@@ -587,7 +587,7 @@ it.each(["table", "named-smaller", "unnamed-smaller"])("F7 rejects an unsplit bl
 });
 
 
-it.each(["named", "unnamed", "next-page", "named-no-header", "unnamed-no-header", "next-page-no-header", "named-no-header-tall-header", "named-no-header-tall-label", "named-no-header-close", "named-no-header-unicode", "named-no-header-long", "named-no-header-body-note", "named-no-header-heading-note", "named-no-header-negative"])("F10 a smaller %s heading interrupts a single-model section without extracted columns", (kind) => {
+it.each(["named", "unnamed", "next-page", "named-no-header", "unnamed-no-header", "next-page-no-header", "named-no-header-tall-header", "named-no-header-tall-label", "named-no-header-close", "named-no-header-unicode", "named-no-header-long", "named-no-header-body-note", "named-no-header-heading-note", "named-no-header-negative", "named-no-header-indented", "named-no-header-raw-values", "named-no-header-split-title", "next-page-no-header-indented", "next-page-no-header-split-title", "named-no-header-indented-bold-label", "named-no-header-larger-body", "named-no-header-same-body-font", "named-no-header-same-body-font-negative", "named-no-header-wide-gap", "named-no-header-page-end"])("F10 a smaller %s heading interrupts a single-model section without extracted columns", (kind) => {
   const title = kind.startsWith("unnamed") ? "DC Output Data" : "DC Output Data for 2080-LC20-20QBB";
   const items = [row("Output Specifications for 2080-LC20-20QWB", 740, 12),
     row("Attribute Value", 720, 8), row("Load current max 2 A", 706, 8),
@@ -609,18 +609,34 @@ it.each(["named", "unnamed", "next-page", "named-no-header", "unnamed-no-header"
   }
   if (kind.endsWith("negative")) items.find((r)=>r.str.startsWith("DC Output Data"))!.str="DC Output Data (not for 2080-LC20-20QWB)";
   if (kind.endsWith("unicode")) items.find((r) => r.str.startsWith("DC Output Data"))!.str = items.find((r) => r.str.startsWith("DC Output Data"))!.str.replaceAll("-", "\u2011");
+  if (kind.includes("indented")) for (const r of items) { if (r.y === 648 || r.y === 634) r.x = 180; }
+  if (kind.endsWith("raw-values")) for (const r of items) {
+    if (r.y === 648 || r.y === 634) { r.str = r.y === 648 ? "9 A" : "11 A"; r.x = 350; }
+  }
+  if (kind.endsWith("split-title")) {
+    const at = items.findIndex((r) => r.str.startsWith("DC Output Data"));
+    items.splice(at, 1, row("DC Output Data for", 676, 10), row("2080-LC20-20QBB", 676, 10, 350));
+  }
+  if (kind.endsWith("bold-label")) {
+    const at = items.findIndex((r) => r.y === 648);
+    items.splice(at, 1, row("Point current max", 648, 11, 180), row("9 A", 648, 8, 350));
+  }
+  if (kind.endsWith("larger-body")) for (const r of items) { if (r.y === 648 || r.y === 634) r.size = 11; }
+  if (kind.includes("same-body-font")) items.find((r) => r.str.startsWith("DC Output Data"))!.size = 8;
+  if (kind.endsWith("wide-gap")) for (const r of items) { if (r.y === 648 || r.y === 634) r.y -= 48; }
   if (kind.endsWith("long")) {
     items.find((r) => r.y === 634)!.y = 320;
     for (let n=0;n<20;n++) items.push(row("Additional electrical operating conditions and parameter context without a new model assertion.",620-n*14,8));
   }
   expect(pageWithTables(items)).toBeNull();
   const scope = new SectionTableScope(new Map(), true, [QWB]);
-  const original = sectionTableLayout(kind.startsWith("next-page") ? items.slice(0, 3) : items)!;
+  const original = sectionTableLayout(kind.startsWith("next-page") ? items.slice(0, 3) : kind.endsWith("page-end") ? items.slice(0, 4) : items)!;
   const first = scope.splitPage(original.text, original, []);
   expect(first.sections.find((part) => part.text.includes("Load current max"))).toMatchObject({ models: [QWB], scope: "section" });
-  const next = kind.startsWith("next-page") ? sectionTableLayout(items.slice(3))! : null;
-  const result = next ? scope.splitPage(next.text, next, []) : first;
-  const later = result.sections.find((part) => part.text.includes("Point current max"))!;
+  const nextItems = kind.startsWith("next-page") ? items.slice(3) : kind.endsWith("page-end") ? items.slice(4) : null;
+  const next = nextItems ? sectionTableLayout(nextItems) : null;
+  const result = nextItems ? scope.splitPage(next?.text ?? nextItems.map((r) => r.str).join("\n"), next, []) : first;
+  const later = result.sections.find((part) => part.text.includes(kind.endsWith("raw-values") ? "9 A" : "Point current max"))!;
   expect(later).toMatchObject({ scope: "unresolved" });
   expect(later.text).not.toContain("Load current max");
   expect(scope.split("Point current max 9 A continued", null)[0]).toMatchObject({ scope: "unresolved" });

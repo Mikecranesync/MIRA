@@ -77,6 +77,11 @@ function localSectionTitle(text: string): boolean {
   const values = findValues(remainder, "source");
   if (!values.every((value) => !remainder.slice(0, value.start).trim())) return false;
   const words = values.reduceRight((part, value) => part.slice(0, value.start) + " " + part.slice(value.end), remainder);
+  // A running product-family title is not a new engineering section. Retain
+  // catalog-only titles, the existing catalog suffix grammar and engineering
+  // headings; do not turn a smaller family/page header into a scope change.
+  if (catalogs.length > 0 && TITLE_LETTER.test(words) && captionModels({ text: title }).length === 0 &&
+      !/\b(?:Specifications|Requirements|Ratings|Relay|Contact|Data)\b/i.test(title)) return false;
   return catalogs.length > 0 || TITLE_LETTER.test(words);
 }
 
@@ -282,16 +287,16 @@ export function sectionTableLayout(items: readonly LayoutItem[], includeBoundari
       const bodyHeading = !caption && line.columns.length === 1 && line.text.length < 200 &&
         isTitleLine(line.text) && next && line.y - next.y <= 60 &&
         /^(?:Attribute|Description)\b/i.test(next.text) && line.size > next.size + 0.2;
-      // Keep a standalone font peak even without a repeated table header.
-      // The state machine compares it with the established section body font.
-      // Mixed-size grid rows and numeric value rows are not such titles.
-      const inHeader = [...captions.values()].some((c) => c.headerTop !== undefined && c.headerBottom !== undefined &&
+      // Keep uniform-font title evidence even without a repeated table header.
+      // A title/catalog can occupy several PDF columns, and its following body
+      // can be indented or use a different font. Those layouts do not prove
+      // that the earlier model still owns it. The state machine checks the
+      // established body font and contradictory catalog evidence below.
+      // Mixed-size grid rows and measured value rows remain data.
+      const inHeader = /^(?:Attribute|Description)\b/i.test(line.text) || [...captions.values()].some((c) => c.headerTop !== undefined && c.headerBottom !== undefined &&
         line.y <= c.headerTop + 2.5 && line.y >= c.headerBottom - 2.5);
-      const localTitle = !caption && !inHeader && line.columns.length === 1 && line.minSize >= line.size - 0.2 &&
-        line.text.length < 200 && next &&
-        line.y - next.y <= 60 && next.x <= line.x + line.size * 2 &&
-        next.size < line.size - 0.2 &&
-        localSectionTitle(line.text);
+      const localTitle = !caption && !line.removed && !inHeader && line.minSize >= line.size - 0.2 &&
+        line.text.length < 200 && localSectionTitle(line.text);
       const heading: Heading = { text: caption?.text ?? line.text, at, table: !!caption, size: line.size,
         ...(bodyHeading ? { bodyHeading: true } : {}),
         ...(localTitle ? { localTitle: true } : {}),
@@ -496,8 +501,19 @@ export class SectionTableScope {
     }
     // With no inherited scope and no table caption, there is no applicability boundary to
     // split. Preserve original text AND window boundaries on unrelated prose pages.
-    const interruptsInherited = (h: Heading) => h.interruption || (this.active.scope &&
-      (h.bodyHeading || (h.localTitle && this.active.scope === "section" && this.bodySize > 0 && h.size > this.bodySize + 0.2)));
+    const interruptsInherited = (h: Heading): boolean => {
+      if (h.interruption) return true;
+      if (!this.active.scope) return false;
+      if (h.bodyHeading) return true;
+      if (!h.localTitle || this.active.scope !== "section") return false;
+      // A different or excluded catalog title cannot silently inherit the old
+      // model just because it uses body-sized text. Reuse the catalog reader
+      // for contradiction only; this path never assigns an affirmative model.
+      const catalogs = modelNumbersIn(catalogIdentifierView(h.text).text);
+      const contradictory = catalogs.length > 0 && (hasNegation(h.text) ||
+        catalogs.some((n) => !this.active.models?.includes(exactModelKey(n.label))));
+      return contradictory || (this.bodySize > 0 && h.size > this.bodySize + 0.2);
+    };
     const hasInterruption = layout.headings.some(interruptsInherited);
     const hasTableInterruption = layout.headings.some((h) => h.interruption || (h.bodyHeading && this.active.scope));
     if (!layout.hasTables && !hasInterruption && (!this.active.scope || this.active.scope === "shared")) {

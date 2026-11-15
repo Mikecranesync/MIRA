@@ -1047,7 +1047,7 @@ describe("#5503 actual upload INSERT through raw retrieval SQL", () => {
     });
   });
 
-  it.each(["named", "unnamed", "next-page", "named-no-header", "unnamed-no-header", "next-page-no-header", "named-no-header-tall-header", "named-no-header-tall-label", "named-no-header-close", "named-no-header-unicode", "named-no-header-long", "named-no-header-body-note", "named-no-header-heading-note", "named-no-header-negative"])("F10 real single-model upload rejects smaller %s sibling headings and headerless continuation", async (kind) => {
+  it.each(["named", "unnamed", "next-page", "named-no-header", "unnamed-no-header", "next-page-no-header", "named-no-header-tall-header", "named-no-header-tall-label", "named-no-header-close", "named-no-header-unicode", "named-no-header-long", "named-no-header-body-note", "named-no-header-heading-note", "named-no-header-negative", "named-no-header-indented", "named-no-header-raw-values", "named-no-header-split-title", "next-page-no-header-indented", "next-page-no-header-split-title", "named-no-header-indented-bold-label", "named-no-header-larger-body", "named-no-header-same-body-font", "named-no-header-same-body-font-negative", "named-no-header-wide-gap", "named-no-header-page-end"])("F10 real single-model upload rejects smaller %s sibling headings and headerless continuation", async (kind) => {
     const items = [item("Output Specifications for 2080-LC20-20QWB", 100, 740, 12),
       item("Attribute Value", 100, 720), item("zzf10original Load current max 2 A", 100, 706),
       item(kind.startsWith("named") ? "DC Output Data for 2080-LC20-20QBB" : "DC Output Data", 100, 676, 10),
@@ -1070,19 +1070,35 @@ describe("#5503 actual upload INSERT through raw retrieval SQL", () => {
     }
     if (kind.endsWith("negative")) items.find((i)=>i.str.startsWith("DC Output Data"))!.str="DC Output Data (not for 2080-LC20-20QWB)";
     if (kind.endsWith("unicode")) items.find((i) => i.str.startsWith("DC Output Data"))!.str = items.find((i) => i.str.startsWith("DC Output Data"))!.str.replaceAll("-", "\u2011");
+    if (kind.includes("indented")) for (const i of items) { if (i.y === 648 || i.y === 634) i.x = 180; }
+    if (kind.endsWith("raw-values")) for (const y of [648, 634]) {
+      const at = items.findIndex((i) => i.y === y);
+      items.splice(at, 1, item(y === 648 ? "9 A" : "11 A", 350, y), item(y === 648 ? "zzf10adjacent" : "zzf10surge", 430, y));
+    }
+    if (kind.endsWith("split-title")) {
+      const at = items.findIndex((i) => i.str.startsWith("DC Output Data"));
+      items.splice(at, 1, item("DC Output Data for", 100, 676, 10), item("2080-LC20-20QBB", 350, 676, 10));
+    }
+    if (kind.endsWith("bold-label")) {
+      const at = items.findIndex((i) => i.y === 648);
+      items.splice(at, 1, item("zzf10adjacent Point current max", 180, 648, 11), item("9 A", 350, 648));
+    }
+    if (kind.endsWith("larger-body")) for (const i of items) { if (i.y === 648 || i.y === 634) i.size = 11; }
+    if (kind.includes("same-body-font")) items.find((i) => i.str.startsWith("DC Output Data"))!.size = 8;
+    if (kind.endsWith("wide-gap")) for (const i of items) { if (i.y === 648 || i.y === 634) i.y -= 48; }
     if (kind.endsWith("long")) {
       items.find((i) => i.y === 634)!.y = 320;
       for (let n=0;n<20;n++) items.push(item("Additional electrical operating conditions and parameter context without a new model assertion.",100,620-n*14));
     }
     const pages = [{ page: 1, items: [item(cover, 100, 760, 12)], text: cover }];
-    for (const body of kind.startsWith("next-page") ? [items.slice(0, 3), items.slice(3)] : [items]) {
+    for (const body of kind.startsWith("next-page") ? [items.slice(0, 3), items.slice(3)] : kind.endsWith("page-end") ? [items.slice(0, 4), items.slice(4)] : [items]) {
       pages.push({ page: pages.length + 1, items: body, text: body.map((i) => i.str).join("\n") });
     }
     pages.push({ page: pages.length + 1, items: [item("zzf10continued Point current max 9 A", 100, 720)], text: "zzf10continued Point current max 9 A" });
     await withPages(pages, async () => {
       for (const model of ["20QWB", "20AWB", "20QBB"]) {
         for (const token of ["zzf10adjacent", "zzf10surge", "zzf10continued"]) {
-          expect((await retrieve(model, `${token} Point current max`)).text).not.toContain(token);
+          expect((await retrieve(model, kind.endsWith("raw-values") ? token : `${token} Point current max`)).text).not.toContain(token);
         }
       }
       expect((await retrieve("20QWB", "zzf10original Load current max")).text).toContain("2 A");
