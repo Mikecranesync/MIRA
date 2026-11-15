@@ -585,3 +585,11 @@ it("F7 rejects an unsplit legacy block whose span crosses a later physical secti
     sourceTop: 720, sourceBottom: 648, sourceCaption: "Output Specifications for 2080-LC20-20QWB, 2080-LC20-20AWB" };
   expect(scopeTableChunks([chunk], layout)[0]).toMatchObject({ unqualified: true, scope: "unresolved" });
 });
+
+
+it.each([null, undefined])("F8 distinguishes a successfully headingless page from unreadable geometry (%s)", (layout) => {
+  const chunk = { text: "2080-LC20-20QWB: Load current max 2 A", models: [QWB], unqualified: false, sourceTop: 720, sourceBottom: 686, sourceHeaderSize: 8 };
+  const result = scopeTableChunks([chunk], layout)[0];
+  expect(result.unqualified).toBe(layout === undefined);
+  expect(result.scope).toBe(layout === undefined ? "unresolved" : undefined);
+});

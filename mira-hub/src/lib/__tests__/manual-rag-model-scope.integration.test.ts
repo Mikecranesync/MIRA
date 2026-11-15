@@ -1012,14 +1012,14 @@ describe("#5503 actual upload INSERT through raw retrieval SQL", () => {
     });
   });
 
-  it.each(["20QBB", "20QWB"])("F7 real extracted columns cannot swallow adjacent %s electrical values", async (nextModel) => {
+  it.each(["20QBB", "20QWB", "non-table", "non-table-large-body"])("F7 real extracted columns cannot swallow adjacent %s electrical values", async (nextModel) => {
     const items = [item("Output Specifications for 2080-LC20-20QWB, 2080-LC20-20AWB", 100, 740, 10),
       item("Attribute", 100, 720), item("2080-LC20-20QWB(R)", 280, 720), item("2080-LC20-20AWB(R)", 420, 720),
       item("zzoriginalvalue Load current max", 100, 706), item("2.0 A", 280, 706), item("1.5 A", 420, 706),
       item("Switching time max", 100, 692), item("10 ms", 280, 692), item("8 ms", 420, 692),
-      item(`Output Specifications for 2080-LC20-${nextModel}`, 100, 676, 10),
+      item(nextModel.startsWith("non-table") ? "DC Output Data for 2080-LC20-20QBB" : `Output Specifications for 2080-LC20-${nextModel}`, 100, 676, nextModel.startsWith("non-table") ? 12 : 10),
       item("Attribute", 100, 662), item("Value", 280, 662),
-      item("zzadjacentvalue Point current max", 100, 648), item("9 A", 280, 648),
+      item("zzadjacentvalue Point current max", 100, 648, nextModel === "non-table-large-body" ? 12 : 8), item("9 A", 280, 648, nextModel === "non-table-large-body" ? 12 : 8),
       item("Point surge max", 100, 634), item("11 A", 280, 634)];
     const cover = "Micro820 Programmable Controllers\n2080-LC20-20QBB, 2080-LC20-20QWB, 2080-LC20-20AWB";
     await withPages([{ page: 1, items: [item(cover, 100, 760, 12)], text: cover },
@@ -1033,6 +1033,32 @@ describe("#5503 actual upload INSERT through raw retrieval SQL", () => {
         expect(result.text).toContain(value);
         expect(result.chunks.filter((c) => c.content.includes(": zzoriginalvalue")).every((c) => !c.content.includes("zzadjacentvalue"))).toBe(true);
       }
+    });
+  });
+
+  it.each(["independent", "independent-footnote", "inherited-conflict", "inherited-compatible"])("F8 real storage keeps readable headingless columns with %s scope", async (kind) => {
+    const cover = "Micro820 Programmable Controllers\n2080-LC20-20QBB, 2080-LC20-20QWB, 2080-LC20-20AWB";
+    const caption = kind === "inherited-compatible" ? "Output Specifications for 2080-LC20-20QWB, 2080-LC20-20AWB" : "Output Specifications for 2080-LC20-20QBB";
+    const prior = [item(caption, 100, 740, 10), item("Attribute Value", 100, 720), item("Controller current max 1 A", 100, 700)];
+    const items = [item("Attribute", 100, 720), item("2080-LC20-20QWB(R)", 280, 720), item("2080-LC20-20AWB(R)", 420, 720),
+      item("zzheadingless Load current max", 100, 700), item("2 A", 280, 700), item("1 A", 420, 700),
+      item("Switching time max", 100, 686), item("10 ms", 280, 686), item("8 ms", 420, 686)];
+    if (kind === "independent-footnote") {
+      items.push(item("1", 100, 660, 4.9));
+      for (const row of items) if (row.str.includes("Load current max") || row.str === "Switching time max") row.size = 10;
+    }
+    await withPages([{ page: 1, items: [item(cover, 100, 760, 12)], text: cover },
+      ...(kind.startsWith("independent") ? [] : [{ page: 2, items: prior, text: prior.map((i) => i.str).join("\n") }]),
+      { page: kind.startsWith("independent") ? 2 : 3, items, text: items.map((i) => i.str).join("\n") }], async () => {
+      for (const [model, value] of [["20QWB", "2 A"], ["20AWB", "1 A"]]) {
+        const result = await retrieve(model, "zzheadingless Load current max");
+        expect(result.text.includes("zzheadingless")).toBe(kind !== "inherited-conflict");
+        if (kind !== "inherited-conflict") {
+          expect(result.text).toContain(value);
+          expect(result.text).not.toContain(model === "20QWB" ? "20AWB(R):" : "20QWB(R):");
+        }
+      }
+      expect((await retrieve("20QBB", "zzheadingless current")).text).not.toContain("zzheadingless");
     });
   });
 

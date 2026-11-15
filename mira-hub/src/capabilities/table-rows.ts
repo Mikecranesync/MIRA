@@ -20,8 +20,9 @@ export type TableBlock = {
   unqualified: string[];
   top: number;
   bottom: number;
+  bodySize?: number;
 };
-export type TableChunk = { text: string; models: string[]; unqualified: boolean; sourceTop?: number; sourceBottom?: number; sourceCaption?: string; sourceModels?: string[]; scope?: "unresolved" };
+export type TableChunk = { text: string; models: string[]; unqualified: boolean; sourceTop?: number; sourceBottom?: number; sourceHeaderSize?: number; sourceBodySize?: number; sourceCaption?: string; sourceModels?: string[]; scope?: "unresolved" };
 /** A MODEL-KEYED table (one model per line in a left column, attributes as columns — the GS10
  *  Appendix A cable-length table, #5450): its header band + model lines as rendered text, and the
  *  models of its key column. It carries NO rows on purpose: cells merged down a group of models
@@ -289,6 +290,7 @@ function buildBlock(lines: readonly Line[], headerIdx: number): { block: TableBl
   const unqualified: string[] = [];
   const rowLines = new Map<TableRow, number>();
   const rowRawLine = new Map<TableRow, string>();
+  let bodySize = 0;
   let lastRow: TableRow | null = null;
   let lastColumnCellIdx = headerIdx;
   // A label-only line waiting to forward-attach onto the next row. `attached` is true once its text
@@ -333,6 +335,13 @@ function buildBlock(lines: readonly Line[], headerIdx: number): { block: TableBl
       releasePending();
       pendingLabelOnly = { y: line.y, idx: i, text, attached };
       continue;
+    }
+
+    // Calibrate the ordinary table font from its first value-bearing row, not the
+    // page minimum (which may be a tiny footnote). A foreign catalog cell is not
+    // evidence for ordinary body size: it may be the next section's title.
+    if (!modelNumbersIn(renderItems(valueItems)).some((number) => !modelKeys.includes(number.key))) {
+      if (bodySize === 0) bodySize = Math.max(...line.items.map((item) => item.size));
     }
 
     // Continuation of lastRow?
@@ -427,7 +436,7 @@ function buildBlock(lines: readonly Line[], headerIdx: number): { block: TableBl
   const top = header.y;
   const bottom = lines[lastColumnCellIdx].y;
   return {
-    block: { caption, header: headerLabel, models, modelKeys, rows: finalRows, unqualified, top, bottom },
+    block: { caption, header: headerLabel, models, modelKeys, rows: finalRows, unqualified, top, bottom, bodySize },
     nextIdx: scanEnd,
   };
 }
@@ -636,7 +645,7 @@ export function pageWithTables(items: readonly LayoutItem[], sectionBoundaries: 
   if (blocks.length === 0 && keyed.length === 0) return null;
 
   const chunks: TableChunk[] = [];
-  for (const block of blocks) chunks.push(...tableChunks(block).map((chunk) => ({ ...chunk, sourceTop: block.top, sourceBottom: block.bottom, sourceCaption: block.caption, sourceModels: block.modelKeys })));
+  for (const block of blocks) chunks.push(...tableChunks(block).map((chunk) => ({ ...chunk, sourceTop: block.top, sourceBottom: block.bottom, sourceBodySize: block.bodySize, sourceHeaderSize: Math.max(...items.filter((i) => Math.abs(i.y - block.top) <= LINE_GAP_PT).map((i) => i.size)), sourceCaption: block.caption, sourceModels: block.modelKeys })));
   // A model-keyed table is ONE unqualified chunk (split only by the size budget) tagged with every
   // model of its key column, so retrieval withholds it from a record holding a catalog number and
   // reports the page as unresolved — a flat `GS11N-20P2 230 1.8` line never answers for a value

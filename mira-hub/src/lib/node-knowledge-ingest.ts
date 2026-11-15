@@ -29,7 +29,7 @@ import { readPageLabelsBounded } from "@/capabilities/pdf-page-label-reader";
 import { pageLayoutItems } from "@/capabilities/pdf-layout-items";
 import { pageWithTables, type TableChunk } from "@/capabilities/table-rows";
 import { contactRatingTable, columnLines, withColumnLines } from "@/capabilities/contact-ratings-table";
-import { SectionTableScope, modelSectionModels, scopeTableChunks, sectionTableLayout, readOutputTypes, mergeOutputTypes, type ScopedText, type SectionScope } from "@/capabilities/section-table-scope";
+import { SectionTableScope, tableExtractionBoundaries, modelSectionModels, scopeTableChunks, sectionTableLayout, readOutputTypes, mergeOutputTypes, type ScopedText, type SectionScope } from "@/capabilities/section-table-scope";
 import { hasUnmappedGlyphBetweenDigits } from "@/capabilities/manual-completeness";
 import { uploadIdentity } from "@/capabilities/page-label-backfill";
 
@@ -803,8 +803,13 @@ async function parsePdfForNode(buffer: Buffer | Uint8Array, rest: NodeChunkOpts)
       const items = await pageLayoutItems(pdf, p + 1);
       // Recognize physical section cuts on the complete page, before extraction removes
       // their source items. Closely adjacent sections must never share a model block.
-      const boundaries = sectionTableLayout(items)?.headings.filter((h) => h.table).map((h) => h.y) ?? [];
-      const table = items.length > 0 ? pageWithTables(items, boundaries) : null;
+      const fullLayout = sectionTableLayout(items);
+      const boundaries = tableExtractionBoundaries(fullLayout);
+      let table = items.length > 0 ? pageWithTables(items, boundaries) : null;
+      if (table) {
+        const bounded = tableExtractionBoundaries(fullLayout, table.chunks);
+        if (bounded.length > boundaries.length) table = pageWithTables(items, bounded);
+      }
       if (table) {
         outputInventoryObserved ||= table.chunks.some((c) => /\bOutput circuit type\b/i.test(c.text));
       }

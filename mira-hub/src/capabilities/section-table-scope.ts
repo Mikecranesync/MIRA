@@ -303,6 +303,22 @@ function contradictoryTableHeading(h: Pick<Heading, "text" | "headerModels">): b
     header.some((n) => !caption.some((own) => own.key === n.key));
 }
 
+/** Font furniture below a table's own header size is not a new physical heading.
+ * Footnotes can make the page-wide minimum tiny; do not split ordinary grid rows
+ * just because that minimum made them candidates in the general page layout. */
+function crossesHeading(chunk: TableChunk, h: Heading): boolean {
+  return chunk.sourceTop !== undefined && chunk.sourceBottom !== undefined &&
+    h.y < chunk.sourceTop - 2.5 && h.y >= chunk.sourceBottom - 2.5 &&
+    (h.table || (chunk.sourceHeaderSize === undefined && chunk.sourceBodySize === undefined) ||
+      h.size > Math.max(chunk.sourceHeaderSize ?? 0, chunk.sourceBodySize ?? 0) + 0.2);
+}
+
+/** Start with proven table captions; then fence every larger recognized heading
+ * inside an extracted column block, including unresolved/non-table sections. */
+export function tableExtractionBoundaries(layout: SectionLayout | null, chunks: readonly TableChunk[] = []): number[] {
+  return layout?.headings.filter((h) => h.table || chunks.some((c) => !c.unqualified && crossesHeading(c, h))).map((h) => h.y) ?? [];
+}
+
 /** Bind each extracted block to its physical caption, even when its source lines have
  * been removed from the remainder. Coordinates are parser-local; persisted scope is the
  * same authoritative unresolved marker used by residual sections and retrieval. */
@@ -315,9 +331,10 @@ export function scopeTableChunks(chunks: readonly TableChunk[], layout: SectionL
     const source = heading ?? { text: chunk.sourceCaption ?? "", headerModels: chunk.sourceModels };
     const named = captionModels(source).map((n) => n.key);
     const header = heading?.headerModels ?? [];
-    const crossesBoundary = chunk.sourceTop !== undefined && chunk.sourceBottom !== undefined &&
-      layout?.headings.some((h) => h.table && h.y < chunk.sourceTop! - 2.5 && h.y >= chunk.sourceBottom! - 2.5);
-    const invalid = !layout || chunk.sourceTop === undefined || crossesBoundary ||
+    const crossesBoundary = layout?.headings.some((h) => crossesHeading(chunk, h));
+    // null means a successful positioned-page read with no headings; undefined
+    // means unreadable/absent geometry. Independent columns survive the former.
+    const invalid = layout === undefined || chunk.sourceTop === undefined || crossesBoundary ||
       uncertainCaption(source) || contradictoryTableHeading(source) || heading?.columnUnresolved ||
       (named.length > 0 && chunk.models.some((m) => !named.includes(exactModelKey(m)))) ||
       (header.length > 0 && chunk.models.some((m) => !header.includes(exactModelKey(m))));
