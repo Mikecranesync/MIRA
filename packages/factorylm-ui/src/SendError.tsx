@@ -40,8 +40,11 @@ export interface SendErrorProps {
 export function SendError({ error, dispatch, draft, turnId, hooks }: SendErrorProps) {
   if (!error) return null;
 
-  const hostRetry = turnId && hooks?.onRetry ? hooks.onRetry : undefined;
-  const draftRetry = Boolean(draft.trim() && hooks?.onSend);
+  // A target review (#5557) is answered by checking the target and pressing
+  // Send; a retry control here would re-ask about the new target in one tap.
+  const review = Boolean(hooks?.targetReview) && error === hooks?.targetReview;
+  const hostRetry = !review && turnId && hooks?.onRetry ? hooks.onRetry : undefined;
+  const draftRetry = !review && Boolean(draft.trim() && hooks?.onSend);
   const canRetry = Boolean(hostRetry) || draftRetry;
 
   const retry = () => {
@@ -74,7 +77,7 @@ export function SendError({ error, dispatch, draft, turnId, hooks }: SendErrorPr
     <div className="fl-send-error" role="alert" aria-label="Send error">
       <div className="fl-send-error__icon">✕</div>
       <div className="fl-send-error__content">
-        <p className="fl-send-error__message">Couldn't reach MIRA</p>
+        <p className="fl-send-error__message">{review ? "Check the question target" : "Couldn't reach MIRA"}</p>
         <p className="fl-send-error__detail">{error}{draft.trim() ? " Your message is saved below." : ""}</p>
         <div className="fl-send-error__actions">
           {canRetry ? (

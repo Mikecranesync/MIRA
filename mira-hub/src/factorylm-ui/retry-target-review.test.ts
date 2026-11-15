@@ -106,6 +106,9 @@ describe("the host is wired to the hold (source shape, like hub-host-restore-ret
     expect(host).toMatch(/refusedScope \? \{ refusedScope \} : \{\}/);
     expect(host).toMatch(/targetReviewMessage\(retryCheck\.review\)/);
   });
+  it("the banner is told it is a target review, so it offers no Try again (#5557)", () => {
+    expect(host).toMatch(/\.\.\.\(reviewMessage \? \{ targetReview: reviewMessage \} : \{\}\)/);
+  });
   it("Send routes the held question through heldQuestionForSend", () => {
     expect(host).toMatch(/const held = heldQuestionForSend\(failedBody, retryCheck, q, files\.length\);/);
   });
