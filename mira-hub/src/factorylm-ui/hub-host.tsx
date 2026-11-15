@@ -75,7 +75,7 @@ import { ParkedSources } from "./ParkedSources";
 import { clearSheetDataForSignOut, localStorageStore, parseSheetReceipts } from "./living-sheet-client";
 import { actionsCoveredByLayer, notebookActionsStyle } from "./notebook-actions";
 import { BenchComponents } from "./BenchComponents";
-import { SEND_BLOCKED_MESSAGE, benchSendRefusal, createBenchSendGate, expectsComponentFrame, isScopeRefusalCode, parseComponentFrames, prepareChatSend, heldQuestionForSend, recordBenchScope, retryTargetCheck, targetReviewMessage, withoutScope, type BenchScopes, type BenchState, type ComponentTurnFrame, type ScopeField } from "./bench-components-logic";
+import { SEND_BLOCKED_MESSAGE, benchSendRefusal, createBenchSendGate, expectsComponentFrame, isScopeRefusalCode, parseComponentFrames, prepareChatSend, heldEvidenceNote, heldQuestionForSend, recordBenchScope, retryTargetCheck, targetReviewMessage, withoutScope, type BenchScopes, type BenchState, type ComponentTurnFrame, type ScopeField } from "./bench-components-logic";
 import { LEGACY_THREAD_ID, notebookMachines, notebookProjects, threadRefFromItem, notebookIdFromProject, type HubNotebook } from "./notebook-tree";
 import { answerTurnId, citationIndex, contextFor, lifecycleFromStream, livePartsWhileRunning, partsFromStream, sourceIdFor, threadFromPersisted, withManualSearchStatus, withSettledFollowups, type SettledFollowups } from "./to-interaction";
 import {
@@ -646,6 +646,8 @@ export function HubShellHost() {
     ? retryTargetCheck(failedBody.refusedScope, benchView && benchView.key === gateConversation ? benchView.state : undefined)
     : null;
   const reviewMessage = retryCheck?.kind === "review" ? targetReviewMessage(retryCheck.review) : null;
+  // #5562: the held photo is shown beside the composer while the question waits for review.
+  const heldNote = heldEvidenceNote(failedBody, retryCheck, view.draft);
   useEffect(() => {
     if (reviewMessage) dispatch({ type: "set-send-error", error: reviewMessage });
   }, [reviewMessage]);
@@ -1127,6 +1129,7 @@ export function HubShellHost() {
         adapter={adapter}
         hooks={hooks}
         conversationSurface="assistant"
+        {...(heldNote ? { composerAccessory: <p className="fl-qtarget__browsing" role="status" aria-label="Kept with this question">{heldNote}</p> } : {})}
         onOpenItem={onOpenItem}
         onSelectProject={onSelectProject}
         navigationFooter={

@@ -165,6 +165,25 @@ export function heldQuestionForSend<B extends object>(
   return text.trim() === failed.question.trim() ? failed.body : null;
 }
 
+/**
+ * #5562: while a refused question waits for review, the composer has already released its
+ * chip, so nothing showed that the photo is still held. Say so beside the composer, and say
+ * plainly when it will NOT go: heldQuestionForSend drops the held body once the question is
+ * edited or a new attachment is added (the host cannot see new chips before Send, so the
+ * note names that case up front).
+ */
+export function heldEvidenceNote(
+  failed: { body: object; question: string; refusedScope?: ScopeField } | null,
+  check: ReturnType<typeof retryTargetCheck> | null,
+  draft: string,
+): string | null {
+  if (!failed?.refusedScope || check?.kind !== "review") return null;
+  if (!("visualEvidence" in failed.body) || !failed.body.visualEvidence) return null;
+  return draft.trim() === failed.question.trim()
+    ? `Your photo is kept with this question and goes with the next Send to ${check.review.to}, unless you change the question or attach something new.`
+    : "You changed the question, so the kept photo will not go with it. Attach the photo again if you need it.";
+}
+
 export function targetReviewMessage(r: TargetReview): string {
   return `This question was asked about ${r.from}. The question target is now ${r.to}. Check the target, then press Send to ask about ${r.to}.`;
 }
