@@ -1,4 +1,4 @@
-import { GS_CATALOG_PATTERN, modelMentionsInText } from "./model-token";
+import { modelMentionsInText } from "./model-token";
 import { catalogIdentifierView } from "./catalog-identifier";
 import {
   NAMEPLATE_BODY_MARK,
@@ -175,53 +175,33 @@ const UNIT_RE =
 const STANDARD_RE = /^(?:IP|RS|UL|IEC|ISO|EN|NEMA|CAT|DIN|AWG|USB|SIL|ANSI|NFPA|CSA)\d+[A-Z]?$/;
 const CHAIN_RE = /[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*/g;
 const hasDigit = (s: string) => /\d/.test(s);
-const numberFrom = (run: string[], rawLabel?: string): ModelNumber | null => {
+const numberFrom = (run: string[], raw?: string): ModelNumber | null => {
   const key = run.join("").toUpperCase();
-  const label = rawLabel ?? run.join("-");
-  return /[A-Z]/.test(key) && key.length >= 4 && !UNIT_RE.test(key) && !STANDARD_RE.test(key)
-    // Existing ASCII casing is retained; a newly recognized Unicode spelling
-    // remains the literal source label, separate from its comparison key.
-    ? { key, label: /^[\x00-\x7F]*$/.test(label) ? label.toUpperCase() : label }
-    : null;
+  // The key is the comparison form. The label stays what was written when the
+  // number was spelled with a non-ASCII hyphen; ASCII labels are as before.
+  const label = raw !== undefined && /[^\x00-\x7F]/.test(raw) ? raw : run.join("-").toUpperCase();
+  return /[A-Z]/.test(key) && key.length >= 4 && !UNIT_RE.test(key) && !STANDARD_RE.test(key) ? { key, label } : null;
 };
 type NumberRun = { segments: string[]; raw: string };
 
 /** The hyphen-joined runs of a text that could hold a model number: a run of
  *  groups that each carry a digit ("2080-LC20-20QBB"), or a short letter prefix
  *  hyphenated to its number ("RX-420"). */
-function numberRuns(text: string): NumberRun[] {
+function numberRuns(text: string, view = catalogIdentifierView(text).text): NumberRun[] {
   const runs: NumberRun[] = [];
-  const view = catalogIdentifierView(text);
-  let consumed = 0;
-  for (const chain of view.text.matchAll(CHAIN_RE)) {
-    if (chain.index < consumed) continue;
-    // Extend only a model-shaped span the common view actually accepted.
-    // Global optional-space hyphens would join prose/range endpoints too.
-    const span = view.spans.find(span => span.start === chain.index && span.end >= chain.index + chain[0].length);
-    const detected = span?.detected ?? chain[0];
-    const pieces = [...detected.matchAll(/[A-Za-z0-9]+/g)];
-    const segments = pieces.map(piece => piece[0]);
-    // Only a newly joined SPACED count/unit tail ("2 NC - 24 V") is
-    // suppressed. Explicit joined catalogs and spaced inventory without a
-    // following unit ("2 NC-24 indicators", "2 NC - 24 indicators") remain
-    // numbers. Both unit decisions reuse the EXISTING unit grammar.
-    const previousCount = /(?:^|[^A-Za-z0-9])(\d+)[ \t]+$/.exec(text.slice(0, chain.index));
-    const separator = pieces.length > 1 ? detected.slice(pieces[0].index + pieces[0][0].length, pieces[1].index) : "";
-    const numberEnd = pieces.length > 1 ? chain.index + pieces[1].index + pieces[1][0].length : chain.index;
-    const followingUnit = /^[ \t]+([A-Za-z]+)\b/.exec(text.slice(numberEnd));
-    const numericUnitTail = pieces.length > 1 && (UNIT_RE.test(segments[1].toUpperCase())
-      || (followingUnit !== null && UNIT_RE.test(`${segments[1]}${followingUnit[1]}`.toUpperCase())));
-    const countedPrefix = /[ \t]/.test(separator) && numericUnitTail && previousCount !== null
-      && UNIT_RE.test(`${previousCount[1]}${segments[0].toUpperCase()}`);
-    consumed = span?.end ?? chain.index + chain[0].length;
+  // Compared in the identifier view (same length as `text`): a supported
+  // Unicode hyphen written directly between the groups of one identifier reads
+  // as "-". Nothing else differs, and a spaced dash is never a separator here.
+  for (const chain of view.matchAll(CHAIN_RE)) {
+    const segments = chain[0].split("-");
+    const starts: number[] = [];
+    for (let k = 0, at = chain.index; k < segments.length; at += segments[k].length + 1, k++) starts.push(at);
     for (let i = 0; i < segments.length; i++) {
-      const prefixed = !(i === 0 && countedPrefix) && /^[A-Za-z]{1,3}$/.test(segments[i]) && /^\d/.test(segments[i + 1] ?? "");
+      const prefixed = /^[A-Za-z]{1,3}$/.test(segments[i]) && /^\d/.test(segments[i + 1] ?? "");
       if (!hasDigit(segments[i]) && !prefixed) continue;
       let j = i;
       while (j + 1 < segments.length && hasDigit(segments[j + 1])) j++;
-      const start = chain.index + pieces[i].index;
-      const end = chain.index + pieces[j].index + pieces[j][0].length;
-      runs.push({ segments: segments.slice(i, j + 1), raw: text.slice(start, end) });
+      runs.push({ segments: segments.slice(i, j + 1), raw: text.slice(starts[i], starts[j] + segments[j].length) });
       i = j;
     }
   }
@@ -235,52 +215,32 @@ export function modelNumbersIn(text: string): ModelNumber[] {
   return numberRuns(text).flatMap((run) => numberFrom(run.segments, run.raw) ?? []);
 }
 
-/** A spaced dash inside a run is either a catalog separator ("ZX731 - 04A") or
- *  a clause dash ("ZX731-09C - 24V"); the text cannot say which. Where a model
- *  is ASKED about or DECLARED, the shorter reading is therefore read as well:
- *  the run cut before a spaced dash. It is only ever an additional number, so a
- *  manual can be refused by it and never admitted by it alone on the asked side.
- *  A cut after the first group is taken only when what follows reads as prose
- *  (a rating, an ordinal, a bare count, or lower case after an upper-case
- *  number), so "ZX731 - 04A" stays one number. */
-function spacedPrefixReadings(run: NumberRun): { readings: ModelNumber[]; clauseTail: boolean } {
-  const pieces = [...run.raw.matchAll(/[A-Za-z0-9]+/g)];
-  if (pieces.length !== run.segments.length) return { readings: [], clauseTail: false };
-  const readings: ModelNumber[] = [];
-  let clauseTail = false, unspacedBefore = false;
-  for (let k = 1; k < pieces.length; k++) {
-    const prefixEnd = pieces[k - 1].index + pieces[k - 1][0].length;
-    if (!/[ \t]/.test(run.raw.slice(prefixEnd, pieces[k].index))) { unspacedBefore = true; continue; }
-    const prefix = run.raw.slice(0, prefixEnd), tail = pieces[k][0];
-    const prose = (UNIT_RE.test(tail.toUpperCase()) && !/^0/.test(tail)) || /^\d+$/.test(tail) || (/[a-z]/.test(tail) && !/[a-z]/.test(prefix));
-    if (k === 1 && !prose) continue;
-    const reading = numberFrom(run.segments.slice(0, k), prefix);
-    if (!reading) continue;
-    readings.push(reading);
-    // A number written with unspaced hyphens, then a spaced dash and prose:
-    // the writer changed style, so the long reading is not a number at all.
-    if (unspacedBefore && prose) clauseTail = true;
-  }
-  return { readings, clauseTail };
-}
-const askedNumbersIn = (text: string): ModelNumber[] =>
-  numberRuns(text).flatMap((run) => {
-    const { readings, clauseTail } = spacedPrefixReadings(run);
-    const whole = clauseTail ? null : numberFrom(run.segments, run.raw);
-    return [...(whole ? [whole] : []), ...readings];
-  });
-
 /** The same, as a COVER or a FILENAME is read: every group of a hyphenated run
  *  that is a model number on its own is read too. A cover writes a range
  *  ("RX410-RX415") or glues a model to its publication number
  *  ("RX410-UM001A-EN-P"); read only as one long number, the model in it would
  *  resemble nothing and the manual would look silent about its own family. */
 function coverNumbersIn(text: string): ModelNumber[] {
-  return numberRuns(text).flatMap((run) => [
+  const read = (runs: NumberRun[]) => runs.flatMap((run) => [
     ...(numberFrom(run.segments, run.raw) ? [numberFrom(run.segments, run.raw)!] : []),
     ...(run.segments.length > 1 ? run.segments.flatMap((segment) => numberFrom([segment]) ?? []) : []),
-    ...spacedPrefixReadings(run).readings,
   ]);
+  return withWrittenReading(text, read);
+}
+
+/** Where a number decides admission (asked, declared, on record), the folded
+ *  reading of a Unicode-hyphen spelling is only ever ADDED to the reading the
+ *  text had as written. "ZX731\u201104A" is read as ZX731-04A and, as before,
+ *  as ZX731. Every asked number must be covered or unknown, so an added number
+ *  can refuse a manual and cannot admit one that the written reading refused.
+ *  Text without a supported Unicode hyphen takes the first return: one reading,
+ *  the one it always had. */
+function withWrittenReading(text: string, read: (runs: NumberRun[]) => ModelNumber[]): ModelNumber[] {
+  const view = catalogIdentifierView(text).text;
+  const folded = read(numberRuns(text, view));
+  if (view === text) return folded;
+  const keys = new Set(folded.map((n) => n.key));
+  return [...folded, ...read(numberRuns(text, text)).filter((n) => !keys.has(n.key))];
 }
 
 const layoutOf = (key: string) => key.replace(/[A-Z]+/g, "A").replace(/\d+/g, "D");
@@ -314,23 +274,24 @@ export const sameModelFamily = sameFamily;
  *  the detector reads is left to the existing check, whole: "GS11N-20P2" must
  *  not come back as a leftover "20P2". */
 export function unlistedModelNumbers(text: string): ModelNumber[] {
-  const view = catalogIdentifierView(text);
   // UTF-16 units, not code points: the detector's positions and `text[i]` below
   // count units, and an emoji is two. Only letters, digits and hyphens are ever
   // blanked, so a surrogate pair is never split.
   const chars = text.split("");
+  const view = catalogIdentifierView(text).text; // same length as `text`
   const blank = (start: number, end: number) => {
     let s = start;
     let e = end;
-    while (s > 0 && /[A-Za-z0-9-]/.test(view.text[s - 1])) s--;
-    while (e < text.length && /[A-Za-z0-9-]/.test(view.text[e])) e++;
+    while (s > 0 && /[A-Za-z0-9-]/.test(view[s - 1])) s--;
+    while (e < text.length && /[A-Za-z0-9-]/.test(view[e])) e++;
     for (let i = s; i < e; i++) chars[i] = " ";
   };
   for (const m of modelMentionsInText(text)) blank(m.start, m.end);
   // modelIdentitiesInText also reads a GS catalog number written with spaces round its hyphen.
-  for (const m of view.text.matchAll(GS_CATALOG_PATTERN)) blank(m.index, m.index + m[0].length);
+  for (const m of view.matchAll(/\bGS\d{1,2}[a-z]?\s*-\s*[a-z0-9]+\b/gi)) blank(m.index, m.index + m[0].length);
   const seen = new Set<string>();
-  return askedNumbersIn(chars.join("")).filter((n) => !seen.has(n.key) && seen.add(n.key));
+  const read = (runs: NumberRun[]) => runs.flatMap((run) => numberFrom(run.segments, run.raw) ?? []);
+  return withWrittenReading(chars.join(""), read).filter((n) => !seen.has(n.key) && seen.add(n.key));
 }
 
 // How a title is told from a sentence. Three things, all needed:

@@ -681,6 +681,9 @@ describe("notebook lexical IDF scoring (#4513, NOTEBOOK_LEXICAL_V2)", () => {
 
 
 // Public fictional identifier controls run inside the existing beta-gate SQL suite.
+// #5484, narrowed (PR #5500): the six hyphen equivalents of the shared detection fold, written
+// directly inside an identifier, compare as "-". A spaced dash and the en dash are NOT in scope and
+// keep the reading they have on main; the cases marked OPEN state that remaining defect.
 describe("#5484 catalog identifier folding and counted inventory — real SQL", () => {
 const TENANT = "84000000-0000-4000-8000-000000000001", FOREIGN = "84000000-0000-4000-8000-000000000002";
 const doc = (n: number) => `84000000-0000-4000-8000-${String(100 + n).padStart(12, "0")}`;
@@ -689,7 +692,9 @@ const TABLE_OWN = doc(6), TABLE_SIBLING = doc(7), TABLE_UNQUALIFIED = doc(8);
 const COUNTED_OWN_DOC = doc(9);
 const OWN = "ZX731-04A", SIBLING = "ZX731-09C", KNOWN = "GS11N-20P2", KNOWN_SIBLING = "GS11N-20P5";
 const NODE = "catalog-fold-current", BODY = "UNIT_FICTIONAL_LEGEND: indicator legend and reference marker description. No physical setting is asserted.";
-const variants = ["-", "\u2011", "\u2013", " - ", " \u2011 ", " \u2013 "];
+const variants = ["-", "\u2010", "\u2011", "\u2012", "\u2212", "\uFE63", "\uFF0D"];
+const unsupported = [" - ", " \u2011 ", "\u2013", " \u2013 "];
+const BARE_DOC = doc(10), OTHER_FAMILY_DOC = doc(11);
 const spell = (identifier: string, separator: string) => identifier.replaceAll("-", separator);
 let client: Client;
 
@@ -732,6 +737,8 @@ beforeAll(async () => {
   await insert(TENANT, TABLE_SIBLING, "DURApulse GS10 AC Drive User Manual", "gs10-guide.pdf", { table_models: ["GS11N20P5"] });
   await insert(TENANT, TABLE_UNQUALIFIED, "DURApulse GS10 AC Drive User Manual", "gs10-guide.pdf", { table_models: ["GS11N20P2", "GS11N20P5"], table_unqualified: true });
   await insert(TENANT, COUNTED_OWN_DOC, "NC-24 Indicator Module\nUser Manual", "NC-24.pdf");
+  await insert(TENANT, BARE_DOC, "ZX731 Logic Controller\nUser Manual", "ZX731.pdf");
+  await insert(TENANT, OTHER_FAMILY_DOC, "ZX735 Logic Controller\nUser Manual", "ZX735.pdf");
   for (const [index, separator] of variants.entries()) {
     await insert(TENANT, doc(20 + index), `${spell(OWN, separator)} Logic Controller\nUser Manual`, `${OWN}.pdf`);
     await insert(TENANT, doc(30 + index), `${OWN} Logic Controller\nUser Manual`, `${spell(OWN, separator)}.pdf`);
@@ -802,16 +809,41 @@ describe.each(variants)("identifier folding over actual SQL: separator %j", (sep
   });
 });
 
-// Review finding F4 (ledger 6892789648): prose after a spaced dash must not turn the sibling
-// into an unrecognised number that the own manual then answers.
-describe("prose after a spaced dash does not disguise a sibling — real SQL", () => {
-  const tailed = (identifier: string, tail: string) => `For ${identifier}${tail}, which fictional indicator legend applies?`;
-  it.each([" - 24V", " \u2013 24V", " - 2nd alarm", " - 3PH", " - 5MIN", " - 24AX"])("refuses the sibling with tail %j without a confirmed record", async (tail) => {
-    expect(await retrieve(tailed(SIBLING, tail))).toEqual([]);
-    expect(await retrieve(tailed("ZX731 - 09C", tail))).toEqual([]);
+describe.each(variants.slice(1))("folding %j adds a reading and never replaces the written one — real SQL", (separator) => {
+  // Main reads the Unicode spelling as the bare family number and refuses the ZX735 manual. The
+  // folded reading is added beside it, so that refusal stands.
+  it("a manual refused for the written reading stays refused", async () => {
+    expect(await retrieve(question(spell(OWN, separator)), [OTHER_FAMILY_DOC])).toEqual([]);
+    expect(await retrieve(question(`${SIBLING}${separator}24V`))).toEqual([]);
   });
-  it.each([" - 24V", " - 2nd alarm", " - 3PH"])("control: the own number with tail %j still retrieves its manual", async (tail) => {
+});
+
+// The three review findings on PR #5500 (ledgers 6892548431, 6892789648, 6893044534). Each came from
+// a spaced-dash rule this PR had added and has removed; each case now reads as it does on main.
+describe("review regressions: a spaced dash is never a separator — real SQL", () => {
+  const tailed = (identifier: string, tail: string) => `For ${identifier}${tail}, which fictional indicator legend applies?`;
+  it.each([" - 24V", " \u2013 24V", " \u2011 24V", " - 2nd alarm", " - 3PH", " - 5MIN", " - 24AX"])("round 2: refuses the sibling with tail %j without a confirmed record", async (tail) => {
+    expect(await retrieve(tailed(SIBLING, tail))).toEqual([]);
+  });
+  it.each([" - 24V", " - 2nd alarm", " - 3PH"])("round 2 control: the own number with tail %j still retrieves its manual", async (tail) => {
     hasLegend(await retrieve(tailed(OWN, tail)), OWN_DOC);
+  });
+  it.each([" - 24VOLT", " - 24VOLTS", " - 3PHASE", " - 24V"])("round 3: a bare model with tail %j is refused the other model's manual", async (tail) => {
+    expect(await retrieve(tailed("ZX731", tail), [OTHER_FAMILY_DOC])).toEqual([]);
+    hasLegend(await retrieve(tailed("ZX731", tail), [BARE_DOC]), BARE_DOC);
+  });
+});
+
+// OPEN in #5484, not repaired here: these state what main does today.
+describe.each(unsupported)("OPEN #5484: separator %j is still split — real SQL", (separator) => {
+  it("a sibling spelled this way still reaches the own manual", async () => {
+    hasLegend(await retrieve(question(spell(SIBLING, separator))), OWN_DOC);
+  });
+  // Main already reads a GS catalog written with a spaced ASCII hyphen; every other spelling here
+  // loses the catalog, and the sibling's table is then served to the confirmed record.
+  it("a confirmed record spelled this way admits the sibling table, except the spaced ASCII GS form", async () => {
+    const hits = await retrieve("Which fictional indicator legend applies?", [TABLE_SIBLING], knownRecord(spell(KNOWN, separator)));
+    expect(hits.length > 0).toBe(separator !== " - ");
   });
 });
 

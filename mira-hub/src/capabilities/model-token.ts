@@ -34,11 +34,7 @@ export const MODEL_PATTERNS: RegExp[] = [
   // bound OEM retrieval can scope (or refuse) instead of manufacturer-only BM25.
   /\b(tp\s*\d{3,4})\b/i, //              TP700 / TP 1200
   /\b(ktp\s*\d{2,4})\b/i, //             KTP700
-  // 6AV2124-0GC01-0AX0. A group joined by a bare hyphen is taken as printed. A group joined by a
-  // SPACED hyphen is taken only when it has the shape of an order-number group (digit, letters,
-  // digits: 0GC01, 0AX0) — never a following word ("- what"), a count ("- 2 pumps"), or the start
-  // of a second order number ("- 6AV…"), which must stay a separate identity.
-  /\b(6av[0-9a-z.]+(?:-[0-9a-z.]+|[ \t]*-[ \t]*(?!6av)\d[a-z]{1,3}\d{1,3}(?![0-9a-z]))*)\b/i,
+  /\b(6av[0-9a-z.-]+)\b/i, //             6AV2124-0GC01-0AX0
   /\b(sinamics\s*v\s*20)\b/i, //        SINAMICS V20
   /\b(v20)\b/i, //                        V20 (drive family)
   /\b(comfort)\b/i, //                    Comfort panel family
@@ -124,7 +120,7 @@ export function modelIdentitiesInText(text: string): Set<string> {
   const identities = new Set(modelMentionsInText(text).map((m) => m.id));
   // Retain the admitted exact GS catalog boundary without changing the
   // canonical close-name mentions or the single-token SQL/query resolver.
-  for (const match of catalogIdentifierView(text).text.matchAll(GS_CATALOG_PATTERN)) {
+  for (const match of catalogIdentifierView(text).text.matchAll(/\b(GS\d{1,2}[a-z]?\s*-\s*[a-z0-9]+)\b/gi)) {
     identities.add(match[1].replace(/\s+/g, "").toUpperCase());
   }
   // Mirror resolveModelFromObservationText's COMFORT-is-a-family-hint drop
@@ -142,8 +138,6 @@ export function modelIdentitiesInText(text: string): Set<string> {
 
 /** One model mention: its identity (modelIdentitiesInText's shape) and where it sits in the text. */
 export type ModelMention = { id: string; start: number; end: number };
-/** One acceptance boundary for exact GS identities and recognized-span masking. */
-export const GS_CATALOG_PATTERN = /\b(GS\d{1,2}[a-z]?\s*-\s*[a-z0-9]+)\b/gi;
 
 /**
  * #5355 (Codex r2 on #5359): every model mention WITH its position, in text
@@ -153,6 +147,7 @@ export const GS_CATALOG_PATTERN = /\b(GS\d{1,2}[a-z]?\s*-\s*[a-z0-9]+)\b/gi;
  * question for cue words.
  */
 export function modelMentionsInText(text: string): ModelMention[] {
+  // Same length as `text`: positions below are positions in `text`.
   const detected = catalogIdentifierView(text).text;
   const mentions: ModelMention[] = [];
   MODEL_PATTERNS.forEach((pattern, i) => {
