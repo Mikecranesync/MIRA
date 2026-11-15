@@ -42,7 +42,7 @@ function LevelIcon({ node }: { readonly node: EquipmentNode }) {
 
 /**
  * Equipment-first navigation. Rows are compact (one line, label then muted
- * detail). A tag that appears on more than one row also shows where the row is,
+ * tag when it differs from the label, detail and PLC symbol). A tag that appears on more than one row also shows where the row is,
  * so two "VFD1"s are never confused. Search and recent items bypass the tree.
  *
  * Browsing (expand, focus, search) is local. The question target moves only
@@ -82,7 +82,9 @@ export function EquipmentNavigator({ roots, target, browsingId, onBrowse, onAskA
   const rowMeta = (entry: EquipmentEntry, showPlace: boolean) => <>
     <span className="fl-equip__text">
       <span className="fl-equip__label">{entry.node.label}</span>
+      {entry.node.tag && entry.node.tag !== entry.node.label ? <span className="fl-equip__detail fl-equip__tag">{entry.node.tag}</span> : null}
       {entry.node.detail ? <span className="fl-equip__detail">{entry.node.detail}</span> : null}
+      {entry.node.plcSymbol ? <span className="fl-equip__detail fl-equip__plc">PLC out {entry.node.plcSymbol}</span> : null}
       {showPlace ? <span className="fl-equip__place" title={placeOf(entry)}>{shortPlaceOf(entry) || placeOf(entry)}</span> : null}
     </span>
     {entry.node.id === currentId ? <span className="fl-equip__target-mark">Target</span> : null}

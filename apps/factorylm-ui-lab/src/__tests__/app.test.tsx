@@ -261,14 +261,14 @@ describe("equipment-first navigation (nav=equipment)", () => {
 
   it("browsing another component does NOT change the target; the bar says where questions go", () => {
     const view = renderApp("?nav=equipment");
-    view.click(row(view, "c-plc1-bench"));
-    expect(row(view, "c-plc1-bench").dataset.browsing).toBe("true");
+    view.click(row(view, "c-q1-mlc-bench"));
+    expect(row(view, "c-q1-mlc-bench").dataset.browsing).toBe("true");
     expect(target(view)).toBe("VFD1 on GS10 bench");
     // Exactly one "Ask about" in the tree: on the row being browsed, nowhere else.
     const treeAsks = Array.from(view.container.querySelectorAll('[role="tree"] .fl-equip__ask')).map((b) => b.textContent);
-    expect(treeAsks).toEqual(["Ask about PLC1"]);
+    expect(treeAsks).toEqual(["Ask about MLC"]);
     const status = must(view.container.querySelector('.fl-qtarget__browsing'), "browsing notice").textContent ?? "";
-    expect(status).toContain("Browsing PLC1 on GS10 bench. Questions still go to VFD1 on GS10 bench.");
+    expect(status).toContain("Browsing MLC on GS10 bench. Questions still go to VFD1 on GS10 bench.");
     // A send while browsing still goes to the old target.
     send(view, "What is the fault code?");
     expect(log(view)).toContain("send:target=m-gs10-bench/c-vfd1-bench");
@@ -276,13 +276,13 @@ describe("equipment-first navigation (nav=equipment)", () => {
 
   it("an explicit Ask about moves the target, and the next send carries it", () => {
     const view = renderApp("?nav=equipment");
-    view.click(row(view, "c-plc1-bench"));
-    view.click(must(view.buttonNamed("Ask about PLC1"), "Ask about PLC1"));
-    expect(target(view)).toBe("PLC1 on GS10 bench");
-    expect(log(view)).toContain("askAbout:m-gs10-bench/c-plc1-bench");
+    view.click(row(view, "c-q1-mlc-bench"));
+    view.click(must(view.buttonNamed("Ask about MLC"), "Ask about MLC"));
+    expect(target(view)).toBe("MLC on GS10 bench");
+    expect(log(view)).toContain("askAbout:m-gs10-bench/c-q1-mlc-bench");
     expect(view.container.querySelector('.fl-qtarget__browsing')).toBeNull();
     send(view, "What is the fault code?");
-    expect(log(view)).toContain("send:target=m-gs10-bench/c-plc1-bench");
+    expect(log(view)).toContain("send:target=m-gs10-bench/c-q1-mlc-bench");
   });
 
   // #5561 review F1: the send line is read back from the turn the send made, so
@@ -291,22 +291,22 @@ describe("equipment-first navigation (nav=equipment)", () => {
 
   it("the sent turn records the target, not the scenario's own machine", () => {
     const view = renderApp("?nav=equipment&scenario=machine-ask");
-    view.click(row(view, "c-plc1-bench"));
-    view.click(must(view.buttonNamed("Ask about PLC1"), "Ask about PLC1"));
+    view.click(row(view, "c-q1-mlc-bench"));
+    view.click(must(view.buttonNamed("Ask about MLC"), "Ask about MLC"));
     send(view, "What does the RUN light mean?");
-    expect(lastSend(view)).toBe("send:target=m-gs10-bench/c-plc1-bench");
+    expect(lastSend(view)).toBe("send:target=m-gs10-bench/c-q1-mlc-bench");
   });
 
-  it("browsing the other VFD1 and sending again still sends to PLC1; asking about it moves the next send", () => {
+  it("browsing the other VFD1 and sending again still sends to MLC; asking about it moves the next send", () => {
     const view = renderApp("?nav=equipment");
-    view.click(row(view, "c-plc1-bench"));
-    view.click(must(view.buttonNamed("Ask about PLC1"), "Ask about PLC1"));
+    view.click(row(view, "c-q1-mlc-bench"));
+    view.click(must(view.buttonNamed("Ask about MLC"), "Ask about MLC"));
     send(view, "First question");
     view.click(row(view, "line-2"));
     view.click(row(view, "m-conveyor-2"));
     view.click(row(view, "c-vfd1-line2"));
     send(view, "Second question");
-    expect(lastSend(view)).toBe("send:target=m-gs10-bench/c-plc1-bench");
+    expect(lastSend(view)).toBe("send:target=m-gs10-bench/c-q1-mlc-bench");
     view.click(must(view.buttonNamed("Ask about VFD1"), "Ask about VFD1"));
     send(view, "Third question");
     expect(lastSend(view)).toBe("send:target=m-conveyor-2/c-vfd1-line2");
@@ -323,6 +323,28 @@ describe("equipment-first navigation (nav=equipment)", () => {
     expect(log(view).some((entry) => entry?.startsWith("askAbout:"))).toBe(false);
   });
 
+  it("says on screen that the equipment is sample data", () => {
+    const view = renderApp("?nav=equipment");
+    expect(view.container.querySelector('[role="note"].lab__sample-note')?.textContent).toBe("Sample equipment for the lab. Not live plant data.");
+    // Control: the project tree is not labelled as sample equipment.
+    expect(renderApp().container.querySelector(".lab__sample-note")).toBeNull();
+  });
+
+  it("the MLC row shows its drawing designation, catalog and PLC output; PLC1 is a separate row", () => {
+    const view = renderApp("?nav=equipment");
+    const mlc = row(view, "c-q1-mlc-bench");
+    expect(mlc.querySelector(".fl-equip__label")?.textContent).toBe("MLC");
+    expect(mlc.querySelector(".fl-equip__tag")?.textContent).toBe("Q1");
+    expect(mlc.textContent).toContain("Schneider TeSys CA3KN22BD control relay");
+    expect(mlc.querySelector(".fl-equip__plc")?.textContent).toBe("PLC out _IO_EM_DO_02");
+    const plc = row(view, "c-plc1-bench");
+    expect(plc.textContent).toContain("Allen-Bradley Micro820");
+    // Control: a tag equal to its label is not repeated, and a row with no PLC symbol shows none.
+    expect(plc.querySelector(".fl-equip__tag")).toBeNull();
+    expect(plc.querySelector(".fl-equip__plc")).toBeNull();
+    expect(row(view, "c-vfd1-bench").querySelector(".fl-equip__tag")).toBeNull();
+  });
+
   it("the two VFD1 rows show where they are", () => {
     const view = renderApp("?nav=equipment");
     view.click(row(view, "line-2"));
@@ -332,7 +354,7 @@ describe("equipment-first navigation (nav=equipment)", () => {
     // The full path stays available as the row's tooltip.
     expect(row(view, "c-vfd1-line2").querySelector(".fl-equip__place")?.getAttribute("title")).toBe("Lake Wales plant › Garage › Line 2 › Conveyor 2");
     // Control: a unique tag stays compact.
-    expect(row(view, "c-plc1-bench").querySelector(".fl-equip__place")).toBeNull();
+    expect(row(view, "c-q1-mlc-bench").querySelector(".fl-equip__place")).toBeNull();
   });
 
   it("search bypasses the tree; asking from a result targets that exact VFD1", () => {
@@ -351,9 +373,9 @@ describe("equipment-first navigation (nav=equipment)", () => {
 
   it("a targeted row joins Recent, and Recent rows show their place", () => {
     const view = renderApp("?nav=equipment");
-    view.click(row(view, "c-plc1-bench"));
-    view.click(must(view.buttonNamed("Ask about PLC1"), "Ask about PLC1"));
-    const recent = row(view, "c-plc1-bench", '[aria-label="Recent equipment"]');
+    view.click(row(view, "c-q1-mlc-bench"));
+    view.click(must(view.buttonNamed("Ask about MLC"), "Ask about MLC"));
+    const recent = row(view, "c-q1-mlc-bench", '[aria-label="Recent equipment"]');
     expect(recent.textContent).toContain("GS10 bench");
   });
 
