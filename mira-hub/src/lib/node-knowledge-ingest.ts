@@ -801,7 +801,10 @@ async function parsePdfForNode(buffer: Buffer | Uint8Array, rest: NodeChunkOpts)
     }
     try {
       const items = await pageLayoutItems(pdf, p + 1);
-      const table = items.length > 0 ? pageWithTables(items) : null;
+      // Recognize physical section cuts on the complete page, before extraction removes
+      // their source items. Closely adjacent sections must never share a model block.
+      const boundaries = sectionTableLayout(items)?.headings.filter((h) => h.table).map((h) => h.y) ?? [];
+      const table = items.length > 0 ? pageWithTables(items, boundaries) : null;
       if (table) {
         outputInventoryObserved ||= table.chunks.some((c) => /\bOutput circuit type\b/i.test(c.text));
       }

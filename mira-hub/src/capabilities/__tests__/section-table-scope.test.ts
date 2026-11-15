@@ -572,3 +572,16 @@ it.each([
   const layout = sectionTableLayout([row(title, 700, 12), row("Attribute Value", 680), row("Interval 12 ms", 660)])!;
   expect(modelSectionModels(layout)).toEqual([]);
 });
+
+it("F7 rejects an unsplit legacy block whose span crosses a later physical section", () => {
+  const item = (str: string, x: number, y: number, size = 8) => ({ str, x, y, size, w: str.length * size * 0.4 });
+  const layout = sectionTableLayout([
+    item("Output Specifications for 2080-LC20-20QWB, 2080-LC20-20AWB", 100, 740, 10),
+    item("Attribute", 100, 720), item("2080-LC20-20QWB", 280, 720), item("2080-LC20-20AWB", 420, 720),
+    item("Load current max", 100, 706), item("2 A", 280, 706), item("1 A", 420, 706),
+    item("Output Specifications for 2080-LC20-20QBB", 100, 676, 10), item("Attribute Value", 100, 662), item("Point current max 9 A", 100, 648),
+  ])!;
+  const chunk = { text: "2080-LC20-20QWB: Point current max 9 A", models: ["2080LC2020QWB"], unqualified: false,
+    sourceTop: 720, sourceBottom: 648, sourceCaption: "Output Specifications for 2080-LC20-20QWB, 2080-LC20-20AWB" };
+  expect(scopeTableChunks([chunk], layout)[0]).toMatchObject({ unqualified: true, scope: "unresolved" });
+});

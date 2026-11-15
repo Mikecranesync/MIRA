@@ -851,3 +851,48 @@ it.each(["conflict", "conflict-small-header", "compatible", "new-section", "befo
     expect((await retrieve(model, rows, "zzcontinuation load current")).text.includes("zzcontinuation")).toBe(expected);
   }
 });
+
+it.each(["not", "excluding", "affirmative"])("F6 direct catalog caption retains scope through long windows and a headerless page: %s", async (qualifier) => {
+  const item = (str: string, y: number, size = 8) => ({ str, x: 100, y, size, w: str.length * size * 0.4 });
+  const title = `Output Specifications 2080-LC20-20QWB only${qualifier === "affirmative" ? "" : ` (${qualifier} 2080-LC20-20QBB)`}`;
+  const body = "zzdirectnegative Point current max 9 A. ".repeat(100);
+  const continuation = "zzdirectcontinuation Point surge max 11 A. ".repeat(100);
+  pdfPages.current = [
+    { page: 1, text: "Micro820 Programmable Controllers", items: [item("Micro820 Programmable Controllers", 760, 12)] },
+    { page: 2, text: `${title}\nAttribute Value\n${body}`, items: [item(title, 740, 10), item("Attribute Value", 720), item(body, 700)] },
+    { page: 3, text: continuation, items: [item(continuation, 700)] },
+  ];
+  let rows: Row[];
+  try { rows = (await ingestFixture()).filter((r) => r.page_start === 2 || r.page_start === 3); } finally { pdfPages.current = null; }
+  expect(rows.length).toBeGreaterThan(4);
+  expect(rows.some((r) => r.page_start === 3 && !r.content.includes("2080-LC20"))).toBe(true);
+  for (const model of ["20QBB", "20QWB", "20AWB"]) {
+    expect((await retrieve(model, rows, "zzdirectnegative zzdirectcontinuation current")).text.includes("zzdirect")).toBe(qualifier === "affirmative" && model === "20QWB");
+  }
+  expect(rows.every((r) => r.table_scope === (qualifier === "affirmative" ? "section" : "unresolved"))).toBe(true);
+});
+
+it.each(["20QBB", "20QWB"])("F7 adjacent extracted columns stop at a later %s section and retain their original values", async (nextModel) => {
+  const item = (str: string, x: number, y: number, size = 8) => ({ str, x, y, size, w: str.length * size * 0.4 });
+  const items = [item("Output Specifications for 2080-LC20-20QWB, 2080-LC20-20AWB", 100, 740, 10),
+    item("Attribute", 100, 720), item("2080-LC20-20QWB(R)", 280, 720), item("2080-LC20-20AWB(R)", 420, 720),
+    item("zzoriginalvalue Load current max", 100, 706), item("2.0 A", 280, 706), item("1.5 A", 420, 706),
+    item("Switching time max", 100, 692), item("10 ms", 280, 692), item("8 ms", 420, 692),
+    item(`Output Specifications for 2080-LC20-${nextModel}`, 100, 676, 10),
+    item("Attribute", 100, 662), item("Value", 280, 662),
+    item("zzadjacentvalue Point current max", 100, 648), item("9 A", 280, 648),
+    item("Point surge max", 100, 634), item("11 A", 280, 634)];
+  pdfPages.current = [{ page: 1, text: items.map((i) => i.str).join("\n"), items }];
+  let rows: Row[];
+  try { rows = await ingestFixture(); } finally { pdfPages.current = null; }
+  for (const model of ["20QWB", "20AWB", "20QBB"]) {
+    const later = await retrieve(model, rows, "zzadjacentvalue Point current max");
+    expect(later.text.includes("zzadjacentvalue")).toBe(model === nextModel);
+  }
+  for (const [model, value] of [["20QWB", "2.0 A"], ["20AWB", "1.5 A"]]) {
+    expect((await retrieve(model, rows, "zzoriginalvalue Load current max")).text).toContain(value);
+  }
+  const originalColumns = rows.filter((r) => r.content.includes(": zzoriginalvalue"));
+  expect(originalColumns).toHaveLength(2);
+  expect(originalColumns.every((r) => !r.content.includes("zzadjacentvalue"))).toBe(true);
+});

@@ -992,6 +992,50 @@ describe("#5503 actual upload INSERT through raw retrieval SQL", () => {
     });
   });
 
+  it.each(["not", "excluding", "affirmative"])("F6 direct negative captions survive long-window and headerless-page real storage: %s", async (qualifier) => {
+    const title = `Output Specifications 2080-LC20-20QWB only${qualifier === "affirmative" ? "" : ` (${qualifier} 2080-LC20-20QBB)`}`;
+    const cover = "Micro820 Programmable Controllers\n2080-LC20-20QBB, 2080-LC20-20QWB, 2080-LC20-20AWB";
+    const body = "zzdirectnegative Point current max 9 A. ".repeat(100);
+    const continuation = "zzdirectcontinuation Point surge max 11 A. ".repeat(100);
+    const items = [item(title, 100, 740, 10), item("Attribute Value", 100, 720), item(body, 100, 700)];
+    await withPages([{ page: 1, items: [item(cover, 100, 760, 12)], text: cover },
+      { page: 2, items, text: items.map((i) => i.str).join("\n") },
+      { page: 3, items: [item(continuation, 100, 700)], text: continuation }], async () => {
+      for (const model of ["20QBB", "20QWB", "20AWB"]) {
+        const result = await retrieve(model, "zzdirectnegative zzdirectcontinuation current");
+        expect(result.text.includes("zzdirect")).toBe(qualifier === "affirmative" && model === "20QWB");
+        if (qualifier !== "affirmative") expect(result.diagnostics.excludedTables).toEqual(expect.arrayContaining([
+          expect.objectContaining({ page: 2, section: true, unqualified: true }),
+          expect.objectContaining({ page: 3, section: true, unqualified: true }),
+        ]));
+      }
+    });
+  });
+
+  it.each(["20QBB", "20QWB"])("F7 real extracted columns cannot swallow adjacent %s electrical values", async (nextModel) => {
+    const items = [item("Output Specifications for 2080-LC20-20QWB, 2080-LC20-20AWB", 100, 740, 10),
+      item("Attribute", 100, 720), item("2080-LC20-20QWB(R)", 280, 720), item("2080-LC20-20AWB(R)", 420, 720),
+      item("zzoriginalvalue Load current max", 100, 706), item("2.0 A", 280, 706), item("1.5 A", 420, 706),
+      item("Switching time max", 100, 692), item("10 ms", 280, 692), item("8 ms", 420, 692),
+      item(`Output Specifications for 2080-LC20-${nextModel}`, 100, 676, 10),
+      item("Attribute", 100, 662), item("Value", 280, 662),
+      item("zzadjacentvalue Point current max", 100, 648), item("9 A", 280, 648),
+      item("Point surge max", 100, 634), item("11 A", 280, 634)];
+    const cover = "Micro820 Programmable Controllers\n2080-LC20-20QBB, 2080-LC20-20QWB, 2080-LC20-20AWB";
+    await withPages([{ page: 1, items: [item(cover, 100, 760, 12)], text: cover },
+      { page: 2, items, text: items.map((i) => i.str).join("\n") }], async () => {
+      for (const model of ["20QWB", "20AWB", "20QBB"]) {
+        const result = await retrieve(model, "zzadjacentvalue Point current max");
+        expect(result.text.includes("zzadjacentvalue")).toBe(model === nextModel);
+      }
+      for (const [model, value] of [["20QWB", "2.0 A"], ["20AWB", "1.5 A"]]) {
+        const result = await retrieve(model, "zzoriginalvalue Load current max");
+        expect(result.text).toContain(value);
+        expect(result.chunks.filter((c) => c.content.includes(": zzoriginalvalue")).every((c) => !c.content.includes("zzadjacentvalue"))).toBe(true);
+      }
+    });
+  });
+
   it("a shared header marker cannot admit sibling-only prose over actual SQL", async () => {
     await client.query("SAVEPOINT f31_shared_prose");
     try {

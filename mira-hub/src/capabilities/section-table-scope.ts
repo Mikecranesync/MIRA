@@ -3,7 +3,7 @@
  * scope; a complete per-model output-circuit row supplies relay applicability independently.
  */
 import { exactModelKey, type LayoutItem, type TableChunk } from "./table-rows";
-import { isTitleLine, modelNumbersIn, sameModelFamily } from "./manual-applicability";
+import { hasNegation, isTitleLine, modelNumbersIn, sameModelFamily } from "./manual-applicability";
 import { tableUnit } from "./supporting-quote";
 
 export type SectionScope = "section" | "shared" | "unresolved";
@@ -288,10 +288,10 @@ function observedCaptionModels(h: Pick<Heading, "text">) {
   const affirmative = captionModels(h);
   if (affirmative.length > 0) return affirmative;
   const suffix = h.text.slice(noun.index + noun[0].length);
-  // A product named BEFORE the engineering noun, or an arbitrary descriptive
-  // suffix, is not a section declaration. Retain the explicit (possibly negative)
-  // "for" clause without promoting any of its mentions to affirmative coverage.
-  return /\bfor\b/i.test(suffix) ? modelNumbersIn(suffix) : [];
+  // Both explicit "for" clauses and direct negative catalog suffixes remain observed.
+  // Reuse the title reader's exclusions; no second, weaker negation vocabulary.
+  // A prefix product or ordinary descriptive/service suffix still declares nothing.
+  return /\bfor\b/i.test(suffix) || hasNegation(suffix) ? modelNumbersIn(suffix) : [];
 }
 function uncertainCaption(h: Pick<Heading, "text">): boolean {
   return observedCaptionModels(h).length > 0 && captionModels(h).length === 0;
@@ -315,7 +315,9 @@ export function scopeTableChunks(chunks: readonly TableChunk[], layout: SectionL
     const source = heading ?? { text: chunk.sourceCaption ?? "", headerModels: chunk.sourceModels };
     const named = captionModels(source).map((n) => n.key);
     const header = heading?.headerModels ?? [];
-    const invalid = !layout || chunk.sourceTop === undefined ||
+    const crossesBoundary = chunk.sourceTop !== undefined && chunk.sourceBottom !== undefined &&
+      layout?.headings.some((h) => h.table && h.y < chunk.sourceTop! - 2.5 && h.y >= chunk.sourceBottom! - 2.5);
+    const invalid = !layout || chunk.sourceTop === undefined || crossesBoundary ||
       uncertainCaption(source) || contradictoryTableHeading(source) || heading?.columnUnresolved ||
       (named.length > 0 && chunk.models.some((m) => !named.includes(exactModelKey(m)))) ||
       (header.length > 0 && chunk.models.some((m) => !header.includes(exactModelKey(m))));

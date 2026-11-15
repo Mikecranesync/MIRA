@@ -444,7 +444,7 @@ const hasSentenceWord = (line: string, strict = true) => {
   return hasExclusionPhrase(plain(line)) || words.some((_, i) => sentenceWordAt(words, i)) || joinedTokens(line).some((t) => joinedSentenceWord(t, countsAsSentence));
 };
 /** A negation or an exclusion anywhere on the line. */
-const hasNegation = (line: string) => {
+export const hasNegation = (line: string) => {
   const words = wordsOf(line);
   return (
     hasExclusionPhrase(plain(line)) ||
