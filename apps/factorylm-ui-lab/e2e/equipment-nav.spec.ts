@@ -120,6 +120,38 @@ test("phone 412x915: browse in the drawer, Ask about closes it, target shown bes
   expect(seen.errors).toEqual([]);
 });
 
+test("tablet portrait 800x1107: search stays under the note and both VFD1 results show above the keyboard", async ({ page }) => {
+  // Galaxy Tab S9 FE portrait in Chrome leaves an 800x1107 CSS px page; the Samsung keyboard
+  // covers everything below ~634 px (physical-tablet finding F1, #5564 comment 6894710506).
+  // Without align-content: start the nav rows stretch, so the search sat ~70 px lower and
+  // dropped another ~220 px once the short result list replaced the tree.
+  await page.setViewportSize({ width: 800, height: 1107 });
+  const seen = watch(page);
+  await page.goto("/?surface=hub&theme=light&scenario=general-ask&nav=equipment");
+  const note = page.getByRole("note");
+  const search = page.getByRole("searchbox", { name: "Search equipment" });
+  await expect(search).toBeVisible();
+  const noteTop = (await note.boundingBox())!.y;
+  const searchTop = async () => (await search.boundingBox())!.y;
+  const before = await searchTop();
+  expect(before - noteTop, "blank gap between the note and search").toBeLessThan(80);
+
+  await search.fill("vfd1");
+  const results = page.getByRole("list", { name: "Equipment search results" });
+  await expect(results.locator("[data-equipment-id]")).toHaveCount(2);
+  expect(Math.abs((await searchTop()) - before), "search moved when results replaced the tree").toBeLessThan(2);
+  const keyboardLine = 634;
+  for (const id of ["c-vfd1-bench", "c-vfd1-line2"]) {
+    const box = (await results.locator(`[data-equipment-id="${id}"] .fl-equip__place`).boundingBox())!;
+    expect(box.y + box.height, `${id} location is behind the keyboard`).toBeLessThan(keyboardLine);
+  }
+  await page.screenshot({ path: resolve(SHOTS, "2026-11-15_equipment-search-portrait_tablet.png") });
+
+  await noHorizontalScroll(page);
+  expect(seen.external).toEqual([]);
+  expect(seen.errors).toEqual([]);
+});
+
 test("control: the default lab shows no equipment navigation or target bar", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/?surface=hub&theme=light&scenario=general-ask");

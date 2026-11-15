@@ -27,7 +27,8 @@
 .fl-shell__search input:focus-visible { outline: none; }
 .fl-shell__search:focus-within { border-color: var(--fl-workspace-accent); }
 /* Explicit column: an implicit `auto` grid track sizes to the widest row (the 550px main-column bug, again). */
-.fl-shell__nav-scroll { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0; min-inline-size: 0; flex: 1 1 auto; min-block-size: 0; overflow-y: auto; overflow-x: hidden; }
+/* align-content: start: rows pack at the top. Stretched rows spread spare height between short content, which pushed equipment search to the bottom of a portrait tablet (behind the keyboard). */
+.fl-shell__nav-scroll { display: grid; grid-template-columns: minmax(0, 1fr); align-content: start; gap: 0; min-inline-size: 0; flex: 1 1 auto; min-block-size: 0; overflow-y: auto; overflow-x: hidden; }
 .fl-shell__nav-section { min-inline-size: 0; }
 .fl-shell__section-title { display: flex; align-items: center; gap: var(--fl-workspace-space-1); margin: var(--fl-workspace-space-3) 0 var(--fl-workspace-space-1); padding-inline: var(--fl-workspace-space-2); color: var(--fl-workspace-muted); font-size: var(--fl-workspace-fs-xs); font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; }
 
