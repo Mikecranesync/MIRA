@@ -83,6 +83,44 @@ describe("Try again is never a dead button", () => {
   });
 });
 
+describe("a target review is not a failure (#5557)", () => {
+  const REVIEW = "This question was asked about VFD1. The question target is now the whole machine. Check the target, then press Send to ask about the whole machine.";
+
+  function review(hooks: Record<string, unknown>): HarnessView {
+    const view = renderHarness({ surface: "web", fixture: "grounded-answer", conversationSurface: "assistant", hooks: { targetReview: REVIEW, ...hooks } });
+    views.push(view);
+    view.dispatch({ type: "set-draft", draft: "what fuse does the selected component take" });
+    view.dispatch({ type: "set-send-error", error: REVIEW });
+    return view;
+  }
+
+  it("offers no Try again even though the kept question sits in the composer", () => {
+    // The hub keeps the held question in the draft, which re-armed Try again
+    // through the draft fallback; one tap re-asked about the new target.
+    const sent: unknown[][] = [];
+    const view = review({ onSend: (...args: unknown[]) => { sent.push(args); }, onRetry: () => { sent.push(["retry"]); } });
+    expect(view.buttonNamed("Try again")).toBeNull();
+    expect(view.buttonNamed("Dismiss")).not.toBeNull();
+    expect(sent).toEqual([]);
+  });
+
+  it("does not claim MIRA was unreachable", () => {
+    const view = review({ onSend: () => {} });
+    const banner = view.container.querySelector('[aria-label="Send error"]')?.textContent ?? "";
+    expect(banner).toContain("Check the question target");
+    expect(banner).not.toContain("Couldn't reach MIRA");
+    expect(banner).toContain(REVIEW);
+  });
+
+  it("a different error while a review is pending is still a failure with Try again", () => {
+    const view = review({ onSend: () => {} });
+    view.dispatch({ type: "set-send-error", error: "Couldn't reach MIRA." });
+    const banner = view.container.querySelector('[aria-label="Send error"]')?.textContent ?? "";
+    expect(banner).toContain("Couldn't reach MIRA");
+    expect(view.buttonNamed("Try again")).not.toBeNull();
+  });
+});
+
 describe("assistant glance grammar stays visible on the assistant surface", () => {
   it("keeps user turns visibly bubbled without changing assistant document text", () => {
     expect(CONVERSATION_CSS).toMatch(/\.fl-turn\[data-role="user"\]\s+\.fl-part--text\s*\{[^}]*border:\s*1px solid var\(--fl-workspace-line\)/);

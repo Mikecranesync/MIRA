@@ -29,6 +29,13 @@ const ROW_ID = "ffffffff-ffff-4fff-8fff-ffffffffffff";
 const sessionMock = vi.hoisted(() => ({
   sessionOr401: vi.fn(async () => ({ tenantId: "11111111-1111-4111-8111-111111111111", userId: "u1" })),
 }));
+// #5504 post-cap: the route reads the conversation's saved bench-component selection on every
+// turn. This file's database stand-in answers every query alike, so that read is stood in here:
+// nothing selected (today's path).
+vi.mock("@/capabilities/bench-components/store", async (orig) => ({
+  ...(await orig<Record<string, unknown>>()),
+  getSelectionState: vi.fn(async () => ({ selection: null, version: null })),
+}));
 vi.mock("@/lib/session", () => sessionMock);
 
 const domainMock = vi.hoisted(() => ({

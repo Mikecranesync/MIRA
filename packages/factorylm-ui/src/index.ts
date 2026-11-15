@@ -33,3 +33,5 @@ export {
 } from "./answer-actions";
 
 export { PhotoThumb } from "./PhotoViewer";
+
+export { EquipmentNavigator, QuestionTargetBar, type EquipmentNavigatorProps, type QuestionTargetBarProps } from "./EquipmentNavigator";

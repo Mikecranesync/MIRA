@@ -14,3 +14,4 @@ html, body { margin: 0; background: var(--fl-workspace-bg); color: var(--fl-work
 .lab[data-viewport="fluid"] .lab__stage { display: grid; }
 .lab:not([data-viewport="fluid"]) .lab__stage { display: grid; place-items: start center; padding: var(--fl-workspace-space-4); overflow: auto; }
 .lab__frame { border: 1px solid var(--fl-workspace-line-strong); border-radius: var(--fl-workspace-radius); background: var(--fl-workspace-surface); box-shadow: var(--fl-workspace-shadow-pop); }
+.lab__sample-note { margin: 0; padding: var(--fl-workspace-space-2) var(--fl-workspace-space-3); border-block-end: 1px solid var(--fl-workspace-line); color: var(--fl-workspace-muted); font-size: var(--fl-workspace-fs-sm); }

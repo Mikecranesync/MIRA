@@ -151,6 +151,13 @@ export interface HostHooks {
   /** Whether this photo is already one of the machine's sources. */
   readonly isPhotoKept?: (fileId: string) => boolean;
   readonly busy?: boolean;
+  /**
+   * The message the host is showing because a question was refused after its
+   * target moved (#5557). While the send error equals it, the banner is a
+   * target review, not a failure: no Try again (the question needs a fresh
+   * Send after review), and the title does not claim MIRA was unreachable.
+   */
+  readonly targetReview?: string;
 }
 
 export interface PartRendererProps {

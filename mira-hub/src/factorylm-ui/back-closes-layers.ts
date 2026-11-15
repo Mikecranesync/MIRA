@@ -15,8 +15,9 @@ function useNarrow(): boolean {
   return narrow;
 }
 
-/** Mount once in the web host with the state the shell renders. */
-export function useBackClosesLayers(state: Parameters<typeof topLayer>[0]): void {
+/** Mount once in the web host with the state the shell renders. Returns the top layer and whether the
+ *  viewport is narrow, so the host can keep its own floating controls off an open layer (#5546). */
+export function useBackClosesLayers(state: Parameters<typeof topLayer>[0]): { top: ReturnType<typeof topLayer>; narrow: boolean } {
   const narrow = useNarrow();
   // Keyed on WHICH layer is on top, not just "any": Back that closes a sheet above the open drawer
   // must re-arm for the drawer.
@@ -32,4 +33,5 @@ export function useBackClosesLayers(state: Parameters<typeof topLayer>[0]): void
     return () => { controller.current?.dispose(); controller.current = null; };
   }, []);
   useEffect(() => { controller.current?.sync(top !== null); }, [top]);
+  return { top, narrow };
 }

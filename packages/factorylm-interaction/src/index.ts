@@ -3,3 +3,5 @@ export * from "./fixtures";
 export * from "./manual-search-follow";
 export * from "./reducer";
 export * from "./types";
+export * from "./equipment-fixtures";
+export * from "./equipment-nav";

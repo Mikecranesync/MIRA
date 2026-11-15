@@ -1,5 +1,13 @@
 import {
+  EQUIPMENT_FIXTURE,
+  EQUIPMENT_FIXTURE_DEFAULT_TARGET_ID,
   FIXTURE_IDS,
+  findEntry,
+  indexEquipment,
+  pushRecent,
+  targetFor,
+  type QuestionTarget,
+  type ShellAction,
   PROFILES,
   createShellState,
   getFixture,
@@ -9,7 +17,7 @@ import {
   type SurfaceKind,
   type ThemeName,
 } from "@factorylm/interaction";
-import { FactoryLMShell, type ConversationSurface } from "@factorylm/ui";
+import { EquipmentNavigator, FactoryLMShell, NAVIGATION_LAYER_QUERY, QuestionTargetBar, type ConversationSurface } from "@factorylm/ui";
 import { useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { createLabAdapter } from "./fake-adapter";
 
@@ -17,7 +25,9 @@ export const LAB_SURFACES = ["public", "web", "mobile", "hub"] as const satisfie
 export const LAB_THEMES = ["light", "dark"] as const satisfies readonly ThemeName[];
 export const LAB_VIEWPORTS = ["fluid", "390x844", "412x915", "768x1024", "1440x900", "1720x1000"] as const;
 export const LAB_THREADS = ["classic", "assistant"] as const satisfies readonly ConversationSurface[];
+export const LAB_NAVS = ["projects", "equipment"] as const;
 export type LabViewport = (typeof LAB_VIEWPORTS)[number];
+export type LabNav = (typeof LAB_NAVS)[number];
 
 export interface LabState {
   readonly surface: SurfaceKind;
@@ -28,9 +38,11 @@ export interface LabState {
   readonly embed: boolean;
   /** Which conversation surface renders the turns (blueprint: classic list vs assistant-ui primitives). */
   readonly thread: ConversationSurface;
+  /** Navigation body: the project tree (default) or equipment-first navigation (fixture slice). */
+  readonly nav: LabNav;
 }
 
-const DEFAULT_LAB: LabState = { surface: "web", scenario: "grounded-answer", theme: "light", viewport: "fluid", embed: false, thread: "classic" };
+const DEFAULT_LAB: LabState = { surface: "web", scenario: "grounded-answer", theme: "light", viewport: "fluid", embed: false, thread: "classic", nav: "projects" };
 
 function pick<T extends string>(allowed: readonly T[], value: string | null, fallback: T): T {
   return value !== null && (allowed as readonly string[]).includes(value) ? (value as T) : fallback;
@@ -46,12 +58,14 @@ export function parseLabState(search: string): LabState {
     viewport: pick(LAB_VIEWPORTS, params.get("viewport"), DEFAULT_LAB.viewport),
     embed: params.get("embed") === "1",
     thread: pick(LAB_THREADS, params.get("thread"), DEFAULT_LAB.thread),
+    nav: pick(LAB_NAVS, params.get("nav"), DEFAULT_LAB.nav),
   };
 }
 
 export function labSearch(lab: LabState, options: { readonly embed?: boolean } = {}): string {
   const params = new URLSearchParams({ surface: lab.surface, scenario: lab.scenario, theme: lab.theme });
   if (lab.thread !== "classic") params.set("thread", lab.thread);
+  if (lab.nav !== "projects") params.set("nav", lab.nav);
   if (!options.embed && lab.viewport !== "fluid") params.set("viewport", lab.viewport);
   if (options.embed) params.set("embed", "1");
   return `?${params.toString()}`;
@@ -88,6 +102,43 @@ export function App({ search = window.location.search, onSearch = replaceSearch 
     () => setAdapterCalls((count) => count + 1),
   ), []);
 
+  // Equipment-first navigation: the lab is the host that owns the question target.
+  // Browsing only moves `browsingId`; the target moves on an explicit "Ask about".
+  const equipment = useMemo(() => indexEquipment(EQUIPMENT_FIXTURE), []);
+  const [target, setTarget] = useState<QuestionTarget | null>(() => {
+    const entry = findEntry(equipment, EQUIPMENT_FIXTURE_DEFAULT_TARGET_ID);
+    return entry ? targetFor(entry) : null;
+  });
+  const [browsingId, setBrowsingId] = useState<string | null>(null);
+  const [recentIds, setRecentIds] = useState<readonly string[]>([]);
+  const targetRef = useRef(target);
+  targetRef.current = target;
+  const browsingEntry = browsingId ? findEntry(equipment, browsingId) : undefined;
+  const browsingTarget = browsingEntry ? targetFor(browsingEntry) : null;
+  const askAbout = (next: QuestionTarget, entryId?: string) => {
+    setTarget(next);
+    setRecentIds((recent) => pushRecent(recent, entryId ?? next.componentId ?? next.machineId));
+    adapter.note(`askAbout:${next.machineId}/${next.componentId ?? "whole-machine"}`);
+    if (window.matchMedia?.(NAVIGATION_LAYER_QUERY).matches) dispatch({ type: "set-navigation-visible", visible: false });
+  };
+  const labDispatch = (action: ShellAction) => {
+    if (lab.nav === "equipment" && action.type === "mock-send" && stateRef.current.draft.trim()) {
+      const current = targetRef.current;
+      // The target rides the send itself; the log below is read back from the turn it made.
+      dispatch(current ? { type: "mock-send", target: { machineId: current.machineId, componentId: current.componentId } } : action);
+      return;
+    }
+    dispatch(action);
+  };
+  const lastTurn = state.thread.turns.at(-1);
+  const sentTurnId = lab.nav === "equipment" && lastTurn?.role === "user" && lastTurn.id.startsWith("mock-") ? lastTurn.id : null;
+  useEffect(() => {
+    if (!sentTurnId || !lastTurn) return;
+    const { machineId, componentId } = lastTurn.context;
+    adapter.note(`send:target=${machineId ? `${machineId}/${componentId ?? "whole-machine"}` : "none"}`);
+    // Keyed on the turn id: one log line per sent turn.
+  }, [sentTurnId]);
+
   useEffect(() => {
     document.documentElement.dataset.theme = state.theme;
   }, [state.theme]);
@@ -109,7 +160,27 @@ export function App({ search = window.location.search, onSearch = replaceSearch 
   // and the mock host records the request in the adapter log.
   const shell = <FactoryLMShell
     state={state}
-    dispatch={dispatch}
+    dispatch={labDispatch}
+    {...(lab.nav === "equipment" ? {
+      navigationContent: <>
+        {/* Fixture plant: say so on screen, so a preview is never read as live equipment. */}
+        <p className="lab__sample-note" role="note">Sample equipment for the lab. Not live plant data.</p>
+        <EquipmentNavigator
+          roots={EQUIPMENT_FIXTURE}
+          target={target}
+          browsingId={browsingId}
+          onBrowse={setBrowsingId}
+          onAskAbout={askAbout}
+          recentIds={recentIds}
+        />
+      </>,
+      composerAccessory: <QuestionTargetBar
+        target={target}
+        browsing={browsingTarget}
+        onAskAbout={(next) => askAbout(next, browsingId ?? undefined)}
+        onChange={() => dispatch({ type: "set-navigation-visible", visible: true })}
+      />,
+    } : {})}
     adapter={adapter}
     hooks={{ onRetry: (turnId) => adapter.note(`onRetry:${turnId}`) }}
     conversationSurface={lab.thread}
@@ -140,6 +211,9 @@ export function App({ search = window.location.search, onSearch = replaceSearch 
       <label>Viewport
         <select aria-label="Viewport" value={lab.viewport} onChange={(event) => update({ viewport: event.currentTarget.value as LabViewport })}>
           {LAB_VIEWPORTS.map((viewport) => <option key={viewport} value={viewport}>{viewport}</option>)}
+        </select>
+        <select aria-label="Navigation" value={lab.nav} onChange={(event) => update({ nav: event.currentTarget.value as LabNav })}>
+          {LAB_NAVS.map((nav) => <option key={nav} value={nav}>{nav}</option>)}
         </select>
         <select aria-label="Thread" value={lab.thread} onChange={(event) => update({ thread: event.currentTarget.value as ConversationSurface })}>
           {LAB_THREADS.map((thread) => <option key={thread} value={thread}>{thread}</option>)}

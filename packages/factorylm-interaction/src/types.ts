@@ -406,6 +406,8 @@ export interface ContextSnapshot {
   readonly projectId?: string;
   readonly folderId?: string;
   readonly machineId?: string;
+  /** The component a question was asked about; absent = the whole machine. */
+  readonly componentId?: string;
   readonly machineIdentity: "confirmed" | "unconfirmed" | "not_applicable";
   readonly evidenceAuthorization: "authorized" | "not_authorized" | "not_applicable";
   readonly capturedAt: string;

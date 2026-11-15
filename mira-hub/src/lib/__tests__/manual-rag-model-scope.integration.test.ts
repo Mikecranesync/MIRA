@@ -3,8 +3,8 @@
  * The integration connection gets a TEMP knowledge_entries table, so no
  * persistent corpus row or schema is created or changed.
  */
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { Pool, type PoolClient } from "pg";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { Client, Pool, type PoolClient } from "pg";
 import { retrieveManualChunks, retrieveNodeChunks } from "../manual-rag";
 import { inferEquipmentType } from "../equipment-type";
 
@@ -1067,7 +1067,7 @@ describe("#5503 actual upload INSERT through raw retrieval SQL", () => {
       }
       expect((await retrieve("20QWB", "zzf10original Load current max")).text).toContain("2 A");
       expect((await retrieve("20QBB", "zzf10original Load current max")).text).not.toContain("zzf10original");
-      const stored = await client.query("SELECT content,metadata FROM knowledge_entries WHERE tenant_id=$1 AND doc_id=$2 AND is_private=true", [TENANT,DOCUMENT]);
+      const stored = await client.query("SELECT content,metadata FROM knowledge_entries WHERE tenant_id = $1 AND doc_id = $2 AND is_private = true", [TENANT,DOCUMENT]);
       for (const token of ["zzf10adjacent", "zzf10surge", "zzf10continued"]) {
         const rows = stored.rows.filter((r) => r.content.includes(token));
         expect(rows.length).toBeGreaterThan(0);
@@ -1164,5 +1164,254 @@ describe("#5503 actual upload INSERT through raw retrieval SQL", () => {
       await client.query("RELEASE SAVEPOINT f31_shared_prose");
     }
   });
+
+});
+
+
+// Public fictional identifier controls run inside the existing beta-gate SQL suite.
+// #5484, narrowed (PR #5500): the six hyphen equivalents of the shared detection fold, written
+// directly inside an identifier, compare as "-". A spaced dash and the en dash are NOT in scope and
+// keep the reading they have on main; the cases marked OPEN state that remaining defect.
+describe("#5484 catalog identifier folding and counted inventory — real SQL", () => {
+const TENANT = "84000000-0000-4000-8000-000000000001", FOREIGN = "84000000-0000-4000-8000-000000000002";
+const doc = (n: number) => `84000000-0000-4000-8000-${String(100 + n).padStart(12, "0")}`;
+const OWN_DOC = doc(1), KNOWN_DOC = doc(2), SIBLING_DOC = doc(3), OTHER_NODE_DOC = doc(4), OLD_DOC = doc(5);
+const TABLE_OWN = doc(6), TABLE_SIBLING = doc(7), TABLE_UNQUALIFIED = doc(8);
+const COUNTED_OWN_DOC = doc(9);
+const OWN = "ZX731-04A", SIBLING = "ZX731-09C", KNOWN = "GS11N-20P2", KNOWN_SIBLING = "GS11N-20P5";
+const NODE = "catalog-fold-current", BODY = "UNIT_FICTIONAL_LEGEND: indicator legend and reference marker description. No physical setting is asserted.";
+const variants = ["-", "\u2010", "\u2011", "\u2012", "\u2212", "\uFE63", "\uFF0D"];
+const unsupported = [" - ", " \u2011 ", "\u2013", " \u2013 "];
+const BARE_DOC = doc(10), OTHER_FAMILY_DOC = doc(11);
+// Round 4 (F5): one ZX735 manual per hyphen, holding its own rating passage and an untagged
+// passage that names the sibling ZX731 with that hyphen.
+const supportedHyphens = variants.filter((separator) => separator !== "-");
+const PASSAGE_OWN = "ZX735 UNIT_FICTIONAL_RATING: rated current reference value 12 A. No physical setting is asserted.";
+const passageSibling = (separator: string) => `ZX731${separator}04A UNIT_FICTIONAL_RATING: rated current reference value 10 A. No physical setting is asserted.`;
+const passageDoc = (separator: string) => doc(60 + variants.indexOf(separator));
+const ASCII_PASSAGE_DOC = doc(59);
+const spell = (identifier: string, separator: string) => identifier.replaceAll("-", separator);
+let client: Client;
+
+type Options = Parameters<typeof retrieveNodeChunks>[3];
+async function insert(tenant: string, document: string, heading: string, filename: string, metadata: Record<string, unknown> = {}, node = NODE) {
+  for (const [page, content] of [[1, heading], [7, BODY]] as const) {
+    await client.query(`INSERT INTO knowledge_entries
+      (tenant_id, content, source_url, source_page, page_start, metadata, doc_id, ingest_route, verified, is_private)
+      VALUES ($1,$2,$3,$4,$4,$5::jsonb,$6,'v2',false,true)`,
+    [tenant, content, `https://manual.unit.invalid/${document}`, page,
+      JSON.stringify({ node_id: node, filename, chunk_index: page + 10, ...metadata }), document]);
+  }
+}
+beforeAll(async () => {
+  if (!process.env.TEST_DATABASE_URL || process.env.MIRA_TEST_DB_CONFIRM !== "DISPOSABLE") throw Error("Explicit disposable database confirmation required");
+  const url = new URL(process.env.TEST_DATABASE_URL);
+  const database = decodeURIComponent(url.pathname.slice(1));
+  const local = ["127.0.0.1", "localhost", "::1", "[::1]"].includes(url.hostname);
+  const disposableName = /(?:test|disposable)/i.test(database);
+  const sharedName = /(?:prod(?:uction)?|prd|stag(?:e|ing))/i.test(database);
+  if (!local || !disposableName || sharedName) {
+    throw Error("Only explicitly confirmed local test/disposable Postgres is permitted");
+  }
+  client = new Client({ connectionString: url.href }); await client.connect(); await client.query("BEGIN");
+  await client.query("SET LOCAL statement_timeout = '5000ms'");
+  await client.query(`CREATE TEMP TABLE knowledge_entries (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id text NOT NULL, content text NOT NULL,
+    content_tsv tsvector GENERATED ALWAYS AS (to_tsvector('english',content)) STORED,
+    manufacturer text NOT NULL DEFAULT '', model_number text NOT NULL DEFAULT '', source_url text NOT NULL,
+    source_page integer, page_start integer, section_path text, metadata jsonb NOT NULL,
+    verified boolean NOT NULL, is_private boolean NOT NULL, doc_id uuid NOT NULL, ingest_route text NOT NULL
+  ) ON COMMIT DROP`);
+  await insert(TENANT, OWN_DOC, `${OWN} Logic Controller\nUser Manual`, `${OWN}.pdf`);
+  await insert(TENANT, KNOWN_DOC, `${KNOWN} AC Drive\nUser Manual`, `${KNOWN}.pdf`);
+  await insert(TENANT, SIBLING_DOC, `${SIBLING} Logic Controller\nUser Manual`, `${SIBLING}.pdf`);
+  await insert(TENANT, OTHER_NODE_DOC, `${OWN} Logic Controller\nUser Manual`, `${OWN}.pdf`, {}, "catalog-fold-other-node");
+  await insert(TENANT, OLD_DOC, `${OWN} Logic Controller\nUser Manual`, `${OWN}.pdf`);
+  await insert(FOREIGN, OWN_DOC, `${OWN} Logic Controller\nUser Manual`, `${OWN}.pdf`);
+  await insert(TENANT, TABLE_OWN, "DURApulse GS10 AC Drive User Manual", "gs10-guide.pdf", { table_models: ["GS11N20P2"] });
+  await insert(TENANT, TABLE_SIBLING, "DURApulse GS10 AC Drive User Manual", "gs10-guide.pdf", { table_models: ["GS11N20P5"] });
+  await insert(TENANT, TABLE_UNQUALIFIED, "DURApulse GS10 AC Drive User Manual", "gs10-guide.pdf", { table_models: ["GS11N20P2", "GS11N20P5"], table_unqualified: true });
+  await insert(TENANT, COUNTED_OWN_DOC, "NC-24 Indicator Module\nUser Manual", "NC-24.pdf");
+  await insert(TENANT, BARE_DOC, "ZX731 Logic Controller\nUser Manual", "ZX731.pdf");
+  await insert(TENANT, OTHER_FAMILY_DOC, "ZX735 Logic Controller\nUser Manual", "ZX735.pdf");
+  for (const [index, separator] of variants.entries()) {
+    await insert(TENANT, doc(20 + index), `${spell(OWN, separator)} Logic Controller\nUser Manual`, `${OWN}.pdf`);
+    await insert(TENANT, doc(30 + index), `${OWN} Logic Controller\nUser Manual`, `${spell(OWN, separator)}.pdf`);
+    await insert(TENANT, doc(40 + index), `${OWN} Logic Controller\nUser Manual`, `${spell(SIBLING, separator)}.pdf`);
+  }
+});
+beforeAll(async () => {
+  const passages = async (document: string, sibling: string) => {
+    for (const [page, content] of [[1, "ZX735 Logic Controller\nUser Manual"], [8, PASSAGE_OWN], [9, sibling]] as const) {
+      await client.query(`INSERT INTO knowledge_entries
+        (tenant_id, content, source_url, source_page, page_start, metadata, doc_id, ingest_route, verified, is_private)
+        VALUES ($1,$2,$3,$4,$4,$5::jsonb,$6,'v2',false,true)`,
+      [TENANT, content, `https://manual.unit.invalid/${document}`, page,
+        JSON.stringify({ node_id: NODE, filename: "ZX735.pdf", chunk_index: page + 10 }), document]);
+    }
+  };
+  for (const separator of supportedHyphens) await passages(passageDoc(separator), passageSibling(separator));
+  await passages(ASCII_PASSAGE_DOC, passageSibling("-"));
+});
+afterAll(async () => { if (client) { await client.query("ROLLBACK"); await client.end(); } });
+beforeEach(() => {
+  for (const [key, value] of Object.entries({ MIRA_ENFORCE_APPROVED_RETRIEVAL: "true", NOTEBOOK_HYBRID_RETRIEVAL: "0",
+    NOTEBOOK_RERANK: "0", NOTEBOOK_LEXICAL_V2: "0", NOTEBOOK_QUERY_REWRITE: "0", MIRA_JEV_SHADOW: "0", NOTEBOOK_SEMANTIC_CHECK: "0" })) vi.stubEnv(key, value);
+  vi.stubGlobal("fetch", vi.fn(() => { throw Error("Unexpected inference/network request in disposable catalog SQL test"); }));
+});
+afterEach(() => { expect(fetch).not.toHaveBeenCalled(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
+
+async function retrieve(question: string, ids = [OWN_DOC], extra: Partial<Options> = {}, tenant = TENANT) {
+  return retrieveNodeChunks(client as unknown as PoolClient, tenant, question, {
+    nodeId: NODE, unsPath: null, topK: 6, docIds: ids, approvedSourceDocIds: ids,
+    validatedDocScope: true, rawQuery: question, ...extra,
+  });
+}
+const question = (identifier: string) => `For ${identifier}, which fictional indicator legend applies?`;
+const record = (identifier: string): Partial<Options> => ({
+  identity: { manufacturer: "Unit fixture", model: identifier }, catalogNumber: identifier, identityStatus: "user_confirmed",
+});
+const knownRecord = (identifier: string): Partial<Options> => ({
+  identity: { manufacturer: "AutomationDirect", model: "GS10" }, catalogNumber: identifier, identityStatus: "user_confirmed",
+});
+function hasLegend(hits: Awaited<ReturnType<typeof retrieve>>, expected: string) {
+  expect(hits.some((hit) => hit.docId === expected && hit.sourcePage === 7 && hit.content === BODY)).toBe(true);
+  expect(hits.every((hit) => hit.docId === expected)).toBe(true);
+}
+
+describe("round 4 (F5): an untagged sibling passage inside the record's own manual — real SQL", () => {
+  const ask = "What is the rated current reference value?";
+  it.each(supportedHyphens)("the sibling's passage written with %j never returns; the record's own does", async (separator) => {
+    const hits = await retrieve(ask, [passageDoc(separator)], record("ZX735"));
+    expect(hits.some((hit) => hit.content === PASSAGE_OWN)).toBe(true);
+    expect(hits.filter((hit) => hit.content.includes("10 A"))).toEqual([]);
+    expect(hits.every((hit) => hit.docId === passageDoc(separator))).toBe(true);
+  });
+  it("control: without a confirmed record nothing is left out, so the passage is retrievable at all", async () => {
+    const hits = await retrieve(ask, [passageDoc(supportedHyphens[0])]);
+    expect(hits.some((hit) => hit.content.includes("10 A"))).toBe(true);
+  });
+  it("OPEN, as on main: the ASCII spelling of the same passage is one long number and is not left out", async () => {
+    const hits = await retrieve(ask, [ASCII_PASSAGE_DOC], record("ZX735"));
+    expect(hits.some((hit) => hit.content === PASSAGE_OWN)).toBe(true);
+    expect(hits.some((hit) => hit.content.includes("10 A"))).toBe(true);
+  });
+});
+
+describe.each(variants)("identifier folding over actual SQL: separator %j", (separator) => {
+  it("retains own fictional catalog question without a confirmed record", async () => {
+    hasLegend(await retrieve(question(spell(OWN, separator))), OWN_DOC);
+  });
+  it("refuses the fictional sibling exactly as ASCII without a confirmed record", async () => {
+    expect(await retrieve(question(SIBLING))).toEqual([]);
+    expect(await retrieve(question(spell(SIBLING, separator)))).toEqual([]);
+  });
+  it("compares own question to the Unicode/spaced cover and filename", async () => {
+    const index = variants.indexOf(separator);
+    hasLegend(await retrieve(question(OWN), [doc(20 + index)]), doc(20 + index));
+    hasLegend(await retrieve(question(OWN), [doc(30 + index)]), doc(30 + index));
+  });
+  it("does not let a sibling filename silently agree with the own cover", async () => {
+    expect(await retrieve(question(OWN), [doc(40 + variants.indexOf(separator))])).toEqual([]);
+  });
+  it("retains a Unicode/spaced owner-confirmed fictional record without a model in the question", async () => {
+    hasLegend(await retrieve("Which fictional indicator legend applies?", [OWN_DOC], record(spell(OWN, separator))), OWN_DOC);
+  });
+  it("refuses a sibling of the owner-confirmed fictional record", async () => {
+    const confirmed = record(OWN);
+    expect(await retrieve(question(SIBLING), [OWN_DOC], confirmed)).toEqual([]);
+    expect(await retrieve(question(spell(SIBLING, separator)), [OWN_DOC], confirmed)).toEqual([]);
+  });
+  it("keeps the known own catalog and same-prefix sibling distinct in a confirmed record", async () => {
+    const confirmed = knownRecord(KNOWN);
+    hasLegend(await retrieve(question(spell(KNOWN, separator)), [KNOWN_DOC], confirmed), KNOWN_DOC);
+    expect(await retrieve(question(KNOWN_SIBLING), [KNOWN_DOC], confirmed)).toEqual([]);
+    expect(await retrieve(question(spell(KNOWN_SIBLING, separator)), [KNOWN_DOC], confirmed)).toEqual([]);
+  });
+  it("compares a Unicode/spaced known confirmed record to ASCII current table keys", async () => {
+    const confirmed = knownRecord(spell(KNOWN, separator));
+    hasLegend(await retrieve("Which fictional indicator legend applies?", [TABLE_OWN], confirmed), TABLE_OWN);
+    expect(await retrieve("Which fictional indicator legend applies?", [TABLE_SIBLING], confirmed)).toEqual([]);
+    expect(await retrieve("Which fictional indicator legend applies?", [TABLE_UNQUALIFIED], confirmed)).toEqual([]);
+  });
+});
+
+describe.each(variants.slice(1))("folding %j adds a reading and never replaces the written one — real SQL", (separator) => {
+  // Main reads the Unicode spelling as the bare family number and refuses the ZX735 manual. The
+  // folded reading is added beside it, so that refusal stands.
+  it("a manual refused for the written reading stays refused", async () => {
+    expect(await retrieve(question(spell(OWN, separator)), [OTHER_FAMILY_DOC])).toEqual([]);
+    expect(await retrieve(question(`${SIBLING}${separator}24V`))).toEqual([]);
+  });
+});
+
+// The three review findings on PR #5500 (ledgers 6892548431, 6892789648, 6893044534). Each came from
+// a spaced-dash rule this PR had added and has removed; each case now reads as it does on main.
+describe("review regressions: a spaced dash is never a separator — real SQL", () => {
+  const tailed = (identifier: string, tail: string) => `For ${identifier}${tail}, which fictional indicator legend applies?`;
+  it.each([" - 24V", " \u2013 24V", " \u2011 24V", " - 2nd alarm", " - 3PH", " - 5MIN", " - 24AX"])("round 2: refuses the sibling with tail %j without a confirmed record", async (tail) => {
+    expect(await retrieve(tailed(SIBLING, tail))).toEqual([]);
+  });
+  it.each([" - 24V", " - 2nd alarm", " - 3PH"])("round 2 control: the own number with tail %j still retrieves its manual", async (tail) => {
+    hasLegend(await retrieve(tailed(OWN, tail)), OWN_DOC);
+  });
+  it.each([" - 24VOLT", " - 24VOLTS", " - 3PHASE", " - 24V"])("round 3: a bare model with tail %j is refused the other model's manual", async (tail) => {
+    expect(await retrieve(tailed("ZX731", tail), [OTHER_FAMILY_DOC])).toEqual([]);
+    hasLegend(await retrieve(tailed("ZX731", tail), [BARE_DOC]), BARE_DOC);
+  });
+});
+
+// OPEN in #5484, not repaired here: these state what main does today.
+describe.each(unsupported)("OPEN #5484: separator %j is still split — real SQL", (separator) => {
+  it("a sibling spelled this way still reaches the own manual", async () => {
+    hasLegend(await retrieve(question(spell(SIBLING, separator))), OWN_DOC);
+  });
+  // Main already reads a GS catalog written with a spaced ASCII hyphen; every other spelling here
+  // loses the catalog, and the sibling's table is then served to the confirmed record.
+  it("a confirmed record spelled this way admits the sibling table, except the spaced ASCII GS form", async () => {
+    const hits = await retrieve("Which fictional indicator legend applies?", [TABLE_SIBLING], knownRecord(spell(KNOWN, separator)));
+    expect(hits.length > 0).toBe(separator !== " - ");
+  });
+});
+
+describe("existing source and identity boundaries remain authoritative", () => {
+  it("uses real tenant predicates even with an approved-looking foreign source ID", async () => {
+    expect(await retrieve(question(OWN), [OWN_DOC], {}, doc(999))).toEqual([]);
+  });
+  it("cannot broaden current validated docs with stale approval IDs", async () => {
+    const hits = await retrieve(question(OWN), [OWN_DOC], { approvedSourceDocIds: [OWN_DOC, OLD_DOC, SIBLING_DOC] });
+    hasLegend(hits, OWN_DOC);
+  });
+  it("refuses selected private rows absent from the current approval intersection", async () => {
+    expect(await retrieve(question(OWN), [OLD_DOC], { approvedSourceDocIds: [OWN_DOC] })).toEqual([]);
+  });
+  it("keeps canonical current doc linkage valid across ingest-time node stamps", async () => {
+    hasLegend(await retrieve(question(OWN), [OTHER_NODE_DOC]), OTHER_NODE_DOC);
+  });
+  it("enforces explicit node scope when current canonical linkage was not validated", async () => {
+    expect(await retrieve(question(OWN), [OTHER_NODE_DOC], { validatedDocScope: false })).toEqual([]);
+  });
+  it("never serves a specifically different fictional sibling manual", async () => {
+    expect(await retrieve(question(OWN), [SIBLING_DOC])).toEqual([]);
+  });
+  it("an unknown/candidate notebook record does not become a confirmed table discriminator", async () => {
+    const hits = await retrieve("Which fictional indicator legend applies?", [TABLE_SIBLING], {
+      ...knownRecord(KNOWN), identityStatus: "candidate", catalogNumber: null,
+    });
+    hasLegend(hits, TABLE_SIBLING);
+  });
+});
+
+
+describe.each(variants)("counted identifier admission over actual SQL: separator %j", (separator) => {
+  it("retains the exact own NC24 legend after an inventory count", async () => {
+    const inventory = `For 2 NC${separator}24 indicators, which fictional indicator legend applies?`;
+    hasLegend(await retrieve(inventory, [COUNTED_OWN_DOC]), COUNTED_OWN_DOC);
+  });
+  it("does not let counted NC28 borrow the NC24 legend", async () => {
+    const inventory = `For 2 NC${separator}28 indicators, which fictional indicator legend applies?`;
+    expect(await retrieve(inventory, [COUNTED_OWN_DOC])).toEqual([]);
+  });
+});
 
 });
