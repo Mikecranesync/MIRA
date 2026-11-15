@@ -1047,15 +1047,35 @@ describe("#5503 actual upload INSERT through raw retrieval SQL", () => {
     });
   });
 
-  it.each(["named", "unnamed", "next-page"])("F10 real single-model upload rejects smaller %s sibling headings and headerless continuation", async (kind) => {
+  it.each(["named", "unnamed", "next-page", "named-no-header", "unnamed-no-header", "next-page-no-header", "named-no-header-tall-header", "named-no-header-tall-label", "named-no-header-close", "named-no-header-unicode", "named-no-header-long", "named-no-header-body-note", "named-no-header-heading-note", "named-no-header-negative"])("F10 real single-model upload rejects smaller %s sibling headings and headerless continuation", async (kind) => {
     const items = [item("Output Specifications for 2080-LC20-20QWB", 100, 740, 12),
       item("Attribute Value", 100, 720), item("zzf10original Load current max 2 A", 100, 706),
-      item(kind === "named" ? "DC Output Data for 2080-LC20-20QBB" : "DC Output Data", 100, 676, 10),
+      item(kind.startsWith("named") ? "DC Output Data for 2080-LC20-20QBB" : "DC Output Data", 100, 676, 10),
       item("Attribute Value", 100, 662), item("zzf10adjacent Point current max 9 A", 100, 648),
       item("zzf10surge Point surge max 11 A", 100, 634)];
     const cover = "Micro820 Programmable Controllers\n2080-LC20-20QBB, 2080-LC20-20QWB, 2080-LC20-20AWB";
+    if (kind.endsWith("tall-header") || kind.endsWith("tall-label")) { items[0].size = 16; items[1].size = 12; }
+    if (kind.endsWith("tall-label")) items.splice(2, 1, item("zzf10original Load current max",100,706,14),item("2 A",320,706));
+    if (kind.includes("no-header")) items.splice(items.findIndex((i) => i.y === 662), 1);
+    if (kind.endsWith("close")) for (const i of items) {
+      if (i.y === 676) i.y = 692; else if (i.y === 648) i.y = 678; else if (i.y === 634) i.y = 664;
+    }
+    if (kind.endsWith("body-note")) {
+      items[0].size=16;items[1].size=12;
+      items.splice(2,1,item("zzf10original Load current max",100,706,14),item("2 A",320,706),item("(1)",330,706,4));
+    }
+    if (kind.endsWith("heading-note")) {
+      const title=items.find((i)=>i.str.startsWith("DC Output Data"))!;
+      items.push(item("(1)",title.x+title.w+2,title.y,4));
+    }
+    if (kind.endsWith("negative")) items.find((i)=>i.str.startsWith("DC Output Data"))!.str="DC Output Data (not for 2080-LC20-20QWB)";
+    if (kind.endsWith("unicode")) items.find((i) => i.str.startsWith("DC Output Data"))!.str = items.find((i) => i.str.startsWith("DC Output Data"))!.str.replaceAll("-", "\u2011");
+    if (kind.endsWith("long")) {
+      items.find((i) => i.y === 634)!.y = 320;
+      for (let n=0;n<20;n++) items.push(item("Additional electrical operating conditions and parameter context without a new model assertion.",100,620-n*14));
+    }
     const pages = [{ page: 1, items: [item(cover, 100, 760, 12)], text: cover }];
-    for (const body of kind === "next-page" ? [items.slice(0, 3), items.slice(3)] : [items]) {
+    for (const body of kind.startsWith("next-page") ? [items.slice(0, 3), items.slice(3)] : [items]) {
       pages.push({ page: pages.length + 1, items: body, text: body.map((i) => i.str).join("\n") });
     }
     pages.push({ page: pages.length + 1, items: [item("zzf10continued Point current max 9 A", 100, 720)], text: "zzf10continued Point current max 9 A" });

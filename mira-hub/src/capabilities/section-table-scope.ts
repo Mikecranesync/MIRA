@@ -4,13 +4,14 @@
  */
 import { exactModelKey, type LayoutItem, type TableChunk } from "./table-rows";
 import { hasNegation, isTitleLine, modelNumbersIn, sameModelFamily } from "./manual-applicability";
-import { tableUnit } from "./supporting-quote";
+import { findValues, tableUnit } from "./supporting-quote";
+import { catalogIdentifierView } from "./catalog-identifier";
 
 export type SectionScope = "section" | "shared" | "unresolved";
 /** columnOnly is internal: independent parameter/accessory columns retain the
  * existing family-domain rule; an explicit catalog section never gains it. */
 export type ScopedText = { columnOnly?: boolean; text: string; models?: string[]; scope?: SectionScope; sharedHeader?: string };
-type Heading = { interruption?: boolean; bodyHeading?: boolean; interruptedModels?: string[]; text: string; at: number; table: boolean; size: number; sharedHeader?: string; headerModels?: string[]; headerUnresolved?: boolean; headerInvalidLabels?: boolean; relayTable?: boolean; sourceLine: number; y: number; headerTop?: number; headerBottom?: number; columnUnresolved?: boolean };
+type Heading = { interruption?: boolean; bodyHeading?: boolean; localTitle?: boolean; bodySize?: number; interruptedModels?: string[]; text: string; at: number; table: boolean; size: number; sharedHeader?: string; headerModels?: string[]; headerUnresolved?: boolean; headerInvalidLabels?: boolean; relayTable?: boolean; sourceLine: number; y: number; headerTop?: number; headerBottom?: number; columnUnresolved?: boolean };
 export type SectionLayout = { text: string; headings: Heading[]; candidates?: Heading[]; hasTables: boolean; retainedLines: string[] };
 type OutputMap = Map<string, boolean | null>;
 type ActiveScope = Pick<ScopedText, "models" | "scope" | "sharedHeader" | "columnOnly">;
@@ -62,6 +63,23 @@ export function withoutSharedTableHeader(text: string, header: unknown): string 
   return text.replace(new RegExp(`(^|\\n)[\\t ]*${pattern}[\\t ]*(?=\\r?\\n|$)`), "$1 ");
 }
 
+const TITLE_LETTER = new RegExp("\\p{L}", "u");
+
+/** Detection only: catalog fragments and footnote markers are not measured row
+ * values. A negative catalog title may stop scope, but never assigns models. */
+function localSectionTitle(text: string): boolean {
+  let remainder = catalogIdentifierView(text).text;
+  const catalogs = modelNumbersIn(remainder);
+  const title = catalogs.length > 0 ? remainder.replace(/\b(?:not|excluding|except|only|without)\b/gi, " ") : remainder;
+  if (!isTitleLine(title)) return false;
+  for (const model of catalogs) remainder = remainder.replaceAll(model.label, " ");
+  remainder = remainder.replace(/\(\d+\)/g, " ");
+  const values = findValues(remainder, "source");
+  if (!values.every((value) => !remainder.slice(0, value.start).trim())) return false;
+  const words = values.reduceRight((part, value) => part.slice(0, value.start) + " " + part.slice(value.end), remainder);
+  return catalogs.length > 0 || TITLE_LETTER.test(words);
+}
+
 /** Render every positioned item once, in page reading order. Caption positions, rather than
  * unpdf's object order, delimit sections (real p20 puts its top caption AFTER its lower chart).
  * Only pages containing a layout-qualified table caption use this rendering at ingest.
@@ -69,7 +87,7 @@ export function withoutSharedTableHeader(text: string, header: unknown): string 
 export function sectionTableLayout(items: readonly LayoutItem[], includeBoundaries = true, remainderItems?: readonly LayoutItem[], annotation?: { after: LayoutItem; lines: string[] }): SectionLayout | null {
   if (annotation && !items.includes(annotation.after)) throw new Error("contact-column source row is not in this page's positioned items");
   const retained = remainderItems ? new Set(remainderItems) : null;
-  const lines: Array<{ text: string; y: number; x: number; size: number; columns: Array<{ text: string; x: number; right: number }>; removed: boolean; virtual: boolean }> = [];
+  const lines: Array<{ text: string; y: number; x: number; size: number; minSize: number; columns: Array<{ text: string; x: number; right: number; size: number }>; removed: boolean; virtual: boolean }> = [];
   const bands: LayoutItem[][] = [];
   for (const item of [...items].filter((i) => i.str.trim()).sort((a, b) => b.y - a.y || a.x - b.x)) {
     const last = bands.at(-1);
@@ -78,22 +96,24 @@ export function sectionTableLayout(items: readonly LayoutItem[], includeBoundari
   }
   for (const band of bands) {
     band.sort((a, b) => a.x - b.x);
-    const columns: Array<{ text: string; x: number; right: number }> = [];
+    const columns: Array<{ text: string; x: number; right: number; size: number }> = [];
     for (const item of band) {
       const last = columns.at(-1);
-      if (last && item.x - last.right <= 6) { last.text += ` ${item.str.trim()}`; last.right = item.x + item.w; }
-      else columns.push({ text: item.str.trim(), x: item.x, right: item.x + item.w });
+      if (last && item.x - last.right <= 6) { last.text += ` ${item.str.trim()}`; last.right = item.x + item.w; last.size = Math.max(last.size, item.size); }
+      else columns.push({ text: item.str.trim(), x: item.x, right: item.x + item.w, size: item.size });
     }
+    const ordinary = band.filter((i) => !/^\(?\d+\)?$/.test(i.str.trim()));
+    const titleSizes = (ordinary.length ? ordinary : band).map((i) => i.size);
     lines.push({ text: band.map((i) => i.str.trim()).join(" ").replace(/\s+/g, " "),
-      y: band[0].y, x: band[0].x, size: Math.max(...band.map((i) => i.size)), columns,
+      y: band[0].y, x: band[0].x, size: Math.max(...band.map((i) => i.size)), minSize: Math.min(...titleSizes), columns,
       removed: !!retained && band.every((item) => !retained.has(item)), virtual: false });
     // Derived contact columns belong to their physical source table, even when that table
     // was extracted into separate model chunks. Never append them under a later caption.
     if (annotation && band.includes(annotation.after)) {
-      for (const text of annotation.lines) lines.push({ text, y: band[0].y, x: band[0].x, size: 0, columns: [], removed: false, virtual: true });
+      for (const text of annotation.lines) lines.push({ text, y: band[0].y, x: band[0].x, size: 0, minSize: 0, columns: [], removed: false, virtual: true });
     }
   }
-  const captions = new Map<number, { text: string; end: number; sharedHeader?: string; headerModels?: string[]; headerUnresolved?: boolean; headerInvalidLabels?: boolean; columnUnresolved?: boolean; headerTop?: number; headerBottom?: number; relayTable: boolean }>();
+  const captions = new Map<number, { text: string; end: number; bodySize?: number; sharedHeader?: string; headerModels?: string[]; headerUnresolved?: boolean; headerInvalidLabels?: boolean; columnUnresolved?: boolean; headerTop?: number; headerBottom?: number; relayTable: boolean }>();
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     if (line.virtual || line.text.length > 200) continue;
@@ -137,6 +157,7 @@ export function sectionTableLayout(items: readonly LayoutItem[], includeBoundari
     let columnUnresolved = false;
     let headerTop: number | undefined;
     let headerBottom: number | undefined;
+    let localBodySize = header?.size ?? ratingHeadSize;
     if (header) {
       const attributeColumn = header.columns.findIndex((c) => /^(?:Attribute|Description)$/i.test(c.text));
       const headerAt = lines.indexOf(header);
@@ -171,6 +192,13 @@ export function sectionTableLayout(items: readonly LayoutItem[], includeBoundari
       }
       headerTop = lines[headerStart].y;
       headerBottom = lines[headerEnd - 1].y;
+      // Sample this table's first value row, not the page's smallest footnote
+      // or its tallest header/attribute label. A later page can inherit this
+      // font evidence, but never an affirmative scope past a new title.
+      const firstBody = lines[headerEnd];
+      if (firstBody && !firstBody.virtual && header.y - firstBody.y <= 60) {
+        localBodySize = Math.min(header.size, ...firstBody.columns.map((c) => c.size));
+      }
       const candidate = lines.slice(headerStart, headerEnd).map((l) => l.text).join("\n");
       const numbers = [...modelNumbersIn(candidate), ...rejectedCatalogs];
       if (numbers.length > 0) {
@@ -228,6 +256,7 @@ export function sectionTableLayout(items: readonly LayoutItem[], includeBoundari
       }
     }
     captions.set(i, { text: lines.slice(i, end + 1).map((l) => l.text).join(" "), end, sharedHeader,
+      ...(Number.isFinite(localBodySize) && localBodySize > 0 ? { bodySize: localBodySize } : {}),
       headerModels, headerUnresolved, headerInvalidLabels, columnUnresolved, headerTop, headerBottom,
       relayTable: isRating || /\brelay\b/i.test(line.text) });
   }
@@ -253,8 +282,20 @@ export function sectionTableLayout(items: readonly LayoutItem[], includeBoundari
       const bodyHeading = !caption && line.columns.length === 1 && line.text.length < 200 &&
         isTitleLine(line.text) && next && line.y - next.y <= 60 &&
         /^(?:Attribute|Description)\b/i.test(next.text) && line.size > next.size + 0.2;
+      // Keep a standalone font peak even without a repeated table header.
+      // The state machine compares it with the established section body font.
+      // Mixed-size grid rows and numeric value rows are not such titles.
+      const inHeader = [...captions.values()].some((c) => c.headerTop !== undefined && c.headerBottom !== undefined &&
+        line.y <= c.headerTop + 2.5 && line.y >= c.headerBottom - 2.5);
+      const localTitle = !caption && !inHeader && line.columns.length === 1 && line.minSize >= line.size - 0.2 &&
+        line.text.length < 200 && next &&
+        line.y - next.y <= 60 && next.x <= line.x + line.size * 2 &&
+        next.size < line.size - 0.2 &&
+        localSectionTitle(line.text);
       const heading: Heading = { text: caption?.text ?? line.text, at, table: !!caption, size: line.size,
         ...(bodyHeading ? { bodyHeading: true } : {}),
+        ...(localTitle ? { localTitle: true } : {}),
+        ...(caption?.bodySize ? { bodySize: caption.bodySize } : {}),
         ...(caption?.sharedHeader ? { sharedHeader: caption.sharedHeader } : {}),
         ...(caption?.headerModels ? { headerModels: caption.headerModels } : {}),
         ...(caption?.headerUnresolved ? { headerUnresolved: true } : {}),
@@ -268,7 +309,7 @@ export function sectionTableLayout(items: readonly LayoutItem[], includeBoundari
       // Retain potential local boundaries before a preceding caption's size can
       // discard them. Extraction qualifies these against its own table geometry.
       if (caption || line.text.length < 200) candidates.push(heading);
-      if (caption || bodyHeading || (line.size >= captionSize && line.text.length < 200)) headings.push(heading);
+      if (caption || bodyHeading || localTitle || (line.size >= captionSize && line.text.length < 200)) headings.push(heading);
       if (caption) continuationEnd = caption.end;
     }
     at += line.text.length + 1;
@@ -401,6 +442,7 @@ export function hasModelSectionScope(layout: SectionLayout | null | undefined): 
 export class SectionTableScope {
   private active: ActiveScope = {};
   private headingSize = 0;
+  private bodySize = 0;
   private hasReadableSection = false;
   constructor(private readonly outputs: OutputMap, private observed = outputs.size > 0, private readonly sectionModels: readonly string[] = []) {}
 
@@ -454,12 +496,15 @@ export class SectionTableScope {
     }
     // With no inherited scope and no table caption, there is no applicability boundary to
     // split. Preserve original text AND window boundaries on unrelated prose pages.
-    const interruptsInherited = layout.headings.some((h) => h.interruption || (h.bodyHeading && this.active.scope));
-    if (!layout.hasTables && !interruptsInherited && (!this.active.scope || this.active.scope === "shared")) {
+    const interruptsInherited = (h: Heading) => h.interruption || (this.active.scope &&
+      (h.bodyHeading || (h.localTitle && this.active.scope === "section" && this.bodySize > 0 && h.size > this.bodySize + 0.2)));
+    const hasInterruption = layout.headings.some(interruptsInherited);
+    const hasTableInterruption = layout.headings.some((h) => h.interruption || (h.bodyHeading && this.active.scope));
+    if (!layout.hasTables && !hasInterruption && (!this.active.scope || this.active.scope === "shared")) {
       this.active = {}; // a mixed-column header's privilege never crosses onto another page
       return [{ text }];
     }
-    if (!layout.hasTables && !interruptsInherited && layout.headings.some((h) => h.size >= this.headingSize)) {
+    if (!layout.hasTables && !hasTableInterruption && layout.headings.some((h) => h.size >= this.headingSize)) {
       // No qualified boundary exists on this page. Keep its original text/windows, but
       // do not let a running header or a possible new section release the restriction.
       this.active = { models: this.active.models ?? [...this.outputs.keys()], scope: "unresolved",
@@ -480,7 +525,7 @@ export class SectionTableScope {
     const sections: ScopedText[] = [];
     let start = 0;
     for (const h of headings) {
-      if (!h.table && !h.interruption && !(h.bodyHeading && this.active.scope) &&
+      if (!h.table && !interruptsInherited(h) &&
           (this.headingSize === 0 || h.size < this.headingSize)) continue; // running page furniture
       if (h.at > start) sections.push({ text: text.slice(start, h.at), ...this.active });
       // Font and page position cannot prove that a model restriction ended. A running
@@ -497,6 +542,7 @@ export class SectionTableScope {
       this.active = {};
       this.headingSize = h.size;
       if (h.table) {
+        this.bodySize = h.bodySize ?? 0;
         this.hasReadableSection = true;
         const lastFor = [...h.text.matchAll(/\bfor\s+/gi)].at(-1);
         const afterFor = lastFor ? h.text.slice(lastFor.index! + lastFor[0].length) : "";

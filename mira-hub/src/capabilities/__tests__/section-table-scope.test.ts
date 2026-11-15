@@ -587,18 +587,38 @@ it.each(["table", "named-smaller", "unnamed-smaller"])("F7 rejects an unsplit bl
 });
 
 
-it.each(["named", "unnamed", "next-page"])("F10 a smaller %s heading interrupts a single-model section without extracted columns", (kind) => {
-  const title = kind === "unnamed" ? "DC Output Data" : "DC Output Data for 2080-LC20-20QBB";
+it.each(["named", "unnamed", "next-page", "named-no-header", "unnamed-no-header", "next-page-no-header", "named-no-header-tall-header", "named-no-header-tall-label", "named-no-header-close", "named-no-header-unicode", "named-no-header-long", "named-no-header-body-note", "named-no-header-heading-note", "named-no-header-negative"])("F10 a smaller %s heading interrupts a single-model section without extracted columns", (kind) => {
+  const title = kind.startsWith("unnamed") ? "DC Output Data" : "DC Output Data for 2080-LC20-20QBB";
   const items = [row("Output Specifications for 2080-LC20-20QWB", 740, 12),
     row("Attribute Value", 720, 8), row("Load current max 2 A", 706, 8),
     row(title, 676, 10), row("Attribute Value", 662, 8),
     row("Point current max 9 A", 648, 8), row("Point surge max 11 A", 634, 8)];
+  if (kind.endsWith("tall-header") || kind.endsWith("tall-label")) { items[0].size = 16; items[1].size = 12; }
+  if (kind.endsWith("tall-label")) items.splice(2, 1, row("Load current max", 706, 14), row("2 A", 706, 8, 320));
+  if (kind.includes("no-header")) items.splice(items.findIndex((r) => r.y === 662), 1);
+  if (kind.endsWith("close")) for (const r of items) {
+    if (r.y === 676) r.y = 692; else if (r.y === 648) r.y = 678; else if (r.y === 634) r.y = 664;
+  }
+  if (kind.endsWith("body-note")) {
+    items[0].size=16;items[1].size=12;
+    items.splice(2,1,row("Load current max",706,14),row("2 A",706,8,320),row("(1)",706,4,330));
+  }
+  if (kind.endsWith("heading-note")) {
+    const title=items.find((r)=>r.str.startsWith("DC Output Data"))!;
+    items.push(row("(1)",title.y,4,title.x+title.w+2));
+  }
+  if (kind.endsWith("negative")) items.find((r)=>r.str.startsWith("DC Output Data"))!.str="DC Output Data (not for 2080-LC20-20QWB)";
+  if (kind.endsWith("unicode")) items.find((r) => r.str.startsWith("DC Output Data"))!.str = items.find((r) => r.str.startsWith("DC Output Data"))!.str.replaceAll("-", "\u2011");
+  if (kind.endsWith("long")) {
+    items.find((r) => r.y === 634)!.y = 320;
+    for (let n=0;n<20;n++) items.push(row("Additional electrical operating conditions and parameter context without a new model assertion.",620-n*14,8));
+  }
   expect(pageWithTables(items)).toBeNull();
   const scope = new SectionTableScope(new Map(), true, [QWB]);
-  const original = sectionTableLayout(kind === "next-page" ? items.slice(0, 3) : items)!;
+  const original = sectionTableLayout(kind.startsWith("next-page") ? items.slice(0, 3) : items)!;
   const first = scope.splitPage(original.text, original, []);
   expect(first.sections.find((part) => part.text.includes("Load current max"))).toMatchObject({ models: [QWB], scope: "section" });
-  const next = kind === "next-page" ? sectionTableLayout(items.slice(3))! : null;
+  const next = kind.startsWith("next-page") ? sectionTableLayout(items.slice(3))! : null;
   const result = next ? scope.splitPage(next.text, next, []) : first;
   const later = result.sections.find((part) => part.text.includes("Point current max"))!;
   expect(later).toMatchObject({ scope: "unresolved" });
@@ -654,4 +674,44 @@ it("an anonymous parameter-column span stays unqualified within its original dom
   const result = scopeTableChunks(unsplit.chunks, sectionTableLayout(items));
   expect(result.filter((c) => !c.unqualified)).toHaveLength(0);
   expect(result.every((c) => c.scope === undefined)).toBe(true);
+});
+
+it("body-font headings do not turn uniform larger numeric rows or a small footnote into new sections", () => {
+ const items=[row("Output Specifications for 2080-LC20-20QWB",740,12),row("Attribute Value",720,8),
+  row("Load current max 2 A",706,10),row("Switching time max 10 ms",692,8),
+  row("Output circuit type Relay",678,8),row("1",664,4.9)];
+ const layout=sectionTableLayout(items)!; const scope=new SectionTableScope(new Map(),true,[QWB]);
+ const result=scope.splitPage(layout.text,layout,[]);
+ for(const value of ["2 A","10 ms","Relay"]) expect(result.sections.find(p=>p.text.includes(value))).toMatchObject({scope:"section",models:[QWB]});
+ expect(scope.split("Continued load current max 2 A",null)[0]).toMatchObject({scope:"section",models:[QWB]});
+});
+
+it("a title followed only by raw smaller-font values ends inherited scope", () => {
+ const items=[row("Output Specifications for 2080-LC20-20QWB",740,12),row("Attribute Value",720,8),row("Load current max 2 A",706,8),
+ row("DC Output Data",692,10),row("9 A",678,8),row("11 A",664,8)];
+ const layout=sectionTableLayout(items)!; const scope=new SectionTableScope(new Map(),true,[QWB]);
+ const result=scope.splitPage(layout.text,layout,[]);
+ expect(result.sections.find(p=>p.text.includes("2 A"))).toMatchObject({scope:"section",models:[QWB]});
+ expect(result.sections.find(p=>p.text.includes("9 A"))).toMatchObject({scope:"unresolved"});
+ expect(scope.split("11 A continued",null)[0]).toMatchObject({scope:"unresolved"});
+});
+
+it("a new local body title cannot release whole-page uncertainty from an equal-or-larger unqualified heading", () => {
+ const scope=new SectionTableScope(new Map(),true,[QWB]);
+ const previous=caption("Output Specifications for 2080-LC20-20QWB");
+ scope.split(previous.text,previous.layout);
+ const items=[row("Potential continuation current 2 A",740,8),row("DC Output Data for 2080-LC20-20QBB",700,9),
+ row("Point current max 9 A",680,8),row("Unqualified page heading",100,14)];
+ const layout=sectionTableLayout(items)!;
+ const result=scope.splitPage(layout.text,layout,[]);
+ expect(result.sections.every(p=>p.scope==="unresolved")).toBe(true);
+});
+
+it("a larger value-only row is data rather than a section title", () => {
+ const items=[row("Output Specifications for 2080-LC20-20QWB",740,12),row("Attribute Value",720,8),
+ row("Load current max",706,8),row("9 A",692,10),row("Switching time max 10 ms",678,8)];
+ const layout=sectionTableLayout(items)!; const scope=new SectionTableScope(new Map(),true,[QWB]);
+ const result=scope.splitPage(layout.text,layout,[]);
+ expect(result.sections.find(p=>p.text.includes("9 A"))).toMatchObject({scope:"section",models:[QWB]});
+ expect(result.sections.find(p=>p.text.includes("10 ms"))).toMatchObject({scope:"section",models:[QWB]});
 });
