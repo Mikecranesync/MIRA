@@ -1,7 +1,7 @@
 /** Public fictional identifiers; detection/comparison only, never whole-string
  * Unicode normalization or a reason to rewrite technician-facing source text. */
 import { describe, expect, it } from "vitest";
-import { modelIdentitiesInText, modelMentionsInText } from "@/capabilities/model-token";
+import { modelIdentitiesInText, modelMentionsInText, resolveModelFromObservationText } from "@/capabilities/model-token";
 import { coverDeclaredNumbers, manualAnswersFor, modelNumbersIn, unlistedModelNumbers } from "@/capabilities/manual-applicability";
 import { exactModelKey } from "@/capabilities/table-rows";
 
@@ -124,5 +124,35 @@ describe("counted inventory preserves complete identifier runs", () => {
     for (const detect of [modelNumbersIn, unlistedModelNumbers]) {
       expect(detect("2 NC - 24 V DC coil")).toEqual([]);
     }
+  });
+});
+
+// Review finding F1 on PR 5500 (ledger 6892548431): the spaced-separator form of a 6AV order
+// number must stop at the order number. It may not swallow the clause after a dash, and it
+// may not weld two complete order numbers into one.
+describe("a spaced 6AV separator stops at the order number", () => {
+  const A = "6AV3182-0HX02-1BZ4", B = "6AV3182-0HX02-1BZ5";
+  it.each([
+    `${A} - what does this alarm mean?`,
+    `${A} – reset procedure`,
+    `${A} - 3rd alarm today`,
+    `${A} - 2 pumps tripped`,
+  ])("prose after a dash is not part of the identity: %s", (text) => {
+    expect(resolveModelFromObservationText(text)).toEqual({ model: A, ambiguous: false });
+    expect([...modelIdentitiesInText(text)]).toEqual([A]);
+  });
+  it("two complete order numbers joined by a spaced dash stay two, and ambiguous", () => {
+    const text = `${A} - ${B}`;
+    expect(resolveModelFromObservationText(text)).toEqual({ model: null, ambiguous: true });
+    expect([...modelIdentitiesInText(text)].sort()).toEqual([A, B]);
+  });
+  it("control: the spaced spelling of ONE order number is still read as that order number", () => {
+    expect(resolveModelFromObservationText("6AV3182 - 0HX02 - 1BZ4")).toEqual({ model: A, ambiguous: false });
+    expect(resolveModelFromObservationText("plate 6AV3182 - 0HX02 - 1BZ4 - what is this?")).toEqual({ model: A, ambiguous: false });
+  });
+  it("control: the unspaced order number is unchanged", () => {
+    expect(resolveModelFromObservationText(`${A} fault`)).toEqual({ model: A, ambiguous: false });
+    expect(resolveModelFromObservationText(`The panel is a ${A}.`)).toEqual({ model: A, ambiguous: false });
+    expect(resolveModelFromObservationText("6AV2124.0GC01-0AX0 panel")).toEqual({ model: "6AV2124.0GC01-0AX0", ambiguous: false });
   });
 });
