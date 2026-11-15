@@ -114,11 +114,13 @@ test("#5546: the open drawer's controls take their taps on a phone with a projec
 
   const aside = page.locator('aside[aria-label="FactoryLM navigation"]');
   await expect(aside).toBeAttached();
-  if (await aside.evaluate((el) => el.hasAttribute("inert"))) {
-    await page.locator('button[aria-label="Open navigation"]').click();
-  }
-  await expect.poll(() => aside.evaluate((el) => el.hasAttribute("inert"))).toBe(false);
+  // CSS can hide the sidebar before the narrow-layout hook marks it inert: open it by what is
+  // visible, not by the attribute (coordinator's qualification run, 2026-11-15).
+  const opener = page.locator('button[aria-label="Open navigation"]');
+  await expect(opener).toBeVisible();
+  if (!(await aside.isVisible())) await opener.click();
   await expect(aside).toBeVisible();
+  await expect.poll(() => aside.evaluate((el) => el.hasAttribute("inert"))).toBe(false);
   await page.waitForTimeout(400); // the drawer's 160 ms slide
 
   fs.mkdirSync(SHOT_DIR, { recursive: true });
