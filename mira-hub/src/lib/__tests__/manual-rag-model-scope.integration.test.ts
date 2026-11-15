@@ -1078,7 +1078,7 @@ describe("#5503 actual upload INSERT through raw retrieval SQL", () => {
     const cover = "Micro820 Programmable Controllers\n2080-LC20-20QBB, 2080-LC20-20QWB, 2080-LC20-20AWB";
     await withPages([{ page: 1, items: [item(cover, 100, 760, 12)], text: cover },
       { page: 2, items, text: items.map((i) => i.str).join("\n") }], async () => {
-      const rows = await client.query("SELECT content,metadata FROM knowledge_entries WHERE tenant_id=$1 AND doc_id=$2 AND page_start=2", [TENANT,DOCUMENT]);
+      const rows = await client.query("SELECT content,metadata FROM knowledge_entries WHERE tenant_id=$1 AND doc_id=$2 AND page_start=2 AND is_private = true", [TENANT,DOCUMENT]);
       const text = rows.rows.map((r) => r.content).join("\n");
       expect(text).toContain("internally");
       expect(text).toContain("externally");
