@@ -159,6 +159,39 @@ def _sets(args, results_root: Path) -> list[Path]:
     )
 
 
+_META = ("prompt_sha256", "answer_sha256", "origin", "tokens_in", "tokens_out", "usd", "request_id")
+
+
+def _cache_file(cache, key: str) -> str:
+    derived = cache.cas.derived_key(key, jd.CACHE_STAGE, jd.VERSION)
+    return str(cache.cas._path("derived", derived).relative_to(cache.cas.root.parent))
+
+
+def _verdict_rows(sr, cache, entry: dict, head: str) -> list[dict]:
+    """One stored row per judged case: score, plus what produced it and where the evidence is."""
+    scored = {r["case_id"]: r for r in sr.rows}
+    rows = []
+    for case_id, reason, key in sr.trace:
+        hit = cache.get(key) or {}
+        rows.append(
+            {
+                "set": sr.set_id,
+                "model": sr.model,
+                "transcript_sha": entry["sha"],
+                "base_url": entry["base_url"],
+                "runner_sha": head,
+                "source": reason,
+                "cache_key": key,
+                "cache_file": _cache_file(cache, key),
+                "judged_at": hit.get("created_at"),
+                **{k: hit.get(k) for k in _META},
+                "evidence": f"judge/{sr.set_id}__{sr.model}/scores/{case_id}.json",
+                **scored.get(case_id, {"case_id": case_id, "unscored": True}),
+            }
+        )
+    return rows
+
+
 def _judge_all(
     args, state, run_dir, cfg, ledger, cache, keyf, client, head, mode
 ) -> dict[str, Any]:
@@ -198,7 +231,7 @@ def _judge_all(
                     "paid_required_usd": sr.paid_required_usd,
                     "gate": rp.gate_text(set_dir, sr.summary),
                 }
-                out["rows"] += [{"set": set_dir.name, "model": model, **r} for r in sr.rows]
+                out["rows"] += _verdict_rows(sr, cache, entry, head)
             out["sets"].append(entry)
     except ab.BudgetStop as e:
         out["error"] = f"{e.code if e.code else e}"

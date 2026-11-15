@@ -30,7 +30,9 @@ through a metered, budgeted, cached seam. Dry by default. Nothing is written ins
 - `alert-state.json`, `alerts.jsonl`: alert transitions
 - `paid.json`: paid configuration (paid mode only)
 - `STOP`: kill sentinel
-- `runs/<run_id>/`: `run.json`, `report.md`, `mission_control.txt`, `verdicts.jsonl`, `alerts.jsonl`, `judge/`
+- `runs/<run_id>/`: `run.json`, `report.md`, `mission_control.txt`, `alerts.jsonl`, `judge/`, and
+  `verdicts.jsonl` (one row per judged case: model, prompt hash, transcript and runner commit,
+  tokens, cost, request id, cache file, and the path of the judge's evidence file)
 - `seed/`: output of `seed`
 
 ## Operate
@@ -98,12 +100,11 @@ launchctl unload ~/Library/LaunchAgents/com.factorylm.autoeval.plist   # stop th
 - **Checkout wedged:** `run.sh` reuses one fixed checkout at `~/.factorylm/autoeval/checkout` and
   force-resets its tracked files to `origin/main` each run. To rebuild it:
   `git worktree remove --force ~/.factorylm/autoeval/checkout`, then re-run.
-- **A verdict is wrong:** the runner does not record a key-to-case map, so the safe step is to move
-  `cas/` aside (`mv ~/.factorylm/autoeval/cas ~/.factorylm/autoeval/cas.bak.<date>`) and re-run with
-  `--paid`. Every case is then re-judged, and that is a real spend. Check the `dry` run's
-  `paid_required_usd` in `run.json` first.
+- **A verdict is wrong:** each row of `runs/<run_id>/verdicts.jsonl` names its `cache_file`. Move
+  that one file aside and re-run with `--paid`: only that case is re-judged, and that is a real
+  spend. A `dry` run first shows the worst-case cost under "Worst-case reserved" in `report.md`.
 - **Stored unparseable or truncated verdicts** recall as unscored. They are not re-billed, and they
-  stay unscored until `cas/` is moved aside as above.
+  stay unscored until their `cache_file` is moved aside as above.
 
 ## Known limits
 

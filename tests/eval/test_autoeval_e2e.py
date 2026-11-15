@@ -186,6 +186,35 @@ def test_dry_run_writes_the_run_and_spends_nothing(world):
             assert "[DELIVERY-UPDATE:" not in p.read_text(errors="ignore")
 
 
+def _verdict_rows(state: Path) -> tuple[Path, list[dict]]:
+    run_dir = sorted((state / "runs").glob("*"))[-1]
+    lines = (run_dir / "verdicts.jsonl").read_text().splitlines()
+    return run_dir, [json.loads(ln) for ln in lines]
+
+
+def test_stored_verdicts_name_what_produced_them_and_where_the_evidence_is(world):
+    _paid_json(world["state"])
+    assert _run(world, "--paid", "--skip-lanes") == 0
+    run_dir, rows = _verdict_rows(world["state"])
+    assert len(rows) == 40 and len({r["case_id"] for r in rows}) == 40
+    for r in rows:
+        assert r["model"] == "claude-sonnet-4-6" and r["set"] == SET
+        assert r["runner_sha"] == _head() and r["transcript_sha"]
+        assert r["source"] == "api" and r["origin"] == "api"
+        assert len(r["prompt_sha256"]) == 64 and len(r["cache_key"]) == 64
+        assert r["tokens_in"] > 0 and r["tokens_out"] > 0 and r["usd"] > 0
+        assert (run_dir / r["evidence"]).is_file(), r["evidence"]
+        assert (world["state"] / r["cache_file"]).is_file(), r["cache_file"]
+
+
+def test_control_dry_miss_rows_are_marked_unscored_with_no_cost(world):
+    assert _run(world, "--skip-lanes") == 0
+    _, rows = _verdict_rows(world["state"])
+    assert len(rows) == 40
+    assert all(r["source"] == "paid_required" and r["usd"] is None for r in rows)
+    assert all(r["tokens_in"] is None and r["judged_at"] is None for r in rows)
+
+
 def test_paid_run_judges_each_case_once_then_recalls(world):
     _paid_json(world["state"])
     assert _run(world, "--paid", "--skip-lanes") == 0

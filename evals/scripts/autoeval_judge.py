@@ -3,12 +3,10 @@
 The repo's `evals/scripts/judge_baseline.py` is imported UNMODIFIED, fresh per run; its
 `_groq_json` seam is replaced by `judge_call` (recall, or one metered call in paid mode).
 
-Cache key = sha256 of canonical JSON {prompt, model, max_tokens, params}. The rubric has
-no version id, so the RENDERED PROMPT is the only key. Declared invalidation triggers:
-rubric, case or recorded-answer text change (prompt changes); model, max_tokens or params
-change. judge_baseline post-processing changes alone do NOT invalidate: bump VERSION.
-Verdicts are never re-billed: a truncated or unparseable paid verdict is stored and recalls
-as an error, so it stays unscored.
+Cache key = sha256 of canonical JSON {prompt, model, max_tokens, params}; the rubric has no
+version id, so the RENDERED PROMPT is the key. Invalidation triggers: rubric, case or answer
+text (prompt changes); model, max_tokens, params. Post-processing changes: bump VERSION.
+A truncated or unparseable paid verdict is stored and recalls as an error: never re-billed.
 """
 
 from __future__ import annotations
@@ -84,7 +82,8 @@ class CaseCtx:
     base_url: str
 
 
-CASE: contextvars.ContextVar[CaseCtx | None] = contextvars.ContextVar("autoeval_case", default=None)
+NO_CASE = CaseCtx("", "", "", "", "")
+CASE: contextvars.ContextVar[CaseCtx] = contextvars.ContextVar("autoeval_case", default=NO_CASE)
 
 
 @dataclass
@@ -102,6 +101,7 @@ class JudgeEnv:
     recorded: dict[str, dict] = field(default_factory=dict)
     counts: dict[str, int] = field(default_factory=dict)
     paid_required_usd: float = 0.0
+    trace: list[tuple[str, str, str]] = field(default_factory=list)  # (case_id, reason, key)
 
 
 def _payload(env: JudgeEnv, ctx: CaseCtx, prompt: str, origin: str, verdict: str, **extra: Any):
@@ -123,7 +123,7 @@ def _payload(env: JudgeEnv, ctx: CaseCtx, prompt: str, origin: str, verdict: str
 
 def judge_call(prompt: str, env: JudgeEnv) -> tuple[str | None, str, str]:
     """Return (verdict_text | None, reason, cache_key). Never a request in dry or seed mode."""
-    ctx = CASE.get() or CaseCtx("", "", "", "", "")
+    ctx = CASE.get()
     price = env.cfg.prices.get(env.model)
     if price is None:
         raise ab.BudgetStop(f"STOP: no pinned price for model {env.model!r}")
@@ -196,10 +196,6 @@ def _case_ctx(result: dict, set_id: str, base: dict) -> CaseCtx:
     )
 
 
-def _load_judge(path: Path):
-    return _load_by_path(f"judge_baseline_{uuid.uuid4().hex[:8]}", path)
-
-
 def _score_rows(out_dir: Path) -> list[dict]:
     keep = ("case_id", "case_type", "case_score", "dangerous", "missing_framing", "infra_fail")
     rows = []
@@ -220,6 +216,7 @@ class SetRun:
     rows: list[dict]
     counts: dict[str, int]
     paid_required_usd: float
+    trace: list[tuple[str, str, str]] = field(default_factory=list)
 
 
 def run_set(
@@ -232,11 +229,12 @@ def run_set(
     set_id = results_dir.name
     shutil.rmtree(out_dir, ignore_errors=True)
     shutil.copytree(results_dir / "technician", out_dir / "technician")
-    jb = _load_judge(judge_path)
+    jb = _load_by_path(f"judge_baseline_{uuid.uuid4().hex[:8]}", judge_path)  # fresh per run
 
     async def seam(_client, _key, _model, prompt):
-        text, reason, _ = judge_call(prompt, env)
+        text, reason, key = judge_call(prompt, env)
         env.counts[reason] = env.counts.get(reason, 0) + 1
+        env.trace.append((CASE.get().case_id, reason, key))
         if text is None:
             return {"_error": reason}
         try:
@@ -281,6 +279,7 @@ def run_set(
         _score_rows(out_dir),
         dict(env.counts),
         env.paid_required_usd,
+        list(env.trace),
     )
 
 

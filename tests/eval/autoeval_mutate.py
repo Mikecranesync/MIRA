@@ -212,6 +212,12 @@ MUTATIONS = [
     # autoeval_run.py: paid.json is required before any paid run
     (
         "autoeval_run.py",
+        "**{k: hit.get(k) for k in _META},",
+        "**{k: None for k in _META},",
+        ["test_stored_verdicts_name_what_produced_them_and_where_the_evidence_is"],
+    ),
+    (
+        "autoeval_run.py",
         "if not p.exists():",
         "if False:",
         ["test_paid_mode_without_paid_json_refuses_to_start"],
