@@ -14,6 +14,11 @@ interface SidebarProps {
   /** The drawer is closed on a layered (mobile) profile: out of the tab order immediately. */
   readonly inert?: boolean;
   readonly hooks?: HostHooks;
+  /**
+   * Host-owned navigation body (e.g. equipment-first navigation). Replaces the
+   * Projects/Recent sections and their search; absent = the project tree.
+   */
+  readonly content?: ReactNode;
 }
 
 /** Threads and runs anywhere in the workspace, in workspace order (the fixture/host order is the recency order). */
@@ -59,7 +64,7 @@ function isOpenItem(state: ShellState, itemId: string): boolean {
   return openObjectId(state) === itemId;
 }
 
-export function Sidebar({ state, dispatch, onOpenItem, onSelectProject, footer, inert, hooks }: SidebarProps) {
+export function Sidebar({ state, dispatch, onOpenItem, onSelectProject, footer, inert, hooks, content }: SidebarProps) {
   const onNewChat = hooks?.onNewChat;
   const onCreateProject = hooks?.onCreateProject;
   const [query, setQuery] = useState("");
@@ -151,6 +156,9 @@ export function Sidebar({ state, dispatch, onOpenItem, onSelectProject, footer, 
         <p id="fl-new-project-reason" className="fl-shell__hint">Not available in this workspace yet.</p>
       </>}
 
+    {content !== undefined
+      ? <div className="fl-shell__nav-scroll">{content}</div>
+      : <>
     <label className="fl-shell__search">
       <SearchIcon className="fl-shell__nav-icon" />
       <input
@@ -195,6 +203,7 @@ export function Sidebar({ state, dispatch, onOpenItem, onSelectProject, footer, 
       </section>
 
     </div>
+      </>}
 
     {footer ? <div className="fl-shell__nav-footer">{footer}</div> : null}
   </aside>;

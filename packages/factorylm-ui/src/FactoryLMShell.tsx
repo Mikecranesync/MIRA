@@ -31,6 +31,10 @@ export interface FactoryLMShellProps {
    * The composer, header, navigation and layers are identical for both.
    */
   readonly conversationSurface?: ConversationSurface;
+  /** Host-owned navigation body; replaces the project tree when present (see Sidebar). */
+  readonly navigationContent?: ReactNode;
+  /** Rendered at the top of the composer, inside its sticky area (e.g. the question target). */
+  readonly composerAccessory?: ReactNode;
 }
 
 export type ConversationSurface = "classic" | "assistant";
@@ -125,7 +129,7 @@ export function closeLayerAction(layer: LayerName): ShellAction {
   }
 }
 
-export function FactoryLMShell({ state, dispatch, adapter, hooks, onOpenItem, onSelectProject, navigationFooter, conversationSurface = "classic" }: FactoryLMShellProps) {
+export function FactoryLMShell({ state, dispatch, adapter, hooks, onOpenItem, onSelectProject, navigationFooter, conversationSurface = "classic", navigationContent, composerAccessory }: FactoryLMShellProps) {
   // Only an accepted composer send re-arms scrolling. Message IDs can change
   // when a live answer is persisted or older history is refreshed.
   const [sendRevision, setSendRevision] = useState(0);
@@ -205,7 +209,7 @@ export function FactoryLMShell({ state, dispatch, adapter, hooks, onOpenItem, on
   >
     {scrimLayer ? <div className="fl-scrim" data-layer={scrimLayer} aria-hidden="true" onClick={closeTop} /> : null}
     <Overlay layer="navigation" active={state.navigationVisible} modal={layered} trapsTab={top === "navigation"}>
-      <Sidebar state={state} dispatch={dispatch} onOpenItem={onOpenItem} onSelectProject={onSelectProject} footer={navigationFooter} inert={layered && !state.navigationVisible} hooks={hooks} />
+      <Sidebar state={state} dispatch={dispatch} onOpenItem={onOpenItem} onSelectProject={onSelectProject} footer={navigationFooter} content={navigationContent} inert={layered && !state.navigationVisible} hooks={hooks} />
     </Overlay>
     <main className="fl-shell__main">
       <ThreadHeader state={state} dispatch={dispatch} />
@@ -216,7 +220,7 @@ export function FactoryLMShell({ state, dispatch, adapter, hooks, onOpenItem, on
         ? <AssistantThread sendRevision={sendRevision} state={state} dispatch={dispatch} adapter={adapter} hooks={hooks} />
         : <Conversation sendRevision={sendRevision} state={state} dispatch={dispatch} adapter={adapter} hooks={hooks} />}
       {state.sendError ? <SendError error={state.sendError} dispatch={dispatch} draft={state.draft} turnId={state.thread.turns.at(-1)?.id} hooks={hooks} /> : null}
-      <Composer state={state} dispatch={composerDispatch} adapter={adapter} hooks={composerHooks} attachmentTrapsTab={top === "attachment-menu"} />
+      <Composer state={state} dispatch={composerDispatch} adapter={adapter} hooks={composerHooks} attachmentTrapsTab={top === "attachment-menu"} accessory={composerAccessory} />
     </main>
     <Overlay layer="inspector" active={inspectorOpen(state)} modal={layered} trapsTab={top === "inspector"}>
       <Inspector state={state} />

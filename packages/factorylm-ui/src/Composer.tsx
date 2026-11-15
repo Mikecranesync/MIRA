@@ -1,5 +1,5 @@
 import type { Attachment, PlatformAdapter, ShellAction, ShellState } from "@factorylm/interaction";
-import { useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type Dispatch, type DragEvent, type FormEvent, type KeyboardEvent } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type Dispatch, type DragEvent, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
 import { AttachmentMenu } from "./AttachmentMenu";
 import { PlusIcon } from "./icons";
 import { Overlay } from "./Overlay";
@@ -15,6 +15,8 @@ export interface ComposerProps {
   readonly hooks?: HostHooks;
   /** The attachment sheet is the top-most layer (FactoryLMShell decides via topLayer). */
   readonly attachmentTrapsTab?: boolean;
+  /** Host content at the top of the composer (e.g. the question target), inside its sticky area. */
+  readonly accessory?: ReactNode;
 }
 
 export interface ComposerKeyEvent {
@@ -49,7 +51,7 @@ function describeFailure(operation: AdapterOperation, error: unknown): string {
   return `${verb} failed${detail}. Try again.`;
 }
 
-export function Composer({ state, dispatch, adapter, hooks, attachmentTrapsTab = true }: ComposerProps) {
+export function Composer({ state, dispatch, adapter, hooks, attachmentTrapsTab = true, accessory }: ComposerProps) {
   const [pending, setPending] = useState<readonly PendingAttachment[]>([]);
   const [busy, setBusy] = useState<AdapterOperation | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
@@ -224,6 +226,7 @@ export function Composer({ state, dispatch, adapter, hooks, attachmentTrapsTab =
     onDragLeave={() => setDragOver(false)}
     onDrop={onDrop}
   >
+    {accessory}
     {state.offline.state !== "online" ? <p className="fl-composer__sync" role="status" aria-label="Sync status" aria-live="polite" aria-atomic="true" data-sync-state={state.offline.state}>
       {OFFLINE_LABEL[state.offline.state]} · {state.offline.pendingChanges} pending
       {state.offline.detail ? ` · ${state.offline.detail}` : ""}

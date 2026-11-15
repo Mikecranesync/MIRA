@@ -59,7 +59,8 @@ export type ShellAction =
   | { readonly type: "set-attachment-menu-visible"; readonly visible: boolean }
   | { readonly type: "select-source"; readonly sourceId: string | null }
   | { readonly type: "set-draft"; readonly draft: string }
-  | { readonly type: "mock-send" }
+  /** `target`: the question target the host chose; the turn records it (equipment nav). */
+  | { readonly type: "mock-send"; readonly target?: { readonly machineId: string; readonly componentId: string | null } }
   | { readonly type: "set-send-error"; readonly error: string | null }
   | { readonly type: "set-theme"; readonly theme: ThemeName }
   | { readonly type: "set-profile"; readonly profile: SurfaceProfile };
@@ -91,6 +92,7 @@ function contextsEqual(left: ContextSnapshot, right: ContextSnapshot): boolean {
     && left.projectId === right.projectId
     && left.folderId === right.folderId
     && left.machineId === right.machineId
+    && left.componentId === right.componentId
     && left.machineIdentity === right.machineIdentity
     && left.evidenceAuthorization === right.evidenceAuthorization
     && left.capturedAt === right.capturedAt;
@@ -199,6 +201,32 @@ export function createShellState(fixture: ShellFixture, profile: SurfaceProfile)
   });
 }
 
+/**
+ * The one rule for moving a context to another machine: nothing known about the
+ * old machine (its confirmed identity, its evidence authorization, a component on
+ * it) carries over. Machine selection and a targeted send both go through here.
+ */
+function onAnotherMachine(context: ContextSnapshot, machineId: string): ContextSnapshot {
+  const { componentId: _previous, ...rest } = context;
+  return { ...rest, machineId, machineIdentity: "unconfirmed", evidenceAuthorization: "not_authorized" };
+}
+
+/**
+ * The context a sent turn captures. With a host-chosen target, the turn records
+ * that machine and component. On the active machine everything else is kept; on
+ * another machine it follows the machine-switch rule above.
+ */
+function turnContext(
+  active: ContextSnapshot,
+  target: { readonly machineId: string; readonly componentId: string | null } | undefined,
+): ContextSnapshot {
+  const base = copyValue(active);
+  if (!target) return base;
+  const { componentId: _previous, ...rest } = base;
+  const machine = target.machineId === active.machineId ? rest : onAnotherMachine(rest, target.machineId);
+  return target.componentId ? { ...machine, componentId: target.componentId } : machine;
+}
+
 export function shellReducer(state: ShellState, action: ShellAction): ShellState {
   switch (action.type) {
     case "load-fixture": {
@@ -266,12 +294,7 @@ export function shellReducer(state: ShellState, action: ShellAction): ShellState
       if (!state.machines.some((machine) => machine.id === action.machineId)) return state;
       if (!machineIsInActiveScope(state, action.machineId)) return state;
       if (state.activeContext.machineId === action.machineId) return state;
-      return setFutureContext(state, {
-        ...state.activeContext,
-        machineId: action.machineId,
-        machineIdentity: "unconfirmed",
-        evidenceAuthorization: "not_authorized",
-      }, state.selectedProjectId, state.selectedFolderId);
+      return setFutureContext(state, onAnotherMachine(state.activeContext, action.machineId), state.selectedProjectId, state.selectedFolderId);
     }
 
     case "set-navigation-visible":
@@ -310,7 +333,7 @@ export function shellReducer(state: ShellState, action: ShellAction): ShellState
         role: "user" as const,
         parts: [{ type: "text" as const, text }],
         lifecycle: "accepted" as const,
-        context: copyValue(state.activeContext),
+        context: turnContext(state.activeContext, action.target),
         createdAt: state.thread.updatedAt,
         updatedAt: state.thread.updatedAt,
         ...(state.mode === "work" && state.run ? { runId: state.run.id } : {}),
