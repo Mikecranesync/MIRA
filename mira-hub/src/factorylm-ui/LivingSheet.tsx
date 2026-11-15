@@ -245,14 +245,14 @@ export function conflictValues(event: SheetWriteEvent, serverView: SheetView | n
 }
 
 export const SHEET_PILL_STYLE: CSSProperties = {
-  background: "var(--fl-surface)", color: "var(--fl-text)", border: "1px solid var(--fl-line)",
+  background: "var(--fl-surface)", color: "var(--fl-ink)", border: "1px solid var(--fl-line)",
   borderRadius: "var(--fl-radius-pill, 999px)", padding: "10px 16px", fontSize: "var(--fl-fs-md, 17px)",
   minHeight: 48, cursor: "pointer",
 };
 
 const LAYER_STYLE: CSSProperties = {
   position: "fixed", inset: 0, zIndex: 70, overflowY: "auto",
-  background: "var(--fl-surface)", color: "var(--fl-text)", fontFamily: "var(--fl-font)",
+  background: "var(--fl-surface)", color: "var(--fl-ink)", fontFamily: "var(--fl-font)",
   padding: "var(--fl-space-4, 16px)", fontSize: "17px", boxSizing: "border-box",
 };
 
@@ -264,7 +264,7 @@ const SECTION_STYLE: CSSProperties = {
 const FIELD_STYLE: CSSProperties = {
   display: "block", width: "100%", minHeight: 48, marginTop: 6, padding: "10px",
   border: "1px solid var(--fl-line)", borderRadius: "var(--fl-radius)", background: "var(--fl-surface)",
-  color: "var(--fl-text)", fontSize: "17px", boxSizing: "border-box",
+  color: "var(--fl-ink)", fontSize: "17px", boxSizing: "border-box",
 };
 
 const BUTTON_STYLE: CSSProperties = {
@@ -273,7 +273,7 @@ const BUTTON_STYLE: CSSProperties = {
   cursor: "pointer", fontSize: "17px",
 };
 
-const GHOST_BUTTON_STYLE: CSSProperties = { ...BUTTON_STYLE, background: "var(--fl-surface)", color: "var(--fl-text)" };
+const GHOST_BUTTON_STYLE: CSSProperties = { ...BUTTON_STYLE, background: "var(--fl-surface)", color: "var(--fl-ink)" };
 
 const BADGE_STYLE: CSSProperties = {
   position: "sticky", top: 0, zIndex: 1, padding: "6px 10px", borderRadius: "var(--fl-radius)",

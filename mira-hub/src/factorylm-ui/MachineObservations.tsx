@@ -32,21 +32,21 @@ type Phase =
 
 // Placed by the host's notebook-actions stack (hub-host.tsx), so it never sits on another button.
 export const OBS_PILL_STYLE: CSSProperties = {
-  background: "var(--fl-surface)", color: "var(--fl-text)", border: "1px solid var(--fl-line)",
+  background: "var(--fl-surface)", color: "var(--fl-ink)", border: "1px solid var(--fl-line)",
   borderRadius: "var(--fl-radius-pill, 999px)", padding: "8px 14px", fontSize: "var(--fl-fs-sm)",
   minHeight: 44, cursor: "pointer",
 };
 
 const PANEL_STYLE: CSSProperties = {
   position: "fixed", inset: "auto 0 0 0", maxHeight: "80vh", overflowY: "auto", zIndex: 60,
-  background: "var(--fl-surface)", color: "var(--fl-text)", borderTop: "1px solid var(--fl-line)",
+  background: "var(--fl-surface)", color: "var(--fl-ink)", borderTop: "1px solid var(--fl-line)",
   boxShadow: "var(--fl-shadow)", padding: "var(--fl-space-4, 16px)", fontFamily: "var(--fl-font)",
 };
 
 const FIELD_STYLE: CSSProperties = {
   display: "block", width: "100%", minHeight: 44, marginTop: 4, padding: "8px",
   border: "1px solid var(--fl-line)", borderRadius: "var(--fl-radius)", background: "var(--fl-surface)",
-  color: "var(--fl-text)", fontSize: "var(--fl-fs-md, 16px)", boxSizing: "border-box",
+  color: "var(--fl-ink)", fontSize: "var(--fl-fs-md, 16px)", boxSizing: "border-box",
 };
 
 const BUTTON_STYLE: CSSProperties = {
@@ -254,7 +254,7 @@ export function MachineObservations({ notebookId }: { notebookId: string }) {
         <section role="dialog" aria-label="Machine state" style={PANEL_STYLE} data-testid="machine-state-panel">
           <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <h2 style={{ fontSize: "var(--fl-fs-lg, 18px)", margin: 0 }}>Machine state</h2>
-            <button type="button" style={{ ...BUTTON_STYLE, background: "var(--fl-surface)", color: "var(--fl-text)" }} onClick={() => setOpen(false)}>Close</button>
+            <button type="button" style={{ ...BUTTON_STYLE, background: "var(--fl-surface)", color: "var(--fl-ink)" }} onClick={() => setOpen(false)}>Close</button>
           </header>
 
           {readError && <p role="alert">{readError}</p>}

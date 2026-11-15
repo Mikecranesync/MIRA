@@ -45,21 +45,21 @@ const SECTION_STYLE: CSSProperties = {
 const FIELD_STYLE: CSSProperties = {
   display: "block", width: "100%", minHeight: 48, marginTop: 6, padding: "10px",
   border: "1px solid var(--fl-line)", borderRadius: "var(--fl-radius)", background: "var(--fl-surface)",
-  color: "var(--fl-text)", fontSize: "17px", boxSizing: "border-box",
+  color: "var(--fl-ink)", fontSize: "17px", boxSizing: "border-box",
 };
 const BUTTON_STYLE: CSSProperties = {
   minHeight: 48, padding: "10px 18px", marginInlineEnd: 8, marginTop: 8, borderRadius: "var(--fl-radius)",
   border: "1px solid var(--fl-line)", background: "var(--fl-accent)", color: "var(--fl-surface)",
   cursor: "pointer", fontSize: "17px",
 };
-const GHOST_BUTTON_STYLE: CSSProperties = { ...BUTTON_STYLE, background: "var(--fl-surface)", color: "var(--fl-text)" };
+const GHOST_BUTTON_STYLE: CSSProperties = { ...BUTTON_STYLE, background: "var(--fl-surface)", color: "var(--fl-ink)" };
 const BADGE_STYLE: CSSProperties = {
   display: "inline-block", padding: "2px 8px", borderRadius: "var(--fl-radius)", fontSize: "15px",
   border: "1px solid var(--fl-line)", color: "var(--fl-muted)", marginInlineStart: 8,
 };
 const LAYER_STYLE: CSSProperties = {
   border: "1px solid var(--fl-line)", borderRadius: "var(--fl-radius)", padding: "16px",
-  marginBottom: 16, background: "var(--fl-surface)", color: "var(--fl-text)", fontSize: "17px",
+  marginBottom: 16, background: "var(--fl-surface)", color: "var(--fl-ink)", fontSize: "17px",
 };
 
 export type JobSheetsLibraryProps = {
