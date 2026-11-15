@@ -105,6 +105,7 @@ import {
   abandonNotebookTurnRequest,
   claimNotebookTurnRequest,
   getNotebook,
+  LEGACY_THREAD_ID,
   listSources,
   listTurns,
   normalizeNotebookThreadId,
@@ -143,6 +144,10 @@ import {
 import { ambiguousModelAskText, libraryNotForAskedModelText, namedModelMismatchText, siblingOfRecordAskText, subjectOutOfReachText, type NamedModelMismatch } from "@/capabilities/named-model-mismatch";
 import { readSubject, SUBJECT_READ_STEPS } from "@/capabilities/conversation-subject";
 import { notebookManualIdentity } from "@/capabilities/notebook-manual-identity";
+import { componentAttributionEntry, isComponentAttributionEntry, type ComponentAttributionEntry } from "@/capabilities/bench-components/attribution";
+import { checkWholeMachineScope, componentTurnFrame, noDocumentsForComponentText, readComponentSelection, resolveComponentTurn, selectionMovedText, type ComponentTurn, type ComponentTurnFrame } from "@/capabilities/bench-components/chat-turn";
+import { historyForWholeMachine, historyUnderSelection, readSubjectUnderSelection } from "@/capabilities/bench-components/selection";
+import { listSelectionTurns, stampTurnComponent } from "@/capabilities/bench-components/store";
 import {
   excludedTablesRefusalText,
   otherProductRefusalText,
@@ -1089,6 +1094,9 @@ function replayNotebookTurnResponse(turn: StoredNotebookTurn): Response {
     (entry) => typeof entry === "object" && entry !== null && (entry as { kind?: unknown }).kind === "identity_dispute",
   );
   const storedProposal = turn.evidence.find(isIdentityProposalEntry) ?? null;
+  // #5504 Codex r2 F1: a replayed component answer names the same component it did live.
+  // Its buttons are not replayed (they belonged to the screen that asked).
+  const storedComponent = turn.evidence.find(isComponentAttributionEntry) ?? null;
   const basis = REPLAY_BASES.has(turn.basis as EvidenceBasis) ? turn.basis as EvidenceBasis : null;
   // The weak-evidence badge replays exactly as it was delivered: the persisted
   // marker (not a re-run of the rule) decides, and only on the basis it fired for.
@@ -1098,6 +1106,10 @@ function replayNotebookTurnResponse(turn: StoredNotebookTurn): Response {
     start(controller) {
       const emit = (frame: NotebookChatFrame) => controller.enqueue(enc.encode(sse(frame)));
       if (identityDisputed) emit(IDENTITY_DISPUTE_FRAME);
+      if (storedComponent) {
+        const { componentId, revision, selectionVersion, label } = storedComponent;
+        controller.enqueue(enc.encode(sse({ kind: "component", componentId, revision, selectionVersion, label, actions: [] } satisfies ComponentTurnFrame)));
+      }
 
       const sources: NotebookSourcesFrame = {
         kind: "sources",
@@ -1260,6 +1272,11 @@ async function handleChatTurn(
      *  server re-derives the job's current view itself (loadJob, scoped to
      *  THIS notebook). */
     livingSheetJobId?: unknown;
+    /** Bench components: the component this conversation's "Asking about …"
+     *  header showed, and the selection version it read. Only these two are
+     *  read; the server checks them against the stored selection (409 when
+     *  they no longer match) and re-reads the component's identity itself. */
+    componentSelection?: unknown;
   };
   try {
     body = await req.json();
@@ -1317,6 +1334,24 @@ async function handleChatTurn(
       : null;
   if (body.clientRequestId != null && !clientRequestId) {
     return NextResponse.json({ error: "invalid_client_request_id" }, { status: 400 });
+  }
+  // Bench components: a malformed selection is a 400, never "answered for the
+  // whole machine". A component scopes the turn's manuals, so it cannot ride a
+  // general-mode turn (which reads none), and the turn is stamped with it by
+  // its request id, so it needs one.
+  // #5504 post-cap F9/F10: the scope may also be the whole machine, read with the version
+  // the screen saw, and it must be for this request's own conversation.
+  const scopeRequest = readComponentSelection(body.componentSelection, threadId);
+  if (scopeRequest && "error" in scopeRequest) {
+    return NextResponse.json({ error: scopeRequest.error }, { status: 400 });
+  }
+  const componentRequest = scopeRequest?.kind === "component" ? scopeRequest : null;
+  const wholeMachineRequest = scopeRequest?.kind === "whole_machine" ? scopeRequest : null;
+  if (componentRequest && general) {
+    return NextResponse.json({ error: "component_selection_not_general" }, { status: 400 });
+  }
+  if (componentRequest && !clientRequestId) {
+    return NextResponse.json({ error: "client_request_id_required" }, { status: 400 });
   }
   // Carry the CLIENT's own key into the ingress ledger (093). The arrival row
   // is written before the body is parsed, so it cannot have this; the response
@@ -1711,6 +1746,99 @@ async function handleChatTurn(
     }
   };
 
+  // Bench components: checked after the claim, so an exact retry still replays
+  // its stored answer even if the selection moved since. A selection that no
+  // longer matches what the client showed answers nothing and writes nothing —
+  // unless the question reports a hazard: an error must never stand in for the
+  // energized-work stop or the safety banner, so that turn is served as a hold
+  // about no component (the stop still wins below).
+  let componentTurn: Exclude<ComponentTurn, { kind: "conflict" }> | null = null;
+  let selectionMoved = false;
+  // #5504 post-cap F9/F10: a question without a component is checked against the saved
+  // choice too. Whatever the screen missed (a lost reply, a late read from another
+  // conversation, a pick on another screen), a saved component is never answered as the
+  // whole machine; an explicit whole-machine scope must have read the saved version.
+  let wholeMachine: Awaited<ReturnType<typeof checkWholeMachineScope>> | null = null;
+  if (!componentRequest) {
+    wholeMachine = await releaseClaimOnFailure(() =>
+      checkWholeMachineScope(ctx.tenantId, notebookId, ctx.userId, threadId, wholeMachineRequest),
+    );
+  }
+  const resolved = componentRequest && clientRequestId
+    ? await releaseClaimOnFailure(() =>
+      resolveComponentTurn(ctx.tenantId, notebookId, ctx.userId, threadId ?? LEGACY_THREAD_ID, componentRequest, message, clientRequestId),
+    )
+    : wholeMachine?.kind === "conflict"
+      ? wholeMachine
+      : null;
+  if (resolved) {
+    if (resolved.kind === "conflict") {
+      if (!questionSafetyTrigger && !energizedAskEarly) {
+        await abandonRequestClaim();
+        endRoot();
+        return NextResponse.json(
+          { error: "selection_changed", message: "The component for this chat was changed on another screen.", selection: resolved.selection },
+          { status: 409 },
+        );
+      }
+      selectionMoved = true;
+    } else if (clientRequestId) {
+      componentTurn = resolved;
+      const revision = resolved.kind === "hold" ? resolved.revision : resolved.revision.revision;
+      const stamped = await releaseClaimOnFailure(() =>
+        stampTurnComponent(ctx.tenantId, notebookId, ctx.userId, clientRequestId, resolved.component.id, revision),
+      );
+      if (!stamped) console.error("[notebook-chat] component stamp matched no turn row (turn kept unlabelled)");
+    }
+  }
+  // A held turn (component not confirmed, no model number, the question names
+  // another component of this bench, or the selection moved under a hazard
+  // report) reads no manual and calls no provider — a safety flag included.
+  const componentHold: { text: string; reason: string } | null =
+    componentTurn?.kind === "hold" ? componentTurn : selectionMoved ? { text: selectionMovedText, reason: "selection_changed" } : null;
+  const componentScope = componentTurn?.kind === "scoped" ? componentTurn : null;
+  // #5504 Codex r2 F1: the component an answer is about is saved WITH the turn, from the
+  // same frame the stream sends, so a reload, a retry replay or a later header change
+  // can never relabel it. Only the paths that stream a component frame save one.
+  const componentEntries: ComponentAttributionEntry[] = componentScope ? [componentAttributionEntry(componentTurnFrame(componentScope, false))] : [];
+  const heldComponentEntries: ComponentAttributionEntry[] = componentTurn ? [componentAttributionEntry(componentTurnFrame(componentTurn, true))] : [];
+  // Under a selected component the turn sees only the conversation asked under this
+  // selection: another component's topic never carries into retrieval, the topic
+  // hint, prior reports or the provider's messages (#5504 Codex F2). A failed read
+  // carries nothing.
+  let turnHistory = history;
+  let selectionTurnIds: Set<string> | null = null;
+  if (componentScope) {
+    try {
+      const scoped = historyUnderSelection(
+        await listSelectionTurns(ctx.tenantId, notebookId, ctx.userId, threadId, 50, { withAnswers: true }),
+        componentScope.selection,
+        clientRequestId ?? null,
+      );
+      turnHistory = scoped.history;
+      selectionTurnIds = scoped.turnIds;
+    } catch (err) {
+      console.error("[notebook-chat] selection history read failed (no history carried):", err instanceof Error ? err.message : err);
+      turnHistory = [];
+      selectionTurnIds = new Set();
+    }
+  } else if (wholeMachine?.kind === "whole_machine" && wholeMachine.explicit && !selectionMoved) {
+    // An explicit whole-machine question sees only the conversation asked about the whole
+    // machine: a component's answers never carry into it (the same saved-turn rule).
+    try {
+      const scoped = historyForWholeMachine(
+        await listSelectionTurns(ctx.tenantId, notebookId, ctx.userId, threadId, 50, { withAnswers: true }),
+        clientRequestId ?? null,
+      );
+      turnHistory = scoped.history;
+      selectionTurnIds = scoped.turnIds;
+    } catch (err) {
+      console.error("[notebook-chat] whole-machine history read failed (no history carried):", err instanceof Error ? err.message : err);
+      turnHistory = [];
+      selectionTurnIds = new Set();
+    }
+  }
+
   // PRD §27: no sources selected is an explicit, honest state — not a silent
   // fall-through to the global corpus.
   const validated = await releaseClaimOnFailure(() =>
@@ -1944,6 +2072,9 @@ async function handleChatTurn(
       const seen = new Set<string>();
       for (const t of [...recent].reverse()) {
         if (t.answerStatus !== "answered" || !t.answerText?.trim()) continue;
+        // Under a selected component only photos answered under this selection carry
+        // (#5504 Codex r3 F7); a failed selection read carries none.
+        if (selectionTurnIds && !selectionTurnIds.has(t.id)) continue;
         for (const e of t.evidence) {
           if (isVisualObservationEntry(e) && e.fileId && !seen.has(e.fileId)) seen.add(e.fileId);
         }
@@ -1960,7 +2091,9 @@ async function handleChatTurn(
       priorLookRows = await withTenantContext(ctx.tenantId, async (c) => {
         // Standalone LOOK belongs in the observation ledger, not as an empty
         // answered turn. Old actual chat turns remain a compatibility source.
-        const out = await loadRecentLookObservations(c, ctx.tenantId, scope);
+        // A standalone LOOK records no component, so under a component it cannot be
+        // shown to belong to this one and is not recalled (#5504 Codex r3 F7).
+        const out = componentScope ? [] : await loadRecentLookObservations(c, ctx.tenantId, scope);
         for (const fid of linkedHistorical) {
           if (out.some((row) => row.fileId === fid)) continue;
           // App builds before #3968 upload the photo with no threadId, so its
@@ -2313,7 +2446,7 @@ async function handleChatTurn(
   // turn (both `general || nodeId === null`, see notebookRetrieval below) must
   // not pay for or wait on a rewrite nothing reads (Codex F3 on #5003).
   const queryRewritePromise: Promise<QueryRewrite> =
-    general || nodeId === null
+    general || nodeId === null || componentHold
       ? Promise.resolve({ rewritten: null, status: "off", provider: null, durationMs: 0 })
       : rewriteForManualSearch(message);
   // A failed source read is UNKNOWN state, never "no sources" (#5268: the
@@ -2338,7 +2471,10 @@ async function handleChatTurn(
   ]);
 
   // Non-English questions search the English corpus in English (answered in their own language).
-  const retrievalQuery = await englishSearchQuery(buildRetrievalQuery(message, history, lookRow?.text), translateForSearch);
+  // A held turn reads no manual, so it needs no translated search query either (#5504 Codex r3 F8).
+  const retrievalQuery = componentHold
+    ? buildRetrievalQuery(message, turnHistory, lookRow?.text)
+    : await englishSearchQuery(buildRetrievalQuery(message, turnHistory, lookRow?.text), translateForSearch);
   const retrievalSpan = startStage("retrieval.execute");
   // Retrieval policy (docs/plans/2026-09-22-retrieval-routing-evidence-continuity.md):
   //   1. notebook sources validated       → notebook_sources_bm25 (unchanged)
@@ -2354,7 +2490,10 @@ async function handleChatTurn(
   const notebookRetrieval = !(general || nodeId === null);
   // One identity for every manual read of this turn (the question's pass and
   // the safety stop's passes), so no read is scoped differently from another.
-  const manualIdentity = notebookManualIdentity(nb, boundAsset, identityDisputed);
+  // Bench components: the selected component's confirmed identity replaces the
+  // notebook's for every read (a held turn reads none, so it keeps the notebook's
+  // for the energized-work stop's lockout page).
+  const manualIdentity = componentScope ? componentScope.identity : notebookManualIdentity(nb, boundAsset, identityDisputed);
   // The earlier questions of THIS conversation that were not answered from a
   // document (conversation-subject.ts). A follow-up that names no model is
   // still about the model one of them named, so the manual check keeps
@@ -2371,10 +2510,18 @@ async function handleChatTurn(
   if (notebookRetrieval) {
     try {
       for (const limit of SUBJECT_READ_STEPS) {
-        const read = readSubject(
-          await listTurns(ctx.tenantId, notebookId, limit, { viewerUserId: ctx.userId, threadId }),
-          limit,
-        );
+        // Under a selected component only the questions asked under this
+        // selection carry: a pick, a Return or a correction starts a new run.
+        const read = componentScope
+          ? readSubjectUnderSelection(
+              await listSelectionTurns(ctx.tenantId, notebookId, ctx.userId, threadId, limit),
+              limit,
+              componentScope.selection,
+            )
+          : readSubject(
+              await listTurns(ctx.tenantId, notebookId, limit, { viewerUserId: ctx.userId, threadId }),
+              limit,
+            );
         subjectQueries = read.questions;
         subjectOutOfReach = !read.complete;
         if (read.complete) break;
@@ -2477,8 +2624,10 @@ async function handleChatTurn(
           },
         )
       : false;
+  // A selected component is never answered from the shared library by the
+  // notebook's machine: its manuals are the notebook's documents or none.
   const oemRetrieval =
-    !guidedDeadEnd && !notebookRetrieval && oemManufacturer !== null && !oemIdentity.ambiguous && !oemIdentity.failed;
+    !guidedDeadEnd && !componentTurn && !componentHold && !notebookRetrieval && oemManufacturer !== null && !oemIdentity.ambiguous && !oemIdentity.failed;
   const retrievalExecuted = notebookRetrieval || oemRetrieval;
   // #4687: only when a document search actually runs (Codex #4765 F3).
   if (retrievalExecuted) reportProgress(req, "searching_documentation");
@@ -2550,7 +2699,7 @@ async function handleChatTurn(
           }
         }
       })()
-    : !notebookRetrieval
+    : !notebookRetrieval || componentHold
     ? []
     : await releaseClaimOnFailure(() =>
         withTenantContext(ctx.tenantId, (client) =>
@@ -3614,12 +3763,18 @@ async function handleChatTurn(
   // A flagged hazard turn is never swallowed by this abstain (owner decision
   // 2026-09-27): with no documents it takes the general lane, so the tech gets
   // the hazard banner and an answer instead of "couldn't find that".
-  if (chunks.length === 0 && (!general || libraryNotForAsk || missingModelManual || noEvidenceForMachine || unidentifiedServiceText || photoPartLookup || photoPartCompatibilityText) && !groundedMachineEntry && !safetyTrigger) {
+  if (componentHold || (chunks.length === 0 && (!general || libraryNotForAsk || missingModelManual || noEvidenceForMachine || unidentifiedServiceText || photoPartLookup || photoPartCompatibilityText) && !groundedMachineEntry && !safetyTrigger)) {
     // Gate G — abstain honestly, persist the turn, never call the provider.
     // #4015: "couldn't find that in the documentation I have", not "I don't have
     // the manual" — a zero-hit scoped search does not prove the manual is absent
     // (staging holds 11 GS10 rows; a carrier-frequency query still hit none).
-    const abstainAnswerText = oemRetrievalFailed && (missingModelManual || noEvidenceForMachine)
+    // A held component turn keeps the question's safety banner: the hold answers
+    // nothing, and the hazard is still flagged above it.
+    const abstainAnswerText = componentHold
+      ? withSafetyFlag(componentHold.text, safetyTrigger)
+      : componentScope && !notebookRetrieval
+      ? noDocumentsForComponentText(componentScope.label)
+      : oemRetrievalFailed && (missingModelManual || noEvidenceForMachine)
       ? `I couldn't reach the manual library just now, so I won't guess at an answer for your ${(missingModelManual ?? noEvidenceForMachine)!}. Please try again in a moment.`
       : unidentifiedServiceText
       ? unidentifiedServiceText
@@ -3686,7 +3841,7 @@ async function handleChatTurn(
     rec.stage("answer_gate", {
       invoked: true,
       decision: "insufficient_evidence",
-      reason: oemRetrievalFailed && (missingModelManual || noEvidenceForMachine) ? "identity_bound_retrieval_failed" : libraryNotForAsk ? "library_other_model" : unidentifiedServiceText ? "unidentified_service_decline" : missingModelManual ? "identity_bound_no_manual" : noEvidenceForMachine ? "identity_bound_no_evidence" : "gate_g_no_evidence",
+      reason: componentHold ? `component_${componentHold.reason}` : oemRetrievalFailed && (missingModelManual || noEvidenceForMachine) ? "identity_bound_retrieval_failed" : libraryNotForAsk ? "library_other_model" : unidentifiedServiceText ? "unidentified_service_decline" : missingModelManual ? "identity_bound_no_manual" : noEvidenceForMachine ? "identity_bound_no_evidence" : "gate_g_no_evidence",
       answer_chars: abstainAnswerText?.length ?? 0,
       refusal_phrase_matched: false,
       evidence_phrase_matched: false,
@@ -3704,7 +3859,7 @@ async function handleChatTurn(
       {
         "mira.answer_gate.invoked": true,
         "mira.answer_gate.decision": "insufficient_evidence",
-        "mira.answer_gate.reason": oemRetrievalFailed && (missingModelManual || noEvidenceForMachine) ? "identity_bound_retrieval_failed" : unidentifiedServiceText ? "unidentified_service_decline" : missingModelManual ? "identity_bound_no_manual" : noEvidenceForMachine ? "identity_bound_no_evidence" : "gate_g_no_evidence",
+        "mira.answer_gate.reason": componentHold ? `component_${componentHold.reason}` : oemRetrievalFailed && (missingModelManual || noEvidenceForMachine) ? "identity_bound_retrieval_failed" : unidentifiedServiceText ? "unidentified_service_decline" : missingModelManual ? "identity_bound_no_manual" : noEvidenceForMachine ? "identity_bound_no_evidence" : "gate_g_no_evidence",
         "mira.answer_gate.answer_chars": abstainAnswerText?.length ?? 0,
       },
       gateAnswerGateSpan,
@@ -3725,6 +3880,10 @@ async function handleChatTurn(
       // history read renders the same card the live turn showed.
       evidence: [
         ...disputeEntries,
+        ...heldComponentEntries,
+        // A held component turn can carry the energized-electrical notice; it is
+        // persisted so a reload shows the same flag (empty on every other abstain).
+        ...hazardEntries,
         ...(visualEntry ? [visualEntry] : []),
         // #4150 — the pending proposal is what a confirmation is checked against.
         ...(photoPartLookup?.proposal ? [photoPartLookup.proposal] : []),
@@ -3805,6 +3964,10 @@ async function handleChatTurn(
           };
           controller.enqueue(enc.encode(sse(chips)));
         }
+        // Bench components: which component this was asked under, and its actions
+        // (Confirm / Switch / Stay / Return to …). They are buttons that call the
+        // selection and revision routes — never text for the next question.
+        if (componentTurn) controller.enqueue(enc.encode(sse(componentTurnFrame(componentTurn, true))));
         controller.enqueue(enc.encode("data: [DONE]\n\n"));
         controller.close();
       },
@@ -3871,9 +4034,13 @@ async function handleChatTurn(
   // — unbound or disputed → nothing (owner: "if no equipment is explicitly
   // bound, return no visual evidence"). Own try/catch: a ledger read failure
   // never drops the document/machine context already built.
+  // #5504 post-cap F7: not on a component turn. These are the bound machine's
+  // nameplate readings (another component's, as often as not), and this section
+  // presents them as facts about THIS machine beside the selected component's
+  // identity — so a PLC's supply voltage would be answered as the VFD's.
   let visualSection = "";
   let visualReadings: string[] = [];
-  if (boundAsset.state === "resolved" && !identityDisputed) {
+  if (boundAsset.state === "resolved" && !identityDisputed && !componentScope) {
     try {
       const visualRows = await withTenantContext(ctx.tenantId, (c) =>
         loadVisualEvidenceForAsset(c, ctx.tenantId, boundAsset.entityId),
@@ -4206,11 +4373,11 @@ async function handleChatTurn(
   // only) riding IN the user turn next to the question — an end-of-system-prompt
   // hint measurably failed to stop "what's the maximum?" in a decel thread from
   // resolving to the lexically similar P044 [Maximum Freq] row (battery defect D).
-  const topicHint = buildTopicHint(message, history, lookRow?.text);
+  const topicHint = buildTopicHint(message, turnHistory, lookRow?.text);
   // Restore literal older technician reports from this viewer/thread only.
   // Existing per-turn machine snapshots prevent a notebook rebind from turning
   // a different machine's conversation into this machine's prior reports.
-  let priorReportContext = buildPriorReportContext([], history, "not_requested");
+  let priorReportContext = buildPriorReportContext([], turnHistory, "not_requested");
   // An explicit modern thread is the case boundary. Legacy/unscoped callers
   // keep their existing client history; never guess a case from a notebook.
   if (threadId && threadId !== "legacy" && !identityDisputed) try {
@@ -4218,10 +4385,13 @@ async function handleChatTurn(
     const reports = await listTurns(ctx.tenantId, notebookId, 25, {
       viewerUserId: ctx.userId, threadId, expectedEquipmentEntityId: assetSnapshot.equipmentEntityId,
     });
-    priorReportContext = buildPriorReportContext(reports.filter(report => report.ownerUserId === ctx.userId), history);
+    priorReportContext = buildPriorReportContext(
+      reports.filter(report => report.ownerUserId === ctx.userId && (!selectionTurnIds || selectionTurnIds.has(report.id))),
+      turnHistory,
+    );
   } catch (err) {
     console.error("[notebook-chat] prior technician reports unavailable:", err instanceof Error ? err.message : err);
-    priorReportContext = buildPriorReportContext([], history, "unavailable");
+    priorReportContext = buildPriorReportContext([], turnHistory, "unavailable");
     rec.error("context", "prior_reports_unavailable");
   }
   // R2-33: the Living Work Sheet job section rides into the SAME
@@ -4234,7 +4404,7 @@ async function handleChatTurn(
   const sheetAndLookContext = [lookContext, sheetSection].filter(Boolean).join("\n\n");
   const messages = buildProviderMessages(
     systemPrompt,
-    history,
+    turnHistory,
     buildManualUserContent(topicHint ? `${message}\n\n${topicHint}` : message, chunks, sheetAndLookContext),
     priorReportContext.content,
   );
@@ -4259,7 +4429,7 @@ async function handleChatTurn(
       chunk_count: chunks.length,
       visual_evidence_count: visualEvidenceCount,
       identity_included: identityIncluded,
-      history_turns: history.length,
+      history_turns: turnHistory.length,
       prior_report_turn_ids: priorReportContext.turnIds,
       prior_report_coverage: priorReportContext.coverage,
       prior_report_truncated: priorReportContext.truncated,
@@ -4272,7 +4442,7 @@ async function handleChatTurn(
         "mira.context.chunk_count": chunks.length,
         "mira.context.visual_evidence_count": visualEvidenceCount,
         "mira.context.identity_included": identityIncluded,
-        "mira.context.history_turns": history.length,
+        "mira.context.history_turns": turnHistory.length,
         "mira.context.prompt_chars": promptChars,
         "mira.context.system_prompt_kind": systemPromptKind,
       },
@@ -4363,6 +4533,10 @@ async function handleChatTurn(
       // 086 §3: the dispute marker goes out before the first content byte, so
       // a Stop mid-answer (persisted WITH the dispute) has already shown it.
       if (identityDisputed) controller.enqueue(enc.encode(sse(IDENTITY_DISPUTE_FRAME)));
+      // Bench components: which component this answer is about, before its first
+      // content byte, so the reply is attributed even if the header moves while it
+      // streams (#5504 Codex F1). No actions: nothing was refused.
+      if (componentScope) controller.enqueue(enc.encode(sse(componentTurnFrame(componentScope, false))));
       // Citations are emitted AFTER generation, filtered to what the answer
       // actually cited — so a refusal ships no pages and a grounded answer ships
       // only its supporting evidence (no retrieved-but-unused pages as proof).
@@ -4856,7 +5030,7 @@ async function handleChatTurn(
             // F3); a stop is still not an answer — hydration shows no
             // observation, citation or basis on a stopped answer, and prior-look
             // grounding reads answered turns only.
-            evidence: [...hazardEntries, ...disputeEntries, ...(visualEntry ? [visualEntry] : [])],
+            evidence: [...hazardEntries, ...disputeEntries, ...componentEntries, ...(visualEntry ? [visualEntry] : [])],
             model: stoppedModel,
             basis: null,
             ...assetSnapshot,
@@ -5621,13 +5795,14 @@ async function handleChatTurn(
                   { kind: "safety_notice", trigger: outputRejected.violation } satisfies SafetyNoticeEntry,
                   { kind: "safety_stop", trigger: outputRejected.violation } satisfies SafetyStopEntry,
                   ...disputeEntries,
+                  ...componentEntries,
                   ...(visualEntry ? [visualEntry] : []),
                   ...proposalEntries,
                 ]
-              : [...hazardEntries, ...(manualSafetyEntry ? [manualSafetyEntry] : []), ...emittedCitations, ...(machineEntry ? [machineEntry] : []), ...(visualEntry ? [visualEntry] : []), ...disputeEntries, ...proposalEntries, ...(observedPersistEntry ? [observedPersistEntry] : []), ...(weakEntry ? [weakEntry] : [])]
+              : [...hazardEntries, ...(manualSafetyEntry ? [manualSafetyEntry] : []), ...emittedCitations, ...(machineEntry ? [machineEntry] : []), ...(visualEntry ? [visualEntry] : []), ...disputeEntries, ...componentEntries, ...proposalEntries, ...(observedPersistEntry ? [observedPersistEntry] : []), ...(weakEntry ? [weakEntry] : [])]
             // Not served: the technician's own photo still stays on their saved
             // question (#4289 F4); hydration shows no observation on a failed answer.
-            : [...hazardEntries, ...emittedCitations, ...disputeEntries, ...proposalEntries, ...(visualEntry ? [visualEntry] : []), ...providerFailureEntries],
+            : [...hazardEntries, ...emittedCitations, ...disputeEntries, ...componentEntries, ...proposalEntries, ...(visualEntry ? [visualEntry] : []), ...providerFailureEntries],
           model: servedModel,
           basis: served ? (outputRejected?.kind === "unsafe_answer" ? null : evidenceFrame.basis) : null,
           ...assetSnapshot,

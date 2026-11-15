@@ -1,0 +1,153 @@
+{
+  "inventory": "CV-101 provisional inventory",
+  "status": "provisional: every row is seeded unconfirmed; a technician confirms each one from its own label",
+  "sources": [
+    "plc/conv_simple_electrical/model/devices.yaml (old device schedule, rev A, 2026-07-11)",
+    "CV-101 complete-machine ground truth section 2 (2026-11-13 sweep of repo evidence and bench photos)"
+  ],
+  "rows": [
+    {
+      "key": "PLC1",
+      "localTag": "PLC1",
+      "kind": "plc",
+      "origin": "device_schedule",
+      "note": "Old device schedule (devices.yaml rev A) says model \"Allen-Bradley Micro820 2080-LC20-20QBB\". Earlier photo read of the nameplate: Series C, FW 12.011, SN 285561379, MAC 5C:88:16:D9:75:DC. A front-panel label shows a second MAC, 5C:88:16:D8:E4:D7, so whether this is one unit or two is unresolved."
+    },
+    {
+      "key": "VFD1",
+      "localTag": "VFD1",
+      "kind": "vfd",
+      "origin": "device_schedule",
+      "note": "Old device schedule (devices.yaml rev A) says model \"AutomationDirect GS10 DURApulse\". Earlier photo read: model GS11N-20P2, barcode GS1120P2+K25310021, Ver 1.03."
+    },
+    {
+      "key": "M1",
+      "localTag": "M1",
+      "kind": "motor",
+      "origin": "device_schedule",
+      "note": "Old device schedule (devices.yaml rev A) names no model. Earlier photo read: the nameplate prints no manufacturer; model 108074, SN U340156C25040052, 1 HP, 230/460 V, frame 56C."
+    },
+    {
+      "key": "S0",
+      "localTag": "S0",
+      "kind": "e_stop",
+      "origin": "device_schedule",
+      "note": "Old device schedule (devices.yaml rev A) names no model: dual-channel e-stop, NC channel to I-02, NO channel to I-03. Whether a safety relay sits between it and the PLC is open (OI-05)."
+    },
+    {
+      "key": "SS1",
+      "localTag": "SS1",
+      "kind": "selector_switch",
+      "origin": "device_schedule",
+      "note": "Old device schedule (devices.yaml rev A) names no model: direction selector, FWD to I-00, REV to I-01."
+    },
+    {
+      "key": "S2",
+      "localTag": "S2",
+      "kind": "pushbutton_no",
+      "origin": "device_schedule",
+      "note": "Old device schedule (devices.yaml rev A) names no model: illuminated run / rearm pushbutton to I-04, lamp from O-03."
+    },
+    {
+      "key": "B1",
+      "localTag": "B1",
+      "kind": "photo_eye",
+      "origin": "device_schedule",
+      "note": "Old device schedule (devices.yaml rev A) names no model: product-present beam to I-05. Make, model, PNP or NPN, and signal wire colour are open (OI-06)."
+    },
+    {
+      "key": "PS1",
+      "localTag": "PS1",
+      "kind": "power_supply",
+      "origin": "device_schedule",
+      "note": "Old device schedule (devices.yaml rev A) says model \"Mean Well DIN-rail supply (24 V / 1.0 A; 100-240 VAC in @ 0.55 A; +V / -V / DC-OK out, N / L / PE in, +V ADJ pot, DC-OK LED)\". The exact model number is not recorded (OI-25)."
+    },
+    {
+      "key": "DB1",
+      "localTag": "DB1",
+      "kind": "distribution_block",
+      "origin": "device_schedule",
+      "note": "Old device schedule (devices.yaml rev A) names no model: 24 VDC push-in distribution block fed from PS1. Which colour is +24 V is open (OI-25)."
+    },
+    {
+      "key": "CB1",
+      "localTag": "CB1",
+      "kind": "circuit_breaker",
+      "origin": "device_schedule",
+      "note": "Old device schedule (devices.yaml rev A) names no model: 2-pole branch breaker on the 230 V supply. Its existence, type and rating are unconfirmed."
+    },
+    {
+      "key": "Q1",
+      "localTag": "Q1",
+      "kind": "control_relay",
+      "origin": "device_schedule",
+      "note": "Old device schedule (devices.yaml rev A) says model \"Schneider Electric TeSys CA3KN22BD (control relay, 2 NO + 2 NC, 24 VDC coil)\", hand-labelled MLC. Earlier photo read of the part: CA3KN22BD, coil A1/A2 24 V."
+    },
+    {
+      "key": "PL1",
+      "localTag": "PL1",
+      "kind": "pilot_light",
+      "origin": "device_schedule",
+      "note": "Old device schedule (devices.yaml rev A) names no model: green RUNNING pilot on O-00."
+    },
+    {
+      "key": "PL2",
+      "localTag": "PL2",
+      "kind": "pilot_light",
+      "origin": "device_schedule",
+      "note": "Old device schedule (devices.yaml rev A) names no model: red FAULT / E-STOP pilot on O-01."
+    },
+    {
+      "key": "X1",
+      "localTag": "X1",
+      "kind": "terminal_block",
+      "origin": "device_schedule",
+      "note": "Old device schedule (devices.yaml rev A) names no model: field terminal strip. Layout and numbering are not documented."
+    },
+    {
+      "key": "reducer",
+      "localTag": null,
+      "kind": "reducer",
+      "origin": "inventory",
+      "note": "Not on the old device schedule. Earlier photo read: Dorner MFG. CORP., model 32M020HS, SN 516338-002-001-001. An older note says the Dorner gearbox is not on CV-101; that conflict is unresolved."
+    },
+    {
+      "key": "conveyor-frame",
+      "localTag": null,
+      "kind": "conveyor_frame",
+      "origin": "inventory",
+      "note": "Not on the old device schedule. Conveyor frame and belt: no manufacturer or catalog number appears in any CV-101 evidence."
+    },
+    {
+      "key": "second-controller",
+      "localTag": null,
+      "kind": "second_controller",
+      "origin": "inventory",
+      "note": "Not on the old device schedule. A Siemens CPU 1212C AC/DC/RLY is on the panel; its relationship to CV-101 is recorded as unknown (OI-23)."
+    },
+    {
+      "key": "pmc-device",
+      "localTag": null,
+      "kind": "panel_device",
+      "origin": "inventory",
+      "note": "Not on the old device schedule. A device labelled \"PMC 192.x\" is on the panel; its relationship to CV-101 is recorded as unknown (OI-24)."
+    },
+    {
+      "key": "hmi-laptop",
+      "localTag": null,
+      "kind": "hmi_laptop",
+      "origin": "inventory",
+      "note": "Not on the old device schedule. The HMI / Ignition laptop has no nameplate, photo or inventory entry in the evidence."
+    }
+  ],
+  "excluded": [
+    {
+      "what": "Litmus Edge gateway",
+      "why": "Evidence shows software running in a container, not a physical part on the bench. Add it from the checklist if a physical gateway is found."
+    },
+    {
+      "what": "A second PLC row for MAC 5C:88:16:D8:E4:D7",
+      "why": "Whether there are one or two PLC units is unresolved; it is recorded on PLC1 instead of inventing a second unit."
+    }
+  ]
+}
