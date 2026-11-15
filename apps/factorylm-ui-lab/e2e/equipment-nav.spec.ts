@@ -96,6 +96,11 @@ test("phone 412x915: browse in the drawer, Ask about closes it, target shown bes
   await expect(mlc).toContainText("Schneider TeSys CA3KN22BD control relay");
   await expect(mlc.locator(".fl-equip__plc")).toHaveText("PLC out _IO_EM_DO_02");
   await expect(treeRow(page, "c-plc1-bench")).toContainText("Allen-Bradley Micro820");
+  // At phone width the catalog number and PLC symbol are whole, not cut with an ellipsis.
+  for (const detail of await mlc.locator(".fl-equip__detail").all()) {
+    expect(await detail.evaluate((el) => el.scrollWidth <= el.clientWidth), "detail is clipped").toBe(true);
+    await expect(detail).toBeInViewport({ ratio: 1 });
+  }
   await treeRow(page, "c-q1-mlc-bench").click();
   // Browsing does not close the drawer and does not move the target.
   await expect(aside).toBeVisible();

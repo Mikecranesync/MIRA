@@ -207,7 +207,8 @@
 .fl-equip__row[data-target="true"] { background: var(--fl-workspace-accent-tint); color: var(--fl-workspace-accent-ink); }
 .fl-equip__text { display: flex; flex: 1 1 auto; flex-wrap: wrap; align-items: baseline; column-gap: var(--fl-workspace-space-2); min-inline-size: 0; }
 .fl-equip__label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.fl-equip__detail { color: var(--fl-workspace-muted); font-size: var(--fl-workspace-fs-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Details wrap instead of clipping: a catalog number cut to "CA3KN22B…" is a wrong part number. */
+.fl-equip__detail { min-inline-size: 0; color: var(--fl-workspace-muted); font-size: var(--fl-workspace-fs-sm); overflow-wrap: anywhere; }
 .fl-equip__place { flex-basis: 100%; color: var(--fl-workspace-muted); font-size: var(--fl-workspace-fs-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fl-equip__row[data-target="true"] .fl-equip__detail,
 .fl-equip__row[data-target="true"] .fl-equip__place { color: inherit; }
