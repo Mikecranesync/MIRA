@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { heldQuestionForSend, retryTargetCheck, targetReviewMessage, withoutScope, scopedChatBody, recordBenchScope, type BenchScopes, type BenchState } from "./bench-components-logic";
+import { heldEvidenceNote, heldQuestionForSend, retryTargetCheck, targetReviewMessage, withoutScope, scopedChatBody, recordBenchScope, type BenchScopes, type BenchState } from "./bench-components-logic";
 
 /**
  * Tablet semantic-retry gap: a question asked about "the selected component" was refused
@@ -96,6 +96,32 @@ describe("the fresh Send after review", () => {
   });
 });
 
+describe("the held photo is shown while the question waits for review (#5562)", () => {
+  const failed = { body: { message: "what is this bracket for?", visualEvidence: { fileId: "f-1", capturedAt: "t" } }, question: "what is this bracket for?", refusedScope: REFUSED };
+  const review = retryTargetCheck(REFUSED, cleared(5));
+
+  it("unchanged question: says the photo is kept and goes with the next Send, and when it would not", () => {
+    expect(heldEvidenceNote(failed, review, "  what is this bracket for?  ")).toBe(
+      "Your photo is kept with this question and goes with the next Send to the whole machine, unless you change the question or attach something new.",
+    );
+  });
+  it("edited question: says the kept photo will not go (heldQuestionForSend drops it)", () => {
+    const edited = "what is this bracket for on VFD1?";
+    expect(heldQuestionForSend(failed, review, edited, 0)).toBeNull();
+    expect(heldEvidenceNote(failed, review, edited)).toBe(
+      "You changed the question, so the kept photo will not go with it. Attach the photo again if you need it.",
+    );
+  });
+  it("control: no photo held, no note", () => {
+    expect(heldEvidenceNote({ ...failed, body: { message: failed.question } }, review, failed.question)).toBeNull();
+  });
+  it("control: no review pending (same target, or not a target refusal), no note", () => {
+    expect(heldEvidenceNote(failed, retryTargetCheck(REFUSED, selected(A, 5)), failed.question)).toBeNull();
+    expect(heldEvidenceNote({ body: failed.body, question: failed.question }, review, failed.question)).toBeNull();
+    expect(heldEvidenceNote(null, null, failed.question)).toBeNull();
+  });
+});
+
 describe("the host is wired to the hold (source shape, like hub-host-restore-retry)", () => {
   const host = readFileSync(new URL("./hub-host.tsx", import.meta.url), "utf8");
   it("Retry is offered only when the target did not move", () => {
@@ -108,6 +134,10 @@ describe("the host is wired to the hold (source shape, like hub-host-restore-ret
   });
   it("the banner is told it is a target review, so it offers no Try again (#5557)", () => {
     expect(host).toMatch(/\.\.\.\(reviewMessage \? \{ targetReview: reviewMessage \} : \{\}\)/);
+  });
+  it("the held-photo note sits beside the composer, read from the live draft (#5562)", () => {
+    expect(host).toMatch(/const heldNote = heldEvidenceNote\(failedBody, retryCheck, view\.draft\);/);
+    expect(host).toMatch(/heldNote \? \{ composerAccessory: <p className="fl-qtarget__browsing" role="status" aria-label="Kept with this question">\{heldNote\}<\/p> \}/);
   });
   it("Send routes the held question through heldQuestionForSend", () => {
     expect(host).toMatch(/const held = heldQuestionForSend\(failedBody, retryCheck, q, files\.length\);/);
