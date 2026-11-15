@@ -162,14 +162,18 @@ export function App({ search = window.location.search, onSearch = replaceSearch 
     state={state}
     dispatch={labDispatch}
     {...(lab.nav === "equipment" ? {
-      navigationContent: <EquipmentNavigator
-        roots={EQUIPMENT_FIXTURE}
-        target={target}
-        browsingId={browsingId}
-        onBrowse={setBrowsingId}
-        onAskAbout={askAbout}
-        recentIds={recentIds}
-      />,
+      navigationContent: <>
+        {/* Fixture plant: say so on screen, so a preview is never read as live equipment. */}
+        <p className="lab__sample-note" role="note">Sample equipment for the lab. Not live plant data.</p>
+        <EquipmentNavigator
+          roots={EQUIPMENT_FIXTURE}
+          target={target}
+          browsingId={browsingId}
+          onBrowse={setBrowsingId}
+          onAskAbout={askAbout}
+          recentIds={recentIds}
+        />
+      </>,
       composerAccessory: <QuestionTargetBar
         target={target}
         browsing={browsingTarget}

@@ -3,8 +3,10 @@ import type { EquipmentNode } from "./equipment-nav";
 /**
  * Disconnected fixture plant for the equipment-first navigation lab.
  *
- * Drive (VFD1, AutomationDirect GS10) and MLC (PLC1, Allen-Bradley Micro820)
- * on the GS10 bench come first. Line 2 repeats the tag "VFD1" with the same
+ * Drive (VFD1, AutomationDirect GS10) and MLC on the GS10 bench come first. MLC
+ * is the hand label on drawing device Q1, a Schneider TeSys CA3KN22BD control
+ * relay switched by PLC output _IO_EM_DO_02. It is not the PLC: PLC1
+ * (Allen-Bradley Micro820) is its own row. Line 2 repeats the tag "VFD1" with the same
  * model on purpose, so the repeated-tag location rule is exercised. Utilities
  * holds a machine with no components (the whole machine is the only target).
  * Synthetic names only, no customer data.
@@ -38,6 +40,7 @@ export const EQUIPMENT_FIXTURE: readonly EquipmentNode[] = [
                     label: "Control panel",
                     children: [
                       { id: "c-vfd1-bench", level: "component", label: "VFD1", tag: "VFD1", detail: "AutomationDirect GS10" },
+                      { id: "c-q1-mlc-bench", level: "component", label: "MLC", tag: "Q1", detail: "Schneider TeSys CA3KN22BD control relay", plcSymbol: "_IO_EM_DO_02" },
                       { id: "c-plc1-bench", level: "component", label: "PLC1", tag: "PLC1", detail: "Allen-Bradley Micro820" },
                     ],
                   },

@@ -24,8 +24,8 @@ const entry = (id: string) => {
 
 describe("equipment hierarchy", () => {
   it("indexes site > area > line > machine > assembly > component in tree order", () => {
-    expect(entries.map((e) => e.node.id).slice(0, 7)).toEqual([
-      "site-lw", "area-garage", "line-bench", "m-gs10-bench", "asm-panel", "c-vfd1-bench", "c-plc1-bench",
+    expect(entries.map((e) => e.node.id).slice(0, 8)).toEqual([
+      "site-lw", "area-garage", "line-bench", "m-gs10-bench", "asm-panel", "c-vfd1-bench", "c-q1-mlc-bench", "c-plc1-bench",
     ]);
     expect(placeOf(entry("c-plc1-bench"))).toBe("Lake Wales plant › Garage › Bench line › GS10 bench › Control panel");
   });
@@ -55,6 +55,7 @@ describe("repeated tags show where they are", () => {
   it("control: a unique tag is not flagged", () => {
     const repeated = repeatedTagIds(entries);
     expect(repeated.has("c-plc1-bench")).toBe(false);
+    expect(repeated.has("c-q1-mlc-bench")).toBe(false);
     expect(repeated.has("m-gs10-bench")).toBe(false);
   });
 });
@@ -68,6 +69,18 @@ describe("search bypasses the tree", () => {
   it("finds a component by model", () => {
     expect(searchEquipment(entries, "micro820").map((h) => h.node.id)).toEqual(["c-plc1-bench"]);
   });
+  it("finds MLC by its label, drawing designation, catalog number and PLC symbol", () => {
+    for (const query of ["mlc", "q1", "ca3kn22bd", "_io_em_do_02"]) {
+      expect(searchEquipment(entries, query).map((h) => h.node.id)).toEqual(["c-q1-mlc-bench"]);
+    }
+  });
+  it("MLC is not the PLC: the relay and the Micro820 are separate rows", () => {
+    const mlc = entry("c-q1-mlc-bench").node;
+    expect(mlc).toMatchObject({ label: "MLC", tag: "Q1", detail: "Schneider TeSys CA3KN22BD control relay", plcSymbol: "_IO_EM_DO_02" });
+    expect(mlc.detail).not.toMatch(/micro\s?820|plc/i);
+    expect(entry("c-plc1-bench").node).toMatchObject({ label: "PLC1", detail: "Allen-Bradley Micro820" });
+    expect(entry("c-plc1-bench").node.plcSymbol).toBeUndefined();
+  });
   it("control: a blank query returns nothing, and site/area rows are not results", () => {
     expect(searchEquipment(entries, "   ")).toEqual([]);
     expect(searchEquipment(entries, "garage")).toEqual([]);
@@ -76,15 +89,15 @@ describe("search bypasses the tree", () => {
 
 describe("question target", () => {
   it("a component row targets that component on its machine", () => {
-    const target = targetFor(entry("c-plc1-bench"));
+    const target = targetFor(entry("c-q1-mlc-bench"));
     expect(target).toEqual({
       machineId: "m-gs10-bench",
       machineLabel: "GS10 bench",
-      componentId: "c-plc1-bench",
-      componentLabel: "PLC1",
+      componentId: "c-q1-mlc-bench",
+      componentLabel: "MLC",
       location: "Lake Wales plant › Garage › Bench line",
     });
-    expect(targetText(target!)).toBe("PLC1 on GS10 bench");
+    expect(targetText(target!)).toBe("MLC on GS10 bench");
   });
   it("a machine row targets the whole machine", () => {
     const target = targetFor(entry("m-air"));

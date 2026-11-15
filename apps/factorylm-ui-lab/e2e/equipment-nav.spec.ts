@@ -45,7 +45,7 @@ test("desktop 1440x900: browsing keeps the target; Ask about moves it; the send 
   await expect(treeRow(page, "c-vfd1-bench")).toHaveAttribute("data-target", "true");
   await page.screenshot({ path: resolve(SHOTS, "2026-11-15_equipment-nav-target_desktop.png") });
 
-  await treeRow(page, "c-plc1-bench").click();
+  await treeRow(page, "c-q1-mlc-bench").click();
   await expect(target(page)).toHaveText("VFD1 on GS10 bench");
   await expect(page.getByRole("status").filter({ hasText: "Questions still go to VFD1 on GS10 bench" })).toBeVisible();
   await page.screenshot({ path: resolve(SHOTS, "2026-11-15_equipment-nav-browsing_desktop.png") });
@@ -53,10 +53,10 @@ test("desktop 1440x900: browsing keeps the target; Ask about moves it; the send 
   await sendQuestion(page, "What does fault oc mean");
   await expect(adapterLog(page)).toContainText("send:target=m-gs10-bench/c-vfd1-bench");
 
-  await page.locator('[role="tree"]').getByRole("button", { name: "Ask about PLC1" }).click();
-  await expect(target(page)).toHaveText("PLC1 on GS10 bench");
+  await page.locator('[role="tree"]').getByRole("button", { name: "Ask about MLC" }).click();
+  await expect(target(page)).toHaveText("MLC on GS10 bench");
   await sendQuestion(page, "What does the RUN light mean");
-  await expect(adapterLog(page)).toContainText("send:target=m-gs10-bench/c-plc1-bench");
+  await expect(adapterLog(page)).toContainText("send:target=m-gs10-bench/c-q1-mlc-bench");
 
   // Search bypasses the tree; the repeated VFD1 shows where it is.
   await page.getByRole("searchbox", { name: "Search equipment" }).fill("vfd1");
@@ -67,8 +67,8 @@ test("desktop 1440x900: browsing keeps the target; Ask about moves it; the send 
   await results.locator('[data-equipment-id="c-vfd1-line2"]').click();
   // Clicking a result only browses it: the target holds, and the result offers Ask about.
   await expect(results.getByRole("button", { name: "Ask about VFD1" })).toBeVisible();
-  await expect(page.getByRole("status").filter({ hasText: "Questions still go to PLC1 on GS10 bench" })).toBeVisible();
-  await expect(target(page)).toHaveText("PLC1 on GS10 bench");
+  await expect(page.getByRole("status").filter({ hasText: "Questions still go to MLC on GS10 bench" })).toBeVisible();
+  await expect(target(page)).toHaveText("MLC on GS10 bench");
   const label = results.locator('[data-equipment-id="c-vfd1-line2"] .fl-equip__label');
   expect(await label.evaluate((el) => el.scrollWidth <= el.clientWidth), "label is truncated").toBe(true);
   await page.screenshot({ path: resolve(SHOTS, "2026-11-15_equipment-nav-search_desktop.png") });
@@ -89,15 +89,22 @@ test("phone 412x915: browse in the drawer, Ask about closes it, target shown bes
   const aside = page.locator('aside[aria-label="FactoryLM navigation"]');
   if (!(await aside.isVisible())) await page.getByRole("button", { name: "Open navigation" }).click();
   await expect(aside).toBeVisible();
-  await treeRow(page, "c-plc1-bench").click();
+  await expect(aside.getByRole("note")).toHaveText("Sample equipment for the lab. Not live plant data.");
+  // MLC is the Q1 relay, not the PLC; its designation, catalog and PLC output stay separate.
+  const mlc = treeRow(page, "c-q1-mlc-bench");
+  await expect(mlc.locator(".fl-equip__tag")).toHaveText("Q1");
+  await expect(mlc).toContainText("Schneider TeSys CA3KN22BD control relay");
+  await expect(mlc.locator(".fl-equip__plc")).toHaveText("PLC out _IO_EM_DO_02");
+  await expect(treeRow(page, "c-plc1-bench")).toContainText("Allen-Bradley Micro820");
+  await treeRow(page, "c-q1-mlc-bench").click();
   // Browsing does not close the drawer and does not move the target.
   await expect(aside).toBeVisible();
   await page.waitForTimeout(300);
   await page.screenshot({ path: resolve(SHOTS, "2026-11-15_equipment-nav-drawer_mobile.png") });
 
-  await page.locator('[role="tree"]').getByRole("button", { name: "Ask about PLC1" }).click();
+  await page.locator('[role="tree"]').getByRole("button", { name: "Ask about MLC" }).click();
   await expect(aside).toBeHidden();
-  await expect(target(page)).toHaveText("PLC1 on GS10 bench");
+  await expect(target(page)).toHaveText("MLC on GS10 bench");
   // Beside the composer and on screen, not below the fold under the sticky composer.
   await expect(target(page)).toBeInViewport();
   await page.waitForTimeout(300);

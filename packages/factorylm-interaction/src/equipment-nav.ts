@@ -25,6 +25,11 @@ export interface EquipmentNode {
   readonly tag?: string;
   /** Model or short description, shown muted after the label. */
   readonly detail?: string;
+  /**
+   * PLC program symbol that drives this device (e.g. "_IO_EM_DO_02"). Kept apart
+   * from the tag and the catalog number: a symbol names the PLC output, not the device.
+   */
+  readonly plcSymbol?: string;
   /** Machine state only. Never decorative. */
   readonly status?: "normal" | "attention" | "unknown";
   readonly children?: readonly EquipmentNode[];
@@ -118,7 +123,7 @@ export function searchEquipment(entries: readonly EquipmentEntry[], query: strin
   if (!needle) return [];
   return entries
     .filter((entry) => SEARCHABLE.has(entry.node.level))
-    .filter((entry) => [entry.node.label, entry.node.tag, entry.node.detail]
+    .filter((entry) => [entry.node.label, entry.node.tag, entry.node.detail, entry.node.plcSymbol]
       .some((value) => value !== undefined && value.toLowerCase().includes(needle)))
     .slice(0, limit);
 }
