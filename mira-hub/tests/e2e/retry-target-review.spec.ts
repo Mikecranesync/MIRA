@@ -10,7 +10,7 @@
  * answered 503 so no model is called.
  *
  * Must turn red under `if (false && held)` in hub-host.tsx's Send path (the mutation the
- * unit suite does not catch), and under reverting cf55cade3 when the question is reworded.
+ * unit suite does not catch).
  *
  *   HUB_URL=http://localhost:3131/hub PW_CHANNEL=chrome npx playwright test tests/e2e/retry-target-review.spec.ts -c playwright.config.ts
  *
@@ -118,12 +118,12 @@ test("a refused 'selected component' question with a photo is held for review, t
   await expect(page.getByRole("button", { name: /^Remove / })).toHaveCount(0);
   expect(looks, "exactly one photo upload before the review").toBe(1);
 
-  // Reworded, then a fresh Send: the new target, the new version, the same photo.
-  await box.fill("what fuse does the drive take");
+  // A fresh Send of the kept question: the new target, the new version, the same photo.
+  // (A reworded question is a new question and does not carry the held photo: #5555.)
   await page.getByRole("button", { name: "Send" }).click();
   await expect.poll(() => sent.length, { timeout: 30_000 }).toBe(1);
   const body = sent[0] as { message?: string; componentSelection?: { componentId: unknown; selectionVersion: unknown }; visualEvidence?: { fileId?: string } };
-  expect(body.message).toBe("what fuse does the drive take");
+  expect(body.message).toBe(question);
   expect(body.componentSelection).toMatchObject({ componentId: null, selectionVersion: v2 });
   expect(body.visualEvidence?.fileId, "the held photo must ride the fresh Send").toBe("f-photo-1");
   expect(looks, "the photo is not uploaded again").toBe(1);

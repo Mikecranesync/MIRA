@@ -155,18 +155,14 @@ export function retryTargetCheck(
  * its attachment rider kept), but only when the box still holds that question and no new
  * attachment was added. Anything else is a new question and goes the ordinary way.
  */
-export function heldQuestionForSend<B extends { message: string; clientRequestId: string }>(
+export function heldQuestionForSend<B extends object>(
   failed: { body: B; question: string; refusedScope?: ScopeField } | null,
   check: ReturnType<typeof retryTargetCheck> | null,
   text: string,
   newFiles: number,
-  newRequestId: () => string = () => crypto.randomUUID(),
 ): B | null {
-  if (!failed?.refusedScope || check?.kind !== "review" || newFiles > 0 || !text.trim()) return null;
-  if (text.trim() === failed.question.trim()) return failed.body;
-  // Reworded after the review: still the held turn, so its photo rides along. A new
-  // request id, because the server deduplicates on it and this is different text.
-  return { ...failed.body, message: text, clientRequestId: newRequestId() };
+  if (!failed?.refusedScope || check?.kind !== "review" || newFiles > 0) return null;
+  return text.trim() === failed.question.trim() ? failed.body : null;
 }
 
 export function targetReviewMessage(r: TargetReview): string {

@@ -79,21 +79,14 @@ describe("retry after the question's target moved (tablet semantic-retry gap)", 
 });
 
 describe("the fresh Send after review", () => {
-  const failed = { body: { message: "what fuse does the selected component take?", clientRequestId: "req-1", visualEvidence: { fileId: "f-1", capturedAt: "t" } }, question: "what fuse does the selected component take?", refusedScope: REFUSED };
+  const failed = { body: { message: "what fuse does the selected component take?", visualEvidence: { fileId: "f-1", capturedAt: "t" } }, question: "what fuse does the selected component take?", refusedScope: REFUSED };
   const review = retryTargetCheck(REFUSED, cleared(5));
 
   it("asks the held question, attachment rider included", () => {
     expect(heldQuestionForSend(failed, review, "what fuse does the selected component take?", 0)).toBe(failed.body);
   });
-  it("a question reworded after the review keeps its photo, with the new wording and a new request id", () => {
-    expect(heldQuestionForSend(failed, review, "what fuse does VFD1 take?", 0, () => "req-2")).toEqual({
-      message: "what fuse does VFD1 take?",
-      clientRequestId: "req-2",
-      visualEvidence: { fileId: "f-1", capturedAt: "t" },
-    });
-  });
-  it("control: a cleared composer is not a held send", () => {
-    expect(heldQuestionForSend(failed, review, "   ", 0)).toBeNull();
+  it("control: an edited question is a new question (ordinary send)", () => {
+    expect(heldQuestionForSend(failed, review, "what fuse does VFD1 take?", 0)).toBeNull();
   });
   it("control: a new attachment makes it a new send", () => {
     expect(heldQuestionForSend(failed, review, failed.question, 1)).toBeNull();
