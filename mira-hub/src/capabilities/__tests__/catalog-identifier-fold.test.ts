@@ -156,3 +156,65 @@ describe("a spaced 6AV separator stops at the order number", () => {
     expect(resolveModelFromObservationText("6AV2124.0GC01-0AX0 panel")).toEqual({ model: "6AV2124.0GC01-0AX0", ambiguous: false });
   });
 });
+
+// Review finding F4 on PR 5500 (ledger 6892789648): a spaced dash is either a catalog
+// separator or a clause dash, and the text cannot say which. The shorter reading is read
+// as well, wherever a number is asked about or declared, so a tail can never hide a sibling.
+describe("a spaced dash is read both ways, and either reading can refuse", () => {
+  const ask = (tail: string, catalog = SIBLING) => `For ${catalog}${tail}, which fictional indicator legend applies?`;
+  const keys = (text: string) => unlistedModelNumbers(text).map((number) => number.key);
+  const answers = (text: string, own = OWN) => manualAnswersFor(unlistedModelNumbers(text), cover(own), `${own}.pdf`).admit;
+  const tails = [" - 24V", " \u2013 24V", " \u2011 24V", " - 2nd alarm", " - 3PH", " - 2 pumps tripped", " - 480VAC",
+    " - 5min delay", " - 100mm rail", " - 24 V supply", " - 5MIN", " - 2NO", " - 100MM", " - 60C", " - 12AWG", " - 3P", " - 2X", " - 24VOLT", " - 24AX"];
+  it.each(tails)("the sibling with tail %j is still read as the sibling and cannot borrow the own manual", (tail) => {
+    for (const catalog of [SIBLING, "ZX731 - 09C"]) {
+      expect(keys(ask(tail, catalog)), catalog).toContain("ZX73109C");
+      expect(answers(ask(tail, catalog)), catalog).toBe(false);
+    }
+  });
+  // A tail of one or two characters makes the long reading a look-alike variant of the own
+  // number ("ZX73104A2X"). Written with unspaced hyphens first, the change of style marks the
+  // tail as prose and the own manual answers. Written fully spaced, nothing tells a variant
+  // from a clause, so the manual is withheld: a known limit that fails closed.
+  const shortTails = new Set([" - 2 pumps tripped", " - 24 V supply", " - 3P", " - 2X"]);
+  it.each(tails)("control: the own model with tail %j is still read as the own model", (tail) => {
+    expect(keys(ask(tail, OWN))).toContain(KEY);
+    expect(keys(ask(tail, "ZX731 - 04A"))).toContain(KEY);
+    expect(answers(ask(tail, "ZX731 - 04A"))).toBe(!shortTails.has(tail));
+    expect(answers(ask(tail, OWN))).toBe(true);
+  });
+  it("a bare model followed by a spaced rating is still read as that model", () => {
+    expect(keys(ask(" - 24V", "ZX731"))).toContain("ZX731");
+    expect(manualAnswersFor(unlistedModelNumbers(ask(" - 24V", "ZX731")), "ZX735 Logic Controller\nUser Manual", "ZX735.pdf").admit).toBe(false);
+    expect(manualAnswersFor(unlistedModelNumbers(ask(" - 24V", "ZX731")), "ZX731 Logic Controller\nUser Manual", "ZX731.pdf").admit).toBe(true);
+  });
+  describe.each(variants)("siblings that differ only in a rating-shaped suffix, separator %j", (separator) => {
+    it.each([["ZX731-10A", "ZX731-20A"], ["ZX731-24V", "ZX731-48V"], ["ZX731-3PH", "ZX731-1PH"], ["ZX731-24", "ZX731-48"]])(
+      "%s manual answers itself and refuses %s", (own, sibling) => {
+        expect(answers(ask("", spell(own, separator)), own)).toBe(true);
+        expect(answers(ask("", spell(sibling, separator)), own)).toBe(false);
+      });
+  });
+  it("a cover with prose after a spaced dash still declares its model and refuses the sibling", () => {
+    const heading = "ZX731-04A - 24V LOGIC CONTROLLER\nUser Manual";
+    expect(coverDeclaredNumbers(heading).map((number) => number.key)).toEqual([KEY]);
+    expect(manualAnswersFor(unlistedModelNumbers(ask("", OWN)), heading, "reference.pdf")).toEqual({ admit: true });
+    expect(manualAnswersFor(unlistedModelNumbers(ask("", SIBLING)), heading, "reference.pdf").admit).toBe(false);
+  });
+  // Known limit, failing closed: a cover written fully spaced with a further tail is not
+  // read as a title, so it shows coverage for no one. It must never answer the sibling.
+  it.each(["ZX731 - 04A - 24V Logic Controller\nUser Manual", "ZX731 - 04A - 2NO CONTACTS\nUser Manual"])(
+    "a fully spaced cover with a tail never answers the sibling: %j", (heading) => {
+      expect(manualAnswersFor(unlistedModelNumbers(ask("", SIBLING)), heading, "reference.pdf").admit).toBe(false);
+      expect(manualAnswersFor(unlistedModelNumbers(ask("", OWN)), heading, "reference.pdf").admit).toBe(false);
+    });
+  it("control: one consistently spaced number is one number, with no extra reading", () => {
+    expect(keys(ask("", "ZX731 - 04A"))).toEqual([KEY]);
+    expect(modelNumbersIn("Unit QZ - 743 - 24AX label").map((number) => number.key)).toEqual(["QZ74324AX"]);
+    expect(modelNumbersIn("Inventory: 2 NC - 24 indicators").map((number) => number.key)).toEqual(["NC24"]);
+  });
+  it("control: unspaced numbers are unchanged and gain no extra reading", () => {
+    expect(keys(ask("", "QZ-743-24AX"))).toEqual(["QZ74324AX"]);
+    expect(keys(ask("", "ZX731-09C-24V"))).toEqual(["ZX73109C24V"]);
+  });
+});

@@ -235,6 +235,41 @@ export function modelNumbersIn(text: string): ModelNumber[] {
   return numberRuns(text).flatMap((run) => numberFrom(run.segments, run.raw) ?? []);
 }
 
+/** A spaced dash inside a run is either a catalog separator ("ZX731 - 04A") or
+ *  a clause dash ("ZX731-09C - 24V"); the text cannot say which. Where a model
+ *  is ASKED about or DECLARED, the shorter reading is therefore read as well:
+ *  the run cut before a spaced dash. It is only ever an additional number, so a
+ *  manual can be refused by it and never admitted by it alone on the asked side.
+ *  A cut after the first group is taken only when what follows reads as prose
+ *  (a rating, an ordinal, a bare count, or lower case after an upper-case
+ *  number), so "ZX731 - 04A" stays one number. */
+function spacedPrefixReadings(run: NumberRun): { readings: ModelNumber[]; clauseTail: boolean } {
+  const pieces = [...run.raw.matchAll(/[A-Za-z0-9]+/g)];
+  if (pieces.length !== run.segments.length) return { readings: [], clauseTail: false };
+  const readings: ModelNumber[] = [];
+  let clauseTail = false, unspacedBefore = false;
+  for (let k = 1; k < pieces.length; k++) {
+    const prefixEnd = pieces[k - 1].index + pieces[k - 1][0].length;
+    if (!/[ \t]/.test(run.raw.slice(prefixEnd, pieces[k].index))) { unspacedBefore = true; continue; }
+    const prefix = run.raw.slice(0, prefixEnd), tail = pieces[k][0];
+    const prose = (UNIT_RE.test(tail.toUpperCase()) && !/^0/.test(tail)) || /^\d+$/.test(tail) || (/[a-z]/.test(tail) && !/[a-z]/.test(prefix));
+    if (k === 1 && !prose) continue;
+    const reading = numberFrom(run.segments.slice(0, k), prefix);
+    if (!reading) continue;
+    readings.push(reading);
+    // A number written with unspaced hyphens, then a spaced dash and prose:
+    // the writer changed style, so the long reading is not a number at all.
+    if (unspacedBefore && prose) clauseTail = true;
+  }
+  return { readings, clauseTail };
+}
+const askedNumbersIn = (text: string): ModelNumber[] =>
+  numberRuns(text).flatMap((run) => {
+    const { readings, clauseTail } = spacedPrefixReadings(run);
+    const whole = clauseTail ? null : numberFrom(run.segments, run.raw);
+    return [...(whole ? [whole] : []), ...readings];
+  });
+
 /** The same, as a COVER or a FILENAME is read: every group of a hyphenated run
  *  that is a model number on its own is read too. A cover writes a range
  *  ("RX410-RX415") or glues a model to its publication number
@@ -244,6 +279,7 @@ function coverNumbersIn(text: string): ModelNumber[] {
   return numberRuns(text).flatMap((run) => [
     ...(numberFrom(run.segments, run.raw) ? [numberFrom(run.segments, run.raw)!] : []),
     ...(run.segments.length > 1 ? run.segments.flatMap((segment) => numberFrom([segment]) ?? []) : []),
+    ...spacedPrefixReadings(run).readings,
   ]);
 }
 
@@ -294,7 +330,7 @@ export function unlistedModelNumbers(text: string): ModelNumber[] {
   // modelIdentitiesInText also reads a GS catalog number written with spaces round its hyphen.
   for (const m of view.text.matchAll(GS_CATALOG_PATTERN)) blank(m.index, m.index + m[0].length);
   const seen = new Set<string>();
-  return modelNumbersIn(chars.join("")).filter((n) => !seen.has(n.key) && seen.add(n.key));
+  return askedNumbersIn(chars.join("")).filter((n) => !seen.has(n.key) && seen.add(n.key));
 }
 
 // How a title is told from a sentence. Three things, all needed:

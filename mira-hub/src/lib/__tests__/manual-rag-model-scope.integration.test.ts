@@ -802,6 +802,19 @@ describe.each(variants)("identifier folding over actual SQL: separator %j", (sep
   });
 });
 
+// Review finding F4 (ledger 6892789648): prose after a spaced dash must not turn the sibling
+// into an unrecognised number that the own manual then answers.
+describe("prose after a spaced dash does not disguise a sibling — real SQL", () => {
+  const tailed = (identifier: string, tail: string) => `For ${identifier}${tail}, which fictional indicator legend applies?`;
+  it.each([" - 24V", " \u2013 24V", " - 2nd alarm", " - 3PH", " - 5MIN", " - 24AX"])("refuses the sibling with tail %j without a confirmed record", async (tail) => {
+    expect(await retrieve(tailed(SIBLING, tail))).toEqual([]);
+    expect(await retrieve(tailed("ZX731 - 09C", tail))).toEqual([]);
+  });
+  it.each([" - 24V", " - 2nd alarm", " - 3PH"])("control: the own number with tail %j still retrieves its manual", async (tail) => {
+    hasLegend(await retrieve(tailed(OWN, tail)), OWN_DOC);
+  });
+});
+
 describe("existing source and identity boundaries remain authoritative", () => {
   it("uses real tenant predicates even with an approved-looking foreign source ID", async () => {
     expect(await retrieve(question(OWN), [OWN_DOC], {}, doc(999))).toEqual([]);
