@@ -202,9 +202,19 @@ export function createShellState(fixture: ShellFixture, profile: SurfaceProfile)
 }
 
 /**
+ * The one rule for moving a context to another machine: nothing known about the
+ * old machine (its confirmed identity, its evidence authorization, a component on
+ * it) carries over. Machine selection and a targeted send both go through here.
+ */
+function onAnotherMachine(context: ContextSnapshot, machineId: string): ContextSnapshot {
+  const { componentId: _previous, ...rest } = context;
+  return { ...rest, machineId, machineIdentity: "unconfirmed", evidenceAuthorization: "not_authorized" };
+}
+
+/**
  * The context a sent turn captures. With a host-chosen target, the turn records
- * that machine and component; a machine other than the active one is not a
- * confirmed identity, whatever the active context said about its own machine.
+ * that machine and component. On the active machine everything else is kept; on
+ * another machine it follows the machine-switch rule above.
  */
 function turnContext(
   active: ContextSnapshot,
@@ -213,12 +223,8 @@ function turnContext(
   const base = copyValue(active);
   if (!target) return base;
   const { componentId: _previous, ...rest } = base;
-  return {
-    ...rest,
-    machineId: target.machineId,
-    ...(target.componentId ? { componentId: target.componentId } : {}),
-    machineIdentity: target.machineId === active.machineId ? active.machineIdentity : "unconfirmed",
-  };
+  const machine = target.machineId === active.machineId ? rest : onAnotherMachine(rest, target.machineId);
+  return target.componentId ? { ...machine, componentId: target.componentId } : machine;
 }
 
 export function shellReducer(state: ShellState, action: ShellAction): ShellState {
@@ -288,12 +294,7 @@ export function shellReducer(state: ShellState, action: ShellAction): ShellState
       if (!state.machines.some((machine) => machine.id === action.machineId)) return state;
       if (!machineIsInActiveScope(state, action.machineId)) return state;
       if (state.activeContext.machineId === action.machineId) return state;
-      return setFutureContext(state, {
-        ...state.activeContext,
-        machineId: action.machineId,
-        machineIdentity: "unconfirmed",
-        evidenceAuthorization: "not_authorized",
-      }, state.selectedProjectId, state.selectedFolderId);
+      return setFutureContext(state, onAnotherMachine(state.activeContext, action.machineId), state.selectedProjectId, state.selectedFolderId);
     }
 
     case "set-navigation-visible":
