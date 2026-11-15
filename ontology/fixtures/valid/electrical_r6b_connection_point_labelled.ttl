@@ -1,0 +1,9 @@
+# PROTECTS: mirash:ConnectionPointShape
+#
+# R6b. Device and terminal.
+
+@prefix mira: <https://ontology.factorylm.com/mira#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix ex:   <https://example.org/fx#> .
+
+ex:k1_a1 a mira:ConnectionPoint ; mira:terminal_label "K1:A1" .

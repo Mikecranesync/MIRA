@@ -1,0 +1,13 @@
+# EXPECT-VIOLATION: mirash:InstanceOfDirectionShape
+#
+# An installed drive is declared instance_of its MANUFACTURER. A manufacturer makes models; it is
+# not one. Before #5528 this conformed: RDFS inference types the object of instance_of as an asset
+# class, and the old rule only asked "is it an asset class?". The rule now also looks at what the
+# object was declared as.
+
+@prefix mira: <https://ontology.factorylm.com/mira#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix ex:   <https://example.org/fx#> .
+
+ex:rockwell a mira:Manufacturer .
+ex:vfd_101  a mira:AssetInstance ; mira:instance_of ex:rockwell .

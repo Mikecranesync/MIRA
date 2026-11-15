@@ -1,3 +1,5 @@
+# PROTECTS: mirash:ApprovedAssertionEvidenceShape
+#
 # R9 satisfied — the conforming counterpart of invalid/evidence_r9_verified_without_evidence.ttl.
 # A verified assertion cites its evidence, names the Technician who approved it, and records when.
 # Proposed by a SoftwareAgent, approved by a DIFFERENT human — the correct two-actor pattern.

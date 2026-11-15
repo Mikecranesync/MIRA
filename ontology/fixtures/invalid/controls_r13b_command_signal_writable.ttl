@@ -1,0 +1,12 @@
+# EXPECT-VIOLATION: mirash:WritableSignalShape
+#
+# R13b — a command signal explicitly marked read_only=false, i.e. writable BY MIRA. No
+# customer-shipped MIRA surface opens a write path to a drive or PLC; the bench tools that do
+# (plc/live_monitor.py, plc/live-plc-bridge/bridge.py) carry BENCH-ONLY banners and never ship.
+
+@prefix mira: <https://ontology.factorylm.com/mira#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix ex:   <https://example.org/fx#> .
+
+ex:run_cmd a mira:CommandSignal ;
+    mira:read_only false .

@@ -1,3 +1,5 @@
+# PROTECTS: mirash:FaultCodeScopeShape
+#
 # SEED FIXTURE (ADR-0032 §8) — the template the fixture phase copies.
 #
 # A correctly-formed fault code: it declares the family it is scoped to, retains the source
