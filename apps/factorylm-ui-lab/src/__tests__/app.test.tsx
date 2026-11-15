@@ -74,16 +74,16 @@ function must<T>(value: T | null | undefined, what: string): T {
 
 describe("lab state from the URL", () => {
   it("defaults to the web surface, grounded answer, light theme, fluid viewport", () => {
-    expect(parseLabState("")).toEqual({ surface: "web", scenario: "grounded-answer", theme: "light", viewport: "fluid", embed: false, thread: "classic" });
+    expect(parseLabState("")).toEqual({ surface: "web", scenario: "grounded-answer", theme: "light", viewport: "fluid", embed: false, thread: "classic", nav: "projects" });
   });
 
   it("reads every control from the query string and rejects unknown values", () => {
     expect(parseLabState("?surface=hub&scenario=work-run&theme=dark&viewport=412x915&embed=1"))
-      .toEqual({ surface: "hub", scenario: "work-run", theme: "dark", viewport: "412x915", embed: true, thread: "classic" });
+      .toEqual({ surface: "hub", scenario: "work-run", theme: "dark", viewport: "412x915", embed: true, thread: "classic", nav: "projects" });
     expect(parseLabState("?thread=assistant").thread).toBe("assistant");
     expect(parseLabState("?thread=nope").thread).toBe("classic");
     expect(parseLabState("?surface=nope&scenario=nope&theme=nope&viewport=nope"))
-      .toEqual({ surface: "web", scenario: "grounded-answer", theme: "light", viewport: "fluid", embed: false, thread: "classic" });
+      .toEqual({ surface: "web", scenario: "grounded-answer", theme: "light", viewport: "fluid", embed: false, thread: "classic", nav: "projects" });
   });
 
   it("offers exactly the plan's viewport set", () => {
@@ -222,5 +222,112 @@ describe("built document", () => {
     expect(csp).toContain("form-action 'none'");
     expect(html).toMatch(/<script type="module" src="\.\/src\/main\.tsx"><\/script>/);
     expect(html).not.toMatch(/https?:\/\//);
+  });
+});
+
+describe("equipment-first navigation (nav=equipment)", () => {
+  const target = (view: AppView) => must(view.container.querySelector('[data-testid="question-target"]'), "question target").textContent;
+  const row = (view: AppView, id: string, scope = '[role="tree"]') =>
+    must(view.container.querySelector<HTMLButtonElement>(`${scope} [data-equipment-id="${id}"]`), `row ${id}`);
+  const log = (view: AppView) => Array.from(view.container.querySelectorAll('[aria-label="Adapter log"] li')).map((li) => li.textContent);
+  const send = (view: AppView, text: string) => {
+    view.type(must(view.container.querySelector<HTMLTextAreaElement>('textarea[aria-label="Ask MIRA"]'), "Ask MIRA"), text);
+    view.submit(must(view.container.querySelector<HTMLFormElement>('form[aria-label="Composer"]'), "composer"));
+  };
+
+  it("is addressable from the URL and mirrored back", () => {
+    expect(parseLabState("?nav=equipment").nav).toBe("equipment");
+    expect(parseLabState("?nav=nope").nav).toBe("projects");
+    const view = renderApp("?nav=equipment");
+    expect(view.search()).toContain("nav=equipment");
+    expect(view.container.querySelector('[role="tree"][aria-label="Equipment"]')).not.toBeNull();
+    // The project tree is replaced, not shown beside it.
+    expect(view.container.querySelector("#fl-nav-projects")).toBeNull();
+  });
+
+  it("control: the default lab still shows the project tree and no target bar", () => {
+    const view = renderApp();
+    expect(view.container.querySelector("#fl-nav-projects")).not.toBeNull();
+    expect(view.container.querySelector('[aria-label="Question target"]')).toBeNull();
+  });
+
+  it("starts with the bench drive as the target and its row marked", () => {
+    const view = renderApp("?nav=equipment");
+    expect(target(view)).toBe("VFD1 on GS10 bench");
+    expect(row(view, "c-vfd1-bench").dataset.target).toBe("true");
+  });
+
+  it("browsing another component does NOT change the target; the bar says where questions go", () => {
+    const view = renderApp("?nav=equipment");
+    view.click(row(view, "c-plc1-bench"));
+    expect(row(view, "c-plc1-bench").dataset.browsing).toBe("true");
+    expect(target(view)).toBe("VFD1 on GS10 bench");
+    // Exactly one "Ask about" in the tree: on the row being browsed, nowhere else.
+    const treeAsks = Array.from(view.container.querySelectorAll('[role="tree"] .fl-equip__ask')).map((b) => b.textContent);
+    expect(treeAsks).toEqual(["Ask about PLC1"]);
+    const status = must(view.container.querySelector('.fl-qtarget__browsing'), "browsing notice").textContent ?? "";
+    expect(status).toContain("Browsing PLC1 on GS10 bench. Questions still go to VFD1 on GS10 bench.");
+    // A send while browsing still goes to the old target.
+    send(view, "What is the fault code?");
+    expect(log(view)).toContain("send:target=m-gs10-bench/c-vfd1-bench");
+  });
+
+  it("an explicit Ask about moves the target, and the next send carries it", () => {
+    const view = renderApp("?nav=equipment");
+    view.click(row(view, "c-plc1-bench"));
+    view.click(must(view.buttonNamed("Ask about PLC1"), "Ask about PLC1"));
+    expect(target(view)).toBe("PLC1 on GS10 bench");
+    expect(log(view)).toContain("askAbout:m-gs10-bench/c-plc1-bench");
+    expect(view.container.querySelector('.fl-qtarget__browsing')).toBeNull();
+    send(view, "What is the fault code?");
+    expect(log(view)).toContain("send:target=m-gs10-bench/c-plc1-bench");
+  });
+
+  it("expanding a line or a machine never changes the target", () => {
+    const view = renderApp("?nav=equipment");
+    view.click(row(view, "area-garage"));
+    view.click(row(view, "area-garage"));
+    view.click(row(view, "line-2"));
+    view.click(row(view, "m-conveyor-2"));
+    expect(target(view)).toBe("VFD1 on GS10 bench");
+    expect(log(view).some((entry) => entry?.startsWith("askAbout:"))).toBe(false);
+  });
+
+  it("the two VFD1 rows show where they are", () => {
+    const view = renderApp("?nav=equipment");
+    view.click(row(view, "line-2"));
+    view.click(row(view, "m-conveyor-2"));
+    expect(row(view, "c-vfd1-bench").textContent).toContain("Lake Wales plant › Garage › Bench line › GS10 bench › Control panel");
+    expect(row(view, "c-vfd1-line2").textContent).toContain("Lake Wales plant › Garage › Line 2 › Conveyor 2");
+    // Control: a unique tag stays compact.
+    expect(row(view, "c-plc1-bench").querySelector(".fl-equip__place")).toBeNull();
+  });
+
+  it("search bypasses the tree; asking from a result targets that exact VFD1", () => {
+    const view = renderApp("?nav=equipment");
+    const input = must(view.container.querySelector<HTMLInputElement>('input[aria-label="Search equipment"]'), "search");
+    act(() => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "vfd1");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    const results = '[aria-label="Equipment search results"]';
+    expect(view.container.querySelectorAll(`${results} [data-equipment-id]`).length).toBe(2);
+    view.click(row(view, "c-vfd1-line2", results));
+    view.click(must(view.buttonNamed("Ask about VFD1"), "Ask about VFD1"));
+    expect(target(view)).toBe("VFD1 on Conveyor 2");
+  });
+
+  it("a targeted row joins Recent, and Recent rows show their place", () => {
+    const view = renderApp("?nav=equipment");
+    view.click(row(view, "c-plc1-bench"));
+    view.click(must(view.buttonNamed("Ask about PLC1"), "Ask about PLC1"));
+    const recent = row(view, "c-plc1-bench", '[aria-label="Recent equipment"]');
+    expect(recent.textContent).toContain("GS10 bench");
+  });
+
+  it("site, area and line rows offer no Ask about", () => {
+    const view = renderApp("?nav=equipment");
+    view.click(row(view, "line-bench"));
+    expect(Array.from(view.container.querySelectorAll(".fl-equip__ask")).length).toBe(0);
   });
 });
