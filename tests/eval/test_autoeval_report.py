@@ -193,7 +193,18 @@ def test_runner_exception_fires_as_execution_failure():
 
 def test_a_hard_stop_fires_as_hard_stop_not_execution_failure():
     fired, _ = rp.alerts(make_run(runner_error="STOP: total cap. spent=$1 + $1 > $1"), {})
-    assert [(a["key"], a["kind"]) for a in fired] == [("hard_stop:runner", "hard_stop")]
+    assert [(a["key"], a["kind"]) for a in fired] == [("hard_stop:total cap", "hard_stop")]
+
+
+def test_a_different_hard_stop_reason_fires_separately():
+    kill = "STOP: kill sentinel present at /state/STOP"
+    _, st = rp.alerts(make_run(run_id="1", runner_error=kill), {})
+    again, st2 = rp.alerts(make_run(run_id="2", runner_error=kill), st)
+    assert again == []
+    cap, _ = rp.alerts(
+        make_run(run_id="3", runner_error="STOP: total cap. spent=$1 + $1 > $1"), st2
+    )
+    assert [a["key"] for a in cap] == ["hard_stop:total cap"]
 
 
 def test_a_stopped_run_keeps_earlier_alerts_active_so_they_do_not_fire_again():

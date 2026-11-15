@@ -301,6 +301,7 @@ def test_lanes_run_on_first_run_then_only_the_always_lane_when_nothing_changed(w
         "unsupported",
         "citation",
         "technician",
+        "runner",
     }
     assert (world["state"] / "state.json").exists()
     assert _run(world) == 0

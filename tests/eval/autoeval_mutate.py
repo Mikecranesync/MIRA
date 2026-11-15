@@ -199,6 +199,12 @@ MUTATIONS = [
     ),
     (
         "autoeval_report.py",
+        'why = _stop_reason(err) if kind == "hard_stop" else "runner"',
+        'why = "runner"',
+        ["test_a_different_hard_stop_reason_fires_separately"],
+    ),
+    (
+        "autoeval_report.py",
         "active = set(current) | (prev if err else set())",
         "active = set(current)",
         ["test_a_stopped_run_keeps_earlier_alerts_active_so_they_do_not_fire_again"],

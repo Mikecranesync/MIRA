@@ -81,6 +81,12 @@ def test_control_docs_plus_unmapped_still_selects_all_only_because_of_the_code_p
     assert _names(mixed) == ALL
 
 
+def test_a_change_to_the_runner_itself_selects_the_runner_lane_not_every_lane():
+    got = sel.select(["evals/scripts/autoeval_budget.py"], full=False, lanes=LANES)
+    assert _names(got) == {"safety", "runner"} and got.unmapped == ()
+    assert _reason(got, "runner") == "trigger"
+
+
 def test_full_selects_every_lane_with_reason_full():
     s = sel.select([], full=True, lanes=LANES)
     assert _names(s) == ALL

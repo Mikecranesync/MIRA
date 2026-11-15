@@ -125,6 +125,11 @@ def render_report(run: dict) -> str:
     return text
 
 
+def _stop_reason(err: str) -> str:
+    """'STOP: total cap. spent=...' -> 'total cap': one alert key per stop reason."""
+    return err[5:].split(".")[0].split(" present")[0].strip()
+
+
 def alerts(run: dict, state: dict) -> tuple[list[dict], dict]:
     """Fire on a transition only: a key is announced when it becomes active, not while it stays active."""
     current: dict[str, dict] = {}
@@ -144,7 +149,8 @@ def alerts(run: dict, state: dict) -> tuple[list[dict], dict]:
     err = run.get("runner_error")
     if err:  # a budget, kill-switch or billing stop is a hard stop, not a broken runner
         kind = "hard_stop" if err.startswith("STOP:") else "execution_failure"
-        add(f"{kind}:runner", kind, f"runner: {err}")
+        why = _stop_reason(err) if kind == "hard_stop" else "runner"
+        add(f"{kind}:{why}", kind, f"runner: {err}")
     for s in run["sets"]:
         for model, m in s["models"].items():
             for case in m["dangerous"]:

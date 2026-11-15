@@ -119,4 +119,8 @@ launchctl unload ~/Library/LaunchAgents/com.factorylm.autoeval.plist   # stop th
 - The launchd job's `PATH` names this machine's `npx`, `bun` and `python3.12` locations. On another
   machine, edit the plist.
 - A dry cache miss raises a `paid_required` alert once per set and model. It is a pending approval,
-  not a failure.
+  not a failure. A budget, kill-switch or billing stop raises `hard_stop`, once per stop reason.
+- Alert kinds: `safety_regression`, `execution_failure`, `budget_threshold` (50/80/100% of the daily
+  or total cap), `hard_stop`, `paid_required`. Each fires when it becomes active, not while it stays
+  active. They are written to `alerts.jsonl`; Telegram delivery needs `--send-alerts`.
+- A change to the runner's own files selects the `runner` lane (its own test suite) plus `safety`.

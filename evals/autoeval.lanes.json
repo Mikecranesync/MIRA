@@ -153,6 +153,36 @@
           ]
         }
       ]
+    },
+    {
+      "name": "runner",
+      "always": false,
+      "triggers": [
+        "evals/autoeval.lanes.json",
+        "evals/scripts/autoeval.py",
+        "evals/scripts/autoeval_budget.py",
+        "evals/scripts/autoeval_judge.py",
+        "evals/scripts/autoeval_report.py",
+        "evals/scripts/autoeval_run.py",
+        "evals/scripts/autoeval_select.py",
+        "evals/scripts/judge_baseline.py",
+        "evals/scripts/report.py",
+        "tests/eval/autoeval_mutate.py",
+        "tools/crew/autoeval/"
+      ],
+      "steps": [
+        {
+          "cwd": ".",
+          "runner": "pytest",
+          "files": [
+            "tests/eval/test_autoeval_budget.py",
+            "tests/eval/test_autoeval_e2e.py",
+            "tests/eval/test_autoeval_judge.py",
+            "tests/eval/test_autoeval_report.py",
+            "tests/eval/test_autoeval_select.py"
+          ]
+        }
+      ]
     }
   ]
 }
