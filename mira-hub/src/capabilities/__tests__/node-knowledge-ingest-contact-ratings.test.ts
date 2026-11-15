@@ -93,19 +93,22 @@ describe("writePdfChunksForNode writes a contact-ratings table's columns under t
       `${COLUMN_LINE_MARK}24 V DC row: continuous 1 A; no column read for 1.0 A.`,
       `${COLUMN_LINE_MARK}125 V DC row: no column read for 0.22 A.`,
     ]);
-    expect(lines[at + 5]).toBe("Analog Output Specifications");
+    // Section splitting keeps the next table on its own applicability boundary.
+    expect(lines[at + 5]).toBeUndefined();
+    expect(rows.find((r) => r.page === 2 && r.content.startsWith("Analog Output Specifications"))).toBeDefined();
   });
 
-  it("each row's line is written once for the page, and every chunk is stamped extraction version 4", async () => {
+  it("each row's line is written once for the page, and every chunk is stamped extraction version 5", async () => {
     const rows = await write();
     expect(rows.flatMap((r) => r.content.split("\n")).filter((l) => l.startsWith(COLUMN_LINE_MARK))).toHaveLength(4);
-    for (const r of rows) expect(r.metadata.extraction_version).toBe(4);
+    for (const r of rows) expect(r.metadata.extraction_version).toBe(5);
   });
 
-  it("nothing of the page's own text is lost or changed: without the column lines it chunks as before", async () => {
+  it("every positioned source item survives when explicit sections select physical reading order", async () => {
     const rows = await write();
     const stored = rows.filter((r) => r.page === 2).map((r) => r.content).join("\n");
-    for (const line of p19.text.split("\n").map((l: string) => l.trim()).filter(Boolean)) expect(stored).toContain(line);
+    const compact = (s: string) => s.replace(/\s+/g, "");
+    for (const item of p19.items.filter((i) => i.str.trim())) expect(compact(stored)).toContain(compact(item.str));
     expect(rows.filter((r) => r.page === 1).map((r) => r.content)).toEqual(chunkText(PROSE));
   });
 

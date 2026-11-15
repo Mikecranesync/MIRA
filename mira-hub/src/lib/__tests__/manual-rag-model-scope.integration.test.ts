@@ -8,6 +8,37 @@ import { Client, Pool, type PoolClient } from "pg";
 import { retrieveManualChunks, retrieveNodeChunks } from "../manual-rag";
 import { inferEquipmentType } from "../equipment-type";
 
+import fixture from "../../capabilities/__fixtures__/table-rows/micro820-in009-p16-20-scope.json";
+import { COLUMN_LINE_MARK } from "@/capabilities/contact-ratings-table";
+import { excludedTablesRefusalText } from "@/capabilities/manual-applicability";
+
+// #5503 PDF/tenant boundaries for the nested SQL block below; no search rows scripted.
+vi.hoisted(() => {
+  process.env.NODE_EMBED_ON_WRITE = "0";
+  process.env.NOTEBOOK_HYBRID_RETRIEVAL = "0";
+  process.env.NOTEBOOK_RERANK = "0";
+});
+const db = vi.hoisted(() => ({ client: null as PoolClient | null, failLayoutPage: null as number | null, pages: null as typeof fixture.pages | null }));
+vi.mock("unpdf", () => ({
+  getDocumentProxy: vi.fn(async () => ({
+    getPage: async (page: number) => ({
+      getTextContent: async () => {
+        if (db.failLayoutPage === page) throw new Error("simulated page layout read failure");
+        return { items: ((db.pages ?? fixture.pages).find((p) => p.page === page)?.items ?? []).map((i) => ({
+          str: i.str, width: i.w, transform: [i.size, 0, 0, i.size, i.x, i.y],
+        })) };
+      },
+      cleanup: () => true,
+    }),
+  })),
+  extractText: vi.fn(async () => ({ text: Array.from({ length: Math.max(20, ...(db.pages ?? fixture.pages).map((p) => p.page)) }, (_, i) => (db.pages ?? fixture.pages).find((p) => p.page === i + 1)?.text ?? "") })),
+}));
+vi.mock("@/capabilities/pdf-page-label-reader", () => ({ readPageLabelsBounded: vi.fn(async () => null) }));
+vi.mock("@/lib/tenant-context", () => ({
+  withTenantContext: vi.fn(async (_tenant: string, fn: (client: PoolClient) => Promise<unknown>) => fn(db.client!)),
+}));
+
+
 const TENANT = "39700000-0000-4000-8000-000000000001";
 let pool: Pool;
 let client: PoolClient;
@@ -677,6 +708,483 @@ describe("notebook lexical IDF scoring (#4513, NOTEBOOK_LEXICAL_V2)", () => {
     expect(after).toEqual(before);
     expect(before[0]).toBe(2);
   });
+});
+
+// #5503 cases are collected by the existing Beta Gate OEM model-specificity selection.
+// Existing32 bodies above and the moved13 body below are preserved verbatim.
+describe("#5503 model-section applicability: actual upload and retrieval SQL", () => {
+const TENANT = "55030000-0000-4000-8000-000000000001";
+const OTHER_TENANT = "55030000-0000-4000-8000-000000000002";
+const DOCUMENT = "55030000-0000-4000-8000-000000000010";
+const NODE = "55030000-0000-4000-8000-000000000020";
+let pool: Pool;
+let client: PoolClient;
+
+beforeAll(async () => {
+  if (!process.env.TEST_DATABASE_URL || process.env.MIRA_TEST_DB_CONFIRM !== "DISPOSABLE") {
+    throw new Error("A confirmed disposable TEST_DATABASE_URL is required");
+  }
+  pool = new Pool({ connectionString: process.env.TEST_DATABASE_URL, connectionTimeoutMillis: 2000 });
+  client = await pool.connect();
+  db.client = client;
+  await client.query("BEGIN");
+  await client.query(`CREATE TEMP TABLE knowledge_entries (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id text NOT NULL,
+    source_type text, content text NOT NULL,
+    content_tsv tsvector GENERATED ALWAYS AS (to_tsvector('english', content)) STORED,
+    manufacturer text NOT NULL DEFAULT '', model_number text NOT NULL DEFAULT '',
+    source_url text NOT NULL, source_page integer, doc_id uuid, ingest_route text,
+    page_start integer, page_end integer, section_path text,
+    metadata jsonb NOT NULL DEFAULT '{}'::jsonb, verified boolean NOT NULL DEFAULT true,
+    is_private boolean NOT NULL DEFAULT true
+  ) ON COMMIT DROP`);
+  await client.query(`CREATE UNIQUE INDEX f31_temp_chunk_unique ON knowledge_entries
+    (tenant_id, source_url, ((metadata->>'chunk_index')::int))
+    WHERE (metadata->>'chunk_index') IS NOT NULL`);
+  const { writePdfChunksForNode } = await import("@/lib/node-knowledge-ingest");
+  await writePdfChunksForNode({ tenantId: TENANT, uploadId: DOCUMENT, nodeId: NODE, unsPath: null,
+    filename: fixture.source, buffer: Buffer.from("%PDF source-bound fixture proxy") });
+  // Same document/node identifiers on another tenant must not supply either a hit
+  // or the header from which the current tenant's manual applicability is judged.
+  await client.query(`INSERT INTO knowledge_entries
+    (tenant_id, content, source_url, doc_id, ingest_route, page_start, metadata, is_private)
+    VALUES ($1, 'foreignscope sentinel Micro810 relay contact ratings switching time analog output DC input surge current',
+      'node-doc/foreign/manual.pdf', $2, 'v2', 1, $3::jsonb, true)`,
+  [OTHER_TENANT, DOCUMENT, JSON.stringify({ node_id: NODE, filename: fixture.source })]);
+});
+
+afterAll(async () => {
+  if (client) {
+    await client.query("ROLLBACK");
+    client.release();
+  }
+  db.client = null;
+  if (pool) await pool.end();
+});
+
+async function retrieve(model: string, question: string) {
+  const diagnostics: { excludedTables?: Array<{ page: number | null; models: string[]; section?: true; unqualified?: true }> } = {};
+  const chunks = await retrieveNodeChunks(client, TENANT, question, {
+    nodeId: NODE, unsPath: null, docIds: [DOCUMENT], validatedDocScope: true, topK: 100,
+    identity: { manufacturer: "Allen-Bradley", model: "Micro820" }, identityStatus: "user_confirmed",
+    catalogNumber: `2080-LC20-${model}`, diagnostics,
+  });
+  return { chunks, diagnostics, text: chunks.map((c) => c.content).join("\n") };
+}
+
+describe("#5503 actual upload INSERT through raw retrieval SQL", () => {
+  it("the actual writer persists separated sections and #5487 lines with model scope", async () => {
+    const result = await client.query(`SELECT content, page_start, metadata FROM knowledge_entries
+      WHERE tenant_id = $1 AND page_start IN (18, 19)`, [TENANT]);
+    const rows = result.rows.filter((r) => /Relay Output Specifications|Relay Contact Ratings|columns read from the page layout/.test(r.content));
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.some((r) => r.content.includes(COLUMN_LINE_MARK))).toBe(true);
+    for (const row of rows) {
+      expect(row.metadata.table_models).toEqual(expect.arrayContaining(["2080LC2020QWB", "2080LC2020AWB"]));
+      expect(row.metadata.table_scope).toBe("section");
+      expect(row.content).not.toMatch(/Analog Output Specifications|DC Input Specifications|DC Output Specifications/);
+    }
+  });
+  it("QBB receives no relay-only rows or contact-rating columns and SQL reports their source pages", async () => {
+    const contact = await retrieve("20QBB", "relay contact ratings 120 V AC");
+    const output = await retrieve("20QBB", "relay output specifications switching time mechanical life");
+    for (const result of [contact, output]) {
+      expect(result.text).not.toMatch(/Relay Contact Ratings|Relay Output Specifications|Maximum switching time|10,000,000 cycles|columns read from the page layout/);
+    }
+    expect(contact.diagnostics.excludedTables).toEqual(expect.arrayContaining([
+      expect.objectContaining({ page: 19, section: true, models: expect.arrayContaining(["2080LC2020QWB", "2080LC2020AWB"]) }),
+    ]));
+    expect(output.diagnostics.excludedTables).toEqual(expect.arrayContaining([
+      expect.objectContaining({ page: 18, section: true, models: expect.arrayContaining(["2080LC2020QWB", "2080LC2020AWB"]) }),
+    ]));
+  });
+  for (const model of ["20QWB", "20AWB"]) {
+    it(`${model} retains valid relay output and contact-rating evidence through actual SQL`, async () => {
+      const contact = await retrieve(model, "relay contact ratings 120 V AC");
+      const output = await retrieve(model, "relay output specifications switching time mechanical life");
+      expect(contact.text).toContain(`${COLUMN_LINE_MARK}120 V AC row: make 15 A, break 1.5 A, continuous 2 A.`);
+      expect(output.text).toContain("Maximum switching time");
+      expect(output.text).toContain("10,000,000 cycles");
+    });
+  }
+  for (const model of ["20QBB", "20QWB", "20AWB"]) {
+    it(`${model} keeps shared analog-output evidence through actual SQL`, async () => {
+      const result = await retrieve(model, "analog output voltage range");
+      const analog = result.chunks.find((c) => /Analog Output Specifications/.test(c.content));
+      expect(analog?.content).toContain("Output count range");
+      expect(analog?.content).toContain("Channel-to-channel isolation");
+      expect(analog?.content).not.toMatch(/Relay Contact Ratings|columns read from the page layout/);
+    });
+    it(`${model} keeps shared DC-input evidence despite sibling names in a subcolumn`, async () => {
+      const result = await retrieve(model, "DC input specifications voltage category IEC compatibility");
+      const input = result.chunks.find((c) => /DC Input Specifications/.test(c.content));
+      expect(input?.content).toContain("IEC input compatibility");
+      expect(input?.content).not.toMatch(/Relay Output Specifications|Maximum switching time/);
+    });
+  }
+  it("DC-output evidence is available for QBB and excluded for QWB/AWB over SQL", async () => {
+    const own = await retrieve("20QBB", "DC output specifications surge current per point");
+    expect(own.text).toContain("DC Output Specifications");
+    expect(own.text).toContain("Surge current per point");
+    for (const model of ["20QWB", "20AWB"]) {
+      const other = await retrieve(model, "DC output specifications surge current per point");
+      expect(other.text).not.toMatch(/DC Output Specifications|Surge current per point/);
+    }
+  });
+  it("a parser layout failure withholds the mixed page over SQL until readable page20 restores QBB scope", async () => {
+    await client.query("SAVEPOINT f31_layout_failure");
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      await client.query("DELETE FROM knowledge_entries WHERE tenant_id = $1 AND doc_id = $2", [TENANT, DOCUMENT]);
+      const { writePdfChunksForNode } = await import("@/lib/node-knowledge-ingest");
+      db.failLayoutPage = 19;
+      try {
+        await writePdfChunksForNode({ tenantId: TENANT, uploadId: DOCUMENT, nodeId: NODE, unsPath: null,
+          filename: fixture.source, buffer: Buffer.from("%PDF source-bound fixture proxy") });
+      } finally { db.failLayoutPage = null; }
+      const unresolved = await client.query(`SELECT metadata FROM knowledge_entries
+        WHERE tenant_id = $1 AND doc_id = $2 AND page_start = 19`, [TENANT, DOCUMENT]);
+      expect(unresolved.rows.length).toBeGreaterThan(0);
+      expect(unresolved.rows.every((r) => r.metadata.table_unqualified === true && r.metadata.table_scope === "unresolved")).toBe(true);
+      for (const model of ["20QBB", "20QWB", "20AWB"]) {
+        for (const question of ["relay contact ratings 120 V AC", "DC output specifications surge current per point"]) {
+          const result = await retrieve(model, question);
+          expect(result.chunks.some((c) => c.sourcePage === 19)).toBe(false);
+          const failedPage = (result.diagnostics.excludedTables ?? []).filter((e) => e.page === 19);
+          expect(failedPage).toEqual(expect.arrayContaining([
+            expect.objectContaining({ section: true, unqualified: true }),
+          ]));
+          const refusal = excludedTablesRefusalText(`2080-LC20-${model}`, failedPage);
+          expect(refusal).toMatch(/could not read which models/i);
+          expect(refusal).toContain("page 19");
+          expect(refusal).not.toMatch(/another model.s column|read the .* column|15 A|interposing|safe to/i);
+        }
+      }
+      const recovered = await retrieve("20QBB", "DC output specifications resistive load");
+      expect(recovered.chunks.some((c) => c.sourcePage === 20 && c.content.includes("DC Output Specifications"))).toBe(true);
+    } finally {
+      db.failLayoutPage = null;
+      warning.mockRestore();
+      await client.query("ROLLBACK TO SAVEPOINT f31_layout_failure");
+      await client.query("RELEASE SAVEPOINT f31_layout_failure");
+    }
+  });
+  it("a foreign tenant cannot contribute matching passages or its earlier document heading", async () => {
+    for (const model of ["20QBB", "20QWB", "20AWB"]) {
+      const result = await retrieve(model, "foreignscope sentinel analog output relay contact ratings");
+      expect(result.text).not.toContain("foreignscope sentinel");
+      expect(result.chunks.length).toBeGreaterThan(0);
+    }
+  });
+});
+
+  // Review F1/F2: mutate only the PDF boundary, then execute the production writer and
+  // real storage/retrieval. Synthetic pages deliberately share the source fixture's models.
+  async function withPages(pages: typeof fixture.pages, fn: () => Promise<void>) {
+    await client.query("SAVEPOINT review_scope");
+    try {
+      await client.query("DELETE FROM knowledge_entries WHERE tenant_id = $1 AND doc_id = $2", [TENANT, DOCUMENT]);
+      db.pages = pages;
+      const { writePdfChunksForNode } = await import("@/lib/node-knowledge-ingest");
+      await writePdfChunksForNode({ tenantId: TENANT, uploadId: DOCUMENT, nodeId: NODE, unsPath: null,
+        filename: fixture.source, buffer: Buffer.from("%PDF synthetic review regression") });
+      await fn();
+    } finally {
+      db.pages = null;
+      await client.query("ROLLBACK TO SAVEPOINT review_scope");
+      await client.query("RELEASE SAVEPOINT review_scope");
+    }
+  }
+  const item = (str: string, x: number, y: number, size = 8) => ({ str, x, y, size, w: str.length * size * 0.4 });
+  it.each([10, 14])("F1 a %s-point running header never releases QWB scope in storage/retrieval", async (size) => {
+    const pages = structuredClone(fixture.pages);
+    const prior = pages.find((p) => p.page === 18)!;
+    prior.items = [item("Relay Output Specifications for 2080-LC20-20QWB(R)", 100, 700, 10),
+      item("Attribute Value", 100, 680), item("Mechanical life 100000 cycles", 100, 660)];
+    prior.text = prior.items.map((i) => i.str).join("\n");
+    const next = pages.find((p) => p.page === 19)!;
+    next.items = [item("Micro820 Programmable Controllers", 100, 740, size),
+      item("zzrunningheader Maximum switching time 10 ms", 100, 680)];
+    next.text = next.items.map((i) => i.str).join("\n");
+    await withPages(pages, async () => {
+      const stored = await client.query("SELECT metadata FROM knowledge_entries WHERE tenant_id=$1 AND page_start=19", [TENANT]);
+      expect(stored.rows.length).toBeGreaterThan(0);
+      expect(stored.rows.every((r) => r.metadata.table_scope === "unresolved" && r.metadata.table_unqualified)).toBe(true);
+      for (const model of ["20QBB", "20QWB", "20AWB"]) {
+        const result = await retrieve(model, "zzrunningheader switching time");
+        expect(result.text).not.toContain("zzrunningheader");
+        expect(result.diagnostics.excludedTables).toEqual(expect.arrayContaining([
+          expect.objectContaining({ page: 19, unqualified: true, section: true }),
+        ]));
+      }
+      expect((await retrieve("20QBB", "DC output specifications controller current")).text).toContain("Controller current, max total");
+    });
+  });
+  it.each([[false, false], [false, true], [true, false], [true, true]])("F2 genuine two-model columns obey their physical caption (compatible=%s, output inventory=%s)", async (compatible, inventory) => {
+    const caption = compatible ? "Output Specifications for 2080-LC20-20QWB(R), 2080-LC20-20AWB(R)"
+      : "Output Specifications for 2080-LC20-20QBB(R)";
+    const items = [item(caption, 100, 700, 10), item("Attribute", 100, 680),
+      item("2080-LC20-20QWB(R)", 280, 680), item("2080-LC20-20AWB(R)", 420, 680),
+      item("zzcaptioncurrent Load current max", 100, 660), item("2.0 A", 280, 660), item("1.5 A", 420, 660),
+      item("Surge current max", 100, 646), item("4.0 A", 280, 646), item("3.0 A", 420, 646)];
+    const cover = "Micro820 20-Point Programmable Controllers\n2080-LC20-20QBB, 2080-LC20-20QWB, 2080-LC20-20AWB";
+    const pages = [...(inventory ? structuredClone(fixture.pages) : [{ page: 1, items: [item(cover, 100, 700)], text: cover }]),
+      { page: 21, items, text: items.map((i) => i.str).join("\n") }];
+    await withPages(pages, async () => {
+      const stored = await client.query("SELECT content, metadata FROM knowledge_entries WHERE tenant_id=$1 AND page_start=21", [TENANT]);
+      const columns = stored.rows.filter((r) => r.content.includes(": zzcaptioncurrent"));
+      expect(columns).toHaveLength(2); // prove pageWithTables actually extracted columns
+      expect(columns.every((r) => r.metadata.table_models.length === 1)).toBe(true);
+      for (const row of columns) {
+        expect(row.metadata.table_unqualified ?? false).toBe(!compatible);
+        expect(row.metadata.table_scope ?? null).toBe(compatible ? null : "unresolved");
+      }
+      for (const model of ["20QBB", "20QWB", "20AWB"]) {
+        const result = await retrieve(model, "zzcaptioncurrent load current");
+        expect(result.chunks.some((c) => c.sourcePage === 21 && c.content.includes(": zzcaptioncurrent"))).toBe(compatible && model !== "20QBB");
+      }
+    });
+  });
+
+  it.each([
+    "Output Specifications for 2080-LC20-20QWB only (not 2080-LC20-20QBB)",
+    "Output Specifications not for 2080-LC20-20QBB",
+    "Output Specifications for 2080-LC20-20QWB",
+  ])("F4 caption semantics survive long-window storage and real retrieval: %s", async (caption) => {
+    const items = [item(caption, 100, 720, 10), item("Attribute Value", 100, 700),
+      item("zznegativecaption Load current max 2 A. ".repeat(100), 100, 680)];
+    await withPages([...structuredClone(fixture.pages), { page: 21, items, text: items.map((i) => i.str).join("\n") }], async () => {
+      const stored = await client.query("SELECT content, metadata FROM knowledge_entries WHERE tenant_id=$1 AND page_start=21", [TENANT]);
+      expect(stored.rows.length).toBeGreaterThan(2);
+      expect(stored.rows.some((r) => !r.content.includes("2080-LC20"))).toBe(true);
+      const positive = !caption.includes("not");
+      expect(stored.rows.every((r) => r.metadata.table_scope === (positive ? "section" : "unresolved"))).toBe(true);
+      for (const model of ["20QBB", "20QWB", "20AWB"]) {
+        expect((await retrieve(model, "zznegativecaption load current")).text.includes("zznegativecaption")).toBe(positive && model === "20QWB");
+      }
+    });
+  });
+
+  it.each(["conflict", "conflict-small-header", "compatible", "new-section", "before-new-section"])("F5 real stored extracted columns retain document boundaries: %s", async (kind) => {
+    const compatible = kind === "compatible";
+    const prior = [item(compatible ? "Output Specifications for 2080-LC20-20QWB, 2080-LC20-20AWB" : "Output Specifications for 2080-LC20-20QBB", 100, 720, 10),
+      item("Attribute Value", 100, 700), item("Controller current 1 A", 100, 680)];
+    const items = [item("Micro820 Programmable Controllers", 100, 760, compatible || kind === "conflict-small-header" ? 9 : 12),
+      ...(kind === "new-section" ? [item("Output Specifications for 2080-LC20-20QWB, 2080-LC20-20AWB", 100, 710, 10)] : []),
+      item("Attribute", 100, 680), item("2080-LC20-20QWB(R)", 280, 680), item("2080-LC20-20AWB(R)", 420, 680),
+      item("zzcontinuation Load current max", 100, 660), item("2.0 A", 280, 660), item("1.5 A", 420, 660),
+      item("Switching time max", 100, 646), item("10 ms", 280, 646), item("8 ms", 420, 646),
+      ...(kind === "before-new-section" ? [item("Input Specifications for 2080-LC20-20QWB, 2080-LC20-20AWB", 100, 600, 10), item("Attribute Value", 100, 580), item("Input current 7 A", 100, 560)] : []),
+    ];
+    await withPages([...structuredClone(fixture.pages),
+      { page: 21, items: prior, text: prior.map((i) => i.str).join("\n") },
+      { page: 22, items, text: items.map((i) => i.str).join("\n") }], async () => {
+      const stored = await client.query("SELECT content, metadata FROM knowledge_entries WHERE tenant_id=$1 AND page_start=22", [TENANT]);
+      const columns = stored.rows.filter((r) => r.content.includes(": zzcontinuation"));
+      expect(columns).toHaveLength(2); // genuine pageWithTables extraction followed by production INSERTs
+      expect(columns.every((r) => r.metadata.table_models.length === 1)).toBe(true);
+      const allowed = compatible || kind === "new-section";
+      expect(columns.every((r) => r.metadata.table_scope === "unresolved" && r.metadata.table_unqualified)).toBe(!allowed);
+      for (const model of ["20QBB", "20QWB", "20AWB"]) {
+        const result = await retrieve(model, "zzcontinuation load current");
+        expect(result.text.includes("zzcontinuation")).toBe(allowed && model !== "20QBB");
+      }
+    });
+  });
+
+  it.each(["not", "excluding", "affirmative"])("F6 direct negative captions survive long-window and headerless-page real storage: %s", async (qualifier) => {
+    const title = `Output Specifications 2080-LC20-20QWB only${qualifier === "affirmative" ? "" : ` (${qualifier} 2080-LC20-20QBB)`}`;
+    const cover = "Micro820 Programmable Controllers\n2080-LC20-20QBB, 2080-LC20-20QWB, 2080-LC20-20AWB";
+    const body = "zzdirectnegative Point current max 9 A. ".repeat(100);
+    const continuation = "zzdirectcontinuation Point surge max 11 A. ".repeat(100);
+    const items = [item(title, 100, 740, 10), item("Attribute Value", 100, 720), item(body, 100, 700)];
+    await withPages([{ page: 1, items: [item(cover, 100, 760, 12)], text: cover },
+      { page: 2, items, text: items.map((i) => i.str).join("\n") },
+      { page: 3, items: [item(continuation, 100, 700)], text: continuation }], async () => {
+      for (const model of ["20QBB", "20QWB", "20AWB"]) {
+        const result = await retrieve(model, "zzdirectnegative zzdirectcontinuation current");
+        expect(result.text.includes("zzdirect")).toBe(qualifier === "affirmative" && model === "20QWB");
+        if (qualifier !== "affirmative") expect(result.diagnostics.excludedTables).toEqual(expect.arrayContaining([
+          expect.objectContaining({ page: 2, section: true, unqualified: true }),
+          expect.objectContaining({ page: 3, section: true, unqualified: true }),
+        ]));
+      }
+    });
+  });
+
+  it.each(["20QBB", "20QWB", "non-table", "non-table-large-body", "non-table-smaller", "non-table-equal", "unnamed-smaller", "unnamed-equal", "unnamed-larger", "uncaptioned-smaller", "uncaptioned-larger", "uncaptioned-model", "non-table-tall-label"])("F7 real extracted columns cannot swallow adjacent %s electrical values", async (nextModel) => {
+    const items = [item("Output Specifications for 2080-LC20-20QWB, 2080-LC20-20AWB", 100, 740, nextModel.endsWith("smaller") || nextModel.endsWith("equal") ? 12 : 10),
+      item("Attribute", 100, 720), item("2080-LC20-20QWB(R)", 280, 720), item("2080-LC20-20AWB(R)", 420, 720),
+      item("zzoriginalvalue Load current max", 100, 706), item("2.0 A", 280, 706), item("1.5 A", 420, 706),
+      item("Switching time max", 100, 692), item("10 ms", 280, 692), item("8 ms", 420, 692),
+      item((nextModel.startsWith("unnamed") || (nextModel.startsWith("uncaptioned") && nextModel !== "uncaptioned-model")) ? "DC Output Data" : (nextModel.startsWith("non-table") || nextModel === "uncaptioned-model") ? "DC Output Data for 2080-LC20-20QBB" : `Output Specifications for 2080-LC20-${nextModel}`, 100, 676, nextModel.endsWith("smaller") ? 10 : nextModel.startsWith("non-table") || (nextModel.startsWith("unnamed") || nextModel.startsWith("uncaptioned")) ? 12 : 10),
+      item("Attribute", 100, 662), item("Value", 280, 662),
+      item("zzadjacentvalue Point current max", 100, 648, nextModel === "non-table-large-body" ? 12 : 8), item("9 A", 280, 648, nextModel === "non-table-large-body" ? 12 : 8),
+      item("Point surge max", 100, 634), item("11 A", 280, 634)];
+    if (nextModel.startsWith("uncaptioned")) items.shift();
+    if (nextModel === "non-table-tall-label") {
+      for (const cell of items.filter((i) => i.y === 720)) cell.size = 12;
+      items.find((i) => i.y === 740)!.size = 14;
+      items.find((i) => i.y === 706)!.size = 14;
+      items.find((i) => i.y === 706)!.str = "zzoriginalvalue Current";
+      items.find((i) => i.y === 676)!.size = 10;
+      for (const cell of items) cell.w = cell.str.length * cell.size * 0.4;
+    }
+    const cover = "Micro820 Programmable Controllers\n2080-LC20-20QBB, 2080-LC20-20QWB, 2080-LC20-20AWB";
+    await withPages([{ page: 1, items: [item(cover, 100, 760, 12)], text: cover },
+      { page: 2, items, text: items.map((i) => i.str).join("\n") },
+      { page: 3, items: [item("zzboundarycontinuation Point current max 9 A", 100, 720)], text: "zzboundarycontinuation Point current max 9 A" }], async () => {
+      for (const model of ["20QWB", "20AWB", "20QBB"]) {
+        const result = await retrieve(model, "zzadjacentvalue Point current max");
+        expect(result.text.includes("zzadjacentvalue")).toBe(model === nextModel);
+        expect((await retrieve(model, "zzboundarycontinuation Point current max")).text.includes("zzboundarycontinuation")).toBe(model === nextModel);
+      }
+      for (const [model, value] of [["20QWB", "2.0 A"], ["20AWB", "1.5 A"]]) {
+        const result = await retrieve(model, "zzoriginalvalue Load current max");
+        expect(result.text).toContain(value);
+        expect(result.chunks.filter((c) => c.content.includes(": zzoriginalvalue")).every((c) => !c.content.includes("zzadjacentvalue"))).toBe(true);
+      }
+    });
+  });
+
+  it.each(["named", "unnamed", "next-page", "named-no-header", "unnamed-no-header", "next-page-no-header", "named-no-header-tall-header", "named-no-header-tall-label", "named-no-header-close", "named-no-header-unicode", "named-no-header-long", "named-no-header-body-note", "named-no-header-heading-note", "named-no-header-negative"])("F10 real single-model upload rejects smaller %s sibling headings and headerless continuation", async (kind) => {
+    const items = [item("Output Specifications for 2080-LC20-20QWB", 100, 740, 12),
+      item("Attribute Value", 100, 720), item("zzf10original Load current max 2 A", 100, 706),
+      item(kind.startsWith("named") ? "DC Output Data for 2080-LC20-20QBB" : "DC Output Data", 100, 676, 10),
+      item("Attribute Value", 100, 662), item("zzf10adjacent Point current max 9 A", 100, 648),
+      item("zzf10surge Point surge max 11 A", 100, 634)];
+    const cover = "Micro820 Programmable Controllers\n2080-LC20-20QBB, 2080-LC20-20QWB, 2080-LC20-20AWB";
+    if (kind.endsWith("tall-header") || kind.endsWith("tall-label")) { items[0].size = 16; items[1].size = 12; }
+    if (kind.endsWith("tall-label")) items.splice(2, 1, item("zzf10original Load current max",100,706,14),item("2 A",320,706));
+    if (kind.includes("no-header")) items.splice(items.findIndex((i) => i.y === 662), 1);
+    if (kind.endsWith("close")) for (const i of items) {
+      if (i.y === 676) i.y = 692; else if (i.y === 648) i.y = 678; else if (i.y === 634) i.y = 664;
+    }
+    if (kind.endsWith("body-note")) {
+      items[0].size=16;items[1].size=12;
+      items.splice(2,1,item("zzf10original Load current max",100,706,14),item("2 A",320,706),item("(1)",330,706,4));
+    }
+    if (kind.endsWith("heading-note")) {
+      const title=items.find((i)=>i.str.startsWith("DC Output Data"))!;
+      items.push(item("(1)",title.x+title.w+2,title.y,4));
+    }
+    if (kind.endsWith("negative")) items.find((i)=>i.str.startsWith("DC Output Data"))!.str="DC Output Data (not for 2080-LC20-20QWB)";
+    if (kind.endsWith("unicode")) items.find((i) => i.str.startsWith("DC Output Data"))!.str = items.find((i) => i.str.startsWith("DC Output Data"))!.str.replaceAll("-", "\u2011");
+    if (kind.endsWith("long")) {
+      items.find((i) => i.y === 634)!.y = 320;
+      for (let n=0;n<20;n++) items.push(item("Additional electrical operating conditions and parameter context without a new model assertion.",100,620-n*14));
+    }
+    const pages = [{ page: 1, items: [item(cover, 100, 760, 12)], text: cover }];
+    for (const body of kind.startsWith("next-page") ? [items.slice(0, 3), items.slice(3)] : [items]) {
+      pages.push({ page: pages.length + 1, items: body, text: body.map((i) => i.str).join("\n") });
+    }
+    pages.push({ page: pages.length + 1, items: [item("zzf10continued Point current max 9 A", 100, 720)], text: "zzf10continued Point current max 9 A" });
+    await withPages(pages, async () => {
+      for (const model of ["20QWB", "20AWB", "20QBB"]) {
+        for (const token of ["zzf10adjacent", "zzf10surge", "zzf10continued"]) {
+          expect((await retrieve(model, `${token} Point current max`)).text).not.toContain(token);
+        }
+      }
+      expect((await retrieve("20QWB", "zzf10original Load current max")).text).toContain("2 A");
+      expect((await retrieve("20QBB", "zzf10original Load current max")).text).not.toContain("zzf10original");
+      const stored = await client.query("SELECT content,metadata FROM knowledge_entries WHERE tenant_id = $1 AND doc_id = $2 AND is_private = true", [TENANT,DOCUMENT]);
+      for (const token of ["zzf10adjacent", "zzf10surge", "zzf10continued"]) {
+        const rows = stored.rows.filter((r) => r.content.includes(token));
+        expect(rows.length).toBeGreaterThan(0);
+        expect(rows.every((r) => r.metadata.table_scope === "unresolved")).toBe(true);
+      }
+      expect(stored.rows.some((r) => r.content.includes("zzf10original") && r.metadata.table_scope === "section")).toBe(true);
+    });
+  });
+
+  it.each(["catalog", "parameter", "parameter-explicit"])("F7 real SQL preserves interrupted %s column ownership without creating an equipment domain", async (kind) => {
+    const items = [item("Attribute", 100, 720), item(kind === "catalog" ? "2080-LC20-20QWB" : "P01.20", 280, 720), item(kind === "catalog" ? "2080-LC20-20AWB" : "P01.21", 420, 720),
+      item("zzoriginalsingle Load current max", 100, 706), item("2 A", 280, 706), item("1 A", 420, 706),
+      item("DC Output Data", 100, 690, 10), item("Attribute", 100, 676), item("Value", 280, 676), item("zzuncaptioned Point current max", 100, 662), item("9 A", 280, 662)];
+    const generic = [item(kind === "parameter-explicit" ? "DC Output Specifications for 2080-LC20-20QBB" : "General Specifications", 100, 720, 12), item("Attribute Value", 100, 700), item("zzuncaptioned Point surge max 11 A", 100, 686)];
+    const cover = "Micro820 Programmable Controllers\n2080-LC20-20QBB, 2080-LC20-20QWB, 2080-LC20-20AWB";
+    await withPages([{ page: 1, items: [item(cover, 100, 760, 12)], text: cover },
+      { page: 2, items, text: [...items].reverse().map((i) => i.str).join("\n") },
+      { page: 3, items: generic, text: generic.map((i) => i.str).join("\n") },
+      { page: 4, text: "zzuncaptioned Point current max 12 A", items: [item("zzuncaptioned Point current max 12 A", 100, 720)] }], async () => {
+      const result = await retrieve("20QWB", "zzuncaptioned Point current max");
+      if (kind === "catalog") expect(result.text).not.toContain("zzuncaptioned");
+      else if (kind === "parameter") for (const value of ["9 A", "11 A", "12 A"]) expect(result.text).toContain(value);
+      else {
+        expect(result.text).toContain("9 A");
+        expect(result.text).not.toContain("11 A");
+        expect(result.text).not.toContain("12 A");
+        const own = await retrieve("20QBB", "zzuncaptioned Point current max");
+        expect(own.text).toContain("11 A");
+        expect(own.text).toContain("12 A");
+      }
+    });
+  });
+
+  it("duplicate catalog columns retain both values in storage and admit neither as a qualified own-model value", async () => {
+    const items = [item("Attribute", 100, 720), item("2080-LC20-20QWB", 280, 720), item("2080-LC20-20QWB", 420, 720),
+      item("zzduplicate Connection", 100, 706), item("internally", 280, 706), item("externally", 420, 706),
+      item("Inputs per Module", 100, 692), item("4", 280, 692), item("8", 420, 692)];
+    const cover = "Micro820 Programmable Controllers\n2080-LC20-20QBB, 2080-LC20-20QWB, 2080-LC20-20AWB";
+    await withPages([{ page: 1, items: [item(cover, 100, 760, 12)], text: cover },
+      { page: 2, items, text: items.map((i) => i.str).join("\n") }], async () => {
+      const rows = await client.query("SELECT content,metadata FROM knowledge_entries WHERE tenant_id=$1 AND doc_id=$2 AND page_start=2 AND is_private = true", [TENANT,DOCUMENT]);
+      const text = rows.rows.map((r) => r.content).join("\n");
+      expect(text).toContain("internally");
+      expect(text).toContain("externally");
+      expect(rows.rows.filter((r) => r.content.includes("zzduplicate")).every((r) => r.metadata.table_unqualified === true)).toBe(true);
+      expect((await retrieve("20QWB", "zzduplicate Connection")).text).not.toContain("zzduplicate");
+    });
+  });
+
+  it.each(["independent", "independent-footnote", "inherited-conflict", "inherited-compatible"])("F8 real storage keeps readable headingless columns with %s scope", async (kind) => {
+    const cover = "Micro820 Programmable Controllers\n2080-LC20-20QBB, 2080-LC20-20QWB, 2080-LC20-20AWB";
+    const caption = kind === "inherited-compatible" ? "Output Specifications for 2080-LC20-20QWB, 2080-LC20-20AWB" : "Output Specifications for 2080-LC20-20QBB";
+    const prior = [item(caption, 100, 740, 10), item("Attribute Value", 100, 720), item("Controller current max 1 A", 100, 700)];
+    const items = [item("Attribute", 100, 720), item("2080-LC20-20QWB(R)", 280, 720), item("2080-LC20-20AWB(R)", 420, 720),
+      item("zzheadingless Load current max", 100, 700), item("2 A", 280, 700), item("1 A", 420, 700),
+      item("Switching time max", 100, 686), item("10 ms", 280, 686), item("8 ms", 420, 686)];
+    if (kind === "independent-footnote") {
+      items.push(item("1", 100, 660, 4.9));
+      for (const row of items) if (row.str.includes("Load current max") || row.str === "Switching time max") row.size = 10;
+    }
+    await withPages([{ page: 1, items: [item(cover, 100, 760, 12)], text: cover },
+      ...(kind.startsWith("independent") ? [] : [{ page: 2, items: prior, text: prior.map((i) => i.str).join("\n") }]),
+      { page: kind.startsWith("independent") ? 2 : 3, items, text: items.map((i) => i.str).join("\n") }], async () => {
+      for (const [model, value] of [["20QWB", "2 A"], ["20AWB", "1 A"]]) {
+        const result = await retrieve(model, "zzheadingless Load current max");
+        expect(result.text.includes("zzheadingless")).toBe(kind !== "inherited-conflict");
+        if (kind !== "inherited-conflict") {
+          expect(result.text).toContain(value);
+          expect(result.text).not.toContain(model === "20QWB" ? "20AWB(R):" : "20QWB(R):");
+        }
+      }
+      expect((await retrieve("20QBB", "zzheadingless current")).text).not.toContain("zzheadingless");
+    });
+  });
+
+  it("a shared header marker cannot admit sibling-only prose over actual SQL", async () => {
+    await client.query("SAVEPOINT f31_shared_prose");
+    try {
+      await client.query(`INSERT INTO knowledge_entries
+        (tenant_id, content, source_url, doc_id, ingest_route, page_start, metadata, is_private)
+        VALUES ($1, '2080-LC20-20QWB(R) only: zzscopevariantonly relay evidence.',
+          'node-doc/f31-prose/manual.pdf', $2, 'v2', 30, $3::jsonb, true)`,
+      [TENANT, DOCUMENT, JSON.stringify({ node_id: NODE, filename: fixture.source,
+        table_scope: "shared", table_header: "Attribute Common inputs Isolated inputs 2080-LC20-20QWB(R)" })]);
+      const own = await retrieve("20QWB", "zzscopevariantonly");
+      expect(own.text).toContain("zzscopevariantonly");
+      const sibling = await retrieve("20QBB", "zzscopevariantonly");
+      expect(sibling.text).not.toContain("zzscopevariantonly");
+      expect(sibling.diagnostics.excludedTables).toEqual(expect.arrayContaining([
+        expect.objectContaining({ page: 30, models: ["2080LC2020QWB"] }),
+      ]));
+    } finally {
+      await client.query("ROLLBACK TO SAVEPOINT f31_shared_prose");
+      await client.query("RELEASE SAVEPOINT f31_shared_prose");
+    }
+  });
+
 });
 
 

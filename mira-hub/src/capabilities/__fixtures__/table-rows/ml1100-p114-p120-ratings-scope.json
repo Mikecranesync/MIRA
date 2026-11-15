@@ -1,0 +1,6372 @@
+{
+  "source": "1763-UM001G-EN-P (ml1100.pdf)",
+  "sha256": "7df1c906a14dc2b9603ea9c3f56936172ec432fd09a3f19508d20001d982d5c9",
+  "capture": "Unmodified unpdf extractText mergePages:false and pageLayoutItems geometry; selected actual pages 111–114 and 120.",
+  "pages": [
+    {
+      "page": 111,
+      "text": "Rockwell Automation Publication 1763-UM001G-EN-P - May 2024 111\nAppendix A\nSpecifications\nMicroLogix 1100 Controller\nSpecifications\nGeneral Specifications\nDescription 1763-L16AWA 1763-L16BWA 1763-L16BBB 1763-L16DWD\nDimensions, HxWxD 90 x 110 x 87 mm\n3.5 x 4.33 x 3.43 in.\nHeight is 104 mm (4.09 in.) with DIN latch open\nShipping weight 0.9 kg (2.0 lbs)\nNumber of I/O 12 inputs (10 digital and 2 analog) and 6 outputs\nPower supply voltage 100…240V AC (-15%, +10%)\n@ 47…63 Hz 24V DC (-15%, +10%)\nClass 2 SELV 12…24V DC (-15%, +10%)\nClass 2 SELV\nHeat dissipation See System Loading and Heat Dissipation on page 165\nPower supply inrush current, max 120V AC: 25 A for 8 ms\n240V AC: 40 A for 4 ms 24V DC: 15 A for 20 ms\nMaximum power consumption 46VA 52VA 35 W\nSee Figure 82\n24V DC sensor power None 250 mA @ 24V DC\nAC Ripple < 500 mV peak-to-peak\n400 μF max None\nInput circuit type\nDigital: 120V AC\nAnalog: 0…10V DC\nDigital: 24V DC sinking/sourcing\n(standard and high-speed)\nAnalog: 0…10V DC\nDigital: 24V DC sinking/sourcing\n(standard and high-speed)\nAnalog: 0…10V DC\nOutput circuit type Relay Relay Relay/FET Relay\nPilot duty rating Ordinary location – B300, R150\nHazardous location – C300, R150\nTemperature, operating -20…+65 °C (-4…+149 °F) ambient\nTemperature, storage -40…+85 °C (-40…+185 °F) ambient\nRelative humidity 5%…95% noncondensing\nVibration Operating: 10…500 Hz, 5 g, 0.015 in. max peak-to-peak, 2 hours each axis\nRelay Operation: 1.5 g\nShock, operating 30 g; 3 pulses each direction, each axis\nRelay Operation: 10 g\nShock, nonoperating 50 g panel mounted (40 g DIN Rail mounted); 3 pulses each direction, each axis\nTerminal screw torque 0.56 N•m (5.0 lb•in) rated\nAgency certification\nUL Listed Industrial Control Equipment for use in Class 1 Division 2, Hazardous Locations, Groups A, B, C, D\ncUL Listed Industrial Control Equipment for use in Canada\nCE marked for all applicable directives\nRCM marked for all applicable acts\nESD immunity EN 61000-4-2\n4 kV contact, 8 kV air, 4 kV indirect\nRadiated RF immunity EN 61000-4-3\n10V/m, 26…1000 MHz (alternatively, 80…1000 MHz),\n80% amplitude modulation, +900 MHz keyed carrier\nFast transient immunity EN 61000-4-4\n2 kV, 5 kHz\nCommunications cables such as Ethernet, RS-232, and RS-485: 1 kV, 5 kHz",
+      "items": [
+        {
+          "str": "Rockwell Automation Publication 1763-UM001G-EN-P - May 2024",
+          "x": 195.72,
+          "y": 28.98,
+          "w": 193.21649999999994,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 388.9364999999999,
+          "y": 28.98,
+          "w": 18.938200000000013,
+          "size": 9
+        },
+        {
+          "str": "111",
+          "x": 559.3803,
+          "y": 28.98,
+          "w": 7.656300000000096,
+          "size": 9
+        },
+        {
+          "str": "",
+          "x": 490.98,
+          "y": 727.02,
+          "w": 0,
+          "size": 16
+        },
+        {
+          "str": "Appendix A",
+          "x": 490.98,
+          "y": 727.02,
+          "w": 74.21989999999991,
+          "size": 16
+        },
+        {
+          "str": "Specifications",
+          "x": 216,
+          "y": 670.8,
+          "w": 103.70219400000003,
+          "size": 20
+        },
+        {
+          "str": "MicroLogix 1100 Controller",
+          "x": 45,
+          "y": 640.44,
+          "w": 149.9473920000001,
+          "size": 16
+        },
+        {
+          "str": "Specifications",
+          "x": 45,
+          "y": 623.4601560000001,
+          "w": 82.94092799999997,
+          "size": 16
+        },
+        {
+          "str": "",
+          "x": 45,
+          "y": 604.8,
+          "w": 0,
+          "size": 11
+        },
+        {
+          "str": "General Specifications",
+          "x": 45,
+          "y": 604.8,
+          "w": 87.32943000000002,
+          "size": 11
+        },
+        {
+          "str": "",
+          "x": 46.98,
+          "y": 586.08,
+          "w": 0,
+          "size": 9
+        },
+        {
+          "str": "Description",
+          "x": 46.98,
+          "y": 586.08,
+          "w": 37.262699999999995,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 84.24269999999999,
+          "y": 586.08,
+          "w": 8.053,
+          "size": 9
+        },
+        {
+          "str": "1763-L16AWA",
+          "x": 156.7197,
+          "y": 586.08,
+          "w": 40.856400000000015,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 197.57610000000005,
+          "y": 586.08,
+          "w": 6.611299999999996,
+          "size": 9
+        },
+        {
+          "str": "1763-L16BWA",
+          "x": 257.0778,
+          "y": 586.08,
+          "w": 41.218200000000124,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 298.2960000000001,
+          "y": 586.08,
+          "w": 8.124699999999999,
+          "size": 9
+        },
+        {
+          "str": "1763-L16BBB",
+          "x": 371.4183000000001,
+          "y": 586.08,
+          "w": 40.05270000000012,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 411.4710000000002,
+          "y": 586.08,
+          "w": 7.009999999999997,
+          "size": 9
+        },
+        {
+          "str": "1763-L16DWD",
+          "x": 474.56100000000015,
+          "y": 586.08,
+          "w": 41.88420000000012,
+          "size": 9
+        },
+        {
+          "str": "",
+          "x": 46.98,
+          "y": 564.12,
+          "w": 0,
+          "size": 9
+        },
+        {
+          "str": "Dimensions, HxWxD",
+          "x": 46.98,
+          "y": 564.12,
+          "w": 59.569200000000045,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 106.54920000000003,
+          "y": 564.12,
+          "w": 5.574499999999996,
+          "size": 9
+        },
+        {
+          "str": "90 x 110 x 87 mm",
+          "x": 156.7197,
+          "y": 573.12,
+          "w": 50.491800000000055,
+          "size": 9
+        },
+        {
+          "str": "3.5 x 4.33 x 3.43 in.",
+          "x": 156.7197,
+          "y": 564.12,
+          "w": 56.32680000000008,
+          "size": 9
+        },
+        {
+          "str": "Height is 104 mm (4.09 in.) with DIN latch open",
+          "x": 156.72,
+          "y": 555.12,
+          "w": 129.5831749199997,
+          "size": 9
+        },
+        {
+          "str": "Shipping weight",
+          "x": 46.98,
+          "y": 542.1,
+          "w": 48.59099999999998,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 95.57099999999996,
+          "y": 542.1,
+          "w": 6.786300000000001,
+          "size": 9
+        },
+        {
+          "str": "0.9 kg (2.0 lbs)",
+          "x": 156.64769999999996,
+          "y": 542.1,
+          "w": 43.83450000000012,
+          "size": 9
+        },
+        {
+          "str": "Number of I/O",
+          "x": 46.98,
+          "y": 529.0797,
+          "w": 42.7743,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 89.75429999999999,
+          "y": 529.0797,
+          "w": 7.443999999999999,
+          "size": 9
+        },
+        {
+          "str": "12 inputs (10 digital and 2 analog) and 6 outputs",
+          "x": 156.75029999999998,
+          "y": 529.0797,
+          "w": 144.0629999999997,
+          "size": 9
+        },
+        {
+          "str": "Power supply voltage",
+          "x": 46.97999999999999,
+          "y": 511.6197,
+          "w": 64.40040000000008,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 111.38040000000005,
+          "y": 511.6197,
+          "w": 5.037699999999993,
+          "size": 9
+        },
+        {
+          "str": "100…240V AC (-15%, +10%)",
+          "x": 156.7197,
+          "y": 516.1197,
+          "w": 82.83779999999986,
+          "size": 9
+        },
+        {
+          "str": "@ 47…63 Hz",
+          "x": 156.7197,
+          "y": 507.11969999999997,
+          "w": 37.51110000000001,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 194.2308,
+          "y": 507.11969999999997,
+          "w": 19.6921,
+          "size": 9
+        },
+        {
+          "str": "24V DC (-15%, +10%)",
+          "x": 371.4597,
+          "y": 516.1197,
+          "w": 63.54449999999974,
+          "size": 9
+        },
+        {
+          "str": "Class 2 SELV",
+          "x": 371.4597,
+          "y": 507.11969999999997,
+          "w": 38.09069999999993,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 409.55039999999997,
+          "y": 507.11969999999997,
+          "w": 7.227700000000002,
+          "size": 9
+        },
+        {
+          "str": "12…24V DC (-15%, +10%)",
+          "x": 474.5997,
+          "y": 516.1197,
+          "w": 75.0635999999998,
+          "size": 9
+        },
+        {
+          "str": "Class 2 SELV",
+          "x": 474.5997,
+          "y": 507.11969999999997,
+          "w": 38.09610000000005,
+          "size": 9
+        },
+        {
+          "str": "Heat dissipation",
+          "x": 46.97999999999996,
+          "y": 494.09939999999995,
+          "w": 49.169700000000034,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 96.1497,
+          "y": 494.09939999999995,
+          "w": 6.729300000000001,
+          "size": 9
+        },
+        {
+          "str": "See System Loading and Heat Dissipation on page 165",
+          "x": 156.7134,
+          "y": 494.09939999999995,
+          "w": 163.0908,
+          "size": 9
+        },
+        {
+          "str": "Power supply inrush current, max",
+          "x": 46.98,
+          "y": 476.58,
+          "w": 102.09329999999997,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 149.0733,
+          "y": 476.58,
+          "w": 0.8496,
+          "size": 9
+        },
+        {
+          "str": "120V AC: 25 A for 8 ms",
+          "x": 156.7197,
+          "y": 481.08,
+          "w": 66.93030000000019,
+          "size": 9
+        },
+        {
+          "str": "240V AC: 40 A for 4 ms",
+          "x": 156.7197,
+          "y": 472.08,
+          "w": 68.7222000000001,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 225.44190000000012,
+          "y": 472.08,
+          "w": 16.224199999999986,
+          "size": 9
+        },
+        {
+          "str": "24V DC: 15 A for 20 ms",
+          "x": 371.4597,
+          "y": 476.58,
+          "w": 67.42169999999975,
+          "size": 9
+        },
+        {
+          "str": "Maximum power consumption",
+          "x": 46.98000000000002,
+          "y": 454.62,
+          "w": 91.15469999999995,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 138.13469999999998,
+          "y": 454.62,
+          "w": 2.0627000000000004,
+          "size": 9
+        },
+        {
+          "str": "46VA",
+          "x": 156.69899999999998,
+          "y": 454.62,
+          "w": 14.626800000000003,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 171.3258,
+          "y": 454.62,
+          "w": 9.530000000000001,
+          "size": 9
+        },
+        {
+          "str": "52VA",
+          "x": 257.0958,
+          "y": 454.62,
+          "w": 14.43599999999998,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 271.5318,
+          "y": 454.62,
+          "w": 11.103100000000003,
+          "size": 9
+        },
+        {
+          "str": "35 W",
+          "x": 371.4597,
+          "y": 459.12,
+          "w": 14.790600000000003,
+          "size": 9
+        },
+        {
+          "str": "See Figure 82",
+          "x": 371.4597,
+          "y": 450.12,
+          "w": 41.341499999999954,
+          "size": 9
+        },
+        {
+          "str": "24V DC sensor power",
+          "x": 46.98,
+          "y": 428.1,
+          "w": 64.05120000000001,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 111.0312,
+          "y": 428.1,
+          "w": 5.074699999999999,
+          "size": 9
+        },
+        {
+          "str": "None",
+          "x": 156.7035,
+          "y": 428.1,
+          "w": 15.639299999999983,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 172.3428,
+          "y": 428.1,
+          "w": 9.417499999999999,
+          "size": 9
+        },
+        {
+          "str": "250 mA @ 24V DC",
+          "x": 257.1003,
+          "y": 437.1,
+          "w": 54.34200000000001,
+          "size": 9
+        },
+        {
+          "str": "AC Ripple < 500 mV peak-to-peak",
+          "x": 257.1003,
+          "y": 428.1,
+          "w": 102.09329999999991,
+          "size": 9
+        },
+        {
+          "str": "400 μF max",
+          "x": 257.1003,
+          "y": 419.1,
+          "w": 35.750700000000016,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 292.851,
+          "y": 419.1,
+          "w": 8.7344,
+          "size": 9
+        },
+        {
+          "str": "None",
+          "x": 371.4606,
+          "y": 428.1,
+          "w": 15.678000000000043,
+          "size": 9
+        },
+        {
+          "str": "Input circuit type",
+          "x": 46.98090000000002,
+          "y": 392.5797,
+          "w": 52.38450000000003,
+          "size": 9
+        },
+        {
+          "str": "Digital: 120V AC",
+          "x": 156.72060000000002,
+          "y": 406.0797,
+          "w": 46.35180000000005,
+          "size": 9
+        },
+        {
+          "str": "Analog: 0…10V DC",
+          "x": 156.72060000000002,
+          "y": 379.0797,
+          "w": 53.82090000000014,
+          "size": 9
+        },
+        {
+          "str": "Digital: 24V DC sinking/sourcing",
+          "x": 257.1003,
+          "y": 406.0797,
+          "w": 97.49429999999955,
+          "size": 9
+        },
+        {
+          "str": "(standard and high-speed)",
+          "x": 257.1003,
+          "y": 397.0797,
+          "w": 80.44379999999987,
+          "size": 9
+        },
+        {
+          "str": "Analog: 0…10V DC",
+          "x": 257.1003,
+          "y": 379.0797,
+          "w": 53.802900000000186,
+          "size": 9
+        },
+        {
+          "str": "Digital: 24V DC sinking/sourcing",
+          "x": 371.4606,
+          "y": 406.0797,
+          "w": 97.62569999999974,
+          "size": 9
+        },
+        {
+          "str": "(standard and high-speed)",
+          "x": 371.4606,
+          "y": 397.0797,
+          "w": 80.48160000000007,
+          "size": 9
+        },
+        {
+          "str": "Analog: 0…10V DC",
+          "x": 371.4606,
+          "y": 379.0797,
+          "w": 53.843400000000194,
+          "size": 9
+        },
+        {
+          "str": "Output circuit type",
+          "x": 46.98090000000002,
+          "y": 366.1197,
+          "w": 56.93580000000003,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 103.91670000000006,
+          "y": 366.1197,
+          "w": 5.8663,
+          "size": 9
+        },
+        {
+          "str": "Relay",
+          "x": 156.71340000000006,
+          "y": 366.1197,
+          "w": 16.229699999999962,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 172.94310000000004,
+          "y": 366.1197,
+          "w": 9.352000000000004,
+          "size": 9
+        },
+        {
+          "str": "Relay",
+          "x": 257.1111000000001,
+          "y": 366.1197,
+          "w": 16.209900000000015,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 273.32100000000014,
+          "y": 366.1197,
+          "w": 10.905299999999999,
+          "size": 9
+        },
+        {
+          "str": "Relay/FET",
+          "x": 371.4687000000001,
+          "y": 366.1197,
+          "w": 30.267,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 401.73570000000024,
+          "y": 366.1197,
+          "w": 8.097,
+          "size": 9
+        },
+        {
+          "str": "Relay",
+          "x": 474.6087000000002,
+          "y": 366.1197,
+          "w": 16.209900000000015,
+          "size": 9
+        },
+        {
+          "str": "Pilot duty rating",
+          "x": 46.98090000000002,
+          "y": 348.5994,
+          "w": 48.69000000000007,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 95.67090000000007,
+          "y": 348.5994,
+          "w": 6.7832999999999934,
+          "size": 9
+        },
+        {
+          "str": "Ordinary location – B300, R150",
+          "x": 156.72060000000002,
+          "y": 353.0994,
+          "w": 92.26350000000016,
+          "size": 9
+        },
+        {
+          "str": "Hazardous location – C300, R150",
+          "x": 156.72060000000002,
+          "y": 344.0994,
+          "w": 98.4969000000002,
+          "size": 9
+        },
+        {
+          "str": "Temperature, operating",
+          "x": 46.98090000000002,
+          "y": 331.0791,
+          "w": 71.77139999999991,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 118.75229999999998,
+          "y": 331.0791,
+          "w": 4.220300000000001,
+          "size": 9
+        },
+        {
+          "str": "-20…+65 °C (-4…+149 °F) ambient",
+          "x": 156.73499999999999,
+          "y": 331.0791,
+          "w": 103.45500000000007,
+          "size": 9
+        },
+        {
+          "str": "Temperature, storage",
+          "x": 46.98090000000002,
+          "y": 318.1191,
+          "w": 65.62350000000004,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 112.60440000000007,
+          "y": 318.1191,
+          "w": 4.8997,
+          "size": 9
+        },
+        {
+          "str": "-40…+85 °C (-40…+185 °F) ambient",
+          "x": 156.70170000000007,
+          "y": 318.1191,
+          "w": 107.83439999999993,
+          "size": 9
+        },
+        {
+          "str": "Relative humidity",
+          "x": 46.98090000000002,
+          "y": 305.0988,
+          "w": 52.75890000000008,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 99.73980000000007,
+          "y": 305.0988,
+          "w": 6.332000000000002,
+          "size": 9
+        },
+        {
+          "str": "5%…95% noncondensing",
+          "x": 156.7278000000001,
+          "y": 305.0988,
+          "w": 78.96779999999993,
+          "size": 9
+        },
+        {
+          "str": "Vibration",
+          "x": 46.98090000000002,
+          "y": 287.57849999999996,
+          "w": 27.75780000000001,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 74.73870000000004,
+          "y": 287.57849999999996,
+          "w": 9.109099999999998,
+          "size": 9
+        },
+        {
+          "str": "Operating: 10…500 Hz, 5 g, 0.015 in. max peak-to-peak, 2 hours each axis",
+          "x": 156.72060000000002,
+          "y": 292.07849999999996,
+          "w": 221.32349999999997,
+          "size": 9
+        },
+        {
+          "str": "Relay Operation: 1.5 g",
+          "x": 156.72060000000002,
+          "y": 283.07849999999996,
+          "w": 64.6776000000002,
+          "size": 9
+        },
+        {
+          "str": "Shock, operating",
+          "x": 46.98090000000002,
+          "y": 265.6185,
+          "w": 51.27300000000002,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 98.25390000000004,
+          "y": 265.6185,
+          "w": 6.496299999999997,
+          "size": 9
+        },
+        {
+          "str": "30 g; 3 pulses each direction, each axis",
+          "x": 156.72060000000002,
+          "y": 270.1185,
+          "w": 119.68379999999972,
+          "size": 9
+        },
+        {
+          "str": "Relay Operation: 10 g",
+          "x": 156.72060000000002,
+          "y": 261.1185,
+          "w": 63.249300000000225,
+          "size": 9
+        },
+        {
+          "str": "Shock, nonoperating",
+          "x": 46.98090000000002,
+          "y": 248.0982,
+          "w": 62.67419999999991,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 109.65509999999996,
+          "y": 248.0982,
+          "w": 5.233700000000001,
+          "size": 9
+        },
+        {
+          "str": "50 g panel mounted (40 g DIN Rail mounted); 3 pulses each direction, each axis",
+          "x": 156.75839999999997,
+          "y": 248.0982,
+          "w": 240.0668999999996,
+          "size": 9
+        },
+        {
+          "str": "Terminal screw torque",
+          "x": 46.98090000000002,
+          "y": 235.0779,
+          "w": 68.21460000000006,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 115.1955000000001,
+          "y": 235.0779,
+          "w": 4.6129999999999995,
+          "size": 9
+        },
+        {
+          "str": "0.56 N•m (5.0 lb•in) rated",
+          "x": 156.7125000000001,
+          "y": 235.0779,
+          "w": 74.32949999999997,
+          "size": 9
+        },
+        {
+          "str": "Agency certification",
+          "x": 46.9803,
+          "y": 202.5603,
+          "w": 61.198199999999986,
+          "size": 9
+        },
+        {
+          "str": "UL Listed Industrial Control Equipment for use in Class 1 Division 2, Hazardous Locations, Groups A, B, C, D",
+          "x": 156.72,
+          "y": 222.06060000000002,
+          "w": 320.79239999999993,
+          "size": 9
+        },
+        {
+          "str": "cUL Listed Industrial Control Equipment for use in Canada",
+          "x": 156.71909999999994,
+          "y": 209.10060000000001,
+          "w": 176.33429999999979,
+          "size": 9
+        },
+        {
+          "str": "CE marked for all applicable directives",
+          "x": 156.71909999999994,
+          "y": 196.08030000000002,
+          "w": 117.23039999999982,
+          "size": 9
+        },
+        {
+          "str": "RCM marked for all applicable acts",
+          "x": 156.71909999999994,
+          "y": 183.06000000000003,
+          "w": 104.98590000000023,
+          "size": 9
+        },
+        {
+          "str": "ESD immunity",
+          "x": 46.97939999999994,
+          "y": 165.60000000000002,
+          "w": 42.230700000000006,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 89.21009999999994,
+          "y": 165.60000000000002,
+          "w": 7.501,
+          "size": 9
+        },
+        {
+          "str": "EN 61000-4-2",
+          "x": 156.71909999999994,
+          "y": 170.10000000000002,
+          "w": 40.75020000000004,
+          "size": 9
+        },
+        {
+          "str": "4 kV contact, 8 kV air, 4 kV indirect",
+          "x": 156.71909999999994,
+          "y": 161.10000000000002,
+          "w": 106.65629999999989,
+          "size": 9
+        },
+        {
+          "str": "Radiated RF immunity",
+          "x": 46.97939999999994,
+          "y": 139.07970000000003,
+          "w": 66.85920000000007,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 113.8386,
+          "y": 139.07970000000003,
+          "w": 4.764499999999994,
+          "size": 9
+        },
+        {
+          "str": "EN 61000-4-3",
+          "x": 156.71909999999994,
+          "y": 148.07970000000003,
+          "w": 40.804200000000044,
+          "size": 9
+        },
+        {
+          "str": "10V/m, 26…1000 MHz (alternatively, 80…1000 MHz),",
+          "x": 156.71909999999994,
+          "y": 139.07970000000003,
+          "w": 153.32039999999995,
+          "size": 9
+        },
+        {
+          "str": "80% amplitude modulation, +900 MHz keyed carrier",
+          "x": 156.71909999999994,
+          "y": 130.07970000000003,
+          "w": 158.22629999999975,
+          "size": 9
+        },
+        {
+          "str": "Fast transient immunity",
+          "x": 46.97939999999994,
+          "y": 108.05940000000004,
+          "w": 72.98189999999995,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 119.96129999999988,
+          "y": 108.05940000000004,
+          "w": 4.084200000000006,
+          "size": 9
+        },
+        {
+          "str": "EN 61000-4-4",
+          "x": 156.71909999999994,
+          "y": 117.05940000000004,
+          "w": 40.86720000000004,
+          "size": 9
+        },
+        {
+          "str": "2 kV, 5 kHz",
+          "x": 156.71909999999994,
+          "y": 108.05940000000004,
+          "w": 32.75190000000001,
+          "size": 9
+        },
+        {
+          "str": "Communications cables such as Ethernet, RS-232, and RS-485: 1 kV, 5 kHz",
+          "x": 156.71909999999994,
+          "y": 99.05940000000004,
+          "w": 224.39700000000005,
+          "size": 9
+        }
+      ]
+    },
+    {
+      "page": 112,
+      "text": "112 Rockwell Automation Publication 1763-UM001G-EN-P - May 2024\nAppendix A Specifications\nFigure 82 - MicroLogix 1100 DC Input Power Requirements for 1763-L16BBB and 1763-L16DWD Unit\nSurge transient immunity\nEN 61000-4-5\nUnshielded communications cable: 2 kV CM (common mode), 1 kV DM (differential mode)\nShielded communications cable: 1 kV galvanic gun\nI/O: 2 kV CM (common mode), 1 kV DM (differential mode)\nAC power supply input: 4 kV CM (common mode), 2 kV DM (differential mode)\nDC power supply input: 500V CM (common mode), 500V DM (differential mode)\nAC/DC auxiliary output: 500V CM (common mode), 500V DM (differential mode)\nConducted RF immunity EN 61000-4-6\n10V, 150 kHz…80 MHz\nConducted emissions EN 55011\nAC power supply input: 150 kHz…30 MHz\nRadiated emissions EN 55011\n30…1000 MHz\nLine related tests\nEN 61000-4-11\nAC power supply input:\n• Voltage drop: -30% for 10 ms, -60% for 100 ms\n• Voltage interrupt: at voltage greater than -95% for 5 s\n• Voltage fluctuation: +10% for 15 min, -10% for 15 min\nDC power supply input:\nVoltage fluctuation: +20% for 15 min, -20% for 15 min\nGeneral Specifications (Continued)\nDescription 1763-L16AWA 1763-L16BWA 1763-L16BBB 1763-L16DWD\n28\n21\n14\n7\n1763-L16BBB and 1763-L16DWD Typical Power Requirements\nCalculated Load Power (Watts)\nInput Power Required\n@ 24V DC (Watts)\n0\n4 8 12 16 20\nDigital Input Specifications\nDescription 1763-L16AWA\n1763-L16BWA, 1763-L16BBB\nInputs 0...3\n(4 high-speed DC inputs) Inputs 4 and Higher\n(6 standard DC inputs)\nOn-state voltage range 79…132V AC 14…24V DC\n14…26.4V DC (+10%) @ 65 °C/149 °F\n14…30V DC (+25%) @ 30 °C/86 °F\n10…24V DC\n10…26.4V DC (+10%) @ 65 °C/149 °F\n10…30V DC (+25%) @ 30 °C/86 °F\nOff-state voltage range 0…20V AC 0…5V DC\nOperating frequency 47 Hz…63 Hz 0 Hz…20 kHz\n0 Hz…40 kHz(1) 0 Hz…1 kHz\n(scan time dependent)\nOn-state current:\nMin\nNom\nMax\n5.0 mA @ 79V AC\n12 mA @ 120V AC\n16.0 mA @ 132V AC\n2.5 mA @ 14V DC\n9.8 mA @ 24V DC\n12.0 mA @ 30V DC\n2.0 mA @ 10V DC\n8.5 mA @ 24V DC\n12.0 mA @ 30V DC\nOff-state leakage current, max 2.5 mA 1.5 mA\nNominal impedance 12 kΩ @ 50 Hz\n10 kΩ @ 60 Hz 3.1 kΩ 3.1 kΩ\nInrush current @ 120V AC, max 250 mA Not applicable\n(1) OS series B FRN 4 or later",
+      "items": [
+        {
+          "str": "112",
+          "x": 45,
+          "y": 28.98,
+          "w": 9.042299999999996,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 54.04229999999999,
+          "y": 28.98,
+          "w": 15.742000000000003,
+          "size": 9
+        },
+        {
+          "str": "Rockwell Automation Publication 1763-UM001G-EN-P - May 2024",
+          "x": 195.7203,
+          "y": 28.98,
+          "w": 193.21649999999985,
+          "size": 9
+        },
+        {
+          "str": "",
+          "x": 45,
+          "y": 768,
+          "w": 0,
+          "size": 9
+        },
+        {
+          "str": "Appendix A",
+          "x": 45,
+          "y": 768,
+          "w": 36.36089999999998,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 81.36089999999997,
+          "y": 768,
+          "w": 1.993199999999997,
+          "size": 9
+        },
+        {
+          "str": "Specifications",
+          "x": 99.29969999999994,
+          "y": 768,
+          "w": 46.65779999999999,
+          "size": 9
+        },
+        {
+          "str": "",
+          "x": 216,
+          "y": 497.34,
+          "w": 0,
+          "size": 10
+        },
+        {
+          "str": "Figure 82 - MicroLogix 1100 DC Input Power Requirements for 1763-L16BBB and 1763-L16DWD Unit",
+          "x": 216,
+          "y": 497.34,
+          "w": 337.93981200000115,
+          "size": 10
+        },
+        {
+          "str": "",
+          "x": 46.98,
+          "y": 681,
+          "w": 0,
+          "size": 9
+        },
+        {
+          "str": "Surge transient immunity",
+          "x": 46.98,
+          "y": 681,
+          "w": 77.4747,
+          "size": 9
+        },
+        {
+          "str": "EN 61000-4-5",
+          "x": 156.7197,
+          "y": 708,
+          "w": 40.81320000000004,
+          "size": 9
+        },
+        {
+          "str": "Unshielded communications cable: 2 kV CM (common mode), 1 kV DM (differential mode)",
+          "x": 156.7197,
+          "y": 699,
+          "w": 267.2927999999995,
+          "size": 9
+        },
+        {
+          "str": "Shielded communications cable: 1 kV galvanic gun",
+          "x": 156.7197,
+          "y": 690,
+          "w": 152.77680000000007,
+          "size": 9
+        },
+        {
+          "str": "I/O: 2 kV CM (common mode), 1 kV DM (differential mode)",
+          "x": 156.7197,
+          "y": 681,
+          "w": 171.43830000000025,
+          "size": 9
+        },
+        {
+          "str": "AC power supply input: 4 kV CM (common mode), 2 kV DM (differential mode)",
+          "x": 156.7197,
+          "y": 672,
+          "w": 231.24779999999961,
+          "size": 9
+        },
+        {
+          "str": "DC power supply input: 500V CM (common mode), 500V DM (differential mode)",
+          "x": 156.7197,
+          "y": 663,
+          "w": 236.8952999999995,
+          "size": 9
+        },
+        {
+          "str": "AC/DC auxiliary output: 500V CM (common mode), 500V DM (differential mode)",
+          "x": 156.7197,
+          "y": 654,
+          "w": 237.4046999999997,
+          "size": 9
+        },
+        {
+          "str": "Conducted RF immunity",
+          "x": 46.97999999999996,
+          "y": 636.4797,
+          "w": 72.44909999999999,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 119.42909999999995,
+          "y": 636.4797,
+          "w": 4.1434000000000015,
+          "size": 9
+        },
+        {
+          "str": "EN 61000-4-6",
+          "x": 156.71969999999996,
+          "y": 641.04,
+          "w": 40.82220000000004,
+          "size": 9
+        },
+        {
+          "str": "10V, 150 kHz…80 MHz",
+          "x": 156.71969999999996,
+          "y": 631.9797,
+          "w": 63.6507000000001,
+          "size": 9
+        },
+        {
+          "str": "Conducted emissions",
+          "x": 46.97999999999996,
+          "y": 614.5197,
+          "w": 64.9593,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 111.93929999999997,
+          "y": 614.5197,
+          "w": 4.975599999999998,
+          "size": 9
+        },
+        {
+          "str": "EN 55011",
+          "x": 156.71969999999996,
+          "y": 619.0197,
+          "w": 25.822800000000026,
+          "size": 9
+        },
+        {
+          "str": "AC power supply input: 150 kHz…30 MHz",
+          "x": 156.71969999999996,
+          "y": 610.0197,
+          "w": 120.98700000000032,
+          "size": 9
+        },
+        {
+          "str": "Radiated emissions",
+          "x": 46.97999999999996,
+          "y": 592.4993999999999,
+          "w": 59.352300000000014,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 106.33229999999998,
+          "y": 592.4993999999999,
+          "w": 5.5985999999999985,
+          "size": 9
+        },
+        {
+          "str": "EN 55011",
+          "x": 156.71969999999996,
+          "y": 596.9993999999999,
+          "w": 25.822800000000026,
+          "size": 9
+        },
+        {
+          "str": "30…1000 MHz",
+          "x": 156.71969999999996,
+          "y": 587.9993999999999,
+          "w": 41.527800000000084,
+          "size": 9
+        },
+        {
+          "str": "Line related tests",
+          "x": 46.97999999999996,
+          "y": 546.4796999999999,
+          "w": 53.122499999999945,
+          "size": 9
+        },
+        {
+          "str": "EN 61000-4-11",
+          "x": 156.71969999999996,
+          "y": 574.9799999999999,
+          "w": 41.535900000000055,
+          "size": 9
+        },
+        {
+          "str": "AC power supply input:",
+          "x": 156.71969999999996,
+          "y": 565.9799999999999,
+          "w": 69.02370000000016,
+          "size": 9
+        },
+        {
+          "str": "• Voltage drop: -30% for 10 ms, -60% for 100 ms",
+          "x": 156.71969999999996,
+          "y": 556.0197,
+          "w": 150.9308999999999,
+          "size": 9
+        },
+        {
+          "str": "• Voltage interrupt: at voltage greater than -95% for 5 s",
+          "x": 156.71969999999996,
+          "y": 546,
+          "w": 172.1637000000001,
+          "size": 9
+        },
+        {
+          "str": "• Voltage fluctuation: +10% for 15 min, -10% for 15 min",
+          "x": 156.71969999999996,
+          "y": 535.9802999999999,
+          "w": 168.56459999999979,
+          "size": 9
+        },
+        {
+          "str": "DC power supply input:",
+          "x": 156.71969999999996,
+          "y": 526.9802999999999,
+          "w": 69.6500999999999,
+          "size": 9
+        },
+        {
+          "str": "Voltage fluctuation: +20% for 15 min, -20% for 15 min",
+          "x": 156.71969999999996,
+          "y": 517.9802999999999,
+          "w": 163.86569999999978,
+          "size": 9
+        },
+        {
+          "str": "",
+          "x": 45,
+          "y": 739.6801,
+          "w": 0,
+          "size": 11
+        },
+        {
+          "str": "General Specifications (Continued)",
+          "x": 45,
+          "y": 739.6801,
+          "w": 134.78498999999985,
+          "size": 11
+        },
+        {
+          "str": "",
+          "x": 46.98,
+          "y": 721.02,
+          "w": 0,
+          "size": 9
+        },
+        {
+          "str": "Description",
+          "x": 46.98,
+          "y": 721.02,
+          "w": 37.262699999999995,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 84.24269999999999,
+          "y": 721.02,
+          "w": 8.053,
+          "size": 9
+        },
+        {
+          "str": "1763-L16AWA",
+          "x": 156.7197,
+          "y": 721.02,
+          "w": 40.856400000000015,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 197.57610000000005,
+          "y": 721.02,
+          "w": 6.611299999999996,
+          "size": 9
+        },
+        {
+          "str": "1763-L16BWA",
+          "x": 257.0778,
+          "y": 721.02,
+          "w": 41.218200000000124,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 298.2960000000001,
+          "y": 721.02,
+          "w": 8.124699999999999,
+          "size": 9
+        },
+        {
+          "str": "1763-L16BBB",
+          "x": 371.4183000000001,
+          "y": 721.02,
+          "w": 40.05270000000012,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 411.4710000000002,
+          "y": 721.02,
+          "w": 7.009999999999997,
+          "size": 9
+        },
+        {
+          "str": "1763-L16DWD",
+          "x": 474.56100000000015,
+          "y": 721.02,
+          "w": 41.88420000000012,
+          "size": 9
+        },
+        {
+          "str": "",
+          "x": 170.58,
+          "y": 452.82,
+          "w": 0,
+          "size": 8
+        },
+        {
+          "str": "28",
+          "x": 170.58,
+          "y": 452.82,
+          "w": 6.607440000000015,
+          "size": 8
+        },
+        {
+          "str": "21",
+          "x": 172.19994000000003,
+          "y": 429.060348,
+          "w": 4.982712000000011,
+          "size": 8
+        },
+        {
+          "str": "14",
+          "x": 171.84004200000004,
+          "y": 406.26068999999995,
+          "w": 5.351387999999988,
+          "size": 8
+        },
+        {
+          "str": "7",
+          "x": 174.24042600000004,
+          "y": 382.44039,
+          "w": 2.92068,
+          "size": 8
+        },
+        {
+          "str": "",
+          "x": 253.86,
+          "y": 474.6,
+          "w": 0,
+          "size": 8
+        },
+        {
+          "str": "1763-L16BBB and 1763-L16DWD Typical Power Requirements",
+          "x": 253.86,
+          "y": 474.6,
+          "w": 170.7233220000003,
+          "size": 8
+        },
+        {
+          "str": "",
+          "x": 319.56013800000005,
+          "y": 331.56009600000004,
+          "w": 0,
+          "size": 8
+        },
+        {
+          "str": "Calculated Load Power (Watts)",
+          "x": 319.56013800000005,
+          "y": 331.56009600000004,
+          "w": 81.97375200000039,
+          "size": 8
+        },
+        {
+          "str": "Input Power Required",
+          "x": 138.36,
+          "y": 377.16,
+          "w": 58.1538850170183,
+          "size": 8
+        },
+        {
+          "str": "@ 24V DC (Watts)",
+          "x": 148.37922538000007,
+          "y": 382.6185648900001,
+          "w": 47.19322742575353,
+          "size": 8
+        },
+        {
+          "str": "0",
+          "x": 173.64,
+          "y": 361.44,
+          "w": 3.54312,
+          "size": 8
+        },
+        {
+          "str": "4",
+          "x": 249.780372,
+          "y": 348.840378,
+          "w": 3.3117000000000005,
+          "size": 8
+        },
+        {
+          "str": " ",
+          "x": 253.092072,
+          "y": 348.840378,
+          "w": 8.532400000000003,
+          "size": 8
+        },
+        {
+          "str": "8",
+          "x": 321.180624,
+          "y": 348.840378,
+          "w": 3.36756,
+          "size": 8
+        },
+        {
+          "str": " ",
+          "x": 324.54818400000005,
+          "y": 348.840378,
+          "w": 8.578000000000003,
+          "size": 8
+        },
+        {
+          "str": "12",
+          "x": 393.0006240000001,
+          "y": 348.840378,
+          "w": 5.308296000000002,
+          "size": 8
+        },
+        {
+          "str": " ",
+          "x": 398.3089200000001,
+          "y": 348.840378,
+          "w": 8.244599999999997,
+          "size": 8
+        },
+        {
+          "str": "16",
+          "x": 464.1008280000001,
+          "y": 348.840378,
+          "w": 5.311487999999987,
+          "size": 8
+        },
+        {
+          "str": " ",
+          "x": 469.4123160000001,
+          "y": 348.840378,
+          "w": 8.191500000000001,
+          "size": 8
+        },
+        {
+          "str": "20",
+          "x": 534.7804860000001,
+          "y": 348.840378,
+          "w": 6.723150000000031,
+          "size": 8
+        },
+        {
+          "str": "",
+          "x": 45,
+          "y": 298.3201,
+          "w": 0,
+          "size": 11
+        },
+        {
+          "str": "Digital Input Specifications",
+          "x": 45,
+          "y": 298.3201,
+          "w": 104.79751199999993,
+          "size": 11
+        },
+        {
+          "str": "",
+          "x": 46.98,
+          "y": 268.6801,
+          "w": 0,
+          "size": 9
+        },
+        {
+          "str": "Description",
+          "x": 46.98,
+          "y": 268.6801,
+          "w": 37.2816,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 84.26159999999999,
+          "y": 268.6801,
+          "w": 11.8597,
+          "size": 9
+        },
+        {
+          "str": "1763-L16AWA",
+          "x": 190.9989,
+          "y": 268.6801,
+          "w": 40.89600000000004,
+          "size": 9
+        },
+        {
+          "str": "1763-L16BWA, 1763-L16BBB",
+          "x": 306.72,
+          "y": 279.6601,
+          "w": 84.92850000000026,
+          "size": 9
+        },
+        {
+          "str": "Inputs 0...3",
+          "x": 306.72,
+          "y": 266.6398,
+          "w": 36.25560000000011,
+          "size": 9
+        },
+        {
+          "str": "(4 high-speed DC inputs)",
+          "x": 306.72,
+          "y": 257.6398,
+          "w": 80.63369999999985,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 387.35369999999983,
+          "y": 257.6398,
+          "w": 5.61400000000002,
+          "size": 9
+        },
+        {
+          "str": "Inputs 4 and Higher",
+          "x": 437.8797,
+          "y": 266.6398,
+          "w": 63.27269999999987,
+          "size": 9
+        },
+        {
+          "str": "(6 standard DC inputs)",
+          "x": 437.8797,
+          "y": 257.6398,
+          "w": 72.95040000000007,
+          "size": 9
+        },
+        {
+          "str": "",
+          "x": 46.97999999999996,
+          "y": 235.67979999999997,
+          "w": 0,
+          "size": 9
+        },
+        {
+          "str": "On-state voltage range",
+          "x": 46.97999999999996,
+          "y": 235.67979999999997,
+          "w": 69.57180000000001,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 116.55179999999994,
+          "y": 235.67979999999997,
+          "w": 8.273000000000001,
+          "size": 9
+        },
+        {
+          "str": "79…132V AC",
+          "x": 191.00879999999995,
+          "y": 235.67979999999997,
+          "w": 35.455500000000015,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 226.46429999999998,
+          "y": 235.67979999999997,
+          "w": 8.9173,
+          "size": 9
+        },
+        {
+          "str": "14…24V DC",
+          "x": 306.71999999999997,
+          "y": 244.67979999999997,
+          "w": 32.95439999999999,
+          "size": 9
+        },
+        {
+          "str": "14…26.4V DC (+10%) @ 65 °C/149 °F",
+          "x": 306.71999999999997,
+          "y": 235.67979999999997,
+          "w": 109.48679999999997,
+          "size": 9
+        },
+        {
+          "str": "14…30V DC (+25%) @ 30 °C/86 °F",
+          "x": 306.71999999999997,
+          "y": 226.67979999999997,
+          "w": 103.49010000000004,
+          "size": 9
+        },
+        {
+          "str": "10…24V DC",
+          "x": 437.87969999999996,
+          "y": 244.67979999999997,
+          "w": 33.199199999999905,
+          "size": 9
+        },
+        {
+          "str": "10…26.4V DC (+10%) @ 65 °C/149 °F",
+          "x": 437.87969999999996,
+          "y": 235.67979999999997,
+          "w": 109.80359999999966,
+          "size": 9
+        },
+        {
+          "str": "10…30V DC (+25%) @ 30 °C/86 °F",
+          "x": 437.87969999999996,
+          "y": 226.67979999999997,
+          "w": 103.72049999999982,
+          "size": 9
+        },
+        {
+          "str": "Off-state voltage range",
+          "x": 46.979999999999905,
+          "y": 213.65949999999998,
+          "w": 70.69319999999999,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 117.67319999999988,
+          "y": 213.65949999999998,
+          "w": 8.146299999999998,
+          "size": 9
+        },
+        {
+          "str": "0…20V AC",
+          "x": 190.98989999999986,
+          "y": 213.65949999999998,
+          "w": 30.619800000000044,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 221.60969999999992,
+          "y": 213.65949999999998,
+          "w": 9.4607,
+          "size": 9
+        },
+        {
+          "str": "0…5V DC",
+          "x": 306.7559999999999,
+          "y": 213.65949999999998,
+          "w": 27.247500000000002,
+          "size": 9
+        },
+        {
+          "str": "Operating frequency",
+          "x": 46.979999999999905,
+          "y": 194.93949999999998,
+          "w": 62.254799999999925,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 109.23479999999982,
+          "y": 194.93949999999998,
+          "w": 9.0853,
+          "size": 9
+        },
+        {
+          "str": "47 Hz…63 Hz",
+          "x": 191.00249999999983,
+          "y": 194.93949999999998,
+          "w": 38.20680000000008,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 229.2092999999999,
+          "y": 194.93949999999998,
+          "w": 8.612300000000001,
+          "size": 9
+        },
+        {
+          "str": "0 Hz…20 kHz",
+          "x": 306.7199999999999,
+          "y": 200.6392,
+          "w": 39.42900000000012,
+          "size": 9
+        },
+        {
+          "str": "0 Hz…40 kHz",
+          "x": 306.7199999999999,
+          "y": 189.2389,
+          "w": 39.54000000000009,
+          "size": 9
+        },
+        {
+          "str": "(1)",
+          "x": 346.26,
+          "y": 192.8401,
+          "w": 5.018400000000022,
+          "size": 7.2
+        },
+        {
+          "str": " ",
+          "x": 351.2784000000001,
+          "y": 192.8401,
+          "w": 9.62239999999999,
+          "size": 7.2
+        },
+        {
+          "str": "0 Hz…1 kHz",
+          "x": 437.88,
+          "y": 199.44,
+          "w": 34.09830000000004,
+          "size": 9
+        },
+        {
+          "str": "(scan time dependent)",
+          "x": 437.88,
+          "y": 190.44,
+          "w": 68.28389999999997,
+          "size": 9
+        },
+        {
+          "str": "On-state current:",
+          "x": 46.98029999999994,
+          "y": 176.2803,
+          "w": 52.47900000000004,
+          "size": 9
+        },
+        {
+          "str": "Min",
+          "x": 46.98029999999994,
+          "y": 167.2803,
+          "w": 10.355399999999994,
+          "size": 9
+        },
+        {
+          "str": "Nom",
+          "x": 46.98029999999994,
+          "y": 158.2803,
+          "w": 13.991399999999993,
+          "size": 9
+        },
+        {
+          "str": "Max",
+          "x": 46.98029999999994,
+          "y": 149.2803,
+          "w": 11.782800000000003,
+          "size": 9
+        },
+        {
+          "str": "5.0 mA @ 79V AC",
+          "x": 190.98029999999994,
+          "y": 167.2803,
+          "w": 51.06329999999999,
+          "size": 9
+        },
+        {
+          "str": "12 mA @ 120V AC",
+          "x": 190.98029999999994,
+          "y": 158.2803,
+          "w": 50.91210000000005,
+          "size": 9
+        },
+        {
+          "str": "16.0 mA @ 132V AC",
+          "x": 190.98029999999994,
+          "y": 149.2803,
+          "w": 56.02500000000001,
+          "size": 9
+        },
+        {
+          "str": "2.5 mA @ 14V DC",
+          "x": 306.72029999999995,
+          "y": 167.2803,
+          "w": 50.705999999999825,
+          "size": 9
+        },
+        {
+          "str": "9.8 mA @ 24V DC",
+          "x": 306.72029999999995,
+          "y": 158.2803,
+          "w": 52.14689999999983,
+          "size": 9
+        },
+        {
+          "str": "12.0 mA @ 30V DC",
+          "x": 306.72029999999995,
+          "y": 149.2803,
+          "w": 54.66419999999998,
+          "size": 9
+        },
+        {
+          "str": "2.0 mA @ 10V DC",
+          "x": 437.87999999999994,
+          "y": 167.2803,
+          "w": 50.9417999999999,
+          "size": 9
+        },
+        {
+          "str": "8.5 mA @ 24V DC",
+          "x": 437.87999999999994,
+          "y": 158.2803,
+          "w": 52.23689999999994,
+          "size": 9
+        },
+        {
+          "str": "12.0 mA @ 30V DC",
+          "x": 437.87999999999994,
+          "y": 149.2803,
+          "w": 54.61649999999996,
+          "size": 9
+        },
+        {
+          "str": "Off-state leakage current, max",
+          "x": 46.980299999999886,
+          "y": 136.26000000000002,
+          "w": 93.48929999999997,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 140.46959999999987,
+          "y": 136.26000000000002,
+          "w": 5.610699999999999,
+          "size": 9
+        },
+        {
+          "str": "2.5 mA",
+          "x": 190.96589999999986,
+          "y": 136.26000000000002,
+          "w": 20.291399999999978,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 211.25729999999984,
+          "y": 136.26000000000002,
+          "w": 10.603299999999999,
+          "size": 9
+        },
+        {
+          "str": "1.5 mA",
+          "x": 306.68699999999984,
+          "y": 136.26000000000002,
+          "w": 18.988199999999967,
+          "size": 9
+        },
+        {
+          "str": "Nominal impedance",
+          "x": 46.980299999999886,
+          "y": 118.73970000000001,
+          "w": 60.6105000000001,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 107.59079999999994,
+          "y": 118.73970000000001,
+          "w": 9.265499999999994,
+          "size": 9
+        },
+        {
+          "str": "12 k",
+          "x": 190.9802999999999,
+          "y": 123.23970000000001,
+          "w": 11.37330000000002,
+          "size": 9
+        },
+        {
+          "str": "Ω",
+          "x": 202.38059999999987,
+          "y": 123.23970000000001,
+          "w": 6.732,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 209.11259999999987,
+          "y": 123.23970000000001,
+          "w": 0.19870000000000232,
+          "size": 9
+        },
+        {
+          "str": "@ 50 Hz",
+          "x": 210.9008999999999,
+          "y": 123.23970000000001,
+          "w": 25.59779999999998,
+          "size": 9
+        },
+        {
+          "str": "10 k",
+          "x": 190.9811999999999,
+          "y": 114.23970000000001,
+          "w": 11.733300000000021,
+          "size": 9
+        },
+        {
+          "str": "Ω",
+          "x": 202.7414999999999,
+          "y": 114.23970000000001,
+          "w": 6.732,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 209.4734999999999,
+          "y": 114.23970000000001,
+          "w": 0.19870000000000232,
+          "size": 9
+        },
+        {
+          "str": "@ 60 Hz",
+          "x": 211.2617999999999,
+          "y": 114.23970000000001,
+          "w": 25.573500000000006,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 236.8352999999999,
+          "y": 114.23970000000001,
+          "w": 7.765199999999999,
+          "size": 9
+        },
+        {
+          "str": "3.1 k",
+          "x": 306.7220999999999,
+          "y": 118.73970000000001,
+          "w": 13.125600000000059,
+          "size": 9
+        },
+        {
+          "str": "Ω",
+          "x": 319.8017999999999,
+          "y": 118.73970000000001,
+          "w": 6.732,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 326.5337999999999,
+          "y": 118.73970000000001,
+          "w": 12.371999999999995,
+          "size": 9
+        },
+        {
+          "str": "3.1 k",
+          "x": 437.8817999999999,
+          "y": 118.73970000000001,
+          "w": 13.125600000000059,
+          "size": 9
+        },
+        {
+          "str": "Ω",
+          "x": 450.9614999999999,
+          "y": 118.73970000000001,
+          "w": 6.732,
+          "size": 9
+        },
+        {
+          "str": "",
+          "x": 46.98119999999989,
+          "y": 101.27970000000002,
+          "w": 0,
+          "size": 9
+        },
+        {
+          "str": "Inrush current @ 120V AC, max",
+          "x": 46.98119999999989,
+          "y": 101.27970000000002,
+          "w": 93.59279999999998,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 140.5739999999999,
+          "y": 101.27970000000002,
+          "w": 5.604000000000001,
+          "size": 9
+        },
+        {
+          "str": "250 mA",
+          "x": 191.0099999999999,
+          "y": 101.27970000000002,
+          "w": 22.597200000000008,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 213.60719999999992,
+          "y": 101.27970000000002,
+          "w": 10.349999999999998,
+          "size": 9
+        },
+        {
+          "str": "Not applicable",
+          "x": 306.7571999999999,
+          "y": 101.27970000000002,
+          "w": 43.67699999999994,
+          "size": 9
+        },
+        {
+          "str": "(1)",
+          "x": 45,
+          "y": 89.04,
+          "w": 5.579616000000003,
+          "size": 8
+        },
+        {
+          "str": " ",
+          "x": 50.57961600000001,
+          "y": 89.04,
+          "w": 0.9884999999999999,
+          "size": 8
+        },
+        {
+          "str": "OS series B FRN 4 or later",
+          "x": 58.46784600000001,
+          "y": 89.04,
+          "w": 68.74291200000002,
+          "size": 8
+        }
+      ]
+    },
+    {
+      "page": 113,
+      "text": "Rockwell Automation Publication 1763-UM001G-EN-P - May 2024 113\nAppendix A Specifications\nDigital Input Specifications for 1763-L16DWD\nDescription\n1763-L16DWD\nInputs 0...3\n(4 high-speed DC inputs) Inputs 4 and Higher\n(6 standard DC inputs)\nOn-state voltage range 10…24V DC @ 65 °C/149 °F\n10…30V DC @ 30 °C/86 °F\nOff-state voltage range 0…5V DC\nOperating frequency 0 Hz…40 kHz(1)\n(1) OS series B FRN 4 or later\n0 Hz…1 kHz\nOn-state current:\nMin\nNom\nMax\n2.0 mA @ 10V DC\n8.5 mA @ 24V DC\n12.0 mA @ 30V DC\nOff-state leakage current, max 1.5 mA\nNominal impedance 2.61 kΩ 3.1 kΩ\nMaximum inrush current Not applicable\nAnalog Input Specifications\nDescription 1763-L16AWA, 1763-L16BWA, 1763-L16BBB, 1763-L16DWD\nVoltage input range 0…10.0V DC, - 1 LSB\nType of data 10-bit unsigned integer\nInput coding (0...10.0V DC, - 1 LSB) 0…+1,023\nVoltage input impedance 210 kΩ\nInput resolution 10 bit\nNon-linearity ±1.0% of full scale\nOverall accuracy\n-20…+65 °C (-4…+149 °F) ±1.0% of full scale\nVoltage input overvoltage protection 10.5V DC\nField wiring to logic isolation Non-isolated with logic\nOutput Specifications For Hazardous Locations Applications (Class I Division 2, Groups A, B,\nC, D) - General\nDescription 1763-L16AWA, 1763-L16BWA,\n1763-L16DWD 1763-L16BBB\nRelay and FET Outputs\nMaximum controlled load 1080VA 360VA\nMaximum Continuous Current\nCurrent per group common 3 A 3 A\nCurrent per controller @ 150V max 18 A or a total of per-point loads, whichever is less\n@ 240V max 18 A or a total of per-point loads, whichever is less\nRelay Outputs\nTurn on time/Turn off time, max 10 ms(1)\n(1) Scan time dependent\nRelay life - Electrical (Resistive Load) See Figure 83\nRelay life - Mechanical 10,000,000 cycles\nLoad current, min 10 mA",
+      "items": [
+        {
+          "str": "Rockwell Automation Publication 1763-UM001G-EN-P - May 2024",
+          "x": 195.72,
+          "y": 28.98,
+          "w": 193.21649999999994,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 388.9364999999999,
+          "y": 28.98,
+          "w": 18.784900000000018,
+          "size": 9
+        },
+        {
+          "str": "113",
+          "x": 558.0006000000001,
+          "y": 28.98,
+          "w": 9.024300000000096,
+          "size": 9
+        },
+        {
+          "str": "",
+          "x": 466.02,
+          "y": 768,
+          "w": 0,
+          "size": 9
+        },
+        {
+          "str": "Appendix A",
+          "x": 466.02,
+          "y": 768,
+          "w": 36.3735,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 502.3935,
+          "y": 768,
+          "w": 1.9993999999999863,
+          "size": 9
+        },
+        {
+          "str": "Specifications",
+          "x": 520.3880999999999,
+          "y": 768,
+          "w": 46.63079999999989,
+          "size": 9
+        },
+        {
+          "str": "",
+          "x": 216,
+          "y": 731.7,
+          "w": 0,
+          "size": 11
+        },
+        {
+          "str": "Digital Input Specifications for 1763-L16DWD",
+          "x": 216,
+          "y": 731.7,
+          "w": 170.59406399999978,
+          "size": 11
+        },
+        {
+          "str": "",
+          "x": 217.98,
+          "y": 702,
+          "w": 0,
+          "size": 9
+        },
+        {
+          "str": "Description",
+          "x": 217.98,
+          "y": 702,
+          "w": 37.268100000000004,
+          "size": 9
+        },
+        {
+          "str": "1763-L16DWD",
+          "x": 342.4203,
+          "y": 713.0403,
+          "w": 41.96610000000013,
+          "size": 9
+        },
+        {
+          "str": "Inputs 0...3",
+          "x": 342.4203,
+          "y": 700.02,
+          "w": 36.26819999999985,
+          "size": 9
+        },
+        {
+          "str": "(4 high-speed DC inputs)",
+          "x": 342.4203,
+          "y": 691.02,
+          "w": 80.64719999999981,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 423.0674999999998,
+          "y": 691.02,
+          "w": 3.6259000000000206,
+          "size": 9
+        },
+        {
+          "str": "Inputs 4 and Higher",
+          "x": 455.7006,
+          "y": 700.02,
+          "w": 63.34920000000006,
+          "size": 9
+        },
+        {
+          "str": "(6 standard DC inputs)",
+          "x": 455.7006,
+          "y": 691.02,
+          "w": 72.95760000000016,
+          "size": 9
+        },
+        {
+          "str": "",
+          "x": 217.98090000000002,
+          "y": 673.4997,
+          "w": 0,
+          "size": 9
+        },
+        {
+          "str": "On-state voltage range",
+          "x": 217.98090000000002,
+          "y": 673.4997,
+          "w": 69.55379999999997,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 287.5347,
+          "y": 673.4997,
+          "w": 6.098500000000001,
+          "size": 9
+        },
+        {
+          "str": "10…24V DC @ 65 °C/149 °F",
+          "x": 342.4212,
+          "y": 677.9997,
+          "w": 81.36539999999998,
+          "size": 9
+        },
+        {
+          "str": "10…30V DC @ 30 °C/86 °F",
+          "x": 342.4212,
+          "y": 668.9997,
+          "w": 79.75260000000013,
+          "size": 9
+        },
+        {
+          "str": "Off-state voltage range",
+          "x": 217.9809,
+          "y": 656.0396999999999,
+          "w": 70.78770000000017,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 288.7686000000001,
+          "y": 656.0396999999999,
+          "w": 5.966300000000002,
+          "size": 9
+        },
+        {
+          "str": "0…5V DC",
+          "x": 342.4653000000001,
+          "y": 656.0396999999999,
+          "w": 27.22140000000002,
+          "size": 9
+        },
+        {
+          "str": "Operating frequency",
+          "x": 217.9809,
+          "y": 641.8196999999999,
+          "w": 62.20349999999986,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 280.1843999999998,
+          "y": 641.8196999999999,
+          "w": 6.915200000000021,
+          "size": 9
+        },
+        {
+          "str": "0 Hz…40 kHz",
+          "x": 342.4212,
+          "y": 640.6199999999999,
+          "w": 39.538799999999995,
+          "size": 9
+        },
+        {
+          "str": "(1)",
+          "x": 381.96,
+          "y": 644.22,
+          "w": 5.018399999999965,
+          "size": 7.2
+        },
+        {
+          "str": "(1)",
+          "x": 216,
+          "y": 549.42,
+          "w": 5.6402639999999895,
+          "size": 8
+        },
+        {
+          "str": " ",
+          "x": 221.64026399999997,
+          "y": 549.42,
+          "w": 0.9810000000000012,
+          "size": 8
+        },
+        {
+          "str": "OS series B FRN 4 or later",
+          "x": 229.46864399999998,
+          "y": 549.42,
+          "w": 68.72695199999971,
+          "size": 8
+        },
+        {
+          "str": "0 Hz…1 kHz",
+          "x": 455.7,
+          "y": 641.8201,
+          "w": 34.144200000000104,
+          "size": 9
+        },
+        {
+          "str": "On-state current:",
+          "x": 217.9803,
+          "y": 627.6001,
+          "w": 52.478999999999886,
+          "size": 9
+        },
+        {
+          "str": "Min",
+          "x": 217.9803,
+          "y": 618.6001,
+          "w": 10.355400000000023,
+          "size": 9
+        },
+        {
+          "str": "Nom",
+          "x": 217.9803,
+          "y": 609.6001,
+          "w": 13.99139999999998,
+          "size": 9
+        },
+        {
+          "str": "Max",
+          "x": 217.9803,
+          "y": 600.6001,
+          "w": 11.78279999999999,
+          "size": 9
+        },
+        {
+          "str": "2.0 mA @ 10V DC",
+          "x": 342.42060000000004,
+          "y": 618.6001,
+          "w": 51.01470000000002,
+          "size": 9
+        },
+        {
+          "str": "8.5 mA @ 24V DC",
+          "x": 342.42060000000004,
+          "y": 609.6001,
+          "w": 52.20629999999983,
+          "size": 9
+        },
+        {
+          "str": "12.0 mA @ 30V DC",
+          "x": 342.42060000000004,
+          "y": 600.6001,
+          "w": 54.63630000000016,
+          "size": 9
+        },
+        {
+          "str": "Off-state leakage current, max",
+          "x": 217.98030000000003,
+          "y": 587.5798,
+          "w": 93.52620000000012,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 311.5065000000001,
+          "y": 587.5798,
+          "w": 3.4372999999999996,
+          "size": 9
+        },
+        {
+          "str": "1.5 mA",
+          "x": 342.44220000000007,
+          "y": 587.5798,
+          "w": 19.00080000000004,
+          "size": 9
+        },
+        {
+          "str": "Nominal impedance",
+          "x": 217.98030000000003,
+          "y": 574.6197999999999,
+          "w": 60.63749999999997,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 278.6178,
+          "y": 574.6197999999999,
+          "w": 7.092999999999999,
+          "size": 9
+        },
+        {
+          "str": "2.61 k",
+          "x": 342.4548,
+          "y": 574.6197999999999,
+          "w": 16.47360000000005,
+          "size": 9
+        },
+        {
+          "str": "Ω",
+          "x": 358.9203,
+          "y": 574.6197999999999,
+          "w": 6.732,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 365.6523,
+          "y": 574.6197999999999,
+          "w": 10.005299999999997,
+          "size": 9
+        },
+        {
+          "str": "3.1 k",
+          "x": 455.7,
+          "y": 574.6197999999999,
+          "w": 13.106699999999973,
+          "size": 9
+        },
+        {
+          "str": "Ω",
+          "x": 468.84,
+          "y": 574.6197999999999,
+          "w": 6.732,
+          "size": 9
+        },
+        {
+          "str": "",
+          "x": 217.98029999999997,
+          "y": 561.5994999999999,
+          "w": 0,
+          "size": 9
+        },
+        {
+          "str": "Maximum inrush current",
+          "x": 217.98029999999997,
+          "y": 561.5994999999999,
+          "w": 74.51370000000001,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 292.49399999999986,
+          "y": 561.5994999999999,
+          "w": 5.546299999999999,
+          "size": 9
+        },
+        {
+          "str": "Not applicable",
+          "x": 342.41069999999985,
+          "y": 561.5994999999999,
+          "w": 43.685999999999886,
+          "size": 9
+        },
+        {
+          "str": "",
+          "x": 216,
+          "y": 525.42,
+          "w": 0,
+          "size": 11
+        },
+        {
+          "str": "Analog Input Specifications",
+          "x": 216,
+          "y": 525.42,
+          "w": 106.29628199999965,
+          "size": 11
+        },
+        {
+          "str": "",
+          "x": 217.98,
+          "y": 506.7,
+          "w": 0,
+          "size": 9
+        },
+        {
+          "str": "Description",
+          "x": 217.98,
+          "y": 506.7,
+          "w": 37.295999999999935,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 255.27599999999995,
+          "y": 506.7,
+          "w": 9.686299999999997,
+          "size": 9
+        },
+        {
+          "str": "1763-L16AWA, 1763-L16BWA, 1763-L16BBB, 1763-L16DWD",
+          "x": 342.45269999999994,
+          "y": 506.7,
+          "w": 175.10310000000055,
+          "size": 9
+        },
+        {
+          "str": "",
+          "x": 217.98,
+          "y": 493.74,
+          "w": 0,
+          "size": 9
+        },
+        {
+          "str": "Voltage input range",
+          "x": 217.98,
+          "y": 493.74,
+          "w": 59.23979999999989,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 277.21979999999985,
+          "y": 493.74,
+          "w": 7.239700000000003,
+          "size": 9
+        },
+        {
+          "str": "0…10.0V DC, - 1 LSB",
+          "x": 342.37709999999987,
+          "y": 493.74,
+          "w": 58.50089999999985,
+          "size": 9
+        },
+        {
+          "str": "Type of data",
+          "x": 217.98,
+          "y": 480.7197,
+          "w": 37.80989999999996,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 255.7899,
+          "y": 480.7197,
+          "w": 9.626999999999997,
+          "size": 9
+        },
+        {
+          "str": "10-bit unsigned integer",
+          "x": 342.43289999999996,
+          "y": 480.7197,
+          "w": 70.30259999999991,
+          "size": 9
+        },
+        {
+          "str": "Input coding (0...10.0V DC, - 1 LSB)",
+          "x": 217.98,
+          "y": 467.69939999999997,
+          "w": 101.91600000000034,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 319.8960000000002,
+          "y": 467.69939999999997,
+          "w": 2.5047000000000015,
+          "size": 9
+        },
+        {
+          "str": "0…+1,023",
+          "x": 342.4383000000002,
+          "y": 467.69939999999997,
+          "w": 28.431900000000063,
+          "size": 9
+        },
+        {
+          "str": "Voltage input impedance",
+          "x": 217.98,
+          "y": 454.7394,
+          "w": 75.61619999999998,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 293.59619999999995,
+          "y": 454.7394,
+          "w": 5.426300000000001,
+          "size": 9
+        },
+        {
+          "str": "210 k",
+          "x": 342.43289999999996,
+          "y": 454.7394,
+          "w": 15.036299999999995,
+          "size": 9
+        },
+        {
+          "str": "Ω",
+          "x": 357.4197,
+          "y": 454.7394,
+          "w": 6.732,
+          "size": 9
+        },
+        {
+          "str": "",
+          "x": 217.98,
+          "y": 441.71909999999997,
+          "w": 0,
+          "size": 9
+        },
+        {
+          "str": "Input resolution",
+          "x": 217.98,
+          "y": 441.71909999999997,
+          "w": 48.13740000000006,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 266.1174000000001,
+          "y": 441.71909999999997,
+          "w": 8.475999999999999,
+          "size": 9
+        },
+        {
+          "str": "10 bit",
+          "x": 342.4014000000001,
+          "y": 441.71909999999997,
+          "w": 16.13879999999994,
+          "size": 9
+        },
+        {
+          "str": "Non-linearity",
+          "x": 217.98,
+          "y": 428.69879999999995,
+          "w": 39.61979999999994,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 257.59979999999996,
+          "y": 428.69879999999995,
+          "w": 9.418700000000001,
+          "size": 9
+        },
+        {
+          "str": "±1.0% of full scale",
+          "x": 342.36809999999997,
+          "y": 428.69879999999995,
+          "w": 55.8585,
+          "size": 9
+        },
+        {
+          "str": "Overall accuracy",
+          "x": 217.98,
+          "y": 415.73879999999997,
+          "w": 50.37930000000011,
+          "size": 9
+        },
+        {
+          "str": "-20…+65 °C (-4…+149 °F)",
+          "x": 217.98,
+          "y": 406.73879999999997,
+          "w": 76.64579999999988,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 294.6257999999999,
+          "y": 406.73879999999997,
+          "w": 5.310500000000009,
+          "size": 9
+        },
+        {
+          "str": "±1.0% of full scale",
+          "x": 342.4203,
+          "y": 411.23879999999997,
+          "w": 55.805399999999885,
+          "size": 9
+        },
+        {
+          "str": "Voltage input overvoltage protection",
+          "x": 217.98,
+          "y": 393.71849999999995,
+          "w": 110.7836999999998,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 328.7637,
+          "y": 393.71849999999995,
+          "w": 1.5226999999999988,
+          "size": 9
+        },
+        {
+          "str": "10.5V DC",
+          "x": 342.46799999999996,
+          "y": 393.71849999999995,
+          "w": 25.571699999999957,
+          "size": 9
+        },
+        {
+          "str": "Field wiring to logic isolation",
+          "x": 217.98,
+          "y": 380.69819999999993,
+          "w": 87.50069999999978,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 305.4806999999999,
+          "y": 380.69819999999993,
+          "w": 4.102700000000002,
+          "size": 9
+        },
+        {
+          "str": "Non-isolated with logic",
+          "x": 342.4049999999999,
+          "y": 380.69819999999993,
+          "w": 70.24319999999982,
+          "size": 9
+        },
+        {
+          "str": "",
+          "x": 216,
+          "y": 355.38,
+          "w": 0,
+          "size": 11
+        },
+        {
+          "str": "Output Specifications For Hazardous Locations Applications (Class I Division 2, Groups A, B,",
+          "x": 216,
+          "y": 355.38,
+          "w": 349.1014140000001,
+          "size": 11
+        },
+        {
+          "str": "C, D) - General",
+          "x": 215.99999999999997,
+          "y": 344.4,
+          "w": 55.021877999999965,
+          "size": 11
+        },
+        {
+          "str": "",
+          "x": 217.98,
+          "y": 321.24,
+          "w": 0,
+          "size": 9
+        },
+        {
+          "str": "Description",
+          "x": 217.98,
+          "y": 321.24,
+          "w": 37.268100000000004,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 255.24810000000002,
+          "y": 321.24,
+          "w": 9.685799999999997,
+          "size": 9
+        },
+        {
+          "str": "1763-L16AWA, 1763-L16BWA,",
+          "x": 342.4203,
+          "y": 325.74,
+          "w": 87.78060000000028,
+          "size": 9
+        },
+        {
+          "str": "1763-L16DWD",
+          "x": 342.4203,
+          "y": 316.74,
+          "w": 41.92830000000008,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 384.3486,
+          "y": 316.74,
+          "w": 7.968000000000005,
+          "size": 9
+        },
+        {
+          "str": "1763-L16BBB",
+          "x": 456.0606,
+          "y": 321.24,
+          "w": 39.98340000000018,
+          "size": 9
+        },
+        {
+          "str": "Relay and FET Outputs",
+          "x": 217.98090000000002,
+          "y": 303.7197,
+          "w": 72.3303000000001,
+          "size": 9
+        },
+        {
+          "str": "",
+          "x": 217.98090000000002,
+          "y": 290.69939999999997,
+          "w": 0,
+          "size": 9
+        },
+        {
+          "str": "Maximum controlled load",
+          "x": 217.98090000000002,
+          "y": 290.69939999999997,
+          "w": 76.22639999999996,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 294.20730000000003,
+          "y": 290.69939999999997,
+          "w": 5.363700000000001,
+          "size": 9
+        },
+        {
+          "str": "1080VA",
+          "x": 342.48060000000004,
+          "y": 290.69939999999997,
+          "w": 21.273299999999935,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 363.75389999999993,
+          "y": 290.69939999999997,
+          "w": 10.263300000000003,
+          "size": 9
+        },
+        {
+          "str": "360VA",
+          "x": 456.12359999999995,
+          "y": 290.69939999999997,
+          "w": 18.490499999999916,
+          "size": 9
+        },
+        {
+          "str": "",
+          "x": 217.98090000000002,
+          "y": 277.7394,
+          "w": 0,
+          "size": 9
+        },
+        {
+          "str": "Maximum Continuous Current",
+          "x": 217.98090000000002,
+          "y": 277.7394,
+          "w": 95.60429999999994,
+          "size": 9
+        },
+        {
+          "str": "",
+          "x": 217.98090000000002,
+          "y": 264.71909999999997,
+          "w": 0,
+          "size": 9
+        },
+        {
+          "str": "Current per group common",
+          "x": 217.98090000000002,
+          "y": 264.71909999999997,
+          "w": 82.70819999999979,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 300.6890999999997,
+          "y": 264.71909999999997,
+          "w": 4.642700000000003,
+          "size": 9
+        },
+        {
+          "str": "3 A",
+          "x": 342.47339999999974,
+          "y": 264.71909999999997,
+          "w": 9.150299999999994,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 351.62369999999976,
+          "y": 264.71909999999997,
+          "w": 11.610000000000001,
+          "size": 9
+        },
+        {
+          "str": "3 A",
+          "x": 456.11369999999977,
+          "y": 264.71909999999997,
+          "w": 9.150299999999994,
+          "size": 9
+        },
+        {
+          "str": "Current per controller",
+          "x": 217.98090000000002,
+          "y": 245.21879999999996,
+          "w": 66.05370000000022,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 284.03460000000024,
+          "y": 245.21879999999996,
+          "w": 0.9273999999999774,
+          "size": 9
+        },
+        {
+          "str": "@ 150V max",
+          "x": 292.38120000000004,
+          "y": 251.69879999999995,
+          "w": 37.2978,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 329.679,
+          "y": 251.69879999999995,
+          "w": 1.417299999999999,
+          "size": 9
+        },
+        {
+          "str": "18 A or a total of per-point loads, whichever is less",
+          "x": 342.43469999999996,
+          "y": 251.69879999999995,
+          "w": 152.6489999999997,
+          "size": 9
+        },
+        {
+          "str": "@ 240V max",
+          "x": 292.38120000000004,
+          "y": 238.73879999999994,
+          "w": 38.677499999999974,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 331.0587,
+          "y": 238.73879999999994,
+          "w": 1.2639999999999973,
+          "size": 9
+        },
+        {
+          "str": "18 A or a total of per-point loads, whichever is less",
+          "x": 342.43469999999996,
+          "y": 238.73879999999994,
+          "w": 152.6489999999997,
+          "size": 9
+        },
+        {
+          "str": "",
+          "x": 217.98090000000002,
+          "y": 225.71849999999995,
+          "w": 0,
+          "size": 9
+        },
+        {
+          "str": "Relay Outputs",
+          "x": 217.98090000000002,
+          "y": 225.71849999999995,
+          "w": 44.788500000000006,
+          "size": 9
+        },
+        {
+          "str": "",
+          "x": 217.98090000000002,
+          "y": 211.49849999999995,
+          "w": 0,
+          "size": 9
+        },
+        {
+          "str": "Turn on time/Turn off time, max",
+          "x": 217.98090000000002,
+          "y": 211.49849999999995,
+          "w": 98.06850000000001,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 316.04940000000005,
+          "y": 211.49849999999995,
+          "w": 2.9301999999999944,
+          "size": 9
+        },
+        {
+          "str": "10 ms",
+          "x": 342.4212,
+          "y": 210.29879999999994,
+          "w": 17.278800000000057,
+          "size": 9
+        },
+        {
+          "str": "(1)",
+          "x": 359.7,
+          "y": 213.9001,
+          "w": 5.018400000000022,
+          "size": 7.2
+        },
+        {
+          "str": "(1)",
+          "x": 216,
+          "y": 159.1201,
+          "w": 5.626697999999993,
+          "size": 8
+        },
+        {
+          "str": " ",
+          "x": 221.62669799999998,
+          "y": 159.1201,
+          "w": 0.9810000000000012,
+          "size": 8
+        },
+        {
+          "str": "Scan time dependent",
+          "x": 229.455078,
+          "y": 159.1201,
+          "w": 57.527022000000066,
+          "size": 8
+        },
+        {
+          "str": "Relay life - Electrical (Resistive Load)",
+          "x": 217.98,
+          "y": 197.3401,
+          "w": 112.51799999999984,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 330.49799999999993,
+          "y": 197.3401,
+          "w": 1.3247000000000009,
+          "size": 9
+        },
+        {
+          "str": "See Figure 83",
+          "x": 342.42029999999994,
+          "y": 197.3401,
+          "w": 41.34419999999994,
+          "size": 9
+        },
+        {
+          "str": "Relay life - Mechanical",
+          "x": 217.98,
+          "y": 184.3201,
+          "w": 68.22359999999993,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 286.20359999999994,
+          "y": 184.3201,
+          "w": 6.245699999999999,
+          "size": 9
+        },
+        {
+          "str": "10,000,000 cycles",
+          "x": 342.41489999999993,
+          "y": 184.3201,
+          "w": 53.590499999999906,
+          "size": 9
+        },
+        {
+          "str": "Load current, min",
+          "x": 217.98,
+          "y": 171.2998,
+          "w": 54.03780000000002,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 272.0178,
+          "y": 171.2998,
+          "w": 7.8226999999999975,
+          "size": 9
+        },
+        {
+          "str": "10 mA",
+          "x": 342.4221,
+          "y": 171.2998,
+          "w": 17.60849999999999,
+          "size": 9
+        }
+      ]
+    },
+    {
+      "page": 114,
+      "text": "114 Rockwell Automation Publication 1763-UM001G-EN-P - May 2024\nAppendix A Specifications\nRelay Contact Ratings(1)\n(1) Pilot Duty Rating: (ordinary location) – B300, R150. (hazardous location) – C300, R150.\nMaximum Volts Amperes Amperes Continuous Voltamperes\nMake Break Make Break\n240V AC(2)\n(2) For AC voltage applications lower than 240V AC but higher than 120V AC, the maximum make and break ratings are to be\nobtained by dividing the voltampere rating by the application voltage.\n7.5 A 0.75 A 2.5 A 1800VA 180VA\n120V AC(3)\n(3) For AC voltage applications lower than 120V AC, the maximum make current is to be the same as for 120V AC, and the\nmaximum break current is to be obtained by dividing the break voltampere rating by the application voltage, but the currents\nare not to exceed the thermal continuous current.\n15.0 A 1.5 A 2.5 A 1800VA 180VA\n125V DC(4)\n(4) For DC voltage applications lower than 125V DC, the make/break ampere rating for relay contacts can be determined by\ndividing the voltampere rating by the applied DC voltage but the current values are not to exceed the thermal continuous\ncurrent.\n0.22 A 1.0 A 28VA\nATTENTION: Do not exceed the “Current per group common” specification.\nOutput Specifications For Ordinary (Non-Hazardous) Locations only - General\nDescription 1763-L16AWA, 1763-L16BWA,\n1763-L16DWD 1763-L16BBB\nRelay and FET Outputs\nMaximum controlled load 1440VA 720VA\nMaximum Continuous Current\nCurrent per group common 5 A(1)\n(1) 3.0 A above 40 °C (104 °F)\n5 A\nCurrent per controller @ 150V max 30 A or a total of per-point loads, whichever is less\n@ 240V max 20 A or a total of per-point loads, whichever is less\nRelay Outputs\nTurn on time/Turn off time, max 10 ms(2)\n(2) Scan time dependent\nRelay life - Electrical (Resistive Load) See Figure 83\nRelay life - Mechanical 10,000,000 cycles\nLoad current, min 10 mA\nRelay Contact Ratings(1)\n(1) Pilot Duty Rating: (ordinary location) – B300, R150. (hazardous location) – C300, R150.\nMaximum Volts Amperes Amperes Continuous Voltamperes\nMake Break Make Break\n240V AC(2)\n(2) For AC voltage applications lower than 240V AC but higher than 120V AC, the maximum make and break ratings are to be\nobtained by dividing the voltampere rating by the application voltage.\n15.0 A 1.5 A 5.0 A(3)\n(3) 3.0 A above 40 °C (104 °F).\n3600VA 360VA\n120V AC(4)\n(4) For AC voltage applications lower than 120V AC, the maximum make current is to be the same as for 120V AC, and the\nmaximum break current is to be obtained by dividing the break voltampere rating by the application voltage, but the currents\nare not to exceed the thermal continuous current.\n30.0 A 3.0 A 3600VA 360VA\n125V DC(5)\n(5) For DC voltage applications lower than 125V DC, the make/break ampere rating for relay contacts can be determined by\ndividing the voltampere rating by the applied DC voltage but the current values are not to exceed the thermal continuous\ncurrent.\n0.22 A 1.0 A 28VA\nATTENTION: Do not exceed the “Current per group common” specification.",
+      "items": [
+        {
+          "str": "114",
+          "x": 45,
+          "y": 28.98,
+          "w": 9.456299999999995,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 54.45629999999999,
+          "y": 28.98,
+          "w": 15.696000000000002,
+          "size": 9
+        },
+        {
+          "str": "Rockwell Automation Publication 1763-UM001G-EN-P - May 2024",
+          "x": 195.7203,
+          "y": 28.98,
+          "w": 193.21649999999985,
+          "size": 9
+        },
+        {
+          "str": "",
+          "x": 45,
+          "y": 768,
+          "w": 0,
+          "size": 9
+        },
+        {
+          "str": "Appendix A",
+          "x": 45,
+          "y": 768,
+          "w": 36.36089999999998,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 81.36089999999997,
+          "y": 768,
+          "w": 1.993199999999997,
+          "size": 9
+        },
+        {
+          "str": "Specifications",
+          "x": 99.29969999999994,
+          "y": 768,
+          "w": 46.65779999999999,
+          "size": 9
+        },
+        {
+          "str": "",
+          "x": 216,
+          "y": 728.76,
+          "w": 0,
+          "size": 11
+        },
+        {
+          "str": "Relay Contact Ratings",
+          "x": 216,
+          "y": 728.76,
+          "w": 84.66000000000008,
+          "size": 11
+        },
+        {
+          "str": "(1)",
+          "x": 300.66,
+          "y": 733.14,
+          "w": 7.3040879999999815,
+          "size": 8.8
+        },
+        {
+          "str": "",
+          "x": 216,
+          "y": 638.64,
+          "w": 0,
+          "size": 8
+        },
+        {
+          "str": "(1)",
+          "x": 216,
+          "y": 638.64,
+          "w": 5.611535999999989,
+          "size": 8
+        },
+        {
+          "str": " ",
+          "x": 221.61153599999997,
+          "y": 638.64,
+          "w": 0.9810000000000012,
+          "size": 8
+        },
+        {
+          "str": "Pilot Duty Rating: (ordinary location) – B300, R150. (hazardous location) – C300, R150.",
+          "x": 229.43991599999998,
+          "y": 638.64,
+          "w": 228.78899399999924,
+          "size": 8
+        },
+        {
+          "str": "",
+          "x": 217.98,
+          "y": 703.56,
+          "w": 0,
+          "size": 9
+        },
+        {
+          "str": "Maximum Volts",
+          "x": 217.98,
+          "y": 703.56,
+          "w": 48.952800000000025,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 266.9328,
+          "y": 703.56,
+          "w": 4.007499999999999,
+          "size": 9
+        },
+        {
+          "str": "Amperes",
+          "x": 303.0003,
+          "y": 710.1003,
+          "w": 28.84770000000011,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 331.84800000000007,
+          "y": 710.1003,
+          "w": 7.121399999999994,
+          "size": 9
+        },
+        {
+          "str": "Amperes Continuous",
+          "x": 395.9406,
+          "y": 703.56,
+          "w": 67.03019999999992,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 462.97080000000005,
+          "y": 703.56,
+          "w": 0.7588999999999955,
+          "size": 9
+        },
+        {
+          "str": "Voltamperes",
+          "x": 469.8009,
+          "y": 710.1003,
+          "w": 40.90770000000006,
+          "size": 9
+        },
+        {
+          "str": "Make",
+          "x": 303.00120000000004,
+          "y": 697.0799999999999,
+          "w": 16.68869999999998,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 319.6899,
+          "y": 697.0799999999999,
+          "w": 3.3107000000000033,
+          "size": 9
+        },
+        {
+          "str": "Break",
+          "x": 349.48620000000005,
+          "y": 697.0799999999999,
+          "w": 18.996299999999962,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 368.4825,
+          "y": 697.0799999999999,
+          "w": 11.2577,
+          "size": 9
+        },
+        {
+          "str": "Make",
+          "x": 469.8018,
+          "y": 697.0799999999999,
+          "w": 16.687799999999978,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 486.4896,
+          "y": 697.0799999999999,
+          "w": 3.6573000000000015,
+          "size": 9
+        },
+        {
+          "str": "Break",
+          "x": 519.4053,
+          "y": 697.0799999999999,
+          "w": 18.989999999999895,
+          "size": 9
+        },
+        {
+          "str": "",
+          "x": 217.98090000000005,
+          "y": 681.6602999999999,
+          "w": 0,
+          "size": 9
+        },
+        {
+          "str": "240V AC",
+          "x": 217.98090000000005,
+          "y": 681.6602999999999,
+          "w": 24.659099999999924,
+          "size": 9
+        },
+        {
+          "str": "(2)",
+          "x": 242.64,
+          "y": 685.26,
+          "w": 6.098400000000012,
+          "size": 7.2
+        },
+        {
+          "str": "(2)",
+          "x": 216,
+          "y": 630.66,
+          "w": 6.755868000000019,
+          "size": 8
+        },
+        {
+          "str": " ",
+          "x": 222.75586800000002,
+          "y": 630.66,
+          "w": 0.8381000000000007,
+          "size": 8
+        },
+        {
+          "str": "For AC voltage applications lower than 240V AC but higher than 120V AC, the maximum make and break ratings are to be",
+          "x": 229.44390600000003,
+          "y": 630.66,
+          "w": 324.37582800000035,
+          "size": 8
+        },
+        {
+          "str": "obtained by dividing the voltampere rating by the application voltage.",
+          "x": 229.50056400000005,
+          "y": 622.68,
+          "w": 188.0510940000005,
+          "size": 8
+        },
+        {
+          "str": "7.5 A",
+          "x": 303,
+          "y": 682.86,
+          "w": 13.701599999999985,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 316.7015999999999,
+          "y": 682.86,
+          "w": 3.643299999999998,
+          "size": 9
+        },
+        {
+          "str": "0.75 A",
+          "x": 349.4912999999999,
+          "y": 682.86,
+          "w": 17.901900000000033,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 367.39319999999987,
+          "y": 682.86,
+          "w": 3.169999999999997,
+          "size": 9
+        },
+        {
+          "str": "2.5 A",
+          "x": 395.92319999999984,
+          "y": 682.86,
+          "w": 14.490900000000057,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 410.41409999999985,
+          "y": 682.86,
+          "w": 6.5966999999999985,
+          "size": 9
+        },
+        {
+          "str": "1800VA",
+          "x": 469.78439999999983,
+          "y": 682.86,
+          "w": 21.269700000000046,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 491.05409999999983,
+          "y": 682.86,
+          "w": 3.1500000000000026,
+          "size": 9
+        },
+        {
+          "str": "180VA",
+          "x": 519.4040999999999,
+          "y": 682.86,
+          "w": 17.250300000000003,
+          "size": 9
+        },
+        {
+          "str": "120V AC",
+          "x": 217.9797,
+          "y": 666.3,
+          "w": 23.28029999999998,
+          "size": 9
+        },
+        {
+          "str": "(3)",
+          "x": 241.26,
+          "y": 669.9,
+          "w": 6.098399999999999,
+          "size": 7.2
+        },
+        {
+          "str": "(3)",
+          "x": 216,
+          "y": 614.64,
+          "w": 6.8053440000000265,
+          "size": 8
+        },
+        {
+          "str": " ",
+          "x": 222.80534400000002,
+          "y": 614.64,
+          "w": 0.8305999999999992,
+          "size": 8
+        },
+        {
+          "str": "For AC voltage applications lower than 120V AC, the maximum make current is to be the same as for 120V AC, and the",
+          "x": 229.433532,
+          "y": 614.64,
+          "w": 315.25389000000047,
+          "size": 8
+        },
+        {
+          "str": "maximum break current is to be obtained by dividing the break voltampere rating by the application voltage, but the currents",
+          "x": 229.50056400000005,
+          "y": 606.66,
+          "w": 336.06812400000103,
+          "size": 8
+        },
+        {
+          "str": "are not to exceed the thermal continuous current.",
+          "x": 229.50056400000003,
+          "y": 598.68,
+          "w": 135.21152400000003,
+          "size": 8
+        },
+        {
+          "str": "15.0 A",
+          "x": 303,
+          "y": 667.5,
+          "w": 16.8903,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 319.8902999999999,
+          "y": 667.5,
+          "w": 3.2900000000000014,
+          "size": 9
+        },
+        {
+          "str": "1.5 A",
+          "x": 349.5002999999999,
+          "y": 667.5,
+          "w": 13.188600000000019,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 362.6888999999999,
+          "y": 667.5,
+          "w": 3.696700000000002,
+          "size": 9
+        },
+        {
+          "str": "2.5 A",
+          "x": 395.9591999999999,
+          "y": 667.5,
+          "w": 14.490000000000055,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 410.4491999999999,
+          "y": 667.5,
+          "w": 6.5966999999999985,
+          "size": 9
+        },
+        {
+          "str": "1800VA",
+          "x": 469.8194999999999,
+          "y": 667.5,
+          "w": 21.266999999999985,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 491.08649999999983,
+          "y": 667.5,
+          "w": 3.1499999999999964,
+          "size": 9
+        },
+        {
+          "str": "180VA",
+          "x": 519.4364999999998,
+          "y": 667.5,
+          "w": 17.22239999999996,
+          "size": 9
+        },
+        {
+          "str": "125V DC",
+          "x": 217.9797,
+          "y": 650.8797,
+          "w": 23.520299999999978,
+          "size": 9
+        },
+        {
+          "str": "(4)",
+          "x": 241.5,
+          "y": 654.48,
+          "w": 6.219359999999999,
+          "size": 7.2
+        },
+        {
+          "str": "(4)",
+          "x": 216,
+          "y": 590.64,
+          "w": 6.9042959999999995,
+          "size": 8
+        },
+        {
+          "str": " ",
+          "x": 222.904296,
+          "y": 590.64,
+          "w": 0.8231000000000014,
+          "size": 8
+        },
+        {
+          "str": "For DC voltage applications lower than 125V DC, the make/break ampere rating for relay contacts can be determined by",
+          "x": 229.472634,
+          "y": 590.64,
+          "w": 322.69284600000026,
+          "size": 8
+        },
+        {
+          "str": "dividing the voltampere rating by the applied DC voltage but the current values are not to exceed the thermal continuous",
+          "x": 229.49976600000005,
+          "y": 582.66,
+          "w": 326.8951140000003,
+          "size": 8
+        },
+        {
+          "str": "current.",
+          "x": 229.49976600000005,
+          "y": 574.68,
+          "w": 21.553181999999982,
+          "size": 8
+        },
+        {
+          "str": "0.22 A",
+          "x": 303,
+          "y": 652.0801,
+          "w": 18.441899999999972,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 321.4418999999999,
+          "y": 652.0801,
+          "w": 8.276699999999998,
+          "size": 9
+        },
+        {
+          "str": "1.0 A",
+          "x": 395.9321999999999,
+          "y": 652.0801,
+          "w": 13.16969999999999,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 409.10189999999983,
+          "y": 652.0801,
+          "w": 6.743300000000001,
+          "size": 9
+        },
+        {
+          "str": "28VA",
+          "x": 469.79159999999985,
+          "y": 652.0801,
+          "w": 14.564699999999945,
+          "size": 9
+        },
+        {
+          "str": "",
+          "x": 266.82,
+          "y": 533.22,
+          "w": 0,
+          "size": 11
+        },
+        {
+          "str": "ATTENTION:",
+          "x": 266.82,
+          "y": 533.22,
+          "w": 46.91863800000007,
+          "size": 11
+        },
+        {
+          "str": " ",
+          "x": 313.738638,
+          "y": 533.22,
+          "w": 0.19680000000000034,
+          "size": 11
+        },
+        {
+          "str": "Do not exceed the “Current per group common” specification.",
+          "x": 315.899502,
+          "y": 533.22,
+          "w": 228.6112859999993,
+          "size": 11
+        },
+        {
+          "str": "",
+          "x": 215.99907,
+          "y": 496.740048,
+          "w": 0,
+          "size": 11
+        },
+        {
+          "str": "Output Specifications For Ordinary (Non-Hazardous) Locations only - General",
+          "x": 215.99907,
+          "y": 496.740048,
+          "w": 297.8270099999999,
+          "size": 11
+        },
+        {
+          "str": "",
+          "x": 217.98,
+          "y": 473.58,
+          "w": 0,
+          "size": 9
+        },
+        {
+          "str": "Description",
+          "x": 217.98,
+          "y": 473.58,
+          "w": 37.268100000000004,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 255.24810000000002,
+          "y": 473.58,
+          "w": 9.685799999999997,
+          "size": 9
+        },
+        {
+          "str": "1763-L16AWA, 1763-L16BWA,",
+          "x": 342.4203,
+          "y": 478.08,
+          "w": 87.78060000000028,
+          "size": 9
+        },
+        {
+          "str": "1763-L16DWD",
+          "x": 342.4203,
+          "y": 469.08,
+          "w": 41.92830000000008,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 384.3486,
+          "y": 469.08,
+          "w": 7.968000000000005,
+          "size": 9
+        },
+        {
+          "str": "1763-L16BBB",
+          "x": 456.0606,
+          "y": 473.58,
+          "w": 39.98340000000018,
+          "size": 9
+        },
+        {
+          "str": "Relay and FET Outputs",
+          "x": 217.98090000000002,
+          "y": 456.12,
+          "w": 72.3303000000001,
+          "size": 9
+        },
+        {
+          "str": "",
+          "x": 217.98090000000002,
+          "y": 443.0997,
+          "w": 0,
+          "size": 9
+        },
+        {
+          "str": "Maximum controlled load",
+          "x": 217.98090000000002,
+          "y": 443.0997,
+          "w": 76.11120000000025,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 294.09210000000036,
+          "y": 443.0997,
+          "w": 5.363700000000001,
+          "size": 9
+        },
+        {
+          "str": "1440VA",
+          "x": 342.36540000000036,
+          "y": 443.0997,
+          "w": 20.90970000000004,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 363.2751000000004,
+          "y": 443.0997,
+          "w": 10.303299999999998,
+          "size": 9
+        },
+        {
+          "str": "720VA",
+          "x": 456.0048000000004,
+          "y": 443.0997,
+          "w": 18.08100000000004,
+          "size": 9
+        },
+        {
+          "str": "",
+          "x": 217.98090000000002,
+          "y": 430.07939999999996,
+          "w": 0,
+          "size": 9
+        },
+        {
+          "str": "Maximum Continuous Current",
+          "x": 217.98090000000002,
+          "y": 430.07939999999996,
+          "w": 95.60429999999994,
+          "size": 9
+        },
+        {
+          "str": "",
+          "x": 217.98090000000002,
+          "y": 415.9197,
+          "w": 0,
+          "size": 9
+        },
+        {
+          "str": "Current per group common",
+          "x": 217.98090000000002,
+          "y": 415.9197,
+          "w": 82.69200000000005,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 300.67289999999997,
+          "y": 415.9197,
+          "w": 4.638700000000004,
+          "size": 9
+        },
+        {
+          "str": "5 A",
+          "x": 342.4212,
+          "y": 414.71999999999997,
+          "w": 9.178800000000043,
+          "size": 9
+        },
+        {
+          "str": "(1)",
+          "x": 351.6,
+          "y": 418.32,
+          "w": 5.018400000000022,
+          "size": 7.2
+        },
+        {
+          "str": "(1)",
+          "x": 216,
+          "y": 309.06,
+          "w": 5.625899999999989,
+          "size": 8
+        },
+        {
+          "str": " ",
+          "x": 221.62589999999997,
+          "y": 309.06,
+          "w": 0.9810000000000012,
+          "size": 8
+        },
+        {
+          "str": "3.0 A above 40 °C (104 °F)",
+          "x": 229.45427999999998,
+          "y": 309.06,
+          "w": 68.87697599999981,
+          "size": 8
+        },
+        {
+          "str": "5 A",
+          "x": 456.06,
+          "y": 415.92,
+          "w": 9.150300000000035,
+          "size": 9
+        },
+        {
+          "str": "Current per controller",
+          "x": 217.9803,
+          "y": 395.22,
+          "w": 66.05370000000022,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 284.0340000000002,
+          "y": 395.22,
+          "w": 0.9273999999999774,
+          "size": 9
+        },
+        {
+          "str": "@ 150V max",
+          "x": 292.3806,
+          "y": 401.70000000000005,
+          "w": 37.27619999999997,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 329.6567999999999,
+          "y": 401.70000000000005,
+          "w": 1.417299999999999,
+          "size": 9
+        },
+        {
+          "str": "30 A or a total of per-point loads, whichever is less",
+          "x": 342.4124999999999,
+          "y": 401.70000000000005,
+          "w": 154.23839999999984,
+          "size": 9
+        },
+        {
+          "str": "@ 240V max",
+          "x": 292.3806,
+          "y": 388.6797,
+          "w": 38.60370000000002,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 330.9843,
+          "y": 388.6797,
+          "w": 1.270700000000002,
+          "size": 9
+        },
+        {
+          "str": "20 A or a total of per-point loads, whichever is less",
+          "x": 342.42060000000004,
+          "y": 388.6797,
+          "w": 154.1132999999997,
+          "size": 9
+        },
+        {
+          "str": "",
+          "x": 217.98030000000003,
+          "y": 375.71970000000005,
+          "w": 0,
+          "size": 9
+        },
+        {
+          "str": "Relay Outputs",
+          "x": 217.98030000000003,
+          "y": 375.71970000000005,
+          "w": 44.788500000000006,
+          "size": 9
+        },
+        {
+          "str": "",
+          "x": 217.98030000000003,
+          "y": 361.4997,
+          "w": 0,
+          "size": 9
+        },
+        {
+          "str": "Turn on time/Turn off time, max",
+          "x": 217.98030000000003,
+          "y": 361.4997,
+          "w": 98.06850000000001,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 316.04879999999997,
+          "y": 361.4997,
+          "w": 2.9302000000000072,
+          "size": 9
+        },
+        {
+          "str": "10 ms",
+          "x": 342.42060000000004,
+          "y": 360.3,
+          "w": 17.27940000000002,
+          "size": 9
+        },
+        {
+          "str": "(2)",
+          "x": 359.7,
+          "y": 363.9,
+          "w": 6.098400000000012,
+          "size": 7.2
+        },
+        {
+          "str": "(2)",
+          "x": 216,
+          "y": 301.08,
+          "w": 6.766242000000004,
+          "size": 8
+        },
+        {
+          "str": " ",
+          "x": 222.766242,
+          "y": 301.08,
+          "w": 0.8381000000000007,
+          "size": 8
+        },
+        {
+          "str": "Scan time dependent",
+          "x": 229.45428,
+          "y": 301.08,
+          "w": 57.527022000000066,
+          "size": 8
+        },
+        {
+          "str": "Relay life - Electrical (Resistive Load)",
+          "x": 217.98,
+          "y": 347.28,
+          "w": 112.51799999999984,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 330.49799999999993,
+          "y": 347.28,
+          "w": 1.3247000000000009,
+          "size": 9
+        },
+        {
+          "str": "See Figure 83",
+          "x": 342.42029999999994,
+          "y": 347.28,
+          "w": 41.34419999999994,
+          "size": 9
+        },
+        {
+          "str": "Relay life - Mechanical",
+          "x": 217.98,
+          "y": 334.32,
+          "w": 68.22359999999993,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 286.20359999999994,
+          "y": 334.32,
+          "w": 6.245699999999999,
+          "size": 9
+        },
+        {
+          "str": "10,000,000 cycles",
+          "x": 342.41489999999993,
+          "y": 334.32,
+          "w": 53.590499999999906,
+          "size": 9
+        },
+        {
+          "str": "Load current, min",
+          "x": 217.98,
+          "y": 321.2997,
+          "w": 54.03780000000002,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 272.0178,
+          "y": 321.2997,
+          "w": 7.8226999999999975,
+          "size": 9
+        },
+        {
+          "str": "10 mA",
+          "x": 342.4221,
+          "y": 321.2997,
+          "w": 17.60849999999999,
+          "size": 9
+        },
+        {
+          "str": "",
+          "x": 216,
+          "y": 274.14,
+          "w": 0,
+          "size": 11
+        },
+        {
+          "str": "Relay Contact Ratings",
+          "x": 216,
+          "y": 274.14,
+          "w": 84.66000000000008,
+          "size": 11
+        },
+        {
+          "str": "(1)",
+          "x": 300.66,
+          "y": 278.5201,
+          "w": 7.3040879999999815,
+          "size": 8.8
+        },
+        {
+          "str": "",
+          "x": 216,
+          "y": 184.08,
+          "w": 0,
+          "size": 8
+        },
+        {
+          "str": "(1)",
+          "x": 216,
+          "y": 184.08,
+          "w": 5.611535999999989,
+          "size": 8
+        },
+        {
+          "str": " ",
+          "x": 221.61153599999997,
+          "y": 184.08,
+          "w": 0.9810000000000012,
+          "size": 8
+        },
+        {
+          "str": "Pilot Duty Rating: (ordinary location) – B300, R150. (hazardous location) – C300, R150.",
+          "x": 229.43991599999998,
+          "y": 184.08,
+          "w": 228.78899399999924,
+          "size": 8
+        },
+        {
+          "str": "",
+          "x": 217.98,
+          "y": 249,
+          "w": 0,
+          "size": 9
+        },
+        {
+          "str": "Maximum Volts",
+          "x": 217.98,
+          "y": 249,
+          "w": 48.952800000000025,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 266.9328,
+          "y": 249,
+          "w": 4.007499999999999,
+          "size": 9
+        },
+        {
+          "str": "Amperes",
+          "x": 303.0003,
+          "y": 255.48,
+          "w": 28.84770000000011,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 331.84800000000007,
+          "y": 255.48,
+          "w": 7.121399999999994,
+          "size": 9
+        },
+        {
+          "str": "Amperes Continuous",
+          "x": 395.9406,
+          "y": 249,
+          "w": 67.03019999999992,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 462.97080000000005,
+          "y": 249,
+          "w": 0.7588999999999955,
+          "size": 9
+        },
+        {
+          "str": "Voltamperes",
+          "x": 469.8009,
+          "y": 255.48,
+          "w": 40.90770000000006,
+          "size": 9
+        },
+        {
+          "str": "Make",
+          "x": 303.00120000000004,
+          "y": 242.4597,
+          "w": 16.68869999999998,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 319.6899,
+          "y": 242.4597,
+          "w": 3.3107000000000033,
+          "size": 9
+        },
+        {
+          "str": "Break",
+          "x": 349.48620000000005,
+          "y": 242.4597,
+          "w": 18.996299999999962,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 368.4825,
+          "y": 242.4597,
+          "w": 11.2577,
+          "size": 9
+        },
+        {
+          "str": "Make",
+          "x": 469.8018,
+          "y": 242.4597,
+          "w": 16.687799999999978,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 486.4896,
+          "y": 242.4597,
+          "w": 3.6573000000000015,
+          "size": 9
+        },
+        {
+          "str": "Break",
+          "x": 519.4053,
+          "y": 242.4597,
+          "w": 18.989999999999895,
+          "size": 9
+        },
+        {
+          "str": "",
+          "x": 217.98090000000005,
+          "y": 227.0994,
+          "w": 0,
+          "size": 9
+        },
+        {
+          "str": "240V AC",
+          "x": 217.98090000000005,
+          "y": 227.0994,
+          "w": 24.659099999999924,
+          "size": 9
+        },
+        {
+          "str": "(2)",
+          "x": 242.64,
+          "y": 230.7001,
+          "w": 6.098400000000012,
+          "size": 7.2
+        },
+        {
+          "str": "(2)",
+          "x": 216,
+          "y": 176.0401,
+          "w": 6.755868000000019,
+          "size": 8
+        },
+        {
+          "str": " ",
+          "x": 222.75586800000002,
+          "y": 176.0401,
+          "w": 0.8381000000000007,
+          "size": 8
+        },
+        {
+          "str": "For AC voltage applications lower than 240V AC but higher than 120V AC, the maximum make and break ratings are to be",
+          "x": 229.44390600000003,
+          "y": 176.0401,
+          "w": 324.37582800000035,
+          "size": 8
+        },
+        {
+          "str": "obtained by dividing the voltampere rating by the application voltage.",
+          "x": 229.50056400000005,
+          "y": 168.0601,
+          "w": 188.0510940000005,
+          "size": 8
+        },
+        {
+          "str": "15.0 A",
+          "x": 303,
+          "y": 228.3,
+          "w": 16.883999999999986,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 319.8839999999999,
+          "y": 228.3,
+          "w": 3.2900000000000014,
+          "size": 9
+        },
+        {
+          "str": "1.5 A",
+          "x": 349.4939999999999,
+          "y": 228.3,
+          "w": 13.169700000000047,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 362.6636999999999,
+          "y": 228.3,
+          "w": 3.69740000000001,
+          "size": 9
+        },
+        {
+          "str": "5.0 A",
+          "x": 395.9403,
+          "y": 219.36030000000002,
+          "w": 14.519700000000062,
+          "size": 9
+        },
+        {
+          "str": "(3)",
+          "x": 410.46,
+          "y": 222.9601,
+          "w": 6.15888000000004,
+          "size": 7.2
+        },
+        {
+          "str": "(3)",
+          "x": 216,
+          "y": 160.08,
+          "w": 6.825293999999992,
+          "size": 8
+        },
+        {
+          "str": " ",
+          "x": 222.82529399999999,
+          "y": 160.08,
+          "w": 0.8305999999999992,
+          "size": 8
+        },
+        {
+          "str": "3.0 A above 40 °C (104 °F).",
+          "x": 229.45348199999998,
+          "y": 160.08,
+          "w": 70.42190399999981,
+          "size": 8
+        },
+        {
+          "str": "3600VA",
+          "x": 469.8,
+          "y": 228.3,
+          "w": 22.50269999999994,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 492.30269999999996,
+          "y": 228.3,
+          "w": 3.016700000000002,
+          "size": 9
+        },
+        {
+          "str": "360VA",
+          "x": 519.453,
+          "y": 228.3,
+          "w": 18.51210000000001,
+          "size": 9
+        },
+        {
+          "str": "120V AC",
+          "x": 217.98000000000002,
+          "y": 211.67970000000003,
+          "w": 23.27999999999997,
+          "size": 9
+        },
+        {
+          "str": "(4)",
+          "x": 241.26,
+          "y": 215.28,
+          "w": 6.158879999999987,
+          "size": 7.2
+        },
+        {
+          "str": "(4)",
+          "x": 216,
+          "y": 152.0401,
+          "w": 6.9042959999999995,
+          "size": 8
+        },
+        {
+          "str": " ",
+          "x": 222.904296,
+          "y": 152.0401,
+          "w": 0.8231000000000014,
+          "size": 8
+        },
+        {
+          "str": "For AC voltage applications lower than 120V AC, the maximum make current is to be the same as for 120V AC, and the",
+          "x": 229.472634,
+          "y": 152.0401,
+          "w": 315.2147880000005,
+          "size": 8
+        },
+        {
+          "str": "maximum break current is to be obtained by dividing the break voltampere rating by the application voltage, but the currents",
+          "x": 229.50056400000005,
+          "y": 144.0601,
+          "w": 336.06812400000103,
+          "size": 8
+        },
+        {
+          "str": "are not to exceed the thermal continuous current.",
+          "x": 229.50056400000003,
+          "y": 136.08010000000002,
+          "w": 135.21152400000003,
+          "size": 8
+        },
+        {
+          "str": "30.0 A",
+          "x": 303,
+          "y": 212.8801,
+          "w": 18.57059999999994,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 321.5705999999999,
+          "y": 212.8801,
+          "w": 3.1033000000000026,
+          "size": 9
+        },
+        {
+          "str": "3.0 A",
+          "x": 349.5002999999999,
+          "y": 212.8801,
+          "w": 14.48999999999997,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 363.9902999999999,
+          "y": 212.8801,
+          "w": 11.756699999999999,
+          "size": 9
+        },
+        {
+          "str": "3600VA",
+          "x": 469.80059999999986,
+          "y": 212.8801,
+          "w": 22.47119999999995,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 492.2717999999998,
+          "y": 212.8801,
+          "w": 3.0166999999999953,
+          "size": 9
+        },
+        {
+          "str": "360VA",
+          "x": 519.4220999999998,
+          "y": 212.8801,
+          "w": 18.51120000000001,
+          "size": 9
+        },
+        {
+          "str": "125V DC",
+          "x": 217.9797,
+          "y": 196.25979999999998,
+          "w": 23.520299999999978,
+          "size": 9
+        },
+        {
+          "str": "(5)",
+          "x": 241.5,
+          "y": 199.86,
+          "w": 6.158880000000028,
+          "size": 7.2
+        },
+        {
+          "str": "(5)",
+          "x": 216,
+          "y": 128.04,
+          "w": 6.813324000000026,
+          "size": 8
+        },
+        {
+          "str": " ",
+          "x": 222.81332400000002,
+          "y": 128.04,
+          "w": 0.8305999999999992,
+          "size": 8
+        },
+        {
+          "str": "For DC voltage applications lower than 125V DC, the make/break ampere rating for relay contacts can be determined by",
+          "x": 229.44151200000002,
+          "y": 128.04,
+          "w": 322.72396800000024,
+          "size": 8
+        },
+        {
+          "str": "dividing the voltampere rating by the applied DC voltage but the current values are not to exceed the thermal continuous",
+          "x": 229.49976600000005,
+          "y": 120.05999999999999,
+          "w": 326.8951140000003,
+          "size": 8
+        },
+        {
+          "str": "current.",
+          "x": 229.49976600000005,
+          "y": 112.07999999999998,
+          "w": 21.553181999999982,
+          "size": 8
+        },
+        {
+          "str": "0.22 A",
+          "x": 303,
+          "y": 197.4601,
+          "w": 18.441899999999972,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 321.4418999999999,
+          "y": 197.4601,
+          "w": 8.276699999999998,
+          "size": 9
+        },
+        {
+          "str": "1.0 A",
+          "x": 395.9321999999999,
+          "y": 197.4601,
+          "w": 13.16969999999999,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 409.10189999999983,
+          "y": 197.4601,
+          "w": 6.743300000000001,
+          "size": 9
+        },
+        {
+          "str": "28VA",
+          "x": 469.79159999999985,
+          "y": 197.4601,
+          "w": 14.564699999999945,
+          "size": 9
+        },
+        {
+          "str": "",
+          "x": 266.82,
+          "y": 70.6201,
+          "w": 0,
+          "size": 11
+        },
+        {
+          "str": "ATTENTION:",
+          "x": 266.82,
+          "y": 70.6201,
+          "w": 46.91863800000007,
+          "size": 11
+        },
+        {
+          "str": " ",
+          "x": 313.738638,
+          "y": 70.6201,
+          "w": 0.19680000000000034,
+          "size": 11
+        },
+        {
+          "str": "Do not exceed the “Current per group common” specification.",
+          "x": 315.899502,
+          "y": 70.6201,
+          "w": 228.6112859999993,
+          "size": 11
+        }
+      ]
+    },
+    {
+      "page": 120,
+      "text": "120 Rockwell Automation Publication 1763-UM001G-EN-P - May 2024\nAppendix A Specifications\nHeat dissipation, max 2.9 W 6.1 W(1) 2.8 W\n5.0 W at 30V DC\n4.4 W at 26.4V DC (The Watts\nper point, plus the min W, with\nall points energized)\nSignal delay, max – resistive load On Delay: 10 ms\nOff Delay: 10 ms On Delay: 10 ms\nOff Delay: 10 ms\nOn Delay: 10 ms (max) 6 ms\n(typical)\nOff Delay: 20 ms (max)\n12 ms (typical)\nOn-delay: 10 ms (max)\nOff-delay: 10 ms (max)\nOff-state leakage, max 0 mA 0 mA 0 mA 0 mA\nOn-state current, min 10 mA 10 mA 100 mA 10 mA\nOn-state voltage drop, max Not Applicable\nContinuous current per point, max 2.5 A. See Table 25 7 A\nSee Table 26 2.5 A\nSee Table 25\nContinuous current per common,\nmax 8 A 8 A 7 A\nSee Table 26 8 A\nContinuous current per module, max 16 A 16 A 30 A\nSee Table 27 8 A\nSurge current, max See Table 25 See Table 26 See Table 25\nIsolated groups Group 1: Outputs 0…3\nGroup 2: Outputs 4…7 Group 1: Outputs 0…7\nGroup 2: Outputs 8…15 All 6 Outputs Individually\nIsolated Group 3: Outputs 0…5\nOutput group to backplane isolation Verified by one of the following dielectric tests: 1836V AC for 1 s or 2596V DC for 1 s\n265V AC working voltage (IEC Class 2 reinforced insulation)\nOutput group to output group\nisolation\nVerified by one of the following dielectric tests: 1836V AC for 1 s or 2596V DC for 1 s\n265V AC working voltage (basic insulation)\n150V AC working voltage (IEC Class 2 reinforced insulation)\nVendor I.D. code 1\nProduct type code 7\nProduct code 120 121 124 98\n(1) Only applicable for series B and series C I/O modules.\nOutput Specifications – 1762-OW8, 1762-OW16, 1762-OX6I, 1762-IQ8OW6 (Continued)\nAttribute 1762-OW8 1762-OW16 1762-OX6I 1762-IQ8OW6\nTable 25 - Relay Contact Ratings – 1762-OW8, 1762-OW16, and 1762-IQ8OW6\nMaximum Volts Amperes Continuous Amperes Voltamperes\nMake Break Make Break\n240V AC 2.5 A(1)\n(1) 1.5 A above 40 °C (104 °F).\n7.5 A 0.75 A 1800VA 180VA\n120V AC 2.5 A(1) 15 A 1.5 A 1800VA 180VA\n125V DC 1.0 A 0.22 A(2)\n(2) For DC voltage applications, the make/break ampere rating for relay contacts can be determined by dividing 28VA by the\napplied DC voltage. For example, 28VA/48V DC = 0.58 A. For DC voltage applications less than 14V, the make/break ratings for\nrelay contacts cannot exceed 2 A.\n28VA\n24V DC 2.0 A 1.2 A(2)\nTable 26 - Relay Contact Ratings 1762-OX6I\nMaximum Volts Continuous Amps per\nPoint (Max)(1)\n(1) The continuous current per module must be limited so that the module power does not exceed 1440VA.\nAmperes(2)\n(2) Surge Suppression – Connecting surge suppressors across your external inductive load will extend the life of the relay\ncontacts. For additional details, see the Industrial Automation Wiring and Grounding Guidelines, publication 1770-4.1.\nVoltamperes\nMake Break Make Break\n240V AC 5.0 A 15 A 1.5 A 3600VA 360VA\n120V AC 7.0 A(3)\n(3) 6 A in ambient temperatures above 40 °C (104.°F)\n30 A 3.0 A\n125V DC 2.5 A 0.4 A 50VA(4)\n(4) DC Make/Break Voltamperes must be limited to 50VA for DC voltages between 28V DC and 125V DC. DC Make/Break\nVoltamperes below 28V DC are limited by the 7 A Make/Break current limit.\n24V DC 7.0 A(3) 7.0 A 168VA(4)",
+      "items": [
+        {
+          "str": "120",
+          "x": 45,
+          "y": 28.98,
+          "w": 10.557,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 55.556999999999995,
+          "y": 28.98,
+          "w": 15.573700000000002,
+          "size": 9
+        },
+        {
+          "str": "Rockwell Automation Publication 1763-UM001G-EN-P - May 2024",
+          "x": 195.7203,
+          "y": 28.98,
+          "w": 193.21649999999985,
+          "size": 9
+        },
+        {
+          "str": "",
+          "x": 45,
+          "y": 768,
+          "w": 0,
+          "size": 9
+        },
+        {
+          "str": "Appendix A",
+          "x": 45,
+          "y": 768,
+          "w": 36.36089999999998,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 81.36089999999997,
+          "y": 768,
+          "w": 1.993199999999997,
+          "size": 9
+        },
+        {
+          "str": "Specifications",
+          "x": 99.29969999999994,
+          "y": 768,
+          "w": 46.65779999999999,
+          "size": 9
+        },
+        {
+          "str": "",
+          "x": 46.98,
+          "y": 694.5,
+          "w": 0,
+          "size": 9
+        },
+        {
+          "str": "Heat dissipation, max",
+          "x": 46.98,
+          "y": 694.5,
+          "w": 65.36610000000005,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 112.3461,
+          "y": 694.5,
+          "w": 5.5173,
+          "size": 9
+        },
+        {
+          "str": "2.9 W",
+          "x": 162.0018,
+          "y": 694.5,
+          "w": 16.327799999999986,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 178.3296,
+          "y": 694.5,
+          "w": 9.5056,
+          "size": 9
+        },
+        {
+          "str": "6.1 W",
+          "x": 263.88,
+          "y": 693.3003,
+          "w": 15.120000000000026,
+          "size": 9
+        },
+        {
+          "str": "(1)",
+          "x": 279,
+          "y": 696.9,
+          "w": 5.018399999999965,
+          "size": 7.2
+        },
+        {
+          "str": " ",
+          "x": 284.01840000000004,
+          "y": 696.9,
+          "w": 9.08906666666666,
+          "size": 7.2
+        },
+        {
+          "str": "2.8 W",
+          "x": 365.82,
+          "y": 694.5,
+          "w": 16.52760000000006,
+          "size": 9
+        },
+        {
+          "str": "5.0 W at 30V DC",
+          "x": 467.76030000000003,
+          "y": 708,
+          "w": 47.726999999999904,
+          "size": 9
+        },
+        {
+          "str": "4.4 W at 26.4V DC (The Watts",
+          "x": 467.76030000000003,
+          "y": 699,
+          "w": 87.12449999999973,
+          "size": 9
+        },
+        {
+          "str": "per point, plus the min W, with",
+          "x": 467.76030000000003,
+          "y": 690,
+          "w": 92.26439999999967,
+          "size": 9
+        },
+        {
+          "str": "all points energized)",
+          "x": 467.76030000000003,
+          "y": 681,
+          "w": 61.6436999999998,
+          "size": 9
+        },
+        {
+          "str": "Signal delay, max – resistive load",
+          "x": 46.98059999999998,
+          "y": 654.54,
+          "w": 100.2186,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 147.1992,
+          "y": 654.54,
+          "w": 1.644599999999997,
+          "size": 9
+        },
+        {
+          "str": "On Delay: 10 ms",
+          "x": 162.00059999999996,
+          "y": 659.04,
+          "w": 47.13030000000014,
+          "size": 9
+        },
+        {
+          "str": "Off Delay: 10 ms",
+          "x": 162.00059999999996,
+          "y": 650.04,
+          "w": 48.29040000000009,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 210.2910000000001,
+          "y": 650.04,
+          "w": 5.954399999999983,
+          "size": 9
+        },
+        {
+          "str": "On Delay: 10 ms",
+          "x": 263.88059999999996,
+          "y": 659.04,
+          "w": 47.173500000000004,
+          "size": 9
+        },
+        {
+          "str": "Off Delay: 10 ms",
+          "x": 263.88059999999996,
+          "y": 650.04,
+          "w": 48.28769999999991,
+          "size": 9
+        },
+        {
+          "str": "On Delay: 10 ms (max) 6 ms",
+          "x": 365.82089999999994,
+          "y": 668.04,
+          "w": 82.34010000000006,
+          "size": 9
+        },
+        {
+          "str": "(typical)",
+          "x": 365.82089999999994,
+          "y": 659.04,
+          "w": 24.37919999999991,
+          "size": 9
+        },
+        {
+          "str": "Off Delay: 20 ms (max)",
+          "x": 365.82089999999994,
+          "y": 650.04,
+          "w": 68.33069999999987,
+          "size": 9
+        },
+        {
+          "str": "12 ms (typical)",
+          "x": 365.82089999999994,
+          "y": 641.04,
+          "w": 43.11179999999996,
+          "size": 9
+        },
+        {
+          "str": "On-delay: 10 ms (max)",
+          "x": 467.7611999999999,
+          "y": 659.04,
+          "w": 66.53609999999999,
+          "size": 9
+        },
+        {
+          "str": "Off-delay: 10 ms (max)",
+          "x": 467.7611999999999,
+          "y": 650.04,
+          "w": 67.66829999999973,
+          "size": 9
+        },
+        {
+          "str": "Off-state leakage, max",
+          "x": 46.98149999999987,
+          "y": 628.0197,
+          "w": 69.22439999999996,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 116.20589999999982,
+          "y": 628.0197,
+          "w": 5.0973,
+          "size": 9
+        },
+        {
+          "str": "0 mA",
+          "x": 162.0815999999998,
+          "y": 628.0197,
+          "w": 15.279300000000006,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 177.36089999999982,
+          "y": 628.0197,
+          "w": 9.6233,
+          "size": 9
+        },
+        {
+          "str": "0 mA",
+          "x": 263.9705999999998,
+          "y": 628.0197,
+          "w": 15.312600000000003,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 279.2831999999998,
+          "y": 628.0197,
+          "w": 9.623300000000004,
+          "size": 9
+        },
+        {
+          "str": "0 mA",
+          "x": 365.8928999999998,
+          "y": 628.0197,
+          "w": 15.312600000000003,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 381.2054999999998,
+          "y": 628.0197,
+          "w": 9.623299999999997,
+          "size": 9
+        },
+        {
+          "str": "0 mA",
+          "x": 467.8151999999998,
+          "y": 628.0197,
+          "w": 15.312600000000003,
+          "size": 9
+        },
+        {
+          "str": "On-state current, min",
+          "x": 46.98149999999987,
+          "y": 614.9993999999999,
+          "w": 65.44440000000003,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 112.42589999999991,
+          "y": 614.9993999999999,
+          "w": 5.5093000000000005,
+          "size": 9
+        },
+        {
+          "str": "10 mA",
+          "x": 162.00959999999992,
+          "y": 614.9993999999999,
+          "w": 17.600399999999976,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 179.6099999999999,
+          "y": 614.9993999999999,
+          "w": 9.369999999999997,
+          "size": 9
+        },
+        {
+          "str": "10 mA",
+          "x": 263.9399999999999,
+          "y": 614.9993999999999,
+          "w": 17.614800000000002,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 281.55479999999983,
+          "y": 614.9993999999999,
+          "w": 9.369999999999997,
+          "size": 9
+        },
+        {
+          "str": "100 mA",
+          "x": 365.8847999999998,
+          "y": 614.9993999999999,
+          "w": 21.60359999999999,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 387.48839999999973,
+          "y": 614.9993999999999,
+          "w": 8.923300000000003,
+          "size": 9
+        },
+        {
+          "str": "10 mA",
+          "x": 467.79809999999975,
+          "y": 614.9993999999999,
+          "w": 17.614800000000002,
+          "size": 9
+        },
+        {
+          "str": "On-state voltage drop, max",
+          "x": 46.98149999999987,
+          "y": 601.9790999999999,
+          "w": 82.14300000000003,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 129.1244999999999,
+          "y": 601.9790999999999,
+          "w": 3.6507000000000005,
+          "size": 9
+        },
+        {
+          "str": "Not Applicable",
+          "x": 161.9807999999999,
+          "y": 601.9790999999999,
+          "w": 43.62479999999988,
+          "size": 9
+        },
+        {
+          "str": "Continuous current per point, max",
+          "x": 46.98149999999987,
+          "y": 584.5190999999999,
+          "w": 104.27670000000003,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 151.25819999999987,
+          "y": 584.5190999999999,
+          "w": 1.1973,
+          "size": 9
+        },
+        {
+          "str": "2.5 A. See Table 25",
+          "x": 162.03389999999987,
+          "y": 584.5190999999999,
+          "w": 56.268899999999995,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 218.3027999999999,
+          "y": 584.5190999999999,
+          "w": 16.39080000000001,
+          "size": 9
+        },
+        {
+          "str": "7 A",
+          "x": 365.82,
+          "y": 589.02,
+          "w": 8.801999999999984,
+          "size": 9
+        },
+        {
+          "str": "See Table 26",
+          "x": 365.82,
+          "y": 580.02,
+          "w": 38.369699999999995,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 404.1897000000001,
+          "y": 580.02,
+          "w": 7.063366666666657,
+          "size": 9
+        },
+        {
+          "str": "2.5 A",
+          "x": 467.76,
+          "y": 589.02,
+          "w": 14.489100000000054,
+          "size": 9
+        },
+        {
+          "str": "See Table 25",
+          "x": 467.76,
+          "y": 580.02,
+          "w": 38.361599999999996,
+          "size": 9
+        },
+        {
+          "str": "Continuous current per common,",
+          "x": 46.98,
+          "y": 567,
+          "w": 100.31130000000007,
+          "size": 9
+        },
+        {
+          "str": "max",
+          "x": 46.98,
+          "y": 558,
+          "w": 12.924,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 59.903999999999996,
+          "y": 558,
+          "w": 11.344000000000001,
+          "size": 9
+        },
+        {
+          "str": "8 A",
+          "x": 162,
+          "y": 562.5,
+          "w": 9.27630000000002,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 171.27630000000002,
+          "y": 562.5,
+          "w": 10.29,
+          "size": 9
+        },
+        {
+          "str": "8 A",
+          "x": 263.8863,
+          "y": 562.5,
+          "w": 9.330300000000022,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 273.2166,
+          "y": 562.5,
+          "w": 10.289299999999994,
+          "size": 9
+        },
+        {
+          "str": "7 A",
+          "x": 365.8203,
+          "y": 567,
+          "w": 8.790300000000022,
+          "size": 9
+        },
+        {
+          "str": "See Table 26",
+          "x": 365.8203,
+          "y": 558,
+          "w": 38.369699999999995,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 404.19000000000005,
+          "y": 558,
+          "w": 7.063333333333326,
+          "size": 9
+        },
+        {
+          "str": "8 A",
+          "x": 467.76,
+          "y": 562.5,
+          "w": 9.270000000000039,
+          "size": 9
+        },
+        {
+          "str": "Continuous current per module, max 16 A",
+          "x": 46.98029999999994,
+          "y": 540.4797,
+          "w": 126.42570000000003,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 173.406,
+          "y": 540.4797,
+          "w": 10.049999999999999,
+          "size": 9
+        },
+        {
+          "str": "16 A",
+          "x": 263.856,
+          "y": 540.4797,
+          "w": 11.49030000000002,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 275.3463,
+          "y": 540.4797,
+          "w": 10.05269999999999,
+          "size": 9
+        },
+        {
+          "str": "30 A",
+          "x": 365.8205999999999,
+          "y": 544.9797,
+          "w": 13.139999999999983,
+          "size": 9
+        },
+        {
+          "str": "See Table 27",
+          "x": 365.8205999999999,
+          "y": 535.9797,
+          "w": 37.973699999999994,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 403.79429999999996,
+          "y": 535.9797,
+          "w": 7.107300000000003,
+          "size": 9
+        },
+        {
+          "str": "8 A",
+          "x": 467.76,
+          "y": 540.48,
+          "w": 9.270000000000039,
+          "size": 9
+        },
+        {
+          "str": "Surge current, max",
+          "x": 46.98029999999994,
+          "y": 523.02,
+          "w": 58.130999999999986,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 105.11129999999993,
+          "y": 523.02,
+          "w": 6.323999999999998,
+          "size": 9
+        },
+        {
+          "str": "See Table 25",
+          "x": 162.0272999999999,
+          "y": 523.02,
+          "w": 38.27430000000005,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 200.30159999999998,
+          "y": 523.02,
+          "w": 18.390933333333336,
+          "size": 9
+        },
+        {
+          "str": "See Table 26",
+          "x": 365.82,
+          "y": 523.02,
+          "w": 38.369699999999995,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 404.1897000000001,
+          "y": 523.02,
+          "w": 7.063366666666657,
+          "size": 9
+        },
+        {
+          "str": "See Table 25",
+          "x": 467.76,
+          "y": 523.02,
+          "w": 38.361599999999996,
+          "size": 9
+        },
+        {
+          "str": "Isolated groups",
+          "x": 46.98,
+          "y": 505.5,
+          "w": 47.140200000000036,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 94.12020000000003,
+          "y": 505.5,
+          "w": 7.542199999999998,
+          "size": 9
+        },
+        {
+          "str": "Group 1: Outputs 0…3",
+          "x": 162,
+          "y": 510,
+          "w": 64.57590000000012,
+          "size": 9
+        },
+        {
+          "str": "Group 2: Outputs 4…7",
+          "x": 162,
+          "y": 501,
+          "w": 65.27700000000024,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 227.2770000000003,
+          "y": 501,
+          "w": 4.066999999999966,
+          "size": 9
+        },
+        {
+          "str": "Group 1: Outputs 0…7",
+          "x": 263.88,
+          "y": 510,
+          "w": 64.25549999999973,
+          "size": 9
+        },
+        {
+          "str": "Group 2: Outputs 8…15",
+          "x": 263.88,
+          "y": 501,
+          "w": 68.05259999999981,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 331.9325999999997,
+          "y": 501,
+          "w": 3.765300000000031,
+          "size": 9
+        },
+        {
+          "str": "All 6 Outputs Individually",
+          "x": 365.8203,
+          "y": 510,
+          "w": 74.32199999999992,
+          "size": 9
+        },
+        {
+          "str": "Isolated",
+          "x": 365.8203,
+          "y": 501,
+          "w": 24.266699999999965,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 390.087,
+          "y": 501,
+          "w": 8.630399999999996,
+          "size": 9
+        },
+        {
+          "str": "Group 3: Outputs 0…5",
+          "x": 467.76059999999995,
+          "y": 505.5,
+          "w": 66.02219999999978,
+          "size": 9
+        },
+        {
+          "str": "Output group to backplane isolation",
+          "x": 46.980899999999906,
+          "y": 483.4797,
+          "w": 108.9441,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 155.925,
+          "y": 483.4797,
+          "w": 0.6750999999999863,
+          "size": 9
+        },
+        {
+          "str": "Verified by one of the following dielectric tests: 1836V AC for 1 s or 2596V DC for 1 s",
+          "x": 162.0008999999999,
+          "y": 487.9797,
+          "w": 250.6292999999995,
+          "size": 9
+        },
+        {
+          "str": "265V AC working voltage (IEC Class 2 reinforced insulation)",
+          "x": 162.0008999999999,
+          "y": 478.9797,
+          "w": 178.4205000000004,
+          "size": 9
+        },
+        {
+          "str": "Output group to output group",
+          "x": 46.980899999999906,
+          "y": 461.5197,
+          "w": 89.06309999999998,
+          "size": 9
+        },
+        {
+          "str": "isolation",
+          "x": 46.980899999999906,
+          "y": 452.5197,
+          "w": 26.138700000000004,
+          "size": 9
+        },
+        {
+          "str": "Verified by one of the following dielectric tests: 1836V AC for 1 s or 2596V DC for 1 s",
+          "x": 162.0008999999999,
+          "y": 466.0197,
+          "w": 250.6292999999995,
+          "size": 9
+        },
+        {
+          "str": "265V AC working voltage (basic insulation)",
+          "x": 162.0008999999999,
+          "y": 457.0197,
+          "w": 128.32829999999993,
+          "size": 9
+        },
+        {
+          "str": "150V AC working voltage (IEC Class 2 reinforced insulation)",
+          "x": 162.0008999999999,
+          "y": 448.0197,
+          "w": 177.40259999999952,
+          "size": 9
+        },
+        {
+          "str": "Vendor I.D. code",
+          "x": 46.980899999999906,
+          "y": 434.9994,
+          "w": 49.01760000000003,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 95.99849999999994,
+          "y": 434.9994,
+          "w": 7.333,
+          "size": 9
+        },
+        {
+          "str": "1",
+          "x": 161.99549999999994,
+          "y": 434.9994,
+          "w": 2.3040000000000003,
+          "size": 9
+        },
+        {
+          "str": "Product type code",
+          "x": 46.980899999999906,
+          "y": 421.97909999999996,
+          "w": 55.505700000000026,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 102.48659999999992,
+          "y": 421.97909999999996,
+          "w": 6.612900000000002,
+          "size": 9
+        },
+        {
+          "str": "7",
+          "x": 162.00269999999995,
+          "y": 421.97909999999996,
+          "w": 3.294,
+          "size": 9
+        },
+        {
+          "str": "Product code",
+          "x": 46.980899999999906,
+          "y": 409.0191,
+          "w": 40.52249999999999,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 87.50339999999989,
+          "y": 409.0191,
+          "w": 8.2797,
+          "size": 9
+        },
+        {
+          "str": "120",
+          "x": 162.0206999999999,
+          "y": 409.0191,
+          "w": 9.122869200000103,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 171.1435692,
+          "y": 409.02,
+          "w": 10.304047866666666,
+          "size": 9
+        },
+        {
+          "str": "121",
+          "x": 263.88,
+          "y": 409.02,
+          "w": 7.368931440000044,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 271.24893144000004,
+          "y": 409.02,
+          "w": 10.507896506666661,
+          "size": 9
+        },
+        {
+          "str": "124",
+          "x": 365.82,
+          "y": 409.02,
+          "w": 9.67500000000003,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 375.495,
+          "y": 409.02,
+          "w": 10.251700000000003,
+          "size": 9
+        },
+        {
+          "str": "98",
+          "x": 467.76030000000003,
+          "y": 409.02,
+          "w": 7.458299999999997,
+          "size": 9
+        },
+        {
+          "str": "(1)",
+          "x": 45,
+          "y": 396.78,
+          "w": 5.550888000000003,
+          "size": 8
+        },
+        {
+          "str": " ",
+          "x": 50.55088800000001,
+          "y": 396.78,
+          "w": 0.9884999999999999,
+          "size": 8
+        },
+        {
+          "str": "Only applicable for series B and series C I/O modules.",
+          "x": 58.43911800000001,
+          "y": 396.78,
+          "w": 144.06373799999997,
+          "size": 8
+        },
+        {
+          "str": "",
+          "x": 45,
+          "y": 739.6801,
+          "w": 0,
+          "size": 11
+        },
+        {
+          "str": "Output Specifications – 1762-OW8, 1762-OW16, 1762-OX6I, 1762-IQ8OW6 (Continued)",
+          "x": 45,
+          "y": 739.6801,
+          "w": 317.83147200000036,
+          "size": 11
+        },
+        {
+          "str": "",
+          "x": 46.98,
+          "y": 721.02,
+          "w": 0,
+          "size": 9
+        },
+        {
+          "str": "Attribute",
+          "x": 46.98,
+          "y": 721.02,
+          "w": 28.93049999999998,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 75.91049999999998,
+          "y": 721.02,
+          "w": 9.564,
+          "size": 9
+        },
+        {
+          "str": "1762-OW8",
+          "x": 161.98649999999998,
+          "y": 721.02,
+          "w": 31.46039999999996,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 193.4469,
+          "y": 721.02,
+          "w": 7.826700000000001,
+          "size": 9
+        },
+        {
+          "str": "1762-OW16",
+          "x": 263.8872,
+          "y": 721.02,
+          "w": 34.05240000000002,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 297.9396,
+          "y": 721.02,
+          "w": 7.540000000000002,
+          "size": 9
+        },
+        {
+          "str": "1762-OX6I",
+          "x": 365.7996,
+          "y": 721.02,
+          "w": 31.524300000000007,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 397.3238999999999,
+          "y": 721.02,
+          "w": 7.823299999999999,
+          "size": 9
+        },
+        {
+          "str": "1762-IQ8OW6",
+          "x": 467.7335999999999,
+          "y": 721.02,
+          "w": 41.67899999999998,
+          "size": 9
+        },
+        {
+          "str": "",
+          "x": 216,
+          "y": 366.78,
+          "w": 0,
+          "size": 10
+        },
+        {
+          "str": "Table 25 - Relay Contact Ratings – 1762-OW8, 1762-OW16, and 1762-IQ8OW6",
+          "x": 216,
+          "y": 366.78,
+          "w": 260.5426440000005,
+          "size": 10
+        },
+        {
+          "str": "",
+          "x": 217.98,
+          "y": 341.64,
+          "w": 0,
+          "size": 9
+        },
+        {
+          "str": "Maximum Volts",
+          "x": 217.98,
+          "y": 341.64,
+          "w": 48.93659999999999,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 266.91659999999996,
+          "y": 341.64,
+          "w": 2.841300000000002,
+          "size": 9
+        },
+        {
+          "str": "Amperes Continuous",
+          "x": 292.4883,
+          "y": 341.64,
+          "w": 67.07429999999997,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 359.5626000000001,
+          "y": 341.64,
+          "w": 1.521899999999985,
+          "size": 9
+        },
+        {
+          "str": "Amperes",
+          "x": 373.25969999999995,
+          "y": 348.12,
+          "w": 28.789199999999962,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 402.0488999999999,
+          "y": 348.12,
+          "w": 7.674699999999998,
+          "size": 9
+        },
+        {
+          "str": "Voltamperes",
+          "x": 471.1211999999999,
+          "y": 348.12,
+          "w": 40.901399999999775,
+          "size": 9
+        },
+        {
+          "str": "Make",
+          "x": 373.25969999999995,
+          "y": 335.0997,
+          "w": 16.68869999999998,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 389.94839999999994,
+          "y": 335.0997,
+          "w": 3.584000000000003,
+          "size": 9
+        },
+        {
+          "str": "Break",
+          "x": 422.20439999999996,
+          "y": 335.0997,
+          "w": 18.996299999999962,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 441.2006999999999,
+          "y": 335.0997,
+          "w": 3.3243,
+          "size": 9
+        },
+        {
+          "str": "Make",
+          "x": 471.1193999999999,
+          "y": 335.0997,
+          "w": 16.687799999999978,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 487.8071999999999,
+          "y": 335.0997,
+          "w": 3.584000000000003,
+          "size": 9
+        },
+        {
+          "str": "Break",
+          "x": 520.0631999999999,
+          "y": 335.0997,
+          "w": 18.989999999999895,
+          "size": 9
+        },
+        {
+          "str": "",
+          "x": 217.97999999999996,
+          "y": 320.94,
+          "w": 0,
+          "size": 9
+        },
+        {
+          "str": "240V AC",
+          "x": 217.97999999999996,
+          "y": 320.94,
+          "w": 24.721200000000024,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 242.7012,
+          "y": 320.94,
+          "w": 5.533199999999994,
+          "size": 9
+        },
+        {
+          "str": "2.5 A",
+          "x": 292.49999999999994,
+          "y": 319.7403,
+          "w": 14.460000000000083,
+          "size": 9
+        },
+        {
+          "str": "(1)",
+          "x": 306.96,
+          "y": 323.34,
+          "w": 5.078879999999949,
+          "size": 7.2
+        },
+        {
+          "str": "(1)",
+          "x": 216,
+          "y": 261.3,
+          "w": 5.625102000000014,
+          "size": 8
+        },
+        {
+          "str": " ",
+          "x": 221.625102,
+          "y": 261.3,
+          "w": 0.9810000000000012,
+          "size": 8
+        },
+        {
+          "str": "1.5 A above 40 °C (104 °F).",
+          "x": 229.453482,
+          "y": 261.3,
+          "w": 69.14111400000013,
+          "size": 8
+        },
+        {
+          "str": "7.5 A",
+          "x": 373.26,
+          "y": 320.94,
+          "w": 13.650299999999962,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 386.9102999999999,
+          "y": 320.94,
+          "w": 3.9233000000000025,
+          "size": 9
+        },
+        {
+          "str": "0.75 A",
+          "x": 422.2199999999999,
+          "y": 320.94,
+          "w": 17.964000000000077,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 440.1839999999999,
+          "y": 320.94,
+          "w": 3.443300000000003,
+          "size": 9
+        },
+        {
+          "str": "1800VA",
+          "x": 471.17369999999994,
+          "y": 320.94,
+          "w": 21.246300000000065,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 492.41999999999996,
+          "y": 320.94,
+          "w": 3.0766999999999975,
+          "size": 9
+        },
+        {
+          "str": "180VA",
+          "x": 520.1102999999999,
+          "y": 320.94,
+          "w": 17.207999999999934,
+          "size": 9
+        },
+        {
+          "str": "120V AC",
+          "x": 217.9803,
+          "y": 305.5203,
+          "w": 23.262300000000007,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 241.2426,
+          "y": 305.5203,
+          "w": 5.695299999999997,
+          "size": 9
+        },
+        {
+          "str": "2.5 A",
+          "x": 292.5003,
+          "y": 304.3206,
+          "w": 14.459700000000044,
+          "size": 9
+        },
+        {
+          "str": "(1)",
+          "x": 306.96,
+          "y": 307.92,
+          "w": 5.078879999999949,
+          "size": 7.2
+        },
+        {
+          "str": " ",
+          "x": 312.03888,
+          "y": 307.92,
+          "w": 6.802346666666665,
+          "size": 7.2
+        },
+        {
+          "str": "15 A",
+          "x": 373.26,
+          "y": 305.52,
+          "w": 11.502900000000002,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 384.76289999999995,
+          "y": 305.52,
+          "w": 4.163299999999999,
+          "size": 9
+        },
+        {
+          "str": "1.5 A",
+          "x": 422.23259999999993,
+          "y": 305.52,
+          "w": 13.188600000000019,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 435.4211999999999,
+          "y": 305.52,
+          "w": 3.970000000000002,
+          "size": 9
+        },
+        {
+          "str": "1800VA",
+          "x": 471.1511999999999,
+          "y": 305.52,
+          "w": 21.26789999999993,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 492.4190999999998,
+          "y": 305.52,
+          "w": 3.076700000000004,
+          "size": 9
+        },
+        {
+          "str": "180VA",
+          "x": 520.1093999999998,
+          "y": 305.52,
+          "w": 17.22239999999996,
+          "size": 9
+        },
+        {
+          "str": "125V DC",
+          "x": 217.9803,
+          "y": 290.1003,
+          "w": 23.564700000000002,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 241.54500000000002,
+          "y": 290.1003,
+          "w": 5.660700000000001,
+          "size": 9
+        },
+        {
+          "str": "1.0 A",
+          "x": 292.4913,
+          "y": 290.1003,
+          "w": 13.16969999999999,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 305.66099999999994,
+          "y": 290.1003,
+          "w": 7.5110000000000054,
+          "size": 9
+        },
+        {
+          "str": "0.22 A",
+          "x": 373.26,
+          "y": 288.9006,
+          "w": 18.420000000000066,
+          "size": 9
+        },
+        {
+          "str": "(2)",
+          "x": 391.68,
+          "y": 292.5001,
+          "w": 6.037920000000028,
+          "size": 7.2
+        },
+        {
+          "str": "(2)",
+          "x": 216,
+          "y": 253.3201,
+          "w": 6.757464000000026,
+          "size": 8
+        },
+        {
+          "str": " ",
+          "x": 222.75746400000003,
+          "y": 253.3201,
+          "w": 0.8381000000000007,
+          "size": 8
+        },
+        {
+          "str": "For DC voltage applications, the make/break ampere rating for relay contacts can be determined by dividing 28VA by the",
+          "x": 229.44550200000003,
+          "y": 253.3201,
+          "w": 326.165742,
+          "size": 8
+        },
+        {
+          "str": "applied DC voltage. For example, 28VA/48V DC = 0.58 A. For DC voltage applications less than 14V, the make/break ratings for",
+          "x": 229.499766,
+          "y": 245.28025,
+          "w": 335.76169200000015,
+          "size": 8
+        },
+        {
+          "str": "relay contacts cannot exceed 2 A.",
+          "x": 229.49976600000002,
+          "y": 237.30025,
+          "w": 90.96481799999962,
+          "size": 8
+        },
+        {
+          "str": "28VA",
+          "x": 471.12,
+          "y": 282.42,
+          "w": 14.610600000000018,
+          "size": 9
+        },
+        {
+          "str": "24V DC",
+          "x": 217.9797,
+          "y": 274.7403,
+          "w": 21.294,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 239.27370000000002,
+          "y": 274.7403,
+          "w": 5.914,
+          "size": 9
+        },
+        {
+          "str": "2.0 A",
+          "x": 292.4997,
+          "y": 274.7403,
+          "w": 14.490000000000002,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 306.98969999999997,
+          "y": 274.7403,
+          "w": 7.363300000000006,
+          "size": 9
+        },
+        {
+          "str": "1.2 A",
+          "x": 373.2594,
+          "y": 273.5406,
+          "w": 13.0806,
+          "size": 9
+        },
+        {
+          "str": "(2)",
+          "x": 386.34,
+          "y": 277.14,
+          "w": 6.098400000000012,
+          "size": 7.2
+        },
+        {
+          "str": "",
+          "x": 216,
+          "y": 213.3,
+          "w": 0,
+          "size": 10
+        },
+        {
+          "str": "Table 26 - Relay Contact Ratings 1762-OX6I",
+          "x": 216,
+          "y": 213.3,
+          "w": 150.00257999999985,
+          "size": 10
+        },
+        {
+          "str": "",
+          "x": 217.98,
+          "y": 186.9601,
+          "w": 0,
+          "size": 9
+        },
+        {
+          "str": "Maximum Volts",
+          "x": 217.98,
+          "y": 186.9601,
+          "w": 48.952800000000025,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 266.9328,
+          "y": 186.9601,
+          "w": 2.8408000000000015,
+          "size": 9
+        },
+        {
+          "str": "Continuous Amps per",
+          "x": 292.5,
+          "y": 192.65980000000002,
+          "w": 68.98409999999988,
+          "size": 9
+        },
+        {
+          "str": "Point (Max)",
+          "x": 292.5,
+          "y": 181.25950000000003,
+          "w": 37.01999999999991,
+          "size": 9
+        },
+        {
+          "str": "(1)",
+          "x": 329.52,
+          "y": 184.86,
+          "w": 6.559200000000002,
+          "size": 7.2
+        },
+        {
+          "str": "",
+          "x": 216,
+          "y": 107.82,
+          "w": 0,
+          "size": 8
+        },
+        {
+          "str": "(1)",
+          "x": 216,
+          "y": 107.82,
+          "w": 5.637072000000006,
+          "size": 8
+        },
+        {
+          "str": " ",
+          "x": 221.637072,
+          "y": 107.82,
+          "w": 0.9810000000000012,
+          "size": 8
+        },
+        {
+          "str": "The continuous current per module must be limited so that the module power does not exceed 1440VA.",
+          "x": 229.465452,
+          "y": 107.82,
+          "w": 277.8340739999985,
+          "size": 8
+        },
+        {
+          "str": "",
+          "x": 373.32,
+          "y": 192.2401,
+          "w": 0,
+          "size": 9
+        },
+        {
+          "str": "Amperes",
+          "x": 373.32,
+          "y": 192.2401,
+          "w": 28.800000000000036,
+          "size": 9
+        },
+        {
+          "str": "(2)",
+          "x": 402.12,
+          "y": 195.8401,
+          "w": 7.639200000000011,
+          "size": 7.2
+        },
+        {
+          "str": "",
+          "x": 216,
+          "y": 99.8401,
+          "w": 0,
+          "size": 8
+        },
+        {
+          "str": "(2)",
+          "x": 216,
+          "y": 99.8401,
+          "w": 6.75108,
+          "size": 8
+        },
+        {
+          "str": " ",
+          "x": 222.75108,
+          "y": 99.8401,
+          "w": 0.838200000000001,
+          "size": 8
+        },
+        {
+          "str": "Surge Suppression",
+          "x": 229.439916,
+          "y": 99.8401,
+          "w": 53.90011199999989,
+          "size": 8
+        },
+        {
+          "str": " ",
+          "x": 283.3400279999998,
+          "y": 99.8401,
+          "w": 0.20050000000002738,
+          "size": 8
+        },
+        {
+          "str": "– Connecting surge suppressors across your external inductive load will extend the life of the relay",
+          "x": 284.940018,
+          "y": 99.8401,
+          "w": 266.62616400000076,
+          "size": 8
+        },
+        {
+          "str": "contacts. For additional details, see the Industrial Automation Wiring and Grounding Guidelines, publication 1770-4.1.",
+          "x": 229.499766,
+          "y": 91.80025,
+          "w": 313.5763340000005,
+          "size": 8
+        },
+        {
+          "str": "",
+          "x": 471.24,
+          "y": 193.44,
+          "w": 0,
+          "size": 9
+        },
+        {
+          "str": "Voltamperes",
+          "x": 471.24,
+          "y": 193.44,
+          "w": 40.90770000000006,
+          "size": 9
+        },
+        {
+          "str": "Make",
+          "x": 373.32,
+          "y": 179.22,
+          "w": 16.68689999999998,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 390.0069,
+          "y": 179.22,
+          "w": 3.583999999999997,
+          "size": 9
+        },
+        {
+          "str": "Break",
+          "x": 422.26289999999995,
+          "y": 179.22,
+          "w": 19.02419999999995,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 441.2870999999999,
+          "y": 179.22,
+          "w": 3.330999999999998,
+          "size": 9
+        },
+        {
+          "str": "Make",
+          "x": 471.2660999999999,
+          "y": 179.22,
+          "w": 16.68689999999998,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 487.95299999999986,
+          "y": 179.22,
+          "w": 3.583999999999997,
+          "size": 9
+        },
+        {
+          "str": "Break",
+          "x": 520.2089999999998,
+          "y": 179.22,
+          "w": 18.988199999999892,
+          "size": 9
+        },
+        {
+          "str": "",
+          "x": 217.98,
+          "y": 166.26,
+          "w": 0,
+          "size": 9
+        },
+        {
+          "str": "240V AC",
+          "x": 217.98,
+          "y": 166.26,
+          "w": 24.705,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 242.685,
+          "y": 166.26,
+          "w": 5.533999999999998,
+          "size": 9
+        },
+        {
+          "str": "5.0 A",
+          "x": 292.491,
+          "y": 166.26,
+          "w": 14.567400000000022,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 307.05839999999995,
+          "y": 166.26,
+          "w": 7.3633,
+          "size": 9
+        },
+        {
+          "str": "15 A",
+          "x": 373.32809999999995,
+          "y": 166.26,
+          "w": 11.432700000000057,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 384.76079999999996,
+          "y": 166.26,
+          "w": 4.1700000000000035,
+          "size": 9
+        },
+        {
+          "str": "1.5 A",
+          "x": 422.2908,
+          "y": 166.26,
+          "w": 13.169700000000047,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 435.46049999999997,
+          "y": 166.26,
+          "w": 3.9755000000000047,
+          "size": 9
+        },
+        {
+          "str": "3600VA",
+          "x": 471.24,
+          "y": 158.51999999999998,
+          "w": 22.50269999999994,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 493.74269999999996,
+          "y": 158.51999999999998,
+          "w": 2.943300000000003,
+          "size": 9
+        },
+        {
+          "str": "360VA",
+          "x": 520.2324,
+          "y": 158.51999999999998,
+          "w": 18.51210000000001,
+          "size": 9
+        },
+        {
+          "str": "120V AC",
+          "x": 217.98000000000002,
+          "y": 152.04,
+          "w": 23.262300000000007,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 241.24230000000003,
+          "y": 152.04,
+          "w": 5.695299999999997,
+          "size": 9
+        },
+        {
+          "str": "7.0 A",
+          "x": 292.5,
+          "y": 150.84029999999998,
+          "w": 13.680000000000069,
+          "size": 9
+        },
+        {
+          "str": "(3)",
+          "x": 306.18,
+          "y": 154.44,
+          "w": 6.15888000000004,
+          "size": 7.2
+        },
+        {
+          "str": "(3)",
+          "x": 216,
+          "y": 83.82,
+          "w": 6.803748000000019,
+          "size": 8
+        },
+        {
+          "str": " ",
+          "x": 222.803748,
+          "y": 83.82,
+          "w": 0.8305999999999992,
+          "size": 8
+        },
+        {
+          "str": "6 A in ambient temperatures above 40 °C (104.°F)",
+          "x": 229.431936,
+          "y": 83.82,
+          "w": 133.21253399999972,
+          "size": 8
+        },
+        {
+          "str": "30 A",
+          "x": 373.32,
+          "y": 152.0401,
+          "w": 13.134599999999976,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 386.45459999999997,
+          "y": 152.0401,
+          "w": 3.983299999999998,
+          "size": 9
+        },
+        {
+          "str": "3.0 A",
+          "x": 422.30429999999996,
+          "y": 152.0401,
+          "w": 14.550299999999954,
+          "size": 9
+        },
+        {
+          "str": "125V DC",
+          "x": 217.98,
+          "y": 136.6204,
+          "w": 23.55209999999998,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 241.53209999999999,
+          "y": 136.6204,
+          "w": 5.660699999999998,
+          "size": 9
+        },
+        {
+          "str": "2.5 A",
+          "x": 292.47839999999997,
+          "y": 136.6204,
+          "w": 14.516099999999982,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 306.9944999999999,
+          "y": 136.6204,
+          "w": 7.369999999999998,
+          "size": 9
+        },
+        {
+          "str": "0.4 A",
+          "x": 373.3244999999999,
+          "y": 136.6204,
+          "w": 14.909399999999977,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 388.23389999999984,
+          "y": 136.6204,
+          "w": 9.222900000000019,
+          "size": 9
+        },
+        {
+          "str": "50VA",
+          "x": 471.24,
+          "y": 135.42069999999998,
+          "w": 14.820000000000011,
+          "size": 9
+        },
+        {
+          "str": "(4)",
+          "x": 486.06,
+          "y": 139.0201,
+          "w": 6.158159999999957,
+          "size": 7.2
+        },
+        {
+          "str": "(4)",
+          "x": 216,
+          "y": 75.8401,
+          "w": 6.871577999999983,
+          "size": 8
+        },
+        {
+          "str": " ",
+          "x": 222.87157799999997,
+          "y": 75.8401,
+          "w": 0.8231000000000014,
+          "size": 8
+        },
+        {
+          "str": "DC Make/Break Voltamperes must be limited to 50VA for DC voltages between 28V DC and 125V DC. DC Make/Break",
+          "x": 229.43991599999998,
+          "y": 75.8401,
+          "w": 308.1971760000007,
+          "size": 8
+        },
+        {
+          "str": "Voltamperes below 28V DC are limited by the 7 A Make/Break current limit.",
+          "x": 229.50056400000003,
+          "y": 67.80025,
+          "w": 200.6985959999995,
+          "size": 8
+        },
+        {
+          "str": "24V DC",
+          "x": 217.98,
+          "y": 121.26,
+          "w": 21.294,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 239.274,
+          "y": 121.26,
+          "w": 5.914,
+          "size": 9
+        },
+        {
+          "str": "7.0 A",
+          "x": 292.5,
+          "y": 120.06030000000001,
+          "w": 13.680000000000069,
+          "size": 9
+        },
+        {
+          "str": "(3)",
+          "x": 306.18,
+          "y": 123.66,
+          "w": 6.15888000000004,
+          "size": 7.2
+        },
+        {
+          "str": " ",
+          "x": 312.3388800000001,
+          "y": 123.66,
+          "w": 6.775679999999991,
+          "size": 7.2
+        },
+        {
+          "str": "7.0 A",
+          "x": 373.32,
+          "y": 121.26,
+          "w": 13.650300000000017,
+          "size": 9
+        },
+        {
+          "str": " ",
+          "x": 386.97029999999995,
+          "y": 121.26,
+          "w": 9.363300000000006,
+          "size": 9
+        },
+        {
+          "str": "168VA",
+          "x": 471.24,
+          "y": 120.06030000000001,
+          "w": 16.920000000000023,
+          "size": 9
+        },
+        {
+          "str": "(4)",
+          "x": 488.16,
+          "y": 123.66,
+          "w": 6.219360000000056,
+          "size": 7.2
+        }
+      ]
+    }
+  ]
+}
