@@ -70,6 +70,50 @@ export const TAG_AS_MODEL: Identity = { manufacturer: "Allen-Bradley", model: "C
 export const CATALOG_ONLY_COVER = synthetic(
   "catalog-only-cover", "2080-LC20-20QBB\nTechnical Specifications\nInputs\nOutputs\nSupply", "2080-LC20-20QBB.pdf");
 
+/** The machine's own print set, as the Print Pack build writes its cover
+ *  (machine-print-pack/build/pack_docs.py; text read from the example PDF
+ *  machine-print-pack/examples/cv-101/prints/CV-101_print_set.pdf, page 1). The
+ *  number on its title line is the machine's asset tag, not a product. */
+export const MACHINE_PRINT_SET_AS_STORED: Manual = {
+  key: "machine-print-set-as-stored",
+  heading:
+    "CV-101  -  Garage conveyor (Conv_Simple)\nMIRA Print Pack  -  Verified Machine Print Pack\n"
+    + "Approval tier:  APPROVABLE WITH FIELD VERIFICATION\n"
+    + "This pack documents CV-101 only. 14 devices  \u00b7  40 modeled conductors (37 FIELD VERIFY)  \u00b7  "
+    + "96 modeled terminals (34 FIELD VERIFY)  \u00b7  28 open items (2 closed).\n"
+    + "UNS path: enterprise.garage.demo_cell.cv_101\nCustomer: FactoryLM (bench/demo asset)\nSite: Garage demo cell\n"
+    + "As of: 2026-07-11\nDISCLAIMER",
+  filename: "CV-101_print_set.pdf", page: 6, pageLabel: "6", origin: "public-cover",
+};
+/** The UNS path the example print set's cover gives. */
+export const CV101_PATH = "enterprise.garage.demo_cell.cv_101";
+const packCover = (tag: string, label: string, unsPath: string) =>
+  `${tag}  -  ${label}\nMIRA Print Pack  -  Verified Machine Print Pack\nApproval tier:  APPROVABLE WITH FIELD VERIFICATION\n`
+  + `This pack documents ${tag} only. 9 devices  \u00b7  12 modeled conductors (4 FIELD VERIFY).\nUNS path: ${unsPath}\nSite: Garage demo cell`;
+/** The same build's cover for the machine next to it. Synthetic. */
+export const OTHER_MACHINE_PRINT_SET = synthetic(
+  "other-machine-print-set", packCover("CV-102", "Infeed conveyor", "enterprise.garage.demo_cell.cv_102"), "CV-102_print_set.pdf");
+/** A print set whose path only begins like the bound machine's. Synthetic. */
+export const LONGER_PATH_PRINT_SET = synthetic(
+  "longer-path-print-set", packCover("CV-1012", "Outfeed conveyor", `${CV101_PATH}2`), "CV-1012_print_set.pdf");
+/** The bound machine's path with a look-alike letter (the Kelvin sign for "k"), and in capitals. Synthetic. */
+export const LOOKALIKE_PATH_PRINT_SET = synthetic(
+  "lookalike-path-print-set", packCover("CV-101", "Conveyor", "enterprise.garage.demo_cell.cv_101".replace("_cell", "_cell\u212a")), "CV-101K_print_set.pdf");
+export const CAPITALS_PATH_PRINT_SET = synthetic(
+  "capitals-path-print-set", packCover("CV-101", "Conveyor", CV101_PATH.toUpperCase()), "CV-101U_print_set.pdf");
+/** Controls: the machine's tag on a title line of a document that is NOT a print set. */
+export const TAG_TITLED_SHEET = synthetic(
+  "tag-titled-sheet", "CV-101\nTechnical Specifications\nInputs\nOutputs\nSupply", "CV-101.pdf");
+/** Every pack line and the bound machine's path, but the title is for another number than the scope sentence. */
+export const PRINT_LINES_OTHER_TITLE = synthetic(
+  "print-lines-other-title",
+  `RX420  -  Compact drive\nMIRA Print Pack  -  Verified Machine Print Pack\nThis pack documents CV-101 only. 3 devices.\nUNS path: ${CV101_PATH}`,
+  "RX420.pdf");
+/** The pack line and the bound machine's path, with no scope sentence. */
+export const PRINT_LINE_NO_SCOPE = synthetic(
+  "print-line-no-scope",
+  `RX420  -  Compact drive\nMIRA Print Pack  -  Verified Machine Print Pack\nRatings\nUNS path: ${CV101_PATH}`, "RX420-pack.pdf");
+
 const SUPPLY = "What is the supply voltage?";
 const PLATE = "The plate reads AutomationDirect GS11N-20P2. It will not start.";
 
@@ -314,4 +358,56 @@ export const PROJECT_JOBS: Job[] = [
   { id: "P-81", who: "journeyman", doing: "stated limit: a code of the carried model's own family, after the sibling model was refused",
     attached: [RX410_TITLED], earlier: ["RX420 will not start"],
     ask: "What does RX421 mean?", want: REFUSE, says: "other-model", about: "question" },
+  // The machine's own print set, in a project BOUND to that machine: the number on its cover is
+  // the machine's asset tag, so it is not "another product" whichever part the project records.
+  { id: "P-82", who: "journeyman", doing: "asking about the supply wiring in the drive's project, bound to the machine; its print set is attached",
+    attached: [MACHINE_PRINT_SET_AS_STORED], identity: DRIVE, boundMachine: CV101_PATH,
+    ask: "Which terminals bring supply power into the drive?", want: answer(MACHINE_PRINT_SET_AS_STORED) },
+  { id: "P-83", who: "journeyman", doing: "the same print set in the relay's project, bound to the machine",
+    attached: [MACHINE_PRINT_SET_AS_STORED], identity: RELAY, boundMachine: CV101_PATH,
+    ask: "Is this relay a safety disconnect?", want: answer(MACHINE_PRINT_SET_AS_STORED) },
+  { id: "P-84", who: "journeyman", doing: "the same print set in a project recorded by the controller's catalog number, bound to the machine",
+    attached: [MACHINE_PRINT_SET_AS_STORED], identity: PLC_BY_CATALOG, boundMachine: CV101_PATH,
+    ask: "Which output drives the control relay coil?", want: answer(MACHINE_PRINT_SET_AS_STORED) },
+  { id: "P-85", who: "journeyman", doing: "the drive's project, bound to the machine, with the drive's manual and the print set attached",
+    attached: [GS10, MACHINE_PRINT_SET_AS_STORED], identity: DRIVE, boundMachine: CV101_PATH,
+    ask: "Which terminals bring supply power into the drive?", want: answer(GS10, MACHINE_PRINT_SET_AS_STORED) },
+  { id: "P-86", who: "journeyman", doing: "the bound path written in another letter case than the cover's",
+    attached: [MACHINE_PRINT_SET_AS_STORED], identity: DRIVE, boundMachine: CV101_PATH.toUpperCase(),
+    ask: "Which terminals bring supply power into the drive?", want: REFUSE, says: "another-product", about: "notebook" },
+  { id: "P-96", who: "journeyman", doing: "a print set whose path is the bound machine's in capitals",
+    attached: [CAPITALS_PATH_PRINT_SET], identity: DRIVE, boundMachine: CV101_PATH,
+    ask: "Which terminals bring supply power into the drive?", want: REFUSE, says: "another-product", about: "notebook" },
+  { id: "P-97", who: "journeyman", doing: "a bound path and a cover path that agree only once a look-alike letter is folded",
+    attached: [LOOKALIKE_PATH_PRINT_SET], identity: DRIVE, boundMachine: "enterprise.garage.demo_cellk.cv_101",
+    ask: "Which terminals bring supply power into the drive?", want: REFUSE, says: "another-product", about: "notebook" },
+  // Refused exactly as before: nothing ties the print set to this project's machine.
+  { id: "P-87", who: "journeyman", doing: "ANOTHER machine's print set in the relay's project, bound to this machine",
+    attached: [OTHER_MACHINE_PRINT_SET], identity: RELAY, boundMachine: CV101_PATH,
+    ask: "Which output drives the relay coil?", want: REFUSE, says: "another-product", about: "notebook" },
+  { id: "P-88", who: "journeyman", doing: "the machine's print set in the drive's project, which is bound to no machine",
+    attached: [MACHINE_PRINT_SET_AS_STORED], identity: DRIVE,
+    ask: "Which terminals bring supply power into the drive?", want: REFUSE, says: "another-product", about: "notebook" },
+  { id: "P-89", who: "journeyman", doing: "a print set whose path only begins like the bound machine's",
+    attached: [LONGER_PATH_PRINT_SET], identity: DRIVE, boundMachine: CV101_PATH,
+    ask: "Which terminals bring supply power into the drive?", want: REFUSE, says: "another-product", about: "notebook" },
+  { id: "P-90", who: "apprentice", doing: "a sheet titled with the machine's tag that is not a print set, in the bound drive's project",
+    attached: [TAG_TITLED_SHEET], identity: DRIVE, boundMachine: CV101_PATH, ask: SUPPLY, want: REFUSE, says: "another-product", about: "notebook" },
+  { id: "P-91", who: "apprentice", doing: "a cover with the pack's lines and the bound path, but a title for another number than its scope sentence",
+    attached: [PRINT_LINES_OTHER_TITLE], identity: DRIVE, boundMachine: CV101_PATH, ask: SUPPLY, want: REFUSE, says: "another-product", about: "notebook" },
+  { id: "P-92", who: "apprentice", doing: "a cover with the pack line and the bound path but no scope sentence",
+    attached: [PRINT_LINE_NO_SCOPE], identity: DRIVE, boundMachine: CV101_PATH, ask: SUPPLY, want: REFUSE, says: "another-product", about: "notebook" },
+  // A project recorded by its machine tag keeps telling its own print set from another machine's, bound or not.
+  { id: "P-93", who: "apprentice", doing: "a project recorded by machine tag and bound to no machine; its own print set is attached",
+    attached: [MACHINE_PRINT_SET_AS_STORED], identity: TAG_AS_MODEL,
+    ask: "Which output drives the control relay coil?", want: answer(MACHINE_PRINT_SET_AS_STORED) },
+  { id: "P-94", who: "apprentice", doing: "the same project; another machine's print set is attached",
+    attached: [OTHER_MACHINE_PRINT_SET], identity: TAG_AS_MODEL,
+    ask: "Which output drives the control relay coil?", want: REFUSE },
+  // Stated limits, unchanged by this rule and tracked separately: a question that names a
+  // MODEL is answered only by a cover that affirms that model, and a family name in the
+  // machine's label is still read as the cover's product.
+  { id: "P-95", who: "journeyman", doing: "stated limit: naming the drive's model against the bound machine's print set, whose cover affirms no model",
+    attached: [MACHINE_PRINT_SET_AS_STORED], identity: DRIVE, boundMachine: CV101_PATH,
+    ask: "Which terminals bring supply power into the GS11N-20P2?", want: REFUSE },
 ];

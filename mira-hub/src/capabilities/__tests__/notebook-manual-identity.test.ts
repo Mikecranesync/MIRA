@@ -114,3 +114,27 @@ describe("garage pilot PR-4 — the ONE definition of 'the record's number' (ret
     expect(confirmedCatalogNumber({ identityStatus: "user_confirmed" })).toBeNull();
   });
 });
+
+describe("the bound machine's UNS path rides with the manual identity", () => {
+  const PATH = "enterprise.garage.demo_cell.cv_101";
+  const bound = { ...boundPlc, unsPath: ` ${PATH} ` };
+  const own = { manufacturer: "AutomationDirect", model: "GS11N", catalogNumber: "GS11N-20P2", identityStatus: "user_confirmed" as const };
+
+  it("a confirmed binding supplies it, trimmed, whichever identity wins", () => {
+    expect(notebookManualIdentity(blank, bound).machineUnsPath).toBe(PATH);
+    expect(notebookManualIdentity(own, bound)).toEqual({
+      identity: { manufacturer: "AutomationDirect", model: "GS11N" }, catalogNumber: "GS11N-20P2", identityStatus: "user_confirmed", machineUnsPath: PATH,
+    });
+  });
+  it("control: a binding nobody confirmed supplies none", () => {
+    expect("machineUnsPath" in notebookManualIdentity(own, { ...bound, confirmedAt: null })).toBe(false);
+  });
+  it("control: a binding the device disputes this turn supplies none", () => {
+    expect("machineUnsPath" in notebookManualIdentity(own, bound, true)).toBe(false);
+  });
+  it("control: no machine, an unresolvable machine, or a blank path supplies none", () => {
+    expect("machineUnsPath" in notebookManualIdentity(own, { state: "unbound" })).toBe(false);
+    expect("machineUnsPath" in notebookManualIdentity(own, { state: "unresolvable" })).toBe(false);
+    expect("machineUnsPath" in notebookManualIdentity(own, { ...bound, unsPath: "  " })).toBe(false);
+  });
+});
