@@ -1012,27 +1012,78 @@ describe("#5503 actual upload INSERT through raw retrieval SQL", () => {
     });
   });
 
-  it.each(["20QBB", "20QWB", "non-table", "non-table-large-body"])("F7 real extracted columns cannot swallow adjacent %s electrical values", async (nextModel) => {
-    const items = [item("Output Specifications for 2080-LC20-20QWB, 2080-LC20-20AWB", 100, 740, 10),
+  it.each(["20QBB", "20QWB", "non-table", "non-table-large-body", "non-table-smaller", "non-table-equal", "unnamed-smaller", "unnamed-equal", "unnamed-larger", "uncaptioned-smaller", "uncaptioned-larger", "uncaptioned-model", "non-table-tall-label"])("F7 real extracted columns cannot swallow adjacent %s electrical values", async (nextModel) => {
+    const items = [item("Output Specifications for 2080-LC20-20QWB, 2080-LC20-20AWB", 100, 740, nextModel.endsWith("smaller") || nextModel.endsWith("equal") ? 12 : 10),
       item("Attribute", 100, 720), item("2080-LC20-20QWB(R)", 280, 720), item("2080-LC20-20AWB(R)", 420, 720),
       item("zzoriginalvalue Load current max", 100, 706), item("2.0 A", 280, 706), item("1.5 A", 420, 706),
       item("Switching time max", 100, 692), item("10 ms", 280, 692), item("8 ms", 420, 692),
-      item(nextModel.startsWith("non-table") ? "DC Output Data for 2080-LC20-20QBB" : `Output Specifications for 2080-LC20-${nextModel}`, 100, 676, nextModel.startsWith("non-table") ? 12 : 10),
+      item((nextModel.startsWith("unnamed") || (nextModel.startsWith("uncaptioned") && nextModel !== "uncaptioned-model")) ? "DC Output Data" : (nextModel.startsWith("non-table") || nextModel === "uncaptioned-model") ? "DC Output Data for 2080-LC20-20QBB" : `Output Specifications for 2080-LC20-${nextModel}`, 100, 676, nextModel.endsWith("smaller") ? 10 : nextModel.startsWith("non-table") || (nextModel.startsWith("unnamed") || nextModel.startsWith("uncaptioned")) ? 12 : 10),
       item("Attribute", 100, 662), item("Value", 280, 662),
       item("zzadjacentvalue Point current max", 100, 648, nextModel === "non-table-large-body" ? 12 : 8), item("9 A", 280, 648, nextModel === "non-table-large-body" ? 12 : 8),
       item("Point surge max", 100, 634), item("11 A", 280, 634)];
+    if (nextModel.startsWith("uncaptioned")) items.shift();
+    if (nextModel === "non-table-tall-label") {
+      for (const cell of items.filter((i) => i.y === 720)) cell.size = 12;
+      items.find((i) => i.y === 740)!.size = 14;
+      items.find((i) => i.y === 706)!.size = 14;
+      items.find((i) => i.y === 706)!.str = "zzoriginalvalue Current";
+      items.find((i) => i.y === 676)!.size = 10;
+      for (const cell of items) cell.w = cell.str.length * cell.size * 0.4;
+    }
     const cover = "Micro820 Programmable Controllers\n2080-LC20-20QBB, 2080-LC20-20QWB, 2080-LC20-20AWB";
     await withPages([{ page: 1, items: [item(cover, 100, 760, 12)], text: cover },
-      { page: 2, items, text: items.map((i) => i.str).join("\n") }], async () => {
+      { page: 2, items, text: items.map((i) => i.str).join("\n") },
+      { page: 3, items: [item("zzboundarycontinuation Point current max 9 A", 100, 720)], text: "zzboundarycontinuation Point current max 9 A" }], async () => {
       for (const model of ["20QWB", "20AWB", "20QBB"]) {
         const result = await retrieve(model, "zzadjacentvalue Point current max");
         expect(result.text.includes("zzadjacentvalue")).toBe(model === nextModel);
+        expect((await retrieve(model, "zzboundarycontinuation Point current max")).text.includes("zzboundarycontinuation")).toBe(model === nextModel);
       }
       for (const [model, value] of [["20QWB", "2.0 A"], ["20AWB", "1.5 A"]]) {
         const result = await retrieve(model, "zzoriginalvalue Load current max");
         expect(result.text).toContain(value);
         expect(result.chunks.filter((c) => c.content.includes(": zzoriginalvalue")).every((c) => !c.content.includes("zzadjacentvalue"))).toBe(true);
       }
+    });
+  });
+
+  it.each(["catalog", "parameter", "parameter-explicit"])("F7 real SQL preserves interrupted %s column ownership without creating an equipment domain", async (kind) => {
+    const items = [item("Attribute", 100, 720), item(kind === "catalog" ? "2080-LC20-20QWB" : "P01.20", 280, 720), item(kind === "catalog" ? "2080-LC20-20AWB" : "P01.21", 420, 720),
+      item("zzoriginalsingle Load current max", 100, 706), item("2 A", 280, 706), item("1 A", 420, 706),
+      item("DC Output Data", 100, 690, 10), item("Attribute", 100, 676), item("Value", 280, 676), item("zzuncaptioned Point current max", 100, 662), item("9 A", 280, 662)];
+    const generic = [item(kind === "parameter-explicit" ? "DC Output Specifications for 2080-LC20-20QBB" : "General Specifications", 100, 720, 12), item("Attribute Value", 100, 700), item("zzuncaptioned Point surge max 11 A", 100, 686)];
+    const cover = "Micro820 Programmable Controllers\n2080-LC20-20QBB, 2080-LC20-20QWB, 2080-LC20-20AWB";
+    await withPages([{ page: 1, items: [item(cover, 100, 760, 12)], text: cover },
+      { page: 2, items, text: [...items].reverse().map((i) => i.str).join("\n") },
+      { page: 3, items: generic, text: generic.map((i) => i.str).join("\n") },
+      { page: 4, text: "zzuncaptioned Point current max 12 A", items: [item("zzuncaptioned Point current max 12 A", 100, 720)] }], async () => {
+      const result = await retrieve("20QWB", "zzuncaptioned Point current max");
+      if (kind === "catalog") expect(result.text).not.toContain("zzuncaptioned");
+      else if (kind === "parameter") for (const value of ["9 A", "11 A", "12 A"]) expect(result.text).toContain(value);
+      else {
+        expect(result.text).toContain("9 A");
+        expect(result.text).not.toContain("11 A");
+        expect(result.text).not.toContain("12 A");
+        const own = await retrieve("20QBB", "zzuncaptioned Point current max");
+        expect(own.text).toContain("11 A");
+        expect(own.text).toContain("12 A");
+      }
+    });
+  });
+
+  it("duplicate catalog columns retain both values in storage and admit neither as a qualified own-model value", async () => {
+    const items = [item("Attribute", 100, 720), item("2080-LC20-20QWB", 280, 720), item("2080-LC20-20QWB", 420, 720),
+      item("zzduplicate Connection", 100, 706), item("internally", 280, 706), item("externally", 420, 706),
+      item("Inputs per Module", 100, 692), item("4", 280, 692), item("8", 420, 692)];
+    const cover = "Micro820 Programmable Controllers\n2080-LC20-20QBB, 2080-LC20-20QWB, 2080-LC20-20AWB";
+    await withPages([{ page: 1, items: [item(cover, 100, 760, 12)], text: cover },
+      { page: 2, items, text: items.map((i) => i.str).join("\n") }], async () => {
+      const rows = await client.query("SELECT content,metadata FROM knowledge_entries WHERE tenant_id=$1 AND doc_id=$2 AND page_start=2", [TENANT,DOCUMENT]);
+      const text = rows.rows.map((r) => r.content).join("\n");
+      expect(text).toContain("internally");
+      expect(text).toContain("externally");
+      expect(rows.rows.filter((r) => r.content.includes("zzduplicate")).every((r) => r.metadata.table_unqualified === true)).toBe(true);
+      expect((await retrieve("20QWB", "zzduplicate Connection")).text).not.toContain("zzduplicate");
     });
   });
 

@@ -7,11 +7,13 @@ import { hasNegation, isTitleLine, modelNumbersIn, sameModelFamily } from "./man
 import { tableUnit } from "./supporting-quote";
 
 export type SectionScope = "section" | "shared" | "unresolved";
-export type ScopedText = { text: string; models?: string[]; scope?: SectionScope; sharedHeader?: string };
-type Heading = { text: string; at: number; table: boolean; size: number; sharedHeader?: string; headerModels?: string[]; headerUnresolved?: boolean; headerInvalidLabels?: boolean; relayTable?: boolean; sourceLine: number; y: number; headerTop?: number; headerBottom?: number; columnUnresolved?: boolean };
-export type SectionLayout = { text: string; headings: Heading[]; hasTables: boolean; retainedLines: string[] };
+/** columnOnly is internal: independent parameter/accessory columns retain the
+ * existing family-domain rule; an explicit catalog section never gains it. */
+export type ScopedText = { columnOnly?: boolean; text: string; models?: string[]; scope?: SectionScope; sharedHeader?: string };
+type Heading = { interruption?: boolean; interruptedModels?: string[]; text: string; at: number; table: boolean; size: number; sharedHeader?: string; headerModels?: string[]; headerUnresolved?: boolean; headerInvalidLabels?: boolean; relayTable?: boolean; sourceLine: number; y: number; headerTop?: number; headerBottom?: number; columnUnresolved?: boolean };
+export type SectionLayout = { text: string; headings: Heading[]; candidates?: Heading[]; hasTables: boolean; retainedLines: string[] };
 type OutputMap = Map<string, boolean | null>;
-type ActiveScope = Pick<ScopedText, "models" | "scope" | "sharedHeader">;
+type ActiveScope = Pick<ScopedText, "models" | "scope" | "sharedHeader" | "columnOnly">;
 
 /** A complete model-column table, with an explicit circuit type for every column. Unknown or
  * contradictory values prevent inferred relay restrictions. Relay/FET remains relay-capable.
@@ -235,13 +237,15 @@ export function sectionTableLayout(items: readonly LayoutItem[], includeBoundari
   const bodySize = Math.min(...sizes.keys());
   const captionSize = captions.size > 0 ? Math.min(...[...captions.keys()].map((i) => lines[i].size)) : bodySize + 0.5;
   const headings: Heading[] = [];
+  const candidates: Heading[] = [];
   let at = 0;
+  let retainedOrdinal = 0;
   let continuationEnd = -1;
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     const caption = captions.get(i);
-    if (!line.virtual && i > continuationEnd && (caption || (line.size >= captionSize && line.text.length < 200))) {
-      headings.push({ text: caption?.text ?? line.text, at, table: !!caption, size: line.size,
+    if (!line.virtual && i > continuationEnd) {
+      const heading: Heading = { text: caption?.text ?? line.text, at, table: !!caption, size: line.size,
         ...(caption?.sharedHeader ? { sharedHeader: caption.sharedHeader } : {}),
         ...(caption?.headerModels ? { headerModels: caption.headerModels } : {}),
         ...(caption?.headerUnresolved ? { headerUnresolved: true } : {}),
@@ -249,15 +253,20 @@ export function sectionTableLayout(items: readonly LayoutItem[], includeBoundari
         ...(caption?.relayTable ? { relayTable: true } : {}),
         // The source ordinal applies to retained AND intentionally removed headings.
         // Identical labels and prose references cannot move a physical boundary.
-        sourceLine: lines.slice(0, i).filter((l) => !l.removed).length, y: line.y,
+        sourceLine: retainedOrdinal, y: line.y,
         ...(caption?.columnUnresolved ? { columnUnresolved: true } : {}),
-        ...(caption?.headerTop !== undefined ? { headerTop: caption.headerTop, headerBottom: caption.headerBottom } : {}) });
+        ...(caption?.headerTop !== undefined ? { headerTop: caption.headerTop, headerBottom: caption.headerBottom } : {}) };
+      // Retain potential local boundaries before a preceding caption's size can
+      // discard them. Extraction qualifies these against its own table geometry.
+      if (caption || line.text.length < 200) candidates.push(heading);
+      if (caption || (line.size >= captionSize && line.text.length < 200)) headings.push(heading);
       if (caption) continuationEnd = caption.end;
     }
     at += line.text.length + 1;
+    if (!line.removed) retainedOrdinal++;
   }
   const retainedLines = lines.filter((l) => !l.removed).map((l) => l.text);
-  return headings.length > 0 ? { text: retainedLines.join("\n"), headings, hasTables: captions.size > 0, retainedLines } : null;
+  return headings.length > 0 ? { text: retainedLines.join("\n"), headings, candidates, hasTables: captions.size > 0, retainedLines } : null;
 }
 
 /** Caption and header are independent assertions about this physical table. Neither
@@ -310,13 +319,29 @@ function crossesHeading(chunk: TableChunk, h: Heading): boolean {
   return chunk.sourceTop !== undefined && chunk.sourceBottom !== undefined &&
     h.y < chunk.sourceTop - 2.5 && h.y >= chunk.sourceBottom - 2.5 &&
     (h.table || (chunk.sourceHeaderSize === undefined && chunk.sourceBodySize === undefined) ||
-      h.size > Math.max(chunk.sourceHeaderSize ?? 0, chunk.sourceBodySize ?? 0) + 0.2);
+      !chunk.sourceRowYs?.some((y) => Math.abs(y - h.y) <= 2.5) &&
+      h.size > (chunk.sourceBodySize || chunk.sourceHeaderSize || 0) + 0.2);
 }
 
 /** Start with proven table captions; then fence every larger recognized heading
  * inside an extracted column block, including unresolved/non-table sections. */
 export function tableExtractionBoundaries(layout: SectionLayout | null, chunks: readonly TableChunk[] = []): number[] {
-  return layout?.headings.filter((h) => h.table || chunks.some((c) => !c.unqualified && crossesHeading(c, h))).map((h) => h.y) ?? [];
+  return (layout?.candidates ?? layout?.headings)?.filter((h) => h.table || chunks.some((c) => !c.unqualified && crossesHeading(c, h))).map((h) => h.y) ?? [];
+}
+
+/** Promote only interruptions proven against an extracted table's local font/span.
+ * Reuse the original unsplit spans after extraction, so a smaller new heading
+ * also stops residual text and headerless continuation inheriting earlier scope. */
+export function withTableInterruptions(layout: SectionLayout | null, chunks: readonly TableChunk[]): SectionLayout | null {
+  if (!layout) return layout;
+  const original = new Set(layout.headings);
+  const headings = (layout.candidates ?? layout.headings).flatMap((h) => {
+    const crossed = chunks.filter((c) => !c.unqualified && crossesHeading(c, h));
+    if (!h.table && crossed.length > 0) return [{ ...h, interruption: true,
+      interruptedModels: [...new Set([...crossed.flatMap((c) => c.models.map(exactModelKey)), ...modelNumbersIn(h.text).map((n) => n.key)])] }];
+    return original.has(h) ? [h] : [];
+  });
+  return { ...layout, headings };
 }
 
 /** Bind each extracted block to its physical caption, even when its source lines have
@@ -331,14 +356,19 @@ export function scopeTableChunks(chunks: readonly TableChunk[], layout: SectionL
     const source = heading ?? { text: chunk.sourceCaption ?? "", headerModels: chunk.sourceModels };
     const named = captionModels(source).map((n) => n.key);
     const header = heading?.headerModels ?? [];
-    const crossesBoundary = layout?.headings.some((h) => crossesHeading(chunk, h));
+    const crossesBoundary = (layout?.candidates ?? layout?.headings)?.some((h) => crossesHeading(chunk, h));
     // null means a successful positioned-page read with no headings; undefined
     // means unreadable/absent geometry. Independent columns survive the former.
-    const invalid = layout === undefined || chunk.sourceTop === undefined || crossesBoundary ||
+    const invalidScope = layout === undefined || chunk.sourceTop === undefined ||
       uncertainCaption(source) || contradictoryTableHeading(source) || heading?.columnUnresolved ||
       (named.length > 0 && chunk.models.some((m) => !named.includes(exactModelKey(m)))) ||
       (header.length > 0 && chunk.models.some((m) => !header.includes(exactModelKey(m))));
-    return invalid ? { ...chunk, unqualified: true, scope: "unresolved" } : chunk;
+    // A font-only interruption of independent columns does not invent a
+    // document-wide catalog domain (the columns may be parameter/accessory IDs).
+    // Explicit captions/headers and unreadable or contradictory geometry keep
+    // their stronger unresolved section contract.
+    return invalidScope || crossesBoundary ? { ...chunk, unqualified: true,
+      scope: invalidScope || named.length > 0 || header.length > 0 ? "unresolved" : chunk.scope } : chunk;
   });
 }
 
@@ -352,7 +382,7 @@ export function modelSectionModels(layout: SectionLayout | null | undefined): st
   ]) ?? [])];
 }
 export function hasModelSectionScope(layout: SectionLayout | null | undefined): boolean {
-  return modelSectionModels(layout).length > 0;
+  return modelSectionModels(layout).length > 0 || !!layout?.headings.some((h) => h.interruption);
 }
 
 /** Per-document state, never shared across uploads. Captions reset scope; text windows inherit
@@ -371,7 +401,8 @@ export class SectionTableScope {
     // Empty padding before the first readable section has no scope to interrupt. Once a
     // section has been established, a blank/image-only gap breaks its proven continuity.
     if (!text.trim() && !this.hasReadableSection && !this.active.scope) return [{ text }];
-    this.active = this.observed ? { models: [...this.outputs.keys()], scope: "unresolved" } : {};
+    this.active = this.observed ? { models: this.active.columnOnly ? this.active.models : [...this.outputs.keys()], scope: "unresolved",
+      ...(this.active.columnOnly ? { columnOnly: true } : {}) } : {};
     return [{ text, ...this.active }];
   }
 
@@ -395,9 +426,11 @@ export class SectionTableScope {
       for (const boundary of boundaries) {
         if (chunk.sourceTop !== undefined && boundary.y >= chunk.sourceTop - 2.5) active = boundary.active;
       }
-      const invalid = active.scope === "unresolved" || (active.scope === "section" &&
+      const columnDomain = !active.columnOnly || chunk.models.some((model) => modelNumbersIn(model).some((n) =>
+        active.models?.some((key) => modelNumbersIn(key).some((own) => sameModelFamily(own, n)))));
+      const invalid = (active.scope === "unresolved" && columnDomain) || (active.scope === "section" &&
         chunk.models.some((model) => !active.models?.includes(exactModelKey(model))));
-      return invalid ? { ...chunk, unqualified: true, scope: "unresolved" as const } : chunk;
+      return invalid ? { ...chunk, unqualified: true, scope: active.columnOnly ? undefined : "unresolved" as const } : chunk;
     }) };
   }
 
@@ -412,14 +445,15 @@ export class SectionTableScope {
     }
     // With no inherited scope and no table caption, there is no applicability boundary to
     // split. Preserve original text AND window boundaries on unrelated prose pages.
-    if (!layout.hasTables && (!this.active.scope || this.active.scope === "shared")) {
+    if (!layout.hasTables && !layout.headings.some((h) => h.interruption) && (!this.active.scope || this.active.scope === "shared")) {
       this.active = {}; // a mixed-column header's privilege never crosses onto another page
       return [{ text }];
     }
-    if (!layout.hasTables && layout.headings.some((h) => h.size >= this.headingSize)) {
+    if (!layout.hasTables && !layout.headings.some((h) => h.interruption) && layout.headings.some((h) => h.size >= this.headingSize)) {
       // No qualified boundary exists on this page. Keep its original text/windows, but
       // do not let a running header or a possible new section release the restriction.
-      this.active = { models: this.active.models ?? [...this.outputs.keys()], scope: "unresolved" };
+      this.active = { models: this.active.models ?? [...this.outputs.keys()], scope: "unresolved",
+        ...(this.active.columnOnly ? { columnOnly: true } : {}) };
       return [{ text, ...this.active }];
     }
     // A missing table boundary is uncertainty, never permission to inherit the previous scope.
@@ -436,17 +470,19 @@ export class SectionTableScope {
     const sections: ScopedText[] = [];
     let start = 0;
     for (const h of headings) {
-      if (!h.table && (this.headingSize === 0 || h.size < this.headingSize)) continue; // running page furniture
+      if (!h.table && !h.interruption && (this.headingSize === 0 || h.size < this.headingSize)) continue; // running page furniture
       if (h.at > start) sections.push({ text: text.slice(start, h.at), ...this.active });
       // Font and page position cannot prove that a model restriction ended. A running
       // title can be larger than the section caption. Without a qualified table boundary,
       // continuity is unresolved, including for the formerly eligible model.
-      if (!h.table && this.active.scope) {
-        this.active = { models: this.active.models ?? [...this.outputs.keys()], scope: "unresolved" };
+      if (!h.table && (this.active.scope || h.interruption)) {
+        this.active = { models: this.active.models ?? h.interruptedModels ?? [...this.outputs.keys()], scope: "unresolved",
+          ...(this.active.columnOnly || !this.active.scope ? { columnOnly: true } : {}) };
         boundary?.(h);
         start = h.at;
         continue;
       }
+      const previousColumnScope = this.active.columnOnly ? this.active : undefined;
       this.active = {};
       this.headingSize = h.size;
       if (h.table) {
@@ -493,6 +529,13 @@ export class SectionTableScope {
             this.active = { scope: "shared", sharedHeader: h.sharedHeader };
           }
         }
+      }
+      // A generic caption cannot promote a parameter/accessory column domain
+      // into document-wide equipment scope. Explicit catalog/header assertions
+      // and circuit inventories still establish the stronger existing contract.
+      if (h.table && previousColumnScope && observedCaptionModels(h).length === 0 &&
+          (h.headerModels?.length ?? 0) === 0 && this.outputs.size === 0) {
+        this.active = { ...previousColumnScope, scope: "unresolved" };
       }
       boundary?.(h);
       start = h.at;

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { modelSectionModels, mergeOutputTypes, readOutputTypes, SectionTableScope, scopeTableChunks, sectionTableLayout, withoutSharedTableHeader } from "../section-table-scope";
-import { pageWithTables, type LayoutItem, type TableChunk } from "../table-rows";
+import { pageWithTables, tableChunks, detectModelTables, type LayoutItem, type TableChunk } from "../table-rows";
 import ml1100Ratings from "../__fixtures__/table-rows/ml1100-p114-p120-ratings-scope.json";
 import micro820 from "../__fixtures__/table-rows/micro820-in009-p16-20-scope.json";
 import { columnLines, contactRatingTable } from "../contact-ratings-table";
@@ -573,16 +573,16 @@ it.each([
   expect(modelSectionModels(layout)).toEqual([]);
 });
 
-it("F7 rejects an unsplit legacy block whose span crosses a later physical section", () => {
+it.each(["table", "named-smaller", "unnamed-smaller"])("F7 rejects an unsplit block crossing a later %s section", (kind) => {
   const item = (str: string, x: number, y: number, size = 8) => ({ str, x, y, size, w: str.length * size * 0.4 });
   const layout = sectionTableLayout([
-    item("Output Specifications for 2080-LC20-20QWB, 2080-LC20-20AWB", 100, 740, 10),
+    item("Output Specifications for 2080-LC20-20QWB, 2080-LC20-20AWB", 100, 740, kind === "table" ? 10 : 12),
     item("Attribute", 100, 720), item("2080-LC20-20QWB", 280, 720), item("2080-LC20-20AWB", 420, 720),
     item("Load current max", 100, 706), item("2 A", 280, 706), item("1 A", 420, 706),
-    item("Output Specifications for 2080-LC20-20QBB", 100, 676, 10), item("Attribute Value", 100, 662), item("Point current max 9 A", 100, 648),
+    item(kind === "table" ? "Output Specifications for 2080-LC20-20QBB" : kind === "named-smaller" ? "DC Output Data for 2080-LC20-20QBB" : "DC Output Data", 100, 676, 10), item("Attribute Value", 100, 662), item("Point current max 9 A", 100, 648),
   ])!;
   const chunk = { text: "2080-LC20-20QWB: Point current max 9 A", models: ["2080LC2020QWB"], unqualified: false,
-    sourceTop: 720, sourceBottom: 648, sourceCaption: "Output Specifications for 2080-LC20-20QWB, 2080-LC20-20AWB" };
+    sourceTop: 720, sourceBottom: 648, sourceHeaderSize: 8, sourceBodySize: 8, sourceCaption: "Output Specifications for 2080-LC20-20QWB, 2080-LC20-20AWB" };
   expect(scopeTableChunks([chunk], layout)[0]).toMatchObject({ unqualified: true, scope: "unresolved" });
 });
 
@@ -592,4 +592,34 @@ it.each([null, undefined])("F8 distinguishes a successfully headingless page fro
   const result = scopeTableChunks([chunk], layout)[0];
   expect(result.unqualified).toBe(layout === undefined);
   expect(result.scope).toBe(layout === undefined ? "unresolved" : undefined);
+});
+
+
+it.each(["same", "alias"])("duplicate %s catalog columns retain every cell as unresolved data", (kind) => {
+  const item = (str: string, x: number, y: number) => ({ str, x, y, size: 8, w: str.length * 3.2 });
+  const items = [item("Attribute", 100, 720), item("RX-420", 280, 720), item(kind === "same" ? "RX-420" : "RX420", 420, 720),
+    item("Connection", 100, 706), item("internally", 280, 706), item("externally", 420, 706),
+    item("Inputs per Module", 100, 692), item("4", 280, 692), item("8", 420, 692)];
+  const block = detectModelTables(items)[0];
+  expect(block).toBeDefined();
+  for (const chunks of [tableChunks(block), pageWithTables(items)!.chunks]) {
+    expect(chunks.every((c) => c.unqualified)).toBe(true);
+    expect(chunks.every((c) => c.models.length === 1 && c.models[0] === "RX420")).toBe(true);
+    const text = chunks.map((c) => c.text).join("\n");
+    for (const word of [...block.models, "internally", "externally", "4", "8"]) expect(text).toContain(word);
+  }
+});
+
+
+it("an anonymous parameter-column span stays unqualified within its original domain", () => {
+  const item = (str: string, x: number, y: number, size = 8) => ({ str, x, y, size, w: str.length * size * 0.4 });
+  const items = [item("Attribute", 100, 720), item("P01.20", 280, 720), item("P01.21", 420, 720),
+    item("Current max", 100, 706), item("2 A", 280, 706), item("1 A", 420, 706),
+    item("Switching time", 100, 692), item("10 ms", 280, 692), item("8 ms", 420, 692),
+    item("DC Output Data", 100, 676, 10), item("Attribute", 100, 662), item("Value", 280, 662),
+    item("Point current max", 100, 648), item("9 A", 280, 648)];
+  const unsplit = pageWithTables(items)!;
+  const result = scopeTableChunks(unsplit.chunks, sectionTableLayout(items));
+  expect(result.filter((c) => !c.unqualified)).toHaveLength(0);
+  expect(result.every((c) => c.scope === undefined)).toBe(true);
 });

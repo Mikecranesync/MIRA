@@ -872,22 +872,33 @@ it.each(["not", "excluding", "affirmative"])("F6 direct catalog caption retains 
   expect(rows.every((r) => r.table_scope === (qualifier === "affirmative" ? "section" : "unresolved"))).toBe(true);
 });
 
-it.each(["20QBB", "20QWB", "non-table", "non-table-large-body"])("F7 adjacent extracted columns stop at a later %s section and retain their original values", async (nextModel) => {
+it.each(["20QBB", "20QWB", "non-table", "non-table-large-body", "non-table-smaller", "non-table-equal", "unnamed-smaller", "unnamed-equal", "unnamed-larger", "uncaptioned-smaller", "uncaptioned-larger", "uncaptioned-model", "non-table-tall-label"])("F7 adjacent extracted columns stop at a later %s section and retain their original values", async (nextModel) => {
   const item = (str: string, x: number, y: number, size = 8) => ({ str, x, y, size, w: str.length * size * 0.4 });
-  const items = [item("Output Specifications for 2080-LC20-20QWB, 2080-LC20-20AWB", 100, 740, 10),
+  const items = [item("Output Specifications for 2080-LC20-20QWB, 2080-LC20-20AWB", 100, 740, nextModel.endsWith("smaller") || nextModel.endsWith("equal") ? 12 : 10),
     item("Attribute", 100, 720), item("2080-LC20-20QWB(R)", 280, 720), item("2080-LC20-20AWB(R)", 420, 720),
     item("zzoriginalvalue Load current max", 100, 706), item("2.0 A", 280, 706), item("1.5 A", 420, 706),
     item("Switching time max", 100, 692), item("10 ms", 280, 692), item("8 ms", 420, 692),
-    item(nextModel.startsWith("non-table") ? "DC Output Data for 2080-LC20-20QBB" : `Output Specifications for 2080-LC20-${nextModel}`, 100, 676, nextModel.startsWith("non-table") ? 12 : 10),
+    item((nextModel.startsWith("unnamed") || (nextModel.startsWith("uncaptioned") && nextModel !== "uncaptioned-model")) ? "DC Output Data" : (nextModel.startsWith("non-table") || nextModel === "uncaptioned-model") ? "DC Output Data for 2080-LC20-20QBB" : `Output Specifications for 2080-LC20-${nextModel}`, 100, 676, nextModel.endsWith("smaller") ? 10 : nextModel.startsWith("non-table") || (nextModel.startsWith("unnamed") || nextModel.startsWith("uncaptioned")) ? 12 : 10),
     item("Attribute", 100, 662), item("Value", 280, 662),
     item("zzadjacentvalue Point current max", 100, 648, nextModel === "non-table-large-body" ? 12 : 8), item("9 A", 280, 648, nextModel === "non-table-large-body" ? 12 : 8),
     item("Point surge max", 100, 634), item("11 A", 280, 634)];
-  pdfPages.current = [{ page: 1, text: items.map((i) => i.str).join("\n"), items }];
+  if (nextModel.startsWith("uncaptioned")) items.shift();
+  if (nextModel === "non-table-tall-label") {
+    for (const cell of items.filter((i) => i.y === 720)) cell.size = 12;
+    items.find((i) => i.y === 740)!.size = 14;
+    items.find((i) => i.y === 706)!.size = 14;
+    items.find((i) => i.y === 706)!.str = "zzoriginalvalue Current";
+    items.find((i) => i.y === 676)!.size = 10;
+    for (const cell of items) cell.w = cell.str.length * cell.size * 0.4;
+  }
+  pdfPages.current = [{ page: 1, text: items.map((i) => i.str).join("\n"), items },
+    { page: 2, text: "zzboundarycontinuation Point current max 9 A", items: [item("zzboundarycontinuation Point current max 9 A", 100, 720)] }];
   let rows: Row[];
   try { rows = await ingestFixture(); } finally { pdfPages.current = null; }
   for (const model of ["20QWB", "20AWB", "20QBB"]) {
     const later = await retrieve(model, rows, "zzadjacentvalue Point current max");
     expect(later.text.includes("zzadjacentvalue")).toBe(model === nextModel);
+    expect((await retrieve(model, rows, "zzboundarycontinuation Point current max")).text.includes("zzboundarycontinuation")).toBe(model === nextModel);
   }
   for (const [model, value] of [["20QWB", "2.0 A"], ["20AWB", "1.5 A"]]) {
     expect((await retrieve(model, rows, "zzoriginalvalue Load current max")).text).toContain(value);
@@ -922,4 +933,28 @@ it.each(["independent", "independent-footnote", "inherited-conflict", "inherited
     if (kind !== "inherited-conflict") expect(result.text).not.toContain(model === "20QWB" ? "20AWB(R):" : "20QWB(R):");
   }
   expect((await retrieve("20QBB", rows, "zzheadingless current")).text).not.toContain("zzheadingless");
+});
+
+it.each(["catalog", "parameter", "parameter-explicit"])("F7 interrupted uncaptioned %s columns keep their own domain through generic and headerless pages", async (kind) => {
+  const item = (str: string, x: number, y: number, size = 8) => ({ str, x, y, size, w: str.length * size * 0.4 });
+  const items = [item("Attribute", 100, 720), item(kind === "catalog" ? "2080-LC20-20QWB" : "P01.20", 280, 720), item(kind === "catalog" ? "2080-LC20-20AWB" : "P01.21", 420, 720),
+    item("zzoriginalsingle Load current max", 100, 706), item("2 A", 280, 706), item("1 A", 420, 706),
+    item("DC Output Data", 100, 690, 10), item("Attribute", 100, 676), item("Value", 280, 676), item("zzuncaptioned Point current max", 100, 662), item("9 A", 280, 662)];
+  const generic = [item(kind === "parameter-explicit" ? "DC Output Specifications for 2080-LC20-20QBB" : "General Specifications", 100, 720, 12), item("Attribute Value", 100, 700), item("zzuncaptioned Point surge max 11 A", 100, 686)];
+  pdfPages.current = [{ page: 1, text: [...items].reverse().map((i) => i.str).join("\n"), items },
+    { page: 2, text: generic.map((i) => i.str).join("\n"), items: generic },
+    { page: 3, text: "zzuncaptioned Point current max 12 A", items: [item("zzuncaptioned Point current max 12 A", 100, 720)] }];
+  let rows: Row[];
+  try { rows = await ingestFixture(); } finally { pdfPages.current = null; }
+  const result = await retrieve("20QWB", rows, "zzuncaptioned Point current max");
+  if (kind === "catalog") expect(result.text).not.toContain("zzuncaptioned");
+  else if (kind === "parameter") for (const value of ["9 A", "11 A", "12 A"]) expect(result.text).toContain(value);
+  else {
+    expect(result.text).toContain("9 A");
+    expect(result.text).not.toContain("11 A");
+    expect(result.text).not.toContain("12 A");
+    const own = await retrieve("20QBB", rows, "zzuncaptioned Point current max");
+    expect(own.text).toContain("11 A");
+    expect(own.text).toContain("12 A");
+  }
 });

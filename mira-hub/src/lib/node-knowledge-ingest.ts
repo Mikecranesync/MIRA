@@ -29,7 +29,7 @@ import { readPageLabelsBounded } from "@/capabilities/pdf-page-label-reader";
 import { pageLayoutItems } from "@/capabilities/pdf-layout-items";
 import { pageWithTables, type TableChunk } from "@/capabilities/table-rows";
 import { contactRatingTable, columnLines, withColumnLines } from "@/capabilities/contact-ratings-table";
-import { SectionTableScope, tableExtractionBoundaries, modelSectionModels, scopeTableChunks, sectionTableLayout, readOutputTypes, mergeOutputTypes, type ScopedText, type SectionScope } from "@/capabilities/section-table-scope";
+import { SectionTableScope, tableExtractionBoundaries, withTableInterruptions, hasModelSectionScope, modelSectionModels, scopeTableChunks, sectionTableLayout, readOutputTypes, mergeOutputTypes, type ScopedText, type SectionScope } from "@/capabilities/section-table-scope";
 import { hasUnmappedGlyphBetweenDigits } from "@/capabilities/manual-completeness";
 import { uploadIdentity } from "@/capabilities/page-label-backfill";
 
@@ -611,7 +611,9 @@ async function insertChunkRows(
           repair: repairs?.[p] ?? null,
           label: pageLabels?.[p] ?? null,
           tableModels: section.models,
-          tableScope: section.scope,
+          // Independent column ownership retains the existing model-family domain
+          // (parameter/accessory tables are not document-wide equipment scope).
+          tableScope: section.columnOnly ? undefined : section.scope,
           tableHeader,
           tableUnqualified: section.scope === "unresolved",
         });
@@ -806,6 +808,7 @@ async function parsePdfForNode(buffer: Buffer | Uint8Array, rest: NodeChunkOpts)
       const fullLayout = sectionTableLayout(items);
       const boundaries = tableExtractionBoundaries(fullLayout);
       let table = items.length > 0 ? pageWithTables(items, boundaries) : null;
+      const unsplitChunks = table?.chunks ?? [];
       if (table) {
         const bounded = tableExtractionBoundaries(fullLayout, table.chunks);
         if (bounded.length > boundaries.length) table = pageWithTables(items, bounded);
@@ -833,6 +836,7 @@ async function parsePdfForNode(buffer: Buffer | Uint8Array, rest: NodeChunkOpts)
         layout = sectionTableLayout(items, true, table?.remainderItems);
         console.warn(`[node-ingest] contact-ratings column read failed on ${rest.filename} p.${p + 1} (page kept without column lines):`, err instanceof Error ? err.message : err);
       }
+      layout = withTableInterruptions(layout, unsplitChunks);
       if (table) {
         table.chunks = scopeTableChunks(table.chunks, layout);
         mergeOutputTypes(outputs, readOutputTypes(table.chunks));
@@ -850,13 +854,14 @@ async function parsePdfForNode(buffer: Buffer | Uint8Array, rest: NodeChunkOpts)
     console.warn(`[node-ingest] output-type applicability unresolved in ${rest.filename}; relay sections with unreadable model applicability are marked unresolved`);
   }
   const sectionModels = [...new Set(sectionLayouts.flatMap(modelSectionModels))];
-  const sectionScopeObserved = outputInventoryObserved || sectionModels.length > 0;
-  const scope = new SectionTableScope(outputs, sectionScopeObserved, sectionModels);
+  const declaredSectionScope = outputInventoryObserved || sectionModels.length > 0;
+  const sectionScopeObserved = declaredSectionScope || sectionLayouts.some(hasModelSectionScope);
+  const scope = new SectionTableScope(outputs, declaredSectionScope, sectionModels);
   for (let p = 0; p < pages.length; p++) {
     if (!sectionScopeObserved) break;
     const table = pageTables[p];
     const layout = sectionLayouts[p];
-    const remainder = layout && (table || layout.hasTables) ? layout.text : table?.remainder ?? pages[p];
+    const remainder = layout && (table || layout.hasTables || hasModelSectionScope(layout)) ? layout.text : table?.remainder ?? pages[p];
     const scoped = layout === undefined
       ? { sections: scope.unreadable(remainder), chunks: [] }
       : scope.splitPage(remainder, layout, table?.chunks ?? []);

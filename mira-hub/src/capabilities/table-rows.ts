@@ -21,8 +21,9 @@ export type TableBlock = {
   top: number;
   bottom: number;
   bodySize?: number;
+  rowYs?: number[];
 };
-export type TableChunk = { text: string; models: string[]; unqualified: boolean; sourceTop?: number; sourceBottom?: number; sourceHeaderSize?: number; sourceBodySize?: number; sourceCaption?: string; sourceModels?: string[]; scope?: "unresolved" };
+export type TableChunk = { text: string; models: string[]; unqualified: boolean; sourceTop?: number; sourceBottom?: number; sourceHeaderSize?: number; sourceBodySize?: number; sourceRowYs?: number[]; sourceCaption?: string; sourceModels?: string[]; scope?: "unresolved" };
 /** A MODEL-KEYED table (one model per line in a left column, attributes as columns — the GS10
  *  Appendix A cable-length table, #5450): its header band + model lines as rendered text, and the
  *  models of its key column. It carries NO rows on purpose: cells merged down a group of models
@@ -291,6 +292,7 @@ function buildBlock(lines: readonly Line[], headerIdx: number): { block: TableBl
   const rowLines = new Map<TableRow, number>();
   const rowRawLine = new Map<TableRow, string>();
   let bodySize = 0;
+  const rowYs: number[] = [];
   let lastRow: TableRow | null = null;
   let lastColumnCellIdx = headerIdx;
   // A label-only line waiting to forward-attach onto the next row. `attached` is true once its text
@@ -337,11 +339,11 @@ function buildBlock(lines: readonly Line[], headerIdx: number): { block: TableBl
       continue;
     }
 
-    // Calibrate the ordinary table font from its first value-bearing row, not the
+    // Calibrate the ordinary value-cell font from its first value-bearing row, not the
     // page minimum (which may be a tiny footnote). A foreign catalog cell is not
     // evidence for ordinary body size: it may be the next section's title.
     if (!modelNumbersIn(renderItems(valueItems)).some((number) => !modelKeys.includes(number.key))) {
-      if (bodySize === 0) bodySize = Math.max(...line.items.map((item) => item.size));
+      if (bodySize === 0) bodySize = Math.max(...valueItems.map((item) => item.size));
     }
 
     // Continuation of lastRow?
@@ -397,6 +399,9 @@ function buildBlock(lines: readonly Line[], headerIdx: number): { block: TableBl
     }
 
     if (freshRow) {
+      // A full per-model value row remains a row even if its attribute label is
+      // bold. Catalog-bearing lines cannot use this exemption as a new heading.
+      if (!freshRow.merged && modelNumbersIn(renderItems(line.items)).length === 0) rowYs.push(line.y);
       // Forward attach: a pending label-only line (above, within band) whose text applies
       // because THIS row's own (pre-attach) label has < 2 words, or the pending text is
       // itself a recognised unit token.
@@ -436,7 +441,7 @@ function buildBlock(lines: readonly Line[], headerIdx: number): { block: TableBl
   const top = header.y;
   const bottom = lines[lastColumnCellIdx].y;
   return {
-    block: { caption, header: headerLabel, models, modelKeys, rows: finalRows, unqualified, top, bottom, bodySize },
+    block: { caption, header: headerLabel, models, modelKeys, rows: finalRows, unqualified, top, bottom, bodySize, rowYs },
     nextIdx: scanEnd,
   };
 }
@@ -501,6 +506,13 @@ function splitRowsIntoChunks(prefix: string, rowLines: readonly string[]): strin
  *  as unresolved, so an unreadable line of the record's own table never answers for it. */
 export function tableChunks(block: TableBlock): TableChunk[] {
   const prefix = [block.caption, block.header].filter((s) => s.trim().length > 0).join(" — ");
+  // Repeated catalog keys do not identify independent columns. Serializing by
+  // model name would choose the first matching cell twice and drop the other.
+  if (new Set(block.modelKeys).size !== block.modelKeys.length) {
+    const rows = [block.models.join(" "), ...block.rows.map((r) => [r.label, ...r.cells.map((c) => c.value), r.unit ?? ""].filter(Boolean).join(" "))];
+    return splitRowsIntoChunks(prefix ? `${prefix} — unqualified` : "unqualified", [...rows, ...block.unqualified])
+      .map((text) => ({ text, models: [...new Set(block.modelKeys)], unqualified: true }));
+  }
   const chunks: TableChunk[] = [];
   for (let i = 0; i < block.models.length; i++) {
     const model = block.models[i];
@@ -645,7 +657,7 @@ export function pageWithTables(items: readonly LayoutItem[], sectionBoundaries: 
   if (blocks.length === 0 && keyed.length === 0) return null;
 
   const chunks: TableChunk[] = [];
-  for (const block of blocks) chunks.push(...tableChunks(block).map((chunk) => ({ ...chunk, sourceTop: block.top, sourceBottom: block.bottom, sourceBodySize: block.bodySize, sourceHeaderSize: Math.max(...items.filter((i) => Math.abs(i.y - block.top) <= LINE_GAP_PT).map((i) => i.size)), sourceCaption: block.caption, sourceModels: block.modelKeys })));
+  for (const block of blocks) chunks.push(...tableChunks(block).map((chunk) => ({ ...chunk, sourceTop: block.top, sourceBottom: block.bottom, sourceBodySize: block.bodySize, sourceRowYs: block.rowYs, sourceHeaderSize: Math.max(...items.filter((i) => Math.abs(i.y - block.top) <= LINE_GAP_PT).map((i) => i.size)), sourceCaption: block.caption, sourceModels: block.modelKeys })));
   // A model-keyed table is ONE unqualified chunk (split only by the size budget) tagged with every
   // model of its key column, so retrieval withholds it from a record holding a catalog number and
   // reports the page as unresolved — a flat `GS11N-20P2 230 1.8` line never answers for a value
