@@ -195,7 +195,7 @@ def _verdict_rows(sr, cache, entry: dict, head: str) -> list[dict]:
 def _judge_all(
     args, state, run_dir, cfg, ledger, cache, keyf, client, head, mode
 ) -> dict[str, Any]:
-    out: dict[str, Any] = {"sets": [], "rows": [], "error": None}
+    out: dict[str, Any] = {"sets": [], "rows": [], "error": None, "partial": {}}
     try:
         for set_dir in _sets(args, Path(args.results_root)):
             man = json.loads((set_dir / "technician" / "_manifest.json").read_text())
@@ -205,6 +205,7 @@ def _judge_all(
                 "base_url": man.get("base_url"),
                 "models": {},
             }
+            out["sets"].append(entry)  # recorded first: a stop mid-set keeps what was judged
             for model in args.models:
                 env = jd.JudgeEnv(
                     mode=mode,
@@ -216,12 +217,14 @@ def _judge_all(
                     runner_sha=head,
                     client=client,
                 )
+                out["partial"] = env.counts  # read only if run_set is stopped part-way
                 sr = jd.run_set(
                     set_dir,
                     run_dir / "judge" / f"{set_dir.name}__{model}",
                     env,
                     judge_path=jd.JUDGE_PATH,
                 )
+                out["partial"] = {}
                 entry["models"][model] = {
                     "summary": sr.summary,
                     "dangerous": sr.summary.get("dangerous_cases", []),
@@ -232,7 +235,6 @@ def _judge_all(
                     "gate": rp.gate_text(set_dir, sr.summary),
                 }
                 out["rows"] += _verdict_rows(sr, cache, entry, head)
-            out["sets"].append(entry)
     except ab.BudgetStop as e:
         out["error"] = f"{e.code if e.code else e}"
     except Exception as e:  # runner failure is an alert, never a silent pass

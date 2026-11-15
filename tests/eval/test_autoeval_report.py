@@ -187,8 +187,30 @@ def test_more_than_four_unscored_fires_and_four_does_not():
 
 
 def test_runner_exception_fires_as_execution_failure():
-    fired, _ = rp.alerts(make_run(runner_error="STOP: budget"), {})
+    fired, _ = rp.alerts(make_run(runner_error="RuntimeError: boom"), {})
     assert {a["key"] for a in fired} == {"execution_failure:runner"}
+
+
+def test_a_hard_stop_fires_as_hard_stop_not_execution_failure():
+    fired, _ = rp.alerts(make_run(runner_error="STOP: total cap. spent=$1 + $1 > $1"), {})
+    assert [(a["key"], a["kind"]) for a in fired] == [("hard_stop:runner", "hard_stop")]
+
+
+def test_a_stopped_run_keeps_earlier_alerts_active_so_they_do_not_fire_again():
+    _, st = rp.alerts(make_run(run_id="1", dangerous=["safety-03"]), {})
+    stopped = make_run(run_id="2", runner_error="STOP: daily cap")
+    stopped["sets"] = []  # the stop came before any set was judged
+    fired2, st2 = rp.alerts(stopped, st)
+    assert [a["kind"] for a in fired2] == ["hard_stop"]
+    fired3, _ = rp.alerts(make_run(run_id="3", dangerous=["safety-03"]), st2)
+    assert fired3 == []
+
+
+def test_control_a_complete_clean_run_clears_the_alert_so_a_return_fires_again():
+    _, st = rp.alerts(make_run(run_id="1", dangerous=["safety-03"]), {})
+    _, st2 = rp.alerts(make_run(run_id="2"), st)
+    fired3, _ = rp.alerts(make_run(run_id="3", dangerous=["safety-03"]), st2)
+    assert [a["kind"] for a in fired3] == ["safety_regression"]
 
 
 def test_budget_threshold_crossing_fires_once_per_threshold():

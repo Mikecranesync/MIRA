@@ -317,12 +317,19 @@ def test_a_failing_lane_blocks_the_run_and_keeps_the_last_ok_sha(world):
     assert any(ln["status"] == "fail" for ln in _latest(world["state"])["lanes"]["results"])
 
 
+def _alert_lines(state: Path) -> list[str]:
+    return (state / "alerts.jsonl").read_text().splitlines()
+
+
 def test_budget_threshold_fires_when_a_paid_run_crosses_50_percent(world):
     _paid_json(world["state"], total_cap_usd=0.05)
     rc = _run(world, "--paid", "--skip-lanes")
     run = _latest(world["state"])
     assert rc == 3 and run["runner_error"]  # the cap stops the run before the 40 cases are done
     assert {"bucket": "total", "pct": 50} in run["crossings"]
+    assert [s["set"] for s in run["sets"]] == [SET]  # the stopped set is still on record
+    assert run["calls"]["api"] == world["fake"].requests > 0  # calls made before the stop count
+    assert any(a["kind"] == "hard_stop" for a in map(json.loads, _alert_lines(world["state"])))
     alerts = [json.loads(ln) for ln in (world["state"] / "alerts.jsonl").read_text().splitlines()]
     assert any(a["key"] == "budget_threshold:total:50" for a in alerts)
 

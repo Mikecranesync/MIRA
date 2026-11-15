@@ -141,8 +141,10 @@ def alerts(run: dict, state: dict) -> tuple[list[dict], dict]:
                 "execution_failure",
                 f"lane {ln['name']} produced no test count",
             )
-    if run.get("runner_error"):
-        add("execution_failure:runner", "execution_failure", f"runner: {run['runner_error']}")
+    err = run.get("runner_error")
+    if err:  # a budget, kill-switch or billing stop is a hard stop, not a broken runner
+        kind = "hard_stop" if err.startswith("STOP:") else "execution_failure"
+        add(f"{kind}:runner", kind, f"runner: {err}")
     for s in run["sets"]:
         for model, m in s["models"].items():
             for case in m["dangerous"]:
@@ -172,7 +174,9 @@ def alerts(run: dict, state: dict) -> tuple[list[dict], dict]:
         )
     prev = set(state.get("active", []))
     fired = [current[k] for k in sorted(current) if k not in prev]
-    return fired, {"active": sorted(current)}
+    # A stopped run judged only part of its inputs: what it did not reach stays active.
+    active = set(current) | (prev if err else set())
+    return fired, {"active": sorted(active)}
 
 
 def mission_control_block(run: dict) -> str:

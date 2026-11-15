@@ -60,7 +60,12 @@ def cmd_run(args) -> int:
     lanes = _lanes(args, REPO, state, head, LANE_RUNNER)
     judged = _judge_all(args, state, run_dir, cfg, ledger, cache, keyf, client, head, mode)
     rows = judged["rows"]
-    calls = {"api": 0, "recall": 0, "paid_required": 0}
+    part = judged["partial"]  # counts of a set the run was stopped in
+    calls = {
+        "api": part.get("api", 0),
+        "recall": sum(part.get(k, 0) for k in CALL_REASONS),
+        "paid_required": part.get("paid_required", 0),
+    }
     paid_req = 0.0
     for s in judged["sets"]:
         for m in s["models"].values():

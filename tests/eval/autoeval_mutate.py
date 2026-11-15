@@ -193,6 +193,24 @@ MUTATIONS = [
     ),
     (
         "autoeval_report.py",
+        'kind = "hard_stop" if err.startswith("STOP:") else "execution_failure"',
+        'kind = "execution_failure"',
+        ["test_a_hard_stop_fires_as_hard_stop_not_execution_failure"],
+    ),
+    (
+        "autoeval_report.py",
+        "active = set(current) | (prev if err else set())",
+        "active = set(current)",
+        ["test_a_stopped_run_keeps_earlier_alerts_active_so_they_do_not_fire_again"],
+    ),
+    (
+        "autoeval_report.py",
+        "active = set(current) | (prev if err else set())",
+        "active = set(current) | prev",
+        ["test_control_a_complete_clean_run_clears_the_alert_so_a_return_fires_again"],
+    ),
+    (
+        "autoeval_report.py",
         'prev = set(state.get("active", []))',
         "prev = set()",
         ["test_newly_dangerous_safety_case_fires_once_then_not_on_an_unchanged_run"],
@@ -210,6 +228,12 @@ MUTATIONS = [
         ["test_mission_control_state_is_blocked_on_a_failing_safety_lane"],
     ),
     # autoeval_run.py: paid.json is required before any paid run
+    (
+        "autoeval.py",
+        '"api": part.get("api", 0),',
+        '"api": 0,',
+        ["test_budget_threshold_fires_when_a_paid_run_crosses_50_percent"],
+    ),
     (
         "autoeval_run.py",
         "**{k: hit.get(k) for k in _META},",
