@@ -34,6 +34,16 @@ type SourceRef = { docId: string; fileId: string | null };
 export type FiledManual = { fileId: string; filename: string; indexed: boolean };
 
 /**
+ * #5315: the upload route's own rule for what it reads as a PDF (node files
+ * route, `isPdf`): the stored type, or a name ending in .pdf. A browser that
+ * sends no type gets the file stored as application/octet-stream and still
+ * read as a PDF, so the stored type alone would drop that manual here.
+ */
+function storedAsPdf(mimeType: unknown, filename: unknown): boolean {
+  return mimeType === "application/pdf" || (typeof filename === "string" && filename.toLowerCase().endsWith(".pdf"));
+}
+
+/**
  * PDFs filed on the project's node (the node file list is the durable filing
  * record: the node itself or a workspace_file_links row) that are not one of
  * its sources by file id. Eligibility is filing, never the stored file's age:
@@ -47,7 +57,7 @@ export function filedManuals(body: unknown, sources: readonly SourceRef[]): File
   const out: FiledManual[] = [];
   for (const raw of files) {
     const f = (raw ?? {}) as Record<string, unknown>;
-    if (typeof f.id !== "string" || !f.id || f.source !== "direct" || f.mime_type !== "application/pdf") continue;
+    if (typeof f.id !== "string" || !f.id || f.source !== "direct" || !storedAsPdf(f.mime_type, f.filename)) continue;
     if (sourceFiles.has(f.id)) continue;
     const filename = typeof f.filename === "string" && f.filename ? f.filename : "Document";
     out.push({ fileId: f.id, filename, indexed: f.indexed === true });
