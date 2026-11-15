@@ -113,11 +113,13 @@ def select(
 
 _PY_COUNT = re.compile(r"(\d+) (passed|failed|errors?|skipped)")
 _VT_COUNT = re.compile(r"(\d+) (passed|failed|skipped|todo)")
+_ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")  # vitest colours its summary even when piped
 
 
 def parse_counts(runner: str, output: str) -> dict[str, int]:
     """Pass/fail/error/skip counts from pytest or vitest output. Empty dict when none found."""
     counts: dict[str, int] = {}
+    output = _ANSI.sub("", output)
     if runner == "pytest":
         lines = [ln for ln in output.splitlines() if _PY_COUNT.search(ln)]
         found = _PY_COUNT.findall(lines[-1]) if lines else []

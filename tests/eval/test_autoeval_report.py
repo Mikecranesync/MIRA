@@ -167,6 +167,18 @@ def test_infra_error_lane_fires_as_execution_failure_not_safety():
     assert [a["kind"] for a in fired] == ["execution_failure"]
 
 
+def test_cases_awaiting_a_paid_judge_fire_as_paid_required_not_execution_failure():
+    awaiting = [f"tech-{i:02d}" for i in range(40)]
+    fired, _ = rp.alerts(make_run(unscored=awaiting, paid_required=40), {})
+    assert [a["kind"] for a in fired] == ["paid_required"]
+    assert "40 case(s)" in fired[0]["message"]
+
+
+def test_control_unscored_beyond_the_awaiting_cases_is_still_an_execution_failure():
+    fired, _ = rp.alerts(make_run(unscored=list("abcdefg"), paid_required=2), {})
+    assert sorted(a["kind"] for a in fired) == ["execution_failure", "paid_required"]
+
+
 def test_more_than_four_unscored_fires_and_four_does_not():
     five, _ = rp.alerts(make_run(unscored=["a", "b", "c", "d", "e"]), {})
     assert [a["kind"] for a in five] == ["execution_failure"]

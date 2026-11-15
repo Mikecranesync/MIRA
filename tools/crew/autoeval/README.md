@@ -95,8 +95,9 @@ launchctl unload ~/Library/LaunchAgents/com.factorylm.autoeval.plist   # stop th
 - **Lock left behind** (`run.lock` exists and no run is alive): `rmdir ~/.factorylm/autoeval/run.lock`.
 - **Ledger unreadable** (`STOP: ledger unreadable`): spend is uncertain. Do not delete it. Find the
   bad line, fix it by hand after a copy, and confirm the totals with `status` before any paid run.
-- **Checkout wedged:** `run.sh` replaces `~/.factorylm/autoeval/checkout` on every run. The path is
-  fixed and checked before removal.
+- **Checkout wedged:** `run.sh` reuses one fixed checkout at `~/.factorylm/autoeval/checkout` and
+  force-resets its tracked files to `origin/main` each run. To rebuild it:
+  `git worktree remove --force ~/.factorylm/autoeval/checkout`, then re-run.
 - **A verdict is wrong:** the runner does not record a key-to-case map, so the safe step is to move
   `cas/` aside (`mv ~/.factorylm/autoeval/cas ~/.factorylm/autoeval/cas.bak.<date>`) and re-run with
   `--paid`. Every case is then re-judged, and that is a real spend. Check the `dry` run's
@@ -112,4 +113,9 @@ launchctl unload ~/Library/LaunchAgents/com.factorylm.autoeval.plist   # stop th
 - The judge rubric has no version id. Only the rendered prompt keys the cache. Bump `VERSION` in
   `autoeval_judge.py` to force a full re-judge.
 - Hub lanes need `mira-hub/node_modules`. Without it they are `infra_error` (`npx --no-install`
-  never fetches). Install dependencies in the checkout before expecting Hub lane results.
+  never fetches). `run.sh` runs `bun install --frozen-lockfile` in its checkout before each run;
+  a direct `autoeval.py run` from another checkout needs that install done by hand.
+- The launchd job's `PATH` names this machine's `npx`, `bun` and `python3.12` locations. On another
+  machine, edit the plist.
+- A dry cache miss raises a `paid_required` alert once per set and model. It is a pending approval,
+  not a failure.

@@ -123,6 +123,23 @@ def test_counts_parse_vitest_tests_line():
     assert sel.parse_counts("vitest", out) == {"failed": 1, "passed": 5}
 
 
+# Bytes captured from a real `CI=1 npx vitest run` on 2026-11-15: vitest colours even when piped.
+REAL_VITEST_TAIL = (
+    "\x1b[2m Test Files \x1b[22m \x1b[1m\x1b[32m2 passed\x1b[39m\x1b[22m\x1b[90m (2)\x1b[39m\n"
+    "\x1b[2m      Tests \x1b[22m \x1b[1m\x1b[31m1 failed\x1b[39m\x1b[22m\x1b[2m | \x1b[22m"
+    "\x1b[1m\x1b[32m192 passed\x1b[39m\x1b[22m\x1b[90m (193)\x1b[39m\n"
+    "\x1b[2m   Start at \x1b[22m 11:41:39\n"
+)
+
+
+def test_counts_parse_real_coloured_vitest_output():
+    assert sel.parse_counts("vitest", REAL_VITEST_TAIL) == {"failed": 1, "passed": 192}
+
+
+def test_control_coloured_text_without_a_tests_line_is_still_empty():
+    assert sel.parse_counts("vitest", "\x1b[31mError\x1b[39m: Cannot find module vitest") == {}
+
+
 def test_counts_absent_output_is_empty_not_a_pass():
     assert sel.parse_counts("pytest", "no tests ran in 0.01s") == {}
     assert sel.parse_counts("vitest", "Error: Cannot find module vitest") == {}

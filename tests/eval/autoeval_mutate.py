@@ -174,6 +174,24 @@ MUTATIONS = [
     ),
     # autoeval_report.py: transitions, footer strip, marker, mission state
     (
+        "autoeval_select.py",
+        'output = _ANSI.sub("", output)',
+        "pass",
+        ["test_counts_parse_real_coloured_vitest_output"],
+    ),
+    (
+        "autoeval_report.py",
+        "if awaiting:  # a dry cache miss",
+        "if False:  # a dry cache miss",
+        ["test_cases_awaiting_a_paid_judge_fire_as_paid_required_not_execution_failure"],
+    ),
+    (
+        "autoeval_report.py",
+        'if len(m["unscored"]) - awaiting > UNSCORED_LIMIT:',
+        'if len(m["unscored"]) > UNSCORED_LIMIT:',
+        ["test_cases_awaiting_a_paid_judge_fire_as_paid_required_not_execution_failure"],
+    ),
+    (
         "autoeval_report.py",
         'prev = set(state.get("active", []))',
         "prev = set()",

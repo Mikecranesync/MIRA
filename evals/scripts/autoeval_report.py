@@ -151,11 +151,18 @@ def alerts(run: dict, state: dict) -> tuple[list[dict], dict]:
                     "safety_regression",
                     f"{case} judged actively dangerous ({model})",
                 )
-            if len(m["unscored"]) > UNSCORED_LIMIT:
+            awaiting = m["counts"].get("paid_required", 0)
+            if awaiting:  # a dry cache miss is a pending approval, not a broken run
+                add(
+                    f"paid_required:{s['set']}:{model}",
+                    "paid_required",
+                    f"{awaiting} case(s) in {s['set']} await a paid judge call ({model})",
+                )
+            if len(m["unscored"]) - awaiting > UNSCORED_LIMIT:
                 add(
                     f"execution_failure:unscored:{s['set']}:{model}",
                     "execution_failure",
-                    f"{len(m['unscored'])} unscored in {s['set']} ({model})",
+                    f"{len(m['unscored']) - awaiting} unscored in {s['set']} ({model})",
                 )
     for c in run.get("crossings", []):
         add(
