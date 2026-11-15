@@ -244,3 +244,92 @@ for nothing in a new receipt.
 | R4 | #5322 comment 6743769088 | Upload again on staging in desktop Chrome emulating a phone. Not a physical device | REPORTED, emulated |
 | R8 | #5308 comment 6723733976 | Unit-level proof on main of the sign-out marker rule. No device run | REPORTED, tests only |
 | O11, O15, R5, R9 to R11 | none found | | NOT TESTED |
+
+## 13. Component workflow verification loop (build with PR 5504, from `eab62164d`)
+
+Sections 4 to 6 were written before a conversation could be pointed at one component. This loop is
+the same acceptance run on a build that has the component checklist. It replaces nothing: O1 to O15
+and R1 to R11 still apply, and a V step names the O or R step whose receipt it extends. The labels
+quoted here are the ones on the screen at `eab62164d`; if a label differs on the candidate, record
+the label seen and do not guess.
+
+Scope agreed for the pilot: the drive (VFD1) and the supply relay (hand label MLC, schedule tag Q1)
+on Conveyor 1. The coordinator is the integration owner named in `DELIVERY.md`.
+
+| # | What a technician does | Expected | Evidence |
+|---|---|---|---|
+| V1 | Signed in, with no project open, find the machine by its plant name ("Conveyor 1"), not by the project's title: drawer Search, then the machine list in New project. | The machine is found by the plant name in at most two actions; a project titled differently is still reachable from it. If only the project title finds it, that is a FAIL, not a note. | screenshot of the query and the result |
+| V2 | Open "Components". Read the row for VFD1 and for MLC. | Each inventoried component has one row with a status and its evidence. A row is never shown as ready while its status is "identity not confirmed" or "not described yet". | screenshot of both rows |
+| V3 | Open MLC's confirmation card. Compare "What the label says" with the catalog fields. | The label is shown as written. Manufacturer, family, catalog number, serial, revision and local tag are separate. A field marked not sure is empty, not filled in. A look-alike number shows the differing character and is not taken as the identity. | screenshot of the card |
+| V4 | With MLC still unconfirmed, press "Ask about this" and ask the reference question (section 5). | A held turn: the screen says the identity is not confirmed, reads no manual and shows no citation. This is the correct refusal. An answer with a citation here is a FAIL. | screenshot; the turn's text |
+| V5 | Confirm MLC against the physical label (a person at the bench; the record of section 3 is the source). Ask the reference question again. | The header reads "Asking about" MLC. The answer carries the datasheet's values with a citation, or a refusal that names what is missing. Record which. | screenshot; values compared with section 5 |
+| V6 | Open the citation. | The cited page of the cited file opens, in the device's own viewer; record the PDF page and the printed page number. Not verified by any earlier receipt for a component-scoped turn. | screenshot of the page; file id and page |
+| V7 | Switch the conversation to VFD1 with the picker and ask its reference question. Then ask MLC's question without switching. | The first answer is scoped to VFD1. The second is held with "Switch" and "Stay" offered; the selection does not change by itself, and no value from the other component's document is shown. | screenshots of both turns |
+| V8 | Save a job with a note and a photo while MLC is selected (O10, O11). Close the browser or app fully, reopen, sign in. | Same machine, same job, note and exactly one photo; the header shows the stored selection or says none is selected. It must not show a different component. | screenshots before and after |
+| V9 | Stale selection: on a second screen (or second signed-in tab) correct or re-select the component. On the first screen, with a typed draft and an attached photo not yet sent, press Send. | The turn is not answered under the old selection. The screen says the selection changed. The typed draft and the attachment are still there and can be sent after choosing. Losing either is a FAIL. | screenshots of both screens; whether draft and attachment survived |
+| V10 | After any refusal in V4 or V7, use the offered action to go back to the component. | A button does it; no phrase has to be typed. | screenshot |
+| V11 | Open the drawer at phone width with a project open and press New project, Search and a project row. | Each control answers the first press in its middle. | issue 5546 is open against this at `eab62164d`; record PASS or FAIL per control |
+
+Dependencies that stay open and must be written on every receipt until they are closed:
+
+- Second technician (R8, R11): needs a second real person's account in the same tenant. Invitations
+  go by email. NOT TESTED until performed; a second browser tab under the same account is not a
+  second technician.
+- Large manual (O6, R10): the drive's manual is blocked by issue 5289. The drive's V5 to V7 answers
+  cannot be accepted on a manual that was cut down to get past it.
+- Send on a phone: on 2026-11-14 a scripted tap on Send did not reach the app on a Pixel 9a on the
+  previous build. Sends that worked on a tablet in another session say nothing about that phone.
+  Until a person presses Send on the phone on the candidate and records the result, V4 to V7 on a
+  phone are NOT TESTED.
+- V5 needs a person at the bench to confirm identity. A synthetic run may confirm only against the
+  recorded photo and must say so on the receipt.
+
+What a synthetic run may claim for this loop: V1 to V4, V7 to V11 in a browser, labelled synthetic,
+with the build and the viewport. It may not fill the human columns of section 8.
+
+## 14. Factory-scale cases (prepared, not run)
+
+The bench has one conveyor. A plant does not. These cases check that the same screens stay correct
+and usable when the lists are long and the names repeat. They are about navigation, isolation and
+behaviour under delay. They do not measure the database: a screenshot or one timed click is not a
+performance result, and none of these cases may be reported as one.
+
+Shape of the data set (synthetic, clearly named as such, never a customer's):
+
+- Tenant A, site 1: 8 lines, 50 machines per line, 50 components per machine: 400 machines and
+  20 000 components.
+- Every machine has a component with local tag `MLC` and one with `VFD1`. So each tag occurs 400
+  times in one tenant.
+- Identical models: on every line, machines 1 to 10 carry the same drive catalog number and the
+  same relay catalog number; serial numbers differ.
+- Tenant A, site 2: one line with the same line and machine names as site 1, line 1.
+- Tenant B: one line with the same names and tags as tenant A, and one document that only tenant B
+  uploaded.
+- Unplaced equipment: 25 machines with no line, and 25 components attached to no machine record.
+- Shared utilities: one compressed-air unit and one control-power supply that serve all 8 lines,
+  each recorded once, not once per line.
+
+Where the data may live is the coordinator's decision. Default until told otherwise: a disposable
+local PostgreSQL built from the repository's migrations plus a generator kept with this lane's
+tests, and nothing written to staging. Rows are created through the application's own store
+functions or routes, not by hand-written inserts, so the fixtures cannot hold a state the product
+could never produce.
+
+| # | Case | Expected | Not acceptable |
+|---|---|---|---|
+| S1 | Find "Conveyor 1" on line 3 by plant name. | Results show line and site for each hit, so the right one can be chosen without opening each. | Fifty indistinguishable "Conveyor 1" rows |
+| S2 | Search the tag `MLC`. | Hits are grouped or labelled by machine; the count is bounded and says when more exist. | A list that silently stops at a page size |
+| S3 | Open the Components list of a 50-component machine and reach row 50. | Every row is reachable; a status is shown for each; the list says how many there are. | Rows beyond a page that cannot be reached, or a count that disagrees with the rows |
+| S4 | Select `MLC` on line 1 machine 7, ask; then open line 2 machine 7 and ask. | Each answer is scoped to its own component, although tag and model are identical. The header names the machine as well as the tag. | A header that reads only "MLC" in both |
+| S5 | Two machines with the identical drive model: confirm one. | Only that component becomes confirmed. | The sibling changing status |
+| S6 | Tenant B searches for a name, tag and document that exist only in tenant A; and the reverse with tenant B's own document. | Nothing of the other tenant appears in search, lists, counts, citations or error text. | Any count or name from the other tenant |
+| S7 | Site 2's "Line 1, Conveyor 1" against site 1's. | The two are told apart on every screen that lists them. | Opening the wrong one from a list that does not show the site |
+| S8 | Unplaced machine and unplaced component. | Both can be found and are labelled as not placed; neither is silently attached to a line. | An invented line or machine |
+| S9 | Shared utility opened from line 2 and from line 6. | The same record, with the same history, from both. | Two diverging copies |
+| S10 | Delay every response by 3 s, then by 15 s, and repeat S1, S3 and S4. Then drop one response in each. | A visible waiting state; no double submit on a second press; a truthful error and a retry after the drop; the selection never changes while a request is pending. | A blank screen, a duplicated row, or an answer under the previous selection |
+| S11 | From a component deep in line 8: browser Back, then reopen from Recent, then restart and reopen. | Back returns one level at a time and does not leave the app mid-way; reopening lands on the same machine and component. | Landing on a different machine with the same name |
+| S12 | Page through all 400 machines forwards and backwards. | No machine is skipped or shown twice; the order is stable between visits. | Duplicates or gaps at page boundaries |
+
+Each case is recorded as PASS, FAIL or NOT TESTED with the build, the data-set seed and a
+screenshot. Cases S1 to S5 and S7 to S12 need the data set; S6 additionally needs two accounts.
+Until the data set exists and its owner is agreed, all twelve are NOT TESTED.
