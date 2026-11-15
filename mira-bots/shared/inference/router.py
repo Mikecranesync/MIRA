@@ -31,6 +31,7 @@ import re
 import sqlite3
 import time
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 from urllib.parse import unquote
 
@@ -469,7 +470,74 @@ def _build_providers() -> list[_Provider]:
             )
         )
 
-    return providers
+    anthropic = _anthropic_provider()
+    if anthropic is not None:
+        providers.append(anthropic)
+
+    return _apply_cascade_order(providers, os.getenv("MIRA_CASCADE_ORDER") or "")
+
+
+def _truthy(value: str | None) -> bool:
+    return (value or "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def _anthropic_provider(now: datetime | None = None) -> _Provider | None:
+    """Time-boxed Anthropic slot (owner decision 2026-11-15, promo credit).
+
+    PR #610 removed Anthropic because it billed real money on auto-charge. The
+    owner reopened it for a prepaid promotional credit, so the slot is fenced
+    three ways and fails CLOSED on each:
+
+    * ``ANTHROPIC_CASCADE_ENABLED`` must be truthy — a key alone never adds it;
+    * ``ANTHROPIC_API_KEY`` must be set;
+    * ``ANTHROPIC_CASCADE_NOT_AFTER`` (ISO-8601 with offset) must be set, parse,
+      and be in the future. Missing or unparseable = off, so the slot can never
+      outlive the credit it was opened for.
+
+    Uses Anthropic's OpenAI-compatible endpoint, so it rides the same request
+    path as every other provider. Text-only unless ANTHROPIC_VISION_MODEL is set.
+    """
+    if not _truthy(os.getenv("ANTHROPIC_CASCADE_ENABLED")):
+        return None
+    key = os.getenv("ANTHROPIC_API_KEY", "")
+    if not key:
+        return None
+    raw = os.getenv("ANTHROPIC_CASCADE_NOT_AFTER") or ""
+    try:
+        not_after = datetime.fromisoformat(raw)
+    except ValueError:
+        logger.error("ANTHROPIC_CASCADE_NOT_AFTER unparseable (%r) — slot left out", raw)
+        return None
+    if not_after.tzinfo is None:
+        logger.error("ANTHROPIC_CASCADE_NOT_AFTER has no UTC offset — slot left out")
+        return None
+    if (now or datetime.now(UTC)) >= not_after:
+        logger.warning("ANTHROPIC_CASCADE_NOT_AFTER passed (%s) — slot left out", raw)
+        return None
+    return _Provider(
+        name="anthropic",
+        api_url="https://api.anthropic.com/v1/chat/completions",
+        api_key=key,
+        model=os.getenv("ANTHROPIC_MODEL") or "claude-sonnet-4-6",
+        timeout=float(os.getenv("ANTHROPIC_TIMEOUT") or "90"),
+        vision_model=os.getenv("ANTHROPIC_VISION_MODEL") or "",
+    )
+
+
+def _apply_cascade_order(providers: list[_Provider], order: str) -> list[_Provider]:
+    """Hot-swap the cascade order without a code change.
+
+    ``MIRA_CASCADE_ORDER`` is a comma list of provider names. Named providers
+    move to the front in that order; every other configured provider keeps its
+    default relative order behind them (an order list never DROPS a provider —
+    that would silently remove a fallback). Unknown names are ignored.
+    """
+    names = [n.strip().lower() for n in order.split(",") if n.strip()]
+    if not names:
+        return providers
+    by_name = {p.name: p for p in providers}
+    front = [by_name[n] for n in dict.fromkeys(names) if n in by_name]
+    return front + [p for p in providers if p not in front]
 
 
 class EncodedSessionId(str):
