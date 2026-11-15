@@ -1,0 +1,34 @@
+{
+  "images": [
+    {
+      "file": "01-line-equipment.png",
+      "source": "/Users/charlienode/.codex/generated_images/01a1da9d-4402-7993-ba21-3631ab6bcd1d/exec-67ef3d80-9cac-4369-98e5-095e41c5789f.png",
+      "width": 1585,
+      "height": 992,
+      "sha256": "06b265bd95d213e1bdd02ac97bfef14c11d1f3cb4568feea02da8d9366dab151"
+    },
+    {
+      "file": "02-find-component.png",
+      "source": "/Users/charlienode/.codex/generated_images/01a1da9d-4402-7993-ba21-3631ab6bcd1d/exec-0799bccc-5c34-4258-8607-28e9dc9650b6.png",
+      "width": 1585,
+      "height": 992,
+      "sha256": "b29e9352913991d8d820942c3385560ddbcebd757485c23580bd74b71f807767"
+    },
+    {
+      "file": "03-machine-components.png",
+      "source": "/Users/charlienode/.codex/generated_images/01a1da9d-4402-7993-ba21-3631ab6bcd1d/exec-c1d37e97-7ce9-4948-a732-e7967e3a6808.png",
+      "width": 1585,
+      "height": 992,
+      "sha256": "57070b765c48c995383d76acc083a61b1d37044bf6fbd4b8285b25885bb7bd84"
+    },
+    {
+      "file": "04-component-workspace.png",
+      "source": "/Users/charlienode/.codex/generated_images/01a1da9d-4402-7993-ba21-3631ab6bcd1d/exec-14e71fbe-58c8-4d4a-977f-235189785991.png",
+      "width": 1585,
+      "height": 992,
+      "sha256": "48bb41f74482b475e899c143e287a7a09ba39842785d873c09c6b4ba66322cc6"
+    }
+  ],
+  "canonical_tokens": "/Users/charlienode/.codex/worktrees/e116/MIRA/docs/design/factorylm-tokens.css",
+  "tokens_sha256": "b51bd0e15d57be0797d712e013fe31ba6f0b7d98dafe924f388f8a691fdc021a"
+}
