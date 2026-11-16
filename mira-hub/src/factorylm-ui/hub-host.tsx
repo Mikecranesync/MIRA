@@ -1122,7 +1122,7 @@ export function HubShellHost() {
   }
 
   return (
-    <div className="hub-shell-host" data-testid="hub-shell">
+    <div className="hub-shell-host" data-testid="hub-shell" data-fl-surface="light">
       <FactoryLMShell
         state={view}
         dispatch={dispatch}
