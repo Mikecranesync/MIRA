@@ -16,9 +16,9 @@
  * never fetched or cleaned up twice.
  */
 
-import { rulesCrossing, verticalRules } from "./pdf-table-rules";
+import { pinnedRules, rulePinsForSha, rulesCrossing } from "./table-rule-pins";
 
-/** `vr`: indices of the page's painted vertical rules crossing this item's baseline (absent = no rule evidence); `vrx`: those rules' x positions, index-aligned. */
+/** `vr`: indices of the page's pinned vertical rules crossing this item's baseline (absent = no rule evidence); `vrx`: those rules' x positions, index-aligned. */
 export type LayoutItem = { str: string; x: number; y: number; w: number; size: number; vr?: readonly number[]; vrx?: readonly number[] };
 
 interface PdfTextItem {
@@ -33,7 +33,6 @@ interface PdfTextContent {
 
 interface PdfPage {
   getTextContent: () => Promise<PdfTextContent>;
-  getOperatorList?: () => Promise<unknown>;
   cleanup?: () => boolean;
 }
 
@@ -53,23 +52,15 @@ export function layoutItemsFromTextContent(content: PdfTextContent): LayoutItem[
   return items;
 }
 
-/** A standalone catalog-shaped cell: the only kind of text a model-column header is made of. */
-const CATALOG_CELL_RE = /^(?=[A-Z0-9()-]*[A-Z])(?=[A-Z0-9()-]*\d)[A-Z0-9][A-Z0-9()-]{3,}$/;
-
 /**
- * Annotates each item with the painted vertical rules crossing its baseline (#5503 F14). Read only
- * for a page that could hold a model-column header; any failure leaves the items unannotated,
- * which downstream means "no rule evidence" and grants nothing.
+ * Annotates each item with the pinned vertical rules crossing its baseline (#5503 F14/F15). The
+ * page's drawing is never read: rules exist only for a pinned document's pinned page whose text
+ * geometry still matches. Anything else leaves the items unannotated, which downstream means
+ * "no rule evidence" and grants nothing.
  */
-async function annotateRules(page: PdfPage, items: LayoutItem[]): Promise<void> {
-  if (!page.getOperatorList) return;
-  if (items.filter((item) => CATALOG_CELL_RE.test(item.str.trim())).length < 2) return;
-  let rules: ReturnType<typeof verticalRules>;
-  try {
-    rules = verticalRules(await page.getOperatorList());
-  } catch {
-    return;
-  }
+function annotateRules(documentSha256: string | undefined, pageNumber: number, items: LayoutItem[]): void {
+  if (!documentSha256) return;
+  const rules = pinnedRules(rulePinsForSha(documentSha256), pageNumber, items);
   if (!rules || rules.length === 0) return;
   for (const item of items) {
     const crossing = rulesCrossing(rules, item.y);
@@ -80,14 +71,15 @@ async function annotateRules(page: PdfPage, items: LayoutItem[]): Promise<void> 
   }
 }
 
-/** One page's positioned text items, fetched and released by this call alone. */
-export async function pageLayoutItems(pdf: PdfDocumentProxy, pageNumber: number): Promise<LayoutItem[]> {
+/** One page's positioned text items, fetched and released by this call alone. `documentSha256`
+ * is the SHA-256 of the PDF bytes; without it the items carry no rule evidence. */
+export async function pageLayoutItems(pdf: PdfDocumentProxy, pageNumber: number, documentSha256?: string): Promise<LayoutItem[]> {
   if (!pdf.getPage) return [];
   const page = await pdf.getPage(pageNumber);
   try {
     const content = await page.getTextContent();
     const items = layoutItemsFromTextContent(content);
-    await annotateRules(page, items);
+    annotateRules(documentSha256, pageNumber, items);
     return items;
   } finally {
     if (page.cleanup && !page.cleanup()) {

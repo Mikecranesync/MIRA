@@ -769,6 +769,8 @@ interface ParsedPdfForNode {
  */
 async function parsePdfForNode(buffer: Buffer | Uint8Array, rest: NodeChunkOpts): Promise<ParsedPdfForNode> {
   const pdf = await getDocumentProxy(new Uint8Array(buffer));
+  // Identity of exactly the bytes parsed here: pinned table rules apply to no other file.
+  const documentSha256 = createHash("sha256").update(buffer).digest("hex");
   const { text } = await extractText(pdf, { mergePages: false });
   // Copy rather than alias: writeChunkRowsForNode releases each page's text
   // in place (`pages[p] = ""`) to bound peak memory, and `text` may be the
@@ -802,7 +804,7 @@ async function parsePdfForNode(buffer: Buffer | Uint8Array, rest: NodeChunkOpts)
       continue;
     }
     try {
-      const items = await pageLayoutItems(pdf, p + 1);
+      const items = await pageLayoutItems(pdf, p + 1, documentSha256);
       let rating: ReturnType<typeof contactRatingTable> = null;
       try { rating = contactRatingTable(items); }
       catch (err) {

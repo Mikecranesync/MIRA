@@ -8,16 +8,11 @@ import { Client, Pool, type PoolClient } from "pg";
 import { retrieveManualChunks, retrieveNodeChunks } from "../manual-rag";
 import { inferEquipmentType } from "../equipment-type";
 
-import sourceFixture from "../../capabilities/__fixtures__/table-rows/micro820-in009-p16-20-scope.json";
+import fixture from "../../capabilities/__fixtures__/table-rows/micro820-in009-p16-20-scope.json";
 import { COLUMN_LINE_MARK } from "@/capabilities/contact-ratings-table";
 import { excludedTablesRefusalText } from "@/capabilities/manual-applicability";
 import { boundaryMatrix, boundaryMatrixPages, measuredMatrix, measuredMatrixPage, columnBoundaryMatrix, columnBoundaryMatrixPages, columnSemanticMatrix, columnSemanticMatrixPages, columnMeasuredMatrix, columnMeasuredMatrixPage, columnMeasuredMatrixRules, columnMeasuredLaterQualified } from "@/capabilities/__fixtures__/section-boundary-matrix";
 
-// The captured pages carry their painted vertical rules (#5503 F14); pages a test builds may omit them.
-type PaintedRule = { x: number; y0: number; y1: number };
-const fixture = sourceFixture as Omit<typeof sourceFixture, "pages"> & {
-  pages: Array<Omit<(typeof sourceFixture.pages)[number], "rules"> & { rules?: PaintedRule[] }>;
-};
 
 // #5503 PDF/tenant boundaries for the nested SQL block below; no search rows scripted.
 vi.hoisted(() => {
@@ -25,7 +20,14 @@ vi.hoisted(() => {
   process.env.NOTEBOOK_HYBRID_RETRIEVAL = "0";
   process.env.NOTEBOOK_RERANK = "0";
 });
-const db = vi.hoisted(() => ({ client: null as PoolClient | null, failLayoutPage: null as number | null, pages: null as typeof fixture.pages | null }));
+const db = vi.hoisted(() => ({ client: null as PoolClient | null, failLayoutPage: null as number | null, pages: null as Array<(typeof fixture.pages)[number] & { rules?: Array<{ x: number; y0: number; y1: number }> }> | null }));
+// Pinned table rules (#5503 F14/F15): a captured page gets its source manual's real pin; a page a
+// test builds may declare its own rules.
+vi.mock("@/capabilities/table-rule-pins", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/capabilities/table-rule-pins")>();
+  const { pinsDouble } = await import("../../capabilities/__fixtures__/pinned-rules-double");
+  return { ...actual, rulePinsForSha: () => pinsDouble(actual, db.pages ?? fixture.pages, [fixture.sha256]) };
+});
 vi.mock("unpdf", () => ({
   getDocumentProxy: vi.fn(async () => ({
     getPage: async (page: number) => ({
@@ -34,11 +36,6 @@ vi.mock("unpdf", () => ({
         return { items: ((db.pages ?? fixture.pages).find((p) => p.page === page)?.items ?? []).map((i) => ({
           str: i.str, width: i.w, transform: [i.size, 0, 0, i.size, i.x, i.y],
         })) };
-      },
-      // Painted vertical rules of the same page (#5503 F14); a page without them has no rule evidence.
-      getOperatorList: async () => {
-        const rules = ((db.pages ?? fixture.pages).find((p) => p.page === page))?.rules ?? [];
-        return { fnArray: rules.map(() => 91), argsArray: rules.map((r) => [22, [[]], [r.x - 0.25, r.y0, r.x + 0.25, r.y1]]) };
       },
       cleanup: () => true,
     }),
@@ -892,7 +889,7 @@ describe("#5503 actual upload INSERT through raw retrieval SQL", () => {
 
   // Review F1/F2: mutate only the PDF boundary, then execute the production writer and
   // real storage/retrieval. Synthetic pages deliberately share the source fixture's models.
-  async function withPages(pages: typeof fixture.pages, fn: () => Promise<void>) {
+  async function withPages(pages: NonNullable<typeof db.pages>, fn: () => Promise<void>) {
     await client.query("SAVEPOINT review_scope");
     try {
       await client.query("DELETE FROM knowledge_entries WHERE tenant_id = $1 AND doc_id = $2", [TENANT, DOCUMENT]);

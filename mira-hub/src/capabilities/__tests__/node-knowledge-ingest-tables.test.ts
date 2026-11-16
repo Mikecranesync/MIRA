@@ -25,12 +25,21 @@ const captured: { sql: string; params: unknown[] }[] = [];
 const pdf = vi.hoisted(() => ({
   pages: [] as string[],
   layout: new Map<number, Array<{ str: string; x: number; y: number; w: number; size: number }>>(),
-  /** Painted vertical rules per page (#5503 F14); a page without an entry has no rule evidence. */
+  /** Rules a test declares for a page it built itself (#5503 F14/F15); captured pages get their real pin. */
   rules: new Map<number, Array<{ x: number; y0: number; y1: number }>>(),
   getPageThrows: false,
   withoutGetPage: false,
 }));
 
+/** SHA-256 of the GS10 user manual rev B the page 26/27 fixtures were captured from. */
+const GS10_SHA256 = vi.hoisted(() => "090aa1b36250be11e1da33526a4b995492593c6fc35aa82ad18115e411dcc5e4");
+const realPins = await vi.importActual<typeof import("@/capabilities/table-rule-pins")>("@/capabilities/table-rule-pins");
+// Pinned table rules: the writer's bytes are a stub, so this stands in for "these bytes are that manual".
+vi.mock("@/capabilities/table-rule-pins", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/capabilities/table-rule-pins")>();
+  const { pinsDouble } = await import("../__fixtures__/pinned-rules-double");
+  return { ...actual, rulePinsForSha: () => pinsDouble(actual, [...pdf.layout].map(([page, items]) => ({ page, items, rules: pdf.rules.get(page) })), [GS10_SHA256]) };
+});
 vi.mock("unpdf", () => ({
   getDocumentProxy: vi.fn(async () => {
     if (pdf.withoutGetPage) return {};
@@ -43,10 +52,7 @@ vi.mock("unpdf", () => ({
           transform: [i.size, 0, 0, i.size, i.x, i.y],
           width: i.w,
         }));
-        const rules = pdf.rules.get(n) ?? [];
-        const getOperatorList = async () => ({ fnArray: rules.map(() => 91),
-          argsArray: rules.map((r) => [22, [[]], [r.x - 0.25, r.y0, r.x + 0.25, r.y1]]) });
-        return { getTextContent: vi.fn(async () => ({ items })), getOperatorList, cleanup: () => true };
+        return { getTextContent: vi.fn(async () => ({ items })), cleanup: () => true };
       }),
     };
   }),
@@ -95,7 +101,7 @@ describe("writePdfChunksForNode stores a model-column table as one chunk per mod
     captured.length = 0;
     pdf.pages = [PROSE, gs10p26.text];
     pdf.layout = new Map([[2, gs10p26.items]]);
-    pdf.rules = new Map([[2, gs10p26.rules]]);
+    pdf.rules = new Map();
     pdf.getPageThrows = false;
     pdf.withoutGetPage = false;
     vi.resetModules();
@@ -170,7 +176,7 @@ describe("writePdfChunksForNode stores a model-column table as one chunk per mod
     const first = interrupted();
     pdf.pages = [first.map((item) => item.str).join("\n"), gs10p26.text];
     pdf.layout = new Map([[1, first], [2, gs10p26.items]]);
-    pdf.rules = new Map([[2, gs10p26.rules]]);
+    pdf.rules = new Map();
     const { writePdfChunksForNode } = await import("@/lib/node-knowledge-ingest");
     await writePdfChunksForNode(opts);
     const own = insertedRows().filter((row) => row.page === 2 && (row.metadata.table_models as string[] | undefined)?.join() === "GS11N20P2");
@@ -224,7 +230,8 @@ describe("garage pilot L2 — a page whose numbers carry an unmapped glyph still
     const glyph = (s: string) => s.replace(/(\d)\.(\d)/g, "$1�$2");
     pdf.pages = [PROSE, glyph(gs10p26.text)];
     pdf.layout = new Map([[2, gs10p26.items.map((i) => ({ ...i, str: glyph(i.str) }))]]);
-    pdf.rules = new Map([[2, gs10p26.rules]]);
+    // The glyph-garbled page is built here, so it declares the page's real pinned rules itself.
+    pdf.rules = new Map([[2, [...realPins.rulePinsForSha(GS10_SHA256)!["26"].rules]]]);
     pdf.getPageThrows = false;
     pdf.withoutGetPage = false;
     vi.resetModules();
