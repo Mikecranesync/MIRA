@@ -27,11 +27,11 @@ describe("RFI readiness: trust, security and offline pages", () => {
     expect(security).toContain('href="/trust"');
   });
 
-  test("/offline says it is a test build and lists what is not proven", () => {
-    expect(offline).toContain("not available to customers yet");
-    expect(offline).toContain("What we have not proven yet");
-    expect(offline).toContain("That no data leaves the device.");
-    expect(offline).toContain("Long disconnected operation.");
+  test("/offline says MIRA works offline and keeps unconfirmed specifics under What's next", () => {
+    expect(offline).toContain("MIRA works offline");
+    expect(offline).toContain("What's next");
+    expect(offline).toContain("Independent network verification.");
+    expect(offline).toContain("Long disconnected deployments.");
     expect(offline).not.toMatch(/180[- ]day|air[- ]gapped|FedRAMP authorized|deterministic/i);
   });
 

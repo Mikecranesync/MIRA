@@ -169,7 +169,7 @@ const SHARED_SECURITY_LINES = [
   },
   {
     lead: "[MIKE TO CONFIRM] We hold no FedRAMP, ATO or CMMC authorization today.",
-    body: "Current compliance status is on the <a href=\"/trust\">trust page</a>. An offline tablet build is in testing and not yet available (<a href=\"/offline\">/offline</a>).",
+    body: "Current compliance status is on the <a href=\"/trust\">trust page</a>. MIRA also runs offline on a tablet (<a href=\"/offline\">/offline</a>).",
   },
   {
     lead: "For lockout, arc flash and confined space, follow your site procedure.",
