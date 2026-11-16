@@ -168,7 +168,7 @@ const SHARED_SECURITY_LINES = [
     body: "We don't publish a session lifetime or browser-storage detail here.",
   },
   {
-    lead: "[MIKE TO CONFIRM] We hold no FedRAMP, ATO or CMMC authorization today.",
+    lead: "We hold no FedRAMP, ATO or CMMC authorization today.",
     body: "Current compliance status is on the <a href=\"/trust\">trust page</a>. MIRA also runs offline on a tablet (<a href=\"/offline\">/offline</a>).",
   },
   {
