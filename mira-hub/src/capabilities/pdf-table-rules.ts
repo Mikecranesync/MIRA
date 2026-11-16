@@ -11,6 +11,13 @@
  * membership by itself. Every unreadable, unexpected or oversized input yields `null`, which the
  * caller treats as "no rule evidence" (the conservative outcome: no exemption is granted).
  *
+ * Colour, opacity, line width, dash, clip and embedded-form state are tracked just far enough to
+ * drop a rule that is not visibly drawn where its coordinates say, and a later opaque fill, image
+ * or shading hides what it covers. Anything the reader cannot evaluate (a pattern or non-RGB
+ * colour, a soft mask) counts as not drawn, and any operator it does not model (annotations,
+ * transparency groups, repeated or inline images) leaves the whole page without evidence.
+ * Not modelled: text glyphs drawn over a rule.
+ *
  * Rules come from the path's own segments, never from its bounding box (#5503 F15): a diagonal,
  * a curve or two horizontal lines share a rectangle's box and draw no vertical edge.
  *
@@ -24,21 +31,43 @@ const OP_SAVE = 10;
 const OP_RESTORE = 11;
 const OP_TRANSFORM = 12;
 const OP_CONSTRUCT_PATH = 91;
-/** stroke, closeStroke, fill, eoFill, fillStroke, eoFillStroke, closeFillStroke, closeEOFillStroke. */
-const PAINTING = new Set([20, 21, 22, 23, 24, 25, 26, 27]);
+const OP_SET_LINE_WIDTH = 2;
+const OP_SET_DASH = 6;
+const OP_SET_GSTATE = 9;
+const OP_CLIP = 29;
+const OP_EO_CLIP = 30;
+const OP_STROKE_RGB = 58;
+const OP_FILL_RGB = 59;
+const OP_FORM_BEGIN = 74;
+const OP_FORM_END = 75;
+const OP_SHADING_FILL = 62;
+/** Images that paint the unit square of the current matrix. */
+const UNIT_SQUARE_IMAGE = new Set([83, 85, 90]);
+/** Operators that neither paint over a rule nor change how one is painted: resource loading,
+ * stroke joins and caps, rendering hints, text and marked content. Everything not named in this
+ * file is unknown and leaves the page without evidence. */
+const NEUTRAL = new Set([1, 3, 4, 5, 7, 8, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 69, 70, 71, 72, 73]);
+const CLOSING_PAINT = new Set([21, 26, 27]);
+/** A filled shape thinner than this in area paints nothing. */
+const MIN_FILL_AREA = 0.05;
+/** Every other operator that sets a stroke / fill colour; the reader cannot evaluate those. */
+const OTHER_STROKE_COLOUR = new Set([50, 52, 53, 56, 60, 92]);
+const OTHER_FILL_COLOUR = new Set([51, 54, 55, 57, 61, 93]);
+/** Paint operators of a path: stroke 20, closeStroke 21, fill 22, eoFill 23, and the four fill-and-stroke forms 24-27. */
 const STROKING = new Set([20, 21, 24, 25, 26, 27]);
 const FILLING = new Set([22, 23, 24, 25, 26, 27]);
 const PATH_MOVE = 0, PATH_LINE = 1, PATH_CURVE = 2, PATH_QUADRATIC = 3, PATH_CLOSE = 4;
 /** A stroked edge is vertical when it leans less than this over its whole length. */
-const MAX_LEAN_PT = 0.5;
+const MAX_LEAN_PT = 0.25;
 
 const MAX_OPERATORS = 250_000;
 const MAX_SEGMENTS = 5_000;
 const MAX_RULE_WIDTH_PT = 2;
 const MIN_SEGMENT_PT = 6;
 const MIN_RULE_PT = 12;
-const MERGE_GAP_PT = 2;
-const SAME_X_PT = 1;
+/** Per-row pieces of one separator touch; explicit dashes leave real gaps and stay separate. */
+const MERGE_GAP_PT = 0.75;
+const SAME_X_PT = 0.25;
 
 type Matrix = [number, number, number, number, number, number];
 
@@ -82,51 +111,162 @@ function straightSubpaths(pathArgument: unknown): Subpath[] | null {
   return subpaths;
 }
 
+type Box = { x0: number; y0: number; x1: number; y1: number };
+/** Only the paint state that decides whether a rule is visible where it is drawn. */
+type State = { ctm: Matrix; lineWidth: number; stroke: boolean; fill: boolean; strokeAlpha: boolean; fillAlpha: boolean; dashed: boolean; clip: Box | null };
+
+/** A colour pdf.js delivers as "#rrggbb" that is not near white. Anything else is not evidence. */
+function isVisibleColour(args: unknown): boolean {
+  const value = Array.isArray(args) ? args[0] : null;
+  if (typeof value !== "string" || !/^#[0-9a-f]{6}$/i.test(value)) return false;
+  return [1, 3, 5].some((at) => parseInt(value.slice(at, at + 2), 16) < 0xe0);
+}
+
+function boxUnder(ctm: Matrix, bounds: unknown): Box | null {
+  if (!(Array.isArray(bounds) || ArrayBuffer.isView(bounds))) return null;
+  const b = Array.from(bounds as ArrayLike<unknown>);
+  if (b.length !== 4 || !b.every((n) => typeof n === "number" && Number.isFinite(n))) return null;
+  const [xa, ya, xb, yb] = b as number[];
+  const corners = [[xa, ya], [xa, yb], [xb, ya], [xb, yb]].map(([x, y]) => [ctm[0] * x + ctm[2] * y + ctm[4], ctm[1] * x + ctm[3] * y + ctm[5]]);
+  const xs = corners.map(([x]) => x), ys = corners.map(([, y]) => y);
+  return { x0: Math.min(...xs), y0: Math.min(...ys), x1: Math.max(...xs), y1: Math.max(...ys) };
+}
+
+function intersect(a: Box | null, b: Box): Box {
+  return a === null ? b : { x0: Math.max(a.x0, b.x0), y0: Math.max(a.y0, b.y0), x1: Math.min(a.x1, b.x1), y1: Math.min(a.y1, b.y1) };
+}
+
 /** Painted vertical rules, collinear segments merged; `null` when the page gives no usable evidence. */
 export function verticalRules(operatorList: unknown): VerticalRule[] | null {
   const list = operatorList as { fnArray?: ArrayLike<number>; argsArray?: ArrayLike<unknown> } | null;
   if (!list || !list.fnArray || !list.argsArray || list.fnArray.length !== list.argsArray.length) return null;
   if (list.fnArray.length > MAX_OPERATORS) return null;
-  let ctm: Matrix = [1, 0, 0, 1, 0, 0];
-  const stack: Matrix[] = [];
+  // PDF defaults: black, opaque, solid, unclipped.
+  let state: State = { ctm: [1, 0, 0, 1, 0, 0], lineWidth: 1, stroke: true, fill: true, strokeAlpha: true, fillAlpha: true, dashed: false, clip: null };
+  const stack: State[] = [];
+  let clipPending = false;
   const segments: VerticalRule[] = [];
+  /** Keep the part of a segment its clip leaves visible. */
+  const add = (x: number, y0: number, y1: number) => {
+    const clip = state.clip;
+    if (clip && (x < clip.x0 - MAX_LEAN_PT || x > clip.x1 + MAX_LEAN_PT)) return;
+    const bottom = clip ? Math.max(y0, clip.y0) : y0, top = clip ? Math.min(y1, clip.y1) : y1;
+    if (top - bottom >= MIN_SEGMENT_PT) segments.push({ x, y0: bottom, y1: top });
+  };
+  /** Whatever is painted opaquely over an earlier rule hides the part it covers. */
+  const cover = (box: Box) => {
+    const clip = state.clip;
+    const hidden = clip ? intersect(clip, box) : box;
+    if (hidden.x1 < hidden.x0 || hidden.y1 < hidden.y0) return;
+    for (const segment of segments.splice(0)) {
+      if (segment.x < hidden.x0 || segment.x > hidden.x1) { segments.push(segment); continue; }
+      if (hidden.y0 - segment.y0 >= MIN_SEGMENT_PT) segments.push({ x: segment.x, y0: segment.y0, y1: Math.min(segment.y1, hidden.y0) });
+      if (segment.y1 - hidden.y1 >= MIN_SEGMENT_PT) segments.push({ x: segment.x, y0: Math.max(segment.y0, hidden.y1), y1: segment.y1 });
+    }
+  };
+  const EVERYWHERE: Box = { x0: -Infinity, y0: -Infinity, x1: Infinity, y1: Infinity };
   for (let i = 0; i < list.fnArray.length; i++) {
     const fn = list.fnArray[i];
     const args = list.argsArray[i];
-    if (fn === OP_SAVE) stack.push(ctm);
-    else if (fn === OP_RESTORE) ctm = stack.pop() ?? ctm;
+    if (NEUTRAL.has(fn)) continue;
+    if (fn === OP_SAVE) stack.push(state);
+    else if (fn === OP_RESTORE) state = stack.pop() ?? state;
     else if (fn === OP_TRANSFORM) {
       if (!isMatrix(args)) return null;
-      ctm = multiply(ctm, Array.from(args) as Matrix);
-    } else if (fn === OP_CONSTRUCT_PATH) {
+      state = { ...state, ctm: multiply(state.ctm, Array.from(args) as Matrix) };
+    } else if (fn === OP_FORM_BEGIN) {
+      // An embedded drawing: its own matrix and clipping box, undone at its end.
+      stack.push(state);
+      if (!Array.isArray(args)) return null;
+      if (args[0] != null) {
+        if (!isMatrix(args[0])) return null;
+        state = { ...state, ctm: multiply(state.ctm, Array.from(args[0]) as Matrix) };
+      }
+      if (args[1] != null) {
+        const box = boxUnder(state.ctm, args[1]);
+        if (box === null) return null;
+        state = { ...state, clip: intersect(state.clip, box) };
+      }
+    } else if (fn === OP_FORM_END) state = stack.pop() ?? state;
+    else if (fn === OP_SET_LINE_WIDTH) {
+      const width = Array.isArray(args) ? args[0] : null;
+      if (typeof width !== "number" || !Number.isFinite(width)) return null;
+      state = { ...state, lineWidth: width };
+    } else if (fn === OP_SHADING_FILL) cover(EVERYWHERE);
+    else if (UNIT_SQUARE_IMAGE.has(fn)) cover(boxUnder(state.ctm, [0, 0, 1, 1])!);
+    else if (fn === OP_STROKE_RGB) state = { ...state, stroke: isVisibleColour(args) };
+    else if (fn === OP_FILL_RGB) state = { ...state, fill: isVisibleColour(args) };
+    else if (OTHER_STROKE_COLOUR.has(fn)) state = { ...state, stroke: false };
+    else if (OTHER_FILL_COLOUR.has(fn)) state = { ...state, fill: false };
+    else if (fn === OP_SET_DASH) {
+      const pattern = Array.isArray(args) ? args[0] : null;
+      state = { ...state, dashed: !(Array.isArray(pattern) || ArrayBuffer.isView(pattern)) || (pattern as ArrayLike<unknown>).length > 0 };
+    } else if (fn === OP_SET_GSTATE) {
+      const entries = Array.isArray(args) && Array.isArray(args[0]) ? args[0] : null;
+      if (entries === null) return null;
+      for (const entry of entries) {
+        if (!Array.isArray(entry)) return null;
+        if (entry[0] === "CA") state = { ...state, strokeAlpha: typeof entry[1] === "number" && entry[1] >= 0.5 };
+        else if (entry[0] === "ca") state = { ...state, fillAlpha: typeof entry[1] === "number" && entry[1] >= 0.5 };
+        else if (entry[0] === "SMask" && entry[1] !== false) state = { ...state, strokeAlpha: false, fillAlpha: false };
+        else if (entry[0] === "D") state = { ...state, dashed: true };
+        else if (entry[0] === "LW") {
+          if (typeof entry[1] !== "number" || !Number.isFinite(entry[1])) return null;
+          state = { ...state, lineWidth: entry[1] };
+        }
+      }
+    } else if (fn === OP_CLIP || fn === OP_EO_CLIP) clipPending = true;
+    else if (fn === OP_CONSTRUCT_PATH) {
       if (!Array.isArray(args) || typeof args[0] !== "number") return null;
-      if (!PAINTING.has(args[0])) continue; // clip-only or unpainted path: invisible
+      const ctm = state.ctm;
+      const rotated = Math.abs(ctm[1]) > 1e-6 || Math.abs(ctm[2]) > 1e-6;
       const subpaths = straightSubpaths(args[1]);
       if (subpaths === null) return null;
-      if (Math.abs(ctm[1]) > 1e-6 || Math.abs(ctm[2]) > 1e-6) continue; // rotated drawing: not a table rule
-      for (const subpath of subpaths) {
+      if (CLOSING_PAINT.has(args[0]) && subpaths.length > 0) subpaths[subpaths.length - 1].closed = true;
+      const strokes = STROKING.has(args[0]) && state.stroke && state.strokeAlpha && !state.dashed &&
+        state.lineWidth * Math.abs(ctm[0]) <= MAX_RULE_WIDTH_PT;
+      const fills = FILLING.has(args[0]) && state.fill && state.fillAlpha;
+      if (FILLING.has(args[0]) && state.fillAlpha) {
+        // The fill is painted first, in whatever colour, over everything drawn before it.
+        const painted = boxUnder(ctm, args[2]);
+        if (painted === null) return null;
+        // A fill no thicker than a rule is a grid line crossing this one, not something that hides it.
+        if (painted.x1 - painted.x0 > MAX_RULE_WIDTH_PT && painted.y1 - painted.y0 > MAX_RULE_WIDTH_PT) cover(painted);
+      }
+      if (!rotated) for (const subpath of subpaths) {
         const points = subpath.points.map(([x, y]) => [ctm[0] * x + ctm[4], ctm[3] * y + ctm[5]]);
-        if (STROKING.has(args[0])) {
+        if (strokes) {
           // Each straight vertical edge the pen actually draws, the closing edge included.
           const drawn = subpath.closed && points.length > 2 ? [...points, points[0]] : points;
           for (let k = 1; k < drawn.length; k++) {
             const [xa, ya] = drawn[k - 1], [xb, yb] = drawn[k];
-            if (Math.abs(xa - xb) <= MAX_LEAN_PT && Math.abs(ya - yb) >= MIN_SEGMENT_PT) {
-              segments.push({ x: (xa + xb) / 2, y0: Math.min(ya, yb), y1: Math.max(ya, yb) });
-            }
+            if (Math.abs(xa - xb) <= MAX_LEAN_PT && Math.abs(ya - yb) >= MIN_SEGMENT_PT) add((xa + xb) / 2, Math.min(ya, yb), Math.max(ya, yb));
           }
         }
-        if (FILLING.has(args[0]) && points.length >= 3) {
+        if (fills && points.length >= 3) {
           // A filled shape is a rule only when the whole shape is a thin vertical bar.
           const xs = points.map(([x]) => x), ys = points.map(([, y]) => y);
-          const left = Math.min(...xs), right = Math.max(...xs), bottom = Math.min(...ys), top = Math.max(...ys);
-          if (right - left <= MAX_RULE_WIDTH_PT && top - bottom >= MIN_SEGMENT_PT) {
-            segments.push({ x: (left + right) / 2, y0: bottom, y1: top });
+          const left = Math.min(...xs), right = Math.max(...xs);
+          let area = 0;
+          for (let k = 0; k < points.length; k++) {
+            const [xa, ya] = points[k], [xb, yb] = points[(k + 1) % points.length];
+            area += xa * yb - xb * ya;
           }
+          if (right - left <= MAX_RULE_WIDTH_PT && Math.abs(area) / 2 >= MIN_FILL_AREA) add((left + right) / 2, Math.min(...ys), Math.max(...ys));
+        }
+      }
+      if (clipPending) {
+        // The path just built also becomes the clip. Its bounds contain it, so a rule outside them is invisible.
+        clipPending = false;
+        if (rotated) state = { ...state, clip: { x0: 0, y0: 0, x1: 0, y1: 0 } };
+        else {
+          const box = boxUnder(ctm, args[2]);
+          if (box === null) return null;
+          state = { ...state, clip: intersect(state.clip, box) };
         }
       }
       if (segments.length > MAX_SEGMENTS) return null;
-    }
+    } else return null; // an operator this reader does not model: the page gives no evidence
   }
   segments.sort((a, b) => a.x - b.x || a.y0 - b.y0);
   const merged: VerticalRule[] = [];

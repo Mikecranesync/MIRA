@@ -68,6 +68,67 @@ describe("#5503 F14/F15: painted vertical rules of a PDF page", () => {
     ]))).toEqual([]);
   });
 
+  // The reader models only as much paint state as decides whether a rule is visible where it is drawn.
+  const RULE = [{ x: 270, y0: 600, y1: 700 }];
+  const SET_DASH = 6, SET_GSTATE = 9, CLIP = 29, STROKE_RGB = 58, FILL_RGB = 59, STROKE_PATTERN = 53, FORM_BEGIN = 74, FORM_END = 75;
+  it.each([
+    ["a dark stroke", [[STROKE_RGB, ["#2c2e35"]], path(STROKE, line(270, 600, 270, 700))], RULE],
+    ["a white stroke", [[STROKE_RGB, ["#ffffff"]], path(STROKE, line(270, 600, 270, 700))], []],
+    ["a white filled bar", [[FILL_RGB, ["#ffffff"]], path(FILL, rect(269.75, 600, 270.25, 700))], []],
+    ["a stroke in a colour the reader cannot evaluate", [[STROKE_PATTERN, ["P1"]], path(STROKE, line(270, 600, 270, 700))], []],
+    ["a white stroke undone by restore", [[SAVE, null], [STROKE_RGB, ["#ffffff"]], [RESTORE, null], path(STROKE, line(270, 600, 270, 700))], RULE],
+    ["a fully transparent stroke", [[SET_GSTATE, [[["CA", 0]]]], path(STROKE, line(270, 600, 270, 700))], []],
+    ["a stroke under a soft mask", [[SET_GSTATE, [[["SMask", true]]]], path(STROKE, line(270, 600, 270, 700))], []],
+    ["a dashed stroke", [[SET_DASH, [[3, 3], 0]], path(STROKE, line(270, 600, 270, 700))], []],
+    ["a solid stroke after the dash is cleared", [[SET_DASH, [[3, 3], 0]], [SET_DASH, [[], 0]], path(STROKE, line(270, 600, 270, 700))], RULE],
+    ["dashes drawn as separate short segments", Array.from({ length: 12 }, (_, i) => path(STROKE, line(270, 600 + i * 8, 270, 606 + i * 8))), []],
+    ["a stroke clipped away", [[CLIP, null], path(END_PATH, rect(300, 590, 500, 710)), path(STROKE, line(270, 600, 270, 700))], []],
+    ["a stroke shortened by its clip", [[CLIP, null], path(END_PATH, rect(200, 650, 500, 710)), path(STROKE, line(270, 600, 270, 700))], [{ x: 270, y0: 650, y1: 700 }]],
+    ["a clip undone by restore", [[SAVE, null], [CLIP, null], path(END_PATH, rect(300, 590, 500, 710)), [RESTORE, null], path(STROKE, line(270, 600, 270, 700))], RULE],
+    ["a form that moves its drawing", [[FORM_BEGIN, [[1, 0, 0, 1, -200, 0], [0, 0, 612, 792]]], path(STROKE, line(270, 600, 270, 700)), [FORM_END, []]], [{ x: 70, y0: 600, y1: 700 }]],
+    ["a stroke after a form ends", [[FORM_BEGIN, [[1, 0, 0, 1, -200, 0], [0, 0, 612, 792]]], [FORM_END, []], path(STROKE, line(270, 600, 270, 700))], RULE],
+    ["a form that clips its drawing away", [[FORM_BEGIN, [[1, 0, 0, 1, 0, 0], [300, 0, 612, 792]]], path(STROKE, line(270, 600, 270, 700)), [FORM_END, []]], []],
+    ["a polyline that leans a point over its length", [path(STROKE, [M, 270, 600, L, 270.5, 650, L, 271, 700])], []],
+  ] as Array<[string, Array<[number, unknown]>, unknown]>)("paint state: %s", (_name, ops, expected) => {
+    expect(verticalRules(list(ops))).toEqual(expected);
+  });
+
+  const LINE_WIDTH = 2, IMAGE = 85, SHADING = 62, ANNOTATION = 80, TEXT = 44, MARKED = 70;
+  it.each([
+    ["a hairline stroke", [[LINE_WIDTH, [0.5]], path(STROKE, line(270, 600, 270, 700))], RULE],
+    ["a stroke as wide as a shading band", [[LINE_WIDTH, [100]], path(STROKE, line(270, 600, 270, 700))], []],
+    ["a hairline scaled up into a band", [[TRANSFORM, [50, 0, 0, 1, 0, 0]], [LINE_WIDTH, [1]], path(STROKE, line(5.4, 600, 5.4, 700))], []],
+    ["a wide stroke set by graphics state", [[SET_GSTATE, [[["LW", 100]]]], path(STROKE, line(270, 600, 270, 700))], []],
+    ["a filled shape with no area", [path(FILL, [M, 270, 600, L, 270, 700, L, 270, 600])], []],
+    ["a rule later covered by an opaque fill", [path(STROKE, line(270, 600, 270, 700)), [FILL_RGB, ["#ffffff"]], path(FILL, rect(200, 590, 400, 710))], []],
+    ["a rule partly covered by a later fill", [path(STROKE, line(270, 600, 270, 700)), path(FILL, rect(200, 650, 400, 710))], [{ x: 270, y0: 600, y1: 650 }]],
+    ["a rule crossed by a later horizontal grid line", [path(STROKE, line(270, 600, 270, 700)), path(FILL, rect(90, 649.5, 540, 650.5))], RULE],
+    ["a rule drawn over an earlier fill", [path(FILL, rect(200, 590, 400, 710)), path(STROKE, line(270, 600, 270, 700))], RULE],
+    ["a rule under a later transparent fill", [path(STROKE, line(270, 600, 270, 700)), [SET_GSTATE, [[["ca", 0]]]], path(FILL, rect(200, 590, 400, 710))], RULE],
+    ["a rule later covered by an image", [path(STROKE, line(270, 600, 270, 700)), [SAVE, null], [TRANSFORM, [200, 0, 0, 200, 200, 550]], [IMAGE, ["img", 10, 10]], [RESTORE, null]], []],
+    ["a rule later covered by a shading", [path(STROKE, line(270, 600, 270, 700)), [SHADING, ["p"]]], []],
+    ["a rule beside text and marked content", [[MARKED, ["P", null]], [TEXT, [[]]], path(STROKE, line(270, 600, 270, 700))], RULE],
+    ["a path closed by its paint operator", [path(21, [M, 270, 600, L, 500, 600, L, 500, 700, L, 270, 700])], [{ x: 270, y0: 600, y1: 700 }, { x: 500, y0: 600, y1: 700 }]],
+  ] as Array<[string, Array<[number, unknown]>, unknown]>)("visibility: %s", (_name, ops, expected) => {
+    expect(verticalRules(list(ops))).toEqual(expected);
+  });
+
+  it.each([
+    ["a page with a drawn annotation", list([path(STROKE, line(270, 600, 270, 700)), [ANNOTATION, ["a1", [0, 0, 10, 10], [1, 0, 0, 1, 0, 0], [1, 0, 0, 1, 0, 0], false]]])],
+    ["an operator the reader does not know", list([path(STROKE, line(270, 600, 270, 700)), [76, [{}]]])],
+    ["a line width that is not a number", list([[2, ["x"]]])],
+    ["a filled path without usable bounds", list([[PATH, [FILL, [new Float32Array(rect(200, 590, 400, 710))], null]]])],
+  ])("gives no evidence for %s", (_name, input) => {
+    expect(verticalRules(input)).toBeNull();
+  });
+
+  it.each([
+    ["a form with a malformed matrix", list([[74, [[1, 0], [0, 0, 1, 1]]]])],
+    ["a clip whose path has no usable bounds", list([[29, null], [PATH, [END_PATH, [new Float32Array([M, 0, 0, L, 1, 1])], null]]])],
+  ])("gives no evidence for %s", (_name, input) => {
+    expect(verticalRules(input)).toBeNull();
+  });
+
   it.each([
     ["no operator list", null],
     ["mismatched arrays", { fnArray: [PATH], argsArray: [] }],

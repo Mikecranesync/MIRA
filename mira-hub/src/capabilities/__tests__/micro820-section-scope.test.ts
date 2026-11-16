@@ -1014,6 +1014,31 @@ it.each([
   }
 });
 
+// A separator counts only where it is visibly drawn: the same stroke at x=270 qualifies the later
+// row when plainly painted and does not when white, clipped away, moved by its form, or covered.
+it.each([
+  ["plainly painted", [], [], true],
+  ["white", [[58, ["#ffffff"]]], [], false],
+  ["dashed", [[6, [[3, 3], 0]]], [], false],
+  ["clipped away", [[29, null], [91, [28, [new Float32Array([0, 300, 590, 1, 500, 590, 1, 500, 740, 1, 300, 740, 4])], new Float32Array([300, 590, 500, 740])]]], [], false],
+  ["moved by its form", [[74, [[1, 0, 0, 1, -200, 0], [0, 0, 612, 792]]]], [[75, []]], false],
+  ["covered by a later fill", [], [[91, [22, [new Float32Array([0, 200, 590, 1, 400, 590, 1, 400, 740, 1, 200, 740, 4])], new Float32Array([200, 590, 400, 740])]]], false],
+] as Array<[string, Array<[number, unknown]>, Array<[number, unknown]>, boolean]>)("F15 separator visibility through the writer: %s", async (_name, before, after, qualified) => {
+  const c = columnMeasuredMatrix.find((entry) => entry.id === "voltage-heading-8-28-unruled")!;
+  const items = columnMeasuredMatrixPage(c);
+  const ops: Array<[number, unknown]> = [...before, [91, [20, [new Float32Array([0, 270, 600, 1, 270, 730])], new Float32Array([270, 600, 270, 730])]], ...after];
+  const operators = { fnArray: ops.map(([fn]) => fn), argsArray: ops.map(([, args]) => args) };
+  pdfPages.current = [{ page: 1, items, operators, text: items.map((r) => r.str).join("\n") }];
+  let rows: Row[];
+  try { rows = await ingestFixture(); } finally { pdfPages.current = null; }
+  for (const [model, original, later] of [["20QWB", "2 A", "3 A"], ["20AWB", "1 A", "4 A"]]) {
+    expect((await retrieve(model, rows, "zzcolumnoriginal Load current")).text).toContain(original);
+    const measured = (await retrieve(model, rows, "zzcolumnmeasured")).text;
+    if (qualified) expect(measured).toContain(later);
+    else expect(measured).not.toContain(later);
+  }
+});
+
 it.each(["independent", "independent-footnote", "inherited-conflict", "inherited-compatible"])("F8 readable headingless model columns retain qualification with %s scope", async (kind) => {
   const item = (str: string, x: number, y: number, size = 8) => ({ str, x, y, size, w: str.length * size * 0.4 });
   const caption = kind === "inherited-compatible" ? "Output Specifications for 2080-LC20-20QWB, 2080-LC20-20AWB" : "Output Specifications for 2080-LC20-20QBB";
