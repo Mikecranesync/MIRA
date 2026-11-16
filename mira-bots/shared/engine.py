@@ -3734,7 +3734,9 @@ class Supervisor:
                         tenant_id=resolved_tenant,
                         honest_prefix=_honest_prefix,
                     )
-                return await self._handle_instructional_question(chat_id, message, state, trace_id)
+                return await self._handle_instructional_question(
+                    chat_id, message, state, trace_id, tenant_id=resolved_tenant
+                )
 
             if _router_intent == "continue_current" and detect_session_followup(
                 message, sc, state["state"]
@@ -6507,44 +6509,11 @@ class Supervisor:
         if mfr and kb_covered:
             if not asset:
                 state["asset_identified"] = f"{mfr}, {model}" if model else mfr
-            try:
-                raw_resp = await self.rag.process(
-                    message, state, photo_b64=None, tenant_id=resolved_tenant
-                )
-                # This path calls rag.process() directly (no _call_with_correction),
-                # so pop the per-turn evidence off state here — BEFORE
-                # _record_exchange persists state — and thread it via result (#1704).
-                _evidence = {
-                    "kb_status": state.pop("_rag_kb_status", None) or {},
-                    "chunks": state.pop("_rag_last_chunks", None) or [],
-                    "sources": state.pop("_rag_sources", None) or [],
-                    "no_kb": state.pop("_rag_no_kb", False),
-                }
-                parsed = self._parse_response(raw_resp)
-                raw = parsed.get("reply", "") if parsed else ""
-                if raw:
-                    reply = self._format_simple_response(
-                        raw,
-                        suggestions=[
-                            "Find documentation",
-                            "Log a work order",
-                            "Diagnose this asset",
-                        ],
-                    )
-                    # Gate BEFORE recording, so history stores what the technician
-                    # actually saw rather than the pre-strip text.
-                    reply = self._gate_reply_citations(reply, message, state, chat_id)
-                    self._record_exchange(chat_id, state, message, reply)
-                    tl_flush()
-                    return self._make_result(
-                        reply,
-                        self._infer_confidence(raw),
-                        trace_id,
-                        state.get("state", "IDLE"),
-                        citation_evidence=_evidence,
-                    )
-            except Exception as exc:
-                logger.warning("GENERAL_QUESTION_RAG_FAILURE error=%s — falling through", exc)
+            rag_result = await self._rag_general_reply(
+                chat_id, message, state, trace_id, resolved_tenant
+            )
+            if rag_result is not None:
+                return rag_result
 
         # 3) Vendor identified but no KB coverage → kick off doc lookup/crawl.
         if mfr and not kb_covered:
@@ -6596,6 +6565,18 @@ class Supervisor:
 
         # 4) Industrial-flavored question with no resolvable vendor → ask.
         looks_industrial = bool(self._INDUSTRIAL_HINTS_RE.search(message))
+        # 4a) No vendor, no fault code: an educational question ("what does an AC
+        #     drive do?", "how does a VFD work?") needs no machine — answer it from
+        #     the KB with citations. uns-confirmation-gate.md lists these as
+        #     gate-free. A bare fault code still needs the machine (4 below), and
+        #     an empty retrieval falls through to the clarifier.
+        if looks_industrial and not asset and not uns.fault_code:
+            rag_result = await self._rag_general_reply(
+                chat_id, message, state, trace_id, resolved_tenant
+            )
+            if rag_result is not None:
+                return rag_result
+
         if looks_industrial and not asset:
             clarify_system = (
                 "You are MIRA, an industrial maintenance assistant. The "
@@ -6675,6 +6656,58 @@ class Supervisor:
                 "no_kb": True,
             },
         )
+
+    async def _rag_general_reply(
+        self,
+        chat_id: str,
+        message: str,
+        state: dict,
+        trace_id: str,
+        tenant_id: str,
+    ) -> dict | None:
+        """Answer through the RAG worker with citations; None when it returns nothing or fails.
+
+        Shared by the general-question and instructional handlers so a question that
+        names no machine still reaches the KB instead of an unretrieved LLM answer.
+        """
+        try:
+            raw_resp = await self.rag.process(message, state, photo_b64=None, tenant_id=tenant_id)
+            # This path calls rag.process() directly (no _call_with_correction),
+            # so pop the per-turn evidence off state here — BEFORE
+            # _record_exchange persists state — and thread it via result (#1704).
+            _evidence = {
+                "kb_status": state.pop("_rag_kb_status", None) or {},
+                "chunks": state.pop("_rag_last_chunks", None) or [],
+                "sources": state.pop("_rag_sources", None) or [],
+                "no_kb": state.pop("_rag_no_kb", False),
+            }
+            parsed = self._parse_response(raw_resp)
+            raw = parsed.get("reply", "") if parsed else ""
+            if not raw:
+                return None
+            reply = self._format_simple_response(
+                raw,
+                suggestions=[
+                    "Find documentation",
+                    "Log a work order",
+                    "Diagnose this asset",
+                ],
+            )
+            # Gate BEFORE recording, so history stores what the technician
+            # actually saw rather than the pre-strip text.
+            reply = self._gate_reply_citations(reply, message, state, chat_id)
+            self._record_exchange(chat_id, state, message, reply)
+            tl_flush()
+            return self._make_result(
+                reply,
+                self._infer_confidence(raw),
+                trace_id,
+                state.get("state", "IDLE"),
+                citation_evidence=_evidence,
+            )
+        except Exception as exc:
+            logger.warning("GENERAL_QUESTION_RAG_FAILURE error=%s — falling through", exc)
+            return None
 
     async def _handle_multi_vendor_question(
         self,
@@ -7396,6 +7429,8 @@ class Supervisor:
         message: str,
         state: dict,
         trace_id: str,
+        *,
+        tenant_id: str | None = None,
     ) -> dict:
         """Answer a procedural how-to question directly via the LLM.
 
@@ -7407,6 +7442,13 @@ class Supervisor:
         state = self._clear_diagnostic_carryover(
             chat_id, state, clear_photo=True, target_state="IDLE"
         )
+        # Retrieval first, so a how-to answer is grounded in the manual and cited;
+        # the direct LLM answer below is the fallback when the KB returns nothing.
+        rag_result = await self._rag_general_reply(
+            chat_id, message, state, trace_id, tenant_id or state.get("tenant_id") or ""
+        )
+        if rag_result is not None:
+            return rag_result
         asset = state.get("asset_identified", "")
         ctx = state.get("context") or {}
         history = ctx.get("history", [])
