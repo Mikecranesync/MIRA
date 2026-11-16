@@ -323,6 +323,21 @@ def _cap_key(provider: _Provider) -> str:
     return "max_completion_tokens" if provider.request_style == "openai_reasoning" else "max_tokens"
 
 
+def _attempt_cap(provider: _Provider, max_tokens: int) -> int:
+    """The output cap actually sent for one attempt.
+
+    Claude 5.5-family models think by default, thinking counts toward
+    max_tokens, and the OpenAI-compat endpoint cannot turn it off ("Adaptive
+    thinking is not available via the OpenAI compatibility endpoint"). A short
+    cap such as the conversation router's 300 is spent on thinking and comes
+    back empty, so the anthropic slot floors the cap; only used tokens bill.
+    Every other provider keeps the caller's cap exactly.
+    """
+    if getattr(provider, "request_style", "") != "anthropic_compat":
+        return max_tokens
+    return max(max_tokens, int(os.getenv("ANTHROPIC_MIN_OUTPUT_TOKENS") or "2048"))
+
+
 def _request_payload(
     provider: _Provider, model: str, messages: list[dict], max_tokens: int
 ) -> dict:
@@ -343,7 +358,7 @@ def _request_payload(
         # Claude 5.5-family models return HTTP 400 "`temperature` is deprecated
         # for this model" — which would read as an outage and fall through the
         # cascade. Older Claude models accept the omission, so never send it.
-        return {"model": model, "max_tokens": max_tokens, "messages": messages}
+        return {"model": model, "max_tokens": _attempt_cap(provider, max_tokens), "messages": messages}
     return {
         "model": model,
         "max_tokens": max_tokens,
@@ -880,7 +895,7 @@ class InferenceRouter:
             for attempt_idx, attempt_cap in enumerate(attempt_caps):
                 if not _hold(attempt_cap, "retry" if attempt_idx else "request"):
                     break
-                payload[_cap_key(provider)] = attempt_cap
+                payload[_cap_key(provider)] = _attempt_cap(provider, attempt_cap)
                 t0 = time.monotonic()
                 async with httpx.AsyncClient(timeout=provider.timeout) as client:
                     resp = await client.post(provider.api_url, headers=headers, json=payload)

@@ -26,6 +26,7 @@ ALL_ENV = (
     "ANTHROPIC_CASCADE_NOT_AFTER",
     "ANTHROPIC_MODEL",
     "ANTHROPIC_VISION_MODEL",
+    "ANTHROPIC_MIN_OUTPUT_TOKENS",
     "MIRA_CASCADE_ORDER",
 )
 FUTURE = (datetime.now(UTC) + timedelta(days=1)).isoformat()
@@ -116,8 +117,8 @@ def test_empty_cascade_order_is_default(monkeypatch):
 def test_anthropic_payload_uses_compat_fields(monkeypatch):
     _open(monkeypatch)
     p = _anthropic_provider()
-    body = _request_payload(p, p.model, [{"role": "user", "content": "hi"}], 512)
-    assert body["max_tokens"] == 512
+    body = _request_payload(p, p.model, [{"role": "user", "content": "hi"}], 4096)
+    assert body["max_tokens"] == 4096
     assert "max_completion_tokens" not in body
     assert body["model"] == "claude-sonnet-4-6"
 
@@ -127,11 +128,11 @@ def test_anthropic_payload_omits_temperature(monkeypatch):
     _open(monkeypatch)
     monkeypatch.setenv("ANTHROPIC_MODEL", "claude-haiku-5-5")
     p = _anthropic_provider()
-    body = _request_payload(p, p.model, [{"role": "user", "content": "hi"}], 512)
+    body = _request_payload(p, p.model, [{"role": "user", "content": "hi"}], 4096)
     assert "temperature" not in body
     assert body == {
         "model": "claude-haiku-5-5",
-        "max_tokens": 512,
+        "max_tokens": 4096,
         "messages": [{"role": "user", "content": "hi"}],
     }
 
@@ -143,3 +144,72 @@ def test_compat_providers_still_send_temperature():
     p = _Provider(name="groq", api_url="https://x", api_key="k", model="m")
     body = _request_payload(p, p.model, [{"role": "user", "content": "hi"}], 512)
     assert body["temperature"] == 0.1
+
+
+def test_anthropic_payload_floors_short_caps(monkeypatch):
+    # The conversation router asks for 300; thinking would spend it and return "".
+    _open(monkeypatch)
+    p = _anthropic_provider()
+    msgs = [{"role": "user", "content": "hi"}]
+    assert _request_payload(p, p.model, msgs, 300)["max_tokens"] == 2048
+    assert _request_payload(p, p.model, msgs, 4096)["max_tokens"] == 4096  # larger caps kept
+    monkeypatch.setenv("ANTHROPIC_MIN_OUTPUT_TOKENS", "1024")
+    assert _request_payload(p, p.model, msgs, 300)["max_tokens"] == 1024
+
+
+def test_compat_providers_keep_short_caps():
+    # Control: the floor is scoped to the anthropic slot.
+    from shared.inference.router import _Provider
+
+    p = _Provider(name="groq", api_url="https://x", api_key="k", model="m")
+    body = _request_payload(p, p.model, [{"role": "user", "content": "hi"}], 300)
+    assert body["max_tokens"] == 300
+
+
+async def test_floor_reaches_the_wire(monkeypatch):
+    # The send loop rewrites the cap per attempt; the floor must survive it.
+    from unittest.mock import MagicMock, patch
+
+    from shared.inference.router import InferenceRouter
+
+    _open(monkeypatch)
+    monkeypatch.setenv("INFERENCE_BACKEND", "cloud")
+    posts = []
+
+    class _Client:
+        def __init__(self, *a, **k):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return False
+
+        async def post(self, url, headers=None, json=None):
+            posts.append(dict(json))
+            ok = MagicMock()
+            ok.raise_for_status = MagicMock()
+            ok.json = MagicMock(return_value={"choices": [{"message": {"content": "ok"}}],
+                                              "usage": {"prompt_tokens": 5, "completion_tokens": 2}})
+            return ok
+
+    r = InferenceRouter()
+    r.write_api_usage = MagicMock()
+    assert [p.name for p in r.providers] == ["anthropic"]
+    with patch("shared.inference.router.httpx.AsyncClient", _Client):
+        content, _ = await r.complete([{"role": "user", "content": "hi"}], max_tokens=300,
+                                      reasoning_retry=False)
+    assert content == "ok"
+    assert posts[0]["max_tokens"] == 2048
+
+    # Control: on the same send path a non-anthropic provider keeps the caller's 300.
+    monkeypatch.setenv("ANTHROPIC_CASCADE_ENABLED", "0")
+    monkeypatch.setenv("GROQ_API_KEY", "k")
+    posts.clear()
+    r = InferenceRouter()
+    r.write_api_usage = MagicMock()
+    assert [p.name for p in r.providers] == ["groq"]
+    with patch("shared.inference.router.httpx.AsyncClient", _Client):
+        await r.complete([{"role": "user", "content": "hi"}], max_tokens=300, reasoning_retry=False)
+    assert posts[0]["max_tokens"] == 300
