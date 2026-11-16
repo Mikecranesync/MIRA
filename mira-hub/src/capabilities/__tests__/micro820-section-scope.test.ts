@@ -7,7 +7,7 @@ import { excludedTablesRefusalText, modelNumbersIn } from "../manual-applicabili
 import { retrieveNodeChunks } from "@/lib/manual-rag";
 import { SectionTableScope, sectionTableLayout } from "../section-table-scope";
 import { pageWithTables } from "../table-rows";
-import { columnBoundaryMatrix, columnBoundaryMatrixPages } from "../__fixtures__/section-boundary-matrix";
+import { columnBoundaryMatrix, columnBoundaryMatrixPages, columnSemanticMatrix, columnSemanticMatrixPages, columnMeasuredMatrix, columnMeasuredMatrixPage } from "../__fixtures__/section-boundary-matrix";
 
 // Actual unpdf page text and positioned items, captured from the retained source hash.
 // Only the PDF/SQL boundaries are simulated: upload parsing, chunking, the #5487
@@ -921,6 +921,34 @@ it.each(columnBoundaryMatrix)("F10 extracted-column boundary $id preserves origi
   }
   for (const model of ["20QWB", "20AWB", "20QBB"]) for (const token of ["zzmatrixfirst", "zzmatrixlast", "zzmatrixcontinued"]) {
     expect((await retrieve(model, rows, token)).text).not.toContain(token);
+  }
+});
+
+it.each(columnSemanticMatrix)("F12 semantic extracted-column boundary $id preserves only original values", async (c) => {
+  const cover = "Micro820 Programmable Controllers\n2080-LC20-20QBB, 2080-LC20-20QWB, 2080-LC20-20AWB";
+  pdfPages.current = [{ page: 1, text: cover, items: [{ str: cover, x: 100, y: 760, w: 450, size: 12 }] },
+    ...columnSemanticMatrixPages(c).map((items, i) => ({ page: i + 2, items, text: items.map((r) => r.str).join("\n") }))];
+  let rows: Row[];
+  try { rows = await ingestFixture(); } finally { pdfPages.current = null; }
+  for (const [model, value] of [["20QWB", "2 A"], ["20AWB", "1 A"]]) {
+    expect((await retrieve(model, rows, "zzcolumnoriginal Load current")).text).toContain(value);
+  }
+  for (const token of ["zzcolumnfirst", "zzcolumnlast", "zzcolumncontinued"]) {
+    expect(rows.some((r) => r.content.includes(token))).toBe(true); // preserve the source data
+    for (const model of ["20QWB", "20AWB", "20QBB"]) expect((await retrieve(model, rows, token)).text).not.toContain(token);
+  }
+});
+
+it.each(columnMeasuredMatrix)("F12 measured extracted-column row $id retains original values and uncertainty controls", async (c) => {
+  const items = columnMeasuredMatrixPage(c);
+  pdfPages.current = [{ page: 1, items, text: items.map((r) => r.str).join("\n") }];
+  let rows: Row[];
+  try { rows = await ingestFixture(); } finally { pdfPages.current = null; }
+  for (const [model, original, later] of [["20QWB", "2 A", "3 A"], ["20AWB", "1 A", "4 A"]]) {
+    expect((await retrieve(model, rows, "zzcolumnoriginal Load current")).text).toContain(original);
+    const measured = (await retrieve(model, rows, "zzcolumnmeasured Point current")).text;
+    if (c.kind === "bold-label") expect(measured).not.toContain(later); // preserve earlier oversized-row uncertainty
+    else expect(measured).toContain(later);
   }
 });
 

@@ -11,7 +11,7 @@ import { inferEquipmentType } from "../equipment-type";
 import fixture from "../../capabilities/__fixtures__/table-rows/micro820-in009-p16-20-scope.json";
 import { COLUMN_LINE_MARK } from "@/capabilities/contact-ratings-table";
 import { excludedTablesRefusalText } from "@/capabilities/manual-applicability";
-import { boundaryMatrix, boundaryMatrixPages, measuredMatrix, measuredMatrixPage, columnBoundaryMatrix, columnBoundaryMatrixPages } from "@/capabilities/__fixtures__/section-boundary-matrix";
+import { boundaryMatrix, boundaryMatrixPages, measuredMatrix, measuredMatrixPage, columnBoundaryMatrix, columnBoundaryMatrixPages, columnSemanticMatrix, columnSemanticMatrixPages, columnMeasuredMatrix, columnMeasuredMatrixPage } from "@/capabilities/__fixtures__/section-boundary-matrix";
 
 // #5503 PDF/tenant boundaries for the nested SQL block below; no search rows scripted.
 vi.hoisted(() => {
@@ -1124,6 +1124,36 @@ describe("#5503 actual upload INSERT through raw retrieval SQL", () => {
       }
       for (const model of ["20QWB", "20QBB", "20AWB"]) for (const token of ["zzmatrixfirst", "zzmatrixlast", "zzmatrixcontinued"]) {
         expect((await retrieve(model, token)).text).not.toContain(token);
+      }
+    });
+  });
+
+  it.each(columnSemanticMatrix)("F12 actual writer/SQL rejects semantic extracted-column boundary $id", async (c) => {
+    const cover = "Micro820 Programmable Controllers\n2080-LC20-20QBB, 2080-LC20-20QWB, 2080-LC20-20AWB";
+    const pages = [{ page: 1, items: [item(cover, 100, 760, 12)], text: cover },
+      ...columnSemanticMatrixPages(c).map((items, i) => ({ page: i + 2, items, text: items.map((r) => r.str).join("\n") }))];
+    await withPages(pages, async () => {
+      for (const [model, value] of [["20QWB", "2 A"], ["20AWB", "1 A"]]) {
+        expect((await retrieve(model, "zzcolumnoriginal Load current")).text).toContain(value);
+      }
+      const stored = await client.query("SELECT content,metadata FROM knowledge_entries WHERE tenant_id = $1 AND doc_id = $2 AND is_private = true", [TENANT,DOCUMENT]);
+      for (const token of ["zzcolumnfirst", "zzcolumnlast", "zzcolumncontinued"]) {
+        const rows = stored.rows.filter((r) => r.content.includes(token));
+        expect(rows.length).toBeGreaterThan(0);
+        expect(rows.every((r) => r.metadata.table_unqualified || r.metadata.table_scope === "unresolved")).toBe(true);
+        for (const model of ["20QWB", "20AWB", "20QBB"]) expect((await retrieve(model, token)).text).not.toContain(token);
+      }
+    });
+  });
+
+  it.each(columnMeasuredMatrix)("F12 actual writer/SQL preserves measured extracted-column row $id", async (c) => {
+    const items = columnMeasuredMatrixPage(c);
+    await withPages([{ page: 1, items, text: items.map((r) => r.str).join("\n") }], async () => {
+      for (const [model, original, later] of [["20QWB", "2 A", "3 A"], ["20AWB", "1 A", "4 A"]]) {
+        expect((await retrieve(model, "zzcolumnoriginal Load current")).text).toContain(original);
+        const measured = (await retrieve(model, "zzcolumnmeasured Point current")).text;
+        if (c.kind === "bold-label") expect(measured).not.toContain(later); // preserve earlier oversized-row uncertainty
+        else expect(measured).toContain(later);
       }
     });
   });

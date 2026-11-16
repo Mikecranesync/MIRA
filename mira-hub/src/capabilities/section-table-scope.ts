@@ -11,7 +11,7 @@ export type SectionScope = "section" | "shared" | "unresolved";
 /** columnOnly is internal: independent parameter/accessory columns retain the
  * existing family-domain rule; an explicit catalog section never gains it. */
 export type ScopedText = { columnOnly?: boolean; text: string; models?: string[]; scope?: SectionScope; sharedHeader?: string };
-type Heading = { interruption?: boolean; bodyHeading?: boolean; localTitle?: boolean; fontPeakEligible?: boolean; bodySize?: number; interruptedModels?: string[]; text: string; at: number; table: boolean; size: number; sharedHeader?: string; headerModels?: string[]; headerUnresolved?: boolean; headerInvalidLabels?: boolean; relayTable?: boolean; sourceLine: number; y: number; headerTop?: number; headerBottom?: number; columnUnresolved?: boolean };
+type Heading = { interruption?: boolean; bodyHeading?: boolean; localTitle?: boolean; semanticTitle?: boolean; fontPeakEligible?: boolean; bodySize?: number; interruptedModels?: string[]; text: string; at: number; table: boolean; size: number; sharedHeader?: string; headerModels?: string[]; headerUnresolved?: boolean; headerInvalidLabels?: boolean; relayTable?: boolean; sourceLine: number; y: number; headerTop?: number; headerBottom?: number; columnUnresolved?: boolean };
 export type SectionLayout = { text: string; headings: Heading[]; candidates?: Heading[]; hasTables: boolean; retainedLines: string[] };
 type OutputMap = Map<string, boolean | null>;
 type ActiveScope = Pick<ScopedText, "models" | "scope" | "sharedHeader" | "columnOnly">;
@@ -80,7 +80,7 @@ function engineeringBoundary(text: string): boolean {
 
 /** Detection only: catalog fragments and footnote markers are not measured row
  * values. A negative catalog title may stop scope, but never assigns models. */
-function localSectionTitle(text: string): { semantic: boolean; typographic: boolean } | null {
+function localSectionTitle(text: string): { semantic: boolean; typographic: boolean; sectionTitle: boolean } | null {
   let remainder = catalogIdentifierView(text).text;
   const catalogs = modelNumbersIn(remainder);
   const title = catalogs.length > 0 || engineeringBoundary(remainder)
@@ -101,8 +101,14 @@ function localSectionTitle(text: string): { semantic: boolean; typographic: bool
   // Reuse the existing enumerated-catalog grammar on its readable prefix.
   const measured = findValues(title, "source")[0];
   const catalogPrefix = measured !== undefined && captionModels({ text: title.slice(0, measured.start) }).length > 0;
-  const semantic = engineeringBoundary(title) || (catalogs.length > 0 && (ordinaryTitle || catalogPrefix));
-  return ordinaryTitle || semantic ? { semantic, typographic: ordinaryTitle } : null;
+  const engineering = engineeringBoundary(title);
+  const semantic = engineering || (catalogs.length > 0 && (ordinaryTitle || catalogPrefix));
+  // Bare identifiers can be column labels or graph legends inside a table.
+  // Only a declaration, exclusion or engineering section fences extraction;
+  // the separate inherited-scope path still checks catalog contradictions.
+  const sectionTitle = engineering || catalogPrefix || captionModels({ text: title }).length > 0 ||
+    (catalogs.length > 0 && hasNegation(text));
+  return ordinaryTitle || semantic ? { semantic, typographic: ordinaryTitle, sectionTitle } : null;
 }
 
 /** Render every positioned item once, in page reading order. Caption positions, rather than
@@ -322,6 +328,7 @@ export function sectionTableLayout(items: readonly LayoutItem[], includeBoundari
       const heading: Heading = { text: caption?.text ?? line.text, at, table: !!caption, size: line.size,
         ...(bodyHeading ? { bodyHeading: true } : {}),
         ...(localTitle ? { localTitle: true, fontPeakEligible } : {}),
+        ...(titleEvidence?.sectionTitle ? { semanticTitle: true } : {}),
         ...(caption?.bodySize ? { bodySize: caption.bodySize } : {}),
         ...(caption?.sharedHeader ? { sharedHeader: caption.sharedHeader } : {}),
         ...(caption?.headerModels ? { headerModels: caption.headerModels } : {}),
@@ -389,24 +396,24 @@ function contradictoryTableHeading(h: Pick<Heading, "text" | "headerModels">): b
     header.some((n) => !caption.some((own) => own.key === n.key));
 }
 
-/** Font furniture below a table's own header size is not a new physical heading.
- * Footnotes can make the page-wide minimum tiny; do not split ordinary grid rows
- * just because that minimum made them candidates in the general page layout. */
+/** Semantic title evidence must fence extracted spans before source items are
+ * removed. Font and measured-row geometry remain fallback evidence only;
+ * tiny footnotes and ordinary grid rows do not establish semantic titles. */
 function crossesHeading(chunk: TableChunk, h: Heading): boolean {
   return chunk.sourceTop !== undefined && chunk.sourceBottom !== undefined &&
     h.y < chunk.sourceTop - 2.5 && h.y >= chunk.sourceBottom - 2.5 &&
-    (h.table || (chunk.sourceHeaderSize === undefined && chunk.sourceBodySize === undefined) ||
+    (h.table || h.semanticTitle || (chunk.sourceHeaderSize === undefined && chunk.sourceBodySize === undefined) ||
       !chunk.sourceRowYs?.some((y) => Math.abs(y - h.y) <= 2.5) &&
       h.size > (chunk.sourceBodySize || chunk.sourceHeaderSize || 0) + 0.2);
 }
 
-/** Start with proven table captions; then fence every larger recognized heading
- * inside an extracted column block, including unresolved/non-table sections. */
+/** Fence semantic section titles and the existing larger-font fallback inside
+ * extracted columns, including unresolved sections with no repeated header. */
 export function tableExtractionBoundaries(layout: SectionLayout | null, chunks: readonly TableChunk[] = []): number[] {
   return (layout?.candidates ?? layout?.headings)?.filter((h) => h.table || chunks.some((c) => !c.unqualified && crossesHeading(c, h))).map((h) => h.y) ?? [];
 }
 
-/** Promote only interruptions proven against an extracted table's local font/span.
+/** Promote interruptions proven against an extracted table's semantic evidence/span.
  * Reuse the original unsplit spans after extraction, so a smaller new heading
  * also stops residual text and headerless continuation inheriting earlier scope. */
 export function withTableInterruptions(layout: SectionLayout | null, chunks: readonly TableChunk[]): SectionLayout | null {

@@ -126,3 +126,60 @@ export function columnBoundaryMatrixPages(c: BoundaryMatrixCase): LayoutItem[][]
   return pages;
 }
 
+export type ColumnSemanticCase = {
+  id: string;
+  bodyFont: number;
+  titleFont: number;
+  kind: "named" | "negative" | "unnamed" | "description" | "same-qwb" | "same-awb";
+  fragments: "joined" | "split";
+  gap: number;
+};
+
+/** Include the entire title in ONE PDF item: separate title/catalog cells can
+ * stop the column reader for another reason and conceal a missed boundary. */
+export const columnSemanticMatrix: ColumnSemanticCase[] = [];
+for (const bodyFont of [6, 8, 10])
+  for (const titleFont of [bodyFont - 2, bodyFont, bodyFont + 2])
+    for (const kind of ["named", "negative", "unnamed", "description", "same-qwb", "same-awb"] as const)
+      for (const fragments of ["joined", "split"] as const)
+        for (const gap of [12, 28])
+          columnSemanticMatrix.push({ bodyFont, titleFont, kind, fragments, gap,
+            id: [bodyFont, titleFont, kind, fragments, gap].join("-") });
+
+const originalColumns = (font: number): LayoutItem[] => [
+  row("Output Specifications for 2080-LC20-20QWB, 2080-LC20-20AWB", 740, 12),
+  row("Attribute", 720), row("2080-LC20-20QWB", 720, 8, 280), row("2080-LC20-20AWB", 720, 8, 420),
+  row("zzcolumnoriginal Load current max", 706, font), row("2 A", 706, font, 280), row("1 A", 706, font, 420),
+  row("Switching time max", 692, font), row("10 ms", 692, font, 280), row("8 ms", 692, font, 420),
+];
+
+export function columnSemanticMatrixPages(c: ColumnSemanticCase): LayoutItem[][] {
+  const y = 692 - c.gap;
+  const prefix = c.kind === "description" || c.kind.startsWith("same-") ? "Description for"
+    : c.kind === "negative" ? "DC Output Data (not for" : "DC Output Data for";
+  const catalog = c.kind === "negative" ? "2080-LC20-20QWB)" : c.kind === "same-qwb" ? "2080-LC20-20QWB"
+    : c.kind === "same-awb" ? "2080-LC20-20AWB" : "2080-LC20-20QBB";
+  const heading = c.kind === "unnamed" ? (c.fragments === "joined" ? [row("DC Output Data", y, c.titleFont)]
+    : [row("DC Output", y, c.titleFont), row("Data", y, c.titleFont, 350)])
+    : c.fragments === "joined" ? [row(prefix + " " + catalog, y, c.titleFont)]
+      : [row(prefix, y, c.titleFont), row(catalog, y, c.titleFont, 350)];
+  return [[...originalColumns(c.bodyFont), ...heading,
+    row("zzcolumnfirst Point current max", y - c.gap, c.bodyFont), row("9 A", y - c.gap, c.bodyFont, 280), row("11 A", y - c.gap, c.bodyFont, 420),
+    row("zzcolumnlast Point current max", y - c.gap - 14, c.bodyFont), row("19 A", y - c.gap - 14, c.bodyFont, 280), row("21 A", y - c.gap - 14, c.bodyFont, 420)],
+  [row("zzcolumncontinued Point current max", 720, c.bodyFont), row("39 A", 720, c.bodyFont, 280), row("41 A", 720, c.bodyFont, 420)]];
+}
+
+export const columnMeasuredMatrix = (["ordinary", "bold-label", "smaller-label", "catalog-qwb", "catalog-awb"] as const)
+  .flatMap((kind) => [6, 8, 10].flatMap((bodyFont) => [12, 28].map((gap) =>
+    ({ kind, bodyFont, gap, id: [kind, bodyFont, gap].join("-") }))));
+
+export function columnMeasuredMatrixPage(c: typeof columnMeasuredMatrix[number]): LayoutItem[] {
+  const labelFont = c.kind === "bold-label" ? 14 : c.kind === "smaller-label" ? c.bodyFont - 2 : c.bodyFont;
+  const catalog = c.kind.startsWith("catalog-");
+  const y = 692 - c.gap - (catalog ? 14 : 0);
+  return [...originalColumns(c.bodyFont),
+    ...(catalog ? [row(c.kind === "catalog-qwb" ? "2080-LC20-20QWB" : "2080-LC20-20AWB", 692 - c.gap, c.bodyFont)] : []),
+    row("zzcolumnmeasured Point current max", y, labelFont),
+    row("3 A", y, c.bodyFont, 280), row("4 A", y, c.bodyFont, 420)];
+}
+
