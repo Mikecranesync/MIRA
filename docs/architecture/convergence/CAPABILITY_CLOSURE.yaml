@@ -1243,8 +1243,8 @@ capabilities:
       - "InferenceRouter.complete              # every cascade call (diagnosis, router, vision when opted in)"
     environments:
       dev: unset
-      staging: unset
-      production: unset
+      staging: unset      # not forwarded by docker-compose.staging-vps.yml
+      production: unset   # not forwarded by docker-compose.saas.yml (ANTHROPIC_API_KEY is; the three controls are not)
     state: deployed_disabled
     owner: Mike
     ci_jobs:
@@ -1257,8 +1257,13 @@ capabilities:
       auto-charge; a prepaid promotional credit reopens it. Three fail-closed
       fences: a key, ANTHROPIC_CASCADE_ENABLED=1, and a timezone-aware
       ANTHROPIC_CASCADE_NOT_AFTER in the future. Read 2026-11-16: unset in Doppler
-      dev, stg and prd, so it is off everywhere.
+      dev, stg and prd, so it is off everywhere. No compose file forwards
+      ANTHROPIC_CASCADE_ENABLED, ANTHROPIC_CASCADE_NOT_AFTER or MIRA_CASCADE_ORDER,
+      so a Doppler write alone does nothing in a container: the slot is
+      reachable only in-process (the eval harness), deliberately, until
+      forwarding is approved (Codex r1 F2 on #5568).
     promotion_criteria:
+      - "A compose change forwards ANTHROPIC_CASCADE_ENABLED, ANTHROPIC_CASCADE_NOT_AFTER and MIRA_CASCADE_ORDER (default off) to the inference services, with a contract test."
       - "Mike authorizes the Doppler writes (flag + key + not-after) and a staging deploy."
       - "Staging smoke + release-gate eval with the slot on, before any production enablement."
     review_by: "2026-11-18"

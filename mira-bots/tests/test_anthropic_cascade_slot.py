@@ -218,3 +218,106 @@ async def test_floor_reaches_the_wire(monkeypatch):
     with patch("shared.inference.router.httpx.AsyncClient", _Client):
         await r.complete([{"role": "user", "content": "hi"}], max_tokens=300, reasoning_retry=False)
     assert posts[0]["max_tokens"] == 300
+
+
+# --- Deadline is re-checked before every send (Codex r1 F1 on #5568) ----------
+# A router is built once and cached for the process, so a check at construction
+# alone let a long-running service keep calling Anthropic past the deadline.
+
+DEADLINE = datetime(2026, 11, 17, 19, 0, tzinfo=UTC)
+
+
+def _wire(responses, posts):
+    from unittest.mock import MagicMock
+
+    import httpx
+
+    class _Client:
+        def __init__(self, *a, **k):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return False
+
+        async def post(self, url, headers=None, json=None):
+            posts.append(url)
+            status, body = responses.get(url, (200, "fallback answer"))
+            resp = MagicMock()
+            if status != 200:
+                req = httpx.Request("POST", url)
+                err = httpx.Response(status, request=req, headers={"retry-after": "1"})
+                resp.raise_for_status = MagicMock(
+                    side_effect=httpx.HTTPStatusError("x", request=req, response=err)
+                )
+            else:
+                resp.raise_for_status = MagicMock()
+            resp.json = MagicMock(
+                return_value={
+                    "choices": [{"message": {"content": body}}],
+                    "usage": {"prompt_tokens": 5, "completion_tokens": 2},
+                }
+            )
+            return resp
+
+    return _Client
+
+
+def _router_before_deadline(monkeypatch):
+    from unittest.mock import MagicMock
+
+    from shared.inference import router as rmod
+
+    _open(monkeypatch, DEADLINE.isoformat())
+    monkeypatch.setenv("GROQ_API_KEY", "k")
+    monkeypatch.setenv("MIRA_CASCADE_ORDER", "anthropic,groq")
+    monkeypatch.setenv("INFERENCE_BACKEND", "cloud")
+    monkeypatch.setattr(rmod, "_now", lambda: DEADLINE - timedelta(minutes=1))
+    r = rmod.InferenceRouter()
+    r.write_api_usage = MagicMock()
+    assert [p.name for p in r.providers] == ["anthropic", "groq"]
+    return rmod, r
+
+
+async def test_cached_router_stops_calling_anthropic_at_the_deadline(monkeypatch):
+    from unittest.mock import patch
+
+    rmod, r = _router_before_deadline(monkeypatch)
+    posts: list[str] = []
+    anth = "https://api.anthropic.com/v1/chat/completions"
+    with patch.object(rmod.httpx, "AsyncClient", _wire({anth: (200, "claude")}, posts)):
+        content, _ = await r.complete([{"role": "user", "content": "hi"}], reasoning_retry=False)
+        assert content == "claude"  # control: before the deadline the slot answers
+
+        monkeypatch.setattr(rmod, "_now", lambda: DEADLINE)
+        posts.clear()
+        content, usage = await r.complete(
+            [{"role": "user", "content": "hi"}], reasoning_retry=False
+        )
+    assert anth not in posts
+    assert content == "fallback answer"
+    assert usage["provider"] == "groq"
+
+
+async def test_deadline_passing_during_a_rate_limit_wait_blocks_the_retry(monkeypatch):
+    from unittest.mock import patch
+
+    rmod, r = _router_before_deadline(monkeypatch)
+    posts: list[str] = []
+    anth = "https://api.anthropic.com/v1/chat/completions"
+
+    async def _sleep_past_deadline(_s):
+        monkeypatch.setattr(rmod, "_now", lambda: DEADLINE + timedelta(seconds=1))
+
+    with (
+        patch.object(rmod.httpx, "AsyncClient", _wire({anth: (429, "")}, posts)),
+        patch.object(rmod.asyncio, "sleep", _sleep_past_deadline),
+    ):
+        content, usage = await r.complete(
+            [{"role": "user", "content": "hi"}], reasoning_retry=False
+        )
+    assert posts.count(anth) == 1  # the 429'd attempt, and no retry after the deadline
+    assert content == "fallback answer"
+    assert usage["provider"] == "groq"

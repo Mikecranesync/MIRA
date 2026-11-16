@@ -505,6 +505,39 @@ def _truthy(value: str | None) -> bool:
     return (value or "").strip().lower() in ("1", "true", "yes", "on")
 
 
+def _now() -> datetime:
+    """Wall clock for the Anthropic deadline; a seam so tests can move time."""
+    return datetime.now(UTC)
+
+
+def _anthropic_slot_open(now: datetime | None = None) -> bool:
+    """True only while all three fences are open. Re-read on every attempt.
+
+    A router is built once and cached for the life of a process
+    (conversation_router, vision_worker), so a check at construction alone let a
+    long-running service keep calling Anthropic after the deadline (Codex r1 F1
+    on #5568). ``_hold`` calls this before every send — first attempt,
+    reasoning retry and rate-limit retry.
+    """
+    if not _truthy(os.getenv("ANTHROPIC_CASCADE_ENABLED")):
+        return False
+    if not os.getenv("ANTHROPIC_API_KEY", ""):
+        return False
+    raw = os.getenv("ANTHROPIC_CASCADE_NOT_AFTER") or ""
+    try:
+        not_after = datetime.fromisoformat(raw)
+    except ValueError:
+        logger.error("ANTHROPIC_CASCADE_NOT_AFTER unparseable (%r) — slot closed", raw)
+        return False
+    if not_after.tzinfo is None:
+        logger.error("ANTHROPIC_CASCADE_NOT_AFTER has no UTC offset — slot closed")
+        return False
+    if (now or _now()) >= not_after:
+        logger.warning("ANTHROPIC_CASCADE_NOT_AFTER passed (%s) — slot closed", raw)
+        return False
+    return True
+
+
 def _anthropic_provider(now: datetime | None = None) -> _Provider | None:
     """Time-boxed Anthropic slot (owner decision 2026-11-15, promo credit).
 
@@ -521,27 +554,12 @@ def _anthropic_provider(now: datetime | None = None) -> _Provider | None:
     Uses Anthropic's OpenAI-compatible endpoint, so it rides the same request
     path as every other provider. Text-only unless ANTHROPIC_VISION_MODEL is set.
     """
-    if not _truthy(os.getenv("ANTHROPIC_CASCADE_ENABLED")):
-        return None
-    key = os.getenv("ANTHROPIC_API_KEY", "")
-    if not key:
-        return None
-    raw = os.getenv("ANTHROPIC_CASCADE_NOT_AFTER") or ""
-    try:
-        not_after = datetime.fromisoformat(raw)
-    except ValueError:
-        logger.error("ANTHROPIC_CASCADE_NOT_AFTER unparseable (%r) — slot left out", raw)
-        return None
-    if not_after.tzinfo is None:
-        logger.error("ANTHROPIC_CASCADE_NOT_AFTER has no UTC offset — slot left out")
-        return None
-    if (now or datetime.now(UTC)) >= not_after:
-        logger.warning("ANTHROPIC_CASCADE_NOT_AFTER passed (%s) — slot left out", raw)
+    if not _anthropic_slot_open(now):
         return None
     return _Provider(
         name="anthropic",
         api_url="https://api.anthropic.com/v1/chat/completions",
-        api_key=key,
+        api_key=os.getenv("ANTHROPIC_API_KEY", ""),
         model=os.getenv("ANTHROPIC_MODEL") or "claude-sonnet-4-6",
         timeout=float(os.getenv("ANTHROPIC_TIMEOUT") or "90"),
         vision_model=os.getenv("ANTHROPIC_VISION_MODEL") or "",
@@ -851,6 +869,9 @@ class InferenceRouter:
         def _hold(cap: int, what: str) -> bool:
             """Reserve a metered attempt; False when it no longer fits the cap."""
             nonlocal current, current_cap
+            if provider.request_style == "anthropic_compat" and not _anthropic_slot_open():
+                logger.warning("ANTHROPIC_SLOT_CLOSED — not sending the %s", what)
+                return False
             if not metered:
                 return True
             if current is None:
