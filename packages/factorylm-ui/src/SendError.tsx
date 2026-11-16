@@ -74,8 +74,8 @@ export function SendError({ error, dispatch, draft, turnId, hooks }: SendErrorPr
   };
 
   return (
-    <div className="fl-send-error" role="alert" aria-label="Send error">
-      <div className="fl-send-error__icon">✕</div>
+    <div className="fl-send-error" role="alert" aria-label="Send error" data-kind={review ? "review" : "failure"}>
+      <div className="fl-send-error__icon" aria-hidden="true">{review ? "!" : "✕"}</div>
       <div className="fl-send-error__content">
         <p className="fl-send-error__message">{review ? "Check the question target" : "Couldn't reach MIRA"}</p>
         <p className="fl-send-error__detail">{error}{draft.trim() ? " Your message is saved below." : ""}</p>

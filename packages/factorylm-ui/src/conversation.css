@@ -1,6 +1,18 @@
 .fl-shell__main { grid-template-rows: auto minmax(0, 1fr) auto; }
 /* Composer and any send error, pinned together to the bottom: a send error must not hide under the pinned composer. */
 .fl-shell__dock { position: sticky; inset-block-end: 0; min-inline-size: 0; background: var(--fl-workspace-surface); }
+/* Send error card: amber for a target review (check, then Send), red when MIRA
+   could not be reached. State colors on the edge and tint only; text stays ink. */
+.fl-send-error { display: flex; align-items: flex-start; gap: var(--fl-workspace-space-3); margin: var(--fl-workspace-space-2) max(var(--fl-workspace-space-4), calc((100% - 48rem) / 2)) 0; padding: var(--fl-workspace-space-3); border: 1px solid var(--fl-workspace-fault-line); border-inline-start-width: 4px; border-radius: var(--fl-workspace-radius); background: var(--fl-workspace-fault-tint); color: var(--fl-workspace-fault-ink); }
+.fl-send-error[data-kind="review"] { border-color: var(--fl-workspace-warn-line); background: var(--fl-workspace-warn-tint); color: var(--fl-workspace-warn-ink); }
+.fl-send-error__icon { flex: none; font-weight: 700; line-height: 1.45; color: var(--fl-workspace-fault); }
+.fl-send-error[data-kind="review"] .fl-send-error__icon { color: var(--fl-workspace-warn); }
+.fl-send-error__content { flex: 1 1 auto; min-inline-size: 0; }
+.fl-send-error__message { margin: 0; font-weight: 600; }
+.fl-send-error__detail { margin: var(--fl-workspace-space-1) 0 0; line-height: 1.45; }
+.fl-send-error__actions { display: flex; flex-wrap: wrap; gap: var(--fl-workspace-space-2); margin-block-start: var(--fl-workspace-space-2); }
+/* Beats the generic `.fl-shell button` reset so the action reads as a button. */
+.fl-send-error .fl-send-error__button { min-block-size: max(2.75rem, 44px); padding-inline: var(--fl-workspace-space-3); border: 1px solid var(--fl-workspace-line); border-radius: var(--fl-workspace-radius); background: var(--fl-workspace-surface); color: var(--fl-workspace-ink); font: inherit; cursor: pointer; }
 
 .fl-conversation {
   min-block-size: 0;
