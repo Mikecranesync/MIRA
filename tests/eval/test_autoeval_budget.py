@@ -323,3 +323,46 @@ def test_payload_is_pinned_per_model_and_carries_model_params(tmp_path):
 
     _run(tmp_path, Spy(capture), model=MODEL)
     assert seen[0]["max_tokens"] == 1024 and seen[0]["temperature"] == 0
+
+
+# --- Concurrent commands share one ledger (Codex r1 F1 on #5569) ---------------
+
+
+def _race(tmp_path, monkeypatch, usd, cap):
+    import threading
+    import time as _t
+
+    cfg = _cfg(tmp_path, total_cap_usd=cap, daily_cap_usd=cap)
+    real = ab.Ledger.spent_day
+
+    def slow_spent_day(self, day):
+        v = real(self, day)
+        _t.sleep(0.2)  # widen the read-then-append window so an unlocked reserve races
+        return v
+
+    monkeypatch.setattr(ab.Ledger, "spent_day", slow_spent_day)
+    admitted, refused = [], []
+
+    def one():
+        ledger = ab.Ledger(tmp_path / "ledger.jsonl", cfg, clock=lambda: NOON)
+        try:
+            admitted.append(ledger.reserve(usd, model=MODEL))
+        except ab.BudgetStop:
+            refused.append(1)
+
+    ts = [threading.Thread(target=one) for _ in range(2)]
+    [t.start() for t in ts]
+    [t.join() for t in ts]
+    return admitted, refused, ab.Ledger(tmp_path / "ledger.jsonl", cfg).spent_total()
+
+
+def test_two_concurrent_reservations_cannot_both_pass_the_cap(tmp_path, monkeypatch):
+    admitted, refused, booked = _race(tmp_path, monkeypatch, usd=0.75, cap=1.0)
+    assert len(admitted) == 1 and len(refused) == 1
+    assert booked <= 1.0
+
+
+def test_control_concurrent_reservations_that_fit_both_pass(tmp_path, monkeypatch):
+    admitted, refused, booked = _race(tmp_path, monkeypatch, usd=0.4, cap=1.0)
+    assert len(admitted) == 2 and not refused
+    assert abs(booked - 0.8) < 1e-9

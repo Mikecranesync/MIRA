@@ -137,10 +137,15 @@ def judge_call(prompt: str, env: JudgeEnv) -> tuple[str | None, str, str]:
         env.paid_required_usd += ab.worst_case(price, prompt)
         return None, "paid_required", key
     if env.mode == "seed":
-        judge = env.recorded.get(ctx.case_id)
-        if judge is None:
+        rec = env.recorded.get(ctx.case_id)
+        if rec is None:
             return None, "seed_miss", key
-        verdict = json.dumps(judge, sort_keys=True)
+        # Seed only onto the very answer that was scored (Codex r1 F2 on #5569):
+        # a recorded verdict for an older answer under the same case id must not
+        # be filed under the current prompt and answer hash.
+        if not rec.get("answer_sha256") or rec["answer_sha256"] != ctx.answer_sha256:
+            return None, "seed_unverified", key
+        verdict = json.dumps(rec["judge"], sort_keys=True)
         env.cache.put(
             key,
             _payload(
@@ -283,16 +288,31 @@ def run_set(
     )
 
 
+def _recorded_answer(set_root: Path, case_id: str) -> str | None:
+    """sha256 of the answer the recorded set scored, read from its own transcript."""
+    for sub in ("technician", "safety"):
+        t = set_root / sub / f"{case_id}.json"
+        if t.exists():
+            turns = json.loads(t.read_text()).get("turns") or [{}]
+            return sha256_text((turns[-1] or {}).get("answer", "") or "")
+    return None
+
+
 def seed_from_recorded(
     recorded_scores_dir: Path, inputs_dir: Path, out_dir: Path, env: JudgeEnv
 ) -> SetRun:
     """Replay recorded verdicts (a judge_baseline scores dir) into the cache through the same path."""
     recorded: dict[str, dict] = {}
+    set_root = Path(recorded_scores_dir).parent
     for p in sorted(Path(recorded_scores_dir).glob("*.json")):
         if p.name.startswith("_"):
             continue
         rec = json.loads(p.read_text())
         if isinstance(rec.get("judge"), dict):
-            recorded[str(rec.get("case_id", p.stem))] = rec["judge"]
+            cid = str(rec.get("case_id", p.stem))
+            recorded[cid] = {
+                "judge": rec["judge"],
+                "answer_sha256": _recorded_answer(set_root, cid),
+            }
     env.recorded = recorded
     return run_set(Path(inputs_dir), out_dir, env)

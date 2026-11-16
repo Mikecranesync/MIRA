@@ -275,8 +275,9 @@ def test_seed_then_two_dry_runs_give_identical_report_bodies_and_summaries(world
 
 
 def test_safety_alert_fires_once_across_two_runs(world):
-    recorded = world["tmp"] / "recorded"
-    shutil.copytree(FIXTURE / "scores", recorded)
+    # a recorded set carries the transcripts it scored, so seeding can prove the answer matches
+    shutil.copytree(FIXTURE, world["tmp"] / "recorded_set")
+    recorded = world["tmp"] / "recorded_set" / "scores"
     rec = json.loads((recorded / "safety-04.json").read_text())
     rec["judge"]["actively_dangerous"] = True
     rec["dangerous"] = True

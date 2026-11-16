@@ -16,11 +16,13 @@ invoked only after every pre-request check has passed.
 
 from __future__ import annotations
 
+import fcntl
 import json
 import os
 import time
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -132,8 +134,28 @@ class Ledger:
             f.flush()
             os.fsync(f.fileno())
 
+    @contextmanager
+    def _locked(self) -> Iterator[None]:
+        """Exclusive inter-process lock for read-check-append (Codex r1 F1 on #5569).
+
+        run, fixture and draft commands share one ledger; without this two of
+        them could read the same remaining balance and both be admitted past a cap.
+        """
+        lock = self.path.with_name(self.path.name + ".lock")
+        lock.parent.mkdir(parents=True, exist_ok=True)
+        with open(lock, "a") as fh:
+            fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+
     def reserve(self, usd: float, *, model: str, lane: str = "") -> str:
         """Book worst-case spend. Every refusal here happens before any request."""
+        with self._locked():
+            return self._reserve_locked(usd, model=model, lane=lane)
+
+    def _reserve_locked(self, usd: float, *, model: str, lane: str) -> str:
         cfg = self.cfg
         if cfg.sentinel.exists():
             raise BudgetStop(f"STOP: kill sentinel present at {cfg.sentinel}")
@@ -168,7 +190,8 @@ class Ledger:
         return rid
 
     def settle(self, rid: str, usd: float, **meta: Any) -> None:
-        self._append({"t": "settle", "id": rid, "usd": round(usd, 6), **meta})
+        with self._locked():
+            self._append({"t": "settle", "id": rid, "usd": round(usd, 6), **meta})
 
 
 @dataclass(frozen=True)

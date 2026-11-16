@@ -330,8 +330,9 @@ def test_seeded_entries_are_marked_seeded_with_null_cost(tmp_path):
 
 
 def test_seed_miss_stays_a_miss_and_is_not_guessed(tmp_path):
-    recorded = tmp_path / "recorded"
-    shutil.copytree(FIXTURE / "scores", recorded)
+    # a recorded set carries the transcripts it scored, so seeding can prove the answer matches
+    shutil.copytree(FIXTURE, tmp_path / "recorded_set")
+    recorded = tmp_path / "recorded_set" / "scores"
     (recorded / "tech-03.json").unlink()
     env, _ = _env(tmp_path, "seed")
     seeded = jud.seed_from_recorded(recorded, _set(tmp_path), tmp_path / "seed-out", env)
@@ -342,8 +343,9 @@ def test_seed_miss_stays_a_miss_and_is_not_guessed(tmp_path):
 
 
 def test_recorded_dangerous_verdict_is_reproduced_in_the_dangerous_list(tmp_path):
-    recorded = tmp_path / "recorded"
-    shutil.copytree(FIXTURE / "scores", recorded)
+    # a recorded set carries the transcripts it scored, so seeding can prove the answer matches
+    shutil.copytree(FIXTURE, tmp_path / "recorded_set")
+    recorded = tmp_path / "recorded_set" / "scores"
     rec = json.loads((recorded / "safety-04.json").read_text())
     rec["judge"]["actively_dangerous"] = True
     rec["dangerous"] = True
@@ -370,3 +372,37 @@ def test_parse_json_strips_code_fences_and_rejects_non_objects():
         jud.parse_json("[1, 2]")
     with pytest.raises(ValueError):
         jud.parse_json("not json")
+
+
+# ── seed provenance (Codex r1 F2 on #5569) ─────────────────────────────────────
+
+
+def _changed_answer_set(tmp):
+    root = _set(tmp)
+    t = sorted(p for p in (root / "technician").glob("*.json") if not p.name.startswith("_"))[0]
+    doc = json.loads(t.read_text())
+    doc["turns"][-1]["answer"] = "A DIFFERENT, NEWER ANSWER"
+    t.write_text(json.dumps(doc))
+    return root, doc["case_id"]
+
+
+def test_seed_refuses_a_recorded_verdict_for_a_changed_answer(tmp_path):
+    root, changed = _changed_answer_set(tmp_path)
+    env, _ = _env(tmp_path, "seed")
+    seeded = jud.seed_from_recorded(FIXTURE / "scores", root, tmp_path / "seed-out", env)
+    assert seeded.counts.get("seed_unverified") == 1
+    assert (changed, "seed_unverified") in {(c, r) for c, r, _ in seeded.trace}
+    dry_env, _ = _env(tmp_path, "dry")
+    dry = _run(tmp_path, root, dry_env, name="dry")
+    assert dry.counts.get("paid_required") == 1  # the changed answer is judged fresh, not recalled
+
+
+def test_seed_refuses_when_the_recorded_transcript_is_missing(tmp_path):
+    recorded_set = tmp_path / "recorded_set"
+    shutil.copytree(FIXTURE / "scores", recorded_set / "scores")  # scores without transcripts
+    env, _ = _env(tmp_path, "seed")
+    seeded = jud.seed_from_recorded(
+        recorded_set / "scores", _set(tmp_path), tmp_path / "seed-out", env
+    )
+    assert seeded.counts.get("seed_hit", 0) == 0
+    assert seeded.counts.get("seed_unverified", 0) > 0
