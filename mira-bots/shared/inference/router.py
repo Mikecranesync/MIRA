@@ -52,7 +52,8 @@ logger = logging.getLogger("mira-gsd")
 # Providers billed per token. Their LLM_USAGE line must never read as free
 # (est_cost=$0.00000) — see InferenceRouter.log_usage. Groq / Cerebras /
 # Together are free-tier and stay out of this set.
-_METERED_PROVIDERS = frozenset({"openai", "openrouter"})
+# anthropic: the promo credit is finite, so a zero line would hide its spend (Codex r2 F4 on #5568).
+_METERED_PROVIDERS = frozenset({"openai", "openrouter", "anthropic"})
 
 # OpenRouter backup tier (owner decision 2026-10-14). Non-reasoning Llama 3.3
 # 70B for text (gpt-oss burns small caps on hidden reasoning) and Qwen3-VL for

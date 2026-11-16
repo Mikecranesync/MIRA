@@ -321,3 +321,17 @@ async def test_deadline_passing_during_a_rate_limit_wait_blocks_the_retry(monkey
     assert posts.count(anth) == 1  # the 429'd attempt, and no retry after the deadline
     assert content == "fallback answer"
     assert usage["provider"] == "groq"
+
+
+def test_anthropic_usage_logs_as_metered_not_free(caplog):
+    # Codex r2 F4 on #5568: the credit is finite, so a $0 line would hide its spend.
+    import logging
+
+    from shared.inference.router import InferenceRouter
+
+    with caplog.at_level(logging.INFO):
+        InferenceRouter.log_usage({"provider": "anthropic", "input_tokens": 5, "output_tokens": 2})
+        InferenceRouter.log_usage({"provider": "groq", "input_tokens": 5, "output_tokens": 2})
+    lines = [r.getMessage() for r in caplog.records if "LLM_USAGE" in r.getMessage()]
+    assert "metered=1" in lines[0] and "anthropic" in lines[0]
+    assert "est_cost=$0.00000" in lines[1]  # control: a free provider keeps the zero line
