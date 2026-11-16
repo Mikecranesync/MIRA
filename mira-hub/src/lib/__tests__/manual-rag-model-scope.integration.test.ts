@@ -38,7 +38,7 @@ vi.mock("unpdf", () => ({
       // Painted vertical rules of the same page (#5503 F14); a page without them has no rule evidence.
       getOperatorList: async () => {
         const rules = ((db.pages ?? fixture.pages).find((p) => p.page === page))?.rules ?? [];
-        return { fnArray: rules.map(() => 91), argsArray: rules.map((r) => [22, [[]], [r.x - 0.25, r.y0, r.x + 0.25, r.y1]]) };
+        return { fnArray: rules.map(() => 91), argsArray: rules.map((r) => [20, [[0, r.x, r.y0, 1, r.x, r.y1]], [r.x, r.y0, r.x, r.y1]]) };
       },
       cleanup: () => true,
     }),

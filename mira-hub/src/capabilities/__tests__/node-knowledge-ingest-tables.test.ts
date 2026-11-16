@@ -45,7 +45,7 @@ vi.mock("unpdf", () => ({
         }));
         const rules = pdf.rules.get(n) ?? [];
         const getOperatorList = async () => ({ fnArray: rules.map(() => 91),
-          argsArray: rules.map((r) => [22, [[]], [r.x - 0.25, r.y0, r.x + 0.25, r.y1]]) });
+          argsArray: rules.map((r) => [20, [[0, r.x, r.y0, 1, r.x, r.y1]], [r.x, r.y0, r.x, r.y1]]) });
         return { getTextContent: vi.fn(async () => ({ items })), getOperatorList, cleanup: () => true };
       }),
     };

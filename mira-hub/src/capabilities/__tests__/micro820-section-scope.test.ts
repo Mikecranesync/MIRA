@@ -19,7 +19,7 @@ const fixture = sourceFixture as Omit<typeof sourceFixture, "pages"> & {
 // Only the PDF/SQL boundaries are simulated: upload parsing, chunking, the #5487
 // column reader, retrieval admission and refusal wording are the production code.
 vi.hoisted(() => { process.env.NODE_EMBED_ON_WRITE = "0"; });
-const pdfPages = vi.hoisted(() => ({ failPage: null as number | null, current: null as null | Array<{ page: number; text: string; rules?: Array<{ x: number; y0: number; y1: number }>; items: Array<{ str: string; x: number; y: number; w: number; size: number }> }> }));
+const pdfPages = vi.hoisted(() => ({ failPage: null as number | null, current: null as null | Array<{ page: number; text: string; rules?: Array<{ x: number; y0: number; y1: number }>; operators?: { fnArray: number[]; argsArray: unknown[] }; items: Array<{ str: string; x: number; y: number; w: number; size: number }> }> }));
 vi.mock("unpdf", () => ({
   getDocumentProxy: vi.fn(async () => ({
     getPage: async (page: number) => ({
@@ -32,7 +32,9 @@ vi.mock("unpdf", () => ({
       // Painted vertical rules captured from the same source pages (#5503 F14); synthetic pages have none.
       getOperatorList: async () => {
         const rules = ((pdfPages.current ?? fixture.pages).find((p) => p.page === page))?.rules ?? [];
-        return { fnArray: rules.map(() => 91), argsArray: rules.map((r) => [22, [[]], [r.x - 0.25, r.y0, r.x + 0.25, r.y1]]) };
+        const drawn = (pdfPages.current ?? []).find((p) => p.page === page)?.operators;
+        if (drawn) return drawn;
+        return { fnArray: rules.map(() => 91), argsArray: rules.map((r) => [20, [[0, r.x, r.y0, 1, r.x, r.y1]], [r.x, r.y0, r.x, r.y1]]) };
       },
       cleanup: () => true,
     }),
@@ -980,6 +982,28 @@ it.each([
   const c = columnMeasuredMatrix.find((entry) => entry.id === "voltage-heading-8-12-unruled")!;
   const items = columnMeasuredMatrixPage(c);
   pdfPages.current = [{ page: 1, items, rules: [...rules], text: items.map((r) => r.str).join("\n") }];
+  let rows: Row[];
+  try { rows = await ingestFixture(); } finally { pdfPages.current = null; }
+  for (const [model, original, later] of [["20QWB", "2 A", "3 A"], ["20AWB", "1 A", "4 A"]]) {
+    expect((await retrieve(model, rows, "zzcolumnoriginal Load current")).text).toContain(original);
+    const measured = (await retrieve(model, rows, "zzcolumnmeasured")).text;
+    if (qualified) expect(measured).toContain(later);
+    else expect(measured).not.toContain(later);
+  }
+});
+
+// Round 12 F15: a drawing whose bounding box spans x=270..500 beside the title draws no
+// separator. Its box must not become one; an actual stroked separator there still does.
+it.each([
+  ["a diagonal", [0, 270, 600, 1, 500, 730], false],
+  ["two horizontal lines in one path", [0, 270, 600, 1, 500, 600, 0, 270, 730, 1, 500, 730], false],
+  ["a curve", [0, 270, 600, 2, 270, 730, 500, 730, 500, 600], false],
+  ["a stroked rectangle", [0, 270, 600, 1, 500, 600, 1, 500, 730, 1, 270, 730, 4], true],
+] as const)("F15 drawing geometry through the writer: %s", async (_name, data, qualified) => {
+  const c = columnMeasuredMatrix.find((entry) => entry.id === "voltage-heading-8-28-unruled")!;
+  const items = columnMeasuredMatrixPage(c);
+  const operators = { fnArray: [91], argsArray: [[20, [new Float32Array(data)], new Float32Array([270, 600, 500, 730])]] };
+  pdfPages.current = [{ page: 1, items, operators, text: items.map((r) => r.str).join("\n") }];
   let rows: Row[];
   try { rows = await ingestFixture(); } finally { pdfPages.current = null; }
   for (const [model, original, later] of [["20QWB", "2 A", "3 A"], ["20AWB", "1 A", "4 A"]]) {
