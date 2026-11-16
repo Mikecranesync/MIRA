@@ -219,8 +219,13 @@ export function FactoryLMShell({ state, dispatch, adapter, hooks, onOpenItem, on
       {conversationSurface === "assistant"
         ? <AssistantThread sendRevision={sendRevision} state={state} dispatch={dispatch} adapter={adapter} hooks={hooks} />
         : <Conversation sendRevision={sendRevision} state={state} dispatch={dispatch} adapter={adapter} hooks={hooks} />}
-      {state.sendError ? <SendError error={state.sendError} dispatch={dispatch} draft={state.draft} turnId={state.thread.turns.at(-1)?.id} hooks={hooks} /> : null}
-      <Composer state={state} dispatch={composerDispatch} adapter={adapter} hooks={composerHooks} attachmentTrapsTab={top === "attachment-menu"} accessory={composerAccessory} />
+      {/* The send error rides with the composer (#5572): the page scrolls and the
+          composer is pinned to the bottom, so a banner left in the flow above it
+          stays under the composer until the very end of the thread. */}
+      <div className="fl-shell__dock" data-menu-open={top === "attachment-menu" ? "true" : undefined}>
+        {state.sendError ? <SendError error={state.sendError} dispatch={dispatch} draft={state.draft} turnId={state.thread.turns.at(-1)?.id} hooks={hooks} /> : null}
+        <Composer state={state} dispatch={composerDispatch} adapter={adapter} hooks={composerHooks} attachmentTrapsTab={top === "attachment-menu"} accessory={composerAccessory} />
+      </div>
     </main>
     <Overlay layer="inspector" active={inspectorOpen(state)} modal={layered} trapsTab={top === "inspector"}>
       <Inspector state={state} />

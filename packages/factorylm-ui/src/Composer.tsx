@@ -69,9 +69,12 @@ export function Composer({ state, dispatch, adapter, hooks, attachmentTrapsTab =
     const form = formRef.current;
     const shell = form?.closest<HTMLElement>(".fl-shell");
     if (!form || !shell || typeof ResizeObserver === "undefined") return;
-    const publish = () => shell.style.setProperty("--fl-composer-block-size", `${Math.ceil(form.getBoundingClientRect().height)}px`);
+    // Measure the whole sticky dock when there is one (#5572): a send error
+    // pinned above the form covers the conversation just like the form does.
+    const box = form.closest<HTMLElement>(".fl-shell__dock") ?? form;
+    const publish = () => shell.style.setProperty("--fl-composer-block-size", `${Math.ceil(box.getBoundingClientRect().height)}px`);
     const observer = new ResizeObserver(publish);
-    observer.observe(form);
+    observer.observe(box);
     publish();
     return () => { observer.disconnect(); shell.style.removeProperty("--fl-composer-block-size"); };
   }, []);

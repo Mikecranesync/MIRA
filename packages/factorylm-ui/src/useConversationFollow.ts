@@ -37,7 +37,9 @@ export function useConversationFollow<T extends HTMLElement = HTMLElement>(threa
             bottom = Math.min(bottom, node.getBoundingClientRect().bottom);
           }
         }
-        const composer = root.closest(".fl-shell")?.querySelector(".fl-composer")?.getBoundingClientRect();
+        // The pinned dock (send error + composer, #5572), else the composer.
+        const shell = root.closest(".fl-shell");
+        const composer = (shell?.querySelector(".fl-shell__dock") ?? shell?.querySelector(".fl-composer"))?.getBoundingClientRect();
         if (composer && composer.top > 0 && composer.top < bottom) bottom = composer.top;
         atLatest = rect.bottom <= bottom + 32 && rect.bottom > 0;
       } else {
@@ -77,7 +79,9 @@ export function useConversationFollow<T extends HTMLElement = HTMLElement>(threa
       // Checked unconditionally — not gated on the turn node below — so a
       // composer remount is still picked up even while the latest turn is
       // transiently absent from the DOM (#4714 cheap-review follow-up).
-      const composer = rootRef.current?.closest<HTMLElement>(".fl-shell")?.querySelector<HTMLElement>(".fl-composer") ?? undefined;
+      // Watch the whole pinned dock (send error + composer, #5572) when present.
+      const shell = rootRef.current?.closest<HTMLElement>(".fl-shell");
+      const composer = shell?.querySelector<HTMLElement>(".fl-shell__dock") ?? shell?.querySelector<HTMLElement>(".fl-composer") ?? undefined;
       if (composer !== composerObserved) {
         if (composerObserved) resize.unobserve(composerObserved);
         if (composer) resize.observe(composer);
