@@ -57,7 +57,7 @@ const FIELD_STYLE: CSSProperties = {
 };
 const BUTTON_STYLE: CSSProperties = {
   minHeight: 44, padding: "8px 16px", marginInlineEnd: 8, marginTop: 8, borderRadius: "var(--fl-radius)",
-  border: "1px solid var(--fl-line)", background: "var(--fl-accent)", color: "var(--fl-accent-ink, var(--fl-surface))", cursor: "pointer",
+  border: "1px solid var(--fl-line)", background: "var(--fl-accent)", color: "var(--fl-surface)", cursor: "pointer",
 };
 const QUIET_BUTTON: CSSProperties = { ...BUTTON_STYLE, background: "var(--fl-surface)", color: "var(--fl-ink)" };
 const CHIP: Record<"ok" | "warn" | "muted", CSSProperties> = {
