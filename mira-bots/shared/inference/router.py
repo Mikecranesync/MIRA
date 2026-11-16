@@ -339,6 +339,11 @@ def _request_payload(
             "messages": messages,
             "reasoning_effort": os.getenv("OPENAI_REASONING_EFFORT") or "low",
         }
+    if provider.request_style == "anthropic_compat":
+        # Claude 5.5-family models return HTTP 400 "`temperature` is deprecated
+        # for this model" — which would read as an outage and fall through the
+        # cascade. Older Claude models accept the omission, so never send it.
+        return {"model": model, "max_tokens": max_tokens, "messages": messages}
     return {
         "model": model,
         "max_tokens": max_tokens,
@@ -521,6 +526,7 @@ def _anthropic_provider(now: datetime | None = None) -> _Provider | None:
         model=os.getenv("ANTHROPIC_MODEL") or "claude-sonnet-4-6",
         timeout=float(os.getenv("ANTHROPIC_TIMEOUT") or "90"),
         vision_model=os.getenv("ANTHROPIC_VISION_MODEL") or "",
+        request_style="anthropic_compat",
     )
 
 

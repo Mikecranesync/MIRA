@@ -120,3 +120,26 @@ def test_anthropic_payload_uses_compat_fields(monkeypatch):
     assert body["max_tokens"] == 512
     assert "max_completion_tokens" not in body
     assert body["model"] == "claude-sonnet-4-6"
+
+
+def test_anthropic_payload_omits_temperature(monkeypatch):
+    # Claude 5.5-family models 400 on `temperature` ("deprecated for this model").
+    _open(monkeypatch)
+    monkeypatch.setenv("ANTHROPIC_MODEL", "claude-haiku-5-5")
+    p = _anthropic_provider()
+    body = _request_payload(p, p.model, [{"role": "user", "content": "hi"}], 512)
+    assert "temperature" not in body
+    assert body == {
+        "model": "claude-haiku-5-5",
+        "max_tokens": 512,
+        "messages": [{"role": "user", "content": "hi"}],
+    }
+
+
+def test_compat_providers_still_send_temperature():
+    # Control: the omission is scoped to the anthropic slot, not every compat provider.
+    from shared.inference.router import _Provider
+
+    p = _Provider(name="groq", api_url="https://x", api_key="k", model="m")
+    body = _request_payload(p, p.model, [{"role": "user", "content": "hi"}], 512)
+    assert body["temperature"] == 0.1
