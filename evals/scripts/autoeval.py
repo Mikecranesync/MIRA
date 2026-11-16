@@ -104,8 +104,17 @@ def cmd_run(args) -> int:
     astate = state / "alert-state.json"
     prev = json.loads(astate.read_text()) if astate.exists() else {}
     fired, new_state = rp.alerts(run, prev)
-    if args.send_alerts and fired:
-        run["alerts_sent"] = _send(fired)
+    # Delivery is tracked apart from activity (Codex r1 F4 on #5569): an alert
+    # still active but never delivered (sending off, Telegram down) is retried
+    # on the next run that can send, instead of being deduplicated forever.
+    current = {a["key"]: a for a in rp.alerts_now(run)}
+    delivered = set(prev.get("delivered", [])) & set(current)
+    pending = [current[k] for k in sorted(current) if k not in delivered]
+    if args.send_alerts and pending:
+        run["alerts_sent"] = _send(pending)
+        if run["alerts_sent"]:
+            delivered |= {a["key"] for a in pending}
+    new_state["delivered"] = sorted(delivered)
     header = f"<!-- autoeval run {run_id} created {run['created_at']} -->\n"
     _write(run_dir / "run.json", json.dumps(run, indent=2, sort_keys=True))
     _write(run_dir / "report.md", header + rp.render_report(run))
@@ -130,7 +139,11 @@ def cmd_run(args) -> int:
             indent=2,
         )
     )
-    blocked = bool(judged["error"]) or any(r["status"] != "pass" for r in lanes["results"])
+    blocked = (
+        bool(judged["error"])
+        or any(r["status"] != "pass" for r in lanes["results"])
+        or bool(rp.coverage_problems(run))
+    )
     return 3 if judged["error"] else (1 if blocked else 0)
 
 

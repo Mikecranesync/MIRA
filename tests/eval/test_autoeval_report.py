@@ -259,3 +259,30 @@ def test_mission_control_is_partial_while_cases_need_a_paid_judge():
 
 def test_control_clean_run_is_green():
     assert "State: GREEN" in rp.mission_control_block(make_run())
+
+
+# ── infrastructure failures and missing coverage (Codex r1 F3 on #5569) ─────────
+
+
+def _infra_run(infra=40, scored=(0, 0)):
+    run = make_run()
+    m = run["sets"][0]["models"]["claude-sonnet-4-6"]
+    m["summary"].update(
+        {"infra_failures": infra, "scored_technician": scored[0], "scored_safety": scored[1]}
+    )
+    return run
+
+
+def test_all_infra_failed_answers_never_read_green():
+    run = _infra_run()
+    block = rp.mission_control_block(run)
+    assert "State: BLOCKED" in block
+    assert any("infrastructure failure" in b for b in rp.coverage_problems(run))
+    kinds = {a["key"] for a in rp.alerts_now(run)}
+    assert "execution_failure:coverage:f06922ac6-cov100:claude-sonnet-4-6" in kinds
+
+
+def test_control_fully_scored_set_with_no_infra_failures_stays_green():
+    run = _infra_run(infra=0, scored=(30, 10))
+    assert rp.coverage_problems(run) == []
+    assert "State: GREEN" in rp.mission_control_block(run)

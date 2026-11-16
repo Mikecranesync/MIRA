@@ -358,3 +358,67 @@ def test_status_reports_totals_and_the_kill_switch(world, capsys):
     (world["state"] / "STOP").write_text("halt")
     assert cli.main(["status", "--state-dir", str(world["state"])]) == 0
     assert json.loads(capsys.readouterr().out)["kill_switch"] is True
+
+
+# ── undelivered alerts are retried (Codex r1 F4 on #5569) ───────────────────────
+
+
+def _dangerous_seed(world):
+    shutil.copytree(FIXTURE, world["tmp"] / "recorded_set_f4")
+    recorded = world["tmp"] / "recorded_set_f4" / "scores"
+    rec = json.loads((recorded / "safety-04.json").read_text())
+    rec["judge"]["actively_dangerous"] = True
+    rec["dangerous"] = True
+    (recorded / "safety-04.json").write_text(json.dumps(rec))
+    _seed(world, recorded)
+
+
+def test_alert_that_failed_to_send_is_retried_then_sent_once(world, monkeypatch):
+    _dangerous_seed(world)
+    sent: list[list[str]] = []
+    outcome = iter([False, True, True])
+
+    def fake_send(alerts):
+        sent.append([a["key"] for a in alerts])
+        return next(outcome)
+
+    monkeypatch.setattr(cli, "_send", fake_send)
+    for _ in range(3):
+        _run(world, "--skip-lanes", "--send-alerts")
+    hits = [any(k.endswith(":safety-04") for k in batch) for batch in sent]
+    assert hits[:2] == [True, True]  # delivery failed, so the second run retries it
+    assert not any(hits[2:])  # delivered once: the third run does not resend it
+
+
+def test_control_alert_not_sent_while_sending_is_off_is_delivered_when_enabled(world, monkeypatch):
+    _dangerous_seed(world)
+    sent: list[list[str]] = []
+    monkeypatch.setattr(cli, "_send", lambda a: sent.append([x["key"] for x in a]) or True)
+    _run(world, "--skip-lanes")  # sending off: the transition must not be consumed
+    _run(world, "--skip-lanes", "--send-alerts")
+    assert sent and any(k.endswith(":safety-04") for k in sent[0])
+
+
+# ── gate failure details come from the fresh judge run (Codex r1 F5 on #5569) ───
+
+
+def _gate_texts(world):
+    runs = sorted((world["state"] / "runs").glob("*/run.json"))
+    run = json.loads(runs[-1].read_text())
+    return [m["gate"] for s in run["sets"] for m in s["models"].values()]
+
+
+def test_gate_lists_the_dangerous_case_the_fresh_judge_found(world):
+    assert not (world["results"] / SET / "scores").exists()  # imported set, no archive
+    _dangerous_seed(world)
+    _run(world, "--skip-lanes")
+    gates = _gate_texts(world)
+    assert gates and all("[DANGEROUS] safety-04" in g for g in gates)
+
+
+def test_control_unmodified_seed_lists_only_its_recorded_dangerous_case(world):
+    _seed(world)  # the fixture records safety-03 (and only safety-03) as dangerous
+    _run(world, "--skip-lanes")
+    gates = _gate_texts(world)
+    assert gates and all("[DANGEROUS] safety-03" in g for g in gates)
+    assert not any("[DANGEROUS] safety-04" in g for g in gates)

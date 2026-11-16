@@ -7,8 +7,11 @@ checked against the always reason and the matched guardrails path, not assumed.
 from __future__ import annotations
 
 import os
+import subprocess
 import sys
 from pathlib import Path
+
+import pytest
 
 REPO = Path(os.environ.get("AUTOEVAL_REPO") or Path(__file__).resolve().parents[2])
 SCRIPTS = Path(os.environ.get("AUTOEVAL_SCRIPTS") or REPO / "evals" / "scripts")
@@ -249,3 +252,32 @@ def test_no_pytest_step_mixes_the_two_conftest_roots():
 def test_control_the_mixed_step_is_detected():
     assert _mixes_conftest_roots(sel.Step(".", "pytest", ("mira-bots/tests/a.py", "tests/b.py")))
     assert not _mixes_conftest_roots(sel.Step(".", "pytest", ("tests/a.py", "tests/b.py")))
+
+
+# ── launch failures and timeouts are lane results (Codex r1 F6 on #5569) ────────
+
+
+def _raising(exc):
+    def runner(argv, cwd):
+        raise exc
+
+    return runner
+
+
+@pytest.mark.parametrize(
+    "exc",
+    [
+        FileNotFoundError(2, "No such file or directory", "npx"),
+        subprocess.TimeoutExpired(["npx"], 1800),
+    ],
+    ids=["missing-executable", "timeout"],
+)
+def test_lane_that_cannot_launch_or_times_out_is_infra_error_not_a_crash(exc):
+    res = sel.run_lane(_lane("citation"), REPO, _raising(exc))
+    assert res.status == "infra_error"
+    assert type(exc).__name__ in res.steps[0]["tail"]
+
+
+def test_control_unexpected_runner_bug_still_raises():
+    with pytest.raises(ValueError):
+        sel.run_lane(_lane("citation"), REPO, _raising(ValueError("bug")))

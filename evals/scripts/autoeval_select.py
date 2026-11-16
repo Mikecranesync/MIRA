@@ -179,7 +179,12 @@ def run_lane(lane: Lane, repo: Path, runner: Runner = subprocess_runner) -> Lane
         else:
             # --no-install: never fetch from the registry; a missing install is infra_error
             argv = ["npx", "--no-install", "vitest", "run", *st.files]
-        rc, out = runner(argv, cwd)
+        try:
+            rc, out = runner(argv, cwd)
+        except (OSError, subprocess.TimeoutExpired) as e:
+            # A missing executable or a timeout is an infra_error lane result, not an
+            # escaped exception that skips the report and alert (Codex r1 F6 on #5569).
+            rc, out = -1, f"lane step could not complete: {type(e).__name__}: {e}"
         counts = parse_counts(st.runner, out)
         status = judge_counts(counts, rc)
         statuses.append(status)

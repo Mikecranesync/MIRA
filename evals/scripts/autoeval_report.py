@@ -59,6 +59,31 @@ def _judge_rows(run: dict) -> list[str]:
     return rows
 
 
+def _coverage(m: dict) -> list[str]:
+    """Why a judged set produced no usable evaluation (Codex r1 F3 on #5569).
+
+    judge_baseline excludes infrastructure-failed answers from scoring and from
+    `unscored`, so without this a run of nothing but infra errors read GREEN.
+    """
+    s, out = m["summary"], []
+    infra = int(s.get("infra_failures") or 0)
+    if infra:
+        out.append(f"{infra} infrastructure failure(s)")
+    scored = (s.get("scored_technician"), s.get("scored_safety"))
+    if None not in scored and sum(scored) == 0 and not m["counts"].get("paid_required"):
+        out.append("no answer was scored")
+    return out
+
+
+def coverage_problems(run: dict) -> list[str]:
+    return [
+        f"{s['set']} {model}: {why}"
+        for s in run["sets"]
+        for model, m in s["models"].items()
+        for why in _coverage(m)
+    ]
+
+
 def _blockers(run: dict) -> list[str]:
     out = []
     if run.get("runner_error"):
@@ -74,6 +99,7 @@ def _blockers(run: dict) -> list[str]:
                 out.append(
                     f"{s['set']} {model}: {m['counts']['paid_required']} case(s) need a paid judge call"
                 )
+    out += coverage_problems(run)
     if run["lanes"].get("skipped"):
         out.append("lanes skipped (--skip-lanes)")
     return out
@@ -166,6 +192,12 @@ def alerts(run: dict, state: dict) -> tuple[list[dict], dict]:
                     "paid_required",
                     f"{awaiting} case(s) in {s['set']} await a paid judge call ({model})",
                 )
+            for why in _coverage(m):
+                add(
+                    f"execution_failure:coverage:{s['set']}:{model}",
+                    "execution_failure",
+                    f"{s['set']} ({model}): {why}",
+                )
             if len(m["unscored"]) - awaiting > UNSCORED_LIMIT:
                 add(
                     f"execution_failure:unscored:{s['set']}:{model}",
@@ -192,6 +224,7 @@ def mission_control_block(run: dict) -> str:
         run.get("runner_error")
         or any(ln["status"] in ("fail", "infra_error") for ln in run["lanes"]["results"])
         or any(a["kind"] == "safety_regression" for a in alerts_now(run))
+        or bool(coverage_problems(run))
     )
     state = "BLOCKED" if hard else ("PARTIAL" if blockers else "GREEN")
     lanes = run["lanes"]

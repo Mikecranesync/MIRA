@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import shutil
 import subprocess
 import time
 import uuid
@@ -218,12 +219,13 @@ def _judge_all(
                     client=client,
                 )
                 out["partial"] = env.counts  # read only if run_set is stopped part-way
-                sr = jd.run_set(
-                    set_dir,
-                    run_dir / "judge" / f"{set_dir.name}__{model}",
-                    env,
-                    judge_path=jd.JUDGE_PATH,
-                )
+                fresh = run_dir / "judge" / f"{set_dir.name}__{model}"
+                sr = jd.run_set(set_dir, fresh, env, judge_path=jd.JUDGE_PATH)
+                # Failure details must come from THIS judge run's scores, not the
+                # input set's archived ones (Codex r1 F5 on #5569); the input
+                # manifest is copied across as provenance only.
+                if (set_dir / "manifest.json").exists() and not (fresh / "manifest.json").exists():
+                    shutil.copy2(set_dir / "manifest.json", fresh / "manifest.json")
                 out["partial"] = {}
                 entry["models"][model] = {
                     "summary": sr.summary,
@@ -232,7 +234,7 @@ def _judge_all(
                     "counts": sr.counts,
                     "rc": sr.rc,
                     "paid_required_usd": sr.paid_required_usd,
-                    "gate": rp.gate_text(set_dir, sr.summary),
+                    "gate": rp.gate_text(fresh, sr.summary),
                 }
                 out["rows"] += _verdict_rows(sr, cache, entry, head)
     except ab.BudgetStop as e:
