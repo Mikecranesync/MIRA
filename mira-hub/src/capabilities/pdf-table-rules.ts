@@ -48,7 +48,10 @@ const UNIT_SQUARE_IMAGE = new Set([83, 85, 90]);
 /** Operators that neither paint over a rule nor change how one is painted: resource loading,
  * stroke joins and caps, rendering hints, text and marked content. Everything not named in this
  * file is unknown and leaves the page without evidence. */
-const NEUTRAL = new Set([1, 3, 4, 5, 7, 8, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 69, 70, 71, 72, 73]);
+const NEUTRAL = new Set([1, 3, 4, 5, 7, 8, 31, 32, 33, 34, 35, 36, 37, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 69, 70, 71, 72, 73]);
+const OP_TEXT_RENDERING_MODE = 38;
+/** Graphics-state keys that cannot hide or move a rule. */
+const NEUTRAL_GSTATE = new Set(["LC", "LJ", "ML", "RI", "FL", "Font"]);
 const CLOSING_PAINT = new Set([21, 26, 27]);
 /** A filled shape thinner than this in area paints nothing. */
 const MIN_FILL_AREA = 0.05;
@@ -117,11 +120,23 @@ type Box = { x0: number; y0: number; x1: number; y1: number };
 /** Only the paint state that decides whether a rule is visible where it is drawn. */
 type State = { ctm: Matrix; lineWidth: number; stroke: boolean; fill: boolean; strokeAlpha: boolean; fillAlpha: boolean; dashed: boolean; clip: Box | null };
 
-/** A colour pdf.js delivers as "#rrggbb" that is not near white. Anything else is not evidence. */
+/** A colour pdf.js delivers as "#rrggbb" that is dark enough to read as a ruled line. Anything
+ * else (pale, bright, or not in that form) is not evidence. */
 function isVisibleColour(args: unknown): boolean {
   const value = Array.isArray(args) ? args[0] : null;
   if (typeof value !== "string" || !/^#[0-9a-f]{6}$/i.test(value)) return false;
-  return [1, 3, 5].some((at) => parseInt(value.slice(at, at + 2), 16) < 0xe0);
+  const [r, g, b] = [1, 3, 5].map((at) => parseInt(value.slice(at, at + 2), 16));
+  return 0.299 * r + 0.587 * g + 0.114 * b < 160;
+}
+
+/** The four corners when `points` trace one upright rectangle, else null. */
+function uprightRectangle(points: ReadonlyArray<readonly number[]>): ReadonlyArray<readonly number[]> | null {
+  const corners = points.length === 5 && points[0][0] === points[4][0] && points[0][1] === points[4][1] ? points.slice(0, 4) : points;
+  if (corners.length !== 4) return null;
+  return corners.every(([x, y], k) => {
+    const [nx, ny] = corners[(k + 1) % 4];
+    return (x === nx) !== (y === ny);
+  }) ? corners : null;
 }
 
 function boxUnder(ctm: Matrix, bounds: unknown): Box | null {
@@ -147,7 +162,8 @@ export function verticalRules(operatorList: unknown): VerticalRule[] | null {
   let state: State = { ctm: [1, 0, 0, 1, 0, 0], lineWidth: 1, stroke: true, fill: true, strokeAlpha: true, fillAlpha: true, dashed: false, clip: null };
   const stack: State[] = [];
   let clipPending = false;
-  const segments: VerticalRule[] = [];
+  /** `cutLow` / `cutHigh`: that end was painted over, so the piece is never joined to a neighbour there. */
+  const segments: Array<VerticalRule & { cutLow?: boolean; cutHigh?: boolean }> = [];
   /** Keep the part of a segment its clip leaves visible. */
   const add = (x: number, y0: number, y1: number) => {
     const clip = state.clip;
@@ -162,8 +178,9 @@ export function verticalRules(operatorList: unknown): VerticalRule[] | null {
     if (hidden.x1 < hidden.x0 || hidden.y1 < hidden.y0) return;
     for (const segment of segments.splice(0)) {
       if (segment.x < hidden.x0 || segment.x > hidden.x1) { segments.push(segment); continue; }
-      if (hidden.y0 - segment.y0 >= MIN_SEGMENT_PT) segments.push({ x: segment.x, y0: segment.y0, y1: Math.min(segment.y1, hidden.y0) });
-      if (segment.y1 - hidden.y1 >= MIN_SEGMENT_PT) segments.push({ x: segment.x, y0: Math.max(segment.y0, hidden.y1), y1: segment.y1 });
+      if (hidden.y1 < segment.y0 || hidden.y0 > segment.y1) { segments.push(segment); continue; }
+      if (hidden.y0 - segment.y0 >= MIN_SEGMENT_PT) segments.push({ x: segment.x, y0: segment.y0, y1: hidden.y0, cutLow: segment.cutLow, cutHigh: true });
+      if (segment.y1 - hidden.y1 >= MIN_SEGMENT_PT) segments.push({ x: segment.x, y0: hidden.y1, y1: segment.y1, cutLow: true, cutHigh: segment.cutHigh });
     }
   };
   const NOWHERE: Box = { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity };
@@ -188,13 +205,18 @@ export function verticalRules(operatorList: unknown): VerticalRule[] | null {
       if (args[1] != null) {
         const box = boxUnder(state.ctm, args[1]);
         if (box === null) return null;
-        state = { ...state, clip: intersect(state.clip, box) };
+        const upright = Math.abs(state.ctm[1]) <= 1e-6 && Math.abs(state.ctm[2]) <= 1e-6;
+        state = { ...state, clip: intersect(state.clip, upright ? box : NOWHERE) };
       }
     } else if (fn === OP_FORM_END) state = stack.pop() ?? state;
     else if (fn === OP_SET_LINE_WIDTH) {
       const width = Array.isArray(args) ? args[0] : null;
-      if (typeof width !== "number" || !Number.isFinite(width)) return null;
+      if (typeof width !== "number" || !Number.isFinite(width) || width < 0) return null;
       state = { ...state, lineWidth: width };
+    } else if (fn === OP_TEXT_RENDERING_MODE) {
+      // Modes 4 to 7 turn text into a clip, which this reader does not model.
+      const mode = Array.isArray(args) ? args[0] : null;
+      if (typeof mode !== "number" || mode < 0 || mode > 3) return null;
     } else if (fn === OP_SHADING_FILL) cover(EVERYWHERE);
     else if (UNIT_SQUARE_IMAGE.has(fn)) cover(boxUnder(state.ctm, [0, 0, 1, 1])!);
     else if (fn === OP_STROKE_RGB) state = { ...state, stroke: isVisibleColour(args) };
@@ -211,13 +233,16 @@ export function verticalRules(operatorList: unknown): VerticalRule[] | null {
         if (!Array.isArray(entry)) return null;
         if (entry[0] === "CA") state = { ...state, strokeAlpha: typeof entry[1] === "number" && entry[1] >= 0.5 };
         else if (entry[0] === "ca") state = { ...state, fillAlpha: typeof entry[1] === "number" && entry[1] >= 0.5 };
-        else if (entry[0] === "SMask" && entry[1] !== false) return null; // what a mask shows or hides is not in the operators
-        else if (entry[0] === "BM" && entry[1] !== "source-over" && entry[1] !== "normal") return null;
+        else if (entry[0] === "SMask") {
+          if (entry[1] !== false) return null; // what a mask shows or hides is not in the operators
+        } else if (entry[0] === "BM") {
+          if (entry[1] !== "source-over" && entry[1] !== "normal") return null;
+        }
         else if (entry[0] === "D") state = { ...state, dashed: true };
         else if (entry[0] === "LW") {
-          if (typeof entry[1] !== "number" || !Number.isFinite(entry[1])) return null;
+          if (typeof entry[1] !== "number" || !Number.isFinite(entry[1]) || entry[1] < 0) return null;
           state = { ...state, lineWidth: entry[1] };
-        }
+        } else if (!NEUTRAL_GSTATE.has(entry[0] as string)) return null;
       }
     } else if (fn === OP_CLIP || fn === OP_EO_CLIP) clipPending = true;
     else if (fn === OP_CONSTRUCT_PATH) {
@@ -232,51 +257,44 @@ export function verticalRules(operatorList: unknown): VerticalRule[] | null {
       const darkStroke = state.stroke && state.strokeAlpha && thinStroke;
       const strokes = STROKING.has(args[0]) && darkStroke && !state.dashed;
       const fills = FILLING.has(args[0]) && state.fill && state.fillAlpha;
-      if (FILLING.has(args[0]) || STROKING.has(args[0])) {
-        // Whatever this path paints lies over everything drawn before it. Only a thin dark mark
-        // (a grid line, a frame, another rule) is known not to hide a rule; anything else, in any
-        // colour or opacity, hides what its bounds cover.
-        const painted = boxUnder(ctm, args[2]);
-        if (painted === null) return null;
+      const painted = FILLING.has(args[0]) || STROKING.has(args[0]) ? boxUnder(ctm, args[2]) : EVERYWHERE;
+      if (painted === null) return null;
+      const placed = rotated ? [] : subpaths.map((subpath) => ({ closed: subpath.closed,
+        points: subpath.points.map(([x, y]) => [ctm[0] * x + ctm[4], ctm[3] * y + ctm[5]]) }));
+      // Whatever a path paints lies over everything drawn before it, the fill first and then the
+      // stroke. Only a thin dark mark (a grid line, a frame, another rule) is known not to hide a
+      // rule; anything else, in any colour or opacity, hides what its bounds cover.
+      if (FILLING.has(args[0])) {
         const thinFill = Math.min(painted.x1 - painted.x0, painted.y1 - painted.y0) <= MAX_RULE_WIDTH_PT;
-        if (FILLING.has(args[0]) && !(fills && thinFill)) cover(painted);
-        if (STROKING.has(args[0]) && !darkStroke) {
+        if (!(fills && thinFill)) cover(painted);
+        if (fills) for (const { points } of placed) {
+          // A filled shape is a rule only when it is one thin upright bar.
+          const corners = uprightRectangle(points);
+          if (corners === null) continue;
+          const xs = corners.map(([x]) => x), ys = corners.map(([, y]) => y);
+          const left = Math.min(...xs), right = Math.max(...xs), bottom = Math.min(...ys), top = Math.max(...ys);
+          if (right - left <= MAX_RULE_WIDTH_PT && (right - left) * (top - bottom) >= MIN_FILL_AREA) add((left + right) / 2, bottom, top);
+        }
+      }
+      if (STROKING.has(args[0])) {
+        if (!darkStroke) {
           const half = (state.lineWidth * scale) / 2;
           cover({ x0: painted.x0 - half, y0: painted.y0 - half, x1: painted.x1 + half, y1: painted.y1 + half });
         }
-      }
-      if (!rotated) for (const subpath of subpaths) {
-        const points = subpath.points.map(([x, y]) => [ctm[0] * x + ctm[4], ctm[3] * y + ctm[5]]);
-        if (strokes) {
+        if (strokes) for (const { points, closed } of placed) {
           // Each straight vertical edge the pen actually draws, the closing edge included.
-          const drawn = subpath.closed && points.length > 2 ? [...points, points[0]] : points;
+          const drawn = closed && points.length > 2 ? [...points, points[0]] : points;
           for (let k = 1; k < drawn.length; k++) {
             const [xa, ya] = drawn[k - 1], [xb, yb] = drawn[k];
             if (Math.abs(xa - xb) <= MAX_LEAN_PT && Math.abs(ya - yb) >= MIN_SEGMENT_PT) add((xa + xb) / 2, Math.min(ya, yb), Math.max(ya, yb));
           }
-        }
-        if (fills && points.length >= 3) {
-          // A filled shape is a rule only when the whole shape is a thin vertical bar.
-          const xs = points.map(([x]) => x), ys = points.map(([, y]) => y);
-          const left = Math.min(...xs), right = Math.max(...xs);
-          let area = 0;
-          for (let k = 0; k < points.length; k++) {
-            const [xa, ya] = points[k], [xb, yb] = points[(k + 1) % points.length];
-            area += xa * yb - xb * ya;
-          }
-          if (right - left <= MAX_RULE_WIDTH_PT && Math.abs(area) / 2 >= MIN_FILL_AREA) add((left + right) / 2, Math.min(...ys), Math.max(...ys));
         }
       }
       if (clipPending) {
         // The path just built also becomes the clip. Only a single upright rectangle is modelled;
         // under any other clip nothing is known to be visible.
         clipPending = false;
-        const only = subpaths.length === 1 ? subpaths[0].points : [];
-        const corners = only.length === 5 && only[0][0] === only[4][0] && only[0][1] === only[4][1] ? only.slice(0, 4) : only;
-        const upright = !rotated && corners.length === 4 && corners.every(([x, y], k) => {
-          const [nx, ny] = corners[(k + 1) % 4];
-          return (x === nx) !== (y === ny);
-        });
+        const upright = !rotated && subpaths.length === 1 && uprightRectangle(subpaths[0].points) !== null;
         const box = upright ? boxUnder(ctm, args[2]) : NOWHERE;
         if (box === null) return null;
         state = { ...state, clip: intersect(state.clip, box) };
@@ -285,19 +303,27 @@ export function verticalRules(operatorList: unknown): VerticalRule[] | null {
     } else return null; // an operator this reader does not model: the page gives no evidence
   }
   segments.sort((a, b) => a.x - b.x || a.y0 - b.y0);
-  const merged: VerticalRule[] = [];
+  const merged: Array<VerticalRule & { cutHigh?: boolean }> = [];
   for (const segment of segments) {
     const last = merged[merged.length - 1];
-    if (last && Math.abs(last.x - segment.x) <= SAME_X_PT && segment.y0 <= last.y1 + MERGE_GAP_PT) {
-      last.y1 = Math.max(last.y1, segment.y1);
-    } else merged.push({ ...segment });
+    const joins = last !== undefined && Math.abs(last.x - segment.x) <= SAME_X_PT && segment.y0 <= last.y1 + MERGE_GAP_PT;
+    // A piece ending where it was painted over joins only a piece that genuinely overlaps it.
+    const acrossCut = last !== undefined && (last.cutHigh === true || segment.cutLow === true) && segment.y0 >= last.y1;
+    if (last && joins && !acrossCut) {
+      if (segment.y1 > last.y1) { last.y1 = segment.y1; last.cutHigh = segment.cutHigh; }
+    } else merged.push({ x: segment.x, y0: segment.y0, y1: segment.y1, cutHigh: segment.cutHigh });
   }
-  return merged.filter((rule) => rule.y1 - rule.y0 >= MIN_RULE_PT);
+  return merged.filter((rule) => rule.y1 - rule.y0 >= MIN_RULE_PT).map(({ x, y0, y1 }) => ({ x, y0, y1 }));
 }
 
-/** Indices of the rules whose painted extent crosses baseline `y`. */
+/** A rule runs through a text line only when it passes below the baseline and up through the
+ * body of the letters; one that merely reaches the baseline stops at the line. */
+const BELOW_BASELINE_PT = 1;
+const ABOVE_BASELINE_PT = 4;
+
+/** Indices of the rules whose painted extent runs through the text line at baseline `y`. */
 export function rulesCrossing(rules: readonly VerticalRule[], y: number): number[] {
   const ids: number[] = [];
-  for (let i = 0; i < rules.length; i++) if (rules[i].y0 - 1 <= y && y <= rules[i].y1 + 1) ids.push(i);
+  for (let i = 0; i < rules.length; i++) if (rules[i].y0 <= y - BELOW_BASELINE_PT && y + ABOVE_BASELINE_PT <= rules[i].y1) ids.push(i);
   return ids;
 }

@@ -1022,6 +1022,7 @@ it.each([
   ["dashed", [[6, [[3, 3], 0]]], [], false],
   ["clipped away", [[29, null], [91, [28, [new Float32Array([0, 300, 590, 1, 500, 590, 1, 500, 740, 1, 300, 740, 4])], new Float32Array([300, 590, 500, 740])]]], [], false],
   ["moved by its form", [[74, [[1, 0, 0, 1, -200, 0], [0, 0, 612, 792]]]], [[75, []]], false],
+  ["stopped at the title by a white box", [], [[59, ["#ffffff"]], [91, [22, [new Float32Array([0, 200, 655, 1, 400, 655, 1, 400, 665, 1, 200, 665, 4])], new Float32Array([200, 655, 400, 665])]]], false],
   ["covered by a later fill", [], [[91, [22, [new Float32Array([0, 200, 590, 1, 400, 590, 1, 400, 740, 1, 200, 740, 4])], new Float32Array([200, 590, 400, 740])]]], false],
 ] as Array<[string, Array<[number, unknown]>, Array<[number, unknown]>, boolean]>)("F15 separator visibility through the writer: %s", async (_name, before, after, qualified) => {
   const c = columnMeasuredMatrix.find((entry) => entry.id === "voltage-heading-8-28-unruled")!;

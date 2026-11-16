@@ -109,6 +109,16 @@ describe("#5503 F14/F15: painted vertical rules of a PDF page", () => {
     ["a rule painted over by a thin white fill", [path(STROKE, line(270, 600, 270, 700)), [FILL_RGB, ["#ffffff"]], path(FILL, rect(269, 590, 271, 710))], []],
     ["a rule cut by stacked thin white bands", [path(STROKE, line(270, 600, 270, 700)), [FILL_RGB, ["#ffffff"]], ...Array.from({ length: 15 }, (_, i) => path(FILL, rect(200, 660 + i * 2, 400, 662 + i * 2)))], [{ x: 270, y0: 600, y1: 660 }]],
     ["a rule inside a dark thin frame drawn later", [path(STROKE, line(270, 600, 270, 700)), path(STROKE, rect(90, 590, 540, 710))], [{ x: 90, y0: 590, y1: 710 }, { x: 270, y0: 600, y1: 700 }, { x: 540, y0: 590, y1: 710 }]],
+    ["a dark bar overpainted by its own white outline", [[FILL_RGB, ["#000000"]], [STROKE_RGB, ["#ffffff"]], [LINE_WIDTH, [2]], path(24, rect(269.5, 600, 270.5, 700))], []],
+    ["a rule with a hairline white gap", [path(STROKE, line(270, 600, 270, 700)), [FILL_RGB, ["#ffffff"]], path(FILL, rect(200, 663.75, 400, 664.5))], [{ x: 270, y0: 600, y1: 663.75 }, { x: 270, y0: 664.5, y1: 700 }]],
+    ["a rule cut by a zero-width white hairline", [path(STROKE, line(270, 600, 270, 700)), [STROKE_RGB, ["#ffffff"]], [LINE_WIDTH, [0]], path(STROKE, line(200, 664, 400, 664))], [{ x: 270, y0: 600, y1: 664 }, { x: 270, y0: 664, y1: 700 }]],
+    ["a yellow line", [[STROKE_RGB, ["#ffff00"]], path(STROKE, line(270, 600, 270, 700))], []],
+    ["a rule under a later pale thin band", [path(STROKE, line(270, 600, 270, 700)), [FILL_RGB, ["#dfdfdf"]], path(FILL, rect(200, 650, 400, 652))], [{ x: 270, y0: 600, y1: 650 }, { x: 270, y0: 652, y1: 700 }]],
+    ["a rule under the ordinary graphics state", [[SET_GSTATE, [[["BM", "source-over"], ["CA", 1], ["SMask", false], ["ca", 1], ["LC", 0]]]], path(STROKE, line(270, 600, 270, 700))], RULE],
+    ["a mid-grey rule", [[STROKE_RGB, ["#707176"]], path(STROKE, line(270, 600, 270, 700))], RULE],
+    ["an hourglass fill pinched to nothing", [path(FILL, [M, 270, 600, L, 271, 600, L, 270, 700, L, 271, 700, Z])], []],
+    ["a thin filled rectangle bar", [path(FILL, rect(270, 600, 271, 700))], [{ x: 270.5, y0: 600, y1: 700 }]],
+    ["a rule inside a form whose box is not upright", [[TRANSFORM, [0.707, 0.707, -0.707, 0.707, 310, 680]], [FORM_BEGIN, [null, [-56, -1, 56, 1]]], [TRANSFORM, [0.707, -0.707, 0.707, 0.707, -700, -261]], path(STROKE, line(270, 600, 270, 730)), [FORM_END, []]], []],
     ["a rule under a triangular clip", [[CLIP, null], path(END_PATH, [M, 260, 740, L, 500, 740, L, 500, 600, Z]), path(STROKE, line(270, 600, 270, 700))], []],
     ["a rule under a clip with a hole", [[30, null], path(END_PATH, [...rect(200, 590, 500, 740), ...rect(250, 640, 300, 700)]), path(STROKE, line(270, 600, 270, 720))], []],
     ["a rule later covered by an image", [path(STROKE, line(270, 600, 270, 700)), [SAVE, null], [TRANSFORM, [200, 0, 0, 200, 200, 550]], [IMAGE, ["img", 10, 10]], [RESTORE, null]], []],
@@ -120,6 +130,9 @@ describe("#5503 F14/F15: painted vertical rules of a PDF page", () => {
   });
 
   it.each([
+    ["a negative line width", list([[2, [-3]]])],
+    ["a text mode that clips", list([[38, [7]], path(STROKE, line(270, 600, 270, 700))])],
+    ["a graphics-state key the reader does not know", list([[9, [[["TR", "x"]]]]])],
     ["a soft mask", list([[9, [[["SMask", true]]]], path(STROKE, line(270, 600, 270, 700))])],
     ["a blend mode other than normal", list([[9, [[["BM", "difference"]]]], path(STROKE, line(270, 600, 270, 700))])],
     ["a painted path without usable bounds", list([[PATH, [STROKE, [new Float32Array(line(270, 600, 270, 700))], null]]])],
