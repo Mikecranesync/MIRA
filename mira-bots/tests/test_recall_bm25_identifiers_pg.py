@@ -71,6 +71,12 @@ DISTRACTORS = [
     for i in range(12)
 ]
 ORDINARY = "Set the acceleration time parameter to change how fast the drive ramps to frequency."
+RATINGS = "Input rating: 3-phase 480V/60Hz, 24-volt control supply, 6-pulse rectifier, 50/60Hz."
+# Wrong-model control: another model's catalog table, same wording, a different catalog number.
+WRONG_MODEL = (
+    "PowerFlex 40 Drive Models by Frame Size. Drive = 22B-D2P3N104, 22B-D4P0N104. "
+    "Frame size B mounting kit catalog number."
+)
 
 
 def _rows():
@@ -98,6 +104,13 @@ def _rows():
             verified=False,
         ),
         dict(content=ORDINARY, manufacturer="Yaskawa", model_number="GA500", **pub),
+        dict(content=RATINGS, manufacturer="Yaskawa", model_number="GA800", **pub),
+        dict(
+            content=WRONG_MODEL,
+            manufacturer="Rockwell Automation",
+            model_number="PowerFlex 40",
+            **pub,
+        ),
     ]
     out += [
         dict(content=d, manufacturer="Rockwell Automation", model_number="PowerFlex 40", **pub)
@@ -268,6 +281,10 @@ def test_identifier_does_not_match_a_suffixed_part_number(engine, monkeypatch):
         "Micro820 analog input wiring",
         "PowerFlex 525 F0004 undervoltage",
         "V1000 T1-07 base speed and H3-09 gain",
+        # ratings and wiring phrasing that has separators, letters and digits but is no part number
+        "is this a 3-phase 480V/60Hz drive or 24-volt",
+        "6-pulse rectifier on a 50/60Hz supply",
+        "12-24VDC sensor on a 15000rpm spindle",
     ],
 )
 def test_query_without_identifier_runs_exactly_one_unchanged_statement(engine, monkeypatch, query):
@@ -281,6 +298,37 @@ def test_query_without_identifier_runs_exactly_one_unchanged_statement(engine, m
 def test_ordinary_query_still_returns_its_row(engine, monkeypatch):
     contents, _ = _bm25(engine, "acceleration time ramps frequency", monkeypatch=monkeypatch)
     assert contents and contents[0] == ORDINARY
+
+
+def test_ratings_question_still_returns_its_row(engine, monkeypatch):
+    contents, _ = _bm25(
+        engine, "3-phase 480V/60Hz 24-volt 6-pulse rectifier", monkeypatch=monkeypatch
+    )
+    assert contents and contents[0] == RATINGS
+
+
+# --- wrong-model control ---------------------------------------------------------------------
+
+
+def test_wrong_model_table_with_same_wording_does_not_outrank_the_identifier_row(
+    engine, monkeypatch
+):
+    """Another model's frame table shares every word of the question but not the catalog number."""
+    contents, _ = _bm25(engine, QUESTION, monkeypatch=monkeypatch)
+    assert contents[0] == GS10_B
+    assert _rank(contents, WRONG_MODEL) is None or _rank(contents, WRONG_MODEL) > 1
+
+
+def test_prepass_rows_all_hold_the_identifier(engine, monkeypatch):
+    """Rows the pre-pass leads with must contain the complete identifier — never a lookalike."""
+    with engine.connect() as conn:
+        rec = _Recorder(conn)
+        monkeypatch.setenv("MIRA_ENFORCE_APPROVED_RETRIEVAL", "false")
+        neon_recall._recall_bm25(rec, sqlalchemy.text, None, QUESTION, 6)
+        sql, params = next(c for c in rec.calls if "plainto_tsquery" in c[0])
+        pre = [r["content"] for r in conn.execute(sqlalchemy.text(sql), params).mappings()]
+    assert pre and all("GS13N-22P0" in c and "GS13N-22P0X" not in c for c in pre)
+    assert WRONG_MODEL not in pre and GS10_C not in pre
 
 
 # --- privacy, tenancy and approval stay enforced on the pre-pass ----------------------------
