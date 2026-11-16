@@ -8,10 +8,16 @@ import { Client, Pool, type PoolClient } from "pg";
 import { retrieveManualChunks, retrieveNodeChunks } from "../manual-rag";
 import { inferEquipmentType } from "../equipment-type";
 
-import fixture from "../../capabilities/__fixtures__/table-rows/micro820-in009-p16-20-scope.json";
+import sourceFixture from "../../capabilities/__fixtures__/table-rows/micro820-in009-p16-20-scope.json";
 import { COLUMN_LINE_MARK } from "@/capabilities/contact-ratings-table";
 import { excludedTablesRefusalText } from "@/capabilities/manual-applicability";
-import { boundaryMatrix, boundaryMatrixPages, measuredMatrix, measuredMatrixPage, columnBoundaryMatrix, columnBoundaryMatrixPages, columnSemanticMatrix, columnSemanticMatrixPages, columnMeasuredMatrix, columnMeasuredMatrixPage } from "@/capabilities/__fixtures__/section-boundary-matrix";
+import { boundaryMatrix, boundaryMatrixPages, measuredMatrix, measuredMatrixPage, columnBoundaryMatrix, columnBoundaryMatrixPages, columnSemanticMatrix, columnSemanticMatrixPages, columnMeasuredMatrix, columnMeasuredMatrixPage, columnMeasuredMatrixRules, columnMeasuredLaterQualified } from "@/capabilities/__fixtures__/section-boundary-matrix";
+
+// The captured pages carry their painted vertical rules (#5503 F14); pages a test builds may omit them.
+type PaintedRule = { x: number; y0: number; y1: number };
+const fixture = sourceFixture as Omit<typeof sourceFixture, "pages"> & {
+  pages: Array<Omit<(typeof sourceFixture.pages)[number], "rules"> & { rules?: PaintedRule[] }>;
+};
 
 // #5503 PDF/tenant boundaries for the nested SQL block below; no search rows scripted.
 vi.hoisted(() => {
@@ -28,6 +34,11 @@ vi.mock("unpdf", () => ({
         return { items: ((db.pages ?? fixture.pages).find((p) => p.page === page)?.items ?? []).map((i) => ({
           str: i.str, width: i.w, transform: [i.size, 0, 0, i.size, i.x, i.y],
         })) };
+      },
+      // Painted vertical rules of the same page (#5503 F14); a page without them has no rule evidence.
+      getOperatorList: async () => {
+        const rules = ((db.pages ?? fixture.pages).find((p) => p.page === page))?.rules ?? [];
+        return { fnArray: rules.map(() => 91), argsArray: rules.map((r) => [22, [[]], [r.x - 0.25, r.y0, r.x + 0.25, r.y1]]) };
       },
       cleanup: () => true,
     }),
@@ -1148,12 +1159,12 @@ describe("#5503 actual upload INSERT through raw retrieval SQL", () => {
 
   it.each(columnMeasuredMatrix)("F12 actual writer/SQL preserves measured extracted-column row $id", async (c) => {
     const items = columnMeasuredMatrixPage(c);
-    await withPages([{ page: 1, items, text: items.map((r) => r.str).join("\n") }], async () => {
+    await withPages([{ page: 1, items, rules: columnMeasuredMatrixRules(c), text: items.map((r) => r.str).join("\n") }], async () => {
       for (const [model, original, later] of [["20QWB", "2 A", "3 A"], ["20AWB", "1 A", "4 A"]]) {
         expect((await retrieve(model, "zzcolumnoriginal Load current")).text).toContain(original);
         const measured = (await retrieve(model, "zzcolumnmeasured")).text;
-        if (c.kind === "bold-label" || c.kind === "foreign-row") expect(measured).not.toContain(later); // oversized-row uncertainty and contradictory catalog evidence
-        else expect(measured).toContain(later);
+        if (columnMeasuredLaterQualified(c)) expect(measured).toContain(later);
+        else expect(measured).not.toContain(later);
       }
     });
   });

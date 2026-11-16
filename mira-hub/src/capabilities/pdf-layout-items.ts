@@ -16,7 +16,10 @@
  * never fetched or cleaned up twice.
  */
 
-export type LayoutItem = { str: string; x: number; y: number; w: number; size: number };
+import { rulesCrossing, verticalRules } from "./pdf-table-rules";
+
+/** `vr`: indices of the page's painted vertical rules crossing this item's baseline (absent = no rule evidence); `vrx`: those rules' x positions, index-aligned. */
+export type LayoutItem = { str: string; x: number; y: number; w: number; size: number; vr?: readonly number[]; vrx?: readonly number[] };
 
 interface PdfTextItem {
   str?: string;
@@ -30,6 +33,7 @@ interface PdfTextContent {
 
 interface PdfPage {
   getTextContent: () => Promise<PdfTextContent>;
+  getOperatorList?: () => Promise<unknown>;
   cleanup?: () => boolean;
 }
 
@@ -49,13 +53,42 @@ export function layoutItemsFromTextContent(content: PdfTextContent): LayoutItem[
   return items;
 }
 
+/** A standalone catalog-shaped cell: the only kind of text a model-column header is made of. */
+const CATALOG_CELL_RE = /^(?=[A-Z0-9()-]*[A-Z])(?=[A-Z0-9()-]*\d)[A-Z0-9][A-Z0-9()-]{3,}$/;
+
+/**
+ * Annotates each item with the painted vertical rules crossing its baseline (#5503 F14). Read only
+ * for a page that could hold a model-column header; any failure leaves the items unannotated,
+ * which downstream means "no rule evidence" and grants nothing.
+ */
+async function annotateRules(page: PdfPage, items: LayoutItem[]): Promise<void> {
+  if (!page.getOperatorList) return;
+  if (items.filter((item) => CATALOG_CELL_RE.test(item.str.trim())).length < 2) return;
+  let rules: ReturnType<typeof verticalRules>;
+  try {
+    rules = verticalRules(await page.getOperatorList());
+  } catch {
+    return;
+  }
+  if (!rules || rules.length === 0) return;
+  for (const item of items) {
+    const crossing = rulesCrossing(rules, item.y);
+    if (crossing.length > 0) {
+      item.vr = crossing;
+      item.vrx = crossing.map((id) => rules[id].x);
+    }
+  }
+}
+
 /** One page's positioned text items, fetched and released by this call alone. */
 export async function pageLayoutItems(pdf: PdfDocumentProxy, pageNumber: number): Promise<LayoutItem[]> {
   if (!pdf.getPage) return [];
   const page = await pdf.getPage(pageNumber);
   try {
     const content = await page.getTextContent();
-    return layoutItemsFromTextContent(content);
+    const items = layoutItemsFromTextContent(content);
+    await annotateRules(page, items);
+    return items;
   } finally {
     if (page.cleanup && !page.cleanup()) {
       throw new Error("PDF page resources could not be released");

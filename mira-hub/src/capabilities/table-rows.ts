@@ -9,7 +9,8 @@ import { findValues, tableUnit } from "./supporting-quote";
 import { hasNegation, modelNumbersIn } from "./manual-applicability";
 import { catalogIdentifierView } from "./catalog-identifier";
 
-export type LayoutItem = { str: string; x: number; y: number; w: number; size: number };
+/** `vr`: indices of the page's painted vertical rules crossing this item's baseline (absent = no rule evidence); `vrx`: those rules' x positions, index-aligned. */
+export type LayoutItem = { str: string; x: number; y: number; w: number; size: number; vr?: readonly number[]; vrx?: readonly number[] };
 export type TableCell = { model: string; value: string };
 export type TableRow = { label: string; unit: string | null; cells: TableCell[]; merged: boolean };
 export type TableBlock = {
@@ -39,6 +40,8 @@ interface Line {
 }
 
 const LINE_GAP_PT = 2.5;
+/** A table's frame rule sits within a cell padding of its outermost header text. */
+const RULE_EDGE_PT = 8;
 const CAPTION_BAND_PT = 40;
 const ATTACH_BAND_PT = 14;
 const BLOCK_GAP_MULT = 3;
@@ -300,6 +303,22 @@ function captionFor(lines: readonly Line[], headerIdx: number, cols: Columns): s
  *  first line NOT consumed by it (where the outer scan should resume). */
 function buildBlock(lines: readonly Line[], headerIdx: number): { block: TableBlock; nextIdx: number } {
   const header = lines[headerIdx];
+  /** Painted vertical rules crossing EVERY printed item of a line. */
+  const rulesOf = (l: Line): readonly number[] => l.items.filter((item) => item.str.trim().length > 0)
+    .reduce<readonly number[] | null>((common, item) => {
+      const own = item.vr ?? [];
+      return common === null ? own : common.filter((id) => own.includes(id));
+    }, null) ?? [];
+  // Column separators of THIS header: rules crossing it within its own printed extent (its frame
+  // edge included). A page-margin bar or a rule beside the table is not one of its separators.
+  const printed = header.items.filter((item) => item.str.trim().length > 0);
+  const headerLeft = Math.min(...printed.map((item) => item.x));
+  const headerRight = Math.max(...printed.map((item) => item.x + item.w));
+  const headerRules = rulesOf(header).filter((id) => printed.some((item) => {
+    const at = item.vr?.indexOf(id) ?? -1;
+    const x = at >= 0 ? item.vrx?.[at] : undefined;
+    return x !== undefined && x > headerLeft - RULE_EDGE_PT && x < headerRight + RULE_EDGE_PT;
+  }));
   const idCells = identifierCells(header);
   const models = idCells.map((c) => c.str.trim());
   const modelKeys = models.map(exactModelKey);
@@ -372,11 +391,9 @@ function buildBlock(lines: readonly Line[], headerIdx: number): { block: TableBl
     const gridRow = aligned && new Set(columns).size >= 2 && new Set(columns).size === runs.length;
     const bareLabel = modelKeys.includes(exactModelKey(text)) || line.items.every((item) =>
       isIdentifierCell(item.str) && modelKeys.includes(exactModelKey(item.str)));
-    const footnote = /^\(?\d{1,2}\)?$|^(?:\(\d{1,2}\)|\d{1,2}[.)])\s+\S/.test(text);
     const measuredRow = aligned && (findValues(renderItems(valueItems), "source").length > 0 ||
       (labelItems.length > 0 && (/^[+−-]?\d/.test(renderItems(valueItems)) ||
         (labelAndUnit(labelItems).unit !== null && valueItems.every((item) => isNumberShaped(item.str))))));
-    const referenceCell = aligned && runs.every((run) => /^(?:See|Refer to)\b.*\b(?:page|figure|table)\s+\d/i.test(renderItems(run.items)));
     // Centred labels can sit between two baselines of their own multiline
     // value cells. Require overlapping text boxes at this grid's columns;
     // mere adjacency or short label wording is not ownership evidence.
@@ -386,7 +403,18 @@ function buildBlock(lines: readonly Line[], headerIdx: number): { block: TableBl
       return adjacentCells.valueItems.length > 0 &&
         groupRuns(adjacentCells.valueItems, RUN_GAP_PT).every((run) => Math.abs(run.leftX - cols.x[nearestColumn(run.leftX, cols)]) <= cols.tol);
     });
-    if (!conflicting && (gridRow || bareLabel || footnote || measuredRow || referenceCell || centredLabel)) memberYs.push(line.y);
+    // F14: a numbered prefix cannot tell a footnote from a numbered section
+    // title, and a measurement inside one aligned item cannot tell a merged
+    // data cell from a voltage-bearing heading. Wording and position grant
+    // nothing. The measured-row and centred-label roles count only when the
+    // a painted column separator of the model header runs unbroken through
+    // this line; a page with no rule evidence gets none.
+    const lineRules = rulesOf(line);
+    const ruled = headerRules.some((id) => lineRules.includes(id));
+    // A label-less line of aligned cells is a wrapped continuation or a title
+    // set across the columns; position cannot tell which, so it too needs the rule.
+    const labelledGridRow = gridRow && (labelItems.length > 0 || ruled);
+    if (!conflicting && (labelledGridRow || bareLabel || (ruled && (measuredRow || centredLabel)))) memberYs.push(line.y);
 
     if (valueItems.length === 0) {
       const text = renderItems(labelItems);

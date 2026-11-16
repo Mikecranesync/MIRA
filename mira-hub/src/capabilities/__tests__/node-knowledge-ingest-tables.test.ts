@@ -25,6 +25,8 @@ const captured: { sql: string; params: unknown[] }[] = [];
 const pdf = vi.hoisted(() => ({
   pages: [] as string[],
   layout: new Map<number, Array<{ str: string; x: number; y: number; w: number; size: number }>>(),
+  /** Painted vertical rules per page (#5503 F14); a page without an entry has no rule evidence. */
+  rules: new Map<number, Array<{ x: number; y0: number; y1: number }>>(),
   getPageThrows: false,
   withoutGetPage: false,
 }));
@@ -41,7 +43,10 @@ vi.mock("unpdf", () => ({
           transform: [i.size, 0, 0, i.size, i.x, i.y],
           width: i.w,
         }));
-        return { getTextContent: vi.fn(async () => ({ items })), cleanup: () => true };
+        const rules = pdf.rules.get(n) ?? [];
+        const getOperatorList = async () => ({ fnArray: rules.map(() => 91),
+          argsArray: rules.map((r) => [22, [[]], [r.x - 0.25, r.y0, r.x + 0.25, r.y1]]) });
+        return { getTextContent: vi.fn(async () => ({ items })), getOperatorList, cleanup: () => true };
       }),
     };
   }),
@@ -90,6 +95,7 @@ describe("writePdfChunksForNode stores a model-column table as one chunk per mod
     captured.length = 0;
     pdf.pages = [PROSE, gs10p26.text];
     pdf.layout = new Map([[2, gs10p26.items]]);
+    pdf.rules = new Map([[2, gs10p26.rules]]);
     pdf.getPageThrows = false;
     pdf.withoutGetPage = false;
     vi.resetModules();
@@ -164,6 +170,7 @@ describe("writePdfChunksForNode stores a model-column table as one chunk per mod
     const first = interrupted();
     pdf.pages = [first.map((item) => item.str).join("\n"), gs10p26.text];
     pdf.layout = new Map([[1, first], [2, gs10p26.items]]);
+    pdf.rules = new Map([[2, gs10p26.rules]]);
     const { writePdfChunksForNode } = await import("@/lib/node-knowledge-ingest");
     await writePdfChunksForNode(opts);
     const own = insertedRows().filter((row) => row.page === 2 && (row.metadata.table_models as string[] | undefined)?.join() === "GS11N20P2");
@@ -182,6 +189,7 @@ describe("writePdfChunksForNode stores a model-column table as one chunk per mod
       expect(pageWithTables(ordinary)).toBeNull(); // parameter fields remain ordinary, never equipment/model chunks
       pdf.pages = [first.map((value) => value.str).join("\n"), ordinary.map((value) => value.str).join("\n")];
       pdf.layout = new Map([[1, first], [2, ordinary]]);
+      pdf.rules = new Map();
       const { writePdfChunksForNode } = await import("@/lib/node-knowledge-ingest");
       await writePdfChunksForNode(opts);
       const rows = insertedRows().filter((row) => row.page === 2 && row.content.includes("zzordinaryparameter"));
@@ -216,6 +224,7 @@ describe("garage pilot L2 — a page whose numbers carry an unmapped glyph still
     const glyph = (s: string) => s.replace(/(\d)\.(\d)/g, "$1�$2");
     pdf.pages = [PROSE, glyph(gs10p26.text)];
     pdf.layout = new Map([[2, gs10p26.items.map((i) => ({ ...i, str: glyph(i.str) }))]]);
+    pdf.rules = new Map([[2, gs10p26.rules]]);
     pdf.getPageThrows = false;
     pdf.withoutGetPage = false;
     vi.resetModules();
@@ -240,6 +249,7 @@ describe("writePdfChunksForNode stores a model-keyed table (one model per line) 
     captured.length = 0;
     pdf.pages = [PROSE, gs10p394.text];
     pdf.layout = new Map([[2, gs10p394.items]]);
+    pdf.rules = new Map();
     pdf.getPageThrows = false;
     pdf.withoutGetPage = false;
     vi.resetModules();

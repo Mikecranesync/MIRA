@@ -1,19 +1,25 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import type { PoolClient } from "pg";
-import fixture from "../__fixtures__/table-rows/micro820-in009-p16-20-scope.json";
+import sourceFixture from "../__fixtures__/table-rows/micro820-in009-p16-20-scope.json";
 import ml1100Ratings from "../__fixtures__/table-rows/ml1100-p114-p120-ratings-scope.json";
 import { COLUMN_LINE_MARK } from "../contact-ratings-table";
 import { excludedTablesRefusalText, modelNumbersIn } from "../manual-applicability";
 import { retrieveNodeChunks } from "@/lib/manual-rag";
 import { SectionTableScope, sectionTableLayout } from "../section-table-scope";
 import { pageWithTables } from "../table-rows";
-import { columnBoundaryMatrix, columnBoundaryMatrixPages, columnSemanticMatrix, columnSemanticMatrixPages, columnMeasuredMatrix, columnMeasuredMatrixPage } from "../__fixtures__/section-boundary-matrix";
+import { columnBoundaryMatrix, columnBoundaryMatrixPages, columnSemanticMatrix, columnSemanticMatrixPages, columnMeasuredMatrix, columnMeasuredMatrixPage, columnMeasuredMatrixRules, columnMeasuredLaterQualified } from "../__fixtures__/section-boundary-matrix";
+
+// The captured pages carry their painted vertical rules (#5503 F14); pages a test builds may omit them.
+type PaintedRule = { x: number; y0: number; y1: number };
+const fixture = sourceFixture as Omit<typeof sourceFixture, "pages"> & {
+  pages: Array<Omit<(typeof sourceFixture.pages)[number], "rules"> & { rules?: PaintedRule[] }>;
+};
 
 // Actual unpdf page text and positioned items, captured from the retained source hash.
 // Only the PDF/SQL boundaries are simulated: upload parsing, chunking, the #5487
 // column reader, retrieval admission and refusal wording are the production code.
 vi.hoisted(() => { process.env.NODE_EMBED_ON_WRITE = "0"; });
-const pdfPages = vi.hoisted(() => ({ failPage: null as number | null, current: null as null | Array<{ page: number; text: string; items: Array<{ str: string; x: number; y: number; w: number; size: number }> }> }));
+const pdfPages = vi.hoisted(() => ({ failPage: null as number | null, current: null as null | Array<{ page: number; text: string; rules?: Array<{ x: number; y0: number; y1: number }>; items: Array<{ str: string; x: number; y: number; w: number; size: number }> }> }));
 vi.mock("unpdf", () => ({
   getDocumentProxy: vi.fn(async () => ({
     getPage: async (page: number) => ({
@@ -22,6 +28,11 @@ vi.mock("unpdf", () => ({
         return { items: ((pdfPages.current ?? fixture.pages).find((p) => p.page === page)?.items ?? []).map((i) => ({
           str: i.str, width: i.w, transform: [i.size, 0, 0, i.size, i.x, i.y],
         })) };
+      },
+      // Painted vertical rules captured from the same source pages (#5503 F14); synthetic pages have none.
+      getOperatorList: async () => {
+        const rules = ((pdfPages.current ?? fixture.pages).find((p) => p.page === page))?.rules ?? [];
+        return { fnArray: rules.map(() => 91), argsArray: rules.map((r) => [22, [[]], [r.x - 0.25, r.y0, r.x + 0.25, r.y1]]) };
       },
       cleanup: () => true,
     }),
@@ -941,14 +952,14 @@ it.each(columnSemanticMatrix)("F12 semantic extracted-column boundary $id preser
 
 it.each(columnMeasuredMatrix)("F12 measured extracted-column row $id retains original values and uncertainty controls", async (c) => {
   const items = columnMeasuredMatrixPage(c);
-  pdfPages.current = [{ page: 1, items, text: items.map((r) => r.str).join("\n") }];
+  pdfPages.current = [{ page: 1, items, rules: columnMeasuredMatrixRules(c), text: items.map((r) => r.str).join("\n") }];
   let rows: Row[];
   try { rows = await ingestFixture(); } finally { pdfPages.current = null; }
   for (const [model, original, later] of [["20QWB", "2 A", "3 A"], ["20AWB", "1 A", "4 A"]]) {
     expect((await retrieve(model, rows, "zzcolumnoriginal Load current")).text).toContain(original);
     const measured = (await retrieve(model, rows, "zzcolumnmeasured")).text;
-    if (c.kind === "bold-label" || c.kind === "foreign-row") expect(measured).not.toContain(later); // oversized-row uncertainty and contradictory catalog evidence
-    else expect(measured).toContain(later);
+    if (columnMeasuredLaterQualified(c)) expect(measured).toContain(later);
+    else expect(measured).not.toContain(later);
   }
 });
 

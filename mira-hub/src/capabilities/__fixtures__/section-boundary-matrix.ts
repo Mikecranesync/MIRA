@@ -229,19 +229,50 @@ export function columnSemanticMatrixPages(c: ColumnSemanticCase): LayoutItem[][]
   [row("zzcolumncontinued Point current max", 720, c.bodyFont), row("39 A", 720, c.bodyFont, 280), row("41 A", 720, c.bodyFont, 420)]];
 }
 
-export const columnMeasuredMatrix = (["ordinary", "bold-label", "smaller-label", "catalog-qwb", "catalog-awb", "foreign-row", "numbered-footnote", "merged-measurement"] as const)
-  .flatMap((kind) => [6, 8, 10].flatMap((bodyFont) => [12, 28].map((gap) =>
-    ({ kind, bodyFont, gap, id: [kind, bodyFont, gap].join("-") }))));
+/** Kinds whose ownership rests on a non-row line: proven only by a painted column separator (#5503 F14). */
+const ruleDependentKinds = ["numbered-footnote", "merged-measurement", "numbered-heading", "numbered-heading-small", "voltage-heading", "voltage-heading-small", "split-title", "split-voltage-title"] as const;
+export const columnMeasuredMatrix = (["ordinary", "bold-label", "smaller-label", "catalog-qwb", "catalog-awb", "foreign-row", ...ruleDependentKinds] as const)
+  .flatMap((kind) => [6, 8, 10].flatMap((bodyFont) => [12, 28].flatMap((gap) =>
+    ((ruleDependentKinds as readonly string[]).includes(kind) ? [false, true] : [false]).map((ruled) =>
+      ({ kind, bodyFont, gap, ruled, id: [kind, bodyFont, gap, ruled ? "ruled" : "unruled"].join("-") })))));
+
+/** Whether the row after the interposed line keeps the original models' qualification.
+ * A numbered line is never proof (footnote and numbered title are indistinguishable); a
+ * measurement-bearing aligned cell is proof only inside the header's painted column rules. */
+export function columnMeasuredLaterQualified(c: typeof columnMeasuredMatrix[number]): boolean {
+  if (c.kind === "bold-label" || c.kind === "foreign-row") return false; // oversized-row uncertainty and contradictory catalog evidence
+  if (c.kind.startsWith("numbered-")) return false;
+  if (c.kind === "merged-measurement" || c.kind.startsWith("voltage-heading") || c.kind.startsWith("split-")) return c.ruled;
+  return true;
+}
+
+/** One painted separator between the label and the first model column, from the header through the last row. */
+export function columnMeasuredMatrixRules(c: typeof columnMeasuredMatrix[number]): Array<{ x: number; y0: number; y1: number }> {
+  return c.ruled ? [{ x: 270, y0: 692 - c.gap - 24, y1: 730 }] : [];
+}
 
 export function columnMeasuredMatrixPage(c: typeof columnMeasuredMatrix[number]): LayoutItem[] {
   const labelFont = c.kind === "bold-label" ? 14 : c.kind === "smaller-label" ? c.bodyFont - 2 : c.bodyFont;
   const catalog = c.kind.startsWith("catalog-");
   const footnote = c.kind === "numbered-footnote";
   const merged = c.kind === "merged-measurement";
-  const y = 692 - c.gap - (catalog || footnote || merged ? 14 : 0);
+  const numbered = c.kind.startsWith("numbered-heading");
+  const voltage = c.kind.startsWith("voltage-heading");
+  const titleFont = c.kind.endsWith("-small") ? c.bodyFont - 2 : c.bodyFont;
+  const split = c.kind.startsWith("split-");
+  const y = 692 - c.gap - (catalog || footnote || merged || numbered || voltage || split ? 14 : 0);
   return [...originalColumns(c.bodyFont),
     ...(catalog ? [row(c.kind === "catalog-qwb" ? "2080-LC20-20QWB" : "2080-LC20-20AWB", 692 - c.gap, c.bodyFont)] : []),
     ...(footnote ? [row("(1) Values apply under the recorded conditions.", 692 - c.gap, c.bodyFont - 2)] : []),
+    // Round 11 F14: a numbered section title at the label margin and a voltage-bearing
+    // title at the first value column, neither repeating a model header.
+    ...(numbered ? [row("2. DC Output Characteristics", 692 - c.gap, titleFont)] : []),
+    ...(voltage ? [row("24 V DC Outputs", 692 - c.gap, titleFont, 280)] : []),
+    // A title set across both value columns with no label: aligned like a wrapped
+    // continuation line, so position alone proves nothing.
+    ...(split ? (c.kind === "split-title"
+      ? [row("DC Output", 692 - c.gap, c.bodyFont, 280), row("Characteristics", 692 - c.gap, c.bodyFont, 420)]
+      : [row("24 V DC", 692 - c.gap, c.bodyFont, 280), row("Outputs", 692 - c.gap, c.bodyFont, 420)]) : []),
     ...(merged ? [row("Common interval", 692 - c.gap, c.bodyFont), row("12 ms", 692 - c.gap, c.bodyFont, 280)] : []),
     row("zzcolumnmeasured " + (c.kind === "foreign-row" ? "Test load 2080-LC20-20QBB" : "Point current max"), y, labelFont),
     row("3 A", y, c.bodyFont, 280), row("4 A", y, c.bodyFont, 420)];
