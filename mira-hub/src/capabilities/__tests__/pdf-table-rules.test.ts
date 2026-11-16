@@ -92,6 +92,8 @@ describe("#5503 F14/F15: painted vertical rules of a PDF page", () => {
     expect(verticalRules(list(ops))).toEqual(expected);
   });
 
+  /** Half of a 20 pt stroke as the reader bounds it under a quarter turn: never less than the drawn 10 pt. */
+  const ROTATED_HALF = (20 * Math.hypot(0, 1, -1, 0)) / 2;
   const LINE_WIDTH = 2, IMAGE = 85, SHADING = 62, ANNOTATION = 80, TEXT = 44, MARKED = 70;
   it.each([
     ["a hairline stroke", [[LINE_WIDTH, [0.5]], path(STROKE, line(270, 600, 270, 700))], RULE],
@@ -122,6 +124,8 @@ describe("#5503 F14/F15: painted vertical rules of a PDF page", () => {
     ["a rule covered under a clip the reader cannot model", [path(STROKE, line(270, 600, 270, 730)), [SAVE, null], [CLIP, null], path(END_PATH, [M, 270, 560, L, 400, 670, L, 270, 780, L, 140, 670, Z]), [FILL_RGB, ["#ffffff"]], path(FILL, rect(200, 650, 340, 690)), [RESTORE, null]], [{ x: 270, y0: 600, y1: 650 }, { x: 270, y0: 690, y1: 730 }]],
     ["a rule covered by an image under such a clip", [path(STROKE, line(270, 600, 270, 730)), [SAVE, null], [CLIP, null], path(END_PATH, [M, 270, 560, L, 400, 670, L, 270, 780, L, 140, 670, Z]), [TRANSFORM, [140, 0, 0, 40, 200, 650]], [IMAGE, ["img", 1, 1]], [RESTORE, null]], [{ x: 270, y0: 600, y1: 650 }, { x: 270, y0: 690, y1: 730 }]],
     ["a rule covered inside a rotated form", [path(STROKE, line(270, 600, 270, 730)), [SAVE, null], [TRANSFORM, [0, 1, -1, 0, 0, 0]], [FORM_BEGIN, [null, [0, -800, 800, 0]]], [TRANSFORM, [0, -1, 1, 0, 0, 0]], [FILL_RGB, ["#ffffff"]], path(FILL, rect(200, 650, 340, 690)), [FORM_END, []], [RESTORE, null]], [{ x: 270, y0: 600, y1: 650 }, { x: 270, y0: 690, y1: 730 }]],
+    ["a rule under a thick white stroke drawn in a rotated frame", [path(STROKE, line(270, 600, 270, 730)), [SAVE, null], [TRANSFORM, [0, 1, -1, 0, 0, 0]], [LINE_WIDTH, [20]], [STROKE_RGB, ["#ffffff"]], path(STROKE, line(660, -200, 660, -400)), [RESTORE, null]], [{ x: 270, y0: 600, y1: 660 - ROTATED_HALF }, { x: 270, y0: 660 + ROTATED_HALF, y1: 730 }]],
+    ["a rule under a thick dark stroke drawn in a rotated frame", [path(STROKE, line(270, 600, 270, 730)), [SAVE, null], [TRANSFORM, [0, 1, -1, 0, 0, 0]], [LINE_WIDTH, [20]], path(STROKE, line(660, -200, 660, -400)), [RESTORE, null]], [{ x: 270, y0: 600, y1: 660 - ROTATED_HALF }, { x: 270, y0: 660 + ROTATED_HALF, y1: 730 }]],
     ["a line continued after closing its path", [path(STROKE, [M, 300, 600, L, 270, 600, Z, L, 270, 730])], []],
     ["a rule under a triangular clip", [[CLIP, null], path(END_PATH, [M, 260, 740, L, 500, 740, L, 500, 600, Z]), path(STROKE, line(270, 600, 270, 700))], []],
     ["a rule under a clip with a hole", [[30, null], path(END_PATH, [...rect(200, 590, 500, 740), ...rect(250, 640, 300, 700)]), path(STROKE, line(270, 600, 270, 720))], []],

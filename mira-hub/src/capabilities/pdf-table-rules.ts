@@ -263,7 +263,8 @@ export function verticalRules(operatorList: unknown): VerticalRule[] | null {
       const subpaths = straightSubpaths(args[1]);
       if (subpaths === null) return null;
       if (CLOSING_PAINT.has(args[0]) && subpaths.length > 0) subpaths[subpaths.length - 1].closed = true;
-      const scale = Math.max(Math.abs(ctm[0]), Math.abs(ctm[3]));
+      // Never smaller than the widest a stroke can be drawn under this matrix, whatever its rotation.
+      const scale = Math.hypot(ctm[0], ctm[1], ctm[2], ctm[3]);
       const thinStroke = state.lineWidth * scale <= MAX_RULE_WIDTH_PT;
       const darkStroke = state.stroke && state.strokeAlpha && thinStroke;
       const strokes = STROKING.has(args[0]) && darkStroke && !state.dashed;
