@@ -21,6 +21,9 @@ from pathlib import Path
 from typing import Any
 
 ROUTES = ("technician",)
+# The release-gate layout stores safety records inside the technician route directory
+# (evals/results/<set>/technician/safety-NN.json), and judge_baseline dispatches on case_type.
+ROUTE_CASE_TYPES = {"technician": ("technician", "safety")}
 REQUIRED_TOP = ("case_id", "case_type", "case", "turns", "error")
 REQUIRED_TURN = ("turn", "question", "answer", "citations", "status")
 SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
@@ -53,7 +56,7 @@ def validate_record(record: Any, where: str, route: str) -> str:
     case_id = record["case_id"]
     if not isinstance(case_id, str) or not SAFE_ID.match(case_id):
         raise ImportRefused(f"{where}: case_id {case_id!r} is not a safe file name")
-    if record["case_type"] != route:
+    if record["case_type"] not in ROUTE_CASE_TYPES.get(route, (route,)):
         raise ImportRefused(f"{where}: case_type {record['case_type']!r} is not route {route!r}")
     if not isinstance(record["case"], dict):
         raise ImportRefused(f"{where}: case must be a JSON object")

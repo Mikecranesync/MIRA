@@ -146,9 +146,15 @@ def test_importer_refuses_an_unsafe_case_id(tmp_path):
 
 
 def test_importer_refuses_a_record_for_another_route(tmp_path):
-    rec = record("tech-01", case_type="safety")
+    rec = record("tech-01", case_type="notebook")
     with pytest.raises(ai.ImportRefused, match="is not route 'technician'"):
         do_import(tmp_path, [rec])
+
+
+def test_importer_accepts_safety_records_in_the_technician_route(tmp_path):
+    # Control for the refusal above: the release-gate layout keeps safety-NN.json in technician/.
+    do_import(tmp_path, [record("safety-01", case_type="safety"), record("tech-01")])
+    assert (tmp_path / "results" / "set-a" / "technician" / "safety-01.json").exists()
 
 
 def test_importer_refuses_a_bad_sha_and_a_non_http_base_url(tmp_path):
