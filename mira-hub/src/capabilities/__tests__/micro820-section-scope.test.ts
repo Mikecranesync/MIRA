@@ -7,6 +7,7 @@ import { excludedTablesRefusalText, modelNumbersIn } from "../manual-applicabili
 import { retrieveNodeChunks } from "@/lib/manual-rag";
 import { SectionTableScope, sectionTableLayout } from "../section-table-scope";
 import { pageWithTables } from "../table-rows";
+import { columnBoundaryMatrix, columnBoundaryMatrixPages } from "../__fixtures__/section-boundary-matrix";
 
 // Actual unpdf page text and positioned items, captured from the retained source hash.
 // Only the PDF/SQL boundaries are simulated: upload parsing, chunking, the #5487
@@ -908,6 +909,20 @@ it.each(["20QBB", "20QWB", "non-table", "non-table-large-body", "non-table-small
   expect(originalColumns.every((r) => !r.content.includes("zzadjacentvalue"))).toBe(true);
 });
 
+
+it.each(columnBoundaryMatrix)("F10 extracted-column boundary $id preserves original columns and excludes later values", async (c) => {
+  const cover = "Micro820 Programmable Controllers\n2080-LC20-20QBB, 2080-LC20-20QWB, 2080-LC20-20AWB";
+  pdfPages.current = [{ page: 1, text: cover, items: [{ str: cover, x: 100, y: 760, w: 450, size: 12 }] },
+    ...columnBoundaryMatrixPages(c).map((items, i) => ({ page: i + 2, items, text: items.map((r) => r.str).join("\n") }))];
+  let rows: Row[];
+  try { rows = await ingestFixture(); } finally { pdfPages.current = null; }
+  for (const [model, value] of [["20QWB", "2 A"], ["20AWB", "1 A"]]) {
+    expect((await retrieve(model, rows, "zzmatrixoriginal Load current")).text).toContain(value);
+  }
+  for (const model of ["20QWB", "20AWB", "20QBB"]) for (const token of ["zzmatrixfirst", "zzmatrixlast", "zzmatrixcontinued"]) {
+    expect((await retrieve(model, rows, token)).text).not.toContain(token);
+  }
+});
 
 it.each(["independent", "independent-footnote", "inherited-conflict", "inherited-compatible"])("F8 readable headingless model columns retain qualification with %s scope", async (kind) => {
   const item = (str: string, x: number, y: number, size = 8) => ({ str, x, y, size, w: str.length * size * 0.4 });

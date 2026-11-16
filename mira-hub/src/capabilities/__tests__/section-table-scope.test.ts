@@ -4,6 +4,7 @@ import { pageWithTables, tableChunks, detectModelTables, type LayoutItem, type T
 import ml1100Ratings from "../__fixtures__/table-rows/ml1100-p114-p120-ratings-scope.json";
 import micro820 from "../__fixtures__/table-rows/micro820-in009-p16-20-scope.json";
 import { columnLines, contactRatingTable } from "../contact-ratings-table";
+import { boundaryMatrix, boundaryMatrixPages, measuredMatrix, measuredMatrixPage } from "../__fixtures__/section-boundary-matrix";
 
 const AWB = "2080LC2020AWB";
 const QBB = "2080LC2020QBB";
@@ -640,6 +641,35 @@ it.each(["named", "unnamed", "next-page", "named-no-header", "unnamed-no-header"
   expect(later).toMatchObject({ scope: "unresolved" });
   expect(later.text).not.toContain("Load current max");
   expect(scope.split("Point current max 9 A continued", null)[0]).toMatchObject({ scope: "unresolved" });
+});
+
+it.each(measuredMatrix)("F10 measured data $id preserves valid original values", (c) => {
+  const items = measuredMatrixPage(c);
+  const layout = sectionTableLayout(items)!;
+  const parts = new SectionTableScope(new Map(), true, [QWB]).splitPage(layout.text, layout, []).sections;
+  for (const token of ["zzmeasureoriginal", "zzmeasurelast"]) {
+    const rows = parts.filter((p) => p.text.includes(token));
+    expect(rows.length).toBeGreaterThan(0);
+    if (c.font === 14 && token === "zzmeasurelast") expect(rows.every((p) => p.scope === "unresolved")).toBe(true);
+    else expect(rows.every((p) => p.scope === "section" && p.models?.includes(QWB))).toBe(true);
+  }
+});
+
+it.each(boundaryMatrix)("F10 geometry-independent boundary $id preserves only the original model values", (c) => {
+  const scope = new SectionTableScope(new Map(), true, [QWB]);
+  const parts = boundaryMatrixPages(c).flatMap((items) => {
+    const layout = sectionTableLayout(items);
+    return scope.splitPage(layout?.text ?? items.map((r) => r.str).join("\n"), layout, []).sections;
+  });
+  const original = parts.filter((p) => p.text.includes("zzmatrixoriginal"));
+  expect(original.length).toBeGreaterThan(0);
+  expect(original.every((p) => p.scope === "section" && p.models?.includes(QWB))).toBe(true);
+  for (const token of ["zzmatrixfirst", "zzmatrixlast", "zzmatrixcontinued"]) {
+    const later = parts.filter((p) => p.text.includes(token));
+    expect(later.length).toBeGreaterThan(0);
+    expect(later.every((p) => p.scope === "unresolved")).toBe(true);
+    expect(later.every((p) => !p.text.includes("zzmatrixoriginal"))).toBe(true);
+  }
 });
 
 it("F10 local boundaries neither qualify unrelated tables nor mistake larger grid rows or service prose for headings", () => {

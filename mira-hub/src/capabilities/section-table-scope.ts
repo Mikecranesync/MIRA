@@ -11,7 +11,7 @@ export type SectionScope = "section" | "shared" | "unresolved";
 /** columnOnly is internal: independent parameter/accessory columns retain the
  * existing family-domain rule; an explicit catalog section never gains it. */
 export type ScopedText = { columnOnly?: boolean; text: string; models?: string[]; scope?: SectionScope; sharedHeader?: string };
-type Heading = { interruption?: boolean; bodyHeading?: boolean; localTitle?: boolean; bodySize?: number; interruptedModels?: string[]; text: string; at: number; table: boolean; size: number; sharedHeader?: string; headerModels?: string[]; headerUnresolved?: boolean; headerInvalidLabels?: boolean; relayTable?: boolean; sourceLine: number; y: number; headerTop?: number; headerBottom?: number; columnUnresolved?: boolean };
+type Heading = { interruption?: boolean; bodyHeading?: boolean; localTitle?: boolean; fontPeakEligible?: boolean; bodySize?: number; interruptedModels?: string[]; text: string; at: number; table: boolean; size: number; sharedHeader?: string; headerModels?: string[]; headerUnresolved?: boolean; headerInvalidLabels?: boolean; relayTable?: boolean; sourceLine: number; y: number; headerTop?: number; headerBottom?: number; columnUnresolved?: boolean };
 export type SectionLayout = { text: string; headings: Heading[]; candidates?: Heading[]; hasTables: boolean; retainedLines: string[] };
 type OutputMap = Map<string, boolean | null>;
 type ActiveScope = Pick<ScopedText, "models" | "scope" | "sharedHeader" | "columnOnly">;
@@ -65,24 +65,44 @@ export function withoutSharedTableHeader(text: string, header: unknown): string 
 
 const TITLE_LETTER = new RegExp("\\p{L}", "u");
 
+/** A readable engineering section remains a boundary when its catalog is
+ * fragmented or absent. This only withdraws inherited applicability; it does
+ * not declare a model. Ordinary labels and measured values do not match. */
+function engineeringBoundary(text: string): boolean {
+  const title = catalogIdentifierView(text).text
+    .replace(/\b(?:not|excluding|except|only|without)\b/gi, " ")
+    .replace(/\(\d+\)/g, " ");
+  const noun = /\b(?:Specifications|Requirements|Ratings|Data)\s*(?:\(?\s*for\b|[()\s]*$)/i.exec(title);
+  // A book's generic running "Appendix ... Specifications" is not evidence
+  // of a new engineering category. Catalog contradictions are checked separately.
+  return !!noun && /\b(?:AC|DC|Input|Output|Relay|Contact|Power|Supply|Voltage|Current|Electrical|Environmental|Technical)\b/i.test(title.slice(0, noun.index));
+}
+
 /** Detection only: catalog fragments and footnote markers are not measured row
  * values. A negative catalog title may stop scope, but never assigns models. */
-function localSectionTitle(text: string): boolean {
+function localSectionTitle(text: string): { semantic: boolean; typographic: boolean } | null {
   let remainder = catalogIdentifierView(text).text;
   const catalogs = modelNumbersIn(remainder);
-  const title = catalogs.length > 0 ? remainder.replace(/\b(?:not|excluding|except|only|without)\b/gi, " ") : remainder;
-  if (!isTitleLine(title)) return false;
+  const title = catalogs.length > 0 || engineeringBoundary(remainder)
+    ? remainder.replace(/\b(?:not|excluding|except|only|without)\b/gi, " ") : remainder;
+  if (!isTitleLine(title)) return null;
   for (const model of catalogs) remainder = remainder.replaceAll(model.label, " ");
   remainder = remainder.replace(/\(\d+\)/g, " ");
   const values = findValues(remainder, "source");
-  if (!values.every((value) => !remainder.slice(0, value.start).trim())) return false;
   const words = values.reduceRight((part, value) => part.slice(0, value.start) + " " + part.slice(value.end), remainder);
   // A running product-family title is not a new engineering section. Retain
   // catalog-only titles, the existing catalog suffix grammar and engineering
   // headings; do not turn a smaller family/page header into a scope change.
-  if (catalogs.length > 0 && TITLE_LETTER.test(words) && captionModels({ text: title }).length === 0 &&
-      !/\b(?:Specifications|Requirements|Ratings|Relay|Contact|Data)\b/i.test(title)) return false;
-  return catalogs.length > 0 || TITLE_LETTER.test(words);
+  const ordinaryTitle = values.every((value) => !remainder.slice(0, value.start).trim()) &&
+    !(catalogs.length > 0 && TITLE_LETTER.test(words) && captionModels({ text: title }).length === 0 &&
+      !/\b(?:Specifications|Requirements|Ratings|Relay|Contact|Data)\b/i.test(title)) &&
+    (catalogs.length > 0 || TITLE_LETTER.test(words));
+  // A nominal voltage after a catalog does not turn a title into a value row.
+  // Reuse the existing enumerated-catalog grammar on its readable prefix.
+  const measured = findValues(title, "source")[0];
+  const catalogPrefix = measured !== undefined && captionModels({ text: title.slice(0, measured.start) }).length > 0;
+  const semantic = engineeringBoundary(title) || (catalogs.length > 0 && (ordinaryTitle || catalogPrefix));
+  return ordinaryTitle || semantic ? { semantic, typographic: ordinaryTitle } : null;
 }
 
 /** Render every positioned item once, in page reading order. Caption positions, rather than
@@ -92,7 +112,7 @@ function localSectionTitle(text: string): boolean {
 export function sectionTableLayout(items: readonly LayoutItem[], includeBoundaries = true, remainderItems?: readonly LayoutItem[], annotation?: { after: LayoutItem; lines: string[] }): SectionLayout | null {
   if (annotation && !items.includes(annotation.after)) throw new Error("contact-column source row is not in this page's positioned items");
   const retained = remainderItems ? new Set(remainderItems) : null;
-  const lines: Array<{ text: string; y: number; x: number; size: number; minSize: number; columns: Array<{ text: string; x: number; right: number; size: number }>; removed: boolean; virtual: boolean }> = [];
+  const lines: Array<{ text: string; y: number; x: number; size: number; uniformFont: boolean; columns: Array<{ text: string; x: number; right: number; size: number }>; removed: boolean; virtual: boolean }> = [];
   const bands: LayoutItem[][] = [];
   for (const item of [...items].filter((i) => i.str.trim()).sort((a, b) => b.y - a.y || a.x - b.x)) {
     const last = bands.at(-1);
@@ -108,14 +128,15 @@ export function sectionTableLayout(items: readonly LayoutItem[], includeBoundari
       else columns.push({ text: item.str.trim(), x: item.x, right: item.x + item.w, size: item.size });
     }
     const ordinary = band.filter((i) => !/^\(?\d+\)?$/.test(i.str.trim()));
-    const titleSizes = (ordinary.length ? ordinary : band).map((i) => i.size);
+    const size = Math.max(...band.map((i) => i.size));
+    const uniformFont = Math.min(...(ordinary.length ? ordinary : band).map((i) => i.size)) >= size - 0.2;
     lines.push({ text: band.map((i) => i.str.trim()).join(" ").replace(/\s+/g, " "),
-      y: band[0].y, x: band[0].x, size: Math.max(...band.map((i) => i.size)), minSize: Math.min(...titleSizes), columns,
+      y: band[0].y, x: band[0].x, size, uniformFont, columns,
       removed: !!retained && band.every((item) => !retained.has(item)), virtual: false });
     // Derived contact columns belong to their physical source table, even when that table
     // was extracted into separate model chunks. Never append them under a later caption.
     if (annotation && band.includes(annotation.after)) {
-      for (const text of annotation.lines) lines.push({ text, y: band[0].y, x: band[0].x, size: 0, minSize: 0, columns: [], removed: false, virtual: true });
+      for (const text of annotation.lines) lines.push({ text, y: band[0].y, x: band[0].x, size: 0, uniformFont: true, columns: [], removed: false, virtual: true });
     }
   }
   const captions = new Map<number, { text: string; end: number; bodySize?: number; sharedHeader?: string; headerModels?: string[]; headerUnresolved?: boolean; headerInvalidLabels?: boolean; columnUnresolved?: boolean; headerTop?: number; headerBottom?: number; relayTable: boolean }>();
@@ -286,20 +307,21 @@ export function sectionTableLayout(items: readonly LayoutItem[], includeBoundari
       // Use the adjacent header, not a page minimum lowered by tiny footnotes.
       const bodyHeading = !caption && line.columns.length === 1 && line.text.length < 200 &&
         isTitleLine(line.text) && next && line.y - next.y <= 60 &&
-        /^(?:Attribute|Description)\b/i.test(next.text) && line.size > next.size + 0.2;
-      // Keep uniform-font title evidence even without a repeated table header.
-      // A title/catalog can occupy several PDF columns, and its following body
-      // can be indented or use a different font. Those layouts do not prove
-      // that the earlier model still owns it. The state machine checks the
-      // established body font and contradictory catalog evidence below.
-      // Mixed-size grid rows and measured value rows remain data.
-      const inHeader = /^(?:Attribute|Description)\b/i.test(line.text) || [...captions.values()].some((c) => c.headerTop !== undefined && c.headerBottom !== undefined &&
+        /^(?:Attribute|Description)\b/i.test(next.text) &&
+        !/^(?:Attribute|Description)\s+for\b/i.test(next.text) && line.size > next.size + 0.2;
+      // Preserve semantic boundary evidence BEFORE any typography fallback.
+      // Mixed fonts, columns, indentation, spacing and page position cannot
+      // establish that a later section still belongs to the earlier model.
+      // Only actual table headers/extracted rows are already owned; a title
+      // such as "Description for <catalog>" is not an Attribute/Value header.
+      const inHeader = /^(?:Attribute|Description)(?:\s+Value)?(?:\s*\(\d+\))?$/i.test(line.text) || [...captions.values()].some((c) => c.headerTop !== undefined && c.headerBottom !== undefined &&
         line.y <= c.headerTop + 2.5 && line.y >= c.headerBottom - 2.5);
-      const localTitle = !caption && !line.removed && !inHeader && line.minSize >= line.size - 0.2 &&
-        line.text.length < 200 && localSectionTitle(line.text);
+      const titleEvidence = !caption && !line.removed && !inHeader ? localSectionTitle(line.text) : null;
+      const fontPeakEligible = !!titleEvidence?.typographic && line.uniformFont && line.text.length < 200;
+      const localTitle = !!titleEvidence?.semantic || fontPeakEligible;
       const heading: Heading = { text: caption?.text ?? line.text, at, table: !!caption, size: line.size,
         ...(bodyHeading ? { bodyHeading: true } : {}),
-        ...(localTitle ? { localTitle: true } : {}),
+        ...(localTitle ? { localTitle: true, fontPeakEligible } : {}),
         ...(caption?.bodySize ? { bodySize: caption.bodySize } : {}),
         ...(caption?.sharedHeader ? { sharedHeader: caption.sharedHeader } : {}),
         ...(caption?.headerModels ? { headerModels: caption.headerModels } : {}),
@@ -313,7 +335,7 @@ export function sectionTableLayout(items: readonly LayoutItem[], includeBoundari
         ...(caption?.headerTop !== undefined ? { headerTop: caption.headerTop, headerBottom: caption.headerBottom } : {}) };
       // Retain potential local boundaries before a preceding caption's size can
       // discard them. Extraction qualifies these against its own table geometry.
-      if (caption || line.text.length < 200) candidates.push(heading);
+      if (caption || localTitle || line.text.length < 200) candidates.push(heading);
       if (caption || bodyHeading || localTitle || (line.size >= captionSize && line.text.length < 200)) headings.push(heading);
       if (caption) continuationEnd = caption.end;
     }
@@ -512,7 +534,10 @@ export class SectionTableScope {
       const catalogs = modelNumbersIn(catalogIdentifierView(h.text).text);
       const contradictory = catalogs.length > 0 && (hasNegation(h.text) ||
         catalogs.some((n) => !this.active.models?.includes(exactModelKey(n.label))));
-      return contradictory || (this.bodySize > 0 && h.size > this.bodySize + 0.2);
+      // Typography is fallback evidence only; it never vetoes a catalog or
+      // engineering boundary. Keep the earlier measured-row/uncertainty controls.
+      return contradictory || engineeringBoundary(h.text) ||
+        (h.fontPeakEligible !== false && this.bodySize > 0 && h.size > this.bodySize + 0.2);
     };
     const hasInterruption = layout.headings.some(interruptsInherited);
     const hasTableInterruption = layout.headings.some((h) => h.interruption || (h.bodyHeading && this.active.scope));

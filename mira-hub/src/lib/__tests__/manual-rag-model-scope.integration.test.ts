@@ -11,6 +11,7 @@ import { inferEquipmentType } from "../equipment-type";
 import fixture from "../../capabilities/__fixtures__/table-rows/micro820-in009-p16-20-scope.json";
 import { COLUMN_LINE_MARK } from "@/capabilities/contact-ratings-table";
 import { excludedTablesRefusalText } from "@/capabilities/manual-applicability";
+import { boundaryMatrix, boundaryMatrixPages, measuredMatrix, measuredMatrixPage, columnBoundaryMatrix, columnBoundaryMatrixPages } from "@/capabilities/__fixtures__/section-boundary-matrix";
 
 // #5503 PDF/tenant boundaries for the nested SQL block below; no search rows scripted.
 vi.hoisted(() => {
@@ -1110,6 +1111,54 @@ describe("#5503 actual upload INSERT through raw retrieval SQL", () => {
         expect(rows.every((r) => r.metadata.table_scope === "unresolved")).toBe(true);
       }
       expect(stored.rows.some((r) => r.content.includes("zzf10original") && r.metadata.table_scope === "section")).toBe(true);
+    });
+  });
+
+  it.each(columnBoundaryMatrix)("F10 actual writer/SQL rejects extracted-column boundary $id", async (c) => {
+    const cover = "Micro820 Programmable Controllers\n2080-LC20-20QBB, 2080-LC20-20QWB, 2080-LC20-20AWB";
+    const pages = [{ page: 1, items: [item(cover, 100, 760, 12)], text: cover },
+      ...columnBoundaryMatrixPages(c).map((items, i) => ({ page: i + 2, items, text: items.map((r) => r.str).join("\n") }))];
+    await withPages(pages, async () => {
+      for (const [model, value] of [["20QWB", "2 A"], ["20AWB", "1 A"]]) {
+        expect((await retrieve(model, "zzmatrixoriginal Load current")).text).toContain(value);
+      }
+      for (const model of ["20QWB", "20QBB", "20AWB"]) for (const token of ["zzmatrixfirst", "zzmatrixlast", "zzmatrixcontinued"]) {
+        expect((await retrieve(model, token)).text).not.toContain(token);
+      }
+    });
+  });
+
+  it.each(measuredMatrix)("F10 actual writer/SQL preserves measured data $id", async (c) => {
+    const cover = "Micro820 Programmable Controllers\n2080-LC20-20QBB, 2080-LC20-20QWB, 2080-LC20-20AWB";
+    const items = measuredMatrixPage(c);
+    await withPages([{ page: 1, items: [item(cover, 100, 760, 12)], text: cover },
+      { page: 2, items, text: items.map((r) => r.str).join("\n") }], async () => {
+      expect((await retrieve("20QWB", "zzmeasureoriginal Load current")).text).toContain("2 A");
+      const later = (await retrieve("20QWB", "zzmeasurelast Switching time")).text;
+      if (c.font === 14) expect(later).not.toContain("10 ms"); // retain pre-existing uncertainty
+      else expect(later).toContain("10 ms");
+      expect((await retrieve("20QBB", "zzmeasureoriginal Load current")).text).not.toContain("zzmeasureoriginal");
+    });
+  });
+
+  it.each(boundaryMatrix)("F10 actual writer/SQL rejects geometry-independent boundary $id", async (c) => {
+    const cover = "Micro820 Programmable Controllers\n2080-LC20-20QBB, 2080-LC20-20QWB, 2080-LC20-20AWB";
+    const pages = [{ page: 1, items: [item(cover, 100, 760, 12)], text: cover }];
+    for (const items of boundaryMatrixPages(c)) pages.push({ page: pages.length + 1, items, text: items.map((r) => r.str).join("\n") });
+    await withPages(pages, async () => {
+      for (const model of ["20QWB", "20QBB", "20AWB"]) {
+        for (const token of ["zzmatrixfirst", "zzmatrixlast", "zzmatrixcontinued"]) {
+          expect((await retrieve(model, token)).text).not.toContain(token);
+        }
+      }
+      expect((await retrieve("20QWB", "zzmatrixoriginal Load current max")).text).toContain("2 A");
+      expect((await retrieve("20QBB", "zzmatrixoriginal Load current max")).text).not.toContain("zzmatrixoriginal");
+      const stored = await client.query("SELECT content,metadata FROM knowledge_entries WHERE tenant_id = $1 AND doc_id = $2 AND is_private = true", [TENANT,DOCUMENT]);
+      for (const token of ["zzmatrixfirst", "zzmatrixlast", "zzmatrixcontinued"]) {
+        const rows = stored.rows.filter((r) => r.content.includes(token));
+        expect(rows.length).toBeGreaterThan(0);
+        expect(rows.every((r) => r.metadata.table_scope === "unresolved")).toBe(true);
+      }
     });
   });
 
