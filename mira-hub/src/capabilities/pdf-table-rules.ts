@@ -12,10 +12,12 @@
  * caller treats as "no rule evidence" (the conservative outcome: no exemption is granted).
  *
  * Colour, opacity, line width, dash, clip and embedded-form state are tracked just far enough to
- * drop a rule that is not visibly drawn where its coordinates say, and a later opaque fill, image
- * or shading hides what it covers. Anything the reader cannot evaluate (a pattern or non-RGB
- * colour, a soft mask) counts as not drawn, and any operator it does not model (annotations,
- * transparency groups, repeated or inline images) leaves the whole page without evidence.
+ * drop a rule that is not visibly drawn where its coordinates say. The reader is not a renderer and
+ * errs one way only: everything painted after a rule hides what its bounds cover unless it is
+ * itself a thin dark mark; a clip that is not one upright rectangle shows nothing; a colour it
+ * cannot evaluate counts as not drawn; and a soft mask, a non-normal blend mode or any operator it
+ * does not model (annotations, transparency groups, repeated or inline images) leaves the whole
+ * page without evidence.
  * Not modelled: text glyphs drawn over a rule.
  *
  * Rules come from the path's own segments, never from its bounding box (#5503 F15): a diagonal,
@@ -164,6 +166,7 @@ export function verticalRules(operatorList: unknown): VerticalRule[] | null {
       if (segment.y1 - hidden.y1 >= MIN_SEGMENT_PT) segments.push({ x: segment.x, y0: Math.max(segment.y0, hidden.y1), y1: segment.y1 });
     }
   };
+  const NOWHERE: Box = { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity };
   const EVERYWHERE: Box = { x0: -Infinity, y0: -Infinity, x1: Infinity, y1: Infinity };
   for (let i = 0; i < list.fnArray.length; i++) {
     const fn = list.fnArray[i];
@@ -208,7 +211,8 @@ export function verticalRules(operatorList: unknown): VerticalRule[] | null {
         if (!Array.isArray(entry)) return null;
         if (entry[0] === "CA") state = { ...state, strokeAlpha: typeof entry[1] === "number" && entry[1] >= 0.5 };
         else if (entry[0] === "ca") state = { ...state, fillAlpha: typeof entry[1] === "number" && entry[1] >= 0.5 };
-        else if (entry[0] === "SMask" && entry[1] !== false) state = { ...state, strokeAlpha: false, fillAlpha: false };
+        else if (entry[0] === "SMask" && entry[1] !== false) return null; // what a mask shows or hides is not in the operators
+        else if (entry[0] === "BM" && entry[1] !== "source-over" && entry[1] !== "normal") return null;
         else if (entry[0] === "D") state = { ...state, dashed: true };
         else if (entry[0] === "LW") {
           if (typeof entry[1] !== "number" || !Number.isFinite(entry[1])) return null;
@@ -223,15 +227,23 @@ export function verticalRules(operatorList: unknown): VerticalRule[] | null {
       const subpaths = straightSubpaths(args[1]);
       if (subpaths === null) return null;
       if (CLOSING_PAINT.has(args[0]) && subpaths.length > 0) subpaths[subpaths.length - 1].closed = true;
-      const strokes = STROKING.has(args[0]) && state.stroke && state.strokeAlpha && !state.dashed &&
-        state.lineWidth * Math.abs(ctm[0]) <= MAX_RULE_WIDTH_PT;
+      const scale = Math.max(Math.abs(ctm[0]), Math.abs(ctm[3]));
+      const thinStroke = state.lineWidth * scale <= MAX_RULE_WIDTH_PT;
+      const darkStroke = state.stroke && state.strokeAlpha && thinStroke;
+      const strokes = STROKING.has(args[0]) && darkStroke && !state.dashed;
       const fills = FILLING.has(args[0]) && state.fill && state.fillAlpha;
-      if (FILLING.has(args[0]) && state.fillAlpha) {
-        // The fill is painted first, in whatever colour, over everything drawn before it.
+      if (FILLING.has(args[0]) || STROKING.has(args[0])) {
+        // Whatever this path paints lies over everything drawn before it. Only a thin dark mark
+        // (a grid line, a frame, another rule) is known not to hide a rule; anything else, in any
+        // colour or opacity, hides what its bounds cover.
         const painted = boxUnder(ctm, args[2]);
         if (painted === null) return null;
-        // A fill no thicker than a rule is a grid line crossing this one, not something that hides it.
-        if (painted.x1 - painted.x0 > MAX_RULE_WIDTH_PT && painted.y1 - painted.y0 > MAX_RULE_WIDTH_PT) cover(painted);
+        const thinFill = Math.min(painted.x1 - painted.x0, painted.y1 - painted.y0) <= MAX_RULE_WIDTH_PT;
+        if (FILLING.has(args[0]) && !(fills && thinFill)) cover(painted);
+        if (STROKING.has(args[0]) && !darkStroke) {
+          const half = (state.lineWidth * scale) / 2;
+          cover({ x0: painted.x0 - half, y0: painted.y0 - half, x1: painted.x1 + half, y1: painted.y1 + half });
+        }
       }
       if (!rotated) for (const subpath of subpaths) {
         const points = subpath.points.map(([x, y]) => [ctm[0] * x + ctm[4], ctm[3] * y + ctm[5]]);
@@ -256,14 +268,18 @@ export function verticalRules(operatorList: unknown): VerticalRule[] | null {
         }
       }
       if (clipPending) {
-        // The path just built also becomes the clip. Its bounds contain it, so a rule outside them is invisible.
+        // The path just built also becomes the clip. Only a single upright rectangle is modelled;
+        // under any other clip nothing is known to be visible.
         clipPending = false;
-        if (rotated) state = { ...state, clip: { x0: 0, y0: 0, x1: 0, y1: 0 } };
-        else {
-          const box = boxUnder(ctm, args[2]);
-          if (box === null) return null;
-          state = { ...state, clip: intersect(state.clip, box) };
-        }
+        const only = subpaths.length === 1 ? subpaths[0].points : [];
+        const corners = only.length === 5 && only[0][0] === only[4][0] && only[0][1] === only[4][1] ? only.slice(0, 4) : only;
+        const upright = !rotated && corners.length === 4 && corners.every(([x, y], k) => {
+          const [nx, ny] = corners[(k + 1) % 4];
+          return (x === nx) !== (y === ny);
+        });
+        const box = upright ? boxUnder(ctm, args[2]) : NOWHERE;
+        if (box === null) return null;
+        state = { ...state, clip: intersect(state.clip, box) };
       }
       if (segments.length > MAX_SEGMENTS) return null;
     } else return null; // an operator this reader does not model: the page gives no evidence
