@@ -98,16 +98,25 @@ function straightSubpaths(pathArgument: unknown): Subpath[] | null {
   if (data.length === 0 || !data.every((n) => typeof n === "number" && Number.isFinite(n))) return null;
   const numbers = data as number[];
   const subpaths: Subpath[] = [];
+  let reopen = false;
   for (let i = 0; i < numbers.length;) {
     const code = numbers[i];
     if (code === PATH_CURVE || code === PATH_QUADRATIC) return [];
     if (code === PATH_CLOSE) {
       if (subpaths.length === 0) return null;
       subpaths[subpaths.length - 1].closed = true;
+      reopen = true;
       i += 1;
     } else if (code === PATH_MOVE || code === PATH_LINE) {
       if (i + 2 >= numbers.length) return null;
       if (code === PATH_MOVE) subpaths.push({ points: [], closed: false });
+      else if (reopen) {
+        // After closePath the pen is back at the subpath's start; drawing on begins a new subpath there.
+        const start = subpaths[subpaths.length - 1]?.points[0];
+        if (start === undefined) return null;
+        subpaths.push({ points: [start], closed: false });
+      }
+      reopen = false;
       if (subpaths.length === 0) return null;
       subpaths[subpaths.length - 1].points.push([numbers[i + 1], numbers[i + 2]]);
       i += 3;
@@ -118,7 +127,10 @@ function straightSubpaths(pathArgument: unknown): Subpath[] | null {
 
 type Box = { x0: number; y0: number; x1: number; y1: number };
 /** Only the paint state that decides whether a rule is visible where it is drawn. */
-type State = { ctm: Matrix; lineWidth: number; stroke: boolean; fill: boolean; strokeAlpha: boolean; fillAlpha: boolean; dashed: boolean; clip: Box | null };
+type State = { ctm: Matrix; lineWidth: number; stroke: boolean; fill: boolean; strokeAlpha: boolean; fillAlpha: boolean; dashed: boolean;
+  /** `clip`: where a rule is known to be visible (never larger than the real clip). `reach`: where
+   * paint can land (never smaller than the real clip). They differ under a clip the reader cannot model. */
+  clip: Box | null; reach: Box | null };
 
 /** A colour pdf.js delivers as "#rrggbb" that is dark enough to read as a ruled line. Anything
  * else (pale, bright, or not in that form) is not evidence. */
@@ -159,7 +171,7 @@ export function verticalRules(operatorList: unknown): VerticalRule[] | null {
   if (!list || !list.fnArray || !list.argsArray || list.fnArray.length !== list.argsArray.length) return null;
   if (list.fnArray.length > MAX_OPERATORS) return null;
   // PDF defaults: black, opaque, solid, unclipped.
-  let state: State = { ctm: [1, 0, 0, 1, 0, 0], lineWidth: 1, stroke: true, fill: true, strokeAlpha: true, fillAlpha: true, dashed: false, clip: null };
+  let state: State = { ctm: [1, 0, 0, 1, 0, 0], lineWidth: 1, stroke: true, fill: true, strokeAlpha: true, fillAlpha: true, dashed: false, clip: null, reach: null };
   const stack: State[] = [];
   let clipPending = false;
   /** `cutLow` / `cutHigh`: that end was painted over, so the piece is never joined to a neighbour there. */
@@ -173,8 +185,7 @@ export function verticalRules(operatorList: unknown): VerticalRule[] | null {
   };
   /** Whatever is painted opaquely over an earlier rule hides the part it covers. */
   const cover = (box: Box) => {
-    const clip = state.clip;
-    const hidden = clip ? intersect(clip, box) : box;
+    const hidden = state.reach ? intersect(state.reach, box) : box;
     if (hidden.x1 < hidden.x0 || hidden.y1 < hidden.y0) return;
     for (const segment of segments.splice(0)) {
       if (segment.x < hidden.x0 || segment.x > hidden.x1) { segments.push(segment); continue; }
@@ -206,7 +217,7 @@ export function verticalRules(operatorList: unknown): VerticalRule[] | null {
         const box = boxUnder(state.ctm, args[1]);
         if (box === null) return null;
         const upright = Math.abs(state.ctm[1]) <= 1e-6 && Math.abs(state.ctm[2]) <= 1e-6;
-        state = { ...state, clip: intersect(state.clip, upright ? box : NOWHERE) };
+        state = { ...state, clip: intersect(state.clip, upright ? box : NOWHERE), reach: intersect(state.reach, box) };
       }
     } else if (fn === OP_FORM_END) state = stack.pop() ?? state;
     else if (fn === OP_SET_LINE_WIDTH) {
@@ -295,9 +306,9 @@ export function verticalRules(operatorList: unknown): VerticalRule[] | null {
         // under any other clip nothing is known to be visible.
         clipPending = false;
         const upright = !rotated && subpaths.length === 1 && uprightRectangle(subpaths[0].points) !== null;
-        const box = upright ? boxUnder(ctm, args[2]) : NOWHERE;
-        if (box === null) return null;
-        state = { ...state, clip: intersect(state.clip, box) };
+        const bounds = boxUnder(ctm, args[2]);
+        if (bounds === null) return null;
+        state = { ...state, clip: intersect(state.clip, upright ? bounds : NOWHERE), reach: intersect(state.reach, bounds) };
       }
       if (segments.length > MAX_SEGMENTS) return null;
     } else return null; // an operator this reader does not model: the page gives no evidence
