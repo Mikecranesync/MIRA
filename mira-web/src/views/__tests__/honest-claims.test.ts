@@ -6,6 +6,7 @@ import { renderHome } from "../home.js";
 import { renderCmms, renderSamplePlaceholder } from "../cmms.js";
 import { renderLimitations } from "../limitations.js";
 import { renderSecurity } from "../security.js";
+import { renderOffline } from "../offline.js";
 import { navbar, footer } from "../_topbar.js";
 import {
   FEATURES,
@@ -135,6 +136,7 @@ const RENDERER_SOURCES = [
   "views/cmms.ts",
   "views/limitations.ts",
   "views/security.ts",
+  "views/offline.ts",
 ] as const;
 
 const rendererSources = RENDERER_SOURCES.map((rel) => ({
@@ -147,6 +149,7 @@ const pages: Array<{ name: string; html: string }> = [
   { name: "/cmms", html: renderCmms("https://factorylm.com/cmms") },
   { name: "/limitations", html: renderLimitations("https://factorylm.com/limitations") },
   { name: "/security", html: renderSecurity("https://factorylm.com/security") },
+  { name: "/offline", html: renderOffline("https://factorylm.com/offline") },
   { name: "/sample", html: renderSamplePlaceholder() },
   { name: "/printsense (route)", html: renderPrintsenseLanding() },
   { name: "/blog (renderer)", html: renderBlogIndex(BLOG_POSTS, FAULT_CODES.length) },
