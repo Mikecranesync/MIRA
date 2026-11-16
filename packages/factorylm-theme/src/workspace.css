@@ -155,3 +155,28 @@
     --fl-workspace-off-ink: var(--fl-dark-muted);
   }
 }
+
+/* A host whose canonical layer never follows the OS (the Hub sets this on its
+   shell wrapper). Without it the system-dark block above repaints only the state
+   family, so a light Hub on a dark-OS device got dark state colours on light
+   surfaces: amber card text measured 2.03:1 on a tablet and sidebar labels went
+   blank (issue 5580). Same expressions as :root; a descendant data-theme="dark"
+   still wins. Hosts that do follow the OS (the mobile WebView) leave it off. */
+[data-fl-surface="light"] {
+  --fl-workspace-ok: var(--fl-ok);
+  --fl-workspace-ok-tint: var(--fl-ok-bg);
+  --fl-workspace-ok-line: var(--fl-ok);
+  --fl-workspace-ok-ink: var(--fl-ok-ink);
+  --fl-workspace-warn: var(--fl-warn);
+  --fl-workspace-warn-tint: var(--fl-warn-bg);
+  --fl-workspace-warn-line: var(--fl-warn);
+  --fl-workspace-warn-ink: var(--fl-ink);
+  --fl-workspace-fault: var(--fl-fault);
+  --fl-workspace-fault-tint: var(--fl-fault-bg);
+  --fl-workspace-fault-line: var(--fl-fault);
+  --fl-workspace-fault-ink: var(--fl-ink);
+  --fl-workspace-off: var(--fl-off);
+  --fl-workspace-off-tint: var(--fl-bg);
+  --fl-workspace-off-line: var(--fl-off);
+  --fl-workspace-off-ink: var(--fl-ink);
+}
