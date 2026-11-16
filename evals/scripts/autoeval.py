@@ -1,7 +1,6 @@
 """autoeval: unattended, zero-paid-by-default evaluation runner for MIRA.
 
   run   [--paid] [--full] [--sets ...] [--models ...] [--state-dir D] [--skip-lanes] [--send-alerts]
-  seed  --recorded DIR --inputs DIR --model M [--state-dir D]
   status [--state-dir D]
   import   --records DIR --set S --sha SHA --base-url URL --results-root DIR [--route technician]
   fixture  --set-dir DIR [--model M] [--paid] [--state-dir D]
@@ -9,7 +8,7 @@
   verify   --candidates FILE --passages FILE --out-dir DIR
 
 Default state dir ~/.factorylm/autoeval holds ledger.jsonl, cas/, state.json, paid.json (paid
-mode only), STOP (kill sentinel), runs/<run_id>/ and seed/. Nothing is written inside the checkout.
+mode only), STOP (kill sentinel), and runs/<run_id>/. Nothing is written inside the checkout.
 Dry is the default: a verdict cache miss is recorded as paid_required and no request is made.
 import and verify never touch the network or the ledger.
 """
@@ -37,7 +36,6 @@ from autoeval_run import (
     _iso_now,
     _judge_all,
     _lanes,
-    _no_key,
     _run_id,
     _send,
     _spend,
@@ -104,17 +102,12 @@ def cmd_run(args) -> int:
     astate = state / "alert-state.json"
     prev = json.loads(astate.read_text()) if astate.exists() else {}
     fired, new_state = rp.alerts(run, prev)
-    # Delivery is tracked apart from activity (Codex r1 F4 on #5569): an alert
-    # still active but never delivered (sending off, Telegram down) is retried
-    # on the next run that can send, instead of being deduplicated forever.
     current = {a["key"]: a for a in rp.alerts_now(run)}
-    delivered = set(prev.get("delivered", [])) & set(current)
-    pending = [current[k] for k in sorted(current) if k not in delivered]
-    if args.send_alerts and pending:
-        run["alerts_sent"] = _send(pending)
-        if run["alerts_sent"]:
-            delivered |= {a["key"] for a in pending}
-    new_state["delivered"] = sorted(delivered)
+    queued = queue_alerts(prev, fired, current)
+    astate.write_text(json.dumps({**new_state, **queued}, indent=2))  # durable before sending
+    if args.send_alerts and queued["outbox"]:
+        queued, run["alerts_sent"] = deliver(queued, current, _send)
+    new_state.update(queued)
     header = f"<!-- autoeval run {run_id} created {run['created_at']} -->\n"
     _write(run_dir / "run.json", json.dumps(run, indent=2, sort_keys=True))
     _write(run_dir / "report.md", header + rp.render_report(run))
@@ -139,12 +132,51 @@ def cmd_run(args) -> int:
             indent=2,
         )
     )
-    blocked = (
-        bool(judged["error"])
-        or any(r["status"] != "pass" for r in lanes["results"])
-        or bool(rp.coverage_problems(run))
-    )
-    return 3 if judged["error"] else (1 if blocked else 0)
+    return exit_code(run)
+
+
+def exit_code(run: dict) -> int:
+    """3 runner stop; 1 a lane or coverage blocker; 6 the judge found a release blocker
+    (dangerous answer, failed gate); 0 nothing blocks. Same blockers as the relay (F8)."""
+    if run.get("runner_error"):
+        return 3
+    verdict = set(rp.verdict_blockers(run))
+    if any(b not in verdict for b in rp.hard_blockers(run)):
+        return 1
+    return 6 if verdict else 0
+
+
+def queue_alerts(prev: dict, fired: list[dict], current: dict[str, dict]) -> dict:
+    """One outbox for every alert not yet delivered, kept until it is (Codex F4 on #5569).
+
+    Fired events (a budget threshold crossed once) and active conditions that were
+    never delivered (sending off, Telegram down) both wait here, independent of
+    whether the next run still shows them.
+    """
+    outbox = {a["key"]: a for a in prev.get("outbox", [])}
+    delivered = set(prev.get("delivered", [])) & set(current)
+    for a in fired:
+        outbox[a["key"]] = a
+    for k, a in current.items():
+        if k not in delivered:
+            outbox.setdefault(k, a)
+    return {"delivered": sorted(delivered), "outbox": [outbox[k] for k in sorted(outbox)]}
+
+
+def deliver(queued: dict, current: dict[str, dict], send) -> tuple[dict, bool]:
+    """Send the whole outbox once. A failed or raising send keeps every record queued."""
+    try:
+        ok = bool(send(queued["outbox"]))
+    except Exception as e:  # a delivery failure must never cost the run its report
+        print(f"autoeval: alert delivery failed: {type(e).__name__}: {e}", file=sys.stderr)
+        ok = False
+    if not ok:
+        return queued, False
+    keys = {a["key"] for a in queued["outbox"]}
+    return {
+        "delivered": sorted(set(queued["delivered"]) | (keys & set(current))),
+        "outbox": [],
+    }, True
 
 
 def cmd_status(args) -> int:
@@ -161,42 +193,6 @@ def cmd_status(args) -> int:
                 "last_run": runs[-1].name if runs else None,
                 "last_ok_sha": st.get("last_ok_sha"),
                 "kill_switch": (state / "STOP").exists(),
-            },
-            indent=2,
-        )
-    )
-    return 0
-
-
-def cmd_seed(args) -> int:
-    state = Path(args.state_dir).expanduser()
-    state.mkdir(parents=True, exist_ok=True)
-    cfg = dry_config(state)
-    cache = jd.VerdictCache(jd.load_cas().CAS(state / "cas"))
-    env = jd.JudgeEnv(
-        mode="seed",
-        model=args.model,
-        cache=cache,
-        cfg=cfg,
-        ledger=ab.Ledger(state / "ledger.jsonl", cfg),
-        key_provider=_no_key,
-        runner_sha=git(["rev-parse", "HEAD"], REPO),
-    )
-    inputs = Path(args.inputs)
-    tag = f"{inputs.name}__{args.model}"
-    sr = jd.seed_from_recorded(Path(args.recorded), inputs, state / "seed" / tag, env)
-    summary_file = state / "seed" / f"{tag}.summary.json"
-    _write(summary_file, json.dumps(sr.summary, indent=2, sort_keys=True))
-    print(
-        json.dumps(
-            {
-                "set": inputs.name,
-                "model": args.model,
-                "counts": sr.counts,
-                "technician_score": sr.summary.get("technician_score"),
-                "dangerous_cases": sr.summary.get("dangerous_cases"),
-                "unscored": sr.summary.get("unscored"),
-                "summary_file": str(summary_file),
             },
             indent=2,
         )
@@ -329,12 +325,6 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("--skip-lanes", action="store_true")
     r.add_argument("--send-alerts", action="store_true")
     r.set_defaults(fn=cmd_run)
-    s = sub.add_parser("seed", help="replay recorded Stage 1 verdicts into the cache (free)")
-    state_arg(s)
-    s.add_argument("--recorded", required=True)
-    s.add_argument("--inputs", required=True)
-    s.add_argument("--model", required=True)
-    s.set_defaults(fn=cmd_seed)
     st = sub.add_parser("status", help="ledger totals and last run (free)")
     state_arg(st)
     st.set_defaults(fn=cmd_status)

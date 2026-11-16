@@ -59,10 +59,6 @@ class KeyOnce:
         return self._key
 
 
-def _no_key() -> str:
-    raise ab.BudgetStop("STOP: a key was requested outside paid mode")
-
-
 def dry_config(state: Path) -> ab.BudgetConfig:
     return ab.BudgetConfig(
         total_cap_usd=0.0,

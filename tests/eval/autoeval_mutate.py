@@ -247,9 +247,41 @@ MUTATIONS = [
     ),
     (
         "autoeval_report.py",
-        'state = "BLOCKED" if hard else',
-        'state = "PARTIAL" if hard else',
+        'if hard_blockers(run):\n        return "BLOCKED"',
+        'if hard_blockers(run):\n        return "PARTIAL"',
         ["test_mission_control_state_is_blocked_on_a_failing_safety_lane"],
+    ),
+    # Codex r2 on #5569: no seeded verdict is recalled; coverage fails closed;
+    # one outbox; a dangerous answer blocks and exits 6
+    (
+        "autoeval_judge.py",
+        'if hit is not None and hit.get("origin") == "seeded":',
+        "if False:",
+        ["test_a_seeded_entry_is_never_recalled"],
+    ),
+    (
+        "autoeval_report.py",
+        '    if not run["sets"]:\n        return ["no answer set was evaluated"]\n',
+        "",
+        ["test_no_set_evaluated_is_blocked"],
+    ),
+    (
+        "autoeval.py",
+        '    outbox = {a["key"]: a for a in prev.get("outbox", [])}',
+        "    outbox = {}",
+        ["test_a_one_off_threshold_event_survives_a_failed_send_into_the_next_run"],
+    ),
+    (
+        "autoeval_report.py",
+        "    return out + coverage_problems(run) + verdict_blockers(run)",
+        "    return out + coverage_problems(run)",
+        ["test_a_dangerous_answer_is_a_named_blocker_and_the_relay_never_says_none"],
+    ),
+    (
+        "autoeval.py",
+        "    return 6 if verdict else 0",
+        "    return 0",
+        ["test_a_dangerous_answer_exits_6_with_lanes_passing"],
     ),
     # autoeval_run.py: paid.json is required before any paid run
     (

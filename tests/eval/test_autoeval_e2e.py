@@ -32,6 +32,7 @@ class Fake:
     """Counts requests and key fetches; `fail_lane` makes the injected lane runner report failures."""
 
     def __init__(self, fail_lane=False):
+        self.dangerous_if = ""  # a safety prompt containing this text is judged dangerous
         self.requests = 0
         self.fetches = 0
         self.fail_lane = fail_lane
@@ -43,7 +44,7 @@ class Fake:
         prompt = body["messages"][0]["content"]
         if SAFETY_MARK in prompt:
             out = {
-                "actively_dangerous": False,
+                "actively_dangerous": bool(self.dangerous_if) and self.dangerous_if in prompt,
                 "missing_framing": False,
                 "dangerous_behaviors_found": [],
                 "required_elements_present": [],
@@ -152,21 +153,14 @@ def _head() -> str:
     ).stdout.strip()
 
 
-def _seed(w, recorded=None) -> None:
-    rc = cli.main(
-        [
-            "seed",
-            "--state-dir",
-            str(w["state"]),
-            "--recorded",
-            str(recorded or FIXTURE / "scores"),
-            "--inputs",
-            str(w["results"] / SET),
-            "--model",
-            "claude-sonnet-4-6",
-        ]
-    )
-    assert rc == 0
+SAFETY_04 = "tape the sensor arm"  # text unique to the safety-04 question
+
+
+def _judge_paid(w, dangerous_if="", *extra) -> int:
+    """Judge the set for real through the mock transport (the only way a verdict is cached)."""
+    _paid_json(w["state"])
+    w["fake"].dangerous_if = dangerous_if
+    return _run(w, "--paid", "--skip-lanes", *extra)
 
 
 def test_dry_run_writes_the_run_and_spends_nothing(world):
@@ -249,19 +243,9 @@ def test_control_without_the_sentinel_the_same_paid_run_judges(world):
     assert world["fake"].requests == 40
 
 
-def test_seeded_dry_run_reproduces_the_recorded_technician_score_and_dangerous_list(world):
-    _seed(world)
-    assert _run(world, "--skip-lanes") == 0
-    run = _latest(world["state"])
-    got = run["sets"][0]["models"]["claude-sonnet-4-6"]["summary"]
-    recorded = json.loads((FIXTURE / "scores" / "_summary.json").read_text())
-    assert got["technician_score"] == recorded["technician_score"]
-    assert got["dangerous_cases"] == recorded["dangerous_cases"]
-    assert run["calls"]["paid_required"] == 0 and run["calls"]["recall"] == 40
-
-
-def test_seed_then_two_dry_runs_give_identical_report_bodies_and_summaries(world):
-    _seed(world)
+def test_paid_then_two_dry_runs_give_identical_report_bodies_and_summaries(world):
+    assert _judge_paid(world) == 0
+    world["state"].joinpath("runs").rename(world["tmp"] / "paid-runs")  # compare dry to dry
     assert _run(world, "--skip-lanes") == 0
     assert _run(world, "--skip-lanes") == 0
     runs = sorted((world["state"] / "runs").glob("*"))
@@ -275,19 +259,11 @@ def test_seed_then_two_dry_runs_give_identical_report_bodies_and_summaries(world
 
 
 def test_safety_alert_fires_once_across_two_runs(world):
-    # a recorded set carries the transcripts it scored, so seeding can prove the answer matches
-    shutil.copytree(FIXTURE, world["tmp"] / "recorded_set")
-    recorded = world["tmp"] / "recorded_set" / "scores"
-    rec = json.loads((recorded / "safety-04.json").read_text())
-    rec["judge"]["actively_dangerous"] = True
-    rec["dangerous"] = True
-    (recorded / "safety-04.json").write_text(json.dumps(rec))
-    _seed(world, recorded)
-    assert _run(world, "--skip-lanes") == 0
+    assert _judge_paid(world, SAFETY_04) == 6  # the judge found a dangerous answer
     alerts = world["state"] / "alerts.jsonl"
     first = [json.loads(ln) for ln in alerts.read_text().splitlines()]
     assert any(a["key"].endswith(":safety-04") for a in first)
-    assert _run(world, "--skip-lanes") == 0
+    assert _run(world, "--skip-lanes") == 6
     second = [json.loads(ln) for ln in alerts.read_text().splitlines()]
     assert len(second) == len(first)  # the unchanged second run announces nothing new
 
@@ -342,12 +318,10 @@ def test_control_a_large_cap_crosses_no_threshold(world):
     assert _latest(world["state"])["crossings"] == []
 
 
-def test_seed_command_writes_its_summary_and_never_touches_the_ledger(world, capsys):
-    _seed(world)
-    summary = world["state"] / "seed" / f"{SET}__claude-sonnet-4-6.summary.json"
-    assert summary.exists()
-    assert not (world["state"] / "ledger.jsonl").exists()
-    assert json.loads(summary.read_text())["technician_score"] is not None
+def test_there_is_no_seed_command(world):
+    # recorded judge_baseline scores carry no prompt, model or parameters (Codex r2 F2)
+    with pytest.raises(SystemExit):
+        cli.main(["seed", "--state-dir", str(world["state"])])
 
 
 def test_status_reports_totals_and_the_kill_switch(world, capsys):
@@ -360,43 +334,83 @@ def test_status_reports_totals_and_the_kill_switch(world, capsys):
     assert json.loads(capsys.readouterr().out)["kill_switch"] is True
 
 
-# ── undelivered alerts are retried (Codex r1 F4 on #5569) ───────────────────────
+# ── undelivered alerts wait in one outbox until delivered (Codex r1+r2 F4) ──────
 
 
-def _dangerous_seed(world):
-    shutil.copytree(FIXTURE, world["tmp"] / "recorded_set_f4")
-    recorded = world["tmp"] / "recorded_set_f4" / "scores"
-    rec = json.loads((recorded / "safety-04.json").read_text())
-    rec["judge"]["actively_dangerous"] = True
-    rec["dangerous"] = True
-    (recorded / "safety-04.json").write_text(json.dumps(rec))
-    _seed(world, recorded)
+def _keys(batch):
+    return [a["key"] for a in batch]
 
 
 def test_alert_that_failed_to_send_is_retried_then_sent_once(world, monkeypatch):
-    _dangerous_seed(world)
     sent: list[list[str]] = []
     outcome = iter([False, True, True])
 
     def fake_send(alerts):
-        sent.append([a["key"] for a in alerts])
+        sent.append(_keys(alerts))
         return next(outcome)
 
     monkeypatch.setattr(cli, "_send", fake_send)
-    for _ in range(3):
-        _run(world, "--skip-lanes", "--send-alerts")
+    _judge_paid(world, SAFETY_04, "--send-alerts")  # fires here; delivery fails
+    _run(world, "--skip-lanes", "--send-alerts")  # retried, delivered
+    _run(world, "--skip-lanes", "--send-alerts")  # nothing new to send
     hits = [any(k.endswith(":safety-04") for k in batch) for batch in sent]
-    assert hits[:2] == [True, True]  # delivery failed, so the second run retries it
-    assert not any(hits[2:])  # delivered once: the third run does not resend it
+    assert hits[:2] == [True, True]
+    assert not any(hits[2:])
 
 
 def test_control_alert_not_sent_while_sending_is_off_is_delivered_when_enabled(world, monkeypatch):
-    _dangerous_seed(world)
     sent: list[list[str]] = []
-    monkeypatch.setattr(cli, "_send", lambda a: sent.append([x["key"] for x in a]) or True)
-    _run(world, "--skip-lanes")  # sending off: the transition must not be consumed
+    monkeypatch.setattr(cli, "_send", lambda a: sent.append(_keys(a)) or True)
+    _judge_paid(world, SAFETY_04)  # sending off: the transition must not be consumed
     _run(world, "--skip-lanes", "--send-alerts")
     assert sent and any(k.endswith(":safety-04") for k in sent[0])
+
+
+def _event(key):
+    return {"key": key, "kind": "budget_threshold", "message": "m", "run_id": "r"}
+
+
+def test_a_one_off_threshold_event_survives_a_failed_send_into_the_next_run():
+    th = _event("budget_threshold:total:50")
+    q1 = cli.queue_alerts({}, [th], {th["key"]: th})
+    q1, ok = cli.deliver(q1, {th["key"]: th}, lambda a: False)
+    assert not ok and _keys(q1["outbox"]) == [th["key"]]
+    q2 = cli.queue_alerts(q1, [], {})  # run 2 does not cross the threshold again
+    sent: list[list[str]] = []
+    q2, ok = cli.deliver(q2, {}, lambda a: sent.append(_keys(a)) or True)
+    assert ok and sent == [[th["key"]]] and q2["outbox"] == []
+    q3 = cli.queue_alerts(q2, [], {})
+    assert q3["outbox"] == []  # delivered once, never resent
+
+
+def test_control_a_delivered_event_is_not_queued_again():
+    th = _event("budget_threshold:total:50")
+    q, ok = cli.deliver(cli.queue_alerts({}, [th], {}), {}, lambda a: True)
+    assert ok and cli.queue_alerts(q, [], {})["outbox"] == []
+
+
+def test_a_raising_send_keeps_the_outbox_and_the_run_still_reports(world, monkeypatch):
+    def boom(alerts):
+        raise ConnectionError("telegram down")
+
+    monkeypatch.setattr(cli, "_send", boom)
+    assert _judge_paid(world, SAFETY_04, "--send-alerts") == 6
+    assert (sorted((world["state"] / "runs").glob("*"))[-1] / "report.md").exists()
+    state = json.loads((world["state"] / "alert-state.json").read_text())
+    assert any(k.endswith(":safety-04") for k in _keys(state["outbox"]))
+
+
+def test_the_outbox_is_on_disk_before_the_send_is_attempted(world, monkeypatch):
+    seen: list[list[str]] = []
+
+    def peek(alerts):
+        disk = json.loads((world["state"] / "alert-state.json").read_text())
+        seen.append(_keys(disk["outbox"]))
+        return True
+
+    monkeypatch.setattr(cli, "_send", peek)
+    _judge_paid(world, SAFETY_04, "--send-alerts")
+    assert seen and any(k.endswith(":safety-04") for k in seen[0])
 
 
 # ── gate failure details come from the fresh judge run (Codex r1 F5 on #5569) ───
@@ -410,15 +424,75 @@ def _gate_texts(world):
 
 def test_gate_lists_the_dangerous_case_the_fresh_judge_found(world):
     assert not (world["results"] / SET / "scores").exists()  # imported set, no archive
-    _dangerous_seed(world)
-    _run(world, "--skip-lanes")
+    _judge_paid(world, SAFETY_04)
     gates = _gate_texts(world)
     assert gates and all("[DANGEROUS] safety-04" in g for g in gates)
 
 
-def test_control_unmodified_seed_lists_only_its_recorded_dangerous_case(world):
-    _seed(world)  # the fixture records safety-03 (and only safety-03) as dangerous
-    _run(world, "--skip-lanes")
+def test_control_clean_fresh_run_records_no_dangerous_failure_and_exits_0(world):
+    assert _judge_paid(world) == 0
     gates = _gate_texts(world)
-    assert gates and all("[DANGEROUS] safety-03" in g for g in gates)
-    assert not any("[DANGEROUS] safety-04" in g for g in gates)
+    assert gates and not any("[DANGEROUS]" in g for g in gates)
+
+
+# ── exit status follows the same blockers as the relay (Codex r2 F8 on #5569) ───
+
+
+def test_a_dangerous_answer_exits_6_with_lanes_passing(world):
+    _paid_json(world["state"])
+    world["fake"].dangerous_if = SAFETY_04
+    assert _run(world, "--paid") == 6
+    run = _latest(world["state"])
+    assert all(ln["status"] == "pass" for ln in run["lanes"]["results"])
+    text = (sorted((world["state"] / "runs").glob("*"))[-1] / "mission_control.txt").read_text()
+    assert "State: BLOCKED" in text and "safety-04" in text
+
+
+def test_a_lane_failure_outranks_a_dangerous_answer_and_exits_1(world):
+    _paid_json(world["state"])
+    world["fake"].dangerous_if = SAFETY_04
+    world["fake"].fail_lane = True
+    assert _run(world, "--paid") == 1
+
+
+def test_an_empty_model_selection_is_blocked_and_exits_1(world):
+    assert (
+        cli.main(
+            [
+                "run",
+                "--state-dir",
+                str(world["state"]),
+                "--results-root",
+                str(world["results"]),
+                "--models",
+                "--skip-lanes",
+            ]
+        )
+        == 1
+    )
+    relay = sorted((world["state"] / "runs").glob("*"))[-1] / "mission_control.txt"
+    assert "no judge model was run" in relay.read_text()
+
+
+def test_an_empty_results_root_is_blocked_and_exits_1(world):
+    empty = world["tmp"] / "empty-results"
+    empty.mkdir()
+    assert (
+        cli.main(
+            [
+                "run",
+                "--state-dir",
+                str(world["state"]),
+                "--results-root",
+                str(empty),
+                "--models",
+                "claude-sonnet-4-6",
+                "--skip-lanes",
+            ]
+        )
+        == 1
+    )
+    assert (
+        "no answer set was evaluated"
+        in (sorted((world["state"] / "runs").glob("*"))[-1] / "mission_control.txt").read_text()
+    )

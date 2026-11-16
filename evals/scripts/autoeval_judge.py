@@ -58,13 +58,25 @@ def load_cas(path: Path = CAS_PATH):
 
 
 class VerdictCache:
-    """Content-addressed verdict store. `put` refuses to rewrite an existing key."""
+    """Content-addressed verdict store. `put` refuses to rewrite an existing key.
+
+    Entries with origin "seeded" were written by the removed seed command, which
+    filed a recorded judge's verdict under a Claude model's key without proof that
+    the prompt or model matched (Codex r1+r2 F2 on #5569). They are never recalled,
+    and a real verdict may replace one; nothing on disk is deleted.
+    """
 
     def __init__(self, cas) -> None:
         self.cas = cas
 
-    def get(self, key: str) -> dict | None:
+    def _raw(self, key: str) -> dict | None:
         return self.cas.cache_get(key, CACHE_STAGE, VERSION)
+
+    def get(self, key: str) -> dict | None:
+        hit = self._raw(key)
+        if hit is not None and hit.get("origin") == "seeded":
+            return None
+        return hit
 
     def put(self, key: str, payload: dict) -> bool:
         if self.get(key) is not None:
@@ -88,7 +100,7 @@ CASE: contextvars.ContextVar[CaseCtx] = contextvars.ContextVar("autoeval_case", 
 
 @dataclass
 class JudgeEnv:
-    mode: str  # "dry" | "paid" | "seed"
+    mode: str  # "dry" | "paid"
     model: str
     cache: VerdictCache
     cfg: ab.BudgetConfig
@@ -98,7 +110,6 @@ class JudgeEnv:
     client: httpx.Client | None = None
     clock: Callable[[], float] = time.time
     sleep: Callable[[float], None] = time.sleep
-    recorded: dict[str, dict] = field(default_factory=dict)
     counts: dict[str, int] = field(default_factory=dict)
     paid_required_usd: float = 0.0
     trace: list[tuple[str, str, str]] = field(default_factory=list)  # (case_id, reason, key)
@@ -122,7 +133,7 @@ def _payload(env: JudgeEnv, ctx: CaseCtx, prompt: str, origin: str, verdict: str
 
 
 def judge_call(prompt: str, env: JudgeEnv) -> tuple[str | None, str, str]:
-    """Return (verdict_text | None, reason, cache_key). Never a request in dry or seed mode."""
+    """Return (verdict_text | None, reason, cache_key). Never a request in dry mode."""
     ctx = CASE.get()
     price = env.cfg.prices.get(env.model)
     if price is None:
@@ -136,23 +147,6 @@ def judge_call(prompt: str, env: JudgeEnv) -> tuple[str | None, str, str]:
     if env.mode == "dry":
         env.paid_required_usd += ab.worst_case(price, prompt)
         return None, "paid_required", key
-    if env.mode == "seed":
-        rec = env.recorded.get(ctx.case_id)
-        if rec is None:
-            return None, "seed_miss", key
-        # Seed only onto the very answer that was scored (Codex r1 F2 on #5569):
-        # a recorded verdict for an older answer under the same case id must not
-        # be filed under the current prompt and answer hash.
-        if not rec.get("answer_sha256") or rec["answer_sha256"] != ctx.answer_sha256:
-            return None, "seed_unverified", key
-        verdict = json.dumps(rec["judge"], sort_keys=True)
-        env.cache.put(
-            key,
-            _payload(
-                env, ctx, prompt, "seeded", verdict, tokens_in=None, tokens_out=None, usd=None
-            ),
-        )
-        return verdict, "seed_hit", key
     reply = ab.claude_text(
         prompt,
         env.model,
@@ -286,33 +280,3 @@ def run_set(
         env.paid_required_usd,
         list(env.trace),
     )
-
-
-def _recorded_answer(set_root: Path, case_id: str) -> str | None:
-    """sha256 of the answer the recorded set scored, read from its own transcript."""
-    for sub in ("technician", "safety"):
-        t = set_root / sub / f"{case_id}.json"
-        if t.exists():
-            turns = json.loads(t.read_text()).get("turns") or [{}]
-            return sha256_text((turns[-1] or {}).get("answer", "") or "")
-    return None
-
-
-def seed_from_recorded(
-    recorded_scores_dir: Path, inputs_dir: Path, out_dir: Path, env: JudgeEnv
-) -> SetRun:
-    """Replay recorded verdicts (a judge_baseline scores dir) into the cache through the same path."""
-    recorded: dict[str, dict] = {}
-    set_root = Path(recorded_scores_dir).parent
-    for p in sorted(Path(recorded_scores_dir).glob("*.json")):
-        if p.name.startswith("_"):
-            continue
-        rec = json.loads(p.read_text())
-        if isinstance(rec.get("judge"), dict):
-            cid = str(rec.get("case_id", p.stem))
-            recorded[cid] = {
-                "judge": rec["judge"],
-                "answer_sha256": _recorded_answer(set_root, cid),
-            }
-    env.recorded = recorded
-    return run_set(Path(inputs_dir), out_dir, env)

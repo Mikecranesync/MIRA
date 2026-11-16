@@ -8,10 +8,10 @@ through a metered, budgeted, cached seam. Dry by default. Nothing is written ins
 
 | Path | Role |
 |---|---|
-| `evals/scripts/autoeval.py` | CLI: `run`, `seed`, `status`, `import`, `fixture`, `draft`, `verify` |
+| `evals/scripts/autoeval.py` | CLI: `run`, `status`, `import`, `fixture`, `draft`, `verify` |
 | `evals/scripts/autoeval_run.py` | CLI helpers: keys, budget config, lanes, spend, alert delivery |
 | `evals/scripts/autoeval_budget.py` | Spend ledger and the one metered Claude call |
-| `evals/scripts/autoeval_judge.py` | Verdict cache keyed on the rendered prompt; judge runner; seed replay |
+| `evals/scripts/autoeval_judge.py` | Verdict cache keyed on the rendered prompt; judge runner |
 | `evals/scripts/autoeval_select.py` | Changed-path lane selection; count parsing |
 | `evals/scripts/autoeval_report.py` | Report, transition alerts, Mission Control block |
 | `evals/scripts/autoeval_import.py` | `import`: validates generated answer records into a transcript set (no network) |
@@ -37,7 +37,6 @@ through a metered, budgeted, cached seam. Dry by default. Nothing is written ins
 - `runs/<run_id>/`: `run.json`, `report.md`, `mission_control.txt`, `alerts.jsonl`, `judge/`, and
   `verdicts.jsonl` (one row per judged case: model, prompt hash, transcript and runner commit,
   tokens, cost, request id, cache file, and the path of the judge's evidence file)
-- `seed/`: output of `seed`
 
 ## Generated-answer lane (import, fixture, draft, verify)
 
@@ -81,8 +80,9 @@ python3.12 evals/scripts/autoeval.py verify --candidates <candidates.jsonl> \
 python3.12 evals/scripts/autoeval.py run --skip-lanes
 tools/crew/autoeval/run.sh --skip-lanes          # the wrapper; needs the autoeval files on origin/main
 
-# seed the cache from recorded Stage 1 verdicts (free, offline)
-python3.12 evals/scripts/autoeval.py seed --recorded <set>/scores --inputs <set> --model claude-sonnet-4-6
+# There is no seed command. Recorded judge_baseline scores carry no prompt, model or
+# parameters, so they cannot be bound to a cache key; the removed `seed` filed them under
+# a Claude model's key anyway. Cache entries it wrote (origin "seeded") are never recalled.
 
 # paid (only after paid.json exists; see below)
 python3.12 evals/scripts/autoeval.py run --paid --sets <set-dir> --models claude-sonnet-4-6
@@ -124,8 +124,11 @@ cat ~/.factorylm/autoeval/runs/<run_id>/mission_control.txt
 tail ~/.factorylm/autoeval/alerts.jsonl
 ```
 
-Exit codes: `0` clean; `1` a lane failed or infra-errored; `3` a runner stop (budget, kill
-switch, org mismatch, Anthropic error).
+Exit codes: `0` nothing blocks; `1` a lane failed or infra-errored, or the run evaluated nothing
+usable (no set, no model, no score summary, infrastructure-failed answers); `3` a runner stop
+(budget, kill switch, org mismatch, Anthropic error); `6` the judge found a release blocker (an
+actively dangerous answer, technician gate FAIL). The relay's State and "Blocked by" come from the
+same blocker list, so State is GREEN exactly when the exit code is 0 and nothing is pending.
 
 ## Kill switch
 

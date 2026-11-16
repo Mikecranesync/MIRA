@@ -51,7 +51,14 @@ def make_run(
         ]
     counts = {"api": 0, "recall_hit": 40 - paid_required, "paid_required": paid_required}
     model = {
-        "summary": {"technician_score": 47.7, "technician_gate": "FAIL"},
+        "summary": {
+            "technician_score": 47.7,
+            # judge_baseline sets FAIL exactly when an answer is dangerous
+            "technician_gate": "FAIL" if dangerous else "PASS_WITH_SCORES",
+            "scored_technician": 30,
+            "scored_safety": 10,
+            "infra_failures": 0,
+        },
         "dangerous": list(dangerous),
         "unscored": list(unscored),
         "counts": counts,
@@ -286,3 +293,82 @@ def test_control_fully_scored_set_with_no_infra_failures_stays_green():
     run = _infra_run(infra=0, scored=(30, 10))
     assert rp.coverage_problems(run) == []
     assert "State: GREEN" in rp.mission_control_block(run)
+
+
+# ── coverage fails closed (Codex r2 F3 on #5569) ────────────────────────────────
+
+
+def _model(run):
+    return run["sets"][0]["models"]["claude-sonnet-4-6"]
+
+
+def test_no_set_evaluated_is_blocked():
+    run = make_run()
+    run["sets"] = []
+    assert rp.coverage_problems(run) == ["no answer set was evaluated"]
+    assert rp.run_state(run) == "BLOCKED"
+
+
+def test_a_set_with_no_model_is_blocked():
+    run = make_run()
+    run["sets"][0]["models"] = {}
+    assert any("no judge model" in b for b in rp.coverage_problems(run))
+    assert rp.run_state(run) == "BLOCKED"
+
+
+def test_a_missing_score_summary_is_blocked_not_assumed_fine():
+    run = make_run()
+    _model(run)["summary"] = {}  # run_set returns {} when _summary.json was never written
+    assert any("no score summary" in b for b in rp.coverage_problems(run))
+    assert rp.run_state(run) == "BLOCKED"
+
+
+def test_a_judge_that_exited_nonzero_is_blocked():
+    run = make_run()
+    _model(run)["rc"] = 2
+    assert any("judge exited 2" in b for b in rp.coverage_problems(run))
+
+
+def test_control_pending_paid_calls_are_partial_not_a_coverage_failure():
+    run = make_run(paid_required=40)
+    _model(run)["summary"] = {}
+    assert rp.coverage_problems(run) == []
+    assert rp.run_state(run) == "PARTIAL"
+
+
+# ── judge findings are blockers everywhere (Codex r2 F8 on #5569) ───────────────
+
+
+def test_a_dangerous_answer_is_a_named_blocker_and_the_relay_never_says_none():
+    run = make_run(dangerous=["safety-04"])
+    assert any("safety-04" in b for b in rp.verdict_blockers(run))
+    block = rp.mission_control_block(run)
+    assert "State: BLOCKED" in block
+    assert "Blocked by: none" not in block
+    assert "nothing blocks" not in block
+
+
+def test_a_failed_gate_without_a_dangerous_list_is_still_a_blocker():
+    run = make_run()
+    _model(run)["summary"]["technician_gate"] = "FAIL"
+    assert rp.verdict_blockers(run) == ["f06922ac6-cov100 claude-sonnet-4-6: technician gate FAIL"]
+
+
+def test_state_is_green_exactly_when_nothing_blocks():
+    variants = [
+        make_run(),
+        make_run(dangerous=["safety-03"]),
+        make_run(lane="fail"),
+        make_run(lane="infra_error"),
+        make_run(paid_required=3),
+        make_run(unscored=["a", "b", "c", "d", "e"]),
+        make_run(runner_error="boom"),
+        make_run(skipped=True),
+        _infra_run(),
+    ]
+    for run in variants:
+        block = rp.mission_control_block(run)
+        green = rp.run_state(run) == "GREEN"
+        assert green == (rp._blockers(run) == [])
+        assert green == ("Blocked by: none" in block)
+    assert rp.run_state(variants[0]) == "GREEN"

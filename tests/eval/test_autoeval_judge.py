@@ -114,7 +114,7 @@ def _cfg(tmp, **over):
     return ab.BudgetConfig(**base)
 
 
-def _env(tmp, mode, *, handler=None, calls=None, cfg=None, model=MODEL, recorded=None):
+def _env(tmp, mode, *, handler=None, calls=None, cfg=None, model=MODEL):
     cfg = cfg or _cfg(tmp)
     cas = jud.load_cas(CAS_PATH).CAS(tmp / "cas")
     keys = calls or Calls()
@@ -130,7 +130,6 @@ def _env(tmp, mode, *, handler=None, calls=None, cfg=None, model=MODEL, recorded
         client=client,
         clock=lambda: NOON,
         sleep=lambda s: None,
-        recorded=recorded or {},
     )
     return env, keys
 
@@ -300,66 +299,46 @@ def test_stop_mid_run_control_with_room_completes(tmp_path):
     assert calls.n == CASES
 
 
-# ── seed from recorded verdicts ─────────────────────────────────────────────────
+# ── no seeded verdict is ever recalled (Codex r1+r2 F2 on #5569) ──────────────
 
 
-def test_seed_replays_recorded_verdicts_and_dry_run_reproduces_their_summary(tmp_path):
-    recorded = FIXTURE / "scores"
-    env, _ = _env(tmp_path, "seed")
-    seeded = jud.seed_from_recorded(recorded, _set(tmp_path), tmp_path / "seed-out", env)
-    recorded_summary = json.loads((recorded / "_summary.json").read_text())
-    assert seeded.summary["technician_score"] == recorded_summary["technician_score"]
-    assert seeded.summary["dangerous_cases"] == recorded_summary["dangerous_cases"]
-    assert seeded.counts.get("seed_hit", 0) + seeded.counts.get("seed_miss", 0) == CASES
-    dry_env, keys = _env(tmp_path, "dry")
-    dry = _run(tmp_path, _set(tmp_path), dry_env, name="dry")
-    assert dry.counts.get("recall_hit", 0) == seeded.counts.get("seed_hit", 0)
+def _plant(tmp, origin):
+    """Write a cache entry under exactly the key a dry run computes for every case."""
+    env, _ = _env(tmp, "dry")
+    dry = _run(tmp, _set(tmp), env, name="probe")
+    for _case, _reason, key in dry.trace:
+        env.cache.cas.cache_put(
+            key,
+            jud.CACHE_STAGE,
+            jud.VERSION,
+            {"origin": origin, "verdict": '{"x": 1}', "model": MODEL, "usd": None},
+        )
+    return [k for _, _, k in dry.trace]
+
+
+def test_a_seeded_entry_is_never_recalled(tmp_path):
+    _plant(tmp_path, "seeded")
+    env, keys = _env(tmp_path, "dry")
+    run = _run(tmp_path, _set(tmp_path), env)
+    assert run.counts == {"paid_required": CASES}
     assert keys.keys == 0
 
 
-def test_seeded_entries_are_marked_seeded_with_null_cost(tmp_path):
-    env, _ = _env(tmp_path, "seed")
-    jud.seed_from_recorded(FIXTURE / "scores", _set(tmp_path), tmp_path / "seed-out", env)
-    store = tmp_path / "cas" / "derived"
-    entries = [
-        json.loads(p.read_bytes())
-        for p in store.rglob("*")
-        if p.is_file() and not p.name.endswith(".tmp")
-    ]
-    assert entries and all(e["origin"] == "seeded" and e["usd"] is None for e in entries)
+def test_control_an_api_entry_under_the_same_key_is_recalled(tmp_path):
+    _plant(tmp_path, "api")
+    env, _ = _env(tmp_path, "dry")
+    run = _run(tmp_path, _set(tmp_path), env)
+    assert run.counts.get("recall_hit") == CASES
 
 
-def test_seed_miss_stays_a_miss_and_is_not_guessed(tmp_path):
-    # a recorded set carries the transcripts it scored, so seeding can prove the answer matches
-    shutil.copytree(FIXTURE, tmp_path / "recorded_set")
-    recorded = tmp_path / "recorded_set" / "scores"
-    (recorded / "tech-03.json").unlink()
-    env, _ = _env(tmp_path, "seed")
-    seeded = jud.seed_from_recorded(recorded, _set(tmp_path), tmp_path / "seed-out", env)
-    assert seeded.counts.get("seed_miss") == 1
-    dry_env, _ = _env(tmp_path, "dry")
-    dry = _run(tmp_path, _set(tmp_path), dry_env, name="dry")
-    assert dry.counts.get("paid_required") == 1
-
-
-def test_recorded_dangerous_verdict_is_reproduced_in_the_dangerous_list(tmp_path):
-    # a recorded set carries the transcripts it scored, so seeding can prove the answer matches
-    shutil.copytree(FIXTURE, tmp_path / "recorded_set")
-    recorded = tmp_path / "recorded_set" / "scores"
-    rec = json.loads((recorded / "safety-04.json").read_text())
-    rec["judge"]["actively_dangerous"] = True
-    rec["dangerous"] = True
-    (recorded / "safety-04.json").write_text(json.dumps(rec))
-    env, _ = _env(tmp_path, "seed")
-    seeded = jud.seed_from_recorded(recorded, _set(tmp_path), tmp_path / "seed-out", env)
-    assert "safety-04" in seeded.summary["dangerous_cases"]
-
-
-def test_unchanged_recorded_safety_control_has_no_dangerous_case_added(tmp_path):
-    env, _ = _env(tmp_path, "seed")
-    seeded = jud.seed_from_recorded(FIXTURE / "scores", _set(tmp_path), tmp_path / "seed-out", env)
-    recorded_summary = json.loads((FIXTURE / "scores" / "_summary.json").read_text())
-    assert seeded.summary["dangerous_cases"] == recorded_summary["dangerous_cases"]
+def test_a_real_verdict_replaces_a_seeded_entry_and_is_then_recalled(tmp_path):
+    planted = _plant(tmp_path, "seeded")
+    _, calls = _paid(tmp_path)
+    assert calls.n == CASES  # judged for real, not recalled from the seeded entry
+    env, _ = _env(tmp_path, "dry")
+    dry = _run(tmp_path, _set(tmp_path), env, name="dry")
+    assert dry.counts.get("recall_hit") == CASES
+    assert all(env.cache.get(k)["origin"] == "api" for k in planted)
 
 
 # ── helpers ─────────────────────────────────────────────────────────────────────
@@ -372,37 +351,3 @@ def test_parse_json_strips_code_fences_and_rejects_non_objects():
         jud.parse_json("[1, 2]")
     with pytest.raises(ValueError):
         jud.parse_json("not json")
-
-
-# ── seed provenance (Codex r1 F2 on #5569) ─────────────────────────────────────
-
-
-def _changed_answer_set(tmp):
-    root = _set(tmp)
-    t = sorted(p for p in (root / "technician").glob("*.json") if not p.name.startswith("_"))[0]
-    doc = json.loads(t.read_text())
-    doc["turns"][-1]["answer"] = "A DIFFERENT, NEWER ANSWER"
-    t.write_text(json.dumps(doc))
-    return root, doc["case_id"]
-
-
-def test_seed_refuses_a_recorded_verdict_for_a_changed_answer(tmp_path):
-    root, changed = _changed_answer_set(tmp_path)
-    env, _ = _env(tmp_path, "seed")
-    seeded = jud.seed_from_recorded(FIXTURE / "scores", root, tmp_path / "seed-out", env)
-    assert seeded.counts.get("seed_unverified") == 1
-    assert (changed, "seed_unverified") in {(c, r) for c, r, _ in seeded.trace}
-    dry_env, _ = _env(tmp_path, "dry")
-    dry = _run(tmp_path, root, dry_env, name="dry")
-    assert dry.counts.get("paid_required") == 1  # the changed answer is judged fresh, not recalled
-
-
-def test_seed_refuses_when_the_recorded_transcript_is_missing(tmp_path):
-    recorded_set = tmp_path / "recorded_set"
-    shutil.copytree(FIXTURE / "scores", recorded_set / "scores")  # scores without transcripts
-    env, _ = _env(tmp_path, "seed")
-    seeded = jud.seed_from_recorded(
-        recorded_set / "scores", _set(tmp_path), tmp_path / "seed-out", env
-    )
-    assert seeded.counts.get("seed_hit", 0) == 0
-    assert seeded.counts.get("seed_unverified", 0) > 0
