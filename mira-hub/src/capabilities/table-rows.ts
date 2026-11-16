@@ -40,7 +40,7 @@ interface Line {
 }
 
 const LINE_GAP_PT = 2.5;
-/** A table's frame rule sits within a cell padding of its outermost header text. */
+/** A table's frame edge, or the separator left of an unlabelled first model cell, sits within a cell padding of the header text. */
 const RULE_EDGE_PT = 8;
 const CAPTION_BAND_PT = 40;
 const ATTACH_BAND_PT = 14;
@@ -309,16 +309,24 @@ function buildBlock(lines: readonly Line[], headerIdx: number): { block: TableBl
       const own = item.vr ?? [];
       return common === null ? own : common.filter((id) => own.includes(id));
     }, null) ?? [];
-  // Column separators of THIS header: rules crossing it within its own printed extent (its frame
-  // edge included). A page-margin bar or a rule beside the table is not one of its separators.
+  // Painted rules of THIS header, by x. A separator lies between its cells: right of the label
+  // cell (or just left of the first model cell when no label is printed) and left of the header's
+  // right end. A rule outside that is at most a frame edge, and one edge alone proves nothing - a
+  // margin or revision bar looks the same - so the frame counts only as a left and right pair.
   const printed = header.items.filter((item) => item.str.trim().length > 0);
   const headerLeft = Math.min(...printed.map((item) => item.x));
   const headerRight = Math.max(...printed.map((item) => item.x + item.w));
-  const headerRules = rulesOf(header).filter((id) => printed.some((item) => {
-    const at = item.vr?.indexOf(id) ?? -1;
-    const x = at >= 0 ? item.vrx?.[at] : undefined;
-    return x !== undefined && x > headerLeft - RULE_EDGE_PT && x < headerRight + RULE_EDGE_PT;
-  }));
+  const firstModelLeft = Math.min(...printed.filter((item) => isIdentifierCell(item.str)).map((item) => item.x));
+  const labelCells = printed.filter((item) => item.x < firstModelLeft);
+  const labelRight = labelCells.length > 0 ? Math.max(...labelCells.map((item) => item.x + item.w)) : firstModelLeft - RULE_EDGE_PT;
+  const ruleX = (id: number): number => {
+    const item = printed.find((candidate) => candidate.vr?.includes(id));
+    return item?.vrx?.[item.vr!.indexOf(id)] ?? Number.NaN;
+  };
+  const crossingHeader = rulesOf(header);
+  const separators = crossingHeader.filter((id) => ruleX(id) > labelRight && ruleX(id) < headerRight);
+  const frameLeft = crossingHeader.filter((id) => ruleX(id) <= headerLeft && ruleX(id) > headerLeft - RULE_EDGE_PT);
+  const frameRight = crossingHeader.filter((id) => ruleX(id) >= headerRight && ruleX(id) < headerRight + RULE_EDGE_PT);
   const idCells = identifierCells(header);
   const models = idCells.map((c) => c.str.trim());
   const modelKeys = models.map(exactModelKey);
@@ -409,7 +417,8 @@ function buildBlock(lines: readonly Line[], headerIdx: number): { block: TableBl
     // painted rule of the model header runs unbroken through the line. A page
     // with no rule evidence gets none. Prose inside the rules stays outside.
     const lineRules = rulesOf(line);
-    const ruled = headerRules.some((id) => lineRules.includes(id));
+    const through = (ids: readonly number[]) => ids.some((id) => lineRules.includes(id));
+    const ruled = through(separators) || (through(frameLeft) && through(frameRight));
     const labelledGridRow = gridRow && labelItems.length > 0;
     if (!conflicting && (labelledGridRow || bareLabel || (ruled && (aligned || centredLabel)))) memberYs.push(line.y);
 

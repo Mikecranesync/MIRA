@@ -969,9 +969,13 @@ it.each([
   ["a header separator that stops above the title", [{ x: 270, y0: 690, y1: 730 }], false],
   ["a rule on the page that never crosses the model header", [{ x: 270, y0: 640, y1: 715 }], false],
   ["a bar in the page margin running through header and title", [{ x: 80, y0: 640, y1: 730 }], false],
+  // One edge beside the table is no frame: a margin bar or a revision bar looks the same.
+  ["a single bar just left of the header label", [{ x: 94, y0: 640, y1: 730 }], false],
+  ["a single bar just right of the header", [{ x: 472, y0: 640, y1: 730 }], false],
+  ["a left edge running through the title beside a right edge that stops above it", [{ x: 96, y0: 640, y1: 730 }, { x: 472, y0: 690, y1: 730 }], false],
   // One ruled frame is one physical table: real merged group rows (GS10 "Output Rating")
-  // break every interior separator, so the frame edge beside the header is the proof.
-  ["the table frame edge beside the header running through the title", [{ x: 96, y0: 640, y1: 730 }], true],
+  // break every interior separator, so the frame's two edges beside the header are the proof.
+  ["both frame edges beside the header running through the title", [{ x: 96, y0: 640, y1: 730 }, { x: 472, y0: 640, y1: 730 }], true],
 ] as const)("F14 painted-rule evidence: %s", async (_name, rules, qualified) => {
   const c = columnMeasuredMatrix.find((entry) => entry.id === "voltage-heading-8-12-unruled")!;
   const items = columnMeasuredMatrixPage(c);
