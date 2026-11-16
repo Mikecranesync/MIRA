@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 
 from .inference.router import EncodedSessionId, InferenceRouter
 
@@ -105,7 +106,7 @@ async def route_intent(
     response = await _call_router_llm(messages, session_id=session_id)
 
     try:
-        result = json.loads(response)
+        result = json.loads(_strip_code_fence(response))
         if result.get("intent") not in INTENTS:
             result["intent"] = "continue_current"
         return result
@@ -115,6 +116,23 @@ async def route_intent(
             "confidence": 0.3,
             "reasoning": "Router parse failure — defaulting to continue",
         }
+
+
+_CODE_FENCE = re.compile(r"^\s*```[A-Za-z]*\s*\n?(.*?)\n?\s*```\s*$", re.DOTALL)
+
+
+def _strip_code_fence(text: str) -> str:
+    """Return the JSON body of a reply wrapped in one Markdown code fence.
+
+    Several models answer "reply with JSON" with a ```json fenced block. A bare
+    json.loads on that raises, and route_intent then reports "Router parse
+    failure" and falls back to continue_current on EVERY turn — silently, since
+    nothing logs it (measured 2026-11-16: claude-sonnet-4-6 fenced 14/14).
+    Only a reply that is entirely one fenced block is unwrapped; anything else
+    is returned unchanged so json.loads keeps its existing behaviour.
+    """
+    m = _CODE_FENCE.match(text or "")
+    return m.group(1) if m else text
 
 
 def _format_history(history: list[dict]) -> str:
