@@ -16,6 +16,10 @@ const turns = Array.from({ length: 16 }, (_, i) => ({ ...base.thread.turns[0], i
 function App() {
   const [state, dispatch] = useReducer(shellReducer, createShellState({ ...base, thread: { ...base.thread, turns } }, PROFILES.web));
   useEffect(() => { dispatch({ type: "set-send-error", error: REVIEW }); }, []);
+  // Grow the latest turn while the banner stays up (a streamed answer).
+  (window as any).proof = {
+    grow: () => dispatch({ type: "hydrate", data: { thread: { ...state.thread, turns: state.thread.turns.map((t, i) => i === state.thread.turns.length - 1 ? { ...t, parts: [{ type: "text" as const, text: (t.parts[0] as any).text + " Continued answer details. ".repeat(25) }] } : t) } } }),
+  };
   return <FactoryLMShell state={state} dispatch={dispatch} adapter={fakeAdapter()} hooks={{ targetReview: REVIEW, onSend: () => undefined }} conversationSurface={params.get("renderer") === "assistant" ? "assistant" : "classic"} />;
 }
 createRoot(document.getElementById("root")!).render(<App />);

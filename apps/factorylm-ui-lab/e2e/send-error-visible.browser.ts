@@ -20,6 +20,20 @@ try {
     await page.goto(`http://127.0.0.1:${server.port}/?renderer=${renderer}`);
     await page.waitForSelector(".fl-send-error");
     await page.waitForTimeout(200);
+    // While following, the latest turn ends above the WHOLE pinned dock (banner +
+    // composer), at first and after the turn grows with the banner still up.
+    for (const step of ["followed", "grown"]) {
+      if (step === "grown") { await page.evaluate(() => (window as any).proof.grow()); }
+      await page.waitForTimeout(300);
+      const f = await page.evaluate(() => {
+        const last = [...document.querySelectorAll<HTMLElement>("[data-turn-id]")].at(-1)!.getBoundingClientRect();
+        const dock = document.querySelector<HTMLElement>(".fl-shell__dock")!.getBoundingClientRect();
+        return { lastBottom: Math.round(last.bottom), dockTop: Math.round(dock.top) };
+      });
+      const ok = f.lastBottom <= f.dockTop + 1;
+      if (!ok) failures += 1;
+      console.log(`${ok ? "PASS" : "FAIL"} ${renderer} ${width}x${height} ${step} ${JSON.stringify(f)}`);
+    }
     // The banner must be readable wherever the page is scrolled: top, middle, end.
     for (const at of ["top", "middle", "end"]) {
       await page.evaluate((at) => { const el = document.scrollingElement!; el.scrollTop = at === "top" ? 0 : at === "end" ? el.scrollHeight : el.scrollHeight / 2; }, at);

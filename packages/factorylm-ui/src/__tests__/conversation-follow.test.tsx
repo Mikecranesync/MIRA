@@ -216,8 +216,10 @@ for (const surface of ["classic", "assistant"] as const) {
       function composerGrowthObserver(lastTurnId: string) {
         // The observer the hook uses to re-follow on resize watches BOTH the
         // latest turn and the composer — that is the fix this test proves.
+        // #5572: the composer sits in the sticky dock with any send error, and
+        // the dock (the whole pinned box) is what is watched.
         return observers.find((entry) =>
-          entry.targets.some((t) => t.classList.contains("fl-composer")) &&
+          entry.targets.some((t) => t.classList.contains("fl-shell__dock")) &&
           entry.targets.some((t) => (t as HTMLElement).dataset.turnId === lastTurnId));
       }
       it("re-follows the latest answer when the composer alone grows (mobile host, fixed height)", async () => {
@@ -245,7 +247,7 @@ for (const surface of ["classic", "assistant"] as const) {
         const lastId = base.turns.at(-1)!.id;
         const observer = composerGrowthObserver(lastId);
         expect(observer).toBeDefined();
-        const oldComposer = view!.container.querySelector(".fl-composer")!;
+        const oldComposer = view!.container.querySelector(".fl-shell__dock")!;
         const newComposer = oldComposer.cloneNode(true) as HTMLElement;
         oldComposer.replaceWith(newComposer);
         // No thread/turns/sendRevision change — only a window resize re-runs
@@ -259,7 +261,7 @@ for (const surface of ["classic", "assistant"] as const) {
         const lastId = base.turns.at(-1)!.id;
         const turnNode = view!.container.querySelector<HTMLElement>(`[data-turn-id="${lastId}"]`)!;
         turnNode.remove(); // transient DOM absence — no thread/turns/sendRevision change
-        const oldComposer = view!.container.querySelector(".fl-composer")!;
+        const oldComposer = view!.container.querySelector(".fl-shell__dock")!;
         const newComposer = oldComposer.cloneNode(true) as HTMLElement;
         oldComposer.replaceWith(newComposer); // composer remounts during the same gap
         // The turn stays missing for this trigger; a prior design only

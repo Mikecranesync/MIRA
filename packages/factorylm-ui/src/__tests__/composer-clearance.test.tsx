@@ -28,8 +28,10 @@ afterEach(() => {
   (globalThis as { ResizeObserver?: unknown }).ResizeObserver = OriginalRO;
 });
 
+// #5572: the measured box is the sticky dock (send error + composer) when the
+// shell provides one, else the composer form itself.
 function composerObserver() {
-  return observers.find((o) => o.targets.some((t) => t.classList.contains("fl-composer")));
+  return observers.find((o) => o.targets.some((t) => t.classList.contains("fl-shell__dock") || t.classList.contains("fl-composer")));
 }
 
 describe("#4620 composer clearance follows the composer's real height", () => {
@@ -39,12 +41,15 @@ describe("#4620 composer clearance follows the composer's real height", () => {
     const form = view.container.querySelector<HTMLElement>(".fl-composer")!;
     const shell = view.container.querySelector<HTMLElement>(".fl-shell")!;
     expect(form).not.toBeNull();
+    const dock = form.closest<HTMLElement>(".fl-shell__dock");
+    expect(dock).not.toBeNull();
     const observer = composerObserver();
     expect(observer).toBeDefined();
-    form.getBoundingClientRect = () => ({ height: 183.4 } as DOMRect);
+    expect(observer!.targets).toContain(dock!);
+    dock!.getBoundingClientRect = () => ({ height: 183.4 } as DOMRect);
     act(() => { observer!.callback([]); });
     expect(shell.style.getPropertyValue("--fl-composer-block-size")).toBe("184px");
-    form.getBoundingClientRect = () => ({ height: 96 } as DOMRect);
+    dock!.getBoundingClientRect = () => ({ height: 96 } as DOMRect);
     act(() => { observer!.callback([]); });
     expect(shell.style.getPropertyValue("--fl-composer-block-size")).toBe("96px");
   });
