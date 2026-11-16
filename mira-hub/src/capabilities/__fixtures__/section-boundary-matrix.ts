@@ -237,12 +237,13 @@ export const columnMeasuredMatrix = (["ordinary", "bold-label", "smaller-label",
       ({ kind, bodyFont, gap, ruled, id: [kind, bodyFont, gap, ruled ? "ruled" : "unruled"].join("-") })))));
 
 /** Whether the row after the interposed line keeps the original models' qualification.
- * A numbered line is never proof (footnote and numbered title are indistinguishable); a
- * measurement-bearing aligned cell is proof only inside the header's painted column rules. */
+ * A numbered line at the label margin is never proof (footnote and numbered title are
+ * indistinguishable). Cells aligned to the columns without a row label are proof only
+ * inside the header's painted rules. */
 export function columnMeasuredLaterQualified(c: typeof columnMeasuredMatrix[number]): boolean {
   if (c.kind === "bold-label" || c.kind === "foreign-row") return false; // oversized-row uncertainty and contradictory catalog evidence
   if (c.kind.startsWith("numbered-")) return false;
-  if (c.kind === "merged-measurement" || c.kind.startsWith("voltage-heading") || c.kind.startsWith("split-")) return c.ruled;
+  if ((ruleDependentKinds as readonly string[]).includes(c.kind)) return c.ruled;
   return true;
 }
 

@@ -391,9 +391,6 @@ function buildBlock(lines: readonly Line[], headerIdx: number): { block: TableBl
     const gridRow = aligned && new Set(columns).size >= 2 && new Set(columns).size === runs.length;
     const bareLabel = modelKeys.includes(exactModelKey(text)) || line.items.every((item) =>
       isIdentifierCell(item.str) && modelKeys.includes(exactModelKey(item.str)));
-    const measuredRow = aligned && (findValues(renderItems(valueItems), "source").length > 0 ||
-      (labelItems.length > 0 && (/^[+−-]?\d/.test(renderItems(valueItems)) ||
-        (labelAndUnit(labelItems).unit !== null && valueItems.every((item) => isNumberShaped(item.str))))));
     // Centred labels can sit between two baselines of their own multiline
     // value cells. Require overlapping text boxes at this grid's columns;
     // mere adjacency or short label wording is not ownership evidence.
@@ -406,15 +403,15 @@ function buildBlock(lines: readonly Line[], headerIdx: number): { block: TableBl
     // F14: a numbered prefix cannot tell a footnote from a numbered section
     // title, and a measurement inside one aligned item cannot tell a merged
     // data cell from a voltage-bearing heading. Wording and position grant
-    // nothing. The measured-row and centred-label roles count only when the
-    // a painted column separator of the model header runs unbroken through
-    // this line; a page with no rule evidence gets none.
+    // nothing beyond a labelled grid row. A centred label, or cells aligned to
+    // the columns without a label (a wrapped continuation, a merged cell, a
+    // lone marker - or a title set in a column), is this table's only when a
+    // painted rule of the model header runs unbroken through the line. A page
+    // with no rule evidence gets none. Prose inside the rules stays outside.
     const lineRules = rulesOf(line);
     const ruled = headerRules.some((id) => lineRules.includes(id));
-    // A label-less line of aligned cells is a wrapped continuation or a title
-    // set across the columns; position cannot tell which, so it too needs the rule.
-    const labelledGridRow = gridRow && (labelItems.length > 0 || ruled);
-    if (!conflicting && (labelledGridRow || bareLabel || (ruled && (measuredRow || centredLabel)))) memberYs.push(line.y);
+    const labelledGridRow = gridRow && labelItems.length > 0;
+    if (!conflicting && (labelledGridRow || bareLabel || (ruled && (aligned || centredLabel)))) memberYs.push(line.y);
 
     if (valueItems.length === 0) {
       const text = renderItems(labelItems);

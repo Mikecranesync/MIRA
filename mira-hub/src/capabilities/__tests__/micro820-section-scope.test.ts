@@ -963,6 +963,29 @@ it.each(columnMeasuredMatrix)("F12 measured extracted-column row $id retains ori
   }
 });
 
+// #5503 F14: what counts as a painted rule of THIS table. The page is the voltage-bearing
+// title at the first value column (title y=680, model header y=720 spanning x=100..468).
+it.each([
+  ["a header separator that stops above the title", [{ x: 270, y0: 690, y1: 730 }], false],
+  ["a rule on the page that never crosses the model header", [{ x: 270, y0: 640, y1: 715 }], false],
+  ["a bar in the page margin running through header and title", [{ x: 80, y0: 640, y1: 730 }], false],
+  // One ruled frame is one physical table: real merged group rows (GS10 "Output Rating")
+  // break every interior separator, so the frame edge beside the header is the proof.
+  ["the table frame edge beside the header running through the title", [{ x: 96, y0: 640, y1: 730 }], true],
+] as const)("F14 painted-rule evidence: %s", async (_name, rules, qualified) => {
+  const c = columnMeasuredMatrix.find((entry) => entry.id === "voltage-heading-8-12-unruled")!;
+  const items = columnMeasuredMatrixPage(c);
+  pdfPages.current = [{ page: 1, items, rules: [...rules], text: items.map((r) => r.str).join("\n") }];
+  let rows: Row[];
+  try { rows = await ingestFixture(); } finally { pdfPages.current = null; }
+  for (const [model, original, later] of [["20QWB", "2 A", "3 A"], ["20AWB", "1 A", "4 A"]]) {
+    expect((await retrieve(model, rows, "zzcolumnoriginal Load current")).text).toContain(original);
+    const measured = (await retrieve(model, rows, "zzcolumnmeasured")).text;
+    if (qualified) expect(measured).toContain(later);
+    else expect(measured).not.toContain(later);
+  }
+});
+
 it.each(["independent", "independent-footnote", "inherited-conflict", "inherited-compatible"])("F8 readable headingless model columns retain qualification with %s scope", async (kind) => {
   const item = (str: string, x: number, y: number, size = 8) => ({ str, x, y, size, w: str.length * size * 0.4 });
   const caption = kind === "inherited-compatible" ? "Output Specifications for 2080-LC20-20QWB, 2080-LC20-20AWB" : "Output Specifications for 2080-LC20-20QBB";
