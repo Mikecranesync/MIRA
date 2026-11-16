@@ -803,9 +803,15 @@ async function parsePdfForNode(buffer: Buffer | Uint8Array, rest: NodeChunkOpts)
     }
     try {
       const items = await pageLayoutItems(pdf, p + 1);
+      let rating: ReturnType<typeof contactRatingTable> = null;
+      try { rating = contactRatingTable(items); }
+      catch (err) {
+        console.warn(`[node-ingest] contact-ratings column read failed on ${rest.filename} p.${p + 1} (page kept without column lines):`, err instanceof Error ? err.message : err);
+      }
+      const annotation = rating ? { after: rating.lastRow, lines: columnLines(rating.rows), sourceRows: rating.sourceRows } : undefined;
       // Recognize physical section cuts on the complete page, before extraction removes
       // their source items. Closely adjacent sections must never share a model block.
-      const fullLayout = sectionTableLayout(items);
+      const fullLayout = sectionTableLayout(items, true, undefined, annotation, true);
       const boundaries = tableExtractionBoundaries(fullLayout);
       let table = items.length > 0 ? pageWithTables(items, boundaries) : null;
       const unsplitChunks = table?.chunks ?? [];
@@ -823,9 +829,7 @@ async function parsePdfForNode(buffer: Buffer | Uint8Array, rest: NodeChunkOpts)
       // remainder, which is what a page with a model table chunks). The flat rows stay as they
       // were. Its own guard: a failure here must not cost the page its table read.
       try {
-        const rating = contactRatingTable(items);
-        layout = sectionTableLayout(items, true, table?.remainderItems,
-          rating ? { after: rating.lastRow, lines: columnLines(rating.rows) } : undefined);
+        layout = sectionTableLayout(items, true, table?.remainderItems, annotation, unsplitChunks.length > 0);
         if (rating) {
           // Preserve the legacy path for documents without an output inventory. The scoped
           // path below uses the physically attached annotations in layout.text instead.
@@ -833,7 +837,7 @@ async function parsePdfForNode(buffer: Buffer | Uint8Array, rest: NodeChunkOpts)
           if (table) table.remainder = withColumnLines(table.remainder, rating.rows);
         }
       } catch (err) {
-        layout = sectionTableLayout(items, true, table?.remainderItems);
+        layout = sectionTableLayout(items, true, table?.remainderItems, undefined, unsplitChunks.length > 0);
         console.warn(`[node-ingest] contact-ratings column read failed on ${rest.filename} p.${p + 1} (page kept without column lines):`, err instanceof Error ? err.message : err);
       }
       layout = withTableInterruptions(layout, unsplitChunks);
@@ -861,7 +865,7 @@ async function parsePdfForNode(buffer: Buffer | Uint8Array, rest: NodeChunkOpts)
     if (!sectionScopeObserved) break;
     const table = pageTables[p];
     const layout = sectionLayouts[p];
-    const remainder = layout && (table || layout.hasTables || hasModelSectionScope(layout)) ? layout.text : table?.remainder ?? pages[p];
+    const remainder = layout && (table || layout.hasTables || hasModelSectionScope(layout) || layout.headings.some((heading) => heading.ordinaryTable)) ? layout.text : table?.remainder ?? pages[p];
     const scoped = layout === undefined
       ? { sections: scope.unreadable(remainder), chunks: [] }
       : scope.splitPage(remainder, layout, table?.chunks ?? []);

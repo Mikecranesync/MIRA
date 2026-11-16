@@ -1151,8 +1151,8 @@ describe("#5503 actual upload INSERT through raw retrieval SQL", () => {
     await withPages([{ page: 1, items, text: items.map((r) => r.str).join("\n") }], async () => {
       for (const [model, original, later] of [["20QWB", "2 A", "3 A"], ["20AWB", "1 A", "4 A"]]) {
         expect((await retrieve(model, "zzcolumnoriginal Load current")).text).toContain(original);
-        const measured = (await retrieve(model, "zzcolumnmeasured Point current")).text;
-        if (c.kind === "bold-label") expect(measured).not.toContain(later); // preserve earlier oversized-row uncertainty
+        const measured = (await retrieve(model, "zzcolumnmeasured")).text;
+        if (c.kind === "bold-label" || c.kind === "foreign-row") expect(measured).not.toContain(later); // oversized-row uncertainty and contradictory catalog evidence
         else expect(measured).toContain(later);
       }
     });
@@ -1189,6 +1189,34 @@ describe("#5503 actual upload INSERT through raw retrieval SQL", () => {
         expect(rows.length).toBeGreaterThan(0);
         expect(rows.every((r) => r.metadata.table_scope === "unresolved")).toBe(true);
       }
+    });
+  });
+
+  it.each([false, true])("F13 actual SQL bounds fresh column ownership without releasing explicit section uncertainty=%s", async (section) => {
+    const first = [...(section ? [item("Output Specifications for 2080-LC20-20QWB, 2080-LC20-20AWB", 100, 740, 12)] : []),
+      item("Attribute", 100, 720), item("2080-LC20-20QWB", 280, 720), item("2080-LC20-20AWB", 420, 720),
+      item("Original current", 100, 706), item("2 A", 280, 706), item("1 A", 420, 706),
+      item("Original interval", 100, 692), item("10 ms", 280, 692), item("8 ms", 420, 692),
+      item("Derating", 100, 680), item("zzcontextold current", 100, 668), item("9 A", 280, 668), item("11 A", 420, 668)];
+    const next = [item("Attribute", 100, 720), item("2080-LC20-20AWB", 280, 720), item("2080-LC20-20QWB", 420, 720),
+      item("zzcontextfresh current", 100, 706), item("3 A", 280, 706), item("4 A", 420, 706),
+      item("Original interval", 100, 692), item("12 ms", 280, 692), item("7 ms", 420, 692)];
+    const cover = "Micro820 Programmable Controllers\n2080-LC20-20QBB, 2080-LC20-20QWB, 2080-LC20-20AWB";
+    const ordinary = [item("Type", 416.52, 720), item("Hex Addr", 457.02, 720), item("Dec Addr", 506.52, 720),
+      ...["P01.12", "P01.13", "P01.14"].flatMap((key, index) => [item(key, 74, 706 - index * 14),
+        item("zzordinaryparameter Acceleration time", 117, 706 - index * 14), item("R/W", 423, 706 - index * 14),
+        item(["010C", "010D", "010E"][index], 463, 706 - index * 14), item(String(40269 + index), 513, 706 - index * 14)])];
+    await withPages([{ page: 1, items: [item(cover, 100, 760, 12)], text: cover },
+      { page: 2, items: first, text: first.map((row) => row.str).join("\n") },
+      { page: 3, items: next, text: next.map((row) => row.str).join("\n") },
+      { page: 4, items: ordinary, text: ordinary.map((row) => row.str).join("\n") }], async () => {
+      for (const model of ["20QWB", "20AWB", "20QBB"]) expect((await retrieve(model, "zzcontextold current")).text).not.toContain("zzcontextold");
+      for (const [model, value] of [["20AWB", "3 A"], ["20QWB", "4 A"]]) {
+        const result = await retrieve(model, "zzcontextfresh current");
+        expect(result.text.includes(value)).toBe(!section);
+      }
+      expect((await retrieve("20QBB", "zzcontextfresh current")).text).not.toContain("zzcontextfresh");
+      expect((await retrieve("20QWB", "zzordinaryparameter Acceleration time")).text.includes("zzordinaryparameter")).toBe(!section);
     });
   });
 

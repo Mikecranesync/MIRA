@@ -93,7 +93,7 @@ export function contactRatingColumns(items: readonly LayoutItem[]): ColumnRow[] 
 }
 
 /** The same column read, with the last source row so derived text stays inside its table. */
-export function contactRatingTable(items: readonly LayoutItem[]): { rows: ColumnRow[]; lastRow: LayoutItem } | null {
+export function contactRatingTable(items: readonly LayoutItem[]): { rows: ColumnRow[]; lastRow: LayoutItem; sourceRows: LayoutItem[] } | null {
   const lines = linesOf(items);
   const headAt = lines.findIndex((l) => l.items.some((i) => isWord(i, "make")) && l.items.some((i) => isWord(i, "break")));
   if (headAt === -1) return null;
@@ -105,6 +105,7 @@ export function contactRatingTable(items: readonly LayoutItem[]): { rows: Column
   if (!heads.some((h) => h.column === "continuous")) return null;
 
   const rows: ColumnRow[] = [];
+  const sourceRows: LayoutItem[] = [];
   let lastRow: LayoutItem | undefined;
   for (const line of lines.slice(headAt + 1)) {
     const label = line.items[0].str.trim();
@@ -123,10 +124,11 @@ export function contactRatingTable(items: readonly LayoutItem[]): { rows: Column
       if (continuous) row.continuous = continuous;
     } else row.unread.push(...cells.map((c) => c.str.trim()));
     rows.push(row);
+    sourceRows.push(line.items[0]);
     lastRow = line.items[0];
   }
   if (new Set(rows.map((r) => r.label)).size !== rows.length) return null;
-  return lastRow && rows.some((r) => r.make || r.continuous) ? { rows, lastRow } : null;
+  return lastRow && rows.some((r) => r.make || r.continuous) ? { rows, lastRow, sourceRows } : null;
 }
 
 /** The lines stored with the page text: one per row that has a figure. "No column read for" a

@@ -2,7 +2,7 @@
  * No question words or model-specific constants: qualified layout captions supply explicit
  * scope; a complete per-model output-circuit row supplies relay applicability independently.
  */
-import { exactModelKey, type LayoutItem, type TableChunk } from "./table-rows";
+import { exactModelKey, ordinaryKeyedTableHeaders, type LayoutItem, type TableChunk } from "./table-rows";
 import { hasNegation, isTitleLine, modelNumbersIn, sameModelFamily } from "./manual-applicability";
 import { findValues, tableUnit } from "./supporting-quote";
 import { catalogIdentifierView } from "./catalog-identifier";
@@ -11,7 +11,7 @@ export type SectionScope = "section" | "shared" | "unresolved";
 /** columnOnly is internal: independent parameter/accessory columns retain the
  * existing family-domain rule; an explicit catalog section never gains it. */
 export type ScopedText = { columnOnly?: boolean; text: string; models?: string[]; scope?: SectionScope; sharedHeader?: string };
-type Heading = { interruption?: boolean; bodyHeading?: boolean; localTitle?: boolean; semanticTitle?: boolean; fontPeakEligible?: boolean; bodySize?: number; interruptedModels?: string[]; text: string; at: number; table: boolean; size: number; sharedHeader?: string; headerModels?: string[]; headerUnresolved?: boolean; headerInvalidLabels?: boolean; relayTable?: boolean; sourceLine: number; y: number; headerTop?: number; headerBottom?: number; columnUnresolved?: boolean };
+type Heading = { ordinaryTable?: boolean; columnModels?: string[]; memberTableCaption?: string; catalogs?: string[]; catalogExcluded?: boolean; interruption?: boolean; bodyHeading?: boolean; localTitle?: boolean; semanticTitle?: boolean; fontPeakEligible?: boolean; bodySize?: number; interruptedModels?: string[]; text: string; at: number; table: boolean; size: number; sharedHeader?: string; headerModels?: string[]; headerUnresolved?: boolean; headerInvalidLabels?: boolean; relayTable?: boolean; sourceLine: number; y: number; headerTop?: number; headerBottom?: number; columnUnresolved?: boolean };
 export type SectionLayout = { text: string; headings: Heading[]; candidates?: Heading[]; hasTables: boolean; retainedLines: string[] };
 type OutputMap = Map<string, boolean | null>;
 type ActiveScope = Pick<ScopedText, "models" | "scope" | "sharedHeader" | "columnOnly">;
@@ -115,7 +115,7 @@ function localSectionTitle(text: string): { semantic: boolean; typographic: bool
  * unpdf's object order, delimit sections (real p20 puts its top caption AFTER its lower chart).
  * Only pages containing a layout-qualified table caption use this rendering at ingest.
  */
-export function sectionTableLayout(items: readonly LayoutItem[], includeBoundaries = true, remainderItems?: readonly LayoutItem[], annotation?: { after: LayoutItem; lines: string[] }): SectionLayout | null {
+export function sectionTableLayout(items: readonly LayoutItem[], includeBoundaries = true, remainderItems?: readonly LayoutItem[], annotation?: { after: LayoutItem; lines: string[]; sourceRows?: readonly LayoutItem[] }, retainCandidates = false): SectionLayout | null {
   if (annotation && !items.includes(annotation.after)) throw new Error("contact-column source row is not in this page's positioned items");
   const retained = remainderItems ? new Set(remainderItems) : null;
   const lines: Array<{ text: string; y: number; x: number; size: number; uniformFont: boolean; columns: Array<{ text: string; x: number; right: number; size: number }>; removed: boolean; virtual: boolean }> = [];
@@ -146,6 +146,8 @@ export function sectionTableLayout(items: readonly LayoutItem[], includeBoundari
     }
   }
   const captions = new Map<number, { text: string; end: number; bodySize?: number; sharedHeader?: string; headerModels?: string[]; headerUnresolved?: boolean; headerInvalidLabels?: boolean; columnUnresolved?: boolean; headerTop?: number; headerBottom?: number; relayTable: boolean }>();
+  const ordinaryHeaders = new Set(ordinaryKeyedTableHeaders(items));
+  const memberLines = new Map<number, string>();
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     if (line.virtual || line.text.length > 200) continue;
@@ -180,6 +182,15 @@ export function sectionTableLayout(items: readonly LayoutItem[], includeBoundari
       (isTitleLine(line.text.replace(/\bonly(?=\s*(?:[-–—]|$))/gi, "")) || observedCaptionModels(line).length > 0) &&
       header && header.size < line.size;
     if (!attributeCaption && !isRating) continue;
+    // The existing contact-column reader has placed actual ampere cells under
+    // Make/Break/Continuous. Its multi-line field heads belong to that SAME
+    // caption, including when catalog columns are printed above the heads.
+    // This is positive header proof, not an exception for arbitrary title words.
+    if (annotation && isRating && headerLines.every((head) => head.y > annotation.after.y)) {
+      const caption = lines.slice(i, end + 1).map((l) => l.text).join(" ");
+      for (const head of headerLines) memberLines.set(head.y, caption);
+      for (const row of annotation.sourceRows ?? []) memberLines.set(row.y, caption);
+    }
     // Unit/annotation columns do not establish another applicability domain. A common
     // electrical category must be positively identified; unsupported labels stay ambiguous.
     let sharedHeader: string | undefined;
@@ -325,7 +336,11 @@ export function sectionTableLayout(items: readonly LayoutItem[], includeBoundari
       const titleEvidence = !caption && !line.removed && !inHeader ? localSectionTitle(line.text) : null;
       const fontPeakEligible = !!titleEvidence?.typographic && line.uniformFont && line.text.length < 200;
       const localTitle = !!titleEvidence?.semantic || fontPeakEligible;
+      const catalogs = modelNumbersIn(catalogIdentifierView(line.text).text).map((number) => exactModelKey(number.label));
       const heading: Heading = { text: caption?.text ?? line.text, at, table: !!caption, size: line.size,
+        ...(ordinaryHeaders.has(line.y) ? { ordinaryTable: true } : {}),
+        catalogs, catalogExcluded: catalogs.length > 0 && hasNegation(line.text),
+        ...(memberLines.has(line.y) ? { memberTableCaption: memberLines.get(line.y) } : {}),
         ...(bodyHeading ? { bodyHeading: true } : {}),
         ...(localTitle ? { localTitle: true, fontPeakEligible } : {}),
         ...(titleEvidence?.sectionTitle ? { semanticTitle: true } : {}),
@@ -340,17 +355,18 @@ export function sectionTableLayout(items: readonly LayoutItem[], includeBoundari
         sourceLine: retainedOrdinal, y: line.y,
         ...(caption?.columnUnresolved ? { columnUnresolved: true } : {}),
         ...(caption?.headerTop !== undefined ? { headerTop: caption.headerTop, headerBottom: caption.headerBottom } : {}) };
-      // Retain potential local boundaries before a preceding caption's size can
-      // discard them. Extraction qualifies these against its own table geometry.
-      if (caption || localTitle || line.text.length < 200) candidates.push(heading);
-      if (caption || bodyHeading || localTitle || (line.size >= captionSize && line.text.length < 200)) headings.push(heading);
+      // Every physical line is checked against positive table membership,
+      // including long prose and lines with no catalog or title vocabulary.
+      candidates.push(heading);
+      if (caption || ordinaryHeaders.has(line.y) || bodyHeading || localTitle || (line.size >= captionSize && line.text.length < 200)) headings.push(heading);
       if (caption) continuationEnd = caption.end;
     }
     at += line.text.length + 1;
     if (!line.removed) retainedOrdinal++;
   }
   const retainedLines = lines.filter((l) => !l.removed).map((l) => l.text);
-  return headings.length > 0 ? { text: retainedLines.join("\n"), headings, candidates, hasTables: captions.size > 0, retainedLines } : null;
+  return headings.length > 0 || (retainCandidates && candidates.length > 0)
+    ? { text: retainedLines.join("\n"), headings, candidates, hasTables: captions.size > 0, retainedLines } : null;
 }
 
 /** Caption and header are independent assertions about this physical table. Neither
@@ -396,21 +412,25 @@ function contradictoryTableHeading(h: Pick<Heading, "text" | "headerModels">): b
     header.some((n) => !caption.some((own) => own.key === n.key));
 }
 
-/** Semantic title evidence must fence extracted spans before source items are
- * removed. Font and measured-row geometry remain fallback evidence only;
- * tiny footnotes and ordinary grid rows do not establish semantic titles. */
+/** Every line inside an extracted span must have positive membership evidence
+ * from that table's own grid. Heading grammar/font cannot fill a gap in proof.
+ * Legacy callers without membership evidence keep their conservative fallback. */
 function crossesHeading(chunk: TableChunk, h: Heading): boolean {
-  return chunk.sourceTop !== undefined && chunk.sourceBottom !== undefined &&
-    h.y < chunk.sourceTop - 2.5 && h.y >= chunk.sourceBottom - 2.5 &&
-    (h.table || h.semanticTitle || (chunk.sourceHeaderSize === undefined && chunk.sourceBodySize === undefined) ||
+  if (chunk.sourceTop === undefined || chunk.sourceBottom === undefined ||
+      h.y >= chunk.sourceTop - 2.5 || h.y < chunk.sourceBottom - 2.5) return false;
+  const catalogs = h.catalogs ?? modelNumbersIn(catalogIdentifierView(h.text).text).map((number) => exactModelKey(number.label));
+  const own = (chunk.sourceModels ?? chunk.models).map(exactModelKey);
+  if (catalogs.some((model) => !own.includes(model)) || (catalogs.length > 0 && (h.catalogExcluded ?? hasNegation(h.text)))) return true;
+  if (!h.table && h.memberTableCaption !== undefined && h.memberTableCaption === chunk.sourceCaption) return false;
+  return h.table || h.ordinaryTable || (chunk.sourceMemberYs !== undefined && !chunk.sourceMemberYs.some((y) => Math.abs(y - h.y) <= 2.5)) ||
+      h.semanticTitle || (chunk.sourceHeaderSize === undefined && chunk.sourceBodySize === undefined) ||
       !chunk.sourceRowYs?.some((y) => Math.abs(y - h.y) <= 2.5) &&
-      h.size > (chunk.sourceBodySize || chunk.sourceHeaderSize || 0) + 0.2);
+      h.size > (chunk.sourceBodySize || chunk.sourceHeaderSize || 0) + 0.2;
 }
 
-/** Fence semantic section titles and the existing larger-font fallback inside
- * extracted columns, including unresolved sections with no repeated header. */
+/** Fence unproven lines before column extraction can absorb their later rows. */
 export function tableExtractionBoundaries(layout: SectionLayout | null, chunks: readonly TableChunk[] = []): number[] {
-  return (layout?.candidates ?? layout?.headings)?.filter((h) => h.table || chunks.some((c) => !c.unqualified && crossesHeading(c, h))).map((h) => h.y) ?? [];
+  return (layout?.candidates ?? layout?.headings)?.filter((h) => h.table || h.ordinaryTable || chunks.some((c) => !c.unqualified && crossesHeading(c, h))).map((h) => h.y) ?? [];
 }
 
 /** Promote interruptions proven against an extracted table's semantic evidence/span.
@@ -422,10 +442,12 @@ export function withTableInterruptions(layout: SectionLayout | null, chunks: rea
   const headings = (layout.candidates ?? layout.headings).flatMap((h) => {
     const crossed = chunks.filter((c) => !c.unqualified && crossesHeading(c, h));
     if (!h.table && crossed.length > 0) return [{ ...h, interruption: true,
-      interruptedModels: [...new Set([...crossed.flatMap((c) => c.models.map(exactModelKey)), ...modelNumbersIn(h.text).map((n) => n.key)])] }];
+      interruptedModels: [...new Set([...crossed.flatMap((c) => c.models.map(exactModelKey)), ...modelNumbersIn(catalogIdentifierView(h.text).text).map((n) => n.key)])] }];
+    const columns = chunks.filter((c) => c.sourceTop !== undefined && Math.abs(c.sourceTop - h.y) <= 2.5).flatMap((c) => c.sourceModels ?? []);
+    if (!h.table && columns.length > 0) return [{ ...h, columnModels: [...new Set(columns)] }];
     return original.has(h) ? [h] : [];
   });
-  return { ...layout, headings };
+  return headings.length > 0 ? { ...layout, headings } : null;
 }
 
 /** Bind each extracted block to its physical caption, even when its source lines have
@@ -513,7 +535,8 @@ export class SectionTableScope {
       }
       const columnDomain = !active.columnOnly || chunk.models.some((model) => modelNumbersIn(model).some((n) =>
         active.models?.some((key) => modelNumbersIn(key).some((own) => sameModelFamily(own, n)))));
-      const invalid = (active.scope === "unresolved" && columnDomain) || (active.scope === "section" &&
+      const independentColumns = active.columnOnly && !chunk.unqualified && chunk.sourceTop !== undefined && (chunk.sourceModels?.length ?? 0) > 0;
+      const invalid = (active.scope === "unresolved" && columnDomain && !independentColumns) || (active.scope === "section" &&
         chunk.models.some((model) => !active.models?.includes(exactModelKey(model))));
       return invalid ? { ...chunk, unqualified: true, scope: active.columnOnly ? undefined : "unresolved" as const } : chunk;
     }) };
@@ -531,6 +554,8 @@ export class SectionTableScope {
     // With no inherited scope and no table caption, there is no applicability boundary to
     // split. Preserve original text AND window boundaries on unrelated prose pages.
     const interruptsInherited = (h: Heading): boolean => {
+      if (h.ordinaryTable && this.active.columnOnly) return true;
+      if (h.columnModels && this.active.columnOnly) return true;
       if (h.interruption) return true;
       if (!this.active.scope) return false;
       if (h.bodyHeading) return true;
@@ -547,7 +572,7 @@ export class SectionTableScope {
         (h.fontPeakEligible !== false && this.bodySize > 0 && h.size > this.bodySize + 0.2);
     };
     const hasInterruption = layout.headings.some(interruptsInherited);
-    const hasTableInterruption = layout.headings.some((h) => h.interruption || (h.bodyHeading && this.active.scope));
+    const hasTableInterruption = layout.headings.some((h) => h.interruption || ((h.ordinaryTable || h.columnModels) && this.active.columnOnly) || (h.bodyHeading && this.active.scope));
     if (!layout.hasTables && !hasInterruption && (!this.active.scope || this.active.scope === "shared")) {
       this.active = {}; // a mixed-column header's privilege never crosses onto another page
       return [{ text }];
@@ -562,7 +587,7 @@ export class SectionTableScope {
     // A missing table boundary is uncertainty, never permission to inherit the previous scope.
     // Bind every heading to the exact physical source sequence, never a text occurrence.
     let at = 0;
-    const actual = text.split("\n").map((line) => {
+    const actual = (text.length === 0 && layout.retainedLines.length === 0 ? [] : text.split("\n")).map((line) => {
       const start = at; at += line.length + 1;
       return { text: line.replace(/\s+/g, " ").trim(), at: start };
     });
@@ -573,6 +598,24 @@ export class SectionTableScope {
     const sections: ScopedText[] = [];
     let start = 0;
     for (const h of headings) {
+      if (h.ordinaryTable) {
+        if (this.active.columnOnly || this.active.scope === "shared") {
+          if (h.at > start) sections.push({ text: text.slice(start, h.at), ...this.active });
+          this.active = {};
+          this.headingSize = 0;
+          this.bodySize = 0;
+          boundary?.(h);
+          start = h.at;
+        }
+        continue; // ordinary fields cannot change an explicit model assertion
+      }
+      if (h.columnModels && this.active.columnOnly) {
+        if (h.at > start) sections.push({ text: text.slice(start, h.at), ...this.active });
+        this.active = { models: h.columnModels, scope: "unresolved", columnOnly: true };
+        boundary?.(h);
+        start = h.at;
+        continue;
+      }
       if (!h.table && !interruptsInherited(h) &&
           (this.headingSize === 0 || h.size < this.headingSize)) continue; // running page furniture
       if (h.at > start) sections.push({ text: text.slice(start, h.at), ...this.active });
@@ -580,8 +623,12 @@ export class SectionTableScope {
       // title can be larger than the section caption. Without a qualified table boundary,
       // continuity is unresolved, including for the formerly eligible model.
       if (!h.table && (this.active.scope || h.interruption)) {
+        const relevantCatalog = h.interruption && (h.catalogs ?? []).some((model) =>
+          modelNumbersIn(model).some((number) => (this.active.models ?? h.interruptedModels ?? []).some((key) =>
+            modelNumbersIn(key).some((own) => sameModelFamily(own, number)))));
+        const declaredSection = relevantCatalog || captionModels(h).length > 0;
         this.active = { models: this.active.models ?? h.interruptedModels ?? [...this.outputs.keys()], scope: "unresolved",
-          ...(this.active.columnOnly || !this.active.scope ? { columnOnly: true } : {}) };
+          ...((this.active.columnOnly || !this.active.scope) && !declaredSection ? { columnOnly: true } : {}) };
         boundary?.(h);
         start = h.at;
         continue;

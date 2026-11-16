@@ -133,6 +133,12 @@ export type ColumnSemanticCase = {
   kind: "named" | "negative" | "unnamed" | "description" | "same-qwb" | "same-awb";
   fragments: "joined" | "split";
   gap: number;
+  spelling?: "for" | "parenthesis" | "dash" | "colon" | "comma" | "trailing" | "leading" | "bare" | "prose" | "long-prose";
+  x?: number;
+  text?: string;
+  wrapped?: boolean;
+  headingless?: boolean;
+  shiftedCells?: boolean;
 };
 
 /** Include the entire title in ONE PDF item: separate title/catalog cells can
@@ -145,6 +151,34 @@ for (const bodyFont of [6, 8, 10])
         for (const gap of [12, 28])
           columnSemanticMatrix.push({ bodyFont, titleFont, kind, fragments, gap,
             id: [bodyFont, titleFont, kind, fragments, gap].join("-") });
+
+for (const kind of ["named", "negative"] as const)
+  for (const spelling of ["for", "parenthesis", "dash", "colon", "comma", "trailing", "leading", "bare", "prose", "long-prose"] as const)
+    for (const titleFont of [6, 8, 10])
+      for (const x of [100, 180, 350])
+        for (const gap of [12, 28])
+          columnSemanticMatrix.push({ bodyFont: 8, titleFont, kind, fragments: "joined", gap, spelling, x,
+            id: ["f13", kind, spelling, titleFont, x, gap].join("-") });
+
+// These lines have no catalog and no shared title grammar. Their failure to
+// belong to the column grid, rather than their words or font, ends ownership.
+for (const text of ["Relay Output Characteristics", "Sink/Source Outputs", "Derating", "See the following conditions.", "Operating envelope at 24 V", "These source conditions remain recorded without any declaration of equipment ownership. ".repeat(4)])
+  for (const titleFont of [6, 8, 10])
+    for (const x of [100, 180, 350])
+      for (const fragments of ["joined", "split", "wrapped"] as const)
+        for (const gap of [12, 28])
+          columnSemanticMatrix.push({ bodyFont: 8, titleFont, kind: "unnamed", fragments: fragments === "wrapped" ? "split" : fragments, wrapped: fragments === "wrapped", gap, x, text,
+            id: ["f13-unproven", text, titleFont, x, fragments, gap].join("-") });
+
+for (const text of ["Derating", "See the following conditions.", "The following conditions remain in the source without asserting model ownership. ".repeat(4)])
+  for (const titleFont of [6, 8])
+    for (const wrapped of [false, true])
+      columnSemanticMatrix.push({ bodyFont: 8, titleFont, kind: "unnamed", fragments: wrapped ? "split" : "joined", wrapped, gap: 12, text, headingless: true,
+        id: ["f13-headingless", text, titleFont, wrapped].join("-") });
+
+for (const titleFont of [6, 8, 10]) for (const gap of [12, 28])
+  columnSemanticMatrix.push({ bodyFont: 8, titleFont, kind: "unnamed", fragments: "joined", gap, shiftedCells: true,
+    id: ["f13-unaligned-cells", titleFont, gap].join("-") });
 
 const originalColumns = (font: number): LayoutItem[] => [
   row("Output Specifications for 2080-LC20-20QWB, 2080-LC20-20AWB", 740, 12),
@@ -159,27 +193,57 @@ export function columnSemanticMatrixPages(c: ColumnSemanticCase): LayoutItem[][]
     : c.kind === "negative" ? "DC Output Data (not for" : "DC Output Data for";
   const catalog = c.kind === "negative" ? "2080-LC20-20QWB)" : c.kind === "same-qwb" ? "2080-LC20-20QWB"
     : c.kind === "same-awb" ? "2080-LC20-20AWB" : "2080-LC20-20QBB";
-  const heading = c.kind === "unnamed" ? (c.fragments === "joined" ? [row("DC Output Data", y, c.titleFont)]
+  let heading = c.kind === "unnamed" ? (c.fragments === "joined" ? [row("DC Output Data", y, c.titleFont)]
     : [row("DC Output", y, c.titleFont), row("Data", y, c.titleFont, 350)])
     : c.fragments === "joined" ? [row(prefix + " " + catalog, y, c.titleFont)]
       : [row(prefix, y, c.titleFont), row(catalog, y, c.titleFont, 350)];
-  return [[...originalColumns(c.bodyFont), ...heading,
+  if (c.spelling) {
+    const model = c.kind === "negative" ? "2080-LC20-20QWB" : "2080-LC20-20QBB";
+    const target = (c.kind === "negative" ? "not " : "") + model;
+    const titles = {
+      for: "DC Output Data for " + target,
+      parenthesis: "DC Output Data (" + target + ")",
+      dash: "DC Output Data - " + target,
+      colon: "DC Output Data: " + target,
+      comma: "DC Output Data, " + target,
+      trailing: "DC Output Data " + target,
+      leading: target + " - DC Output Data",
+      bare: target,
+      prose: "See " + target + " for another operating configuration.",
+      "long-prose": "The following source conditions remain recorded without changing their wording. ".repeat(4) + "See " + target + " for another configuration.",
+    };
+    heading = [row(titles[c.spelling], y, c.titleFont, c.x ?? 100)];
+  }
+  if (c.text) {
+    const x = c.x ?? 100;
+    const space = c.text.indexOf(" ");
+    const first = space < 0 ? Math.floor(c.text.length / 2) : space;
+    heading = c.fragments === "joined" ? [row(c.text, y, c.titleFont, x)]
+      : [row(c.text.slice(0, first), y, c.titleFont, x), row(c.text.slice(first + (space < 0 ? 0 : 1)),
+        c.wrapped ? y - c.titleFont * 1.1 : y, c.titleFont, c.wrapped ? x : x + 75)];
+  }
+  if (c.shiftedCells) heading = [row("Unplaced characteristic", y, c.titleFont), row("7 A", y, c.titleFont, 320), row("6 A", y, c.titleFont, 460)];
+  return [[...originalColumns(c.bodyFont).slice(c.headingless ? 1 : 0), ...heading,
     row("zzcolumnfirst Point current max", y - c.gap, c.bodyFont), row("9 A", y - c.gap, c.bodyFont, 280), row("11 A", y - c.gap, c.bodyFont, 420),
     row("zzcolumnlast Point current max", y - c.gap - 14, c.bodyFont), row("19 A", y - c.gap - 14, c.bodyFont, 280), row("21 A", y - c.gap - 14, c.bodyFont, 420)],
   [row("zzcolumncontinued Point current max", 720, c.bodyFont), row("39 A", 720, c.bodyFont, 280), row("41 A", 720, c.bodyFont, 420)]];
 }
 
-export const columnMeasuredMatrix = (["ordinary", "bold-label", "smaller-label", "catalog-qwb", "catalog-awb"] as const)
+export const columnMeasuredMatrix = (["ordinary", "bold-label", "smaller-label", "catalog-qwb", "catalog-awb", "foreign-row", "numbered-footnote", "merged-measurement"] as const)
   .flatMap((kind) => [6, 8, 10].flatMap((bodyFont) => [12, 28].map((gap) =>
     ({ kind, bodyFont, gap, id: [kind, bodyFont, gap].join("-") }))));
 
 export function columnMeasuredMatrixPage(c: typeof columnMeasuredMatrix[number]): LayoutItem[] {
   const labelFont = c.kind === "bold-label" ? 14 : c.kind === "smaller-label" ? c.bodyFont - 2 : c.bodyFont;
   const catalog = c.kind.startsWith("catalog-");
-  const y = 692 - c.gap - (catalog ? 14 : 0);
+  const footnote = c.kind === "numbered-footnote";
+  const merged = c.kind === "merged-measurement";
+  const y = 692 - c.gap - (catalog || footnote || merged ? 14 : 0);
   return [...originalColumns(c.bodyFont),
     ...(catalog ? [row(c.kind === "catalog-qwb" ? "2080-LC20-20QWB" : "2080-LC20-20AWB", 692 - c.gap, c.bodyFont)] : []),
-    row("zzcolumnmeasured Point current max", y, labelFont),
+    ...(footnote ? [row("(1) Values apply under the recorded conditions.", 692 - c.gap, c.bodyFont - 2)] : []),
+    ...(merged ? [row("Common interval", 692 - c.gap, c.bodyFont), row("12 ms", 692 - c.gap, c.bodyFont, 280)] : []),
+    row("zzcolumnmeasured " + (c.kind === "foreign-row" ? "Test load 2080-LC20-20QBB" : "Point current max"), y, labelFont),
     row("3 A", y, c.bodyFont, 280), row("4 A", y, c.bodyFont, 420)];
 }
 

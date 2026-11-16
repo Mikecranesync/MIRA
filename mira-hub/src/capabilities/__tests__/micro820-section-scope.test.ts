@@ -946,8 +946,8 @@ it.each(columnMeasuredMatrix)("F12 measured extracted-column row $id retains ori
   try { rows = await ingestFixture(); } finally { pdfPages.current = null; }
   for (const [model, original, later] of [["20QWB", "2 A", "3 A"], ["20AWB", "1 A", "4 A"]]) {
     expect((await retrieve(model, rows, "zzcolumnoriginal Load current")).text).toContain(original);
-    const measured = (await retrieve(model, rows, "zzcolumnmeasured Point current")).text;
-    if (c.kind === "bold-label") expect(measured).not.toContain(later); // preserve earlier oversized-row uncertainty
+    const measured = (await retrieve(model, rows, "zzcolumnmeasured")).text;
+    if (c.kind === "bold-label" || c.kind === "foreign-row") expect(measured).not.toContain(later); // oversized-row uncertainty and contradictory catalog evidence
     else expect(measured).toContain(later);
   }
 });
