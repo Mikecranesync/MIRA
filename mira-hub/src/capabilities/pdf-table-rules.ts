@@ -279,8 +279,9 @@ export function verticalRules(operatorList: unknown): VerticalRule[] | null {
       if (FILLING.has(args[0])) {
         const thinFill = Math.min(painted.x1 - painted.x0, painted.y1 - painted.y0) <= MAX_RULE_WIDTH_PT;
         if (!(fills && thinFill)) cover(painted);
-        if (fills) for (const { points } of placed) {
-          // A filled shape is a rule only when it is one thin upright bar.
+        // A filled shape is a rule only when the whole path is one thin upright bar. With a second
+        // subpath the fill rule decides what is dark, and a bar inside another shape may be a hole.
+        if (fills && placed.length === 1) for (const { points } of placed) {
           const corners = uprightRectangle(points);
           if (corners === null) continue;
           const xs = corners.map(([x]) => x), ys = corners.map(([, y]) => y);

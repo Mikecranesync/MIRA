@@ -18,6 +18,7 @@ const bounds = (data: number[]): number[] => {
 /** A painted path exactly as pdf.js delivers it: paint op, [typed path data], bounding box. */
 const path = (paint: number, data: number[]): [number, unknown] => [PATH, [paint, [new Float32Array(data)], new Float32Array(bounds(data))]];
 const line = (x0: number, y0: number, x1: number, y1: number) => [M, x0, y0, L, x1, y1];
+const EO_FILL = 23;
 const rect = (x0: number, y0: number, x1: number, y1: number) => [M, x0, y0, L, x1, y0, L, x1, y1, L, x0, y1, Z];
 
 describe("#5503 F14/F15: painted vertical rules of a PDF page", () => {
@@ -100,6 +101,8 @@ describe("#5503 F14/F15: painted vertical rules of a PDF page", () => {
     ["a stroke as wide as a shading band", [[LINE_WIDTH, [100]], path(STROKE, line(270, 600, 270, 700))], []],
     ["a hairline scaled up into a band", [[TRANSFORM, [50, 0, 0, 1, 0, 0]], [LINE_WIDTH, [1]], path(STROKE, line(5.4, 600, 5.4, 700))], []],
     ["a wide stroke set by graphics state", [[SET_GSTATE, [[["LW", 100]]]], path(STROKE, line(270, 600, 270, 700))], []],
+    ["a thin hole cut in a dark block (even-odd)", [path(EO_FILL, [...rect(200, 590, 400, 740), ...rect(269.5, 600, 270.5, 730)])], []],
+    ["a thin hole cut in a dark block (winding)", [path(FILL, [...rect(200, 590, 400, 740), M, 269.5, 600, L, 269.5, 730, L, 270.5, 730, L, 270.5, 600, Z])], []],
     ["a filled shape with no area", [path(FILL, [M, 270, 600, L, 270, 700, L, 270, 600])], []],
     ["a rule later covered by an opaque fill", [path(STROKE, line(270, 600, 270, 700)), [FILL_RGB, ["#ffffff"]], path(FILL, rect(200, 590, 400, 710))], []],
     ["a rule partly covered by a later fill", [path(STROKE, line(270, 600, 270, 700)), path(FILL, rect(200, 650, 400, 710))], [{ x: 270, y0: 600, y1: 650 }]],
