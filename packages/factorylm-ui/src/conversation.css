@@ -2,9 +2,11 @@
 /* Composer and any send error, pinned together to the bottom: a send error must not hide under the pinned composer. */
 .fl-shell__dock { position: sticky; inset-block-end: 0; min-inline-size: 0; background: var(--fl-workspace-surface); }
 /* Send error card: amber for a target review (check, then Send), red when MIRA
-   could not be reached. State colors on the edge and tint only; text stays ink. */
-.fl-send-error { display: flex; align-items: flex-start; gap: var(--fl-workspace-space-3); margin: var(--fl-workspace-space-2) max(var(--fl-workspace-space-4), calc((100% - 48rem) / 2)) 0; padding: var(--fl-workspace-space-3); border: 1px solid var(--fl-workspace-fault-line); border-inline-start-width: 4px; border-radius: var(--fl-workspace-radius); background: var(--fl-workspace-fault-tint); color: var(--fl-workspace-fault-ink); }
-.fl-send-error[data-kind="review"] { border-color: var(--fl-workspace-warn-line); background: var(--fl-workspace-warn-tint); color: var(--fl-workspace-warn-ink); }
+   could not be reached. State colors on the edge, tint and icon only; text uses the
+   host ink, never a state ink: on a dark-OS device under a light shell the state
+   inks resolve to their dark values, and amber text measured 2.03:1 on a tablet. */
+.fl-send-error { display: flex; align-items: flex-start; gap: var(--fl-workspace-space-3); margin: var(--fl-workspace-space-2) max(var(--fl-workspace-space-4), calc((100% - 48rem) / 2)) 0; padding: var(--fl-workspace-space-3); border: 1px solid var(--fl-workspace-fault-line); border-inline-start-width: 4px; border-radius: var(--fl-workspace-radius); background: var(--fl-workspace-fault-tint); color: var(--fl-workspace-ink); }
+.fl-send-error[data-kind="review"] { border-color: var(--fl-workspace-warn-line); background: var(--fl-workspace-warn-tint); }
 .fl-send-error__icon { flex: none; font-weight: 700; line-height: 1.45; color: var(--fl-workspace-fault); }
 .fl-send-error[data-kind="review"] .fl-send-error__icon { color: var(--fl-workspace-warn); }
 .fl-send-error__content { flex: 1 1 auto; min-inline-size: 0; }
