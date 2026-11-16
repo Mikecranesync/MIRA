@@ -190,16 +190,21 @@ async def test_floor_reaches_the_wire(monkeypatch):
             posts.append(dict(json))
             ok = MagicMock()
             ok.raise_for_status = MagicMock()
-            ok.json = MagicMock(return_value={"choices": [{"message": {"content": "ok"}}],
-                                              "usage": {"prompt_tokens": 5, "completion_tokens": 2}})
+            ok.json = MagicMock(
+                return_value={
+                    "choices": [{"message": {"content": "ok"}}],
+                    "usage": {"prompt_tokens": 5, "completion_tokens": 2},
+                }
+            )
             return ok
 
     r = InferenceRouter()
     r.write_api_usage = MagicMock()
     assert [p.name for p in r.providers] == ["anthropic"]
     with patch("shared.inference.router.httpx.AsyncClient", _Client):
-        content, _ = await r.complete([{"role": "user", "content": "hi"}], max_tokens=300,
-                                      reasoning_retry=False)
+        content, _ = await r.complete(
+            [{"role": "user", "content": "hi"}], max_tokens=300, reasoning_retry=False
+        )
     assert content == "ok"
     assert posts[0]["max_tokens"] == 2048
 

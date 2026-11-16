@@ -358,7 +358,11 @@ def _request_payload(
         # Claude 5.5-family models return HTTP 400 "`temperature` is deprecated
         # for this model" — which would read as an outage and fall through the
         # cascade. Older Claude models accept the omission, so never send it.
-        return {"model": model, "max_tokens": _attempt_cap(provider, max_tokens), "messages": messages}
+        return {
+            "model": model,
+            "max_tokens": _attempt_cap(provider, max_tokens),
+            "messages": messages,
+        }
     return {
         "model": model,
         "max_tokens": max_tokens,
