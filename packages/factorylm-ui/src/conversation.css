@@ -1,4 +1,6 @@
 .fl-shell__main { grid-template-rows: auto minmax(0, 1fr) auto; }
+/* Composer and any send error, pinned together to the bottom: a send error must not hide under the pinned composer. */
+.fl-shell__dock { position: sticky; inset-block-end: 0; min-inline-size: 0; background: var(--fl-workspace-surface); }
 
 .fl-conversation {
   min-block-size: 0;
@@ -162,7 +164,7 @@
 .fl-run__criteria { margin: var(--fl-workspace-space-2) 0; padding: 0; list-style: none; display: grid; gap: var(--fl-workspace-space-2); }
 .fl-run__criteria { padding-inline-start: var(--fl-workspace-space-4); list-style: disc; font-size: var(--fl-workspace-fs-sm); }
 
-.fl-composer { position: sticky; inset-block-end: 0; padding: var(--fl-workspace-space-3) max(var(--fl-workspace-space-4), calc((100% - 48rem) / 2)) calc(var(--fl-workspace-space-4) + env(safe-area-inset-bottom, 0px)); border-block-start: 1px solid var(--fl-workspace-line); background: var(--fl-workspace-surface); }
+.fl-composer { position: relative; padding: var(--fl-workspace-space-3) max(var(--fl-workspace-space-4), calc((100% - 48rem) / 2)) calc(var(--fl-workspace-space-4) + env(safe-area-inset-bottom, 0px)); border-block-start: 1px solid var(--fl-workspace-line); background: var(--fl-workspace-surface); }
 .fl-composer__sync { margin: 0 0 var(--fl-workspace-space-2); padding: var(--fl-workspace-space-2) var(--fl-workspace-space-3); border: 1px solid var(--fl-workspace-warn-line); border-radius: var(--fl-workspace-radius); background: var(--fl-workspace-warn-tint); color: var(--fl-workspace-warn-ink); font-size: var(--fl-workspace-fs-sm); }
 .fl-composer__sync[data-sync-state="error"] { border-color: var(--fl-workspace-fault-line); background: var(--fl-workspace-fault-tint); color: var(--fl-workspace-fault-ink); }
 .fl-composer__context { margin: 0 0 var(--fl-workspace-space-1); padding-inline: var(--fl-workspace-space-2); color: var(--fl-workspace-muted); font-size: var(--fl-workspace-fs-xs); }
@@ -185,9 +187,11 @@
 .fl-composer__pending-remove { display: inline-flex; align-items: center; justify-content: center; vertical-align: middle; min-inline-size: 32px; min-block-size: 32px; margin-inline-start: var(--fl-workspace-space-1); padding: 0; border: 0; border-radius: var(--fl-workspace-radius-sm); background: transparent; color: inherit; font: inherit; line-height: 1; cursor: pointer; }
 .fl-composer__pending-remove:focus-visible { outline: 2px solid var(--fl-workspace-accent); outline-offset: 2px; }
 
-/* While the attachment sheet is open the sticky composer must stack above the
-   sheet's scrim (z-index 2): position: sticky is its own stacking context. */
+/* While the attachment sheet is open the sticky dock (composer + any send error)
+   must stack above the sheet's scrim (z-index 2): position: sticky is its own
+   stacking context, so the composer's own z-index only counts inside the dock. */
 .fl-composer[data-menu-open="true"] { z-index: 3; }
+.fl-shell__dock[data-menu-open="true"] { z-index: 3; }
 .fl-composer__row { display: flex; align-items: flex-end; min-block-size: max(3.25rem, 52px); gap: var(--fl-workspace-space-2); padding: var(--fl-workspace-space-2); border: 1px solid var(--fl-workspace-line); border-radius: var(--fl-workspace-radius-card); background: var(--fl-workspace-surface); box-shadow: var(--fl-workspace-shadow-pop); }
 /* field-sizing grows the box with its content between the min/max bounds —
    the ChatGPT composer behavior — as a progressive enhancement: engines
