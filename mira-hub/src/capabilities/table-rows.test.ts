@@ -636,3 +636,75 @@ describe("a model-keyed (one model per line) table is stored as one unqualified 
     expect(pageWithTables(keyed)).toBeNull();
   });
 });
+
+describe("duty stubs: placement is bounded, and stub text is never dropped (#5598 Codex F1, F2)", () => {
+  const item = (str: string, x: number, y: number) => ({ str, x, y, w: str.length * 4, size: 8 });
+  const header = (y: number) => [item("GS11N-20P2", 250, y), item("GS11N-20P5", 350, y)];
+  /** `segments` rated-value segments of three rows each, a CT/VT stub inline on each middle row. */
+  const stubbed = (segments: number) => {
+    const items = header(760);
+    for (let s = 0; s < segments; s++) for (let r = 0; r < 3; r++) {
+      const y = 740 - 12 * (3 * s + r);
+      if (r === 1) items.push(item(s % 2 === 0 ? "CT" : "VT", 50, y));
+      items.push(item("Rated Value", 100, y), item(String(3 * s + r), 250, y), item(String(3 * s + r + 1), 350, y));
+    }
+    return items;
+  };
+  const allText = (items: ReturnType<typeof stubbed>) => {
+    // No qualifying table: the writer stores the page text as read.
+    const page = pageWithTables(items);
+    return page ? [page.remainder, ...page.chunks.map((c) => c.text)].join("\n") : items.map((i) => i.str).join("\n");
+  };
+
+  it("60 rows under 20 stubs: the one centred split is found quickly and every row takes its own stub", () => {
+    const started = performance.now();
+    const blocks = detectModelTables(stubbed(20));
+    expect(performance.now() - started).toBeLessThan(2000);
+    const rows = blocks.flatMap((b) => b.rows);
+    expect(rows).toHaveLength(60);
+    rows.forEach((r, i) => expect(r.label, `row ${i}`).toBe(`${Math.floor(i / 3) % 2 === 0 ? "CT" : "VT"} / Rated Value`));
+  }, 10000);
+
+  it("a table too large to search within the work limit is withheld whole, its stub text kept", () => {
+    const items = stubbed(100);
+    const blocks = detectModelTables(items);
+    expect(blocks.flatMap((b) => b.rows).filter((r) => /Rated Value/.test(r.label))).toHaveLength(0);
+    const text = allText(items);
+    expect(text.match(/\bCT\b/g)?.length ?? 0).toBe(50);
+    expect(text.match(/\bVT\b/g)?.length ?? 0).toBe(50);
+  }, 10000);
+
+  it("two different splits both centre on the group cells: neither is chosen, the values stay unqualified and both labels survive", () => {
+    // Rows at 740/728/716/704 under two rotated group cells. Their centres (739.4 and 715.4) fit
+    // both [740][728 716 704] and [740 728][716 704] within tolerance, so placement is ambiguous.
+    const group = (str: string, centre: number) => ({ str, x: 40, y: centre - 20, w: 40, size: 8, vertical: true });
+    const items = [...header(776), item("Frame Size", 30, 764), item("A1", 250, 764), item("A1", 350, 764),
+      item("Cooling Method", 30, 752), item("Fan", 250, 752), item("Fan", 350, 752),
+      ...[740, 728, 716, 704].flatMap((y, i) => [item("Rated Value", 100, y), item(String(i + 3), 250, y), item(String(i + 4), 350, y)]),
+      group("Output Rating", 739.4), group("Input Rating", 715.4)];
+    const blocks = detectModelTables(items);
+    expect(blocks.flatMap((b) => b.rows).map((r) => r.label)).toEqual(["Frame Size", "Cooling Method"]);
+    expect(blocks.flatMap((b) => b.unqualified).filter((l) => /Rated Value/.test(l))).toHaveLength(4);
+    expect(pageWithTables(items), "precondition: the page is read as a table").not.toBeNull();
+    const text = allText(items);
+    expect(text).toContain("Output Rating");
+    expect(text).toContain("Input Rating");
+  });
+
+  it("two ordinary rows, then three rated rows CT and VT cannot be centred on: the values stay unqualified and CT and VT survive", () => {
+    const items = [...header(750),
+      item("Frame Size", 30, 738), item("A1", 250, 738), item("A1", 350, 738),
+      item("Cooling Method", 30, 726), item("Fan", 250, 726), item("Fan", 350, 726),
+      item("CT", 50, 714), item("Rated Current", 100, 714), item("3", 250, 714), item("4", 350, 714),
+      item("Rated Current", 100, 702), item("4", 250, 702), item("5", 350, 702),
+      item("VT", 50, 690), item("Rated Current", 100, 690), item("5", 250, 690), item("6", 350, 690)];
+    const blocks = detectModelTables(items);
+    // Precondition: the ordinary rows keep the table qualified.
+    expect(blocks.flatMap((b) => b.rows).map((r) => r.label)).toEqual(["Frame Size", "Cooling Method"]);
+    expect(blocks.flatMap((b) => b.unqualified).filter((l) => /Rated Current/.test(l))).toHaveLength(3);
+    expect(pageWithTables(items), "precondition: the page is read as a table").not.toBeNull();
+    const text = allText(items);
+    expect(text).toMatch(/\bCT\b/);
+    expect(text).toMatch(/\bVT\b/);
+  });
+});
