@@ -1232,6 +1232,46 @@ capabilities:
       pending legacy push (CMMS_SYNC_ENABLED worker). Inbound CMMS changes are
       not implemented beyond read-back + marker echo-prevention.
 
+  # =========================================================================
+  - id: anthropic_cascade_slot
+    purpose: "Optional, time-boxed Anthropic provider slot in the InferenceRouter cascade, plus MIRA_CASCADE_ORDER to reorder providers without a code change."
+    customer_outcome: "None directly; lets the owner route answers through a prepaid Anthropic credit and swap provider order by config."
+    feature_flag: ANTHROPIC_CASCADE_ENABLED
+    entrypoints:
+      - "mira-bots/shared/inference/router.py   # _anthropic_provider, _build_providers, _attempt_cap"
+    consumers:
+      - "InferenceRouter.complete              # every cascade call (diagnosis, router, vision when opted in)"
+    environments:
+      dev: unset
+      staging: unset      # not forwarded by docker-compose.staging-vps.yml
+      production: unset   # not forwarded by docker-compose.saas.yml (ANTHROPIC_API_KEY is; the three controls are not)
+    state: deployed_disabled
+    owner: Mike
+    ci_jobs:
+      - test-unit   # mira-bots/tests/test_anthropic_cascade_slot.py (fences, expiry, order, payload, cap floor on the wire)
+    required_checks: []
+    evidence: []
+    rollback: "Unset ANTHROPIC_CASCADE_ENABLED (or let ANTHROPIC_CASCADE_NOT_AFTER pass); the slot is absent from the provider list. MIRA_CASCADE_ORDER empty = the default order."
+    reason: >-
+      Owner decision 2026-11-15: PR #610 removed Anthropic because it billed on
+      auto-charge; a prepaid promotional credit reopens it. Three fail-closed
+      fences: a key, ANTHROPIC_CASCADE_ENABLED=1, and a timezone-aware
+      ANTHROPIC_CASCADE_NOT_AFTER in the future. Read 2026-11-16: unset in Doppler
+      dev, stg and prd, so it is off everywhere. No compose file forwards
+      ANTHROPIC_CASCADE_ENABLED, ANTHROPIC_CASCADE_NOT_AFTER or MIRA_CASCADE_ORDER,
+      so a Doppler write alone does nothing in a container: the slot is
+      reachable only in-process (the eval harness), deliberately, until
+      forwarding is approved (Codex r1 F2 on #5568).
+    promotion_criteria:
+      - "A compose change forwards ANTHROPIC_CASCADE_ENABLED, ANTHROPIC_CASCADE_NOT_AFTER and MIRA_CASCADE_ORDER (default off) to the inference services, with a contract test."
+      - "Mike authorizes the Doppler writes (flag + key + not-after) and a staging deploy."
+      - "Staging smoke + release-gate eval with the slot on, before any production enablement."
+    review_by: "2026-11-18"
+    notes: >-
+      The slot expires itself at ANTHROPIC_CASCADE_NOT_AFTER (planned 2026-11-17T19:00-05:00).
+      After that date retire the flag or record the next decision; MIRA_CASCADE_ORDER is the
+      durable part and is not gated.
+
 ignored_flags:
   - CRAWL_SCHEDULE_ENABLED          # default-ON operational schedule, not a gated capability
   - ENFORCE_PLAN_QUOTA              # billing/plan enforcement; belongs to the PLG surface

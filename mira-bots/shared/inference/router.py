@@ -31,6 +31,7 @@ import re
 import sqlite3
 import time
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 from urllib.parse import unquote
 
@@ -51,7 +52,8 @@ logger = logging.getLogger("mira-gsd")
 # Providers billed per token. Their LLM_USAGE line must never read as free
 # (est_cost=$0.00000) — see InferenceRouter.log_usage. Groq / Cerebras /
 # Together are free-tier and stay out of this set.
-_METERED_PROVIDERS = frozenset({"openai", "openrouter"})
+# anthropic: the promo credit is finite, so a zero line would hide its spend (Codex r2 F4 on #5568).
+_METERED_PROVIDERS = frozenset({"openai", "openrouter", "anthropic"})
 
 # OpenRouter backup tier (owner decision 2026-10-14). Non-reasoning Llama 3.3
 # 70B for text (gpt-oss burns small caps on hidden reasoning) and Qwen3-VL for
@@ -322,6 +324,21 @@ def _cap_key(provider: _Provider) -> str:
     return "max_completion_tokens" if provider.request_style == "openai_reasoning" else "max_tokens"
 
 
+def _attempt_cap(provider: _Provider, max_tokens: int) -> int:
+    """The output cap actually sent for one attempt.
+
+    Claude 5.5-family models think by default, thinking counts toward
+    max_tokens, and the OpenAI-compat endpoint cannot turn it off ("Adaptive
+    thinking is not available via the OpenAI compatibility endpoint"). A short
+    cap such as the conversation router's 300 is spent on thinking and comes
+    back empty, so the anthropic slot floors the cap; only used tokens bill.
+    Every other provider keeps the caller's cap exactly.
+    """
+    if getattr(provider, "request_style", "") != "anthropic_compat":
+        return max_tokens
+    return max(max_tokens, int(os.getenv("ANTHROPIC_MIN_OUTPUT_TOKENS") or "2048"))
+
+
 def _request_payload(
     provider: _Provider, model: str, messages: list[dict], max_tokens: int
 ) -> dict:
@@ -337,6 +354,15 @@ def _request_payload(
             "max_completion_tokens": max_tokens,
             "messages": messages,
             "reasoning_effort": os.getenv("OPENAI_REASONING_EFFORT") or "low",
+        }
+    if provider.request_style == "anthropic_compat":
+        # Claude 5.5-family models return HTTP 400 "`temperature` is deprecated
+        # for this model" — which would read as an outage and fall through the
+        # cascade. Older Claude models accept the omission, so never send it.
+        return {
+            "model": model,
+            "max_tokens": _attempt_cap(provider, max_tokens),
+            "messages": messages,
         }
     return {
         "model": model,
@@ -469,7 +495,93 @@ def _build_providers() -> list[_Provider]:
             )
         )
 
-    return providers
+    anthropic = _anthropic_provider()
+    if anthropic is not None:
+        providers.append(anthropic)
+
+    return _apply_cascade_order(providers, os.getenv("MIRA_CASCADE_ORDER") or "")
+
+
+def _truthy(value: str | None) -> bool:
+    return (value or "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def _now() -> datetime:
+    """Wall clock for the Anthropic deadline; a seam so tests can move time."""
+    return datetime.now(UTC)
+
+
+def _anthropic_slot_open(now: datetime | None = None) -> bool:
+    """True only while all three fences are open. Re-read on every attempt.
+
+    A router is built once and cached for the life of a process
+    (conversation_router, vision_worker), so a check at construction alone let a
+    long-running service keep calling Anthropic after the deadline (Codex r1 F1
+    on #5568). ``_hold`` calls this before every send — first attempt,
+    reasoning retry and rate-limit retry.
+    """
+    if not _truthy(os.getenv("ANTHROPIC_CASCADE_ENABLED")):
+        return False
+    if not os.getenv("ANTHROPIC_API_KEY", ""):
+        return False
+    raw = os.getenv("ANTHROPIC_CASCADE_NOT_AFTER") or ""
+    try:
+        not_after = datetime.fromisoformat(raw)
+    except ValueError:
+        logger.error("ANTHROPIC_CASCADE_NOT_AFTER unparseable (%r) — slot closed", raw)
+        return False
+    if not_after.tzinfo is None:
+        logger.error("ANTHROPIC_CASCADE_NOT_AFTER has no UTC offset — slot closed")
+        return False
+    if (now or _now()) >= not_after:
+        logger.warning("ANTHROPIC_CASCADE_NOT_AFTER passed (%s) — slot closed", raw)
+        return False
+    return True
+
+
+def _anthropic_provider(now: datetime | None = None) -> _Provider | None:
+    """Time-boxed Anthropic slot (owner decision 2026-11-15, promo credit).
+
+    PR #610 removed Anthropic because it billed real money on auto-charge. The
+    owner reopened it for a prepaid promotional credit, so the slot is fenced
+    three ways and fails CLOSED on each:
+
+    * ``ANTHROPIC_CASCADE_ENABLED`` must be truthy — a key alone never adds it;
+    * ``ANTHROPIC_API_KEY`` must be set;
+    * ``ANTHROPIC_CASCADE_NOT_AFTER`` (ISO-8601 with offset) must be set, parse,
+      and be in the future. Missing or unparseable = off, so the slot can never
+      outlive the credit it was opened for.
+
+    Uses Anthropic's OpenAI-compatible endpoint, so it rides the same request
+    path as every other provider. Text-only unless ANTHROPIC_VISION_MODEL is set.
+    """
+    if not _anthropic_slot_open(now):
+        return None
+    return _Provider(
+        name="anthropic",
+        api_url="https://api.anthropic.com/v1/chat/completions",
+        api_key=os.getenv("ANTHROPIC_API_KEY", ""),
+        model=os.getenv("ANTHROPIC_MODEL") or "claude-sonnet-4-6",
+        timeout=float(os.getenv("ANTHROPIC_TIMEOUT") or "90"),
+        vision_model=os.getenv("ANTHROPIC_VISION_MODEL") or "",
+        request_style="anthropic_compat",
+    )
+
+
+def _apply_cascade_order(providers: list[_Provider], order: str) -> list[_Provider]:
+    """Hot-swap the cascade order without a code change.
+
+    ``MIRA_CASCADE_ORDER`` is a comma list of provider names. Named providers
+    move to the front in that order; every other configured provider keeps its
+    default relative order behind them (an order list never DROPS a provider —
+    that would silently remove a fallback). Unknown names are ignored.
+    """
+    names = [n.strip().lower() for n in order.split(",") if n.strip()]
+    if not names:
+        return providers
+    by_name = {p.name: p for p in providers}
+    front = [by_name[n] for n in dict.fromkeys(names) if n in by_name]
+    return front + [p for p in providers if p not in front]
 
 
 class EncodedSessionId(str):
@@ -758,6 +870,9 @@ class InferenceRouter:
         def _hold(cap: int, what: str) -> bool:
             """Reserve a metered attempt; False when it no longer fits the cap."""
             nonlocal current, current_cap
+            if provider.request_style == "anthropic_compat" and not _anthropic_slot_open():
+                logger.warning("ANTHROPIC_SLOT_CLOSED — not sending the %s", what)
+                return False
             if not metered:
                 return True
             if current is None:
@@ -806,7 +921,7 @@ class InferenceRouter:
             for attempt_idx, attempt_cap in enumerate(attempt_caps):
                 if not _hold(attempt_cap, "retry" if attempt_idx else "request"):
                     break
-                payload[_cap_key(provider)] = attempt_cap
+                payload[_cap_key(provider)] = _attempt_cap(provider, attempt_cap)
                 t0 = time.monotonic()
                 async with httpx.AsyncClient(timeout=provider.timeout) as client:
                     resp = await client.post(provider.api_url, headers=headers, json=payload)
