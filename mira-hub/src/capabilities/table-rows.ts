@@ -346,10 +346,10 @@ function findStubs(window: readonly Line[], cols: Columns): Stub[] {
  *  its stub. Anything else (a stub beside no run, no split, two splits) fails closed: every row the
  *  stubs of that kind could label is returned for demotion, never left unlabelled as a value. */
 function placeStubs(rows: readonly TableRow[], span: ReadonlyMap<TableRow, RowSpan>, stubs: readonly Stub[]):
-    { prefix: Map<TableRow, string[]>; demote: Set<TableRow>; placed: Stub[]; unplaced: Stub[] } {
+    { prefix: Map<TableRow, string[]>; demote: Set<TableRow>; placed: Map<Stub, TableRow[]>; unplaced: Stub[] } {
   const prefix = new Map<TableRow, string[]>();
   const demote = new Set<TableRow>();
-  const placed: Stub[] = [];
+  const placed = new Map<Stub, TableRow[]>();
   const unplaced: Stub[] = [];
   const tops = rows.map((r) => span.get(r)!.top);
   const pitch = tops.length >= 2 ? median(tops.slice(1).map((t, i) => tops[i] - t).filter((g) => g > 0)) || 12 : 12;
@@ -383,6 +383,7 @@ function placeStubs(rows: readonly TableRow[], span: ReadonlyMap<TableRow, RowSp
       byRun.set(run, [...(byRun.get(run) ?? []), s]);
     }
     const assigned: Array<[TableRow, string]> = [];
+    const rowsOf = new Map<Stub, TableRow[]>();
     for (const [run, ss] of failed ? [] : byRun) {
       // Count the centred splits, capped at two, by dynamic programming over (stub, first row):
       // ways[j][from] = splits of run[from..] into one segment per stub j.. (#5598 Codex F1: the
@@ -407,6 +408,7 @@ function placeStubs(rows: readonly TableRow[], span: ReadonlyMap<TableRow, RowSp
         let to = from + 1;
         while (!(ways[j + 1][to] > 0 && fits(j, from, to))) to++;
         for (const r of run.slice(from, to)) assigned.push([r, renderItems([ss[j].item])]);
+        rowsOf.set(ss[j], run.slice(from, to));
         from = to;
       }
     }
@@ -420,7 +422,7 @@ function placeStubs(rows: readonly TableRow[], span: ReadonlyMap<TableRow, RowSp
       if (text) assigned.push([r, text]);
     });
     for (const [r, text] of assigned) prefix.set(r, [...(prefix.get(r) ?? []), text]);
-    placed.push(...own);
+    for (const [stub, labelled] of rowsOf) placed.set(stub, labelled);
   }
   return { prefix, demote, placed, unplaced };
 }
@@ -729,9 +731,11 @@ function buildBlock(sourceLines: readonly Line[], headerIdx: number): { block: T
   // cannot be placed beyond doubt, the rows they could label are kept as unqualified text.
   if (stubs.length > 0) {
     const { prefix, demote, placed, unplaced } = placeStubs(rows, rowSpan, stubs);
-    // Demoted rows and the stubs that could not be placed go to the flat text in page order, so
-    // no printed label is lost (#5598 Codex F2).
-    const flat: Array<{ y: number; text: string }> = unplaced.map((s) => ({ y: s.centre, text: renderItems([s.item]) }));
+    // Demoted rows go to the flat text in page order, with every stub that could not be placed and
+    // every placed stub whose rows another stub kind demoted (#5598 Codex F2, rounds 1 and 2).
+    // No printed label is lost and none is affirmed.
+    const flat: Array<{ y: number; text: string }> = [...unplaced, ...[...placed].filter(([, labelled]) => labelled.some((r) => demote.has(r))).map(([s]) => s)]
+      .map((s) => ({ y: s.centre, text: renderItems([s.item]) }));
     for (const r of [...rows]) {
       if (demote.has(r)) {
         flat.push({ y: rowSpan.get(r)!.top, text: [r.label, r.unit, ...(r.merged ? [r.cells[0]?.value] : r.cells.map((c) => c.value))].filter(Boolean).join(" ") });
@@ -742,7 +746,7 @@ function buildBlock(sourceLines: readonly Line[], headerIdx: number): { block: T
       if (p && r.label.trim() !== "") r.label = [...p, r.label].join(" / ");
     }
     for (const { text } of flat.sort((a, b) => b.y - a.y)) unqualified.push(text);
-    for (const s of placed) if (s.kind === "group") memberYs.push(s.item.y);
+    for (const s of placed.keys()) if (s.kind === "group") memberYs.push(s.item.y);
   }
 
   const finalRows: TableRow[] = [];
