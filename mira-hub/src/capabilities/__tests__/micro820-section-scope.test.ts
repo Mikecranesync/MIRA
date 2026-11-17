@@ -1228,7 +1228,8 @@ it.each([["after a parameter table", true, false], ["with no parameter table", f
   try { rows = await ingestFixture(); } finally { pdfPages.current = null; }
   const page3 = rows.filter((r) => r.page_start === 3);
   expect(page3.some((r) => /0\.22 A/.test(r.content)), "the continued row is stored").toBe(true);
-  for (const r of rows.filter((row) => row.page_start >= 2 && /\b(?:15|0\.22) A\b/.test(row.content))) expect(r.table_scope, `p${r.page_start} ${r.content.slice(0, 60)}`).toBe("unresolved");
+  // Every stored row on the region pages is withheld, except the section the control's caption binds.
+  for (const r of rows.filter((row) => row.page_start >= 2 && !/zzqbbonly|DC Output Specifications for 2080-LC20-20QBB/.test(row.content))) expect(r.table_scope, `p${r.page_start} ${r.content.slice(0, 60)}`).toBe("unresolved");
   const qbb = await retrieve("20QBB", rows.filter((r) => r.page_start >= 2), "What is the relay contact rating at 125 V DC?");
   expect(qbb.text).not.toMatch(/0\.22 A|\b15 A\b/);
   // Control: a section a caption binds after the continuation is not withheld with it.
@@ -1254,7 +1255,8 @@ it.each([["after a contact page", true], ["control: no contact page before it", 
   const page3 = rows.filter((r) => r.page_start === 3 && /0\.22 A/.test(r.content));
   expect(page3.length, "the continued rating is stored").toBeGreaterThan(0);
   if (withContact) {
-    for (const r of page3) expect(r.table_scope, r.content.slice(0, 60)).toBe("unresolved");
+    // Every stored row on the region pages is withheld, chunks and sections alike.
+    for (const r of rows.filter((row) => row.page_start >= 2)) expect(r.table_scope, `p${r.page_start} ${r.content.slice(0, 60)}`).toBe("unresolved");
     const qbb = await retrieve("20QBB", rows.filter((r) => r.page_start >= 2), "What is the AC-15 rating at 125 V DC?");
     expect(qbb.text).not.toMatch(/0\.22 A|\b15 A\b/);
   } else {
@@ -1286,3 +1288,4 @@ it.each(["catalog", "parameter", "parameter-explicit"])("F7 interrupted uncaptio
     expect(own.text).toContain("12 A");
   }
 });
+
