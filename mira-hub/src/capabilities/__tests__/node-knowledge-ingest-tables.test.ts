@@ -153,13 +153,17 @@ describe("writePdfChunksForNode stores a model-column table as one chunk per mod
     for (const r of rows.filter((r) => r.page === 1)) expect(r.metadata.table_models).toBeUndefined();
     const remainder = rows.filter((r) => r.page === 2 && !r.metadata.table_models);
     expect(remainder.length).toBeGreaterThan(0);
-    // The unplaced Cooling Method line now ends positive grid ownership.
-    // Preserve the following notes on their physical page without silently
-    // restoring model applicability after that uncertainty.
+    // Owner decision 2026-11-17 (GS10 option 1): the table's footnotes sit
+    // below the grid, so they are page prose. They stay in the withheld
+    // unqualified chunk and also reach the unscoped remainder, which carries
+    // no model scope and none of the table's values.
     const notes = rows.filter((r) => r.page === 2 && /For use with three-phase motors only/.test(r.content));
-    expect(notes.length).toBeGreaterThan(0);
-    expect(notes.every((r) => r.metadata.table_unqualified === true)).toBe(true);
+    expect(notes.some((r) => r.metadata.table_unqualified === true)).toBe(true);
+    const proseNotes = remainder.filter((r) => /For use with three-phase motors only/.test(r.content));
+    expect(proseNotes.length).toBeGreaterThan(0);
+    for (const r of proseNotes) expect(r.metadata.table_unqualified).toBeUndefined();
     expect(remainder.map((r) => r.content).join("\n")).not.toMatch(/5\.1\s+7\.3\s+10\.8/);
+    expect(remainder.map((r) => r.content).join("\n")).not.toMatch(/\b5\.1 A\b|Rated Input Current/);
   });
 
   it("stamps extraction_version on every chunk, and the version is at least 2", async () => {
