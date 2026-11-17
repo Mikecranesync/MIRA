@@ -517,23 +517,24 @@ describe("#5503: real Micro820 sections from upload through retrieval", () => {
     const cellRe = /(?<![\w.])0\.22 A(?![\w.])/;
     /** The captured table with no caption naming a catalog; the 0.22 A cell moved `dy` points below
      *  its 125 V DC label (`dy` 0 is the page as printed) and extracted on the next text line. */
-    const shifted = (dy: number, between = false) => {
+    const shifted = (dy: number, between = false, mark = "") => {
       const pages = contactTableBeforeInventory(fixture.pages, "absent", RELAY_CAPTION_BODY, true);
       const contact = pages.find((p) => p.page === 2)!;
       const label = contact.items.find((i) => i.str === "125 V DC")!;
       const cell = contact.items.find((i) => i.str === "0.22 A" && Math.abs(i.y - label.y) < 0.5)!;
+      if (mark) { cell.str = `0.22 A ${mark}`; contact.text = contact.text.replace("125 V DC 0.22 A", `125 V DC 0.22 A ${mark}`); }
       if (between) {
         const above = contact.items.find((i) => i.str === "24 V DC")!;
         cell.y = (label.y + above.y) / 2; // half-way between two rows
         contact.text = contact.text.replace("125 V DC 0.22 A", "0.22 A\n125 V DC");
       } else {
         cell.y = label.y - dy;
-        contact.text = contact.text.replace("125 V DC 0.22 A", "125 V DC\n0.22 A");
+        if (dy > 0) contact.text = contact.text.replace("125 V DC 0.22 A", "125 V DC\n0.22 A");
       }
       return pages;
     };
-    it.each([[3, false], [4, false], [6, false], [0, true]])("%s pt below its label (between rows: %s): the table is still read, every copy is restricted, and QBB gets none", async (dy, between) => {
-      const pages = shifted(dy, between);
+    it.each([[3, false, ""], [4, false, ""], [6, false, ""], [0, true, ""], [4, false, "(1)"], [0, false, "(1)"], [4, false, "*"]] as const)("%s pt below its label (between rows: %s, footnote mark %j): the table is still read, every copy is restricted, and QBB gets none (F19, F21)", async (dy, between, mark) => {
+      const pages = shifted(dy, between, mark);
       const contact = pages.find((p) => p.page === 2)!;
       expect(contactRatingColumns(contact.items)?.length ?? 0, "precondition: the table is still recognised").toBeGreaterThan(0);
       pdfPages.current = pages;
