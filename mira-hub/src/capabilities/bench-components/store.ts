@@ -86,6 +86,9 @@ const LATEST_JOIN = `LEFT JOIN LATERAL (
      ORDER BY r0.revision DESC LIMIT 1
   ) r ON TRUE`;
 
+/** Existing pure read parts for bounded callers on their own tenant transaction. */
+export const componentReadProjection = { columns: `${COMPONENT_COLS}, ${REVISION_COLS}`, latestJoin: LATEST_JOIN, decode: toComponent };
+
 /** Every component of one notebook (retired ones included, flagged), checklist order. */
 export async function listComponents(tenantId: string, notebookId: string): Promise<ComponentRecord[]> {
   return withTenantContext(tenantId, async (c) => {
@@ -100,7 +103,7 @@ export async function listComponents(tenantId: string, notebookId: string): Prom
   });
 }
 
-async function readComponent(c: PoolClient, tenantId: string, notebookId: string, componentId: string, lock = false) {
+export async function readComponent(c: PoolClient, tenantId: string, notebookId: string, componentId: string, lock = false) {
   const res = await c.query(
     `SELECT ${COMPONENT_COLS}, ${REVISION_COLS}
        FROM notebook_components c ${LATEST_JOIN}

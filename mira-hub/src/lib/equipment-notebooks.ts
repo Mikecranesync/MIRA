@@ -252,6 +252,15 @@ function rowToNotebook(r: Record<string, unknown>, sourceCount = 0): EquipmentNo
   };
 }
 
+/** Pure projection for read-only navigation; unlike getNotebook, this never changes recency. */
+export const notebookReadProjection = { columns: NOTEBOOK_COLS, decode: rowToNotebook };
+
+export async function readNotebookHeader(client: PoolClient, tenantId: string, notebookId: string): Promise<EquipmentNotebook | null> {
+  const { rows } = await client.query(`SELECT to_jsonb(h) AS header FROM equipment_notebooks n
+    CROSS JOIN LATERAL (SELECT ${NOTEBOOK_COLS}) h WHERE n.tenant_id = $1::uuid AND n.id = $2::uuid`, [tenantId, notebookId]);
+  return rows[0] ? rowToNotebook(rows[0].header) : null;
+}
+
 export type CreateNotebookInput = {
   displayName: string;
   manufacturer?: string | null;
