@@ -16,7 +16,10 @@
  * never fetched or cleaned up twice.
  */
 
-export type LayoutItem = { str: string; x: number; y: number; w: number; size: number };
+import { pinnedRules, rulePinsForSha, rulesCrossing } from "./table-rule-pins";
+
+/** `vr`: indices of the page's pinned vertical rules crossing this item's baseline (absent = no rule evidence); `vrx`: those rules' x positions, index-aligned. */
+export type LayoutItem = { str: string; x: number; y: number; w: number; size: number; vr?: readonly number[]; vrx?: readonly number[] };
 
 interface PdfTextItem {
   str?: string;
@@ -49,13 +52,35 @@ export function layoutItemsFromTextContent(content: PdfTextContent): LayoutItem[
   return items;
 }
 
-/** One page's positioned text items, fetched and released by this call alone. */
-export async function pageLayoutItems(pdf: PdfDocumentProxy, pageNumber: number): Promise<LayoutItem[]> {
+/**
+ * Annotates each item with the pinned vertical rules crossing its baseline (#5503 F14/F15). The
+ * page's drawing is never read: rules exist only for a pinned document's pinned page whose text
+ * geometry still matches. Anything else leaves the items unannotated, which downstream means
+ * "no rule evidence" and grants nothing.
+ */
+function annotateRules(documentSha256: string | undefined, pageNumber: number, items: LayoutItem[]): void {
+  if (!documentSha256) return;
+  const rules = pinnedRules(rulePinsForSha(documentSha256), pageNumber, items);
+  if (!rules || rules.length === 0) return;
+  for (const item of items) {
+    const crossing = rulesCrossing(rules, item.y);
+    if (crossing.length > 0) {
+      item.vr = crossing;
+      item.vrx = crossing.map((id) => rules[id].x);
+    }
+  }
+}
+
+/** One page's positioned text items, fetched and released by this call alone. `documentSha256`
+ * is the SHA-256 of the PDF bytes; without it the items carry no rule evidence. */
+export async function pageLayoutItems(pdf: PdfDocumentProxy, pageNumber: number, documentSha256?: string): Promise<LayoutItem[]> {
   if (!pdf.getPage) return [];
   const page = await pdf.getPage(pageNumber);
   try {
     const content = await page.getTextContent();
-    return layoutItemsFromTextContent(content);
+    const items = layoutItemsFromTextContent(content);
+    annotateRules(documentSha256, pageNumber, items);
+    return items;
   } finally {
     if (page.cleanup && !page.cleanup()) {
       throw new Error("PDF page resources could not be released");

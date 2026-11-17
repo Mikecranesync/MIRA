@@ -5,10 +5,12 @@
  * file implements literally. Pure, deterministic, zero tokens: no model call, no vendor-shape
  * regex (the only shape test is "an identifier cell": letters AND digits, >=5 chars, no spaces).
  */
-import { tableUnit } from "./supporting-quote";
-import { modelNumbersIn } from "./manual-applicability";
+import { findValues, tableUnit } from "./supporting-quote";
+import { hasNegation, modelNumbersIn } from "./manual-applicability";
+import { catalogIdentifierView } from "./catalog-identifier";
 
-export type LayoutItem = { str: string; x: number; y: number; w: number; size: number };
+/** `vr`: indices of the page's painted vertical rules crossing this item's baseline (absent = no rule evidence); `vrx`: those rules' x positions, index-aligned. */
+export type LayoutItem = { str: string; x: number; y: number; w: number; size: number; vr?: readonly number[]; vrx?: readonly number[] };
 export type TableCell = { model: string; value: string };
 export type TableRow = { label: string; unit: string | null; cells: TableCell[]; merged: boolean };
 export type TableBlock = {
@@ -20,8 +22,11 @@ export type TableBlock = {
   unqualified: string[];
   top: number;
   bottom: number;
+  bodySize?: number;
+  rowYs?: number[];
+  memberYs?: number[];
 };
-export type TableChunk = { text: string; models: string[]; unqualified: boolean };
+export type TableChunk = { text: string; models: string[]; unqualified: boolean; sourceTop?: number; sourceBottom?: number; sourceHeaderSize?: number; sourceBodySize?: number; sourceRowYs?: number[]; sourceMemberYs?: number[]; sourceCaption?: string; sourceModels?: string[]; scope?: "unresolved" };
 /** A MODEL-KEYED table (one model per line in a left column, attributes as columns — the GS10
  *  Appendix A cable-length table, #5450): its header band + model lines as rendered text, and the
  *  models of its key column. It carries NO rows on purpose: cells merged down a group of models
@@ -35,6 +40,8 @@ interface Line {
 }
 
 const LINE_GAP_PT = 2.5;
+/** A table's frame edge, or the separator left of an unlabelled first model cell, sits within a cell padding of the header text. */
+const RULE_EDGE_PT = 8;
 const CAPTION_BAND_PT = 40;
 const ATTACH_BAND_PT = 14;
 const BLOCK_GAP_MULT = 3;
@@ -98,6 +105,40 @@ function buildLines(items: readonly LayoutItem[]): Line[] {
   }
   for (const l of lines) l.items.sort((a, b) => a.x - b.x);
   return lines;
+}
+
+/** Ordinary keyed data stays ordinary (#5451). A fresh, physically proven
+ * parameter grid can end an earlier column-only domain, without assigning
+ * equipment identities or extracting its values into model columns. */
+export function ordinaryKeyedTableHeaders(items: readonly LayoutItem[]): number[] {
+  const lines = buildLines(items);
+  const tops: number[] = [];
+  const numeric = (item: LayoutItem) => isNumberShaped(item.str) || /^(?:0x)?(?=[0-9a-f]*\d)[0-9a-f]+$/i.test(item.str.trim());
+  for (let i = 1; i + 2 < lines.length; i++) {
+    const header = lines[i - 1];
+    const first = lines[i].items[0];
+    if (!isIdentifierCell(first.str) || modelNumbersIn(first.str).length > 0 || identifierCells(header).length > 0 ||
+        modelNumbersIn(catalogIdentifierView(renderItems(header.items)).text).length > 0 ||
+        header.items.some(numeric) || findValues(renderItems(header.items), "source").length > 0) continue;
+    const fields = groupRuns(header.items, RUN_GAP_PT).map((run) => run.leftX).filter((x) => x > first.x + MODEL_KEY_X_TOL_PT);
+    if (fields.length < 2) continue;
+    const tolerance = Math.max(6, median(fields.slice(1).map((x, j) => x - fields[j])) * 0.15);
+    const columnOf = (x: number) => fields.findIndex((field) => Math.abs(field - x) <= tolerance);
+    const keys = new Set<string>();
+    const pitch = Math.max(1, header.y - lines[i].y);
+    const proven = lines.slice(i, i + MODEL_KEYED_MIN_LINES).every((line, j) => {
+      const key = line.items[0];
+      if (!isIdentifierCell(key.str) || modelNumbersIn(key.str).length > 0 || Math.abs(key.x - first.x) > MODEL_KEY_X_TOL_PT ||
+          (j > 0 && lines[i + j - 1].y - line.y > BLOCK_GAP_MULT * pitch)) return false;
+      keys.add(key.str.trim());
+      const values = line.items.slice(1).filter(numeric);
+      const columns = values.map((value) => columnOf(value.x));
+      return values.length >= 2 && columns.every((column) => column >= 0) && new Set(columns).size === values.length &&
+        line.items.slice(1).every((item) => item.x < fields[0] - tolerance || columnOf(item.x) >= 0);
+    });
+    if (proven && keys.size >= MODEL_KEYED_MIN_LINES) tops.push(header.y);
+  }
+  return tops;
 }
 
 /** A line's identifier-shaped cells (candidate header models), x-ordered. */
@@ -262,6 +303,30 @@ function captionFor(lines: readonly Line[], headerIdx: number, cols: Columns): s
  *  first line NOT consumed by it (where the outer scan should resume). */
 function buildBlock(lines: readonly Line[], headerIdx: number): { block: TableBlock; nextIdx: number } {
   const header = lines[headerIdx];
+  /** Painted vertical rules crossing EVERY printed item of a line. */
+  const rulesOf = (l: Line): readonly number[] => l.items.filter((item) => item.str.trim().length > 0)
+    .reduce<readonly number[] | null>((common, item) => {
+      const own = item.vr ?? [];
+      return common === null ? own : common.filter((id) => own.includes(id));
+    }, null) ?? [];
+  // Painted rules of THIS header, by x. A separator lies between its cells: right of the label
+  // cell (or just left of the first model cell when no label is printed) and left of the header's
+  // right end. A rule outside that is at most a frame edge, and one edge alone proves nothing - a
+  // margin or revision bar looks the same - so the frame counts only as a left and right pair.
+  const printed = header.items.filter((item) => item.str.trim().length > 0);
+  const headerLeft = Math.min(...printed.map((item) => item.x));
+  const headerRight = Math.max(...printed.map((item) => item.x + item.w));
+  const firstModelLeft = Math.min(...printed.filter((item) => isIdentifierCell(item.str)).map((item) => item.x));
+  const labelCells = printed.filter((item) => item.x < firstModelLeft);
+  const labelRight = labelCells.length > 0 ? Math.max(...labelCells.map((item) => item.x + item.w)) : firstModelLeft - RULE_EDGE_PT;
+  const ruleX = (id: number): number => {
+    const item = printed.find((candidate) => candidate.vr?.includes(id));
+    return item?.vrx?.[item.vr!.indexOf(id)] ?? Number.NaN;
+  };
+  const crossingHeader = rulesOf(header);
+  const separators = crossingHeader.filter((id) => ruleX(id) > labelRight && ruleX(id) < headerRight);
+  const frameLeft = crossingHeader.filter((id) => ruleX(id) <= headerLeft && ruleX(id) > headerLeft - RULE_EDGE_PT);
+  const frameRight = crossingHeader.filter((id) => ruleX(id) >= headerRight && ruleX(id) < headerRight + RULE_EDGE_PT);
   const idCells = identifierCells(header);
   const models = idCells.map((c) => c.str.trim());
   const modelKeys = models.map(exactModelKey);
@@ -289,6 +354,9 @@ function buildBlock(lines: readonly Line[], headerIdx: number): { block: TableBl
   const unqualified: string[] = [];
   const rowLines = new Map<TableRow, number>();
   const rowRawLine = new Map<TableRow, string>();
+  let bodySize = 0;
+  const rowYs: number[] = [];
+  const memberYs: number[] = [];
   let lastRow: TableRow | null = null;
   let lastColumnCellIdx = headerIdx;
   // A label-only line waiting to forward-attach onto the next row. `attached` is true once its text
@@ -317,6 +385,43 @@ function buildBlock(lines: readonly Line[], headerIdx: number): { block: TableBl
 
     const { labelItems, valueItems } = splitLabelValue(line, cols);
 
+    // Ownership is positive: a line must fit this table's column grid or a
+    // bounded data/label/footnote exemption. Nearest-column assignment alone
+    // does not prove membership. This evidence is used BEFORE extraction to
+    // cut off unrelated text; it never assigns an affirmative model scope.
+    const text = renderItems(line.items);
+    const catalogs = modelNumbersIn(catalogIdentifierView(text).text);
+    const conflicting = catalogs.some((number) => !modelKeys.includes(number.key)) ||
+      (catalogs.length > 0 && hasNegation(text));
+    const runs = groupRuns(valueItems, RUN_GAP_PT);
+    const columns = runs.map((run) => nearestColumn(run.leftX, cols));
+    const aligned = runs.length > 0 && runs.every((run, j) => Math.abs(run.leftX - cols.x[columns[j]]) <= cols.tol);
+    const gridRow = aligned && new Set(columns).size >= 2 && new Set(columns).size === runs.length;
+    const bareLabel = modelKeys.includes(exactModelKey(text)) || line.items.every((item) =>
+      isIdentifierCell(item.str) && modelKeys.includes(exactModelKey(item.str)));
+    // Centred labels can sit between two baselines of their own multiline
+    // value cells. Require overlapping text boxes at this grid's columns;
+    // mere adjacency or short label wording is not ownership evidence.
+    const centredLabel = labelItems.length > 0 && [lines[i - 1], lines[i + 1]].some((adjacent) => {
+      if (!adjacent || Math.abs(adjacent.y - line.y) > Math.min(...line.items.map((item) => item.size)) * 0.75) return false;
+      const adjacentCells = splitLabelValue(adjacent, cols);
+      return adjacentCells.valueItems.length > 0 &&
+        groupRuns(adjacentCells.valueItems, RUN_GAP_PT).every((run) => Math.abs(run.leftX - cols.x[nearestColumn(run.leftX, cols)]) <= cols.tol);
+    });
+    // F14: a numbered prefix cannot tell a footnote from a numbered section
+    // title, and a measurement inside one aligned item cannot tell a merged
+    // data cell from a voltage-bearing heading. Wording and position grant
+    // nothing beyond a labelled grid row. A centred label, or cells aligned to
+    // the columns without a label (a wrapped continuation, a merged cell, a
+    // lone marker - or a title set in a column), is this table's only when a
+    // painted rule of the model header runs unbroken through the line. A page
+    // with no rule evidence gets none. Prose inside the rules stays outside.
+    const lineRules = rulesOf(line);
+    const through = (ids: readonly number[]) => ids.some((id) => lineRules.includes(id));
+    const ruled = through(separators) || (through(frameLeft) && through(frameRight));
+    const labelledGridRow = gridRow && labelItems.length > 0;
+    if (!conflicting && (labelledGridRow || bareLabel || (ruled && (aligned || centredLabel)))) memberYs.push(line.y);
+
     if (valueItems.length === 0) {
       const text = renderItems(labelItems);
       if (/^\d+$/.test(text)) continue; // pure-number footnote mark: dropped
@@ -333,6 +438,13 @@ function buildBlock(lines: readonly Line[], headerIdx: number): { block: TableBl
       releasePending();
       pendingLabelOnly = { y: line.y, idx: i, text, attached };
       continue;
+    }
+
+    // Calibrate the ordinary value-cell font from its first value-bearing row, not the
+    // page minimum (which may be a tiny footnote). A foreign catalog cell is not
+    // evidence for ordinary body size: it may be the next section's title.
+    if (!modelNumbersIn(renderItems(valueItems)).some((number) => !modelKeys.includes(number.key))) {
+      if (bodySize === 0) bodySize = Math.max(...valueItems.map((item) => item.size));
     }
 
     // Continuation of lastRow?
@@ -388,6 +500,9 @@ function buildBlock(lines: readonly Line[], headerIdx: number): { block: TableBl
     }
 
     if (freshRow) {
+      // A full per-model value row remains a row even if its attribute label is
+      // bold. Catalog-bearing lines cannot use this exemption as a new heading.
+      if (!freshRow.merged && modelNumbersIn(renderItems(line.items)).length === 0) rowYs.push(line.y);
       // Forward attach: a pending label-only line (above, within band) whose text applies
       // because THIS row's own (pre-attach) label has < 2 words, or the pending text is
       // itself a recognised unit token.
@@ -427,7 +542,7 @@ function buildBlock(lines: readonly Line[], headerIdx: number): { block: TableBl
   const top = header.y;
   const bottom = lines[lastColumnCellIdx].y;
   return {
-    block: { caption, header: headerLabel, models, modelKeys, rows: finalRows, unqualified, top, bottom },
+    block: { caption, header: headerLabel, models, modelKeys, rows: finalRows, unqualified, top, bottom, bodySize, rowYs, memberYs },
     nextIdx: scanEnd,
   };
 }
@@ -492,6 +607,13 @@ function splitRowsIntoChunks(prefix: string, rowLines: readonly string[]): strin
  *  as unresolved, so an unreadable line of the record's own table never answers for it. */
 export function tableChunks(block: TableBlock): TableChunk[] {
   const prefix = [block.caption, block.header].filter((s) => s.trim().length > 0).join(" — ");
+  // Repeated catalog keys do not identify independent columns. Serializing by
+  // model name would choose the first matching cell twice and drop the other.
+  if (new Set(block.modelKeys).size !== block.modelKeys.length) {
+    const rows = [block.models.join(" "), ...block.rows.map((r) => [r.label, ...r.cells.map((c) => c.value), r.unit ?? ""].filter(Boolean).join(" "))];
+    return splitRowsIntoChunks(prefix ? `${prefix} — unqualified` : "unqualified", [...rows, ...block.unqualified])
+      .map((text) => ({ text, models: [...new Set(block.modelKeys)], unqualified: true }));
+  }
   const chunks: TableChunk[] = [];
   for (let i = 0; i < block.models.length; i++) {
     const model = block.models[i];
@@ -604,8 +726,33 @@ function detectModelKeyedTables(lines: readonly Line[], occupied: ReadonlySet<nu
  *  A MODEL-KEYED table (`detectModelKeyedTables`, #5450) also qualifies, as unqualified text only.
  *  Returns null when the page has no qualifying table (the remainder is then just the page as-is,
  *  which callers already have via the flat-text path). */
-export function pageWithTables(items: readonly LayoutItem[]): { remainder: string; chunks: TableChunk[] } | null {
-  const blocks = detectModelTables(items).filter((b) => b.rows.length >= 2 && b.rows.some((r) => !r.merged));
+export function pageWithTables(items: readonly LayoutItem[], sectionBoundaries: readonly number[] = [], qualifiedHeaders: readonly number[] = []): { remainder: string; chunks: TableChunk[]; remainderItems: LayoutItem[] } | null {
+  // A second engineering section can occur at ordinary table-row spacing. Cut the
+  // physical input before the single table reader assigns any cells to models.
+  // Otherwise its label/continuation heuristics can absorb the next section's values.
+  if (sectionBoundaries.length > 0) {
+    // A cut must not erase a valid first row merely because the remaining
+    // prefix is shorter than the original, already-qualified block. Reuse
+    // only that exact physical header, never a new header in a later region.
+    const headers = detectModelTables(items).filter((block) => block.rows.length >= 2 && block.rows.some((row) => !row.merged)).map((block) => block.top);
+    const cuts = [...new Set(sectionBoundaries)].sort((a, b) => b - a);
+    const regions = Array.from({ length: cuts.length + 1 }, () => [] as LayoutItem[]);
+    for (const item of items) {
+      const region = cuts.filter((cut) => item.y <= cut + LINE_GAP_PT).length;
+      regions[region].push(item);
+    }
+    const chunks: TableChunk[] = [];
+    const retained = new Set<LayoutItem>();
+    for (const region of regions) {
+      const table = pageWithTables(region, [], headers);
+      if (table) chunks.push(...table.chunks);
+      for (const item of table?.remainderItems ?? region) retained.add(item);
+    }
+    if (chunks.length === 0) return null;
+    const remainderItems = items.filter((item) => retained.has(item));
+    return { chunks, remainderItems, remainder: buildLines(remainderItems).map((line) => renderItems(line.items)).join("\n") };
+  }
+  const blocks = detectModelTables(items).filter((b) => (b.rows.length >= 2 || (b.rows.length === 1 && qualifiedHeaders.includes(b.top))) && b.rows.some((r) => !r.merged));
   const lines = buildLines(items);
   const occupied = new Set<number>();
   lines.forEach((l, idx) => {
@@ -615,18 +762,20 @@ export function pageWithTables(items: readonly LayoutItem[]): { remainder: strin
   if (blocks.length === 0 && keyed.length === 0) return null;
 
   const chunks: TableChunk[] = [];
-  for (const block of blocks) chunks.push(...tableChunks(block));
+  for (const block of blocks) chunks.push(...tableChunks(block).map((chunk) => ({ ...chunk, sourceTop: block.top, sourceBottom: block.bottom, sourceBodySize: block.bodySize, sourceRowYs: block.rowYs, sourceMemberYs: block.memberYs, sourceHeaderSize: Math.max(...items.filter((i) => Math.abs(i.y - block.top) <= LINE_GAP_PT).map((i) => i.size)), sourceCaption: block.caption, sourceModels: block.modelKeys })));
   // A model-keyed table is ONE unqualified chunk (split only by the size budget) tagged with every
   // model of its key column, so retrieval withholds it from a record holding a catalog number and
   // reports the page as unresolved — a flat `GS11N-20P2 230 1.8` line never answers for a value
   // again (#5450). No per-model chunk is written: nothing was tied to a column.
   for (const t of keyed) {
     const prefix = t.caption ? `${t.caption} — unqualified` : "unqualified";
-    for (const text of splitRowsIntoChunks(prefix, t.lines)) chunks.push({ text, models: [...t.modelKeys], unqualified: true });
+    for (const text of splitRowsIntoChunks(prefix, t.lines)) chunks.push({ text, models: [...t.modelKeys], unqualified: true, sourceTop: t.top, sourceBottom: t.bottom, sourceCaption: t.caption, sourceModels: t.modelKeys });
   }
 
   const spans = [...blocks.map((b) => ({ top: b.top, bottom: b.bottom })), ...keyed.map((t) => ({ top: t.top, bottom: t.bottom }))];
   const kept = lines.filter((l) => !spans.some((s) => l.y <= s.top && l.y >= s.bottom));
   const remainder = kept.map((l) => renderItems(l.items)).join("\n");
-  return { remainder, chunks };
+  // Expose the exact source membership of the remainder. Section boundaries inside removed
+  // blocks still exist, but their absence from the remainder is intentional, not a read failure.
+  return { remainder, chunks, remainderItems: kept.flatMap((l) => l.items) };
 }
