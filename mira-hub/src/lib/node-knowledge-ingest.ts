@@ -926,26 +926,25 @@ async function parsePdfForNode(buffer: Buffer | Uint8Array, rest: NodeChunkOpts)
 
 /** Vertical band (pt) within which an item shares a contact-table source row's physical line. */
 const RATING_ROW_BAND_PT = 2.5;
-/** A figure a contact-ratings cell can hold: a number, optionally with an A / V / VA unit. */
-const CELL_FIGURE_RE = /^\d+(?:\.\d+)?\s?(?:A|V|VA)?$/;
-
-/** Every cell of a recognised contact-ratings table, read from positions (#5510 F18, F19): each item
- *  on a source row's physical line, and each figure anywhere in the table's region, from its
- *  Make/Break heads down to the first line below the last row that is not a figure. A cell printed
- *  off its row's baseline, between rows or just under the last one, is therefore still counted, and
- *  the text around the table is released only when every one of them is accounted for. */
+/** Every cell of a recognised contact-ratings table, read from positions, never from what a cell
+ *  looks like (#5510 F18, F19, F21). The table's region runs from its Make/Break heads down to the
+ *  first line under its last row that starts in the label column (a heading, a paragraph, a note).
+ *  Every item to the right of the label column inside that region counts as a cell, whatever it
+ *  holds: a cell off its row's baseline, between rows, or carrying a footnote mark is still counted,
+ *  and the text around the table is released only when every one of them is accounted for. */
 export function contactTableCells(items: readonly LayoutItem[], sourceRows: readonly LayoutItem[]): string[] {
   const ys = sourceRows.map((label) => label.y);
   const first = Math.max(...ys), last = Math.min(...ys);
+  const labelX = Math.min(...sourceRows.map((label) => label.x));
+  const rightOfLabels = (i: LayoutItem) => i.x > labelX + RATING_ROW_BAND_PT;
   const heads = items.filter((i) => /^(make|break)$/i.test(i.str.trim()) && i.y > first).map((i) => i.y);
   const top = heads.length > 0 ? Math.min(...heads) : first + RATING_ROW_BAND_PT;
-  const below = items.filter((i) => i.y < last - RATING_ROW_BAND_PT && i.str.trim() !== "" && !CELL_FIGURE_RE.test(i.str.trim())).map((i) => i.y);
+  const below = items.filter((i) => i.y < last - RATING_ROW_BAND_PT && i.str.trim() !== "" && !rightOfLabels(i)).map((i) => i.y);
   const floor = below.length > 0 ? Math.max(...below) : -Infinity;
   return items.filter((i) => {
-    const t = i.str.trim();
-    if (t === "" || sourceRows.includes(i)) return false;
+    if (i.str.trim() === "" || sourceRows.includes(i)) return false;
     if (sourceRows.some((label) => Math.abs(i.y - label.y) <= RATING_ROW_BAND_PT && i.x > label.x)) return true;
-    return CELL_FIGURE_RE.test(t) && i.y < top && i.y > floor;
+    return rightOfLabels(i) && i.y < top && i.y > floor;
   }).map((i) => i.str.trim());
 }
 

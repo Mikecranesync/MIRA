@@ -206,7 +206,7 @@ describe("isolateRatingLines accounts for every physical contact cell (#5510 F18
   });
 });
 
-describe("contactTableCells reads every cell in the table's region (#5510 F19)", () => {
+describe("contactTableCells reads every cell in the table's region by position (#5510 F19, F21)", () => {
   const it8 = (str: string, x: number, y: number) => ({ str, x, y, w: str.length * 3.2, size: 8 });
   const heads = [it8("Make", 206, 588), it8("Break", 252, 588)];
   const r1 = it8("120 V AC", 148, 572.7), r2 = it8("125 V DC", 148, 548);
@@ -219,7 +219,11 @@ describe("contactTableCells reads every cell in the table's region (#5510 F19)",
     const items = [...base.filter((i) => i.str !== "0.22 A"), it8("0.22 A", 299, 544), it8("2 A", 299, 560), below];
     expect(contactTableCells(items, [r1, r2]).sort()).toEqual(["0.22 A", "1.5 A", "15 A", "2 A"]);
   });
-  it("control: a figure below the first non-figure line under the table is not a cell", () => {
+  it("an off-baseline cell carrying a footnote mark is a cell, and does not end the table", () => {
+    const items = [...base.filter((i) => i.str !== "0.22 A"), it8("0.22 A (1)", 299, 544), it8("Note", 299, 540), below];
+    expect(contactTableCells(items, [r1, r2]).sort()).toEqual(["0.22 A (1)", "1.5 A", "15 A", "Note"]);
+  });
+  it("control: an item below the first line that starts in the label column is not a cell", () => {
     expect(contactTableCells([...base, below, it8("4.0 A", 299, 500)], [r1, r2])).not.toContain("4.0 A");
   });
   it("control: a figure above the Make/Break heads is not a cell", () => {
