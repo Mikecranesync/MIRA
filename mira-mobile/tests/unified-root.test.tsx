@@ -647,6 +647,36 @@ describe("UnifiedRoot", () => {
     expect(root.querySelector('[data-item-id="notebook-nb-a:thread-thrd-a2"]')).not.toBeNull();
   });
 
+  it("Codex F1: a refresh whose newest-threads window omits the thread just left keeps that thread first and reopenable", async () => {
+    const { listNotebooks } = await import("../src/api/resources");
+    const backRef = { current: null as (() => boolean) | null };
+    render(<UnifiedRoot me={ME} backRef={backRef} onSignOut={async () => {}} />);
+    await waitFor(() => screen.getByTestId("unified-home"));
+    fireEvent.click(screen.getByRole("button", { name: "Open navigation" }));
+    fireEvent.click(recentRow("Startup checks"));
+    await waitFor(() => screen.getByTestId("nb"));
+
+    // A newer chat pushed thrd-a2 out of the server's window.
+    const boot = await vi.mocked(listNotebooks).getMockImplementation()!();
+    const fresh = boot.map((nb) =>
+      nb.id === "nb-a"
+        ? { ...nb, threads: [{ id: "thrd-a3", notebookId: "nb-a", title: "Made on the Hub", createdAt: "", updatedAt: "2026-09-10T13:00:00Z", turnCount: 1, sharedLegacy: false }, nb.threads[0]] }
+        : nb,
+    );
+    expect(fresh.find((nb) => nb.id === "nb-a")!.threads.some((t) => t.id === "thrd-a2")).toBe(false);
+    vi.mocked(listNotebooks).mockResolvedValueOnce(fresh);
+    await act(async () => {
+      backRef.current?.();
+    });
+
+    const root = await waitFor(() => screen.getByTestId("unified-project-root"));
+    await waitFor(() => expect(root.querySelector('[data-item-id="notebook-nb-a:thread-thrd-a3"]')).not.toBeNull());
+    const rows = Array.from(root.querySelectorAll("[data-item-id]")).map((el) => el.getAttribute("data-item-id"));
+    expect(rows[0]).toBe("notebook-nb-a:thread-thrd-a2");
+    fireEvent.click(root.querySelector('[data-item-id="notebook-nb-a:thread-thrd-a2"]') as HTMLElement);
+    expect((await waitFor(() => screen.getByTestId("nb"))).getAttribute("data-thread-id")).toBe("thrd-a2");
+  });
+
   it("#4188: a QR deep link to a just-created machine notebook gets ITS project root on BACK — the opened notebook joins the list at once, it never waits for the drawer refresh", async () => {
     // openAssetNotebook can create the notebook, and the drawer refresh that
     // would list it may fail or lag (the listNotebooks mock never includes it).

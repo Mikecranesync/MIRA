@@ -467,7 +467,18 @@ export function UnifiedRoot({ me, backRef, onSignOut, deepLink, onDeepLinkConsum
         if (!live) return;
         setNotebooks((current) => {
           const listed = new Set(list.map((nb) => nb.id));
-          return [...list, ...(current ?? []).filter((nb) => !listed.has(nb.id))];
+          // The server returns only a notebook's newest threads, so an older
+          // thread the technician just left can fall out of the window; keep
+          // its known summary so its row stays reachable.
+          const left = current
+            ?.find((nb) => nb.id === selected)
+            ?.threads?.find((thread) => thread.id === selectedThreadId);
+          const refreshed = list.map((nb) =>
+            left && nb.id === selected && !nb.threads?.some((thread) => thread.id === left.id)
+              ? { ...nb, threads: [left, ...(nb.threads ?? [])] }
+              : nb,
+          );
+          return [...refreshed, ...(current ?? []).filter((nb) => !listed.has(nb.id))];
         });
       } catch {
         // The list already on screen stays; a stale list is tolerable.
@@ -476,7 +487,7 @@ export function UnifiedRoot({ me, backRef, onSignOut, deepLink, onDeepLinkConsum
     return () => {
       live = false;
     };
-  }, [projectRootVisible]);
+  }, [projectRootVisible, selected, selectedThreadId]);
 
   // NotebookScreen owns Android Back while a conversation is mounted. Every
   // root-owned state must replace that handler explicitly: otherwise the
