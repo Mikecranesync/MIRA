@@ -301,6 +301,26 @@ describe("#5503 runtime-review output inventory controls", () => {
   });
 });
 
+describe("#5510 F16: an all-relay inventory scopes the relay table to the models it lists", () => {
+  const relayCaption = (outputs: ReturnType<typeof readOutputTypes>, sectionModels: string[] = []) =>
+    splitCaption(new SectionTableScope(outputs, outputs.size > 0, sectionModels), "Relay Contact Ratings").find((p) => p.text.includes("Voltage, max"))!;
+  it("a subset inventory (AWB, QWB relay) never applies to QBB, which other sections name", () => {
+    const outputs = readOutputTypes([column(AWB, "Relay"), column(QWB, "Relay")]);
+    expect([...outputs.values()]).toEqual([true, true]); // precondition: every listed column is relay
+    const part = relayCaption(outputs, [AWB, QBB, QWB]);
+    expect(part.scope).toBe("unresolved");
+    expect(part.models).toEqual(expect.arrayContaining([AWB, QWB, QBB]));
+  });
+  it("a complete all-relay inventory scopes the table to exactly its models, so the review gate applies", () => {
+    const outputs = readOutputTypes([column(AWB, "Relay"), column(QWB, "Relay")]);
+    expect(relayCaption(outputs, [AWB, QWB])).toEqual(expect.objectContaining({ scope: "section", models: [AWB, QWB] }));
+    expect(relayCaption(outputs)).toEqual(expect.objectContaining({ scope: "section", models: [AWB, QWB] }));
+  });
+  it("control: the complete mixed inventory still scopes to its relay models", () => {
+    expect(relayCaption(readOutputTypes(complete()), [AWB, QBB, QWB])).toEqual(expect.objectContaining({ scope: "section", models: [AWB, QWB] }));
+  });
+});
+
 describe("#5503 scope follows qualified layout and resets at section boundaries", () => {
   it("infers relay scope from output evidence without inheriting a same-word heading", () => {
     const scope = new SectionTableScope(readOutputTypes(complete()));
@@ -308,11 +328,12 @@ describe("#5503 scope follows qualified layout and resets at section boundaries"
     expect(sections).toEqual([expect.objectContaining({ scope: "section", models: [AWB, QWB] })]);
   });
   it("an all-relay or all-non-relay family establishes no sibling-only relay restriction", () => {
-    for (const type of ["Relay", "FET"]) {
-      const outputs = readOutputTypes([column(AWB, type), column(QBB, type)]);
-      const parts = splitCaption(new SectionTableScope(outputs), "Relay Contact Ratings");
-      expect(parts.some((p) => p.scope === "section")).toBe(false);
-    }
+    // All relay: the table applies to the whole listed family, scoped to it so the review gate
+    // applies (#5510 F16), never to a sibling subset. All non-relay: no section scope at all.
+    const relay = splitCaption(new SectionTableScope(readOutputTypes([column(AWB, "Relay"), column(QBB, "Relay")])), "Relay Contact Ratings");
+    expect(relay.filter((p) => p.scope === "section").map((p) => [...(p.models ?? [])].sort())).toEqual([[AWB, QBB].sort()]);
+    const fet = splitCaption(new SectionTableScope(readOutputTypes([column(AWB, "FET"), column(QBB, "FET")])), "Relay Contact Ratings");
+    expect(fet.some((p) => p.scope === "section")).toBe(false);
   });
   it("explicit known-family catalog scope survives a wrapped caption", () => {
     const items = [row("Relay Output Specifications for 2080-LC20-20QWB(R),", 700), row("2080-LC20-20AWB(R)", 690), row("Attribute Value", 670, 8), row("Life 100,000 cycles", 650, 8)];

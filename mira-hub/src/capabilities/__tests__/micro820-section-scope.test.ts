@@ -496,7 +496,10 @@ describe("#5503: real Micro820 sections from upload through retrieval", () => {
     const commonRelay = page.filter((row) => /15\.0 A 1\.5 A|30\.0 A 3\.0 A/.test(row.content));
     expect(commonRelay.some((row) => row.content.includes("15.0 A 1.5 A"))).toBe(true);
     expect(commonRelay.some((row) => row.content.includes("30.0 A 3.0 A"))).toBe(true);
-    expect(commonRelay.every((row) => row.table_scope !== "unresolved")).toBe(true);
+    // The output inventory does not cover every model the manual's sections name, so the common
+    // ratings cannot be applied to any of them yet: text kept, withheld for all (#5510 F16).
+    expect(commonRelay.every((row) => row.table_scope === "unresolved" && row.table_unqualified === true)).toBe(true);
+    expect(commonRelay.every((row) => ["1763L16AWA", "1763L16BBB", "1762OW8"].every((m) => ((row.table_models as string[] | null) ?? []).includes(m)))).toBe(true);
     const general = page.find((row) => row.content.includes("Output Specifications For Ordinary"))!;
     expect(general.table_scope).toBe("unresolved");
     expect(general.table_unqualified).toBe(true);

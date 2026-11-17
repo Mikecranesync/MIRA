@@ -674,8 +674,14 @@ export class SectionTableScope {
             const allRelay = oneFamily && values.length > 0 && values.every((v) => v === true);
             if (canonical && oneFamily && !values.includes(null) && values.includes(false) && relays.length > 0) {
               this.active = { models: relays, scope: "section" };
-            } else if (!allRelay) {
-              this.active = { models: [...this.outputs.keys()], scope: "unresolved" };
+            } else {
+              // An all-relay inventory proves applicability only for the models it lists, and
+              // only when it lists every model the document's sections name. A subset leaves
+              // the rest unknown, so the table is unresolved for all of them (#5510 F16).
+              const missing = this.sectionModels.filter((model) => !this.outputs.has(model));
+              this.active = allRelay && missing.length === 0
+                ? { models: [...this.outputs.keys()], scope: "section" }
+                : { models: [...new Set([...this.outputs.keys(), ...missing])], scope: "unresolved" };
             }
           } else if (sectionFamily && h.sharedHeader) {
             this.active = { scope: "shared", sharedHeader: h.sharedHeader };
