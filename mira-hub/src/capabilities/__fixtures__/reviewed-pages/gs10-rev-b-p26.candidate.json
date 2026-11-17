@@ -1,678 +1,713 @@
 {
- "sha256": "090aa1b36250be11e1da33526a4b995492593c6fc35aa82ad18115e411dcc5e4",
- "source": "gs10usermanual.pdf",
- "page": 26,
- "printedPage": "1-12",
- "status": "not reviewed",
- "why": "Fails exact gold: lines under a group label (CT / VT, Output Rating, Input Rating) are stored without it, so the condition the page prints is lost. Values and models are as printed. Not recorded as reviewed in table-rule-pins.json.",
- "digest": "5a68f20d187c128b083ef8a1c663b6b30a8e8317efecc244dc9f94dcc3bb2b87",
- "rows": [
-  {
-   "content": "230V Class – 1-Phase Model-Specific Specifications / GS10 230V Class Specifications; Frame Size A, B, C — Model Name: GS11N-2xPx — GS11N-20P2\nGS11N-20P2: Frame Size A1\nGS11N-20P2: Max Motor Output 1/4 hp\nGS11N-20P2: Max Motor Output 0.2 kW\nGS11N-20P2: Rated Output Capacity 0.6 kVA\nGS11N-20P2: CT Rated Output Current 1.6 A\nGS11N-20P2: Carrier Frequency 2–15 kHz\nGS11N-20P2: Rated Output Capacity 0.7 kVA\nGS11N-20P2: VT Rated Output Current 1.8 A\nGS11N-20P2: Carrier Frequency 2–15 kHz\nGS11N-20P2: CT Rated Input Current 5.1 A\nGS11N-20P2: VT Rated Input Current 5.8 A\n",
-   "tableModels": [
-    "GS11N20P2"
-   ],
-   "tableUnqualified": false
-  },
-  {
-   "content": "230V Class – 1-Phase Model-Specific Specifications / GS10 230V Class Specifications; Frame Size A, B, C — Model Name: GS11N-2xPx — GS11N-20P5\nGS11N-20P5: Frame Size A3\nGS11N-20P5: Max Motor Output 1/2 hp\nGS11N-20P5: Max Motor Output 0.4 kW\nGS11N-20P5: Rated Output Capacity 1.1 kVA\nGS11N-20P5: CT Rated Output Current 2.8 A\nGS11N-20P5: Carrier Frequency 2–15 kHz\nGS11N-20P5: Rated Output Capacity 1.2 kVA\nGS11N-20P5: VT Rated Output Current 3.2 A\nGS11N-20P5: Carrier Frequency 2–15 kHz\nGS11N-20P5: CT Rated Input Current 7.3 A\nGS11N-20P5: VT Rated Input Current 8.3 A\n",
-   "tableModels": [
-    "GS11N20P5"
-   ],
-   "tableUnqualified": false
-  },
-  {
-   "content": "230V Class – 1-Phase Model-Specific Specifications / GS10 230V Class Specifications; Frame Size A, B, C — Model Name: GS11N-2xPx — GS11N-21P0\nGS11N-21P0: Frame Size B2\nGS11N-21P0: Max Motor Output 1 hp\nGS11N-21P0: Max Motor Output 0.75 kW\nGS11N-21P0: Rated Output Capacity 1.8 kVA\nGS11N-21P0: CT Rated Output Current 4.8 A\nGS11N-21P0: Carrier Frequency 2–15 kHz\nGS11N-21P0: Rated Output Capacity 1.9 kVA\nGS11N-21P0: VT Rated Output Current 5 A\nGS11N-21P0: Carrier Frequency 2–15 kHz\nGS11N-21P0: CT Rated Input Current 10.8 A\nGS11N-21P0: VT Rated Input Current 11.3 A\n",
-   "tableModels": [
-    "GS11N21P0"
-   ],
-   "tableUnqualified": false
-  },
-  {
-   "content": "230V Class – 1-Phase Model-Specific Specifications / GS10 230V Class Specifications; Frame Size A, B, C — Model Name: GS11N-2xPx — GS11N-22P0\nGS11N-22P0: Frame Size C1\nGS11N-22P0: Max Motor Output 2 hp\nGS11N-22P0: Max Motor Output 1.5 kW\nGS11N-22P0: Rated Output Capacity 2.9 kVA\nGS11N-22P0: CT Rated Output Current 7.5 A\nGS11N-22P0: Carrier Frequency 2–15 kHz\nGS11N-22P0: Rated Output Capacity 3.2 kVA\nGS11N-22P0: VT Rated Output Current 8.5 A\nGS11N-22P0: Carrier Frequency 2–15 kHz\nGS11N-22P0: CT Rated Input Current 16.5 A\nGS11N-22P0: VT Rated Input Current 18.5 A\n",
-   "tableModels": [
-    "GS11N22P0"
-   ],
-   "tableUnqualified": false
-  },
-  {
-   "content": "230V Class – 1-Phase Model-Specific Specifications / GS10 230V Class Specifications; Frame Size A, B, C — Model Name: GS11N-2xPx — GS11N-23P0\nGS11N-23P0: Frame Size C1\nGS11N-23P0: Max Motor Output 3 hp\nGS11N-23P0: Max Motor Output 2.2 kW\nGS11N-23P0: Rated Output Capacity 4.2 kVA\nGS11N-23P0: CT Rated Output Current 11 A\nGS11N-23P0: Carrier Frequency 2–15 kHz\nGS11N-23P0: Rated Output Capacity 4.8 kVA\nGS11N-23P0: VT Rated Output Current 12.5 A\nGS11N-23P0: Carrier Frequency 2–15 kHz\nGS11N-23P0: CT Rated Input Current 24.2 A\nGS11N-23P0: VT Rated Input Current 27.5 A\n",
-   "tableModels": [
-    "GS11N23P0"
-   ],
-   "tableUnqualified": false
-  }
- ],
- "gold": [
-  {
-   "model": "GS11N-20P2",
-   "property": "Frame Size",
-   "condition": null,
-   "unit": null,
-   "value": "A1"
-  },
-  {
-   "model": "GS11N-20P5",
-   "property": "Frame Size",
-   "condition": null,
-   "unit": null,
-   "value": "A3"
-  },
-  {
-   "model": "GS11N-21P0",
-   "property": "Frame Size",
-   "condition": null,
-   "unit": null,
-   "value": "B2"
-  },
-  {
-   "model": "GS11N-22P0",
-   "property": "Frame Size",
-   "condition": null,
-   "unit": null,
-   "value": "C1"
-  },
-  {
-   "model": "GS11N-23P0",
-   "property": "Frame Size",
-   "condition": null,
-   "unit": null,
-   "value": "C1"
-  },
-  {
-   "model": "GS11N-20P2",
-   "property": "Max Motor Output",
-   "condition": "Output Rating",
-   "unit": "hp",
-   "value": "1/4"
-  },
-  {
-   "model": "GS11N-20P5",
-   "property": "Max Motor Output",
-   "condition": "Output Rating",
-   "unit": "hp",
-   "value": "1/2"
-  },
-  {
-   "model": "GS11N-21P0",
-   "property": "Max Motor Output",
-   "condition": "Output Rating",
-   "unit": "hp",
-   "value": "1"
-  },
-  {
-   "model": "GS11N-22P0",
-   "property": "Max Motor Output",
-   "condition": "Output Rating",
-   "unit": "hp",
-   "value": "2"
-  },
-  {
-   "model": "GS11N-23P0",
-   "property": "Max Motor Output",
-   "condition": "Output Rating",
-   "unit": "hp",
-   "value": "3"
-  },
-  {
-   "model": "GS11N-20P2",
-   "property": "Max Motor Output",
-   "condition": "Output Rating",
-   "unit": "kW",
-   "value": "0.2"
-  },
-  {
-   "model": "GS11N-20P5",
-   "property": "Max Motor Output",
-   "condition": "Output Rating",
-   "unit": "kW",
-   "value": "0.4"
-  },
-  {
-   "model": "GS11N-21P0",
-   "property": "Max Motor Output",
-   "condition": "Output Rating",
-   "unit": "kW",
-   "value": "0.75"
-  },
-  {
-   "model": "GS11N-22P0",
-   "property": "Max Motor Output",
-   "condition": "Output Rating",
-   "unit": "kW",
-   "value": "1.5"
-  },
-  {
-   "model": "GS11N-23P0",
-   "property": "Max Motor Output",
-   "condition": "Output Rating",
-   "unit": "kW",
-   "value": "2.2"
-  },
-  {
-   "model": "GS11N-20P2",
-   "property": "Rated Output Capacity",
-   "condition": "Output Rating / CT",
-   "unit": "kVA",
-   "value": "0.6"
-  },
-  {
-   "model": "GS11N-20P5",
-   "property": "Rated Output Capacity",
-   "condition": "Output Rating / CT",
-   "unit": "kVA",
-   "value": "1.1"
-  },
-  {
-   "model": "GS11N-21P0",
-   "property": "Rated Output Capacity",
-   "condition": "Output Rating / CT",
-   "unit": "kVA",
-   "value": "1.8"
-  },
-  {
-   "model": "GS11N-22P0",
-   "property": "Rated Output Capacity",
-   "condition": "Output Rating / CT",
-   "unit": "kVA",
-   "value": "2.9"
-  },
-  {
-   "model": "GS11N-23P0",
-   "property": "Rated Output Capacity",
-   "condition": "Output Rating / CT",
-   "unit": "kVA",
-   "value": "4.2"
-  },
-  {
-   "model": "GS11N-20P2",
-   "property": "Rated Output Current",
-   "condition": "Output Rating / CT",
-   "unit": "A",
-   "value": "1.6"
-  },
-  {
-   "model": "GS11N-20P5",
-   "property": "Rated Output Current",
-   "condition": "Output Rating / CT",
-   "unit": "A",
-   "value": "2.8"
-  },
-  {
-   "model": "GS11N-21P0",
-   "property": "Rated Output Current",
-   "condition": "Output Rating / CT",
-   "unit": "A",
-   "value": "4.8"
-  },
-  {
-   "model": "GS11N-22P0",
-   "property": "Rated Output Current",
-   "condition": "Output Rating / CT",
-   "unit": "A",
-   "value": "7.5"
-  },
-  {
-   "model": "GS11N-23P0",
-   "property": "Rated Output Current",
-   "condition": "Output Rating / CT",
-   "unit": "A",
-   "value": "11"
-  },
-  {
-   "model": "GS11N-20P2",
-   "property": "Carrier Frequency",
-   "condition": "Output Rating / CT",
-   "unit": "kHz",
-   "value": "2–15"
-  },
-  {
-   "model": "GS11N-20P5",
-   "property": "Carrier Frequency",
-   "condition": "Output Rating / CT",
-   "unit": "kHz",
-   "value": "2–15"
-  },
-  {
-   "model": "GS11N-21P0",
-   "property": "Carrier Frequency",
-   "condition": "Output Rating / CT",
-   "unit": "kHz",
-   "value": "2–15"
-  },
-  {
-   "model": "GS11N-22P0",
-   "property": "Carrier Frequency",
-   "condition": "Output Rating / CT",
-   "unit": "kHz",
-   "value": "2–15"
-  },
-  {
-   "model": "GS11N-23P0",
-   "property": "Carrier Frequency",
-   "condition": "Output Rating / CT",
-   "unit": "kHz",
-   "value": "2–15"
-  },
-  {
-   "model": "GS11N-20P2",
-   "property": "Rated Output Capacity",
-   "condition": "Output Rating / VT",
-   "unit": "kVA",
-   "value": "0.7"
-  },
-  {
-   "model": "GS11N-20P5",
-   "property": "Rated Output Capacity",
-   "condition": "Output Rating / VT",
-   "unit": "kVA",
-   "value": "1.2"
-  },
-  {
-   "model": "GS11N-21P0",
-   "property": "Rated Output Capacity",
-   "condition": "Output Rating / VT",
-   "unit": "kVA",
-   "value": "1.9"
-  },
-  {
-   "model": "GS11N-22P0",
-   "property": "Rated Output Capacity",
-   "condition": "Output Rating / VT",
-   "unit": "kVA",
-   "value": "3.2"
-  },
-  {
-   "model": "GS11N-23P0",
-   "property": "Rated Output Capacity",
-   "condition": "Output Rating / VT",
-   "unit": "kVA",
-   "value": "4.8"
-  },
-  {
-   "model": "GS11N-20P2",
-   "property": "Rated Output Current",
-   "condition": "Output Rating / VT",
-   "unit": "A",
-   "value": "1.8"
-  },
-  {
-   "model": "GS11N-20P5",
-   "property": "Rated Output Current",
-   "condition": "Output Rating / VT",
-   "unit": "A",
-   "value": "3.2"
-  },
-  {
-   "model": "GS11N-21P0",
-   "property": "Rated Output Current",
-   "condition": "Output Rating / VT",
-   "unit": "A",
-   "value": "5"
-  },
-  {
-   "model": "GS11N-22P0",
-   "property": "Rated Output Current",
-   "condition": "Output Rating / VT",
-   "unit": "A",
-   "value": "8.5"
-  },
-  {
-   "model": "GS11N-23P0",
-   "property": "Rated Output Current",
-   "condition": "Output Rating / VT",
-   "unit": "A",
-   "value": "12.5"
-  },
-  {
-   "model": "GS11N-20P2",
-   "property": "Carrier Frequency",
-   "condition": "Output Rating / VT",
-   "unit": "kHz",
-   "value": "2–15"
-  },
-  {
-   "model": "GS11N-20P5",
-   "property": "Carrier Frequency",
-   "condition": "Output Rating / VT",
-   "unit": "kHz",
-   "value": "2–15"
-  },
-  {
-   "model": "GS11N-21P0",
-   "property": "Carrier Frequency",
-   "condition": "Output Rating / VT",
-   "unit": "kHz",
-   "value": "2–15"
-  },
-  {
-   "model": "GS11N-22P0",
-   "property": "Carrier Frequency",
-   "condition": "Output Rating / VT",
-   "unit": "kHz",
-   "value": "2–15"
-  },
-  {
-   "model": "GS11N-23P0",
-   "property": "Carrier Frequency",
-   "condition": "Output Rating / VT",
-   "unit": "kHz",
-   "value": "2–15"
-  },
-  {
-   "model": "GS11N-20P2",
-   "property": "Rated Input Current",
-   "condition": "Input Rating / CT",
-   "unit": "A",
-   "value": "5.1"
-  },
-  {
-   "model": "GS11N-20P5",
-   "property": "Rated Input Current",
-   "condition": "Input Rating / CT",
-   "unit": "A",
-   "value": "7.3"
-  },
-  {
-   "model": "GS11N-21P0",
-   "property": "Rated Input Current",
-   "condition": "Input Rating / CT",
-   "unit": "A",
-   "value": "10.8"
-  },
-  {
-   "model": "GS11N-22P0",
-   "property": "Rated Input Current",
-   "condition": "Input Rating / CT",
-   "unit": "A",
-   "value": "16.5"
-  },
-  {
-   "model": "GS11N-23P0",
-   "property": "Rated Input Current",
-   "condition": "Input Rating / CT",
-   "unit": "A",
-   "value": "24.2"
-  },
-  {
-   "model": "GS11N-20P2",
-   "property": "Rated Input Current",
-   "condition": "Input Rating / VT",
-   "unit": "A",
-   "value": "5.8"
-  },
-  {
-   "model": "GS11N-20P5",
-   "property": "Rated Input Current",
-   "condition": "Input Rating / VT",
-   "unit": "A",
-   "value": "8.3"
-  },
-  {
-   "model": "GS11N-21P0",
-   "property": "Rated Input Current",
-   "condition": "Input Rating / VT",
-   "unit": "A",
-   "value": "11.3"
-  },
-  {
-   "model": "GS11N-22P0",
-   "property": "Rated Input Current",
-   "condition": "Input Rating / VT",
-   "unit": "A",
-   "value": "18.5"
-  },
-  {
-   "model": "GS11N-23P0",
-   "property": "Rated Input Current",
-   "condition": "Input Rating / VT",
-   "unit": "A",
-   "value": "27.5"
-  },
-  {
-   "model": "GS11N-20P2",
-   "property": "Rated Voltage/Frequency",
-   "condition": "Input Rating",
-   "unit": "VAC",
-   "value": "One-phase 200-240 VAC (-15% to +10%), 50/60 Hz"
-  },
-  {
-   "model": "GS11N-20P5",
-   "property": "Rated Voltage/Frequency",
-   "condition": "Input Rating",
-   "unit": "VAC",
-   "value": "One-phase 200-240 VAC (-15% to +10%), 50/60 Hz"
-  },
-  {
-   "model": "GS11N-21P0",
-   "property": "Rated Voltage/Frequency",
-   "condition": "Input Rating",
-   "unit": "VAC",
-   "value": "One-phase 200-240 VAC (-15% to +10%), 50/60 Hz"
-  },
-  {
-   "model": "GS11N-22P0",
-   "property": "Rated Voltage/Frequency",
-   "condition": "Input Rating",
-   "unit": "VAC",
-   "value": "One-phase 200-240 VAC (-15% to +10%), 50/60 Hz"
-  },
-  {
-   "model": "GS11N-23P0",
-   "property": "Rated Voltage/Frequency",
-   "condition": "Input Rating",
-   "unit": "VAC",
-   "value": "One-phase 200-240 VAC (-15% to +10%), 50/60 Hz"
-  },
-  {
-   "model": "GS11N-20P2",
-   "property": "Operating Voltage Range (VAC)",
-   "condition": "Input Rating",
-   "unit": "VAC",
-   "value": "170–265"
-  },
-  {
-   "model": "GS11N-20P5",
-   "property": "Operating Voltage Range (VAC)",
-   "condition": "Input Rating",
-   "unit": "VAC",
-   "value": "170–265"
-  },
-  {
-   "model": "GS11N-21P0",
-   "property": "Operating Voltage Range (VAC)",
-   "condition": "Input Rating",
-   "unit": "VAC",
-   "value": "170–265"
-  },
-  {
-   "model": "GS11N-22P0",
-   "property": "Operating Voltage Range (VAC)",
-   "condition": "Input Rating",
-   "unit": "VAC",
-   "value": "170–265"
-  },
-  {
-   "model": "GS11N-23P0",
-   "property": "Operating Voltage Range (VAC)",
-   "condition": "Input Rating",
-   "unit": "VAC",
-   "value": "170–265"
-  },
-  {
-   "model": "GS11N-20P2",
-   "property": "Frequency Tolerance (Hz)",
-   "condition": "Input Rating",
-   "unit": "Hz",
-   "value": "47–63"
-  },
-  {
-   "model": "GS11N-20P5",
-   "property": "Frequency Tolerance (Hz)",
-   "condition": "Input Rating",
-   "unit": "Hz",
-   "value": "47–63"
-  },
-  {
-   "model": "GS11N-21P0",
-   "property": "Frequency Tolerance (Hz)",
-   "condition": "Input Rating",
-   "unit": "Hz",
-   "value": "47–63"
-  },
-  {
-   "model": "GS11N-22P0",
-   "property": "Frequency Tolerance (Hz)",
-   "condition": "Input Rating",
-   "unit": "Hz",
-   "value": "47–63"
-  },
-  {
-   "model": "GS11N-23P0",
-   "property": "Frequency Tolerance (Hz)",
-   "condition": "Input Rating",
-   "unit": "Hz",
-   "value": "47–63"
-  },
-  {
-   "model": "GS11N-20P2",
-   "property": "IE2 Efficiency - Relative Power Loss",
-   "condition": null,
-   "unit": "%",
-   "value": "4.7%"
-  },
-  {
-   "model": "GS11N-20P5",
-   "property": "IE2 Efficiency - Relative Power Loss",
-   "condition": null,
-   "unit": "%",
-   "value": "3.1%"
-  },
-  {
-   "model": "GS11N-21P0",
-   "property": "IE2 Efficiency - Relative Power Loss",
-   "condition": null,
-   "unit": "%",
-   "value": "2.7%"
-  },
-  {
-   "model": "GS11N-22P0",
-   "property": "IE2 Efficiency - Relative Power Loss",
-   "condition": null,
-   "unit": "%",
-   "value": "2.5%"
-  },
-  {
-   "model": "GS11N-23P0",
-   "property": "IE2 Efficiency - Relative Power Loss",
-   "condition": null,
-   "unit": "%",
-   "value": "2.4%"
-  },
-  {
-   "model": "GS11N-20P2",
-   "property": "Weight (kg)",
-   "condition": null,
-   "unit": "kg",
-   "value": "0.4"
-  },
-  {
-   "model": "GS11N-20P5",
-   "property": "Weight (kg)",
-   "condition": null,
-   "unit": "kg",
-   "value": "0.5"
-  },
-  {
-   "model": "GS11N-21P0",
-   "property": "Weight (kg)",
-   "condition": null,
-   "unit": "kg",
-   "value": "0.8"
-  },
-  {
-   "model": "GS11N-22P0",
-   "property": "Weight (kg)",
-   "condition": null,
-   "unit": "kg",
-   "value": "1"
-  },
-  {
-   "model": "GS11N-23P0",
-   "property": "Weight (kg)",
-   "condition": null,
-   "unit": "kg",
-   "value": "1"
-  },
-  {
-   "model": "GS11N-20P2",
-   "property": "Cooling Method",
-   "condition": null,
-   "unit": null,
-   "value": "Convective"
-  },
-  {
-   "model": "GS11N-20P5",
-   "property": "Cooling Method",
-   "condition": null,
-   "unit": null,
-   "value": "Convective"
-  },
-  {
-   "model": "GS11N-21P0",
-   "property": "Cooling Method",
-   "condition": null,
-   "unit": null,
-   "value": "Convective"
-  },
-  {
-   "model": "GS11N-22P0",
-   "property": "Cooling Method",
-   "condition": null,
-   "unit": null,
-   "value": "Convective"
-  },
-  {
-   "model": "GS11N-23P0",
-   "property": "Cooling Method",
-   "condition": null,
-   "unit": null,
-   "value": "Fan"
-  },
-  {
-   "model": "GS11N-20P2",
-   "property": "IP Rating",
-   "condition": null,
-   "unit": null,
-   "value": "IP20"
-  },
-  {
-   "model": "GS11N-20P5",
-   "property": "IP Rating",
-   "condition": null,
-   "unit": null,
-   "value": "IP20"
-  },
-  {
-   "model": "GS11N-21P0",
-   "property": "IP Rating",
-   "condition": null,
-   "unit": null,
-   "value": "IP20"
-  },
-  {
-   "model": "GS11N-22P0",
-   "property": "IP Rating",
-   "condition": null,
-   "unit": null,
-   "value": "IP20"
-  },
-  {
-   "model": "GS11N-23P0",
-   "property": "IP Rating",
-   "condition": null,
-   "unit": null,
-   "value": "IP20"
-  }
- ]
+  "sha256": "090aa1b36250be11e1da33526a4b995492593c6fc35aa82ad18115e411dcc5e4",
+  "source": "gs10usermanual.pdf",
+  "page": 26,
+  "printedPage": "1-12",
+  "status": "not reviewed",
+  "why": "Passes the exact gold check on this branch: all 90 values, each under its own model with the group and duty labels the page prints (each model now spans two chunks). Not recorded as reviewed in table-rule-pins.json: that needs the owner's approval.",
+  "digest": "d570e81e1fc665e0fa75879a2624aab107f0765b83d6be1acf013382f70b91d5",
+  "rows": [
+    {
+      "content": "230V Class – 1-Phase Model-Specific Specifications / GS10 230V Class Specifications; Frame Size A, B, C — Model Name: GS11N-2xPx — GS11N-20P2\nGS11N-20P2: Frame Size A1\nGS11N-20P2: Output Rating / Max Motor Output 1/4 hp\nGS11N-20P2: Output Rating / Max Motor Output 0.2 kW\nGS11N-20P2: Output Rating / CT / Rated Output Capacity 0.6 kVA\nGS11N-20P2: Output Rating / CT / Rated Output Current 1.6 A\nGS11N-20P2: Output Rating / CT / Carrier Frequency 2–15 kHz\nGS11N-20P2: Output Rating / VT / Rated Output Capacity 0.7 kVA\nGS11N-20P2: Output Rating / VT / Rated Output Current 1.8 A\nGS11N-20P2: Output Rating / VT / Carrier Frequency 2–15 kHz\nGS11N-20P2: Input Rating / CT / Rated Input Current 5.1 A\nGS11N-20P2: Input Rating / VT / Rated Input Current 5.8 A\nGS11N-20P2: Input Rating / Rated Voltage/Frequency One-phase 200-240 VAC (-15% to +10%), 50/60 Hz\nGS11N-20P2: Input Rating / Operating Voltage Range 170–265 VAC\nGS11N-20P2: Input Rating / Frequency Tolerance 47–63 Hz\n",
+      "tableModels": [
+        "GS11N20P2"
+      ],
+      "tableUnqualified": false
+    },
+    {
+      "content": "230V Class – 1-Phase Model-Specific Specifications / GS10 230V Class Specifications; Frame Size A, B, C — Model Name: GS11N-2xPx — GS11N-20P2 (cont.)\nGS11N-20P2: IE2 Efficiency - Relative Power Loss 4.7%\nGS11N-20P2: Weight 0.4 kg\nGS11N-20P2: Cooling Method Convective\nGS11N-20P2: IP Rating IP20\n",
+      "tableModels": [
+        "GS11N20P2"
+      ],
+      "tableUnqualified": false
+    },
+    {
+      "content": "230V Class – 1-Phase Model-Specific Specifications / GS10 230V Class Specifications; Frame Size A, B, C — Model Name: GS11N-2xPx — GS11N-20P5\nGS11N-20P5: Frame Size A3\nGS11N-20P5: Output Rating / Max Motor Output 1/2 hp\nGS11N-20P5: Output Rating / Max Motor Output 0.4 kW\nGS11N-20P5: Output Rating / CT / Rated Output Capacity 1.1 kVA\nGS11N-20P5: Output Rating / CT / Rated Output Current 2.8 A\nGS11N-20P5: Output Rating / CT / Carrier Frequency 2–15 kHz\nGS11N-20P5: Output Rating / VT / Rated Output Capacity 1.2 kVA\nGS11N-20P5: Output Rating / VT / Rated Output Current 3.2 A\nGS11N-20P5: Output Rating / VT / Carrier Frequency 2–15 kHz\nGS11N-20P5: Input Rating / CT / Rated Input Current 7.3 A\nGS11N-20P5: Input Rating / VT / Rated Input Current 8.3 A\nGS11N-20P5: Input Rating / Rated Voltage/Frequency One-phase 200-240 VAC (-15% to +10%), 50/60 Hz\nGS11N-20P5: Input Rating / Operating Voltage Range 170–265 VAC\nGS11N-20P5: Input Rating / Frequency Tolerance 47–63 Hz\n",
+      "tableModels": [
+        "GS11N20P5"
+      ],
+      "tableUnqualified": false
+    },
+    {
+      "content": "230V Class – 1-Phase Model-Specific Specifications / GS10 230V Class Specifications; Frame Size A, B, C — Model Name: GS11N-2xPx — GS11N-20P5 (cont.)\nGS11N-20P5: IE2 Efficiency - Relative Power Loss 3.1%\nGS11N-20P5: Weight 0.5 kg\nGS11N-20P5: Cooling Method Convective\nGS11N-20P5: IP Rating IP20\n",
+      "tableModels": [
+        "GS11N20P5"
+      ],
+      "tableUnqualified": false
+    },
+    {
+      "content": "230V Class – 1-Phase Model-Specific Specifications / GS10 230V Class Specifications; Frame Size A, B, C — Model Name: GS11N-2xPx — GS11N-21P0\nGS11N-21P0: Frame Size B2\nGS11N-21P0: Output Rating / Max Motor Output 1 hp\nGS11N-21P0: Output Rating / Max Motor Output 0.75 kW\nGS11N-21P0: Output Rating / CT / Rated Output Capacity 1.8 kVA\nGS11N-21P0: Output Rating / CT / Rated Output Current 4.8 A\nGS11N-21P0: Output Rating / CT / Carrier Frequency 2–15 kHz\nGS11N-21P0: Output Rating / VT / Rated Output Capacity 1.9 kVA\nGS11N-21P0: Output Rating / VT / Rated Output Current 5 A\nGS11N-21P0: Output Rating / VT / Carrier Frequency 2–15 kHz\nGS11N-21P0: Input Rating / CT / Rated Input Current 10.8 A\nGS11N-21P0: Input Rating / VT / Rated Input Current 11.3 A\nGS11N-21P0: Input Rating / Rated Voltage/Frequency One-phase 200-240 VAC (-15% to +10%), 50/60 Hz\nGS11N-21P0: Input Rating / Operating Voltage Range 170–265 VAC\nGS11N-21P0: Input Rating / Frequency Tolerance 47–63 Hz\n",
+      "tableModels": [
+        "GS11N21P0"
+      ],
+      "tableUnqualified": false
+    },
+    {
+      "content": "230V Class – 1-Phase Model-Specific Specifications / GS10 230V Class Specifications; Frame Size A, B, C — Model Name: GS11N-2xPx — GS11N-21P0 (cont.)\nGS11N-21P0: IE2 Efficiency - Relative Power Loss 2.7%\nGS11N-21P0: Weight 0.8 kg\nGS11N-21P0: Cooling Method Convective\nGS11N-21P0: IP Rating IP20\n",
+      "tableModels": [
+        "GS11N21P0"
+      ],
+      "tableUnqualified": false
+    },
+    {
+      "content": "230V Class – 1-Phase Model-Specific Specifications / GS10 230V Class Specifications; Frame Size A, B, C — Model Name: GS11N-2xPx — GS11N-22P0\nGS11N-22P0: Frame Size C1\nGS11N-22P0: Output Rating / Max Motor Output 2 hp\nGS11N-22P0: Output Rating / Max Motor Output 1.5 kW\nGS11N-22P0: Output Rating / CT / Rated Output Capacity 2.9 kVA\nGS11N-22P0: Output Rating / CT / Rated Output Current 7.5 A\nGS11N-22P0: Output Rating / CT / Carrier Frequency 2–15 kHz\nGS11N-22P0: Output Rating / VT / Rated Output Capacity 3.2 kVA\nGS11N-22P0: Output Rating / VT / Rated Output Current 8.5 A\nGS11N-22P0: Output Rating / VT / Carrier Frequency 2–15 kHz\nGS11N-22P0: Input Rating / CT / Rated Input Current 16.5 A\nGS11N-22P0: Input Rating / VT / Rated Input Current 18.5 A\nGS11N-22P0: Input Rating / Rated Voltage/Frequency One-phase 200-240 VAC (-15% to +10%), 50/60 Hz\nGS11N-22P0: Input Rating / Operating Voltage Range 170–265 VAC\nGS11N-22P0: Input Rating / Frequency Tolerance 47–63 Hz\n",
+      "tableModels": [
+        "GS11N22P0"
+      ],
+      "tableUnqualified": false
+    },
+    {
+      "content": "230V Class – 1-Phase Model-Specific Specifications / GS10 230V Class Specifications; Frame Size A, B, C — Model Name: GS11N-2xPx — GS11N-22P0 (cont.)\nGS11N-22P0: IE2 Efficiency - Relative Power Loss 2.5%\nGS11N-22P0: Weight 1 kg\nGS11N-22P0: Cooling Method Convective\nGS11N-22P0: IP Rating IP20\n",
+      "tableModels": [
+        "GS11N22P0"
+      ],
+      "tableUnqualified": false
+    },
+    {
+      "content": "230V Class – 1-Phase Model-Specific Specifications / GS10 230V Class Specifications; Frame Size A, B, C — Model Name: GS11N-2xPx — GS11N-23P0\nGS11N-23P0: Frame Size C1\nGS11N-23P0: Output Rating / Max Motor Output 3 hp\nGS11N-23P0: Output Rating / Max Motor Output 2.2 kW\nGS11N-23P0: Output Rating / CT / Rated Output Capacity 4.2 kVA\nGS11N-23P0: Output Rating / CT / Rated Output Current 11 A\nGS11N-23P0: Output Rating / CT / Carrier Frequency 2–15 kHz\nGS11N-23P0: Output Rating / VT / Rated Output Capacity 4.8 kVA\nGS11N-23P0: Output Rating / VT / Rated Output Current 12.5 A\nGS11N-23P0: Output Rating / VT / Carrier Frequency 2–15 kHz\nGS11N-23P0: Input Rating / CT / Rated Input Current 24.2 A\nGS11N-23P0: Input Rating / VT / Rated Input Current 27.5 A\nGS11N-23P0: Input Rating / Rated Voltage/Frequency One-phase 200-240 VAC (-15% to +10%), 50/60 Hz\nGS11N-23P0: Input Rating / Operating Voltage Range 170–265 VAC\nGS11N-23P0: Input Rating / Frequency Tolerance 47–63 Hz\n",
+      "tableModels": [
+        "GS11N23P0"
+      ],
+      "tableUnqualified": false
+    },
+    {
+      "content": "230V Class – 1-Phase Model-Specific Specifications / GS10 230V Class Specifications; Frame Size A, B, C — Model Name: GS11N-2xPx — GS11N-23P0 (cont.)\nGS11N-23P0: IE2 Efficiency - Relative Power Loss 2.4%\nGS11N-23P0: Weight 1 kg\nGS11N-23P0: Cooling Method Fan\nGS11N-23P0: IP Rating IP20\n",
+      "tableModels": [
+        "GS11N23P0"
+      ],
+      "tableUnqualified": false
+    }
+  ],
+  "gold": [
+    {
+      "model": "GS11N-20P2",
+      "property": "Frame Size",
+      "condition": null,
+      "unit": null,
+      "value": "A1"
+    },
+    {
+      "model": "GS11N-20P5",
+      "property": "Frame Size",
+      "condition": null,
+      "unit": null,
+      "value": "A3"
+    },
+    {
+      "model": "GS11N-21P0",
+      "property": "Frame Size",
+      "condition": null,
+      "unit": null,
+      "value": "B2"
+    },
+    {
+      "model": "GS11N-22P0",
+      "property": "Frame Size",
+      "condition": null,
+      "unit": null,
+      "value": "C1"
+    },
+    {
+      "model": "GS11N-23P0",
+      "property": "Frame Size",
+      "condition": null,
+      "unit": null,
+      "value": "C1"
+    },
+    {
+      "model": "GS11N-20P2",
+      "property": "Max Motor Output",
+      "condition": "Output Rating",
+      "unit": "hp",
+      "value": "1/4"
+    },
+    {
+      "model": "GS11N-20P5",
+      "property": "Max Motor Output",
+      "condition": "Output Rating",
+      "unit": "hp",
+      "value": "1/2"
+    },
+    {
+      "model": "GS11N-21P0",
+      "property": "Max Motor Output",
+      "condition": "Output Rating",
+      "unit": "hp",
+      "value": "1"
+    },
+    {
+      "model": "GS11N-22P0",
+      "property": "Max Motor Output",
+      "condition": "Output Rating",
+      "unit": "hp",
+      "value": "2"
+    },
+    {
+      "model": "GS11N-23P0",
+      "property": "Max Motor Output",
+      "condition": "Output Rating",
+      "unit": "hp",
+      "value": "3"
+    },
+    {
+      "model": "GS11N-20P2",
+      "property": "Max Motor Output",
+      "condition": "Output Rating",
+      "unit": "kW",
+      "value": "0.2"
+    },
+    {
+      "model": "GS11N-20P5",
+      "property": "Max Motor Output",
+      "condition": "Output Rating",
+      "unit": "kW",
+      "value": "0.4"
+    },
+    {
+      "model": "GS11N-21P0",
+      "property": "Max Motor Output",
+      "condition": "Output Rating",
+      "unit": "kW",
+      "value": "0.75"
+    },
+    {
+      "model": "GS11N-22P0",
+      "property": "Max Motor Output",
+      "condition": "Output Rating",
+      "unit": "kW",
+      "value": "1.5"
+    },
+    {
+      "model": "GS11N-23P0",
+      "property": "Max Motor Output",
+      "condition": "Output Rating",
+      "unit": "kW",
+      "value": "2.2"
+    },
+    {
+      "model": "GS11N-20P2",
+      "property": "Rated Output Capacity",
+      "condition": "Output Rating / CT",
+      "unit": "kVA",
+      "value": "0.6"
+    },
+    {
+      "model": "GS11N-20P5",
+      "property": "Rated Output Capacity",
+      "condition": "Output Rating / CT",
+      "unit": "kVA",
+      "value": "1.1"
+    },
+    {
+      "model": "GS11N-21P0",
+      "property": "Rated Output Capacity",
+      "condition": "Output Rating / CT",
+      "unit": "kVA",
+      "value": "1.8"
+    },
+    {
+      "model": "GS11N-22P0",
+      "property": "Rated Output Capacity",
+      "condition": "Output Rating / CT",
+      "unit": "kVA",
+      "value": "2.9"
+    },
+    {
+      "model": "GS11N-23P0",
+      "property": "Rated Output Capacity",
+      "condition": "Output Rating / CT",
+      "unit": "kVA",
+      "value": "4.2"
+    },
+    {
+      "model": "GS11N-20P2",
+      "property": "Rated Output Current",
+      "condition": "Output Rating / CT",
+      "unit": "A",
+      "value": "1.6"
+    },
+    {
+      "model": "GS11N-20P5",
+      "property": "Rated Output Current",
+      "condition": "Output Rating / CT",
+      "unit": "A",
+      "value": "2.8"
+    },
+    {
+      "model": "GS11N-21P0",
+      "property": "Rated Output Current",
+      "condition": "Output Rating / CT",
+      "unit": "A",
+      "value": "4.8"
+    },
+    {
+      "model": "GS11N-22P0",
+      "property": "Rated Output Current",
+      "condition": "Output Rating / CT",
+      "unit": "A",
+      "value": "7.5"
+    },
+    {
+      "model": "GS11N-23P0",
+      "property": "Rated Output Current",
+      "condition": "Output Rating / CT",
+      "unit": "A",
+      "value": "11"
+    },
+    {
+      "model": "GS11N-20P2",
+      "property": "Carrier Frequency",
+      "condition": "Output Rating / CT",
+      "unit": "kHz",
+      "value": "2–15"
+    },
+    {
+      "model": "GS11N-20P5",
+      "property": "Carrier Frequency",
+      "condition": "Output Rating / CT",
+      "unit": "kHz",
+      "value": "2–15"
+    },
+    {
+      "model": "GS11N-21P0",
+      "property": "Carrier Frequency",
+      "condition": "Output Rating / CT",
+      "unit": "kHz",
+      "value": "2–15"
+    },
+    {
+      "model": "GS11N-22P0",
+      "property": "Carrier Frequency",
+      "condition": "Output Rating / CT",
+      "unit": "kHz",
+      "value": "2–15"
+    },
+    {
+      "model": "GS11N-23P0",
+      "property": "Carrier Frequency",
+      "condition": "Output Rating / CT",
+      "unit": "kHz",
+      "value": "2–15"
+    },
+    {
+      "model": "GS11N-20P2",
+      "property": "Rated Output Capacity",
+      "condition": "Output Rating / VT",
+      "unit": "kVA",
+      "value": "0.7"
+    },
+    {
+      "model": "GS11N-20P5",
+      "property": "Rated Output Capacity",
+      "condition": "Output Rating / VT",
+      "unit": "kVA",
+      "value": "1.2"
+    },
+    {
+      "model": "GS11N-21P0",
+      "property": "Rated Output Capacity",
+      "condition": "Output Rating / VT",
+      "unit": "kVA",
+      "value": "1.9"
+    },
+    {
+      "model": "GS11N-22P0",
+      "property": "Rated Output Capacity",
+      "condition": "Output Rating / VT",
+      "unit": "kVA",
+      "value": "3.2"
+    },
+    {
+      "model": "GS11N-23P0",
+      "property": "Rated Output Capacity",
+      "condition": "Output Rating / VT",
+      "unit": "kVA",
+      "value": "4.8"
+    },
+    {
+      "model": "GS11N-20P2",
+      "property": "Rated Output Current",
+      "condition": "Output Rating / VT",
+      "unit": "A",
+      "value": "1.8"
+    },
+    {
+      "model": "GS11N-20P5",
+      "property": "Rated Output Current",
+      "condition": "Output Rating / VT",
+      "unit": "A",
+      "value": "3.2"
+    },
+    {
+      "model": "GS11N-21P0",
+      "property": "Rated Output Current",
+      "condition": "Output Rating / VT",
+      "unit": "A",
+      "value": "5"
+    },
+    {
+      "model": "GS11N-22P0",
+      "property": "Rated Output Current",
+      "condition": "Output Rating / VT",
+      "unit": "A",
+      "value": "8.5"
+    },
+    {
+      "model": "GS11N-23P0",
+      "property": "Rated Output Current",
+      "condition": "Output Rating / VT",
+      "unit": "A",
+      "value": "12.5"
+    },
+    {
+      "model": "GS11N-20P2",
+      "property": "Carrier Frequency",
+      "condition": "Output Rating / VT",
+      "unit": "kHz",
+      "value": "2–15"
+    },
+    {
+      "model": "GS11N-20P5",
+      "property": "Carrier Frequency",
+      "condition": "Output Rating / VT",
+      "unit": "kHz",
+      "value": "2–15"
+    },
+    {
+      "model": "GS11N-21P0",
+      "property": "Carrier Frequency",
+      "condition": "Output Rating / VT",
+      "unit": "kHz",
+      "value": "2–15"
+    },
+    {
+      "model": "GS11N-22P0",
+      "property": "Carrier Frequency",
+      "condition": "Output Rating / VT",
+      "unit": "kHz",
+      "value": "2–15"
+    },
+    {
+      "model": "GS11N-23P0",
+      "property": "Carrier Frequency",
+      "condition": "Output Rating / VT",
+      "unit": "kHz",
+      "value": "2–15"
+    },
+    {
+      "model": "GS11N-20P2",
+      "property": "Rated Input Current",
+      "condition": "Input Rating / CT",
+      "unit": "A",
+      "value": "5.1"
+    },
+    {
+      "model": "GS11N-20P5",
+      "property": "Rated Input Current",
+      "condition": "Input Rating / CT",
+      "unit": "A",
+      "value": "7.3"
+    },
+    {
+      "model": "GS11N-21P0",
+      "property": "Rated Input Current",
+      "condition": "Input Rating / CT",
+      "unit": "A",
+      "value": "10.8"
+    },
+    {
+      "model": "GS11N-22P0",
+      "property": "Rated Input Current",
+      "condition": "Input Rating / CT",
+      "unit": "A",
+      "value": "16.5"
+    },
+    {
+      "model": "GS11N-23P0",
+      "property": "Rated Input Current",
+      "condition": "Input Rating / CT",
+      "unit": "A",
+      "value": "24.2"
+    },
+    {
+      "model": "GS11N-20P2",
+      "property": "Rated Input Current",
+      "condition": "Input Rating / VT",
+      "unit": "A",
+      "value": "5.8"
+    },
+    {
+      "model": "GS11N-20P5",
+      "property": "Rated Input Current",
+      "condition": "Input Rating / VT",
+      "unit": "A",
+      "value": "8.3"
+    },
+    {
+      "model": "GS11N-21P0",
+      "property": "Rated Input Current",
+      "condition": "Input Rating / VT",
+      "unit": "A",
+      "value": "11.3"
+    },
+    {
+      "model": "GS11N-22P0",
+      "property": "Rated Input Current",
+      "condition": "Input Rating / VT",
+      "unit": "A",
+      "value": "18.5"
+    },
+    {
+      "model": "GS11N-23P0",
+      "property": "Rated Input Current",
+      "condition": "Input Rating / VT",
+      "unit": "A",
+      "value": "27.5"
+    },
+    {
+      "model": "GS11N-20P2",
+      "property": "Rated Voltage/Frequency",
+      "condition": "Input Rating",
+      "unit": "VAC",
+      "value": "One-phase 200-240 VAC (-15% to +10%), 50/60 Hz"
+    },
+    {
+      "model": "GS11N-20P5",
+      "property": "Rated Voltage/Frequency",
+      "condition": "Input Rating",
+      "unit": "VAC",
+      "value": "One-phase 200-240 VAC (-15% to +10%), 50/60 Hz"
+    },
+    {
+      "model": "GS11N-21P0",
+      "property": "Rated Voltage/Frequency",
+      "condition": "Input Rating",
+      "unit": "VAC",
+      "value": "One-phase 200-240 VAC (-15% to +10%), 50/60 Hz"
+    },
+    {
+      "model": "GS11N-22P0",
+      "property": "Rated Voltage/Frequency",
+      "condition": "Input Rating",
+      "unit": "VAC",
+      "value": "One-phase 200-240 VAC (-15% to +10%), 50/60 Hz"
+    },
+    {
+      "model": "GS11N-23P0",
+      "property": "Rated Voltage/Frequency",
+      "condition": "Input Rating",
+      "unit": "VAC",
+      "value": "One-phase 200-240 VAC (-15% to +10%), 50/60 Hz"
+    },
+    {
+      "model": "GS11N-20P2",
+      "property": "Operating Voltage Range (VAC)",
+      "condition": "Input Rating",
+      "unit": "VAC",
+      "value": "170–265"
+    },
+    {
+      "model": "GS11N-20P5",
+      "property": "Operating Voltage Range (VAC)",
+      "condition": "Input Rating",
+      "unit": "VAC",
+      "value": "170–265"
+    },
+    {
+      "model": "GS11N-21P0",
+      "property": "Operating Voltage Range (VAC)",
+      "condition": "Input Rating",
+      "unit": "VAC",
+      "value": "170–265"
+    },
+    {
+      "model": "GS11N-22P0",
+      "property": "Operating Voltage Range (VAC)",
+      "condition": "Input Rating",
+      "unit": "VAC",
+      "value": "170–265"
+    },
+    {
+      "model": "GS11N-23P0",
+      "property": "Operating Voltage Range (VAC)",
+      "condition": "Input Rating",
+      "unit": "VAC",
+      "value": "170–265"
+    },
+    {
+      "model": "GS11N-20P2",
+      "property": "Frequency Tolerance (Hz)",
+      "condition": "Input Rating",
+      "unit": "Hz",
+      "value": "47–63"
+    },
+    {
+      "model": "GS11N-20P5",
+      "property": "Frequency Tolerance (Hz)",
+      "condition": "Input Rating",
+      "unit": "Hz",
+      "value": "47–63"
+    },
+    {
+      "model": "GS11N-21P0",
+      "property": "Frequency Tolerance (Hz)",
+      "condition": "Input Rating",
+      "unit": "Hz",
+      "value": "47–63"
+    },
+    {
+      "model": "GS11N-22P0",
+      "property": "Frequency Tolerance (Hz)",
+      "condition": "Input Rating",
+      "unit": "Hz",
+      "value": "47–63"
+    },
+    {
+      "model": "GS11N-23P0",
+      "property": "Frequency Tolerance (Hz)",
+      "condition": "Input Rating",
+      "unit": "Hz",
+      "value": "47–63"
+    },
+    {
+      "model": "GS11N-20P2",
+      "property": "IE2 Efficiency - Relative Power Loss",
+      "condition": null,
+      "unit": "%",
+      "value": "4.7%"
+    },
+    {
+      "model": "GS11N-20P5",
+      "property": "IE2 Efficiency - Relative Power Loss",
+      "condition": null,
+      "unit": "%",
+      "value": "3.1%"
+    },
+    {
+      "model": "GS11N-21P0",
+      "property": "IE2 Efficiency - Relative Power Loss",
+      "condition": null,
+      "unit": "%",
+      "value": "2.7%"
+    },
+    {
+      "model": "GS11N-22P0",
+      "property": "IE2 Efficiency - Relative Power Loss",
+      "condition": null,
+      "unit": "%",
+      "value": "2.5%"
+    },
+    {
+      "model": "GS11N-23P0",
+      "property": "IE2 Efficiency - Relative Power Loss",
+      "condition": null,
+      "unit": "%",
+      "value": "2.4%"
+    },
+    {
+      "model": "GS11N-20P2",
+      "property": "Weight (kg)",
+      "condition": null,
+      "unit": "kg",
+      "value": "0.4"
+    },
+    {
+      "model": "GS11N-20P5",
+      "property": "Weight (kg)",
+      "condition": null,
+      "unit": "kg",
+      "value": "0.5"
+    },
+    {
+      "model": "GS11N-21P0",
+      "property": "Weight (kg)",
+      "condition": null,
+      "unit": "kg",
+      "value": "0.8"
+    },
+    {
+      "model": "GS11N-22P0",
+      "property": "Weight (kg)",
+      "condition": null,
+      "unit": "kg",
+      "value": "1"
+    },
+    {
+      "model": "GS11N-23P0",
+      "property": "Weight (kg)",
+      "condition": null,
+      "unit": "kg",
+      "value": "1"
+    },
+    {
+      "model": "GS11N-20P2",
+      "property": "Cooling Method",
+      "condition": null,
+      "unit": null,
+      "value": "Convective"
+    },
+    {
+      "model": "GS11N-20P5",
+      "property": "Cooling Method",
+      "condition": null,
+      "unit": null,
+      "value": "Convective"
+    },
+    {
+      "model": "GS11N-21P0",
+      "property": "Cooling Method",
+      "condition": null,
+      "unit": null,
+      "value": "Convective"
+    },
+    {
+      "model": "GS11N-22P0",
+      "property": "Cooling Method",
+      "condition": null,
+      "unit": null,
+      "value": "Convective"
+    },
+    {
+      "model": "GS11N-23P0",
+      "property": "Cooling Method",
+      "condition": null,
+      "unit": null,
+      "value": "Fan"
+    },
+    {
+      "model": "GS11N-20P2",
+      "property": "IP Rating",
+      "condition": null,
+      "unit": null,
+      "value": "IP20"
+    },
+    {
+      "model": "GS11N-20P5",
+      "property": "IP Rating",
+      "condition": null,
+      "unit": null,
+      "value": "IP20"
+    },
+    {
+      "model": "GS11N-21P0",
+      "property": "IP Rating",
+      "condition": null,
+      "unit": null,
+      "value": "IP20"
+    },
+    {
+      "model": "GS11N-22P0",
+      "property": "IP Rating",
+      "condition": null,
+      "unit": null,
+      "value": "IP20"
+    },
+    {
+      "model": "GS11N-23P0",
+      "property": "IP Rating",
+      "condition": null,
+      "unit": null,
+      "value": "IP20"
+    }
+  ]
 }

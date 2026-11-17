@@ -43,16 +43,18 @@ vi.mock("../table-rule-pins", async (importOriginal) => {
   } };
 });
 // The PDF boundary: a captured item becomes the pdf.js text item it was read from, rotation included.
-vi.mock("unpdf", () => ({
+vi.mock("unpdf", async () => {
+  const { textContentItem } = await import("../__fixtures__/text-content-item");
+  return {
   getDocumentProxy: vi.fn(async () => ({
     getPage: async (n: number) => ({
-      getTextContent: async () => ({ items: (pdf.pages.find((p) => p.page === n)?.items ?? []).map((i) => ({ str: i.str, width: i.w,
-        transform: i.vertical ? [0, i.size, -i.size, 0, i.x, i.y] : [i.size, 0, 0, i.size, i.x, i.y] })) }),
+      getTextContent: async () => ({ items: (pdf.pages.find((p) => p.page === n)?.items ?? []).map((i) => textContentItem(i)) }),
       cleanup: () => true,
     }),
   })),
   extractText: vi.fn(async () => ({ text: Array.from({ length: Math.max(...pdf.pages.map((p) => p.page)) }, (_, i) => pdf.pages.find((p) => p.page === i + 1)?.text ?? "") })),
-}));
+  };
+});
 vi.mock("@/capabilities/pdf-page-label-reader", () => ({ readPageLabelsBounded: vi.fn(async () => null) }));
 const captured = vi.hoisted(() => [] as Array<{ sql: string; params: unknown[] }>);
 vi.mock("@/lib/tenant-context", () => ({
@@ -155,7 +157,9 @@ describe("GS10 page 27: the CT values are never stated as VT values, or the othe
           const duty = / \/ (CT|VT) \/ /.exec(l)?.[1] as "CT" | "VT" | undefined;
           expect(duty, l).toBeDefined();
           const first = (d: "CT" | "VT") => goldOf(model, p, d).value.split(" ")[0];
-          const value = l.slice(l.indexOf(` ${p} `) + p.length + 2).split(" ")[0];
+          // The page prints the unit cell on the label line for some rows ("Rated Output Current
+          // A 1.6"): skip a unit word, then the first token is the value.
+          const value = l.slice(l.indexOf(` ${p} `) + p.length + 2).split(" ").find((t) => !/^(A|kVA|kW|hp|kHz)$/.test(t));
           expect(value, l).toBe(first(duty!));
           expect(value, l).not.toBe(first(duty === "CT" ? "VT" : "CT"));
         }
@@ -164,21 +168,21 @@ describe("GS10 page 27: the CT values are never stated as VT values, or the othe
   }
 });
 
-describe("GS10 page 27: whatever the reader cannot place by duty is withheld, never stated without it", () => {
+describe("GS10 page 27: a rated value is never stated without its duty", () => {
   const rated = ["Rated Output Capacity", "Rated Output Current", "Rated Input Current"];
   it("no affirmed line states a rated value without a CT or VT label", async () => {
     const lines = modelLines((await ingest(P27)).read);
-    // Not vacuous by itself: the next test proves the rated values are still read and stored.
+    expect(lines.length).toBeGreaterThan(0); // the page is read
     const unlabelled = lines.filter((l) => rated.some((p) => l.includes(` ${p} `)) && !/ \/ (CT|VT) \/ /.test(l));
     expect(unlabelled).toEqual([]);
   });
-  it("the CT and VT values are still stored, as text withheld from every catalog record", async () => {
-    const { read } = await ingest(P27);
-    for (const printed of ["1.6 2.8 4.8 7.5", "1.8 3.0 5.0 8.0", "1.9 3.4 5.8 9.0", "2.2 3.8 6.0 9.6"]) {
-      const holding = read.filter((r) => r.content.includes(printed));
-      expect(holding.length, printed).toBeGreaterThan(0);
-      expect(holding.every((r) => !affirmsModel(r)), printed).toBe(true);
-    }
+  it("the duty-labelled lines are stored, and withheld while page 27 is not reviewed", async () => {
+    const { read, stored } = await ingest(P27);
+    const line = "GS13N-20P2: Input Rating / CT / Rated Input Current 1.9 A";
+    expect(modelLines(read)).toContain(line); // read, so withholding is not vacuous
+    const holding = stored.filter((r) => r.content.includes(line));
+    expect(holding.length).toBeGreaterThan(0);
+    expect(holding.every((r) => r.meta.table_unqualified === true)).toBe(true);
   });
 });
 
@@ -191,7 +195,11 @@ describe("the gate is unchanged: these lines answer only from a reviewed page", 
     expect(stored.filter((r) => r.content.includes(line)).every((r) => r.meta.table_unqualified === true)).toBe(true);
   });
   it("a review recorded for the page as it was read before this change does not carry over", async () => {
-    const { stored } = await ingest(P26, candidateP26.digest);
+    // The digest of page 26 as the 117860bce reader read it (the candidate record before this change).
+    const before = "5a68f20d187c128b083ef8a1c663b6b30a8e8317efecc244dc9f94dcc3bb2b87";
+    expect(candidateP26.digest).not.toBe(before);
+    const { stored } = await ingest(P26, before);
+    expect(stored.some((r) => r.content.includes(line))).toBe(true); // stored, so withholding is not vacuous
     expect(stored.filter((r) => r.content.includes(line)).every((r) => r.meta.table_unqualified === true)).toBe(true);
   });
   it("reviewed for exactly these rows: 5.1 A answers GS11N-20P2 only, from page 26, under Input Rating / CT", async () => {
