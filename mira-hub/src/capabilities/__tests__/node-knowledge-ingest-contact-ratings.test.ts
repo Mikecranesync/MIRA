@@ -3,7 +3,7 @@ import p19 from "@/capabilities/__fixtures__/contact-ratings/micro820-in009b-p19
 import gs10p26 from "@/capabilities/__fixtures__/table-rows/gs10-p26-230v-1ph.json";
 import { COLUMN_LINE_MARK, contactRatingColumns, readColumnLines, withColumnLines } from "@/capabilities/contact-ratings-table";
 import { ratingColumnFinding } from "@/capabilities/rating-column";
-import { chunkText } from "@/lib/node-knowledge-ingest";
+import { chunkText, isolateRatingLines } from "@/lib/node-knowledge-ingest";
 
 /**
  * #5474 item 5 — the upload side. `writePdfChunksForNode` reads a contact-ratings table's make /
@@ -179,5 +179,29 @@ describe("writePdfChunksForNode writes a contact-ratings table's columns under t
     const rows = await write();
     expect(rows.length).toBeGreaterThan(2);
     expect(rows.some((r) => r.content.includes(COLUMN_LINE_MARK))).toBe(false);
+  });
+});
+
+describe("isolateRatingLines accounts for every physical contact cell (#5510 F18)", () => {
+  const owned = { derived: [], labels: ["120 V AC", "240 V AC"], cells: ["15 A", "1.5 A", "7.5 A", "1.5 A"] };
+  const models = ["2080LC2020AWB", "2080LC2020QBB"];
+  it("a section with no row label but a table cell is withheld whole", () => {
+    expect(isolateRatingLines({ text: "Notes\n7.5 A" }, owned, models)).toEqual([{ text: "Notes\n7.5 A", models, scope: "unresolved" }]);
+  });
+  it("control: a section with no row label and no table cell is returned as is", () => {
+    const section = { text: "Analog Output Specifications\nOutput type Voltage" };
+    expect(isolateRatingLines(section, owned, models)).toEqual([section]);
+  });
+  it("a cell printed twice but present once inside the span leaves the section withheld whole", () => {
+    const text = "Intro\n120 V AC 15 A 1.5 A\n240 V AC 7.5 A\n1.5 A\nAfter";
+    expect(isolateRatingLines({ text }, owned, models)).toEqual([{ text, models, scope: "unresolved" }]);
+  });
+  it("control: when the span holds every printed occurrence, the text around it is released", () => {
+    const text = "Intro\n120 V AC 15 A 1.5 A\n240 V AC 7.5 A 1.5 A\nAfter 1.5 A rating elsewhere";
+    expect(isolateRatingLines({ text }, owned, models)).toEqual([
+      { text: "Intro" },
+      { text: "120 V AC 15 A 1.5 A\n240 V AC 7.5 A 1.5 A", models, scope: "unresolved" },
+      { text: "After 1.5 A rating elsewhere" },
+    ]);
   });
 });

@@ -809,7 +809,9 @@ async function parsePdfForNode(buffer: Buffer | Uint8Array, rest: NodeChunkOpts)
   const sectionLayouts: Array<ReturnType<typeof sectionTableLayout> | undefined> = [];
   // Lines a recognised contact-ratings table owns on each page: its derived column lines and the
   // labels of its source rows (#5510 F17). They are never written as unscoped text.
-  const ratingLines: Array<{ derived: string[]; labels: string[] } | null> = new Array(pages.length).fill(null);
+  // F18: also every cell printed on a source row's physical line, read from positions, so a cell the
+  // flattened text separates from its label is still accounted for.
+  const ratingLines: Array<{ derived: string[]; labels: string[]; cells: string[] } | null> = new Array(pages.length).fill(null);
   const outputs = new Map<string, boolean | null>();
   // Even a failed layout read must not erase a visibly present type inventory. Its model
   // applicability then stays unknown, with a warning and unresolved relay-section metadata.
@@ -829,7 +831,11 @@ async function parsePdfForNode(buffer: Buffer | Uint8Array, rest: NodeChunkOpts)
         console.warn(`[node-ingest] contact-ratings column read failed on ${rest.filename} p.${p + 1} (page kept without column lines):`, err instanceof Error ? err.message : err);
       }
       const annotation = rating ? { after: rating.lastRow, lines: columnLines(rating.rows), sourceRows: rating.sourceRows } : undefined;
-      if (rating) ratingLines[p] = { derived: annotation!.lines, labels: rating.rows.map((r) => r.label.trim()).filter(Boolean) };
+      if (rating) {
+        const cells = items.filter((i) => i.str.trim() !== "" && !rating!.sourceRows.includes(i)
+          && rating!.sourceRows.some((label) => Math.abs(i.y - label.y) <= RATING_ROW_BAND_PT && i.x > label.x)).map((i) => i.str.trim());
+        ratingLines[p] = { derived: annotation!.lines, labels: rating.rows.map((r) => r.label.trim()).filter(Boolean), cells };
+      }
       // Recognize physical section cuts on the complete page, before extraction removes
       // their source items. Closely adjacent sections must never share a model block.
       const fullLayout = sectionTableLayout(items, true, undefined, annotation, true);
@@ -919,21 +925,38 @@ async function parsePdfForNode(buffer: Buffer | Uint8Array, rest: NodeChunkOpts)
   return { pages, markers, labels, pageTables };
 }
 
+/** Vertical band (pt) within which an item shares a contact-table source row's physical line. */
+const RATING_ROW_BAND_PT = 2.5;
+
 /** Split an unscoped section around the lines a recognised contact-ratings table owns (its derived
  *  column lines, and lines that begin with one of its row labels), from the first to the last, and
- *  mark only that span unresolved (#5510 F17). A section holding none of them is returned as is. */
-function isolateRatingLines(section: ScopedText, owned: { derived: string[]; labels: string[] }, models: string[]): ScopedText[] {
+ *  mark only that span unresolved (#5510 F17). The text outside the span is released only when the
+ *  span's source lines account for every cell the table prints on its rows' physical lines, counted
+ *  occurrence by occurrence (#5510 F18): flattened extraction can put a cell on a line away from its
+ *  label, and a cell the span cannot account for leaves the whole section unresolved rather than
+ *  unrestricted. A section holding no owned line and no cell is returned as is. */
+export function isolateRatingLines(section: ScopedText, owned: { derived: string[]; labels: string[]; cells: string[] }, models: string[]): ScopedText[] {
   const lines = section.text.split("\n");
   const ownsLine = (line: string) => {
     const t = line.trim();
     return owned.derived.some((d) => t === d.trim()) || owned.labels.some((label) => t === label || t.startsWith(`${label} `));
   };
+  const cellPattern = (cell: string) => new RegExp(`(?<![\\w.])${cell.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, "\\s*")}(?![\\w.])`, "g");
+  const holdsCell = (text: string) => owned.cells.some((cell) => cellPattern(cell).test(text));
+  const printed = new Map<string, number>();
+  for (const cell of owned.cells) printed.set(cell, (printed.get(cell) ?? 0) + 1);
+  const accounted = (span: string[]) => {
+    const source = span.filter((line) => !owned.derived.some((d) => line.trim() === d.trim())).join("\n");
+    return [...printed].every(([cell, n]) => (source.match(cellPattern(cell))?.length ?? 0) >= n);
+  };
+  const whole = [{ text: section.text, models, scope: "unresolved" as const }];
   const first = lines.findIndex(ownsLine);
-  if (first < 0) return [section];
+  if (first < 0) return holdsCell(section.text) ? whole : [section];
   let last = first;
   lines.forEach((line, i) => { if (ownsLine(line)) last = i; });
   const before = lines.slice(0, first).join("\n");
   const after = lines.slice(last + 1).join("\n");
+  if (!accounted(lines.slice(first, last + 1))) return whole;
   return [
     ...(first > 0 ? [{ ...section, text: before }] : []),
     { text: lines.slice(first, last + 1).join("\n"), models, scope: "unresolved" as const },
