@@ -8,7 +8,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import micro820 from "../__fixtures__/table-rows/micro820-in009-p16-20-scope.json";
-import { relayOnlyInventory } from "../__fixtures__/micro820-relay-subset";
+import { contactTableBeforeInventory, RELAY_CAPTION_BODY, RELAY_CAPTION_PRINTED, relayOnlyInventory } from "../__fixtures__/micro820-relay-subset";
 import gs10p26 from "../__fixtures__/table-rows/gs10-p26-230v-1ph.json";
 import candidateP26 from "../__fixtures__/reviewed-pages/gs10-rev-b-p26.candidate.json";
 import pins from "../table-rule-pins.json";
@@ -178,6 +178,23 @@ describe("through the writer: a relay inventory that lists only some variants (#
         else expect(scoped.tableUnqualified).toBe(true);
       }
     });
+  }
+});
+
+describe("through the writer: a contact table whose caption typography fails (#5510 F17)", () => {
+  for (const inventory of ["complete", "subset", "absent"] as const) {
+    for (const size of [RELAY_CAPTION_BODY, RELAY_CAPTION_PRINTED]) {
+      it(`${inventory} inventory, caption ${size} pt: the contact values are stored withheld, never as plain text`, async () => {
+        const rows = await ingest(contactTableBeforeInventory(micro820.pages as Page[], inventory, size), micro820.sha256);
+        const contact = rows.filter((r) => r.page === 2 && /\b15 A\b|\b1\.5 A\b|columns read from the page layout/.test(r.content));
+        expect(contact.length).toBeGreaterThan(0); // the text is preserved
+        for (const r of contact) {
+          const scoped = asScoped(r);
+          expect(affirmsModel(scoped)).toBe(false);
+          expect(scoped.tableScope === "unresolved" || (scoped.tableModels?.length ?? 0) > 0, r.content.slice(0, 80)).toBe(true);
+        }
+      });
+    }
   }
 });
 

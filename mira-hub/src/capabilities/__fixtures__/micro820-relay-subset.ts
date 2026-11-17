@@ -19,3 +19,24 @@ export function relayOnlyInventory<P extends FixturePage>(pages: readonly P[]): 
     rules: PAGE16_RULES,
   });
 }
+
+/**
+ * The captured relay contact table placed BEFORE the output-type inventory (#5510 F17): page 1 a
+ * model-list cover, page 2 the real page 19, page 3 the real page 16 inventory (complete, the
+ * AWB/QWB-only subset, or absent). `captionSize` replaces only the "Relay Contact Ratings"
+ * caption's font size; 10 is the page as printed, 8 is its body size (the reproduction Codex ran),
+ * below the 9 pt Make/Break heads, so typography cannot make it the table's caption.
+ */
+export const RELAY_CAPTION_PRINTED = 10;
+export const RELAY_CAPTION_BODY = 8;
+export const RELAY_HEAD_SIZE = 9;
+export function contactTableBeforeInventory<P extends FixturePage>(pages: readonly P[], inventory: "complete" | "subset" | "absent", captionSize: number): RuledPage[] {
+  const coverLines = ["Micro820 20-Point Programmable Controllers", "Catalog Numbers 2080-LC20-20AWB(R), 2080-LC20-20QBB(R), 2080-LC20-20QWB(R)"];
+  const cover: RuledPage = { page: 1, text: coverLines.join("\n"),
+    items: coverLines.map((str, i) => ({ str, x: 72, y: 700 - i * 20, w: str.length * 4.5, size: i === 0 ? 14 : 10 })) };
+  const p19 = pages.find((p) => p.page === 19)!;
+  const contact: RuledPage = { page: 2, text: p19.text,
+    items: p19.items.map((i) => i.str === "Relay Contact Ratings" || (i.str === "" && Math.abs(i.y - 623.3) < 0.5) ? { ...i, size: captionSize } : { ...i }) };
+  const p16 = (inventory === "subset" ? relayOnlyInventory(pages) : pages).find((p) => p.page === 16)!;
+  return inventory === "absent" ? [cover, contact] : [cover, contact, { ...p16, page: 3 }];
+}

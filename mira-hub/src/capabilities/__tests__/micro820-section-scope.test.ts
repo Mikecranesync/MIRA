@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import type { PoolClient } from "pg";
 import fixture from "../__fixtures__/table-rows/micro820-in009-p16-20-scope.json";
-import { relayOnlyInventory } from "../__fixtures__/micro820-relay-subset";
+import { contactTableBeforeInventory, RELAY_CAPTION_BODY, RELAY_CAPTION_PRINTED, RELAY_HEAD_SIZE, relayOnlyInventory } from "../__fixtures__/micro820-relay-subset";
 import ml1100Ratings from "../__fixtures__/table-rows/ml1100-p114-p120-ratings-scope.json";
 import { COLUMN_LINE_MARK } from "../contact-ratings-table";
 import { excludedTablesRefusalText, modelNumbersIn } from "../manual-applicability";
@@ -421,6 +421,36 @@ describe("#5503: real Micro820 sections from upload through retrieval", () => {
     expect(sibling.text).not.toContain(body);
     const own = await retrieve("20QBB", bodyRows, "What is the transistor-only output evidence?");
     expect(own.text.includes(body) || bodyRows.every((r) => r.table_unqualified === true)).toBe(true);
+  });
+
+  describe("a recognized contact table keeps withheld scope when typography cannot make its caption one (#5510 F17)", () => {
+    const contactValues = /15 A|1\.5 A|make 15 A/;
+    for (const inventory of ["complete", "subset", "absent"] as const) {
+      for (const captionSize of [RELAY_CAPTION_BODY, RELAY_CAPTION_PRINTED]) {
+        const why = `${inventory} inventory, caption ${captionSize} pt${captionSize === RELAY_CAPTION_PRINTED ? " (as printed, control)" : ""}`;
+        it(`${why}: the contact values are stored, scoped, and never returned for QBB`, async () => {
+          const pages = contactTableBeforeInventory(fixture.pages, inventory, captionSize);
+          const contact = pages.find((p) => p.page === 2)!;
+          // Preconditions: only the caption size differs, and the reader still recognises the table.
+          expect(contact.items.find((i) => i.str === "Relay Contact Ratings")!.size).toBe(captionSize);
+          expect(contact.items.filter((i) => i.str === "Make").every((i) => i.size === RELAY_HEAD_SIZE)).toBe(true);
+          const heading = sectionTableLayout(contact.items, true)?.headings.some((h) => h.table && /Relay Contact Ratings/.test(h.text)) ?? false;
+          expect(heading).toBe(captionSize > RELAY_HEAD_SIZE);
+          pdfPages.current = pages;
+          let rows: Row[];
+          try { rows = await ingestFixture(); } finally { pdfPages.current = null; }
+          const ratings = rows.filter((r) => r.page_start === 2 && r.content.includes(COLUMN_LINE_MARK));
+          expect(ratings.length).toBeGreaterThan(0); // the reader derived the make/break/continuous lines
+          for (const r of rows.filter((row) => row.page_start === 2 && contactValues.test(row.content))) {
+            expect(r.table_scope === "unresolved" || ((r.table_models as string[] | null) ?? []).length > 0, r.content.slice(0, 80)).toBe(true);
+            if (r.table_scope !== "unresolved") expect((r.table_models as string[]) ?? []).not.toContain("2080LC2020QBB");
+          }
+          const qbb = await retrieve("20QBB", rows.filter((r) => r.page_start === 2), "What are the relay contact ratings at 120 V AC?");
+          expect(qbb.text).not.toMatch(contactValues);
+          expect(qbb.text).not.toContain(COLUMN_LINE_MARK);
+        });
+      }
+    }
   });
 
   it("real Make/Break/Continuous geometry remains relay evidence when the title is only Contact Ratings", async () => {
