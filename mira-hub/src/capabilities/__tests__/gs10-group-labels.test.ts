@@ -164,6 +164,24 @@ describe("GS10 page 27: the CT values are never stated as VT values, or the othe
   }
 });
 
+describe("GS10 page 27: whatever the reader cannot place by duty is withheld, never stated without it", () => {
+  const rated = ["Rated Output Capacity", "Rated Output Current", "Rated Input Current"];
+  it("no affirmed line states a rated value without a CT or VT label", async () => {
+    const lines = modelLines((await ingest(P27)).read);
+    // Not vacuous by itself: the next test proves the rated values are still read and stored.
+    const unlabelled = lines.filter((l) => rated.some((p) => l.includes(` ${p} `)) && !/ \/ (CT|VT) \/ /.test(l));
+    expect(unlabelled).toEqual([]);
+  });
+  it("the CT and VT values are still stored, as text withheld from every catalog record", async () => {
+    const { read } = await ingest(P27);
+    for (const printed of ["1.6 2.8 4.8 7.5", "1.8 3.0 5.0 8.0", "1.9 3.4 5.8 9.0", "2.2 3.8 6.0 9.6"]) {
+      const holding = read.filter((r) => r.content.includes(printed));
+      expect(holding.length, printed).toBeGreaterThan(0);
+      expect(holding.every((r) => !affirmsModel(r)), printed).toBe(true);
+    }
+  });
+});
+
 describe("the gate is unchanged: these lines answer only from a reviewed page", () => {
   const line = "GS11N-20P2: Input Rating / CT / Rated Input Current 5.1 A";
   it("with the shipped pins (page 26 not reviewed) the 5.1 A line is stored, but withheld", async () => {
