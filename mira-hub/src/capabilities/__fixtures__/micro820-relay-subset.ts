@@ -30,13 +30,19 @@ export function relayOnlyInventory<P extends FixturePage>(pages: readonly P[]): 
 export const RELAY_CAPTION_PRINTED = 10;
 export const RELAY_CAPTION_BODY = 8;
 export const RELAY_HEAD_SIZE = 9;
-export function contactTableBeforeInventory<P extends FixturePage>(pages: readonly P[], inventory: "complete" | "subset" | "absent", captionSize: number): RuledPage[] {
+export const RELAY_CAPTION_HEAD = 9;
+/** `uncaptioned`: also drop every other caption from the contact page, so no line on it names a
+ *  catalog number and nothing in the document binds the contact table to any model. */
+export function contactTableBeforeInventory<P extends FixturePage>(pages: readonly P[], inventory: "complete" | "subset" | "absent", captionSize: number, uncaptioned = false): RuledPage[] {
   const coverLines = ["Micro820 20-Point Programmable Controllers", "Catalog Numbers 2080-LC20-20AWB(R), 2080-LC20-20QBB(R), 2080-LC20-20QWB(R)"];
   const cover: RuledPage = { page: 1, text: coverLines.join("\n"),
     items: coverLines.map((str, i) => ({ str, x: 72, y: 700 - i * 20, w: str.length * 4.5, size: i === 0 ? 14 : 10 })) };
   const p19 = pages.find((p) => p.page === 19)!;
   const contact: RuledPage = { page: 2, text: p19.text,
-    items: p19.items.map((i) => i.str === "Relay Contact Ratings" || (i.str === "" && Math.abs(i.y - 623.3) < 0.5) ? { ...i, size: captionSize } : { ...i }) };
+    items: p19.items.map((i) => i.str === "Relay Contact Ratings" || (i.str === "" && Math.abs(i.y - 623.3) < 0.5) ? { ...i, size: captionSize } : { ...i })
+      .filter((i) => !uncaptioned || !/\b2080-LC20-20/.test(i.str)) };
+  if (uncaptioned) contact.text = contact.text.split("\n").filter((line) => !/\b2080-LC20-20/.test(line)).join("\n");
+  if (uncaptioned) cover.items = cover.items.slice(0, 1), cover.text = coverLines[0];
   const p16 = (inventory === "subset" ? relayOnlyInventory(pages) : pages).find((p) => p.page === 16)!;
   return inventory === "absent" ? [cover, contact] : [cover, contact, { ...p16, page: 3 }];
 }
