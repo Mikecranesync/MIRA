@@ -691,6 +691,27 @@ describe("duty stubs: placement is bounded, and stub text is never dropped (#559
     expect(text).toContain("Input Rating");
   });
 
+  // #5598 Codex round 2 F2: one stub kind places, the other fails; the rows are demoted and the
+  // label that DID place must survive as text too.
+  const vgroup = (str: string, y: number) => ({ str, x: 20, y, w: 48, size: 8, vertical: true });
+  it.each([
+    ["the group label places, the CT/VT labels cannot", [
+      item("CT", 50, 714), item("VT", 50, 666), vgroup("Output Rating", 668.4),
+      ...[714, 702, 690, 678, 666].flatMap((y, i) => [item("Rated Current", 100, y), item(String(i + 3), 250, y), item(String(i + 4), 350, y)])], 5],
+    ["the CT/VT labels place, the group label cannot", [
+      item("CT", 50, 714), item("VT", 50, 702), vgroup("Output Rating", 640),
+      ...[714, 702].flatMap((y, i) => [item("Rated Current", 100, y), item(String(i + 3), 250, y), item(String(i + 4), 350, y)])], 2],
+  ])("%s: the values stay unqualified and every label survives", (_name, rated, demoted) => {
+    const items = [...header(750), item("Frame Size", 10, 738), item("A1", 250, 738), item("A1", 350, 738),
+      item("Cooling Method", 10, 726), item("Fan", 250, 726), item("Fan", 350, 726), ...rated];
+    const blocks = detectModelTables(items);
+    expect(blocks.flatMap((b) => b.rows).map((r) => r.label)).toEqual(["Frame Size", "Cooling Method"]);
+    expect(blocks.flatMap((b) => b.unqualified).filter((l) => /Rated Current/.test(l))).toHaveLength(demoted);
+    expect(pageWithTables(items), "precondition: the page is read as a table").not.toBeNull();
+    const text = allText(items);
+    for (const label of ["Output Rating", "CT", "VT"]) expect(text, label).toMatch(new RegExp(`\\b${label}\\b`));
+  });
+
   it("two ordinary rows, then three rated rows CT and VT cannot be centred on: the values stay unqualified and CT and VT survive", () => {
     const items = [...header(750),
       item("Frame Size", 30, 738), item("A1", 250, 738), item("A1", 350, 738),
