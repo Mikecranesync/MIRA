@@ -29,7 +29,7 @@ import { readPageLabelsBounded } from "@/capabilities/pdf-page-label-reader";
 import { pageLayoutItems } from "@/capabilities/pdf-layout-items";
 import { reviewedRowsDigest, rulePinsForSha } from "@/capabilities/table-rule-pins";
 import { gatePageRows } from "@/capabilities/model-scope-gate";
-import { pageWithTables, type TableChunk } from "@/capabilities/table-rows";
+import { pageWithTables, type LayoutItem, type TableChunk } from "@/capabilities/table-rows";
 import { contactRatingTable, columnLines, withColumnLines } from "@/capabilities/contact-ratings-table";
 import { SectionTableScope, tableExtractionBoundaries, withTableInterruptions, hasModelSectionScope, modelSectionModels, scopeTableChunks, sectionTableLayout, readOutputTypes, mergeOutputTypes, type ScopedText, type SectionScope } from "@/capabilities/section-table-scope";
 import { hasUnmappedGlyphBetweenDigits } from "@/capabilities/manual-completeness";
@@ -832,8 +832,7 @@ async function parsePdfForNode(buffer: Buffer | Uint8Array, rest: NodeChunkOpts)
       }
       const annotation = rating ? { after: rating.lastRow, lines: columnLines(rating.rows), sourceRows: rating.sourceRows } : undefined;
       if (rating) {
-        const cells = items.filter((i) => i.str.trim() !== "" && !rating!.sourceRows.includes(i)
-          && rating!.sourceRows.some((label) => Math.abs(i.y - label.y) <= RATING_ROW_BAND_PT && i.x > label.x)).map((i) => i.str.trim());
+        const cells = contactTableCells(items, rating.sourceRows);
         ratingLines[p] = { derived: annotation!.lines, labels: rating.rows.map((r) => r.label.trim()).filter(Boolean), cells };
       }
       // Recognize physical section cuts on the complete page, before extraction removes
@@ -927,6 +926,28 @@ async function parsePdfForNode(buffer: Buffer | Uint8Array, rest: NodeChunkOpts)
 
 /** Vertical band (pt) within which an item shares a contact-table source row's physical line. */
 const RATING_ROW_BAND_PT = 2.5;
+/** A figure a contact-ratings cell can hold: a number, optionally with an A / V / VA unit. */
+const CELL_FIGURE_RE = /^\d+(?:\.\d+)?\s?(?:A|V|VA)?$/;
+
+/** Every cell of a recognised contact-ratings table, read from positions (#5510 F18, F19): each item
+ *  on a source row's physical line, and each figure anywhere in the table's region, from its
+ *  Make/Break heads down to the first line below the last row that is not a figure. A cell printed
+ *  off its row's baseline, between rows or just under the last one, is therefore still counted, and
+ *  the text around the table is released only when every one of them is accounted for. */
+export function contactTableCells(items: readonly LayoutItem[], sourceRows: readonly LayoutItem[]): string[] {
+  const ys = sourceRows.map((label) => label.y);
+  const first = Math.max(...ys), last = Math.min(...ys);
+  const heads = items.filter((i) => /^(make|break)$/i.test(i.str.trim()) && i.y > first).map((i) => i.y);
+  const top = heads.length > 0 ? Math.min(...heads) : first + RATING_ROW_BAND_PT;
+  const below = items.filter((i) => i.y < last - RATING_ROW_BAND_PT && i.str.trim() !== "" && !CELL_FIGURE_RE.test(i.str.trim())).map((i) => i.y);
+  const floor = below.length > 0 ? Math.max(...below) : -Infinity;
+  return items.filter((i) => {
+    const t = i.str.trim();
+    if (t === "" || sourceRows.includes(i)) return false;
+    if (sourceRows.some((label) => Math.abs(i.y - label.y) <= RATING_ROW_BAND_PT && i.x > label.x)) return true;
+    return CELL_FIGURE_RE.test(t) && i.y < top && i.y > floor;
+  }).map((i) => i.str.trim());
+}
 
 /** Split an unscoped section around the lines a recognised contact-ratings table owns (its derived
  *  column lines, and lines that begin with one of its row labels), from the first to the last, and
