@@ -130,7 +130,7 @@ vi.mock("@/capabilities/pdf-page-label-reader", () => ({ readPageLabelsBounded: 
 vi.mock("@/lib/tenant-context", () => ({
   withTenantContext: vi.fn(async (_tenant: string, fn: (c: { query: (sql: string, params: unknown[]) => Promise<{ rows: never[] }> }) => Promise<unknown>) =>
     fn({ query: async (sql: string, params: unknown[]) => {
-      if (/INSERT INTO knowledge_entries/.test(sql)) for (let i = 3; i + 3 < params.length; i += 4) {
+      if (/INSERT\s+INTO\s+knowledge_entries/.test(sql)) for (let i = 3; i + 3 < params.length; i += 4) {
         upload.rows.push({ content: params[i + 1] as string, page: params[i + 2] as number, metadata: JSON.parse(params[i + 3] as string) });
       }
       return { rows: [] as never[] };
