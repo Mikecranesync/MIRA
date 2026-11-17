@@ -1571,3 +1571,28 @@ approved:
     approved_classification: TENANT-ONLY
     query_sha256: "f891394efb5278961c51a28e34a2fe9442b499acc3ec8eadee7dca3316197dec"
     reason: "#5503 / PR #5510 F4/F5 regression only: inspect private synthetic upload rows for the fixed TENANT and page21/22 in the connection-local TEMP knowledge_entries table, under BEGIN, SAVEPOINT and final ROLLBACK. Requires confirmed disposable PostgreSQL. Production writer/retrieval is exercised separately; no shared OEM visibility policy or checker change."
+
+  "mira-hub/src/lib/__tests__/model-scope-gate.integration.test.ts:57":
+    approved_classification: TENANT-ONLY
+    query_sha256: "338fe465bb52dfe698fd64b66df32cc3263bf64681a5c3a3773e30c2df203de7"
+    reason: "#5503 / PR #5510 fail-closed gate: DELETE clears the fixed TENANT before re-running the real upload writer with the gate open or closed. Target is the connection-local TEMP knowledge_entries table created in beforeAll for a fixed synthetic TENANT, under BEGIN and final ROLLBACK (ON COMMIT DROP); requires a confirmed disposable PostgreSQL. Deliberately a private-upload test, not a shared OEM surface; no production pool or corpus data."
+
+  "mira-hub/src/lib/__tests__/model-scope-gate.integration.test.ts:107":
+    approved_classification: TENANT-ONLY
+    query_sha256: "8bb2c29f2d1cd2653872d84eb699f2d42fea6eaf0a11476a6b73b8324efaf860"
+    reason: "#5503 / PR #5510 fail-closed gate: control readback counting rows that affirm a model after the gate-open upload. Target is the connection-local TEMP knowledge_entries table created in beforeAll for a fixed synthetic TENANT, under BEGIN and final ROLLBACK (ON COMMIT DROP); requires a confirmed disposable PostgreSQL. Deliberately a private-upload test, not a shared OEM surface; no production pool or corpus data."
+
+  "mira-hub/src/lib/__tests__/model-scope-gate.integration.test.ts:118":
+    approved_classification: TENANT-ONLY
+    query_sha256: "eb100eb36e9b1aefbeed1d73f015a4fa449869593e900e0d05e1b56d36d45894"
+    reason: "#5503 / PR #5510 fail-closed gate: readback of every stored row's metadata to prove no row affirms a model when the page is not reviewed. Target is the connection-local TEMP knowledge_entries table created in beforeAll for a fixed synthetic TENANT, under BEGIN and final ROLLBACK (ON COMMIT DROP); requires a confirmed disposable PostgreSQL. Deliberately a private-upload test, not a shared OEM surface; no production pool or corpus data."
+
+  "mira-hub/src/lib/__tests__/model-scope-gate.integration.test.ts:150":
+    approved_classification: TENANT-ONLY
+    query_sha256: "941694f3756ecfdd3c5b7a6513a182723dcbd01c2195eaecd8caa36691177fe2"
+    reason: "#5503 / PR #5510 fail-closed gate: DELETE removes only the synthetic probe passage (zzsharedprobe) between admission checks. Target is the connection-local TEMP knowledge_entries table created in beforeAll for a fixed synthetic TENANT, under BEGIN and final ROLLBACK (ON COMMIT DROP); requires a confirmed disposable PostgreSQL. Deliberately a private-upload test, not a shared OEM surface; no production pool or corpus data."
+
+  "mira-hub/src/lib/__tests__/model-scope-gate.integration.test.ts:159":
+    approved_classification: TENANT-ONLY
+    query_sha256: "fc45869274388bf33284d85cb692e5f19a8589def76754f9122f9379131c0dbf"
+    reason: "#5503 / PR #5510 fail-closed gate: INSERT ... SELECT copies one real stored row of this upload as the probe passage, replacing only its text and model-scope fields. Target is the connection-local TEMP knowledge_entries table created in beforeAll for a fixed synthetic TENANT, under BEGIN and final ROLLBACK (ON COMMIT DROP); requires a confirmed disposable PostgreSQL. Deliberately a private-upload test, not a shared OEM surface; no production pool or corpus data."
