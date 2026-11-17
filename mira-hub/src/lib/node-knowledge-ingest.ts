@@ -894,7 +894,9 @@ async function parsePdfForNode(buffer: Buffer | Uint8Array, rest: NodeChunkOpts)
   // #5510 F17, F22: a contact-ratings table the column reader positively recognised states
   // electrical values whose applicability only a caption can establish. On such a page every section
   // no caption bound is stored unresolved: withheld from every record that holds a catalog number,
-  // text kept. Sections a caption bound are left as they were. The whole page is withheld, not just
+  // text kept. Sections a caption bound are left as they were. Scope inherited from a parameter or
+  // accessory column (columnOnly) is not a caption: it is withheld too, never left to the column
+  // domain, which would admit the ratings for any other family (F23). The whole page is withheld, not just
   // the table's lines, because which text items belong to a table cannot be read reliably from
   // positions: F18, F19, F21 and F22 each released a rating cell that a positional count missed.
   // Owner decision 2026-11-17 (Mission Control #5232): withhold the page; the cost on the captured
@@ -904,7 +906,7 @@ async function parsePdfForNode(buffer: Buffer | Uint8Array, rest: NodeChunkOpts)
     if (!hasTable) return;
     const table = pageTables[p];
     const sections = table?.sections ?? [{ text: table ? table.remainder : pages[p] }];
-    const withheld = sections.map((section) => section.scope || (section.models?.length ?? 0) > 0
+    const withheld = sections.map((section) => !section.columnOnly && (section.scope || (section.models?.length ?? 0) > 0)
       ? section : { text: section.text, models: knownModels, scope: "unresolved" as const });
     pageTables[p] = { remainder: table?.remainder ?? pages[p], chunks: table?.chunks ?? [], ...table, sections: withheld };
   });
