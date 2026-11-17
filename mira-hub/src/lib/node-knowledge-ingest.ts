@@ -29,7 +29,7 @@ import { readPageLabelsBounded } from "@/capabilities/pdf-page-label-reader";
 import { pageLayoutItems } from "@/capabilities/pdf-layout-items";
 import { reviewedRowsDigest, rulePinsForSha } from "@/capabilities/table-rule-pins";
 import { gatePageRows } from "@/capabilities/model-scope-gate";
-import { pageWithTables, type LayoutItem, type TableChunk } from "@/capabilities/table-rows";
+import { pageWithTables, type TableChunk } from "@/capabilities/table-rows";
 import { contactRatingTable, columnLines, withColumnLines } from "@/capabilities/contact-ratings-table";
 import { SectionTableScope, tableExtractionBoundaries, withTableInterruptions, hasModelSectionScope, modelSectionModels, scopeTableChunks, sectionTableLayout, readOutputTypes, mergeOutputTypes, type ScopedText, type SectionScope } from "@/capabilities/section-table-scope";
 import { hasUnmappedGlyphBetweenDigits } from "@/capabilities/manual-completeness";
@@ -807,11 +807,8 @@ async function parsePdfForNode(buffer: Buffer | Uint8Array, rest: NodeChunkOpts)
   const reviewed: Array<string | null> = new Array(pages.length).fill(null);
   // undefined means unreadable/repaired geometry; null means a successful unheaded page.
   const sectionLayouts: Array<ReturnType<typeof sectionTableLayout> | undefined> = [];
-  // Lines a recognised contact-ratings table owns on each page: its derived column lines and the
-  // labels of its source rows (#5510 F17). They are never written as unscoped text.
-  // F18: also every cell printed on a source row's physical line, read from positions, so a cell the
-  // flattened text separates from its label is still accounted for.
-  const ratingLines: Array<{ derived: string[]; labels: string[]; cells: string[] } | null> = new Array(pages.length).fill(null);
+  // Pages holding a contact-ratings table the column reader positively recognised (#5510 F17, F22).
+  const ratingPages: boolean[] = new Array(pages.length).fill(false);
   const outputs = new Map<string, boolean | null>();
   // Even a failed layout read must not erase a visibly present type inventory. Its model
   // applicability then stays unknown, with a warning and unresolved relay-section metadata.
@@ -831,10 +828,7 @@ async function parsePdfForNode(buffer: Buffer | Uint8Array, rest: NodeChunkOpts)
         console.warn(`[node-ingest] contact-ratings column read failed on ${rest.filename} p.${p + 1} (page kept without column lines):`, err instanceof Error ? err.message : err);
       }
       const annotation = rating ? { after: rating.lastRow, lines: columnLines(rating.rows), sourceRows: rating.sourceRows } : undefined;
-      if (rating) {
-        const cells = contactTableCells(items, rating.sourceRows);
-        ratingLines[p] = { derived: annotation!.lines, labels: rating.rows.map((r) => r.label.trim()).filter(Boolean), cells };
-      }
+      if (rating) ratingPages[p] = true;
       // Recognize physical section cuts on the complete page, before extraction removes
       // their source items. Closely adjacent sections must never share a model block.
       const fullLayout = sectionTableLayout(items, true, undefined, annotation, true);
@@ -897,18 +891,22 @@ async function parsePdfForNode(buffer: Buffer | Uint8Array, rest: NodeChunkOpts)
       : scope.splitPage(remainder, layout, table?.chunks ?? []);
     pageTables[p] = { remainder, ...scoped };
   }
-  // #5510 F17: a contact-ratings table the column reader positively recognised states electrical
-  // values whose applicability only a caption can establish. Where no caption bound them (its
-  // typography did not qualify, or the page had no readable section at all), the table's own lines
-  // are stored unresolved: withheld from every record that holds a catalog number, text kept.
-  // Text under a caption that did bind them, and every other line of the page, is left as it was.
+  // #5510 F17, F22: a contact-ratings table the column reader positively recognised states
+  // electrical values whose applicability only a caption can establish. On such a page every section
+  // no caption bound is stored unresolved: withheld from every record that holds a catalog number,
+  // text kept. Sections a caption bound are left as they were. The whole page is withheld, not just
+  // the table's lines, because which text items belong to a table cannot be read reliably from
+  // positions: F18, F19, F21 and F22 each released a rating cell that a positional count missed.
+  // Owner decision 2026-11-17 (Mission Control #5232): withhold the page; the cost on the captured
+  // manuals is Micro820 p19 "Analog Output Specifications", withheld until that page is reviewed.
   const knownModels = [...new Set([...outputs.keys(), ...sectionModels])];
-  ratingLines.forEach((owned, p) => {
-    if (!owned) return;
+  ratingPages.forEach((hasTable, p) => {
+    if (!hasTable) return;
     const table = pageTables[p];
     const sections = table?.sections ?? [{ text: table ? table.remainder : pages[p] }];
-    const isolated = sections.flatMap((section) => section.scope || (section.models?.length ?? 0) > 0 ? [section] : isolateRatingLines(section, owned, knownModels));
-    pageTables[p] = { remainder: table?.remainder ?? pages[p], chunks: table?.chunks ?? [], ...table, sections: isolated };
+    const withheld = sections.map((section) => section.scope || (section.models?.length ?? 0) > 0
+      ? section : { text: section.text, models: knownModels, scope: "unresolved" as const });
+    pageTables[p] = { remainder: table?.remainder ?? pages[p], chunks: table?.chunks ?? [], ...table, sections: withheld };
   });
   // Garage pilot L2 (plan row 5-A): a page whose numbers carry a replacement
   // character between two digits ("5�1" for 5.1 A — the PDF's ToUnicode
@@ -922,66 +920,6 @@ async function parsePdfForNode(buffer: Buffer | Uint8Array, rest: NodeChunkOpts)
   pageTables.forEach((table, p) => { if (table) table.reviewed = reviewed[p]; });
   const markers: Array<TextRepair | null> = repairs.map((r, p) => r ?? (hasUnmappedGlyphBetweenDigits(pages[p]) ? "unmapped_glyph" : null));
   return { pages, markers, labels, pageTables };
-}
-
-/** Vertical band (pt) within which an item shares a contact-table source row's physical line. */
-const RATING_ROW_BAND_PT = 2.5;
-/** Every cell of a recognised contact-ratings table, read from positions, never from what a cell
- *  looks like (#5510 F18, F19, F21). The table's region runs from its Make/Break heads down to the
- *  first line under its last row that starts in the label column (a heading, a paragraph, a note).
- *  Every item to the right of the label column inside that region counts as a cell, whatever it
- *  holds: a cell off its row's baseline, between rows, or carrying a footnote mark is still counted,
- *  and the text around the table is released only when every one of them is accounted for. */
-export function contactTableCells(items: readonly LayoutItem[], sourceRows: readonly LayoutItem[]): string[] {
-  const ys = sourceRows.map((label) => label.y);
-  const first = Math.max(...ys), last = Math.min(...ys);
-  const labelX = Math.min(...sourceRows.map((label) => label.x));
-  const rightOfLabels = (i: LayoutItem) => i.x > labelX + RATING_ROW_BAND_PT;
-  const heads = items.filter((i) => /^(make|break)$/i.test(i.str.trim()) && i.y > first).map((i) => i.y);
-  const top = heads.length > 0 ? Math.min(...heads) : first + RATING_ROW_BAND_PT;
-  const below = items.filter((i) => i.y < last - RATING_ROW_BAND_PT && i.str.trim() !== "" && !rightOfLabels(i)).map((i) => i.y);
-  const floor = below.length > 0 ? Math.max(...below) : -Infinity;
-  return items.filter((i) => {
-    if (i.str.trim() === "" || sourceRows.includes(i)) return false;
-    if (sourceRows.some((label) => Math.abs(i.y - label.y) <= RATING_ROW_BAND_PT && i.x > label.x)) return true;
-    return rightOfLabels(i) && i.y < top && i.y > floor;
-  }).map((i) => i.str.trim());
-}
-
-/** Split an unscoped section around the lines a recognised contact-ratings table owns (its derived
- *  column lines, and lines that begin with one of its row labels), from the first to the last, and
- *  mark only that span unresolved (#5510 F17). The text outside the span is released only when the
- *  span's source lines account for every cell the table prints on its rows' physical lines, counted
- *  occurrence by occurrence (#5510 F18): flattened extraction can put a cell on a line away from its
- *  label, and a cell the span cannot account for leaves the whole section unresolved rather than
- *  unrestricted. A section holding no owned line and no cell is returned as is. */
-export function isolateRatingLines(section: ScopedText, owned: { derived: string[]; labels: string[]; cells: string[] }, models: string[]): ScopedText[] {
-  const lines = section.text.split("\n");
-  const ownsLine = (line: string) => {
-    const t = line.trim();
-    return owned.derived.some((d) => t === d.trim()) || owned.labels.some((label) => t === label || t.startsWith(`${label} `));
-  };
-  const cellPattern = (cell: string) => new RegExp(`(?<![\\w.])${cell.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, "\\s*")}(?![\\w.])`, "g");
-  const holdsCell = (text: string) => owned.cells.some((cell) => cellPattern(cell).test(text));
-  const printed = new Map<string, number>();
-  for (const cell of owned.cells) printed.set(cell, (printed.get(cell) ?? 0) + 1);
-  const accounted = (span: string[]) => {
-    const source = span.filter((line) => !owned.derived.some((d) => line.trim() === d.trim())).join("\n");
-    return [...printed].every(([cell, n]) => (source.match(cellPattern(cell))?.length ?? 0) >= n);
-  };
-  const whole = [{ text: section.text, models, scope: "unresolved" as const }];
-  const first = lines.findIndex(ownsLine);
-  if (first < 0) return holdsCell(section.text) ? whole : [section];
-  let last = first;
-  lines.forEach((line, i) => { if (ownsLine(line)) last = i; });
-  const before = lines.slice(0, first).join("\n");
-  const after = lines.slice(last + 1).join("\n");
-  if (!accounted(lines.slice(first, last + 1))) return whole;
-  return [
-    ...(first > 0 ? [{ ...section, text: before }] : []),
-    { text: lines.slice(first, last + 1).join("\n"), models, scope: "unresolved" as const },
-    ...(last + 1 < lines.length ? [{ ...section, text: after }] : []),
-  ];
 }
 
 /**

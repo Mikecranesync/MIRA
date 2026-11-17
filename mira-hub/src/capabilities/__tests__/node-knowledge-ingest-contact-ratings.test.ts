@@ -3,7 +3,7 @@ import p19 from "@/capabilities/__fixtures__/contact-ratings/micro820-in009b-p19
 import gs10p26 from "@/capabilities/__fixtures__/table-rows/gs10-p26-230v-1ph.json";
 import { COLUMN_LINE_MARK, contactRatingColumns, readColumnLines, withColumnLines } from "@/capabilities/contact-ratings-table";
 import { ratingColumnFinding } from "@/capabilities/rating-column";
-import { chunkText, contactTableCells, isolateRatingLines } from "@/lib/node-knowledge-ingest";
+import { chunkText } from "@/lib/node-knowledge-ingest";
 
 /**
  * #5474 item 5 — the upload side. `writePdfChunksForNode` reads a contact-ratings table's make /
@@ -179,54 +179,5 @@ describe("writePdfChunksForNode writes a contact-ratings table's columns under t
     const rows = await write();
     expect(rows.length).toBeGreaterThan(2);
     expect(rows.some((r) => r.content.includes(COLUMN_LINE_MARK))).toBe(false);
-  });
-});
-
-describe("isolateRatingLines accounts for every physical contact cell (#5510 F18)", () => {
-  const owned = { derived: [], labels: ["120 V AC", "240 V AC"], cells: ["15 A", "1.5 A", "7.5 A", "1.5 A"] };
-  const models = ["2080LC2020AWB", "2080LC2020QBB"];
-  it("a section with no row label but a table cell is withheld whole", () => {
-    expect(isolateRatingLines({ text: "Notes\n7.5 A" }, owned, models)).toEqual([{ text: "Notes\n7.5 A", models, scope: "unresolved" }]);
-  });
-  it("control: a section with no row label and no table cell is returned as is", () => {
-    const section = { text: "Analog Output Specifications\nOutput type Voltage" };
-    expect(isolateRatingLines(section, owned, models)).toEqual([section]);
-  });
-  it("a cell printed twice but present once inside the span leaves the section withheld whole", () => {
-    const text = "Intro\n120 V AC 15 A 1.5 A\n240 V AC 7.5 A\n1.5 A\nAfter";
-    expect(isolateRatingLines({ text }, owned, models)).toEqual([{ text, models, scope: "unresolved" }]);
-  });
-  it("control: when the span holds every printed occurrence, the text around it is released", () => {
-    const text = "Intro\n120 V AC 15 A 1.5 A\n240 V AC 7.5 A 1.5 A\nAfter 1.5 A rating elsewhere";
-    expect(isolateRatingLines({ text }, owned, models)).toEqual([
-      { text: "Intro" },
-      { text: "120 V AC 15 A 1.5 A\n240 V AC 7.5 A 1.5 A", models, scope: "unresolved" },
-      { text: "After 1.5 A rating elsewhere" },
-    ]);
-  });
-});
-
-describe("contactTableCells reads every cell in the table's region by position (#5510 F19, F21)", () => {
-  const it8 = (str: string, x: number, y: number) => ({ str, x, y, w: str.length * 3.2, size: 8 });
-  const heads = [it8("Make", 206, 588), it8("Break", 252, 588)];
-  const r1 = it8("120 V AC", 148, 572.7), r2 = it8("125 V DC", 148, 548);
-  const base = [...heads, r1, it8("15 A", 206, 572.7), it8("1.5 A", 252, 572.7), r2, it8("0.22 A", 299, 548)];
-  const below = it8("Analog Output Specifications", 148, 520);
-  it("cells on each row's own baseline", () => {
-    expect(contactTableCells([...base, below], [r1, r2]).sort()).toEqual(["0.22 A", "1.5 A", "15 A"]);
-  });
-  it("a figure printed between rows or just under the last row is a cell", () => {
-    const items = [...base.filter((i) => i.str !== "0.22 A"), it8("0.22 A", 299, 544), it8("2 A", 299, 560), below];
-    expect(contactTableCells(items, [r1, r2]).sort()).toEqual(["0.22 A", "1.5 A", "15 A", "2 A"]);
-  });
-  it("an off-baseline cell carrying a footnote mark is a cell, and does not end the table", () => {
-    const items = [...base.filter((i) => i.str !== "0.22 A"), it8("0.22 A (1)", 299, 544), it8("Note", 299, 540), below];
-    expect(contactTableCells(items, [r1, r2]).sort()).toEqual(["0.22 A (1)", "1.5 A", "15 A", "Note"]);
-  });
-  it("control: an item below the first line that starts in the label column is not a cell", () => {
-    expect(contactTableCells([...base, below, it8("4.0 A", 299, 500)], [r1, r2])).not.toContain("4.0 A");
-  });
-  it("control: a figure above the Make/Break heads is not a cell", () => {
-    expect(contactTableCells([...base, below, it8("10 A", 299, 600)], [r1, r2])).not.toContain("10 A");
   });
 });
