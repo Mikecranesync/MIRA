@@ -8,6 +8,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import micro820 from "../__fixtures__/table-rows/micro820-in009-p16-20-scope.json";
+import { relayOnlyInventory } from "../__fixtures__/micro820-relay-subset";
 import gs10p26 from "../__fixtures__/table-rows/gs10-p26-230v-1ph.json";
 import candidateP26 from "../__fixtures__/reviewed-pages/gs10-rev-b-p26.candidate.json";
 import pins from "../table-rule-pins.json";
@@ -148,15 +149,6 @@ describe("through the writer: a page nobody reviewed affirms no model", () => {
   });
 });
 
-/** Micro820 page 16 with the QBB column removed: an output-type inventory that lists only the two
- *  relay variants (AWB, QWB), while the other captured pages still describe the non-relay QBB. */
-const relayOnlyInventory = (pages: Page[]): Array<Page & { rules?: Array<{ x: number; y0: number; y1: number }> }> => pages.map((p) => p.page !== 16 ? p : {
-  ...p,
-  items: p.items.filter((i) => !(i.x >= 300 && i.x < 380 && i.y >= 270 && i.y <= 610)),
-  text: p.text.replace(/2080-LC20-20QBB\(R\)\s*/g, ""),
-  // The pinned page-16 rules without the one that separated QBB from QWB: two value columns.
-  rules: [{ x: 212.46, y0: 205.5, y1: 614.52 }, { x: 300.24, y0: 269.76, y1: 476.28 }, { x: 300.24, y0: 574.74, y1: 614.52 }],
-});
 const relayRatings = (r: { content: string }) => /\b15 A\b/.test(r.content) && /\b1\.5 A\b/.test(r.content);
 describe("through the writer: a relay inventory that lists only some variants (#5510 F16)", () => {
   it("the modified page lists AWB and QWB as relay and no QBB column (precondition)", () => {
@@ -166,6 +158,11 @@ describe("through the writer: a relay inventory that lists only some variants (#
     expect(strs.some((s) => s.includes("QBB"))).toBe(false);
     expect(strs.filter((s) => s === "Relay")).toHaveLength(2);
     expect(strs).not.toContain("24V DC source");
+  });
+  it("the reader builds the all-relay AWB/QWB inventory from it (precondition)", async () => {
+    await ingest(relayOnlyInventory(micro820.pages as Page[]), micro820.sha256);
+    const inventory = gated.flatMap((g) => g.input).filter((r) => affirmsModel(r) && /: Output circuit type Relay$/m.test(r.content));
+    expect(inventory.map((r) => r.tableModels).sort()).toEqual([["2080LC2020AWB"], ["2080LC2020QWB"]]);
   });
   for (const [why, pages] of [["subset inventory", relayOnlyInventory(micro820.pages as Page[])], ["complete inventory (control)", micro820.pages as Page[]]] as const) {
     it(`${why}: the relay ratings are stored, never as plain text any model may read`, async () => {

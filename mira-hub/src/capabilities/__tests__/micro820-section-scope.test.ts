@@ -1,6 +1,7 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import type { PoolClient } from "pg";
 import fixture from "../__fixtures__/table-rows/micro820-in009-p16-20-scope.json";
+import { relayOnlyInventory } from "../__fixtures__/micro820-relay-subset";
 import ml1100Ratings from "../__fixtures__/table-rows/ml1100-p114-p120-ratings-scope.json";
 import { COLUMN_LINE_MARK } from "../contact-ratings-table";
 import { excludedTablesRefusalText, modelNumbersIn } from "../manual-applicability";
@@ -484,6 +485,18 @@ describe("#5503: real Micro820 sections from upload through retrieval", () => {
     const result = await retrieve("20QBB", [row], "What is the output value?");
     expect(result.chunks).toEqual([]);
     expect(section.sharedHeader ?? "").not.toContain(siblingBody);
+  });
+
+  it("a relay inventory listing only AWB and QWB gives QBB no relay ratings (#5510 F16)", async () => {
+    pdfPages.current = relayOnlyInventory(fixture.pages);
+    let rows: Row[];
+    try { rows = await ingestFixture(); } finally { pdfPages.current = null; }
+    const relay = rows.filter((row) => row.page_start === 19 && /\b15 A\b/.test(row.content) && /\b1\.5 A\b/.test(row.content));
+    expect(relay.length).toBeGreaterThan(0); // the ratings text is kept
+    const qbb = await retrieve("20QBB", rows);
+    expect(qbb.text).not.toMatch(/\b15 A\b|\b1\.5 A\b|make 15 A/);
+    const control = await retrieve("20QBB", stored); // complete inventory: same refusal
+    expect(control.text).not.toMatch(/\b15 A\b|make 15 A/);
   });
 
   it("real ML1100 model-table removal preserves relay ratings through the full writer", async () => {
