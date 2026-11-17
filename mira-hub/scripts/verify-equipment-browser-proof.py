@@ -68,6 +68,14 @@ if __name__ == "__main__":
         result = verify(report)
         result["negativeControlsRejected"] = self_test(report)
         result["reportSha256"] = hashlib.sha256(source.read_bytes()).hexdigest()
+        if len(sys.argv) > 3:
+            measurements = json.loads(pathlib.Path(sys.argv[3]).read_text())
+            if measurements.get("fixture") != {"tenantA": 20000, "tenantB": 2500}:
+                raise ValueError("missing exact scale fixture measurements")
+            if measurements.get("explain", {}).get("role") != "factorylm_app" or not measurements["explain"].get("plan"):
+                raise ValueError("missing restricted-role production-query EXPLAIN")
+            if not measurements.get("timings") or any(t.get("milliseconds", -1) < 0 or t.get("bytes", 0) <= 0 for t in measurements["timings"]):
+                raise ValueError("missing actual HTTP timing/size measurements")
         if len(sys.argv) > 2: pathlib.Path(sys.argv[2]).write_text(json.dumps(result, indent=2) + "\n")
         print("Required DB proof: %d cases PASS, 0 SKIP; %d negative controls rejected" % (result["total"], result["negativeControlsRejected"]))
     except (OSError, ValueError, KeyError, IndexError, TypeError) as error:

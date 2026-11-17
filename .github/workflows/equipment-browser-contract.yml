@@ -74,7 +74,7 @@ jobs:
       - name: Reject absent, zero, skipped or incomplete required evidence
         if: always()
         working-directory: mira-hub
-        run: python3 scripts/verify-equipment-browser-proof.py /tmp/equipment-browser-proof/vitest.json /tmp/equipment-browser-proof/cases.json
+        run: python3 scripts/verify-equipment-browser-proof.py /tmp/equipment-browser-proof/vitest.json /tmp/equipment-browser-proof/cases.json /tmp/equipment-browser-proof/measurements.json
       - name: Preserve runner binding, named cases and actual measurements
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

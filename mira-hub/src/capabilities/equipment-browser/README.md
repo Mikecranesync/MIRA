@@ -87,6 +87,10 @@ For active SQL, a separate connection uses public `pg_cancel_backend`; the origi
 held until query/cancel completion and rollback. Uncertain cancellation/rollback destroys the
 lease. No private pg active-query API or product debug/sleep route is used. A normal completion
 may win a late disconnect race; no read-side writes are committed in either outcome.
+Backend identity is captured after BEGIN, while transaction pooling pins that backend. An abort
+during setup, before that identity exists, destroys the lease instead of signalling a previously
+borrowed autocommit backend. A separate control-path simulation checks this transaction-pooler
+case; real Neon/TLS transport remains an unrun deployment check.
 
 The canonical disposable bootstrap must include migrations 015, 016, 017, 018, 021, 023 and 115
 in addition to its default migrations. This does not authorize applying any shared migration.

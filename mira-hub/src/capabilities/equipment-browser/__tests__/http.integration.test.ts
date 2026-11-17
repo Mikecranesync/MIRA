@@ -269,7 +269,9 @@ describe("direct equipment API HTTP/PostgreSQL contract", () => {
       const pending=request("children?parentKind=root","a",controller.signal).catch((error)=>error);
       await until(async()=>db.app.waitingCount>0); controller.abort();expect((await pending).name).toBe("AbortError");
     } finally { lease.release(); }
-    await until(async()=>db.app.waitingCount===0 && db.app.idleCount===1);
+    // If socket close races the late acquisition/preamble, destroying that
+    // connection is also safe. There must be no waiter or checked-out lease.
+    await until(async()=>db.app.waitingCount===0 && (db.app.totalCount===0 || db.app.idleCount===db.app.totalCount));
     for (let i=0;i<3;i++) {
       const complete=new AbortController();expect((await request("children?parentKind=root","a",complete.signal)).status).toBe(200);complete.abort();
     }
