@@ -28,6 +28,14 @@ vi.mock("@/capabilities/table-rule-pins", async (importOriginal) => {
   const { pinsDouble } = await import("../../capabilities/__fixtures__/pinned-rules-double");
   return { ...actual, rulePinsForSha: () => pinsDouble(actual, db.pages ?? fixture.pages, [fixture.sha256]) };
 });
+// The #5503 matrices below measure what the page reader affirms and withholds on synthetic and
+// captured layouts. None of those pages is a reviewed page, so the model-scope gate would store
+// every affirming row withheld; the gate is opened for this file only. The gate itself is proven
+// closed over the same writer and SQL in `model-scope-gate.integration.test.ts`.
+vi.mock("@/capabilities/model-scope-gate", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/capabilities/model-scope-gate")>();
+  return { ...actual, gatePageRows: <Row,>(rows: readonly Row[]) => [...rows] };
+});
 vi.mock("unpdf", () => ({
   getDocumentProxy: vi.fn(async () => ({
     getPage: async (page: number) => ({

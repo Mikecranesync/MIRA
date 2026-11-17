@@ -40,6 +40,14 @@ vi.mock("@/capabilities/table-rule-pins", async (importOriginal) => {
   const { pinsDouble } = await import("../__fixtures__/pinned-rules-double");
   return { ...actual, rulePinsForSha: () => pinsDouble(actual, [...pdf.layout].map(([page, items]) => ({ page, items, rules: pdf.rules.get(page) })), [GS10_SHA256]) };
 });
+// These cases read the page reader's own output: which column chunks it writes and which lines it
+// leaves unqualified. No page here is recorded as reviewed, so the model-scope gate would store
+// every affirming row withheld; the gate is opened for this file only. Storage with the gate
+// closed is proven in `model-scope-gate.test.ts` and `model-scope-gate.integration.test.ts`.
+vi.mock("@/capabilities/model-scope-gate", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/capabilities/model-scope-gate")>();
+  return { ...actual, gatePageRows: <Row,>(rows: readonly Row[]) => [...rows] };
+});
 vi.mock("unpdf", () => ({
   getDocumentProxy: vi.fn(async () => {
     if (pdf.withoutGetPage) return {};

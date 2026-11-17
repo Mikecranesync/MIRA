@@ -27,6 +27,8 @@ import { repairExtractedPage, type PageRepair } from "@/capabilities/garbled-tex
 import { ocrExtractPage } from "@/capabilities/garbled-text-ocr";
 import { readPageLabelsBounded } from "@/capabilities/pdf-page-label-reader";
 import { pageLayoutItems } from "@/capabilities/pdf-layout-items";
+import { reviewedRowsDigest, rulePinsForSha } from "@/capabilities/table-rule-pins";
+import { gatePageRows } from "@/capabilities/model-scope-gate";
 import { pageWithTables, type TableChunk } from "@/capabilities/table-rows";
 import { contactRatingTable, columnLines, withColumnLines } from "@/capabilities/contact-ratings-table";
 import { SectionTableScope, tableExtractionBoundaries, withTableInterruptions, hasModelSectionScope, modelSectionModels, scopeTableChunks, sectionTableLayout, readOutputTypes, mergeOutputTypes, type ScopedText, type SectionScope } from "@/capabilities/section-table-scope";
@@ -49,10 +51,15 @@ const CHUNK_OVERLAP = 120;
  *        answer check's WRONG-COLUMN rule cannot run on it until it is reprocessed.
  *   v5 — layout-bounded model sections, including relay applicability from the manual's own
  *        complete per-model output-type table (#5503). One reprocess also includes v4's lines.
+ *   v6 — model scope fails closed: only a reviewed page stores a row that affirms a model
+ *        (`model-scope-gate.ts`); the same text on any other page is stored withheld. Earlier
+ *        heads of this change wrote v5 rows that affirm from the layout reader alone, so v5 is
+ *        stale too.
  */
-export const EXTRACTION_VERSION = 5;
+export const EXTRACTION_VERSION = 6;
 
-type PageTable = { remainder: string; chunks: TableChunk[]; sections?: ScopedText[] };
+/** `reviewed`: the page's reviewed-rows digest (`reviewedRowsDigest`); absent/null = not a reviewed page. */
+type PageTable = { remainder: string; chunks: TableChunk[]; sections?: ScopedText[]; reviewed?: string | null };
 
 // Multi-row INSERT batch size. Bounds BOTH the chunk rows held in memory at once
 // (≤ BATCH_ROWS, instead of every chunk of a 1200-page manual accumulated in one
@@ -596,6 +603,9 @@ async function insertChunkRows(
     // per TableChunk — the ingest contract asserts exactly one row per model
     // tag (`table-rows.test.ts`), so TableChunk.text goes in verbatim.
     const textToChunk = table ? table.remainder : pageText;
+    // The page's rows are collected, passed through the ONE model-scope gate, and only then
+    // queued: a row affirms a model only on a reviewed page (model-scope-gate.ts).
+    const pageRows: ChunkRow[] = [];
     for (const section of table?.sections ?? [{ text: textToChunk }]) {
       let searchFrom = 0;
       const headerAt = section.sharedHeader ? section.text.indexOf(section.sharedHeader) : -1;
@@ -604,7 +614,7 @@ async function insertChunkRows(
         searchFrom = pieceAt >= 0 ? pieceAt + 1 : searchFrom;
         const tableHeader = section.sharedHeader && headerAt >= pieceAt && pieceAt >= 0 &&
           headerAt + section.sharedHeader.length <= pieceAt + piece.length ? section.sharedHeader : undefined;
-        batch.push({
+        pageRows.push({
           content: piece,
           page: p + 1,
           idx: idx++,
@@ -617,12 +627,11 @@ async function insertChunkRows(
           tableHeader,
           tableUnqualified: section.scope === "unresolved",
         });
-        if (batch.length >= BATCH_ROWS) await flush();
       }
     }
     if (table) {
       for (const tc of table.chunks) {
-        batch.push({
+        pageRows.push({
           content: tc.text,
           page: p + 1,
           idx: idx++,
@@ -632,8 +641,11 @@ async function insertChunkRows(
           tableUnqualified: tc.unqualified,
           tableScope: tc.scope,
         });
-        if (batch.length >= BATCH_ROWS) await flush();
       }
+    }
+    for (const row of gatePageRows(pageRows, table?.reviewed)) {
+      batch.push(row);
+      if (batch.length >= BATCH_ROWS) await flush();
     }
   }
   await flush();
@@ -791,6 +803,8 @@ async function parsePdfForNode(buffer: Buffer | Uint8Array, rest: NodeChunkOpts)
   // geometry to key columns off of). A read/detect failure is warned and
   // treated as "no table on this page" — it must never fail the upload.
   const pageTables: Array<PageTable | null> = [];
+  // Per page: the digest of its reviewed model-scope rows, null for a page that is not reviewed.
+  const reviewed: Array<string | null> = new Array(pages.length).fill(null);
   // undefined means unreadable/repaired geometry; null means a successful unheaded page.
   const sectionLayouts: Array<ReturnType<typeof sectionTableLayout> | undefined> = [];
   const outputs = new Map<string, boolean | null>();
@@ -805,6 +819,7 @@ async function parsePdfForNode(buffer: Buffer | Uint8Array, rest: NodeChunkOpts)
     }
     try {
       const items = await pageLayoutItems(pdf, p + 1, documentSha256);
+      reviewed[p] = reviewedRowsDigest(rulePinsForSha(documentSha256), p + 1, items);
       let rating: ReturnType<typeof contactRatingTable> = null;
       try { rating = contactRatingTable(items); }
       catch (err) {
@@ -882,6 +897,7 @@ async function parsePdfForNode(buffer: Buffer | Uint8Array, rest: NodeChunkOpts)
   // table rows are written (flagged) rather than dropped. A page the repair
   // touched keeps its repair marker. Independent of NOTEBOOK_GARBLE_DECODE —
   // this is detection, not a repair.
+  pageTables.forEach((table, p) => { if (table) table.reviewed = reviewed[p]; });
   const markers: Array<TextRepair | null> = repairs.map((r, p) => r ?? (hasUnmappedGlyphBetweenDigits(pages[p]) ? "unmapped_glyph" : null));
   return { pages, markers, labels, pageTables };
 }

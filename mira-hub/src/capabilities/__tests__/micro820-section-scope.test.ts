@@ -22,6 +22,15 @@ vi.mock("../table-rule-pins", async (importOriginal) => {
   const { pinsDouble } = await import("../__fixtures__/pinned-rules-double");
   return { ...actual, rulePinsForSha: () => pinsDouble(actual, pdfPages.current ?? fixture.pages, [fixture.sha256, ml1100Ratings.sha256]) };
 });
+// These cases read the page reader's own output: what it would affirm and what it withholds on
+// each layout. Stored rows pass the model-scope gate afterwards, and none of these pages is a
+// reviewed page, so with the real gate every affirming row here is stored withheld. The gate is
+// therefore opened for this file only; `model-scope-gate.test.ts` and
+// `model-scope-gate.integration.test.ts` run the writer with it closed.
+vi.mock("../model-scope-gate", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../model-scope-gate")>();
+  return { ...actual, gatePageRows: <Row,>(rows: readonly Row[]) => [...rows] };
+});
 vi.mock("unpdf", () => ({
   getDocumentProxy: vi.fn(async () => ({
     getPage: async (page: number) => ({

@@ -16,11 +16,13 @@ import { createHash } from "node:crypto";
 import pins from "./table-rule-pins.json";
 
 export type VerticalRule = { x: number; y0: number; y1: number };
-export type PagePin = { fingerprint: string; rules: readonly VerticalRule[] };
+/** `reviewed`: digest of the page's model-scope rows as checked against the page image
+ *  (`model-scope-gate.ts`); absent = the page's rows were not reviewed. */
+export type PagePin = { fingerprint: string; rules: readonly VerticalRule[]; reviewed?: string };
 /** Page number (1-based, as a string key) to that page's pin. */
 export type DocumentRulePins = Readonly<Record<string, PagePin>>;
 
-const PINNED = pins.documents as Record<string, { source: string; pages: Record<string, PagePin> }>;
+const PINNED = pins.documents as unknown as Record<string, { source: string; pages: Record<string, PagePin> }>;
 
 /** The pins of the document with exactly these bytes' SHA-256, or null when it is not pinned. */
 export function rulePinsForSha(sha256: string): DocumentRulePins | null {
@@ -37,10 +39,23 @@ export function layoutFingerprint(items: ReadonlyArray<{ str: string; x: number;
 /** The pinned rules of one page, only when its text geometry is the geometry that was pinned. */
 export function pinnedRules(document: DocumentRulePins | null, pageNumber: number,
   items: ReadonlyArray<{ str: string; x: number; y: number }>): readonly VerticalRule[] | null {
+  return matchingPin(document, pageNumber, items)?.rules ?? null;
+}
+
+/** The pin of one page, only when its text geometry is the geometry that was pinned. */
+function matchingPin(document: DocumentRulePins | null, pageNumber: number,
+  items: ReadonlyArray<{ str: string; x: number; y: number }>): PagePin | null {
   const key = String(pageNumber);
   if (!document || !Object.hasOwn(document, key)) return null;
   const pin = document[key];
-  return pin.fingerprint === layoutFingerprint(items) ? pin.rules : null;
+  return pin.fingerprint === layoutFingerprint(items) ? pin : null;
+}
+
+/** The reviewed-rows digest of one page of a pinned document: null unless the document is
+ *  pinned, the page is pinned, its text geometry matches and its rows were reviewed. */
+export function reviewedRowsDigest(document: DocumentRulePins | null, pageNumber: number,
+  items: ReadonlyArray<{ str: string; x: number; y: number }>): string | null {
+  return matchingPin(document, pageNumber, items)?.reviewed ?? null;
 }
 
 /** A rule runs through a text line only when it passes below the baseline and up through the
