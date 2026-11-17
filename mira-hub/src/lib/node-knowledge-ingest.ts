@@ -901,13 +901,23 @@ async function parsePdfForNode(buffer: Buffer | Uint8Array, rest: NodeChunkOpts)
   // positions: F18, F19, F21 and F22 each released a rating cell that a positional count missed.
   // Owner decision 2026-11-17 (Mission Control #5232): withhold the page; the cost on the captured
   // manuals is Micro820 p19 "Analog Output Specifications", withheld until that page is reviewed.
+  // F24: a table's rows can run onto the next page without repeating its heads, so withholding
+  // continues past a contact-ratings page until a section a caption binds marks a new boundary
+  // (a page with no such section is withheld whole, and so on).
   const knownModels = [...new Set([...outputs.keys(), ...sectionModels])];
-  ratingPages.forEach((hasTable, p) => {
-    if (!hasTable) return;
+  const bound = (section: ScopedText) => !section.columnOnly && Boolean(section.scope || (section.models?.length ?? 0) > 0);
+  let continuing = false;
+  pages.forEach((_page, p) => {
+    if (!ratingPages[p] && !continuing) return;
     const table = pageTables[p];
     const sections = table?.sections ?? [{ text: table ? table.remainder : pages[p] }];
-    const withheld = sections.map((section) => !section.columnOnly && (section.scope || (section.models?.length ?? 0) > 0)
-      ? section : { text: section.text, models: knownModels, scope: "unresolved" as const });
+    let open = !ratingPages[p];
+    const withheld = sections.map((section) => {
+      if (bound(section)) { open = false; return section; }
+      return ratingPages[p] || open ? { text: section.text, models: knownModels, scope: "unresolved" as const } : section;
+    });
+    // A contact page passes the withholding on unless its last section is caption-bound.
+    continuing = ratingPages[p] ? !bound(sections[sections.length - 1]) : open;
     pageTables[p] = { remainder: table?.remainder ?? pages[p], chunks: table?.chunks ?? [], ...table, sections: withheld };
   });
   // Garage pilot L2 (plan row 5-A): a page whose numbers carry a replacement
