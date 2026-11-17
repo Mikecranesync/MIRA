@@ -825,12 +825,9 @@ describe("#5503 actual upload INSERT through raw retrieval SQL", () => {
     });
   }
   for (const model of ["20QBB", "20QWB", "20AWB"]) {
-    it(`${model} keeps shared analog-output evidence through actual SQL`, async () => {
+    it(`${model}: analog-output evidence on the contact table's page is withheld through actual SQL until the page is reviewed (#5510 F22, owner decision)`, async () => {
       const result = await retrieve(model, "analog output voltage range");
-      const analog = result.chunks.find((c) => /Analog Output Specifications/.test(c.content));
-      expect(analog?.content).toContain("Output count range");
-      expect(analog?.content).toContain("Channel-to-channel isolation");
-      expect(analog?.content).not.toMatch(/Relay Contact Ratings|columns read from the page layout/);
+      expect(result.chunks.some((c) => /Output count range|Relay Contact Ratings|columns read from the page layout/.test(c.content))).toBe(false);
     });
     it(`${model} keeps shared DC-input evidence despite sibling names in a subcolumn`, async () => {
       const result = await retrieve(model, "DC input specifications voltage category IEC compatibility");
