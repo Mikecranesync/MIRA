@@ -3,7 +3,7 @@ import type { PoolClient } from "pg";
 import fixture from "../__fixtures__/table-rows/micro820-in009-p16-20-scope.json";
 import { contactTableBeforeInventory, RELAY_CAPTION_BODY, RELAY_CAPTION_HEAD, RELAY_CAPTION_PRINTED, RELAY_HEAD_SIZE, relayOnlyInventory } from "../__fixtures__/micro820-relay-subset";
 import ml1100Ratings from "../__fixtures__/table-rows/ml1100-p114-p120-ratings-scope.json";
-import { COLUMN_LINE_MARK } from "../contact-ratings-table";
+import { COLUMN_LINE_MARK, contactRatingColumns } from "../contact-ratings-table";
 import { excludedTablesRefusalText, modelNumbersIn } from "../manual-applicability";
 import { retrieveNodeChunks } from "@/lib/manual-rag";
 import { SectionTableScope, sectionTableLayout } from "../section-table-scope";
@@ -504,6 +504,43 @@ describe("#5503: real Micro820 sections from upload through retrieval", () => {
       const page = rows.filter((r) => r.page_start === 2);
       const all = page.map((r) => r.content).join("\n");
       for (const cell of cells) expect(all, `cell ${cell} preserved`).toContain(cell);
+      for (const r of page.filter((row) => cellRe.test(row.content))) {
+        expect(r.table_scope === "unresolved" || ((r.table_models as string[] | null) ?? []).length > 0, r.content.slice(0, 80)).toBe(true);
+        expect((r.table_models as string[] | null) ?? []).not.toContain("2080LC2020QBB");
+      }
+      const qbb = await retrieve("20QBB", page, "What are the relay contact ratings at 125 V DC?");
+      expect(qbb.text).not.toMatch(cellRe);
+    });
+  });
+
+  describe("contact cells printed off their row's baseline stay withheld (#5510 F19)", () => {
+    const cellRe = /(?<![\w.])0\.22 A(?![\w.])/;
+    /** The captured table with no caption naming a catalog; the 0.22 A cell moved `dy` points below
+     *  its 125 V DC label (`dy` 0 is the page as printed) and extracted on the next text line. */
+    const shifted = (dy: number, between = false) => {
+      const pages = contactTableBeforeInventory(fixture.pages, "absent", RELAY_CAPTION_BODY, true);
+      const contact = pages.find((p) => p.page === 2)!;
+      const label = contact.items.find((i) => i.str === "125 V DC")!;
+      const cell = contact.items.find((i) => i.str === "0.22 A" && Math.abs(i.y - label.y) < 0.5)!;
+      if (between) {
+        const above = contact.items.find((i) => i.str === "24 V DC")!;
+        cell.y = (label.y + above.y) / 2; // half-way between two rows
+        contact.text = contact.text.replace("125 V DC 0.22 A", "0.22 A\n125 V DC");
+      } else {
+        cell.y = label.y - dy;
+        contact.text = contact.text.replace("125 V DC 0.22 A", "125 V DC\n0.22 A");
+      }
+      return pages;
+    };
+    it.each([[3, false], [4, false], [6, false], [0, true]])("%s pt below its label (between rows: %s): the table is still read, every copy is restricted, and QBB gets none", async (dy, between) => {
+      const pages = shifted(dy, between);
+      const contact = pages.find((p) => p.page === 2)!;
+      expect(contactRatingColumns(contact.items)?.length ?? 0, "precondition: the table is still recognised").toBeGreaterThan(0);
+      pdfPages.current = pages;
+      let rows: Row[];
+      try { rows = await ingestFixture(); } finally { pdfPages.current = null; }
+      const page = rows.filter((r) => r.page_start === 2);
+      expect(page.some((r) => cellRe.test(r.content)), "the cell is preserved").toBe(true);
       for (const r of page.filter((row) => cellRe.test(row.content))) {
         expect(r.table_scope === "unresolved" || ((r.table_models as string[] | null) ?? []).length > 0, r.content.slice(0, 80)).toBe(true);
         expect((r.table_models as string[] | null) ?? []).not.toContain("2080LC2020QBB");
