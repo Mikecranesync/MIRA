@@ -4,8 +4,10 @@ import {
   FIXTURE_IDS,
   findEntry,
   indexEquipment,
+  itemKey,
   pushRecent,
   targetFor,
+  type BrowserItem,
   type QuestionTarget,
   type ShellAction,
   PROFILES,
@@ -17,15 +19,26 @@ import {
   type SurfaceKind,
   type ThemeName,
 } from "@factorylm/interaction";
-import { EquipmentNavigator, FactoryLMShell, NAVIGATION_LAYER_QUERY, QuestionTargetBar, type ConversationSurface } from "@factorylm/ui";
+import {
+  EquipmentAskNoticeBar,
+  EquipmentNavigator,
+  FactoryLMShell,
+  NAVIGATION_LAYER_QUERY,
+  PagedEquipmentNavigator,
+  QuestionTargetBar,
+  provisionalTarget,
+  useEquipmentAsk,
+  type ConversationSurface,
+} from "@factorylm/ui";
 import { useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { createLabAdapter } from "./fake-adapter";
+import { BENCH_IDS, createFakeEquipmentSource } from "./fake-equipment-source";
 
 export const LAB_SURFACES = ["public", "web", "mobile", "hub"] as const satisfies readonly SurfaceKind[];
 export const LAB_THEMES = ["light", "dark"] as const satisfies readonly ThemeName[];
 export const LAB_VIEWPORTS = ["fluid", "390x844", "412x915", "768x1024", "1440x900", "1720x1000"] as const;
 export const LAB_THREADS = ["classic", "assistant"] as const satisfies readonly ConversationSurface[];
-export const LAB_NAVS = ["projects", "equipment"] as const;
+export const LAB_NAVS = ["projects", "equipment", "equipment-paged"] as const;
 export type LabViewport = (typeof LAB_VIEWPORTS)[number];
 export type LabNav = (typeof LAB_NAVS)[number];
 
@@ -38,7 +51,7 @@ export interface LabState {
   readonly embed: boolean;
   /** Which conversation surface renders the turns (blueprint: classic list vs assistant-ui primitives). */
   readonly thread: ConversationSurface;
-  /** Navigation body: the project tree (default) or equipment-first navigation (fixture slice). */
+  /** Navigation body: the project tree (default), equipment-first navigation (fixture tree), or the paged source (#5602 contract). */
   readonly nav: LabNav;
 }
 
@@ -121,7 +134,26 @@ export function App({ search = window.location.search, onSearch = replaceSearch 
     adapter.note(`askAbout:${next.machineId}/${next.componentId ?? "whole-machine"}`);
     if (window.matchMedia?.(NAVIGATION_LAYER_QUERY).matches) dispatch({ type: "set-navigation-visible", visible: false });
   };
+  // Paged equipment navigation: a disconnected stand-in for the Hub equipment-browser API.
+  // The host still owns the target; "Ask about" resolves once through the shared asker.
+  const pagedSource = useMemo(() => createFakeEquipmentSource({ latencyMs: 120, onCall: (line) => adapter.note(line) }), [adapter]);
+  const [pagedTarget, setPagedTarget] = useState<QuestionTarget | null>({
+    machineId: BENCH_IDS.bench, machineLabel: "GS10 bench", componentId: BENCH_IDS.vfd1, componentLabel: "VFD1", location: "Garage › Bench line",
+  });
+  const [pagedBrowsing, setPagedBrowsing] = useState<BrowserItem | null>(null);
+  const pagedTargetRef = useRef(pagedTarget);
+  pagedTargetRef.current = pagedTarget;
+  const asker = useEquipmentAsk(pagedSource, (next) => {
+    setPagedTarget(next);
+    adapter.note(`askAbout:${next.machineId}/${next.componentId ?? "whole-machine"}`);
+    if (window.matchMedia?.(NAVIGATION_LAYER_QUERY).matches) dispatch({ type: "set-navigation-visible", visible: false });
+  });
   const labDispatch = (action: ShellAction) => {
+    if (lab.nav === "equipment-paged" && action.type === "mock-send" && stateRef.current.draft.trim()) {
+      const current = pagedTargetRef.current;
+      dispatch(current ? { type: "mock-send", target: { machineId: current.machineId, componentId: current.componentId } } : action);
+      return;
+    }
     if (lab.nav === "equipment" && action.type === "mock-send" && stateRef.current.draft.trim()) {
       const current = targetRef.current;
       // The target rides the send itself; the log below is read back from the turn it made.
@@ -131,7 +163,7 @@ export function App({ search = window.location.search, onSearch = replaceSearch 
     dispatch(action);
   };
   const lastTurn = state.thread.turns.at(-1);
-  const sentTurnId = lab.nav === "equipment" && lastTurn?.role === "user" && lastTurn.id.startsWith("mock-") ? lastTurn.id : null;
+  const sentTurnId = (lab.nav === "equipment" || lab.nav === "equipment-paged") && lastTurn?.role === "user" && lastTurn.id.startsWith("mock-") ? lastTurn.id : null;
   useEffect(() => {
     if (!sentTurnId || !lastTurn) return;
     const { machineId, componentId } = lastTurn.context;
@@ -181,6 +213,27 @@ export function App({ search = window.location.search, onSearch = replaceSearch 
         onChange={() => dispatch({ type: "set-navigation-visible", visible: true })}
       />,
     } : {})}
+    {...(lab.nav === "equipment-paged" ? {
+      navigationContent: <>
+        <p className="lab__sample-note" role="note">Sample equipment for the lab, served one page at a time. Not live plant data.</p>
+        <PagedEquipmentNavigator
+          source={pagedSource}
+          target={pagedTarget}
+          browsingKey={pagedBrowsing ? itemKey(pagedBrowsing) : null}
+          onBrowse={setPagedBrowsing}
+          asker={asker}
+        />
+      </>,
+      composerAccessory: <>
+        <EquipmentAskNoticeBar asker={asker} />
+        <QuestionTargetBar
+          target={pagedTarget}
+          browsing={provisionalTarget(pagedBrowsing)}
+          onAskAbout={() => { if (pagedBrowsing) asker.ask(pagedBrowsing); }}
+          onChange={() => dispatch({ type: "set-navigation-visible", visible: true })}
+        />
+      </>,
+    } : {})}
     adapter={adapter}
     hooks={{ onRetry: (turnId) => adapter.note(`onRetry:${turnId}`) }}
     conversationSurface={lab.thread}
@@ -213,7 +266,8 @@ export function App({ search = window.location.search, onSearch = replaceSearch 
           {LAB_VIEWPORTS.map((viewport) => <option key={viewport} value={viewport}>{viewport}</option>)}
         </select>
         <select aria-label="Navigation" value={lab.nav} onChange={(event) => update({ nav: event.currentTarget.value as LabNav })}>
-          {LAB_NAVS.map((nav) => <option key={nav} value={nav}>{nav}</option>)}
+          {/* Short label: a longer option widens the select and the phone page scrolls sideways. */}
+          {LAB_NAVS.map((nav) => <option key={nav} value={nav}>{nav === "equipment-paged" ? "paged" : nav}</option>)}
         </select>
         <select aria-label="Thread" value={lab.thread} onChange={(event) => update({ thread: event.currentTarget.value as ConversationSurface })}>
           {LAB_THREADS.map((thread) => <option key={thread} value={thread}>{thread}</option>)}
