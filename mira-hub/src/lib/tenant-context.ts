@@ -50,7 +50,12 @@ export async function withTenantContext<T>(
   let cancellable = true;
   let pid: number | undefined;
   const abort = () => {
-    if (cancel || !cancellable || pid === undefined) return;
+    if (cancel || !cancellable || released) return;
+    if (pid === undefined) {
+      // During preamble there is not yet a transaction-pinned backend identity.
+      // Closing this lease aborts its setup without signalling an unrelated backend.
+      released = true; client.release(true); return;
+    }
     // Public PostgreSQL cancellation, on a separate connection so a full pool cannot
     // starve it. The original login may cancel its own backend after SET LOCAL ROLE.
     cancel = (async () => {
@@ -66,7 +71,6 @@ export async function withTenantContext<T>(
   };
   try {
     if (signal) {
-      pid = Number((await client.query("SELECT pg_backend_pid() AS pid")).rows[0].pid);
       signal.addEventListener("abort", abort, { once: true });
       if (signal.aborted) throw abortError();
     }
@@ -84,6 +88,10 @@ export async function withTenantContext<T>(
       "SELECT set_config('app.tenant_id', $1, true), set_config('app.current_tenant_id', $1, true)",
       [tenantId],
     );
+    // Transaction poolers may change the server backend between autocommit and
+    // BEGIN. Capture only after BEGIN, while the target backend remains pinned
+    // until cancel completion and rollback/commit.
+    if (signal) pid = Number((await client.query("SELECT pg_backend_pid() AS pid")).rows[0].pid);
     if (signal?.aborted) throw abortError();
     const result = await fn(client);
     if (signal?.aborted) throw abortError();
