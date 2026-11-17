@@ -908,7 +908,8 @@ async function parsePdfForNode(buffer: Buffer | Uint8Array, rest: NodeChunkOpts)
   // AC-15/DC-13 grid, a parameter list) are not a caption and cannot bind the ratings to a model, and
   // their positions relative to the sections are not kept, so every chunk on such a page is withheld.
   const knownModels = [...new Set([...outputs.keys(), ...sectionModels])];
-  const bound = (section: ScopedText) => !section.columnOnly && Boolean(section.scope || (section.models?.length ?? 0) > 0);
+  // Only a section a caption affirmatively binds is a boundary. Inherited or unresolved scope is not (F26).
+  const bound = (section: ScopedText) => !section.columnOnly && section.scope === "section" && (section.models?.length ?? 0) > 0;
   let continuing = false;
   pages.forEach((_page, p) => {
     if (!ratingPages[p] && !continuing) return;
