@@ -904,6 +904,9 @@ async function parsePdfForNode(buffer: Buffer | Uint8Array, rest: NodeChunkOpts)
   // F24: a table's rows can run onto the next page without repeating its heads, so withholding
   // continues past a contact-ratings page until a section a caption binds marks a new boundary
   // (a page with no such section is withheld whole, and so on).
+  // F25: extracted column chunks on a page in that region are withheld too. Their column heads (an
+  // AC-15/DC-13 grid, a parameter list) are not a caption and cannot bind the ratings to a model, and
+  // their positions relative to the sections are not kept, so every chunk on such a page is withheld.
   const knownModels = [...new Set([...outputs.keys(), ...sectionModels])];
   const bound = (section: ScopedText) => !section.columnOnly && Boolean(section.scope || (section.models?.length ?? 0) > 0);
   let continuing = false;
@@ -918,7 +921,8 @@ async function parsePdfForNode(buffer: Buffer | Uint8Array, rest: NodeChunkOpts)
     });
     // A contact page passes the withholding on unless its last section is caption-bound.
     continuing = ratingPages[p] ? !bound(sections[sections.length - 1]) : open;
-    pageTables[p] = { remainder: table?.remainder ?? pages[p], chunks: table?.chunks ?? [], ...table, sections: withheld };
+    const chunks = (table?.chunks ?? []).map((chunk) => ({ ...chunk, models: knownModels, unqualified: true, scope: "unresolved" as const }));
+    pageTables[p] = { remainder: table?.remainder ?? pages[p], ...table, chunks, sections: withheld };
   });
   // Garage pilot L2 (plan row 5-A): a page whose numbers carry a replacement
   // character between two digits ("5�1" for 5.1 A — the PDF's ToUnicode
