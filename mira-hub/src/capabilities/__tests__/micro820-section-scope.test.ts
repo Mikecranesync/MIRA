@@ -158,13 +158,12 @@ describe("#5503: real Micro820 sections from upload through retrieval", () => {
   }
 
   for (const model of ["20QBB", "20QWB", "20AWB"]) {
-    it(`${model} retains the shared analog-output section without relay evidence`, async () => {
+    it(`${model}: the analog-output section sharing the contact table's page is stored, but withheld until the page is reviewed (#5510 F22, owner decision)`, async () => {
       const rows = stored.filter((r) => r.page_start === 19 && /Analog Output Specifications|Output count range|Channel-to-channel isolation/.test(r.content));
-      expect(rows.length).toBeGreaterThan(0);
+      expect(rows.some((r) => r.content.includes("Output count range")), "the text is kept").toBe(true);
+      for (const r of rows) expect(r.table_scope, r.content.slice(0, 60)).toBe("unresolved");
       const result = await retrieve(model, rows, "What is the analog output voltage range?");
-      expect(result.text).toContain("Output count range");
-      expect(result.text).toContain("Channel-to-channel isolation");
-      expect(result.text).not.toMatch(/Relay Contact Ratings|columns read from the page layout|DC Output Specifications/);
+      expect(result.text).not.toMatch(/Output count range|Relay Contact Ratings|columns read from the page layout/);
     });
     it(`${model} retains the shared DC-input section despite variant names within one header column`, async () => {
       const rows = stored.filter((r) => r.page_start === 18 && /DC Input Specifications|IEC input compatibility/.test(r.content));
@@ -470,8 +469,12 @@ describe("#5503: real Micro820 sections from upload through retrieval", () => {
     const qbb = await retrieve("20QBB", rows.filter((r) => r.page_start === 2), "What are the relay contact ratings at 120 V AC?");
     expect(qbb.text).not.toMatch(/\b15 A\b|\b1\.5 A\b/);
     expect(qbb.text).not.toContain(COLUMN_LINE_MARK);
-    // Control: the page's other text is not withheld with it.
-    expect(rows.some((r) => r.page_start === 2 && /Analog Output Specifications/.test(r.content) && r.table_scope !== "unresolved")).toBe(true);
+    // F22 (owner decision): every section of that page no caption bound is withheld with it, text kept.
+    const unscoped = rows.filter((r) => r.page_start === 2 && ((r.table_models as string[] | null) ?? []).length === 0);
+    expect(unscoped.some((r) => /Analog Output Specifications/.test(r.content))).toBe(true);
+    for (const r of unscoped) expect(r.table_scope, r.content.slice(0, 60)).toBe("unresolved");
+    // Control: a page with no recognised contact table is not withheld with it.
+    expect(rows.some((r) => r.page_start !== 2 && r.table_scope !== "unresolved" && ((r.table_models as string[] | null) ?? []).length === 0)).toBe(true);
   });
 
   describe("contact cells the flattened text separates from their row label stay withheld (#5510 F18)", () => {
@@ -513,15 +516,19 @@ describe("#5503: real Micro820 sections from upload through retrieval", () => {
     });
   });
 
-  describe("contact cells printed off their row's baseline stay withheld (#5510 F19)", () => {
+  describe("contact cells printed off their row's baseline stay withheld (#5510 F19, F21, F22)", () => {
     const cellRe = /(?<![\w.])0\.22 A(?![\w.])/;
     /** The captured table with no caption naming a catalog; the 0.22 A cell moved `dy` points below
      *  its 125 V DC label (`dy` 0 is the page as printed) and extracted on the next text line. */
-    const shifted = (dy: number, between = false, mark = "") => {
+    const shifted = (dy: number, between = false, mark = "", noteX: number | null = null) => {
       const pages = contactTableBeforeInventory(fixture.pages, "absent", RELAY_CAPTION_BODY, true);
       const contact = pages.find((p) => p.page === 2)!;
       const label = contact.items.find((i) => i.str === "125 V DC")!;
       const cell = contact.items.find((i) => i.str === "0.22 A" && Math.abs(i.y - label.y) < 0.5)!;
+      if (noteX !== null) { // a note three points below the label: left margin, inside, or right of the table
+        contact.items.push({ ...label, str: "(1) Resistive load", x: noteX, y: label.y - 3, w: 60 });
+        contact.text = contact.text.replace("125 V DC 0.22 A", "125 V DC 0.22 A\n(1) Resistive load");
+      }
       if (mark) { cell.str = `0.22 A ${mark}`; contact.text = contact.text.replace("125 V DC 0.22 A", `125 V DC 0.22 A ${mark}`); }
       if (between) {
         const above = contact.items.find((i) => i.str === "24 V DC")!;
@@ -533,8 +540,11 @@ describe("#5503: real Micro820 sections from upload through retrieval", () => {
       }
       return pages;
     };
-    it.each([[3, false, ""], [4, false, ""], [6, false, ""], [0, true, ""], [4, false, "(1)"], [0, false, "(1)"], [4, false, "*"]] as const)("%s pt below its label (between rows: %s, footnote mark %j): the table is still read, every copy is restricted, and QBB gets none (F19, F21)", async (dy, between, mark) => {
-      const pages = shifted(dy, between, mark);
+    const notes = [null, 72, 200, 420] as const; // none, left margin (F22), inside the table, right of it
+    const placements = [[0, false], [3, false], [4, false], [6, false], [0, true]] as const;
+    const cases = notes.flatMap((note) => placements.flatMap(([dy, between]) => ["", "(1)", "*"].map((mark) => [dy, between, mark, note] as const)));
+    it.each(cases)("%s pt below its label (between rows: %s, footnote mark %j, note at x %s): the table is still read, every copy is restricted, and QBB gets none", async (dy, between, mark, note) => {
+      const pages = shifted(dy, between, mark, note);
       const contact = pages.find((p) => p.page === 2)!;
       expect(contactRatingColumns(contact.items)?.length ?? 0, "precondition: the table is still recognised").toBeGreaterThan(0);
       pdfPages.current = pages;
