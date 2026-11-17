@@ -807,6 +807,9 @@ async function parsePdfForNode(buffer: Buffer | Uint8Array, rest: NodeChunkOpts)
   const reviewed: Array<string | null> = new Array(pages.length).fill(null);
   // undefined means unreadable/repaired geometry; null means a successful unheaded page.
   const sectionLayouts: Array<ReturnType<typeof sectionTableLayout> | undefined> = [];
+  // Lines a recognised contact-ratings table owns on each page: its derived column lines and the
+  // labels of its source rows (#5510 F17). They are never written as unscoped text.
+  const ratingLines: Array<{ derived: string[]; labels: string[] } | null> = new Array(pages.length).fill(null);
   const outputs = new Map<string, boolean | null>();
   // Even a failed layout read must not erase a visibly present type inventory. Its model
   // applicability then stays unknown, with a warning and unresolved relay-section metadata.
@@ -826,6 +829,7 @@ async function parsePdfForNode(buffer: Buffer | Uint8Array, rest: NodeChunkOpts)
         console.warn(`[node-ingest] contact-ratings column read failed on ${rest.filename} p.${p + 1} (page kept without column lines):`, err instanceof Error ? err.message : err);
       }
       const annotation = rating ? { after: rating.lastRow, lines: columnLines(rating.rows), sourceRows: rating.sourceRows } : undefined;
+      if (rating) ratingLines[p] = { derived: annotation!.lines, labels: rating.rows.map((r) => r.label.trim()).filter(Boolean) };
       // Recognize physical section cuts on the complete page, before extraction removes
       // their source items. Closely adjacent sections must never share a model block.
       const fullLayout = sectionTableLayout(items, true, undefined, annotation, true);
@@ -888,6 +892,19 @@ async function parsePdfForNode(buffer: Buffer | Uint8Array, rest: NodeChunkOpts)
       : scope.splitPage(remainder, layout, table?.chunks ?? []);
     pageTables[p] = { remainder, ...scoped };
   }
+  // #5510 F17: a contact-ratings table the column reader positively recognised states electrical
+  // values whose applicability only a caption can establish. Where no caption bound them (its
+  // typography did not qualify, or the page had no readable section at all), the table's own lines
+  // are stored unresolved: withheld from every record that holds a catalog number, text kept.
+  // Text under a caption that did bind them, and every other line of the page, is left as it was.
+  const knownModels = [...new Set([...outputs.keys(), ...sectionModels])];
+  ratingLines.forEach((owned, p) => {
+    if (!owned) return;
+    const table = pageTables[p];
+    const sections = table?.sections ?? [{ text: table ? table.remainder : pages[p] }];
+    const isolated = sections.flatMap((section) => section.scope || (section.models?.length ?? 0) > 0 ? [section] : isolateRatingLines(section, owned, knownModels));
+    pageTables[p] = { remainder: table?.remainder ?? pages[p], chunks: table?.chunks ?? [], ...table, sections: isolated };
+  });
   // Garage pilot L2 (plan row 5-A): a page whose numbers carry a replacement
   // character between two digits ("5�1" for 5.1 A — the PDF's ToUnicode
   // map has no entry for the decimal-point glyph; the GS10 chapter file) is
@@ -900,6 +917,28 @@ async function parsePdfForNode(buffer: Buffer | Uint8Array, rest: NodeChunkOpts)
   pageTables.forEach((table, p) => { if (table) table.reviewed = reviewed[p]; });
   const markers: Array<TextRepair | null> = repairs.map((r, p) => r ?? (hasUnmappedGlyphBetweenDigits(pages[p]) ? "unmapped_glyph" : null));
   return { pages, markers, labels, pageTables };
+}
+
+/** Split an unscoped section around the lines a recognised contact-ratings table owns (its derived
+ *  column lines, and lines that begin with one of its row labels), from the first to the last, and
+ *  mark only that span unresolved (#5510 F17). A section holding none of them is returned as is. */
+function isolateRatingLines(section: ScopedText, owned: { derived: string[]; labels: string[] }, models: string[]): ScopedText[] {
+  const lines = section.text.split("\n");
+  const ownsLine = (line: string) => {
+    const t = line.trim();
+    return owned.derived.some((d) => t === d.trim()) || owned.labels.some((label) => t === label || t.startsWith(`${label} `));
+  };
+  const first = lines.findIndex(ownsLine);
+  if (first < 0) return [section];
+  let last = first;
+  lines.forEach((line, i) => { if (ownsLine(line)) last = i; });
+  const before = lines.slice(0, first).join("\n");
+  const after = lines.slice(last + 1).join("\n");
+  return [
+    ...(first > 0 ? [{ ...section, text: before }] : []),
+    { text: lines.slice(first, last + 1).join("\n"), models, scope: "unresolved" as const },
+    ...(last + 1 < lines.length ? [{ ...section, text: after }] : []),
+  ];
 }
 
 /**
