@@ -1180,6 +1180,32 @@ it.each(["independent", "independent-footnote", "inherited-conflict", "inherited
   expect((await retrieve("20QBB", rows, "zzheadingless current")).text).not.toContain("zzheadingless");
 });
 
+it.each([["after", true], ["control: no contact table", false]] as const)("F23 a contact-ratings page that inherits parameter-column scope is withheld, never admitted by the column domain (%s)", async (_name, withTable) => {
+  const item = (str: string, x: number, y: number, size = 8) => ({ str, x, y, size, w: str.length * size * 0.4 });
+  const params = [item("Attribute", 100, 720), item("P01.20", 280, 720), item("P01.21", 420, 720),
+    item("zzoriginalsingle Load current max", 100, 706), item("2 A", 280, 706), item("1 A", 420, 706),
+    item("DC Output Data", 100, 690, 10), item("Attribute", 100, 676), item("Value", 280, 676), item("zzuncaptioned Point current max", 100, 662), item("9 A", 280, 662)];
+  const contact = contactTableBeforeInventory(fixture.pages, "absent", RELAY_CAPTION_BODY, true).find((p) => p.page === 2)!;
+  const plain = [item("zzplain Point surge max 11 A", 100, 720)];
+  const second = withTable ? { ...contact, page: 2 } : { page: 2, text: plain.map((i) => i.str).join("\n"), items: plain };
+  if (withTable) expect(contactRatingColumns(second.items)?.length ?? 0, "precondition: the table is recognised").toBeGreaterThan(0);
+  pdfPages.current = [{ page: 1, text: [...params].reverse().map((i) => i.str).join("\n"), items: params }, second];
+  let rows: Row[];
+  try { rows = await ingestFixture(); } finally { pdfPages.current = null; }
+  const page2 = rows.filter((r) => r.page_start === 2);
+  if (withTable) {
+    const rating = page2.filter((r) => /\b15 A\b|columns read from the page layout/.test(r.content));
+    expect(rating.length, "the ratings are stored").toBeGreaterThan(0);
+    for (const r of rating) expect(r.table_scope, r.content.slice(0, 80)).toBe("unresolved");
+    const qbb = await retrieve("20QBB", page2, "What are the relay contact ratings at 120 V AC?");
+    expect(qbb.text).not.toMatch(/\b15 A\b|\b1\.5 A\b/);
+    expect(qbb.text).not.toContain(COLUMN_LINE_MARK);
+  } else {
+    // Control: without a contact-ratings table, inherited parameter-column scope keeps its own domain.
+    expect(page2.some((r) => r.table_scope !== "unresolved")).toBe(true);
+  }
+});
+
 it.each(["catalog", "parameter", "parameter-explicit"])("F7 interrupted uncaptioned %s columns keep their own domain through generic and headerless pages", async (kind) => {
   const item = (str: string, x: number, y: number, size = 8) => ({ str, x, y, size, w: str.length * size * 0.4 });
   const items = [item("Attribute", 100, 720), item(kind === "catalog" ? "2080-LC20-20QWB" : "P01.20", 280, 720), item(kind === "catalog" ? "2080-LC20-20AWB" : "P01.21", 420, 720),
