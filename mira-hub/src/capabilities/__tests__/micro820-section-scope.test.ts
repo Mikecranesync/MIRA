@@ -474,6 +474,45 @@ describe("#5503: real Micro820 sections from upload through retrieval", () => {
     expect(rows.some((r) => r.page_start === 2 && /Analog Output Specifications/.test(r.content) && r.table_scope !== "unresolved")).toBe(true);
   });
 
+  describe("contact cells the flattened text separates from their row label stay withheld (#5510 F18)", () => {
+    // Every cell of the printed contact table that appears nowhere else on the page.
+    const CELLS = ["15 A", "1.5 A", "7.5 A", "0.75 A", "0.22 A", "1800"];
+    const cellRe = /(?<![\w.])(?:15 A|1\.5 A|7\.5 A|0\.75 A|0\.22 A|1800)(?![\w.])/;
+    const contactPage = (edit: (text: string) => string, oneRow = false) => {
+      const pages = contactTableBeforeInventory(fixture.pages, "absent", RELAY_CAPTION_BODY, true);
+      const contact = pages.find((p) => p.page === 2)!;
+      if (oneRow) {
+        const ys = contact.items.filter((i) => ["240 V AC", "24 V DC", "125 V DC"].includes(i.str)).map((i) => i.y);
+        contact.items = contact.items.filter((i) => !ys.some((y) => Math.abs(i.y - y) < 1) && !/^Publication /.test(i.str));
+        contact.text = contact.text.split("\n").filter((l) => !/^(240 V AC|24 V DC|125 V DC) |^Publication /.test(l)).join("\n");
+      }
+      const before = contact.text;
+      contact.text = edit(contact.text);
+      expect(contact.text, "precondition: the text edit applied").not.toBe(before);
+      return pages;
+    };
+    const cases: Array<[string, (t: string) => string, boolean, string[]]> = [
+      ["the label line, then its cell on the next line", (t) => t.replace("125 V DC 0.22 A", "125 V DC\n0.22 A"), false, CELLS],
+      ["a one-row table with its cells before the label, no footer", (t) => t.replace("120 V AC 15 A 1.5 A 2 A 1800 180", "15 A 1.5 A 2 A 1800 180\n120 V AC"), true, ["15 A", "1.5 A", "1800"]],
+      ["the label in the middle of a line", (t) => t.replace("125 V DC 0.22 A", "Rating 125 V DC 0.22 A"), false, CELLS],
+      ["cells with no label line anywhere in the text", (t) => t.replace(/^(120 V AC|240 V AC|24 V DC|125 V DC) /gm, ""), false, CELLS],
+    ];
+    it.each(cases)("%s: every cell is stored, only with restrictive scope, and never returned for QBB", async (_why, edit, oneRow, cells) => {
+      pdfPages.current = contactPage(edit, oneRow);
+      let rows: Row[];
+      try { rows = await ingestFixture(); } finally { pdfPages.current = null; }
+      const page = rows.filter((r) => r.page_start === 2);
+      const all = page.map((r) => r.content).join("\n");
+      for (const cell of cells) expect(all, `cell ${cell} preserved`).toContain(cell);
+      for (const r of page.filter((row) => cellRe.test(row.content))) {
+        expect(r.table_scope === "unresolved" || ((r.table_models as string[] | null) ?? []).length > 0, r.content.slice(0, 80)).toBe(true);
+        expect((r.table_models as string[] | null) ?? []).not.toContain("2080LC2020QBB");
+      }
+      const qbb = await retrieve("20QBB", page, "What are the relay contact ratings at 125 V DC?");
+      expect(qbb.text).not.toMatch(cellRe);
+    });
+  });
+
   it("real Make/Break/Continuous geometry remains relay evidence when the title is only Contact Ratings", async () => {
     const extended = structuredClone(fixture.pages);
     const page = extended.find((p) => p.page === 19)!;
