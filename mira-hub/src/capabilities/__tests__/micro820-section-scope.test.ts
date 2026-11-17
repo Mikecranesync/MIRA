@@ -1265,6 +1265,32 @@ it.each([["after a contact page", true], ["control: no contact page before it", 
   }
 });
 
+it.each([["after a contact page that inherits unresolved scope", true], ["control: the same grid with no contact page", false]] as const)("F26 inherited unresolved scope does not end the withholding of a contact table's continuation (%s)", async (_name, withContact) => {
+  const item = (str: string, x: number, y: number, size = 8) => ({ str, x, y, size, w: str.length * size * 0.4 });
+  const base = contactTableBeforeInventory(fixture.pages, "complete", RELAY_CAPTION_BODY, true);
+  const inventory = { ...base.find((p) => p.page === 3)!, page: 2 };
+  const contact = structuredClone(base.find((p) => p.page === 2)!);
+  const label = contact.items.find((i) => i.str === "125 V DC")!;
+  contact.items = contact.items.filter((i) => i.y > 520 && Math.abs(i.y - label.y) >= 1);
+  contact.text = contact.items.map((i) => i.str).join("\n");
+  expect(contactRatingColumns(contact.items)?.length ?? 0, "precondition: the cut table is still recognised").toBeGreaterThan(0);
+  const grid = [item("Contact Ratings (continued)", 100, 755, 10), item("Attribute", 100, 730), item("AC-15", 280, 730), item("DC-13", 420, 730),
+    item("125 V DC", 100, 716), item("0.22 A", 280, 716), item("0.11 A", 420, 716), item("250 V AC", 100, 702), item("1.5 A", 280, 702), item("0.75 A", 420, 702)];
+  const middle = withContact ? { ...contact, page: 3 } : { page: 3, text: "zzintro General", items: [item("zzintro General", 100, 720)] };
+  pdfPages.current = [base[0], inventory, middle, { page: 4, text: [...grid].reverse().map((i) => i.str).join("\n"), items: grid }];
+  let rows: Row[];
+  try { rows = await ingestFixture(); } finally { pdfPages.current = null; }
+  const page4 = rows.filter((r) => r.page_start === 4 && /0\.22 A/.test(r.content));
+  expect(page4.length, "the continued rating is stored").toBeGreaterThan(0);
+  if (withContact) {
+    for (const r of rows.filter((row) => row.page_start >= 3)) expect(r.table_scope, `p${r.page_start} ${r.content.slice(0, 60)}`).toBe("unresolved");
+    const qbb = await retrieve("20QBB", rows.filter((r) => r.page_start >= 3), "What is the AC-15 rating at 125 V DC?");
+    expect(qbb.text).not.toMatch(/0\.22 A|\b15 A\b/);
+  } else {
+    expect(page4.some((r) => r.table_scope !== "unresolved"), "control: an ordinary grid is not withheld").toBe(true);
+  }
+});
+
 it.each(["catalog", "parameter", "parameter-explicit"])("F7 interrupted uncaptioned %s columns keep their own domain through generic and headerless pages", async (kind) => {
   const item = (str: string, x: number, y: number, size = 8) => ({ str, x, y, size, w: str.length * size * 0.4 });
   const items = [item("Attribute", 100, 720), item(kind === "catalog" ? "2080-LC20-20QWB" : "P01.20", 280, 720), item(kind === "catalog" ? "2080-LC20-20AWB" : "P01.21", 420, 720),
