@@ -238,20 +238,24 @@ describe("the exact gold check a page must pass before it is recorded as reviewe
     expect(backed(gold, "GS11N-20P2: Input Rating / VT / Rated Input Current 5.1 A")).toBe(false); // the other duty
     expect(backed(gold, "GS11N-20P2: Output Rating / Max Motor Output 1/4 hp")).toBe(true);
   });
-  it("GS10 page 26 as read now: 90 lines, 65 backed; the other 25 fail only on how the gold encodes units", async () => {
-    // The exact check mirrors the frozen benchmark scorer and is not loosened here. The 25 are the
-    // five lower rows, whose gold puts the unit in the property ("Weight (kg)") or in the value and
-    // the unit both ("4.7%" with unit "%"), while the line prints "Weight 0.4 kg". So the page still
-    // fails this check and has no reviewed record.
+  it("GS10 page 26 as read now: all 90 lines pass the exact gold check, and the page is still not reviewed", async () => {
+    // The check is the frozen benchmark scorer's, unchanged. The fixture's gold was corrected to the
+    // printed page (25 entries: a unit the page prints once is no longer recorded twice, nor in the
+    // label); every entry is verified against the source PDF's word positions. Passing the check
+    // does not record the page as reviewed: that needs the owner's source review.
     const rows = await ingest(P26, candidateP26.sha256, candidateP26.digest);
     const lines = affirmedLines(rows.map(asScoped)).filter((l) => !/\(cont\.\)$/.test(l));
     expect(lines).toHaveLength(90);
-    const unbacked = lines.filter((l) => !backed(gold, l));
-    expect(unbacked).toHaveLength(25);
-    const lower = /: (Input Rating \/ (Rated Voltage\/Frequency|Operating Voltage Range|Frequency Tolerance)|IE2 Efficiency - Relative Power Loss|Weight) /;
-    expect(unbacked.filter((l) => !lower.test(l))).toEqual([]);
-    expect(lines.filter((l) => /\/ (CT|VT) \//.test(l)).every((l) => backed(gold, l))).toBe(true); // every duty line is backed
+    expect(lines.filter((l) => !backed(gold, l))).toEqual([]);
+    expect(new Set(lines).size).toBe(90);
+    expect(lines).toContain("GS11N-20P2: Input Rating / CT / Rated Input Current 5.1 A");
     expect(candidateP26.status).toBe("not reviewed");
+  });
+  it("the corrected gold still rejects a line that misstates the printed unit", () => {
+    expect(backed(gold, "GS11N-20P2: IE2 Efficiency - Relative Power Loss 4.7")).toBe(false);
+    expect(backed(gold, "GS11N-20P2: Weight 0.4 lb")).toBe(false);
+    expect(backed(gold, "GS11N-20P2: Input Rating / Operating Voltage Range 170–265 Hz")).toBe(false);
+    expect(backed(gold, "GS11N-20P2: Weight 0.4 kg")).toBe(true);
   });
 });
 
