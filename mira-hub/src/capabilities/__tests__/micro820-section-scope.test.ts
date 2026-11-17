@@ -1206,6 +1206,35 @@ it.each([["after", true], ["control: no contact table", false]] as const)("F23 a
   }
 });
 
+it.each([["after a parameter table", true, false], ["with no parameter table", false, false], ["control: a caption on the next page ends the withholding", false, true]] as const)("F24 a contact-ratings table continued onto a headerless page stays withheld on both pages (%s)", async (_name, withParams, captioned) => {
+  const item = (str: string, x: number, y: number, size = 8) => ({ str, x, y, size, w: str.length * size * 0.4 });
+  const params = [item("Attribute", 100, 720), item("P01.20", 280, 720), item("P01.21", 420, 720),
+    item("zzoriginalsingle Load current max", 100, 706), item("2 A", 280, 706), item("1 A", 420, 706),
+    item("DC Output Data", 100, 690, 10), item("Attribute", 100, 676), item("Value", 280, 676), item("zzuncaptioned Point current max", 100, 662), item("9 A", 280, 662)];
+  const contact = structuredClone(contactTableBeforeInventory(fixture.pages, "absent", RELAY_CAPTION_BODY, true).find((p) => p.page === 2)!);
+  const label = contact.items.find((i) => i.str === "125 V DC")!;
+  const lastRow = contact.items.filter((i) => Math.abs(i.y - label.y) < 1);
+  contact.items = contact.items.filter((i) => !lastRow.includes(i));
+  const rowText = lastRow.sort((a, b) => a.x - b.x).map((i) => i.str).join(" ");
+  contact.text = contact.text.replace(rowText, "").replace(/\n{2,}/g, "\n");
+  expect(contactRatingColumns(contact.items)?.length ?? 0, "precondition: the split table is still recognised").toBeGreaterThan(0);
+  const continuation = lastRow.map((i) => ({ ...i, y: 700 }));
+  const caption = [item("DC Output Specifications for 2080-LC20-20QBB(R)", 100, 650, 12), item("Attribute Value", 100, 630), item("zzqbbonly Output current max 0.5 A", 100, 616)];
+  const third = captioned ? [...continuation, ...caption] : continuation;
+  const first = withParams ? [{ page: 1, text: [...params].reverse().map((i) => i.str).join("\n"), items: params }]
+    : [{ page: 1, text: "zzintro General", items: [item("zzintro General", 100, 720)] }];
+  pdfPages.current = [...first, { ...contact, page: 2 }, { page: 3, text: third.map((i) => i.str).join("\n"), items: third }];
+  let rows: Row[];
+  try { rows = await ingestFixture(); } finally { pdfPages.current = null; }
+  const page3 = rows.filter((r) => r.page_start === 3);
+  expect(page3.some((r) => /0\.22 A/.test(r.content)), "the continued row is stored").toBe(true);
+  for (const r of rows.filter((row) => row.page_start >= 2 && /\b(?:15|0\.22) A\b/.test(row.content))) expect(r.table_scope, `p${r.page_start} ${r.content.slice(0, 60)}`).toBe("unresolved");
+  const qbb = await retrieve("20QBB", rows.filter((r) => r.page_start >= 2), "What is the relay contact rating at 125 V DC?");
+  expect(qbb.text).not.toMatch(/0\.22 A|\b15 A\b/);
+  // Control: a section a caption binds after the continuation is not withheld with it.
+  if (captioned) expect((await retrieve("20QBB", rows, "zzqbbonly Output current max")).text).toContain("0.5 A");
+});
+
 it.each(["catalog", "parameter", "parameter-explicit"])("F7 interrupted uncaptioned %s columns keep their own domain through generic and headerless pages", async (kind) => {
   const item = (str: string, x: number, y: number, size = 8) => ({ str, x, y, size, w: str.length * size * 0.4 });
   const items = [item("Attribute", 100, 720), item(kind === "catalog" ? "2080-LC20-20QWB" : "P01.20", 280, 720), item(kind === "catalog" ? "2080-LC20-20AWB" : "P01.21", 420, 720),
