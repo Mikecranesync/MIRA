@@ -3,6 +3,7 @@ import { Client, type PoolClient } from "pg";
 
 export type TenantContextOptions = { signal?: AbortSignal; readOnly?: boolean };
 const abortError = () => new DOMException("The database request was aborted", "AbortError");
+const cancellationTimeoutMs = 5_000;
 
 /** A cancelled pool waiter must release a connection if it arrives after the caller left. */
 function acquire(signal?: AbortSignal): Promise<PoolClient> {
@@ -49,24 +50,49 @@ export async function withTenantContext<T>(
   let began = false;
   let cancellable = true;
   let pid: number | undefined;
+  const discard = () => {
+    if (released) return;
+    released = true;
+    client.release(true);
+  };
   const abort = () => {
     if (cancel || !cancellable || released) return;
     if (pid === undefined) {
       // During preamble there is not yet a transaction-pinned backend identity.
       // Closing this lease aborts its setup without signalling an unrelated backend.
-      released = true; client.release(true); return;
+      discard();
+      return;
     }
     // Public PostgreSQL cancellation, on a separate connection so a full pool cannot
     // starve it. The original login may cancel its own backend after SET LOCAL ROLE.
     cancel = (async () => {
       const control = new Client(pool.options);
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      let expired = false;
       try {
-        await control.connect();
-        if (cancellable) await control.query("SELECT pg_cancel_backend($1)", [pid]);
+        const deadline = new Promise<never>((_, reject) => {
+          timer = setTimeout(() => {
+            expired = true;
+            reject(new Error("Database cancellation timed out"));
+          }, cancellationTimeoutMs);
+        });
+        const outcome = (async () => {
+          await control.connect();
+          if (!cancellable || expired) return true;
+          const { rows } = await control.query<{ cancelled: boolean }>(
+            "SELECT pg_cancel_backend($1) AS cancelled",
+            [pid],
+          );
+          return rows[0]?.cancelled === true;
+        })();
+        if (!await Promise.race([outcome, deadline])) discard();
       } catch {
         // An uncertain cancellation must never return a running lease to the pool.
-        if (!released) { released = true; client.release(true); }
-      } finally { await control.end().catch(() => {}); }
+        discard();
+      } finally {
+        clearTimeout(timer);
+        void control.end().catch(() => {});
+      }
     })();
   };
   try {
@@ -85,7 +111,8 @@ export async function withTenantContext<T>(
     began = true;
     await client.query(`${readOnly ? "BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY" : "BEGIN"}; SET LOCAL ROLE factorylm_app`);
     await client.query(
-      "SELECT set_config('app.tenant_id', $1, true), set_config('app.current_tenant_id', $1, true)",
+      "SELECT set_config('app.tenant_id', $1, true), set_config('app.current_tenant_id', $1, true)"
+        + (readOnly ? ", set_config('statement_timeout', '15000', true)" : ""),
       [tenantId],
     );
     // Transaction poolers may change the server backend between autocommit and
@@ -103,8 +130,11 @@ export async function withTenantContext<T>(
     cancellable = false;
     await cancel;
     if (began && !released) {
-      try { await client.query("ROLLBACK"); }
-      catch { released = true; client.release(true); }
+      try {
+        const timedRollback = { text: "ROLLBACK", query_timeout: cancellationTimeoutMs };
+        if (signal?.aborted) await client.query(timedRollback);
+        else await client.query("ROLLBACK");
+      } catch { discard(); }
     }
     throw signal?.aborted ? abortError() : err;
   } finally {

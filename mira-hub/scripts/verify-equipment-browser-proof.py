@@ -10,6 +10,7 @@ REQUIRED = {
     "equipment-browser/__tests__/http.integration.test.ts": (21, [
         "20k fixture:", "real socket cancellation", "stale or corrected selections",
         "GETs leave recency", "rechecks authorization on every page", "same UUID",
+        "canonical asset binding, live source counts and normalized labels", "refusing foreign and unknown assets",
     ]),
     "equipment-browser/__tests__/tenant-read.integration.test.ts": (3, [
         "aborts before acquiring", "read-only callbacks cannot change", "repeatable-read",
@@ -74,6 +75,8 @@ if __name__ == "__main__":
                 raise ValueError("missing exact scale fixture measurements")
             if measurements.get("explain", {}).get("role") != "factorylm_app" or not measurements["explain"].get("plan"):
                 raise ValueError("missing restricted-role production-query EXPLAIN")
+            if not measurements["explain"].get("smallNotebookPlan"):
+                raise ValueError("missing restricted-role notebook-page EXPLAIN")
             if not measurements.get("timings") or any(t.get("milliseconds", -1) < 0 or t.get("bytes", 0) <= 0 for t in measurements["timings"]):
                 raise ValueError("missing actual HTTP timing/size measurements")
         if len(sys.argv) > 2: pathlib.Path(sys.argv[2]).write_text(json.dumps(result, indent=2) + "\n")

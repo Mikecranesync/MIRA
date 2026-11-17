@@ -63,6 +63,18 @@ jobs:
       - name: Bootstrap only the disposable canonical database
         working-directory: mira-hub
         run: node scripts/setup-integration-db.mjs
+      - name: Match the deployed CMMS tenant column
+        run: |
+          psql "$TEST_DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
+          BEGIN;
+          DROP POLICY cmms_equipment_tenant ON cmms_equipment;
+          ALTER TABLE cmms_equipment DROP CONSTRAINT cmms_equipment_tenant_id_fkey;
+          ALTER TABLE cmms_equipment ALTER COLUMN tenant_id TYPE text USING tenant_id::text;
+          CREATE POLICY cmms_equipment_tenant ON cmms_equipment FOR ALL TO factorylm_app
+            USING (tenant_id IN (current_setting('app.tenant_id', true), current_setting('app.current_tenant_id', true)))
+            WITH CHECK (tenant_id IN (current_setting('app.tenant_id', true), current_setting('app.current_tenant_id', true)));
+          COMMIT;
+          SQL
       - name: Execute named API and existing store suites
         working-directory: mira-hub
         run: >-

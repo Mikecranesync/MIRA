@@ -204,10 +204,14 @@ const NOTEBOOK_COLS_BARE = NOTEBOOK_COLS.replace(/\bn\./g, "");
 // Only in the read paths (list/get) — NOT in NOTEBOOK_COLS, which
 // NOTEBOOK_COLS_BARE reuses for RETURNING clauses that have no FROM to join.
 const BOUND_ASSET_COLS = `ba.bound_asset_name, ba.bound_asset_tag`;
+const SOURCE_COUNT = `(SELECT count(*)::int FROM equipment_notebook_sources s
+  WHERE s.tenant_id = n.tenant_id AND s.notebook_id = n.id AND s.match_state <> 'rejected') AS source_count`;
 const BOUND_ASSET_JOIN = `
   LEFT JOIN LATERAL (
     SELECT ae.name AS bound_asset_name,
-           ae.properties->>'asset_tag' AS bound_asset_tag
+           ae.properties->>'asset_tag' AS bound_asset_tag,
+           ae.id AS bound_asset_node_id, ae.entity_id AS bound_asset_entity_id,
+           ae.uns_path AS bound_asset_path
       FROM kg_entities ae
      WHERE ae.tenant_id = n.tenant_id
        AND ae.entity_type IN ('equipment', 'asset')
@@ -253,12 +257,18 @@ function rowToNotebook(r: Record<string, unknown>, sourceCount = 0): EquipmentNo
 }
 
 /** Pure projection for read-only navigation; unlike getNotebook, this never changes recency. */
-export const notebookReadProjection = { columns: NOTEBOOK_COLS, decode: rowToNotebook };
+export const notebookReadProjection = {
+  columns: `${NOTEBOOK_COLS}, ${BOUND_ASSET_COLS}, ${SOURCE_COUNT}`,
+  boundAssetJoin: BOUND_ASSET_JOIN,
+  decode: (row: Record<string, unknown>) => rowToNotebook(row, Number(row.source_count ?? 0)),
+};
 
 export async function readNotebookHeader(client: PoolClient, tenantId: string, notebookId: string): Promise<EquipmentNotebook | null> {
   const { rows } = await client.query(`SELECT to_jsonb(h) AS header FROM equipment_notebooks n
-    CROSS JOIN LATERAL (SELECT ${NOTEBOOK_COLS}) h WHERE n.tenant_id = $1::uuid AND n.id = $2::uuid`, [tenantId, notebookId]);
-  return rows[0] ? rowToNotebook(rows[0].header) : null;
+    ${notebookReadProjection.boundAssetJoin}
+    CROSS JOIN LATERAL (SELECT ${notebookReadProjection.columns}) h
+    WHERE n.tenant_id = $1::uuid AND n.id = $2::uuid`, [tenantId, notebookId]);
+  return rows[0] ? notebookReadProjection.decode(rows[0].header) : null;
 }
 
 export type CreateNotebookInput = {
@@ -344,9 +354,7 @@ export async function listNotebooks(
     const assetFilter = opts.equipmentEntityId ? ` AND n.equipment_entity_id = $2` : "";
     const args: unknown[] = opts.equipmentEntityId ? [tenantId, opts.equipmentEntityId] : [tenantId];
     const res = await c.query(
-      `SELECT ${NOTEBOOK_COLS}, ${BOUND_ASSET_COLS},
-              (SELECT count(*) FROM equipment_notebook_sources s
-                WHERE s.notebook_id = n.id AND s.match_state <> 'rejected') AS source_count
+      `SELECT ${notebookReadProjection.columns}
          FROM equipment_notebooks n${BOUND_ASSET_JOIN}
         WHERE n.tenant_id = $1::uuid${assetFilter}
         ORDER BY n.last_opened_at DESC NULLS LAST, n.created_at DESC

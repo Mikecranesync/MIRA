@@ -13,6 +13,7 @@ import type { Pool } from "pg";
 import { NextResponse } from "next/server";
 import { addComponent, reviseComponent, setSelection } from "@/capabilities/bench-components/store";
 import { readRevisionInput } from "@/capabilities/bench-components/validate";
+import { createAndBindNotebookTx } from "@/lib/equipment-notebooks";
 import { withTenantContext } from "@/lib/tenant-context";
 import { equipmentBrowserPageSql } from "../browser";
 
@@ -39,6 +40,7 @@ describe("direct equipment API HTTP/PostgreSQL contract", () => {
   const a = uuid(), b = uuid(), notebook = uuid(), otherNotebook = uuid();
   let componentId: string, secondComponent: string;
   const installed = uuid(), assignedInstalled=uuid(), asset=uuid(), foreignAsset=uuid();
+  const legacyAsset = uuid();
   let server: Server, base: string;
   const users = { a: { tenantId: a, userId: "browser-a" }, b: { tenantId: b, userId: "browser-b" }, second: { tenantId: a, userId: "browser-a2" } };
   const request = (route: string, token = "a", signal?: AbortSignal) => fetch(base + route, { headers: { authorization: token }, signal });
@@ -49,10 +51,14 @@ describe("direct equipment API HTTP/PostgreSQL contract", () => {
 
   beforeAll(async () => {
     process.env.AUTH_SECRET = "disposable-equipment-browser-cursor-fixture";
+    const schema = await db.owner.query(`SELECT data_type FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = 'cmms_equipment' AND column_name = 'tenant_id'`);
+    expect(schema.rows[0]?.data_type).toBe("text");
     await db.owner.query("DO $$ BEGIN CREATE ROLE api_runtime_owner LOGIN NOSUPERUSER NOBYPASSRLS PASSWORD 'disposable_api_fixture'; EXCEPTION WHEN duplicate_object THEN NULL; END $$");
     await db.owner.query("ALTER ROLE api_runtime_owner PASSWORD 'disposable_api_fixture'; GRANT factorylm_app TO api_runtime_owner");
     await db.owner.query("INSERT INTO tenants(id,slug,name) VALUES($1,$1::uuid::text,'API fixture A'),($2,$2::uuid::text,'API fixture B')",[a,b]);
     await db.owner.query("INSERT INTO cmms_equipment(id,tenant_id,equipment_number,slug,path) VALUES($1,$2,'Conveyor 7','conveyor7','enterprise.line.machine'),($3,$4,'Conveyor 7','conveyor7','enterprise.line.machine')",[asset,a,foreignAsset,b]);
+    await db.owner.query("INSERT INTO cmms_equipment(id,tenant_id,equipment_number,slug,path) VALUES($1,'legacy-slug','Legacy Conveyor','legacy-conveyor','enterprise.line.legacy')",[legacyAsset]);
     await db.owner.query("INSERT INTO equipment_notebooks (id,tenant_id,node_id,display_name) VALUES ($1,$2,$3,'Conveyor 7'),($4,$5,$6,'Conveyor 7')", [notebook,a,uuid(),otherNotebook,b,uuid()]);
     for (let i=0;i<2;i++) {
       const revision = readRevisionInput({ rawLabel: "GS11N-20P2",inputKind: "typed",manufacturer: "AutomationDirect",family: "GS10",catalogNumber: "GS11N-20P2",localTag: "VFD1",serialNumber: `serial-${i}` },true);
@@ -91,6 +97,7 @@ describe("direct equipment API HTTP/PostgreSQL contract", () => {
     await db.owner.query("DELETE FROM equipment_notebooks WHERE tenant_id = ANY($1::uuid[])", [[a,b]]);
     await db.owner.query("DELETE FROM installed_component_instances WHERE tenant_id = ANY($1::uuid[])",[[a,b]]);
     await db.owner.query("DELETE FROM kg_entities WHERE tenant_id = ANY($1::uuid[])",[[a,b]]);
+    await db.owner.query("DELETE FROM cmms_equipment WHERE id=ANY($1::uuid[])",[[asset,foreignAsset,legacyAsset]]);
     await db.owner.query("DELETE FROM tenants WHERE id=ANY($1::uuid[])",[[a,b]]);
     await Promise.all([db.app.end(),db.owner.end()]);
   });
@@ -169,10 +176,17 @@ describe("direct equipment API HTTP/PostgreSQL contract", () => {
   });
 
   it("asset children and asset search use the stored asset ID while refusing foreign and unknown assets",async()=>{
+    const root = await request("children?parentKind=root&kind=asset");
+    expect(root.status).toBe(200);
+    expect((await root.json()).items.map((row: { id: string }) => row.id)).toEqual([asset]);
+    expect((await request(`children?parentKind=notebook&parentId=${notebook}`)).status).toBe(200);
     const listed=await(await request(`children?parentKind=asset&parentId=${asset}`)).json();
     expect(listed.counts.total).toBe(1);expect(listed.items[0]).toMatchObject({id:assignedInstalled,kind:"installed_instance",resolution:{reason:"no_link",target:null}});
     const found=await(await request(`search?scopeKind=asset&scopeId=${asset}&q=MLC`)).json();expect(found.counts.total).toBe(1);
-    for(const id of [foreignAsset,uuid()])expect((await request(`children?parentKind=asset&parentId=${id}`)).status).toBe(404);
+    for(const id of [foreignAsset,legacyAsset,uuid()]) {
+      expect((await request(`children?parentKind=asset&parentId=${id}`)).status).toBe(404);
+      expect((await request(`search?scopeKind=asset&scopeId=${id}&q=MLC`)).status).toBe(404);
+    }
   });
 
   it("search is bounded by the exact scope and treats wildcard characters literally", async () => {
@@ -296,18 +310,65 @@ describe("direct equipment API HTTP/PostgreSQL contract", () => {
     await db.owner.query("DELETE FROM equipment_notebooks WHERE id=$1",[nb]);
   });
 
+  it("canonical asset binding, live source counts and normalized labels survive scoped browsing", async () => {
+    const line = uuid(), assetNode = uuid(), backing = uuid();
+    await db.owner.query(`INSERT INTO kg_entities(id,tenant_id,entity_type,entity_id,name,uns_path,approval_state)
+      VALUES ($1,$2,'line',NULL,'Binding line','binding.line','verified'),
+             ($3,$2,'equipment',$4,'Binding machine','binding.line.machine','verified'),
+             ($5,$2,'equipment',NULL,'Private backing',NULL,'verified')`,[line,a,assetNode,asset,backing]);
+    await db.owner.query("UPDATE cmms_equipment SET uns_path='binding.line.machine' WHERE id=$1",[asset]);
+    const bound = await createAndBindNotebookTx(a, asset, { selectedVia:"asset_picker", createdBy:users.a.userId });
+    if (!bound.ok) throw new Error(bound.error);
+    const boundId = bound.notebook.id, unboundId = uuid();
+    await db.owner.query("INSERT INTO equipment_notebooks(id,tenant_id,node_id,display_name) VALUES($1,$2,$3,'Unplaced notebook')",[unboundId,a,backing]);
+    const revision = readRevisionInput({ rawLabel:"ＭＬＣ  starter",inputKind:"typed",unresolved:["catalogNumber"] },false);
+    if ("error" in revision) throw new Error(revision.error);
+    const added = await addComponent(a,boundId,users.a.userId,{clientRequestId:uuid(),kind:"relay",origin:"technician",position:0,revision});
+    if (added.status !== "created") throw new Error(added.status);
+    await db.owner.query(`INSERT INTO equipment_notebook_sources(notebook_id,doc_id,tenant_id,match_state)
+      VALUES ($1,$2,$3,'verified'),($1,$4,$3,'rejected')`,[boundId,uuid(),a,uuid()]);
+    await db.owner.query("UPDATE kg_entities SET name='Current machine', properties=jsonb_build_object('asset_tag','CV binding') WHERE id=$1",[assetNode]);
+
+    const listed = await (await request(`children?parentKind=asset&parentId=${asset}&kind=notebook`)).json();
+    const expected = { id:boundId, sourceCount:1, asset:{ name:"Current machine", assetTag:"CV binding" } };
+    expect(listed.items).toMatchObject([{ id:boundId, placement:"placed", notebook:expected }]);
+    const resolved = await (await request(`resolve?targetKind=notebook_component&notebookId=${boundId}&componentId=${added.component.id}`)).json();
+    expect(resolved.notebook).toMatchObject(expected);
+    const roots = await (await request("children?parentKind=root")).json();
+    expect(roots.items).toContainEqual(expect.objectContaining({id:unboundId,placement:"unplaced"}));
+    expect(roots.items.map((row:{id:string})=>row.id)).not.toContain(backing);
+    for (const scope of [`asset&scopeId=${asset}`,`namespace&scopeId=${line}`]) {
+      for (const query of ["ＭＬＣ  starter","MLC starter"]) {
+        const found = await (await request(`search?scopeKind=${scope}&kind=notebook_component&q=${encodeURIComponent(query)}`)).json();
+        expect(found.counts.total).toBe(1);
+        expect(found.items).toMatchObject([{id:added.component.id,component:{current:{rawLabel:"ＭＬＣ  starter"}}}]);
+      }
+    }
+    await db.owner.query("DELETE FROM equipment_notebook_sources WHERE notebook_id=$1",[boundId]);
+  });
+
   it("20k fixture: SQL-scoped counts, repeated identities and page/cursor boundaries remain isolated", async () => {
+    const smallNotebookPage = async () => {
+      const response = await request(`children?parentKind=notebook&parentId=${notebook}&limit=1`);
+      expect(response.status).toBe(200);
+      return response.json();
+    };
+    const smallPageBefore = await smallNotebookPage();
     // Reuses BRAVO's b061/f755 definition: 8 x 50 x 50, plus 1 x 50 x 50 foreign;
     // VFD1/MLC repeated, first 10 drives per line share GS11N-20P2, serials differ.
     // Bulk fixture inserts are not qualification of writers; existing store suite proves those.
     const lines=[] as Array<{id:string;tenant:string;line:number}>;
-    const machines=[] as Array<{id:string;tenant:string;node:string;name:string;line:number;machine:number}>;
+    const machines=[] as Array<{id:string;tenant:string;node:string;asset:string;name:string;line:number;machine:number}>;
     for (const [tenant,n] of [[a,8],[b,1]] as const) for(let line=1;line<=n;line++) {
       const node=uuid();lines.push({id:node,tenant,line});
-      for(let machine=1;machine<=50;machine++) machines.push({id:uuid(),tenant,node,name:`Conveyor ${machine}`,line,machine});
+      for(let machine=1;machine<=50;machine++) machines.push({id:uuid(),tenant,node:uuid(),asset:uuid(),name:`Conveyor ${machine}`,line,machine});
     }
     await db.owner.query("INSERT INTO kg_entities(id,tenant_id,entity_type,entity_id,name,uns_path) SELECT id,tenant,'line',id::text,'Line '||line,('enterprise.Line'||line)::ltree FROM jsonb_to_recordset($1::jsonb) AS x(id uuid,tenant uuid,line int)",[JSON.stringify(lines)]);
-    await db.owner.query("INSERT INTO equipment_notebooks(id,tenant_id,node_id,display_name) SELECT id,tenant,node,name FROM jsonb_to_recordset($1::jsonb) AS x(id uuid,tenant uuid,node uuid,name text)",[JSON.stringify(machines)]);
+    await db.owner.query(`INSERT INTO kg_entities(id,tenant_id,entity_type,name,uns_path,approval_state)
+      SELECT asset,tenant,'equipment',name||' on line '||line,('enterprise.Line'||line||'.Machine'||machine)::ltree,'verified'
+      FROM jsonb_to_recordset($1::jsonb) AS x(asset uuid,tenant uuid,name text,line int,machine int)`,[JSON.stringify(machines)]);
+    await db.owner.query(`INSERT INTO equipment_notebooks(id,tenant_id,node_id,display_name,equipment_entity_id)
+      SELECT id,tenant,node,name,asset::text FROM jsonb_to_recordset($1::jsonb) AS x(id uuid,tenant uuid,node uuid,name text,asset uuid)`,[JSON.stringify(machines)]);
     await db.owner.query(`INSERT INTO notebook_components(tenant_id,notebook_id,position,kind,origin,created_by,client_request_id)
       SELECT tenant,id,k,CASE k WHEN 1 THEN 'drive' WHEN 2 THEN 'relay' ELSE 'device' END,'inventory','fixture',gen_random_uuid()
       FROM jsonb_to_recordset($1::jsonb) AS x(id uuid,tenant uuid) CROSS JOIN generate_series(1,50) k`,[JSON.stringify(machines)]);
@@ -323,6 +384,10 @@ describe("direct equipment API HTTP/PostgreSQL contract", () => {
         CASE WHEN c.position<=2 THEN 'candidate' ELSE 'unknown' END,
         CASE WHEN c.position<=2 THEN '[]'::jsonb ELSE '["manufacturer","catalogNumber"]'::jsonb END,'fixture',gen_random_uuid()
       FROM notebook_components c JOIN jsonb_to_recordset($1::jsonb) AS x(id uuid,line int,machine int) ON x.id=c.notebook_id`,[JSON.stringify(machines)]);
+    await db.owner.query("ANALYZE kg_entities; ANALYZE equipment_notebooks; ANALYZE notebook_components; ANALYZE notebook_component_revisions");
+    const smallPageAfter = await smallNotebookPage();
+    expect(smallPageAfter).toEqual(smallPageBefore);
+    expect(smallPageAfter.items).toMatchObject([{ childrenCount: 0 }]);
     const line=lines[0].id;
     const timings=[] as Array<{case:string;milliseconds:number;bytes:number}>;
     for (const limit of [1,50,100]) {
@@ -350,7 +415,12 @@ describe("direct equipment API HTTP/PostgreSQL contract", () => {
     const explain=await withTenantContext(a,async(client)=>{
       const role=(await client.query("SELECT current_user AS role")).rows[0].role;expect(role).toBe("factorylm_app");
       const plan=await client.query("EXPLAIN (ANALYZE,BUFFERS,FORMAT JSON) "+equipmentBrowserPageSql(true,false),[a,"namespace",line,"notebook_component","GS11N-20P2",null,null,51]);
-      return {role,plan:plan.rows};
+      const small = await client.query("EXPLAIN (ANALYZE,BUFFERS,FORMAT JSON) "+equipmentBrowserPageSql(false,false),
+        [a,"notebook",notebook,null,"",null,null,2]);
+      const smallPlan = JSON.stringify(small.rows);
+      expect(smallPlan).toContain("idx_notebook_components_notebook");
+      expect(smallPlan).not.toContain("child_counts");
+      return {role,plan:plan.rows,smallNotebookPlan:small.rows};
     },{readOnly:true});
     if(process.env.EQUIPMENT_BROWSER_MEASUREMENTS) writeFileSync(process.env.EQUIPMENT_BROWSER_MEASUREMENTS,JSON.stringify({fixture:{tenantA:20000,tenantB:2500},timings,explain},null,2));
     console.log("equipment-browser measurements",JSON.stringify({fixture:20000,timings}));

@@ -62,7 +62,7 @@ function readCursor(value: string | null, binding: string): [string, string] | n
  */
 const inventory = `inventory AS NOT MATERIALIZED (
   SELECT 'namespace'::text AS kind,k.id::text AS id,k.name,
-    CASE WHEN p.id IS NULL THEN 'root' ELSE 'namespace' END AS parent_kind,p.id AS parent_id,
+    CASE WHEN p.id IS NULL THEN 'root' ELSE 'namespace' END AS parent_kind,p.id::uuid AS parent_id,
     concat_ws(' ',k.name,k.entity_type,k.entity_id) AS search_text,
     jsonb_build_object('entityType',k.entity_type,'unsPath',k.uns_path::text) AS data
   FROM kg_entities k
@@ -70,57 +70,82 @@ const inventory = `inventory AS NOT MATERIALIZED (
     SELECT CASE WHEN count(*)=1 THEN min(a.id::text) END AS id FROM kg_entities a
     WHERE a.tenant_id=k.tenant_id AND a.uns_path @> k.uns_path AND a.uns_path<>k.uns_path
       AND nlevel(a.uns_path)=(SELECT max(nlevel(z.uns_path)) FROM kg_entities z WHERE z.tenant_id=k.tenant_id AND z.uns_path @> k.uns_path AND z.uns_path<>k.uns_path)
-  ) p ON true WHERE k.tenant_id=$1::uuid
+  ) p ON true WHERE k.tenant_id=$1::uuid AND (
+    k.uns_path IS NOT NULL OR NOT EXISTS (
+      SELECT 1 FROM equipment_notebooks n WHERE n.tenant_id=k.tenant_id AND n.node_id=k.id
+    )
+  )
   UNION ALL
   SELECT 'asset',e.id::text,e.equipment_number,
     CASE WHEN a.id IS NOT NULL THEN 'asset' WHEN p.id IS NOT NULL THEN 'namespace' ELSE 'root' END,
-    coalesce(a.id::text,p.id),concat_ws(' ',e.equipment_number,e.manufacturer,to_jsonb(e)->>'model_number',to_jsonb(e)->>'description'),
+    coalesce(a.id,p.id::uuid),concat_ws(' ',e.equipment_number,e.manufacturer,to_jsonb(e)->>'model_number',to_jsonb(e)->>'description'),
     jsonb_build_object('manufacturer',e.manufacturer,'model',to_jsonb(e)->>'model_number','unsPath',e.uns_path::text)
   FROM cmms_equipment e
   LEFT JOIN cmms_equipment a ON a.tenant_id=e.tenant_id AND a.id::text=to_jsonb(e)->>'parent_asset_id' AND a.id<>e.id
   LEFT JOIN LATERAL (
     SELECT CASE WHEN count(*)=1 THEN min(k.id::text) END AS id FROM kg_entities k
-    WHERE k.tenant_id=e.tenant_id AND k.uns_path @> e.uns_path AND k.uns_path<>e.uns_path
-      AND nlevel(k.uns_path)=(SELECT max(nlevel(z.uns_path)) FROM kg_entities z WHERE z.tenant_id=e.tenant_id AND z.uns_path @> e.uns_path AND z.uns_path<>e.uns_path)
-  ) p ON true WHERE e.tenant_id=$1::uuid
+    WHERE k.tenant_id=$1::uuid AND k.uns_path @> e.uns_path AND k.uns_path<>e.uns_path
+      AND nlevel(k.uns_path)=(SELECT max(nlevel(z.uns_path)) FROM kg_entities z WHERE z.tenant_id=$1::uuid AND z.uns_path @> e.uns_path AND z.uns_path<>e.uns_path)
+  ) p ON true WHERE e.tenant_id::text=$1::uuid::text
   UNION ALL
-  SELECT 'notebook',n.id::text,n.display_name,CASE WHEN k.id IS NULL THEN 'root' ELSE 'namespace' END,k.id::text,
+  SELECT 'notebook',n.id::text,n.display_name,
+    CASE WHEN e.id IS NOT NULL THEN 'asset' WHEN ba.bound_asset_path IS NOT NULL THEN 'namespace' ELSE 'root' END,
+    coalesce(e.id, CASE WHEN ba.bound_asset_path IS NOT NULL THEN ba.bound_asset_node_id END),
     concat_ws(' ',n.display_name,n.manufacturer,n.model,n.catalog_number,n.asset_tag,n.serial_number),to_jsonb(h)
-  FROM equipment_notebooks n LEFT JOIN kg_entities k ON k.tenant_id=n.tenant_id AND k.id=n.node_id
+  FROM equipment_notebooks n ${notebook.boundAssetJoin}
+  LEFT JOIN cmms_equipment e ON e.tenant_id::text=n.tenant_id::text AND e.id::text=ba.bound_asset_entity_id
   CROSS JOIN LATERAL (SELECT ${notebook.columns}) h WHERE n.tenant_id=$1::uuid
   UNION ALL
-  SELECT 'notebook_component',c.id::text,coalesce(r.local_tag,r.raw_label,c.kind,'Unknown component'),'notebook',c.notebook_id::text,
+  SELECT 'notebook_component',c.id::text,coalesce(r.local_tag,r.raw_label,c.kind,'Unknown component'),'notebook',c.notebook_id,
     concat_ws(' ',c.kind,r.raw_label,r.manufacturer,r.family,r.catalog_number,r.serial_number,r.local_tag),to_jsonb(h)
   FROM notebook_components c ${component.latestJoin}
   CROSS JOIN LATERAL (SELECT ${component.columns}) h
-  WHERE c.tenant_id=$1::uuid AND EXISTS(SELECT 1 FROM equipment_notebooks n WHERE n.tenant_id=c.tenant_id AND n.id=c.notebook_id)
+  JOIN equipment_notebooks n ON n.tenant_id=c.tenant_id AND n.id=c.notebook_id
+  WHERE c.tenant_id=$1::uuid
   UNION ALL
-  SELECT 'installed_instance',i.id::text,coalesce(i.canonical_name,i.component_name),CASE WHEN e.id IS NULL THEN 'root' ELSE 'asset' END,e.id::text,
+  SELECT 'installed_instance',i.id::text,coalesce(i.canonical_name,i.component_name),CASE WHEN e.id IS NULL THEN 'root' ELSE 'asset' END,e.id,
     concat_ws(' ',i.component_name,i.canonical_name,array_to_string(i.aliases,' '),i.plc_tag,t.manufacturer,t.model),
     jsonb_build_object('componentName',i.component_name,'canonicalName',i.canonical_name,'aliases',i.aliases,'assetId',i.asset_id,
       'humanConfirmed',i.human_confirmed,'manufacturer',t.manufacturer,'model',t.model,'unsPath',i.uns_path::text)
-  FROM installed_component_instances i LEFT JOIN cmms_equipment e ON e.tenant_id=i.tenant_id AND e.id=i.asset_id
+  FROM installed_component_instances i LEFT JOIN cmms_equipment e ON e.tenant_id::text=i.tenant_id::text AND e.id=i.asset_id
   LEFT JOIN component_templates t ON t.id=i.template_id WHERE i.tenant_id=$1::uuid
 )`;
 
 /** The exact page SQL, also used for restricted-role EXPLAIN qualification. */
 export function equipmentBrowserPageSql(search: boolean, root: boolean): string {
+  const withinScope = root
+    ? "parent_kind=$2 AND parent_id IS NULL AND $3::uuid IS NULL"
+    : "parent_kind=$2 AND parent_id=$3::uuid";
   return `/* equipment-browser:${search ? "search" : "children"} */
       WITH RECURSIVE ${inventory}, descendants AS (
-        SELECT * FROM inventory WHERE parent_kind=$2 AND parent_id IS NOT DISTINCT FROM $3::text
-        UNION SELECT i.* FROM inventory i JOIN descendants d ON i.parent_kind=d.kind AND i.parent_id=d.id
+        SELECT * FROM inventory WHERE ${withinScope}
+        UNION SELECT i.* FROM inventory i JOIN descendants d ON i.parent_kind=d.kind AND i.parent_id=d.id::uuid
       ), matched AS MATERIALIZED (
         SELECT * FROM ${search ? root ? "inventory" : "descendants" : "inventory"}
-        WHERE ${search ? "true" : "parent_kind=$2 AND parent_id IS NOT DISTINCT FROM $3::text"}
-          AND ($4::text IS NULL OR kind=$4) AND (search_text ILIKE ('%' || $5 || '%') ESCAPE E'\\\\')
+        WHERE ${search ? "true" : withinScope}
+          AND ($4::text IS NULL OR kind=$4) AND (
+            $5::text = '' OR regexp_replace(normalize(search_text, NFKC), '[[:space:]]+', ' ', 'g')
+              ILIKE ('%' || $5 || '%') ESCAPE E'\\\\'
+          )
       ), counts AS (SELECT count(*) AS total,coalesce(jsonb_object_agg(kind,n),'{}'::jsonb) AS by_kind
         FROM (SELECT kind,count(*) AS n FROM matched GROUP BY kind) groups
-      ), total AS (SELECT count(*) AS n FROM matched), child_counts AS (
-        SELECT parent_kind,parent_id,count(*) AS n FROM inventory GROUP BY parent_kind,parent_id
-      ), limited AS (
-        SELECT m.*,coalesce(cc.n,0) AS child_count FROM matched m LEFT JOIN child_counts cc ON cc.parent_kind=m.kind AND cc.parent_id=m.id
+      ), total AS (SELECT count(*) AS n FROM matched), page_keys AS MATERIALIZED (
+        SELECT m.* FROM matched m
         WHERE ($6::text IS NULL OR (m.kind COLLATE "C",m.id COLLATE "C") > ($6::text COLLATE "C",$7::text COLLATE "C"))
         ORDER BY m.kind COLLATE "C",m.id COLLATE "C" LIMIT $8
+      ), limited AS (
+        SELECT m.*, CASE
+          WHEN m.kind='notebook' THEN (
+            SELECT count(*) FROM notebook_components c
+            WHERE c.tenant_id=$1::uuid AND c.notebook_id=m.id::uuid
+          )
+          WHEN m.kind IN ('namespace','asset') THEN (
+            SELECT count(*) FROM inventory
+            WHERE kind IN ('namespace','asset','notebook','installed_instance')
+              AND parent_kind=m.kind AND parent_id=m.id::uuid
+          )
+          ELSE 0
+        END AS child_count FROM page_keys m
       ) SELECT (SELECT n FROM total)::int AS total,(SELECT by_kind FROM counts) AS by_kind,
         coalesce((SELECT jsonb_agg(to_jsonb(limited) ORDER BY kind COLLATE "C",id COLLATE "C") FROM limited),'[]'::jsonb) AS items`;
 }
@@ -139,7 +164,8 @@ function item(row: InventoryRow) {
 async function authorize(client: PoolClient, tenant: string, scope: Scope): Promise<void> {
   if (scope.kind === "root") return;
   const table = { namespace: "kg_entities", asset: "cmms_equipment", notebook: "equipment_notebooks" }[scope.kind];
-  const { rowCount } = await client.query(`SELECT 1 FROM ${table} WHERE tenant_id=$1::uuid AND id=$2::uuid`, [tenant,scope.id]);
+  const tenantPredicate = scope.kind === "asset" ? "tenant_id::text=$1::text" : "tenant_id=$1::uuid";
+  const { rowCount } = await client.query(`SELECT 1 FROM ${table} WHERE ${tenantPredicate} AND id=$2::uuid`, [tenant,scope.id]);
   if (!rowCount) throw new BrowserError(404, "not_found");
 }
 
