@@ -10,7 +10,8 @@ import { hasNegation, modelNumbersIn } from "./manual-applicability";
 import { catalogIdentifierView } from "./catalog-identifier";
 
 /** `vr`: indices of the page's painted vertical rules crossing this item's baseline (absent = no rule evidence); `vrx`: those rules' x positions, index-aligned. */
-export type LayoutItem = { str: string; x: number; y: number; w: number; size: number; vr?: readonly number[]; vrx?: readonly number[] };
+/** `vertical`: the PDF sets this text rotated 90 degrees counter-clockwise; it then reads upward from (x, y) and `w` is its length along y. */
+export type LayoutItem = { str: string; x: number; y: number; w: number; size: number; vr?: readonly number[]; vrx?: readonly number[]; vertical?: boolean };
 export type TableCell = { model: string; value: string };
 export type TableRow = { label: string; unit: string | null; cells: TableCell[]; merged: boolean };
 export type TableBlock = {
@@ -299,9 +300,125 @@ function captionFor(lines: readonly Line[], headerIdx: number, cols: Columns): s
   return picked.map((l) => renderItems(l.items)).join(" / ");
 }
 
+/** A stub cell: a label printed once beside the rows it applies to, either rotated text naming
+ *  a group of rows ("Output Rating") or one of a column of short duty labels ("CT", "VT"). */
+type Stub = { item: LayoutItem; kind: "group" | "duty"; centre: number; right: number };
+/** Where a built row sits: first and last baselines, and the leftmost x of its label text. */
+type RowSpan = { top: number; bottom: number; labelX: number };
+const isFootnoteMark = (text: string): boolean => /^\d{1,2}$/.test(text);
+
+/** Stub cells in a block's label area, read from text geometry alone. A rotated item is a group
+ *  stub. A duty stub is a single-word, non-unit first label run; it counts only as a COLUMN: two or
+ *  more share one x, no multi-word label starts at that x, and at least one of them is followed on
+ *  its own line by more label text. A lone short label, or a column of one-word labels, is not one. */
+function findStubs(window: readonly Line[], cols: Columns): Stub[] {
+  const out: Stub[] = [];
+  const duty: Array<Stub & { followed: boolean }> = [];
+  const labelStarts: Array<{ x: number; words: number }> = [];
+  for (const line of window) {
+    const { labelItems } = splitLabelValue(line, cols);
+    for (const it of labelItems) if (it.vertical) out.push({ item: it, kind: "group", centre: it.y + it.w / 2, right: it.x });
+    const runs = groupRuns(labelItems.filter((it) => !it.vertical), RUN_GAP_PT).filter((r) => !isFootnoteMark(renderItems(r.items)));
+    for (const r of runs) labelStarts.push({ x: r.leftX, words: renderItems(r.items).split(/\s+/).length });
+    const first = runs[0];
+    if (!first || first.items.length !== 1) continue;
+    const text = renderItems(first.items);
+    if (/\s/.test(text) || tableUnit(text) !== null) continue;
+    const followed = runs.slice(1).some((r) => tableUnit(renderItems(r.items)) === null);
+    const it = first.items[0];
+    duty.push({ item: it, kind: "duty", centre: line.y, right: it.x + it.w, followed });
+  }
+  for (const s of duty) {
+    const column = duty.filter((o) => Math.abs(o.item.x - s.item.x) <= 2);
+    const labelAtX = labelStarts.some((l) => l.words > 1 && Math.abs(l.x - s.item.x) <= 2);
+    if (column.length >= 2 && !labelAtX && column.some((o) => o.followed)) out.push({ item: s.item, kind: s.kind, centre: s.centre, right: s.right });
+  }
+  return out;
+}
+
+/** Apply stubs to the rows they span. For each kind, the rows whose label starts right of the
+ *  stubs form contiguous runs; each run holding stubs is split into one consecutive segment per
+ *  stub, and the split is accepted only when it is the ONLY one whose every segment is centred on
+ *  its stub. Anything else (a stub beside no run, no split, two splits) fails closed: every row the
+ *  stubs of that kind could label is returned for demotion, never left unlabelled as a value. */
+function placeStubs(rows: readonly TableRow[], span: ReadonlyMap<TableRow, RowSpan>, stubs: readonly Stub[]):
+    { prefix: Map<TableRow, string[]>; demote: Set<TableRow>; placed: Stub[] } {
+  const prefix = new Map<TableRow, string[]>();
+  const demote = new Set<TableRow>();
+  const placed: Stub[] = [];
+  const tops = rows.map((r) => span.get(r)!.top);
+  const pitch = tops.length >= 2 ? median(tops.slice(1).map((t, i) => tops[i] - t).filter((g) => g > 0)) || 12 : 12;
+  const tol = 0.35 * pitch;
+  for (const kind of ["group", "duty"] as const) {
+    const own = stubs.filter((s) => s.kind === kind).sort((a, b) => b.centre - a.centre);
+    if (own.length === 0) continue;
+    const edge = Math.max(...own.map((s) => s.right)) - 0.5;
+    // A label that is one unit word ("kW" printed beside "Max Motor Output") is a unit cell of a
+    // neighbouring row, not a row of its own: it neither starts nor breaks a run, and it takes
+    // the stub of the row it continues, the row above, when that row has one. Never the row
+    // below: a unit printed under one property's cell must not take the next property's duty.
+    const unitOnly = (r: TableRow) => /^\S+$/.test(r.label.trim()) && tableUnit(r.label.trim()) !== null;
+    const inColumn = (r: TableRow) => span.get(r)!.labelX >= edge && !unitOnly(r);
+    const eligible = rows.filter(inColumn);
+    const runs: TableRow[][] = [];
+    let previous: TableRow | null = null;
+    for (const r of rows) {
+      if (unitOnly(r)) continue;
+      if (!inColumn(r)) { previous = r; continue; }
+      if (previous !== null && runs.length > 0 && runs[runs.length - 1].at(-1) === previous) runs[runs.length - 1].push(r);
+      else runs.push([r]);
+      previous = r;
+    }
+    const offset = (s: Stub) => (s.kind === "group" ? 0.3 * s.item.size : 0);
+    const mid = (seg: readonly TableRow[]) => (span.get(seg[0])!.top + span.get(seg[seg.length - 1])!.bottom) / 2;
+    const byRun = new Map<TableRow[], Stub[]>();
+    let failed = false;
+    for (const s of own) {
+      const run = runs.find((r) => s.centre <= span.get(r[0])!.top + pitch / 2 + offset(s) && s.centre >= span.get(r[r.length - 1])!.bottom - pitch / 2);
+      if (!run) { failed = true; break; }
+      byRun.set(run, [...(byRun.get(run) ?? []), s]);
+    }
+    const assigned: Array<[TableRow, string]> = [];
+    for (const [run, ss] of failed ? [] : byRun) {
+      const fits: number[][] = [];
+      const split = (start: number, k: number, cuts: number[]) => {
+        if (k === ss.length - 1) {
+          const all = [...cuts, start];
+          const ok = all.every((from, j) => {
+            const to = j + 1 < all.length ? all[j + 1] : run.length;
+            return Math.abs(mid(run.slice(from, to)) + offset(ss[j]) - ss[j].centre) <= tol;
+          });
+          if (ok && run.length - start > 0) fits.push(all);
+          return;
+        }
+        for (let next = start + 1; next < run.length; next++) split(next, k + 1, [...cuts, start]);
+      };
+      split(0, 0, []);
+      if (fits.length !== 1) { failed = true; break; }
+      fits[0].forEach((from, j) => {
+        const to = j + 1 < fits[0].length ? fits[0][j + 1] : run.length;
+        for (const r of run.slice(from, to)) assigned.push([r, renderItems([ss[j].item])]);
+      });
+    }
+    if (failed) { for (const r of eligible) demote.add(r); continue; }
+    const stubOf = new Map(assigned);
+    rows.forEach((r, i) => {
+      if (!unitOnly(r)) return;
+      let j = i - 1;
+      while (rows[j] && unitOnly(rows[j])) j -= 1;
+      const text = rows[j] ? stubOf.get(rows[j]) : undefined;
+      if (text) assigned.push([r, text]);
+    });
+    for (const [r, text] of assigned) prefix.set(r, [...(prefix.get(r) ?? []), text]);
+    placed.push(...own);
+  }
+  return { prefix, demote, placed };
+}
+
 /** Build one TableBlock starting at `lines[headerIdx]`. Returns the block and the index of the
  *  first line NOT consumed by it (where the outer scan should resume). */
-function buildBlock(lines: readonly Line[], headerIdx: number): { block: TableBlock; nextIdx: number } {
+function buildBlock(sourceLines: readonly Line[], headerIdx: number): { block: TableBlock; nextIdx: number } {
+  let lines = sourceLines;
   const header = lines[headerIdx];
   /** Painted vertical rules crossing EVERY printed item of a line. */
   const rulesOf = (l: Line): readonly number[] => l.items.filter((item) => item.str.trim().length > 0)
@@ -344,6 +461,12 @@ function buildBlock(lines: readonly Line[], headerIdx: number): { block: TableBl
   }
   const window = lines.slice(headerIdx + 1, windowEnd);
   const cols = computeColumns(idCells.map((c) => c.x), window);
+  // Stub cells leave their lines here and are applied to the rows they span after the scan.
+  const stubs = findStubs(window, cols);
+  if (stubs.length > 0) {
+    const stubItems = new Set(stubs.map((s) => s.item));
+    lines = sourceLines.map((l, i) => (i <= headerIdx || i >= windowEnd ? l : { y: l.y, items: l.items.filter((it) => !stubItems.has(it)) }));
+  }
 
   const gaps: number[] = [];
   for (let i = headerIdx; i + 1 < windowEnd; i++) gaps.push(lines[i].y - lines[i + 1].y);
@@ -354,6 +477,8 @@ function buildBlock(lines: readonly Line[], headerIdx: number): { block: TableBl
   const unqualified: string[] = [];
   const rowLines = new Map<TableRow, number>();
   const rowRawLine = new Map<TableRow, string>();
+  const rowSpan = new Map<TableRow, RowSpan>();
+  const labelStart = (items: readonly LayoutItem[]) => Math.min(...items.filter((it) => !isFootnoteMark(it.str.trim())).map((it) => it.x));
   let bodySize = 0;
   const rowYs: number[] = [];
   const memberYs: number[] = [];
@@ -363,7 +488,7 @@ function buildBlock(lines: readonly Line[], headerIdx: number): { block: TableBl
   // reached any row (backward or forward); a line that reaches none is kept as unqualified flat
   // text, so nothing inside the block is lost (cheap review of #5430 r1: the remainder drops every
   // line between the header and the last column-cell line).
-  let pendingLabelOnly: { y: number; idx: number; text: string; attached: boolean } | null = null;
+  let pendingLabelOnly: { y: number; idx: number; text: string; attached: boolean; x: number } | null = null;
   let scanEnd = windowEnd;
 
   const wordCount = (s: string): number => (s.trim().length === 0 ? 0 : s.trim().split(/\s+/).length);
@@ -372,19 +497,9 @@ function buildBlock(lines: readonly Line[], headerIdx: number): { block: TableBl
     pendingLabelOnly = null;
   };
 
-  for (let i = headerIdx + 1; i < windowEnd; i++) {
-    const line = lines[i];
-    if (isHeaderLine(line)) {
-      scanEnd = i;
-      break;
-    }
-    if (i > headerIdx + 1 && lines[i - 1].y - line.y > hardStopGap) {
-      scanEnd = i;
-      break;
-    }
-
+  /** Positive evidence that line `idx` belongs to this table (never a model scope). */
+  const isMemberLine = (line: Line, i: number, continuation = true): boolean => {
     const { labelItems, valueItems } = splitLabelValue(line, cols);
-
     // Ownership is positive: a line must fit this table's column grid or a
     // bounded data/label/footnote exemption. Nearest-column assignment alone
     // does not prove membership. This evidence is used BEFORE extraction to
@@ -420,7 +535,47 @@ function buildBlock(lines: readonly Line[], headerIdx: number): { block: TableBl
     const through = (ids: readonly number[]) => ids.some((id) => lineRules.includes(id));
     const ruled = through(separators) || (through(frameLeft) && through(frameRight));
     const labelledGridRow = gridRow && labelItems.length > 0;
-    if (!conflicting && (labelledGridRow || bareLabel || (ruled && (aligned || centredLabel)))) memberYs.push(line.y);
+    // A labelled line whose label and values one of this header's own separators keeps apart,
+    // with no value run cut by a rule crossing the line, is a row of this table: a merged or
+    // spanning cell sits inside its rules. The frame alone grants nothing.
+    const runRight = (run: Run) => Math.max(...run.items.map((it) => it.x + it.w));
+    const separatedLabel = labelItems.length > 0 && valueItems.length > 0 && through(separators) &&
+      !runs.some((run) => lineRules.some((id) => ruleX(id) > run.leftX + 0.5 && ruleX(id) < runRight(run) - 0.5));
+    // The second line of a two-line label ("Rated Input Current" / "(3-phase and 1-phase)"):
+    // a parenthetical qualifier only (a numbered footnote or heading is not one), starting at
+    // the same x as the label of a member row printed directly
+    // above it, within the attach band, inside this header's painted separators (a footnote or
+    // a numbered heading outside them never qualifies). Only label words; no value or catalog.
+    const labelX = (items: readonly LayoutItem[]) => Math.min(...items.filter((it) => it.str.trim().length > 0).map((it) => it.x));
+    const labelLine = continuation && labelItems.length > 0 && valueItems.length === 0 && catalogs.length === 0 && through(separators) &&
+      /^\([^()]+\)$/.test(renderItems(labelItems).trim()) &&
+      lines.slice(headerIdx + 1, i).some((above, k) => {
+        const own = splitLabelValue(above, cols).labelItems.filter((it) => it.str.trim().length > 0);
+        return above.y - line.y <= ATTACH_BAND_PT && own.length > 0 && Math.abs(labelX(own) - labelX(labelItems)) <= 1 &&
+          isMemberLine(above, headerIdx + 1 + k, false);
+      });
+    return !conflicting && (labelledGridRow || bareLabel || separatedLabel || labelLine || (ruled && (aligned || centredLabel)));
+  };
+
+  for (let i = headerIdx + 1; i < windowEnd; i++) {
+    const line = lines[i];
+    if (isHeaderLine(line)) {
+      scanEnd = i;
+      break;
+    }
+    if (i > headerIdx + 1 && lines[i - 1].y - line.y > hardStopGap) {
+      scanEnd = i;
+      break;
+    }
+    if (line.items.length === 0) continue; // only stub cells were on it
+
+    const { labelItems, valueItems } = splitLabelValue(line, cols);
+
+    // A footnote mark on its own line is this table's when the line it marks is.
+    const markOnly = isFootnoteMark(renderItems(line.items)) && [lines[i - 1], lines[i + 1]].some((adjacent) =>
+      adjacent !== undefined && Math.abs(adjacent.y - line.y) <= Math.min(...line.items.map((it) => it.size)) * 0.75 &&
+      isMemberLine(adjacent, lines.indexOf(adjacent)));
+    if (isMemberLine(line, i) || markOnly) memberYs.push(line.y);
 
     if (valueItems.length === 0) {
       const text = renderItems(labelItems);
@@ -433,10 +588,12 @@ function buildBlock(lines: readonly Line[], headerIdx: number): { block: TableBl
         if (gapOk && (wordCount(lastRow.label) < 2 || tableUnit(text) !== null)) {
           lastRow.label = `${lastRow.label} ${text}`.trim();
           attached = true;
+          const sp = rowSpan.get(lastRow);
+          if (sp) rowSpan.set(lastRow, { ...sp, bottom: line.y, labelX: Math.min(sp.labelX, labelStart(labelItems)) });
         }
       }
       releasePending();
-      pendingLabelOnly = { y: line.y, idx: i, text, attached };
+      pendingLabelOnly = { y: line.y, idx: i, text, attached, x: labelStart(labelItems) };
       continue;
     }
 
@@ -471,6 +628,8 @@ function buildBlock(lines: readonly Line[], headerIdx: number): { block: TableBl
         }
         if (labelText) lastRow.label = `${lastRow.label} ${labelText}`.trim();
         rowLines.set(lastRow, line.y);
+        const sp = rowSpan.get(lastRow);
+        if (sp) rowSpan.set(lastRow, { ...sp, bottom: line.y, labelX: labelItems.length > 0 ? Math.min(sp.labelX, labelStart(labelItems)) : sp.labelX });
         lastColumnCellIdx = i;
         continue;
       }
@@ -497,6 +656,26 @@ function buildBlock(lines: readonly Line[], headerIdx: number): { block: TableBl
           cells: models.map((m, idx) => ({ model: m, value: valueByCol.get(idx) ?? "" })),
         };
       }
+    } else if (valueRuns.length > 1 && valueRuns.length < n) {
+      // Spanning cells ("Convective" across four models, "Fan" under the fifth): each run is
+      // centred on a contiguous span of model headers, and the spans tile every column exactly
+      // once, in order. Anything less is not assigned.
+      const centre = (left: number, right: number) => (left + right) / 2;
+      const runRight = (run: Run) => Math.max(...run.items.map((it) => it.x + it.w));
+      const spans: Array<[number, number]> = [];
+      let from = 0;
+      for (const run of valueRuns) {
+        if (from >= n) break;
+        const c = centre(run.leftX, runRight(run));
+        const to = idCells.findIndex((_, k) => k >= from && Math.abs(centre(idCells[from].x, idCells[k].x + idCells[k].w) - c) <= cols.tol);
+        if (to < 0) break;
+        spans.push([from, to]);
+        from = to + 1;
+      }
+      if (spans.length === valueRuns.length && from === n) {
+        const valueAt = (idx: number) => renderItems(valueRuns[spans.findIndex(([a, b]) => idx >= a && idx <= b)].items);
+        freshRow = { label: built.label, unit: built.unit, merged: false, cells: models.map((m, idx) => ({ model: m, value: valueAt(idx) })) };
+      }
     }
 
     if (freshRow) {
@@ -506,14 +685,18 @@ function buildBlock(lines: readonly Line[], headerIdx: number): { block: TableBl
       // Forward attach: a pending label-only line (above, within band) whose text applies
       // because THIS row's own (pre-attach) label has < 2 words, or the pending text is
       // itself a recognised unit token.
+      const span: RowSpan = { top: line.y, bottom: line.y, labelX: labelItems.length > 0 ? labelStart(labelItems) : Infinity };
       if (pendingLabelOnly) {
         const gapOk = pendingLabelOnly.y - line.y <= ATTACH_BAND_PT;
         if (gapOk && (wordCount(freshRow.label) < 2 || tableUnit(pendingLabelOnly.text) !== null)) {
           freshRow.label = `${freshRow.label} ${pendingLabelOnly.text}`.trim();
           pendingLabelOnly.attached = true;
+          span.top = pendingLabelOnly.y;
+          span.labelX = Math.min(span.labelX, pendingLabelOnly.x);
         }
         releasePending();
       }
+      rowSpan.set(freshRow, span);
       // An empty label here isn't necessarily final: a label-only line further down may still
       // backward-attach onto this row (see above) before the loop ends. Defer the "empty label
       // after assembly is unqualified" decision to the end, keeping the row's own source line so
@@ -531,6 +714,22 @@ function buildBlock(lines: readonly Line[], headerIdx: number): { block: TableBl
   // A pending line above the last column-cell line is inside the block (the remainder will drop
   // it); one below it is outside and the remainder keeps it as-is.
   if (pendingLabelOnly && pendingLabelOnly.idx < lastColumnCellIdx) releasePending();
+
+  // Stub cells: each row gets the group and duty labels it is printed beside, or, when they
+  // cannot be placed beyond doubt, the rows they could label are kept as unqualified text.
+  if (stubs.length > 0) {
+    const { prefix, demote, placed } = placeStubs(rows, rowSpan, stubs);
+    for (const r of [...rows]) {
+      if (demote.has(r)) {
+        unqualified.push([r.label, r.unit, ...(r.merged ? [r.cells[0]?.value] : r.cells.map((c) => c.value))].filter(Boolean).join(" "));
+        rows.splice(rows.indexOf(r), 1);
+        continue;
+      }
+      const p = prefix.get(r);
+      if (p && r.label.trim() !== "") r.label = [...p, r.label].join(" / ");
+    }
+    for (const s of placed) if (s.kind === "group") memberYs.push(s.item.y);
+  }
 
   const finalRows: TableRow[] = [];
   for (const r of rows) {
