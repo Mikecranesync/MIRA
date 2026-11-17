@@ -867,12 +867,6 @@ def _recall_bm25(
     }
     if tenant_id:
         params["tid"] = tenant_id
-    select_cols = (
-        "SELECT content, manufacturer, model_number, equipment_type, "
-        "source_type, source_url, source_page, metadata, verified, "
-        "ts_rank_cd(content_tsv, to_tsquery('english', :tsq)) AS similarity "
-        "FROM knowledge_entries "
-    )
 
     # Exact-identifier pre-pass: rows holding a complete catalog identifier lead
     # the stream, ranked by the rest of the question. plainto_tsquery ANDs the
@@ -893,7 +887,11 @@ def _recall_bm25(
                 dict(r)
                 for r in conn.execute(
                     text_fn(
-                        select_cols + f"WHERE {tenant_filter} "
+                        "SELECT content, manufacturer, model_number, equipment_type, "
+                        "source_type, source_url, source_page, metadata, verified, "
+                        "ts_rank_cd(content_tsv, to_tsquery('english', :tsq)) AS similarity "
+                        "FROM knowledge_entries "
+                        f"WHERE {tenant_filter} "
                         f"  AND content_tsv @@ ({' || '.join(id_terms)}){_approval_filter_sql()} "
                         "ORDER BY similarity DESC "
                         "LIMIT :lim"
@@ -911,7 +909,11 @@ def _recall_bm25(
         rows = (
             conn.execute(
                 text_fn(
-                    select_cols + f"WHERE {tenant_filter} "
+                    "SELECT content, manufacturer, model_number, equipment_type, "
+                    "source_type, source_url, source_page, metadata, verified, "
+                    "ts_rank_cd(content_tsv, to_tsquery('english', :tsq)) AS similarity "
+                    "FROM knowledge_entries "
+                    f"WHERE {tenant_filter} "
                     f"  AND content_tsv @@ to_tsquery('english', :tsq){_approval_filter_sql()} "
                     "ORDER BY similarity DESC "
                     "LIMIT :lim"

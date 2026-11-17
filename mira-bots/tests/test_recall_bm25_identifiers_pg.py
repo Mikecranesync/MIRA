@@ -252,16 +252,18 @@ def test_identifier_does_not_match_a_suffixed_part_number(engine, monkeypatch):
     with engine.connect() as conn:
         n = conn.execute(
             sqlalchemy.text(
-                "SELECT count(*) FROM knowledge_entries WHERE content_tsv @@ plainto_tsquery('english', :q)"
+                "SELECT count(*) FROM knowledge_entries WHERE (is_private = false OR tenant_id = :tid) "
+                "AND content_tsv @@ plainto_tsquery('english', :q)"
             ),
-            {"q": "GS13N-22P0"},
+            {"q": "GS13N-22P0", "tid": T1},
         ).scalar()
         hits = (
             conn.execute(
                 sqlalchemy.text(
-                    "SELECT content FROM knowledge_entries WHERE content_tsv @@ plainto_tsquery('english', :q)"
+                    "SELECT content FROM knowledge_entries WHERE (is_private = false OR tenant_id = :tid) "
+                    "AND content_tsv @@ plainto_tsquery('english', :q)"
                 ),
-                {"q": "GS13N-22P0"},
+                {"q": "GS13N-22P0", "tid": T1},
             )
             .scalars()
             .all()
