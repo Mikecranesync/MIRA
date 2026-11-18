@@ -16,6 +16,9 @@
  *   - a record that changed elsewhere is refused at resolve or at the write, and nothing is selected.
  *   - an answer that arrives after leaving and returning to the chat moves nothing (r2 F3).
  *   - a destination checklist that fails to load ends the hand-off with a notice (r2 F11).
+ *   - equipment in another notebook is only offered; the technician's Open tap opens it, and
+ *     closing the panel cancels a lookup on its way so the chat and its draft stay (r3 F12).
+ *   - a component added after the checklist was read is shown after one fresh read (r3 F13).
  *   - showing a part never saves it, and reopening the chat does not show it again.
  *   - off: the panel is not rendered.
  *
@@ -58,8 +61,8 @@ const mlcView = {
   current: { ...vfdRev, componentId: MLC, revision: 1, rawLabel: "MLC", family: "MLC", localTag: "Q1" },
 };
 type Selection = { componentId: string; version: number } | null;
-const bench = (sel: Selection) => ({
-  components: [vfdView, mlcView],
+const bench = (sel: Selection, without?: string) => ({
+  components: [vfdView, mlcView].filter((c) => c.id !== without),
   selection: sel ? { componentId: sel.componentId, revision: sel.componentId === VFD ? 3 : 1, selectedAt: "2026-11-18T12:00:00.000Z", selectedVia: "picker", version: sel.version, current: true } : null,
   selectionVersion: sel?.version ?? null,
   lastTurn: null,
@@ -91,6 +94,7 @@ type Seen = {
   selections: Map<string, Selection>;
   /** Lets a held resolve answer (opts.holdResolve). */
   release: () => void;
+  benchReads: number;
 };
 type RouteOpts = {
   enabled: boolean;
@@ -98,6 +102,10 @@ type RouteOpts = {
   put?: "ok" | "stale_revision";
   holdResolve?: boolean;
   benchFails?: boolean;
+  /** The first checklist read predates this component (it was added on another screen). */
+  firstBenchWithout?: string;
+  /** The resolve answers with the component in this notebook instead of NB. */
+  resolveNotebook?: string;
   initial?: Record<string, Selection>;
 };
 
@@ -106,13 +114,15 @@ async function routes(page: Page, opts: RouteOpts): Promise<Seen> {
   await installRoutes(page, "G");
   let release!: () => void;
   const released = new Promise<void>((r) => (release = r));
-  const seen: Seen = { resolves: [], selectionPuts: [], selections: new Map(Object.entries(opts.initial ?? {})), release };
+  const seen: Seen = { resolves: [], selectionPuts: [], selections: new Map(Object.entries(opts.initial ?? {})), release, benchReads: 0 };
 
   await page.route(/\/api\/equipment-notebooks\/[^/]+\/components\/(\?.*)?$/, (route) => {
     if (route.request().method() !== "GET") return route.fallback();
     if (opts.benchFails) return route.fulfill(json({ error: "internal" }, 500));
     const thread = new URL(route.request().url()).searchParams.get("threadId") ?? "";
-    return route.fulfill(json(bench(seen.selections.get(thread) ?? null)));
+    seen.benchReads += 1;
+    const without = seen.benchReads === 1 ? opts.firstBenchWithout : undefined;
+    return route.fulfill(json(bench(seen.selections.get(thread) ?? null, without)));
   });
   await page.route(/\/api\/equipment-notebooks\/[^/]+\/components\/selection\/?$/, (route) => {
     const req: Request = route.request();
@@ -138,7 +148,7 @@ async function routes(page: Page, opts: RouteOpts): Promise<Seen> {
       const id = url.searchParams.get("componentId");
       return route.fulfill(json({
         status: "resolved",
-        notebook: { id: NB, displayName: "GS10 — Line 3 conveyor", locationLabel: "Line 3" },
+        notebook: { id: opts.resolveNotebook ?? NB, displayName: opts.resolveNotebook ? "Packaging line" : "GS10 — Line 3 conveyor", locationLabel: "Line 3" },
         component: { id, kind: "drive", current: { localTag: id === MLC ? "Q1" : "VFD1", rawLabel: id === MLC ? "Q1" : "VFD1" } },
       })).catch(() => undefined);
     }
@@ -161,6 +171,8 @@ const askAbout = (page: Page, label: string) =>
 const pickNotice = (page: Page) => page.getByTestId("equipment-pick-notice");
 const checklist = (page: Page) => page.getByTestId("bench-components-panel");
 const checklistRow = (page: Page, id: string) => checklist(page).getByTestId(`bench-component-${id}`);
+const offer = (page: Page) => page.getByTestId("equipment-offer");
+const composer = (page: Page) => page.getByRole("textbox", { name: /ask mira/i });
 const selectInChecklist = (page: Page, id: string) => checklistRow(page, id).getByRole("button", { name: "Ask about this" }).click();
 
 test("on: Ask about opens the checklist on the part; the technician's tap selects it", async ({ page, context, baseURL }) => {
@@ -290,6 +302,74 @@ test("showing a part never saves it, and reopening the chat does not show it aga
   await expect(page.getByTestId("bench-asking-about")).toBeVisible();
   await page.waitForTimeout(1500);
   await expect(checklist(page)).toHaveCount(0);
+  expect(seen.selectionPuts).toHaveLength(0);
+});
+
+test("equipment in another notebook is offered and opens only on the technician's tap (#5625 r3 F12)", async ({ page, context, baseURL }) => {
+  await auth(context, baseURL!);
+  const seen = await routes(page, { enabled: true, resolve: "resolved" });
+  await page.goto(`/v3/`);
+  await expect(panel(page)).toBeVisible();
+
+  await openTo(page, VFD);
+  await askAbout(page, "VFD1");
+
+  await expect(offer(page)).toContainText("VFD1 is in GS10 — Line 3 conveyor");
+  // Nothing opened by itself.
+  await page.waitForTimeout(500);
+  await expect(page).not.toHaveURL(/notebook=/);
+  await expect(checklist(page)).toHaveCount(0);
+
+  await offer(page).getByRole("button", { name: "Open" }).click();
+  await expect(page).toHaveURL(new RegExp(`notebook=${NB}`));
+  await expect(checklistRow(page, VFD)).toHaveAttribute("data-found", "true");
+  expect(seen.selectionPuts).toHaveLength(0);
+});
+
+test("closing Find equipment cancels a lookup on its way: the chat and the typed message stay (#5625 r3 F12)", async ({ page, context, baseURL }) => {
+  await auth(context, baseURL!);
+  const OTHER = "99999999-9999-4999-8999-999999999999";
+  const seen = await routes(page, { enabled: true, resolve: "resolved", holdResolve: true, resolveNotebook: OTHER });
+  await page.goto(`/v3/?notebook=${NB}&thread=${THREAD}`);
+  await expect(panel(page)).toBeVisible();
+  const url = page.url();
+
+  await openTo(page, VFD);
+  await askAbout(page, "VFD1");
+  await expect.poll(() => seen.resolves.length).toBe(1);
+  await panel(page).getByRole("button", { name: "Close equipment" }).click();
+  await composer(page).fill("half-typed question");
+  seen.release();
+
+  await page.waitForTimeout(1500);
+  expect(page.url()).toBe(url);
+  await expect(composer(page)).toHaveValue("half-typed question");
+  await expect(offer(page)).toHaveCount(0);
+  await expect(checklist(page)).toHaveCount(0);
+
+  // Control: with the panel left open the same answer arrives as an offer; still nothing moves.
+  await openTo(page, VFD);
+  await askAbout(page, "VFD1");
+  await expect(offer(page)).toContainText("Packaging line");
+  expect(page.url()).toBe(url);
+  await expect(composer(page)).toHaveValue("half-typed question");
+  expect(seen.selectionPuts).toHaveLength(0);
+});
+
+test("a component added after the checklist was read is still shown: one fresh read first (#5625 r3 F13)", async ({ page, context, baseURL }) => {
+  await auth(context, baseURL!);
+  const seen = await routes(page, { enabled: true, resolve: "resolved", firstBenchWithout: MLC });
+  await page.goto(`/v3/?notebook=${NB}&thread=${THREAD}`);
+  await expect(panel(page)).toBeVisible();
+  // Precondition: the checklist on screen was read without Q1.
+  await expect.poll(() => seen.benchReads).toBeGreaterThanOrEqual(1);
+
+  await openTo(page, MLC);
+  await askAbout(page, "Q1");
+
+  await expect(checklistRow(page, MLC)).toHaveAttribute("data-found", "true");
+  expect(seen.benchReads).toBeGreaterThanOrEqual(2);
+  await expect(pickNotice(page)).toHaveCount(0);
   expect(seen.selectionPuts).toHaveLength(0);
 });
 

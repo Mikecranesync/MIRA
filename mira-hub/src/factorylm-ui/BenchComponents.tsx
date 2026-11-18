@@ -195,9 +195,23 @@ export function BenchComponents({
 
   // The navigator never writes a selection: it opens the checklist on what it found.
   const consumedFocus = useRef(new Set<number>());
+  // One fresh read per hand-off before a component is called missing (#5625 r3 F13).
+  const reread = useRef(new Map<number, "pending" | "done">());
+  const [rereadDone, setRereadDone] = useState(0);
   useEffect(() => {
-    const step = focusStep(focus, consumedFocus.current, { bench, available, readFailed });
+    const again = focus ? reread.current.get(focus.token) : undefined;
+    if (again === "pending") return;
+    const step = focusStep(focus, consumedFocus.current, { bench, available, readFailed, reread: again === "done" });
     if (!focus || step === "none" || step === "wait") return;
+    if (step === "refresh") {
+      const token = focus.token;
+      reread.current.set(token, "pending");
+      void load().finally(() => {
+        reread.current.set(token, "done");
+        if (alive.current) setRereadDone((n) => n + 1);
+      });
+      return;
+    }
     consumedFocus.current.add(focus.token);
     if (step === "show") {
       setCard(null);
@@ -213,7 +227,7 @@ export function BenchComponents({
         : "The component list isn't available here, so the component wasn't shown. Nothing was changed.";
     setMessage(text);
     onFocusDone?.(focus.token, { ok: false, message: text });
-  }, [focus, bench, available, readFailed, onFocusDone]);
+  }, [focus, bench, available, readFailed, onFocusDone, load, rereadDone]);
   useEffect(() => {
     if (open && focused) document.querySelector(`[data-testid="bench-component-${focused}"]`)?.scrollIntoView?.({ block: "nearest" });
   }, [open, focused]);

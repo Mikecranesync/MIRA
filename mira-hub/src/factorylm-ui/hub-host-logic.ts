@@ -4,7 +4,7 @@
  * the shell's context snapshot says about the machine, which sources a turn is
  * allowed to cite, and what history the canonical route receives.
  */
-import { PROFILES, createShellState, shellReducer, type InteractionTurn, type ManualSearchStatus, type ShellAction, type ShellFixture, type ShellState } from "../../../packages/factorylm-interaction/src";
+import { PROFILES, createShellState, shellReducer, type InteractionTurn, type ManualSearchStatus, type ShellAction, type QuestionTarget, type ShellFixture, type ShellState } from "../../../packages/factorylm-interaction/src";
 import type { EquipmentNotebook, NotebookSource } from "@/lib/equipment-notebooks";
 import { buildChatBody, isAbortError, type ChatBody, type PersistedTurn, type StreamResult } from "@/components/equipment/notebook-chat-utils";
 import { isSafetyNoticeEntry } from "@/lib/notebook-chat-types";
@@ -101,38 +101,65 @@ export function openNotebookSelection(nb: Pick<HubNotebook, "id">, mint: () => s
 export type EquipmentFocus = { notebookId: string; threadId: string; componentId: string; token: number };
 
 /**
+ * An answer for equipment in another notebook (or asked from HOME). It never switches chats by
+ * itself (#5625 r3 F12, Mike's A): the panel offers "Open", and only that tap opens the notebook.
+ * It lapses on any conversation change.
+ */
+export type EquipmentOffer = { target: QuestionTarget; generation: number; token: number };
+
+/**
  * Where Ask about was pressed: the open conversation (null = HOME) and the host's navigation
  * generation, which moves on every conversation change, a return to the same one included.
  */
 export type PickOrigin = { conversation: HubSelection | null; generation: number };
 
 export type PickRoute =
-  | { kind: "route"; open: HubSelection | null; focus: EquipmentFocus | null }
+  | { kind: "focus"; focus: EquipmentFocus | null }
+  | { kind: "offer"; offer: EquipmentOffer }
   | { kind: "dropped"; reason: "conversation_changed" | "answer_in_progress" };
 
 /**
- * Where an "Ask about" from the equipment navigator lands. A component in the open notebook
- * is shown in the open conversation's checklist; anything in another notebook opens that
- * notebook in a fresh chat (as a project click does, #4444) and is shown there.
+ * What an "Ask about" answer from the equipment navigator does. Nothing here ever changes the
+ * open conversation:
+ *  - a component of the open notebook is shown in the open conversation's checklist;
+ *  - the open notebook as a whole needs nothing;
+ *  - anything in another notebook, or asked from HOME, becomes an offer the technician taps.
  *
  * The answer arrives after the press. If any conversation change happened in between (leaving
- * and coming back included, #5625 r2 F3), or an answer is streaming, nothing moves: opening a
- * chat would stop that answer.
+ * and coming back included, #5625 r2 F3), or an answer is streaming, it does nothing at all.
  */
 export function pickRouteFor(
-  target: { machineId: string; componentId: string | null },
+  target: QuestionTarget,
   origin: PickOrigin,
   now: { generation: number; selection: HubSelection | null; answering: boolean },
   token: number,
-  mint: () => string = newThreadId,
 ): PickRoute {
   if (origin.generation !== now.generation) return { kind: "dropped", reason: "conversation_changed" };
   if (now.answering) return { kind: "dropped", reason: "answer_in_progress" };
-  const selection = now.selection;
-  const open = selection?.notebookId === target.machineId ? null : openNotebookSelection({ id: target.machineId }, mint);
-  const conversation = open ?? selection;
-  if (!conversation || !target.componentId) return { kind: "route", open, focus: null };
-  return { kind: "route", open, focus: { notebookId: conversation.notebookId, threadId: conversation.threadId, componentId: target.componentId, token } };
+  const open = now.selection;
+  if (open && open.notebookId === target.machineId) {
+    return {
+      kind: "focus",
+      focus: target.componentId ? { notebookId: open.notebookId, threadId: open.threadId, componentId: target.componentId, token } : null,
+    };
+  }
+  return { kind: "offer", offer: { target, generation: now.generation, token } };
+}
+
+/**
+ * The technician tapped "Open" on an offer: that notebook opens in a fresh chat, as a project
+ * click does (#4444), and its checklist is shown on the component. An offer from an earlier
+ * conversation never opens anything.
+ */
+export function openOffer(
+  offer: EquipmentOffer,
+  generation: number,
+  mint: () => string = newThreadId,
+): { open: HubSelection; focus: EquipmentFocus | null } | null {
+  if (offer.generation !== generation) return null;
+  const open = openNotebookSelection({ id: offer.target.machineId }, mint);
+  const componentId = offer.target.componentId;
+  return { open, focus: componentId ? { notebookId: open.notebookId, threadId: open.threadId, componentId, token: offer.token } : null };
 }
 
 /**

@@ -105,8 +105,10 @@ import {
   metaFor,
   newThreadId,
   openNotebookSelection,
+  openOffer,
   pickRouteFor,
   type EquipmentFocus,
+  type EquipmentOffer,
   type PickOrigin,
   openThreadAction,
   retainedStreamInterruption,
@@ -206,6 +208,7 @@ export function HubShellHost() {
   const [benchView, setBenchView] = useState<{ key: string; state: BenchState | null } | null>(null);
   // Equipment navigator (MIRA_EQUIPMENT_NAV): the component it resolved, for that conversation's checklist to select.
   const [equipmentFocus, setEquipmentFocus] = useState<EquipmentFocus | null>(null);
+  const [equipmentOffer, setEquipmentOffer] = useState<EquipmentOffer | null>(null);
   const [equipmentNotice, setEquipmentNotice] = useState<string | null>(null);
   const equipmentPickToken = useRef(0);
   // TASK-S3: the Living Work Sheet job open for ANY notebook (LivingSheet is
@@ -659,6 +662,8 @@ export function HubShellHost() {
     setNav({ key: benchKey, generation: nav.generation + 1 });
     // Leaving the conversation before its checklist showed the component abandons the hand-off.
     if (equipmentFocus && `${equipmentFocus.notebookId}|${equipmentFocus.threadId}` !== benchKey) setEquipmentFocus(null);
+    // An offer belongs to the conversation it was answered in.
+    if (equipmentOffer) setEquipmentOffer(null);
   }
   const navGeneration = nav.key === benchKey ? nav.generation : nav.generation + 1;
   const equipmentOrigin = useMemo<PickOrigin>(
@@ -681,9 +686,22 @@ export function HubShellHost() {
       return;
     }
     setEquipmentNotice(null);
-    if (route.open) select(route.open);
+    if (route.kind === "offer") {
+      setEquipmentOffer(route.offer);
+      return;
+    }
+    setEquipmentOffer(null);
     setEquipmentFocus(route.focus);
+  }, []);
+  // The technician's tap is the only thing that opens another notebook (#5625 r3 F12).
+  const onOpenOffer = useCallback((offer: EquipmentOffer) => {
+    setEquipmentOffer(null);
+    const opened = openOffer(offer, pickNow.current.generation);
+    if (!opened) return;
+    select(opened.open);
+    setEquipmentFocus(opened.focus);
   }, [select]);
+  const onDismissOffer = useCallback(() => setEquipmentOffer(null), []);
   // The host owns a hand-off until the checklist reports how it ended (#5625 r1 F2): a checklist
   // remounted later never sees it again. Only the hand-off that ended is dropped, never a newer one.
   const onFocusDone = useCallback((token: number, outcome: { ok: true } | { ok: false; message: string }) => {
@@ -1228,7 +1246,15 @@ export function HubShellHost() {
           own row, so Machine state and Work Packet never cover each other (#5102). */}
       <div data-testid="notebook-actions" data-covered={actionsCovered ? "true" : undefined} aria-hidden={actionsCovered || undefined} style={notebookActionsStyle(actionsCovered)}>
       {/* Equipment-first navigation (MIRA_EQUIPMENT_NAV): renders nothing while the flag is off. */}
-      <EquipmentNav origin={equipmentOrigin} target={equipmentTarget} notice={equipmentNotice} onPick={onEquipmentPick} />
+      <EquipmentNav
+        origin={equipmentOrigin}
+        target={equipmentTarget}
+        notice={equipmentNotice}
+        offer={equipmentOffer && equipmentOffer.generation === navGeneration ? equipmentOffer : null}
+        onPick={onEquipmentPick}
+        onOpenOffer={onOpenOffer}
+        onDismissOffer={onDismissOffer}
+      />
       {/* Bench components: "Asking about …", the checklist and the reply's actions; nothing without migration 115. */}
       {selection && (
         <BenchComponents

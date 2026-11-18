@@ -631,15 +631,21 @@ export async function changeSelection(opts: {
  * `pickRouteFor`). It is shown once: the checklist opens on it and the technician selects it
  * there. Nothing is written here. A read that failed, a missing checklist or a component not
  * (or no longer) in it ends the hand-off with a reason, so it is never applied later.
+ *
+ * The server has just resolved the component, so a checklist read earlier may simply predate it
+ * (#5625 r3 F13): a miss on the list already on screen asks for one fresh read ("refresh") before
+ * it is reported missing.
  */
 export function focusStep(
   focus: { componentId: string; token: number } | null,
   consumed: ReadonlySet<number>,
-  state: { bench: BenchState | null; available: boolean; readFailed: boolean },
-): "none" | "wait" | "unavailable" | "failed" | "missing" | "show" {
+  state: { bench: BenchState | null; available: boolean; readFailed: boolean; reread: boolean },
+): "none" | "wait" | "unavailable" | "failed" | "refresh" | "missing" | "show" {
   if (!focus || consumed.has(focus.token)) return "none";
   if (!state.available) return "unavailable";
-  if (!state.bench) return state.readFailed ? "failed" : "wait";
+  if (state.readFailed) return "failed";
+  if (!state.bench) return "wait";
   const c = state.bench.components.find((x) => x.id === focus.componentId);
-  return c && c.status !== "retired" ? "show" : "missing";
+  if (c && c.status !== "retired") return "show";
+  return state.reread ? "missing" : "refresh";
 }
