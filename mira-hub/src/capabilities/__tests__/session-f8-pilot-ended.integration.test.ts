@@ -152,6 +152,18 @@ describe.skipIf(!READY)("requireSession denies an ended-pilot cookie on the next
     expect(body.error).toBe("Your pilot has ended. Contact FactoryLM to continue.");
   });
 
+  it("can require a live user in the session tenant for restricted routes", async () => {
+    const { tenantId } = await makeTenant(`current-session-${MARK}`);
+    testTenantIds.push(tenantId);
+    const userId = await makeUser(tenantId,`current-session-${MARK}@example.com`,"approved",null);
+    mockSessionFor(userId,tenantId);
+    expect(await requireSession({requireCurrentUser:true})).toMatchObject({userId,tenantId,status:"approved"});
+    mockSessionFor(randomUUID(),tenantId);
+    await expect(requireSession({requireCurrentUser:true})).rejects.toBeInstanceOf(UnauthorizedError);
+    mockSessionFor(userId,randomUUID());
+    await expect(requireSession({requireCurrentUser:true})).rejects.toBeInstanceOf(UnauthorizedError);
+  });
+
   it("a non-pilot trial user inside the 30-day window still passes, unaffected by any other tenant's pilot ending", async () => {
     const { tenantId } = await makeTenant(`f8-ok-${MARK}`);
     testTenantIds.push(tenantId);

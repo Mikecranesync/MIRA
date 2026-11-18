@@ -159,6 +159,11 @@ function b64Nonce(raw: string): string {
 export default async function middleware(req: NextRequest, _ev: NextFetchEvent) {
   void _ev;
   const pathname = req.nextUrl.pathname;
+  const equipmentBrowserApi = /^\/api\/equipment-browser\/(children|search|resolve)\/?$/.test(pathname);
+  const unauthorized = () => NextResponse.json({ error: "Unauthorized" }, {
+    status: 401,
+    headers: equipmentBrowserApi ? { "Cache-Control": "private, no-store" } : undefined,
+  });
 
   // Per-request nonce for script-src CSP — removes unsafe-inline/unsafe-eval.
   // Forwarded as x-nonce request header so RootLayout can attach it to <Script>.
@@ -176,7 +181,7 @@ export default async function middleware(req: NextRequest, _ev: NextFetchEvent) 
   if (!cookieValue || !secret) {
     if (pathname.startsWith("/api/")) {
       return applySecurityHeaders(
-        NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
+        unauthorized(),
         pathname,
         csp,
       );
@@ -192,7 +197,7 @@ export default async function middleware(req: NextRequest, _ev: NextFetchEvent) 
   if (!token) {
     if (pathname.startsWith("/api/")) {
       return applySecurityHeaders(
-        NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
+        unauthorized(),
         pathname,
         csp,
       );
@@ -220,16 +225,13 @@ export default async function middleware(req: NextRequest, _ev: NextFetchEvent) 
     return applySecurityHeaders(NextResponse.redirect(url), pathname, csp);
   }
 
-  // Already on a gate page — let it render so the user can act.
-  if (!GATE_PATHS.some((p) => pathname.startsWith(p))) {
+  // Equipment routes use the current database entitlement. Page redirects
+  // continue to use their cookie claims, including the existing gate pages.
+  if (!equipmentBrowserApi && !GATE_PATHS.some((p) => pathname.startsWith(p))) {
     const status = String(token.status ?? "trial");
     const redirectUrl = gateRedirect(req, status, token.trialExpiresAt);
     if (redirectUrl) {
-      return applySecurityHeaders(
-        NextResponse.redirect(redirectUrl),
-        pathname,
-        csp,
-      );
+      return applySecurityHeaders(NextResponse.redirect(redirectUrl), pathname, csp);
     }
   }
 
