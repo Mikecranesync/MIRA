@@ -1,4 +1,5 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
+import { encode } from "next-auth/jwt";
 import { NextRequest, type NextFetchEvent } from "next/server";
 import middleware from "./middleware";
 
@@ -73,5 +74,46 @@ describe("middleware — CSP allows the cloud-picker SDKs (#1902)", () => {
   it("still allows the Google Picker SDK (apis.google.com) in script-src", async () => {
     const res = await unauth("/knowledge/manuals/");
     expect(directive(res, "script-src")).toContain("https://apis.google.com");
+  });
+});
+
+describe("equipment-browser session HTTP contract", () => {
+  it("returns private JSON for each equipment endpoint with or without the trailing slash", async () => {
+    for (const endpoint of ["children", "search", "resolve"]) {
+      for (const suffix of ["", "/"]) {
+        const response = await unauth(`/api/equipment-browser/${endpoint}${suffix}`);
+        expect(response.status).toBe(401);
+        expect(response.headers.get("cache-control")).toBe("private, no-store");
+        expect(response.headers.get("location")).toBeNull();
+        expect(await response.json()).toEqual({ error: "Unauthorized" });
+      }
+    }
+    expect((await unauth("/api/equipment-browser/children-extra")).headers.get("cache-control")).toBeNull();
+  });
+
+  it("returns JSON for blocked entitlements while preserving adjacent redirects", async () => {
+    const secret = "equipment-browser-local-middleware-test";
+    vi.stubEnv("AUTH_SECRET", secret);
+    try {
+      for (const [status, trialExpiresAt, redirect] of [
+        ["expired", null, "/upgrade"],
+        ["pending", null, "/pending-approval"],
+        ["trial", "2000-01-01T00:00:00.000Z", "/upgrade"],
+      ] as const) {
+        const cookie = await encode({secret,token:{status,trialExpiresAt}});
+        const send = (path: string) => middleware(new NextRequest(`http://localhost${path}`, {
+          headers:{cookie:`next-auth.session-token=${cookie}`},
+        }), {} as NextFetchEvent);
+        const response = await send("/api/equipment-browser/resolve/");
+        expect(response.status).toBe(403);
+        expect(response.headers.get("cache-control")).toBe("private, no-store");
+        expect(response.headers.get("location")).toBeNull();
+        expect(await response.json()).toMatchObject({error:expect.any(String)});
+        expect(callbackOf(await send("/assets/")).pathname).toBe(redirect);
+        expect(callbackOf(await send("/api/equipment-browser/resolve-extra")).pathname).toBe(redirect);
+      }
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 });

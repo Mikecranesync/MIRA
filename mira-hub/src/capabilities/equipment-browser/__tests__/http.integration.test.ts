@@ -342,10 +342,10 @@ describe("direct equipment API HTTP/PostgreSQL contract", () => {
   it("canonical asset binding, live source counts and normalized labels survive scoped browsing", async () => {
     const line = uuid(), assetNode = uuid(), backing = uuid();
     await db.owner.query(`INSERT INTO kg_entities(id,tenant_id,entity_type,entity_id,name,uns_path,approval_state)
-      VALUES ($1,$2,'line',NULL,'Binding line','binding.line','verified'),
-             ($3,$2,'equipment',$4,'Binding machine','binding.line.machine','verified'),
+      VALUES ($1,$2,'line',NULL,'Binding line','enterprise.binding.line','verified'),
+             ($3,$2,'equipment',$4,'Binding machine','enterprise.binding.line.machine','verified'),
              ($5,$2,'equipment',NULL,'Private backing',NULL,'verified')`,[line,a,assetNode,asset,backing]);
-    await db.owner.query("UPDATE cmms_equipment SET uns_path='binding.line.machine' WHERE id=$1",[asset]);
+    await db.owner.query("UPDATE cmms_equipment SET uns_path='enterprise.binding.line.machine' WHERE id=$1",[asset]);
     const bound = await createAndBindNotebookTx(a, asset, { selectedVia:"asset_picker", createdBy:users.a.userId });
     if (!bound.ok) throw new Error(bound.error);
     const boundId = bound.notebook.id, unboundId = uuid();
@@ -385,7 +385,7 @@ describe("direct equipment API HTTP/PostgreSQL contract", () => {
 
     const newLine = uuid();
     await db.owner.query(`INSERT INTO kg_entities(id,tenant_id,entity_type,name,uns_path,approval_state)
-      VALUES ($1,$2,'line','Moved line','binding.moved','verified')`, [newLine,a]);
+      VALUES ($1,$2,'line','Moved line','enterprise.binding.moved','verified')`, [newLine,a]);
     const { PUT } = await import("@/app/api/namespace/node/[id]/route");
     const move = () => auth.run({...users.a,userId:uuid()}, () => PUT(new Request("http://localhost", {
       method: "PUT", body: JSON.stringify({newParentId:newLine}),
@@ -400,7 +400,7 @@ describe("direct equipment API HTTP/PostgreSQL contract", () => {
     } finally {
       vi.unstubAllEnvs();
     }
-    expect((await db.owner.query("SELECT uns_path::text FROM cmms_equipment WHERE id=$1",[asset])).rows[0].uns_path).toBe("binding.line.machine");
+    expect((await db.owner.query("SELECT uns_path::text FROM cmms_equipment WHERE id=$1",[asset])).rows[0].uns_path).toBe("enterprise.binding.line.machine");
     for (const [parent, count] of [[line,0],[newLine,1]] as const) {
       const page = await (await request(`children?parentKind=namespace&parentId=${parent}&kind=asset&limit=1`)).json();
       expect(page.counts.total).toBe(count);
@@ -413,7 +413,7 @@ describe("direct equipment API HTTP/PostgreSQL contract", () => {
     expect(alias.items).toMatchObject([{id:boundId}]);
     const explicitParent = uuid();
     await db.owner.query(`INSERT INTO cmms_equipment(id,tenant_id,equipment_number,slug,path,uns_path)
-      VALUES ($1,$2,'Explicit parent','explicit-parent','binding','binding.line.explicit_parent')`, [explicitParent,a]);
+      VALUES ($1,$2,'Explicit parent','explicit-parent','binding','enterprise.binding.line.explicit_parent')`, [explicitParent,a]);
     try {
       await db.owner.query("UPDATE cmms_equipment SET parent_asset_id=$1 WHERE id=$2",[explicitParent,asset]);
       const underAsset = await (await request(`children?parentKind=asset&parentId=${explicitParent}&kind=asset`)).json();
@@ -430,17 +430,120 @@ describe("direct equipment API HTTP/PostgreSQL contract", () => {
   it.each(["proposed", "unrelated"])("does not merge a %s bridge from coincident paths or UUIDs", async (mode) => {
     const parent = uuid(), machine = uuid();
     await db.owner.query(`INSERT INTO kg_entities(id,tenant_id,entity_type,entity_id,name,uns_path,approval_state)
-      VALUES ($1,$2,'line',$1::uuid::text,'Independent line ' || $1::uuid::text,('independent.' || replace($1::uuid::text,'-',''))::ltree,'verified'),
-        ($3::uuid,$2::uuid,'equipment',$4::text,'Independent machine ' || $3::uuid::text,('independent.' || replace($1::uuid::text,'-','') || '.machine')::ltree,$5)`,
+      VALUES ($1,$2,'line',$1::uuid::text,'Independent line ' || $1::uuid::text,('enterprise.independent.' || replace($1::uuid::text,'-',''))::ltree,'verified'),
+        ($3::uuid,$2::uuid,'equipment',$4::text,'Independent machine ' || $3::uuid::text,('enterprise.independent.' || replace($1::uuid::text,'-','') || '.machine')::ltree,$5)`,
       [parent,a,machine,mode === "proposed" ? machine : uuid(),mode === "proposed" ? "proposed" : "verified"]);
     await db.owner.query(`INSERT INTO cmms_equipment(id,tenant_id,equipment_number,slug,path,uns_path)
-      VALUES ($1,$2,'Independent machine ' || $1::uuid::text,$1::uuid::text,'independent',('independent.' || replace($3::uuid::text,'-','') || '.machine')::ltree)`,[machine,a,parent]);
+      VALUES ($1,$2,'Independent machine ' || $1::uuid::text,$1::uuid::text,'independent',('enterprise.independent.' || replace($3::uuid::text,'-','') || '.machine')::ltree)`,[machine,a,parent]);
     const response = await request(`children?parentKind=namespace&parentId=${parent}`);
     expect(response.status).toBe(200);
     const page = await response.json();
     expect(page.items.map((row:{kind:string,id:string})=>[row.kind,row.id])).toEqual([["asset",machine],["namespace",machine]]);
     const namespace = await (await request(`children?parentKind=namespace&parentId=${machine}`)).json();
     expect(namespace.scope).toEqual({kind:"namespace",id:machine});
+  });
+
+  it("excludes historical namespace branches and keeps genuine equipment unplaced", async () => {
+    const historical = uuid(), child = uuid(), unpathed = uuid(), orphan = uuid(), privateNode = uuid(), book = uuid();
+    const prefix = "audit_" + historical.replaceAll("-", "");
+    await db.owner.query(`INSERT INTO kg_entities(id,tenant_id,entity_type,name,uns_path)
+      VALUES ($1,$2,'line','Eligibility history',$3::ltree),($4,$2,'equipment','Eligibility history child',($3::text || '.child')::ltree),
+      ($5,$2,'area','Eligibility unpathed',NULL),($6,$2,'equipment','Eligibility private backing',NULL)`,[historical,a,prefix,child,unpathed,privateNode]);
+    await db.owner.query("UPDATE kg_entities SET approval_state='verified' WHERE id=$1",[child]);
+    await db.owner.query(`INSERT INTO cmms_equipment(id,tenant_id,equipment_number,slug,path,uns_path)
+      VALUES ($1,$2,'Eligibility physical',$1::uuid::text,$3,($3::text || '.physical')::ltree)`,[orphan,a,prefix]);
+    await db.owner.query(`INSERT INTO equipment_notebooks(id,tenant_id,node_id,display_name,equipment_entity_id)
+      VALUES ($1,$2,$3,'Eligibility notebook',$4::uuid::text)`,[book,a,privateNode,child]);
+    const roots = await (await request("children?parentKind=root")).json();
+    expect(roots.items).toEqual(expect.arrayContaining([
+      expect.objectContaining({id:unpathed,kind:"namespace"}),
+      expect.objectContaining({id:orphan,placement:"unplaced"}),
+      expect.objectContaining({id:book,placement:"unplaced"}),
+    ]));
+    expect(roots.items.map((row: {id:string}) => row.id)).not.toEqual(expect.arrayContaining([historical]));
+    const matches = await (await request("search?scopeKind=root&q=Eligibility")).json();
+    expect(matches.counts.total).toBe(3);
+    for (const id of [historical,child,privateNode]) {
+      expect((await request(`children?parentKind=namespace&parentId=${id}`)).status).toBe(404);
+      expect((await request(`search?scopeKind=namespace&scopeId=${id}&q=Eligibility`)).status).toBe(404);
+    }
+    expect((await request(`children?parentKind=namespace&parentId=${unpathed}`)).status).toBe(200);
+  });
+
+  it("keeps a mixed parent cycle reachable after a real namespace move", async () => {
+    const line = uuid(), first = uuid(), second = uuid(), third = uuid();
+    const firstKg = uuid(), secondKg = uuid(), thirdKg = uuid(), firstBook = uuid(), secondBook = uuid();
+    await db.owner.query(`INSERT INTO cmms_equipment(id,tenant_id,equipment_number,slug,path)
+      SELECT id,$1,'Cycle fixture ' || id::text,id::text,'cycle' FROM unnest($2::uuid[]) AS id`,[a,[first,second,third]]);
+    await db.owner.query("UPDATE cmms_equipment SET parent_asset_id=$1 WHERE id=$2",[second,first]);
+    await db.owner.query(`INSERT INTO kg_entities(id,tenant_id,entity_type,entity_id,name,uns_path,approval_state) VALUES
+      ($1,$2,'line',NULL,'Cycle line','enterprise.cycle','verified'),
+      ($3,$2,'equipment',$4,'Cycle first','enterprise.cycle.first','verified'),
+      ($5,$2,'equipment',$6,'Cycle second','enterprise.cycle.second','verified'),
+      ($7,$2,'equipment',$8,'Cycle third','enterprise.cycle.third','verified')`,[line,a,firstKg,first,secondKg,second,thirdKg,third]);
+    await db.owner.query(`INSERT INTO equipment_notebooks(id,tenant_id,node_id,display_name,equipment_entity_id) VALUES
+      ($1,$2,$3,'Cycle first notebook',$4),($5,$2,$6,'Cycle second notebook',$7)`,[firstBook,a,uuid(),first,secondBook,uuid(),second]);
+    const { PUT } = await import("@/app/api/namespace/node/[id]/route");
+    async function move(node: string, parent: string) {
+      vi.stubEnv("NEON_DATABASE_URL", process.env.TEST_DATABASE_URL);
+      try {
+        const response = await auth.run({...users.a,userId:uuid()}, () => PUT(new Request("http://localhost",{
+          method:"PUT",body:JSON.stringify({newParentId:parent}),
+        }),{params:Promise.resolve({id:node})}));
+        expect(response.status,await response.text()).toBe(200);
+      } finally { vi.unstubAllEnvs(); }
+    }
+    await db.owner.query("UPDATE cmms_equipment SET parent_asset_id=$1 WHERE id=$2",[foreignAsset,third]);
+    const lineChildren = await (await request(`children?parentKind=namespace&parentId=${line}`)).json();
+    expect(lineChildren.items).toContainEqual(expect.objectContaining({id:third}));
+    await move(secondKg,firstKg);
+    for (const pass of [0,1,2]) {
+      if (pass === 1) {
+        await db.owner.query("UPDATE cmms_equipment SET parent_asset_id=$1 WHERE id=$2",[third,first]);
+        await db.owner.query("UPDATE cmms_equipment SET parent_asset_id=$1 WHERE id=$2",[second,third]);
+      }
+      if (pass === 2) {
+        await move(secondKg,line);
+        await db.owner.query("UPDATE cmms_equipment SET parent_asset_id=$1 WHERE id=$2",[first,second]);
+      }
+      const rootAsset = pass === 2 ? [first,second,third].sort()[0] : second;
+      const root = await (await request("children?parentKind=root&kind=asset")).json();
+      expect(root.items).toContainEqual(expect.objectContaining({id:rootAsset,placement:"unplaced",childrenCount:rootAsset === third ? 1 : 2}));
+      const otherAssets = [first,second,third].filter(id => id !== rootAsset && (pass !== 0 || id !== third));
+      const scope = `search?scopeKind=asset&scopeId=${rootAsset}&q=Cycle`;
+      const scoped = await (await request(scope)).json();
+      expect(scoped.items.map((row:{id:string})=>row.id).sort()).toEqual([...otherAssets,firstBook,secondBook].sort());
+      const kgAlias = rootAsset === first ? firstKg : rootAsset === second ? secondKg : thirdKg;
+      const alias = await (await request(`search?scopeKind=namespace&scopeId=${kgAlias}&q=Cycle`)).json();
+      expect(alias).toEqual(scoped);
+      const firstPage = await (await request(scope+"&limit=1")).json();
+      const rest = await (await request(scope+"&cursor="+firstPage.nextCursor)).json();
+      expect(rest.counts).toEqual(firstPage.counts);
+      expect([...firstPage.items,...rest.items]).toEqual(scoped.items);
+    }
+  });
+
+  it("uses identical component timestamps in children, search, and exact resolve", async () => {
+    const raw = "2026-11-18T12:35:45.125719+00:00", expected = "2026-11-18T12:35:45.125Z";
+    await db.owner.query("UPDATE notebook_components SET created_at=$1::timestamptz WHERE id=$2",[raw,componentId]);
+    await db.owner.query("UPDATE notebook_component_revisions SET created_at=$1::timestamptz,confirmed_at=$1::timestamptz WHERE component_id=$2",[raw,componentId]);
+    const children = await (await request(`children?parentKind=notebook&parentId=${notebook}`)).json();
+    const found = await (await request(`search?scopeKind=notebook&scopeId=${notebook}&q=VFD1`)).json();
+    const resolved = await (await request(`resolve?targetKind=notebook_component&notebookId=${notebook}&componentId=${componentId}`)).json();
+    expect(resolved.component).toMatchObject({createdAt:expected,retiredAt:null,current:{createdAt:expected,confirmedAt:expected}});
+    for (const page of [children, found]) {
+      expect(page.items.find((row:{id:string})=>row.id===componentId).component).toEqual(resolved.component);
+    }
+    const draft = await addComponent(a,notebook,users.a.userId,{
+      clientRequestId:uuid(),kind:"timestamp fixture",origin:"technician",position:10,revision:null,
+    });
+    if (draft.status !== "created") throw new Error(draft.status);
+    await db.owner.query("UPDATE notebook_components SET retired_at=$1::timestamptz WHERE id=$2",[raw,draft.component.id]);
+    const after = await (await request(`children?parentKind=notebook&parentId=${notebook}`)).json();
+    expect(after.items).toContainEqual(expect.objectContaining({id:draft.component.id,
+      component:expect.objectContaining({current:null,retiredAt:expected}),
+    }));
+    expect((await request(`resolve?targetKind=notebook_component&notebookId=${notebook}&componentId=${draft.component.id}`)).status).toBe(409);
   });
 
   it("20k fixture: SQL-scoped counts, repeated identities and page/cursor boundaries remain isolated", async () => {
@@ -494,7 +597,12 @@ describe("direct equipment API HTTP/PostgreSQL contract", () => {
     const own=machines.find((m)=>m.tenant===a)!, foreign=machines.find((m)=>m.tenant===b)!;
     expect((await request(`children?parentKind=notebook&parentId=${foreign.id}`)).status).toBe(404);
     expect((await (await request(`search?scopeKind=namespace&scopeId=${line}&q=GS11N-20P2&kind=notebook_component`)).json()).counts.total).toBe(10);
-    expect((await (await request(`search?scopeKind=root&q=CA3KN22BD&kind=notebook_component`)).json()).counts.total).toBe(400);
+    const rootSearchStart = performance.now();
+    const rootSearchResponse = await request("search?scopeKind=root&q=CA3KN22BD&kind=notebook_component");
+    const rootSearch = await rootSearchResponse.text();
+    timings.push({case:"root-component-search",milliseconds:performance.now()-rootSearchStart,bytes:Buffer.byteLength(rootSearch)});
+    expect(rootSearchResponse.status).toBe(200);
+    expect(JSON.parse(rootSearch).counts.total).toBe(400);
     expect((await (await request(`search?scopeKind=root&q=CA3KN22BD&kind=notebook_component`,"b")).json()).counts.total).toBe(50);
     const seen=new Set<string>();let cursor: string|null=null;let lastCursor:string|null=null;
     do {
@@ -511,7 +619,7 @@ describe("direct equipment API HTTP/PostgreSQL contract", () => {
     const explain=await withTenantContext(a,async(client)=>{
       const role=(await client.query("SELECT current_user AS role")).rows[0].role;expect(role).toBe("factorylm_app");
       const plan=await client.query("EXPLAIN (ANALYZE,BUFFERS,FORMAT JSON) "+equipmentBrowserPageSql(true,false),[a,"namespace",line,"notebook_component","GS11N-20P2",null,null,51]);
-      const small = await client.query("EXPLAIN (ANALYZE,BUFFERS,FORMAT JSON) "+equipmentBrowserPageSql(false,false),
+      const small = await client.query("EXPLAIN (ANALYZE,BUFFERS,FORMAT JSON) "+equipmentBrowserPageSql(false,false,true),
         [a,"notebook",notebook,null,"",null,null,2]);
       const smallPlan = JSON.stringify(small.rows);
       expect(smallPlan).toContain("idx_notebook_components_notebook");

@@ -29,13 +29,15 @@ remain visible/countable, with `retiredAt`; resolving one as an active target re
 
 ## Placement and scope
 
-Namespace nodes are existing tenant KG rows. Their parent is the unique nearest existing
-strict-ancestor path; ambiguous placement stays at root. Assets use their stored parent asset,
+Namespace rows follow the maintenance tree: the enterprise root, its descendants, and eligible
+unpathed rows. Private unpathed notebook backing rows are excluded. The namespace parent is
+the unique nearest strict ancestor. Ambiguous placement stays at root. Assets use their stored parent asset,
 or unique nearest namespace ancestor. A unique verified same-tenant KG bridge whose `entity_id`
 is the stored CMMS asset UUID exposes one machine branch, using its KG display name. Existing
 KG machine references resolve to that same asset scope. The verified bridge’s current KG path
 drives namespace placement and the returned path, including after a move. An explicit CMMS
-parent still takes precedence for placement. Equal paths, names or UUIDs without
+parent takes precedence when eligible. A combined parent cycle is cut at one stable edge,
+preferentially an inferred edge. The cut branch is reachable from root. Equal paths, names or UUIDs without
 that bridge do not combine identities. Notebooks use their canonical verified asset binding;
 the private document `node_id` is not placement. Components use their notebook FK. Installed instances use their explicit, authorized `asset_id`; absent or
 foreign/missing placement stays visible at root. No tag, model, catalog or coincident UUID
@@ -68,8 +70,10 @@ never selects or confirms it. An unconfirmed identity returns `identityUsable: f
 
 Unknown and foreign references share 404 `not_found`. Invalid/mixed arguments and invalid
 cursors return 400. Missing cursor secret returns 503. Query errors disclose no database detail.
-Successful and error API responses are private/no-store. Session authorization uses the existing
-`sessionOr401` boundary; no request tenant parameter is accepted.
+Successful and error API responses are private/no-store, including middleware denial. Missing
+or invalid sessions return JSON 401, and blocked entitlements return JSON 403. Route authorization
+also checks the live session through `sessionOr401`. Session lookup outages return JSON 503 with
+`Retry-After`. No request tenant parameter is accepted.
 
 Cursors are HMAC-SHA256 signed using existing `AUTH_SECRET`/`NEXTAUTH_SECRET`, with domain
 separation. They bind caller/tenant/role, operation, scope, normalized query and kind filter.

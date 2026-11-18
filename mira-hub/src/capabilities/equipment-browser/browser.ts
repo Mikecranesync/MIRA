@@ -63,6 +63,16 @@ function readCursor(value: string | null, binding: string): [string, string] | n
  */
 // Only the persisted, unique, verified same-tenant bridge coalesces a machine.
 // Equal names, paths or UUIDs alone never establish that identity.
+// Keep the maintenance tree's enterprise-or-unpathed rule, except for private
+// unpathed notebook backing nodes that were never public browser scopes.
+const eligibleNamespace = `eligible_namespace AS NOT MATERIALIZED (
+  SELECT k.* FROM kg_entities k
+  WHERE k.tenant_id=$1::uuid AND (
+    k.uns_path <@ 'enterprise'::ltree OR (k.uns_path IS NULL AND NOT EXISTS (
+      SELECT 1 FROM equipment_notebooks n WHERE n.tenant_id=k.tenant_id AND n.node_id=k.id
+    ))
+  )
+)`;
 const bridges = `bridged_assets AS NOT MATERIALIZED (
   SELECT e.id AS asset_id, min(k.id::text)::uuid AS node_id, min(k.name) AS name, min(k.uns_path::text)::ltree AS uns_path
   FROM cmms_equipment e JOIN kg_entities k
@@ -70,56 +80,97 @@ const bridges = `bridged_assets AS NOT MATERIALIZED (
       AND k.entity_type IN ('equipment','asset') AND k.approval_state='verified'
       AND k.uns_path IS NOT NULL
   WHERE e.tenant_id::text=$1::uuid::text
-  GROUP BY e.id HAVING count(*)=1
+  GROUP BY e.id HAVING count(*)=1 AND bool_and(k.uns_path <@ 'enterprise'::ltree)
 )`;
-const inventory = `${bridges}, inventory AS NOT MATERIALIZED (
+const componentInventory = `
+  SELECT 'notebook_component'::text AS kind,c.id::text AS id,
+    coalesce(r.local_tag,r.raw_label,c.kind,'Unknown component') AS name,
+    'notebook'::text AS parent_kind,c.notebook_id AS parent_id,
+    concat_ws(' ',c.kind,r.raw_label,r.manufacturer,r.family,r.catalog_number,r.serial_number,r.local_tag) AS search_text,
+    to_jsonb(h) AS data
+  FROM notebook_components c ${component.latestJoin}
+  CROSS JOIN LATERAL (SELECT ${component.columns}) h
+  JOIN equipment_notebooks n ON n.tenant_id=c.tenant_id AND n.id=c.notebook_id
+  WHERE c.tenant_id=$1::uuid`;
+
+// Namespace ancestry and explicit asset parenting can individually be trees
+// yet make a cycle when combined. Walk the cheap, root-connected part once.
+// Only disconnected rows enter cycle detection. A walk can return to its
+// origin only if that origin is on the cycle and outranks every other member.
+const inventory = `${eligibleNamespace}, ${bridges}, placement_candidates AS MATERIALIZED (
   SELECT 'namespace'::text AS kind,k.id::text AS id,k.name,
     CASE WHEN pb.asset_id IS NOT NULL THEN 'asset' WHEN p.id IS NULL THEN 'root' ELSE 'namespace' END AS parent_kind,
-    coalesce(pb.asset_id,p.id::uuid) AS parent_id,
+    coalesce(pb.asset_id,p.id) AS parent_id,false AS explicit_parent,
     concat_ws(' ',k.name,k.entity_type,k.entity_id) AS search_text,
     jsonb_build_object('entityType',k.entity_type,'unsPath',k.uns_path::text) AS data
-  FROM kg_entities k
+  FROM eligible_namespace k
   LEFT JOIN LATERAL (
-    SELECT CASE WHEN count(*)=1 THEN min(a.id::text) END AS id FROM kg_entities a
-    WHERE a.tenant_id=k.tenant_id AND a.uns_path @> k.uns_path AND a.uns_path<>k.uns_path
-      AND nlevel(a.uns_path)=(SELECT max(nlevel(z.uns_path)) FROM kg_entities z WHERE z.tenant_id=k.tenant_id AND z.uns_path @> k.uns_path AND z.uns_path<>k.uns_path)
+    SELECT CASE WHEN count(*)=1 THEN min(nearest.id::text)::uuid END AS id
+    FROM (
+      SELECT a.id FROM eligible_namespace a
+      WHERE a.uns_path @> k.uns_path AND a.uns_path<>k.uns_path
+      ORDER BY nlevel(a.uns_path) DESC FETCH FIRST 1 ROW WITH TIES
+    ) nearest
   ) p ON true
-  LEFT JOIN bridged_assets pb ON pb.node_id=p.id::uuid
-  WHERE k.tenant_id=$1::uuid AND NOT EXISTS (SELECT 1 FROM bridged_assets b WHERE b.node_id=k.id) AND (
-    k.uns_path IS NOT NULL OR NOT EXISTS (
-      SELECT 1 FROM equipment_notebooks n WHERE n.tenant_id=k.tenant_id AND n.node_id=k.id
-    )
-  )
+  LEFT JOIN bridged_assets pb ON pb.node_id=p.id
+  WHERE NOT EXISTS (SELECT 1 FROM bridged_assets b WHERE b.node_id=k.id)
   UNION ALL
   SELECT 'asset',e.id::text,coalesce(b.name,e.equipment_number),
     CASE WHEN a.id IS NOT NULL THEN 'asset' WHEN pb.asset_id IS NOT NULL THEN 'asset' WHEN p.id IS NOT NULL THEN 'namespace' ELSE 'root' END,
-    coalesce(a.id,pb.asset_id,p.id::uuid),concat_ws(' ',b.name,e.equipment_number,e.manufacturer,to_jsonb(e)->>'model_number',to_jsonb(e)->>'description'),
-    jsonb_build_object('manufacturer',e.manufacturer,'model',to_jsonb(e)->>'model_number','unsPath',coalesce(b.uns_path,e.uns_path)::text)
+    coalesce(a.id,pb.asset_id,p.id),a.id IS NOT NULL,
+    concat_ws(' ',b.name,e.equipment_number,e.manufacturer,to_jsonb(e)->>'model_number',to_jsonb(e)->>'description'),
+    jsonb_build_object('manufacturer',e.manufacturer,'model',to_jsonb(e)->>'model_number','unsPath',placement.uns_path::text)
   FROM cmms_equipment e
   LEFT JOIN bridged_assets b ON b.asset_id=e.id
   LEFT JOIN cmms_equipment a ON a.tenant_id=e.tenant_id AND a.id::text=to_jsonb(e)->>'parent_asset_id' AND a.id<>e.id
+  CROSS JOIN LATERAL (
+    SELECT coalesce(b.uns_path, CASE WHEN e.uns_path <@ 'enterprise'::ltree THEN e.uns_path END) AS uns_path
+  ) placement
   LEFT JOIN LATERAL (
-    SELECT CASE WHEN count(*)=1 THEN min(k.id::text) END AS id FROM kg_entities k
-    WHERE k.tenant_id=$1::uuid AND k.uns_path @> coalesce(b.uns_path,e.uns_path) AND k.uns_path<>coalesce(b.uns_path,e.uns_path)
-      AND nlevel(k.uns_path)=(SELECT max(nlevel(z.uns_path)) FROM kg_entities z WHERE z.tenant_id=$1::uuid AND z.uns_path @> coalesce(b.uns_path,e.uns_path) AND z.uns_path<>coalesce(b.uns_path,e.uns_path))
-  ) p ON true
-  LEFT JOIN bridged_assets pb ON pb.node_id=p.id::uuid
+    SELECT CASE WHEN count(*)=1 THEN min(nearest.id::text)::uuid END AS id
+    FROM (
+      SELECT k.id FROM eligible_namespace k
+      WHERE k.uns_path @> placement.uns_path AND k.uns_path<>placement.uns_path
+      ORDER BY nlevel(k.uns_path) DESC FETCH FIRST 1 ROW WITH TIES
+    ) nearest
+  ) p ON a.id IS NULL
+  LEFT JOIN bridged_assets pb ON pb.node_id=p.id
   WHERE e.tenant_id::text=$1::uuid::text
+), root_reachable(kind,id) AS (
+  SELECT kind,id FROM placement_candidates WHERE parent_id IS NULL
+  UNION ALL
+  SELECT child.kind,child.id FROM placement_candidates child JOIN root_reachable parent
+    ON child.parent_kind=parent.kind AND child.parent_id=parent.id::uuid
+), disconnected AS MATERIALIZED (
+  SELECT c.kind,c.id,c.parent_kind,c.parent_id,c.explicit_parent
+  FROM placement_candidates c
+  WHERE NOT EXISTS (SELECT 1 FROM root_reachable r WHERE r.kind=c.kind AND r.id=c.id)
+), cycle_walk(origin_kind,origin_id,origin_explicit,kind,id) AS (
+  SELECT kind,id,explicit_parent,parent_kind,parent_id::text FROM disconnected
+  UNION
+  SELECT w.origin_kind,w.origin_id,w.origin_explicit,d.parent_kind,d.parent_id::text
+  FROM cycle_walk w JOIN disconnected d ON d.kind=w.kind AND d.id=w.id
+  WHERE (d.explicit_parent,d.kind COLLATE "C",d.id COLLATE "C") >
+        (w.origin_explicit,w.origin_kind COLLATE "C",w.origin_id COLLATE "C")
+), cycle_breaks AS (
+  SELECT kind,id FROM cycle_walk WHERE kind=origin_kind AND id=origin_id
+), inventory AS NOT MATERIALIZED (
+  SELECT c.kind,c.id,c.name,
+    CASE WHEN cut.id IS NULL THEN c.parent_kind ELSE 'root' END AS parent_kind,
+    CASE WHEN cut.id IS NULL THEN c.parent_id END AS parent_id,
+    c.search_text,c.data
+  FROM placement_candidates c
+  LEFT JOIN cycle_breaks cut ON cut.kind=c.kind AND cut.id=c.id
   UNION ALL
   SELECT 'notebook',n.id::text,n.display_name,
-    CASE WHEN e.id IS NOT NULL THEN 'asset' WHEN ba.bound_asset_path IS NOT NULL THEN 'namespace' ELSE 'root' END,
-    coalesce(e.id, CASE WHEN ba.bound_asset_path IS NOT NULL THEN ba.bound_asset_node_id END),
+    CASE WHEN e.id IS NOT NULL THEN 'asset' WHEN ba.bound_asset_path <@ 'enterprise'::ltree THEN 'namespace' ELSE 'root' END,
+    coalesce(e.id, CASE WHEN ba.bound_asset_path <@ 'enterprise'::ltree THEN ba.bound_asset_node_id END),
     concat_ws(' ',n.display_name,n.manufacturer,n.model,n.catalog_number,n.asset_tag,n.serial_number),to_jsonb(h)
   FROM equipment_notebooks n ${notebook.boundAssetJoin}
   LEFT JOIN cmms_equipment e ON e.tenant_id::text=n.tenant_id::text AND e.id::text=ba.bound_asset_entity_id
   CROSS JOIN LATERAL (SELECT ${notebook.columns}) h WHERE n.tenant_id=$1::uuid
   UNION ALL
-  SELECT 'notebook_component',c.id::text,coalesce(r.local_tag,r.raw_label,c.kind,'Unknown component'),'notebook',c.notebook_id,
-    concat_ws(' ',c.kind,r.raw_label,r.manufacturer,r.family,r.catalog_number,r.serial_number,r.local_tag),to_jsonb(h)
-  FROM notebook_components c ${component.latestJoin}
-  CROSS JOIN LATERAL (SELECT ${component.columns}) h
-  JOIN equipment_notebooks n ON n.tenant_id=c.tenant_id AND n.id=c.notebook_id
-  WHERE c.tenant_id=$1::uuid
+  ${componentInventory}
   UNION ALL
   SELECT 'installed_instance',i.id::text,coalesce(i.canonical_name,i.component_name),CASE WHEN e.id IS NULL THEN 'root' ELSE 'asset' END,e.id,
     concat_ws(' ',i.component_name,i.canonical_name,array_to_string(i.aliases,' '),i.plc_tag,t.manufacturer,t.model),
@@ -130,12 +181,12 @@ const inventory = `${bridges}, inventory AS NOT MATERIALIZED (
 )`;
 
 /** The exact page SQL, also used for restricted-role EXPLAIN qualification. */
-export function equipmentBrowserPageSql(search: boolean, root: boolean): string {
+export function equipmentBrowserPageSql(search: boolean, root: boolean, notebookScope = false): string {
   const withinScope = root
     ? "parent_kind=$2 AND parent_id IS NULL AND $3::uuid IS NULL"
     : "parent_kind=$2 AND parent_id=$3::uuid";
   return `/* equipment-browser:${search ? "search" : "children"} */
-      WITH RECURSIVE ${inventory}, descendants AS (
+      WITH RECURSIVE ${notebookScope ? `inventory AS (${componentInventory} AND c.notebook_id=$3::uuid)` : inventory}, descendants AS (
         SELECT * FROM inventory WHERE ${withinScope}
         UNION SELECT i.* FROM inventory i JOIN descendants d ON i.parent_kind=d.kind AND i.parent_id=d.id::uuid
       ), matched AS MATERIALIZED (
@@ -183,13 +234,16 @@ async function authorize(client: PoolClient, tenant: string, scope: Scope): Prom
   if (scope.kind === "root") return scope;
   const table = { namespace: "kg_entities", asset: "cmms_equipment", notebook: "equipment_notebooks" }[scope.kind];
   const tenantPredicate = scope.kind === "asset" ? "tenant_id::text=$1::text" : "tenant_id=$1::uuid";
+  if (scope.kind === "namespace") {
+    const { rows } = await client.query<{asset_id:string | null}>(
+      `WITH ${eligibleNamespace}, ${bridges}
+       SELECT b.asset_id FROM eligible_namespace n LEFT JOIN bridged_assets b ON b.node_id=n.id
+       WHERE n.id=$2::uuid`, [tenant,scope.id]);
+    if (!rows[0]) throw new BrowserError(404, "not_found");
+    return rows[0].asset_id ? {kind:"asset",id:rows[0].asset_id} : scope;
+  }
   const { rowCount } = await client.query(`SELECT 1 FROM ${table} WHERE ${tenantPredicate} AND id=$2::uuid`, [tenant,scope.id]);
   if (!rowCount) throw new BrowserError(404, "not_found");
-  if (scope.kind === "namespace") {
-    const { rows } = await client.query<{asset_id:string}>(
-      `WITH ${bridges} SELECT asset_id FROM bridged_assets WHERE node_id=$2::uuid`, [tenant,scope.id]);
-    if (rows[0]) return {kind:"asset",id:rows[0].asset_id};
-  }
   return scope;
 }
 
@@ -206,7 +260,7 @@ async function page(request: Request, actor: Actor, search: boolean) {
   const escaped = query.replace(/[\\%_]/g,"\\$&");
   return withTenantContext(actor.tenantId, async (client) => {
     const canonicalScope = await authorize(client,actor.tenantId,scope);
-    const { rows } = await client.query(equipmentBrowserPageSql(search,canonicalScope.kind === "root"),
+    const { rows } = await client.query(equipmentBrowserPageSql(search,canonicalScope.kind === "root",canonicalScope.kind === "notebook"),
       [actor.tenantId,canonicalScope.kind,canonicalScope.id,filter,escaped,last?.[0] ?? null,last?.[1] ?? null,limit+1]);
     const result = rows[0], all = result.items as InventoryRow[], hasMore = all.length > limit, selected = all.slice(0,limit);
     const tail = selected.at(-1);
