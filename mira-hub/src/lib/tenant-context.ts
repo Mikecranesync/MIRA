@@ -63,7 +63,7 @@ export async function withTenantContext<T>(
   const bounded = <R>(operation: Promise<R>): Promise<R> =>
     signal ? Promise.race([operation, abandoned]) : operation;
   const abort = () => {
-    if (cancel || !cancellable || released) return;
+    if (abortTimer !== undefined || released) return;
     // An acknowledgement does not prove the original socket delivered its result.
     // Keep this deadline through query settlement and rollback.
     abortTimer = setTimeout(() => {
@@ -71,6 +71,8 @@ export async function withTenantContext<T>(
       discard();
       expire(abortError());
     }, cancellationTimeoutMs);
+    // During finalization the backend may already have returned to a pooler.
+    if (!cancellable) return;
     if (pid === undefined) {
       // During preamble there is not yet a transaction-pinned backend identity.
       // Closing this lease aborts its setup without signalling an unrelated backend.
@@ -128,18 +130,17 @@ export async function withTenantContext<T>(
     if (signal?.aborted) throw abortError();
     const result = await bounded(fn(client));
     if (signal?.aborted) throw abortError();
-    signal?.removeEventListener("abort", abort);
     cancellable = false;
     await bounded(client.query("COMMIT"));
+    began = false;
+    if (signal?.aborted) throw abortError();
     return result;
   } catch (err) {
     cancellable = false;
     await cancel;
     if (began && !released) {
       try {
-        const timedRollback = { text: "ROLLBACK", query_timeout: cancellationTimeoutMs };
-        if (signal?.aborted) await bounded(client.query(timedRollback));
-        else await client.query("ROLLBACK");
+        await bounded(client.query("ROLLBACK"));
       } catch { discard(); }
     }
     throw signal?.aborted ? abortError() : err;

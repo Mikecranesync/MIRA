@@ -33,7 +33,9 @@ Namespace nodes are existing tenant KG rows. Their parent is the unique nearest 
 strict-ancestor path; ambiguous placement stays at root. Assets use their stored parent asset,
 or unique nearest namespace ancestor. A unique verified same-tenant KG bridge whose `entity_id`
 is the stored CMMS asset UUID exposes one machine branch, using its KG display name. Existing
-KG machine references resolve to that same asset scope. Equal paths, names or UUIDs without
+KG machine references resolve to that same asset scope. The verified bridge’s current KG path
+drives namespace placement and the returned path, including after a move. An explicit CMMS
+parent still takes precedence for placement. Equal paths, names or UUIDs without
 that bridge do not combine identities. Notebooks use their canonical verified asset binding;
 the private document `node_id` is not placement. Components use their notebook FK. Installed instances use their explicit, authorized `asset_id`; absent or
 foreign/missing placement stays visible at root. No tag, model, catalog or coincident UUID
@@ -89,8 +91,9 @@ Abort before acquisition does no work. An aborted queued acquisition releases it
 For active SQL, a separate connection uses public `pg_cancel_backend`; the original lease remains
 held until query/cancel completion and rollback. Uncertain cancellation/rollback destroys the
 lease. A five-second client deadline stays active through original-query settlement and rollback,
-even after a positive cancellation acknowledgement; expiration destroys the lease and settles
-the request. No private pg active-query API or product debug/sleep route is used. A normal completion
+even after a positive cancellation acknowledgement. The abort deadline also applies during
+COMMIT and ROLLBACK, without signalling a potentially released backend. Expiration destroys
+the lease and settles the request. No private pg active-query API or product debug/sleep route is used. A normal completion
 may win a late disconnect race; no read-side writes are committed in either outcome.
 Backend identity is captured after BEGIN, while transaction pooling pins that backend. An abort
 during setup, before that identity exists, destroys the lease instead of signalling a previously
@@ -102,6 +105,11 @@ in addition to its default migrations. This does not authorize applying any shar
 The runtime requires those existing tables and grants; missing schema is not silently stubbed.
 
 ## Qualification and disclosed boundaries
+
+From `mira-hub`, run `MIRA_TEST_DB_CONFIRM=DISPOSABLE npm run test:integration:equipment-browser`
+with `TEST_DATABASE_URL` pointing to a fresh loopback UTF-8 PostgreSQL database. The same
+command bootstraps the TEXT tenant fixture and runs the named suites in CI. The standard
+integration profile keeps its default schema and excludes the browser-specific suites.
 
 `__tests__/http.integration.test.ts` runs a real TCP HTTP request through production GET handlers,
 the production transaction helper and PostgreSQL using a non-superuser login. Its test-only Node

@@ -4,6 +4,7 @@ import type { PoolClient } from "pg";
 import { sessionOr401 } from "@/lib/session";
 import { withTenantContext } from "@/lib/tenant-context";
 import { notebookReadProjection as notebook, readNotebookHeader } from "@/lib/equipment-notebooks";
+import { threadKeyOf } from "@/capabilities/bench-components/http";
 import { componentReadProjection as component, readComponent } from "@/capabilities/bench-components/store";
 
 const kinds = ["namespace", "asset", "notebook", "notebook_component", "installed_instance"] as const;
@@ -63,7 +64,7 @@ function readCursor(value: string | null, binding: string): [string, string] | n
 // Only the persisted, unique, verified same-tenant bridge coalesces a machine.
 // Equal names, paths or UUIDs alone never establish that identity.
 const bridges = `bridged_assets AS NOT MATERIALIZED (
-  SELECT e.id AS asset_id, min(k.id::text)::uuid AS node_id, min(k.name) AS name
+  SELECT e.id AS asset_id, min(k.id::text)::uuid AS node_id, min(k.name) AS name, min(k.uns_path::text)::ltree AS uns_path
   FROM cmms_equipment e JOIN kg_entities k
     ON k.tenant_id=$1::uuid AND k.entity_id=e.id::text
       AND k.entity_type IN ('equipment','asset') AND k.approval_state='verified'
@@ -93,14 +94,14 @@ const inventory = `${bridges}, inventory AS NOT MATERIALIZED (
   SELECT 'asset',e.id::text,coalesce(b.name,e.equipment_number),
     CASE WHEN a.id IS NOT NULL THEN 'asset' WHEN pb.asset_id IS NOT NULL THEN 'asset' WHEN p.id IS NOT NULL THEN 'namespace' ELSE 'root' END,
     coalesce(a.id,pb.asset_id,p.id::uuid),concat_ws(' ',b.name,e.equipment_number,e.manufacturer,to_jsonb(e)->>'model_number',to_jsonb(e)->>'description'),
-    jsonb_build_object('manufacturer',e.manufacturer,'model',to_jsonb(e)->>'model_number','unsPath',e.uns_path::text)
+    jsonb_build_object('manufacturer',e.manufacturer,'model',to_jsonb(e)->>'model_number','unsPath',coalesce(b.uns_path,e.uns_path)::text)
   FROM cmms_equipment e
   LEFT JOIN bridged_assets b ON b.asset_id=e.id
   LEFT JOIN cmms_equipment a ON a.tenant_id=e.tenant_id AND a.id::text=to_jsonb(e)->>'parent_asset_id' AND a.id<>e.id
   LEFT JOIN LATERAL (
     SELECT CASE WHEN count(*)=1 THEN min(k.id::text) END AS id FROM kg_entities k
-    WHERE k.tenant_id=$1::uuid AND k.uns_path @> e.uns_path AND k.uns_path<>e.uns_path
-      AND nlevel(k.uns_path)=(SELECT max(nlevel(z.uns_path)) FROM kg_entities z WHERE z.tenant_id=$1::uuid AND z.uns_path @> e.uns_path AND z.uns_path<>e.uns_path)
+    WHERE k.tenant_id=$1::uuid AND k.uns_path @> coalesce(b.uns_path,e.uns_path) AND k.uns_path<>coalesce(b.uns_path,e.uns_path)
+      AND nlevel(k.uns_path)=(SELECT max(nlevel(z.uns_path)) FROM kg_entities z WHERE z.tenant_id=$1::uuid AND z.uns_path @> coalesce(b.uns_path,e.uns_path) AND z.uns_path<>coalesce(b.uns_path,e.uns_path))
   ) p ON true
   LEFT JOIN bridged_assets pb ON pb.node_id=p.id::uuid
   WHERE e.tenant_id::text=$1::uuid::text
@@ -226,9 +227,10 @@ async function resolve(request: Request, actor: Actor) {
   const revision = p.has("expectedRevision") ? integer(p.get("expectedRevision")) : null;
   const version = p.get("selectionVersion");
   const expectedVersion = version === "none" ? null : version !== null ? integer(version) : undefined;
-  const thread = p.get("threadKey");
-  if (expectedVersion !== undefined && (!thread || thread.length > 200)) reject();
-  if (thread !== null && expectedVersion === undefined) reject();
+  const rawThread = p.get("threadKey");
+  const thread = rawThread === null ? null : threadKeyOf(rawThread);
+  if (expectedVersion !== undefined && thread === null) reject();
+  if (rawThread !== null && expectedVersion === undefined) reject();
   return withTenantContext(actor.tenantId, async (client) => {
     if (installedId) {
       const { rows } = await client.query(`SELECT i.id::text,i.component_name,i.canonical_name,i.asset_id::text,i.human_confirmed,t.manufacturer,t.model
@@ -253,7 +255,10 @@ async function resolve(request: Request, actor: Actor) {
 
 export async function equipmentBrowser(request: Request, action: "children" | "search" | "resolve"): Promise<Response> {
   const actor = await sessionOr401();
-  if (actor instanceof NextResponse) return actor;
+  if (actor instanceof NextResponse) {
+    actor.headers.set("Cache-Control", "private, no-store");
+    return actor;
+  }
   try {
     const result = action === "resolve" ? await resolve(request,actor) : await page(request,actor,action === "search");
     return NextResponse.json(result,{ headers: { "Cache-Control": "private, no-store" } });

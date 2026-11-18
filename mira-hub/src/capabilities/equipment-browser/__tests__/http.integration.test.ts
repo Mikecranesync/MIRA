@@ -32,7 +32,7 @@ vi.mock("@/lib/db", () => ({ default: db.app }));
 const auth = vi.hoisted(() => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { AsyncLocalStorage: Storage } = require("node:async_hooks");
-  return new Storage() as AsyncLocalStorage<{ tenantId: string; userId: string } | null>;
+  return new Storage() as AsyncLocalStorage<{ tenantId: string; userId: string } | Response | null>;
 });
 vi.mock("@/lib/session", () => ({ sessionOr401: async () => auth.getStore() ?? NextResponse.json({ error: "Unauthorized" }, { status: 401 }) }));
 
@@ -79,7 +79,12 @@ describe("direct equipment API HTTP/PostgreSQL contract", () => {
       const controller = new AbortController();
       outgoing.on("close", () => { if (!outgoing.writableEnded) controller.abort(); });
       const token = String(incoming.headers.authorization ?? "");
-      auth.run(users[token as keyof typeof users] ?? null, async () => {
+      const session = token === "expired"
+        ? NextResponse.json({error:"Trial ended"}, {status:403})
+        : token === "unavailable"
+          ? NextResponse.json({error:"Session unavailable"}, {status:503, headers:{"Retry-After":"30"}})
+          : users[token as keyof typeof users] ?? null;
+      auth.run(session, async () => {
         try {
           const url = new URL(incoming.url!, "http://localhost");
           const handler = routes.get(url.pathname.split("/").at(-1)!);
@@ -96,8 +101,9 @@ describe("direct equipment API HTTP/PostgreSQL contract", () => {
     if (server) { server.closeAllConnections(); await new Promise<void>((resolve) => server.close(() => resolve())); }
     await db.owner.query("DELETE FROM equipment_notebooks WHERE tenant_id = ANY($1::uuid[])", [[a,b]]);
     await db.owner.query("DELETE FROM installed_component_instances WHERE tenant_id = ANY($1::uuid[])",[[a,b]]);
+    await db.owner.query("DELETE FROM namespace_versions WHERE tenant_id = ANY($1::uuid[])",[[a,b]]);
     await db.owner.query("DELETE FROM kg_entities WHERE tenant_id = ANY($1::uuid[])",[[a,b]]);
-    await db.owner.query("DELETE FROM cmms_equipment WHERE id=ANY($1::uuid[])",[[asset,foreignAsset,legacyAsset]]);
+    await db.owner.query("DELETE FROM cmms_equipment WHERE tenant_id::text=ANY($1::text[]) OR id=$2::uuid",[[a,b],legacyAsset]);
     await db.owner.query("DELETE FROM tenants WHERE id=ANY($1::uuid[])",[[a,b]]);
     await Promise.all([db.app.end(),db.owner.end()]);
   });
@@ -117,7 +123,15 @@ describe("direct equipment API HTTP/PostgreSQL contract", () => {
   });
 
   it("requires a session and rejects ambiguous or untyped scopes", async () => {
-    expect((await request("children?parentKind=root","missing")).status).toBe(401);
+    for (const [token,status,error] of [
+      ["anonymous",401,"Unauthorized"], ["expired",403,"Trial ended"], ["unavailable",503,"Session unavailable"],
+    ] as const) {
+      const response = await request("children?parentKind=root",token);
+      expect(response.status).toBe(status);
+      expect(response.headers.get("cache-control")).toBe("private, no-store");
+      expect(response.headers.get("retry-after")).toBe(status === 503 ? "30" : null);
+      expect(await response.json()).toEqual({error});
+    }
     for (const query of ["", "parentKind=notebook", "parentKind=root&parentId="+notebook,"parentKind=root&limit=1&limit=2","parentKind=root&tenantId="+b]) {
       expect((await request("children?"+query)).status).toBe(400);
     }
@@ -211,15 +225,30 @@ describe("direct equipment API HTTP/PostgreSQL contract", () => {
     expect(pick.status).toBe("set");
     const route=`resolve?targetKind=notebook_component&notebookId=${notebook}&componentId=${secondComponent}&selectionVersion=1&threadKey=browser-thread`;
     expect((await request(route)).status).toBe(200);
+    const withoutSelection = route.replace("selectionVersion=1", "selectionVersion=none");
+    for (const key of ["browser-thread", "  browser-thread  "]) {
+      expect((await request(withoutSelection.replace("browser-thread", encodeURIComponent(key)))).status).toBe(409);
+    }
+    for (const key of ["", " ", "malformed/thread", "x".repeat(121)]) {
+      expect((await request(withoutSelection.replace("browser-thread", encodeURIComponent(key)))).status).toBe(400);
+    }
+    expect((await request(withoutSelection.replace("&threadKey=browser-thread", ""))).status).toBe(400);
+    for (const key of ["legacy", "new-thread"]) {
+      expect((await request(withoutSelection.replace("browser-thread", key))).status).toBe(200);
+    }
     expect((await request(route,"second")).status).toBe(409);
     const correction=readRevisionInput({ rawLabel:"Needs clarification",inputKind:"typed",unresolved:["catalogNumber"] },false);
     if ("error" in correction) throw new Error(correction.error);
     await reviseComponent(a,notebook,secondComponent,users.a.userId,{clientRequestId:uuid(),expectedRevision:1,revision:correction});
-    expect((await request(route)).status).toBe(409);
+    for (const key of ["browser-thread", "%20browser-thread%20"]) {
+      expect((await request(route.replace("browser-thread", key))).status).toBe(409);
+    }
     const raw=await (await request(`resolve?targetKind=notebook_component&notebookId=${notebook}&componentId=${secondComponent}`)).json();
     expect(raw.identityUsable).toBe(false);
     await setSelection(a,notebook,users.a.userId,"browser-thread",{ componentId:null,via:"picker",expectedVersion:1,clientRequestId:uuid() });
-    expect((await request(route.replace("selectionVersion=1","selectionVersion=2"))).status).toBe(409);
+    for (const key of ["browser-thread", "%20browser-thread%20"]) {
+      expect((await request(route.replace("selectionVersion=1","selectionVersion=2").replace("browser-thread", key))).status).toBe(409);
+    }
   });
 
   it("GETs leave recency, identity, binding, confirmation, selection and turn history byte-for-byte unchanged", async () => {
@@ -352,6 +381,48 @@ describe("direct equipment API HTTP/PostgreSQL contract", () => {
         expect(found.counts.total).toBe(1);
         expect(found.items).toMatchObject([{id:added.component.id,component:{current:{rawLabel:"ＭＬＣ  starter"}}}]);
       }
+    }
+
+    const newLine = uuid();
+    await db.owner.query(`INSERT INTO kg_entities(id,tenant_id,entity_type,name,uns_path,approval_state)
+      VALUES ($1,$2,'line','Moved line','binding.moved','verified')`, [newLine,a]);
+    const { PUT } = await import("@/app/api/namespace/node/[id]/route");
+    const move = () => auth.run({...users.a,userId:uuid()}, () => PUT(new Request("http://localhost", {
+      method: "PUT", body: JSON.stringify({newParentId:newLine}),
+    }), {params:Promise.resolve({id:assetNode})}));
+    vi.stubEnv("NEON_DATABASE_URL", process.env.TEST_DATABASE_URL);
+    let movedPath: string;
+    try {
+      const response = await move();
+      const payload = await response.json();
+      expect(response.status, JSON.stringify(payload)).toBe(200);
+      movedPath = payload.unsPath;
+    } finally {
+      vi.unstubAllEnvs();
+    }
+    expect((await db.owner.query("SELECT uns_path::text FROM cmms_equipment WHERE id=$1",[asset])).rows[0].uns_path).toBe("binding.line.machine");
+    for (const [parent, count] of [[line,0],[newLine,1]] as const) {
+      const page = await (await request(`children?parentKind=namespace&parentId=${parent}&kind=asset&limit=1`)).json();
+      expect(page.counts.total).toBe(count);
+      if (count === 1) expect(page.items).toMatchObject([{id:asset,unsPath:movedPath,childrenCount:2}]);
+      const search = await (await request(`search?scopeKind=namespace&scopeId=${parent}&kind=notebook_component&q=MLC%20starter`)).json();
+      expect(search.counts.total).toBe(count);
+      if (count === 1) expect(search.items).toMatchObject([{id:added.component.id}]);
+    }
+    const alias = await (await request(`children?parentKind=namespace&parentId=${assetNode}&kind=notebook`)).json();
+    expect(alias.items).toMatchObject([{id:boundId}]);
+    const explicitParent = uuid();
+    await db.owner.query(`INSERT INTO cmms_equipment(id,tenant_id,equipment_number,slug,path,uns_path)
+      VALUES ($1,$2,'Explicit parent','explicit-parent','binding','binding.line.explicit_parent')`, [explicitParent,a]);
+    try {
+      await db.owner.query("UPDATE cmms_equipment SET parent_asset_id=$1 WHERE id=$2",[explicitParent,asset]);
+      const underAsset = await (await request(`children?parentKind=asset&parentId=${explicitParent}&kind=asset`)).json();
+      expect(underAsset.items).toMatchObject([{id:asset,unsPath:movedPath}]);
+      const underLine = await (await request(`children?parentKind=namespace&parentId=${newLine}&kind=asset`)).json();
+      expect(underLine.counts.total).toBe(0);
+      expect((await request(`children?parentKind=namespace&parentId=${assetNode}`,"b")).status).toBe(404);
+    } finally {
+      await db.owner.query("DELETE FROM cmms_equipment WHERE id=$1",[explicitParent]);
     }
     await db.owner.query("DELETE FROM equipment_notebook_sources WHERE notebook_id=$1",[boundId]);
   });

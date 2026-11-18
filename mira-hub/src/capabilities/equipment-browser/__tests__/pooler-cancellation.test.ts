@@ -3,7 +3,7 @@
 import { describe,expect,it,vi } from "vitest";
 const state=vi.hoisted(()=>({
   transaction:false, targets:[] as number[], started:null as null|(()=>void),
-  cancelled:null as null|(()=>void), primaryStalled:false, rollbackStalled:false, response:"confirmed", end:vi.fn(),
+  cancelled:null as null|(()=>void), finalizing:null as null|{sql:string, started:()=>void, finish?:()=>void}, primaryStalled:false, rollbackStalled:false, response:"confirmed", connectGate:null as Promise<void>|null, end:vi.fn(),
 }));
 const client=vi.hoisted(()=>({
   query:vi.fn(async(query:string|{text:string})=>{
@@ -11,6 +11,10 @@ const client=vi.hoisted(()=>({
     if(text.startsWith("BEGIN"))state.transaction=true;
     if(text==="ROLLBACK" || text==="COMMIT")state.transaction=false;
     if(text.includes("pg_backend_pid"))return {rows:[{pid:state.transaction?222:111}]};
+    if (state.finalizing?.sql === text) {
+      const stage = state.finalizing;
+      await new Promise<void>((resolve) => { stage.finish = resolve; stage.started(); });
+    }
     if(text==="ROLLBACK" && state.rollbackStalled) await new Promise<void>(()=>{});
     if(text==="slow fixture query"){
       state.started?.();
@@ -22,7 +26,7 @@ const client=vi.hoisted(()=>({
 }));
 vi.mock("@/lib/db",()=>({default:{options:{},connect:async()=>client}}));
 vi.mock("pg",()=>({Client:class{
-  async connect(){}
+  async connect(){ await state.connectGate; }
   async query(_sql:string,params:number[]){
     state.targets.push(params[0]);
     if (!state.primaryStalled) state.cancelled?.();
@@ -65,6 +69,100 @@ describe("transaction pooler cancellation identity",()=>{
     } finally {
       state.primaryStalled = false;
       state.rollbackStalled = false;
+      vi.useRealTimers();
+    }
+  });
+
+  it.each(["COMMIT", "ROLLBACK"])("bounds disconnect after %s starts without signalling the backend", async (sql) => {
+    vi.useFakeTimers();
+    const controller = new AbortController();
+    let started!: () => void;
+    const inFinalization = new Promise<void>((resolve) => { started = resolve; });
+    state.finalizing = { sql, started };
+    state.targets = [];
+    client.release.mockClear();
+    let outcome: unknown;
+    try {
+      const pending = withTenantContext("tenant", async () => {
+        if (sql === "ROLLBACK") throw new Error("read failed");
+        return "result";
+      }, {signal:controller.signal,readOnly:true}).catch((error) => {outcome=error;});
+      await inFinalization;
+      controller.abort();
+      await vi.advanceTimersByTimeAsync(4_999);
+      expect(client.release).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(outcome).toMatchObject({name:"AbortError"});
+      await pending;
+      expect(state.targets).toEqual([]);
+      expect(client.release).toHaveBeenCalledExactlyOnceWith(true);
+      state.finalizing.finish?.();
+      await Promise.resolve();
+      expect(client.release).toHaveBeenCalledExactlyOnceWith(true);
+      state.finalizing = null;
+      await expect(withTenantContext("next",async()=>"ready")).resolves.toBe("ready");
+    } finally {
+      state.finalizing?.finish?.();
+      state.finalizing = null;
+      vi.useRealTimers();
+    }
+  });
+
+  it("can reuse a connection after COMMIT finishes before the abort deadline", async () => {
+    vi.useFakeTimers();
+    const controller = new AbortController();
+    let started!: () => void;
+    const inCommit = new Promise<void>((resolve) => { started = resolve; });
+    state.finalizing = { sql: "COMMIT", started };
+    state.targets = [];
+    client.release.mockClear();
+    try {
+      const pending = withTenantContext("tenant", async () => "result", {
+        signal: controller.signal, readOnly: true,
+      });
+      const rejected = expect(pending).rejects.toMatchObject({name:"AbortError"});
+      await inCommit;
+      controller.abort();
+      await vi.advanceTimersByTimeAsync(4_999);
+      state.finalizing.finish?.();
+      await rejected;
+      await vi.advanceTimersByTimeAsync(1);
+      expect(state.targets).toEqual([]);
+      expect(client.release).toHaveBeenCalledExactlyOnceWith();
+    } finally {
+      state.finalizing?.finish?.();
+      state.finalizing = null;
+      vi.useRealTimers();
+    }
+  });
+
+  it("ignores a control connection that opens after the primary lease is discarded", async () => {
+    vi.useFakeTimers();
+    const controller = new AbortController();
+    let connect!: () => void;
+    state.connectGate = new Promise<void>((resolve) => { connect = resolve; });
+    state.primaryStalled = true;
+    state.targets = [];
+    client.release.mockClear();
+    const started = new Promise<void>((resolve) => { state.started = resolve; });
+    try {
+      const pending = withTenantContext("tenant", (c) => c.query("slow fixture query"), {
+        signal: controller.signal, readOnly: true,
+      });
+      const rejected = expect(pending).rejects.toMatchObject({name:"AbortError"});
+      await started;
+      controller.abort();
+      await vi.advanceTimersByTimeAsync(5_000);
+      await rejected;
+      connect();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(state.targets).toEqual([]);
+      expect(client.release).toHaveBeenCalledExactlyOnceWith(true);
+    } finally {
+      connect();
+      state.cancelled?.();
+      state.primaryStalled = false;
+      state.connectGate = null;
       vi.useRealTimers();
     }
   });

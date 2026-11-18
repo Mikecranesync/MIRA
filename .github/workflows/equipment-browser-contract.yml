@@ -8,6 +8,8 @@ on:
       - 'mira-hub/src/lib/tenant-context.ts'
       - 'mira-hub/src/lib/equipment-notebooks.ts'
       - 'mira-hub/scripts/verify-equipment-browser-proof.py'
+      - 'mira-hub/scripts/setup-integration-db.mjs'
+      - 'mira-hub/vitest*.config.ts'
       - 'mira-hub/package*.json'
       - '.github/workflows/equipment-browser-contract.yml'
 permissions:
@@ -31,7 +33,6 @@ jobs:
     env:
       TEST_DATABASE_URL: postgres://postgres:testpw@127.0.0.1:5432/equipment_browser
       MIRA_TEST_DB_CONFIRM: DISPOSABLE
-      MIRA_INTEGRATION_EXTRA_MIGRATIONS: 015_equipment_uns_path.sql,016_component_templates.sql,017_installed_component_instances.sql,018_relationship_proposals.sql,021_namespace_builder.sql,023_grant_app_namespace_tables.sql,115_bench_components.sql
       EQUIPMENT_BROWSER_MEASUREMENTS: /tmp/equipment-browser-proof/measurements.json
       EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
       EXPECTED_BASE: ${{ github.event.pull_request.base.sha }}
@@ -60,28 +61,10 @@ jobs:
       - name: Install locked dependencies
         working-directory: mira-hub
         run: npm ci --no-audit --no-fund
-      - name: Bootstrap only the disposable canonical database
-        working-directory: mira-hub
-        run: node scripts/setup-integration-db.mjs
-      - name: Match the deployed CMMS tenant column
-        run: |
-          psql "$TEST_DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
-          BEGIN;
-          DROP POLICY cmms_equipment_tenant ON cmms_equipment;
-          ALTER TABLE cmms_equipment DROP CONSTRAINT cmms_equipment_tenant_id_fkey;
-          ALTER TABLE cmms_equipment ALTER COLUMN tenant_id TYPE text USING tenant_id::text;
-          CREATE POLICY cmms_equipment_tenant ON cmms_equipment FOR ALL TO factorylm_app
-            USING (tenant_id IN (current_setting('app.tenant_id', true), current_setting('app.current_tenant_id', true)))
-            WITH CHECK (tenant_id IN (current_setting('app.tenant_id', true), current_setting('app.current_tenant_id', true)));
-          COMMIT;
-          SQL
-      - name: Execute named API and existing store suites
+      - name: Execute the disposable equipment browser integration profile
         working-directory: mira-hub
         run: >-
-          node node_modules/vitest/vitest.mjs run --config vitest.integration.config.ts
-          src/capabilities/equipment-browser/__tests__/http.integration.test.ts
-          src/capabilities/equipment-browser/__tests__/tenant-read.integration.test.ts
-          src/capabilities/bench-components/__tests__/store.integration.test.ts
+          npm run test:integration:equipment-browser --
           --reporter=default --reporter=json --outputFile=/tmp/equipment-browser-proof/vitest.json
       - name: Reject absent, zero, skipped or incomplete required evidence
         if: always()

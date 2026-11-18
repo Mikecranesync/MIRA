@@ -7,10 +7,10 @@ import pathlib
 import sys
 
 REQUIRED = {
-    "equipment-browser/__tests__/http.integration.test.ts": (21, [
+    "equipment-browser/__tests__/http.integration.test.ts": (27, [
         "20k fixture:", "real socket cancellation", "stale or corrected selections",
         "GETs leave recency", "rechecks authorization on every page", "same UUID",
-        "canonical asset binding, live source counts and normalized labels", "refusing foreign and unknown assets",
+        "canonical asset binding, live source counts and normalized labels", "requires a session", "refusing foreign and unknown assets",
     ]),
     "equipment-browser/__tests__/tenant-read.integration.test.ts": (3, [
         "aborts before acquiring", "read-only callbacks cannot change", "repeatable-read",
