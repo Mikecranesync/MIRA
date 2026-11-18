@@ -46,6 +46,11 @@ export interface EquipmentAskController {
   /** One explicit resolve. On success the host's onAskAbout runs; on refusal a notice is set. */
   readonly ask: (item: BrowserItem) => void;
   readonly dismiss: () => void;
+  /**
+   * Abandon the resolve in flight, if any (the host closed the navigator): the request is
+   * aborted, every Ask control is free again, and neither its answer nor its refusal is applied.
+   */
+  readonly cancel: () => void;
   /** Latest "Load current record" press, from the drawer or the composer notice. */
   readonly refreshRequest: EquipmentRefreshRequest | null;
   /** Reload the list a refused row came from. Never resolves; clears the notice. */
@@ -162,6 +167,12 @@ export function useEquipmentAsk(
       });
   }, [source]);
 
+  const cancel = useCallback(() => {
+    inFlight.current?.abort();
+    inFlight.current = null;
+    setPending(null);
+  }, []);
+
   const requestRefresh = useCallback((item: BrowserItem) => {
     setNotice(null);
     setRefreshRequest((last) => ({ item, sequence: (last?.sequence ?? 0) + 1 }));
@@ -201,6 +212,7 @@ export function useEquipmentAsk(
     notice,
     ask,
     dismiss: () => setNotice(null),
+    cancel,
     refreshRequest,
     requestRefresh,
     settleRefresh,

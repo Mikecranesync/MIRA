@@ -94,18 +94,19 @@ export function openNotebookSelection(nb: Pick<HubNotebook, "id">, mint: () => s
 }
 
 /**
- * A component the equipment navigator resolved, to be shown in that conversation's checklist.
+ * A component the technician asked to see, to be shown in that conversation's checklist.
  * The navigator never selects (#5625 r2, Mike's B): the checklist opens on the component and
  * the technician selects it there, through the checklist's own checked write.
  */
 export type EquipmentFocus = { notebookId: string; threadId: string; componentId: string; token: number };
 
 /**
- * An answer for equipment in another notebook (or asked from HOME). It never switches chats by
- * itself (#5625 r3 F12, Mike's A): the panel offers "Open", and only that tap opens the notebook.
- * It lapses on any conversation change.
+ * An answer from the equipment navigator, shown as a button inside the panel. It never changes
+ * anything outside the panel by itself (#5625 r3 F12 / r4 F14, Mike's A): `here` = a part of the
+ * open notebook ("Show in checklist"), otherwise another notebook or HOME ("Open"). Only the
+ * technician's tap acts on it, and it lapses on any conversation change.
  */
-export type EquipmentOffer = { target: QuestionTarget; generation: number; token: number };
+export type EquipmentOffer = { target: QuestionTarget; here: boolean; generation: number; token: number };
 
 /**
  * Where Ask about was pressed: the open conversation (null = HOME) and the host's navigation
@@ -114,19 +115,15 @@ export type EquipmentOffer = { target: QuestionTarget; generation: number; token
 export type PickOrigin = { conversation: HubSelection | null; generation: number };
 
 export type PickRoute =
-  | { kind: "focus"; focus: EquipmentFocus | null }
+  | { kind: "none" }
   | { kind: "offer"; offer: EquipmentOffer }
   | { kind: "dropped"; reason: "conversation_changed" | "answer_in_progress" };
 
 /**
- * What an "Ask about" answer from the equipment navigator does. Nothing here ever changes the
- * open conversation:
- *  - a component of the open notebook is shown in the open conversation's checklist;
- *  - the open notebook as a whole needs nothing;
- *  - anything in another notebook, or asked from HOME, becomes an offer the technician taps.
- *
- * The answer arrives after the press. If any conversation change happened in between (leaving
- * and coming back included, #5625 r2 F3), or an answer is streaming, it does nothing at all.
+ * What an "Ask about" answer from the equipment navigator does: at most it puts a button in
+ * the panel. The open notebook as a whole needs nothing. The answer arrives after the press; if
+ * any conversation change happened in between (leaving and coming back included, #5625 r2 F3),
+ * or an answer is streaming, it does nothing at all.
  */
 export function pickRouteFor(
   target: QuestionTarget,
@@ -136,30 +133,29 @@ export function pickRouteFor(
 ): PickRoute {
   if (origin.generation !== now.generation) return { kind: "dropped", reason: "conversation_changed" };
   if (now.answering) return { kind: "dropped", reason: "answer_in_progress" };
-  const open = now.selection;
-  if (open && open.notebookId === target.machineId) {
-    return {
-      kind: "focus",
-      focus: target.componentId ? { notebookId: open.notebookId, threadId: open.threadId, componentId: target.componentId, token } : null,
-    };
-  }
-  return { kind: "offer", offer: { target, generation: now.generation, token } };
+  const here = now.selection !== null && now.selection.notebookId === target.machineId;
+  if (here && !target.componentId) return { kind: "none" };
+  return { kind: "offer", offer: { target, here, generation: now.generation, token } };
 }
 
 /**
- * The technician tapped "Open" on an offer: that notebook opens in a fresh chat, as a project
- * click does (#4444), and its checklist is shown on the component. An offer from an earlier
- * conversation never opens anything.
+ * The technician tapped an offer. A part of the open notebook is shown in this conversation's
+ * checklist; anything else opens that notebook in a fresh chat, as a project click does (#4444),
+ * and shows the part there. An offer from an earlier conversation does nothing.
  */
 export function openOffer(
   offer: EquipmentOffer,
-  generation: number,
+  now: { generation: number; selection: HubSelection | null },
   mint: () => string = newThreadId,
-): { open: HubSelection; focus: EquipmentFocus | null } | null {
-  if (offer.generation !== generation) return null;
-  const open = openNotebookSelection({ id: offer.target.machineId }, mint);
+): { open: HubSelection | null; focus: EquipmentFocus | null } | null {
+  if (offer.generation !== now.generation) return null;
   const componentId = offer.target.componentId;
-  return { open, focus: componentId ? { notebookId: open.notebookId, threadId: open.threadId, componentId, token: offer.token } : null };
+  const here = now.selection !== null && now.selection.notebookId === offer.target.machineId;
+  const conversation = here ? now.selection! : openNotebookSelection({ id: offer.target.machineId }, mint);
+  return {
+    open: here ? null : conversation,
+    focus: componentId ? { notebookId: conversation.notebookId, threadId: conversation.threadId, componentId, token: offer.token } : null,
+  };
 }
 
 /**

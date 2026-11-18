@@ -633,17 +633,19 @@ export async function changeSelection(opts: {
  * (or no longer) in it ends the hand-off with a reason, so it is never applied later.
  *
  * The server has just resolved the component, so a checklist read earlier may simply predate it
- * (#5625 r3 F13): a miss on the list already on screen asks for one fresh read ("refresh") before
- * it is reported missing.
+ * (#5625 r3 F13), and a read that failed earlier may have been transient (r4 F16): each hand-off
+ * gets one fresh read ("refresh") before it is reported missing or failed. An open label editor
+ * is never closed for it (r4 F14): the hand-off waits until the technician saves or cancels.
  */
 export function focusStep(
   focus: { componentId: string; token: number } | null,
   consumed: ReadonlySet<number>,
-  state: { bench: BenchState | null; available: boolean; readFailed: boolean; reread: boolean },
+  state: { bench: BenchState | null; available: boolean; readFailed: boolean; reread: boolean; editing: boolean },
 ): "none" | "wait" | "unavailable" | "failed" | "refresh" | "missing" | "show" {
   if (!focus || consumed.has(focus.token)) return "none";
   if (!state.available) return "unavailable";
-  if (state.readFailed) return "failed";
+  if (state.editing) return "wait";
+  if (state.readFailed) return state.reread ? "failed" : "refresh";
   if (!state.bench) return "wait";
   const c = state.bench.components.find((x) => x.id === focus.componentId);
   if (c && c.status !== "retired") return "show";

@@ -195,13 +195,13 @@ export function BenchComponents({
 
   // The navigator never writes a selection: it opens the checklist on what it found.
   const consumedFocus = useRef(new Set<number>());
-  // One fresh read per hand-off before a component is called missing (#5625 r3 F13).
+  // One fresh read per hand-off before a component is called missing or the read failed (#5625 r3 F13, r4 F16).
   const reread = useRef(new Map<number, "pending" | "done">());
   const [rereadDone, setRereadDone] = useState(0);
   useEffect(() => {
     const again = focus ? reread.current.get(focus.token) : undefined;
     if (again === "pending") return;
-    const step = focusStep(focus, consumedFocus.current, { bench, available, readFailed, reread: again === "done" });
+    const step = focusStep(focus, consumedFocus.current, { bench, available, readFailed, reread: again === "done", editing: card !== null });
     if (!focus || step === "none" || step === "wait") return;
     if (step === "refresh") {
       const token = focus.token;
@@ -214,7 +214,6 @@ export function BenchComponents({
     }
     consumedFocus.current.add(focus.token);
     if (step === "show") {
-      setCard(null);
       setFocused(focus.componentId);
       setOpen(true);
       onFocusDone?.(focus.token, { ok: true });
@@ -227,7 +226,7 @@ export function BenchComponents({
         : "The component list isn't available here, so the component wasn't shown. Nothing was changed.";
     setMessage(text);
     onFocusDone?.(focus.token, { ok: false, message: text });
-  }, [focus, bench, available, readFailed, onFocusDone, load, rereadDone]);
+  }, [focus, bench, available, readFailed, onFocusDone, load, rereadDone, card]);
   useEffect(() => {
     if (open && focused) document.querySelector(`[data-testid="bench-component-${focused}"]`)?.scrollIntoView?.({ block: "nearest" });
   }, [open, focused]);
@@ -365,6 +364,11 @@ export function BenchComponents({
           <p data-testid="bench-panel-asking">{askingAbout(bench)}</p>
           {message && <p role="status" data-testid="bench-message">{message}</p>}
 
+          {card && focus && !consumedFocus.current.has(focus.token) && (
+            <p role="status" data-testid="bench-focus-waiting">
+              {`${bench?.components.find((c) => c.id === focus.componentId)?.label ?? "The component you found"} will be shown when you finish this label.`}
+            </p>
+          )}
           {card ? (
             <ConfirmationCard card={card} onChange={setCard} known={bench?.documentNumbers ?? []} saving={saving} onSave={saveCard} onCancel={() => setCard(null)} />
           ) : (

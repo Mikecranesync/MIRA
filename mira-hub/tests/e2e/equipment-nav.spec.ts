@@ -102,6 +102,8 @@ type RouteOpts = {
   put?: "ok" | "stale_revision";
   holdResolve?: boolean;
   benchFails?: boolean;
+  /** 1-based checklist reads that answer 500. */
+  failReads?: number[];
   /** The first checklist read predates this component (it was added on another screen). */
   firstBenchWithout?: string;
   /** The resolve answers with the component in this notebook instead of NB. */
@@ -121,6 +123,7 @@ async function routes(page: Page, opts: RouteOpts): Promise<Seen> {
     if (opts.benchFails) return route.fulfill(json({ error: "internal" }, 500));
     const thread = new URL(route.request().url()).searchParams.get("threadId") ?? "";
     seen.benchReads += 1;
+    if (opts.failReads?.includes(seen.benchReads)) return route.fulfill(json({ error: "internal" }, 500));
     const without = seen.benchReads === 1 ? opts.firstBenchWithout : undefined;
     return route.fulfill(json(bench(seen.selections.get(thread) ?? null, without)));
   });
@@ -173,9 +176,10 @@ const checklist = (page: Page) => page.getByTestId("bench-components-panel");
 const checklistRow = (page: Page, id: string) => checklist(page).getByTestId(`bench-component-${id}`);
 const offer = (page: Page) => page.getByTestId("equipment-offer");
 const composer = (page: Page) => page.getByRole("textbox", { name: /ask mira/i });
+const showFound = (page: Page) => offer(page).getByRole("button", { name: "Show in checklist" }).click();
 const selectInChecklist = (page: Page, id: string) => checklistRow(page, id).getByRole("button", { name: "Ask about this" }).click();
 
-test("on: Ask about opens the checklist on the part; the technician's tap selects it", async ({ page, context, baseURL }) => {
+test("on: Ask about offers the part; Show in checklist opens it there; the technician's tap selects it", async ({ page, context, baseURL }) => {
   await auth(context, baseURL!);
   const seen = await routes(page, { enabled: true, resolve: "resolved" });
   await page.goto(`/v3/?notebook=${NB}&thread=${THREAD}`);
@@ -183,6 +187,11 @@ test("on: Ask about opens the checklist on the part; the technician's tap select
 
   await openTo(page, VFD);
   await askAbout(page, "VFD1");
+  // The answer is a button in the panel; nothing else moved (#5625 r4 F14).
+  await expect(offer(page)).toContainText("Found VFD1");
+  await expect(checklist(page)).toHaveCount(0);
+  await showFound(page);
+  await expect(offer(page)).toHaveCount(0);
 
   await expect(checklistRow(page, VFD)).toHaveAttribute("data-found", "true");
   expect(seen.resolves).toHaveLength(1);
@@ -207,6 +216,7 @@ test("a saved component can be switched to another one", async ({ page, context,
 
   await openTo(page, MLC);
   await askAbout(page, "Q1");
+  await showFound(page);
   await expect(checklistRow(page, MLC)).toHaveAttribute("data-found", "true");
   await selectInChecklist(page, MLC);
 
@@ -240,6 +250,7 @@ test("a record corrected after the checklist was read is refused at the write (#
 
   await openTo(page, VFD);
   await askAbout(page, "VFD1");
+  await showFound(page);
   await selectInChecklist(page, VFD);
 
   await expect(checklist(page).getByTestId("bench-message")).toContainText("changed on another screen");
@@ -278,6 +289,7 @@ test("a destination checklist that fails to load ends the hand-off with a notice
 
   await openTo(page, VFD);
   await askAbout(page, "VFD1");
+  await showFound(page);
 
   await expect(pickNotice(page)).toContainText("couldn't be read");
   expect(seen.selectionPuts).toHaveLength(0);
@@ -291,6 +303,7 @@ test("showing a part never saves it, and reopening the chat does not show it aga
 
   await openTo(page, VFD);
   await askAbout(page, "VFD1");
+  await showFound(page);
   await expect(checklistRow(page, VFD)).toHaveAttribute("data-found", "true");
   await checklist(page).getByRole("button", { name: "Close" }).click();
 
@@ -366,10 +379,80 @@ test("a component added after the checklist was read is still shown: one fresh r
 
   await openTo(page, MLC);
   await askAbout(page, "Q1");
+  await showFound(page);
 
   await expect(checklistRow(page, MLC)).toHaveAttribute("data-found", "true");
   expect(seen.benchReads).toBeGreaterThanOrEqual(2);
   await expect(pickNotice(page)).toHaveCount(0);
+  expect(seen.selectionPuts).toHaveLength(0);
+});
+
+test("an answer that arrives while a label is being edited never closes the editor (#5625 r4 F14)", async ({ page, context, baseURL }) => {
+  await auth(context, baseURL!);
+  const seen = await routes(page, { enabled: true, resolve: "resolved", holdResolve: true });
+  await page.goto(`/v3/?notebook=${NB}&thread=${THREAD}`);
+  await expect(panel(page)).toBeVisible();
+
+  await openTo(page, MLC);
+  await askAbout(page, "Q1");
+  await expect.poll(() => seen.resolves.length).toBe(1);
+  await page.getByTestId("bench-asking-about").click();
+  await checklistRow(page, VFD).getByRole("button", { name: "Edit label" }).click();
+  await page.getByTestId("bench-card-raw").fill("unsaved edit");
+  seen.release();
+
+  await expect(offer(page)).toContainText("Found Q1");
+  await expect(page.getByTestId("bench-card-raw")).toHaveValue("unsaved edit");
+  // Even the tap waits for the editor to be finished with, and says so.
+  await showFound(page);
+  await expect(offer(page)).toHaveCount(0);
+  await expect(checklist(page).getByTestId("bench-focus-waiting")).toContainText("Q1 · MLC will be shown when you finish this label");
+  await expect(page.getByTestId("bench-card-raw")).toHaveValue("unsaved edit");
+  await checklist(page).getByRole("button", { name: "Cancel" }).click();
+  await expect(checklistRow(page, MLC)).toHaveAttribute("data-found", "true");
+  expect(seen.selectionPuts).toHaveLength(0);
+});
+
+test("closing Find equipment aborts the lookup: Ask is free again and a late refusal shows nothing (#5625 r4 F15)", async ({ page, context, baseURL }) => {
+  await auth(context, baseURL!);
+  const seen = await routes(page, { enabled: true, resolve: "stale_revision", holdResolve: true });
+  await page.goto(`/v3/?notebook=${NB}&thread=${THREAD}`);
+  await expect(panel(page)).toBeVisible();
+
+  await openTo(page, VFD);
+  await askAbout(page, "VFD1");
+  await expect.poll(() => seen.resolves.length).toBe(1);
+  await panel(page).getByRole("button", { name: "Close equipment" }).click();
+  await openTo(page, MLC);
+  // Nothing is still "checking": every Ask control is usable.
+  await expect(panel(page).locator('[role="tree"]').getByRole("button", { name: "Ask about Q1" })).toBeEnabled();
+  seen.release();
+
+  await page.waitForTimeout(1000);
+  await expect(panel(page).getByRole("alert").filter({ hasText: "did not change" })).toHaveCount(0);
+  await expect(offer(page)).toHaveCount(0);
+  expect(seen.selectionPuts).toHaveLength(0);
+});
+
+test("a failed checklist read does not fail the next lookup: it gets its own fresh read (#5625 r4 F16)", async ({ page, context, baseURL }) => {
+  await auth(context, baseURL!);
+  const seen = await routes(page, { enabled: true, resolve: "resolved", firstBenchWithout: MLC, failReads: [2] });
+  await page.goto(`/v3/?notebook=${NB}&thread=${THREAD}`);
+  await expect(panel(page)).toBeVisible();
+  await expect.poll(() => seen.benchReads).toBeGreaterThanOrEqual(1);
+
+  await openTo(page, MLC);
+  await askAbout(page, "Q1");
+  await showFound(page);
+  // Precondition: the re-read for the first hand-off failed.
+  await expect(pickNotice(page)).toContainText("couldn't be read");
+  const before = seen.benchReads;
+
+  await openTo(page, MLC);
+  await askAbout(page, "Q1");
+  await showFound(page);
+  await expect(checklistRow(page, MLC)).toHaveAttribute("data-found", "true");
+  expect(seen.benchReads).toBeGreaterThan(before);
   expect(seen.selectionPuts).toHaveLength(0);
 });
 

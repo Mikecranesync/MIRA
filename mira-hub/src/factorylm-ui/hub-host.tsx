@@ -686,19 +686,14 @@ export function HubShellHost() {
       return;
     }
     setEquipmentNotice(null);
-    if (route.kind === "offer") {
-      setEquipmentOffer(route.offer);
-      return;
-    }
-    setEquipmentOffer(null);
-    setEquipmentFocus(route.focus);
+    setEquipmentOffer(route.kind === "offer" ? route.offer : null);
   }, []);
-  // The technician's tap is the only thing that opens another notebook (#5625 r3 F12).
+  // The technician's tap is the only thing that changes the screen outside the panel (#5625 r3 F12 / r4 F14).
   const onOpenOffer = useCallback((offer: EquipmentOffer) => {
     setEquipmentOffer(null);
-    const opened = openOffer(offer, pickNow.current.generation);
+    const opened = openOffer(offer, { generation: pickNow.current.generation, selection: selectionRef.current });
     if (!opened) return;
-    select(opened.open);
+    if (opened.open) select(opened.open);
     setEquipmentFocus(opened.focus);
   }, [select]);
   const onDismissOffer = useCallback(() => setEquipmentOffer(null), []);
