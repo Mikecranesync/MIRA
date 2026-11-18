@@ -120,8 +120,12 @@ describe("rotation is read from the PDF, not guessed", () => {
 
 describe("GS10 page 26: all 90 values, each under its own model with the labels the page prints", () => {
   const gold = candidateP26.gold as Gold[];
-  it("the captured page has the rotated group cells the reader depends on (precondition)", () => {
-    expect(P26.items.filter((i) => i.vertical).map((i) => i.str.trim())).toEqual(["Output Rating", "Input Rating"]);
+  it("the captured page has the rotated items the real PDF has, not only the two labels (precondition)", () => {
+    // As read from the real file by layoutItemsFromTextContent: besides the two group cells, the
+    // PDF also rotates empty and space items and the footnote mark "2". A capture that keeps only
+    // the labels tests a cleaner page than any upload produces.
+    expect(P26.items.filter((i) => i.vertical).map((i) => i.str)).toEqual(["", "Output Rating", " ", "", "Input Rating", "2", " "]);
+    expect(P27.items.filter((i) => i.vertical).map((i) => i.str)).toEqual(["", "Output Rating", "", "Input Rating", "2", " "]);
     expect(gold).toHaveLength(90);
   });
   for (const g of gold) {

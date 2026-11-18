@@ -306,6 +306,10 @@ type Stub = { item: LayoutItem; kind: "group" | "duty"; centre: number; right: n
 /** Where a built row sits: first and last baselines, and the leftmost x of its label text. */
 type RowSpan = { top: number; bottom: number; labelX: number };
 const isFootnoteMark = (text: string): boolean => /^\d{1,2}$/.test(text);
+/** A rotated item names a group only when it holds a word. A real PDF also rotates empty and
+ *  space items and footnote marks beside a rotated label (GS10 pages 26 and 27); those are read as
+ *  ordinary label text, as if upright, and never as a group stub. */
+const isGroupStub = (it: LayoutItem): boolean => it.vertical === true && /\p{L}{2,}/u.test(it.str);
 
 /** Stub cells in a block's label area, read from text geometry alone. A rotated item is a group
  *  stub. A duty stub is a single-word, non-unit first label run; it counts only as a COLUMN: two or
@@ -321,8 +325,8 @@ function findStubs(window: readonly Line[], cols: Columns): Stub[] {
   const labelStarts: Array<{ x: number; words: number }> = [];
   for (const line of window) {
     const { labelItems } = splitLabelValue(line, cols);
-    for (const it of labelItems) if (it.vertical) out.push({ item: it, kind: "group", centre: it.y + it.w / 2, right: it.x });
-    const runs = groupRuns(labelItems.filter((it) => !it.vertical), RUN_GAP_PT).filter((r) => !isFootnoteMark(renderItems(r.items)));
+    for (const it of labelItems) if (isGroupStub(it)) out.push({ item: it, kind: "group", centre: it.y + it.w / 2, right: it.x });
+    const runs = groupRuns(labelItems.filter((it) => !isGroupStub(it)), RUN_GAP_PT).filter((r) => !isFootnoteMark(renderItems(r.items)));
     for (const r of runs) labelStarts.push({ x: r.leftX, words: renderItems(r.items).split(/\s+/).length });
     const first = runs[0];
     if (!first || first.items.length !== 1) continue;
