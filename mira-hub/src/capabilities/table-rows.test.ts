@@ -695,10 +695,13 @@ describe("duty stubs: placement is bounded, and stub text is never dropped (#559
   // also rotates blanks and footnote marks beside a label (GS10 pages 26 and 27); only those are
   // read as ordinary text.
   it.each([
-    ["H and L", "H", "L"],
-    ["Output Rating and Input Rating (control)", "Output Rating", "Input Rating"],
-  ])("rotated group labels %s each keep their own rows", (_name, upper, lower) => {
-    const group = (str: string, centre: number) => ({ str, x: 40, y: centre - 20, w: 40, size: 8, vertical: true });
+    ["H and L", "H", "L", 8],
+    ["1 and 2, printed full size (#5615 Codex F4)", "1", "2", 8],
+    // Alone on its line a digit annotates nothing, so even a small one is a group label.
+    ["1 and 2 at 6 pt over 8 pt text, each alone on its line", "1", "2", 6],
+    ["Output Rating and Input Rating (control)", "Output Rating", "Input Rating", 8],
+  ])("rotated group labels %s each keep their own rows", (_name, upper, lower, size) => {
+    const group = (str: string, centre: number) => ({ str, x: 40, y: centre - 20, w: 40, size, vertical: true });
     const items = [...header(776), item("Frame Size", 30, 764), item("A1", 250, 764), item("A1", 350, 764),
       item("Cooling Method", 30, 752), item("Fan", 250, 752), item("Fan", 350, 752),
       ...[740, 728, 692, 680].flatMap((y, i) => [item("Rated Current", 100, y), item(String(i + 3), 250, y), item(String(i + 4), 350, y)]),
@@ -708,7 +711,29 @@ describe("duty stubs: placement is bounded, and stub text is never dropped (#559
     expect(labels).toEqual(["Frame Size", "Cooling Method",
       `${upper} / Rated Current`, `${upper} / Rated Current`, `${lower} / Rated Current`, `${lower} / Rated Current`]);
   });
-  it.each([["blank", ""], ["space", " "], ["footnote mark", "2"], ["two-digit footnote mark", "12"]])(
+  // #5615 Codex round 2 F4: a rotated digit that shares its line with row text is a mark only when
+  // it is printed small against the table's text, not against the largest item on that line. Here
+  // the digits are labels that this reader cannot centre, so their rows are withheld with the
+  // digits kept as text. Read as marks they would be dropped, leaving bare affirmable rows.
+  it.each([
+    ["8 pt, beside one 11 pt label", 8, 11],
+    ["7 pt, inside the ratio boundary", 7, 8],
+  ])("a rotated digit sharing a row line at %s is a group label: withheld, never dropped", (_name, size, labelSize) => {
+    const digit = (str: string, centre: number) => ({ str, x: 40, y: centre - 5, w: 10, size, vertical: true });
+    const rated = (y: number) => ({ str: "Rated Current", x: 100, y, w: 52, size: y === 728 ? labelSize : 8 });
+    const items = [...header(776), item("Frame Size", 30, 764), item("A1", 250, 764), item("A1", 350, 764),
+      item("Cooling Method", 30, 752), item("Fan", 250, 752), item("Fan", 350, 752),
+      ...[740, 728, 716, 704].flatMap((y, i) => [rated(y), item(String(i + 3), 250, y), item(String(i + 4), 350, y)]),
+      digit("1", 734), digit("2", 710)]; // each digit's y (729, 705) lands on the lower row of its pair
+    const onRowLine = (y: number) => items.filter((it) => Math.abs(it.y - y) <= 2.5).length;
+    expect([onRowLine(728), onRowLine(704)], "precondition: each digit shares a row line").toEqual([4, 4]);
+    expect(pageWithTables(items), "precondition: the page is read as a table").not.toBeNull();
+    const blocks = detectModelTables(items);
+    expect(blocks.flatMap((b) => b.rows).map((r) => r.label)).toEqual(["Frame Size", "Cooling Method"]);
+    expect(blocks.flatMap((b) => b.unqualified)).toEqual(expect.arrayContaining(["1", "2"]));
+    expect(blocks.flatMap((b) => b.unqualified).filter((l) => /Rated Current/.test(l))).toHaveLength(4);
+  });
+  it.each([["blank", ""], ["space", " "], ["footnote mark", "2"], ["two-digit footnote mark", "12"], ["space-padded footnote mark (#5615 Codex F3)", " 2 "]])(
     "a rotated %s beside a rotated label is not a group label", (_name, str) => {
       const group = (s: string, centre: number) => ({ str: s, x: 40, y: centre - 20, w: 40, size: 8, vertical: true });
       const items = [...header(776), item("Frame Size", 30, 764), item("A1", 250, 764), item("A1", 350, 764),
