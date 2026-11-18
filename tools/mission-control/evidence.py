@@ -190,6 +190,7 @@ def gather(
                 for name, row in env_rows.items()
             }
         row = lifecycle.derive(item, ev)
+        row["head_sha"] = item.get("head_sha")
         row["title"], row["url"], row["state"] = (
             item.get("title"),
             item.get("url"),

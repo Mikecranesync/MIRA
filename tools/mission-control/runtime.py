@@ -133,6 +133,16 @@ def _poll_once(handler, get, post, state: dict) -> None:
     trusted = handler.trusted_authors()
     poll.poll_events(get, REPO, store, state)
     poll.poll_reports(get, REPO, COORD_ISSUE, store, trusted)
+    handler.reports_at = _now_iso()
+    if hasattr(handler, "workflow_mod"):
+        plan = handler.workflow_mod.refresh(
+            handler.plan_state, get, REPO, pin=os.getenv("MC_ROADMAP_REF") or None,
+        )
+        handler.plan_state = {**plan, "decision": handler.workflow_mod.verify_decision(
+            get, REPO, COORD_ISSUE, store.reports(),
+            int(os.getenv("MC_PLAN_REPORT_ID", "6870960483")),
+            os.getenv("MC_PLAN_ACCEPTOR", "Mikecranesync"),
+        )}
     cands = candidates(handler, store)
     handler.last_poll = _now_iso()
     by_item: dict[int, list[dict]] = {}

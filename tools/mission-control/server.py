@@ -49,6 +49,7 @@ evidence = _load("evidence")
 model = _load("model")
 cockpit = _load("cockpit")
 runtime = _load("runtime")
+workflow = _load("workflow")
 
 log = logging.getLogger("mission-control")
 HERE = Path(__file__).resolve().parent
@@ -155,10 +156,21 @@ class Handler(BaseHTTPRequestHandler):
     evidence: dict = EMPTY_EVIDENCE
     last_poll: Optional[str] = None
     last_webhook: Optional[str] = None
+    plan_state: dict = {}
+    reports_at: Optional[str] = None
+    workflow_mod = workflow
     poll_mod, evidence_mod, trusted_authors = poll, _evidence_module, staticmethod(trusted_authors)
 
     def _model(self) -> dict:
-        return build_model(self.store, self.evidence, self.last_poll, self.last_webhook)
+        snapshot = build_model(self.store, self.evidence, self.last_poll, self.last_webhook)
+        snapshot["plan"] = workflow.project(
+            self.plan_state, self.store.reports(), self.evidence, dt.datetime.now(dt.timezone.utc),
+            report_id=int(os.getenv("MC_PLAN_REPORT_ID", "6870960483")),
+            max_age_seconds=2 * POLL_SECONDS,
+            reports_at=self.reports_at,
+            issue_url=f"https://github.com/{runtime.REPO}/issues/{runtime.COORD_ISSUE}",
+        )
+        return snapshot
 
     def do_GET(self) -> None:  # noqa: N802
         if self.path in ("/", "/index.html"):
