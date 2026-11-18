@@ -51,6 +51,7 @@ describe("direct equipment API HTTP/PostgreSQL contract", () => {
 
   beforeAll(async () => {
     process.env.AUTH_SECRET = "disposable-equipment-browser-cursor-fixture";
+    process.env.MIRA_EQUIPMENT_NAV = "1";
     const schema = await db.owner.query(`SELECT data_type FROM information_schema.columns
       WHERE table_schema = 'public' AND table_name = 'cmms_equipment' AND column_name = 'tenant_id'`);
     expect(schema.rows[0]?.data_type).toBe("text");
