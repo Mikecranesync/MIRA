@@ -9,8 +9,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const storeMock = vi.hoisted(() => ({
   listComponents: vi.fn(async (): Promise<unknown[]> => []),
-  getSelection: vi.fn(async (): Promise<unknown> => null),
-  getSelectionVersion: vi.fn(async (): Promise<number | null> => null),
+  getSelectionState: vi.fn(async (): Promise<{ selection: unknown; version: number | null }> => ({ selection: null, version: null })),
   listSelectionTurns: vi.fn(async (): Promise<unknown[]> => []),
   readDocumentHeadings: vi.fn(async () => new Map<string, string>()),
 }));
@@ -51,6 +50,24 @@ beforeEach(() => {
 });
 
 describe("benchState", () => {
+  it("the selection and its version come from one read, so they always describe the same row (#5625 r2 F10)", async () => {
+    storeMock.getSelectionState.mockResolvedValue({
+      selection: { componentId: VFD, revision: 1, selectedAt: "2026-11-14T04:00:00.000Z", selectedVia: "picker", version: 2 },
+      version: 2,
+    });
+    const state = await benchState("t", NB, "u1", "legacy", []);
+    expect(storeMock.getSelectionState).toHaveBeenCalledTimes(1);
+    expect(state.selection).toMatchObject({ componentId: VFD, version: 2 });
+    expect(state.selectionVersion).toBe(2);
+  });
+
+  it("a cleared selection still reports its version (the next pick is checked against it)", async () => {
+    storeMock.getSelectionState.mockResolvedValue({ selection: null, version: 3 });
+    const state = await benchState("t", NB, "u1", "legacy", []);
+    expect(state.selection).toBeNull();
+    expect(state.selectionVersion).toBe(3);
+  });
+
   it("keeps answered and refused apart, and a stop or an unlabelled turn counts as neither", async () => {
     const state = await benchState("t", NB, "u1", "legacy", [{ docId: "d1", filename: "gs10usermanual.pdf" } as never]);
     expect(state.tallies).toEqual({ [VFD]: { answered: 1, refused: 2 } });

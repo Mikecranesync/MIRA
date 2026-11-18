@@ -94,63 +94,45 @@ export function openNotebookSelection(nb: Pick<HubNotebook, "id">, mint: () => s
 }
 
 /**
- * A component the equipment navigator resolved, waiting for that conversation's checklist to
- * select it. `expectedVersion` is the conversation's selection version when Ask about was
- * pressed and `expectedRevision` the record revision the technician saw: the checklist's write
- * is refused if either has moved since (#5625 r1 F1/F4).
+ * A component the equipment navigator resolved, to be shown in that conversation's checklist.
+ * The navigator never selects (#5625 r2, Mike's B): the checklist opens on the component and
+ * the technician selects it there, through the checklist's own checked write.
  */
-export type EquipmentPick = {
-  notebookId: string;
-  threadId: string;
-  componentId: string;
-  token: number;
-  expectedVersion: number | null;
-  expectedRevision: number | null;
-};
+export type EquipmentFocus = { notebookId: string; threadId: string; componentId: string; token: number };
 
 /**
- * The open conversation at the moment Ask about was pressed: null = HOME. `version` is its
- * checklist's selection version, "unknown" while the checklist has not reported yet.
+ * Where Ask about was pressed: the open conversation (null = HOME) and the host's navigation
+ * generation, which moves on every conversation change, a return to the same one included.
  */
-export type PickOrigin = { notebookId: string; threadId: string; version: number | null | "unknown" } | null;
+export type PickOrigin = { conversation: HubSelection | null; generation: number };
 
 export type PickRoute =
-  | { kind: "route"; open: HubSelection | null; pick: EquipmentPick | null }
-  | { kind: "dropped"; reason: "conversation_changed" | "checklist_not_loaded" };
+  | { kind: "route"; open: HubSelection | null; focus: EquipmentFocus | null }
+  | { kind: "dropped"; reason: "conversation_changed" | "answer_in_progress" };
 
 /**
  * Where an "Ask about" from the equipment navigator lands. A component in the open notebook
- * is picked in the open conversation; anything in another notebook opens that notebook in a
- * fresh chat (as a project click does, #4444) and is picked there. The pick itself is made by
- * the checklist (BenchComponents), the only writer of a conversation's selection.
+ * is shown in the open conversation's checklist; anything in another notebook opens that
+ * notebook in a fresh chat (as a project click does, #4444) and is shown there.
  *
- * The answer arrives after the press. If the technician has opened another conversation (or
- * HOME) in between, nothing moves (#5625 r1 F3): the server checked a different context.
+ * The answer arrives after the press. If any conversation change happened in between (leaving
+ * and coming back included, #5625 r2 F3), or an answer is streaming, nothing moves: opening a
+ * chat would stop that answer.
  */
 export function pickRouteFor(
   target: { machineId: string; componentId: string | null },
   origin: PickOrigin,
-  revision: number | null,
-  selection: HubSelection | null,
+  now: { generation: number; selection: HubSelection | null; answering: boolean },
   token: number,
   mint: () => string = newThreadId,
 ): PickRoute {
-  const same = origin === null
-    ? selection === null
-    : selection !== null && selection.notebookId === origin.notebookId && selection.threadId === origin.threadId;
-  if (!same) return { kind: "dropped", reason: "conversation_changed" };
+  if (origin.generation !== now.generation) return { kind: "dropped", reason: "conversation_changed" };
+  if (now.answering) return { kind: "dropped", reason: "answer_in_progress" };
+  const selection = now.selection;
   const open = selection?.notebookId === target.machineId ? null : openNotebookSelection({ id: target.machineId }, mint);
-  if (!target.componentId) return { kind: "route", open, pick: null };
-  if (open) {
-    // A fresh chat has no selection yet: its first pick expects none.
-    return { kind: "route", open, pick: { notebookId: open.notebookId, threadId: open.threadId, componentId: target.componentId, token, expectedVersion: null, expectedRevision: revision } };
-  }
-  if (!origin || origin.version === "unknown") return { kind: "dropped", reason: "checklist_not_loaded" };
-  return {
-    kind: "route",
-    open: null,
-    pick: { notebookId: origin.notebookId, threadId: origin.threadId, componentId: target.componentId, token, expectedVersion: origin.version, expectedRevision: revision },
-  };
+  const conversation = open ?? selection;
+  if (!conversation || !target.componentId) return { kind: "route", open, focus: null };
+  return { kind: "route", open, focus: { notebookId: conversation.notebookId, threadId: conversation.threadId, componentId: target.componentId, token } };
 }
 
 /**

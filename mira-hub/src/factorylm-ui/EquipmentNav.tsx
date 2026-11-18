@@ -5,13 +5,13 @@
  * while the flag is off the routes answer 404 and this renders nothing.
  *
  * "Ask about" resolves the row on the server (exists, not retired, the revision on screen is
- * current) and hands the target to the host with what the open conversation looked like at the
- * press. The host routes it only if that conversation is still open, and the checklist writes
- * the selection checked against that version and revision. This panel never writes a selection.
+ * current) and hands the target to the host with where the press came from. The host acts only
+ * if no conversation change happened since, and then opens the checklist on that component; the
+ * technician selects it there (#5625 r2, Mike's B). This panel never writes a selection.
  *
  * Resolve carries no selection precondition (#5625 r1 F1): #5602's check means "the selection
  * is still exactly this component", which a switch to another component can never satisfy. The
- * version check is the checklist write's own compare-and-set.
+ * checklist's own write is the compare-and-set.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { itemKey, type BrowserItem, type EquipmentSource, type QuestionTarget } from "@factorylm/interaction";
@@ -20,35 +20,35 @@ import { createHubEquipmentSource, equipmentNavAvailable } from "./equipment-sou
 import type { PickOrigin } from "./hub-host-logic";
 
 export function EquipmentNav({
-  conversation,
+  origin,
   target,
   notice,
   onPick,
 }: {
-  /** The open conversation (null = HOME) and its checklist's selection version ("unknown" until it reports). */
-  conversation: PickOrigin;
+  /** Where a press would come from now: the open conversation (null = HOME) and the navigation generation. */
+  origin: PickOrigin;
   /** What the next question is about, for the "Target" mark. */
   target: QuestionTarget | null;
-  /** How the last pick ended, when it did not select (the checklist may be closed). */
+  /** Why the last Ask about did not open the checklist (it may be closed). */
   notice: string | null;
-  onPick: (target: QuestionTarget, seen: { origin: PickOrigin; revision: number | null }) => void;
+  onPick: (target: QuestionTarget, pressedIn: PickOrigin) => void;
 }) {
-  // Read at the moment of a press, so the latest conversation and handler are used.
-  const conversationRef = useRef(conversation);
+  // Read at the moment of a press, so the latest origin and handler are used.
+  const originRef = useRef(origin);
   const onPickRef = useRef(onPick);
   useEffect(() => {
-    conversationRef.current = conversation;
+    originRef.current = origin;
     onPickRef.current = onPick;
-  }, [conversation, onPick]);
+  }, [origin, onPick]);
 
   // The conversation as it was when this resolve was sent (one resolve at a time).
-  const pressedIn = useRef<PickOrigin>(null);
+  const pressedIn = useRef<PickOrigin>(origin);
   const source = useMemo<EquipmentSource>(() => {
     const hub = createHubEquipmentSource();
     return {
       ...hub,
       resolve: (request, options) => {
-        pressedIn.current = conversationRef.current;
+        pressedIn.current = originRef.current;
         return hub.resolve(request, options);
       },
     };
@@ -67,9 +67,9 @@ export function EquipmentNav({
     };
   }, []);
 
-  const asker = useEquipmentAsk(source, (next, item) => {
+  const asker = useEquipmentAsk(source, (next) => {
     setOpen(false);
-    onPickRef.current(next, { origin: pressedIn.current, revision: item.kind === "notebook_component" ? item.revision ?? null : null });
+    onPickRef.current(next, pressedIn.current);
   }, { selection: () => null });
 
   if (!available) return null;

@@ -112,10 +112,21 @@ export async function listComponents(tenantId: string, notebookId: string): Prom
 }
 
 export async function readComponent(c: PoolClient, tenantId: string, notebookId: string, componentId: string, lock = false) {
+  if (lock) {
+    // Lock first, read after (#5625 r2 F4). A read that waits for this lock keeps the snapshot it
+    // started with, so a revision committed while it waited would be invisible to the latest-revision
+    // join. Under READ COMMITTED the next statement takes a fresh snapshot that includes it.
+    const locked = await c.query(
+      `SELECT 1 FROM notebook_components c
+        WHERE c.tenant_id = $1::uuid AND c.notebook_id = $2::uuid AND c.id = $3::uuid FOR UPDATE`,
+      [tenantId, notebookId, componentId],
+    );
+    if (!locked.rows[0]) return null;
+  }
   const res = await c.query(
     `SELECT ${COMPONENT_COLS}, ${REVISION_COLS}
        FROM notebook_components c ${LATEST_JOIN}
-      WHERE c.tenant_id = $1::uuid AND c.notebook_id = $2::uuid AND c.id = $3::uuid${lock ? " FOR UPDATE OF c" : ""}`,
+      WHERE c.tenant_id = $1::uuid AND c.notebook_id = $2::uuid AND c.id = $3::uuid`,
     [tenantId, notebookId, componentId],
   );
   return res.rows[0] ? toComponent(res.rows[0]) : null;

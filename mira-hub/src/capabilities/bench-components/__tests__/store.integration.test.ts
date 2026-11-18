@@ -179,6 +179,35 @@ run("bench component store (real Postgres, RLS)", () => {
     expect(current.selection).toMatchObject({ componentId: cid, revision: 2, version: 1 });
   });
 
+  it("a correction committed while the pick waits for the component lock is still seen: the pick is refused (#5625 r2 F4)", async () => {
+    const added = await addComponent(tenantA, notebookA, USER, { clientRequestId: uuid(), kind: "drive", origin: "inventory", position: null, revision: rev(GS10) });
+    if (added.status !== "created") throw new Error();
+    const cid = added.component.id;
+    const thread = `t-${uuid().slice(0, 8)}`;
+    // Another screen's correction: holds the component lock with revision 2 inserted, not yet committed.
+    const other = await testPool.connect();
+    try {
+      await other.query("BEGIN");
+      await other.query("SELECT 1 FROM notebook_components WHERE id = $1::uuid FOR UPDATE", [cid]);
+      await other.query(
+        `INSERT INTO notebook_component_revisions (tenant_id, component_id, revision, input_kind, identity_status, local_tag, client_request_id)
+         VALUES ($1::uuid, $2::uuid, 2, 'typed', 'unknown', 'VFD1-corrected', $3::uuid)`,
+        [tenantA, cid, uuid()],
+      );
+      const pick = setSelection(tenantA, notebookA, USER, thread, { componentId: cid, via: "picker", expectedVersion: null, expectedRevision: 1, clientRequestId: uuid() });
+      // Precondition: the pick is waiting on that lock (not finished, not ahead of it).
+      await vi.waitFor(async () => {
+        const waiting = await testPool.query("SELECT count(*)::int AS n FROM pg_locks WHERE NOT granted");
+        expect(waiting.rows[0].n).toBeGreaterThan(0);
+      }, { timeout: 5000, interval: 20 });
+      await other.query("COMMIT");
+      expect(await pick).toEqual({ status: "stale_revision", selection: null });
+    } finally {
+      other.release();
+    }
+    expect(await getSelection(tenantA, notebookA, USER, thread)).toBeNull();
+  });
+
   it("two first picks on two screens at the same moment: one wins, the other is a conflict, never a silent overwrite", async () => {
     const make = async (body: Record<string, unknown>) => {
       const a = await addComponent(tenantA, notebookA, USER, { clientRequestId: uuid(), kind: "drive", origin: "inventory", position: null, revision: rev(body, true) });

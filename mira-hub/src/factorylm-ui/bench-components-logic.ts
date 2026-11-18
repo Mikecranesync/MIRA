@@ -361,7 +361,7 @@ export function componentErrorMessage(code: string): string {
     case "component_changed":
       return "This component was changed on another screen. Here is what it says now — check it and save again.";
     case "stale_revision":
-      return "That component's record was changed on another screen since you picked it. Nothing was changed; find it again to see what it says now.";
+      return "This component's record was changed on another screen. Nothing was changed; here is what it says now — check it and ask again.";
     case "component_retired":
       return "That component was removed from the checklist.";
     case "component_not_found":
@@ -627,19 +627,19 @@ export async function changeSelection(opts: {
 }
 
 /**
- * What the checklist does with a navigator pick (hub-host `pickRouteFor`). A pick is tried
- * once: it waits while an answer is streaming, a change is saving or the list is loading,
- * and is then consumed whether or not the selection succeeds, so a refused pick never retries.
+ * What the checklist does with a component the equipment navigator found (hub-host
+ * `pickRouteFor`). It is shown once: the checklist opens on it and the technician selects it
+ * there. Nothing is written here. A read that failed, a missing checklist or a component not
+ * (or no longer) in it ends the hand-off with a reason, so it is never applied later.
  */
-export function pickStep(
-  pick: { componentId: string; token: number } | null,
+export function focusStep(
+  focus: { componentId: string; token: number } | null,
   consumed: ReadonlySet<number>,
-  state: { bench: BenchState | null; available: boolean; busy: boolean; saving: boolean },
-): "none" | "wait" | "unavailable" | "missing" | "already" | "select" {
-  if (!pick || consumed.has(pick.token)) return "none";
+  state: { bench: BenchState | null; available: boolean; readFailed: boolean },
+): "none" | "wait" | "unavailable" | "failed" | "missing" | "show" {
+  if (!focus || consumed.has(focus.token)) return "none";
   if (!state.available) return "unavailable";
-  if (state.busy || state.saving || !state.bench) return "wait";
-  const selection = state.bench.selection;
-  if (selection?.componentId === pick.componentId && selection.current) return "already";
-  return state.bench.components.some((c) => c.id === pick.componentId) ? "select" : "missing";
+  if (!state.bench) return state.readFailed ? "failed" : "wait";
+  const c = state.bench.components.find((x) => x.id === focus.componentId);
+  return c && c.status !== "retired" ? "show" : "missing";
 }

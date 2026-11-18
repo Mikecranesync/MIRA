@@ -24,7 +24,7 @@ import {
   cardIsEmpty,
   changeSelection,
   componentErrorMessage,
-  pickStep,
+  focusStep,
   readBench,
   reconcileBench,
   retakeCard,
@@ -86,8 +86,8 @@ export function BenchComponents({
   frame,
   gate,
   onState,
-  pick = null,
-  onPickDone,
+  focus = null,
+  onFocusDone,
 }: {
   notebookId: string;
   threadId: string;
@@ -102,13 +102,12 @@ export function BenchComponents({
   /** The state the header shows — the host builds the chat rider from it. */
   onState: (state: BenchState | null) => void;
   /**
-   * A component the equipment navigator resolved for this conversation; tried once (`pickStep`).
-   * Written with the selection version and record revision seen when Ask about was pressed, so a
-   * change made since is refused rather than overwritten (#5625 r1 F1/F4).
+   * A component the equipment navigator found for this conversation (#5625 r2, Mike's B): the
+   * checklist opens on it, once, and the technician selects it here. Nothing is written for it.
    */
-  pick?: { componentId: string; token: number; expectedVersion: number | null; expectedRevision: number | null } | null;
-  /** How a pick ended; the host drops it then, so a remounted checklist never replays it (#5625 r1 F2). */
-  onPickDone?: (token: number, outcome: { ok: true } | { ok: false; message: string }) => void;
+  focus?: { componentId: string; token: number } | null;
+  /** How the hand-off ended; the host drops it then, so a remounted checklist never shows it again. */
+  onFocusDone?: (token: number, outcome: { ok: true } | { ok: false; message: string }) => void;
 }) {
   const [bench, setBench] = useState<BenchState | null>(null);
   const [available, setAvailable] = useState(true);
@@ -118,6 +117,8 @@ export function BenchComponents({
   const [saving, setSaving] = useState(false);
   const [adding, setAdding] = useState({ localTag: "", kind: "", rawLabel: "" });
   const [handled, setHandled] = useState<ComponentTurnFrame | null>(null);
+  const [readFailed, setReadFailed] = useState(false);
+  const [focused, setFocused] = useState<string | null>(null);
   const addRequest = useRef<AddRequest | null>(null);
 
   // #5504 Codex r3 F6: the host refuses a send until this read has answered (or the
@@ -146,9 +147,11 @@ export function BenchComponents({
     }
     if (out.kind === "failed") {
       setMessage("The component list couldn't be read just now.");
+      setReadFailed(true);
       return null;
     }
     if (out.kind === "stale") return null;
+    setReadFailed(false);
     setAvailable(true);
     setBench(out.state);
     return out.state;
@@ -190,23 +193,30 @@ export function BenchComponents({
     [notebookId, threadId, bench, load, gate],
   );
 
-  // The navigator never writes a selection itself: its pick goes through `select` like a checklist tap.
-  const consumedPicks = useRef(new Set<number>());
+  // The navigator never writes a selection: it opens the checklist on what it found.
+  const consumedFocus = useRef(new Set<number>());
   useEffect(() => {
-    const step = pickStep(pick, consumedPicks.current, { bench, available, busy, saving });
-    if (!pick || step === "none" || step === "wait") return;
-    consumedPicks.current.add(pick.token);
-    const done = (outcome: { ok: true } | { ok: false; message: string }) => onPickDone?.(pick.token, outcome);
-    if (step === "select") void select(pick.componentId, "picker", pick).then(done);
-    else if (step === "already") done({ ok: true });
-    else {
-      const text = step === "missing"
-        ? "That component isn't in this machine's checklist. Nothing was changed."
-        : "The component list isn't available here, so the component wasn't selected.";
-      setMessage(text);
-      done({ ok: false, message: text });
+    const step = focusStep(focus, consumedFocus.current, { bench, available, readFailed });
+    if (!focus || step === "none" || step === "wait") return;
+    consumedFocus.current.add(focus.token);
+    if (step === "show") {
+      setCard(null);
+      setFocused(focus.componentId);
+      setOpen(true);
+      onFocusDone?.(focus.token, { ok: true });
+      return;
     }
-  }, [pick, bench, available, busy, saving, select, onPickDone]);
+    const text = step === "missing"
+      ? "That component isn't in this machine's checklist. Nothing was changed."
+      : step === "failed"
+        ? "The component list couldn't be read, so the component wasn't shown. Nothing was changed."
+        : "The component list isn't available here, so the component wasn't shown. Nothing was changed.";
+    setMessage(text);
+    onFocusDone?.(focus.token, { ok: false, message: text });
+  }, [focus, bench, available, readFailed, onFocusDone]);
+  useEffect(() => {
+    if (open && focused) document.querySelector(`[data-testid="bench-component-${focused}"]`)?.scrollIntoView?.({ block: "nearest" });
+  }, [open, focused]);
 
   const onAction = useCallback(
     async (a: ComponentAction) => {
@@ -336,7 +346,7 @@ export function BenchComponents({
         <section role="dialog" aria-label="Components" style={PANEL_STYLE} data-testid="bench-components-panel">
           <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <h2 style={{ fontSize: "var(--fl-fs-title, 18px)", margin: 0 }}>Components</h2>
-            <button type="button" style={QUIET_BUTTON} onClick={() => { setOpen(false); setCard(null); }}>Close</button>
+            <button type="button" style={QUIET_BUTTON} onClick={() => { setOpen(false); setCard(null); setFocused(null); }}>Close</button>
           </header>
           <p data-testid="bench-panel-asking">{askingAbout(bench)}</p>
           {message && <p role="status" data-testid="bench-message">{message}</p>}
@@ -354,10 +364,12 @@ export function BenchComponents({
                     key={c.id}
                     c={c}
                     selected={current?.id === c.id}
+                    found={focused === c.id}
                     tally={bench?.tallies[c.id]}
                     saving={saving || busy}
                     onAsk={async () => {
-                      const out = await select(c.id, "picker");
+                      // Checked against what this row shows (#5625 r2 F4): a record corrected since is refused.
+                      const out = await select(c.id, "picker", { expectedVersion: bench?.selectionVersion ?? null, expectedRevision: c.current?.revision ?? null });
                       if (out.ok && c.status !== "confirmed") setCard(cardFor(c));
                     }}
                     onCheck={() => setCard(cardFor(c))}
@@ -379,9 +391,11 @@ export function BenchComponents({
   );
 }
 
-export function ComponentRow({ c, selected, tally, saving, onAsk, onCheck }: {
+export function ComponentRow({ c, selected, found = false, tally, saving, onAsk, onCheck }: {
   c: ComponentView;
   selected: boolean;
+  /** Opened from Find equipment: marked so the technician sees which row was found. */
+  found?: boolean;
   tally: { answered: number; refused: number } | undefined;
   saving: boolean;
   onAsk: () => void;
@@ -391,11 +405,17 @@ export function ComponentRow({ c, selected, tally, saving, onAsk, onCheck }: {
   const own = c.documents.filter((d) => d.selected && d.model === "covers" && d.ready);
   const unselected = c.documents.filter((d) => !d.selected && d.model === "covers");
   return (
-    <li data-testid={`bench-component-${c.id}`} data-status={c.status} style={{ borderTop: "1px solid var(--fl-line)", padding: "8px 0" }}>
+    <li
+      data-testid={`bench-component-${c.id}`}
+      data-status={c.status}
+      data-found={found ? "true" : undefined}
+      style={{ borderTop: "1px solid var(--fl-line)", padding: "8px 0", ...(found ? { outline: "2px solid var(--fl-accent)", outlineOffset: 2 } : {}) }}
+    >
       <div>
         <strong>{c.label}</strong>
         <span style={{ ...CHIP_BASE, ...CHIP[statusTone(c.status)] }} data-testid="bench-status">{c.statusLabel}</span>
         {selected && <span style={{ ...CHIP_BASE, ...CHIP.muted }}>this chat</span>}
+        {found && <span style={{ ...CHIP_BASE, ...CHIP.muted }} data-testid="bench-found">found</span>}
       </div>
       <div style={{ fontSize: "var(--fl-fs-sm)", color: "var(--fl-muted)" }}>
         {c.status !== "confirmed"

@@ -7,15 +7,16 @@
  * database. The panel's flag is MIRA_EQUIPMENT_NAV on the server; the browser only sees
  * what the routes answer, so "on" = the availability probe answers 200, "off" = 404.
  *
- * What is proved:
- *   - on: browse → Ask about sends one resolve carrying the revision on screen and no selection
- *     precondition (#5625 r1 F1), then the checklist (the only selection writer) selects that
- *     component through its own PUT, checked against the version and revision seen at the press.
- *   - switching from a saved component to another one works (#5625 r1 F1).
- *   - a record that changed elsewhere is refused at resolve (409) or at the write (409), with a
- *     notice, and nothing is selected (#5625 r1 F4).
- *   - an answer that arrives after another chat was opened moves nothing (#5625 r1 F3).
- *   - reopening a chat never replays a pick already applied there (#5625 r1 F2).
+ * What is proved (#5625 r2, Mike's B: Ask about opens the checklist on the part; the technician
+ * selects it there):
+ *   - on: browse → Ask about sends one resolve with the revision on screen and no selection
+ *     precondition, then opens the checklist with that part marked. Nothing is saved until the
+ *     technician taps it; that write carries the version and revision the checklist shows.
+ *   - switching from a saved component to another one works.
+ *   - a record that changed elsewhere is refused at resolve or at the write, and nothing is selected.
+ *   - an answer that arrives after leaving and returning to the chat moves nothing (r2 F3).
+ *   - a destination checklist that fails to load ends the hand-off with a notice (r2 F11).
+ *   - showing a part never saves it, and reopening the chat does not show it again.
  *   - off: the panel is not rendered.
  *
  * Auth: a next-auth JWE signed with the SAME AUTH_SECRET the server boots with
@@ -96,6 +97,7 @@ type RouteOpts = {
   resolve: "resolved" | "stale_revision";
   put?: "ok" | "stale_revision";
   holdResolve?: boolean;
+  benchFails?: boolean;
   initial?: Record<string, Selection>;
 };
 
@@ -108,6 +110,7 @@ async function routes(page: Page, opts: RouteOpts): Promise<Seen> {
 
   await page.route(/\/api\/equipment-notebooks\/[^/]+\/components\/(\?.*)?$/, (route) => {
     if (route.request().method() !== "GET") return route.fallback();
+    if (opts.benchFails) return route.fulfill(json({ error: "internal" }, 500));
     const thread = new URL(route.request().url()).searchParams.get("threadId") ?? "";
     return route.fulfill(json(bench(seen.selections.get(thread) ?? null)));
   });
@@ -156,8 +159,11 @@ async function openTo(page: Page, id: string) {
 const askAbout = (page: Page, label: string) =>
   panel(page).locator('[role="tree"]').getByRole("button", { name: `Ask about ${label}` }).click();
 const pickNotice = (page: Page) => page.getByTestId("equipment-pick-notice");
+const checklist = (page: Page) => page.getByTestId("bench-components-panel");
+const checklistRow = (page: Page, id: string) => checklist(page).getByTestId(`bench-component-${id}`);
+const selectInChecklist = (page: Page, id: string) => checklistRow(page, id).getByRole("button", { name: "Ask about this" }).click();
 
-test("on: Ask about resolves once and the checklist selects the component", async ({ page, context, baseURL }) => {
+test("on: Ask about opens the checklist on the part; the technician's tap selects it", async ({ page, context, baseURL }) => {
   await auth(context, baseURL!);
   const seen = await routes(page, { enabled: true, resolve: "resolved" });
   await page.goto(`/v3/?notebook=${NB}&thread=${THREAD}`);
@@ -166,19 +172,22 @@ test("on: Ask about resolves once and the checklist selects the component", asyn
   await openTo(page, VFD);
   await askAbout(page, "VFD1");
 
-  await expect.poll(() => seen.selectionPuts.length).toBe(1);
+  await expect(checklistRow(page, VFD)).toHaveAttribute("data-found", "true");
   expect(seen.resolves).toHaveLength(1);
   const q = seen.resolves[0].searchParams;
   expect(q.get("componentId")).toBe(VFD);
   expect(q.get("expectedRevision")).toBe("3");
-  // No selection precondition on resolve: the write below is the compare-and-set.
   expect(q.has("selectionVersion")).toBe(false);
   expect(q.has("threadKey")).toBe(false);
-  // The open conversation never had a selection: expected version null, revision as seen.
+  // Showing is not selecting.
+  expect(seen.selectionPuts).toHaveLength(0);
+
+  await selectInChecklist(page, VFD);
+  await expect.poll(() => seen.selectionPuts.length).toBe(1);
   expect(seen.selectionPuts[0]).toMatchObject({ threadId: THREAD, componentId: VFD, via: "picker", expectedVersion: null, expectedRevision: 3 });
 });
 
-test("a saved component can be switched to another one (#5625 r1 F1)", async ({ page, context, baseURL }) => {
+test("a saved component can be switched to another one", async ({ page, context, baseURL }) => {
   await auth(context, baseURL!);
   const seen = await routes(page, { enabled: true, resolve: "resolved", initial: { [THREAD]: { componentId: VFD, version: 1 } } });
   await page.goto(`/v3/?notebook=${NB}&thread=${THREAD}`);
@@ -186,9 +195,10 @@ test("a saved component can be switched to another one (#5625 r1 F1)", async ({ 
 
   await openTo(page, MLC);
   await askAbout(page, "Q1");
+  await expect(checklistRow(page, MLC)).toHaveAttribute("data-found", "true");
+  await selectInChecklist(page, MLC);
 
   await expect.poll(() => seen.selectionPuts.length).toBe(1);
-  expect(seen.resolves[0].searchParams.has("selectionVersion")).toBe(false);
   expect(seen.selectionPuts[0]).toMatchObject({ threadId: THREAD, componentId: MLC, expectedVersion: 1, expectedRevision: 1 });
   expect(seen.selections.get(THREAD)).toEqual({ componentId: MLC, version: 2 });
 });
@@ -207,9 +217,10 @@ test("a record that changed elsewhere is refused with a notice and nothing is se
   await expect(notice).toHaveAttribute("data-reason", "stale_revision");
   expect(seen.resolves).toHaveLength(1);
   expect(seen.selectionPuts).toHaveLength(0);
+  await expect(checklist(page)).toHaveCount(0);
 });
 
-test("a record corrected between resolve and the write is refused at the write (#5625 r1 F4)", async ({ page, context, baseURL }) => {
+test("a record corrected after the checklist was read is refused at the write (#5625 r2 F4)", async ({ page, context, baseURL }) => {
   await auth(context, baseURL!);
   const seen = await routes(page, { enabled: true, resolve: "resolved", put: "stale_revision" });
   await page.goto(`/v3/?notebook=${NB}&thread=${THREAD}`);
@@ -217,32 +228,50 @@ test("a record corrected between resolve and the write is refused at the write (
 
   await openTo(page, VFD);
   await askAbout(page, "VFD1");
+  await selectInChecklist(page, VFD);
 
-  await expect(pickNotice(page)).toContainText("changed on another screen since you picked it");
+  await expect(checklist(page).getByTestId("bench-message")).toContainText("changed on another screen");
   expect(seen.selectionPuts).toHaveLength(1);
+  expect(seen.selectionPuts[0]).toMatchObject({ componentId: VFD, expectedRevision: 3 });
   expect(seen.selections.get(THREAD)).toBeUndefined();
 });
 
-test("an answer that arrives after another chat was opened moves nothing (#5625 r1 F3)", async ({ page, context, baseURL }) => {
+test("an answer that arrives after leaving and returning to the chat moves nothing (#5625 r2 F3)", async ({ page, context, baseURL }) => {
   await auth(context, baseURL!);
   const seen = await routes(page, { enabled: true, resolve: "resolved", holdResolve: true });
-  await page.goto(`/v3/?notebook=${NB}&thread=${THREAD}`);
+  await page.goto(`/v3/?notebook=${NB}&thread=legacy`);
   await expect(panel(page)).toBeVisible();
 
   await openTo(page, VFD);
   await askAbout(page, "VFD1");
   await expect.poll(() => seen.resolves.length).toBe(1);
-  // Precondition: the press is still waiting on the server.
-  expect(seen.selectionPuts).toHaveLength(0);
   await page.getByRole("button", { name: "New chat" }).first().click();
-  await expect(page).not.toHaveURL(new RegExp(`thread=${THREAD}`));
+  await expect(page).not.toHaveURL(/thread=legacy/);
+  await page.locator(`[data-item-id="notebook-${NB}:thread-legacy"]`).first().click();
+  // Precondition: back on the chat the press came from, same IDs.
+  await expect(page).toHaveURL(/thread=legacy/);
   seen.release();
 
   await expect(pickNotice(page)).toContainText("opened another chat");
+  await expect(page).toHaveURL(/thread=legacy/);
+  await expect(checklist(page)).toHaveCount(0);
   expect(seen.selectionPuts).toHaveLength(0);
 });
 
-test("reopening a chat never replays a pick already applied there (#5625 r1 F2)", async ({ page, context, baseURL }) => {
+test("a destination checklist that fails to load ends the hand-off with a notice (#5625 r2 F11)", async ({ page, context, baseURL }) => {
+  await auth(context, baseURL!);
+  const seen = await routes(page, { enabled: true, resolve: "resolved", benchFails: true });
+  await page.goto(`/v3/?notebook=${NB}&thread=${THREAD}`);
+  await expect(panel(page)).toBeVisible();
+
+  await openTo(page, VFD);
+  await askAbout(page, "VFD1");
+
+  await expect(pickNotice(page)).toContainText("couldn't be read");
+  expect(seen.selectionPuts).toHaveLength(0);
+});
+
+test("showing a part never saves it, and reopening the chat does not show it again", async ({ page, context, baseURL }) => {
   await auth(context, baseURL!);
   const seen = await routes(page, { enabled: true, resolve: "resolved" });
   await page.goto(`/v3/?notebook=${NB}&thread=legacy`);
@@ -250,20 +279,18 @@ test("reopening a chat never replays a pick already applied there (#5625 r1 F2)"
 
   await openTo(page, VFD);
   await askAbout(page, "VFD1");
-  await expect.poll(() => seen.selectionPuts.length).toBe(1);
-  await expect.poll(() => seen.selections.get("legacy")).toEqual({ componentId: VFD, version: 1 });
+  await expect(checklistRow(page, VFD)).toHaveAttribute("data-found", "true");
+  await checklist(page).getByRole("button", { name: "Close" }).click();
 
   await page.getByRole("button", { name: "New chat" }).first().click();
   await expect(page).not.toHaveURL(/thread=legacy/);
-  // Meanwhile another screen moves that chat to Q1.
-  seen.selections.set("legacy", { componentId: MLC, version: 2 });
   await page.locator(`[data-item-id="notebook-${NB}:thread-legacy"]`).first().click();
   await expect(page).toHaveURL(/thread=legacy/);
-  // The reopened checklist has loaded the moved selection; give a replay time to fire.
-  await expect(page.getByTestId("bench-asking-about")).toContainText("Q1", { timeout: 10_000 });
+  // The reopened checklist has loaded; give a replay time to show.
+  await expect(page.getByTestId("bench-asking-about")).toBeVisible();
   await page.waitForTimeout(1500);
-  expect(seen.selectionPuts).toHaveLength(1);
-  expect(seen.selections.get("legacy")).toEqual({ componentId: MLC, version: 2 });
+  await expect(checklist(page)).toHaveCount(0);
+  expect(seen.selectionPuts).toHaveLength(0);
 });
 
 test("off: the panel is not rendered", async ({ page, context, baseURL }) => {
