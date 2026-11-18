@@ -228,7 +228,7 @@ export function App({ search = window.location.search, onSearch = replaceSearch 
         <EquipmentAskNoticeBar asker={asker} />
         <QuestionTargetBar
           target={pagedTarget}
-          browsing={provisionalTarget(pagedBrowsing)}
+          browsing={provisionalTarget(pagedBrowsing, pagedSource)}
           onAskAbout={() => { if (pagedBrowsing) asker.ask(pagedBrowsing); }}
           onChange={() => dispatch({ type: "set-navigation-visible", visible: true })}
         />

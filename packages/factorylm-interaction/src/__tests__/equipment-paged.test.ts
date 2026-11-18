@@ -6,6 +6,7 @@ import {
   parentKey,
   repeatedLabelKeys,
   resolveFailureText,
+  resolveRequestOf,
   targetKeyOf,
   type BrowserItem,
   type BrowserPage,
@@ -20,13 +21,45 @@ const page = (items: BrowserItem[], more: string | null, total = items.length): 
   ({ items, total, hasMore: more !== null, nextCursor: more });
 
 describe("askability", () => {
-  it("offers Ask about only on notebooks and active notebook components", () => {
-    expect(askabilityOf(item("notebook", "n1", "GS10 bench"))).toBe("askable");
-    expect(askabilityOf(item("notebook_component", "c1", "VFD1", { retiredAt: null }))).toBe("askable");
-    expect(askabilityOf(item("notebook_component", "c2", "K0", { retiredAt: "2026-11-01T00:00:00Z" }))).toBe("retired");
+  const bench = { kind: "notebook", id: "n1" } as const;
+  it("offers Ask about on active components inside a notebook; notebooks only when the source resolves them", () => {
+    expect(askabilityOf(item("notebook", "n1", "GS10 bench"))).toBe("browse_only");
+    expect(askabilityOf(item("notebook", "n1", "GS10 bench"), { notebooks: true })).toBe("askable");
+    expect(askabilityOf(item("notebook_component", "c1", "VFD1", { retiredAt: null, parent: bench }))).toBe("askable");
+    expect(askabilityOf(item("notebook_component", "c1", "VFD1", { retiredAt: null }))).toBe("browse_only");
+    expect(askabilityOf(item("notebook_component", "c2", "K0", { retiredAt: "2026-11-01T00:00:00Z", parent: bench }))).toBe("retired");
     expect(askabilityOf(item("installed_instance", "i1", "VFD1", { resolution: { status: "unmapped", reason: "no_link" } }))).toBe("no_link");
     expect(askabilityOf(item("namespace", "s1", "Garage"))).toBe("browse_only");
     expect(askabilityOf(item("asset", "a1", "Conveyor 2"))).toBe("browse_only");
+  });
+});
+
+describe("resolve request", () => {
+  const bench = { kind: "notebook", id: "n1" } as const;
+  it("carries the notebook, component and the revision on screen", () => {
+    expect(resolveRequestOf(item("notebook_component", "c1", "VFD1", { parent: bench, revision: 5 }), null))
+      .toEqual({ kind: "notebook_component", notebookId: "n1", componentId: "c1", expectedRevision: 5 });
+  });
+  it("sends revision 0 as 0, and omits an unknown revision instead of asserting 0", () => {
+    expect(resolveRequestOf(item("notebook_component", "c1", "VFD1", { parent: bench, revision: 0 }), null)).toMatchObject({ expectedRevision: 0 });
+    expect(resolveRequestOf(item("notebook_component", "c1", "VFD1", { parent: bench }), null)).not.toHaveProperty("expectedRevision");
+  });
+  it("adds the host's selection precondition when there is one", () => {
+    expect(resolveRequestOf(item("notebook_component", "c1", "VFD1", { parent: bench, revision: 1 }), { threadKey: "t", version: null }))
+      .toMatchObject({ selection: { threadKey: "t", version: null } });
+  });
+  it("has no request for rows that cannot be asked about", () => {
+    expect(resolveRequestOf(item("notebook", "n1", "GS10 bench"), null)).toBeNull();
+    expect(resolveRequestOf(item("notebook", "n1", "GS10 bench"), null, { notebooks: true })).toEqual({ kind: "notebook", notebookId: "n1" });
+    expect(resolveRequestOf(item("installed_instance", "i1", "VFD1"), null)).toBeNull();
+    expect(resolveRequestOf(item("notebook_component", "c2", "K0", { parent: bench, retiredAt: "2026-11-01T00:00:00Z" }), null)).toBeNull();
+  });
+});
+
+describe("branches clear", () => {
+  it("drops every loaded branch", () => {
+    const state = branchesReducer(new Map(), { type: "start", key: "root", request: 1, append: false });
+    expect(branchesReducer(state, { type: "clear" }).size).toBe(0);
   });
 });
 

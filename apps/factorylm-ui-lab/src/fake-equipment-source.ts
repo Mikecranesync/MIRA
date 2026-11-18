@@ -1,11 +1,13 @@
 import {
   itemKey,
   parentKey,
+  resolveRequestKey,
   type BrowserItem,
   type BrowserPage,
   type BrowserRef,
   type EquipmentSource,
   type EquipmentSourceOptions,
+  type ResolveRequest,
   type ResolveResult,
 } from "@factorylm/interaction";
 
@@ -17,8 +19,15 @@ import {
  *
  * Fixture plant (sample data, not live equipment):
  * - Garage › Bench line › GS10 bench: the drive (VFD1) and MLC (Q1 relay) bench,
- *   plus deliberate negatives: a retired component, one corrected since the list
- *   loaded (409 stale_revision) and one whose selection changed elsewhere (409).
+ *   plus deliberate negatives: a retired component, and Contactor K2, which is
+ *   corrected (revision 1 → 2) right after the bench list first loads, so an
+ *   "Ask about" from that list carries a stale revision and gets a 409.
+ *
+ * Resolve applies the equipment-browser checks to the request it is given, against
+ * mutable current state: notebook membership, retirement, `expectedRevision`, and
+ * the thread selection precondition (version, cleared, same component, same
+ * revision). Nothing is refused by id. Whole notebooks resolve only when
+ * `resolvesNotebooks` is set; the Hub API does not resolve them (400).
  * - Garage › Line 2: a second "VFD1" (duplicate tag) and an installed VFD1 with no
  *   notebook link.
  * - Garage › Flaky storeroom: its first children request fails, to show the error row.
@@ -64,8 +73,8 @@ function buildRows(): Row[] {
     { kind: "notebook_component", id: b.mlc, label: "MLC", tag: "Q1", detail: "Schneider TeSys CA3KN22BD control relay", parent: ref("notebook", b.bench), retiredAt: null },
     { kind: "notebook_component", id: b.plc, label: "PLC1", detail: "Allen-Bradley Micro820", parent: ref("notebook", b.bench), retiredAt: null },
     { kind: "notebook_component", id: b.retired, label: "Contactor K0", detail: "Removed from the bench", parent: ref("notebook", b.bench), retiredAt: "2026-11-01T00:00:00Z" },
-    { kind: "notebook_component", id: b.stale, label: "Contactor K2", detail: "Corrected since this list loaded", parent: ref("notebook", b.bench), retiredAt: null },
-    { kind: "notebook_component", id: b.moved, label: "Fuse F3", detail: "Selection changed in another tab", parent: ref("notebook", b.bench), retiredAt: null },
+    { kind: "notebook_component", id: b.stale, label: "Contactor K2", detail: "Corrected right after the bench list loads", parent: ref("notebook", b.bench), retiredAt: null },
+    { kind: "notebook_component", id: b.moved, label: "Fuse F3", detail: "Control fuse", parent: ref("notebook", b.bench), retiredAt: null },
     { kind: "namespace", id: b.line2, label: "Line 2", parent: ref("namespace", b.garage) },
     { kind: "asset", id: b.conveyor2Asset, label: "Conveyor 2", detail: "CMMS asset", parent: ref("namespace", b.line2) },
     { kind: "notebook", id: b.conveyor2, label: "Conveyor 2 notebook", parent: ref("asset", b.conveyor2Asset) },
@@ -98,13 +107,29 @@ function buildRows(): Row[] {
 export interface FakeEquipmentSourceOptions {
   readonly pageSize?: number;
   readonly latencyMs?: number;
+  /** Resolve whole notebooks too (not something the Hub equipment-browser API does). */
+  readonly resolvesNotebooks?: boolean;
   /** Called once per request, e.g. for the lab's adapter log. */
   readonly onCall?: (line: string) => void;
+}
+
+/** A stored thread selection, as `notebook_thread_selections` holds it. */
+export interface FakeSelection {
+  readonly componentId: string;
+  readonly revision: number;
+  readonly version: number;
+  readonly cleared?: boolean;
 }
 
 export interface FakeEquipmentSource extends EquipmentSource {
   /** Largest page the source has returned so far. */
   readonly maxPageSeen: () => number;
+  /** Current revision of a component (what a correction bumps). */
+  readonly revisionOf: (componentId: string) => number;
+  /** A correction: the component's current revision goes up by one. */
+  readonly correct: (componentId: string) => void;
+  /** Another tab/device changed this thread's selection. */
+  readonly setSelection: (threadKey: string, selection: FakeSelection | null) => void;
 }
 
 const KIND_ORDER = ["namespace", "asset", "notebook", "notebook_component", "installed_instance"];
@@ -135,7 +160,11 @@ export function createFakeEquipmentSource(options: FakeEquipmentSourceOptions = 
   let byParent: Map<string, Row[]> | null = null;
   let byKey: Map<string, Row> | null = null;
   let flakyFailed = false;
+  let benchListed = false;
   let maxPage = 0;
+  const revisions = new Map<string, number>();
+  const selections = new Map<string, FakeSelection>();
+  const revisionOf = (id: string) => revisions.get(id) ?? 1;
 
   const ensure = () => {
     if (rows && byParent && byKey) return { rows, byParent, byKey };
@@ -165,6 +194,7 @@ export function createFakeEquipmentSource(options: FakeEquipmentSourceOptions = 
 
   const toItem = (row: Row): BrowserItem => ({
     ...row,
+    ...(row.kind === "notebook_component" ? { revision: revisionOf(row.id) } : {}),
     place: placeOf(row),
     childCount: ensure().byParent.get(itemKey(row))?.length ?? 0,
   });
@@ -196,8 +226,36 @@ export function createFakeEquipmentSource(options: FakeEquipmentSourceOptions = 
     return out.sort(compare);
   };
 
+  const resolveNow = (request: ResolveRequest): ResolveResult => {
+    const { byKey } = ensure();
+    if (request.kind === "notebook") {
+      if (!options.resolvesNotebooks) return { ok: false, reason: "error" }; // the Hub API answers 400
+      const notebook = byKey.get(itemKey({ kind: "notebook", id: request.notebookId }));
+      if (!notebook) return { ok: false, reason: "not_found" };
+      return { ok: true, target: { machineId: notebook.id, machineLabel: notebook.label, componentId: null, componentLabel: null, location: placeOf(notebook) } };
+    }
+    const row = byKey.get(itemKey({ kind: "notebook_component", id: request.componentId }));
+    const notebook = byKey.get(itemKey({ kind: "notebook", id: request.notebookId }));
+    if (!row || !notebook || row.parent?.kind !== "notebook" || row.parent.id !== request.notebookId) return { ok: false, reason: "not_found" };
+    if (row.retiredAt) return { ok: false, reason: "retired" };
+    const current = revisionOf(row.id);
+    if (request.expectedRevision !== undefined && request.expectedRevision !== current) return { ok: false, reason: "stale_revision" };
+    if (request.selection) {
+      const stored = selections.get(request.selection.threadKey);
+      if ((stored ? stored.version : null) !== request.selection.version
+        || (stored && (stored.cleared || stored.componentId !== row.id || stored.revision !== current))) {
+        return { ok: false, reason: "selection_changed" };
+      }
+    }
+    return { ok: true, target: { machineId: notebook.id, machineLabel: notebook.label, componentId: row.id, componentLabel: row.label, location: placeOf(notebook) } };
+  };
+
   return {
+    ...(options.resolvesNotebooks ? { resolvesNotebooks: true } : {}),
     maxPageSeen: () => maxPage,
+    revisionOf,
+    correct: (id) => { revisions.set(id, revisionOf(id) + 1); },
+    setSelection: (threadKey, selection) => { if (selection) selections.set(threadKey, selection); else selections.delete(threadKey); },
     async children(parent: BrowserRef | null, opts: EquipmentSourceOptions = {}) {
       const key = parentKey(parent);
       options.onCall?.(`browse:children ${key}${opts.cursor ? " +more" : ""}`);
@@ -206,7 +264,10 @@ export function createFakeEquipmentSource(options: FakeEquipmentSourceOptions = 
         flakyFailed = true;
         throw new Error("fixture: storeroom children fail once");
       }
-      return page(ensure().byParent.get(key) ?? [], `children:${key}`, opts.cursor);
+      const result = page(ensure().byParent.get(key) ?? [], `children:${key}`, opts.cursor);
+      // Fixture story: someone corrects K2 just after the technician first sees the bench.
+      if (parent?.id === BENCH_IDS.bench && !benchListed) { benchListed = true; revisions.set(BENCH_IDS.stale, revisionOf(BENCH_IDS.stale) + 1); }
+      return result;
     },
     async search(query: string, scope: BrowserRef | null, opts: EquipmentSourceOptions = {}) {
       const needle = normalize(query);
@@ -215,21 +276,11 @@ export function createFakeEquipmentSource(options: FakeEquipmentSourceOptions = 
       const hits = descendants(scope).filter((row) => [row.label, row.tag, row.detail].some((v) => v !== undefined && normalize(v).includes(needle)));
       return page(hits, `search:${parentKey(scope)}:${needle}`, opts.cursor);
     },
-    async resolve(target: BrowserRef, opts = {}): Promise<ResolveResult> {
-      options.onCall?.(`browse:resolve ${itemKey(target)}`);
+    async resolve(request: ResolveRequest, opts = {}): Promise<ResolveResult> {
+      const revision = request.kind === "notebook_component" && request.expectedRevision !== undefined ? ` rev=${request.expectedRevision}` : "";
+      options.onCall?.(`browse:resolve ${resolveRequestKey(request)}${revision}`);
       await wait(opts.signal);
-      const row = ensure().byKey.get(itemKey(target));
-      if (!row) return { ok: false, reason: "not_found" };
-      if (row.kind === "installed_instance") return { ok: false, reason: "no_link" };
-      if (row.kind === "notebook_component" && row.retiredAt) return { ok: false, reason: "retired" };
-      if (row.id === BENCH_IDS.stale) return { ok: false, reason: "stale_revision" };
-      if (row.id === BENCH_IDS.moved) return { ok: false, reason: "selection_changed" };
-      if (row.kind === "notebook") return { ok: true, target: { machineId: row.id, machineLabel: row.label, componentId: null, componentLabel: null, location: placeOf(row) } };
-      if (row.kind === "notebook_component" && row.parent) {
-        const machine = ensure().byKey.get(itemKey(row.parent))!;
-        return { ok: true, target: { machineId: machine.id, machineLabel: machine.label, componentId: row.id, componentLabel: row.label, location: placeOf(machine) } };
-      }
-      return { ok: false, reason: "not_found" };
+      return resolveNow(request);
     },
   };
 }

@@ -64,6 +64,13 @@ test("desktop 1440x900: pages load per expand, a 409 is shown and not retried, A
   await expect(target(page)).toHaveText("VFD1 on GS10 bench");
   await page.screenshot({ path: resolve(SHOTS, "2026-11-17_equipment-nav-paged-stale-409_desktop.png") });
 
+  // Recovery is a reload, not a retry: the list is fetched again, nothing is resolved, the target holds.
+  await expect(adapterLog(page).locator("li", { hasText: "browse:resolve notebook_component:nc-k2-corrected rev=1" })).toHaveCount(1);
+  await page.locator(".fl-equip").getByRole("button", { name: "Load current record" }).click();
+  await expect(adapterLog(page).locator("li", { hasText: "browse:children notebook:nb-gs10-bench" })).toHaveCount(2);
+  expect(await adapterLog(page).locator("li", { hasText: "browse:resolve" }).count()).toBe(1);
+  await expect(target(page)).toHaveText("VFD1 on GS10 bench");
+
   // Browsing MLC keeps the target; the explicit Ask about resolves it and moves it.
   await row(page, "notebook_component:nc-q1-mlc-bench").click();
   await expect(target(page)).toHaveText("VFD1 on GS10 bench");

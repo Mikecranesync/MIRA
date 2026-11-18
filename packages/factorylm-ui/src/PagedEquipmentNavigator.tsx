@@ -4,14 +4,18 @@ import {
   EMPTY_BRANCH,
   itemKey,
   parentKey,
+  refusalNeedsRefresh,
   repeatedLabelKeys,
   resolveFailureText,
+  resolveRequestOf,
   targetKeyOf,
   type BrowserItem,
   type BrowserPage,
+  type BrowserRef,
   type EquipmentSource,
   type QuestionTarget,
   type ResolveFailureReason,
+  type SelectionPrecondition,
 } from "@factorylm/interaction";
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { ChevronIcon, FolderIcon, MachineIcon, SearchIcon } from "./icons";
@@ -19,11 +23,15 @@ import { ChevronIcon, FolderIcon, MachineIcon, SearchIcon } from "./icons";
 /** A refused "Ask about": shown to the technician, never retried by the UI. */
 export interface EquipmentAskNotice {
   readonly itemKey: string;
+  /** The row as it was when refused; lets the navigator offer to load its current record. */
+  readonly item: BrowserItem;
   readonly reason: ResolveFailureReason;
   readonly text: string;
 }
 
 export interface EquipmentAskController {
+  /** The source this controller resolves against (a navigator must use the same one). */
+  readonly source: EquipmentSource;
   /** Key of the row whose resolve is in flight, if any. */
   readonly pendingKey: string | null;
   readonly notice: EquipmentAskNotice | null;
@@ -32,40 +40,61 @@ export interface EquipmentAskController {
   readonly dismiss: () => void;
 }
 
+export interface EquipmentAskOptions {
+  /**
+   * The conversation's current selection, read at the moment of the press. When
+   * given, the server refuses with `selection_changed` if it moved elsewhere.
+   */
+  readonly selection?: () => SelectionPrecondition | null;
+}
+
 /**
- * The only path from a paged row to a question target. One request per press;
- * a 409 (stale revision, changed selection) or any other refusal becomes a
- * notice and the target is left exactly as it was.
+ * The only path from a paged row to a question target. One request per press,
+ * carrying the revision on screen (and the expected selection); a 409 or any
+ * other refusal becomes a notice and the target is left exactly as it was.
+ * Replacing the source cancels an in-flight resolve: its answer belongs to the old source.
  */
 export function useEquipmentAsk(
   source: EquipmentSource,
   onAskAbout: (target: QuestionTarget, item: BrowserItem) => void,
+  options: EquipmentAskOptions = {},
 ): EquipmentAskController {
   const [pendingKey, setPendingKey] = useState<string | null>(null);
   const [notice, setNotice] = useState<EquipmentAskNotice | null>(null);
   const inFlight = useRef<AbortController | null>(null);
   const onAskRef = useRef(onAskAbout);
   onAskRef.current = onAskAbout;
-  useEffect(() => () => inFlight.current?.abort(), []);
+  const selectionRef = useRef(options.selection);
+  selectionRef.current = options.selection;
+  useEffect(() => () => {
+    inFlight.current?.abort();
+    inFlight.current = null;
+    setPendingKey(null);
+    setNotice(null);
+  }, [source]);
 
   const ask = useCallback((item: BrowserItem) => {
     if (inFlight.current) return; // one resolve at a time; a second press does not queue a retry
     const key = itemKey(item);
-    const askability = askabilityOf(item);
-    if (askability !== "askable") {
-      setNotice({ itemKey: key, reason: askability === "retired" ? "retired" : "no_link", text: resolveFailureText(askability === "retired" ? "retired" : "no_link", item.label) });
+    const notebooks = source.resolvesNotebooks === true;
+    const askability = askabilityOf(item, { notebooks });
+    const request = resolveRequestOf(item, selectionRef.current?.() ?? null, { notebooks });
+    if (!request) {
+      if (askability === "browse_only") return; // nothing to refuse: the row was never askable
+      const reason = askability === "retired" ? "retired" : "no_link";
+      setNotice({ itemKey: key, item, reason, text: resolveFailureText(reason, item.label) });
       return;
     }
     const controller = new AbortController();
     inFlight.current = controller;
     setPendingKey(key);
     setNotice(null);
-    source.resolve({ kind: item.kind, id: item.id }, { signal: controller.signal })
+    source.resolve(request, { signal: controller.signal })
       .catch(() => ({ ok: false as const, reason: "error" as const }))
       .then((result) => {
         if (controller.signal.aborted) return;
         if (result.ok) onAskRef.current(result.target, item);
-        else setNotice({ itemKey: key, reason: result.reason, text: resolveFailureText(result.reason, item.label) });
+        else setNotice({ itemKey: key, item, reason: result.reason, text: resolveFailureText(result.reason, item.label) });
       })
       .finally(() => {
         if (inFlight.current === controller) inFlight.current = null;
@@ -73,7 +102,7 @@ export function useEquipmentAsk(
       });
   }, [source]);
 
-  return { pendingKey, notice, ask, dismiss: () => setNotice(null) };
+  return { source, pendingKey, notice, ask, dismiss: () => setNotice(null) };
 }
 
 export interface PagedEquipmentNavigatorProps {
@@ -111,8 +140,14 @@ export function PagedEquipmentNavigator({ source, target, browsingKey, onBrowse,
   const requests = useRef(0);
   const aborts = useRef(new Map<string, AbortController>());
   const currentKey = targetKeyOf(target);
+  const notebooks = source.resolvesNotebooks === true;
+  const browsingRef = useRef(browsingKey);
+  browsingRef.current = browsingKey;
+  const onBrowseRef = useRef(onBrowse);
+  onBrowseRef.current = onBrowse;
 
-  const load = useCallback((key: string, run: (signal: AbortSignal, cursor: string | null) => Promise<BrowserPage>, cursor: string | null) => {
+  /** Loads one page into `key`. `fresh` re-points the browsed row at its newly loaded record. */
+  const load = useCallback((key: string, run: (signal: AbortSignal, cursor: string | null) => Promise<BrowserPage>, cursor: string | null, fresh = false) => {
     aborts.current.get(key)?.abort();
     const controller = new AbortController();
     aborts.current.set(key, controller);
@@ -120,33 +155,62 @@ export function PagedEquipmentNavigator({ source, target, browsingKey, onBrowse,
     const append = cursor !== null;
     dispatch({ type: "start", key, request, append });
     run(controller.signal, cursor).then(
-      (page) => { if (!controller.signal.aborted) dispatch({ type: "page", key, request, page, append }); },
+      (page) => {
+        if (controller.signal.aborted) return;
+        dispatch({ type: "page", key, request, page, append });
+        const browsed = fresh ? page.items.find((item) => itemKey(item) === browsingRef.current) : undefined;
+        if (browsed) onBrowseRef.current(browsed);
+      },
       () => { if (!controller.signal.aborted) dispatch({ type: "fail", key, request }); },
     );
   }, []);
 
-  const loadChildren = useCallback((item: BrowserItem | null, cursor: string | null = null) => {
-    const ref = item ? { kind: item.kind, id: item.id } : null;
-    load(parentKey(ref), (signal, after) => source.children(ref, { cursor: after, signal }), cursor);
+  const loadChildren = useCallback((parent: BrowserRef | null, cursor: string | null = null, fresh = false) => {
+    const ref = parent ? { kind: parent.kind, id: parent.id } : null;
+    load(parentKey(ref), (signal, after) => source.children(ref, { cursor: after, signal }), cursor, fresh);
   }, [load, source]);
 
+  // A new source is a new inventory: nothing loaded, opened or searched under the old one survives.
   useEffect(() => {
+    dispatch({ type: "clear" });
+    setExpanded(new Set());
     loadChildren(null);
     const pending = aborts.current;
-    return () => { for (const controller of pending.values()) controller.abort(); };
+    return () => {
+      for (const controller of pending.values()) controller.abort();
+      pending.clear();
+    };
   }, [loadChildren]);
 
-  // Debounced server search; clearing the box drops the results.
+  // Debounced server search. The moment the query changes, the old results and
+  // their request are gone, so nothing from the previous query stays clickable.
+  const needle = query.trim();
   useEffect(() => {
-    const needle = query.trim();
-    if (!needle) { setSearchFor(""); aborts.current.get("search")?.abort(); dispatch({ type: "reset", key: "search" }); return; }
+    aborts.current.get("search")?.abort();
+    dispatch({ type: "reset", key: "search" });
+    setSearchFor("");
+    if (!needle) return;
     const timer = setTimeout(() => setSearchFor(needle), searchDelayMs);
     return () => clearTimeout(timer);
-  }, [query, searchDelayMs]);
-  useEffect(() => {
+  }, [needle, searchDelayMs, source]);
+  const searchFresh = searchFor !== "" && searchFor === needle;
+  const loadSearch = useCallback((cursor: string | null, fresh = false) => {
     if (!searchFor) return;
-    load("search", (signal, cursor) => source.search(searchFor, null, { cursor, signal }), null);
+    load("search", (signal, after) => source.search(searchFor, null, { cursor: after, signal }), cursor, fresh);
   }, [searchFor, load, source]);
+  useEffect(() => { loadSearch(null); }, [loadSearch]);
+
+  /**
+   * After a refusal that says the row is out of date: reload the list it came from
+   * (tree branch and/or search) on the technician's press. Never resolves; the
+   * target stays where it is until they ask again.
+   */
+  const refreshFor = (item: BrowserItem) => {
+    const key = itemKey(item);
+    const holding = parentKey(item.parent);
+    if (branches.get(holding)?.items.some((row) => itemKey(row) === key)) loadChildren(item.parent, null, true);
+    if (branches.get("search")?.items.some((row) => itemKey(row) === key)) loadSearch(null, true);
+  };
 
   const loaded = useMemo(() => [...branches.values()].flatMap((branch) => branch.items), [branches]);
   const repeated = useMemo(() => repeatedLabelKeys(loaded), [loaded]);
@@ -165,7 +229,7 @@ export function PagedEquipmentNavigator({ source, target, browsingKey, onBrowse,
 
   const askButton = (item: BrowserItem) => {
     const key = itemKey(item);
-    if (key !== browsingKey || askabilityOf(item) !== "askable" || key === currentKey) return null;
+    if (key !== browsingKey || askabilityOf(item, { notebooks }) !== "askable" || key === currentKey) return null;
     const pending = asker.pendingKey === key;
     return <button
       type="button"
@@ -177,13 +241,13 @@ export function PagedEquipmentNavigator({ source, target, browsingKey, onBrowse,
   };
 
   const rowMeta = (item: BrowserItem, showPlace: boolean) => {
-    const note = NOTE[askabilityOf(item)];
+    const note = NOTE[askabilityOf(item, { notebooks })];
     return <>
       <span className="fl-equip__text">
         <span className="fl-equip__label">{item.label}</span>
         {item.tag && item.tag !== item.label ? <span className="fl-equip__detail fl-equip__tag">{item.tag}</span> : null}
         {item.detail ? <span className="fl-equip__detail">{item.detail}</span> : null}
-        {note ? <span className="fl-equip__detail fl-equip__note" data-note={askabilityOf(item)}>{note}</span> : null}
+        {note ? <span className="fl-equip__detail fl-equip__note" data-note={askabilityOf(item, { notebooks })}>{note}</span> : null}
         {showPlace && item.place ? <span className="fl-equip__place" title={item.place}>{item.place}</span> : null}
       </span>
       {itemKey(item) === currentKey ? <span className="fl-equip__target-mark">Target</span> : null}
@@ -212,7 +276,7 @@ export function PagedEquipmentNavigator({ source, target, browsingKey, onBrowse,
     const key = parentKey(parent);
     const branch = branches.get(key) ?? EMPTY_BRANCH;
     // After a failed first page the cursor is still null (reload); after a failed "Show more" it is the page that failed.
-    const retry = () => loadChildren(parent, branch.nextCursor);
+    const retry = () => loadChildren(parent ? { kind: parent.kind, id: parent.id } : null, branch.nextCursor);
     return <>
       {branch.items.map((item) => {
         const k = itemKey(item);
@@ -249,8 +313,9 @@ export function PagedEquipmentNavigator({ source, target, browsingKey, onBrowse,
     </>;
   };
 
-  const search = branches.get("search") ?? EMPTY_BRANCH;
-  const searching = query.trim() !== "";
+  const search = searchFresh ? branches.get("search") ?? EMPTY_BRANCH : { ...EMPTY_BRANCH, status: "loading" as const };
+  const searching = needle !== "";
+  const notice = asker.notice;
 
   return <div className="fl-equip" data-mode="paged">
     <label className="fl-shell__search">
@@ -264,9 +329,12 @@ export function PagedEquipmentNavigator({ source, target, browsingKey, onBrowse,
       />
     </label>
 
-    {asker.notice
-      ? <div className="fl-equip__notice" data-reason={asker.notice.reason}>
-        <p>{asker.notice.text}</p>
+    {notice
+      ? <div className="fl-equip__notice" data-reason={notice.reason}>
+        <p>{notice.text}</p>
+        {refusalNeedsRefresh(notice.reason)
+          ? <button type="button" className="fl-equip__more" onClick={() => { refreshFor(notice.item); asker.dismiss(); }}>Load current record</button>
+          : null}
         <button type="button" className="fl-equip__more" onClick={asker.dismiss}>Dismiss</button>
       </div>
       : null}
@@ -298,7 +366,7 @@ export function PagedEquipmentNavigator({ source, target, browsingKey, onBrowse,
                 </div>
               </li>;
             })}
-            {branchFooter("search", () => load("search", (signal, cursor) => source.search(searchFor, null, { cursor, signal }), search.nextCursor), "search results")}
+            {searchFresh ? branchFooter("search", () => loadSearch(search.nextCursor), "search results") : <li role="none" className="fl-equip__state" aria-live="polite">Searching…</li>}
           </ul>}
       </section>
       : <section className="fl-shell__nav-section" aria-labelledby="fl-equip-tree">
@@ -318,8 +386,8 @@ export function EquipmentAskNoticeBar({ asker }: { readonly asker: EquipmentAskC
 }
 
 /** Display-only target for the composer bar while browsing; asking still goes through `asker.ask`. */
-export function provisionalTarget(item: BrowserItem | null): QuestionTarget | null {
-  if (!item || askabilityOf(item) !== "askable") return null;
+export function provisionalTarget(item: BrowserItem | null, source?: Pick<EquipmentSource, "resolvesNotebooks">): QuestionTarget | null {
+  if (!item || askabilityOf(item, { notebooks: source?.resolvesNotebooks === true }) !== "askable") return null;
   if (item.kind === "notebook") return { machineId: item.id, machineLabel: item.label, componentId: null, componentLabel: null, location: item.place ?? "" };
   const machineLabel = item.place?.split(" › ").at(-1) ?? "";
   return { machineId: item.parent?.id ?? "", machineLabel, componentId: item.id, componentLabel: item.label, location: item.place ?? "" };
