@@ -269,28 +269,27 @@ def verify_decision(get, repo, issue, reports, report_id, owner):
     return {"url": url, "envelope": expected} if envelope == expected else None
 
 
+def _capability_candidate(report):
+    raw = report.get("raw") or ""
+    top = re.split(r"(?mi)^\s*<details\b", raw, maxsplit=1)[0]
+    lines = re.findall(r"(?mi)^Capability candidate:[^\n]*", top)
+    if not lines:
+        return None, False
+    match = re.fullmatch(r"Capability candidate: #([1-9]\d*) @ ([0-9a-f]{40})", lines[0])
+    return ((int(match[1]), match[2]), True) if len(lines) == 1 and match else (None, True)
+
+
 def coordinator_pr(state, reports, report_id, issue_url=None):
     rep = _coordinator(reports, report_id, issue_url)
-    data = _read_report(rep) or {}
-    docs = state.get("documents") or {}
-    current_pr = _candidate_pr(rep)
-    if current_pr:
-        return current_pr
-    pr = data.get("pr")
-    if (type(pr) is int and pr > 0 and data.get("plan_revision") == docs.get("revision")
-            and docs.get("current") and data.get("step") == docs["current"]["number"]):
-        return pr
-    return None
-
-
-def _candidate_line(report):
-    raw = report.get("raw") or ""
-    match = re.search(r"(?m)^Branch / SHA:([^\n]+)", raw.split("<details>", 1)[0])
-    return match[1] if match else ""
-
-
-def _candidate_pr(report):
-    match = re.search(r"#([1-9]\d*)", _candidate_line(report))
+    explicit, provided = _capability_candidate(rep)
+    if provided:
+        return explicit[0] if explicit else None
+    # Before the first structured result, the old report can guide the action
+    # display. It cannot establish the current candidate for acceptance.
+    if _read_report(rep):
+        return None
+    raw = rep.get("raw") or ""
+    match = re.search(r"(?m)^Branch / SHA:[^\n]*?#([1-9]\d*)", raw.split("<details>", 1)[0])
     return int(match[1]) if match else None
 
 
@@ -350,8 +349,8 @@ def project(state, reports, evidence, now, *, report_id, max_age_seconds, report
     env, build = data.get("environment"), data.get("build")
     runtime = (evidence.get("envs") or {}).get(env) or {} if isinstance(env, str) else {}
     head = data.get("head")
-    listed_head = re.search(r"\b[0-9a-f]{40}\b", _candidate_line(rep))
-    candidate_conflict = bound and (data.get("pr") != pr or bool(listed_head and listed_head[0] != head))
+    explicit, _provided = _capability_candidate(rep)
+    candidate_conflict = bound and (explicit is None or explicit != (data.get("pr"), head))
     head_matches = (not candidate_conflict and isinstance(head, str) and SHA.fullmatch(head)
                     and head == row.get("head_sha"))
     generation, configuration = data.get("generation"), data.get("configuration_sha256")
@@ -405,7 +404,7 @@ def project(state, reports, evidence, now, *, report_id, max_age_seconds, report
               or any(c["status"] in {"FAIL", "BLOCKED"} for c in checks) else "In progress")
     result_error = None
     if candidate_conflict:
-        result_error = "An older candidate's results are retained as history"
+        result_error = "The capability candidate is missing, ambiguous, or differs from these results"
     elif raw is None or raw_results is not None and not valid_results:
         result_error = "Acceptance record needs correction"
     elif raw_results and not runtime_bound:

@@ -71,23 +71,25 @@ def _enum(value: str, allowed: tuple[str, ...]) -> str:
     return UNPARSED
 
 
-def _report_prose(lines: list[str]) -> list[str]:
-    """Capability results have their own work links, separate from readiness."""
-    prose, fenced = [], False
-    for line in lines:
+def _report_prose(lines: list[str]) -> tuple[list[str], bool]:
+    """Exclude well-formed capability-only references from production readiness."""
+    prose, fence = [], None
+    for index, line in enumerate(lines):
         if line.strip() == "```capability-results":
-            fenced = True
-        elif fenced:
+            if fence is not None:
+                return lines, True
+            fence = index
+        elif fence is not None:
             if line.strip() == "```":
-                fenced = False
-        else:
+                fence = None
+        elif not line.strip().lower().startswith("capability candidate:"):
             prose.append(line)
-    return prose
+    return (lines, True) if fence is not None else (prose, False)
 
 
 def parse(body: str) -> Optional[dict]:
     """Return the report dict for the top block, or None if the body is not a report."""
-    block = _report_prose(_top_block(body or ""))
+    block, malformed = _report_prose(_top_block(body or ""))
     if not block:
         return None
     lane = MARKER_RE.match(block[0]).group(1)  # type: ignore[union-attr]
@@ -120,4 +122,6 @@ def parse(body: str) -> Optional[dict]:
         else:
             r[key] = raw
     r["items"] = items
+    if malformed:
+        r["malformed_capability"] = True
     return r

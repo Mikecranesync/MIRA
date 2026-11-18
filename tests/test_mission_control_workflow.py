@@ -101,7 +101,8 @@ def report(**overrides):
         "url": SOURCE,
         "updated_at": AT,
         "raw": "[DELIVERY-UPDATE: CHARLIE-CODEX]\nUpdated: " + AT
-               + "\n" + "```capability-results\n" + json.dumps(block) + "\n```",
+               + f"\nCapability candidate: #5625 @ {HEAD}\n"
+               + "```capability-results\n" + json.dumps(block) + "\n```",
         "parsed": {},
     }
 
@@ -301,14 +302,14 @@ def test_project_links_show_real_refs_and_preserve_stale_status():
 def test_replacing_the_candidate_pr_makes_earlier_passes_historical():
     coordinator = report()
     coordinator["raw"] = coordinator["raw"].replace(
-        "Updated: ", "Branch / SHA: Replacement #5630\nUpdated: ", 1
+        f"Capability candidate: #5625 @ {HEAD}", f"Capability candidate: #5630 @ {HEAD}",
     )
     ev = evidence()
     next_row = {**ev["rows"][0], "number": 5630}
     ev["rows"].append(next_row)
     value = project(coordinator, ev)
     assert value["status"] == "Blocked"
-    assert "older candidate" in value["result_error"]
+    assert "differs from these results" in value["result_error"]
     assert all(c["status"] == "NO RECEIPT" and c["history"] for c in value["checks"])
 
 
@@ -397,3 +398,60 @@ def test_projects_outage_does_not_stop_workflow_evidence():
     server.runtime.poll_once(Handler, lambda *a, **kw: (200, {}, {"sha": REV}), None, {})
     assert "Projects denied" in Handler.evidence["error"]
     assert Handler.workflow_evidence == {"rows": [{"number": 5625}], "at": AT}
+
+
+def test_ambiguous_candidate_references_cannot_keep_an_old_acceptance():
+    for line in (
+        "Capability candidate: https://github.com/Mikecranesync/MIRA/pull/5630",
+        f"Capability candidate: #5625 superseded by #5630 @ {HEAD}",
+        "Capability candidate: #5625 @ 23456abcd",
+        f"Capability candidate: #5625 @ {HEAD}\nCapability candidate: #5630 @ {HEAD}",
+    ):
+        value = report()
+        value["raw"] = value["raw"].replace(f"Capability candidate: #5625 @ {HEAD}", line)
+        projected = project(value)
+        assert projected["status"] == "Blocked"
+        assert all(row["history"] for row in projected["checks"])
+
+
+def test_capability_candidate_is_excluded_but_unclosed_fence_blocks_production():
+    raw = report()["raw"] + "\nNext: follow up on production #5666"
+    assert server.reports.parse(raw)["items"] == [5666]
+    broken = raw.replace("\n```\nNext:", "\nNext:")
+    parsed = server.reports.parse(broken)
+    assert parsed["malformed_capability"] and 5666 in parsed["items"]
+
+    class Snap:
+        def get(self):
+            return self
+
+        items = [{"kind": "PR", "repo": REPO, "state": "OPEN", "status": "In Progress", "number": 7}]
+        at = NOW
+        error = None
+
+    class Handler:
+        snapshot = Snap()
+
+    class Store:
+        def reports(self):
+            return [{"trusted": 1, "parsed": parsed}]
+
+    try:
+        server.runtime.candidates(Handler, Store(), now=NOW)
+    except RuntimeError as exc:
+        assert "unclosed capability-results fence" in str(exc)
+    else:
+        raise AssertionError("Readiness accepted a malformed authoritative report")
+
+
+def test_live_hub_probe_fields_map_to_acceptance_runtime():
+    def get(url, headers):
+        return 200, {}, {
+            "service": "mira-hub", "version": "3.455.0", "gitSha": BUILD,
+            "builtAt": "2026-11-18T20:00:00Z", "runtimeGeneration": GEN,
+            "configurationSha256": CONFIG, "ts": 1000,
+        }
+
+    ev = evidence()
+    ev["envs"]["staging"] = server.evidence.env_version(get, "https://app-staging.factorylm.com/api/version/")
+    assert project(ev=ev)["status"] == "Accepted"

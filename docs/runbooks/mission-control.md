@@ -81,8 +81,10 @@ fence can remain in the existing DELIVERY.md format.
 
 Add one entry per acceptance ID using `id`, `status`, `observed`, `build`,
 `environment`, `generation`, `configuration_sha256` and `receipt`. Use the
-current candidate on the existing report's `Branch / SHA:` line. Conflicting
-candidate references retain the earlier results as history. A passing row
+current capability candidate on its own line above the fence using
+`Capability candidate: #5625 @ <full reviewed PR head>`. The existing
+Branch / SHA line remains available for the lane's production work. A missing,
+ambiguous or conflicting capability candidate retains earlier results as history. A passing row
 requires a nonblank observation and a specific GitHub comment, commit, or
 Actions run, job or artifact.
 For `decision`, link Mike's separate acceptance comment on #5232, beginning with
@@ -105,8 +107,10 @@ Mission Control retrieves the comment and verifies the configured decision autho
 and matching fields. The normalized results digest changes when an observation
 or receipt changes. The configured environment version endpoint must supply
 `runtimeGeneration` and `configurationSha256` for the effective configuration.
-Older endpoints still report their build version and leave runtime acceptance
-unverified. A Projects board outage leaves the separately polled workflow usable.
+Ship this revision of the Hub version probe in the normal staging
+release before qualifying FIND-09. Its digest covers the effective equipment
+navigation switch; it does not include secret environment values. Older
+endpoints keep reporting their build version and leave acceptance unverified. A Projects board outage leaves the separately polled workflow usable.
 Keep previous
 runs linked in the existing comment history. Blank results display as NO RECEIPT.
 Rows whose plan/build differs stay historical. Candidate review and CI, deployed
