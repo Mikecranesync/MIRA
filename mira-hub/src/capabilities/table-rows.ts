@@ -310,18 +310,28 @@ const isFootnoteMark = (text: string): boolean => /^\d{1,2}$/.test(text);
  *  "2" is 5 pt where the table's upright text has a median of 8 pt (0.625). A full-size digit is
  *  a label, not a mark. */
 const SUPERSCRIPT_RATIO = 0.8;
+/** How far a mark may sit from the rotated label it annotates, across the label and beyond the end
+ *  of its text. GS10 pages 26 and 27: the "2" is 2.83 pt left of "Input Rating" and starts where
+ *  that label's text ends. */
+const MARK_REACH_PT = 6;
 /** A rotated item names a group unless it is a footnote mark. A mark is one or two digits,
- *  surrounding space ignored, that shares its line with other text (the label it annotates) and is
- *  printed at under SUPERSCRIPT_RATIO of `bodySize`, the median size of the table's upright text.
- *  A rotated digit alone on its line annotates nothing, so it is a group label: placed if it
- *  centres on its rows, otherwise the rows are withheld with its text kept. A real PDF also
- *  rotates empty and space items beside a rotated label; `buildLines` drops those. A mark is read
- *  as ordinary label text, as if upright (#5615 Codex F1, F3, F4). */
-function isGroupStub(it: LayoutItem, line: Line, bodySize: number): boolean {
+ *  surrounding space ignored, printed at under SUPERSCRIPT_RATIO of `bodySize` (the median size of
+ *  the table's upright text), in the column of a rotated word label and within that label's span:
+ *  positive evidence that it annotates the label. Any other rotated digit, small or not, is a group
+ *  label: placed if it centres on its rows, otherwise the rows are withheld with its text kept. A
+ *  real PDF also rotates empty and space items beside a rotated label; `buildLines` drops those. A
+ *  mark is read as ordinary label text, as if upright (#5615 Codex F1, F3, F4, F5). */
+function isGroupStub(it: LayoutItem, bodySize: number, rotatedLabels: readonly LayoutItem[]): boolean {
   if (it.vertical !== true) return false;
   if (!isFootnoteMark(it.str.trim())) return true;
-  if (line.items.length === 1) return true;
-  return it.size >= SUPERSCRIPT_RATIO * bodySize;
+  if (it.size >= SUPERSCRIPT_RATIO * bodySize) return true;
+  return !rotatedLabels.some((l) => Math.abs(it.x - l.x) <= MARK_REACH_PT
+    && it.y <= l.y + l.w + MARK_REACH_PT && it.y + it.w >= l.y - MARK_REACH_PT);
+}
+
+/** Rotated items that hold label text: the labels a footnote mark can annotate. */
+function rotatedWordLabels(window: readonly Line[]): LayoutItem[] {
+  return window.flatMap((l) => l.items).filter((it) => it.vertical === true && /[A-Za-z]/.test(it.str));
 }
 
 function medianUprightSize(window: readonly Line[]): number {
@@ -344,10 +354,11 @@ function findStubs(window: readonly Line[], cols: Columns): Stub[] {
   const duty: Array<Stub & { followed: boolean }> = [];
   const labelStarts: Array<{ x: number; words: number }> = [];
   const bodySize = medianUprightSize(window);
+  const rotatedLabels = rotatedWordLabels(window);
   for (const line of window) {
     const { labelItems } = splitLabelValue(line, cols);
-    for (const it of labelItems) if (isGroupStub(it, line, bodySize)) out.push({ item: it, kind: "group", centre: it.y + it.w / 2, right: it.x });
-    const runs = groupRuns(labelItems.filter((it) => !isGroupStub(it, line, bodySize)), RUN_GAP_PT).filter((r) => !isFootnoteMark(renderItems(r.items)));
+    for (const it of labelItems) if (isGroupStub(it, bodySize, rotatedLabels)) out.push({ item: it, kind: "group", centre: it.y + it.w / 2, right: it.x });
+    const runs = groupRuns(labelItems.filter((it) => !isGroupStub(it, bodySize, rotatedLabels)), RUN_GAP_PT).filter((r) => !isFootnoteMark(renderItems(r.items)));
     for (const r of runs) labelStarts.push({ x: r.leftX, words: renderItems(r.items).split(/\s+/).length });
     const first = runs[0];
     if (!first || first.items.length !== 1) continue;
