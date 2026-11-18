@@ -508,34 +508,6 @@ describe("paged equipment navigator", () => {
     expect(flakyCalls()).toBe(2);
     expect(view.row(key("notebook", "nb-storeroom-shelf"))).not.toBeNull();
   });
-});
-
-describe("fake equipment source (the server stand-in)", () => {
-  it("holds a 20,000-component plant and serves it in bounded pages", async () => {
-    const source = createFakeEquipmentSource({ pageSize: 100 });
-    const first = await source.search("component", null);
-    expect(first.total).toBe(LARGE_PLANT.areas * LARGE_PLANT.linesPerArea * LARGE_PLANT.machinesPerLine * (LARGE_PLANT.componentsPerMachine - 1));
-    expect(first.items).toHaveLength(100);
-    expect(first.hasMore).toBe(true);
-    const all = await source.search("M", { kind: "namespace", id: BENCH_IDS.plant });
-    expect(all.total).toBeGreaterThanOrEqual(20_000);
-    expect(source.maxPageSeen()).toBe(100);
-  });
-
-  it("keys thread selections by notebook and thread, as the Hub does", async () => {
-    const source = createFakeEquipmentSource();
-    source.setSelection(BENCH_IDS.bench, "thread-1", { componentId: BENCH_IDS.vfd1, revision: 1, version: 4 });
-    // Another notebook on the same thread has no selection: version null is accepted.
-    const other = await source.resolve({ kind: "notebook_component", notebookId: BENCH_IDS.conveyor2, componentId: BENCH_IDS.vfd1Line2, expectedRevision: 1, selection: { threadKey: "thread-1", version: null } });
-    expect(other.ok).toBe(true);
-    // The bench selection still refuses a wrong version.
-    const bench = await source.resolve({ kind: "notebook_component", notebookId: BENCH_IDS.bench, componentId: BENCH_IDS.vfd1, expectedRevision: 1, selection: { threadKey: "thread-1", version: 3 } });
-    expect(bench).toEqual({ ok: false, reason: "selection_changed" });
-    // Control: the stored bench selection, asked with its own version, is accepted.
-    const same = await source.resolve({ kind: "notebook_component", notebookId: BENCH_IDS.bench, componentId: BENCH_IDS.vfd1, expectedRevision: 1, selection: { threadKey: "thread-1", version: 4 } });
-    expect(same.ok).toBe(true);
-  });
-
   // #5617 F10: a refresh that answers late must not replace a newer record the technician already browsed.
   it("a held refresh that returns an older record does not replace a newer one browsed meanwhile", async () => {
     const real = createFakeEquipmentSource();
@@ -622,6 +594,58 @@ describe("fake equipment source (the server stand-in)", () => {
     await view.showNavigator(false);
     await view.showNavigator(true);
     expect(calls.slice(before)).toEqual(["browse:children root"]);
+  });
+  it("closing the navigator during a refresh says it stopped and offers the reload again; nothing is sent", async () => {
+    const real = createFakeEquipmentSource();
+    let hold: Promise<void> | null = null;
+    const source: EquipmentSource = {
+      children: async (parent, opts) => {
+        const page = await real.children(parent, opts);
+        if (hold && parent?.id === BENCH_IDS.bench) await hold;
+        return page;
+      },
+      search: (query, scope, opts) => real.search(query, scope, opts),
+      resolve: (request, opts) => real.resolve(request, opts),
+    };
+    const view = await render(source);
+    await openBench(view);
+    await view.click(view.row(key("notebook_component", BENCH_IDS.stale)));
+    await view.click(view.composer("Ask about Contactor K2"));
+    hold = new Promise<void>(() => {}); // never answers
+    await view.click(view.composer("Load current record"));
+    await view.showNavigator(false);
+    const alert = view.container.querySelector('[data-testid="composer"] [role="alert"]');
+    expect(alert?.textContent).toContain("Loading the current record of Contactor K2 stopped");
+    expect(view.composer("Load current record")).not.toBeNull();
+    expect(view.resolves).toHaveLength(1);
+    expect(view.target()).toEqual(START);
+  });
+});
+
+describe("fake equipment source (the server stand-in)", () => {
+  it("holds a 20,000-component plant and serves it in bounded pages", async () => {
+    const source = createFakeEquipmentSource({ pageSize: 100 });
+    const first = await source.search("component", null);
+    expect(first.total).toBe(LARGE_PLANT.areas * LARGE_PLANT.linesPerArea * LARGE_PLANT.machinesPerLine * (LARGE_PLANT.componentsPerMachine - 1));
+    expect(first.items).toHaveLength(100);
+    expect(first.hasMore).toBe(true);
+    const all = await source.search("M", { kind: "namespace", id: BENCH_IDS.plant });
+    expect(all.total).toBeGreaterThanOrEqual(20_000);
+    expect(source.maxPageSeen()).toBe(100);
+  });
+
+  it("keys thread selections by notebook and thread, as the Hub does", async () => {
+    const source = createFakeEquipmentSource();
+    source.setSelection(BENCH_IDS.bench, "thread-1", { componentId: BENCH_IDS.vfd1, revision: 1, version: 4 });
+    // Another notebook on the same thread has no selection: version null is accepted.
+    const other = await source.resolve({ kind: "notebook_component", notebookId: BENCH_IDS.conveyor2, componentId: BENCH_IDS.vfd1Line2, expectedRevision: 1, selection: { threadKey: "thread-1", version: null } });
+    expect(other.ok).toBe(true);
+    // The bench selection still refuses a wrong version.
+    const bench = await source.resolve({ kind: "notebook_component", notebookId: BENCH_IDS.bench, componentId: BENCH_IDS.vfd1, expectedRevision: 1, selection: { threadKey: "thread-1", version: 3 } });
+    expect(bench).toEqual({ ok: false, reason: "selection_changed" });
+    // Control: the stored bench selection, asked with its own version, is accepted.
+    const same = await source.resolve({ kind: "notebook_component", notebookId: BENCH_IDS.bench, componentId: BENCH_IDS.vfd1, expectedRevision: 1, selection: { threadKey: "thread-1", version: 4 } });
+    expect(same.ok).toBe(true);
   });
 
   it("rejects a cursor from another scope", async () => {

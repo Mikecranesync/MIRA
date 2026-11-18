@@ -210,7 +210,10 @@ export type BranchAction =
   | { readonly type: "page"; readonly key: string; readonly request: number; readonly page: BrowserPage; readonly append: boolean }
   | { readonly type: "fail"; readonly key: string; readonly request: number }
   | { readonly type: "reset"; readonly key: string }
-  /** A freshly read record replaces every loaded copy of that row (tree and search), without another read. */
+  /**
+   * A freshly read record replaces every loaded copy of that row (tree and search), without
+   * another read. A copy already showing a newer revision is kept (#5617 F10).
+   */
   | { readonly type: "patch"; readonly item: BrowserItem }
   | { readonly type: "clear" };
 
@@ -226,10 +229,11 @@ export function branchesReducer(state: Branches, action: BranchAction): Branches
     const key = itemKey(action.item);
     let changed = false;
     const next = new Map(state);
+    const replaces = (row: BrowserItem) => itemKey(row) === key && row !== action.item && revisionOf(row) <= revisionOf(action.item);
     for (const [branchKey, branch] of state) {
-      if (!branch.items.some((row) => itemKey(row) === key)) continue;
+      if (!branch.items.some(replaces)) continue;
       changed = true;
-      next.set(branchKey, { ...branch, items: branch.items.map((row) => itemKey(row) === key ? action.item : row) });
+      next.set(branchKey, { ...branch, items: branch.items.map((row) => replaces(row) ? action.item : row) });
     }
     return changed ? next : state;
   }
@@ -273,6 +277,11 @@ export function branchesReducer(state: Branches, action: BranchAction): Branches
  * Those rows show where they are. Paged loading cannot see unloaded rows, so
  * search results always show their place regardless.
  */
+/** A row's record revision for ordering copies; a row without one sorts below every revision. */
+export function revisionOf(item: BrowserItem): number {
+  return item.revision ?? -1;
+}
+
 /** Whether a refusal means the row on screen is out of date, so reloading its list is useful. */
 export function refusalNeedsRefresh(reason: ResolveFailureReason): boolean {
   return reason === "stale_revision" || reason === "retired" || reason === "not_found";
