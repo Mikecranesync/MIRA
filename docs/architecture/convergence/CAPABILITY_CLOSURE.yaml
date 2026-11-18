@@ -1233,6 +1233,58 @@ capabilities:
       pending legacy push (CMMS_SYNC_ENABLED worker). Inbound CMMS changes are
       not implemented beyond read-back + marker echo-prevention.
 
+  # =========================================================================
+  - id: equipment_first_navigation
+    purpose: >-
+      Equipment-first navigation in the Hub: browse and search the tenant's
+      equipment one server page at a time (/api/equipment-browser/*, #5602) and
+      ask about one exact component. Ask about resolves the row on the server
+      (409 stale_revision / selection_changed / component_retired, unmapped
+      no_link) and the checklist selects it through its existing selection path.
+      Shared navigator #5614 (frozen at 37445da9); Hub adapter + #5617 fixes in
+      PR B (feat/equipment-nav-hub-20261118).
+    customer_outcome: >-
+      A technician finds the drive or the MLC by browsing or searching the
+      plant, presses Ask about, and the next question is about exactly that
+      component; a record that changed elsewhere is refused with a notice, never
+      silently retried.
+    feature_flag: null   # hub TS flag MIRA_EQUIPMENT_NAV — see notes
+    entrypoints:
+      - "mira-hub/src/app/api/equipment-browser/   # children / search / resolve routes"
+      - "mira-hub/src/capabilities/equipment-browser/browser.ts"
+      - "packages/factorylm-ui/src/PagedEquipmentNavigator.tsx"
+      - "mira-hub/src/factorylm-ui/EquipmentNav.tsx"
+    consumers:
+      - "mira-hub/src/factorylm-ui/hub-host.tsx   # Find equipment panel in the notebook actions column"
+    environments:
+      dev: unset
+      staging: unset                        # not forwarded by docker-compose.staging-vps.yml
+      production: unset                     # not forwarded by docker-compose.saas.yml
+    state: deployed_disabled
+    owner: null
+    owner_missing: "CHARLIE Claude component/UI lane (#5232); owner assigned at promotion (Mike)."
+    ci_jobs:
+      - mira-hub-unit   # equipment-source / equipment-pick / flag.route tests
+    required_checks: []
+    evidence: []
+    rollback: "n/a - off in every environment; flag off returns 404 and the Hub renders nothing."
+    reason: >-
+      Not deployed. The staging compose does not forward MIRA_EQUIPMENT_NAV
+      (a guarded file), so staging stays off until Mike authorizes that edit, the
+      Doppler stg write and a staging deploy.
+    promotion_criteria:
+      - "Mike authorizes forwarding MIRA_EQUIPMENT_NAV in docker-compose.staging-vps.yml, setting it in factorylm/stg, and a staging deploy."
+      - "Staging walk on the Galaxy Tab S9 FE: find the drive and the MLC by browse and by search, ask about each, reload and recover; stale-record and no_link negatives refuse with a notice."
+      - "#5617 F10-F13 stay closed on the deployed build."
+    review_by: "2026-11-24"
+    notes: >-
+      Gate flag is MIRA_EQUIPMENT_NAV ("1"/"true" = on), read at call time in
+      mira-hub/src/capabilities/equipment-browser/flag.ts. Recorded in notes, not
+      feature_flag, because tools/capability_closure.py scans Python modules only.
+      The navigator's #5617 F10-F13 tests (apps/factorylm-ui-lab
+      paged-equipment.test.tsx) run in the shared-ui job of
+      factorylm-ui-lab.yml, which this validator does not read (ci.yml only).
+
 ignored_flags:
   - CRAWL_SCHEDULE_ENABLED          # default-ON operational schedule, not a gated capability
   - ENFORCE_PLAN_QUOTA              # billing/plan enforcement; belongs to the PLG surface
