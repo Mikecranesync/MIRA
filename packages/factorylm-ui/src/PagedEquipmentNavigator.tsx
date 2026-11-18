@@ -71,10 +71,11 @@ export interface EquipmentAskController {
 
 export interface EquipmentAskOptions {
   /**
-   * The conversation's current selection, read at the moment of the press. When
-   * given, the server refuses with `selection_changed` if it moved elsewhere.
+   * The conversation's current selection, read at the moment of the press, for the
+   * row being asked about (null when the row is in another machine than the open
+   * conversation). When given, the server refuses with `selection_changed` if it moved elsewhere.
    */
-  readonly selection?: () => SelectionPrecondition | null;
+  readonly selection?: (item: BrowserItem) => SelectionPrecondition | null;
 }
 
 /**
@@ -131,7 +132,7 @@ export function useEquipmentAsk(
     }
     const notebooks = source.resolvesNotebooks === true;
     const askability = askabilityOf(item, { notebooks });
-    const request = resolveRequestOf(item, selectionRef.current?.() ?? null, { notebooks });
+    const request = resolveRequestOf(item, selectionRef.current?.(item) ?? null, { notebooks });
     if (!request) {
       if (askability === "browse_only") return; // nothing to refuse: the row was never askable
       const reason = askability === "retired" ? "retired" : "no_link";
