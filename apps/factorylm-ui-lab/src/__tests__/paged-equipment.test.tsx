@@ -171,6 +171,23 @@ describe("paged equipment navigator", () => {
     expect(view.target()).toMatchObject({ componentId: BENCH_IDS.stale });
   });
 
+  it("the composer notice offers the same reload: one list reload, no resolve, target holds", async () => {
+    const calls: string[] = [];
+    const view = await render(createFakeEquipmentSource({ onCall: (line) => calls.push(line) }), { calls });
+    await openBench(view);
+    await view.click(view.row(key("notebook_component", BENCH_IDS.stale)));
+    await view.click(view.button("Ask about Contactor K2"));
+    const composerReload = [...view.container.querySelectorAll<HTMLButtonElement>('[data-testid="composer"] button')].find((b) => b.textContent === "Load current record") ?? null;
+    await view.click(composerReload);
+    expect(calls.filter((line) => line === `browse:children notebook:${BENCH_IDS.bench}`)).toHaveLength(2);
+    expect(view.resolves).toHaveLength(1);
+    expect(view.target()).toEqual(START);
+    expect(view.container.querySelector('[role="alert"]')).toBeNull();
+    // The browsed row now points at the corrected record: the next press sends revision 2.
+    await view.click(view.button("Ask about Contactor K2"));
+    expect(view.requests.at(-1)).toMatchObject({ componentId: BENCH_IDS.stale, expectedRevision: 2 });
+  });
+
   it("a selection that changed elsewhere is a 409 from the host's precondition, and the target holds", async () => {
     const source = createFakeEquipmentSource();
     source.setSelection("thread-1", { componentId: BENCH_IDS.vfd1, revision: 1, version: 4 });

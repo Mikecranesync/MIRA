@@ -29,15 +29,24 @@ export interface EquipmentAskNotice {
   readonly text: string;
 }
 
+/** A technician's request to reload a refused row's list; the navigator carries it out. */
+export interface EquipmentRefreshRequest {
+  readonly item: BrowserItem;
+  /** Bumped per press, so pressing twice reloads twice. */
+  readonly sequence: number;
+}
+
 export interface EquipmentAskController {
-  /** The source this controller resolves against (a navigator must use the same one). */
-  readonly source: EquipmentSource;
   /** Key of the row whose resolve is in flight, if any. */
   readonly pendingKey: string | null;
   readonly notice: EquipmentAskNotice | null;
   /** One explicit resolve. On success the host's onAskAbout runs; on refusal a notice is set. */
   readonly ask: (item: BrowserItem) => void;
   readonly dismiss: () => void;
+  /** Latest "Load current record" press, from the drawer or the composer notice. */
+  readonly refreshRequest: EquipmentRefreshRequest | null;
+  /** Reload the list a refused row came from. Never resolves; clears the notice. */
+  readonly requestRefresh: (item: BrowserItem) => void;
 }
 
 export interface EquipmentAskOptions {
@@ -61,6 +70,7 @@ export function useEquipmentAsk(
 ): EquipmentAskController {
   const [pendingKey, setPendingKey] = useState<string | null>(null);
   const [notice, setNotice] = useState<EquipmentAskNotice | null>(null);
+  const [refreshRequest, setRefreshRequest] = useState<EquipmentRefreshRequest | null>(null);
   const inFlight = useRef<AbortController | null>(null);
   const onAskRef = useRef(onAskAbout);
   onAskRef.current = onAskAbout;
@@ -71,6 +81,7 @@ export function useEquipmentAsk(
     inFlight.current = null;
     setPendingKey(null);
     setNotice(null);
+    setRefreshRequest(null);
   }, [source]);
 
   const ask = useCallback((item: BrowserItem) => {
@@ -102,7 +113,12 @@ export function useEquipmentAsk(
       });
   }, [source]);
 
-  return { source, pendingKey, notice, ask, dismiss: () => setNotice(null) };
+  const requestRefresh = useCallback((item: BrowserItem) => {
+    setNotice(null);
+    setRefreshRequest((last) => ({ item, sequence: (last?.sequence ?? 0) + 1 }));
+  }, []);
+
+  return { pendingKey, notice, ask, dismiss: () => setNotice(null), refreshRequest, requestRefresh };
 }
 
 export interface PagedEquipmentNavigatorProps {
@@ -211,6 +227,13 @@ export function PagedEquipmentNavigator({ source, target, browsingKey, onBrowse,
     if (branches.get(holding)?.items.some((row) => itemKey(row) === key)) loadChildren(item.parent, null, true);
     if (branches.get("search")?.items.some((row) => itemKey(row) === key)) loadSearch(null, true);
   };
+  const refreshRef = useRef(refreshFor);
+  refreshRef.current = refreshFor;
+  const refreshSequence = asker.refreshRequest?.sequence;
+  useEffect(() => {
+    if (asker.refreshRequest) refreshRef.current(asker.refreshRequest.item);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per press (sequence), from either notice
+  }, [refreshSequence]);
 
   const loaded = useMemo(() => [...branches.values()].flatMap((branch) => branch.items), [branches]);
   const repeated = useMemo(() => repeatedLabelKeys(loaded), [loaded]);
@@ -333,7 +356,7 @@ export function PagedEquipmentNavigator({ source, target, browsingKey, onBrowse,
       ? <div className="fl-equip__notice" data-reason={notice.reason}>
         <p>{notice.text}</p>
         {refusalNeedsRefresh(notice.reason)
-          ? <button type="button" className="fl-equip__more" onClick={() => { refreshFor(notice.item); asker.dismiss(); }}>Load current record</button>
+          ? <button type="button" className="fl-equip__more" onClick={() => asker.requestRefresh(notice.item)}>Load current record</button>
           : null}
         <button type="button" className="fl-equip__more" onClick={asker.dismiss}>Dismiss</button>
       </div>
@@ -378,9 +401,13 @@ export function PagedEquipmentNavigator({ source, target, browsingKey, onBrowse,
 
 /** The ask notice beside the composer, where the question target is read. */
 export function EquipmentAskNoticeBar({ asker }: { readonly asker: EquipmentAskController }) {
-  if (!asker.notice) return null;
-  return <div className="fl-equip__notice" role="alert" data-reason={asker.notice.reason}>
-    <p>{asker.notice.text}</p>
+  const notice = asker.notice;
+  if (!notice) return null;
+  return <div className="fl-equip__notice" role="alert" data-reason={notice.reason}>
+    <p>{notice.text}</p>
+    {refusalNeedsRefresh(notice.reason)
+      ? <button type="button" className="fl-equip__more" onClick={() => asker.requestRefresh(notice.item)}>Load current record</button>
+      : null}
     <button type="button" className="fl-equip__more" onClick={asker.dismiss}>Dismiss</button>
   </div>;
 }
