@@ -573,11 +573,11 @@ describe("fake equipment source (the server stand-in)", () => {
     const source = createFakeEquipmentSource();
     const view = await render(source);
     await openBench(view); // tree shows revision 1; the record is 2
+    await view.click(view.row(key("notebook_component", BENCH_IDS.stale)));
+    await view.click(view.composer("Ask about Contactor K2")); // revision 1 refused
     await view.search("k2"); // search shows revision 2
     source.correct(BENCH_IDS.stale); // the record is 3
     const results = '[aria-label="Equipment search results"]';
-    await view.click(view.row(key("notebook_component", BENCH_IDS.stale)));
-    await view.click(view.composer("Ask about Contactor K2"));
     await view.click(view.row(key("notebook_component", BENCH_IDS.stale), results));
     await view.click(view.composer("Ask about Contactor K2"));
     expect(view.requests.map((r) => r.kind === "notebook_component" ? r.expectedRevision : null)).toEqual([1, 2]);
