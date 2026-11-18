@@ -15,7 +15,7 @@ import { addComponent, reviseComponent, setSelection } from "@/capabilities/benc
 import { readRevisionInput } from "@/capabilities/bench-components/validate";
 import { createAndBindNotebookTx } from "@/lib/equipment-notebooks";
 import { withTenantContext } from "@/lib/tenant-context";
-import { equipmentBrowserPageSql } from "../browser";
+import { equipmentBrowserPageSql, readEquipmentBrowserTopology, equipmentBrowserTopology } from "../browser";
 
 const db = vi.hoisted(() => {
   if (!process.env.TEST_DATABASE_URL || process.env.MIRA_TEST_DB_CONFIRM !== "DISPOSABLE") throw new Error("Required disposable database prerequisites missing");
@@ -32,7 +32,7 @@ vi.mock("@/lib/db", () => ({ default: db.app }));
 const auth = vi.hoisted(() => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { AsyncLocalStorage: Storage } = require("node:async_hooks");
-  return new Storage() as AsyncLocalStorage<{ tenantId: string; userId: string } | Response | null>;
+  return new Storage() as AsyncLocalStorage<{ tenantId: string; userId: string; status?: string; trialExpiresAt?: string } | Response | null>;
 });
 vi.mock("@/lib/session", () => ({ sessionOr401: async () => auth.getStore() ?? NextResponse.json({ error: "Unauthorized" }, { status: 401 }) }));
 
@@ -84,7 +84,9 @@ describe("direct equipment API HTTP/PostgreSQL contract", () => {
         : token === "unavailable"
           ? NextResponse.json({error:"Session unavailable"}, {status:503, headers:{"Retry-After":"30"}})
           : users[token as keyof typeof users] ?? null;
-      auth.run(session, async () => {
+      const currentSession = token === "pending-account" ? {...users.a,status:"pending"}
+        : token === "completed-trial" ? {...users.a,status:"trial",trialExpiresAt:"2000-01-01T00:00:00Z"} : session;
+      auth.run(currentSession, async () => {
         try {
           const url = new URL(incoming.url!, "http://localhost");
           const handler = routes.get(url.pathname.split("/").at(-1)!);
@@ -134,6 +136,18 @@ describe("direct equipment API HTTP/PostgreSQL contract", () => {
     }
     for (const query of ["", "parentKind=notebook", "parentKind=root&parentId="+notebook,"parentKind=root&limit=1&limit=2","parentKind=root&tenantId="+b]) {
       expect((await request("children?"+query)).status).toBe(400);
+    }
+  });
+
+  it("enforces current equipment entitlements at each read handler", async () => {
+    for (const endpoint of ["children","search","resolve"]) {
+      for (const session of ["pending-account","completed-trial"]) {
+        const response = await request(endpoint,session);
+        expect(response.status).toBe(403);
+        expect(response.headers.get("Cache-Control")).toBe("private, no-store");
+        expect(response.headers.get("Location")).toBeNull();
+        expect(await response.json()).toMatchObject({error:expect.any(String)});
+      }
     }
   });
 
@@ -470,6 +484,28 @@ describe("direct equipment API HTTP/PostgreSQL contract", () => {
     expect((await request(`children?parentKind=namespace&parentId=${unpathed}`)).status).toBe(200);
   });
 
+  it("places notebooks only through an eligible unambiguous binding", async () => {
+    for (const competing of [false,true]) {
+      const machine=uuid(), book=uuid(), other=uuid(), key=machine.replaceAll("-","");
+      await db.owner.query(`INSERT INTO cmms_equipment(id,tenant_id,equipment_number,slug,path)
+        VALUES($1,$2,$1::uuid::text,$1::uuid::text,'binding')`,[machine,a]);
+      await db.owner.query(`INSERT INTO kg_entities(tenant_id,entity_type,entity_id,name,uns_path,approval_state)
+        VALUES($1,'equipment',$2,'Binding control ' || $2,('audit_' || $3)::ltree,'verified')`,[a,machine,key]);
+      if (competing) {
+        await db.owner.query(`INSERT INTO kg_entities(tenant_id,entity_type,entity_id,name,uns_path,approval_state)
+          VALUES($1,'asset',$2,'Binding candidate ' || $2,('enterprise.binding_' || $3)::ltree,'verified')`,[a,machine,key]);
+      }
+      await db.owner.query(`INSERT INTO equipment_notebooks(id,tenant_id,node_id,display_name,equipment_entity_id)
+        VALUES($1,$2,$3,'Unique notebook placement probe',$4)`,[book,a,other,machine]);
+      const root=await (await request("children?parentKind=root&kind=notebook")).json();
+      expect(root.items).toContainEqual(expect.objectContaining({id:book,placement:"unplaced"}));
+      const children=await (await request(`children?parentKind=asset&parentId=${machine}&kind=notebook`)).json();
+      expect(children.counts.total).toBe(0);
+      const search=await (await request(`search?scopeKind=asset&scopeId=${machine}&q=Unique%20notebook`)).json();
+      expect(search.counts.total).toBe(0);
+    }
+  });
+
   it("keeps a mixed parent cycle reachable after a real namespace move", async () => {
     const line = uuid(), first = uuid(), second = uuid(), third = uuid();
     const firstKg = uuid(), secondKg = uuid(), thirdKg = uuid(), firstBook = uuid(), secondBook = uuid();
@@ -552,14 +588,14 @@ describe("direct equipment API HTTP/PostgreSQL contract", () => {
     expect(rows.size).toBe(assets.length);
 
     for (const [mask,group] of groups.entries()) {
-      const groupIds = new Set(group.map(item => item.id));
+      const groupIds = new Set<string>(group.map(item => item.id));
       const explicitOnlyCut = mask === 15 ? [...groupIds].sort()[0] : null;
       for (const item of group) {
         const row = rows.get(item.id)!;
         if (item.explicit && item.id !== explicitOnlyCut) {
           expect(row.parent).toEqual({kind:"asset",id:item.explicit});
         }
-        const seen = new Set([item.id]);
+        const seen = new Set<string>([item.id]);
         let parent = row.parent;
         while (parent.kind === "asset") {
           const id = parent.id!;
@@ -581,6 +617,23 @@ describe("direct equipment API HTTP/PostgreSQL contract", () => {
     for (const row of rows.values()) {
       expect(roots.items.some((root:Result)=>root.id===row.id)).toBe(row.parent.kind==="root");
     }
+  });
+
+  it("finalizes a large typed placement graph and keeps independent branches reachable", () => {
+    const ids = Array.from({length:20_000},(_,i) => `asset-${String(i).padStart(5,"0")}`);
+    const edges = ids.map((id,index) => ({
+      kind:"asset" as const,id,parent_kind:"asset" as const,
+      parent_id:ids[(index+1)%ids.length],explicit_parent:true,
+    }));
+    const independent = {kind:"namespace" as const,id:ids[0],parent_kind:"root" as const,parent_id:null,explicit_parent:false};
+    const mixed = {kind:"asset" as const,id:"attached",parent_kind:"namespace" as const,parent_id:independent.id,explicit_parent:false};
+    const graph = [...edges,independent,mixed];
+    const cycle = equipmentBrowserTopology(graph,{kind:"asset",id:ids[0]},true);
+    expect(cycle.cuts).toEqual([{kind:"asset",id:ids[0]}]);
+    expect(cycle.assets).toEqual(ids.slice(1).reverse());
+    const healthy = equipmentBrowserTopology(graph,{kind:"namespace",id:ids[0]},true);
+    expect(healthy.assets).toEqual([mixed.id]);
+    expect(healthy.namespaces).toEqual([]);
   });
 
   it("uses identical component timestamps in children, search, and exact resolve", async () => {
@@ -678,7 +731,10 @@ describe("direct equipment API HTTP/PostgreSQL contract", () => {
     expect(Object.fromEntries(total.rows.map((r)=>[r.tenant_id,r.n]))).toEqual({[a]:20000,[b]:2500});
     const explain=await withTenantContext(a,async(client)=>{
       const role=(await client.query("SELECT current_user AS role")).rows[0].role;expect(role).toBe("factorylm_app");
-      const plan=await client.query("EXPLAIN (ANALYZE,BUFFERS,FORMAT JSON) "+equipmentBrowserPageSql(true,false),[a,"namespace",line,"notebook_component","GS11N-20P2",null,null,51]);
+      const scope = {kind:"namespace",id:line} as const;
+      const topology = await readEquipmentBrowserTopology(client,a,scope,true);
+      const plan=await client.query("EXPLAIN (ANALYZE,BUFFERS,FORMAT JSON) "+equipmentBrowserPageSql(true,false),
+        [a,scope.kind,scope.id,"notebook_component","GS11N-20P2",null,null,51,JSON.stringify(topology.cuts),topology.namespaces,topology.assets]);
       const small = await client.query("EXPLAIN (ANALYZE,BUFFERS,FORMAT JSON) "+equipmentBrowserPageSql(false,false,true),
         [a,"notebook",notebook,null,"",null,null,2]);
       const smallPlan = JSON.stringify(small.rows);

@@ -2,6 +2,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 import type { PoolClient } from "pg";
 import { sessionOr401 } from "@/lib/session";
+import { trialAccessDecision } from "@/capabilities/trial-access";
 import { withTenantContext } from "@/lib/tenant-context";
 import { notebookReadProjection as notebook, readNotebookHeader } from "@/lib/equipment-notebooks";
 import { threadKeyOf } from "@/capabilities/bench-components/http";
@@ -78,9 +79,8 @@ const bridges = `bridged_assets AS NOT MATERIALIZED (
   FROM cmms_equipment e JOIN kg_entities k
     ON k.tenant_id=$1::uuid AND k.entity_id=e.id::text
       AND k.entity_type IN ('equipment','asset') AND k.approval_state='verified'
-      AND k.uns_path IS NOT NULL
   WHERE e.tenant_id::text=$1::uuid::text
-  GROUP BY e.id HAVING count(*)=1 AND bool_and(k.uns_path <@ 'enterprise'::ltree)
+  GROUP BY e.id HAVING count(*)=1 AND bool_and(coalesce(k.uns_path <@ 'enterprise'::ltree,false))
 )`;
 const componentInventory = `
   SELECT 'notebook_component'::text AS kind,c.id::text AS id,
@@ -93,11 +93,7 @@ const componentInventory = `
   JOIN equipment_notebooks n ON n.tenant_id=c.tenant_id AND n.id=c.notebook_id
   WHERE c.tenant_id=$1::uuid`;
 
-// Namespace ancestry and explicit asset parenting can individually be trees
-// yet make a cycle when combined. Walk the cheap, root-connected part once.
-// Only disconnected rows enter cycle detection. A walk can return to its
-// origin only if that origin is on the cycle and outranks every other member.
-const inventory = `${eligibleNamespace}, ${bridges}, placement_candidates AS MATERIALIZED (
+const placementCandidates = `${eligibleNamespace}, ${bridges}, placement_candidates AS MATERIALIZED (
   SELECT 'namespace'::text AS kind,k.id::text AS id,k.name,
     CASE WHEN pb.asset_id IS NOT NULL THEN 'asset' WHEN p.id IS NULL THEN 'root' ELSE 'namespace' END AS parent_kind,
     coalesce(pb.asset_id,p.id) AS parent_id,false AS explicit_parent,
@@ -122,7 +118,7 @@ const inventory = `${eligibleNamespace}, ${bridges}, placement_candidates AS MAT
     jsonb_build_object('manufacturer',e.manufacturer,'model',to_jsonb(e)->>'model_number','unsPath',placement.uns_path::text)
   FROM cmms_equipment e
   LEFT JOIN bridged_assets b ON b.asset_id=e.id
-  LEFT JOIN cmms_equipment a ON a.tenant_id=e.tenant_id AND a.id::text=to_jsonb(e)->>'parent_asset_id' AND a.id<>e.id
+  LEFT JOIN cmms_equipment a ON a.tenant_id=e.tenant_id AND a.id=(to_jsonb(e)->>'parent_asset_id')::uuid AND a.id<>e.id
   CROSS JOIN LATERAL (
     SELECT coalesce(b.uns_path, CASE WHEN e.uns_path <@ 'enterprise'::ltree THEN e.uns_path END) AS uns_path
   ) placement
@@ -136,41 +132,98 @@ const inventory = `${eligibleNamespace}, ${bridges}, placement_candidates AS MAT
   ) p ON a.id IS NULL
   LEFT JOIN bridged_assets pb ON pb.node_id=p.id
   WHERE e.tenant_id::text=$1::uuid::text
-), root_reachable(kind,id) AS (
-  SELECT kind,id FROM placement_candidates WHERE parent_id IS NULL
-  UNION ALL
-  SELECT child.kind,child.id FROM placement_candidates child JOIN root_reachable parent
-    ON child.parent_kind=parent.kind AND child.parent_id=parent.id::uuid
-), disconnected AS MATERIALIZED (
-  SELECT c.kind,c.id,c.parent_kind,c.parent_id,c.explicit_parent
-  FROM placement_candidates c
-  WHERE NOT EXISTS (SELECT 1 FROM root_reachable r WHERE r.kind=c.kind AND r.id=c.id)
-), cycle_walk(origin_kind,origin_id,origin_explicit,kind,id) AS (
-  SELECT kind,id,explicit_parent,parent_kind,parent_id::text FROM disconnected
-  UNION
-  SELECT w.origin_kind,w.origin_id,w.origin_explicit,d.parent_kind,d.parent_id::text
-  FROM cycle_walk w JOIN disconnected d ON d.kind=w.kind AND d.id=w.id
-  WHERE (d.explicit_parent,d.kind COLLATE "C",d.id COLLATE "C") >
-        (w.origin_explicit,w.origin_kind COLLATE "C",w.origin_id COLLATE "C")
-), cycle_breaks AS (
-  SELECT kind,id FROM cycle_walk WHERE kind=origin_kind AND id=origin_id
-), inventory AS NOT MATERIALIZED (
+)`;
+
+type PlacementKind = "asset" | "namespace";
+type PlacementEdge = {
+  kind: PlacementKind; id: string; parent_kind: PlacementKind | "root";
+  parent_id: string | null; explicit_parent: boolean;
+};
+const placementKey = (kind: string, id: string | null) => `${kind}:${id}`;
+
+export function equipmentBrowserTopology(edges: PlacementEdge[], scope: Scope, scopedSearch: boolean) {
+  const byKey = new Map(edges.map(edge => [placementKey(edge.kind,edge.id),edge]));
+  const visited = new Set<PlacementEdge>();
+  const cuts = new Set<PlacementEdge>();
+
+  // A placement has at most one parent. Each walk finishes every node it visits,
+  // so merging tails and long cycles never start a second walk of the same nodes.
+  for (const edge of edges) {
+    if (visited.has(edge)) continue;
+    const path: PlacementEdge[] = [];
+    const pathIndex = new Map<PlacementEdge,number>();
+    let current: PlacementEdge | undefined = edge;
+    while (current && !visited.has(current)) {
+      visited.add(current);
+      pathIndex.set(current,path.length);
+      path.push(current);
+      current = byKey.get(placementKey(current.parent_kind,current.parent_id));
+    }
+    const cycleStart = current && pathIndex.get(current);
+    if (cycleStart === undefined) continue;
+    let cut = path[cycleStart];
+    for (const candidate of path.slice(cycleStart+1)) {
+      if (candidate.explicit_parent !== cut.explicit_parent
+        ? !candidate.explicit_parent
+        : placementKey(candidate.kind,candidate.id) < placementKey(cut.kind,cut.id)) cut = candidate;
+    }
+    cuts.add(cut);
+  }
+
+  const namespaces: string[] = [], assets: string[] = [];
+  if (scopedSearch) {
+    const children = new Map<string,PlacementEdge[]>();
+    for (const edge of edges) {
+      if (cuts.has(edge) || edge.parent_id === null) continue;
+      const key = placementKey(edge.parent_kind,edge.parent_id);
+      const siblings = children.get(key);
+      if (siblings) siblings.push(edge);
+      else children.set(key,[edge]);
+    }
+    const pending = [placementKey(scope.kind,scope.id)];
+    while (pending.length) {
+      for (const child of children.get(pending.pop()!) ?? []) {
+        (child.kind === "namespace" ? namespaces : assets).push(child.id);
+        pending.push(placementKey(child.kind,child.id));
+      }
+    }
+  }
+
+  return {
+    cuts: [...cuts].map(({kind,id}) => ({kind,id})),
+    namespaces,
+    assets,
+  };
+}
+
+export async function readEquipmentBrowserTopology(client: PoolClient, tenant: string, scope: Scope, search: boolean) {
+  const {rows} = await client.query<PlacementEdge>(
+    `WITH ${placementCandidates} SELECT kind,id,parent_kind,parent_id,explicit_parent FROM placement_candidates`, [tenant]);
+  return equipmentBrowserTopology(rows,scope,search && scope.kind !== "root");
+}
+
+const inventory = `${placementCandidates}, branch_items AS MATERIALIZED (
   SELECT c.kind,c.id,c.name,
     CASE WHEN cut.id IS NULL THEN c.parent_kind ELSE 'root' END AS parent_kind,
     CASE WHEN cut.id IS NULL THEN c.parent_id END AS parent_id,
     c.search_text,c.data
   FROM placement_candidates c
-  LEFT JOIN cycle_breaks cut ON cut.kind=c.kind AND cut.id=c.id
+  LEFT JOIN jsonb_to_recordset($9::jsonb) AS cut(kind text,id text) ON cut.kind=c.kind AND cut.id=c.id
   UNION ALL
   SELECT 'notebook',n.id::text,n.display_name,
-    CASE WHEN e.id IS NOT NULL THEN 'asset' WHEN ba.bound_asset_path <@ 'enterprise'::ltree THEN 'namespace' ELSE 'root' END,
-    coalesce(e.id, CASE WHEN ba.bound_asset_path <@ 'enterprise'::ltree THEN ba.bound_asset_node_id END),
+    CASE WHEN b.asset_id IS NOT NULL THEN 'asset' WHEN binding.id IS NOT NULL THEN 'namespace' ELSE 'root' END,
+    coalesce(b.asset_id,binding.id),
     concat_ws(' ',n.display_name,n.manufacturer,n.model,n.catalog_number,n.asset_tag,n.serial_number),to_jsonb(h)
   FROM equipment_notebooks n ${notebook.boundAssetJoin}
-  LEFT JOIN cmms_equipment e ON e.tenant_id::text=n.tenant_id::text AND e.id::text=ba.bound_asset_entity_id
+  LEFT JOIN bridged_assets b ON b.asset_id::text=n.equipment_entity_id
+  LEFT JOIN LATERAL (
+    SELECT min(k.id::text)::uuid AS id FROM kg_entities k
+    WHERE k.tenant_id=n.tenant_id AND k.approval_state='verified'
+      AND k.entity_type IN ('equipment','asset')
+      AND coalesce(k.entity_id,k.id::text)=n.equipment_entity_id
+    HAVING count(*)=1 AND bool_and(coalesce(k.uns_path <@ 'enterprise'::ltree,false))
+  ) binding ON b.asset_id IS NULL
   CROSS JOIN LATERAL (SELECT ${notebook.columns}) h WHERE n.tenant_id=$1::uuid
-  UNION ALL
-  ${componentInventory}
   UNION ALL
   SELECT 'installed_instance',i.id::text,coalesce(i.canonical_name,i.component_name),CASE WHEN e.id IS NULL THEN 'root' ELSE 'asset' END,e.id,
     concat_ws(' ',i.component_name,i.canonical_name,array_to_string(i.aliases,' '),i.plc_tag,t.manufacturer,t.model),
@@ -178,6 +231,10 @@ const inventory = `${eligibleNamespace}, ${bridges}, placement_candidates AS MAT
       'humanConfirmed',i.human_confirmed,'manufacturer',t.manufacturer,'model',t.model,'unsPath',i.uns_path::text)
   FROM installed_component_instances i LEFT JOIN cmms_equipment e ON e.tenant_id::text=i.tenant_id::text AND e.id=i.asset_id
   LEFT JOIN component_templates t ON t.id=i.template_id WHERE i.tenant_id=$1::uuid
+), inventory AS NOT MATERIALIZED (
+  SELECT * FROM branch_items
+  UNION ALL
+  ${componentInventory}
 )`;
 
 /** The exact page SQL, also used for restricted-role EXPLAIN qualification. */
@@ -185,13 +242,24 @@ export function equipmentBrowserPageSql(search: boolean, root: boolean, notebook
   const withinScope = root
     ? "parent_kind=$2 AND parent_id IS NULL AND $3::uuid IS NULL"
     : "parent_kind=$2 AND parent_id=$3::uuid";
+  const scopedSearch = search && !root && !notebookScope;
+  const matchScope = scopedSearch ? "true"
+    : search && root ? "$2::text='root' AND $3::uuid IS NULL" : withinScope;
+  const scopeCtes = scopedSearch ? `, scoped AS MATERIALIZED (
+        SELECT * FROM inventory WHERE (${withinScope})
+          OR (parent_kind='namespace' AND parent_id=ANY($10::uuid[]))
+          OR (parent_kind='asset' AND parent_id=ANY($11::uuid[]))
+      ), scoped_matches AS (
+        SELECT * FROM scoped
+        UNION ALL
+        SELECT * FROM inventory WHERE parent_kind='notebook'
+          AND parent_id IN (SELECT id::uuid FROM scoped WHERE kind='notebook')
+      )` : "";
   return `/* equipment-browser:${search ? "search" : "children"} */
-      WITH RECURSIVE ${notebookScope ? `inventory AS (${componentInventory} AND c.notebook_id=$3::uuid)` : inventory}, descendants AS (
-        SELECT * FROM inventory WHERE ${withinScope}
-        UNION SELECT i.* FROM inventory i JOIN descendants d ON i.parent_kind=d.kind AND i.parent_id=d.id::uuid
-      ), matched AS MATERIALIZED (
-        SELECT * FROM ${search ? root ? "inventory" : "descendants" : "inventory"}
-        WHERE ${search ? "true" : withinScope}
+      WITH ${notebookScope ? `inventory AS (${componentInventory} AND c.notebook_id=$3::uuid)` : inventory}${scopeCtes},
+      matched AS MATERIALIZED (
+        SELECT * FROM ${scopedSearch ? "scoped_matches" : "inventory"}
+        WHERE ${matchScope}
           AND ($4::text IS NULL OR kind=$4) AND (
             $5::text = '' OR regexp_replace(normalize(search_text, NFKC), '[[:space:]]+', ' ', 'g')
               ILIKE ('%' || $5 || '%') ESCAPE E'\\\\'
@@ -209,9 +277,8 @@ export function equipmentBrowserPageSql(search: boolean, root: boolean, notebook
             WHERE c.tenant_id=$1::uuid AND c.notebook_id=m.id::uuid
           )
           WHEN m.kind IN ('namespace','asset') THEN (
-            SELECT count(*) FROM inventory
-            WHERE kind IN ('namespace','asset','notebook','installed_instance')
-              AND parent_kind=m.kind AND parent_id=m.id::uuid
+            SELECT count(*) FROM ${notebookScope ? "inventory" : "branch_items"}
+            WHERE parent_kind=m.kind AND parent_id=m.id::uuid
           )
           ELSE 0
         END AS child_count FROM page_keys m
@@ -260,8 +327,14 @@ async function page(request: Request, actor: Actor, search: boolean) {
   const escaped = query.replace(/[\\%_]/g,"\\$&");
   return withTenantContext(actor.tenantId, async (client) => {
     const canonicalScope = await authorize(client,actor.tenantId,scope);
-    const { rows } = await client.query(equipmentBrowserPageSql(search,canonicalScope.kind === "root",canonicalScope.kind === "notebook"),
-      [actor.tenantId,canonicalScope.kind,canonicalScope.id,filter,escaped,last?.[0] ?? null,last?.[1] ?? null,limit+1]);
+    const root = canonicalScope.kind === "root", notebookScope = canonicalScope.kind === "notebook";
+    const values: unknown[] = [actor.tenantId,canonicalScope.kind,canonicalScope.id,filter,escaped,last?.[0] ?? null,last?.[1] ?? null,limit+1];
+    if (!notebookScope) {
+      const topology = await readEquipmentBrowserTopology(client,actor.tenantId,canonicalScope,search);
+      values.push(JSON.stringify(topology.cuts));
+      if (search && !root) values.push(topology.namespaces,topology.assets);
+    }
+    const { rows } = await client.query(equipmentBrowserPageSql(search,root,notebookScope),values);
     const result = rows[0], all = result.items as InventoryRow[], hasMore = all.length > limit, selected = all.slice(0,limit);
     const tail = selected.at(-1);
     return { scope:canonicalScope,items: selected.map(item),counts: { total: result.total,byKind: result.by_kind },hasMore,
@@ -308,10 +381,16 @@ async function resolve(request: Request, actor: Actor) {
 }
 
 export async function equipmentBrowser(request: Request, action: "children" | "search" | "resolve"): Promise<Response> {
-  const actor = await sessionOr401();
+  const actor = await sessionOr401({ requireCurrentUser: true });
   if (actor instanceof NextResponse) {
     actor.headers.set("Cache-Control", "private, no-store");
     return actor;
+  }
+  const access = trialAccessDecision(actor.status,actor.trialExpiresAt);
+  if (access !== "ok") {
+    return NextResponse.json({
+      error: access === "pending" ? "Your account is pending approval." : "Your pilot has ended. Contact FactoryLM to continue.",
+    }, { status:403, headers: { "Cache-Control":"private, no-store" } });
   }
   try {
     const result = action === "resolve" ? await resolve(request,actor) : await page(request,actor,action === "search");

@@ -37,8 +37,9 @@ is the stored CMMS asset UUID exposes one machine branch, using its KG display n
 KG machine references resolve to that same asset scope. The verified bridge’s current KG path
 drives namespace placement and the returned path, including after a move. An explicit CMMS
 parent takes precedence when eligible. A combined parent cycle is cut at one stable edge,
-preferentially an inferred edge. The cut branch is reachable from root. Equal paths, names or UUIDs without
-that bridge do not combine identities. Notebooks use their canonical verified asset binding;
+preferentially an inferred edge. The cut branch is reachable from root. Cycle repair walks the typed parent graph once per read,
+and SQL still scopes, counts and paginates results within the same tenant transaction. Equal paths, names or UUIDs without
+that bridge do not combine identities. Notebooks use a unique eligible KG binding and the same verified CMMS bridge as browsing;
 the private document `node_id` is not placement. Components use their notebook FK. Installed instances use their explicit, authorized `asset_id`; absent or
 foreign/missing placement stays visible at root. No tag, model, catalog or coincident UUID
 creates a link between kinds. Namespace placement is browsing context, not identity approval.
@@ -72,7 +73,7 @@ Unknown and foreign references share 404 `not_found`. Invalid/mixed arguments an
 cursors return 400. Missing cursor secret returns 503. Query errors disclose no database detail.
 Successful and error API responses are private/no-store, including middleware denial. Missing
 or invalid sessions return JSON 401, and blocked entitlements return JSON 403. Route authorization
-also checks the live session through `sessionOr401`. Session lookup outages return JSON 503 with
+also requires a current user in the session tenant and checks the live entitlement before dispatching a read. Session lookup outages return JSON 503 with
 `Retry-After`. No request tenant parameter is accepted.
 
 Cursors are HMAC-SHA256 signed using existing `AUTH_SECRET`/`NEXTAUTH_SECRET`, with domain

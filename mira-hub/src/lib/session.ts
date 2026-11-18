@@ -108,7 +108,7 @@ export class SessionUnavailableError extends Error {
 // This approach: read the cookie directly from next/headers, detect the correct
 // name (and salt) by checking which cookie is actually present, then call
 // decode() with that salt explicitly. Works in dev (HTTP) and prod (HTTPS).
-export async function requireSession(): Promise<SessionContext> {
+export async function requireSession(options?: { requireCurrentUser?: boolean }): Promise<SessionContext> {
   const cookieStore = await cookies();
 
   const SECURE_NAME = "__Secure-next-auth.session-token";
@@ -176,6 +176,8 @@ export async function requireSession(): Promise<SessionContext> {
     throw new SessionUnavailableError(err);
   }
 
+  if (options?.requireCurrentUser && (!user || user.tenantId !== tid)) throw new UnauthorizedError();
+
   role = (user?.role ?? "").toLowerCase().trim();
   platformAdmin = user?.status === "admin";
   if (user) {
@@ -215,9 +217,9 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
  *   if (ctx instanceof NextResponse) return ctx;
  *   // ctx.tenantId, ctx.userId, ctx.email
  */
-export async function sessionOr401(): Promise<SessionContext | NextResponse> {
+export async function sessionOr401(options?: { requireCurrentUser?: boolean }): Promise<SessionContext | NextResponse> {
   try {
-    return await requireSession();
+    return await requireSession(options);
   } catch (err) {
     // F8: the ~150 callers of this shared helper get the friendlier,
     // specific 403 for an ended pilot / lapsed trial without each one
