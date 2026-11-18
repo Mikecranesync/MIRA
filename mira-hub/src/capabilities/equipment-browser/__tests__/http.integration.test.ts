@@ -523,6 +523,66 @@ describe("direct equipment API HTTP/PostgreSQL contract", () => {
     }
   });
 
+  it("keeps generated placement graphs acyclic and reachable", async () => {
+    const namespace = uuid();
+    await db.owner.query(`INSERT INTO kg_entities(id,tenant_id,entity_type,name,uns_path)
+      VALUES ($1,$2,'area','Placement property area','enterprise.placement_property')`,[namespace,a]);
+    const groups = Array.from({length:16}, (_,mask) => {
+      const ids = Array.from({length:4}, () => uuid());
+      return ids.map((id,index) => ({
+        id,
+        path: `enterprise.placement_property.case_${mask}.${ids.slice(0,index+1).map((_,depth)=>"node_"+depth).join(".")}`,
+        explicit: (mask & (1 << index)) ? ids[(index+1)%ids.length] : null,
+      }));
+    });
+    const assets = groups.flat();
+    const fixture = JSON.stringify(assets);
+    await db.owner.query(`INSERT INTO cmms_equipment(id,tenant_id,equipment_number,slug,path)
+      SELECT id,$1,id::text,id::text,path FROM jsonb_to_recordset($2::jsonb) AS f(id uuid,path text)`, [a,fixture]);
+    await db.owner.query(`INSERT INTO kg_entities(tenant_id,entity_type,entity_id,name,uns_path,approval_state)
+      SELECT $1,'equipment',id::text,'Placement property machine ' || id::text,path::ltree,'verified'
+      FROM jsonb_to_recordset($2::jsonb) AS f(id uuid,path text)`,[a,fixture]);
+    await db.owner.query(`UPDATE cmms_equipment e SET parent_asset_id=f.explicit
+      FROM jsonb_to_recordset($1::jsonb) AS f(id uuid,explicit uuid) WHERE f.id=e.id`,[fixture]);
+
+    type Result = { id:string; parent:{kind:string;id:string|null}; childrenCount:number };
+    const result = await (await request("search?scopeKind=root&kind=asset&q=Placement%20property&limit=100")).json();
+    const rows = new Map<string,Result>(result.items.map((item:Result)=>[item.id,item]));
+    expect(result.counts.total).toBe(assets.length);
+    expect(rows.size).toBe(assets.length);
+
+    for (const [mask,group] of groups.entries()) {
+      const groupIds = new Set(group.map(item => item.id));
+      const explicitOnlyCut = mask === 15 ? [...groupIds].sort()[0] : null;
+      for (const item of group) {
+        const row = rows.get(item.id)!;
+        if (item.explicit && item.id !== explicitOnlyCut) {
+          expect(row.parent).toEqual({kind:"asset",id:item.explicit});
+        }
+        const seen = new Set([item.id]);
+        let parent = row.parent;
+        while (parent.kind === "asset") {
+          const id = parent.id!;
+          expect(groupIds.has(id)).toBe(true);
+          expect(seen.has(id),`cycle in generated group ${mask}`).toBe(false);
+          seen.add(id);
+          parent = rows.get(id)!.parent;
+        }
+        expect(parent).toEqual(parent.kind === "namespace"
+          ? {kind:"namespace",id:namespace}
+          : {kind:"root",id:null});
+        const direct = group.filter(({id}) => rows.get(id)?.parent.id === item.id).map(({id}) => id).sort();
+        expect(row.childrenCount).toBe(direct.length);
+        const page = await (await request(`children?parentKind=asset&parentId=${item.id}`)).json();
+        expect(page.items.map((child:Result)=>child.id)).toEqual(direct);
+      }
+    }
+    const roots = await (await request("children?parentKind=root&kind=asset&limit=100")).json();
+    for (const row of rows.values()) {
+      expect(roots.items.some((root:Result)=>root.id===row.id)).toBe(row.parent.kind==="root");
+    }
+  });
+
   it("uses identical component timestamps in children, search, and exact resolve", async () => {
     const raw = "2026-11-18T12:35:45.125719+00:00", expected = "2026-11-18T12:35:45.125Z";
     await db.owner.query("UPDATE notebook_components SET created_at=$1::timestamptz WHERE id=$2",[raw,componentId]);
