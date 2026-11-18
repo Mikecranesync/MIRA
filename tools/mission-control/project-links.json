@@ -1,0 +1,36 @@
+[
+  {
+    "step": 1,
+    "items": [
+      {
+        "issue": 5617,
+        "prs": [5625],
+        "checks": ["FIND-03", "FIND-04", "FIND-05", "FIND-08", "FIND-09"],
+        "remaining": "Qualify the Hub repair through review and CI. Verify the live routes and walk the connected tablet."
+      },
+      {
+        "issue": 5624,
+        "prs": [],
+        "checks": ["FIND-07"],
+        "remaining": "Search validation follow-up. The API review filed this as LOW."
+      }
+    ]
+  },
+  {
+    "step": 2,
+    "items": [
+      {
+        "issue": 5600,
+        "prs": [],
+        "checks": [],
+        "remaining": "Qualify each answer against the approved source and model. This issue tracks a known wrong-model evidence path."
+      },
+      {
+        "issue": 5626,
+        "prs": [],
+        "checks": [],
+        "remaining": "GS10 source extraction follow-up. Confirm the approved digest for the exact manual before rating answers."
+      }
+    ]
+  }
+]

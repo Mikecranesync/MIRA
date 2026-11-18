@@ -210,6 +210,17 @@ def verify_decision(get, repo, issue, reports, report_id, owner):
     return {"url": url, "envelope": expected} if envelope == expected else None
 
 
+def coordinator_pr(state, reports, report_id, issue_url=None):
+    rep = _coordinator(reports, report_id, issue_url)
+    data = _read_report(rep) or {}
+    docs = state.get("documents") or {}
+    pr = data.get("pr")
+    if (type(pr) is int and pr > 0 and data.get("plan_revision") == docs.get("revision")
+            and docs.get("current") and data.get("step") == docs["current"]["number"]):
+        return pr
+    return _candidate_pr(rep)
+
+
 def _candidate_pr(report):
     raw = report.get("raw") or ""
     match = re.search(r"(?m)^Branch / SHA:[^\n]*?#([1-9]\d*)", raw.split("<details>", 1)[0])
@@ -264,7 +275,7 @@ def project(state, reports, evidence, now, *, report_id, max_age_seconds, report
     block = raw or {}
     bound = block.get("plan_revision") == docs["revision"] and block.get("step") == docs["current"]["number"]
     data = block if bound else {}
-    pr = data.get("pr") if type(data.get("pr")) is int else _candidate_pr(rep)
+    pr = coordinator_pr(state, reports, report_id, issue_url)
     row = next((r for r in evidence.get("rows", []) if r["number"] == pr), {})
     cells = row.get("cells", {})
     review = cells.get("REVIEWED") or {"on": False, "label": "Review evidence unavailable"}

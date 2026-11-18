@@ -102,11 +102,16 @@ def env_urls() -> dict[str, str]:
     return out
 
 
-def refresh_evidence(handler, evidence, post, get, cands, envs, trusted, by_item, main_sha) -> None:
+def refresh_evidence(handler, evidence, post, get, cands, envs, trusted, by_item, main_sha, workflow_pr=None) -> None:
     """Replace handler.evidence on success; on failure keep the last rows for display but
     stamp the error and leave `at` untouched, so the model reads it as not current."""
     try:
-        fresh = evidence.gather(post, get, REPO, cands, envs, trusted, by_item, main_sha)
+        separate = workflow_pr is not None and workflow_pr not in cands
+        tracked = [*cands, workflow_pr] if separate else cands
+        fresh = evidence.gather(post, get, REPO, tracked, envs, trusted, by_item, main_sha)
+        if separate:
+            fresh["workflow_rows"] = [r for r in fresh["rows"] if r["number"] == workflow_pr]
+            fresh["rows"] = [r for r in fresh["rows"] if r["number"] != workflow_pr]
         board_at = handler.snapshot.get().at  # the board snapshot these candidates came from
         fresh["board_at"] = _iso(board_at) if board_at else None
         handler.evidence = fresh
@@ -134,6 +139,7 @@ def _poll_once(handler, get, post, state: dict) -> None:
     poll.poll_events(get, REPO, store, state)
     poll.poll_reports(get, REPO, COORD_ISSUE, store, trusted)
     handler.reports_at = _now_iso()
+    workflow_pr = None
     if hasattr(handler, "workflow_mod"):
         plan = handler.workflow_mod.refresh(
             handler.plan_state, get, REPO, pin=os.getenv("MC_ROADMAP_REF") or None,
@@ -143,6 +149,12 @@ def _poll_once(handler, get, post, state: dict) -> None:
             int(os.getenv("MC_PLAN_REPORT_ID", "6870960483")),
             os.getenv("MC_PLAN_ACCEPTOR", "Mikecranesync"),
         )}
+        workflow_pr = handler.workflow_mod.coordinator_pr(
+            plan, store.reports(), int(os.getenv("MC_PLAN_REPORT_ID", "6870960483")),
+            f"https://github.com/{REPO}/issues/{COORD_ISSUE}",
+        )
+        if hasattr(handler, "project_links_mod"):
+            handler.link_state = handler.project_links_mod.refresh(handler.link_state, get, REPO)
     cands = candidates(handler, store)
     handler.last_poll = _now_iso()
     by_item: dict[int, list[dict]] = {}
@@ -152,7 +164,7 @@ def _poll_once(handler, get, post, state: dict) -> None:
                 by_item.setdefault(int(n), []).append(r["parsed"])
     status, _h, main = get(f"https://api.github.com/repos/{REPO}/commits/main", headers={})
     main_sha = main.get("sha") if status == 200 and isinstance(main, dict) else None
-    refresh_evidence(handler, evidence, post, get, cands, env_urls(), trusted, by_item, main_sha)
+    refresh_evidence(handler, evidence, post, get, cands, env_urls(), trusted, by_item, main_sha, workflow_pr)
 
 
 def poll_loop(handler, get, post) -> None:

@@ -33,7 +33,12 @@ the dispatch contract: PR #4736, `docs/proposals/project4-mission-control.md`.
 The homepage shows the current step from the repository roadmap, its ordered work,
 the coordinator's next action, and each check's expected and observed results.
 Use **Open acceptance record** to work in the existing #5232 coordinator comment.
-The GitHub board and release evidence remain available under Engineering details.
+The Project work sections show current issues, their linked PRs, and the next
+capability's issues. The relationship file `tools/mission-control/project-links.json`
+records which PR addresses each issue and which proof remains. GitHub supplies names
+and states at refresh. When no closing PR is linked the row says so. These links do
+not affect capability acceptance or production readiness. The GitHub board and
+release evidence remain available under Engineering details.
 
 1. The coordinator names one action, its owner, and the expected result. Link the
    PR or test run where the work is performed.
@@ -210,7 +215,7 @@ Staging reads "unreachable from this host" from BRAVO (the hub's `/api/version` 
 
 Run the CHARLIE install recipe above with the merged sha, the existing label and `charlie/run.sh`; add `MC_ENV_PRODUCTION_URL` to `run.sh`. Same limits as BRAVO: poll-only, staging grey.
 
-### Stage B — OVH VPS (needs owner GO; delivers webhooks, staging, off-tailnet phone access)
+### Stage B — private HTTPS on the OVH VPS (needs owner GO)
 
 Use the systemd unit and nginx example in `tools/mission-control/vps`.
 Start with authenticated HTTPS and GitHub polling on the existing OVH VPS.
@@ -219,10 +224,12 @@ Start with authenticated HTTPS and GitHub polling on the existing OVH VPS.
    DNS, certificate and data directory. Save the previous release target and service
    configuration. Take a consistent SQLite backup with the SQLite backup API.
 2. Put the reviewed Git archive under `/opt/mission-control/releases/<full SHA>`.
-   In that release, create `.venv` using Python 3.10 or newer with
-   `--system-site-packages`, verify `httpx` imports, then install
-   `requirements-workflow.txt` into it. Keep the shared data directory outside
-   the release. Test the release on a separate loopback port before switching
+   In that release, create a Python 3.12 `.venv` and install the existing dashboard
+   HTTP client (`httpx==0.28.1`) and `requirements-workflow.txt` into it. The
+   base OVH system interpreter may lack httpx. Keep the shared data directory outside
+   the release. For the proposed roadmap add `MC_ROADMAP_REF` in the
+   `/etc/mission-control.env` systemd environment file. Test the release on a
+   separate loopback port before switching
    `current`; record the archive revision in `DEPLOYED_SHA`.
 3. Install the reviewed unit and authenticated nginx site. Use the site's TLS
    certificate for `mc.factorylm.com` and an individual bcrypt htpasswd entry for

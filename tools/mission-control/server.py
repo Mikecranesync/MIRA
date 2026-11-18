@@ -50,6 +50,7 @@ model = _load("model")
 cockpit = _load("cockpit")
 runtime = _load("runtime")
 workflow = _load("workflow")
+project_links = _load("project_links")
 
 log = logging.getLogger("mission-control")
 HERE = Path(__file__).resolve().parent
@@ -159,16 +160,24 @@ class Handler(BaseHTTPRequestHandler):
     plan_state: dict = {}
     reports_at: Optional[str] = None
     workflow_mod = workflow
+    project_links_mod = project_links
+    link_state: dict = {}
     poll_mod, evidence_mod, trusted_authors = poll, _evidence_module, staticmethod(trusted_authors)
 
     def _model(self) -> dict:
         snapshot = build_model(self.store, self.evidence, self.last_poll, self.last_webhook)
         snapshot["plan"] = workflow.project(
-            self.plan_state, self.store.reports(), self.evidence, dt.datetime.now(dt.timezone.utc),
+            self.plan_state, self.store.reports(),
+            {**self.evidence, "rows": [*self.evidence.get("rows", []), *self.evidence.get("workflow_rows", [])]},
+            dt.datetime.now(dt.timezone.utc),
             report_id=int(os.getenv("MC_PLAN_REPORT_ID", "6870960483")),
             max_age_seconds=2 * POLL_SECONDS,
             reports_at=self.reports_at,
             issue_url=f"https://github.com/{runtime.REPO}/issues/{runtime.COORD_ISSUE}",
+        )
+        snapshot["plan"]["project_links"] = project_links.project(
+            self.link_state, (snapshot["plan"].get("current") or {}).get("number"),
+            dt.datetime.now(dt.timezone.utc),
         )
         return snapshot
 

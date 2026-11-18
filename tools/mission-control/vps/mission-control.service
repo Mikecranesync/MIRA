@@ -25,6 +25,7 @@ Environment=MC_DATA_DIR=/opt/mission-control/data
 Environment=MC_ENV_PRODUCTION_URL=https://app.factorylm.com/api/version/
 Environment=MC_ENV_STAGING_URL=http://127.0.0.1:4101/api/version/
 Environment=MC_POLL_SECONDS=60
+EnvironmentFile=-/etc/mission-control.env
 Restart=always
 RestartSec=10
 NoNewPrivileges=true

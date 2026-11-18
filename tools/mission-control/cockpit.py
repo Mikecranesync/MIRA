@@ -277,6 +277,30 @@ def render_workflow(plan: dict) -> str:
     )
 
 
+def _project_work(links):
+    def ref(record):
+        label = f"#{record['number']} {record['title']}"
+        return f'{_source(record["url"], label)} <span class="chip">{_e(record["state"])}</span>'
+
+    def issue_row(item):
+        checks = " · ".join(item["checks"])
+        prs = "".join(f'<li>{ref(pr)}</li>' for pr in item["prs"])
+        return (f'<li class="workflow-check">{ref(item["issue"])}<p>{_e(item["remaining"])}</p>'
+                f'<p class="meta">{_e(checks)}</p>'
+                + (f'<ul>{prs}</ul>' if prs else '<p class="meta">No closing PR linked.</p>') + '</li>')
+
+    if not links.get("current") and not links.get("next"):
+        return '<p class="meta">' + _e(links.get("error") or "Waiting for linked GitHub work.") + '</p>'
+    current = "".join(issue_row(item) for item in links["current"])
+    future = "".join(issue_row(item) for item in links["next"])
+    prs = {record["number"]: record for item in links["current"] for record in item["prs"]}
+    linked = "".join(f'<li>{ref(pr)}</li>' for pr in prs.values())
+    warning = '<p class="meta">Last seen project records. Live status is unavailable.</p>' if not links["fresh"] else ""
+    return (f'{warning}<details open><summary>Current gaps</summary><ul>{current}</ul></details>'
+            f'<details><summary>PRs that address these gaps</summary><ul>{linked}</ul></details>'
+            f'<details><summary>Issues for the next capability</summary><ul>{future}</ul></details>')
+
+
 def render(snap, board, model: dict) -> str:
     v = board.build_views(list(snap.items))
     when = snap.at.strftime("%Y-%m-%d %H:%M UTC") if snap.at else "never"
@@ -320,5 +344,6 @@ def render(snap, board, model: dict) -> str:
         f'<li><b>{_e(owner["name"])}</b><p>{_e(owner["deliverable"])}</p></li>'
         for owner in plan.get("owners", [])
     )
+    fields["project_work"] = _project_work(plan.get("project_links") or {})
     fields.update(render_cockpit(model))
     return string.Template((HERE / "page.html").read_text()).substitute(fields)

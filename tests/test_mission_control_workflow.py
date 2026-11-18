@@ -236,3 +236,44 @@ def test_arbitrary_link_or_unverified_approval_cannot_accept():
     assert not check("Any unrelated decision")
     assert not check(ENVELOPE.replace(BUILD, REV))
     assert check(ENVELOPE) == {"url": DECISION, "envelope": ENVELOPE}
+
+
+def test_workflow_pr_evidence_remains_visible_after_it_leaves_open_board():
+    r = report()
+    assert server.reports.parse(r["raw"])["items"] == []
+    plan = {"documents": documents()}
+    assert workflow.coordinator_pr(plan, [r], 6870960483) == 5625
+
+    class Handler:
+        snapshot = server.Snapshot(lambda: [])
+
+    class Evidence:
+        def gather(self, _post, _get, _repo, numbers, *_args):
+            return {"rows": [{"number": n} for n in numbers]}
+
+    server.runtime.refresh_evidence(Handler, Evidence(), None, None, [7], {}, (), {}, None, 5625)
+    assert [r["number"] for r in Handler.evidence["rows"]] == [7]
+    assert [r["number"] for r in Handler.evidence["workflow_rows"]] == [5625]
+
+
+def test_project_links_show_real_refs_and_preserve_stale_status():
+    links = server.project_links
+
+    def get(url, headers):
+        number = int(url.rsplit("/", 1)[-1])
+        return 200, {}, {"number": number, "title": f"GitHub item {number}", "state": "open",
+                         "draft": number == 5625}
+
+    state = links.refresh({}, get, REPO, NOW)
+    v = links.project(state, 1, NOW)
+    assert v["fresh"] and v["current"][0]["issue"]["number"] == 5617
+    assert v["current"][0]["prs"][0]["state"] == "Draft"
+    assert {i["issue"]["number"] for i in v["next"]} == {5600, 5626}
+    page = server.cockpit._project_work(v)
+    assert "https://github.com/Mikecranesync/MIRA/pull/5625" in page
+    assert "No closing PR linked" in page
+    then = NOW + dt.timedelta(minutes=6)
+    failed = links.refresh(state, lambda *a, **kw: (503, {}, {}), REPO, then)
+    stale = links.project(failed, 1, then)
+    assert not stale["fresh"] and stale["current"] == v["current"]
+    assert "Last seen project records" in server.cockpit._project_work(stale)
