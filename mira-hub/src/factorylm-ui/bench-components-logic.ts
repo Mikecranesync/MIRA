@@ -623,3 +623,21 @@ export async function changeSelection(opts: {
     opts.gate.endChange();
   }
 }
+
+/**
+ * What the checklist does with a navigator pick (hub-host `pickRouteFor`). A pick is tried
+ * once: it waits while an answer is streaming, a change is saving or the list is loading,
+ * and is then consumed whether or not the selection succeeds, so a refused pick never retries.
+ */
+export function pickStep(
+  pick: { componentId: string; token: number } | null,
+  consumed: ReadonlySet<number>,
+  state: { bench: BenchState | null; available: boolean; busy: boolean; saving: boolean },
+): "none" | "wait" | "unavailable" | "missing" | "already" | "select" {
+  if (!pick || consumed.has(pick.token)) return "none";
+  if (!state.available) return "unavailable";
+  if (state.busy || state.saving || !state.bench) return "wait";
+  const selection = state.bench.selection;
+  if (selection?.componentId === pick.componentId && selection.current) return "already";
+  return state.bench.components.some((c) => c.id === pick.componentId) ? "select" : "missing";
+}

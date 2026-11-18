@@ -34,6 +34,7 @@ import {
   type ManualSearchFollowState,
   type ManualSearchStatus,
   type ProjectItem,
+  type QuestionTarget,
   type ShellState,
   type ProgressStage,
 } from "@factorylm/interaction";
@@ -65,6 +66,7 @@ import { composeHubSend, pairAttachments, resolveUploadNode, runAttachedSend, ty
 import { createManualSearchDriver, type ManualSearchDriver } from "./manual-search-driver";
 import { GuidedProcedure } from "./GuidedProcedure";
 import { MachineObservations } from "./MachineObservations";
+import { EquipmentNav } from "./EquipmentNav";
 import { SavedFixes } from "./SavedFixes";
 import { WorkPacketPanel } from "./WorkPacketPanel";
 import { wantsPacketOpen } from "./work-packet-view";
@@ -103,6 +105,8 @@ import {
   metaFor,
   newThreadId,
   openNotebookSelection,
+  pickRouteFor,
+  type EquipmentPick,
   openThreadAction,
   retainedStreamInterruption,
   searchForSelection,
@@ -199,6 +203,9 @@ export function HubShellHost() {
   const [failedBody, setFailedBody] = useState<{ body: ReturnType<typeof chatBodyFor> & { componentSelection?: ScopeField }; question: string; refusedScope?: ScopeField } | null>(null);
   // The panel's newest read, by conversation: names the targets when a refused question's target moved.
   const [benchView, setBenchView] = useState<{ key: string; state: BenchState | null } | null>(null);
+  // Equipment navigator (MIRA_EQUIPMENT_NAV): the component it resolved, for that conversation's checklist to select.
+  const [equipmentPick, setEquipmentPick] = useState<EquipmentPick | null>(null);
+  const equipmentPickToken = useRef(0);
   // TASK-S3: the Living Work Sheet job open for ANY notebook (LivingSheet is
   // mounted per-notebook, but this state belongs to the host, not the panel,
   // so send() can read it without a prop round-trip). `livingSheetJobId`
@@ -639,6 +646,21 @@ export function HubShellHost() {
       setBenchView({ key: `${benchNotebookId}|${benchThreadId}`, state: bench });
     }
   }, [benchNotebookId, benchThreadId]);
+
+  // Equipment navigator: the open conversation once its checklist has reported, and its current pick.
+  const benchKey = benchNotebookId && benchThreadId ? `${benchNotebookId}|${benchThreadId}` : null;
+  const benchNow = benchView && benchView.key === benchKey ? benchView.state : null;
+  const equipmentConversation = benchNotebookId && benchThreadId && benchNow
+    ? { notebookId: benchNotebookId, threadId: benchThreadId, version: benchNow.selectionVersion }
+    : null;
+  const equipmentTarget: QuestionTarget | null = benchNotebookId
+    ? { machineId: benchNotebookId, machineLabel: "", componentId: benchNow?.selection?.componentId ?? null, componentLabel: "", location: "" }
+    : null;
+  const onEquipmentPick = useCallback((target: QuestionTarget) => {
+    const route = pickRouteFor(target, selectionRef.current, ++equipmentPickToken.current);
+    if (route.open) select(route.open);
+    setEquipmentPick(route.pick);
+  }, [select]);
 
   // Tablet semantic-retry gap: a question refused because its target moved is never retried
   // onto the new target silently. Retry shows only when the target is unchanged.
@@ -1176,6 +1198,8 @@ export function HubShellHost() {
       {/* The notebook's action buttons share one column below the guided-procedure pill, each in its
           own row, so Machine state and Work Packet never cover each other (#5102). */}
       <div data-testid="notebook-actions" data-covered={actionsCovered ? "true" : undefined} aria-hidden={actionsCovered || undefined} style={notebookActionsStyle(actionsCovered)}>
+      {/* Equipment-first navigation (MIRA_EQUIPMENT_NAV): renders nothing while the flag is off. */}
+      <EquipmentNav conversation={equipmentConversation} target={equipmentTarget} onPick={onEquipmentPick} />
       {/* Bench components: "Asking about …", the checklist and the reply's actions; nothing without migration 115. */}
       {selection && (
         <BenchComponents
@@ -1187,6 +1211,7 @@ export function HubShellHost() {
           frame={componentFrame?.key === `${selection.notebookId}|${selection.threadId}` ? componentFrame.frame : null}
           gate={benchGate}
           onState={onBenchState}
+          pick={equipmentPick && equipmentPick.notebookId === selection.notebookId && equipmentPick.threadId === selection.threadId ? equipmentPick : null}
         />
       )}
       {/* Mission 001: report an observation and read back machine state; renders nothing while off. */}

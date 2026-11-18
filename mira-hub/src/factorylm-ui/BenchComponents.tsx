@@ -24,6 +24,7 @@ import {
   cardIsEmpty,
   changeSelection,
   componentErrorMessage,
+  pickStep,
   readBench,
   reconcileBench,
   retakeCard,
@@ -85,6 +86,7 @@ export function BenchComponents({
   frame,
   gate,
   onState,
+  pick = null,
 }: {
   notebookId: string;
   threadId: string;
@@ -98,6 +100,8 @@ export function BenchComponents({
   gate: BenchSendGate;
   /** The state the header shows — the host builds the chat rider from it. */
   onState: (state: BenchState | null) => void;
+  /** A component the equipment navigator resolved for this conversation; tried once (`pickStep`). */
+  pick?: { componentId: string; token: number } | null;
 }) {
   const [bench, setBench] = useState<BenchState | null>(null);
   const [available, setAvailable] = useState(true);
@@ -167,6 +171,17 @@ export function BenchComponents({
     },
     [notebookId, threadId, bench, load, gate],
   );
+
+  // The navigator never writes a selection itself: its pick goes through `select` like a checklist tap.
+  const consumedPicks = useRef(new Set<number>());
+  useEffect(() => {
+    const step = pickStep(pick, consumedPicks.current, { bench, available, busy, saving });
+    if (!pick || step === "none" || step === "wait") return;
+    consumedPicks.current.add(pick.token);
+    if (step === "select") void select(pick.componentId, "picker");
+    else if (step === "missing") setMessage("That component isn't in this machine's checklist. Nothing was changed.");
+    else if (step === "unavailable") setMessage("The component list isn't available here, so the component wasn't selected.");
+  }, [pick, bench, available, busy, saving, select]);
 
   const onAction = useCallback(
     async (a: ComponentAction) => {

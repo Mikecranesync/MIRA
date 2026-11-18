@@ -93,6 +93,27 @@ export function openNotebookSelection(nb: Pick<HubNotebook, "id">, mint: () => s
   return { notebookId: nb.id, threadId: mint() };
 }
 
+/** A component the equipment navigator resolved, waiting for that conversation's checklist to select it. */
+export type EquipmentPick = { notebookId: string; threadId: string; componentId: string; token: number };
+
+/**
+ * Where an "Ask about" from the equipment navigator lands. A component in the open notebook
+ * is picked in the open conversation; anything in another notebook opens that notebook in a
+ * fresh chat (as a project click does, #4444) and is picked there. The pick itself is made by
+ * the checklist (BenchComponents), the only writer of a conversation's selection.
+ */
+export function pickRouteFor(
+  target: { machineId: string; componentId: string | null },
+  selection: HubSelection | null,
+  token: number,
+  mint: () => string = newThreadId,
+): { open: HubSelection | null; pick: EquipmentPick | null } {
+  const open = selection?.notebookId === target.machineId ? null : openNotebookSelection({ id: target.machineId }, mint);
+  const conversation = open ?? selection;
+  if (!conversation || !target.componentId) return { open, pick: null };
+  return { open, pick: { notebookId: conversation.notebookId, threadId: conversation.threadId, componentId: target.componentId, token } };
+}
+
 /**
  * Where a fresh mount lands: HOME — no notebook, composer enabled. The 2026-09-07
  * stranger walk recorded "cold launch drops into the last thread" as a failure;
