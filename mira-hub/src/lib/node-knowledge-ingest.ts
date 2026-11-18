@@ -55,8 +55,11 @@ const CHUNK_OVERLAP = 120;
  *        (`model-scope-gate.ts`); the same text on any other page is stored withheld. Earlier
  *        heads of this change wrote v5 rows that affirm from the layout reader alone, so v5 is
  *        stale too.
+ *   v7 — rotated blanks and footnote marks beside a rotated group label are no longer group
+ *        stubs (#5615). On a real GS10 upload v6 lost every group and duty label on pages 26 and
+ *        27, so a v6 document is stale.
  */
-export const EXTRACTION_VERSION = 6;
+export const EXTRACTION_VERSION = 7;
 
 /** `reviewed`: the page's reviewed-rows digest (`reviewedRowsDigest`); absent/null = not a reviewed page. */
 type PageTable = { remainder: string; chunks: TableChunk[]; sections?: ScopedText[]; reviewed?: string | null };

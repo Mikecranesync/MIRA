@@ -306,10 +306,11 @@ type Stub = { item: LayoutItem; kind: "group" | "duty"; centre: number; right: n
 /** Where a built row sits: first and last baselines, and the leftmost x of its label text. */
 type RowSpan = { top: number; bottom: number; labelX: number };
 const isFootnoteMark = (text: string): boolean => /^\d{1,2}$/.test(text);
-/** A rotated item names a group only when it holds a word. A real PDF also rotates empty and
- *  space items and footnote marks beside a rotated label (GS10 pages 26 and 27); those are read as
- *  ordinary label text, as if upright, and never as a group stub. */
-const isGroupStub = (it: LayoutItem): boolean => it.vertical === true && /\p{L}{2,}/u.test(it.str);
+/** A rotated item names a group unless it is a footnote mark. A real PDF also rotates footnote
+ *  marks (and empty and space items, which `buildLines` already drops) beside a rotated label
+ *  (GS10 pages 26 and 27); a mark is read as ordinary label text, as if upright, and never as a
+ *  group stub. A one-letter label ("H", "L") is still a group label (#5615 Codex F1). */
+const isGroupStub = (it: LayoutItem): boolean => it.vertical === true && !isFootnoteMark(it.str);
 
 /** Stub cells in a block's label area, read from text geometry alone. A rotated item is a group
  *  stub. A duty stub is a single-word, non-unit first label run; it counts only as a COLUMN: two or

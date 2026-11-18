@@ -691,6 +691,35 @@ describe("duty stubs: placement is bounded, and stub text is never dropped (#559
     expect(text).toContain("Input Rating");
   });
 
+  // #5615 Codex round 1 F1: a one-letter rotated group label is still a group label. A real PDF
+  // also rotates blanks and footnote marks beside a label (GS10 pages 26 and 27); only those are
+  // read as ordinary text.
+  it.each([
+    ["H and L", "H", "L"],
+    ["Output Rating and Input Rating (control)", "Output Rating", "Input Rating"],
+  ])("rotated group labels %s each keep their own rows", (_name, upper, lower) => {
+    const group = (str: string, centre: number) => ({ str, x: 40, y: centre - 20, w: 40, size: 8, vertical: true });
+    const items = [...header(776), item("Frame Size", 30, 764), item("A1", 250, 764), item("A1", 350, 764),
+      item("Cooling Method", 30, 752), item("Fan", 250, 752), item("Fan", 350, 752),
+      ...[740, 728, 692, 680].flatMap((y, i) => [item("Rated Current", 100, y), item(String(i + 3), 250, y), item(String(i + 4), 350, y)]),
+      group(upper, 734), group(lower, 686)]; // one split only: [740 728] centred 734, [692 680] centred 686
+    expect(pageWithTables(items), "precondition: the page is read as a table").not.toBeNull();
+    const labels = detectModelTables(items).flatMap((b) => b.rows).map((r) => r.label);
+    expect(labels).toEqual(["Frame Size", "Cooling Method",
+      `${upper} / Rated Current`, `${upper} / Rated Current`, `${lower} / Rated Current`, `${lower} / Rated Current`]);
+  });
+  it.each([["blank", ""], ["space", " "], ["footnote mark", "2"], ["two-digit footnote mark", "12"]])(
+    "a rotated %s beside a rotated label is not a group label", (_name, str) => {
+      const group = (s: string, centre: number) => ({ str: s, x: 40, y: centre - 20, w: 40, size: 8, vertical: true });
+      const items = [...header(776), item("Frame Size", 30, 764), item("A1", 250, 764), item("A1", 350, 764),
+        item("Cooling Method", 30, 752), item("Fan", 250, 752), item("Fan", 350, 752),
+        ...[740, 728, 716, 704].flatMap((y, i) => [item("Rated Current", 100, y), item(String(i + 3), 250, y), item(String(i + 4), 350, y)]),
+        group("Output Rating", 722), { str, x: 37, y: 730, w: 3, size: 5, vertical: true }];
+      expect(pageWithTables(items), "precondition: the page is read as a table").not.toBeNull();
+      expect(detectModelTables(items).flatMap((b) => b.rows).map((r) => r.label)).toEqual(["Frame Size", "Cooling Method",
+        ...Array(4).fill("Output Rating / Rated Current")]);
+    });
+
   // #5598 Codex round 2 F2: one stub kind places, the other fails; the rows are demoted and the
   // label that DID place must survive as text too.
   const vgroup = (str: string, y: number) => ({ str, x: 20, y, w: 48, size: 8, vertical: true });

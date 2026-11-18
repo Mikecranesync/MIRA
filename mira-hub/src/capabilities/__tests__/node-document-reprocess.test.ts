@@ -225,6 +225,20 @@ describe("reprocessNodeDocument — one transaction, delete then insert, then th
     expect(uploads.updateUploadStatus).not.toHaveBeenCalled();
   });
 
+  // #5615 Codex round 1 F2: v6 is the reader that lost the GS10 page 26/27 group and duty labels
+  // on a real upload, so a document every chunk of which is stamped v6 is stale, not current.
+  it("a document stamped v6 (rotated blanks read as group stubs) is reprocessed, not a no-op", async () => {
+    expect(EXTRACTION_VERSION).toBeGreaterThan(6);
+    db.versionRow = { n: 20, current: 0, unstamped: 0, min_version: 6 };
+    db.upload = uploadRow({ kb_chunk_count: 20 });
+    const r = await reprocess({ bytes: LOCAL_PDF });
+    expect(r.action).toBe("reprocessed");
+    if (r.action !== "reprocessed") return;
+    expect(r.from).toBe(6);
+    expect(r.to).toBe(EXTRACTION_VERSION);
+    expect(db.stmts.map(sqlOf).some((s) => /^INSERT INTO knowledge_entries/.test(s))).toBe(true);
+  });
+
   // Cheap review of PR-6 (#5427 r1) finding 1: the count is written AFTER commit, so a failed
   // status write leaves the swapped chunks with a stale kb_chunk_count; the retry lands on the
   // no-op path, which must make the write the failed step would have made.
