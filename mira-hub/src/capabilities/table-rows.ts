@@ -310,23 +310,28 @@ const isFootnoteMark = (text: string): boolean => /^\d{1,2}$/.test(text);
  *  "2" is 5 pt where the table's upright text has a median of 8 pt (0.625). A full-size digit is
  *  a label, not a mark. */
 const SUPERSCRIPT_RATIO = 0.8;
-/** How far a mark may sit from the rotated label it annotates, across the label and beyond the end
- *  of its text. GS10 pages 26 and 27: the "2" is 2.83 pt left of "Input Rating" and starts where
- *  that label's text ends. */
-const MARK_REACH_PT = 6;
+/** Where a superscript mark sits relative to the rotated label it annotates. GS10 pages 26 and 27:
+ *  the "2" is raised 2.83 pt off "Input Rating"'s baseline and starts exactly where that label's
+ *  text ends. A digit on the label's own baseline is not raised, so it is not a superscript. */
+const MARK_RAISE_MIN_PT = 0.5;
+const MARK_RAISE_MAX_PT = 6;
+const MARK_END_TOLERANCE_PT = 2;
 /** A rotated item names a group unless it is a footnote mark. A mark is one or two digits,
  *  surrounding space ignored, printed at under SUPERSCRIPT_RATIO of `bodySize` (the median size of
- *  the table's upright text), in the column of a rotated word label and within that label's span:
- *  positive evidence that it annotates the label. Any other rotated digit, small or not, is a group
- *  label: placed if it centres on its rows, otherwise the rows are withheld with its text kept. A
- *  real PDF also rotates empty and space items beside a rotated label; `buildLines` drops those. A
- *  mark is read as ordinary label text, as if upright (#5615 Codex F1, F3, F4, F5). */
+ *  the table's upright text), raised off a rotated word label's baseline and starting where that
+ *  label's text ends: positive evidence that it annotates the label. Any other rotated digit, small
+ *  or not, is a group label: placed if it centres on its rows, otherwise the rows are withheld with
+ *  its text kept. A real PDF also rotates empty and space items beside a rotated label;
+ *  `buildLines` drops those. A mark is read as ordinary label text, as if upright (#5615 Codex F1,
+ *  F3, F4, F5, F7). */
 function isGroupStub(it: LayoutItem, bodySize: number, rotatedLabels: readonly LayoutItem[]): boolean {
   if (it.vertical !== true) return false;
   if (!isFootnoteMark(it.str.trim())) return true;
   if (it.size >= SUPERSCRIPT_RATIO * bodySize) return true;
-  return !rotatedLabels.some((l) => Math.abs(it.x - l.x) <= MARK_REACH_PT
-    && it.y <= l.y + l.w + MARK_REACH_PT && it.y + it.w >= l.y - MARK_REACH_PT);
+  return !rotatedLabels.some((l) => {
+    const raise = Math.abs(it.x - l.x);
+    return raise >= MARK_RAISE_MIN_PT && raise <= MARK_RAISE_MAX_PT && Math.abs(it.y - (l.y + l.w)) <= MARK_END_TOLERANCE_PT;
+  });
 }
 
 /** Rotated items that hold label text: the labels a footnote mark can annotate. */

@@ -739,7 +739,8 @@ describe("duty stubs: placement is bounded, and stub text is never dropped (#559
       const items = [...header(776), item("Frame Size", 30, 764), item("A1", 250, 764), item("A1", 350, 764),
         item("Cooling Method", 30, 752), item("Fan", 250, 752), item("Fan", 350, 752),
         ...[740, 728, 716, 704].flatMap((y, i) => [item("Rated Current", 100, y), item(String(i + 3), 250, y), item(String(i + 4), 350, y)]),
-        group("Output Rating", 722), { str, x: 37, y: 730, w: 3, size: 5, vertical: true }];
+        // As on GS10: raised 3 pt off the label's baseline, starting where its text ends (702 + 40).
+        group("Output Rating", 722), { str, x: 37, y: 742, w: 3, size: 5, vertical: true }];
       expect(pageWithTables(items), "precondition: the page is read as a table").not.toBeNull();
       expect(detectModelTables(items).flatMap((b) => b.rows).map((r) => r.label)).toEqual(["Frame Size", "Cooling Method",
         ...Array(4).fill("Output Rating / Rated Current")]);
@@ -758,15 +759,29 @@ describe("duty stubs: placement is bounded, and stub text is never dropped (#559
       "1 / Rated Current", "1 / Rated Current", "2 / Rated Current", "2 / Rated Current"]);
   });
 
-  // #5615 Codex round 3 F5: a small rotated digit is a mark only in the column of a rotated label
-  // and within that label's span. Each case breaks one of those conditions; the digit is then a group
-  // label, placed or withheld, and never dropped. Read as a mark it would vanish.
+  it("a 6 pt rotated 2 on a word label's baseline, before its text begins, keeps its own rows (#5615 Codex F7)", () => {
+    const items = [...header(776), item("Frame Size", 30, 764), item("A1", 250, 764), item("A1", 350, 764),
+      item("Cooling Method", 30, 752), item("Fan", 250, 752), item("Fan", 350, 752),
+      ...[740, 730, 720, 710].flatMap((y, i) => [item("Rated Current", 100, y), item(String(i + 3), 250, y), item(String(i + 4), 350, y)]),
+      { str: "Continuous", x: 40, y: 721.9, w: 31, size: 8, vertical: true },
+      { str: "2", x: 40, y: 715.3, w: 3.2, size: 6, vertical: true }];
+    expect(pageWithTables(items), "precondition: the page is read as a table").not.toBeNull();
+    expect(detectModelTables(items).flatMap((b) => b.rows).map((r) => r.label)).toEqual(["Frame Size", "Cooling Method",
+      "Continuous / Rated Current", "Continuous / Rated Current", "2 / Rated Current", "2 / Rated Current"]);
+  });
+
+  // #5615 Codex rounds 3 and 4, F5 and F7: a small rotated digit is a mark only when it is raised
+  // off a rotated word label's baseline and starts where that label's text ends. Each case breaks one
+  // condition; the digit is then a group label, placed or withheld, and never dropped. Read as a mark
+  // it would vanish. The label spans 702 to 742.
   it.each([
-    ["5 pt, in its own column 30 pt right of the label", { x: 67, y: 730, size: 5 }, 722, 40],
-    ["5 pt, in the label's column but below its span", { x: 37, y: 704, size: 5 }, 734, 20],
-    ["8 pt, full size, inside the label's span", { x: 37, y: 730, size: 8 }, 722, 40],
-    ["7 pt, at or above 0.8 of the 8 pt text, inside the label's span", { x: 37, y: 730, size: 7 }, 722, 40],
-  ])("a rotated digit %s is a group label: never dropped", (_name, digit, labelCentre, labelLength) => {
+    ["5 pt, 30 pt across from the label's baseline", { x: 67, y: 742, size: 5 }],
+    ["5 pt, on the label's own baseline (not raised)", { x: 40, y: 742, size: 5 }],
+    ["5 pt, raised, at the start of the label's text", { x: 37, y: 699, size: 5 }],
+    ["8 pt, full size, raised at the label's end", { x: 37, y: 742, size: 8 }],
+    ["7 pt, at or above 0.8 of the 8 pt text, raised at the label's end", { x: 37, y: 742, size: 7 }],
+  ])("a rotated digit %s is a group label: never dropped", (_name, digit) => {
+    const labelCentre = 722, labelLength = 40;
     const items = [...header(776), item("Frame Size", 30, 764), item("A1", 250, 764), item("A1", 350, 764),
       item("Cooling Method", 30, 752), item("Fan", 250, 752), item("Fan", 350, 752),
       ...[740, 728, 716, 704].flatMap((y, i) => [item("Rated Current", 100, y), item(String(i + 3), 250, y), item(String(i + 4), 350, y)]),
