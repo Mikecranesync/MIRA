@@ -93,25 +93,64 @@ export function openNotebookSelection(nb: Pick<HubNotebook, "id">, mint: () => s
   return { notebookId: nb.id, threadId: mint() };
 }
 
-/** A component the equipment navigator resolved, waiting for that conversation's checklist to select it. */
-export type EquipmentPick = { notebookId: string; threadId: string; componentId: string; token: number };
+/**
+ * A component the equipment navigator resolved, waiting for that conversation's checklist to
+ * select it. `expectedVersion` is the conversation's selection version when Ask about was
+ * pressed and `expectedRevision` the record revision the technician saw: the checklist's write
+ * is refused if either has moved since (#5625 r1 F1/F4).
+ */
+export type EquipmentPick = {
+  notebookId: string;
+  threadId: string;
+  componentId: string;
+  token: number;
+  expectedVersion: number | null;
+  expectedRevision: number | null;
+};
+
+/**
+ * The open conversation at the moment Ask about was pressed: null = HOME. `version` is its
+ * checklist's selection version, "unknown" while the checklist has not reported yet.
+ */
+export type PickOrigin = { notebookId: string; threadId: string; version: number | null | "unknown" } | null;
+
+export type PickRoute =
+  | { kind: "route"; open: HubSelection | null; pick: EquipmentPick | null }
+  | { kind: "dropped"; reason: "conversation_changed" | "checklist_not_loaded" };
 
 /**
  * Where an "Ask about" from the equipment navigator lands. A component in the open notebook
  * is picked in the open conversation; anything in another notebook opens that notebook in a
  * fresh chat (as a project click does, #4444) and is picked there. The pick itself is made by
  * the checklist (BenchComponents), the only writer of a conversation's selection.
+ *
+ * The answer arrives after the press. If the technician has opened another conversation (or
+ * HOME) in between, nothing moves (#5625 r1 F3): the server checked a different context.
  */
 export function pickRouteFor(
   target: { machineId: string; componentId: string | null },
+  origin: PickOrigin,
+  revision: number | null,
   selection: HubSelection | null,
   token: number,
   mint: () => string = newThreadId,
-): { open: HubSelection | null; pick: EquipmentPick | null } {
+): PickRoute {
+  const same = origin === null
+    ? selection === null
+    : selection !== null && selection.notebookId === origin.notebookId && selection.threadId === origin.threadId;
+  if (!same) return { kind: "dropped", reason: "conversation_changed" };
   const open = selection?.notebookId === target.machineId ? null : openNotebookSelection({ id: target.machineId }, mint);
-  const conversation = open ?? selection;
-  if (!conversation || !target.componentId) return { open, pick: null };
-  return { open, pick: { notebookId: conversation.notebookId, threadId: conversation.threadId, componentId: target.componentId, token } };
+  if (!target.componentId) return { kind: "route", open, pick: null };
+  if (open) {
+    // A fresh chat has no selection yet: its first pick expects none.
+    return { kind: "route", open, pick: { notebookId: open.notebookId, threadId: open.threadId, componentId: target.componentId, token, expectedVersion: null, expectedRevision: revision } };
+  }
+  if (!origin || origin.version === "unknown") return { kind: "dropped", reason: "checklist_not_loaded" };
+  return {
+    kind: "route",
+    open: null,
+    pick: { notebookId: origin.notebookId, threadId: origin.threadId, componentId: target.componentId, token, expectedVersion: origin.version, expectedRevision: revision },
+  };
 }
 
 /**

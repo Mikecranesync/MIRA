@@ -162,6 +162,23 @@ run("bench component store (real Postgres, RLS)", () => {
     expect(await getSelection(tenantA, notebookA, USER, thread)).toBeNull();
   });
 
+  it("a pick carrying the record revision the technician saw is refused once the record was corrected (#5625 r1 F4)", async () => {
+    const added = await addComponent(tenantA, notebookA, USER, { clientRequestId: uuid(), kind: "drive", origin: "inventory", position: null, revision: rev(GS10) });
+    if (added.status !== "created") throw new Error();
+    const cid = added.component.id;
+    const thread = `t-${uuid().slice(0, 8)}`;
+    // Precondition: the record is now at revision 2 (corrected on another screen).
+    const corrected = await reviseComponent(tenantA, notebookA, cid, USER, { clientRequestId: uuid(), expectedRevision: 1, revision: rev(GS10, true) });
+    expect(corrected.status).toBe("created");
+    const stale = await setSelection(tenantA, notebookA, USER, thread, { componentId: cid, via: "picker", expectedVersion: null, expectedRevision: 1, clientRequestId: uuid() });
+    expect(stale).toEqual({ status: "stale_revision", selection: null });
+    expect(await getSelection(tenantA, notebookA, USER, thread)).toBeNull();
+    // Control: the revision on screen is the current one, so the pick is written at it.
+    const current = await setSelection(tenantA, notebookA, USER, thread, { componentId: cid, via: "picker", expectedVersion: null, expectedRevision: 2, clientRequestId: uuid() });
+    if (current.status !== "set") throw new Error(current.status);
+    expect(current.selection).toMatchObject({ componentId: cid, revision: 2, version: 1 });
+  });
+
   it("two first picks on two screens at the same moment: one wins, the other is a conflict, never a silent overwrite", async () => {
     const make = async (body: Record<string, unknown>) => {
       const a = await addComponent(tenantA, notebookA, USER, { clientRequestId: uuid(), kind: "drive", origin: "inventory", position: null, revision: rev(body, true) });

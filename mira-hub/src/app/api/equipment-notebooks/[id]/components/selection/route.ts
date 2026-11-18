@@ -1,6 +1,6 @@
 /**
  * PUT /api/equipment-notebooks/[id]/components/selection
- *   { threadId, componentId | null, via, expectedVersion | null, clientRequestId }
+ *   { threadId, componentId | null, via, expectedVersion | null, expectedRevision?, clientRequestId }
  *
  * Points this technician's conversation at one component ("Asking about …"),
  * or clears it (whole machine). `via` is how: the picker, the "Return to …"
@@ -8,6 +8,8 @@
  * Re-picking the component already selected still moves the boundary, so a
  * Return ends a refused question's carry. Nothing is written into the
  * conversation: the next question is not rephrased, it is asked under this state.
+ * `expectedRevision` (optional, a pick of a component) is the record revision the
+ * technician saw: a record corrected since is refused 409 stale_revision, nothing written.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { sessionOr401 } from "@/lib/session";
@@ -40,11 +42,17 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   if (!VIAS.includes(body.via as SelectedVia)) return bad("invalid_via", 400, { allowed: VIAS });
   const expectedVersion = body.expectedVersion === null ? null : Number.isInteger(body.expectedVersion) ? (body.expectedVersion as number) : undefined;
   if (expectedVersion === undefined) return bad("expected_version_required");
+  const expectedRevision = body.expectedRevision === undefined
+    ? undefined
+    : Number.isInteger(body.expectedRevision) && (body.expectedRevision as number) >= 0 ? (body.expectedRevision as number) : null;
+  if (expectedRevision === null) return bad("invalid_expected_revision");
+  if (expectedRevision !== undefined && body.componentId === null) return bad("invalid_expected_revision");
 
   const result = await setSelection(ctx.tenantId, id, ctx.userId, threadKey, {
     componentId: body.componentId as string | null,
     via: body.via as SelectedVia,
     expectedVersion,
+    ...(expectedRevision !== undefined ? { expectedRevision } : {}),
     clientRequestId,
   });
   switch (result.status) {
@@ -59,5 +67,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       return bad("component_retired", 409);
     case "version_conflict":
       return bad("selection_changed", 409, { message: "The component for this chat was changed on another screen.", selection: result.selection });
+    case "stale_revision":
+      return bad("stale_revision", 409, { message: "That component's record was changed since it was picked.", selection: result.selection });
   }
 }

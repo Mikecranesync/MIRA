@@ -107,6 +107,7 @@ import {
   openNotebookSelection,
   pickRouteFor,
   type EquipmentPick,
+  type PickOrigin,
   openThreadAction,
   retainedStreamInterruption,
   searchForSelection,
@@ -205,6 +206,7 @@ export function HubShellHost() {
   const [benchView, setBenchView] = useState<{ key: string; state: BenchState | null } | null>(null);
   // Equipment navigator (MIRA_EQUIPMENT_NAV): the component it resolved, for that conversation's checklist to select.
   const [equipmentPick, setEquipmentPick] = useState<EquipmentPick | null>(null);
+  const [equipmentNotice, setEquipmentNotice] = useState<string | null>(null);
   const equipmentPickToken = useRef(0);
   // TASK-S3: the Living Work Sheet job open for ANY notebook (LivingSheet is
   // mounted per-notebook, but this state belongs to the host, not the panel,
@@ -650,17 +652,41 @@ export function HubShellHost() {
   // Equipment navigator: the open conversation once its checklist has reported, and its current pick.
   const benchKey = benchNotebookId && benchThreadId ? `${benchNotebookId}|${benchThreadId}` : null;
   const benchNow = benchView && benchView.key === benchKey ? benchView.state : null;
-  const equipmentConversation = benchNotebookId && benchThreadId && benchNow
-    ? { notebookId: benchNotebookId, threadId: benchThreadId, version: benchNow.selectionVersion }
+  // The checklist has reported for this conversation (state null = not available here).
+  const benchReported = benchView !== null && benchView.key === benchKey;
+  const equipmentConversation: PickOrigin = benchNotebookId && benchThreadId
+    ? { notebookId: benchNotebookId, threadId: benchThreadId, version: benchReported ? (benchNow?.selectionVersion ?? null) : "unknown" }
     : null;
   const equipmentTarget: QuestionTarget | null = benchNotebookId
     ? { machineId: benchNotebookId, machineLabel: "", componentId: benchNow?.selection?.componentId ?? null, componentLabel: "", location: "" }
     : null;
-  const onEquipmentPick = useCallback((target: QuestionTarget) => {
-    const route = pickRouteFor(target, selectionRef.current, ++equipmentPickToken.current);
+  const onEquipmentPick = useCallback((target: QuestionTarget, seen: { origin: PickOrigin; revision: number | null }) => {
+    const route = pickRouteFor(target, seen.origin, seen.revision, selectionRef.current, ++equipmentPickToken.current);
+    if (route.kind === "dropped") {
+      setEquipmentNotice(route.reason === "conversation_changed"
+        ? "You opened another chat before the equipment answered, so nothing was selected. Ask about it again from here."
+        : "The component list hadn't loaded yet, so nothing was selected. Ask about it again.");
+      return;
+    }
+    setEquipmentNotice(null);
     if (route.open) select(route.open);
     setEquipmentPick(route.pick);
   }, [select]);
+  // The host owns a pick until the checklist reports how it ended (#5625 r1 F2): a checklist
+  // remounted later never sees it again. Only the pick that ended is dropped, never a newer one.
+  const onPickDone = useCallback((token: number, outcome: { ok: true } | { ok: false; message: string }) => {
+    setEquipmentPick((p) => (p?.token === token ? null : p));
+    if (!outcome.ok) setEquipmentNotice(outcome.message);
+  }, []);
+  // Leaving the pick's conversation before its checklist applied it abandons it.
+  const pickLeftKey = useRef<string | null>(null);
+  useEffect(() => {
+    const was = pickLeftKey.current;
+    pickLeftKey.current = benchKey;
+    if (was !== null && was !== benchKey) {
+      setEquipmentPick((p) => (p && `${p.notebookId}|${p.threadId}` === was ? null : p));
+    }
+  }, [benchKey]);
 
   // Tablet semantic-retry gap: a question refused because its target moved is never retried
   // onto the new target silently. Retry shows only when the target is unchanged.
@@ -1199,7 +1225,7 @@ export function HubShellHost() {
           own row, so Machine state and Work Packet never cover each other (#5102). */}
       <div data-testid="notebook-actions" data-covered={actionsCovered ? "true" : undefined} aria-hidden={actionsCovered || undefined} style={notebookActionsStyle(actionsCovered)}>
       {/* Equipment-first navigation (MIRA_EQUIPMENT_NAV): renders nothing while the flag is off. */}
-      <EquipmentNav conversation={equipmentConversation} target={equipmentTarget} onPick={onEquipmentPick} />
+      <EquipmentNav conversation={equipmentConversation} target={equipmentTarget} notice={equipmentNotice} onPick={onEquipmentPick} />
       {/* Bench components: "Asking about …", the checklist and the reply's actions; nothing without migration 115. */}
       {selection && (
         <BenchComponents
@@ -1212,6 +1238,7 @@ export function HubShellHost() {
           gate={benchGate}
           onState={onBenchState}
           pick={equipmentPick && equipmentPick.notebookId === selection.notebookId && equipmentPick.threadId === selection.threadId ? equipmentPick : null}
+          onPickDone={onPickDone}
         />
       )}
       {/* Mission 001: report an observation and read back machine state; renders nothing while off. */}

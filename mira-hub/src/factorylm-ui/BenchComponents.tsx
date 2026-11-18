@@ -87,6 +87,7 @@ export function BenchComponents({
   gate,
   onState,
   pick = null,
+  onPickDone,
 }: {
   notebookId: string;
   threadId: string;
@@ -100,8 +101,14 @@ export function BenchComponents({
   gate: BenchSendGate;
   /** The state the header shows — the host builds the chat rider from it. */
   onState: (state: BenchState | null) => void;
-  /** A component the equipment navigator resolved for this conversation; tried once (`pickStep`). */
-  pick?: { componentId: string; token: number } | null;
+  /**
+   * A component the equipment navigator resolved for this conversation; tried once (`pickStep`).
+   * Written with the selection version and record revision seen when Ask about was pressed, so a
+   * change made since is refused rather than overwritten (#5625 r1 F1/F4).
+   */
+  pick?: { componentId: string; token: number; expectedVersion: number | null; expectedRevision: number | null } | null;
+  /** How a pick ended; the host drops it then, so a remounted checklist never replays it (#5625 r1 F2). */
+  onPickDone?: (token: number, outcome: { ok: true } | { ok: false; message: string }) => void;
 }) {
   const [bench, setBench] = useState<BenchState | null>(null);
   const [available, setAvailable] = useState(true);
@@ -152,7 +159,11 @@ export function BenchComponents({
   }, [load, refresh]);
 
   const select = useCallback(
-    async (componentId: string | null, via: "picker" | "return" | "clarify" | "confirm"): Promise<boolean> => {
+    async (
+      componentId: string | null,
+      via: "picker" | "return" | "clarify" | "confirm",
+      seen?: { expectedVersion: number | null; expectedRevision: number | null },
+    ): Promise<{ ok: true } | { ok: false; message: string }> => {
       setSaving(true);
       setMessage(null);
       try {
@@ -160,11 +171,18 @@ export function BenchComponents({
           gate,
           fetch: (url, init) => fetch(url, init),
           url: `${base(notebookId)}selection/`,
-          body: { threadId, componentId, via, expectedVersion: bench?.selectionVersion ?? null, clientRequestId: crypto.randomUUID() },
+          body: {
+            threadId,
+            componentId,
+            via,
+            expectedVersion: seen ? seen.expectedVersion : bench?.selectionVersion ?? null,
+            ...(seen && seen.expectedRevision !== null ? { expectedRevision: seen.expectedRevision } : {}),
+            clientRequestId: crypto.randomUUID(),
+          },
           load,
         });
         if (!out.ok) setMessage(out.message);
-        return out.ok;
+        return out;
       } finally {
         setSaving(false);
       }
@@ -178,10 +196,17 @@ export function BenchComponents({
     const step = pickStep(pick, consumedPicks.current, { bench, available, busy, saving });
     if (!pick || step === "none" || step === "wait") return;
     consumedPicks.current.add(pick.token);
-    if (step === "select") void select(pick.componentId, "picker");
-    else if (step === "missing") setMessage("That component isn't in this machine's checklist. Nothing was changed.");
-    else if (step === "unavailable") setMessage("The component list isn't available here, so the component wasn't selected.");
-  }, [pick, bench, available, busy, saving, select]);
+    const done = (outcome: { ok: true } | { ok: false; message: string }) => onPickDone?.(pick.token, outcome);
+    if (step === "select") void select(pick.componentId, "picker", pick).then(done);
+    else if (step === "already") done({ ok: true });
+    else {
+      const text = step === "missing"
+        ? "That component isn't in this machine's checklist. Nothing was changed."
+        : "The component list isn't available here, so the component wasn't selected.";
+      setMessage(text);
+      done({ ok: false, message: text });
+    }
+  }, [pick, bench, available, busy, saving, select, onPickDone]);
 
   const onAction = useCallback(
     async (a: ComponentAction) => {
@@ -332,8 +357,8 @@ export function BenchComponents({
                     tally={bench?.tallies[c.id]}
                     saving={saving || busy}
                     onAsk={async () => {
-                      const ok = await select(c.id, "picker");
-                      if (ok && c.status !== "confirmed") setCard(cardFor(c));
+                      const out = await select(c.id, "picker");
+                      if (out.ok && c.status !== "confirmed") setCard(cardFor(c));
                     }}
                     onCheck={() => setCard(cardFor(c))}
                   />

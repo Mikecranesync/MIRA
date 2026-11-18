@@ -337,7 +337,8 @@ export type SetSelectionResult =
   | { status: "cleared" }
   | { status: "component_not_found" }
   | { status: "component_retired" }
-  | { status: "version_conflict"; selection: ThreadSelection | null };
+  | { status: "version_conflict"; selection: ThreadSelection | null }
+  | { status: "stale_revision"; selection: ThreadSelection | null };
 
 /**
  * Point one technician's conversation at a component (or clear it: whole machine).
@@ -347,13 +348,17 @@ export type SetSelectionResult =
  * this conversation never had a selection) makes two taps on two devices a conflict
  * instead of a silent overwrite. Clearing keeps the row, so the version never repeats. A retried request with
  * the same request id is a no-op that returns the stored row.
+ * `expectedRevision` (optional) is the component record revision the technician saw when
+ * choosing it: if the record was corrected since, nothing is written ("stale_revision"). The
+ * component row is locked for that check, the same lock a revision write takes, so a correction
+ * cannot commit between the check and this write.
  */
 export async function setSelection(
   tenantId: string,
   notebookId: string,
   ownerUserId: string,
   threadKey: string,
-  input: { componentId: string | null; via: SelectedVia; expectedVersion: number | null; clientRequestId: string },
+  input: { componentId: string | null; via: SelectedVia; expectedVersion: number | null; expectedRevision?: number; clientRequestId: string },
 ): Promise<SetSelectionResult> {
   return withTenantContext(tenantId, async (c) => {
     const currentRes = await c.query(
@@ -381,10 +386,13 @@ export async function setSelection(
       }
       return { status: "cleared" };
     }
-    const component = await readComponent(c, tenantId, notebookId, input.componentId);
+    const component = await readComponent(c, tenantId, notebookId, input.componentId, input.expectedRevision !== undefined);
     if (!component) return { status: "component_not_found" };
     if (component.retiredAt) return { status: "component_retired" };
     if (!component.current) return { status: "component_not_found" };
+    if (input.expectedRevision !== undefined && component.current.revision !== input.expectedRevision) {
+      return { status: "stale_revision", selection: current };
+    }
     const res = await c.query(
       `INSERT INTO notebook_thread_selections AS s
          (tenant_id, notebook_id, owner_user_id, thread_key, component_id, component_revision, selected_via,

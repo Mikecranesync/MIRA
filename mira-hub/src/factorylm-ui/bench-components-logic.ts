@@ -360,6 +360,8 @@ export function componentErrorMessage(code: string): string {
       return "The component for this chat was changed on another screen. Check the header and try again.";
     case "component_changed":
       return "This component was changed on another screen. Here is what it says now — check it and save again.";
+    case "stale_revision":
+      return "That component's record was changed on another screen since you picked it. Nothing was changed; find it again to see what it says now.";
     case "component_retired":
       return "That component was removed from the checklist.";
     case "component_not_found":
@@ -574,7 +576,7 @@ export async function changeSelection(opts: {
   gate: BenchSendGate;
   fetch: (url: string, init: RequestInit) => Promise<Response>;
   url: string;
-  body: { threadId: string; componentId: string | null; via: string; expectedVersion: number | null; clientRequestId: string };
+  body: { threadId: string; componentId: string | null; via: string; expectedVersion: number | null; expectedRevision?: number; clientRequestId: string };
   load: () => Promise<unknown>;
 }): Promise<{ ok: true } | { ok: false; message: string }> {
   if (!opts.gate.tryBeginChange()) return { ok: false, message: CHANGE_BLOCKED_MESSAGE };

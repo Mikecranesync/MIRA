@@ -4,33 +4,35 @@
  * the shared paged navigator over `/api/equipment-browser/*`. Behind MIRA_EQUIPMENT_NAV:
  * while the flag is off the routes answer 404 and this renders nothing.
  *
- * "Ask about" resolves the row on the server (revision and, for the open conversation,
- * selection version checked) and hands the target to the host, which opens the notebook
- * and lets the checklist select the component. This panel never writes a selection.
+ * "Ask about" resolves the row on the server (exists, not retired, the revision on screen is
+ * current) and hands the target to the host with what the open conversation looked like at the
+ * press. The host routes it only if that conversation is still open, and the checklist writes
+ * the selection checked against that version and revision. This panel never writes a selection.
+ *
+ * Resolve carries no selection precondition (#5625 r1 F1): #5602's check means "the selection
+ * is still exactly this component", which a switch to another component can never satisfy. The
+ * version check is the checklist write's own compare-and-set.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
-import { itemKey, type BrowserItem, type QuestionTarget, type SelectionPrecondition } from "@factorylm/interaction";
+import { itemKey, type BrowserItem, type EquipmentSource, type QuestionTarget } from "@factorylm/interaction";
 import { EquipmentAskNoticeBar, PagedEquipmentNavigator, useEquipmentAsk } from "@factorylm/ui";
 import { createHubEquipmentSource, equipmentNavAvailable } from "./equipment-source";
+import type { PickOrigin } from "./hub-host-logic";
 
 export function EquipmentNav({
   conversation,
   target,
+  notice,
   onPick,
 }: {
-  /**
-   * The open conversation and its checklist's selection version, once the checklist has
-   * reported for it (`version` null = never selected). Null while it has not.
-   */
-  conversation: { notebookId: string; threadId: string; version: number | null } | null;
+  /** The open conversation (null = HOME) and its checklist's selection version ("unknown" until it reports). */
+  conversation: PickOrigin;
   /** What the next question is about, for the "Target" mark. */
   target: QuestionTarget | null;
-  onPick: (target: QuestionTarget) => void;
+  /** How the last pick ended, when it did not select (the checklist may be closed). */
+  notice: string | null;
+  onPick: (target: QuestionTarget, seen: { origin: PickOrigin; revision: number | null }) => void;
 }) {
-  const source = useMemo(() => createHubEquipmentSource(), []);
-  const [available, setAvailable] = useState(false);
-  const [open, setOpen] = useState(false);
-  const [browsing, setBrowsing] = useState<BrowserItem | null>(null);
   // Read at the moment of a press, so the latest conversation and handler are used.
   const conversationRef = useRef(conversation);
   const onPickRef = useRef(onPick);
@@ -38,6 +40,22 @@ export function EquipmentNav({
     conversationRef.current = conversation;
     onPickRef.current = onPick;
   }, [conversation, onPick]);
+
+  // The conversation as it was when this resolve was sent (one resolve at a time).
+  const pressedIn = useRef<PickOrigin>(null);
+  const source = useMemo<EquipmentSource>(() => {
+    const hub = createHubEquipmentSource();
+    return {
+      ...hub,
+      resolve: (request, options) => {
+        pressedIn.current = conversationRef.current;
+        return hub.resolve(request, options);
+      },
+    };
+  }, []);
+  const [available, setAvailable] = useState(false);
+  const [open, setOpen] = useState(false);
+  const [browsing, setBrowsing] = useState<BrowserItem | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -49,19 +67,10 @@ export function EquipmentNav({
     };
   }, []);
 
-  // A component of the open conversation's notebook carries that conversation's selection
-  // version, so a pick made elsewhere in between is refused (409 selection_changed). Anything
-  // else opens a fresh chat, and the checklist's own expected version guards the write.
-  const asker = useEquipmentAsk(source, (next) => {
+  const asker = useEquipmentAsk(source, (next, item) => {
     setOpen(false);
-    onPickRef.current(next);
-  }, {
-    selection: (item): SelectionPrecondition | null => {
-      const c = conversationRef.current;
-      if (!c || item.kind !== "notebook_component" || item.parent?.kind !== "notebook" || item.parent.id !== c.notebookId) return null;
-      return { threadKey: c.threadId, version: c.version };
-    },
-  });
+    onPickRef.current(next, { origin: pressedIn.current, revision: item.kind === "notebook_component" ? item.revision ?? null : null });
+  }, { selection: () => null });
 
   if (!available) return null;
   return (
@@ -70,6 +79,7 @@ export function EquipmentNav({
         {open ? "Close equipment" : "Find equipment"}
       </button>
       <EquipmentAskNoticeBar asker={asker} />
+      {notice ? <p role="status" className="fl-equip__notice" data-testid="equipment-pick-notice">{notice}</p> : null}
       {open ? (
         <PagedEquipmentNavigator
           source={source}
