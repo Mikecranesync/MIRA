@@ -5,3 +5,4 @@ export * from "./reducer";
 export * from "./types";
 export * from "./equipment-fixtures";
 export * from "./equipment-nav";
+export * from "./equipment-paged";

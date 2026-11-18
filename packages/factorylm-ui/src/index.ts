@@ -35,3 +35,12 @@ export {
 export { PhotoThumb } from "./PhotoViewer";
 
 export { EquipmentNavigator, QuestionTargetBar, type EquipmentNavigatorProps, type QuestionTargetBarProps } from "./EquipmentNavigator";
+export {
+  EquipmentAskNoticeBar,
+  PagedEquipmentNavigator,
+  provisionalTarget,
+  useEquipmentAsk,
+  type EquipmentAskController,
+  type EquipmentAskNotice,
+  type PagedEquipmentNavigatorProps,
+} from "./PagedEquipmentNavigator";
