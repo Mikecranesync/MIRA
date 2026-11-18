@@ -71,9 +71,23 @@ def _enum(value: str, allowed: tuple[str, ...]) -> str:
     return UNPARSED
 
 
+def _report_prose(lines: list[str]) -> list[str]:
+    """Capability results have their own work links, separate from readiness."""
+    prose, fenced = [], False
+    for line in lines:
+        if line.strip() == "```capability-results":
+            fenced = True
+        elif fenced:
+            if line.strip() == "```":
+                fenced = False
+        else:
+            prose.append(line)
+    return prose
+
+
 def parse(body: str) -> Optional[dict]:
     """Return the report dict for the top block, or None if the body is not a report."""
-    block = _top_block(body or "")
+    block = _report_prose(_top_block(body or ""))
     if not block:
         return None
     lane = MARKER_RE.match(block[0]).group(1)  # type: ignore[union-attr]

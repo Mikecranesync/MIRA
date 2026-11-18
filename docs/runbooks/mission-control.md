@@ -64,6 +64,8 @@ fence can remain in the existing DELIVERY.md format.
   "head": "<full reviewed PR head>",
   "build": "<full staged runtime SHA>",
   "environment": "staging",
+  "generation": "<verified runtime generation>",
+  "configuration_sha256": "<verified effective configuration digest>",
   "action": {
     "title": "Walk the connected tablet",
     "owner": "CHARLIE Codex",
@@ -78,21 +80,34 @@ fence can remain in the existing DELIVERY.md format.
 ```
 
 Add one entry per acceptance ID using `id`, `status`, `observed`, `build`,
-`environment`, and `receipt`. A passing row requires a GitHub receipt link.
+`environment`, `generation`, `configuration_sha256` and `receipt`. Use the
+current candidate on the existing report's `Branch / SHA:` line. Conflicting
+candidate references retain the earlier results as history. A passing row
+requires a nonblank observation and a specific GitHub comment, commit, or
+Actions run, job or artifact.
 For `decision`, link Mike's separate acceptance comment on #5232, beginning with
-these six lines and the exact values from the coordinator's record:
+these ten lines and the exact values from the coordinator's record:
 
 ```text
 [CAPABILITY-ACCEPTED]
 Plan revision: <full plan revision>
 Step: 1
+PR: 5625
 PR head: <full reviewed PR head>
 Build: <full staged runtime SHA>
 Environment: staging
+Runtime generation: <verified runtime generation>
+Configuration SHA-256: <verified effective configuration digest>
+Results SHA-256: <digest from the dashboard>
 ```
 
 Mission Control retrieves the comment and verifies the configured decision author
-and matching fields. Keep previous
+and matching fields. The normalized results digest changes when an observation
+or receipt changes. The configured environment version endpoint must supply
+`runtimeGeneration` and `configurationSha256` for the effective configuration.
+Older endpoints still report their build version and leave runtime acceptance
+unverified. A Projects board outage leaves the separately polled workflow usable.
+Keep previous
 runs linked in the existing comment history. Blank results display as NO RECEIPT.
 Rows whose plan/build differs stay historical. Candidate review and CI, deployed
 ancestry, running build, and all required check receipts must agree before the
@@ -227,7 +242,11 @@ Start with authenticated HTTPS and GitHub polling on the existing OVH VPS.
    In that release, create a Python 3.12 `.venv` and install the existing dashboard
    HTTP client (`httpx==0.28.1`) and `requirements-workflow.txt` into it. The
    base OVH system interpreter may lack httpx. Keep the shared data directory outside
-   the release. For the proposed roadmap add `MC_ROADMAP_REF` in the
+   the release. Provision the dedicated `MC_GITHUB_READ_TOKEN` from Doppler
+   as the systemd credential `/etc/mission-control/github-token` (root-owned,
+   mode 0400, root-only directory). The token needs only GitHub `read:project`
+   for the public repository and project data.
+   For the proposed roadmap add `MC_ROADMAP_REF` in the
    `/etc/mission-control.env` systemd environment file. Test the release on a
    separate loopback port before switching
    `current`; record the archive revision in `DEPLOYED_SHA`.

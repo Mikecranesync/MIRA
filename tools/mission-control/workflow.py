@@ -12,6 +12,8 @@ import re
 log = logging.getLogger("mission-control.workflow")
 ROADMAP = "docs/plans/capability-roadmap.md"
 SHA = re.compile(r"[0-9a-f]{40}")
+SHA256 = re.compile(r"[0-9a-f]{64}")
+GENERATION = re.compile(r"[A-Za-z0-9_.:-]{1,100}")
 CHECK_ID = re.compile(r"[A-Z][A-Z0-9-]*-\d+")
 STATES = {"PASS", "FAIL", "BLOCKED", "NOT TESTED"}
 PLAN_PATH = re.compile(r"[a-z0-9][a-z0-9-]*\.md")
@@ -41,14 +43,15 @@ def _section(tokens, names):
     return []
 
 
-def _table(tokens):
-    """Extract the first table's body cells using Markdown tokens, not pipe splitting."""
+def _table(tokens, part="tbody"):
+    """Extract one part of the first table using Markdown tokens."""
+
     rows = []
     reading = False
     for token in tokens:
-        if token.type == "tbody_open":
+        if token.type == part + "_open":
             reading = True
-        if token.type == "table_close":
+        if token.type in {"table_close", part + "_close"}:
             break
         if reading and token.type == "tr_open":
             rows.append([])
@@ -87,10 +90,20 @@ def load_documents(read, repo, revision):
         raise ValueError("Missing current capability or unordered roadmap")
     detail = _tokens(read(path))
     checks = []
-    for cells in _table(_section(detail, {"Pass/fail contract", "Acceptance contract"})):
-        if len(cells) < 3:
+    table = _section(detail, {"Pass/fail contract", "Acceptance contract"})
+    head = _table(table, part="thead")
+    headers = tuple(map(_plain, head[0])) if len(head) == 1 else ()
+    columns = {
+        ("ID", "Test and expected result", "Required evidence"): (1, 2),
+        ("ID", "Technician action or failure condition", "Expected observable result",
+         "Proof level / owner", "Receipt and result"): (2, 3),
+    }.get(headers)
+    if columns is None:
+        raise ValueError("Unrecognized acceptance table headings")
+    for cells in _table(table):
+        if len(cells) != len(headers):
             raise ValueError("Invalid acceptance row")
-        rid, expected, proof = map(_plain, cells[:3])
+        rid, expected, proof = _plain(cells[0]), _plain(cells[columns[0]]), _plain(cells[columns[1]])
         if not CHECK_ID.fullmatch(rid) or not expected or not proof:
             raise ValueError("Invalid acceptance definition")
         checks.append({"id": rid, "expected": expected, "proof": proof})
@@ -150,9 +163,46 @@ def _fresh(at, now, limit):
 
 
 def _receipt(value):
-    if isinstance(value, str) and value.startswith("https://github.com/"):
+    # Evidence must name a concrete GitHub run, artifact, commit, issue or PR comment.
+    if isinstance(value, str) and re.fullmatch(
+        r"https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/"
+        r"(?:(?:issues|pull)/[1-9]\d*#(?:issuecomment|discussion_r|pullrequestreview)-[1-9]\d*"
+        r"|actions/runs/[1-9]\d*(?:/(?:job|artifacts)/[1-9]\d*)?"
+        r"|commit/[0-9a-f]{40})", value,
+    ):
         return value
     return None
+
+
+def _results(data):
+    entries = data.get("results")
+    if not isinstance(entries, list):
+        return None
+    rows = {}
+    for entry in entries:
+        if not isinstance(entry, dict):
+            return None
+        rid, status, observed = (entry.get(k) for k in ("id", "status", "observed"))
+        if (not isinstance(rid, str) or not CHECK_ID.fullmatch(rid) or rid in rows
+                or not isinstance(status, str) or status not in STATES
+                or not isinstance(observed, str) or not observed.strip()):
+            return None
+        receipt = _receipt(entry.get("receipt"))
+        if status == "PASS" and not receipt:
+            return None
+        identity = ("build", "environment", "generation", "configuration_sha256")
+        if any(entry.get(k) is not None and not isinstance(entry[k], str) for k in identity):
+            return None
+        rows[rid] = {**{k: entry.get(k) for k in identity}, "status": status,
+                     "observed": observed.strip(), "receipt": receipt}
+    return rows
+
+
+def _results_digest(data):
+    rows = _results(data)
+    if not rows:
+        return None
+    return hashlib.sha256(json.dumps(rows, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 
 def _read_report(report):
@@ -177,13 +227,20 @@ def _coordinator(reports, report_id, issue_url):
 
 
 def _decision_envelope(data):
+    digest = _results_digest(data)
+    if digest is None:
+        return None
     return "\n".join((
         "[CAPABILITY-ACCEPTED]",
         f"Plan revision: {data.get('plan_revision')}",
         f"Step: {data.get('step')}",
+        f"PR: {data.get('pr')}",
         f"PR head: {data.get('head')}",
         f"Build: {data.get('build')}",
         f"Environment: {data.get('environment')}",
+        f"Runtime generation: {data.get('generation')}",
+        f"Configuration SHA-256: {data.get('configuration_sha256')}",
+        f"Results SHA-256: {digest}",
     ))
 
 
@@ -197,6 +254,8 @@ def verify_decision(get, repo, issue, reports, report_id, owner):
         return None
     number = url[len(prefix):]
     expected = _decision_envelope(data)
+    if not expected:
+        return None
     try:
         status, _, comment = get(f"https://api.github.com/repos/{repo}/issues/comments/{number}", headers={})
     except Exception as exc:
@@ -206,7 +265,7 @@ def verify_decision(get, repo, issue, reports, report_id, owner):
             or (comment.get("user") or {}).get("login") != owner
             or not isinstance(comment.get("body"), str)):
         return None
-    envelope = "\n".join(comment["body"].splitlines()[:6])
+    envelope = "\n".join(comment["body"].splitlines()[:10])
     return {"url": url, "envelope": expected} if envelope == expected else None
 
 
@@ -214,16 +273,24 @@ def coordinator_pr(state, reports, report_id, issue_url=None):
     rep = _coordinator(reports, report_id, issue_url)
     data = _read_report(rep) or {}
     docs = state.get("documents") or {}
+    current_pr = _candidate_pr(rep)
+    if current_pr:
+        return current_pr
     pr = data.get("pr")
     if (type(pr) is int and pr > 0 and data.get("plan_revision") == docs.get("revision")
             and docs.get("current") and data.get("step") == docs["current"]["number"]):
         return pr
-    return _candidate_pr(rep)
+    return None
+
+
+def _candidate_line(report):
+    raw = report.get("raw") or ""
+    match = re.search(r"(?m)^Branch / SHA:([^\n]+)", raw.split("<details>", 1)[0])
+    return match[1] if match else ""
 
 
 def _candidate_pr(report):
-    raw = report.get("raw") or ""
-    match = re.search(r"(?m)^Branch / SHA:[^\n]*?#([1-9]\d*)", raw.split("<details>", 1)[0])
+    match = re.search(r"#([1-9]\d*)", _candidate_line(report))
     return int(match[1]) if match else None
 
 
@@ -283,41 +350,40 @@ def project(state, reports, evidence, now, *, report_id, max_age_seconds, report
     env, build = data.get("environment"), data.get("build")
     runtime = (evidence.get("envs") or {}).get(env) or {} if isinstance(env, str) else {}
     head = data.get("head")
-    head_matches = isinstance(head, str) and SHA.fullmatch(head) and head == row.get("head_sha")
-    matches = (head_matches and isinstance(build, str) and SHA.fullmatch(build) and runtime.get("ok")
-               and runtime.get("git_sha") == build)
+    listed_head = re.search(r"\b[0-9a-f]{40}\b", _candidate_line(rep))
+    candidate_conflict = bound and (data.get("pr") != pr or bool(listed_head and listed_head[0] != head))
+    head_matches = (not candidate_conflict and isinstance(head, str) and SHA.fullmatch(head)
+                    and head == row.get("head_sha"))
+    generation, configuration = data.get("generation"), data.get("configuration_sha256")
+    runtime_bound = (
+        isinstance(generation, str) and GENERATION.fullmatch(generation)
+        and isinstance(configuration, str) and SHA256.fullmatch(configuration)
+        and generation == runtime.get("generation")
+        and configuration == runtime.get("configuration_sha256")
+    )
+    matches = (head_matches and isinstance(build, str) and SHA.fullmatch(build)
+               and runtime.get("ok") and runtime.get("git_sha") == build and runtime_bound)
     fresh = (not state.get("error") and not evidence.get("error") and all(
         _fresh(at, now, max_age_seconds) for at in (state.get("at"), reports_at, evidence.get("at"))
     ))
     raw_results = block.get("results")
     check_ids = {r["id"] for r in docs["checks"]}
-    rows = {}
-    valid_results = isinstance(raw_results, list)
-    if valid_results:
-        for entry in raw_results:
-            if not isinstance(entry, dict) or not isinstance(entry.get("id"), str) or entry["id"] not in check_ids or entry["id"] in rows:
-                valid_results = False
-                break
-            result = entry.get("status")
-            if not isinstance(result, str) or result not in STATES or not isinstance(entry.get("observed"), str):
-                valid_results = False
-                break
-            if result == "PASS" and not _receipt(entry.get("receipt")):
-                valid_results = False
-                break
-            rows[entry["id"]] = {k: entry.get(k) for k in ("status", "observed", "build", "environment")}
-            rows[entry["id"]]["receipt"] = _receipt(entry.get("receipt"))
+    rows = _results(block)
+    valid_results = rows is not None and set(rows) <= check_ids
     checks = []
     for check in docs["checks"]:
         recorded = rows.get(check["id"]) if valid_results else None
-        applicable = recorded and bound and matches and fresh and recorded["build"] == build and recorded["environment"] == env
+        applicable = (recorded and bound and matches and fresh
+                      and recorded["build"] == build and recorded["environment"] == env
+                      and recorded["generation"] == generation
+                      and recorded["configuration_sha256"] == configuration)
         checks.append({**check, "status": recorded["status"] if applicable else "NO RECEIPT",
                        "observed": recorded["observed"] if applicable else None,
                        "receipt": recorded["receipt"] if applicable else None,
                        "history": recorded if recorded and not applicable else None})
     checked = state.get("decision") or {}
     expected = _decision_envelope(data)
-    decision = (checked.get("url") if checked.get("envelope") == expected
+    decision = (checked.get("url") if expected and checked.get("envelope") == expected
                 and checked.get("url") == data.get("decision") else None)
     reported_action = data.get("action")
     preflight_action = (build is None and head_matches and isinstance(reported_action, dict)
@@ -334,13 +400,21 @@ def project(state, reports, evidence, now, *, report_id, max_age_seconds, report
                       owner="CHARLIE Codex · integration", observed="Acceptance recorded",
                       next="Publish the next capability through the reviewed roadmap")
     status = ("Evidence stale" if not fresh else "Accepted" if accepted
-              else "Blocked" if review["label"].startswith("ISSUES_FOUND")
+              else "Blocked" if candidate_conflict or review["label"].startswith("ISSUES_FOUND")
               or action["status"] in {"FAIL", "BLOCKED"}
               or any(c["status"] in {"FAIL", "BLOCKED"} for c in checks) else "In progress")
+    result_error = None
+    if candidate_conflict:
+        result_error = "An older candidate's results are retained as history"
+    elif raw is None or raw_results is not None and not valid_results:
+        result_error = "Acceptance record needs correction"
+    elif raw_results and not runtime_bound:
+        result_error = "Current runtime configuration proof is unavailable or differs"
     return {
         **docs, "checks": checks, "status": status, "proposed": bool(state.get("proposed")),
         "fresh": fresh, "updated_at": state.get("at"), "error": state.get("error"),
-        "result_error": "Acceptance record needs correction" if raw is None or raw_results is not None and not valid_results else None,
+        "result_error": result_error,
+        "results_digest": _results_digest(data) if valid_results and matches and fresh else None,
         "candidate_head": row.get("head_sha"), "build": build if isinstance(build, str) else None,
         "environment": env if isinstance(env, str) else None, "review": review,
         "review_fresh": fresh and bool(row), "decision": decision if accepted else None,

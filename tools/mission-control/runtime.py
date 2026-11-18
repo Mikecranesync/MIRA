@@ -102,16 +102,11 @@ def env_urls() -> dict[str, str]:
     return out
 
 
-def refresh_evidence(handler, evidence, post, get, cands, envs, trusted, by_item, main_sha, workflow_pr=None) -> None:
+def refresh_evidence(handler, evidence, post, get, cands, envs, trusted, by_item, main_sha) -> None:
     """Replace handler.evidence on success; on failure keep the last rows for display but
     stamp the error and leave `at` untouched, so the model reads it as not current."""
     try:
-        separate = workflow_pr is not None and workflow_pr not in cands
-        tracked = [*cands, workflow_pr] if separate else cands
-        fresh = evidence.gather(post, get, REPO, tracked, envs, trusted, by_item, main_sha)
-        if separate:
-            fresh["workflow_rows"] = [r for r in fresh["rows"] if r["number"] == workflow_pr]
-            fresh["rows"] = [r for r in fresh["rows"] if r["number"] != workflow_pr]
+        fresh = evidence.gather(post, get, REPO, cands, envs, trusted, by_item, main_sha)
         board_at = handler.snapshot.get().at  # the board snapshot these candidates came from
         fresh["board_at"] = _iso(board_at) if board_at else None
         handler.evidence = fresh
@@ -119,6 +114,18 @@ def refresh_evidence(handler, evidence, post, get, cands, envs, trusted, by_item
         log.warning("evidence refresh failed: %s", exc)
         old = dict(handler.evidence or {})
         handler.evidence = dict(old, error=f"{type(exc).__name__}: {exc}")
+
+
+def refresh_workflow_evidence(handler, evidence, post, get, pr, envs, trusted, by_item, main_sha):
+    try:
+        handler.workflow_evidence = evidence.gather(
+            post, get, REPO, [pr] if pr else [], envs, trusted, by_item, main_sha,
+        )
+    except Exception as exc:
+        log.warning("workflow evidence refresh failed: %s", type(exc).__name__)
+        handler.workflow_evidence = {
+            **handler.workflow_evidence, "error": "Workflow evidence refresh failed",
+        }
 
 
 def poll_once(handler, get, post, state: dict) -> None:
@@ -131,6 +138,8 @@ def poll_once(handler, get, post, state: dict) -> None:
         log.warning("poll iteration failed: %s", exc)
         reason = str(exc) if isinstance(exc, RuntimeError) else f"{type(exc).__name__}: {exc}"
         handler.evidence = dict(handler.evidence or {}, error=f"poll failed: {reason}")
+        if hasattr(handler, "workflow_evidence"):
+            handler.workflow_evidence = dict(handler.workflow_evidence, error="Workflow poll failed")
 
 
 def _poll_once(handler, get, post, state: dict) -> None:
@@ -155,8 +164,6 @@ def _poll_once(handler, get, post, state: dict) -> None:
         )
         if hasattr(handler, "project_links_mod"):
             handler.link_state = handler.project_links_mod.refresh(handler.link_state, get, REPO)
-    cands = candidates(handler, store)
-    handler.last_poll = _now_iso()
     by_item: dict[int, list[dict]] = {}
     for r in reversed(store.reports()):  # oldest first so the newest ends up last
         if r["trusted"]:
@@ -164,7 +171,16 @@ def _poll_once(handler, get, post, state: dict) -> None:
                 by_item.setdefault(int(n), []).append(r["parsed"])
     status, _h, main = get(f"https://api.github.com/repos/{REPO}/commits/main", headers={})
     main_sha = main.get("sha") if status == 200 and isinstance(main, dict) else None
-    refresh_evidence(handler, evidence, post, get, cands, env_urls(), trusted, by_item, main_sha, workflow_pr)
+    envs = env_urls()
+    if hasattr(handler, "workflow_evidence"):
+        refresh_workflow_evidence(handler, evidence, post, get, workflow_pr, envs, trusted, by_item, main_sha)
+    try:
+        cands = candidates(handler, store)
+    except RuntimeError as exc:
+        handler.evidence = dict(handler.evidence or {}, error=f"poll failed: {exc}")
+        return
+    handler.last_poll = _now_iso()
+    refresh_evidence(handler, evidence, post, get, cands, envs, trusted, by_item, main_sha)
 
 
 def poll_loop(handler, get, post) -> None:

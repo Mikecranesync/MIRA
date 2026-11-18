@@ -158,6 +158,7 @@ class Handler(BaseHTTPRequestHandler):
     last_poll: Optional[str] = None
     last_webhook: Optional[str] = None
     plan_state: dict = {}
+    workflow_evidence: dict = EMPTY_EVIDENCE
     reports_at: Optional[str] = None
     workflow_mod = workflow
     project_links_mod = project_links
@@ -168,7 +169,7 @@ class Handler(BaseHTTPRequestHandler):
         snapshot = build_model(self.store, self.evidence, self.last_poll, self.last_webhook)
         snapshot["plan"] = workflow.project(
             self.plan_state, self.store.reports(),
-            {**self.evidence, "rows": [*self.evidence.get("rows", []), *self.evidence.get("workflow_rows", [])]},
+            self.workflow_evidence,
             dt.datetime.now(dt.timezone.utc),
             report_id=int(os.getenv("MC_PLAN_REPORT_ID", "6870960483")),
             max_age_seconds=2 * POLL_SECONDS,

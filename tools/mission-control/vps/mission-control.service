@@ -14,11 +14,10 @@ Wants=network-online.target
 Type=simple
 User=ubuntu
 WorkingDirectory=/opt/mission-control/current
-# Secrets come from Doppler factorylm/prd at start; nothing is written to disk.
-#   GITHUB_PAT          -> GITHUB_TOKEN (read:project + repo read)
-ExecStart=/usr/bin/doppler run --project factorylm --config prd \
-  --name-transform none \
-  -- /bin/sh -c 'GITHUB_TOKEN="$GITHUB_PAT" exec /opt/mission-control/current/.venv/bin/python /opt/mission-control/current/server.py'
+# Provision only the dashboard's read:project token from Doppler.
+# systemd copies the root-only credential into a private runtime directory.
+LoadCredential=github-token:/etc/mission-control/github-token
+ExecStart=/bin/sh -ec 'export GITHUB_TOKEN="$$(cat "$$CREDENTIALS_DIRECTORY/github-token")"; exec /opt/mission-control/current/.venv/bin/python /opt/mission-control/current/server.py'
 Environment=MC_PORT=8787
 Environment=MC_BIND=127.0.0.1
 Environment=MC_DATA_DIR=/opt/mission-control/data

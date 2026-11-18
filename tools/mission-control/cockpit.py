@@ -251,6 +251,8 @@ def render_workflow(plan: dict) -> str:
     next_step = plan.get("next_step")
     up_next = f'<p><b>Up next</b> · {_e(next_step["name"])}</p>' if next_step else ""
     decision = _source(plan.get("decision"), "Acceptance decision")
+    digest = plan.get("results_digest")
+    digest_line = f'<p class="meta">Results SHA-256 <code>{_e(digest)}</code></p>' if digest else ""
     evidence = (
         f'<p class="meta">{_e(review_label)} · {_e(review["label"])} '
         f'{_source(review.get("source"), "Review record")}</p>'
@@ -271,7 +273,7 @@ def render_workflow(plan: dict) -> str:
         f'{_e(str(plan["build"] or "No accepted build")[:20])}</p>'
         f'<div class="workflow-links">{ledger}{repair}{decision}</div></section>'
         f'{up_next}<div class="workflow-links">{source}{_source(plan["roadmap_url"], "Roadmap source")}</div>'
-        f'<details><summary>What proves this step</summary><ul class="workflow-checks">{checks}</ul></details>'
+        f'<details><summary>What proves this step</summary>{digest_line}<ul class="workflow-checks">{checks}</ul></details>'
         f'<details><summary>Work sequence</summary><ol>{actions}</ol></details>'
         f'<details><summary>Capability roadmap</summary><ol>{steps}</ol></details></section>'
     )

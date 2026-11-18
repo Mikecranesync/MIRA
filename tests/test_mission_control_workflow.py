@@ -1,6 +1,7 @@
 """Capability workflow: exact revision/build binding and safe plan projection."""
 import base64
 import datetime as dt
+import hashlib
 import importlib.util
 import json
 import sys
@@ -19,7 +20,25 @@ REPO = "Mikecranesync/MIRA"
 SOURCE = f"https://github.com/{REPO}/issues/5232#issuecomment-6870960483"
 PROOF = f"https://github.com/{REPO}/pull/5625#issuecomment-6992591038"
 DECISION = f"https://github.com/{REPO}/issues/5232#issuecomment-8"
-ENVELOPE = f"[CAPABILITY-ACCEPTED]\nPlan revision: {REV}\nStep: 1\nPR head: {HEAD}\nBuild: {BUILD}\nEnvironment: staging"
+GEN, CONFIG = "staging-generation-1", "d" * 64
+
+
+def fixture_results():
+    return [
+        {"id": rid, "status": "PASS", "build": BUILD, "environment": "staging",
+         "generation": GEN, "configuration_sha256": CONFIG,
+         "observed": "Passed on tablet", "receipt": PROOF}
+        for rid in ("FIND-01", "FIND-02")
+    ]
+
+
+ROWS = {entry["id"]: {k: v for k, v in entry.items() if k != "id"} for entry in fixture_results()}
+DIGEST = hashlib.sha256(json.dumps(ROWS, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+ENVELOPE = "\n".join((
+    "[CAPABILITY-ACCEPTED]", f"Plan revision: {REV}", "Step: 1", "PR: 5625",
+    f"PR head: {HEAD}", f"Build: {BUILD}", "Environment: staging",
+    f"Runtime generation: {GEN}", f"Configuration SHA-256: {CONFIG}", f"Results SHA-256: {DIGEST}",
+))
 ROADMAP = """# Roadmap
 
 Build trusted equipment context.
@@ -61,6 +80,8 @@ def report(**overrides):
         "head": HEAD,
         "build": BUILD,
         "environment": "staging",
+        "generation": GEN,
+        "configuration_sha256": CONFIG,
         "action": {
             "title": "Walk the tablet",
             "owner": "CHARLIE Codex",
@@ -69,11 +90,7 @@ def report(**overrides):
             "status": "PASS",
             "next": "Record acceptance",
         },
-        "results": [
-            {"id": rid, "status": "PASS", "build": BUILD, "environment": "staging",
-             "observed": "Passed on tablet", "receipt": PROOF}
-            for rid in ("FIND-01", "FIND-02")
-        ],
+        "results": fixture_results(),
         "decision": DECISION,
     }
     block.update(overrides)
@@ -89,7 +106,7 @@ def report(**overrides):
     }
 
 
-def evidence(review_passes=True, head=HEAD, runtime=BUILD):
+def evidence(review_passes=True, head=HEAD, runtime=BUILD, generation=GEN, configuration=CONFIG):
     return {
         "at": AT,
         "rows": [{
@@ -100,7 +117,7 @@ def evidence(review_passes=True, head=HEAD, runtime=BUILD):
                 "DEPLOYED:staging": {"on": True},
             },
         }],
-        "envs": {"staging": {"ok": 1, "git_sha": runtime}},
+        "envs": {"staging": {"ok": 1, "git_sha": runtime, "generation": generation, "configuration_sha256": configuration}},
     }
 
 
@@ -246,14 +263,16 @@ def test_workflow_pr_evidence_remains_visible_after_it_leaves_open_board():
 
     class Handler:
         snapshot = server.Snapshot(lambda: [])
+        workflow_evidence = {}
 
     class Evidence:
         def gather(self, _post, _get, _repo, numbers, *_args):
             return {"rows": [{"number": n} for n in numbers]}
 
-    server.runtime.refresh_evidence(Handler, Evidence(), None, None, [7], {}, (), {}, None, 5625)
+    server.runtime.refresh_evidence(Handler, Evidence(), None, None, [7], {}, (), {}, None)
+    server.runtime.refresh_workflow_evidence(Handler, Evidence(), None, None, 5625, {}, (), {}, None)
     assert [r["number"] for r in Handler.evidence["rows"]] == [7]
-    assert [r["number"] for r in Handler.evidence["workflow_rows"]] == [5625]
+    assert [r["number"] for r in Handler.workflow_evidence["rows"]] == [5625]
 
 
 def test_project_links_show_real_refs_and_preserve_stale_status():
@@ -277,3 +296,104 @@ def test_project_links_show_real_refs_and_preserve_stale_status():
     stale = links.project(failed, 1, then)
     assert not stale["fresh"] and stale["current"] == v["current"]
     assert "Last seen project records" in server.cockpit._project_work(stale)
+
+
+def test_replacing_the_candidate_pr_makes_earlier_passes_historical():
+    coordinator = report()
+    coordinator["raw"] = coordinator["raw"].replace(
+        "Updated: ", "Branch / SHA: Replacement #5630\nUpdated: ", 1
+    )
+    ev = evidence()
+    next_row = {**ev["rows"][0], "number": 5630}
+    ev["rows"].append(next_row)
+    value = project(coordinator, ev)
+    assert value["status"] == "Blocked"
+    assert "older candidate" in value["result_error"]
+    assert all(c["status"] == "NO RECEIPT" and c["history"] for c in value["checks"])
+
+
+def test_same_sha_recreation_flag_change_or_missing_config_invalidates_results():
+    for change in ({"generation": "second"}, {"configuration": "e" * 64}, {"configuration": None}):
+        value = project(ev=evidence(**change))
+        assert value["status"] != "Accepted"
+        assert value["action"]["status"] != "PASS"
+        assert all(c["status"] == "NO RECEIPT" and c["history"] for c in value["checks"])
+
+
+def test_owner_decision_is_bound_to_nonblank_specific_receipts():
+    entries = fixture_results()
+    entries[0]["observed"] = "Different observation"
+    assert project(report(results=entries))["status"] != "Accepted"
+    entries[0]["observed"] = " "
+    assert project(report(results=entries))["result_error"]
+    entries[0]["observed"] = "Valid observation"
+    entries[0]["receipt"] = "https://github.com/"
+    invalid = project(report(results=entries))
+    assert invalid["result_error"] and invalid["status"] != "Accepted"
+
+
+def test_capability_fence_proof_mentions_do_not_enter_readiness():
+    r = report(action={
+        "title": "Confirm #5630", "owner": "A", "expected": "Probe only", "observed": "See #5625",
+        "status": "NOT TESTED", "next": "Read update",
+    })
+    assert server.reports.parse(r["raw"])["items"] == []
+    assert workflow.coordinator_pr({"documents": documents()}, [r], 6870960483) == 5625
+
+
+def test_next_capability_template_shows_expected_result_and_proof():
+    plan = """## Acceptance contract
+
+| ID | Technician action or failure condition | Expected observable result | Proof level / owner | Receipt and result |
+|---|---|---|---|---|
+| NEXT-01 | Open manual. | Correct manual opens. | Device recording. | NOT TESTED |
+"""
+    value = workflow.load_documents(lambda path: ROADMAP if "roadmap" in path else plan, REPO, REV)
+    assert value["checks"] == [
+        {"id": "NEXT-01", "expected": "Correct manual opens.", "proof": "Device recording."}
+    ]
+
+
+def test_projects_outage_does_not_stop_workflow_evidence():
+    r = report()
+
+    class BoardUnavailable:
+        def get(self):
+            return self
+        at = NOW
+        error = "Projects denied"
+
+    class NoopPoll:
+        def poll_events(self, *args): pass
+        def poll_reports(self, *args): pass
+
+    class Store:
+        def reports(self): return [r]
+
+    class Evidence:
+        def gather(self, _post, _get, _repo, numbers, *_args):
+            assert numbers == [5625]
+            return {"rows": [{"number": 5625}], "at": AT}
+
+    class Workflow:
+        def refresh(self, *_args, **_kwargs): return {"documents": documents(), "at": AT}
+        def verify_decision(self, *_args): return None
+        def coordinator_pr(self, *_args): return 5625
+
+    class Handler:
+        snapshot = BoardUnavailable()
+        poll_mod = NoopPoll()
+        evidence_mod = Evidence()
+        workflow_mod = Workflow()
+        store = Store()
+        plan_state = {}
+        workflow_evidence = {}
+        evidence = {}
+
+        @staticmethod
+        def trusted_authors():
+            return ("Mikecranesync",)
+
+    server.runtime.poll_once(Handler, lambda *a, **kw: (200, {}, {"sha": REV}), None, {})
+    assert "Projects denied" in Handler.evidence["error"]
+    assert Handler.workflow_evidence == {"rows": [{"number": 5625}], "at": AT}
