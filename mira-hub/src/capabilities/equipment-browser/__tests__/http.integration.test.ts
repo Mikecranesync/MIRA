@@ -329,6 +329,15 @@ describe("direct equipment API HTTP/PostgreSQL contract", () => {
       VALUES ($1,$2,$3,'verified'),($1,$4,$3,'rejected')`,[boundId,uuid(),a,uuid()]);
     await db.owner.query("UPDATE kg_entities SET name='Current machine', properties=jsonb_build_object('asset_tag','CV binding') WHERE id=$1",[assetNode]);
 
+    const machinePage = await (await request(`children?parentKind=namespace&parentId=${line}`)).json();
+    const machines = machinePage.items.filter((row:{id:string}) => row.id === asset || row.id === assetNode);
+    expect(machines).toHaveLength(1);
+    expect(machines[0]).toMatchObject({kind:"asset",id:asset,name:"Current machine"});
+    const fromDisplayedMachine = await (await request(`children?parentKind=${machines[0].kind}&parentId=${machines[0].id}&kind=notebook`)).json();
+    expect(fromDisplayedMachine.items).toMatchObject([{id:boundId}]);
+    // Existing KG references remain usable after duplicate machine entries are coalesced.
+    const kgChildren = await (await request(`children?parentKind=namespace&parentId=${assetNode}&kind=notebook`)).json();
+    expect(kgChildren.items).toMatchObject([{id:boundId}]);
     const listed = await (await request(`children?parentKind=asset&parentId=${asset}&kind=notebook`)).json();
     const expected = { id:boundId, sourceCount:1, asset:{ name:"Current machine", assetTag:"CV binding" } };
     expect(listed.items).toMatchObject([{ id:boundId, placement:"placed", notebook:expected }]);
@@ -337,7 +346,7 @@ describe("direct equipment API HTTP/PostgreSQL contract", () => {
     const roots = await (await request("children?parentKind=root")).json();
     expect(roots.items).toContainEqual(expect.objectContaining({id:unboundId,placement:"unplaced"}));
     expect(roots.items.map((row:{id:string})=>row.id)).not.toContain(backing);
-    for (const scope of [`asset&scopeId=${asset}`,`namespace&scopeId=${line}`]) {
+    for (const scope of [`asset&scopeId=${asset}`,`namespace&scopeId=${assetNode}`,`namespace&scopeId=${line}`]) {
       for (const query of ["ＭＬＣ  starter","MLC starter"]) {
         const found = await (await request(`search?scopeKind=${scope}&kind=notebook_component&q=${encodeURIComponent(query)}`)).json();
         expect(found.counts.total).toBe(1);
@@ -345,6 +354,22 @@ describe("direct equipment API HTTP/PostgreSQL contract", () => {
       }
     }
     await db.owner.query("DELETE FROM equipment_notebook_sources WHERE notebook_id=$1",[boundId]);
+  });
+
+  it.each(["proposed", "unrelated"])("does not merge a %s bridge from coincident paths or UUIDs", async (mode) => {
+    const parent = uuid(), machine = uuid();
+    await db.owner.query(`INSERT INTO kg_entities(id,tenant_id,entity_type,entity_id,name,uns_path,approval_state)
+      VALUES ($1,$2,'line',$1::uuid::text,'Independent line ' || $1::uuid::text,('independent.' || replace($1::uuid::text,'-',''))::ltree,'verified'),
+        ($3::uuid,$2::uuid,'equipment',$4::text,'Independent machine ' || $3::uuid::text,('independent.' || replace($1::uuid::text,'-','') || '.machine')::ltree,$5)`,
+      [parent,a,machine,mode === "proposed" ? machine : uuid(),mode === "proposed" ? "proposed" : "verified"]);
+    await db.owner.query(`INSERT INTO cmms_equipment(id,tenant_id,equipment_number,slug,path,uns_path)
+      VALUES ($1,$2,'Independent machine ' || $1::uuid::text,$1::uuid::text,'independent',('independent.' || replace($3::uuid::text,'-','') || '.machine')::ltree)`,[machine,a,parent]);
+    const response = await request(`children?parentKind=namespace&parentId=${parent}`);
+    expect(response.status).toBe(200);
+    const page = await response.json();
+    expect(page.items.map((row:{kind:string,id:string})=>[row.kind,row.id])).toEqual([["asset",machine],["namespace",machine]]);
+    const namespace = await (await request(`children?parentKind=namespace&parentId=${machine}`)).json();
+    expect(namespace.scope).toEqual({kind:"namespace",id:machine});
   });
 
   it("20k fixture: SQL-scoped counts, repeated identities and page/cursor boundaries remain isolated", async () => {

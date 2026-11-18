@@ -31,8 +31,11 @@ remain visible/countable, with `retiredAt`; resolving one as an active target re
 
 Namespace nodes are existing tenant KG rows. Their parent is the unique nearest existing
 strict-ancestor path; ambiguous placement stays at root. Assets use their stored parent asset,
-or unique nearest namespace ancestor. Notebooks use their stored `node_id`. Components use
-their notebook FK. Installed instances use their explicit, authorized `asset_id`; absent or
+or unique nearest namespace ancestor. A unique verified same-tenant KG bridge whose `entity_id`
+is the stored CMMS asset UUID exposes one machine branch, using its KG display name. Existing
+KG machine references resolve to that same asset scope. Equal paths, names or UUIDs without
+that bridge do not combine identities. Notebooks use their canonical verified asset binding;
+the private document `node_id` is not placement. Components use their notebook FK. Installed instances use their explicit, authorized `asset_id`; absent or
 foreign/missing placement stays visible at root. No tag, model, catalog or coincident UUID
 creates a link between kinds. Namespace placement is browsing context, not identity approval.
 
@@ -85,7 +88,9 @@ identity or revise history.
 Abort before acquisition does no work. An aborted queued acquisition releases its late lease.
 For active SQL, a separate connection uses public `pg_cancel_backend`; the original lease remains
 held until query/cancel completion and rollback. Uncertain cancellation/rollback destroys the
-lease. No private pg active-query API or product debug/sleep route is used. A normal completion
+lease. A five-second client deadline stays active through original-query settlement and rollback,
+even after a positive cancellation acknowledgement; expiration destroys the lease and settles
+the request. No private pg active-query API or product debug/sleep route is used. A normal completion
 may win a late disconnect race; no read-side writes are committed in either outcome.
 Backend identity is captured after BEGIN, while transaction pooling pins that backend. An abort
 during setup, before that identity exists, destroys the lease instead of signalling a previously

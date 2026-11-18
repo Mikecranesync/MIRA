@@ -60,9 +60,21 @@ function readCursor(value: string | null, binding: string): [string, string] | n
  * placement stays at root. Missing notebook/asset placement also stays visible at root.
  * Parent paths are physical browsing placement only; they never create an identity link.
  */
-const inventory = `inventory AS NOT MATERIALIZED (
+// Only the persisted, unique, verified same-tenant bridge coalesces a machine.
+// Equal names, paths or UUIDs alone never establish that identity.
+const bridges = `bridged_assets AS NOT MATERIALIZED (
+  SELECT e.id AS asset_id, min(k.id::text)::uuid AS node_id, min(k.name) AS name
+  FROM cmms_equipment e JOIN kg_entities k
+    ON k.tenant_id=$1::uuid AND k.entity_id=e.id::text
+      AND k.entity_type IN ('equipment','asset') AND k.approval_state='verified'
+      AND k.uns_path IS NOT NULL
+  WHERE e.tenant_id::text=$1::uuid::text
+  GROUP BY e.id HAVING count(*)=1
+)`;
+const inventory = `${bridges}, inventory AS NOT MATERIALIZED (
   SELECT 'namespace'::text AS kind,k.id::text AS id,k.name,
-    CASE WHEN p.id IS NULL THEN 'root' ELSE 'namespace' END AS parent_kind,p.id::uuid AS parent_id,
+    CASE WHEN pb.asset_id IS NOT NULL THEN 'asset' WHEN p.id IS NULL THEN 'root' ELSE 'namespace' END AS parent_kind,
+    coalesce(pb.asset_id,p.id::uuid) AS parent_id,
     concat_ws(' ',k.name,k.entity_type,k.entity_id) AS search_text,
     jsonb_build_object('entityType',k.entity_type,'unsPath',k.uns_path::text) AS data
   FROM kg_entities k
@@ -70,23 +82,28 @@ const inventory = `inventory AS NOT MATERIALIZED (
     SELECT CASE WHEN count(*)=1 THEN min(a.id::text) END AS id FROM kg_entities a
     WHERE a.tenant_id=k.tenant_id AND a.uns_path @> k.uns_path AND a.uns_path<>k.uns_path
       AND nlevel(a.uns_path)=(SELECT max(nlevel(z.uns_path)) FROM kg_entities z WHERE z.tenant_id=k.tenant_id AND z.uns_path @> k.uns_path AND z.uns_path<>k.uns_path)
-  ) p ON true WHERE k.tenant_id=$1::uuid AND (
+  ) p ON true
+  LEFT JOIN bridged_assets pb ON pb.node_id=p.id::uuid
+  WHERE k.tenant_id=$1::uuid AND NOT EXISTS (SELECT 1 FROM bridged_assets b WHERE b.node_id=k.id) AND (
     k.uns_path IS NOT NULL OR NOT EXISTS (
       SELECT 1 FROM equipment_notebooks n WHERE n.tenant_id=k.tenant_id AND n.node_id=k.id
     )
   )
   UNION ALL
-  SELECT 'asset',e.id::text,e.equipment_number,
-    CASE WHEN a.id IS NOT NULL THEN 'asset' WHEN p.id IS NOT NULL THEN 'namespace' ELSE 'root' END,
-    coalesce(a.id,p.id::uuid),concat_ws(' ',e.equipment_number,e.manufacturer,to_jsonb(e)->>'model_number',to_jsonb(e)->>'description'),
+  SELECT 'asset',e.id::text,coalesce(b.name,e.equipment_number),
+    CASE WHEN a.id IS NOT NULL THEN 'asset' WHEN pb.asset_id IS NOT NULL THEN 'asset' WHEN p.id IS NOT NULL THEN 'namespace' ELSE 'root' END,
+    coalesce(a.id,pb.asset_id,p.id::uuid),concat_ws(' ',b.name,e.equipment_number,e.manufacturer,to_jsonb(e)->>'model_number',to_jsonb(e)->>'description'),
     jsonb_build_object('manufacturer',e.manufacturer,'model',to_jsonb(e)->>'model_number','unsPath',e.uns_path::text)
   FROM cmms_equipment e
+  LEFT JOIN bridged_assets b ON b.asset_id=e.id
   LEFT JOIN cmms_equipment a ON a.tenant_id=e.tenant_id AND a.id::text=to_jsonb(e)->>'parent_asset_id' AND a.id<>e.id
   LEFT JOIN LATERAL (
     SELECT CASE WHEN count(*)=1 THEN min(k.id::text) END AS id FROM kg_entities k
     WHERE k.tenant_id=$1::uuid AND k.uns_path @> e.uns_path AND k.uns_path<>e.uns_path
       AND nlevel(k.uns_path)=(SELECT max(nlevel(z.uns_path)) FROM kg_entities z WHERE z.tenant_id=$1::uuid AND z.uns_path @> e.uns_path AND z.uns_path<>e.uns_path)
-  ) p ON true WHERE e.tenant_id::text=$1::uuid::text
+  ) p ON true
+  LEFT JOIN bridged_assets pb ON pb.node_id=p.id::uuid
+  WHERE e.tenant_id::text=$1::uuid::text
   UNION ALL
   SELECT 'notebook',n.id::text,n.display_name,
     CASE WHEN e.id IS NOT NULL THEN 'asset' WHEN ba.bound_asset_path IS NOT NULL THEN 'namespace' ELSE 'root' END,
@@ -161,12 +178,18 @@ function item(row: InventoryRow) {
     ...(row.kind === "installed_instance" ? { resolution: { status: "unmapped", reason: "no_link", target: null } } : {}),
   };
 }
-async function authorize(client: PoolClient, tenant: string, scope: Scope): Promise<void> {
-  if (scope.kind === "root") return;
+async function authorize(client: PoolClient, tenant: string, scope: Scope): Promise<Scope> {
+  if (scope.kind === "root") return scope;
   const table = { namespace: "kg_entities", asset: "cmms_equipment", notebook: "equipment_notebooks" }[scope.kind];
   const tenantPredicate = scope.kind === "asset" ? "tenant_id::text=$1::text" : "tenant_id=$1::uuid";
   const { rowCount } = await client.query(`SELECT 1 FROM ${table} WHERE ${tenantPredicate} AND id=$2::uuid`, [tenant,scope.id]);
   if (!rowCount) throw new BrowserError(404, "not_found");
+  if (scope.kind === "namespace") {
+    const { rows } = await client.query<{asset_id:string}>(
+      `WITH ${bridges} SELECT asset_id FROM bridged_assets WHERE node_id=$2::uuid`, [tenant,scope.id]);
+    if (rows[0]) return {kind:"asset",id:rows[0].asset_id};
+  }
+  return scope;
 }
 
 async function page(request: Request, actor: Actor, search: boolean) {
@@ -181,12 +204,12 @@ async function page(request: Request, actor: Actor, search: boolean) {
   const last = readCursor(p.get("cursor"),binding);
   const escaped = query.replace(/[\\%_]/g,"\\$&");
   return withTenantContext(actor.tenantId, async (client) => {
-    await authorize(client,actor.tenantId,scope);
-    const { rows } = await client.query(equipmentBrowserPageSql(search,scope.kind === "root"),
-      [actor.tenantId,scope.kind,scope.id,filter,escaped,last?.[0] ?? null,last?.[1] ?? null,limit+1]);
+    const canonicalScope = await authorize(client,actor.tenantId,scope);
+    const { rows } = await client.query(equipmentBrowserPageSql(search,canonicalScope.kind === "root"),
+      [actor.tenantId,canonicalScope.kind,canonicalScope.id,filter,escaped,last?.[0] ?? null,last?.[1] ?? null,limit+1]);
     const result = rows[0], all = result.items as InventoryRow[], hasMore = all.length > limit, selected = all.slice(0,limit);
     const tail = selected.at(-1);
-    return { scope,items: selected.map(item),counts: { total: result.total,byKind: result.by_kind },hasMore,
+    return { scope:canonicalScope,items: selected.map(item),counts: { total: result.total,byKind: result.by_kind },hasMore,
       nextCursor: hasMore && tail ? cursor(binding,[tail.kind,tail.id]) : null,consistency: "live_keyset" };
   }, { signal: request.signal,readOnly: true });
 }
