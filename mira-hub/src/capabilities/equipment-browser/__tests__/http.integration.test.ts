@@ -151,6 +151,21 @@ describe("direct equipment API HTTP/PostgreSQL contract", () => {
     }
   });
 
+  it("rejects empty paging inputs and accepts omitted filters", async () => {
+    for (const path of [`children?parentKind=notebook&parentId=${notebook}`,
+      `search?scopeKind=notebook&scopeId=${notebook}&q=VFD1`]) {
+      for (const [parameter,error] of [["cursor","invalid_cursor"],["kind","invalid_request"]]) {
+        const response=await request(`${path}&${parameter}=`);
+        expect(response.status).toBe(400);
+        expect(response.headers.get("Cache-Control")).toBe("private, no-store");
+        expect(await response.json()).toEqual({error});
+      }
+      const first=await request(path);
+      expect(first.status).toBe(200);
+      expect((await first.json()).counts.total).toBe(2);
+    }
+  });
+
   it("pages tied labels by exact identity and rejects replay across users, scopes, filters, query and tenant", async () => {
     const prefix=`children?parentKind=notebook&parentId=${notebook}&limit=1`;
     const first=await (await request(prefix)).json();

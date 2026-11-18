@@ -9,6 +9,7 @@ on:
       - 'mira-hub/src/lib/equipment-notebooks.ts'
       - 'mira-hub/scripts/verify-equipment-browser-proof.py'
       - 'mira-hub/scripts/setup-integration-db.mjs'
+      - 'mira-hub/scripts/equipment-test-database.mjs'
       - 'mira-hub/vitest*.config.ts'
       - 'mira-hub/package*.json'
       - '.github/workflows/equipment-browser-contract.yml'

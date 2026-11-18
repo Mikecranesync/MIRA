@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
+import { equipmentTestDatabaseUrl } from "./equipment-test-database.mjs";
 
 const { Client } = pg;
 
@@ -227,11 +228,11 @@ async function matchEquipmentBrowserTenantSchema(client) {
 
 async function main() {
   const equipmentBrowser = process.argv.includes("--equipment-browser");
-  const databaseUrl = requireEnv("TEST_DATABASE_URL");
-  assertDisposable(databaseUrl);
-  if (equipmentBrowser && !["localhost", "127.0.0.1", "[::1]"].includes(new URL(databaseUrl).hostname)) {
-    throw new Error("The equipment browser profile requires a loopback disposable database.");
-  }
+  const configuredUrl = requireEnv("TEST_DATABASE_URL");
+  const databaseUrl = equipmentBrowser
+    ? equipmentTestDatabaseUrl(configuredUrl, process.env.MIRA_TEST_DB_CONFIRM)
+    : configuredUrl;
+  if (!equipmentBrowser) assertDisposable(databaseUrl);
 
   const client = new Client({ connectionString: databaseUrl });
   await client.connect();

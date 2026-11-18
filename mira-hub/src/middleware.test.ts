@@ -91,7 +91,7 @@ describe("equipment-browser session HTTP contract", () => {
     expect((await unauth("/api/equipment-browser/children-extra")).headers.get("cache-control")).toBeNull();
   });
 
-  it("returns JSON for blocked entitlements while preserving adjacent redirects", async () => {
+  it("defers equipment entitlement to the route while preserving adjacent redirects", async () => {
     const secret = "equipment-browser-local-middleware-test";
     vi.stubEnv("AUTH_SECRET", secret);
     try {
@@ -105,10 +105,9 @@ describe("equipment-browser session HTTP contract", () => {
           headers:{cookie:`next-auth.session-token=${cookie}`},
         }), {} as NextFetchEvent);
         const response = await send("/api/equipment-browser/resolve/");
-        expect(response.status).toBe(403);
-        expect(response.headers.get("cache-control")).toBe("private, no-store");
+        expect(response.headers.get("x-middleware-next")).toBe("1");
         expect(response.headers.get("location")).toBeNull();
-        expect(await response.json()).toMatchObject({error:expect.any(String)});
+        expect(response.headers.get("content-security-policy")).toBeTruthy();
         expect(callbackOf(await send("/assets/")).pathname).toBe(redirect);
         expect(callbackOf(await send("/api/equipment-browser/resolve-extra")).pathname).toBe(redirect);
       }

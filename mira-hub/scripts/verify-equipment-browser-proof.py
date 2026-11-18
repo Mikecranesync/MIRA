@@ -7,13 +7,13 @@ import pathlib
 import sys
 
 REQUIRED = {
-    "equipment-browser/__tests__/http.integration.test.ts": (34, [
+    "equipment-browser/__tests__/http.integration.test.ts": (35, [
         "20k fixture:", "real socket cancellation", "stale or corrected selections",
         "excludes historical namespace branches", "keeps a mixed parent cycle reachable",
         "places notebooks only through an eligible unambiguous binding",
         "keeps generated placement graphs acyclic and reachable",
         "finalizes a large typed placement graph", "uses identical component timestamps", "GETs leave recency", "rechecks authorization on every page", "same UUID",
-        "canonical asset binding, live source counts and normalized labels", "requires a session", "enforces current equipment entitlements", "refusing foreign and unknown assets",
+        "canonical asset binding, live source counts and normalized labels", "requires a session", "enforces current equipment entitlements", "rejects empty paging inputs", "refusing foreign and unknown assets",
     ]),
     "equipment-browser/__tests__/tenant-read.integration.test.ts": (3, [
         "aborts before acquiring", "read-only callbacks cannot change", "repeatable-read",

@@ -46,7 +46,7 @@ function cursor(binding: string, last: [Kind, string]): string {
   return `${payload}.${sign(payload).toString("base64url")}`;
 }
 function readCursor(value: string | null, binding: string): [string, string] | null {
-  if (!value) return null;
+  if (value === null) return null;
   if (value.length > 4096 || !/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]{43}$/.test(value)) reject("invalid_cursor");
   const [payload, signature] = value.split(".");
   const supplied = Buffer.from(signature, "base64url"), expected = sign(payload);
@@ -318,7 +318,7 @@ async function page(request: Request, actor: Actor, search: boolean) {
   const p = parameters(request, [search ? "scopeKind" : "parentKind",search ? "scopeId" : "parentId",...(search ? ["q"] : []),"kind","limit","cursor"]);
   const scope = scopeOf(p, search ? "scope" : "parent");
   const limit = integer(p.get("limit"),50); if (limit < 1 || limit > 100) reject("invalid_limit");
-  const filter = p.get("kind"); if (filter && !kinds.includes(filter as Kind)) reject();
+  const filter = p.get("kind"); if (filter !== null && !kinds.includes(filter as Kind)) reject();
   const query = (p.get("q") ?? "").normalize("NFKC").trim().replace(/\s+/g," ");
   if (query.length > 200 || (search && !query)) reject("invalid_query");
   secret();

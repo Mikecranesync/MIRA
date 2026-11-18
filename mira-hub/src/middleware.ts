@@ -225,19 +225,13 @@ export default async function middleware(req: NextRequest, _ev: NextFetchEvent) 
     return applySecurityHeaders(NextResponse.redirect(url), pathname, csp);
   }
 
-  // Already on a gate page — let it render so the user can act.
-  if (!GATE_PATHS.some((p) => pathname.startsWith(p))) {
+  // Equipment routes use the current database entitlement. Page redirects
+  // continue to use their cookie claims, including the existing gate pages.
+  if (!equipmentBrowserApi && !GATE_PATHS.some((p) => pathname.startsWith(p))) {
     const status = String(token.status ?? "trial");
     const redirectUrl = gateRedirect(req, status, token.trialExpiresAt);
     if (redirectUrl) {
-      const response = equipmentBrowserApi
-        ? NextResponse.json({
-            error: status === "pending"
-              ? "Your account is pending approval."
-              : "Your pilot has ended. Contact FactoryLM to continue.",
-          }, { status: 403, headers: { "Cache-Control": "private, no-store" } })
-        : NextResponse.redirect(redirectUrl);
-      return applySecurityHeaders(response, pathname, csp);
+      return applySecurityHeaders(NextResponse.redirect(redirectUrl), pathname, csp);
     }
   }
 

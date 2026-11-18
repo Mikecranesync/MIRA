@@ -112,7 +112,7 @@ The runtime requires those existing tables and grants; missing schema is not sil
 ## Qualification and disclosed boundaries
 
 From `mira-hub`, run `MIRA_TEST_DB_CONFIRM=DISPOSABLE npm run test:integration:equipment-browser`
-with `TEST_DATABASE_URL` pointing to a fresh loopback UTF-8 PostgreSQL database. The same
+with an option-free PostgreSQL `TEST_DATABASE_URL` pointing to a fresh loopback UTF-8 database. The same
 command bootstraps the TEXT tenant fixture and runs the named suites in CI. The standard
 integration profile keeps its default schema and excludes the browser-specific suites.
 
