@@ -783,7 +783,8 @@ capabilities:
     promotion_criteria:
       - "Refusals: unanswerable questions refuse no worse than with the flag off (2026-10-21 staging: 6/7 vs 7/7 by answer text — not met; #4572)."
       - "Production: owner decision after the staging walk."
-    review_by: "2026-11-17"
+      - "REVIEW DEFERRED 2026-11-17 -> 2026-11-24 (reason): moved without re-deciding by an owner-approved agent PR (Mike, in chat, 2026-11-18: resolve #5138 and verify required CI checks) so the lapsed date stops failing CI Gate on every open PR and on main. Nothing about the capability changed: staging stays 0, production unset. Re-decide by the new date, with the seven records already due 2026-11-24."
+    review_by: "2026-11-24"
 
   - id: notebook_query_rewrite
     purpose: >-

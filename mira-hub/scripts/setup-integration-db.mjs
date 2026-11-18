@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
+import { equipmentTestDatabaseUrl } from "./equipment-test-database.mjs";
 
 const { Client } = pg;
 
@@ -78,8 +79,19 @@ async function listSql(dir) {
     .map((file) => path.join(dir, file));
 }
 
-async function integrationMigrations() {
-  const configured = process.env.MIRA_INTEGRATION_MIGRATIONS;
+const equipmentBrowserMigrations = [
+  "012_qr_permanent_binding.sql",
+  "015_equipment_uns_path.sql",
+  "016_component_templates.sql",
+  "017_installed_component_instances.sql",
+  "018_relationship_proposals.sql",
+  "021_namespace_builder.sql",
+  "023_grant_app_namespace_tables.sql",
+  "115_bench_components.sql",
+];
+
+async function integrationMigrations(equipmentBrowser) {
+  const configured = equipmentBrowser ? undefined : process.env.MIRA_INTEGRATION_MIGRATIONS;
   const base = configured
     ? configured.split(",").map((file) => file.trim()).filter(Boolean)
     : defaultMigrationFiles;
@@ -94,7 +106,7 @@ async function integrationMigrations() {
     .split(",")
     .map((file) => file.trim())
     .filter(Boolean);
-  const files = [...base, ...extra];
+  const files = [...base, ...(equipmentBrowser ? equipmentBrowserMigrations : extra)];
 
   return Promise.all(files.map(async (file) => {
     const fullPath = path.join(migrationsDir, file);
@@ -196,25 +208,54 @@ async function grantIntegrationPrivileges(client) {
   await client.query("GRANT SELECT, INSERT ON kg_triples_log TO factorylm_app");
 }
 
+async function matchEquipmentBrowserTenantSchema(client) {
+  await client.query("BEGIN");
+  try {
+    await client.query(`
+      DROP POLICY cmms_equipment_tenant ON cmms_equipment;
+      ALTER TABLE cmms_equipment DROP CONSTRAINT IF EXISTS cmms_equipment_tenant_id_fkey;
+      ALTER TABLE cmms_equipment ALTER COLUMN tenant_id TYPE text USING tenant_id::text;
+      CREATE POLICY cmms_equipment_tenant ON cmms_equipment FOR ALL TO factorylm_app
+        USING (tenant_id IN (current_setting('app.tenant_id', true), current_setting('app.current_tenant_id', true)))
+        WITH CHECK (tenant_id IN (current_setting('app.tenant_id', true), current_setting('app.current_tenant_id', true)));
+    `);
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  }
+}
+
 async function main() {
-  const databaseUrl = requireEnv("TEST_DATABASE_URL");
-  assertDisposable(databaseUrl);
+  const equipmentBrowser = process.argv.includes("--equipment-browser");
+  const configuredUrl = requireEnv("TEST_DATABASE_URL");
+  const databaseUrl = equipmentBrowser
+    ? equipmentTestDatabaseUrl(configuredUrl, process.env.MIRA_TEST_DB_CONFIRM)
+    : configuredUrl;
+  if (!equipmentBrowser) assertDisposable(databaseUrl);
 
   const client = new Client({ connectionString: databaseUrl });
   await client.connect();
   try {
+    if (equipmentBrowser) {
+      const encoding = await client.query("SHOW server_encoding");
+      if (encoding.rows[0]?.server_encoding !== "UTF8") {
+        throw new Error("The equipment browser disposable database must use UTF8.");
+      }
+    }
     await ensureBootstrap(client);
 
     for (const file of await listSql(fixturesDir)) {
       await applySqlFile(client, file);
     }
 
-    for (const file of await integrationMigrations()) {
+    for (const file of await integrationMigrations(equipmentBrowser)) {
       await applySqlFile(client, file);
     }
 
     await grantIntegrationPrivileges(client);
     await smokeCheck(client);
+    if (equipmentBrowser) await matchEquipmentBrowserTenantSchema(client);
   } finally {
     await client.end();
   }

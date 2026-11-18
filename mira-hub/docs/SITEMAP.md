@@ -11,7 +11,7 @@
 | Surface | Count |
 |---|---|
 | Pages | **71** (12 dynamic) |
-| API routes | **208** (88 dynamic) |
+| API routes | **211** (88 dynamic) |
 
 ## Pages (71)
 
@@ -89,7 +89,7 @@
 | `/workorders/[id]` | dynamic | `(hub)/workorders/[id]/page.tsx` |
 | `/workorders/new` | static | `(hub)/workorders/new/page.tsx` |
 
-## API routes (208)
+## API routes (211)
 
 | Route | Kind | Source |
 |---|---|---|
@@ -175,6 +175,9 @@
 | `/api/demo/signals/toggle` | static | `api/demo/signals/toggle/route.ts` |
 | `/api/documents` | static | `api/documents/route.ts` |
 | `/api/documents/upload` | static | `api/documents/upload/route.ts` |
+| `/api/equipment-browser/children` | static | `api/equipment-browser/children/route.ts` |
+| `/api/equipment-browser/resolve` | static | `api/equipment-browser/resolve/route.ts` |
+| `/api/equipment-browser/search` | static | `api/equipment-browser/search/route.ts` |
 | `/api/equipment-notebooks` | static | `api/equipment-notebooks/route.ts` |
 | `/api/equipment-notebooks/[id]` | dynamic | `api/equipment-notebooks/[id]/route.ts` |
 | `/api/equipment-notebooks/[id]/asset` | dynamic | `api/equipment-notebooks/[id]/asset/route.ts` |
