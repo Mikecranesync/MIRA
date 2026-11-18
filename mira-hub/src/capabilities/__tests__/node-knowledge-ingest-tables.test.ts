@@ -48,24 +48,23 @@ vi.mock("@/capabilities/model-scope-gate", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/capabilities/model-scope-gate")>();
   return { ...actual, gatePageRows: <Row,>(rows: readonly Row[]) => [...rows] };
 });
-vi.mock("unpdf", () => ({
+vi.mock("unpdf", async () => {
+  const { textContentItem } = await import("../__fixtures__/text-content-item");
+  return {
   getDocumentProxy: vi.fn(async () => {
     if (pdf.withoutGetPage) return {};
     return {
       numPages: pdf.pages.length,
       getPage: vi.fn(async (n: number) => {
         if (pdf.getPageThrows) throw new Error("layout read failed");
-        const items = (pdf.layout.get(n) ?? []).map((i) => ({
-          str: i.str,
-          transform: [i.size, 0, 0, i.size, i.x, i.y],
-          width: i.w,
-        }));
+        const items = (pdf.layout.get(n) ?? []).map((i) => textContentItem(i));
         return { getTextContent: vi.fn(async () => ({ items })), cleanup: () => true };
       }),
     };
   }),
   extractText: vi.fn(async () => ({ text: pdf.pages })),
-}));
+  };
+});
 
 vi.mock("@/capabilities/pdf-page-label-reader", () => ({
   readPageLabelsBounded: vi.fn(async () => null),
@@ -120,16 +119,19 @@ describe("writePdfChunksForNode stores a model-column table as one chunk per mod
     await writePdfChunksForNode(opts);
     const rows = insertedRows();
     const own = rows.filter((r) => Array.isArray(r.metadata.table_models) && (r.metadata.table_models as string[]).join() === "GS11N20P2");
-    expect(own).toHaveLength(1);
-    expect(own[0].page).toBe(2);
-    expect(own[0].content).toContain("GS11N-20P2: CT Rated Input Current 5.1 A");
-    expect(own[0].content).toContain("GS11N-20P2: VT Rated Input Current 5.8 A");
-    expect(own[0].content).not.toContain("7.3");
-    expect(own[0].content).not.toContain("GS11N-20P5");
-    expect(own[0].metadata.table_unqualified).toBeUndefined();
-    // Five model chunks for the five header models.
+    // The group and duty labels lengthen each model past one chunk: it splits at a row boundary.
+    expect(own).toHaveLength(2);
+    expect(own[1].content).toMatch(/GS11N-20P2 \(cont\.\)\n/);
+    const text = own.map((r) => r.content).join("");
+    expect(own.every((r) => r.page === 2)).toBe(true);
+    expect(text).toContain("GS11N-20P2: Input Rating / CT / Rated Input Current 5.1 A");
+    expect(text).toContain("GS11N-20P2: Input Rating / VT / Rated Input Current 5.8 A");
+    expect(text).not.toContain("7.3");
+    expect(text).not.toContain("GS11N-20P5");
+    expect(own.every((r) => r.metadata.table_unqualified === undefined)).toBe(true);
+    // Model chunks for exactly the five header models.
     const tagged = rows.filter((r) => Array.isArray(r.metadata.table_models) && !r.metadata.table_unqualified);
-    expect(tagged.map((r) => (r.metadata.table_models as string[])[0]).sort()).toEqual(["GS11N20P2", "GS11N20P5", "GS11N21P0", "GS11N22P0", "GS11N23P0"]);
+    expect([...new Set(tagged.map((r) => (r.metadata.table_models as string[])[0]))].sort()).toEqual(["GS11N20P2", "GS11N20P5", "GS11N21P0", "GS11N22P0", "GS11N23P0"]);
   });
 
   it("keeps the unqualified lines as flat text tagged with every model of the table", async () => {
@@ -137,7 +139,8 @@ describe("writePdfChunksForNode stores a model-column table as one chunk per mod
     await writePdfChunksForNode(opts);
     const flat = insertedRows().filter((r) => r.metadata.table_unqualified === true);
     expect(flat.length).toBeGreaterThan(0);
-    expect(flat.some((row) => /Cooling Method/.test(row.content))).toBe(true);
+    expect(flat.some((row) => /For use with three-phase motors only/.test(row.content))).toBe(true);
+    expect(flat.some((row) => /Cooling Method/.test(row.content))).toBe(false); // now a row: its cells tile the columns
     for (const row of flat) expect(row.metadata.table_models).toEqual(["GS11N20P2", "GS11N20P5", "GS11N21P0", "GS11N22P0", "GS11N23P0"]);
   });
 
@@ -150,13 +153,17 @@ describe("writePdfChunksForNode stores a model-column table as one chunk per mod
     for (const r of rows.filter((r) => r.page === 1)) expect(r.metadata.table_models).toBeUndefined();
     const remainder = rows.filter((r) => r.page === 2 && !r.metadata.table_models);
     expect(remainder.length).toBeGreaterThan(0);
-    // The unplaced Cooling Method line now ends positive grid ownership.
-    // Preserve the following notes on their physical page without silently
-    // restoring model applicability after that uncertainty.
+    // Owner decision 2026-11-17 (GS10 option 1): the table's footnotes sit
+    // below the grid, so they are page prose. They stay in the withheld
+    // unqualified chunk and also reach the unscoped remainder, which carries
+    // no model scope and none of the table's values.
     const notes = rows.filter((r) => r.page === 2 && /For use with three-phase motors only/.test(r.content));
-    expect(notes.length).toBeGreaterThan(0);
-    expect(notes.every((r) => r.metadata.table_unqualified === true)).toBe(true);
+    expect(notes.some((r) => r.metadata.table_unqualified === true)).toBe(true);
+    const proseNotes = remainder.filter((r) => /For use with three-phase motors only/.test(r.content));
+    expect(proseNotes.length).toBeGreaterThan(0);
+    for (const r of proseNotes) expect(r.metadata.table_unqualified).toBeUndefined();
     expect(remainder.map((r) => r.content).join("\n")).not.toMatch(/5\.1\s+7\.3\s+10\.8/);
+    expect(remainder.map((r) => r.content).join("\n")).not.toMatch(/\b5\.1 A\b|Rated Input Current/);
   });
 
   it("stamps extraction_version on every chunk, and the version is at least 2", async () => {
@@ -188,7 +195,7 @@ describe("writePdfChunksForNode stores a model-column table as one chunk per mod
     const { writePdfChunksForNode } = await import("@/lib/node-knowledge-ingest");
     await writePdfChunksForNode(opts);
     const own = insertedRows().filter((row) => row.page === 2 && (row.metadata.table_models as string[] | undefined)?.join() === "GS11N20P2");
-    expect(own.some((row) => row.content.includes("GS11N-20P2: CT Rated Input Current 5.1 A") && !row.metadata.table_unqualified)).toBe(true);
+    expect(own.some((row) => row.content.includes("GS11N-20P2: Input Rating / CT / Rated Input Current 5.1 A") && !row.metadata.table_unqualified)).toBe(true);
     expect(insertedRows().filter((row) => row.page === 1 && row.content.includes("Later current")).every((row) => row.metadata.table_unqualified)).toBe(true);
   });
 
@@ -250,8 +257,8 @@ describe("garage pilot L2 — a page whose numbers carry an unmapped glyph still
     await writePdfChunksForNode(opts);
     const rows = insertedRows();
     const own = rows.filter((r) => Array.isArray(r.metadata.table_models) && (r.metadata.table_models as string[]).join() === "GS11N20P2");
-    expect(own).toHaveLength(1);
-    expect(own[0].content).toContain("GS11N-20P2: CT Rated Input Current 5�1 A");
+    expect(own).toHaveLength(2);
+    expect(own.map((r) => r.content).join("")).toContain("GS11N-20P2: Input Rating / CT / Rated Input Current 5�1 A");
     const page2 = rows.filter((r) => r.page === 2);
     expect(page2.length).toBeGreaterThan(1);
     for (const r of page2) expect(r.metadata.text_repair).toBe("unmapped_glyph");

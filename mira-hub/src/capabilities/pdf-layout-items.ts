@@ -19,7 +19,7 @@
 import { pinnedRules, rulePinsForSha, rulesCrossing } from "./table-rule-pins";
 
 /** `vr`: indices of the page's pinned vertical rules crossing this item's baseline (absent = no rule evidence); `vrx`: those rules' x positions, index-aligned. */
-export type LayoutItem = { str: string; x: number; y: number; w: number; size: number; vr?: readonly number[]; vrx?: readonly number[] };
+export type LayoutItem = { str: string; x: number; y: number; w: number; size: number; vr?: readonly number[]; vrx?: readonly number[]; vertical?: boolean };
 
 interface PdfTextItem {
   str?: string;
@@ -46,8 +46,12 @@ export function layoutItemsFromTextContent(content: PdfTextContent): LayoutItem[
   for (const raw of content.items) {
     const it = raw as PdfTextItem;
     if (!it || typeof it.str !== "string" || !Array.isArray(it.transform)) continue;
-    const [, b, , d, x, y] = it.transform;
-    items.push({ str: it.str, x, y, w: it.width ?? 0, size: Math.round(Math.hypot(b, d) * 10) / 10 });
+    const [a, b, , d, x, y] = it.transform;
+    const size = Math.round(Math.hypot(b, d) * 10) / 10;
+    // Text set 90 degrees counter-clockwise (a = d = 0, b > 0): it reads upward from (x, y), so
+    // `w` is its length along y. Only this one rotation is flagged; other angles stay as before.
+    const vertical = size > 0 && Math.abs(a) <= size * 0.01 && Math.abs(d) <= size * 0.01 && b > 0;
+    items.push({ str: it.str, x, y, w: it.width ?? 0, size, ...(vertical ? { vertical: true as const } : {}) });
   }
   return items;
 }

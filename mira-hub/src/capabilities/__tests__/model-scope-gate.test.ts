@@ -44,15 +44,18 @@ vi.mock("../table-rule-pins", async (importOriginal) => {
     return Object.fromEntries(Object.entries(pins).map(([k, pin]) => [k, { ...pin, reviewed: pdf.reviewed }]));
   } };
 });
-vi.mock("unpdf", () => ({
+vi.mock("unpdf", async () => {
+  const { textContentItem } = await import("../__fixtures__/text-content-item");
+  return {
   getDocumentProxy: vi.fn(async () => ({
     getPage: async (n: number) => ({
-      getTextContent: async () => ({ items: (pdf.pages.find((p) => p.page === n)?.items ?? []).map((i) => ({ str: i.str, width: i.w, transform: [i.size, 0, 0, i.size, i.x, i.y] })) }),
+      getTextContent: async () => ({ items: (pdf.pages.find((p) => p.page === n)?.items ?? []).map((i) => textContentItem(i)) }),
       cleanup: () => true,
     }),
   })),
   extractText: vi.fn(async () => ({ text: Array.from({ length: Math.max(...pdf.pages.map((p) => p.page)) }, (_, i) => pdf.pages.find((p) => p.page === i + 1)?.text ?? "") })),
-}));
+  };
+});
 vi.mock("@/capabilities/pdf-page-label-reader", () => ({ readPageLabelsBounded: vi.fn(async () => null) }));
 const captured = vi.hoisted(() => [] as Array<{ sql: string; params: unknown[] }>);
 vi.mock("@/lib/tenant-context", () => ({
@@ -144,7 +147,7 @@ describe("through the writer: a page nobody reviewed affirms no model", () => {
   });
   it("GS10 page 26 whose reviewed record is for other rows affirms nothing", async () => {
     const rows = await ingest(P26, candidateP26.sha256, scopeDigest([{ content: "x", tableModels: ["A"] }]));
-    expect(affirmedIn(gated.flatMap((g) => g.input))).toBe(5);
+    expect(affirmedIn(gated.flatMap((g) => g.input))).toBe(10); // five models, two chunks each
     expect(affirmedIn(rows.map(asScoped))).toBe(0);
   });
 });
@@ -230,13 +233,29 @@ describe("the exact gold check a page must pass before it is recorded as reviewe
     expect(backed(gold, "GS11N-20P2: CT Rated Input Current 15.1 A")).toBe(false);  // value inside a longer one
     expect(backed(gold, "GS11N-20P2: Max Motor Output 1/4 hp")).toBe(false);        // its group label is missing
   });
-  it("GS10 page 26 as read today fails it: its group-labelled lines lose their label", async () => {
+  it("backs a line only with the group and duty labels the page prints", () => {
+    expect(backed(gold, "GS11N-20P2: Input Rating / CT / Rated Input Current 5.1 A")).toBe(true);
+    expect(backed(gold, "GS11N-20P2: Input Rating / VT / Rated Input Current 5.1 A")).toBe(false); // the other duty
+    expect(backed(gold, "GS11N-20P2: Output Rating / Max Motor Output 1/4 hp")).toBe(true);
+  });
+  it("GS10 page 26 as read now: all 90 lines pass the exact gold check, and the page is still not reviewed", async () => {
+    // The check is the frozen benchmark scorer's, unchanged. The fixture's gold was corrected to the
+    // printed page (25 entries: a unit the page prints once is no longer recorded twice, nor in the
+    // label); every entry is verified against the source PDF's word positions. Passing the check
+    // does not record the page as reviewed: that needs the owner's source review.
     const rows = await ingest(P26, candidateP26.sha256, candidateP26.digest);
-    const lines = affirmedLines(rows.map(asScoped));
-    expect(lines).toHaveLength(55);
-    const unbacked = lines.filter((l) => !backed(gold, l));
-    expect(unbacked.length).toBe(30);
-    expect(unbacked.every((l) => !/\b(CT|VT)\b/.test(l.slice(l.indexOf(": ") + 2)))).toBe(true);
+    const lines = affirmedLines(rows.map(asScoped)).filter((l) => !/\(cont\.\)$/.test(l));
+    expect(lines).toHaveLength(90);
+    expect(lines.filter((l) => !backed(gold, l))).toEqual([]);
+    expect(new Set(lines).size).toBe(90);
+    expect(lines).toContain("GS11N-20P2: Input Rating / CT / Rated Input Current 5.1 A");
+    expect(candidateP26.status).toBe("not reviewed");
+  });
+  it("the corrected gold still rejects a line that misstates the printed unit", () => {
+    expect(backed(gold, "GS11N-20P2: IE2 Efficiency - Relative Power Loss 4.7")).toBe(false);
+    expect(backed(gold, "GS11N-20P2: Weight 0.4 lb")).toBe(false);
+    expect(backed(gold, "GS11N-20P2: Input Rating / Operating Voltage Range 170–265 Hz")).toBe(false);
+    expect(backed(gold, "GS11N-20P2: Weight 0.4 kg")).toBe(true);
   });
 });
 
@@ -270,7 +289,8 @@ describe("through the writer: a page with a matching reviewed record stores its 
   // reviewed record a test supplies: the digest of exactly the rows the reader produces.
   it("GS10 page 26 with a matching record stores its five model columns unchanged", async () => {
     const rows = await ingest(P26, candidateP26.sha256, candidateP26.digest);
-    expect(rows.map(asScoped).filter(affirmsModel).map((r) => r.tableModels)).toEqual([["GS11N20P2"], ["GS11N20P5"], ["GS11N21P0"], ["GS11N22P0"], ["GS11N23P0"]]);
+    expect(rows.map(asScoped).filter(affirmsModel).map((r) => r.tableModels)).toEqual(
+      ["GS11N20P2", "GS11N20P5", "GS11N21P0", "GS11N22P0", "GS11N23P0"].flatMap((m) => [[m], [m]])); // two chunks per model
     expect(gated.flatMap((g) => g.output)).toEqual(gated.flatMap((g) => g.input));
   });
 });
