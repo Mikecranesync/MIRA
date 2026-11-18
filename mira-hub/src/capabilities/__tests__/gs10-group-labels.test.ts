@@ -15,6 +15,7 @@ import candidateP26 from "../__fixtures__/reviewed-pages/gs10-rev-b-p26.candidat
 import goldP27 from "../__fixtures__/reviewed-pages/gs10-rev-b-p27.gold.json";
 import { affirmsModel, scopeDigest, type ScopedRow } from "../model-scope-gate";
 import { layoutItemsFromTextContent } from "../pdf-layout-items";
+import pins from "../table-rule-pins.json";
 
 vi.hoisted(() => { process.env.NODE_EMBED_ON_WRITE = "0"; });
 
@@ -120,8 +121,12 @@ describe("rotation is read from the PDF, not guessed", () => {
 
 describe("GS10 page 26: all 90 values, each under its own model with the labels the page prints", () => {
   const gold = candidateP26.gold as Gold[];
-  it("the captured page has the rotated group cells the reader depends on (precondition)", () => {
-    expect(P26.items.filter((i) => i.vertical).map((i) => i.str.trim())).toEqual(["Output Rating", "Input Rating"]);
+  it("the captured page has the rotated items the real PDF has, not only the two labels (precondition)", () => {
+    // As read from the real file by layoutItemsFromTextContent: besides the two group cells, the
+    // PDF also rotates empty and space items and the footnote mark "2". A capture that keeps only
+    // the labels tests a cleaner page than any upload produces.
+    expect(P26.items.filter((i) => i.vertical).map((i) => i.str)).toEqual(["", "Output Rating", " ", "", "Input Rating", "2", " "]);
+    expect(P27.items.filter((i) => i.vertical).map((i) => i.str)).toEqual(["", "Output Rating", "", "Input Rating", "2", " "]);
     expect(gold).toHaveLength(90);
   });
   for (const g of gold) {
@@ -183,6 +188,22 @@ describe("GS10 page 27: a rated value is never stated without its duty", () => {
     const holding = stored.filter((r) => r.content.includes(line));
     expect(holding.length).toBeGreaterThan(0);
     expect(holding.every((r) => r.meta.table_unqualified === true)).toBe(true);
+  });
+});
+
+describe("GS10 page 26: the rotated footnote mark is read by its size, not its exact string (#5615 Codex F3)", () => {
+  it("a space-padded rotated \"2\" reads the page exactly as the captured \"2\" does", async () => {
+    const at = P26.items.findIndex((i) => i.vertical && i.str === "2");
+    expect(at, "precondition: the capture has the rotated mark").toBeGreaterThan(-1);
+    // The padded string changes the layout fingerprint, so give the page the real page 26 rules
+    // explicitly (as a matching pin would): only the mark's string differs from the control.
+    const rules = (pins as unknown as { documents: Record<string, { pages: Record<string, { rules: unknown }> }> })
+      .documents[candidateP26.sha256].pages["26"].rules;
+    const padded = { ...P26, items: P26.items.map((i, k) => (k === at ? { ...i, str: " 2 " } : i)), rules } as Page;
+    const control = (await ingest(P26)).read;
+    const read = (await ingest(padded)).read;
+    expect(modelLines(control)).toContain("GS11N-20P2: Input Rating / CT / Rated Input Current 5.1 A");
+    expect(scopeDigest(read)).toBe(scopeDigest(control));
   });
 });
 

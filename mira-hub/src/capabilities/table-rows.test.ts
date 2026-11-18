@@ -691,6 +691,110 @@ describe("duty stubs: placement is bounded, and stub text is never dropped (#559
     expect(text).toContain("Input Rating");
   });
 
+  // #5615 Codex round 1 F1: a one-letter rotated group label is still a group label. A real PDF
+  // also rotates blanks and footnote marks beside a label (GS10 pages 26 and 27); only those are
+  // read as ordinary text.
+  it.each([
+    ["H and L", "H", "L", 8],
+    ["1 and 2, printed full size (#5615 Codex F4)", "1", "2", 8],
+    // Alone on its line a digit annotates nothing, so even a small one is a group label.
+    ["1 and 2 at 6 pt over 8 pt text, each alone on its line", "1", "2", 6],
+    ["Output Rating and Input Rating (control)", "Output Rating", "Input Rating", 8],
+  ])("rotated group labels %s each keep their own rows", (_name, upper, lower, size) => {
+    const group = (str: string, centre: number) => ({ str, x: 40, y: centre - 20, w: 40, size, vertical: true });
+    const items = [...header(776), item("Frame Size", 30, 764), item("A1", 250, 764), item("A1", 350, 764),
+      item("Cooling Method", 30, 752), item("Fan", 250, 752), item("Fan", 350, 752),
+      ...[740, 728, 692, 680].flatMap((y, i) => [item("Rated Current", 100, y), item(String(i + 3), 250, y), item(String(i + 4), 350, y)]),
+      group(upper, 734), group(lower, 686)]; // one split only: [740 728] centred 734, [692 680] centred 686
+    expect(pageWithTables(items), "precondition: the page is read as a table").not.toBeNull();
+    const labels = detectModelTables(items).flatMap((b) => b.rows).map((r) => r.label);
+    expect(labels).toEqual(["Frame Size", "Cooling Method",
+      `${upper} / Rated Current`, `${upper} / Rated Current`, `${lower} / Rated Current`, `${lower} / Rated Current`]);
+  });
+  // #5615 Codex round 2 F4: a rotated digit that shares its line with row text is a mark only when
+  // it is printed small against the table's text, not against the largest item on that line. Here
+  // the digits are labels that this reader cannot centre, so their rows are withheld with the
+  // digits kept as text. Read as marks they would be dropped, leaving bare affirmable rows.
+  it.each([
+    ["8 pt, beside one 11 pt label", 8, 11],
+    ["7 pt, inside the ratio boundary", 7, 8],
+  ])("a rotated digit sharing a row line at %s is a group label: withheld, never dropped", (_name, size, labelSize) => {
+    const digit = (str: string, centre: number) => ({ str, x: 40, y: centre - 5, w: 10, size, vertical: true });
+    const rated = (y: number) => ({ str: "Rated Current", x: 100, y, w: 52, size: y === 728 ? labelSize : 8 });
+    const items = [...header(776), item("Frame Size", 30, 764), item("A1", 250, 764), item("A1", 350, 764),
+      item("Cooling Method", 30, 752), item("Fan", 250, 752), item("Fan", 350, 752),
+      ...[740, 728, 716, 704].flatMap((y, i) => [rated(y), item(String(i + 3), 250, y), item(String(i + 4), 350, y)]),
+      digit("1", 734), digit("2", 710)]; // each digit's y (729, 705) lands on the lower row of its pair
+    const onRowLine = (y: number) => items.filter((it) => Math.abs(it.y - y) <= 2.5).length;
+    expect([onRowLine(728), onRowLine(704)], "precondition: each digit shares a row line").toEqual([4, 4]);
+    expect(pageWithTables(items), "precondition: the page is read as a table").not.toBeNull();
+    const blocks = detectModelTables(items);
+    expect(blocks.flatMap((b) => b.rows).map((r) => r.label)).toEqual(["Frame Size", "Cooling Method"]);
+    expect(blocks.flatMap((b) => b.unqualified)).toEqual(expect.arrayContaining(["1", "2"]));
+    expect(blocks.flatMap((b) => b.unqualified).filter((l) => /Rated Current/.test(l))).toHaveLength(4);
+  });
+  it.each([["blank", ""], ["space", " "], ["footnote mark", "2"], ["two-digit footnote mark", "12"], ["space-padded footnote mark (#5615 Codex F3)", " 2 "]])(
+    "a rotated %s beside a rotated label is not a group label", (_name, str) => {
+      const group = (s: string, centre: number) => ({ str: s, x: 40, y: centre - 20, w: 40, size: 8, vertical: true });
+      const items = [...header(776), item("Frame Size", 30, 764), item("A1", 250, 764), item("A1", 350, 764),
+        item("Cooling Method", 30, 752), item("Fan", 250, 752), item("Fan", 350, 752),
+        ...[740, 728, 716, 704].flatMap((y, i) => [item("Rated Current", 100, y), item(String(i + 3), 250, y), item(String(i + 4), 350, y)]),
+        // As on GS10: raised 3 pt off the label's baseline, starting where its text ends (702 + 40).
+        group("Output Rating", 722), { str, x: 37, y: 742, w: 3, size: 5, vertical: true }];
+      expect(pageWithTables(items), "precondition: the page is read as a table").not.toBeNull();
+      expect(detectModelTables(items).flatMap((b) => b.rows).map((r) => r.label)).toEqual(["Frame Size", "Cooling Method",
+        ...Array(4).fill("Output Rating / Rated Current")]);
+    });
+
+  it("6 pt rotated group digits in their own column, each on its pair's lower row line, keep their rows (#5615 Codex F5)", () => {
+    const digit = (str: string, centre: number) => ({ str, x: 40, y: centre - 5, w: 10, size: 6, vertical: true });
+    const items = [...header(776), item("Frame Size", 30, 764), item("A1", 250, 764), item("A1", 350, 764),
+      item("Cooling Method", 30, 752), item("Fan", 250, 752), item("Fan", 350, 752),
+      ...[740, 728, 716, 704].flatMap((y, i) => [item("Rated Current", 100, y), item(String(i + 3), 250, y), item(String(i + 4), 350, y)]),
+      digit("1", 734), digit("2", 710)];
+    const onRowLine = (y: number) => items.filter((it) => Math.abs(it.y - y) <= 2.5).length;
+    expect([onRowLine(728), onRowLine(704)], "precondition: each digit shares a row line").toEqual([4, 4]);
+    expect(pageWithTables(items), "precondition: the page is read as a table").not.toBeNull();
+    expect(detectModelTables(items).flatMap((b) => b.rows).map((r) => r.label)).toEqual(["Frame Size", "Cooling Method",
+      "1 / Rated Current", "1 / Rated Current", "2 / Rated Current", "2 / Rated Current"]);
+  });
+
+  it("a 6 pt rotated 2 on a word label's baseline, before its text begins, keeps its own rows (#5615 Codex F7)", () => {
+    const items = [...header(776), item("Frame Size", 30, 764), item("A1", 250, 764), item("A1", 350, 764),
+      item("Cooling Method", 30, 752), item("Fan", 250, 752), item("Fan", 350, 752),
+      ...[740, 730, 720, 710].flatMap((y, i) => [item("Rated Current", 100, y), item(String(i + 3), 250, y), item(String(i + 4), 350, y)]),
+      { str: "Continuous", x: 40, y: 721.9, w: 31, size: 8, vertical: true },
+      { str: "2", x: 40, y: 715.3, w: 3.2, size: 6, vertical: true }];
+    expect(pageWithTables(items), "precondition: the page is read as a table").not.toBeNull();
+    expect(detectModelTables(items).flatMap((b) => b.rows).map((r) => r.label)).toEqual(["Frame Size", "Cooling Method",
+      "Continuous / Rated Current", "Continuous / Rated Current", "2 / Rated Current", "2 / Rated Current"]);
+  });
+
+  // #5615 Codex rounds 3 and 4, F5 and F7: a small rotated digit is a mark only when it is raised
+  // off a rotated word label's baseline and starts where that label's text ends. Each case breaks one
+  // condition; the digit is then a group label, placed or withheld, and never dropped. Read as a mark
+  // it would vanish. The label spans 702 to 742.
+  it.each([
+    ["5 pt, 30 pt across from the label's baseline", { x: 67, y: 742, size: 5 }],
+    ["5 pt, on the label's own baseline (not raised)", { x: 40, y: 742, size: 5 }],
+    ["5 pt, raised, at the start of the label's text", { x: 37, y: 699, size: 5 }],
+    ["8 pt, full size, raised at the label's end", { x: 37, y: 742, size: 8 }],
+    ["7 pt, at or above 0.8 of the 8 pt text, raised at the label's end", { x: 37, y: 742, size: 7 }],
+  ])("a rotated digit %s is a group label: never dropped", (_name, digit) => {
+    const labelCentre = 722, labelLength = 40;
+    const items = [...header(776), item("Frame Size", 30, 764), item("A1", 250, 764), item("A1", 350, 764),
+      item("Cooling Method", 30, 752), item("Fan", 250, 752), item("Fan", 350, 752),
+      ...[740, 728, 716, 704].flatMap((y, i) => [item("Rated Current", 100, y), item(String(i + 3), 250, y), item(String(i + 4), 350, y)]),
+      { str: "Output Rating", x: 40, y: labelCentre - labelLength / 2, w: labelLength, size: 8, vertical: true },
+      { str: "2", x: digit.x, y: digit.y, w: 3, size: digit.size, vertical: true }];
+    expect(pageWithTables(items), "precondition: the page is read as a table").not.toBeNull();
+    const blocks = detectModelTables(items);
+    const labels = blocks.flatMap((b) => b.rows).map((r) => r.label);
+    const kept = labels.some((l) => /^2 \/ /.test(l)) || blocks.flatMap((b) => b.unqualified).includes("2");
+    expect(kept, `labels ${JSON.stringify(labels)}`).toBe(true);
+    expect(labels.filter((l) => /Rated Current/.test(l) && !/\//.test(l))).toEqual([]);
+  });
+
   // #5598 Codex round 2 F2: one stub kind places, the other fails; the rows are demoted and the
   // label that DID place must survive as text too.
   const vgroup = (str: string, y: number) => ({ str, x: 20, y, w: 48, size: 8, vertical: true });
