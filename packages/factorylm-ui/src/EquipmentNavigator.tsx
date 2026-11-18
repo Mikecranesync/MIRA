@@ -186,6 +186,8 @@ export interface QuestionTargetBarProps {
   readonly onAskAbout: (target: QuestionTarget) => void;
   /** Open the equipment navigation to pick another target. */
   readonly onChange?: () => void;
+  /** Label of the row whose check is in flight: Ask waits (disabled) until it is answered. */
+  readonly pendingLabel?: string | null;
 }
 
 /**
@@ -193,7 +195,7 @@ export interface QuestionTargetBarProps {
  * When the technician is browsing other equipment it says so, and keeps saying
  * where the question will go until they press "Ask about".
  */
-export function QuestionTargetBar({ target, browsing, onAskAbout, onChange }: QuestionTargetBarProps) {
+export function QuestionTargetBar({ target, browsing, onAskAbout, onChange, pendingLabel = null }: QuestionTargetBarProps) {
   const differs = browsing !== null && !sameTarget(browsing, target);
   return <section className="fl-qtarget" aria-label="Question target" data-differs={differs ? "true" : undefined}>
     <p className="fl-qtarget__line">
@@ -207,7 +209,13 @@ export function QuestionTargetBar({ target, browsing, onAskAbout, onChange }: Qu
     {differs
       ? <p className="fl-qtarget__line fl-qtarget__browsing" role="status">
         <span>Browsing {targetText(browsing)}. Questions still go to {target ? targetText(target) : "no equipment"}.</span>
-        <button type="button" className="fl-equip__ask" onClick={() => onAskAbout(browsing)}>Ask about {browsing.componentLabel ?? browsing.machineLabel}</button>
+        <button
+          type="button"
+          className="fl-equip__ask"
+          disabled={pendingLabel !== null}
+          aria-busy={pendingLabel !== null ? "true" : undefined}
+          onClick={() => onAskAbout(browsing)}
+        >{pendingLabel !== null ? `Checking ${pendingLabel}…` : `Ask about ${browsing.componentLabel ?? browsing.machineLabel}`}</button>
       </p>
       : null}
   </section>;

@@ -230,6 +230,7 @@ export function App({ search = window.location.search, onSearch = replaceSearch 
           target={pagedTarget}
           browsing={provisionalTarget(pagedBrowsing, pagedSource)}
           onAskAbout={() => { if (pagedBrowsing) asker.ask(pagedBrowsing); }}
+          pendingLabel={asker.pendingLabel}
           onChange={() => dispatch({ type: "set-navigation-visible", visible: true })}
         />
       </>,

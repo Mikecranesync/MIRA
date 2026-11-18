@@ -39,6 +39,8 @@ export interface EquipmentRefreshRequest {
 export interface EquipmentAskController {
   /** Key of the row whose resolve is in flight, if any. */
   readonly pendingKey: string | null;
+  /** Label of that row, so every Ask control can say what is being checked. */
+  readonly pendingLabel: string | null;
   readonly notice: EquipmentAskNotice | null;
   /** One explicit resolve. On success the host's onAskAbout runs; on refusal a notice is set. */
   readonly ask: (item: BrowserItem) => void;
@@ -47,6 +49,16 @@ export interface EquipmentAskController {
   readonly refreshRequest: EquipmentRefreshRequest | null;
   /** Reload the list a refused row came from. Never resolves; clears the notice. */
   readonly requestRefresh: (item: BrowserItem) => void;
+  /**
+   * The navigator's answer to a refresh: the current record, or null when it could
+   * not be read back. Null shows a notice; the refused snapshot stays unaskable.
+   */
+  readonly settleRefresh: (item: BrowserItem, current: BrowserItem | null) => void;
+}
+
+/** A row as it was refused: same row and same revision means the same out-of-date record. */
+function snapshotOf(item: BrowserItem): string {
+  return `${itemKey(item)}@${item.revision ?? "-"}`;
 }
 
 export interface EquipmentAskOptions {
@@ -68,10 +80,12 @@ export function useEquipmentAsk(
   onAskAbout: (target: QuestionTarget, item: BrowserItem) => void,
   options: EquipmentAskOptions = {},
 ): EquipmentAskController {
-  const [pendingKey, setPendingKey] = useState<string | null>(null);
+  const [pending, setPending] = useState<BrowserItem | null>(null);
   const [notice, setNotice] = useState<EquipmentAskNotice | null>(null);
   const [refreshRequest, setRefreshRequest] = useState<EquipmentRefreshRequest | null>(null);
   const inFlight = useRef<AbortController | null>(null);
+  /** Snapshots a refusal said were out of date, by row key. Asking with one again sends nothing. */
+  const refused = useRef(new Map<string, { readonly snapshot: string; readonly reason: ResolveFailureReason }>());
   const onAskRef = useRef(onAskAbout);
   onAskRef.current = onAskAbout;
   const selectionRef = useRef(options.selection);
@@ -79,7 +93,8 @@ export function useEquipmentAsk(
   useEffect(() => () => {
     inFlight.current?.abort();
     inFlight.current = null;
-    setPendingKey(null);
+    refused.current.clear();
+    setPending(null);
     setNotice(null);
     setRefreshRequest(null);
   }, [source]);
@@ -87,6 +102,12 @@ export function useEquipmentAsk(
   const ask = useCallback((item: BrowserItem) => {
     if (inFlight.current) return; // one resolve at a time; a second press does not queue a retry
     const key = itemKey(item);
+    const known = refused.current.get(key);
+    if (known && known.snapshot === snapshotOf(item)) {
+      // The same out-of-date record: say so again instead of sending it. Loading the current record clears this.
+      setNotice({ itemKey: key, item, reason: known.reason, text: resolveFailureText(known.reason, item.label) });
+      return;
+    }
     const notebooks = source.resolvesNotebooks === true;
     const askability = askabilityOf(item, { notebooks });
     const request = resolveRequestOf(item, selectionRef.current?.() ?? null, { notebooks });
@@ -98,18 +119,21 @@ export function useEquipmentAsk(
     }
     const controller = new AbortController();
     inFlight.current = controller;
-    setPendingKey(key);
+    setPending(item);
     setNotice(null);
     source.resolve(request, { signal: controller.signal })
       .catch(() => ({ ok: false as const, reason: "error" as const }))
       .then((result) => {
         if (controller.signal.aborted) return;
         if (result.ok) onAskRef.current(result.target, item);
-        else setNotice({ itemKey: key, item, reason: result.reason, text: resolveFailureText(result.reason, item.label) });
+        else {
+          if (refusalNeedsRefresh(result.reason)) refused.current.set(key, { snapshot: snapshotOf(item), reason: result.reason });
+          setNotice({ itemKey: key, item, reason: result.reason, text: resolveFailureText(result.reason, item.label) });
+        }
       })
       .finally(() => {
         if (inFlight.current === controller) inFlight.current = null;
-        if (!controller.signal.aborted) setPendingKey(null);
+        if (!controller.signal.aborted) setPending(null);
       });
   }, [source]);
 
@@ -118,7 +142,29 @@ export function useEquipmentAsk(
     setRefreshRequest((last) => ({ item, sequence: (last?.sequence ?? 0) + 1 }));
   }, []);
 
-  return { pendingKey, notice, ask, dismiss: () => setNotice(null), refreshRequest, requestRefresh };
+  const settleRefresh = useCallback((item: BrowserItem, current: BrowserItem | null) => {
+    const key = itemKey(item);
+    const known = refused.current.get(key);
+    if (current && snapshotOf(current) !== known?.snapshot) {
+      refused.current.delete(key);
+      return;
+    }
+    const text = current
+      ? `The list still shows the record of ${item.label} that was refused. The question target did not change.`
+      : `Could not load the current record of ${item.label}. The question target did not change. Find ${item.label} in the list again before asking.`;
+    setNotice({ itemKey: key, item, reason: known?.reason ?? "stale_revision", text });
+  }, []);
+
+  return {
+    pendingKey: pending ? itemKey(pending) : null,
+    pendingLabel: pending?.label ?? null,
+    notice,
+    ask,
+    dismiss: () => setNotice(null),
+    refreshRequest,
+    requestRefresh,
+    settleRefresh,
+  };
 }
 
 export interface PagedEquipmentNavigatorProps {
@@ -133,6 +179,11 @@ export interface PagedEquipmentNavigatorProps {
   /** Wait after typing before searching the server. */
   readonly searchDelayMs?: number;
 }
+
+/** The list (and page) a browsed row was pressed in. */
+type RowOrigin =
+  | { readonly list: "children"; readonly parent: BrowserRef | null; readonly cursor: string | null }
+  | { readonly list: "search"; readonly query: string; readonly cursor: string | null };
 
 function LevelIcon({ item }: { readonly item: BrowserItem }) {
   return item.kind === "namespace" ? <FolderIcon /> : <MachineIcon />;
@@ -162,8 +213,16 @@ export function PagedEquipmentNavigator({ source, target, browsingKey, onBrowse,
   const onBrowseRef = useRef(onBrowse);
   onBrowseRef.current = onBrowse;
 
-  /** Loads one page into `key`. `fresh` re-points the browsed row at its newly loaded record. */
-  const load = useCallback((key: string, run: (signal: AbortSignal, cursor: string | null) => Promise<BrowserPage>, cursor: string | null, fresh = false) => {
+  /** Per list, the cursor that fetched each loaded row's page, so that one page can be read again. */
+  const pageCursors = useRef(new Map<string, Map<string, string | null>>());
+  /** Where each browsed row was found: the list the technician pressed it in, not wherever else it is cached. */
+  const origins = useRef(new Map<string, RowOrigin>());
+  const refreshAbort = useRef<AbortController | null>(null);
+  const askerRef = useRef(asker);
+  askerRef.current = asker;
+
+  /** Loads one page into `key`. */
+  const load = useCallback((key: string, run: (signal: AbortSignal, cursor: string | null) => Promise<BrowserPage>, cursor: string | null) => {
     aborts.current.get(key)?.abort();
     const controller = new AbortController();
     aborts.current.set(key, controller);
@@ -174,27 +233,32 @@ export function PagedEquipmentNavigator({ source, target, browsingKey, onBrowse,
       (page) => {
         if (controller.signal.aborted) return;
         dispatch({ type: "page", key, request, page, append });
-        const browsed = fresh ? page.items.find((item) => itemKey(item) === browsingRef.current) : undefined;
-        if (browsed) onBrowseRef.current(browsed);
+        const cursors = append ? pageCursors.current.get(key) ?? new Map<string, string | null>() : new Map<string, string | null>();
+        for (const item of page.items) if (!cursors.has(itemKey(item))) cursors.set(itemKey(item), cursor);
+        pageCursors.current.set(key, cursors);
       },
       () => { if (!controller.signal.aborted) dispatch({ type: "fail", key, request }); },
     );
   }, []);
 
-  const loadChildren = useCallback((parent: BrowserRef | null, cursor: string | null = null, fresh = false) => {
+  const loadChildren = useCallback((parent: BrowserRef | null, cursor: string | null = null) => {
     const ref = parent ? { kind: parent.kind, id: parent.id } : null;
-    load(parentKey(ref), (signal, after) => source.children(ref, { cursor: after, signal }), cursor, fresh);
+    load(parentKey(ref), (signal, after) => source.children(ref, { cursor: after, signal }), cursor);
   }, [load, source]);
 
   // A new source is a new inventory: nothing loaded, opened or searched under the old one survives.
   useEffect(() => {
     dispatch({ type: "clear" });
     setExpanded(new Set());
+    pageCursors.current.clear();
+    origins.current.clear();
     loadChildren(null);
     const pending = aborts.current;
     return () => {
       for (const controller of pending.values()) controller.abort();
       pending.clear();
+      refreshAbort.current?.abort();
+      refreshAbort.current = null;
     };
   }, [loadChildren]);
 
@@ -210,22 +274,48 @@ export function PagedEquipmentNavigator({ source, target, browsingKey, onBrowse,
     return () => clearTimeout(timer);
   }, [needle, searchDelayMs, source]);
   const searchFresh = searchFor !== "" && searchFor === needle;
-  const loadSearch = useCallback((cursor: string | null, fresh = false) => {
+  const loadSearch = useCallback((cursor: string | null) => {
     if (!searchFor) return;
-    load("search", (signal, after) => source.search(searchFor, null, { cursor: after, signal }), cursor, fresh);
+    load("search", (signal, after) => source.search(searchFor, null, { cursor: after, signal }), cursor);
   }, [searchFor, load, source]);
   useEffect(() => { loadSearch(null); }, [loadSearch]);
 
+  const browseFrom = (item: BrowserItem, origin: RowOrigin) => {
+    origins.current.set(itemKey(item), origin);
+    onBrowse(item);
+  };
+  const treeOrigin = (item: BrowserItem): RowOrigin => {
+    const holding = parentKey(item.parent);
+    return { list: "children", parent: item.parent, cursor: pageCursors.current.get(holding)?.get(itemKey(item)) ?? null };
+  };
+
   /**
-   * After a refusal that says the row is out of date: reload the list it came from
-   * (tree branch and/or search) on the technician's press. Never resolves; the
-   * target stays where it is until they ask again.
+   * After a refusal that says the row is out of date: on the technician's press,
+   * read again the one page of the one list they found the row in (it survives a
+   * cleared search and later pages), then swap the record into every loaded copy.
+   * Never resolves; the target stays where it is until they ask again.
    */
   const refreshFor = (item: BrowserItem) => {
     const key = itemKey(item);
-    const holding = parentKey(item.parent);
-    if (branches.get(holding)?.items.some((row) => itemKey(row) === key)) loadChildren(item.parent, null, true);
-    if (branches.get("search")?.items.some((row) => itemKey(row) === key)) loadSearch(null, true);
+    const origin = origins.current.get(key) ?? treeOrigin(item);
+    refreshAbort.current?.abort();
+    const controller = new AbortController();
+    refreshAbort.current = controller;
+    const read = origin.list === "search"
+      ? source.search(origin.query, null, { cursor: origin.cursor, signal: controller.signal })
+      : source.children(origin.parent ? { kind: origin.parent.kind, id: origin.parent.id } : null, { cursor: origin.cursor, signal: controller.signal });
+    read.then(
+      (page) => {
+        if (controller.signal.aborted) return;
+        const current = page.items.find((row) => itemKey(row) === key) ?? null;
+        if (current) {
+          dispatch({ type: "patch", item: current });
+          if (browsingRef.current === key) onBrowseRef.current(current);
+        }
+        askerRef.current.settleRefresh(item, current);
+      },
+      () => { if (!controller.signal.aborted) askerRef.current.settleRefresh(item, null); },
+    ).finally(() => { if (refreshAbort.current === controller) refreshAbort.current = null; });
   };
   const refreshRef = useRef(refreshFor);
   refreshRef.current = refreshFor;
@@ -317,7 +407,7 @@ export function PagedEquipmentNavigator({ source, target, browsingKey, onBrowse,
               data-target={k === currentKey ? "true" : undefined}
               aria-expanded={hasChildren ? open : undefined}
               aria-selected={k === browsingKey}
-              onClick={() => { onBrowse(item); if (hasChildren) toggle(item); }}
+              onClick={() => { browseFrom(item, treeOrigin(item)); if (hasChildren) toggle(item); }}
             >
               <span className="fl-tree__disclosure" aria-hidden="true">
                 {hasChildren ? <ChevronIcon className="fl-tree__chevron"/> : null}
@@ -379,7 +469,7 @@ export function PagedEquipmentNavigator({ source, target, browsingKey, onBrowse,
                     data-equipment-key={k}
                     data-browsing={k === browsingKey ? "true" : undefined}
                     data-target={k === currentKey ? "true" : undefined}
-                    onClick={() => onBrowse(item)}
+                    onClick={() => browseFrom(item, { list: "search", query: searchFor, cursor: pageCursors.current.get("search")?.get(k) ?? null })}
                   >
                     <span className="fl-tree__icon" aria-hidden="true"><LevelIcon item={item} /></span>
                     {/* Off-tree rows always show their place: there is no tree around them to say it. */}

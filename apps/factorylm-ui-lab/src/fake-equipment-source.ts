@@ -128,8 +128,8 @@ export interface FakeEquipmentSource extends EquipmentSource {
   readonly revisionOf: (componentId: string) => number;
   /** A correction: the component's current revision goes up by one. */
   readonly correct: (componentId: string) => void;
-  /** Another tab/device changed this thread's selection. */
-  readonly setSelection: (threadKey: string, selection: FakeSelection | null) => void;
+  /** Another tab/device changed this thread's selection in this notebook (Hub keys selections by both). */
+  readonly setSelection: (notebookId: string, threadKey: string, selection: FakeSelection | null) => void;
 }
 
 const KIND_ORDER = ["namespace", "asset", "notebook", "notebook_component", "installed_instance"];
@@ -164,6 +164,7 @@ export function createFakeEquipmentSource(options: FakeEquipmentSourceOptions = 
   let maxPage = 0;
   const revisions = new Map<string, number>();
   const selections = new Map<string, FakeSelection>();
+  const selectionKey = (notebookId: string, threadKey: string) => JSON.stringify([notebookId, threadKey]);
   const revisionOf = (id: string) => revisions.get(id) ?? 1;
 
   const ensure = () => {
@@ -241,7 +242,7 @@ export function createFakeEquipmentSource(options: FakeEquipmentSourceOptions = 
     const current = revisionOf(row.id);
     if (request.expectedRevision !== undefined && request.expectedRevision !== current) return { ok: false, reason: "stale_revision" };
     if (request.selection) {
-      const stored = selections.get(request.selection.threadKey);
+      const stored = selections.get(selectionKey(request.notebookId, request.selection.threadKey));
       if ((stored ? stored.version : null) !== request.selection.version
         || (stored && (stored.cleared || stored.componentId !== row.id || stored.revision !== current))) {
         return { ok: false, reason: "selection_changed" };
@@ -255,7 +256,10 @@ export function createFakeEquipmentSource(options: FakeEquipmentSourceOptions = 
     maxPageSeen: () => maxPage,
     revisionOf,
     correct: (id) => { revisions.set(id, revisionOf(id) + 1); },
-    setSelection: (threadKey, selection) => { if (selection) selections.set(threadKey, selection); else selections.delete(threadKey); },
+    setSelection: (notebookId, threadKey, selection) => {
+      const key = selectionKey(notebookId, threadKey);
+      if (selection) selections.set(key, selection); else selections.delete(key);
+    },
     async children(parent: BrowserRef | null, opts: EquipmentSourceOptions = {}) {
       const key = parentKey(parent);
       options.onCall?.(`browse:children ${key}${opts.cursor ? " +more" : ""}`);

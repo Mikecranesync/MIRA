@@ -210,6 +210,8 @@ export type BranchAction =
   | { readonly type: "page"; readonly key: string; readonly request: number; readonly page: BrowserPage; readonly append: boolean }
   | { readonly type: "fail"; readonly key: string; readonly request: number }
   | { readonly type: "reset"; readonly key: string }
+  /** A freshly read record replaces every loaded copy of that row (tree and search), without another read. */
+  | { readonly type: "patch"; readonly item: BrowserItem }
   | { readonly type: "clear" };
 
 export type Branches = ReadonlyMap<string, Branch>;
@@ -220,6 +222,17 @@ export type Branches = ReadonlyMap<string, Branch>;
  */
 export function branchesReducer(state: Branches, action: BranchAction): Branches {
   if (action.type === "clear") return new Map();
+  if (action.type === "patch") {
+    const key = itemKey(action.item);
+    let changed = false;
+    const next = new Map(state);
+    for (const [branchKey, branch] of state) {
+      if (!branch.items.some((row) => itemKey(row) === key)) continue;
+      changed = true;
+      next.set(branchKey, { ...branch, items: branch.items.map((row) => itemKey(row) === key ? action.item : row) });
+    }
+    return changed ? next : state;
+  }
   const current = state.get(action.key) ?? EMPTY_BRANCH;
   const next = new Map(state);
   switch (action.type) {
