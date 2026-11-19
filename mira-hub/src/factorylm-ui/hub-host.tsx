@@ -80,6 +80,7 @@ import { BenchComponents } from "./BenchComponents";
 import { SEND_BLOCKED_MESSAGE, benchSendRefusal, createBenchSendGate, expectsComponentFrame, isScopeRefusalCode, parseComponentFrames, prepareChatSend, heldEvidenceNote, heldQuestionForSend, recordBenchScope, retryTargetCheck, targetReviewMessage, withoutScope, type BenchScopes, type BenchState, type ComponentTurnFrame, type ScopeField } from "./bench-components-logic";
 import { LEGACY_THREAD_ID, notebookMachines, notebookProjects, threadRefFromItem, notebookIdFromProject, type HubNotebook } from "./notebook-tree";
 import { answerTurnId, citationIndex, contextFor, lifecycleFromStream, livePartsWhileRunning, partsFromStream, sourceIdFor, threadFromPersisted, withManualSearchStatus, withSettledFollowups, type SettledFollowups } from "./to-interaction";
+import { persistedRetryTarget, withoutRetriedFailures, withPersistedRetry } from "./persisted-retry";
 import {
   EMPTY_FIXTURE,
   NO_PROJECT_ERROR,
@@ -117,6 +118,7 @@ import {
   sendFailureMessage,
   shellThreadId,
   withLivingSheetRider,
+  stopArmed,
   type CompatibleStreamResult,
   type HubSelection,
 } from "./hub-host-logic";
@@ -202,6 +204,9 @@ export function HubShellHost() {
   // The technician's message from the moment Send is tapped (outgoing-turn.ts).
   const [outgoing, setOutgoing] = useState<Outgoing | null>(null);
   const [busy, setBusy] = useState(false);
+  // #4924: when the running send started, so a second tap on Send (now Stop) is ignored.
+  const busySinceRef = useRef<number | null>(null);
+  useEffect(() => { busySinceRef.current = busy ? Date.now() : null; }, [busy]);
   // A retry re-sends the body as it went out, with the component scope it was asked under (#5504 post-cap).
   const [failedBody, setFailedBody] = useState<{ body: ReturnType<typeof chatBodyFor> & { componentSelection?: ScopeField }; question: string; refusedScope?: ScopeField } | null>(null);
   // The panel's newest read, by conversation: names the targets when a refused question's target moved.
@@ -437,6 +442,20 @@ export function HubShellHost() {
     return [q, a];
   }, [live, meta, selection]);
 
+  // #4846/#5463: after a reload the newest stored failure offers Retry, while
+  // nothing is running or failed live and no send error is showing (that
+  // banner's Try again belongs to the composer draft). Retry asks under the
+  // header, so it also waits until this conversation's header has been read and
+  // shows what the question was asked about (the live hold, #5557).
+  const headerComponentId =
+    selection && benchView && benchView.key === `${selection.notebookId}|${selection.threadId}`
+      ? (benchView.state?.selection?.componentId ?? null)
+      : undefined;
+  const persistedRetry = useMemo(
+    () => (detail && !busy && !live && !failedBody && !state.sendError ? persistedRetryTarget(detail.turns, headerComponentId) : null),
+    [detail, busy, live, failedBody, state.sendError, headerComponentId],
+  );
+
   // Live data is a pure projection over the UI state: the reducer's `hydrate`
   // replaces thread/projects/machines/context and keeps drawer, draft, mode and
   // the open source. Applying it in render (not an effect) means no cascading
@@ -462,7 +481,11 @@ export function HubShellHost() {
         : null;
     const turns = withManualSearchStatus(
       withSettledFollowups(
-        withOutgoing(threadFromPersisted(detail.turns, meta).turns, { turns: liveTurns, outgoingId: live?.outgoingId ?? null }, outgoing, shellThreadId(selection), shellThreadId(selection), contextFor(meta)),
+        withOutgoing(
+          // #4846: a failure asked again right after is not shown twice; the newest one offers Retry.
+          withPersistedRetry(threadFromPersisted(withoutRetriedFailures(detail.turns), meta).turns, persistedRetry?.answerId ?? null),
+          { turns: liveTurns, outgoingId: live?.outgoingId ?? null }, outgoing, shellThreadId(selection), shellThreadId(selection), contextFor(meta),
+        ),
         settled,
       ),
       // Codex #4195 round 2 F6: the FOLLOWED status (hydration/confirm-seeded,
@@ -472,7 +495,7 @@ export function HubShellHost() {
     );
     const thread = { ...base.thread, turns };
     return shellReducer(state, { type: "hydrate", data: { thread, projects, machines, activeContext: base.activeContext } });
-  }, [state, detail, meta, selection, projects, machines, liveTurns, live, notebooks, follow, outgoing, settledFollowups]);
+  }, [state, detail, meta, selection, projects, machines, liveTurns, live, notebooks, follow, outgoing, settledFollowups, persistedRetry]);
 
   // The outgoing message owns its photo previews until it is dropped; leaving
   // the hub releases whatever it still holds (Codex #4289 F2).
@@ -925,8 +948,19 @@ export function HubShellHost() {
     void send(guidedDeadEndBody(q, sessionId, historyRows(detail.turns), selection), q);
   }, [busy, selection, detail, send, putOutgoing]);
 
-  const onStop = useCallback(() => { abortRef.current?.abort(); uploadAbortRef.current?.abort(); }, []);
-  const onRetry = useCallback(() => { if (failedBody && retryCheck?.kind === "retry") void send(failedBody.body, failedBody.question); }, [failedBody, retryCheck, send]);
+  const onStop = useCallback(() => {
+    // #4924: the second tap of a double-tap on Send lands here; it is not a Stop.
+    if (!stopArmed(busySinceRef.current, Date.now())) return;
+    abortRef.current?.abort();
+    uploadAbortRef.current?.abort();
+  }, []);
+  const onRetry = useCallback((turnId?: string) => {
+    if (failedBody && retryCheck?.kind === "retry") { void send(failedBody.body, failedBody.question); return; }
+    // #4846/#5463: a stored failure is asked again through the ordinary send path, as if
+    // typed again: a new request, scoped from what the header shows now.
+    if (!persistedRetry || !selection || !detail || (turnId && turnId !== persistedRetry.answerId)) return;
+    void send(chatBodyFor(persistedRetry.question, docIds, historyRows(detail.turns), selection), persistedRetry.question);
+  }, [failedBody, retryCheck, send, persistedRetry, selection, detail, docIds]);
 
   /** New chat: a fresh thread in the open notebook; from HOME, HOME is already the blank chat. */
   const onNewChat = useCallback(() => {
@@ -1173,7 +1207,7 @@ export function HubShellHost() {
     onNewChat,
     onCreateProject,
     ...(busy ? { onStop } : {}),
-    ...(failedBody && retryCheck?.kind === "retry" ? { onRetry } : {}),
+    ...((failedBody && retryCheck?.kind === "retry") || persistedRetry ? { onRetry } : {}),
     ...(reviewMessage ? { targetReview: reviewMessage } : {}),
     groundingLine: () => groundingLineFor(detail?.notebook ?? null, docIds.length),
     busy,

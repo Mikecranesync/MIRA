@@ -30,6 +30,8 @@ import {
   selectionFromSearch,
   shellThreadId,
   stoppedStreamResult,
+  STOP_ARM_DELAY_MS,
+  stopArmed,
   type HubSelection,
 } from "./hub-host-logic";
 
@@ -54,6 +56,28 @@ describe("sendFailureMessage — #4311 the browser's network wording never reach
   it("never yields an empty banner", () => {
     expect(sendFailureMessage(new Error(""))).toMatch(/couldn't answer/);
     expect(sendFailureMessage(undefined)).toMatch(/couldn't answer/);
+  });
+});
+
+describe("stopArmed — #4924 a second tap on Send never stops the answer", () => {
+  it("is not armed in the first moment after a send starts", () => {
+    expect(stopArmed(1_000, 1_000)).toBe(false);
+    expect(stopArmed(1_000, 1_200)).toBe(false); // the 200 ms double tap from the Oct 28 walk
+    expect(stopArmed(1_000, 1_000 + STOP_ARM_DELAY_MS - 1)).toBe(false);
+  });
+
+  it("is armed once the guard has passed (a deliberate Stop works)", () => {
+    expect(stopArmed(1_000, 1_000 + STOP_ARM_DELAY_MS)).toBe(true);
+    expect(stopArmed(1_000, 30_000)).toBe(true);
+  });
+
+  it("is not armed when nothing is running", () => {
+    expect(stopArmed(null, 30_000)).toBe(false);
+  });
+
+  it("the guard is short: well under a second", () => {
+    expect(STOP_ARM_DELAY_MS).toBeGreaterThanOrEqual(300);
+    expect(STOP_ARM_DELAY_MS).toBeLessThanOrEqual(600);
   });
 });
 

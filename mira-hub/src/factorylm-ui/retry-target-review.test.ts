@@ -125,8 +125,11 @@ describe("the held photo is shown while the question waits for review (#5562)", 
 describe("the host is wired to the hold (source shape, like hub-host-restore-retry)", () => {
   const host = readFileSync(new URL("./hub-host.tsx", import.meta.url), "utf8");
   it("Retry is offered only when the target did not move", () => {
-    expect(host).toMatch(/\.\.\.\(failedBody && retryCheck\?\.kind === "retry" \? \{ onRetry \} : \{\}\)/);
+    expect(host).toMatch(/\.\.\.\(\(failedBody && retryCheck\?\.kind === "retry"\) \|\| persistedRetry \? \{ onRetry \} : \{\}\)/);
     expect(host).not.toMatch(/\.\.\.\(failedBody \? \{ onRetry \} : \{\}\)/);
+    // #4846: the stored-failure Retry exists only while no live failure is held, so a held
+    // review (failedBody set, target moved) can never be retried through it.
+    expect(host).toMatch(/!failedBody && !state\.sendError \? persistedRetryTarget\(detail\.turns, headerComponentId\)/);
   });
   it("a target refusal keeps the refused scope and the review message is shown", () => {
     expect(host).toMatch(/refusedScope \? \{ refusedScope \} : \{\}/);

@@ -558,6 +558,19 @@ export function sendFailureMessage(err: unknown): string {
 }
 
 /**
+ * #4924 — Send turns into Stop in the same spot, so the second tap of a
+ * double-tap lands on Stop and kills the question it just sent ("Stopped
+ * before the answer completed."). Stop is not armed for this long after a
+ * send starts; after that a deliberate Stop works as before.
+ */
+export const STOP_ARM_DELAY_MS = 400;
+
+/** `busySince` is when the running send started (ms), or null when none is running. */
+export function stopArmed(busySince: number | null, now: number): boolean {
+  return busySince !== null && now - busySince >= STOP_ARM_DELAY_MS;
+}
+
+/**
  * #4311 — a failed send hands the question back to the composer; a successful
  * host retry must take it away again, but never clobber something new the
  * technician typed meanwhile. Returns the draft to set, or null to leave it.
