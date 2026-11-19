@@ -1258,7 +1258,7 @@ capabilities:
       - "mira-hub/src/factorylm-ui/hub-host.tsx   # Find equipment panel in the notebook actions column"
     environments:
       dev: unset
-      staging: unset                        # not forwarded by docker-compose.staging-vps.yml
+      staging: unset                        # forwarded by docker-compose.staging-vps.yml (default 0); Doppler factorylm/stg not yet set
       production: unset                     # not forwarded by docker-compose.saas.yml
     state: deployed_disabled
     owner: null
