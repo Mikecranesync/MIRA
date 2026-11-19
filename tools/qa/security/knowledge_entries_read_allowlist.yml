@@ -915,9 +915,9 @@ approved:
                                    WHERE tenant_id = :tenant
                                      AND TRIM(manufacturer) = :mfr
   "tools/owui_tools/lookup_part.py:67":
-    approved_classification: UNFILTERED
-    query_sha256: "a656111bb4d7b962d2535b38d954d121e831e345f4ba7ac1f16a59a6034bc69e"
-    reason: "TODO: justify this read pattern HASH MIGRATION (#5646 r4, 2026-11-19): the only change is the added exclusion of rows carrying metadata table_reviewed or table_held, which can only remove rows; the scope is otherwise unchanged."
+    approved_classification: TENANT-ONLY
+    query_sha256: "9727bfb6f24ba9bc19f7b17f447daa475573eeb523bf3ad164da349692bd5c93"
+    reason: "TODO: justify this read pattern HASH MIGRATION (#5646 r4, 2026-11-19): the only change is the added exclusion of rows carrying metadata table_reviewed or table_held, which can only remove rows; the scope is otherwise unchanged. HASH MIGRATION (#5646 r6, 2026-11-19): the only change is the extended approved-page exclusion (file hash and same-document page check added to the table_reviewed and table_held marks), which can only remove rows; tenant, privacy and every other predicate are unchanged. Its classification now reads TENANT-ONLY only because the exclusion's own same-document check names tenant_id."
     query_snippet: |
       FROM knowledge_entries
                       WHERE content ILIKE %s
@@ -1121,8 +1121,8 @@ approved:
               return ctx
   "mira-bots/shared/pm_extractor.py:3":
     approved_classification: UNFILTERED
-    query_sha256: "250604c7a97b7ea7a207ad5d23b2a11540dbc67e11b3dd42b82a20a7405c9a36"
-    reason: "TODO: justify this read pattern"
+    query_sha256: "40440708ce8d3771403ebb4951707b08916b650789e32cddb7bb3377dda95659"
+    reason: "TODO: justify this read pattern HASH MIGRATION (#5646 r6, 2026-11-19): docstring prose, not a query; its context window now includes the shared hub_release import that replaced an inline exclusion. No read changed."
     query_snippet: |
       Takes parsed manual chunks from knowledge_entries and extracts structured
       preventive maintenance schedules using the Groq→Cerebras→Together cascade.
@@ -1210,18 +1210,18 @@ approved:
       with _neon_engine().connect() as _conn:
                       row = _conn.execute(
                           _text(
-  "mira-core/mira-ingest/db/neon.py:106":
+  "mira-core/mira-ingest/db/neon.py:125":
     approved_classification: UNFILTERED
-    query_sha256: "d3f07655a816320632aaa4b4c0938d9dcabc70932e4a21dbbc3de29f97034d03"
-    reason: "TODO: justify this read pattern HASH MIGRATION (#5646 r4 F1, 2026-11-19): the only change is the added release guard (AND activeReleaseSql / releaseGuard / the Python table_reviewed IS NULL exclusion), which can only remove rows; tenant, route, approval, node and document predicates are unchanged, so the scope is identical or narrower."
+    query_sha256: "ab6603a46531c546881e660137ea1308e29d2cf2e05e34ea8690f2e9792c63c2"
+    reason: "TODO: justify this read pattern HASH MIGRATION (#5646 r4 F1, 2026-11-19): the only change is the added release guard (AND activeReleaseSql / releaseGuard / the Python table_reviewed IS NULL exclusion), which can only remove rows; tenant, route, approval, node and document predicates are unchanged, so the scope is identical or narrower. HASH MIGRATION (#5646 r6, 2026-11-19): the only change is the extended approved-page exclusion (file hash and same-document page check added to the table_reviewed and table_held marks), which can only remove rows; tenant, privacy and every other predicate are unchanged."
     query_snippet: |
       FROM knowledge_entries
               WHERE {where}
               ORDER BY embedding <=> cast(:emb AS vector)
-  "mira-core/mira-ingest/db/neon.py:132":
+  "mira-core/mira-ingest/db/neon.py:151":
     approved_classification: TENANT-ONLY
-    query_sha256: "a59c9546065746004f497a370c8f28c8d15d0809bee00edcc836d87099ba0f7a"
-    reason: "TODO: justify this read pattern HASH MIGRATION (#5646 r4 F1, 2026-11-19): the only change is the added release guard (AND activeReleaseSql / releaseGuard / the Python table_reviewed IS NULL exclusion), which can only remove rows; tenant, route, approval, node and document predicates are unchanged, so the scope is identical or narrower."
+    query_sha256: "f63265fec99f9ee70da226b94c4a8196aa31780abccee01a1d4043517e194f96"
+    reason: "TODO: justify this read pattern HASH MIGRATION (#5646 r4 F1, 2026-11-19): the only change is the added release guard (AND activeReleaseSql / releaseGuard / the Python table_reviewed IS NULL exclusion), which can only remove rows; tenant, route, approval, node and document predicates are unchanged, so the scope is identical or narrower. HASH MIGRATION (#5646 r6, 2026-11-19): the only change is the extended approved-page exclusion (file hash and same-document page check added to the table_reviewed and table_held marks), which can only remove rows; tenant, privacy and every other predicate are unchanged."
     query_snippet: |
       FROM knowledge_entries
                       WHERE tenant_id = :tid
@@ -1604,15 +1604,23 @@ approved:
     approved_classification: TENANT-ONLY
     query_sha256: "fc45869274388bf33284d85cb692e5f19a8589def76754f9122f9379131c0dbf"
     reason: "#5503 / PR #5510 fail-closed gate: INSERT ... SELECT copies one real stored row of this upload as the probe passage, replacing only its text and model-scope fields. Target is the connection-local TEMP knowledge_entries table created in beforeAll for a fixed synthetic TENANT, under BEGIN and final ROLLBACK (ON COMMIT DROP); requires a confirmed disposable PostgreSQL. Deliberately a private-upload test, not a shared OEM surface; no production pool or corpus data."
-  "mira-bots/tests/test_recall_excludes_hub_released_rows.py:125":
+  "mira-bots/shared/hub_release.py:54":
     approved_classification: TENANT-ONLY
-    query_sha256: "656aa51c558686566ce748c4256eb2970dce128af509d8d3ccf2a5a3323d0d63"
+    query_sha256: "5354aa9fdece6f96b21a00986937221826c9a03f885acdabf2a540da0ca851e8"
+    reason: "PR #5646 r6: not a read that returns rows. This is the same-document existence check inside the approved-page exclusion (an AND NOT EXISTS condition on the outer read): it decides only whether an outer row of an approved page is withheld, and is scoped to that row's own tenant and document (s.tenant_id = outer tenant_id AND s.doc_id = outer doc_id). It can only remove rows from the outer read; no content it touches reaches an answer."
+    query_snippet: |
+      from __future__ import annotations
+      
+      # (file SHA-256, page) of every recorded approval, enabled or not.
+  "mira-bots/tests/test_recall_excludes_hub_released_rows.py:273":
+    approved_classification: TENANT-ONLY
+    query_sha256: "bd97d0f3c0002e2c6daff0641127af29e14ec6f2e47b07d39a79f25d4f3a7fad"
     reason: "PR #5646 test (disposable PostgreSQL only: TEST_DATABASE_URL + MIRA_TEST_DB_CONFIRM=DISPOSABLE): reads, copies or deletes only rows this test wrote for its own random tenant uuid; never a shared or real tenant."
     query_snippet: |
       with engine.connect() as conn:
       stored = conn.execute(
       text("SELECT count(*) FROM knowledge_entries WHERE tenant_id = CAST(:t AS uuid)"),
-  "mira-bots/tests/test_recall_excludes_hub_released_rows.py:137":
+  "mira-bots/tests/test_recall_excludes_hub_released_rows.py:287":
     approved_classification: TENANT-ONLY
     query_sha256: "50c08ec0a467c599444780b7ec17860ba487af04ae15170083241ff513946ba2"
     reason: "PR #5646 test (disposable PostgreSQL only: TEST_DATABASE_URL + MIRA_TEST_DB_CONFIRM=DISPOSABLE): reads, copies or deletes only rows this test wrote for its own random tenant uuid; never a shared or real tenant."
@@ -1620,68 +1628,103 @@ approved:
       with engine.begin() as conn:
       conn.execute(
       text("DELETE FROM knowledge_entries WHERE tenant_id = CAST(:t AS uuid)"),
-  "mira-hub/src/lib/__tests__/gs10-p26-reviewed-rollout.integration.test.ts:164":
-    approved_classification: TENANT-ONLY
-    query_sha256: "40587811736ab58fadeeef2843540a269c14459055b81839c081936d461c4d79"
+  "mira-bots/tests/test_recall_excludes_hub_released_rows.py:335":
+    approved_classification: UNFILTERED
+    query_sha256: "3f0185d2e237587f75b49ccaf888d9a75151a4e672680d34e17a9933085cde4f"
     reason: "PR #5646 test (disposable PostgreSQL only: TEST_DATABASE_URL + MIRA_TEST_DB_CONFIRM=DISPOSABLE): reads, copies or deletes only rows this test wrote for its own random tenant uuid; never a shared or real tenant."
     query_snippet: |
-      FROM hub_uploads u
-      LEFT JOIN namespace_direct_uploads d ON d.upload_id = u.id AND d.tenant_id::text = u.tenant_id
-      WHERE (u.content_sha256 IN ('<sha a>', '<sha b>')
-  "mira-hub/src/lib/__tests__/gs10-p26-reviewed-rollout.integration.test.ts:171":
-    approved_classification: TENANT-ONLY
-    query_sha256: "a22031d41e4801f0ff97d3fa9eccb8e1338161bbb4514c8c5abf528b3ab13a2c"
+      with patch.object(pm_extractor, "_get_neon_engine", return_value=engine):
+      pm_extractor.get_chunks_for_model("AutomationDirect", "GS11N-20P2", tenant_id=None)
+      sqls = _sql_of(conn)
+  "mira-bots/tests/test_recall_excludes_hub_released_rows.py:336":
+    approved_classification: UNFILTERED
+    query_sha256: "3f0185d2e237587f75b49ccaf888d9a75151a4e672680d34e17a9933085cde4f"
     reason: "PR #5646 test (disposable PostgreSQL only: TEST_DATABASE_URL + MIRA_TEST_DB_CONFIRM=DISPOSABLE): reads, copies or deletes only rows this test wrote for its own random tenant uuid; never a shared or real tenant."
     query_snippet: |
-      FROM knowledge_entries k
-      WHERE k.source_type = 'node_attachment'
-      AND k.metadata->>'table_reviewed' = '<digest>'
-  "mira-hub/src/lib/__tests__/gs10-p26-reviewed-rollout.integration.test.ts:209":
+      with patch.object(pm_extractor, "_get_neon_engine", return_value=engine):
+      pm_extractor.get_chunks_for_model("AutomationDirect", "GS11N-20P2", tenant_id=None)
+      sqls = _sql_of(conn)
+  "mira-core/mira-ingest/db/neon.py:75":
+    approved_classification: UNFILTERED
+    query_sha256: "4c19aa40c55a6510d3db0526c5bf0a6748b94b3e5d9b8e0f4032d96eef641c22"
+    reason: "PR #5646 r6: not a read that returns rows. This is the same-document existence check inside the approved-page exclusion (an AND NOT EXISTS condition on the outer read): it decides only whether an outer row of an approved page is withheld, and is scoped to that row's own tenant and document (s.tenant_id = outer tenant_id AND s.doc_id = outer doc_id). It can only remove rows from the outer read; no content it touches reaches an answer."
+    query_snippet: |
+      with _engine().connect() as conn:
+      row = (
+      conn.execute(
+  "mira-hub/src/capabilities/__tests__/table-rule-pins.test.ts:169":
+    approved_classification: UNFILTERED
+    query_sha256: "fdcb71d0710d4c98698c674213b62f726c08a08ecbf490f5757349a669ae2d75"
+    reason: "PR #5646 unit test: string assertions on the SQL text activeReleaseSql generates; it runs no query against any database."
+    query_snippet: |
+      expect(one).toContain("(knowledge_entries.metadata->>'file_sha256' IS NULL OR (knowledge_entries.metadata->>'file_sha256', COALESCE(knowledge_entries.page_start, knowledge_entries.source_page, 0)::text) NOT IN (");
+      expect(one).toContain("knowledge_entries.source_type IS DISTINCT FROM 'node_attachment' OR knowledge_entries.metadata->>'file_sha256' IS NOT NULL");
+  "mira-hub/src/capabilities/__tests__/table-rule-pins.test.ts:171":
+    approved_classification: TENANT-ONLY
+    query_sha256: "938df50d8bfefd5cbaa382286c8837f6550bbc1b42b51568bb8d336d77101b0c"
+    reason: "PR #5646 unit test: string assertions on the SQL text activeReleaseSql generates; it runs no query against any database."
+    query_snippet: |
+      expect(one).toContain("COALESCE(knowledge_entries.page_start, knowledge_entries.source_page, 0) <> 26");
+      expect(one).toContain("FROM knowledge_entries s WHERE s.tenant_id = knowledge_entries.tenant_id AND s.doc_id = knowledge_entries.doc_id");
+  "mira-hub/src/capabilities/__tests__/table-rule-pins.test.ts:172":
+    approved_classification: TENANT-ONLY
+    query_sha256: "f0bac2355bd9edf4ce9cf8eb4522f3fcfdd80c176426f9b1951f0601ae72a15d"
+    reason: "PR #5646 unit test: string assertions on the SQL text activeReleaseSql generates; it runs no query against any database."
+    query_snippet: |
+      expect(one).toContain("FROM knowledge_entries s WHERE s.tenant_id = knowledge_entries.tenant_id AND s.doc_id = knowledge_entries.doc_id");
+      for (const model of ["GS11N-20P2", "GS11N-20P5", "GS11N-21P0", "GS11N-22P0", "GS11N-23P0"]) expect(one).toContain(`strpos(s.content, '${model}') > 0`);
+  "mira-hub/src/capabilities/__tests__/table-rule-pins.test.ts:181":
+    approved_classification: UNFILTERED
+    query_sha256: "221afcb05d03a94506a445ef8627221ec3b6ac759a5c67bed06f31c73a02ad34"
+    reason: "PR #5646 unit test: string assertions on the SQL text activeReleaseSql generates; it runs no query against any database."
+    query_snippet: |
+      expect(aliased).toContain("COALESCE(knowledge_entries.page_start, knowledge_entries.source_page, 0) <> 26");
+      // Catalog numbers are validated; a page with none recorded is withheld whole (fail closed).
+  "mira-hub/src/capabilities/table-rule-pins.ts:139":
+    approved_classification: TENANT-ONLY
+    query_sha256: "3e4747e46eff99a9c7f18c242b8e8cf79227dc30218caffb8449cd1097827b95"
+    reason: "PR #5646 r6: not a read that returns rows. This is the same-document existence check inside the approved-page exclusion (an AND NOT EXISTS condition on the outer read): it decides only whether an outer row of an approved page is withheld, and is scoped to that row's own tenant and document (s.tenant_id = outer tenant_id AND s.doc_id = outer doc_id). It can only remove rows from the outer read; no content it touches reaches an answer."
+    query_snippet: |
+      withdrawnModels.set(Number(page), models);
+      }
+      }
+  "mira-hub/src/lib/__tests__/gs10-p26-reviewed-rollout.integration.test.ts:226":
     approved_classification: TENANT-ONLY
     query_sha256: "8012d324e2a6478b40ed7b1ac4df7ed91b5fc9ea9ee8c5a8fc0808ad77628bb0"
     reason: "PR #5646 test (disposable PostgreSQL only: TEST_DATABASE_URL + MIRA_TEST_DB_CONFIRM=DISPOSABLE): reads, copies or deletes only rows this test wrote for its own random tenant uuid; never a shared or real tenant."
     query_snippet: |
       FROM knowledge_entries WHERE doc_id = $1::uuid AND tenant_id = $2::uuid ORDER BY source_page, (metadata->>'chunk_index')::int`,
       [docId, TENANT])).rows;
-  "mira-hub/src/lib/__tests__/gs10-p26-reviewed-rollout.integration.test.ts:218":
+  "mira-hub/src/lib/__tests__/gs10-p26-reviewed-rollout.integration.test.ts:238":
     approved_classification: TENANT-ONLY
-    query_sha256: "30138baf793f3400459656d71b641b7f854bdcb2da5aee89cc6d7ce308d40c43"
+    query_sha256: "e3efa73c8627d4d2450706fdd47e0b010930c8bd35511e330e92b47d84ce0b59"
     reason: "PR #5646 test (disposable PostgreSQL only: TEST_DATABASE_URL + MIRA_TEST_DB_CONFIRM=DISPOSABLE): reads, copies or deletes only rows this test wrote for its own random tenant uuid; never a shared or real tenant."
     query_snippet: |
       FROM knowledge_entries WHERE doc_id = $1::uuid AND tenant_id = $2::uuid ORDER BY source_page, (metadata->>'chunk_index')::int`,
       [docId, TENANT])).rows;
       }
-  "mira-hub/src/lib/__tests__/gs10-p26-reviewed-rollout.integration.test.ts:227":
+  "mira-hub/src/lib/__tests__/gs10-p26-reviewed-rollout.integration.test.ts:277":
     approved_classification: TENANT-ONLY
-    query_sha256: "fdf311848b4fb14696499429c3e084ee7bc139ed47b2733e749df256c1bf5c12"
+    query_sha256: "c70ba757c248f6a5ccec3db72df3712e5328e043a5bac0b00121a7bad821dd0e"
     reason: "PR #5646 test (disposable PostgreSQL only: TEST_DATABASE_URL + MIRA_TEST_DB_CONFIRM=DISPOSABLE): reads, copies or deletes only rows this test wrote for its own random tenant uuid; never a shared or real tenant."
     query_snippet: |
-      FROM knowledge_entries WHERE doc_id = $1::uuid AND tenant_id = $2::uuid ORDER BY source_page, (metadata->>'chunk_index')::int`,
-      [docId, TENANT])).rows;
-      }
-  "mira-hub/src/lib/__tests__/gs10-p26-reviewed-rollout.integration.test.ts:257":
-    approved_classification: TENANT-ONLY
-    query_sha256: "7a373548cfadc28b0e1f2ff014171b0fbfc2eba5329bcaca8f70c0156177fc33"
-    reason: "PR #5646 test (disposable PostgreSQL only: TEST_DATABASE_URL + MIRA_TEST_DB_CONFIRM=DISPOSABLE): reads, copies or deletes only rows this test wrote for its own random tenant uuid; never a shared or real tenant."
-    query_snippet: |
-      FROM knowledge_entries WHERE doc_id = $1::uuid AND tenant_id = $2::uuid ORDER BY source_page, (metadata->>'chunk_index')::int`,
-      [docId, TENANT])).rows;
-      }
-  "mira-hub/src/lib/__tests__/gs10-p26-reviewed-rollout.integration.test.ts:439":
+      await testPool.query("DELETE FROM knowledge_entries WHERE tenant_id = $1::uuid", [TENANT]);
+      await testPool.query("DELETE FROM namespace_direct_uploads WHERE tenant_id = $1::uuid", [TENANT]);
+  "mira-hub/src/lib/__tests__/gs10-p26-reviewed-rollout.integration.test.ts:462":
     approved_classification: TENANT-ONLY
     query_sha256: "63cb445c961ab28665be21db6e72a1818cdc4c8510076c2e127eceb137df22cd"
     reason: "PR #5646 test (disposable PostgreSQL only: TEST_DATABASE_URL + MIRA_TEST_DB_CONFIRM=DISPOSABLE): reads, copies or deletes only rows this test wrote for its own random tenant uuid; never a shared or real tenant."
     query_snippet: |
       FROM knowledge_entries WHERE tenant_id = $1::uuid AND doc_id = $3::uuid AND content LIKE '%' || $4 || '%'`,
       [TENANT, enrichTenant, doc, LINE_5_1]);
-  "mira-hub/src/lib/__tests__/gs10-p26-reviewed-rollout.integration.test.ts:449":
+  "mira-hub/src/lib/__tests__/gs10-p26-reviewed-rollout.integration.test.ts:472":
     approved_classification: TENANT-ONLY
     query_sha256: "2e93a873a405593d78109558fd38e4622f24dcf29082426ba0793be5042bce29"
     reason: "PR #5646 test (disposable PostgreSQL only: TEST_DATABASE_URL + MIRA_TEST_DB_CONFIRM=DISPOSABLE): reads, copies or deletes only rows this test wrote for its own random tenant uuid; never a shared or real tenant."
     query_snippet: |
       FROM knowledge_entries WHERE tenant_id = $1::uuid AND doc_id = $2::uuid AND content LIKE '%' || $3 || '%' AND metadata->>'table_reviewed' IS NOT NULL LIMIT 1`,
       [TENANT, doc, LINE_5_1]);
-  "mira-hub/src/lib/__tests__/gs10-p26-reviewed-rollout.integration.test.ts:451":
+  "mira-hub/src/lib/__tests__/gs10-p26-reviewed-rollout.integration.test.ts:474":
     approved_classification: TENANT-ONLY
     query_sha256: "fda0fec707f5cf6dbcc65ae9fa5df585fffc1f89bb2206c51d7612a542285968"
     reason: "PR #5646 test (disposable PostgreSQL only: TEST_DATABASE_URL + MIRA_TEST_DB_CONFIRM=DISPOSABLE): reads, copies or deletes only rows this test wrote for its own random tenant uuid; never a shared or real tenant."
@@ -1689,7 +1732,7 @@ approved:
       FROM knowledge_entries WHERE tenant_id = $1::uuid AND doc_id = $2::uuid AND content LIKE '%' || $3 || '%' AND metadata->>'table_reviewed' IS NOT NULL LIMIT 1`,
       [TENANT, doc, LINE_5_1]);
       const sourceUrl = (await testPool.query<{ u: string }>("SELECT source_url AS u FROM knowledge_entries WHERE doc_id = $1::uuid LIMIT 1", [doc])).rows[0].u;
-  "mira-hub/src/lib/__tests__/gs10-p26-reviewed-rollout.integration.test.ts:487":
+  "mira-hub/src/lib/__tests__/gs10-p26-reviewed-rollout.integration.test.ts:510":
     approved_classification: TENANT-ONLY
     query_sha256: "aad15067641575e839001722168d53b1d6e82e59d480ca2f4afe5b3fa89bb82d"
     reason: "PR #5646 test (disposable PostgreSQL only: TEST_DATABASE_URL + MIRA_TEST_DB_CONFIRM=DISPOSABLE): reads, copies or deletes only rows this test wrote for its own random tenant uuid; never a shared or real tenant."
@@ -1697,3 +1740,63 @@ approved:
       FROM knowledge_entries WHERE tenant_id = $1::uuid AND doc_id = $2::uuid AND content LIKE '%' || $3 || '%' AND metadata->>'table_reviewed' IS NOT NULL LIMIT 1`,
       [TENANT, doc, LINE_5_1]);
       const sourceUrl = (await testPool.query<{ u: string }>("SELECT source_url AS u FROM knowledge_entries WHERE doc_id = $1::uuid LIMIT 1", [doc])).rows[0].u;
+  "mira-hub/src/lib/__tests__/gs10-p26-reviewed-rollout.integration.test.ts:578":
+    approved_classification: UNFILTERED
+    query_sha256: "5a0850ef6e01c0c778b02e768fe412b432442f782ba76eb0b1ec165b30b74428"
+    reason: "PR #5646 test (disposable PostgreSQL only: TEST_DATABASE_URL + MIRA_TEST_DB_CONFIRM=DISPOSABLE): reads, copies or deletes only rows this test wrote for its own random tenant uuid; never a shared or real tenant."
+    query_snippet: |
+      const sourceUrl = (await testPool.query<{ u: string }>("SELECT source_url AS u FROM knowledge_entries WHERE doc_id = $1::uuid LIMIT 1", [doc])).rows[0].u;
+      await testPool.query(
+      `INSERT INTO knowledge_entries (id, tenant_id, source_type, content, source_url, source_page, doc_id, ingest_route, page_start, page_end, metadata, is_private)
+  "mira-hub/src/lib/__tests__/gs10-p26-reviewed-rollout.integration.test.ts:582":
+    approved_classification: TENANT-ONLY
+    query_sha256: "4c35d8909fe4afb4d010033f0fc2f0c9353ee88408ac5d2e8ecf89d2dc24a695"
+    reason: "PR #5646 test (disposable PostgreSQL only: TEST_DATABASE_URL + MIRA_TEST_DB_CONFIRM=DISPOSABLE): reads, copies or deletes only rows this test wrote for its own random tenant uuid; never a shared or real tenant."
+    query_snippet: |
+      FROM knowledge_entries WHERE tenant_id = $1::uuid AND doc_id = $2::uuid AND content LIKE '%' || $3 || '%'`,
+      [TENANT, doc, LINE_5_1]);
+  "mira-hub/src/lib/__tests__/gs10-p26-reviewed-rollout.integration.test.ts:588":
+    approved_classification: TENANT-ONLY
+    query_sha256: "882b678166828552b2f847d28561513d6ec4b4630a13065d4369e496069760bc"
+    reason: "PR #5646 test (disposable PostgreSQL only: TEST_DATABASE_URL + MIRA_TEST_DB_CONFIRM=DISPOSABLE): reads, copies or deletes only rows this test wrote for its own random tenant uuid; never a shared or real tenant."
+    query_snippet: |
+      FROM knowledge_entries WHERE tenant_id = $1::uuid AND doc_id = $2::uuid AND page_start = 27 AND metadata->>'chunk_index' = '13'`,
+      [TENANT, doc]);
+  "mira-hub/src/lib/__tests__/gs10-p26-reviewed-rollout.integration.test.ts:595":
+    approved_classification: TENANT-ONLY
+    query_sha256: "61c605868e28213f5a0a320d134430516cf578f84a300e33aba3dd142bbcff1e"
+    reason: "PR #5646 test (disposable PostgreSQL only: TEST_DATABASE_URL + MIRA_TEST_DB_CONFIRM=DISPOSABLE): reads, copies or deletes only rows this test wrote for its own random tenant uuid; never a shared or real tenant."
+    query_snippet: |
+      FROM knowledge_entries WHERE tenant_id = $1::uuid AND doc_id = $3::uuid AND metadata->>'chunk_index' <> '9999'
+      AND (content LIKE '%' || $4 || '%' OR page_start = 27)`,
+      [TENANT, enrichTenant, doc, LINE_5_1]);
+  "mira-hub/src/lib/__tests__/gs10-p26-reviewed-rollout.integration.test.ts:639":
+    approved_classification: TENANT-ONLY
+    query_sha256: "b180d3a622965e83631377ff5221a3e1b47798f6486c5406c336a3d16048b8f1"
+    reason: "PR #5646 test (disposable PostgreSQL only: TEST_DATABASE_URL + MIRA_TEST_DB_CONFIRM=DISPOSABLE): reads, copies or deletes only rows this test wrote for its own random tenant uuid; never a shared or real tenant."
+    query_snippet: |
+      FROM knowledge_entries WHERE tenant_id = $1::uuid AND doc_id = $3::uuid AND metadata->>'chunk_index' <> '9999'
+      AND (content LIKE '%' || $4 || '%' OR page_start = 27)`,
+      [TENANT, enrichTenant, doc, LINE_5_1]);
+  "mira-hub/src/lib/__tests__/gs10-p26-reviewed-rollout.integration.test.ts:678":
+    approved_classification: UNFILTERED
+    query_sha256: "73e82eb7a41231f36a12df3bcfcac7fc17030a46d7458edfd20f5bde9488b054"
+    reason: "PR #5646 test (disposable PostgreSQL only: TEST_DATABASE_URL + MIRA_TEST_DB_CONFIRM=DISPOSABLE): reads, copies or deletes only rows this test wrote for its own random tenant uuid; never a shared or real tenant."
+    query_snippet: |
+      (await testPool.query<{ id: string }>(`SELECT id::text AS id FROM knowledge_entries WHERE doc_id = $1::uuid AND ${where} ORDER BY id LIMIT 1`, [docId])).rows[0].id;
+      const stampedHit = await idOf(doc, "metadata->>'table_reviewed' IS NOT NULL");
+  "mira-hub/src/lib/__tests__/gs10-p26-reviewed-rollout.integration.test.ts:739":
+    approved_classification: TENANT-ONLY
+    query_sha256: "f35d1d0d05c441853491a1e567f87bc55db465e9342c915d5bd4ca268f90053e"
+    reason: "PR #5646 test (disposable PostgreSQL only: TEST_DATABASE_URL + MIRA_TEST_DB_CONFIRM=DISPOSABLE): reads, copies or deletes only rows this test wrote for its own random tenant uuid; never a shared or real tenant."
+    query_snippet: |
+      await testPool.query("DELETE FROM knowledge_entries WHERE tenant_id = $1::uuid AND doc_id = ANY($2::uuid[])", [TENANT, [released, held, legacy, fileOnly]]);
+      for (const doc of [released, held, legacy, fileOnly]) expect(await bound(doc)).toEqual({});
+  "tools/owui_tools/lookup_part.py:75":
+    approved_classification: TENANT-ONLY
+    query_sha256: "9727bfb6f24ba9bc19f7b17f447daa475573eeb523bf3ad164da349692bd5c93"
+    reason: "PR #5646 r6: not a read that returns rows. This is the same-document existence check inside the approved-page exclusion (an AND NOT EXISTS condition on the outer read): it decides only whether an outer row of an approved page is withheld, and is scoped to that row's own tenant and document (s.tenant_id = outer tenant_id AND s.doc_id = outer doc_id). It can only remove rows from the outer read; no content it touches reaches an answer."
+    query_snippet: |
+      FROM knowledge_entries
+      WHERE content ILIKE %s
+      AND embedding IS NOT NULL

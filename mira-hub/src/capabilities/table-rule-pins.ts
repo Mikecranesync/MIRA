@@ -21,12 +21,25 @@ export type VerticalRule = { x: number; y0: number; y1: number };
  *  `release`: the approval switch of a reviewed page. Only the exact value `"enabled"` releases the
  *  reviewed rows; `"disabled"` (or anything else, or nothing) withdraws them everywhere while the
  *  approved digest stays recorded for the drift checks. Turning an approval off is a one-word
- *  change, never a deletion. */
-export type PagePin = { fingerprint: string; rules: readonly VerticalRule[]; reviewed?: string; release?: string };
+ *  change, never a deletion.
+ *  `models`: the catalog numbers of a reviewed page exactly as the page prints them. A row stored
+ *  before approvals were bound to their pages carries no mark and no file hash; while the approval
+ *  is off, such a row is treated as this page's when a passage of its own document page names one
+ *  of them (`activeReleaseSql`). */
+export type PagePin = { fingerprint: string; rules: readonly VerticalRule[]; reviewed?: string; release?: string; models?: readonly string[] };
+
+const HEX64 = /^[0-9a-f]{64}$/;
+const PAGE_KEY = /^[1-9]\d*$/;
+/** A printed catalog number as it may reach SQL: letters, digits and hyphens only. */
+const MODEL_NAME = /^[A-Za-z0-9][A-Za-z0-9-]{2,31}$/;
 
 /** The reviewed digest of a pin only while its approval switch is enabled. */
 function releasedDigest(pin: PagePin): string | null {
   return pin.release === "enabled" && typeof pin.reviewed === "string" ? pin.reviewed : null;
+}
+/** The recorded digest of a pin, whatever its switch: null when the page has no valid approval. */
+function recordedDigest(pin: PagePin): string | null {
+  return typeof pin.reviewed === "string" && HEX64.test(pin.reviewed) ? pin.reviewed : null;
 }
 /** Page number (1-based, as a string key) to that page's pin. */
 export type DocumentRulePins = Readonly<Record<string, PagePin>>;
@@ -61,18 +74,26 @@ export function allRulePins(): Readonly<Record<string, DocumentRulePins>> {
   return Object.fromEntries(Object.entries(PINNED).map(([sha, document]) => [sha, document.pages]));
 }
 
-/** SQL condition (no parameters) on a `knowledge_entries` row that is true unless the row carries
- *  a release stamp (`metadata.table_reviewed`) or a hold mark (`metadata.table_held`) whose
- *  approval is not enabled now. A hold mark is written on every row of a page whose approval is
- *  recorded but switched off when the page is indexed (`heldRowsDigest`), so content an approval
- *  covers stays out of every answer while that approval is off, however and whenever it was
- *  indexed. Every query that can put a node row into an
- *  answer, a prompt or a citation adds `AND <this>`, so a withdrawn approval removes its released
- *  rows from every route at once, whatever the question names, with no reprocess and no need for
- *  the original file; the stored row itself is left as it is. The active releases are exactly the
- *  file, page and digest triples whose pin is enabled (`isReleaseActive`); with none, no stamped
- *  row qualifies. The values are pin-file hex and digits, validated here before they reach SQL.
- *  `documents` exists for tests that stand stub bytes in for a pinned file. */
+/** SQL condition (no parameters) on a `knowledge_entries` row: false for every row of an approved
+ *  file's page whose approval is recorded but not enabled now, true otherwise. Every query that can
+ *  put a node row into an answer, a prompt or a citation adds `AND <this>`, so switching an
+ *  approval off removes that page from every route at once, whatever the question names, with no
+ *  reprocess and no need for the original file; the stored rows are left as they are.
+ *
+ *  A row is recognised as the page's in one of three ways:
+ *  1. a mark: the writer marks every row of a page with a recorded approval, in either switch
+ *     state and whatever the page's extraction reads — a released row with the reviewed digest
+ *     (`metadata.table_reviewed`), every other row with the recorded digest (`metadata.table_held`),
+ *     each with its file's SHA-256. A marked row is served only while its exact file, page and
+ *     digest approval is enabled;
+ *  2. its file: every row this writer stores carries `metadata.file_sha256`;
+ *  3. its page: a node row stored by an earlier build carries neither, so while an approval of
+ *     page P is off, an unmarked node row of page P with no file hash is withheld when a passage of
+ *     its own document page names one of that page's catalog numbers (`PagePin.models`). Rows of
+ *     other documents and other pages are untouched.
+ *  With every recorded approval enabled, only clause 1 is emitted. The values are pin-file hex,
+ *  digits and catalog numbers, validated here before they reach SQL. `documents` exists for tests
+ *  that stand stub bytes in for a pinned file. */
 export function activeReleaseSql(alias = "",
   documents: Readonly<Record<string, DocumentRulePins>> = allRulePins()): string {
   if (alias !== "" && !/^[a-z_][a-z0-9_]*$/.test(alias)) throw new Error(`activeReleaseSql: bad alias ${alias}`);
@@ -81,19 +102,61 @@ export function activeReleaseSql(alias = "",
   const held = `${col("metadata")}->>'table_held'`;
   const page = `COALESCE(${col("page_start")}, ${col("source_page")})::text`;
   const active: string[] = [];
+  const withdrawn: string[] = [];
+  const withdrawnModels = new Map<number, Set<string>>();
   for (const sha of Object.keys(documents).sort()) {
-    if (!/^[0-9a-f]{64}$/.test(sha)) continue;
+    if (!HEX64.test(sha)) continue;
     const pages = documents[sha];
     for (const page of Object.keys(pages).sort()) {
+      if (!PAGE_KEY.test(page)) continue;
+      const recorded = recordedDigest(pages[page]);
       const digest = releasedDigest(pages[page]);
-      if (digest === null || !/^[1-9]\d*$/.test(page) || !/^[0-9a-f]{64}$/.test(digest)) continue;
-      active.push(`('${sha}', '${page}', '${digest}')`);
+      if (digest !== null && HEX64.test(digest)) { active.push(`('${sha}', '${page}', '${digest}')`); continue; }
+      if (recorded === null) continue;
+      withdrawn.push(`('${sha}', '${page}')`);
+      const models = withdrawnModels.get(Number(page)) ?? new Set<string>();
+      for (const model of pages[page].models ?? []) if (typeof model === "string" && MODEL_NAME.test(model)) models.add(model);
+      withdrawnModels.set(Number(page), models);
     }
   }
-  if (active.length === 0) return `(${stamp} IS NULL AND ${held} IS NULL)`;
-  const triples = active.join(", ");
-  return `((${stamp} IS NULL OR (${col("metadata")}->>'table_reviewed_sha', ${page}, ${stamp}) IN (${triples}))` +
-    ` AND (${held} IS NULL OR (${col("metadata")}->>'table_held_sha', ${page}, ${held}) IN (${triples})))`;
+  const marked = active.length === 0
+    ? `(${stamp} IS NULL AND ${held} IS NULL)`
+    : `((${stamp} IS NULL OR (${col("metadata")}->>'table_reviewed_sha', ${page}, ${stamp}) IN (${active.join(", ")}))` +
+      ` AND (${held} IS NULL OR (${col("metadata")}->>'table_held_sha', ${page}, ${held}) IN (${active.join(", ")})))`;
+  if (withdrawn.length === 0) return marked;
+  // Clauses 2 and 3 name the outer row explicitly: they sit beside a subquery over the same table.
+  const o = alias || "knowledge_entries";
+  const fileSha = `${o}.metadata->>'file_sha256'`;
+  const pageNumber = `COALESCE(${o}.page_start, ${o}.source_page, 0)`;
+  const byFile = `(${fileSha} IS NULL OR (${fileSha}, ${pageNumber}::text) NOT IN (${withdrawn.join(", ")}))`;
+  const byPage = [...withdrawnModels.keys()].sort((a, b) => a - b).map((p) => {
+    const models = [...withdrawnModels.get(p)!].sort();
+    // A page approval with no catalog numbers recorded cannot be recognised by its text, so every
+    // unmarked, unhashed node row of that page number is withheld while it is off (fail closed).
+    const named = models.length === 0 ? "TRUE" : models.map((m) => `strpos(s.content, '${m}') > 0`).join(" OR ");
+    return `(${o}.source_type IS DISTINCT FROM 'node_attachment' OR ${fileSha} IS NOT NULL` +
+      ` OR ${o}.metadata->>'table_reviewed' IS NOT NULL OR ${o}.metadata->>'table_held' IS NOT NULL OR ${pageNumber} <> ${p}` +
+      ` OR NOT EXISTS (SELECT 1 FROM knowledge_entries s WHERE s.tenant_id = ${o}.tenant_id AND s.doc_id = ${o}.doc_id` +
+      ` AND s.source_type = 'node_attachment' AND COALESCE(s.page_start, s.source_page) = ${p} AND (${named})))`;
+  });
+  return `(${marked} AND ${byFile} AND ${byPage.join(" AND ")})`;
+}
+
+/** Every recorded page approval (file SHA-256, page, digest, catalog numbers), whatever its switch,
+ *  for the fence and inventory statements of the rollback runbook. */
+export function recordedApprovals(documents: Readonly<Record<string, DocumentRulePins>> = allRulePins()):
+  Array<{ sha256: string; page: number; digest: string; models: string[]; enabled: boolean }> {
+  const out: Array<{ sha256: string; page: number; digest: string; models: string[]; enabled: boolean }> = [];
+  for (const sha of Object.keys(documents).sort()) {
+    if (!HEX64.test(sha)) continue;
+    for (const page of Object.keys(documents[sha]).sort()) {
+      const pin = documents[sha][page];
+      const digest = recordedDigest(pin);
+      if (digest === null || !PAGE_KEY.test(page)) continue;
+      out.push({ sha256: sha, page: Number(page), digest, models: [...(pin.models ?? [])], enabled: releasedDigest(pin) === digest });
+    }
+  }
+  return out;
 }
 
 /** Identity of a page's positioned text: every item's text and position, in reading order. */
@@ -127,15 +190,16 @@ export function reviewedRowsDigest(document: DocumentRulePins | null, pageNumber
   return pin ? releasedDigest(pin) : null;
 }
 
-/** The recorded digest of one page whose approval is recorded but NOT enabled (same geometry check
- *  as `reviewedRowsDigest`); null otherwise. The writer marks that page's rows as held under it
- *  when they are exactly the reviewed rows, so the content stays out of answers until the
- *  approval is enabled again (`activeReleaseSql`). */
-export function heldRowsDigest(document: DocumentRulePins | null, pageNumber: number,
-  items: ReadonlyArray<{ str: string; x: number; y: number }>): string | null {
-  const pin = matchingPin(document, pageNumber, items);
-  if (!pin || typeof pin.reviewed !== "string" || releasedDigest(pin) !== null) return null;
-  return pin.reviewed;
+/** The recorded approval digest of one page of a file, in either switch state and WHATEVER the page
+ *  reads now: no geometry check, so a page whose extraction drifted, whose table was not recognised
+ *  or whose layout could not be read is still bound to its approval. The writer marks every row of
+ *  such a page that the gate does not release with it (`metadata.table_held`), so the page's text
+ *  answers only while that approval is enabled (`activeReleaseSql`). Null when the page has no
+ *  recorded approval. */
+export function boundDigest(document: DocumentRulePins | null, pageNumber: number): string | null {
+  const key = String(pageNumber);
+  if (!document || !Object.hasOwn(document, key)) return null;
+  return recordedDigest(document[key]);
 }
 
 /** A rule runs through a text line only when it passes below the baseline and up through the

@@ -466,7 +466,46 @@ export async function enrichAsset(tenantId: string, assetId: string): Promise<En
   return report;
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** The saved KB passages of a report that are still answerable now (#5646 r5 F5). A report keeps
+ *  the passages it found when it ran; a passage whose page approval was switched off since (or
+ *  whose row is gone) must not come back from the saved copy. Each saved hit is looked up by id
+ *  with the same read the search used (hybrid filter on the raw pool, release guard) and kept only
+ *  if it still qualifies; the stored report itself is left as it is. Fails closed: a hit without a
+ *  well-formed id, or a lookup error, returns no hit. */
+async function stillAnswerable(tenantId: string, hits: KBHit[]): Promise<KBHit[]> {
+  const list = Array.isArray(hits) ? hits : [];
+  const ids = [...new Set(list.map((h) => h?.id).filter((id): id is string => typeof id === "string" && UUID_RE.test(id)))];
+  if (ids.length === 0) return [];
+  try {
+    const res = await pool.query<{ id: string }>(
+      `SELECT id::text AS id
+         FROM knowledge_entries
+        WHERE id = ANY($2::uuid[])
+          AND (is_private = false OR tenant_id = $1)
+          AND ${activeReleaseSql()}`,
+      [tenantId, ids],
+    );
+    const live = new Set(res.rows.map((r) => r.id));
+    return list.filter((h) => typeof h?.id === "string" && live.has(h.id));
+  } catch (err) {
+    console.warn("[asset-intelligence] saved KB hits could not be rechecked; none returned:", err instanceof Error ? err.message : err);
+    return [];
+  }
+}
+
 export async function getEnrichmentReport(tenantId: string, assetId: string): Promise<EnrichmentReport | null> {
+  const report = await readEnrichmentReport(tenantId, assetId);
+  if (!report) return null;
+  const [kb, oemAdvisories] = await Promise.all([
+    stillAnswerable(tenantId, report.sources.kb),
+    stillAnswerable(tenantId, report.sources.oemAdvisories),
+  ]);
+  return { ...report, sources: { ...report.sources, kb, oemAdvisories } };
+}
+
+async function readEnrichmentReport(tenantId: string, assetId: string): Promise<EnrichmentReport | null> {
   return withTenantContext(tenantId, async (client) => {
     const res = await client.query<{
       asset_id: string; tenant_id: string; status: string;

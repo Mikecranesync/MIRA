@@ -3,16 +3,17 @@
 // the real reprocessor, the real retrieval SQL, the real page reader and gate.
 //
 // Release: the gate stamps every row it releases with the reviewed digest it was released under
-// (`metadata.table_reviewed`). Rows written before the approval carry no release, so rollout still
-// needs a forced, scoped reprocess (`scripts/reprocess-node-doc.ts --force`) of the uploads that
-// own chunks of an approved file: an ordinary reprocess is a no-op at the same extraction version.
+// (`metadata.table_reviewed`); every other row of an approved page is held under the recorded
+// digest (`metadata.table_held`), in either switch state and whatever the page reads; every row
+// carries its file's SHA-256 (`metadata.file_sha256`). Rows stored before this build carry none of
+// these: they are the merge-base writer's real output (`gs10-p26-base-writer-rows.json`), inserted
+// as stored. Rollout still needs a forced, scoped reprocess of the uploads that own chunks of an
+// approved file: an ordinary reprocess is a no-op at the same extraction version.
 //
-// Withdrawal does not depend on the original file or its hash. Every answer query admits a stamped
-// row only while the shipped pin of its file and page still carries its digest with the approval
-// switch enabled (`activeReleaseSql`), so setting `release` to "disabled" removes every released
-// row from every route at once, with no reprocess and no bytes. The stamp also makes the released
-// rows directly queryable: it is the fence that must read zero before a build without the guard
-// may serve.
+// Withdrawal does not depend on the original file, its hash or a reprocess. Every answer query
+// carries `activeReleaseSql`, so setting `release` to "disabled" removes the page from every route
+// at once: marked rows, rows identified by file hash, and rows stored before this build (recognised
+// by their page). The SQL the operator runs comes from the rollback runbook itself.
 //
 // Only the PDF boundary is simulated (captured page 26 and 27 text items). The stub bytes stand
 // for the approved file: the pin lookup translates their hash to the approved file's REAL
@@ -49,7 +50,9 @@ const { testPool, BYTES, BYTES_B, pins } = vi.hoisted(() => {
     // has the approval enabled and commits after the switch is off for readers.
     // `sqlGuardOff`: the SQL release guard admits everything, so the per-row check in admit() is
     // the only thing between a revoked row and an answer (it must hold on its own).
-    pins: { reverted: false, revertedB: false, lateWriter: false, sqlGuardOff: false },
+    // `drift`: page 26 as a later extraction may read it — one other model's value changed
+    // ("value"), or its layout unreadable ("layoutFail").
+    pins: { reverted: false, revertedB: false, lateWriter: false, sqlGuardOff: false, drift: null as null | "value" | "layoutFail" },
   };
 });
 const { APPROVED_SHA, SECOND_SHA } = vi.hoisted(() => ({
@@ -82,7 +85,11 @@ vi.mock("@/capabilities/table-rule-pins", async (importOriginal) => {
     if (!pins.lateWriter || !Object.hasOwn(stubs, sha)) return forReaders(sha);
     return withRelease(stubs[sha][0], "enabled"); // the previous build: approval still enabled
   };
-  const documents = () => ({ ...actual.allRulePins(), ...Object.fromEntries(Object.keys(stubs).map((sha) => [sha, forReaders(sha)!])) });
+  // The real approved files follow the same switches, so the suite holds whatever the shipped state.
+  const documents = () => ({ ...actual.allRulePins(),
+    [APPROVED_SHA]: withRelease(APPROVED_SHA, pins.reverted ? "disabled" : "enabled"),
+    [SECOND_SHA]: withRelease(SECOND_SHA, pins.revertedB ? "disabled" : "enabled"),
+    ...Object.fromEntries(Object.keys(stubs).map((sha) => [sha, forReaders(sha)!])) });
   return {
     ...actual,
     rulePinsForSha: forWriter,
@@ -98,7 +105,12 @@ vi.mock("unpdf", async () => {
   return {
     getDocumentProxy: vi.fn(async () => ({
       getPage: async (n: number) => ({
-        getTextContent: async () => ({ items: (pages[n]?.items ?? []).map((i) => textContentItem(i)) }),
+        getTextContent: async () => {
+          if (n === 26 && pins.drift === "layoutFail") throw new Error("simulated: page 26 layout unreadable");
+          // One other model's value (GS11N-20P5 CT rated input current, 7.3 A) read differently.
+          const items = n === 26 && pins.drift === "value" ? (pages[n]?.items ?? []).map((i) => (i.str === "7.3" ? { ...i, str: "7.4" } : i)) : (pages[n]?.items ?? []);
+          return { items: items.map((i) => textContentItem(i)) };
+        },
         cleanup: () => true,
       }),
     })),
@@ -110,12 +122,14 @@ vi.mock("@/capabilities/pdf-page-label-reader", () => ({ readPageLabelsBounded: 
 import { reprocessNodeDocument } from "@/lib/node-knowledge-ingest";
 import { linkFileToUpload, parkOrReuseFile } from "@/lib/workspace-files";
 import { retrieveCitedPageChunks, retrieveManualChunks, retrieveNodeChunks } from "@/lib/manual-rag";
-import { searchKB } from "@/lib/agents/asset-intelligence";
+import { getEnrichmentReport, searchKB } from "@/lib/agents/asset-intelligence";
+import baseRows from "@/capabilities/__fixtures__/reviewed-pages/gs10-p26-base-writer-rows.json";
 
 const TENANT = randomUUID();
 const NODE = randomUUID();
 const FILENAME = "gs10usermanual.pdf";
 const SHA = createHash("sha256").update(BYTES).digest("hex");
+const SHA_B = createHash("sha256").update(BYTES_B).digest("hex");
 const LINE_5_1 = "GS11N-20P2: Input Rating / CT / Rated Input Current 5.1 A";
 const hubRoot = path.resolve(__dirname, "..", "..", "..");
 let client: PoolClient;
@@ -148,39 +162,42 @@ async function newParkedUpload(): Promise<string> {
   expect(await linkFileToUpload(TENANT, park.fileId, rows[0].id)).toBe(true);
   return rows[0].id;
 }
-const fill = (sql: string) => sql.replaceAll("<tenant uuid>", TENANT).replaceAll("<sha a>", SHA)
-  .replaceAll("<sha b>", SECOND_SHA).replaceAll("<digest>", APPROVED_DIGEST);
-
-/** The ROLLOUT inventory from the PR body (the stub bytes' hash stands in for the first approved
- *  hash): every upload of the tenant whose upload row OR linked canonical file carries one of the
- *  two approved hashes AND that owns node chunks of its own. A record that owns no chunks (a
- *  duplicate upload of the same bytes) is never listed, so a forced pass over the list cannot
- *  index it. hub_uploads.tenant_id is TEXT, so the joins cast the UUID side to text. */
-const INVENTORY_SQL = `SELECT u.tenant_id, u.id::text AS upload_id
-  FROM hub_uploads u
-  LEFT JOIN namespace_direct_uploads d ON d.upload_id = u.id AND d.tenant_id::text = u.tenant_id
- WHERE (u.content_sha256 IN ('<sha a>', '<sha b>')
-        OR d.content_sha256 IN ('<sha a>', '<sha b>'))
-   AND EXISTS (SELECT 1 FROM knowledge_entries k
-                WHERE k.doc_id = u.id AND k.tenant_id::text = u.tenant_id
-                  AND k.source_type = 'node_attachment' AND k.ingest_route = 'v2')
-   AND u.tenant_id = '<tenant uuid>'`;
-/** The WITHDRAWAL inventory from the PR body: the released rows themselves, by their stamp. It
- *  needs no hash and no file. */
-const RELEASED_SQL = `SELECT k.tenant_id::text AS tenant_id, k.doc_id::text AS upload_id, count(*)::int AS released
-  FROM knowledge_entries k
- WHERE k.source_type = 'node_attachment'
-   AND k.metadata->>'table_reviewed' = '<digest>'
-   AND k.tenant_id = '<tenant uuid>'::uuid
- GROUP BY 1, 2`;
-
+/** A labelled SQL block of the rollback runbook, exactly as an operator would run it (#5646 r5 F7).
+ *  The stub bytes' hashes stand in for the two approved files' hashes. */
+const RUNBOOK = path.resolve(hubRoot, "..", "docs", "runbooks", "2026-11-19-gs10-p26-reviewed-release-rollback.md");
+function runbookSql(name: string): string {
+  const blocks = [...fs.readFileSync(RUNBOOK, "utf8").matchAll(/```sql\n([\s\S]*?)```/g)].map((m) => m[1])
+    .filter((b) => b.trimStart().startsWith(`-- runbook: ${name}\n`));
+  if (blocks.length !== 1) throw new Error(`runbook block ${name}: found ${blocks.length}`);
+  return blocks[0].replaceAll(APPROVED_SHA, SHA).replaceAll(SECOND_SHA, SHA_B);
+}
+/** The rollout inventory: uploads whose row or parked file carries an approved hash and that own
+ *  node chunks. The runbook query is global; the assertions read this tenant's rows. */
 async function inventory(): Promise<string[]> {
-  return (await testPool.query<{ upload_id: string }>(fill(INVENTORY_SQL))).rows.map((r) => r.upload_id).sort();
+  const { rows } = await testPool.query<{ tenant_id: string; upload_id: string }>(runbookSql("rollout-inventory"));
+  return rows.filter((r) => r.tenant_id === TENANT).map((r) => r.upload_id).sort();
 }
-async function releasedRows(): Promise<Record<string, number>> {
-  const { rows } = await testPool.query<{ upload_id: string; released: number }>(fill(RELEASED_SQL));
-  return Object.fromEntries(rows.map((r) => [r.upload_id, r.released]));
+/** The bound-rows inventory (the fence): every row the switch withholds, by how it is recognised. */
+async function bound(docId?: string): Promise<Record<string, number>> {
+  const { rows } = await testPool.query<{ tenant_id: string; upload_id: string; bound_by: string; rows: number }>(runbookSql("bound-rows"));
+  const out: Record<string, number> = {};
+  for (const r of rows) if (r.tenant_id === TENANT && (!docId || r.upload_id === docId)) out[r.bound_by] = (out[r.bound_by] ?? 0) + r.rows;
+  return out;
 }
+type BaseFile = keyof typeof baseRows.files;
+/** Store an upload's rows exactly as the merge-base writer stored them (no mark, no file hash). */
+async function indexAsBase(docId: string, file: BaseFile = "gs10usermanual.pdf", tenant = TENANT) {
+  const node = (await testPool.query<{ n: string }>("SELECT kg_entity_id::text AS n FROM hub_uploads WHERE id = $1::uuid", [docId])).rows[0].n;
+  for (const r of baseRows.files[file]) {
+    await testPool.query(
+      `INSERT INTO knowledge_entries (id, tenant_id, source_type, content, source_url, source_page, doc_id, ingest_route, page_start, page_end, metadata, is_private)
+       VALUES (gen_random_uuid(), $1::uuid, $2, $3, $4, $5, $6::uuid, $7, $8, $9, $10::jsonb, $11)`,
+      [tenant, r.source_type, r.content, r.source_url.replace("{upload}", docId), r.source_page, docId, r.ingest_route,
+        r.page_start, r.page_end, JSON.stringify({ ...r.metadata, node_id: node }), r.is_private]);
+  }
+}
+/** The chunks of a result that come from one page. */
+const onPage = <T extends { sourcePage?: number | null }>(chunks: T[], page: number) => chunks.filter((c) => c.sourcePage === page);
 /** Model-specific retrieval for one GS10 model, as a notebook bound to that catalog number asks. */
 async function ask(docId: string, catalog: string) {
   const diagnostics: { excludedTables?: Array<{ page: number | null; models: string[]; unqualified?: true }> } = {};
@@ -214,14 +231,8 @@ const heldOn = (rows: Array<{ page: number; held: string | null }>, page: number
 const ofDoc = <T extends { sourceUrl?: string | null }>(docId: string, chunks: T[]) => chunks.filter((c) => (c.sourceUrl ?? "").includes(docId));
 /** Any chunk that would carry a withdrawn value into an answer. */
 const carries51 = (chunks: Array<{ content: string }>) => chunks.filter((c) => c.content.includes("5.1 A"));
-/** The rollback fence for retiring the read check: rows still carrying a release stamp. */
-const STAMPED_SQL = `SELECT count(*)::int AS n FROM knowledge_entries k
- WHERE k.source_type = 'node_attachment' AND k.metadata->>'table_reviewed' IS NOT NULL
-   AND k.tenant_id = '<tenant uuid>'::uuid`;
-async function stampedCount(docId?: string): Promise<number> {
-  const sql = fill(STAMPED_SQL) + (docId ? ` AND k.doc_id = '${docId}'::uuid` : "");
-  return (await testPool.query<{ n: number }>(sql)).rows[0].n;
-}
+/** The same, for a page also read as flat text (where the figure stands apart from its unit). */
+const carries51OrValue = (chunks: Array<{ content: string }>) => chunks.filter((c) => /\b5\.1\b/.test(c.content));
 async function stored(docId: string) {
   const { rows } = await testPool.query<{ content: string; page: number; meta: Record<string, unknown> }>(
     `SELECT content, source_page AS page, metadata AS meta FROM knowledge_entries
@@ -250,10 +261,19 @@ describe.skipIf(!READY)("GS10 page 26 reviewed pin: stored rows on rollout and w
       `ALTER TABLE knowledge_entries ADD COLUMN IF NOT EXISTS content_tsv tsvector
          GENERATED ALWAYS AS (to_tsvector('english', content)) STORED`,
     );
+    // Saved asset enrichment reports (#5646 r5 F5): migration 004's policy is not re-runnable.
+    if (!(await testPool.query<{ t: string | null }>("SELECT to_regclass('asset_enrichment_reports')::text AS t")).rows[0].t) {
+      for (const f of ["004_asset_enrichment.sql", "061_grant_app_asset_enrichment_reports.sql"]) {
+        await testPool.query(fs.readFileSync(path.join(hubRoot, "db", "migrations", f), "utf8"));
+      }
+    }
     client = await testPool.connect();
   });
   afterAll(async () => {
     client?.release();
+    await testPool.query("DELETE FROM asset_enrichment_reports WHERE tenant_id = $1::uuid", [TENANT]);
+    await testPool.query("DELETE FROM cmms_equipment WHERE tenant_id = $1::uuid", [TENANT]);
+    await testPool.query("DELETE FROM tenants WHERE id = $1::uuid", [TENANT]);
     await testPool.query("DELETE FROM knowledge_entries WHERE tenant_id = $1::uuid", [TENANT]);
     await testPool.query("DELETE FROM namespace_direct_uploads WHERE tenant_id = $1::uuid", [TENANT]);
     await testPool.query("DELETE FROM hub_uploads WHERE tenant_id = $1", [TENANT]);
@@ -278,7 +298,9 @@ describe.skipIf(!READY)("GS10 page 26 reviewed pin: stored rows on rollout and w
     pins.reverted = true; // the approval is removed from the pin file
     const withdrawn = await ask(doc, "GS11N-20P2");
     expect(withdrawn.cites51).toEqual([]);
-    expect(withdrawn.diagnostics.excludedTables?.some((t) => t.page === 26 && t.unqualified === true)).toBe(true);
+    // The page is withdrawn whole (#5646 r6): retrieval does not even see it to report a withheld table.
+    expect(withdrawn.diagnostics.excludedTables?.some((t) => t.page === 26) ?? false).toBe(false);
+    expect(onPage(withdrawn.chunks, 26)).toEqual([]);
     expect((await ask(doc, "GS11N-20P5")).cites51).toEqual([]);
     // No reprocess was needed, and none changes anything: the stored rows are untouched.
     expect((await reprocessNodeDocument({ tenantId: TENANT, uploadId: doc, bytes: BYTES })).action).toBe("noop");
@@ -329,7 +351,7 @@ describe.skipIf(!READY)("GS10 page 26 reviewed pin: stored rows on rollout and w
     expect((await ask(doc, "GS11N-20P2")).cites51).toHaveLength(1); // still released at this point
 
     // The released rows are found by their stamp, with no hash and no file.
-    expect((await releasedRows())[doc]).toBe(10);
+    expect((await bound(doc)).released).toBe(10);
 
     pins.reverted = true; // route 1: remove the approval from the pin file
     expect((await ask(doc, "GS11N-20P2")).cites51).toEqual([]);
@@ -340,9 +362,9 @@ describe.skipIf(!READY)("GS10 page 26 reviewed pin: stored rows on rollout and w
     expect(carries51(await docChat(doc)).length).toBeGreaterThan(0); // precondition: the route finds it while enabled
     pins.reverted = true;
     expect(carries51(await docChat(doc))).toEqual([]);
-    // Retiring the read check is fenced on zero stamped rows. This upload cannot be re-written, so
-    // its rows keep their stamps and the fence stays closed: a build without the check must not ship.
-    expect(await stampedCount(doc)).toBe(10);
+    // Retiring the reader filter is fenced on zero bound rows. This upload cannot be re-written, so
+    // its rows stay bound and the fence stays closed: a build without the filter must not ship.
+    expect(await bound(doc)).toMatchObject({ released: 10 });
     const after = await stored(doc);
     expect(stampedOn(after, 26)).toBe(10); // the stamp is kept as the record of what was withdrawn
     expect(after.some((r) => r.content.includes(LINE_5_1))).toBe(true); // historical text kept
@@ -350,14 +372,14 @@ describe.skipIf(!READY)("GS10 page 26 reviewed pin: stored rows on rollout and w
   });
 
   it("rollout: an upload stored before this build stays withheld until a forced reprocess re-writes it", async () => {
-    pins.reverted = true; // the base build
+    pins.reverted = false; // this build, approval enabled
     const doc = await newUpload();
-    expect((await reprocessNodeDocument({ tenantId: TENANT, uploadId: doc, bytes: BYTES })).action).toBe("reprocessed");
+    await indexAsBase(doc); // stored by the merge-base writer, before this build
     expect((await ask(doc, "GS11N-20P2")).cites51).toEqual([]);
     expect(releasedOn(await stored(doc), 26)).toBe(0);
     expect(stamps(await stored(doc))).toBe(0);
+    expect(await inventory()).toContain(doc);
 
-    pins.reverted = false; // this build
     expect((await reprocessNodeDocument({ tenantId: TENANT, uploadId: doc, bytes: BYTES })).action).toBe("noop");
     expect((await ask(doc, "GS11N-20P2")).cites51).toEqual([]); // the gap: still withheld
     const r = await reprocessNodeDocument({ tenantId: TENANT, uploadId: doc, bytes: BYTES, force: true });
@@ -370,20 +392,23 @@ describe.skipIf(!READY)("GS10 page 26 reviewed pin: stored rows on rollout and w
     expect(releasedOn(rows, 27)).toBe(0);
     expect(stampedOn(rows, 26)).toBe(10);
     expect(stamps(rows)).toBe(10);
+    // Re-written by this writer: every page 26 row bound to the approval, every row to its file.
+    expect(rows.filter((r) => r.page === 26).every((r) => (r.meta.table_reviewed ?? r.meta.table_held) === APPROVED_DIGEST)).toBe(true);
+    expect(rows.every((r) => r.meta.file_sha256 === SHA)).toBe(true);
   });
 
   it("inventory: an upload with no hash on its row is found through its parked file, and the forced reprocess uses the parked bytes", async () => {
     await testPool.query("DELETE FROM namespace_direct_uploads WHERE tenant_id = $1::uuid", [TENANT]);
-    pins.reverted = true; // indexed before this build
+    pins.reverted = false;
     const doc = await newParkedUpload();
-    expect((await reprocessNodeDocument({ tenantId: TENANT, uploadId: doc })).action).toBe("reprocessed");
+    await indexAsBase(doc); // indexed before this build
     expect((await ask(doc, "GS11N-20P2")).cites51).toEqual([]);
     expect(await inventory()).toContain(doc);
     // The row-hash-only selector Codex found would miss it.
     const rowOnly = await testPool.query("SELECT 1 FROM hub_uploads WHERE id = $1::uuid AND content_sha256 IS NOT NULL", [doc]);
     expect(rowOnly.rowCount).toBe(0);
 
-    pins.reverted = false; // rollout: no local PDF is supplied, the parked original is used
+    // rollout: no local PDF is supplied, the parked original is used
     expect((await reprocessNodeDocument({ tenantId: TENANT, uploadId: doc })).action).toBe("noop");
     expect(await reprocessNodeDocument({ tenantId: TENANT, uploadId: doc, force: true }))
       .toMatchObject({ action: "reprocessed", reason: "recomputed_human_requested" });
@@ -392,15 +417,14 @@ describe.skipIf(!READY)("GS10 page 26 reviewed pin: stored rows on rollout and w
 
   it("inventory: a duplicate upload record of the same bytes that owns no chunks is not listed, so a forced pass gives it nothing", async () => {
     await testPool.query("DELETE FROM namespace_direct_uploads WHERE tenant_id = $1::uuid", [TENANT]);
-    pins.reverted = true;
+    pins.reverted = false;
     const doc = await newUpload();
-    expect((await reprocessNodeDocument({ tenantId: TENANT, uploadId: doc, bytes: BYTES })).action).toBe("reprocessed");
+    await indexAsBase(doc); // indexed before this build
     const duplicate = await newUpload(); // same tenant, same bytes, never indexed
     expect(await stored(duplicate)).toHaveLength(0);
     const hashMatches = await testPool.query("SELECT 1 FROM hub_uploads WHERE id = $1::uuid AND content_sha256 = $2", [duplicate, SHA]);
     expect(hashMatches.rowCount).toBe(1); // a hash-only selector would list it
 
-    pins.reverted = false;
     const listed = await inventory();
     expect(listed).toContain(doc);
     expect(listed).not.toContain(duplicate);
@@ -411,10 +435,9 @@ describe.skipIf(!READY)("GS10 page 26 reviewed pin: stored rows on rollout and w
 
   it("reuse: attaching the same bytes to another node of the same tenant returns the old upload, still withheld until it is reprocessed", async () => {
     await testPool.query("DELETE FROM namespace_direct_uploads WHERE tenant_id = $1::uuid", [TENANT]);
-    pins.reverted = true; // indexed before this build
-    const doc = await newParkedUpload();
-    expect((await reprocessNodeDocument({ tenantId: TENANT, uploadId: doc })).action).toBe("reprocessed");
     pins.reverted = false; // this build
+    const doc = await newParkedUpload();
+    await indexAsBase(doc); // indexed before this build
     const again = await parkOrReuseFile({ tenantId: TENANT, nodeId: null, filename: "copy.pdf",
       mimeType: "application/pdf", sizeBytes: BYTES.length, buffer: BYTES });
     expect(again).toMatchObject({ reused: true, uploadId: doc }); // no new upload, no new chunks
@@ -495,11 +518,14 @@ describe.skipIf(!READY)("GS10 page 26 reviewed pin: stored rows on rollout and w
     pins.lateWriter = false;
     expect(carries51(await docChat(doc))).toEqual([]);
     expect((await ask(doc, "GS11N-20P2")).cites51).toEqual([]);
-    // The fence finds them, and a forced reprocess under the disabled build clears them.
-    expect(await stampedCount(doc)).toBe(10);
+    // The inventory lists them; a forced reprocess under the disabled build re-writes them held,
+    // and they stay listed: the page is still bound to its approval.
+    expect((await bound(doc)).released).toBe(10);
     expect(await reprocessNodeDocument({ tenantId: TENANT, uploadId: doc, bytes: BYTES, force: true }))
       .toMatchObject({ action: "reprocessed" });
-    expect(await stampedCount(doc)).toBe(0);
+    const rebound = await bound(doc);
+    expect(rebound.released).toBeUndefined();
+    expect(rebound.held).toBe(heldOn(await storedMeta(doc), 26));
     // Re-indexed while the approval is off: every page 26 row is held, so no route serves it.
     expect(heldOn(await storedMeta(doc), 26)).toBeGreaterThan(0);
     expect(carries51(await docChat(doc))).toEqual([]);
@@ -517,6 +543,7 @@ describe.skipIf(!READY)("GS10 page 26 reviewed pin: stored rows on rollout and w
     expect(page26.length).toBeGreaterThan(0);
     expect(page26.every((r) => r.held === APPROVED_DIGEST && r.heldSha === SHA)).toBe(true); // every row of the page, bound to its file
     expect(meta.filter((r) => r.page !== 26).some((r) => r.held !== null)).toBe(false); // and no other page
+    expect((await stored(doc)).every((r) => r.meta.file_sha256 === SHA)).toBe(true); // every row names its file
     expect(page26.some((r) => r.content.includes(LINE_5_1))).toBe(true); // the text itself is kept
     expect(carries51(await docChat(doc))).toEqual([]);
     expect(carries51(await docChat(doc, "what is the rated input current on page 26"))).toEqual([]);
@@ -528,5 +555,191 @@ describe.skipIf(!READY)("GS10 page 26 reviewed pin: stored rows on rollout and w
     expect((await ask(doc, "GS11N-20P2")).cites51).toEqual([]);
     expect(await reprocessNodeDocument({ tenantId: TENANT, uploadId: doc, bytes: BYTES, force: true })).toMatchObject({ action: "reprocessed" });
     expect((await ask(doc, "GS11N-20P2")).cites51.map((c) => c.sourcePage)).toEqual([26]);
+  });
+
+  it("rows the merge-base writer stored are withdrawn by the switch on every route, with no reprocess (#5646 r5 F1)", async () => {
+    pins.reverted = false; pins.revertedB = false; pins.lateWriter = false;
+    const doc = await newUpload();
+    await indexAsBase(doc);
+    const docB = await newUpload(BYTES_B);
+    await indexAsBase(docB, "03_gs10_user_manual.pdf");
+    const before = await stored(doc);
+    // Precondition: exactly what main stores — no mark, no file hash, the 5.1 A line on page 26.
+    expect(before).toHaveLength(baseRows.files["gs10usermanual.pdf"].length);
+    expect(before.some((r) => "table_reviewed" in r.meta || "table_held" in r.meta || "file_sha256" in r.meta)).toBe(false);
+    expect(before.filter((r) => r.content.includes(LINE_5_1)).map((r) => r.page)).toEqual([26]);
+    // An unrelated node document whose page 26 states the same figure for another machine.
+    const other = await newUpload(Buffer.from("%PDF-1.4 an unrelated manual"));
+    await testPool.query(
+      `INSERT INTO knowledge_entries (id, tenant_id, source_type, content, source_url, source_page, doc_id, ingest_route, page_start, page_end, metadata, is_private)
+       VALUES (gen_random_uuid(), $1::uuid, 'node_attachment', 'Conveyor motor M-7: rated input current 5.1 A at 230 V', $2, 26, $3::uuid, 'v2', 26, 26, $4::jsonb, true)`,
+      [TENANT, `node-doc/${other}/other.pdf`, other, JSON.stringify({ source: "hub_node_attachment", node_id: NODE, filename: "other.pdf", chunk_index: 0, extraction_version: 7 })]);
+    const otherChat = () => docChat(other, "conveyor motor rated input current 5.1 A");
+    const sourceUrl = (await testPool.query<{ u: string }>("SELECT source_url AS u FROM knowledge_entries WHERE doc_id = $1::uuid LIMIT 1", [doc])).rows[0].u;
+    await testPool.query(
+      `INSERT INTO knowledge_entries (id, tenant_id, source_type, content, source_url, source_page, doc_id, ingest_route, page_start, page_end, metadata, is_private)
+       SELECT gen_random_uuid(), tenant_id, source_type, 'WARNING: ' || content, source_url, source_page, doc_id, ingest_route, page_start, page_end, jsonb_set(metadata, '{chunk_index}', '9999'), is_private
+         FROM knowledge_entries WHERE tenant_id = $1::uuid AND doc_id = $2::uuid AND content LIKE '%' || $3 || '%'`,
+      [TENANT, doc, LINE_5_1]);
+    // The cited-page read returns safety passages only; a page 27 copy is its positive control.
+    await testPool.query(
+      `INSERT INTO knowledge_entries (id, tenant_id, source_type, content, source_url, source_page, doc_id, ingest_route, page_start, page_end, metadata, is_private)
+       SELECT gen_random_uuid(), tenant_id, source_type, 'WARNING: ' || content, source_url, source_page, doc_id, ingest_route, page_start, page_end, jsonb_set(metadata, '{chunk_index}', '9998'), is_private
+         FROM knowledge_entries WHERE tenant_id = $1::uuid AND doc_id = $2::uuid AND page_start = 27 AND metadata->>'chunk_index' = '13'`,
+      [TENANT, doc]);
+    const citedRead = (page = 26) => retrieveCitedPageChunks(client, TENANT, [{ docId: doc, sourceUrl, page }], { keep: () => true });
+    const enrichTenant = randomUUID();
+    await testPool.query(
+      `INSERT INTO knowledge_entries (id, tenant_id, doc_id, content, source_type, source_url, source_page, page_start, page_end, metadata, is_private, ingest_route)
+       SELECT gen_random_uuid(), $2::uuid, doc_id, content, source_type, source_url, source_page, page_start, page_end, metadata, is_private, ingest_route
+         FROM knowledge_entries WHERE tenant_id = $1::uuid AND doc_id = $3::uuid AND metadata->>'chunk_index' <> '9999'
+          AND (content LIKE '%' || $4 || '%' OR page_start = 27)`,
+      [TENANT, enrichTenant, doc, LINE_5_1]);
+    const enrich = (q = "GS11N-20P2 Rated Input Current") => searchKB(enrichTenant, q);
+    const page27 = () => docChat(doc, "GS13N-20P2 rated input current");
+    try {
+      // Enabled: every route finds the stored page (so the withdrawal below is not vacuous).
+      expect(carries51(await docChat(doc)).length).toBeGreaterThan(0);
+      expect(carries51(ofDoc(doc, await library())).length).toBeGreaterThan(0);
+      expect(carries51(await citedRead()).length).toBeGreaterThan(0);
+      expect(carries51(ofDoc(doc, await enrich())).length).toBeGreaterThan(0);
+      expect(onPage(await page27(), 27).length).toBeGreaterThan(0);
+      expect(carries51(await otherChat()).length).toBeGreaterThan(0);
+
+      pins.reverted = true; // the switch is turned off; nothing is reprocessed
+      for (const q of [undefined, "what is the rated input current on page 26"]) expect(onPage(await docChat(doc, q), 26)).toEqual([]);
+      expect(carries51((await ask(doc, "GS11N-20P2")).chunks)).toEqual([]);
+      expect(carries51(ofDoc(doc, await library()))).toEqual([]);
+      expect(carries51(await citedRead())).toEqual([]);
+      expect(carries51(ofDoc(doc, await enrich()))).toEqual([]);
+      // Page 27 and other documents are untouched, on every route (and so each query above ran:
+      // an empty page 26 is a withdrawal, not a failed query).
+      expect(onPage(await page27(), 27).length).toBeGreaterThan(0);
+      expect(carries51(await otherChat()).length).toBeGreaterThan(0);
+      // (The library is tenant-wide: page 27 of any upload of these bytes.)
+      expect(onPage(await retrieveManualChunks(client, TENANT, "GS13N-20P2 Rated Input Current", { topK: 50 }), 27).length).toBeGreaterThan(0);
+      expect((await citedRead(27)).length).toBeGreaterThan(0);
+      expect(onPage((await ask(doc, "GS13N-20P2")).chunks, 27).length).toBeGreaterThan(0); // the model page 27 covers
+      expect(ofDoc(doc, await enrich("GS13N-20P2 Rated Input Current")).filter((h) => h.content.includes("GS13N-")).length).toBeGreaterThan(0); // page 27
+      // The disclosed cost: a stored row names no file, so the other approved file's old rows go too.
+      expect(onPage(await docChat(docB), 26)).toEqual([]);
+      // A late write by the merge-base build after the switch is off is recognised the same way.
+      const late = await newUpload();
+      await indexAsBase(late);
+      expect(onPage(await docChat(late), 26)).toEqual([]);
+      expect(await bound(late)).toEqual({ "before-this-build": baseRows.files["gs10usermanual.pdf"].filter((r) => r.page_start === 26).length });
+      // Nothing was rewritten.
+      expect((await stored(doc)).filter((r) => Number(r.meta.chunk_index) < 9998)).toEqual(before);
+
+      pins.reverted = false; // enabled again: the same rows answer again
+      expect(carries51(await docChat(doc)).length).toBeGreaterThan(0);
+      expect(carries51(await docChat(docB)).length).toBeGreaterThan(0);
+    } finally {
+      pins.reverted = false;
+      await testPool.query("DELETE FROM knowledge_entries WHERE tenant_id = $1::uuid", [enrichTenant]);
+    }
+  });
+
+  it.each(["value", "layoutFail"] as const)("drift (%s): page 26 indexed while the approval is off answers nowhere, whatever its extraction reads (#5646 r5 F1)", async (mode) => {
+    pins.reverted = true; pins.lateWriter = false; pins.drift = mode;
+    try {
+      const doc = await newUpload();
+      expect((await reprocessNodeDocument({ tenantId: TENANT, uploadId: doc, bytes: BYTES })).action).toBe("reprocessed");
+      const rows = await stored(doc);
+      const page26 = rows.filter((r) => r.page === 26);
+      expect(page26.some((r) => /\b5\.1\b/.test(r.content))).toBe(true); // precondition: the value is stored
+      expect(page26.every((r) => r.meta.table_held === APPROVED_DIGEST && r.meta.table_held_sha === SHA)).toBe(true);
+      expect(rows.every((r) => r.meta.file_sha256 === SHA)).toBe(true);
+      expect(stamps(rows)).toBe(0);
+      for (const q of [undefined, "what is the rated input current on page 26"]) expect(onPage(await docChat(doc, q), 26)).toEqual([]);
+      expect(onPage((await ask(doc, "GS11N-20P2")).chunks, 26)).toEqual([]);
+      expect(onPage(ofDoc(doc, await library()), 26)).toEqual([]);
+      // Enabled (control): the page answers as ordinary withheld text, and never as a release —
+      // a re-index under the enabled approval still misses the reviewed rows.
+      pins.reverted = false;
+      expect(onPage(await docChat(doc), 26).length).toBeGreaterThan(0);
+      expect((await ask(doc, "GS11N-20P2")).cites51).toEqual([]);
+      expect(await reprocessNodeDocument({ tenantId: TENANT, uploadId: doc, bytes: BYTES, force: true })).toMatchObject({ action: "reprocessed" });
+      const again = await stored(doc);
+      expect(stamps(again)).toBe(0);
+      expect(again.filter((r) => r.page === 26).every((r) => r.meta.table_held === APPROVED_DIGEST)).toBe(true);
+    } finally {
+      pins.drift = null; pins.reverted = false;
+    }
+  });
+
+  it("a saved enrichment report returns only the passages that are still answerable (#5646 r5 F5)", async () => {
+    pins.reverted = false;
+    const doc = await newUpload();
+    expect((await reprocessNodeDocument({ tenantId: TENANT, uploadId: doc, bytes: BYTES })).action).toBe("reprocessed");
+    const legacy = await newUpload();
+    await indexAsBase(legacy);
+    const idOf = async (docId: string, where: string) =>
+      (await testPool.query<{ id: string }>(`SELECT id::text AS id FROM knowledge_entries WHERE doc_id = $1::uuid AND ${where} ORDER BY id LIMIT 1`, [docId])).rows[0].id;
+    const stampedHit = await idOf(doc, "metadata->>'table_reviewed' IS NOT NULL");
+    const legacyHit = await idOf(legacy, `page_start = 26 AND strpos(content, '${LINE_5_1}') > 0`);
+    const page27Hit = await idOf(legacy, "page_start = 27");
+    const asset = randomUUID();
+    await testPool.query("INSERT INTO tenants (id, slug, name) VALUES ($1::uuid, $2, 'gs10 p26 test') ON CONFLICT (id) DO NOTHING",
+      [TENANT, `gs10-p26-${TENANT.slice(0, 8)}`]);
+    await testPool.query(`INSERT INTO cmms_equipment (id, tenant_id, equipment_number, slug, path) VALUES ($1::uuid, $2::uuid, 'GS10-1', $3, $4)`,
+      [asset, TENANT, `gs10-${asset.slice(0, 8)}`, `enterprise.test.gs10_${asset.slice(0, 8)}`]);
+    const hit = (id: string) => ({ id, content: "saved excerpt", sourceUrl: "node-doc/x", score: 0.9 });
+    await testPool.query(
+      `INSERT INTO asset_enrichment_reports (tenant_id, asset_id, status, kb_hits, oem_advisories, completed_at)
+       VALUES ($1::uuid, $2::uuid, 'complete', $3::jsonb, $4::jsonb, now())`,
+      [TENANT, asset, JSON.stringify([hit(stampedHit), hit(legacyHit), hit(page27Hit), hit("not-a-uuid"), hit(randomUUID())]),
+        JSON.stringify([hit(stampedHit), hit(page27Hit)])]);
+    const ids = async () => {
+      const report = await getEnrichmentReport(TENANT, asset);
+      return { kb: report!.sources.kb.map((h) => h.id), oem: report!.sources.oemAdvisories.map((h) => h.id) };
+    };
+    // Enabled: every saved passage that still exists is returned; a malformed or deleted id is not.
+    expect(await ids()).toEqual({ kb: [stampedHit, legacyHit, page27Hit], oem: [stampedHit, page27Hit] });
+    pins.reverted = true; // the approval is switched off; the report is not regenerated
+    expect(await ids()).toEqual({ kb: [page27Hit], oem: [page27Hit] });
+    // The stored report is kept as it was.
+    expect((await testPool.query<{ n: number }>("SELECT jsonb_array_length(kb_hits)::int AS n FROM asset_enrichment_reports WHERE asset_id = $1::uuid", [asset])).rows[0].n).toBe(5);
+    pins.reverted = false;
+    expect((await ids()).kb).toEqual([stampedHit, legacyHit, page27Hit]);
+    // Another tenant reading the same saved ids gets none of this tenant's private rows.
+    expect((await getEnrichmentReport(randomUUID(), asset))).toBeNull();
+  });
+
+  it("fence: the runbook inventory lists every kind of bound row, a reader without the filter serves them, and only deleting them clears it (#5646 r5 F4)", async () => {
+    pins.reverted = false; pins.lateWriter = false;
+    const released = await newUpload();
+    expect((await reprocessNodeDocument({ tenantId: TENANT, uploadId: released, bytes: BYTES })).action).toBe("reprocessed");
+    pins.reverted = true;
+    const held = await newUpload();
+    expect((await reprocessNodeDocument({ tenantId: TENANT, uploadId: held, bytes: BYTES })).action).toBe("reprocessed");
+    const legacy = await newUpload();
+    await indexAsBase(legacy);
+    // A row identified only by its file hash (marks removed by hand) is still the approval's page.
+    const fileOnly = await newUpload();
+    expect((await reprocessNodeDocument({ tenantId: TENANT, uploadId: fileOnly, bytes: BYTES })).action).toBe("reprocessed");
+    await testPool.query(`UPDATE knowledge_entries SET metadata = metadata - 'table_held' - 'table_held_sha'
+                           WHERE tenant_id = $1::uuid AND doc_id = $2::uuid`, [TENANT, fileOnly]);
+    try {
+      expect(await bound(released)).toMatchObject({ released: 10 });
+      expect(Object.keys(await bound(held))).toEqual(["held"]);
+      expect(Object.keys(await bound(legacy))).toEqual(["before-this-build"]);
+      expect(Object.keys(await bound(fileOnly))).toEqual(["file"]);
+      // With the switch off, none of them answers.
+      for (const doc of [released, held, legacy, fileOnly]) expect(onPage(await docChat(doc), 26)).toEqual([]);
+      // A reader without the filter serves the held, file-identified and older rows: the reason a
+      // code rollback keeps the filter.
+      pins.sqlGuardOff = true;
+      for (const doc of [held, legacy, fileOnly]) expect(carries51OrValue(await docChat(doc)).length).toBeGreaterThan(0);
+      pins.sqlGuardOff = false;
+      // Re-indexing does not clear it: the writer binds the page again.
+      expect(await reprocessNodeDocument({ tenantId: TENANT, uploadId: held, bytes: BYTES, force: true })).toMatchObject({ action: "reprocessed" });
+      expect(Object.keys(await bound(held))).toEqual(["held"]);
+      // Only deleting the rows clears it.
+      await testPool.query("DELETE FROM knowledge_entries WHERE tenant_id = $1::uuid AND doc_id = ANY($2::uuid[])", [TENANT, [released, held, legacy, fileOnly]]);
+      for (const doc of [released, held, legacy, fileOnly]) expect(await bound(doc)).toEqual({});
+    } finally {
+      pins.sqlGuardOff = false; pins.reverted = false;
+    }
   });
 });

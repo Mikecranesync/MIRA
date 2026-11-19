@@ -56,12 +56,31 @@ def get_tier_limits(tier: str) -> dict[str, Any] | None:
     return dict(row) if row else None
 
 
-# #5646: never serve a Hub row released or held under a reviewed table approval; the Hub alone
-# decides whether that approval is enabled (see mira-bots/shared/neon_recall.py).
+# #5646: never serve any row of a Hub-approved table page: marked, identified by its file hash, or
+# (stored before either existed) recognised by its page. The Hub alone decides whether an approval
+# is enabled. A copy of mira-bots/shared/hub_release.py HUB_RELEASE_EXCLUSIONS (this service cannot
+# import that package); mira-bots/tests/test_recall_excludes_hub_released_rows.py pins it equal.
 _HUB_MARK_EXCLUSIONS = (
     "(metadata->>'table_reviewed') IS NULL",
     "(metadata->>'table_held') IS NULL",
+    (
+        "(metadata->>'file_sha256' IS NULL OR (metadata->>'file_sha256', COALESCE(page_start,"
+        " source_page, 0)::text) NOT IN"
+        " (('090aa1b36250be11e1da33526a4b995492593c6fc35aa82ad18115e411dcc5e4', '26'),"
+        " ('90fa490a572558d799c8e8a53ba5f074f36182330c636015a473fd0e43bd1fab', '26')))"
+    ),
+    (
+        "(source_type IS DISTINCT FROM 'node_attachment' OR metadata->>'file_sha256' IS NOT NULL"
+        " OR COALESCE(page_start, source_page, 0) <> 26"
+        " OR NOT EXISTS (SELECT 1 FROM knowledge_entries s"
+        " WHERE s.tenant_id = knowledge_entries.tenant_id AND s.doc_id = knowledge_entries.doc_id"
+        " AND s.source_type = 'node_attachment' AND"
+        " COALESCE(s.page_start, s.source_page) = 26 AND (strpos(s.content, 'GS11N-20P2') > 0 OR"
+        " strpos(s.content, 'GS11N-20P5') > 0 OR strpos(s.content, 'GS11N-21P0') > 0 OR"
+        " strpos(s.content, 'GS11N-22P0') > 0 OR strpos(s.content, 'GS11N-23P0') > 0)))"
+    ),
 )
+_HUB_MARK_EXCLUDED_SQL = " AND ".join(_HUB_MARK_EXCLUSIONS)
 
 
 def recall_knowledge(
@@ -120,7 +139,7 @@ def recall_by_image(
     with _engine().connect() as conn:
         rows = (
             conn.execute(
-                text("""
+                text(f"""
                 SELECT
                     content,
                     manufacturer,
@@ -132,8 +151,7 @@ def recall_by_image(
                 FROM knowledge_entries
                 WHERE tenant_id = :tid
                   AND image_embedding IS NOT NULL
-                  AND (metadata->>'table_reviewed') IS NULL
-                  AND (metadata->>'table_held') IS NULL
+                  AND {_HUB_MARK_EXCLUDED_SQL}
                 ORDER BY image_embedding <=> cast(:emb AS vector)
                 LIMIT :lim
             """),

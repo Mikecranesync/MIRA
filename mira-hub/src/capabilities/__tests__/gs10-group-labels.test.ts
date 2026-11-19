@@ -267,6 +267,8 @@ describe("drift guard: page 26 answers only while it is exactly the page the own
       const { stored } = await ingest(P26, undefined, sha, true, release);
       expect(pinDocs[sha].pages["26"].reviewed).toBe(APPROVED.digest); // the record is never removed
       expect(stored.filter((r) => r.meta.table_reviewed !== undefined)).toHaveLength(on ? 10 : 0);
+      // In both states every row of the page carries a mark of this approval (#5646 r6).
+      expect(stored.every((r) => (r.meta.table_reviewed ?? r.meta.table_held) === APPROVED.digest)).toBe(true);
       const own = stored.filter((r) => r.content.includes(LINE_5_1));
       expect(own).toHaveLength(1);
       expect(own[0].meta.table_unqualified === true).toBe(!on);
@@ -275,8 +277,11 @@ describe("drift guard: page 26 answers only while it is exactly the page the own
   it.each(APPROVED.files)("shipped pins, file %s: 5.1 A answers GS11N-20P2 only, from page 26, under Input Rating / CT", async (sha) => {
     const { read, stored } = await ingest(P26, undefined, sha, true, "enabled");
     expect(gated.filter((g) => g.input.length > 0).map((g) => g.reviewed)).toEqual([APPROVED.digest]); // the gate was handed the approved record
-    // Nothing withheld on the reviewed page: every row as read, the released ones stamped with the digest.
-    expect(gated.flatMap((g) => g.output).map((row) => ({ ...row, tableReviewed: undefined }))).toEqual(gated.flatMap((g) => g.input));
+    // Nothing withheld on the reviewed page: every row as read, the released ones stamped with the
+    // digest and every other row bound to the same approval (#5646 r6), so the page goes with it.
+    expect(gated.flatMap((g) => g.output).map((row) => ({ ...row, tableReviewed: undefined, tableHeld: undefined }))).toEqual(gated.flatMap((g) => g.input));
+    expect(stored.every((r) => (r.meta.table_reviewed ?? r.meta.table_held) === APPROVED.digest)).toBe(true);
+    expect(stored.filter((r) => r.meta.table_reviewed !== undefined && r.meta.table_held !== undefined)).toEqual([]);
     const released = stored.filter((r) => r.meta.table_unqualified !== true && (r.meta.table_models as string[] | undefined)?.length === 1);
     expect(released).toHaveLength(10);
     expect(released.map((r) => r.meta.table_reviewed)).toEqual(Array(10).fill(APPROVED.digest));

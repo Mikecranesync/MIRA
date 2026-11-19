@@ -5,7 +5,8 @@ import gs10p27 from "../__fixtures__/table-rows/gs10-p27-230v-3ph.json";
 import micro820 from "../__fixtures__/table-rows/micro820-in009-p16-20-scope.json";
 import ml1100 from "../__fixtures__/table-rows/ml1100-p114-p120-ratings-scope.json";
 import pinFile from "../table-rule-pins.json";
-import { activeReleaseSql, allRulePins, heldRowsDigest, isReleaseActive, pinnedRules, reviewedRowsDigest, rulePinsForSha, rulesCrossing } from "../table-rule-pins";
+import { activeReleaseSql, allRulePins, boundDigest, isReleaseActive, pinnedRules, recordedApprovals, reviewedRowsDigest, rulePinsForSha, rulesCrossing } from "../table-rule-pins";
+import reviewedP26 from "../__fixtures__/reviewed-pages/gs10-rev-b-p26.reviewed.json";
 import { pageLayoutItems } from "../pdf-layout-items";
 
 // #5503 F14/F15: table rules are pinned data, never read from a page's drawing. Nothing here is
@@ -63,20 +64,23 @@ describe("pinned table rules: the real pin file", () => {
       for (const page of [2, 25, 27, 28, 30]) expect(reviewedRowsDigest(pins, page, gs10p26.items)).toBeNull();
       expect(reviewedRowsDigest(pins, 26, gs10p26.items.slice(1))).toBeNull(); // the layout must match
       expect(reviewedRowsDigest(pins, 27, gs10p27.items)).toBeNull(); // page 27's own layout, not reviewed
-      // Exactly one of release and hold applies to the recorded page, by its switch (#5646 r4).
-      expect(heldRowsDigest(pins, 26, gs10p26.items)).toBe(enabled ? null : approved);
+      // The page is bound to its approval in EVERY switch state and whatever it reads (#5646 r6):
+      // the binding needs no layout match, so a drifted or unreadable page is still withdrawn.
+      expect(boundDigest(pins, 26)).toBe(approved);
       for (const release of ["enabled", "disabled", "off", undefined]) {
         const flipped = { ...pins!, "26": { ...pins!["26"], release } };
-        expect(heldRowsDigest(flipped, 26, gs10p26.items)).toBe(release === "enabled" ? null : approved);
+        expect(boundDigest(flipped, 26)).toBe(approved);
         expect(reviewedRowsDigest(flipped, 26, gs10p26.items)).toBe(release === "enabled" ? approved : null);
       }
-      expect(heldRowsDigest(pins, 26, gs10p26.items.slice(1))).toBeNull(); // the layout must match
-      for (const page of [25, 27]) expect(heldRowsDigest(pins, page, gs10p26.items)).toBeNull();
+      for (const page of [0, 1, 25, 27, 28, Number.NaN]) expect(boundDigest(pins, page)).toBeNull();
+      expect(boundDigest({ ...pins!, "26": { ...pins!["26"], reviewed: "zz" } }, 26)).toBeNull(); // not a digest
     }
     // Another pinned GS10 file (same table at its own page numbers) carries no review.
     const other = Object.keys(pinFile.documents).find((k) => k.startsWith("eca93c34"))!;
     for (const page of [11, 12, 26]) expect(reviewedRowsDigest(rulePinsForSha(other), page, gs10p26.items)).toBeNull();
+    for (const page of [11, 12, 26]) expect(boundDigest(rulePinsForSha(other), page)).toBeNull();
     expect(reviewedRowsDigest(null, 26, gs10p26.items)).toBeNull();
+    expect(boundDigest(null, 26)).toBeNull();
   });
 
   it("a stored release is honoured only while the pin of ITS file and page still carries its digest (#5646 r3 F1)", () => {
@@ -133,16 +137,75 @@ describe("pinned table rules: the real pin file", () => {
     expect(enabled(both).sort()).toEqual([GS10, second].sort());
     expect(enabled(activeReleaseSql("", states("disabled", "enabled")))).toEqual([second]);
     expect(enabled(activeReleaseSql("", states("enabled", "disabled")))).toEqual([GS10]);
+    const marksOnly = "(metadata->>'table_reviewed' IS NULL AND metadata->>'table_held' IS NULL)";
     const none = activeReleaseSql("", states("disabled", "disabled"));
-    expect(none).toBe("(metadata->>'table_reviewed' IS NULL AND metadata->>'table_held' IS NULL)"); // no enabled approval: no stamped or held row qualifies
+    expect(none.startsWith(`(${marksOnly} AND `)).toBe(true); // no enabled approval: no stamped or held row qualifies
     expect(both.startsWith("((metadata->>'table_reviewed' IS NULL OR (metadata->>'table_reviewed_sha', COALESCE(page_start, source_page)::text, metadata->>'table_reviewed') IN (")).toBe(true);
     expect(both).toContain(" AND (metadata->>'table_held' IS NULL OR (metadata->>'table_held_sha', COALESCE(page_start, source_page)::text, metadata->>'table_held') IN (");
     expect(activeReleaseSql("k", states("enabled", "enabled"))).toContain("k.metadata->>'table_reviewed' IS NULL OR (k.metadata->>'table_reviewed_sha', COALESCE(k.page_start, k.source_page)::text");
     for (const alias of ["k;", "K", "1k", "k.x", "k k"]) expect(() => activeReleaseSql(alias)).toThrow();
     // Nothing but validated hex and digits reaches the SQL.
     const hostile = { ["x'); DROP TABLE t; --"]: { "26": { fingerprint: approved, rules: [], reviewed: approved, release: "enabled" } },
-      [GS10]: { "26'--": { fingerprint: approved, rules: [], reviewed: approved, release: "enabled" }, "27": { fingerprint: approved, rules: [], reviewed: "zz'", release: "enabled" } } };
-    expect(activeReleaseSql("", hostile as never)).toBe("(metadata->>'table_reviewed' IS NULL AND metadata->>'table_held' IS NULL)");
+      [GS10]: { "26'--": { fingerprint: approved, rules: [], reviewed: approved, release: "disabled" }, "27": { fingerprint: approved, rules: [], reviewed: "zz'", release: "disabled" } } };
+    expect(activeReleaseSql("", hostile as never)).toBe(marksOnly);
+  });
+
+  it("a withdrawn approval also withholds its page by file hash and, for rows stored before either, by its own text (#5646 r6 F1)", () => {
+    const approved = "d570e81e1fc665e0fa75879a2624aab107f0765b83d6be1acf013382f70b91d5";
+    const second = "90fa490a572558d799c8e8a53ba5f074f36182330c636015a473fd0e43bd1fab";
+    type Docs = Record<string, Record<string, object>>;
+    const all = allRulePins() as Docs;
+    const set = (base: Docs, sha: string, release: string): Docs => ({ ...base, [sha]: { ...base[sha], "26": { ...base[sha]["26"], release } } });
+    const states = (a: string, b: string) => set(set(all, GS10, a), second, b) as never;
+    const pair = (sha: string) => `('${sha}', '26')`;
+    // Shipped all-enabled state: only the mark clause, exactly as before this change.
+    const both = activeReleaseSql("", states("enabled", "enabled"));
+    expect(both).not.toContain("file_sha256");
+    expect(both).not.toContain("strpos");
+    // One approval off: that file's page by its hash; every unhashed node row of page 26 by its text.
+    const one = activeReleaseSql("", states("disabled", "enabled"));
+    expect(one).toContain(pair(GS10));
+    expect(one).not.toContain(pair(second));
+    expect(one).toContain("(knowledge_entries.metadata->>'file_sha256' IS NULL OR (knowledge_entries.metadata->>'file_sha256', COALESCE(knowledge_entries.page_start, knowledge_entries.source_page, 0)::text) NOT IN (");
+    expect(one).toContain("knowledge_entries.source_type IS DISTINCT FROM 'node_attachment' OR knowledge_entries.metadata->>'file_sha256' IS NOT NULL");
+    expect(one).toContain("COALESCE(knowledge_entries.page_start, knowledge_entries.source_page, 0) <> 26");
+    expect(one).toContain("FROM knowledge_entries s WHERE s.tenant_id = knowledge_entries.tenant_id AND s.doc_id = knowledge_entries.doc_id");
+    for (const model of ["GS11N-20P2", "GS11N-20P5", "GS11N-21P0", "GS11N-22P0", "GS11N-23P0"]) expect(one).toContain(`strpos(s.content, '${model}') > 0`);
+    const off = activeReleaseSql("", states("disabled", "disabled"));
+    expect(off).toContain(pair(GS10));
+    expect(off).toContain(pair(second));
+    expect(off.split("NOT EXISTS").length - 1).toBe(1); // one page number, one text clause
+    // An alias names the outer row in every clause.
+    const aliased = activeReleaseSql("knowledge_entries", states("disabled", "enabled"));
+    expect(aliased).toContain("knowledge_entries.metadata->>'table_reviewed'");
+    expect(aliased).toContain("COALESCE(knowledge_entries.page_start, knowledge_entries.source_page, 0) <> 26");
+    // Catalog numbers are validated; a page with none recorded is withheld whole (fail closed).
+    const withModels = (models: unknown) => activeReleaseSql("", { [GS10]: { "26": { fingerprint: approved, rules: [], reviewed: approved, release: "disabled", models } } } as never);
+    const hostile = withModels(["GS11N-20P2", "x') OR TRUE --", "a b", "%", 7]);
+    expect(hostile).toContain("strpos(s.content, 'GS11N-20P2') > 0");
+    expect(hostile).not.toContain("OR TRUE --");
+    expect(hostile).not.toContain("'%'");
+    for (const models of [undefined, [], ["'"]]) expect(withModels(models)).toContain("COALESCE(s.page_start, s.source_page) = 26 AND (TRUE)))");
+  });
+
+  it("the catalog numbers recorded on page 26 are exactly the reviewed page's models, as the page prints them (#5646 r6)", () => {
+    const printed = (model: string) => model.replace(/^(GS11N)(2\d)P(\d)$/, "$1-$2P$3");
+    const reviewedModels = [...new Set(reviewedP26.rows.flatMap((row) => (row as { tableModels?: string[] }).tableModels ?? []))].map(printed).sort();
+    expect(reviewedModels).toHaveLength(5);
+    for (const sha of [GS10, "90fa490a572558d799c8e8a53ba5f074f36182330c636015a473fd0e43bd1fab"]) {
+      expect([...(rulePinsForSha(sha)!["26"].models ?? [])].sort()).toEqual(reviewedModels);
+    }
+    for (const model of reviewedModels) expect(gs10p26.text).toContain(model);
+    for (const model of reviewedModels) expect(gs10p27.text).not.toContain(model); // page 27 never names them
+    // Every recorded approval, and only those, carries its catalog numbers.
+    for (const document of Object.values(pinFile.documents)) {
+      for (const pin of Object.values(document.pages) as Array<{ reviewed?: string; models?: string[] }>) {
+        expect(pin.models === undefined).toBe(pin.reviewed === undefined);
+      }
+    }
+    expect(recordedApprovals().map((a) => [a.sha256, a.page, a.digest]).sort()).toEqual(
+      [[GS10, 26, "d570e81e1fc665e0fa75879a2624aab107f0765b83d6be1acf013382f70b91d5"],
+        ["90fa490a572558d799c8e8a53ba5f074f36182330c636015a473fd0e43bd1fab", 26, "d570e81e1fc665e0fa75879a2624aab107f0765b83d6be1acf013382f70b91d5"]].sort());
   });
 
   it("every reviewed record carries the switch, and only reviewed records do", () => {

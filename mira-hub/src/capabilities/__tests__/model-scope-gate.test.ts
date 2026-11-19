@@ -106,15 +106,26 @@ describe("the gate on its own", () => {
     expect(affirmedIn(out)).toBe(3);
     expect(scopeDigest(out)).toBe(digest);
   });
-  it("holds every row of a page whose recorded approval is off, and only when the rows are that approval's rows (#5646 r4)", () => {
+  it("marks every row it does not release on a page with a recorded approval, whatever the rows read (#5646 r6)", () => {
     const digest = scopeDigest(rows);
     const held = gatePageRows(rows, null, digest);
     expect(held.every((r) => r.tableHeld === digest)).toBe(true);
-    expect(held.map(({ tableHeld: _h, ...r }) => r)).toEqual(rows.map(withheld)); // otherwise exactly withheld
+    expect(held.map((r) => ({ ...r, tableHeld: undefined }))).toEqual(rows.map(withheld)); // otherwise exactly withheld
     expect(held.some((r) => r.tableReviewed !== undefined)).toBe(false);
-    expect(gatePageRows(rows, null, "0".repeat(64)).some((r) => r.tableHeld !== undefined)).toBe(false); // other rows: no hold
-    expect(gatePageRows(rows, null, null).some((r) => r.tableHeld !== undefined)).toBe(false);
-    expect(gatePageRows(rows, digest, digest).some((r) => r.tableHeld !== undefined)).toBe(false); // a release is not held
+    // Drift: rows that are not the approval's rows are still bound to it (withheld and held).
+    const recorded = "0".repeat(64);
+    const drifted = gatePageRows(rows, null, recorded);
+    expect(drifted.map((r) => r.tableHeld)).toEqual(rows.map(() => recorded));
+    expect(drifted.map((r) => ({ ...r, tableHeld: undefined }))).toEqual(rows.map(withheld));
+    // A release in force: the released rows carry the stamp, every other row the hold, no row both.
+    const released = gatePageRows(rows, digest, digest);
+    expect(released.map((r) => (r.tableReviewed ? "stamp" : r.tableHeld ? "hold" : "none"))).toEqual(["hold", "stamp", "stamp", "stamp", "hold"]);
+    expect(released.some((r) => r.tableReviewed && r.tableHeld)).toBe(false);
+    // No recorded approval: no mark at all.
+    for (const none of [null, undefined, "abc", ""]) {
+      expect(gatePageRows(rows, null, none).some((r) => r.tableHeld !== undefined)).toBe(false);
+      expect(gatePageRows(rows, digest, none).some((r) => r.tableHeld !== undefined)).toBe(false);
+    }
   });
   it("stamps every released row with the digest it was released under, and only those rows (#5646 r3 F1)", () => {
     const digest = scopeDigest(rows);
@@ -317,9 +328,14 @@ describe("through the writer: a page with a matching reviewed record stores its 
     expect(rows.map(asScoped).filter(affirmsModel).map((r) => r.tableModels)).toEqual(
       ["GS11N20P2", "GS11N20P5", "GS11N21P0", "GS11N22P0", "GS11N23P0"].flatMap((m) => [[m], [m]])); // two chunks per model
     const output = gated.flatMap((g) => g.output);
-    expect(output.map((row) => ({ ...row, tableReviewed: undefined }))).toEqual(gated.flatMap((g) => g.input));
+    expect(output.map((row) => ({ ...row, tableReviewed: undefined, tableHeld: undefined }))).toEqual(gated.flatMap((g) => g.input));
     expect(output.filter(affirmsModel).every((r) => r.tableReviewed === reviewedP26.digest)).toBe(true);
     expect(output.filter((r) => !affirmsModel(r)).some((r) => r.tableReviewed !== undefined)).toBe(false);
+    // Every other row of the recorded page is bound to the same approval, and every row to its file (#5646 r6).
+    const others = output.filter((r) => !affirmsModel(r));
+    expect(others.length).toBeGreaterThan(0);
+    expect(others.every((r) => r.tableHeld === reviewedP26.digest)).toBe(true);
+    expect(rows.every((r) => /^[0-9a-f]{64}$/.test(String(r.meta.file_sha256)))).toBe(true);
   });
 });
 
@@ -350,7 +366,7 @@ describe("retrieval reads the release stamp wherever it reads a row's model scop
     ["lib/manual-rag.ts", 3], // the library search's BM25 and code lanes, and the cited-page read
     ["capabilities/manual-safety-chapter.ts", 1], // Safety-chapter excerpts added to answers
     ["capabilities/work-packet/document-text.ts", 1], // work-packet text when the file cannot be re-read
-    ["lib/agents/asset-intelligence.ts", 2], // asset enrichment hits (vector and text)
+    ["lib/agents/asset-intelligence.ts", 3], // asset enrichment hits (vector and text), and a saved report's hits re-read
   ] as const)("%s guards each of its %i other passage queries with the release guard (#5646 r4 F1)", (file, n) => {
     const source = readFileSync(join(__dirname, "..", "..", file), "utf8");
     expect(source.split("AND ${activeReleaseSql()}").length - 1).toBe(n);

@@ -67,9 +67,12 @@ class Tools:
                 FROM knowledge_entries
                 WHERE content ILIKE %s
                   AND embedding IS NOT NULL
-                  -- #5646: never a Hub row released or held under a reviewed table approval
+                  -- #5646: never a row of a Hub-approved table page (a copy of
+                  -- mira-bots/shared/hub_release.py HUB_RELEASE_EXCLUSIONS, pinned equal by test)
                   AND (metadata->>'table_reviewed') IS NULL
                   AND (metadata->>'table_held') IS NULL
+                  AND (metadata->>'file_sha256' IS NULL OR (metadata->>'file_sha256', COALESCE(page_start, source_page, 0)::text) NOT IN (('090aa1b36250be11e1da33526a4b995492593c6fc35aa82ad18115e411dcc5e4', '26'), ('90fa490a572558d799c8e8a53ba5f074f36182330c636015a473fd0e43bd1fab', '26')))
+                  AND (source_type IS DISTINCT FROM 'node_attachment' OR metadata->>'file_sha256' IS NOT NULL OR COALESCE(page_start, source_page, 0) <> 26 OR NOT EXISTS (SELECT 1 FROM knowledge_entries s WHERE s.tenant_id = knowledge_entries.tenant_id AND s.doc_id = knowledge_entries.doc_id AND s.source_type = 'node_attachment' AND COALESCE(s.page_start, s.source_page) = 26 AND (strpos(s.content, 'GS11N-20P2') > 0 OR strpos(s.content, 'GS11N-20P5') > 0 OR strpos(s.content, 'GS11N-21P0') > 0 OR strpos(s.content, 'GS11N-22P0') > 0 OR strpos(s.content, 'GS11N-23P0') > 0)))
                 LIMIT 3
                 """,
                 (f"%{part_number}%",),

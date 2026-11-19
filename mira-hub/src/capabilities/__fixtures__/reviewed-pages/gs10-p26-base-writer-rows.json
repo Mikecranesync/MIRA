@@ -1,0 +1,1024 @@
+{
+ "_provenance": {
+  "what": "The knowledge_entries rows the merge-base writer stores for both approved GS10 files (pages 26 and 27), before rows carried a release mark, a hold mark or a file hash.",
+  "base_sha": "36a97e598057c645f36b4cd602d9b40b27716f8d",
+  "how": "reprocessNodeDocument at the merge base, run on stub bytes standing in for each file, with the same unpdf page 26/27 text items as gs10-p26-reviewed-rollout.integration.test.ts and NODE_EMBED_ON_WRITE=0. {upload} and {node} stand for the upload and node ids.",
+  "issue": "#5646 (Codex round 5 F1)"
+ },
+ "files": {
+  "gs10usermanual.pdf": [
+   {
+    "content": "Chapter 1: Getting Started\n230V Class – 1-Phase Model-Specific Specifications\n1\nGS10 230V Class Specifications; Frame Size A, B, C\n1 - For use with three-phase motors only.\n2 - Please refer to “Appendix A - Accessories” for input fusing information.\n3 - For input power that is a floating ground or IT type, the RFI jumper must be removed. See\n“Floating Ground System (IT Systems)” on page 2–12 .\n4 - If application requires adjustment of the carrier frequency above default, refer to “Derate Output\nCurrent Based on Carrier Frequency (if necessary)” on page 1–7 .\nPage 1–12 DURApulse GS10 Drive User Manual – 1st Ed., Rev B",
+    "source_type": "node_attachment",
+    "source_url": "node-doc/{upload}/gs10usermanual.pdf",
+    "source_page": 26,
+    "page_start": 26,
+    "page_end": 26,
+    "ingest_route": "v2",
+    "is_private": true,
+    "verified": false,
+    "metadata": {
+     "source": "hub_node_attachment",
+     "node_id": "{node}",
+     "filename": "gs10usermanual.pdf",
+     "uns_path": null,
+     "chunk_index": 0,
+     "extraction_version": 7
+    }
+   },
+   {
+    "content": "230V Class – 1-Phase Model-Specific Specifications / GS10 230V Class Specifications; Frame Size A, B, C — Model Name: GS11N-2xPx — GS11N-20P2\nGS11N-20P2: Frame Size A1\nGS11N-20P2: Output Rating / Max Motor Output 1/4 hp\nGS11N-20P2: Output Rating / Max Motor Output 0.2 kW\nGS11N-20P2: Output Rating / CT / Rated Output Capacity 0.6 kVA\nGS11N-20P2: Output Rating / CT / Rated Output Current 1.6 A\nGS11N-20P2: Output Rating / CT / Carrier Frequency 2–15 kHz\nGS11N-20P2: Output Rating / VT / Rated Output Capacity 0.7 kVA\nGS11N-20P2: Output Rating / VT / Rated Output Current 1.8 A\nGS11N-20P2: Output Rating / VT / Carrier Frequency 2–15 kHz\nGS11N-20P2: Input Rating / CT / Rated Input Current 5.1 A\nGS11N-20P2: Input Rating / VT / Rated Input Current 5.8 A\nGS11N-20P2: Input Rating / Rated Voltage/Frequency One-phase 200-240 VAC (-15% to +10%), 50/60 Hz\nGS11N-20P2: Input Rating / Operating Voltage Range 170–265 VAC\nGS11N-20P2: Input Rating / Frequency Tolerance 47–63 Hz\n",
+    "source_type": "node_attachment",
+    "source_url": "node-doc/{upload}/gs10usermanual.pdf",
+    "source_page": 26,
+    "page_start": 26,
+    "page_end": 26,
+    "ingest_route": "v2",
+    "is_private": true,
+    "verified": false,
+    "metadata": {
+     "source": "hub_node_attachment",
+     "node_id": "{node}",
+     "filename": "gs10usermanual.pdf",
+     "uns_path": null,
+     "chunk_index": 1,
+     "table_models": [
+      "GS11N20P2"
+     ],
+     "table_unqualified": true,
+     "extraction_version": 7
+    }
+   },
+   {
+    "content": "230V Class – 1-Phase Model-Specific Specifications / GS10 230V Class Specifications; Frame Size A, B, C — Model Name: GS11N-2xPx — GS11N-20P2 (cont.)\nGS11N-20P2: IE2 Efficiency - Relative Power Loss 4.7%\nGS11N-20P2: Weight 0.4 kg\nGS11N-20P2: Cooling Method Convective\nGS11N-20P2: IP Rating IP20\n",
+    "source_type": "node_attachment",
+    "source_url": "node-doc/{upload}/gs10usermanual.pdf",
+    "source_page": 26,
+    "page_start": 26,
+    "page_end": 26,
+    "ingest_route": "v2",
+    "is_private": true,
+    "verified": false,
+    "metadata": {
+     "source": "hub_node_attachment",
+     "node_id": "{node}",
+     "filename": "gs10usermanual.pdf",
+     "uns_path": null,
+     "chunk_index": 2,
+     "table_models": [
+      "GS11N20P2"
+     ],
+     "table_unqualified": true,
+     "extraction_version": 7
+    }
+   },
+   {
+    "content": "230V Class – 1-Phase Model-Specific Specifications / GS10 230V Class Specifications; Frame Size A, B, C — Model Name: GS11N-2xPx — GS11N-20P5\nGS11N-20P5: Frame Size A3\nGS11N-20P5: Output Rating / Max Motor Output 1/2 hp\nGS11N-20P5: Output Rating / Max Motor Output 0.4 kW\nGS11N-20P5: Output Rating / CT / Rated Output Capacity 1.1 kVA\nGS11N-20P5: Output Rating / CT / Rated Output Current 2.8 A\nGS11N-20P5: Output Rating / CT / Carrier Frequency 2–15 kHz\nGS11N-20P5: Output Rating / VT / Rated Output Capacity 1.2 kVA\nGS11N-20P5: Output Rating / VT / Rated Output Current 3.2 A\nGS11N-20P5: Output Rating / VT / Carrier Frequency 2–15 kHz\nGS11N-20P5: Input Rating / CT / Rated Input Current 7.3 A\nGS11N-20P5: Input Rating / VT / Rated Input Current 8.3 A\nGS11N-20P5: Input Rating / Rated Voltage/Frequency One-phase 200-240 VAC (-15% to +10%), 50/60 Hz\nGS11N-20P5: Input Rating / Operating Voltage Range 170–265 VAC\nGS11N-20P5: Input Rating / Frequency Tolerance 47–63 Hz\n",
+    "source_type": "node_attachment",
+    "source_url": "node-doc/{upload}/gs10usermanual.pdf",
+    "source_page": 26,
+    "page_start": 26,
+    "page_end": 26,
+    "ingest_route": "v2",
+    "is_private": true,
+    "verified": false,
+    "metadata": {
+     "source": "hub_node_attachment",
+     "node_id": "{node}",
+     "filename": "gs10usermanual.pdf",
+     "uns_path": null,
+     "chunk_index": 3,
+     "table_models": [
+      "GS11N20P5"
+     ],
+     "table_unqualified": true,
+     "extraction_version": 7
+    }
+   },
+   {
+    "content": "230V Class – 1-Phase Model-Specific Specifications / GS10 230V Class Specifications; Frame Size A, B, C — Model Name: GS11N-2xPx — GS11N-20P5 (cont.)\nGS11N-20P5: IE2 Efficiency - Relative Power Loss 3.1%\nGS11N-20P5: Weight 0.5 kg\nGS11N-20P5: Cooling Method Convective\nGS11N-20P5: IP Rating IP20\n",
+    "source_type": "node_attachment",
+    "source_url": "node-doc/{upload}/gs10usermanual.pdf",
+    "source_page": 26,
+    "page_start": 26,
+    "page_end": 26,
+    "ingest_route": "v2",
+    "is_private": true,
+    "verified": false,
+    "metadata": {
+     "source": "hub_node_attachment",
+     "node_id": "{node}",
+     "filename": "gs10usermanual.pdf",
+     "uns_path": null,
+     "chunk_index": 4,
+     "table_models": [
+      "GS11N20P5"
+     ],
+     "table_unqualified": true,
+     "extraction_version": 7
+    }
+   },
+   {
+    "content": "230V Class – 1-Phase Model-Specific Specifications / GS10 230V Class Specifications; Frame Size A, B, C — Model Name: GS11N-2xPx — GS11N-21P0\nGS11N-21P0: Frame Size B2\nGS11N-21P0: Output Rating / Max Motor Output 1 hp\nGS11N-21P0: Output Rating / Max Motor Output 0.75 kW\nGS11N-21P0: Output Rating / CT / Rated Output Capacity 1.8 kVA\nGS11N-21P0: Output Rating / CT / Rated Output Current 4.8 A\nGS11N-21P0: Output Rating / CT / Carrier Frequency 2–15 kHz\nGS11N-21P0: Output Rating / VT / Rated Output Capacity 1.9 kVA\nGS11N-21P0: Output Rating / VT / Rated Output Current 5 A\nGS11N-21P0: Output Rating / VT / Carrier Frequency 2–15 kHz\nGS11N-21P0: Input Rating / CT / Rated Input Current 10.8 A\nGS11N-21P0: Input Rating / VT / Rated Input Current 11.3 A\nGS11N-21P0: Input Rating / Rated Voltage/Frequency One-phase 200-240 VAC (-15% to +10%), 50/60 Hz\nGS11N-21P0: Input Rating / Operating Voltage Range 170–265 VAC\nGS11N-21P0: Input Rating / Frequency Tolerance 47–63 Hz\n",
+    "source_type": "node_attachment",
+    "source_url": "node-doc/{upload}/gs10usermanual.pdf",
+    "source_page": 26,
+    "page_start": 26,
+    "page_end": 26,
+    "ingest_route": "v2",
+    "is_private": true,
+    "verified": false,
+    "metadata": {
+     "source": "hub_node_attachment",
+     "node_id": "{node}",
+     "filename": "gs10usermanual.pdf",
+     "uns_path": null,
+     "chunk_index": 5,
+     "table_models": [
+      "GS11N21P0"
+     ],
+     "table_unqualified": true,
+     "extraction_version": 7
+    }
+   },
+   {
+    "content": "230V Class – 1-Phase Model-Specific Specifications / GS10 230V Class Specifications; Frame Size A, B, C — Model Name: GS11N-2xPx — GS11N-21P0 (cont.)\nGS11N-21P0: IE2 Efficiency - Relative Power Loss 2.7%\nGS11N-21P0: Weight 0.8 kg\nGS11N-21P0: Cooling Method Convective\nGS11N-21P0: IP Rating IP20\n",
+    "source_type": "node_attachment",
+    "source_url": "node-doc/{upload}/gs10usermanual.pdf",
+    "source_page": 26,
+    "page_start": 26,
+    "page_end": 26,
+    "ingest_route": "v2",
+    "is_private": true,
+    "verified": false,
+    "metadata": {
+     "source": "hub_node_attachment",
+     "node_id": "{node}",
+     "filename": "gs10usermanual.pdf",
+     "uns_path": null,
+     "chunk_index": 6,
+     "table_models": [
+      "GS11N21P0"
+     ],
+     "table_unqualified": true,
+     "extraction_version": 7
+    }
+   },
+   {
+    "content": "230V Class – 1-Phase Model-Specific Specifications / GS10 230V Class Specifications; Frame Size A, B, C — Model Name: GS11N-2xPx — GS11N-22P0\nGS11N-22P0: Frame Size C1\nGS11N-22P0: Output Rating / Max Motor Output 2 hp\nGS11N-22P0: Output Rating / Max Motor Output 1.5 kW\nGS11N-22P0: Output Rating / CT / Rated Output Capacity 2.9 kVA\nGS11N-22P0: Output Rating / CT / Rated Output Current 7.5 A\nGS11N-22P0: Output Rating / CT / Carrier Frequency 2–15 kHz\nGS11N-22P0: Output Rating / VT / Rated Output Capacity 3.2 kVA\nGS11N-22P0: Output Rating / VT / Rated Output Current 8.5 A\nGS11N-22P0: Output Rating / VT / Carrier Frequency 2–15 kHz\nGS11N-22P0: Input Rating / CT / Rated Input Current 16.5 A\nGS11N-22P0: Input Rating / VT / Rated Input Current 18.5 A\nGS11N-22P0: Input Rating / Rated Voltage/Frequency One-phase 200-240 VAC (-15% to +10%), 50/60 Hz\nGS11N-22P0: Input Rating / Operating Voltage Range 170–265 VAC\nGS11N-22P0: Input Rating / Frequency Tolerance 47–63 Hz\n",
+    "source_type": "node_attachment",
+    "source_url": "node-doc/{upload}/gs10usermanual.pdf",
+    "source_page": 26,
+    "page_start": 26,
+    "page_end": 26,
+    "ingest_route": "v2",
+    "is_private": true,
+    "verified": false,
+    "metadata": {
+     "source": "hub_node_attachment",
+     "node_id": "{node}",
+     "filename": "gs10usermanual.pdf",
+     "uns_path": null,
+     "chunk_index": 7,
+     "table_models": [
+      "GS11N22P0"
+     ],
+     "table_unqualified": true,
+     "extraction_version": 7
+    }
+   },
+   {
+    "content": "230V Class – 1-Phase Model-Specific Specifications / GS10 230V Class Specifications; Frame Size A, B, C — Model Name: GS11N-2xPx — GS11N-22P0 (cont.)\nGS11N-22P0: IE2 Efficiency - Relative Power Loss 2.5%\nGS11N-22P0: Weight 1 kg\nGS11N-22P0: Cooling Method Convective\nGS11N-22P0: IP Rating IP20\n",
+    "source_type": "node_attachment",
+    "source_url": "node-doc/{upload}/gs10usermanual.pdf",
+    "source_page": 26,
+    "page_start": 26,
+    "page_end": 26,
+    "ingest_route": "v2",
+    "is_private": true,
+    "verified": false,
+    "metadata": {
+     "source": "hub_node_attachment",
+     "node_id": "{node}",
+     "filename": "gs10usermanual.pdf",
+     "uns_path": null,
+     "chunk_index": 8,
+     "table_models": [
+      "GS11N22P0"
+     ],
+     "table_unqualified": true,
+     "extraction_version": 7
+    }
+   },
+   {
+    "content": "230V Class – 1-Phase Model-Specific Specifications / GS10 230V Class Specifications; Frame Size A, B, C — Model Name: GS11N-2xPx — GS11N-23P0\nGS11N-23P0: Frame Size C1\nGS11N-23P0: Output Rating / Max Motor Output 3 hp\nGS11N-23P0: Output Rating / Max Motor Output 2.2 kW\nGS11N-23P0: Output Rating / CT / Rated Output Capacity 4.2 kVA\nGS11N-23P0: Output Rating / CT / Rated Output Current 11 A\nGS11N-23P0: Output Rating / CT / Carrier Frequency 2–15 kHz\nGS11N-23P0: Output Rating / VT / Rated Output Capacity 4.8 kVA\nGS11N-23P0: Output Rating / VT / Rated Output Current 12.5 A\nGS11N-23P0: Output Rating / VT / Carrier Frequency 2–15 kHz\nGS11N-23P0: Input Rating / CT / Rated Input Current 24.2 A\nGS11N-23P0: Input Rating / VT / Rated Input Current 27.5 A\nGS11N-23P0: Input Rating / Rated Voltage/Frequency One-phase 200-240 VAC (-15% to +10%), 50/60 Hz\nGS11N-23P0: Input Rating / Operating Voltage Range 170–265 VAC\nGS11N-23P0: Input Rating / Frequency Tolerance 47–63 Hz\n",
+    "source_type": "node_attachment",
+    "source_url": "node-doc/{upload}/gs10usermanual.pdf",
+    "source_page": 26,
+    "page_start": 26,
+    "page_end": 26,
+    "ingest_route": "v2",
+    "is_private": true,
+    "verified": false,
+    "metadata": {
+     "source": "hub_node_attachment",
+     "node_id": "{node}",
+     "filename": "gs10usermanual.pdf",
+     "uns_path": null,
+     "chunk_index": 9,
+     "table_models": [
+      "GS11N23P0"
+     ],
+     "table_unqualified": true,
+     "extraction_version": 7
+    }
+   },
+   {
+    "content": "230V Class – 1-Phase Model-Specific Specifications / GS10 230V Class Specifications; Frame Size A, B, C — Model Name: GS11N-2xPx — GS11N-23P0 (cont.)\nGS11N-23P0: IE2 Efficiency - Relative Power Loss 2.4%\nGS11N-23P0: Weight 1 kg\nGS11N-23P0: Cooling Method Fan\nGS11N-23P0: IP Rating IP20\n",
+    "source_type": "node_attachment",
+    "source_url": "node-doc/{upload}/gs10usermanual.pdf",
+    "source_page": 26,
+    "page_start": 26,
+    "page_end": 26,
+    "ingest_route": "v2",
+    "is_private": true,
+    "verified": false,
+    "metadata": {
+     "source": "hub_node_attachment",
+     "node_id": "{node}",
+     "filename": "gs10usermanual.pdf",
+     "uns_path": null,
+     "chunk_index": 10,
+     "table_models": [
+      "GS11N23P0"
+     ],
+     "table_unqualified": true,
+     "extraction_version": 7
+    }
+   },
+   {
+    "content": "230V Class – 1-Phase Model-Specific Specifications / GS10 230V Class Specifications; Frame Size A, B, C — Model Name: GS11N-2xPx — unqualified\n1 - For use with three-phase motors only.\n2 - Please refer to “Appendix A - Accessories” for input fusing information.\n3 - For input power that is a floating ground or IT type, the RFI jumper must be removed. See\n“Floating Ground System (IT Systems)” on page 2–12 .\n4 - If application requires adjustment of the carrier frequency above default, refer to “Derate Output\n",
+    "source_type": "node_attachment",
+    "source_url": "node-doc/{upload}/gs10usermanual.pdf",
+    "source_page": 26,
+    "page_start": 26,
+    "page_end": 26,
+    "ingest_route": "v2",
+    "is_private": true,
+    "verified": false,
+    "metadata": {
+     "source": "hub_node_attachment",
+     "node_id": "{node}",
+     "filename": "gs10usermanual.pdf",
+     "uns_path": null,
+     "chunk_index": 11,
+     "table_models": [
+      "GS11N20P2",
+      "GS11N20P5",
+      "GS11N21P0",
+      "GS11N22P0",
+      "GS11N23P0"
+     ],
+     "table_unqualified": true,
+     "extraction_version": 7
+    }
+   },
+   {
+    "content": "Chapter 1: Getting Started\n230V Class – 3-Phase Model-Specific Specifications\n1\nGS10 230V Class Specifications; Frame Size A, B\n1 - For use with three-phase motors only.\n2 - Please refer to “Appendix A - Accessories” for input fusing information.\n3 - For input power that is a floating ground or IT type, the RFI jumper must be removed. See\n“Floating Ground System (IT Systems)” on page 2–12 .\n4 - If application requires adjustment of the carrier frequency above default, refer to “Derate\nOutput Current Based on Carrier Frequency (if necessary)” on page 1–7 .\nDURApulse GS10 Drive User Manual – 1st Ed., Rev B Page 1–13",
+    "source_type": "node_attachment",
+    "source_url": "node-doc/{upload}/gs10usermanual.pdf",
+    "source_page": 27,
+    "page_start": 27,
+    "page_end": 27,
+    "ingest_route": "v2",
+    "is_private": true,
+    "verified": false,
+    "metadata": {
+     "source": "hub_node_attachment",
+     "node_id": "{node}",
+     "filename": "gs10usermanual.pdf",
+     "uns_path": null,
+     "chunk_index": 12,
+     "extraction_version": 7
+    }
+   },
+   {
+    "content": "230V Class – 3-Phase Model-Specific Specifications / GS10 230V Class Specifications; Frame Size A, B — Model Name: GS13N-2xPx — GS13N-20P2\nGS13N-20P2: Frame Size A1\nGS13N-20P2: hp 1/4\nGS13N-20P2: Output Rating / Max Motor Output hp [0.1]\nGS13N-20P2: Output Rating / (3-phase [1-phase]) kW 0.2\nGS13N-20P2: Output Rating / kW [0.1]\nGS13N-20P2: Output Rating / CT / Rated Output Capacity 0.6 kVA\nGS13N-20P2: Output Rating / CT / Rated Output Current A 1.6\nGS13N-20P2: Output Rating / CT / (3-phase [1-phase]) A [0.8]\nGS13N-20P2: Output Rating / CT / Carrier Frequency 2–15 kHz\nGS13N-20P2: Output Rating / VT / Rated Output Capacity 0.7 kVA\nGS13N-20P2: Output Rating / VT / Rated Output Current 1.8 A\nGS13N-20P2: Output Rating / VT / Carrier Frequency 2–15 kHz\nGS13N-20P2: Input Rating / CT / Rated Input Current 1.9 A\nGS13N-20P2: Input Rating / VT / Rated Input Current 2.2 A\nGS13N-20P2: Input Rating / Rated Voltage/Frequency 3-phase 200-240 VAC (-15% to +10%), 50/60 Hz\n",
+    "source_type": "node_attachment",
+    "source_url": "node-doc/{upload}/gs10usermanual.pdf",
+    "source_page": 27,
+    "page_start": 27,
+    "page_end": 27,
+    "ingest_route": "v2",
+    "is_private": true,
+    "verified": false,
+    "metadata": {
+     "source": "hub_node_attachment",
+     "node_id": "{node}",
+     "filename": "gs10usermanual.pdf",
+     "uns_path": null,
+     "chunk_index": 13,
+     "table_models": [
+      "GS13N20P2"
+     ],
+     "table_unqualified": true,
+     "extraction_version": 7
+    }
+   },
+   {
+    "content": "230V Class – 3-Phase Model-Specific Specifications / GS10 230V Class Specifications; Frame Size A, B — Model Name: GS13N-2xPx — GS13N-20P2 (cont.)\nGS13N-20P2: Input Rating / Operating Voltage Range 170–265 VAC\nGS13N-20P2: Input Rating / Frequency Tolerance 47–63 Hz\nGS13N-20P2: IE2 Efficiency - Relative Power Loss 4.7%\nGS13N-20P2: Weight 0.4 kg\nGS13N-20P2: Cooling Method Convective\nGS13N-20P2: IP Rating IP20\n",
+    "source_type": "node_attachment",
+    "source_url": "node-doc/{upload}/gs10usermanual.pdf",
+    "source_page": 27,
+    "page_start": 27,
+    "page_end": 27,
+    "ingest_route": "v2",
+    "is_private": true,
+    "verified": false,
+    "metadata": {
+     "source": "hub_node_attachment",
+     "node_id": "{node}",
+     "filename": "gs10usermanual.pdf",
+     "uns_path": null,
+     "chunk_index": 14,
+     "table_models": [
+      "GS13N20P2"
+     ],
+     "table_unqualified": true,
+     "extraction_version": 7
+    }
+   },
+   {
+    "content": "230V Class – 3-Phase Model-Specific Specifications / GS10 230V Class Specifications; Frame Size A, B — Model Name: GS13N-2xPx — GS13N-20P5\nGS13N-20P5: Frame Size A2\nGS13N-20P5: hp 1/2\nGS13N-20P5: Output Rating / Max Motor Output hp [1/4]\nGS13N-20P5: Output Rating / (3-phase [1-phase]) kW 0.4\nGS13N-20P5: Output Rating / kW [0.2]\nGS13N-20P5: Output Rating / CT / Rated Output Capacity 1.1 kVA\nGS13N-20P5: Output Rating / CT / Rated Output Current A 2.8\nGS13N-20P5: Output Rating / CT / (3-phase [1-phase]) A [1.4]\nGS13N-20P5: Output Rating / CT / Carrier Frequency 2–15 kHz\nGS13N-20P5: Output Rating / VT / Rated Output Capacity 1.2 kVA\nGS13N-20P5: Output Rating / VT / Rated Output Current 3.0 A\nGS13N-20P5: Output Rating / VT / Carrier Frequency 2–15 kHz\nGS13N-20P5: Input Rating / CT / Rated Input Current 3.4 A\nGS13N-20P5: Input Rating / VT / Rated Input Current 3.8 A\nGS13N-20P5: Input Rating / Rated Voltage/Frequency 3-phase 200-240 VAC (-15% to +10%), 50/60 Hz\n",
+    "source_type": "node_attachment",
+    "source_url": "node-doc/{upload}/gs10usermanual.pdf",
+    "source_page": 27,
+    "page_start": 27,
+    "page_end": 27,
+    "ingest_route": "v2",
+    "is_private": true,
+    "verified": false,
+    "metadata": {
+     "source": "hub_node_attachment",
+     "node_id": "{node}",
+     "filename": "gs10usermanual.pdf",
+     "uns_path": null,
+     "chunk_index": 15,
+     "table_models": [
+      "GS13N20P5"
+     ],
+     "table_unqualified": true,
+     "extraction_version": 7
+    }
+   },
+   {
+    "content": "230V Class – 3-Phase Model-Specific Specifications / GS10 230V Class Specifications; Frame Size A, B — Model Name: GS13N-2xPx — GS13N-20P5 (cont.)\nGS13N-20P5: Input Rating / Operating Voltage Range 170–265 VAC\nGS13N-20P5: Input Rating / Frequency Tolerance 47–63 Hz\nGS13N-20P5: IE2 Efficiency - Relative Power Loss 3.1%\nGS13N-20P5: Weight 0.5 kg\nGS13N-20P5: Cooling Method Convective\nGS13N-20P5: IP Rating IP20\n",
+    "source_type": "node_attachment",
+    "source_url": "node-doc/{upload}/gs10usermanual.pdf",
+    "source_page": 27,
+    "page_start": 27,
+    "page_end": 27,
+    "ingest_route": "v2",
+    "is_private": true,
+    "verified": false,
+    "metadata": {
+     "source": "hub_node_attachment",
+     "node_id": "{node}",
+     "filename": "gs10usermanual.pdf",
+     "uns_path": null,
+     "chunk_index": 16,
+     "table_models": [
+      "GS13N20P5"
+     ],
+     "table_unqualified": true,
+     "extraction_version": 7
+    }
+   },
+   {
+    "content": "230V Class – 3-Phase Model-Specific Specifications / GS10 230V Class Specifications; Frame Size A, B — Model Name: GS13N-2xPx — GS13N-21P0\nGS13N-21P0: Frame Size A5\nGS13N-21P0: hp 1\nGS13N-21P0: Output Rating / Max Motor Output hp [1/2]\nGS13N-21P0: Output Rating / (3-phase [1-phase]) kW 0.75\nGS13N-21P0: Output Rating / kW [0.375]\nGS13N-21P0: Output Rating / CT / Rated Output Capacity 1.8 kVA\nGS13N-21P0: Output Rating / CT / Rated Output Current A 4.8\nGS13N-21P0: Output Rating / CT / (3-phase [1-phase]) A [2.4]\nGS13N-21P0: Output Rating / CT / Carrier Frequency 2–15 kHz\nGS13N-21P0: Output Rating / VT / Rated Output Capacity 1.9 kVA\nGS13N-21P0: Output Rating / VT / Rated Output Current 5.0 A\nGS13N-21P0: Output Rating / VT / Carrier Frequency 2–15 kHz\nGS13N-21P0: Input Rating / CT / Rated Input Current 5.8 A\nGS13N-21P0: Input Rating / VT / Rated Input Current 6.0 A\nGS13N-21P0: Input Rating / Rated Voltage/Frequency 3-phase 200-240 VAC (-15% to +10%), 50/60 Hz\n",
+    "source_type": "node_attachment",
+    "source_url": "node-doc/{upload}/gs10usermanual.pdf",
+    "source_page": 27,
+    "page_start": 27,
+    "page_end": 27,
+    "ingest_route": "v2",
+    "is_private": true,
+    "verified": false,
+    "metadata": {
+     "source": "hub_node_attachment",
+     "node_id": "{node}",
+     "filename": "gs10usermanual.pdf",
+     "uns_path": null,
+     "chunk_index": 17,
+     "table_models": [
+      "GS13N21P0"
+     ],
+     "table_unqualified": true,
+     "extraction_version": 7
+    }
+   },
+   {
+    "content": "230V Class – 3-Phase Model-Specific Specifications / GS10 230V Class Specifications; Frame Size A, B — Model Name: GS13N-2xPx — GS13N-21P0 (cont.)\nGS13N-21P0: Input Rating / Operating Voltage Range 170–265 VAC\nGS13N-21P0: Input Rating / Frequency Tolerance 47–63 Hz\nGS13N-21P0: IE2 Efficiency - Relative Power Loss 2.7%\nGS13N-21P0: Weight 0.6 kg\nGS13N-21P0: Cooling Method Convective\nGS13N-21P0: IP Rating IP20\n",
+    "source_type": "node_attachment",
+    "source_url": "node-doc/{upload}/gs10usermanual.pdf",
+    "source_page": 27,
+    "page_start": 27,
+    "page_end": 27,
+    "ingest_route": "v2",
+    "is_private": true,
+    "verified": false,
+    "metadata": {
+     "source": "hub_node_attachment",
+     "node_id": "{node}",
+     "filename": "gs10usermanual.pdf",
+     "uns_path": null,
+     "chunk_index": 18,
+     "table_models": [
+      "GS13N21P0"
+     ],
+     "table_unqualified": true,
+     "extraction_version": 7
+    }
+   },
+   {
+    "content": "230V Class – 3-Phase Model-Specific Specifications / GS10 230V Class Specifications; Frame Size A, B — Model Name: GS13N-2xPx — GS13N-22P0\nGS13N-22P0: Frame Size B1\nGS13N-22P0: hp 2\nGS13N-22P0: Output Rating / Max Motor Output hp [1]\nGS13N-22P0: Output Rating / (3-phase [1-phase]) kW 1.5\nGS13N-22P0: Output Rating / kW [0.75]\nGS13N-22P0: Output Rating / CT / Rated Output Capacity 2.9 kVA\nGS13N-22P0: Output Rating / CT / Rated Output Current A 7.5\nGS13N-22P0: Output Rating / CT / (3-phase [1-phase]) A [3.75]\nGS13N-22P0: Output Rating / CT / Carrier Frequency 2–15 kHz\nGS13N-22P0: Output Rating / VT / Rated Output Capacity 3.0 kVA\nGS13N-22P0: Output Rating / VT / Rated Output Current 8.0 A\nGS13N-22P0: Output Rating / VT / Carrier Frequency 2–15 kHz\nGS13N-22P0: Input Rating / CT / Rated Input Current 9.0 A\nGS13N-22P0: Input Rating / VT / Rated Input Current 9.6 A\nGS13N-22P0: Input Rating / Rated Voltage/Frequency 3-phase 200-240 VAC (-15% to +10%), 50/60 Hz\n",
+    "source_type": "node_attachment",
+    "source_url": "node-doc/{upload}/gs10usermanual.pdf",
+    "source_page": 27,
+    "page_start": 27,
+    "page_end": 27,
+    "ingest_route": "v2",
+    "is_private": true,
+    "verified": false,
+    "metadata": {
+     "source": "hub_node_attachment",
+     "node_id": "{node}",
+     "filename": "gs10usermanual.pdf",
+     "uns_path": null,
+     "chunk_index": 19,
+     "table_models": [
+      "GS13N22P0"
+     ],
+     "table_unqualified": true,
+     "extraction_version": 7
+    }
+   },
+   {
+    "content": "230V Class – 3-Phase Model-Specific Specifications / GS10 230V Class Specifications; Frame Size A, B — Model Name: GS13N-2xPx — GS13N-22P0 (cont.)\nGS13N-22P0: Input Rating / Operating Voltage Range 170–265 VAC\nGS13N-22P0: Input Rating / Frequency Tolerance 47–63 Hz\nGS13N-22P0: IE2 Efficiency - Relative Power Loss 2.4%\nGS13N-22P0: Weight 0.8 kg\nGS13N-22P0: Cooling Method Fan\nGS13N-22P0: IP Rating IP20\n",
+    "source_type": "node_attachment",
+    "source_url": "node-doc/{upload}/gs10usermanual.pdf",
+    "source_page": 27,
+    "page_start": 27,
+    "page_end": 27,
+    "ingest_route": "v2",
+    "is_private": true,
+    "verified": false,
+    "metadata": {
+     "source": "hub_node_attachment",
+     "node_id": "{node}",
+     "filename": "gs10usermanual.pdf",
+     "uns_path": null,
+     "chunk_index": 20,
+     "table_models": [
+      "GS13N22P0"
+     ],
+     "table_unqualified": true,
+     "extraction_version": 7
+    }
+   },
+   {
+    "content": "230V Class – 3-Phase Model-Specific Specifications / GS10 230V Class Specifications; Frame Size A, B — Model Name: GS13N-2xPx — unqualified\n(3-phase and 1-phase)\n1 - For use with three-phase motors only.\n2 - Please refer to “Appendix A - Accessories” for input fusing information.\n3 - For input power that is a floating ground or IT type, the RFI jumper must be removed. See\n“Floating Ground System (IT Systems)” on page 2–12 .\n4 - If application requires adjustment of the carrier frequency above default, refer to “Derate\n",
+    "source_type": "node_attachment",
+    "source_url": "node-doc/{upload}/gs10usermanual.pdf",
+    "source_page": 27,
+    "page_start": 27,
+    "page_end": 27,
+    "ingest_route": "v2",
+    "is_private": true,
+    "verified": false,
+    "metadata": {
+     "source": "hub_node_attachment",
+     "node_id": "{node}",
+     "filename": "gs10usermanual.pdf",
+     "uns_path": null,
+     "chunk_index": 21,
+     "table_models": [
+      "GS13N20P2",
+      "GS13N20P5",
+      "GS13N21P0",
+      "GS13N22P0"
+     ],
+     "table_unqualified": true,
+     "extraction_version": 7
+    }
+   }
+  ],
+  "03_gs10_user_manual.pdf": [
+   {
+    "content": "Chapter 1: Getting Started\n230V Class – 1-Phase Model-Specific Specifications\n1\nGS10 230V Class Specifications; Frame Size A, B, C\n1 - For use with three-phase motors only.\n2 - Please refer to “Appendix A - Accessories” for input fusing information.\n3 - For input power that is a floating ground or IT type, the RFI jumper must be removed. See\n“Floating Ground System (IT Systems)” on page 2–12 .\n4 - If application requires adjustment of the carrier frequency above default, refer to “Derate Output\nCurrent Based on Carrier Frequency (if necessary)” on page 1–7 .\nPage 1–12 DURApulse GS10 Drive User Manual – 1st Ed., Rev B",
+    "source_type": "node_attachment",
+    "source_url": "node-doc/{upload}/03_gs10_user_manual.pdf",
+    "source_page": 26,
+    "page_start": 26,
+    "page_end": 26,
+    "ingest_route": "v2",
+    "is_private": true,
+    "verified": false,
+    "metadata": {
+     "source": "hub_node_attachment",
+     "node_id": "{node}",
+     "filename": "03_gs10_user_manual.pdf",
+     "uns_path": null,
+     "chunk_index": 0,
+     "extraction_version": 7
+    }
+   },
+   {
+    "content": "230V Class – 1-Phase Model-Specific Specifications / GS10 230V Class Specifications; Frame Size A, B, C — Model Name: GS11N-2xPx — GS11N-20P2\nGS11N-20P2: Frame Size A1\nGS11N-20P2: Output Rating / Max Motor Output 1/4 hp\nGS11N-20P2: Output Rating / Max Motor Output 0.2 kW\nGS11N-20P2: Output Rating / CT / Rated Output Capacity 0.6 kVA\nGS11N-20P2: Output Rating / CT / Rated Output Current 1.6 A\nGS11N-20P2: Output Rating / CT / Carrier Frequency 2–15 kHz\nGS11N-20P2: Output Rating / VT / Rated Output Capacity 0.7 kVA\nGS11N-20P2: Output Rating / VT / Rated Output Current 1.8 A\nGS11N-20P2: Output Rating / VT / Carrier Frequency 2–15 kHz\nGS11N-20P2: Input Rating / CT / Rated Input Current 5.1 A\nGS11N-20P2: Input Rating / VT / Rated Input Current 5.8 A\nGS11N-20P2: Input Rating / Rated Voltage/Frequency One-phase 200-240 VAC (-15% to +10%), 50/60 Hz\nGS11N-20P2: Input Rating / Operating Voltage Range 170–265 VAC\nGS11N-20P2: Input Rating / Frequency Tolerance 47–63 Hz\n",
+    "source_type": "node_attachment",
+    "source_url": "node-doc/{upload}/03_gs10_user_manual.pdf",
+    "source_page": 26,
+    "page_start": 26,
+    "page_end": 26,
+    "ingest_route": "v2",
+    "is_private": true,
+    "verified": false,
+    "metadata": {
+     "source": "hub_node_attachment",
+     "node_id": "{node}",
+     "filename": "03_gs10_user_manual.pdf",
+     "uns_path": null,
+     "chunk_index": 1,
+     "table_models": [
+      "GS11N20P2"
+     ],
+     "table_unqualified": true,
+     "extraction_version": 7
+    }
+   },
+   {
+    "content": "230V Class – 1-Phase Model-Specific Specifications / GS10 230V Class Specifications; Frame Size A, B, C — Model Name: GS11N-2xPx — GS11N-20P2 (cont.)\nGS11N-20P2: IE2 Efficiency - Relative Power Loss 4.7%\nGS11N-20P2: Weight 0.4 kg\nGS11N-20P2: Cooling Method Convective\nGS11N-20P2: IP Rating IP20\n",
+    "source_type": "node_attachment",
+    "source_url": "node-doc/{upload}/03_gs10_user_manual.pdf",
+    "source_page": 26,
+    "page_start": 26,
+    "page_end": 26,
+    "ingest_route": "v2",
+    "is_private": true,
+    "verified": false,
+    "metadata": {
+     "source": "hub_node_attachment",
+     "node_id": "{node}",
+     "filename": "03_gs10_user_manual.pdf",
+     "uns_path": null,
+     "chunk_index": 2,
+     "table_models": [
+      "GS11N20P2"
+     ],
+     "table_unqualified": true,
+     "extraction_version": 7
+    }
+   },
+   {
+    "content": "230V Class – 1-Phase Model-Specific Specifications / GS10 230V Class Specifications; Frame Size A, B, C — Model Name: GS11N-2xPx — GS11N-20P5\nGS11N-20P5: Frame Size A3\nGS11N-20P5: Output Rating / Max Motor Output 1/2 hp\nGS11N-20P5: Output Rating / Max Motor Output 0.4 kW\nGS11N-20P5: Output Rating / CT / Rated Output Capacity 1.1 kVA\nGS11N-20P5: Output Rating / CT / Rated Output Current 2.8 A\nGS11N-20P5: Output Rating / CT / Carrier Frequency 2–15 kHz\nGS11N-20P5: Output Rating / VT / Rated Output Capacity 1.2 kVA\nGS11N-20P5: Output Rating / VT / Rated Output Current 3.2 A\nGS11N-20P5: Output Rating / VT / Carrier Frequency 2–15 kHz\nGS11N-20P5: Input Rating / CT / Rated Input Current 7.3 A\nGS11N-20P5: Input Rating / VT / Rated Input Current 8.3 A\nGS11N-20P5: Input Rating / Rated Voltage/Frequency One-phase 200-240 VAC (-15% to +10%), 50/60 Hz\nGS11N-20P5: Input Rating / Operating Voltage Range 170–265 VAC\nGS11N-20P5: Input Rating / Frequency Tolerance 47–63 Hz\n",
+    "source_type": "node_attachment",
+    "source_url": "node-doc/{upload}/03_gs10_user_manual.pdf",
+    "source_page": 26,
+    "page_start": 26,
+    "page_end": 26,
+    "ingest_route": "v2",
+    "is_private": true,
+    "verified": false,
+    "metadata": {
+     "source": "hub_node_attachment",
+     "node_id": "{node}",
+     "filename": "03_gs10_user_manual.pdf",
+     "uns_path": null,
+     "chunk_index": 3,
+     "table_models": [
+      "GS11N20P5"
+     ],
+     "table_unqualified": true,
+     "extraction_version": 7
+    }
+   },
+   {
+    "content": "230V Class – 1-Phase Model-Specific Specifications / GS10 230V Class Specifications; Frame Size A, B, C — Model Name: GS11N-2xPx — GS11N-20P5 (cont.)\nGS11N-20P5: IE2 Efficiency - Relative Power Loss 3.1%\nGS11N-20P5: Weight 0.5 kg\nGS11N-20P5: Cooling Method Convective\nGS11N-20P5: IP Rating IP20\n",
+    "source_type": "node_attachment",
+    "source_url": "node-doc/{upload}/03_gs10_user_manual.pdf",
+    "source_page": 26,
+    "page_start": 26,
+    "page_end": 26,
+    "ingest_route": "v2",
+    "is_private": true,
+    "verified": false,
+    "metadata": {
+     "source": "hub_node_attachment",
+     "node_id": "{node}",
+     "filename": "03_gs10_user_manual.pdf",
+     "uns_path": null,
+     "chunk_index": 4,
+     "table_models": [
+      "GS11N20P5"
+     ],
+     "table_unqualified": true,
+     "extraction_version": 7
+    }
+   },
+   {
+    "content": "230V Class – 1-Phase Model-Specific Specifications / GS10 230V Class Specifications; Frame Size A, B, C — Model Name: GS11N-2xPx — GS11N-21P0\nGS11N-21P0: Frame Size B2\nGS11N-21P0: Output Rating / Max Motor Output 1 hp\nGS11N-21P0: Output Rating / Max Motor Output 0.75 kW\nGS11N-21P0: Output Rating / CT / Rated Output Capacity 1.8 kVA\nGS11N-21P0: Output Rating / CT / Rated Output Current 4.8 A\nGS11N-21P0: Output Rating / CT / Carrier Frequency 2–15 kHz\nGS11N-21P0: Output Rating / VT / Rated Output Capacity 1.9 kVA\nGS11N-21P0: Output Rating / VT / Rated Output Current 5 A\nGS11N-21P0: Output Rating / VT / Carrier Frequency 2–15 kHz\nGS11N-21P0: Input Rating / CT / Rated Input Current 10.8 A\nGS11N-21P0: Input Rating / VT / Rated Input Current 11.3 A\nGS11N-21P0: Input Rating / Rated Voltage/Frequency One-phase 200-240 VAC (-15% to +10%), 50/60 Hz\nGS11N-21P0: Input Rating / Operating Voltage Range 170–265 VAC\nGS11N-21P0: Input Rating / Frequency Tolerance 47–63 Hz\n",
+    "source_type": "node_attachment",
+    "source_url": "node-doc/{upload}/03_gs10_user_manual.pdf",
+    "source_page": 26,
+    "page_start": 26,
+    "page_end": 26,
+    "ingest_route": "v2",
+    "is_private": true,
+    "verified": false,
+    "metadata": {
+     "source": "hub_node_attachment",
+     "node_id": "{node}",
+     "filename": "03_gs10_user_manual.pdf",
+     "uns_path": null,
+     "chunk_index": 5,
+     "table_models": [
+      "GS11N21P0"
+     ],
+     "table_unqualified": true,
+     "extraction_version": 7
+    }
+   },
+   {
+    "content": "230V Class – 1-Phase Model-Specific Specifications / GS10 230V Class Specifications; Frame Size A, B, C — Model Name: GS11N-2xPx — GS11N-21P0 (cont.)\nGS11N-21P0: IE2 Efficiency - Relative Power Loss 2.7%\nGS11N-21P0: Weight 0.8 kg\nGS11N-21P0: Cooling Method Convective\nGS11N-21P0: IP Rating IP20\n",
+    "source_type": "node_attachment",
+    "source_url": "node-doc/{upload}/03_gs10_user_manual.pdf",
+    "source_page": 26,
+    "page_start": 26,
+    "page_end": 26,
+    "ingest_route": "v2",
+    "is_private": true,
+    "verified": false,
+    "metadata": {
+     "source": "hub_node_attachment",
+     "node_id": "{node}",
+     "filename": "03_gs10_user_manual.pdf",
+     "uns_path": null,
+     "chunk_index": 6,
+     "table_models": [
+      "GS11N21P0"
+     ],
+     "table_unqualified": true,
+     "extraction_version": 7
+    }
+   },
+   {
+    "content": "230V Class – 1-Phase Model-Specific Specifications / GS10 230V Class Specifications; Frame Size A, B, C — Model Name: GS11N-2xPx — GS11N-22P0\nGS11N-22P0: Frame Size C1\nGS11N-22P0: Output Rating / Max Motor Output 2 hp\nGS11N-22P0: Output Rating / Max Motor Output 1.5 kW\nGS11N-22P0: Output Rating / CT / Rated Output Capacity 2.9 kVA\nGS11N-22P0: Output Rating / CT / Rated Output Current 7.5 A\nGS11N-22P0: Output Rating / CT / Carrier Frequency 2–15 kHz\nGS11N-22P0: Output Rating / VT / Rated Output Capacity 3.2 kVA\nGS11N-22P0: Output Rating / VT / Rated Output Current 8.5 A\nGS11N-22P0: Output Rating / VT / Carrier Frequency 2–15 kHz\nGS11N-22P0: Input Rating / CT / Rated Input Current 16.5 A\nGS11N-22P0: Input Rating / VT / Rated Input Current 18.5 A\nGS11N-22P0: Input Rating / Rated Voltage/Frequency One-phase 200-240 VAC (-15% to +10%), 50/60 Hz\nGS11N-22P0: Input Rating / Operating Voltage Range 170–265 VAC\nGS11N-22P0: Input Rating / Frequency Tolerance 47–63 Hz\n",
+    "source_type": "node_attachment",
+    "source_url": "node-doc/{upload}/03_gs10_user_manual.pdf",
+    "source_page": 26,
+    "page_start": 26,
+    "page_end": 26,
+    "ingest_route": "v2",
+    "is_private": true,
+    "verified": false,
+    "metadata": {
+     "source": "hub_node_attachment",
+     "node_id": "{node}",
+     "filename": "03_gs10_user_manual.pdf",
+     "uns_path": null,
+     "chunk_index": 7,
+     "table_models": [
+      "GS11N22P0"
+     ],
+     "table_unqualified": true,
+     "extraction_version": 7
+    }
+   },
+   {
+    "content": "230V Class – 1-Phase Model-Specific Specifications / GS10 230V Class Specifications; Frame Size A, B, C — Model Name: GS11N-2xPx — GS11N-22P0 (cont.)\nGS11N-22P0: IE2 Efficiency - Relative Power Loss 2.5%\nGS11N-22P0: Weight 1 kg\nGS11N-22P0: Cooling Method Convective\nGS11N-22P0: IP Rating IP20\n",
+    "source_type": "node_attachment",
+    "source_url": "node-doc/{upload}/03_gs10_user_manual.pdf",
+    "source_page": 26,
+    "page_start": 26,
+    "page_end": 26,
+    "ingest_route": "v2",
+    "is_private": true,
+    "verified": false,
+    "metadata": {
+     "source": "hub_node_attachment",
+     "node_id": "{node}",
+     "filename": "03_gs10_user_manual.pdf",
+     "uns_path": null,
+     "chunk_index": 8,
+     "table_models": [
+      "GS11N22P0"
+     ],
+     "table_unqualified": true,
+     "extraction_version": 7
+    }
+   },
+   {
+    "content": "230V Class – 1-Phase Model-Specific Specifications / GS10 230V Class Specifications; Frame Size A, B, C — Model Name: GS11N-2xPx — GS11N-23P0\nGS11N-23P0: Frame Size C1\nGS11N-23P0: Output Rating / Max Motor Output 3 hp\nGS11N-23P0: Output Rating / Max Motor Output 2.2 kW\nGS11N-23P0: Output Rating / CT / Rated Output Capacity 4.2 kVA\nGS11N-23P0: Output Rating / CT / Rated Output Current 11 A\nGS11N-23P0: Output Rating / CT / Carrier Frequency 2–15 kHz\nGS11N-23P0: Output Rating / VT / Rated Output Capacity 4.8 kVA\nGS11N-23P0: Output Rating / VT / Rated Output Current 12.5 A\nGS11N-23P0: Output Rating / VT / Carrier Frequency 2–15 kHz\nGS11N-23P0: Input Rating / CT / Rated Input Current 24.2 A\nGS11N-23P0: Input Rating / VT / Rated Input Current 27.5 A\nGS11N-23P0: Input Rating / Rated Voltage/Frequency One-phase 200-240 VAC (-15% to +10%), 50/60 Hz\nGS11N-23P0: Input Rating / Operating Voltage Range 170–265 VAC\nGS11N-23P0: Input Rating / Frequency Tolerance 47–63 Hz\n",
+    "source_type": "node_attachment",
+    "source_url": "node-doc/{upload}/03_gs10_user_manual.pdf",
+    "source_page": 26,
+    "page_start": 26,
+    "page_end": 26,
+    "ingest_route": "v2",
+    "is_private": true,
+    "verified": false,
+    "metadata": {
+     "source": "hub_node_attachment",
+     "node_id": "{node}",
+     "filename": "03_gs10_user_manual.pdf",
+     "uns_path": null,
+     "chunk_index": 9,
+     "table_models": [
+      "GS11N23P0"
+     ],
+     "table_unqualified": true,
+     "extraction_version": 7
+    }
+   },
+   {
+    "content": "230V Class – 1-Phase Model-Specific Specifications / GS10 230V Class Specifications; Frame Size A, B, C — Model Name: GS11N-2xPx — GS11N-23P0 (cont.)\nGS11N-23P0: IE2 Efficiency - Relative Power Loss 2.4%\nGS11N-23P0: Weight 1 kg\nGS11N-23P0: Cooling Method Fan\nGS11N-23P0: IP Rating IP20\n",
+    "source_type": "node_attachment",
+    "source_url": "node-doc/{upload}/03_gs10_user_manual.pdf",
+    "source_page": 26,
+    "page_start": 26,
+    "page_end": 26,
+    "ingest_route": "v2",
+    "is_private": true,
+    "verified": false,
+    "metadata": {
+     "source": "hub_node_attachment",
+     "node_id": "{node}",
+     "filename": "03_gs10_user_manual.pdf",
+     "uns_path": null,
+     "chunk_index": 10,
+     "table_models": [
+      "GS11N23P0"
+     ],
+     "table_unqualified": true,
+     "extraction_version": 7
+    }
+   },
+   {
+    "content": "230V Class – 1-Phase Model-Specific Specifications / GS10 230V Class Specifications; Frame Size A, B, C — Model Name: GS11N-2xPx — unqualified\n1 - For use with three-phase motors only.\n2 - Please refer to “Appendix A - Accessories” for input fusing information.\n3 - For input power that is a floating ground or IT type, the RFI jumper must be removed. See\n“Floating Ground System (IT Systems)” on page 2–12 .\n4 - If application requires adjustment of the carrier frequency above default, refer to “Derate Output\n",
+    "source_type": "node_attachment",
+    "source_url": "node-doc/{upload}/03_gs10_user_manual.pdf",
+    "source_page": 26,
+    "page_start": 26,
+    "page_end": 26,
+    "ingest_route": "v2",
+    "is_private": true,
+    "verified": false,
+    "metadata": {
+     "source": "hub_node_attachment",
+     "node_id": "{node}",
+     "filename": "03_gs10_user_manual.pdf",
+     "uns_path": null,
+     "chunk_index": 11,
+     "table_models": [
+      "GS11N20P2",
+      "GS11N20P5",
+      "GS11N21P0",
+      "GS11N22P0",
+      "GS11N23P0"
+     ],
+     "table_unqualified": true,
+     "extraction_version": 7
+    }
+   },
+   {
+    "content": "Chapter 1: Getting Started\n230V Class – 3-Phase Model-Specific Specifications\n1\nGS10 230V Class Specifications; Frame Size A, B\n1 - For use with three-phase motors only.\n2 - Please refer to “Appendix A - Accessories” for input fusing information.\n3 - For input power that is a floating ground or IT type, the RFI jumper must be removed. See\n“Floating Ground System (IT Systems)” on page 2–12 .\n4 - If application requires adjustment of the carrier frequency above default, refer to “Derate\nOutput Current Based on Carrier Frequency (if necessary)” on page 1–7 .\nDURApulse GS10 Drive User Manual – 1st Ed., Rev B Page 1–13",
+    "source_type": "node_attachment",
+    "source_url": "node-doc/{upload}/03_gs10_user_manual.pdf",
+    "source_page": 27,
+    "page_start": 27,
+    "page_end": 27,
+    "ingest_route": "v2",
+    "is_private": true,
+    "verified": false,
+    "metadata": {
+     "source": "hub_node_attachment",
+     "node_id": "{node}",
+     "filename": "03_gs10_user_manual.pdf",
+     "uns_path": null,
+     "chunk_index": 12,
+     "extraction_version": 7
+    }
+   },
+   {
+    "content": "230V Class – 3-Phase Model-Specific Specifications / GS10 230V Class Specifications; Frame Size A, B — Model Name: GS13N-2xPx — GS13N-20P2\nGS13N-20P2: Frame Size A1\nGS13N-20P2: hp 1/4\nGS13N-20P2: Output Rating / Max Motor Output hp [0.1]\nGS13N-20P2: Output Rating / (3-phase [1-phase]) kW 0.2\nGS13N-20P2: Output Rating / kW [0.1]\nGS13N-20P2: Output Rating / CT / Rated Output Capacity 0.6 kVA\nGS13N-20P2: Output Rating / CT / Rated Output Current A 1.6\nGS13N-20P2: Output Rating / CT / (3-phase [1-phase]) A [0.8]\nGS13N-20P2: Output Rating / CT / Carrier Frequency 2–15 kHz\nGS13N-20P2: Output Rating / VT / Rated Output Capacity 0.7 kVA\nGS13N-20P2: Output Rating / VT / Rated Output Current 1.8 A\nGS13N-20P2: Output Rating / VT / Carrier Frequency 2–15 kHz\nGS13N-20P2: Input Rating / CT / Rated Input Current 1.9 A\nGS13N-20P2: Input Rating / VT / Rated Input Current 2.2 A\nGS13N-20P2: Input Rating / Rated Voltage/Frequency 3-phase 200-240 VAC (-15% to +10%), 50/60 Hz\n",
+    "source_type": "node_attachment",
+    "source_url": "node-doc/{upload}/03_gs10_user_manual.pdf",
+    "source_page": 27,
+    "page_start": 27,
+    "page_end": 27,
+    "ingest_route": "v2",
+    "is_private": true,
+    "verified": false,
+    "metadata": {
+     "source": "hub_node_attachment",
+     "node_id": "{node}",
+     "filename": "03_gs10_user_manual.pdf",
+     "uns_path": null,
+     "chunk_index": 13,
+     "table_models": [
+      "GS13N20P2"
+     ],
+     "table_unqualified": true,
+     "extraction_version": 7
+    }
+   },
+   {
+    "content": "230V Class – 3-Phase Model-Specific Specifications / GS10 230V Class Specifications; Frame Size A, B — Model Name: GS13N-2xPx — GS13N-20P2 (cont.)\nGS13N-20P2: Input Rating / Operating Voltage Range 170–265 VAC\nGS13N-20P2: Input Rating / Frequency Tolerance 47–63 Hz\nGS13N-20P2: IE2 Efficiency - Relative Power Loss 4.7%\nGS13N-20P2: Weight 0.4 kg\nGS13N-20P2: Cooling Method Convective\nGS13N-20P2: IP Rating IP20\n",
+    "source_type": "node_attachment",
+    "source_url": "node-doc/{upload}/03_gs10_user_manual.pdf",
+    "source_page": 27,
+    "page_start": 27,
+    "page_end": 27,
+    "ingest_route": "v2",
+    "is_private": true,
+    "verified": false,
+    "metadata": {
+     "source": "hub_node_attachment",
+     "node_id": "{node}",
+     "filename": "03_gs10_user_manual.pdf",
+     "uns_path": null,
+     "chunk_index": 14,
+     "table_models": [
+      "GS13N20P2"
+     ],
+     "table_unqualified": true,
+     "extraction_version": 7
+    }
+   },
+   {
+    "content": "230V Class – 3-Phase Model-Specific Specifications / GS10 230V Class Specifications; Frame Size A, B — Model Name: GS13N-2xPx — GS13N-20P5\nGS13N-20P5: Frame Size A2\nGS13N-20P5: hp 1/2\nGS13N-20P5: Output Rating / Max Motor Output hp [1/4]\nGS13N-20P5: Output Rating / (3-phase [1-phase]) kW 0.4\nGS13N-20P5: Output Rating / kW [0.2]\nGS13N-20P5: Output Rating / CT / Rated Output Capacity 1.1 kVA\nGS13N-20P5: Output Rating / CT / Rated Output Current A 2.8\nGS13N-20P5: Output Rating / CT / (3-phase [1-phase]) A [1.4]\nGS13N-20P5: Output Rating / CT / Carrier Frequency 2–15 kHz\nGS13N-20P5: Output Rating / VT / Rated Output Capacity 1.2 kVA\nGS13N-20P5: Output Rating / VT / Rated Output Current 3.0 A\nGS13N-20P5: Output Rating / VT / Carrier Frequency 2–15 kHz\nGS13N-20P5: Input Rating / CT / Rated Input Current 3.4 A\nGS13N-20P5: Input Rating / VT / Rated Input Current 3.8 A\nGS13N-20P5: Input Rating / Rated Voltage/Frequency 3-phase 200-240 VAC (-15% to +10%), 50/60 Hz\n",
+    "source_type": "node_attachment",
+    "source_url": "node-doc/{upload}/03_gs10_user_manual.pdf",
+    "source_page": 27,
+    "page_start": 27,
+    "page_end": 27,
+    "ingest_route": "v2",
+    "is_private": true,
+    "verified": false,
+    "metadata": {
+     "source": "hub_node_attachment",
+     "node_id": "{node}",
+     "filename": "03_gs10_user_manual.pdf",
+     "uns_path": null,
+     "chunk_index": 15,
+     "table_models": [
+      "GS13N20P5"
+     ],
+     "table_unqualified": true,
+     "extraction_version": 7
+    }
+   },
+   {
+    "content": "230V Class – 3-Phase Model-Specific Specifications / GS10 230V Class Specifications; Frame Size A, B — Model Name: GS13N-2xPx — GS13N-20P5 (cont.)\nGS13N-20P5: Input Rating / Operating Voltage Range 170–265 VAC\nGS13N-20P5: Input Rating / Frequency Tolerance 47–63 Hz\nGS13N-20P5: IE2 Efficiency - Relative Power Loss 3.1%\nGS13N-20P5: Weight 0.5 kg\nGS13N-20P5: Cooling Method Convective\nGS13N-20P5: IP Rating IP20\n",
+    "source_type": "node_attachment",
+    "source_url": "node-doc/{upload}/03_gs10_user_manual.pdf",
+    "source_page": 27,
+    "page_start": 27,
+    "page_end": 27,
+    "ingest_route": "v2",
+    "is_private": true,
+    "verified": false,
+    "metadata": {
+     "source": "hub_node_attachment",
+     "node_id": "{node}",
+     "filename": "03_gs10_user_manual.pdf",
+     "uns_path": null,
+     "chunk_index": 16,
+     "table_models": [
+      "GS13N20P5"
+     ],
+     "table_unqualified": true,
+     "extraction_version": 7
+    }
+   },
+   {
+    "content": "230V Class – 3-Phase Model-Specific Specifications / GS10 230V Class Specifications; Frame Size A, B — Model Name: GS13N-2xPx — GS13N-21P0\nGS13N-21P0: Frame Size A5\nGS13N-21P0: hp 1\nGS13N-21P0: Output Rating / Max Motor Output hp [1/2]\nGS13N-21P0: Output Rating / (3-phase [1-phase]) kW 0.75\nGS13N-21P0: Output Rating / kW [0.375]\nGS13N-21P0: Output Rating / CT / Rated Output Capacity 1.8 kVA\nGS13N-21P0: Output Rating / CT / Rated Output Current A 4.8\nGS13N-21P0: Output Rating / CT / (3-phase [1-phase]) A [2.4]\nGS13N-21P0: Output Rating / CT / Carrier Frequency 2–15 kHz\nGS13N-21P0: Output Rating / VT / Rated Output Capacity 1.9 kVA\nGS13N-21P0: Output Rating / VT / Rated Output Current 5.0 A\nGS13N-21P0: Output Rating / VT / Carrier Frequency 2–15 kHz\nGS13N-21P0: Input Rating / CT / Rated Input Current 5.8 A\nGS13N-21P0: Input Rating / VT / Rated Input Current 6.0 A\nGS13N-21P0: Input Rating / Rated Voltage/Frequency 3-phase 200-240 VAC (-15% to +10%), 50/60 Hz\n",
+    "source_type": "node_attachment",
+    "source_url": "node-doc/{upload}/03_gs10_user_manual.pdf",
+    "source_page": 27,
+    "page_start": 27,
+    "page_end": 27,
+    "ingest_route": "v2",
+    "is_private": true,
+    "verified": false,
+    "metadata": {
+     "source": "hub_node_attachment",
+     "node_id": "{node}",
+     "filename": "03_gs10_user_manual.pdf",
+     "uns_path": null,
+     "chunk_index": 17,
+     "table_models": [
+      "GS13N21P0"
+     ],
+     "table_unqualified": true,
+     "extraction_version": 7
+    }
+   },
+   {
+    "content": "230V Class – 3-Phase Model-Specific Specifications / GS10 230V Class Specifications; Frame Size A, B — Model Name: GS13N-2xPx — GS13N-21P0 (cont.)\nGS13N-21P0: Input Rating / Operating Voltage Range 170–265 VAC\nGS13N-21P0: Input Rating / Frequency Tolerance 47–63 Hz\nGS13N-21P0: IE2 Efficiency - Relative Power Loss 2.7%\nGS13N-21P0: Weight 0.6 kg\nGS13N-21P0: Cooling Method Convective\nGS13N-21P0: IP Rating IP20\n",
+    "source_type": "node_attachment",
+    "source_url": "node-doc/{upload}/03_gs10_user_manual.pdf",
+    "source_page": 27,
+    "page_start": 27,
+    "page_end": 27,
+    "ingest_route": "v2",
+    "is_private": true,
+    "verified": false,
+    "metadata": {
+     "source": "hub_node_attachment",
+     "node_id": "{node}",
+     "filename": "03_gs10_user_manual.pdf",
+     "uns_path": null,
+     "chunk_index": 18,
+     "table_models": [
+      "GS13N21P0"
+     ],
+     "table_unqualified": true,
+     "extraction_version": 7
+    }
+   },
+   {
+    "content": "230V Class – 3-Phase Model-Specific Specifications / GS10 230V Class Specifications; Frame Size A, B — Model Name: GS13N-2xPx — GS13N-22P0\nGS13N-22P0: Frame Size B1\nGS13N-22P0: hp 2\nGS13N-22P0: Output Rating / Max Motor Output hp [1]\nGS13N-22P0: Output Rating / (3-phase [1-phase]) kW 1.5\nGS13N-22P0: Output Rating / kW [0.75]\nGS13N-22P0: Output Rating / CT / Rated Output Capacity 2.9 kVA\nGS13N-22P0: Output Rating / CT / Rated Output Current A 7.5\nGS13N-22P0: Output Rating / CT / (3-phase [1-phase]) A [3.75]\nGS13N-22P0: Output Rating / CT / Carrier Frequency 2–15 kHz\nGS13N-22P0: Output Rating / VT / Rated Output Capacity 3.0 kVA\nGS13N-22P0: Output Rating / VT / Rated Output Current 8.0 A\nGS13N-22P0: Output Rating / VT / Carrier Frequency 2–15 kHz\nGS13N-22P0: Input Rating / CT / Rated Input Current 9.0 A\nGS13N-22P0: Input Rating / VT / Rated Input Current 9.6 A\nGS13N-22P0: Input Rating / Rated Voltage/Frequency 3-phase 200-240 VAC (-15% to +10%), 50/60 Hz\n",
+    "source_type": "node_attachment",
+    "source_url": "node-doc/{upload}/03_gs10_user_manual.pdf",
+    "source_page": 27,
+    "page_start": 27,
+    "page_end": 27,
+    "ingest_route": "v2",
+    "is_private": true,
+    "verified": false,
+    "metadata": {
+     "source": "hub_node_attachment",
+     "node_id": "{node}",
+     "filename": "03_gs10_user_manual.pdf",
+     "uns_path": null,
+     "chunk_index": 19,
+     "table_models": [
+      "GS13N22P0"
+     ],
+     "table_unqualified": true,
+     "extraction_version": 7
+    }
+   },
+   {
+    "content": "230V Class – 3-Phase Model-Specific Specifications / GS10 230V Class Specifications; Frame Size A, B — Model Name: GS13N-2xPx — GS13N-22P0 (cont.)\nGS13N-22P0: Input Rating / Operating Voltage Range 170–265 VAC\nGS13N-22P0: Input Rating / Frequency Tolerance 47–63 Hz\nGS13N-22P0: IE2 Efficiency - Relative Power Loss 2.4%\nGS13N-22P0: Weight 0.8 kg\nGS13N-22P0: Cooling Method Fan\nGS13N-22P0: IP Rating IP20\n",
+    "source_type": "node_attachment",
+    "source_url": "node-doc/{upload}/03_gs10_user_manual.pdf",
+    "source_page": 27,
+    "page_start": 27,
+    "page_end": 27,
+    "ingest_route": "v2",
+    "is_private": true,
+    "verified": false,
+    "metadata": {
+     "source": "hub_node_attachment",
+     "node_id": "{node}",
+     "filename": "03_gs10_user_manual.pdf",
+     "uns_path": null,
+     "chunk_index": 20,
+     "table_models": [
+      "GS13N22P0"
+     ],
+     "table_unqualified": true,
+     "extraction_version": 7
+    }
+   },
+   {
+    "content": "230V Class – 3-Phase Model-Specific Specifications / GS10 230V Class Specifications; Frame Size A, B — Model Name: GS13N-2xPx — unqualified\n(3-phase and 1-phase)\n1 - For use with three-phase motors only.\n2 - Please refer to “Appendix A - Accessories” for input fusing information.\n3 - For input power that is a floating ground or IT type, the RFI jumper must be removed. See\n“Floating Ground System (IT Systems)” on page 2–12 .\n4 - If application requires adjustment of the carrier frequency above default, refer to “Derate\n",
+    "source_type": "node_attachment",
+    "source_url": "node-doc/{upload}/03_gs10_user_manual.pdf",
+    "source_page": 27,
+    "page_start": 27,
+    "page_end": 27,
+    "ingest_route": "v2",
+    "is_private": true,
+    "verified": false,
+    "metadata": {
+     "source": "hub_node_attachment",
+     "node_id": "{node}",
+     "filename": "03_gs10_user_manual.pdf",
+     "uns_path": null,
+     "chunk_index": 21,
+     "table_models": [
+      "GS13N20P2",
+      "GS13N20P5",
+      "GS13N21P0",
+      "GS13N22P0"
+     ],
+     "table_unqualified": true,
+     "extraction_version": 7
+    }
+   }
+  ]
+ }
+}
