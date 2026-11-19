@@ -319,4 +319,20 @@ describe("retrieval reads the release stamp wherever it reads a row's model scop
     expect(lines.length).toBeGreaterThanOrEqual(5);
     for (const line of lines) expect(line).toContain("metadata->>'table_reviewed' AS table_reviewed, metadata->>'table_reviewed_sha' AS table_reviewed_sha");
   });
+  it("every passage query in manual-rag.ts carries the release guard, so a disabled approval reaches no answer (#5646 r4 F1)", () => {
+    const lines = readFileSync(join(__dirname, "..", "..", "lib", "manual-rag.ts"), "utf8").split("\n");
+    // Each retrieval SELECT (the lines reading table_models), up to its LIMIT, must add the guard.
+    const starts = lines.flatMap((l, i) => (l.includes("AS table_models") ? [i] : []));
+    expect(starts.length).toBeGreaterThanOrEqual(5);
+    for (const start of starts) {
+      const end = lines.findIndex((l, i) => i > start && /\bLIMIT\b/.test(l));
+      expect(end, `LIMIT after line ${start + 1}`).toBeGreaterThan(start);
+      expect(lines.slice(start, end).some((l) => /AND \$\{releaseGuard(On)?\}/.test(l)), `guard in the query at line ${start + 1}`).toBe(true);
+    }
+    // The cited-page read (safety statements) returns passages too.
+    const cited = lines.findIndex((l) => l.startsWith("export async function retrieveCitedPageChunks("));
+    const next = lines.findIndex((l, i) => i > cited && l.startsWith("}"));
+    expect(cited).toBeGreaterThan(-1);
+    expect(lines.slice(cited, next).some((l) => l.includes("AND ${activeReleaseSql()}"))).toBe(true);
+  });
 });

@@ -7,16 +7,17 @@
 // needs a forced, scoped reprocess (`scripts/reprocess-node-doc.ts --force`) of the uploads that
 // own chunks of an approved file: an ordinary reprocess is a no-op at the same extraction version.
 //
-// Withdrawal does not depend on the original file or its hash. Retrieval honours a stamped row
-// only while the shipped pins still carry its digest, so removing the approval from
-// `table-rule-pins.json` withholds every released row at once, with no reprocess and no bytes.
-// The stamp also makes the released rows directly queryable, which is the withdrawal path if the
-// whole PR (and with it that read check) is ever reverted.
+// Withdrawal does not depend on the original file or its hash. Every answer query admits a stamped
+// row only while the shipped pin of its file and page still carries its digest with the approval
+// switch enabled (`activeReleaseSql`), so setting `release` to "disabled" removes every released
+// row from every route at once, with no reprocess and no bytes. The stamp also makes the released
+// rows directly queryable: it is the fence that must read zero before a build without the guard
+// may serve.
 //
 // Only the PDF boundary is simulated (captured page 26 and 27 text items). The stub bytes stand
 // for the approved file: the pin lookup translates their hash to the approved file's REAL
 // page-keyed pin map, so page binding is exercised as shipped. `pins.reverted` stands for a build
-// whose pin file no longer carries this PR's reviewed digest.
+// whose pin file has the approval switch disabled.
 //
 // Requires (local/disposable only — never staging/prod):
 //   TEST_DATABASE_URL      postgres
@@ -42,7 +43,10 @@ const { testPool, BYTES, BYTES_B, pins } = vi.hoisted(() => {
     testPool: new PgPool({ connectionString: process.env.TEST_DATABASE_URL }) as Pool,
     BYTES: Buffer.from("%PDF-1.4 stub bytes standing for the approved GS10 file"),
     BYTES_B: Buffer.from("%PDF-1.4 stub bytes standing for the second approved GS10 file"),
-    pins: { reverted: false, revertedB: false },
+    // `reverted`: the approval switch of the stub file's page 26 is set to "disabled" (the supported
+    // rollback; the record itself stays). `lateWriter`: a process of the previous build that still
+    // has the approval enabled and commits after the switch is off for readers.
+    pins: { reverted: false, revertedB: false, lateWriter: false },
   };
 });
 const { APPROVED_SHA, SECOND_SHA } = vi.hoisted(() => ({
@@ -59,20 +63,27 @@ vi.mock("@/capabilities/table-rule-pins", async (importOriginal) => {
     [hash("sha256").update(BYTES).digest("hex")]: [APPROVED_SHA, () => pins.reverted],
     [hash("sha256").update(BYTES_B).digest("hex")]: [SECOND_SHA, () => pins.revertedB],
   };
-  // One lookup serves the writer AND the read check (`isReleaseActive` calls it), so a reverted
-  // file is reverted for both, exactly as an edited pin file would be.
-  const rulePinsForSha = (sha: string) => {
+  // One lookup serves the reader: the read check (`isReleaseActive`) and the SQL guard
+  // (`activeReleaseSql`) both see the switch exactly as an edited pin file would set it. The writer
+  // uses the same lookup, except as a late writer of the previous build (`lateWriter`).
+  const forReaders = (sha: string) => {
     if (!Object.hasOwn(stubs, sha)) return actual.rulePinsForSha(sha);
     const [realSha, reverted] = stubs[sha];
     const real = actual.rulePinsForSha(realSha)!;
     if (!reverted()) return real;
-    return Object.fromEntries(Object.entries(real).map(([page, pin]) => {
-      const without = { ...pin };
-      delete without.reviewed;
-      return [page, without];
-    }));
+    return Object.fromEntries(Object.entries(real).map(([page, pin]) => [page, pin.reviewed ? { ...pin, release: "disabled" } : pin]));
   };
-  return { ...actual, rulePinsForSha, isReleaseActive: (sha: unknown, page: unknown, digest: unknown) => actual.isReleaseActive(sha, page, digest, rulePinsForSha) };
+  const forWriter = (sha: string) => {
+    if (!pins.lateWriter || !Object.hasOwn(stubs, sha)) return forReaders(sha);
+    return actual.rulePinsForSha(stubs[sha][0]); // the previous build: approval still enabled
+  };
+  const documents = () => ({ ...actual.allRulePins(), ...Object.fromEntries(Object.keys(stubs).map((sha) => [sha, forReaders(sha)!])) });
+  return {
+    ...actual,
+    rulePinsForSha: forWriter,
+    isReleaseActive: (sha: unknown, page: unknown, digest: unknown) => actual.isReleaseActive(sha, page, digest, forReaders),
+    activeReleaseSql: (alias = "") => actual.activeReleaseSql(alias, documents()),
+  };
 });
 vi.mock("unpdf", async () => {
   const { textContentItem } = await import("@/capabilities/__fixtures__/text-content-item");
@@ -93,7 +104,7 @@ vi.mock("@/capabilities/pdf-page-label-reader", () => ({ readPageLabelsBounded: 
 
 import { reprocessNodeDocument } from "@/lib/node-knowledge-ingest";
 import { linkFileToUpload, parkOrReuseFile } from "@/lib/workspace-files";
-import { retrieveNodeChunks } from "@/lib/manual-rag";
+import { retrieveCitedPageChunks, retrieveNodeChunks } from "@/lib/manual-rag";
 
 const TENANT = randomUUID();
 const NODE = randomUUID();
@@ -156,13 +167,6 @@ const RELEASED_SQL = `SELECT k.tenant_id::text AS tenant_id, k.doc_id::text AS u
    AND k.metadata->>'table_reviewed' = '<digest>'
    AND k.tenant_id = '<tenant uuid>'::uuid
  GROUP BY 1, 2`;
-/** The PR body's withdrawal statement for a build that no longer has the read check (a full
- *  revert of this PR): withhold the stamped rows in place, keeping their text and their stamp. */
-const WITHDRAW_SQL = `UPDATE knowledge_entries k
-   SET metadata = (k.metadata - 'table_header') || '{"table_scope": "unresolved", "table_unqualified": true}'::jsonb
- WHERE k.source_type = 'node_attachment'
-   AND k.metadata->>'table_reviewed' = '<digest>'
-   AND k.tenant_id = '<tenant uuid>'::uuid`;
 
 async function inventory(): Promise<string[]> {
   return (await testPool.query<{ upload_id: string }>(fill(INVENTORY_SQL))).rows.map((r) => r.upload_id).sort();
@@ -181,6 +185,22 @@ async function ask(docId: string, catalog: string) {
   });
   const cites51 = chunks.filter((c) => c.content.includes(LINE_5_1));
   return { chunks, cites51, diagnostics };
+}
+/** Namespace document chat (mira-hub/src/app/api/namespace/node/[id]/chat/route.ts): the opened
+ *  document, no catalog number, no identity. Round 4 F1: this route served withdrawn rows. */
+async function docChat(docId: string, question = "GS11N-20P2 rated input current 5.1 A") {
+  const node = (await testPool.query<{ n: string }>("SELECT kg_entity_id::text AS n FROM hub_uploads WHERE id = $1::uuid", [docId])).rows[0].n;
+  return retrieveNodeChunks(client, TENANT, question, { nodeId: node, unsPath: null, docId, approvedSourceDocIds: [docId] });
+}
+/** Any chunk that would carry a withdrawn value into an answer. */
+const carries51 = (chunks: Array<{ content: string }>) => chunks.filter((c) => c.content.includes("5.1 A"));
+/** The rollback fence for retiring the read check: rows still carrying a release stamp. */
+const STAMPED_SQL = `SELECT count(*)::int AS n FROM knowledge_entries k
+ WHERE k.source_type = 'node_attachment' AND k.metadata->>'table_reviewed' IS NOT NULL
+   AND k.tenant_id = '<tenant uuid>'::uuid`;
+async function stampedCount(docId?: string): Promise<number> {
+  const sql = fill(STAMPED_SQL) + (docId ? ` AND k.doc_id = '${docId}'::uuid` : "");
+  return (await testPool.query<{ n: number }>(sql)).rows[0].n;
 }
 async function stored(docId: string) {
   const { rows } = await testPool.query<{ content: string; page: number; meta: Record<string, unknown> }>(
@@ -296,14 +316,17 @@ describe.skipIf(!READY)("GS10 page 26 reviewed pin: stored rows on rollout and w
     pins.reverted = false;
     expect((await ask(doc, "GS11N-20P2")).cites51).toHaveLength(1);
 
-    // Route 2, for a build that no longer has the read check: withhold the stamped rows in place.
-    const updated = await testPool.query(fill(WITHDRAW_SQL).replace("AND k.tenant_id", `AND k.doc_id = '${doc}'::uuid AND k.tenant_id`));
-    expect(updated.rowCount).toBe(10);
-    expect((await ask(doc, "GS11N-20P2")).cites51).toEqual([]); // withheld even with the approval live
+    // With the switch off, no route serves it, though the original is gone.
+    expect(carries51(await docChat(doc)).length).toBeGreaterThan(0); // precondition: the route finds it while enabled
+    pins.reverted = true;
+    expect(carries51(await docChat(doc))).toEqual([]);
+    // Retiring the read check is fenced on zero stamped rows. This upload cannot be re-written, so
+    // its rows keep their stamps and the fence stays closed: a build without the check must not ship.
+    expect(await stampedCount(doc)).toBe(10);
     const after = await stored(doc);
-    expect(releasedOn(after, 26)).toBe(0);
     expect(stampedOn(after, 26)).toBe(10); // the stamp is kept as the record of what was withdrawn
-    expect(after.some((r) => r.content.includes(LINE_5_1))).toBe(true); // text kept, withheld
+    expect(after.some((r) => r.content.includes(LINE_5_1))).toBe(true); // historical text kept
+    pins.reverted = false;
   });
 
   it("rollout: an upload stored before this build stays withheld until a forced reprocess re-writes it", async () => {
@@ -379,5 +402,49 @@ describe.skipIf(!READY)("GS10 page 26 reviewed pin: stored rows on rollout and w
     expect(await inventory()).toContain(doc);
     await reprocessNodeDocument({ tenantId: TENANT, uploadId: doc, force: true });
     expect((await ask(doc, "GS11N-20P2")).cites51.map((c) => c.sourcePage)).toEqual([26]);
+  });
+  it("universal revocation: a disabled approval removes its rows from document chat, model-specific chat and cited-page reads (#5646 r4 F1)", async () => {
+    pins.reverted = false; pins.lateWriter = false;
+    const doc = await newUpload();
+    expect((await reprocessNodeDocument({ tenantId: TENANT, uploadId: doc, bytes: BYTES })).action).toBe("reprocessed");
+    // Released: both routes find page 26 (so the withdrawal below is not vacuous).
+    expect(carries51(await docChat(doc)).length).toBeGreaterThan(0);
+    expect((await ask(doc, "GS11N-20P2")).cites51.map((c) => c.sourcePage)).toEqual([26]);
+    const before = await stored(doc);
+    const page26 = before.filter((r) => r.page === 26);
+    const sourceUrl = (await testPool.query<{ u: string }>("SELECT source_url AS u FROM knowledge_entries WHERE doc_id = $1::uuid LIMIT 1", [doc])).rows[0].u;
+
+    pins.reverted = true; // the switch is turned off; nothing else changes
+    expect(carries51(await docChat(doc))).toEqual([]); // no catalog number: the route round 4 found
+    expect(carries51(await docChat(doc, "what is the rated input current on page 26"))).toEqual([]);
+    expect((await ask(doc, "GS11N-20P2")).cites51).toEqual([]);
+    expect(carries51((await ask(doc, "GS11N-20P2")).chunks)).toEqual([]);
+    const cited = await retrieveCitedPageChunks(client, TENANT, [{ docId: doc, sourceUrl, page: 26 }], { keep: () => true });
+    expect(carries51(cited)).toEqual([]);
+    // Historical evidence is kept as it was: the rows, their text and their stamps.
+    expect(await stored(doc)).toEqual(before);
+    expect(page26.some((r) => r.content.includes(LINE_5_1))).toBe(true);
+
+    pins.reverted = false; // enabled again: the same rows answer again, without a reprocess
+    expect(carries51(await docChat(doc)).length).toBeGreaterThan(0);
+    expect((await ask(doc, "GS11N-20P2")).cites51.map((c) => c.sourcePage)).toEqual([26]);
+  });
+
+  it("in-flight indexing: a late writer of the previous build commits released rows after the switch is off, and no route serves them", async () => {
+    pins.reverted = true; pins.lateWriter = true; // readers: disabled. writer: the previous build.
+    const doc = await newUpload();
+    expect((await reprocessNodeDocument({ tenantId: TENANT, uploadId: doc, bytes: BYTES })).action).toBe("reprocessed");
+    expect(stampedOn(await stored(doc), 26)).toBe(10); // the late write did land released, stamped rows
+    pins.lateWriter = false;
+    expect(carries51(await docChat(doc))).toEqual([]);
+    expect((await ask(doc, "GS11N-20P2")).cites51).toEqual([]);
+    // The fence finds them, and a forced reprocess under the disabled build clears them.
+    expect(await stampedCount(doc)).toBe(10);
+    expect(await reprocessNodeDocument({ tenantId: TENANT, uploadId: doc, bytes: BYTES, force: true }))
+      .toMatchObject({ action: "reprocessed" });
+    expect(await stampedCount(doc)).toBe(0);
+    expect(carries51(await docChat(doc)).length).toBeGreaterThan(0); // withheld rows remain readable text, as on main
+    expect((await ask(doc, "GS11N-20P2")).cites51).toEqual([]);
+    pins.reverted = false;
   });
 });

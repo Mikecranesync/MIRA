@@ -17,8 +17,17 @@ import pins from "./table-rule-pins.json";
 
 export type VerticalRule = { x: number; y0: number; y1: number };
 /** `reviewed`: digest of the page's model-scope rows as checked against the page image
- *  (`model-scope-gate.ts`); absent = the page's rows were not reviewed. */
-export type PagePin = { fingerprint: string; rules: readonly VerticalRule[]; reviewed?: string };
+ *  (`model-scope-gate.ts`); absent = the page's rows were not reviewed.
+ *  `release`: the approval switch of a reviewed page. Only the exact value `"enabled"` releases the
+ *  reviewed rows; `"disabled"` (or anything else, or nothing) withdraws them everywhere while the
+ *  approved digest stays recorded for the drift checks. Turning an approval off is a one-word
+ *  change, never a deletion. */
+export type PagePin = { fingerprint: string; rules: readonly VerticalRule[]; reviewed?: string; release?: string };
+
+/** The reviewed digest of a pin only while its approval switch is enabled. */
+function releasedDigest(pin: PagePin): string | null {
+  return pin.release === "enabled" && typeof pin.reviewed === "string" ? pin.reviewed : null;
+}
 /** Page number (1-based, as a string key) to that page's pin. */
 export type DocumentRulePins = Readonly<Record<string, PagePin>>;
 
@@ -30,7 +39,7 @@ export function rulePinsForSha(sha256: string): DocumentRulePins | null {
 }
 
 /** True while the shipped pin of exactly this file (`sha256`) and page still records `digest` as
- *  that page's reviewed rows. A stored row released by the gate carries all three
+ *  that page's reviewed rows and its approval switch is enabled. A stored row released by the gate carries all three
  *  (`metadata.table_reviewed_sha`, its page, `metadata.table_reviewed`); retrieval honours the
  *  release only while this holds, so removing an approval from the pin file, for one file or for
  *  all, withdraws exactly the rows released under it, with no reprocess and no need for the
@@ -44,7 +53,39 @@ export function isReleaseActive(sha256: unknown, pageNumber: unknown, digest: un
   if (typeof page !== "number" || !Number.isInteger(page) || page < 1) return false;
   const document = lookup(sha256);
   if (!document || !Object.hasOwn(document, String(page))) return false;
-  return document[String(page)].reviewed === digest;
+  return releasedDigest(document[String(page)]) === digest;
+}
+
+/** The shipped pins of every pinned file, keyed by SHA-256 (for `activeReleaseSql`). */
+export function allRulePins(): Readonly<Record<string, DocumentRulePins>> {
+  return Object.fromEntries(Object.entries(PINNED).map(([sha, document]) => [sha, document.pages]));
+}
+
+/** SQL condition (no parameters) on a `knowledge_entries` row that is true unless the row carries
+ *  a release stamp whose release is no longer active. Every query that can put a node row into an
+ *  answer, a prompt or a citation adds `AND <this>`, so a withdrawn approval removes its released
+ *  rows from every route at once, whatever the question names, with no reprocess and no need for
+ *  the original file; the stored row itself is left as it is. The active releases are exactly the
+ *  file, page and digest triples whose pin is enabled (`isReleaseActive`); with none, no stamped
+ *  row qualifies. The values are pin-file hex and digits, validated here before they reach SQL.
+ *  `documents` exists for tests that stand stub bytes in for a pinned file. */
+export function activeReleaseSql(alias = "",
+  documents: Readonly<Record<string, DocumentRulePins>> = allRulePins()): string {
+  if (alias !== "" && !/^[a-z_][a-z0-9_]*$/.test(alias)) throw new Error(`activeReleaseSql: bad alias ${alias}`);
+  const col = (name: string) => (alias ? `${alias}.${name}` : name);
+  const stamp = `${col("metadata")}->>'table_reviewed'`;
+  const active: string[] = [];
+  for (const sha of Object.keys(documents).sort()) {
+    if (!/^[0-9a-f]{64}$/.test(sha)) continue;
+    const pages = documents[sha];
+    for (const page of Object.keys(pages).sort()) {
+      const digest = releasedDigest(pages[page]);
+      if (digest === null || !/^[1-9]\d*$/.test(page) || !/^[0-9a-f]{64}$/.test(digest)) continue;
+      active.push(`('${sha}', '${page}', '${digest}')`);
+    }
+  }
+  if (active.length === 0) return `(${stamp} IS NULL)`;
+  return `(${stamp} IS NULL OR (${col("metadata")}->>'table_reviewed_sha', COALESCE(${col("page_start")}, ${col("source_page")})::text, ${stamp}) IN (${active.join(", ")}))`;
 }
 
 /** Identity of a page's positioned text: every item's text and position, in reading order. */
@@ -70,10 +111,12 @@ function matchingPin(document: DocumentRulePins | null, pageNumber: number,
 }
 
 /** The reviewed-rows digest of one page of a pinned document: null unless the document is
- *  pinned, the page is pinned, its text geometry matches and its rows were reviewed. */
+ *  pinned, the page is pinned, its text geometry matches, its rows were reviewed and that
+ *  approval is enabled. */
 export function reviewedRowsDigest(document: DocumentRulePins | null, pageNumber: number,
   items: ReadonlyArray<{ str: string; x: number; y: number }>): string | null {
-  return matchingPin(document, pageNumber, items)?.reviewed ?? null;
+  const pin = matchingPin(document, pageNumber, items);
+  return pin ? releasedDigest(pin) : null;
 }
 
 /** A rule runs through a text line only when it passes below the baseline and up through the
