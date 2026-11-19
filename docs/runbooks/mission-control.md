@@ -128,9 +128,9 @@ order:
 1. Have the staging owner get approval for the guarded Compose change and map
    `MIRA_EQUIPMENT_NAV` into the staging Hub service with an off default. Compose
    the reviewed navigation repair and the Hub version probe in the approved
-   staging build. When combining them, have the version probe use the same
-   `equipmentNavEnabled()` reader as the equipment routes so its digest
-   describes the setting those routes apply.
+   staging build. The version probe and navigation repair use the same
+   `equipmentNavEnabled()` reader so that the digest describes the setting
+   the repaired routes apply.
 2. Use the [normal staging deploy](staging-vps.md#routine-deploy) to verify the
    composed build with the staging flag off and then with approved
    `MIRA_EQUIPMENT_NAV=1`. On each deployment record the approved build SHA and

@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 
 import { NextResponse } from "next/server";
 
+import { equipmentNavEnabled } from "@/capabilities/equipment-browser/flag";
 import { deploymentGeneration } from "@/lib/inference/runtime-identity";
 
 export const dynamic = "force-dynamic";
@@ -19,9 +20,8 @@ export const dynamic = "force-dynamic";
  * recognize a same-image restart or a change to the equipment navigation flag.
  */
 export function GET() {
-  const nav = process.env.MIRA_EQUIPMENT_NAV;
   const configurationSha256 = createHash("sha256")
-    .update(JSON.stringify({ equipmentNavigation: nav === "1" || nav === "true" }))
+    .update(JSON.stringify({ equipmentNavigation: equipmentNavEnabled() }))
     .digest("hex");
 
   return NextResponse.json({
