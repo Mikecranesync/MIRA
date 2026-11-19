@@ -209,6 +209,7 @@ FactoryLM Foreman (`factorylm-foreman` in `docker-compose.saas.yml`) is a **sepa
 |---|---|---|
 | `MIRA_CANONICAL_SEAM` | unset (**off**) | `"1"` routes the Hub notebook-chat turn through the canonical cascade (OpenAI → OpenRouter, Hard Constraint #2) and emits a per-turn `usage` frame + `turn.usage` spend log. Any other value is off; the pre-existing inline cascade is the fallback. |
 | `MIRA_CHAT_V2_ENABLED` | unset / `0` (**off**) | Hub rollout gate for the mobile ChatV2 conversation surface. Exact `"1"` adds `chat_v2` to authenticated users' `/api/me.capabilities`; any other value removes it and forces the legacy client surface. Unset to roll back without an APK release. |
+| `MIRA_EQUIPMENT_NAV` | unset / `0` (**off**) | Hub equipment-first navigation (#5625/#5642): `"1"` or `"true"` enables the `/api/equipment-browser/*` routes and the notebook's Find equipment panel; any other value returns 404 and the panel renders nothing. Read at call time. **Staging only:** forwarded by `docker-compose.staging-vps.yml` (default `0`), not listed in `docker-compose.saas.yml`, so production stays off. Recreate the staging Hub after changing it. |
 | `MIRA_TURN_MAX_OUTPUT_TOKENS` | `4000` | Per-turn output ceiling under the seam. Caps requested `max_tokens` and aborts a runaway stream (`status: "capped"`). Non-numeric or non-positive values fall back to the default rather than disabling the cap. |
 | `TOGETHERAI_API_KEY` / `TOGETHERAI_MODEL` | — | Third canonical provider. Same names the Python router uses, so the two runtimes cannot serve different models. |
 
