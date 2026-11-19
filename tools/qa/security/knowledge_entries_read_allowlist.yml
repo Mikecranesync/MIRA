@@ -1772,7 +1772,7 @@ approved:
       [TENANT, enrichTenant, doc, LINE_5_1]);
   "mira-hub/src/lib/__tests__/gs10-p26-reviewed-rollout.integration.test.ts:639":
     approved_classification: TENANT-ONLY
-    query_sha256: "b180d3a622965e83631377ff5221a3e1b47798f6486c5406c336a3d16048b8f1"
+    query_sha256: "86c7a365148574faeccdd78a96b40fc4b748010c3de43353c563e134e0c5158c"
     reason: "PR #5646 test (disposable PostgreSQL only: TEST_DATABASE_URL + MIRA_TEST_DB_CONFIRM=DISPOSABLE): reads, copies or deletes only rows this test wrote for its own random tenant uuid; never a shared or real tenant."
     query_snippet: |
       FROM knowledge_entries WHERE tenant_id = $1::uuid AND doc_id = $3::uuid AND metadata->>'chunk_index' <> '9999'
