@@ -6,16 +6,18 @@
  * centred on the rows they cover. A value line stored without them cannot be told apart from its
  * sibling (page 26: CT and VT Rated Output Capacity; page 27: the CT values read as VT). Page and
  * gold are the captured real ones; the reader, the pins and the gate are production code, through
- * the real writer. No page is recorded as reviewed here: the gate stays closed by default.
+ * the real writer. Page 26 of the two approved GS10 files is the one reviewed page (owner review,
+ * #5232, 2026-11-18); page 27 is not reviewed and stays withheld.
  */
 import { describe, expect, it, vi } from "vitest";
 import gs10p26 from "../__fixtures__/table-rows/gs10-p26-230v-1ph.json";
 import gs10p27 from "../__fixtures__/table-rows/gs10-p27-230v-3ph.json";
-import candidateP26 from "../__fixtures__/reviewed-pages/gs10-rev-b-p26.candidate.json";
+import reviewedP26 from "../__fixtures__/reviewed-pages/gs10-rev-b-p26.reviewed.json";
 import goldP27 from "../__fixtures__/reviewed-pages/gs10-rev-b-p27.gold.json";
 import { affirmsModel, scopeDigest, type ScopedRow } from "../model-scope-gate";
 import { layoutItemsFromTextContent } from "../pdf-layout-items";
 import pins from "../table-rule-pins.json";
+import { layoutFingerprint } from "../table-rule-pins";
 
 vi.hoisted(() => { process.env.NODE_EMBED_ON_WRITE = "0"; });
 
@@ -74,9 +76,9 @@ function stored(): Stored[] {
 }
 /** The real writer over one captured page of the pinned GS10 file. Returns the rows the reader
  *  produced (what the gate was given) and the rows that were stored (what the gate returned). */
-async function ingest(page: Page, reviewed?: string) {
+async function ingest(page: Page, reviewed?: string, sha: string = reviewedP26.sha256) {
   captured.length = 0; gated.length = 0;
-  pdf.pages = [page]; pdf.sha = candidateP26.sha256; pdf.reviewed = reviewed;
+  pdf.pages = [page]; pdf.sha = sha; pdf.reviewed = reviewed;
   vi.resetModules();
   const { writePdfChunksForNode } = await import("@/lib/node-knowledge-ingest");
   await writePdfChunksForNode({ tenantId: "11111111-1111-4111-8111-111111111111", uploadId: "up-1", nodeId: "node-1", unsPath: null,
@@ -120,7 +122,7 @@ describe("rotation is read from the PDF, not guessed", () => {
 });
 
 describe("GS10 page 26: all 90 values, each under its own model with the labels the page prints", () => {
-  const gold = candidateP26.gold as Gold[];
+  const gold = reviewedP26.gold as Gold[];
   it("the captured page has the rotated items the real PDF has, not only the two labels (precondition)", () => {
     // As read from the real file by layoutItemsFromTextContent: besides the two group cells, the
     // PDF also rotates empty and space items and the footnote mark "2". A capture that keeps only
@@ -198,7 +200,7 @@ describe("GS10 page 26: the rotated footnote mark is read by its size, not its e
     // The padded string changes the layout fingerprint, so give the page the real page 26 rules
     // explicitly (as a matching pin would): only the mark's string differs from the control.
     const rules = (pins as unknown as { documents: Record<string, { pages: Record<string, { rules: unknown }> }> })
-      .documents[candidateP26.sha256].pages["26"].rules;
+      .documents[reviewedP26.sha256].pages["26"].rules;
     const padded = { ...P26, items: P26.items.map((i, k) => (k === at ? { ...i, str: " 2 " } : i)), rules } as Page;
     const control = (await ingest(P26)).read;
     const read = (await ingest(padded)).read;
@@ -207,33 +209,97 @@ describe("GS10 page 26: the rotated footnote mark is read by its size, not its e
   });
 });
 
-describe("the gate is unchanged: these lines answer only from a reviewed page", () => {
-  const line = "GS11N-20P2: Input Rating / CT / Rated Input Current 5.1 A";
-  it("with the shipped pins (page 26 not reviewed) the 5.1 A line is stored, but withheld", async () => {
-    const { read, stored } = await ingest(P26);
-    expect(modelLines(read)).toContain(line); // the reader states it, so withholding is not vacuous
-    expect(stored.some((r) => r.content.includes(line))).toBe(true);
-    expect(stored.filter((r) => r.content.includes(line)).every((r) => r.meta.table_unqualified === true)).toBe(true);
+// The owner's review of page 26 (#5232, 2026-11-18): the approved identity, written out here and
+// not read from the pin file or the fixture, so neither can be changed to make this pass.
+const APPROVED = {
+  digest: "d570e81e1fc665e0fa75879a2624aab107f0765b83d6be1acf013382f70b91d5",
+  fingerprint: "b0a1fef1bf04c8b095735fd2edc9db31933b1bd083756735a0f71498351c4c9d",
+  files: ["090aa1b36250be11e1da33526a4b995492593c6fc35aa82ad18115e411dcc5e4", "90fa490a572558d799c8e8a53ba5f074f36182330c636015a473fd0e43bd1fab"],
+};
+const LINE_5_1 = "GS11N-20P2: Input Rating / CT / Rated Input Current 5.1 A";
+type PinPage = { fingerprint: string; reviewed?: string };
+const pinDocs = (pins as unknown as { documents: Record<string, { pages: Record<string, PinPage> }> }).documents;
+const reviewedRecords = Object.entries(pinDocs).flatMap(([sha, doc]) =>
+  Object.entries(doc.pages).filter(([, pin]) => pin.reviewed !== undefined).map(([page, pin]) => ({ sha, page, ...pin })));
+
+describe("drift guard: page 26 answers only while it is exactly the page the owner reviewed", () => {
+  it("on the two approved files only page 26 is reviewed, with the approved layout and digest", () => {
+    for (const sha of APPROVED.files) {
+      expect(reviewedRecords.filter((r) => r.sha === sha).map(({ page, fingerprint, reviewed }) => ({ page, fingerprint, reviewed })))
+        .toEqual([{ page: "26", fingerprint: APPROVED.fingerprint, reviewed: APPROVED.digest }]);
+    }
   });
-  it("a review recorded for the page as it was read before this change does not carry over", async () => {
-    // The digest of page 26 as the 117860bce reader read it (the candidate record before this change).
-    const before = "5a68f20d187c128b083ef8a1c663b6b30a8e8317efecc244dc9f94dcc3bb2b87";
-    expect(candidateP26.digest).not.toBe(before);
-    const { stored } = await ingest(P26, before);
-    expect(stored.some((r) => r.content.includes(line))).toBe(true); // stored, so withholding is not vacuous
-    expect(stored.filter((r) => r.content.includes(line)).every((r) => r.meta.table_unqualified === true)).toBe(true);
+  it("the approved digest is recorded for no other file or page", () => {
+    expect(reviewedRecords.filter((r) => r.reviewed === APPROVED.digest).map((r) => `${r.sha}:${r.page}`).sort())
+      .toEqual(APPROVED.files.map((sha) => `${sha}:26`).sort());
   });
-  it("reviewed for exactly these rows: 5.1 A answers GS11N-20P2 only, from page 26, under Input Rating / CT", async () => {
-    const digest = scopeDigest((await ingest(P26)).read);
-    const { stored } = await ingest(P26, digest);
-    const own = stored.filter((r) => r.content.includes(line));
+  it("the captured page 26 still has the approved layout", () => {
+    expect(layoutFingerprint(P26.items)).toBe(APPROVED.fingerprint);
+  });
+  it("the reader still produces exactly the approved rows (a failure here means page 26 must be reviewed again)", async () => {
+    const { read } = await ingest(P26);
+    expect(read.filter(affirmsModel).map((r) => r.content)).toEqual(reviewedP26.rows.map((r) => r.content));
+    expect(scopeDigest(read)).toBe(APPROVED.digest);
+    expect(reviewedP26.digest).toBe(APPROVED.digest);
+  });
+  it.each(APPROVED.files)("shipped pins, file %s: 5.1 A answers GS11N-20P2 only, from page 26, under Input Rating / CT", async (sha) => {
+    const { read, stored } = await ingest(P26, undefined, sha);
+    expect(gated.flatMap((g) => g.output)).toEqual(gated.flatMap((g) => g.input)); // nothing withheld on the reviewed page
+    expect(stored.filter((r) => r.meta.table_unqualified !== true && (r.meta.table_models as string[] | undefined)?.length === 1)).toHaveLength(10);
+    const own = stored.filter((r) => r.content.includes(LINE_5_1));
     expect(own).toHaveLength(1);
     expect(own[0]).toMatchObject({ page: 26 });
     expect(own[0].meta.table_models).toEqual(["GS11N20P2"]);
     expect(own[0].meta.table_unqualified).toBeUndefined();
-    expect(own[0].content).not.toMatch(/: Input Rating \/ CT \/ Rated Input Current (?!5\.1 A)/);
     expect(own[0].content).toContain("GS11N-20P2: Input Rating / VT / Rated Input Current 5.8 A");
+    // No other model is stated at 5.1 A for CT rated input current.
+    expect(modelLines(read).filter((l) => / Input Rating \/ CT \/ Rated Input Current 5\.1 A$/.test(l))).toEqual([LINE_5_1]);
     expect(stored.filter((r) => r.content.includes("5.1 A") && r.meta.table_unqualified !== true)
       .every((r) => (r.meta.table_models as string[]).join() === "GS11N20P2")).toBe(true);
+  });
+});
+
+describe("controls: everything the owner did not review stays withheld", () => {
+  const affirmsStored = (r: Stored) => affirmsModel({ content: r.content, tableModels: r.meta.table_models as string[] | undefined,
+    tableUnqualified: r.meta.table_unqualified as boolean | undefined, tableScope: r.meta.table_scope as ScopedRow["tableScope"] });
+  const withheldOnly = (rows: Stored[]) => rows.filter((r) => r.content.includes(LINE_5_1)).every((r) => r.meta.table_unqualified === true);
+  it("a review recorded for the page as it was read before #5615 does not carry over", async () => {
+    // The digest of page 26 as the 117860bce reader read it (the candidate record before #5615).
+    const before = "5a68f20d187c128b083ef8a1c663b6b30a8e8317efecc244dc9f94dcc3bb2b87";
+    expect(APPROVED.digest).not.toBe(before);
+    const { stored } = await ingest(P26, before);
+    expect(stored.some((r) => r.content.includes(LINE_5_1))).toBe(true); // stored, so withholding is not vacuous
+    expect(withheldOnly(stored)).toBe(true);
+  });
+  it("the same page under another pinned GS10 file that was not approved affirms nothing", async () => {
+    const other = "eca93c34";
+    const sha = Object.keys(pinDocs).find((k) => k.startsWith(other))!;
+    expect(sha, "precondition: another pinned GS10 file").toBeDefined();
+    expect(APPROVED.files).not.toContain(sha);
+    const { read, stored } = await ingest(P26, undefined, sha);
+    // Without this file's own pin the table ends at the first group cell; the reader still affirms
+    // the model columns above it, so the gate has something to withhold.
+    expect(read.filter(affirmsModel).length).toBeGreaterThan(0);
+    expect(stored.some((r) => r.content.includes("Rated Input Current"))).toBe(true); // the text is kept
+    expect(stored.filter(affirmsStored)).toEqual([]);
+  });
+  it("a file that is not pinned at all affirms nothing", async () => {
+    const { read, stored } = await ingest(P26, undefined, "1".repeat(64));
+    expect(read.filter(affirmsModel).length).toBeGreaterThan(0);
+    expect(stored.some((r) => r.content.includes("Rated Input Current"))).toBe(true);
+    expect(stored.filter(affirmsStored)).toEqual([]);
+  });
+  it("page 26 with one value changed is not the reviewed page and affirms nothing", async () => {
+    const at = P26.items.findIndex((i) => i.str.trim() === "5.1");
+    expect(at, "precondition: the capture prints 5.1").toBeGreaterThan(-1);
+    const changed = { ...P26, items: P26.items.map((i, k) => (k === at ? { ...i, str: i.str.replace("5.1", "5.7") } : i)) } as Page;
+    const { read, stored } = await ingest(changed);
+    expect(read.filter(affirmsModel).length).toBeGreaterThan(0); // the reader affirms, so withholding is not vacuous
+    expect(stored.filter(affirmsStored)).toEqual([]);
+  });
+  it("reviewed for exactly these rows by a test-supplied record: the gate's own affirm path", async () => {
+    const digest = scopeDigest((await ingest(P26)).read);
+    const { stored } = await ingest(P26, digest);
+    expect(stored.filter((r) => r.content.includes(LINE_5_1)).map((r) => r.meta.table_models)).toEqual([["GS11N20P2"]]);
   });
 });
