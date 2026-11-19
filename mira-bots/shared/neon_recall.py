@@ -188,9 +188,11 @@ def approval_gate_enabled() -> bool:
 # metadata.table_reviewed, and the Hub admits it only while its approval is enabled in
 # mira-hub/src/capabilities/table-rule-pins.json. This service cannot read that file, so it never
 # serves a released row at all: an approval switched off can then never reach a bot answer, and
-# an approved one is served by the Hub only. Rows without the stamp (every row but those) are
-# unaffected.
-_HUB_RELEASE_EXCLUDED_SQL = " AND (metadata->>'table_reviewed') IS NULL"
+# an approved one is served by the Hub only. Rows the Hub held (indexed while that approval was
+# off, metadata.table_held) are excluded the same way. Rows with neither mark are unaffected.
+_HUB_RELEASE_EXCLUDED_SQL = (
+    " AND (metadata->>'table_reviewed') IS NULL AND (metadata->>'table_held') IS NULL"
+)
 
 
 def _approval_filter_sql() -> str:

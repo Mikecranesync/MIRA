@@ -67,6 +67,9 @@ class Tools:
                 FROM knowledge_entries
                 WHERE content ILIKE %s
                   AND embedding IS NOT NULL
+                  -- #5646: never a Hub row released or held under a reviewed table approval
+                  AND (metadata->>'table_reviewed') IS NULL
+                  AND (metadata->>'table_held') IS NULL
                 LIMIT 3
                 """,
                 (f"%{part_number}%",),

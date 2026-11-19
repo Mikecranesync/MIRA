@@ -62,7 +62,11 @@ export function allRulePins(): Readonly<Record<string, DocumentRulePins>> {
 }
 
 /** SQL condition (no parameters) on a `knowledge_entries` row that is true unless the row carries
- *  a release stamp whose release is no longer active. Every query that can put a node row into an
+ *  a release stamp (`metadata.table_reviewed`) or a hold mark (`metadata.table_held`) whose
+ *  approval is not enabled now. A hold mark is written on every row of a page whose approval is
+ *  recorded but switched off when the page is indexed (`heldRowsDigest`), so content an approval
+ *  covers stays out of every answer while that approval is off, however and whenever it was
+ *  indexed. Every query that can put a node row into an
  *  answer, a prompt or a citation adds `AND <this>`, so a withdrawn approval removes its released
  *  rows from every route at once, whatever the question names, with no reprocess and no need for
  *  the original file; the stored row itself is left as it is. The active releases are exactly the
@@ -74,6 +78,8 @@ export function activeReleaseSql(alias = "",
   if (alias !== "" && !/^[a-z_][a-z0-9_]*$/.test(alias)) throw new Error(`activeReleaseSql: bad alias ${alias}`);
   const col = (name: string) => (alias ? `${alias}.${name}` : name);
   const stamp = `${col("metadata")}->>'table_reviewed'`;
+  const held = `${col("metadata")}->>'table_held'`;
+  const page = `COALESCE(${col("page_start")}, ${col("source_page")})::text`;
   const active: string[] = [];
   for (const sha of Object.keys(documents).sort()) {
     if (!/^[0-9a-f]{64}$/.test(sha)) continue;
@@ -84,8 +90,10 @@ export function activeReleaseSql(alias = "",
       active.push(`('${sha}', '${page}', '${digest}')`);
     }
   }
-  if (active.length === 0) return `(${stamp} IS NULL)`;
-  return `(${stamp} IS NULL OR (${col("metadata")}->>'table_reviewed_sha', COALESCE(${col("page_start")}, ${col("source_page")})::text, ${stamp}) IN (${active.join(", ")}))`;
+  if (active.length === 0) return `(${stamp} IS NULL AND ${held} IS NULL)`;
+  const triples = active.join(", ");
+  return `((${stamp} IS NULL OR (${col("metadata")}->>'table_reviewed_sha', ${page}, ${stamp}) IN (${triples}))` +
+    ` AND (${held} IS NULL OR (${col("metadata")}->>'table_held_sha', ${page}, ${held}) IN (${triples})))`;
 }
 
 /** Identity of a page's positioned text: every item's text and position, in reading order. */
@@ -117,6 +125,17 @@ export function reviewedRowsDigest(document: DocumentRulePins | null, pageNumber
   items: ReadonlyArray<{ str: string; x: number; y: number }>): string | null {
   const pin = matchingPin(document, pageNumber, items);
   return pin ? releasedDigest(pin) : null;
+}
+
+/** The recorded digest of one page whose approval is recorded but NOT enabled (same geometry check
+ *  as `reviewedRowsDigest`); null otherwise. The writer marks that page's rows as held under it
+ *  when they are exactly the reviewed rows, so the content stays out of answers until the
+ *  approval is enabled again (`activeReleaseSql`). */
+export function heldRowsDigest(document: DocumentRulePins | null, pageNumber: number,
+  items: ReadonlyArray<{ str: string; x: number; y: number }>): string | null {
+  const pin = matchingPin(document, pageNumber, items);
+  if (!pin || typeof pin.reviewed !== "string" || releasedDigest(pin) !== null) return null;
+  return pin.reviewed;
 }
 
 /** A rule runs through a text line only when it passes below the baseline and up through the

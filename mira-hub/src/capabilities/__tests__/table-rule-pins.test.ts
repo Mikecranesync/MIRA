@@ -5,7 +5,7 @@ import gs10p27 from "../__fixtures__/table-rows/gs10-p27-230v-3ph.json";
 import micro820 from "../__fixtures__/table-rows/micro820-in009-p16-20-scope.json";
 import ml1100 from "../__fixtures__/table-rows/ml1100-p114-p120-ratings-scope.json";
 import pinFile from "../table-rule-pins.json";
-import { activeReleaseSql, allRulePins, isReleaseActive, pinnedRules, reviewedRowsDigest, rulePinsForSha, rulesCrossing } from "../table-rule-pins";
+import { activeReleaseSql, allRulePins, heldRowsDigest, isReleaseActive, pinnedRules, reviewedRowsDigest, rulePinsForSha, rulesCrossing } from "../table-rule-pins";
 import { pageLayoutItems } from "../pdf-layout-items";
 
 // #5503 F14/F15: table rules are pinned data, never read from a page's drawing. Nothing here is
@@ -63,6 +63,15 @@ describe("pinned table rules: the real pin file", () => {
       for (const page of [2, 25, 27, 28, 30]) expect(reviewedRowsDigest(pins, page, gs10p26.items)).toBeNull();
       expect(reviewedRowsDigest(pins, 26, gs10p26.items.slice(1))).toBeNull(); // the layout must match
       expect(reviewedRowsDigest(pins, 27, gs10p27.items)).toBeNull(); // page 27's own layout, not reviewed
+      // Exactly one of release and hold applies to the recorded page, by its switch (#5646 r4).
+      expect(heldRowsDigest(pins, 26, gs10p26.items)).toBe(enabled ? null : approved);
+      for (const release of ["enabled", "disabled", "off", undefined]) {
+        const flipped = { ...pins!, "26": { ...pins!["26"], release } };
+        expect(heldRowsDigest(flipped, 26, gs10p26.items)).toBe(release === "enabled" ? null : approved);
+        expect(reviewedRowsDigest(flipped, 26, gs10p26.items)).toBe(release === "enabled" ? approved : null);
+      }
+      expect(heldRowsDigest(pins, 26, gs10p26.items.slice(1))).toBeNull(); // the layout must match
+      for (const page of [25, 27]) expect(heldRowsDigest(pins, page, gs10p26.items)).toBeNull();
     }
     // Another pinned GS10 file (same table at its own page numbers) carries no review.
     const other = Object.keys(pinFile.documents).find((k) => k.startsWith("eca93c34"))!;
@@ -118,18 +127,22 @@ describe("pinned table rules: the real pin file", () => {
     const states = (a: string, b: string) => set(set(all as Docs, GS10, a), second, b) as never;
     const both = activeReleaseSql("", states("enabled", "enabled"));
     const enabled = (sql: string) => [GS10, second].filter((sha) => sql.includes(`('${sha}', '26', '${approved}')`));
+    // Released rows and held rows are judged against the same enabled triples, each by its own mark.
+    const twice = (sql: string) => sql.split(`('${GS10}', '26', '${approved}')`).length - 1;
+    expect(twice(activeReleaseSql("", states("enabled", "disabled")))).toBe(2);
     expect(enabled(both).sort()).toEqual([GS10, second].sort());
     expect(enabled(activeReleaseSql("", states("disabled", "enabled")))).toEqual([second]);
     expect(enabled(activeReleaseSql("", states("enabled", "disabled")))).toEqual([GS10]);
     const none = activeReleaseSql("", states("disabled", "disabled"));
-    expect(none).toBe("(metadata->>'table_reviewed' IS NULL)"); // no enabled approval: no stamped row qualifies
-    expect(both.startsWith("(metadata->>'table_reviewed' IS NULL OR (metadata->>'table_reviewed_sha', COALESCE(page_start, source_page)::text, metadata->>'table_reviewed') IN (")).toBe(true);
+    expect(none).toBe("(metadata->>'table_reviewed' IS NULL AND metadata->>'table_held' IS NULL)"); // no enabled approval: no stamped or held row qualifies
+    expect(both.startsWith("((metadata->>'table_reviewed' IS NULL OR (metadata->>'table_reviewed_sha', COALESCE(page_start, source_page)::text, metadata->>'table_reviewed') IN (")).toBe(true);
+    expect(both).toContain(" AND (metadata->>'table_held' IS NULL OR (metadata->>'table_held_sha', COALESCE(page_start, source_page)::text, metadata->>'table_held') IN (");
     expect(activeReleaseSql("k", states("enabled", "enabled"))).toContain("k.metadata->>'table_reviewed' IS NULL OR (k.metadata->>'table_reviewed_sha', COALESCE(k.page_start, k.source_page)::text");
     for (const alias of ["k;", "K", "1k", "k.x", "k k"]) expect(() => activeReleaseSql(alias)).toThrow();
     // Nothing but validated hex and digits reaches the SQL.
     const hostile = { ["x'); DROP TABLE t; --"]: { "26": { fingerprint: approved, rules: [], reviewed: approved, release: "enabled" } },
       [GS10]: { "26'--": { fingerprint: approved, rules: [], reviewed: approved, release: "enabled" }, "27": { fingerprint: approved, rules: [], reviewed: "zz'", release: "enabled" } } };
-    expect(activeReleaseSql("", hostile as never)).toBe("(metadata->>'table_reviewed' IS NULL)");
+    expect(activeReleaseSql("", hostile as never)).toBe("(metadata->>'table_reviewed' IS NULL AND metadata->>'table_held' IS NULL)");
   });
 
   it("every reviewed record carries the switch, and only reviewed records do", () => {

@@ -27,7 +27,7 @@ import { repairExtractedPage, type PageRepair } from "@/capabilities/garbled-tex
 import { ocrExtractPage } from "@/capabilities/garbled-text-ocr";
 import { readPageLabelsBounded } from "@/capabilities/pdf-page-label-reader";
 import { pageLayoutItems } from "@/capabilities/pdf-layout-items";
-import { reviewedRowsDigest, rulePinsForSha } from "@/capabilities/table-rule-pins";
+import { heldRowsDigest, reviewedRowsDigest, rulePinsForSha } from "@/capabilities/table-rule-pins";
 import { gatePageRows } from "@/capabilities/model-scope-gate";
 import { pageWithTables, type TableChunk } from "@/capabilities/table-rows";
 import { contactRatingTable, columnLines, withColumnLines } from "@/capabilities/contact-ratings-table";
@@ -62,8 +62,9 @@ const CHUNK_OVERLAP = 120;
 export const EXTRACTION_VERSION = 7;
 
 /** `reviewed`: the page's reviewed-rows digest (`reviewedRowsDigest`); absent/null = not a reviewed page.
- *  `reviewedSha`: the SHA-256 of the file that digest was looked up for, stamped on released rows. */
-type PageTable = { remainder: string; chunks: TableChunk[]; sections?: ScopedText[]; reviewed?: string | null; reviewedSha?: string };
+ *  `held`: the recorded digest of a page whose approval is switched off (`heldRowsDigest`).
+ *  `reviewedSha`: the SHA-256 of the file that digest was looked up for, stamped on released and held rows. */
+type PageTable = { remainder: string; chunks: TableChunk[]; sections?: ScopedText[]; reviewed?: string | null; held?: string | null; reviewedSha?: string };
 
 // Multi-row INSERT batch size. Bounds BOTH the chunk rows held in memory at once
 // (≤ BATCH_ROWS, instead of every chunk of a 1200-page manual accumulated in one
@@ -542,6 +543,7 @@ async function insertChunkRows(
     tableHeader?: string;
     tableReviewed?: string;
     tableReviewedSha?: string;
+    tableHeld?: string;
   };
   let idx = 0;
   let batch: ChunkRow[] = [];
@@ -579,6 +581,8 @@ async function insertChunkRows(
           ...(r.tableHeader ? { table_header: r.tableHeader } : {}),
           // Release provenance (#5646): the reviewed digest this row was released under.
           ...(r.tableReviewed ? { table_reviewed: r.tableReviewed, table_reviewed_sha: r.tableReviewedSha ?? null } : {}),
+          // Hold provenance (#5646 r4): a page whose recorded approval was off when indexed.
+          ...(r.tableHeld ? { table_held: r.tableHeld, table_held_sha: r.tableReviewedSha ?? null } : {}),
         }),
       );
     }
@@ -651,10 +655,10 @@ async function insertChunkRows(
         });
       }
     }
-    for (const row of gatePageRows(pageRows, table?.reviewed)) {
+    for (const row of gatePageRows(pageRows, table?.reviewed, table?.held)) {
       // A released row is bound to the file it was read from (#5646): its release holds only
       // while that file's pin for this page carries the digest.
-      batch.push(row.tableReviewed ? { ...row, tableReviewedSha: table?.reviewedSha } : row);
+      batch.push(row.tableReviewed || row.tableHeld ? { ...row, tableReviewedSha: table?.reviewedSha } : row);
       if (batch.length >= BATCH_ROWS) await flush();
     }
   }
@@ -815,6 +819,7 @@ async function parsePdfForNode(buffer: Buffer | Uint8Array, rest: NodeChunkOpts)
   const pageTables: Array<PageTable | null> = [];
   // Per page: the digest of its reviewed model-scope rows, null for a page that is not reviewed.
   const reviewed: Array<string | null> = new Array(pages.length).fill(null);
+  const held: Array<string | null> = new Array(pages.length).fill(null);
   // undefined means unreadable/repaired geometry; null means a successful unheaded page.
   const sectionLayouts: Array<ReturnType<typeof sectionTableLayout> | undefined> = [];
   // Pages holding a contact-ratings table the column reader positively recognised (#5510 F17, F22).
@@ -832,6 +837,7 @@ async function parsePdfForNode(buffer: Buffer | Uint8Array, rest: NodeChunkOpts)
     try {
       const items = await pageLayoutItems(pdf, p + 1, documentSha256);
       reviewed[p] = reviewedRowsDigest(rulePinsForSha(documentSha256), p + 1, items);
+      held[p] = heldRowsDigest(rulePinsForSha(documentSha256), p + 1, items);
       let rating: ReturnType<typeof contactRatingTable> = null;
       try { rating = contactRatingTable(items); }
       catch (err) {
@@ -944,7 +950,7 @@ async function parsePdfForNode(buffer: Buffer | Uint8Array, rest: NodeChunkOpts)
   // table rows are written (flagged) rather than dropped. A page the repair
   // touched keeps its repair marker. Independent of NOTEBOOK_GARBLE_DECODE —
   // this is detection, not a repair.
-  pageTables.forEach((table, p) => { if (table) { table.reviewed = reviewed[p]; table.reviewedSha = documentSha256; } });
+  pageTables.forEach((table, p) => { if (table) { table.reviewed = reviewed[p]; table.held = held[p]; table.reviewedSha = documentSha256; } });
   const markers: Array<TextRepair | null> = repairs.map((r, p) => r ?? (hasUnmappedGlyphBetweenDigits(pages[p]) ? "unmapped_glyph" : null));
   return { pages, markers, labels, pageTables };
 }

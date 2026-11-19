@@ -72,7 +72,12 @@ def recall_knowledge(
     """
     # #5646: never serve a Hub row released under a reviewed table approval; the Hub alone
     # decides whether that approval is still enabled (see mira-bots/shared/neon_recall.py).
-    clauses = ["tenant_id = :tid", "embedding IS NOT NULL", "(metadata->>'table_reviewed') IS NULL"]
+    clauses = [
+        "tenant_id = :tid",
+        "embedding IS NOT NULL",
+        "(metadata->>'table_reviewed') IS NULL",
+        "(metadata->>'table_held') IS NULL",
+    ]
     params: dict[str, Any] = {
         "emb": str(embedding),
         "tid": tenant_id,
@@ -127,6 +132,7 @@ def recall_by_image(
                 WHERE tenant_id = :tid
                   AND image_embedding IS NOT NULL
                   AND (metadata->>'table_reviewed') IS NULL
+                  AND (metadata->>'table_held') IS NULL
                 ORDER BY image_embedding <=> cast(:emb AS vector)
                 LIMIT :lim
             """),

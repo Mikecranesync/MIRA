@@ -26,8 +26,8 @@ const gated = vi.hoisted(() => [] as Array<{ input: ScopedRow[]; output: ScopedR
 
 vi.mock("../model-scope-gate", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../model-scope-gate")>();
-  return { ...actual, gatePageRows: <Row extends ScopedRow>(rows: readonly Row[], reviewed: string | null | undefined) => {
-    const output = actual.gatePageRows(rows, reviewed);
+  return { ...actual, gatePageRows: <Row extends ScopedRow>(rows: readonly Row[], reviewed: string | null | undefined, held?: string | null) => {
+    const output = actual.gatePageRows(rows, reviewed, held);
     gated.push({ input: [...rows], output });
     return output;
   } };
@@ -105,6 +105,16 @@ describe("the gate on its own", () => {
     expect(out.map((row) => ({ ...row, tableReviewed: undefined }))).toEqual(rows);
     expect(affirmedIn(out)).toBe(3);
     expect(scopeDigest(out)).toBe(digest);
+  });
+  it("holds every row of a page whose recorded approval is off, and only when the rows are that approval's rows (#5646 r4)", () => {
+    const digest = scopeDigest(rows);
+    const held = gatePageRows(rows, null, digest);
+    expect(held.every((r) => r.tableHeld === digest)).toBe(true);
+    expect(held.map(({ tableHeld: _h, ...r }) => r)).toEqual(rows.map(withheld)); // otherwise exactly withheld
+    expect(held.some((r) => r.tableReviewed !== undefined)).toBe(false);
+    expect(gatePageRows(rows, null, "0".repeat(64)).some((r) => r.tableHeld !== undefined)).toBe(false); // other rows: no hold
+    expect(gatePageRows(rows, null, null).some((r) => r.tableHeld !== undefined)).toBe(false);
+    expect(gatePageRows(rows, digest, digest).some((r) => r.tableHeld !== undefined)).toBe(false); // a release is not held
   });
   it("stamps every released row with the digest it was released under, and only those rows (#5646 r3 F1)", () => {
     const digest = scopeDigest(rows);

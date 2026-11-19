@@ -33,8 +33,8 @@ const gated = vi.hoisted(() => [] as Array<{ input: ScopedRow[]; output: ScopedR
 
 vi.mock("../model-scope-gate", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../model-scope-gate")>();
-  return { ...actual, gatePageRows: <Row extends ScopedRow>(rows: readonly Row[], reviewed: string | null | undefined) => {
-    const output = actual.gatePageRows(rows, reviewed);
+  return { ...actual, gatePageRows: <Row extends ScopedRow>(rows: readonly Row[], reviewed: string | null | undefined, held?: string | null) => {
+    const output = actual.gatePageRows(rows, reviewed, held);
     gated.push({ input: [...rows], output, reviewed });
     return output;
   } };

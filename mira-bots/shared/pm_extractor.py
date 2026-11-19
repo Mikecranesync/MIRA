@@ -112,6 +112,10 @@ def get_chunks_for_model(
                       AND (is_private = false
                            OR (:tenant_id IS NOT NULL
                                AND LOWER(tenant_id::text) = LOWER(:tenant_id)))
+                      -- #5646: never a Hub row released or held under a reviewed
+                      -- table approval (the Hub alone decides if it is enabled).
+                      AND (metadata->>'table_reviewed') IS NULL
+                      AND (metadata->>'table_held') IS NULL
                     ORDER BY source_page ASC NULLS LAST, created_at ASC
                     LIMIT :lim
                     """

@@ -6,7 +6,8 @@ services cannot read that file, so they exclude every stamped row: an approval s
 never reach a bot answer through recall. Rows without the stamp are unaffected.
 
 Two layers:
-* every recall query sends the exclusion (captured SQL, no database);
+* every bot recall query sends the exclusion (captured SQL, no database; the ingest service's
+  own recall is covered in mira-core/mira-ingest/tests/test_recall_excludes_hub_rows.py);
 * against a disposable Postgres, a stamped row is not returned while an otherwise identical
   unstamped row is (skipped unless TEST_DATABASE_URL and MIRA_TEST_DB_CONFIRM=DISPOSABLE).
 """
@@ -28,8 +29,11 @@ os.environ.setdefault("NEON_DATABASE_URL", "postgresql://test:test@localhost/tes
 from shared import neon_recall  # noqa: E402
 from shared.neon_recall import _like_search, _product_search, _recall_bm25, recall_knowledge  # noqa: E402
 
-EXCLUSION = "(metadata->>'table_reviewed') IS NULL"
-REPO = Path(__file__).resolve().parents[2]
+EXCLUSIONS = ("(metadata->>'table_reviewed') IS NULL", "(metadata->>'table_held') IS NULL")
+
+
+def _excludes(sql: str) -> bool:
+    return all(e in sql for e in EXCLUSIONS)
 
 
 def _conn() -> MagicMock:
@@ -53,7 +57,7 @@ def test_every_bot_recall_query_excludes_released_rows(tenant):
         run(conn)
         sqls = [s for s in _sql_of(conn) if "knowledge_entries" in s]
         assert sqls, "precondition: the query ran"
-        assert all(EXCLUSION in s for s in sqls)
+        assert all(_excludes(s) for s in sqls)
 
 
 def test_vector_recall_excludes_released_rows():
@@ -75,30 +79,7 @@ def test_vector_recall_excludes_released_rows():
         if "embedding <=> cast(:emb AS vector)" in s and "FROM knowledge_entries" in s
     ]
     assert vector, "precondition: the vector stream ran"
-    assert all(EXCLUSION in s for s in vector)
-
-
-def _ingest_neon():
-    sys.path.insert(0, str(REPO / "mira-core" / "mira-ingest"))
-    try:
-        from db import neon  # the ingest service's own package, as its tests import it
-    finally:
-        sys.path.pop(0)
-    return neon
-
-
-def test_ingest_visual_recall_excludes_released_rows():
-    neon = _ingest_neon()
-    conn = _conn()
-    engine = MagicMock()
-    engine.connect.return_value.__enter__ = MagicMock(return_value=conn)
-    engine.connect.return_value.__exit__ = MagicMock(return_value=False)
-    with patch.object(neon, "_engine", return_value=engine):
-        neon.recall_knowledge([0.5] * 4, "tenant")
-        neon.recall_by_image([0.5] * 4, "tenant")
-    sqls = _sql_of(conn)
-    assert len(sqls) == 2
-    assert all(EXCLUSION in s for s in sqls)
+    assert all(_excludes(s) for s in vector)
 
 
 READY = (
@@ -111,7 +92,7 @@ READY = (
     not READY,
     reason="needs a disposable Postgres (TEST_DATABASE_URL, MIRA_TEST_DB_CONFIRM=DISPOSABLE)",
 )
-def test_released_row_is_not_recalled_and_an_unstamped_twin_is():
+def test_released_and_held_rows_are_not_recalled_and_an_unmarked_twin_is():
     import sqlalchemy
     from sqlalchemy import text
 
@@ -125,7 +106,11 @@ def test_released_row_is_not_recalled_and_an_unstamped_twin_is():
         "table_reviewed_sha": "090aa1b36250be11e1da33526a4b995492593c6fc35aa82ad18115e411dcc5e4",
     }
     with engine.begin() as conn:
-        for meta, page in ((stamp, 26), ({}, 27)):
+        held = {
+            "table_held": stamp["table_reviewed"],
+            "table_held_sha": stamp["table_reviewed_sha"],
+        }
+        for meta, page in ((stamp, 26), (held, 25), ({}, 27)):
             conn.execute(
                 text(
                     "INSERT INTO knowledge_entries (id, tenant_id, content, source_type, source_page, metadata, "
@@ -140,7 +125,7 @@ def test_released_row_is_not_recalled_and_an_unstamped_twin_is():
                 text("SELECT count(*) FROM knowledge_entries WHERE tenant_id = CAST(:t AS uuid)"),
                 {"t": tenant},
             ).scalar()
-            assert stored == 2  # precondition: both rows are there to be found
+            assert stored == 3  # precondition: all three rows are there to be found
             for found in (
                 _like_search(conn, text, tenant, ["zqxreleasecheck"], limit=10),
                 _recall_bm25(conn, text, tenant, "zqxreleasecheck", limit=10),
@@ -152,3 +137,25 @@ def test_released_row_is_not_recalled_and_an_unstamped_twin_is():
                 text("DELETE FROM knowledge_entries WHERE tenant_id = CAST(:t AS uuid)"),
                 {"t": tenant},
             )
+
+
+def test_pm_extraction_and_owui_part_lookup_exclude_marked_rows():
+    """Two more content readers that feed a model: PM extraction and the Open WebUI part lookup."""
+    from shared import pm_extractor
+
+    conn = _conn()
+    conn.execute.return_value.fetchall.return_value = []
+    engine = MagicMock()
+    engine.connect.return_value.__enter__ = MagicMock(return_value=conn)
+    engine.connect.return_value.__exit__ = MagicMock(return_value=False)
+    with patch.object(pm_extractor, "_get_neon_engine", return_value=engine):
+        pm_extractor.get_chunks_for_model("AutomationDirect", "GS11N-20P2", tenant_id=None)
+    sqls = _sql_of(conn)
+    assert sqls, "precondition: the query ran"
+    assert all(_excludes(s) for s in sqls)
+    # The Open WebUI tool runs outside this package; its one SQL string is checked in source.
+    src = (
+        Path(__file__).resolve().parents[2] / "tools" / "owui_tools" / "lookup_part.py"
+    ).read_text()
+    assert src.count("FROM knowledge_entries") == 1
+    assert _excludes(src)

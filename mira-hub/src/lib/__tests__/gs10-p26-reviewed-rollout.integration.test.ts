@@ -202,6 +202,14 @@ async function docChat(docId: string, question = "GS11N-20P2 rated input current
 async function library() {
   return retrieveManualChunks(client, TENANT, "GS11N-20P2 Rated Input Current", { topK: 50 });
 }
+/** Stored hold marks of one upload. */
+async function storedMeta(docId: string) {
+  return (await testPool.query<{ page: number; content: string; held: string | null; heldSha: string | null }>(
+    `SELECT source_page AS page, content, metadata->>'table_held' AS held, metadata->>'table_held_sha' AS "heldSha"
+       FROM knowledge_entries WHERE doc_id = $1::uuid AND tenant_id = $2::uuid ORDER BY source_page, (metadata->>'chunk_index')::int`,
+    [docId, TENANT])).rows;
+}
+const heldOn = (rows: Array<{ page: number; held: string | null }>, page: number) => rows.filter((r) => r.page === page && r.held !== null).length;
 /** The chunks of one upload (node document source URLs carry the upload id). */
 const ofDoc = <T extends { sourceUrl?: string | null }>(docId: string, chunks: T[]) => chunks.filter((c) => (c.sourceUrl ?? "").includes(docId));
 /** Any chunk that would carry a withdrawn value into an answer. */
@@ -433,17 +441,25 @@ describe.skipIf(!READY)("GS10 page 26 reviewed pin: stored rows on rollout and w
     const enrich = () => searchKB(enrichTenant, "GS11N-20P2 Rated Input Current");
     expect(carries51(ofDoc(doc, await enrich())).length).toBeGreaterThan(0);
     expect((await ask(doc, "GS11N-20P2")).cites51.map((c) => c.sourcePage)).toEqual([26]);
+    // The cited-page read returns only warning text, which page 26 has none of: a stamped copy of the
+    // 5.1 A row that carries a warning word stands for such a line, so that read is tested too.
+    await testPool.query(
+      `INSERT INTO knowledge_entries (id, tenant_id, doc_id, content, source_type, source_url, source_page, page_start, page_end, metadata, is_private, verified, ingest_route)
+       SELECT gen_random_uuid(), tenant_id, doc_id, 'WARNING: ' || content, source_type, source_url, source_page, page_start, page_end, jsonb_set(metadata, '{chunk_index}', '9999'), is_private, verified, ingest_route
+         FROM knowledge_entries WHERE tenant_id = $1::uuid AND doc_id = $2::uuid AND content LIKE '%' || $3 || '%' AND metadata->>'table_reviewed' IS NOT NULL LIMIT 1`,
+      [TENANT, doc, LINE_5_1]);
+    const sourceUrl = (await testPool.query<{ u: string }>("SELECT source_url AS u FROM knowledge_entries WHERE doc_id = $1::uuid LIMIT 1", [doc])).rows[0].u;
+    const citedRead = () => retrieveCitedPageChunks(client, TENANT, [{ docId: doc, sourceUrl, page: 26 }], { keep: () => true });
+    expect(carries51(await citedRead()).length).toBeGreaterThan(0);
     const before = await stored(doc);
     const page26 = before.filter((r) => r.page === 26);
-    const sourceUrl = (await testPool.query<{ u: string }>("SELECT source_url AS u FROM knowledge_entries WHERE doc_id = $1::uuid LIMIT 1", [doc])).rows[0].u;
 
     pins.reverted = true; // the switch is turned off; nothing else changes
     expect(carries51(await docChat(doc))).toEqual([]); // no catalog number: the route round 4 found
     expect(carries51(await docChat(doc, "what is the rated input current on page 26"))).toEqual([]);
     expect((await ask(doc, "GS11N-20P2")).cites51).toEqual([]);
     expect(carries51((await ask(doc, "GS11N-20P2")).chunks)).toEqual([]);
-    const cited = await retrieveCitedPageChunks(client, TENANT, [{ docId: doc, sourceUrl, page: 26 }], { keep: () => true });
-    expect(carries51(cited)).toEqual([]);
+    expect(carries51(await citedRead())).toEqual([]); // safety statements from a cited page
     // Tenant-wide routes also see other uploads of this tenant (withheld, unstamped rows from the
     // other tests are main's baseline), so these are held to this upload's own rows.
     expect(carries51(ofDoc(doc, await library()))).toEqual([]); // hub ask / asset chat: the library search, no maker named
@@ -465,7 +481,9 @@ describe.skipIf(!READY)("GS10 page 26 reviewed pin: stored rows on rollout and w
     expect(carries51(await docChat(doc)).length).toBeGreaterThan(0);
     expect(carries51(ofDoc(doc, await library())).length).toBeGreaterThan(0);
     expect(carries51(ofDoc(doc, await enrich())).length).toBeGreaterThan(0);
-    expect((await ask(doc, "GS11N-20P2")).cites51.map((c) => c.sourcePage)).toEqual([26]);
+    expect(carries51(await citedRead()).length).toBeGreaterThan(0);
+    // page 26 again (the warning copy above is a second page 26 line)
+    expect(new Set((await ask(doc, "GS11N-20P2")).cites51.map((c) => c.sourcePage))).toEqual(new Set([26]));
     await testPool.query("DELETE FROM knowledge_entries WHERE tenant_id = $1::uuid", [enrichTenant]);
   });
 
@@ -482,8 +500,33 @@ describe.skipIf(!READY)("GS10 page 26 reviewed pin: stored rows on rollout and w
     expect(await reprocessNodeDocument({ tenantId: TENANT, uploadId: doc, bytes: BYTES, force: true }))
       .toMatchObject({ action: "reprocessed" });
     expect(await stampedCount(doc)).toBe(0);
-    expect(carries51(await docChat(doc)).length).toBeGreaterThan(0); // withheld rows remain readable text, as on main
+    // Re-indexed while the approval is off: every page 26 row is held, so no route serves it.
+    expect(heldOn(await storedMeta(doc), 26)).toBeGreaterThan(0);
+    expect(carries51(await docChat(doc))).toEqual([]);
     expect((await ask(doc, "GS11N-20P2")).cites51).toEqual([]);
     pins.reverted = false;
+  });
+
+  it("indexed while the approval is off: a fresh upload's page 26 answers nowhere, with or without its file, until the approval is on (#5646 r4)", async () => {
+    pins.reverted = true; pins.lateWriter = false;
+    const doc = await newUpload();
+    expect((await reprocessNodeDocument({ tenantId: TENANT, uploadId: doc, bytes: BYTES })).action).toBe("reprocessed");
+    const meta = await storedMeta(doc);
+    expect(stampedOn(await stored(doc), 26)).toBe(0); // nothing released
+    const page26 = meta.filter((r) => r.page === 26);
+    expect(page26.length).toBeGreaterThan(0);
+    expect(page26.every((r) => r.held === APPROVED_DIGEST && r.heldSha === SHA)).toBe(true); // every row of the page, bound to its file
+    expect(meta.filter((r) => r.page !== 26).some((r) => r.held !== null)).toBe(false); // and no other page
+    expect(page26.some((r) => r.content.includes(LINE_5_1))).toBe(true); // the text itself is kept
+    expect(carries51(await docChat(doc))).toEqual([]);
+    expect(carries51(await docChat(doc, "what is the rated input current on page 26"))).toEqual([]);
+    expect((await ask(doc, "GS11N-20P2")).cites51).toEqual([]);
+    expect(carries51(ofDoc(doc, await library()))).toEqual([]);
+    // Enabled again: the held rows are served as unreviewed text (as on main), never as a release.
+    pins.reverted = false;
+    expect(carries51(await docChat(doc)).length).toBeGreaterThan(0);
+    expect((await ask(doc, "GS11N-20P2")).cites51).toEqual([]);
+    expect(await reprocessNodeDocument({ tenantId: TENANT, uploadId: doc, bytes: BYTES, force: true })).toMatchObject({ action: "reprocessed" });
+    expect((await ask(doc, "GS11N-20P2")).cites51.map((c) => c.sourcePage)).toEqual([26]);
   });
 });

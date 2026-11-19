@@ -29,6 +29,11 @@ export type ScopedRow = {
    *  digest (`isReleaseActive`), and the stamp makes every released row queryable without the
    *  original file. Not part of `scopeDigest`. */
   tableReviewed?: string;
+  /** Set by `gatePageRows` on EVERY row of a page whose approval is recorded but switched off when
+   *  the rows are exactly that approval's rows: the recorded digest, stored as `metadata.table_held`
+   *  (with `table_held_sha`). Retrieval serves such a row only while that approval is enabled.
+   *  Not part of `scopeDigest`. */
+  tableHeld?: string;
 };
 
 /** True when retrieval could admit this row for some record BECAUSE of its model scope. */
@@ -77,9 +82,12 @@ export function withheld<Row extends ScopedRow>(row: Row): Row {
  * are released only when they are exactly the reviewed rows; each released (affirming) row is
  * stamped with that digest and is otherwise unchanged.
  */
-export function gatePageRows<Row extends ScopedRow>(rows: readonly Row[], reviewed: string | null | undefined): Row[] {
+export function gatePageRows<Row extends ScopedRow>(rows: readonly Row[], reviewed: string | null | undefined,
+  held?: string | null): Row[] {
   if (typeof reviewed === "string" && reviewed.length === 64 && reviewed === scopeDigest(rows)) {
     return rows.map((row) => (affirmsModel(row) ? { ...row, tableReviewed: reviewed } : row));
   }
-  return rows.map(withheld);
+  const out = rows.map(withheld);
+  if (typeof held === "string" && held.length === 64 && held === scopeDigest(rows)) return out.map((row) => ({ ...row, tableHeld: held }));
+  return out;
 }
