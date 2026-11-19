@@ -59,9 +59,17 @@ def http_get(token: str) -> Callable[..., tuple[int, dict, object]]:
 
 
 BOARD_MAX_SECONDS = int(os.getenv("MC_BOARD_MAX_SECONDS", "600"))
+_INVALID_CAPABILITY_REPORT = "trusted report has an invalid capability-results block"
 
 
-def candidates(handler, store, now: Optional[dt.datetime] = None, max_age: int = 0) -> list[int]:
+def _invalid_capability_report(reports: list[dict]) -> bool:
+    return any(r["trusted"] and r["parsed"].get("malformed_capability") for r in reports)
+
+
+def candidates(
+    handler, store, now: Optional[dt.datetime] = None, max_age: int = 0, *,
+    reports: Optional[list[dict]] = None,
+) -> list[int]:
     """PRs to track: open In-Progress PR cards on the board + items named by trusted reports.
 
     The board is a candidate *source*: if it never loaded, its last refresh failed, or its
@@ -87,10 +95,11 @@ def candidates(handler, store, now: Optional[dt.datetime] = None, max_age: int =
             and it["status"].lower() == "in progress"
         ):
             nums.append(int(it["number"]))
-    for r in store.reports():
+    reports = store.reports() if reports is None else reports
+    if _invalid_capability_report(reports):
+        raise RuntimeError(_INVALID_CAPABILITY_REPORT)
+    for r in reports:
         if r["trusted"]:
-            if r["parsed"].get("malformed_capability"):
-                raise RuntimeError("trusted report has an invalid capability-results block")
             nums.extend(int(n) for n in r["parsed"].get("items", []))
     return list(dict.fromkeys(nums))  # never capped: evidence.fetch_prs batches the query
 
@@ -149,6 +158,10 @@ def _poll_once(handler, get, post, state: dict) -> None:
     trusted = handler.trusted_authors()
     poll.poll_events(get, REPO, store, state)
     poll.poll_reports(get, REPO, COORD_ISSUE, store, trusted)
+    reports = store.reports()
+    if _invalid_capability_report(reports):
+        # Withdraw the prior verdict before the independent workflow requests.
+        handler.evidence = dict(handler.evidence or {}, error=f"poll failed: {_INVALID_CAPABILITY_REPORT}")
     handler.reports_at = _now_iso()
     workflow_pr = None
     if hasattr(handler, "workflow_mod"):
@@ -156,18 +169,18 @@ def _poll_once(handler, get, post, state: dict) -> None:
             handler.plan_state, get, REPO, pin=os.getenv("MC_ROADMAP_REF") or None,
         )
         handler.plan_state = {**plan, "decision": handler.workflow_mod.verify_decision(
-            get, REPO, COORD_ISSUE, store.reports(),
+            get, REPO, COORD_ISSUE, reports,
             int(os.getenv("MC_PLAN_REPORT_ID", "6870960483")),
             os.getenv("MC_PLAN_ACCEPTOR", "Mikecranesync"),
         )}
         workflow_pr = handler.workflow_mod.coordinator_pr(
-            plan, store.reports(), int(os.getenv("MC_PLAN_REPORT_ID", "6870960483")),
+            plan, reports, int(os.getenv("MC_PLAN_REPORT_ID", "6870960483")),
             f"https://github.com/{REPO}/issues/{COORD_ISSUE}",
         )
         if hasattr(handler, "project_links_mod"):
             handler.link_state = handler.project_links_mod.refresh(handler.link_state, get, REPO)
     by_item: dict[int, list[dict]] = {}
-    for r in reversed(store.reports()):  # oldest first so the newest ends up last
+    for r in reversed(reports):  # oldest first so the newest ends up last
         if r["trusted"]:
             for n in r["parsed"].get("items", []):
                 by_item.setdefault(int(n), []).append(r["parsed"])
@@ -177,7 +190,7 @@ def _poll_once(handler, get, post, state: dict) -> None:
     if hasattr(handler, "workflow_evidence"):
         refresh_workflow_evidence(handler, evidence, post, get, workflow_pr, envs, trusted, by_item, main_sha)
     try:
-        cands = candidates(handler, store)
+        cands = candidates(handler, store, reports=reports)
     except RuntimeError as exc:
         handler.evidence = dict(handler.evidence or {}, error=f"poll failed: {exc}")
         return

@@ -230,7 +230,9 @@ def test_new_candidate_requires_review_and_uses_only_its_owner_decision():
     coordinator["raw"] = "[DELIVERY-UPDATE: CHARLIE-CODEX]\nBranch / SHA: #5625 old\n"
     ui = {
         "id": 2, "lane": "CHARLIE-CLAUDE", "trusted": 1,
-        "url": SOURCE, "updated_at": AT, "raw": f"Pushed {new_head[:9]}",
+        "url": SOURCE, "updated_at": AT,
+        "raw": f"[DELIVERY-UPDATE: CHARLIE-CLAUDE]\nUpdated: {AT}\n"
+               f"```html\n<details>\n```\n\nPushed {new_head[:9]}",
         "parsed": {"items": [5625], "state": "BLOCKED", "decision": "Authorize review of new candidate"},
     }
     state = {"documents": documents(), "at": AT}
@@ -239,7 +241,8 @@ def test_new_candidate_requires_review_and_uses_only_its_owner_decision():
     assert value["status"] == "Blocked"
     assert value["action"]["next"] == "Authorize review of new candidate"
     assert value["action"]["observed"] == "no well-formed review at this head"
-    ui["raw"] = f"Earlier review at {HEAD}"
+    ui["raw"] = (f"[DELIVERY-UPDATE: CHARLIE-CLAUDE]\nUpdated: {AT}\n"
+                 f"```text\nExample review at {new_head[:9]}\n```\n\nEarlier review at {HEAD}")
     unrelated = workflow.project(state, [coordinator, ui], ev, NOW, report_id=6870960483,
                                  max_age_seconds=120, reports_at=AT)
     assert unrelated["ui_url"] is None
@@ -430,12 +433,17 @@ def test_ambiguous_candidate_references_cannot_keep_an_old_acceptance():
         "Capability candidate: #5625 @ 23456abcd",
         f"Capability candidate: #5625 @ {HEAD}\nCapability candidate: #5630 @ {HEAD}",
         f"Capability candidate: #5625 @ {HEAD}\nCapability candidate: [#5630](https://example.com)",
+        *(f"Capability candidate: #5625 @ {HEAD}\n{' ' * n}Capability candidate: #5630 @ {HEAD}"
+          for n in (1, 2, 3)),
+        f"Capability candidate: #5625 @ {HEAD}\n**Capability candidate:** #5630 @ {HEAD}",
+        f"Capability candidate: #5625 @ {HEAD}\nCapability  candidate : #5630 @ {HEAD}",
     ):
         value = report()
         value["raw"] = value["raw"].replace(f"Capability candidate: #5625 @ {HEAD}", line)
         projected = project(value)
         assert projected["status"] == "Blocked"
         assert all(row["history"] for row in projected["checks"])
+        assert server.reports.parse(value["raw"])["items"] == []
 
 
 def test_archived_examples_cannot_continue_acceptance():
@@ -455,6 +463,28 @@ def test_archived_examples_cannot_continue_acceptance():
     )
     for raw in variants:
         assert project({**live, "raw": raw})["status"] != "Accepted"
+
+
+def test_fenced_history_example_cannot_hide_live_replacement():
+    live = report()
+    fenced_example = "\n\n```html\n<details>\n[DELIVERY-UPDATE: CHARLIE-CODEX]\n```\n\n"
+    raw = (live["raw"] + fenced_example + f"Capability candidate: #5630 @ {HEAD}\n"
+           "Next: follow up on production #5666")
+    projected = project({**live, "raw": raw})
+    assert projected["status"] == "Blocked"
+    assert all(row["history"] for row in projected["checks"])
+    assert server.reports.parse(raw)["items"] == [5666]
+
+
+def test_legacy_candidate_after_fenced_example_is_visible():
+    value = report()
+    value["raw"] = (
+        f"[DELIVERY-UPDATE: CHARLIE-CODEX]\nUpdated: {AT}\n"
+        "```html\n<details>\nBranch / SHA: example PR #5625\n```\n\n"
+        f"Branch / SHA: flag-fix at {HEAD}, PR #5630\n"
+        "<details><summary>History</summary>\n\nBranch / SHA: earlier PR #5625\n\n</details>"
+    )
+    assert workflow.coordinator_pr({}, [value], value["id"], value["url"].split("#")[0]) == 5630
 
 
 def test_capability_candidate_is_excluded_but_unclosed_fence_blocks_production():

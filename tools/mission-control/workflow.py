@@ -9,7 +9,7 @@ import logging
 import posixpath
 import re
 
-from mission_control_reports import read_capability_fields
+from mission_control_reports import live_report_text, read_capability_fields
 
 log = logging.getLogger("mission-control.workflow")
 ROADMAP = "docs/plans/capability-roadmap.md"
@@ -274,8 +274,8 @@ def _candidate_number(rep, fields):
     # display. It cannot establish the current candidate for acceptance.
     if fields.results is not None:
         return None
-    raw = rep.get("raw") or ""
-    match = re.search(r"(?m)^Branch / SHA:[^\n]*?#([1-9]\d*)", raw.split("<details>", 1)[0])
+    live = live_report_text(rep.get("raw") or "")
+    match = re.search(r"(?m)^Branch / SHA:[^\n]*?#([1-9]\d*)", live)
     return int(match[1]) if match else None
 
 
@@ -286,7 +286,7 @@ def _ui_report(reports, row, pr):
     return next((r for r in reports if r["trusted"] and r["lane"] == "CHARLIE-CLAUDE"
                  and pr in r.get("parsed", {}).get("items", [])
                  and re.search(rf"(?<![0-9a-f]){head[:9]}[0-9a-f]*\b",
-                               (r.get("raw") or "").split("<details>", 1)[0])), {})
+                               live_report_text(r.get("raw") or ""))), {})
 
 
 def _action(block, report, review, current, ui):

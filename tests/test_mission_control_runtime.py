@@ -18,6 +18,7 @@ def _load(name, path):
 
 
 runtime = _load("mission_control_runtime", MC / "runtime.py")
+model = _load("mission_control_model", MC / "model.py")
 
 
 class _Snap:
@@ -169,6 +170,91 @@ def test_a_failed_report_poll_marks_evidence_errored_every_iteration():  # F11
     answers[COMMENTS_URL] = (200, {}, [])  # control: a complete read clears it
     runtime.poll_once(h, get, post=None, state={})
     assert h.evidence["error"] is None and h.evidence["rows"][0]["number"] == 13
+
+
+def test_malformed_trusted_report_withholds_production_go_during_reconciliation():
+    now = dt.datetime.now(dt.timezone.utc)
+    checked_at = runtime._iso(now - dt.timedelta(seconds=2))
+    comment = {
+        "id": 77,
+        "html_url": f"https://github.com/{runtime.REPO}/issues/{runtime.COORD_ISSUE}#issuecomment-77",
+        "updated_at": checked_at,
+        "user": {"login": "owner"},
+        "body": f"[DELIVERY-UPDATE: CHARLIE-CODEX]\nUpdated: {checked_at}\n"
+        "```capability-results\n{\"results\": []}\n",
+    }
+    answers = {
+        EVENTS_URL: (200, {}, []),
+        COMMENTS_URL: (200, {}, [comment]),
+        MAIN_URL: (200, {}, {"sha": "m" * 40}),
+    }
+    h, get = _handler(answers)
+    h.last_poll = checked_at
+    h.evidence = {
+        "rows": [{"number": 13, "cells": {
+            "DEPLOYED:production": {"on": True},
+            "FIELD-VERIFIED": {"on": True},
+        }}],
+        "envs": {},
+        "at": checked_at,
+        "board_at": checked_at,
+        "error": None,
+    }
+
+    def readiness():
+        return model.build(h.store, h.evidence, h.last_poll, None, now, 9, 60)["readiness"]
+
+    observed = {}
+
+    class Workflow:
+        def refresh(self, *args, **kwargs):
+            observed["stored"] = h.store.reports()[0]["parsed"]["malformed_capability"]
+            observed["readiness"] = readiness()
+            observed["error"] = h.evidence["error"]
+            return {}
+
+        def verify_decision(self, *args):
+            return None
+
+        def coordinator_pr(self, *args):
+            return None
+
+    h.workflow_mod = Workflow()
+    h.plan_state = {}
+    h.workflow_evidence = {}
+
+    assert readiness()["decision"] == "GO"
+    runtime.poll_once(h, get, post=None, state={})
+    assert observed["stored"]
+    assert observed["readiness"]["decision"] == "NO-GO"
+    assert "invalid capability-results block" in observed["error"]
+    assert readiness()["decision"] == "NO-GO"
+    assert "invalid capability-results block" in readiness()["reason"]
+
+
+def test_readiness_refuses_newly_stored_malformed_report_before_poller_updates(tmp_path):
+    store = store_mod.Store(tmp_path / "mc.sqlite")
+    at = runtime._iso(NOW - dt.timedelta(seconds=2))
+    evidence = {
+        "rows": [{"number": 13, "cells": {
+            "DEPLOYED:production": {"on": True},
+            "FIELD-VERIFIED": {"on": True},
+        }}],
+        "at": at,
+        "board_at": at,
+    }
+    row = {
+        "id": 1, "lane": "CHARLIE-CODEX", "author": "unknown", "trusted": False,
+        "updated_at": at, "url": "", "raw": "",
+        "parsed": {"malformed_capability": True},
+    }
+    assert store.put_report(row)
+    assert model.build(store, evidence, at, None, NOW, 9, 60)["readiness"]["decision"] == "GO"
+
+    assert store.put_report({**row, "id": 2, "author": "owner", "trusted": True})
+    view = model.build(store, evidence, at, None, NOW, 9, 60)
+    assert view["readiness"]["decision"] == "NO-GO"
+    assert "invalid capability-results block" in view["readiness"]["reason"]
 
 
 def test_candidates_are_never_silently_capped():  # F12

@@ -84,17 +84,20 @@ def normalise(event: str, delivery_id: str, payload: dict, received_at: str) -> 
 def comment_report(payload: dict, trusted_authors: tuple[str, ...], parse) -> Optional[dict]:
     """Turn an issue_comment payload carrying a DELIVERY-UPDATE into a reports row."""
     c = payload.get("comment") or {}
-    parsed = parse(c.get("body") or "")
+    author = (c.get("user") or {}).get("login") or ""
+    trusted = author in trusted_authors
+    body = c.get("body") or ""
+    # Keep ordinary reports visible, but only trusted authors can supply capability evidence.
+    parsed = parse(body) if trusted else parse(body, include_capability=False)
     if parsed is None:
         return None
-    author = (c.get("user") or {}).get("login") or ""
     return {
         "id": int(c["id"]),
         "lane": parsed["lane"],
         "author": author,
-        "trusted": 1 if author in trusted_authors else 0,
+        "trusted": int(trusted),
         "updated_at": c.get("updated_at") or "",
         "url": c.get("html_url") or "",
-        "raw": c.get("body") or "",
+        "raw": body,
         "parsed": parsed,
     }

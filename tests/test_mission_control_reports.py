@@ -125,3 +125,11 @@ def test_a_marker_that_only_appears_inside_details_is_not_a_current_report():  #
     )
     assert reports.parse(body) is None
     assert reports.parse(PROSE_WITH_NESTED_HISTORY) is not None  # control: top-level marker
+
+
+def test_fenced_example_is_not_a_report_boundary():
+    example = "```html\n<details>\n[DELIVERY-UPDATE: BRAVO-CODEX]\n```\n\n"
+    assert reports.parse(example) is None
+    assert reports.parse(example + GOOD)["lane"] == "BRAVO-CLAUDE"
+    parsed = reports.parse(GOOD + "\n" + example + "PR still waiting on #5630")
+    assert parsed["items"] == [4737, 4985, 5314, 5630]
