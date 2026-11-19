@@ -71,9 +71,6 @@ const PLACEHOLDERS = new Set([
   "notavailable", "notapplicable", "placeholder", "xxx", "xxxx", "xxxxx",
   "0", "00", "000", "0000", "00000",
 ]);
-// The same "I don't know" at any length: nothing but zeros, or three or more x's (#5661 B1). The
-// list above stops at five of each, which let "000000" through as a real serial number.
-const FILLER = /^(?:0+|x{3,})$/;
 // A strong (auto-merge) decision needs an instance-unique id with real entropy. 1–2 char "serials"
 // are implausibly unique and a frequent data-entry artifact, so they can corroborate but never merge.
 const MIN_STRONG_ID_LEN = 3;
@@ -84,7 +81,7 @@ const MIN_STRONG_ID_LEN = 3;
 function norm(v: string | null | undefined): string | null {
   if (v == null) return null;
   const s = v.toLowerCase().replace(/[^a-z0-9]+/g, "");
-  if (!s.length || PLACEHOLDERS.has(s) || FILLER.test(s)) return null;
+  if (!s.length || PLACEHOLDERS.has(s)) return null;
   return s;
 }
 

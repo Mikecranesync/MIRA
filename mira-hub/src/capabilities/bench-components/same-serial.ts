@@ -4,8 +4,9 @@
  * screen can say "this serial is already on another component". A warning only: it never blocks a
  * save, never merges records, and never returns or logs the serial itself.
  *
- * "Same serial" is decided by the contextualization matcher (the one place the folding rules and the
- * placeholder list live). The SQL below is only a prefilter that keeps the read small.
+ * "Same serial" is decided by the contextualization matcher (where the folding rules and the
+ * placeholder list live). One rule is added here, on the serial alone: see FILLER_SERIAL. The SQL
+ * below is only a prefilter that keeps the read small.
  */
 import { classifyAsset } from "@/lib/contextualization/asset-matcher";
 import { withTenantContext } from "@/lib/tenant-context";
@@ -51,13 +52,27 @@ export const SAME_SERIAL_SQL = `SELECT ${componentReadProjection.columns}, n.dis
  ORDER BY c.created_at DESC, c.id
  LIMIT $4`;
 
-/** The matcher decides: two serials are the same when it calls them a strong match. */
+/**
+ * A serial that is nothing but zeros, or three or more x's, is a placeholder at any length (#5661 B1).
+ * The matcher's own list stops at five of each, so "000000" reached it as a real serial number. The
+ * rule is kept here and not in the matcher: there it would also apply to asset numbers and paths, where
+ * treating a value as absent removes a disagreement that keeps two assets apart (#5663 review F1).
+ */
+const FILLER_SERIAL = /^(?:0+|x{3,})$/;
+
+/** Folded as the matcher folds a value before comparing it: lower case, letters and digits only. */
+function fillerSerial(serial: string): boolean {
+  return FILLER_SERIAL.test(serial.toLowerCase().replace(/[^a-z0-9]+/g, ""));
+}
+
+/** Two serials are the same when neither is filler and the matcher calls them a strong match. */
 function sameSerial(a: string | null | undefined, b: string | null | undefined): boolean {
   if (a == null || b == null) return false;
+  if (fillerSerial(a) || fillerSerial(b)) return false;
   return classifyAsset({ serialNumber: a }, [{ id: "other", serialNumber: b }]).strength === "strong";
 }
 
-/** True when the matcher itself treats this serial as identity-bearing. */
+/** True when this serial can identify a unit: not filler, and identity-bearing to the matcher. */
 export function usableSerial(serial: string | null | undefined): boolean {
   return sameSerial(serial, serial);
 }

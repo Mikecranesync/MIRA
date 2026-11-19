@@ -46,53 +46,107 @@ function extractSession(raw: string): string | null {
   return matches.length ? matches[matches.length - 1][1] : null;
 }
 
+const TENANT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+// The address every run of this script registers with (CREDS.email). Registration writes it to
+// hub_users.email and to tenants.contact_email, so it is what marks a tenant as one of ours.
+const THROWAWAY_EMAIL = "^betagate-[0-9]+@factorylm\\.com$";
+
 // Delete every row a provisioned run created for a tenant. Used by the CI job
 // (`--cleanup <tenantId>`) so dev Neon doesn't accumulate gate fixtures.
-async function cleanup(tenantId: string) {
-  if (!tenantId) throw new Error("--cleanup requires a tenant id");
+async function cleanup(given: string) {
+  return sweep(given, false);
+}
+
+// `ownRun`: the id is one this process registered itself, a moment ago (main's self-clean). The run
+// is then the proof that the tenant is ours, so the sweep goes ahead even where no user or tenant
+// row is found under the id; rows that belong to anyone else are refused either way.
+async function sweep(given: string, ownRun: boolean) {
+  if (!given) throw new Error("--cleanup requires a tenant id");
+  // One spelling of the id for every statement (#5663 review F3). Some of the columns below are
+  // uuid and some are text holding a lower-case uuid; an upper-case id matched only the first kind,
+  // so part of a tenant went and the proof, which compares text, still counted nothing left.
+  const tenantId = given.trim().toLowerCase();
+  if (!TENANT_ID.test(tenantId)) throw new Error("--cleanup requires a tenant id in UUID form");
   const c = new Client({ connectionString: process.env.NEON_DATABASE_URL, ssl: { rejectUnauthorized: false } });
   await c.connect();
   try {
-    // Every table a provisioned run can write, dependents first. All deletes
-    // are tenant-scoped by construction (the run's OWN tenant id) — this is the
-    // staging sweep only; the production probe cleans through public APIs.
-    // Notebook-lane tables (Workstream B) may be absent on an older branch:
-    // a missing table is skipped, never fatal.
-    const tables = [
-      "equipment_notebook_turns",
-      "equipment_notebook_sources",
-      "equipment_notebooks",
-      "workspace_file_links",
-      "namespace_direct_uploads",
-      "decision_traces",
-      // 093. The sweep deletes this tenant's `decision_traces`, so leaving its
-      // arrivals behind makes every swept acceptance run look like permanent
-      // capture loss: an ingress row with no ledger row behind it is exactly
-      // what `lost_starts` counts. Measured on staging 2026-09-23 — four swept
-      // attempts scored `lost_starts: 3` and cost an hour to explain.
-      "turn_ingress",
-      "knowledge_entries",
-      "hub_uploads",
-      // 021. The node this run creates (step 4, POST /api/namespace/node/) writes one audit row here.
-      // It has no foreign key, so nothing removed it: every swept tenant left one behind (#5662).
-      "namespace_versions",
-      "kg_entities",
-    ];
-    for (const tbl of tables) {
-      try {
-        await c.query(`DELETE FROM ${tbl} WHERE tenant_id::text = $1`, [tenantId]);
-      } catch (err) {
-        const code = (err as { code?: string }).code;
-        if (code === "42P01" || code === "42703") continue; // undefined_table / undefined_column
-        throw err;
+    // One transaction (#5663 review F2): a sweep that fails part-way leaves the tenant whole, so it
+    // can be run again and nothing is lost that a later statement was meant to remove with it.
+    await c.query("BEGIN");
+    try {
+      // Only a tenant this script provisioned (#5663 review F2). The id is whatever the caller
+      // passed, and one of the tables below is an audit trail (021), so before anything is deleted
+      // every user and the data-side tenant row must carry this script's own address.
+      const who = (
+        await c.query(
+          `SELECT (SELECT count(*) FROM hub_users WHERE tenant_id = $1)::int AS users,
+                (SELECT count(*) FROM hub_users WHERE tenant_id = $1 AND (lower(email) ~ $2) IS NOT TRUE)::int AS other_users,
+                (SELECT count(*) FROM hub_tenants WHERE id = $1)::int AS auth_tenants,
+                (SELECT count(*) FROM tenants WHERE id::text = $1)::int AS tenants,
+                (SELECT count(*) FROM tenants WHERE id::text = $1 AND (lower(contact_email) ~ $2) IS NOT TRUE)::int AS other_tenants`,
+          [tenantId, THROWAWAY_EMAIL],
+        )
+      ).rows[0] as { users: number; other_users: number; auth_tenants: number; tenants: number; other_tenants: number };
+      const none = !who.users && !who.auth_tenants && !who.tenants;
+      if (none && !ownRun) {
+        // No such tenant (already swept, or never registered): nothing says whose rows any others
+        // under this id would be, so none are touched.
+        await c.query("ROLLBACK");
+        console.error(`no tenant ${tenantId}: nothing to clean, nothing deleted`);
+        return;
       }
+      if (who.other_users || who.other_tenants || (!none && !(who.users || who.tenants))) {
+        throw new Error(`refusing to clean ${tenantId}: it is not a tenant this script provisioned (nothing was deleted)`);
+      }
+      // Every table a provisioned run can write, dependents first. All deletes
+      // are tenant-scoped by construction (the run's OWN tenant id) — this is the
+      // staging sweep only; the production probe cleans through public APIs.
+      // Notebook-lane tables (Workstream B) may be absent on an older branch:
+      // a missing table is skipped, never fatal.
+      const tables = [
+        "equipment_notebook_turns",
+        "equipment_notebook_sources",
+        "equipment_notebooks",
+        "workspace_file_links",
+        "namespace_direct_uploads",
+        "decision_traces",
+        // 093. The sweep deletes this tenant's `decision_traces`, so leaving its
+        // arrivals behind makes every swept acceptance run look like permanent
+        // capture loss: an ingress row with no ledger row behind it is exactly
+        // what `lost_starts` counts. Measured on staging 2026-09-23 — four swept
+        // attempts scored `lost_starts: 3` and cost an hour to explain.
+        "turn_ingress",
+        "knowledge_entries",
+        "hub_uploads",
+        // 021. The node this run creates (step 4, POST /api/namespace/node/) writes one audit row here.
+        // It has no foreign key, so nothing removed it: every swept tenant left one behind (#5662).
+        "namespace_versions",
+        "kg_entities",
+      ];
+      for (const tbl of tables) {
+        // A statement that fails ends the whole transaction unless it is undone to a savepoint.
+        await c.query("SAVEPOINT sweep_table");
+        try {
+          await c.query(`DELETE FROM ${tbl} WHERE tenant_id::text = $1`, [tenantId]);
+        } catch (err) {
+          const code = (err as { code?: string }).code;
+          if (code !== "42P01" && code !== "42703") throw err; // undefined_table / undefined_column
+          await c.query("ROLLBACK TO SAVEPOINT sweep_table");
+        }
+        await c.query("RELEASE SAVEPOINT sweep_table");
+      }
+      await c.query(`DELETE FROM tenants WHERE id = $1`, [tenantId]);
+      // Auth side (users.ts): hub_users.tenant_id REFERENCES hub_tenants(id), and
+      // hub_tenants.owner_user_id is a plain TEXT column — so users first, then
+      // the tenant. Both keyed on THIS run's tenant id only.
+      await c.query(`DELETE FROM hub_users WHERE tenant_id = $1`, [tenantId]);
+      await c.query(`DELETE FROM hub_tenants WHERE id = $1`, [tenantId]);
+      await c.query("COMMIT");
+    } catch (err) {
+      // Undo everything. The first failure is the one reported, whatever the undo itself does.
+      await c.query("ROLLBACK").catch(() => undefined);
+      throw err;
     }
-    await c.query(`DELETE FROM tenants WHERE id = $1`, [tenantId]);
-    // Auth side (users.ts): hub_users.tenant_id REFERENCES hub_tenants(id), and
-    // hub_tenants.owner_user_id is a plain TEXT column — so users first, then
-    // the tenant. Both keyed on THIS run's tenant id only.
-    await c.query(`DELETE FROM hub_users WHERE tenant_id = $1`, [tenantId]);
-    await c.query(`DELETE FROM hub_tenants WHERE id = $1`, [tenantId]);
   } finally {
     await c.end();
   }
@@ -163,7 +217,7 @@ export async function main() {
   } catch (e) {
     console.error(`provisioning failed after registration — sweeping tenant ${tenantId}`);
     try {
-      await cleanup(tenantId);
+      await sweep(tenantId, true);
     } catch (sweepErr) {
       // Cleanup failure must PROPAGATE, not be logged away: the caller sees
       // both the original failure and the fact that rows may remain.

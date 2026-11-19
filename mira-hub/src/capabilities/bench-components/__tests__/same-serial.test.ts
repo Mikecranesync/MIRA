@@ -100,31 +100,33 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("a filler serial is no identity, at any length (#5661 B1)", () => {
-  // The rule lives in the shared matcher, so it holds for the contextualization merge decision too.
-  it.each([["000000"], ["0000000000"], ["00-00-00"], ["0 0 0 0 0 0 0"], ["xxxxxx"], ["XXXXXXXX"]])(
-    "FALSE-MERGE GUARD: two assets that both carry %j are never a strong match",
+describe("a filler serial is no identity for the warning, at any length (#5661 B1)", () => {
+  it.each([["000000"], ["0000000000"], ["00-00-00"], ["0 0 0 0 0 0 0"], ["xxxxxx"], ["XXXXXXXX"], ["x-x-x-x"]])(
+    "same serial: %j is filler, so the warning has nothing to compare",
     (filler) => {
-      const m = classifyAsset({ serialNumber: filler }, [{ id: "ph-1", serialNumber: filler }]);
-      expect(m.strength).not.toBe("strong");
-      expect(m.decision).not.toBe("existing_asset");
-      // With a manufacturer and model beside it, it falls back to model-level like any other placeholder.
-      const withModel = classifyAsset(
-        { manufacturer: "Allen-Bradley", model: "PowerFlex 525", serialNumber: filler },
-        [{ id: "ph-2", manufacturer: "Allen-Bradley", model: "PowerFlex 525", serialNumber: filler }],
-      );
-      expect(withModel.strength).toBe("probable");
+      expect(usableSerial(filler)).toBe(false);
     },
   );
 
   it.each([["0000001"], ["100000"], ["X000"], ["00X00"], ["xx7"], ["0x0"], ["A000000"]])(
-    "MISSED-MATCH GUARD: %j only contains zeros or x's and is still a real serial",
+    "MISSED-WARNING GUARD: %j only contains zeros or x's and is still a real serial",
     (real) => {
-      const m = classifyAsset({ serialNumber: real }, [{ id: "real-1", serialNumber: real.toLowerCase() }]);
-      expect(m.strength).toBe("strong");
-      expect(m.decision).toBe("existing_asset");
+      expect(usableSerial(real)).toBe(true);
     },
   );
+
+  // The rule is the warning's own. In the shared matcher it would also read an all-zero asset number
+  // as absent, and an absent value cannot disagree: two units kept apart by their asset numbers
+  // would become one existing asset (#5663 review F1).
+  it("the shared matcher is as it was: asset numbers 000001 and 000000 still keep two units apart when their serials agree", () => {
+    const m = classifyAsset(
+      { assetNumber: "000001", serialNumber: "AB-123" },
+      [{ id: "other-unit", assetNumber: "000000", serialNumber: "AB-123" }],
+    );
+    expect(m.conflictFields).toEqual(["assetNumber"]);
+    expect(m.strength).toBe("none");
+    expect(m.decision).toBe("draft_asset");
+  });
 });
 
 describe("same serial: which serials the warning can use", () => {
@@ -233,7 +235,7 @@ describe("same serial: when it does not look", () => {
     expect(withTenantContext).not.toHaveBeenCalled();
   });
 
-  it.each([["N/A"], ["0000"], ["ab"], [null]])("same serial: a confirmed component with serial %j has nothing usable to compare and nothing is read", async (serialNumber) => {
+  it.each([["N/A"], ["0000"], ["000000"], ["XXXXXXX"], ["ab"], [null]])("same serial: a confirmed component with serial %j has nothing usable to compare and nothing is read", async (serialNumber) => {
     expect(await sameSerialAdvisory(TENANT, saved({ serialNumber }))).toEqual({ status: "not_checked", reason: "no_usable_serial" });
     expect(withTenantContext).not.toHaveBeenCalled();
   });
