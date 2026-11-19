@@ -679,34 +679,45 @@ test.describe("touch", () => {
     const pageScroll = await page.evaluate(() => document.scrollingElement?.scrollTop ?? 0);
     const cdp = await context.newCDPSession(page);
     const results = page.getByTestId("equipment-scroll");
-    /** A touch swipe starting at the on-screen middle of `target` (which may run past the bottom). */
+    /** The part of `target` a finger can touch: inside the panel's scrollport and on screen. */
+    const visible = async (target: typeof results) => {
+      const t = (await target.boundingBox())!;
+      const p = (await panel(page).boundingBox())!;
+      const top = Math.max(t.y, p.y, 0);
+      const bottom = Math.min(t.y + t.height, p.y + p.height, page.viewportSize()!.height);
+      return { x: t.x + t.width / 2, top, bottom, height: bottom - top };
+    };
+    /** A touch swipe starting in the middle of the visible part of `target`. */
     const swipe = async (target: typeof results, yDistance: number) => {
-      const box = (await target.boundingBox())!;
-      const height = page.viewportSize()!.height;
-      const top = Math.max(box.y, 0), bottom = Math.min(box.y + box.height, height);
-      expect(bottom - top, "the swipe starts on screen").toBeGreaterThan(20);
+      const v = await visible(target);
+      expect(v.height, "the swipe starts on the visible target").toBeGreaterThan(8);
       await cdp.send("Input.synthesizeScrollGesture", {
-        x: Math.round(box.x + box.width / 2), y: Math.round((top + bottom) / 2),
-        yDistance, gestureSourceType: "touch", speed: 3000, repeatCount: 1,
+        x: Math.round(v.x), y: Math.round((v.top + v.bottom) / 2),
+        yDistance, gestureSourceType: "touch", speed: 1500, repeatCount: 1,
       });
     };
-    // Swipe the panel up until the results are on screen, then through the results to their end.
-    const onScreen = async () => {
-      const box = (await results.boundingBox())!;
-      return Math.min(box.y + box.height, page.viewportSize()!.height) - Math.max(box.y, 0) > 20;
-    };
-    for (let i = 0; i < 10 && !(await onScreen()); i++) await swipe(panel(page), -150);
-    // Swipe until the results reach their end (how far one swipe travels depends on the machine).
-    const atEnd = () => results.evaluate((el) => el.scrollTop + el.clientHeight >= el.scrollHeight - 1);
-    for (let i = 0; i < 30 && !(await atEnd()); i++) await swipe(results, -400);
-    expect(await atEnd(), "the results reached their end").toBe(true);
-    expect(await panel(page).evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
+    const panelScroll = () => panel(page).evaluate((el) => el.scrollTop);
+    const panelMax = () => panel(page).evaluate((el) => el.scrollHeight - el.clientHeight);
 
-    // Swiping down on the results alone brings the notices back: past the results' top, the swipe
-    // carries on into the panel.
-    const panelTop = async () => (await panel(page).evaluate((el) => el.scrollTop)) === 0;
-    for (let i = 0; i < 40 && !(await panelTop()); i++) await swipe(results, 400);
-    expect(await panel(page).evaluate((el) => el.scrollTop)).toBe(0);
+    // Swipe the panel itself up as far as it goes, so the results take up as much of it as they can.
+    for (let i = 0; i < 20 && (await panelScroll()) < (await panelMax()) - 1; i++) await swipe(panel(page), -150);
+    expect((await visible(results)).height, "the results are visible in the panel").toBeGreaterThan(20);
+    // Swipe the results to their end (how far one swipe travels depends on the machine).
+    const atEnd = () => results.evaluate((el) => el.scrollTop + el.clientHeight >= el.scrollHeight - 1);
+    for (let i = 0; i < 40 && !(await atEnd()); i++) await swipe(results, -300);
+    expect(await atEnd(), "the results reached their end").toBe(true);
+    const scrolledDown = await panelScroll();
+    expect(scrolledDown).toBeGreaterThan(0);
+
+    // The property (#5659): swipes that start on the results, once the results are back at their
+    // top, carry on into the panel. With overscroll contained they never move the panel.
+    for (let i = 0; i < 40 && (await panelScroll()) === scrolledDown && (await visible(results)).height > 8; i++) {
+      await swipe(results, 300);
+    }
+    expect(await panelScroll(), "a swipe on the results moved the panel").toBeLessThan(scrolledDown);
+    // Then the rest of the way back to Close, wherever the finger lands in the panel.
+    for (let i = 0; i < 20 && (await panelScroll()) > 0; i++) await swipe(panel(page), 300);
+    expect(await panelScroll()).toBe(0);
     await expect(panel(page).getByRole("button", { name: "Close equipment" })).toBeInViewport({ ratio: 1 });
 
     await page.touchscreen.tap(
