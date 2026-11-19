@@ -1596,3 +1596,13 @@ approved:
     approved_classification: TENANT-ONLY
     query_sha256: "fc45869274388bf33284d85cb692e5f19a8589def76754f9122f9379131c0dbf"
     reason: "#5503 / PR #5510 fail-closed gate: INSERT ... SELECT copies one real stored row of this upload as the probe passage, replacing only its text and model-scope fields. Target is the connection-local TEMP knowledge_entries table created in beforeAll for a fixed synthetic TENANT, under BEGIN and final ROLLBACK (ON COMMIT DROP); requires a confirmed disposable PostgreSQL. Deliberately a private-upload test, not a shared OEM surface; no production pool or corpus data."
+
+  "mira-hub/src/lib/__tests__/gs10-p26-reviewed-rollout.integration.test.ts:147":
+    approved_classification: TENANT-ONLY
+    query_sha256: "9019646833cce0a9a0a8227a5565ec3ca19063915c78d83eab47179e6793d9e8"
+    reason: "PR #5646 integration test (vitest.integration.config.ts, runs only with TEST_DATABASE_URL + MIRA_TEST_DB_CONFIRM=DISPOSABLE): reads back the rows this test itself wrote for its own random tenant and upload (tenant_id = $1::uuid AND doc_id = $2::uuid) to count page 26 rows released per model. Pure-tenant by construction; not a product surface."
+
+  "mira-hub/src/lib/__tests__/gs10-p26-reviewed-rollout.integration.test.ts:174":
+    approved_classification: TENANT-ONLY
+    query_sha256: "c70ba757c248f6a5ccec3db72df3712e5328e043a5bac0b00121a7bad821dd0e"
+    reason: "PR #5646 integration-test afterAll cleanup: DELETE FROM knowledge_entries WHERE tenant_id = the test's own random disposable tenant (the checker's FROM regex matches DELETE FROM; this is a write). Disposable DB only (MIRA_TEST_DB_CONFIRM=DISPOSABLE)."
