@@ -165,6 +165,29 @@ def test_advancement_requires_current_results_and_explicit_decision():
     assert project(state={"documents": documents(), "at": AT, "proposed": True})["status"] != "Accepted"
 
 
+def test_reported_action_pass_remains_distinct_from_accepted_advancement():
+    reported, accepted = project(report(decision=None)), project()
+    no_receipts = project(report(results=[]))
+    assert no_receipts["status"] == "In progress"
+    assert all(check["status"] == "NO RECEIPT" for check in no_receipts["checks"])
+    assert '<h3>Walk the tablet</h3><p class="meta">CHARLIE Codex · Reported pass</p>' in (
+        server.cockpit.render_workflow(no_receipts)
+    )
+    assert reported["status"] == "In progress" and reported["decision"] is None
+    assert accepted["status"] == "Accepted" and accepted["decision"] == DECISION
+    assert reported["checks"] == accepted["checks"]
+    assert reported["results_digest"] == accepted["results_digest"] == DIGEST
+
+    reported_html = server.cockpit.render_workflow(reported)
+    assert '<h3>Walk the tablet</h3><p class="meta">CHARLIE Codex · Reported pass</p>' in reported_html
+    assert "Acceptance decision" not in reported_html
+    assert "View receipt" in reported_html
+
+    accepted_html = server.cockpit.render_workflow(accepted)
+    assert '<h3>Advance the roadmap</h3><p class="meta">CHARLIE Codex · integration · PASS</p>' in accepted_html
+    assert "Acceptance decision" in accepted_html
+
+
 def test_stale_untrusted_or_ambiguous_results_cannot_accept():
     assert project(state={"documents": documents(), "at": "2026-11-17T00:00:00Z"})["status"] == "Evidence stale"
     assert project({**report(), "trusted": 0})["status"] != "Accepted"

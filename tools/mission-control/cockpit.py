@@ -235,6 +235,9 @@ def render_workflow(plan: dict) -> str:
             f'{_source(plan.get("ledger_url"), "Open acceptance ledger")}</section>'
         )
     current, action = plan["current"], plan["action"]
+    action_status = action["status"]
+    if action_status == "PASS" and plan["status"] != "Accepted":
+        action_status = "Reported pass"
     adoption = "Proposed plan" if plan["proposed"] else "Repository plan"
     source = _source(plan["plan_url"], "Full step plan")
     ledger = _source(plan.get("ledger_url"), "Open acceptance record")
@@ -265,7 +268,7 @@ def render_workflow(plan: dict) -> str:
         f'<p>{_e(current["outcome"])}</p><p class="meta">{_e(adoption)} · '
         f'{_e(plan["revision"][:9])} · checked {_when(plan["updated_at"])} · {_e(plan["status"])}</p>{warnings}'
         f'<section class="work-action"><h3>{_e(action["title"])}</h3>'
-        f'<p class="meta">{_e(action["owner"])} · {_e(action["status"])}</p>'
+        f'<p class="meta">{_e(action["owner"])} · {_e(action_status)}</p>'
         f'<dl><dt>Expected</dt><dd>{_e(action["expected"])}</dd>'
         f'<dt>Observed</dt><dd>{_e(action["observed"])}</dd><dt>Next</dt><dd>{_e(action["next"])}</dd></dl>'
         f'{evidence}<p class="meta">Candidate {_e(str(plan["candidate_head"] or "unavailable")[:12])} · '
