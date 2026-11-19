@@ -360,6 +360,8 @@ export function componentErrorMessage(code: string): string {
       return "The component for this chat was changed on another screen. Check the header and try again.";
     case "component_changed":
       return "This component was changed on another screen. Here is what it says now — check it and save again.";
+    case "stale_revision":
+      return "This component's record was changed on another screen. Nothing was changed; here is what it says now — check it and ask again.";
     case "component_retired":
       return "That component was removed from the checklist.";
     case "component_not_found":
@@ -574,7 +576,7 @@ export async function changeSelection(opts: {
   gate: BenchSendGate;
   fetch: (url: string, init: RequestInit) => Promise<Response>;
   url: string;
-  body: { threadId: string; componentId: string | null; via: string; expectedVersion: number | null; clientRequestId: string };
+  body: { threadId: string; componentId: string | null; via: string; expectedVersion: number | null; expectedRevision?: number; clientRequestId: string };
   load: () => Promise<unknown>;
 }): Promise<{ ok: true } | { ok: false; message: string }> {
   if (!opts.gate.tryBeginChange()) return { ok: false, message: CHANGE_BLOCKED_MESSAGE };
@@ -622,4 +624,30 @@ export async function changeSelection(opts: {
   } finally {
     opts.gate.endChange();
   }
+}
+
+/**
+ * What the checklist does with a component the equipment navigator found (hub-host
+ * `pickRouteFor`). It is shown once: the checklist opens on it and the technician selects it
+ * there. Nothing is written here. A read that failed, a missing checklist or a component not
+ * (or no longer) in it ends the hand-off with a reason, so it is never applied later.
+ *
+ * The server has just resolved the component, so a checklist read earlier may simply predate it
+ * (#5625 r3 F13), and a read that failed earlier may have been transient (r4 F16): each hand-off
+ * gets one fresh read ("refresh") before it is reported missing or failed. An open label editor
+ * is never closed for it (r4 F14): the hand-off waits until the technician saves or cancels.
+ */
+export function focusStep(
+  focus: { componentId: string; token: number } | null,
+  consumed: ReadonlySet<number>,
+  state: { bench: BenchState | null; available: boolean; readFailed: boolean; reread: boolean; editing: boolean },
+): "none" | "wait" | "unavailable" | "failed" | "refresh" | "missing" | "show" {
+  if (!focus || consumed.has(focus.token)) return "none";
+  if (!state.available) return "unavailable";
+  if (state.editing) return "wait";
+  if (state.readFailed) return state.reread ? "failed" : "refresh";
+  if (!state.bench) return "wait";
+  const c = state.bench.components.find((x) => x.id === focus.componentId);
+  if (c && c.status !== "retired") return "show";
+  return state.reread ? "missing" : "refresh";
 }

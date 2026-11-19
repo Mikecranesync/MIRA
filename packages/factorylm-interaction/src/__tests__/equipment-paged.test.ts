@@ -155,3 +155,23 @@ describe("repeated labels", () => {
     expect([...repeated].sort()).toEqual(["installed_instance:i1", "notebook_component:c1", "notebook_component:c2"]);
   });
 });
+
+describe("patching a freshly read record (#5617 F10)", () => {
+  const load = (key: string, rows: BrowserItem[]): Branches => {
+    let state: Branches = new Map();
+    state = branchesReducer(state, { type: "start", key, request: 1, append: false });
+    return branchesReducer(state, { type: "page", key, request: 1, page: page(rows, null), append: false });
+  };
+  it("upgrades older copies and keeps a copy that already shows a newer revision", () => {
+    const tree = load("notebook:n1", [item("notebook_component", "k2", "K2", { revision: 1 })]);
+    const both = branchesReducer(tree, { type: "page", key: "search", request: 0, page: page([], null), append: false });
+    let state: Branches = new Map([...both, ...load("search", [item("notebook_component", "k2", "K2", { revision: 3 })])]);
+    state = branchesReducer(state, { type: "patch", item: item("notebook_component", "k2", "K2", { revision: 2 }) });
+    expect(state.get("notebook:n1")?.items[0].revision).toBe(2);
+    expect(state.get("search")?.items[0].revision).toBe(3);
+  });
+  it("returns the same state when nothing would change", () => {
+    const tree = load("notebook:n1", [item("notebook_component", "k2", "K2", { revision: 3 })]);
+    expect(branchesReducer(tree, { type: "patch", item: item("notebook_component", "k2", "K2", { revision: 2 }) })).toBe(tree);
+  });
+});

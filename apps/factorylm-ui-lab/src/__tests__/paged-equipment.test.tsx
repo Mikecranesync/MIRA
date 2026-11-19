@@ -21,6 +21,8 @@ interface View {
   click(element: Element | null): Promise<void>;
   search(text: string, settle?: boolean): Promise<void>;
   swap(source: EquipmentSource): Promise<void>;
+  /** Unmount or remount the navigator; the host and its asker stay mounted. */
+  showNavigator(show: boolean): Promise<void>;
   flush(): Promise<void>;
   cleanup(): void;
 }
@@ -44,9 +46,12 @@ async function render(initial: EquipmentSource = createFakeEquipmentSource(), op
   const requests: ResolveRequest[] = [];
   let current: QuestionTarget | null = START;
   let swapTo: ((source: EquipmentSource) => void) | null = null;
+  let setShown: ((show: boolean) => void) | null = null;
   function Host() {
     const [source, setSource] = useState<EquipmentSource>(initial);
     swapTo = setSource;
+    const [shown, setShownState] = useState(true);
+    setShown = setShownState;
     // Count resolves at the source boundary: a silent retry would show up here.
     const counted = useMemo<EquipmentSource>(() => ({
       ...(source.resolvesNotebooks ? { resolvesNotebooks: true } : {}),
@@ -59,7 +64,7 @@ async function render(initial: EquipmentSource = createFakeEquipmentSource(), op
     const asker = useEquipmentAsk(counted, (next) => { asked.push(next); current = next; setTarget(next); }, { selection: options.selection });
     current = target;
     return <>
-      <PagedEquipmentNavigator source={counted} target={target} browsingKey={browsing ? itemKey(browsing) : null} onBrowse={setBrowsing} asker={asker} searchDelayMs={options.searchDelayMs ?? 0} />
+      {shown && <PagedEquipmentNavigator source={counted} target={target} browsingKey={browsing ? itemKey(browsing) : null} onBrowse={setBrowsing} asker={asker} searchDelayMs={options.searchDelayMs ?? 0} />}
       <div data-testid="composer">
         <EquipmentAskNoticeBar asker={asker} />
         <QuestionTargetBar
@@ -92,6 +97,7 @@ async function render(initial: EquipmentSource = createFakeEquipmentSource(), op
       if (settle) await flush();
     },
     swap: async (source) => { await act(async () => { swapTo?.(source); }); await flush(); },
+    showNavigator: async (show) => { await act(async () => { setShown?.(show); }); await flush(); },
     flush,
     cleanup: () => { act(() => root?.unmount()); container.remove(); },
   };
@@ -501,6 +507,118 @@ describe("paged equipment navigator", () => {
     await view.click(view.button("Try loading again"));
     expect(flakyCalls()).toBe(2);
     expect(view.row(key("notebook", "nb-storeroom-shelf"))).not.toBeNull();
+  });
+  // #5617 F10: a refresh that answers late must not replace a newer record the technician already browsed.
+  it("a held refresh that returns an older record does not replace a newer one browsed meanwhile", async () => {
+    const real = createFakeEquipmentSource();
+    let hold: Promise<void> | null = null;
+    let release = () => {};
+    const source: EquipmentSource = {
+      children: async (parent, opts) => {
+        const page = await real.children(parent, opts); // read now, answer when released
+        if (hold && parent?.id === BENCH_IDS.bench) await hold;
+        return page;
+      },
+      search: (query, scope, opts) => real.search(query, scope, opts),
+      resolve: (request, opts) => real.resolve(request, opts),
+    };
+    const view = await render(source);
+    await openBench(view);
+    await view.click(view.row(key("notebook_component", BENCH_IDS.stale)));
+    await view.click(view.button("Ask about Contactor K2")); // revision 1 refused; the record is 2
+    hold = new Promise<void>((r) => { release = r; });
+    await view.click(view.composer("Load current record")); // reads revision 2, answer held
+    real.correct(BENCH_IDS.stale); // the record is now 3
+    await view.search("k2");
+    await view.click(view.row(key("notebook_component", BENCH_IDS.stale), '[aria-label="Equipment search results"]'));
+    hold = null;
+    release();
+    await view.flush();
+    expect(view.resolves).toHaveLength(1); // recovering sent nothing
+    await view.click(view.composer("Ask about Contactor K2"));
+    expect(view.requests.at(-1)).toMatchObject({ componentId: BENCH_IDS.stale, expectedRevision: 3 });
+    expect(view.resolves).toHaveLength(2);
+  });
+
+  // #5617 F11: refusing a second revision must not make the first refused revision askable again.
+  it("every refused revision stays refused: the tree's older copy is not sent again, the current one is", async () => {
+    const source = createFakeEquipmentSource();
+    const view = await render(source);
+    await openBench(view); // tree shows revision 1; the record is 2
+    await view.click(view.row(key("notebook_component", BENCH_IDS.stale)));
+    await view.click(view.composer("Ask about Contactor K2")); // revision 1 refused
+    await view.search("k2"); // search shows revision 2
+    source.correct(BENCH_IDS.stale); // the record is 3
+    const results = '[aria-label="Equipment search results"]';
+    await view.click(view.row(key("notebook_component", BENCH_IDS.stale), results));
+    await view.click(view.composer("Ask about Contactor K2"));
+    expect(view.requests.map((r) => r.kind === "notebook_component" ? r.expectedRevision : null)).toEqual([1, 2]);
+    await view.search("");
+    await view.click(view.row(key("notebook_component", BENCH_IDS.stale)));
+    await view.click(view.composer("Ask about Contactor K2"));
+    expect(view.resolves).toHaveLength(2); // revision 1 was refused already: nothing sent
+    expect(view.container.querySelector('[data-testid="composer"] [role="alert"]')?.getAttribute("data-reason")).toBe("stale_revision");
+    await view.click(view.composer("Load current record"));
+    await view.click(view.composer("Ask about Contactor K2"));
+    expect(view.requests.at(-1)).toMatchObject({ componentId: BENCH_IDS.stale, expectedRevision: 3 });
+    expect(view.target()).toMatchObject({ componentId: BENCH_IDS.stale });
+  });
+
+  // #5617 F12: a row browsed on one source is never offered to, or sent to, another.
+  it("after the source is replaced, the composer stops offering the old row and the new source gets no resolve", async () => {
+    const view = await render(createFakeEquipmentSource());
+    await openBench(view);
+    await view.click(view.row(key("notebook_component", BENCH_IDS.mlc)));
+    expect(view.composer("Ask about MLC")).not.toBeNull();
+    const empty: EquipmentSource = {
+      children: async () => ({ items: [], total: 0, hasMore: false, nextCursor: null }),
+      search: async () => ({ items: [], total: 0, hasMore: false, nextCursor: null }),
+      resolve: async () => ({ ok: false, reason: "not_found" }),
+    };
+    await view.swap(empty);
+    expect(view.composer("Ask about MLC")).toBeNull();
+    expect(view.container.textContent).not.toContain("MLC");
+    expect(view.resolves).toEqual([]);
+  });
+
+  // #5617 F13: a completed refresh is consumed once; remounting the navigator does not read it again.
+  it("remounting the navigator after a completed refresh adds only the normal root read", async () => {
+    const calls: string[] = [];
+    const view = await render(createFakeEquipmentSource({ onCall: (line) => calls.push(line) }), { calls });
+    await openBench(view);
+    await view.click(view.row(key("notebook_component", BENCH_IDS.stale)));
+    await view.click(view.composer("Ask about Contactor K2"));
+    await view.click(view.composer("Load current record"));
+    expect(calls.filter((line) => line === `browse:children notebook:${BENCH_IDS.bench}`)).toHaveLength(2);
+    const before = calls.length;
+    await view.showNavigator(false);
+    await view.showNavigator(true);
+    expect(calls.slice(before)).toEqual(["browse:children root"]);
+  });
+  it("closing the navigator during a refresh says it stopped and offers the reload again; nothing is sent", async () => {
+    const real = createFakeEquipmentSource();
+    let hold: Promise<void> | null = null;
+    const source: EquipmentSource = {
+      children: async (parent, opts) => {
+        const page = await real.children(parent, opts);
+        if (hold && parent?.id === BENCH_IDS.bench) await hold;
+        return page;
+      },
+      search: (query, scope, opts) => real.search(query, scope, opts),
+      resolve: (request, opts) => real.resolve(request, opts),
+    };
+    const view = await render(source);
+    await openBench(view);
+    await view.click(view.row(key("notebook_component", BENCH_IDS.stale)));
+    await view.click(view.composer("Ask about Contactor K2"));
+    hold = new Promise<void>(() => {}); // never answers
+    await view.click(view.composer("Load current record"));
+    await view.showNavigator(false);
+    const alert = view.container.querySelector('[data-testid="composer"] [role="alert"]');
+    expect(alert?.textContent).toContain("Loading the current record of Contactor K2 stopped");
+    expect(view.composer("Load current record")).not.toBeNull();
+    expect(view.resolves).toHaveLength(1);
+    expect(view.target()).toEqual(START);
   });
 });
 

@@ -8,7 +8,7 @@ import { modelNumbersIn } from "@/capabilities/manual-applicability";
 import { LEGACY_THREAD_ID, normalizeNotebookThreadId, type NotebookSource } from "@/lib/equipment-notebooks";
 import { isUuid } from "./validate";
 import { componentView, type ComponentView } from "./view";
-import { getSelection, getSelectionVersion, listComponents, listSelectionTurns, readDocumentHeadings, type ThreadSelection } from "./store";
+import { getSelectionState, listComponents, listSelectionTurns, readDocumentHeadings, type ThreadSelection } from "./store";
 
 /** The selection row's key for a conversation: its thread id, or "legacy" for the default one. */
 export function threadKeyOf(value: unknown): string | null {
@@ -73,10 +73,11 @@ export async function benchState(
   threadKey: string,
   sources: readonly NotebookSource[],
 ): Promise<BenchState> {
-  const [components, selection, selectionVersion, turns, headings] = await Promise.all([
+  // One read for the selection and its version (#5625 r2 F10): two reads could describe two
+  // different selections, and the version is what the next pick is checked against.
+  const [components, { selection, version: selectionVersion }, turns, headings] = await Promise.all([
     listComponents(tenantId, notebookId),
-    getSelection(tenantId, notebookId, userId, threadKey),
-    getSelectionVersion(tenantId, notebookId, userId, threadKey),
+    getSelectionState(tenantId, notebookId, userId, threadKey),
     listSelectionTurns(tenantId, notebookId, userId, storedThread(threadKey), 300),
     readDocumentHeadings(tenantId, sources.map((s) => s.docId)),
   ]);

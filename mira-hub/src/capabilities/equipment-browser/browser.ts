@@ -7,6 +7,7 @@ import { withTenantContext } from "@/lib/tenant-context";
 import { notebookReadProjection as notebook, readNotebookHeader } from "@/lib/equipment-notebooks";
 import { threadKeyOf } from "@/capabilities/bench-components/http";
 import { componentReadProjection as component, readComponent } from "@/capabilities/bench-components/store";
+import { equipmentNavEnabled } from "./flag";
 
 const kinds = ["namespace", "asset", "notebook", "notebook_component", "installed_instance"] as const;
 type Kind = typeof kinds[number];
@@ -385,6 +386,9 @@ export async function equipmentBrowser(request: Request, action: "children" | "s
   if (actor instanceof NextResponse) {
     actor.headers.set("Cache-Control", "private, no-store");
     return actor;
+  }
+  if (!equipmentNavEnabled()) {
+    return NextResponse.json({ error: "equipment_nav_disabled" }, { status: 404, headers: { "Cache-Control": "private, no-store" } });
   }
   const access = trialAccessDecision(actor.status,actor.trialExpiresAt);
   if (access !== "ok") {

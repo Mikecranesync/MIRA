@@ -34,6 +34,7 @@ import {
   type ManualSearchFollowState,
   type ManualSearchStatus,
   type ProjectItem,
+  type QuestionTarget,
   type ShellState,
   type ProgressStage,
 } from "@factorylm/interaction";
@@ -65,6 +66,7 @@ import { composeHubSend, pairAttachments, resolveUploadNode, runAttachedSend, ty
 import { createManualSearchDriver, type ManualSearchDriver } from "./manual-search-driver";
 import { GuidedProcedure } from "./GuidedProcedure";
 import { MachineObservations } from "./MachineObservations";
+import { EquipmentNav } from "./EquipmentNav";
 import { SavedFixes } from "./SavedFixes";
 import { WorkPacketPanel } from "./WorkPacketPanel";
 import { wantsPacketOpen } from "./work-packet-view";
@@ -103,6 +105,11 @@ import {
   metaFor,
   newThreadId,
   openNotebookSelection,
+  openOffer,
+  pickRouteFor,
+  type EquipmentFocus,
+  type EquipmentOffer,
+  type PickOrigin,
   openThreadAction,
   retainedStreamInterruption,
   searchForSelection,
@@ -199,6 +206,11 @@ export function HubShellHost() {
   const [failedBody, setFailedBody] = useState<{ body: ReturnType<typeof chatBodyFor> & { componentSelection?: ScopeField }; question: string; refusedScope?: ScopeField } | null>(null);
   // The panel's newest read, by conversation: names the targets when a refused question's target moved.
   const [benchView, setBenchView] = useState<{ key: string; state: BenchState | null } | null>(null);
+  // Equipment navigator (MIRA_EQUIPMENT_NAV): the component it resolved, for that conversation's checklist to select.
+  const [equipmentFocus, setEquipmentFocus] = useState<EquipmentFocus | null>(null);
+  const [equipmentOffer, setEquipmentOffer] = useState<EquipmentOffer | null>(null);
+  const [equipmentNotice, setEquipmentNotice] = useState<string | null>(null);
+  const equipmentPickToken = useRef(0);
   // TASK-S3: the Living Work Sheet job open for ANY notebook (LivingSheet is
   // mounted per-notebook, but this state belongs to the host, not the panel,
   // so send() can read it without a prop round-trip). `livingSheetJobId`
@@ -639,6 +651,58 @@ export function HubShellHost() {
       setBenchView({ key: `${benchNotebookId}|${benchThreadId}`, state: bench });
     }
   }, [benchNotebookId, benchThreadId]);
+
+  // Equipment navigator: where a press comes from, and the component it found.
+  const benchKey = benchNotebookId && benchThreadId ? `${benchNotebookId}|${benchThreadId}` : null;
+  const benchNow = benchView && benchView.key === benchKey ? benchView.state : null;
+  // Moves on every conversation change, a return to the same one included (#5625 r2 F3). Derived
+  // during render so the panel and this host always read the same value at a press.
+  const [nav, setNav] = useState<{ key: string | null; generation: number }>({ key: benchKey, generation: 0 });
+  if (nav.key !== benchKey) {
+    setNav({ key: benchKey, generation: nav.generation + 1 });
+    // Leaving the conversation before its checklist showed the component abandons the hand-off.
+    if (equipmentFocus && `${equipmentFocus.notebookId}|${equipmentFocus.threadId}` !== benchKey) setEquipmentFocus(null);
+    // An offer belongs to the conversation it was answered in.
+    if (equipmentOffer) setEquipmentOffer(null);
+  }
+  const navGeneration = nav.key === benchKey ? nav.generation : nav.generation + 1;
+  const equipmentOrigin = useMemo<PickOrigin>(
+    () => ({ conversation: benchNotebookId && benchThreadId ? { notebookId: benchNotebookId, threadId: benchThreadId } : null, generation: navGeneration }),
+    [benchNotebookId, benchThreadId, navGeneration],
+  );
+  const pickNow = useRef({ generation: navGeneration, answering: busy });
+  useEffect(() => {
+    pickNow.current = { generation: navGeneration, answering: busy };
+  }, [navGeneration, busy]);
+  const equipmentTarget: QuestionTarget | null = benchNotebookId
+    ? { machineId: benchNotebookId, machineLabel: "", componentId: benchNow?.selection?.componentId ?? null, componentLabel: "", location: "" }
+    : null;
+  const onEquipmentPick = useCallback((target: QuestionTarget, pressedIn: PickOrigin) => {
+    const route = pickRouteFor(target, pressedIn, { ...pickNow.current, selection: selectionRef.current }, ++equipmentPickToken.current);
+    if (route.kind === "dropped") {
+      setEquipmentNotice(route.reason === "conversation_changed"
+        ? "You opened another chat before the equipment answered, so nothing was opened. Ask about it again from here."
+        : "An answer was coming in, so the equipment wasn't opened. Ask about it again when the answer is done.");
+      return;
+    }
+    setEquipmentNotice(null);
+    setEquipmentOffer(route.kind === "offer" ? route.offer : null);
+  }, []);
+  // The technician's tap is the only thing that changes the screen outside the panel (#5625 r3 F12 / r4 F14).
+  const onOpenOffer = useCallback((offer: EquipmentOffer) => {
+    setEquipmentOffer(null);
+    const opened = openOffer(offer, { generation: pickNow.current.generation, selection: selectionRef.current });
+    if (!opened) return;
+    if (opened.open) select(opened.open);
+    setEquipmentFocus(opened.focus);
+  }, [select]);
+  const onDismissOffer = useCallback(() => setEquipmentOffer(null), []);
+  // The host owns a hand-off until the checklist reports how it ended (#5625 r1 F2): a checklist
+  // remounted later never sees it again. Only the hand-off that ended is dropped, never a newer one.
+  const onFocusDone = useCallback((token: number, outcome: { ok: true } | { ok: false; message: string }) => {
+    setEquipmentFocus((f) => (f?.token === token ? null : f));
+    if (!outcome.ok) setEquipmentNotice(outcome.message);
+  }, []);
 
   // Tablet semantic-retry gap: a question refused because its target moved is never retried
   // onto the new target silently. Retry shows only when the target is unchanged.
@@ -1176,6 +1240,16 @@ export function HubShellHost() {
       {/* The notebook's action buttons share one column below the guided-procedure pill, each in its
           own row, so Machine state and Work Packet never cover each other (#5102). */}
       <div data-testid="notebook-actions" data-covered={actionsCovered ? "true" : undefined} aria-hidden={actionsCovered || undefined} style={notebookActionsStyle(actionsCovered)}>
+      {/* Equipment-first navigation (MIRA_EQUIPMENT_NAV): renders nothing while the flag is off. */}
+      <EquipmentNav
+        origin={equipmentOrigin}
+        target={equipmentTarget}
+        notice={equipmentNotice}
+        offer={equipmentOffer && equipmentOffer.generation === navGeneration ? equipmentOffer : null}
+        onPick={onEquipmentPick}
+        onOpenOffer={onOpenOffer}
+        onDismissOffer={onDismissOffer}
+      />
       {/* Bench components: "Asking about …", the checklist and the reply's actions; nothing without migration 115. */}
       {selection && (
         <BenchComponents
@@ -1187,6 +1261,8 @@ export function HubShellHost() {
           frame={componentFrame?.key === `${selection.notebookId}|${selection.threadId}` ? componentFrame.frame : null}
           gate={benchGate}
           onState={onBenchState}
+          focus={equipmentFocus && equipmentFocus.notebookId === selection.notebookId && equipmentFocus.threadId === selection.threadId ? equipmentFocus : null}
+          onFocusDone={onFocusDone}
         />
       )}
       {/* Mission 001: report an observation and read back machine state; renders nothing while off. */}

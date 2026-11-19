@@ -24,6 +24,7 @@ import {
   cardIsEmpty,
   changeSelection,
   componentErrorMessage,
+  focusStep,
   readBench,
   reconcileBench,
   retakeCard,
@@ -85,6 +86,8 @@ export function BenchComponents({
   frame,
   gate,
   onState,
+  focus = null,
+  onFocusDone,
 }: {
   notebookId: string;
   threadId: string;
@@ -98,6 +101,13 @@ export function BenchComponents({
   gate: BenchSendGate;
   /** The state the header shows — the host builds the chat rider from it. */
   onState: (state: BenchState | null) => void;
+  /**
+   * A component the equipment navigator found for this conversation (#5625 r2, Mike's B): the
+   * checklist opens on it, once, and the technician selects it here. Nothing is written for it.
+   */
+  focus?: { componentId: string; token: number } | null;
+  /** How the hand-off ended; the host drops it then, so a remounted checklist never shows it again. */
+  onFocusDone?: (token: number, outcome: { ok: true } | { ok: false; message: string }) => void;
 }) {
   const [bench, setBench] = useState<BenchState | null>(null);
   const [available, setAvailable] = useState(true);
@@ -107,6 +117,8 @@ export function BenchComponents({
   const [saving, setSaving] = useState(false);
   const [adding, setAdding] = useState({ localTag: "", kind: "", rawLabel: "" });
   const [handled, setHandled] = useState<ComponentTurnFrame | null>(null);
+  const [readFailed, setReadFailed] = useState(false);
+  const [focused, setFocused] = useState<string | null>(null);
   const addRequest = useRef<AddRequest | null>(null);
 
   // #5504 Codex r3 F6: the host refuses a send until this read has answered (or the
@@ -135,9 +147,11 @@ export function BenchComponents({
     }
     if (out.kind === "failed") {
       setMessage("The component list couldn't be read just now.");
+      setReadFailed(true);
       return null;
     }
     if (out.kind === "stale") return null;
+    setReadFailed(false);
     setAvailable(true);
     setBench(out.state);
     return out.state;
@@ -148,7 +162,11 @@ export function BenchComponents({
   }, [load, refresh]);
 
   const select = useCallback(
-    async (componentId: string | null, via: "picker" | "return" | "clarify" | "confirm"): Promise<boolean> => {
+    async (
+      componentId: string | null,
+      via: "picker" | "return" | "clarify" | "confirm",
+      seen?: { expectedVersion: number | null; expectedRevision: number | null },
+    ): Promise<{ ok: true } | { ok: false; message: string }> => {
       setSaving(true);
       setMessage(null);
       try {
@@ -156,17 +174,62 @@ export function BenchComponents({
           gate,
           fetch: (url, init) => fetch(url, init),
           url: `${base(notebookId)}selection/`,
-          body: { threadId, componentId, via, expectedVersion: bench?.selectionVersion ?? null, clientRequestId: crypto.randomUUID() },
+          body: {
+            threadId,
+            componentId,
+            via,
+            expectedVersion: seen ? seen.expectedVersion : bench?.selectionVersion ?? null,
+            ...(seen && seen.expectedRevision !== null ? { expectedRevision: seen.expectedRevision } : {}),
+            clientRequestId: crypto.randomUUID(),
+          },
           load,
         });
         if (!out.ok) setMessage(out.message);
-        return out.ok;
+        return out;
       } finally {
         setSaving(false);
       }
     },
     [notebookId, threadId, bench, load, gate],
   );
+
+  // The navigator never writes a selection: it opens the checklist on what it found.
+  const consumedFocus = useRef(new Set<number>());
+  // One fresh read per hand-off before a component is called missing or the read failed (#5625 r3 F13, r4 F16).
+  const reread = useRef(new Map<number, "pending" | "done">());
+  const [rereadDone, setRereadDone] = useState(0);
+  useEffect(() => {
+    const again = focus ? reread.current.get(focus.token) : undefined;
+    if (again === "pending") return;
+    const step = focusStep(focus, consumedFocus.current, { bench, available, readFailed, reread: again === "done", editing: card !== null });
+    if (!focus || step === "none" || step === "wait") return;
+    if (step === "refresh") {
+      const token = focus.token;
+      reread.current.set(token, "pending");
+      void load().finally(() => {
+        reread.current.set(token, "done");
+        if (alive.current) setRereadDone((n) => n + 1);
+      });
+      return;
+    }
+    consumedFocus.current.add(focus.token);
+    if (step === "show") {
+      setFocused(focus.componentId);
+      setOpen(true);
+      onFocusDone?.(focus.token, { ok: true });
+      return;
+    }
+    const text = step === "missing"
+      ? "That component isn't in this machine's checklist. Nothing was changed."
+      : step === "failed"
+        ? "The component list couldn't be read, so the component wasn't shown. Nothing was changed."
+        : "The component list isn't available here, so the component wasn't shown. Nothing was changed.";
+    setMessage(text);
+    onFocusDone?.(focus.token, { ok: false, message: text });
+  }, [focus, bench, available, readFailed, onFocusDone, load, rereadDone, card]);
+  useEffect(() => {
+    if (open && focused) document.querySelector(`[data-testid="bench-component-${focused}"]`)?.scrollIntoView?.({ block: "nearest" });
+  }, [open, focused]);
 
   const onAction = useCallback(
     async (a: ComponentAction) => {
@@ -296,11 +359,16 @@ export function BenchComponents({
         <section role="dialog" aria-label="Components" style={PANEL_STYLE} data-testid="bench-components-panel">
           <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <h2 style={{ fontSize: "var(--fl-fs-title, 18px)", margin: 0 }}>Components</h2>
-            <button type="button" style={QUIET_BUTTON} onClick={() => { setOpen(false); setCard(null); }}>Close</button>
+            <button type="button" style={QUIET_BUTTON} onClick={() => { setOpen(false); setCard(null); setFocused(null); }}>Close</button>
           </header>
           <p data-testid="bench-panel-asking">{askingAbout(bench)}</p>
           {message && <p role="status" data-testid="bench-message">{message}</p>}
 
+          {card && focus && !consumedFocus.current.has(focus.token) && (
+            <p role="status" data-testid="bench-focus-waiting">
+              {`${bench?.components.find((c) => c.id === focus.componentId)?.label ?? "The component you found"} will be shown when you finish this label.`}
+            </p>
+          )}
           {card ? (
             <ConfirmationCard card={card} onChange={setCard} known={bench?.documentNumbers ?? []} saving={saving} onSave={saveCard} onCancel={() => setCard(null)} />
           ) : (
@@ -314,11 +382,13 @@ export function BenchComponents({
                     key={c.id}
                     c={c}
                     selected={current?.id === c.id}
+                    found={focused === c.id}
                     tally={bench?.tallies[c.id]}
                     saving={saving || busy}
                     onAsk={async () => {
-                      const ok = await select(c.id, "picker");
-                      if (ok && c.status !== "confirmed") setCard(cardFor(c));
+                      // Checked against what this row shows (#5625 r2 F4): a record corrected since is refused.
+                      const out = await select(c.id, "picker", { expectedVersion: bench?.selectionVersion ?? null, expectedRevision: c.current?.revision ?? null });
+                      if (out.ok && c.status !== "confirmed") setCard(cardFor(c));
                     }}
                     onCheck={() => setCard(cardFor(c))}
                   />
@@ -339,9 +409,11 @@ export function BenchComponents({
   );
 }
 
-export function ComponentRow({ c, selected, tally, saving, onAsk, onCheck }: {
+export function ComponentRow({ c, selected, found = false, tally, saving, onAsk, onCheck }: {
   c: ComponentView;
   selected: boolean;
+  /** Opened from Find equipment: marked so the technician sees which row was found. */
+  found?: boolean;
   tally: { answered: number; refused: number } | undefined;
   saving: boolean;
   onAsk: () => void;
@@ -351,11 +423,17 @@ export function ComponentRow({ c, selected, tally, saving, onAsk, onCheck }: {
   const own = c.documents.filter((d) => d.selected && d.model === "covers" && d.ready);
   const unselected = c.documents.filter((d) => !d.selected && d.model === "covers");
   return (
-    <li data-testid={`bench-component-${c.id}`} data-status={c.status} style={{ borderTop: "1px solid var(--fl-line)", padding: "8px 0" }}>
+    <li
+      data-testid={`bench-component-${c.id}`}
+      data-status={c.status}
+      data-found={found ? "true" : undefined}
+      style={{ borderTop: "1px solid var(--fl-line)", padding: "8px 0", ...(found ? { outline: "2px solid var(--fl-accent)", outlineOffset: 2 } : {}) }}
+    >
       <div>
         <strong>{c.label}</strong>
         <span style={{ ...CHIP_BASE, ...CHIP[statusTone(c.status)] }} data-testid="bench-status">{c.statusLabel}</span>
         {selected && <span style={{ ...CHIP_BASE, ...CHIP.muted }}>this chat</span>}
+        {found && <span style={{ ...CHIP_BASE, ...CHIP.muted }} data-testid="bench-found">found</span>}
       </div>
       <div style={{ fontSize: "var(--fl-fs-sm)", color: "var(--fl-muted)" }}>
         {c.status !== "confirmed"

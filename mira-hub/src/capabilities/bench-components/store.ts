@@ -112,10 +112,21 @@ export async function listComponents(tenantId: string, notebookId: string): Prom
 }
 
 export async function readComponent(c: PoolClient, tenantId: string, notebookId: string, componentId: string, lock = false) {
+  if (lock) {
+    // Lock first, read after (#5625 r2 F4). A read that waits for this lock keeps the snapshot it
+    // started with, so a revision committed while it waited would be invisible to the latest-revision
+    // join. Under READ COMMITTED the next statement takes a fresh snapshot that includes it.
+    const locked = await c.query(
+      `SELECT 1 FROM notebook_components c
+        WHERE c.tenant_id = $1::uuid AND c.notebook_id = $2::uuid AND c.id = $3::uuid FOR UPDATE`,
+      [tenantId, notebookId, componentId],
+    );
+    if (!locked.rows[0]) return null;
+  }
   const res = await c.query(
     `SELECT ${COMPONENT_COLS}, ${REVISION_COLS}
        FROM notebook_components c ${LATEST_JOIN}
-      WHERE c.tenant_id = $1::uuid AND c.notebook_id = $2::uuid AND c.id = $3::uuid${lock ? " FOR UPDATE OF c" : ""}`,
+      WHERE c.tenant_id = $1::uuid AND c.notebook_id = $2::uuid AND c.id = $3::uuid`,
     [tenantId, notebookId, componentId],
   );
   return res.rows[0] ? toComponent(res.rows[0]) : null;
@@ -337,7 +348,8 @@ export type SetSelectionResult =
   | { status: "cleared" }
   | { status: "component_not_found" }
   | { status: "component_retired" }
-  | { status: "version_conflict"; selection: ThreadSelection | null };
+  | { status: "version_conflict"; selection: ThreadSelection | null }
+  | { status: "stale_revision"; selection: ThreadSelection | null };
 
 /**
  * Point one technician's conversation at a component (or clear it: whole machine).
@@ -347,13 +359,17 @@ export type SetSelectionResult =
  * this conversation never had a selection) makes two taps on two devices a conflict
  * instead of a silent overwrite. Clearing keeps the row, so the version never repeats. A retried request with
  * the same request id is a no-op that returns the stored row.
+ * `expectedRevision` (optional) is the component record revision the technician saw when
+ * choosing it: if the record was corrected since, nothing is written ("stale_revision"). The
+ * component row is locked for that check, the same lock a revision write takes, so a correction
+ * cannot commit between the check and this write.
  */
 export async function setSelection(
   tenantId: string,
   notebookId: string,
   ownerUserId: string,
   threadKey: string,
-  input: { componentId: string | null; via: SelectedVia; expectedVersion: number | null; clientRequestId: string },
+  input: { componentId: string | null; via: SelectedVia; expectedVersion: number | null; expectedRevision?: number; clientRequestId: string },
 ): Promise<SetSelectionResult> {
   return withTenantContext(tenantId, async (c) => {
     const currentRes = await c.query(
@@ -381,10 +397,13 @@ export async function setSelection(
       }
       return { status: "cleared" };
     }
-    const component = await readComponent(c, tenantId, notebookId, input.componentId);
+    const component = await readComponent(c, tenantId, notebookId, input.componentId, input.expectedRevision !== undefined);
     if (!component) return { status: "component_not_found" };
     if (component.retiredAt) return { status: "component_retired" };
     if (!component.current) return { status: "component_not_found" };
+    if (input.expectedRevision !== undefined && component.current.revision !== input.expectedRevision) {
+      return { status: "stale_revision", selection: current };
+    }
     const res = await c.query(
       `INSERT INTO notebook_thread_selections AS s
          (tenant_id, notebook_id, owner_user_id, thread_key, component_id, component_revision, selected_via,
