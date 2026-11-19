@@ -21,7 +21,9 @@
  *   - a component added after the checklist was read is shown after one fresh read (r3 F13).
  *   - showing a part never saves it, and reopening the chat does not show it again.
  *   - Close on the checklist drops a part waiting on an open label editor; it is not shown later (#5637).
- *   - a full page of 50 results scrolls inside the panel; Close equipment and the page stay put (#5639).
+ *   - a full page of 50 results scrolls inside the panel; Close equipment and the page stay put (#5639),
+ *     also on a short landscape screen, where the checklist stays on screen too (#5643).
+ *   - the open results sit on the panel's own surface in light and dark (#5654).
  *   - off: the panel is not rendered.
  *
  * Auth: a next-auth JWE signed with the SAME AUTH_SECRET the server boots with
@@ -518,6 +520,51 @@ test("a full page of 50 results scrolls inside the panel; Close equipment and th
   expect(await page.evaluate(() => document.scrollingElement?.scrollTop ?? 0)).toBe(pageScroll);
   await expect(panel(page).getByRole("button", { name: "Close equipment" })).toBeInViewport();
   await expect(page.getByTestId("bench-asking-about")).toBeInViewport();
+});
+
+test("on a short landscape screen the results still scroll inside the panel; Close equipment and the checklist stay on screen (#5643)", async ({ page, context, baseURL }) => {
+  await page.setViewportSize({ width: 800, height: 350 });
+  await auth(context, baseURL!);
+  await routes(page, { enabled: true, resolve: "resolved", fullPage: 50 });
+  await page.goto(`/v3/?notebook=${NB}&thread=${THREAD}`);
+  await expect(panel(page)).toBeVisible();
+
+  await panel(page).getByRole("button", { name: "Find equipment" }).click();
+  await row(page, `notebook:${NB}`).click();
+  await expect(row(page, "notebook_component:00000000-0000-4000-8000-000000000049")).toBeAttached();
+  const region = page.getByTestId("equipment-scroll");
+  expect(await region.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true);
+
+  const pageScroll = await page.evaluate(() => document.scrollingElement?.scrollTop ?? 0);
+  const more = panel(page).getByRole("button", { name: /show more/i }).first();
+  await more.scrollIntoViewIfNeeded();
+  await expect(more).toBeInViewport();
+  expect(await region.evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
+  expect(await page.evaluate(() => document.scrollingElement?.scrollTop ?? 0)).toBe(pageScroll);
+  await expect(panel(page).getByRole("button", { name: "Close equipment" })).toBeInViewport({ ratio: 1 });
+  await expect(page.getByTestId("bench-asking-about")).toBeInViewport({ ratio: 1 });
+});
+
+test("the open results sit on the panel's own surface in light and dark, so chat text never shows through (#5654)", async ({ page, context, baseURL }) => {
+  await auth(context, baseURL!);
+  await routes(page, { enabled: true, resolve: "resolved", fullPage: 50 });
+  for (const colorScheme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme });
+    await page.goto(`/v3/?notebook=${NB}&thread=${THREAD}`);
+    await expect(panel(page)).toBeVisible();
+    await panel(page).getByRole("button", { name: "Find equipment" }).click();
+    await row(page, `notebook:${NB}`).click();
+    const surface = await page.getByTestId("equipment-scroll").evaluate((el) => {
+      const probe = document.createElement("div");
+      probe.style.background = "var(--fl-workspace-surface)";
+      el.appendChild(probe);
+      const token = getComputedStyle(probe).backgroundColor;
+      probe.remove();
+      return { background: getComputedStyle(el).backgroundColor, token };
+    });
+    expect(surface.background, colorScheme).not.toBe("rgba(0, 0, 0, 0)");
+    expect(surface.background, colorScheme).toBe(surface.token);
+  }
 });
 
 test("off: the panel is not rendered", async ({ page, context, baseURL }) => {

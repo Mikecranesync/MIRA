@@ -16,7 +16,7 @@
  * is still exactly this component", which a switch to another component can never satisfy. The
  * checklist's own write is the compare-and-set.
  */
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { itemKey, type BrowserItem, type EquipmentSource, type QuestionTarget } from "@factorylm/interaction";
 import { EquipmentAskNoticeBar, PagedEquipmentNavigator, useEquipmentAsk } from "@factorylm/ui";
 import { createHubEquipmentSource, equipmentNavAvailable } from "./equipment-source";
@@ -82,6 +82,8 @@ export function EquipmentNav({
     onPickRef.current(next, pressedIn.current);
   }, { selection: () => null });
 
+  const { regionRef, room } = useRoomBelow(open, `${notice ?? ""}|${offer ? offerText(offer) : ""}|${asker.notice?.reason ?? ""}`);
+
   if (!available) return null;
   return (
     <section className="fl-equip-panel" aria-label="Find equipment" data-testid="equipment-nav">
@@ -107,8 +109,13 @@ export function EquipmentNav({
       ) : null}
       {open ? (
         // A full page of results scrolls inside the panel, so Close equipment and the checklist below
-        // stay on screen whatever the result count (#5639).
-        <div data-testid="equipment-scroll" style={SCROLL_REGION}>
+        // stay on screen whatever the result count (#5639) and the screen height (#5643). The results
+        // sit on the panel's own surface so chat text never shows through (#5654).
+        <div
+          ref={regionRef}
+          data-testid="equipment-scroll"
+          style={{ ...SCROLL_REGION, maxHeight: room === null ? SCROLL_REGION.maxHeight : `min(50vh, 24rem, ${room}px)` }}
+        >
           <PagedEquipmentNavigator
             source={source}
             target={target}
@@ -122,7 +129,35 @@ export function EquipmentNav({
   );
 }
 
-const SCROLL_REGION: CSSProperties = { maxHeight: "min(50vh, 24rem)", overflowY: "auto", overscrollBehavior: "contain" };
+const SCROLL_REGION: CSSProperties = {
+  maxHeight: "min(50vh, 24rem)", overflowY: "auto", overscrollBehavior: "contain",
+  background: "var(--fl-workspace-surface)", border: "1px solid var(--fl-workspace-line)",
+  borderRadius: "var(--fl-workspace-radius)", boxShadow: "var(--fl-shadow)",
+};
+
+/** Room kept under the results for the checklist trigger (#5643): the actions column's 8px row gap
+ *  (notebook-actions.ts) plus the trigger pill's 44px minimum (BenchComponents PILL_STYLE) and 16px
+ *  for a pill that wraps to a second line. */
+const CHECKLIST_RESERVE = 68;
+/** The results never shrink below two 44px rows, even on a screen too short for everything. */
+const MIN_RESULTS = 88;
+
+/** The results' height cap from where the region starts on screen now: notices or an offer above it
+ *  push it down, a rotation or a soft keyboard changes the window. Null until measured. */
+function useRoomBelow(open: boolean, layoutKey: unknown) {
+  const regionRef = useRef<HTMLDivElement>(null);
+  const [room, setRoom] = useState<number | null>(null);
+  useLayoutEffect(() => {
+    const el = regionRef.current;
+    if (!open || !el) return;
+    const measure = () =>
+      setRoom(Math.max(MIN_RESULTS, Math.floor(window.innerHeight - el.getBoundingClientRect().top - CHECKLIST_RESERVE)));
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, [open, layoutKey]);
+  return { regionRef, room };
+}
 
 function offerText({ target: t, here }: EquipmentOffer): string {
   const machine = t.machineLabel || "that machine";
