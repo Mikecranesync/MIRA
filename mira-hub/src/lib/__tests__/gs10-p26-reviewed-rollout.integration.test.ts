@@ -32,7 +32,7 @@ import type { Pool, PoolClient } from "pg";
 
 const READY = Boolean(process.env.TEST_DATABASE_URL && process.env.MIRA_TEST_DB_CONFIRM === "DISPOSABLE");
 
-const { testPool, BYTES, pins } = vi.hoisted(() => {
+const { testPool, BYTES, BYTES_B, pins } = vi.hoisted(() => {
   process.env.NODE_EMBED_ON_WRITE = "0";
   process.env.NOTEBOOK_HYBRID_RETRIEVAL = "0";
   process.env.NOTEBOOK_RERANK = "0";
@@ -41,32 +41,38 @@ const { testPool, BYTES, pins } = vi.hoisted(() => {
   return {
     testPool: new PgPool({ connectionString: process.env.TEST_DATABASE_URL }) as Pool,
     BYTES: Buffer.from("%PDF-1.4 stub bytes standing for the approved GS10 file"),
-    pins: { reverted: false },
+    BYTES_B: Buffer.from("%PDF-1.4 stub bytes standing for the second approved GS10 file"),
+    pins: { reverted: false, revertedB: false },
   };
 });
-const APPROVED_SHA = "090aa1b36250be11e1da33526a4b995492593c6fc35aa82ad18115e411dcc5e4";
-const SECOND_SHA = "90fa490a572558d799c8e8a53ba5f074f36182330c636015a473fd0e43bd1fab";
+const { APPROVED_SHA, SECOND_SHA } = vi.hoisted(() => ({
+  APPROVED_SHA: "090aa1b36250be11e1da33526a4b995492593c6fc35aa82ad18115e411dcc5e4",
+  SECOND_SHA: "90fa490a572558d799c8e8a53ba5f074f36182330c636015a473fd0e43bd1fab",
+}));
 const APPROVED_DIGEST = "d570e81e1fc665e0fa75879a2624aab107f0765b83d6be1acf013382f70b91d5";
 
 vi.mock("@/lib/db", () => ({ default: testPool }));
 vi.mock("@/capabilities/table-rule-pins", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/capabilities/table-rule-pins")>();
-  const stub = (await import("node:crypto")).createHash("sha256").update(BYTES).digest("hex");
-  return {
-    ...actual,
-    rulePinsForSha: (sha: string) => {
-      if (sha !== stub) return actual.rulePinsForSha(sha);
-      const real = actual.rulePinsForSha(APPROVED_SHA)!;
-      if (!pins.reverted) return real;
-      return Object.fromEntries(Object.entries(real).map(([page, pin]) => {
-        const reverted = { ...pin };
-        delete reverted.reviewed;
-        return [page, reverted];
-      }));
-    },
-    // The same reverted build, as the read side sees it: the pin file no longer carries the digest.
-    isReviewedDigestActive: (digest: unknown) => !pins.reverted && actual.isReviewedDigestActive(digest),
+  const { createHash: hash } = await import("node:crypto");
+  const stubs: Record<string, [string, () => boolean]> = {
+    [hash("sha256").update(BYTES).digest("hex")]: [APPROVED_SHA, () => pins.reverted],
+    [hash("sha256").update(BYTES_B).digest("hex")]: [SECOND_SHA, () => pins.revertedB],
   };
+  // One lookup serves the writer AND the read check (`isReleaseActive` calls it), so a reverted
+  // file is reverted for both, exactly as an edited pin file would be.
+  const rulePinsForSha = (sha: string) => {
+    if (!Object.hasOwn(stubs, sha)) return actual.rulePinsForSha(sha);
+    const [realSha, reverted] = stubs[sha];
+    const real = actual.rulePinsForSha(realSha)!;
+    if (!reverted()) return real;
+    return Object.fromEntries(Object.entries(real).map(([page, pin]) => {
+      const without = { ...pin };
+      delete without.reviewed;
+      return [page, without];
+    }));
+  };
+  return { ...actual, rulePinsForSha, isReleaseActive: (sha: unknown, page: unknown, digest: unknown) => actual.isReleaseActive(sha, page, digest, rulePinsForSha) };
 });
 vi.mock("unpdf", async () => {
   const { textContentItem } = await import("@/capabilities/__fixtures__/text-content-item");
@@ -97,13 +103,13 @@ const LINE_5_1 = "GS11N-20P2: Input Rating / CT / Rated Input Current 5.1 A";
 const hubRoot = path.resolve(__dirname, "..", "..", "..");
 let client: PoolClient;
 
-async function newUpload(): Promise<string> {
+async function newUpload(bytes: Buffer = BYTES): Promise<string> {
   const { rows } = await testPool.query<{ id: string }>(
     `INSERT INTO hub_uploads
        (tenant_id, provider, filename, status, kb_chunk_count, kind, kg_entity_id, uns_path, ingest_route, content_sha256)
      VALUES ($1, 'local', $2, 'parsed', 0, 'document', $3, NULL, 'v2', $4)
      RETURNING id::text AS id`,
-    [TENANT, FILENAME, NODE, SHA],
+    [TENANT, FILENAME, NODE, createHash("sha256").update(bytes).digest("hex")],
   );
   return rows[0].id;
 }
@@ -244,6 +250,26 @@ describe.skipIf(!READY)("GS10 page 26 reviewed pin: stored rows on rollout and w
     pins.reverted = true;
     expect((await ask(doc, "GS11N-20P2")).cites51).toEqual([]);
     pins.reverted = false;
+  });
+
+  it("withdrawal is per file: removing the approval for one approved file withholds that file's rows only", async () => {
+    pins.reverted = false; pins.revertedB = false;
+    const a = await newUpload(BYTES);
+    const b = await newUpload(BYTES_B);
+    expect((await reprocessNodeDocument({ tenantId: TENANT, uploadId: a, bytes: BYTES })).action).toBe("reprocessed");
+    expect((await reprocessNodeDocument({ tenantId: TENANT, uploadId: b, bytes: BYTES_B })).action).toBe("reprocessed");
+    const shaA = createHash("sha256").update(BYTES).digest("hex");
+    const shaB = createHash("sha256").update(BYTES_B).digest("hex");
+    // Same reviewed digest on both files, each row bound to the file it was read from.
+    expect((await stored(a)).filter((r) => r.meta.table_reviewed === APPROVED_DIGEST).map((r) => r.meta.table_reviewed_sha)).toEqual(Array(10).fill(shaA));
+    expect((await stored(b)).filter((r) => r.meta.table_reviewed === APPROVED_DIGEST).map((r) => r.meta.table_reviewed_sha)).toEqual(Array(10).fill(shaB));
+    expect((await ask(a, "GS11N-20P2")).cites51.map((c) => c.sourcePage)).toEqual([26]);
+    expect((await ask(b, "GS11N-20P2")).cites51.map((c) => c.sourcePage)).toEqual([26]);
+
+    pins.revertedB = true; // the second file's approval is removed; the first file's stays
+    expect((await ask(b, "GS11N-20P2")).cites51).toEqual([]);
+    expect((await ask(a, "GS11N-20P2")).cites51.map((c) => c.sourcePage)).toEqual([26]);
+    pins.revertedB = false;
   });
 
   it("withdrawal needs no original: a null-hash upload whose parked file is gone is found by its rows and withheld", async () => {

@@ -24,9 +24,10 @@ export type ScopedRow = {
   tableScope?: "section" | "shared" | "unresolved";
   tableHeader?: string;
   /** Set by `gatePageRows` on a row it RELEASES: the reviewed digest it was released under, stored
-   *  as `metadata.table_reviewed`. Retrieval honours the release only while the shipped pins still
-   *  carry this digest (`isReviewedDigestActive`), and the stamp makes every released row
-   *  queryable without the original file or its hash. Not part of `scopeDigest`. */
+   *  as `metadata.table_reviewed` (the writer adds the file's SHA-256 as `table_reviewed_sha`).
+   *  Retrieval honours the release only while the pin of that file and page still carries this
+   *  digest (`isReleaseActive`), and the stamp makes every released row queryable without the
+   *  original file. Not part of `scopeDigest`. */
   tableReviewed?: string;
 };
 

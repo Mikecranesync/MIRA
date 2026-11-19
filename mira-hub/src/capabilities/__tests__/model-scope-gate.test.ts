@@ -313,10 +313,10 @@ describe("through the writer: a page with a matching reviewed record stores its 
 });
 
 describe("retrieval reads the release stamp wherever it reads a row's model scope (#5646 r3 F1)", () => {
-  it("every SELECT in manual-rag.ts that reads table_models also reads table_reviewed", () => {
+  it("every SELECT in manual-rag.ts that reads table_models also reads table_reviewed and table_reviewed_sha", () => {
     const source = readFileSync(join(__dirname, "..", "..", "lib", "manual-rag.ts"), "utf8");
     const lines = source.split("\n").filter((l) => l.includes("AS table_models"));
     expect(lines.length).toBeGreaterThanOrEqual(5);
-    for (const line of lines) expect(line).toContain("metadata->>'table_reviewed' AS table_reviewed");
+    for (const line of lines) expect(line).toContain("metadata->>'table_reviewed' AS table_reviewed, metadata->>'table_reviewed_sha' AS table_reviewed_sha");
   });
 });

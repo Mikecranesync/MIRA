@@ -61,8 +61,9 @@ const CHUNK_OVERLAP = 120;
  */
 export const EXTRACTION_VERSION = 7;
 
-/** `reviewed`: the page's reviewed-rows digest (`reviewedRowsDigest`); absent/null = not a reviewed page. */
-type PageTable = { remainder: string; chunks: TableChunk[]; sections?: ScopedText[]; reviewed?: string | null };
+/** `reviewed`: the page's reviewed-rows digest (`reviewedRowsDigest`); absent/null = not a reviewed page.
+ *  `reviewedSha`: the SHA-256 of the file that digest was looked up for, stamped on released rows. */
+type PageTable = { remainder: string; chunks: TableChunk[]; sections?: ScopedText[]; reviewed?: string | null; reviewedSha?: string };
 
 // Multi-row INSERT batch size. Bounds BOTH the chunk rows held in memory at once
 // (≤ BATCH_ROWS, instead of every chunk of a 1200-page manual accumulated in one
@@ -540,6 +541,7 @@ async function insertChunkRows(
     tableScope?: SectionScope;
     tableHeader?: string;
     tableReviewed?: string;
+    tableReviewedSha?: string;
   };
   let idx = 0;
   let batch: ChunkRow[] = [];
@@ -576,7 +578,7 @@ async function insertChunkRows(
           ...(r.tableScope ? { table_scope: r.tableScope } : {}),
           ...(r.tableHeader ? { table_header: r.tableHeader } : {}),
           // Release provenance (#5646): the reviewed digest this row was released under.
-          ...(r.tableReviewed ? { table_reviewed: r.tableReviewed } : {}),
+          ...(r.tableReviewed ? { table_reviewed: r.tableReviewed, table_reviewed_sha: r.tableReviewedSha ?? null } : {}),
         }),
       );
     }
@@ -650,7 +652,9 @@ async function insertChunkRows(
       }
     }
     for (const row of gatePageRows(pageRows, table?.reviewed)) {
-      batch.push(row);
+      // A released row is bound to the file it was read from (#5646): its release holds only
+      // while that file's pin for this page carries the digest.
+      batch.push(row.tableReviewed ? { ...row, tableReviewedSha: table?.reviewedSha } : row);
       if (batch.length >= BATCH_ROWS) await flush();
     }
   }
@@ -940,7 +944,7 @@ async function parsePdfForNode(buffer: Buffer | Uint8Array, rest: NodeChunkOpts)
   // table rows are written (flagged) rather than dropped. A page the repair
   // touched keeps its repair marker. Independent of NOTEBOOK_GARBLE_DECODE —
   // this is detection, not a repair.
-  pageTables.forEach((table, p) => { if (table) table.reviewed = reviewed[p]; });
+  pageTables.forEach((table, p) => { if (table) { table.reviewed = reviewed[p]; table.reviewedSha = documentSha256; } });
   const markers: Array<TextRepair | null> = repairs.map((r, p) => r ?? (hasUnmappedGlyphBetweenDigits(pages[p]) ? "unmapped_glyph" : null));
   return { pages, markers, labels, pageTables };
 }

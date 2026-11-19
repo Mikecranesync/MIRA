@@ -9,6 +9,7 @@
  * the real writer. Page 26 of the two approved GS10 files is the one reviewed page (owner review,
  * #5232, 2026-11-18); page 27 is not reviewed and stays withheld.
  */
+import { createHash } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 import gs10p26 from "../__fixtures__/table-rows/gs10-p26-230v-1ph.json";
 import gs10p27 from "../__fixtures__/table-rows/gs10-p27-230v-3ph.json";
@@ -79,13 +80,14 @@ function stored(): Stored[] {
 }
 /** The real writer over one captured page of the pinned GS10 file. Returns the rows the reader
  *  produced (what the gate was given) and the rows that were stored (what the gate returned). */
+const STUB = "%PDF stub standing for the pinned GS10 file";
 async function ingest(page: Page, reviewed?: string, sha: string = reviewedP26.sha256, real = false) {
   captured.length = 0; gated.length = 0;
   pdf.pages = [page]; pdf.sha = sha; pdf.reviewed = reviewed; pdf.real = real;
   vi.resetModules();
   const { writePdfChunksForNode } = await import("@/lib/node-knowledge-ingest");
   await writePdfChunksForNode({ tenantId: "11111111-1111-4111-8111-111111111111", uploadId: "up-1", nodeId: "node-1", unsPath: null,
-    filename: "gs10usermanual.pdf", buffer: Buffer.from("%PDF stub standing for the pinned GS10 file") });
+    filename: "gs10usermanual.pdf", buffer: Buffer.from(STUB) });
   return { read: gated.flatMap((g) => g.input), stored: stored() };
 }
 const P26 = { page: 26, text: gs10p26.text, items: gs10p26.items } as Page;
@@ -253,6 +255,8 @@ describe("drift guard: page 26 answers only while it is exactly the page the own
     const released = stored.filter((r) => r.meta.table_unqualified !== true && (r.meta.table_models as string[] | undefined)?.length === 1);
     expect(released).toHaveLength(10);
     expect(released.map((r) => r.meta.table_reviewed)).toEqual(Array(10).fill(APPROVED.digest));
+    // Bound to the file it was read from: the SHA-256 of the bytes the writer was handed.
+    expect(released.map((r) => r.meta.table_reviewed_sha)).toEqual(Array(10).fill(createHash("sha256").update(STUB).digest("hex")));
     expect(stored.filter((r) => r.meta.table_reviewed !== undefined)).toHaveLength(10);
     const own = stored.filter((r) => r.content.includes(LINE_5_1));
     expect(own).toHaveLength(1);

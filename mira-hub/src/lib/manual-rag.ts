@@ -26,7 +26,7 @@ import {
 import { type PhotoDocumentKind, photoDocumentShape, productWrittenBody } from "@/capabilities/photo-document-text";
 import { withoutSharedTableHeader } from "@/capabilities/section-table-scope";
 import { exactModelKey } from "@/capabilities/table-rows";
-import { isReviewedDigestActive } from "@/capabilities/table-rule-pins";
+import { isReleaseActive } from "@/capabilities/table-rule-pins";
 import { confirmedCatalogNumber } from "@/capabilities/notebook-manual-identity";
 import { embedQueryDetailed, hybridRetrievalEnabled, rrfMerge, vectorLiteral } from "@/capabilities/hybrid-retrieval";
 import { setSpanAttrs } from "@/capabilities/observability/tracing";
@@ -2028,7 +2028,7 @@ export async function retrieveNodeChunks(
           ${PAGE_LABEL_SQL},
           section_path,
           metadata->>'filename' AS filename,
-          metadata->'table_models' AS table_models, metadata->'table_unqualified' AS table_unqualified, metadata->>'table_scope' AS table_scope, metadata->>'table_header' AS table_header, metadata->>'table_reviewed' AS table_reviewed,
+          metadata->'table_models' AS table_models, metadata->'table_unqualified' AS table_unqualified, metadata->>'table_scope' AS table_scope, metadata->>'table_header' AS table_header, metadata->>'table_reviewed' AS table_reviewed, metadata->>'table_reviewed_sha' AS table_reviewed_sha,
           ${documentHeadingSql},
           verified,
           tsvector_to_array(content_tsv) AS lexemes,
@@ -2086,7 +2086,7 @@ export async function retrieveNodeChunks(
           ${PAGE_LABEL_SQL},
           section_path,
           metadata->>'filename' AS filename,
-          metadata->'table_models' AS table_models, metadata->'table_unqualified' AS table_unqualified, metadata->>'table_scope' AS table_scope, metadata->>'table_header' AS table_header, metadata->>'table_reviewed' AS table_reviewed,
+          metadata->'table_models' AS table_models, metadata->'table_unqualified' AS table_unqualified, metadata->>'table_scope' AS table_scope, metadata->>'table_header' AS table_header, metadata->>'table_reviewed' AS table_reviewed, metadata->>'table_reviewed_sha' AS table_reviewed_sha,
           ${documentHeadingSql},
           verified,
           tsvector_to_array(content_tsv) AS lexemes,
@@ -2202,7 +2202,7 @@ export async function retrieveNodeChunks(
             ${PAGE_LABEL_SQL},
             section_path,
             metadata->>'filename' AS filename,
-            metadata->'table_models' AS table_models, metadata->'table_unqualified' AS table_unqualified, metadata->>'table_scope' AS table_scope, metadata->>'table_header' AS table_header, metadata->>'table_reviewed' AS table_reviewed,
+            metadata->'table_models' AS table_models, metadata->'table_unqualified' AS table_unqualified, metadata->>'table_scope' AS table_scope, metadata->>'table_header' AS table_header, metadata->>'table_reviewed' AS table_reviewed, metadata->>'table_reviewed_sha' AS table_reviewed_sha,
             ${documentHeadingSql},
             verified,
             tsvector_to_array(content_tsv) AS lexemes,
@@ -2375,7 +2375,7 @@ export async function retrieveNodeChunks(
         `SELECT
             content, doc_id::text AS doc_id, source_url, source_page, page_start,
             ${PAGE_LABEL_SQL},
-            section_path, metadata->>'filename' AS filename, metadata->'table_models' AS table_models, metadata->'table_unqualified' AS table_unqualified, metadata->>'table_scope' AS table_scope, metadata->>'table_header' AS table_header, metadata->>'table_reviewed' AS table_reviewed, verified,
+            section_path, metadata->>'filename' AS filename, metadata->'table_models' AS table_models, metadata->'table_unqualified' AS table_unqualified, metadata->>'table_scope' AS table_scope, metadata->>'table_header' AS table_header, metadata->>'table_reviewed' AS table_reviewed, metadata->>'table_reviewed_sha' AS table_reviewed_sha, verified,
             ${documentHeadingSql},
             tsvector_to_array(content_tsv) AS lexemes,
             0::float4 AS rank
@@ -2695,10 +2695,11 @@ export async function retrieveNodeChunks(
   const admit = (r: Record<string, unknown>): boolean => {
       judgedDocs.add(String(r.doc_id ?? ""));
       // #5646: a row the model-scope gate released carries the reviewed digest it was released
-      // under. The release holds only while the shipped pins still carry that digest; once the
-      // approval is removed the row is read as withheld (models kept, unresolved, unqualified),
-      // with no reprocess and no need for the original file. Same shape as the stored withdrawal.
-      if (r.table_reviewed != null && !isReviewedDigestActive(r.table_reviewed)) {
+      // under and the SHA-256 of its file. The release holds only while that file's pin for the
+      // row's page still carries the digest; once the approval is removed the row is read as
+      // withheld (models kept, unresolved, unqualified), with no reprocess and no need for the
+      // original file. Same shape as the stored withdrawal statement.
+      if (r.table_reviewed != null && !isReleaseActive(r.table_reviewed_sha, r.page_start ?? r.source_page, r.table_reviewed)) {
         r.table_scope = "unresolved";
         r.table_unqualified = true;
         r.table_header = null;
@@ -2993,7 +2994,7 @@ export async function retrieveNodeChunks(
                 page_start,
                 section_path,
                 metadata->>'filename' AS filename,
-                metadata->'table_models' AS table_models, metadata->'table_unqualified' AS table_unqualified, metadata->>'table_scope' AS table_scope, metadata->>'table_header' AS table_header, metadata->>'table_reviewed' AS table_reviewed,
+                metadata->'table_models' AS table_models, metadata->'table_unqualified' AS table_unqualified, metadata->>'table_scope' AS table_scope, metadata->>'table_header' AS table_header, metadata->>'table_reviewed' AS table_reviewed, metadata->>'table_reviewed_sha' AS table_reviewed_sha,
                 ${documentHeadingSql},
                 verified,
                 tsvector_to_array(content_tsv) AS lexemes,

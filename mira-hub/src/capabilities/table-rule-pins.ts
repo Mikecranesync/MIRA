@@ -29,17 +29,22 @@ export function rulePinsForSha(sha256: string): DocumentRulePins | null {
   return Object.hasOwn(PINNED, sha256) ? PINNED[sha256].pages : null;
 }
 
-const REVIEWED_DIGESTS: ReadonlySet<string> = new Set(
-  Object.values(PINNED).flatMap((d) => Object.values(d.pages).map((p) => p.reviewed))
-    .filter((d): d is string => typeof d === "string" && /^[0-9a-f]{64}$/.test(d)),
-);
-
-/** True while the shipped pin file still records `digest` as a page's reviewed rows. Retrieval
- *  honours a stored row's release stamp (`metadata.table_reviewed`) only while this holds, so
- *  removing an approval from the pin file withdraws every row released under it, with no
- *  reprocess and no need for the original file. */
-export function isReviewedDigestActive(digest: unknown): boolean {
-  return typeof digest === "string" && REVIEWED_DIGESTS.has(digest);
+/** True while the shipped pin of exactly this file (`sha256`) and page still records `digest` as
+ *  that page's reviewed rows. A stored row released by the gate carries all three
+ *  (`metadata.table_reviewed_sha`, its page, `metadata.table_reviewed`); retrieval honours the
+ *  release only while this holds, so removing an approval from the pin file, for one file or for
+ *  all, withdraws exactly the rows released under it, with no reprocess and no need for the
+ *  original file. Anything missing or malformed is not a release. `lookup` exists for tests that
+ *  stand stub bytes in for a pinned file; production always reads the shipped pins. */
+export function isReleaseActive(sha256: unknown, pageNumber: unknown, digest: unknown,
+  lookup: (sha256: string) => DocumentRulePins | null = rulePinsForSha): boolean {
+  if (typeof sha256 !== "string" || !/^[0-9a-f]{64}$/.test(sha256)) return false;
+  if (typeof digest !== "string" || !/^[0-9a-f]{64}$/.test(digest)) return false;
+  const page = typeof pageNumber === "string" && /^[1-9]\d*$/.test(pageNumber) ? Number(pageNumber) : pageNumber;
+  if (typeof page !== "number" || !Number.isInteger(page) || page < 1) return false;
+  const document = lookup(sha256);
+  if (!document || !Object.hasOwn(document, String(page))) return false;
+  return document[String(page)].reviewed === digest;
 }
 
 /** Identity of a page's positioned text: every item's text and position, in reading order. */

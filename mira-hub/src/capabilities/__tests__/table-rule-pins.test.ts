@@ -5,7 +5,7 @@ import gs10p27 from "../__fixtures__/table-rows/gs10-p27-230v-3ph.json";
 import micro820 from "../__fixtures__/table-rows/micro820-in009-p16-20-scope.json";
 import ml1100 from "../__fixtures__/table-rows/ml1100-p114-p120-ratings-scope.json";
 import pinFile from "../table-rule-pins.json";
-import { isReviewedDigestActive, pinnedRules, reviewedRowsDigest, rulePinsForSha, rulesCrossing } from "../table-rule-pins";
+import { isReleaseActive, pinnedRules, reviewedRowsDigest, rulePinsForSha, rulesCrossing } from "../table-rule-pins";
 import { pageLayoutItems } from "../pdf-layout-items";
 
 // #5503 F14/F15: table rules are pinned data, never read from a page's drawing. Nothing here is
@@ -68,19 +68,23 @@ describe("pinned table rules: the real pin file", () => {
     expect(reviewedRowsDigest(null, 26, gs10p26.items)).toBeNull();
   });
 
-  it("a stored release stamp is honoured only while the shipped pins still carry its digest (#5646 r3 F1)", () => {
+  it("a stored release is honoured only while the pin of ITS file and page still carries its digest (#5646 r3 F1)", () => {
     const approved = "d570e81e1fc665e0fa75879a2624aab107f0765b83d6be1acf013382f70b91d5";
-    expect(isReviewedDigestActive(approved)).toBe(true);
-    // Exactly the digests the pin file records as reviewed, nothing else.
-    const recorded = Object.values(pinFile.documents).flatMap((d) =>
-      Object.values(d.pages as Record<string, { reviewed?: string }>).map((p) => p.reviewed).filter(Boolean));
-    expect([...new Set(recorded)]).toEqual([approved]);
-    for (const other of [approved.replace(/^d/, "e"), approved.slice(1), "", null, undefined, 42, { approved }]) {
-      expect(isReviewedDigestActive(other as unknown)).toBe(false);
+    const second = "90fa490a572558d799c8e8a53ba5f074f36182330c636015a473fd0e43bd1fab";
+    for (const sha of [GS10, second]) {
+      expect(isReleaseActive(sha, 26, approved)).toBe(true);
+      expect(isReleaseActive(sha, "26", approved)).toBe(true); // a page read back from SQL as text
+      for (const page of [25, 27, 0, -26, 26.5, Number.NaN, null, undefined]) expect(isReleaseActive(sha, page as never, approved)).toBe(false);
+      for (const digest of [approved.replace(/^d/, "e"), approved.slice(1), "", null, undefined, 42]) {
+        expect(isReleaseActive(sha, 26, digest as never)).toBe(false);
+      }
     }
+    // The same digest is not honoured for another file, or for a release with no file.
+    const other = Object.keys(pinFile.documents).find((k) => k.startsWith("eca93c34"))!;
+    for (const sha of [other, "0".repeat(64), "", null, undefined]) expect(isReleaseActive(sha as never, 26, approved)).toBe(false);
     // A layout fingerprint is not a reviewed digest.
     const fingerprint = (pinFile.documents as Record<string, { pages: Record<string, { fingerprint: string }> }>)[GS10].pages["26"].fingerprint;
-    expect(isReviewedDigestActive(fingerprint)).toBe(false);
+    expect(isReleaseActive(GS10, 26, fingerprint)).toBe(false);
   });
 
   it("every pinned page is well formed", () => {
