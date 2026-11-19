@@ -248,8 +248,12 @@ describe("drift guard: page 26 answers only while it is exactly the page the own
   it.each(APPROVED.files)("shipped pins, file %s: 5.1 A answers GS11N-20P2 only, from page 26, under Input Rating / CT", async (sha) => {
     const { read, stored } = await ingest(P26, undefined, sha, true);
     expect(gated.filter((g) => g.input.length > 0).map((g) => g.reviewed)).toEqual([APPROVED.digest]); // the gate was handed the approved record
-    expect(gated.flatMap((g) => g.output)).toEqual(gated.flatMap((g) => g.input)); // nothing withheld on the reviewed page
-    expect(stored.filter((r) => r.meta.table_unqualified !== true && (r.meta.table_models as string[] | undefined)?.length === 1)).toHaveLength(10);
+    // Nothing withheld on the reviewed page: every row as read, the released ones stamped with the digest.
+    expect(gated.flatMap((g) => g.output).map((row) => ({ ...row, tableReviewed: undefined }))).toEqual(gated.flatMap((g) => g.input));
+    const released = stored.filter((r) => r.meta.table_unqualified !== true && (r.meta.table_models as string[] | undefined)?.length === 1);
+    expect(released).toHaveLength(10);
+    expect(released.map((r) => r.meta.table_reviewed)).toEqual(Array(10).fill(APPROVED.digest));
+    expect(stored.filter((r) => r.meta.table_reviewed !== undefined)).toHaveLength(10);
     const own = stored.filter((r) => r.content.includes(LINE_5_1));
     expect(own).toHaveLength(1);
     expect(own[0]).toMatchObject({ page: 26 });

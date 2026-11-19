@@ -2,19 +2,21 @@
 // approval is added (rollout) or removed (rollback). Real disposable Postgres, the real writer,
 // the real reprocessor, the real retrieval SQL, the real page reader and gate.
 //
-// The admission decision is persisted in chunk metadata at write time and retrieval reads only
-// that metadata. So adding or removing the reviewed digest changes NOTHING for stored rows until
-// the upload is re-written: an ordinary reprocess is a no-op (the extraction version did not
-// change), and a forced, scoped reprocess (`scripts/reprocess-node-doc.ts --force`) re-writes the
-// rows under the pins of the running build. This file proves both directions on one upload id,
-// that the inventory finds uploads whose hash lives only on the parked file (Files and manual
-// discovery record none on the upload row), and that attaching the same bytes to another node of
-// the same tenant reuses the old, still-withheld upload instead of writing new rows.
+// Release: the gate stamps every row it releases with the reviewed digest it was released under
+// (`metadata.table_reviewed`). Rows written before the approval carry no release, so rollout still
+// needs a forced, scoped reprocess (`scripts/reprocess-node-doc.ts --force`) of the uploads that
+// own chunks of an approved file: an ordinary reprocess is a no-op at the same extraction version.
+//
+// Withdrawal does not depend on the original file or its hash. Retrieval honours a stamped row
+// only while the shipped pins still carry its digest, so removing the approval from
+// `table-rule-pins.json` withholds every released row at once, with no reprocess and no bytes.
+// The stamp also makes the released rows directly queryable, which is the withdrawal path if the
+// whole PR (and with it that read check) is ever reverted.
 //
 // Only the PDF boundary is simulated (captured page 26 and 27 text items). The stub bytes stand
 // for the approved file: the pin lookup translates their hash to the approved file's REAL
 // page-keyed pin map, so page binding is exercised as shipped. `pins.reverted` stands for a build
-// without this PR's reviewed digest.
+// whose pin file no longer carries this PR's reviewed digest.
 //
 // Requires (local/disposable only — never staging/prod):
 //   TEST_DATABASE_URL      postgres
@@ -43,21 +45,28 @@ const { testPool, BYTES, pins } = vi.hoisted(() => {
   };
 });
 const APPROVED_SHA = "090aa1b36250be11e1da33526a4b995492593c6fc35aa82ad18115e411dcc5e4";
+const SECOND_SHA = "90fa490a572558d799c8e8a53ba5f074f36182330c636015a473fd0e43bd1fab";
+const APPROVED_DIGEST = "d570e81e1fc665e0fa75879a2624aab107f0765b83d6be1acf013382f70b91d5";
 
 vi.mock("@/lib/db", () => ({ default: testPool }));
 vi.mock("@/capabilities/table-rule-pins", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/capabilities/table-rule-pins")>();
   const stub = (await import("node:crypto")).createHash("sha256").update(BYTES).digest("hex");
-  return { ...actual, rulePinsForSha: (sha: string) => {
-    if (sha !== stub) return actual.rulePinsForSha(sha);
-    const real = actual.rulePinsForSha(APPROVED_SHA)!;
-    if (!pins.reverted) return real;
-    return Object.fromEntries(Object.entries(real).map(([page, pin]) => {
-      const reverted = { ...pin };
-      delete reverted.reviewed;
-      return [page, reverted];
-    }));
-  } };
+  return {
+    ...actual,
+    rulePinsForSha: (sha: string) => {
+      if (sha !== stub) return actual.rulePinsForSha(sha);
+      const real = actual.rulePinsForSha(APPROVED_SHA)!;
+      if (!pins.reverted) return real;
+      return Object.fromEntries(Object.entries(real).map(([page, pin]) => {
+        const reverted = { ...pin };
+        delete reverted.reviewed;
+        return [page, reverted];
+      }));
+    },
+    // The same reverted build, as the read side sees it: the pin file no longer carries the digest.
+    isReviewedDigestActive: (digest: unknown) => !pins.reverted && actual.isReviewedDigestActive(digest),
+  };
 });
 vi.mock("unpdf", async () => {
   const { textContentItem } = await import("@/capabilities/__fixtures__/text-content-item");
@@ -116,20 +125,45 @@ async function newParkedUpload(): Promise<string> {
   expect(await linkFileToUpload(TENANT, park.fileId, rows[0].id)).toBe(true);
   return rows[0].id;
 }
-/** The release and rollback inventory from the PR body (the stub bytes' hash stands in for the
- *  first approved hash): every upload of the tenant whose upload row OR linked canonical file
- *  carries one of the two approved hashes. hub_uploads.tenant_id is TEXT, so the join casts the
- *  UUID side to text and can never throw on a legacy slug tenant. */
+const fill = (sql: string) => sql.replaceAll("<tenant uuid>", TENANT).replaceAll("<sha a>", SHA)
+  .replaceAll("<sha b>", SECOND_SHA).replaceAll("<digest>", APPROVED_DIGEST);
+
+/** The ROLLOUT inventory from the PR body (the stub bytes' hash stands in for the first approved
+ *  hash): every upload of the tenant whose upload row OR linked canonical file carries one of the
+ *  two approved hashes AND that owns node chunks of its own. A record that owns no chunks (a
+ *  duplicate upload of the same bytes) is never listed, so a forced pass over the list cannot
+ *  index it. hub_uploads.tenant_id is TEXT, so the joins cast the UUID side to text. */
 const INVENTORY_SQL = `SELECT u.tenant_id, u.id::text AS upload_id
   FROM hub_uploads u
   LEFT JOIN namespace_direct_uploads d ON d.upload_id = u.id AND d.tenant_id::text = u.tenant_id
  WHERE (u.content_sha256 IN ('<sha a>', '<sha b>')
         OR d.content_sha256 IN ('<sha a>', '<sha b>'))
+   AND EXISTS (SELECT 1 FROM knowledge_entries k
+                WHERE k.doc_id = u.id AND k.tenant_id::text = u.tenant_id
+                  AND k.source_type = 'node_attachment' AND k.ingest_route = 'v2')
    AND u.tenant_id = '<tenant uuid>'`;
+/** The WITHDRAWAL inventory from the PR body: the released rows themselves, by their stamp. It
+ *  needs no hash and no file. */
+const RELEASED_SQL = `SELECT k.tenant_id::text AS tenant_id, k.doc_id::text AS upload_id, count(*)::int AS released
+  FROM knowledge_entries k
+ WHERE k.source_type = 'node_attachment'
+   AND k.metadata->>'table_reviewed' = '<digest>'
+   AND k.tenant_id = '<tenant uuid>'::uuid
+ GROUP BY 1, 2`;
+/** The PR body's withdrawal statement for a build that no longer has the read check (a full
+ *  revert of this PR): withhold the stamped rows in place, keeping their text and their stamp. */
+const WITHDRAW_SQL = `UPDATE knowledge_entries k
+   SET metadata = (k.metadata - 'table_header') || '{"table_scope": "unresolved", "table_unqualified": true}'::jsonb
+ WHERE k.source_type = 'node_attachment'
+   AND k.metadata->>'table_reviewed' = '<digest>'
+   AND k.tenant_id = '<tenant uuid>'::uuid`;
+
 async function inventory(): Promise<string[]> {
-  const sql = INVENTORY_SQL.replaceAll("<tenant uuid>", TENANT).replaceAll("<sha a>", SHA)
-    .replaceAll("<sha b>", "90fa490a572558d799c8e8a53ba5f074f36182330c636015a473fd0e43bd1fab");
-  return (await testPool.query<{ upload_id: string }>(sql)).rows.map((r) => r.upload_id).sort();
+  return (await testPool.query<{ upload_id: string }>(fill(INVENTORY_SQL))).rows.map((r) => r.upload_id).sort();
+}
+async function releasedRows(): Promise<Record<string, number>> {
+  const { rows } = await testPool.query<{ upload_id: string; released: number }>(fill(RELEASED_SQL));
+  return Object.fromEntries(rows.map((r) => [r.upload_id, r.released]));
 }
 /** Model-specific retrieval for one GS10 model, as a notebook bound to that catalog number asks. */
 async function ask(docId: string, catalog: string) {
@@ -150,8 +184,11 @@ async function stored(docId: string) {
 }
 const releasedOn = (rows: Awaited<ReturnType<typeof stored>>, page: number) =>
   rows.filter((r) => r.page === page && (r.meta.table_models as string[] | undefined)?.length === 1 && r.meta.table_unqualified !== true).length;
+const stampedOn = (rows: Awaited<ReturnType<typeof stored>>, page: number) =>
+  rows.filter((r) => r.page === page && r.meta.table_reviewed === APPROVED_DIGEST).length;
+const stamps = (rows: Awaited<ReturnType<typeof stored>>) => rows.filter((r) => r.meta.table_reviewed !== undefined).length;
 
-describe.skipIf(!READY)("GS10 page 26 reviewed pin: stored rows on rollout and rollback (real Postgres)", () => {
+describe.skipIf(!READY)("GS10 page 26 reviewed pin: stored rows on rollout and withdrawal (real Postgres)", () => {
   beforeAll(async () => {
     for (const f of ["045_knowledge_entries_chunk_anchors.sql", "068_hub_uploads.sql", "072_hub_uploads_content_sha256.sql", "077_ingest_claim.sql"]) {
       await testPool.query(fs.readFileSync(path.join(hubRoot, "db", "migrations", f), "utf8"));
@@ -177,7 +214,7 @@ describe.skipIf(!READY)("GS10 page 26 reviewed pin: stored rows on rollout and r
     await testPool.end();
   });
 
-  it("rollback: a reverted build leaves stored page 26 rows released until a forced reprocess re-writes them", async () => {
+  it("withdrawal: removing the approval withholds stored page 26 rows at once, with no reprocess, and restoring it releases them again", async () => {
     pins.reverted = false;
     const doc = await newUpload();
     expect((await reprocessNodeDocument({ tenantId: TENANT, uploadId: doc, bytes: BYTES })).action).toBe("reprocessed");
@@ -185,21 +222,62 @@ describe.skipIf(!READY)("GS10 page 26 reviewed pin: stored rows on rollout and r
     const own = await ask(doc, "GS11N-20P2");
     expect(own.cites51.map((c) => c.sourcePage)).toEqual([26]);
     expect((await ask(doc, "GS11N-20P5")).cites51).toEqual([]);
-    expect(releasedOn(await stored(doc), 26)).toBe(10);
-    expect(releasedOn(await stored(doc), 27)).toBe(0); // page 27 is not reviewed
+    const before = await stored(doc);
+    expect(releasedOn(before, 26)).toBe(10);
+    expect(releasedOn(before, 27)).toBe(0); // page 27 is not reviewed
+    // Every released row, and only those, carries the digest it was released under.
+    expect(stampedOn(before, 26)).toBe(10);
+    expect(stamps(before)).toBe(10);
 
-    pins.reverted = true; // the build without the reviewed digest
-    // The hazard: nothing re-reads the pins for stored rows. Same rows, still released.
-    expect((await ask(doc, "GS11N-20P2")).cites51).toHaveLength(1);
+    pins.reverted = true; // the approval is removed from the pin file
+    const withdrawn = await ask(doc, "GS11N-20P2");
+    expect(withdrawn.cites51).toEqual([]);
+    expect(withdrawn.diagnostics.excludedTables?.some((t) => t.page === 26 && t.unqualified === true)).toBe(true);
+    expect((await ask(doc, "GS11N-20P5")).cites51).toEqual([]);
+    // No reprocess was needed, and none changes anything: the stored rows are untouched.
     expect((await reprocessNodeDocument({ tenantId: TENANT, uploadId: doc, bytes: BYTES })).action).toBe("noop");
+    expect((await ask(doc, "GS11N-20P2")).cites51).toEqual([]);
+    expect(await stored(doc)).toEqual(before);
+
+    pins.reverted = false; // repeatable: restoring the approval releases the same rows again
+    expect((await ask(doc, "GS11N-20P2")).cites51.map((c) => c.sourcePage)).toEqual([26]);
+    pins.reverted = true;
+    expect((await ask(doc, "GS11N-20P2")).cites51).toEqual([]);
+    pins.reverted = false;
+  });
+
+  it("withdrawal needs no original: a null-hash upload whose parked file is gone is found by its rows and withheld", async () => {
+    await testPool.query("DELETE FROM namespace_direct_uploads WHERE tenant_id = $1::uuid", [TENANT]);
+    pins.reverted = false;
+    const doc = await newParkedUpload();
+    expect((await reprocessNodeDocument({ tenantId: TENANT, uploadId: doc })).action).toBe("reprocessed");
+    expect((await ask(doc, "GS11N-20P2")).cites51.map((c) => c.sourcePage)).toEqual([26]);
+
+    // The original is deleted while the source is still in use: no hash anywhere, no bytes.
+    await testPool.query("DELETE FROM namespace_direct_uploads WHERE tenant_id = $1::uuid AND upload_id = $2::uuid", [TENANT, doc]);
+    const row = await testPool.query("SELECT 1 FROM hub_uploads WHERE id = $1::uuid AND content_sha256 IS NULL", [doc]);
+    expect(row.rowCount).toBe(1);
+    expect(await inventory()).not.toContain(doc); // a hash-based selector cannot find it any more
+    expect(await reprocessNodeDocument({ tenantId: TENANT, uploadId: doc, force: true }))
+      .toEqual({ action: "refused", reason: "no_bytes" }); // and a forced reprocess cannot re-write it
+    expect((await ask(doc, "GS11N-20P2")).cites51).toHaveLength(1); // still released at this point
+
+    // The released rows are found by their stamp, with no hash and no file.
+    expect((await releasedRows())[doc]).toBe(10);
+
+    pins.reverted = true; // route 1: remove the approval from the pin file
+    expect((await ask(doc, "GS11N-20P2")).cites51).toEqual([]);
+    pins.reverted = false;
     expect((await ask(doc, "GS11N-20P2")).cites51).toHaveLength(1);
-    // The declared rollback step: a forced, scoped reprocess of this upload.
-    const r = await reprocessNodeDocument({ tenantId: TENANT, uploadId: doc, bytes: BYTES, force: true });
-    expect(r).toMatchObject({ action: "reprocessed", reason: "recomputed_human_requested" });
-    const after = await ask(doc, "GS11N-20P2");
-    expect(after.cites51).toEqual([]);
-    expect(releasedOn(await stored(doc), 26)).toBe(0);
-    expect((await stored(doc)).some((row) => row.content.includes("Rated Input Current"))).toBe(true); // text kept, withheld
+
+    // Route 2, for a build that no longer has the read check: withhold the stamped rows in place.
+    const updated = await testPool.query(fill(WITHDRAW_SQL).replace("AND k.tenant_id", `AND k.doc_id = '${doc}'::uuid AND k.tenant_id`));
+    expect(updated.rowCount).toBe(10);
+    expect((await ask(doc, "GS11N-20P2")).cites51).toEqual([]); // withheld even with the approval live
+    const after = await stored(doc);
+    expect(releasedOn(after, 26)).toBe(0);
+    expect(stampedOn(after, 26)).toBe(10); // the stamp is kept as the record of what was withdrawn
+    expect(after.some((r) => r.content.includes(LINE_5_1))).toBe(true); // text kept, withheld
   });
 
   it("rollout: an upload stored before this build stays withheld until a forced reprocess re-writes it", async () => {
@@ -208,6 +286,7 @@ describe.skipIf(!READY)("GS10 page 26 reviewed pin: stored rows on rollout and r
     expect((await reprocessNodeDocument({ tenantId: TENANT, uploadId: doc, bytes: BYTES })).action).toBe("reprocessed");
     expect((await ask(doc, "GS11N-20P2")).cites51).toEqual([]);
     expect(releasedOn(await stored(doc), 26)).toBe(0);
+    expect(stamps(await stored(doc))).toBe(0);
 
     pins.reverted = false; // this build
     expect((await reprocessNodeDocument({ tenantId: TENANT, uploadId: doc, bytes: BYTES })).action).toBe("noop");
@@ -217,31 +296,47 @@ describe.skipIf(!READY)("GS10 page 26 reviewed pin: stored rows on rollout and r
     const own = await ask(doc, "GS11N-20P2");
     expect(own.cites51.map((c) => c.sourcePage)).toEqual([26]);
     expect((await ask(doc, "GS11N-20P5")).cites51).toEqual([]);
-    expect(releasedOn(await stored(doc), 26)).toBe(10);
-    expect(releasedOn(await stored(doc), 27)).toBe(0);
+    const rows = await stored(doc);
+    expect(releasedOn(rows, 26)).toBe(10);
+    expect(releasedOn(rows, 27)).toBe(0);
+    expect(stampedOn(rows, 26)).toBe(10);
+    expect(stamps(rows)).toBe(10);
   });
 
   it("inventory: an upload with no hash on its row is found through its parked file, and the forced reprocess uses the parked bytes", async () => {
     await testPool.query("DELETE FROM namespace_direct_uploads WHERE tenant_id = $1::uuid", [TENANT]);
-    pins.reverted = false; // indexed while this build is live
+    pins.reverted = true; // indexed before this build
     const doc = await newParkedUpload();
     expect((await reprocessNodeDocument({ tenantId: TENANT, uploadId: doc })).action).toBe("reprocessed");
-    expect((await ask(doc, "GS11N-20P2")).cites51.map((c) => c.sourcePage)).toEqual([26]);
+    expect((await ask(doc, "GS11N-20P2")).cites51).toEqual([]);
     expect(await inventory()).toContain(doc);
     // The row-hash-only selector Codex found would miss it.
     const rowOnly = await testPool.query("SELECT 1 FROM hub_uploads WHERE id = $1::uuid AND content_sha256 IS NOT NULL", [doc]);
     expect(rowOnly.rowCount).toBe(0);
 
-    pins.reverted = true; // rollback: no local PDF is supplied, the parked original is used
+    pins.reverted = false; // rollout: no local PDF is supplied, the parked original is used
     expect((await reprocessNodeDocument({ tenantId: TENANT, uploadId: doc })).action).toBe("noop");
-    expect((await ask(doc, "GS11N-20P2")).cites51).toHaveLength(1);
     expect(await reprocessNodeDocument({ tenantId: TENANT, uploadId: doc, force: true }))
       .toMatchObject({ action: "reprocessed", reason: "recomputed_human_requested" });
-    expect((await ask(doc, "GS11N-20P2")).cites51).toEqual([]);
+    expect((await ask(doc, "GS11N-20P2")).cites51.map((c) => c.sourcePage)).toEqual([26]);
+  });
 
-    pins.reverted = false; // and back again
-    expect(await reprocessNodeDocument({ tenantId: TENANT, uploadId: doc, force: true }))
-      .toMatchObject({ action: "reprocessed" });
+  it("inventory: a duplicate upload record of the same bytes that owns no chunks is not listed, so a forced pass gives it nothing", async () => {
+    await testPool.query("DELETE FROM namespace_direct_uploads WHERE tenant_id = $1::uuid", [TENANT]);
+    pins.reverted = true;
+    const doc = await newUpload();
+    expect((await reprocessNodeDocument({ tenantId: TENANT, uploadId: doc, bytes: BYTES })).action).toBe("reprocessed");
+    const duplicate = await newUpload(); // same tenant, same bytes, never indexed
+    expect(await stored(duplicate)).toHaveLength(0);
+    const hashMatches = await testPool.query("SELECT 1 FROM hub_uploads WHERE id = $1::uuid AND content_sha256 = $2", [duplicate, SHA]);
+    expect(hashMatches.rowCount).toBe(1); // a hash-only selector would list it
+
+    pins.reverted = false;
+    const listed = await inventory();
+    expect(listed).toContain(doc);
+    expect(listed).not.toContain(duplicate);
+    for (const id of listed) await reprocessNodeDocument({ tenantId: TENANT, uploadId: id, bytes: BYTES, force: true });
+    expect(await stored(duplicate)).toHaveLength(0);
     expect((await ask(doc, "GS11N-20P2")).cites51.map((c) => c.sourcePage)).toEqual([26]);
   });
 

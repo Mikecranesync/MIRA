@@ -539,6 +539,7 @@ async function insertChunkRows(
     tableUnqualified?: boolean;
     tableScope?: SectionScope;
     tableHeader?: string;
+    tableReviewed?: string;
   };
   let idx = 0;
   let batch: ChunkRow[] = [];
@@ -574,6 +575,8 @@ async function insertChunkRows(
           ...(r.tableUnqualified ? { table_unqualified: true } : {}),
           ...(r.tableScope ? { table_scope: r.tableScope } : {}),
           ...(r.tableHeader ? { table_header: r.tableHeader } : {}),
+          // Release provenance (#5646): the reviewed digest this row was released under.
+          ...(r.tableReviewed ? { table_reviewed: r.tableReviewed } : {}),
         }),
       );
     }

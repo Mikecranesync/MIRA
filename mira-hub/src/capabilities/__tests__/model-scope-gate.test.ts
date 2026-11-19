@@ -99,8 +99,19 @@ describe("the gate on its own", () => {
     { content: "line", tableModels: ["A", "B"], tableUnqualified: true },
   ];
   it("keeps a page's rows only when the reviewed digest is the digest of what they affirm", () => {
-    expect(gatePageRows(rows, scopeDigest(rows))).toEqual(rows);
-    expect(affirmedIn(gatePageRows(rows, scopeDigest(rows)))).toBe(3);
+    const digest = scopeDigest(rows);
+    const out = gatePageRows(rows, digest);
+    expect(out.map((row) => ({ ...row, tableReviewed: undefined }))).toEqual(rows);
+    expect(affirmedIn(out)).toBe(3);
+    expect(scopeDigest(out)).toBe(digest);
+  });
+  it("stamps every released row with the digest it was released under, and only those rows (#5646 r3 F1)", () => {
+    const digest = scopeDigest(rows);
+    const out = gatePageRows(rows, digest);
+    expect(out.map((r) => r.tableReviewed ?? null)).toEqual([null, digest, digest, digest, null]);
+    // A withheld page carries no release stamp at all.
+    expect(gatePageRows(rows, null).some((r) => r.tableReviewed !== undefined)).toBe(false);
+    expect(gatePageRows(rows, scopeDigest(rows.slice(0, 2))).some((r) => r.tableReviewed !== undefined)).toBe(false);
   });
   it.each([["not a reviewed page", null], ["no record", undefined], ["another page's digest", scopeDigest(rows.slice(0, 2))], ["a short string", "abc"]])(
     "withholds every affirming row and keeps all text: %s", (_why, reviewed) => {
@@ -294,6 +305,18 @@ describe("through the writer: a page with a matching reviewed record stores its 
     const rows = await ingest(P26, reviewedP26.sha256, reviewedP26.digest);
     expect(rows.map(asScoped).filter(affirmsModel).map((r) => r.tableModels)).toEqual(
       ["GS11N20P2", "GS11N20P5", "GS11N21P0", "GS11N22P0", "GS11N23P0"].flatMap((m) => [[m], [m]])); // two chunks per model
-    expect(gated.flatMap((g) => g.output)).toEqual(gated.flatMap((g) => g.input));
+    const output = gated.flatMap((g) => g.output);
+    expect(output.map((row) => ({ ...row, tableReviewed: undefined }))).toEqual(gated.flatMap((g) => g.input));
+    expect(output.filter(affirmsModel).every((r) => r.tableReviewed === reviewedP26.digest)).toBe(true);
+    expect(output.filter((r) => !affirmsModel(r)).some((r) => r.tableReviewed !== undefined)).toBe(false);
+  });
+});
+
+describe("retrieval reads the release stamp wherever it reads a row's model scope (#5646 r3 F1)", () => {
+  it("every SELECT in manual-rag.ts that reads table_models also reads table_reviewed", () => {
+    const source = readFileSync(join(__dirname, "..", "..", "lib", "manual-rag.ts"), "utf8");
+    const lines = source.split("\n").filter((l) => l.includes("AS table_models"));
+    expect(lines.length).toBeGreaterThanOrEqual(5);
+    for (const line of lines) expect(line).toContain("metadata->>'table_reviewed' AS table_reviewed");
   });
 });

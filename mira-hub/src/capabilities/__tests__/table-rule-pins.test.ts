@@ -5,7 +5,7 @@ import gs10p27 from "../__fixtures__/table-rows/gs10-p27-230v-3ph.json";
 import micro820 from "../__fixtures__/table-rows/micro820-in009-p16-20-scope.json";
 import ml1100 from "../__fixtures__/table-rows/ml1100-p114-p120-ratings-scope.json";
 import pinFile from "../table-rule-pins.json";
-import { pinnedRules, reviewedRowsDigest, rulePinsForSha, rulesCrossing } from "../table-rule-pins";
+import { isReviewedDigestActive, pinnedRules, reviewedRowsDigest, rulePinsForSha, rulesCrossing } from "../table-rule-pins";
 import { pageLayoutItems } from "../pdf-layout-items";
 
 // #5503 F14/F15: table rules are pinned data, never read from a page's drawing. Nothing here is
@@ -66,6 +66,21 @@ describe("pinned table rules: the real pin file", () => {
     const other = Object.keys(pinFile.documents).find((k) => k.startsWith("eca93c34"))!;
     for (const page of [11, 12, 26]) expect(reviewedRowsDigest(rulePinsForSha(other), page, gs10p26.items)).toBeNull();
     expect(reviewedRowsDigest(null, 26, gs10p26.items)).toBeNull();
+  });
+
+  it("a stored release stamp is honoured only while the shipped pins still carry its digest (#5646 r3 F1)", () => {
+    const approved = "d570e81e1fc665e0fa75879a2624aab107f0765b83d6be1acf013382f70b91d5";
+    expect(isReviewedDigestActive(approved)).toBe(true);
+    // Exactly the digests the pin file records as reviewed, nothing else.
+    const recorded = Object.values(pinFile.documents).flatMap((d) =>
+      Object.values(d.pages as Record<string, { reviewed?: string }>).map((p) => p.reviewed).filter(Boolean));
+    expect([...new Set(recorded)]).toEqual([approved]);
+    for (const other of [approved.replace(/^d/, "e"), approved.slice(1), "", null, undefined, 42, { approved }]) {
+      expect(isReviewedDigestActive(other as unknown)).toBe(false);
+    }
+    // A layout fingerprint is not a reviewed digest.
+    const fingerprint = (pinFile.documents as Record<string, { pages: Record<string, { fingerprint: string }> }>)[GS10].pages["26"].fingerprint;
+    expect(isReviewedDigestActive(fingerprint)).toBe(false);
   });
 
   it("every pinned page is well formed", () => {

@@ -23,6 +23,11 @@ export type ScopedRow = {
   tableUnqualified?: boolean;
   tableScope?: "section" | "shared" | "unresolved";
   tableHeader?: string;
+  /** Set by `gatePageRows` on a row it RELEASES: the reviewed digest it was released under, stored
+   *  as `metadata.table_reviewed`. Retrieval honours the release only while the shipped pins still
+   *  carry this digest (`isReviewedDigestActive`), and the stamp makes every released row
+   *  queryable without the original file or its hash. Not part of `scopeDigest`. */
+  tableReviewed?: string;
 };
 
 /** True when retrieval could admit this row for some record BECAUSE of its model scope. */
@@ -68,9 +73,12 @@ export function withheld<Row extends ScopedRow>(row: Row): Row {
 /**
  * One page's rows as they may be stored. `reviewed` is the digest recorded for this page when its
  * rows were checked against the page image, or null when the page is not a reviewed page. Rows
- * are returned unchanged only when they are exactly the reviewed rows.
+ * are released only when they are exactly the reviewed rows; each released (affirming) row is
+ * stamped with that digest and is otherwise unchanged.
  */
 export function gatePageRows<Row extends ScopedRow>(rows: readonly Row[], reviewed: string | null | undefined): Row[] {
-  if (typeof reviewed === "string" && reviewed.length === 64 && reviewed === scopeDigest(rows)) return [...rows];
+  if (typeof reviewed === "string" && reviewed.length === 64 && reviewed === scopeDigest(rows)) {
+    return rows.map((row) => (affirmsModel(row) ? { ...row, tableReviewed: reviewed } : row));
+  }
   return rows.map(withheld);
 }

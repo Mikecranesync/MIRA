@@ -29,6 +29,19 @@ export function rulePinsForSha(sha256: string): DocumentRulePins | null {
   return Object.hasOwn(PINNED, sha256) ? PINNED[sha256].pages : null;
 }
 
+const REVIEWED_DIGESTS: ReadonlySet<string> = new Set(
+  Object.values(PINNED).flatMap((d) => Object.values(d.pages).map((p) => p.reviewed))
+    .filter((d): d is string => typeof d === "string" && /^[0-9a-f]{64}$/.test(d)),
+);
+
+/** True while the shipped pin file still records `digest` as a page's reviewed rows. Retrieval
+ *  honours a stored row's release stamp (`metadata.table_reviewed`) only while this holds, so
+ *  removing an approval from the pin file withdraws every row released under it, with no
+ *  reprocess and no need for the original file. */
+export function isReviewedDigestActive(digest: unknown): boolean {
+  return typeof digest === "string" && REVIEWED_DIGESTS.has(digest);
+}
+
 /** Identity of a page's positioned text: every item's text and position, in reading order. */
 export function layoutFingerprint(items: ReadonlyArray<{ str: string; x: number; y: number }>): string {
   const hash = createHash("sha256");
