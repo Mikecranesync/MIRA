@@ -56,6 +56,14 @@ def get_tier_limits(tier: str) -> dict[str, Any] | None:
     return dict(row) if row else None
 
 
+# #5646: never serve a Hub row released or held under a reviewed table approval; the Hub alone
+# decides whether that approval is enabled (see mira-bots/shared/neon_recall.py).
+_HUB_MARK_EXCLUSIONS = (
+    "(metadata->>'table_reviewed') IS NULL",
+    "(metadata->>'table_held') IS NULL",
+)
+
+
 def recall_knowledge(
     embedding: list[float],
     tenant_id: str,
@@ -70,14 +78,7 @@ def recall_knowledge(
       isa95_prefix — scope to an ISA-95 subtree (e.g. 'Plant/Line2/').
       data_types   — one of data_types.ALL values; multiple OK.
     """
-    # #5646: never serve a Hub row released under a reviewed table approval; the Hub alone
-    # decides whether that approval is still enabled (see mira-bots/shared/neon_recall.py).
-    clauses = [
-        "tenant_id = :tid",
-        "embedding IS NOT NULL",
-        "(metadata->>'table_reviewed') IS NULL",
-        "(metadata->>'table_held') IS NULL",
-    ]
+    clauses = ["tenant_id = :tid", "embedding IS NOT NULL", *_HUB_MARK_EXCLUSIONS]
     params: dict[str, Any] = {
         "emb": str(embedding),
         "tid": tenant_id,
