@@ -697,6 +697,13 @@ export function HubShellHost() {
     setEquipmentFocus(opened.focus);
   }, [select]);
   const onDismissOffer = useCallback(() => setEquipmentOffer(null), []);
+  // #5649: a component named by the repeated-serial warning opens through the same hand-off as a
+  // Find equipment answer. The tap is the technician's, so it is routed and opened in one step.
+  const onOpenEquipmentTarget = useCallback((target: QuestionTarget) => {
+    const now = { ...pickNow.current, selection: selectionRef.current };
+    const route = pickRouteFor(target, { conversation: now.selection, generation: now.generation }, now, ++equipmentPickToken.current);
+    if (route.kind === "offer") onOpenOffer(route.offer);
+  }, [onOpenOffer]);
   // The host owns a hand-off until the checklist reports how it ended (#5625 r1 F2): a checklist
   // remounted later never sees it again. Only the hand-off that ended is dropped, never a newer one.
   const onFocusDone = useCallback((token: number, outcome: { ok: true } | { ok: false; message: string }) => {
@@ -1263,6 +1270,7 @@ export function HubShellHost() {
           onState={onBenchState}
           focus={equipmentFocus && equipmentFocus.notebookId === selection.notebookId && equipmentFocus.threadId === selection.threadId ? equipmentFocus : null}
           onFocusDone={onFocusDone}
+          onOpenEquipment={onOpenEquipmentTarget}
         />
       )}
       {/* Mission 001: report an observation and read back machine state; renders nothing while off. */}
