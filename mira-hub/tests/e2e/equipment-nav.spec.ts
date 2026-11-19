@@ -696,13 +696,16 @@ test.describe("touch", () => {
       return Math.min(box.y + box.height, page.viewportSize()!.height) - Math.max(box.y, 0) > 20;
     };
     for (let i = 0; i < 10 && !(await onScreen()); i++) await swipe(panel(page), -150);
-    for (let i = 0; i < 8; i++) await swipe(results, -400);
-    expect(await results.evaluate((el) => el.scrollTop + el.clientHeight >= el.scrollHeight - 1)).toBe(true);
+    // Swipe until the results reach their end (how far one swipe travels depends on the machine).
+    const atEnd = () => results.evaluate((el) => el.scrollTop + el.clientHeight >= el.scrollHeight - 1);
+    for (let i = 0; i < 30 && !(await atEnd()); i++) await swipe(results, -400);
+    expect(await atEnd(), "the results reached their end").toBe(true);
     expect(await panel(page).evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
 
     // Swiping down on the results alone brings the notices back: past the results' top, the swipe
     // carries on into the panel.
-    for (let i = 0; i < 12; i++) await swipe(results, 400);
+    const panelTop = async () => (await panel(page).evaluate((el) => el.scrollTop)) === 0;
+    for (let i = 0; i < 40 && !(await panelTop()); i++) await swipe(results, 400);
     expect(await panel(page).evaluate((el) => el.scrollTop)).toBe(0);
     await expect(panel(page).getByRole("button", { name: "Close equipment" })).toBeInViewport({ ratio: 1 });
 
