@@ -41,7 +41,8 @@ vi.mock("../table-rule-pins", async (importOriginal) => {
     if (!pdf.sha) return null;
     const pins = pinsDouble(actual, pdf.pinnedFrom ?? pdf.pages, [pdf.sha]);
     if (pdf.reviewed === undefined) return pins;
-    return Object.fromEntries(Object.entries(pins).map(([k, pin]) => [k, { ...pin, reviewed: pdf.reviewed }]));
+    // A record a test supplies is an enabled one, whatever the shipped switch says (#5646 r4 F2).
+    return Object.fromEntries(Object.entries(pins).map(([k, pin]) => [k, { ...pin, reviewed: pdf.reviewed, release: "enabled" }]));
   } };
 });
 vi.mock("unpdf", async () => {

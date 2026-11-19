@@ -47,7 +47,9 @@ const { testPool, BYTES, BYTES_B, pins } = vi.hoisted(() => {
     // `reverted`: the approval switch of the stub file's page 26 is set to "disabled" (the supported
     // rollback; the record itself stays). `lateWriter`: a process of the previous build that still
     // has the approval enabled and commits after the switch is off for readers.
-    pins: { reverted: false, revertedB: false, lateWriter: false },
+    // `sqlGuardOff`: the SQL release guard admits everything, so the per-row check in admit() is
+    // the only thing between a revoked row and an answer (it must hold on its own).
+    pins: { reverted: false, revertedB: false, lateWriter: false, sqlGuardOff: false },
   };
 });
 const { APPROVED_SHA, SECOND_SHA } = vi.hoisted(() => ({
@@ -67,23 +69,25 @@ vi.mock("@/capabilities/table-rule-pins", async (importOriginal) => {
   // One lookup serves the reader: the read check (`isReleaseActive`) and the SQL guard
   // (`activeReleaseSql`) both see the switch exactly as an edited pin file would set it. The writer
   // uses the same lookup, except as a late writer of the previous build (`lateWriter`).
+  // The switch state is set here, not inherited from the shipped file, so this suite holds whether
+  // the shipped approval is enabled or has been switched off for a rollback.
+  const withRelease = (sha: string, release: "enabled" | "disabled") =>
+    Object.fromEntries(Object.entries(actual.rulePinsForSha(sha)!).map(([page, pin]) => [page, pin.reviewed ? { ...pin, release } : pin]));
   const forReaders = (sha: string) => {
     if (!Object.hasOwn(stubs, sha)) return actual.rulePinsForSha(sha);
     const [realSha, reverted] = stubs[sha];
-    const real = actual.rulePinsForSha(realSha)!;
-    if (!reverted()) return real;
-    return Object.fromEntries(Object.entries(real).map(([page, pin]) => [page, pin.reviewed ? { ...pin, release: "disabled" } : pin]));
+    return withRelease(realSha, reverted() ? "disabled" : "enabled");
   };
   const forWriter = (sha: string) => {
     if (!pins.lateWriter || !Object.hasOwn(stubs, sha)) return forReaders(sha);
-    return actual.rulePinsForSha(stubs[sha][0]); // the previous build: approval still enabled
+    return withRelease(stubs[sha][0], "enabled"); // the previous build: approval still enabled
   };
   const documents = () => ({ ...actual.allRulePins(), ...Object.fromEntries(Object.keys(stubs).map((sha) => [sha, forReaders(sha)!])) });
   return {
     ...actual,
     rulePinsForSha: forWriter,
     isReleaseActive: (sha: unknown, page: unknown, digest: unknown) => actual.isReleaseActive(sha, page, digest, forReaders),
-    activeReleaseSql: (alias = "") => actual.activeReleaseSql(alias, documents()),
+    activeReleaseSql: (alias = "") => (pins.sqlGuardOff ? "TRUE" : actual.activeReleaseSql(alias, documents())),
   };
 });
 vi.mock("unpdf", async () => {
@@ -447,6 +451,15 @@ describe.skipIf(!READY)("GS10 page 26 reviewed pin: stored rows on rollout and w
     // Historical evidence is kept as it was: the rows, their text and their stamps.
     expect(await stored(doc)).toEqual(before);
     expect(page26.some((r) => r.content.includes(LINE_5_1))).toBe(true);
+
+    // Second layer: with the SQL guard admitting everything, the node routes still drop the rows.
+    pins.sqlGuardOff = true;
+    try {
+      expect(carries51(await docChat(doc))).toEqual([]);
+      expect((await ask(doc, "GS11N-20P2")).cites51).toEqual([]);
+    } finally {
+      pins.sqlGuardOff = false;
+    }
 
     pins.reverted = false; // enabled again: the same rows answer again, without a reprocess
     expect(carries51(await docChat(doc)).length).toBeGreaterThan(0);
