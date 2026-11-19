@@ -6,7 +6,10 @@
 // that metadata. So adding or removing the reviewed digest changes NOTHING for stored rows until
 // the upload is re-written: an ordinary reprocess is a no-op (the extraction version did not
 // change), and a forced, scoped reprocess (`scripts/reprocess-node-doc.ts --force`) re-writes the
-// rows under the pins of the running build. This file proves both directions on one upload id.
+// rows under the pins of the running build. This file proves both directions on one upload id,
+// that the inventory finds uploads whose hash lives only on the parked file (Files and manual
+// discovery record none on the upload row), and that attaching the same bytes to another node of
+// the same tenant reuses the old, still-withheld upload instead of writing new rows.
 //
 // Only the PDF boundary is simulated (captured page 26 and 27 text items). The stub bytes stand
 // for the approved file: the pin lookup translates their hash to the approved file's REAL
@@ -16,7 +19,7 @@
 // Requires (local/disposable only — never staging/prod):
 //   TEST_DATABASE_URL      postgres
 //   MIRA_TEST_DB_CONFIRM   DISPOSABLE
-// Schema: `node scripts/setup-integration-db.mjs`, plus 045/068/072 and 003's dedup index here.
+// Schema: `node scripts/setup-integration-db.mjs`, plus 045/068/072/077 and 003's dedup index here.
 // Run: npx vitest run --config vitest.integration.config.ts src/lib/__tests__/gs10-p26-reviewed-rollout.integration.test.ts
 
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -74,6 +77,7 @@ vi.mock("unpdf", async () => {
 vi.mock("@/capabilities/pdf-page-label-reader", () => ({ readPageLabelsBounded: vi.fn(async () => null) }));
 
 import { reprocessNodeDocument } from "@/lib/node-knowledge-ingest";
+import { linkFileToUpload, parkOrReuseFile } from "@/lib/workspace-files";
 import { retrieveNodeChunks } from "@/lib/manual-rag";
 
 const TENANT = randomUUID();
@@ -93,6 +97,39 @@ async function newUpload(): Promise<string> {
     [TENANT, FILENAME, NODE, SHA],
   );
   return rows[0].id;
+}
+/** The Files and manual-discovery routes record no hash on the upload row; the parked
+ *  canonical file carries it. Same shape as those routes: park the bytes, record the upload
+ *  with a null hash, link the file to it. */
+async function newParkedUpload(): Promise<string> {
+  const node = randomUUID(); // the upload's node (hub_uploads.kg_entity_id); the legacy filing column stays null
+  const park = await parkOrReuseFile({ tenantId: TENANT, nodeId: null, filename: FILENAME,
+    mimeType: "application/pdf", sizeBytes: BYTES.length, buffer: BYTES });
+  expect(park.reused).toBe(false);
+  const { rows } = await testPool.query<{ id: string }>(
+    `INSERT INTO hub_uploads
+       (tenant_id, provider, filename, status, kb_chunk_count, kind, kg_entity_id, uns_path, ingest_route, content_sha256)
+     VALUES ($1, 'local', $2, 'parsed', 0, 'document', $3, NULL, 'v2', NULL)
+     RETURNING id::text AS id`,
+    [TENANT, FILENAME, node],
+  );
+  expect(await linkFileToUpload(TENANT, park.fileId, rows[0].id)).toBe(true);
+  return rows[0].id;
+}
+/** The release and rollback inventory from the PR body (the stub bytes' hash stands in for the
+ *  first approved hash): every upload of the tenant whose upload row OR linked canonical file
+ *  carries one of the two approved hashes. hub_uploads.tenant_id is TEXT, so the join casts the
+ *  UUID side to text and can never throw on a legacy slug tenant. */
+const INVENTORY_SQL = `SELECT u.tenant_id, u.id::text AS upload_id
+  FROM hub_uploads u
+  LEFT JOIN namespace_direct_uploads d ON d.upload_id = u.id AND d.tenant_id::text = u.tenant_id
+ WHERE (u.content_sha256 IN ('<sha a>', '<sha b>')
+        OR d.content_sha256 IN ('<sha a>', '<sha b>'))
+   AND u.tenant_id = '<tenant uuid>'`;
+async function inventory(): Promise<string[]> {
+  const sql = INVENTORY_SQL.replaceAll("<tenant uuid>", TENANT).replaceAll("<sha a>", SHA)
+    .replaceAll("<sha b>", "90fa490a572558d799c8e8a53ba5f074f36182330c636015a473fd0e43bd1fab");
+  return (await testPool.query<{ upload_id: string }>(sql)).rows.map((r) => r.upload_id).sort();
 }
 /** Model-specific retrieval for one GS10 model, as a notebook bound to that catalog number asks. */
 async function ask(docId: string, catalog: string) {
@@ -116,7 +153,7 @@ const releasedOn = (rows: Awaited<ReturnType<typeof stored>>, page: number) =>
 
 describe.skipIf(!READY)("GS10 page 26 reviewed pin: stored rows on rollout and rollback (real Postgres)", () => {
   beforeAll(async () => {
-    for (const f of ["045_knowledge_entries_chunk_anchors.sql", "068_hub_uploads.sql", "072_hub_uploads_content_sha256.sql"]) {
+    for (const f of ["045_knowledge_entries_chunk_anchors.sql", "068_hub_uploads.sql", "072_hub_uploads_content_sha256.sql", "077_ingest_claim.sql"]) {
       await testPool.query(fs.readFileSync(path.join(hubRoot, "db", "migrations", f), "utf8"));
     }
     await testPool.query(
@@ -182,5 +219,44 @@ describe.skipIf(!READY)("GS10 page 26 reviewed pin: stored rows on rollout and r
     expect((await ask(doc, "GS11N-20P5")).cites51).toEqual([]);
     expect(releasedOn(await stored(doc), 26)).toBe(10);
     expect(releasedOn(await stored(doc), 27)).toBe(0);
+  });
+
+  it("inventory: an upload with no hash on its row is found through its parked file, and the forced reprocess uses the parked bytes", async () => {
+    await testPool.query("DELETE FROM namespace_direct_uploads WHERE tenant_id = $1::uuid", [TENANT]);
+    pins.reverted = false; // indexed while this build is live
+    const doc = await newParkedUpload();
+    expect((await reprocessNodeDocument({ tenantId: TENANT, uploadId: doc })).action).toBe("reprocessed");
+    expect((await ask(doc, "GS11N-20P2")).cites51.map((c) => c.sourcePage)).toEqual([26]);
+    expect(await inventory()).toContain(doc);
+    // The row-hash-only selector Codex found would miss it.
+    const rowOnly = await testPool.query("SELECT 1 FROM hub_uploads WHERE id = $1::uuid AND content_sha256 IS NOT NULL", [doc]);
+    expect(rowOnly.rowCount).toBe(0);
+
+    pins.reverted = true; // rollback: no local PDF is supplied, the parked original is used
+    expect((await reprocessNodeDocument({ tenantId: TENANT, uploadId: doc })).action).toBe("noop");
+    expect((await ask(doc, "GS11N-20P2")).cites51).toHaveLength(1);
+    expect(await reprocessNodeDocument({ tenantId: TENANT, uploadId: doc, force: true }))
+      .toMatchObject({ action: "reprocessed", reason: "recomputed_human_requested" });
+    expect((await ask(doc, "GS11N-20P2")).cites51).toEqual([]);
+
+    pins.reverted = false; // and back again
+    expect(await reprocessNodeDocument({ tenantId: TENANT, uploadId: doc, force: true }))
+      .toMatchObject({ action: "reprocessed" });
+    expect((await ask(doc, "GS11N-20P2")).cites51.map((c) => c.sourcePage)).toEqual([26]);
+  });
+
+  it("reuse: attaching the same bytes to another node of the same tenant returns the old upload, still withheld until it is reprocessed", async () => {
+    await testPool.query("DELETE FROM namespace_direct_uploads WHERE tenant_id = $1::uuid", [TENANT]);
+    pins.reverted = true; // indexed before this build
+    const doc = await newParkedUpload();
+    expect((await reprocessNodeDocument({ tenantId: TENANT, uploadId: doc })).action).toBe("reprocessed");
+    pins.reverted = false; // this build
+    const again = await parkOrReuseFile({ tenantId: TENANT, nodeId: null, filename: "copy.pdf",
+      mimeType: "application/pdf", sizeBytes: BYTES.length, buffer: BYTES });
+    expect(again).toMatchObject({ reused: true, uploadId: doc }); // no new upload, no new chunks
+    expect((await ask(doc, "GS11N-20P2")).cites51).toEqual([]);
+    expect(await inventory()).toContain(doc);
+    await reprocessNodeDocument({ tenantId: TENANT, uploadId: doc, force: true });
+    expect((await ask(doc, "GS11N-20P2")).cites51.map((c) => c.sourcePage)).toEqual([26]);
   });
 });
