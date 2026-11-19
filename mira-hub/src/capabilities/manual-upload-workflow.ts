@@ -40,9 +40,11 @@ export async function observeManualUpload(
         state: indexed ? "succeeded" : body.indexing === true ? "waiting" : "failed",
         stage: indexed ? "indexed" : "extract_index",
         evidence: indexed ? [...observation.evidence, { kind: "document", id: body.uploadId as string }] : observation.evidence,
-        failure: indexed || body.indexing === true ? null : { code: "index_failed", retryable: true },
-        retry: { eligible: !indexed && body.indexing !== true, afterMs: body.indexing === true ? 2000 : null },
-        recovery: { authority: "workspace_files", action: indexed ? "none" : body.indexing === true ? "wait" : "upload_again" },
+        // The same HTTP shape covers extraction and post-index final-link
+        // failures. Only canonical inspection can establish a safe recovery.
+        failure: indexed || body.indexing === true ? null : { code: "index_failed", retryable: false },
+        retry: { eligible: false, afterMs: body.indexing === true ? 2000 : null },
+        recovery: { authority: "workspace_files", action: body.indexing === true ? "wait" : "none" },
         observedAt: new Date().toISOString(),
       };
       run.setObservation(observation);

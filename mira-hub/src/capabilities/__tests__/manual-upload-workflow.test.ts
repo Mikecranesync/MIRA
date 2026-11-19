@@ -20,7 +20,7 @@ describe("manual upload observation adapter", () => {
     const result = await observeManualUpload(input(), async () => { calls++; return response; }, s);
     expect(result).toBe(response); expect(calls).toBe(1);
     expect(latest(s).state).toBe("succeeded");
-    expect(latest(s).definition).toEqual({ name: "manual_upload", version: "1.0.2" });
+    expect(latest(s).definition).toEqual({ name: "manual_upload", version: "1.0.3" });
     expect(latest(s).evidence).toContainEqual({ kind: "document", id: docId });
     expect(JSON.stringify([...s.finals, ...s.progress])).not.toContain("private.pdf");
     expect(result.headers.get("X-Mira-Workflow-Run-Id")).toBe(latest(s).identity.attemptId);
@@ -30,10 +30,11 @@ describe("manual upload observation adapter", () => {
     await observeManualUpload(input(), async () => Response.json({ ok: true, indexed: false, indexing: true, fileId }, { status: 202 }), s);
     expect(latest(s).state).toBe("waiting"); expect(s.finals[0].status).toBe("running");
   });
-  it("kept bytes plus extraction failure expose a domain-owned retry", async () => {
+  it("retains an opaque indexing failure without assuming which recovery is safe", async () => {
     const s = sink();
     await observeManualUpload(input(), async () => Response.json({ ok: true, indexed: false, warning: "private exception", fileId }, { status: 201 }), s);
-    expect(latest(s).state).toBe("failed"); expect(latest(s).recovery.action).toBe("upload_again");
+    expect(latest(s).state).toBe("failed"); expect(latest(s).recovery.action).toBe("none");
+    expect(latest(s).retry.eligible).toBe(false);
     expect(JSON.stringify(s.finals)).not.toContain("private exception");
   });
   it("a stop during extraction records cancelled waiting while preserving accepted results", async () => {

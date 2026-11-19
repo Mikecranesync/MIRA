@@ -9,15 +9,16 @@ import { NextRequest } from "next/server";
 import PDFDocument from "pdfkit";
 import type { Pool } from "pg";
 
-const { testPool, controls } = vi.hoisted(() => {
+const { testPool, controls, previousNeon } = await vi.hoisted(async () => {
   const value = process.env.TEST_DATABASE_URL;
-  if (!value || process.env.MIRA_TEST_DB_CONFIRM !== "DISPOSABLE") throw new Error("WF-01 requires an explicitly confirmed disposable database");
-  const url = new URL(value);
-  if (!["127.0.0.1", "[::1]"].includes(url.hostname) || url.pathname !== "/mira_wf01_test") throw new Error("WF-01 refuses any other host/database");
+  const { workflowDatabaseConfig } = await import("./disposable-db");
+  const config = workflowDatabaseConfig(value, process.env.MIRA_TEST_DB_CONFIRM);
+  const previousNeon = process.env.NEON_DATABASE_URL;
+  process.env.NEON_DATABASE_URL = value; // route configuration check only; the pool below is mocked explicitly
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { Pool: PgPool } = require("pg");
-  return { testPool: new PgPool({ connectionString: value }) as Pool,
-    controls: { failFinalize: false, failTelemetry: false, beforeParse: null as null | (() => Promise<void>), provider: "answer" as "answer" | "fail" | "hold", heldProvider: null as ReadableStreamDefaultController<Uint8Array> | null } };
+  return { testPool: new PgPool(config) as Pool, previousNeon,
+    controls: { failFinalize: false, failTelemetry: false, suppressLifecycle: false, beforeParse: null as null | (() => Promise<void>), provider: "answer" as "answer" | "fail" | "hold", heldProvider: null as ReadableStreamDefaultController<Uint8Array> | null } };
 });
 vi.mock("@/lib/db", () => ({ default: testPool }));
 vi.mock("@/lib/session", () => ({ sessionOr401: vi.fn() }));
@@ -41,13 +42,22 @@ vi.mock("@/lib/inference/persist-usage", async (original) => {
     return actual.persistTurnUsage(...args);
   }) };
 });
+vi.mock("@/capabilities/observability/turn-lifecycle", async (original) => {
+  const actual = await original<typeof import("@/capabilities/observability/turn-lifecycle")>();
+  return { ...actual,
+    openTurn: (input: Parameters<typeof actual.openTurn>[0]) => controls.suppressLifecycle
+      ? Promise.resolve({ attemptId: input.attemptId!, durable: false }) : actual.openTurn(input),
+    closeTurn: (input: Parameters<typeof actual.closeTurn>[0]) => controls.suppressLifecycle
+      ? Promise.resolve({ closed: false, matched: false }) : actual.closeTurn(input),
+  };
+});
 
 import { POST as upload } from "@/app/api/namespace/node/[id]/files/route";
 import { POST as attach } from "@/app/api/equipment-notebooks/[id]/sources/route";
 import { POST as ask } from "@/app/api/equipment-notebooks/[id]/chat/route";
 import { GET as inspect } from "@/app/api/workflows/manual-question/route";
 import { createNotebook, claimNotebookTurnRequest } from "@/lib/equipment-notebooks";
-import { parkOrReuseFile, claimIngest, linkFileToUpload } from "@/lib/workspace-files";
+import { parkOrReuseFile, claimIngest, linkFileToUpload, attachFileToTargets } from "@/lib/workspace-files";
 import { ingestPdfToNode } from "@/lib/node-knowledge-ingest";
 import { sessionOr401 } from "@/lib/session";
 
@@ -94,6 +104,12 @@ async function view(fileId: string, requestId?: string) {
 async function indexAndAttach() {
   const result = await sendPdf(); expect(result.body.indexed).toBe(true); expect((await attachDoc(result.body.uploadId)).status).toBe(201); return result.body;
 }
+async function cancelQuestion(docId: string, id: string) {
+  controls.provider = "hold"; const abort = new AbortController();
+  const response = await sendQuestion(docId, id, abort.signal);
+  const stopped = response.text().catch(() => "stopped");
+  await vi.waitFor(() => expect(controls.heldProvider).not.toBeNull()); abort.abort(); await stopped;
+}
 
 beforeAll(async () => {
   const { rows } = await testPool.query("SELECT current_database() AS db");
@@ -106,7 +122,7 @@ beforeAll(async () => {
   await testPool.query("INSERT INTO tenants (id, slug, name) VALUES ($1, $2, 'WF-01 fixture')", [tenantId, `wf01_${tenantId}`]);
 });
 beforeEach(async () => {
-  vi.clearAllMocks(); controls.failFinalize = false; controls.failTelemetry = false; controls.beforeParse = null; controls.provider = "answer"; controls.heldProvider = null; providerCalls = 0;
+  vi.clearAllMocks(); controls.failFinalize = false; controls.failTelemetry = false; controls.suppressLifecycle = false; controls.beforeParse = null; controls.provider = "answer"; controls.heldProvider = null; providerCalls = 0;
   process.env.NODE_INGEST_EMBED = "0"; process.env.NOTEBOOK_HYBRID_RETRIEVAL = "0";
   process.env.NOTEBOOK_ANSWER_GATE = "1"; process.env.NOTEBOOK_SEMANTIC_CHECK = "0";
   process.env.MIRA_CANONICAL_SEAM = "1"; process.env.OPENAI_API_KEY = "fixture-only-not-a-credential";
@@ -128,7 +144,10 @@ beforeEach(async () => {
     } }), { headers: { "Content-Type": "text/event-stream" } });
   }));
 });
-afterAll(async () => { vi.unstubAllGlobals(); await testPool.end(); });
+afterAll(async () => {
+  vi.unstubAllGlobals(); await testPool.end();
+  if (previousNeon === undefined) delete process.env.NEON_DATABASE_URL; else process.env.NEON_DATABASE_URL = previousNeon;
+});
 
 describe("WF-01 existing manual-to-answer vertical slice", () => {
   it("preserves the default upload path without writing workflow metadata", async () => {
@@ -183,13 +202,44 @@ describe("WF-01 existing manual-to-answer vertical slice", () => {
     const body = new FormData();
     body.set("file", new File([`Fictional ${randomUUID()}\nFault F12 means the inspection card is missing.`], `fictional.${extension}`, { type: "text/plain" }));
     controls.failFinalize = true;
-    const response = await upload(new Request(`https://hub.test/api/namespace/node/${nb.nodeId}/files`, { method: "POST", body }), { params: Promise.resolve({ id: nb.nodeId }) });
+    const response = await upload(new Request(`https://hub.test/api/namespace/node/${nb.nodeId}/files`, { method: "POST", body, headers: { "X-Mira-Workflow": "mira.workflow.v1" } }), { params: Promise.resolve({ id: nb.nodeId }) });
     const parked = await response.json(); expect(parked.indexed).toBe(false);
     const result = await view(parked.fileId);
     expect(result.body.workflow).toMatchObject({ state: "interrupted", retry: { eligible: false }, recovery: { action: "none" } });
+    expect(result.body.uploadObservation).toMatchObject({ state: "failed", retry: { eligible: false }, recovery: { action: "none" } });
     const docs = await testPool.query("SELECT id FROM hub_uploads WHERE tenant_id = $1 AND kg_entity_id = $2 AND status = 'parsed'", [tenantId, nb.nodeId]);
     expect(docs.rowCount).toBe(1);
     expect(result.body.workflow.evidence).toContainEqual({ kind: "document", id: docs.rows[0].id });
+  });
+  it("declines orphan retry from a secondary filing that cannot adopt the original node's PDF", async () => {
+    controls.failFinalize = true; const first = await sendPdf();
+    const originalNode = nb.nodeId;
+    nb = await createNotebook(tenantId, { displayName: `secondary ${randomUUID()}`, createdBy: userId });
+    await attachFileToTargets(tenantId, first.body.fileId, [{ targetType: "namespace_node", targetId: nb.nodeId, isPrimary: false }], { createdBy: userId });
+    const result = await view(first.body.fileId);
+    expect(result.body.workflow).toMatchObject({ state: "interrupted", retry: { eligible: false }, recovery: { action: "none" } });
+    const docs = await testPool.query("SELECT id FROM hub_uploads WHERE tenant_id = $1 AND kg_entity_id = $2 AND status = 'parsed'", [tenantId, originalNode]);
+    expect(docs.rowCount).toBe(1);
+    expect(result.body.workflow.evidence).toContainEqual({ kind: "document", id: docs.rows[0].id });
+  });
+  it("optional metadata lock contention cannot hold inspections or unrelated domain queries", async () => {
+    const doc = await indexAndAttach(); const locker = await testPool.connect();
+    const pending: ReturnType<typeof view>[] = []; let beforeUnlock = false;
+    try {
+      await locker.query("BEGIN; LOCK TABLE workflow_runs IN ACCESS EXCLUSIVE MODE");
+      for (let i = 0; i < 5; i++) { pending.push(view(doc.fileId)); await new Promise((r) => setTimeout(r, 10)); }
+      const domain = testPool.query("SELECT 42 AS result");
+      const result = await Promise.race([Promise.all([Promise.all(pending), domain]), new Promise<null>((r) => setTimeout(() => r(null), 2000))]);
+      if (result) {
+        beforeUnlock = true;
+        expect(result[1].rows[0].result).toBe(42);
+        for (const v of result[0]) {
+          expect(v.res.status).toBe(200); expect(v.body.workflow.state).toBe("waiting");
+          expect(v.body.visibility.gaps).toContain("upload_observation_unavailable");
+        }
+      }
+    } finally { await locker.query("ROLLBACK"); locker.release(); await Promise.allSettled(pending); }
+    expect(beforeUnlock).toBe(true);
   });
   it("concurrent identical uploads share the existing claim and create one index", async () => {
     let release!: () => void; const gate = new Promise<void>((r) => { release = r; }); controls.beforeParse = () => gate;
@@ -258,6 +308,24 @@ describe("WF-01 existing manual-to-answer vertical slice", () => {
     expect(result.body.workflow.state).toBe("failed");
     expect(result.body.workflow.cancellation.acknowledged).toBe(false);
     expect(result.body.visibility.gaps).toContain("turn_outcome_unavailable");
+  });
+  it("uses surviving ingress when a retry loses its entire lifecycle", async () => {
+    const doc = await indexAndAttach(); const id = randomUUID(); await cancelQuestion(doc.uploadId, id);
+    await vi.waitFor(async () => expect((await view(doc.fileId, id)).body.workflow.state).toBe("cancelled"));
+    controls.provider = "fail"; controls.failTelemetry = true; controls.suppressLifecycle = true;
+    await (await sendQuestion(doc.uploadId, id)).text();
+    await vi.waitFor(async () => {
+      const count = await testPool.query("SELECT count(DISTINCT attempt_id)::int AS n FROM turn_ingress WHERE tenant_id = $1 AND notebook_id = $2 AND client_request_id = $3 AND phase = 'responded'", [tenantId, nb.id, id]);
+      expect(count.rows[0].n).toBe(2);
+    });
+    const result = await view(doc.fileId, id);
+    expect(result.body.workflow.state).toBe("failed"); expect(result.body.workflow.cancellation.acknowledged).toBe(false);
+    expect(result.body.visibility.gaps).toContain("turn_outcome_unavailable");
+  });
+  it("finds the same first-attempt cancellation for uppercase and lowercase request UUIDs", async () => {
+    const doc = await indexAndAttach(); const id = randomUUID().toUpperCase(); await cancelQuestion(doc.uploadId, id);
+    await vi.waitFor(async () => expect((await view(doc.fileId, id)).body.workflow.state).toBe("cancelled"));
+    expect((await view(doc.fileId, id.toLowerCase())).body.workflow.cancellation.acknowledged).toBe(true);
   });
   it("the existing immediate-danger gate stays terminal, requires no model call, and cannot become workflow success", async () => {
     const doc = await indexAndAttach(); const id = randomUUID();

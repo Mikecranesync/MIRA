@@ -3,15 +3,14 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { randomUUID } from "node:crypto";
 import type { Pool } from "pg";
 
-const { testPool, lockPool } = vi.hoisted(() => {
+const { testPool, lockPool } = await vi.hoisted(async () => {
   const value = process.env.TEST_DATABASE_URL;
-  if (!value || process.env.MIRA_TEST_DB_CONFIRM !== "DISPOSABLE") throw new Error("WF-01 requires an explicitly confirmed disposable database");
-  const url = new URL(value);
-  if (!["127.0.0.1", "[::1]"].includes(url.hostname) || url.pathname !== "/mira_wf01_test") throw new Error("WF-01 refuses any other host/database");
+  const { workflowDatabaseConfig } = await import("./disposable-db");
+  const config = workflowDatabaseConfig(value, process.env.MIRA_TEST_DB_CONFIRM);
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { Pool: PgPool } = require("pg");
-  return { testPool: new PgPool({ connectionString: value, max: 5, application_name: "wf01-observation-test" }) as Pool,
-    lockPool: new PgPool({ connectionString: value, max: 1 }) as Pool };
+  return { testPool: new PgPool({ ...config, max: 5, application_name: "wf01-observation-test" }) as Pool,
+    lockPool: new PgPool({ ...config, max: 1 }) as Pool };
 });
 vi.mock("@/lib/db", () => ({ default: testPool }));
 import { pgWorkflowStore, runWorkflow } from "@/lib/workflow";

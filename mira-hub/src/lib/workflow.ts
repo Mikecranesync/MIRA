@@ -231,10 +231,10 @@ export const pgWorkflowStore = createPgWorkflowStore(async (sql, values) => (awa
 // Observations may occupy at most one shared connection per process. They do
 // not queue behind domain borrowers, and all timeout settings are local to the
 // observation transaction. No new pool or execution/retry authority is added.
-let observationWriteActive = false;
-async function observationQuery(sql: string, values: unknown[]) {
-  if (observationWriteActive) throw new Error("workflow_observation_busy");
-  observationWriteActive = true;
+let observationQueryActive = false;
+export async function queryWorkflowObservation(sql: string, values: unknown[], tenantId?: string) {
+  if (observationQueryActive) throw new Error("workflow_observation_busy");
+  observationQueryActive = true;
   let client: PoolClient | undefined;
   let expired = false;
   let released = false;
@@ -248,7 +248,9 @@ async function observationQuery(sql: string, values: unknown[]) {
       }
       client = await pool.connect();
       if (expired) throw new Error("workflow_observation_timeout");
-      await client.query("BEGIN; SET LOCAL lock_timeout = '100ms'; SET LOCAL statement_timeout = '500ms'");
+      await client.query("BEGIN; SET LOCAL lock_timeout = '100ms'; SET LOCAL statement_timeout = '500ms'" +
+        (tenantId ? "; SET LOCAL ROLE factorylm_app" : ""));
+      if (tenantId) await client.query("SELECT set_config('app.tenant_id', $1, true), set_config('app.current_tenant_id', $1, true)", [tenantId]);
       const result = await client.query(sql, values);
       await client.query("COMMIT");
       return result;
@@ -264,7 +266,7 @@ async function observationQuery(sql: string, values: unknown[]) {
     clearTimeout(timer);
     // If connect settles after the deadline, keep this gate until its client
     // has been discarded. Repeated timeouts cannot queue more acquisitions.
-    observationWriteActive = false;
+    observationQueryActive = false;
   });
   const deadline = new Promise<never>((_, reject) => {
     timer = setTimeout(() => {
@@ -275,7 +277,7 @@ async function observationQuery(sql: string, values: unknown[]) {
   });
   return Promise.race([actual, deadline]);
 }
-const pgWorkflowObservationStore = createPgWorkflowStore(observationQuery);
+const pgWorkflowObservationStore = createPgWorkflowStore(queryWorkflowObservation);
 
 // ---------------------------------------------------------------------------
 // WorkflowRun

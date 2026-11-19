@@ -61,7 +61,7 @@ export function projectManualQuestion(f: ManualWorkflowFacts) {
     }
   } else if (f.claim === "live" && !f.linkedDocId) {
     workflow.state = "running"; workflow.retry = { eligible: false, afterMs: 2000 }; workflow.recovery.action = "wait";
-  } else if (f.linkedDocId && f.chunkCount === 0) {
+  } else if (f.documentId && f.chunkCount === 0) {
     // Same-byte upload returns this existing pointer before any extraction.
     workflow.state = "failed"; workflow.failure = { code: "index_failed", retryable: false };
     workflow.retry.eligible = false; workflow.recovery.action = "none";

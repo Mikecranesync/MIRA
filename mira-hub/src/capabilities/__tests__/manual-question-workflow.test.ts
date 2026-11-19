@@ -55,6 +55,10 @@ describe("manual-to-question domain projection", () => {
     expect(result.workflow.failure?.retryable).toBe(false);
     expect(result.workflow.recovery.action).toBe("none");
   });
+  it("does not recommend adoption of a retained orphan whose chunks are missing", () => {
+    expect(projectManualQuestion({ ...facts(), linkedDocId: null, chunkCount: 0, anchoredChunkCount: 0 }).workflow)
+      .toMatchObject({ state: "failed", retry: { eligible: false }, recovery: { action: "none" } });
+  });
   it("does not let a stale failed observation override a completed canonical index", () => {
     const uploadObservation = { ...observation(), state: "failed" as const,
       failure: { code: "index_failed" as const, retryable: true } };

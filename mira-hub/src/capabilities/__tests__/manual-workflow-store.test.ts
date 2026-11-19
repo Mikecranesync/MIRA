@@ -9,6 +9,8 @@ const fixture = vi.hoisted(() => ({
   query: vi.fn(),
 }));
 vi.mock("@/lib/db", () => ({ default: { query: vi.fn(async () => ({ rows: [] })) } }));
+vi.mock("@/lib/workflow", () => ({ queryWorkflowObservation: async (sql: string, values: unknown[]) =>
+  sql.includes("FROM workflow_runs") ? { rows: [] } : fixture.query(sql, values) }));
 vi.mock("@/lib/uploads", () => ({ findDuplicateUpload: vi.fn(async () => null), getUpload: vi.fn(async () => ({ status: "parsed" })) }));
 vi.mock("@/lib/tenant-context", () => ({
   withTenantContext: async (_tenantId: string, fn: (c: { query: typeof fixture.query }) => unknown) => fn({ query: fixture.query }),
@@ -66,7 +68,7 @@ describe("manual workflow outcome evidence availability", () => {
     const result = await inspectManualQuestion(input());
     expect(result?.visibility.gaps).toEqual([]);
     expect(result?.workflow).toMatchObject({ state: "cancelled", cancellation: { requested: true, scope: "execution", acknowledged: true } });
-    expect(result?.workflow.definition).toEqual({ name: "manual_question", version: "1.0.2" });
+    expect(result?.workflow.definition).toEqual({ name: "manual_question", version: "1.0.3" });
     expect(outcomeQueries()[0][1]).toEqual([fixture.tenantId, fixture.notebookId, fixture.turnId, fixture.requestId]);
   });
   it.each(["answered", "refused", "abstained", "safety_stop", "error", "timeout", "superseded", "abandoned"])("recognizes %s without inferring cancellation or changing domain status", async (outcome) => {
