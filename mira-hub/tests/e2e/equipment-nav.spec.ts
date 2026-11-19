@@ -23,13 +23,17 @@
  *   - Close on the checklist drops a part waiting on an open label editor; it is not shown later (#5637).
  *   - a full page of 50 results scrolls inside the panel; Close equipment and the page stay put (#5639).
  *   - off: the panel is not rendered.
+ *   - repeated serial (#5649), with Find equipment OFF as it ships: confirming a component whose serial
+ *     number is already on other components says so where the card was and names each one; no match
+ *     or an older server looks as it always did; a check that failed never hides the save's success;
+ *     a match opens through this same hand-off, here or in another machine, and nothing is selected.
  *
  * Auth: a next-auth JWE signed with the SAME AUTH_SECRET the server boots with
  * (playwright.command-center.config.ts).
  */
 import { test, expect, type BrowserContext, type Page, type Request } from "@playwright/test";
 import { encode } from "next-auth/jwt";
-import { installRoutes, NB } from "../fidelity/harness";
+import { installRoutes, NB, oracle } from "../fidelity/harness";
 
 const AUTH_SECRET = "cc-e2e-fixed-secret-do-not-use-in-prod";
 const TENANT_ID = "11111111-1111-4111-8111-111111111111";
@@ -528,4 +532,375 @@ test("off: the panel is not rendered", async ({ page, context, baseURL }) => {
   expect((await probe).status()).toBe(404);
   await expect(page.getByTestId("notebook-actions")).toBeVisible();
   await expect(panel(page)).toHaveCount(0);
+});
+
+// ---------------------------------------------------------------------------------------------
+// Repeated serial number (#5649). The technician confirms a component; the save's reply says the
+// same serial number is already on other components; the checklist says so where the card was.
+// Find equipment is OFF in every case (as it ships): the warning needs no flag, and opening a
+// match uses the hand-off proved above.
+// ---------------------------------------------------------------------------------------------
+const OTHER_NB = "99999999-9999-4999-8999-999999999999";
+const AWAY = "88888888-8888-4888-8888-888888888888";
+const GONE = "66666666-6666-4666-8666-666666666666";
+const SERIAL = "E2E-SN-0042"; // made up
+
+const here = { componentId: MLC, notebookId: NB, notebookName: "GS10 — Line 3 conveyor", label: "Q1 · MLC", retired: false };
+const away = { componentId: AWAY, notebookId: OTHER_NB, notebookName: "Packaging line", label: "VFD1 · AutomationDirect GS10", retired: false };
+const gone = { componentId: GONE, notebookId: OTHER_NB, notebookName: "Packaging line", label: "VFD7 · AutomationDirect GS10", retired: true };
+const checked = (candidates: unknown[]) => ({ status: "checked", candidates, truncated: false });
+
+/** The save route: it commits (201) and answers as the server does, with or without `sameSerial`. */
+async function revisions(page: Page, reply: { sameSerial?: unknown; raw?: string }, opts: { hold?: Promise<void> } = {}) {
+  const saves: Record<string, unknown>[] = [];
+  await page.route(/\/api\/equipment-notebooks\/[^/]+\/components\/[^/]+\/revisions\/?$/, async (route) => {
+    if (route.request().method() !== "POST") return route.fallback();
+    saves.push(route.request().postDataJSON());
+    if (opts.hold) await opts.hold; // the server has the save and has not answered yet
+    if (reply.raw !== undefined) return route.fulfill({ status: 201, contentType: "text/html", body: reply.raw });
+    return route.fulfill(json({ status: "created", current: { ...vfdRev, revision: 4, serialNumber: SERIAL }, changed: ["serialNumber"], selection: null, ...reply }, 201));
+  });
+  return saves;
+}
+
+/** A second machine the tenant owns, so a match there has somewhere to open. */
+async function otherMachine(page: Page) {
+  const asOther = <T,>(v: T): T => JSON.parse(JSON.stringify(v).replaceAll(NB, OTHER_NB).replaceAll("GS10 — Line 3 conveyor", "Packaging line"));
+  await page.route(/\/api\/equipment-notebooks(\/[^?]*)?(\?.*)?$/, (route) => {
+    const req = route.request();
+    const p = new URL(req.url()).pathname.replace(/(.)\/$/, "$1");
+    if (req.method() !== "GET") return route.fallback();
+    if (p === "/api/equipment-notebooks") return route.fulfill(json({ notebooks: [...oracle.list.notebooks, ...asOther(oracle.list.notebooks)] }));
+    if (!p.includes(OTHER_NB)) return route.fallback();
+    if (p === `/api/equipment-notebooks/${OTHER_NB}`) return route.fulfill(json(asOther(oracle.detailEmpty)));
+    if (p === `/api/equipment-notebooks/${OTHER_NB}/components`) {
+      return route.fulfill(json({ ...bench(null), components: [{ ...vfdView, id: AWAY, current: { ...vfdRev, componentId: AWAY } }] }));
+    }
+    // Its other panels answer as the first machine's do (off).
+    return route.fallback({ url: req.url().replace(OTHER_NB, NB) });
+  });
+}
+
+async function confirmWithSerial(page: Page) {
+  await page.getByTestId("bench-asking-about").click();
+  await checklistRow(page, VFD).getByRole("button", { name: "Edit label" }).click();
+  await checklist(page).getByTestId("bench-card-serialNumber").fill(SERIAL);
+  await checklist(page).getByTestId("bench-card-confirm").click();
+}
+const serialWarning = (page: Page) => checklist(page).getByRole("group", { name: "Repeated serial number" });
+const notRunNote = (page: Page) => checklist(page).getByTestId("bench-same-serial-not-run");
+const saved = (page: Page) => checklist(page).getByTestId("bench-message");
+/** A proof screenshot, taken only when the run names a folder for it (MIRA_PROOF_SHOTS). */
+async function proofShot(page: Page, viewport: "desktop" | "mobile") {
+  const dir = process.env.MIRA_PROOF_SHOTS;
+  if (dir) await page.screenshot({ path: `${dir}/2026-11-19_repeated-serial-warning_${viewport}.png` });
+}
+
+test("repeated serial: confirming names every other component with that serial number; Show in checklist marks the one here", async ({ page, context, baseURL }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await auth(context, baseURL!);
+  const seen = await routes(page, { enabled: false, resolve: "resolved" });
+  const saves = await revisions(page, { sameSerial: checked([here, away, gone]) });
+  await page.goto(`/v3/?notebook=${NB}&thread=${THREAD}`);
+  await confirmWithSerial(page);
+
+  // The save is reported as it always was, and the warning is where the card was.
+  await expect(saved(page)).toContainText("Confirmed. Questions about it now use what you confirmed.");
+  await expect(checklist(page).getByTestId("bench-card")).toHaveCount(0);
+  const warning = serialWarning(page);
+  await expect(warning.getByRole("status")).toHaveText("This serial number is already on 3 other components.");
+  await expect(warning).toContainText("VFD1 · AutomationDirect GS10 is saved as confirmed. This may be the same unit. Nothing was blocked, changed or merged.");
+  // Each match is named, and two components with the same label are told apart by where they are.
+  await expect(warning.getByTestId(`bench-same-serial-match-${MLC}`)).toContainText("Q1 · MLC");
+  await expect(warning.getByTestId(`bench-same-serial-match-${MLC}`)).toContainText("in this machine's checklist");
+  await expect(warning.getByTestId(`bench-same-serial-match-${AWAY}`)).toContainText("VFD1 · AutomationDirect GS10");
+  await expect(warning.getByTestId(`bench-same-serial-match-${AWAY}`)).toContainText("in Packaging line");
+  await expect(warning.getByTestId(`bench-same-serial-match-${GONE}`)).toContainText("removed from the checklist");
+  await expect(warning.getByTestId(`bench-same-serial-match-${GONE}`).getByRole("button")).toHaveCount(0);
+  // The serial number went to the server once, in the save, and is not on the warning.
+  expect(saves).toHaveLength(1);
+  expect(saves[0]).toMatchObject({ confirm: true, serialNumber: SERIAL, threadId: THREAD });
+  await expect(warning).not.toContainText(SERIAL);
+
+  // Confirm is at the bottom of the card and the result is at the top of the sheet: it is brought into view.
+  await expect(saved(page)).toBeInViewport();
+  await expect(warning.getByRole("status")).toBeInViewport();
+  await proofShot(page, "desktop");
+
+  // Find equipment is off, and a match here is still shown in the checklist. Nothing is selected.
+  await expect(panel(page)).toHaveCount(0);
+  await warning.getByRole("button", { name: "Show in checklist: Q1 · MLC" }).click();
+  await expect(checklistRow(page, MLC)).toHaveAttribute("data-found", "true");
+  await expect(warning).toBeVisible();
+  expect(seen.selectionPuts).toHaveLength(0);
+
+  // OK puts the warning away; the save's own line stays.
+  await warning.getByRole("button", { name: "OK" }).click();
+  await expect(serialWarning(page)).toHaveCount(0);
+  await expect(saved(page)).toContainText("Confirmed.");
+});
+
+test("repeated serial: at phone width the warning is in view after the save and every button is a full touch target", async ({ page, context, baseURL }) => {
+  await page.setViewportSize({ width: 412, height: 915 });
+  await auth(context, baseURL!);
+  await routes(page, { enabled: false, resolve: "resolved" });
+  await revisions(page, { sameSerial: checked([here, away, gone]) });
+  await page.goto(`/v3/?notebook=${NB}&thread=${THREAD}`);
+  await confirmWithSerial(page);
+
+  const warning = serialWarning(page);
+  await expect(saved(page)).toBeInViewport();
+  await expect(warning.getByRole("status")).toBeInViewport();
+  const buttons = await warning.getByRole("button").all();
+  expect(buttons).toHaveLength(3); // Show in checklist, Open, OK: a removed component has none
+  for (const button of buttons) expect((await button.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  const box = (await warning.boundingBox())!;
+  expect(box.x).toBeGreaterThanOrEqual(0);
+  expect(box.x + box.width).toBeLessThanOrEqual(412);
+  await proofShot(page, "mobile");
+});
+
+test("repeated serial: on a short screen, where Confirm is reached by scrolling the sheet, the result is brought back into view", async ({ page, context, baseURL }) => {
+  await page.setViewportSize({ width: 1280, height: 600 });
+  await auth(context, baseURL!);
+  await routes(page, { enabled: false, resolve: "resolved" });
+  await revisions(page, { sameSerial: checked([here, away, gone]) });
+  await page.goto(`/v3/?notebook=${NB}&thread=${THREAD}`);
+  await page.getByTestId("bench-asking-about").click();
+  await checklistRow(page, VFD).getByRole("button", { name: "Edit label" }).click();
+  await checklist(page).getByTestId("bench-card-serialNumber").fill(SERIAL);
+  const confirm = checklist(page).getByTestId("bench-card-confirm");
+  await confirm.scrollIntoViewIfNeeded();
+  // The case this test is for: the sheet had to scroll to reach Confirm, so its top is out of view.
+  expect(await checklist(page).evaluate((sheet) => sheet.scrollTop)).toBeGreaterThan(0);
+  await confirm.click();
+
+  await expect(serialWarning(page).getByRole("status")).toBeInViewport();
+  await expect(saved(page)).toBeInViewport();
+});
+
+for (const [name, reply] of [
+  ["no other component has it", { sameSerial: checked([]) }],
+  ["a server that does not send the check", {}],
+] as const) {
+  test(`repeated serial: ${name}, so confirming looks as it always did`, async ({ page, context, baseURL }) => {
+    await auth(context, baseURL!);
+    await routes(page, { enabled: false, resolve: "resolved" });
+    const saves = await revisions(page, reply);
+    await page.goto(`/v3/?notebook=${NB}&thread=${THREAD}`);
+    await confirmWithSerial(page);
+
+    await expect(saved(page)).toHaveText("Confirmed. Questions about it now use what you confirmed.");
+    await expect(checklist(page).getByTestId("bench-component-list")).toBeVisible();
+    await expect(serialWarning(page)).toHaveCount(0);
+    await expect(notRunNote(page)).toHaveCount(0);
+    expect(saves).toHaveLength(1);
+  });
+}
+
+for (const [name, reply] of [
+  ["the check failed or timed out on the server", { sameSerial: { status: "not_checked", reason: "lookup_failed" } }],
+  ["the save's reply could not be read", { raw: "<html>bad gateway</html>" }],
+] as const) {
+  test(`repeated serial: ${name}; the save is still reported as confirmed, with a quiet note`, async ({ page, context, baseURL }) => {
+    await auth(context, baseURL!);
+    await routes(page, { enabled: false, resolve: "resolved" });
+    await revisions(page, reply);
+    await page.goto(`/v3/?notebook=${NB}&thread=${THREAD}`);
+    await confirmWithSerial(page);
+
+    await expect(saved(page)).toHaveText("Confirmed. Questions about it now use what you confirmed.");
+    await expect(notRunNote(page)).toHaveText("The check for this serial number on other components did not run this time. Your save is not affected.");
+    await expect(serialWarning(page)).toHaveCount(0);
+    await expect(checklist(page).getByTestId("bench-card")).toHaveCount(0);
+  });
+}
+
+test("repeated serial: a match in another machine opens it on the technician's tap, in a new chat, with the component marked", async ({ page, context, baseURL }) => {
+  await auth(context, baseURL!);
+  const seen = await routes(page, { enabled: false, resolve: "resolved" });
+  await otherMachine(page);
+  await revisions(page, { sameSerial: checked([away]) });
+  await page.goto(`/v3/?notebook=${NB}&thread=${THREAD}`);
+  await confirmWithSerial(page);
+
+  const warning = serialWarning(page);
+  await expect(warning.getByRole("status")).toHaveText("This serial number is already on another component.");
+  // Nothing opens by itself.
+  await page.waitForTimeout(500);
+  await expect(page).toHaveURL(new RegExp(`notebook=${NB}`));
+
+  await warning.getByRole("button", { name: "Open Packaging line in a new chat: VFD1 · AutomationDirect GS10", exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`notebook=${OTHER_NB}`));
+  await expect(page).not.toHaveURL(new RegExp(`thread=${THREAD}`));
+  await expect(checklistRow(page, AWAY)).toHaveAttribute("data-found", "true");
+  expect(seen.selectionPuts).toHaveLength(0);
+});
+
+test("repeated serial: opening a label to edit takes the warning away, and cancelling does not bring it back", async ({ page, context, baseURL }) => {
+  await auth(context, baseURL!);
+  await routes(page, { enabled: false, resolve: "resolved" });
+  await revisions(page, { sameSerial: checked([away]) });
+  await page.goto(`/v3/?notebook=${NB}&thread=${THREAD}`);
+  await confirmWithSerial(page);
+  await expect(serialWarning(page)).toBeVisible();
+
+  await checklistRow(page, MLC).getByRole("button", { name: "Edit label" }).click();
+  await expect(checklist(page).getByTestId("bench-card")).toBeVisible();
+  await expect(serialWarning(page)).toHaveCount(0);
+  await checklist(page).getByRole("button", { name: "Cancel" }).click();
+  await expect(checklist(page).getByTestId("bench-component-list")).toBeVisible();
+  await expect(serialWarning(page)).toHaveCount(0);
+});
+
+test("repeated serial: Save without Confirm shows no warning, whatever the reply carries", async ({ page, context, baseURL }) => {
+  await auth(context, baseURL!);
+  await routes(page, { enabled: false, resolve: "resolved" });
+  const saves = await revisions(page, { sameSerial: checked([away]) });
+  await page.goto(`/v3/?notebook=${NB}&thread=${THREAD}`);
+  await page.getByTestId("bench-asking-about").click();
+  await checklistRow(page, VFD).getByRole("button", { name: "Edit label" }).click();
+  await checklist(page).getByTestId("bench-card-serialNumber").fill(SERIAL);
+  await checklist(page).getByTestId("bench-card-save").click();
+
+  await expect(saved(page)).toHaveText("Saved — not confirmed yet.");
+  await expect(serialWarning(page)).toHaveCount(0);
+  await expect(notRunNote(page)).toHaveCount(0);
+  expect(saves).toHaveLength(1);
+  expect(saves[0]).toMatchObject({ confirm: false, serialNumber: SERIAL });
+});
+
+test("repeated serial: a reply whose body never arrives does not hold the save's result back", async ({ page, context, baseURL }) => {
+  await auth(context, baseURL!);
+  await routes(page, { enabled: false, resolve: "resolved" });
+  await revisions(page, { sameSerial: checked([away]) });
+  // The save answers 201, and then its body is never readable: only this route's replies are held.
+  await page.addInitScript(() => {
+    const readJson = Response.prototype.json;
+    Response.prototype.json = function json(this: Response) {
+      return /\/revisions\/?$/.test(new URL(this.url, location.href).pathname) ? new Promise(() => undefined) : readJson.call(this);
+    };
+  });
+  await page.goto(`/v3/?notebook=${NB}&thread=${THREAD}`);
+  await confirmWithSerial(page);
+
+  // The save is reported while the check is still out, and the card is gone.
+  await expect(saved(page)).toHaveText("Confirmed. Questions about it now use what you confirmed.");
+  await expect(notRunNote(page)).toHaveCount(0);
+  await expect(serialWarning(page)).toHaveCount(0);
+  await expect(checklist(page).getByTestId("bench-card")).toHaveCount(0);
+  // The save is over, so the checklist can be used again without waiting for the check.
+  await expect(checklistRow(page, MLC).getByRole("button", { name: "Edit label" })).toBeEnabled();
+  // Then the check gives up, and says so quietly.
+  await expect(notRunNote(page)).toBeVisible({ timeout: 10_000 });
+  await expect(saved(page)).toHaveText("Confirmed. Questions about it now use what you confirmed.");
+});
+
+for (const how of ["Close", "the pill"] as const) {
+  test(`repeated serial: the sheet is closed with ${how} while the save is on its way; its warning is not shown when the sheet is opened again`, async ({ page, context, baseURL }) => {
+    await auth(context, baseURL!);
+    await routes(page, { enabled: false, resolve: "resolved" });
+    let answer!: () => void;
+    const saves = await revisions(page, { sameSerial: checked([away]) }, { hold: new Promise<void>((resolve) => { answer = resolve; }) });
+    await page.goto(`/v3/?notebook=${NB}&thread=${THREAD}`);
+    await page.getByTestId("bench-asking-about").click();
+    await checklistRow(page, VFD).getByRole("button", { name: "Edit label" }).click();
+    await checklist(page).getByTestId("bench-card-serialNumber").fill(SERIAL);
+    const reply = page.waitForResponse((r) => r.request().method() === "POST" && /\/revisions\/?$/.test(new URL(r.url()).pathname));
+    await checklist(page).getByTestId("bench-card-confirm").click();
+    await expect.poll(() => saves.length).toBe(1); // the save has reached the server, which is holding its answer
+    if (how === "Close") await checklist(page).getByRole("button", { name: "Close", exact: true }).click();
+    else await page.getByTestId("bench-asking-about").press("Enter"); // by keyboard: the open sheet can cover the pill
+    await expect(checklist(page)).toHaveCount(0);
+    answer(); // only now does the save's reply leave the server
+    await (await reply).finished();
+
+    await page.getByTestId("bench-asking-about").click();
+    // The save itself is reported as it always was; the warning it came with was closed with the sheet.
+    await expect(saved(page)).toHaveText("Confirmed. Questions about it now use what you confirmed.");
+    await expect(serialWarning(page)).toHaveCount(0);
+    await expect(notRunNote(page)).toHaveCount(0);
+  });
+}
+
+test("repeated serial: a warning that is showing is ended by closing the sheet with the pill, as Close ends it", async ({ page, context, baseURL }) => {
+  await auth(context, baseURL!);
+  await routes(page, { enabled: false, resolve: "resolved" });
+  await revisions(page, { sameSerial: checked([away]) });
+  await page.goto(`/v3/?notebook=${NB}&thread=${THREAD}`);
+  await confirmWithSerial(page);
+  await expect(serialWarning(page)).toBeVisible();
+
+  await page.getByTestId("bench-asking-about").press("Enter");
+  await expect(checklist(page)).toHaveCount(0);
+  await page.getByTestId("bench-asking-about").click();
+  await expect(saved(page)).toHaveText("Confirmed. Questions about it now use what you confirmed.");
+  await expect(serialWarning(page)).toHaveCount(0);
+});
+
+// The save's reply arrives (201) but its body can be read only when the test says so.
+async function holdSaveReplyBody(page: Page) {
+  await page.addInitScript(() => {
+    const readJson = Response.prototype.json;
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => { release = resolve; });
+    (window as unknown as { readSaveReplyNow: () => void }).readSaveReplyNow = release;
+    Response.prototype.json = function json(this: Response) {
+      return /\/revisions\/?$/.test(new URL(this.url, location.href).pathname) ? held.then(() => readJson.call(this)) : readJson.call(this);
+    };
+  });
+  return async () => {
+    await page.evaluate(() => (window as unknown as { readSaveReplyNow: () => void }).readSaveReplyNow());
+    // Long enough for the page to act on the reply it can now read; far short of the 3 s give-up.
+    await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 250)));
+  };
+}
+
+test("repeated serial: a reply that can only be read late shows its warning then, under the save's result", async ({ page, context, baseURL }) => {
+  await auth(context, baseURL!);
+  await routes(page, { enabled: false, resolve: "resolved" });
+  await revisions(page, { sameSerial: checked([away]) });
+  const readNow = await holdSaveReplyBody(page);
+  await page.goto(`/v3/?notebook=${NB}&thread=${THREAD}`);
+  await confirmWithSerial(page);
+  await expect(saved(page)).toHaveText("Confirmed. Questions about it now use what you confirmed.");
+  await expect(serialWarning(page)).toHaveCount(0);
+
+  await readNow();
+  await expect(serialWarning(page).getByTestId(`bench-same-serial-match-${AWAY}`)).toContainText("in Packaging line");
+  await expect(saved(page)).toHaveText("Confirmed. Questions about it now use what you confirmed.");
+});
+
+for (const when of ["while the label is open", "after the label was cancelled"] as const) {
+  test(`repeated serial: a warning still on its way when a label is opened is not shown: its reply is read ${when}`, async ({ page, context, baseURL }) => {
+    await auth(context, baseURL!);
+    await routes(page, { enabled: false, resolve: "resolved" });
+    await revisions(page, { sameSerial: checked([away]) });
+    const readNow = await holdSaveReplyBody(page);
+    await page.goto(`/v3/?notebook=${NB}&thread=${THREAD}`);
+    await confirmWithSerial(page);
+    await expect(saved(page)).toHaveText("Confirmed. Questions about it now use what you confirmed.");
+
+    await checklistRow(page, MLC).getByRole("button", { name: "Edit label" }).click();
+    await expect(checklist(page).getByTestId("bench-card")).toBeVisible();
+    if (when === "while the label is open") await readNow();
+    await checklist(page).getByRole("button", { name: "Cancel" }).click();
+    await expect(checklist(page).getByTestId("bench-component-list")).toBeVisible();
+    if (when === "after the label was cancelled") await readNow();
+
+    await expect(serialWarning(page)).toHaveCount(0);
+    await expect(notRunNote(page)).toHaveCount(0);
+  });
+}
+
+test("repeated serial: the warning is kept when the checklist cannot be re-read after the save", async ({ page, context, baseURL }) => {
+  await auth(context, baseURL!);
+  // Read 1 is the page load; read 2 is the re-read that follows the save.
+  await routes(page, { enabled: false, resolve: "resolved", failReads: [2] });
+  await revisions(page, { sameSerial: checked([away]) });
+  await page.goto(`/v3/?notebook=${NB}&thread=${THREAD}`);
+  await confirmWithSerial(page);
+
+  await expect(serialWarning(page)).toContainText("VFD1 · AutomationDirect GS10 is saved as confirmed.");
+  await expect(serialWarning(page).getByTestId(`bench-same-serial-match-${AWAY}`)).toContainText("in Packaging line");
 });

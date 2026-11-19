@@ -26,9 +26,13 @@ import {
   componentErrorMessage,
   focusStep,
   readBench,
+  readSameSerialNotice,
   reconcileBench,
+  reportSameSerial,
   retakeCard,
   revisionBodyFor,
+  sameSerialButtonName,
+  sameSerialTarget,
   selectedComponent,
   selectionChangeFor,
   statusTone,
@@ -39,6 +43,8 @@ import {
   type ComponentAction,
   type ComponentTurnFrame,
   type ComponentView,
+  type SameSerialMatch,
+  type SameSerialNotice,
 } from "./bench-components-logic";
 
 const PILL_STYLE: CSSProperties = {
@@ -67,6 +73,11 @@ const CHIP: Record<"ok" | "warn" | "muted", CSSProperties> = {
   muted: { background: "var(--fl-bg)", color: "var(--fl-muted)" },
 };
 const CHIP_BASE: CSSProperties = { borderRadius: "var(--fl-radius-pill, 999px)", padding: "2px 8px", fontSize: "var(--fl-fs-xs)", marginInlineStart: 8 };
+// Amber is the warning state (ui-style rule 3). The text stays ink so it reads on the amber ground.
+const SERIAL_WARNING_STYLE: CSSProperties = {
+  margin: "8px 0", padding: "var(--fl-space-3, 12px)", borderRadius: "var(--fl-radius)",
+  border: "1px solid var(--fl-warn)", background: "var(--fl-warn-bg)", color: "var(--fl-ink)",
+};
 
 const base = (notebookId: string) => `${API_BASE}/api/equipment-notebooks/${encodeURIComponent(notebookId)}/components/`;
 
@@ -88,6 +99,7 @@ export function BenchComponents({
   onState,
   focus = null,
   onFocusDone,
+  onOpenEquipment,
 }: {
   notebookId: string;
   threadId: string;
@@ -108,6 +120,11 @@ export function BenchComponents({
   focus?: { componentId: string; token: number } | null;
   /** How the hand-off ended; the host drops it then, so a remounted checklist never shows it again. */
   onFocusDone?: (token: number, outcome: { ok: true } | { ok: false; message: string }) => void;
+  /**
+   * Opens a component the repeated-serial warning names (#5649), through the host's equipment
+   * hand-off: the same routes and rules as a Find equipment answer. Without it, matches are named only.
+   */
+  onOpenEquipment?: (target: ReturnType<typeof sameSerialTarget>) => void;
 }) {
   const [bench, setBench] = useState<BenchState | null>(null);
   const [available, setAvailable] = useState(true);
@@ -119,6 +136,11 @@ export function BenchComponents({
   const [handled, setHandled] = useState<ComponentTurnFrame | null>(null);
   const [readFailed, setReadFailed] = useState(false);
   const [focused, setFocused] = useState<string | null>(null);
+  // #5649: what the last confirmed save's reply said about its serial number on other components.
+  const [serialNotice, setSerialNotice] = useState<SameSerialNotice | null>(null);
+  // Which save that notice may come from. A new save, closing the sheet and opening a label all move
+  // it on, so a reply that is read late is not shown for a save the technician has already moved past.
+  const serialSave = useRef(0);
   const addRequest = useRef<AddRequest | null>(null);
 
   // #5504 Codex r3 F6: the host refuses a send until this read has answered (or the
@@ -237,7 +259,35 @@ export function BenchComponents({
     setOpen(false);
     setCard(null);
     setFocused(null);
+    serialSave.current += 1;
+    setSerialNotice(null);
   }, [focus, onFocusDone]);
+  // The pill closes the sheet as well as opening it. Closing it ends a repeated-serial warning as Close
+  // does, shown or still on its way; everything else about the sheet is left as it was.
+  const togglePanel = useCallback(() => {
+    if (open) {
+      serialSave.current += 1;
+      setSerialNotice(null);
+    }
+    setOpen(!open);
+  }, [open]);
+  // The warning belongs to the save it came from: opening any label to edit takes it away, so it cannot
+  // come back when that card is cancelled. Adjusted while rendering, which React re-renders at once.
+  if (card && serialNotice) setSerialNotice(null);
+  // The same holds for a warning still on its way: once a label has been opened it is not shown,
+  // whether its reply is read while the card is open or after the card is gone.
+  const cardOpen = card !== null;
+  useEffect(() => {
+    if (cardOpen) serialSave.current += 1;
+  }, [cardOpen]);
+  // Confirm is at the bottom of the card and the save's result is at the top of the sheet, so on a short
+  // screen the result would be left above the visible part. Bring it back into view, as a found row is.
+  useEffect(() => {
+    if (!serialNotice) return;
+    // The warning starts directly under the save's own line, so bringing that line into view brings
+    // the start of the warning with it. The later rows of a long warning are reached by scrolling.
+    document.querySelector('[data-testid="bench-message"]')?.scrollIntoView?.({ block: "nearest" });
+  }, [serialNotice]);
   useEffect(() => {
     if (open && focused) document.querySelector(`[data-testid="bench-component-${focused}"]`)?.scrollIntoView?.({ block: "nearest" });
   }, [open, focused]);
@@ -268,6 +318,8 @@ export function BenchComponents({
       }
       setSaving(true);
       setMessage(null);
+      setSerialNotice(null);
+      const save = ++serialSave.current;
       try {
         const res = await fetch(`${base(notebookId)}${encodeURIComponent(card.componentId)}/revisions/`, {
           method: "POST",
@@ -283,10 +335,23 @@ export function BenchComponents({
           if (code === "component_changed" && now) setCard(cardFor(now));
           return;
         }
+        // #5649: the reply of a confirmed save says whether its serial number is already on other
+        // components. It is read alongside the re-read below. It can neither fail the save nor hold its
+        // result back: readSameSerialNotice never throws, and reportSameSerial does not wait for it.
+        const serial = confirm ? readSameSerialNotice(res, { notebookId, componentId: card.componentId }) : null;
         setCard(null);
         // #5504 post-cap F9: a revision may commit even when its reply is lost, so Send stays
         // refused until a read that began after it settled has succeeded.
-        if (!(await reconcileBench(gate, load))) {
+        const reread = await reconcileBench(gate, load);
+        // The save is committed whether or not the re-read worked, so what its reply said still stands.
+        // A reply read by now is shown together with the result below. One still on its way is shown
+        // when it arrives, unless the sheet was closed, a label was opened or another save began meanwhile.
+        if (serial) {
+          await reportSameSerial(serial, (notice) => {
+            if (alive.current && serialSave.current === save) setSerialNotice(notice);
+          });
+        }
+        if (!reread) {
           setMessage(CONNECTION_MESSAGE);
           return;
         }
@@ -348,7 +413,7 @@ export function BenchComponents({
 
   return (
     <>
-      <button type="button" style={PILL_STYLE} data-testid="bench-asking-about" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+      <button type="button" style={PILL_STYLE} data-testid="bench-asking-about" aria-expanded={open} onClick={togglePanel}>
         {askingAbout(bench)}
         {bench?.selection && !bench.selection.current && " (identity changed — next question re-checks it)"}
       </button>
@@ -374,6 +439,15 @@ export function BenchComponents({
           </header>
           <p data-testid="bench-panel-asking">{askingAbout(bench)}</p>
           {message && <p role="status" data-testid="bench-message">{message}</p>}
+          {!card && serialNotice && (
+            <SameSerialWarning
+              notice={serialNotice}
+              savedLabel={bench?.components.find((c) => c.id === serialNotice.componentId)?.label ?? null}
+              disabled={saving || busy}
+              onOpen={onOpenEquipment ? (match) => onOpenEquipment(sameSerialTarget(match)) : undefined}
+              onDismiss={() => setSerialNotice(null)}
+            />
+          )}
 
           {card && focus && !consumedFocus.current.has(focus.token) && (
             <p role="status" data-testid="bench-focus-waiting">
@@ -460,6 +534,75 @@ export function ComponentRow({ c, selected, found = false, tally, saving, onAsk,
       <button type="button" style={BUTTON_STYLE} disabled={saving || selected} onClick={onAsk}>Ask about this</button>
       <button type="button" style={QUIET_BUTTON} disabled={saving} onClick={onCheck}>{c.status === "confirmed" ? "Edit label" : "Check label"}</button>
     </li>
+  );
+}
+
+/**
+ * The repeated-serial warning (#5649), shown where the confirmation card was once a confirmed save
+ * has been reported. It names the other components that carry the same serial number so the
+ * technician can tell them apart. It never shows the serial number, and it changes nothing: the
+ * save stands, and no record is blocked, changed or merged.
+ */
+export function SameSerialWarning({ notice, savedLabel, disabled, onOpen, onDismiss }: {
+  notice: SameSerialNotice;
+  /** The checklist label of the component just confirmed, when the checklist has it. */
+  savedLabel: string | null;
+  /** A save or an answer is in progress: opening equipment waits for it. */
+  disabled: boolean;
+  /** Opens a match through the host's equipment hand-off. Without it, matches are named only. */
+  onOpen?: (match: SameSerialMatch) => void;
+  onDismiss: () => void;
+}) {
+  if (notice.kind === "not_run") {
+    return (
+      <p role="status" data-testid="bench-same-serial-not-run" style={{ fontSize: "var(--fl-fs-sm)", color: "var(--fl-muted)" }}>
+        The check for this serial number on other components did not run this time. Your save is not affected.
+      </p>
+    );
+  }
+  const n = notice.matches.length;
+  const others = notice.more
+    ? n === 1 ? "more than one other component" : `more than ${n} other components`
+    : n === 1 ? "another component" : `${n} other components`;
+  return (
+    <div role="group" aria-label="Repeated serial number" data-testid="bench-same-serial" style={SERIAL_WARNING_STYLE}>
+      <p role="status" data-testid="bench-same-serial-headline" style={{ margin: 0, fontWeight: 600 }}>
+        {`This serial number is already on ${others}.`}
+      </p>
+      <p style={{ margin: "4px 0 0" }}>
+        {`${savedLabel ?? "This component"} is saved as confirmed. This may be the same unit. Nothing was blocked, changed or merged.`}
+      </p>
+      <ul style={{ listStyle: "none", padding: 0, margin: "8px 0 0" }}>
+        {notice.matches.map((m) => (
+          <li key={m.componentId} data-testid={`bench-same-serial-match-${m.componentId}`} style={{ borderTop: "1px solid var(--fl-line)", padding: "8px 0" }}>
+            <strong>{m.label}</strong>{" "}
+            <span style={{ marginInlineStart: 4 }}>{!m.here ? `in ${m.notebookName}` : m.retired ? "on this machine" : "in this machine's checklist"}</span>
+            {m.retired && " "}
+            {m.retired && <span data-testid={`bench-same-serial-removed-${m.componentId}`} style={{ marginInlineStart: 4, color: "var(--fl-muted)" }}>(removed from the checklist)</span>}
+            {onOpen && !m.retired && (
+              <div>
+                <button
+                  type="button"
+                  disabled={disabled}
+                  aria-label={sameSerialButtonName(notice.matches, m)}
+                  data-testid={`bench-same-serial-open-${m.componentId}`}
+                  style={QUIET_BUTTON}
+                  onClick={() => onOpen(m)}
+                >
+                  {m.here ? "Show in checklist" : "Open"}
+                </button>
+              </div>
+            )}
+          </li>
+        ))}
+      </ul>
+      {notice.more && (
+        <p data-testid="bench-same-serial-more" style={{ margin: "4px 0 0", fontSize: "var(--fl-fs-sm)" }}>
+          {n === 1 ? "Only one is listed." : `Only the first ${n} are listed.`}
+        </p>
+      )}
+      <button type="button" data-testid="bench-same-serial-dismiss" style={QUIET_BUTTON} onClick={onDismiss}>OK</button>
+    </div>
   );
 }
 

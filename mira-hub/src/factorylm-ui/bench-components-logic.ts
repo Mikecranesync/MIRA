@@ -12,6 +12,7 @@ import type { BenchState } from "@/capabilities/bench-components/http";
 import type { ComponentAction, ComponentTurnFrame } from "@/capabilities/bench-components/chat-turn";
 import type { ComponentRevision } from "@/capabilities/bench-components/selection";
 import type { ComponentView } from "@/capabilities/bench-components/view";
+import type { QuestionTarget } from "@factorylm/interaction";
 import type { HubSelection } from "./hub-host-logic";
 import { LEGACY_THREAD_ID } from "./notebook-tree";
 
@@ -650,4 +651,159 @@ export function focusStep(
   const c = state.bench.components.find((x) => x.id === focus.componentId);
   if (c && c.status !== "retired") return "show";
   return state.reread ? "missing" : "refresh";
+}
+
+// ---------------------------------------------------------------------------
+// The repeated-serial warning (#5649). A confirmed save's reply may say the same serial
+// number is already on other components of this tenant. Warning only: the save is committed
+// before the check runs, nothing is blocked, changed or merged, and the serial number itself
+// is never read, kept or shown here.
+// ---------------------------------------------------------------------------
+
+/** One other component that carries the serial number just confirmed. */
+export type SameSerialMatch = {
+  componentId: string;
+  notebookId: string;
+  notebookName: string;
+  label: string;
+  /** Removed from its checklist: named, but there is no row to show. */
+  retired: boolean;
+  /** In the checklist that is open (the notebook of the component just saved). */
+  here: boolean;
+};
+
+export type SameSerialNotice =
+  | { kind: "matches"; componentId: string; matches: SameSerialMatch[]; more: boolean }
+  /** The check failed or its result could not be read: not the same as "no match". */
+  | { kind: "not_run"; componentId: string };
+
+/** As many as the server lists (same-serial.ts SAME_SERIAL_LIMIT; a test pins the two equal). */
+export const SAME_SERIAL_SHOWN = 10;
+/** How long a save waits for its own reply body before it is reported without the check's result. */
+export const SAME_SERIAL_READ_MS = 3000;
+
+const SERIAL_MATCH_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const plainObject = (v: unknown): Record<string, unknown> | null =>
+  v !== null && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
+
+/**
+ * What to tell the technician about the `sameSerial` field of a save reply (revisions route).
+ * Null = say nothing: not a confirmed save, no usable serial, no match, or a server that does
+ * not send the field. Only the named fields are carried; anything else in the reply is dropped.
+ * An entry that is not a readable match is never shown as given: it counts toward "more".
+ */
+export function sameSerialNotice(reply: unknown, saved: { notebookId: string; componentId: string }): SameSerialNotice | null {
+  const advisory = plainObject(plainObject(reply)?.sameSerial);
+  if (!advisory) return null;
+  const notRun: SameSerialNotice = { kind: "not_run", componentId: saved.componentId };
+  if (advisory.status === "not_checked") return advisory.reason === "lookup_failed" ? notRun : null;
+  if (advisory.status !== "checked") return null;
+  if (!Array.isArray(advisory.candidates)) return notRun;
+
+  const matches: SameSerialMatch[] = [];
+  const seen = new Set([saved.componentId.toLowerCase()]);
+  let unreadable = 0;
+  for (const entry of advisory.candidates) {
+    const c = plainObject(entry);
+    if (
+      !c || typeof c.componentId !== "string" || !SERIAL_MATCH_ID.test(c.componentId)
+      || typeof c.notebookId !== "string" || !SERIAL_MATCH_ID.test(c.notebookId)
+      || typeof c.label !== "string" || typeof c.notebookName !== "string" || typeof c.retired !== "boolean"
+    ) {
+      unreadable += 1;
+      continue;
+    }
+    const id = c.componentId.toLowerCase();
+    if (seen.has(id)) continue;
+    seen.add(id);
+    matches.push({
+      componentId: c.componentId,
+      notebookId: c.notebookId,
+      notebookName: c.notebookName.trim() || "another machine",
+      label: c.label.trim() || "A component",
+      retired: c.retired,
+      here: c.notebookId.toLowerCase() === saved.notebookId.toLowerCase(),
+    });
+  }
+  if (matches.length === 0) return unreadable > 0 ? notRun : null;
+  return {
+    kind: "matches",
+    componentId: saved.componentId,
+    matches: matches.slice(0, SAME_SERIAL_SHOWN),
+    more: advisory.truncated === true || unreadable > 0 || matches.length > SAME_SERIAL_SHOWN,
+  };
+}
+
+/**
+ * Reads a save reply for `sameSerialNotice`. It never throws and never waits past `timeoutMs`:
+ * the save is already committed, so a body that is missing, malformed or slow can only cost
+ * the warning, never the save's own result.
+ */
+export async function readSameSerialNotice(
+  res: { json: () => Promise<unknown> },
+  saved: { notebookId: string; componentId: string },
+  timeoutMs: number = SAME_SERIAL_READ_MS,
+): Promise<SameSerialNotice | null> {
+  const notRun: SameSerialNotice = { kind: "not_run", componentId: saved.componentId };
+  const gaveUp = Symbol("gave up");
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const body = Promise.resolve().then(() => res.json());
+    body.catch(() => undefined); // a body that fails after the wait is over is not an unhandled error
+    const reply = await Promise.race([
+      body,
+      new Promise<typeof gaveUp>((resolve) => {
+        timer = setTimeout(() => resolve(gaveUp), timeoutMs);
+      }),
+    ]);
+    return reply === gaveUp ? notRun : sameSerialNotice(reply, saved);
+  } catch {
+    return notRun;
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
+const NOT_READ_YET = Symbol("not read yet");
+
+/**
+ * Hands a save's notice to `show`: at once when its reply has already been read, otherwise when it
+ * has been. Either way this returns without waiting for a reply still on its way, so the save's own
+ * result and the send gate are never held back by the check.
+ */
+export async function reportSameSerial(
+  notice: Promise<SameSerialNotice | null>,
+  show: (notice: SameSerialNotice | null) => void,
+): Promise<void> {
+  let first: SameSerialNotice | null | typeof NOT_READ_YET;
+  try {
+    // A promise that has already settled wins this race; one that has not loses it to the marker.
+    first = await Promise.race([notice, Promise.resolve(NOT_READ_YET)]);
+  } catch {
+    return; // readSameSerialNotice never rejects; a notice that does is one there is nothing to show for
+  }
+  if (first === NOT_READ_YET) void notice.then(show, () => undefined);
+  else show(first);
+}
+
+const matchButtonWords = (m: SameSerialMatch): string =>
+  m.here ? `Show in checklist: ${m.label}` : `Open ${m.notebookName} in a new chat: ${m.label}`;
+
+/**
+ * The spoken name of a match's button. Matches that would be named alike (the same label in the same
+ * machine, which is what one unit entered twice looks like) also get their place among them, so a
+ * screen reader can tell their buttons apart. A removed component has no button and is not counted.
+ */
+export function sameSerialButtonName(matches: readonly SameSerialMatch[], match: SameSerialMatch): string {
+  const name = matchButtonWords(match);
+  const alike = matches.filter((m) => !m.retired && matchButtonWords(m) === name);
+  return alike.length > 1 ? `${name} (${alike.indexOf(match) + 1} of ${alike.length})` : name;
+}
+
+/**
+ * A match as the equipment navigator's question target (#5625), so opening one goes through the
+ * same hand-off as Find equipment (hub-host `pickRouteFor` / `openOffer`). The machine is its notebook.
+ */
+export function sameSerialTarget(match: SameSerialMatch): QuestionTarget {
+  return { machineId: match.notebookId, machineLabel: match.notebookName, componentId: match.componentId, componentLabel: match.label, location: "" };
 }
