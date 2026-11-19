@@ -527,7 +527,9 @@ test("a full page of 50 results scrolls inside the panel; Close equipment and th
 });
 
 test("on a short landscape screen the results still scroll inside the panel; Close equipment and the checklist stay on screen (#5643)", async ({ page, context, baseURL }) => {
-  await page.setViewportSize({ width: 800, height: 350 });
+  // 400 px: short, but tall enough for Close, a row of results and the checklist above the chat
+  // composer (#5658). Below that the whole panel scrolls; the touch test for #5659 covers it.
+  await page.setViewportSize({ width: 800, height: 400 });
   await auth(context, baseURL!);
   await routes(page, { enabled: true, resolve: "resolved", fullPage: 50 });
   await page.goto(`/v3/?notebook=${NB}&thread=${THREAD}`);
@@ -623,6 +625,93 @@ test("the open results sit on the panel's own surface in light and dark, so chat
     expect(surface.background, colorScheme).not.toBe("rgba(0, 0, 0, 0)");
     expect(surface.background, colorScheme).toBe(surface.token);
   }
+});
+
+test("on a short landscape screen, Send still sends with a full equipment list open; the checklist stays shut (#5658)", async ({ page, context, baseURL }) => {
+  // 300 px is where, before the fix, the checklist trigger sat over the middle of Send in this layout.
+  await page.setViewportSize({ width: 800, height: 300 });
+  await auth(context, baseURL!);
+  await routes(page, { enabled: true, resolve: "resolved", fullPage: 50 });
+  await page.goto(`/v3/?notebook=${NB}&thread=${THREAD}`);
+  await expect(panel(page)).toBeVisible();
+
+  await panel(page).getByRole("button", { name: "Find equipment" }).click();
+  await row(page, `notebook:${NB}`).click();
+  await expect(row(page, "notebook_component:00000000-0000-4000-8000-000000000049")).toBeAttached();
+  await composer(page).fill("does the drive have power");
+  // Nothing else is on top of the middle of Send (before the fix the checklist trigger was).
+  const send = (await page.getByRole("button", { name: "Send", exact: true }).boundingBox())!;
+  const onTop = await page.evaluate(([x, y]) => document.elementFromPoint(x, y)?.closest('button[aria-label="Send"]') !== null, [send.x + send.width / 2, send.y + send.height / 2]);
+  expect(onTop, "Send is on top at its own middle").toBe(true);
+  const sent = page.waitForRequest((r) => r.method() === "POST" && /\/chat\/?$/.test(new URL(r.url()).pathname), { timeout: 5_000 });
+  // Tap where Send is on screen, as a finger would: no scrolling it into view first, and whatever
+  // is on top at that point takes the tap.
+  await page.mouse.click(send.x + send.width / 2, send.y + send.height / 2);
+  await sent;
+  await expect(checklist(page)).toHaveCount(0);
+});
+
+test.describe("touch", () => {
+  test.use({ hasTouch: true });
+
+  test("on a very short screen a touch user can swipe into the results and back to the notices and Close equipment (#5659)", async ({ page, context, baseURL }) => {
+    await page.setViewportSize({ width: 800, height: 350 });
+    await auth(context, baseURL!);
+    const opts: RouteOpts = { enabled: true, resolve: "resolved", fullPage: 50 };
+    await routes(page, opts);
+    await page.goto(`/v3/?notebook=${NB}&thread=${THREAD}`);
+    await expect(panel(page)).toBeVisible();
+
+    // An offer and a refusal above the results, so the panel has to scroll itself (r2 F1).
+    await panel(page).getByRole("button", { name: "Find equipment" }).click();
+    await row(page, `notebook:${NB}`).click();
+    await row(page, "notebook_component:00000000-0000-4000-8000-000000000000").click();
+    await askAbout(page, "M1");
+    await expect(offer(page)).toBeVisible();
+    opts.resolve = "stale_revision";
+    await panel(page).getByRole("button", { name: "Find equipment" }).click();
+    await row(page, `notebook:${NB}`).click();
+    await row(page, "notebook_component:00000000-0000-4000-8000-000000000001").click();
+    await askAbout(page, "M2");
+    await expect(panel(page).getByRole("alert").filter({ hasText: "did not change" }).first()).toBeAttached();
+    expect(await panel(page).evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true);
+
+    const pageScroll = await page.evaluate(() => document.scrollingElement?.scrollTop ?? 0);
+    const cdp = await context.newCDPSession(page);
+    const results = page.getByTestId("equipment-scroll");
+    /** A touch swipe starting at the on-screen middle of `target` (which may run past the bottom). */
+    const swipe = async (target: typeof results, yDistance: number) => {
+      const box = (await target.boundingBox())!;
+      const height = page.viewportSize()!.height;
+      const top = Math.max(box.y, 0), bottom = Math.min(box.y + box.height, height);
+      expect(bottom - top, "the swipe starts on screen").toBeGreaterThan(20);
+      await cdp.send("Input.synthesizeScrollGesture", {
+        x: Math.round(box.x + box.width / 2), y: Math.round((top + bottom) / 2),
+        yDistance, gestureSourceType: "touch", speed: 3000, repeatCount: 1,
+      });
+    };
+    // Swipe the panel up until the results are on screen, then through the results to their end.
+    const onScreen = async () => {
+      const box = (await results.boundingBox())!;
+      return Math.min(box.y + box.height, page.viewportSize()!.height) - Math.max(box.y, 0) > 20;
+    };
+    for (let i = 0; i < 10 && !(await onScreen()); i++) await swipe(panel(page), -150);
+    for (let i = 0; i < 8; i++) await swipe(results, -400);
+    expect(await results.evaluate((el) => el.scrollTop + el.clientHeight >= el.scrollHeight - 1)).toBe(true);
+    expect(await panel(page).evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
+
+    // Swiping down on the results alone brings the notices back: past the results' top, the swipe
+    // carries on into the panel.
+    for (let i = 0; i < 12; i++) await swipe(results, 400);
+    expect(await panel(page).evaluate((el) => el.scrollTop)).toBe(0);
+    await expect(panel(page).getByRole("button", { name: "Close equipment" })).toBeInViewport({ ratio: 1 });
+
+    await page.touchscreen.tap(
+      ...(await (async () => { const b = (await panel(page).getByRole("button", { name: "Close equipment" }).boundingBox())!; return [b.x + b.width / 2, b.y + b.height / 2] as const; })()),
+    );
+    await expect(panel(page).getByRole("button", { name: "Find equipment" })).toBeVisible();
+    expect(await page.evaluate(() => document.scrollingElement?.scrollTop ?? 0)).toBe(pageScroll);
+  });
 });
 
 test("off: the panel is not rendered", async ({ page, context, baseURL }) => {
