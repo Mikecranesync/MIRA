@@ -7,7 +7,7 @@
   "page": 26,
   "printedPage": "1-12",
   "status": "reviewed",
-  "why": "All 90 stored lines pass the exact gold check: each value under its own model with the group and duty labels the page prints. The owner compared the 90 values with the printed page 26 of both files and approved this digest for page 26 of these two files only (2026-11-18, https://github.com/Mikecranesync/MIRA/issues/5232#issuecomment-6999247326). 03_gs10_user_manual.pdf (alsoSha256) renders page 26 with the same layout fingerprint and the same rows. Any change to these rows changes the digest, and the page is withheld again until re-reviewed.",
+  "why": "All 90 stored lines pass the exact gold check: each value under its own model with the group and duty labels the page prints. The owner compared the 90 values with the printed page 26 of both files and approved this digest for page 26 of these two files only (2026-11-18, https://github.com/Mikecranesync/MIRA/issues/5232#issuecomment-6999247326). 03_gs10_user_manual.pdf (alsoSha256) renders page 26 with the same layout fingerprint and the same rows. Any change to these rows changes the digest: a page written after that is withheld until re-reviewed. Rows already stored keep the admission they were written with until the upload is reprocessed (scripts/reprocess-node-doc.ts --force), in either direction.",
   "digest": "d570e81e1fc665e0fa75879a2624aab107f0765b83d6be1acf013382f70b91d5",
   "rows": [
     {

@@ -5,7 +5,7 @@ import gs10p27 from "../__fixtures__/table-rows/gs10-p27-230v-3ph.json";
 import micro820 from "../__fixtures__/table-rows/micro820-in009-p16-20-scope.json";
 import ml1100 from "../__fixtures__/table-rows/ml1100-p114-p120-ratings-scope.json";
 import pinFile from "../table-rule-pins.json";
-import { pinnedRules, rulePinsForSha, rulesCrossing } from "../table-rule-pins";
+import { pinnedRules, reviewedRowsDigest, rulePinsForSha, rulesCrossing } from "../table-rule-pins";
 import { pageLayoutItems } from "../pdf-layout-items";
 
 // #5503 F14/F15: table rules are pinned data, never read from a page's drawing. Nothing here is
@@ -51,6 +51,21 @@ describe("pinned table rules: the real pin file", () => {
     ["no items", () => []],
   ] as const)("a pinned page whose text geometry differs gets no rules: %s", (_name, change) => {
     expect(pinnedRules(rulePinsForSha(GS10), 26, change(gs10p26.items))).toBeNull();
+  });
+
+  it("the reviewed record of GS10 page 26 binds both approved files, page 26 and the captured layout only (#5232)", () => {
+    const approved = "d570e81e1fc665e0fa75879a2624aab107f0765b83d6be1acf013382f70b91d5";
+    for (const sha of [GS10, "90fa490a572558d799c8e8a53ba5f074f36182330c636015a473fd0e43bd1fab"]) {
+      const pins = rulePinsForSha(sha);
+      expect(reviewedRowsDigest(pins, 26, gs10p26.items)).toBe(approved);
+      for (const page of [2, 25, 27, 28, 30]) expect(reviewedRowsDigest(pins, page, gs10p26.items)).toBeNull();
+      expect(reviewedRowsDigest(pins, 26, gs10p26.items.slice(1))).toBeNull(); // the layout must match
+      expect(reviewedRowsDigest(pins, 27, gs10p27.items)).toBeNull(); // page 27's own layout, not reviewed
+    }
+    // Another pinned GS10 file (same table at its own page numbers) carries no review.
+    const other = Object.keys(pinFile.documents).find((k) => k.startsWith("eca93c34"))!;
+    for (const page of [11, 12, 26]) expect(reviewedRowsDigest(rulePinsForSha(other), page, gs10p26.items)).toBeNull();
+    expect(reviewedRowsDigest(null, 26, gs10p26.items)).toBeNull();
   });
 
   it("every pinned page is well formed", () => {
