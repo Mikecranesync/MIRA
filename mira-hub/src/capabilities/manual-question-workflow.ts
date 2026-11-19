@@ -6,6 +6,8 @@ import { WORKFLOW_VERSIONS } from "@/lib/workflow-versions";
 export interface ManualWorkflowFacts {
   tenantId: string; notebookId: string; fileId: string; sha256: string | null;
   linkedDocId: string | null; documentId: string | null; uploadStatus: string | null;
+  /** Existing node upload can adopt a completed orphan index only for PDFs. */
+  canAdoptOrphan: boolean;
   claim: "none" | "live" | "stale"; chunkCount: number; anchoredChunkCount: number;
   source: { enabled: boolean; matchState: string; superseded: boolean } | null;
   turn: { id: string; state: "pending" | "complete"; status: string; stale: boolean; usesDocument: boolean;
@@ -42,7 +44,7 @@ export function projectManualQuestion(f: ManualWorkflowFacts) {
       if (!t.stale) { workflow.retry = { eligible: false, afterMs: 2000 }; workflow.recovery.action = "wait"; }
     } else if (t.safetyStopped || t.status === "insufficient_evidence") {
       workflow.state = "refused"; workflow.retry.eligible = false; workflow.recovery.action = "none";
-    } else if (t.cancelled) {
+    } else if (t.cancelled && t.status === "error") {
       workflow.state = "cancelled";
       workflow.cancellation = { requested: true, scope: "execution", acknowledged: true };
     } else if (t.status !== "answered" || !t.answerPresent) {
@@ -59,9 +61,16 @@ export function projectManualQuestion(f: ManualWorkflowFacts) {
     }
   } else if (f.claim === "live" && !f.linkedDocId) {
     workflow.state = "running"; workflow.retry = { eligible: false, afterMs: 2000 }; workflow.recovery.action = "wait";
+  } else if (f.linkedDocId && f.chunkCount === 0) {
+    // Same-byte upload returns this existing pointer before any extraction.
+    workflow.state = "failed"; workflow.failure = { code: "index_failed", retryable: false };
+    workflow.retry.eligible = false; workflow.recovery.action = "none";
   } else if (f.claim === "stale" || (f.documentId && !f.linkedDocId)) {
-    workflow.state = "interrupted"; workflow.failure = { code: "claim_expired", retryable: true };
-  } else if (f.uploadStatus === "failed" || (f.linkedDocId && f.chunkCount === 0) ||
+    const recoverable = !f.documentId || f.canAdoptOrphan;
+    workflow.state = "interrupted"; workflow.failure = { code: "claim_expired", retryable: recoverable };
+    workflow.retry.eligible = recoverable;
+    if (!recoverable) workflow.recovery.action = "none";
+  } else if (f.uploadStatus === "failed" ||
       (!f.linkedDocId && f.uploadObservation?.state === "failed")) {
     workflow.state = "failed"; workflow.failure = { code: "index_failed", retryable: true };
   } else if (f.linkedDocId && f.chunkCount > 0 && f.anchoredChunkCount > 0) {

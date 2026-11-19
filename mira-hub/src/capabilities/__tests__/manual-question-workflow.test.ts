@@ -9,6 +9,7 @@ const turnId = "c4000000-0000-4000-8000-000000000001";
 const facts = (): ManualWorkflowFacts => ({
   tenantId: "c0000000-0000-4000-8000-000000000001", fileId, notebookId, sha256: "c".repeat(64),
   linkedDocId: docId, documentId: docId, uploadStatus: "parsed", claim: "none", chunkCount: 3, anchoredChunkCount: 3,
+  canAdoptOrphan: true,
   source: { enabled: true, matchState: "user_confirmed", superseded: false }, turn: null,
   observedAt: "2026-11-19T05:00:00.000Z", uploadObservation: null, visibilityGaps: [],
 });
@@ -42,9 +43,17 @@ describe("manual-to-question domain projection", () => {
     expect(result.workflow).toMatchObject({ state: "interrupted", recovery: { action: "upload_again" } });
     expect(result.readiness.canChat).toBe(false);
   });
+  it("declines orphan adoption when the existing executor cannot adopt that format", () => {
+    const result = projectManualQuestion({ ...facts(), linkedDocId: null, canAdoptOrphan: false });
+    expect(result.workflow).toMatchObject({ state: "interrupted", retry: { eligible: false }, recovery: { action: "none" } });
+    expect(result.workflow.failure?.retryable).toBe(false);
+  });
   it("does not trust parsed status or an observation success when chunks are missing", () => {
     const result = projectManualQuestion({ ...facts(), chunkCount: 0, anchoredChunkCount: 0 });
     expect(result.workflow.state).toBe("failed"); expect(result.readiness.canChat).toBe(false);
+    expect(result.workflow.retry.eligible).toBe(false);
+    expect(result.workflow.failure?.retryable).toBe(false);
+    expect(result.workflow.recovery.action).toBe("none");
   });
   it("does not let a stale failed observation override a completed canonical index", () => {
     const uploadObservation = { ...observation(), state: "failed" as const,
@@ -76,5 +85,11 @@ describe("manual-to-question domain projection", () => {
     const stopped = projectManualQuestion({ ...facts(), turn: { ...turn(), status: "error", cancelled: true } });
     expect(stopped.workflow).toMatchObject({ state: "cancelled", cancellation: { requested: true, scope: "execution", acknowledged: true } });
     expect(projectManualQuestion({ ...facts(), turn: { ...turn(), status: "error", answerPresent: false } }).workflow.state).toBe("failed");
+  });
+  it("does not let an old cancellation erase a persisted retry answer", () => {
+    const result = projectManualQuestion({ ...facts(), turn: { ...turn(), cancelled: true } });
+    expect(result.workflow.state).toBe("succeeded");
+    expect(result.stages.answerPersisted).toBe(true);
+    expect(result.workflow.cancellation.acknowledged).toBe(false);
   });
 });

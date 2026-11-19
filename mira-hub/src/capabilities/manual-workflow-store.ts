@@ -17,6 +17,7 @@ export async function inspectManualQuestion(input: { tenantId: string; userId: s
   const row = await withTenantContext(tenantId, async (c) => {
     const { rows } = await c.query(
       `SELECT f.id::text AS file_id, f.content_sha256, f.upload_id::text,
+              (f.mime_type = 'application/pdf' OR lower(f.filename) LIKE '%.pdf') AS can_adopt_orphan,
               n.node_id::text, now() AS observed_at,
               CASE WHEN f.ingest_claim_token IS NULL THEN 'none'
                    WHEN f.ingest_claimed_at >= now() - interval '10 minutes' THEN 'live'
@@ -87,12 +88,24 @@ export async function inspectManualQuestion(input: { tenantId: string; userId: s
         try {
           // Join only through the already owner-authorized turn, never a guessed request key.
           const { rows } = await withTenantContext(tenantId, (c) => c.query(
-            `SELECT outcome FROM decision_traces WHERE tenant_id = $1 AND notebook_id = $2::uuid
-               AND turn_id = $3::uuid AND lifecycle = 'closed' ORDER BY finished_at DESC LIMIT 1`,
-            [tenantId, notebookId, t.id],
+            // A request retry reuses the turn row but has a new attempt ID. The
+            // completed row retains no attempt ID, so multiple known attempts
+            // are ambiguous: never choose an older cancellation by finish time.
+            `SELECT d.outcome FROM decision_traces d WHERE d.tenant_id = $1 AND d.notebook_id = $2::uuid
+               AND d.turn_id = $3::uuid AND d.lifecycle = 'closed' AND d.attempt_id IS NOT NULL
+               AND d.client_request_id = $4
+               AND EXISTS (SELECT 1 FROM decision_traces s WHERE s.tenant_id = d.tenant_id
+                 AND s.notebook_id = d.notebook_id AND s.attempt_id = d.attempt_id AND s.lifecycle = 'started')
+               AND NOT EXISTS (SELECT 1 FROM decision_traces s WHERE s.tenant_id = d.tenant_id
+                 AND s.notebook_id = d.notebook_id AND s.client_request_id = d.client_request_id
+                 AND s.attempt_id <> d.attempt_id)
+               ORDER BY d.finished_at DESC LIMIT 1`,
+            [tenantId, notebookId, t.id, input.clientRequestId],
           ));
           const outcome: unknown = rows[0]?.outcome;
           if (typeof outcome !== "string" || !Object.hasOwn(TURN_OUTCOMES, outcome)) {
+            visibilityGaps.push("turn_outcome_unavailable");
+          } else if (outcome === "cancelled" && t.answer_status !== "error") {
             visibilityGaps.push("turn_outcome_unavailable");
           } else {
             cancelled = outcome === "cancelled";
@@ -108,6 +121,7 @@ export async function inspectManualQuestion(input: { tenantId: string; userId: s
   }
   return projectManualQuestion({ tenantId, notebookId, fileId, sha256: row.content_sha256 ?? null,
     linkedDocId: row.upload_id ?? null, documentId, uploadStatus: upload?.status ?? null, claim: row.claim,
+    canAdoptOrphan: row.can_adopt_orphan === true,
     chunkCount: Number(counts.total), anchoredChunkCount: Number(counts.anchored),
     source: row.source_doc_id ? { enabled: row.enabled_by_default, matchState: row.match_state, superseded: row.superseded_at !== null } : null,
     turn, observedAt: new Date(row.observed_at).toISOString(), uploadObservation, visibilityGaps });

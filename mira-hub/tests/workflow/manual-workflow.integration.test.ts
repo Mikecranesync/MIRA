@@ -17,7 +17,7 @@ const { testPool, controls } = vi.hoisted(() => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { Pool: PgPool } = require("pg");
   return { testPool: new PgPool({ connectionString: value }) as Pool,
-    controls: { failFinalize: false, beforeParse: null as null | (() => Promise<void>), provider: "answer" as "answer" | "fail" | "hold", heldProvider: null as ReadableStreamDefaultController<Uint8Array> | null } };
+    controls: { failFinalize: false, failTelemetry: false, beforeParse: null as null | (() => Promise<void>), provider: "answer" as "answer" | "fail" | "hold", heldProvider: null as ReadableStreamDefaultController<Uint8Array> | null } };
 });
 vi.mock("@/lib/db", () => ({ default: testPool }));
 vi.mock("@/lib/session", () => ({ sessionOr401: vi.fn() }));
@@ -32,6 +32,13 @@ vi.mock("@/lib/workspace-files", async (original) => {
   return { ...actual, linkFileToUpload: vi.fn(async (...args: Parameters<typeof actual.linkFileToUpload>) => {
     if (controls.failFinalize) { controls.failFinalize = false; throw new Error("declared post-index finalization fault"); }
     return actual.linkFileToUpload(...args);
+  }) };
+});
+vi.mock("@/lib/inference/persist-usage", async (original) => {
+  const actual = await original<typeof import("@/lib/inference/persist-usage")>();
+  return { ...actual, persistTurnUsage: vi.fn(async (...args: Parameters<typeof actual.persistTurnUsage>) => {
+    if (controls.failTelemetry) throw new Error("declared telemetry failure after answer persistence");
+    return actual.persistTurnUsage(...args);
   }) };
 });
 
@@ -93,12 +100,13 @@ beforeAll(async () => {
   if (rows[0].db !== "mira_wf01_test") throw new Error("WF-01 database identity mismatch");
   const ledger = await testPool.query("SELECT file_name FROM integration_schema_migrations WHERE file_name = ANY($1::text[])", [["044_workflow_runs.sql", "077_ingest_claim.sql", "089_notebook_turn_request_claim.sql"]]);
   if (ledger.rowCount !== 3) throw new Error("WF-01 fixture migrations missing");
-  // Fixture-only lexical support. Vectors are deliberately not exercised.
-  await testPool.query("ALTER TABLE knowledge_entries ADD COLUMN IF NOT EXISTS content_tsv tsvector GENERATED ALWAYS AS (to_tsvector('english', content)) STORED; ALTER TABLE knowledge_entries ADD COLUMN IF NOT EXISTS embedding real[]");
+  // Setup is separate: running this suite never applies DDL or migrations.
+  const columns = await testPool.query("SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'knowledge_entries' AND column_name = ANY($1::text[])", [["content_tsv", "embedding"]]);
+  if (columns.rowCount !== 2) throw new Error("WF-01 lexical fixture columns missing");
   await testPool.query("INSERT INTO tenants (id, slug, name) VALUES ($1, $2, 'WF-01 fixture')", [tenantId, `wf01_${tenantId}`]);
 });
 beforeEach(async () => {
-  vi.clearAllMocks(); controls.failFinalize = false; controls.beforeParse = null; controls.provider = "answer"; controls.heldProvider = null; providerCalls = 0;
+  vi.clearAllMocks(); controls.failFinalize = false; controls.failTelemetry = false; controls.beforeParse = null; controls.provider = "answer"; controls.heldProvider = null; providerCalls = 0;
   process.env.NODE_INGEST_EMBED = "0"; process.env.NOTEBOOK_HYBRID_RETRIEVAL = "0";
   process.env.NOTEBOOK_ANSWER_GATE = "1"; process.env.NOTEBOOK_SEMANTIC_CHECK = "0";
   process.env.MIRA_CANONICAL_SEAM = "1"; process.env.OPENAI_API_KEY = "fixture-only-not-a-credential";
@@ -162,6 +170,27 @@ describe("WF-01 existing manual-to-answer vertical slice", () => {
     expect(ingestPdfToNode).toHaveBeenCalledTimes(1);
     expect((await view(first.body.fileId)).body.workflow.stage).toBe("source_attachment");
   });
+  it("declines same-byte retry for a linked document whose index has disappeared", async () => {
+    const doc = await sendPdf();
+    await testPool.query("DELETE FROM knowledge_entries WHERE tenant_id = $1 AND doc_id = $2 AND is_private = true", [tenantId, doc.body.uploadId]);
+    const result = await view(doc.body.fileId);
+    expect(result.body.workflow).toMatchObject({ state: "failed", retry: { eligible: false }, recovery: { action: "none" } });
+    // The unchanged executor returns the old pointer; it cannot perform the advertised repair.
+    expect((await sendPdf()).body).toMatchObject({ indexed: true, uploadId: doc.body.uploadId });
+    expect((await view(doc.body.fileId)).body.stages.indexed).toBe(false);
+  });
+  it.each(["txt", "md"])("does not advertise PDF-only orphan adoption for a %s file", async (extension) => {
+    const body = new FormData();
+    body.set("file", new File([`Fictional ${randomUUID()}\nFault F12 means the inspection card is missing.`], `fictional.${extension}`, { type: "text/plain" }));
+    controls.failFinalize = true;
+    const response = await upload(new Request(`https://hub.test/api/namespace/node/${nb.nodeId}/files`, { method: "POST", body }), { params: Promise.resolve({ id: nb.nodeId }) });
+    const parked = await response.json(); expect(parked.indexed).toBe(false);
+    const result = await view(parked.fileId);
+    expect(result.body.workflow).toMatchObject({ state: "interrupted", retry: { eligible: false }, recovery: { action: "none" } });
+    const docs = await testPool.query("SELECT id FROM hub_uploads WHERE tenant_id = $1 AND kg_entity_id = $2 AND status = 'parsed'", [tenantId, nb.nodeId]);
+    expect(docs.rowCount).toBe(1);
+    expect(result.body.workflow.evidence).toContainEqual({ kind: "document", id: docs.rows[0].id });
+  });
   it("concurrent identical uploads share the existing claim and create one index", async () => {
     let release!: () => void; const gate = new Promise<void>((r) => { release = r; }); controls.beforeParse = () => gate;
     const first = sendPdf(); await vi.waitFor(() => expect(ingestPdfToNode).toHaveBeenCalledTimes(1));
@@ -200,6 +229,35 @@ describe("WF-01 existing manual-to-answer vertical slice", () => {
     const result = await view(doc.fileId, id);
     expect(result.body.stages.answerPersisted).toBe(false);
     expect(result.body.workflow.cancellation).toEqual({ requested: true, scope: "execution", acknowledged: true });
+  });
+  it("keeps a cited retry successful when its telemetry fails after an earlier cancellation", async () => {
+    const doc = await indexAndAttach(); controls.provider = "hold";
+    const id = randomUUID(); const abort = new AbortController();
+    const response = await sendQuestion(doc.uploadId, id, abort.signal);
+    const stopped = response.text().catch(() => "stopped");
+    await vi.waitFor(() => expect(controls.heldProvider).not.toBeNull()); abort.abort(); await stopped;
+    await vi.waitFor(async () => expect((await view(doc.fileId, id)).body.workflow.state).toBe("cancelled"));
+    controls.provider = "answer"; controls.failTelemetry = true;
+    expect(await (await sendQuestion(doc.uploadId, id)).text()).toContain("inspection card");
+    const result = await view(doc.fileId, id);
+    expect(result.body.workflow.state).toBe("succeeded");
+    expect(result.body.stages.answerPersisted).toBe(true);
+    expect(result.body.workflow.cancellation.acknowledged).toBe(false);
+    expect(result.body.visibility.gaps).toContain("turn_outcome_unavailable");
+  });
+  it("reports an evidence gap instead of acknowledging an old stop after a retry fails", async () => {
+    const doc = await indexAndAttach(); controls.provider = "hold";
+    const id = randomUUID(); const abort = new AbortController();
+    const response = await sendQuestion(doc.uploadId, id, abort.signal);
+    const stopped = response.text().catch(() => "stopped");
+    await vi.waitFor(() => expect(controls.heldProvider).not.toBeNull()); abort.abort(); await stopped;
+    await vi.waitFor(async () => expect((await view(doc.fileId, id)).body.workflow.state).toBe("cancelled"));
+    controls.provider = "fail"; controls.failTelemetry = true;
+    await (await sendQuestion(doc.uploadId, id)).text();
+    const result = await view(doc.fileId, id);
+    expect(result.body.workflow.state).toBe("failed");
+    expect(result.body.workflow.cancellation.acknowledged).toBe(false);
+    expect(result.body.visibility.gaps).toContain("turn_outcome_unavailable");
   });
   it("the existing immediate-danger gate stays terminal, requires no model call, and cannot become workflow success", async () => {
     const doc = await indexAndAttach(); const id = randomUUID();

@@ -20,7 +20,7 @@ describe("manual upload observation adapter", () => {
     const result = await observeManualUpload(input(), async () => { calls++; return response; }, s);
     expect(result).toBe(response); expect(calls).toBe(1);
     expect(latest(s).state).toBe("succeeded");
-    expect(latest(s).definition).toEqual({ name: "manual_upload", version: "1.0.1" });
+    expect(latest(s).definition).toEqual({ name: "manual_upload", version: "1.0.2" });
     expect(latest(s).evidence).toContainEqual({ kind: "document", id: docId });
     expect(JSON.stringify([...s.finals, ...s.progress])).not.toContain("private.pdf");
     expect(result.headers.get("X-Mira-Workflow-Run-Id")).toBe(latest(s).identity.attemptId);

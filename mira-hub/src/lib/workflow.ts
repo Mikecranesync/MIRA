@@ -39,6 +39,7 @@
  */
 
 import { parseWorkflowObservation, workflowRunStatus, type WorkflowObservation } from "./workflow-contract";
+import type { PoolClient } from "pg";
 
 // The pg pool is imported lazily inside the default store (below) so this module
 // can be imported for its pure helpers without instantiating a DB connection —
@@ -147,11 +148,13 @@ async function getPool() {
   return (await import("./db")).default;
 }
 
-/** Default store — writes to NeonDB via the shared pg pool. */
-export const pgWorkflowStore: WorkflowStore = {
+type WorkflowQuery = (sql: string, values: unknown[]) => Promise<{ rows: Record<string, unknown>[] }>;
+
+/** One SQL implementation; the observation path adds resource bounds only. */
+function createPgWorkflowStore(query: WorkflowQuery): WorkflowStore {
+  return {
   async create(row) {
-    const pool = await getPool();
-    const inserted = await pool.query(
+    const inserted = await query(
       `INSERT INTO workflow_runs
          (run_id, workflow_name, workflow_version, tenant_id,
           status, input, idempotency_key, retry_count)
@@ -174,14 +177,14 @@ export const pgWorkflowStore: WorkflowStore = {
     }
 
     // Conflict: reuse the existing row, surface its prior outcome, bump retry.
-    const existing = await pool.query(
+    const existing = await query(
       `SELECT run_id, status FROM workflow_runs WHERE idempotency_key = $1`,
       [row.idempotencyKey],
     );
     if (existing.rows.length === 0) return null; // raced away → degrade to in-memory
     const runId = existing.rows[0].run_id as string;
     const alreadySucceeded = existing.rows[0].status === "ok";
-    const updated = await pool.query(
+    const updated = await query(
       `UPDATE workflow_runs
           SET retry_count = retry_count + 1,
               status = 'running',
@@ -199,29 +202,80 @@ export const pgWorkflowStore: WorkflowStore = {
   },
 
   async finalize(input) {
-    const pool = await getPool();
-    await pool.query(
+    await query(
       `UPDATE workflow_runs
           SET status = $2,
               output = $3::jsonb,
               error_detail = $4,
               step_artifacts = $5::jsonb,
-              finished_at = CASE WHEN $2 = 'running' THEN NULL ELSE NOW() END
+              finished_at = NOW()
         WHERE run_id = $1`,
       [input.runId, input.status, input.output, input.errorDetail, input.stepArtifacts],
     );
   },
 
   async checkpoint(input) {
-    const pool = await getPool();
-    await pool.query(
+    await query(
       `UPDATE workflow_runs SET output = $2::jsonb, step_artifacts = $3::jsonb
         WHERE run_id = $1 AND tenant_id = $4 AND workflow_name = $5
           AND status = 'running' AND finished_at IS NULL`,
       [input.runId, input.output, input.stepArtifacts, input.tenantId, input.workflowName],
     );
   },
-};
+  };
+}
+
+/** Legacy callers keep the existing shared-pool policy. */
+export const pgWorkflowStore = createPgWorkflowStore(async (sql, values) => (await getPool()).query(sql, values));
+
+// Observations may occupy at most one shared connection per process. They do
+// not queue behind domain borrowers, and all timeout settings are local to the
+// observation transaction. No new pool or execution/retry authority is added.
+let observationWriteActive = false;
+async function observationQuery(sql: string, values: unknown[]) {
+  if (observationWriteActive) throw new Error("workflow_observation_busy");
+  observationWriteActive = true;
+  let client: PoolClient | undefined;
+  let expired = false;
+  let released = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const actual = (async () => {
+    try {
+      const pool = await getPool();
+      if (expired || pool.waitingCount > 0 ||
+        (pool.idleCount === 0 && pool.totalCount >= (pool.options.max ?? 5) - 1)) {
+        throw new Error("workflow_observation_busy");
+      }
+      client = await pool.connect();
+      if (expired) throw new Error("workflow_observation_timeout");
+      await client.query("BEGIN; SET LOCAL lock_timeout = '100ms'; SET LOCAL statement_timeout = '500ms'");
+      const result = await client.query(sql, values);
+      await client.query("COMMIT");
+      return result;
+    } catch (err) {
+      // Discard an errored transaction/connection instead of queuing a rollback
+      // behind a stuck query or leaking transaction-local settings to a user.
+      if (client && !released) { released = true; client.release(true); }
+      throw err;
+    } finally {
+      if (client && !released) { released = true; client.release(); }
+    }
+  })().finally(() => {
+    clearTimeout(timer);
+    // If connect settles after the deadline, keep this gate until its client
+    // has been discarded. Repeated timeouts cannot queue more acquisitions.
+    observationWriteActive = false;
+  });
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      expired = true;
+      if (client && !released) { released = true; client.release(true); }
+      reject(new Error("workflow_observation_timeout"));
+    }, 750);
+  });
+  return Promise.race([actual, deadline]);
+}
+const pgWorkflowObservationStore = createPgWorkflowStore(observationQuery);
 
 // ---------------------------------------------------------------------------
 // WorkflowRun
@@ -298,7 +352,7 @@ export class WorkflowRun {
     this.input = observation ? { workflow: observation } : opts.input ?? null;
     this.idempotencyKey = opts.idempotencyKey ?? null;
     this.retryCount = opts.retryCount ?? 0;
-    this.store = opts.store ?? pgWorkflowStore;
+    this.store = opts.store ?? (observation ? pgWorkflowObservationStore : pgWorkflowStore);
     this.log = opts.logger ?? console;
     this.runId = observation?.identity.attemptId ?? randomUuid();
     this.observationTimeoutMs = Math.min(2000, Math.max(1, opts.observationTimeoutMs ?? 1000));

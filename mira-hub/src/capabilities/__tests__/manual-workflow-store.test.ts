@@ -66,8 +66,8 @@ describe("manual workflow outcome evidence availability", () => {
     const result = await inspectManualQuestion(input());
     expect(result?.visibility.gaps).toEqual([]);
     expect(result?.workflow).toMatchObject({ state: "cancelled", cancellation: { requested: true, scope: "execution", acknowledged: true } });
-    expect(result?.workflow.definition).toEqual({ name: "manual_question", version: "1.0.1" });
-    expect(outcomeQueries()[0][1]).toEqual([fixture.tenantId, fixture.notebookId, fixture.turnId]);
+    expect(result?.workflow.definition).toEqual({ name: "manual_question", version: "1.0.2" });
+    expect(outcomeQueries()[0][1]).toEqual([fixture.tenantId, fixture.notebookId, fixture.turnId, fixture.requestId]);
   });
   it.each(["answered", "refused", "abstained", "safety_stop", "error", "timeout", "superseded", "abandoned"])("recognizes %s without inferring cancellation or changing domain status", async (outcome) => {
     fixture.outcomeRows = [{ outcome }];
@@ -87,6 +87,14 @@ describe("manual workflow outcome evidence availability", () => {
     fixture.answer = true;
     const result = await inspectManualQuestion(input());
     expect(result?.workflow.state).toBe("succeeded"); expect(result?.stages.answerPersisted).toBe(true);
+    expect(result?.visibility.gaps).toEqual(["turn_outcome_unavailable"]);
+  });
+  it("does not let a prior cancellation replace the canonical completed answer", async () => {
+    fixture.answer = true; fixture.outcomeRows = [{ outcome: "cancelled" }];
+    const result = await inspectManualQuestion(input());
+    expect(result?.workflow.state).toBe("succeeded");
+    expect(result?.stages.answerPersisted).toBe(true);
+    expect(result?.workflow.cancellation.acknowledged).toBe(false);
     expect(result?.visibility.gaps).toEqual(["turn_outcome_unavailable"]);
   });
   it("clears the transient visibility gap on a later inspection with a valid outcome", async () => {
