@@ -11,7 +11,7 @@
 | Surface | Count |
 |---|---|
 | Pages | **70** (12 dynamic) |
-| API routes | **205** (85 dynamic) |
+| API routes | **206** (85 dynamic) |
 
 ## Pages (70)
 
@@ -88,7 +88,7 @@
 | `/workorders/[id]` | dynamic | `(hub)/workorders/[id]/page.tsx` |
 | `/workorders/new` | static | `(hub)/workorders/new/page.tsx` |
 
-## API routes (205)
+## API routes (206)
 
 | Route | Kind | Source |
 |---|---|---|
@@ -297,6 +297,7 @@
 | `/api/work-orders/[id]` | dynamic | `api/work-orders/[id]/route.ts` |
 | `/api/work-orders/export.csv` | static | `api/work-orders/export.csv/route.ts` |
 | `/api/workflows` | static | `api/workflows/route.ts` |
+| `/api/workflows/manual-question` | static | `api/workflows/manual-question/route.ts` |
 
 ## Change history (the route changelog)
 

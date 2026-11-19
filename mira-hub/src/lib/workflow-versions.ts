@@ -8,6 +8,10 @@
 // Mirrored on the Python side by per-surface WORKFLOW_VERSION constants.
 
 export const WORKFLOW_VERSIONS = {
+  /** Opt-in reference-only observation; file claims still own execution. */
+  manual_upload: "1.0.5",
+  /** Read-only projection of canonical manual/source/turn state. */
+  manual_question: "1.0.5",
   /** Hub document/photo ingest pipeline (upload-pipeline.ts:runIngestPipeline). */
   document_ingest: "1.0.0",
 } as const;

@@ -31,7 +31,15 @@
  * retry_count, and sets `run.alreadySucceeded`. It does NOT auto-skip the body,
  * and it does NOT make a surface's own data-table writes idempotent — that is
  * fixed at each surface's INSERT.
+ *
+ * Opt-in `observation` runs use workflow-contract.ts: reference-only JSON,
+ * bounded metadata latency, ordered live checkpoints and one row per attempt.
+ * Rich states remain in JSON; domain stores still own execution and recovery.
+ * Legacy callers retain the buffered behavior described above.
  */
+
+import { parseWorkflowObservation, workflowRunStatus, type WorkflowObservation } from "./workflow-contract";
+import type { PoolClient } from "pg";
 
 // The pg pool is imported lazily inside the default store (below) so this module
 // can be imported for its pure helpers without instantiating a DB connection —
@@ -132,17 +140,21 @@ export interface FinalizeInput {
 export interface WorkflowStore {
   create(row: CreateRowInput): Promise<CreateRowResult | null>;
   finalize(input: FinalizeInput): Promise<void>;
+  /** Optional for backwards-compatible stores. Progress never owns domain execution. */
+  checkpoint?(input: FinalizeInput & { tenantId: string; workflowName: string }): Promise<void>;
 }
 
 async function getPool() {
   return (await import("./db")).default;
 }
 
-/** Default store — writes to NeonDB via the shared pg pool. */
-export const pgWorkflowStore: WorkflowStore = {
+type WorkflowQuery = (sql: string, values: unknown[]) => Promise<{ rows: Record<string, unknown>[] }>;
+
+/** One SQL implementation; the observation path adds resource bounds only. */
+function createPgWorkflowStore(query: WorkflowQuery): WorkflowStore {
+  return {
   async create(row) {
-    const pool = await getPool();
-    const inserted = await pool.query(
+    const inserted = await query(
       `INSERT INTO workflow_runs
          (run_id, workflow_name, workflow_version, tenant_id,
           status, input, idempotency_key, retry_count)
@@ -165,14 +177,14 @@ export const pgWorkflowStore: WorkflowStore = {
     }
 
     // Conflict: reuse the existing row, surface its prior outcome, bump retry.
-    const existing = await pool.query(
+    const existing = await query(
       `SELECT run_id, status FROM workflow_runs WHERE idempotency_key = $1`,
       [row.idempotencyKey],
     );
     if (existing.rows.length === 0) return null; // raced away → degrade to in-memory
     const runId = existing.rows[0].run_id as string;
     const alreadySucceeded = existing.rows[0].status === "ok";
-    const updated = await pool.query(
+    const updated = await query(
       `UPDATE workflow_runs
           SET retry_count = retry_count + 1,
               status = 'running',
@@ -190,8 +202,7 @@ export const pgWorkflowStore: WorkflowStore = {
   },
 
   async finalize(input) {
-    const pool = await getPool();
-    await pool.query(
+    await query(
       `UPDATE workflow_runs
           SET status = $2,
               output = $3::jsonb,
@@ -202,7 +213,71 @@ export const pgWorkflowStore: WorkflowStore = {
       [input.runId, input.status, input.output, input.errorDetail, input.stepArtifacts],
     );
   },
-};
+
+  async checkpoint(input) {
+    await query(
+      `UPDATE workflow_runs SET output = $2::jsonb, step_artifacts = $3::jsonb
+        WHERE run_id = $1 AND tenant_id = $4 AND workflow_name = $5
+          AND status = 'running' AND finished_at IS NULL`,
+      [input.runId, input.output, input.stepArtifacts, input.tenantId, input.workflowName],
+    );
+  },
+  };
+}
+
+/** Legacy callers keep the existing shared-pool policy. */
+export const pgWorkflowStore = createPgWorkflowStore(async (sql, values) => (await getPool()).query(sql, values));
+
+// Observations may occupy at most one shared connection per process. They do
+// not queue behind domain borrowers, and all timeout settings are local to the
+// observation transaction. No new pool or execution/retry authority is added.
+let observationQueryActive = false;
+export async function queryWorkflowObservation(sql: string, values: unknown[], tenantId?: string) {
+  if (observationQueryActive) throw new Error("workflow_observation_busy");
+  observationQueryActive = true;
+  let client: PoolClient | undefined;
+  let expired = false;
+  let released = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const actual = (async () => {
+    try {
+      const pool = await getPool();
+      if (expired || pool.waitingCount > 0 ||
+        (pool.idleCount === 0 && pool.totalCount >= (pool.options.max ?? 5) - 1)) {
+        throw new Error("workflow_observation_busy");
+      }
+      client = await pool.connect();
+      if (expired) throw new Error("workflow_observation_timeout");
+      await client.query("BEGIN; SET LOCAL lock_timeout = '100ms'; SET LOCAL statement_timeout = '500ms'" +
+        (tenantId ? "; SET LOCAL ROLE factorylm_app" : ""));
+      if (tenantId) await client.query("SELECT set_config('app.tenant_id', $1, true), set_config('app.current_tenant_id', $1, true)", [tenantId]);
+      const result = await client.query(sql, values);
+      await client.query("COMMIT");
+      return result;
+    } catch (err) {
+      // Discard an errored transaction/connection instead of queuing a rollback
+      // behind a stuck query or leaking transaction-local settings to a user.
+      if (client && !released) { released = true; client.release(true); }
+      throw err;
+    } finally {
+      if (client && !released) { released = true; client.release(); }
+    }
+  })().finally(() => {
+    clearTimeout(timer);
+    // If connect settles after the deadline, keep this gate until its client
+    // has been discarded. Repeated timeouts cannot queue more acquisitions.
+    observationQueryActive = false;
+  });
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      expired = true;
+      if (client && !released) { released = true; client.release(true); }
+      reject(new Error("workflow_observation_timeout"));
+    }, 750);
+  });
+  return Promise.race([actual, deadline]);
+}
+const pgWorkflowObservationStore = createPgWorkflowStore(queryWorkflowObservation);
 
 // ---------------------------------------------------------------------------
 // WorkflowRun
@@ -217,6 +292,10 @@ export interface WorkflowRunOptions {
   retryCount?: number;
   store?: WorkflowStore;
   logger?: Pick<Console, "info" | "warn" | "error">;
+  /** Opt-in reference-only contract; one observation attempt per domain request. */
+  observation?: WorkflowObservation;
+  /** Bound metadata latency only; never a timeout or retry policy for domain work. */
+  observationTimeoutMs?: number;
 }
 
 /** A JSON-able artifact summary — deliberately not `unknown` so the callback
@@ -257,21 +336,90 @@ export class WorkflowRun {
   private readonly steps: StepRecord[] = [];
   private degraded = false;
   private recorded = false;
+  private observation: WorkflowObservation | null = null;
+  private progress: Promise<void> = Promise.resolve();
+  private readonly observationTimeoutMs: number;
+  private terminal: FinalizeInput | null = null;
 
   constructor(opts: WorkflowRunOptions) {
+    const observation = opts.observation ? parseWorkflowObservation(opts.observation) : null;
+    if (observation && (opts.workflowName !== observation.definition.name ||
+      (opts.tenantId !== undefined && opts.tenantId !== observation.identity.tenantId) ||
+      (opts.version !== undefined && opts.version !== observation.definition.version) || opts.idempotencyKey)) {
+      throw new Error("workflow_observation_identity_mismatch");
+    }
     this.workflowName = opts.workflowName;
-    this.version = opts.version ?? "1.0.0";
-    this.tenantId = opts.tenantId ?? null;
-    this.input = opts.input ?? null;
+    this.version = observation?.definition.version ?? opts.version ?? "1.0.0";
+    this.tenantId = observation?.identity.tenantId ?? opts.tenantId ?? null;
+    this.input = observation ? { workflow: observation } : opts.input ?? null;
     this.idempotencyKey = opts.idempotencyKey ?? null;
     this.retryCount = opts.retryCount ?? 0;
-    this.store = opts.store ?? pgWorkflowStore;
+    this.store = opts.store ?? (observation ? pgWorkflowObservationStore : pgWorkflowStore);
     this.log = opts.logger ?? console;
-    this.runId = randomUuid();
+    this.runId = observation?.identity.attemptId ?? randomUuid();
+    this.observationTimeoutMs = Math.min(2000, Math.max(1, opts.observationTimeoutMs ?? 1000));
+    if (observation) this.setObservation(observation);
   }
 
   setOutput(value: unknown): void {
+    if (this.observation) throw new Error("use_setObservation_for_contract_runs");
     this.output = value;
+  }
+
+  private logMetadata(level: "info" | "warn" | "error", message: string): void {
+    try { this.log[level](message); } catch { /* Logging cannot change domain results. */ }
+  }
+
+  setObservation(value: WorkflowObservation): void {
+    const next = parseWorkflowObservation(value);
+    const scope = (o: WorkflowObservation) => [o.definition.name, o.definition.version,
+      o.identity.tenantId, o.identity.operationId, o.identity.attemptId, o.owner.system, o.owner.id].join("|");
+    if (this.observation && scope(next) !== scope(this.observation)) {
+      throw new Error("workflow_observation_identity_mismatch");
+    }
+    this.observation = next;
+    this.output = { workflow: next };
+  }
+
+  /** Ordered progress writes; a late checkpoint cannot overwrite finalization. */
+  checkpoint(value: WorkflowObservation): Promise<void> {
+    this.setObservation(value);
+    const snapshot = this.observation!;
+    const output = boundedJson({ workflow: snapshot });
+    const steps = this.stepJson();
+    this.progress = this.progress.then(async () => {
+      if (!this.recorded || !this.store.checkpoint) return;
+      try {
+        await this.observeWrite(this.store.checkpoint({ runId: this.runId, tenantId: snapshot.identity.tenantId,
+          workflowName: this.workflowName, status: "running", output, errorDetail: null, stepArtifacts: steps }));
+      } catch { this.logMetadata("warn", `workflow observation checkpoint unavailable (run_id=${this.runId})`); }
+    });
+    return this.progress;
+  }
+
+  private stepJson(): string {
+    if (!this.observation) return JSON.stringify(this.steps);
+    return JSON.stringify(this.steps.map((s) => ({
+      step_name: /^[a-z][a-z0-9_]{0,63}$/.test(s.step_name) ? s.step_name : "operation",
+      status: s.status === "ok" ? "ok" : "failed", started_at: s.started_at,
+      finished_at: s.finished_at, duration_ms: s.duration_ms,
+      ...(s.error ? { error: "operation_failed" } : {}),
+    })));
+  }
+
+  private async observeWrite<T>(work: Promise<T>): Promise<T> {
+    if (!this.observation) return work;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await Promise.race([work, new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error("workflow_observation_timeout")), this.observationTimeoutMs);
+      })]);
+    } finally { clearTimeout(timer); }
+  }
+
+  private async finalize(input: FinalizeInput): Promise<void> {
+    try { await this.observeWrite(this.store.finalize(input)); }
+    catch (err) { this.logMetadata("warn", this.observation ? `workflow observation finalize unavailable (run_id=${this.runId})` : `workflow run finalize skipped: ${String(err)}`); }
   }
 
   /** Run `fn` as a recorded step; return its result. See module docstring.
@@ -292,11 +440,12 @@ export class WorkflowRun {
       );
       return result;
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
+      const message = this.observation ? "operation_failed" : err instanceof Error ? err.message : String(err);
       this.steps.push(
         buildStepRecord({ stepName: name, status: "failed", startedAt: started, finishedAt: new Date(), error: message }),
       );
-      this.log.warn(`workflow ${this.workflowName} step ${name} failed: ${message}`);
+      const label = this.observation && !/^[a-z][a-z0-9_]{0,63}$/.test(name) ? "operation" : name;
+      this.logMetadata("warn", `workflow ${this.workflowName} step ${label} failed: ${message}`);
       if (opts.tolerate) {
         this.degraded = true;
         return null;
@@ -328,7 +477,7 @@ export class WorkflowRun {
   /** @internal — called by runWorkflow. */
   async _begin(): Promise<void> {
     try {
-      const res = await this.store.create({
+      const creating = this.store.create({
         runId: this.runId,
         workflowName: this.workflowName,
         workflowVersion: this.version,
@@ -337,6 +486,17 @@ export class WorkflowRun {
         idempotencyKey: this.idempotencyKey,
         retryCount: this.retryCount,
       });
+      if (this.observation) {
+        // A timed-out metadata INSERT may settle after domain work. Close that
+        // late row from the cached terminal snapshot; never execute work again.
+        void creating.then((late) => {
+          if (late?.runId === this.runId) {
+            this.recorded = true;
+            if (this.terminal) void this.finalize(this.terminal);
+          }
+        }).catch(() => undefined);
+      }
+      const res = await this.observeWrite(creating);
       if (res) {
         this.runId = res.runId;
         this.alreadySucceeded = res.alreadySucceeded;
@@ -344,35 +504,42 @@ export class WorkflowRun {
         this.recorded = true;
       }
     } catch (err) {
-      this.log.warn(`workflow run create skipped (degraded to in-memory): ${String(err)}`);
+      this.logMetadata("warn", this.observation ? `workflow observation create unavailable (run_id=${this.runId})` : `workflow run create skipped (degraded to in-memory): ${String(err)}`);
     }
-    this.log.info(
+    this.logMetadata("info",
       `workflow ${this.workflowName} v${this.version} started (run_id=${this.runId} tenant=${this.tenantId})`,
     );
   }
 
   /** @internal — called by runWorkflow. */
   async _finish(threw: boolean, error?: unknown): Promise<void> {
+    await this.progress;
     this.status = computeFinalStatus(threw, this.degraded);
+    if (this.observation) {
+      const unresolved = this.degraded || this.observation.failure !== null;
+      const completed = !threw && !unresolved && this.observation.state === "running";
+      this.setObservation({ ...this.observation,
+        state: threw ? "failed" : unresolved && ["running", "succeeded"].includes(this.observation.state) ? "partial" : this.observation.state === "running" ? "succeeded" : this.observation.state,
+        failure: threw ? { code: "operation_failed", retryable: false } : this.degraded ? this.observation.failure ?? { code: "operation_failed", retryable: false } : this.observation.failure,
+        ...(completed ? { retry: { eligible: false, afterMs: null }, recovery: { ...this.observation.recovery, action: "none" as const } } : {}),
+        observedAt: new Date().toISOString(),
+      });
+      this.status = workflowRunStatus(this.observation.state);
+      this.errorDetail = this.observation.failure?.code ?? null;
+    }
     if (threw && this.errorDetail === null) {
-      this.errorDetail = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+      this.errorDetail = this.observation ? "operation_failed" : error instanceof Error ? `${error.name}: ${error.message}` : String(error);
     }
-    if (this.recorded) {
-      try {
-        await this.store.finalize({
-          runId: this.runId,
-          status: this.status,
-          output: boundedJson(this.output),
-          errorDetail: this.errorDetail,
-          stepArtifacts: JSON.stringify(this.steps),
-        });
-      } catch (err) {
-        this.log.warn(`workflow run finalize skipped: ${String(err)}`);
-      }
-    }
+    this.terminal = {
+      runId: this.runId,
+      status: this.status,
+      output: boundedJson(this.output),
+      errorDetail: this.errorDetail,
+      stepArtifacts: this.stepJson(),
+    };
+    if (this.recorded) await this.finalize(this.terminal);
     const line = `workflow ${this.workflowName} finished status=${this.status} (run_id=${this.runId} steps=${this.steps.length})`;
-    if (this.status === "failed") this.log.error(line);
-    else this.log.info(line);
+    this.logMetadata(this.status === "failed" ? "error" : "info", line);
   }
 
   /** Test-only accessor for the buffered step records. */
@@ -391,13 +558,22 @@ export async function runWorkflow<T>(
   fn: (run: WorkflowRun) => Promise<T>,
 ): Promise<T> {
   const run = new WorkflowRun(opts);
-  await run._begin();
+  const metadata = async (stage: string, work: () => Promise<void>) => {
+    try { await work(); }
+    catch {
+      // A recorder failure, including normalization/logging, cannot replace a
+      // domain result or its original exception. Never expose recorder content.
+      try { (opts.logger ?? console).warn(`workflow recorder ${stage} unavailable`); } catch { /* failed logger */ }
+    }
+  };
+  await metadata("create", () => run._begin());
+  let result: T;
   try {
-    const result = await fn(run);
-    await run._finish(false);
-    return result;
+    result = await fn(run);
   } catch (err) {
-    await run._finish(true, err);
+    await metadata("finalize", () => run._finish(true, err));
     throw err;
   }
+  await metadata("finalize", () => run._finish(false));
+  return result;
 }

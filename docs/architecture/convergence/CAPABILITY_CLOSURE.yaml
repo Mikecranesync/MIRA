@@ -1222,6 +1222,52 @@ capabilities:
       pending legacy push (CMMS_SYNC_ENABLED worker). Inbound CMMS changes are
       not implemented beyond read-back + marker echo-prevention.
 
+  # =========================================================================
+  - id: manual_workflow_visibility
+    purpose: >-
+      Expose a reference-only common lifecycle/evidence contract for canonical
+      manual upload through notebook attachment and persisted technician answer,
+      while retaining existing file/request claims and domain safety gates.
+    state: blocked
+    owner: "Mike Harper"
+    entrypoints:
+      - "mira-hub/src/lib/workflow-contract.ts"
+      - "mira-hub/src/capabilities/manual-upload-workflow.ts"
+      - "mira-hub/src/capabilities/manual-workflow-store.ts"
+      - "mira-hub/src/lib/notebook-cancellation-receipt.ts"
+    consumers:
+      - "mira-hub/src/app/api/namespace/node/[id]/files/route.ts # explicit X-Mira-Workflow: mira.workflow.v1 header only"
+      - "mira-hub/src/app/api/workflows/manual-question/route.ts # authenticated read-only inspection"
+    environments:
+      dev: local_disposable_fixture_only
+      staging: unknown
+      production: unknown
+    reason: >-
+      Dependent draft PR #5647 on unmerged recovery PR #5319, exact R0
+      d866ceb0e9392e26361bae0155c87465a7a9537a. Local deterministic evidence
+      does not qualify the combined current-main pilot, deployment or field
+      acceptance. No UI consumer/default switch or environment flag was added.
+    ci_jobs:
+      - mira-hub-unit # includes new unit/route contracts; integration fixture is local-only
+    required_checks:
+      - mira-hub-unit
+    evidence:
+      - "docs/architecture/convergence/units/WF-01.md"
+      - "mira-hub/src/lib/workflow-observation.test.ts"
+      - "mira-hub/src/capabilities/__tests__/notebook-cancellation-receipt.test.ts"
+      - "mira-hub/tests/workflow/manual-workflow.integration.test.ts"
+      - "mira-hub/tests/workflow/workflow-observation.integration.test.ts"
+    rollback: >-
+      Omit the opt-in upload header to retain default domain execution without
+      new observation writes. Revert this dependent increment to R0 to remove
+      the additive inspection API and observation support. No schema rollback;
+      canonical bytes, claims, sources and turns remain domain-owned.
+    promotion_criteria:
+      - "Resolve #5319 gates, unchanged dependency build advisory and baseline registry-review expirations; qualify the composed current-main candidate and exact-head independent review/hosted CI."
+      - "Wire this disposable real-SQL slice into an existing suitable gated integration job; no silent skips."
+      - "Verify identified staging technician flow/recovery on the approved artifact before deciding any pilot client adoption."
+    review_by: "2026-12-15"
+
 ignored_flags:
   - CRAWL_SCHEDULE_ENABLED          # default-ON operational schedule, not a gated capability
   - ENFORCE_PLAN_QUOTA              # billing/plan enforcement; belongs to the PLG surface

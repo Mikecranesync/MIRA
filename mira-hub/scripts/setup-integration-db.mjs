@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
+import { workflowDatabaseConfig } from "./workflow-disposable-db.mjs";
 
 const { Client } = pg;
 
@@ -198,11 +199,18 @@ async function grantIntegrationPrivileges(client) {
 
 async function main() {
   const databaseUrl = requireEnv("TEST_DATABASE_URL");
-  assertDisposable(databaseUrl);
-
-  const client = new Client({ connectionString: databaseUrl });
+  const workflow = process.argv.includes("--workflow");
+  if (!workflow) assertDisposable(databaseUrl);
+  const config = workflow
+    ? workflowDatabaseConfig(databaseUrl, process.env.MIRA_TEST_DB_CONFIRM)
+    : { connectionString: databaseUrl };
+  const client = new Client(config);
   await client.connect();
   try {
+    if (workflow) {
+      const { rows } = await client.query("SELECT current_database() AS db");
+      if (rows[0]?.db !== "mira_wf01_test") throw new Error("WF-01 setup database identity mismatch");
+    }
     await ensureBootstrap(client);
 
     for (const file of await listSql(fixturesDir)) {
