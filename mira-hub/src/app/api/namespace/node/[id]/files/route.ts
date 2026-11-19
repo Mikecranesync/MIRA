@@ -6,6 +6,8 @@ import { ingestPdfToNode, ingestTextToNode, deleteOrphanNodeIngest } from "@/lib
 import { findDuplicateUpload } from "@/lib/uploads";
 import pool from "@/lib/db";
 import { MAX_UPLOAD_BYTES, MAX_UPLOAD_MB } from "@/lib/config";
+import { observeManualUpload } from "@/capabilities/manual-upload-workflow";
+import { WORKFLOW_CONTRACT } from "@/lib/workflow-contract";
 import {
   parkOrReuseFile,
   linkFileToUpload,
@@ -299,6 +301,10 @@ export async function POST(
     });
     const directId = park.fileId;
 
+    // Phase 1 opt-in metadata only: the existing handler and its file claim
+    // remain the execution authority. Default pilot requests are unchanged.
+    const completeUpload = async () => {
+
     // Every upload files the canonical file at THIS node. Attaching is
     // idempotent (unique relationship constraint), and a link failure must
     // never lose the parked bytes.
@@ -452,6 +458,11 @@ export async function POST(
       },
       { status: 201 },
     );
+    };
+    return req.headers.get("X-Mira-Workflow") === WORKFLOW_CONTRACT && (isPdf || isText)
+      ? await observeManualUpload({ tenantId: ctx.tenantId, fileId: directId,
+          sha256: createHash("sha256").update(buffer).digest("hex"), signal: req.signal }, completeUpload)
+      : await completeUpload();
   } catch (err) {
     console.error("[api/namespace/node/:id/files POST]", err);
     // #1899: a 500 must NOT render as "nothing happened". Return a specific,

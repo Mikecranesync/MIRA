@@ -1,0 +1,233 @@
+/** WF-01: real routes, PDF extraction, private lexical SQL, RLS, claims and persistence.
+ * Provider responses are deterministic; every unexpected network call fails.
+ * Requires an explicitly confirmed loopback database named mira_wf01_test.
+ * See WF-01.md for the existing fixture/migration setup. No shared DB is permitted.
+ */
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { randomUUID } from "node:crypto";
+import { NextRequest } from "next/server";
+import PDFDocument from "pdfkit";
+import type { Pool } from "pg";
+
+const { testPool, controls } = vi.hoisted(() => {
+  const value = process.env.TEST_DATABASE_URL;
+  if (!value || process.env.MIRA_TEST_DB_CONFIRM !== "DISPOSABLE") throw new Error("WF-01 requires an explicitly confirmed disposable database");
+  const url = new URL(value);
+  if (!["127.0.0.1", "[::1]"].includes(url.hostname) || url.pathname !== "/mira_wf01_test") throw new Error("WF-01 refuses any other host/database");
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { Pool: PgPool } = require("pg");
+  return { testPool: new PgPool({ connectionString: value }) as Pool,
+    controls: { failFinalize: false, beforeParse: null as null | (() => Promise<void>), provider: "answer" as "answer" | "fail" | "hold", heldProvider: null as ReadableStreamDefaultController<Uint8Array> | null } };
+});
+vi.mock("@/lib/db", () => ({ default: testPool }));
+vi.mock("@/lib/session", () => ({ sessionOr401: vi.fn() }));
+vi.mock("@/lib/node-knowledge-ingest", async (original) => {
+  const actual = await original<typeof import("@/lib/node-knowledge-ingest")>();
+  return { ...actual, ingestPdfToNode: vi.fn(async (...args: Parameters<typeof actual.ingestPdfToNode>) => {
+    await controls.beforeParse?.(); return actual.ingestPdfToNode(...args);
+  }) };
+});
+vi.mock("@/lib/workspace-files", async (original) => {
+  const actual = await original<typeof import("@/lib/workspace-files")>();
+  return { ...actual, linkFileToUpload: vi.fn(async (...args: Parameters<typeof actual.linkFileToUpload>) => {
+    if (controls.failFinalize) { controls.failFinalize = false; throw new Error("declared post-index finalization fault"); }
+    return actual.linkFileToUpload(...args);
+  }) };
+});
+
+import { POST as upload } from "@/app/api/namespace/node/[id]/files/route";
+import { POST as attach } from "@/app/api/equipment-notebooks/[id]/sources/route";
+import { POST as ask } from "@/app/api/equipment-notebooks/[id]/chat/route";
+import { GET as inspect } from "@/app/api/workflows/manual-question/route";
+import { createNotebook, claimNotebookTurnRequest } from "@/lib/equipment-notebooks";
+import { parkOrReuseFile, claimIngest, linkFileToUpload } from "@/lib/workspace-files";
+import { ingestPdfToNode } from "@/lib/node-knowledge-ingest";
+import { sessionOr401 } from "@/lib/session";
+
+const tenantId = randomUUID(); const userId = randomUUID(); const otherTenant = randomUUID();
+const answer = "Fault F12 means the inspection card is missing [1].";
+const encoder = new TextEncoder();
+const frame = (text: string) => encoder.encode(`data: ${JSON.stringify({ choices: [{ delta: { content: text } }] })}\n\n`);
+let providerCalls = 0;
+let nb: Awaited<ReturnType<typeof createNotebook>>;
+let pdf: Buffer;
+const session = (tenant = tenantId, user = userId) => vi.mocked(sessionOr401).mockResolvedValue({ tenantId: tenant, userId: user, role: "owner", status: "active", email: "fixture@example.test" } as never);
+
+async function manual(): Promise<Buffer> {
+  const doc = new PDFDocument({ compress: false }); const bytes: Buffer[] = [];
+  const result = new Promise<Buffer>((resolve) => { doc.on("data", (b) => bytes.push(b)); doc.on("end", () => resolve(Buffer.concat(bytes))); });
+  doc.text(`Fictional PM-42 manual ${randomUUID()}`); doc.addPage();
+  doc.text("Fault F12 means the inspection card is missing. This is a read-only diagnostic description."); doc.end();
+  return result;
+}
+async function sendPdf(signal?: AbortSignal, observed = true) {
+  const body = new FormData(); body.set("file", new File([new Uint8Array(pdf)], "fictional-manual.pdf", { type: "application/pdf" }));
+  const request = new Request(`https://hub.test/api/namespace/node/${nb.nodeId}/files`, { method: "POST", body,
+    headers: observed ? { "X-Mira-Workflow": "mira.workflow.v1" } : {}, signal });
+  const res = await upload(request, { params: Promise.resolve({ id: nb.nodeId }) });
+  return { res, body: await res.json() };
+}
+async function attachDoc(docId: string) {
+  return attach(new NextRequest(`https://hub.test/api/equipment-notebooks/${nb.id}/sources`, {
+    method: "POST", body: JSON.stringify({ docId, sourceRole: "manual" }), headers: { "Content-Type": "application/json" },
+  }), { params: Promise.resolve({ id: nb.id }) });
+}
+const questionBody = (docId: string, clientRequestId: string) => ({ message: "What does fault F12 mean?", sourceDocIds: [docId], clientRequestId, threadId: "wf01" });
+async function sendQuestion(docId: string, requestId: string, signal?: AbortSignal) {
+  return ask(new NextRequest(`https://hub.test/api/equipment-notebooks/${nb.id}/chat`, {
+    method: "POST", body: JSON.stringify(questionBody(docId, requestId)), headers: { "Content-Type": "application/json" }, signal,
+  }), { params: Promise.resolve({ id: nb.id }) });
+}
+async function view(fileId: string, requestId?: string) {
+  const q = new URLSearchParams({ notebook_id: nb.id, file_id: fileId });
+  if (requestId) { q.set("client_request_id", requestId); q.set("thread_id", "wf01"); }
+  const res = await inspect(new Request(`https://hub.test/api/workflows/manual-question?${q}`));
+  return { res, body: await res.json() };
+}
+async function indexAndAttach() {
+  const result = await sendPdf(); expect(result.body.indexed).toBe(true); expect((await attachDoc(result.body.uploadId)).status).toBe(201); return result.body;
+}
+
+beforeAll(async () => {
+  const { rows } = await testPool.query("SELECT current_database() AS db");
+  if (rows[0].db !== "mira_wf01_test") throw new Error("WF-01 database identity mismatch");
+  const ledger = await testPool.query("SELECT file_name FROM integration_schema_migrations WHERE file_name = ANY($1::text[])", [["044_workflow_runs.sql", "077_ingest_claim.sql", "089_notebook_turn_request_claim.sql"]]);
+  if (ledger.rowCount !== 3) throw new Error("WF-01 fixture migrations missing");
+  // Fixture-only lexical support. Vectors are deliberately not exercised.
+  await testPool.query("ALTER TABLE knowledge_entries ADD COLUMN IF NOT EXISTS content_tsv tsvector GENERATED ALWAYS AS (to_tsvector('english', content)) STORED; ALTER TABLE knowledge_entries ADD COLUMN IF NOT EXISTS embedding real[]");
+  await testPool.query("INSERT INTO tenants (id, slug, name) VALUES ($1, $2, 'WF-01 fixture')", [tenantId, `wf01_${tenantId}`]);
+});
+beforeEach(async () => {
+  vi.clearAllMocks(); controls.failFinalize = false; controls.beforeParse = null; controls.provider = "answer"; controls.heldProvider = null; providerCalls = 0;
+  process.env.NODE_INGEST_EMBED = "0"; process.env.NOTEBOOK_HYBRID_RETRIEVAL = "0";
+  process.env.NOTEBOOK_ANSWER_GATE = "1"; process.env.NOTEBOOK_SEMANTIC_CHECK = "0";
+  process.env.MIRA_CANONICAL_SEAM = "1"; process.env.OPENAI_API_KEY = "fixture-only-not-a-credential";
+  process.env.NOTEBOOK_MANUAL_ACQUISITION = "0";
+  session(); nb = await createNotebook(tenantId, { displayName: `WF-01 ${randomUUID()}`, createdBy: userId }); pdf = await manual();
+  vi.stubGlobal("fetch", vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+    if (String(url) !== "https://api.openai.com/v1/chat/completions") throw new Error(`unexpected network endpoint in WF-01 fixture`);
+    providerCalls++;
+    if (controls.provider === "fail") return new Response("fixture unavailable", { status: 503 });
+    const payload = JSON.parse(String(init?.body));
+    if (!payload.stream) return Response.json({ choices: [{ message: { content: answer } }], usage: { prompt_tokens: 10, completion_tokens: 10 } });
+    return new Response(new ReadableStream<Uint8Array>({ start(c) {
+      if (controls.provider === "hold") {
+        controls.heldProvider = c;
+        init?.signal?.addEventListener("abort", () => c.error(new DOMException("fixture request aborted", "AbortError")), { once: true });
+        return;
+      }
+      c.enqueue(frame(answer)); c.enqueue(encoder.encode('data: {"choices":[{"finish_reason":"stop","delta":{}}],"usage":{"prompt_tokens":10,"completion_tokens":10}}\n\ndata: [DONE]\n\n')); c.close();
+    } }), { headers: { "Content-Type": "text/event-stream" } });
+  }));
+});
+afterAll(async () => { vi.unstubAllGlobals(); await testPool.end(); });
+
+describe("WF-01 existing manual-to-answer vertical slice", () => {
+  it("preserves the default upload path without writing workflow metadata", async () => {
+    const result = await sendPdf(undefined, false);
+    expect(result.body.indexed).toBe(true);
+    expect(result.res.headers.get("X-Mira-Workflow-Run-Id")).toBeNull();
+    const rows = await testPool.query("SELECT run_id FROM workflow_runs WHERE tenant_id=$1 AND input->'workflow'->'identity'->>'operationId'=$2", [tenantId, result.body.fileId]);
+    expect(rows.rowCount).toBe(0);
+    expect((await view(result.body.fileId)).body.visibility.uploadRecorded).toBe(false);
+  });
+  it("extracts a real PDF, indexes private anchored text, attaches it, retrieves and persists a cited gated answer; duplicates replay", async () => {
+    const doc = await indexAndAttach();
+    expect((await view(doc.fileId)).body.workflow.stage).toBe("question");
+    const requestId = randomUUID(); const res = await sendQuestion(doc.uploadId, requestId); const text = await res.text();
+    expect(text).toContain("inspection card"); expect(text).toContain('"kind":"sources"');
+    const result = await view(doc.fileId, requestId);
+    expect(result.body.workflow).toMatchObject({ state: "succeeded", stage: "answer_persisted" });
+    expect(result.body.workflow.evidence).toContainEqual({ kind: "document", id: doc.uploadId, page: 2 });
+    expect(JSON.stringify(result.body)).not.toContain("inspection card");
+    const calls = providerCalls;
+    await (await sendQuestion(doc.uploadId, requestId)).text(); expect(providerCalls).toBe(calls);
+    const repeated = await sendPdf(); expect(repeated.body).toMatchObject({ fileId: doc.fileId, uploadId: doc.uploadId, duplicate: true });
+    expect(ingestPdfToNode).toHaveBeenCalledTimes(1);
+    const counts = await testPool.query("SELECT count(*)::int AS n FROM equipment_notebook_turns WHERE notebook_id=$1 AND client_request_id=$2", [nb.id, requestId]);
+    expect(counts.rows[0].n).toBe(1);
+  });
+  it("reports an extraction failure while retaining bytes and permitting the existing retry", async () => {
+    pdf = Buffer.from("%PDF-1.4 deliberately invalid synthetic file");
+    const result = await sendPdf(); expect(result.body.indexed).toBe(false);
+    const status = await view(result.body.fileId);
+    expect(status.body.workflow.state).toBe("failed"); expect(status.body.workflow.recovery.action).toBe("upload_again");
+    const bytes = await testPool.query("SELECT octet_length(content) AS n FROM namespace_direct_uploads WHERE id=$1", [result.body.fileId]);
+    expect(bytes.rows[0].n).toBe(pdf.length);
+  });
+  it("recovers an indexed document after a declared finalization failure without parsing it again", async () => {
+    controls.failFinalize = true; const first = await sendPdf(); expect(first.body.indexed).toBe(false);
+    expect((await view(first.body.fileId)).body.workflow.state).toBe("interrupted");
+    const recovered = await sendPdf(); expect(recovered.body).toMatchObject({ indexed: true, duplicate: true, fileId: first.body.fileId });
+    expect(ingestPdfToNode).toHaveBeenCalledTimes(1);
+    expect((await view(first.body.fileId)).body.workflow.stage).toBe("source_attachment");
+  });
+  it("concurrent identical uploads share the existing claim and create one index", async () => {
+    let release!: () => void; const gate = new Promise<void>((r) => { release = r; }); controls.beforeParse = () => gate;
+    const first = sendPdf(); await vi.waitFor(() => expect(ingestPdfToNode).toHaveBeenCalledTimes(1));
+    const second = await sendPdf(); expect(second.res.status).toBe(202);
+    expect((await view(second.body.fileId)).body.workflow.state).toBe("running");
+    release(); const result = await first; expect(result.body.indexed).toBe(true); expect(ingestPdfToNode).toHaveBeenCalledTimes(1);
+  });
+  it("a client stopping its upload wait does not cancel or discard accepted extraction", async () => {
+    const abort = new AbortController();
+    controls.beforeParse = async () => { abort.abort(); };
+    const result = await sendPdf(abort.signal); expect(result.body.indexed).toBe(true);
+    const status = await view(result.body.fileId);
+    expect(status.body.uploadObservation).toMatchObject({ state: "succeeded", cancellation: { requested: true, scope: "client_wait", acknowledged: false } });
+  });
+  it("a fresh consumer recovers a persisted stale producer claim and fences its late finalization", async () => {
+    const file = await parkOrReuseFile({ tenantId, nodeId: nb.nodeId, filename: "fictional-manual.pdf", mimeType: "application/pdf", buffer: pdf, sizeBytes: pdf.length });
+    const old = await claimIngest(tenantId, file.fileId); if (!old.claimed) throw new Error("fixture claim missing");
+    // Simulated producer loss: only persisted state survives, with the lease aged past its domain timeout.
+    await testPool.query("UPDATE namespace_direct_uploads SET ingest_claimed_at=now()-interval '11 minutes' WHERE id=$1", [file.fileId]);
+    expect((await view(file.fileId)).body.workflow).toMatchObject({ state: "interrupted", recovery: { action: "upload_again" } });
+    const result = await sendPdf(); expect(result.body.indexed).toBe(true);
+    expect(await linkFileToUpload(tenantId, file.fileId, randomUUID(), old.claimToken)).toBe(false);
+    expect((await view(file.fileId)).body.workflow.stage).toBe("source_attachment");
+  });
+  it("a provider failure is visible through the persisted request and never becomes an answered workflow", async () => {
+    const doc = await indexAndAttach(); controls.provider = "fail"; const id = randomUUID();
+    await (await sendQuestion(doc.uploadId, id)).text();
+    expect((await view(doc.fileId, id)).body.workflow).toMatchObject({ state: "failed", failure: { code: "answer_failed" } });
+  });
+  it("a notebook stop is acknowledged by the existing domain path and leaves an inspectable non-answer", async () => {
+    const doc = await indexAndAttach(); controls.provider = "hold"; const id = randomUUID(); const abort = new AbortController();
+    const response = await sendQuestion(doc.uploadId, id, abort.signal);
+    const finished = response.text().catch(() => "stopped");
+    await vi.waitFor(() => expect(controls.heldProvider).not.toBeNull()); abort.abort(); await finished;
+    await vi.waitFor(async () => expect((await view(doc.fileId, id)).body.workflow.state).toBe("cancelled"));
+    const result = await view(doc.fileId, id);
+    expect(result.body.stages.answerPersisted).toBe(false);
+    expect(result.body.workflow.cancellation).toEqual({ requested: true, scope: "execution", acknowledged: true });
+  });
+  it("the existing immediate-danger gate stays terminal, requires no model call, and cannot become workflow success", async () => {
+    const doc = await indexAndAttach(); const id = randomUUID();
+    const payload = { ...questionBody(doc.uploadId, id), message: "Smoke is coming from the control panel." };
+    const response = await ask(new NextRequest(`https://hub.test/api/equipment-notebooks/${nb.id}/chat`, {
+      method: "POST", body: JSON.stringify(payload), headers: { "Content-Type": "application/json" },
+    }), { params: Promise.resolve({ id: nb.id }) });
+    await response.text();
+    expect(providerCalls).toBe(0);
+    expect((await view(doc.fileId, id)).body.workflow).toMatchObject({ state: "refused", retry: { eligible: false } });
+  });
+  it("another in-flight question is observed through its existing request claim; retry does not start inference", async () => {
+    const doc = await indexAndAttach(); const id = randomUUID(); const payload = questionBody(doc.uploadId, id);
+    await claimNotebookTurnRequest(tenantId, nb.id, { ownerUserId: userId, clientRequestId: id, question: payload.message, threadId: "wf01", requestPayload: payload });
+    expect((await view(doc.fileId, id)).body.workflow.state).toBe("running");
+    expect((await sendQuestion(doc.uploadId, id)).status).toBe(409); expect(providerCalls).toBe(0);
+    await testPool.query("UPDATE equipment_notebook_turns SET client_request_started_at=now()-interval '11 minutes' WHERE client_request_id=$1", [id]);
+    expect((await view(doc.fileId, id)).body.workflow.state).toBe("interrupted");
+    await (await sendQuestion(doc.uploadId, id)).text(); expect((await view(doc.fileId, id)).body.workflow.state).toBe("succeeded");
+  });
+  it("inspection enforces tenant, notebook relationship and conversation owner, and executes no writes", async () => {
+    const doc = await indexAndAttach(); const id = randomUUID(); await (await sendQuestion(doc.uploadId, id)).text();
+    session(otherTenant); expect((await view(doc.fileId, id)).res.status).toBe(404);
+    session(tenantId, randomUUID()); expect((await view(doc.fileId, id)).body.stages.answerPersisted).toBe(false);
+    session(); const old = nb; nb = await createNotebook(tenantId, { displayName: `unrelated ${randomUUID()}` });
+    expect((await view(doc.fileId)).res.status).toBe(404); nb = old;
+    const query = vi.spyOn(testPool, "query"); await view(doc.fileId, id);
+    expect(query.mock.calls.every(([q]) => typeof q !== "string" || !/\b(INSERT|UPDATE|DELETE|ALTER|CREATE)\b/i.test(q))).toBe(true);
+    query.mockRestore();
+  });
+});
