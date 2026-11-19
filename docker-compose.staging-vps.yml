@@ -447,6 +447,10 @@ services:
       # Same default-off ChatV2 rollout gate as production. Staging must prove
       # the capability before a production Doppler value is enabled.
       - MIRA_CHAT_V2_ENABLED=${MIRA_CHAT_V2_ENABLED:-0}
+      # Equipment-first navigation (#5625/#5642): the Hub's /api/equipment-browser/* routes and the
+      # Find equipment panel. Default off; staging only — the production compose does not list it,
+      # so a Doppler factorylm/prd value cannot reach production.
+      - MIRA_EQUIPMENT_NAV=${MIRA_EQUIPMENT_NAV:-0}
       # Per-turn output ceiling under the seam (cost guard).
       - MIRA_TURN_MAX_OUTPUT_TOKENS=${MIRA_TURN_MAX_OUTPUT_TOKENS:-4000}
       - HUB_CMMS_API_URL=http://stg-atlas-api:8080

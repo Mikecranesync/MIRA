@@ -1269,9 +1269,9 @@ capabilities:
     evidence: []
     rollback: "n/a - off in every environment; flag off returns 404 and the Hub renders nothing."
     reason: >-
-      Not deployed. The staging compose does not forward MIRA_EQUIPMENT_NAV
-      (a guarded file), so staging stays off until Mike authorizes that edit, the
-      Doppler stg write and a staging deploy.
+      Not deployed yet. Mike authorized (2026-11-19) forwarding MIRA_EQUIPMENT_NAV
+      in the staging compose only (default 0), the Doppler stg write and a staging
+      deploy; the production compose does not forward it, so production stays off.
     promotion_criteria:
       - "Mike authorizes forwarding MIRA_EQUIPMENT_NAV in docker-compose.staging-vps.yml, setting it in factorylm/stg, and a staging deploy."
       - "Staging walk on the Galaxy Tab S9 FE: find the drive and the MLC by browse and by search, ask about each, reload and recover; stale-record and no_link negatives refuse with a notice."
