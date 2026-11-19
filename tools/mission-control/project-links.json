@@ -6,7 +6,7 @@
         "issue": 5617,
         "prs": [5625],
         "checks": ["FIND-03", "FIND-04", "FIND-05", "FIND-08", "FIND-09"],
-        "remaining": "Qualify the Hub repair through review and CI. Verify the live routes and walk the connected tablet."
+        "remaining": "Qualify the Hub repair through review and CI. Deploy the repair and version probe with equipment navigation enabled in the staging container, verify the live routes, then walk the connected tablet."
       },
       {
         "issue": 5624,

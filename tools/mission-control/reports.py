@@ -8,8 +8,9 @@ enum reads "unparsed". A report never implies success on its own (see lifecycle.
 
 from __future__ import annotations
 
+import json
 import re
-from typing import Optional
+from typing import NamedTuple, Optional
 
 MARKER_RE = re.compile(r"^\[DELIVERY-UPDATE:\s*([A-Z0-9-]+)\s*\]\s*$")
 STATES = ("ACTIVE", "BLOCKED", "HANDOFF", "COMPLETE")
@@ -17,6 +18,7 @@ EVIDENCE = ("VERIFIED", "REPORTED", "NOT TESTED")
 STAGES = ("local", "review/CI", "staging", "device", "human", "production")
 SHA_RE = re.compile(r"\b[0-9a-f]{40}\b")
 ITEM_RE = re.compile(r"#(\d{2,6})\b")
+CAPABILITY_CANDIDATE = re.compile(r"Capability candidate: #([1-9]\d{0,5}) @ ([0-9a-f]{40})")
 
 NOT_STATED = "not stated"
 UNPARSED = "unparsed"
@@ -46,13 +48,13 @@ def _top_block(body: str) -> list[str]:
     started = False
     for ln in lines:
         if not started:
-            if ln.lstrip().startswith("<details"):
+            if ln.lstrip().lower().startswith("<details"):
                 return []
             if MARKER_RE.match(ln.strip()):
                 started = True
                 out.append(ln.strip())
             continue
-        if ln.lstrip().startswith("<details") or MARKER_RE.match(ln.strip()):
+        if ln.lstrip().lower().startswith("<details") or MARKER_RE.match(ln.strip()):
             break
         out.append(ln.rstrip())
     return out
@@ -71,27 +73,78 @@ def _enum(value: str, allowed: tuple[str, ...]) -> str:
     return UNPARSED
 
 
-def _report_prose(lines: list[str]) -> tuple[list[str], bool]:
-    """Exclude well-formed capability-only references from production readiness."""
-    prose, fence = [], None
-    for index, line in enumerate(lines):
-        if line.strip() == "```capability-results":
-            if fence is not None:
-                return lines, True
-            fence = index
-        elif fence is not None:
-            if line.strip() == "```":
-                fence = None
-        elif not line.strip().lower().startswith("capability candidate:"):
-            prose.append(line)
-    return (lines, True) if fence is not None else (prose, False)
+class CapabilityFields(NamedTuple):
+    candidate: Optional[tuple[int, str]] = None
+    candidate_provided: bool = False
+    results: Optional[dict] = None
+    excluded: frozenset[int] = frozenset()
+    malformed: bool = False
+
+
+def _capability_fields(lines: list[str]) -> CapabilityFields:
+    """Read live capability fields and identify their exact source lines."""
+    raw = "\n".join(lines)
+    lowered = raw.lower()
+    if "capability candidate:" not in lowered and "capability-results" not in lowered:
+        return CapabilityFields()
+    try:
+        from markdown_it import MarkdownIt
+    except ImportError:
+        # Unqualified installations keep the raw report and fail readiness closed.
+        return CapabilityFields(malformed=True)
+
+    tokens = MarkdownIt("commonmark").parse(raw)
+    fences = [token for token in tokens if token.type == "fence" and token.level == 0
+              and token.info.strip().split()[:1] == ["capability-results"]]
+    if len(fences) > 1:
+        return CapabilityFields(malformed=True)
+    excluded: set[int] = set()
+    results = None
+    if fences:
+        fence = fences[0]
+        start, end = fence.map
+        if (end - start < 3 or lines[start] != "```capability-results"
+                or lines[end - 1] != "```"):
+            return CapabilityFields(malformed=True)
+        try:
+            results = json.loads(fence.content)
+        except ValueError:
+            return CapabilityFields(malformed=True)
+        if not isinstance(results, dict):
+            return CapabilityFields(malformed=True)
+        excluded.update(range(start, end))
+
+    candidate_lines = []
+    for previous, inline in zip(tokens, tokens[1:]):
+        if (previous.type, previous.level, inline.type) != ("paragraph_open", 0, "inline"):
+            continue
+        start, end = inline.map
+        visible = "".join(child.content if child.type == "text" else
+                          "\n" if child.type in {"softbreak", "hardbreak"} else ""
+                          for child in inline.children or []).split("\n")
+        if len(visible) != end - start:
+            continue
+        for index, field in enumerate(visible, start):
+            if (field.lower().startswith("capability candidate:")
+                    and lines[index].lower().startswith("capability candidate:")):
+                candidate_lines.append(field if lines[index] == field else "")
+                excluded.add(index)
+    match = CAPABILITY_CANDIDATE.fullmatch(candidate_lines[0]) if len(candidate_lines) == 1 else None
+    candidate = (int(match[1]), match[2]) if match else None
+    return CapabilityFields(candidate, bool(candidate_lines), results, frozenset(excluded))
+
+
+def read_capability_fields(body: str) -> CapabilityFields:
+    return _capability_fields(_top_block(body))
 
 
 def parse(body: str) -> Optional[dict]:
     """Return the report dict for the top block, or None if the body is not a report."""
-    block, malformed = _report_prose(_top_block(body or ""))
+    block = _top_block(body or "")
     if not block:
         return None
+    fields = _capability_fields(block)
+    block = [line for index, line in enumerate(block) if index not in fields.excluded]
     lane = MARKER_RE.match(block[0]).group(1)  # type: ignore[union-attr]
     found: dict[str, str] = {}
     for ln in block[1:]:
@@ -122,6 +175,6 @@ def parse(body: str) -> Optional[dict]:
         else:
             r[key] = raw
     r["items"] = items
-    if malformed:
+    if fields.malformed:
         r["malformed_capability"] = True
     return r

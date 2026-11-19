@@ -180,6 +180,37 @@ def test_candidates_are_never_silently_capped():  # F12
     assert len(out) == 26 and 125 in out
 
 
+def test_poll_refreshes_cached_candidates_from_an_unchanged_comment(tmp_path):
+    store = store_mod.Store(tmp_path / "mc.sqlite")
+    handler = H(Snap([CARD], at=NOW))
+    body = (
+        "[DELIVERY-UPDATE: CHARLIE-CODEX]\nUpdated: 2026-11-12T23:00:00Z\n"
+        f"Capability candidate: #5625 @ {'a' * 40}\nNext: merge #5666\n"
+    )
+    comment = {
+        "id": 77,
+        "html_url": f"https://github.com/{runtime.REPO}/issues/{runtime.COORD_ISSUE}#issuecomment-77",
+        "updated_at": "2026-11-12T23:00:00Z",
+        "user": {"login": "owner"},
+        "body": body,
+    }
+    stored = poll_mod.webhook.comment_report({"comment": comment}, ("owner",), poll_mod.reports.parse)
+    stored["parsed"]["items"] = [5625, 5666]  # cached by the pre-workflow parser
+    assert store.put_report(stored)
+    assert runtime.candidates(handler, store, now=NOW) == [13, 5625, 5666]
+
+    def get(url, headers=None):
+        assert url == COMMENTS_URL
+        return 200, {}, [comment]
+
+    assert poll_mod.poll_reports(get, runtime.REPO, runtime.COORD_ISSUE, store, ("owner",)) == 1
+    assert runtime.candidates(handler, store, now=NOW) == [13, 5666]
+    reparsed = store.reports()[0]
+    assert reparsed["updated_at"] == stored["updated_at"]
+    assert reparsed["raw"] == body
+    assert poll_mod.poll_reports(get, runtime.REPO, runtime.COORD_ISSUE, store, ("owner",)) == 0
+
+
 def test_a_transport_failure_during_the_poll_marks_evidence_errored():  # r5 F15
     import httpx
 

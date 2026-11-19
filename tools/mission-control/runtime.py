@@ -90,7 +90,7 @@ def candidates(handler, store, now: Optional[dt.datetime] = None, max_age: int =
     for r in store.reports():
         if r["trusted"]:
             if r["parsed"].get("malformed_capability"):
-                raise RuntimeError("trusted report has an unclosed capability-results fence")
+                raise RuntimeError("trusted report has an invalid capability-results block")
             nums.extend(int(n) for n in r["parsed"].get("items", []))
     return list(dict.fromkeys(nums))  # never capped: evidence.fetch_prs batches the query
 

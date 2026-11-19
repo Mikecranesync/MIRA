@@ -9,6 +9,8 @@ import logging
 import posixpath
 import re
 
+from mission_control_reports import read_capability_fields
+
 log = logging.getLogger("mission-control.workflow")
 ROADMAP = "docs/plans/capability-roadmap.md"
 SHA = re.compile(r"[0-9a-f]{40}")
@@ -17,7 +19,6 @@ GENERATION = re.compile(r"[A-Za-z0-9_.:-]{1,100}")
 CHECK_ID = re.compile(r"[A-Z][A-Z0-9-]*-\d+")
 STATES = {"PASS", "FAIL", "BLOCKED", "NOT TESTED"}
 PLAN_PATH = re.compile(r"[a-z0-9][a-z0-9-]*\.md")
-BLOCK = re.compile(r"^```capability-results\s*\n(.*?)\n```\s*$", re.M | re.S)
 
 
 def _tokens(markdown):
@@ -206,18 +207,8 @@ def _results_digest(data):
 
 
 def _read_report(report):
-    # Keep old versions in the existing report's <details> history.
-    current = re.split(r"(?mi)^\s*<details\b", report.get("raw") or "", maxsplit=1)[0]
-    blocks = BLOCK.findall(current)
-    if not blocks:
-        return {}
-    if len(blocks) != 1:
-        return None
-    try:
-        data = json.loads(blocks[0])
-    except ValueError:
-        return None
-    return data if isinstance(data, dict) else None
+    fields = read_capability_fields(report.get("raw") or "")
+    return None if fields.malformed else fields.results or {}
 
 
 def _coordinator(reports, report_id, issue_url):
@@ -269,24 +260,19 @@ def verify_decision(get, repo, issue, reports, report_id, owner):
     return {"url": url, "envelope": expected} if envelope == expected else None
 
 
-def _capability_candidate(report):
-    raw = report.get("raw") or ""
-    top = re.split(r"(?mi)^\s*<details\b", raw, maxsplit=1)[0]
-    lines = re.findall(r"(?mi)^Capability candidate:[^\n]*", top)
-    if not lines:
-        return None, False
-    match = re.fullmatch(r"Capability candidate: #([1-9]\d*) @ ([0-9a-f]{40})", lines[0])
-    return ((int(match[1]), match[2]), True) if len(lines) == 1 and match else (None, True)
-
-
 def coordinator_pr(state, reports, report_id, issue_url=None):
     rep = _coordinator(reports, report_id, issue_url)
-    explicit, provided = _capability_candidate(rep)
-    if provided:
-        return explicit[0] if explicit else None
+    return _candidate_number(rep, read_capability_fields(rep.get("raw") or ""))
+
+
+def _candidate_number(rep, fields):
+    if fields.malformed:
+        return None
+    if fields.candidate_provided:
+        return fields.candidate[0] if fields.candidate else None
     # Before the first structured result, the old report can guide the action
     # display. It cannot establish the current candidate for acceptance.
-    if _read_report(rep):
+    if fields.results is not None:
         return None
     raw = rep.get("raw") or ""
     match = re.search(r"(?m)^Branch / SHA:[^\n]*?#([1-9]\d*)", raw.split("<details>", 1)[0])
@@ -337,11 +323,12 @@ def project(state, reports, evidence, now, *, report_id, max_age_seconds, report
     if not docs:
         return {"status": "Plan unavailable", "error": state.get("error"), "ledger_url": issue_url}
     rep = _coordinator(reports, report_id, issue_url)
-    raw = _read_report(rep)
+    fields = read_capability_fields(rep.get("raw") or "")
+    raw = None if fields.malformed else fields.results or {}
     block = raw or {}
     bound = block.get("plan_revision") == docs["revision"] and block.get("step") == docs["current"]["number"]
     data = block if bound else {}
-    pr = coordinator_pr(state, reports, report_id, issue_url)
+    pr = _candidate_number(rep, fields)
     row = next((r for r in evidence.get("rows", []) if r["number"] == pr), {})
     cells = row.get("cells", {})
     review = cells.get("REVIEWED") or {"on": False, "label": "Review evidence unavailable"}
@@ -349,7 +336,7 @@ def project(state, reports, evidence, now, *, report_id, max_age_seconds, report
     env, build = data.get("environment"), data.get("build")
     runtime = (evidence.get("envs") or {}).get(env) or {} if isinstance(env, str) else {}
     head = data.get("head")
-    explicit, _provided = _capability_candidate(rep)
+    explicit = fields.candidate
     candidate_conflict = bound and (explicit is None or explicit != (data.get("pr"), head))
     head_matches = (not candidate_conflict and isinstance(head, str) and SHA.fullmatch(head)
                     and head == row.get("head_sha"))

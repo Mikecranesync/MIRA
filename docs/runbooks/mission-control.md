@@ -107,15 +107,45 @@ Mission Control retrieves the comment and verifies the configured decision autho
 and matching fields. The normalized results digest changes when an observation
 or receipt changes. The configured environment version endpoint must supply
 `runtimeGeneration` and `configurationSha256` for the effective configuration.
-Ship this revision of the Hub version probe in the normal staging
-release before qualifying FIND-09. Its digest covers the effective equipment
-navigation switch; it does not include secret environment values. Older
-endpoints keep reporting their build version and leave acceptance unverified. A Projects board outage leaves the separately polled workflow usable.
-Keep previous
-runs linked in the existing comment history. Blank results display as NO RECEIPT.
+The digest covers the effective equipment navigation switch without exposing
+secret environment values. Older endpoints can report the build version while
+leaving acceptance unverified. A Projects board outage leaves the separately
+polled workflow usable. Link previous runs in the comment history. Blank
+results display as NO RECEIPT.
 Rows whose plan/build differs stay historical. Candidate review and CI, deployed
 ancestry, running build, and all required check receipts must agree before the
 page displays Accepted. That label concerns the named capability and environment.
+
+#### FIND-09 staging runtime prerequisites
+
+The [equipment navigation repair PR](https://github.com/Mikecranesync/MIRA/pull/5625#not-done-here-decisions-and-follow-ups)
+records that the staging Compose service does not pass `MIRA_EQUIPMENT_NAV`
+into its Hub container. The Hub defaults to off, so a staging Doppler change
+alone cannot enable the navigator. Close the runtime portion of the
+[Hub integration gap](https://github.com/Mikecranesync/MIRA/issues/5617) in this
+order:
+
+1. Have the staging owner get approval for the guarded Compose change and map
+   `MIRA_EQUIPMENT_NAV` into the staging Hub service with an off default. Compose
+   the reviewed navigation repair and the Hub version probe in the approved
+   staging build. When combining them, have the version probe use the same
+   `equipmentNavEnabled()` reader as the equipment routes so its digest
+   describes the setting those routes apply.
+2. Use the [normal staging deploy](staging-vps.md#routine-deploy) to verify the
+   composed build with the staging flag off and then with approved
+   `MIRA_EQUIPMENT_NAV=1`. On each deployment record the approved build SHA and
+   the staging `/api/version` response's `gitSha`, `runtimeGeneration`, and
+   `configurationSha256`. With a supported staging login, confirm the real
+   `/api/equipment-browser/children` route returns `404 equipment_nav_disabled`
+   while off and that browse and resolve work against the staging database and
+   proxy while on. Confirm the configuration digest changes and the earlier
+   runtime receipt becomes historical after the redeploy.
+3. Verify that turning the flag off restores the prior flow and preserves saved
+   work. Attach the deployment, endpoint and rollback receipts to the
+   coordinator record. Keep FIND-09 blocked while any prerequisite is
+   outstanding. With a qualified enabled runtime, return to the connected
+   Galaxy Tab S9 FE walkthrough for FIND-08 and FIND-10. Mocked API checks and a
+   reachable Mission Control login are separate evidence.
 
 For the initial rollout, `MC_ROADMAP_REF=b07057c6255b4608faa243ca59becdc3b706456a`
 selects the published proposal for Find the Right Equipment. Remove that pin after

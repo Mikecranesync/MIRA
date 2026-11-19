@@ -406,6 +406,7 @@ def test_ambiguous_candidate_references_cannot_keep_an_old_acceptance():
         f"Capability candidate: #5625 superseded by #5630 @ {HEAD}",
         "Capability candidate: #5625 @ 23456abcd",
         f"Capability candidate: #5625 @ {HEAD}\nCapability candidate: #5630 @ {HEAD}",
+        f"Capability candidate: #5625 @ {HEAD}\nCapability candidate: [#5630](https://example.com)",
     ):
         value = report()
         value["raw"] = value["raw"].replace(f"Capability candidate: #5625 @ {HEAD}", line)
@@ -414,12 +415,28 @@ def test_ambiguous_candidate_references_cannot_keep_an_old_acceptance():
         assert all(row["history"] for row in projected["checks"])
 
 
+def test_archived_examples_cannot_continue_acceptance():
+    live = report()
+    candidate = f"Capability candidate: #5625 @ {HEAD}"
+    assert project(live)["status"] == "Accepted"
+    assert project({**live, "raw": live["raw"] + "\n<details>\n\n" + live["raw"] + "\n</details>"})[
+        "status"
+    ] == "Accepted"
+
+    variants = (
+        live["raw"].replace(candidate, f"```text\n{candidate}\n```"),
+        live["raw"].replace(candidate, f"`\n{candidate}\n`"),
+        live["raw"].replace("\n```capability-results\n", "\n````example\n```capability-results\n")
+        + "\n````",
+        live["raw"].replace(candidate, f"<DETAILS>\n\n{candidate}") + "\n\n</DETAILS>",
+    )
+    for raw in variants:
+        assert project({**live, "raw": raw})["status"] != "Accepted"
+
+
 def test_capability_candidate_is_excluded_but_unclosed_fence_blocks_production():
     raw = report()["raw"] + "\nNext: follow up on production #5666"
     assert server.reports.parse(raw)["items"] == [5666]
-    broken = raw.replace("\n```\nNext:", "\nNext:")
-    parsed = server.reports.parse(broken)
-    assert parsed["malformed_capability"] and 5666 in parsed["items"]
 
     class Snap:
         def get(self):
@@ -433,15 +450,25 @@ def test_capability_candidate_is_excluded_but_unclosed_fence_blocks_production()
         snapshot = Snap()
 
     class Store:
-        def reports(self):
-            return [{"trusted": 1, "parsed": parsed}]
+        def __init__(self, parsed):
+            self.parsed = parsed
 
-    try:
-        server.runtime.candidates(Handler, Store(), now=NOW)
-    except RuntimeError as exc:
-        assert "unclosed capability-results fence" in str(exc)
-    else:
-        raise AssertionError("Readiness accepted a malformed authoritative report")
+        def reports(self):
+            return [{"trusted": 1, "parsed": self.parsed}]
+
+    broken = raw.replace("\n```\nNext:", "\nNext:")
+    later_example = "\n\n```text\nExample\n```"
+    assert server.runtime.candidates(Handler, Store(server.reports.parse(raw + later_example)), now=NOW) == [7, 5666]
+    duplicate = raw + "\n\n```capability-results\n{}\n```"
+    for malformed in (broken, broken + later_example, duplicate):
+        parsed = server.reports.parse(malformed)
+        assert parsed["malformed_capability"] and 5666 in parsed["items"]
+        try:
+            server.runtime.candidates(Handler, Store(parsed), now=NOW)
+        except RuntimeError as exc:
+            assert "invalid capability-results block" in str(exc)
+        else:
+            raise AssertionError("Readiness accepted a malformed authoritative report")
 
 
 def test_live_hub_probe_fields_map_to_acceptance_runtime():

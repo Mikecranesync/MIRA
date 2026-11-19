@@ -124,12 +124,22 @@ def test_an_older_report_version_never_overwrites_a_newer_one(tmp_path):  # F5
     assert s.put_report(report(1, "2026-11-12T23:30:00Z", parsed={"state": "COMPLETE"})) is True
 
 
+def test_same_version_parser_refresh_cannot_replace_report_source_data(tmp_path):
+    s = store.Store(tmp_path / "mc.sqlite")
+    original = report()
+    assert s.put_report(original)
+    for changed in ({"raw": "different comment"}, {"author": "stranger"}, {"trusted": 0}):
+        assert not s.put_report({**original, **changed, "parsed": {"state": "COMPLETE"}})
+    assert s.reports() == [original]
+
+
 def test_deleted_reports_are_tombstoned_against_late_deliveries(tmp_path):  # F9
     s = store.Store(tmp_path / "mc.sqlite")
     s.put_report(report(1))
     s.delete_report(1, permanent=True)  # the comment itself is gone
     assert s.reports() == []
     assert s.put_report(report(1, "2026-11-12T23:59:00Z")) is False  # a replay cannot resurrect it
+    assert s.put_report(report(1, parsed={"state": "COMPLETE"})) is False
     assert s.reports() == []
     assert s.put_report(report(2)) is True  # control: a new comment id is unaffected
 
