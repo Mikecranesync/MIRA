@@ -23,11 +23,14 @@ export async function observeManualUpload(
   };
   return runWorkflow({ workflowName: "manual_upload", observation, store }, async (run) => {
     const stoppedWaiting = () => {
+      if (observation.cancellation.requested) return;
       observation = { ...observation, cancellation: { requested: true, scope: "client_wait", acknowledged: false }, observedAt: new Date().toISOString() };
       void run.checkpoint(observation);
     };
     input.signal.addEventListener("abort", stoppedWaiting, { once: true });
     try {
+      // Abort events are not replayed when they occurred during _begin().
+      if (input.signal.aborted) stoppedWaiting();
       await run.checkpoint(observation);
       const response = await operation(); // exactly once; never replay on an observation failure
       let body: Record<string, unknown> = {};

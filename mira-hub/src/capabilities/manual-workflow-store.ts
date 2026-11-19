@@ -4,6 +4,13 @@ import { withTenantContext } from "@/lib/tenant-context";
 import { findDuplicateUpload, getUpload } from "@/lib/uploads";
 import { parseWorkflowObservation, type WorkflowObservation } from "@/lib/workflow-contract";
 import { projectManualQuestion, type ManualWorkflowFacts } from "./manual-question-workflow";
+import type { TurnOutcome } from "./observability/turn-lifecycle";
+
+// Reader validation stays exhaustive against the existing ledger's vocabulary.
+const TURN_OUTCOMES = {
+  answered: true, refused: true, abstained: true, safety_stop: true, error: true,
+  timeout: true, cancelled: true, superseded: true, abandoned: true,
+} satisfies Record<TurnOutcome, true>;
 
 export async function inspectManualQuestion(input: { tenantId: string; userId: string; notebookId: string; fileId: string; clientRequestId?: string; threadId?: string }) {
   const { tenantId, notebookId, fileId } = input;
@@ -75,15 +82,23 @@ export async function inspectManualQuestion(input: { tenantId: string; userId: s
     if (t) {
       const evidence: Record<string, unknown>[] = Array.isArray(t.evidence) ? t.evidence : [];
       let cancelled = false;
-      try {
-        // Join only through the already owner-authorized turn, never a guessed request key.
-        const { rows } = await withTenantContext(tenantId, (c) => c.query(
-          `SELECT outcome FROM decision_traces WHERE tenant_id = $1 AND notebook_id = $2::uuid
-             AND turn_id = $3::uuid AND lifecycle = 'closed' ORDER BY finished_at DESC LIMIT 1`,
-          [tenantId, notebookId, t.id],
-        ));
-        cancelled = rows[0]?.outcome === "cancelled";
-      } catch { visibilityGaps.push("turn_outcome_unavailable"); }
+      // A pending turn is not expected to have a closed outcome yet.
+      if (t.client_request_state === "complete") {
+        try {
+          // Join only through the already owner-authorized turn, never a guessed request key.
+          const { rows } = await withTenantContext(tenantId, (c) => c.query(
+            `SELECT outcome FROM decision_traces WHERE tenant_id = $1 AND notebook_id = $2::uuid
+               AND turn_id = $3::uuid AND lifecycle = 'closed' ORDER BY finished_at DESC LIMIT 1`,
+            [tenantId, notebookId, t.id],
+          ));
+          const outcome: unknown = rows[0]?.outcome;
+          if (typeof outcome !== "string" || !Object.hasOwn(TURN_OUTCOMES, outcome)) {
+            visibilityGaps.push("turn_outcome_unavailable");
+          } else {
+            cancelled = outcome === "cancelled";
+          }
+        } catch { visibilityGaps.push("turn_outcome_unavailable"); }
+      }
       turn = { id: t.id, state: t.client_request_state, status: t.answer_status, stale: Boolean(t.stale),
         usesDocument: Boolean(t.client_request_state === "pending" ? t.pending_scope : t.completed_scope),
         answerPresent: t.answer_present, safetyStopped: evidence.some((e) => e.kind === "safety_stop"), cancelled,

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { observeManualUpload } from "../manual-upload-workflow";
 import type { FinalizeInput, WorkflowStore } from "@/lib/workflow";
 
@@ -20,6 +20,7 @@ describe("manual upload observation adapter", () => {
     const result = await observeManualUpload(input(), async () => { calls++; return response; }, s);
     expect(result).toBe(response); expect(calls).toBe(1);
     expect(latest(s).state).toBe("succeeded");
+    expect(latest(s).definition).toEqual({ name: "manual_upload", version: "1.0.1" });
     expect(latest(s).evidence).toContainEqual({ kind: "document", id: docId });
     expect(JSON.stringify([...s.finals, ...s.progress])).not.toContain("private.pdf");
     expect(result.headers.get("X-Mira-Workflow-Run-Id")).toBe(latest(s).identity.attemptId);
@@ -43,6 +44,58 @@ describe("manual upload observation adapter", () => {
     }, s);
     expect(s.progress.some((r) => JSON.parse(r.output!).workflow.cancellation.requested)).toBe(true);
     expect(latest(s)).toMatchObject({ state: "succeeded", cancellation: { requested: true, scope: "client_wait", acknowledged: false } });
+  });
+  it("retains a cancellation already requested before recorder creation", async () => {
+    const s = sink(); const abort = new AbortController(); abort.abort();
+    let calls = 0;
+    await observeManualUpload(input(abort.signal), async () => { calls++; return Response.json({ indexed: true, uploadId: docId }); }, s);
+    expect(calls).toBe(1);
+    expect(latest(s)).toMatchObject({ state: "succeeded", cancellation: { requested: true, scope: "client_wait", acknowledged: false } });
+  });
+  it.each(["resolves", "rejects"])("records an abort while recorder creation is pending and then %s", async (outcome) => {
+    const s = sink(); const abort = new AbortController();
+    let release!: () => void;
+    const response = Response.json({ indexed: true, uploadId: docId });
+    const operation = vi.fn(async () => response);
+    const store: WorkflowStore = { ...s, create: (r) => new Promise((resolve, reject) => {
+      release = () => outcome === "resolves"
+        ? resolve({ runId: r.runId, alreadySucceeded: false, retryCount: 0 })
+        : reject(new Error("declared recorder failure"));
+    }) };
+    const pending = observeManualUpload(input(abort.signal), operation, store);
+    abort.abort(); release();
+    expect(await pending).toBe(response);
+    expect(operation).toHaveBeenCalledTimes(1);
+    if (outcome === "resolves") {
+      expect(latest(s).cancellation).toEqual({ requested: true, scope: "client_wait", acknowledged: false });
+    } else {
+      // No durable observation can be asserted when row creation failed.
+      expect(s.finals).toHaveLength(0); expect(s.progress).toHaveLength(0);
+    }
+  });
+  it("retains the stop when metadata creation times out and later completes", async () => {
+    vi.useFakeTimers();
+    try {
+      const s = sink(); const abort = new AbortController(); let release!: () => void;
+      const store: WorkflowStore = { ...s, create: (r) => new Promise((resolve) => {
+        release = () => resolve({ runId: r.runId, alreadySucceeded: false, retryCount: 0 });
+      }) };
+      const operation = vi.fn(async () => Response.json({ indexed: true, uploadId: docId }));
+      const pending = observeManualUpload(input(abort.signal), operation, store);
+      abort.abort(); await vi.advanceTimersByTimeAsync(2000); await pending;
+      expect(operation).toHaveBeenCalledTimes(1);
+      expect(s.finals).toHaveLength(0);
+      release(); await vi.advanceTimersByTimeAsync(1);
+      expect(latest(s)).toMatchObject({ state: "succeeded", cancellation: { requested: true, scope: "client_wait", acknowledged: false } });
+    } finally { vi.useRealTimers(); }
+  });
+  it("removes the stop listener once the domain operation finishes", async () => {
+    const s = sink(); const abort = new AbortController();
+    await observeManualUpload(input(abort.signal), async () => Response.json({ indexed: true, uploadId: docId }), s);
+    const count = s.progress.length;
+    abort.abort(); await Promise.resolve();
+    expect(s.progress).toHaveLength(count);
+    expect(latest(s).cancellation.requested).toBe(false);
   });
   it("recorder failure never retries, discards, or changes an accepted domain response", async () => {
     let calls = 0; const unavailable: WorkflowStore = { create: async () => { throw new Error("down"); }, finalize: async () => { throw new Error("down"); } };
