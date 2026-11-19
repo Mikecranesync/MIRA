@@ -70,7 +70,9 @@ def recall_knowledge(
       isa95_prefix — scope to an ISA-95 subtree (e.g. 'Plant/Line2/').
       data_types   — one of data_types.ALL values; multiple OK.
     """
-    clauses = ["tenant_id = :tid", "embedding IS NOT NULL"]
+    # #5646: never serve a Hub row released under a reviewed table approval; the Hub alone
+    # decides whether that approval is still enabled (see mira-bots/shared/neon_recall.py).
+    clauses = ["tenant_id = :tid", "embedding IS NOT NULL", "(metadata->>'table_reviewed') IS NULL"]
     params: dict[str, Any] = {
         "emb": str(embedding),
         "tid": tenant_id,
@@ -124,6 +126,7 @@ def recall_by_image(
                 FROM knowledge_entries
                 WHERE tenant_id = :tid
                   AND image_embedding IS NOT NULL
+                  AND (metadata->>'table_reviewed') IS NULL
                 ORDER BY image_embedding <=> cast(:emb AS vector)
                 LIMIT :lim
             """),

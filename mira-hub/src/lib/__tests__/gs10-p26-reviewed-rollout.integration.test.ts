@@ -37,6 +37,7 @@ const { testPool, BYTES, BYTES_B, pins } = vi.hoisted(() => {
   process.env.NODE_EMBED_ON_WRITE = "0";
   process.env.NOTEBOOK_HYBRID_RETRIEVAL = "0";
   process.env.NOTEBOOK_RERANK = "0";
+  process.env.OLLAMA_BASE_URL = "http://127.0.0.1:9"; // asset enrichment's embedder is unreachable: its text search runs
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { Pool: PgPool } = require("pg");
   return {
@@ -104,7 +105,8 @@ vi.mock("@/capabilities/pdf-page-label-reader", () => ({ readPageLabelsBounded: 
 
 import { reprocessNodeDocument } from "@/lib/node-knowledge-ingest";
 import { linkFileToUpload, parkOrReuseFile } from "@/lib/workspace-files";
-import { retrieveCitedPageChunks, retrieveNodeChunks } from "@/lib/manual-rag";
+import { retrieveCitedPageChunks, retrieveManualChunks, retrieveNodeChunks } from "@/lib/manual-rag";
+import { searchKB } from "@/lib/agents/asset-intelligence";
 
 const TENANT = randomUUID();
 const NODE = randomUUID();
@@ -192,6 +194,12 @@ async function docChat(docId: string, question = "GS11N-20P2 rated input current
   const node = (await testPool.query<{ n: string }>("SELECT kg_entity_id::text AS n FROM hub_uploads WHERE id = $1::uuid", [docId])).rows[0].n;
   return retrieveNodeChunks(client, TENANT, question, { nodeId: node, unsPath: null, docId, approvedSourceDocIds: [docId] });
 }
+/** The manual-library search hub ask and asset chat run when no maker is named (tenant fallback). */
+async function library() {
+  return retrieveManualChunks(client, TENANT, "GS11N-20P2 Rated Input Current", { topK: 50 });
+}
+/** The chunks of one upload (node document source URLs carry the upload id). */
+const ofDoc = <T extends { sourceUrl?: string | null }>(docId: string, chunks: T[]) => chunks.filter((c) => (c.sourceUrl ?? "").includes(docId));
 /** Any chunk that would carry a withdrawn value into an answer. */
 const carries51 = (chunks: Array<{ content: string }>) => chunks.filter((c) => c.content.includes("5.1 A"));
 /** The rollback fence for retiring the read check: rows still carrying a release stamp. */
@@ -407,8 +415,19 @@ describe.skipIf(!READY)("GS10 page 26 reviewed pin: stored rows on rollout and w
     pins.reverted = false; pins.lateWriter = false;
     const doc = await newUpload();
     expect((await reprocessNodeDocument({ tenantId: TENANT, uploadId: doc, bytes: BYTES })).action).toBe("reprocessed");
-    // Released: both routes find page 26 (so the withdrawal below is not vacuous).
+    // Released: every route finds page 26 (so the withdrawal below is not vacuous).
     expect(carries51(await docChat(doc)).length).toBeGreaterThan(0);
+    expect(carries51(ofDoc(doc, await library())).length).toBeGreaterThan(0);
+    // Asset enrichment reads at most 5 rows tenant-wide, so it gets a tenant of its own holding a
+    // copy of exactly this upload's stamped GS11N-20P2 row.
+    const enrichTenant = randomUUID();
+    await testPool.query(
+      `INSERT INTO knowledge_entries (id, tenant_id, doc_id, content, source_type, source_url, source_page, page_start, page_end, metadata, is_private, verified, ingest_route)
+       SELECT gen_random_uuid(), $2::uuid, doc_id, content, source_type, source_url, source_page, page_start, page_end, metadata, is_private, verified, ingest_route
+         FROM knowledge_entries WHERE tenant_id = $1::uuid AND doc_id = $3::uuid AND content LIKE '%' || $4 || '%'`,
+      [TENANT, enrichTenant, doc, LINE_5_1]);
+    const enrich = () => searchKB(enrichTenant, "GS11N-20P2 Rated Input Current");
+    expect(carries51(ofDoc(doc, await enrich())).length).toBeGreaterThan(0);
     expect((await ask(doc, "GS11N-20P2")).cites51.map((c) => c.sourcePage)).toEqual([26]);
     const before = await stored(doc);
     const page26 = before.filter((r) => r.page === 26);
@@ -421,13 +440,20 @@ describe.skipIf(!READY)("GS10 page 26 reviewed pin: stored rows on rollout and w
     expect(carries51((await ask(doc, "GS11N-20P2")).chunks)).toEqual([]);
     const cited = await retrieveCitedPageChunks(client, TENANT, [{ docId: doc, sourceUrl, page: 26 }], { keep: () => true });
     expect(carries51(cited)).toEqual([]);
+    // Tenant-wide routes also see other uploads of this tenant (withheld, unstamped rows from the
+    // other tests are main's baseline), so these are held to this upload's own rows.
+    expect(carries51(ofDoc(doc, await library()))).toEqual([]); // hub ask / asset chat: the library search, no maker named
+    expect(carries51(ofDoc(doc, await enrich()))).toEqual([]); // asset enrichment
     // Historical evidence is kept as it was: the rows, their text and their stamps.
     expect(await stored(doc)).toEqual(before);
     expect(page26.some((r) => r.content.includes(LINE_5_1))).toBe(true);
 
     pins.reverted = false; // enabled again: the same rows answer again, without a reprocess
     expect(carries51(await docChat(doc)).length).toBeGreaterThan(0);
+    expect(carries51(ofDoc(doc, await library())).length).toBeGreaterThan(0);
+    expect(carries51(ofDoc(doc, await enrich())).length).toBeGreaterThan(0);
     expect((await ask(doc, "GS11N-20P2")).cites51.map((c) => c.sourcePage)).toEqual([26]);
+    await testPool.query("DELETE FROM knowledge_entries WHERE tenant_id = $1::uuid", [enrichTenant]);
   });
 
   it("in-flight indexing: a late writer of the previous build commits released rows after the switch is off, and no route serves them", async () => {

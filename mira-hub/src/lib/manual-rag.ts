@@ -1409,6 +1409,7 @@ async function runBm25Query(
           ts_rank_cd(content_tsv, ${tsquery}) AS rank
         FROM knowledge_entries
         WHERE (is_private = false OR tenant_id = $1)
+          AND ${activeReleaseSql()}
           ${approvalFilterSql()}
           ${mfrClause}
           ${modelClause}
@@ -1497,6 +1498,7 @@ async function runBm25Query(
           2::float4 AS rank
         FROM knowledge_entries
         WHERE (is_private = false OR tenant_id = $1)
+          AND ${activeReleaseSql()}
           ${approvalFilterSql()}
           ${codeScope.mfrClause}
           ${codeScope.modelClause}

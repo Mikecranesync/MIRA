@@ -335,4 +335,13 @@ describe("retrieval reads the release stamp wherever it reads a row's model scop
     expect(cited).toBeGreaterThan(-1);
     expect(lines.slice(cited, next).some((l) => l.includes("AND ${activeReleaseSql()}"))).toBe(true);
   });
+  it.each([
+    ["lib/manual-rag.ts", 3], // the library search's BM25 and code lanes, and the cited-page read
+    ["capabilities/manual-safety-chapter.ts", 1], // Safety-chapter excerpts added to answers
+    ["capabilities/work-packet/document-text.ts", 1], // work-packet text when the file cannot be re-read
+    ["lib/agents/asset-intelligence.ts", 2], // asset enrichment hits (vector and text)
+  ] as const)("%s guards each of its %i other passage queries with the release guard (#5646 r4 F1)", (file, n) => {
+    const source = readFileSync(join(__dirname, "..", "..", file), "utf8");
+    expect(source.split("AND ${activeReleaseSql()}").length - 1).toBe(n);
+  });
 });

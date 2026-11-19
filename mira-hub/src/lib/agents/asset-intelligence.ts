@@ -15,6 +15,7 @@
 import path from "path";
 import fs from "fs/promises";
 import pool from "@/lib/db";
+import { activeReleaseSql } from "@/capabilities/table-rule-pins";
 import { withTenantContext } from "@/lib/tenant-context";
 
 // ── Output types ─────────────────────────────────────────────────────────────
@@ -142,6 +143,7 @@ export async function searchKB(
                   1 - (embedding <=> $2::vector) AS score
            FROM knowledge_entries
            WHERE (is_private = false OR tenant_id = $1)
+             AND ${activeReleaseSql()}
              AND embedding IS NOT NULL
            ORDER BY embedding <=> $2::vector
            LIMIT 5`,
@@ -161,6 +163,7 @@ export async function searchKB(
       `SELECT id::text, content, source_url
        FROM knowledge_entries
        WHERE (is_private = false OR tenant_id = $1)
+         AND ${activeReleaseSql()}
          AND to_tsvector('english', content) @@ plainto_tsquery('english', $2)
          ${excludeKeywords?.length ? `AND NOT (content ILIKE ANY($3))` : ""}
        LIMIT 5`,

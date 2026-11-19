@@ -29,6 +29,7 @@
  */
 import type { PoolClient } from "pg";
 import { extractManualSafetyStatement } from "@/capabilities/manual-safety-statement";
+import { activeReleaseSql } from "@/capabilities/table-rule-pins";
 import {
   approvalGateEnabled,
   approvedSourceFilterSql,
@@ -249,6 +250,7 @@ async function readChapterRows(
            FROM knowledge_entries
           WHERE tenant_id = $1
             AND ingest_route = 'v2'
+            AND ${activeReleaseSql()}
             ${approvedSourceFilterSql(admitApproved ? 9 : null)}
             AND (doc_id::text, source_url, COALESCE(page_start, source_page)) IN (
               SELECT * FROM unnest($2::text[], $3::text[], $4::int[])
