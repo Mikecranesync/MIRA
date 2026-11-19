@@ -82,7 +82,7 @@ export function EquipmentNav({
     onPickRef.current(next, pressedIn.current);
   }, { selection: () => null });
 
-  const { regionRef, room } = useRoomBelow(open, `${notice ?? ""}|${offer ? offerText(offer) : ""}|${asker.notice?.reason ?? ""}`);
+  const { regionRef, room } = useRoomBelow(open);
 
   if (!available) return null;
   return (
@@ -139,23 +139,41 @@ const SCROLL_REGION: CSSProperties = {
  *  (notebook-actions.ts) plus the trigger pill's 44px minimum (BenchComponents PILL_STYLE) and 16px
  *  for a pill that wraps to a second line. */
 const CHECKLIST_RESERVE = 68;
-/** The results never shrink below two 44px rows, even on a screen too short for everything. */
-const MIN_RESULTS = 88;
+/** The results never shrink below one 44px row, even on a screen too short for everything: an offer
+ *  or notice above them on a short landscape screen leaves little else (#5655 r1 F1). */
+const MIN_RESULTS = 44;
 
-/** The results' height cap from where the region starts on screen now: notices or an offer above it
- *  push it down, a rotation or a soft keyboard changes the window. Null until measured. */
-function useRoomBelow(open: boolean, layoutKey: unknown) {
+/** The results' height cap from where the region starts to the bottom of what is actually visible.
+ *  Re-measured when anything in the panel changes size (a notice, an offer, a wrapped line — r1 F3),
+ *  on a window resize, and on a visual-viewport resize or pan, which is how a soft keyboard shows up
+ *  in browsers that keep the layout viewport's height (r1 F2). Null until measured. */
+function useRoomBelow(open: boolean) {
   const regionRef = useRef<HTMLDivElement>(null);
   const [room, setRoom] = useState<number | null>(null);
   useLayoutEffect(() => {
     const el = regionRef.current;
     if (!open || !el) return;
-    const measure = () =>
-      setRoom(Math.max(MIN_RESULTS, Math.floor(window.innerHeight - el.getBoundingClientRect().top - CHECKLIST_RESERVE)));
+    const vv = window.visualViewport;
+    const measure = () => {
+      const bottom = vv ? vv.offsetTop + vv.height : window.innerHeight;
+      setRoom(Math.max(MIN_RESULTS, Math.floor(bottom - el.getBoundingClientRect().top - CHECKLIST_RESERVE)));
+    };
     measure();
+    // The panel's own size changes when anything above the results does; the cap depends only on
+    // where the results start, so a re-measure after the results themselves resize settles at once.
+    const panel = el.parentElement;
+    const observer = typeof ResizeObserver === "undefined" || !panel ? null : new ResizeObserver(measure);
+    if (observer && panel) observer.observe(panel);
     window.addEventListener("resize", measure);
-    return () => window.removeEventListener("resize", measure);
-  }, [open, layoutKey]);
+    vv?.addEventListener("resize", measure);
+    vv?.addEventListener("scroll", measure);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener("resize", measure);
+      vv?.removeEventListener("resize", measure);
+      vv?.removeEventListener("scroll", measure);
+    };
+  }, [open]);
   return { regionRef, room };
 }
 

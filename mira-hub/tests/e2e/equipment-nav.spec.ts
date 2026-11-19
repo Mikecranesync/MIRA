@@ -545,6 +545,29 @@ test("on a short landscape screen the results still scroll inside the panel; Clo
   await expect(page.getByTestId("bench-asking-about")).toBeInViewport({ ratio: 1 });
 });
 
+test("on a short landscape screen an offer above the results still leaves the checklist on screen (#5655 r1 F1)", async ({ page, context, baseURL }) => {
+  await page.setViewportSize({ width: 800, height: 350 });
+  await auth(context, baseURL!);
+  await routes(page, { enabled: true, resolve: "resolved", fullPage: 50 });
+  await page.goto(`/v3/?notebook=${NB}&thread=${THREAD}`);
+  await expect(panel(page)).toBeVisible();
+
+  await panel(page).getByRole("button", { name: "Find equipment" }).click();
+  await row(page, `notebook:${NB}`).click();
+  await expect(row(page, "notebook_component:00000000-0000-4000-8000-000000000000")).toBeAttached();
+  await row(page, "notebook_component:00000000-0000-4000-8000-000000000000").click();
+  await askAbout(page, "M1");
+  await expect(offer(page)).toBeVisible();
+
+  await panel(page).getByRole("button", { name: "Find equipment" }).click();
+  await row(page, `notebook:${NB}`).click();
+  await expect(row(page, "notebook_component:00000000-0000-4000-8000-000000000049")).toBeAttached();
+  await expect(offer(page)).toBeVisible();
+  const region = page.getByTestId("equipment-scroll");
+  expect(await region.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true);
+  await expect(page.getByTestId("bench-asking-about")).toBeInViewport({ ratio: 1 });
+});
+
 test("the open results sit on the panel's own surface in light and dark, so chat text never shows through (#5654)", async ({ page, context, baseURL }) => {
   await auth(context, baseURL!);
   await routes(page, { enabled: true, resolve: "resolved", fullPage: 50 });
