@@ -3,16 +3,10 @@ import { queryWorkflowObservation } from "@/lib/workflow";
 import pool from "@/lib/db";
 import { withTenantContext } from "@/lib/tenant-context";
 import { findDuplicateUpload, getUpload } from "@/lib/uploads";
-import { parseWorkflowObservation, type WorkflowObservation } from "@/lib/workflow-contract";
+import { parseWorkflowObservation, WORKFLOW_UUID, type WorkflowObservation } from "@/lib/workflow-contract";
 import { projectManualQuestion, type ManualWorkflowFacts } from "./manual-question-workflow";
-import type { TurnOutcome } from "./observability/turn-lifecycle";
-import { currentCancellationReceipt } from "./notebook-cancellation-receipt";
-
-// Reader validation stays exhaustive against the existing ledger's vocabulary.
-const TURN_OUTCOMES = {
-  answered: true, refused: true, abstained: true, safety_stop: true, error: true,
-  timeout: true, cancelled: true, superseded: true, abandoned: true,
-} satisfies Record<TurnOutcome, true>;
+import { validateChatSources } from "@/lib/equipment-notebooks";
+import { currentCancellationReceipt } from "@/lib/notebook-cancellation-receipt";
 
 export async function inspectManualQuestion(input: { tenantId: string; userId: string; notebookId: string; fileId: string; clientRequestId?: string; threadId?: string }) {
   const { tenantId, notebookId, fileId } = input;
@@ -95,7 +89,7 @@ export async function inspectManualQuestion(input: { tenantId: string; userId: s
                 enabled_source_doc_ids ? $6 AS completed_scope,
                 client_request_payload->'sourceDocIds' ? $6 AS pending_scope,
                 answer_text IS NOT NULL AND length(answer_text) > 0 AS answer_present,
-                evidence
+                evidence, client_request_payload
            FROM equipment_notebook_turns
           WHERE tenant_id = $1::uuid AND notebook_id = $2::uuid AND owner_user_id = $3
             AND client_request_id = $4::uuid AND COALESCE(thread_id, 'legacy') = $5`,
@@ -103,44 +97,27 @@ export async function inspectManualQuestion(input: { tenantId: string; userId: s
       ); return rows[0];
     });
     if (t) {
-      const evidence: Record<string, unknown>[] = Array.isArray(t.evidence) ? t.evidence : [];
+      const evidence: Record<string, unknown>[] = Array.isArray(t.evidence)
+        ? t.evidence.filter((e: unknown) => e !== null && typeof e === "object" && !Array.isArray(e)) : [];
       // The current completion is authoritative. Append-only telemetry can
       // arrive late or be lost; absence of a newer trace proves nothing.
       const cancelled = t.client_request_state === "complete" && t.answer_status === "error" &&
         currentCancellationReceipt(evidence, input.clientRequestId) !== null;
-      // A pending turn is not expected to have a closed outcome yet.
-      if (t.client_request_state === "complete" && !cancelled) {
-        try {
-          // Join only through the already owner-authorized turn, never a guessed request key.
-          const { rows } = await queryWorkflowObservation(
-            // A request retry reuses the turn row but has a new attempt ID. The
-            // completed row retains no attempt ID, so multiple known attempts
-            // are ambiguous: never choose an older cancellation by finish time.
-            `SELECT d.outcome FROM decision_traces d WHERE d.tenant_id = $1 AND d.notebook_id = $2::uuid
-               AND d.turn_id = $3::uuid AND d.lifecycle = 'closed' AND d.attempt_id IS NOT NULL
-               AND lower(d.client_request_id) = lower($4)
-               AND EXISTS (SELECT 1 FROM decision_traces s WHERE s.tenant_id = d.tenant_id
-                 AND s.notebook_id = d.notebook_id AND s.attempt_id = d.attempt_id AND s.lifecycle = 'started')
-               AND NOT EXISTS (SELECT 1 FROM decision_traces s WHERE s.tenant_id = d.tenant_id
-                 AND s.notebook_id = d.notebook_id AND lower(s.client_request_id) = lower(d.client_request_id)
-                 AND s.attempt_id <> d.attempt_id)
-               AND NOT EXISTS (SELECT 1 FROM turn_ingress i WHERE i.tenant_id = d.tenant_id
-                 AND i.notebook_id = d.notebook_id AND lower(i.client_request_id) = lower(d.client_request_id)
-                 AND i.attempt_id <> d.attempt_id)
-               ORDER BY d.finished_at DESC LIMIT 1`,
-            [tenantId, notebookId, t.id, input.clientRequestId], tenantId,
-          );
-          const outcome: unknown = rows[0]?.outcome;
-          if (typeof outcome !== "string" || !Object.hasOwn(TURN_OUTCOMES, outcome)) {
-            visibilityGaps.push("turn_outcome_unavailable");
-          } else if (outcome === "cancelled") {
-            visibilityGaps.push("turn_outcome_unavailable");
-          }
-        } catch { visibilityGaps.push("turn_outcome_unavailable"); }
+      // Canonical completion evidence is owner-scoped. Ownerless append-only
+      // ingress/trace timing cannot establish this completion's visibility.
+      if (t.client_request_state === "complete" && t.answer_status === "error" && !cancelled) {
+        visibilityGaps.push("turn_outcome_unavailable");
       }
+      let canRetry = false;
+      const requested = t.client_request_payload?.sourceDocIds;
+      if (Array.isArray(requested) && requested.length > 0 &&
+          requested.every((id: unknown) => typeof id === "string" && WORKFLOW_UUID.test(id))) {
+        try { canRetry = (await validateChatSources(tenantId, notebookId, requested)).ok; }
+        catch { visibilityGaps.push("request_scope_unavailable"); }
+      } else { visibilityGaps.push("request_scope_unavailable"); }
       turn = { id: t.id, state: t.client_request_state, status: t.answer_status, stale: Boolean(t.stale),
         usesDocument: Boolean(t.client_request_state === "pending" ? t.pending_scope : t.completed_scope),
-        answerPresent: t.answer_present, safetyStopped: evidence.some((e) => e.kind === "safety_stop"), cancelled,
+        answerPresent: t.answer_present, safetyStopped: evidence.some((e) => e?.kind === "safety_stop"), cancelled, canRetry,
         citations: evidence.filter((e) => e.docId === documentId).slice(0, 32).map((e) => ({ docId: documentId!, page: Number.isInteger(e.page) && Number(e.page) >= 0 ? Number(e.page) : null })),
       };
     }

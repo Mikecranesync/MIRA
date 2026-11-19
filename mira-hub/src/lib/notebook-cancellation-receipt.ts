@@ -24,3 +24,9 @@ export function currentCancellationReceipt(evidence: readonly unknown[], clientR
     r.clientRequestId.toLowerCase() !== clientRequestId.toLowerCase()) return null;
   return { kind: KIND, version: 1, attemptId: r.attemptId.toLowerCase(), clientRequestId: r.clientRequestId.toLowerCase() };
 }
+
+/** Internal completion proof must not become an unknown display part on old clients. */
+export function publicNotebookEvidence(evidence: readonly unknown[]): unknown[] {
+  return evidence.filter((e) => !(e !== null && typeof e === "object" &&
+    (e as Record<string, unknown>).kind === KIND));
+}

@@ -1234,7 +1234,7 @@ capabilities:
       - "mira-hub/src/lib/workflow-contract.ts"
       - "mira-hub/src/capabilities/manual-upload-workflow.ts"
       - "mira-hub/src/capabilities/manual-workflow-store.ts"
-      - "mira-hub/src/capabilities/notebook-cancellation-receipt.ts"
+      - "mira-hub/src/lib/notebook-cancellation-receipt.ts"
     consumers:
       - "mira-hub/src/app/api/namespace/node/[id]/files/route.ts # explicit X-Mira-Workflow: mira.workflow.v1 header only"
       - "mira-hub/src/app/api/workflows/manual-question/route.ts # authenticated read-only inspection"

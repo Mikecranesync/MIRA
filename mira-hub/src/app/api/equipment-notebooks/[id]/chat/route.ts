@@ -177,7 +177,7 @@ import {
 } from "@/lib/inference/canonical-cascade";
 import { legacyProviders } from "@/lib/inference/legacy-cascade";
 import { persistTurnUsage } from "@/lib/inference/persist-usage";
-import { cancellationReceiptEvidence } from "@/capabilities/notebook-cancellation-receipt";
+import { cancellationReceiptEvidence } from "@/lib/notebook-cancellation-receipt";
 import {
   logProvidersExhausted,
   providerExhaustionStatus,

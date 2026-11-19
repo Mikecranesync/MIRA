@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { queryWorkflowObservation, runWorkflow, type WorkflowStore } from "@/lib/workflow";
 import { WORKFLOW_CONTRACT, WORKFLOW_UUID, type WorkflowObservation } from "@/lib/workflow-contract";
 import { WORKFLOW_VERSIONS } from "@/lib/workflow-versions";
+import { hasManualIndex } from "./manual-question-workflow";
 
 export async function observeManualUpload(
   input: { tenantId: string; fileId: string; sha256: string; signal: AbortSignal },
@@ -51,7 +52,7 @@ export async function observeManualUpload(
              WHERE f.tenant_id = $1::uuid AND f.id = $3::uuid AND f.upload_id = $2::uuid`,
             [input.tenantId, documentId, input.fileId],
           );
-          if (rows[0]) verification = rows[0].status === "parsed" && Number(rows[0].total) > 0 && Number(rows[0].anchored) > 0 ? "verified" : "unusable";
+          if (rows[0]) verification = hasManualIndex(rows[0].status, Number(rows[0].total), Number(rows[0].anchored)) ? "verified" : "unusable";
         } catch { /* An unavailable read cannot certify completion or affect HTTP behavior. */ }
       }
       const indexed = verification === "verified";

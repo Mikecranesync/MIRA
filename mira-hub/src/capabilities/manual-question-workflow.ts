@@ -12,15 +12,21 @@ export interface ManualWorkflowFacts {
   claim: "none" | "live" | "stale"; chunkCount: number; anchoredChunkCount: number;
   source: { enabled: boolean; matchState: string; superseded: boolean } | null;
   turn: { id: string; state: "pending" | "complete"; status: string; stale: boolean; usesDocument: boolean;
-    answerPresent: boolean; safetyStopped: boolean; cancelled: boolean; citations: { docId: string; page: number | null }[] } | null;
+    answerPresent: boolean; safetyStopped: boolean; cancelled: boolean; canRetry: boolean; citations: { docId: string; page: number | null }[] } | null;
   observedAt: string; uploadObservation: WorkflowObservation | null; visibilityGaps: string[];
+}
+
+/** Current materialized index, distinct from an independently saved historical answer. */
+export function hasManualIndex(status: unknown, chunks: number, anchors: number): boolean {
+  return status === "parsed" && chunks > 0 && anchors > 0;
 }
 
 export function projectManualQuestion(f: ManualWorkflowFacts) {
   const attached = Boolean(f.source?.enabled && !f.source.superseded && ["verified", "user_confirmed"].includes(f.source.matchState));
+  const indexed = hasManualIndex(f.uploadStatus, f.chunkCount, f.anchoredChunkCount);
   const readiness = deriveReadiness({ bytesDurable: true, chunkCount: f.chunkCount,
     hasPageAnchors: f.anchoredChunkCount > 0, scopeValidated: attached,
-    originalResolvable: f.linkedDocId !== null, parseFailed: f.uploadStatus === "failed" || f.uploadStatus === "cancelled" });
+    originalResolvable: f.linkedDocId !== null, parseFailed: f.documentId !== null && f.uploadStatus !== "parsed" });
   const workflow: WorkflowObservation = {
     contract: WORKFLOW_CONTRACT, definition: { name: "manual_question", version: WORKFLOW_VERSIONS.manual_question },
     identity: { tenantId: f.tenantId, operationId: f.fileId, attemptId: f.turn?.id ?? f.uploadObservation?.identity.attemptId ?? f.fileId },
@@ -35,13 +41,13 @@ export function projectManualQuestion(f: ManualWorkflowFacts) {
     workflow.owner = { system: "equipment_notebook_turns", id: t.id };
     workflow.evidence.push({ kind: "turn", id: t.id });
     workflow.stage = "question";
-    workflow.recovery = { authority: "equipment_notebook_turns", action: "repeat_question" };
-    workflow.retry.eligible = attached;
+    workflow.retry.eligible = readiness.canChat && t.canRetry;
+    workflow.recovery = { authority: "equipment_notebook_turns", action: workflow.retry.eligible ? "repeat_question" : "none" };
     if (!t.usesDocument) {
-      workflow.failure = { code: "request_source_mismatch", retryable: false }; workflow.retry.eligible = false;
+      workflow.failure = { code: "request_source_mismatch", retryable: false }; workflow.retry.eligible = false; workflow.recovery.action = "none";
     } else if (t.state === "pending") {
       workflow.state = t.stale ? "interrupted" : "running";
-      workflow.failure = t.stale ? { code: "claim_expired", retryable: attached } : null;
+      workflow.failure = t.stale ? { code: "claim_expired", retryable: workflow.retry.eligible } : null;
       if (!t.stale) { workflow.retry = { eligible: false, afterMs: 2000 }; workflow.recovery.action = "wait"; }
     } else if (t.safetyStopped || t.status === "insufficient_evidence") {
       workflow.state = "refused"; workflow.retry.eligible = false; workflow.recovery.action = "none";
@@ -49,7 +55,7 @@ export function projectManualQuestion(f: ManualWorkflowFacts) {
       workflow.state = "cancelled";
       workflow.cancellation = { requested: true, scope: "execution", acknowledged: true };
     } else if (t.status !== "answered" || !t.answerPresent) {
-      workflow.state = "failed"; workflow.failure = { code: "answer_failed", retryable: attached };
+      workflow.state = "failed"; workflow.failure = { code: "answer_failed", retryable: workflow.retry.eligible };
     } else if (!t.citations.some((c) => c.docId === f.documentId)) {
       workflow.state = "partial"; workflow.failure = { code: "answer_not_grounded", retryable: false }; workflow.retry.eligible = false;
     } else {
@@ -62,7 +68,7 @@ export function projectManualQuestion(f: ManualWorkflowFacts) {
     }
   } else if (f.claim === "live" && !f.linkedDocId) {
     workflow.state = "running"; workflow.retry = { eligible: false, afterMs: 2000 }; workflow.recovery.action = "wait";
-  } else if (f.documentId && (f.chunkCount === 0 || f.anchoredChunkCount === 0 || ["failed", "cancelled"].includes(f.uploadStatus ?? ""))) {
+  } else if (f.documentId && !indexed) {
     // Same-byte upload returns this existing pointer before any extraction.
     workflow.state = "failed"; workflow.failure = { code: "index_failed", retryable: false };
     workflow.retry.eligible = false; workflow.recovery.action = "none";
@@ -85,7 +91,7 @@ export function projectManualQuestion(f: ManualWorkflowFacts) {
     }
   }
   return { workflow: parseWorkflowObservation(workflow), readiness,
-    stages: { stored: true, extracted: f.chunkCount > 0, indexed: f.anchoredChunkCount > 0,
+    stages: { stored: true, extracted: f.chunkCount > 0, indexed,
       attached, answerPersisted: workflow.state === "succeeded" },
     visibility: { uploadRecorded: f.uploadObservation !== null, gaps: f.visibilityGaps },
     uploadObservation: f.uploadObservation,

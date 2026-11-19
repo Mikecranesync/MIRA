@@ -16,6 +16,7 @@ import pool from "@/lib/db";
 import { withTenantContext } from "@/lib/tenant-context";
 import { deriveReadiness, type Readiness } from "@/lib/document-readiness";
 import { insertWithUniqueFallback } from "@/lib/pg-unique-retry";
+import { publicNotebookEvidence } from "@/lib/notebook-cancellation-receipt";
 
 /** Short disambiguator for an internal backing-node name. Never user-facing. */
 function randomSuffix(): string {
@@ -1811,7 +1812,7 @@ export async function listTurns(
       question: String(r.question),
       answerStatus: String(r.answer_status),
       answerText: (r.answer_text as string) ?? null,
-      evidence: Array.isArray(r.evidence) ? (r.evidence as unknown[]) : [],
+      evidence: publicNotebookEvidence(Array.isArray(r.evidence) ? r.evidence : []),
       basis: (r.basis as string) ?? null,
       createdAt: String(r.created_at),
       ownerUserId: r.owner_user_id == null ? null : String(r.owner_user_id),

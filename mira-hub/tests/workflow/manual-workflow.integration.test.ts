@@ -67,7 +67,9 @@ import { POST as upload } from "@/app/api/namespace/node/[id]/files/route";
 import { POST as attach } from "@/app/api/equipment-notebooks/[id]/sources/route";
 import { POST as ask } from "@/app/api/equipment-notebooks/[id]/chat/route";
 import { GET as inspect } from "@/app/api/workflows/manual-question/route";
-import { createNotebook, claimNotebookTurnRequest, recordTurn } from "@/lib/equipment-notebooks";
+import { DELETE as removeUpload } from "@/app/api/uploads/[id]/route";
+import { PATCH as changeSource } from "@/app/api/equipment-notebooks/[id]/sources/[docId]/route";
+import { createNotebook, claimNotebookTurnRequest, recordTurn, listTurns } from "@/lib/equipment-notebooks";
 import { parkOrReuseFile, claimIngest, linkFileToUpload, attachFileToTargets } from "@/lib/workspace-files";
 import { ingestPdfToNode } from "@/lib/node-knowledge-ingest";
 import { sessionOr401 } from "@/lib/session";
@@ -234,6 +236,42 @@ describe("WF-01 existing manual-to-answer vertical slice", () => {
     expect(second.uploadObservation.state).not.toBe("succeeded");
     expect(ingestPdfToNode).toHaveBeenCalledTimes(1);
   });
+  it.each([false, true])("does not declare a deleted upload currently indexed (historical answer=%s)", async (answered) => {
+    const doc = await indexAndAttach(); const id = randomUUID();
+    if (answered) await (await sendQuestion(doc.uploadId, id)).text();
+    expect((await removeUpload(new NextRequest(`https://hub.test/api/uploads/${doc.uploadId}`, { method: "DELETE" }), { params: Promise.resolve({ id: doc.uploadId }) })).status).toBe(200);
+    const result = (await view(doc.fileId)).body;
+    expect(result.readiness.canChat).toBe(false); expect(result.stages.indexed).toBe(false);
+    expect(result.workflow).toMatchObject({ state: "failed", retry: { eligible: false }, recovery: { action: "none" } });
+    if (answered) expect((await view(doc.fileId, id)).body.workflow.state).toBe("succeeded");
+    const replay = await sendPdf(); expect(replay.body.indexed).toBe(true);
+    expect((await view(doc.fileId)).body.uploadObservation.state).not.toBe("succeeded");
+  });
+  it("validates the complete original question scope before suggesting same-key retry", async () => {
+    const a = await indexAndAttach(); pdf = await manual(); const b = await indexAndAttach();
+    const id = randomUUID(); controls.provider = "fail";
+    const payload = { ...questionBody(a.uploadId, id), sourceDocIds: [a.uploadId, b.uploadId] };
+    await (await ask(new NextRequest(`https://hub.test/api/equipment-notebooks/${nb.id}/chat`, { method: "POST", body: JSON.stringify(payload), headers: { "Content-Type": "application/json" } }), { params: Promise.resolve({ id: nb.id }) })).text();
+    expect((await view(a.fileId, id)).body.workflow.retry.eligible).toBe(true);
+    expect((await changeSource(new NextRequest(`https://hub.test/api/equipment-notebooks/${nb.id}/sources/${b.uploadId}`, { method: "PATCH", body: JSON.stringify({ enabledByDefault: false }), headers: { "Content-Type": "application/json" } }), { params: Promise.resolve({ id: nb.id, docId: b.uploadId }) })).status).toBe(200);
+    expect((await view(a.fileId, id)).body.workflow).toMatchObject({ state: "failed", retry: { eligible: false }, recovery: { action: "none" } });
+    const saved = await testPool.query("SELECT client_request_state, answer_status FROM equipment_notebook_turns WHERE tenant_id=$1 AND notebook_id=$2 AND owner_user_id=$3 AND client_request_id=$4", [tenantId, nb.id, userId, id]);
+    expect(saved.rows).toEqual([{ client_request_state: "complete", answer_status: "error" }]);
+  });
+  it.each(["answer", "fail"] as const)("does not change one owner's %s visibility when another owner uses the same request UUID", async (provider) => {
+    const doc = await indexAndAttach(); const id = randomUUID();
+    controls.provider = provider;
+    await (await sendQuestion(doc.uploadId, id)).text();
+    await vi.waitFor(async () => expect((await view(doc.fileId, id)).body.visibility.gaps).toEqual(provider === "answer" ? [] : ["turn_outcome_unavailable"]));
+    const first = (await view(doc.fileId, id)).body.visibility;
+    controls.provider = "answer";
+    session(tenantId, randomUUID()); await (await sendQuestion(doc.uploadId, id)).text();
+    await vi.waitFor(async () => {
+      const rows = await testPool.query("SELECT count(DISTINCT turn_id)::int AS n FROM decision_traces WHERE tenant_id=$1 AND notebook_id=$2 AND client_request_id=$3 AND lifecycle='closed'", [tenantId, nb.id, id]);
+      expect(rows.rows[0].n).toBe(2);
+    });
+    session(); expect((await view(doc.fileId, id)).body.visibility).toEqual(first);
+  });
   it.each(["txt", "md"])("does not advertise PDF-only orphan adoption for a %s file", async (extension) => {
     const body = new FormData();
     body.set("file", new File([`Fictional ${randomUUID()}\nFault F12 means the inspection card is missing.`], `fictional.${extension}`, { type: "text/plain" }));
@@ -329,7 +367,7 @@ describe("WF-01 existing manual-to-answer vertical slice", () => {
     expect(result.body.workflow.state).toBe("succeeded");
     expect(result.body.stages.answerPersisted).toBe(true);
     expect(result.body.workflow.cancellation.acknowledged).toBe(false);
-    expect(result.body.visibility.gaps).toContain("turn_outcome_unavailable");
+    expect(result.body.visibility.gaps).toEqual([]);
   });
   it("reports an evidence gap instead of acknowledging an old stop after a retry fails", async () => {
     const doc = await indexAndAttach(); controls.provider = "hold";
@@ -387,6 +425,8 @@ describe("WF-01 existing manual-to-answer vertical slice", () => {
       await vi.waitFor(async () => expect((await view(doc.fileId, id)).body.workflow.state).toBe("cancelled"));
       const result = (await view(doc.fileId, id)).body;
       expect(result.workflow).toMatchObject({ state: "cancelled", cancellation: { acknowledged: true } });
+      const publicHistory = await listTurns(tenantId, nb.id, 50, { viewerUserId: userId, threadId: "wf01" });
+      expect(publicHistory.flatMap((t) => t.evidence).some((e) => (e as { kind?: string })?.kind === "notebook_turn_cancelled")).toBe(false);
       const traces = await testPool.query("SELECT attempt_id FROM decision_traces WHERE tenant_id = $1 AND client_request_id = $2 AND lifecycle IS NOT NULL", [tenantId, id]);
       expect(traces.rowCount).toBe(0);
     } finally { release(); await Promise.allSettled(controls.ingressPending); }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cancellationReceiptEvidence, currentCancellationReceipt } from "../notebook-cancellation-receipt";
+import { cancellationReceiptEvidence, currentCancellationReceipt, publicNotebookEvidence } from "@/lib/notebook-cancellation-receipt";
 import { splitEvidence } from "@/components/equipment/notebook-chat-utils";
 
 const attempt = "cf100000-0000-4000-8000-000000000001";
@@ -24,5 +24,12 @@ describe("current notebook cancellation completion evidence", () => {
   });
   it("is ignored by the existing citation/hydration classifier", () => {
     expect(splitEvidence([receipt()])).toMatchObject({ citations: [], machineEvidence: [], visualEvidence: [], safetyNotice: null, safetyStop: null });
+  });
+  it("keeps completion proof private without dropping other public or unknown evidence", () => {
+    const citation = { docId: attempt, citationId: "1" }; const unknown = { kind: "future_public_entry" };
+    const original = [citation, receipt(), unknown, { kind: receipt().kind, version: 9 }];
+    expect(publicNotebookEvidence(original)).toEqual([citation, unknown]);
+    expect(original).toHaveLength(4);
+    expect(currentCancellationReceipt([receipt()], request)).toEqual(receipt());
   });
 });

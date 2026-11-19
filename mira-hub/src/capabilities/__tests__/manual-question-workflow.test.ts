@@ -15,7 +15,7 @@ const facts = (): ManualWorkflowFacts => ({
   observedAt: "2026-11-19T05:00:00.000Z", uploadObservation: null, visibilityGaps: [],
 });
 const turn = () => ({ id: turnId, state: "complete" as const, status: "answered", stale: false, usesDocument: true,
-  answerPresent: true, safetyStopped: false, cancelled: false, citations: [{ docId, page: 2 }] });
+  answerPresent: true, safetyStopped: false, cancelled: false, canRetry: true, citations: [{ docId, page: 2 }] });
 
 describe("manual-to-question domain projection", () => {
   it("requires a persisted answer with evidence from this document to declare success", () => {
@@ -69,6 +69,21 @@ describe("manual-to-question domain projection", () => {
   });
   it("will not present unanchored text as ready", () => {
     expect(projectManualQuestion({ ...facts(), anchoredChunkCount: 0 }).readiness.canChat).toBe(false);
+  });
+  it.each([null, "queued", "parsing", "failed", "cancelled"])("requires the canonical parsed upload for current readiness (%s)", (uploadStatus) => {
+    const result = projectManualQuestion({ ...facts(), uploadStatus });
+    expect(result.readiness.canChat).toBe(false);
+    expect(result.stages.indexed).toBe(false);
+    expect(result.workflow).toMatchObject({ state: "failed", retry: { eligible: false }, recovery: { action: "none" } });
+    const historical = projectManualQuestion({ ...facts(), uploadStatus, turn: turn() });
+    expect(historical.workflow.state).toBe("succeeded");
+    expect(historical.readiness.canChat).toBe(false);
+  });
+  it.each([false, true])("withholds same-key recovery when the original full scope is unavailable (stale=%s)", (stale) => {
+    const result = projectManualQuestion({ ...facts(), turn: { ...turn(), state: stale ? "pending" : "complete", stale,
+      status: "error", answerPresent: false, canRetry: false } });
+    expect(result.workflow).toMatchObject({ retry: { eligible: false }, recovery: { action: "none" } });
+    expect(result.workflow.failure?.retryable).toBe(false);
   });
   it.each(["none", "live", "stale"] as const)("never recommends reconstruction through a retained pointer (%s claim)", (claim) => {
     for (const bad of [{ chunkCount: 0, anchoredChunkCount: 0 }, { anchoredChunkCount: 0 }, { uploadStatus: "failed" }, { uploadStatus: "cancelled" }]) {
