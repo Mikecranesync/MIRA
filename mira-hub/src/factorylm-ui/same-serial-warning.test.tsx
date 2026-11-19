@@ -26,7 +26,11 @@ import {
   reportSameSerial,
   sameSerialButtonName,
   sameSerialNotice,
+  sameSerialNoticeCurrent,
+  sameSerialPlace,
   sameSerialTarget,
+  type BenchState,
+  type ComponentView,
   type SameSerialMatch,
   type SameSerialNotice,
 } from "./bench-components-logic";
@@ -495,5 +499,137 @@ describe("the browser bundle stays free of the server lookup", () => {
 
   it("a match's button is named by the one naming rule, with the whole list in hand", () => {
     expect(src("BenchComponents.tsx")).toContain("aria-label={sameSerialButtonName(notice.matches, m)}");
+  });
+});
+
+describe("the warning is about one revision of the saved component (#5656)", () => {
+  const replyAt = (revision: unknown, sameSerial: unknown = { status: "checked", candidates: [away], truncated: false }) => ({ status: "created", current: { revision }, changed: [], selection: null, sameSerial });
+  const row = (id: string, revision: number | null): ComponentView => ({
+    id, position: 0, kind: "VFD", origin: "device_schedule", status: "confirmed", statusLabel: "confirmed", label: "VFD1",
+    current: revision === null ? null : ({ revision } as NonNullable<ComponentView["current"]>), documents: [], hasOwnDocument: false, evidence: "",
+  });
+  const benchWith = (...components: ComponentView[]): BenchState => ({ components, selection: null, selectionVersion: null, lastTurn: null, turnComponents: {}, tallies: {}, documentNumbers: [] });
+  const matchesAt4 = sameSerialNotice(replyAt(4), saved)!;
+  const notRunAt4 = sameSerialNotice(replyAt(4, SAME_SERIAL_LOOKUP_FAILED), saved)!;
+
+  it("the notice carries the revision the save made, whether the check found matches or did not run", () => {
+    expect(matchesAt4).toEqual({ kind: "matches", componentId: SAVED, matches: [{ ...away, here: false }], more: false, revision: 4 });
+    expect(notRunAt4).toEqual({ kind: "not_run", componentId: SAVED, revision: 4 });
+    expect(sameSerialNotice(replyAt(4, { status: "checked", candidates: "none" }), saved)).toEqual({ kind: "not_run", componentId: SAVED, revision: 4 });
+  });
+
+  it.each([[undefined], [null], ["4"], [0], [-1], [1.5], [Number.NaN], [{}]])("a reply whose revision is %j carries none, and is never dropped for it", (revision) => {
+    const notice = sameSerialNotice(replyAt(revision), saved)!;
+    expect(notice).toMatchObject({ kind: "matches" });
+    expect(notice).not.toHaveProperty("revision");
+    expect(sameSerialNoticeCurrent(notice, benchWith(row(SAVED, 99)))).toBe(true);
+  });
+
+  it("a reply that could not be read carries no revision", async () => {
+    await expect(readSameSerialNotice({ json: () => { throw new Error("already read"); } }, saved)).resolves.not.toHaveProperty("revision");
+  });
+
+  it("stands while the checklist shows the revision it was made for, or an older read of it", () => {
+    for (const notice of [matchesAt4, notRunAt4]) {
+      expect(sameSerialNoticeCurrent(notice, benchWith(row(SAVED, 4)))).toBe(true);
+      expect(sameSerialNoticeCurrent(notice, benchWith(row(SAVED, 3)))).toBe(true);
+    }
+  });
+
+  it("ends once the checklist holds a later revision of that component", () => {
+    for (const notice of [matchesAt4, notRunAt4]) {
+      expect(sameSerialNoticeCurrent(notice, benchWith(row(SAVED, 5)))).toBe(false);
+      expect(sameSerialNoticeCurrent(notice, benchWith(row(HERE, 1), row(SAVED, 40)))).toBe(false);
+    }
+  });
+
+  it("another component's revision, a missing row, a row with no revision or no checklist at all leave it standing", () => {
+    expect(sameSerialNoticeCurrent(matchesAt4, benchWith(row(HERE, 9)))).toBe(true);
+    expect(sameSerialNoticeCurrent(matchesAt4, benchWith())).toBe(true);
+    expect(sameSerialNoticeCurrent(matchesAt4, benchWith(row(SAVED, null)))).toBe(true);
+    expect(sameSerialNoticeCurrent(matchesAt4, null)).toBe(true);
+  });
+
+  it("source pin (behaviour is in tests/e2e/same-serial-advisory.spec.ts): the screen drops a notice the checklist has moved past, where it drops one for an opened label", () => {
+    const view = readFileSync(new URL("./BenchComponents.tsx", import.meta.url), "utf8");
+    expect(view).toMatch(/if \(card && serialNotice\) setSerialNotice\(null\);\n(?:[ \t]*\/\/[^\n]*\n)*[ \t]*else if \(serialNotice && !sameSerialNoticeCurrent\(serialNotice, bench\)\) setSerialNotice\(null\);/);
+  });
+});
+
+describe("matches that read alike are numbered on the screen as well as in the button name (#5661 A1)", () => {
+  const a: SameSerialMatch = { ...here, here: true };
+  const b: SameSerialMatch = { ...here, componentId: "56565656-5656-4656-8656-565656565656", here: true };
+  const c: SameSerialMatch = { ...away, here: false };
+  const removed: SameSerialMatch = { ...here, componentId: "12121212-1212-4212-8212-121212121212", here: true, retired: true };
+  const render = (matches: SameSerialMatch[], buttons: "with buttons" | "named only" = "with buttons") =>
+    renderToStaticMarkup(<SameSerialWarning notice={{ kind: "matches", componentId: SAVED, matches, more: false }} savedLabel="VFD1" disabled={false} onOpen={buttons === "with buttons" ? vi.fn() : undefined} onDismiss={vi.fn()} />);
+  const rowWords = (html: string, id: string) => {
+    const from = html.indexOf(`data-testid="bench-same-serial-match-${id}"`);
+    return html.slice(html.indexOf(">", from) + 1, html.indexOf("</li>", from)).replace(/<[^>]*>/g, "").replaceAll("&#x27;", "'");
+  };
+
+  it("each of two alike rows shows its place; a row that reads like no other shows none", () => {
+    const html = render([a, c, b], "named only");
+    expect(rowWords(html, a.componentId)).toBe("Q1 · MLC (1 of 2) in this machine's checklist");
+    expect(rowWords(html, b.componentId)).toBe("Q1 · MLC (2 of 2) in this machine's checklist");
+    expect(rowWords(html, c.componentId)).toBe("VFD1 · AutomationDirect GS11N-20P2 in Packaging line");
+    expect(html).toContain(`data-testid="bench-same-serial-place-${a.componentId}"`);
+    expect(html).not.toContain(`data-testid="bench-same-serial-place-${c.componentId}"`);
+  });
+
+  it("the place on the row is the place in the button's name", () => {
+    const matches = [a, c, b];
+    const html = render(matches);
+    for (const m of matches) {
+      const place = sameSerialPlace(matches, m);
+      const name = sameSerialButtonName(matches, m);
+      expect(html).toContain(`aria-label="${name}"`);
+      if (place) {
+        expect(name.endsWith(` (${place})`)).toBe(true);
+        expect(rowWords(html, m.componentId)).toContain(`${m.label} (${place}) in `);
+      } else {
+        expect(name).not.toMatch(/\(\d+ of \d+\)$/);
+      }
+    }
+    expect(matches.map((m) => sameSerialPlace(matches, m))).toEqual(["1 of 2", null, "2 of 2"]);
+  });
+
+  it("a removed component has no button, so it has no place and does not number a lone match", () => {
+    expect(sameSerialPlace([a, removed], a)).toBeNull();
+    expect(sameSerialPlace([a, removed], removed)).toBeNull();
+    expect(sameSerialPlace([a, b, removed], removed)).toBeNull();
+    expect(sameSerialButtonName([a, b, removed], removed)).toBe("Show in checklist: Q1 · MLC");
+    const html = render([a, removed], "named only");
+    expect(rowWords(html, a.componentId)).toBe("Q1 · MLC in this machine's checklist");
+    expect(rowWords(html, removed.componentId)).toBe("Q1 · MLC on this machine (removed from the checklist)");
+  });
+
+  it("three alike are numbered one to three, in the order they are listed", () => {
+    const third: SameSerialMatch = { ...here, componentId: "78787878-7878-4878-8878-787878787878", here: true };
+    expect([a, b, third].map((m) => sameSerialPlace([a, b, third], m))).toEqual(["1 of 3", "2 of 3", "3 of 3"]);
+  });
+});
+
+describe("showing a component that is already marked (#5657 F4)", () => {
+  it("source pin (behaviour is in tests/e2e/same-serial-advisory.spec.ts): every show is counted, and the scroll runs for each one", () => {
+    const view = readFileSync(new URL("./BenchComponents.tsx", import.meta.url), "utf8");
+    expect(view).toMatch(/setFocused\(focus\.componentId\);\s*setShown\(\(n\) => n \+ 1\);/);
+    expect(view).toMatch(/scrollIntoView\?\.\(\{ block: "nearest" \}\);\s*\}, \[open, focused, shown\]\);/);
+  });
+});
+
+describe("a notice is shown only for the save it came from, on a screen that is still there (#5661 C1)", () => {
+  // No jsdom here: the behaviour is proved in a real browser (tests/e2e/equipment-nav.spec.ts, "the sheet
+  // is closed ... while the save is on its way" and "a warning still on its way when a label is opened").
+  // This pins the guard those cases depend on, so removing it fails here as well as there.
+  const view = readFileSync(new URL("./BenchComponents.tsx", import.meta.url), "utf8");
+
+  it("source pin: a late notice is applied only when the screen is mounted and no later save, close or label has moved on", () => {
+    expect(view).toContain("if (alive.current && serialSave.current === save) setSerialNotice(notice);");
+    expect(view).toContain("const save = ++serialSave.current;");
+  });
+
+  it("source pin: closing the sheet, the pill and opening a label each move the counter on", () => {
+    expect(view.match(/serialSave\.current \+= 1;/g)).toHaveLength(3);
   });
 });

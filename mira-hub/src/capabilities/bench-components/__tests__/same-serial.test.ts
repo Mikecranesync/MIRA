@@ -14,6 +14,7 @@ vi.mock("@/lib/tenant-context", () => ({ withTenantContext }));
 
 import { SAME_SERIAL_DEADLINE_MS, SAME_SERIAL_LIMIT, SAME_SERIAL_SQL, sameSerialAdvisory, usableSerial } from "../same-serial";
 import type { StoredRevision } from "../store";
+import { classifyAsset } from "@/lib/contextualization/asset-matcher";
 
 const TENANT = "11111111-1111-4111-8111-111111111111";
 const SAVED_ID = "44444444-4444-4444-8444-444444444444";
@@ -99,12 +100,39 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+describe("a filler serial is no identity, at any length (#5661 B1)", () => {
+  // The rule lives in the shared matcher, so it holds for the contextualization merge decision too.
+  it.each([["000000"], ["0000000000"], ["00-00-00"], ["0 0 0 0 0 0 0"], ["xxxxxx"], ["XXXXXXXX"]])(
+    "FALSE-MERGE GUARD: two assets that both carry %j are never a strong match",
+    (filler) => {
+      const m = classifyAsset({ serialNumber: filler }, [{ id: "ph-1", serialNumber: filler }]);
+      expect(m.strength).not.toBe("strong");
+      expect(m.decision).not.toBe("existing_asset");
+      // With a manufacturer and model beside it, it falls back to model-level like any other placeholder.
+      const withModel = classifyAsset(
+        { manufacturer: "Allen-Bradley", model: "PowerFlex 525", serialNumber: filler },
+        [{ id: "ph-2", manufacturer: "Allen-Bradley", model: "PowerFlex 525", serialNumber: filler }],
+      );
+      expect(withModel.strength).toBe("probable");
+    },
+  );
+
+  it.each([["0000001"], ["100000"], ["X000"], ["00X00"], ["xx7"], ["0x0"], ["A000000"]])(
+    "MISSED-MATCH GUARD: %j only contains zeros or x's and is still a real serial",
+    (real) => {
+      const m = classifyAsset({ serialNumber: real }, [{ id: "real-1", serialNumber: real.toLowerCase() }]);
+      expect(m.strength).toBe("strong");
+      expect(m.decision).toBe("existing_asset");
+    },
+  );
+});
+
 describe("same serial: which serials the warning can use", () => {
-  it.each([["AB12345"], ["abc"], ["ab-1"], ["000000"]])("same serial: %j is usable", (s) => {
+  it.each([["AB12345"], ["abc"], ["ab-1"], ["0000001"], ["100000"], ["00X00"]])("same serial: %j is usable", (s) => {
     expect(usableSerial(s)).toBe(true);
   });
 
-  it.each([["ab"], ["a-b"], ["---"], ["   "], [""], [null], [undefined], ["N/A"], ["unknown"], ["0000"], ["xxx"]])(
+  it.each([["ab"], ["a-b"], ["---"], ["   "], [""], [null], [undefined], ["N/A"], ["unknown"], ["0000"], ["xxx"], ["000000"], ["00-00-00-00"], ["XXXXXXX"]])(
     "same serial: %j is not usable (too short or a placeholder)",
     (s) => {
       expect(usableSerial(s as string | null | undefined)).toBe(false);

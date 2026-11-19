@@ -27,7 +27,7 @@ const AUTH_SECRET = "cc-e2e-fixed-secret-do-not-use-in-prod";
 
 export default defineConfig({
   testDir: "./tests/e2e",
-  testMatch: ["command-center.spec.ts", "equipment-nav.spec.ts"],
+  testMatch: ["command-center.spec.ts", "equipment-nav.spec.ts", "same-serial-advisory.spec.ts"],
   timeout: 180_000,
   expect: { timeout: 15_000 },
   fullyParallel: false,

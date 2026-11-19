@@ -73,6 +73,9 @@ async function cleanup(tenantId: string) {
       "turn_ingress",
       "knowledge_entries",
       "hub_uploads",
+      // 021. The node this run creates (step 4, POST /api/namespace/node/) writes one audit row here.
+      // It has no foreign key, so nothing removed it: every swept tenant left one behind (#5662).
+      "namespace_versions",
       "kg_entities",
     ];
     for (const tbl of tables) {
@@ -98,18 +101,32 @@ async function cleanup(tenantId: string) {
     const c2 = new Client({ connectionString: process.env.NEON_DATABASE_URL, ssl: { rejectUnauthorized: false } });
     await c2.connect();
     try {
-      const r = await c2.query(
-        `SELECT (SELECT count(*) FROM hub_users WHERE tenant_id = $1)::int AS users,
+      const count = (audit: boolean) =>
+        c2.query(
+          `SELECT (SELECT count(*) FROM hub_users WHERE tenant_id = $1)::int AS users,
                 (SELECT count(*) FROM hub_tenants WHERE id = $1)::int AS auth_tenants,
-                (SELECT count(*) FROM tenants WHERE id::text = $1)::int AS tenants`,
-        [tenantId],
-      );
-      return r.rows[0] as { users: number; auth_tenants: number; tenants: number };
+                (SELECT count(*) FROM tenants WHERE id::text = $1)::int AS tenants${
+                  audit ? `,
+                (SELECT count(*) FROM namespace_versions WHERE tenant_id::text = $1)::int AS namespace_versions` : ""
+                }`,
+          [tenantId],
+        );
+      let r;
+      try {
+        r = await count(true);
+      } catch (err) {
+        // A database older than 021 has no audit table, so it holds no audit rows: count the other
+        // three without it. Only "no such table" is read that way; if one of the other three is the
+        // table that is missing, the second count fails too and the sweep is not called clean.
+        if ((err as { code?: string }).code !== "42P01") throw err;
+        r = await count(false);
+      }
+      return r.rows[0] as { users: number; auth_tenants: number; tenants: number; namespace_versions?: number };
     } finally {
       await c2.end();
     }
   })();
-  if (left.users || left.auth_tenants || left.tenants) {
+  if (left.users || left.auth_tenants || left.tenants || left.namespace_versions) {
     throw new Error(`cleanup incomplete for ${tenantId}: ${JSON.stringify(left)}`);
   }
   console.error(`cleaned tenant ${tenantId} (auth + data rows verified gone)`);

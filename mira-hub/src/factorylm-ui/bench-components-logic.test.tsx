@@ -7,6 +7,7 @@
  *
  * Run: npx vitest run src/factorylm-ui/bench-components-logic.test.tsx
  */
+import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { ComponentRow, ConfirmationCard } from "./BenchComponents";
@@ -28,6 +29,8 @@ import {
   selectionChangeFor,
   withoutScope,
   SEND_LOADING_MESSAGE,
+  CONNECTION_MESSAGE,
+  savedNotRefreshedMessage,
   type BenchScopes,
   type BenchState,
   type ComponentTurnFrame,
@@ -264,5 +267,22 @@ describe("component frames in the chat stream", () => {
     const seen: ComponentTurnFrame[] = [];
     await parseComponentFrames(stream, (f) => seen.push(f));
     expect(seen).toEqual([frame]);
+  });
+});
+
+describe("a committed save whose checklist re-read failed (#5661 A2)", () => {
+  it("is reported as what it was, with the list said to be out of date, never as a lost connection", () => {
+    expect(savedNotRefreshedMessage(true)).toBe("Confirmed. The component list couldn't be refreshed just now.");
+    expect(savedNotRefreshedMessage(false)).toBe("Saved — not confirmed yet. The component list couldn't be refreshed just now.");
+    for (const confirm of [true, false]) {
+      expect(savedNotRefreshedMessage(confirm)).not.toBe(CONNECTION_MESSAGE);
+      expect(savedNotRefreshedMessage(confirm)).not.toMatch(/try again|reach the server/i);
+    }
+  });
+
+  it("source pin (behaviour is in tests/e2e/same-serial-advisory.spec.ts): the view uses it after a committed save, and keeps the connection message for a save that never answered", () => {
+    const view = readFileSync(new URL("./BenchComponents.tsx", import.meta.url), "utf8");
+    expect(view).toMatch(/if \(!reread\) \{\n(?:[ \t]*\/\/[^\n]*\n)*[ \t]*setMessage\(savedNotRefreshedMessage\(confirm\)\);\n[ \t]*return;/);
+    expect(view).toMatch(/\} catch \{\n[ \t]*setMessage\(CONNECTION_MESSAGE\);\n[ \t]*await reconcileBench\(gate, load\);/);
   });
 });
