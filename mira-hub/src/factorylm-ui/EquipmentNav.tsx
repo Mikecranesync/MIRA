@@ -82,11 +82,19 @@ export function EquipmentNav({
     onPickRef.current(next, pressedIn.current);
   }, { selection: () => null });
 
-  const { regionRef, room } = useRoomBelow(open);
+  const { panelRef, regionRef, room, panelRoom } = useRoomBelow(open);
 
   if (!available) return null;
   return (
-    <section className="fl-equip-panel" aria-label="Find equipment" data-testid="equipment-nav">
+    // While open, the whole panel is capped above the checklist trigger and scrolls itself when its
+    // controls (Close, a refusal, an offer) and the results do not all fit (#5655 r2 F1).
+    <section
+      ref={panelRef}
+      className="fl-equip-panel"
+      aria-label="Find equipment"
+      data-testid="equipment-nav"
+      style={open && panelRoom !== null ? { maxHeight: panelRoom, overflowY: "auto", overscrollBehavior: "contain" } : undefined}
+    >
       <button
         type="button"
         className="fl-equip__more"
@@ -139,42 +147,64 @@ const SCROLL_REGION: CSSProperties = {
  *  (notebook-actions.ts) plus the trigger pill's 44px minimum (BenchComponents PILL_STYLE) and 16px
  *  for a pill that wraps to a second line. */
 const CHECKLIST_RESERVE = 68;
-/** The results never shrink below one 44px row, even on a screen too short for everything: an offer
- *  or notice above them on a short landscape screen leaves little else (#5655 r1 F1). */
-const MIN_RESULTS = 44;
+/** Neither the results nor the panel shrink below one 44px row, even on a screen too short for
+ *  everything: an offer or a refusal above them on a short landscape screen leaves little else
+ *  (#5655 r1 F1); the panel then scrolls itself (r2 F1). */
+const MIN_ROW = 44;
 
-/** The results' height cap from where the region starts to the bottom of what is actually visible.
- *  Re-measured when anything in the panel changes size (a notice, an offer, a wrapped line — r1 F3),
- *  on a window resize, and on a visual-viewport resize or pan, which is how a soft keyboard shows up
- *  in browsers that keep the layout viewport's height (r1 F2). Null until measured. */
+/** Height caps for the open panel and its results, from where each starts to the bottom of what is
+ *  actually visible, keeping CHECKLIST_RESERVE free below. The results' start is taken as if the
+ *  panel were not scrolled, so scrolling the panel does not resize them. Re-measured after every
+ *  render (a notice or an offer appearing re-renders this component), when the panel or the results
+ *  change size (a wrapped line — r1 F3), on a window resize, and on a visual-viewport resize or pan,
+ *  which is how a soft keyboard shows up in browsers that keep the layout viewport's height (r1 F2).
+ *  Null until measured. */
 function useRoomBelow(open: boolean) {
+  const panelRef = useRef<HTMLElement>(null);
   const regionRef = useRef<HTMLDivElement>(null);
   const [room, setRoom] = useState<number | null>(null);
+  const [panelRoom, setPanelRoom] = useState<number | null>(null);
+  const measureRef = useRef<() => void>(() => undefined);
+
   useLayoutEffect(() => {
-    const el = regionRef.current;
-    if (!open || !el) return;
+    const panel = panelRef.current;
+    const region = regionRef.current;
+    if (!open || !panel || !region) {
+      measureRef.current = () => undefined;
+      return;
+    }
     const vv = window.visualViewport;
     const measure = () => {
       const bottom = vv ? vv.offsetTop + vv.height : window.innerHeight;
-      setRoom(Math.max(MIN_RESULTS, Math.floor(bottom - el.getBoundingClientRect().top - CHECKLIST_RESERVE)));
+      const panelTop = panel.getBoundingClientRect().top;
+      const regionTop = region.getBoundingClientRect().top + panel.scrollTop;
+      setPanelRoom(Math.max(MIN_ROW, Math.floor(bottom - panelTop - CHECKLIST_RESERVE)));
+      setRoom(Math.max(MIN_ROW, Math.floor(bottom - regionTop - CHECKLIST_RESERVE)));
     };
+    measureRef.current = measure;
     measure();
-    // The panel's own size changes when anything above the results does; the cap depends only on
-    // where the results start, so a re-measure after the results themselves resize settles at once.
-    const panel = el.parentElement;
-    const observer = typeof ResizeObserver === "undefined" || !panel ? null : new ResizeObserver(measure);
-    if (observer && panel) observer.observe(panel);
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
+    observer?.observe(panel);
+    observer?.observe(region);
     window.addEventListener("resize", measure);
     vv?.addEventListener("resize", measure);
     vv?.addEventListener("scroll", measure);
     return () => {
+      measureRef.current = () => undefined;
       observer?.disconnect();
       window.removeEventListener("resize", measure);
       vv?.removeEventListener("resize", measure);
       vv?.removeEventListener("scroll", measure);
     };
   }, [open]);
-  return { regionRef, room };
+
+  // After every render: a notice or an offer above the results may have appeared or gone. Setting an
+  // unchanged value does not re-render, so this settles at once.
+  useLayoutEffect(() => {
+    measureRef.current();
+  });
+
+  return { panelRef, regionRef, room, panelRoom };
 }
 
 function offerText({ target: t, here }: EquipmentOffer): string {
