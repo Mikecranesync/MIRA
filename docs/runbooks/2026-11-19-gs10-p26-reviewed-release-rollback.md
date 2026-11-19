@@ -40,8 +40,9 @@ original file. A code rollback must keep the reader filters (step 3).
   rows and any other GS10 revision with that table on page 26. Rows of other pages and documents
   are untouched.
 - **Out of scope.** The shared OEM corpus and every non-node ingest path never carried this
-  approval and are unchanged. Conversation history that already contains an earlier answer is not
-  rewritten. The crawler's blog and component-template tasks read only the shared tenant and run on
+  approval and are unchanged. Withdrawal applies to retrieval, not to conversation history: a thread
+  that already holds an answer quoting a page 26 value still sends that turn to the model as
+  conversation text, so a follow-up in that thread can repeat it (a new thread cannot). The crawler's blog and component-template tasks read only the shared tenant and run on
   queues no production worker consumes (`docker-compose.saas.yml`).
 - Rows are never deleted or rewritten by disabling: the text and the marks stay as the historical
   record.
