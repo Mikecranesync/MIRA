@@ -16,7 +16,7 @@
  * is still exactly this component", which a switch to another component can never satisfy. The
  * checklist's own write is the compare-and-set.
  */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { itemKey, type BrowserItem, type EquipmentSource, type QuestionTarget } from "@factorylm/interaction";
 import { EquipmentAskNoticeBar, PagedEquipmentNavigator, useEquipmentAsk } from "@factorylm/ui";
 import { createHubEquipmentSource, equipmentNavAvailable } from "./equipment-source";
@@ -106,17 +106,23 @@ export function EquipmentNav({
         </div>
       ) : null}
       {open ? (
-        <PagedEquipmentNavigator
-          source={source}
-          target={target}
-          browsingKey={browsing ? itemKey(browsing) : null}
-          onBrowse={setBrowsing}
-          asker={asker}
-        />
+        // A full page of results scrolls inside the panel, so Close equipment and the checklist below
+        // stay on screen whatever the result count (#5639).
+        <div data-testid="equipment-scroll" style={SCROLL_REGION}>
+          <PagedEquipmentNavigator
+            source={source}
+            target={target}
+            browsingKey={browsing ? itemKey(browsing) : null}
+            onBrowse={setBrowsing}
+            asker={asker}
+          />
+        </div>
       ) : null}
     </section>
   );
 }
+
+const SCROLL_REGION: CSSProperties = { maxHeight: "min(50vh, 24rem)", overflowY: "auto", overscrollBehavior: "contain" };
 
 function offerText({ target: t, here }: EquipmentOffer): string {
   const machine = t.machineLabel || "that machine";
