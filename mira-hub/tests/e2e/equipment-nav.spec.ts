@@ -20,6 +20,8 @@
  *     closing the panel cancels a lookup on its way so the chat and its draft stay (r3 F12).
  *   - a component added after the checklist was read is shown after one fresh read (r3 F13).
  *   - showing a part never saves it, and reopening the chat does not show it again.
+ *   - Close on the checklist drops a part waiting on an open label editor; it is not shown later (#5637).
+ *   - a full page of 50 results scrolls inside the panel; Close equipment and the page stay put (#5639).
  *   - off: the panel is not rendered.
  *
  * Auth: a next-auth JWE signed with the SAME AUTH_SECRET the server boots with
@@ -87,6 +89,11 @@ const notebookPage = {
   counts: { total: 2 }, hasMore: false, nextCursor: null,
 };
 
+const fullNotebookPage = (n: number) => ({
+  items: Array.from({ length: n }, (_, i) => component(`00000000-0000-4000-8000-${String(i).padStart(12, "0")}`, `M${i + 1}`, 1, "MLC")),
+  counts: { total: n + 10 }, hasMore: true, nextCursor: "next",
+});
+
 type Seen = {
   resolves: URL[];
   selectionPuts: Record<string, unknown>[];
@@ -106,6 +113,8 @@ type RouteOpts = {
   failReads?: number[];
   /** The first checklist read predates this component (it was added on another screen). */
   firstBenchWithout?: string;
+  /** The notebook's children page holds this many components (a full page, #5639). */
+  fullPage?: number;
   /** The resolve answers with the component in this notebook instead of NB. */
   resolveNotebook?: string;
   initial?: Record<string, Selection>;
@@ -142,6 +151,7 @@ async function routes(page: Page, opts: RouteOpts): Promise<Seen> {
     if (!opts.enabled) return route.fulfill(json({ error: "equipment_nav_disabled" }, 404));
     if (url.pathname.includes("/children")) {
       const parentKind = url.searchParams.get("parentKind");
+      if (parentKind === "notebook" && opts.fullPage) return route.fulfill(json(fullNotebookPage(opts.fullPage)));
       return route.fulfill(json(parentKind === "notebook" ? notebookPage : rootPage));
     }
     if (url.pathname.includes("/resolve")) {
@@ -454,6 +464,60 @@ test("a failed checklist read does not fail the next lookup: it gets its own fre
   await expect(checklistRow(page, MLC)).toHaveAttribute("data-found", "true");
   expect(seen.benchReads).toBeGreaterThan(before);
   expect(seen.selectionPuts).toHaveLength(0);
+});
+
+test("Close on the checklist drops a part waiting on an open label editor; it is not shown later (#5637)", async ({ page, context, baseURL }) => {
+  await auth(context, baseURL!);
+  const seen = await routes(page, { enabled: true, resolve: "resolved", holdResolve: true });
+  await page.goto(`/v3/?notebook=${NB}&thread=${THREAD}`);
+  await expect(panel(page)).toBeVisible();
+
+  await openTo(page, MLC);
+  await askAbout(page, "Q1");
+  await expect.poll(() => seen.resolves.length).toBe(1);
+  await page.getByTestId("bench-asking-about").click();
+  await checklistRow(page, VFD).getByRole("button", { name: "Edit label" }).click();
+  await page.getByTestId("bench-card-raw").fill("unsaved edit");
+  seen.release();
+  await showFound(page);
+  await expect(checklist(page).getByTestId("bench-focus-waiting")).toContainText("Q1 · MLC will be shown when you finish this label");
+
+  await checklist(page).getByRole("button", { name: "Close", exact: true }).click();
+  await expect(checklist(page)).toHaveCount(0);
+  // Nothing reopens it by itself, and opening it by hand does not replay the hand-off.
+  await page.waitForTimeout(500);
+  await expect(checklist(page)).toHaveCount(0);
+  await page.getByTestId("bench-asking-about").click();
+  await expect(checklistRow(page, MLC)).toBeVisible();
+  await expect(checklistRow(page, MLC)).not.toHaveAttribute("data-found", "true");
+  await expect(pickNotice(page)).toHaveCount(0);
+  expect(seen.selectionPuts).toHaveLength(0);
+});
+
+test("a full page of 50 results scrolls inside the panel; Close equipment and the page stay put (#5639)", async ({ page, context, baseURL }) => {
+  await page.setViewportSize({ width: 800, height: 1280 });
+  await auth(context, baseURL!);
+  await routes(page, { enabled: true, resolve: "resolved", fullPage: 50 });
+  await page.goto(`/v3/?notebook=${NB}&thread=${THREAD}`);
+  await expect(panel(page)).toBeVisible();
+
+  await panel(page).getByRole("button", { name: "Find equipment" }).click();
+  await row(page, `notebook:${NB}`).click();
+  await expect(row(page, "notebook_component:00000000-0000-4000-8000-000000000049")).toBeAttached();
+  const region = page.getByTestId("equipment-scroll");
+  const viewport = page.viewportSize()!;
+  const box = (await region.boundingBox())!;
+  expect(box.y + box.height).toBeLessThanOrEqual(viewport.height);
+  expect(await region.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true);
+
+  const pageScroll = await page.evaluate(() => document.scrollingElement?.scrollTop ?? 0);
+  const more = panel(page).getByRole("button", { name: /show more/i }).first();
+  await more.scrollIntoViewIfNeeded();
+  await expect(more).toBeInViewport();
+  expect(await region.evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
+  expect(await page.evaluate(() => document.scrollingElement?.scrollTop ?? 0)).toBe(pageScroll);
+  await expect(panel(page).getByRole("button", { name: "Close equipment" })).toBeInViewport();
+  await expect(page.getByTestId("bench-asking-about")).toBeInViewport();
 });
 
 test("off: the panel is not rendered", async ({ page, context, baseURL }) => {

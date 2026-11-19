@@ -227,6 +227,17 @@ export function BenchComponents({
     setMessage(text);
     onFocusDone?.(focus.token, { ok: false, message: text });
   }, [focus, bench, available, readFailed, onFocusDone, load, rereadDone, card]);
+  // Close is the technician saying they're done: a hand-off still waiting on an open label editor is
+  // dropped, not replayed once the editor goes away (#5637). Save and the editor's Cancel keep it.
+  const closeChecklist = useCallback(() => {
+    if (focus && !consumedFocus.current.has(focus.token)) {
+      consumedFocus.current.add(focus.token);
+      onFocusDone?.(focus.token, { ok: true });
+    }
+    setOpen(false);
+    setCard(null);
+    setFocused(null);
+  }, [focus, onFocusDone]);
   useEffect(() => {
     if (open && focused) document.querySelector(`[data-testid="bench-component-${focused}"]`)?.scrollIntoView?.({ block: "nearest" });
   }, [open, focused]);
@@ -359,7 +370,7 @@ export function BenchComponents({
         <section role="dialog" aria-label="Components" style={PANEL_STYLE} data-testid="bench-components-panel">
           <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <h2 style={{ fontSize: "var(--fl-fs-title, 18px)", margin: 0 }}>Components</h2>
-            <button type="button" style={QUIET_BUTTON} onClick={() => { setOpen(false); setCard(null); setFocused(null); }}>Close</button>
+            <button type="button" style={QUIET_BUTTON} onClick={closeChecklist}>Close</button>
           </header>
           <p data-testid="bench-panel-asking">{askingAbout(bench)}</p>
           {message && <p role="status" data-testid="bench-message">{message}</p>}
