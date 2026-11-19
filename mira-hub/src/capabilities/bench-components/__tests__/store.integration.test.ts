@@ -35,6 +35,8 @@ import {
 import { readRevisionInput, type ComponentRevisionInput } from "../validate";
 import { readSubjectUnderSelection } from "../selection";
 import { SEED_USER, runSeed, seedInputs, type InventoryRow } from "../seed";
+import { SAME_SERIAL_SQL, sameSerialAdvisory } from "../same-serial";
+import { withTenantContext } from "@/lib/tenant-context";
 
 const MIGRATION = path.resolve(__dirname, "../../../../db/migrations/115_bench_components.sql");
 const USER = "user-tech-1";
@@ -480,5 +482,170 @@ run("bench component store (real Postgres, RLS)", () => {
         [tenantA, added.component.id, uuid()],
       ),
     ).rejects.toThrow(/notebook_component_revisions_confirmed_chk/);
+  });
+
+  // ---- the repeated-serial advisory (each case: its own tenant, its own random serial) ----
+
+  async function namedNotebook(tenantId: string, name: string): Promise<string> {
+    const id = await makeNotebook(tenantId);
+    await testPool.query(`UPDATE equipment_notebooks SET display_name = $1 WHERE id = $2::uuid AND tenant_id = $3::uuid`, [name, id, tenantId]);
+    return id;
+  }
+  /** A serial no other case uses, and the same serial typed another way (case, spaces, dash). */
+  function serialPair() {
+    const hex = uuid().replace(/-/g, "").slice(0, 10);
+    return { typed: `SN-${hex.toUpperCase()}`, retyped: `sn ${hex.slice(0, 4)} ${hex.slice(4)}`, folded: `sn${hex}` };
+  }
+  async function confirmedUnit(tenantId: string, notebookId: string, serial: string | null, over: Record<string, unknown> = {}) {
+    const added = await addComponent(tenantId, notebookId, USER, {
+      clientRequestId: uuid(), kind: "drive", origin: "technician", position: null, revision: rev({ ...GS10, serialNumber: serial, ...over }, true),
+    });
+    if (added.status !== "created") throw new Error(added.status);
+    return added.component;
+  }
+  const ids = (advisory: Awaited<ReturnType<typeof sameSerialAdvisory>>) => (advisory.status === "checked" ? advisory.candidates.map((c) => c.componentId) : advisory.status);
+
+  it("same serial: two confirmed components of one tenant in different projects with the same serial, typed differently, warn about each other", async () => {
+    const tenant = uuid();
+    const [nb1, nb2] = [await namedNotebook(tenant, "Line 1"), await namedNotebook(tenant, "Line 2")];
+    const s = serialPair();
+    const a = await confirmedUnit(tenant, nb1, s.typed, { localTag: "VFD1" });
+    const b = await confirmedUnit(tenant, nb2, s.retyped, { localTag: "VFD2" });
+    expect(await sameSerialAdvisory(tenant, b)).toEqual({
+      status: "checked",
+      candidates: [{ componentId: a.id, notebookId: nb1, notebookName: "Line 1", label: "VFD1 · AutomationDirect GS11N-20P2", retired: false }],
+      truncated: false,
+    });
+    expect(await sameSerialAdvisory(tenant, a)).toEqual({
+      status: "checked",
+      candidates: [{ componentId: b.id, notebookId: nb2, notebookName: "Line 2", label: "VFD2 · AutomationDirect GS11N-20P2", retired: false }],
+      truncated: false,
+    });
+  });
+
+  it("same serial: the same tag, manufacturer and catalog number with a different serial, or with no serial, is not a candidate", async () => {
+    const tenant = uuid();
+    const [nb1, nb2] = [await namedNotebook(tenant, "Line 1"), await namedNotebook(tenant, "Line 2")];
+    const s = serialPair();
+    const a = await confirmedUnit(tenant, nb1, s.typed);
+    const b = await confirmedUnit(tenant, nb2, s.retyped);
+    const differentSerial = await confirmedUnit(tenant, nb2, serialPair().typed);
+    const noSerial = await confirmedUnit(tenant, nb2, null);
+    expect(differentSerial.current).toMatchObject({ localTag: "VFD1", manufacturer: "AutomationDirect", catalogNumber: "GS11N-20P2" });
+    expect(noSerial.current).toMatchObject({ localTag: "VFD1", manufacturer: "AutomationDirect", catalogNumber: "GS11N-20P2", serialNumber: null });
+    expect(ids(await sameSerialAdvisory(tenant, b))).toEqual([a.id]);
+    expect(ids(await sameSerialAdvisory(tenant, a))).toEqual([b.id]);
+  });
+
+  it("same serial: a component never lists itself, also after a note-only correction", async () => {
+    const tenant = uuid();
+    const [nb1, nb2] = [await namedNotebook(tenant, "Line 1"), await namedNotebook(tenant, "Line 2")];
+    const s = serialPair();
+    const a = await confirmedUnit(tenant, nb1, s.typed);
+    const b = await confirmedUnit(tenant, nb2, s.retyped);
+    expect(ids(await sameSerialAdvisory(tenant, b))).toEqual([a.id]);
+    const corrected = await reviseComponent(tenant, nb2, b.id, USER, {
+      clientRequestId: uuid(), expectedRevision: 1, revision: rev({ ...GS10, serialNumber: s.retyped, evidenceNote: "read off the nameplate" }, true),
+    });
+    if (corrected.status !== "created") throw new Error(corrected.status);
+    expect(corrected.component.current?.revision).toBe(2);
+    expect(ids(await sameSerialAdvisory(tenant, corrected.component))).toEqual([a.id]);
+  });
+
+  it("same serial: a serial corrected away or cleared on the other component no longer warns (and warned before)", async () => {
+    const tenant = uuid();
+    const [nb1, nb2] = [await namedNotebook(tenant, "Line 1"), await namedNotebook(tenant, "Line 2")];
+    const s = serialPair();
+    const a = await confirmedUnit(tenant, nb1, s.typed);
+    const b = await confirmedUnit(tenant, nb2, s.retyped);
+    expect(ids(await sameSerialAdvisory(tenant, b))).toEqual([a.id]);
+    const corrected = await reviseComponent(tenant, nb1, a.id, USER, { clientRequestId: uuid(), expectedRevision: 1, revision: rev({ ...GS10, serialNumber: serialPair().typed }, true) });
+    expect(corrected.status).toBe("created");
+    expect(await sameSerialAdvisory(tenant, b)).toEqual({ status: "checked", candidates: [], truncated: false });
+
+    const s2 = serialPair();
+    const c = await confirmedUnit(tenant, nb1, s2.typed);
+    const d = await confirmedUnit(tenant, nb2, s2.retyped);
+    expect(ids(await sameSerialAdvisory(tenant, d))).toEqual([c.id]);
+    const cleared = await reviseComponent(tenant, nb1, c.id, USER, { clientRequestId: uuid(), expectedRevision: 1, revision: rev({ ...GS10 }, true) });
+    expect(cleared.status === "created" && cleared.component.current?.serialNumber).toBeNull();
+    expect(await sameSerialAdvisory(tenant, d)).toEqual({ status: "checked", candidates: [], truncated: false });
+  });
+
+  it("same serial: another tenant's component with the same serial is never listed, by the predicate and not by an empty table", async () => {
+    const tenantA = uuid();
+    const tenantB = uuid();
+    const nbA = await namedNotebook(tenantA, "A's line");
+    const nbB = await namedNotebook(tenantB, "B's line");
+    const s = serialPair();
+    const mine = await confirmedUnit(tenantA, nbA, s.typed);
+    const theirs = await confirmedUnit(tenantB, nbB, s.retyped);
+    expect(await sameSerialAdvisory(tenantA, mine)).toEqual({ status: "checked", candidates: [], truncated: false });
+    // On the owner connection RLS is bypassed, so only the explicit tenant predicate is under test.
+    const own = await testPool.query(SAME_SERIAL_SQL, [tenantA, mine.id, s.typed, 11]);
+    expect(own.rows.map((r) => r.id)).toEqual([]);
+    const control = await testPool.query(SAME_SERIAL_SQL, [tenantB, mine.id, s.typed, 11]);
+    expect(control.rows.map((r) => r.id)).toEqual([theirs.id]);
+    // And the row-level policy alone: inside tenant A's transaction the same statement, asked for tenant
+    // B's rows outright, sees none, while tenant B's own transaction does see it (so it is the policy
+    // refusing, not a missing grant).
+    const read = (as: string) => withTenantContext(as, (c) => c.query(SAME_SERIAL_SQL, [tenantB, mine.id, s.typed, 11]), { readOnly: true });
+    expect((await read(tenantA)).rows).toEqual([]);
+    expect((await read(tenantB)).rows.map((r) => r.id)).toEqual([theirs.id]);
+  });
+
+  it("same serial: a retired component with the same serial is still listed, marked as retired", async () => {
+    const tenant = uuid();
+    const [nb1, nb2] = [await namedNotebook(tenant, "Line 1"), await namedNotebook(tenant, "Line 2")];
+    const s = serialPair();
+    const a = await confirmedUnit(tenant, nb1, s.typed);
+    const b = await confirmedUnit(tenant, nb2, s.retyped);
+    await testPool.query(`UPDATE notebook_components SET retired_at = now() WHERE id = $1::uuid AND tenant_id = $2::uuid`, [a.id, tenant]);
+    expect(await sameSerialAdvisory(tenant, b)).toEqual({
+      status: "checked",
+      candidates: [{ componentId: a.id, notebookId: nb1, notebookName: "Line 1", label: "VFD1 · AutomationDirect GS11N-20P2", retired: true }],
+      truncated: false,
+    });
+  });
+
+  it("same serial: eleven other components with the same serial list ten and say there are more", async () => {
+    const tenant = uuid();
+    const nb = await namedNotebook(tenant, "Line 1");
+    const s = serialPair();
+    const others: string[] = [];
+    for (let i = 0; i < 11; i++) others.push((await confirmedUnit(tenant, nb, i % 2 ? s.typed : s.retyped)).id);
+    // Known ages in an order that is neither the insert order nor its reverse, with one tie, so which ten
+    // are shown can only come from the stated order: newest first, then by id.
+    const minutes = [5, 0, 9, 2, 7, 10, 1, 8, 3, 6, 6];
+    for (let i = 0; i < 11; i++) {
+      await testPool.query(
+        `UPDATE notebook_components SET created_at = timestamptz '2026-01-01T00:00:00Z' + make_interval(mins => $1::int) WHERE id = $2::uuid AND tenant_id = $3::uuid`,
+        [minutes[i], others[i], tenant],
+      );
+    }
+    const newestFirst = others
+      .map((id, i) => ({ id, age: minutes[i]! }))
+      .sort((x, y) => y.age - x.age || (x.id < y.id ? -1 : 1))
+      .map((x) => x.id);
+    const subject = await confirmedUnit(tenant, nb, s.typed);
+    const out = await sameSerialAdvisory(tenant, subject);
+    expect(out).toMatchObject({ status: "checked", truncated: true });
+    expect(ids(out)).toEqual(newestFirst.slice(0, 10));
+    expect(newestFirst[10]).toBe(others[1]);
+  });
+
+  it("same serial: right after a confirm is saved, the advisory sees the committed save and the other component", async () => {
+    const tenant = uuid();
+    const [nb1, nb2] = [await namedNotebook(tenant, "Line 1"), await namedNotebook(tenant, "Line 2")];
+    const s = serialPair();
+    const a = await confirmedUnit(tenant, nb1, s.typed);
+    const added = await addComponent(tenant, nb2, USER, { clientRequestId: uuid(), kind: "drive", origin: "technician", position: null, revision: rev({ ...GS10, serialNumber: s.retyped }, false) });
+    if (added.status !== "created") throw new Error(added.status);
+    expect(await sameSerialAdvisory(tenant, added.component)).toEqual({ status: "not_checked", reason: "not_confirmed" });
+    const confirmed = await reviseComponent(tenant, nb2, added.component.id, USER, { clientRequestId: uuid(), expectedRevision: 1, revision: rev({ ...GS10, serialNumber: s.retyped }, true) });
+    if (confirmed.status !== "created") throw new Error(confirmed.status);
+    const out = await sameSerialAdvisory(tenant, confirmed.component);
+    expect(out).toMatchObject({ status: "checked", truncated: false });
+    expect(ids(out)).toEqual([a.id]);
   });
 });
