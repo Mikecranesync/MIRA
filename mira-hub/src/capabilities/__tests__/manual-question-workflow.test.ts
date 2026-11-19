@@ -10,6 +10,7 @@ const facts = (): ManualWorkflowFacts => ({
   tenantId: "c0000000-0000-4000-8000-000000000001", fileId, notebookId, sha256: "c".repeat(64),
   linkedDocId: docId, documentId: docId, uploadStatus: "parsed", claim: "none", chunkCount: 3, anchoredChunkCount: 3,
   canAdoptOrphan: true,
+  canExtract: true,
   source: { enabled: true, matchState: "user_confirmed", superseded: false }, turn: null,
   observedAt: "2026-11-19T05:00:00.000Z", uploadObservation: null, visibilityGaps: [],
 });
@@ -68,6 +69,18 @@ describe("manual-to-question domain projection", () => {
   });
   it("will not present unanchored text as ready", () => {
     expect(projectManualQuestion({ ...facts(), anchoredChunkCount: 0 }).readiness.canChat).toBe(false);
+  });
+  it.each(["none", "live", "stale"] as const)("never recommends reconstruction through a retained pointer (%s claim)", (claim) => {
+    for (const bad of [{ chunkCount: 0, anchoredChunkCount: 0 }, { anchoredChunkCount: 0 }, { uploadStatus: "failed" }, { uploadStatus: "cancelled" }]) {
+      const result = projectManualQuestion({ ...facts(), ...bad, claim });
+      expect(result.workflow).toMatchObject({ state: "failed", retry: { eligible: false }, recovery: { action: "none" } });
+      expect(result.readiness.canChat).toBe(false);
+    }
+  });
+  it("does not offer manual extraction for a stored, unsupported file", () => {
+    const result = projectManualQuestion({ ...facts(), documentId: null, linkedDocId: null, uploadStatus: null,
+      canExtract: false, chunkCount: 0, anchoredChunkCount: 0, source: null });
+    expect(result.workflow).toMatchObject({ retry: { eligible: false }, recovery: { action: "none" } });
   });
   it.each(["rejected", "candidate"])("does not promote a %s source", (matchState) => {
     const result = projectManualQuestion({ ...facts(), source: { enabled: true, matchState, superseded: false } });

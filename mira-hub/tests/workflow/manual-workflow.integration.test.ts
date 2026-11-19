@@ -18,7 +18,9 @@ const { testPool, controls, previousNeon } = await vi.hoisted(async () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { Pool: PgPool } = require("pg");
   return { testPool: new PgPool(config) as Pool, previousNeon,
-    controls: { failFinalize: false, failTelemetry: false, suppressLifecycle: false, beforeParse: null as null | (() => Promise<void>), provider: "answer" as "answer" | "fail" | "hold", heldProvider: null as ReadableStreamDefaultController<Uint8Array> | null } };
+    controls: { failFinalize: false, failTelemetry: false, suppressLifecycle: false,
+      beforeIngress: null as null | (() => Promise<void>), ingressPending: [] as Promise<unknown>[],
+      beforeParse: null as null | (() => Promise<void>), provider: "answer" as "answer" | "fail" | "hold", heldProvider: null as ReadableStreamDefaultController<Uint8Array> | null } };
 });
 vi.mock("@/lib/db", () => ({ default: testPool }));
 vi.mock("@/lib/session", () => ({ sessionOr401: vi.fn() }));
@@ -51,12 +53,21 @@ vi.mock("@/capabilities/observability/turn-lifecycle", async (original) => {
       ? Promise.resolve({ closed: false, matched: false }) : actual.closeTurn(input),
   };
 });
+vi.mock("@/capabilities/observability/turn-ingress", async (original) => {
+  const actual = await original<typeof import("@/capabilities/observability/turn-ingress")>();
+  return { ...actual, recordResponse: (input: Parameters<typeof actual.recordResponse>[0]) => {
+    const gate = controls.beforeIngress;
+    const work = Promise.resolve(gate?.()).then(() => actual.recordResponse(input));
+    if (gate) controls.ingressPending.push(work);
+    return work;
+  } };
+});
 
 import { POST as upload } from "@/app/api/namespace/node/[id]/files/route";
 import { POST as attach } from "@/app/api/equipment-notebooks/[id]/sources/route";
 import { POST as ask } from "@/app/api/equipment-notebooks/[id]/chat/route";
 import { GET as inspect } from "@/app/api/workflows/manual-question/route";
-import { createNotebook, claimNotebookTurnRequest } from "@/lib/equipment-notebooks";
+import { createNotebook, claimNotebookTurnRequest, recordTurn } from "@/lib/equipment-notebooks";
 import { parkOrReuseFile, claimIngest, linkFileToUpload, attachFileToTargets } from "@/lib/workspace-files";
 import { ingestPdfToNode } from "@/lib/node-knowledge-ingest";
 import { sessionOr401 } from "@/lib/session";
@@ -123,6 +134,7 @@ beforeAll(async () => {
 });
 beforeEach(async () => {
   vi.clearAllMocks(); controls.failFinalize = false; controls.failTelemetry = false; controls.suppressLifecycle = false; controls.beforeParse = null; controls.provider = "answer"; controls.heldProvider = null; providerCalls = 0;
+  controls.beforeIngress = null; controls.ingressPending = [];
   process.env.NODE_INGEST_EMBED = "0"; process.env.NOTEBOOK_HYBRID_RETRIEVAL = "0";
   process.env.NOTEBOOK_ANSWER_GATE = "1"; process.env.NOTEBOOK_SEMANTIC_CHECK = "0";
   process.env.MIRA_CANONICAL_SEAM = "1"; process.env.OPENAI_API_KEY = "fixture-only-not-a-credential";
@@ -157,6 +169,12 @@ describe("WF-01 existing manual-to-answer vertical slice", () => {
     const rows = await testPool.query("SELECT run_id FROM workflow_runs WHERE tenant_id=$1 AND input->'workflow'->'identity'->>'operationId'=$2", [tenantId, result.body.fileId]);
     expect(rows.rowCount).toBe(0);
     expect((await view(result.body.fileId)).body.visibility.uploadRecorded).toBe(false);
+  });
+  it.each(["opaque.bin", "opaqueXpdf", "opaqueXtxt", "opaqueXmd"])("does not advertise an extractor for %s", async (filename) => {
+    const body = new FormData(); body.set("file", new File(["stored only"], filename, { type: "application/octet-stream" }));
+    const response = await upload(new Request(`https://hub.test/api/namespace/node/${nb.nodeId}/files`, { method: "POST", body }), { params: Promise.resolve({ id: nb.nodeId }) });
+    const file = await response.json();
+    expect((await view(file.fileId)).body.workflow).toMatchObject({ retry: { eligible: false }, recovery: { action: "none" } });
   });
   it("extracts a real PDF, indexes private anchored text, attaches it, retrieves and persists a cited gated answer; duplicates replay", async () => {
     const doc = await indexAndAttach();
@@ -195,8 +213,26 @@ describe("WF-01 existing manual-to-answer vertical slice", () => {
     const result = await view(doc.body.fileId);
     expect(result.body.workflow).toMatchObject({ state: "failed", retry: { eligible: false }, recovery: { action: "none" } });
     // The unchanged executor returns the old pointer; it cannot perform the advertised repair.
-    expect((await sendPdf()).body).toMatchObject({ indexed: true, uploadId: doc.body.uploadId });
-    expect((await view(doc.body.fileId)).body.stages.indexed).toBe(false);
+    const replay = await sendPdf();
+    expect(replay.body).toMatchObject({ indexed: true, uploadId: doc.body.uploadId });
+    const inspected = (await view(doc.body.fileId)).body;
+    expect(inspected.stages.indexed).toBe(false);
+    expect(inspected.uploadObservation.state).not.toBe("succeeded");
+    expect(inspected.uploadObservation.stage).not.toBe("indexed");
+    const run = await testPool.query("SELECT output FROM workflow_runs WHERE run_id = $1", [replay.res.headers.get("X-Mira-Workflow-Run-Id")]);
+    expect(run.rows[0].output.workflow.state).not.toBe("succeeded");
+  });
+  it("declines pointer replay as repair when retained chunks lose all page locators", async () => {
+    const doc = await indexAndAttach();
+    await testPool.query("UPDATE knowledge_entries SET page_start = NULL, source_page = NULL WHERE tenant_id = $1 AND doc_id = $2 AND is_private = true", [tenantId, doc.uploadId]);
+    const first = (await view(doc.fileId)).body;
+    expect(first.readiness.canChat).toBe(false);
+    expect(first.workflow).toMatchObject({ retry: { eligible: false }, recovery: { action: "none" } });
+    const replay = await sendPdf(); expect(replay.body).toMatchObject({ indexed: true, uploadId: doc.uploadId });
+    const second = (await view(doc.fileId)).body;
+    expect(second.workflow.retry.eligible).toBe(false);
+    expect(second.uploadObservation.state).not.toBe("succeeded");
+    expect(ingestPdfToNode).toHaveBeenCalledTimes(1);
   });
   it.each(["txt", "md"])("does not advertise PDF-only orphan adoption for a %s file", async (extension) => {
     const body = new FormData();
@@ -322,10 +358,65 @@ describe("WF-01 existing manual-to-answer vertical slice", () => {
     expect(result.body.workflow.state).toBe("failed"); expect(result.body.workflow.cancellation.acknowledged).toBe(false);
     expect(result.body.visibility.gaps).toContain("turn_outcome_unavailable");
   });
+  it("cannot inherit an old stop before a failed retry's delayed ingress commits", async () => {
+    const doc = await indexAndAttach(); const id = randomUUID(); await cancelQuestion(doc.uploadId, id);
+    await vi.waitFor(async () => expect((await view(doc.fileId, id)).body.workflow.state).toBe("cancelled"));
+    let release!: () => void; const gate = new Promise<void>((r) => { release = r; });
+    controls.provider = "fail"; controls.failTelemetry = true; controls.suppressLifecycle = true; controls.beforeIngress = () => gate;
+    try {
+      await (await sendQuestion(doc.uploadId, id)).text();
+      await vi.waitFor(() => expect(controls.ingressPending).toHaveLength(1));
+      const before = (await view(doc.fileId, id)).body;
+      expect(before.workflow.state).toBe("failed"); expect(before.workflow.cancellation.acknowledged).toBe(false);
+      expect(before.visibility.gaps).toContain("turn_outcome_unavailable");
+    } finally { release(); await Promise.allSettled(controls.ingressPending); }
+    const after = (await view(doc.fileId, id)).body;
+    expect(after.workflow.state).toBe("failed"); expect(after.workflow.cancellation.acknowledged).toBe(false);
+  });
   it("finds the same first-attempt cancellation for uppercase and lowercase request UUIDs", async () => {
     const doc = await indexAndAttach(); const id = randomUUID().toUpperCase(); await cancelQuestion(doc.uploadId, id);
     await vi.waitFor(async () => expect((await view(doc.fileId, id)).body.workflow.state).toBe("cancelled"));
     expect((await view(doc.fileId, id.toLowerCase())).body.workflow.cancellation.acknowledged).toBe(true);
+  });
+  it("acknowledges the current saved stop while all optional telemetry is absent or delayed", async () => {
+    const doc = await indexAndAttach(); const id = randomUUID();
+    let release!: () => void; const gate = new Promise<void>((r) => { release = r; });
+    controls.failTelemetry = true; controls.suppressLifecycle = true; controls.beforeIngress = () => gate;
+    try {
+      await cancelQuestion(doc.uploadId, id);
+      await vi.waitFor(async () => expect((await view(doc.fileId, id)).body.workflow.state).toBe("cancelled"));
+      const result = (await view(doc.fileId, id)).body;
+      expect(result.workflow).toMatchObject({ state: "cancelled", cancellation: { acknowledged: true } });
+      const traces = await testPool.query("SELECT attempt_id FROM decision_traces WHERE tenant_id = $1 AND client_request_id = $2 AND lifecycle IS NOT NULL", [tenantId, id]);
+      expect(traces.rowCount).toBe(0);
+    } finally { release(); await Promise.allSettled(controls.ingressPending); }
+  });
+  it("keeps old stop evidence inactive during reclaim, replaces it on completion, and fences the old writer", async () => {
+    const doc = await indexAndAttach(); const id = randomUUID();
+    controls.provider = "hold"; const abort = new AbortController();
+    const res = await sendQuestion(doc.uploadId, id, abort.signal); const stopped = res.text().catch(() => "stopped");
+    await vi.waitFor(() => expect(controls.heldProvider).not.toBeNull());
+    const lease = await testPool.query("SELECT client_request_claim_token FROM equipment_notebook_turns WHERE tenant_id = $1 AND notebook_id = $2 AND client_request_id = $3", [tenantId, nb.id, id]);
+    abort.abort(); await stopped;
+    await vi.waitFor(async () => expect((await view(doc.fileId, id)).body.workflow.state).toBe("cancelled"));
+    const first = await testPool.query("SELECT evidence FROM equipment_notebook_turns WHERE tenant_id = $1 AND notebook_id = $2 AND client_request_id = $3", [tenantId, nb.id, id]);
+    const receipt = first.rows[0].evidence.find((e: { kind?: string }) => e.kind === "notebook_turn_cancelled");
+    expect(receipt).toBeDefined();
+    controls.heldProvider = null; const secondAbort = new AbortController();
+    const secondRes = await sendQuestion(doc.uploadId, id, secondAbort.signal); const secondStopped = secondRes.text().catch(() => "stopped");
+    await vi.waitFor(() => expect(controls.heldProvider).not.toBeNull());
+    expect((await view(doc.fileId, id)).body.workflow).toMatchObject({ state: "running", cancellation: { acknowledged: false } });
+    secondAbort.abort(); await secondStopped;
+    await vi.waitFor(async () => expect((await view(doc.fileId, id)).body.workflow.state).toBe("cancelled"));
+    const next = await testPool.query("SELECT evidence FROM equipment_notebook_turns WHERE tenant_id = $1 AND notebook_id = $2 AND client_request_id = $3", [tenantId, nb.id, id]);
+    const nextReceipt = next.rows[0].evidence.find((e: { kind?: string }) => e.kind === "notebook_turn_cancelled");
+    expect(nextReceipt.attemptId).not.toBe(receipt.attemptId);
+    expect((await view(doc.fileId, id)).body.workflow.state).toBe("cancelled");
+    controls.provider = "answer"; await (await sendQuestion(doc.uploadId, id)).text();
+    await expect(recordTurn(tenantId, nb.id, { ownerUserId: userId, clientRequestId: id, threadId: "wf01",
+      claimToken: lease.rows[0].client_request_claim_token, question: questionBody(doc.uploadId, id).message,
+      answerStatus: "error", answerText: null, enabledSourceDocIds: [doc.uploadId], evidence: [receipt], model: null })).rejects.toThrow("notebook_not_found");
+    expect((await view(doc.fileId, id)).body.workflow).toMatchObject({ state: "succeeded", cancellation: { acknowledged: false } });
   });
   it("the existing immediate-danger gate stays terminal, requires no model call, and cannot become workflow success", async () => {
     const doc = await indexAndAttach(); const id = randomUUID();

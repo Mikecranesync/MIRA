@@ -6,6 +6,7 @@ import { findDuplicateUpload, getUpload } from "@/lib/uploads";
 import { parseWorkflowObservation, type WorkflowObservation } from "@/lib/workflow-contract";
 import { projectManualQuestion, type ManualWorkflowFacts } from "./manual-question-workflow";
 import type { TurnOutcome } from "./observability/turn-lifecycle";
+import { currentCancellationReceipt } from "./notebook-cancellation-receipt";
 
 // Reader validation stays exhaustive against the existing ledger's vocabulary.
 const TURN_OUTCOMES = {
@@ -19,6 +20,8 @@ export async function inspectManualQuestion(input: { tenantId: string; userId: s
     const { rows } = await c.query(
       `SELECT f.id::text AS file_id, f.content_sha256, f.upload_id::text, f.node_id::text AS original_node_id,
               (f.mime_type = 'application/pdf' OR lower(f.filename) LIKE '%.pdf') AS can_adopt_orphan,
+              (f.mime_type = 'application/pdf' OR f.mime_type LIKE 'text/plain%'
+                OR lower(f.filename) LIKE '%.pdf' OR lower(f.filename) LIKE '%.txt' OR lower(f.filename) LIKE '%.md') AS can_extract,
               n.node_id::text, now() AS observed_at,
               CASE WHEN f.ingest_claim_token IS NULL THEN 'none'
                    WHEN f.ingest_claimed_at >= now() - interval '10 minutes' THEN 'live'
@@ -101,9 +104,12 @@ export async function inspectManualQuestion(input: { tenantId: string; userId: s
     });
     if (t) {
       const evidence: Record<string, unknown>[] = Array.isArray(t.evidence) ? t.evidence : [];
-      let cancelled = false;
+      // The current completion is authoritative. Append-only telemetry can
+      // arrive late or be lost; absence of a newer trace proves nothing.
+      const cancelled = t.client_request_state === "complete" && t.answer_status === "error" &&
+        currentCancellationReceipt(evidence, input.clientRequestId) !== null;
       // A pending turn is not expected to have a closed outcome yet.
-      if (t.client_request_state === "complete") {
+      if (t.client_request_state === "complete" && !cancelled) {
         try {
           // Join only through the already owner-authorized turn, never a guessed request key.
           const { rows } = await queryWorkflowObservation(
@@ -127,10 +133,8 @@ export async function inspectManualQuestion(input: { tenantId: string; userId: s
           const outcome: unknown = rows[0]?.outcome;
           if (typeof outcome !== "string" || !Object.hasOwn(TURN_OUTCOMES, outcome)) {
             visibilityGaps.push("turn_outcome_unavailable");
-          } else if (outcome === "cancelled" && t.answer_status !== "error") {
+          } else if (outcome === "cancelled") {
             visibilityGaps.push("turn_outcome_unavailable");
-          } else {
-            cancelled = outcome === "cancelled";
           }
         } catch { visibilityGaps.push("turn_outcome_unavailable"); }
       }
@@ -143,7 +147,7 @@ export async function inspectManualQuestion(input: { tenantId: string; userId: s
   }
   return projectManualQuestion({ tenantId, notebookId, fileId, sha256: row.content_sha256 ?? null,
     linkedDocId: row.upload_id ?? null, documentId, uploadStatus: upload?.status ?? null, claim: row.claim,
-    canAdoptOrphan,
+    canAdoptOrphan, canExtract: row.can_extract === true,
     chunkCount: Number(counts.total), anchoredChunkCount: Number(counts.anchored),
     source: row.source_doc_id ? { enabled: row.enabled_by_default, matchState: row.match_state, superseded: row.superseded_at !== null } : null,
     turn, observedAt: new Date(row.observed_at).toISOString(), uploadObservation, visibilityGaps });

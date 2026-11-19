@@ -177,6 +177,7 @@ import {
 } from "@/lib/inference/canonical-cascade";
 import { legacyProviders } from "@/lib/inference/legacy-cascade";
 import { persistTurnUsage } from "@/lib/inference/persist-usage";
+import { cancellationReceiptEvidence } from "@/capabilities/notebook-cancellation-receipt";
 import {
   logProvidersExhausted,
   providerExhaustionStatus,
@@ -4584,7 +4585,9 @@ async function handleChatTurn(
             // F3); a stop is still not an answer — hydration shows no
             // observation, citation or basis on a stopped answer, and prior-look
             // grounding reads answered turns only.
-            evidence: [...hazardEntries, ...disputeEntries, ...(visualEntry ? [visualEntry] : [])],
+            evidence: [...hazardEntries, ...disputeEntries, ...(visualEntry ? [visualEntry] : []),
+              // The same token-fenced write replaces this receipt on a retry.
+              ...cancellationReceiptEvidence(ingress.attemptId, clientRequestId)],
             model: stoppedModel,
             basis: null,
             ...assetSnapshot,

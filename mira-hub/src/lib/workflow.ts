@@ -366,6 +366,10 @@ export class WorkflowRun {
     this.output = value;
   }
 
+  private logMetadata(level: "info" | "warn" | "error", message: string): void {
+    try { this.log[level](message); } catch { /* Logging cannot change domain results. */ }
+  }
+
   setObservation(value: WorkflowObservation): void {
     const next = parseWorkflowObservation(value);
     const scope = (o: WorkflowObservation) => [o.definition.name, o.definition.version,
@@ -388,7 +392,7 @@ export class WorkflowRun {
       try {
         await this.observeWrite(this.store.checkpoint({ runId: this.runId, tenantId: snapshot.identity.tenantId,
           workflowName: this.workflowName, status: "running", output, errorDetail: null, stepArtifacts: steps }));
-      } catch { this.log.warn(`workflow observation checkpoint unavailable (run_id=${this.runId})`); }
+      } catch { this.logMetadata("warn", `workflow observation checkpoint unavailable (run_id=${this.runId})`); }
     });
     return this.progress;
   }
@@ -415,7 +419,7 @@ export class WorkflowRun {
 
   private async finalize(input: FinalizeInput): Promise<void> {
     try { await this.observeWrite(this.store.finalize(input)); }
-    catch (err) { this.log.warn(this.observation ? `workflow observation finalize unavailable (run_id=${this.runId})` : `workflow run finalize skipped: ${String(err)}`); }
+    catch (err) { this.logMetadata("warn", this.observation ? `workflow observation finalize unavailable (run_id=${this.runId})` : `workflow run finalize skipped: ${String(err)}`); }
   }
 
   /** Run `fn` as a recorded step; return its result. See module docstring.
@@ -441,7 +445,7 @@ export class WorkflowRun {
         buildStepRecord({ stepName: name, status: "failed", startedAt: started, finishedAt: new Date(), error: message }),
       );
       const label = this.observation && !/^[a-z][a-z0-9_]{0,63}$/.test(name) ? "operation" : name;
-      this.log.warn(`workflow ${this.workflowName} step ${label} failed: ${message}`);
+      this.logMetadata("warn", `workflow ${this.workflowName} step ${label} failed: ${message}`);
       if (opts.tolerate) {
         this.degraded = true;
         return null;
@@ -500,9 +504,9 @@ export class WorkflowRun {
         this.recorded = true;
       }
     } catch (err) {
-      this.log.warn(this.observation ? `workflow observation create unavailable (run_id=${this.runId})` : `workflow run create skipped (degraded to in-memory): ${String(err)}`);
+      this.logMetadata("warn", this.observation ? `workflow observation create unavailable (run_id=${this.runId})` : `workflow run create skipped (degraded to in-memory): ${String(err)}`);
     }
-    this.log.info(
+    this.logMetadata("info",
       `workflow ${this.workflowName} v${this.version} started (run_id=${this.runId} tenant=${this.tenantId})`,
     );
   }
@@ -512,9 +516,10 @@ export class WorkflowRun {
     await this.progress;
     this.status = computeFinalStatus(threw, this.degraded);
     if (this.observation) {
-      const completed = !threw && !this.degraded && this.observation.state === "running";
+      const unresolved = this.degraded || this.observation.failure !== null;
+      const completed = !threw && !unresolved && this.observation.state === "running";
       this.setObservation({ ...this.observation,
-        state: threw ? "failed" : this.degraded && ["running", "succeeded"].includes(this.observation.state) ? "partial" : this.observation.state === "running" ? "succeeded" : this.observation.state,
+        state: threw ? "failed" : unresolved && ["running", "succeeded"].includes(this.observation.state) ? "partial" : this.observation.state === "running" ? "succeeded" : this.observation.state,
         failure: threw ? { code: "operation_failed", retryable: false } : this.degraded ? this.observation.failure ?? { code: "operation_failed", retryable: false } : this.observation.failure,
         ...(completed ? { retry: { eligible: false, afterMs: null }, recovery: { ...this.observation.recovery, action: "none" as const } } : {}),
         observedAt: new Date().toISOString(),
@@ -534,8 +539,7 @@ export class WorkflowRun {
     };
     if (this.recorded) await this.finalize(this.terminal);
     const line = `workflow ${this.workflowName} finished status=${this.status} (run_id=${this.runId} steps=${this.steps.length})`;
-    if (this.status === "failed") this.log.error(line);
-    else this.log.info(line);
+    this.logMetadata(this.status === "failed" ? "error" : "info", line);
   }
 
   /** Test-only accessor for the buffered step records. */
@@ -554,13 +558,22 @@ export async function runWorkflow<T>(
   fn: (run: WorkflowRun) => Promise<T>,
 ): Promise<T> {
   const run = new WorkflowRun(opts);
-  await run._begin();
+  const metadata = async (stage: string, work: () => Promise<void>) => {
+    try { await work(); }
+    catch {
+      // A recorder failure, including normalization/logging, cannot replace a
+      // domain result or its original exception. Never expose recorder content.
+      try { (opts.logger ?? console).warn(`workflow recorder ${stage} unavailable`); } catch { /* failed logger */ }
+    }
+  };
+  await metadata("create", () => run._begin());
+  let result: T;
   try {
-    const result = await fn(run);
-    await run._finish(false);
-    return result;
+    result = await fn(run);
   } catch (err) {
-    await run._finish(true, err);
+    await metadata("finalize", () => run._finish(true, err));
     throw err;
   }
+  await metadata("finalize", () => run._finish(false));
+  return result;
 }

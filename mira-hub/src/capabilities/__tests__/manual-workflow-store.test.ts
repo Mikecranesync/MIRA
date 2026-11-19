@@ -6,6 +6,7 @@ const fixture = vi.hoisted(() => ({
   turnId: "e5000000-0000-4000-8000-000000000001", requestId: "e6000000-0000-4000-8000-000000000001",
   fileAllowed: true, turnAllowed: true, state: "complete", stale: false, answer: false,
   outcomeRows: [] as { outcome: unknown }[], outcomeFails: false,
+  receipt: [] as Record<string, unknown>[],
   query: vi.fn(),
 }));
 vi.mock("@/lib/db", () => ({ default: { query: vi.fn(async () => ({ rows: [] })) } }));
@@ -24,18 +25,18 @@ const outcomeQueries = () => fixture.query.mock.calls.filter(([sql]) => sql.incl
 beforeEach(() => {
   vi.clearAllMocks();
   fixture.fileAllowed = true; fixture.turnAllowed = true; fixture.state = "complete";
-  fixture.stale = false; fixture.answer = false; fixture.outcomeRows = []; fixture.outcomeFails = false;
+  fixture.stale = false; fixture.answer = false; fixture.outcomeRows = []; fixture.outcomeFails = false; fixture.receipt = [];
   fixture.query.mockImplementation(async (sql: string) => {
     if (sql.includes("FROM equipment_notebooks n")) return { rows: fixture.fileAllowed ? [{
       file_id: fixture.fileId, content_sha256: "e".repeat(64), upload_id: fixture.docId,
       node_id: fixture.notebookId, observed_at: new Date("2026-11-19T09:00:00.000Z"), claim: "none",
-      source_doc_id: fixture.docId, enabled_by_default: true, match_state: "user_confirmed", superseded_at: null,
+      source_doc_id: fixture.docId, enabled_by_default: true, match_state: "user_confirmed", superseded_at: null, can_extract: true,
     }] : [] };
     if (sql.includes("AS anchored")) return { rows: [{ total: 2, anchored: 2 }] };
     if (sql.includes("FROM equipment_notebook_turns")) return { rows: fixture.turnAllowed ? [{
       id: fixture.turnId, answer_status: fixture.answer ? "answered" : "error", client_request_state: fixture.state,
       stale: fixture.stale, completed_scope: true, pending_scope: true, answer_present: fixture.answer,
-      evidence: fixture.answer ? [{ docId: fixture.docId, page: 2 }] : [],
+      evidence: [...fixture.receipt, ...(fixture.answer ? [{ docId: fixture.docId, page: 2 }] : [])],
     }] : [] };
     if (sql.includes("FROM decision_traces")) {
       if (fixture.outcomeFails) throw new Error("declared private recorder failure");
@@ -63,13 +64,26 @@ describe("manual workflow outcome evidence availability", () => {
     expect(result?.visibility.gaps).toEqual(["turn_outcome_unavailable"]);
     expect(JSON.stringify(result)).not.toContain("private");
   });
-  it("acknowledges cancellation only through the authorized turn's closed outcome", async () => {
+  it("does not infer current cancellation from a closed historical outcome", async () => {
     fixture.outcomeRows = [{ outcome: "cancelled" }];
     const result = await inspectManualQuestion(input());
-    expect(result?.visibility.gaps).toEqual([]);
-    expect(result?.workflow).toMatchObject({ state: "cancelled", cancellation: { requested: true, scope: "execution", acknowledged: true } });
-    expect(result?.workflow.definition).toEqual({ name: "manual_question", version: "1.0.3" });
+    expect(result?.visibility.gaps).toEqual(["turn_outcome_unavailable"]);
+    expect(result?.workflow).toMatchObject({ state: "failed", cancellation: { acknowledged: false } });
+    expect(result?.workflow.definition).toEqual({ name: "manual_question", version: "1.0.4" });
     expect(outcomeQueries()[0][1]).toEqual([fixture.tenantId, fixture.notebookId, fixture.turnId, fixture.requestId]);
+  });
+  it("acknowledges only the current completion's receipt without requiring telemetry", async () => {
+    fixture.receipt = [{ kind: "notebook_turn_cancelled", version: 1, attemptId: fixture.turnId, clientRequestId: fixture.requestId }];
+    const result = await inspectManualQuestion(input());
+    expect(result?.workflow).toMatchObject({ state: "cancelled", cancellation: { requested: true, scope: "execution", acknowledged: true } });
+    expect(outcomeQueries()).toHaveLength(0);
+  });
+  it("ignores a prior completion's receipt while its retry is pending or answered", async () => {
+    fixture.receipt = [{ kind: "notebook_turn_cancelled", version: 1, attemptId: fixture.turnId, clientRequestId: fixture.requestId }];
+    fixture.state = "pending";
+    expect((await inspectManualQuestion(input()))?.workflow.state).toBe("running");
+    fixture.state = "complete"; fixture.answer = true;
+    expect((await inspectManualQuestion(input()))?.workflow.state).toBe("succeeded");
   });
   it.each(["answered", "refused", "abstained", "safety_stop", "error", "timeout", "superseded", "abandoned"])("recognizes %s without inferring cancellation or changing domain status", async (outcome) => {
     fixture.outcomeRows = [{ outcome }];

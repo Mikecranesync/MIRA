@@ -1,4 +1,6 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+const verification = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/workflow", async (original) => ({ ...await original<typeof import("@/lib/workflow")>(), queryWorkflowObservation: verification }));
 import { observeManualUpload } from "../manual-upload-workflow";
 import type { FinalizeInput, WorkflowStore } from "@/lib/workflow";
 
@@ -12,15 +14,35 @@ function sink() {
 }
 const input = (signal = new AbortController().signal) => ({ tenantId, fileId, sha256: "b".repeat(64), signal });
 const latest = (s: ReturnType<typeof sink>) => JSON.parse(s.finals.at(-1)!.output!).workflow;
+beforeEach(() => { verification.mockReset(); verification.mockResolvedValue({ rows: [{ status: "parsed", total: 3, anchored: 2 }] }); });
 
 describe("manual upload observation adapter", () => {
+  it.each(["missing", "empty", "unanchored", "failed", "cancelled", "read_error"])("cannot certify a replay from %s index evidence", async (condition) => {
+    const s = sink();
+    if (condition === "read_error") verification.mockRejectedValue(new Error("private query failure"));
+    else verification.mockResolvedValue({ rows: condition === "missing" ? [] : [{
+      status: ["failed", "cancelled"].includes(condition) ? condition : "parsed",
+      total: condition === "empty" ? 0 : 3, anchored: ["empty", "unanchored"].includes(condition) ? 0 : 2,
+    }] });
+    const response = Response.json({ indexed: true, duplicate: true, uploadId: docId });
+    const body = vi.fn(async () => response);
+    expect(await observeManualUpload(input(), body, s)).toBe(response); expect(body).toHaveBeenCalledOnce();
+    expect(latest(s).state).not.toBe("succeeded"); expect(latest(s).stage).not.toBe("indexed");
+    expect(latest(s).retry.eligible).toBe(false); expect(latest(s).recovery.action).toBe("none");
+    expect(JSON.stringify(s.finals)).not.toContain("private");
+    expect(verification.mock.calls[0][1]).toEqual([tenantId, docId, fileId]);
+  });
+  it("does not replace an authoritative response when its headers are immutable", async () => {
+    const response = Response.error(); const body = vi.fn(async () => response);
+    expect(await observeManualUpload(input(), body, sink())).toBe(response); expect(body).toHaveBeenCalledOnce();
+  });
   it.each([[201, false], [200, true]])("preserves a %s indexed response and domain replay result", async (status, duplicate) => {
     const s = sink(); let calls = 0;
     const response = Response.json({ ok: true, indexed: true, uploadId: docId, fileId, duplicate, filename: "private.pdf" }, { status });
     const result = await observeManualUpload(input(), async () => { calls++; return response; }, s);
     expect(result).toBe(response); expect(calls).toBe(1);
     expect(latest(s).state).toBe("succeeded");
-    expect(latest(s).definition).toEqual({ name: "manual_upload", version: "1.0.3" });
+    expect(latest(s).definition).toEqual({ name: "manual_upload", version: "1.0.4" });
     expect(latest(s).evidence).toContainEqual({ kind: "document", id: docId });
     expect(JSON.stringify([...s.finals, ...s.progress])).not.toContain("private.pdf");
     expect(result.headers.get("X-Mira-Workflow-Run-Id")).toBe(latest(s).identity.attemptId);

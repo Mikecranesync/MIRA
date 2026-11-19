@@ -1,6 +1,6 @@
 /** Opt-in visibility around the existing upload handler; owns no claim, parse or retry. */
 import { randomUUID } from "node:crypto";
-import { runWorkflow, type WorkflowStore } from "@/lib/workflow";
+import { queryWorkflowObservation, runWorkflow, type WorkflowStore } from "@/lib/workflow";
 import { WORKFLOW_CONTRACT, WORKFLOW_UUID, type WorkflowObservation } from "@/lib/workflow-contract";
 import { WORKFLOW_VERSIONS } from "@/lib/workflow-versions";
 
@@ -35,20 +35,39 @@ export async function observeManualUpload(
       const response = await operation(); // exactly once; never replay on an observation failure
       let body: Record<string, unknown> = {};
       try { body = await response.clone().json(); } catch { /* original response remains authoritative */ }
-      const indexed = body.indexed === true && typeof body.uploadId === "string" && WORKFLOW_UUID.test(body.uploadId);
+      const documentId = body.indexed === true && typeof body.uploadId === "string" && WORKFLOW_UUID.test(body.uploadId) ? body.uploadId : null;
+      let verification: "verified" | "unusable" | "unknown" = "unknown";
+      if (documentId) {
+        try {
+          // A replayed pointer is not materialized index evidence. This read
+          // uses the existing optional-metadata resource bounds and owns no retry.
+          const { rows } = await queryWorkflowObservation(
+            `SELECT u.status,
+              (SELECT count(*)::int FROM knowledge_entries k WHERE k.tenant_id = $1::uuid
+                AND k.doc_id = $2::uuid AND k.is_private = true) AS total,
+              (SELECT count(*)::int FROM knowledge_entries k WHERE k.tenant_id = $1::uuid
+                AND k.doc_id = $2::uuid AND k.is_private = true AND COALESCE(k.page_start, k.source_page) > 0) AS anchored
+             FROM namespace_direct_uploads f LEFT JOIN hub_uploads u ON u.id = f.upload_id AND u.tenant_id = $1::text
+             WHERE f.tenant_id = $1::uuid AND f.id = $3::uuid AND f.upload_id = $2::uuid`,
+            [input.tenantId, documentId, input.fileId],
+          );
+          if (rows[0]) verification = rows[0].status === "parsed" && Number(rows[0].total) > 0 && Number(rows[0].anchored) > 0 ? "verified" : "unusable";
+        } catch { /* An unavailable read cannot certify completion or affect HTTP behavior. */ }
+      }
+      const indexed = verification === "verified";
       observation = { ...observation,
-        state: indexed ? "succeeded" : body.indexing === true ? "waiting" : "failed",
+        state: indexed ? "succeeded" : body.indexing === true ? "waiting" : documentId && verification === "unknown" ? "partial" : "failed",
         stage: indexed ? "indexed" : "extract_index",
-        evidence: indexed ? [...observation.evidence, { kind: "document", id: body.uploadId as string }] : observation.evidence,
+        evidence: documentId ? [...observation.evidence, { kind: "document", id: documentId }] : observation.evidence,
         // The same HTTP shape covers extraction and post-index final-link
         // failures. Only canonical inspection can establish a safe recovery.
-        failure: indexed || body.indexing === true ? null : { code: "index_failed", retryable: false },
+        failure: indexed || body.indexing === true || (documentId && verification === "unknown") ? null : { code: "index_failed", retryable: false },
         retry: { eligible: false, afterMs: body.indexing === true ? 2000 : null },
         recovery: { authority: "workspace_files", action: body.indexing === true ? "wait" : "none" },
         observedAt: new Date().toISOString(),
       };
       run.setObservation(observation);
-      response.headers.set("X-Mira-Workflow-Run-Id", observation.identity.attemptId);
+      try { response.headers.set("X-Mira-Workflow-Run-Id", observation.identity.attemptId); } catch { /* immutable response headers remain authoritative */ }
       return response;
     } finally {
       input.signal.removeEventListener("abort", stoppedWaiting);

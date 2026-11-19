@@ -8,6 +8,7 @@ export interface ManualWorkflowFacts {
   linkedDocId: string | null; documentId: string | null; uploadStatus: string | null;
   /** Existing node upload can adopt a completed orphan index only for PDFs. */
   canAdoptOrphan: boolean;
+  canExtract: boolean;
   claim: "none" | "live" | "stale"; chunkCount: number; anchoredChunkCount: number;
   source: { enabled: boolean; matchState: string; superseded: boolean } | null;
   turn: { id: string; state: "pending" | "complete"; status: string; stale: boolean; usesDocument: boolean;
@@ -19,13 +20,13 @@ export function projectManualQuestion(f: ManualWorkflowFacts) {
   const attached = Boolean(f.source?.enabled && !f.source.superseded && ["verified", "user_confirmed"].includes(f.source.matchState));
   const readiness = deriveReadiness({ bytesDurable: true, chunkCount: f.chunkCount,
     hasPageAnchors: f.anchoredChunkCount > 0, scopeValidated: attached,
-    originalResolvable: f.linkedDocId !== null, parseFailed: f.uploadStatus === "failed" });
+    originalResolvable: f.linkedDocId !== null, parseFailed: f.uploadStatus === "failed" || f.uploadStatus === "cancelled" });
   const workflow: WorkflowObservation = {
     contract: WORKFLOW_CONTRACT, definition: { name: "manual_question", version: WORKFLOW_VERSIONS.manual_question },
     identity: { tenantId: f.tenantId, operationId: f.fileId, attemptId: f.turn?.id ?? f.uploadObservation?.identity.attemptId ?? f.fileId },
     owner: { system: "workspace_files", id: f.fileId }, stage: "extract_index", state: "partial",
     evidence: [{ kind: "file", id: f.fileId, ...(f.sha256 ? { sha256: f.sha256 } : {}) }, { kind: "notebook", id: f.notebookId }],
-    failure: null, retry: { eligible: true, afterMs: null }, recovery: { authority: "workspace_files", action: "upload_again" },
+    failure: null, retry: { eligible: f.canExtract, afterMs: null }, recovery: { authority: "workspace_files", action: f.canExtract ? "upload_again" : "none" },
     cancellation: { requested: false, scope: "client_wait", acknowledged: false }, observedAt: f.observedAt,
   };
   if (f.documentId) workflow.evidence.push({ kind: "document", id: f.documentId });
@@ -61,18 +62,18 @@ export function projectManualQuestion(f: ManualWorkflowFacts) {
     }
   } else if (f.claim === "live" && !f.linkedDocId) {
     workflow.state = "running"; workflow.retry = { eligible: false, afterMs: 2000 }; workflow.recovery.action = "wait";
-  } else if (f.documentId && f.chunkCount === 0) {
+  } else if (f.documentId && (f.chunkCount === 0 || f.anchoredChunkCount === 0 || ["failed", "cancelled"].includes(f.uploadStatus ?? ""))) {
     // Same-byte upload returns this existing pointer before any extraction.
     workflow.state = "failed"; workflow.failure = { code: "index_failed", retryable: false };
     workflow.retry.eligible = false; workflow.recovery.action = "none";
   } else if (f.claim === "stale" || (f.documentId && !f.linkedDocId)) {
-    const recoverable = !f.documentId || f.canAdoptOrphan;
+    const recoverable = f.canExtract && (!f.documentId || f.canAdoptOrphan);
     workflow.state = "interrupted"; workflow.failure = { code: "claim_expired", retryable: recoverable };
     workflow.retry.eligible = recoverable;
     if (!recoverable) workflow.recovery.action = "none";
   } else if (f.uploadStatus === "failed" ||
       (!f.linkedDocId && f.uploadObservation?.state === "failed")) {
-    workflow.state = "failed"; workflow.failure = { code: "index_failed", retryable: true };
+    workflow.state = "failed"; workflow.failure = { code: "index_failed", retryable: f.canExtract };
   } else if (f.linkedDocId && f.chunkCount > 0 && f.anchoredChunkCount > 0) {
     workflow.state = "waiting"; workflow.stage = attached ? "question" : "source_attachment";
     workflow.owner = { system: "equipment_notebook_sources", id: f.notebookId };

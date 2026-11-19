@@ -15,6 +15,42 @@ function store() {
 }
 
 describe("WorkflowRun observations", () => {
+  it("keeps a valid running failure partial after the operation returns an accepted result", async () => {
+    const sink = store(); const body = vi.fn(async () => "accepted");
+    expect(await runWorkflow({ workflowName: "manual_upload", observation: { ...observation(), failure: { code: "index_failed", retryable: false } }, store: sink, logger: quiet }, body)).toBe("accepted");
+    expect(body).toHaveBeenCalledOnce();
+    expect(JSON.parse(sink.writes[0].output!).workflow).toMatchObject({ state: "partial", failure: { code: "index_failed" } });
+  });
+  it("cannot lose an accepted result to a failing metadata logger", async () => {
+    const body = vi.fn(async () => "accepted");
+    const unavailable = () => { throw new Error("declared logger failure"); };
+    expect(await runWorkflow({ workflowName: "manual_upload", observation: observation(), store: store(), logger: { info: unavailable, warn: unavailable, error: unavailable } }, body)).toBe("accepted");
+    expect(body).toHaveBeenCalledOnce();
+  });
+  it("preserves the original domain exception when finalization and its logger fail", async () => {
+    const original = new Error("domain failure"); const body = vi.fn(async () => { throw original; });
+    const unavailable = () => { throw new Error("metadata failure"); };
+    const sink = { ...store(), finalize: async () => { unavailable(); } };
+    await expect(runWorkflow({ workflowName: "manual_upload", observation: observation(), store: sink,
+      logger: { info() {}, warn: unavailable, error: unavailable } }, body)).rejects.toBe(original);
+    expect(body).toHaveBeenCalledOnce();
+  });
+  it.each(["create", "checkpoint", "finalize"] as const)("keeps accepted work when %s and logging both fail", async (stage) => {
+    const unavailable = () => { throw new Error("declared metadata failure"); };
+    const sink = { ...store(), [stage]: async () => { unavailable(); } };
+    const body = vi.fn(async (run: WorkflowRun) => { await run.checkpoint(observation()); return "accepted"; });
+    expect(await runWorkflow({ workflowName: "manual_upload", observation: observation(), store: sink,
+      logger: { info: unavailable, warn: unavailable, error: unavailable } }, body)).toBe("accepted");
+    expect(body).toHaveBeenCalledOnce();
+  });
+  it.each([false, true])("logging cannot change failed-step semantics (tolerate=%s)", async (tolerate) => {
+    const original = new Error("original domain failure");
+    const unavailable = () => { throw new Error("declared logger failure"); };
+    const run = new WorkflowRun({ workflowName: "manual_upload", observation: observation(), store: store(),
+      logger: { info: unavailable, warn: unavailable, error: unavailable } });
+    if (tolerate) expect(await run.step("domain_step", () => { throw original; }, { tolerate: true })).toBeNull();
+    else await expect(run.step("domain_step", () => { throw original; })).rejects.toBe(original);
+  });
   it("late metadata creation is finalized from the already completed domain result", async () => {
     vi.useFakeTimers();
     try {

@@ -1234,6 +1234,7 @@ capabilities:
       - "mira-hub/src/lib/workflow-contract.ts"
       - "mira-hub/src/capabilities/manual-upload-workflow.ts"
       - "mira-hub/src/capabilities/manual-workflow-store.ts"
+      - "mira-hub/src/capabilities/notebook-cancellation-receipt.ts"
     consumers:
       - "mira-hub/src/app/api/namespace/node/[id]/files/route.ts # explicit X-Mira-Workflow: mira.workflow.v1 header only"
       - "mira-hub/src/app/api/workflows/manual-question/route.ts # authenticated read-only inspection"
@@ -1253,6 +1254,7 @@ capabilities:
     evidence:
       - "docs/architecture/convergence/units/WF-01.md"
       - "mira-hub/src/lib/workflow-observation.test.ts"
+      - "mira-hub/src/capabilities/__tests__/notebook-cancellation-receipt.test.ts"
       - "mira-hub/tests/workflow/manual-workflow.integration.test.ts"
       - "mira-hub/tests/workflow/workflow-observation.integration.test.ts"
     rollback: >-
