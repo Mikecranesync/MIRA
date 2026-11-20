@@ -38,11 +38,19 @@ After the restore the tool takes the same inventory of both sides and fails unle
   hash sums over every row: a check against rows lost or changed, not a cryptographic proof),
   columns, defaults, owner, privileges, row security on/off and forced, storage options;
 - every row-security policy, compared **exactly**;
-- indexes, constraints, functions, triggers, views, sequences and their privileges, enum and other
-  types, rules, extended statistics, event triggers, publications, large objects;
+- indexes and constraints (table and domain) by definition; functions by their full definition
+  (so volatility, strictness, language and settings count) and owner; triggers by definition and
+  enabled state; views by definition, owner, options and privileges; sequences by position,
+  counting rules (increment, bounds, cycle, cache) and privileges; table kind, persistence,
+  partitioning and inheritance; column collation; enum, domain and composite types; rules,
+  extended statistics, event triggers, publications, large objects;
 - the application roles (flags, memberships, settings) and that the owner can still
   `SET ROLE factorylm_app`;
-- schema and default privileges, and the migration ledger (count and content hashes).
+- schema owners and privileges, default privileges, and the migration ledger (count and content
+  hashes).
+
+Not compared: object comments, per-column statistics targets and storage settings. None of them
+changes what a query returns.
 
 Differences it tolerates, each printed:
 

@@ -201,7 +201,7 @@ SELECT jsonb_build_object(
      'encoding', pg_encoding_to_char(d.encoding), 'collate', d.datcollate, 'ctype', d.datctype)
      FROM pg_database d WHERE d.datname = current_database()),
  'extensions', (SELECT COALESCE(jsonb_object_agg(extname, extversion), '{{}}') FROM pg_extension WHERE extname NOT IN {ext_skip}),
- 'schemas', (SELECT COALESCE(jsonb_object_agg(n.nspname, {acl.format(col="n.nspacl")}), '{{}}') FROM pg_namespace n WHERE {user_ns}),
+ 'schemas', (SELECT COALESCE(jsonb_object_agg(n.nspname, pg_get_userbyid(n.nspowner) || '|' || {acl.format(col="n.nspacl")}), '{{}}') FROM pg_namespace n WHERE {user_ns}),
  'roles', (SELECT COALESCE(jsonb_object_agg(r.rolname, jsonb_build_object('login', r.rolcanlogin, 'super', r.rolsuper,
      'bypassrls', r.rolbypassrls, 'createrole', r.rolcreaterole, 'inherit', r.rolinherit,
      'member_of', COALESCE((SELECT string_agg(DISTINCT g.rolname, ',' ORDER BY g.rolname) FROM pg_auth_members m
@@ -218,11 +218,15 @@ SELECT jsonb_build_object(
  'tables', (SELECT COALESCE(jsonb_object_agg(n.nspname || '.' || c.relname, jsonb_build_object('rows', {count},
      'content', {content},
      'rls', c.relrowsecurity, 'force_rls', c.relforcerowsecurity, 'owner', pg_get_userbyid(c.relowner),
-     'options', COALESCE(array_to_string(c.reloptions, ','), '') || '|' || c.relreplident::text,
+     'options', COALESCE(array_to_string(c.reloptions, ','), '') || '|' || c.relreplident::text
+          || '|' || c.relkind::text || c.relpersistence::text || '|' || COALESCE(pg_get_partkeydef(c.oid), '')
+          || '|' || COALESCE(pg_get_expr(c.relpartbound, c.oid), '') || '|' || COALESCE((SELECT string_agg(
+             i.inhparent::regclass::text, ',' ORDER BY i.inhseqno) FROM pg_inherits i WHERE i.inhrelid = c.oid), ''),
      'acl', {acl.format(col="c.relacl")},
      'columns', (SELECT md5(COALESCE(string_agg(a.attname || ':' || format_type(a.atttypid, a.atttypmod) || ':' || a.attnotnull::text
           || ':' || COALESCE(pg_get_expr(ad.adbin, ad.adrelid), '') || ':' || a.attgenerated::text || ':' || a.attidentity::text
-          || ':' || COALESCE(a.attacl::text, ''), '|' ORDER BY a.attnum), ''))
+          || ':' || COALESCE(a.attacl::text, '') || ':' || COALESCE((SELECT k.collname FROM pg_collation k
+             WHERE k.oid = a.attcollation), ''), '|' ORDER BY a.attnum), ''))
         FROM pg_attribute a LEFT JOIN pg_attrdef ad ON ad.adrelid = a.attrelid AND ad.adnum = a.attnum
         WHERE a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped))), '{{}}')
      FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE c.relkind IN ('r', 'p') AND {user_ns}),
@@ -237,14 +241,22 @@ SELECT jsonb_build_object(
      SELECT 'domain ' || n.nspname || '.' || t.typname || '.' || co.conname, pg_get_constraintdef(co.oid)
        FROM pg_constraint co JOIN pg_type t ON t.oid = co.contypid JOIN pg_namespace n ON n.oid = t.typnamespace WHERE {user_ns}) q),
  'functions', (SELECT COALESCE(jsonb_object_agg(n.nspname || '.' || p.proname || '(' || pg_get_function_identity_arguments(p.oid) || ')',
-     md5(p.prosrc) || ':' || p.prosecdef::text || ':' || {acl.format(col="p.proacl")}), '{{}}')
+     md5(CASE WHEN p.prokind IN ('f', 'p') THEN pg_get_functiondef(p.oid) ELSE p.prokind::text || p.prosrc END)
+     || ':' || pg_get_userbyid(p.proowner) || ':' || {acl.format(col="p.proacl")}), '{{}}')
      FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
      WHERE {user_ns} AND NOT EXISTS (SELECT 1 FROM pg_depend d WHERE d.objid = p.oid AND d.deptype = 'e')),
- 'triggers', (SELECT COALESCE(jsonb_object_agg(n.nspname || '.' || c.relname || '.' || t.tgname, md5(pg_get_triggerdef(t.oid))), '{{}}')
+ 'triggers', (SELECT COALESCE(jsonb_object_agg(n.nspname || '.' || c.relname || '.' || t.tgname, md5(pg_get_triggerdef(t.oid)) || ':' || t.tgenabled::text), '{{}}')
      FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid JOIN pg_namespace n ON n.oid = c.relnamespace WHERE NOT t.tgisinternal AND {user_ns}),
- 'views', (SELECT COALESCE(jsonb_object_agg(schemaname || '.' || viewname, md5(definition)), '{{}}') FROM pg_views v WHERE v.schemaname NOT IN {skip}),
- 'matviews', (SELECT COALESCE(jsonb_object_agg(schemaname || '.' || matviewname, md5(definition)), '{{}}') FROM pg_matviews v WHERE v.schemaname NOT IN {skip}),
+ 'views', (SELECT COALESCE(jsonb_object_agg(n.nspname || '.' || c.relname, md5(pg_get_viewdef(c.oid)) || ':' || pg_get_userbyid(c.relowner)
+     || ':' || COALESCE(array_to_string(c.reloptions, ','), '') || ':' || {acl.format(col="c.relacl")}), '{{}}')
+     FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE c.relkind = 'v' AND {user_ns}),
+ 'matviews', (SELECT COALESCE(jsonb_object_agg(n.nspname || '.' || c.relname, md5(pg_get_viewdef(c.oid)) || ':' || pg_get_userbyid(c.relowner)
+     || ':' || COALESCE(array_to_string(c.reloptions, ','), '') || ':' || {acl.format(col="c.relacl")}), '{{}}')
+     FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE c.relkind = 'm' AND {user_ns}),
  'sequences', (SELECT COALESCE(jsonb_object_agg(schemaname || '.' || sequencename, COALESCE(last_value, 0)), '{{}}') FROM pg_sequences s WHERE s.schemaname NOT IN {skip}),
+ 'sequence_settings', (SELECT COALESCE(jsonb_object_agg(schemaname || '.' || sequencename, data_type::text || '|' || start_value
+     || '|' || min_value || '|' || max_value || '|' || increment_by || '|' || cycle::text || '|' || cache_size), '{{}}')
+     FROM pg_sequences s WHERE s.schemaname NOT IN {skip}),
  'sequence_acl', (SELECT COALESCE(jsonb_object_agg(n.nspname || '.' || c.relname, {acl.format(col="c.relacl")}), '{{}}')
      FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE c.relkind = 'S' AND {user_ns}),
  'enums', (SELECT COALESCE(jsonb_object_agg(k, v), '{{}}') FROM (SELECT n.nspname || '.' || t.typname AS k,
@@ -252,7 +264,10 @@ SELECT jsonb_build_object(
      JOIN pg_namespace n ON n.oid = t.typnamespace WHERE {user_ns} GROUP BY 1) q),
  'types', (SELECT COALESCE(jsonb_object_agg(n.nspname || '.' || t.typname, t.typtype::text
      || CASE WHEN t.typtype = 'd' THEN '|' || format_type(t.typbasetype, t.typtypmod) || '|' || t.typnotnull::text
-          || '|' || COALESCE(t.typdefault, '') ELSE '' END), '{{}}') FROM pg_type t
+          || '|' || COALESCE(t.typdefault, '')
+          WHEN t.typtype = 'c' THEN '|' || COALESCE((SELECT string_agg(a.attname || ':' || format_type(a.atttypid, a.atttypmod),
+             ',' ORDER BY a.attnum) FROM pg_attribute a WHERE a.attrelid = t.typrelid AND a.attnum > 0 AND NOT a.attisdropped), '')
+          ELSE '' END), '{{}}') FROM pg_type t
      JOIN pg_namespace n ON n.oid = t.typnamespace WHERE {user_ns} AND t.typtype IN ('c', 'd', 'e', 'r')
      AND (t.typrelid = 0 OR (SELECT k.relkind FROM pg_class k WHERE k.oid = t.typrelid) = 'c')
      AND NOT EXISTS (SELECT 1 FROM pg_depend d WHERE d.objid = t.oid AND d.deptype = 'e')),

@@ -572,3 +572,41 @@ def test_definitions_are_no_longer_normalized_inside_the_database_and_domains_ar
     sql = m.inventory_sql()
     assert "[()[:space:]]" not in sql
     assert "contypid" in sql and "typbasetype" in sql and "typnotnull" in sql
+
+
+# ---------------------------------------------------------------- behaviour, not only source text
+
+
+def test_objects_are_inventoried_on_what_changes_their_behaviour():
+    sql = m.inventory_sql()
+    # Functions: the full definition (volatility, strictness, language, settings) and the owner.
+    assert "pg_get_functiondef(p.oid)" in sql and "p.proowner" in sql
+    # Triggers: enabled or disabled is not part of the trigger definition text.
+    assert "t.tgenabled" in sql
+    # Sequences: how they count, separately from where they are.
+    for column in ("increment_by", "min_value", "max_value", "cycle", "cache_size", "start_value"):
+        assert column in sql
+    # Tables: kind, persistence, partitioning, inheritance, column collation.
+    for piece in (
+        "c.relpersistence",
+        "pg_get_partkeydef(c.oid)",
+        "c.relpartbound",
+        "pg_inherits",
+        "a.attcollation",
+    ):
+        assert piece in sql
+    # Views run with their owner's rights unless told otherwise.
+    views = sql[sql.index("'views'") : sql.index("'sequences'")]
+    assert (
+        views.count("c.relowner") == 2
+        and views.count("c.reloptions") == 2
+        and views.count("c.relacl") == 2
+    )
+    assert "n.nspowner" in sql
+
+
+def test_a_sequence_that_counts_differently_fails_even_at_the_same_position():
+    src = _inv(sequences={"public.s": 5}, sequence_settings={"public.s": "bigint|1|1|9|1|false|1"})
+    tgt = _inv(sequences={"public.s": 5}, sequence_settings={"public.s": "bigint|1|1|9|2|false|1"})
+    assert m.compare(src, tgt)[0] == ["sequence_settings: differs: public.s"]
+    assert m.compare(src, tgt, structure_only=True)[0] == ["sequence_settings: differs: public.s"]
