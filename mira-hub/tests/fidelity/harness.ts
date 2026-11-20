@@ -88,7 +88,16 @@ export async function installRoutes(page: Page, scenario: Scenario) {
     if (m === "GET" && p === nbPath) {
       if (!answered) return route.fulfill(json(oracle.detailEmpty));
       await released;
-      return route.fulfill(json(oracle[scenario].detailAfter)).catch(() => undefined);
+      // The real history read echoes the accepted request ID. This oracle is
+      // a reusable response template, while each browser send mints a fresh
+      // ID. Bind only that matching question to the actual captured POST so
+      // recovery can observe its own terminal row after the held read lands.
+      const detail = structuredClone(oracle[scenario].detailAfter);
+      const request = cap.chatBodies.at(-1);
+      for (const turn of detail.turns) {
+        if (request && turn.question === request.message) turn.clientRequestId = request.clientRequestId;
+      }
+      return route.fulfill(json(detail)).catch(() => undefined);
     }
     if (m === "POST" && p === `${nbPath}/chat`) {
       cap.chatBodies.push(req.postDataJSON());
