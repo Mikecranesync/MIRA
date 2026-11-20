@@ -823,6 +823,12 @@ describe("photo-to-manual (2026-11-20): a weak label word ending a sentence befo
     "Unit. No ABC DEF GHI. Serial 12345678", // the number two tokens later
     "Unit. No abc def ghi jkl", // no sentence end: fail closed
     "Cables run past the unit. No loose wiring is visible. MODEL: GS11N-20P2", // a digit in the next sentence: fail closed
+    "Unit. No NORTH WEST PUMP.", // Codex #5706 r2 F1: a word-based unit number
+    "Unit. No NORTH WEST PUMP. Ref. 12345678.",
+    "the unit. No NORTH WEST PUMP is visible.", // capitals are a label, not a description
+    "the unit. No north west pump.", // no verb of description
+    "the unit. No loose wiring is visible. Ref. 12345678.", // a digit anywhere after it
+    "Unit. No loose or disconnected wiring is visible.", // no determiner before the word
   ])("still a private label: %s", (text) => {
     expect(mentionsAssetLabel(text)).toBe(true);
   });

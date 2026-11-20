@@ -40,28 +40,9 @@ const SERIAL_LABEL = new RegExp(
 // code, or — for "tag" — as a suffix right after such a code.
 const ID_WORD = String.raw`(?:tag|ident(?:ifier)?|id|ref(?:erence)?|${NUM_WORD}|#)`;
 const CODE_AHEAD = String.raw`(?=(?:is\b)?[^A-Za-z0-9]*(?=[A-Z0-9./-]*\d)[A-Z0-9][A-Z0-9./-]{3,}(?![A-Z0-9]))`;
-// A weak word that ENDS a sentence, followed by a new sentence of ordinary
-// prose opening with the English word "No", is not a label: "…the right side of
-// the unit. No loose or disconnected wiring is visible." (a real GS10 LOOK
-// reading, 2026-11-20 — it hid the plate's MODEL from the manual search).
-// The exception needs affirmative evidence of prose, and fails closed otherwise:
-//  - the separator is exactly "." plus spaces;
-//  - "No" is followed by at least THREE plain words (letters only), so a label
-//    value ("Unit. No ABC.", "Unit. No AB 4471") never qualifies;
-//  - that sentence carries no digit and ends at ".", "!" or "?" followed by
-//    whitespace or the end of the text — a line break, a "." inside a token,
-//    or text that simply stops is not an end;
-//  - the text after it, up to the next ".", "!" or "?", carries no digit,
-//    however it is wrapped or spaced ("Unit. No ABC DEF GHI. ( 12345678 )",
-//    "…visible. Serial 12345678", "…wiring.\n12345678").
-// So "Unit. No. 12345678", "UNIT NO 4471", "UNIT NO\nAB-1234567",
-// "Unit No ABC 12345678", "unit. No AB 4471", "UNIT. NO TP\n1200",
-// "Unit. No AB.1234567", "Unit. No ABC. (12345678)" and "Unit. No abc def ghi"
-// all stay labels.
-const PROSE_NO_SENTENCE = String.raw`(?!\.[ \t]+no(?:[ \t]+[a-z]+){3}[^\d.!?\r\n]*[.!?](?=\s|$)(?![^.!?]*\d))`;
 const ASSET_LABEL = new RegExp(
   String.raw`\b(?:(?:fixed\s*asset|asset|inventory|inv|cmms|sap|work\s*order|wo)(?![a-z])` +
-    String.raw`|(?:tag|equip(?:ment)?|unit|machine|location|loc|site|plant|area|line|cell)(?![a-z])${PROSE_NO_SENTENCE}${LABEL_SEP}(?:${ID_WORD}(?![a-z])|${CODE_AHEAD})` +
+    String.raw`|(?:tag|equip(?:ment)?|unit|machine|location|loc|site|plant|area|line|cell)(?![a-z])${LABEL_SEP}(?:${ID_WORD}(?![a-z])|${CODE_AHEAD})` +
     String.raw`|(?<=\d[A-Z0-9./-]*[^A-Za-z0-9]+)tag(?![a-z]))`,
   "gi",
 );
@@ -78,7 +59,32 @@ const trimCode = (code: string) => code.replace(/[./-]+$/, "");
 /** Quotes are label punctuation, never identifier characters (#4150 F1/F4); invisible
  *  characters (soft hyphen, zero-width, BOM) are nothing at all, so "Ser\u00adial" is
  *  still "Serial" (#4172). */
-const normalize = (t: string) => t.replace(/[\u00ad\u200b-\u200d\u2060\ufeff]/g, "").replace(/["'\u2018\u2019\u201c\u201d`]/g, " ");
+// A weak label word that ENDS a sentence of ordinary description, followed by
+// a sentence of ordinary prose opening with "No", is not a label: "…the right
+// side of the unit. No loose or disconnected wiring is visible." (a real GS10
+// LOOK reading, 2026-11-20 — it hid the plate's MODEL from the manual search).
+// That word is masked before the label rules run, and only on affirmative
+// evidence of prose, matched CASE-SENSITIVELY (plates print labels in capitals;
+// a description writes lowercase):
+//  - a lowercase determiner directly before the word ("the unit.", "this cell.");
+//  - ". No" then at least three lowercase words, a verb of description among
+//    them ("is", "are", "visible", …), no digit, and a real sentence end;
+//  - no digit anywhere in the rest of the text.
+// Anything else stays a label: "Unit. No ABC DEF GHI.", "Unit. No NORTH WEST
+// PUMP.", "the unit. No loose wiring is visible. Ref. 12345678", "UNIT. NO TP",
+// "Unit. No AB.1234567", "the unit. No abc def ghi" (no sentence end).
+const PROSE_WEAK_WORD =
+  /\b((?:[Tt]he|[Tt]his|[Tt]hat|[Ii]ts|[Tt]heir|[Ee]ach|[Ee]very|[Aa]n?)[ \t]+)(?:tag|equipment|equip|unit|machine|location|loc|site|plant|area|line|cell)\.(?=[ \t]+No(?:[ \t]+[a-z]+){3}[^\d.!?\r\nA-Z]*[.!?](?:\s|$)[^\d]*$)(?<=\.)/g;
+const DESCRIPTIVE_VERB = /\b(?:is|are|was|were|appears?|visible|seen|present|found|observed|detected)\b/;
+function maskProseWeakWords(t: string): string {
+  return t.replace(PROSE_WEAK_WORD, (m: string, det: string, offset: number) => {
+    const rest = t.slice(offset + m.length);
+    const sentence = /^[ \t]+No[^.!?]*[.!?]/.exec(rest)?.[0] ?? "";
+    return DESCRIPTIVE_VERB.test(sentence) ? `${det}item.` : m;
+  });
+}
+const normalize = (t: string) =>
+  maskProseWeakWords(t.replace(/[\u00ad\u200b-\u200d\u2060\ufeff]/g, "").replace(/["'\u2018\u2019\u201c\u201d`]/g, " "));
 
 /**
  * Every distinct, serial-safe part code in the text (#4172: exported so a caller

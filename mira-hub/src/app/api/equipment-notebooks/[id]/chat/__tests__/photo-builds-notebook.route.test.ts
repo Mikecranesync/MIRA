@@ -492,6 +492,8 @@ describe("photo-to-manual (2026-11-20): the archived CV-101 reading + 'Find me t
   it.each([
     "Unit. No ABC. (12345678)",
     "the unit. No loose wiring is visible.\n12345678",
+    "Unit. No NORTH WEST PUMP.",
+    "Unit. No NORTH WEST PUMP. Ref. 12345678.",
   ])("Codex r1 F1: the same reading plus a unit-number field (%s) starts no search", async (field) => {
     visualMock.loadVisualEvidenceForPhoto.mockResolvedValue({
       observationId: "obs", sessionId: "session", text: `${GS10_CV101_LOOK}\n${field}`, obsKind: "look", trust: "candidate", fileId: PHOTO, hazards: [],
