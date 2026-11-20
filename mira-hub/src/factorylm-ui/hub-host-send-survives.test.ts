@@ -14,16 +14,16 @@ describe("the host keeps a send alive (source shape)", () => {
     expect(host).toMatch(/useEffect\(\(\) => \{ busySinceRef\.current = busy \? Date\.now\(\) : null; \}, \[busy\]\);/);
   });
 
-  it("#4846: the reloaded thread hides a failure asked again and marks the newest one retryable", () => {
-    expect(host).toMatch(/withPersistedRetry\(threadFromPersisted\(withoutRetriedFailures\(detail\.turns\), meta\)\.turns, persistedRetry\?\.answerId \?\? null\)/);
+  it("#4846: the reloaded thread preserves exchanges and marks only the eligible request retryable", () => {
+    expect(host).toMatch(/withPersistedRetry\(threadFromPersisted\(withoutRetriedFailures\(detail\.turns\), meta\)\.turns, recoveryRetry\?\.answerId \?\? persistedRetry\?\.answerId \?\? null\)/);
   });
 
-  it("#4846: a stored failure is retried as a new ordinary send of its question", () => {
-    expect(host).toMatch(/void send\(chatBodyFor\(persistedRetry\.question, docIds, historyRows\(detail\.turns\), selection\), persistedRetry\.question\);/);
+  it("#4846: a stored failure retries its original request through the canonical send path", () => {
+    expect(host).toMatch(/void send\(chatBodyFor\(persistedRetry\.question, \[\], \[\], selection\), persistedRetry\.question, selection, "retry", row\.clientRequestId\);/);
   });
 
   it("#4846: no stored-failure Retry while a send is running or a send error is showing", () => {
-    expect(host).toMatch(/detail && !busy && !live && !failedBody && !state\.sendError \? persistedRetryTarget\(detail\.turns, headerComponentId\) : null/);
+    expect(host).toMatch(/detail && !busy && !live && !failedBody && !state\.sendError \? persistedRetryTarget\(detail\.turns, headerComponentId, detail\.notebook\.asset\?\.entityId\) : null/);
   });
 
   it("#5557: the stored-failure Retry reads THIS conversation's header, undefined until it is read", () => {

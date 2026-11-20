@@ -4,6 +4,8 @@ import type { PersistedTurn } from "@/components/equipment/notebook-chat-utils";
 import { persistedRetryTarget, withoutRetriedFailures, withPersistedRetry } from "./persisted-retry";
 import { threadFromPersisted, type HubNotebookMeta } from "./to-interaction";
 
+const target = (rows: readonly PersistedTurn[], component: string | null | undefined) => persistedRetryTarget(rows, component, "machine-A");
+
 const AT = "2026-11-19T12:00:00.000Z";
 const meta: HubNotebookMeta = {
   notebookId: "nb-1",
@@ -20,6 +22,7 @@ function row(over: Partial<PersistedTurn> & { id: string }): PersistedTurn {
     answerStatus: "answered",
     answerText: "Verify the Modbus link.",
     evidence: [],
+    equipmentEntityId: "machine-A",
     basis: "oem_documentation",
     ...over,
   };
@@ -30,9 +33,9 @@ const stopped = (id: string, question = "isolation rating?") =>
   row({ id, question, answerStatus: "error", answerText: "Verify the", basis: null });
 
 describe("withoutRetriedFailures (#4846: failures don't pile up)", () => {
-  it("drops a failed turn the very next turn asks again (case and spacing ignored)", () => {
+  it("preserves separate attempts even when their text repeats", () => {
     const rows = [failed("t1", "isolation rating?"), failed("t2", "Isolation  rating? "), row({ id: "t3", question: "isolation rating?" })];
-    expect(withoutRetriedFailures(rows).map((r) => r.id)).toEqual(["t3"]);
+    expect(withoutRetriedFailures(rows).map((r) => r.id)).toEqual(["t1", "t2", "t3"]);
   });
 
   it("keeps a stopped turn even when asked again: its partial text is still shown", () => {
@@ -70,47 +73,47 @@ describe("withoutRetriedFailures (#4846: failures don't pile up)", () => {
 
 describe("persistedRetryTarget (#4846/#5463: Retry survives a reload)", () => {
   it("offers the newest turn when it is a provider failure", () => {
-    expect(persistedRetryTarget([row({ id: "t1" }), failed("t2", "  isolation rating?  ")], null)).toEqual({ answerId: "t2-a", question: "isolation rating?" });
+    expect(target([row({ id: "t1" }), failed("t2", "  isolation rating?  ")], null)).toEqual({ answerId: "t2-a", question: "isolation rating?" });
   });
 
   it("offers nothing when the newest turn answered", () => {
-    expect(persistedRetryTarget([failed("t1"), row({ id: "t2" })], null)).toBeNull();
+    expect(target([failed("t1"), row({ id: "t2" })], null)).toBeNull();
   });
 
   it("offers nothing for a stopped turn that kept partial text", () => {
-    expect(persistedRetryTarget([stopped("t1")], null)).toBeNull();
+    expect(target([stopped("t1")], null)).toBeNull();
   });
 
   it("offers nothing for a failure that recorded the providers were out (live shows it without Retry, #4356)", () => {
     const exhausted = { ...failed("t1"), evidence: [{ kind: "provider_failure", reason: "no_provider_configured" }] } as unknown as PersistedTurn;
-    expect(persistedRetryTarget([exhausted], null)).toBeNull();
+    expect(target([exhausted], null)).toBeNull();
     // Control: the same row without the marker is offered.
-    expect(persistedRetryTarget([failed("t1")], null)).not.toBeNull();
+    expect(target([failed("t1")], null)).not.toBeNull();
   });
 
   it("offers nothing for a failed photo question (a text re-ask would drop the photo)", () => {
     const photo = { ...failed("t1"), evidence: [{ kind: "visual_observation", fileId: "f-1", capturedAt: AT, provenance: "phone_photo" }] } as unknown as PersistedTurn;
-    expect(persistedRetryTarget([photo], null)).toBeNull();
+    expect(target([photo], null)).toBeNull();
   });
 
   it("offers nothing before the header has been read (the live hold shows 'loading' then too)", () => {
-    expect(persistedRetryTarget([failed("t1")], undefined)).toBeNull();
+    expect(target([failed("t1")], undefined)).toBeNull();
   });
 
   it("offers Retry only while the header shows what the question was asked about (#5557)", () => {
     const attribution = { kind: "component_attribution", componentId: "c-1", revision: 1, selectionVersion: 3, label: "Main contactor" };
     const underC1 = { ...failed("t1"), evidence: [attribution] } as unknown as PersistedTurn;
-    expect(persistedRetryTarget([underC1], "c-1")).not.toBeNull();
-    expect(persistedRetryTarget([underC1], "c-2")).toBeNull();
-    expect(persistedRetryTarget([underC1], null)).toBeNull();
+    expect(target([underC1], "c-1")).not.toBeNull();
+    expect(target([underC1], "c-2")).toBeNull();
+    expect(target([underC1], null)).toBeNull();
     // No component on the record: only the whole machine is safe to ask under.
-    expect(persistedRetryTarget([failed("t1")], null)).not.toBeNull();
-    expect(persistedRetryTarget([failed("t1")], "c-1")).toBeNull();
+    expect(target([failed("t1")], null)).not.toBeNull();
+    expect(target([failed("t1")], "c-1")).toBeNull();
   });
 
   it("offers nothing for an empty question or an empty conversation", () => {
-    expect(persistedRetryTarget([failed("t1", "   ")], null)).toBeNull();
-    expect(persistedRetryTarget([], null)).toBeNull();
+    expect(target([failed("t1", "   ")], null)).toBeNull();
+    expect(target([], null)).toBeNull();
   });
 });
 
@@ -151,6 +154,6 @@ describe("the reloaded failure meets the shell's Retry condition", () => {
     const part = turn.parts.find((p) => p.type === "error");
     expect(turn.lifecycle).toBe("failed");
     expect(part).toMatchObject({ error: { retryable: true } });
-    expect(turn.id).toBe(persistedRetryTarget([failed("t1")], null)?.answerId);
+    expect(turn.id).toBe(target([failed("t1")], null)?.answerId);
   });
 });

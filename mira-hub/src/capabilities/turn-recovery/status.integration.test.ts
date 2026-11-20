@@ -21,7 +21,8 @@ const auth = vi.hoisted(() => {
 });
 vi.mock("@/lib/session", () => ({ sessionOr401: async () => auth.getStore() ?? NextResponse.json({ error: "Unauthorized" }, { status: 401 }) }));
 
-import { claimNotebookTurnRequest, listTurns, recordTurn } from "@/lib/equipment-notebooks";
+import { abandonNotebookTurnRequest, claimNotebookTurnRequest, listTurns, recordTurn } from "@/lib/equipment-notebooks";
+import { readTurnRetry } from "./store";
 import { withTenantContext } from "@/lib/tenant-context";
 import { GET } from "@/app/api/equipment-notebooks/[id]/requests/[requestId]/route";
 
@@ -111,5 +112,25 @@ describe("request recovery HTTP/PostgreSQL", () => {
   it("keeps original target A visible after the notebook is rebound to B", async () => {
     await db.pool.query("UPDATE equipment_notebooks SET equipment_entity_id='machine-B' WHERE id=$1", [notebook]);
     expect(await (await read()).json()).toMatchObject({ target: { kind: "known", equipmentEntityId: "machine-A" }, currentEquipmentEntityId: "machine-B" });
+  });
+
+  it("restores an existing failed exchange when its reclaimed retry is refused", async () => {
+    const id = uuid(), photo = uuid();
+    const body = { clientRequestId: id, message: "Original photo question", threadId: thread, sourceDocIds: [], expectedEquipmentEntityId: "machine-A", visualEvidence: { fileId: photo }, history: [{ role: "user", content: "original history" }] };
+    const first = await claimNotebookTurnRequest(tenant, notebook, { ownerUserId: owner, clientRequestId: id, question: body.message, threadId: thread, requestPayload: body });
+    if (first.status !== "claimed") throw new Error("claim failed");
+    const evidence = [{ kind: "visual_observation", fileId: photo }];
+    await recordTurn(tenant, notebook, { question: body.message, answerStatus: "error", answerText: null, enabledSourceDocIds: [], evidence, model: null,
+      ownerUserId: owner, threadId: thread, clientRequestId: id, claimToken: first.claimToken, equipmentEntityId: "machine-A" });
+    expect(await readTurnRetry(tenant, notebook, owner, thread, id)).toMatchObject({ body, target: { kind: "known", equipmentEntityId: "machine-A" } });
+    const second = await claimNotebookTurnRequest(tenant, notebook, { ownerUserId: owner, clientRequestId: id, question: body.message, threadId: thread, requestPayload: body });
+    if (second.status !== "claimed") throw new Error("retry did not own lease");
+    expect(second.preserveFailedTurn).toBe(true);
+    expect(await readTurnRetry(tenant, notebook, owner, thread, id)).toMatchObject({ error: "request_in_progress", status: 409 });
+    await abandonNotebookTurnRequest(tenant, notebook, owner, id, second.claimToken, second.preserveFailedTurn);
+    const saved = (await listTurns(tenant, notebook, 50, { viewerUserId: owner, threadId: thread })).find(row => row.clientRequestId === id);
+    expect(saved).toMatchObject({ question: body.message, answerStatus: "error", evidence, equipmentEntityId: "machine-A" });
+    expect(await readTurnRetry(tenant, notebook, "another-owner", thread, id)).toMatchObject({ error: "retry_request_not_found", status: 404 });
+    expect(await readTurnRetry(tenant, notebook, owner, "other-thread", id)).toMatchObject({ error: "retry_request_not_found", status: 404 });
   });
 });

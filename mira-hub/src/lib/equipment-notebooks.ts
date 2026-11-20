@@ -1430,7 +1430,7 @@ export type StoredNotebookTurn = {
 };
 
 export type NotebookTurnRequestClaim =
-  | { status: "claimed"; claimToken: string }
+  | { status: "claimed"; claimToken: string; preserveFailedTurn?: boolean }
   | { status: "in_progress" }
   | { status: "mismatch" }
   | { status: "replay"; turn: StoredNotebookTurn };
@@ -1475,6 +1475,20 @@ export async function claimNotebookTurnRequest(
   if (!owner) throw new Error("claimNotebookTurnRequest requires ownerUserId (server-derived)");
   const payload = JSON.stringify(request.requestPayload ?? null);
   return withTenantContext(tenantId, async (c) => {
+    // Serialize claim decisions for this exact owner/request. The prior row
+    // is locked before takeover so a later refusal can restore an existing
+    // failed exchange instead of deleting its photo and original attribution.
+    await c.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [
+      JSON.stringify([tenantId, notebookId, owner, request.clientRequestId]),
+    ]);
+    const previous = await c.query(
+      `SELECT client_request_state, answer_status FROM equipment_notebook_turns
+        WHERE tenant_id=$1::uuid AND notebook_id=$2::uuid AND owner_user_id=$3
+          AND client_request_id=$4::uuid FOR UPDATE`,
+      [tenantId, notebookId, owner, request.clientRequestId],
+    );
+    const preserveFailedTurn = previous.rows[0]?.client_request_state === "complete"
+      && previous.rows[0]?.answer_status === "error";
     const res = await c.query(
       `WITH candidate AS (
          SELECT gen_random_uuid() AS token
@@ -1584,7 +1598,7 @@ export async function claimNotebookTurnRequest(
     if (!row) throw new NotebookNotFoundError(notebookId);
     const status = String(row.claim_status);
     if (status === "replay") return { status, turn: storedNotebookTurn(row) };
-    if (status === "claimed") return { status, claimToken: String(row.claim_token) };
+    if (status === "claimed") return { status, claimToken: String(row.claim_token), ...(preserveFailedTurn ? { preserveFailedTurn: true } : {}) };
     if (status === "in_progress" || status === "mismatch") return { status };
     throw new Error(`unexpected notebook request claim status: ${status}`);
   });
@@ -1597,11 +1611,12 @@ export async function abandonNotebookTurnRequest(
   ownerUserId: string,
   clientRequestId: string | null,
   claimToken: string | null,
+  preserveFailedTurn = false,
 ): Promise<void> {
   if (!clientRequestId || !claimToken) return;
   await withTenantContext(tenantId, async (c) => {
     await c.query(
-      `DELETE FROM equipment_notebook_turns
+      `${preserveFailedTurn ? "UPDATE equipment_notebook_turns SET client_request_state = 'complete'" : "DELETE FROM equipment_notebook_turns"}
         WHERE tenant_id = $1::uuid AND notebook_id = $2::uuid
           AND owner_user_id = $3 AND client_request_id = $4::uuid
           AND client_request_state = 'pending'

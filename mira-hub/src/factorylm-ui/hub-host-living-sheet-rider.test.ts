@@ -23,7 +23,7 @@ describe("withLivingSheetRider", () => {
 
 describe("hub-host send()", () => {
   it("routes the chat body through withLivingSheetRider", () => {
-    expect(host).toMatch(/withLivingSheetRider\(body, sel\.notebookId, livingSheetJob\)/);
+    expect(host).toMatch(/withLivingSheetRider\(targetBody, sel\.notebookId, livingSheetJob\)/);
   });
   it("lists livingSheetJob in send's useCallback deps (stale-closure guard)", () => {
     const sendStart = host.indexOf("const send = useCallback(");

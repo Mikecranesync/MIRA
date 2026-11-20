@@ -38,6 +38,8 @@
  * Together). The legacy list still contains Gemini; that divergence is exactly
  * what the seam removes (P0004 map §10 Q4).
  */
+import { equipmentExpectation, matchesEquipmentExpectation, type EquipmentExpectation } from "@/capabilities/turn-recovery/contract";
+import { readTurnRetry } from "@/capabilities/turn-recovery/store";
 import { createHash } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { context, SpanStatusCode, trace, type Context, type Span } from "@opentelemetry/api";
@@ -1252,6 +1254,8 @@ async function handleChatTurn(
     mode?: string;
     threadId?: unknown;
     clientRequestId?: unknown;
+    expectedEquipmentEntityId?: unknown;
+    retryRequestId?: unknown;
     /** Sensor REPLAY (contract §4.4): the fault window the technician selected.
      *  Only the SELECTION is trusted — the server re-fetches the rows itself. */
     machineEvidence?: { assetId?: unknown; anchorAt?: unknown; pre?: unknown; post?: unknown };
@@ -1283,6 +1287,25 @@ async function handleChatTurn(
   } catch {
     return NextResponse.json({ error: "invalid_json" }, { status: 400 });
   }
+  let recoveredTarget: EquipmentExpectation | null = null;
+  let recoveredComponent: { componentId: string; revision: number } | null = null;
+  const recovering = body.retryRequestId !== undefined;
+  if (recovering) {
+    const retryId = body.retryRequestId;
+    const retryThread = body.threadId == null ? null : normalizeNotebookThreadId(body.threadId);
+    if (typeof retryId !== "string" || !isUuid(retryId)
+        || (body.threadId != null && !retryThread)
+        || Object.keys(body).some(key => key !== "retryRequestId" && key !== "threadId")) {
+      return NextResponse.json({ error: "retry_request_invalid" }, { status: 400 });
+    }
+    const retry = await readTurnRetry(ctx.tenantId, notebookId, ctx.userId, retryThread, retryId, req.signal);
+    if ("error" in retry) return NextResponse.json({ error: retry.error }, { status: retry.status });
+    body = retry.body as typeof body;
+    recoveredTarget = retry.target;
+    recoveredComponent = retry.component;
+  }
+  const expectedTarget = recoveredTarget ?? equipmentExpectation(body);
+  if (expectedTarget.kind === "invalid") return NextResponse.json({ error: "invalid_equipment_expectation" }, { status: 400 });
   // Machine-evidence selection (§4.4). Validated up front so a malformed
   // window is a 400, never a silent "answered without the machine".
   let machineRequest: { assetId: string; at: string; pre: number; post: number } | null = null;
@@ -1667,6 +1690,7 @@ async function handleChatTurn(
   // a completed turn remains replayable even if a source is later detached;
   // a changed payload fails closed instead of inheriting that terminal truth.
   let requestClaimToken: string | null = null;
+  let preserveFailedTurn = false;
   if (clientRequestId) {
     try {
       const claim = await claimNotebookTurnRequest(ctx.tenantId, notebookId, {
@@ -1705,6 +1729,7 @@ async function handleChatTurn(
         );
       }
       requestClaimToken = claim.claimToken;
+      preserveFailedTurn = claim.preserveFailedTurn === true;
     } catch (err) {
       if (err instanceof NotebookNotFoundError) {
         endRoot();
@@ -1721,6 +1746,7 @@ async function handleChatTurn(
         ctx.userId,
         clientRequestId,
         requestClaimToken,
+        ...(preserveFailedTurn ? [true] as const : [] as const),
       )
     : Promise.resolve();
   const releaseClaimOnFailure = async <T>(operation: () => Promise<T>): Promise<T> => {
@@ -1745,6 +1771,16 @@ async function handleChatTurn(
       throw err;
     }
   };
+
+  if (expectedTarget.kind === "known") {
+    const notebook = await releaseClaimOnFailure(() => getNotebook(ctx.tenantId, notebookId));
+    if (!notebook) { await abandonRequestClaim(); endRoot(); return NextResponse.json({ error: "notebook_not_found" }, { status: 404 }); }
+    if (!matchesEquipmentExpectation(expectedTarget, notebook.asset?.entityId ?? null)) {
+      await abandonRequestClaim();
+      endRoot();
+      return NextResponse.json({ error: "equipment_binding_changed", message: "The machine changed. Review the target before asking again." }, { status: 409 });
+    }
+  }
 
   // Bench components: checked after the claim, so an exact retry still replays
   // its stored answer even if the selection moved since. A selection that no
@@ -1790,6 +1826,13 @@ async function handleChatTurn(
       );
       if (!stamped) console.error("[notebook-chat] component stamp matched no turn row (turn kept unlabelled)");
     }
+  }
+  if (recoveredComponent && (!componentTurn
+      || componentTurn.component.id !== recoveredComponent.componentId
+      || (componentTurn.kind === "hold" ? componentTurn.revision : componentTurn.revision.revision) !== recoveredComponent.revision)) {
+    await abandonRequestClaim();
+    endRoot();
+    return NextResponse.json({ error: "component_revision_changed", message: "The original component revision changed. Review the target before sending again." }, { status: 409 });
   }
   // A held turn (component not confirmed, no model number, the question names
   // another component of this bench, or the selection moved under a hazard
@@ -1922,6 +1965,14 @@ async function handleChatTurn(
   const visualEntry = await releaseClaimOnFailure(() =>
     verifyVisualEntry(ctx.tenantId, notebookId, visualClaimFileId),
   );
+
+  if (recovering && visualClaimFileId && !visualEntry) {
+    evidenceMaterializeSpan.end();
+    await abandonRequestClaim();
+    endRoot();
+    return NextResponse.json({ error: "retry_photo_unavailable", message: "The original photo is unavailable. Attach it again before sending." }, { status: 409 });
+  }
+
 
   // #3786 (T-5 part 2, option A) — deterministic scope reply. BEFORE
   // retrieval and BEFORE every provider call: `offTopicTrigger` was computed
@@ -2189,6 +2240,13 @@ async function handleChatTurn(
   const boundAsset: ResolvedAsset = await releaseClaimOnFailure(() =>
     resolveBoundAsset(ctx.tenantId, notebookId),
   );
+  // Compare the SAME captured binding that retrieval/inference below uses.
+  // A rebind between acceptance and this read must not retarget the question.
+  if (!matchesEquipmentExpectation(expectedTarget, boundAsset.state === "resolved" ? boundAsset.entityId : null)) {
+    await abandonRequestClaim();
+    endRoot();
+    return NextResponse.json({ error: "equipment_binding_changed", message: "The machine changed. Review the target before asking again." }, { status: 409 });
+  }
   rec.stage("identity", {
     ran: true,
     state: boundAsset.state === "resolved" ? "verified" : "unknown",

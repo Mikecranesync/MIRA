@@ -513,6 +513,18 @@ export function guidedDeadEndBody(
  */
 export function errorMessageFor(code: string, status: number): string {
   switch (code) {
+    case "equipment_binding_changed":
+    case "retry_target_unknown":
+    case "component_revision_changed":
+      return "The original question target changed or is unknown. Review the machine and component before sending again.";
+    case "retry_photo_unavailable":
+      return "The original photo is unavailable. Attach it again before sending.";
+    case "retry_request_not_found":
+    case "retry_request_unavailable":
+    case "retry_request_invalid":
+      return "The original request cannot be recovered. Review the target and send a new question.";
+    case "request_in_progress":
+      return "This request is still being completed. Checking its saved result…";
     case "no_sources_selected":
       return "This notebook has no selected sources yet. Add a manual to it, then ask.";
     case "approved_context":

@@ -27,6 +27,7 @@ export type RecoveryRow = {
   client_request_state: string; stale: boolean; answer_status: string;
   equipment_entity_id: string | null; current_equipment_entity_id: string | null;
   component_id?: string | null; component_revision?: number | string | null;
+  answer_text?: string | null; evidence?: unknown[];
   client_request_payload: unknown; created_at: Date | string;
 };
 
@@ -44,6 +45,9 @@ export function recoveryView(row: RecoveryRow) {
   return {
     requestId: row.client_request_id, turnId: row.id, threadId: row.thread_id ?? "legacy",
     question: row.question, state, answerStatus: state === "complete" ? row.answer_status : null,
+    canRetry: (state === "interrupted" || (state === "complete" && row.answer_status === "error"))
+      && !row.answer_text && target.kind === "known"
+      && !(row.evidence ?? []).some(e => ["provider_failure", "safety_stop"].includes(String(record(e).kind))),
     target, currentEquipmentEntityId: row.current_equipment_entity_id,
     component: row.component_id && row.component_revision != null
       ? { componentId: row.component_id, revision: Number(row.component_revision) } : null,
