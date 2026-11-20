@@ -2226,6 +2226,16 @@ class Supervisor:
         }
 
     @staticmethod
+    def _record_citation_strip(parsed: dict, cc: dict) -> None:
+        """Record what the compliance gate stripped on ``parsed`` for the salvage.
+
+        ``_stripped_labels`` (#3213) become the salvage's disallowed labels, and
+        ``_provenance_stripped`` (#3049 round-4 F11) disables the re-tag outright.
+        """
+        parsed["_stripped_labels"] = cc.get("stripped_labels") or []
+        parsed["_provenance_stripped"] = bool(cc.get("provenance_stripped"))
+
+    @staticmethod
     def _evidence_from_parsed(parsed: dict) -> dict:
         """Per-turn citation/grounding evidence carried on ``parsed`` (#1704).
 
@@ -2242,7 +2252,35 @@ class Supervisor:
             # bridge passes them as disallowed so a rejected citation cannot be
             # silently re-inserted by the salvage pass.
             "stripped_labels": parsed.get("_stripped_labels") or [],
+            # Round-4 F11 — a provenance strip disables the salvage re-tag.
+            "provenance_stripped": bool(parsed.get("_provenance_stripped")),
+            # #3049 — the same relevance inputs the gate used, so the salvage can
+            # only insert a label that gate would have let through.
+            "uns_context": (parsed.get("_citation_relevance") or {}).get("uns_context"),
+            "established_text": (parsed.get("_citation_relevance") or {}).get(
+                "established_text", ""
+            ),
+            "current_text": (parsed.get("_citation_relevance") or {}).get("current_text"),
         }
+
+    @staticmethod
+    def _citation_relevance_inputs(message: str, state: dict, parsed: dict) -> dict:
+        """The relevance gate's inputs for THIS turn, recorded on ``parsed``.
+
+        One computation feeds the gate here and the salvage rewrite in
+        ``process()`` (via ``_evidence_from_parsed``), so the two can never judge
+        a label differently. ``chunks`` is the turn's own retrieval snapshot —
+        never the shared ``self.rag`` attributes (#1704).
+        """
+        inputs = {
+            "uns_context": _trusted_uns_context(state),
+            "established_text": _established_context_text(message, state),
+            # This message only, memory block removed: vendorless provenance
+            # reads no history or session state (#3049).
+            "current_text": Supervisor._strip_memory_block(message or ""),
+        }
+        parsed["_citation_relevance"] = inputs
+        return {**inputs, "chunks": parsed.get("_last_chunks") or None}
 
     async def _enforce_citation_rewrite(
         self, reply: str, *, chat_id: str, fsm_state: str, evidence: dict | None = None
@@ -2278,6 +2316,10 @@ class Supervisor:
                 chat_id=chat_id,
                 llm_call=rag._call_llm,
                 disallowed_labels=set(evidence.get("stripped_labels") or []),
+                uns_context=evidence.get("uns_context"),
+                established_text=evidence.get("established_text") or "",
+                current_text=evidence.get("current_text"),
+                provenance_stripped=bool(evidence.get("provenance_stripped")),
             )
         except Exception:
             logger.warning(
@@ -4577,13 +4619,12 @@ class Supervisor:
             parsed.get("_kb_status") or {},
             fsm_state=state.get("state", ""),
             chat_id=chat_id,
-            uns_context=_trusted_uns_context(state),
-            established_text=_established_context_text(message, state),
             enforce=_citation_enforce_enabled(),
+            **self._citation_relevance_inputs(message, state, parsed),
         )
         if _cc.get("sanitized_reply"):
             formatted = _cc["sanitized_reply"]
-            parsed["_stripped_labels"] = _cc.get("stripped_labels") or []
+            self._record_citation_strip(parsed, _cc)
 
         tl_flush()
         return self._make_result(
@@ -5934,13 +5975,12 @@ class Supervisor:
             parsed.get("_kb_status") or {},
             fsm_state=state.get("state", ""),
             chat_id=chat_id,
-            uns_context=_trusted_uns_context(state),
-            established_text=_established_context_text(message, state),
             enforce=_citation_enforce_enabled(),
+            **self._citation_relevance_inputs(message, state, parsed),
         )
         if _cc.get("sanitized_reply"):
             formatted = _cc["sanitized_reply"]
-            parsed["_stripped_labels"] = _cc.get("stripped_labels") or []
+            self._record_citation_strip(parsed, _cc)
 
         return self._make_result(
             formatted,
@@ -6533,7 +6573,9 @@ class Supervisor:
                     )
                     # Gate BEFORE recording, so history stores what the technician
                     # actually saw rather than the pre-strip text.
-                    reply = self._gate_reply_citations(reply, message, state, chat_id)
+                    reply = self._gate_reply_citations(
+                        reply, message, state, chat_id, evidence=_evidence
+                    )
                     self._record_exchange(chat_id, state, message, reply)
                     tl_flush()
                     return self._make_result(
@@ -7941,7 +7983,14 @@ class Supervisor:
         """Create conversation_state table if it doesn't exist."""
         ensure_table(self.db_path)
 
-    def _gate_reply_citations(self, formatted: str, message: str, state: dict, chat_id: str) -> str:
+    def _gate_reply_citations(
+        self,
+        formatted: str,
+        message: str,
+        state: dict,
+        chat_id: str,
+        evidence: dict | None = None,
+    ) -> str:
         """Normalize block-form citations, then run the vendor-relevance gate.
 
         `process_full`'s two branches do this inline; `_handle_general_question`
@@ -7953,18 +8002,34 @@ class Supervisor:
 
         A no-op when the reply carries no citation, so it is safe on every return.
         Never raises — a gate that breaks a reply is worse than one that misses.
+
+        ``evidence`` (optional) is the turn's ``citation_evidence`` dict. With it
+        the gate also judges provenance against the turn's chunks (#3049), and
+        the dict is updated in place with the same relevance inputs and the
+        stripped labels, so the salvage in ``process()`` cannot re-insert a
+        label this gate refused.
         """
         try:
             formatted = _normalize_sources_block(formatted)
+            inputs = {
+                "uns_context": _trusted_uns_context(state),
+                "established_text": _established_context_text(message, state),
+                "current_text": self._strip_memory_block(message or ""),
+            }
+            if evidence is not None:
+                evidence.update(inputs)
             _cc = _check_citation_compliance(
                 formatted,
                 {},
                 fsm_state=state.get("state", ""),
                 chat_id=chat_id,
-                uns_context=_trusted_uns_context(state),
-                established_text=_established_context_text(message, state),
                 enforce=_citation_enforce_enabled(),
+                chunks=(evidence or {}).get("chunks") or None,
+                **inputs,
             )
+            if _cc.get("sanitized_reply") and evidence is not None:
+                evidence["stripped_labels"] = _cc.get("stripped_labels") or []
+                evidence["provenance_stripped"] = bool(_cc.get("provenance_stripped"))
             return _cc.get("sanitized_reply") or formatted
         except Exception as exc:  # noqa: BLE001 — never break a reply over QC
             logger.warning("CITATION_GATE_FAILED chat_id=%s error=%s", chat_id, exc)
