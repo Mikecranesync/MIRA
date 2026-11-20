@@ -40,23 +40,23 @@ const SERIAL_LABEL = new RegExp(
 // code, or — for "tag" — as a suffix right after such a code.
 const ID_WORD = String.raw`(?:tag|ident(?:ifier)?|id|ref(?:erence)?|${NUM_WORD}|#)`;
 const CODE_AHEAD = String.raw`(?=(?:is\b)?[^A-Za-z0-9]*(?=[A-Z0-9./-]*\d)[A-Z0-9][A-Z0-9./-]{3,}(?![A-Z0-9]))`;
-// A weak word that ENDS a sentence, followed by a new sentence opening with the
-// English word "No" and then ordinary words, is prose, not a label: "…the right
-// side of the unit. No loose or disconnected wiring is visible." (a real GS10
-// LOOK reading, 2026-11-20 — it hid the plate's MODEL from the manual search).
-// Narrow on purpose, and fail closed everywhere else:
-//  - the separator is exactly "." plus spaces, and "No" is followed by spaces
-//    and a letter (never "No." / "No:" / "No#" / a line break);
+// A weak word that ENDS a sentence, followed by a new sentence of ordinary
+// prose opening with the English word "No", is not a label: "…the right side of
+// the unit. No loose or disconnected wiring is visible." (a real GS10 LOOK
+// reading, 2026-11-20 — it hid the plate's MODEL from the manual search).
+// The exception needs affirmative evidence of prose, and fails closed otherwise:
+//  - the separator is exactly "." plus spaces;
+//  - "No" is followed by at least THREE plain words (letters only), so a label
+//    value ("Unit. No ABC.", "Unit. No AB 4471") never qualifies;
 //  - that sentence carries no digit and ends at ".", "!" or "?" followed by
 //    whitespace, or at the end of the text — a line break or a "." inside a
-//    token ("AB.1234567") is not an end;
-//  - the next sentence does not open with a digit-bearing code
-//    ("Unit. No ABC. 12345678").
+//    token is not an end;
+//  - the next token carries no digit, whatever punctuation wraps it
+//    ("Unit. No ABC. (12345678)", "…wiring.\n12345678").
 // So "Unit. No. 12345678", "UNIT NO 4471", "UNIT NO\nAB-1234567",
-// "Unit No ABC 12345678", "unit. No AB 4471", "UNIT. NO TP\n1200" and
-// "Unit. No AB.1234567" all stay labels. A digitless value ("Unit. No ABC.")
-// reads as prose; it can never become a search key (a part code needs a digit).
-const PROSE_NO_SENTENCE = String.raw`(?!\.[ \t]+no[ \t]+[a-z][^\d.!?\r\n]*(?:[.!?](?=\s|$)(?![ \t\r\n]+[A-Z0-9./-]*\d)|$))`;
+// "Unit No ABC 12345678", "unit. No AB 4471", "UNIT. NO TP\n1200",
+// "Unit. No AB.1234567" and "Unit. No ABC. (12345678)" all stay labels.
+const PROSE_NO_SENTENCE = String.raw`(?!\.[ \t]+no(?:[ \t]+[a-z]+){3}[^\d.!?\r\n]*(?:[.!?](?=\s|$)(?!\s+\S*\d)|$))`;
 const ASSET_LABEL = new RegExp(
   String.raw`\b(?:(?:fixed\s*asset|asset|inventory|inv|cmms|sap|work\s*order|wo)(?![a-z])` +
     String.raw`|(?:tag|equip(?:ment)?|unit|machine|location|loc|site|plant|area|line|cell)(?![a-z])${PROSE_NO_SENTENCE}${LABEL_SEP}(?:${ID_WORD}(?![a-z])|${CODE_AHEAD})` +

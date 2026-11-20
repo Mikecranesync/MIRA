@@ -790,7 +790,7 @@ describe("photo-to-manual (2026-11-20): a weak label word ending a sentence befo
     expect(danglingPrivateLabel(GS10_CV101_LOOK)).toBe(false);
     expect(unambiguousPartNumber(GS10_CV101_LOOK)).toBe("GS11N-20P2");
   });
-  it.each(["Cables run past the unit. No loose wiring is visible. MODEL: GS11N-20P2", "Mounted in the cell. No damage. MODEL: GS11N-20P2", "Near the area. No burn marks visible"])(
+  it.each(["Cables run past the unit. No loose wiring is visible. MODEL: GS11N-20P2", "Mounted in the cell. No visible damage anywhere. MODEL: GS11N-20P2", "Near the area. No burn marks visible"])(
     "control: %s is prose",
     (text) => {
       expect(mentionsAssetLabel(text)).toBe(false);
@@ -812,6 +812,11 @@ describe("photo-to-manual (2026-11-20): a weak label word ending a sentence befo
     "Unit. No AB\n1234567",
     "UNIT. NO TP\n1200",
     "Unit. No ABC. 12345678",
+    "Unit. No ABC. (12345678)",
+    "Unit. No ABC DEF. [12345678]",
+    "the unit. No loose wiring is visible.\n12345678",
+    "Unit. No loose wiring is visible. (4471)",
+    "Mounted in the cell. No damage. MODEL: GS11N-20P2", // fewer than three plain words: fail closed
   ])("still a private label: %s", (text) => {
     expect(mentionsAssetLabel(text)).toBe(true);
   });
