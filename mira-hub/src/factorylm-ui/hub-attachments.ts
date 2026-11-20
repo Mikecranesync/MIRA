@@ -106,8 +106,8 @@ export async function resolveUploadNode(
 export async function runAttachedSend(opts: {
   signal: AbortSignal;
   compose: () => Promise<ComposedHubSend>;
-  send: (composed: ComposedHubSend) => Promise<void>;
-}): Promise<"sent" | "cancelled" | ComposedHubSend> {
+  send: (composed: ComposedHubSend) => Promise<void | "deferred">;
+}): Promise<"sent" | "cancelled" | "deferred" | ComposedHubSend> {
   let composed: ComposedHubSend;
   try {
     composed = await opts.compose();
@@ -117,8 +117,7 @@ export async function runAttachedSend(opts: {
   }
   if (opts.signal.aborted) return "cancelled";
   if (composed.failure) return composed;
-  await opts.send(composed);
-  return "sent";
+  return (await opts.send(composed)) ?? "sent";
 }
 
 async function body(res: Response): Promise<Record<string, unknown>> {

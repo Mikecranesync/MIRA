@@ -166,23 +166,17 @@ export function heldQuestionForSend<B extends object>(
   return text.trim() === failed.question.trim() ? failed.body : null;
 }
 
-/**
- * #5562: while a refused question waits for review, the composer has already released its
- * chip, so nothing showed that the photo is still held. Say so beside the composer, and say
- * plainly when it will NOT go: heldQuestionForSend drops the held body once the question is
- * edited or a new attachment is added (the host cannot see new chips before Send, so the
- * note names that case up front).
- */
+/** Describe which action owns the kept photo, using the composer's send decision. */
 export function heldEvidenceNote(
   failed: { body: object; question: string; refusedScope?: ScopeField } | null,
   check: ReturnType<typeof retryTargetCheck> | null,
-  draft: string,
+  composerWillSendRecovery: boolean,
 ): string | null {
   if (!failed?.refusedScope || check?.kind !== "review") return null;
   if (!("visualEvidence" in failed.body) || !failed.body.visualEvidence) return null;
-  return draft.trim() === failed.question.trim()
+  return composerWillSendRecovery
     ? `Your photo is kept with this question and goes with the next Send to ${check.review.to}, unless you change the question or attach something new.`
-    : "You changed the question, so the kept photo will not go with it. Attach the photo again if you need it.";
+    : "Your photo is kept with the saved question below. Send the saved question to include it.";
 }
 
 export function targetReviewMessage(r: TargetReview): string {
@@ -431,7 +425,7 @@ export type BenchSendGate = {
   setPending(replay: (() => Promise<Response>) | null): void;
 };
 
-export function createBenchSendGate(): BenchSendGate {
+export function createBenchSendGate(onStatusChanged?: () => void): BenchSendGate {
   let changes = 0;
   let sends = 0;
   let known = false;
@@ -441,10 +435,13 @@ export function createBenchSendGate(): BenchSendGate {
     tryBeginChange() {
       if (sends > 0) return false;
       changes++;
+      onStatusChanged?.();
       return true;
     },
     endChange() {
-      if (changes > 0) changes--;
+      if (changes === 0) return;
+      changes--;
+      onStatusChanged?.();
     },
     tryBeginSend() {
       if (changes > 0) return false;
@@ -466,18 +463,23 @@ export function createBenchSendGate(): BenchSendGate {
     invalidate() {
       known = false;
       epoch++;
+      onStatusChanged?.();
     },
     get epoch() {
       return epoch;
     },
     markKnown() {
+      if (known) return;
       known = true;
+      onStatusChanged?.();
     },
     get pending() {
       return pending;
     },
     setPending(replay) {
+      if (pending === replay) return;
       pending = replay;
+      onStatusChanged?.();
     },
   };
 }

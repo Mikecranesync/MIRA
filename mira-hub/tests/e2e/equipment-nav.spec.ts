@@ -802,6 +802,7 @@ test("a confirmed retry stays answered when detail refresh fails (#5684)", async
   await auth(context, baseURL!);
   await routes(page, { enabled: true, resolve: "resolved", initial: { [THREAD]: { componentId: VFD, version: 2 } } });
   let posts = 0;
+  let retryRequestId: string | undefined;
   let failDetail = true;
   let refreshes = 0;
   await page.route(new RegExp("/api/equipment-notebooks/" + NB + "/?(\\?.*)?$"), (route) => {
@@ -810,12 +811,13 @@ test("a confirmed retry stays answered when detail refresh fails (#5684)", async
     return failDetail ? route.fulfill(json({ error: "test_refresh_failed" }, 503)) : route.fulfill(json({
       ...oracle.detailEmpty,
       turns: [{ id: "persisted-answer", question: "Settle this question once.", answerStatus: "answered",
-        answerText: "Confirmed answer text.", evidence: [] }],
+        answerText: "Confirmed answer text.", clientRequestId: retryRequestId, evidence: [] }],
     }));
   });
   await page.route(/\/api\/equipment-notebooks\/[^/]+\/chat\/?$/, (route) => {
     posts++;
     if (posts === 1) return route.fulfill(json({ error: "test_stop" }, 503));
+    retryRequestId = route.request().postDataJSON().clientRequestId;
     const frames = [{ kind: "content", content: "Confirmed answer text." }, { kind: "status", status: "answered" }];
     return route.fulfill({ status: 200, contentType: "text/event-stream",
       body: frames.map((frame) => "data: " + JSON.stringify(frame) + "\n\n").join("") });
@@ -1953,4 +1955,233 @@ test.describe("More", () => {
     expect((await menu(page).boundingBox())!.width, "the two-column list uses the tablet width").toBeGreaterThan(600);
     await expect(menu(page)).toBeInViewport({ ratio: 1 });
   });
+});
+
+test("round 5 F18 retains an interrupted safety warning without evidence links", async ({ page, context, baseURL }) => {
+  await auth(context, baseURL!);
+  await routes(page, { enabled: true, resolve: "resolved" });
+  await page.route(/\/api\/equipment-notebooks\/[^/]+\/chat\/?$/, (route) => {
+    const frames = [
+      { kind: "content", content: "Partial warning response." },
+      { kind: "safety", trigger: "Synthetic safety fixture" },
+      { kind: "sources", citations: [{ citationId: 1, sourceTitle: "Unconfirmed fixture", page: 1, fileId: null, quote: "Synthetic citation." }] },
+    ];
+    return route.fulfill({ status: 200, contentType: "text/event-stream",
+      body: frames.map((frame) => "data: " + JSON.stringify(frame) + "\n\n").join("") });
+  });
+  await page.goto("/v3/?notebook=" + NB + "&thread=" + THREAD);
+  await expect(more(page)).toBeVisible();
+  await composer(page).fill("Check the synthetic warning.");
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Try again", exact: true })).toBeEnabled();
+  await expect(page.getByText("Partial warning response.", { exact: true })).toBeVisible();
+  await expect(page.locator('[data-part-type="safety_notice"][data-severity="stop"]')).toBeVisible();
+  await expect(page.getByText("Unconfirmed fixture", { exact: true })).toHaveCount(0);
+});
+
+test("round 5 F21 settles only the matching durable request after a cutoff", async ({ page, context, baseURL }) => {
+  await auth(context, baseURL!);
+  await routes(page, { enabled: true, resolve: "resolved" });
+  const question = "Check the delivered request.";
+  let requestId: string | undefined;
+  let revealActual = false;
+  let posts = 0;
+  await page.route(new RegExp("/api/equipment-notebooks/" + NB + "/?(\\?.*)?$"), (route) => {
+    if (new URL(route.request().url()).searchParams.get("threadId") !== THREAD) return route.fallback();
+    const row = { question, answerStatus: "answered", evidence: [] };
+    const turns = requestId ? [
+      { ...row, id: "1385d53e-2779-4593-a204-32d697f6291e", clientRequestId: "0c631455-e06e-4379-a656-e71acc373f53", answerText: "Another request with the same words." },
+      ...(revealActual ? [{ ...row, id: "d4fe8069-48e1-4f0d-ab53-1413873d9d03", clientRequestId: requestId, answerText: "One durable answer." }] : []),
+    ] : [];
+    return route.fulfill(json({ ...oracle.detailEmpty, turns }));
+  });
+  await page.route(/\/api\/equipment-notebooks\/[^/]+\/chat\/?$/, (route) => {
+    posts++;
+    requestId = route.request().postDataJSON().clientRequestId;
+    return route.fulfill({ status: 200, contentType: "text/event-stream", body: "" });
+  });
+  await page.goto("/v3/?notebook=" + NB + "&thread=" + THREAD);
+  await expect(more(page)).toBeVisible();
+  const origin = page.url();
+  await composer(page).fill(question);
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  const retry = page.getByRole("button", { name: "Try again", exact: true });
+  await expect(retry).toBeEnabled();
+  await page.getByRole("button", { name: "New chat", exact: true }).click();
+  const row = page.getByRole("region", { name: "Projects" }).getByRole("button", { name: /Unsent draft/ });
+  await row.click();
+  await expect(page).toHaveURL(origin);
+  await expect(page.getByText("Another request with the same words.", { exact: true })).toBeVisible();
+  await expect(retry).toBeEnabled();
+
+  revealActual = true;
+  await page.getByRole("button", { name: "New chat", exact: true }).click();
+  await row.click();
+  await expect(page.getByText("One durable answer.", { exact: true })).toHaveCount(1);
+  await expect(page.getByText("Another request with the same words.", { exact: true })).toHaveCount(1);
+  await expect(retry).toHaveCount(0);
+  await expect(composer(page)).toHaveValue("");
+  expect(posts).toBe(1);
+});
+
+test("F19 keeps the uploaded photo recoverable when a checklist write blocks Chat", async ({ page, context, baseURL }) => {
+  await auth(context, baseURL!);
+  await routes(page, { enabled: true, resolve: "resolved", initial: { [THREAD]: { componentId: VFD, version: 2 } } });
+  let finishUpload = () => {};
+  let finishSave = () => {};
+  const heldUpload = new Promise<void>((resolve) => { finishUpload = resolve; });
+  const heldSave = new Promise<void>((resolve) => { finishSave = resolve; });
+  let adds = 0;
+  await page.route(/\/api\/equipment-notebooks\/[^/]+\/components\/?(\?.*)?$/, async (route) => {
+    if (route.request().method() !== "POST") return route.fallback();
+    adds++;
+    await heldSave;
+    return route.fulfill(json({ componentId: "66666666-6666-4666-8666-666666666666" }, 201));
+  });
+  const photoId = "blocked-after-upload-photo";
+  let uploads = 0;
+  await page.route(/\/api\/equipment-notebooks\/[^/]+\/look\/?$/, async (route) => {
+    uploads++;
+    await heldUpload;
+    return route.fulfill(json({
+      fileId: photoId, observation: { text: "Drive photo", capturedAt: "2026-11-20T12:00:00.000Z" },
+      attachment: { linkId: "link" }, observationPersisted: true,
+    }));
+  });
+  const requests: unknown[] = [];
+  await page.route(/\/api\/equipment-notebooks\/[^/]+\/chat\/?$/, (route) => {
+    requests.push(route.request().postDataJSON());
+    return route.fulfill(json({ error: "test_stop" }, 503));
+  });
+
+  await page.goto("/v3/?notebook=" + NB + "&thread=" + THREAD);
+  await expect(page.getByTestId("bench-asking-about")).toContainText("VFD1");
+  const firstQuestion = "Check the uploaded drive photo.";
+  const newerDraft = "Keep this newer checklist draft.";
+  await composer(page).fill(firstQuestion);
+  await attachDraftPhoto(page, "blocked-after-upload.png");
+  const card = page.getByRole("group", { name: "Saved question" }).filter({ hasText: firstQuestion });
+  const retry = card.getByRole("button", { name: "Retry saved question" });
+  try {
+    await page.getByRole("button", { name: "Send", exact: true }).click();
+    await expect.poll(() => uploads).toBe(1);
+    await composer(page).fill(newerDraft);
+    await openChecklist(page);
+    await checklist(page).getByTestId("bench-add-label").fill("New fixture component");
+    await checklist(page).getByTestId("bench-add").click();
+    await expect.poll(() => adds).toBe(1);
+    await checklist(page).getByRole("button", { name: "Close", exact: true }).click();
+
+    finishUpload();
+    await expect(page.getByRole("button", { name: "Stop", exact: true })).toHaveCount(0);
+    await expect(composer(page)).toHaveValue(newerDraft);
+    await expect(card).toContainText("Photo kept with this question.");
+    await expect(retry).toBeDisabled();
+    expect(requests).toHaveLength(0);
+  } finally {
+    finishUpload();
+    finishSave();
+  }
+  await expect(retry).toBeEnabled();
+  await retry.click();
+  await expect.poll(() => requests.length).toBe(1);
+  expect(requests[0]).toMatchObject({ message: firstQuestion, visualEvidence: { fileId: photoId } });
+  await expect(composer(page)).toHaveValue(newerDraft);
+  expect(uploads).toBe(1);
+});
+
+test("F20 a whitespace edit keeps the refused photo on the saved question only", async ({ page, context, baseURL }) => {
+  await auth(context, baseURL!);
+  const seen = await routes(page, { enabled: true, resolve: "resolved", initial: { [THREAD]: { componentId: VFD, version: 2 } } });
+  const photoId = "whitespace-review-photo";
+  let uploads = 0;
+  await page.route(/\/api\/equipment-notebooks\/[^/]+\/look\/?$/, (route) => {
+    uploads++;
+    return route.fulfill(json({
+      fileId: photoId, observation: { text: "Drive photo", capturedAt: "2026-11-20T12:00:00.000Z" },
+      attachment: { linkId: "link" }, observationPersisted: true,
+    }));
+  });
+  const requests: { message: string; visualEvidence?: { fileId: string }; componentSelection?: { componentId: string | null } }[] = [];
+  await page.route(/\/api\/equipment-notebooks\/[^/]+\/chat\/?$/, (route) => {
+    requests.push(route.request().postDataJSON());
+    if (requests.length === 1) {
+      seen.selections.delete(THREAD);
+      return route.fulfill(json({ error: "selection_changed" }, 409));
+    }
+    return route.fulfill(json({ error: "test_stop" }, 503));
+  });
+
+  await page.goto("/v3/?notebook=" + NB + "&thread=" + THREAD);
+  await expect(page.getByTestId("bench-asking-about")).toContainText("VFD1");
+  const question = "Read the drive label.";
+  await composer(page).fill(question);
+  await attachDraftPhoto(page, "whitespace-review.png");
+  const send = page.getByRole("button", { name: "Send", exact: true });
+  await send.click();
+  await expect(page.getByRole("alert", { name: "Send error" })).toContainText("now the whole machine");
+  await expect(composer(page)).toHaveValue(question);
+  await composer(page).fill(question + " ");
+
+  await expect(page.getByText(/photo.*goes with the next Send/i)).toHaveCount(0);
+  const saved = page.getByRole("group", { name: "Saved question" }).filter({ hasText: question });
+  await expect(saved).toContainText("Photo kept with this question.");
+  await send.click();
+  await expect.poll(() => requests.length).toBe(2);
+  expect(requests[1]).toMatchObject({ message: question, componentSelection: { componentId: null } });
+  expect(requests[1].visualEvidence).toBeUndefined();
+
+  await saved.getByRole("button", { name: "Send saved question to current target" }).click();
+  await expect.poll(() => requests.length).toBe(3);
+  expect(requests[2]).toMatchObject({ message: question, visualEvidence: { fileId: photoId }, componentSelection: { componentId: null } });
+  expect(uploads).toBe(1);
+});
+
+test("F22 a refused exact replay can be reviewed as a new general question", async ({ page, context, baseURL }) => {
+  await auth(context, baseURL!);
+  const seen = await routes(page, { enabled: true, resolve: "resolved", initial: { [THREAD]: { componentId: VFD, version: 2 } } });
+  await page.route(/\/api\/equipment-notebooks\/[^/?]+\/?(\?.*)?$/, (route) => {
+    if (route.request().method() !== "GET") return route.fallback();
+    return route.fulfill(json({ ...oracle.detailEmpty, sources: [] }));
+  });
+  type ChatRequest = {
+    clientRequestId: string;
+    message: string;
+    mode?: string;
+    sourceDocIds: string[];
+    componentSelection?: { componentId: string | null };
+  };
+  const requests: ChatRequest[] = [];
+  const posted: (string | null)[] = [];
+  await page.route(/\/api\/equipment-notebooks\/[^/]+\/chat\/?$/, (route) => {
+    posted.push(route.request().postData());
+    requests.push(route.request().postDataJSON());
+    if (requests.length === 1) return route.fulfill({ status: 200, contentType: "text/event-stream", body: "" });
+    if (requests.length === 2) {
+      seen.selections.delete(THREAD);
+      return route.fulfill(json({ error: "selection_changed" }, 409));
+    }
+    return route.fulfill(json({ error: "test_stop" }, 503));
+  });
+
+  await page.goto("/v3/?notebook=" + NB + "&thread=" + THREAD);
+  await expect(page.getByTestId("bench-asking-about")).toContainText("VFD1");
+  const question = "What does the drive indicator mean?";
+  await composer(page).fill(question);
+  const send = page.getByRole("button", { name: "Send", exact: true });
+  const banner = page.getByRole("alert", { name: "Send error" });
+  await send.click();
+  await expect(banner).toContainText("didn't confirm");
+  expect(requests[0]).toMatchObject({ message: question, sourceDocIds: [], componentSelection: { componentId: VFD } });
+  expect(requests[0].mode).toBeUndefined();
+
+  await page.getByRole("button", { name: "Try again", exact: true }).click();
+  await expect(banner).toContainText("now the whole machine");
+  expect(posted[1]).toBe(posted[0]);
+  await expect(composer(page)).toHaveValue(question);
+  await send.click();
+
+  await expect.poll(() => requests.length).toBe(3);
+  expect(requests[2]).toMatchObject({ message: question, mode: "general", sourceDocIds: [], componentSelection: { componentId: null } });
+  expect(requests[2].clientRequestId).not.toBe(requests[0].clientRequestId);
 });

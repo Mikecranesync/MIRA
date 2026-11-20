@@ -317,6 +317,8 @@ export function openThreadAction(sel: HubSelection, at: string): ShellAction {
 /** The host's actions: the shell's, plus an automatic landing (deep link, reload, first load). */
 export type HubSendRecovery = {
   readonly body: ReturnType<typeof chatBodyFor> & { componentSelection?: ScopeField };
+  readonly composition?: ReturnType<typeof chatBodyFor>;
+  readonly unposted?: boolean;
   readonly question: string;
   readonly refusedScope?: ScopeField;
   readonly recoveryId?: string;
@@ -331,6 +333,7 @@ export type HubHostAction =
   | { readonly type: "recover-send"; readonly threadId: string; readonly recovery: HubSendRecovery; readonly restoreDraft: boolean }
   | { readonly type: "recover-attachment-draft"; readonly threadId: string; readonly text: string; readonly notice: string }
   | { readonly type: "clear-recovery"; readonly threadId: string; readonly recoveryId: string }
+  | { readonly type: "reconcile-send"; readonly threadId: string; readonly requestIds: ReadonlySet<string> }
   | { readonly type: "clear-attachment-recovery"; readonly threadId: string };
 
 /**
@@ -359,6 +362,22 @@ export function sendRecoveryId(recovery: HubSendRecovery): string {
   return recovery.recoveryId ?? recovery.body.clientRequestId;
 }
 
+export function recoveryOwnsDraft(
+  recovery: HubSendRecovery,
+  revision: number | undefined,
+  text: string,
+  hasAttachments: boolean,
+): boolean {
+  return recovery.draftRevision !== undefined && recovery.draftRevision === revision &&
+    recovery.question.trim() === text.trim() && !hasAttachments;
+}
+
+export function recoverySendBody(recovery: HubSendRecovery): HubSendRecovery["body"] {
+  if (recovery.unposted) return recovery.composition ?? recovery.body;
+  if (!recovery.refusedScope) return recovery.body;
+  return { ...(recovery.composition ?? recovery.body), clientRequestId: crypto.randomUUID() };
+}
+
 export function hubHostReducer(state: HubShellState, action: HubHostAction): HubShellState {
   if (action.type === "land-thread") {
     // #4695: automatic landing keeps what was typed on HOME during loading.
@@ -376,6 +395,20 @@ export function hubHostReducer(state: HubShellState, action: HubHostAction): Hub
     const draftsByThread = new Map(state.draftsByThread);
     draftsByThread.delete(action.threadId);
     return { ...state, draftsByThread };
+  }
+
+  if (action.type === "reconcile-send") {
+    let next = state;
+    for (const recovery of state.sendRecoveryByThread?.get(action.threadId) ?? []) {
+      if (recovery.unposted || !action.requestIds.has(recovery.body.clientRequestId)) continue;
+      next = hubHostReducer(next, { type: "clear-recovery", threadId: action.threadId, recoveryId: sendRecoveryId(recovery) });
+      if (recovery.draftRevision !== undefined) {
+        next = hubHostReducer(next, {
+          type: "sent-draft", threadId: action.threadId, question: recovery.question, revision: recovery.draftRevision,
+        });
+      }
+    }
+    return next;
   }
 
   if (action.type === "clear-recovery") {
