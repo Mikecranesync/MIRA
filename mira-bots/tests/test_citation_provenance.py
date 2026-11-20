@@ -176,7 +176,9 @@ def test_sources_footer_label_for_an_unrelated_chunk_is_stripped():
 
 def test_document_from_the_established_vendor_is_kept_without_the_identifier():
     """Control: the technician named Yaskawa, and the cited Yaskawa table keys its
-    rows by suffix (2001, not GA50U2001). Vendor provenance alone keeps it."""
+    rows by suffix (2001, not GA50U2001). The GA500 label has no applicability
+    marker and computes to "unknown" for GA50U2001, so it is kept by its series
+    row (2001 beside 2002), not by vendor alone."""
     q = "Which Bussmann semiconductor fuse does Yaskawa require for a GA50U2001?"
     reply = f"FWH-25A14F. [Source: {YASKAWA_LABEL}]"
     out = check_citation_compliance(
@@ -880,3 +882,49 @@ def test_r2_f2_general_question_gate_uses_the_corrected_unit(tmp_path):
         )
     assert evidence["current_text"] == correction
     assert AD_LABEL not in gated, gated
+
+
+def test_r3_correction_phrasings_drop_the_old_model():
+    for message in (
+        "GS13N-42P0 was wrong, it's a GA50U2001",
+        "swapped the GS13N-42P0 for a GA50U2001",
+        "it's a GA50U2001, I misread it as GS13N-42P0",
+        "replaced the GS13N-42P0 with a GA50U2001",
+    ):
+        assert catalog_identifiers(message) == {"GA50U2001"}, message
+    # Control: a plain mention is still an identifier.
+    assert catalog_identifiers("replaced it with a GA50U2001") == {"GA50U2001"}
+    assert catalog_identifiers("the GS13N-42P0 trips on start") == {"GS13N42P0"}
+
+
+def test_r3_stated_cost_a_right_series_page_without_the_row_is_stripped():
+    """The documented over-strip: a correct GA500 page that names neither the
+    catalog number nor its row (an EMC page) cannot be shown to cover a
+    GA50U2001 and is stripped. Pinned so a change to it is a decision."""
+    page = {
+        "manufacturer": "Yaskawa",
+        "model_number": "GA500",
+        "metadata": {"section": "Grounding"},
+        "content": "Ground the drive with the shortest possible wire.",
+    }
+    from shared.workers.rag_worker import format_source_label
+
+    out = evaluate_citation_relevance(
+        f"Ground it. [Source: {format_source_label(page)}]",
+        "Yaskawa",
+        "Yaskawa GA50U2001 grounding?",
+        chunks=[page],
+    )
+    assert out["relevant"] is False and out["reason"] == "unproven", out
+
+
+def test_r3_reranker_row_that_does_not_match_its_index_gets_no_label():
+    from shared.workers.rag_worker import _metadata_for_reranked
+
+    chunks = [AD_GS10, SIEMENS_PM340]
+    rows = [
+        {"index": 1, "text": SIEMENS_PM340["content"], "score": 0.9},
+        {"index": 0, "text": "text the reranker rewrote", "score": 0.5},
+        {"index": 7, "text": AD_GS10["content"], "score": 0.4},
+    ]
+    assert _metadata_for_reranked(rows, chunks) == [SIEMENS_PM340, {}, {}]

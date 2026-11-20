@@ -386,8 +386,15 @@ _STANDARD_RE = re.compile(r"^(?:NEMA|IEC|UL|CSA|ISO|EN|IP|AWG|MCM|KCMIL)\d")
 # A mention the technician is moving AWAY from: "GA50U2001, not GS13N-42P0",
 # "instead of the GS13N-42P0" (Codex #5687 round 2, F2).
 _NEGATED_BEFORE_RE = re.compile(
-    r"(?:\bnot|\bisn'?t|\bwasn'?t|\binstead\s+of|\bno\s+longer|\brather\s+than|\bwrong)"
+    r"(?:\bnot|\bisn'?t|\bwasn'?t|\binstead\s+of|\bno\s+longer|\brather\s+than|\bwrong"
+    r"|\bswapped(?:\s+out)?|\breplaced|\bmisread(?:\s+it)?\s+as|\bmistook\s+it\s+for"
+    r"|\bthought\s+it\s+was)"
     r"\s+(?:an?\s+|the\s+|it'?s\s+an?\s+)?$",
+    re.IGNORECASE,
+)
+# "GS13N-42P0 was wrong", "GS13N-42P0 is a typo" — the negation follows the token.
+_NEGATED_AFTER_RE = re.compile(
+    r"^\s*(?:was|is|was\s+a|is\s+a)?\s*(?:wrong|incorrect|a\s+typo|typo|a\s+mistake|not\s+right)\b",
     re.IGNORECASE,
 )
 _MEMORY_BLOCK_RE = re.compile(r"^\[MIRA MEMORY[^\]]*\].*?\[END MEMORY\]\s*\n*", re.DOTALL)
@@ -417,6 +424,7 @@ def catalog_identifiers(text: str) -> set[str]:
             and not _RATING_RE.match(n)
             and not _STANDARD_RE.match(n)
             and not _NEGATED_BEFORE_RE.search(text[max(0, m.start() - 24) : m.start()])
+            and not _NEGATED_AFTER_RE.match(text[m.end() : m.end() + 24])
         ):
             out.add(n)
     return out

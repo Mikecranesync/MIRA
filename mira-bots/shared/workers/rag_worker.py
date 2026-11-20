@@ -218,16 +218,22 @@ def chunk_matches_vendor(chunk_manufacturer: str | None, query_vendor: str | Non
     return cq is not None and cq == cm
 
 
-def _metadata_for_texts(texts: list[str], chunks: list[dict]) -> list[dict]:
-    """Each text's own chunk record, in the texts' order (a duplicate text
-    consumes its records once each). An unmatched text gets ``{}``."""
-    pool: dict[str, list[dict]] = {}
-    for ch in chunks:
-        pool.setdefault(str(ch.get("content") or ""), []).append(ch)
+def _metadata_for_reranked(reranked: list[dict], chunks: list[dict]) -> list[dict]:
+    """Each reranked row's own chunk record, in the reranked order.
+
+    The reranker returns ``{"index", "text", "score"}`` where ``index`` points
+    into the passages it was given (``nemotron.rerank``). A row whose index is
+    out of range, or whose text does not match that chunk, gets ``{}`` (no
+    label) rather than a neighbour's metadata.
+    """
     out: list[dict] = []
-    for t in texts:
-        bucket = pool.get(t)
-        out.append(bucket.pop(0) if bucket else {})
+    for row in reranked:
+        idx = row.get("index")
+        ch = chunks[idx] if isinstance(idx, int) and 0 <= idx < len(chunks) else None
+        if ch is not None and str(ch.get("content") or "") == str(row.get("text") or ""):
+            out.append(ch)
+        else:
+            out.append({})
     return out
 
 
@@ -1038,7 +1044,8 @@ class RAGWorker:
             prompt_chunk_meta = local_neon_chunks
             if self.nemotron and self.nemotron.enabled and chunk_texts:
                 reranked = await self.nemotron.rerank(rerank_query, chunk_texts)
-                top_chunks = [r["text"] for r in reranked if r["score"] > 0]
+                kept = [r for r in reranked if r["score"] > 0]
+                top_chunks = [r["text"] for r in kept]
                 if top_chunks:
                     chunk_texts = top_chunks
                     # The reranker reorders and drops TEXT; the prompt pairs text
@@ -1046,7 +1053,7 @@ class RAGWorker:
                     # one document's passage is rendered under another's label
                     # (Codex #5687 round 2, F8). A returned text that matches no
                     # retrieved chunk gets no label, never a borrowed one.
-                    prompt_chunk_meta = _metadata_for_texts(top_chunks, local_neon_chunks)
+                    prompt_chunk_meta = _metadata_for_reranked(kept, local_neon_chunks)
 
             # Stage 3: Build prompt with (reranked) chunks → call LLM
             if chunk_texts:
