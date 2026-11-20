@@ -381,7 +381,6 @@ _RATING_RE = re.compile(
 )
 # A standard or enclosure reference, not a unit: NEMA12, IEC61800, UL508A, IP65.
 _STANDARD_RE = re.compile(r"^(?:NEMA|IEC|UL|CSA|ISO|EN|IP|AWG|MCM|KCMIL)\d")
-_MEMORY_BLOCK_RE = re.compile(r"^\[MIRA MEMORY[^\]]*\].*?\[END MEMORY\]\s*\n*", re.DOTALL)
 
 
 def _norm_ident(text: str) -> str:
@@ -409,12 +408,6 @@ def catalog_identifiers(text: str) -> set[str]:
         ):
             out.add(n)
     return out
-
-
-def current_message_text(message: str) -> str:
-    """This turn's message as the technician typed it: the injected
-    ``[MIRA MEMORY …]`` block (mira-pipeline) removed, nothing else added."""
-    return _MEMORY_BLOCK_RE.sub("", message or "").strip()
 
 
 def _source_tokens(text: str) -> set[str]:
@@ -491,9 +484,25 @@ def _chunk_has_manufacturer(chunk: dict) -> bool:
     )
 
 
+def _metadata_tokens(meta: object) -> set[str]:
+    """Identity a Hub upload carries outside its text: the asset node it is
+    attached to (``uns_path``, whose slug segments such as ``gs13n_42p0`` are
+    normalized whole), its filename, and the models its tables list."""
+    if not isinstance(meta, dict):
+        return set()
+    out = _source_tokens(str(meta.get("filename") or ""))
+    out.update(_norm_ident(seg) for seg in str(meta.get("uns_path") or "").split(".") if seg)
+    models = meta.get("table_models")
+    if isinstance(models, list):
+        for model in models:
+            out.update(_source_tokens(str(model)))
+    return out
+
+
 def _document_names_unit(document: list[dict], identifiers: set[str]) -> bool:
     """True when any chunk of the document names one of the identifiers as a
-    whole token — in its text, model field, source URL or label."""
+    whole token — in its text, model field, source URL, label, or the asset node,
+    filename and table models recorded on an upload."""
     for ch in document:
         tokens = set().union(
             *(
@@ -501,6 +510,7 @@ def _document_names_unit(document: list[dict], identifiers: set[str]) -> bool:
                 for field in ("content", "model_number", "source_url")
             ),
             _source_tokens(format_source_label(ch)),
+            _metadata_tokens(ch.get("metadata")),
         )
         if tokens & identifiers:
             return True

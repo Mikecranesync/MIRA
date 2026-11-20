@@ -34,10 +34,10 @@ from shared.citation_compliance import (
     CITATION_TAG_RE,
     catalog_identifiers,
     check_citation_compliance,
-    current_message_text,
     enforce_citation_via_rewrite,
     evaluate_citation_relevance,
 )
+from shared.engine import Supervisor
 from shared.response_formatter import _format_citation_label
 from shared.workers.rag_worker import format_source_label, kb_citation_entry
 
@@ -368,9 +368,12 @@ MEMORY = "[MIRA MEMORY — facts from this session]\nAsset: GA50U2001, frame B.\
 
 
 def test_the_memory_block_never_supplies_the_unit():
-    assert current_message_text(MEMORY + "Which fuse does it take?") == "Which fuse does it take?"
+    assert (
+        Supervisor._strip_memory_block(MEMORY + "Which fuse does it take?")
+        == "Which fuse does it take?"
+    )
     reply = f"Use the listed fuse. [Source: {SIRIUS_LABEL}]"
-    message = current_message_text(MEMORY + "Which fuse does it take?")
+    message = Supervisor._strip_memory_block(MEMORY + "Which fuse does it take?")
     assert _new(reply, None, FUSE_Q, [SIRIUS_NULL_MFR], message) == _main(reply, None, FUSE_Q)
 
 
@@ -604,3 +607,65 @@ def test_general_question_rag_path_gates_with_the_turn_chunks(tmp_path):
     assert rag_mock.await_count == 1
     assert "Use the listed fuse" in result["reply"], result["reply"]
     assert SIRIUS_LABEL not in result["reply"], result["reply"]
+
+
+# ---------------------------------------------------------------------------
+# Hub uploads (node-knowledge-ingest writes no manufacturer and no model)
+# ---------------------------------------------------------------------------
+def _node_upload(uns_path: str, content: str = "Fault oC: overcurrent.", **meta) -> dict:
+    return {
+        "manufacturer": None,
+        "model_number": None,
+        "source_type": "node_attachment",
+        "source_url": "node-doc/u1/line3_drive_manual.pdf",
+        "metadata": {
+            "filename": "line3_drive_manual.pdf",
+            "uns_path": uns_path,
+            "page_num": 12,
+            **meta,
+        },
+        "content": content,
+    }
+
+
+def test_an_upload_attached_to_the_named_unit_is_kept():
+    """The asset node the technician attached the manual to names the unit."""
+    q = "GA50U2001 shows oC"
+    for path in ("enterprise.garage.line3.ga50u2001", "enterprise.garage.line3.ga50u_2001"):
+        doc = _node_upload(path)
+        label = _format_citation_label(kb_citation_entry(doc))
+        assert _new(f"Overcurrent. [Source: {label}]", None, q, [doc], q)["relevant"] is True, path
+
+
+def test_an_upload_whose_table_lists_the_unit_is_kept():
+    doc = _node_upload("enterprise.garage.line3.drive", table_models=["GA50U2001", "GA50U2002"])
+    label = _format_citation_label(kb_citation_entry(doc))
+    q = "GA50U2002 fuse?"
+    assert _new(f"FWH-25A14F. [Source: {label}]", None, q, [doc], q)["relevant"] is True
+
+
+def test_an_upload_attached_to_another_unit_is_stripped():
+    doc = _node_upload("enterprise.garage.line3.ga50u2001")
+    label = _format_citation_label(kb_citation_entry(doc))
+    q = "GS13N-42P0 shows oC"
+    assert _main(f"Overcurrent. [Source: {label}]", None, q)["relevant"] is True
+    out = _new(f"Overcurrent. [Source: {label}]", None, q, [doc], q)
+    assert out["relevant"] is False and out["reason"] == "unproven", out
+
+
+def test_stated_cost_a_message_naming_another_device_strips_the_right_upload():
+    """Pinned (same-message form of Codex round 3, F2): the gate reads every
+    catalog number in this message, including one the technician has moved
+    away from or one belonging to another device, so a vendorless document for
+    the unit actually in front of them is stripped when it never prints that
+    number. Stated in the PR; the fix is a correction-aware resolver (#5688)."""
+    gs10 = _upload("upload://t/line2_drive.pdf", "GS10 Frame B, 2 HP.")
+    label = format_source_label(gs10)
+    for q in (
+        "On the GS10 now, not the GA50U2002. Frame size?",
+        "Switched from the 1769-L33ER, GS10 frame size?",
+        "CIPR-GA50U2001ABA fuse?",
+    ):
+        out = _new(f"Frame B. [Source: {label}]", None, q, [gs10], q)
+        assert _main(f"Frame B. [Source: {label}]", None, q)["relevant"] is True, q
+        assert out["relevant"] is False, q

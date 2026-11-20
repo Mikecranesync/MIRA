@@ -23,7 +23,6 @@ from .chat_tenant import resolve as resolve_tenant
 from .citation_compliance import SOURCES_BLOCK_RE as _SOURCES_BLOCK_RE
 from .citation_compliance import check_citation_compliance as _check_citation_compliance
 from .citation_compliance import citation_enforce_enabled as _citation_enforce_enabled
-from .citation_compliance import current_message_text as _current_message_text
 from .citation_compliance import enforce_citation_via_rewrite as _enforce_citation_via_rewrite
 from .citation_compliance import established_context_text as _established_context_text
 from .citation_compliance import trusted_uns_context as _trusted_uns_context
@@ -2266,7 +2265,7 @@ class Supervisor:
             "established_text": _established_context_text(message, state),
             # This message only, memory block removed: vendorless provenance
             # reads no history or session state (#3049).
-            "current_text": _current_message_text(message),
+            "current_text": Supervisor._strip_memory_block(message or ""),
         }
         parsed["_citation_relevance"] = inputs
         return {**inputs, "chunks": parsed.get("_last_chunks") or None}
@@ -8002,7 +8001,7 @@ class Supervisor:
             inputs = {
                 "uns_context": _trusted_uns_context(state),
                 "established_text": _established_context_text(message, state),
-                "current_text": _current_message_text(message),
+                "current_text": self._strip_memory_block(message or ""),
             }
             if evidence is not None:
                 evidence.update(inputs)
