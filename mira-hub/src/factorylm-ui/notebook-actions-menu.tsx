@@ -9,7 +9,7 @@
  * (FactoryLMShell): Back, Escape and a tap outside all close it, and focus returns to More.
  * Not role=menu: the items open views, so it is a disclosure button over a plain list of buttons.
  */
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
 import { groupItems, moreBadge, orderItems, type MenuItem, type MenuItemId } from "./notebook-actions-menu-logic";
 
 interface Entry { item: MenuItem; open: () => void }
@@ -19,12 +19,12 @@ interface Registry {
   register: (item: MenuItem, open: () => void) => () => void;
   setChip: (chip: MenuChip | null) => void;
   focusMore: () => void;
-  moreRef: React.RefObject<HTMLButtonElement | null>;
 }
 
 const RegistryContext = createContext<Registry | null>(null);
 const EntriesContext = createContext<ReadonlyMap<MenuItemId, Entry>>(new Map());
 const ChipContext = createContext<MenuChip | null>(null);
+const MoreRefContext = createContext<RefObject<HTMLButtonElement | null> | null>(null);
 
 export function NotebookActionsMenuProvider({ children }: { children: ReactNode }) {
   const [entries, setEntries] = useState<ReadonlyMap<MenuItemId, Entry>>(new Map());
@@ -44,12 +44,13 @@ export function NotebookActionsMenuProvider({ children }: { children: ReactNode 
     },
     setChip,
     focusMore: () => moreRef.current?.focus(),
-    moreRef,
   }), []);
   return (
     <RegistryContext.Provider value={registry}>
       <EntriesContext.Provider value={entries}>
-        <ChipContext.Provider value={chip}>{children}</ChipContext.Provider>
+        <ChipContext.Provider value={chip}>
+          <MoreRefContext.Provider value={moreRef}>{children}</MoreRefContext.Provider>
+        </ChipContext.Provider>
       </EntriesContext.Provider>
     </RegistryContext.Provider>
   );
@@ -100,6 +101,7 @@ export function NotebookActionsMenu({ covered }: { covered: boolean }) {
   const registry = useContext(RegistryContext);
   const entries = useContext(EntriesContext);
   const chip = useContext(ChipContext);
+  const moreRef = useContext(MoreRefContext);
   const dialogRef = useRef<HTMLDialogElement>(null);
   const [open, setOpen] = useState(false);
   const [place, setPlace] = useState<{ top: number; right: number } | null>(null);
@@ -108,15 +110,15 @@ export function NotebookActionsMenu({ covered }: { covered: boolean }) {
 
   const items = useMemo(() => orderItems([...entries.values()].map((e) => e.item)), [entries]);
 
-  const show = useCallback(() => {
-    const more = registry?.moreRef.current;
+  const show = () => {
+    const more = moreRef?.current;
     const d = dialogRef.current;
     if (!more || !d) return;
     const r = more.getBoundingClientRect();
     setPlace({ top: Math.round(r.bottom + 8), right: Math.max(12, Math.round(window.innerWidth - r.right)) });
     setOpen(true);
     if (!d.open) d.showModal();
-  }, [registry]);
+  };
 
   // A layer covering the column (#5546) closes the list; the button itself stays mounted.
   useEffect(() => {
@@ -146,7 +148,7 @@ export function NotebookActionsMenu({ covered }: { covered: boolean }) {
       ) : null}
       {items.length > 0 ? <button
         type="button"
-        ref={registry.moreRef}
+        ref={moreRef}
         data-testid="notebook-more"
         aria-haspopup="dialog"
         aria-expanded={open}
