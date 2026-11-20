@@ -136,4 +136,17 @@ describe("Hub draft isolation across notebook navigation (#5684)", () => {
     expect(backToDestination.draft).toBe("Destination question");
     expect(hubHostReducer(backToDestination, openThreadAction(SEL, AT)).draft).toBe("");
   });
+
+  it("clears a successfully retried origin draft even after switching; identical destination text stays", () => {
+    const question = "Check the drive";
+    const origin = hubHostReducer(initialHubShellState(), openThreadAction(SEL, AT));
+    const retry = hubHostReducer(origin, { type: "set-draft", draft: question });
+    const switched = hubHostReducer(retry, openThreadAction(destination, AT));
+    const sameText = hubHostReducer(switched, { type: "set-draft", draft: question });
+
+    const completed = hubHostReducer(sameText, { type: "sent-draft", threadId: shellThreadId(SEL), question });
+    expect(completed.draft).toBe(question);
+    expect(hubHostReducer(completed, openThreadAction(SEL, AT)).draft).toBe("");
+  });
+
 });

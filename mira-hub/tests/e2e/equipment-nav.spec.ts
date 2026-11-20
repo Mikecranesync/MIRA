@@ -355,57 +355,91 @@ test("equipment in another notebook is offered and opens only on the technician'
   expect(seen.selectionPuts).toHaveLength(0);
 });
 
-test("opening equipment in another notebook preserves the origin draft and photo (#5684)", async ({ page, context, baseURL }) => {
-  await auth(context, baseURL!);
-  const destination = "99999999-9999-4999-8999-999999999999";
-  const seen = await routes(page, { enabled: true, resolve: "resolved", resolveNotebook: destination });
-  const originTitle = "Origin draft conversation";
-  const origin = oracle.list.notebooks[0];
-  await page.route(/\/api\/equipment-notebooks\/?$/, (route) => route.fulfill(json({
-    notebooks: [{
-      ...origin,
-      threads: [{ id: THREAD, notebookId: NB, title: originTitle, turnCount: 1, sharedLegacy: false,
-        createdAt: origin.createdAt, updatedAt: origin.createdAt }],
-    }],
-  })));
-  await page.route(new RegExp(`/api/equipment-notebooks/${destination}/?(\\?.*)?$`), (route) => route.fulfill(json({
-    ...oracle.detailEmpty,
-    notebook: { ...oracle.detailEmpty.notebook, id: destination, displayName: "Packaging line" },
-  })));
+for (const originKind of ["saved", "new"] as const) {
+  test(`opening equipment in another notebook preserves the origin draft and photo from a ${originKind} chat (#5684)`, async ({ page, context, baseURL }) => {
+    await auth(context, baseURL!);
+    const destination = "99999999-9999-4999-8999-999999999999";
+    const seen = await routes(page, { enabled: true, resolve: "resolved", resolveNotebook: destination });
+    const originTitle = originKind === "saved" ? "Origin draft conversation" : "Unsent draft";
+    const origin = oracle.list.notebooks[0];
+    await page.route(/\/api\/equipment-notebooks\/?$/, (route) => route.fulfill(json({
+      notebooks: [{
+        ...origin,
+        threads: originKind === "saved" ? [{ id: THREAD, notebookId: NB, title: originTitle, turnCount: 1, sharedLegacy: false,
+          createdAt: origin.createdAt, updatedAt: origin.createdAt }] : [],
+      }],
+    })));
+    await page.route(new RegExp(`/api/equipment-notebooks/${destination}/?(\\?.*)?$`), (route) => route.fulfill(json({
+      ...oracle.detailEmpty,
+      notebook: { ...oracle.detailEmpty.notebook, id: destination, displayName: "Packaging line" },
+    })));
 
-  await page.goto(`/v3/?notebook=${NB}&thread=${THREAD}`);
-  await openTo(page, VFD);
-  await askAbout(page, "VFD1");
-  await expect(offer(page)).toContainText("Packaging line");
+    await page.goto(`/v3/?notebook=${NB}&thread=${THREAD}`);
+    await openTo(page, VFD);
+    await askAbout(page, "VFD1");
+    await expect(offer(page)).toContainText("Packaging line");
 
-  const draft = "Check the original drive before the next shift.";
-  const photoName = "fixture-draft-photo.png";
-  await composer(page).fill(draft);
-  await page.getByRole("button", { name: "Add attachment" }).click();
-  const [chooser] = await Promise.all([
-    page.waitForEvent("filechooser"),
-    page.getByRole("button", { name: "Photo", exact: true }).click(),
-  ]);
-  await chooser.setFiles({
-    name: photoName,
-    mimeType: "image/png",
-    buffer: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aN1sAAAAASUVORK5CYII=", "base64"),
+    const draft = "Check the original drive before the next shift.";
+    const photoName = "fixture-draft-photo.png";
+    await composer(page).fill(draft);
+    await page.getByRole("button", { name: "Add attachment" }).click();
+    const [chooser] = await Promise.all([
+      page.waitForEvent("filechooser"),
+      page.getByRole("button", { name: "Photo", exact: true }).click(),
+    ]);
+    await chooser.setFiles({
+      name: photoName,
+      mimeType: "image/png",
+      buffer: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aN1sAAAAASUVORK5CYII=", "base64"),
+    });
+    const attachment = page.getByRole("button", { name: `Remove ${photoName}` });
+    await expect(attachment).toBeVisible();
+
+    await offer(page).getByRole("button", { name: "Open", exact: true }).click();
+    await expect(page).toHaveURL(new RegExp(`notebook=${destination}`));
+    await expect(checklistRow(page, VFD)).toHaveAttribute("data-found", "true");
+    await checklist(page).getByRole("button", { name: "Close", exact: true }).click();
+    await expect(composer(page)).toHaveValue("");
+    await expect(attachment).toHaveCount(0);
+
+    const originRow = page.getByRole("region", { name: "Projects" }).getByRole("button", { name: originTitle });
+    await expect(originRow).toBeVisible();
+    await originRow.click();
+    await expect(page).toHaveURL(new RegExp(`notebook=${NB}&thread=${THREAD}`));
+    await expect(attachment).toBeVisible();
+    await expect(composer(page)).toHaveValue(draft);
+    expect(seen.selectionPuts).toHaveLength(0);
   });
-  const attachment = page.getByRole("button", { name: `Remove ${photoName}` });
-  await expect(attachment).toBeVisible();
+}
 
-  await offer(page).getByRole("button", { name: "Open", exact: true }).click();
-  await expect(page).toHaveURL(new RegExp(`notebook=${destination}`));
-  await expect(checklistRow(page, VFD)).toHaveAttribute("data-found", "true");
-  await checklist(page).getByRole("button", { name: "Close", exact: true }).click();
+test("a failed send that is aborted by navigation cannot put its question in another chat (#5684)", async ({ page, context, baseURL }) => {
+  await auth(context, baseURL!);
+  await routes(page, { enabled: true, resolve: "resolved" });
+  await page.addInitScript(() => {
+    const fetchNormally = window.fetch.bind(window);
+    window.fetch = (input, init) => {
+      if (init?.method !== "POST" || !String(input).includes("/chat/")) return fetchNormally(input, init);
+      // The HTTP status arrives first. The error body is still streaming
+      // when opening a fresh chat aborts the origin's request.
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          init.signal?.addEventListener("abort", () => controller.error(new DOMException("Aborted", "AbortError")), { once: true });
+        },
+      });
+      return Promise.resolve(new Response(body, { status: 500 }));
+    };
+  });
+  await page.goto(`/v3/?notebook=${NB}&thread=${THREAD}`);
+  await expect(page.getByTestId("bench-asking-about")).toBeVisible();
+  await composer(page).fill("Only the origin may recover this question.");
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Stop", exact: true })).toBeVisible();
+
+  const origin = page.url();
+  await page.getByRole("button", { name: "New chat", exact: true }).click();
+  await expect(page).not.toHaveURL(origin);
+  await expect(page.getByRole("button", { name: "Stop", exact: true })).toHaveCount(0);
   await expect(composer(page)).toHaveValue("");
-  await expect(attachment).toHaveCount(0);
-
-  await page.getByRole("region", { name: "Projects" }).getByRole("button", { name: originTitle }).click();
-  await expect(page).toHaveURL(new RegExp(`notebook=${NB}&thread=${THREAD}`));
-  await expect(attachment).toBeVisible();
-  await expect(composer(page)).toHaveValue(draft);
-  expect(seen.selectionPuts).toHaveLength(0);
 });
 
 test("closing Find equipment cancels a lookup on its way: the chat and the typed message stay (#5625 r3 F12)", async ({ page, context, baseURL }) => {

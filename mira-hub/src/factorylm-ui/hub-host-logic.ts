@@ -34,7 +34,7 @@ export const EMPTY_FIXTURE = {
  * desktop the sidebar is static and this flag has no effect (the drawer CSS,
  * `inert` and `topLayer` all key on the narrow-viewport query).
  */
-export function initialHubShellState(): ShellState {
+export function initialHubShellState(): HubShellState {
   return shellReducer(createShellState(EMPTY_FIXTURE, PROFILES.hub), { type: "set-navigation-visible", visible: false });
 }
 
@@ -314,7 +314,10 @@ export function openThreadAction(sel: HubSelection, at: string): ShellAction {
 }
 
 /** The host's actions: the shell's, plus an automatic landing (deep link, reload, first load). */
-export type HubHostAction = ShellAction | { readonly type: "land-thread"; readonly selection: HubSelection; readonly at: string };
+export type HubHostAction =
+  | ShellAction
+  | { readonly type: "land-thread"; readonly selection: HubSelection; readonly at: string }
+  | { readonly type: "sent-draft"; readonly threadId: string; readonly question: string };
 
 type HubShellState = ShellState & { readonly draftsByThread?: ReadonlyMap<string, string> };
 
@@ -329,6 +332,16 @@ export function hubHostReducer(state: HubShellState, action: HubHostAction): Hub
     // #4695: automatic landing keeps what was typed on HOME during loading.
     const landed = shellReducer(state, openThreadAction(action.selection, action.at));
     return state.draft && landed.draft !== state.draft ? shellReducer(landed, { type: "set-draft", draft: state.draft }) : landed;
+  }
+
+  if (action.type === "sent-draft") {
+    const active = action.threadId === state.thread.id;
+    const draft = active ? state.draft : state.draftsByThread?.get(action.threadId);
+    if (draft === undefined || draftAfterSendSucceeded(draft, action.question) === null) return state;
+    if (active) return shellReducer(state, { type: "set-draft", draft: "" });
+    const draftsByThread = new Map(state.draftsByThread);
+    draftsByThread.delete(action.threadId);
+    return { ...state, draftsByThread };
   }
 
   const next = shellReducer(state, action);

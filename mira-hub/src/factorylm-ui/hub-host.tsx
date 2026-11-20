@@ -88,7 +88,6 @@ import {
   guidedDeadEndBody,
   createLatestLoadTracker,
   detailQueryFor,
-  draftAfterSendSucceeded,
   enabledDocIds,
   reloadIfStillSelected,
   errorMessageFor,
@@ -241,12 +240,6 @@ export function HubShellHost() {
   const adapter = useMemo(() => createWebAdapter(browserAdapterDeps()), []);
 
   const [state, dispatch] = useReducer(hubHostReducer, undefined, initialHubShellState);
-  // #4311: the send path finishes long after the render that started it; a
-  // successful retry needs the composer's CURRENT draft to decide whether the
-  // question it put back is still sitting there.
-  const draftRef = useRef(state.draft);
-  useEffect(() => { draftRef.current = state.draft; }, [state.draft]);
-
   /**
    * Tell the reducer WHICH thread is open, from event handlers (never effects).
    * The live turns are projected onto the state at render time via `hydrate`
@@ -391,7 +384,10 @@ export function HubShellHost() {
   }, []);
 
   // --- derived shell inputs ---
-  const projects = useMemo(() => notebookProjects(notebooks ?? []), [notebooks]);
+  const projects = useMemo(
+    () => notebookProjects(notebooks ?? [], state.draftsByThread),
+    [notebooks, state.draftsByThread],
+  );
   const approvedManuals = useMemo(
     () => new Set(selection ? pendingApprovals[selection.notebookId] ?? [] : []),
     [selection, pendingApprovals],
@@ -548,7 +544,11 @@ export function HubShellHost() {
       if (!res.ok || !res.body) {
         // The route's own error codes, in plain language; never a bare status code.
         let code = "";
-        try { code = String(((await res.json()) as { error?: unknown }).error ?? ""); } catch { /* no JSON body */ }
+        try {
+          code = String(((await res.json()) as { error?: unknown }).error ?? "");
+        } catch (error) {
+          if (ctrl.signal.aborted) throw error;
+        }
         scopeRefused = isScopeRefusalCode(code);
         throw new Error(errorMessageFor(code, res.status));
       }
@@ -600,9 +600,14 @@ export function HubShellHost() {
       dropOutgoing(outgoingId);
       // #4311: a failed send put the question back in the composer; a
       // successful retry takes it away again (never a newer draft).
-      const draft = draftAfterSendSucceeded(draftRef.current, question);
-      if (draft !== null) dispatch({ type: "set-draft", draft });
+      dispatch({ type: "sent-draft", threadId: shellThreadId(sel), question });
     } catch (caught) {
+      // Selecting another conversation aborts this request. A late rejection
+      // must not become the newly opened conversation's draft or retry.
+      if (selectionRef.current !== sel || abortRef.current !== ctrl) {
+        dropOutgoing(outgoingId);
+        return;
+      }
       // #4687: a refusal delivered inside the progress stream is handled exactly
       // like the non-OK response above (signed out, or the route's own message).
       if (caught instanceof NotebookHttpError && caught.status === 401) { setSignedOut(true); return; }
