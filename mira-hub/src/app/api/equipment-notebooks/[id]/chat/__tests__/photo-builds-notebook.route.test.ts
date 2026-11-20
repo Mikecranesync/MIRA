@@ -448,6 +448,54 @@ describe("photo-to-manual (2026-11-20): the archived CV-101 reading + 'Find me t
     expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
   });
 
+  // #5706 (owner decision 2026-11-20): the one focused confirmation. The
+  // archived reading's code is withheld only by that value-less unit label, so
+  // when the code is printed in the maker's own public manuals the turn shows
+  // the existing confirm card — and still searches nothing until the tap.
+  describe("the confirm-first card for a code withheld only by a distant asset label", () => {
+    const ask = async (message = "Find me the manual", text = GS10_CV101_LOOK) => {
+      visualMock.loadVisualEvidenceForPhoto.mockResolvedValue({
+        observationId: "obs", sessionId: "session", text, obsKind: "look", trust: "candidate", fileId: PHOTO, hazards: [],
+      });
+      return frames(await POST(req({ message, mode: "general", visualEvidence: { fileId: PHOTO } }), params));
+    };
+
+    it("proven public: the card asks 'Is this an AUTOMATIONDIRECT GS11N-20P2?' and nothing is searched", async () => {
+      proofMock.publicManualSeries.mockResolvedValue("GS10");
+      const f = await ask();
+      expect(proofMock.publicManualSeries).toHaveBeenCalledWith(expect.anything(), "AUTOMATIONDIRECT", MODEL);
+      expect(f.filter((x) => x.kind === "identity_proposal")).toEqual([{ kind: "identity_proposal", manufacturer: "AUTOMATIONDIRECT", model: MODEL }]);
+      expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+      const followups = f.find((x) => x.kind === "followups") as { suggestions?: string[] } | undefined;
+      expect(followups?.suggestions ?? []).not.toContainEqual(expect.stringMatching(/Search the web for/));
+    });
+
+    it("control: not proven public, the plate offers nothing, as on main", async () => {
+      const f = await ask();
+      expect(f.find((x) => x.kind === "identity_proposal")).toBeUndefined();
+      expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+    });
+
+    it("control: a turn that does not ask for the manual runs no proof and shows no card", async () => {
+      proofMock.publicManualSeries.mockResolvedValue("GS10");
+      const f = await ask("Is the keypad light normal?");
+      expect(proofMock.publicManualSeries).not.toHaveBeenCalled();
+      expect(f.find((x) => x.kind === "identity_proposal")).toBeUndefined();
+    });
+
+    it.each([
+      `${"SMC MODEL: TP1200\n(customer\nasset tag)"}`,
+      "SMC MODEL: TP1200 24VDC\n(asset tag)",
+      `${"SMC MODEL: TP1200\nS/N"}`,
+    ])("control: a value-less label beside the code, or any serial label, shows no card even when proven (%j)", async (plate) => {
+      proofMock.publicManualSeries.mockResolvedValue("");
+      const f = await ask("Find the manual for this", plate);
+      expect(f.find((x) => x.kind === "identity_proposal")).toBeUndefined();
+      for (const frame of f) expect(JSON.stringify(frame)).not.toContain("TP1200");
+      expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+    });
+  });
+
   it("control: the same plate without the unit sentence (kVA/kA ratings kept) starts the search on GS11N-20P2", async () => {
     visualMock.loadVisualEvidenceForPhoto.mockResolvedValue({
       observationId: "obs", sessionId: "session", text: GS10_CLEAN_LOOK, obsKind: "look", trust: "candidate", fileId: PHOTO, hazards: [],

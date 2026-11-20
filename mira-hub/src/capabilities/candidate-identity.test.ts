@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { extractCandidateIdentity, isSafeCandidateSearchIdentity, makerFromText, refineCorpusProposal, wantsManualDocumentation } from "./candidate-identity";
 import { GS10_CLEAN_LOOK, GS10_CV101_LOOK } from "./__fixtures__/gs10-cv101-look";
+import { confirmFirstCandidate } from "./candidate-identity";
 import { labelledPartCodes } from "./photo-part-lookup";
 
 // Manual-First PRD R1 (#4160 S5): a candidate (manufacturer, part) read from a
@@ -484,5 +485,26 @@ describe("refineCorpusProposal — a typed catalog number is not cut to its libr
   });
   it("control: nothing typed beyond the stem → unchanged", () => {
     expect(refineCorpusProposal(corpus, "", "AutomationDirect GS11N manual please")).toEqual(corpus);
+  });
+});
+
+// #5706 (owner decision 2026-11-20): what the confirm card may show for a plate
+// whose one code is withheld only by a value-less asset label away from it.
+describe("confirmFirstCandidate — show-only, never a search", () => {
+  it("the archived GS10 reading: maker and model for the confirm card", () => {
+    expect(confirmFirstCandidate(GS10_CV101_LOOK, "Find me the manual")).toEqual({ manufacturer: "AUTOMATIONDIRECT", part: "GS11N-20P2" });
+  });
+  it("control: a clean plate is not this path (the normal gate handles it)", () => {
+    expect(confirmFirstCandidate(GS10_CLEAN_LOOK, "Find me the manual")).toBeNull();
+  });
+  it.each([
+    [`${GS10_CV101_LOOK} A second sticker on the rear reads S/N.`, "Find me the manual"], // any serial label, however far
+    [GS10_CV101_LOOK, "Find me the manual, asset tag 4471"], // typed private label
+    [GS10_CV101_LOOK, "Find the manual for GS11N-20P3"], // typed different code
+    [GS10_CV101_LOOK, "Find the Rockwell manual"], // typed different maker
+    ["SMC MODEL: TP1200\n(customer\nasset tag)", "manual"], // the label wraps right after the code
+    ["SMC MODEL: TP1200 24VDC\n(asset tag)", "manual"],
+  ])("refused: %j + %j", (photo, typed) => {
+    expect(confirmFirstCandidate(photo, typed)).toBeNull();
   });
 });
