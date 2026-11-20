@@ -237,16 +237,40 @@ def model_token_re(model: str) -> re.Pattern[str] | None:
 
     A separator followed by a letter or digit continues an identifier, so a
     suffixed variant ("GS11N-20P2-EX", "GS11N-20P2/EX") never counts as the
-    model, on either side (#5706 r2 F7)."""
+    model, on either side (#5706 r2 F7).
+
+    Separators are spelling, not identity: at each break the model writes (a
+    separator, or a change between letters and digits) one optional dash, dot,
+    slash or underscore is accepted, so "GS11N20P2" finds the page that prints
+    "GS11N-20P2" and back (#5706 r3 F10). Whitespace is accepted only where the
+    model itself writes a space ("PowerFlex 525"), never in place of a dash, so
+    a neighbouring table cell cannot complete a longer model."""
     m = (model or "").strip()
-    if len(re.sub(r"[^A-Za-z0-9]", "", m)) < 4:
+    chars = re.sub(r"[^A-Za-z0-9]", "", m)
+    if len(chars) < 4:
         return None
     sep = r"[-_./\u2010-\u2015]"
+    parts: list[str] = []
+    prev = ""
+    pending_sep = False
+    pending_space = False
+    for ch in m:
+        if not ch.isascii() or not ch.isalnum():
+            pending_sep = bool(prev)
+            pending_space = pending_space or (bool(prev) and ch.isspace())
+            continue
+        if prev and (pending_sep or prev.isdigit() != ch.isdigit()):
+            # A space the model itself writes ("PowerFlex 525") stays allowed there.
+            parts.append(r"(?:[ \t\u00a0]|" + sep + ")?" if pending_space else sep + "?")
+        parts.append(re.escape(ch))
+        prev = ch
+        pending_sep = False
+        pending_space = False
     return re.compile(
         r"(?<![A-Za-z0-9])(?<![A-Za-z0-9]"
         + sep
         + r")"
-        + re.escape(m)
+        + "".join(parts)
         + r"(?![A-Za-z0-9])(?!"
         + sep
         + r"[A-Za-z0-9])",
@@ -276,9 +300,15 @@ def _model_page_sync(data: bytes, model: str, max_pages: int, max_chars: int) ->
             hit = rx.search(t)
             if hit:
                 lo = max(0, hit.start() - max_chars // 2)
+                printed = hit.group(0)
+                spelled = (
+                    ""
+                    if printed == model
+                    else f" (the requested {model}, written with different separators)"
+                )
                 label = (
                     f"[Note from MIRA, not text of the PDF: page {number} is the first page "
-                    f"whose text contains {model}. The PDF text of that page follows.]\n"
+                    f"whose text contains {printed}{spelled}. The PDF text of that page follows.]\n"
                 )
                 return label + t[lo : lo + max_chars]
     return ""
@@ -564,15 +594,18 @@ async def _judge_one(make: str, model: str, cand: dict) -> dict:
     cand["validated"] = True
     cand["_read_stage"] = "extract"
     text = await extract_text(data)
-    if not text.strip():
-        cand["judge"] = {"status": "no_text", "reason": _READ_REASON.get()}
-        return cand
     model_rx = model_token_re(model)
     model_page = ""
+    # Blank lead pages (a scanned cover, an image-only front matter) are not an
+    # unreadable PDF: the later page that names the model is still tried before
+    # the candidate is reported as having no text (#5706 r3 F10).
     if model_rx is not None and not model_rx.search(text):
         model_page = await model_page_text(data, model)
         if model_page:
-            text = f"{text}\n\n{model_page}"
+            text = f"{text}\n\n{model_page}" if text.strip() else model_page
+    if not text.strip():
+        cand["judge"] = {"status": "no_text", "reason": _READ_REASON.get()}
+        return cand
     cand["_read_stage"] = "judge"
     verdict = await judge_text(make, model, cand, text)
     if verdict is None:

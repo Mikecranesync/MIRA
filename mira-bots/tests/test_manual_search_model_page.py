@@ -283,3 +283,63 @@ def test_the_deployed_byte_cap_default_matches_the_code(compose):
             m = re.search(r":-(\d+)\}", str(value))
             assert m, f"{compose}: MANUAL_JUDGE_MAX_BYTES has no numeric default: {value!r}"
             assert int(m.group(1)) == judge.MAX_BYTES
+
+
+# --- #5706 r3 F10: separators are spelling; blank lead pages are still scanned ---
+
+
+def test_a_compact_model_finds_the_page_that_prints_it_hyphenated():
+    window = judge._model_page_sync(MANUAL, "GS11N20P2", max_pages=80, max_chars=2500)
+    assert window.startswith(
+        "[Note from MIRA, not text of the PDF: page 5 is the first page whose text contains "
+        "GS11N-20P2 (the requested GS11N20P2, written with different separators)."
+    )
+
+
+def test_a_hyphenated_model_finds_the_page_that_prints_it_compact():
+    pdf = _pdf([COVER, WARN, "Model-Specific Specifications GS11N20P2 0.25 HP"])
+    window = judge._model_page_sync(pdf, MODEL, max_pages=80, max_chars=2500)
+    assert "page 3 is the first page whose text contains GS11N20P2 (the requested" in window
+
+
+@pytest.mark.parametrize("variant", ["GS11N20P2-EX", "GS11N-20P2/EX", "GS11N20P25"])
+def test_a_compact_model_still_rejects_suffixed_variants(variant):
+    pdf = _pdf([COVER, WARN, f"Model-Specific Specifications {variant} 0.25 HP"])
+    assert judge._model_page_sync(pdf, "GS11N20P2", max_pages=80, max_chars=2500) == ""
+
+
+def test_a_space_never_stands_in_for_the_models_dash():
+    pdf = _pdf([COVER, WARN, "Table GS11N 20P2 0.25 HP"])
+    assert judge._model_page_sync(pdf, MODEL, max_pages=80, max_chars=2500) == ""
+
+
+def test_control_a_space_the_model_writes_is_still_matched():
+    pdf = _pdf([COVER, "Specifications for the PowerFlex 525 drive"])
+    assert "page 2 is the first page whose text contains PowerFlex 525." in judge._model_page_sync(
+        pdf, "PowerFlex 525", max_pages=80, max_chars=2500
+    )
+
+
+def test_blank_lead_pages_are_scanned_before_no_text(monkeypatch, first_pages_only):
+    async def extract(data, max_pages=8, max_chars=7000):
+        return ""  # an image-only cover and front matter
+
+    monkeypatch.setattr(judge, "extract_text", extract)
+    cand = asyncio.run(judge._judge_one("AutomationDirect", MODEL, _cand()))
+    j = cand["judge"]
+    assert j["status"] == "judged" and j["model_page"] is True and j["is_manual"] is True
+    assert "page 5 is the first page whose text contains" in first_pages_only.calls[-1]
+
+
+def test_control_blank_text_and_no_model_page_is_still_no_text(monkeypatch, first_pages_only):
+    async def extract(data, max_pages=8, max_chars=7000):
+        return ""
+
+    async def no_page(data, model):
+        return ""
+
+    monkeypatch.setattr(judge, "extract_text", extract)
+    monkeypatch.setattr(judge, "model_page_text", no_page)
+    cand = asyncio.run(judge._judge_one("AutomationDirect", MODEL, _cand()))
+    assert cand["judge"]["status"] == "no_text"
+    assert first_pages_only.calls == []
