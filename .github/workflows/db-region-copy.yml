@@ -1,0 +1,129 @@
+name: DB region copy (staging rehearsal)
+
+# Copies the STAGING database into the empty staging branch of the Oregon Neon project and
+# proves the copy by comparison. Runbook: docs/runbooks/db-region-move.md.
+#
+# Why: the Hub server is in Oregon and its database is in Virginia, so every query pays a
+# cross-country trip (~61 ms measured 2026-11-20). Neon cannot change a project's region in
+# place; the data has to be copied into a new project.
+#
+# What this workflow can and cannot do:
+#   - It READS staging (one read-only transaction plus pg_dump through the same snapshot).
+#   - It WRITES only to the target named by NEON_STG_USW2_DATABASE_URL, and only if that
+#     database is empty and its host is in us-west-2. It never drops or overwrites anything.
+#   - It does NOT switch staging to the new database. That is a separate, human-approved step.
+#   - Production is not an option here, on purpose: the source is hardcoded to factorylm/stg
+#     and tools/db_region_copy.py refuses production's endpoint on either side. Production
+#     needs writers stopped first and gets its own plan.
+#
+# Addresses and passwords never reach a command line or the log: they travel in the
+# environment, and the tool redacts hosts, users and passwords from everything it prints.
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'structure = tables, row-security rules, indexes, no rows (fast rehearsal of the method). full = structure and rows.'
+        required: true
+        default: 'structure'
+        type: choice
+        options:
+          - structure
+          - full
+      confirm:
+        description: 'Type exactly: copy staging to oregon'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: db-region-copy-staging
+  cancel-in-progress: false
+
+jobs:
+  copy:
+    name: Copy staging to Oregon staging (${{ inputs.mode }})
+    # Pinned: the PGDG repository line below is derived from this image's codename.
+    runs-on: ubuntu-24.04
+    environment: staging
+    timeout-minutes: 180
+
+    steps:
+      - name: Confirm intent
+        env:
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          if [ "${CONFIRM}" != "copy staging to oregon" ]; then
+            echo "::error::Confirmation text did not match. Nothing was run."
+            exit 1
+          fi
+
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Install Doppler CLI
+        uses: dopplerhq/cli-action@4819d808ab99e5cde19a0637a16536a4038fad73 # v4
+
+      - name: Install the PostgreSQL 17 client
+        # The server is PostgreSQL 17. pg_dump refuses a server newer than itself, and the
+        # image ships version 16, so the client comes from the PostgreSQL project's own
+        # apt repository.
+        run: |
+          set -euo pipefail
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+            https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          . /etc/os-release
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt ${VERSION_CODENAME}-pgdg main" \
+            | sudo tee /etc/apt/sources.list.d/pgdg.list >/dev/null
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client-17
+          echo "/usr/lib/postgresql/17/bin" >> "${GITHUB_PATH}"
+
+      - name: Client must be version 17
+        run: |
+          set -euo pipefail
+          for tool in psql pg_dump pg_restore; do
+            v="$("${tool}" --version)"
+            echo "${v}"
+            case "${v}" in
+              *" 17."*) ;;
+              *) echo "::error::${tool} is not version 17"; exit 1 ;;
+            esac
+          done
+
+      - name: Copy and compare
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+          TARGET_DATABASE_URL: ${{ secrets.NEON_STG_USW2_DATABASE_URL }}
+          MODE: ${{ inputs.mode }}
+        run: |
+          set -euo pipefail
+          if [ -z "${DOPPLER_TOKEN:-}" ]; then
+            echo "::error::DOPPLER_TOKEN secret not set."
+            exit 1
+          fi
+          if [ -z "${TARGET_DATABASE_URL:-}" ]; then
+            echo "::error::NEON_STG_USW2_DATABASE_URL secret not set (the Oregon staging branch, direct host)."
+            exit 1
+          fi
+          SOURCE_DATABASE_URL="$(doppler secrets get NEON_DATABASE_URL --project factorylm --config stg --plain)"
+          if [ -z "${SOURCE_DATABASE_URL}" ]; then
+            echo "::error::NEON_DATABASE_URL empty after Doppler fetch (factorylm/stg)"
+            exit 1
+          fi
+          echo "::add-mask::${SOURCE_DATABASE_URL}"
+          export SOURCE_DATABASE_URL
+          unset DOPPLER_TOKEN
+          # ep-purple-hall-ahimeyn0 is production's endpoint (the same id ovh-preflight.yml
+          # checks for). The tool refuses it as source or target.
+          python3 tools/db_region_copy.py copy \
+            --source-env SOURCE_DATABASE_URL \
+            --target-env TARGET_DATABASE_URL \
+            --database neondb \
+            --database atlas_cmms \
+            --expect-target-region us-west-2 \
+            --refuse-host ep-purple-hall-ahimeyn0 \
+            --leave-rows public.cmms_sync_conflicts \
+            --mode "${MODE}"

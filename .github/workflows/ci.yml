@@ -570,6 +570,15 @@ jobs:
         # tools/stg_atlas_service_account.py: hermetic, stub Atlas on localhost; never
         # prints credentials (public logs).
         run: pytest tests/test_stg_atlas_service_account.py -v
+      - name: DB region copy tool (refusals, comparison gate)
+        # tools/db_region_copy.py copies a database into an EMPTY database in another region
+        # and proves the copy; .github/workflows/db-region-copy.yml runs it for staging.
+        # Named here because root `tests/` is not collected wholesale in this job, so an
+        # unnamed file would never run. What it pins: every refusal that stops a run before
+        # it copies (same host, wrong region, target not empty, production endpoint), that
+        # addresses stay out of command lines, and the comparison rules that decide whether
+        # a copy passes. Hermetic: no database, no network.
+        run: pytest tests/test_db_region_copy.py -v
       - name: Answer Radar benchmark (rubric, rights gate, leakage split)
         # answer_radar/: the real-world maintenance-question benchmark (VCAD). Named
         # explicitly because root `tests/` is not collected wholesale in this job, and
