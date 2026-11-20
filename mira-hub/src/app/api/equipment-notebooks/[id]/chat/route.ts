@@ -76,6 +76,7 @@ import {
   applicableEnabledSource,
   readAcquisition,
   reconcileAcquisition,
+  partialRefreshDue,
   startManualAcquisition,
 } from "@/capabilities/notebook-manual-acquisition";
 import { evaluateTurnDecision } from "@/capabilities/observability/jev-decision";
@@ -3302,14 +3303,17 @@ async function handleChatTurn(
       // predicate only lets it through once a new UTC day has started
       // (#4168 Codex F1 — without this the promised next-day retry never ran).
       const retryable = (s: string) => s === "search_unavailable" || s === "search_limit_reached";
-      if (acq && acq.key === key && retryable(acq.state)) {
+      if (acq && acq.key === key && (retryable(acq.state) || acq.partial === true)) {
         acq = await reconcileAcquisition(ctx.tenantId, notebookId, acq);
       }
+      // Codex #5706 r1 F6: same once-per-revision refresh of a cached partial result.
+      const refresh = wantsManualDocumentation(message) && partialRefreshDue(acq, key);
       if (
         !acq ||
         acq.key !== key ||
         acq.state === "running" ||
-        (retryable(acq.state) && !acq.source_removed)
+        (retryable(acq.state) && !acq.source_removed) ||
+        refresh
       ) {
         started = await startManualAcquisition({
           tenantId: ctx.tenantId,
@@ -3318,6 +3322,7 @@ async function handleChatTurn(
           nodeId: nb.nodeId,
           identity,
           turnSpanContext: rootSpan.spanContext(),
+          ...(refresh ? { refreshPartial: true } : {}),
         });
         if (started) {
           acq = {
@@ -3371,14 +3376,18 @@ async function handleChatTurn(
         let cAcq = await readAcquisition(ctx.tenantId, notebookId);
         let cStarted = false;
         const retryableState = (s: string) => s === "search_unavailable" || s === "search_limit_reached";
-        if (cAcq && cAcq.key === candidateKey && retryableState(cAcq.state)) {
+        if (cAcq && cAcq.key === candidateKey && (retryableState(cAcq.state) || cAcq.partial === true)) {
           cAcq = await reconcileAcquisition(ctx.tenantId, notebookId, cAcq);
         }
+        // Codex #5706 r1 F6: an explicit manual request refreshes, once, a
+        // partial result an older discovery revision cached (never a removed one).
+        const cRefresh = wantsManualDocumentation(message) && partialRefreshDue(cAcq, candidateKey);
         if (
           !cAcq ||
           cAcq.key !== candidateKey ||
           cAcq.state === "running" ||
-          (retryableState(cAcq.state) && !cAcq.source_removed)
+          (retryableState(cAcq.state) && !cAcq.source_removed) ||
+          cRefresh
         ) {
           cStarted = await startManualAcquisition({
             tenantId: ctx.tenantId,
@@ -3388,6 +3397,7 @@ async function handleChatTurn(
             identity: candidateIdentity,
             basis: "candidate",
             turnSpanContext: rootSpan.spanContext(),
+            ...(cRefresh ? { refreshPartial: true } : {}),
           });
           if (cStarted) {
             cAcq = {

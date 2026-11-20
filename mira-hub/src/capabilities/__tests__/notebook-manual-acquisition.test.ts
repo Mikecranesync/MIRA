@@ -55,6 +55,8 @@ import {
   applicableEnabledSource,
   applicableReadySource,
   currentManualSearchStatus,
+  DISCOVERY_REVISION,
+  partialRefreshDue,
   readAcquisition,
   reconcileAcquisition,
   recordFromOutcome,
@@ -140,8 +142,9 @@ describe("startManualAcquisition", () => {
       attach: expect.any(Function),
     });
     const claimQ = db.queries.find((q) => /RETURNING manual_acquisition->>'gen'/.test(q.sql))!;
-    // A background start is NOT an explicit technician confirmation ($7 false).
-    expect(claimQ.params).toEqual(["t", "nb", "SMC|VQ1000FPGC6C6D|", 10, 30, 3, false]);
+    // A background start is NOT an explicit technician confirmation ($7 false),
+    // and refreshes no partial result ($8 null — Codex #5706 r1 F6).
+    expect(claimQ.params).toEqual(["t", "nb", "SMC|VQ1000FPGC6C6D|", 10, 30, 3, false, null]);
     expect(claimQ.sql).toMatch(/state' = 'search_unavailable'/);
     // #4160 S4 — anchored to the specific WHERE-clause predicates (not just
     // "appears somewhere in the query"):
@@ -176,6 +179,30 @@ describe("startManualAcquisition", () => {
     // The claim is keyed and stale-aware, so a second caller cannot double-start.
     expect(claimQ.sql).toMatch(/manual_acquisition->>'key' IS DISTINCT FROM \$3::text/);
     expect(claimQ.sql).toMatch(/manual_acquisition->>'state' = 'running'/);
+  });
+
+  it("Codex #5706 r1 F6: a partial refresh claims with the current discovery revision, and the new record carries it", async () => {
+    const acquire = vi.fn(async () => ({ status: "candidate_review" as const, payload: { manual: { matchState: "candidate" } } }));
+    expect(await startManualAcquisition({ ...input, refreshPartial: true }, { acquire, env: ON })).toBe(true);
+    await vi.waitFor(() => expect(db.queries.some((q) => /jsonb_set/.test(q.sql))).toBe(true));
+    const claimQ = db.queries.find((q) => /RETURNING manual_acquisition->>'gen'/.test(q.sql))!;
+    expect(claimQ.params[7]).toBe(DISCOVERY_REVISION);
+    expect(claimQ.sql).toMatch(
+      /OR \(\$8::int IS NOT NULL\s*\n\s*AND manual_acquisition->>'key' = \$3::text\s*\n\s*AND manual_acquisition->>'state' = 'candidate_review'\s*\n\s*AND manual_acquisition->>'partial' = 'true'\s*\n\s*AND COALESCE\(\(manual_acquisition->>'discovery_rev'\)::int, 0\) < \$8::int\)/,
+    );
+    const rec = JSON.parse(db.queries.find((q) => /jsonb_set/.test(q.sql))!.params[2] as string) as AcquisitionRecord;
+    expect(rec.discovery_rev).toBe(DISCOVERY_REVISION);
+  });
+
+  it("Codex #5706 r1 F6: partialRefreshDue is once per revision and never for a removed source", () => {
+    const base = { key: "K", state: "candidate_review", partial: true, started_at: null, finished_at: null, candidate_host: null, match_state: null, oem_request_url: null } as AcquisitionRecord;
+    expect(partialRefreshDue(base, "K")).toBe(true);
+    expect(partialRefreshDue({ ...base, discovery_rev: DISCOVERY_REVISION }, "K")).toBe(false);
+    expect(partialRefreshDue({ ...base, source_removed: true }, "K")).toBe(false);
+    expect(partialRefreshDue({ ...base, partial: undefined }, "K")).toBe(false);
+    expect(partialRefreshDue({ ...base, state: "complete" }, "K")).toBe(false);
+    expect(partialRefreshDue(base, "OTHER")).toBe(false);
+    expect(partialRefreshDue(null, "K")).toBe(false);
   });
 
   it("does nothing when another caller already holds the claim", async () => {
@@ -1056,6 +1083,45 @@ describe("applicableEnabledSource / applicableReadySource (#4195 F3/F10)", () =>
 // T2 (#4189 F4/F6) — the notebook GET route's current (never-stale) status,
 // recomputed on every call instead of read from a persisted "running"
 // snapshot captured at some earlier point in time.
+describe("currentManualSearchStatus — the polled status carries the acquired manual (Codex #5706 r1 F3)", () => {
+  const gs10 = { identityStatus: "user_confirmed", manufacturer: "AutomationDirect", model: "GS11N-20P2", catalogNumber: "" };
+  const key = acquisitionKey(gs10)!;
+  const URL = "https://cdn.automationdirect.com/static/manuals/gs10m/gs10usermanual.pdf";
+  const rec = {
+    key, state: "complete", started_at: "2026-11-20T00:00:00Z", finished_at: "2026-11-20T00:01:00Z",
+    candidate_host: "cdn.automationdirect.com", match_state: "verified", oem_request_url: null,
+    doc_id: "d-gs10", manual_url: URL, identifier_pages: [26], attached_indexed: true,
+  };
+  const src = (docId: string, canChat: boolean) => ({
+    docId, enabledByDefault: true, matchState: "verified", sourceRole: "manual", readiness: { canChat }, matchEvidence: { autoAcquisitionKey: key },
+  });
+  const unbound = { identityStatus: "unconfirmed", manufacturer: null, model: null, catalogNumber: null };
+  const proposed = { manufacturer: "AutomationDirect", model: "GS11N-20P2" };
+
+  it("ready: the acquired PDF is the link and the message names the coverage page", async () => {
+    db.readRow = rec;
+    const r = await currentManualSearchStatus("t", "nb", unbound, proposed, [src("d-gs10", true)] as never, { env: ON });
+    expect(r?.manualUrl).toBe(URL);
+    expect(r?.message).toContain("ready");
+    expect(r?.message).toContain("Its text names the AutomationDirect GS11N-20P2 on page 26.");
+  });
+
+  it("preparing: the acquired PDF is the link, and no page is claimed before the copy is searchable", async () => {
+    db.readRow = rec;
+    const r = await currentManualSearchStatus("t", "nb", unbound, proposed, [src("d-gs10", false)] as never, { env: ON });
+    expect(r?.manualUrl).toBe(URL);
+    expect(r?.message).not.toMatch(/page 26/);
+    expect(r?.message).toMatch(/can't cite its pages yet/);
+  });
+
+  it("control: a ready source this search did not acquire gets neither the record's link nor its pages", async () => {
+    db.readRow = rec;
+    const r = await currentManualSearchStatus("t", "nb", unbound, proposed, [src("d-upload", true)] as never, { env: ON });
+    expect(r?.manualUrl).toBeUndefined();
+    expect(r?.message).not.toMatch(/page 26/);
+  });
+});
+
 describe("currentManualSearchStatus — recomputed fresh, never a stale snapshot", () => {
   const confirmedIdentity = { identityStatus: "user_confirmed", manufacturer: "SMC", model: "SS5Y3-DUW01302", catalogNumber: null };
   const confirmedKey = acquisitionKey(confirmedIdentity)!;

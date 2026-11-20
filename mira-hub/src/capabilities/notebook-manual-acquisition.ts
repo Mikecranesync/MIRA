@@ -95,6 +95,8 @@ export interface AcquisitionRecord {
   ingest_failed?: boolean;
   /** Automatic retries already spent on a retryable failure (capped by MAX_AUTOMATIC_RETRIES). */
   retries?: number;
+  /** The DISCOVERY_REVISION that produced this record (absent before 2026-11-20). */
+  discovery_rev?: number;
   /** Why a download failed, when it did (safe-download's rejection reason). */
   download_reason?: string | null;
   /** Set at read time: the acquired source was since removed or rejected by the technician. */
@@ -222,6 +224,29 @@ export function applicableReadySource(
 }
 
 /** The recorded search for this notebook, or null (never attempted, or unreadable). */
+/**
+ * Bumped when manual discovery changes enough that an older PARTIAL result
+ * (one chapter held for review) may now find the full manual. Revision 2
+ * (2026-11-20, Codex #5706 r1 F6): the judge reads manuals up to the Hub's
+ * download cap and the first later page naming the exact model, so the 33 MB
+ * GS10 manual is no longer skipped for its first chapter. An explicit manual
+ * request refreshes a same-key partial result from an older revision once;
+ * the new record carries this revision, so it never refreshes again.
+ */
+export const DISCOVERY_REVISION = 2;
+
+/** An explicit manual request may refresh this record (see DISCOVERY_REVISION). */
+export function partialRefreshDue(rec: AcquisitionRecord | null, key: string): boolean {
+  return (
+    rec !== null &&
+    rec.key === key &&
+    rec.state === "candidate_review" &&
+    rec.partial === true &&
+    rec.source_removed !== true &&
+    (rec.discovery_rev ?? 0) < DISCOVERY_REVISION
+  );
+}
+
 export async function readAcquisition(tenantId: string, notebookId: string): Promise<AcquisitionRecord | null> {
   try {
     return await withTenantContext(tenantId, async (c) => {
@@ -253,7 +278,13 @@ export async function readAcquisition(tenantId: string, notebookId: string): Pro
  * its real outcome is always persisted and a stale miss is never left behind.
  * A background start never passes it.
  */
-async function claim(tenantId: string, notebookId: string, key: string, explicit = false): Promise<string | null> {
+async function claim(
+  tenantId: string,
+  notebookId: string,
+  key: string,
+  explicit = false,
+  refreshRev: number | null = null,
+): Promise<string | null> {
   try {
     return await withTenantContext(tenantId, async (c) => {
       // Every claim mints a fresh generation; only the holder of the CURRENT
@@ -297,14 +328,16 @@ async function claim(tenantId: string, notebookId: string, key: string, explicit
                   -- recovery of THAT attempt (#4177 Codex r6 F8).
                   'prior_doc_id', CASE WHEN NOT $7::boolean
                                         AND manual_acquisition->>'key' = $3::text
-                                        AND manual_acquisition->>'state' IN ('search_unavailable', 'search_limit_reached', 'running')
+                                        AND (manual_acquisition->>'state' IN ('search_unavailable', 'search_limit_reached', 'running')
+                                             OR ($8::int IS NOT NULL AND manual_acquisition->>'state' = 'candidate_review'))
                                        THEN COALESCE(
                                               CASE WHEN manual_acquisition->>'linked' = 'true'
                                                    THEN manual_acquisition->'doc_id' END,
                                               manual_acquisition->'prior_doc_id') END,
                   'prior_file_id', CASE WHEN NOT $7::boolean
                                          AND manual_acquisition->>'key' = $3::text
-                                         AND manual_acquisition->>'state' IN ('search_unavailable', 'search_limit_reached', 'running')
+                                         AND (manual_acquisition->>'state' IN ('search_unavailable', 'search_limit_reached', 'running')
+                                              OR ($8::int IS NOT NULL AND manual_acquisition->>'state' = 'candidate_review'))
                                         THEN COALESCE(
                                                CASE WHEN manual_acquisition->>'linked' = 'true'
                                                     THEN manual_acquisition->'file_id' END,
@@ -329,9 +362,18 @@ async function claim(tenantId: string, notebookId: string, key: string, explicit
                          < date_trunc('day', now(), 'UTC'))
                  OR ($7::boolean
                      AND manual_acquisition->>'key' = $3::text
-                     AND manual_acquisition->>'state' <> 'running'))
+                     AND manual_acquisition->>'state' <> 'running')
+                 -- Codex #5706 r1 F6: an explicit manual request refreshes a
+                 -- same-key PARTIAL result from an older discovery revision,
+                 -- once (the new record carries the current revision). The
+                 -- caller has already checked the source was not removed.
+                 OR ($8::int IS NOT NULL
+                     AND manual_acquisition->>'key' = $3::text
+                     AND manual_acquisition->>'state' = 'candidate_review'
+                     AND manual_acquisition->>'partial' = 'true'
+                     AND COALESCE((manual_acquisition->>'discovery_rev')::int, 0) < $8::int))
           RETURNING manual_acquisition->>'gen' AS gen`,
-        [tenantId, notebookId, key, STALE_RUNNING_MINUTES, UNAVAILABLE_RETRY_MINUTES, MAX_AUTOMATIC_RETRIES, explicit],
+        [tenantId, notebookId, key, STALE_RUNNING_MINUTES, UNAVAILABLE_RETRY_MINUTES, MAX_AUTOMATIC_RETRIES, explicit, refreshRev],
       );
       return r.rows[0]?.gen ?? null;
     });
@@ -421,6 +463,7 @@ export function recordFromOutcome(key: string, startedAt: string | null, out: Ma
     ...(identifierPages.length ? { identifier_pages: identifierPages } : {}),
     ...(out.status === "candidate_review" && p.ingestFailed === true ? { ingest_failed: true } : {}),
     download_reason: downloadReason,
+    discovery_rev: DISCOVERY_REVISION,
     linked: p.linked === true,
     ...(p.removedByTechnician === true ? { source_removed: true } : {}),
     ...(out.candidateTrail ? { candidate_trail: out.candidateTrail } : {}),
@@ -746,6 +789,8 @@ export interface StartInput {
   identity: ConfirmedIdentity;
   /** R15: the chat turn starting this search (see ManualAcquisitionInput). */
   turnSpanContext?: SpanContext;
+  /** An explicit manual request refreshing an older partial result (partialRefreshDue). */
+  refreshPartial?: boolean;
   /**
    * "candidate" starts the search for an identity the technician has not yet
    * confirmed (#4160 S6, PRD R2) — `identity` here is the SYNTHETIC
@@ -773,7 +818,7 @@ export async function startManualAcquisition(
   const basis = input.basis ?? "confirmed";
   const key = acquisitionKey(input.identity);
   if (!key) return false;
-  const gen = await claim(input.tenantId, input.notebookId, key);
+  const gen = await claim(input.tenantId, input.notebookId, key, false, input.refreshPartial ? DISCOVERY_REVISION : null);
   if (!gen) return false;
   const acquire = deps.acquire ?? acquireManualForIdentity;
   const startedAt = new Date().toISOString();
@@ -1192,23 +1237,35 @@ export async function currentManualSearchStatus(
   const startedAt = rec.started_at ?? undefined;
 
   // F10: the acquired source's CURRENT state wins over the historical record.
+  // Codex #5706 r1 F3: when the ready (or preparing) source IS the document this
+  // search acquired, the status the shell polls carries that PDF as its link and,
+  // once it is searchable, the page that names the exact model. A source the
+  // search did not acquire (an earlier upload) gets neither: the record's URL
+  // and pages describe a different document.
+  const acquiredBy = (s: NotebookSource) => Boolean(rec.doc_id) && s.docId === rec.doc_id && rec.key === key;
   const ready = applicableReadySource(sources, identity);
   if (ready) {
+    const mine = acquiredBy(ready);
+    const pages = mine ? pagesPhrase(rec.identifier_pages) : null;
+    const pdf = mine ? savedManualUrl(rec) : null;
     return {
       manufacturer,
       model,
       running: false,
-      message: `The ${manufacturer} ${model} manual is ready — I can answer from it.`,
+      message: `The ${manufacturer} ${model} manual is ready — I can answer from it.${pages ? ` Its text names the ${manufacturer} ${model} on ${pages}.` : ""}`,
+      ...(pdf ? { manualUrl: pdf } : {}),
       ...(startedAt ? { startedAt } : {}),
     };
   }
   const enabledButPreparing = applicableEnabledSource(sources, identity);
   if (enabledButPreparing) {
+    const pdf = acquiredBy(enabledButPreparing) ? savedManualUrl(rec) : null;
     return {
       manufacturer,
       model,
       running: false,
-      message: `I found the ${manufacturer} ${model} manual and added it to this notebook's Sources — it's still being prepared to answer from.`,
+      message: `I found the ${manufacturer} ${model} manual and added it to this notebook's Sources — it's still being prepared to answer from, so I can't cite its pages yet.`,
+      ...(pdf ? { manualUrl: pdf } : {}),
       ...(startedAt ? { startedAt } : {}),
     };
   }

@@ -446,4 +446,57 @@ describe("photo-to-manual (2026-11-20): the archived CV-101 reading + 'Find me t
     expect(acqMock.startManualAcquisition).toHaveBeenCalledTimes(1);
     expect(acqMock.startManualAcquisition).toHaveBeenCalledWith(expect.objectContaining({ identity: EXPECTED_IDENTITY, basis: "candidate" }));
   });
+
+  describe("Codex r1 F6: a partial chapter cached by an older discovery revision", () => {
+    const partialRec = async (extra: Record<string, unknown> = {}) => {
+      const { acquisitionKey } = await vi.importActual<typeof import("@/capabilities/notebook-manual-acquisition")>(
+        "@/capabilities/notebook-manual-acquisition",
+      );
+      return {
+        key: acquisitionKey(EXPECTED_IDENTITY)!, state: "candidate_review", started_at: "2026-11-07T00:00:00Z", finished_at: "2026-11-07T00:01:00Z",
+        candidate_host: "cdn.automationdirect.com", match_state: "candidate", oem_request_url: null,
+        attached_indexed: true, partial: true, doc_id: "d-ch1", ...extra,
+      };
+    };
+    const ask = async () => {
+      visualMock.loadVisualEvidenceForPhoto.mockResolvedValue({
+        observationId: "obs", sessionId: "session", text: GS10_CV101_LOOK, obsKind: "look", trust: "candidate", fileId: PHOTO, hazards: [],
+      });
+      await frames(await POST(req({ message: "Find me the manual", mode: "general", visualEvidence: { fileId: PHOTO } }), params));
+    };
+
+    it("an explicit manual request refreshes it once with the corrected discovery", async () => {
+      acqMock.readAcquisition.mockResolvedValue(await partialRec());
+      await ask();
+      expect(acqMock.startManualAcquisition).toHaveBeenCalledTimes(1);
+      expect(acqMock.startManualAcquisition).toHaveBeenCalledWith(expect.objectContaining({ basis: "candidate", refreshPartial: true }));
+    });
+
+    it("a partial result the current revision produced is not searched again", async () => {
+      const { DISCOVERY_REVISION } = await vi.importActual<typeof import("@/capabilities/notebook-manual-acquisition")>(
+        "@/capabilities/notebook-manual-acquisition",
+      );
+      acqMock.readAcquisition.mockResolvedValue(await partialRec({ discovery_rev: DISCOVERY_REVISION }));
+      await ask();
+      expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+    });
+
+    it("a chapter the technician removed or rejected stays removed", async () => {
+      acqMock.readAcquisition.mockResolvedValue(await partialRec());
+      acqMock.reconcileAcquisition.mockImplementationOnce(async (_t: string, _n: string, rec: unknown) => ({ ...(rec as object), source_removed: true }));
+      await ask();
+      expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+    });
+  });
+
+  it.each([
+    "Unit. No ABC. (12345678)",
+    "the unit. No loose wiring is visible.\n12345678",
+  ])("Codex r1 F1: the same reading plus a unit-number field (%s) starts no search", async (field) => {
+    visualMock.loadVisualEvidenceForPhoto.mockResolvedValue({
+      observationId: "obs", sessionId: "session", text: `${GS10_CV101_LOOK}\n${field}`, obsKind: "look", trust: "candidate", fileId: PHOTO, hazards: [],
+    });
+    await frames(await POST(req({ message: "Find me the manual", mode: "general", visualEvidence: { fileId: PHOTO } }), params));
+    expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+  });
 });
