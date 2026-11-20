@@ -128,8 +128,14 @@ async function open(page: Page, context: BrowserContext, baseURL: string | undef
   return seen;
 }
 
+/** The checklist opens from More → Pick a part while the whole machine is the subject (Mike, 2026-11-20). */
+async function openChecklist(page: Page, press: "click" | "tap" = "click") {
+  await page.getByTestId("notebook-more")[press]();
+  await page.getByTestId("notebook-more-item-part")[press]();
+}
+
 async function confirmWithSerial(page: Page, press: "click" | "tap" = "click") {
-  await page.getByTestId("bench-asking-about")[press]();
+  await openChecklist(page, press);
   await checklistRow(page, VFD).getByRole("button", { name: "Edit label" })[press]();
   await checklist(page).getByTestId("bench-card-serialNumber").fill(SERIAL);
   await checklist(page).getByTestId("bench-card-confirm")[press]();
@@ -203,7 +209,7 @@ for (const [kind, button, words] of [
 ] as const) {
   test(`a committed ${kind} whose checklist re-read fails is reported as saved, not as a lost connection (#5661 A2)`, async ({ page, context, baseURL }) => {
     const seen = await open(page, context, baseURL, { sameSerial: checked([away]), failReads: [2] });
-    await page.getByTestId("bench-asking-about").click();
+    await openChecklist(page);
     await checklistRow(page, VFD).getByRole("button", { name: "Edit label" }).click();
     await checklist(page).getByTestId("bench-card-serialNumber").fill(SERIAL);
     await checklist(page).getByTestId(button).click();

@@ -170,7 +170,8 @@ export function NotebookActionsMenu({ covered }: { covered: boolean }) {
           choosing.current = false;
         }}
       >
-        {open ? groupItems(items).map(({ group, items: groupItemsList }) => (
+        {/* Rendered while closed too (a closed dialog shows nothing), so its items can be found and counted. */}
+        {groupItems(items).map(({ group, items: groupItemsList }) => (
           <div key={group} className={`fl-more__group fl-more__group--${group.toLowerCase()}`} role="group" aria-label={group}>
             <h2 style={HEADING}>{group}</h2>
             {groupItemsList.map((item) => (
@@ -186,7 +187,7 @@ export function NotebookActionsMenu({ covered }: { covered: boolean }) {
               </button>
             ))}
           </div>
-        )) : null}
+        ))}
       </dialog>
     </div>
   );

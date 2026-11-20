@@ -85,9 +85,10 @@ export function EquipmentNav({
     onPickRef.current(next, pressedIn.current);
   }, { selection: () => null });
 
-  const { panelRef, regionRef, room, panelRoom, panelScrolls } = useRoomBelow(open);
   // In the More list (Mike, 2026-11-20) the panel opens from there; its Close button stays here.
   const { inMenu } = useMenuItem(available ? EQUIPMENT_ITEM : null, () => setOpen(true));
+  // There the checklist opens from the chip or More above the panel, so nothing needs room below it.
+  const { panelRef, regionRef, room, panelRoom, panelScrolls } = useRoomBelow(open, inMenu ? 0 : CHECKLIST_RESERVE);
 
   if (!available) return null;
   return (
@@ -168,13 +169,13 @@ const MIN_ROW = 44;
 
 /** Height caps for the open panel and its results, from where each starts to the bottom of what is
  *  actually visible — or to the top of the chat composer when that is higher, so the checklist
- *  trigger below never lands on Send (#5658) — keeping CHECKLIST_RESERVE free below. The results'
+ *  trigger below never lands on Send (#5658) — keeping `reserve` free below (CHECKLIST_RESERVE outside the More list, nothing inside it). The results'
  *  start is taken as if the panel were not scrolled, so scrolling the panel does not resize them.
  *  Re-measured after every render (a notice or an offer appearing re-renders this component), when
  *  the panel, the results or the composer change size (a wrapped line — r1 F3), on a window resize, and on a visual-viewport resize or pan,
  *  which is how a soft keyboard shows up in browsers that keep the layout viewport's height (r1 F2).
  *  Null until measured. */
-function useRoomBelow(open: boolean) {
+function useRoomBelow(open: boolean, reserve: number) {
   const panelRef = useRef<HTMLElement>(null);
   const regionRef = useRef<HTMLDivElement>(null);
   const [room, setRoom] = useState<number | null>(null);
@@ -198,8 +199,8 @@ function useRoomBelow(open: boolean) {
       const bottom = Math.min(visible, composerTop);
       const panelTop = panel.getBoundingClientRect().top;
       const regionTop = region.getBoundingClientRect().top + panel.scrollTop;
-      setPanelRoom(Math.max(MIN_ROW, Math.floor(bottom - panelTop - CHECKLIST_RESERVE)));
-      setRoom(Math.max(MIN_ROW, Math.floor(bottom - regionTop - CHECKLIST_RESERVE)));
+      setPanelRoom(Math.max(MIN_ROW, Math.floor(bottom - panelTop - reserve)));
+      setRoom(Math.max(MIN_ROW, Math.floor(bottom - regionTop - reserve)));
       setPanelScrolls(panel.scrollHeight > panel.clientHeight + 1);
     };
     measureRef.current = measure;
@@ -219,7 +220,7 @@ function useRoomBelow(open: boolean) {
       vv?.removeEventListener("resize", measure);
       vv?.removeEventListener("scroll", measure);
     };
-  }, [open]);
+  }, [open, reserve]);
 
   // After every render: a notice or an offer above the results may have appeared or gone. Setting an
   // unchanged value does not re-render, so this settles at once.
