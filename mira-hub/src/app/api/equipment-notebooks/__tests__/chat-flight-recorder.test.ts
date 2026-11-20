@@ -2354,6 +2354,45 @@ describe("#4075 — a confirmed identity with no manual starts, and then reports
     });
   });
 
+  describe("Codex #5706 r1 F6: a partial manual an older discovery revision cached", () => {
+    const partial = (extra: Record<string, unknown> = {}) => ({
+      key: KEY, state: "candidate_review", started_at: "2026-09-29T07:00:00Z", finished_at: "2026-09-29T07:00:40Z",
+      candidate_host: "www.siemens.com", match_state: "candidate", oem_request_url: null, attached_indexed: true, partial: true, doc_id: "d-ch1", ...extra,
+    });
+    const askForManual = async () => {
+      ragMock.retrieveManualChunks.mockResolvedValueOnce([] as never);
+      vi.stubGlobal("fetch", vi.fn());
+      return frames(await POST(chatReq({ message: "Find me the manual", mode: "general" }), params));
+    };
+
+    it("an explicit manual request refreshes it once", async () => {
+      acqMock.acquisitionEnabled.mockReturnValue(true);
+      acqMock.readAcquisition.mockResolvedValue(partial());
+      acqMock.startManualAcquisition.mockResolvedValue(true);
+      domainMock.getNotebook.mockResolvedValue(confirmed() as never);
+      await askForManual();
+      expect(acqMock.startManualAcquisition).toHaveBeenCalledTimes(1);
+      expect(acqMock.startManualAcquisition).toHaveBeenCalledWith(expect.objectContaining({ refreshPartial: true }));
+    });
+
+    it("a troubleshooting question does not refresh it", async () => {
+      acqMock.acquisitionEnabled.mockReturnValue(true);
+      acqMock.readAcquisition.mockResolvedValue(partial());
+      domainMock.getNotebook.mockResolvedValue(confirmed() as never);
+      await ask();
+      expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+    });
+
+    it("a removed chapter is never refreshed", async () => {
+      acqMock.acquisitionEnabled.mockReturnValue(true);
+      acqMock.readAcquisition.mockResolvedValue(partial());
+      acqMock.reconcileAcquisition.mockImplementationOnce(async (_t: string, _n: string, r: unknown) => ({ ...(r as object), source_removed: true }));
+      domainMock.getNotebook.mockResolvedValue(confirmed() as never);
+      await askForManual();
+      expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+    });
+  });
+
   it("a search recorded for a DIFFERENT identity (the notebook was re-bound) is not reported; a new one starts", async () => {
     acqMock.acquisitionEnabled.mockReturnValue(true);
     acqMock.readAcquisition.mockResolvedValue({

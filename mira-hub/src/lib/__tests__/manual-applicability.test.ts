@@ -213,6 +213,22 @@ describe("assessApplicability — suffixes, table cells and PDF dashes (Codex #5
     expect(oem("GS11N-20P2", content)).toMatchObject({ state: "verified", identifierPages: [26] });
   });
 
+  it.each([
+    ["PowerFlex 40", "PowerFlex 40 Adjustable Frequency AC Drive user manual"],
+    ["PowerFlex 4", "PowerFlex 4 Adjustable Frequency AC Drive"],
+    ["PowerFlex 70", "This manual covers the PowerFlex 70 drive"],
+  ])("a model whose own last group is short (%s) still verifies against its own spelling", (model, content) => {
+    expect(assessApplicability({ identity: { manufacturer: "Allen-Bradley", model }, chunks: [{ content, page: 3 }], oemHost: true }).state).toBe("verified");
+  });
+
+  it("control: PowerFlex 40 does not verify against PowerFlex 400", () => {
+    expect(assessApplicability({ identity: { manufacturer: "Allen-Bradley", model: "PowerFlex 40" }, chunks: [{ content: "PowerFlex 400 drive", page: 3 }], oemHost: true }).state).toBe("candidate");
+  });
+
+  it("a slash-joined model list is not read as either model (fails safe to candidate review)", () => {
+    expect(oem("GS11N-20P2", "Models GS11N-20P2/GS11N-20P5 rated 0.25 HP").state).toBe("candidate");
+  });
+
   it("control: a different suffix written with an en dash stays a candidate", () => {
     expect(oem("GS11N-20P3", "Model GS11N–20P2 rated 0.25 HP").state).toBe("candidate");
   });

@@ -87,7 +87,8 @@ function isFamilyPrefix(model: string, token: string): boolean {
  * U+2013 and the non-breaking hyphen count as separators). Both ends must be
  * token boundaries, and a separator followed by a letter or digit continues
  * the identifier ("GS11N-20P2-EX" is not GS11N-20P2). A match that spans
- * whitespace must end in a run of at least three letters or digits, so a
+ * whitespace must end in a run of at least three letters or digits, or in the
+ * identifier's own last space-separated group ("PowerFlex 40"), so a
  * neighbouring table cell ("GS11N-20P2 N/A") never completes a longer model.
  * Plain punctuation-stripped containment let a table row "GS11N-20P2 5.1"
  * (GS10 manual p.383) verify a misread "GS11N-20P25", and let the stems
@@ -110,6 +111,8 @@ function identifierMatcher(raw: string): ((text: string) => boolean) | null {
     sep = false;
   }
   if (chars.length === 0) return null;
+  const alnum = (t: string) => t.replace(/[^A-Za-z0-9]/g, "").toUpperCase();
+  const ownTail = alnum((raw ?? "").trim().split(/\s+/).pop() ?? "");
   const body = chars.map((c, i) => (breakBefore[i] ? "[ \\t\\u00a0._/\\u2010-\\u2015-]{0,2}" : "") + c).join("");
   const re = new RegExp(
     `(?<![A-Za-z0-9])(?<![A-Za-z0-9]${ID_SEP})${body}(?![A-Za-z0-9])(?!${ID_SEP}[A-Za-z0-9])`,
@@ -118,7 +121,7 @@ function identifierMatcher(raw: string): ((text: string) => boolean) | null {
   return (text: string) => {
     for (const m of (text ?? "").matchAll(re)) {
       const tail = m[0].split(/[ \t\u00a0]+/).pop() ?? "";
-      if (m[0] === tail || tail.replace(/[^A-Za-z0-9]/g, "").length >= 3) return true;
+      if (m[0] === tail || alnum(tail).length >= 3 || alnum(tail) === ownTail) return true;
     }
     return false;
   };

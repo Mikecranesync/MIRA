@@ -64,6 +64,7 @@ import {
   startManualAcquisition,
   type AcquisitionRecord,
 } from "../notebook-manual-acquisition";
+import { assessApplicability } from "@/lib/manual-applicability";
 
 const confirmed = { identityStatus: "user_confirmed", manufacturer: "SMC", model: "VQ1000-FPG-C6C6-D", catalogNumber: null };
 const ON = { MIRA_NOTEBOOK_MANUAL_ACQUISITION: "1" };
@@ -1284,6 +1285,27 @@ describe("garage pilot L2 — a partial manual (one chapter / unreadable numbers
     expect(t).not.toContain("turn it on if it's right");
     // Photo basis uses the same shared candidate_review copy.
     expect(acquisitionDeclineText(base, "K", "AutomationDirect GS11N-20P2", "candidate")).toBe(t);
+  });
+});
+
+describe("recordFromOutcome reads the real applicability verdict (advisor, #5706 r1)", () => {
+  it("a verdict from assessApplicability lands as identifier_pages, and the download URL as manual_url", () => {
+    const verdict = assessApplicability({
+      identity: { manufacturer: "AutomationDirect", model: "GS11N-20P2" },
+      chunks: [
+        { content: "GS10 series AC drive user manual", page: 1 },
+        { content: "GS11N-20P2 0.25 0.2 120 1 1.7", page: 26 },
+      ],
+      oemHost: true,
+    });
+    expect(verdict.state).toBe("verified");
+    const URL = "https://cdn.automationdirect.com/static/manuals/gs10m/gs10usermanual.pdf";
+    const r = recordFromOutcome("K", null, {
+      status: "complete",
+      payload: { manual: { docId: "d1", indexed: true, finalUrl: URL }, applicability: verdict },
+    });
+    expect(r.identifier_pages).toEqual([26]);
+    expect(r.manual_url).toBe(URL);
   });
 });
 

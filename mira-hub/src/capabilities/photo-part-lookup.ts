@@ -49,14 +49,16 @@ const CODE_AHEAD = String.raw`(?=(?:is\b)?[^A-Za-z0-9]*(?=[A-Z0-9./-]*\d)[A-Z0-9
 //  - "No" is followed by at least THREE plain words (letters only), so a label
 //    value ("Unit. No ABC.", "Unit. No AB 4471") never qualifies;
 //  - that sentence carries no digit and ends at ".", "!" or "?" followed by
-//    whitespace, or at the end of the text — a line break or a "." inside a
-//    token is not an end;
-//  - the next token carries no digit, whatever punctuation wraps it
-//    ("Unit. No ABC. (12345678)", "…wiring.\n12345678").
+//    whitespace or the end of the text — a line break, a "." inside a token,
+//    or text that simply stops is not an end;
+//  - the text after it, up to the next ".", "!" or "?", carries no digit,
+//    however it is wrapped or spaced ("Unit. No ABC DEF GHI. ( 12345678 )",
+//    "…visible. Serial 12345678", "…wiring.\n12345678").
 // So "Unit. No. 12345678", "UNIT NO 4471", "UNIT NO\nAB-1234567",
 // "Unit No ABC 12345678", "unit. No AB 4471", "UNIT. NO TP\n1200",
-// "Unit. No AB.1234567" and "Unit. No ABC. (12345678)" all stay labels.
-const PROSE_NO_SENTENCE = String.raw`(?!\.[ \t]+no(?:[ \t]+[a-z]+){3}[^\d.!?\r\n]*(?:[.!?](?=\s|$)(?!\s+\S*\d)|$))`;
+// "Unit. No AB.1234567", "Unit. No ABC. (12345678)" and "Unit. No abc def ghi"
+// all stay labels.
+const PROSE_NO_SENTENCE = String.raw`(?!\.[ \t]+no(?:[ \t]+[a-z]+){3}[^\d.!?\r\n]*[.!?](?=\s|$)(?![^.!?]*\d))`;
 const ASSET_LABEL = new RegExp(
   String.raw`\b(?:(?:fixed\s*asset|asset|inventory|inv|cmms|sap|work\s*order|wo)(?![a-z])` +
     String.raw`|(?:tag|equip(?:ment)?|unit|machine|location|loc|site|plant|area|line|cell)(?![a-z])${PROSE_NO_SENTENCE}${LABEL_SEP}(?:${ID_WORD}(?![a-z])|${CODE_AHEAD})` +
