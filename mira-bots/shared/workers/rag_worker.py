@@ -218,25 +218,6 @@ def chunk_matches_vendor(chunk_manufacturer: str | None, query_vendor: str | Non
     return cq is not None and cq == cm
 
 
-def _metadata_for_reranked(reranked: list[dict], chunks: list[dict]) -> list[dict]:
-    """Each reranked row's own chunk record, in the reranked order.
-
-    The reranker returns ``{"index", "text", "score"}`` where ``index`` points
-    into the passages it was given (``nemotron.rerank``). A row whose index is
-    out of range, or whose text does not match that chunk, gets ``{}`` (no
-    label) rather than a neighbour's metadata.
-    """
-    out: list[dict] = []
-    for row in reranked:
-        idx = row.get("index")
-        ch = chunks[idx] if isinstance(idx, int) and 0 <= idx < len(chunks) else None
-        if ch is not None and str(ch.get("content") or "") == str(row.get("text") or ""):
-            out.append(ch)
-        else:
-            out.append({})
-    return out
-
-
 def evidence_applicability(
     excerpt_model: str | None, asked_model: str, asked_family: str | None = None
 ) -> str | None:
@@ -1041,19 +1022,11 @@ class RAGWorker:
             if photo_b64 and state.get("asset_identified"):
                 rerank_query = f"{state['asset_identified']} {rewritten}"
 
-            prompt_chunk_meta = local_neon_chunks
             if self.nemotron and self.nemotron.enabled and chunk_texts:
                 reranked = await self.nemotron.rerank(rerank_query, chunk_texts)
-                kept = [r for r in reranked if r["score"] > 0]
-                top_chunks = [r["text"] for r in kept]
+                top_chunks = [r["text"] for r in reranked if r["score"] > 0]
                 if top_chunks:
                     chunk_texts = top_chunks
-                    # The reranker reorders and drops TEXT; the prompt pairs text
-                    # with metadata by index, so the metadata must move with it or
-                    # one document's passage is rendered under another's label
-                    # (Codex #5687 round 2, F8). A returned text that matches no
-                    # retrieved chunk gets no label, never a borrowed one.
-                    prompt_chunk_meta = _metadata_for_reranked(kept, local_neon_chunks)
 
             # Stage 3: Build prompt with (reranked) chunks → call LLM
             if chunk_texts:
@@ -1063,7 +1036,7 @@ class RAGWorker:
                     rewritten,
                     chunk_texts,
                     photo_b64=photo_b64,
-                    neon_chunks_meta=prompt_chunk_meta,
+                    neon_chunks_meta=local_neon_chunks,
                     kg_context=local_kg_context,
                 )
             else:

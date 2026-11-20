@@ -354,49 +354,33 @@ def ineligible_source_reason(label: str) -> str | None:
     return None
 
 
-# ── Provenance: is the cited document evidence for the unit named? (#3049) ────
+# ── Provenance for vendorless labels (#3049) ──────────────────────────────────
 #
-# The two relevance cases above read the vendor out of the citation LABEL. Two
-# measured failures are invisible to that:
+# The two relevance cases above read the vendor out of the citation LABEL. A
+# label with no manufacturer in it is invisible to them: a Drive-ingested copy
+# whose stored `manufacturer` is NULL ("manual SIRIUS circuit breaker 3RV en
+# US"), or a Sources-footer label rendered from a file stem ("2100 — CA 004,
+# p. 1"). Those shipped on 22 of 31 GA500 fuse refusals.
 #
-#   * a label with no manufacturer in it — a Drive-ingested copy whose stored
-#     `manufacturer` is NULL ("manual SIRIUS circuit breaker 3RV en US"), or a
-#     Sources-footer label rendered from a file stem ("2100 — CA 004, p. 1");
-#   * the right document stripped because the technician typed only the catalog
-#     number ("GS13N-42P0 frame size?") — then the salvage rewrite re-tagged the
-#     reply with the next retrieved label, a Siemens PM340 manual.
+# This check is deliberately narrow, and strip-only relative to the label cases:
 #
-# When the technician's own words carry a catalog-style identifier and the turn's
-# retrieved chunks are known, the gate asks the question the label cannot answer:
-# does the chunk this tag names mention that identifier, or come from a vendor the
-# technician (or trusted state) established? Off when either input is missing, so
-# callers that cannot supply chunks get the old behaviour exactly.
+#   * it reads ONLY the catalog identifiers in THIS message (memory block
+#     removed) — never history, memory or session state — so a turn that names
+#     no catalog number is judged exactly as before;
+#   * it judges ONLY tags whose retrieved document carries no manufacturer; a tag
+#     with a vendor is left to Cases 1 and 2 untouched;
+#   * it never reverses a strip.
 
 _IDENT_TOKEN_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9-]{3,}[A-Za-z0-9]")
 _HAYSTACK_TOKEN_RE = re.compile(r"[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*")
 _PAGE_SUFFIX_RE = re.compile(r",\s*p\.\s*\d+\s*$", re.IGNORECASE)
 # A rating, not a unit: digits followed by an electrical/mechanical unit
-# ("480VAC", "24VDC", "2200RPM", "400VAC50HZ"). Codex #5687 F4: these matched an
-# unrelated manual that merely states the same voltage.
+# ("480VAC", "24VDC", "2200RPM", "100kAIC").
 _RATING_RE = re.compile(
     r"^(?:\d+(?:V|VAC|VDC|KV|HZ|KHZ|KW|HP|KVA|MVA|VA|MA|A|KA|KAIC|AIC|SCCR|RPM|MM|NM|PH|PHASE|W|UF|OHM|C|F))+$"
 )
 # A standard or enclosure reference, not a unit: NEMA12, IEC61800, UL508A, IP65.
 _STANDARD_RE = re.compile(r"^(?:NEMA|IEC|UL|CSA|ISO|EN|IP|AWG|MCM|KCMIL)\d")
-# A mention the technician is moving AWAY from: "GA50U2001, not GS13N-42P0",
-# "instead of the GS13N-42P0" (Codex #5687 round 2, F2).
-_NEGATED_BEFORE_RE = re.compile(
-    r"(?:\bnot|\bisn'?t|\bwasn'?t|\binstead\s+of|\bno\s+longer|\brather\s+than|\bwrong"
-    r"|\bswapped(?:\s+out)?|\breplaced|\bmisread(?:\s+it)?\s+as|\bmistook\s+it\s+for"
-    r"|\bthought\s+it\s+was)"
-    r"\s+(?:an?\s+|the\s+|it'?s\s+an?\s+)?$",
-    re.IGNORECASE,
-)
-# "GS13N-42P0 was wrong", "GS13N-42P0 is a typo" — the negation follows the token.
-_NEGATED_AFTER_RE = re.compile(
-    r"^\s*(?:was|is|was\s+a|is\s+a)?\s*(?:wrong|incorrect|a\s+typo|typo|a\s+mistake|not\s+right)\b",
-    re.IGNORECASE,
-)
 _MEMORY_BLOCK_RE = re.compile(r"^\[MIRA MEMORY[^\]]*\].*?\[END MEMORY\]\s*\n*", re.DOTALL)
 
 
@@ -408,14 +392,13 @@ def catalog_identifiers(text: str) -> set[str]:
     """Catalog-style identifiers in free text, normalized (``GS13N-42P0`` → ``GS13N42P0``).
 
     Deliberately narrow: at least 6 alphanumerics with at least 2 letters and 2
-    digits, and not a rating. That admits catalog numbers (``GS13N-42P0``,
-    ``GA50U2001``, ``1769-L33ER``) and rejects the tokens a turn is full of that
-    do not name a unit — ``525``, ``F0004``, ``P01-01``, ``CE10``, ``60Hz``,
-    ``480VAC``.
+    digits, and not a rating or standards reference. That admits catalog numbers
+    (``GS13N-42P0``, ``GA50U2001``, ``1769-L33ER``) and rejects the tokens a turn
+    is full of that do not name a unit — ``525``, ``F0004``, ``P01-01``,
+    ``CE10``, ``60Hz``, ``480VAC``, ``NEMA12``.
     """
-    text = text or ""
     out: set[str] = set()
-    for m in _IDENT_TOKEN_RE.finditer(text):
+    for m in _IDENT_TOKEN_RE.finditer(text or ""):
         n = _norm_ident(m.group(0))
         if (
             len(n) >= 6
@@ -423,45 +406,21 @@ def catalog_identifiers(text: str) -> set[str]:
             and sum(c.isdigit() for c in n) >= 2
             and not _RATING_RE.match(n)
             and not _STANDARD_RE.match(n)
-            and not _NEGATED_BEFORE_RE.search(text[max(0, m.start() - 24) : m.start()])
-            and not _NEGATED_AFTER_RE.match(text[m.end() : m.end() + 24])
         ):
             out.add(n)
     return out
 
 
-def active_unit_text(message: str, state: dict | None) -> str:
-    """The technician's most recent words that name a unit — the ONLY model
-    evidence provenance reads (Codex #5687 rounds 1-2, F2; contract CTX-001).
-
-    In order: this message (minus any injected memory block); else the newest
-    user turn in history that names a catalog identifier; else the confirmed
-    asset. A correction therefore supersedes every older mention, a pronoun-only
-    follow-up keeps the corrected unit, and a remembered model never poses as a
-    current one. Returns ``""`` when nothing names a unit, which turns
-    provenance OFF rather than falling back to the whole session.
-    """
-    current = _MEMORY_BLOCK_RE.sub("", message or "").strip()
-    if catalog_identifiers(current):
-        return current
-    if not isinstance(state, dict):
-        return ""
-    ctx = state.get("context")
-    history = ctx.get("history") if isinstance(ctx, dict) else None
-    if isinstance(history, list):
-        for turn in reversed(history):
-            if isinstance(turn, dict) and turn.get("role") == "user":
-                text = _MEMORY_BLOCK_RE.sub("", str(turn.get("content") or "")).strip()
-                if catalog_identifiers(text):
-                    return text
-    asset = str(state.get("asset_identified") or "")
-    return asset if catalog_identifiers(asset) else ""
+def current_message_text(message: str) -> str:
+    """This turn's message as the technician typed it: the injected
+    ``[MIRA MEMORY …]`` block (mira-pipeline) removed, nothing else added."""
+    return _MEMORY_BLOCK_RE.sub("", message or "").strip()
 
 
 def _source_tokens(text: str) -> set[str]:
     """Normalized whole tokens of a source field, plus each hyphen-separated part.
 
-    ``CIPR-GA50U2001ABA`` yields ``CIPRGA50U2001ABA``, ``CIPR`` and ``GA50U2001ABA``;
+    ``CIPR-GA50U2001`` yields ``CIPRGA50U2001``, ``CIPR`` and ``GA50U2001``;
     ``zx9000_manual.pdf`` yields ``ZX9000``, ``MANUAL`` and ``PDF``.
     """
     out: set[str] = set()
@@ -470,25 +429,6 @@ def _source_tokens(text: str) -> set[str]:
         if "-" in tok:
             out.update(_norm_ident(part) for part in tok.split("-") if part)
     return out
-
-
-# The one suffix rule: a 2-4 letter option code after a catalog number that ends
-# in a digit (Yaskawa CIPR-GA50U2001ABA: enclosure, region, options). A digit
-# or a single letter after the number is a different variant (ZX9000B2,
-# ZX9000B) and never matches (Codex #5687 round 2, F4).
-_OPTION_SUFFIX_RE = re.compile(r"^[A-Z]{2,4}$")
-
-
-def _names_identifier(token: str, ident: str) -> bool:
-    """True when ``token`` IS the identifier, or the identifier plus an option
-    suffix that starts at a letter/digit boundary (``GA50U2001`` in
-    ``GA50U2001ABA``). ``ZX9000`` never matches ``ZX90000``: the remainder ``0``
-    continues the number rather than starting a new field (Codex #5687 F4)."""
-    if token == ident:
-        return True
-    if len(token) > len(ident) and token.startswith(ident):
-        return ident[-1].isdigit() and bool(_OPTION_SUFFIX_RE.match(token[len(ident) :]))
-    return False
 
 
 def _label_key(label: str, *, keep_page: bool = True) -> str:
@@ -514,7 +454,7 @@ def _documents_by_label(
 
     Returns ``(exact, unpaged)``: ``exact`` keys keep the page suffix; ``unpaged``
     keys drop it and are only a fallback for a tag whose page matches no rendered
-    label (Codex #5687 F3 — two "Installation Guide" PDFs must not pool).
+    label, so two same-titled PDFs do not pool.
     """
     from .response_formatter import _format_citation_label
     from .workers.rag_worker import kb_citation_entry
@@ -543,63 +483,17 @@ def _documents_by_label(
     return exact, unpaged
 
 
-def _chunk_vendor(chunk: dict) -> str | None:
-    return _canonical_vendor(str(chunk.get("manufacturer") or "")) or _canonical_vendor(
-        format_source_label(chunk)
+def _chunk_has_manufacturer(chunk: dict) -> bool:
+    """Any stored manufacturer at all, including one the alias table does not
+    know (e.g. "Konecranes"), or a recognised vendor in the chunk's rendered label."""
+    return bool(str(chunk.get("manufacturer") or "").strip()) or bool(
+        _canonical_vendor(format_source_label(chunk))
     )
 
 
-_SERIES_ROW_RE = re.compile(r"^([A-Z0-9]*[A-Z])(\d{4,})$")
-
-
-def _names_series_row(chunk: dict, identifiers: set[str]) -> bool:
-    """A series table proves a catalog number by its abbreviated row.
-
-    Yaskawa's GA500 fuse table lists ``GA50U2002`` as row ``2002`` under a chunk
-    labelled ``GA500``. Proven only when BOTH hold: the chunk's model label shares
-    all but at most one character of the identifier's lead (``GA50U`` vs
-    ``GA500`` → ``GA50``), and the identifier's digit tail (4+ digits) appears as
-    a whole token in the chunk. Retrieval marks such a chunk ``unknown`` because
-    the alias table has no GA50U family, which is why vendor alone is not enough
-    (Codex #5687 F5) but the row is.
-    """
-    label = _norm_ident(str(chunk.get("model_number") or ""))
-    if not label:
-        return False
-    tokens = _source_tokens(str(chunk.get("content") or ""))
-    for ident in identifiers:
-        m = _SERIES_ROW_RE.match(ident)
-        if not m:
-            continue
-        lead, tail = m.groups()
-        shared = len(os.path.commonprefix([lead, label]))
-        if not (shared >= 3 and shared >= len(lead) - 1 and tail in tokens):
-            continue
-        # A ROW, not an incidental number (Codex #5687 round 2, F7): the chunk
-        # must read as a model table (another row of the same width and leading
-        # digit beside it) and the tail must never sit after a
-        # copyright / revision / date marker.
-        siblings = {
-            t
-            for t in tokens
-            if t.isdigit() and len(t) == len(tail) and t[0] == tail[0] and t != tail
-        }
-        content = str(chunk.get("content") or "")
-        incidental = re.search(
-            rf"(?:copyright|\(c\)|\u00a9|rev\.?|revision|version|edition|date)\s*[:.]?\s*{tail}\b",
-            content,
-            re.IGNORECASE,
-        )
-        if siblings and not incidental:
-            return True
-    return False
-
-
-def _document_backs_unit(
-    document: list[dict], identifiers: set[str], allowed_vendors: set[str]
-) -> bool:
-    if any(_names_series_row(ch, identifiers) for ch in document):
-        return True
+def _document_names_unit(document: list[dict], identifiers: set[str]) -> bool:
+    """True when any chunk of the document names one of the identifiers as a
+    whole token — in its text, model field, source URL or label."""
     for ch in document:
         tokens = set().union(
             *(
@@ -608,56 +502,32 @@ def _document_backs_unit(
             ),
             _source_tokens(format_source_label(ch)),
         )
-        if any(_names_identifier(t, i) for t in tokens for i in identifiers):
-            return True
-    for ch in document:
-        # Codex #5687 F5: retrieval marks an excerpt labelled for another model of
-        # an undecidable family as "unknown" — general context only. Sharing the
-        # manufacturer does not make it evidence for the unit the technician named.
-        # When the marker is absent (a photo turn, an unscoped retrieval) it is
-        # computed here with retrieval's own helper against the named unit
-        # (Codex #5687 round 2, F5).
-        if not _applies_to_unit(ch, identifiers):
-            continue
-        vendor = _chunk_vendor(ch)
-        if vendor and vendor in allowed_vendors:
+        if tokens & identifiers:
             return True
     return False
 
 
-def _applies_to_unit(chunk: dict, identifiers: set[str]) -> bool:
-    scope = chunk.get("evidence_applicability")
-    if scope is not None:
-        return scope in ("model", "family", "unlabelled")
-    from .workers.rag_worker import evidence_applicability
-
-    return any(
-        evidence_applicability(chunk.get("model_number"), ident)
-        in ("model", "family", "unlabelled")
-        for ident in identifiers
-    )
-
-
-def _tag_provenance(
+def _vendorless_tag_unproven(
     tag: str,
     labels: tuple[dict[str, list[list[dict]]], dict[str, list[list[dict]]]],
     identifiers: set[str],
-    allowed_vendors: set[str],
-) -> bool | None:
-    """True = the cited document backs this unit; False = it does not; None = unknown.
-
-    ``None`` (the tag names no retrieved document — a drive pack, a KG fact,
-    another renderer) is left to the label-based cases: provenance never strips
-    what it cannot see. When a label resolves to more than one document, the tag
-    is ambiguous — a reader cannot tell which was meant — so EVERY candidate must
-    back the unit; one supporting namesake never vouches for another (F3).
-    """
+) -> bool:
+    """True only when this tag is SURE to be unproven: its label resolves to at
+    least one retrieved document, every such document carries no manufacturer,
+    and none of them names the unit. Anything else — no matching document, any
+    candidate with a vendor, any candidate naming the unit — is False and left
+    to the label-based cases."""
     exact, unpaged = labels
     label = _tag_label(tag)
     documents = exact.get(_label_key(label)) or unpaged.get(_label_key(label, keep_page=False))
     if not documents:
-        return None
-    return all(_document_backs_unit(d, identifiers, allowed_vendors) for d in documents)
+        return False
+    for document in documents:
+        if any(_chunk_has_manufacturer(ch) for ch in document):
+            return False
+        if _document_names_unit(document, identifiers):
+            return False
+    return True
 
 
 def evaluate_citation_relevance(
@@ -673,7 +543,7 @@ def evaluate_citation_relevance(
 
         {
           "relevant":         bool,   # False on conflict OR unsupported attribution
-          "reason":           str,    # "conflict" | "unestablished" | ""
+          "reason":           str,    # "conflict" | "unestablished" | "unproven" | ""
           "expected_vendor":  str | None,   # canonical, when recognized
           "cited_vendors":    list[str],    # canonical vendors named in tags
           "conflicting_tags": list[str],    # tags to strip
@@ -692,7 +562,12 @@ def evaluate_citation_relevance(
     turn plus history plus any confirmed asset); a cited vendor absent from it
     is being attributed to a machine nobody has identified.
 
-    Both are conservative and fail-open. `established_text` defaults to empty,
+    **Unproven vendorless citation** (#3049) — with ``chunks`` (this turn's
+    retrieval snapshot) and ``current_text`` (this message, memory removed)
+    naming a catalog number, a tag whose retrieved document has no manufacturer
+    and never names that number is stripped. It only ever adds strips.
+
+    All are conservative and fail-open. `established_text` defaults to empty,
     which disables the second check entirely — a caller that cannot supply the
     conversation gets exactly the old behavior rather than a false strip.
     """
@@ -754,39 +629,21 @@ def evaluate_citation_relevance(
             reason = "unestablished"
             conflicting = unsupported
 
-    # Case 3 — PROVENANCE (#3049). Only with the turn's chunks AND a catalog
-    # identifier in the technician's words. Identifiers in THIS message win over
-    # history, so a corrected model ("actually it's a GA50U2001") cannot be
-    # vouched for by the manual of the one it replaced (Codex #5687 F2); a
-    # follow-up that names no unit keeps the session's.
-    identifiers = set()
-    if chunks:
-        # A caller that knows the active unit passes its text (possibly empty,
-        # which turns provenance off); legacy callers pass nothing and get the
-        # session-wide reading.
-        identifiers = catalog_identifiers(
-            established_text if current_text is None else current_text
-        )
+    # Case 3 — VENDORLESS PROVENANCE (#3049). Only with the turn's chunks AND a
+    # catalog identifier in THIS message. Strip-only: it adds tags to the strip
+    # list and never removes one, and a Case 1/2 verdict keeps its reason.
+    identifiers = catalog_identifiers(current_text) if (chunks and current_text) else set()
     if identifiers:
         labels = _documents_by_label(chunks)
-        allowed = {expected} if expected else _vendors_in_text(established_text)
-        verdicts = {t: _tag_provenance(t, labels, identifiers, allowed) for t in tags}
-        unproven = [t for t in tags if verdicts[t] is False]
-        if reason == "conflict":
-            # Case 1 is never overridden — a vendor conflict stays stripped and
-            # keeps its reason — but it no longer exempts the REST of the reply
-            # from provenance (Codex #5687 F1: a Siemens conflict let an
-            # unrelated vendorless MCC guide ride along).
-            conflicting += [t for t in unproven if t not in conflicting]
-        else:
-            # A Case-2 strip of a tag whose document names the unit is reversed:
-            # the technician established the equipment by typing its catalog number.
-            conflicting = [t for t in conflicting if verdicts[t] is not True]
-            conflicting += [t for t in unproven if t not in conflicting]
-            if unproven:
+        unproven = [
+            t
+            for t in tags
+            if t not in conflicting and _vendorless_tag_unproven(t, labels, identifiers)
+        ]
+        if unproven:
+            conflicting = conflicting + unproven
+            if relevant:
                 relevant, reason = False, "unproven"
-            elif not conflicting:
-                relevant, reason = True, ""
 
     return {
         "relevant": relevant,
@@ -946,10 +803,11 @@ def check_citation_compliance(
 ) -> dict:
     """Inspect a final LLM reply for inline ``[Source: ...]`` citations.
 
-    ``chunks`` (optional) is THIS turn's retrieved chunk snapshot. With it, a tag
-    is also judged on provenance — does the document it names mention the
-    catalog identifier the technician typed (#3049). Without it the gate is
-    exactly the label-based one.
+    ``chunks`` (optional) is THIS turn's retrieved chunk snapshot and
+    ``current_text`` this message with the memory block removed. With both, a
+    tag whose document has no manufacturer is also judged on provenance — does
+    that document name the catalog number typed in this message (#3049).
+    Without them the gate is exactly the label-based one.
 
     Citation is *required* when:
       * the KB returned chunks (``kb_status['status']`` is ``covered`` or
