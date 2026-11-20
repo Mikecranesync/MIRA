@@ -1091,7 +1091,7 @@ describe("currentManualSearchStatus — the polled status carries the acquired m
   const rec = {
     key, state: "complete", started_at: "2026-11-20T00:00:00Z", finished_at: "2026-11-20T00:01:00Z",
     candidate_host: "cdn.automationdirect.com", match_state: "verified", oem_request_url: null,
-    doc_id: "d-gs10", manual_url: URL, identifier_pages: [26], attached_indexed: true,
+    doc_id: "d-gs10", manual_url: URL, identifier_pages: [26], identifier_text: "GS11N-20P2", identifier_kind: "model", attached_indexed: true,
   };
   const src = (docId: string, canChat: boolean) => ({
     docId, enabledByDefault: true, matchState: "verified", sourceRole: "manual", readiness: { canChat }, matchEvidence: { autoAcquisitionKey: key },
@@ -1099,12 +1099,27 @@ describe("currentManualSearchStatus — the polled status carries the acquired m
   const unbound = { identityStatus: "unconfirmed", manufacturer: null, model: null, catalogNumber: null };
   const proposed = { manufacturer: "AutomationDirect", model: "GS11N-20P2" };
 
+  it("Codex r2 F8: a catalog-number record is named as the catalog number in the polled status", async () => {
+    db.readRow = { ...rec, identifier_text: "GS11N-20P2-EX", identifier_kind: "catalog_number" };
+    const r = await currentManualSearchStatus("t", "nb", unbound, proposed, [src("d-gs10", true)] as never, { env: ON });
+    expect(r?.message).toContain("Its text names the catalog number GS11N-20P2-EX on page 26.");
+    expect(r?.message).not.toContain("names the AutomationDirect GS11N-20P2");
+  });
+
+  it("Codex r2 F8: an older record without the identifier claims no page in the polled status", async () => {
+    const { identifier_text: _t, identifier_kind: _k, ...older } = rec;
+    db.readRow = older;
+    const r = await currentManualSearchStatus("t", "nb", unbound, proposed, [src("d-gs10", true)] as never, { env: ON });
+    expect(r?.manualUrl).toBe(URL);
+    expect(r?.message).not.toContain("Its text names");
+  });
+
   it("ready: the acquired PDF is the link and the message names the coverage page", async () => {
     db.readRow = rec;
     const r = await currentManualSearchStatus("t", "nb", unbound, proposed, [src("d-gs10", true)] as never, { env: ON });
     expect(r?.manualUrl).toBe(URL);
     expect(r?.message).toContain("ready");
-    expect(r?.message).toContain("Its text names the AutomationDirect GS11N-20P2 on page 26.");
+    expect(r?.message).toContain("Its text names the model GS11N-20P2 on page 26.");
   });
 
   it("preparing: the acquired PDF is the link, and no page is claimed before the copy is searchable", async () => {
@@ -1113,6 +1128,26 @@ describe("currentManualSearchStatus — the polled status carries the acquired m
     expect(r?.manualUrl).toBe(URL);
     expect(r?.message).not.toMatch(/page 26/);
     expect(r?.message).toMatch(/can't cite its pages yet/);
+  });
+
+  it("Codex r2 F3: an earlier ready source sorted first does not hide the acquired manual's link", async () => {
+    db.readRow = rec;
+    const r = await currentManualSearchStatus("t", "nb", unbound, proposed, [src("d-upload", true), src("d-gs10", true)] as never, { env: ON });
+    expect(r?.manualUrl).toBe(URL);
+    expect(r?.message).toContain("on page 26");
+  });
+
+  it("Codex r2 F3: a saved-but-unsearchable PDF links to the saved PDF, not the page it was discovered on", async () => {
+    db.readRow = {
+      key, state: "search_unavailable", started_at: "2026-11-20T00:00:00Z", finished_at: "2026-11-20T00:01:00Z",
+      candidate_host: "www.automationdirect.com", match_state: null, oem_request_url: null,
+      candidate_url: "https://www.automationdirect.com/gs10-manual", manual_url: URL, ingest_failed: true,
+      attached_indexed: false, linked: true, file_id: "f1", retries: 0,
+    };
+    db.fileLinked = true; // the saved file is still in this notebook's Files
+    const r = await currentManualSearchStatus("t", "nb", unbound, proposed, [] as never, { env: ON });
+    expect(r?.manualUrl).toBe(URL);
+    expect(r?.message).toContain(URL);
   });
 
   it("control: a ready source this search did not acquire gets neither the record's link nor its pages", async () => {
@@ -1309,6 +1344,35 @@ describe("recordFromOutcome reads the real applicability verdict (advisor, #5706
   });
 });
 
+describe("Codex #5706 r2 F8: the coverage claim names the identifier the page prints", () => {
+  const URL_ = "https://cdn.automationdirect.com/static/manuals/gs10m/gs10usermanual.pdf";
+  const pf = { manufacturer: "Allen-Bradley", model: "PowerFlex 525", catalogNumber: "25B-D010N104" };
+  const catalogOnly = assessApplicability({ identity: pf, chunks: [{ content: "25B-D010N104 480 V 10 A", page: 26 }], oemHost: true });
+  const outcome = {
+    status: "complete",
+    payload: { manual: { docId: "d1", indexed: true, attached: true, finalUrl: URL_ }, applicability: catalogOnly, linked: true },
+  } as unknown as ManualAcquisitionOutcome;
+
+  it("a catalog-number verdict is recorded and rendered as the catalog number, never the model", () => {
+    expect(catalogOnly.method).toBe("catalog_number_exact");
+    const rec = recordFromOutcome("K", null, outcome);
+    expect(rec.identifier_kind).toBe("catalog_number");
+    expect(rec.identifier_text).toBe("25B-D010N104");
+    const t = acquisitionDeclineText(rec, "K", "Allen-Bradley PowerFlex 525")!;
+    expect(t).toContain("Its text names the catalog number 25B-D010N104 on page 26.");
+    expect(t).not.toMatch(/names the (model |Allen-Bradley )?PowerFlex 525/);
+  });
+
+  it("an older record without the identifier claims no page", () => {
+    const rec = { ...recordFromOutcome("K", null, outcome) };
+    delete (rec as { identifier_text?: string }).identifier_text;
+    delete (rec as { identifier_kind?: string }).identifier_kind;
+    const t = acquisitionDeclineText(rec, "K", "Allen-Bradley PowerFlex 525")!;
+    expect(t).toContain(URL_);
+    expect(t).not.toContain("Its text names");
+  });
+});
+
 describe("photo-to-manual (2026-11-20): the finished search hands over the manual and its coverage", () => {
   const URL_ = "https://cdn.automationdirect.com/static/manuals/gs10m/gs10usermanual.pdf";
   const LABEL = "AutomationDirect GS11N-20P2";
@@ -1318,7 +1382,7 @@ describe("photo-to-manual (2026-11-20): the finished search hands over the manua
       payload: {
         candidate: { host: "cdn.automationdirect.com", url: URL_ },
         manual: { docId: "d1", fileId: "f1", indexed: true, attached: true, matchState: "verified", finalUrl: URL_ },
-        applicability: { state, identifierPages: pages },
+        applicability: { state, identifierPages: pages, identifier: { kind: "model", text: "GS11N-20P2" } },
         linked: true,
       },
     }) as unknown as ManualAcquisitionOutcome;
@@ -1335,7 +1399,7 @@ describe("photo-to-manual (2026-11-20): the finished search hands over the manua
     const rec = recordFromOutcome("K", null, verifiedOutcome([26]));
     const t = acquisitionDeclineText(rec, "K", LABEL, "candidate")!;
     expect(t).toContain(`Here it is: ${URL_}.`);
-    expect(t).toContain(`Its text names the ${LABEL} on page 26.`);
+    expect(t).toContain("Its text names the model GS11N-20P2 on page 26.");
     expect(t).not.toMatch(/Ask again/);
     const confirmedText = acquisitionDeclineText(rec, "K", LABEL)!;
     expect(confirmedText).toContain(URL_);

@@ -90,6 +90,11 @@ export interface AcquisitionRecord {
   /** Pages of that manual whose text names the exact model or catalog number
    *  (the applicability check's identifier pages; at most a few, ascending). */
   identifier_pages?: number[];
+  /** What those pages print: the identifier text and whether it is the
+   *  catalog number or the model (#5706 r2 F8). A record without it claims
+   *  no page coverage. */
+  identifier_text?: string;
+  identifier_kind?: "catalog_number" | "model";
   /** The manual downloaded and was saved, but could not be made searchable
    *  (a non-scan ingest failure); retried like an unavailable search. */
   ingest_failed?: boolean;
@@ -399,7 +404,7 @@ export function recordFromOutcome(key: string, startedAt: string | null, out: Ma
       candidateApplicability?: unknown;
       completeness?: unknown;
     } | null;
-    applicability?: { state?: unknown; identifierPages?: unknown } | null;
+    applicability?: { state?: unknown; identifierPages?: unknown; identifier?: unknown } | null;
     oemRequestUrl?: unknown;
     searchPageUrl?: unknown;
     warning?: unknown;
@@ -439,6 +444,12 @@ export function recordFromOutcome(key: string, startedAt: string | null, out: Ma
           .filter((n): n is number => typeof n === "number" && Number.isInteger(n) && n > 0)
           .slice(0, 5)
       : [];
+  const ident = p.applicability?.identifier as { kind?: unknown; text?: unknown } | null | undefined;
+  const identText =
+    identifierPages.length && typeof ident?.text === "string" && /^[A-Za-z0-9][A-Za-z0-9 ._\/-]{0,63}$/.test(ident.text.trim())
+      ? ident.text.trim()
+      : null;
+  const identKind = ident?.kind === "catalog_number" || ident?.kind === "model" ? ident.kind : null;
   const transientDownload =
     transientIngest ||
     (downloadReason !== null &&
@@ -461,6 +472,7 @@ export function recordFromOutcome(key: string, startedAt: string | null, out: Ma
     file_id: str(p.manual?.fileId),
     manual_url: str(p.manual?.finalUrl),
     ...(identifierPages.length ? { identifier_pages: identifierPages } : {}),
+    ...(identText && identKind ? { identifier_text: identText, identifier_kind: identKind } : {}),
     ...(out.status === "candidate_review" && p.ingestFailed === true ? { ingest_failed: true } : {}),
     download_reason: downloadReason,
     discovery_rev: DISCOVERY_REVISION,
@@ -1002,6 +1014,19 @@ export { MANUAL_SEARCH_LIMIT_COPY, MANUAL_SEARCH_UNAVAILABLE_COPY };
 
 /** A download handoff is not source admission. Never hand a security-rejected
  * URL to the browser as a workaround for the hardened downloader. */
+/** The saved manual's own link, when it is a public https URL (the same safety
+ *  rules as acquisitionManualUrl). */
+function savedManualUrl(rec: AcquisitionRecord): string | null {
+  const raw = rec.manual_url;
+  if (!raw || /[\\\s<>"']/.test(raw)) return null;
+  try {
+    const url = new URL(raw);
+    return isPublicHttpsUrl(raw) && !isBlockedHost(url.hostname) ? raw : null;
+  } catch {
+    return null;
+  }
+}
+
 export function acquisitionManualUrl(rec: AcquisitionRecord): string | null {
   const downloadableFailure = !rec.download_reason ||
     ["http_error", "network_error", "timeout", "wrong_content_type", "not_pdf", "too_large", "empty_body"].includes(rec.download_reason);
@@ -1016,18 +1041,6 @@ export function acquisitionManualUrl(rec: AcquisitionRecord): string | null {
   return null;
 }
 
-/** The saved manual's own link, when it is a public https URL (the same safety
- *  rules as acquisitionManualUrl). */
-function savedManualUrl(rec: AcquisitionRecord): string | null {
-  const raw = rec.manual_url;
-  if (!raw || /[\\\s<>"']/.test(raw)) return null;
-  try {
-    const url = new URL(raw);
-    return isPublicHttpsUrl(raw) && !isBlockedHost(url.hostname) ? raw : null;
-  } catch {
-    return null;
-  }
-}
 
 /** "page 26" / "pages 26 and 27" / "pages 26, 27 and 30" — the manual's pages
  *  whose text names the exact model (only ever from a verified, indexed copy). */
@@ -1039,11 +1052,19 @@ function pagesPhrase(pages: readonly number[] | undefined): string | null {
 }
 
 /** The found manual and what proves it covers this model, for a completed
- *  search: " Here it is: <url>. Its text names the <label> on page 26." */
-function coverageSentence(rec: AcquisitionRecord, label: string): string {
-  const url = savedManualUrl(rec);
+ *  search: " Here it is: <url>. Its text names the model GS11N-20P2 on page 26." */
+/** " Its text names the model GS11N-20P2 on page 26." — the identifier the
+ *  pages actually print, or nothing for a record that does not carry it. */
+function coverageClaim(rec: AcquisitionRecord): string {
   const pages = pagesPhrase(rec.identifier_pages);
-  return (url ? ` Here it is: ${url}.` : "") + (pages ? ` Its text names the ${label} on ${pages}.` : "");
+  if (!pages || !rec.identifier_text || !rec.identifier_kind) return "";
+  const kind = rec.identifier_kind === "catalog_number" ? "catalog number" : "model";
+  return ` Its text names the ${kind} ${rec.identifier_text} on ${pages}.`;
+}
+
+function coverageSentence(rec: AcquisitionRecord, _label: string): string {
+  const url = savedManualUrl(rec);
+  return (url ? ` Here it is: ${url}.` : "") + coverageClaim(rec);
 }
 
 export function acquisitionDeclineText(
@@ -1243,21 +1264,24 @@ export async function currentManualSearchStatus(
   // search did not acquire (an earlier upload) gets neither: the record's URL
   // and pages describe a different document.
   const acquiredBy = (s: NotebookSource) => Boolean(rec.doc_id) && s.docId === rec.doc_id && rec.key === key;
-  const ready = applicableReadySource(sources, identity);
+  // Prefer the acquired document when it is among the ready sources, so an
+  // earlier ready source sorted first never hides this search's link (r2 F3).
+  const acquiredOnly = sources.filter((s) => acquiredBy(s));
+  const ready = applicableReadySource(acquiredOnly, identity) ?? applicableReadySource(sources, identity);
   if (ready) {
     const mine = acquiredBy(ready);
-    const pages = mine ? pagesPhrase(rec.identifier_pages) : null;
+    const claim = mine ? coverageClaim(rec) : "";
     const pdf = mine ? savedManualUrl(rec) : null;
     return {
       manufacturer,
       model,
       running: false,
-      message: `The ${manufacturer} ${model} manual is ready — I can answer from it.${pages ? ` Its text names the ${manufacturer} ${model} on ${pages}.` : ""}`,
+      message: `The ${manufacturer} ${model} manual is ready — I can answer from it.${claim}`,
       ...(pdf ? { manualUrl: pdf } : {}),
       ...(startedAt ? { startedAt } : {}),
     };
   }
-  const enabledButPreparing = applicableEnabledSource(sources, identity);
+  const enabledButPreparing = applicableEnabledSource(acquiredOnly, identity) ?? applicableEnabledSource(sources, identity);
   if (enabledButPreparing) {
     const pdf = acquiredBy(enabledButPreparing) ? savedManualUrl(rec) : null;
     return {
@@ -1277,6 +1301,8 @@ export async function currentManualSearchStatus(
   // preparing branches above returned), so a "complete" record's manual is off.
   const message = running ? null : acquisitionDeclineText(reconciled, key, `${manufacturer} ${model}`, basis, { sourceOff: true });
   const manualUrl = !running && !reconciled.attached_indexed && !reconciled.source_removed
-    ? acquisitionManualUrl(reconciled) : null;
+    // The PDF this search actually saved (after redirects) beats the page it
+    // was discovered on (Codex #5706 r2 F3).
+    ? savedManualUrl(reconciled) ?? acquisitionManualUrl(reconciled) : null;
   return { manufacturer, model, running, ...(message ? { message } : {}), ...(manualUrl ? { manualUrl } : {}), ...(startedAt ? { startedAt } : {}) };
 }
