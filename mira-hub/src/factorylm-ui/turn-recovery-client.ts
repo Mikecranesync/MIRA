@@ -59,7 +59,7 @@ export type RecoveryObservation = { pointer: RecoveryPointer; value: TurnRecover
 export function followTurnRecoveries(pointers: readonly RecoveryPointer[], deps: {
   read: (pointer: RecoveryPointer, signal: AbortSignal) => Promise<TurnRecovery | null>;
   observe: (observation: RecoveryObservation) => void;
-  terminal: (pointer: RecoveryPointer, value: TurnRecovery) => Promise<boolean | void>;
+  terminal: (pointer: RecoveryPointer, value: TurnRecovery, signal: AbortSignal) => Promise<boolean | void>;
   delayMs?: number; maxWaitMs?: number;
 }): () => void {
   const controller = new AbortController(), pending = [...pointers];
@@ -73,7 +73,7 @@ export function followTurnRecoveries(pointers: readonly RecoveryPointer[], deps:
       value = await deps.read(pointer, controller.signal);
       if (controller.signal.aborted) return;
       deps.observe({ pointer, value });
-      if (value?.state === "complete" && await deps.terminal(pointer, value) !== false) keep = false;
+      if (value?.state === "complete" && await deps.terminal(pointer, value, controller.signal) !== false) keep = false;
       if (value?.state === "interrupted") keep = false;
     } catch { if (controller.signal.aborted) return; }
     if (controller.signal.aborted) return;

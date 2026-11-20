@@ -46,6 +46,13 @@ describe("equipment-bound recovery", () => {
       .toEqual({ kind: "known", equipmentEntityId: "machine-old" });
   });
 
+  it.each(["accepted-A", null])("uses the accepted server binding %s for a legacy request without a client precondition", equipmentEntityId => {
+    const view = recoveryView({ ...row, stale: true, client_request_payload: {}, accepted_context_known: true,
+      accepted_target_known: true, original_equipment_entity_id: equipmentEntityId });
+    expect(view.target).toEqual({ kind: "known", equipmentEntityId });
+    expect(view.canRetry).toBe(true);
+  });
+
   it("carries the recorded component revision and original selection precondition, never a current replacement", () => {
     const view = recoveryView({ ...row, component_id: "component-A", component_revision: "2",
       client_request_payload: { ...row.client_request_payload, componentSelection: { componentId: "component-A", selectionVersion: 4 } } });

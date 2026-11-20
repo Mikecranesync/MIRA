@@ -1906,6 +1906,9 @@ export async function listTurns(
     expectedEquipmentEntityId?: string | null;
     /** Retry proposal reads stop before the immutable original request, before LIMIT. */
     beforeRequestId?: string;
+    /** Exact terminal recovery only: owner + conversation required, one row. */
+    requestId?: string;
+    signal?: AbortSignal;
   } = {},
 ): Promise<
   {
@@ -1931,8 +1934,10 @@ export async function listTurns(
   }[]
 > {
   const viewer = (opts.viewerUserId ?? "").trim() || null;
+  if (opts.requestId && (!viewer || opts.threadId === undefined)) return [];
   const threadId = opts.threadId === undefined ? undefined : storedThreadId(opts.threadId);
   const turns = await withTenantContext(tenantId, async (c) => {
+    if (opts.requestId) await c.query("SET LOCAL statement_timeout = '1500ms'");
     // Take the MOST RECENT `limit` turns (inner DESC), then present them
     // chronologically (outer ASC). A plain `ORDER BY created_at ASC LIMIT n`
     // returns the OLDEST n — so past n turns the recent conversation vanishes
@@ -1941,10 +1946,10 @@ export async function listTurns(
     // Report recall never treats ownerless legacy rows as this technician's
     // disclosures. Filter before LIMIT so they cannot crowd out owned reports.
     const reportRecall = opts.expectedEquipmentEntityId !== undefined;
-    const ownerPredicate = reportRecall
+    const ownerPredicate = reportRecall || opts.requestId
       ? (viewer ? `owner_user_id = $4` : "FALSE")
       : (viewer ? `(owner_user_id = $4 OR owner_user_id IS NULL)` : `owner_user_id IS NULL`);
-    const values: unknown[] = [tenantId, notebookId, limit];
+    const values: unknown[] = [tenantId, notebookId, opts.requestId ? 1 : limit];
     if (viewer) values.push(viewer);
     const threadPredicate = opts.threadId === undefined
       ? ""
@@ -1964,6 +1969,7 @@ export async function listTurns(
         WHERE cutoff.tenant_id=$1::uuid AND cutoff.notebook_id=$2::uuid
           AND cutoff.owner_user_id=$4 AND cutoff.client_request_id=$${beforeParam}::uuid
           AND cutoff.thread_id IS NOT DISTINCT FROM equipment_notebook_turns.thread_id)` : " AND FALSE";
+    const requestPredicate = opts.requestId ? ` AND client_request_id = $${values.push(opts.requestId)}::uuid` : "";
     const res = await c.query(
       `SELECT id, thread_id, question, answer_status, answer_text, evidence, basis, created_at, owner_user_id, client_request_id, equipment_entity_id
          FROM (
@@ -1976,6 +1982,7 @@ export async function listTurns(
               ${threadPredicate}
               ${equipmentPredicate}
               ${beforePredicate}
+              ${requestPredicate}
             ORDER BY created_at DESC
             LIMIT $3
          ) recent
@@ -1996,7 +2003,7 @@ export async function listTurns(
       sharedLegacy: r.owner_user_id == null,
       clientRequestId: r.client_request_id == null ? null : String(r.client_request_id),
     }));
-  });
+  }, { readOnly: true, signal: opts.signal });
 
   // Invariant 3 (085): persisted citations resolve their canonical origin
   // server-side at read time — pre-085 turns carry no originFileId in their

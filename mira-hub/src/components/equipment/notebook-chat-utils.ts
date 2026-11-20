@@ -208,9 +208,14 @@ export function answerContentFor(
 /** #4687 — the opted-in stream opened before the route's handler returned an error
  *  response. The caller treats it exactly like a non-OK HTTP response. */
 export class NotebookHttpError extends Error {
-  constructor(readonly status: number, readonly code: string) {
+  constructor(readonly status: number, readonly code: string, readonly safetyWarning: string | null = null) {
     super(`chat request failed (${status}${code ? ` ${code}` : ""})`);
     this.name = "NotebookHttpError";
+  }
+  static fromBody(status: number, value: unknown): NotebookHttpError {
+    const body = value && typeof value === "object" ? value as Record<string, unknown> : {};
+    return new NotebookHttpError(status, typeof body.code === "string" ? body.code : typeof body.error === "string" ? body.error : "",
+      typeof body.safetyWarning === "string" && body.safetyWarning.length <= 8192 ? body.safetyWarning : null);
   }
 }
 
@@ -258,8 +263,7 @@ export async function readNotebookStream(
         if (frame.kind === "progress") {
           if (PROGRESS_STAGES.has(frame.stage)) opts.onProgress?.(frame.stage);
         } else if (frame.kind === "http_error") {
-          const body = frame.body as { error?: unknown } | null;
-          httpError = new NotebookHttpError(frame.status, typeof body?.error === "string" ? body.error : "");
+          httpError = NotebookHttpError.fromBody(frame.status, frame.body);
           // A refusal is terminal: stop reading so a later transport failure
           // (reset, Stop) can never replace it with an "interrupted answer".
           break read;

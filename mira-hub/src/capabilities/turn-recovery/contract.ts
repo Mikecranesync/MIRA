@@ -1,5 +1,6 @@
 /** Recovery projects the existing turn claim; it never executes or authorizes a retry. */
 import { turnRequestEnvelope } from "./accepted-context";
+import type { listTurns } from "@/lib/equipment-notebooks";
 export type EquipmentExpectation =
   | { kind: "absent" }
   | { kind: "invalid" }
@@ -31,6 +32,7 @@ export type RecoveryRow = {
   answer_text?: string | null; evidence?: unknown[];
   client_request_payload: unknown; created_at: Date | string;
   accepted_context_known?: boolean; original_notebook_identity?: unknown;
+  accepted_target_known?: boolean; original_equipment_entity_id?: string | null;
 };
 
 export function recoveryView(row: RecoveryRow) {
@@ -39,8 +41,13 @@ export function recoveryView(row: RecoveryRow) {
   const state = row.client_request_state === "complete" ? "complete" : row.stale ? "interrupted" : "pending";
   const expected = equipmentExpectation(body);
   // A server-recorded historical binding is stronger than an optional client snapshot.
-  const target: EquipmentExpectation = row.equipment_entity_id !== null
-    ? { kind: "known", equipmentEntityId: row.equipment_entity_id } : expected;
+  const accepted = envelope.acceptedContext;
+  const target: EquipmentExpectation = accepted
+    ? { kind: "known", equipmentEntityId: accepted.target.equipmentEntityId }
+    : row.accepted_target_known === true
+      ? { kind: "known", equipmentEntityId: row.original_equipment_entity_id ?? null }
+      : row.equipment_entity_id !== null
+        ? { kind: "known", equipmentEntityId: row.equipment_entity_id } : expected;
   const visual = record(body.visualEvidence);
   const scope = record(body.componentSelection);
   const hasScope = Object.hasOwn(scope, "componentId") && (scope.componentId === null || typeof scope.componentId === "string")
@@ -71,4 +78,4 @@ export function recoveryView(row: RecoveryRow) {
   };
 }
 
-export type TurnRecovery = ReturnType<typeof recoveryView>;
+export type TurnRecovery = ReturnType<typeof recoveryView> & { turn?: Awaited<ReturnType<typeof listTurns>>[number] | null };

@@ -8,13 +8,11 @@ import { beforeAll, afterAll, beforeEach, describe, expect, it, vi } from "vites
 import { NextRequest, NextResponse } from "next/server";
 import type { Pool } from "pg";
 
-const db = vi.hoisted(() => {
-  const u = new URL(process.env.TEST_DATABASE_URL ?? "http://invalid");
-  if (u.hostname !== "127.0.0.1" || u.port !== "55569" || u.pathname !== "/recovery_5669"
-      || process.env.MIRA_TEST_DB_CONFIRM !== "DISPOSABLE") throw new Error("Owned disposable recovery database required");
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { Pool: PgPool } = require("pg");
-  return { pool: new PgPool({ connectionString: process.env.TEST_DATABASE_URL, max: 5 }) as Pool };
+const db = await vi.hoisted(async () => {
+  const { equipmentTestDatabaseUrl } = await import("../../../scripts/equipment-test-database.mjs");
+  const { Pool: PgPool } = await import("pg");
+  const connectionString = equipmentTestDatabaseUrl(process.env.TEST_DATABASE_URL, process.env.MIRA_TEST_DB_CONFIRM);
+  return { pool: new PgPool({ connectionString, max: 5 }) as Pool };
 });
 vi.mock("@/lib/db", () => ({ default: db.pool }));
 const auth = vi.hoisted(() => {
@@ -57,7 +55,7 @@ describe("round2 recovery real storage regressions", () => {
   }
   async function context(id: string): Promise<AcceptedTurnContext> {
     const nb = await notebooks.getNotebook(tenant, id);
-    return { version: 1, target: { equipmentEntityId: null, notebookIdentity: notebookIdentitySnapshot(nb), manualIdentity: notebookManualIdentity(nb, { state: "unbound" }) },
+    return { version: 1, target: { equipmentEntityId: nb?.asset?.entityId ?? null, notebookIdentity: notebookIdentitySnapshot(nb), manualIdentity: notebookManualIdentity(nb, await notebooks.resolveBoundAsset(tenant, id)) },
       component: null, history: [{ role: "user", content: "Discuss ORIGINAL-PART" }, { role: "assistant", content: "The original part context" }],
       selectionTurnIds: [], subjectQueries: ["ORIGINAL-PART"], subjectOutOfReach: false,
       priorLookRows: [], currentLookRow: null, priorLookFileIds: [], priorReportContext: { content: "ORIGINAL-REPORT", turnIds: [], truncated: false, coverage: "available" } };
@@ -68,14 +66,14 @@ describe("round2 recovery real storage regressions", () => {
     expect(await notebooks.acceptNotebookTurnContext(tenant, id, owner, body.clientRequestId, claim.claimToken, accepted)).toBe(true);
     if (accepted.component) expect(await notebooks.stampClaimedTurnComponent(tenant, id, owner, body.clientRequestId, claim.claimToken, accepted.component.componentId, accepted.component.revision)).toBe(true);
     await notebooks.recordTurn(tenant, id, { question: body.message, answerStatus: "error", answerText: null, evidence: [{ kind: "original_fixture", value: "ORIGINAL-EVIDENCE" }],
-      enabledSourceDocIds: [], model: null, ownerUserId: owner, threadId: body.threadId, clientRequestId: body.clientRequestId, claimToken: claim.claimToken });
+      enabledSourceDocIds: [], model: null, equipmentEntityId: accepted.target.equipmentEntityId, ownerUserId: owner, threadId: body.threadId, clientRequestId: body.clientRequestId, claimToken: claim.claimToken });
     return claim;
   }
   const row = async (requestId: string) => (await db.pool.query("SELECT to_jsonb(t) AS row FROM equipment_notebook_turns t WHERE client_request_id=$1", [requestId])).rows[0]?.row;
 
   beforeAll(async () => {
     process.env.NOTEBOOK_SEMANTIC_CHECK = "0";
-    vi.stubGlobal("fetch", (async (input, init) => {
+    vi.stubGlobal("fetch", (async (input) => {
       if (String(input) !== "https://controlled-provider.invalid") throw new Error("External request forbidden");
       provider.calls++;
       return new Response('data: {"choices":[{"delta":{"content":"The original part remains the question."}}]}\n\ndata: [DONE]\n\n');
@@ -112,6 +110,50 @@ describe("round2 recovery real storage regressions", () => {
     const direct = await post(nb, body);
     expect(direct.status).toBe(409);
     expect(await direct.json()).toMatchObject({ error: "notebook_identity_changed" });
+    expect(provider.calls).toBe(0);
+  });
+
+  it.each(["full-body", "envelope"])("round3 F2 fences the server-accepted instance for legacy %s retries, including explicit null", async transport => {
+    for (const unbound of [false, true]) {
+      const nb = await notebook(), a = uuid(), b = uuid();
+      await db.pool.query(`INSERT INTO kg_entities(tenant_id,entity_type,entity_id,name,approval_state,uns_path)
+        VALUES($1,'equipment',$2,'GS10 drive A ' || $2,'verified','factory.driveA'::ltree),($1,'equipment',$3,'GS10 drive B ' || $3,'verified','factory.driveB'::ltree)`, [tenant, a, b]);
+      if (!unbound) await db.pool.query("UPDATE equipment_notebooks SET equipment_entity_id=$2,asset_confirmed_at=now(),asset_selected_via='asset_picker' WHERE id=$1", [nb, a]);
+      const originalBody = bodyFor(uuid());
+      const body = Object.fromEntries(Object.entries(originalBody).filter(([key]) => key !== "expectedEquipmentEntityId")) as Omit<typeof originalBody, "expectedEquipmentEntityId">;
+      await acceptedFailure(nb, body as ReturnType<typeof bodyFor>, await context(nb));
+      const original = await row(body.clientRequestId);
+      await db.pool.query("UPDATE equipment_notebooks SET equipment_entity_id=$2,asset_confirmed_at=now(),asset_selected_via='asset_picker' WHERE id=$1", [nb, b]);
+      const response = await post(nb, transport === "full-body" ? body : { retryRequestId: body.clientRequestId, threadId: body.threadId });
+      expect(response.status).toBe(409);
+      expect(await response.json()).toMatchObject({ error: "equipment_binding_changed" });
+      const after = await row(body.clientRequestId);
+      for (const key of ["question", "answer_text", "evidence", "component_id", "component_revision", "equipment_entity_id", "client_request_payload", "created_at"]) expect(after[key]).toEqual(original[key]);
+      expect(await readTurnRecovery(tenant, nb, owner, body.threadId, body.clientRequestId)).toMatchObject({ target: { kind: "known", equipmentEntityId: unbound ? null : a }, currentEquipmentEntityId: b });
+      expect(provider.calls).toBe(0);
+    }
+  });
+
+  it("round3 F1/F3 delivers smoke after an exact component is reselected while retaining original attribution and evidence", async () => {
+    const nb = await notebook();
+    const revision = readRevisionInput({ rawLabel: "Drive", inputKind: "typed", manufacturer: "AutomationDirect", family: "GS10", catalogNumber: "GS11N-10P2" }, true);
+    if ("error" in revision) throw new Error(revision.error);
+    const added = await addComponent(tenant, nb, owner, { clientRequestId: uuid(), kind: "drive", origin: "technician", position: null, revision });
+    if (!("component" in added)) throw new Error("fixture component failed");
+    const picked = await setSelection(tenant, nb, owner, "round2", { componentId: added.component.id, via: "picker", expectedVersion: null, expectedRevision: 1, clientRequestId: uuid() });
+    if (!("selection" in picked) || !picked.selection) throw new Error("fixture pick failed");
+    const body = { ...bodyFor(uuid()), mode: "grounded", message: "There is smoke coming from the drive panel", componentSelection: { threadId: "round2", componentId: added.component.id, selectionVersion: picked.selection.version } };
+    const accepted = await context(nb); accepted.component = { componentId: added.component.id, revision: 1, selection: picked.selection };
+    await acceptedFailure(nb, body, accepted);
+    const original = await row(body.clientRequestId);
+    const pickedAgain = await setSelection(tenant, nb, owner, "round2", { componentId: added.component.id, via: "return", expectedVersion: picked.selection.version, expectedRevision: 1, clientRequestId: uuid() });
+    if (!("selection" in pickedAgain)) throw new Error("fixture reselect failed");
+    const response = await post(nb, { retryRequestId: body.clientRequestId, threadId: "round2" });
+    expect(response.status).toBe(409);
+    expect(await response.text()).toContain("⚠️");
+    const after = await row(body.clientRequestId);
+    for (const key of ["question", "answer_text", "answer_status", "evidence", "component_id", "component_revision", "equipment_entity_id", "client_request_payload", "created_at"]) expect(after[key]).toEqual(original[key]);
+    expect(await getSelection(tenant, nb, owner, "round2")).toEqual(pickedAgain.selection);
     expect(provider.calls).toBe(0);
   });
 

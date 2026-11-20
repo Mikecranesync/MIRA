@@ -161,6 +161,25 @@ describe("request recovery HTTP/PostgreSQL", () => {
     expect((await listTurns(tenant, notebook, 50, { viewerUserId: owner, threadId: thread })).find(row => row.clientRequestId === id)?.question).toBe("Large original");
   });
 
+  it("F5 hydrates an exact owned terminal request outside the recent fifty, without widening discovery", async () => {
+    const id = uuid();
+    await db.pool.query(`INSERT INTO equipment_notebook_turns(notebook_id,tenant_id,owner_user_id,thread_id,question,answer_status,
+      answer_text,evidence,client_request_id,client_request_state,created_at)
+      VALUES($1,$2,$3,$4,'Old exact question','answered','ORIGINAL-EXACT-ANSWER','[]'::jsonb,$5,'complete',now()-interval '1 day')`,
+      [notebook, tenant, owner, thread, id]);
+    for (let i = 0; i < 55; i++) await recordTurn(tenant, notebook, { question: `Later ${i}`, answerStatus: "answered", answerText: "Later answer",
+      enabledSourceDocIds: [], evidence: [], model: null, ownerUserId: owner, threadId: thread });
+    expect((await listTurns(tenant, notebook, 50, { viewerUserId: owner, threadId: thread })).some(t => t.clientRequestId === id)).toBe(false);
+    const response = await read("owner", `?threadId=${thread}&includeTurn=1`, id);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ state: "complete", turn: { clientRequestId: id, question: "Old exact question", answerText: "ORIGINAL-EXACT-ANSWER", sharedLegacy: false } });
+    expect((await (await read("owner", `?threadId=${thread}`, id)).json()).turn).toBeUndefined();
+    for (const actor of ["other", "foreign"]) expect((await read(actor, `?threadId=${thread}&includeTurn=1`, id)).status).toBe(404);
+    expect((await read("owner", "?threadId=other-thread&includeTurn=1", id)).status).toBe(404);
+    expect((await read("owner", `?threadId=${thread}&includeTurn=all`, id)).status).toBe(400);
+    expect((await read("owner", `?threadId=${thread}&includeTurn=1&includeTurn=1`, id)).status).toBe(400);
+  });
+
   it("keeps an accepted stale pending question when its recovered execution is later refused", async () => {
     const id = uuid(), body = { clientRequestId: id, message: "Stale original", threadId: thread, expectedEquipmentEntityId: "machine-A", sourceDocIds: [] };
     const first = await claimNotebookTurnRequest(tenant, notebook, { ownerUserId: owner, clientRequestId: id, question: body.message, threadId: thread, requestPayload: body });

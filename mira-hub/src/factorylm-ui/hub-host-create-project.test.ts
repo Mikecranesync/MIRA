@@ -82,7 +82,7 @@ describe("project creation does not wait for sidebar refresh", () => {
     const setSelection = vi.fn();
     const select = callback("select", {selectionRef, abortRef:{current:null}, uploadAbortRef:{current:null},
       detailGate:latestRequestGate(), detailAbortRef:{current:null}, setDetail:noop, setLive:noop,
-      setRecoveries: vi.fn(),
+      setRecoveries: vi.fn(), setPinnedTurns: vi.fn(),
       setFailedBody:noop, manualSearchDriverRef:{current:null}, setFollow:noop, syncThread:noop,
       setSelection, writeSearch:noop, searchForSelection:()=>""});
     const chosen={notebookId:"created-project",threadId:"new-thread"};

@@ -4,7 +4,8 @@
 import { readFileSync } from "node:fs";
 import ts from "typescript";
 import { describe, expect, it, vi } from "vitest";
-import { prepareChatSend, createBenchSendGate, SEND_BLOCKED_MESSAGE, isScopeRefusalCode, withoutScope, parseComponentFrames } from "./bench-components-logic";
+import { prepareChatSend, createBenchSendGate, SEND_BLOCKED_MESSAGE, isScopeRefusalCode, withoutScope, parseComponentFrames, expectsComponentFrame } from "./bench-components-logic";
+import { LEGACY_THREAD_ID } from "./notebook-tree";
 import { withLivingSheetRider, chatBodyFor, errorMessageFor, sendFailureMessage, retainedStreamInterruption } from "./hub-host-logic";
 import { draftAfterSendFailed, readRecoveryPointer, recoveryPointerKey } from "./turn-recovery-client";
 import { notebookIdentitySnapshot } from "@/capabilities/turn-recovery/accepted-context";
@@ -12,7 +13,7 @@ import { draftAfterSendSucceeded } from "./hub-host-logic";
 import { NotebookHttpError, readNotebookStream } from "@/components/equipment/notebook-chat-utils";
 import { partsFromStream } from "./to-interaction";
 
-function realSend(draft: string, scopeRefusal = false, succeed = false) {
+function realSend(draft: string, scopeRefusal = false, succeed = false, refusalCode = "selection_changed") {
   const source = readFileSync(new URL("./hub-host.tsx", import.meta.url), "utf8");
   const parsed = ts.createSourceFile("host.tsx", source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   let initializer = "";
@@ -24,8 +25,10 @@ function realSend(draft: string, scopeRefusal = false, succeed = false) {
   const sel = { notebookId: "notebook", threadId: "thread" };
   const dispatch = vi.fn(), fetch = vi.fn(async () => succeed
     ? new Response('data: {"kind":"content","content":"Question B answer"}\n\ndata: {"kind":"status","status":"answered"}\n\ndata: [DONE]\n\n', { headers: { "content-type": "text/event-stream" } })
-    : ({ ok: false, status: 409, body: null, json: async () => ({ error: "selection_changed" }) }));
+    : ({ ok: false, status: 409, body: null, json: async () => ({ error: refusalCode }) }));
   const setFailedBody = vi.fn();
+  let liveState: Record<string, unknown> | null = null;
+  const setLive = vi.fn((next: Record<string, unknown> | null | ((previous: Record<string, unknown> | null) => Record<string, unknown> | null)) => { liveState = typeof next === "function" ? next(liveState) : next; });
   const data = new Map<string, string>();
   const storage = { get length() { return data.size; }, key: (index: number) => [...data.keys()][index] ?? null,
     getItem: (key: string) => data.get(key) ?? null, setItem: (key: string, value: string) => { data.set(key, value); }, removeItem: (key: string) => { data.delete(key); } };
@@ -35,16 +38,16 @@ function realSend(draft: string, scopeRefusal = false, succeed = false) {
     draftRef: { current: draft }, livingSheetJob: null, recoveryActor: "owner",
     prepareChatSend: scopeRefusal ? ({ body }: { body: object }) => ({ ok: true, body: { ...body, componentSelection: { threadId: "thread", componentId: null, selectionVersion: null } } }) : prepareChatSend,
     withLivingSheetRider, draftAfterSendFailed, draftAfterSendSucceeded, notebookIdentitySnapshot, SEND_BLOCKED_MESSAGE, readRecoveryPointer, isScopeRefusalCode, withoutScope,
-    errorMessageFor, sendFailureMessage, retainedStreamInterruption, NotebookHttpError, readNotebookStream, partsFromStream, parseComponentFrames,
+    errorMessageFor, sendFailureMessage, retainedStreamInterruption, NotebookHttpError, readNotebookStream, partsFromStream, parseComponentFrames, LEGACY_THREAD_ID, expectsComponentFrame,
     recoveryPointerKey, window: { localStorage: storage }, API_BASE: "", abortRef: { current: null },
-    selectionRef: { current: sel }, setFailedBody, setSettledFollowups: vi.fn(), setLive: vi.fn(), setBusy: vi.fn(),
+    selectionRef: { current: sel }, setFailedBody, setSettledFollowups: vi.fn(), setLive, setBusy: vi.fn(),
     setComponentFrame: vi.fn(), setRecoveries: vi.fn(), setRecoveryEpoch: vi.fn(), setSignedOut: vi.fn(), setBenchView: vi.fn(),
-    dropOutgoing: vi.fn(), outgoingOwner: { current: null }, dispatch, fetch,
+    dropOutgoing: vi.fn(), outgoingOwner: { current: null }, dispatch, fetch, hydrateRecovery: async () => null,
     setBenchRefresh: vi.fn(), loadDetail: vi.fn(), loadNotebooks: vi.fn(),
   };
   const compiled = ts.transpileModule(`const send = ${initializer};`, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } }).outputText;
   const send = new Function(...Object.keys(deps), "useCallback", `${compiled}\nreturn send;`)(...Object.values(deps), (fn: unknown) => fn);
-  return { send, dispatch, fetch, sel, setFailedBody, data };
+  return { send, dispatch, fetch, sel, setFailedBody, data, liveState: () => liveState };
 }
 
 describe("F4 actual host send-gate refusal", () => {
@@ -111,5 +114,65 @@ describe("actual host Retry chooses its own request", () => {
     const h = retryCallback([], []);
     h.retry("live-B-a");
     expect(h.send).toHaveBeenCalledWith({ message: "Question B" }, "Question B", expect.anything(), "retry", undefined);
+  });
+});
+
+describe("native round3 live recovery regressions", () => {
+  it("F6 retains an existing recovered photo/target pointer after a direct409", async () => {
+    const h = realSend("Unrelated draft", true, false, "equipment_binding_changed");
+    const a = { notebookId: "notebook", threadId: "thread", requestId: "original-A", question: "Question A" };
+    const key = recoveryPointerKey("owner", a.notebookId, a.threadId, a.requestId);
+    h.data.set(key, JSON.stringify(a));
+    await h.send(chatBodyFor(a.question, [], [], h.sel), a.question, h.sel, "retry", a.requestId);
+    expect(h.fetch).toHaveBeenCalledTimes(1);
+    expect(h.data.has(key)).toBe(true);
+    expect(h.dispatch.mock.calls.some(([action]) => action.type === "set-draft")).toBe(false);
+  });
+  it("F5 keeps a successfully streamed answer until its exact persisted row can take over", async () => {
+    const h = realSend("", true, true);
+    await h.send(chatBodyFor("Question outside recent history", [], [], h.sel), "Question outside recent history", h.sel, "retry", "old-request");
+    expect(h.fetch).toHaveBeenCalledTimes(1);
+    expect(h.liveState()).not.toBeNull();
+    expect(h.liveState()?.content).toBe("Question B answer");
+  });
+});
+
+function terminalCallback(liveRequestId: string) {
+  const source = readFileSync(new URL("./hub-host.tsx", import.meta.url), "utf8");
+  const parsed = ts.createSourceFile("host.tsx", source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  let initializer = "";
+  const visit = (node: ts.Node) => {
+    if (ts.isCallExpression(node) && node.expression.getText(parsed) === "followTurnRecoveries") {
+      const options = node.arguments[1] as ts.ObjectLiteralExpression;
+      initializer = (options.properties.find(p => p.name?.getText(parsed) === "terminal") as ts.PropertyAssignment).initializer.getText(parsed);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(parsed);
+  let live: { requestId: string } | null = { requestId: liveRequestId };
+  const selection = { notebookId: "notebook", threadId: "thread" }, requestId = "original-A";
+  const pointer = { ...selection, requestId, question: "Question A" };
+  const drop = vi.fn();
+  const deps = { isCurrent: () => true, selection, loadDetail: async () => true,
+    detailRef: { current: { turns: [{ id: "saved-A", clientRequestId: requestId }] } }, hydrateRecovery: async () => ({ id: "saved-A", clientRequestId: requestId }),
+    removeRecoveryPointer: vi.fn(), window: { localStorage: {} }, recoveryActor: "owner", setRecoveries: vi.fn(),
+    setLive: (fn: (previous: typeof live) => typeof live) => { live = fn(live); },
+    outgoingOwner: { current: { id: "outgoing-A", requestId }, drop }, dropOutgoing: drop };
+  const compiled = ts.transpileModule(`const terminal = ${initializer};`, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } }).outputText;
+  const terminal = new Function(...Object.keys(deps), `${compiled}\nreturn terminal;`)(...Object.values(deps));
+  return { terminal, pointer, live: () => live, drop };
+}
+
+describe("native round3 late persistence", () => {
+  it("F4 retires the matching stopped live exchange after its authoritative row arrives", async () => {
+    const h = terminalCallback("original-A");
+    await h.terminal(h.pointer, { state: "complete", answerStatus: "error" });
+    expect(h.live()).toBeNull();
+    expect(h.drop).toHaveBeenCalledWith("outgoing-A");
+  });
+  it("does not retire another request's live exchange", async () => {
+    const h = terminalCallback("newer-B");
+    await h.terminal(h.pointer, { state: "complete", answerStatus: "answered" });
+    expect(h.live()).toEqual({ requestId: "newer-B" });
   });
 });

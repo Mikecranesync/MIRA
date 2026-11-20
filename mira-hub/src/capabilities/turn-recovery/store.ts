@@ -42,6 +42,11 @@ async function readRecoveryRow(
               ${boundedPayload} AS client_request_payload, t.created_at,
               (NOT (t.client_request_payload ? 'message') AND t.client_request_payload->>'format'='notebook-turn/v1'
                 AND t.client_request_payload->'acceptedContext'->>'version'='1') AS accepted_context_known,
+              (NOT (t.client_request_payload ? 'message') AND t.client_request_payload->>'format'='notebook-turn/v1'
+                AND t.client_request_payload->'acceptedContext'->>'version'='1'
+                AND jsonb_typeof(t.client_request_payload #> '{acceptedContext,target,equipmentEntityId}') IN ('string','null')
+                AND octet_length((t.client_request_payload #> '{acceptedContext,target,equipmentEntityId}')::text) <= 514) AS accepted_target_known,
+              left(t.client_request_payload #>> '{acceptedContext,target,equipmentEntityId}',512) AS original_equipment_entity_id,
               CASE WHEN NOT (t.client_request_payload ? 'message') AND t.client_request_payload->>'format'='notebook-turn/v1'
                 THEN jsonb_build_object('version',1,
                   'manufacturer', left(t.client_request_payload #>> '{acceptedContext,target,notebookIdentity,manufacturer}',512),
