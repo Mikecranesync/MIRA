@@ -75,7 +75,7 @@ import { NewProjectSetup } from "./NewProjectSetup";
 import { PendingManuals } from "./PendingManuals";
 import { ParkedSources } from "./ParkedSources";
 import { clearSheetDataForSignOut, localStorageStore, parseSheetReceipts } from "./living-sheet-client";
-import { actionsCoveredByLayer, notebookActionsStyle } from "./notebook-actions";
+import { actionsCoveredByLayer, NOTEBOOK_ACTIONS_CSS, notebookActionsStyle } from "./notebook-actions";
 import { BenchComponents } from "./BenchComponents";
 import { SEND_BLOCKED_MESSAGE, benchSendRefusal, createBenchSendGate, expectsComponentFrame, isScopeRefusalCode, parseComponentFrames, prepareChatSend, heldEvidenceNote, heldQuestionForSend, recordBenchScope, retryTargetCheck, targetReviewMessage, withoutScope, type BenchScopes, type BenchState, type ComponentTurnFrame, type ScopeField } from "./bench-components-logic";
 import { LEGACY_THREAD_ID, notebookMachines, notebookProjects, threadRefFromItem, notebookIdFromProject, type HubNotebook } from "./notebook-tree";
@@ -1247,6 +1247,7 @@ export function HubShellHost() {
       {/* The notebook's action buttons share one column below the guided-procedure pill, each in its
           own row, so Machine state and Work Packet never cover each other (#5102). */}
       <div data-testid="notebook-actions" data-covered={actionsCovered ? "true" : undefined} aria-hidden={actionsCovered || undefined} style={notebookActionsStyle(actionsCovered)}>
+      <style>{NOTEBOOK_ACTIONS_CSS}</style>
       {/* Equipment-first navigation (MIRA_EQUIPMENT_NAV): renders nothing while the flag is off. */}
       <EquipmentNav
         origin={equipmentOrigin}

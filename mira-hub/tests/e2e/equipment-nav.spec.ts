@@ -651,6 +651,45 @@ test("on a short landscape screen, Send still sends with a full equipment list o
   await expect(checklist(page)).toHaveCount(0);
 });
 
+test("on a tablet with the panel open, a tap on Send goes through the actions column's empty area; its rows still take taps (#5658, #5667)", async ({ page, context, baseURL }) => {
+  // The Galaxy Tab S9 FE in landscape. On the device the rows below the panel (Whole machine, Prepare
+  // job, Job sheet) stretch the actions column down over Send and its empty box took the tap. Those
+  // rows need their own feature flags, so here the column is stretched to the bottom the same way.
+  await page.setViewportSize({ width: 1316, height: 648 });
+  await auth(context, baseURL!);
+  await routes(page, { enabled: true, resolve: "resolved", fullPage: 50 });
+  await page.goto(`/v3/?notebook=${NB}&thread=${THREAD}`);
+  // Send is refused until the notebook detail and the component read are in. The grounding line shows the
+  // detail is in; the checklist listing its rows shows the component read is in (then shut it).
+  await expect(page.getByText(/Answers cite \d+ selected sources? for /)).toBeVisible();
+  await page.getByTestId("bench-asking-about").click();
+  await expect(checklistRow(page, VFD)).toBeVisible();
+  await page.getByTestId("bench-asking-about").click();
+  await expect(checklist(page)).toHaveCount(0);
+  await expect(panel(page)).toBeVisible();
+  await panel(page).getByRole("button", { name: "Find equipment" }).click();
+  await row(page, `notebook:${NB}`).click();
+  await expect(row(page, "notebook_component:00000000-0000-4000-8000-000000000049")).toBeAttached();
+  await composer(page).fill("does the drive have power");
+  const column = page.getByTestId("notebook-actions");
+  await column.evaluate((el) => {
+    (el as HTMLElement).style.minHeight = `${window.innerHeight - el.getBoundingClientRect().top}px`;
+  });
+  const send = (await page.getByRole("button", { name: "Send", exact: true }).boundingBox())!;
+  const [x, y] = [send.x + send.width / 2, send.y + send.height / 2];
+  const col = (await column.boundingBox())!;
+  expect(x > col.x && x < col.x + col.width && y > col.y && y < col.y + col.height, "the column's box covers Send").toBe(true);
+  const onTop = await page.evaluate(([px, py]) => document.elementFromPoint(px, py)?.closest('button[aria-label="Send"]') !== null, [x, y]);
+  expect(onTop, "Send is on top at its own middle").toBe(true);
+  const sent = page.waitForRequest((r) => r.method() === "POST" && /\/chat\/?$/.test(new URL(r.url()).pathname), { timeout: 5_000 });
+  await page.mouse.click(x, y);
+  await sent;
+  // Control: the column's own rows still take taps.
+  const close = (await panel(page).getByRole("button", { name: "Close equipment" }).boundingBox())!;
+  await page.mouse.click(close.x + close.width / 2, close.y + close.height / 2);
+  await expect(panel(page).getByRole("button", { name: "Find equipment" })).toBeVisible();
+});
+
 /** Open a full list with an offer and a refusal above it at 800×350, so the panel itself must scroll. */
 async function openCrowdedShortPanel(page: Page, context: BrowserContext, baseURL: string) {
   await page.setViewportSize({ width: 800, height: 350 });
