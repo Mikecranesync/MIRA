@@ -14,6 +14,7 @@ vi.mock("@/lib/tenant-context", () => ({ withTenantContext }));
 
 import { SAME_SERIAL_DEADLINE_MS, SAME_SERIAL_LIMIT, SAME_SERIAL_SQL, sameSerialAdvisory, usableSerial } from "../same-serial";
 import type { StoredRevision } from "../store";
+import { classifyAsset } from "@/lib/contextualization/asset-matcher";
 
 const TENANT = "11111111-1111-4111-8111-111111111111";
 const SAVED_ID = "44444444-4444-4444-8444-444444444444";
@@ -99,12 +100,41 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+describe("a filler serial is no identity for the warning, at any length (#5661 B1)", () => {
+  it.each([["000000"], ["0000000000"], ["00-00-00"], ["0 0 0 0 0 0 0"], ["xxxxxx"], ["XXXXXXXX"], ["x-x-x-x"]])(
+    "same serial: %j is filler, so the warning has nothing to compare",
+    (filler) => {
+      expect(usableSerial(filler)).toBe(false);
+    },
+  );
+
+  it.each([["0000001"], ["100000"], ["X000"], ["00X00"], ["xx7"], ["0x0"], ["A000000"]])(
+    "MISSED-WARNING GUARD: %j only contains zeros or x's and is still a real serial",
+    (real) => {
+      expect(usableSerial(real)).toBe(true);
+    },
+  );
+
+  // The rule is the warning's own. In the shared matcher it would also read an all-zero asset number
+  // as absent, and an absent value cannot disagree: two units kept apart by their asset numbers
+  // would become one existing asset (#5663 review F1).
+  it("the shared matcher is as it was: asset numbers 000001 and 000000 still keep two units apart when their serials agree", () => {
+    const m = classifyAsset(
+      { assetNumber: "000001", serialNumber: "AB-123" },
+      [{ id: "other-unit", assetNumber: "000000", serialNumber: "AB-123" }],
+    );
+    expect(m.conflictFields).toEqual(["assetNumber"]);
+    expect(m.strength).toBe("none");
+    expect(m.decision).toBe("draft_asset");
+  });
+});
+
 describe("same serial: which serials the warning can use", () => {
-  it.each([["AB12345"], ["abc"], ["ab-1"], ["000000"]])("same serial: %j is usable", (s) => {
+  it.each([["AB12345"], ["abc"], ["ab-1"], ["0000001"], ["100000"], ["00X00"]])("same serial: %j is usable", (s) => {
     expect(usableSerial(s)).toBe(true);
   });
 
-  it.each([["ab"], ["a-b"], ["---"], ["   "], [""], [null], [undefined], ["N/A"], ["unknown"], ["0000"], ["xxx"]])(
+  it.each([["ab"], ["a-b"], ["---"], ["   "], [""], [null], [undefined], ["N/A"], ["unknown"], ["0000"], ["xxx"], ["000000"], ["00-00-00-00"], ["XXXXXXX"]])(
     "same serial: %j is not usable (too short or a placeholder)",
     (s) => {
       expect(usableSerial(s as string | null | undefined)).toBe(false);
@@ -205,7 +235,7 @@ describe("same serial: when it does not look", () => {
     expect(withTenantContext).not.toHaveBeenCalled();
   });
 
-  it.each([["N/A"], ["0000"], ["ab"], [null]])("same serial: a confirmed component with serial %j has nothing usable to compare and nothing is read", async (serialNumber) => {
+  it.each([["N/A"], ["0000"], ["000000"], ["XXXXXXX"], ["ab"], [null]])("same serial: a confirmed component with serial %j has nothing usable to compare and nothing is read", async (serialNumber) => {
     expect(await sameSerialAdvisory(TENANT, saved({ serialNumber }))).toEqual({ status: "not_checked", reason: "no_usable_serial" });
     expect(withTenantContext).not.toHaveBeenCalled();
   });
