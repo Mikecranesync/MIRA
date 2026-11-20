@@ -729,7 +729,10 @@ function coverageOf(asked: ModelNumber, heading: string, filename: string, writt
   }
   if (declared === null) return { kind: "coverage-not-shown" };
   const cover = declared;
-  if (onFile.length > 0 && !onFile.some((f) => cover.some((c) => c.key === f.key))) return { kind: "cover-and-file-disagree" };
+  // Beside a cover that lists models, a publication number written with
+  // underscores names the document too: the cover is the evidence here.
+  const besideCover = familyOn(withoutPublicationNumbers(stemOf(filename), FILE_PUBLICATION_ANY_SEPARATOR_RE));
+  if (besideCover.length > 0 && !besideCover.some((f) => cover.some((c) => c.key === f.key))) return { kind: "cover-and-file-disagree" };
   return cover.some(isAsked) ? { kind: "covers" } : { kind: "other-model", declared: [...new Set(cover.map((c) => c.label))] };
 }
 
@@ -788,16 +791,25 @@ const isPublicationNumber = (n: ModelNumber) => n.label.split("-").some((part) =
  *  the whole signature is a model: "1234-BR100.pdf" (no suffix),
  *  "PM800-EN-P.pdf" (nothing in front), "1234-AB123-US-A.pdf" (not a
  *  publication type). Stated limit: a PRODUCT whose name has that whole shape
- *  ("1234-SR750-EN-P.pdf") is taken for a document, and the cover decides.
- *  Mike's plan of 2026-11-19 (item 3, "an '_' in a file name"): the language
- *  and the format may follow an underscore instead of a hyphen
- *  ("2080-IN009B_EN_P.pdf"). The groups in front keep their hyphens, and
- *  are kept, so a model written there is still read. */
+ *  ("1234-SR750-EN-P.pdf") is taken for a document. A cover that lists models
+ *  still decides; a cover that names none answers for any number of the family. */
 const FILE_PUBLICATION_RE = new RegExp(
+  `((?:[A-Za-z0-9]+-)+)${PUBLICATION_PART_RE.source.replace(/^\^|\$$/g, "")}-[A-Za-z]{2}-[A-Za-z](?![A-Za-z0-9])`,
+  "gi",
+);
+/** Mike's plan of 2026-11-19 (item 3, "an '_' in a file name"): the same
+ *  signature with the language and the format after an underscore
+ *  ("2080-IN009B_EN_P.pdf"). The groups in front keep their hyphens, and are
+ *  kept, so a model written there is still read. Used ONLY beside a cover that
+ *  lists models (coverageOf): with a cover that names none, the file name is
+ *  the only evidence, and taking a product-shaped name ("1234-PM800_EN_P.pdf")
+ *  for a document there would answer for every sibling. */
+const FILE_PUBLICATION_ANY_SEPARATOR_RE = new RegExp(
   `((?:[A-Za-z0-9]+-)+)${PUBLICATION_PART_RE.source.replace(/^\^|\$$/g, "")}[-_][A-Za-z]{2}[-_][A-Za-z](?![A-Za-z0-9])`,
   "gi",
 );
-const withoutPublicationNumbers = (stem: string) => stem.replace(FILE_PUBLICATION_RE, (_whole, front: string) => `${front.slice(0, -1)} `);
+const withoutPublicationNumbers = (stem: string, signature: RegExp = FILE_PUBLICATION_RE) =>
+  stem.replace(signature, (_whole, front: string) => `${front.slice(0, -1)} `);
 
 /**
  * The model or catalog numbers a cover DECLARES as its own product, when no
@@ -983,10 +995,10 @@ const shortOf = (asked: string, declared: string) =>
  * its safety and scope checks on the message text, and a "yes" turn would
  * answer the earlier question with those checks run on "yes".
  *
- * Null unless the asked number is one number of the question's (or of an
- * earlier question's) and the covers declare another model: never for the
- * notebook's own record (that record needs correcting), a photo reading, or
- * any other reason. `declared` is every refused manual's, so two equally near
+ * Null unless exactly one asked number failed against the covers (a number no
+ * selected manual knows anything about is not one of them) and the covers
+ * declare another model: never for the notebook's own record (that record
+ * needs correcting), a photo reading, or any other reason. `declared` is every refused manual's, so two equally near
  * models across the selected manuals give no suggestion. Stated cost: a
  * sibling one digit away (RX420 asked, RX410 declared) reads exactly like a
  * typo and is asked about too; the reply says to check the plate.

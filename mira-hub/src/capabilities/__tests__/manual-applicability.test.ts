@@ -337,6 +337,29 @@ describe("a file saved under its publication number (#5465)", () => {
     // Not a publication type, with underscores: still a product's name.
     expect(kindOf(verdict("Supply voltage for 1234-AB124?", "Northfield 1234-AB124 Drive\nHardware User Guide", "1234-AB123_US_A.pdf"))).toBe("cover-and-file-disagree");
   });
+  // Review of #5671 (Claude reviewing Claude, PARTIAL), finding 1: the
+  // underscore spelling is read as a document's number only beside a cover
+  // that lists models. With a cover that names none, the file name is the only
+  // evidence, and reading a product-shaped name ("1234-PM800_EN_P.pdf") as a
+  // document would let that cover answer for every sibling.
+  it("with a cover that names no model, an underscore file name is read as before: it is the only evidence, and refuses a sibling", () => {
+    // Precondition: the cover is silent about these families, so the file name alone decides.
+    for (const n of ["PM850", "1234-AB123", "1234-BR200", "2080-LC20-20QWB"]) {
+      expect(kindOf(verdict(`Supply voltage for ${n}?`, GENERIC, "manual.pdf")), n).toBe("answers");
+    }
+    expect(verdict("Supply voltage for PM850?", GENERIC, "1234-PM800_EN_P.pdf")).toEqual({ admit: false, kind: "coverage-not-shown", asked: ["PM850"], declared: [] });
+    expect(verdict("Supply voltage for 1234-AB123?", GENERIC, "1234-SR750_EN_P.pdf")).toEqual({ admit: false, kind: "coverage-not-shown", asked: ["1234-AB123"], declared: [] });
+    expect(verdict("Supply voltage for 1234-BR200?", GENERIC, "1234-BR100_is_a_copy.pdf")).toEqual({ admit: false, kind: "coverage-not-shown", asked: ["1234-BR200"], declared: [] });
+    // Stated limit: the Micro820 sheet saved with underscores is refused under
+    // a silent cover, where the hyphen spelling answers.
+    expect(kindOf(verdict("Relay contact ratings on the 2080-LC20-20QWB?", GENERIC, "2080-IN009B_EN_P.pdf"))).toBe("coverage-not-shown");
+    expect(kindOf(verdict("Relay contact ratings on the 2080-LC20-20QWB?", GENERIC, FILE))).toBe("answers");
+  });
+  it("control: beside a cover that lists the asked model, those file names answer, and the cover still refuses a sibling", () => {
+    const PM850 = "Northfield PM850 Power Meter\nInstallation Guide";
+    expect(kindOf(verdict("Supply voltage for PM850?", PM850, "1234-PM800_EN_P.pdf"))).toBe("answers");
+    expect(kindOf(verdict("Supply voltage for PM820?", PM850, "1234-PM800_EN_P.pdf"))).toBe("other-model");
+  });
   it.each(["1234-AB123-US-A.pdf", "1234-AB123-EN-P.pdf", "Z1234-BR100-EN-P_1234-BR100.pdf"])(
     "control: a sibling product that only resembles the signature still disagrees with the cover: %s", (filename) => {
       const asked = filename.includes("AB123") ? "1234-AB124" : "1234-BR200";
