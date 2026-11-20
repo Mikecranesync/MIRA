@@ -21,6 +21,7 @@ import {
   type ObservationPreview,
   type ObservedStateView,
 } from "./machine-observations-logic";
+import { useMenuItem } from "./notebook-actions-menu";
 
 type Phase =
   | { kind: "idle" }
@@ -111,6 +112,8 @@ function deviceTimeZone(): string | null {
     return null;
   }
 }
+
+const MACHINE_STATE_ITEM = { id: "machine-state", label: "Machine state", description: "Record what the machine is doing" } as const;
 
 export function MachineObservations({ notebookId }: { notebookId: string }) {
   const [enabled, setEnabled] = useState<boolean | null>(null);
@@ -238,6 +241,8 @@ export function MachineObservations({ notebookId }: { notebookId: string }) {
     }
   }, [notebookId, readBack, requestIds]);
 
+  const { inMenu } = useMenuItem(enabled ? MACHINE_STATE_ITEM : null, () => setOpen(true));
+
   if (!enabled) return null;
 
   const editing = phase.kind === "review" || phase.kind === "failed" || phase.kind === "pending" ? phase.preview : null;
@@ -247,9 +252,11 @@ export function MachineObservations({ notebookId }: { notebookId: string }) {
 
   return (
     <>
-      <button type="button" style={OBS_PILL_STYLE} data-testid="machine-state-pill" onClick={() => setOpen((v) => !v)}>
-        Machine state
-      </button>
+      {inMenu ? null : (
+        <button type="button" style={OBS_PILL_STYLE} data-testid="machine-state-pill" onClick={() => setOpen((v) => !v)}>
+          Machine state
+        </button>
+      )}
       {open && (
         <section role="dialog" aria-label="Machine state" style={PANEL_STYLE} data-testid="machine-state-panel">
           <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
