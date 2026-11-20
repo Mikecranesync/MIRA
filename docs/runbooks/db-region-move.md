@@ -56,7 +56,9 @@ After the restore the tool takes the same inventory of both sides and fails unle
   enabled state; views by definition, owner, options and privileges; sequences by position,
   counting rules (increment, bounds, cycle, cache) and privileges; table kind, persistence,
   partitioning and inheritance; column collation; enum, domain and composite types; rules,
-  extended statistics, event triggers and publications (presence and definition);
+  extended statistics by definition; event triggers and publications by PRESENCE only (an event
+  trigger's name and event, a publication's name and all-tables flag), not their membership or
+  options;
 - the application roles (flags, memberships, settings) and that the owner can still
   `SET ROLE factorylm_app`;
 - schema owners and privileges, default privileges, and the migration ledger (count and content
@@ -64,6 +66,17 @@ After the restore the tool takes the same inventory of both sides and fails unle
 
 Not compared: object comments, per-column statistics targets and storage settings. None of them
 changes what a query returns.
+
+Known limits, accepted for the staging rehearsal (review round 7, owner's decision 2026-11-20):
+
+- A publication's table list and options, and an event trigger's function and tags, are not
+  compared. Staging holds no publication and no event trigger owned by the database owner.
+- The empty-target check does not count user-defined casts. Creating a cast requires owning one of
+  its two types, and every user-owned type is counted, so only a superuser could leave a cast in
+  an otherwise empty database. The target is a fresh database created for this copy.
+
+Revisit both before using the tool on a database that holds publications, or on a target that
+was not created empty for the purpose.
 
 Differences it tolerates, each printed:
 
