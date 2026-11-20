@@ -26,6 +26,15 @@ import { readTurnRetry } from "./store";
 import { withTenantContext } from "@/lib/tenant-context";
 import { GET } from "@/app/api/equipment-notebooks/[id]/requests/[requestId]/route";
 
+import { notebookIdentitySnapshot, type AcceptedTurnContext } from "./accepted-context";
+import { acceptNotebookTurnContext } from "@/lib/equipment-notebooks";
+const acceptedFixture = (equipmentEntityId: string | null): AcceptedTurnContext => ({
+  version: 1, target: { equipmentEntityId, notebookIdentity: notebookIdentitySnapshot({ identityStatus: "unknown" }),
+    manualIdentity: { identity: { manufacturer: null, model: null }, catalogNumber: null, identityStatus: "unknown" } },
+  component: null, history: [], selectionTurnIds: null, subjectQueries: [], subjectOutOfReach: false,
+  priorLookRows: [], currentLookRow: null, priorLookFileIds: [], priorReportContext: { content: "", turnIds: [], truncated: false, coverage: "not_requested" },
+});
+
 describe("request recovery HTTP/PostgreSQL", () => {
   const tenant = uuid(), foreignTenant = uuid(), notebook = uuid(), requestId = uuid();
   const thread = "recovery-thread", owner = "recovery-user";
@@ -119,6 +128,7 @@ describe("request recovery HTTP/PostgreSQL", () => {
     const body = { clientRequestId: id, message: "Original photo question", threadId: thread, sourceDocIds: [], expectedEquipmentEntityId: "machine-A", visualEvidence: { fileId: photo }, history: [{ role: "user", content: "original history" }] };
     const first = await claimNotebookTurnRequest(tenant, notebook, { ownerUserId: owner, clientRequestId: id, question: body.message, threadId: thread, requestPayload: body });
     if (first.status !== "claimed") throw new Error("claim failed");
+    expect(await acceptNotebookTurnContext(tenant, notebook, owner, id, first.claimToken, acceptedFixture("machine-A"))).toBe(true);
     const evidence = [{ kind: "visual_observation", fileId: photo }];
     await recordTurn(tenant, notebook, { question: body.message, answerStatus: "error", answerText: null, enabledSourceDocIds: [], evidence, model: null,
       ownerUserId: owner, threadId: thread, clientRequestId: id, claimToken: first.claimToken, equipmentEntityId: "machine-A" });
@@ -153,7 +163,9 @@ describe("request recovery HTTP/PostgreSQL", () => {
 
   it("keeps an accepted stale pending question when its recovered execution is later refused", async () => {
     const id = uuid(), body = { clientRequestId: id, message: "Stale original", threadId: thread, expectedEquipmentEntityId: "machine-A", sourceDocIds: [] };
-    await claimNotebookTurnRequest(tenant, notebook, { ownerUserId: owner, clientRequestId: id, question: body.message, threadId: thread, requestPayload: body });
+    const first = await claimNotebookTurnRequest(tenant, notebook, { ownerUserId: owner, clientRequestId: id, question: body.message, threadId: thread, requestPayload: body });
+    if (first.status !== "claimed") throw new Error("fixture claim failed");
+    expect(await acceptNotebookTurnContext(tenant, notebook, owner, id, first.claimToken, acceptedFixture("machine-A"))).toBe(true);
     await db.pool.query("UPDATE equipment_notebook_turns SET client_request_started_at=now()-interval '11 minutes' WHERE client_request_id=$1", [id]);
     const recovered = await claimNotebookTurnRequest(tenant, notebook, { ownerUserId: owner, clientRequestId: id, question: body.message, threadId: thread, requestPayload: body });
     if (recovered.status !== "claimed") throw new Error("stale lease not recovered");

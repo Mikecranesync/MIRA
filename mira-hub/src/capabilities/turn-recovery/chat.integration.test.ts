@@ -26,6 +26,15 @@ vi.mock("@/lib/session", () => ({ sessionOr401: async () => auth.getStore() ?? N
 import * as notebooks from "@/lib/equipment-notebooks";
 import { POST } from "@/app/api/equipment-notebooks/[id]/chat/route";
 
+import { notebookIdentitySnapshot, type AcceptedTurnContext } from "./accepted-context";
+import { acceptNotebookTurnContext } from "@/lib/equipment-notebooks";
+const acceptedFixture = (equipmentEntityId: string | null): AcceptedTurnContext => ({
+  version: 1, target: { equipmentEntityId, notebookIdentity: notebookIdentitySnapshot({ identityStatus: "unknown" }),
+    manualIdentity: { identity: { manufacturer: null, model: null }, catalogNumber: null, identityStatus: "unknown" } },
+  component: null, history: [], selectionTurnIds: null, subjectQueries: [], subjectOutOfReach: false,
+  priorLookRows: [], currentLookRow: null, priorLookFileIds: [], priorReportContext: { content: "", turnIds: [], truncated: false, coverage: "not_requested" },
+});
+
 describe("recovered chat acceptance HTTP/PostgreSQL", () => {
   const tenant = uuid(), foreignTenant = uuid(), notebook = uuid(), owner = "chat-recovery-owner", thread = "chat-recovery";
   const nativeFetch = globalThis.fetch;
@@ -103,6 +112,7 @@ describe("recovered chat acceptance HTTP/PostgreSQL", () => {
     const id = uuid(), photo = uuid(), body = { ...payload(id), visualEvidence: { fileId: photo } };
     const claim = await notebooks.claimNotebookTurnRequest(tenant, notebook, { ownerUserId: owner, clientRequestId: id, question: body.message, threadId: thread, requestPayload: body });
     if (claim.status !== "claimed") throw new Error("claim failed");
+    expect(await acceptNotebookTurnContext(tenant, notebook, owner, id, claim.claimToken, acceptedFixture("machine-A"))).toBe(true);
     const evidence = [{ kind: "visual_observation", fileId: photo }];
     await notebooks.recordTurn(tenant, notebook, { question: body.message, answerStatus: "error", answerText: null, enabledSourceDocIds: [], evidence, model: null, ownerUserId: owner,
       threadId: thread, clientRequestId: id, claimToken: claim.claimToken, equipmentEntityId: "machine-A" });

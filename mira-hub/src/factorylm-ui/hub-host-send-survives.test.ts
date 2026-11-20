@@ -15,7 +15,7 @@ describe("the host keeps a send alive (source shape)", () => {
   });
 
   it("#4846: the reloaded thread preserves exchanges and marks only the eligible request retryable", () => {
-    expect(host).toMatch(/withPersistedRetry\(threadFromPersisted\(withoutRetriedFailures\(detail\.turns\), meta\)\.turns, recoveryRetry\?\.answerId \?\? persistedRetry\?\.answerId \?\? null\)/);
+    expect(host).toMatch(/withPersistedRetry\(threadFromPersisted\(withoutRetriedFailures\(detail\.turns\), meta\)\.turns, persistedRetry\?\.answerId \?\? null\)/);
   });
 
   it("#4846: a stored failure retries its original request through the canonical send path", () => {

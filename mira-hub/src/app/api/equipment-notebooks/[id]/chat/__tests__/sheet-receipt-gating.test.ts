@@ -11,15 +11,14 @@
  * statements at all.
  */
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
 const TENANT = "11111111-1111-4111-8111-111111111111";
 const NB = "22222222-2222-4222-8222-222222222222";
 const JOB_ID = "33333333-3333-4333-8333-333333333333";
 
-vi.mock("@/lib/session", () => ({
-  sessionOr401: vi.fn(async () => ({ tenantId: TENANT, userId: "u1" })),
-}));
+const sessionMock = vi.hoisted(() => ({ sessionOr401: vi.fn() }));
+vi.mock("@/lib/session", () => sessionMock);
 const nbMock = vi.hoisted(() => ({
   validateChatSources: vi.fn(),
   getNotebook: vi.fn(),
@@ -67,6 +66,7 @@ const ORIGINAL_FLAG = process.env.NOTEBOOK_LIVING_SHEET;
 const ORIGINAL_PERSONA = process.env.MIRA_PERSONA_CONTRACT;
 beforeEach(() => {
   vi.clearAllMocks();
+  sessionMock.sessionOr401.mockResolvedValue({ tenantId: TENANT, userId: "u1" });
   delete process.env.NOTEBOOK_LIVING_SHEET;
   process.env.NOTEBOOK_SEMANTIC_CHECK = "0";
   process.env.MIRA_PERSONA_CONTRACT = "1";
@@ -83,6 +83,22 @@ afterEach(() => {
 });
 
 describe("sheet-receipt gating in POST", () => {
+  it("native round2 F3 checks current membership before the original-job recovery pre-read", async () => {
+    process.env.NOTEBOOK_LIVING_SHEET = "1";
+    const id = "44444444-4444-4444-8444-444444444444";
+    sessionMock.sessionOr401.mockImplementation(async (options?: { requireCurrentUser?: boolean }) =>
+      options?.requireCurrentUser ? NextResponse.json({ error: "Unauthorized" }, { status: 401 }) : { tenantId: TENANT, userId: "u1" });
+    retryMock.readTurnRetry.mockResolvedValue({ body: { message: "Original job question", livingSheetJobId: JOB_ID,
+      clientRequestId: id, threadId: "thread", sourceDocIds: [], mode: "general", expectedEquipmentEntityId: null },
+      target: { kind: "known", equipmentEntityId: null }, component: null });
+    nbMock.claimNotebookTurnRequest.mockResolvedValue({ status: "replay", turn: { id, question: "Original job question",
+      answerStatus: "answered", answerText: "Saved answer", enabledSourceDocIds: [], evidence: [], model: null, basis: null } });
+    const res = await POST(req({ retryRequestId: id, threadId: "thread" }), params);
+    expect(res.status).toBe(401);
+    expect(retryMock.readTurnRetry).not.toHaveBeenCalled();
+    expect(nbMock.claimNotebookTurnRequest).not.toHaveBeenCalled();
+    expect(withSheetReceiptMock).not.toHaveBeenCalled();
+  });
   it("uses the original request job, text and turn id for a recovery envelope", async () => {
     process.env.NOTEBOOK_LIVING_SHEET = "1";
     const id = "44444444-4444-4444-8444-444444444444";

@@ -57,6 +57,7 @@ describe("equipment-bound recovery", () => {
     const failed = { ...row, stale: true, client_request_payload: { ...row.client_request_payload,
       componentSelection: { componentId: "component-A", selectionVersion: 4 } } };
     expect(recoveryView(failed).canRetry).toBe(false);
-    expect(recoveryView({ ...failed, component_id: "component-A", component_revision: 2 }).canRetry).toBe(true);
+    expect(recoveryView({ ...failed, component_id: "component-A", component_revision: 2 }).canRetry).toBe(false);
+    expect(recoveryView({ ...failed, component_id: "component-A", component_revision: 2, accepted_context_known: true }).canRetry).toBe(true);
   });
 });

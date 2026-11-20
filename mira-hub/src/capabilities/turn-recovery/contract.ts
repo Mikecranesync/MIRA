@@ -1,4 +1,5 @@
 /** Recovery projects the existing turn claim; it never executes or authorizes a retry. */
+import { turnRequestEnvelope } from "./accepted-context";
 export type EquipmentExpectation =
   | { kind: "absent" }
   | { kind: "invalid" }
@@ -29,10 +30,12 @@ export type RecoveryRow = {
   component_id?: string | null; component_revision?: number | string | null;
   answer_text?: string | null; evidence?: unknown[];
   client_request_payload: unknown; created_at: Date | string;
+  accepted_context_known?: boolean; original_notebook_identity?: unknown;
 };
 
 export function recoveryView(row: RecoveryRow) {
-  const body = record(row.client_request_payload);
+  const envelope = turnRequestEnvelope(row.client_request_payload);
+  const body = record(envelope.request);
   const state = row.client_request_state === "complete" ? "complete" : row.stale ? "interrupted" : "pending";
   const expected = equipmentExpectation(body);
   // A server-recorded historical binding is stronger than an optional client snapshot.
@@ -50,8 +53,10 @@ export function recoveryView(row: RecoveryRow) {
     question: row.question, state, answerStatus: state === "complete" ? row.answer_status : null,
     canRetry: (state === "interrupted" || (state === "complete" && row.answer_status === "error"))
       && !row.answer_text && target.kind === "known" && componentRevisionKnown
+      && (row.accepted_context_known === true || envelope.acceptedContext !== null)
       && !(row.evidence ?? []).some(e => ["provider_failure", "safety_stop"].includes(String(record(e).kind))),
     target, currentEquipmentEntityId: row.current_equipment_entity_id,
+    originalNotebookIdentity: row.original_notebook_identity ?? envelope.acceptedContext?.target.notebookIdentity ?? null,
     component: row.component_id && row.component_revision != null
       ? { componentId: row.component_id, revision: Number(row.component_revision) } : null,
     componentSelection: hasScope ? { threadId: row.thread_id, componentId: scope.componentId as string | null,

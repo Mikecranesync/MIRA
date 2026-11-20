@@ -1,5 +1,6 @@
 import { withTenantContext } from "@/lib/tenant-context";
 import { recoveryView, type RecoveryRow } from "./contract";
+import { requestPayloadSql, turnRequestEnvelope } from "./accepted-context";
 
 /** One owner-scoped claim, including pending claims deliberately absent from completed history.
  * Read-only: observing a claim must not take it over, extend its lease or touch notebook recency.
@@ -12,9 +13,10 @@ async function readRecoveryRow(
     await client.query("SET LOCAL statement_timeout = '1500ms'");
     // Status polling never loads stored history or arbitrary request fields.
     // Recovery needs the original payload once, with a bound on that read.
+    const originalRequest = requestPayloadSql("t.client_request_payload");
     const payload = fullPayload
       ? "CASE WHEN octet_length(t.client_request_payload::text) <= 1048576 THEN t.client_request_payload ELSE NULL END"
-      : `(CASE WHEN t.client_request_payload ? 'expectedEquipmentEntityId'
+      : `(CASE WHEN request_payload ? 'expectedEquipmentEntityId'
             THEN jsonb_build_object('expectedEquipmentEntityId', CASE
               WHEN jsonb_typeof(t.client_request_payload->'expectedEquipmentEntityId') IN ('string','null')
                 AND octet_length((t.client_request_payload->'expectedEquipmentEntityId')::text) <= 514
@@ -33,16 +35,29 @@ async function readRecoveryRow(
                  FROM (SELECT value AS item FROM jsonb_array_elements(t.client_request_payload->'sourceDocIds')
                         WHERE jsonb_typeof(value)='string' LIMIT 100) bounded_ids)
               ELSE '[]'::jsonb END)`;
+    const boundedPayload = fullPayload ? payload : payload.replaceAll("t.client_request_payload", "request_payload");
     const { rows } = await client.query<RecoveryRow>(
       `SELECT t.id::text, t.client_request_id::text, t.thread_id, t.question,
               t.client_request_state, t.answer_status, t.answer_text, t.evidence, t.equipment_entity_id,
-              ${payload} AS client_request_payload, t.created_at,
+              ${boundedPayload} AS client_request_payload, t.created_at,
+              (NOT (t.client_request_payload ? 'message') AND t.client_request_payload->>'format'='notebook-turn/v1'
+                AND t.client_request_payload->'acceptedContext'->>'version'='1') AS accepted_context_known,
+              CASE WHEN NOT (t.client_request_payload ? 'message') AND t.client_request_payload->>'format'='notebook-turn/v1'
+                THEN jsonb_build_object('version',1,
+                  'manufacturer', left(t.client_request_payload #>> '{acceptedContext,target,notebookIdentity,manufacturer}',512),
+                  'model', left(t.client_request_payload #>> '{acceptedContext,target,notebookIdentity,model}',512),
+                  'catalogNumber', left(t.client_request_payload #>> '{acceptedContext,target,notebookIdentity,catalogNumber}',512),
+                  'serialNumber', left(t.client_request_payload #>> '{acceptedContext,target,notebookIdentity,serialNumber}',512),
+                  'equipmentType', left(t.client_request_payload #>> '{acceptedContext,target,notebookIdentity,equipmentType}',512),
+                  'identityStatus', left(t.client_request_payload #>> '{acceptedContext,target,notebookIdentity,identityStatus}',64))
+                ELSE NULL END AS original_notebook_identity,
               to_jsonb(t)->>'component_id' AS component_id,
               to_jsonb(t)->>'component_revision' AS component_revision,
               n.equipment_entity_id AS current_equipment_entity_id,
               coalesce(t.client_request_started_at < now() - interval '10 minutes', true) AS stale
          FROM equipment_notebook_turns t
          JOIN equipment_notebooks n ON n.id=t.notebook_id AND n.tenant_id=t.tenant_id
+         CROSS JOIN LATERAL (SELECT ${originalRequest} AS request_payload) request_body
         WHERE t.tenant_id=$1::uuid AND t.notebook_id=$2::uuid
           AND t.owner_user_id=$3 AND t.thread_id IS NOT DISTINCT FROM $4::text
           AND t.client_request_id=$5::uuid
@@ -65,14 +80,17 @@ export async function readTurnRetry(...args: Parameters<typeof readRecoveryRow>)
   if (!row) return { error: "retry_request_not_found" as const, status: 404 };
   const view = recoveryView(row);
   if (view.state === "pending") return { error: "request_in_progress" as const, status: 409 };
-  if (view.target.kind !== "known") return { error: "retry_target_unknown" as const, status: 409 };
-  if (row.answer_status === "error" && !view.canRetry) return { error: "retry_request_unavailable" as const, status: 409 };
-  const body = row.client_request_payload as Record<string, unknown> | null;
+  const successful = row.client_request_state === "complete" && row.answer_status !== "error";
+  const envelope = turnRequestEnvelope(row.client_request_payload);
+  const body = envelope.request as Record<string, unknown> | null;
   if (!body || typeof body !== "object" || Array.isArray(body)
       || typeof body.clientRequestId !== "string" || body.clientRequestId.toLowerCase() !== row.client_request_id
       || typeof body.message !== "string" || body.message.trim() !== row.question
       || (body.threadId == null || body.threadId === "legacy" ? null : body.threadId) !== row.thread_id || "retryRequestId" in body) {
     return { error: "retry_request_unavailable" as const, status: 409 };
   }
-  return { body, target: view.target, component: view.component };
+  if (!successful && !envelope.acceptedContext) return { error: "retry_context_unknown" as const, status: 409 };
+  if (!successful && view.target.kind !== "known") return { error: "retry_target_unknown" as const, status: 409 };
+  if (row.answer_status === "error" && !view.canRetry) return { error: "retry_request_unavailable" as const, status: 409 };
+  return { body, target: view.target, component: view.component, acceptedContext: envelope.acceptedContext };
 }

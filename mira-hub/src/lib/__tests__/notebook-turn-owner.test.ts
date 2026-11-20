@@ -88,7 +88,7 @@ describe("claimNotebookTurnRequest — atomic execution ownership and replay", (
         question: "q",
         threadId: "thrd_a",
       }),
-    ).resolves.toEqual({ status: "claimed", claimToken: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb" });
+    ).resolves.toEqual({ status: "claimed", claimToken: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", acceptedContext: null });
 
     const claimCall = calls.find(c => /WITH candidate AS/.test(c.sql))!;
     expect(calls[0].sql).toContain("pg_advisory_xact_lock");
