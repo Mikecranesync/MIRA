@@ -23,8 +23,8 @@ project's region in place, so the data has to be copied into a project in `aws-u
 - **The source is only read**: one `READ ONLY` transaction, plus `pg_dump` through that same
   exported snapshot. Because the inventory and the dump see one instant, the comparison is exact
   even while the source is being written to.
-- **The target must be empty, a different host, and in the expected region**, or the run refuses
-  before copying. It never drops, cleans or overwrites.
+- **The target must be empty (no relation of any kind, function, type or extra schema), a
+  different host, and in the expected region**, or the run refuses before copying. It never drops, cleans or overwrites.
 - **An endpoint passed as `--refuse-host` is refused on either side.** The workflow passes
   production's endpoint id.
 - **Addresses never reach a command line or the log.** They travel in the child processes'
@@ -34,8 +34,9 @@ project's region in place, so the data has to be copied into a project in `aws-u
 
 After the restore the tool takes the same inventory of both sides and fails unless they match:
 
-- every table: row count, a content fingerprint (order-independent hash of every row), columns,
-  defaults, owner, privileges, row security on/off and forced, storage options;
+- every table: row count, a content fingerprint (two independently seeded, order-independent
+  hash sums over every row: a check against rows lost or changed, not a cryptographic proof),
+  columns, defaults, owner, privileges, row security on/off and forced, storage options;
 - every row-security policy, compared **exactly**;
 - indexes, constraints, functions, triggers, views, sequences and their privileges, enum and other
   types, rules, extended statistics, event triggers, publications, large objects;
@@ -48,7 +49,7 @@ Differences it tolerates, each printed:
 | Difference | Why it is acceptable |
 |---|---|
 | Rows of a table named in `--leave-rows` (target must hold **zero**) | A deliberate choice; a partial copy still fails |
-| Extension versions | The new project offers newer builds |
+| An extension that is **newer** on the target | The new project offers newer builds; an older or unreadable version fails |
 | A sequence further along on the target | It advanced on the source while the dump ran; behind fails |
 | `pg_restore`: "permission denied to change default privileges" | The dump carries the platform's own default-privilege statements; the owner's are compared in the inventory |
 

@@ -142,6 +142,18 @@ def test_refuses_to_restore_over_a_target_that_is_not_empty(monkeypatch):
         m.check_preconditions(m.Address(SRC), m.Address(TGT), "neondb", "us-west-2")
 
 
+def test_the_emptiness_check_counts_every_kind_of_object(monkeypatch):
+    calls = _no_db(monkeypatch)
+    m.check_preconditions(m.Address(SRC), m.Address(TGT), "neondb", "us-west-2")
+    sql = calls[-1][2]
+    # Any relation kind (a foreign table or a composite type is not "empty"), plus functions,
+    # types and extra schemas.
+    assert "relkind IN" not in sql
+    for catalog in ("pg_class", "pg_proc", "pg_type", "pg_namespace"):
+        assert catalog in sql
+    assert "<> 'public'" in sql
+
+
 def test_the_emptiness_check_reads_the_target_not_the_source(monkeypatch):
     calls = _no_db(monkeypatch)
     m.check_preconditions(m.Address(SRC), m.Address(TGT), "neondb", "us-west-2")
@@ -300,6 +312,11 @@ def test_a_missing_table_fails():
 def test_extension_versions_may_differ_but_a_missing_extension_fails():
     unexpected, expected = m.compare(_inv(), _inv(extensions={"vector": "0.8.7", "ltree": "1.3"}))
     assert unexpected == [] and expected == ["extension version: vector 0.8.0 -> 0.8.7"]
+    older = m.compare(_inv(), _inv(extensions={"vector": "0.7.9", "ltree": "1.3"}))
+    assert older == (["extensions: vector is OLDER on target: 0.8.0 -> 0.7.9"], [])
+    odd = m.compare(_inv(), _inv(extensions={"vector": "next", "ltree": "1.3"}))
+    assert odd[0] == ["extensions: vector is OLDER on target: 0.8.0 -> next"]
+    assert m._version_not_older("1.9", "1.10") and not m._version_not_older("1.10", "1.9")
     assert m.compare(_inv(), _inv(extensions={"ltree": "1.3"}))[0] == [
         "extensions: MISSING on target: vector"
     ]
@@ -373,6 +390,7 @@ def test_the_fingerprint_query_reads_every_table_except_the_ones_left_behind():
     sql = m.inventory_sql(True, ("public.cmms_sync_conflicts",))
     assert (
         "hashtextextended(t::text, 0)" in sql
+        and "hashtextextended(t::text, 1)" in sql
         and "IN ('public.cmms_sync_conflicts') THEN 'not read'" in sql
     )
     assert "hashtextextended" not in m.inventory_sql(False)

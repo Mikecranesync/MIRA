@@ -152,10 +152,12 @@ def _in_list(names: tuple[str, ...]) -> str:
 def inventory_sql(fingerprint: bool = False, no_fingerprint: tuple[str, ...] = ()) -> str:
     """One statement that returns the whole inventory as a single JSON line.
 
-    With ``fingerprint`` every table also gets a content fingerprint: the sum of a 64-bit hash
-    of each row's text form. It does not depend on row order, so it needs no key, and two
-    tables holding the same rows give the same number. Tables in ``no_fingerprint`` (the ones
-    whose rows are deliberately left behind) are counted but not read row by row.
+    With ``fingerprint`` every table also gets a content fingerprint: two sums, each of a
+    differently seeded 64-bit hash of every row's text form. It does not depend on row order,
+    so it needs no key, and two tables holding the same rows give the same pair. It is a check
+    against rows lost or changed by a copy, not a cryptographic proof. Tables in
+    ``no_fingerprint`` (the ones whose rows are deliberately left behind) are counted but not
+    read row by row.
     """
     for t in no_fingerprint:
         if not _QUALIFIED.match(t):
@@ -165,7 +167,8 @@ def inventory_sql(fingerprint: bool = False, no_fingerprint: tuple[str, ...] = (
         content = (
             f"CASE WHEN (n.nspname || '.' || c.relname) IN {not_read} THEN 'not read' ELSE"
             " (xpath('/row/h/text()', query_to_xml(format("
-            "'SELECT COALESCE(sum(hashtextextended(t::text, 0)), 0)::text AS h FROM %I.%I t',"
+            "'SELECT COALESCE(sum(hashtextextended(t::text, 0)), 0)::text || '':'' ||"
+            " COALESCE(sum(hashtextextended(t::text, 1)), 0)::text AS h FROM %I.%I t',"
             " n.nspname, c.relname), false, true, '')))[1]::text END"
         )
     else:
@@ -304,7 +307,10 @@ def compare(
             if a == b:
                 continue
             if section == "extensions":
-                expected.append(f"extension version: {key} {a} -> {b}")
+                if _version_not_older(a, b):
+                    expected.append(f"extension version: {key} {a} -> {b}")
+                else:
+                    unexpected.append(f"extensions: {key} is OLDER on target: {a} -> {b}")
             elif section == "sequences" and (structure_only or _not_behind(a, b)):
                 expected.append(f"sequence position: {key} {a} -> {b}")
             elif section == "tables" and isinstance(a, dict) and isinstance(b, dict):
@@ -328,6 +334,16 @@ def compare(
             else:
                 unexpected.append(f"{section}: differs: {key}")
     return unexpected, expected
+
+
+def _version_not_older(source_version: Any, target_version: Any) -> bool:
+    """An extension may be newer on the target, never older. Anything unreadable is not accepted."""
+    parts = []
+    for v in (source_version, target_version):
+        if not isinstance(v, str) or not re.fullmatch(r"\d+(\.\d+)*", v):
+            return False
+        parts.append(tuple(int(x) for x in v.split(".")))
+    return parts[1] >= parts[0]
 
 
 def _not_behind(source_value: Any, target_value: Any) -> bool:
@@ -403,15 +419,23 @@ def check_preconditions(
         raise Refusal(f"target host is not in the expected region {expect_region}")
     if expect_region and f".{expect_region}." in source.host:
         raise Refusal(f"source host is already in {expect_region}: source and target look swapped")
-    skip = _in_list(("pg_catalog", "information_schema", "pg_toast"))
+    # "Empty" means no object of any kind in a user schema: any relation kind (a foreign table
+    # or a composite type counts), functions, types, and any schema besides public.
+    user = "n.nspname !~ '^pg_' AND n.nspname <> 'information_schema'"
     n = _psql(
         target,
         database,
-        f"SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE c.relkind IN ('r','p','v','m','S') AND n.nspname NOT IN {skip};",
+        "SELECT (SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace"
+        f" WHERE {user})"
+        " + (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace"
+        f" WHERE {user})"
+        " + (SELECT count(*) FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace"
+        f" WHERE {user})"
+        f" + (SELECT count(*) FROM pg_namespace n WHERE {user} AND n.nspname <> 'public');",
     )
     if n != "0":
         raise Refusal(
-            f"target database {database} is not empty ({n} relations); refusing to restore over it"
+            f"target database {database} is not empty ({n} objects); refusing to restore over it"
         )
 
 
