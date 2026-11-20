@@ -3488,9 +3488,15 @@ async function handleChatTurn(
     if (key) {
       let acq = await readAcquisition(ctx.tenantId, notebookId);
       const retryable = acq !== null && (acq.state === "search_unavailable" || acq.state === "search_limit_reached");
-      if (acq && acq.key === key && (retryable || acq.state === "running")) {
-        if (retryable) acq = await reconcileAcquisition(ctx.tenantId, notebookId, acq);
-        if (acq && acq.key === key && !acq.source_removed) {
+      // Codex #5706 r2 F6: an explicit manual request on a source-selected turn
+      // refreshes a cached partial manual too (same once-per-revision predicate,
+      // reconciled first so a removed or rejected chapter stays removed).
+      const askedForPartialRefresh =
+        acq !== null && acq.key === key && acq.partial === true && acq.state === "candidate_review" && wantsManualDocumentation(message);
+      if (acq && acq.key === key && (retryable || acq.state === "running" || askedForPartialRefresh)) {
+        if (retryable || askedForPartialRefresh) acq = await reconcileAcquisition(ctx.tenantId, notebookId, acq);
+        const refresh = askedForPartialRefresh && partialRefreshDue(acq, key);
+        if (acq && acq.key === key && !acq.source_removed && (!askedForPartialRefresh || refresh)) {
           const started = await startManualAcquisition({
             tenantId: ctx.tenantId,
             userId: ctx.userId ?? null,
@@ -3498,6 +3504,7 @@ async function handleChatTurn(
             nodeId: nb.nodeId,
             identity,
             turnSpanContext: rootSpan.spanContext(),
+            ...(refresh ? { refreshPartial: true } : {}),
           });
           manualAcquisition = started
             ? { state: "running", started_this_turn: true, candidate_host: null }

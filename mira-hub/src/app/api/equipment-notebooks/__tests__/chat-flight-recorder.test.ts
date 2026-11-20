@@ -2556,6 +2556,56 @@ describe("#4075 — a confirmed identity with no manual starts, and then reports
       expect(acqMock.startManualAcquisition).toHaveBeenCalledTimes(1);
     });
 
+    describe("Codex #5706 r2 F6: a cached partial manual on a source-selected turn", () => {
+      const partial = (extra: Record<string, unknown> = {}) => ({
+        key: KEY, state: "candidate_review", started_at: null, finished_at: "2026-09-29T06:00:00Z",
+        candidate_host: "www.siemens.com", match_state: "candidate", oem_request_url: null, attached_indexed: true, partial: true, doc_id: "d-ch1", ...extra,
+      });
+      const askForManualWithSources = async () => {
+        vi.stubGlobal("fetch", vi.fn(async () => providerStream("Here is what the selected sources say.")));
+        return frames(await POST(chatReq({ message: "Find me the manual" }), params));
+      };
+
+      it("an explicit manual request refreshes it once", async () => {
+        acqMock.acquisitionEnabled.mockReturnValue(true);
+        acqMock.readAcquisition.mockResolvedValue(partial());
+        acqMock.startManualAcquisition.mockResolvedValue(true);
+        domainMock.getNotebook.mockResolvedValue(confirmed() as never);
+        await askForManualWithSources();
+        expect(ragMock.retrieveNodeChunks).toHaveBeenCalled();
+        expect(acqMock.startManualAcquisition).toHaveBeenCalledTimes(1);
+        expect(acqMock.startManualAcquisition).toHaveBeenCalledWith(expect.objectContaining({ refreshPartial: true }));
+      });
+
+      it("a partial result from the current revision is not refreshed", async () => {
+        const { DISCOVERY_REVISION } = await vi.importActual<typeof import("@/capabilities/notebook-manual-acquisition")>(
+          "@/capabilities/notebook-manual-acquisition",
+        );
+        acqMock.acquisitionEnabled.mockReturnValue(true);
+        acqMock.readAcquisition.mockResolvedValue(partial({ discovery_rev: DISCOVERY_REVISION }));
+        domainMock.getNotebook.mockResolvedValue(confirmed() as never);
+        await askForManualWithSources();
+        expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+      });
+
+      it("a rejected chapter is not refreshed", async () => {
+        acqMock.acquisitionEnabled.mockReturnValue(true);
+        acqMock.readAcquisition.mockResolvedValue(partial());
+        acqMock.reconcileAcquisition.mockImplementationOnce(async (_t: string, _n: string, r: unknown) => ({ ...(r as object), source_removed: true }));
+        domainMock.getNotebook.mockResolvedValue(confirmed() as never);
+        await askForManualWithSources();
+        expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+      });
+
+      it("a troubleshooting question does not refresh it", async () => {
+        acqMock.acquisitionEnabled.mockReturnValue(true);
+        acqMock.readAcquisition.mockResolvedValue(partial());
+        domainMock.getNotebook.mockResolvedValue(confirmed() as never);
+        await askWithSources();
+        expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+      });
+    });
+
     it("control: no record → a source-selected turn never starts a NEW search", async () => {
       acqMock.acquisitionEnabled.mockReturnValue(true);
       acqMock.readAcquisition.mockResolvedValue(null);
