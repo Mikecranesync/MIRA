@@ -182,13 +182,9 @@ def inventory_sql(fingerprint: bool = False, no_fingerprint: tuple[str, ...] = (
     # A restore RE-PARSES every expression, and Postgres then prints the same check differently:
     #   source:  (status)::text = ANY ((ARRAY['a'::character varying])::text[])
     #   target:  (status)::text = ANY (ARRAY[('a'::character varying)::text])
-    # Same meaning, different text. So constraint and index definitions are compared after
-    # removing text-type casts, parentheses and whitespace. Row-security policies are NOT
-    # loosened this way: they are compared exactly.
-    canon = (
-        "md5(regexp_replace(regexp_replace({expr}, '::(character varying|text|bpchar|name)(\\[\\])?', '', 'g'),"
-        " '[()[:space:]]', '', 'g'))"
-    )
+    # Same meaning, different text. The definitions are therefore returned as they are and
+    # compared in ``compare`` through ``canonical_definition``. Row-security policies are NOT
+    # given that tolerance: they are compared exactly.
     count = (
         "(xpath('/row/c/text()', query_to_xml(format('SELECT count(*) AS c FROM %I.%I', n.nspname, c.relname),"
         " false, true, '')))[1]::text::bigint"
@@ -233,9 +229,13 @@ SELECT jsonb_build_object(
  'policies', (SELECT COALESCE(jsonb_object_agg(schemaname || '.' || tablename || '.' || policyname,
      md5(permissive || '|' || array_to_string(roles, ',') || '|' || cmd || '|' || COALESCE(qual, '') || '|' || COALESCE(with_check, ''))), '{{}}')
      FROM pg_policies p WHERE p.schemaname NOT IN {skip}),
- 'indexes', (SELECT COALESCE(jsonb_object_agg(schemaname || '.' || indexname, {canon.format(expr="indexdef")}), '{{}}') FROM pg_indexes i WHERE i.schemaname NOT IN {skip}),
- 'constraints', (SELECT COALESCE(jsonb_object_agg(n.nspname || '.' || cl.relname || '.' || co.conname, {canon.format(expr="pg_get_constraintdef(co.oid)")}), '{{}}')
-     FROM pg_constraint co JOIN pg_class cl ON cl.oid = co.conrelid JOIN pg_namespace n ON n.oid = cl.relnamespace WHERE {user_ns}),
+ 'indexes', (SELECT COALESCE(jsonb_object_agg(schemaname || '.' || indexname, indexdef), '{{}}') FROM pg_indexes i WHERE i.schemaname NOT IN {skip}),
+ 'constraints', (SELECT COALESCE(jsonb_object_agg(k, v), '{{}}') FROM (
+     SELECT n.nspname || '.' || cl.relname || '.' || co.conname AS k, pg_get_constraintdef(co.oid) AS v
+       FROM pg_constraint co JOIN pg_class cl ON cl.oid = co.conrelid JOIN pg_namespace n ON n.oid = cl.relnamespace WHERE {user_ns}
+     UNION ALL
+     SELECT 'domain ' || n.nspname || '.' || t.typname || '.' || co.conname, pg_get_constraintdef(co.oid)
+       FROM pg_constraint co JOIN pg_type t ON t.oid = co.contypid JOIN pg_namespace n ON n.oid = t.typnamespace WHERE {user_ns}) q),
  'functions', (SELECT COALESCE(jsonb_object_agg(n.nspname || '.' || p.proname || '(' || pg_get_function_identity_arguments(p.oid) || ')',
      md5(p.prosrc) || ':' || p.prosecdef::text || ':' || {acl.format(col="p.proacl")}), '{{}}')
      FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
@@ -250,7 +250,9 @@ SELECT jsonb_build_object(
  'enums', (SELECT COALESCE(jsonb_object_agg(k, v), '{{}}') FROM (SELECT n.nspname || '.' || t.typname AS k,
      string_agg(e.enumlabel, ',' ORDER BY e.enumsortorder) AS v FROM pg_type t JOIN pg_enum e ON e.enumtypid = t.oid
      JOIN pg_namespace n ON n.oid = t.typnamespace WHERE {user_ns} GROUP BY 1) q),
- 'types', (SELECT COALESCE(jsonb_object_agg(n.nspname || '.' || t.typname, t.typtype::text), '{{}}') FROM pg_type t
+ 'types', (SELECT COALESCE(jsonb_object_agg(n.nspname || '.' || t.typname, t.typtype::text
+     || CASE WHEN t.typtype = 'd' THEN '|' || format_type(t.typbasetype, t.typtypmod) || '|' || t.typnotnull::text
+          || '|' || COALESCE(t.typdefault, '') ELSE '' END), '{{}}') FROM pg_type t
      JOIN pg_namespace n ON n.oid = t.typnamespace WHERE {user_ns} AND t.typtype IN ('c', 'd', 'e', 'r')
      AND (t.typrelid = 0 OR (SELECT k.relkind FROM pg_class k WHERE k.oid = t.typrelid) = 'c')
      AND NOT EXISTS (SELECT 1 FROM pg_depend d WHERE d.objid = t.oid AND d.deptype = 'e')),
@@ -311,6 +313,13 @@ def compare(
                     expected.append(f"extension version: {key} {a} -> {b}")
                 else:
                     unexpected.append(f"extensions: {key} is OLDER on target: {a} -> {b}")
+            elif (
+                section in ("constraints", "indexes")
+                and isinstance(a, str)
+                and isinstance(b, str)
+                and canonical_definition(a) == canonical_definition(b)
+            ):
+                expected.append(f"{section}: reprinted by the restore, same meaning: {key}")
             elif section == "sequences" and (structure_only or _not_behind(a, b)):
                 expected.append(f"sequence position: {key} {a} -> {b}")
             elif section == "tables" and isinstance(a, dict) and isinstance(b, dict):
@@ -334,6 +343,56 @@ def compare(
             else:
                 unexpected.append(f"{section}: differs: {key}")
     return unexpected, expected
+
+
+_TEXT_CAST = re.compile(r"::(?:character varying|text)(?:\[\])?")
+_QUOTED = re.compile(r"'(?:[^']|'')*'|\"(?:[^\"]|\"\")*\"")
+_INNERMOST = re.compile(r"\(([^()]*)\)")
+_KEPT = re.compile("\x01[^\x01\x02]*\x02")
+_BRACKETS = re.compile(r"\[[^\[\]]*\]")
+
+
+def canonical_definition(definition: str) -> str:
+    """A constraint or index definition in a form that survives a dump and restore.
+
+    A restore re-parses an expression, and Postgres then prints the same thing differently:
+    it moves text casts and adds or drops parentheses around a single value. Two things are
+    removed here, and nothing else:
+
+    * a cast to ``text`` or ``character varying`` (these two compare identically);
+    * parentheses that wrap ONE value: nothing inside them is separated by a space at their
+      own level, and they are not a call's argument list (nothing name-like sits directly
+      before them).
+
+    Parentheses that group an expression (``(a OR b) AND c``) always contain a space and are
+    never removed. Quoted strings and quoted names are left untouched.
+    """
+    quoted: list[str] = []
+
+    def stash(match: re.Match[str]) -> str:
+        quoted.append(match.group(0))
+        return f"\x00{len(quoted) - 1}\x00"
+
+    text = _QUOTED.sub(stash, definition)
+    text = " ".join(_TEXT_CAST.sub("", text).split())
+    while True:
+        m = _INNERMOST.search(text)
+        if not m:
+            break
+        inner = m.group(1).strip()
+        probe = inner
+        for pattern, flat in ((_KEPT, "\x03"), (_BRACKETS, "\x03")):
+            while pattern.search(probe):
+                probe = pattern.sub(flat, probe)
+        before = text[m.start() - 1] if m.start() else ""
+        is_call = before.isalnum() or before in ("_", "\x00", "\x02", "]")
+        if inner and not is_call and not re.search(r"\s", probe):
+            replacement = inner
+        else:
+            replacement = "\x01" + inner + "\x02"
+        text = text[: m.start()] + replacement + text[m.end() :]
+    text = text.replace("\x01", "(").replace("\x02", ")")
+    return re.sub("\x00(\\d+)\x00", lambda q: quoted[int(q.group(1))], text)
 
 
 def _version_not_older(source_version: Any, target_version: Any) -> bool:

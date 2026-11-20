@@ -523,3 +523,52 @@ def test_role_and_database_settings_are_in_the_inventory_and_gate():
     assert m.compare(src, _inv(settings={"neondb_owner|*": "search_path=other"}))[0] == [
         "settings: differs: neondb_owner|*"
     ]
+
+
+# ---------------------------------------------------------------- reprinted definitions
+
+_SRC_DEF = "CHECK (((status)::text = ANY ((ARRAY['a'::character varying, 'b c'::character varying])::text[])))"
+_TGT_DEF = "CHECK (((status)::text = ANY (ARRAY[('a'::character varying)::text, ('b c'::character varying)::text])))"
+
+
+def test_a_definition_reprinted_by_a_restore_compares_equal():
+    assert _SRC_DEF != _TGT_DEF
+    assert m.canonical_definition(_SRC_DEF) == m.canonical_definition(_TGT_DEF)
+
+
+def test_grouping_parentheses_are_never_removed():
+    a = m.canonical_definition("CHECK (((a = 1) OR (b = 1)) AND (c = 1))")
+    b = m.canonical_definition("CHECK ((a = 1) OR ((b = 1) AND (c = 1)))")
+    assert a != b
+
+
+def test_canonical_form_keeps_calls_literals_and_other_casts_apart():
+    c = m.canonical_definition
+    assert c("CHECK (lower(name) = 'x')") != c("CHECK (lowername = 'x')")
+    assert c("CHECK (x = '(a)::text')") != c("CHECK (x = 'a')")
+    assert c("CHECK ((c)::bpchar = 'a')") != c("CHECK ((c)::text = 'a')")
+    assert c("CHECK (x = 'a b')") != c("CHECK (x = 'ab')")
+    assert c('CHECK ("my (col)" > 0)') != c('CHECK ("my col" > 0)')
+    assert c("CHECK (n = numeric(10,2))") != c("CHECK (n = numeric10,2)")
+
+
+def test_compare_tolerates_a_reprint_but_not_a_changed_constraint_or_index():
+    for section in ("constraints", "indexes"):
+        same = m.compare(
+            _inv(**{section: {"public.a.k": _SRC_DEF}}), _inv(**{section: {"public.a.k": _TGT_DEF}})
+        )
+        assert same == ([], [f"{section}: reprinted by the restore, same meaning: public.a.k"])
+        changed = m.compare(
+            _inv(**{section: {"public.a.k": "CHECK (((a = 1) OR (b = 1)) AND (c = 1))"}}),
+            _inv(**{section: {"public.a.k": "CHECK ((a = 1) OR ((b = 1) AND (c = 1)))"}}),
+        )
+        assert changed == ([f"{section}: differs: public.a.k"], [])
+    # No other section gets the tolerance.
+    pol = m.compare(_inv(policies={"p": _SRC_DEF}), _inv(policies={"p": _TGT_DEF}))
+    assert pol[0] == ["policies: differs: p"]
+
+
+def test_definitions_are_no_longer_normalized_inside_the_database_and_domains_are_read():
+    sql = m.inventory_sql()
+    assert "[()[:space:]]" not in sql
+    assert "contypid" in sql and "typbasetype" in sql and "typnotnull" in sql

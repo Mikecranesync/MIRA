@@ -53,10 +53,13 @@ Differences it tolerates, each printed:
 | A sequence further along on the target | It advanced on the source while the dump ran; behind fails |
 | `pg_restore`: "permission denied to change default privileges" | The dump carries the platform's own default-privilege statements; the owner's are compared in the inventory |
 
-Check constraints and index predicates are compared after removing text-type casts and
-parentheses, because a restore re-parses them and Postgres then prints the same expression
-differently (`ANY ((ARRAY['a'::character varying])::text[])` becomes
-`ANY (ARRAY[('a'::character varying)::text])`). Policies are not loosened this way.
+A restore re-parses check constraints and index predicates, and Postgres then prints the same
+expression differently (`ANY ((ARRAY['a'::character varying])::text[])` becomes
+`ANY (ARRAY[('a'::character varying)::text])`). So for constraints and indexes only, a difference
+is tolerated, and printed, when the two definitions are equal after removing (1) casts to `text`
+or `character varying` and (2) parentheses that wrap a single value. Parentheses that group an
+expression are never removed, so `(a OR b) AND c` and `a OR (b AND c)` stay different. Policies
+get no such tolerance. Domain constraints are compared the same way as table constraints.
 
 ## What is deliberately not copied
 
