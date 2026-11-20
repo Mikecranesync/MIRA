@@ -374,7 +374,8 @@ capabilities:
       harness output to a technician.
     promotion_criteria:
       - "Do not enable in production. Revisit only if #3312 decides to keep rather than remove the path, AND a non-bench producer exists."
-    review_by: "2026-11-19"
+      - "REVIEW DEFERRED 2026-11-19 -> 2026-11-24 (reason): moved without re-deciding by an owner-approved agent PR (Mike, in chat, 2026-11-19) so the lapsed date stops failing CI Gate on every open PR and on main. Nothing about the capability changed: it stays off in every environment. Re-decide by the new date, with the records already due 2026-11-24."
+    review_by: "2026-11-24"
     notes: "Gate 11 API-consumer edge: mira-fault-detective is not deletion-safe while this exists."
 
   # =========================================================================
@@ -885,7 +886,8 @@ capabilities:
     promotion_criteria:
       - "Staging: three complete technician workflows at phone size on staging with screenshots."
       - "Production: owner decision."
-    review_by: "2026-11-21"
+      - "REVIEW DEFERRED 2026-11-21 -> 2026-11-24 (reason): moved without re-deciding by an owner-approved agent PR (Mike, in chat, 2026-11-19), three days ahead of its date, so it does not lapse at UTC midnight on 2026-11-21 and fail CI Gate on every open PR while work is in review. Nothing about the capability changed: staging and production settings are as recorded above. Re-decide by the new date, with the records already due 2026-11-24."
+    review_by: "2026-11-24"
   - id: technician_work_packet
     purpose: >-
       Turn an authorized, supported equipment manual (today: CAT Pumps data sheets and service manuals) plus a
