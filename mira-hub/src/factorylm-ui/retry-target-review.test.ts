@@ -140,6 +140,6 @@ describe("the host is wired to the hold (source shape, like hub-host-restore-ret
     expect(host).toMatch(/heldNote \? \{ composerAccessory: <p className="fl-qtarget__browsing" role="status" aria-label="Kept with this question">\{heldNote\}<\/p> \}/);
   });
   it("Send routes the held question through heldQuestionForSend", () => {
-    expect(host).toMatch(/const held = heldQuestionForSend\(failedBody, retryCheck, q, files\.length\);/);
+    expect(host).toMatch(/const held = retryBody \?\? heldQuestionForSend\(failedBody, retryCheck, q, files\.length\);/);
   });
 });

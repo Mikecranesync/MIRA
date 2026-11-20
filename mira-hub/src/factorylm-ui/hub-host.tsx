@@ -614,14 +614,16 @@ export function HubShellHost() {
         dispatch({ type: "sent-draft", threadId, question, revision: retryDraftRevision });
       }
     } catch (caught) {
-      const latest = sendAttempts.current.get(threadId) === ctrl;
-      const stillActive = selectionRef.current === sel && abortRef.current === ctrl;
-      if (!latest || !stillActive) {
+      if (sendAttempts.current.get(threadId) !== ctrl) {
+        dropOutgoing(outgoingId);
+        return;
+      }
+      if (selectionRef.current !== sel || abortRef.current !== ctrl) {
         dropOutgoing(outgoingId);
         // No response status means an interrupted request could already have
         // reached the server. A known rejection keeps its original request ID
         // and can only be recovered into the originating conversation.
-        if (!latest || rejectionStatus === undefined) return;
+        if (rejectionStatus === undefined) return;
         const refusedScope = (scopeRefused || rejectionStatus === 409) ? outBody.componentSelection : undefined;
         dispatch({
           type: "recover-send", threadId, restoreDraft: true,
