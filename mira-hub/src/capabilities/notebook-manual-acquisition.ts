@@ -758,6 +758,9 @@ export function fencedAttach(
       // check — r4 F7); the upsert keeps a trusted row's evidence (r4 F5).
       const res = await attachFileToTargetsTx(c, tenantId, fileId, targets, { createdBy });
       if (!res.ok) throw new Error(`attach failed: ${res.error}`);
+      // Codex #5706 r4 F9: the fence names what THIS attach linked — a file-only
+      // replacement clears the earlier chapter's document, so a later removal
+      // of the replacement is checked against the replacement itself.
       // Record what was attached IN THIS TRANSACTION, fenced by our generation:
       // if the worker dies before finish, stale-running recovery still knows,
       // so a later removal is honored (Codex #4118 r16 F22).
@@ -765,7 +768,7 @@ export function fencedAttach(
         `UPDATE equipment_notebooks
             SET manual_acquisition = manual_acquisition || jsonb_build_object(
                   'prior_file_id', $5::text,
-                  'prior_doc_id', COALESCE($6::text, manual_acquisition->>'prior_doc_id'))
+                  'prior_doc_id', $6::text)
           WHERE tenant_id = $1::uuid AND id = $2::uuid
             AND manual_acquisition->>'key' = $3 AND manual_acquisition->>'gen' = $4`,
         [tenantId, notebookId, key, gen, fileId, docId],
@@ -948,7 +951,10 @@ export async function reconcileAcquisition(
   // removal during the backoff is honored before any retry (r14 F19).
   // For a retryable record, check what ANY attempt attached (r15 F20).
   const retryable = rec.state === "search_unavailable" || rec.state === "search_limit_reached";
-  const docRef = retryable ? (rec.linked ? rec.doc_id : null) || rec.prior_doc_id || null : rec.doc_id || null;
+  // Codex #5706 r4 F9: an attempt that linked a file with no document (saved,
+  // not indexed) is checked by that file, never by an older chapter's document.
+  const linkedFileOnly = retryable && rec.linked === true && !rec.doc_id && Boolean(rec.file_id);
+  const docRef = linkedFileOnly ? null : retryable ? (rec.linked ? rec.doc_id : null) || rec.prior_doc_id || null : rec.doc_id || null;
   const fileRef = retryable ? (rec.linked ? rec.file_id : null) || rec.prior_file_id || null : rec.file_id || null;
   const bySource =
     Boolean(docRef) &&

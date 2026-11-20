@@ -34,6 +34,7 @@ vi.mock("@/lib/tenant-context", () => ({
         if (/RETURNING manual_acquisition->>'gen'/.test(sql)) return { rowCount: db.claimRows, rows: db.claimRows ? [{ gen: "g1" }] : [] };
         if (/^\s*SELECT match_state FROM equipment_notebook_sources\s+WHERE[\s\S]*FOR UPDATE/.test(sql) && db.priorDoc)
           return { rowCount: db.priorSource ? 1 : 0, rows: db.priorSource ? [db.priorSource] : [] };
+        if (/FROM workspace_file_links/.test(sql)) return { rowCount: db.fileLinked ? 1 : 0, rows: db.fileLinked ? [{}] : [] };
         if (/FOR UPDATE/.test(sql))
           return {
             rowCount: db.claimRows,
@@ -42,7 +43,6 @@ vi.mock("@/lib/tenant-context", () => ({
               : [],
           };
         if (/RETURNING match_state/.test(sql)) return { rowCount: db.updatedSource ? 1 : 0, rows: db.updatedSource ? [db.updatedSource] : [] };
-        if (/FROM workspace_file_links/.test(sql)) return { rowCount: db.fileLinked ? 1 : 0, rows: db.fileLinked ? [{}] : [] };
         if (/^\s*SELECT match_state FROM equipment_notebook_sources/.test(sql) || /\bAS auto_key\b/.test(sql)) return { rowCount: db.sourceRow ? 1 : 0, rows: db.sourceRow ? [db.sourceRow] : [] };
         if (/SELECT match_state, enabled_by_default/.test(sql)) return { rowCount: db.currentSource ? 1 : 0, rows: db.currentSource ? [db.currentSource] : [] };
         if (/SELECT 1 FROM equipment_notebook_sources/.test(sql)) return { rowCount: db.existingSource ? 1 : 0, rows: db.existingSource ? [{}] : [] };
@@ -522,6 +522,53 @@ describe("Codex #5706 r3 F9 — a retry resumes only the same linked file", () =
     expect(await fencedAttach("K", "g1")("t", "nb", "file-full-manual", null, tgt, null)).toBe("removed");
     db.priorSource = { match_state: "rejected" };
     expect(await fencedAttach("K", "g1")("t", "nb", "file-full-manual", null, tgt, null)).toBe("removed");
+  });
+});
+
+describe("Codex #5706 r4 F9 — removing a file-only replacement is honoured despite the old chapter", () => {
+  const tgt = [{ targetType: "equipment_notebook" as const, targetId: "nb", role: "manual" as const, displayLabel: "m.pdf" }];
+  const replacement = {
+    key: "K", state: "search_unavailable", started_at: "2026-11-20T00:00:00Z", finished_at: "2026-11-20T00:01:00Z",
+    manual_url: "https://cdn.example.com/full.pdf", ingest_failed: true, attached_indexed: false,
+    linked: true, doc_id: null, file_id: "file-full-manual", prior_doc_id: "doc-chapter", prior_file_id: "file-full-manual", retries: 0,
+  };
+
+  it("the file-only attach records the replacement as the fence, clearing the chapter's document", async () => {
+    const { fencedAttach } = await import("../notebook-manual-acquisition");
+    db.claimRows = 1;
+    db.priorDoc = "doc-chapter";
+    db.priorFile = "file-chapter";
+    db.priorSource = { match_state: "candidate" };
+    expect(await fencedAttach("K", "g1")("t", "nb", "file-full-manual", null, tgt, null)).toBe(true);
+    const record = db.queries.find((q) => /SET manual_acquisition = manual_acquisition \|\| jsonb_build_object/.test(q.sql))!;
+    expect(record.sql).not.toMatch(/COALESCE\(\$6/);
+    expect(record.params).toEqual(["t", "nb", "K", "g1", "file-full-manual", null]);
+  });
+
+  it("the replacement removed, the chapter kept: reconcile reports it removed", async () => {
+    const { reconcileAcquisition } = await import("../notebook-manual-acquisition");
+    db.sourceRow = { match_state: "candidate", auto_key: "K", cand_app: null, revoked: null }; // the old chapter is still in Sources
+    db.fileLinked = false; // the replacement PDF is gone from Files
+    const r = await reconcileAcquisition("t", "nb", replacement as never);
+    expect(r?.source_removed).toBe(true);
+    expect(db.queries.some((q) => /FROM workspace_file_links/.test(q.sql))).toBe(true);
+  });
+
+  it("control: the replacement still linked stays as it was", async () => {
+    const { reconcileAcquisition } = await import("../notebook-manual-acquisition");
+    db.sourceRow = { match_state: "candidate", auto_key: "K", cand_app: null, revoked: null };
+    db.fileLinked = true;
+    const r = await reconcileAcquisition("t", "nb", replacement as never);
+    expect(r?.source_removed).toBeUndefined();
+  });
+
+  it("the next automatic retry does not relink a removed replacement", async () => {
+    const { fencedAttach } = await import("../notebook-manual-acquisition");
+    db.claimRows = 1;
+    db.priorDoc = null; // the fence the file-only attach now writes
+    db.priorFile = "file-full-manual";
+    db.fileLinked = false;
+    expect(await fencedAttach("K", "g2")("t", "nb", "file-full-manual", null, tgt, null)).toBe("removed");
   });
 });
 
