@@ -201,8 +201,6 @@ export function HubShellHost() {
   // The technician's message from the moment Send is tapped (outgoing-turn.ts).
   const [outgoing, setOutgoing] = useState<Outgoing | null>(null);
   const [busy, setBusy] = useState(false);
-  // A retry re-sends the body as it went out, with the component scope it was asked under (#5504 post-cap).
-  const [failedBody, setFailedBody] = useState<{ body: ReturnType<typeof chatBodyFor> & { componentSelection?: ScopeField }; question: string; refusedScope?: ScopeField } | null>(null);
   // The panel's newest read, by conversation: names the targets when a refused question's target moved.
   const [benchView, setBenchView] = useState<{ key: string; state: BenchState | null } | null>(null);
   // Equipment navigator (MIRA_EQUIPMENT_NAV): the component it resolved, for that conversation's checklist to select.
@@ -226,6 +224,9 @@ export function HubShellHost() {
   const [componentFrame, setComponentFrame] = useState<{ key: string; frame: ComponentTurnFrame } | null>(null);
   const [benchRefresh, setBenchRefresh] = useState(0);
   const abortRef = useRef<AbortController | null>(null);
+  // A rejected request can settle after a switch. Only the newest attempt
+  // for its conversation may recover the original request.
+  const sendAttempts = useRef(new Map<string, AbortController>());
   // The upload half of an attached send (#4019 round 2 F2): Stop and thread
   // changes abort it too, so a slow upload can never post afterwards.
   const uploadAbortRef = useRef<AbortController | null>(null);
@@ -240,6 +241,7 @@ export function HubShellHost() {
   const adapter = useMemo(() => createWebAdapter(browserAdapterDeps()), []);
 
   const [state, dispatch] = useReducer(hubHostReducer, undefined, initialHubShellState);
+  const failedBody = state.sendRecoveryByThread?.get(state.thread.id) ?? null;
   /**
    * Tell the reducer WHICH thread is open, from event handlers (never effects).
    * The live turns are projected onto the state at render time via `hydrate`
@@ -335,7 +337,6 @@ export function HubShellHost() {
     detailAbortRef.current?.abort();
     setDetail(null);
     setLive(null);
-    setFailedBody(null);
     manualSearchDriverRef.current?.reset();
     setFollow(null);
     syncThread(sel);
@@ -487,7 +488,12 @@ export function HubShellHost() {
   }, [gateConversation]);
 
   // --- the send path: the canonical notebook-chat route, streamed ---
-  const send = useCallback(async (body: ReturnType<typeof chatBodyFor> & { componentSelection?: ScopeField }, question: string, sel: HubSelection | null = selection) => {
+  const send = useCallback(async (
+    body: ReturnType<typeof chatBodyFor> & { componentSelection?: ScopeField },
+    question: string,
+    sel: HubSelection | null = selection,
+    retryDraftRevision?: number,
+  ) => {
     if (!sel) return;
     // Never while a component change is saving (this send would carry the version the
     // header read before it), and never before this conversation's component selection
@@ -516,9 +522,11 @@ export function HubShellHost() {
     abortRef.current?.abort();
     const ctrl = new AbortController();
     abortRef.current = ctrl;
+    const threadId = shellThreadId(sel);
+    sendAttempts.current.set(threadId, ctrl);
     const id = `live-${Date.now()}`;
     const outgoingId = outgoingOwner.current?.id ?? null;
-    setFailedBody(null);
+    dispatch({ type: "clear-recovery", threadId });
     setSettledFollowups(null);
     // #4454: which answers were already there, so the kept follow-ups land on the one this send produces.
     const answeredBefore = (detailRef.current?.turns ?? []).map((row) => answerTurnId(row.id));
@@ -529,6 +537,7 @@ export function HubShellHost() {
     // The route refused the scope (the selection moved): a retry is asked again under what the
     // header shows after the re-read, never replayed under the scope that was refused.
     let scopeRefused = false;
+    let rejectionStatus: number | undefined;
     try {
       // TASK-S3: the rider is applied here, centrally, rather than threaded
       // through every chatBodyFor(...) call site — one enforcement point
@@ -542,6 +551,7 @@ export function HubShellHost() {
       });
       if (res.status === 401) { setSignedOut(true); return; }
       if (!res.ok || !res.body) {
+        if (!res.ok) rejectionStatus = res.status;
         // The route's own error codes, in plain language; never a bare status code.
         let code = "";
         try {
@@ -600,12 +610,26 @@ export function HubShellHost() {
       dropOutgoing(outgoingId);
       // #4311: a failed send put the question back in the composer; a
       // successful retry takes it away again (never a newer draft).
-      dispatch({ type: "sent-draft", threadId: shellThreadId(sel), question });
+      if (retryDraftRevision !== undefined && sendAttempts.current.get(threadId) === ctrl) {
+        dispatch({ type: "sent-draft", threadId, question, revision: retryDraftRevision });
+      }
     } catch (caught) {
-      // Selecting another conversation aborts this request. A late rejection
-      // must not become the newly opened conversation's draft or retry.
-      if (selectionRef.current !== sel || abortRef.current !== ctrl) {
+      const latest = sendAttempts.current.get(threadId) === ctrl;
+      const stillActive = selectionRef.current === sel && abortRef.current === ctrl;
+      if (!latest || !stillActive) {
         dropOutgoing(outgoingId);
+        // No response status means an interrupted request could already have
+        // reached the server. A known rejection keeps its original request ID
+        // and can only be recovered into the originating conversation.
+        if (!latest || rejectionStatus === undefined) return;
+        const refusedScope = (scopeRefused || rejectionStatus === 409) ? outBody.componentSelection : undefined;
+        dispatch({
+          type: "recover-send", threadId, restoreDraft: true,
+          recovery: {
+            body: refusedScope ? withoutScope(body) : outBody, question, ...(refusedScope ? { refusedScope } : {}),
+            error: errorMessageFor("", rejectionStatus),
+          },
+        });
         return;
       }
       // #4687: a refusal delivered inside the progress stream is handled exactly
@@ -623,8 +647,7 @@ export function HubShellHost() {
         );
         if (!retained.stopped) {
           const message = sendFailureMessage(err);
-          setFailedBody({ body: outBody, question });
-          dispatch({ type: "set-send-error", error: message });
+          dispatch({ type: "recover-send", threadId, recovery: { body: outBody, question, error: message }, restoreDraft: false });
         }
         return;
       }
@@ -635,10 +658,12 @@ export function HubShellHost() {
       // until the panel has re-read what is selected now (the old read is stale).
       const refusedScope = scopeRefused ? (outBody as { componentSelection?: ScopeField }).componentSelection : undefined;
       if (scopeRefused) setBenchView((cur) => (cur && cur.key === `${sel.notebookId}|${sel.threadId}` ? null : cur));
-      setFailedBody({ body: scopeRefused ? withoutScope(body) : outBody, question, ...(refusedScope ? { refusedScope } : {}) });
-      dispatch({ type: "set-send-error", error: message });
-      dispatch({ type: "set-draft", draft: question });
+      dispatch({
+        type: "recover-send", threadId, restoreDraft: true,
+        recovery: { body: scopeRefused ? withoutScope(body) : outBody, question, ...(refusedScope ? { refusedScope } : {}), error: message },
+      });
     } finally {
+      if (sendAttempts.current.get(threadId) === ctrl) sendAttempts.current.delete(threadId);
       benchGate.endSend();
       if (abortRef.current === ctrl) { abortRef.current = null; setBusy(false); }
       // A turn can change the checklist (its tallies) or find the selection moved (409).
@@ -873,7 +898,7 @@ export function HubShellHost() {
     await composeAndSend(q, files, sel, target.nodeId, [], [], ctrl);
   }, [adapter, createNotebook, select, send, composeAndSend, dropOutgoing, putOutgoing, outgoingOwner]);
 
-  const onSend = useCallback((text: string, attachments: readonly Attachment[] = []) => {
+  const onSend = useCallback((text: string, attachments: readonly Attachment[] = [], opts?: { retry?: boolean }) => {
     const q = text.trim();
     // #4019: pair each chip with the bytes the adapter held for it. Throws
     // (Composer keeps the draft AND the chips) on a missing file or a second
@@ -906,9 +931,11 @@ export function HubShellHost() {
       return;
     }
     if (!detail) throw new Error(NO_PROJECT_ERROR);
-    // After the target review, Send asks the held question (with its attachments) again,
-    // scoped from what the header shows now.
-    const held = heldQuestionForSend(failedBody, retryCheck, q, files.length);
+    // Retry can fall back through the composer when the server has no turn.
+    // In that case reuse the original request ID, history and any held photo.
+    const retryBody = opts?.retry && retryCheck?.kind === "retry"
+      && failedBody?.question.trim() === q && files.length === 0 ? failedBody.body : null;
+    const held = retryBody ?? heldQuestionForSend(failedBody, retryCheck, q, files.length);
     if (held) {
       beginOutgoing(shellThreadId(selection));
       void send(held, q);
@@ -931,7 +958,11 @@ export function HubShellHost() {
   }, [busy, selection, detail, send, putOutgoing]);
 
   const onStop = useCallback(() => { abortRef.current?.abort(); uploadAbortRef.current?.abort(); }, []);
-  const onRetry = useCallback(() => { if (failedBody && retryCheck?.kind === "retry") void send(failedBody.body, failedBody.question); }, [failedBody, retryCheck, send]);
+  const onRetry = useCallback(() => {
+    if (failedBody && retryCheck?.kind === "retry") {
+      void send(failedBody.body, failedBody.question, selection, state.draftRevision);
+    }
+  }, [failedBody, retryCheck, selection, send, state.draftRevision]);
 
   /** New chat: a fresh thread in the open notebook; from HOME, HOME is already the blank chat. */
   const onNewChat = useCallback(() => {

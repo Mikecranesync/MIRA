@@ -144,7 +144,7 @@ describe("Hub draft isolation across notebook navigation (#5684)", () => {
     const switched = hubHostReducer(retry, openThreadAction(destination, AT));
     const sameText = hubHostReducer(switched, { type: "set-draft", draft: question });
 
-    const completed = hubHostReducer(sameText, { type: "sent-draft", threadId: shellThreadId(SEL), question });
+    const completed = hubHostReducer(sameText, { type: "sent-draft", threadId: shellThreadId(SEL), question, revision: retry.draftRevision! });
     expect(completed.draft).toBe(question);
     expect(hubHostReducer(completed, openThreadAction(SEL, AT)).draft).toBe("");
   });
@@ -152,11 +152,24 @@ describe("Hub draft isolation across notebook navigation (#5684)", () => {
   it("keeps newer text whether the sending conversation is active or parked", () => {
     const origin = hubHostReducer(initialHubShellState(), openThreadAction(SEL, AT));
     const edited = hubHostReducer(origin, { type: "set-draft", draft: "A new question" });
-    const completion = { type: "sent-draft", threadId: shellThreadId(SEL), question: "The sent question" } as const;
+    const completion = { type: "sent-draft", threadId: shellThreadId(SEL), question: "The sent question", revision: edited.draftRevision! } as const;
     expect(hubHostReducer(edited, completion).draft).toBe("A new question");
 
     const switched = hubHostReducer(edited, openThreadAction(destination, AT));
     const completed = hubHostReducer(switched, completion);
     expect(hubHostReducer(completed, openThreadAction(SEL, AT)).draft).toBe("A new question");
   });
+
+  it("keeps a new draft with identical wording when an older retry settles", () => {
+    const question = "Check the drive";
+    const origin = hubHostReducer(initialHubShellState(), openThreadAction(SEL, AT));
+    const before = hubHostReducer(origin, { type: "set-draft", draft: question });
+    const completion = { type: "sent-draft", threadId: shellThreadId(SEL), question, revision: before.draftRevision! } as const;
+    const cleared = hubHostReducer(before, { type: "set-draft", draft: "" });
+    const retyped = hubHostReducer(cleared, { type: "set-draft", draft: question });
+    const parked = hubHostReducer(retyped, openThreadAction(destination, AT));
+    const completed = hubHostReducer(parked, completion);
+    expect(hubHostReducer(completed, openThreadAction(SEL, AT)).draft).toBe(question);
+  });
+
 });

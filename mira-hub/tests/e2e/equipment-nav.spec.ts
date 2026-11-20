@@ -192,6 +192,18 @@ const checklist = (page: Page) => page.getByTestId("bench-components-panel");
 const checklistRow = (page: Page, id: string) => checklist(page).getByTestId(`bench-component-${id}`);
 const offer = (page: Page) => page.getByTestId("equipment-offer");
 const composer = (page: Page) => page.getByRole("textbox", { name: /ask mira/i });
+async function attachDraftPhoto(page: Page, name: string) {
+  await page.getByRole("button", { name: "Add attachment" }).click();
+  const [chooser] = await Promise.all([
+    page.waitForEvent("filechooser"),
+    page.getByRole("button", { name: "Photo", exact: true }).click(),
+  ]);
+  await chooser.setFiles({
+    name,
+    mimeType: "image/png",
+    buffer: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aN1sAAAAASUVORK5CYII=", "base64"),
+  });
+}
 const showFound = (page: Page) => offer(page).getByRole("button", { name: "Show in checklist" }).click();
 const selectInChecklist = (page: Page, id: string) => checklistRow(page, id).getByRole("button", { name: "Ask about this" }).click();
 
@@ -382,16 +394,7 @@ for (const originKind of ["saved", "new"] as const) {
     const draft = "Check the original drive before the next shift.";
     const photoName = "fixture-draft-photo.png";
     await composer(page).fill(draft);
-    await page.getByRole("button", { name: "Add attachment" }).click();
-    const [chooser] = await Promise.all([
-      page.waitForEvent("filechooser"),
-      page.getByRole("button", { name: "Photo", exact: true }).click(),
-    ]);
-    await chooser.setFiles({
-      name: photoName,
-      mimeType: "image/png",
-      buffer: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aN1sAAAAASUVORK5CYII=", "base64"),
-    });
+    await attachDraftPhoto(page, photoName);
     const attachment = page.getByRole("button", { name: `Remove ${photoName}` });
     await expect(attachment).toBeVisible();
 
@@ -412,13 +415,75 @@ for (const originKind of ["saved", "new"] as const) {
   });
 }
 
-test("a failed send that is aborted by navigation cannot put its question in another chat (#5684)", async ({ page, context, baseURL }) => {
+test("a held photo and target review are kept with the origin across equipment Open (#5684)", async ({ page, context, baseURL }) => {
+  await auth(context, baseURL!);
+  const destination = "99999999-9999-4999-8999-999999999999";
+  const seen = await routes(page, {
+    enabled: true, resolve: "resolved", resolveNotebook: destination,
+    initial: { [THREAD]: { componentId: VFD, version: 2 } },
+  });
+  let looks = 0;
+  await page.route(/\/api\/equipment-notebooks\/[^/]+\/look\/?$/, (route) => route.fulfill(json({
+    fileId: `fixture-held-photo-${++looks}`, observation: { text: "Fixture drive photo", capturedAt: "2026-11-20T12:00:00.000Z" },
+    attachment: { linkId: "fixture-link" }, observationPersisted: true,
+  })));
+  const requests: { message?: string; visualEvidence?: { fileId?: string }; componentSelection?: { componentId?: string | null } }[] = [];
+  await page.route(/\/api\/equipment-notebooks\/[^/]+\/chat\/?$/, (route) => {
+    requests.push(route.request().postDataJSON());
+    if (requests.length === 1) {
+      seen.selections.delete(THREAD);
+      return route.fulfill(json({ error: "selection_changed" }, 409));
+    }
+    return route.fulfill(json({ error: "test_stop" }, 503));
+  });
+
+  await page.goto(`/v3/?notebook=${NB}&thread=${THREAD}`);
+  await expect(page.getByTestId("bench-asking-about")).toContainText("VFD1");
+  const question = "Check the drive photo";
+  await attachDraftPhoto(page, "held-fixture.png");
+  await composer(page).fill(question);
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  const held = page.getByRole("status", { name: "Kept with this question" });
+  await expect(held).toContainText(/photo is kept/i);
+  expect(requests[0].visualEvidence?.fileId).toBe("fixture-held-photo-1");
+
+  await openTo(page, VFD);
+  await askAbout(page, "VFD1");
+  await offer(page).getByRole("button", { name: "Open", exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`notebook=${destination}`));
+  await expect(checklistRow(page, VFD)).toHaveAttribute("data-found", "true");
+  await checklist(page).getByRole("button", { name: "Close", exact: true }).click();
+  await expect(composer(page)).toHaveValue("");
+  await expect(held).toHaveCount(0);
+
+  const origin = page.getByRole("region", { name: "Projects" }).getByRole("button", { name: /Unsent draft/ });
+  await expect(origin).toBeVisible();
+  await origin.click();
+  await expect(composer(page)).toHaveValue(question);
+  await expect(page.getByText(/now the whole machine/i).first()).toBeVisible();
+  await expect(held).toContainText(/photo is kept/i);
+  expect(requests).toHaveLength(1);
+
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  await expect.poll(() => requests.length).toBe(2);
+  expect(requests[1]).toMatchObject({ message: question, visualEvidence: { fileId: "fixture-held-photo-1" }, componentSelection: { componentId: null } });
+  expect(looks).toBe(1);
+});
+
+test("a rejected send is recoverable only in the origin after navigation (#5684)", async ({ page, context, baseURL }) => {
   await auth(context, baseURL!);
   await routes(page, { enabled: true, resolve: "resolved" });
   await page.addInitScript(() => {
     const fetchNormally = window.fetch.bind(window);
     window.fetch = (input, init) => {
       if (init?.method !== "POST" || !String(input).includes("/chat/")) return fetchNormally(input, init);
+      const { clientRequestId } = JSON.parse(String(init.body));
+      const data = document.documentElement.dataset;
+      if (data.sentRequest) {
+        data.retriedRequest = clientRequestId;
+        return Promise.resolve(new Response('{"error":"test_stop"}', { status: 503 }));
+      }
+      data.sentRequest = clientRequestId;
       // The HTTP status arrives first. The error body is still streaming
       // when opening a fresh chat aborts the origin's request.
       const body = new ReadableStream<Uint8Array>({
@@ -440,6 +505,16 @@ test("a failed send that is aborted by navigation cannot put its question in ano
   await expect(page).not.toHaveURL(origin);
   await expect(page.getByRole("button", { name: "Stop", exact: true })).toHaveCount(0);
   await expect(composer(page)).toHaveValue("");
+  const originDraft = page.getByRole("region", { name: "Projects" }).getByRole("button", { name: /Unsent draft/ });
+  await expect(originDraft).toBeVisible();
+  await originDraft.click();
+  await expect(page).toHaveURL(origin);
+  await expect(composer(page)).toHaveValue("Only the origin may recover this question.");
+
+  const requestId = await page.locator("html").getAttribute("data-sent-request");
+  expect(requestId).toBeTruthy();
+  await page.getByRole("button", { name: "Try again", exact: true }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-retried-request", requestId!);
 });
 
 test("closing Find equipment cancels a lookup on its way: the chat and the typed message stay (#5625 r3 F12)", async ({ page, context, baseURL }) => {

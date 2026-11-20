@@ -10,6 +10,7 @@ import { buildChatBody, isAbortError, type ChatBody, type PersistedTurn, type St
 import { isSafetyNoticeEntry } from "@/lib/notebook-chat-types";
 import { LEGACY_THREAD_ID, machineNameFor, notebookLabel, threadItemId, type HubNotebook } from "./notebook-tree";
 import { historyFromSavedTurns, type HistoryRow } from "@/capabilities/conversation-history";
+import type { ScopeField } from "./bench-components-logic";
 import { contextFor, threadFromPersisted, type HubNotebookMeta } from "./to-interaction";
 
 /** The shell's fixture before any notebook loads: an empty, untitled thread. */
@@ -314,27 +315,40 @@ export function openThreadAction(sel: HubSelection, at: string): ShellAction {
 }
 
 /** The host's actions: the shell's, plus an automatic landing (deep link, reload, first load). */
+export type HubSendRecovery = {
+  readonly body: ReturnType<typeof chatBodyFor> & { componentSelection?: ScopeField };
+  readonly question: string;
+  readonly refusedScope?: ScopeField;
+  readonly error: string;
+};
+
 export type HubHostAction =
   | ShellAction
   | { readonly type: "land-thread"; readonly selection: HubSelection; readonly at: string }
-  | { readonly type: "sent-draft"; readonly threadId: string; readonly question: string };
+  | { readonly type: "sent-draft"; readonly threadId: string; readonly question: string; readonly revision: number }
+  | { readonly type: "recover-send"; readonly threadId: string; readonly recovery: HubSendRecovery; readonly restoreDraft: boolean }
+  | { readonly type: "clear-recovery"; readonly threadId: string };
 
 /**
- * #4311 — a failed send hands the question back to the composer; a successful
- * host retry must take it away again, but never clobber something new the
- * technician typed meanwhile. Returns the draft to set, or null to leave it.
+ * #4311 — successful retry clears the question it retried. The Hub also checks
+ * draft revision so newly typed text survives even when it has the same words.
  */
 export function draftAfterSendSucceeded(draft: string, question: string): string | null {
   return draft !== "" && draft.trim() === question.trim() ? "" : null;
 }
 
-type HubShellState = ShellState & { readonly draftsByThread?: ReadonlyMap<string, string> };
+type ParkedDraft = { readonly text: string; readonly revision: number };
+
+type HubShellState = ShellState & {
+  readonly draftRevision?: number;
+  readonly draftSequence?: number;
+  readonly draftsByThread?: ReadonlyMap<string, ParkedDraft>;
+  readonly sendRecoveryByThread?: ReadonlyMap<string, HubSendRecovery>;
+};
 
 /**
- * The composer already holds pending attachments by thread ID. Keep unsent
- * text by that same identity when a technician opens another conversation.
- * The state that switches threads owns the latest text, including keystrokes
- * that arrived after the equipment offer appeared.
+ * Use the same composite conversation ID for parked text, pending photos and
+ * send recovery. The reducer sees the latest edit when navigation commits.
  */
 export function hubHostReducer(state: HubShellState, action: HubHostAction): HubShellState {
   if (action.type === "land-thread") {
@@ -345,28 +359,63 @@ export function hubHostReducer(state: HubShellState, action: HubHostAction): Hub
 
   if (action.type === "sent-draft") {
     const active = action.threadId === state.thread.id;
-    const draft = active ? state.draft : state.draftsByThread?.get(action.threadId);
-    if (draft === undefined || draftAfterSendSucceeded(draft, action.question) === null) return state;
-    if (active) return shellReducer(state, { type: "set-draft", draft: "" });
+    const draft = active && state.draftRevision !== undefined
+      ? { text: state.draft, revision: state.draftRevision }
+      : state.draftsByThread?.get(action.threadId);
+    if (!draft || draft.revision !== action.revision || draftAfterSendSucceeded(draft.text, action.question) === null) return state;
+    if (active) return hubHostReducer(state, { type: "set-draft", draft: "" });
     const draftsByThread = new Map(state.draftsByThread);
     draftsByThread.delete(action.threadId);
     return { ...state, draftsByThread };
   }
 
+  if (action.type === "clear-recovery") {
+    if (!state.sendRecoveryByThread?.has(action.threadId)) return state;
+    const sendRecoveryByThread = new Map(state.sendRecoveryByThread);
+    sendRecoveryByThread.delete(action.threadId);
+    return { ...state, sendRecoveryByThread };
+  }
+
+  if (action.type === "recover-send") {
+    const sendRecoveryByThread = new Map(state.sendRecoveryByThread);
+    sendRecoveryByThread.set(action.threadId, action.recovery);
+    const next = { ...state, sendRecoveryByThread };
+    if (action.threadId === state.thread.id) {
+      const withError = shellReducer(next, { type: "set-send-error", error: action.recovery.error });
+      return action.restoreDraft && !state.draft
+        ? hubHostReducer(withError, { type: "set-draft", draft: action.recovery.question })
+        : withError;
+    }
+    if (!action.restoreDraft || state.draftsByThread?.has(action.threadId)) return next;
+    const revision = (state.draftSequence ?? 0) + 1;
+    const draftsByThread = new Map(state.draftsByThread);
+    draftsByThread.set(action.threadId, { text: action.recovery.question, revision });
+    return { ...next, draftsByThread, draftSequence: revision };
+  }
+
   const next = shellReducer(state, action);
+  if (action.type === "set-draft" && next !== state) {
+    const revision = (state.draftSequence ?? 0) + 1;
+    return { ...next, draftSequence: revision, draftRevision: next.draft ? revision : undefined };
+  }
   if (action.type !== "hydrate" || next.thread.id === state.thread.id) return next;
 
-  const outgoingDraft = state.thread.id === EMPTY_FIXTURE.thread.id ? "" : state.draft;
+  const outgoingDraft = state.thread.id !== EMPTY_FIXTURE.thread.id
+    && state.draft && state.draftRevision !== undefined
+    ? { text: state.draft, revision: state.draftRevision }
+    : undefined;
   const incomingDraft = state.draftsByThread?.get(next.thread.id);
-  if (!outgoingDraft && incomingDraft === undefined) return next;
+  const incomingError = state.sendRecoveryByThread?.get(next.thread.id)?.error ?? null;
+  const opened = shellReducer(next, { type: "set-send-error", error: incomingError });
+  if (!outgoingDraft && !incomingDraft) return { ...opened, draftRevision: undefined };
 
   const draftsByThread = new Map(state.draftsByThread);
   if (outgoingDraft) draftsByThread.set(state.thread.id, outgoingDraft);
-  // Once active, the composer owns the text. Clearing or sending it cannot
-  // bring back an older parked copy on a later visit.
+  // The active composer owns the current draft. Clearing or sending it must
+  // never bring back an older parked copy on a later visit.
   draftsByThread.delete(next.thread.id);
-  const restored = incomingDraft === undefined ? next : shellReducer(next, { type: "set-draft", draft: incomingDraft });
-  return { ...restored, draftsByThread };
+  const restored = incomingDraft ? shellReducer(opened, { type: "set-draft", draft: incomingDraft.text }) : opened;
+  return { ...restored, draftsByThread, draftRevision: incomingDraft?.revision };
 }
 
 /**
