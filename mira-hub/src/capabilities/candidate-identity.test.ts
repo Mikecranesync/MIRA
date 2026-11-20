@@ -504,6 +504,8 @@ describe("confirmFirstCandidate — show-only, never a search", () => {
     [GS10_CV101_LOOK, "Find the Rockwell manual"], // typed different maker
     ["SMC MODEL: TP1200\n(customer\nasset tag)", "manual"], // the label wraps right after the code
     ["SMC MODEL: TP1200 24VDC\n(asset tag)", "manual"],
+    ["SMC MODEL: TP\u200b1200 24VDC\n(asset tag)", "manual"], // Codex #5706 r4 F1: an invisible character inside the code
+    ["SMC MODEL: TP\u00ad1200\n(customer\nasset tag)", "manual"],
   ])("refused: %j + %j", (photo, typed) => {
     expect(confirmFirstCandidate(photo, typed)).toBeNull();
   });

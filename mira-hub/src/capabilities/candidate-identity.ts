@@ -28,6 +28,7 @@ import {
   partCodes,
   privateIdentifierKeys,
   privateSuffixTails,
+  normalizeLabelText,
   partNumberWithheldOnlyByAssetLabel,
   serialCodes,
   unambiguousPartNumber,
@@ -269,9 +270,15 @@ export function confirmFirstCandidate(photoText: string, typed: string): { manuf
   // The value-less label must sit away from the code: one written beside it or
   // wrapped onto the next line ("TP1200 (customer\nasset tag)") may be marking
   // that very code, which r16 never lets out.
-  for (const m of photoText.matchAll(new RegExp(`(?<![A-Za-z0-9])${part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![A-Za-z0-9])`, "gi"))) {
+  // Codex #5706 r4 F1: locate the code in the SAME normalized text the part
+  // reader extracted it from (an invisible character inside the code must not
+  // hide it), and refuse when it cannot be located at all.
+  const located = normalizeLabelText(photoText);
+  const spans = [...located.matchAll(new RegExp(`(?<![A-Za-z0-9])${part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![A-Za-z0-9])`, "gi"))];
+  if (spans.length === 0) return null;
+  for (const m of spans) {
     const at = m.index ?? 0;
-    const near = photoText.slice(Math.max(0, at - CONFIRM_LABEL_DISTANCE), at + part.length + CONFIRM_LABEL_DISTANCE);
+    const near = located.slice(Math.max(0, at - CONFIRM_LABEL_DISTANCE), at + part.length + CONFIRM_LABEL_DISTANCE);
     if (mentionsAssetLabel(near) || mentionsSerialLabel(near)) return null;
   }
   if (typed && (mentionsSerialLabel(typed) || mentionsAssetLabel(typed))) return null;

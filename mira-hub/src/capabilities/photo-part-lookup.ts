@@ -59,6 +59,8 @@ const trimCode = (code: string) => code.replace(/[./-]+$/, "");
 /** Quotes are label punctuation, never identifier characters (#4150 F1/F4); invisible
  *  characters (soft hyphen, zero-width, BOM) are nothing at all, so "Ser\u00adial" is
  *  still "Serial" (#4172). */
+/** Exported so a caller locating a code read by this module searches the SAME text (#5706 r4 F1). */
+export const normalizeLabelText = (t: string) => normalize(t);
 const normalize = (t: string) => t.replace(/[\u00ad\u200b-\u200d\u2060\ufeff]/g, "").replace(/["'\u2018\u2019\u201c\u201d`]/g, " ");
 
 /**
