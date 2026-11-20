@@ -47,7 +47,9 @@ import {
   acquisitionKey,
   applicableReadySource,
   confirmNotebookIdentity,
+  partialRefreshDue,
   readAcquisition,
+  reconcileAcquisition,
   startManualAcquisition,
 } from "@/capabilities/notebook-manual-acquisition";
 
@@ -206,12 +208,29 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // is the DB's own `now()`, never a value this route invents.
   let startedAt: string | null = null;
   if (!manualReady && acquisitionEnabled(ctx.tenantId)) {
+    // Codex #5706 r4 F6: confirming is an explicit request for this machine's
+    // manual (the card's "Use its manuals"), so a same-key partial result an
+    // older discovery revision cached is refreshed once — the same guarded
+    // predicate the chat route uses (reconciled first; removed or rejected
+    // stays removed; a current-revision result is not searched again).
+    let refresh = false;
+    try {
+      const key = acquisitionKey(identity);
+      let prior = await readAcquisition(ctx.tenantId, notebookId);
+      if (prior && key !== null && prior.key === key && prior.partial === true) {
+        prior = await reconcileAcquisition(ctx.tenantId, notebookId, prior);
+      }
+      refresh = key !== null && partialRefreshDue(prior, key);
+    } catch (err) {
+      console.warn(`[identity-confirm] partial-refresh check failed notebook=${notebookId}: ${(err as Error).message}`);
+    }
     const justClaimed = await startManualAcquisition({
       tenantId: ctx.tenantId,
       userId: ctx.userId ?? null,
       notebookId,
       nodeId: notebook.nodeId,
       identity,
+      ...(refresh ? { refreshPartial: true } : {}),
     });
     try {
       const rec = await readAcquisition(ctx.tenantId, notebookId);

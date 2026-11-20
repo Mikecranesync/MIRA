@@ -31,6 +31,7 @@ const acqMock = vi.hoisted(() => ({
   acquisitionEnabled: vi.fn(() => true),
   startManualAcquisition: vi.fn(async () => true),
   readAcquisition: vi.fn(async () => null as unknown),
+  reconcileAcquisition: vi.fn(async (_t: string, _n: string, rec: unknown) => rec),
   confirmNotebookIdentity: vi.fn(async () => ({ ok: true }) as unknown),
 }));
 vi.mock("@/capabilities/notebook-manual-acquisition", async (importOriginal) => {
@@ -40,6 +41,7 @@ vi.mock("@/capabilities/notebook-manual-acquisition", async (importOriginal) => 
     acquisitionEnabled: acqMock.acquisitionEnabled,
     startManualAcquisition: acqMock.startManualAcquisition,
     readAcquisition: acqMock.readAcquisition,
+    reconcileAcquisition: acqMock.reconcileAcquisition,
     confirmNotebookIdentity: acqMock.confirmNotebookIdentity,
     // acquisitionKey stays REAL — pure, already unit-proven; this suite
     // checks the route builds the exact same key the candidate-basis
@@ -88,6 +90,7 @@ beforeEach(() => {
   acqMock.acquisitionEnabled.mockReturnValue(true);
   acqMock.startManualAcquisition.mockResolvedValue(true);
   acqMock.readAcquisition.mockResolvedValue(null);
+  acqMock.reconcileAcquisition.mockImplementation(async (_t: string, _n: string, rec: unknown) => rec);
   acqMock.confirmNotebookIdentity.mockResolvedValue({ ok: true });
 });
 
@@ -396,6 +399,33 @@ describe("POST identity/confirm", () => {
       const call = (acqMock.startManualAcquisition.mock.calls[0] as unknown[])[0] as { identity: unknown };
       expect(call.identity).toEqual({ identityStatus: "user_confirmed", manufacturer: "AUTOMATIONDIRECT", model: "GS11N-20P2", catalogNumber: "" });
       expect((await res.json()).searching).toBe(true);
+    });
+
+    // Codex #5706 r4 F6: the tap on "Use its manuals" refreshes a same-key
+    // partial result an older discovery revision cached — once, never a
+    // removed one and never a current-revision one.
+    describe("Codex r4 F6: a cached partial chapter on confirm", () => {
+      const gs10 = { identityStatus: "user_confirmed", manufacturer: "AUTOMATIONDIRECT", model: "GS11N-20P2", catalogNumber: "" };
+      const partial = (extra: Record<string, unknown>) => ({
+        key: acquisitionKey(gs10 as never), state: "candidate_review", partial: true, started_at: "2026-11-01T00:00:00Z", ...extra,
+      });
+      const refreshArg = () => ((acqMock.startManualAcquisition.mock.calls[0] as unknown[])[0] as { refreshPartial?: boolean }).refreshPartial;
+      it("an older-revision partial chapter is refreshed once by the confirmed search", async () => {
+        acqMock.readAcquisition.mockResolvedValue(partial({ discovery_rev: 1 }));
+        await POST(req({ manufacturer: "AUTOMATIONDIRECT", model: "GS11N-20P2" }), params);
+        expect(acqMock.reconcileAcquisition).toHaveBeenCalled();
+        expect(acqMock.startManualAcquisition).toHaveBeenCalledTimes(1);
+        expect(refreshArg()).toBe(true);
+      });
+      it.each([
+        ["a current-revision partial", { discovery_rev: 2 }],
+        ["a removed chapter", { discovery_rev: 1, source_removed: true }],
+        ["a different machine's partial", { discovery_rev: 1, key: "other-key" }],
+      ])("control: %s is not refreshed", async (_label, extra) => {
+        acqMock.readAcquisition.mockResolvedValue(partial(extra));
+        await POST(req({ manufacturer: "AUTOMATIONDIRECT", model: "GS11N-20P2" }), params);
+        expect(refreshArg()).toBeUndefined();
+      });
     });
 
     it("a repeated confirmation does not duplicate the search — a refused claim (already running) still reports the honest 'looking' copy, not a fabricated promise", async () => {
