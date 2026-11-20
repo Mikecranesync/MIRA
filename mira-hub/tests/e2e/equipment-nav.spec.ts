@@ -651,29 +651,62 @@ test("on a short landscape screen, Send still sends with a full equipment list o
   await expect(checklist(page)).toHaveCount(0);
 });
 
+/** Open a full list with an offer and a refusal above it at 800×350, so the panel itself must scroll. */
+async function openCrowdedShortPanel(page: Page, context: BrowserContext, baseURL: string) {
+  await page.setViewportSize({ width: 800, height: 350 });
+  await auth(context, baseURL);
+  const opts: RouteOpts = { enabled: true, resolve: "resolved", fullPage: 50 };
+  await routes(page, opts);
+  await page.goto(`/v3/?notebook=${NB}&thread=${THREAD}`);
+  await expect(panel(page)).toBeVisible();
+  await panel(page).getByRole("button", { name: "Find equipment" }).click();
+  await row(page, `notebook:${NB}`).click();
+  await row(page, "notebook_component:00000000-0000-4000-8000-000000000000").click();
+  await askAbout(page, "M1");
+  await expect(offer(page)).toBeVisible();
+  opts.resolve = "stale_revision";
+  await panel(page).getByRole("button", { name: "Find equipment" }).click();
+  await row(page, `notebook:${NB}`).click();
+  await row(page, "notebook_component:00000000-0000-4000-8000-000000000001").click();
+  await askAbout(page, "M2");
+  await expect(panel(page).getByRole("alert").filter({ hasText: "did not change" }).first()).toBeAttached();
+}
+
+const overscrollY = (page: Page, testId: string) =>
+  page.getByTestId(testId).evaluate((el) => getComputedStyle(el).overscrollBehaviorY);
+
+// Deterministic half of #5659, run everywhere including CI: while the panel itself scrolls, the
+// results let a swipe carry on into it; the panel still stops at the page. The finger-level proof
+// is the touch test below, which runs locally and on the device walk.
+test("when the panel itself scrolls, the results hand an overscroll on to it; the panel never scrolls the page (#5659)", async ({ page, context, baseURL }) => {
+  await openCrowdedShortPanel(page, context, baseURL!);
+  expect(await panel(page).evaluate((el) => el.scrollHeight > el.clientHeight), "the panel scrolls").toBe(true);
+  await expect.poll(() => overscrollY(page, "equipment-scroll")).toBe("auto");
+  expect(await overscrollY(page, "equipment-nav")).toBe("contain");
+});
+
+test("when the panel fits, the results keep their overscroll to themselves (#5659 control)", async ({ page, context, baseURL }) => {
+  await page.setViewportSize({ width: 800, height: 1280 });
+  await auth(context, baseURL!);
+  await routes(page, { enabled: true, resolve: "resolved", fullPage: 50 });
+  await page.goto(`/v3/?notebook=${NB}&thread=${THREAD}`);
+  await expect(panel(page)).toBeVisible();
+  await panel(page).getByRole("button", { name: "Find equipment" }).click();
+  await row(page, `notebook:${NB}`).click();
+  await expect(row(page, "notebook_component:00000000-0000-4000-8000-000000000049")).toBeAttached();
+  expect(await panel(page).evaluate((el) => el.scrollHeight > el.clientHeight + 1), "the panel fits").toBe(false);
+  await expect.poll(() => overscrollY(page, "equipment-scroll")).toBe("contain");
+});
+
 test.describe("touch", () => {
   test.use({ hasTouch: true });
 
   test("on a very short screen a touch user can swipe into the results and back to the notices and Close equipment (#5659)", async ({ page, context, baseURL }) => {
-    await page.setViewportSize({ width: 800, height: 350 });
-    await auth(context, baseURL!);
-    const opts: RouteOpts = { enabled: true, resolve: "resolved", fullPage: 50 };
-    await routes(page, opts);
-    await page.goto(`/v3/?notebook=${NB}&thread=${THREAD}`);
-    await expect(panel(page)).toBeVisible();
-
-    // An offer and a refusal above the results, so the panel has to scroll itself (r2 F1).
-    await panel(page).getByRole("button", { name: "Find equipment" }).click();
-    await row(page, `notebook:${NB}`).click();
-    await row(page, "notebook_component:00000000-0000-4000-8000-000000000000").click();
-    await askAbout(page, "M1");
-    await expect(offer(page)).toBeVisible();
-    opts.resolve = "stale_revision";
-    await panel(page).getByRole("button", { name: "Find equipment" }).click();
-    await row(page, `notebook:${NB}`).click();
-    await row(page, "notebook_component:00000000-0000-4000-8000-000000000001").click();
-    await askAbout(page, "M2");
-    await expect(panel(page).getByRole("alert").filter({ hasText: "did not change" }).first()).toBeAttached();
+    // Chromium's synthesized touch scrolls barely move the results on the GitHub Linux runner (about
+    // one row in 40 swipes, PR #5666), while the same test passes locally at 800×330–380. CI runs
+    // the deterministic overscroll tests above instead; this one runs locally and before device walks.
+    test.skip(!!process.env.CI, "synthesized touch scrolling is unreliable on the CI runner");
+    await openCrowdedShortPanel(page, context, baseURL!);
     expect(await panel(page).evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true);
 
     const pageScroll = await page.evaluate(() => document.scrollingElement?.scrollTop ?? 0);
