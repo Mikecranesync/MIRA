@@ -225,6 +225,40 @@ describe("assessApplicability — suffixes, table cells and PDF dashes (Codex #5
     expect(assessApplicability({ identity: { manufacturer: "Allen-Bradley", model: "PowerFlex 40" }, chunks: [{ content: "PowerFlex 400 drive", page: 3 }], oemHost: true }).state).toBe("candidate");
   });
 
+  it.each([
+    ["GS11N20P2", "Applies to GS11N20P2-EX only"], // Codex #5706 r2 F4: compact spelling, suffixed variant
+    ["GS11N-20P2-230", "GS11N-20P2 230 V 1.7 A"], // a neighbouring voltage cell
+    ["GS11N-20P2-230V", "GS11N-20P2 230V 1.7 A"], // advisor: the same class with a letter tail
+    ["GS11N-20P2-1PH", "GS11N-20P2 1PH 0.25 HP"],
+    ["GS11N-20P2-IP20", "GS11N-20P2 IP20 enclosure"],
+  ])("model %s does not verify against %j", (model, content) => {
+    const v = oem(model, content);
+    expect(v.state).toBe("candidate");
+    expect(v.identifierPages ?? []).toEqual([]);
+  });
+
+  it.each([
+    ["GS11N-20P2-230", "GS11N-20P2 230 V 1.7 A"],
+    ["GS11N-20P2-230V", "GS11N-20P2 230V 1.7 A"],
+    ["GS11N-20P2-IP20", "GS11N-20P2 IP20 enclosure"],
+  ])("catalog %s does not verify against a neighbouring cell %j", (catalogNumber, content) => {
+    const v = assessApplicability({
+      identity: { manufacturer: "AutomationDirect", model: "", catalogNumber },
+      chunks: [{ content, page: 26 }],
+      oemHost: true,
+    });
+    expect(v.state).toBe("candidate");
+    expect(v.identifierPages ?? []).toEqual([]);
+  });
+
+  it.each([
+    ["GS11N20P2", "Model GS11N20P2 rated 0.25 HP"],
+    ["PowerFlex525", "PowerFlex 525 AC Drives"],
+    ["GS11N-20P2-230", "Model GS11N-20P2-230 rated"],
+  ])("control: %s verifies against %j", (model, content) => {
+    expect(oem(model, content).state).toBe("verified");
+  });
+
   it("a slash-joined model list is not read as either model (fails safe to candidate review)", () => {
     expect(oem("GS11N-20P2", "Models GS11N-20P2/GS11N-20P5 rated 0.25 HP").state).toBe("candidate");
   });

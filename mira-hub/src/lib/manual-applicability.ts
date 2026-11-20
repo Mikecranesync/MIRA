@@ -34,6 +34,10 @@ export interface ApplicabilityVerdict {
    *  that only name the manufacturer (`evidencePages` includes those). Set on a
    *  verified verdict; what the chat cites as "covers this exact model". */
   identifierPages?: number[];
+  /** The identifier those pages actually print, and which one it is — so a
+   *  page verified by the catalog number is never described as naming the
+   *  model (Codex #5706 r2 F8). Set with identifierPages. */
+  identifier?: { kind: "catalog_number" | "model"; text: string };
   confidence: number;
   reason: string;
 }
@@ -87,9 +91,9 @@ function isFamilyPrefix(model: string, token: string): boolean {
  * U+2013 and the non-breaking hyphen count as separators). Both ends must be
  * token boundaries, and a separator followed by a letter or digit continues
  * the identifier ("GS11N-20P2-EX" is not GS11N-20P2). A match that spans
- * whitespace must end in a run of at least three letters or digits, or in the
- * identifier's own last space-separated group ("PowerFlex 40"), so a
- * neighbouring table cell ("GS11N-20P2 N/A") never completes a longer model.
+ * whitespace counts only when it prints no punctuation separator at all
+ * ("25B D010 N104", "PowerFlex 40"), so a neighbouring table cell
+ * ("GS11N-20P2 N/A", "GS11N-20P2 230V") never completes a longer identifier.
  * Plain punctuation-stripped containment let a table row "GS11N-20P2 5.1"
  * (GS10 manual p.383) verify a misread "GS11N-20P25", and let the stems
  * "GS11N-20" / "GS11N-2" verify as the exact model.
@@ -111,8 +115,6 @@ function identifierMatcher(raw: string): ((text: string) => boolean) | null {
     sep = false;
   }
   if (chars.length === 0) return null;
-  const alnum = (t: string) => t.replace(/[^A-Za-z0-9]/g, "").toUpperCase();
-  const ownTail = alnum((raw ?? "").trim().split(/\s+/).pop() ?? "");
   const body = chars.map((c, i) => (breakBefore[i] ? "[ \\t\\u00a0._/\\u2010-\\u2015-]{0,2}" : "") + c).join("");
   const re = new RegExp(
     `(?<![A-Za-z0-9])(?<![A-Za-z0-9]${ID_SEP})${body}(?![A-Za-z0-9])(?!${ID_SEP}[A-Za-z0-9])`,
@@ -120,8 +122,13 @@ function identifierMatcher(raw: string): ((text: string) => boolean) | null {
   );
   return (text: string) => {
     for (const m of (text ?? "").matchAll(re)) {
-      const tail = m[0].split(/[ \t\u00a0]+/).pop() ?? "";
-      if (m[0] === tail || alnum(tail).length >= 3 || alnum(tail) === ownTail) return true;
+      // Whitespace inside the match is a spelling variant only when the match
+      // prints no punctuation separator at all ("25B D010 N104",
+      // "PowerFlex 525"). A spelling that mixes punctuation with a space is the
+      // identifier followed by the next table cell: "GS11N-20P2 230V",
+      // "GS11N-20P2 IP20" and "GS11N-20P2 N/A" never complete a longer
+      // identifier, for the model or the catalog number (Codex #5706 r2 F4).
+      if (!/[ \t\u00a0]/.test(m[0]) || !/[-._/\u2010-\u2015]/.test(m[0])) return true;
     }
     return false;
   };
@@ -197,7 +204,9 @@ export function assessApplicability(input: {
       if (page !== null) catalogPages.push(page);
     }
     if (model) {
-      if (tokSet.has(model) || (model.length >= 4 && modelMatches?.(ch.content ?? ""))) {
+      // The whole-identifier matcher for every spelling, compact ones included:
+      // a token-set hit let "GS11N20P2" verify against "GS11N20P2-EX".
+      if (modelMatches?.(ch.content ?? "")) {
         hits.model++;
         if (page !== null) modelPages.push(page);
       } else {
@@ -237,6 +246,7 @@ export function assessApplicability(input: {
       matchedTokens: uniq([catalog, ...(mfrEvident ? [...mfrTokens] : [])]),
       evidencePages: uniqSorted([...catalogPages, ...(mfrEvident ? mfrPages : [])]),
       identifierPages: uniqSorted(catalogPages),
+      identifier: { kind: "catalog_number", text: (input.identity.catalogNumber ?? "").trim() },
       confidence: 0.95,
       reason: `the document text contains the confirmed catalog number ${input.identity.catalogNumber}`,
     };
@@ -250,6 +260,7 @@ export function assessApplicability(input: {
       matchedTokens: uniq([model, ...mfrTokens]),
       evidencePages: uniqSorted([...modelPages, ...mfrPages]),
       identifierPages: uniqSorted(modelPages),
+      identifier: { kind: "model", text: (input.identity.model ?? "").trim() },
       confidence: mfrEvident ? 0.85 : 0.8,
       reason: mfrEvident
         ? `the document text names both ${input.identity.manufacturer} and model ${input.identity.model}`
