@@ -83,13 +83,18 @@ function isFamilyPrefix(model: string, token: string): boolean {
  * The identifier as a whole token of the text, case-insensitive (2026-11-20).
  * Separator drift is tolerated only where the identifier itself has a
  * separator or changes between letters and digits ("25B-D010N104" matches
- * "25B D010 N104"; "PowerFlex525" matches "PowerFlex 525"), and both ends
- * must be token boundaries. Plain punctuation-stripped containment let a
- * table row "GS11N-20P2 5.1" (GS10 manual p.383) verify a misread
- * "GS11N-20P25", and let the stems "GS11N-20" / "GS11N-2" verify as the exact
- * model.
+ * "25B D010 N104"; "PowerFlex525" matches "PowerFlex 525"; PDF dashes such as
+ * U+2013 and the non-breaking hyphen count as separators). Both ends must be
+ * token boundaries, and a separator followed by a letter or digit continues
+ * the identifier ("GS11N-20P2-EX" is not GS11N-20P2). A match that spans
+ * whitespace must end in a run of at least three letters or digits, so a
+ * neighbouring table cell ("GS11N-20P2 N/A") never completes a longer model.
+ * Plain punctuation-stripped containment let a table row "GS11N-20P2 5.1"
+ * (GS10 manual p.383) verify a misread "GS11N-20P25", and let the stems
+ * "GS11N-20" / "GS11N-2" verify as the exact model.
  */
-function identifierPattern(raw: string): RegExp | null {
+const ID_SEP = "[-._/\\u2010-\\u2015]";
+function identifierMatcher(raw: string): ((text: string) => boolean) | null {
   const chars: string[] = [];
   const breakBefore: boolean[] = [];
   let sep = false;
@@ -105,8 +110,18 @@ function identifierPattern(raw: string): RegExp | null {
     sep = false;
   }
   if (chars.length === 0) return null;
-  const body = chars.map((c, i) => (breakBefore[i] ? "[ \\t._/-]{0,2}" : "") + c).join("");
-  return new RegExp(`(?<![A-Za-z0-9])${body}(?![A-Za-z0-9])`, "i");
+  const body = chars.map((c, i) => (breakBefore[i] ? "[ \\t\\u00a0._/\\u2010-\\u2015-]{0,2}" : "") + c).join("");
+  const re = new RegExp(
+    `(?<![A-Za-z0-9])(?<![A-Za-z0-9]${ID_SEP})${body}(?![A-Za-z0-9])(?!${ID_SEP}[A-Za-z0-9])`,
+    "gi",
+  );
+  return (text: string) => {
+    for (const m of (text ?? "").matchAll(re)) {
+      const tail = m[0].split(/[ \t\u00a0]+/).pop() ?? "";
+      if (m[0] === tail || tail.replace(/[^A-Za-z0-9]/g, "").length >= 3) return true;
+    }
+    return false;
+  };
 }
 
 function uniqSorted(nums: number[]): number[] {
@@ -133,8 +148,8 @@ export function assessApplicability(input: {
   const chunks = Array.isArray(input.chunks) ? input.chunks : [];
   const model = normalizeIdentifier(input.identity.model ?? "");
   const catalog = normalizeIdentifier(input.identity.catalogNumber ?? "");
-  const modelRe = identifierPattern(input.identity.model ?? "");
-  const catalogRe = identifierPattern(input.identity.catalogNumber ?? "");
+  const modelMatches = identifierMatcher(input.identity.model ?? "");
+  const catalogMatches = identifierMatcher(input.identity.catalogNumber ?? "");
   const mfrFull = normalizeIdentifier(input.identity.manufacturer ?? "");
   // Longest word of a multi-word manufacturer ("Allen-Bradley" → ALLENBRADLEY,
   // but also match a document that only says "BRADLEY" or "ROCKWELL").
@@ -173,13 +188,13 @@ export function assessApplicability(input: {
 
     // Catalog numbers are long and punctuation-heavy, so separators may
     // drift — but only inside the number, never across a neighbouring token
-    // (identifierPattern).
-    if (catalog && catalog.length >= 4 && catalogRe?.test(ch.content ?? "")) {
+    // (identifierMatcher).
+    if (catalog && catalog.length >= 4 && catalogMatches?.(ch.content ?? "")) {
       hits.catalog++;
       if (page !== null) catalogPages.push(page);
     }
     if (model) {
-      if (tokSet.has(model) || (model.length >= 4 && modelRe?.test(ch.content ?? ""))) {
+      if (tokSet.has(model) || (model.length >= 4 && modelMatches?.(ch.content ?? ""))) {
         hits.model++;
         if (page !== null) modelPages.push(page);
       } else {

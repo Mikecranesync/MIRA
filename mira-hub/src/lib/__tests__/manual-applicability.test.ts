@@ -188,3 +188,32 @@ describe("assessApplicability — identifier pages (2026-11-20)", () => {
     expect(v.identifierPages).toEqual([26, 383]);
   });
 });
+
+describe("assessApplicability — suffixes, table cells and PDF dashes (Codex #5706 r1 F4/F5)", () => {
+  const oem = (model: string, content: string) =>
+    assessApplicability({ identity: { manufacturer: "AutomationDirect", model }, chunks: [{ content, page: 26 }], oemHost: true });
+
+  it.each([
+    ["GS11N-20P2", "Applies to GS11N-20P2-EX only"], // a longer suffixed model
+    ["GS11N-20P2", "Applies to GS11N-20P2/EX only"],
+    ["GS11N-20P2N", "GS11N-20P2 N/A 5.1"], // a neighbouring N/A cell
+    ["GS11N-20P2N", "GS11N-20P2 N 5.1"], // a one-letter neighbouring cell
+  ])("%s does not verify against %j", (model, content) => {
+    const v = oem(model, content);
+    expect(v.state).toBe("candidate");
+    expect(v.identifierPages ?? []).toEqual([]);
+  });
+
+  it.each([
+    "Model GS11N–20P2 rated 0.25 HP", // en dash
+    "Model GS11N‑20P2 rated 0.25 HP", // non-breaking hyphen
+    "Model GS11N-20P2, GS11N-20P5", // a comma-separated list
+    "Model GS11N-20P2.", // sentence end
+  ])("GS11N-20P2 verifies against %j", (content) => {
+    expect(oem("GS11N-20P2", content)).toMatchObject({ state: "verified", identifierPages: [26] });
+  });
+
+  it("control: a different suffix written with an en dash stays a candidate", () => {
+    expect(oem("GS11N-20P3", "Model GS11N–20P2 rated 0.25 HP").state).toBe("candidate");
+  });
+});
