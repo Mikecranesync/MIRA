@@ -17,4 +17,8 @@ export const REQUEST_ALLOWLIST: Record<string, { reason: string; valid: (v: unkn
     reason: "Only the clone is thread-aware: the classic page never sends it, and on the legacy (thread-less) notebook the clone must send it as null.",
     valid: (v, present, surface) => (surface === "reference" ? !present : present && v === null),
   },
+  expectedEquipmentEntityId: {
+    reason: "The clone carries the machine-binding precondition for safe recovery. This fixture is unbound, so it must explicitly send null; the reference predates that additive field.",
+    valid: (v, present, surface) => (surface === "reference" ? !present : present && v === null),
+  },
 };
