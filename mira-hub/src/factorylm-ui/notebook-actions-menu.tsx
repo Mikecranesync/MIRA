@@ -164,7 +164,7 @@ export function NotebookActionsMenu({ covered }: { covered: boolean }) {
         className="fl-more"
         aria-label="Notebook tools"
         data-testid="notebook-more-menu"
-        style={place ? { ...SHEET, top: place.top, right: place.right } : SHEET}
+        style={place ? { ...SHEET, top: place.top, right: place.right, maxHeight: `calc(100dvh - ${place.top + 12}px)` } : SHEET}
         onClick={(e) => { if (e.target === dialogRef.current) dialogRef.current?.close(); }}
         onClose={() => {
           setOpen(false);
@@ -218,6 +218,7 @@ const ICONS: Record<MenuItemId, string> = {
 // Two columns on a short, wide screen (a tablet in landscape), so every tool shows without scrolling.
 const MENU_CSS = `
 .fl-more::backdrop { background: transparent; }
+.fl-more { width: min(360px, calc(100vw - 24px)); }
 @media (min-width: 900px) and (max-height: 760px) {
   .fl-more[open] { width: min(680px, calc(100vw - 24px)); display: grid; grid-template-columns: 1fr 1fr; column-gap: 8px; }
   .fl-more__group--find { grid-column: 1; grid-row: 1; }
@@ -251,7 +252,7 @@ const DOT: CSSProperties = {
   background: "var(--fl-warn)", border: "2px solid var(--fl-surface)",
 };
 const SHEET: CSSProperties = {
-  position: "fixed", margin: 0, left: "auto", bottom: "auto", width: "min(360px, calc(100vw - 24px))",
+  position: "fixed", margin: 0, left: "auto", bottom: "auto",
   maxHeight: "calc(100dvh - 140px)", overflowY: "auto", padding: 8, color: "var(--fl-ink)",
   background: "var(--fl-surface)", border: "1px solid var(--fl-line)", borderRadius: "var(--fl-radius-card, 16px)",
   boxShadow: "var(--fl-shadow-pop)",

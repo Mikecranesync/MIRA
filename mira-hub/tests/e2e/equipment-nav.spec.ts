@@ -1319,6 +1319,8 @@ test.describe("More", () => {
     const fixes = (await menu(page).getByRole("group", { name: "Fix" }).boundingBox())!;
     expect(fixes.x, "Fix sits to the right of Find").toBeGreaterThan(find.x + find.width - 1);
     expect(Math.abs(fixes.y - find.y), "side by side").toBeLessThan(2);
+    // The wide layout must actually be wide: a 360px sheet split in two wraps every line (Codex F3).
+    expect((await menu(page).boundingBox())!.width, "the two-column list uses the tablet width").toBeGreaterThan(600);
     await expect(menu(page)).toBeInViewport({ ratio: 1 });
   });
 });
