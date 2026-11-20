@@ -1220,3 +1220,79 @@ describe("garage pilot L2 — a partial manual (one chapter / unreadable numbers
     expect(acquisitionDeclineText(base, "K", "AutomationDirect GS11N-20P2", "candidate")).toBe(t);
   });
 });
+
+describe("photo-to-manual (2026-11-20): the finished search hands over the manual and its coverage", () => {
+  const URL_ = "https://cdn.automationdirect.com/static/manuals/gs10m/gs10usermanual.pdf";
+  const LABEL = "AutomationDirect GS11N-20P2";
+  const verifiedOutcome = (pages: unknown, state = "verified"): ManualAcquisitionOutcome =>
+    ({
+      status: "complete",
+      payload: {
+        candidate: { host: "cdn.automationdirect.com", url: URL_ },
+        manual: { docId: "d1", fileId: "f1", indexed: true, attached: true, matchState: "verified", finalUrl: URL_ },
+        applicability: { state, identifierPages: pages },
+        linked: true,
+      },
+    }) as unknown as ManualAcquisitionOutcome;
+
+  it("records the saved manual's URL and only a verified verdict's exact-model pages", () => {
+    const r = recordFromOutcome("K", null, verifiedOutcome([26, 34]));
+    expect(r.manual_url).toBe(URL_);
+    expect(r.identifier_pages).toEqual([26, 34]);
+    expect(recordFromOutcome("K", null, verifiedOutcome([26], "candidate")).identifier_pages).toBeUndefined();
+    expect(recordFromOutcome("K", null, verifiedOutcome([0, -1, 2.5, "26"])).identifier_pages).toBeUndefined();
+  });
+
+  it("a completed photo search names the link and the page that proves the exact model", () => {
+    const rec = recordFromOutcome("K", null, verifiedOutcome([26]));
+    const t = acquisitionDeclineText(rec, "K", LABEL, "candidate")!;
+    expect(t).toContain(`Here it is: ${URL_}.`);
+    expect(t).toContain(`Its text names the ${LABEL} on page 26.`);
+    expect(t).not.toMatch(/Ask again/);
+    const confirmedText = acquisitionDeclineText(rec, "K", LABEL)!;
+    expect(confirmedText).toContain(URL_);
+    expect(confirmedText).toContain("on page 26");
+  });
+
+  it("control: without a verified verdict the copy claims no coverage page", () => {
+    const rec = recordFromOutcome("K", null, verifiedOutcome([26], "candidate"));
+    expect(acquisitionDeclineText(rec, "K", LABEL, "candidate")).not.toMatch(/names the .* on page/);
+  });
+
+  it("control: a non-public manual URL is never shown", () => {
+    const rec = { ...recordFromOutcome("K", null, verifiedOutcome([26])), manual_url: "http://10.0.0.5/m.pdf" };
+    expect(acquisitionDeclineText(rec, "K", LABEL, "candidate")).not.toContain("10.0.0.5");
+  });
+
+  const ingestFailed = (retries?: number): AcquisitionRecord => ({
+    ...recordFromOutcome("K", null, {
+      status: "candidate_review",
+      payload: {
+        candidate: { host: "cdn.automationdirect.com", url: URL_ },
+        manual: { docId: null, fileId: "f1", indexed: false, finalUrl: URL_ },
+        ingestFailed: true,
+        linked: true,
+      },
+    } as unknown as ManualAcquisitionOutcome),
+    ...(retries === undefined ? {} : { retries }),
+  });
+
+  it("saved but not searchable: the link, the indexing state, no page claims, and the real recovery", () => {
+    const rec = ingestFailed();
+    expect(rec.state).toBe("search_unavailable");
+    expect(rec.ingest_failed).toBe(true);
+    const t = acquisitionDeclineText(rec, "K", LABEL)!;
+    expect(t).toContain(URL_);
+    expect(t).toContain("couldn't make it searchable yet");
+    expect(t).toContain("can't answer from it or cite its pages");
+    expect(t).toContain("try again automatically");
+    expect(t).not.toBe(MANUAL_SEARCH_UNAVAILABLE_COPY);
+    expect(t).not.toMatch(/on page \d/);
+  });
+
+  it("saved but not searchable, retries spent: says so instead of promising another retry", () => {
+    const t = acquisitionDeclineText(ingestFailed(3), "K", LABEL)!;
+    expect(t).toContain("stopped retrying");
+    expect(t).not.toContain("try again automatically");
+  });
+});

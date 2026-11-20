@@ -85,6 +85,14 @@ export interface AcquisitionRecord {
   /** What an EARLIER attempt attached, carried through every retry until resolved (r15 F20). */
   prior_doc_id?: string | null;
   prior_file_id?: string | null;
+  /** The downloaded manual's own URL (the official PDF this search saved). */
+  manual_url?: string | null;
+  /** Pages of that manual whose text names the exact model or catalog number
+   *  (the applicability check's identifier pages; at most a few, ascending). */
+  identifier_pages?: number[];
+  /** The manual downloaded and was saved, but could not be made searchable
+   *  (a non-scan ingest failure); retried like an unavailable search. */
+  ingest_failed?: boolean;
   /** Automatic retries already spent on a retryable failure (capped by MAX_AUTOMATIC_RETRIES). */
   retries?: number;
   /** Why a download failed, when it did (safe-download's rejection reason). */
@@ -341,6 +349,7 @@ export function recordFromOutcome(key: string, startedAt: string | null, out: Ma
     candidate?: { host?: unknown; url?: unknown } | null;
     manual?: {
       matchState?: unknown;
+      finalUrl?: unknown;
       docId?: unknown;
       fileId?: unknown;
       indexed?: unknown;
@@ -348,6 +357,7 @@ export function recordFromOutcome(key: string, startedAt: string | null, out: Ma
       candidateApplicability?: unknown;
       completeness?: unknown;
     } | null;
+    applicability?: { state?: unknown; identifierPages?: unknown } | null;
     oemRequestUrl?: unknown;
     searchPageUrl?: unknown;
     warning?: unknown;
@@ -379,6 +389,14 @@ export function recordFromOutcome(key: string, startedAt: string | null, out: Ma
   // A PDF that downloaded but could not be READ for a non-scan reason (e.g. the
   // database dropped mid-ingest) is retryable too (Codex #4118 r12 F16).
   const transientIngest = out.status === "candidate_review" && (p.ingestFailed === true || p.retryable === true);
+  // What the chat may show as "covers this exact model": only a verified
+  // verdict's identifier pages (positive integers, ascending, at most five).
+  const identifierPages =
+    p.applicability?.state === "verified" && Array.isArray(p.applicability.identifierPages)
+      ? (p.applicability.identifierPages as unknown[])
+          .filter((n): n is number => typeof n === "number" && Number.isInteger(n) && n > 0)
+          .slice(0, 5)
+      : [];
   const transientDownload =
     transientIngest ||
     (downloadReason !== null &&
@@ -399,6 +417,9 @@ export function recordFromOutcome(key: string, startedAt: string | null, out: Ma
     ...(partial ? { partial: true } : {}),
     doc_id: str(p.manual?.docId),
     file_id: str(p.manual?.fileId),
+    manual_url: str(p.manual?.finalUrl),
+    ...(identifierPages.length ? { identifier_pages: identifierPages } : {}),
+    ...(out.status === "candidate_review" && p.ingestFailed === true ? { ingest_failed: true } : {}),
     download_reason: downloadReason,
     linked: p.linked === true,
     ...(p.removedByTechnician === true ? { source_removed: true } : {}),
@@ -950,6 +971,36 @@ export function acquisitionManualUrl(rec: AcquisitionRecord): string | null {
   return null;
 }
 
+/** The saved manual's own link, when it is a public https URL (the same safety
+ *  rules as acquisitionManualUrl). */
+function savedManualUrl(rec: AcquisitionRecord): string | null {
+  const raw = rec.manual_url;
+  if (!raw || /[\\\s<>"']/.test(raw)) return null;
+  try {
+    const url = new URL(raw);
+    return isPublicHttpsUrl(raw) && !isBlockedHost(url.hostname) ? raw : null;
+  } catch {
+    return null;
+  }
+}
+
+/** "page 26" / "pages 26 and 27" / "pages 26, 27 and 30" — the manual's pages
+ *  whose text names the exact model (only ever from a verified, indexed copy). */
+function pagesPhrase(pages: readonly number[] | undefined): string | null {
+  const ps = (pages ?? []).filter((n) => Number.isInteger(n) && n > 0);
+  if (ps.length === 0) return null;
+  if (ps.length === 1) return `page ${ps[0]}`;
+  return `pages ${ps.slice(0, -1).join(", ")} and ${ps[ps.length - 1]}`;
+}
+
+/** The found manual and what proves it covers this model, for a completed
+ *  search: " Here it is: <url>. Its text names the <label> on page 26." */
+function coverageSentence(rec: AcquisitionRecord, label: string): string {
+  const url = savedManualUrl(rec);
+  const pages = pagesPhrase(rec.identifier_pages);
+  return (url ? ` Here it is: ${url}.` : "") + (pages ? ` Its text names the ${label} on ${pages}.` : "");
+}
+
 export function acquisitionDeclineText(
   rec: AcquisitionRecord | null,
   key: string | null,
@@ -973,9 +1024,9 @@ export function acquisitionDeclineText(
         // A caller that KNOWS the source is off says so; otherwise the copy
         // claims only what happened (found and added), never "switched on".
         if (opts.sourceOff) {
-          return `I found the official ${label} manual from your photo and added it to this notebook's Sources, but it's turned off there now, so I can't answer from it. Turn it back on in Sources and ask again — I'll answer from it and show you the page.`;
+          return `I found the official ${label} manual from your photo and added it to this notebook's Sources, but it's turned off there now, so I can't answer from it.${coverageSentence(rec, label)} Turn it back on in Sources and ask again — I'll answer from it and show you the page.`;
         }
-        return `I found the official ${label} manual from your photo and added it to this notebook's Sources. Ask again and I'll answer from it and show you the page.`;
+        return `I found the official ${label} manual from your photo and added it to this notebook's Sources.${coverageSentence(rec, label)} Ask your question and I'll answer from it and show you the page.`;
       // candidate_review (Codex post-cap 4 F9 / 13 F13 / 14 F13): the manual's
       // text did NOT verify this model, so the shared copy below gives the one
       // real next step: check it in Sources, or the URL and the upload
@@ -992,7 +1043,7 @@ export function acquisitionDeclineText(
     case "complete":
       // The client chose this turn's sources before the manual arrived, so this
       // answer did not consult it — say so rather than imply it was searched.
-      return `I found the official ${label} manual and added it to this notebook's Sources. Reopen the notebook (or turn it on in Sources) and ask again — I'll answer from it and show you the page.`;
+      return `I found the official ${label} manual and added it to this notebook's Sources.${coverageSentence(rec, label)} Reopen the notebook (or turn it on in Sources) and ask again — I'll answer from it and show you the page.`;
     case "candidate_review":
       // Only name Sources when an indexed document is actually there to review.
       // Garage pilot L2: the document is PART of a manual (one chapter, or pages
@@ -1005,8 +1056,10 @@ export function acquisitionDeclineText(
         return `I found a possible manual for the ${label}${rec.candidate_host ? ` (from ${rec.candidate_host})` : ""}, but I couldn't confirm it covers this exact model, so it isn't turned on. Check it in this notebook's Sources — turn it on if it's right and ask again.`;
       }
       return `I found a possible manual for the ${label}${rec.candidate_url ? ` at ${rec.candidate_url}` : rec.candidate_host ? ` on ${rec.candidate_host}` : ""}, but I couldn't confirm it's the official document for this model, so I didn't add it. If it's right, upload it to this notebook and ask again — I'll answer from it and show you the page.`;
-    case "no_extractable_text":
-      return `I found a manual for the ${label}, but it's a scanned image I can't read, so I can't answer from it. It's saved in this notebook's Sources for you to open.`;
+    case "no_extractable_text": {
+      const url = savedManualUrl(rec);
+      return `I found a manual for the ${label}${url ? ` (${url})` : ""}, but it's a scanned image I can't read, so I can't answer from it or cite its pages. It's saved in this notebook's Sources for you to open.`;
+    }
     case "no_manual_found":
       return `I looked for the official ${label} manual and couldn't find one.` + (websiteHelp || " Upload the manual (or the page that covers it) to this notebook, and I'll answer from it and show you the page.");
     case "search_limit_reached":
@@ -1024,6 +1077,13 @@ export function acquisitionDeclineText(
       // "I'll try again automatically": a retry only happens on a later turn.
       return MANUAL_SEARCH_LIMIT_COPY + websiteHelp;
     case "search_unavailable":
+      // Acceptance 3 (2026-11-20): the manual downloaded and was saved, but the
+      // notebook copy could not be made searchable. Give the link, say exactly
+      // what is not possible yet (no answer, no page citations — the model
+      // check needs the searchable text), and the recovery that really exists.
+      if (rec.ingest_failed && savedManualUrl(rec)) {
+        return `I found a manual for the ${label}${rec.candidate_host ? ` on ${rec.candidate_host}` : ""}: ${savedManualUrl(rec)}. I saved it to this notebook's Files, but I couldn't make it searchable yet, so I haven't confirmed from its text that it covers this exact model, and I can't answer from it or cite its pages. ${(rec.retries ?? 0) < MAX_AUTOMATIC_RETRIES ? `I'll try again automatically when you ask in ${UNAVAILABLE_RETRY_MINUTES} minutes or more; you can also upload the PDF to this notebook yourself.` : "I've stopped retrying it automatically; upload the PDF to this notebook yourself and I'll index it."}`;
+      }
       if (rec.download_reason && acquisitionManualUrl(rec)) {
         return `I found a possible manual for the ${label}, but couldn't download it. Open this website: ${acquisitionManualUrl(rec)}. If it is the right manual, download it and upload it to this notebook so I can answer with page citations.`;
       }

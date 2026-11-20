@@ -171,3 +171,20 @@ describe("assessApplicability — the identifier is a whole token (2026-11-20, G
     expect(gs("GS10", P383, "GS11N-20P2").method).toBe("catalog_number_exact");
   });
 });
+
+describe("assessApplicability — identifier pages (2026-11-20)", () => {
+  it("lists only the pages that name the exact model, not manufacturer-only pages", () => {
+    const v = assessApplicability({
+      identity: { manufacturer: "AutomationDirect", model: "GS11N-20P2" },
+      chunks: [
+        { content: "AutomationDirect DURApulse GS10 user manual", page: 1 },
+        { content: "Model Name: GS11N-20P2 GS11N-20P5", page: 26 },
+        { content: "GS11N-20P2 5.1 N/A", page: 383 },
+      ],
+      oemHost: true,
+    });
+    expect(v.state).toBe("verified");
+    expect(v.evidencePages).toEqual([1, 26, 383]);
+    expect(v.identifierPages).toEqual([26, 383]);
+  });
+});

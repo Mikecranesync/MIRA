@@ -30,6 +30,10 @@ export interface ApplicabilityVerdict {
   method: string;
   matchedTokens: string[];
   evidencePages: number[];
+  /** Pages whose text names the exact catalog number or model — never pages
+   *  that only name the manufacturer (`evidencePages` includes those). Set on a
+   *  verified verdict; what the chat cites as "covers this exact model". */
+  identifierPages?: number[];
   confidence: number;
   reason: string;
 }
@@ -214,6 +218,7 @@ export function assessApplicability(input: {
       method: "catalog_number_exact",
       matchedTokens: uniq([catalog, ...(mfrEvident ? [...mfrTokens] : [])]),
       evidencePages: uniqSorted([...catalogPages, ...(mfrEvident ? mfrPages : [])]),
+      identifierPages: uniqSorted(catalogPages),
       confidence: 0.95,
       reason: `the document text contains the confirmed catalog number ${input.identity.catalogNumber}`,
     };
@@ -226,6 +231,7 @@ export function assessApplicability(input: {
       method: mfrEvident ? "model_exact_with_manufacturer" : "model_exact_on_oem_host",
       matchedTokens: uniq([model, ...mfrTokens]),
       evidencePages: uniqSorted([...modelPages, ...mfrPages]),
+      identifierPages: uniqSorted(modelPages),
       confidence: mfrEvident ? 0.85 : 0.8,
       reason: mfrEvident
         ? `the document text names both ${input.identity.manufacturer} and model ${input.identity.model}`
