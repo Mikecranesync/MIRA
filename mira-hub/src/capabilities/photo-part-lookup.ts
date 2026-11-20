@@ -59,32 +59,7 @@ const trimCode = (code: string) => code.replace(/[./-]+$/, "");
 /** Quotes are label punctuation, never identifier characters (#4150 F1/F4); invisible
  *  characters (soft hyphen, zero-width, BOM) are nothing at all, so "Ser\u00adial" is
  *  still "Serial" (#4172). */
-// A weak label word that ENDS a sentence of ordinary description, followed by
-// a sentence of ordinary prose opening with "No", is not a label: "…the right
-// side of the unit. No loose or disconnected wiring is visible." (a real GS10
-// LOOK reading, 2026-11-20 — it hid the plate's MODEL from the manual search).
-// That word is masked before the label rules run, and only on affirmative
-// evidence of prose, matched CASE-SENSITIVELY (plates print labels in capitals;
-// a description writes lowercase):
-//  - a lowercase determiner directly before the word ("the unit.", "this cell.");
-//  - ". No" then at least three lowercase words, a verb of description among
-//    them ("is", "are", "visible", …), no digit, and a real sentence end;
-//  - no digit anywhere in the rest of the text.
-// Anything else stays a label: "Unit. No ABC DEF GHI.", "Unit. No NORTH WEST
-// PUMP.", "the unit. No loose wiring is visible. Ref. 12345678", "UNIT. NO TP",
-// "Unit. No AB.1234567", "the unit. No abc def ghi" (no sentence end).
-const PROSE_WEAK_WORD =
-  /\b((?:[Tt]he|[Tt]his|[Tt]hat|[Ii]ts|[Tt]heir|[Ee]ach|[Ee]very|[Aa]n?)[ \t]+)(?:tag|equipment|equip|unit|machine|location|loc|site|plant|area|line|cell)\.(?=[ \t]+No(?:[ \t]+[a-z]+){3}[^\d.!?\r\nA-Z]*[.!?](?:\s|$)[^\d]*$)(?<=\.)/g;
-const DESCRIPTIVE_VERB = /\b(?:is|are|was|were|appears?|visible|seen|present|found|observed|detected)\b/;
-function maskProseWeakWords(t: string): string {
-  return t.replace(PROSE_WEAK_WORD, (m: string, det: string, offset: number) => {
-    const rest = t.slice(offset + m.length);
-    const sentence = /^[ \t]+No[^.!?]*[.!?]/.exec(rest)?.[0] ?? "";
-    return DESCRIPTIVE_VERB.test(sentence) ? `${det}item.` : m;
-  });
-}
-const normalize = (t: string) =>
-  maskProseWeakWords(t.replace(/[\u00ad\u200b-\u200d\u2060\ufeff]/g, "").replace(/["'\u2018\u2019\u201c\u201d`]/g, " "));
+const normalize = (t: string) => t.replace(/[\u00ad\u200b-\u200d\u2060\ufeff]/g, "").replace(/["'\u2018\u2019\u201c\u201d`]/g, " ");
 
 /**
  * Every distinct, serial-safe part code in the text (#4172: exported so a caller

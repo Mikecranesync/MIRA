@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { extractCandidateIdentity, isSafeCandidateSearchIdentity, makerFromText, refineCorpusProposal, wantsManualDocumentation } from "./candidate-identity";
-import { GS10_CV101_LOOK } from "./__fixtures__/gs10-cv101-look";
+import { GS10_CLEAN_LOOK, GS10_CV101_LOOK } from "./__fixtures__/gs10-cv101-look";
 import { labelledPartCodes } from "./photo-part-lookup";
 
 // Manual-First PRD R1 (#4160 S5): a candidate (manufacturer, part) read from a
@@ -429,12 +429,22 @@ describe("AS-i makers use the canonical OEM table", () => {
   });
 });
 
-describe("photo-to-manual (2026-11-20): the GS10 regression case reaches the single egress gate", () => {
+// Owner decision 2026-11-20 (#5706): main's label rule stands, so the archived
+// reading ("…the unit. No loose wiring…") never starts the automatic search.
+// The same plate described without that sentence still reaches the gate.
+describe("photo-to-manual (2026-11-20): the GS10 regression case at the single egress gate", () => {
   it.each(["Find me the manual", "Identify this drive from the photo and find its manufacturer's manual."])(
-    "archived CV-101 photo + %s → AUTOMATIONDIRECT GS11N-20P2, safe to search",
+    "archived CV-101 photo + %s → refused: the reading carries a value-less unit label",
     (typed) => {
-      expect(extractCandidateIdentity(GS10_CV101_LOOK, typed)).toEqual({ manufacturer: "AUTOMATIONDIRECT", part: "GS11N-20P2" });
-      expect(isSafeCandidateSearchIdentity(GS10_CV101_LOOK, typed, "GS11N-20P2", "AutomationDirect")).toBe(true);
+      expect(extractCandidateIdentity(GS10_CV101_LOOK, typed)).toBeNull();
+      expect(isSafeCandidateSearchIdentity(GS10_CV101_LOOK, typed, "GS11N-20P2", "AutomationDirect")).toBe(false);
+    },
+  );
+  it.each(["Find me the manual", "Identify this drive from the photo and find its manufacturer's manual."])(
+    "control: the same plate without the unit sentence + %s → AUTOMATIONDIRECT GS11N-20P2, safe to search",
+    (typed) => {
+      expect(extractCandidateIdentity(GS10_CLEAN_LOOK, typed)).toEqual({ manufacturer: "AUTOMATIONDIRECT", part: "GS11N-20P2" });
+      expect(isSafeCandidateSearchIdentity(GS10_CLEAN_LOOK, typed, "GS11N-20P2", "AutomationDirect")).toBe(true);
       expect(wantsManualDocumentation(typed)).toBe(true);
     },
   );
@@ -447,11 +457,14 @@ describe("refineCorpusProposal — a typed catalog number is not cut to its libr
     expect(isSafeCandidateSearchIdentity("", typed, "GS11N", "AutomationDirect")).toBe(false);
     expect(refineCorpusProposal(corpus, "", typed)).toEqual({ manufacturer: "AutomationDirect", model: "GS11N-20P2" });
   });
-  it("the archived photo upgrades the stem the same way", () => {
-    expect(refineCorpusProposal(corpus, GS10_CV101_LOOK, "Find me the AutomationDirect GS11N manual")).toEqual({
+  it("a clean plate reading upgrades the stem the same way", () => {
+    expect(refineCorpusProposal(corpus, GS10_CLEAN_LOOK, "Find me the AutomationDirect GS11N manual")).toEqual({
       manufacturer: "AutomationDirect",
       model: "GS11N-20P2",
     });
+  });
+  it("the archived reading (a value-less unit label) leaves the stem unchanged, never upgraded past the gate", () => {
+    expect(refineCorpusProposal(corpus, GS10_CV101_LOOK, "Find me the AutomationDirect GS11N manual")).toEqual(corpus);
   });
   it("a corpus proposal that already passes is returned unchanged", () => {
     const ok = { manufacturer: "SMC", model: "SY3120-5LZD" };

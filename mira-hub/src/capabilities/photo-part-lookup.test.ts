@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { PART_SEARCH_CANCEL, asksPartCompatibility, danglingPrivateLabel, confirmedPartSearchCandidate, explicitManualLookupRequest, partSearchConfirmation, mentionsAssetLabel, mentionsSerialLabel, partSearchDecision, unambiguousPartNumber } from "./photo-part-lookup";
+import { PART_SEARCH_CANCEL, asksPartCompatibility, danglingPrivateLabel, confirmedPartSearchCandidate, explicitManualLookupRequest, partSearchConfirmation, mentionsAssetLabel, mentionsSerialLabel, partCodes, partSearchDecision, unambiguousPartNumber } from "./photo-part-lookup";
 import { resolveModelFromObservationText } from "@/lib/manual-rag";
 import { GS10_CV101_LOOK } from "./__fixtures__/gs10-cv101-look";
 
@@ -784,19 +784,25 @@ describe("#5268 Codex r17 F1 (fail closed): a number inside a private annotation
   });
 });
 
-describe("photo-to-manual (2026-11-20): a weak label word ending a sentence before 'No …' is prose", () => {
-  it("the archived CV-101 GS10 reading yields its MODEL — '…the unit. No loose wiring…' is not an asset label", () => {
-    expect(mentionsAssetLabel(GS10_CV101_LOOK)).toBe(false);
-    expect(danglingPrivateLabel(GS10_CV101_LOOK)).toBe(false);
-    expect(unambiguousPartNumber(GS10_CV101_LOOK)).toBe("GS11N-20P2");
+// Owner decision 2026-11-20 (#5706, after Codex r3 F1): the prose exception
+// that read "…the unit. No loose wiring…" as description is withdrawn. Every
+// review round found another wording of a real unit number that slipped
+// through, so main's ADR-0036 label rule stands unchanged: these all read as
+// a private label, the archived GS10 reading included.
+describe("photo-to-manual (2026-11-20): a weak label word before 'No …' stays a private label", () => {
+  it("the archived CV-101 GS10 reading reads as a value-less asset label, so the plate offers no code", () => {
+    expect(mentionsAssetLabel(GS10_CV101_LOOK)).toBe(true);
+    expect(danglingPrivateLabel(GS10_CV101_LOOK)).toBe(true);
+    expect(unambiguousPartNumber(GS10_CV101_LOOK)).toBeNull();
+    // The kVA/kA ratings fix still holds: the model is the plate's ONE part code.
+    expect(partCodes(GS10_CV101_LOOK)).toEqual(["GS11N-20P2"]);
   });
-  it.each(["MODEL: GS11N-20P2. Cables run past the unit. No loose wiring is visible.", "MODEL: GS11N-20P2. Mounted in the cell. No visible damage anywhere.", "Near the area. No burn marks visible."])(
-    "control: %s is prose",
-    (text) => {
-      expect(mentionsAssetLabel(text)).toBe(false);
-    },
-  );
   it.each([
+    "MODEL: GS11N-20P2. Cables run past the unit. No loose wiring is visible.",
+    "MODEL: GS11N-20P2. Mounted in the cell. No visible damage anywhere.",
+    "Near the area. No burn marks visible.",
+    'The sticker is on the unit. "No north west pump" is visible.', // Codex #5706 r3 F1: a quoted inscription
+    "the unit. No north west pump is visible.",
     "UNIT NO 4471",
     "Unit. No. 12345678",
     "UNIT NO\nAB-1234567",
