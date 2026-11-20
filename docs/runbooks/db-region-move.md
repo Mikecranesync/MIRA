@@ -23,8 +23,11 @@ project's region in place, so the data has to be copied into a project in `aws-u
 - **The source is only read**: one `READ ONLY` transaction, plus `pg_dump` through that same
   exported snapshot. Because the inventory and the dump see one instant, the comparison is exact
   even while the source is being written to.
-- **The target must be empty (no relation of any kind, function, type or extra schema), a
-  different host, and in the expected region**, or the run refuses before copying. It never drops, cleans or overwrites.
+- **The target must be empty, a different host, and in the expected region**, or the run refuses
+  before copying. Empty means: no relation of any kind, function, type, operator, collation, text
+  search configuration or extended statistic in a user schema; no schema besides `public`; and no
+  large object, event trigger, publication, foreign server or extension beyond the built-in
+  `plpgsql`. It never drops, cleans or overwrites.
 - **An endpoint passed as `--refuse-host` is refused on either side.** The workflow passes
   production's endpoint id.
 - **Addresses never reach a command line or the log.** They travel in the child processes'

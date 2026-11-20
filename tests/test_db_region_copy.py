@@ -149,7 +149,21 @@ def test_the_emptiness_check_counts_every_kind_of_object(monkeypatch):
     # Any relation kind (a foreign table or a composite type is not "empty"), plus functions,
     # types and extra schemas.
     assert "relkind IN" not in sql
-    for catalog in ("pg_class", "pg_proc", "pg_type", "pg_namespace"):
+    for catalog in (
+        "pg_class",
+        "pg_proc",
+        "pg_type",
+        "pg_namespace",
+        "pg_operator",
+        "pg_collation",
+        "pg_ts_config",
+        "pg_statistic_ext",
+        "pg_largeobject_metadata",
+        "pg_event_trigger",
+        "pg_publication",
+        "pg_foreign_server",
+        "pg_extension",
+    ):
         assert catalog in sql
     assert "<> 'public'" in sql
 

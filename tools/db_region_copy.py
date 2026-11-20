@@ -493,20 +493,37 @@ def check_preconditions(
         raise Refusal(f"target host is not in the expected region {expect_region}")
     if expect_region and f".{expect_region}." in source.host:
         raise Refusal(f"source host is already in {expect_region}: source and target look swapped")
-    # "Empty" means no object of any kind in a user schema: any relation kind (a foreign table
-    # or a composite type counts), functions, types, and any schema besides public.
+    # "Empty" means no object of any kind: nothing in a user schema (any relation kind, so a
+    # foreign table or a composite type counts; functions, types, operators, collations, text
+    # search configurations, extended statistics), no schema besides public, and none of the
+    # database-wide objects a restore could collide with (large objects, event triggers,
+    # publications, foreign servers, extensions beyond the built-in plpgsql).
     user = "n.nspname !~ '^pg_' AND n.nspname <> 'information_schema'"
-    n = _psql(
-        target,
-        database,
-        "SELECT (SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace"
-        f" WHERE {user})"
-        " + (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace"
-        f" WHERE {user})"
-        " + (SELECT count(*) FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace"
-        f" WHERE {user})"
-        f" + (SELECT count(*) FROM pg_namespace n WHERE {user} AND n.nspname <> 'public');",
+    in_schema = (
+        ("pg_class", "relnamespace"),
+        ("pg_proc", "pronamespace"),
+        ("pg_type", "typnamespace"),
+        ("pg_operator", "oprnamespace"),
+        ("pg_collation", "collnamespace"),
+        ("pg_ts_config", "cfgnamespace"),
+        ("pg_statistic_ext", "stxnamespace"),
     )
+    counts = [
+        f"(SELECT count(*) FROM {catalog} o JOIN pg_namespace n ON n.oid = o.{column} WHERE {user})"
+        for catalog, column in in_schema
+    ]
+    counts.append(f"(SELECT count(*) FROM pg_namespace n WHERE {user} AND n.nspname <> 'public')")
+    counts += [
+        f"(SELECT count(*) FROM {catalog})"
+        for catalog in (
+            "pg_largeobject_metadata",
+            "pg_event_trigger",
+            "pg_publication",
+            "pg_foreign_server",
+        )
+    ]
+    counts.append("(SELECT count(*) FROM pg_extension WHERE extname <> 'plpgsql')")
+    n = _psql(target, database, "SELECT " + " + ".join(counts) + ";")
     if n != "0":
         raise Refusal(
             f"target database {database} is not empty ({n} objects); refusing to restore over it"
