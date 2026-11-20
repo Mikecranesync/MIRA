@@ -43,14 +43,18 @@ export function SendError({ error, dispatch, draft, turnId, hooks }: SendErrorPr
   // A target review (#5557) is answered by checking the target and pressing
   // Send; a retry control here would re-ask about the new target in one tap.
   const review = Boolean(hooks?.targetReview) && error === hooks?.targetReview;
-  const hostRetry = !review && turnId && hooks?.onRetry ? hooks.onRetry : undefined;
-  const draftRetry = !review && Boolean(draft.trim() && hooks?.onSend);
+  const ownedRetry = hooks?.onRetrySendError;
+  const turnRetry = hooks?.onRetry;
+  const hostRetry = !review && (ownedRetry !== undefined
+    ? ownedRetry
+    : turnId && turnRetry ? () => turnRetry(turnId) : undefined);
+  const draftRetry = !review && ownedRetry === undefined && Boolean(draft.trim() && hooks?.onSend);
   const canRetry = Boolean(hostRetry) || draftRetry;
 
   const retry = () => {
     if (hostRetry) {
       dispatch({ type: "set-send-error", error: null });
-      hostRetry(turnId as string);
+      hostRetry();
       return;
     }
     const text = draft.trim();

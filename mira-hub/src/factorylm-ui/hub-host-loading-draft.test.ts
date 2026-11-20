@@ -11,7 +11,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { shellReducer, type ShellState } from "../../../packages/factorylm-interaction/src";
-import { EMPTY_FIXTURE, hubHostReducer, initialHubShellState, loadingThread, openThreadAction, shellThreadId, type HubSelection } from "./hub-host-logic";
+import { EMPTY_FIXTURE, chatBodyFor, hubHostReducer, initialHubShellState, loadingThread, openThreadAction, shellThreadId, type HubSelection } from "./hub-host-logic";
 
 const SEL: HubSelection = { notebookId: "nb-micro810", threadId: "thread-1" };
 const OTHER: HubSelection = { notebookId: "nb-micro810", threadId: "thread-2" };
@@ -170,6 +170,53 @@ describe("Hub draft isolation across notebook navigation (#5684)", () => {
     const parked = hubHostReducer(retyped, openThreadAction(destination, AT));
     const completed = hubHostReducer(parked, completion);
     expect(hubHostReducer(completed, openThreadAction(SEL, AT)).draft).toBe(question);
+  });
+
+  it("gives a failed request the revision of its restored draft and keeps a replacement", () => {
+    const threadId = shellThreadId(SEL);
+    const question = "Check the drive";
+    const origin = hubHostReducer(initialHubShellState(), openThreadAction(SEL, AT));
+    const failed = hubHostReducer(origin, {
+      type: "recover-send", threadId, restoreDraft: true,
+      recovery: { body: chatBodyFor(question, [], [], SEL), question, error: "Send failed" },
+    });
+    const revision = failed.sendRecoveryByThread?.get(threadId)?.draftRevision;
+    expect(revision).toBeDefined();
+    expect(revision).toBe(failed.draftRevision);
+    const edited = hubHostReducer(failed, { type: "set-draft", draft: "Another draft" });
+    const retyped = hubHostReducer(edited, { type: "set-draft", draft: question });
+    const completion = { type: "sent-draft", threadId, question, revision: revision! } as const;
+    expect(hubHostReducer(failed, completion).draft).toBe("");
+    expect(hubHostReducer(retyped, completion).draft).toBe(question);
+  });
+
+  it("keeps a dismissed failure hidden after reopening the conversation", () => {
+    const threadId = shellThreadId(SEL);
+    const origin = hubHostReducer(initialHubShellState(), openThreadAction(SEL, AT));
+    const failed = hubHostReducer(origin, {
+      type: "recover-send", threadId, restoreDraft: true,
+      recovery: { body: chatBodyFor("Question", [], [], SEL), question: "Question", error: "Send failed" },
+    });
+    const dismissed = hubHostReducer(failed, { type: "set-send-error", error: null });
+    const switched = hubHostReducer(dismissed, openThreadAction(destination, AT));
+    const reopened = hubHostReducer(switched, openThreadAction(SEL, AT));
+    expect(reopened.sendError).toBeNull();
+    expect(reopened.draft).toBe("Question");
+  });
+
+  it("parks an interrupted upload draft only in its own conversation", () => {
+    const origin = hubHostReducer(initialHubShellState(), openThreadAction(SEL, AT));
+    const switched = hubHostReducer(origin, openThreadAction(destination, AT));
+    const typed = hubHostReducer(switched, { type: "set-draft", draft: "Destination draft" });
+    const threadId = shellThreadId(SEL);
+    const interrupted = hubHostReducer(typed, {
+      type: "recover-attachment-draft", threadId, text: "Origin question", notice: "Attach the photo again.",
+    });
+    expect(interrupted.draft).toBe("Destination draft");
+    expect(interrupted.attachmentNotices?.has(switched.thread.id)).toBe(false);
+    const reopened = hubHostReducer(interrupted, openThreadAction(SEL, AT));
+    expect(reopened.draft).toBe("Origin question");
+    expect(reopened.attachmentNotices?.get(threadId)).toBe("Attach the photo again.");
   });
 
 });

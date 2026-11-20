@@ -472,18 +472,18 @@ test("a held photo and target review are kept with the origin across equipment O
 
 test("a rejected send is recoverable only in the origin after navigation (#5684)", async ({ page, context, baseURL }) => {
   await auth(context, baseURL!);
-  await routes(page, { enabled: true, resolve: "resolved" });
+  const seen = await routes(page, { enabled: true, resolve: "resolved", initial: { [THREAD]: { componentId: VFD, version: 2 } } });
   await page.addInitScript(() => {
     const fetchNormally = window.fetch.bind(window);
     window.fetch = (input, init) => {
       if (init?.method !== "POST" || !String(input).includes("/chat/")) return fetchNormally(input, init);
-      const { clientRequestId } = JSON.parse(String(init.body));
+      const request = String(init.body);
       const data = document.documentElement.dataset;
       if (data.sentRequest) {
-        data.retriedRequest = clientRequestId;
+        data.retriedRequest = request;
         return Promise.resolve(new Response('{"error":"test_stop"}', { status: 503 }));
       }
-      data.sentRequest = clientRequestId;
+      data.sentRequest = request;
       // The HTTP status arrives first. The error body is still streaming
       // when opening a fresh chat aborts the origin's request.
       const body = new ReadableStream<Uint8Array>({
@@ -491,7 +491,7 @@ test("a rejected send is recoverable only in the origin after navigation (#5684)
           init.signal?.addEventListener("abort", () => controller.error(new DOMException("Aborted", "AbortError")), { once: true });
         },
       });
-      return Promise.resolve(new Response(body, { status: 500 }));
+      return Promise.resolve(new Response(body, { status: 409 }));
     };
   });
   await page.goto(`/v3/?notebook=${NB}&thread=${THREAD}`);
@@ -507,14 +507,110 @@ test("a rejected send is recoverable only in the origin after navigation (#5684)
   await expect(composer(page)).toHaveValue("");
   const originDraft = page.getByRole("region", { name: "Projects" }).getByRole("button", { name: /Unsent draft/ });
   await expect(originDraft).toBeVisible();
+  seen.selections.set(THREAD, { componentId: VFD, version: 3 });
   await originDraft.click();
   await expect(page).toHaveURL(origin);
   await expect(composer(page)).toHaveValue("Only the origin may recover this question.");
 
-  const requestId = await page.locator("html").getAttribute("data-sent-request");
-  expect(requestId).toBeTruthy();
+  await composer(page).fill("A different draft typed after recovery.");
+  const sent = await page.locator("html").getAttribute("data-sent-request");
+  expect(sent).toBeTruthy();
   await page.getByRole("button", { name: "Try again", exact: true }).click();
-  await expect(page.locator("html")).toHaveAttribute("data-retried-request", requestId!);
+  await expect(page.locator("html")).toHaveAttribute("data-retried-request", sent!);
+  await expect(composer(page)).toHaveValue("A different draft typed after recovery.");
+});
+
+test("a progress-stream rejection survives switching while the stream closes (#5684)", async ({ page, context, baseURL }) => {
+  await auth(context, baseURL!);
+  const seen = await routes(page, { enabled: true, resolve: "resolved", initial: { [THREAD]: { componentId: VFD, version: 2 } } });
+  await page.addInitScript(() => {
+    const fetchNormally = window.fetch.bind(window);
+    window.fetch = (input, init) => {
+      if (init?.method !== "POST" || !String(input).includes("/chat/")) return fetchNormally(input, init);
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          const frame = JSON.stringify({ kind: "http_error", status: 409, body: { error: "selection_changed" } });
+          controller.enqueue(new TextEncoder().encode("data: " + frame + "\n\n"));
+          init.signal?.addEventListener("abort", () => controller.close(), { once: true });
+        },
+      });
+      const tee = body.tee.bind(body);
+      body.tee = () => {
+        const [chat, component] = tee();
+        const getReader = chat.getReader.bind(chat);
+        chat.getReader = (() => {
+          const reader = getReader();
+          const cancel = reader.cancel.bind(reader);
+          reader.cancel = (reason) => {
+            document.documentElement.dataset.refusalRead = "yes";
+            return cancel(reason);
+          };
+          return reader;
+        }) as typeof chat.getReader;
+        return [chat, component];
+      };
+      return Promise.resolve(new Response(body, { headers: { "Content-Type": "text/event-stream" } }));
+    };
+  });
+  await page.goto(`/v3/?notebook=${NB}&thread=${THREAD}`);
+  await expect(page.getByTestId("bench-asking-about")).toContainText("VFD1");
+  const origin = page.url();
+  const question = "Keep this refused VFD question.";
+  await composer(page).fill(question);
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-refusal-read", "yes");
+  seen.selections.delete(THREAD);
+  await page.getByRole("button", { name: "New chat", exact: true }).click();
+  await expect(page).not.toHaveURL(origin);
+  await expect(composer(page)).toHaveValue("");
+  const originDraft = page.getByRole("region", { name: "Projects" }).getByRole("button", { name: /Unsent draft/ });
+  await expect(originDraft).toBeVisible();
+  await originDraft.click();
+  await expect(page).toHaveURL(origin);
+  await expect(composer(page)).toHaveValue(question);
+  await expect(page.getByText(/now the whole machine/i).first()).toBeVisible();
+  await expect(page.getByRole("button", { name: "Try again", exact: true })).toHaveCount(0);
+});
+
+test("switching before a photo upload finishes parks the unsent question (#5684)", async ({ page, context, baseURL }) => {
+  await auth(context, baseURL!);
+  await routes(page, { enabled: true, resolve: "resolved" });
+  let uploadStarted = false;
+  let chatPosts = 0;
+  let finishUpload: () => void = () => {};
+  const upload = new Promise<void>((resolve) => { finishUpload = resolve; });
+  await page.route(/\/api\/equipment-notebooks\/[^/]+\/look\/?$/, async (route) => {
+    uploadStarted = true;
+    await upload;
+    await route.fulfill(json({ error: "upload_incomplete" }, 503)).catch(() => {});
+  });
+  await page.route(/\/api\/equipment-notebooks\/[^/]+\/chat\/?$/, (route) => {
+    chatPosts++;
+    return route.fulfill(json({ error: "unexpected_send" }, 503));
+  });
+  await page.goto(`/v3/?notebook=${NB}&thread=${THREAD}`);
+  await expect(page.getByTestId("bench-asking-about")).toBeVisible();
+  const origin = page.url();
+  const question = "Wait for the drive photo.";
+  await attachDraftPhoto(page, "interrupted-fixture.png");
+  await composer(page).fill(question);
+  try {
+    await page.getByRole("button", { name: "Send", exact: true }).click();
+    await expect.poll(() => uploadStarted).toBe(true);
+    await page.getByRole("button", { name: "New chat", exact: true }).click();
+    await expect(page).not.toHaveURL(origin);
+    await expect(composer(page)).toHaveValue("");
+    const originDraft = page.getByRole("region", { name: "Projects" }).getByRole("button", { name: /Unsent draft/ });
+    await expect(originDraft).toBeVisible();
+    await originDraft.click();
+    await expect(page).toHaveURL(origin);
+    await expect(composer(page)).toHaveValue(question);
+    await expect(page.getByText("The question was not sent. Attach the file again before sending.")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Try again", exact: true })).toHaveCount(0);
+    expect(chatPosts).toBe(0);
+  } finally {
+    finishUpload();
+  }
 });
 
 test("closing Find equipment cancels a lookup on its way: the chat and the typed message stay (#5625 r3 F12)", async ({ page, context, baseURL }) => {

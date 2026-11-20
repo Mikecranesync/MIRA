@@ -319,7 +319,8 @@ export type HubSendRecovery = {
   readonly body: ReturnType<typeof chatBodyFor> & { componentSelection?: ScopeField };
   readonly question: string;
   readonly refusedScope?: ScopeField;
-  readonly error: string;
+  readonly error: string | null;
+  readonly draftRevision?: number;
 };
 
 export type HubHostAction =
@@ -327,6 +328,7 @@ export type HubHostAction =
   | { readonly type: "land-thread"; readonly selection: HubSelection; readonly at: string }
   | { readonly type: "sent-draft"; readonly threadId: string; readonly question: string; readonly revision: number }
   | { readonly type: "recover-send"; readonly threadId: string; readonly recovery: HubSendRecovery; readonly restoreDraft: boolean }
+  | { readonly type: "recover-attachment-draft"; readonly threadId: string; readonly text: string; readonly notice: string }
   | { readonly type: "clear-recovery"; readonly threadId: string };
 
 /**
@@ -344,6 +346,7 @@ type HubShellState = ShellState & {
   readonly draftSequence?: number;
   readonly draftsByThread?: ReadonlyMap<string, ParkedDraft>;
   readonly sendRecoveryByThread?: ReadonlyMap<string, HubSendRecovery>;
+  readonly attachmentNotices?: ReadonlyMap<string, string>;
 };
 
 /**
@@ -370,27 +373,52 @@ export function hubHostReducer(state: HubShellState, action: HubHostAction): Hub
   }
 
   if (action.type === "clear-recovery") {
-    if (!state.sendRecoveryByThread?.has(action.threadId)) return state;
     const sendRecoveryByThread = new Map(state.sendRecoveryByThread);
+    const attachmentNotices = new Map(state.attachmentNotices);
     sendRecoveryByThread.delete(action.threadId);
-    return { ...state, sendRecoveryByThread };
+    attachmentNotices.delete(action.threadId);
+    return { ...state, sendRecoveryByThread, attachmentNotices };
   }
 
-  if (action.type === "recover-send") {
-    const sendRecoveryByThread = new Map(state.sendRecoveryByThread);
-    sendRecoveryByThread.set(action.threadId, action.recovery);
-    const next = { ...state, sendRecoveryByThread };
-    if (action.threadId === state.thread.id) {
-      const withError = shellReducer(next, { type: "set-send-error", error: action.recovery.error });
-      return action.restoreDraft && !state.draft
-        ? hubHostReducer(withError, { type: "set-draft", draft: action.recovery.question })
-        : withError;
-    }
-    if (!action.restoreDraft || state.draftsByThread?.has(action.threadId)) return next;
+  if (action.type === "recover-send" || action.type === "recover-attachment-draft") {
+    const active = action.threadId === state.thread.id;
+    const saved = state.draftsByThread?.get(action.threadId);
+    const restore = (action.type === "recover-attachment-draft" || action.restoreDraft)
+      && !(active ? state.draft : saved);
     const revision = (state.draftSequence ?? 0) + 1;
+    if (action.type === "recover-attachment-draft" && !restore) return state;
+
+    let next = state;
+    if (action.type === "recover-send") {
+      const sendRecoveryByThread = new Map(state.sendRecoveryByThread);
+      sendRecoveryByThread.set(action.threadId, { ...action.recovery, draftRevision: restore ? revision : action.recovery.draftRevision });
+      next = { ...state, sendRecoveryByThread };
+      if (active) next = shellReducer(next, { type: "set-send-error", error: action.recovery.error });
+    } else {
+      const attachmentNotices = new Map(state.attachmentNotices);
+      attachmentNotices.set(action.threadId, action.notice);
+      next = { ...state, attachmentNotices };
+      if (active) next = shellReducer(next, { type: "set-send-error", error: null });
+    }
+    if (!restore) return next;
+
+    const text = action.type === "recover-send" ? action.recovery.question : action.text;
+    if (active) {
+      const restored = shellReducer(next, { type: "set-draft", draft: text });
+      return { ...restored, draftSequence: revision, draftRevision: revision };
+    }
     const draftsByThread = new Map(state.draftsByThread);
-    draftsByThread.set(action.threadId, { text: action.recovery.question, revision });
+    draftsByThread.set(action.threadId, { text, revision });
     return { ...next, draftsByThread, draftSequence: revision };
+  }
+
+  if (action.type === "set-send-error" && action.error === null) {
+    const recovery = state.sendRecoveryByThread?.get(state.thread.id);
+    if (recovery?.error) {
+      const sendRecoveryByThread = new Map(state.sendRecoveryByThread);
+      sendRecoveryByThread.set(state.thread.id, { ...recovery, error: null });
+      return { ...shellReducer(state, action), sendRecoveryByThread };
+    }
   }
 
   const next = shellReducer(state, action);
