@@ -83,11 +83,22 @@ describe("which declared model an asked number is a near miss of", () => {
   it("no suggestion where the question is not the technician's to answer", () => {
     // The near miss is the notebook's own record: the record needs correcting, not the question.
     expect(nearMissOf(OTHER(["LXM32"], ["LXM32A"], "notebook"))).toBeNull();
-    // Two numbers asked, a photo reading, or a reason other than "the cover declares another model".
+    // Two numbers that failed against the covers, a photo reading, or a reason other than "the cover declares another model".
     expect(nearMissOf(OTHER(["LXM32", "RX420"], ["LXM32A"]))).toBeNull();
     expect(nearMissOf({ ...OTHER(["LXM32"], ["LXM32A"]), reading: true })).toBeNull();
     for (const kind of ["coverage-not-shown", "cover-and-file-disagree", "several-look-alikes"] as const)
       expect(nearMissOf({ kind, asked: ["LXM32"], declared: ["LXM32A"], source: "question" })).toBeNull();
+  });
+
+  it("only numbers that failed against the covers count: one no selected manual knows anything about does not stop the question", () => {
+    // Review of #5671 (PARTIAL), finding 3: a refusal names the numbers that
+    // failed, not every number typed. The manual says nothing about the ATV320,
+    // so only the LXM32 is refused, and it is the one asked about.
+    const q = "Bus voltage on the LXM32 and the ATV320?";
+    expect(unlistedModelNumbers(q).map((n) => n.label)).toEqual(["LXM32", "ATV320"]);
+    const r = summarizeUnlistedRefusals([judged(q, LXM32A)], "question");
+    expect(r).toMatchObject({ kind: "other-model", asked: ["LXM32"], declared: ["LXM32A"] });
+    expect(nearMissOf(r)).toBe("LXM32A");
   });
 
   it("an earlier question carried into this one is asked about too", () => {
