@@ -31,6 +31,7 @@ import { LivingSheetPrint } from "./LivingSheetPrint";
 import { LivingSheetShiftReport } from "./LivingSheetShiftReport";
 import { JobSheetsLibrary } from "./JobSheetsLibrary";
 import { NotebookMachineBinding } from "./NotebookMachineBinding";
+import { useMenuItem } from "./notebook-actions-menu";
 import {
   apiGetJob,
   apiGetWorkOrderRequest,
@@ -424,6 +425,8 @@ function NotAcceptedSection({
     </section>
   );
 }
+
+const JOB_SHEET_ITEM = { id: "job-sheet", label: "Job sheet", description: "Steps, readings and photos for this job" } as const;
 
 export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, receipt }: LivingSheetProps) {
   const [enabled, setEnabled] = useState<boolean | null>(null);
@@ -1151,6 +1154,8 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
     setHandledProposalIds((prev) => new Set([...prev, proposalId]));
   }, []);
 
+  const { inMenu } = useMenuItem(enabled === true ? JOB_SHEET_ITEM : null, () => setOpen(true));
+
   if (enabled !== true) return null;
 
   const thisReceipt = receipt && openJobId && receipt.jobId === openJobId ? receipt : null;
@@ -1163,9 +1168,11 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
 
   return (
     <>
-      <button type="button" style={SHEET_PILL_STYLE} data-testid="living-sheet-pill" onClick={() => setOpen((v) => !v)}>
-        Job sheet
-      </button>
+      {inMenu ? null : (
+        <button type="button" style={SHEET_PILL_STYLE} data-testid="living-sheet-pill" onClick={() => setOpen((v) => !v)}>
+          Job sheet
+        </button>
+      )}
 
       {!open && proposals.length > 0 && (
         <button type="button" style={BANNER_STYLE} data-testid="living-sheet-receipt-banner" onClick={() => setOpen(true)}>
