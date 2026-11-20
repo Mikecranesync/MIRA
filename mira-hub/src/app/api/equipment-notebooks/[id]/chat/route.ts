@@ -3291,6 +3291,22 @@ async function handleChatTurn(
   // "candidate" wins over "confirmed": its manual lands turned off, so the
   // fallback must also say to turn it on (Codex #4183 F1).
   let manualSearchRunning: "confirmed" | "candidate" | null = null;
+  // Codex #5706 r5 F14: a confirmed-notebook turn that STARTS a refresh of a
+  // cached partial manual emits one running status frame (this generation's
+  // own DB startedAt), so the live follower on mobile starts following it in
+  // the same chat. Other confirmed searches keep their prose-only UX.
+  let confirmedRefreshFrame: { kind: "manual_search_status"; manufacturer: string; model: string; running: true; startedAt: string } | null = null;
+  const noteConfirmedRefresh = async (key: string, manufacturer: string | null, model: string | null) => {
+    if (!manufacturer || !model) return;
+    try {
+      const fresh = await readAcquisition(ctx.tenantId, notebookId);
+      if (fresh && fresh.key === key && fresh.state === "running" && fresh.started_at) {
+        confirmedRefreshFrame = { kind: "manual_search_status", manufacturer, model, running: true, startedAt: fresh.started_at };
+      }
+    } catch (err) {
+      console.warn("[notebook-chat] confirmed refresh status skipped:", err instanceof Error ? err.message : err);
+    }
+  };
   // #4718: the acquisition key `manualSearchRunning` describes, so the copy
   // can be re-checked against the stored record just before it is chosen.
   let manualSearchKey: string | null = null;
@@ -3351,6 +3367,7 @@ async function handleChatTurn(
           turnSpanContext: rootSpan.spanContext(),
           ...(refresh ? { refreshPartial: true } : {}),
         });
+        if (started && refresh) await noteConfirmedRefresh(key, oemManufacturer.name, oemModel.value);
         if (started) {
           acq = {
             key,
@@ -3534,6 +3551,7 @@ async function handleChatTurn(
             turnSpanContext: rootSpan.spanContext(),
             ...(refresh ? { refreshPartial: true } : {}),
           });
+          if (started && refresh) await noteConfirmedRefresh(key, nb.manufacturer, nb.model);
           manualAcquisition = started
             ? { state: "running", started_this_turn: true, candidate_host: null }
             : { state: acq.state, started_this_turn: false, candidate_host: acq.candidate_host };
@@ -4013,7 +4031,9 @@ async function handleChatTurn(
           controller.enqueue(enc.encode(sse(proposalFrame)));
         }
         // T2 (#4189) — see manualSearchStatusFrame's own header. Transient only.
-        const searchStatusFrame = manualSearchStatusFrame(identityProposal, manualSearchRunning, candidateAcquisitionText, candidateSearchStartedAt, candidateManualUrl);
+        const searchStatusFrame =
+          manualSearchStatusFrame(identityProposal, manualSearchRunning, candidateAcquisitionText, candidateSearchStartedAt, candidateManualUrl) ??
+          (identityProposal ? null : confirmedRefreshFrame);
         if (searchStatusFrame) controller.enqueue(enc.encode(sse(searchStatusFrame)));
         if (photoPartLookup?.proposal) {
           const chips: NotebookFollowupsFrame = {
@@ -5988,7 +6008,9 @@ async function handleChatTurn(
       }
       // T2 (#4189) — see manualSearchStatusFrame's own header. Transient only.
       {
-        const searchStatusFrame = manualSearchStatusFrame(identityProposal, manualSearchRunning, candidateAcquisitionText, candidateSearchStartedAt, candidateManualUrl);
+        const searchStatusFrame =
+          manualSearchStatusFrame(identityProposal, manualSearchRunning, candidateAcquisitionText, candidateSearchStartedAt, candidateManualUrl) ??
+          (identityProposal ? null : confirmedRefreshFrame);
         if (searchStatusFrame) controller.enqueue(enc.encode(sse(searchStatusFrame)));
       }
       if (answerStatus === "answered" && !identityDisputed && !outputRejected) {

@@ -491,7 +491,7 @@ describe("photo-to-manual (2026-11-20): the exact typed staging prompt searches 
   // reader proposes exactly what staging saw: the "GS11N" stem.
   beforeEach(async () => {
     const real = await vi.importActual<typeof import("@/capabilities/model-token")>("@/capabilities/model-token");
-    ragMock.resolveModelFromObservationText.mockImplementation(real.resolveModelFromObservationText);
+    ragMock.resolveModelFromObservationText.mockImplementation(real.resolveModelFromObservationText as never);
   });
   it("precondition: the corpus reader alone proposes the stem the gate refuses", async () => {
     const { proposeIdentityFromText } = await import("@/capabilities/identity-proposal");

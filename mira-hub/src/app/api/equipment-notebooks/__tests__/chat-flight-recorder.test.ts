@@ -2383,6 +2383,27 @@ describe("#4075 — a confirmed identity with no manual starts, and then reports
       expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
     });
 
+    // Codex #5706 r5 F14: the refresh this turn started rides one running
+    // status frame (its own DB generation), so the live follower on mobile
+    // follows it in the same chat.
+    it("the refresh it starts emits one running status frame with its generation", async () => {
+      acqMock.acquisitionEnabled.mockReturnValue(true);
+      acqMock.readAcquisition.mockResolvedValueOnce(partial()).mockResolvedValue({ key: KEY, state: "running", started_at: "2026-11-20T23:30:00.000Z", finished_at: null, candidate_host: null, match_state: null, oem_request_url: null });
+      acqMock.startManualAcquisition.mockResolvedValue(true);
+      domainMock.getNotebook.mockResolvedValue(confirmed() as never);
+      const fr = await askForManual();
+      const status = fr.filter((f) => f.kind === "manual_search_status");
+      expect(status).toEqual([{ kind: "manual_search_status", manufacturer: "Siemens", model: "TP700 Comfort", running: true, startedAt: "2026-11-20T23:30:00.000Z" }]);
+    });
+
+    it("control: a turn that refreshes nothing emits no status frame", async () => {
+      acqMock.acquisitionEnabled.mockReturnValue(true);
+      acqMock.readAcquisition.mockResolvedValue(partial());
+      domainMock.getNotebook.mockResolvedValue(confirmed() as never);
+      const fr = await ask();
+      expect(fr.filter((f) => f.kind === "manual_search_status")).toEqual([]);
+    });
+
     it("a removed chapter is never refreshed", async () => {
       acqMock.acquisitionEnabled.mockReturnValue(true);
       acqMock.readAcquisition.mockResolvedValue(partial());
@@ -2575,6 +2596,26 @@ describe("#4075 — a confirmed identity with no manual starts, and then reports
         expect(ragMock.retrieveNodeChunks).toHaveBeenCalled();
         expect(acqMock.startManualAcquisition).toHaveBeenCalledTimes(1);
         expect(acqMock.startManualAcquisition).toHaveBeenCalledWith(expect.objectContaining({ refreshPartial: true }));
+      });
+
+      it("Codex #5706 r5 F14: the refresh it starts emits one running status frame with its generation", async () => {
+        acqMock.acquisitionEnabled.mockReturnValue(true);
+        acqMock.readAcquisition.mockResolvedValueOnce(partial()).mockResolvedValue({ key: KEY, state: "running", started_at: "2026-11-20T23:30:00.000Z", finished_at: null, candidate_host: null, match_state: null, oem_request_url: null });
+        acqMock.startManualAcquisition.mockResolvedValue(true);
+        domainMock.getNotebook.mockResolvedValue(confirmed() as never);
+        const fr = await askForManualWithSources();
+        const status = fr.filter((f) => f.kind === "manual_search_status");
+        expect(status).toEqual([{ kind: "manual_search_status", manufacturer: "Siemens", model: "TP700 Comfort", running: true, startedAt: "2026-11-20T23:30:00.000Z" }]);
+      });
+
+      it("control: a retry of a failed search (not a partial refresh) keeps the prose-only reply", async () => {
+        acqMock.acquisitionEnabled.mockReturnValue(true);
+        acqMock.readAcquisition.mockResolvedValue(partial({ state: "search_unavailable", partial: undefined }));
+        acqMock.startManualAcquisition.mockResolvedValue(true);
+        domainMock.getNotebook.mockResolvedValue(confirmed() as never);
+        const fr = await askForManualWithSources();
+        expect(acqMock.startManualAcquisition).toHaveBeenCalledTimes(1);
+        expect(fr.filter((f) => f.kind === "manual_search_status")).toEqual([]);
       });
 
       it("a partial result from the current revision is not refreshed", async () => {
