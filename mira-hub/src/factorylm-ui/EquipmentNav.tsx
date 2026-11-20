@@ -21,6 +21,9 @@ import { itemKey, type BrowserItem, type EquipmentSource, type QuestionTarget } 
 import { EquipmentAskNoticeBar, PagedEquipmentNavigator, useEquipmentAsk } from "@factorylm/ui";
 import { createHubEquipmentSource, equipmentNavAvailable } from "./equipment-source";
 import type { EquipmentOffer, PickOrigin } from "./hub-host-logic";
+import { useMenuItem } from "./notebook-actions-menu";
+
+const EQUIPMENT_ITEM = { id: "equipment", label: "Find equipment", description: "Search or browse this machine's equipment" } as const;
 
 export function EquipmentNav({
   origin,
@@ -83,6 +86,8 @@ export function EquipmentNav({
   }, { selection: () => null });
 
   const { panelRef, regionRef, room, panelRoom, panelScrolls } = useRoomBelow(open);
+  // In the More list (Mike, 2026-11-20) the panel opens from there; its Close button stays here.
+  const { inMenu } = useMenuItem(available ? EQUIPMENT_ITEM : null, () => setOpen(true));
 
   if (!available) return null;
   return (
@@ -95,17 +100,19 @@ export function EquipmentNav({
       data-testid="equipment-nav"
       style={open && panelRoom !== null ? { maxHeight: panelRoom, overflowY: "auto", overscrollBehavior: "contain" } : undefined}
     >
-      <button
-        type="button"
-        className="fl-equip__more"
-        aria-expanded={open}
-        onClick={() => {
-          if (open) asker.cancel();
-          setOpen(!open);
-        }}
-      >
-        {open ? "Close equipment" : "Find equipment"}
-      </button>
+      {!inMenu || open ? (
+        <button
+          type="button"
+          className="fl-equip__more"
+          aria-expanded={open}
+          onClick={() => {
+            if (open) asker.cancel();
+            setOpen(!open);
+          }}
+        >
+          {open ? "Close equipment" : "Find equipment"}
+        </button>
+      ) : null}
       <EquipmentAskNoticeBar asker={asker} />
       {notice ? <p role="status" className="fl-equip__notice" data-testid="equipment-pick-notice">{notice}</p> : null}
       {offer ? (
