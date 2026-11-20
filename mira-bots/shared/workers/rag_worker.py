@@ -218,6 +218,19 @@ def chunk_matches_vendor(chunk_manufacturer: str | None, query_vendor: str | Non
     return cq is not None and cq == cm
 
 
+def _metadata_for_texts(texts: list[str], chunks: list[dict]) -> list[dict]:
+    """Each text's own chunk record, in the texts' order (a duplicate text
+    consumes its records once each). An unmatched text gets ``{}``."""
+    pool: dict[str, list[dict]] = {}
+    for ch in chunks:
+        pool.setdefault(str(ch.get("content") or ""), []).append(ch)
+    out: list[dict] = []
+    for t in texts:
+        bucket = pool.get(t)
+        out.append(bucket.pop(0) if bucket else {})
+    return out
+
+
 def evidence_applicability(
     excerpt_model: str | None, asked_model: str, asked_family: str | None = None
 ) -> str | None:
@@ -1022,11 +1035,18 @@ class RAGWorker:
             if photo_b64 and state.get("asset_identified"):
                 rerank_query = f"{state['asset_identified']} {rewritten}"
 
+            prompt_chunk_meta = local_neon_chunks
             if self.nemotron and self.nemotron.enabled and chunk_texts:
                 reranked = await self.nemotron.rerank(rerank_query, chunk_texts)
                 top_chunks = [r["text"] for r in reranked if r["score"] > 0]
                 if top_chunks:
                     chunk_texts = top_chunks
+                    # The reranker reorders and drops TEXT; the prompt pairs text
+                    # with metadata by index, so the metadata must move with it or
+                    # one document's passage is rendered under another's label
+                    # (Codex #5687 round 2, F8). A returned text that matches no
+                    # retrieved chunk gets no label, never a borrowed one.
+                    prompt_chunk_meta = _metadata_for_texts(top_chunks, local_neon_chunks)
 
             # Stage 3: Build prompt with (reranked) chunks → call LLM
             if chunk_texts:
@@ -1036,7 +1056,7 @@ class RAGWorker:
                     rewritten,
                     chunk_texts,
                     photo_b64=photo_b64,
-                    neon_chunks_meta=local_neon_chunks,
+                    neon_chunks_meta=prompt_chunk_meta,
                     kg_context=local_kg_context,
                 )
             else:

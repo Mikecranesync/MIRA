@@ -21,6 +21,7 @@ from . import print_recall, quality_gate
 from .answer_qc import qc_mode, run_output_qc
 from .chat_tenant import resolve as resolve_tenant
 from .citation_compliance import SOURCES_BLOCK_RE as _SOURCES_BLOCK_RE
+from .citation_compliance import active_unit_text as _active_unit_text
 from .citation_compliance import check_citation_compliance as _check_citation_compliance
 from .citation_compliance import citation_enforce_enabled as _citation_enforce_enabled
 from .citation_compliance import enforce_citation_via_rewrite as _enforce_citation_via_rewrite
@@ -2248,7 +2249,7 @@ class Supervisor:
             "established_text": (parsed.get("_citation_relevance") or {}).get(
                 "established_text", ""
             ),
-            "current_text": (parsed.get("_citation_relevance") or {}).get("current_text", ""),
+            "current_text": (parsed.get("_citation_relevance") or {}).get("current_text"),
         }
 
     @staticmethod
@@ -2263,9 +2264,9 @@ class Supervisor:
         inputs = {
             "uns_context": _trusted_uns_context(state),
             "established_text": _established_context_text(message, state),
-            # This turn's own words, minus any injected memory block, so a
-            # remembered model cannot pose as the one typed now (#5687 F2).
-            "current_text": Supervisor._strip_memory_block(message or ""),
+            # The technician's most recent words naming a unit: a correction
+            # supersedes older mentions, memory never counts (#5687 F2).
+            "current_text": _active_unit_text(message, state),
         }
         parsed["_citation_relevance"] = inputs
         return {**inputs, "chunks": parsed.get("_last_chunks") or None}
@@ -2306,7 +2307,7 @@ class Supervisor:
                 disallowed_labels=set(evidence.get("stripped_labels") or []),
                 uns_context=evidence.get("uns_context"),
                 established_text=evidence.get("established_text") or "",
-                current_text=evidence.get("current_text") or "",
+                current_text=evidence.get("current_text"),
             )
         except Exception:
             logger.warning(
@@ -8001,7 +8002,7 @@ class Supervisor:
             inputs = {
                 "uns_context": _trusted_uns_context(state),
                 "established_text": _established_context_text(message, state),
-                "current_text": self._strip_memory_block(message or ""),
+                "current_text": _active_unit_text(message, state),
             }
             if evidence is not None:
                 evidence.update(inputs)

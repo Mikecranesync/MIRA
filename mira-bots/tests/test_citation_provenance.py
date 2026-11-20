@@ -29,6 +29,8 @@ from __future__ import annotations
 import asyncio
 
 from shared.citation_compliance import (
+    active_unit_text,
+    catalog_identifiers,
     check_citation_compliance,
     enforce_citation_via_rewrite,
     evaluate_citation_relevance,
@@ -499,12 +501,13 @@ def test_f2_corrected_model_is_not_vouched_for_by_the_old_models_manual():
     assert out["relevant"] is False, out
     # Control: a follow-up naming no unit keeps the session's active model.
     follow_up = "and what frame is it?"
+    state = {"context": {"history": [{"role": "user", "content": GS10_Q}]}}
     kept = evaluate_citation_relevance(
         f"Frame B. [Source: {AD_LABEL}]",
         None,
-        "GS13N-42P0 frame size? " + follow_up,
+        GS10_Q + " " + follow_up,
         chunks=[AD_GS10],
-        current_text=follow_up,
+        current_text=active_unit_text(follow_up, state),
     )
     assert kept["relevant"] is True, kept
 
@@ -654,3 +657,226 @@ def test_f5_series_table_row_still_proves_the_catalog_number():
         f"FWH-25A14F. [Source: {label}]", "Yaskawa", "Yaskawa GA50U2010 fuse?", chunks=[table]
     )
     assert other["relevant"] is False, other
+
+
+# ---------------------------------------------------------------------------
+# Codex #5687 round-2 findings
+# ---------------------------------------------------------------------------
+GA500_LABEL = YASKAWA_LABEL
+
+
+def _engine_inputs(message: str, history: list[str]) -> dict:
+    from shared.engine import Supervisor
+
+    state = {"context": {"history": [{"role": "user", "content": h} for h in history]}}
+    return Supervisor._citation_relevance_inputs(message, state, {})
+
+
+def _gate(reply: str, inputs: dict, chunks: list[dict]) -> dict:
+    return evaluate_citation_relevance(
+        reply,
+        None,
+        inputs["established_text"],
+        chunks=chunks,
+        current_text=inputs["current_text"],
+    )
+
+
+def test_r2_f2_three_turn_correction_holds_on_the_follow_up():
+    """Original model → correction → pronoun-only follow-up, both manuals
+    retrieved, through the engine's own input builder."""
+    chunks = [AD_GS10, YASKAWA_TABLE]
+    history = [GS10_Q, "Actually it's a GA50U2001."]
+    follow_up = "Which fuse does it take?"
+    inputs = _engine_inputs(follow_up, history + [follow_up])
+    old = _gate(f"Use a 25 A fuse. [Source: {AD_LABEL}]", inputs, chunks)
+    new = _gate(f"FWH-25A14F. [Source: {GA500_LABEL}]", inputs, chunks)
+    assert old["relevant"] is False and old["reason"] == "unproven", old
+    assert new["relevant"] is True, new
+
+
+def test_r2_f2_correction_naming_both_models_drops_the_negated_one():
+    message = "It's a GA50U2001, not a GS13N-42P0 — which fuse?"
+    inputs = _engine_inputs(message, [GS10_Q, message])
+    old = _gate(f"Use a 25 A fuse. [Source: {AD_LABEL}]", inputs, [AD_GS10, YASKAWA_TABLE])
+    assert old["relevant"] is False, old
+    assert catalog_identifiers(inputs["current_text"]) == {"GA50U2001"}
+
+
+def test_r2_f2_stale_model_in_injected_memory_does_not_count():
+    memory = "[MIRA MEMORY recalled]\nLast session: GS13N-42P0 frame B.\n[END MEMORY]\n"
+    follow_up = "Which fuse does it take?"
+    inputs = _engine_inputs(memory + follow_up, ["Actually it's a GA50U2001.", follow_up])
+    assert catalog_identifiers(inputs["current_text"]) == {"GA50U2001"}
+    old = _gate(f"Use a 25 A fuse. [Source: {AD_LABEL}]", inputs, [AD_GS10, YASKAWA_TABLE])
+    assert old["relevant"] is False, old
+    # Memory alone, with no unit named anywhere else, turns provenance off.
+    assert active_unit_text(memory + follow_up, {"context": {"history": []}}) == ""
+
+
+def test_r2_f4_fault_rating_and_a_distinct_variant_are_not_proof():
+    mcc = dict(MCC_NULL_MFR, content="2100 MCC fuse clips rated 100kAIC SCCR.")
+    from shared.workers.rag_worker import format_source_label
+
+    out = evaluate_citation_relevance(
+        f"Use class J. [Source: {format_source_label(mcc)}]",
+        None,
+        "GA50U2001 fuse at 100kAIC SCCR?",
+        chunks=[mcc],
+    )
+    assert out["relevant"] is False, out
+    variant = {
+        "manufacturer": "",
+        "model_number": "",
+        "source_url": "upload://t/zx9000b2_manual.pdf",
+        "metadata": {"section": "Scope"},
+        "content": "This manual covers the ZX9000B2 only.",
+    }
+    out = evaluate_citation_relevance(
+        f"See scope. [Source: {format_source_label(variant)}]",
+        None,
+        "ZX9000 scope?",
+        chunks=[variant],
+    )
+    assert out["relevant"] is False, out
+    # Control: the exact identifier is still proof.
+    exact = dict(
+        variant, source_url="upload://t/manual.pdf", content="This manual covers the ZX9000."
+    )
+    out = evaluate_citation_relevance(
+        f"See scope. [Source: {format_source_label(exact)}]", None, "ZX9000 scope?", chunks=[exact]
+    )
+    assert out["relevant"] is True, out
+
+
+def test_r2_f5_unmarked_other_model_chunk_does_not_pass_on_vendor():
+    v1000 = {
+        "manufacturer": "Yaskawa",
+        "model_number": "V1000",
+        "metadata": {"section": "Fuses"},
+        "content": "V1000 input fuse selection: FWP-15B.",
+    }
+    from shared.workers.rag_worker import format_source_label
+
+    label = format_source_label(v1000)
+    q = "Yaskawa GA50U2002 fuse?"
+    out = evaluate_citation_relevance(f"FWP-15B. [Source: {label}]", "Yaskawa", q, chunks=[v1000])
+    assert out["relevant"] is False, out
+    calls: list = []
+    uncited = "Install the semiconductor fuse listed for the drive before re-energizing it."
+    asyncio.run(
+        enforce_citation_via_rewrite(
+            uncited,
+            [v1000],
+            PARTIAL,
+            fsm_state="DIAGNOSIS",
+            chat_id="t-r2f5",
+            llm_call=_llm_returning(f"{uncited} [Source: {label}]", calls),
+            uns_context={"manufacturer": "Yaskawa", "model": ""},
+            established_text=q,
+            current_text=q,
+        )
+    )
+    assert calls == []
+    # Control: an unlabelled same-vendor chunk is still general vendor evidence.
+    unlabelled = dict(v1000, model_number="", content="Yaskawa drive fuse selection guidance.")
+    ok = evaluate_citation_relevance(
+        f"Fuse. [Source: {format_source_label(unlabelled)}]", "Yaskawa", q, chunks=[unlabelled]
+    )
+    assert ok["relevant"] is True, ok
+
+
+def test_r2_f7_incidental_year_is_not_a_model_row():
+    emc = {
+        "manufacturer": "Yaskawa",
+        "model_number": "GA500",
+        "metadata": {"section": "EMC"},
+        "content": "EMC installation guidelines. Copyright 2002 Yaskawa. Ground the shield at 2004 mm.",
+        "evidence_applicability": "unknown",
+    }
+    from shared.workers.rag_worker import format_source_label
+
+    out = evaluate_citation_relevance(
+        f"FWH-25A14F. [Source: {format_source_label(emc)}]",
+        "Yaskawa",
+        "Yaskawa GA50U2002 fuse?",
+        chunks=[emc],
+    )
+    assert out["relevant"] is False, out
+
+
+def test_r2_f8_reranked_passage_keeps_its_own_label():
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from shared.workers.rag_worker import RAGWorker
+
+    gs10 = dict(AD_GS10, similarity=0.9, equipment_type="", source_type="")
+    pm340 = dict(SIEMENS_PM340, model_number="", similarity=0.8, equipment_type="", source_type="")
+    nemotron = MagicMock()
+    nemotron.enabled = True
+    # The reranker moves the second document first and drops the first.
+    nemotron.rerank = AsyncMock(return_value=[{"index": 1, "text": pm340["content"], "score": 0.9}])
+    router = MagicMock()
+    router.enabled = False
+    worker = RAGWorker(
+        openwebui_url="http://localhost:3000",
+        api_key="k",
+        collection_id="c",
+        nemotron=nemotron,
+        router=router,
+        tenant_id="t",
+    )
+    worker._call_llm = AsyncMock(return_value='{"reply": "x", "next_state": "Q1"}')
+    worker._embed_ollama = AsyncMock(return_value=[0.1] * 768)
+    state = {
+        "state": "Q1",
+        "exchange_count": 1,
+        "asset_identified": "",
+        "context": {"history": [], "ocr_text": "", "ocr_items": []},
+    }
+    with patch("shared.workers.rag_worker._neon_recall") as neon:
+        neon.recall_knowledge.return_value = [gs10, pm340]
+        asyncio.run(worker.process("What frame size is it?", state))
+    prompt = str(worker._call_llm.call_args)
+    assert nemotron.rerank.await_count == 1
+    at = prompt.index(pm340["content"])
+    nearest_label = prompt[: prompt.rfind("[Source: ", 0, at)]
+    rendered_label = prompt[len(nearest_label) : at]
+    assert SIEMENS_LABEL in rendered_label, rendered_label
+    assert AD_LABEL not in rendered_label, rendered_label
+
+
+def test_r2_f2_general_question_gate_uses_the_corrected_unit(tmp_path):
+    """The RAG-path gate (_gate_reply_citations) reads the active unit too: after a
+    correction, a pronoun-only follow-up citing the old model's manual is stripped."""
+    import os
+    from unittest.mock import patch
+
+    os.environ.setdefault("TELEGRAM_BOT_TOKEN", "dummy-token-for-testing")
+    from shared.engine import Supervisor
+
+    sup = Supervisor(
+        db_path=str(tmp_path / "t.db"),
+        openwebui_url="http://stub",
+        api_key="",
+        collection_id="",
+        tenant_id="00000000-0000-0000-0000-000000000001",
+    )
+    correction = "Actually it's a GA50U2001."
+    follow_up = "Which fuse does it take?"
+    state = {
+        "state": "IDLE",
+        "context": {
+            "history": [
+                {"role": "user", "content": GS10_Q},
+                {"role": "user", "content": correction},
+            ]
+        },
+    }
+    evidence = {"kb_status": PARTIAL, "chunks": [AD_GS10, YASKAWA_TABLE], "sources": []}
+    with patch.dict(os.environ, {"MIRA_CITATION_ENFORCE": "1"}):
+        gated = sup._gate_reply_citations(
+            f"Use a 25 A fuse. [Source: {AD_LABEL}]", follow_up, state, "t-r2f2", evidence=evidence
+        )
+    assert evidence["current_text"] == correction
+    assert AD_LABEL not in gated, gated

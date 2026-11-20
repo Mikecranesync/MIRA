@@ -378,7 +378,19 @@ _PAGE_SUFFIX_RE = re.compile(r",\s*p\.\s*\d+\s*$", re.IGNORECASE)
 # A rating, not a unit: digits followed by an electrical/mechanical unit
 # ("480VAC", "24VDC", "2200RPM", "400VAC50HZ"). Codex #5687 F4: these matched an
 # unrelated manual that merely states the same voltage.
-_RATING_RE = re.compile(r"^(?:\d+(?:V|VAC|VDC|HZ|KHZ|KW|HP|KVA|MA|A|RPM|MM|NM|PH|PHASE|W))+$")
+_RATING_RE = re.compile(
+    r"^(?:\d+(?:V|VAC|VDC|KV|HZ|KHZ|KW|HP|KVA|MVA|VA|MA|A|KA|KAIC|AIC|SCCR|RPM|MM|NM|PH|PHASE|W|UF|OHM|C|F))+$"
+)
+# A standard or enclosure reference, not a unit: NEMA12, IEC61800, UL508A, IP65.
+_STANDARD_RE = re.compile(r"^(?:NEMA|IEC|UL|CSA|ISO|EN|IP|AWG|MCM|KCMIL)\d")
+# A mention the technician is moving AWAY from: "GA50U2001, not GS13N-42P0",
+# "instead of the GS13N-42P0" (Codex #5687 round 2, F2).
+_NEGATED_BEFORE_RE = re.compile(
+    r"(?:\bnot|\bisn'?t|\bwasn'?t|\binstead\s+of|\bno\s+longer|\brather\s+than|\bwrong)"
+    r"\s+(?:an?\s+|the\s+|it'?s\s+an?\s+)?$",
+    re.IGNORECASE,
+)
+_MEMORY_BLOCK_RE = re.compile(r"^\[MIRA MEMORY[^\]]*\].*?\[END MEMORY\]\s*\n*", re.DOTALL)
 
 
 def _norm_ident(text: str) -> str:
@@ -394,17 +406,48 @@ def catalog_identifiers(text: str) -> set[str]:
     do not name a unit — ``525``, ``F0004``, ``P01-01``, ``CE10``, ``60Hz``,
     ``480VAC``.
     """
+    text = text or ""
     out: set[str] = set()
-    for tok in _IDENT_TOKEN_RE.findall(text or ""):
-        n = _norm_ident(tok)
+    for m in _IDENT_TOKEN_RE.finditer(text):
+        n = _norm_ident(m.group(0))
         if (
             len(n) >= 6
             and sum(c.isalpha() for c in n) >= 2
             and sum(c.isdigit() for c in n) >= 2
             and not _RATING_RE.match(n)
+            and not _STANDARD_RE.match(n)
+            and not _NEGATED_BEFORE_RE.search(text[max(0, m.start() - 24) : m.start()])
         ):
             out.add(n)
     return out
+
+
+def active_unit_text(message: str, state: dict | None) -> str:
+    """The technician's most recent words that name a unit — the ONLY model
+    evidence provenance reads (Codex #5687 rounds 1-2, F2; contract CTX-001).
+
+    In order: this message (minus any injected memory block); else the newest
+    user turn in history that names a catalog identifier; else the confirmed
+    asset. A correction therefore supersedes every older mention, a pronoun-only
+    follow-up keeps the corrected unit, and a remembered model never poses as a
+    current one. Returns ``""`` when nothing names a unit, which turns
+    provenance OFF rather than falling back to the whole session.
+    """
+    current = _MEMORY_BLOCK_RE.sub("", message or "").strip()
+    if catalog_identifiers(current):
+        return current
+    if not isinstance(state, dict):
+        return ""
+    ctx = state.get("context")
+    history = ctx.get("history") if isinstance(ctx, dict) else None
+    if isinstance(history, list):
+        for turn in reversed(history):
+            if isinstance(turn, dict) and turn.get("role") == "user":
+                text = _MEMORY_BLOCK_RE.sub("", str(turn.get("content") or "")).strip()
+                if catalog_identifiers(text):
+                    return text
+    asset = str(state.get("asset_identified") or "")
+    return asset if catalog_identifiers(asset) else ""
 
 
 def _source_tokens(text: str) -> set[str]:
@@ -421,6 +464,13 @@ def _source_tokens(text: str) -> set[str]:
     return out
 
 
+# The one suffix rule: a 2-4 letter option code after a catalog number that ends
+# in a digit (Yaskawa CIPR-GA50U2001ABA: enclosure, region, options). A digit
+# or a single letter after the number is a different variant (ZX9000B2,
+# ZX9000B) and never matches (Codex #5687 round 2, F4).
+_OPTION_SUFFIX_RE = re.compile(r"^[A-Z]{2,4}$")
+
+
 def _names_identifier(token: str, ident: str) -> bool:
     """True when ``token`` IS the identifier, or the identifier plus an option
     suffix that starts at a letter/digit boundary (``GA50U2001`` in
@@ -429,7 +479,7 @@ def _names_identifier(token: str, ident: str) -> bool:
     if token == ident:
         return True
     if len(token) > len(ident) and token.startswith(ident):
-        return ident[-1].isdigit() != token[len(ident)].isdigit()
+        return ident[-1].isdigit() and bool(_OPTION_SUFFIX_RE.match(token[len(ident) :]))
     return False
 
 
@@ -515,7 +565,24 @@ def _names_series_row(chunk: dict, identifiers: set[str]) -> bool:
             continue
         lead, tail = m.groups()
         shared = len(os.path.commonprefix([lead, label]))
-        if shared >= 3 and shared >= len(lead) - 1 and tail in tokens:
+        if not (shared >= 3 and shared >= len(lead) - 1 and tail in tokens):
+            continue
+        # A ROW, not an incidental number (Codex #5687 round 2, F7): the chunk
+        # must read as a model table (another row of the same width and leading
+        # digit beside it) and the tail must never sit after a
+        # copyright / revision / date marker.
+        siblings = {
+            t
+            for t in tokens
+            if t.isdigit() and len(t) == len(tail) and t[0] == tail[0] and t != tail
+        }
+        content = str(chunk.get("content") or "")
+        incidental = re.search(
+            rf"(?:copyright|\(c\)|\u00a9|rev\.?|revision|version|edition|date)\s*[:.]?\s*{tail}\b",
+            content,
+            re.IGNORECASE,
+        )
+        if siblings and not incidental:
             return True
     return False
 
@@ -539,12 +606,28 @@ def _document_backs_unit(
         # Codex #5687 F5: retrieval marks an excerpt labelled for another model of
         # an undecidable family as "unknown" — general context only. Sharing the
         # manufacturer does not make it evidence for the unit the technician named.
-        if ch.get("evidence_applicability") == "unknown":
+        # When the marker is absent (a photo turn, an unscoped retrieval) it is
+        # computed here with retrieval's own helper against the named unit
+        # (Codex #5687 round 2, F5).
+        if not _applies_to_unit(ch, identifiers):
             continue
         vendor = _chunk_vendor(ch)
         if vendor and vendor in allowed_vendors:
             return True
     return False
+
+
+def _applies_to_unit(chunk: dict, identifiers: set[str]) -> bool:
+    scope = chunk.get("evidence_applicability")
+    if scope is not None:
+        return scope in ("model", "family", "unlabelled")
+    from .workers.rag_worker import evidence_applicability
+
+    return any(
+        evidence_applicability(chunk.get("model_number"), ident)
+        in ("model", "family", "unlabelled")
+        for ident in identifiers
+    )
 
 
 def _tag_provenance(
@@ -574,7 +657,7 @@ def evaluate_citation_relevance(
     expected_manufacturer: str | None,
     established_text: str = "",
     chunks: list[dict] | None = None,
-    current_text: str = "",
+    current_text: str | None = None,
 ) -> dict:
     """Pure, alias-aware citation-relevance check (no I/O).
 
@@ -670,7 +753,12 @@ def evaluate_citation_relevance(
     # follow-up that names no unit keeps the session's.
     identifiers = set()
     if chunks:
-        identifiers = catalog_identifiers(current_text) or catalog_identifiers(established_text)
+        # A caller that knows the active unit passes its text (possibly empty,
+        # which turns provenance off); legacy callers pass nothing and get the
+        # session-wide reading.
+        identifiers = catalog_identifiers(
+            established_text if current_text is None else current_text
+        )
     if identifiers:
         labels = _documents_by_label(chunks)
         allowed = {expected} if expected else _vendors_in_text(established_text)
@@ -846,7 +934,7 @@ def check_citation_compliance(
     established_text: str = "",
     enforce: bool = False,
     chunks: list[dict] | None = None,
-    current_text: str = "",
+    current_text: str | None = None,
 ) -> dict:
     """Inspect a final LLM reply for inline ``[Source: ...]`` citations.
 
@@ -1088,7 +1176,7 @@ async def enforce_citation_via_rewrite(
     disallowed_labels: set[str] | None = None,
     uns_context: dict | None = None,
     established_text: str = "",
-    current_text: str = "",
+    current_text: str | None = None,
 ) -> str:
     """Salvage an uncited-but-grounded technical reply via one insertion-only pass.
 
