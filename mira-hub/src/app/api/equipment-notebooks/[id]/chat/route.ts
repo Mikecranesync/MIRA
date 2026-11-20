@@ -1033,7 +1033,10 @@ function isIdentityProposalEntry(e: unknown): e is NotebookIdentityProposalFrame
  * (#4160 S6) verbatim — no new acquisition-state logic. Scoped to the
  * CANDIDATE basis only: the confirmed-identity search
  * (`manualSearchRunning === "confirmed"`) has no proposal to pair a card
- * with and keeps its existing (prose-only) UX, unchanged.
+ * with and keeps its existing (prose-only) UX — except a turn that STARTS a
+ * refresh of a cached partial manual, which emits one running frame of its
+ * own (`confirmedRefreshFrame`, Codex #5706 r5 F14) so the live follower
+ * follows the replacement.
  *
  * Codex round 5 F15 (#4195): `startedAt` — the search's own generation, the
  * SAME DB value the GET route (`currentManualSearchStatus`) reports for this
