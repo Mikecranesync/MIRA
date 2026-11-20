@@ -226,3 +226,32 @@ def test_every_scanned_page_is_released_before_the_next_is_parsed(monkeypatch):
     monkeypatch.setattr(pdfplumber.page.Page, "extract_text", extract)
     assert judge._model_page_sync(MANUAL, "GS11N-20P3", max_pages=80, max_chars=2500) == ""
     assert released_before == [0, 1, 2, 3, 4]
+
+
+@pytest.mark.parametrize("compose", ["docker-compose.saas.yml", "docker-compose.staging-vps.yml"])
+def test_the_deployed_byte_cap_default_matches_the_code(compose):
+    """Codex #5706 r1 F2: production Compose injected a 26214400-byte default
+    into mira-ask, so the judge still skipped the 33 MB manual whenever the
+    override was unset. A deployment either leaves the cap to the code default
+    or defaults it to the same value."""
+    import yaml
+
+    root = pathlib.Path(__file__).resolve().parents[2]
+    doc = yaml.safe_load((root / compose).read_text())
+    services = [
+        s for name, s in doc["services"].items() if "ask" in name and "environment" in (s or {})
+    ]
+    assert services, f"no mira-ask service in {compose}"
+    for svc in services:
+        env = svc["environment"]
+        items = (
+            env.items()
+            if isinstance(env, dict)
+            else (e.split("=", 1) if "=" in e else (e, "") for e in env)
+        )
+        for key, value in items:
+            if key != "MANUAL_JUDGE_MAX_BYTES":
+                continue
+            m = re.search(r":-(\d+)\}", str(value))
+            assert m, f"{compose}: MANUAL_JUDGE_MAX_BYTES has no numeric default: {value!r}"
+            assert int(m.group(1)) == judge.MAX_BYTES
