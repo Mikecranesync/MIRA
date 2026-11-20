@@ -70,7 +70,9 @@ MANUAL = _pdf([COVER, WARN, CONTENTS, "Chapter 1 Getting Started", SPEC])
 
 def test_model_page_finds_the_first_later_page_that_names_the_exact_model():
     window = judge._model_page_sync(MANUAL, MODEL, max_pages=80, max_chars=2500)
-    assert window.startswith(f"[Page 5 of this PDF, the first page that names {MODEL}]")
+    assert window.startswith(
+        f"[Note from MIRA, not text of the PDF: page 5 is the first page whose text contains {MODEL}."
+    )
     assert MODEL in window
 
 
@@ -84,6 +86,22 @@ def test_model_page_finds_the_first_later_page_that_names_the_exact_model():
 )
 def test_model_page_matches_only_the_exact_whole_token(model):
     assert judge._model_page_sync(MANUAL, model, max_pages=80, max_chars=2500) == ""
+
+
+@pytest.mark.parametrize(
+    "variant", ["GS11N-20P2-EX", "GS11N-20P2/EX", "GS11N-20P2.1", "X-GS11N-20P2"]
+)
+def test_a_suffixed_or_prefixed_variant_is_not_the_model_page(variant):
+    """#5706 r2 F7: a separator followed by a letter or digit continues the
+    identifier, so a variant never stands in for the exact model."""
+    only_variant = _pdf([COVER, WARN, f"Model-Specific Specifications {variant} 0.25 HP"])
+    assert judge._model_page_sync(only_variant, MODEL, max_pages=80, max_chars=2500) == ""
+
+
+def test_a_variant_listed_first_does_not_hide_the_exact_model_page():
+    pdf = _pdf([COVER, f"Specifications {MODEL}-EX 0.25 HP", SPEC])
+    window = judge._model_page_sync(pdf, MODEL, max_pages=80, max_chars=2500)
+    assert "page 3 is the first page whose text contains" in window
 
 
 def test_no_family_prefix_is_derived_a_page_naming_only_the_stem_is_not_the_model_page():
@@ -102,7 +120,7 @@ def test_too_short_a_model_is_never_scanned():
 
 def test_model_page_text_runs_in_the_child_and_returns_the_window():
     window = asyncio.run(judge.model_page_text(MANUAL, MODEL))
-    assert f"names {MODEL}]" in window and MODEL in window
+    assert f"contains {MODEL}." in window and MODEL in window
 
 
 def test_model_page_text_degrades_on_garbage_bytes():
@@ -166,7 +184,7 @@ def test_the_judge_reads_the_model_page_and_accepts_the_whole_manual(first_pages
     assert j["status"] == "judged" and j["is_manual"] is True
     assert j["model_page"] is True
     assert j["scope"] == "complete"
-    assert "[Page 5 of this PDF" in first_pages_only.calls[-1]
+    assert "page 5 is the first page whose text contains" in first_pages_only.calls[-1]
 
 
 def test_control_a_look_alike_model_is_not_given_a_page_and_is_not_matched(first_pages_only):
@@ -174,7 +192,7 @@ def test_control_a_look_alike_model_is_not_given_a_page_and_is_not_matched(first
     j = cand["judge"]
     assert j["status"] == "judged" and j["is_manual"] is False
     assert j["model_page"] is False
-    assert "[Page" not in first_pages_only.calls[-1]
+    assert "Note from MIRA" not in first_pages_only.calls[-1]
 
 
 def test_control_first_pages_that_already_name_the_model_skip_the_scan(
@@ -190,6 +208,16 @@ def test_control_first_pages_that_already_name_the_model_skip_the_scan(
     monkeypatch.setattr(judge, "model_page_text", no_scan)
     cand = asyncio.run(judge._judge_one("AutomationDirect", MODEL, _cand()))
     assert cand["judge"]["is_manual"] is True and cand["judge"]["model_page"] is False
+
+
+def test_a_variant_in_the_first_pages_does_not_suppress_the_scan(monkeypatch, first_pages_only):
+    async def extract(data, max_pages=8, max_chars=7000):
+        return f"{COVER}\nAccessory kit for {MODEL}-EX"
+
+    monkeypatch.setattr(judge, "extract_text", extract)
+    cand = asyncio.run(judge._judge_one("AutomationDirect", MODEL, _cand()))
+    assert cand["judge"]["model_page"] is True
+    assert "page 5 is the first page whose text contains" in first_pages_only.calls[-1]
 
 
 def test_the_byte_cap_admits_the_33_mb_official_manual_and_matches_the_hub_cap():

@@ -232,12 +232,26 @@ def _extract_text_sync(data: bytes, max_pages: int, max_chars: int) -> str:
 
 
 def model_token_re(model: str) -> re.Pattern[str] | None:
-    """The exact model as a whole token, or ``None`` when it is too short to scan
-    for safely (fewer than four letters/digits)."""
+    """The exact model as a whole identifier, or ``None`` when it is too short to
+    scan for safely (fewer than four letters/digits).
+
+    A separator followed by a letter or digit continues an identifier, so a
+    suffixed variant ("GS11N-20P2-EX", "GS11N-20P2/EX") never counts as the
+    model, on either side (#5706 r2 F7)."""
     m = (model or "").strip()
     if len(re.sub(r"[^A-Za-z0-9]", "", m)) < 4:
         return None
-    return re.compile(r"(?<![A-Za-z0-9])" + re.escape(m) + r"(?![A-Za-z0-9])", re.IGNORECASE)
+    sep = r"[-_./\u2010-\u2015]"
+    return re.compile(
+        r"(?<![A-Za-z0-9])(?<![A-Za-z0-9]"
+        + sep
+        + r")"
+        + re.escape(m)
+        + r"(?![A-Za-z0-9])(?!"
+        + sep
+        + r"[A-Za-z0-9])",
+        re.IGNORECASE,
+    )
 
 
 def _model_page_sync(data: bytes, model: str, max_pages: int, max_chars: int) -> str:
@@ -262,7 +276,10 @@ def _model_page_sync(data: bytes, model: str, max_pages: int, max_chars: int) ->
             hit = rx.search(t)
             if hit:
                 lo = max(0, hit.start() - max_chars // 2)
-                label = f"[Page {number} of this PDF, the first page that names {model}]\n"
+                label = (
+                    f"[Note from MIRA, not text of the PDF: page {number} is the first page "
+                    f"whose text contains {model}. The PDF text of that page follows.]\n"
+                )
                 return label + t[lo : lo + max_chars]
     return ""
 
