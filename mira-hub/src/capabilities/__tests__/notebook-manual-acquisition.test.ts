@@ -15,6 +15,10 @@ const db = vi.hoisted(() => ({
   currentSource: null as unknown,
   sourceRow: null as unknown,
   fileLinked: false,
+  // Codex #5706 r3 F9: what an earlier attempt of this generation attached.
+  priorDoc: null as string | null,
+  priorFile: null as string | null,
+  priorSource: null as { match_state: string } | null,
   // #4160 S6 — the fencedWriter/fencedAttach owner-row's confirmed_same_key
   // column. Defaults false so every pre-S6 ("confirmed" basis) test is
   // unaffected: that basis never reads this field.
@@ -28,8 +32,15 @@ vi.mock("@/lib/tenant-context", () => ({
         if (db.failWith) throw Object.assign(new Error("db"), db.failWith);
         if (/^\s*SELECT manual_acquisition/.test(sql)) return { rows: db.readRow ? [{ manual_acquisition: db.readRow }] : [] };
         if (/RETURNING manual_acquisition->>'gen'/.test(sql)) return { rowCount: db.claimRows, rows: db.claimRows ? [{ gen: "g1" }] : [] };
+        if (/^\s*SELECT match_state FROM equipment_notebook_sources\s+WHERE[\s\S]*FOR UPDATE/.test(sql) && db.priorDoc)
+          return { rowCount: db.priorSource ? 1 : 0, rows: db.priorSource ? [db.priorSource] : [] };
         if (/FOR UPDATE/.test(sql))
-          return { rowCount: db.claimRows, rows: db.claimRows ? [{ id: "nb", confirmed_same_key: db.confirmedSameKey }] : [] };
+          return {
+            rowCount: db.claimRows,
+            rows: db.claimRows
+              ? [{ id: "nb", confirmed_same_key: db.confirmedSameKey, prior_doc: db.priorDoc, prior_file: db.priorFile }]
+              : [],
+          };
         if (/RETURNING match_state/.test(sql)) return { rowCount: db.updatedSource ? 1 : 0, rows: db.updatedSource ? [db.updatedSource] : [] };
         if (/FROM workspace_file_links/.test(sql)) return { rowCount: db.fileLinked ? 1 : 0, rows: db.fileLinked ? [{}] : [] };
         if (/^\s*SELECT match_state FROM equipment_notebook_sources/.test(sql) || /\bAS auto_key\b/.test(sql)) return { rowCount: db.sourceRow ? 1 : 0, rows: db.sourceRow ? [db.sourceRow] : [] };
@@ -81,6 +92,9 @@ beforeEach(() => {
   db.sourceRow = null;
   db.fileLinked = false;
   db.confirmedSameKey = false;
+  db.priorDoc = null;
+  db.priorFile = null;
+  db.priorSource = null;
 });
 
 describe("acquisitionKey — only a technician-confirmed, searchable identity", () => {
@@ -468,6 +482,46 @@ describe("Codex #4118 r3 F5 / r15 F19 — fencedAttach", () => {
     db.claimRows = 0;
     expect(await fencedAttach("K", "g1")("t", "nb", "file", "doc", tgt, null)).toBe(false);
     expect(attachFileToTargetsTx).not.toHaveBeenCalled();
+  });
+});
+
+describe("Codex #5706 r3 F9 — a retry resumes only the same linked file", () => {
+  const tgt = [{ targetType: "equipment_notebook" as const, targetId: "nb", role: "manual" as const, displayLabel: "m.pdf" }];
+  const prior = () => {
+    db.claimRows = 1;
+    db.priorDoc = "doc-chapter";
+    db.priorFile = "file-chapter";
+    db.priorSource = { match_state: "candidate" };
+  };
+
+  it("a different file with no document (saved, not indexed) is attached under the fence, not reported as the earlier chapter", async () => {
+    const { fencedAttach } = await import("../notebook-manual-acquisition");
+    const { attachFileToTargetsTx } = await import("@/lib/workspace-files");
+    prior();
+    vi.mocked(attachFileToTargetsTx).mockClear();
+    expect(await fencedAttach("K", "g1")("t", "nb", "file-full-manual", null, tgt, null)).toBe(true);
+    expect(attachFileToTargetsTx).toHaveBeenCalledWith(expect.anything(), "t", "file-full-manual", tgt, expect.anything());
+    const record = db.queries.find((q) => /SET manual_acquisition = manual_acquisition \|\| jsonb_build_object/.test(q.sql));
+    expect(record?.params).toEqual(["t", "nb", "K", "g1", "file-full-manual", null]);
+  });
+
+  it("control: the same linked file with no document still resumes in place", async () => {
+    const { fencedAttach } = await import("../notebook-manual-acquisition");
+    const { attachFileToTargetsTx } = await import("@/lib/workspace-files");
+    prior();
+    vi.mocked(attachFileToTargetsTx).mockClear();
+    expect(await fencedAttach("K", "g1")("t", "nb", "file-chapter", null, tgt, null)).toBe("resume");
+    expect(attachFileToTargetsTx).not.toHaveBeenCalled();
+  });
+
+  it("control: the same document resumes, and a removed earlier document is still honoured for any file", async () => {
+    const { fencedAttach } = await import("../notebook-manual-acquisition");
+    prior();
+    expect(await fencedAttach("K", "g1")("t", "nb", "file-other", "doc-chapter", tgt, null)).toBe("resume");
+    db.priorSource = null; // the technician removed it
+    expect(await fencedAttach("K", "g1")("t", "nb", "file-full-manual", null, tgt, null)).toBe("removed");
+    db.priorSource = { match_state: "rejected" };
+    expect(await fencedAttach("K", "g1")("t", "nb", "file-full-manual", null, tgt, null)).toBe("removed");
   });
 });
 

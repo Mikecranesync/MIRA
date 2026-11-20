@@ -738,8 +738,11 @@ export function fencedAttach(
           [tenantId, notebookId, row.prior_doc],
         );
         if (!src.rows[0] || src.rows[0].match_state === "rejected") return "removed";
-        // Same document (or a file-only retry of it): assess the existing row.
-        if (docId === null || docId === row.prior_doc) return "resume";
+        // Same document, or a file-only retry of the SAME linked file: assess the
+        // existing row. A different file (a refresh that saved the full manual
+        // but could not index it) is attached below under this same fence, so
+        // it is never reported as the earlier document (Codex #5706 r3 F9).
+        if (docId === row.prior_doc || (docId === null && fileId === row.prior_file)) return "resume";
       } else if (row.prior_file) {
         const link = await c.query(
           `SELECT 1 FROM workspace_file_links
