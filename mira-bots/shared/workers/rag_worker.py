@@ -172,6 +172,23 @@ def format_source_label(chunk: dict | None) -> str:
     return section
 
 
+def kb_citation_entry(chunk: dict) -> dict:
+    """The ``kb_status["citations"]`` entry for one retrieved chunk.
+
+    The Sources footer (``response_formatter._maybe_append_citation_footer``)
+    renders its labels from these entries, so the citation gate rebuilds them
+    from the same function to recognise a footer label as that chunk's (#3049).
+    """
+    meta = chunk.get("metadata") or {}
+    return {
+        "manufacturer": chunk.get("manufacturer", ""),
+        "model_number": chunk.get("model_number", ""),
+        "source_url": chunk.get("source_url") or meta.get("source_url", ""),
+        "section": meta.get("section", ""),
+        "page_num": meta.get("page_num"),
+    }
+
+
 def chunk_matches_vendor(chunk_manufacturer: str | None, query_vendor: str | None) -> bool:
     """Should a retrieved chunk survive the cross-vendor filter?
 
@@ -1093,18 +1110,7 @@ class RAGWorker:
         if not has_chunks:
             return {"status": "uncovered", "citations": []}
         high_quality = [c for c in neon_chunks if _chunk_supports_coverage(c)]
-        citations = []
-        for c in high_quality[:3]:
-            meta = c.get("metadata") or {}
-            citations.append(
-                {
-                    "manufacturer": c.get("manufacturer", ""),
-                    "model_number": c.get("model_number", ""),
-                    "source_url": c.get("source_url") or meta.get("source_url", ""),
-                    "section": meta.get("section", ""),
-                    "page_num": meta.get("page_num"),
-                }
-            )
+        citations = [kb_citation_entry(c) for c in high_quality[:3]]
         if len(high_quality) >= 3:
             return {"status": "covered", "citations": citations}
         if high_quality:

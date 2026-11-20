@@ -354,10 +354,133 @@ def ineligible_source_reason(label: str) -> str | None:
     return None
 
 
+# ── Provenance: is the cited document evidence for the unit named? (#3049) ────
+#
+# The two relevance cases above read the vendor out of the citation LABEL. Two
+# measured failures are invisible to that:
+#
+#   * a label with no manufacturer in it — a Drive-ingested copy whose stored
+#     `manufacturer` is NULL ("manual SIRIUS circuit breaker 3RV en US"), or a
+#     Sources-footer label rendered from a file stem ("2100 — CA 004, p. 1");
+#   * the right document stripped because the technician typed only the catalog
+#     number ("GS13N-42P0 frame size?") — then the salvage rewrite re-tagged the
+#     reply with the next retrieved label, a Siemens PM340 manual.
+#
+# When the technician's own words carry a catalog-style identifier and the turn's
+# retrieved chunks are known, the gate asks the question the label cannot answer:
+# does the chunk this tag names mention that identifier, or come from a vendor the
+# technician (or trusted state) established? Off when either input is missing, so
+# callers that cannot supply chunks get the old behaviour exactly.
+
+_IDENT_TOKEN_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9-]{3,}[A-Za-z0-9]")
+_PAGE_SUFFIX_RE = re.compile(r",\s*p\.\s*\d+\s*$", re.IGNORECASE)
+
+
+def _norm_ident(text: str) -> str:
+    return re.sub(r"[^A-Z0-9]", "", (text or "").upper())
+
+
+def catalog_identifiers(text: str) -> set[str]:
+    """Catalog-style identifiers in free text, normalized (``GS13N-42P0`` → ``GS13N42P0``).
+
+    Deliberately narrow: at least 6 alphanumerics with at least 2 letters and 2
+    digits. That admits catalog numbers (``GS13N-42P0``, ``GA50U2001``,
+    ``1769-L33ER``) and rejects the tokens a turn is full of that do not name a unit
+    — ``525``, ``F0004``, ``P01-01``, ``CE10``, ``60Hz``.
+    """
+    out: set[str] = set()
+    for tok in _IDENT_TOKEN_RE.findall(text or ""):
+        n = _norm_ident(tok)
+        if len(n) >= 6 and sum(c.isalpha() for c in n) >= 2 and sum(c.isdigit() for c in n) >= 2:
+            out.add(n)
+    return out
+
+
+def _label_key(label: str) -> str:
+    s = _PAGE_SUFFIX_RE.sub("", (label or "").strip())
+    return re.sub(r"\s+", " ", s).strip().lower()
+
+
+def _chunks_by_label(chunks: list[dict] | None) -> dict[str, list[dict]]:
+    """Every label a retrieved chunk can appear under → that chunk.
+
+    Two renderers exist: the prompt header (``format_source_label``) and the
+    Sources footer (``response_formatter._format_citation_label`` over
+    ``kb_citation_entry``). A tag is recognised under either.
+
+    A tag names a DOCUMENT, so it maps to every retrieved chunk of that
+    document (same ``source_url``), not just the one whose label it copied: a
+    right manual cited from its fault table is still proven by the spec-table
+    chunk beside it that names the catalog number.
+    """
+    from .response_formatter import _format_citation_label
+    from .workers.rag_worker import kb_citation_entry
+
+    valid = [ch for ch in chunks or [] if isinstance(ch, dict)]
+    by_url: dict[str, list[dict]] = {}
+    for ch in valid:
+        url = str(ch.get("source_url") or "").strip()
+        if url:
+            by_url.setdefault(url, []).append(ch)
+
+    out: dict[str, list[dict]] = {}
+    for ch in valid:
+        url = str(ch.get("source_url") or "").strip()
+        document = by_url.get(url, [ch]) if url else [ch]
+        for label in (format_source_label(ch), _format_citation_label(kb_citation_entry(ch))):
+            key = _label_key(label)
+            if key:
+                bucket = out.setdefault(key, [])
+                bucket.extend(c for c in document if c not in bucket)
+    return out
+
+
+def _chunk_vendor(chunk: dict) -> str | None:
+    return _canonical_vendor(str(chunk.get("manufacturer") or "")) or _canonical_vendor(
+        format_source_label(chunk)
+    )
+
+
+def _tag_provenance(
+    tag: str,
+    by_label: dict[str, list[dict]],
+    identifiers: set[str],
+    allowed_vendors: set[str],
+) -> bool | None:
+    """True = the cited chunk backs this unit; False = it does not; None = unknown.
+
+    ``None`` (the tag names no retrieved chunk — a drive pack, a KG fact, another
+    renderer) is left to the label-based cases: provenance never strips what it
+    cannot see.
+    """
+    matched = by_label.get(_label_key(_tag_label(tag)))
+    if not matched:
+        return None
+    for ch in matched:
+        haystack = _norm_ident(
+            " ".join(
+                str(x or "")
+                for x in (
+                    ch.get("content"),
+                    ch.get("model_number"),
+                    ch.get("source_url"),
+                    format_source_label(ch),
+                )
+            )
+        )
+        if any(i in haystack for i in identifiers):
+            return True
+        vendor = _chunk_vendor(ch)
+        if vendor and vendor in allowed_vendors:
+            return True
+    return False
+
+
 def evaluate_citation_relevance(
     reply: str,
     expected_manufacturer: str | None,
     established_text: str = "",
+    chunks: list[dict] | None = None,
 ) -> dict:
     """Pure, alias-aware citation-relevance check (no I/O).
 
@@ -446,6 +569,24 @@ def evaluate_citation_relevance(
             reason = "unestablished"
             conflicting = unsupported
 
+    # Case 3 — PROVENANCE (#3049). Only with the turn's chunks AND a catalog
+    # identifier in the technician's words. Case 1 is never overridden: a
+    # resolved vendor plus a different vendor's document stays a conflict.
+    identifiers = catalog_identifiers(established_text) if chunks else set()
+    if identifiers and reason != "conflict":
+        by_label = _chunks_by_label(chunks)
+        allowed = {expected} if expected else _vendors_in_text(established_text)
+        verdicts = {t: _tag_provenance(t, by_label, identifiers, allowed) for t in tags}
+        unproven = [t for t in tags if verdicts[t] is False]
+        # A Case-2 strip of a tag whose document names the unit is reversed: the
+        # technician established the equipment by typing its catalog number.
+        conflicting = [t for t in conflicting if verdicts[t] is not True]
+        conflicting += [t for t in unproven if t not in conflicting]
+        if unproven:
+            relevant, reason = False, "unproven"
+        elif not conflicting:
+            relevant, reason = True, ""
+
     return {
         "relevant": relevant,
         "reason": reason,
@@ -526,6 +667,15 @@ def strip_conflicting_citations(
         )
         return out
 
+    if reason == "unproven":
+        out += (
+            "\n\n_(Note: I removed a citation because the document it pointed to doesn't "
+            "mention the unit you named, so it isn't evidence for your equipment. Treat "
+            "the statement above as unverified until it's confirmed against that unit's "
+            "manual.)_"
+        )
+        return out
+
     if reason == "unestablished":
         out += (
             "\n\n_(Note: I removed a citation because I haven't established which "
@@ -590,8 +740,14 @@ def check_citation_compliance(
     uns_context: dict | None = None,
     established_text: str = "",
     enforce: bool = False,
+    chunks: list[dict] | None = None,
 ) -> dict:
     """Inspect a final LLM reply for inline ``[Source: ...]`` citations.
+
+    ``chunks`` (optional) is THIS turn's retrieved chunk snapshot. With it, a tag
+    is also judged on provenance — does the document it names mention the
+    catalog identifier the technician typed (#3049). Without it the gate is
+    exactly the label-based one.
 
     Citation is *required* when:
       * the KB returned chunks (``kb_status['status']`` is ``covered`` or
@@ -624,7 +780,7 @@ def check_citation_compliance(
     expected_mfr = (
         (uns_context or {}).get("manufacturer") if isinstance(uns_context, dict) else None
     )
-    rel = evaluate_citation_relevance(reply or "", expected_mfr, established_text)
+    rel = evaluate_citation_relevance(reply or "", expected_mfr, established_text, chunks)
 
     result = {
         "required": required,
@@ -662,9 +818,13 @@ def check_citation_compliance(
             rel["reason"],
             rel["expected_vendor"],
             rel["cited_vendors"],
-            "cited source(s) name a different manufacturer than the resolved asset"
-            if rel["reason"] == "conflict"
-            else "cited a manufacturer for a machine the conversation never established",
+            {
+                "conflict": "cited source(s) name a different manufacturer than the resolved asset",
+                "unproven": "cited document does not mention the unit the technician named",
+            }.get(
+                rel["reason"],
+                "cited a manufacturer for a machine the conversation never established",
+            ),
         )
         if enforce:
             result["sanitized_reply"] = strip_conflicting_citations(
@@ -818,6 +978,8 @@ async def enforce_citation_via_rewrite(
     chat_id: str = "",
     llm_call: Callable[[list[dict]], Awaitable[str]],
     disallowed_labels: set[str] | None = None,
+    uns_context: dict | None = None,
+    established_text: str = "",
 ) -> str:
     """Salvage an uncited-but-grounded technical reply via one insertion-only pass.
 
@@ -848,6 +1010,21 @@ async def enforce_citation_via_rewrite(
     # undoes the strip (observed live: photo-less-ocr-claim, run 31662003031).
     if disallowed_labels:
         labels -= set(disallowed_labels)
+    # #3049 — subtracting only the labels just stripped is not enough: the gate
+    # strips the AutomationDirect tag and the salvage re-tags with the Siemens one.
+    # Offer only labels the relevance gate would itself let through on this turn.
+    # With no context (legacy callers) the gate has nothing to judge — unchanged.
+    if established_text or uns_context:
+        expected = (
+            (uns_context or {}).get("manufacturer") if isinstance(uns_context, dict) else None
+        )
+        labels = {
+            label
+            for label in labels
+            if evaluate_citation_relevance(
+                f"[Source: {label}]", expected, established_text, chunks
+            )["relevant"]
+        }
     if not labels:
         return reply  # nothing legitimate to cite — leave it to the H4 admission
 
