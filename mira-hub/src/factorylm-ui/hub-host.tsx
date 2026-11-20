@@ -731,7 +731,7 @@ export function HubShellHost() {
       // until the panel has re-read what is selected now (the old read is stale).
       const refusedScope = scopeRefused ? (outBody as { componentSelection?: ScopeField }).componentSelection : undefined;
       if (scopeRefused) setBenchView((cur) => (cur && cur.key === `${sel.notebookId}|${sel.threadId}` ? null : cur));
-      setFailedBody({ body: scopeRefused ? withoutScope(body) : outBody, question, ...(refusedScope ? { refusedScope } : {}), ...(retryRequestId ? { retryRequestId } : {}) });
+      setFailedBody({ body: scopeRefused ? withoutScope(outBody) : outBody, question, ...(refusedScope ? { refusedScope } : {}), ...(retryRequestId ? { retryRequestId } : {}) });
       dispatch({ type: "set-send-error", error: message });
       restoreDraft();
     } finally {
