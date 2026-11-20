@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Copy one Postgres database into an EMPTY database in another region, and prove the copy.
+"""Copy one Postgres database into an EMPTY database in another region, and check the copy.
 
 Why this exists: the Hub server (Oregon) and its Neon database (Virginia) are a continent
 apart, and every query pays the trip. Neon cannot change a project's region in place, so the
@@ -14,6 +14,13 @@ What it does (subcommand ``copy``):
 4. Takes the same inventory of the target and compares the two. The run fails unless the only
    differences are the declared ones (tables whose rows were deliberately left behind,
    extension versions, sequences that advanced during the dump).
+
+What the comparison covers, and what it refuses. Row contents are checked for ordinary and
+partitioned tables only. Every other relation kind is either one whose definition is compared
+(indexes, sequences, views, composite types) or one this tool does NOT verify: a materialized
+view, a foreign table, any kind it does not know, and large objects. A source holding any of
+those is REFUSED before the dump (``unverifiable_contents``), so a MATCH never covers data the
+tool did not look at. The rule is a whitelist of relation kinds, not a list of known gaps.
 
 Because the inventory and the dump read through one snapshot, the comparison is exact even
 while the source is being written to. Writes made to the source after that instant are NOT
@@ -278,6 +285,9 @@ SELECT jsonb_build_object(
  'event_triggers', (SELECT COALESCE(jsonb_object_agg(evtname, evtevent), '{{}}') FROM pg_event_trigger
      WHERE pg_get_userbyid(evtowner) = '{OWNER_ROLE}'),
  'publications', (SELECT COALESCE(jsonb_object_agg(pubname, puballtables), '{{}}') FROM pg_publication),
+ 'unverified_relations', (SELECT COALESCE(jsonb_object_agg(n.nspname || '.' || c.relname, c.relkind::text), '{{}}')
+     FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+     WHERE c.relkind NOT IN ('r', 'p', 'i', 'I', 'S', 'v', 'c', 't') AND {user_ns}),
  'large_objects', (SELECT count(*) FROM pg_largeobject_metadata),
  'default_acl', (SELECT COALESCE(jsonb_object_agg(pg_get_userbyid(a.defaclrole) || ':' || COALESCE(n.nspname, '*') || ':' || a.defaclobjtype::text,
      {acl.format(col="a.defaclacl")}), '{{}}')
@@ -288,6 +298,28 @@ SELECT jsonb_build_object(
 
 
 # --------------------------------------------------------------------------- comparison
+
+
+_UNVERIFIED_KIND = {"m": "materialized view", "f": "foreign table"}
+
+
+def unverifiable_contents(inventory: dict[str, Any]) -> list[str]:
+    """What a database holds whose CONTENTS this tool does not verify. Empty means none.
+
+    An inventory that does not say (an older file, a failed section) counts as holding some:
+    the answer has to be a positive "none", never an absence.
+    """
+    relations = inventory.get("unverified_relations")
+    large_objects = inventory.get("large_objects")
+    if not isinstance(relations, dict) or type(large_objects) is not int:
+        return ["unknown: the inventory does not say what else the database holds"]
+    found = [
+        (_UNVERIFIED_KIND.get(kind) or f"relation of kind {kind!r}") + f" {name}"
+        for name, kind in sorted(relations.items())
+    ]
+    if large_objects:
+        found.append(f"{large_objects} large objects")
+    return found
 
 
 def compare(
@@ -304,6 +336,11 @@ def compare(
     """
     unexpected: list[str] = []
     expected: list[str] = []
+    unverifiable = unverifiable_contents(source)
+    if unverifiable:
+        unexpected.append(
+            "source: holds contents this tool does not verify: " + ", ".join(unverifiable[:20])
+        )
     for section in sorted(set(source) | set(target)):
         s, t = source.get(section), target.get(section)
         if not isinstance(s, dict) or not isinstance(t, dict):
@@ -614,6 +651,12 @@ def copy_database(
             )
         src_inv = json.loads(line)
         timings["source_inventory_s"] = time.monotonic() - t0
+        unverifiable = unverifiable_contents(src_inv)
+        if unverifiable:
+            raise Refusal(
+                "the source holds contents this tool does not verify, so it will not copy it: "
+                + ", ".join(unverifiable[:20])
+            )
 
         t1 = time.monotonic()
         dump = subprocess.Popen(

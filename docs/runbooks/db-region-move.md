@@ -14,7 +14,7 @@ project's region in place, so the data has to be copied into a project in `aws-u
 
 | Piece | What it is |
 |---|---|
-| `tools/db_region_copy.py` | Copies one database into an **empty** database elsewhere and proves the copy |
+| `tools/db_region_copy.py` | Copies one database into an **empty** database elsewhere and checks the copy against the source |
 | `.github/workflows/db-region-copy.yml` | Runs the tool for **staging**, by hand, with a PostgreSQL 17 client |
 | `tests/test_db_region_copy.py` | Pins every refusal and the comparison rules (named step in `ci.yml`) |
 
@@ -33,7 +33,17 @@ project's region in place, so the data has to be copied into a project in `aws-u
 - **Addresses never reach a command line or the log.** They travel in the child processes'
   environment and are redacted from all output.
 
-## What "proves the copy" means
+## What the comparison covers, and what it refuses
+
+The tool does not claim to verify every kind of thing a Postgres database can hold. It verifies
+the kinds listed below and **refuses to copy a source that holds anything else**, so a `MATCH`
+never covers data it did not look at:
+
+- Row contents are checked for ordinary and partitioned tables.
+- A materialized view, a foreign table, a relation kind the tool does not know, or any large
+  object on the source makes the run refuse before the dump, naming what it found. The rule is a
+  whitelist of relation kinds, not a list of known gaps. Staging holds none of these (checked
+  2026-11-20: both databases).
 
 After the restore the tool takes the same inventory of both sides and fails unless they match:
 
@@ -46,7 +56,7 @@ After the restore the tool takes the same inventory of both sides and fails unle
   enabled state; views by definition, owner, options and privileges; sequences by position,
   counting rules (increment, bounds, cycle, cache) and privileges; table kind, persistence,
   partitioning and inheritance; column collation; enum, domain and composite types; rules,
-  extended statistics, event triggers, publications, large objects;
+  extended statistics, event triggers and publications (presence and definition);
 - the application roles (flags, memberships, settings) and that the owner can still
   `SET ROLE factorylm_app`;
 - schema owners and privileges, default privileges, and the migration ledger (count and content

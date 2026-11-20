@@ -263,6 +263,8 @@ def _inv(**over):
         "indexes": {"public.a_pkey": "i1"},
         "sequences": {"public.a_id_seq": 10},
         "ledger": "134:abc",
+        "unverified_relations": {},
+        "large_objects": 0,
     }
     for k, v in over.items():
         base[k] = v
@@ -624,3 +626,80 @@ def test_a_sequence_that_counts_differently_fails_even_at_the_same_position():
     tgt = _inv(sequences={"public.s": 5}, sequence_settings={"public.s": "bigint|1|1|9|2|false|1"})
     assert m.compare(src, tgt)[0] == ["sequence_settings: differs: public.s"]
     assert m.compare(src, tgt, structure_only=True)[0] == ["sequence_settings: differs: public.s"]
+
+
+# ---------------------------------------------------------------- verified, or refused
+
+_HOLDS_UNVERIFIED = {"unverified_relations": {"public.mv": "m", "ext.ft": "f"}, "large_objects": 3}
+
+
+def test_contents_the_tool_does_not_verify_are_named():
+    assert m.unverifiable_contents(_inv()) == []
+    assert m.unverifiable_contents(_inv(**_HOLDS_UNVERIFIED)) == [
+        "foreign table ext.ft",
+        "materialized view public.mv",
+        "3 large objects",
+    ]
+    assert m.unverifiable_contents(_inv(unverified_relations={"public.x": "?"})) == [
+        "relation of kind '?' public.x"
+    ]
+
+
+def test_an_inventory_that_does_not_say_is_treated_as_holding_unverified_contents():
+    old_shape = {
+        k: v for k, v in _inv().items() if k not in ("unverified_relations", "large_objects")
+    }
+    assert m.unverifiable_contents(old_shape) != []
+    assert m.unverifiable_contents(_inv(large_objects=None)) != []
+
+
+@pytest.mark.parametrize("structure_only", [False, True])
+def test_compare_fails_a_source_holding_contents_it_does_not_verify(structure_only):
+    for over in ({"unverified_relations": {"public.mv": "m"}}, {"large_objects": 1}):
+        unexpected, _ = m.compare(_inv(**over), _inv(**over), structure_only=structure_only)
+        assert len(unexpected) == 1 and unexpected[0].startswith(
+            "source: holds contents this tool does not verify"
+        )
+
+
+class _FakeProcess:
+    def __init__(self, lines):
+        import io
+
+        self.stdin, self.stderr = io.StringIO(), io.StringIO("")
+        self.stdout = io.StringIO("".join(line + "\n" for line in lines))
+
+    def wait(self, timeout=None):
+        return 0
+
+    def kill(self):
+        pass
+
+
+@pytest.mark.parametrize("structure_only", [False, True])
+def test_the_copy_refuses_before_the_dump_when_the_source_holds_unverified_contents(
+    monkeypatch, structure_only
+):
+    import json
+
+    started = []
+
+    def fake_popen(command, **kwargs):
+        started.append(command[0])
+        return _FakeProcess(["00000003-0000001B-1", json.dumps(_inv(**_HOLDS_UNVERIFIED))])
+
+    monkeypatch.setattr(m.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(m, "_psql", lambda *a, **k: pytest.fail("the target must not be touched"))
+    with pytest.raises(m.Refusal, match="materialized view public.mv"):
+        m.copy_database(
+            m.Address(SRC), m.Address(TGT), "neondb", (), structure_only, log=lambda *_: None
+        )
+    assert started == [
+        "psql"
+    ]  # only the read-only snapshot holder; pg_dump and pg_restore never ran
+
+
+def test_relations_are_verified_by_whitelist_not_by_a_list_of_known_gaps():
+    sql = m.inventory_sql()
+    section = sql[sql.index("'unverified_relations'") : sql.index("'large_objects'")]
+    assert "c.relkind NOT IN ('r', 'p', 'i', 'I', 'S', 'v', 'c', 't')" in section

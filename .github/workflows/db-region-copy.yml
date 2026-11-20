@@ -1,7 +1,7 @@
 name: DB region copy (staging rehearsal)
 
 # Copies the STAGING database into the empty staging branch of the Oregon Neon project and
-# proves the copy by comparison. Runbook: docs/runbooks/db-region-move.md.
+# checks the copy against the source by comparison. Runbook: docs/runbooks/db-region-move.md.
 #
 # Why: the Hub server is in Oregon and its database is in Virginia, so every query pays a
 # cross-country trip (~61 ms measured 2026-11-20). Neon cannot change a project's region in
@@ -11,6 +11,8 @@ name: DB region copy (staging rehearsal)
 #   - It READS staging (one read-only transaction plus pg_dump through the same snapshot).
 #   - It WRITES only to the target named by NEON_STG_USW2_DATABASE_URL, and only if that
 #     database is empty and its host is in us-west-2. It never drops or overwrites anything.
+#   - It REFUSES a source holding anything whose contents the tool does not verify (a
+#     materialized view, a foreign table, a large object), so a MATCH never covers unseen data.
 #   - It does NOT switch staging to the new database. That is a separate, human-approved step.
 #   - Production is not an option here, on purpose: the source is hardcoded to factorylm/stg
 #     and tools/db_region_copy.py refuses production's endpoint on either side. Production
