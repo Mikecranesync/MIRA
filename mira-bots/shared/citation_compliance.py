@@ -373,7 +373,12 @@ def ineligible_source_reason(label: str) -> str | None:
 # callers that cannot supply chunks get the old behaviour exactly.
 
 _IDENT_TOKEN_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9-]{3,}[A-Za-z0-9]")
+_HAYSTACK_TOKEN_RE = re.compile(r"[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*")
 _PAGE_SUFFIX_RE = re.compile(r",\s*p\.\s*\d+\s*$", re.IGNORECASE)
+# A rating, not a unit: digits followed by an electrical/mechanical unit
+# ("480VAC", "24VDC", "2200RPM", "400VAC50HZ"). Codex #5687 F4: these matched an
+# unrelated manual that merely states the same voltage.
+_RATING_RE = re.compile(r"^(?:\d+(?:V|VAC|VDC|HZ|KHZ|KW|HP|KVA|MA|A|RPM|MM|NM|PH|PHASE|W))+$")
 
 
 def _norm_ident(text: str) -> str:
@@ -384,34 +389,74 @@ def catalog_identifiers(text: str) -> set[str]:
     """Catalog-style identifiers in free text, normalized (``GS13N-42P0`` → ``GS13N42P0``).
 
     Deliberately narrow: at least 6 alphanumerics with at least 2 letters and 2
-    digits. That admits catalog numbers (``GS13N-42P0``, ``GA50U2001``,
-    ``1769-L33ER``) and rejects the tokens a turn is full of that do not name a unit
-    — ``525``, ``F0004``, ``P01-01``, ``CE10``, ``60Hz``.
+    digits, and not a rating. That admits catalog numbers (``GS13N-42P0``,
+    ``GA50U2001``, ``1769-L33ER``) and rejects the tokens a turn is full of that
+    do not name a unit — ``525``, ``F0004``, ``P01-01``, ``CE10``, ``60Hz``,
+    ``480VAC``.
     """
     out: set[str] = set()
     for tok in _IDENT_TOKEN_RE.findall(text or ""):
         n = _norm_ident(tok)
-        if len(n) >= 6 and sum(c.isalpha() for c in n) >= 2 and sum(c.isdigit() for c in n) >= 2:
+        if (
+            len(n) >= 6
+            and sum(c.isalpha() for c in n) >= 2
+            and sum(c.isdigit() for c in n) >= 2
+            and not _RATING_RE.match(n)
+        ):
             out.add(n)
     return out
 
 
-def _label_key(label: str) -> str:
-    s = _PAGE_SUFFIX_RE.sub("", (label or "").strip())
+def _source_tokens(text: str) -> set[str]:
+    """Normalized whole tokens of a source field, plus each hyphen-separated part.
+
+    ``CIPR-GA50U2001ABA`` yields ``CIPRGA50U2001ABA``, ``CIPR`` and ``GA50U2001ABA``;
+    ``zx9000_manual.pdf`` yields ``ZX9000``, ``MANUAL`` and ``PDF``.
+    """
+    out: set[str] = set()
+    for tok in _HAYSTACK_TOKEN_RE.findall(text or ""):
+        out.add(_norm_ident(tok))
+        if "-" in tok:
+            out.update(_norm_ident(part) for part in tok.split("-") if part)
+    return out
+
+
+def _names_identifier(token: str, ident: str) -> bool:
+    """True when ``token`` IS the identifier, or the identifier plus an option
+    suffix that starts at a letter/digit boundary (``GA50U2001`` in
+    ``GA50U2001ABA``). ``ZX9000`` never matches ``ZX90000``: the remainder ``0``
+    continues the number rather than starting a new field (Codex #5687 F4)."""
+    if token == ident:
+        return True
+    if len(token) > len(ident) and token.startswith(ident):
+        return ident[-1].isdigit() != token[len(ident)].isdigit()
+    return False
+
+
+def _label_key(label: str, *, keep_page: bool = True) -> str:
+    s = (label or "").strip()
+    if not keep_page:
+        s = _PAGE_SUFFIX_RE.sub("", s)
     return re.sub(r"\s+", " ", s).strip().lower()
 
 
-def _chunks_by_label(chunks: list[dict] | None) -> dict[str, list[dict]]:
-    """Every label a retrieved chunk can appear under → that chunk.
+def _documents_by_label(
+    chunks: list[dict] | None,
+) -> tuple[dict[str, list[list[dict]]], dict[str, list[list[dict]]]]:
+    """Every label a retrieved document can appear under → the documents behind it.
 
     Two renderers exist: the prompt header (``format_source_label``) and the
     Sources footer (``response_formatter._format_citation_label`` over
-    ``kb_citation_entry``). A tag is recognised under either.
+    ``kb_citation_entry``, which appends ``, p. N``). A tag is recognised under
+    either.
 
-    A tag names a DOCUMENT, so it maps to every retrieved chunk of that
-    document (same ``source_url``), not just the one whose label it copied: a
-    right manual cited from its fault table is still proven by the spec-table
-    chunk beside it that names the catalog number.
+    A tag names a DOCUMENT (every retrieved chunk sharing a ``source_url``), not
+    just the one chunk whose label it copied: a right manual cited from its fault
+    table is still proven by the spec-table chunk beside it that names the unit.
+
+    Returns ``(exact, unpaged)``: ``exact`` keys keep the page suffix; ``unpaged``
+    keys drop it and are only a fallback for a tag whose page matches no rendered
+    label (Codex #5687 F3 — two "Installation Guide" PDFs must not pool).
     """
     from .response_formatter import _format_citation_label
     from .workers.rag_worker import kb_citation_entry
@@ -423,16 +468,21 @@ def _chunks_by_label(chunks: list[dict] | None) -> dict[str, list[dict]]:
         if url:
             by_url.setdefault(url, []).append(ch)
 
-    out: dict[str, list[dict]] = {}
+    exact: dict[str, list[list[dict]]] = {}
+    unpaged: dict[str, list[list[dict]]] = {}
     for ch in valid:
         url = str(ch.get("source_url") or "").strip()
-        document = by_url.get(url, [ch]) if url else [ch]
+        document = by_url[url] if url else [ch]
         for label in (format_source_label(ch), _format_citation_label(kb_citation_entry(ch))):
-            key = _label_key(label)
-            if key:
-                bucket = out.setdefault(key, [])
-                bucket.extend(c for c in document if c not in bucket)
-    return out
+            for table, key in (
+                (exact, _label_key(label)),
+                (unpaged, _label_key(label, keep_page=False)),
+            ):
+                if key:
+                    docs = table.setdefault(key, [])
+                    if not any(d is document for d in docs):
+                        docs.append(document)
+    return exact, unpaged
 
 
 def _chunk_vendor(chunk: dict) -> str | None:
@@ -441,39 +491,82 @@ def _chunk_vendor(chunk: dict) -> str | None:
     )
 
 
-def _tag_provenance(
-    tag: str,
-    by_label: dict[str, list[dict]],
-    identifiers: set[str],
-    allowed_vendors: set[str],
-) -> bool | None:
-    """True = the cited chunk backs this unit; False = it does not; None = unknown.
+_SERIES_ROW_RE = re.compile(r"^([A-Z0-9]*[A-Z])(\d{4,})$")
 
-    ``None`` (the tag names no retrieved chunk — a drive pack, a KG fact, another
-    renderer) is left to the label-based cases: provenance never strips what it
-    cannot see.
+
+def _names_series_row(chunk: dict, identifiers: set[str]) -> bool:
+    """A series table proves a catalog number by its abbreviated row.
+
+    Yaskawa's GA500 fuse table lists ``GA50U2002`` as row ``2002`` under a chunk
+    labelled ``GA500``. Proven only when BOTH hold: the chunk's model label shares
+    all but at most one character of the identifier's lead (``GA50U`` vs
+    ``GA500`` → ``GA50``), and the identifier's digit tail (4+ digits) appears as
+    a whole token in the chunk. Retrieval marks such a chunk ``unknown`` because
+    the alias table has no GA50U family, which is why vendor alone is not enough
+    (Codex #5687 F5) but the row is.
     """
-    matched = by_label.get(_label_key(_tag_label(tag)))
-    if not matched:
-        return None
-    for ch in matched:
-        haystack = _norm_ident(
-            " ".join(
-                str(x or "")
-                for x in (
-                    ch.get("content"),
-                    ch.get("model_number"),
-                    ch.get("source_url"),
-                    format_source_label(ch),
-                )
-            )
-        )
-        if any(i in haystack for i in identifiers):
+    label = _norm_ident(str(chunk.get("model_number") or ""))
+    if not label:
+        return False
+    tokens = _source_tokens(str(chunk.get("content") or ""))
+    for ident in identifiers:
+        m = _SERIES_ROW_RE.match(ident)
+        if not m:
+            continue
+        lead, tail = m.groups()
+        shared = len(os.path.commonprefix([lead, label]))
+        if shared >= 3 and shared >= len(lead) - 1 and tail in tokens:
             return True
+    return False
+
+
+def _document_backs_unit(
+    document: list[dict], identifiers: set[str], allowed_vendors: set[str]
+) -> bool:
+    if any(_names_series_row(ch, identifiers) for ch in document):
+        return True
+    for ch in document:
+        tokens = set().union(
+            *(
+                _source_tokens(str(ch.get(field) or ""))
+                for field in ("content", "model_number", "source_url")
+            ),
+            _source_tokens(format_source_label(ch)),
+        )
+        if any(_names_identifier(t, i) for t in tokens for i in identifiers):
+            return True
+    for ch in document:
+        # Codex #5687 F5: retrieval marks an excerpt labelled for another model of
+        # an undecidable family as "unknown" — general context only. Sharing the
+        # manufacturer does not make it evidence for the unit the technician named.
+        if ch.get("evidence_applicability") == "unknown":
+            continue
         vendor = _chunk_vendor(ch)
         if vendor and vendor in allowed_vendors:
             return True
     return False
+
+
+def _tag_provenance(
+    tag: str,
+    labels: tuple[dict[str, list[list[dict]]], dict[str, list[list[dict]]]],
+    identifiers: set[str],
+    allowed_vendors: set[str],
+) -> bool | None:
+    """True = the cited document backs this unit; False = it does not; None = unknown.
+
+    ``None`` (the tag names no retrieved document — a drive pack, a KG fact,
+    another renderer) is left to the label-based cases: provenance never strips
+    what it cannot see. When a label resolves to more than one document, the tag
+    is ambiguous — a reader cannot tell which was meant — so EVERY candidate must
+    back the unit; one supporting namesake never vouches for another (F3).
+    """
+    exact, unpaged = labels
+    label = _tag_label(tag)
+    documents = exact.get(_label_key(label)) or unpaged.get(_label_key(label, keep_page=False))
+    if not documents:
+        return None
+    return all(_document_backs_unit(d, identifiers, allowed_vendors) for d in documents)
 
 
 def evaluate_citation_relevance(
@@ -481,6 +574,7 @@ def evaluate_citation_relevance(
     expected_manufacturer: str | None,
     established_text: str = "",
     chunks: list[dict] | None = None,
+    current_text: str = "",
 ) -> dict:
     """Pure, alias-aware citation-relevance check (no I/O).
 
@@ -570,22 +664,33 @@ def evaluate_citation_relevance(
             conflicting = unsupported
 
     # Case 3 — PROVENANCE (#3049). Only with the turn's chunks AND a catalog
-    # identifier in the technician's words. Case 1 is never overridden: a
-    # resolved vendor plus a different vendor's document stays a conflict.
-    identifiers = catalog_identifiers(established_text) if chunks else set()
-    if identifiers and reason != "conflict":
-        by_label = _chunks_by_label(chunks)
+    # identifier in the technician's words. Identifiers in THIS message win over
+    # history, so a corrected model ("actually it's a GA50U2001") cannot be
+    # vouched for by the manual of the one it replaced (Codex #5687 F2); a
+    # follow-up that names no unit keeps the session's.
+    identifiers = set()
+    if chunks:
+        identifiers = catalog_identifiers(current_text) or catalog_identifiers(established_text)
+    if identifiers:
+        labels = _documents_by_label(chunks)
         allowed = {expected} if expected else _vendors_in_text(established_text)
-        verdicts = {t: _tag_provenance(t, by_label, identifiers, allowed) for t in tags}
+        verdicts = {t: _tag_provenance(t, labels, identifiers, allowed) for t in tags}
         unproven = [t for t in tags if verdicts[t] is False]
-        # A Case-2 strip of a tag whose document names the unit is reversed: the
-        # technician established the equipment by typing its catalog number.
-        conflicting = [t for t in conflicting if verdicts[t] is not True]
-        conflicting += [t for t in unproven if t not in conflicting]
-        if unproven:
-            relevant, reason = False, "unproven"
-        elif not conflicting:
-            relevant, reason = True, ""
+        if reason == "conflict":
+            # Case 1 is never overridden — a vendor conflict stays stripped and
+            # keeps its reason — but it no longer exempts the REST of the reply
+            # from provenance (Codex #5687 F1: a Siemens conflict let an
+            # unrelated vendorless MCC guide ride along).
+            conflicting += [t for t in unproven if t not in conflicting]
+        else:
+            # A Case-2 strip of a tag whose document names the unit is reversed:
+            # the technician established the equipment by typing its catalog number.
+            conflicting = [t for t in conflicting if verdicts[t] is not True]
+            conflicting += [t for t in unproven if t not in conflicting]
+            if unproven:
+                relevant, reason = False, "unproven"
+            elif not conflicting:
+                relevant, reason = True, ""
 
     return {
         "relevant": relevant,
@@ -741,6 +846,7 @@ def check_citation_compliance(
     established_text: str = "",
     enforce: bool = False,
     chunks: list[dict] | None = None,
+    current_text: str = "",
 ) -> dict:
     """Inspect a final LLM reply for inline ``[Source: ...]`` citations.
 
@@ -780,7 +886,9 @@ def check_citation_compliance(
     expected_mfr = (
         (uns_context or {}).get("manufacturer") if isinstance(uns_context, dict) else None
     )
-    rel = evaluate_citation_relevance(reply or "", expected_mfr, established_text, chunks)
+    rel = evaluate_citation_relevance(
+        reply or "", expected_mfr, established_text, chunks, current_text=current_text
+    )
 
     result = {
         "required": required,
@@ -980,6 +1088,7 @@ async def enforce_citation_via_rewrite(
     disallowed_labels: set[str] | None = None,
     uns_context: dict | None = None,
     established_text: str = "",
+    current_text: str = "",
 ) -> str:
     """Salvage an uncited-but-grounded technical reply via one insertion-only pass.
 
@@ -1022,7 +1131,7 @@ async def enforce_citation_via_rewrite(
             label
             for label in labels
             if evaluate_citation_relevance(
-                f"[Source: {label}]", expected, established_text, chunks
+                f"[Source: {label}]", expected, established_text, chunks, current_text=current_text
             )["relevant"]
         }
     if not labels:

@@ -2248,6 +2248,7 @@ class Supervisor:
             "established_text": (parsed.get("_citation_relevance") or {}).get(
                 "established_text", ""
             ),
+            "current_text": (parsed.get("_citation_relevance") or {}).get("current_text", ""),
         }
 
     @staticmethod
@@ -2262,6 +2263,9 @@ class Supervisor:
         inputs = {
             "uns_context": _trusted_uns_context(state),
             "established_text": _established_context_text(message, state),
+            # This turn's own words, minus any injected memory block, so a
+            # remembered model cannot pose as the one typed now (#5687 F2).
+            "current_text": Supervisor._strip_memory_block(message or ""),
         }
         parsed["_citation_relevance"] = inputs
         return {**inputs, "chunks": parsed.get("_last_chunks") or None}
@@ -2302,6 +2306,7 @@ class Supervisor:
                 disallowed_labels=set(evidence.get("stripped_labels") or []),
                 uns_context=evidence.get("uns_context"),
                 established_text=evidence.get("established_text") or "",
+                current_text=evidence.get("current_text") or "",
             )
         except Exception:
             logger.warning(
@@ -7996,6 +8001,7 @@ class Supervisor:
             inputs = {
                 "uns_context": _trusted_uns_context(state),
                 "established_text": _established_context_text(message, state),
+                "current_text": self._strip_memory_block(message or ""),
             }
             if evidence is not None:
                 evidence.update(inputs)

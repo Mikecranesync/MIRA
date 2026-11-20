@@ -333,6 +333,9 @@ def test_engine_threads_one_set_of_relevance_inputs_to_gate_and_salvage():
     assert evidence["chunks"] == [AD_GS10]
     assert evidence["established_text"] == gate_kwargs["established_text"]
     assert evidence["uns_context"] == gate_kwargs["uns_context"]
+    # #5687 F2 — this turn's own words ride separately from session history.
+    assert gate_kwargs["current_text"] == GS10_Q
+    assert evidence["current_text"] == GS10_Q
 
 
 def test_right_null_manufacturer_document_is_proven_by_a_sibling_chunk():
@@ -456,3 +459,198 @@ def test_salvage_without_context_is_unchanged():
     )
     assert out == rewritten
     assert _tags(out) == [SIEMENS_LABEL]
+
+
+# ---------------------------------------------------------------------------
+# Codex #5687 round-1 findings — each test is the reviewer's failure scenario
+# ---------------------------------------------------------------------------
+MCC_FOOTER_LABEL = "2100 — CA 004, p. 1"
+
+
+def test_f1_vendor_conflict_no_longer_exempts_the_other_tags():
+    """Yaskawa resolved; the reply cites Siemens (conflict) AND the unrelated
+    vendorless MCC guide. Both must go — the conflict used to skip provenance."""
+    q = "GA50U2001 semiconductor fuse part number?"
+    reply = (
+        f"Use the listed semiconductor fuse. [Source: {SIEMENS_LABEL}] [Source: {MCC_FOOTER_LABEL}]"
+    )
+    out = check_citation_compliance(
+        reply,
+        PARTIAL,
+        fsm_state="Q1",
+        chat_id="t-f1",
+        uns_context={"manufacturer": "Yaskawa", "model": "GA50U2001"},
+        established_text=q,
+        current_text=q,
+        chunks=[SIEMENS_PM340, MCC_NULL_MFR],
+        enforce=True,
+    )
+    assert out["relevant"] is False
+    assert "[Source:" not in out["sanitized_reply"], out["sanitized_reply"]
+
+
+def test_f2_corrected_model_is_not_vouched_for_by_the_old_models_manual():
+    """History says GS13N-42P0; THIS message corrects it to GA50U2001. The GS10
+    manual names only the old model and must not survive."""
+    history = "GS13N-42P0 frame size? Actually it's a GA50U2001."
+    current = "Actually it's a GA50U2001 — which fuse does it use?"
+    reply = f"Use a 25 A semiconductor fuse. [Source: {AD_LABEL}]"
+    out = evaluate_citation_relevance(reply, None, history, chunks=[AD_GS10], current_text=current)
+    assert out["relevant"] is False, out
+    # Control: a follow-up naming no unit keeps the session's active model.
+    follow_up = "and what frame is it?"
+    kept = evaluate_citation_relevance(
+        f"Frame B. [Source: {AD_LABEL}]",
+        None,
+        "GS13N-42P0 frame size? " + follow_up,
+        chunks=[AD_GS10],
+        current_text=follow_up,
+    )
+    assert kept["relevant"] is True, kept
+
+
+def test_f3_same_titled_manuals_do_not_pool_their_provenance():
+    guide_a = {
+        "manufacturer": "",
+        "model_number": "Installation Guide",
+        "source_url": "upload://t/a.pdf",
+        "metadata": {"page_num": 4},
+        "content": "ZX9000 mounting clearances: 50 mm.",
+    }
+    guide_b = {
+        "manufacturer": "",
+        "model_number": "Installation Guide",
+        "source_url": "upload://t/b.pdf",
+        "metadata": {"page_num": 17},
+        "content": "Conveyor belt tensioning procedure.",
+    }
+    from shared.response_formatter import _format_citation_label
+    from shared.workers.rag_worker import kb_citation_entry
+
+    label_a = _format_citation_label(kb_citation_entry(guide_a))
+    label_b = _format_citation_label(kb_citation_entry(guide_b))
+    assert label_a != label_b, (label_a, label_b)
+    q = "ZX9000 clearance?"
+    good = evaluate_citation_relevance(
+        f"50 mm. [Source: {label_a}]", None, q, chunks=[guide_a, guide_b]
+    )
+    bad = evaluate_citation_relevance(
+        f"50 mm. [Source: {label_b}]", None, q, chunks=[guide_a, guide_b]
+    )
+    assert good["relevant"] is True, good
+    assert bad["relevant"] is False and bad["reason"] == "unproven", bad
+    # An unpaged label shared by both documents is ambiguous: neither vouches for it.
+    unpaged = _label_key_for_test(label_a)
+    amb = evaluate_citation_relevance(
+        f"50 mm. [Source: {unpaged}, p. 9]", None, q, chunks=[guide_a, guide_b]
+    )
+    assert amb["relevant"] is False, amb
+
+
+def _label_key_for_test(label: str) -> str:
+    import re
+
+    return re.sub(r",\s*p\.\s*\d+\s*$", "", label)
+
+
+def test_f4_a_rating_or_a_longer_model_number_is_not_proof():
+    q = "GA50U2001 on 480VAC — fuse?"
+    siemens_480 = dict(SIEMENS_PM340, content="PM340 frame FSB, 380-480 VAC input. 480VAC rated.")
+    out = evaluate_citation_relevance(
+        f"Use a fuse. [Source: {SIEMENS_LABEL}]", None, q, chunks=[siemens_480]
+    )
+    assert out["relevant"] is False, out
+
+    longer = {
+        "manufacturer": "",
+        "model_number": "",
+        "source_url": "upload://t/zx90000_manual.pdf",
+        "metadata": {"section": "Alarms"},
+        "content": "ZX90000 alarm 12: undervoltage.",
+    }
+    from shared.workers.rag_worker import format_source_label
+
+    out = evaluate_citation_relevance(
+        f"Alarm 12. [Source: {format_source_label(longer)}]",
+        None,
+        "ZX9000 alarm 12?",
+        chunks=[longer],
+    )
+    assert out["relevant"] is False, out
+
+    # Control: the exact identifier with an option suffix (catalog form) is kept.
+    yaskawa_full = dict(YASKAWA_TABLE, manufacturer="", content="CIPR-GA50U2001ABA: FWH-25A14F")
+    out = evaluate_citation_relevance(
+        f"FWH-25A14F. [Source: {format_source_label(yaskawa_full)}]",
+        None,
+        "GA50U2001 fuse?",
+        chunks=[yaskawa_full],
+    )
+    assert out["relevant"] is True, out
+
+
+def test_f5_unknown_applicability_does_not_pass_on_vendor_alone():
+    q = "Rockwell 25B-D010N104 accel time parameter?"
+    other_model = {
+        "manufacturer": "Rockwell Automation",
+        "model_number": "PowerFlex 753",
+        "metadata": {"section": "Parameters"},
+        "content": "P535 Accel Time 1.",
+        "evidence_applicability": "unknown",
+    }
+    from shared.workers.rag_worker import format_source_label
+
+    label = format_source_label(other_model)
+    out = evaluate_citation_relevance(
+        f"Set P535. [Source: {label}]", "Rockwell Automation", q, chunks=[other_model]
+    )
+    assert out["relevant"] is False, out
+    # The salvage must not offer it either.
+    calls: list = []
+    uncited = "Set the accel time parameter to 5 seconds before restarting the drive."
+    asyncio.run(
+        enforce_citation_via_rewrite(
+            uncited,
+            [other_model],
+            PARTIAL,
+            fsm_state="DIAGNOSIS",
+            chat_id="t-f5",
+            llm_call=_llm_returning(f"{uncited} [Source: {label}]", calls),
+            uns_context={"manufacturer": "Rockwell Automation", "model": ""},
+            established_text=q,
+            current_text=q,
+        )
+    )
+    assert calls == []
+    # Control: the same chunk with demonstrated applicability stays eligible.
+    applicable = dict(other_model, evidence_applicability="family")
+    ok = evaluate_citation_relevance(
+        f"Set P535. [Source: {label}]", "Rockwell Automation", q, chunks=[applicable]
+    )
+    assert ok["relevant"] is True, ok
+
+
+def test_f5_series_table_row_still_proves_the_catalog_number():
+    """Recorded L4 case: GA500 fuse table, applicability 'unknown' (no GA50U
+    family in the alias table), row '2002' — the right document, kept."""
+    table = {
+        "manufacturer": "Yaskawa",
+        "model_number": "GA500",
+        "source_url": "https://www.yaskawa.com/delegate/getAttachment?documentId=SIEPC71061752",
+        "metadata": {"section": "Fuses"},
+        "content": "Model MaximumSCCR 2001 FWH-25A14F 31kA 2002 FWH-25A14F 31kA 2004 FWH-25A14F",
+        "evidence_applicability": "unknown",
+    }
+    from shared.workers.rag_worker import format_source_label
+
+    label = format_source_label(table)
+    q = "Which Bussmann semiconductor fuse does Yaskawa require for a GA50U2002?"
+    kept = evaluate_citation_relevance(
+        f"FWH-25A14F. [Source: {label}]", "Yaskawa", q, chunks=[table]
+    )
+    assert kept["relevant"] is True, kept
+    # Control: a row that is not the unit's does not vouch for it.
+    other = evaluate_citation_relevance(
+        f"FWH-25A14F. [Source: {label}]", "Yaskawa", "Yaskawa GA50U2010 fuse?", chunks=[table]
+    )
+    assert other["relevant"] is False, other
