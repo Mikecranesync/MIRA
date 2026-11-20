@@ -316,20 +316,35 @@ export function openThreadAction(sel: HubSelection, at: string): ShellAction {
 /** The host's actions: the shell's, plus an automatic landing (deep link, reload, first load). */
 export type HubHostAction = ShellAction | { readonly type: "land-thread"; readonly selection: HubSelection; readonly at: string };
 
+type HubShellState = ShellState & { readonly draftsByThread?: ReadonlyMap<string, string> };
+
 /**
- * #4695: the Hub host's reducer. The shell's `hydrate` blanks the draft whenever
- * the thread id changes, which is right when the technician CHOOSES another
- * thread. An automatic landing is not a choice: what was already typed on HOME
- * belongs to the conversation that is opening. `land-thread` opens the thread
- * and keeps the draft of the SAME state it transitions, in one step, so no
- * separately held copy can be stale. That is a safeguard: the lost first word
- * seen on staging was text typed before hydration, fixed in the Composer
- * (#4695 part 4). Every other action is the shell's.
+ * The composer already holds pending attachments by thread ID. Keep unsent
+ * text by that same identity when a technician opens another conversation.
+ * The state that switches threads owns the latest text, including keystrokes
+ * that arrived after the equipment offer appeared.
  */
-export function hubHostReducer(state: ShellState, action: HubHostAction): ShellState {
-  if (action.type !== "land-thread") return shellReducer(state, action);
-  const landed = shellReducer(state, openThreadAction(action.selection, action.at));
-  return state.draft && landed.draft !== state.draft ? shellReducer(landed, { type: "set-draft", draft: state.draft }) : landed;
+export function hubHostReducer(state: HubShellState, action: HubHostAction): HubShellState {
+  if (action.type === "land-thread") {
+    // #4695: automatic landing keeps what was typed on HOME during loading.
+    const landed = shellReducer(state, openThreadAction(action.selection, action.at));
+    return state.draft && landed.draft !== state.draft ? shellReducer(landed, { type: "set-draft", draft: state.draft }) : landed;
+  }
+
+  const next = shellReducer(state, action);
+  if (action.type !== "hydrate" || next.thread.id === state.thread.id) return next;
+
+  const outgoingDraft = state.thread.id === EMPTY_FIXTURE.thread.id ? "" : state.draft;
+  const incomingDraft = state.draftsByThread?.get(next.thread.id);
+  if (!outgoingDraft && incomingDraft === undefined) return next;
+
+  const draftsByThread = new Map(state.draftsByThread);
+  if (outgoingDraft) draftsByThread.set(state.thread.id, outgoingDraft);
+  // Once active, the composer owns the text. Clearing or sending it cannot
+  // bring back an older parked copy on a later visit.
+  draftsByThread.delete(next.thread.id);
+  const restored = incomingDraft === undefined ? next : shellReducer(next, { type: "set-draft", draft: incomingDraft });
+  return { ...restored, draftsByThread };
 }
 
 /**

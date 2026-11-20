@@ -117,3 +117,23 @@ describe("hubHostReducer land-thread — #4695: an automatic landing keeps what 
     expect(host.match(/syncThread\(sel\);/g)?.length).toBe(1);
   });
 });
+
+describe("Hub draft isolation across notebook navigation (#5684)", () => {
+  const destination = { notebookId: "nb-conveyor", threadId: SEL.threadId };
+
+  it("restores the origin draft without carrying it into the destination", () => {
+    const origin = hubHostReducer(initialHubShellState(), openThreadAction(SEL, AT));
+    const withDraft = hubHostReducer(origin, { type: "set-draft", draft: "Check VFD1 on the origin" });
+    const elsewhere = hubHostReducer(withDraft, openThreadAction(destination, AT));
+    expect(elsewhere.draft).toBe("");
+
+    const withOtherDraft = hubHostReducer(elsewhere, { type: "set-draft", draft: "Destination question" });
+    const returned = hubHostReducer(withOtherDraft, openThreadAction(SEL, AT));
+    expect(view(returned, loadingThread(SEL, [])).draft).toBe("Check VFD1 on the origin");
+
+    const cleared = hubHostReducer(returned, { type: "set-draft", draft: "" });
+    const backToDestination = hubHostReducer(cleared, openThreadAction(destination, AT));
+    expect(backToDestination.draft).toBe("Destination question");
+    expect(hubHostReducer(backToDestination, openThreadAction(SEL, AT)).draft).toBe("");
+  });
+});

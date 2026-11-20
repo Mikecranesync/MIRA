@@ -355,6 +355,59 @@ test("equipment in another notebook is offered and opens only on the technician'
   expect(seen.selectionPuts).toHaveLength(0);
 });
 
+test("opening equipment in another notebook preserves the origin draft and photo (#5684)", async ({ page, context, baseURL }) => {
+  await auth(context, baseURL!);
+  const destination = "99999999-9999-4999-8999-999999999999";
+  const seen = await routes(page, { enabled: true, resolve: "resolved", resolveNotebook: destination });
+  const originTitle = "Origin draft conversation";
+  const origin = oracle.list.notebooks[0];
+  await page.route(/\/api\/equipment-notebooks\/?$/, (route) => route.fulfill(json({
+    notebooks: [{
+      ...origin,
+      threads: [{ id: THREAD, notebookId: NB, title: originTitle, turnCount: 1, sharedLegacy: false,
+        createdAt: origin.createdAt, updatedAt: origin.createdAt }],
+    }],
+  })));
+  await page.route(new RegExp(`/api/equipment-notebooks/${destination}/?(\\?.*)?$`), (route) => route.fulfill(json({
+    ...oracle.detailEmpty,
+    notebook: { ...oracle.detailEmpty.notebook, id: destination, displayName: "Packaging line" },
+  })));
+
+  await page.goto(`/v3/?notebook=${NB}&thread=${THREAD}`);
+  await openTo(page, VFD);
+  await askAbout(page, "VFD1");
+  await expect(offer(page)).toContainText("Packaging line");
+
+  const draft = "Check the original drive before the next shift.";
+  const photoName = "fixture-draft-photo.png";
+  await composer(page).fill(draft);
+  await page.getByRole("button", { name: "Add attachment" }).click();
+  const [chooser] = await Promise.all([
+    page.waitForEvent("filechooser"),
+    page.getByRole("button", { name: "Photo", exact: true }).click(),
+  ]);
+  await chooser.setFiles({
+    name: photoName,
+    mimeType: "image/png",
+    buffer: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aN1sAAAAASUVORK5CYII=", "base64"),
+  });
+  const attachment = page.getByRole("button", { name: `Remove ${photoName}` });
+  await expect(attachment).toBeVisible();
+
+  await offer(page).getByRole("button", { name: "Open", exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`notebook=${destination}`));
+  await expect(checklistRow(page, VFD)).toHaveAttribute("data-found", "true");
+  await checklist(page).getByRole("button", { name: "Close", exact: true }).click();
+  await expect(composer(page)).toHaveValue("");
+  await expect(attachment).toHaveCount(0);
+
+  await page.getByRole("region", { name: "Projects" }).getByRole("button", { name: originTitle }).click();
+  await expect(page).toHaveURL(new RegExp(`notebook=${NB}&thread=${THREAD}`));
+  await expect(attachment).toBeVisible();
+  await expect(composer(page)).toHaveValue(draft);
+  expect(seen.selectionPuts).toHaveLength(0);
+});
+
 test("closing Find equipment cancels a lookup on its way: the chat and the typed message stay (#5625 r3 F12)", async ({ page, context, baseURL }) => {
   await auth(context, baseURL!);
   const OTHER = "99999999-9999-4999-8999-999999999999";
