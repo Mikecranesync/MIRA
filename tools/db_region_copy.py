@@ -46,6 +46,7 @@ import os
 import re
 import subprocess
 import sys
+import threading
 import time
 from typing import Any, Optional
 from urllib.parse import unquote, urlparse
@@ -601,6 +602,37 @@ def classify_restore_output(stderr_text: str) -> tuple[list[str], list[str]]:
     return tolerated, other
 
 
+def pipe_dump_into_restore(
+    dump_cmd: list[str],
+    restore_cmd: list[str],
+    dump_env: dict[str, str],
+    restore_env: dict[str, str],
+) -> tuple[int, bytes, int, bytes]:
+    """Run the dump piped straight into the restore. Nothing touches the disk.
+
+    Returns (dump exit code, dump stderr, restore exit code, restore stderr). The dump's error
+    pipe is drained WHILE the restore runs: a pipe holds about 64 KB, and a dump that fills it
+    would otherwise stop before finishing its data, with the restore waiting on it forever.
+    """
+    dump = subprocess.Popen(dump_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=dump_env)
+    restore = subprocess.Popen(
+        restore_cmd,
+        stdin=dump.stdout,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env=restore_env,
+    )
+    assert dump.stdout and dump.stderr
+    dump.stdout.close()  # so the dump gets SIGPIPE if the restore dies
+    captured: list[bytes] = []
+    drain = threading.Thread(target=lambda: captured.append(dump.stderr.read()), daemon=True)
+    drain.start()
+    _, restore_err = restore.communicate()
+    dump_rc = dump.wait()
+    drain.join()
+    return dump_rc, b"".join(captured), restore.returncode, restore_err
+
+
 def copy_database(
     source: Address,
     target: Address,
@@ -659,24 +691,12 @@ def copy_database(
             )
 
         t1 = time.monotonic()
-        dump = subprocess.Popen(
+        dump_rc, dump_err, restore_rc, restore_err = pipe_dump_into_restore(
             dump_command(snapshot_id, leave_rows, structure_only),
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            env=source.env(database),
-        )
-        restore = subprocess.Popen(
             restore_command(database),
-            stdin=dump.stdout,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            env=target.env(database),
+            source.env(database),
+            target.env(database),
         )
-        assert dump.stdout
-        dump.stdout.close()  # so pg_dump gets SIGPIPE if pg_restore dies
-        _, restore_err = restore.communicate()
-        dump_err = dump.stderr.read() if dump.stderr else b""
-        dump_rc = dump.wait()
         timings["dump_restore_s"] = time.monotonic() - t1
         if dump_rc != 0:
             raise Refusal(
@@ -684,8 +704,8 @@ def copy_database(
                 + redact(dump_err.decode("utf8", "replace")[-600:], source, target)
             )
         tolerated, restore_errors = classify_restore_output(restore_err.decode("utf8", "replace"))
-        if restore.returncode != 0 and not tolerated and not restore_errors:
-            restore_errors = [f"pg_restore exited {restore.returncode} without an error line"]
+        if restore_rc != 0 and not tolerated and not restore_errors:
+            restore_errors = [f"pg_restore exited {restore_rc} without an error line"]
         restore_errors = [redact(ln, source, target)[:300] for ln in restore_errors]
         log(
             f"[{database}] pg_restore: {len(tolerated)} tolerated errors (platform default "

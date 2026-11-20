@@ -703,3 +703,46 @@ def test_relations_are_verified_by_whitelist_not_by_a_list_of_known_gaps():
     sql = m.inventory_sql()
     section = sql[sql.index("'unverified_relations'") : sql.index("'large_objects'")]
     assert "c.relkind NOT IN ('r', 'p', 'i', 'I', 'S', 'v', 'c', 't')" in section
+
+
+# ---------------------------------------------------------------- the pipe cannot hang
+
+
+def test_a_dump_that_prints_a_lot_of_warnings_cannot_hang_the_copy():
+    """A pipe holds about 64 KB. A dump that fills its error pipe before it finishes writing
+    data must not block forever with the restore waiting on it."""
+    import os
+    import threading
+
+    noise = 2_000_000
+    dump = [
+        sys.executable,
+        "-c",
+        f"import sys; sys.stderr.write('w' * {noise}); sys.stderr.flush(); sys.stdout.write('payload')",
+    ]
+    restore = [
+        sys.executable,
+        "-c",
+        "import sys; data = sys.stdin.read(); sys.stderr.write('got ' + str(len(data)))",
+    ]
+    result = []
+    env = dict(os.environ)
+    worker = threading.Thread(
+        target=lambda: result.append(m.pipe_dump_into_restore(dump, restore, env, env)), daemon=True
+    )
+    worker.start()
+    worker.join(20)
+    assert not worker.is_alive(), "the pipeline hung on a noisy dump"
+    dump_rc, dump_err, restore_rc, restore_err = result[0]
+    assert (dump_rc, restore_rc) == (0, 0)
+    assert len(dump_err) == noise
+    assert restore_err == b"got 7"
+
+
+def test_a_failed_dump_still_reports_its_exit_code_and_message():
+    import os
+
+    dump = [sys.executable, "-c", "import sys; sys.stderr.write('boom'); sys.exit(3)"]
+    restore = [sys.executable, "-c", "import sys; sys.stdin.read()"]
+    env = dict(os.environ)
+    assert m.pipe_dump_into_restore(dump, restore, env, env) == (3, b"boom", 0, b"")
