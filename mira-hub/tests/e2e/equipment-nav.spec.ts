@@ -1202,9 +1202,9 @@ const menu = (page: Page) => page.getByTestId("notebook-more-menu");
 const menuOpen = (page: Page) => menu(page).evaluate((d) => (d as HTMLDialogElement).open);
 const item = (page: Page, id: string) => page.getByTestId(`notebook-more-item-${id}`);
 const fix = (n: number) => ({ id: `fix-${n}`, symptom: `Will not start ${n}`, faultCode: null, fix: `Reset the drive ${n}`, createdAt: "2026-11-19T12:00:00.000Z" });
-async function savedFixes(page: Page, count: number) {
+async function savedFixes(page: Page, count: number, assetConfirmed: boolean | null = true) {
   await page.route(/\/api\/equipment-notebooks\/[^/]+\/fixes\/(\?.*)?$/, (route) =>
-    route.fulfill(json({ fixes: Array.from({ length: count }, (_, i) => fix(i + 1)), nextCursor: null, assetConfirmed: true })));
+    route.fulfill(json({ fixes: Array.from({ length: count }, (_, i) => fix(i + 1)), nextCursor: null, assetConfirmed })));
 }
 
 test.describe("More", () => {
@@ -1222,6 +1222,53 @@ test.describe("More", () => {
     // The whole machine is the silent default: no "Asking about" pill and no Whole machine button.
     await expect(page.getByTestId("bench-asking-about")).toHaveCount(0);
     await expect(page.getByTestId("notebook-chip")).toHaveCount(0);
+  });
+
+  for (const [assetConfirmed, wording] of [[null, "Fixes saved in this project"], [true, "Fixes saved in this project for this machine"]] as const) {
+    test(`Saved fixes says whose fixes they are (machine confirmed: ${assetConfirmed}) (#5698)`, async ({ page, context, baseURL }) => {
+      await auth(context, baseURL!);
+      await routes(page, { enabled: false, resolve: "resolved" });
+      await savedFixes(page, 2, assetConfirmed);
+      await page.goto(`/v3/?notebook=${NB}&thread=${THREAD}`);
+      await expect(item(page, "saved-fixes")).toContainText(wording);
+      if (assetConfirmed === null) await expect(item(page, "saved-fixes")).not.toContainText("for this machine");
+    });
+  }
+
+  test("when the last tool goes while the list is open, More comes back closed and opens on the next tap (#5697)", async ({ page, context, baseURL }) => {
+    await auth(context, baseURL!);
+    await routes(page, { enabled: false, resolve: "resolved" });
+    // Registered after routes(), so tried first: the checklist read waits, then says it is unavailable.
+    let answerChecklist!: () => void;
+    const checklistHeld = new Promise<void>((r) => (answerChecklist = r));
+    await page.route(/\/api\/equipment-notebooks\/[^/]+\/components\/(\?.*)?$/, async (route) => {
+      if (route.request().method() !== "GET") return route.fallback();
+      await checklistHeld;
+      return route.fulfill(json({ error: "unavailable" }, 503));
+    });
+    let answerFixes!: () => void;
+    const fixesHeld = new Promise<void>((r) => (answerFixes = r));
+    await page.route(/\/api\/equipment-notebooks\/[^/]+\/fixes\/(\?.*)?$/, async (route) => {
+      await fixesHeld;
+      return route.fulfill(json({ fixes: [fix(1)], nextCursor: null, assetConfirmed: true }));
+    });
+    await page.goto(`/v3/?notebook=${NB}&thread=${THREAD}`);
+
+    await expect(item(page, "part")).toBeAttached();
+    await more(page).click();
+    await expect.poll(() => menuOpen(page)).toBe(true);
+
+    answerChecklist();
+    await expect(item(page, "part")).toHaveCount(0);
+    await expect(more(page)).toHaveCount(0);
+    await expect.poll(() => menuOpen(page)).toBe(false);
+
+    answerFixes();
+    await expect(more(page)).toBeVisible();
+    await expect(more(page)).toHaveAttribute("aria-expanded", "false");
+    await more(page).click();
+    await expect.poll(() => menuOpen(page)).toBe(true);
+    await expect(item(page, "saved-fixes")).toBeVisible();
   });
 
   test("a tool that is off is not in the list (Find equipment off, as it ships)", async ({ page, context, baseURL }) => {

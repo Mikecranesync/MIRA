@@ -137,7 +137,7 @@ export function SavedFixes({ notebookId, refresh }: { notebookId: string; refres
 
   const { inMenu } = useMenuItem(
     state && state.fixes.length > 0
-      ? { id: "saved-fixes", label: savedFixesPillLabel(state.fixes.length, state.cursor !== null), description: "Fixes saved for this machine" }
+      ? { id: "saved-fixes", label: savedFixesPillLabel(state.fixes.length, state.cursor !== null), description: savedFixesHeading(state.assetConfirmed) }
       : null,
     () => setOpen(true),
   );

@@ -125,7 +125,15 @@ export function NotebookActionsMenu({ covered }: { covered: boolean }) {
     if (covered) dialogRef.current?.close();
   }, [covered]);
 
-  if (!registry || (items.length === 0 && !chip)) return null;
+  // The last tool can go while the list is open (#5697). The dialog stays mounted, so it is closed
+  // here and its close event resets `open`; More then comes back collapsed when a tool returns.
+  const empty = items.length === 0;
+  useEffect(() => {
+    if (empty) dialogRef.current?.close();
+  }, [empty]);
+
+  if (!registry) return null;
+  const hidden = empty && !chip;
   const choose = (id: MenuItemId) => {
     choosing.current = true;
     // Closed first, so the shell's Back finds the tool's own dialog, not this one.
@@ -134,7 +142,7 @@ export function NotebookActionsMenu({ covered }: { covered: boolean }) {
   };
 
   return (
-    <div data-testid="notebook-more-row" style={ROW}>
+    <div data-testid="notebook-more-row" style={hidden ? HIDDEN_ROW : ROW}>
       <style>{MENU_CSS}</style>
       {chip ? (
         <span style={CHIP} data-testid="notebook-chip">
@@ -153,7 +161,7 @@ export function NotebookActionsMenu({ covered }: { covered: boolean }) {
         aria-haspopup="dialog"
         aria-expanded={open}
         style={open ? { ...MORE, ...MORE_OPEN } : MORE}
-        onClick={() => (open ? dialogRef.current?.close() : show())}
+        onClick={() => (dialogRef.current?.open ? dialogRef.current.close() : show())}
       >
         <Icon d={DOTS} />
         More
@@ -227,6 +235,8 @@ const MENU_CSS = `
 }`;
 
 const ROW: CSSProperties = { display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 8 };
+// Kept mounted with nothing to show, so an open list can still be closed (#5697).
+const HIDDEN_ROW: CSSProperties = { display: "none" };
 const CHIP: CSSProperties = {
   display: "inline-flex", alignItems: "center", minHeight: 48, maxWidth: "min(56vw, 320px)", paddingInlineEnd: 4,
   borderRadius: "var(--fl-radius-pill, 999px)", background: "var(--fl-accent-tint)", color: "var(--fl-accent-ink)",
