@@ -317,6 +317,17 @@ export const MICRO820_SHEET_PUBLICATION_FILE: Manual = {
   key: "micro820-installation-instructions-publication-file-name",
   filename: "2080-IN009B-EN-P.pdf",
 };
+// Mike's plan of 2026-11-19, item 3: the same file saved with underscores.
+export const MICRO820_SHEET_UNDERSCORE_FILE: Manual = {
+  ...MICRO820_SHEET_AS_STORED,
+  key: "micro820-installation-instructions-underscore-file-name",
+  filename: "2080-IN009B_EN_P.pdf",
+};
+/** A servo drive whose cover gives the model one letter longer than technicians often write it. Invented. */
+export const NX732A_TITLED: Manual = {
+  key: "nx732a-titled", heading: "Northfield NX732A Servo Drive\nProduct Manual", filename: "nx732a-product-manual.pdf",
+  page: 27, pageLabel: "27", origin: "synthetic",
+};
 export const RELAY_SHEET_AS_STORED: Manual = {
   ...RELAY_SHEET,
   key: "ca3kn22bd-data-sheet-as-stored",
@@ -517,6 +528,26 @@ export const EXTRA_JOBS: Job[] = [
   { id: "X-72", who: "senior", doing: "asking by an unlisted catalog number; the sheet is saved under its publication number",
     attached: [MICRO820_SHEET_PUBLICATION_FILE], identity: PLC_BY_CATALOG,
     ask: "Supply voltage for 2080-LC50-24QWB?", want: REFUSE, says: "other-model", about: "question" },
+  // Mike's plan of 2026-11-19, item 3: the same sheet with underscores in its file name.
+  { id: "X-73", who: "journeyman", doing: "asking by a listed catalog number; the publication-number file name is written with underscores",
+    attached: [MICRO820_SHEET_UNDERSCORE_FILE], identity: PLC_BY_CATALOG,
+    ask: "What are the relay contact ratings at 120 V AC on a Micro820 2080-LC20-20QWB?", want: answer(MICRO820_SHEET_UNDERSCORE_FILE) },
+  { id: "X-74", who: "apprentice", doing: "asking with no model named, in a project confirmed by catalog number; underscores in the file name",
+    attached: [MICRO820_SHEET_UNDERSCORE_FILE], identity: PLC_BY_CATALOG,
+    ask: "What is the supply voltage?", want: answer(MICRO820_SHEET_UNDERSCORE_FILE) },
+  { id: "X-75", who: "senior", doing: "asking by an unlisted catalog number; underscores in the file name",
+    attached: [MICRO820_SHEET_UNDERSCORE_FILE], identity: PLC_BY_CATALOG,
+    ask: "Supply voltage for 2080-LC50-24QWB?", want: REFUSE, says: "other-model", about: "question" },
+  // A near miss is asked about ("Did you mean …?"), never answered: the verdict is unchanged.
+  { id: "X-76", who: "journeyman", doing: "asking about the model written one letter short of the cover's",
+    attached: [NX732A_TITLED],
+    ask: "What is the bus voltage limit on my nx732?", want: REFUSE, says: "other-model", about: "question" },
+  { id: "X-77", who: "apprentice", doing: "answering a 'Did you mean' with a bare yes",
+    attached: [NX732A_TITLED], earlier: ["What is the bus voltage limit on my nx732?"],
+    ask: "yes", want: REFUSE, says: "other-model", about: "conversation" },
+  { id: "X-78", who: "apprentice", doing: "control: asking again with the model the cover lists, as the reply says",
+    attached: [NX732A_TITLED], earlier: ["What is the bus voltage limit on my nx732?"],
+    ask: "What is the bus voltage limit on my NX732A?", want: answer(NX732A_TITLED) },
   { id: "X-22", who: "apprentice", doing: "asking with no model named, relay sheet as stored",
     attached: [RELAY_SHEET_AS_STORED], identity: RELAY,
     ask: "What is the coil voltage?", want: answer(RELAY_SHEET_AS_STORED) },

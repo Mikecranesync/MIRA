@@ -788,9 +788,13 @@ const isPublicationNumber = (n: ModelNumber) => n.label.split("-").some((part) =
  *  the whole signature is a model: "1234-BR100.pdf" (no suffix),
  *  "PM800-EN-P.pdf" (nothing in front), "1234-AB123-US-A.pdf" (not a
  *  publication type). Stated limit: a PRODUCT whose name has that whole shape
- *  ("1234-SR750-EN-P.pdf") is taken for a document, and the cover decides. */
+ *  ("1234-SR750-EN-P.pdf") is taken for a document, and the cover decides.
+ *  Mike's plan of 2026-11-19 (item 3, "an '_' in a file name"): the language
+ *  and the format may follow an underscore instead of a hyphen
+ *  ("2080-IN009B_EN_P.pdf"). The groups in front keep their hyphens, and
+ *  are kept, so a model written there is still read. */
 const FILE_PUBLICATION_RE = new RegExp(
-  `((?:[A-Za-z0-9]+-)+)${PUBLICATION_PART_RE.source.replace(/^\^|\$$/g, "")}-[A-Za-z]{2}-[A-Za-z](?![A-Za-z0-9])`,
+  `((?:[A-Za-z0-9]+-)+)${PUBLICATION_PART_RE.source.replace(/^\^|\$$/g, "")}[-_][A-Za-z]{2}[-_][A-Za-z](?![A-Za-z0-9])`,
   "gi",
 );
 const withoutPublicationNumbers = (stem: string) => stem.replace(FILE_PUBLICATION_RE, (_whole, front: string) => `${front.slice(0, -1)} `);
@@ -952,6 +956,51 @@ export const EARLIER_SUBJECT_WAY_OUT =
 
 const listed = (labels: string[]) => (labels.length > 6 ? `${labels.slice(0, 6).join(" / ")} and others` : labels.join(" / "));
 
+/** A label's comparison form: its letters and digits, whatever hyphens it was written with. */
+const keyOfLabel = (label: string) => label.replace(/[^A-Za-z0-9]/g, "").toUpperCase();
+
+/** One character changed, added or removed. */
+function oneEditApart(a: string, b: string): boolean {
+  if (a === b || Math.abs(a.length - b.length) > 1) return false;
+  let i = 0;
+  while (i < a.length && i < b.length && a[i] === b[i]) i++;
+  if (a.length === b.length) return a.slice(i + 1) === b.slice(i + 1);
+  return a.length < b.length ? a.slice(i) === b.slice(i + 1) : a.slice(i + 1) === b.slice(i);
+}
+
+/** Written short of the cover's number: the same start, one or two characters missing at the end. */
+const shortOf = (asked: string, declared: string) =>
+  declared.startsWith(asked) && declared.length - asked.length >= 1 && declared.length - asked.length <= 2;
+
+/**
+ * Mike's plan of 2026-11-19, item 3 (decision 7 plus #5465; record #5232): the
+ * ONE model a refused cover declares that the asked number is a near miss of
+ * (a one-character typo, or the number written short of the cover's), or null.
+ *
+ * It changes no verdict. The manual stays refused; the reply opens by asking
+ * "Did you mean …?" and the technician confirms by asking again with that
+ * model. A bare "yes" is never read as the confirmation: the chat route runs
+ * its safety and scope checks on the message text, and a "yes" turn would
+ * answer the earlier question with those checks run on "yes".
+ *
+ * Null unless the asked number is one number of the question's (or of an
+ * earlier question's) and the covers declare another model: never for the
+ * notebook's own record (that record needs correcting), a photo reading, or
+ * any other reason. `declared` is every refused manual's, so two equally near
+ * models across the selected manuals give no suggestion. Stated cost: a
+ * sibling one digit away (RX420 asked, RX410 declared) reads exactly like a
+ * typo and is asked about too; the reply says to check the plate.
+ */
+export function nearMissOf(r: UnlistedModelRefusal): string | null {
+  if (r.kind !== "other-model" || r.reading || r.source === "notebook" || r.asked.length !== 1) return null;
+  const asked = keyOfLabel(r.asked[0]);
+  const near = r.declared.filter((label) => {
+    const declared = keyOfLabel(label);
+    return oneEditApart(asked, declared) || shortOf(asked, declared);
+  });
+  return near.length === 1 ? near[0] : null;
+}
+
 /** Static text plus model-number labels only: no value, page or wording from a
  *  refused manual reaches it (the rule namedModelMismatchText already follows). */
 export function unlistedModelRefusalText(r: UnlistedModelRefusal): string {
@@ -965,10 +1014,16 @@ export function unlistedModelRefusalText(r: UnlistedModelRefusal): string {
       ? `${EARLIER_SUBJECT_WAY_OUT} Otherwise add the ${asked} manual (or the page that covers it) to this notebook and ask again.`
       : `Add the ${asked} manual (or the page that covers it) to this notebook and ask again.`;
   switch (r.kind) {
-    case "other-model":
+    case "other-model": {
       if (r.reading)
         return `The photo reading saved in this notebook shows the ${listed(r.declared)}, not the ${asked} ${whose}, so I won't answer from it — its values may not apply to the ${asked}. ${add}`;
-      return `The manual in this notebook is for the ${listed(r.declared)}, not the ${asked} ${whose}, so I won't answer from it — its values may not apply to the ${asked}. ${add}`;
+      const refused = `The manual in this notebook is for the ${listed(r.declared)}, not the ${asked} ${whose}, so I won't answer from it — its values may not apply to the ${asked}.`;
+      const meant = nearMissOf(r);
+      if (meant === null) return `${refused} ${add}`;
+      const otherwise =
+        r.source === "conversation" ? add : `Otherwise add the ${asked} manual (or the page that covers it) to this notebook and ask again.`;
+      return `Did you mean the ${meant}? ${refused} If the plate on your unit reads ${meant}, ask again with ${meant} in the question. ${otherwise}`;
+    }
     case "cover-and-file-disagree":
       return `The manual in this notebook has a cover and a file name that point at different models, so I can't confirm it covers the ${asked} ${whose}, and I won't answer from it. Check that the right file is attached, or add the ${asked} manual, and ask again.`;
     case "several-look-alikes":

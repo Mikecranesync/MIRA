@@ -182,6 +182,20 @@ describe("#5369 — a model number no attached manual is shown to cover", () => 
     expect(status.status).toBe("insufficient_evidence");
     expect(status.message).toBe(GENERIC);
   });
+
+  // Mike's plan of 2026-11-19, item 3: a near miss is asked about, and nothing is answered.
+  it("a model written one letter short of the cover's gets 'Did you mean …?', with no provider call and no citation", async () => {
+    retrievalReports({ unlistedModelRefusal: { kind: "other-model", asked: ["NX732"], declared: ["NX732A"], source: "question" } });
+    const { status, sources } = await ask("What is the bus voltage limit on my nx732?");
+    expect(vi.mocked(fetch)).not.toHaveBeenCalled();
+    expect(status.status).toBe("insufficient_evidence");
+    expect(status.message?.startsWith("Did you mean the NX732A? ")).toBe(true);
+    expect(status.message).toContain("If the plate on your unit reads NX732A, ask again with NX732A in the question.");
+    expect(sources.citations).toEqual([]);
+    const stored = nbMock.recordTurn.mock.calls.map((c) => (c as unknown[])[2] as { answerStatus?: string; answerText?: string }).find((t) => t?.answerText);
+    expect(stored).toMatchObject({ answerStatus: "insufficient_evidence" });
+    expect(stored?.answerText?.startsWith("Did you mean the NX732A? ")).toBe(true);
+  });
 });
 
 describe("garage pilot L3/L4 — every passage found was another model's table", () => {
