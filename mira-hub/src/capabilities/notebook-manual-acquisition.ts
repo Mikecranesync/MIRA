@@ -1281,43 +1281,49 @@ export async function currentManualSearchStatus(
   // search did not acquire (an earlier upload) gets neither: the record's URL
   // and pages describe a different document.
   const acquiredBy = (s: NotebookSource) => Boolean(rec.doc_id) && s.docId === rec.doc_id && rec.key === key;
-  // Prefer the acquired document when it is among the ready sources, so an
-  // earlier ready source sorted first never hides this search's link (r2 F3).
   const acquiredOnly = sources.filter((s) => acquiredBy(s));
-  const ready = applicableReadySource(acquiredOnly, identity) ?? applicableReadySource(sources, identity);
-  if (ready) {
-    const mine = acquiredBy(ready);
-    const claim = mine ? coverageClaim(rec) : "";
-    const pdf = mine ? savedManualUrl(rec) : null;
-    return {
-      manufacturer,
-      model,
-      running: false,
-      message: `The ${manufacturer} ${model} manual is ready — I can answer from it.${claim}`,
-      ...(pdf ? { manualUrl: pdf } : {}),
-      ...(startedAt ? { startedAt } : {}),
-    };
-  }
-  const enabledButPreparing = applicableEnabledSource(acquiredOnly, identity) ?? applicableEnabledSource(sources, identity);
-  if (enabledButPreparing) {
-    const pdf = acquiredBy(enabledButPreparing) ? savedManualUrl(rec) : null;
-    return {
-      manufacturer,
-      model,
-      running: false,
-      message: `I found the ${manufacturer} ${model} manual and added it to this notebook's Sources — it's still being prepared to answer from, so I can't cite its pages yet.`,
-      ...(pdf ? { manualUrl: pdf } : {}),
-      ...(startedAt ? { startedAt } : {}),
-    };
+  const readyMessage = (pdf: string | null, claim: string): ManualSearchStatus => ({
+    manufacturer,
+    model,
+    running: false,
+    message: `The ${manufacturer} ${model} manual is ready — I can answer from it.${claim}`,
+    ...(pdf ? { manualUrl: pdf } : {}),
+    ...(startedAt ? { startedAt } : {}),
+  });
+  const preparingMessage = (pdf: string | null): ManualSearchStatus => ({
+    manufacturer,
+    model,
+    running: false,
+    message: `I found the ${manufacturer} ${model} manual and added it to this notebook's Sources — it's still being prepared to answer from, so I can't cite its pages yet.`,
+    ...(pdf ? { manualUrl: pdf } : {}),
+    ...(startedAt ? { startedAt } : {}),
+  });
+
+  // The document THIS search acquired, when it is ready or preparing.
+  const readyMine = applicableReadySource(acquiredOnly, identity);
+  if (readyMine) return readyMessage(savedManualUrl(rec), coverageClaim(rec));
+  const preparingMine = applicableEnabledSource(acquiredOnly, identity);
+  if (preparingMine) return preparingMessage(savedManualUrl(rec));
+
+  // Codex #5706 r4 F3: this search's own lifecycle comes before any OTHER
+  // applicable source. A running refresh stays running (the shell keeps
+  // following it), and a settled one that saved its own PDF reports that PDF
+  // and its indexing state — an older ready manual never hides either.
+  const reconciled = await reconcileAcquisition(tenantId, notebookId, rec);
+  if (reconciled?.state === "running") return { manufacturer, model, running: true, ...(startedAt ? { startedAt } : {}) };
+  const ownSaved = reconciled && !reconciled.source_removed ? savedManualUrl(reconciled) : null;
+  if (!ownSaved) {
+    // Another applicable source (an earlier upload, or an older acquisition):
+    // its state is reported, without this record's URL or pages.
+    if (applicableReadySource(sources, identity)) return readyMessage(null, "");
+    if (applicableEnabledSource(sources, identity)) return preparingMessage(null);
   }
 
-  const reconciled = await reconcileAcquisition(tenantId, notebookId, rec);
   if (!reconciled) return null;
-  const running = reconciled.state === "running";
-  // Reaching here means no applicable source is enabled right now (the ready /
-  // preparing branches above returned), so a "complete" record's manual is off.
-  const message = running ? null : acquisitionDeclineText(reconciled, key, `${manufacturer} ${model}`, basis, { sourceOff: true });
+  // Reaching here means no applicable source of THIS search is enabled right
+  // now (the branches above returned), so a "complete" record's manual is off.
+  const message = acquisitionDeclineText(reconciled, key, `${manufacturer} ${model}`, basis, { sourceOff: true });
   // The same selector the live chat frame uses (Codex #5706 r3 F3).
   const manualUrl = handoffManualUrl(reconciled);
-  return { manufacturer, model, running, ...(message ? { message } : {}), ...(manualUrl ? { manualUrl } : {}), ...(startedAt ? { startedAt } : {}) };
+  return { manufacturer, model, running: false, ...(message ? { message } : {}), ...(manualUrl ? { manualUrl } : {}), ...(startedAt ? { startedAt } : {}) };
 }

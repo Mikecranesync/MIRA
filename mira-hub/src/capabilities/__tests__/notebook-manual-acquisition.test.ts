@@ -1220,6 +1220,27 @@ describe("currentManualSearchStatus — the polled status carries the acquired m
     expect(r?.manualUrl).toBeUndefined();
   });
 
+  it("Codex r4 F3: a running refresh stays running even when an older applicable manual is ready", async () => {
+    db.readRow = { ...rec, state: "running", finished_at: null, doc_id: null, manual_url: null, attached_indexed: false };
+    const r = await currentManualSearchStatus("t", "nb", unbound, proposed, [src("d-upload", true)] as never, { env: ON });
+    expect(r?.running).toBe(true);
+    expect(r?.message).toBeUndefined();
+  });
+
+  it("Codex r4 F3: the settled refresh's saved-but-unsearchable PDF is handed over despite an older ready manual", async () => {
+    db.readRow = {
+      key, state: "search_unavailable", started_at: "2026-11-20T00:00:00Z", finished_at: "2026-11-20T00:01:00Z",
+      candidate_host: "www.automationdirect.com", match_state: null, oem_request_url: null,
+      candidate_url: "https://www.automationdirect.com/gs10-manual", manual_url: URL, ingest_failed: true,
+      attached_indexed: false, linked: true, file_id: "f1", retries: 0,
+    };
+    db.fileLinked = true;
+    const r = await currentManualSearchStatus("t", "nb", unbound, proposed, [src("d-upload", true)] as never, { env: ON });
+    expect(r?.running).toBe(false);
+    expect(r?.manualUrl).toBe(URL);
+    expect(r?.message).toContain(URL);
+  });
+
   it("control: a ready source this search did not acquire gets neither the record's link nor its pages", async () => {
     db.readRow = rec;
     const r = await currentManualSearchStatus("t", "nb", unbound, proposed, [src("d-upload", true)] as never, { env: ON });
