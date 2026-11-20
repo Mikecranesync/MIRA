@@ -2226,6 +2226,16 @@ class Supervisor:
         }
 
     @staticmethod
+    def _record_citation_strip(parsed: dict, cc: dict) -> None:
+        """Record what the compliance gate stripped on ``parsed`` for the salvage.
+
+        ``_stripped_labels`` (#3213) become the salvage's disallowed labels, and
+        ``_provenance_stripped`` (#3049 round-4 F11) disables the re-tag outright.
+        """
+        parsed["_stripped_labels"] = cc.get("stripped_labels") or []
+        parsed["_provenance_stripped"] = bool(cc.get("provenance_stripped"))
+
+    @staticmethod
     def _evidence_from_parsed(parsed: dict) -> dict:
         """Per-turn citation/grounding evidence carried on ``parsed`` (#1704).
 
@@ -2242,6 +2252,8 @@ class Supervisor:
             # bridge passes them as disallowed so a rejected citation cannot be
             # silently re-inserted by the salvage pass.
             "stripped_labels": parsed.get("_stripped_labels") or [],
+            # Round-4 F11 — a provenance strip disables the salvage re-tag.
+            "provenance_stripped": bool(parsed.get("_provenance_stripped")),
             # #3049 — the same relevance inputs the gate used, so the salvage can
             # only insert a label that gate would have let through.
             "uns_context": (parsed.get("_citation_relevance") or {}).get("uns_context"),
@@ -2307,6 +2319,7 @@ class Supervisor:
                 uns_context=evidence.get("uns_context"),
                 established_text=evidence.get("established_text") or "",
                 current_text=evidence.get("current_text"),
+                provenance_stripped=bool(evidence.get("provenance_stripped")),
             )
         except Exception:
             logger.warning(
@@ -4611,7 +4624,7 @@ class Supervisor:
         )
         if _cc.get("sanitized_reply"):
             formatted = _cc["sanitized_reply"]
-            parsed["_stripped_labels"] = _cc.get("stripped_labels") or []
+            self._record_citation_strip(parsed, _cc)
 
         tl_flush()
         return self._make_result(
@@ -5967,7 +5980,7 @@ class Supervisor:
         )
         if _cc.get("sanitized_reply"):
             formatted = _cc["sanitized_reply"]
-            parsed["_stripped_labels"] = _cc.get("stripped_labels") or []
+            self._record_citation_strip(parsed, _cc)
 
         return self._make_result(
             formatted,
@@ -8016,6 +8029,7 @@ class Supervisor:
             )
             if _cc.get("sanitized_reply") and evidence is not None:
                 evidence["stripped_labels"] = _cc.get("stripped_labels") or []
+                evidence["provenance_stripped"] = bool(_cc.get("provenance_stripped"))
             return _cc.get("sanitized_reply") or formatted
         except Exception as exc:  # noqa: BLE001 — never break a reply over QC
             logger.warning("CITATION_GATE_FAILED chat_id=%s error=%s", chat_id, exc)

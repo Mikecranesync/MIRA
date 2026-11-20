@@ -669,3 +669,154 @@ def test_stated_cost_a_message_naming_another_device_strips_the_right_upload():
         out = _new(f"Frame B. [Source: {label}]", None, q, [gs10], q)
         assert _main(f"Frame B. [Source: {label}]", None, q)["relevant"] is True, q
         assert out["relevant"] is False, q
+
+
+# ---------------------------------------------------------------------------
+# Round 4, F11: no salvage re-tag after a provenance strip
+# ---------------------------------------------------------------------------
+
+ZX_Q = "ZX9000 fuse rating?"
+ZX_DOC = _upload("https://docs.example/zx9000-install.pdf", "ZX9000 input fuse: use fuse A.")
+ZX_LABEL = format_source_label(ZX_DOC)
+FUSE_B = "Use fuse B on the input side. Verify the rating on the nameplate before fitting."
+
+
+def _gate(reply, chunks, current, uns=None):
+    return check_citation_compliance(
+        reply,
+        PARTIAL,
+        fsm_state="DIAGNOSIS",
+        chat_id="t-r4",
+        uns_context=uns if uns is not None else {"manufacturer": "", "model": ""},
+        established_text=current,
+        enforce=True,
+        chunks=chunks,
+        current_text=current,
+    )
+
+
+def test_r4_f11_gate_reports_a_provenance_strip():
+    cc = _gate(f"{FUSE_B} [Source: {SIRIUS_LABEL}]", [SIRIUS_NULL_MFR, ZX_DOC], ZX_Q)
+    assert SIRIUS_LABEL not in (cc["sanitized_reply"] or ""), cc
+    assert cc["provenance_stripped"] is True
+
+
+def test_r4_f11_control_a_vendor_strip_is_not_a_provenance_strip():
+    """Control: a Case 2 (unestablished vendor) strip leaves the flag off."""
+    cc = _gate(f"Frame B. [Source: {SIEMENS_LABEL}]", [SIEMENS_PM340], GS10_Q)
+    assert SIEMENS_LABEL not in (cc["sanitized_reply"] or ""), cc
+    assert cc["provenance_stripped"] is False
+
+
+def _salvage_zx(calls, provenance_stripped):
+    rewritten = FUSE_B.replace("fitting.", f"fitting. [Source: {ZX_LABEL}]")
+    out = asyncio.run(
+        enforce_citation_via_rewrite(
+            FUSE_B,
+            [ZX_DOC],
+            PARTIAL,
+            fsm_state="DIAGNOSIS",
+            chat_id="t-r4-salvage",
+            llm_call=_llm_returning(rewritten, calls),
+            uns_context={"manufacturer": "", "model": ""},
+            established_text=ZX_Q,
+            current_text=ZX_Q,
+            provenance_stripped=provenance_stripped,
+        )
+    )
+    return out, rewritten
+
+
+def test_r4_f11_salvage_never_retags_after_a_provenance_strip():
+    """Codex round 4: the ZX9000 manual says fuse A. A re-tag would pin the fuse B
+    claim on it, because the salvage checks the label, never the claim."""
+    calls: list = []
+    out, _ = _salvage_zx(calls, provenance_stripped=True)
+    assert out == FUSE_B
+    assert calls == []
+
+
+def test_r4_f11_control_the_same_label_is_salvageable_without_a_provenance_strip():
+    """Control: the label itself passes the gate, so the flag alone is what stops it."""
+    calls: list = []
+    out, rewritten = _salvage_zx(calls, provenance_stripped=False)
+    assert out == rewritten
+    assert len(calls) == 1
+
+
+def test_r4_f11_general_question_gate_records_the_provenance_strip(tmp_path):
+    from unittest.mock import patch
+
+    sup = _supervisor(tmp_path)
+    state = {"state": "IDLE", "context": {"history": []}}
+    evidence = {"kb_status": PARTIAL, "chunks": [SIRIUS_NULL_MFR, ZX_DOC], "sources": []}
+    with patch.dict(os.environ, {"MIRA_CITATION_ENFORCE": "1"}):
+        sup._gate_reply_citations(
+            f"{FUSE_B} [Source: {SIRIUS_LABEL}]", ZX_Q, state, "t-r4-general", evidence=evidence
+        )
+    assert evidence["provenance_stripped"] is True
+
+
+def test_r4_f11_evidence_carries_the_provenance_strip():
+    from shared.engine import Supervisor
+
+    parsed = {"_last_chunks": [ZX_DOC], "_kb_status": PARTIAL, "_provenance_stripped": True}
+    assert Supervisor._evidence_from_parsed(parsed)["provenance_stripped"] is True
+    assert Supervisor._evidence_from_parsed({})["provenance_stripped"] is False
+
+
+def _process_with_evidence(tmp_path, provenance_stripped):
+    from unittest.mock import AsyncMock, patch
+
+    sup = _supervisor(tmp_path)
+    evidence = {
+        "kb_status": PARTIAL,
+        "chunks": [ZX_DOC],
+        "sources": [],
+        "uns_context": {"manufacturer": "", "model": ""},
+        "established_text": ZX_Q,
+        "current_text": ZX_Q,
+        "provenance_stripped": provenance_stripped,
+    }
+    retagged = UNCITED.replace("kW.", f"kW. [Source: {ZX_LABEL}]")
+    sup.rag._call_llm = AsyncMock(return_value=retagged)
+    full = {
+        "reply": UNCITED,
+        "next_state": "DIAGNOSIS",
+        "dispatch_kind": "",
+        "_citation_evidence": evidence,
+    }
+    with (
+        patch.object(sup, "process_full", new=AsyncMock(return_value=full)),
+        patch.object(sup, "_apply_quality_gate", new=AsyncMock(side_effect=lambda *a, **k: a[2])),
+        patch("shared.engine.check_quota", new=AsyncMock(return_value=(True, ""))),
+        patch.dict(os.environ, {"MIRA_CITATION_REWRITE": "1", "MIRA_CITATION_ENFORCE": "1"}),
+    ):
+        final = asyncio.run(sup.process(chat_id="t-r4-e2e", message=ZX_Q))
+    return final, sup.rag._call_llm.await_count
+
+
+def test_r4_f11_engine_bridge_skips_the_salvage_after_a_provenance_strip(tmp_path):
+    final, llm_calls = _process_with_evidence(tmp_path, provenance_stripped=True)
+    assert ZX_LABEL not in final, final
+    assert llm_calls == 0
+
+
+def test_r4_f11_control_engine_bridge_still_salvages_otherwise(tmp_path):
+    final, llm_calls = _process_with_evidence(tmp_path, provenance_stripped=False)
+    assert llm_calls == 1
+    assert ZX_LABEL in final, final
+
+
+def test_r4_f11_process_full_sites_record_the_provenance_strip():
+    """Both process_full gate sites call this helper (call sites are not driven end
+    to end here, as with the existing #3213 stripped-labels lines)."""
+    from shared.engine import Supervisor
+
+    parsed: dict = {}
+    Supervisor._record_citation_strip(
+        parsed, {"stripped_labels": [SIRIUS_LABEL], "provenance_stripped": True}
+    )
+    assert parsed == {"_stripped_labels": [SIRIUS_LABEL], "_provenance_stripped": True}
+    Supervisor._record_citation_strip(parsed, {"stripped_labels": []})
+    assert parsed["_provenance_stripped"] is False

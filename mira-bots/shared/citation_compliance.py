@@ -643,6 +643,7 @@ def evaluate_citation_relevance(
     # catalog identifier in THIS message. Strip-only: it adds tags to the strip
     # list and never removes one, and a Case 1/2 verdict keeps its reason.
     identifiers = catalog_identifiers(current_text) if (chunks and current_text) else set()
+    unproven: list[str] = []
     if identifiers:
         labels = _documents_by_label(chunks)
         unproven = [
@@ -661,6 +662,7 @@ def evaluate_citation_relevance(
         "expected_vendor": expected,
         "cited_vendors": cited,
         "conflicting_tags": conflicting,
+        "unproven_tags": unproven,
     }
 
 
@@ -863,6 +865,10 @@ def check_citation_compliance(
         "expected_vendor": rel["expected_vendor"],
         "cited_vendors": rel["cited_vendors"],
         "sanitized_reply": None,
+        # Round-4 F11: set when a provenance (Case 3) strip removed a tag. The
+        # salvage must then not re-tag: the claim the stripped tag carried was
+        # never checked against the replacement document.
+        "provenance_stripped": bool(enforce and rel.get("unproven_tags")),
     }
 
     if required and not present:
@@ -1053,6 +1059,7 @@ async def enforce_citation_via_rewrite(
     uns_context: dict | None = None,
     established_text: str = "",
     current_text: str | None = None,
+    provenance_stripped: bool = False,
 ) -> str:
     """Salvage an uncited-but-grounded technical reply via one insertion-only pass.
 
@@ -1075,6 +1082,14 @@ async def enforce_citation_via_rewrite(
 
     compliance = check_citation_compliance(reply, kb_status, fsm_state=fsm_state, chat_id=chat_id)
     if not compliance["required"] or compliance["present"]:
+        return reply
+
+    # Round-4 F11 — after a provenance strip the reply carries a claim that was
+    # attributed to a document that does not cover the unit. Any other label is
+    # checked only as a label, never against that claim, so re-tagging could pin
+    # the claim on a manual that contradicts it. Leave it to the H4 admission.
+    if provenance_stripped:
+        logger.info("CITATION_REWRITE_SKIPPED chat_id=%s reason=provenance_strip", chat_id)
         return reply
 
     labels = valid_source_labels(chunks)
