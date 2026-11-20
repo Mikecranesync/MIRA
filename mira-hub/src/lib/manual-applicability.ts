@@ -105,19 +105,27 @@ function identifierMatcher(raw: string): ((text: string) => boolean) | null {
   // Which breaks the identity itself writes with a separator ("GS11N-20P2-230":
   // N|2 and 2|2), in the order their capture groups appear below.
   const rawSepGaps: boolean[] = [];
+  // Which breaks the identity itself writes with whitespace ("PowerFlex 40").
+  const rawSpaceGaps: boolean[] = [];
   let sep = false;
+  let sepSpace = false;
   for (const ch of (raw ?? "").toUpperCase()) {
     if (!/[A-Z0-9]/.test(ch)) {
       sep = chars.length > 0;
+      if (sep && /\s/.test(ch)) sepSpace = true;
       continue;
     }
     const prev = chars[chars.length - 1];
     const change = prev !== undefined && /[0-9]/.test(prev) !== /[0-9]/.test(ch);
     const brk = chars.length > 0 && (sep || change);
     breakBefore.push(brk);
-    if (brk) rawSepGaps.push(sep);
+    if (brk) {
+      rawSepGaps.push(sep);
+      rawSpaceGaps.push(sepSpace);
+    }
     chars.push(ch);
     sep = false;
+    sepSpace = false;
   }
   if (chars.length === 0) return null;
   const body = chars.map((c, i) => (breakBefore[i] ? "([ \\t\\u00a0._/\\u2010-\\u2015-]{0,2})" : "") + c).join("");
@@ -127,6 +135,13 @@ function identifierMatcher(raw: string): ((text: string) => boolean) | null {
   );
   return (text: string) => {
     for (const m of (text ?? "").matchAll(re)) {
+      // Owner decision 2026-11-20 (Codex #5706 r4 F4): whitespace may stand in
+      // for a break only where the identity itself writes whitespace. Flattened
+      // PDF text cannot show where a table cell ends, so "GS11N 20P2 230" never
+      // completes GS11N-20P2-230; a hyphenated identifier printed with spaces
+      // ("25B D010 N104") goes to candidate review instead of verifying, while
+      // "PowerFlex 40" still verifies for the model that writes the space.
+      if (rawSpaceGaps.some((isSpace, g) => !isSpace && /[ \t\u00a0]/.test(m[g + 1] ?? ""))) continue;
       // Whitespace inside the match is a spelling variant only when the match
       // prints no punctuation separator at all ("25B D010 N104",
       // "PowerFlex 525"). A spelling that mixes punctuation with a space is the

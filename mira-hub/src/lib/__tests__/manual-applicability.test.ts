@@ -37,10 +37,22 @@ describe("assessApplicability — rule 1: exact catalog number wins", () => {
     expect(v.confidence).toBeGreaterThan(0.9);
   });
 
-  it("matches across punctuation drift (25B D010 N104 in the manual)", () => {
+  // Owner decision 2026-11-20 (Codex #5706 r4 F4): a space stands in for a
+  // break only where the identifier itself writes one. Flattened PDF text
+  // cannot show where a table cell ends, so a spaced print of a hyphenated
+  // catalog number goes to candidate review rather than verifying.
+  it("a spaced print of a hyphenated catalog number (25B D010 N104) is candidate review, not exact", () => {
     const v = assessApplicability({
       identity: PF525,
       chunks: [{ content: "Catalog 25B D010 N104", page: 3 }],
+      oemHost: false,
+    });
+    expect(v.state).toBe("candidate");
+  });
+  it("matches across punctuation drift (25B-D010-N104 in the manual)", () => {
+    const v = assessApplicability({
+      identity: PF525,
+      chunks: [{ content: "Catalog 25B-D010-N104", page: 3 }],
       oemHost: false,
     });
     expect(v.state).toBe("verified");
@@ -253,7 +265,8 @@ describe("assessApplicability — suffixes, table cells and PDF dashes (Codex #5
 
   it.each([
     ["GS11N20P2", "Model GS11N20P2 rated 0.25 HP"],
-    ["PowerFlex525", "PowerFlex 525 AC Drives"],
+    ["PowerFlex 525", "PowerFlex 525 AC Drives"],
+    ["PowerFlex525", "PowerFlex525 AC Drives"],
     ["GS11N-20P2-230", "Model GS11N-20P2-230 rated"],
   ])("control: %s verifies against %j", (model, content) => {
     expect(oem(model, content).state).toBe("verified");
@@ -279,11 +292,28 @@ describe("assessApplicability — suffixes, table cells and PDF dashes (Codex #5
 
   it.each([
     ["GS11N-20P2-230", "Model GS11N20P2230 rated"], // every separator omitted
-    ["GS11N-20P2-230", "Model GS11N 20P2 230 rated"], // every separator spaced
-    ["25B-D010N104", "Catalog 25B D010 N104 drive"],
-    ["PowerFlex 40", "PowerFlex 40 Adjustable Frequency AC Drive"],
+    ["GS11N-20P2-230", "Model GS11N.20P2.230 rated"], // every separator punctuated
+    ["PowerFlex 40", "PowerFlex 40 Adjustable Frequency AC Drive"], // the identifier writes the space
   ])("r3 F4 control: %s verifies against the consistent spelling %j", (id, content) => {
     expect(assessApplicability({ identity: { manufacturer: "AutomationDirect", model: "", catalogNumber: id }, chunks: [{ content, page: 26 }], oemHost: true }).state).toBe("verified");
+  });
+
+  // Codex #5706 r4 F4 (owner decision 2026-11-20): a space where the identifier
+  // writes none is a possible table-cell boundary, so the match never verifies.
+  it.each([
+    ["GS11N-20P2-230", "Model GS11N 20P2 230 rated"], // the r4 example: base model + next voltage cell
+    ["GS11N-20P2", "Model GS11N 20P2 rated"],
+    ["25B-D010N104", "Catalog 25B D010 N104 drive"],
+    ["PowerFlex525", "PowerFlex 525 AC Drives"], // a compact request against a spaced print
+  ])("r4 F4: %s stays a candidate against the spaced print %j, as model and as catalog number", (id, content) => {
+    for (const identity of [
+      { manufacturer: "AutomationDirect", model: id },
+      { manufacturer: "AutomationDirect", model: "", catalogNumber: id },
+    ]) {
+      const v = assessApplicability({ identity, chunks: [{ content, page: 26 }], oemHost: true });
+      expect(v.state).toBe("candidate");
+      expect(v.identifierPages ?? []).toEqual([]);
+    }
   });
 
   it("a slash-joined model list is not read as either model (fails safe to candidate review)", () => {
