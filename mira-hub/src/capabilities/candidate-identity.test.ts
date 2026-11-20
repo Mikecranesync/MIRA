@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { extractCandidateIdentity, isSafeCandidateSearchIdentity, makerFromText, wantsManualDocumentation } from "./candidate-identity";
+import { extractCandidateIdentity, isSafeCandidateSearchIdentity, makerFromText, refineCorpusProposal, wantsManualDocumentation } from "./candidate-identity";
+import { GS10_CV101_LOOK } from "./__fixtures__/gs10-cv101-look";
 import { labelledPartCodes } from "./photo-part-lookup";
 
 // Manual-First PRD R1 (#4160 S5): a candidate (manufacturer, part) read from a
@@ -425,5 +426,50 @@ describe("AS-i makers use the canonical OEM table", () => {
   });
   it("does not choose a maker across two different devices", () => {
     expect(makerFromText("Bihl+Wiedemann gateway and Pepperl+Fuchs handheld")).toBeNull();
+  });
+});
+
+describe("photo-to-manual (2026-11-20): the GS10 regression case reaches the single egress gate", () => {
+  it.each(["Find me the manual", "Identify this drive from the photo and find its manufacturer's manual."])(
+    "archived CV-101 photo + %s → AUTOMATIONDIRECT GS11N-20P2, safe to search",
+    (typed) => {
+      expect(extractCandidateIdentity(GS10_CV101_LOOK, typed)).toEqual({ manufacturer: "AUTOMATIONDIRECT", part: "GS11N-20P2" });
+      expect(isSafeCandidateSearchIdentity(GS10_CV101_LOOK, typed, "GS11N-20P2", "AutomationDirect")).toBe(true);
+      expect(wantsManualDocumentation(typed)).toBe(true);
+    },
+  );
+});
+
+describe("refineCorpusProposal — a typed catalog number is not cut to its library stem", () => {
+  const corpus = { manufacturer: "AutomationDirect", model: "GS11N" };
+  it("the staging failure: the typed full part replaces the stem the gate refused", () => {
+    const typed = "Can you find the official manual for my AutomationDirect GS11N-20P2 drive?";
+    expect(isSafeCandidateSearchIdentity("", typed, "GS11N", "AutomationDirect")).toBe(false);
+    expect(refineCorpusProposal(corpus, "", typed)).toEqual({ manufacturer: "AutomationDirect", model: "GS11N-20P2" });
+  });
+  it("the archived photo upgrades the stem the same way", () => {
+    expect(refineCorpusProposal(corpus, GS10_CV101_LOOK, "Find me the AutomationDirect GS11N manual")).toEqual({
+      manufacturer: "AutomationDirect",
+      model: "GS11N-20P2",
+    });
+  });
+  it("a corpus proposal that already passes is returned unchanged", () => {
+    const ok = { manufacturer: "SMC", model: "SY3120-5LZD" };
+    expect(refineCorpusProposal(ok, "", "SMC SY3120-5LZD manual")).toBe(ok);
+  });
+  it("control: a serial in the message keeps the refused stem — no search", () => {
+    expect(refineCorpusProposal(corpus, "", "manual for AutomationDirect GS11N-20P2 serial 12345678")).toEqual(corpus);
+  });
+  it("control: a part that is not a longer spelling of the proposal never replaces it", () => {
+    expect(refineCorpusProposal({ manufacturer: "AutomationDirect", model: "GS13N" }, "", "AutomationDirect GS11N-20P2 manual")).toEqual({
+      manufacturer: "AutomationDirect",
+      model: "GS13N",
+    });
+  });
+  it("control: a troubleshooting turn keeps the series the card has always offered", () => {
+    expect(refineCorpusProposal(corpus, "", "AutomationDirect GS11N-20P2 trips on acceleration")).toEqual(corpus);
+  });
+  it("control: nothing typed beyond the stem → unchanged", () => {
+    expect(refineCorpusProposal(corpus, "", "AutomationDirect GS11N manual please")).toEqual(corpus);
   });
 });

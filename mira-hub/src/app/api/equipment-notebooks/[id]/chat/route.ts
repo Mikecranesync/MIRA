@@ -177,7 +177,12 @@ import {
   type PartSearchProposalEntry,
 } from "@/capabilities/photo-part-lookup";
 import { publicManualSeries } from "@/capabilities/public-model-proof";
-import { extractCandidateIdentity, isSafeCandidateSearchIdentity, wantsManualDocumentation } from "@/capabilities/candidate-identity";
+import {
+  extractCandidateIdentity,
+  isSafeCandidateSearchIdentity,
+  refineCorpusProposal,
+  wantsManualDocumentation,
+} from "@/capabilities/candidate-identity";
 import { citationTitle } from "@/capabilities/citation-title";
 import { ratingColumnFinding, ratingColumnText } from "@/capabilities/rating-column";
 import { claimPartSearchProposal } from "@/capabilities/part-search-claim";
@@ -2878,6 +2883,14 @@ async function handleChatTurn(
       try {
         client = await pool.connect();
         identityProposal = proposeIdentityFromText(message, await corpusManufacturers(client));
+        // The corpus reader cuts a typed catalog number to its library stem
+        // ("GS11N-20P2" → "GS11N"), which the egress gate then refuses. Carry
+        // the full typed part instead when it is the same proposal, written
+        // more specifically, and passes the same gate. Under the kill switch the
+        // label reader is off, so the corpus proposal stands unchanged.
+        if (identityProposal && acquisitionEnabled(ctx.tenantId)) {
+          identityProposal = refineCorpusProposal(identityProposal, photoTextForOem, message);
+        }
       } catch (err) {
         console.error("[notebook-chat] identity proposal skipped:", err instanceof Error ? err.message : err);
       } finally {

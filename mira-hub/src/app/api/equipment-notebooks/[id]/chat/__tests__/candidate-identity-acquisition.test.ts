@@ -463,3 +463,33 @@ describe("#4160 gate — no 'fetch it yourself' advice while the search runs", (
     expect(text).toContain("manufacturer's support");
   });
 });
+
+describe("photo-to-manual (2026-11-20): the exact typed staging prompt searches for the full catalog number", () => {
+  const TYPED = "Can you find the official manual for my AutomationDirect GS11N-20P2 drive?";
+  // The real model-token resolver (this harness stubs it to null), so the corpus
+  // reader proposes exactly what staging saw: the "GS11N" stem.
+  beforeEach(async () => {
+    const real = await vi.importActual<typeof import("@/capabilities/model-token")>("@/capabilities/model-token");
+    ragMock.resolveModelFromObservationText.mockImplementation(real.resolveModelFromObservationText);
+  });
+  it("precondition: the corpus reader alone proposes the stem the gate refuses", async () => {
+    const { proposeIdentityFromText } = await import("@/capabilities/identity-proposal");
+    expect(proposeIdentityFromText(TYPED, ["AutomationDirect"])).toEqual({ manufacturer: "AutomationDirect", model: "GS11N" });
+  });
+  it("the library knows AutomationDirect (corpus proposes the GS11N stem) → the search is keyed on GS11N-20P2", async () => {
+    ragMock.corpusManufacturers.mockResolvedValue(["AutomationDirect"]);
+    const f = await frames(await POST(req({ message: TYPED, mode: "general" }), params));
+    expect(f.find((x) => x.kind === "identity_proposal")).toMatchObject({ manufacturer: "AutomationDirect", model: "GS11N-20P2" });
+    expect(acqMock.startManualAcquisition).toHaveBeenCalledWith(
+      expect.objectContaining({
+        identity: { identityStatus: "user_confirmed", manufacturer: "AutomationDirect", model: "GS11N-20P2", catalogNumber: "" },
+        basis: "candidate",
+      }),
+    );
+  });
+  it("control: the same prompt with a serial number typed beside it starts no search", async () => {
+    ragMock.corpusManufacturers.mockResolvedValue(["AutomationDirect"]);
+    await (await POST(req({ message: `${TYPED} Serial 12345678`, mode: "general" }), params)).text();
+    expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+  });
+});

@@ -126,6 +126,38 @@ export function extractCandidateIdentity(observation: string, typed = ""): Candi
 }
 
 /**
+ * The corpus reader (`proposeIdentityFromText`, #4095) keys on the library's
+ * model column, so a typed catalog number comes back cut to its family stem —
+ * "AutomationDirect GS11N-20P2" proposes model "GS11N". That stem is not the
+ * part the technician typed, so the single egress gate refuses it and the turn
+ * never searches (staging thread 7c3bb99e, 2026-11-20).
+ *
+ * Returns the proposal the turn should carry: the corpus proposal unchanged
+ * when it already passes the gate (or no candidate improves it); otherwise the
+ * label reader's FULL part — only when that part passes the same gate AND is
+ * the same proposal written more specifically (its key starts with the
+ * corpus model's key). A different machine never replaces the corpus proposal.
+ * The library's maker spelling is kept. Only a turn that asks for the manual
+ * is refined: that is the turn the full part keys a search on. A troubleshooting
+ * turn keeps the series the card has always offered ("…GS11N-20P2 trips on
+ * acceleration" still proposes GS11N).
+ */
+export function refineCorpusProposal(
+  corpus: { manufacturer: string; model: string },
+  photoText: string,
+  typed: string,
+): { manufacturer: string; model: string } {
+  if (!wantsManualDocumentation(typed)) return corpus;
+  if (isSafeCandidateSearchIdentity(photoText, typed, corpus.model, corpus.manufacturer)) return corpus;
+  const candidate = extractCandidateIdentity(photoText, typed);
+  if (!candidate) return corpus;
+  const stem = identifierKey(corpus.model);
+  if (!stem || !identifierKey(candidate.part).startsWith(stem)) return corpus;
+  if (!isSafeCandidateSearchIdentity(photoText, typed, candidate.part, corpus.manufacturer)) return corpus;
+  return { manufacturer: corpus.manufacturer, model: candidate.part };
+}
+
+/**
  * Does the technician's own typed text ask for the manual/documentation
  * itself, rather than a troubleshooting question about the part (#4160 S6,
  * PRD R2)? One half of the trigger for a candidate-basis background manual

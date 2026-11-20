@@ -102,6 +102,7 @@ vi.mock("@/capabilities/notebook-manual-acquisition", async (importOriginal) => 
 });
 
 import { POST } from "../route";
+import { GS10_CV101_LOOK } from "@/capabilities/__fixtures__/gs10-cv101-look";
 
 const SERIAL = "7A3K9Q2026X11";
 const MODEL = "GS11N-20P2";
@@ -432,5 +433,17 @@ describe("a nameplate photo starts the manual search on the same turn", () => {
     const systemMsg = (sentBody.messages as { role: string; content: string }[]).find((m) => m.role === "system");
     expect(systemMsg?.content).toMatch(/looking for the official AUTOMATIONDIRECT GS11N-20P2 manual/);
     expect(systemMsg?.content).not.toMatch(/once they confirm/);
+  });
+});
+
+describe("photo-to-manual (2026-11-20): the archived CV-101 reading + 'Find me the manual'", () => {
+  it("the verbatim LOOK observation (prose 'the unit. No loose…', kVA/kA ratings) starts the search on GS11N-20P2", async () => {
+    visualMock.loadVisualEvidenceForPhoto.mockResolvedValue({
+      observationId: "obs", sessionId: "session", text: GS10_CV101_LOOK, obsKind: "look", trust: "candidate", fileId: PHOTO, hazards: [],
+    });
+    const f = await frames(await POST(req({ message: "Find me the manual", mode: "general", visualEvidence: { fileId: PHOTO } }), params));
+    expect(f.find((x) => x.kind === "identity_proposal")).toMatchObject({ manufacturer: "AUTOMATIONDIRECT", model: MODEL });
+    expect(acqMock.startManualAcquisition).toHaveBeenCalledTimes(1);
+    expect(acqMock.startManualAcquisition).toHaveBeenCalledWith(expect.objectContaining({ identity: EXPECTED_IDENTITY, basis: "candidate" }));
   });
 });
