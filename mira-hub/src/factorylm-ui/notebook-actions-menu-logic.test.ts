@@ -1,7 +1,7 @@
 /**
  * The More list (Mike, 2026-11-20): one order and grouping whatever order the tools answered in,
  * and a dot on More only while something is under way. Behaviour in a browser is in
- * tests/e2e/notebook-more-menu.spec.ts.
+ * tests/e2e/equipment-nav.spec.ts (the "More" block).
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
