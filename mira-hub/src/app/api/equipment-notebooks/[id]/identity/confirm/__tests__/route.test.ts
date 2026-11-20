@@ -387,6 +387,17 @@ describe("POST identity/confirm", () => {
       expect(body.message).toMatch(/look for its manual/);
     });
 
+    // #5706: the confirm-first card for the archived GS10 plate posts exactly
+    // this; the tap is what starts the search (the chat turn never did).
+    it("the GS10 confirm-first card's tap starts the confirmed search on AUTOMATIONDIRECT GS11N-20P2", async () => {
+      const res = await POST(req({ manufacturer: "AUTOMATIONDIRECT", model: "GS11N-20P2" }), params);
+      expect(res.status).toBe(200);
+      expect(acqMock.startManualAcquisition).toHaveBeenCalledTimes(1);
+      const call = (acqMock.startManualAcquisition.mock.calls[0] as unknown[])[0] as { identity: unknown };
+      expect(call.identity).toEqual({ identityStatus: "user_confirmed", manufacturer: "AUTOMATIONDIRECT", model: "GS11N-20P2", catalogNumber: "" });
+      expect((await res.json()).searching).toBe(true);
+    });
+
     it("a repeated confirmation does not duplicate the search — a refused claim (already running) still reports the honest 'looking' copy, not a fabricated promise", async () => {
       // startManualAcquisition's OWN claim() refuses a duplicate for the
       // same key (idempotency lives there, not re-implemented here) — a
