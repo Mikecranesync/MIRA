@@ -45,24 +45,37 @@ never covers data it did not look at:
   whitelist of relation kinds, not a list of known gaps. Staging holds none of these (checked
   2026-11-20: both databases).
 
-After the restore the tool takes the same inventory of both sides and fails unless they match:
+After the restore the tool takes the same inventory of both sides and fails unless they match.
+A match needs positive evidence, not the absence of a difference: both inventories must carry
+every section; every table whose rows were copied must have a content fingerprint on **both**
+sides; and wherever rows were to be left behind (the named table in a full copy, every table in
+a structure-only one) the target must hold **zero** rows. Equal row counts alone never pass.
 
 - every table: row count, a content fingerprint (two independently seeded, order-independent
-  hash sums over every row: a check against rows lost or changed, not a cryptographic proof),
-  columns, defaults, owner, privileges, row security on/off and forced, storage options;
+  hash sums over every whole row: a check against rows lost or changed, not a cryptographic
+  proof), columns, defaults, owner, privileges, row security on/off and forced, storage options;
 - every row-security policy, compared **exactly**;
 - indexes and constraints (table and domain) by definition; functions by their full definition
   (so volatility, strictness, language and settings count) and owner; triggers by definition and
-  enabled state; views by definition, owner, options and privileges; sequences by position,
-  counting rules (increment, bounds, cycle, cache) and privileges; table kind, persistence,
+  enabled state; views by definition, owner, options and privileges; sequences by state (the
+  stored value and whether it was already handed out, read from the sequence itself), counting
+  rules (increment, bounds, cycle, cache) and privileges. A target sequence may be ahead of the
+  source, in the direction the sequence counts, because the source can move while the dump
+  runs; it may never be behind, and a sequence that cycles must match exactly; table kind, persistence,
   partitioning and inheritance; column collation; enum, domain and composite types; rules,
   extended statistics by definition; event triggers and publications by PRESENCE only (an event
   trigger's name and event, a publication's name and all-tables flag), not their membership or
   options;
-- the application roles (flags, memberships, settings) and that the owner can still
-  `SET ROLE factorylm_app`;
+- the application roles: flags, settings, and what each can do with each other role (see
+  "Roles" below), and that the owner can still `SET ROLE factorylm_app`;
 - schema owners and privileges, default privileges, and the migration ledger (count and content
   hashes).
+
+One difference in how a definition is printed is tolerated, and only that one: an array of
+string literals cast as a whole, `(ARRAY['a'::character varying])::text[]`, comes back from a
+restore with the cast on each element, `ARRAY[('a'::character varying)::text]`. All 36
+reprinted definitions on staging have this shape. Any other difference in a constraint or
+index definition fails the run, including a cast added or removed anywhere else.
 
 Not compared: object comments, per-column statistics targets and storage settings. None of them
 changes what a query returns.
@@ -104,7 +117,14 @@ get no such tolerance. Domain constraints are compared the same way as table con
   staging's 9.2 GB). Its structure is carried. The old database is kept, so the rows are not lost.
 - Roles. A dump does not carry them. **Create the application roles on the target first**
   (`factorylm_app`, `anonymous`, `authenticated`, `authenticator`, same flags, memberships and
-  settings, and the owner granted membership in each); the inventory compares them.
+  settings, and the owner granted membership in each). The tool refuses to start unless they
+  match: it asks both servers what each role can actually do with each other role (is it a
+  member, does it inherit without switching, may it switch, may it administer), not only
+  whether a membership exists. A membership granted with the wrong options - for example one
+  that inherits where the source requires an explicit switch - is a refusal. Three differences
+  are expected on a new project and are printed, not hidden: the owner administers the roles it
+  created there; platform service roles reach the application roles on the source only; and
+  the role of a platform feature that is not carried exists on the source only.
 - Writes made to the source after the snapshot instant. Acceptable for staging. **Not acceptable
   for production: stop writers first.**
 
@@ -120,8 +140,29 @@ empty `atlas_cmms` database; its **direct** address is stored as the `staging` e
 2. Run again with `mode = full`.
 3. Read the log: one `VERDICT: MATCH` line per database, the timings, and the target size.
 
-A `REFUSED:` line means a precondition failed and nothing was copied. A `MISMATCH` verdict means
-the copy ran and differs: do not use the target; reset the branch and investigate.
+How a run ends:
+
+| Last line | Exit code | Meaning | What to do |
+|---|---|---|---|
+| `VERDICT: MATCH` for every database | exit code 0 | Copied and compared equal | Go on to "After a matching copy" |
+| `VERDICT: MISMATCH` | exit code 1 | The copy ran and differs from the source | Do not use the target. Reset the branch and investigate |
+| `REFUSED:` | exit code 2 | A precondition failed **before any restore started**. Nothing was written | Fix the cause and run again |
+| `FAILED AFTER WRITING to ...` | exit code 3 | A restore had started in at least one database when the run failed. The line names each database as `copied` or `restore started, may be partial` | Do not use the target. **Reset the target branch before any retry** |
+
+`REFUSED` is only ever printed before the first restore. Once one database has been written,
+any later failure - including a refusal on the next database - is reported as
+`FAILED AFTER WRITING`, because the target is no longer empty.
+
+### How the restore protects the target
+
+The target must be empty, and the tool checks that twice: before anything is read, and again
+immediately before each database's restore (reading the source takes minutes; the first check
+is old by then). The archive is then restored in three sections from the same held snapshot:
+the objects, the rows, and last the indexes, constraints and privileges. The first two stop at
+the first error, so if something in the target collides with an object being created, the run
+ends there and no row is loaded on top of it. The tool cannot lock other sessions out of the
+target: rows written into a copied table by someone else during the run are caught afterwards
+by the content fingerprint and reported as a mismatch.
 
 ## After a matching copy (not done by this workflow)
 

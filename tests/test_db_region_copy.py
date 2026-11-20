@@ -197,6 +197,7 @@ def test_dump_never_carries_a_write_or_clean_flag():
 
 def test_structure_mode_copies_no_rows():
     assert "--schema-only" in m.dump_command("1-1", ("public.t",), True)
+    assert m.copy_sections(True) == ("pre-data", "post-data")  # the data section never runs
 
 
 @pytest.mark.parametrize(
@@ -235,6 +236,9 @@ def test_the_inventory_is_read_only_sql():
 # ---------------------------------------------------------------- the comparison is the gate
 
 
+_ASCENDING = "bigint|1|1|9223372036854775807|1|false|1"
+
+
 def _inv(**over):
     base = {
         "server": {"major": 17, "encoding": "UTF8"},
@@ -249,6 +253,7 @@ def _inv(**over):
                 "owner": "neondb_owner",
                 "acl": "x",
                 "columns": "c1",
+                "content": "11:-22",
             },
             "public.log": {
                 "rows": 5000,
@@ -257,18 +262,29 @@ def _inv(**over):
                 "owner": "neondb_owner",
                 "acl": "x",
                 "columns": "c2",
+                "content": "33:44",
             },
         },
         "policies": {"public.a.tenant": "p1"},
         "indexes": {"public.a_pkey": "i1"},
-        "sequences": {"public.a_id_seq": 10},
+        "sequences": {"public.a_id_seq": "10|true"},
+        "sequence_settings": {"public.a_id_seq": _ASCENDING},
         "ledger": "134:abc",
         "unverified_relations": {},
         "large_objects": 0,
     }
+    for section in m.INVENTORY_SECTIONS:  # a real inventory always carries every section
+        base.setdefault(section, {})
     for k, v in over.items():
         base[k] = v
     return base
+
+
+def _empty_target(**over):
+    """What a structure-only copy leaves: every table empty, every sequence as created."""
+    over.setdefault("tables", _tables(a=0, log=0))
+    over.setdefault("sequences", {"public.a_id_seq": "1|false"})
+    return _inv(**over)
 
 
 def _tables(**rows):
@@ -288,7 +304,7 @@ def test_a_named_table_may_be_left_behind_only_if_the_target_has_zero_rows():
 
 
 def test_a_row_count_difference_on_any_other_table_fails():
-    unexpected, _ = m.compare(_inv(), _inv(tables=_tables(a=9)), ("public.log",))
+    unexpected, _ = m.compare(_inv(), _inv(tables=_tables(a=9, log=0)), ("public.log",))
     assert unexpected == ["tables: public.a rows source=10 target=9"]
 
 
@@ -314,9 +330,9 @@ def test_a_missing_or_extra_policy_fails_and_policies_are_never_tolerated():
     assert m.compare(_inv(), _inv(policies={"public.a.tenant": "p1", "public.a.extra": "p2"}))[
         0
     ] == ["policies: only on target: public.a.extra"]
-    assert m.compare(_inv(), _inv(policies={"public.a.tenant": "DIFFERENT"}), structure_only=True)[
-        0
-    ] == ["policies: differs: public.a.tenant"]
+    assert m.compare(
+        _inv(), _empty_target(policies={"public.a.tenant": "DIFFERENT"}), structure_only=True
+    )[0] == ["policies: differs: public.a.tenant"]
 
 
 def test_a_missing_table_fails():
@@ -339,12 +355,13 @@ def test_extension_versions_may_differ_but_a_missing_extension_fails():
 
 
 def test_a_sequence_may_be_ahead_on_the_target_never_behind():
-    assert m.compare(_inv(), _inv(sequences={"public.a_id_seq": 12})) == (
+    assert m.compare(_inv(), _inv(sequences={"public.a_id_seq": "12|true"})) == (
         [],
-        ["sequence position: public.a_id_seq 10 -> 12"],
+        ["sequence position: public.a_id_seq 10|true -> 12|true"],
     )
-    assert m.compare(_inv(), _inv(sequences={"public.a_id_seq": 9}))[0] == [
-        "sequences: differs: public.a_id_seq"
+    assert m.compare(_inv(), _inv(sequences={"public.a_id_seq": "9|true"}))[0] == [
+        "sequences: public.a_id_seq is behind on the target and would reissue a value: "
+        "10|true -> 9|true"
     ]
 
 
@@ -366,7 +383,9 @@ def test_a_changed_role_flag_fails():
 
 
 def test_structure_mode_tolerates_rows_sequences_and_ledger_but_nothing_structural():
-    target = _inv(tables=_tables(a=0, log=0), sequences={"public.a_id_seq": 0}, ledger="0:empty")
+    target = _inv(
+        tables=_tables(a=0, log=0), sequences={"public.a_id_seq": "1|false"}, ledger="0:empty"
+    )
     unexpected, expected = m.compare(_inv(), target, structure_only=True)
     assert unexpected == [] and len(expected) == 4
     target["indexes"] = {}
@@ -386,9 +405,9 @@ def test_collapse_keeps_every_kind_but_not_every_line():
 
 def test_same_row_count_with_different_content_fails():
     t = _tables()
-    t["public.a"]["content"] = "12345"
+    t["public.a"]["content"] = "1:2345"
     src = _inv()
-    src["tables"]["public.a"]["content"] = "99999"
+    src["tables"]["public.a"]["content"] = "9:9999"
     assert m.compare(src, _inv(tables=t))[0] == [
         "tables: public.a same row count but DIFFERENT CONTENT"
     ]
@@ -405,10 +424,13 @@ def test_a_left_behind_table_is_not_judged_on_content():
 def test_the_fingerprint_query_reads_every_table_except_the_ones_left_behind():
     sql = m.inventory_sql(True, ("public.cmms_sync_conflicts",))
     assert (
-        "hashtextextended(t::text, 0)" in sql
-        and "hashtextextended(t::text, 1)" in sql
+        "hashtextextended(ROW(t.*)::text, 0)" in sql
+        and "hashtextextended(ROW(t.*)::text, 1)" in sql
         and "IN ('public.cmms_sync_conflicts') THEN 'not read'" in sql
     )
+    # A bare alias means the COLUMN when the table has a column of that name, so the
+    # fingerprint would cover one column. ROW(t.*) is always the whole row.
+    assert "(t::text" not in sql
     assert "hashtextextended" not in m.inventory_sql(False)
     with pytest.raises(ValueError):
         m.inventory_sql(True, ("public.t'; DROP TABLE x; --",))
@@ -622,10 +644,19 @@ def test_objects_are_inventoried_on_what_changes_their_behaviour():
 
 
 def test_a_sequence_that_counts_differently_fails_even_at_the_same_position():
-    src = _inv(sequences={"public.s": 5}, sequence_settings={"public.s": "bigint|1|1|9|1|false|1"})
-    tgt = _inv(sequences={"public.s": 5}, sequence_settings={"public.s": "bigint|1|1|9|2|false|1"})
+    src = _inv(
+        sequences={"public.s": "5|true"}, sequence_settings={"public.s": "bigint|1|1|9|1|false|1"}
+    )
+    tgt = _inv(
+        sequences={"public.s": "5|true"}, sequence_settings={"public.s": "bigint|1|1|9|2|false|1"}
+    )
     assert m.compare(src, tgt)[0] == ["sequence_settings: differs: public.s"]
-    assert m.compare(src, tgt, structure_only=True)[0] == ["sequence_settings: differs: public.s"]
+    untouched = _empty_target(
+        sequences={"public.s": "1|false"}, sequence_settings={"public.s": "bigint|1|1|9|2|false|1"}
+    )
+    assert m.compare(src, untouched, structure_only=True)[0] == [
+        "sequence_settings: differs: public.s"
+    ]
 
 
 # ---------------------------------------------------------------- verified, or refused
@@ -656,7 +687,8 @@ def test_an_inventory_that_does_not_say_is_treated_as_holding_unverified_content
 @pytest.mark.parametrize("structure_only", [False, True])
 def test_compare_fails_a_source_holding_contents_it_does_not_verify(structure_only):
     for over in ({"unverified_relations": {"public.mv": "m"}}, {"large_objects": 1}):
-        unexpected, _ = m.compare(_inv(**over), _inv(**over), structure_only=structure_only)
+        target = _empty_target(**over) if structure_only else _inv(**over)
+        unexpected, _ = m.compare(_inv(**over), target, structure_only=structure_only)
         assert len(unexpected) == 1 and unexpected[0].startswith(
             "source: holds contents this tool does not verify"
         )
@@ -746,3 +778,432 @@ def test_a_failed_dump_still_reports_its_exit_code_and_message():
     restore = [sys.executable, "-c", "import sys; sys.stdin.read()"]
     env = dict(os.environ)
     assert m.pipe_dump_into_restore(dump, restore, env, env) == (3, b"boom", 0, b"")
+
+
+# ---------------------------------------------------------------- MATCH needs positive evidence
+
+
+def test_a_table_to_leave_behind_that_was_copied_in_full_fails():
+    # Same count on both sides used to be accepted before the zero-row rule was even looked at.
+    unexpected, _ = m.compare(_inv(), _inv(), ("public.log",))
+    assert unexpected == [
+        "tables: public.log was to be left behind but has 5000 rows on the target"
+    ]
+
+
+def test_a_structure_only_target_that_holds_rows_fails():
+    for rows in (4, 10):  # 10 is the source's own count
+        unexpected, _ = m.compare(_inv(), _inv(tables=_tables(a=rows, log=0)), structure_only=True)
+        assert f"tables: public.a has {rows} rows on the target in a structure-only copy" in (
+            unexpected
+        )
+    assert (
+        m.compare(
+            _inv(),
+            _inv(tables=_tables(a=0, log=0), sequences={"public.a_id_seq": "1|false"}, ledger=None),
+            structure_only=True,
+        )[0]
+        == []
+    )
+
+
+@pytest.mark.parametrize(
+    "sides, where",
+    [(("s",), "source"), (("t",), "target"), (("s", "t"), "source and target")],
+)
+def test_a_full_comparison_fails_without_a_content_fingerprint(sides, where):
+    src, tgt = _inv(), _inv()
+    for side, inv in (("s", src), ("t", tgt)):
+        if side in sides:
+            inv["tables"]["public.a"]["content"] = "not read"
+    assert m.compare(src, tgt)[0] == [
+        f"tables: public.a content was not fingerprinted on the {where}"
+    ]
+    # A table whose rows are deliberately left behind is the one place "not read" is right.
+    src, tgt = _inv(), _inv(tables=_tables(log=0))
+    for inv in (src, tgt):
+        inv["tables"]["public.log"]["content"] = "not read"
+    assert m.compare(src, tgt, ("public.log",))[0] == []
+
+
+def test_an_inventory_missing_a_section_never_matches():
+    truncated = {"unverified_relations": {}, "large_objects": 0}
+    unexpected, _ = m.compare(truncated, truncated)
+    assert len(unexpected) == len(m.INVENTORY_SECTIONS) - 2
+    assert "tables: missing from the source and target inventories" in unexpected
+    one_side, _ = m.compare(_inv(), {k: v for k, v in _inv().items() if k != "policies"})
+    assert "policies: missing from the target inventory" in one_side
+
+
+def test_the_required_sections_are_read_from_the_inventory_query_itself():
+    sql = m.inventory_sql()
+    assert len(m.INVENTORY_SECTIONS) == len(set(m.INVENTORY_SECTIONS)) >= 28
+    for section in m.INVENTORY_SECTIONS:
+        assert f"\n '{section}', " in sql
+    assert {"tables", "policies", "role_edges", "sequences", "ledger", "large_objects"} <= set(
+        m.INVENTORY_SECTIONS
+    )
+
+
+# ---------------------------------------------------------------- tolerances no wider than observed
+
+_SRC_INDEX = (
+    "CREATE INDEX i ON public.g USING btree (s, p DESC) WHERE ((s)::text = ANY"
+    " ((ARRAY['pending'::character varying, 'in_progress'::character varying])::text[]))"
+)
+_TGT_INDEX = (
+    "CREATE INDEX i ON public.g USING btree (s, p DESC) WHERE ((s)::text = ANY"
+    " (ARRAY[('pending'::character varying)::text, ('in_progress'::character varying)::text]))"
+)
+
+
+def test_the_one_observed_reprint_is_still_recognised():
+    c = m.canonical_definition
+    assert c(_SRC_INDEX) == c(_TGT_INDEX) and c(_SRC_DEF) == c(_TGT_DEF)
+    # Seen on real data: NULL among the literals.
+    assert c(
+        "CHECK (((d)::text = ANY ((ARRAY['a'::character varying, NULL::character varying])::text[])))"
+    ) == c(
+        "CHECK (((d)::text = ANY (ARRAY[('a'::character varying)::text, (NULL::character varying)::text])))"
+    )
+    # A quoted NAME in the array is a column, not a literal: not the observed shape, not rewritten.
+    assert c('CHECK ((d = ANY ((ARRAY["a"::character varying])::text[])))') != c(
+        'CHECK ((d = ANY (ARRAY[("a"::character varying)::text])))'
+    )
+    assert c('CHECK ("my (col)" > 0)') == 'CHECK ("my (col)" > 0)'  # restored untouched
+
+
+def test_a_cast_that_changes_meaning_is_not_a_reprint():
+    c = m.canonical_definition
+    # bytea: the length of its text form is not its length in bytes.
+    assert c("CHECK ((length((payload)::text) > 4))") != c("CHECK ((length(payload) > 4))")
+    assert c("CHECK (((a)::text = 'x'::text))") != c("CHECK ((a = 'x'::text))")
+    assert c("CHECK ((a) > 0)") != c("CHECK (a > 0)")
+    # The array reprint with another element type is a change, not a reprint.
+    other = _TGT_DEF.replace(")::text", ")::bpchar")
+    assert other != _TGT_DEF and c(_SRC_DEF) != c(other)
+    # Nothing inside a string literal is ever rewritten.
+    assert c("CHECK ((x = '(ARRAY[''a''::text])::text[]'::text))") != c(
+        "CHECK ((x = 'ARRAY[(''a''::text)::text]'::text))"
+    )
+    unexpected, expected = m.compare(
+        _inv(constraints={"public.a.k": "CHECK ((length((payload)::text) > 4))"}),
+        _inv(constraints={"public.a.k": "CHECK ((length(payload) > 4))"}),
+    )
+    assert unexpected == ["constraints: differs: public.a.k"] and expected == []
+
+
+def test_the_next_value_of_a_sequence():
+    assert m.sequence_next("10|true", 1) == 11
+    assert m.sequence_next("10|false", 1) == 10  # set but never called: the value itself is next
+    assert m.sequence_next("90|true", -1) == 89
+    for unreadable in (None, 10, "10", "x|true", "10|maybe"):
+        assert m.sequence_next(unreadable, 1) is None
+
+
+def _seq(source, target, settings=_ASCENDING):
+    src = _inv(sequences={"public.s": source}, sequence_settings={"public.s": settings})
+    return m.compare(
+        src, _inv(sequences={"public.s": target}, sequence_settings={"public.s": settings})
+    )
+
+
+def test_a_descending_sequence_ahead_means_lower_not_higher():
+    down = "bigint|100|1|100|-1|false|1"
+    assert _seq("90|true", "91|true", down)[0] == [
+        "sequences: public.s is behind on the target and would reissue a value: 90|true -> 91|true"
+    ]
+    assert _seq("90|true", "89|true", down) == (
+        [],
+        ["sequence position: public.s 90|true -> 89|true"],
+    )
+
+
+def test_whether_a_sequence_was_called_changes_what_it_gives_next():
+    # Same stored value, but the source will give 11 and the target 10 again.
+    assert _seq("10|true", "10|false")[0] != []
+    assert _seq("10|false", "10|true")[0] == []
+    assert _seq("67|false", "67|false") == ([], [])
+
+
+def test_a_cycling_or_unreadable_sequence_must_match_exactly():
+    assert _seq("10|true", "12|true", "bigint|1|1|100|1|true|1")[0] != []
+    assert _seq("10|true", "12|true", "unreadable")[0] != []
+    assert _seq("10|true", 12)[0] != []
+
+
+def test_a_structure_only_target_sequence_must_be_untouched():
+    src = _inv(sequences={"public.a_id_seq": "10|true"})
+    tgt = _inv(tables=_tables(a=0, log=0), sequences={"public.a_id_seq": "5|true"}, ledger=None)
+    assert m.compare(src, tgt, structure_only=True)[0] == [
+        "sequences: public.a_id_seq is not at its start on the target in a structure-only copy: 5|true"
+    ]
+
+
+def test_sequence_state_is_read_from_the_sequence_itself():
+    sql = m.inventory_sql()
+    assert "last_value::text || ''|'' || is_called::text" in sql
+    assert "COALESCE(last_value, 0)" not in sql  # that made "never called" and 0 the same thing
+
+
+# ---------------------------------------------------------------- effective permissions
+
+_EDGES = {
+    "authenticator>anonymous": "1010",
+    "neondb_owner>factorylm_app": "1111",
+    "neondb_owner>anonymous": "1110",
+    "neon_service>anonymous": "1001",
+    "neondb_owner>neon_auth": "1110",
+}
+
+
+def _edges(**change):
+    edges = dict(_EDGES)
+    for key, value in change.items():
+        key = key.replace("__", ">")
+        if value is None:
+            edges.pop(key, None)
+        else:
+            edges[key] = value
+    return edges
+
+
+def test_a_role_switch_that_works_differently_fails():
+    # The membership is there on both sides; what it lets the member do is not the same.
+    unexpected, _ = m.compare_role_edges(_EDGES, _edges(authenticator__anonymous="1110"))
+    assert unexpected == [
+        "role_edges: authenticator>anonymous differs: source 1010 target 1110"
+        " (member, inherits, can switch to, can administer)"
+    ]
+    assert m.compare_role_edges(_EDGES, _edges(authenticator__anonymous="1000"))[0] != []
+    assert m.compare_role_edges(_EDGES, _edges(authenticator__anonymous=None))[0] == [
+        "role_edges: MISSING on target: authenticator>anonymous"
+    ]
+    assert m.compare(
+        _inv(role_edges=_EDGES), _inv(role_edges=_edges(authenticator__anonymous="1110"))
+    )[0] == [
+        "role_edges: authenticator>anonymous differs: source 1010 target 1110"
+        " (member, inherits, can switch to, can administer)"
+    ]
+
+
+def test_only_the_differences_a_fresh_project_must_have_are_tolerated():
+    # Whoever creates a role administers it: the owner made the roles on the target.
+    target = _edges(
+        neondb_owner__anonymous="1111", neon_service__anonymous=None, neondb_owner__neon_auth=None
+    )
+    target["neondb_owner>authenticator"] = "1001"
+    unexpected, expected = m.compare_role_edges(_EDGES, target)
+    assert unexpected == [] and len(expected) == 4
+    # ...but nobody new may reach an application role, and the owner may not gain a switch.
+    assert m.compare_role_edges(_EDGES, dict(_EDGES, **{"intruder>factorylm_app": "1010"}))[0] == [
+        "role_edges: only on target: intruder>factorylm_app"
+    ]
+    assert (
+        m.compare_role_edges(_EDGES, dict(_EDGES, **{"neondb_owner>authenticator": "1011"}))[0]
+        != []
+    )
+    assert m.compare_role_edges(_EDGES, _edges(neondb_owner__factorylm_app="0001"))[0] != []
+    assert m.compare_role_edges(_EDGES, _edges(authenticator__anonymous="1011"))[0] != []
+    assert m.compare_role_edges({"a>b": "bad"}, {"a>b": "1110"})[0] != []
+
+
+def test_the_roles_are_checked_on_both_sides_before_anything_is_copied(monkeypatch):
+    import json
+
+    roles = {name: {"inherit": name != "authenticator"} for name in m.APP_ROLES}
+    answers = {
+        _SRC_HOST.replace("-pooler", ""): {"roles": roles, "role_edges": _EDGES},
+        _TGT_HOST: {"roles": roles, "role_edges": _edges(authenticator__anonymous="1110")},
+    }
+    asked = []
+
+    def fake(addr, database, sql, timeout=1800):
+        asked.append(addr.host)
+        assert "pg_has_role" in sql and "INSERT" not in sql.upper()
+        return json.dumps(answers[addr.host])
+
+    monkeypatch.setattr(m, "_psql", fake)
+    with pytest.raises(m.Refusal, match="authenticator>anonymous differs"):
+        m.check_roles(m.Address(SRC), m.Address(TGT), "neondb")
+    assert sorted(asked) == sorted(answers)
+    answers[_TGT_HOST]["role_edges"] = _EDGES
+    assert m.check_roles(m.Address(SRC), m.Address(TGT), "neondb") == []
+    answers[_TGT_HOST]["roles"] = dict(roles, authenticator={"inherit": True})
+    with pytest.raises(m.Refusal, match="roles: differs: authenticator"):
+        m.check_roles(m.Address(SRC), m.Address(TGT), "neondb")
+    answers[_TGT_HOST]["roles"] = {k: v for k, v in roles.items() if k != "factorylm_app"}
+    with pytest.raises(m.Refusal, match="factorylm_app does not exist on the target"):
+        m.check_roles(m.Address(SRC), m.Address(TGT), "neondb")
+
+
+def test_role_edges_cover_every_role_an_application_role_can_reach():
+    sql = m.inventory_sql()
+    edges = sql[sql.index("\n 'role_edges'") : sql.index("\n 'settings'")]
+    for privilege in ("'MEMBER'", "'USAGE'", "'SET'", "'MEMBER WITH ADMIN OPTION'"):
+        assert privilege in edges
+    assert "NOT a.rolsuper" in edges and "a.rolname IN" in edges and "b.rolname IN" in edges
+
+
+# ---------------------------------------------------------------- nothing is written, or it says so
+
+
+def test_the_restore_stops_at_the_first_error_except_in_the_last_section():
+    assert "--exit-on-error" in m.restore_command("neondb", exit_on_error=True)
+    assert "--exit-on-error" not in m.restore_command("neondb")
+    assert "--section=pre-data" in m.dump_command("1-1", (), False, "pre-data")
+    assert not any(a.startswith("--section") for a in m.dump_command("1-1", (), False))
+    with pytest.raises(m.Refusal):
+        m.dump_command("1-1", (), False, "everything")
+    assert m.copy_sections(False) == ("pre-data", "data", "post-data")
+
+
+class _Harness:
+    """Drives copy_database with no database: records what happens, in order."""
+
+    def __init__(
+        self, monkeypatch, restore_fails_in=None, objects_at_recheck="0", dump_fails_in=None
+    ):
+        import json
+
+        self.events = []
+        self.restore_fails_in, self.dump_fails_in = restore_fails_in, dump_fails_in
+        inventory = json.dumps(_inv())
+
+        def popen(command, **kwargs):
+            self.events.append("holder")
+            return _FakeProcess(["00000003-0000001B-1", inventory])
+
+        def psql(addr, database, sql, timeout=1800):
+            if "pg_largeobject_metadata" in sql and "jsonb_build_object" not in sql:
+                self.events.append("empty-check")
+                return objects_at_recheck
+            if sql.startswith("ANALYZE"):
+                self.events.append("analyze")
+                return ""
+            self.events.append("target-inventory")
+            return inventory
+
+        def pipe(dump_cmd, restore_cmd, dump_env, restore_env):
+            section = next(a.split("=")[1] for a in dump_cmd if a.startswith("--section="))
+            self.events.append(
+                f"{section}{' stop-on-error' if '--exit-on-error' in restore_cmd else ''}"
+            )
+            dump_rc = 1 if section == self.dump_fails_in else 0
+            restore_rc = 1 if section == self.restore_fails_in else 0
+            return (
+                dump_rc,
+                b"pg_dump: error: connection lost",
+                restore_rc,
+                b"pg_restore: error: boom",
+            )
+
+        monkeypatch.setattr(m.subprocess, "Popen", popen)
+        monkeypatch.setattr(m, "_psql", psql)
+        monkeypatch.setattr(m, "pipe_dump_into_restore", pipe)
+
+    def run(self, structure_only=False):
+        return m.copy_database(
+            m.Address(SRC),
+            m.Address(TGT),
+            "neondb",
+            (),
+            structure_only,
+            log=lambda *_: None,
+            before_restore=lambda: self.events.append("WRITING STARTS"),
+        )
+
+
+def test_the_target_is_checked_again_right_before_the_restore_and_sections_run_in_order(
+    monkeypatch,
+):
+    h = _Harness(monkeypatch)
+    h.run()
+    assert h.events == [
+        "holder",
+        "empty-check",
+        "WRITING STARTS",
+        "pre-data stop-on-error",
+        "data stop-on-error",
+        "post-data",
+        "analyze",
+        "target-inventory",
+    ]
+    h = _Harness(monkeypatch)
+    h.run(structure_only=True)
+    assert [e for e in h.events if "data" in e] == ["pre-data stop-on-error", "post-data"]
+
+
+def test_a_target_filled_after_the_first_check_is_refused_before_anything_is_written(monkeypatch):
+    h = _Harness(monkeypatch, objects_at_recheck="1")
+    with pytest.raises(m.Refusal, match="not empty"):
+        h.run()
+    assert h.events == ["holder", "empty-check"]  # no restore, and writing never began
+
+
+@pytest.mark.parametrize("section", ["pre-data", "data"])
+def test_an_error_while_creating_or_loading_stops_the_copy_before_the_next_section(
+    monkeypatch, section
+):
+    h = _Harness(monkeypatch, restore_fails_in=section)
+    with pytest.raises(m.CopyFailure, match=f"restore failed in the {section} section"):
+        h.run()
+    assert h.events[-1] == f"{section} stop-on-error"
+    assert "post-data" not in h.events and "analyze" not in h.events
+
+
+def test_a_dump_that_fails_part_way_is_a_failure_after_writing_not_a_refusal(monkeypatch):
+    h = _Harness(monkeypatch, dump_fails_in="data")
+    with pytest.raises(m.CopyFailure, match="pg_dump failed in the data section"):
+        h.run()
+    assert "WRITING STARTS" in h.events and "post-data" not in h.events
+
+
+def _run_main(monkeypatch, copy):
+    monkeypatch.setenv("S", SRC)
+    monkeypatch.setenv("T", TGT)
+    monkeypatch.setattr(m, "check_preconditions", lambda *a, **k: None)
+    monkeypatch.setattr(m, "check_roles", lambda *a, **k: [])
+    monkeypatch.setattr(m, "_psql", lambda *a, **k: "1 MB")
+    monkeypatch.setattr(m, "copy_database", copy)
+    return m.main(
+        ["copy", "--source-env", "S", "--target-env", "T", "--database", "neondb", "--database",
+         "atlas_cmms", "--expect-target-region", "us-west-2", "--mode", "full"]
+    )  # fmt: skip
+
+
+def test_refused_means_nothing_was_written(monkeypatch, capsys):
+    def copy(source, target, database, leave, structure, log=print, before_restore=None):
+        raise m.Refusal("the source holds contents this tool does not verify")
+
+    assert _run_main(monkeypatch, copy) == 2
+    err = capsys.readouterr().err
+    assert err.startswith("REFUSED: ") and "nothing was written" in err
+
+
+def test_a_failure_after_writing_names_the_databases_and_asks_for_a_reset(monkeypatch, capsys):
+    def copy(source, target, database, leave, structure, log=print, before_restore=None):
+        if database == "atlas_cmms":
+            # The second database is refused before its own restore: the FIRST is already written.
+            raise m.Refusal("target database atlas_cmms is not empty")
+        before_restore()
+        return _inv(), _inv(), {"dump_restore_s": 1.0}, []
+
+    assert _run_main(monkeypatch, copy) == 3
+    err = capsys.readouterr().err
+    assert "REFUSED" not in err and err.startswith("FAILED AFTER WRITING")
+    assert "neondb (copied)" in err and "reset the target" in err
+
+    def copy_dies(source, target, database, leave, structure, log=print, before_restore=None):
+        before_restore()
+        raise m.CopyFailure("pg_dump failed in the data section:\n  connection\nlost")
+
+    assert _run_main(monkeypatch, copy_dies) == 3
+    err = capsys.readouterr().err
+    assert err.count("\n") == 1 and "data section: connection lost" in err  # one line
+    assert "neondb (restore started, may be partial)" in err and "atlas_cmms" not in err
+
+
+def test_the_runbook_no_longer_promises_that_every_failure_wrote_nothing():
+    text = (_PATH.parents[1] / "docs" / "runbooks" / "db-region-move.md").read_text()
+    assert "FAILED AFTER WRITING" in text and "exit code 3" in text

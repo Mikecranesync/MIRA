@@ -67,7 +67,20 @@ _QUALIFIED = re.compile(r"^[a-z_][a-z0-9_]*\.[a-z_][a-z0-9_]*$")
 
 
 class Refusal(Exception):
-    """A precondition failed. Nothing was copied."""
+    """A precondition failed BEFORE the target was written. On its own it means nothing was
+    written; once a restore has started, ``run_copy`` reports it as a failure after writing."""
+
+
+class CopyFailure(Exception):
+    """The copy failed after the restore had started. The target may hold part of a copy."""
+
+
+class PartialCopy(Exception):
+    """A run failed after at least one target database had been written to."""
+
+    def __init__(self, copied: list[str], started: list[str], reason: str) -> None:
+        super().__init__(reason)
+        self.copied, self.started, self.reason = copied, started, reason
 
 
 # --------------------------------------------------------------------------- addresses
@@ -157,6 +170,38 @@ def _in_list(names: tuple[str, ...]) -> str:
     return "(" + ", ".join(f"'{n}'" for n in names) + ")"
 
 
+def _role_sections() -> str:
+    """The two role sections, shared by the inventory and by the check made before any copy.
+
+    ``role_edges`` is what a role can actually DO with another, asked of the server
+    (``pg_has_role``) rather than read off a list of names: is it a member, does it inherit
+    the other's rights without switching, may it switch to it, may it administer it. It covers
+    every role an application role or the owner can reach, and every non-superuser role that
+    can reach one of them.
+    """
+    roles = _in_list(APP_ROLES)
+    known = _in_list(APP_ROLES + (OWNER_ROLE,))
+    bits = " || ".join(
+        f"pg_has_role(a.oid, b.oid, '{privilege}')::int::text"
+        for privilege in ("MEMBER", "USAGE", "SET", "MEMBER WITH ADMIN OPTION")
+    )
+    return f"""'roles', (SELECT COALESCE(jsonb_object_agg(r.rolname, jsonb_build_object('login', r.rolcanlogin, 'super', r.rolsuper,
+     'bypassrls', r.rolbypassrls, 'createrole', r.rolcreaterole, 'inherit', r.rolinherit,
+     'member_of', COALESCE((SELECT string_agg(DISTINCT g.rolname, ',' ORDER BY g.rolname) FROM pg_auth_members m
+        JOIN pg_roles g ON g.oid = m.roleid WHERE m.member = r.oid AND g.rolname IN {roles}), ''),
+     'settings', COALESCE((SELECT string_agg(x, ';' ORDER BY x) FROM pg_db_role_setting s, unnest(s.setconfig) x
+        WHERE s.setrole = r.oid AND s.setdatabase = 0), ''))), '{{}}')
+     FROM pg_roles r WHERE r.rolname IN {roles}),
+ 'role_edges', (SELECT COALESCE(jsonb_object_agg(a.rolname || '>' || b.rolname, {bits}), '{{}}')
+     FROM pg_roles a, pg_roles b WHERE a.oid <> b.oid AND NOT a.rolsuper
+     AND (a.rolname IN {known} OR b.rolname IN {known}) AND pg_has_role(a.oid, b.oid, 'MEMBER')),"""
+
+
+def roles_sql() -> str:
+    """Only the role sections: asked of both sides before anything is copied."""
+    return "SELECT jsonb_build_object(" + _role_sections().rstrip(",") + ")::text;"
+
+
 def inventory_sql(fingerprint: bool = False, no_fingerprint: tuple[str, ...] = ()) -> str:
     """One statement that returns the whole inventory as a single JSON line.
 
@@ -166,6 +211,9 @@ def inventory_sql(fingerprint: bool = False, no_fingerprint: tuple[str, ...] = (
     against rows lost or changed by a copy, not a cryptographic proof. Tables in
     ``no_fingerprint`` (the ones whose rows are deliberately left behind) are counted but not
     read row by row.
+
+    The row is written ``ROW(t.*)``, never the bare alias ``t``: in a table that has a column
+    named ``t``, a bare ``t`` is that one column, and the fingerprint would cover nothing else.
     """
     for t in no_fingerprint:
         if not _QUALIFIED.match(t):
@@ -175,15 +223,14 @@ def inventory_sql(fingerprint: bool = False, no_fingerprint: tuple[str, ...] = (
         content = (
             f"CASE WHEN (n.nspname || '.' || c.relname) IN {not_read} THEN 'not read' ELSE"
             " (xpath('/row/h/text()', query_to_xml(format("
-            "'SELECT COALESCE(sum(hashtextextended(t::text, 0)), 0)::text || '':'' ||"
-            " COALESCE(sum(hashtextextended(t::text, 1)), 0)::text AS h FROM %I.%I t',"
+            "'SELECT COALESCE(sum(hashtextextended(ROW(t.*)::text, 0)), 0)::text || '':'' ||"
+            " COALESCE(sum(hashtextextended(ROW(t.*)::text, 1)), 0)::text AS h FROM %I.%I t',"
             " n.nspname, c.relname), false, true, '')))[1]::text END"
         )
     else:
         content = "'not read'"
     skip = _in_list(("pg_catalog", "information_schema", "pg_toast") + EXCLUDED_SCHEMAS)
     user_ns = f"n.nspname NOT IN {skip} AND n.nspname NOT LIKE 'pg\\_temp%' AND n.nspname NOT LIKE 'pg\\_toast\\_temp%'"
-    roles = _in_list(APP_ROLES)
     owner_and_roles = _in_list(APP_ROLES + (OWNER_ROLE,))
     ext_skip = _in_list(("plpgsql",) + EXCLUDED_EXTENSIONS)
     acl = "COALESCE((SELECT string_agg(a::text, ';' ORDER BY a::text) FROM unnest({col}) a), '')"
@@ -196,6 +243,12 @@ def inventory_sql(fingerprint: bool = False, no_fingerprint: tuple[str, ...] = (
     count = (
         "(xpath('/row/c/text()', query_to_xml(format('SELECT count(*) AS c FROM %I.%I', n.nspname, c.relname),"
         " false, true, '')))[1]::text::bigint"
+    )
+    # A sequence's state is its stored value AND whether that value was already handed out.
+    # pg_sequences shows NULL for "not handed out yet" and so hides the value; read the sequence.
+    position = (
+        "(xpath('/row/v/text()', query_to_xml(format('SELECT last_value::text || ''|'' || is_called::text"
+        " AS v FROM %I.%I', s.schemaname, s.sequencename), false, true, '')))[1]::text"
     )
     ledger = (
         "CASE WHEN to_regclass('public.schema_migrations') IS NULL THEN NULL ELSE"
@@ -210,13 +263,7 @@ SELECT jsonb_build_object(
      FROM pg_database d WHERE d.datname = current_database()),
  'extensions', (SELECT COALESCE(jsonb_object_agg(extname, extversion), '{{}}') FROM pg_extension WHERE extname NOT IN {ext_skip}),
  'schemas', (SELECT COALESCE(jsonb_object_agg(n.nspname, pg_get_userbyid(n.nspowner) || '|' || {acl.format(col="n.nspacl")}), '{{}}') FROM pg_namespace n WHERE {user_ns}),
- 'roles', (SELECT COALESCE(jsonb_object_agg(r.rolname, jsonb_build_object('login', r.rolcanlogin, 'super', r.rolsuper,
-     'bypassrls', r.rolbypassrls, 'createrole', r.rolcreaterole, 'inherit', r.rolinherit,
-     'member_of', COALESCE((SELECT string_agg(DISTINCT g.rolname, ',' ORDER BY g.rolname) FROM pg_auth_members m
-        JOIN pg_roles g ON g.oid = m.roleid WHERE m.member = r.oid AND g.rolname IN {roles}), ''),
-     'settings', COALESCE((SELECT string_agg(x, ';' ORDER BY x) FROM pg_db_role_setting s, unnest(s.setconfig) x
-        WHERE s.setrole = r.oid AND s.setdatabase = 0), ''))), '{{}}')
-     FROM pg_roles r WHERE r.rolname IN {roles}),
+ {_role_sections()}
  'settings', (SELECT COALESCE(jsonb_object_agg(COALESCE(r.rolname, '*') || '|' || COALESCE(d.datname, '*'),
      (SELECT string_agg(x, ';' ORDER BY x) FROM unnest(s.setconfig) x)), '{{}}')
      FROM pg_db_role_setting s LEFT JOIN pg_roles r ON r.oid = s.setrole LEFT JOIN pg_database d ON d.oid = s.setdatabase
@@ -261,7 +308,7 @@ SELECT jsonb_build_object(
  'matviews', (SELECT COALESCE(jsonb_object_agg(n.nspname || '.' || c.relname, md5(pg_get_viewdef(c.oid)) || ':' || pg_get_userbyid(c.relowner)
      || ':' || COALESCE(array_to_string(c.reloptions, ','), '') || ':' || {acl.format(col="c.relacl")}), '{{}}')
      FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE c.relkind = 'm' AND {user_ns}),
- 'sequences', (SELECT COALESCE(jsonb_object_agg(schemaname || '.' || sequencename, COALESCE(last_value, 0)), '{{}}') FROM pg_sequences s WHERE s.schemaname NOT IN {skip}),
+ 'sequences', (SELECT COALESCE(jsonb_object_agg(schemaname || '.' || sequencename, {position}), '{{}}') FROM pg_sequences s WHERE s.schemaname NOT IN {skip}),
  'sequence_settings', (SELECT COALESCE(jsonb_object_agg(schemaname || '.' || sequencename, data_type::text || '|' || start_value
      || '|' || min_value || '|' || max_value || '|' || increment_by || '|' || cycle::text || '|' || cache_size), '{{}}')
      FROM pg_sequences s WHERE s.schemaname NOT IN {skip}),
@@ -298,6 +345,11 @@ SELECT jsonb_build_object(
 """
 
 
+# Every section a complete inventory carries, read off the query above so that the two cannot
+# drift apart. A comparison refuses to call two inventories a match unless both carry them all.
+INVENTORY_SECTIONS = tuple(re.findall(r"^ '([a-z_]+)', ", inventory_sql(), re.MULTILINE))
+
+
 # --------------------------------------------------------------------------- comparison
 
 
@@ -323,6 +375,9 @@ def unverifiable_contents(inventory: dict[str, Any]) -> list[str]:
     return found
 
 
+_FINGERPRINT = re.compile(r"^-?\d+:-?\d+$")
+
+
 def compare(
     source: dict[str, Any],
     target: dict[str, Any],
@@ -332,8 +387,10 @@ def compare(
     """Return ``(unexpected, expected)`` difference descriptions.
 
     ``expected`` holds only the differences this tool is built to tolerate; anything else is
-    ``unexpected`` and fails the run. A table named in ``leave_rows`` must have ZERO rows on the
-    target - leaving rows behind is allowed, a partial copy is not.
+    ``unexpected`` and fails the run. A match needs positive evidence: every section present on
+    both sides, a content fingerprint on both sides for every table whose rows were copied, and
+    ZERO rows on the target wherever rows were to be left behind (a named table in a full copy,
+    every table in a structure-only one). Equal row counts are never enough by themselves.
     """
     unexpected: list[str] = []
     expected: list[str] = []
@@ -342,7 +399,16 @@ def compare(
         unexpected.append(
             "source: holds contents this tool does not verify: " + ", ".join(unverifiable[:20])
         )
+    for section in INVENTORY_SECTIONS:
+        absent = [
+            side for side, inv in (("source", source), ("target", target)) if section not in inv
+        ]
+        if absent:
+            where = " and ".join(absent) + (" inventories" if len(absent) == 2 else " inventory")
+            unexpected.append(f"{section}: missing from the {where}")
     for section in sorted(set(source) | set(target)):
+        if section in INVENTORY_SECTIONS and (section not in source or section not in target):
+            continue  # already reported above
         s, t = source.get(section), target.get(section)
         if not isinstance(s, dict) or not isinstance(t, dict):
             if s != t:
@@ -350,6 +416,11 @@ def compare(
                     expected.append("ledger: not copied in a structure-only run")
                 else:
                     unexpected.append(f"{section}: source={s!r} target={t!r}")
+            continue
+        if section == "role_edges":
+            edge_unexpected, edge_expected = compare_role_edges(s, t)
+            unexpected += edge_unexpected
+            expected += edge_expected
             continue
         for key in sorted(set(s) | set(t)):
             if key not in t:
@@ -359,6 +430,14 @@ def compare(
                 unexpected.append(f"{section}: only on target: {key}")
                 continue
             a, b = s[key], t[key]
+            if section == "tables" and isinstance(a, dict) and isinstance(b, dict):
+                # Judged in full even when the two entries are equal: equal is not enough.
+                problem, note = _compare_table(key, a, b, key in leave_rows, structure_only)
+                if problem:
+                    unexpected.append(problem)
+                elif note:
+                    expected.append(note)
+                continue
             if a == b:
                 continue
             if section == "extensions":
@@ -373,79 +452,191 @@ def compare(
                 and canonical_definition(a) == canonical_definition(b)
             ):
                 expected.append(f"{section}: reprinted by the restore, same meaning: {key}")
-            elif section == "sequences" and (structure_only or _not_behind(a, b)):
-                expected.append(f"sequence position: {key} {a} -> {b}")
-            elif section == "tables" and isinstance(a, dict) and isinstance(b, dict):
-                rest_a = {k: v for k, v in a.items() if k not in ("rows", "content")}
-                rest_b = {k: v for k, v in b.items() if k not in ("rows", "content")}
-                if rest_a != rest_b:
-                    fields = sorted(
-                        k for k in set(rest_a) | set(rest_b) if rest_a.get(k) != rest_b.get(k)
-                    )
-                    unexpected.append(f"tables: {key} differs in {', '.join(fields)}")
-                elif structure_only or (key in leave_rows and b.get("rows") == 0):
-                    expected.append(
-                        f"rows left behind: {key} source={a.get('rows')} target={b.get('rows')}"
-                    )
-                elif a.get("rows") != b.get("rows"):
-                    unexpected.append(
-                        f"tables: {key} rows source={a.get('rows')} target={b.get('rows')}"
-                    )
+            elif section == "sequences":
+                settings = source.get("sequence_settings")
+                setting = settings.get(key) if isinstance(settings, dict) else None
+                problem, note = _compare_sequence(key, a, b, setting, structure_only)
+                if problem:
+                    unexpected.append(problem)
                 else:
-                    unexpected.append(f"tables: {key} same row count but DIFFERENT CONTENT")
+                    expected.append(note)
             else:
                 unexpected.append(f"{section}: differs: {key}")
     return unexpected, expected
 
 
-_TEXT_CAST = re.compile(r"::(?:character varying|text)(?:\[\])?")
+def _compare_table(
+    key: str, a: dict[str, Any], b: dict[str, Any], left_behind: bool, structure_only: bool
+) -> tuple[Optional[str], Optional[str]]:
+    """One table: ``(unexpected, expected)``, at most one of them set."""
+    rest_a = {k: v for k, v in a.items() if k not in ("rows", "content")}
+    rest_b = {k: v for k, v in b.items() if k not in ("rows", "content")}
+    if rest_a != rest_b:
+        fields = sorted(k for k in set(rest_a) | set(rest_b) if rest_a.get(k) != rest_b.get(k))
+        return f"tables: {key} differs in {', '.join(fields)}", None
+    rows_a, rows_b = a.get("rows"), b.get("rows")
+    if type(rows_a) is not int or type(rows_b) is not int:
+        return f"tables: {key} has no row count: source={rows_a!r} target={rows_b!r}", None
+    if structure_only or left_behind:
+        if rows_b != 0:
+            if structure_only:
+                return (
+                    f"tables: {key} has {rows_b} rows on the target in a structure-only copy",
+                    None,
+                )
+            return f"tables: {key} was to be left behind but has {rows_b} rows on the target", None
+        if rows_a == 0:
+            return None, None
+        return None, f"rows left behind: {key} source={rows_a} target=0"
+    if rows_a != rows_b:
+        return f"tables: {key} rows source={rows_a} target={rows_b}", None
+    unread = [
+        side
+        for side, entry in (("source", a), ("target", b))
+        if not (isinstance(entry.get("content"), str) and _FINGERPRINT.match(entry["content"]))
+    ]
+    if unread:
+        return f"tables: {key} content was not fingerprinted on the {' and '.join(unread)}", None
+    if a["content"] != b["content"]:
+        return f"tables: {key} same row count but DIFFERENT CONTENT", None
+    return None, None
+
+
+def sequence_next(state: Any, increment: int) -> Optional[int]:
+    """The value a sequence gives next, from its state ``"<stored value>|<true or false>"``.
+
+    The flag says whether the stored value was already handed out: if so the next one is a
+    step further, if not the stored value itself is next. ``None`` when the state is unreadable.
+    """
+    if not isinstance(state, str):
+        return None
+    value, _, called = state.partition("|")
+    if called not in ("true", "false") or not re.fullmatch(r"-?\d+", value):
+        return None
+    return int(value) + increment if called == "true" else int(value)
+
+
+def _compare_sequence(
+    key: str, a: Any, b: Any, setting: Any, structure_only: bool
+) -> tuple[Optional[str], str]:
+    """Two differing sequence states: ``(unexpected, expected)``.
+
+    The source may have moved on while the dump ran, so the target may be ahead - in the
+    direction the sequence counts. It must never be behind: it would hand out a value that a
+    copied row already uses. A sequence that cycles, or whose settings cannot be read, has no
+    "ahead" and must match exactly.
+    """
+    fields = setting.split("|") if isinstance(setting, str) else []
+    readable = len(fields) == 7 and re.fullmatch(r"-?[1-9]\d*", fields[4]) is not None
+    if structure_only:
+        # Nothing was copied: the target must still be exactly as created.
+        if readable and b == f"{fields[1]}|false":
+            return None, f"sequence position: {key} not copied in a structure-only run"
+        return (
+            f"sequences: {key} is not at its start on the target in a structure-only copy: {b}",
+            "",
+        )
+    if readable and fields[5] == "false":
+        increment = int(fields[4])
+        next_a, next_b = sequence_next(a, increment), sequence_next(b, increment)
+        if next_a is not None and next_b is not None and (next_b - next_a) * increment >= 0:
+            return None, f"sequence position: {key} {a} -> {b}"
+        if next_a is not None and next_b is not None:
+            return (
+                f"sequences: {key} is behind on the target and would reissue a value: {a} -> {b}",
+                "",
+            )
+    return f"sequences: differs: {key} {a} -> {b}", ""
+
+
+_EDGE = re.compile(r"^[01]{4}$")
+_EDGE_MEANING = "(member, inherits, can switch to, can administer)"
+
+
+def compare_role_edges(
+    source: dict[str, Any], target: dict[str, Any]
+) -> tuple[list[str], list[str]]:
+    """Compare what each role can do with another: ``(unexpected, expected)``.
+
+    The rule is that the target may not let anyone do more, and may not let an application
+    role do less. Three differences follow from a new project and are reported as expected,
+    never silently: the owner administers the application roles it created there; a platform
+    role outside this tool's list reaches an application role on the source only; and a role
+    belonging to a platform feature that is deliberately not carried exists on the source only.
+    """
+    unexpected: list[str] = []
+    expected: list[str] = []
+    known = APP_ROLES + (OWNER_ROLE,)
+    for key in sorted(set(source) | set(target)):
+        member, _, role = key.partition(">")
+        a, b = source.get(key), target.get(key)
+        if any(v is not None and not (isinstance(v, str) and _EDGE.match(v)) for v in (a, b)):
+            unexpected.append(f"role_edges: unreadable: {key} source={a!r} target={b!r}")
+        elif a == b:
+            continue
+        elif b is None:
+            if role in EXCLUDED_SCHEMAS:
+                expected.append(
+                    f"role edge: {key} is on the source only (platform feature not carried)"
+                )
+            elif member not in known:
+                expected.append(f"role edge: {key} is on the source only (platform role)")
+            else:
+                unexpected.append(f"role_edges: MISSING on target: {key}")
+        elif a is None:
+            if member == OWNER_ROLE and role in APP_ROLES and b == "1001":
+                expected.append(
+                    f"role edge: {key} the owner administers a role it created on the target"
+                )
+            else:
+                unexpected.append(f"role_edges: only on target: {key}")
+        elif member == OWNER_ROLE and role in APP_ROLES and a[:3] == b[:3] and b[3] == "1":
+            expected.append(
+                f"role edge: {key} the owner administers a role it created on the target"
+            )
+        else:
+            unexpected.append(f"role_edges: {key} differs: source {a} target {b} {_EDGE_MEANING}")
+    return unexpected, expected
+
+
 _QUOTED = re.compile(r"'(?:[^']|'')*'|\"(?:[^\"]|\"\")*\"")
-_INNERMOST = re.compile(r"\(([^()]*)\)")
-_KEPT = re.compile("\x01[^\x01\x02]*\x02")
-_BRACKETS = re.compile(r"\[[^\[\]]*\]")
+_TYPE_NAME = r"[a-z][a-z ]*[a-z]"
+# An array element this tool recognises: a string literal (set aside as \x00n\x00) or NULL,
+# with a cast. A quoted NAME is set aside under a different marker and is not an element.
+_CAST_LITERAL = "(?:\x00\\d+\x00|NULL)::" + _TYPE_NAME
+_ARRAY_CAST_AS_A_WHOLE = re.compile(
+    r"\(ARRAY\[(" + _CAST_LITERAL + r"(?:, " + _CAST_LITERAL + r")*)\]\)::(" + _TYPE_NAME + r")\[\]"
+)
 
 
 def canonical_definition(definition: str) -> str:
-    """A constraint or index definition in a form that survives a dump and restore.
+    """A constraint or index definition with ONE known reprint undone, and nothing else.
 
-    A restore re-parses an expression, and Postgres then prints the same thing differently:
-    it moves text casts and adds or drops parentheses around a single value. Two things are
-    removed here, and nothing else:
+    A restore re-parses an expression, and Postgres then prints an array of string literals
+    that was cast as a whole with the cast moved onto each element:
 
-    * a cast to ``text`` or ``character varying`` (these two compare identically);
-    * parentheses that wrap ONE value: nothing inside them is separated by a space at their
-      own level, and they are not a call's argument list (nothing name-like sits directly
-      before them).
+        (ARRAY['a'::character varying, 'b'::character varying])::text[]
+        ARRAY[('a'::character varying)::text, ('b'::character varying)::text]
 
-    Parentheses that group an expression (``(a OR b) AND c``) always contain a space and are
-    never removed. Quoted strings and quoted names are left untouched.
+    The first form is rewritten into the second (an element is a string literal or NULL, with
+    a cast). Every one of the reprints seen on real data has this shape. No other cast and no
+    parenthesis is touched, so a definition that differs
+    in any other way still differs here. Quoted strings and quoted names are set aside first,
+    so text inside a literal is never rewritten.
     """
     quoted: list[str] = []
 
     def stash(match: re.Match[str]) -> str:
         quoted.append(match.group(0))
-        return f"\x00{len(quoted) - 1}\x00"
+        mark = "\x00" if match.group(0).startswith("'") else "\x01"
+        return f"{mark}{len(quoted) - 1}{mark}"
 
-    text = _QUOTED.sub(stash, definition)
-    text = " ".join(_TEXT_CAST.sub("", text).split())
-    while True:
-        m = _INNERMOST.search(text)
-        if not m:
-            break
-        inner = m.group(1).strip()
-        probe = inner
-        for pattern, flat in ((_KEPT, "\x03"), (_BRACKETS, "\x03")):
-            while pattern.search(probe):
-                probe = pattern.sub(flat, probe)
-        before = text[m.start() - 1] if m.start() else ""
-        is_call = before.isalnum() or before in ("_", "\x00", "\x02", "]")
-        if inner and not is_call and not re.search(r"\s", probe):
-            replacement = inner
-        else:
-            replacement = "\x01" + inner + "\x02"
-        text = text[: m.start()] + replacement + text[m.end() :]
-    text = text.replace("\x01", "(").replace("\x02", ")")
-    return re.sub("\x00(\\d+)\x00", lambda q: quoted[int(q.group(1))], text)
+    def per_element(match: re.Match[str]) -> str:
+        elements = match.group(1).split(", ")
+        return "ARRAY[" + ", ".join(f"({e})::{match.group(2)}" for e in elements) + "]"
+
+    text = _ARRAY_CAST_AS_A_WHOLE.sub(per_element, _QUOTED.sub(stash, definition))
+    return re.sub("[\x00\x01](\\d+)[\x00\x01]", lambda q: quoted[int(q.group(1))], text)
 
 
 def _version_not_older(source_version: Any, target_version: Any) -> bool:
@@ -458,21 +649,26 @@ def _version_not_older(source_version: Any, target_version: Any) -> bool:
     return parts[1] >= parts[0]
 
 
-def _not_behind(source_value: Any, target_value: Any) -> bool:
-    """A sequence may have advanced on the source while the dump ran; it must never be behind."""
-    try:
-        return int(target_value) >= int(source_value)
-    except (TypeError, ValueError):
-        return False
-
-
 # --------------------------------------------------------------------------- commands
 
 
+SECTIONS = ("pre-data", "data", "post-data")
+
+
+def copy_sections(structure_only: bool) -> tuple[str, ...]:
+    """The archive sections a copy restores, in order. A structure-only copy skips the rows."""
+    return ("pre-data", "post-data") if structure_only else SECTIONS
+
+
 def dump_command(
-    snapshot_id: Optional[str], leave_rows: tuple[str, ...], structure_only: bool
+    snapshot_id: Optional[str],
+    leave_rows: tuple[str, ...],
+    structure_only: bool,
+    section: Optional[str] = None,
 ) -> list[str]:
     """argv for pg_dump. Contains no address and no secret (tested)."""
+    if section is not None and section not in SECTIONS:
+        raise Refusal(f"unknown archive section {section!r}")
     for t in leave_rows:
         if not _QUALIFIED.match(t):
             raise Refusal(f"table to leave behind must be schema.table, got {t!r}")
@@ -487,15 +683,21 @@ def dump_command(
         cmd.append("--schema-only")
     else:
         cmd += [f"--exclude-table-data={t}" for t in leave_rows]
+    if section is not None:
+        cmd.append(f"--section={section}")
     return cmd
 
 
-def restore_command(database: str) -> list[str]:
+def restore_command(database: str, exit_on_error: bool = False) -> list[str]:
     """argv for pg_restore. ``--no-owner``: every carried object belongs to the owner role on
-    both sides, and the restoring user IS that role."""
+    both sides, and the restoring user IS that role. ``exit_on_error`` stops at the first
+    failed statement instead of carrying on."""
     if not re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", database):
         raise Refusal("unexpected database name")
-    return ["pg_restore", "--no-owner", f"--dbname={database}"]
+    cmd = ["pg_restore", "--no-owner"]
+    if exit_on_error:
+        cmd.append("--exit-on-error")
+    return cmd + [f"--dbname={database}"]
 
 
 def _psql(addr: Address, database: str, sql: str, timeout: int = 1800) -> str:
@@ -531,6 +733,12 @@ def check_preconditions(
         raise Refusal(f"target host is not in the expected region {expect_region}")
     if expect_region and f".{expect_region}." in source.host:
         raise Refusal(f"source host is already in {expect_region}: source and target look swapped")
+    assert_target_empty(target, database)
+
+
+def assert_target_empty(target: Address, database: str) -> None:
+    """Refuse unless the target database holds nothing. Run before anything else, and AGAIN
+    immediately before each database's restore: the first check can be minutes old by then."""
     # "Empty" means no object of any kind: nothing in a user schema (any relation kind, so a
     # foreign table or a composite type counts; functions, types, operators, collations, text
     # search configurations, extended statistics), no schema besides public, and none of the
@@ -566,6 +774,33 @@ def check_preconditions(
         raise Refusal(
             f"target database {database} is not empty ({n} objects); refusing to restore over it"
         )
+
+
+def check_roles(source: Address, target: Address, database: str) -> list[str]:
+    """Refuse, before anything is copied, unless the application roles on the target can do
+    what they can do on the source. Roles are not carried by a dump; they are created by hand
+    on the target, so this is where a mistake in that step is caught. Returns the differences
+    that are expected on a new project, for the log."""
+    sides = [json.loads(_psql(addr, database, roles_sql())) for addr in (source, target)]
+    unexpected: list[str] = []
+    roles = [side.get("roles") if isinstance(side.get("roles"), dict) else {} for side in sides]
+    for name in sorted(set(APP_ROLES) | set(roles[0]) | set(roles[1])):
+        if name not in roles[0] or name not in roles[1]:
+            absent = "source" if name not in roles[0] else "target"
+            unexpected.append(f"roles: {name} does not exist on the {absent}")
+        elif roles[0][name] != roles[1][name]:
+            unexpected.append(f"roles: differs: {name}")
+    edges = [side.get("role_edges") for side in sides]
+    if not isinstance(edges[0], dict) or not isinstance(edges[1], dict):
+        raise Refusal("could not read what the application roles can do on both sides")
+    edge_unexpected, expected = compare_role_edges(edges[0], edges[1])
+    unexpected += edge_unexpected
+    if unexpected:
+        raise Refusal(
+            "the application roles on the target do not match the source: "
+            + "; ".join(unexpected[:12])
+        )
+    return expected
 
 
 def take_inventory(
@@ -640,11 +875,22 @@ def copy_database(
     leave_rows: tuple[str, ...],
     structure_only: bool,
     log=print,
+    before_restore=None,
 ) -> tuple[dict[str, Any], dict[str, Any], dict[str, float], list[str]]:
     """Copy one database.
 
     Returns (source inventory, target inventory, timings in seconds, restore errors that are
     NOT on the tolerated list - any of those fails the run).
+
+    The archive is restored one section at a time, each from the same held snapshot. The
+    first two - the objects, then the rows - stop at the FIRST error: if anything in the target
+    collides with an object being created, the run ends there and no row is loaded on top of
+    it. Only the last section (indexes, constraints, privileges) carries on past an error,
+    because that is where the two tolerated platform statements are; its errors are sorted
+    into tolerated and not.
+
+    ``Refusal`` is raised only before the first restore starts (``before_restore`` is called
+    at that moment); after it, every failure is a ``CopyFailure``.
     """
     timings: dict[str, float] = {}
     holder = subprocess.Popen(
@@ -690,23 +936,39 @@ def copy_database(
                 + ", ".join(unverifiable[:20])
             )
 
+        # The first emptiness check ran before the source was read, which can be minutes ago.
+        assert_target_empty(target, database)
+        if before_restore is not None:
+            before_restore()
         t1 = time.monotonic()
-        dump_rc, dump_err, restore_rc, restore_err = pipe_dump_into_restore(
-            dump_command(snapshot_id, leave_rows, structure_only),
-            restore_command(database),
-            source.env(database),
-            target.env(database),
-        )
-        timings["dump_restore_s"] = time.monotonic() - t1
-        if dump_rc != 0:
-            raise Refusal(
-                "pg_dump failed: "
-                + redact(dump_err.decode("utf8", "replace")[-600:], source, target)
+        tolerated: list[str] = []
+        restore_errors: list[str] = []
+        for section in copy_sections(structure_only):
+            last = section == "post-data"
+            dump_rc, dump_err, restore_rc, restore_err = pipe_dump_into_restore(
+                dump_command(snapshot_id, leave_rows, structure_only, section),
+                restore_command(database, exit_on_error=not last),
+                source.env(database),
+                target.env(database),
             )
-        tolerated, restore_errors = classify_restore_output(restore_err.decode("utf8", "replace"))
-        if restore_rc != 0 and not tolerated and not restore_errors:
-            restore_errors = [f"pg_restore exited {restore_rc} without an error line"]
-        restore_errors = [redact(ln, source, target)[:300] for ln in restore_errors]
+            restore_text = restore_err.decode("utf8", "replace")
+            if dump_rc != 0:
+                raise CopyFailure(
+                    f"pg_dump failed in the {section} section: "
+                    + redact(dump_err.decode("utf8", "replace")[-600:], source, target)
+                )
+            if not last:
+                if restore_rc != 0:
+                    raise CopyFailure(
+                        f"restore failed in the {section} section and was stopped there: "
+                        + redact(restore_text[-600:], source, target)
+                    )
+                continue
+            tolerated, restore_errors = classify_restore_output(restore_text)
+            if restore_rc != 0 and not tolerated and not restore_errors:
+                restore_errors = [f"pg_restore exited {restore_rc} without an error line"]
+            restore_errors = [redact(ln, source, target)[:300] for ln in restore_errors]
+        timings["dump_restore_s"] = time.monotonic() - t1
         log(
             f"[{database}] pg_restore: {len(tolerated)} tolerated errors (platform default "
             f"privileges), {len(restore_errors)} other errors"
@@ -725,14 +987,16 @@ def copy_database(
             holder.kill()
             holder.wait(timeout=30)
 
-    t2 = time.monotonic()
-    _psql(
-        target, database, "ANALYZE;", timeout=3600
-    )  # planner statistics are not carried by a dump
-    timings["analyze_s"] = time.monotonic() - t2
-    t3 = time.monotonic()
-    tgt_inv = take_inventory(target, database, not structure_only, leave_rows)
-    timings["target_inventory_s"] = time.monotonic() - t3
+    try:
+        t2 = time.monotonic()
+        # planner statistics are not carried by a dump
+        _psql(target, database, "ANALYZE;", timeout=3600)
+        timings["analyze_s"] = time.monotonic() - t2
+        t3 = time.monotonic()
+        tgt_inv = take_inventory(target, database, not structure_only, leave_rows)
+        timings["target_inventory_s"] = time.monotonic() - t3
+    except Refusal as e:  # the restore has run: this is not "nothing was written"
+        raise CopyFailure(f"the copy could not be checked: {e}") from e
     return src_inv, tgt_inv, timings, restore_errors
 
 
@@ -769,11 +1033,42 @@ def run_copy(args: argparse.Namespace) -> int:
         check_preconditions(
             source, target, database, args.expect_target_region, tuple(args.refuse_host or ())
         )
+    for line in check_roles(source, target, args.database[0]):
+        print(f"[roles] expected difference: {line}")
+    started: list[str] = []  # databases whose restore has begun
+    copied: list[str] = []  # ... and finished
+    try:
+        failed = _copy_all(args, source, target, leave, structure, started, copied)
+    except (Refusal, CopyFailure, OSError, subprocess.SubprocessError, ValueError) as e:
+        if not started:
+            raise
+        # One line: the client's error text carries line breaks, and the verdict is read as a line.
+        reason = " ".join(redact(f"{type(e).__name__}: {e}", source, target).split())
+        raise PartialCopy(copied, [d for d in started if d not in copied], reason) from e
+    return 1 if failed else 0
+
+
+def _copy_all(
+    args: argparse.Namespace,
+    source: Address,
+    target: Address,
+    leave: tuple[str, ...],
+    structure: bool,
+    started: list[str],
+    copied: list[str],
+) -> bool:
+    failed = False
     for database in args.database:
         print(f"== {database}: copying ({args.mode}) ==", flush=True)
         src_inv, tgt_inv, timings, restore_errors = copy_database(
-            source, target, database, leave, structure
+            source,
+            target,
+            database,
+            leave,
+            structure,
+            before_restore=lambda: started.append(database),
         )
+        copied.append(database)
         if args.out_dir:
             os.makedirs(args.out_dir, exist_ok=True)
             for name, inv in (("source", src_inv), ("target", tgt_inv)):
@@ -804,7 +1099,7 @@ def run_copy(args: argparse.Namespace) -> int:
         )
         print(f"[{database}] VERDICT: {verdict}; {len(expected)} expected differences", flush=True)
         failed = failed or bool(unexpected)
-    return 1 if failed else 0
+    return failed
 
 
 def main(argv: Optional[list[str]] = None) -> int:
@@ -881,8 +1176,17 @@ def main(argv: Optional[list[str]] = None) -> int:
         print("VERDICT: " + ("MATCH" if not unexpected else f"MISMATCH ({len(unexpected)})"))
         return 1 if unexpected else 0
     except Refusal as e:
-        print(f"REFUSED: {e}", file=sys.stderr)
+        print(f"REFUSED: {e}. A precondition failed and nothing was written.", file=sys.stderr)
         return 2
+    except PartialCopy as e:
+        written = [f"{d} (copied)" for d in e.copied]
+        written += [f"{d} (restore started, may be partial)" for d in e.started]
+        print(
+            f"FAILED AFTER WRITING to {', '.join(written)}: {e.reason}. The target is no longer "
+            "empty: do not use it, and reset the target branch before any retry.",
+            file=sys.stderr,
+        )
+        return 3
 
 
 if __name__ == "__main__":
