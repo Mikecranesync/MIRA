@@ -383,6 +383,18 @@ _RATING_RE = re.compile(
 _STANDARD_RE = re.compile(r"^(?:NEMA|IEC|UL|CSA|ISO|EN|IP|AWG|MCM|KCMIL)\d")
 
 
+# Round-4 F12 stopgap: a message that corrects or replaces a unit ("On the GS10
+# now, not the GA50U2002") names more than the unit in front of the technician,
+# and this module cannot tell which. Provenance is then off (main's behaviour)
+# until the resolver reports the corrected unit (#5688).
+_CORRECTION_RE = re.compile(
+    r"\bnot\s+(?:the|a|an|my|this|that)?\s*[A-Za-z0-9-]*\d"
+    r"|\b(?:instead\s+of|rather\s+than|switched\s+from|swapped|changed\s+from|replaced|"
+    r"no\s+longer|was\s+wrong|misread|mistyped)\b",
+    re.IGNORECASE,
+)
+
+
 def _norm_ident(text: str) -> str:
     return re.sub(r"[^A-Z0-9]", "", (text or "").upper())
 
@@ -410,17 +422,53 @@ def catalog_identifiers(text: str) -> set[str]:
     return out
 
 
-def _source_tokens(text: str) -> set[str]:
-    """Normalized whole tokens of a source field, plus each hyphen-separated part.
+# Hyphen parts a source field may wrap around a catalog number without changing
+# which unit it names: a known catalog prefix ("CIPR-GA50U2001") or a document
+# word ("gs13n-42p0-manual.pdf"). Any other part is part of the identifier, so
+# ZX9000-PRO and ZX9000-B2 never count as ZX9000 (round-4 F4).
+_CATALOG_PREFIXES = frozenset({"CIPR"})
+_DOC_WORDS = frozenset(
+    {
+        "MANUAL",
+        "GUIDE",
+        "USER",
+        "USERS",
+        "INSTALL",
+        "INSTALLATION",
+        "QUICK",
+        "START",
+        "REFERENCE",
+        "DATASHEET",
+        "CATALOG",
+        "EN",
+        "US",
+        "REV",
+        "PDF",
+    }
+)
 
-    ``CIPR-GA50U2001`` yields ``CIPRGA50U2001``, ``CIPR`` and ``GA50U2001``;
-    ``zx9000_manual.pdf`` yields ``ZX9000``, ``MANUAL`` and ``PDF``.
+
+def _source_tokens(text: str) -> set[str]:
+    """Normalized whole tokens of a source field.
+
+    A hyphenated token counts whole (``1769-L33ER`` → ``1769L33ER``) and, in
+    addition, with a known catalog prefix or document words trimmed from its
+    ends: ``CIPR-GA50U2001`` also yields ``GA50U2001`` and
+    ``gs13n-42p0-manual`` also yields ``GS13N42P0``. No other part is split
+    off, so ``ZX9000-PRO`` yields only ``ZX9000PRO``.
     """
     out: set[str] = set()
     for tok in _HAYSTACK_TOKEN_RE.findall(text or ""):
-        out.add(_norm_ident(tok))
-        if "-" in tok:
-            out.update(_norm_ident(part) for part in tok.split("-") if part)
+        parts = [_norm_ident(part) for part in tok.split("-") if part]
+        if not parts:
+            continue
+        out.add("".join(parts))
+        while len(parts) > 1 and (parts[0] in _CATALOG_PREFIXES or parts[0] in _DOC_WORDS):
+            parts = parts[1:]
+            out.add("".join(parts))
+        while len(parts) > 1 and parts[-1] in _DOC_WORDS:
+            parts = parts[:-1]
+            out.add("".join(parts))
     return out
 
 
@@ -522,22 +570,21 @@ def _vendorless_tag_unproven(
     labels: tuple[dict[str, list[list[dict]]], dict[str, list[list[dict]]]],
     identifiers: set[str],
 ) -> bool:
-    """True only when this tag is SURE to be unproven: its label resolves to at
-    least one retrieved document, every such document carries no manufacturer,
-    and none of them names the unit. Anything else — no matching document, any
-    candidate with a vendor, any candidate naming the unit — is False and left
-    to the label-based cases."""
+    """True when this tag is unproven: its label resolves to at least one
+    retrieved document, every such document carries no manufacturer, and at
+    least one of them does not name the unit. No matching document, or any
+    candidate with a vendor, is False and left to the label-based cases."""
     exact, unpaged = labels
     label = _tag_label(tag)
     documents = exact.get(_label_key(label)) or unpaged.get(_label_key(label, keep_page=False))
     if not documents:
         return False
-    for document in documents:
-        if any(_chunk_has_manufacturer(ch) for ch in document):
-            return False
-        if _document_names_unit(document, identifiers):
-            return False
-    return True
+    if any(_chunk_has_manufacturer(ch) for document in documents for ch in document):
+        return False
+    # Round-4 F3: a label that resolves to several vendorless documents is
+    # ambiguous; it is proven only when every one of them names the unit, so a
+    # same-titled upload for another unit cannot lend its provenance.
+    return not all(_document_names_unit(document, identifiers) for document in documents)
 
 
 def evaluate_citation_relevance(
@@ -642,7 +689,11 @@ def evaluate_citation_relevance(
     # Case 3 — VENDORLESS PROVENANCE (#3049). Only with the turn's chunks AND a
     # catalog identifier in THIS message. Strip-only: it adds tags to the strip
     # list and never removes one, and a Case 1/2 verdict keeps its reason.
-    identifiers = catalog_identifiers(current_text) if (chunks and current_text) else set()
+    identifiers = (
+        catalog_identifiers(current_text)
+        if (chunks and current_text and not _CORRECTION_RE.search(current_text))
+        else set()
+    )
     unproven: list[str] = []
     if identifiers:
         labels = _documents_by_label(chunks)

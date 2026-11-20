@@ -653,31 +653,92 @@ def test_an_upload_attached_to_another_unit_is_stripped():
     assert out["relevant"] is False and out["reason"] == "unproven", out
 
 
+ZX_Q = "ZX9000 fuse rating?"
+ZX_DOC = _upload("https://docs.example/zx9000-install.pdf", "ZX9000 input fuse: use fuse A.")
+ZX_LABEL = format_source_label(ZX_DOC)
+
+
 def test_stated_cost_a_message_naming_another_device_strips_the_right_upload():
-    """Pinned (same-message form of Codex round 3, F2): the gate reads every
-    catalog number in this message, including one the technician has moved
-    away from or one belonging to another device, so a vendorless document for
-    the unit actually in front of them is stripped when it never prints that
-    number. Stated in the PR; the fix is a correction-aware resolver (#5688)."""
+    """Pinned: with no correction in the message, the gate reads every catalog
+    number in it, including another device's or a longer nameplate string, so a
+    vendorless document for the unit in front of the technician is stripped when
+    it never prints that number. Stated in the PR; the fix is #5688."""
     gs10 = _upload("upload://t/line2_drive.pdf", "GS10 Frame B, 2 HP.")
     label = format_source_label(gs10)
-    for q in (
-        "On the GS10 now, not the GA50U2002. Frame size?",
-        "Switched from the 1769-L33ER, GS10 frame size?",
-        "CIPR-GA50U2001ABA fuse?",
-    ):
+    for q in ("GS10 frame size? The PLC is a 1769-L33ER.", "CIPR-GA50U2001ABA fuse?"):
         out = _new(f"Frame B. [Source: {label}]", None, q, [gs10], q)
         assert _main(f"Frame B. [Source: {label}]", None, q)["relevant"] is True, q
         assert out["relevant"] is False, q
+
+
+def test_r4_f12_a_correction_in_the_message_turns_provenance_off():
+    """Codex round 4, F12: "not the GA50U2002" made the gate strip the GS10 upload
+    and keep the GA50U2002 one. Stopgap: a correction cue turns provenance off,
+    so both tags are left exactly as main leaves them (stated under-strip)."""
+    gs10 = _upload("upload://t/line2_drive.pdf", "GS10 Frame B, 2 HP.")
+    ga = _upload("upload://t/old_drive.pdf", "GA50U2002 Frame 2.", model="manual old drive")
+    reply = f"Frame B. [Source: {format_source_label(gs10)}] [Source: {format_source_label(ga)}]"
+    for q in (
+        "On the GS10 now, not the GA50U2002. Frame size?",
+        "Switched from the 1769-L33ER, GS10 frame size?",
+        "It was wrong on the GA50U2002, this is a GS10. Frame?",
+    ):
+        out = _new(reply, None, q, [gs10, ga], q)
+        assert out == _new(reply, None, q, None, None), q
+
+
+def test_r4_f12_control_a_plain_negative_symptom_keeps_provenance_on():
+    """Control: "not" about a symptom, not a unit, does not turn the check off."""
+    q = "GA50U2001 will not start, which fuse?"
+    out = _new(f"Fuse X. [Source: {SIRIUS_LABEL}]", None, q, [SIRIUS_NULL_MFR], q)
+    assert out["relevant"] is False and out["reason"] == "unproven"
+
+
+def test_r4_f3_a_same_titled_upload_for_another_unit_cannot_lend_provenance():
+    """Codex round 4, F3: two vendorless uploads render one label; only one names
+    ZX9000. A tag on that label is ambiguous and is stripped."""
+    right = _upload("node-doc/a/clearances.pdf", "ZX9000 clearance: 50 mm.")
+    other = _upload("node-doc/b/clearances.pdf", "ZX7000 clearance: 15 mm.")
+    label = format_source_label(right)
+    assert label == format_source_label(other)
+    out = _new(f"Clearance 15 mm. [Source: {label}]", None, ZX_Q, [right, other], ZX_Q)
+    assert out["relevant"] is False and out["reason"] == "unproven"
+
+
+def test_r4_f3_control_same_titled_uploads_that_all_name_the_unit_are_kept():
+    a = _upload("node-doc/a/clearances.pdf", "ZX9000 clearance: 50 mm.")
+    b = _upload("node-doc/b/clearances.pdf", "ZX9000 wiring: 2.5 mm2.")
+    out = _new(f"50 mm. [Source: {format_source_label(a)}]", None, ZX_Q, [a, b], ZX_Q)
+    assert out["relevant"] is True
+
+
+def test_r4_f4_a_hyphenated_variant_is_another_unit():
+    for variant in ("ZX9000-PRO", "ZX9000-B2"):
+        doc = _upload(f"node-doc/v/{variant}.pdf", f"Covers the {variant} only.")
+        label = format_source_label(doc)
+        out = _new(f"Fuse A. [Source: {label}]", None, ZX_Q, [doc], ZX_Q)
+        assert out["relevant"] is False, variant
+
+
+def test_r4_f4_a_filename_naming_the_unit_proves_it_with_either_separator():
+    q = "GS13N-42P0 frame size?"
+    for name in ("gs13n-42p0-manual.pdf", "gs13n-42p0_manual.pdf", "manual-gs13n-42p0.pdf"):
+        doc = _upload(f"node-doc/u/{name}", "Frame B, 2 HP.")
+        out = _new(f"Frame B. [Source: {format_source_label(doc)}]", None, q, [doc], q)
+        assert out["relevant"] is True, name
+
+
+def test_r4_f4_control_a_known_catalog_prefix_still_names_the_unit():
+    doc = _upload("node-doc/y/fuses.pdf", "Fuse table for CIPR-GA50U2001.")
+    q = "GA50U2001 fuse?"
+    out = _new(f"Fuse X. [Source: {format_source_label(doc)}]", None, q, [doc], q)
+    assert out["relevant"] is True
 
 
 # ---------------------------------------------------------------------------
 # Round 4, F11: no salvage re-tag after a provenance strip
 # ---------------------------------------------------------------------------
 
-ZX_Q = "ZX9000 fuse rating?"
-ZX_DOC = _upload("https://docs.example/zx9000-install.pdf", "ZX9000 input fuse: use fuse A.")
-ZX_LABEL = format_source_label(ZX_DOC)
 FUSE_B = "Use fuse B on the input side. Verify the rating on the nameplate before fitting."
 
 
