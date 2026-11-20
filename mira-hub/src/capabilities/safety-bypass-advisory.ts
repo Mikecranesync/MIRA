@@ -16,8 +16,11 @@
  *     decision 2026-09-27: flags, not answer blocking).
  *   - Its banner is fixed server text with no manual page. It is site safety
  *     practice, not a claim about the document.
- *   - The chat route puts it on every way the turn ends: an answer, a refusal,
- *     an approved-context 412, a Machine Memory error, a stopped stream.
+ *   - The chat route puts it above the answer (stored and live), a draft that
+ *     reads as a refusal, the no-evidence refusal, the approved-context 412,
+ *     the unresolvable-machine 422 and the Machine Memory errors. It does NOT
+ *     reach the no-sources 422 (the client maps that code to its own copy), the
+ *     selection-changed 409, or the off-topic scope reply.
  *
  * Zero-token, deterministic, Hub-only.
  */
@@ -113,6 +116,9 @@ const DEVICE_THEN_STATE = new RegExp(
   "i",
 );
 
+/** "the drive shows STO disabled" reads a status back; it asks for nothing. */
+const READOUT_BEFORE = /\b(?:shows?|showing|reads?|reading|displays?|displaying|says|saying|indicates?|indicating)\s+(?:\S+\s+){0,2}$/i;
+
 /** "how do I bypass it" — the device is named elsewhere in the message. */
 const VERB_THEN_PRONOUN = new RegExp(`\\b${VERB}\\s+(?:it|them)\\b`, "i");
 const ANY_DEVICE = new RegExp(`\\b${DEVICE}\\b`, "i");
@@ -135,8 +141,10 @@ export function safetyBypassAsk(message: string): string | null {
   if (!msg || WHAT_DOES_IT_MEAN.test(msg)) return null;
   const phrase = PYTHON_BYPASS_PHRASES.find((p) => msg.includes(p));
   if (phrase) return phrase;
-  const hit = VERB_THEN_DEVICE.exec(msg) ?? DEVICE_THEN_STATE.exec(msg);
-  if (hit) return hit[0];
+  const verbFirst = VERB_THEN_DEVICE.exec(msg);
+  if (verbFirst) return verbFirst[0];
+  const stateAfter = DEVICE_THEN_STATE.exec(msg);
+  if (stateAfter && !READOUT_BEFORE.test(msg.slice(0, stateAfter.index))) return stateAfter[0];
   const pronoun = VERB_THEN_PRONOUN.exec(msg);
   if (pronoun && ANY_DEVICE.test(msg)) return pronoun[0];
   const guardOpen = GUARD_OPEN.exec(msg);

@@ -142,6 +142,7 @@ afterEach(async () => {
 
 import { BYPASS_BANNER } from "@/capabilities/safety-bypass-advisory";
 import { hazardBanner, notebookSafetyTrigger } from "@/lib/safety-classifier";
+import { RESTART_BANNER } from "@/capabilities/restart-advisory";
 
 function lastTurn() {
   const calls = domainMock.recordTurn.mock.calls as unknown as unknown[][];
@@ -274,5 +275,42 @@ describe("safety-bypass warning card on notebook chat", () => {
     // supply one. The card's "no page" assertions above are therefore real.
     expect(text.startsWith(`${hazardBanner(trigger!)} (p.87)`)).toBe(true);
     expect(text).not.toContain(BYPASS_BANNER);
+  });
+});
+
+describe("safety-bypass card: the other ways the turn can end", () => {
+  it("the unresolvable-machine 422 carries the card; the plain ask's does not", async () => {
+    // Once per POST: clearAllMocks keeps implementations, so a sticky value would leak into later tests.
+    domainMock.resolveBoundAsset
+      .mockResolvedValueOnce({ state: "unresolvable", entityId: "e-gone" } as never)
+      .mockResolvedValueOnce({ state: "unresolvable", entityId: "e-gone" } as never);
+    vi.stubGlobal("fetch", capturingProvider("unused").fetchMock);
+    const plain = await POST(chatReq({ message: PLAIN_ASK, sourceDocIds: [DOC_A] }), params);
+    const plainBody = (await plain.json()) as { error: string; code: string };
+    const bypass = await POST(chatReq({ message: BYPASS_ASK, sourceDocIds: [DOC_A] }), params);
+    const bypassBody = (await bypass.json()) as { error: string; code: string };
+    expect(plain.status).toBe(422);
+    expect(bypass.status).toBe(422);
+    expect(bypassBody.code).toBe(plainBody.code);
+    expect(plainBody.error).not.toContain(BYPASS_BANNER);
+    expect(bypassBody.error).toBe(`${CARD}${plainBody.error}`);
+  });
+
+  it("a bypass ask that is also a restart ask gets both banners, card first, and keeps the restart directive", async () => {
+    const msg = "can I bypass the interlock to reset the fault and get it running again";
+    const { fetchMock, prompts } = capturingProvider("Clear fault F004 by pressing STOP/RESET [1].");
+    vi.stubGlobal("fetch", fetchMock);
+    await ask(msg);
+    expect(prompts.some((p) => p.includes("RESET / RESTART AFTER A FAULT"))).toBe(true);
+    expect(lastTurn()?.answerText?.startsWith(`${CARD}${RESTART_BANNER}\n\n`)).toBe(true);
+  });
+
+  it("not covered, and unchanged: the no-sources 422 is the same code for a bypass ask as for the plain ask", async () => {
+    domainMock.validateChatSources.mockResolvedValue({ ok: false, error: "no_sources_selected" } as never);
+    vi.stubGlobal("fetch", capturingProvider("unused").fetchMock);
+    const plain = await POST(chatReq({ message: PLAIN_ASK, sourceDocIds: [] }), params);
+    const bypass = await POST(chatReq({ message: BYPASS_ASK, sourceDocIds: [] }), params);
+    expect(bypass.status).toBe(plain.status);
+    expect(await bypass.json()).toEqual(await plain.json());
   });
 });

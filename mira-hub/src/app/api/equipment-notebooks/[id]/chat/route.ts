@@ -2265,9 +2265,9 @@ async function handleChatTurn(
   // Mike 2026-11-19 (#5232): every request to bypass a safety device gets a
   // warning card. An ADVISORY like the restart banner, never a safetyTrigger:
   // it unlocks no evidence-free answer and adds no prompt directive. It takes
-  // the one banner slot ahead of the restart banner; the restart directive
-  // still rides the prompt. withBypassCard puts it on every non-answer
-  // outcome too, since a refused bypass ask is still a bypass ask (#5416).
+  // the banner slot with the restart banner stacked under it when both apply.
+  // withBypassCard puts it on the refusals and errors below too, since a
+  // refused bypass ask is still a bypass ask (#5416).
   const bypassAsk = !safetyTrigger && !electricalHazardDirective ? safetyBypassAsk(message) : null;
   const withBypassCard = <T extends string | null | undefined>(text: T): T =>
     (bypassAsk && text ? `${BYPASS_BANNER}\n\n${text}` : text) as T;
@@ -2275,7 +2275,7 @@ async function handleChatTurn(
   const flagBannerBase = safetyTrigger && !electricalHazardDirective
     ? hazardBanner(safetyTrigger)
     : bypassAsk
-      ? BYPASS_BANNER
+      ? restartAdvisory ? `${BYPASS_BANNER}\n\n${RESTART_BANNER}` : BYPASS_BANNER
       : restartAdvisory
         ? RESTART_BANNER
         : null;
@@ -2309,9 +2309,10 @@ async function handleChatTurn(
     endRoot();
     return NextResponse.json(
       {
-        error:
+        error: withBypassCard(
           "This notebook points at equipment that is no longer available in your account. " +
           "Re-select the machine before asking about it.",
+        ),
         code: "uns_required",
         notebookId,
         entityId: boundAsset.entityId,
