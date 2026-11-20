@@ -130,6 +130,7 @@ import {
   withSafetyFlag,
 } from "@/lib/safety-classifier";
 import { RESTART_BANNER, RESTART_DIRECTIVE, isFaultResetAsk } from "@/capabilities/restart-advisory";
+import { BYPASS_BANNER, safetyBypassAsk } from "@/capabilities/safety-bypass-advisory";
 import { pageFromRetrievedChunks, withPageCitation } from "@/lib/citation-page";
 import {
   ENERGIZED_WORK_TRIGGER,
@@ -2261,11 +2262,23 @@ async function handleChatTurn(
   // an ADVISORY, never a safetyTrigger — a trigger lets a turn be answered with
   // no evidence, and an invented reset procedure is the #4645 failure itself.
   const restartAdvisory = !safetyTrigger && !electricalHazardDirective && isFaultResetAsk(message);
+  // Mike 2026-11-19 (#5232): every request to bypass a safety device gets a
+  // warning card. An ADVISORY like the restart banner, never a safetyTrigger:
+  // it unlocks no evidence-free answer and adds no prompt directive. It takes
+  // the one banner slot ahead of the restart banner; the restart directive
+  // still rides the prompt. withBypassCard puts it on every non-answer
+  // outcome too, since a refused bypass ask is still a bypass ask (#5416).
+  const bypassAsk = !safetyTrigger && !electricalHazardDirective ? safetyBypassAsk(message) : null;
+  const withBypassCard = <T extends string | null | undefined>(text: T): T =>
+    (bypassAsk && text ? `${BYPASS_BANNER}\n\n${text}` : text) as T;
+  const advisoryBanner = Boolean(bypassAsk) || restartAdvisory;
   const flagBannerBase = safetyTrigger && !electricalHazardDirective
     ? hazardBanner(safetyTrigger)
-    : restartAdvisory
-      ? RESTART_BANNER
-      : null;
+    : bypassAsk
+      ? BYPASS_BANNER
+      : restartAdvisory
+        ? RESTART_BANNER
+        : null;
 
   // Snapshot for every persisted turn, including abstains and safety stops: a
   // refusal about a specific machine is still a record about that machine —
@@ -2402,7 +2415,7 @@ async function handleChatTurn(
       endRoot();
       return NextResponse.json(
         {
-          error: withSafetyFlag("Machine Memory could not be read just now. Try again in a moment.", safetyTrigger),
+          error: withBypassCard(withSafetyFlag("Machine Memory could not be read just now. Try again in a moment.", safetyTrigger)),
           code: "machine_history_read_failed",
         },
         { status: 503, headers: safetyFlagHeaders(safetyTrigger) },
@@ -2414,7 +2427,7 @@ async function handleChatTurn(
       endRoot();
       return NextResponse.json(
         {
-          error: withSafetyFlag("Nothing was recorded in this window. Widen the window or check the gateway.", safetyTrigger),
+          error: withBypassCard(withSafetyFlag("Nothing was recorded in this window. Widen the window or check the gateway.", safetyTrigger)),
           code: "machine_window_empty",
           coverage: machineCoverage,
         },
@@ -2425,7 +2438,7 @@ async function handleChatTurn(
     endRoot();
     return NextResponse.json(
       {
-        error: withSafetyFlag("Machine Memory history is not available for this machine, so there is nothing to replay.", safetyTrigger),
+        error: withBypassCard(withSafetyFlag("Machine Memory history is not available for this machine, so there is nothing to replay.", safetyTrigger)),
         code: "machine_history_unavailable",
         reason: machineUnavailableReason ?? "unavailable",
         coverage: machineCoverage,
@@ -2765,9 +2778,9 @@ async function handleChatTurn(
   // Banner is classified before retrieval; the page citation can only be
   // written now that chunks exist. Prefer the WARNING/CAUTION/DANGER chunk's
   // printed label (TQ-29: p.2-15) over INTEGER source_page.
-  // The restart banner is site safety practice, not a manual claim: no page.
+  // The restart and bypass banners are site safety practice, not manual claims: no page.
   const flagBanner = flagBannerBase
-    ? restartAdvisory
+    ? advisoryBanner
       ? flagBannerBase
       : withPageCitation(flagBannerBase, pageFromRetrievedChunks(chunks))
     : null;
@@ -3770,7 +3783,7 @@ async function handleChatTurn(
     // (staging holds 11 GS10 rows; a carrier-frequency query still hit none).
     // A held component turn keeps the question's safety banner: the hold answers
     // nothing, and the hazard is still flagged above it.
-    const abstainAnswerText = componentHold
+    const abstainAnswerText = withBypassCard(componentHold
       ? withSafetyFlag(componentHold.text, safetyTrigger)
       : componentScope && !notebookRetrieval
       ? noDocumentsForComponentText(componentScope.label)
@@ -3835,7 +3848,7 @@ async function handleChatTurn(
         ? excludedTablesRefusalText(manualIdentity.catalogNumber.trim(), retrievalDiagnostics.excludedTables ?? [])
       : notebookRetrieval
         ? "I couldn't find support for that in this notebook's manuals. Add the manual for the equipment you're asking about, or the page that covers it, and ask again."
-        : null;
+        : null);
     const gateAnswerGateSpan = tracer.startSpan("answer_gate.evaluate", undefined, rootCtx);
     lifecycleOutcome = "abstained";
     rec.stage("answer_gate", {
@@ -4016,7 +4029,7 @@ async function handleChatTurn(
       // discriminator.
       await abandonRequestClaim();
       endRoot();
-      const flaggedReason = withSafetyFlag(refusal.reason, safetyTrigger);
+      const flaggedReason = withBypassCard(withSafetyFlag(refusal.reason, safetyTrigger));
       return NextResponse.json(
         { error: flaggedReason, code: "approved_context", ...refusal, reason: flaggedReason },
         { status: 412, headers: safetyFlagHeaders(safetyTrigger) },
@@ -4786,7 +4799,7 @@ async function handleChatTurn(
                     responseBuffer.push(norm);
                     // B2: under the gate the candidate is buffered, not shown.
                     if (!gate) {
-                      if (restartAdvisory && flagBanner && !restartBannerStreamed) {
+                      if (advisoryBanner && flagBanner && !restartBannerStreamed) {
                         restartBannerStreamed = true;
                         controller.enqueue(
                           enc.encode(sse({ kind: "content", content: `${flagBanner}\n\n` } as NotebookContentFrame)),
@@ -5406,7 +5419,7 @@ async function handleChatTurn(
       }
 
       // #5466: the ratings floor replaces the draft but the turn's hazard still stands, so its banner stays.
-      if (flagBanner && served && (!refused || ratingColumn !== null) && !outputRejected && answerText) answerText = `${flagBanner}\n\n${answerText}`;
+      if (flagBanner && served && (!refused || ratingColumn !== null || Boolean(bypassAsk)) && !outputRejected && answerText) answerText = `${flagBanner}\n\n${answerText}`;
 
       // #4068 — owner decision 2026-09-27 ("allow with a warning"): an answer
       // grounded on related-manual pages (the same-family fallback) may relay
