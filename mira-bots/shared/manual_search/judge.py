@@ -57,12 +57,29 @@ def _int_env(name: str, default: int) -> int:
 
 MAX_CANDIDATES = _int_env("MANUAL_JUDGE_MAX_CANDIDATES", 4)  # per batch
 MAX_TOTAL = _int_env("MANUAL_JUDGE_MAX_TOTAL", 8)  # across batches, until a match
-MAX_BYTES = _int_env("MANUAL_JUDGE_MAX_BYTES", 25 * 1024 * 1024)  # real OEM manuals are big
+# Real OEM manuals are big: the official AutomationDirect GS10 user manual is
+# 33 MB, and a 25 MB cap left it unread ("byte_cap") so a one-chapter excerpt
+# won (2026-11-20). Matches the Hub's own download cap (MAX_MANUAL_BYTES in
+# mira-hub/src/capabilities/manual-acquisition.ts): a manual the Hub can
+# acquire must be one the judge can read.
+MAX_BYTES = _int_env("MANUAL_JUDGE_MAX_BYTES", 80 * 1024 * 1024)
 MAX_PAGES = _int_env("MANUAL_JUDGE_MAX_PAGES", 8)
 MAX_CHARS = _int_env("MANUAL_JUDGE_MAX_CHARS", 7000)
 FETCH_TIMEOUT = float(os.getenv("MANUAL_JUDGE_FETCH_TIMEOUT", "12"))
 EXTRACT_TIMEOUT = float(os.getenv("MANUAL_JUDGE_EXTRACT_TIMEOUT", "15"))
 LLM_TIMEOUT = float(os.getenv("MANUAL_JUDGE_LLM_TIMEOUT", "25"))
+
+# The model page (2026-11-20). A whole manual's first pages are a cover, warnings
+# and a contents list; the GS10 manual first names "GS11N-20P2" on page 26. So
+# when the first pages never name the exact model, the judge is also shown the
+# first later page that does, under its own character budget (the first pages
+# already fill MAX_CHARS). Exact model, whole token, case-insensitive; no family
+# prefix is ever derived. Constants, not env knobs (see PREFERRED_LANGUAGE).
+# Bounded so a document that never names the model costs seconds, not the
+# search's whole budget: about 6 s for 80 pages of the 454-page GS10 manual.
+MODEL_SCAN_PAGES = 80
+MODEL_SCAN_TIMEOUT = 8.0
+MODEL_WINDOW_CHARS = 2500
 
 # Which VOLUME wins, not only "is it a manual" (2026-10-04, Golden Walk + Pixel 9a).
 # "Is this a user manual for THIS model?" is truthfully yes for a PowerFlex 525
@@ -214,6 +231,86 @@ def _extract_text_sync(data: bytes, max_pages: int, max_chars: int) -> str:
     return text[:max_chars]
 
 
+def model_token_re(model: str) -> re.Pattern[str] | None:
+    """The exact model as a whole token, or ``None`` when it is too short to scan
+    for safely (fewer than four letters/digits)."""
+    m = (model or "").strip()
+    if len(re.sub(r"[^A-Za-z0-9]", "", m)) < 4:
+        return None
+    return re.compile(r"(?<![A-Za-z0-9])" + re.escape(m) + r"(?![A-Za-z0-9])", re.IGNORECASE)
+
+
+def _model_page_sync(data: bytes, model: str, max_pages: int, max_chars: int) -> str:
+    """The first page (1-based) whose text names ``model``, as a labelled window
+    of at most ``max_chars`` around the first mention; "" when none does."""
+    rx = model_token_re(model)
+    if rx is None:
+        return ""
+    import pdfplumber  # MIT; already used by mira-ingest / mira-mcp / crawler
+
+    with pdfplumber.open(io.BytesIO(data)) as pdf:
+        for number, page in enumerate(pdf.pages[:max_pages], start=1):
+            try:
+                t = page.extract_text() or ""
+            except Exception:  # noqa: BLE001 — one bad page must not kill the scan
+                continue
+            hit = rx.search(t)
+            if hit:
+                lo = max(0, hit.start() - max_chars // 2)
+                label = f"[Page {number} of this PDF, the first page that names {model}]\n"
+                return label + t[lo : lo + max_chars]
+    return ""
+
+
+_MODEL_PAGE_CHILD = (
+    "import sys;from shared.manual_search.judge import _model_page_sync as f;"
+    "d=sys.stdin.buffer.read();"
+    "sys.stdout.buffer.write(f(d,sys.argv[1],int(sys.argv[2]),int(sys.argv[3])).encode('utf-8','replace'))"
+)
+
+
+async def model_page_text(data: bytes, model: str) -> str:
+    """The model page for the judge (see MODEL_SCAN_PAGES), parsed in a killable
+    child under MODEL_SCAN_TIMEOUT like :func:`extract_text`. Never raises; "" on
+    any failure, timeout, or when no page names the model."""
+    import sys
+
+    if model_token_re(model) is None:
+        return ""
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            sys.executable,
+            "-c",
+            _MODEL_PAGE_CHILD,
+            model,
+            str(MODEL_SCAN_PAGES),
+            str(MODEL_WINDOW_CHARS),
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.DEVNULL,
+            cwd=os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+        )
+    except (OSError, ValueError) as e:
+        logger.info("judge model-page scan could not start: %s", e)
+        return ""
+    try:
+        out, _ = await asyncio.wait_for(proc.communicate(data), timeout=MODEL_SCAN_TIMEOUT)
+    except asyncio.CancelledError:
+        proc.kill()
+        raise
+    except Exception as e:  # noqa: BLE001 — timeout or pipe failure: no window, never an error
+        logger.info("judge model-page scan failed: %s", e)
+        proc.kill()
+        try:
+            await proc.wait()
+        except Exception:  # noqa: BLE001
+            pass
+        return ""
+    if proc.returncode != 0:
+        return ""
+    return out.decode("utf-8", "replace")[: MODEL_WINDOW_CHARS + 200]
+
+
 _EXTRACT_CHILD = (
     "import sys;from shared.manual_search.judge import _extract_text_sync as f;"
     "d=sys.stdin.buffer.read();"
@@ -355,7 +452,7 @@ async def _judge_text_once(
         f"Equipment: manufacturer={make!r} model={model!r}\n"
         f"Candidate URL: {cand.get('url', '')[:200]}\n"
         f"Candidate title: {cand.get('title', '')[:160]}\n\n"
-        f"First pages of the PDF:\n<<<\n{text}\n>>>"
+        f"First pages of the PDF (and, when labelled, the first later page that names the model):\n<<<\n{text}\n>>>"
     )
     t0 = time.monotonic()
     try:
@@ -448,6 +545,12 @@ async def _judge_one(make: str, model: str, cand: dict) -> dict:
     if not text.strip():
         cand["judge"] = {"status": "no_text", "reason": _READ_REASON.get()}
         return cand
+    model_rx = model_token_re(model)
+    model_page = ""
+    if model_rx is not None and not model_rx.search(text):
+        model_page = await model_page_text(data, model)
+        if model_page:
+            text = f"{text}\n\n{model_page}"
     cand["_read_stage"] = "judge"
     verdict = await judge_text(make, model, cand, text)
     if verdict is None:
@@ -458,6 +561,7 @@ async def _judge_one(make: str, model: str, cand: dict) -> dict:
         return cand
     verdict["status"] = "judged"
     verdict["text_chars"] = len(text)
+    verdict["model_page"] = bool(model_page)
     # Deterministic signals from the text the judge read (zero-token).
     verdict["text_language"] = text_language(text)
     verdict["fault_heading"] = bool(_FAULT_HEADING.search(text))
@@ -475,6 +579,7 @@ async def _judge_one(make: str, model: str, cand: dict) -> dict:
                 "host": cand.get("host", ""),
                 "title": (cand.get("title") or "")[:120],
                 "text_chars": len(text),
+                "model_page": verdict["model_page"],
                 "is_manual": verdict["is_manual"],
                 "downgraded": verdict.get("downgraded", False),
                 "doc_type": verdict["doc_type"],
