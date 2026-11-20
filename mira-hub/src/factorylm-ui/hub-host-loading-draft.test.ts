@@ -180,7 +180,7 @@ describe("Hub draft isolation across notebook navigation (#5684)", () => {
       type: "recover-send", threadId, restoreDraft: true,
       recovery: { body: chatBodyFor(question, [], [], SEL), question, error: "Send failed" },
     });
-    const revision = failed.sendRecoveryByThread?.get(threadId)?.draftRevision;
+    const revision = failed.sendRecoveryByThread?.get(threadId)?.at(-1)?.draftRevision;
     expect(revision).toBeDefined();
     expect(revision).toBe(failed.draftRevision);
     const edited = hubHostReducer(failed, { type: "set-draft", draft: "Another draft" });
@@ -197,11 +197,28 @@ describe("Hub draft isolation across notebook navigation (#5684)", () => {
       type: "recover-send", threadId, restoreDraft: true,
       recovery: { body: chatBodyFor("Question", [], [], SEL), question: "Question", error: "Send failed" },
     });
-    const dismissed = hubHostReducer(failed, { type: "set-send-error", error: null });
+    const recoveryId = failed.sendRecoveryByThread!.get(threadId)![0].body.clientRequestId;
+    const dismissed = hubHostReducer(failed, { type: "clear-recovery", threadId, recoveryId });
     const switched = hubHostReducer(dismissed, openThreadAction(destination, AT));
     const reopened = hubHostReducer(switched, openThreadAction(SEL, AT));
     expect(reopened.sendError).toBeNull();
     expect(reopened.draft).toBe("Question");
+  });
+
+  it("settles only the selected recovery when another request has failed in the same conversation", () => {
+    const threadId = shellThreadId(SEL);
+    const origin = hubHostReducer(initialHubShellState(), openThreadAction(SEL, AT));
+    const first = chatBodyFor("Check the drive", [], [], SEL);
+    const second = chatBodyFor("Check the conveyor", [], [], SEL);
+    const failed = hubHostReducer(origin, {
+      type: "recover-send", threadId, restoreDraft: true, recovery: { body: first, question: first.message, error: "First failed" },
+    });
+    const both = hubHostReducer(failed, {
+      type: "recover-send", threadId, restoreDraft: true, recovery: { body: second, question: second.message, error: "Second failed" },
+    });
+    const settled = hubHostReducer(both, { type: "clear-recovery", threadId, recoveryId: first.clientRequestId });
+    expect(settled.sendRecoveryByThread?.get(threadId)?.map((entry) => entry.body)).toEqual([second]);
+    expect(settled.sendError).toBe("Second failed");
   });
 
   it("parks an interrupted upload draft only in its own conversation", () => {

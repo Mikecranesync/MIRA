@@ -319,6 +319,7 @@ export type HubSendRecovery = {
   readonly body: ReturnType<typeof chatBodyFor> & { componentSelection?: ScopeField };
   readonly question: string;
   readonly refusedScope?: ScopeField;
+  readonly recoveryId?: string;
   readonly error: string | null;
   readonly draftRevision?: number;
 };
@@ -329,7 +330,7 @@ export type HubHostAction =
   | { readonly type: "sent-draft"; readonly threadId: string; readonly question: string; readonly revision: number }
   | { readonly type: "recover-send"; readonly threadId: string; readonly recovery: HubSendRecovery; readonly restoreDraft: boolean }
   | { readonly type: "recover-attachment-draft"; readonly threadId: string; readonly text: string; readonly notice: string }
-  | { readonly type: "clear-recovery"; readonly threadId: string }
+  | { readonly type: "clear-recovery"; readonly threadId: string; readonly recoveryId: string }
   | { readonly type: "clear-attachment-recovery"; readonly threadId: string };
 
 /**
@@ -346,7 +347,7 @@ type HubShellState = ShellState & {
   readonly draftRevision?: number;
   readonly draftSequence?: number;
   readonly draftsByThread?: ReadonlyMap<string, ParkedDraft>;
-  readonly sendRecoveryByThread?: ReadonlyMap<string, HubSendRecovery>;
+  readonly sendRecoveryByThread?: ReadonlyMap<string, readonly HubSendRecovery[]>;
   readonly attachmentRecoveries?: ReadonlyMap<string, { readonly question: string; readonly notice: string }>;
 };
 
@@ -354,6 +355,10 @@ type HubShellState = ShellState & {
  * Use the same composite conversation ID for parked text, pending photos and
  * send recovery. The reducer sees the latest edit when navigation commits.
  */
+export function sendRecoveryId(recovery: HubSendRecovery): string {
+  return recovery.recoveryId ?? recovery.body.clientRequestId;
+}
+
 export function hubHostReducer(state: HubShellState, action: HubHostAction): HubShellState {
   if (action.type === "land-thread") {
     // #4695: automatic landing keeps what was typed on HOME during loading.
@@ -374,9 +379,16 @@ export function hubHostReducer(state: HubShellState, action: HubHostAction): Hub
   }
 
   if (action.type === "clear-recovery") {
+    const recoveries = state.sendRecoveryByThread?.get(action.threadId);
+    const remaining = recoveries?.filter((recovery) => sendRecoveryId(recovery) !== action.recoveryId);
+    if (!remaining || remaining.length === recoveries?.length) return state;
     const sendRecoveryByThread = new Map(state.sendRecoveryByThread);
-    sendRecoveryByThread.delete(action.threadId);
-    return { ...state, sendRecoveryByThread };
+    if (remaining.length) sendRecoveryByThread.set(action.threadId, remaining);
+    else sendRecoveryByThread.delete(action.threadId);
+    const next = { ...state, sendRecoveryByThread };
+    return action.threadId === state.thread.id && state.sendError === recoveries?.at(-1)?.error
+      ? shellReducer(next, { type: "set-send-error", error: remaining.at(-1)?.error ?? null })
+      : next;
   }
 
   if (action.type === "clear-attachment-recovery") {
@@ -395,7 +407,9 @@ export function hubHostReducer(state: HubShellState, action: HubHostAction): Hub
     let next = state;
     if (action.type === "recover-send") {
       const sendRecoveryByThread = new Map(state.sendRecoveryByThread);
-      sendRecoveryByThread.set(action.threadId, { ...action.recovery, draftRevision: restore ? revision : action.recovery.draftRevision });
+      const recovery = { ...action.recovery, draftRevision: restore ? revision : action.recovery.draftRevision };
+      const peers = sendRecoveryByThread.get(action.threadId)?.filter((item) => sendRecoveryId(item) !== sendRecoveryId(recovery)) ?? [];
+      sendRecoveryByThread.set(action.threadId, [...peers, recovery]);
       next = { ...state, sendRecoveryByThread };
       if (active) next = shellReducer(next, { type: "set-send-error", error: action.recovery.error });
     } else {
@@ -416,15 +430,6 @@ export function hubHostReducer(state: HubShellState, action: HubHostAction): Hub
     return { ...next, draftsByThread, draftSequence: revision };
   }
 
-  if (action.type === "set-send-error" && action.error === null) {
-    const recovery = state.sendRecoveryByThread?.get(state.thread.id);
-    if (recovery?.error) {
-      const sendRecoveryByThread = new Map(state.sendRecoveryByThread);
-      sendRecoveryByThread.set(state.thread.id, { ...recovery, error: null });
-      return { ...shellReducer(state, action), sendRecoveryByThread };
-    }
-  }
-
   const next = shellReducer(state, action);
   if (action.type === "set-draft" && next !== state) {
     const revision = (state.draftSequence ?? 0) + 1;
@@ -437,7 +442,7 @@ export function hubHostReducer(state: HubShellState, action: HubHostAction): Hub
     ? { text: state.draft, revision: state.draftRevision }
     : undefined;
   const incomingDraft = state.draftsByThread?.get(next.thread.id);
-  const incomingError = state.sendRecoveryByThread?.get(next.thread.id)?.error ?? null;
+  const incomingError = state.sendRecoveryByThread?.get(next.thread.id)?.at(-1)?.error ?? null;
   const opened = shellReducer(next, { type: "set-send-error", error: incomingError });
   if (!outgoingDraft && !incomingDraft) return { ...opened, draftRevision: undefined };
 

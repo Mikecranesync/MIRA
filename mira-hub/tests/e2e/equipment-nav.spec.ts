@@ -380,7 +380,7 @@ test("equipment in another notebook is offered and opens only on the technician'
   expect(seen.selectionPuts).toHaveLength(0);
 });
 
-for (const originKind of ["saved", "new"] as const) {
+for (const originKind of ["saved", "new", "photo-only"] as const) {
   test(`opening equipment in another notebook preserves the origin draft and photo from a ${originKind} chat (#5684)`, async ({ page, context, baseURL }) => {
     await auth(context, baseURL!);
     const destination = "99999999-9999-4999-8999-999999999999";
@@ -404,7 +404,7 @@ for (const originKind of ["saved", "new"] as const) {
     await askAbout(page, "VFD1");
     await expect(offer(page)).toContainText("Packaging line");
 
-    const draft = "Check the original drive before the next shift.";
+    const draft = originKind === "photo-only" ? "" : "Check the original drive before the next shift.";
     const photoName = "fixture-draft-photo.png";
     await composer(page).fill(draft);
     await attachDraftPhoto(page, photoName);
@@ -425,6 +425,11 @@ for (const originKind of ["saved", "new"] as const) {
     await expect(attachment).toBeVisible();
     await expect(composer(page)).toHaveValue(draft);
     expect(seen.selectionPuts).toHaveLength(0);
+    if (originKind === "photo-only") {
+      await attachment.click();
+      await page.getByRole("button", { name: "New chat", exact: true }).click();
+      await expect(originRow).toHaveCount(0);
+    }
   });
 }
 
@@ -587,7 +592,7 @@ test("a progress-stream rejection survives switching while the stream closes (#5
 
 test("switching before a photo upload finishes parks the unsent question (#5684)", async ({ page, context, baseURL }) => {
   await auth(context, baseURL!);
-  await routes(page, { enabled: true, resolve: "resolved" });
+  await routes(page, { enabled: true, resolve: "resolved", initial: { [THREAD]: { componentId: VFD, version: 2 } } });
   let uploadStarted = false;
   let chatPosts = 0;
   let finishUpload: () => void = () => {};
@@ -631,7 +636,7 @@ test("switching before a photo upload finishes parks the unsent question (#5684)
 
 test("a retry without terminal status keeps the original request recoverable (#5684)", async ({ page, context, baseURL }) => {
   await auth(context, baseURL!);
-  await routes(page, { enabled: true, resolve: "resolved" });
+  await routes(page, { enabled: true, resolve: "resolved", initial: { [THREAD]: { componentId: VFD, version: 2 } } });
   const requests: (string | null)[] = [];
   await page.route(/\/api\/equipment-notebooks\/[^/]+\/chat\/?$/, (route) => {
     requests.push(route.request().postData());
@@ -658,9 +663,183 @@ test("a retry without terminal status keeps the original request recoverable (#5
   expect(requests).toEqual([requests[0], requests[0], requests[0]]);
 });
 
+test("an initial photo send without terminal status keeps the original request recoverable (#5684)", async ({ page, context, baseURL }) => {
+  await auth(context, baseURL!);
+  await routes(page, { enabled: true, resolve: "resolved", initial: { [THREAD]: { componentId: VFD, version: 2 } } });
+  let uploads = 0;
+  await page.route(/\/api\/equipment-notebooks\/[^/]+\/look\/?$/, (route) => {
+    uploads++;
+    return route.fulfill(json({
+      fileId: "unconfirmed-photo", observation: { text: "Drive photo", capturedAt: "2026-11-20T12:00:00.000Z" },
+      attachment: { linkId: "link" }, observationPersisted: true,
+    }));
+  });
+  const requests: (string | null)[] = [];
+  await page.route(/\/api\/equipment-notebooks\/[^/]+\/chat\/?$/, (route) => {
+    requests.push(route.request().postData());
+    if (requests.length <= 2) return route.fulfill({ status: 200, contentType: "text/event-stream", body: "" });
+    return route.fulfill(json({ error: "test_stop" }, 503));
+  });
+  await page.goto("/v3/?notebook=" + NB + "&thread=" + THREAD);
+  await expect(page.getByTestId("bench-asking-about")).toBeVisible();
+  const origin = page.url();
+  const question = "Preserve a send that was never confirmed.";
+  await composer(page).fill(question);
+  await attachDraftPhoto(page, "unconfirmed-photo.png");
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  const retry = page.getByRole("button", { name: "Try again", exact: true });
+  await expect(page.getByRole("alert", { name: "Send error" })).toContainText("didn't confirm");
+  await expect(composer(page)).toHaveValue(question);
+  await page.getByRole("button", { name: "New chat", exact: true }).click();
+  await expect(page).not.toHaveURL(origin);
+  const originDraft = page.getByRole("region", { name: "Projects" }).getByRole("button", { name: /Unsent draft/ });
+  await originDraft.click();
+  await expect(page).toHaveURL(origin);
+  await retry.click();
+  await expect(page.getByRole("alert", { name: "Send error" })).toContainText("didn't confirm");
+  await retry.click();
+  await expect.poll(() => requests.length).toBe(3);
+  expect(requests).toEqual([requests[0], requests[0], requests[0]]);
+  expect(JSON.parse(requests[0]!).visualEvidence.fileId).toBe("unconfirmed-photo");
+  expect(uploads).toBe(1);
+});
+
+test("a blocked retry keeps its photo-backed request while the checklist loads (#5684)", async ({ page, context, baseURL }) => {
+  await auth(context, baseURL!);
+  await routes(page, { enabled: true, resolve: "resolved", initial: { [THREAD]: { componentId: VFD, version: 2 } } });
+  const requests: (string | null)[] = [];
+  let holdOrigin = false;
+  let resume = () => {};
+  const held = new Promise<void>((resolve) => { resume = resolve; });
+  await page.route(/\/api\/equipment-notebooks\/[^/]+\/components\/(\?.*)?$/, async (route) => {
+    if (holdOrigin && new URL(route.request().url()).searchParams.get("threadId") === THREAD) await held;
+    return route.fallback();
+  });
+  await page.route(/\/api\/equipment-notebooks\/[^/]+\/look\/?$/, (route) => route.fulfill(json({
+    fileId: "blocked-retry-photo", observation: { text: "Photo", capturedAt: "2026-11-20T12:00:00.000Z" },
+    attachment: { linkId: "link" }, observationPersisted: true,
+  })));
+  await page.route(/\/api\/equipment-notebooks\/[^/]+\/chat\/?$/, (route) => {
+    requests.push(route.request().postData());
+    return route.fulfill(json({ error: "test_stop" }, 503));
+  });
+  await page.goto("/v3/?notebook=" + NB + "&thread=" + THREAD);
+  const origin = page.url();
+  await expect(page.getByTestId("bench-asking-about")).toBeVisible();
+  await composer(page).fill("Retry my held photo question.");
+  await attachDraftPhoto(page, "blocked-retry.png");
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  const retry = page.getByRole("button", { name: "Try again", exact: true });
+  await expect(retry).toBeEnabled();
+  await page.getByRole("button", { name: "New chat", exact: true }).click();
+  await expect(page).not.toHaveURL(origin);
+  holdOrigin = true;
+  try {
+    await page.getByRole("region", { name: "Projects" }).getByRole("button", { name: /Unsent draft/ }).click();
+    await expect(page).toHaveURL(origin);
+    await expect(retry).toBeDisabled();
+    expect(requests).toHaveLength(1);
+  } finally {
+    resume();
+  }
+  await expect(retry).toBeEnabled();
+  await retry.click();
+  await expect.poll(() => requests.length).toBe(2);
+  expect(requests[1]).toBe(requests[0]);
+  expect(JSON.parse(requests[0]!).visualEvidence.fileId).toBe("blocked-retry-photo");
+});
+
+test("a target-refused photo question survives sending a newer draft (#5684)", async ({ page, context, baseURL }) => {
+  await auth(context, baseURL!);
+  const seen = await routes(page, { enabled: true, resolve: "resolved", initial: { [THREAD]: { componentId: VFD, version: 2 } } });
+  await page.route(/\/api\/equipment-notebooks\/[^/]+\/look\/?$/, (route) => route.fulfill(json({
+    fileId: "reviewed-photo", observation: { text: "Photo", capturedAt: "2026-11-20T12:00:00.000Z" },
+    attachment: { linkId: "link" }, observationPersisted: true,
+  })));
+  let resume = () => {};
+  const held = new Promise<void>((resolve) => { resume = resolve; });
+  const requests: { message: string; visualEvidence?: { fileId: string }; componentSelection?: { componentId: string; selectionVersion: number }; clientRequestId: string }[] = [];
+  await page.route(/\/api\/equipment-notebooks\/[^/]+\/chat\/?$/, async (route) => {
+    requests.push(route.request().postDataJSON());
+    if (requests.length === 1) {
+      await held;
+      seen.selections.set(THREAD, { componentId: MLC, version: 3 });
+      return route.fulfill(json({ error: "selection_changed" }, 409));
+    }
+    return route.fulfill(json({ error: "test_stop" }, 503));
+  });
+  await page.goto("/v3/?notebook=" + NB + "&thread=" + THREAD);
+  await expect(page.getByTestId("bench-asking-about")).toContainText("VFD1");
+  const original = "Check this drive photo.";
+  const nextDraft = "Another question about the line.";
+  await composer(page).fill(original);
+  await attachDraftPhoto(page, "reviewed-photo.png");
+  const send = page.getByRole("button", { name: "Send", exact: true });
+  try {
+    await send.click();
+    await expect.poll(() => requests.length).toBe(1);
+    await composer(page).fill(nextDraft);
+  } finally {
+    resume();
+  }
+  const saved = page.getByRole("group", { name: "Saved question" }).filter({ hasText: original });
+  await expect(saved).toContainText("Photo kept with this question.");
+  await expect(saved).toContainText("Current target is Q1");
+  await expect(composer(page)).toHaveValue(nextDraft);
+  await send.click();
+  await expect.poll(() => requests.length).toBe(2);
+  expect(requests[1].message).toBe(nextDraft);
+  await saved.getByRole("button", { name: "Send saved question to current target" }).click();
+  await expect.poll(() => requests.length).toBe(3);
+  expect(requests[2]).toMatchObject({
+    message: original, visualEvidence: { fileId: "reviewed-photo" },
+    componentSelection: { componentId: MLC, selectionVersion: 3 },
+  });
+  expect(requests[2].clientRequestId).not.toBe(requests[0].clientRequestId);
+});
+
+test("a confirmed retry stays answered when detail refresh fails (#5684)", async ({ page, context, baseURL }) => {
+  await auth(context, baseURL!);
+  await routes(page, { enabled: true, resolve: "resolved", initial: { [THREAD]: { componentId: VFD, version: 2 } } });
+  let posts = 0;
+  let failDetail = true;
+  let refreshes = 0;
+  await page.route(new RegExp("/api/equipment-notebooks/" + NB + "/?(\\?.*)?$"), (route) => {
+    if (posts < 2) return route.fallback();
+    refreshes++;
+    return failDetail ? route.fulfill(json({ error: "test_refresh_failed" }, 503)) : route.fulfill(json({
+      ...oracle.detailEmpty,
+      turns: [{ id: "persisted-answer", question: "Settle this question once.", answerStatus: "answered",
+        answerText: "Confirmed answer text.", evidence: [] }],
+    }));
+  });
+  await page.route(/\/api\/equipment-notebooks\/[^/]+\/chat\/?$/, (route) => {
+    posts++;
+    if (posts === 1) return route.fulfill(json({ error: "test_stop" }, 503));
+    const frames = [{ kind: "content", content: "Confirmed answer text." }, { kind: "status", status: "answered" }];
+    return route.fulfill({ status: 200, contentType: "text/event-stream",
+      body: frames.map((frame) => "data: " + JSON.stringify(frame) + "\n\n").join("") });
+  });
+  await page.goto("/v3/?notebook=" + NB + "&thread=" + THREAD);
+  await expect(page.getByTestId("bench-asking-about")).toBeVisible();
+  await composer(page).fill("Settle this question once.");
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  await page.getByRole("button", { name: "Try again", exact: true }).click();
+  const refresh = page.getByRole("button", { name: "Refresh conversation" });
+  await expect(refresh).toBeVisible();
+  await expect(page.getByText("Confirmed answer text.", { exact: true })).toBeVisible();
+  await expect(composer(page)).toHaveValue("");
+  await expect(page.getByRole("button", { name: "Try again", exact: true })).toHaveCount(0);
+  failDetail = false;
+  await refresh.click();
+  await expect.poll(() => refreshes).toBe(2);
+  await expect(refresh).toHaveCount(0);
+  expect(posts).toBe(2);
+});
+
 test("a newer attachment validation error cannot retry the previous question (#5684)", async ({ page, context, baseURL }) => {
   await auth(context, baseURL!);
-  await routes(page, { enabled: true, resolve: "resolved" });
+  await routes(page, { enabled: true, resolve: "resolved", initial: { [THREAD]: { componentId: VFD, version: 2 } } });
   let posts = 0;
   await page.route(/\/api\/equipment-notebooks\/[^/]+\/chat\/?$/, (route) => {
     posts++;
@@ -688,7 +867,7 @@ test("a newer attachment validation error cannot retry the previous question (#5
 
 test("a terminal retry refreshes only the still-visible conversation (#5684)", async ({ page, context, baseURL }) => {
   await auth(context, baseURL!);
-  await routes(page, { enabled: true, resolve: "resolved" });
+  await routes(page, { enabled: true, resolve: "resolved", initial: { [THREAD]: { componentId: VFD, version: 2 } } });
   const detailReads: string[] = [];
   page.on("request", (request) => {
     const url = new URL(request.url());
@@ -1064,6 +1243,12 @@ test("on a tablet with the panel open, a tap on Send goes through the actions co
   await page.setViewportSize({ width: 1316, height: 648 });
   await auth(context, baseURL!);
   await routes(page, { enabled: true, resolve: "resolved", fullPage: 50 });
+  let releaseChat = () => {};
+  const heldChat = new Promise<void>((resolve) => { releaseChat = resolve; });
+  await page.route(/\/api\/equipment-notebooks\/[^/]+\/chat\/?$/, async (route) => {
+    await heldChat;
+    await route.fulfill(json({ error: "test_finished" }, 503)).catch(() => {});
+  });
   await page.goto(`/v3/?notebook=${NB}&thread=${THREAD}`);
   // Send is refused until the notebook detail and the component read are in. The grounding line shows the
   // detail is in; the checklist listing its rows shows the component read is in (then shut it).
@@ -1088,12 +1273,17 @@ test("on a tablet with the panel open, a tap on Send goes through the actions co
   const onTop = await page.evaluate(([px, py]) => document.elementFromPoint(px, py)?.closest('button[aria-label="Send"]') !== null, [x, y]);
   expect(onTop, "Send is on top at its own middle").toBe(true);
   const sent = page.waitForRequest((r) => r.method() === "POST" && /\/chat\/?$/.test(new URL(r.url()).pathname), { timeout: 5_000 });
-  await page.mouse.click(x, y);
-  await sent;
-  // Control: the column's own rows still take taps.
-  const close = (await panel(page).getByRole("button", { name: "Close equipment" }).boundingBox())!;
-  await page.mouse.click(close.x + close.width / 2, close.y + close.height / 2);
-  await expect(panel(page).getByRole("button", { name: "Close equipment" })).toHaveCount(0);
+  try {
+    await page.mouse.click(x, y);
+    await sent;
+    await expect(page.getByRole("button", { name: "Stop", exact: true })).toBeVisible();
+    // Keep the response held so a recovery banner cannot move the target between measurement and tap.
+    const close = (await panel(page).getByRole("button", { name: "Close equipment" }).boundingBox())!;
+    await page.mouse.click(close.x + close.width / 2, close.y + close.height / 2);
+    await expect(panel(page).getByRole("button", { name: "Close equipment" })).toHaveCount(0);
+  } finally {
+    releaseChat();
+  }
 });
 
 /** Open a full list with an offer and a refusal above it at 800×350, so the panel itself must scroll. */

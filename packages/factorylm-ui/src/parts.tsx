@@ -42,6 +42,9 @@ export interface HostHooks {
   readonly onRetry?: (turnId: string) => void;
   /** Conversation-owned send recovery. Null suppresses generic draft retry. */
   readonly onRetrySendError?: (() => void) | null;
+  readonly retrySendErrorDisabledReason?: string;
+  readonly onDismissSendError?: () => void;
+  readonly onPendingAttachmentThreads?: (threadIds: ReadonlySet<string>) => void;
   /**
    * Convert a visitor who reached for a capability the public demo does not
    * carry (attachments, scans, saved Projects). Offered ONLY when the host
