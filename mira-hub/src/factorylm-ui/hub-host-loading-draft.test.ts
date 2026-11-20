@@ -149,4 +149,14 @@ describe("Hub draft isolation across notebook navigation (#5684)", () => {
     expect(hubHostReducer(completed, openThreadAction(SEL, AT)).draft).toBe("");
   });
 
+  it("keeps newer text whether the sending conversation is active or parked", () => {
+    const origin = hubHostReducer(initialHubShellState(), openThreadAction(SEL, AT));
+    const edited = hubHostReducer(origin, { type: "set-draft", draft: "A new question" });
+    const completion = { type: "sent-draft", threadId: shellThreadId(SEL), question: "The sent question" } as const;
+    expect(hubHostReducer(edited, completion).draft).toBe("A new question");
+
+    const switched = hubHostReducer(edited, openThreadAction(destination, AT));
+    const completed = hubHostReducer(switched, completion);
+    expect(hubHostReducer(completed, openThreadAction(SEL, AT)).draft).toBe("A new question");
+  });
 });

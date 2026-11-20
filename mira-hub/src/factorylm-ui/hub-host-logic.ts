@@ -319,6 +319,15 @@ export type HubHostAction =
   | { readonly type: "land-thread"; readonly selection: HubSelection; readonly at: string }
   | { readonly type: "sent-draft"; readonly threadId: string; readonly question: string };
 
+/**
+ * #4311 — a failed send hands the question back to the composer; a successful
+ * host retry must take it away again, but never clobber something new the
+ * technician typed meanwhile. Returns the draft to set, or null to leave it.
+ */
+export function draftAfterSendSucceeded(draft: string, question: string): string | null {
+  return draft !== "" && draft.trim() === question.trim() ? "" : null;
+}
+
 type HubShellState = ShellState & { readonly draftsByThread?: ReadonlyMap<string, string> };
 
 /**
@@ -583,15 +592,6 @@ export function sendFailureMessage(err: unknown): string {
   const raw = (err instanceof Error ? err.message : String(err ?? "")).trim();
   if (NETWORK_FAILURE_RE.test(raw)) return NETWORK_FAILURE_MESSAGE;
   return raw || "MIRA couldn't answer that just now.";
-}
-
-/**
- * #4311 — a failed send hands the question back to the composer; a successful
- * host retry must take it away again, but never clobber something new the
- * technician typed meanwhile. Returns the draft to set, or null to leave it.
- */
-export function draftAfterSendSucceeded(draft: string, question: string): string | null {
-  return draft !== "" && draft.trim() === question.trim() ? "" : null;
 }
 
 /** The initial shell fixture for a hydrated notebook. */
