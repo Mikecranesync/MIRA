@@ -125,7 +125,7 @@ describe("the held photo is shown while the question waits for review (#5562)", 
 describe("the host is wired to the hold (source shape, like hub-host-restore-retry)", () => {
   const host = readFileSync(new URL("./hub-host.tsx", import.meta.url), "utf8");
   it("Retry is offered only when the target did not move", () => {
-    expect(host).toContain('onRetrySendError: failedBody && retryCheck?.kind === "retry" ? onRetry : null');
+    expect(host).toContain('onRetrySendError: recoveryIsVisible && retryCheck?.kind === "retry" ? onRetry : null');
     expect(host).toContain('failedBody?.error && retryCheck?.kind === "retry" ? { onRetry }');
   });
   it("a target refusal keeps the refused scope and the review message is shown", () => {
@@ -137,7 +137,7 @@ describe("the host is wired to the hold (source shape, like hub-host-restore-ret
   });
   it("the held-photo note sits beside the composer, read from the live draft (#5562)", () => {
     expect(host).toMatch(/const heldNote = heldEvidenceNote\(failedBody, retryCheck, view\.draft\);/);
-    expect(host).toMatch(/heldNote \? \{ composerAccessory: <p className="fl-qtarget__browsing" role="status" aria-label="Kept with this question">\{heldNote\}<\/p> \}/);
+    expect(host).toContain('aria-label="Kept with this question">{heldNote}');
   });
   it("Send routes the held question through heldQuestionForSend", () => {
     expect(host).toMatch(/const held = heldQuestionForSend\(failedBody, retryCheck, q, files\.length\);/);

@@ -329,7 +329,8 @@ export type HubHostAction =
   | { readonly type: "sent-draft"; readonly threadId: string; readonly question: string; readonly revision: number }
   | { readonly type: "recover-send"; readonly threadId: string; readonly recovery: HubSendRecovery; readonly restoreDraft: boolean }
   | { readonly type: "recover-attachment-draft"; readonly threadId: string; readonly text: string; readonly notice: string }
-  | { readonly type: "clear-recovery"; readonly threadId: string };
+  | { readonly type: "clear-recovery"; readonly threadId: string }
+  | { readonly type: "clear-attachment-recovery"; readonly threadId: string };
 
 /**
  * #4311 — successful retry clears the question it retried. The Hub also checks
@@ -346,7 +347,7 @@ type HubShellState = ShellState & {
   readonly draftSequence?: number;
   readonly draftsByThread?: ReadonlyMap<string, ParkedDraft>;
   readonly sendRecoveryByThread?: ReadonlyMap<string, HubSendRecovery>;
-  readonly attachmentNotices?: ReadonlyMap<string, string>;
+  readonly attachmentRecoveries?: ReadonlyMap<string, { readonly question: string; readonly notice: string }>;
 };
 
 /**
@@ -374,10 +375,14 @@ export function hubHostReducer(state: HubShellState, action: HubHostAction): Hub
 
   if (action.type === "clear-recovery") {
     const sendRecoveryByThread = new Map(state.sendRecoveryByThread);
-    const attachmentNotices = new Map(state.attachmentNotices);
     sendRecoveryByThread.delete(action.threadId);
-    attachmentNotices.delete(action.threadId);
-    return { ...state, sendRecoveryByThread, attachmentNotices };
+    return { ...state, sendRecoveryByThread };
+  }
+
+  if (action.type === "clear-attachment-recovery") {
+    const attachmentRecoveries = new Map(state.attachmentRecoveries);
+    attachmentRecoveries.delete(action.threadId);
+    return { ...state, attachmentRecoveries };
   }
 
   if (action.type === "recover-send" || action.type === "recover-attachment-draft") {
@@ -386,7 +391,6 @@ export function hubHostReducer(state: HubShellState, action: HubHostAction): Hub
     const restore = (action.type === "recover-attachment-draft" || action.restoreDraft)
       && !(active ? state.draft : saved);
     const revision = (state.draftSequence ?? 0) + 1;
-    if (action.type === "recover-attachment-draft" && !restore) return state;
 
     let next = state;
     if (action.type === "recover-send") {
@@ -395,9 +399,9 @@ export function hubHostReducer(state: HubShellState, action: HubHostAction): Hub
       next = { ...state, sendRecoveryByThread };
       if (active) next = shellReducer(next, { type: "set-send-error", error: action.recovery.error });
     } else {
-      const attachmentNotices = new Map(state.attachmentNotices);
-      attachmentNotices.set(action.threadId, action.notice);
-      next = { ...state, attachmentNotices };
+      const attachmentRecoveries = new Map(state.attachmentRecoveries);
+      attachmentRecoveries.set(action.threadId, { question: action.text, notice: action.notice });
+      next = { ...state, attachmentRecoveries };
       if (active) next = shellReducer(next, { type: "set-send-error", error: null });
     }
     if (!restore) return next;

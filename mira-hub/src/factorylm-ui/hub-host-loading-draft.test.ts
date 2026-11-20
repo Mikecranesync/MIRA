@@ -213,10 +213,10 @@ describe("Hub draft isolation across notebook navigation (#5684)", () => {
       type: "recover-attachment-draft", threadId, text: "Origin question", notice: "Attach the photo again.",
     });
     expect(interrupted.draft).toBe("Destination draft");
-    expect(interrupted.attachmentNotices?.has(switched.thread.id)).toBe(false);
+    expect(interrupted.attachmentRecoveries?.has(switched.thread.id)).toBe(false);
     const reopened = hubHostReducer(interrupted, openThreadAction(SEL, AT));
     expect(reopened.draft).toBe("Origin question");
-    expect(reopened.attachmentNotices?.get(threadId)).toBe("Attach the photo again.");
+    expect(reopened.attachmentRecoveries?.get(threadId)).toEqual({ question: "Origin question", notice: "Attach the photo again." });
   });
 
 });
