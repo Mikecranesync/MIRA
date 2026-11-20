@@ -27,6 +27,8 @@ const nbMock = vi.hoisted(() => ({
   recordTurn: vi.fn(async () => undefined),
   listSources: vi.fn(async () => []),
   originFileIdsByDoc: vi.fn(async () => new Map<string, string>()),
+  claimNotebookTurnRequest: vi.fn(),
+  normalizeNotebookThreadId: (value: unknown) => typeof value === "string" ? value : null,
 }));
 vi.mock("@/lib/equipment-notebooks", () => nbMock);
 vi.mock("@/lib/manual-rag", () => ({
@@ -44,6 +46,8 @@ vi.mock("@/lib/tenant-context", () => ({
   withTenantContext: vi.fn(async (_t: string, fn: (c: unknown) => unknown) => fn(client)),
 }));
 vi.mock("@/lib/db", () => ({ default: client }));
+const retryMock = vi.hoisted(() => ({ readTurnRetry: vi.fn() }));
+vi.mock("@/capabilities/turn-recovery/store", () => retryMock);
 
 const withSheetReceiptMock = vi.hoisted(() => vi.fn(async (res: Response, _ctx?: unknown) => res));
 vi.mock("@/capabilities/living-sheet/receipt", () => ({ withSheetReceipt: withSheetReceiptMock }));
@@ -79,6 +83,20 @@ afterEach(() => {
 });
 
 describe("sheet-receipt gating in POST", () => {
+  it("uses the original request job, text and turn id for a recovery envelope", async () => {
+    process.env.NOTEBOOK_LIVING_SHEET = "1";
+    const id = "44444444-4444-4444-8444-444444444444";
+    retryMock.readTurnRetry.mockResolvedValue({ body: { message: "Original job question", livingSheetJobId: JOB_ID,
+      clientRequestId: id, threadId: "thread", sourceDocIds: [], mode: "general", expectedEquipmentEntityId: null },
+      target: { kind: "known", equipmentEntityId: null }, component: null });
+    nbMock.claimNotebookTurnRequest.mockResolvedValue({ status: "replay", turn: { id, question: "Original job question",
+      answerStatus: "answered", answerText: "Saved answer", enabledSourceDocIds: [], evidence: [], model: null, basis: null } });
+    const res = await POST(req({ retryRequestId: id, threadId: "thread" }), params);
+    await res.text();
+    expect(withSheetReceiptMock).toHaveBeenCalledExactlyOnceWith(expect.any(Response), expect.objectContaining({
+      tenantId: TENANT, notebookId: NB, jobId: JOB_ID, techText: "Original job question", turnId: id,
+    }));
+  });
   it("flag off (default) -> withSheetReceipt is never called, response unaffected", async () => {
     const res = await POST(req({ message: "why would a contactor chatter", livingSheetJobId: JOB_ID }), params);
     await res.text();

@@ -1487,8 +1487,8 @@ export async function claimNotebookTurnRequest(
           AND client_request_id=$4::uuid FOR UPDATE`,
       [tenantId, notebookId, owner, request.clientRequestId],
     );
-    const preserveFailedTurn = previous.rows[0]?.client_request_state === "complete"
-      && previous.rows[0]?.answer_status === "error";
+    const preserveFailedTurn = previous.rows[0]?.client_request_state === "pending"
+      || (previous.rows[0]?.client_request_state === "complete" && previous.rows[0]?.answer_status === "error");
     const res = await c.query(
       `WITH candidate AS (
          SELECT gen_random_uuid() AS token

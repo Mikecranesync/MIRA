@@ -133,4 +133,33 @@ describe("request recovery HTTP/PostgreSQL", () => {
     expect(await readTurnRetry(tenant, notebook, "another-owner", thread, id)).toMatchObject({ error: "retry_request_not_found", status: 404 });
     expect(await readTurnRetry(tenant, notebook, owner, "other-thread", id)).toMatchObject({ error: "retry_request_not_found", status: 404 });
   });
+
+  it("bounds status projection and refuses oversized original payload recovery without dropping history", async () => {
+    const id = uuid();
+    await db.pool.query(`INSERT INTO equipment_notebook_turns(notebook_id,tenant_id,owner_user_id,thread_id,question,answer_status,
+      answer_text,evidence,client_request_id,client_request_state,client_request_payload,equipment_entity_id)
+      VALUES($1,$2,$3,$4,'Large original','error',NULL,'[]'::jsonb,$5,'complete',$6::jsonb,'machine-A')`,
+      [notebook, tenant, owner, thread, id, JSON.stringify({ message: "Large original", clientRequestId: id, threadId: thread,
+        history: ["sensitive".repeat(150000)], visualEvidence: { fileId: "photo-original", arbitrary: "hidden".repeat(1000) } })]);
+    const response = await read("owner", `?threadId=${thread}`, id);
+    const text = await response.text();
+    expect(response.status).toBe(200);
+    expect(text.length).toBeLessThan(3000);
+    expect(text).not.toMatch(/sensitive|hidden/);
+    expect(JSON.parse(text).visualEvidence).toEqual({ fileId: "photo-original" });
+    expect(await readTurnRetry(tenant, notebook, owner, thread, id)).toMatchObject({ error: "retry_request_unavailable", status: 409 });
+    expect((await listTurns(tenant, notebook, 50, { viewerUserId: owner, threadId: thread })).find(row => row.clientRequestId === id)?.question).toBe("Large original");
+  });
+
+  it("keeps an accepted stale pending question when its recovered execution is later refused", async () => {
+    const id = uuid(), body = { clientRequestId: id, message: "Stale original", threadId: thread, expectedEquipmentEntityId: "machine-A", sourceDocIds: [] };
+    await claimNotebookTurnRequest(tenant, notebook, { ownerUserId: owner, clientRequestId: id, question: body.message, threadId: thread, requestPayload: body });
+    await db.pool.query("UPDATE equipment_notebook_turns SET client_request_started_at=now()-interval '11 minutes' WHERE client_request_id=$1", [id]);
+    const recovered = await claimNotebookTurnRequest(tenant, notebook, { ownerUserId: owner, clientRequestId: id, question: body.message, threadId: thread, requestPayload: body });
+    if (recovered.status !== "claimed") throw new Error("stale lease not recovered");
+    expect(recovered.preserveFailedTurn).toBe(true);
+    await abandonNotebookTurnRequest(tenant, notebook, owner, id, recovered.claimToken, recovered.preserveFailedTurn);
+    expect((await listTurns(tenant, notebook, 50, { viewerUserId: owner, threadId: thread })).find(row => row.clientRequestId === id)?.question).toBe(body.message);
+    expect(await readTurnRetry(tenant, notebook, owner, thread, id)).toMatchObject({ body });
+  });
 });

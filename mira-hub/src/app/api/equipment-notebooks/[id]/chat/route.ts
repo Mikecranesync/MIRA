@@ -6146,7 +6146,17 @@ export async function POST(req: NextRequest, routeCtx: { params: Promise<{ id: s
   let sheetReceiptCtx: SheetReceiptContext | null = null;
   if (livingSheetEnabled() && notebookId) {
     try {
-      const b = await req.clone().json();
+      let b = await req.clone().json();
+      // Recovery carries a pointer on the wire. The deterministic receipt
+      // must use the same original job/question/key as the canonical handler.
+      if (typeof b?.retryRequestId === "string" && isUuid(b.retryRequestId)) {
+        const actor = await sessionOr401();
+        const thread = b.threadId == null ? null : normalizeNotebookThreadId(b.threadId);
+        if (!(actor instanceof NextResponse) && (b.threadId == null || thread)) {
+          const recovered = await readTurnRetry(actor.tenantId, notebookId, actor.userId, thread, b.retryRequestId, req.signal);
+          b = "body" in recovered ? recovered.body : {};
+        } else b = {};
+      }
       const text = typeof b?.message === "string" ? b.message.trim() : "";
       const jobId = b?.livingSheetJobId;
       if (text && typeof jobId === "string" && isUuid(jobId)) {

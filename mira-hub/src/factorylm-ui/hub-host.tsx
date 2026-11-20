@@ -543,8 +543,8 @@ export function HubShellHost() {
     const recoveredTurns = !busy && !live && recovery && recovery.pointer.notebookId === selection.notebookId && recovery.pointer.threadId === selection.threadId && !detail.turns.some(row => (row as PersistedTurn & { clientRequestId?: string }).clientRequestId === recovery.pointer.requestId)
       ? threadFromPersisted([{ id: recovery.value?.turnId ?? recovery.pointer.requestId, question: recovery.pointer.question, answerStatus: "error", answerText: null, evidence: [] }], meta).turns.map(turn => turn.role === "assistant" ? {
           ...turn,
-          lifecycle: recovery.value?.canRetry || recovery.unavailable ? "failed" as const : "running" as const,
-          parts: recovery.value?.canRetry ? turn.parts : [{ type: "text" as const, text: recovery.unavailable ? "Could not confirm the saved request. Your question is kept here; check the connection before sending again." : "Checking the saved request…" }],
+          lifecycle: recovery.value?.state !== "pending" && recovery.value !== null || recovery.unavailable ? "failed" as const : "running" as const,
+          parts: recovery.value?.canRetry ? turn.parts : [{ type: "text" as const, text: recovery.unavailable ? "Could not confirm the saved request. Your question is kept here; check the connection before sending again." : recovery.value?.state === "interrupted" ? "The saved request was interrupted. Review its original target and attachments before sending again." : "Checking the saved request…" }],
         } : turn)
       : [];
     const projected = withPersistedRetry([...turns, ...recoveredTurns], recoveryRetry?.answerId ?? null);
@@ -1345,6 +1345,9 @@ export function HubShellHost() {
                   for (const key of Object.keys(window.localStorage)) if (key.startsWith(prefix)) window.localStorage.removeItem(key);
                 }
                 abortRef.current?.abort();
+                uploadAbortRef.current?.abort();
+                detailGate.invalidate();
+                detailAbortRef.current?.abort();
                 setSignedOut(true);
                 signOutToLogin();
               })();

@@ -42,11 +42,14 @@ export function recoveryView(row: RecoveryRow) {
   const scope = record(body.componentSelection);
   const hasScope = Object.hasOwn(scope, "componentId") && (scope.componentId === null || typeof scope.componentId === "string")
     && (scope.selectionVersion === null || (Number.isSafeInteger(scope.selectionVersion) && Number(scope.selectionVersion) >= 0));
+  const selectedComponent = typeof scope.componentId === "string" ? scope.componentId : row.component_id;
+  const componentRevisionKnown = !selectedComponent || (row.component_id === selectedComponent
+    && Number.isSafeInteger(Number(row.component_revision)) && Number(row.component_revision) >= 1);
   return {
     requestId: row.client_request_id, turnId: row.id, threadId: row.thread_id ?? "legacy",
     question: row.question, state, answerStatus: state === "complete" ? row.answer_status : null,
     canRetry: (state === "interrupted" || (state === "complete" && row.answer_status === "error"))
-      && !row.answer_text && target.kind === "known"
+      && !row.answer_text && target.kind === "known" && componentRevisionKnown
       && !(row.evidence ?? []).some(e => ["provider_failure", "safety_stop"].includes(String(record(e).kind))),
     target, currentEquipmentEntityId: row.current_equipment_entity_id,
     component: row.component_id && row.component_revision != null

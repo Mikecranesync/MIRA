@@ -52,4 +52,11 @@ describe("equipment-bound recovery", () => {
     expect(view.component).toEqual({ componentId: "component-A", revision: 2 });
     expect(view.componentSelection).toEqual({ threadId: "thread-1", componentId: "component-A", selectionVersion: 4 });
   });
+
+  it("holds a component retry whose original revision was never established", () => {
+    const failed = { ...row, stale: true, client_request_payload: { ...row.client_request_payload,
+      componentSelection: { componentId: "component-A", selectionVersion: 4 } } };
+    expect(recoveryView(failed).canRetry).toBe(false);
+    expect(recoveryView({ ...failed, component_id: "component-A", component_revision: 2 }).canRetry).toBe(true);
+  });
 });
