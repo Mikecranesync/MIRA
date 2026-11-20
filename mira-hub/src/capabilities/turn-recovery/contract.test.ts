@@ -45,4 +45,11 @@ describe("equipment-bound recovery", () => {
     expect(recoveryView({ ...row, client_request_payload: {}, equipment_entity_id: "machine-old" }).target)
       .toEqual({ kind: "known", equipmentEntityId: "machine-old" });
   });
+
+  it("carries the recorded component revision and original selection precondition, never a current replacement", () => {
+    const view = recoveryView({ ...row, component_id: "component-A", component_revision: "2",
+      client_request_payload: { ...row.client_request_payload, componentSelection: { componentId: "component-A", selectionVersion: 4 } } });
+    expect(view.component).toEqual({ componentId: "component-A", revision: 2 });
+    expect(view.componentSelection).toEqual({ threadId: "thread-1", componentId: "component-A", selectionVersion: 4 });
+  });
 });

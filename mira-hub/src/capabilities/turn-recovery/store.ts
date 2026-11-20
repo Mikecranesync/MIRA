@@ -14,6 +14,8 @@ export async function readTurnRecovery(
       `SELECT t.id::text, t.client_request_id::text, t.thread_id, t.question,
               t.client_request_state, t.answer_status, t.equipment_entity_id,
               t.client_request_payload, t.created_at,
+              to_jsonb(t)->>'component_id' AS component_id,
+              to_jsonb(t)->>'component_revision' AS component_revision,
               n.equipment_entity_id AS current_equipment_entity_id,
               coalesce(t.client_request_started_at < now() - interval '10 minutes', true) AS stale
          FROM equipment_notebook_turns t
