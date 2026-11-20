@@ -102,6 +102,9 @@ const ID_SEP = "[-._/\\u2010-\\u2015]";
 function identifierMatcher(raw: string): ((text: string) => boolean) | null {
   const chars: string[] = [];
   const breakBefore: boolean[] = [];
+  // Which breaks the identity itself writes with a separator ("GS11N-20P2-230":
+  // N|2 and 2|2), in the order their capture groups appear below.
+  const rawSepGaps: boolean[] = [];
   let sep = false;
   for (const ch of (raw ?? "").toUpperCase()) {
     if (!/[A-Z0-9]/.test(ch)) {
@@ -110,12 +113,14 @@ function identifierMatcher(raw: string): ((text: string) => boolean) | null {
     }
     const prev = chars[chars.length - 1];
     const change = prev !== undefined && /[0-9]/.test(prev) !== /[0-9]/.test(ch);
-    breakBefore.push(chars.length > 0 && (sep || change));
+    const brk = chars.length > 0 && (sep || change);
+    breakBefore.push(brk);
+    if (brk) rawSepGaps.push(sep);
     chars.push(ch);
     sep = false;
   }
   if (chars.length === 0) return null;
-  const body = chars.map((c, i) => (breakBefore[i] ? "[ \\t\\u00a0._/\\u2010-\\u2015-]{0,2}" : "") + c).join("");
+  const body = chars.map((c, i) => (breakBefore[i] ? "([ \\t\\u00a0._/\\u2010-\\u2015-]{0,2})" : "") + c).join("");
   const re = new RegExp(
     `(?<![A-Za-z0-9])(?<![A-Za-z0-9]${ID_SEP})${body}(?![A-Za-z0-9])(?!${ID_SEP}[A-Za-z0-9])`,
     "gi",
@@ -128,7 +133,21 @@ function identifierMatcher(raw: string): ((text: string) => boolean) | null {
       // identifier followed by the next table cell: "GS11N-20P2 230V",
       // "GS11N-20P2 IP20" and "GS11N-20P2 N/A" never complete a longer
       // identifier, for the model or the catalog number (Codex #5706 r2 F4).
-      if (!/[ \t\u00a0]/.test(m[0]) || !/[-._/\u2010-\u2015]/.test(m[0])) return true;
+      if (/[ \t\u00a0]/.test(m[0]) && /[-._/\u2010-\u2015]/.test(m[0])) continue;
+      // Every break the identity writes with a separator is spelled the same
+      // way in the match: all omitted, all punctuation, or all whitespace. A
+      // spelling that omits one and spaces another is the identifier's prefix
+      // followed by the next table cell — "GS11N20P2 230" never completes
+      // GS11N-20P2-230 — while "25B D010 N104" and "PowerFlex 40" still verify
+      // (Codex #5706 r3 F4).
+      const kinds = new Set(
+        rawSepGaps.flatMap((isSep, g) => {
+          if (!isSep) return [];
+          const gap = m[g + 1] ?? "";
+          return [gap === "" ? "none" : /[ \t\u00a0]/.test(gap) ? "space" : "punct"];
+        }),
+      );
+      if (kinds.size <= 1) return true;
     }
     return false;
   };

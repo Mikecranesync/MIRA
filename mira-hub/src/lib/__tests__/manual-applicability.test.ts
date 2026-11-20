@@ -259,6 +259,33 @@ describe("assessApplicability — suffixes, table cells and PDF dashes (Codex #5
     expect(oem(model, content).state).toBe("verified");
   });
 
+  // Codex #5706 r3 F4: a compact prefix followed by a spaced cell mixes two
+  // spellings of the identity's own separators, for the model and the catalog
+  // number alike.
+  it.each([
+    ["GS11N-20P2-230", "GS11N20P2 230 V 1.7 A"],
+    ["GS11N-20P2-230V", "GS11N20P2 230V 1.7 A"],
+    ["GS11N-20P2-IP20", "GS11N20P2 IP20 enclosure"],
+  ])("r3 F4: %s does not verify against %j, as a model or as a catalog number", (id, content) => {
+    for (const identity of [
+      { manufacturer: "AutomationDirect", model: id },
+      { manufacturer: "AutomationDirect", model: "", catalogNumber: id },
+    ]) {
+      const v = assessApplicability({ identity, chunks: [{ content, page: 26 }], oemHost: true });
+      expect(v.state).toBe("candidate");
+      expect(v.identifierPages ?? []).toEqual([]);
+    }
+  });
+
+  it.each([
+    ["GS11N-20P2-230", "Model GS11N20P2230 rated"], // every separator omitted
+    ["GS11N-20P2-230", "Model GS11N 20P2 230 rated"], // every separator spaced
+    ["25B-D010N104", "Catalog 25B D010 N104 drive"],
+    ["PowerFlex 40", "PowerFlex 40 Adjustable Frequency AC Drive"],
+  ])("r3 F4 control: %s verifies against the consistent spelling %j", (id, content) => {
+    expect(assessApplicability({ identity: { manufacturer: "AutomationDirect", model: "", catalogNumber: id }, chunks: [{ content, page: 26 }], oemHost: true }).state).toBe("verified");
+  });
+
   it("a slash-joined model list is not read as either model (fails safe to candidate review)", () => {
     expect(oem("GS11N-20P2", "Models GS11N-20P2/GS11N-20P5 rated 0.25 HP").state).toBe("candidate");
   });
