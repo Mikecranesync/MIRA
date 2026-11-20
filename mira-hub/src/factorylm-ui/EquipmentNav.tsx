@@ -82,7 +82,7 @@ export function EquipmentNav({
     onPickRef.current(next, pressedIn.current);
   }, { selection: () => null });
 
-  const { panelRef, regionRef, room, panelRoom } = useRoomBelow(open);
+  const { panelRef, regionRef, room, panelRoom, panelScrolls } = useRoomBelow(open);
 
   if (!available) return null;
   return (
@@ -122,7 +122,14 @@ export function EquipmentNav({
         <div
           ref={regionRef}
           data-testid="equipment-scroll"
-          style={{ ...SCROLL_REGION, maxHeight: room === null ? SCROLL_REGION.maxHeight : `min(50vh, 24rem, ${room}px)` }}
+          style={{
+            ...SCROLL_REGION,
+            maxHeight: room === null ? SCROLL_REGION.maxHeight : `min(50vh, 24rem, ${room}px)`,
+            // When the panel scrolls too, a swipe that reaches the end of the results carries on into
+            // the panel, so a touch user can always get back up to Close equipment (#5659); the panel
+            // itself still stops at the page.
+            overscrollBehavior: panelScrolls ? "auto" : "contain",
+          }}
         >
           <PagedEquipmentNavigator
             source={source}
@@ -153,10 +160,11 @@ const CHECKLIST_RESERVE = 68;
 const MIN_ROW = 44;
 
 /** Height caps for the open panel and its results, from where each starts to the bottom of what is
- *  actually visible, keeping CHECKLIST_RESERVE free below. The results' start is taken as if the
- *  panel were not scrolled, so scrolling the panel does not resize them. Re-measured after every
- *  render (a notice or an offer appearing re-renders this component), when the panel or the results
- *  change size (a wrapped line — r1 F3), on a window resize, and on a visual-viewport resize or pan,
+ *  actually visible — or to the top of the chat composer when that is higher, so the checklist
+ *  trigger below never lands on Send (#5658) — keeping CHECKLIST_RESERVE free below. The results'
+ *  start is taken as if the panel were not scrolled, so scrolling the panel does not resize them.
+ *  Re-measured after every render (a notice or an offer appearing re-renders this component), when
+ *  the panel, the results or the composer change size (a wrapped line — r1 F3), on a window resize, and on a visual-viewport resize or pan,
  *  which is how a soft keyboard shows up in browsers that keep the layout viewport's height (r1 F2).
  *  Null until measured. */
 function useRoomBelow(open: boolean) {
@@ -164,6 +172,7 @@ function useRoomBelow(open: boolean) {
   const regionRef = useRef<HTMLDivElement>(null);
   const [room, setRoom] = useState<number | null>(null);
   const [panelRoom, setPanelRoom] = useState<number | null>(null);
+  const [panelScrolls, setPanelScrolls] = useState(false);
   const measureRef = useRef<() => void>(() => undefined);
 
   useLayoutEffect(() => {
@@ -171,21 +180,28 @@ function useRoomBelow(open: boolean) {
     const region = regionRef.current;
     if (!open || !panel || !region) {
       measureRef.current = () => undefined;
+      setPanelScrolls(false);
       return;
     }
     const vv = window.visualViewport;
+    const composerNow = () => document.querySelector<HTMLElement>(".fl-composer");
     const measure = () => {
-      const bottom = vv ? vv.offsetTop + vv.height : window.innerHeight;
+      const visible = vv ? vv.offsetTop + vv.height : window.innerHeight;
+      const composerTop = composerNow()?.getBoundingClientRect().top ?? Infinity;
+      const bottom = Math.min(visible, composerTop);
       const panelTop = panel.getBoundingClientRect().top;
       const regionTop = region.getBoundingClientRect().top + panel.scrollTop;
       setPanelRoom(Math.max(MIN_ROW, Math.floor(bottom - panelTop - CHECKLIST_RESERVE)));
       setRoom(Math.max(MIN_ROW, Math.floor(bottom - regionTop - CHECKLIST_RESERVE)));
+      setPanelScrolls(panel.scrollHeight > panel.clientHeight + 1);
     };
     measureRef.current = measure;
     measure();
     const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
     observer?.observe(panel);
     observer?.observe(region);
+    const composer = composerNow();
+    if (composer) observer?.observe(composer); // a draft growing to more lines
     window.addEventListener("resize", measure);
     vv?.addEventListener("resize", measure);
     vv?.addEventListener("scroll", measure);
@@ -204,7 +220,7 @@ function useRoomBelow(open: boolean) {
     measureRef.current();
   });
 
-  return { panelRef, regionRef, room, panelRoom };
+  return { panelRef, regionRef, room, panelRoom, panelScrolls };
 }
 
 function offerText({ target: t, here }: EquipmentOffer): string {
