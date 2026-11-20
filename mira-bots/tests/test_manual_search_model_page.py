@@ -201,3 +201,28 @@ def test_the_byte_cap_admits_the_33_mb_official_manual_and_matches_the_hub_cap()
     m = re.search(r"MAX_MANUAL_BYTES\s*=\s*(\d+)\s*\*\s*1024\s*\*\s*1024", hub)
     assert m, "the Hub download cap moved; keep the judge cap equal to it"
     assert judge.MAX_BYTES == int(m.group(1)) * 1024 * 1024
+
+
+def test_every_scanned_page_is_released_before_the_next_is_parsed(monkeypatch):
+    """pdfplumber keeps parsed pages until the document closes: an 80-page scan of
+    the GS10 manual peaked at 830 MB that way, 148 MB when each page is released
+    as soon as it is read (mira-ask runs in 1536m)."""
+    import pdfplumber.page
+
+    closed: list[int] = []
+    released_before: list[int] = []
+    real_close = pdfplumber.page.Page.close
+    real_extract = pdfplumber.page.Page.extract_text
+
+    def close(self):
+        closed.append(self.page_number)
+        return real_close(self)
+
+    def extract(self, *a, **k):
+        released_before.append(len(closed))
+        return real_extract(self, *a, **k)
+
+    monkeypatch.setattr(pdfplumber.page.Page, "close", close)
+    monkeypatch.setattr(pdfplumber.page.Page, "extract_text", extract)
+    assert judge._model_page_sync(MANUAL, "GS11N-20P3", max_pages=80, max_chars=2500) == ""
+    assert released_before == [0, 1, 2, 3, 4]

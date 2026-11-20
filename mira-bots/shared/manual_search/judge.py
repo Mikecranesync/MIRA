@@ -254,6 +254,11 @@ def _model_page_sync(data: bytes, model: str, max_pages: int, max_chars: int) ->
                 t = page.extract_text() or ""
             except Exception:  # noqa: BLE001 — one bad page must not kill the scan
                 continue
+            finally:
+                # pdfplumber keeps every parsed page: 80 pages of the GS10 manual
+                # peaked at 830 MB without this, 148 MB with it (mira-ask runs in
+                # 1536m with up to MAX_CANDIDATES scans at once).
+                page.close()
             hit = rx.search(t)
             if hit:
                 lo = max(0, hit.start() - max_chars // 2)
