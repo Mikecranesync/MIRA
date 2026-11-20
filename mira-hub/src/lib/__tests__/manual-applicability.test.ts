@@ -137,3 +137,37 @@ describe("assessApplicability — evidence bookkeeping", () => {
     expect(v.evidencePages).toEqual([2, 9]);
   });
 });
+
+describe("assessApplicability — the identifier is a whole token (2026-11-20, GS10 regression)", () => {
+  // Verbatim rows of the official GS10 user manual (gs10usermanual.pdf).
+  const P26 = "Model Name: GS11N-2xPx GS11N-20P2 GS11N-20P5 GS11N-21P0 GS11N-22P0 GS11N-23P0 AutomationDirect";
+  const P383 = "GS11N-10P5 9.4 N/A\nEMF11AM21A\nGS11N-20P2 5.1 N/A AutomationDirect";
+  const gs = (model: string, content: string, catalogNumber?: string) =>
+    assessApplicability({
+      identity: { manufacturer: "AutomationDirect", model, ...(catalogNumber ? { catalogNumber } : {}) },
+      chunks: [{ content, page: 26 }],
+      oemHost: true,
+    });
+
+  it("verifies the exact plate model from the model table, with or without its hyphen", () => {
+    expect(gs("GS11N-20P2", P26)).toMatchObject({ state: "verified", method: "model_exact_with_manufacturer" });
+    expect(gs("GS11N20P2", P26).state).toBe("verified");
+    expect(gs("gs11n-20p2", P26).state).toBe("verified");
+  });
+
+  it.each([
+    ["GS11N-20P25", P383], // a table neighbour ("5.1") is not part of the model
+    ["GS11N-20", P26], // a stem of the real model is not the exact model
+    ["GS11N-2", P26],
+    ["GS11N-20P3", P26], // a look-alike
+  ])("does not verify %s as the exact model", (model, content) => {
+    const v = gs(model, content);
+    expect(v.state).toBe("candidate");
+    expect(v.method).not.toMatch(/exact/);
+  });
+
+  it("a catalog number never takes a neighbouring table cell either", () => {
+    expect(gs("GS10", P383, "GS11N-20P25").method).not.toBe("catalog_number_exact");
+    expect(gs("GS10", P383, "GS11N-20P2").method).toBe("catalog_number_exact");
+  });
+});

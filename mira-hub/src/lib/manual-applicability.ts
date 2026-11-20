@@ -75,6 +75,36 @@ function isFamilyPrefix(model: string, token: string): boolean {
   return shared >= model.length - 1 && Math.abs(model.length - token.length) <= 2;
 }
 
+/**
+ * The identifier as a whole token of the text, case-insensitive (2026-11-20).
+ * Separator drift is tolerated only where the identifier itself has a
+ * separator or changes between letters and digits ("25B-D010N104" matches
+ * "25B D010 N104"; "PowerFlex525" matches "PowerFlex 525"), and both ends
+ * must be token boundaries. Plain punctuation-stripped containment let a
+ * table row "GS11N-20P2 5.1" (GS10 manual p.383) verify a misread
+ * "GS11N-20P25", and let the stems "GS11N-20" / "GS11N-2" verify as the exact
+ * model.
+ */
+function identifierPattern(raw: string): RegExp | null {
+  const chars: string[] = [];
+  const breakBefore: boolean[] = [];
+  let sep = false;
+  for (const ch of (raw ?? "").toUpperCase()) {
+    if (!/[A-Z0-9]/.test(ch)) {
+      sep = chars.length > 0;
+      continue;
+    }
+    const prev = chars[chars.length - 1];
+    const change = prev !== undefined && /[0-9]/.test(prev) !== /[0-9]/.test(ch);
+    breakBefore.push(chars.length > 0 && (sep || change));
+    chars.push(ch);
+    sep = false;
+  }
+  if (chars.length === 0) return null;
+  const body = chars.map((c, i) => (breakBefore[i] ? "[ \\t._/-]{0,2}" : "") + c).join("");
+  return new RegExp(`(?<![A-Za-z0-9])${body}(?![A-Za-z0-9])`, "i");
+}
+
 function uniqSorted(nums: number[]): number[] {
   return [...new Set(nums)].sort((a, b) => a - b);
 }
@@ -99,6 +129,8 @@ export function assessApplicability(input: {
   const chunks = Array.isArray(input.chunks) ? input.chunks : [];
   const model = normalizeIdentifier(input.identity.model ?? "");
   const catalog = normalizeIdentifier(input.identity.catalogNumber ?? "");
+  const modelRe = identifierPattern(input.identity.model ?? "");
+  const catalogRe = identifierPattern(input.identity.catalogNumber ?? "");
   const mfrFull = normalizeIdentifier(input.identity.manufacturer ?? "");
   // Longest word of a multi-word manufacturer ("Allen-Bradley" → ALLENBRADLEY,
   // but also match a document that only says "BRADLEY" or "ROCKWELL").
@@ -135,14 +167,15 @@ export function assessApplicability(input: {
     const dense = normalizeIdentifier(ch.content ?? "");
     const tokSet = new Set(tokensOf(ch.content ?? "").map(normalizeIdentifier));
 
-    // Catalog numbers are long and punctuation-heavy — a dense (punctuation
-    // stripped) containment test is the right shape for them.
-    if (catalog && catalog.length >= 4 && dense.includes(catalog)) {
+    // Catalog numbers are long and punctuation-heavy, so separators may
+    // drift — but only inside the number, never across a neighbouring token
+    // (identifierPattern).
+    if (catalog && catalog.length >= 4 && catalogRe?.test(ch.content ?? "")) {
       hits.catalog++;
       if (page !== null) catalogPages.push(page);
     }
     if (model) {
-      if (tokSet.has(model) || (model.length >= 4 && dense.includes(model))) {
+      if (tokSet.has(model) || (model.length >= 4 && modelRe?.test(ch.content ?? ""))) {
         hits.model++;
         if (page !== null) modelPages.push(page);
       } else {
