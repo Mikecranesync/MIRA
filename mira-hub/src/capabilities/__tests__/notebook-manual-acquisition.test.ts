@@ -1204,11 +1204,43 @@ describe("currentManualSearchStatus — the polled status carries the acquired m
     expect(r?.message).toContain(URL);
   });
 
+  it("Codex r3 F3: a completed manual that was switched off still links to the saved PDF", async () => {
+    db.readRow = rec;
+    db.sourceRow = { match_state: "verified", auto_key: key, cand_app: null, revoked: null }; // still in Sources, turned off
+    const off = { ...src("d-gs10", true), enabledByDefault: false };
+    const r = await currentManualSearchStatus("t", "nb", unbound, proposed, [off] as never, { env: ON });
+    expect(r?.manualUrl).toBe(URL);
+  });
+
+  it("Codex r3 F3 control: once the technician removed it, the status carries no link", async () => {
+    db.readRow = rec;
+    db.sourceRow = null; // the source row is gone
+    const r = await currentManualSearchStatus("t", "nb", unbound, proposed, [] as never, { env: ON });
+    expect(r).not.toBeNull();
+    expect(r?.manualUrl).toBeUndefined();
+  });
+
   it("control: a ready source this search did not acquire gets neither the record's link nor its pages", async () => {
     db.readRow = rec;
     const r = await currentManualSearchStatus("t", "nb", unbound, proposed, [src("d-upload", true)] as never, { env: ON });
     expect(r?.manualUrl).toBeUndefined();
     expect(r?.message).not.toMatch(/page 26/);
+  });
+});
+
+describe("handoffManualUrl — one link for the live frame and the polled status (Codex #5706 r3 F3)", () => {
+  const URL = "https://cdn.automationdirect.com/static/manuals/gs10m/gs10usermanual.pdf";
+  const base = { key: "K", started_at: null, finished_at: null, candidate_host: "cdn.automationdirect.com", match_state: null, oem_request_url: null };
+  it.each([
+    ["a completed, indexed manual (on or off)", { state: "complete", attached_indexed: true, doc_id: "d", manual_url: URL }, URL],
+    ["a redirected copy saved but not searchable", { state: "search_unavailable", ingest_failed: true, linked: true, candidate_url: "https://www.automationdirect.com/gs10", manual_url: URL }, URL],
+    ["a download the site refused: the page it was found on", { state: "download_rejected", download_reason: "wrong_content_type", candidate_url: "https://www.automationdirect.com/gs10" }, "https://www.automationdirect.com/gs10"],
+    ["a running search", { state: "running", manual_url: URL }, null],
+    ["a removed manual", { state: "complete", attached_indexed: true, doc_id: "d", manual_url: URL, source_removed: true }, null],
+    ["an indexed record with no saved URL (older record)", { state: "complete", attached_indexed: true, doc_id: "d", candidate_url: "https://www.automationdirect.com/gs10" }, null],
+  ])("%s", async (_name, extra, expected) => {
+    const { handoffManualUrl } = await import("../notebook-manual-acquisition");
+    expect(handoffManualUrl({ ...base, ...extra } as never)).toBe(expected);
   });
 });
 

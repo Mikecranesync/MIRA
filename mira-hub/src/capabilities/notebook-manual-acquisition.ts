@@ -1045,6 +1045,20 @@ export function acquisitionManualUrl(rec: AcquisitionRecord): string | null {
 }
 
 
+/**
+ * The ONE structured link a finished manual search hands the technician, for
+ * the live chat frame and the polled notebook status alike (Codex #5706 r3 F3):
+ * the PDF this search saved (after redirects) whenever it saved one — a
+ * completed manual that was switched off, or a copy that could not be made
+ * searchable, included — otherwise, for a search that never got an indexed
+ * copy, the page it found the manual on. Nothing while the search is running,
+ * and nothing once the technician removed the manual.
+ */
+export function handoffManualUrl(rec: AcquisitionRecord): string | null {
+  if (rec.state === "running" || rec.source_removed) return null;
+  return savedManualUrl(rec) ?? (rec.attached_indexed ? null : acquisitionManualUrl(rec));
+}
+
 /** "page 26" / "pages 26 and 27" / "pages 26, 27 and 30" — the manual's pages
  *  whose text names the exact model (only ever from a verified, indexed copy). */
 function pagesPhrase(pages: readonly number[] | undefined): string | null {
@@ -1303,9 +1317,7 @@ export async function currentManualSearchStatus(
   // Reaching here means no applicable source is enabled right now (the ready /
   // preparing branches above returned), so a "complete" record's manual is off.
   const message = running ? null : acquisitionDeclineText(reconciled, key, `${manufacturer} ${model}`, basis, { sourceOff: true });
-  const manualUrl = !running && !reconciled.attached_indexed && !reconciled.source_removed
-    // The PDF this search actually saved (after redirects) beats the page it
-    // was discovered on (Codex #5706 r2 F3).
-    ? savedManualUrl(reconciled) ?? acquisitionManualUrl(reconciled) : null;
+  // The same selector the live chat frame uses (Codex #5706 r3 F3).
+  const manualUrl = handoffManualUrl(reconciled);
   return { manufacturer, model, running, ...(message ? { message } : {}), ...(manualUrl ? { manualUrl } : {}), ...(startedAt ? { startedAt } : {}) };
 }

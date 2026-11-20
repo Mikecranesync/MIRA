@@ -304,6 +304,27 @@ describe("#4160 S6 R2 — candidate-basis background acquisition triggers from t
     expect(f.find(x => x.kind === "manual_search_status")).toMatchObject({ running: false, manualUrl: "https://www.keyence.com/download/?dlAssetId=AS_164319" });
   });
 
+  // Codex #5706 r3 F3: the live frame uses the same selector as the polled
+  // status — a completed manual that was switched off still links to the PDF
+  // this search saved, and a removed one links to nothing.
+  it("Codex #5706 r3 F3: a completed manual switched off links to the saved PDF on the live frame; control: removed", async () => {
+    const PDF = "https://www.smcusa.com/manuals/ss5y3.pdf";
+    const done = {
+      key: "SMC|SS5Y3DUW01302|", state: "complete", started_at: null, finished_at: null, candidate_host: "www.smcusa.com",
+      match_state: "verified", oem_request_url: null, candidate_url: "https://www.smcusa.com/ss5y3", manual_url: PDF,
+      attached_indexed: true, doc_id: "d-ss5y3",
+    };
+    acqMock.startManualAcquisition.mockResolvedValue(false);
+    acqMock.readAcquisition.mockResolvedValue(done);
+    let f = await frames(await POST(req({ message: SMC_MESSAGE, mode: "general" }), params));
+    expect(f.find((x) => x.kind === "manual_search_status")).toMatchObject({ running: false, manualUrl: PDF });
+    acqMock.readAcquisition.mockResolvedValue({ ...done, source_removed: true });
+    f = await frames(await POST(req({ message: SMC_MESSAGE, mode: "general" }), params));
+    const removed = f.find((x) => x.kind === "manual_search_status") as { manualUrl?: string } | undefined;
+    expect(removed).toBeDefined();
+    expect(removed?.manualUrl).toBeUndefined();
+  });
+
   // Codex round 5 F15 (#4195): the live `manual_search_status` frame must
   // carry the search's own GENERATION (`startedAt`) — the SAME value the GET
   // route (`currentManualSearchStatus`, proven against this identical

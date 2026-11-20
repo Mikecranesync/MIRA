@@ -72,7 +72,7 @@ import {
   acquisitionEnabled,
   acquisitionKey,
   acquisitionDeclineText,
-  acquisitionManualUrl,
+  handoffManualUrl,
   applicableEnabledSource,
   readAcquisition,
   reconcileAcquisition,
@@ -3417,7 +3417,8 @@ async function handleChatTurn(
             manualSearchRunning = "candidate";
             manualSearchKey = candidateKey;
           }
-          candidateManualUrl = !cAcq.attached_indexed && !cAcq.source_removed ? acquisitionManualUrl(cAcq) : null;
+          // One selector for the live frame and the polled status (Codex #5706 r3 F3).
+          candidateManualUrl = handoffManualUrl(cAcq);
           // #5268 Codex F2: a completed photo search's manual may have been
           // turned off since — judge that from the source's CURRENT state with
           // the same matcher the notebook status uses, never the history.
