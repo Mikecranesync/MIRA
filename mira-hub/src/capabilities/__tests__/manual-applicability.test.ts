@@ -309,12 +309,57 @@ describe("a file saved under its publication number (#5465)", () => {
     "any listed publication type, language and download suffix: %s", (filename) => {
       expect(kindOf(verdict("Relay contact ratings on the 2080-LC20-20QWB?", SHEET, filename))).toBe("answers");
     });
-  it.each(["2080-DS001B-EN-P.pdf", "2080-IN009B_EN_P.pdf", "2080-IN009B-ENG-P.pdf", "2080-IN009B.pdf"])(
+  it.each(["2080-DS001B-EN-P.pdf", "2080-IN009B-ENG-P.pdf", "2080-IN009B.pdf"])(
     "short of the whole signature the number is read as a model (stated limit: the right manual still refuses): %s", (filename) => {
-      // A type code off the list, underscores, a three-letter language, or no
-      // suffix at all. Tracked in #5469.
+      // A type code off the list, a three-letter language, or no suffix at
+      // all. Tracked in #5469.
       expect(kindOf(verdict("Relay contact ratings on the 2080-LC20-20QWB?", SHEET, filename))).toBe("cover-and-file-disagree");
     });
+  // Mike's plan of 2026-11-19, item 3: "an '_' in a file name" is no reason to
+  // refuse. The underscore was on the #5469 list above; it now separates the
+  // language and the format like a hyphen does. The groups in front of the
+  // publication type are kept, as before, so a model written there is still read.
+  it.each(["2080-IN009B_EN_P.pdf", "2080-IN009B-EN_P.pdf", "2080-IN009B_EN-P.pdf", "2080-in009b_en_p (1).pdf", "2080-IN009B_EN_P_v2.pdf"])(
+    "an underscore between the publication number, language and format: %s answers", (filename) => {
+      expect(kindOf(verdict("Relay contact ratings on the 2080-LC20-20QWB?", SHEET, filename))).toBe("answers");
+      expect(kindOf(verdict("Relay contact ratings on the 2080-LC20-20QWB?", AS_STORED, filename))).toBe("answers");
+      // Still never evidence of coverage on its own, and an unlisted number still refuses.
+      expect(manualCoversNumber(asked("2080-LC20-20QWB")[0], GENERIC, filename)).toBe(false);
+      expect(kindOf(verdict("Supply voltage for 2080-LC99-99ZZZ?", SHEET, filename))).toBe("other-model");
+    });
+  it("control: with underscores, a sibling glued in front still disagrees, and so does the number written again without the suffix", () => {
+    expect(kindOf(verdict("RX420 supply voltage?", RX420, "RX410-UM001A_EN_P.pdf"))).toBe("cover-and-file-disagree");
+    expect(kindOf(verdict("RX410 supply voltage?", GENERIC, "RX410-UM001A_EN_P.pdf"))).toBe("answers");
+    const BR200 = "Northfield 1234-BR200 Drive\nHardware User Guide";
+    for (const filename of ["1234-BR100_EN_P_1234-BR100.pdf", "1234-BR100_1234-BR100_EN_P.pdf", "1234-BR100_1234-BR100-EN-P.pdf"]) {
+      expect(kindOf(verdict("Supply voltage for 1234-BR200?", BR200, filename)), filename).toBe("cover-and-file-disagree");
+    }
+    // Not a publication type, with underscores: still a product's name.
+    expect(kindOf(verdict("Supply voltage for 1234-AB124?", "Northfield 1234-AB124 Drive\nHardware User Guide", "1234-AB123_US_A.pdf"))).toBe("cover-and-file-disagree");
+  });
+  // Review of #5671 (Claude reviewing Claude, PARTIAL), finding 1: the
+  // underscore spelling is read as a document's number only beside a cover
+  // that lists models. With a cover that names none, the file name is the only
+  // evidence, and reading a product-shaped name ("1234-PM800_EN_P.pdf") as a
+  // document would let that cover answer for every sibling.
+  it("with a cover that names no model, an underscore file name is read as before: it is the only evidence, and refuses a sibling", () => {
+    // Precondition: the cover is silent about these families, so the file name alone decides.
+    for (const n of ["PM850", "1234-AB123", "1234-BR200", "2080-LC20-20QWB"]) {
+      expect(kindOf(verdict(`Supply voltage for ${n}?`, GENERIC, "manual.pdf")), n).toBe("answers");
+    }
+    expect(verdict("Supply voltage for PM850?", GENERIC, "1234-PM800_EN_P.pdf")).toEqual({ admit: false, kind: "coverage-not-shown", asked: ["PM850"], declared: [] });
+    expect(verdict("Supply voltage for 1234-AB123?", GENERIC, "1234-SR750_EN_P.pdf")).toEqual({ admit: false, kind: "coverage-not-shown", asked: ["1234-AB123"], declared: [] });
+    expect(verdict("Supply voltage for 1234-BR200?", GENERIC, "1234-BR100_is_a_copy.pdf")).toEqual({ admit: false, kind: "coverage-not-shown", asked: ["1234-BR200"], declared: [] });
+    // Stated limit: the Micro820 sheet saved with underscores is refused under
+    // a silent cover, where the hyphen spelling answers.
+    expect(kindOf(verdict("Relay contact ratings on the 2080-LC20-20QWB?", GENERIC, "2080-IN009B_EN_P.pdf"))).toBe("coverage-not-shown");
+    expect(kindOf(verdict("Relay contact ratings on the 2080-LC20-20QWB?", GENERIC, FILE))).toBe("answers");
+  });
+  it("control: beside a cover that lists the asked model, those file names answer, and the cover still refuses a sibling", () => {
+    const PM850 = "Northfield PM850 Power Meter\nInstallation Guide";
+    expect(kindOf(verdict("Supply voltage for PM850?", PM850, "1234-PM800_EN_P.pdf"))).toBe("answers");
+    expect(kindOf(verdict("Supply voltage for PM820?", PM850, "1234-PM800_EN_P.pdf"))).toBe("other-model");
+  });
   it.each(["1234-AB123-US-A.pdf", "1234-AB123-EN-P.pdf", "Z1234-BR100-EN-P_1234-BR100.pdf"])(
     "control: a sibling product that only resembles the signature still disagrees with the cover: %s", (filename) => {
       const asked = filename.includes("AB123") ? "1234-AB124" : "1234-BR200";
@@ -416,8 +461,11 @@ describe("the reply text", () => {
   });
   it("names the asked number and what the cover declares, and nothing from the manual's body", () => {
     const r = summarizeUnlistedRefusals([refusal(verdict("RX420 supply voltage?", "Northfield RX410 Logic Controller\nHardware User Guide"))], "question");
+    // RX420 is one digit from RX410, which is exactly what a typo looks like, so
+    // since 2026-11-19 (Mike's plan item 3) the reply opens by asking. The
+    // refusal itself is unchanged (model-near-miss.test.ts).
     expect(unlistedModelRefusalText(r)).toBe(
-      "The manual in this notebook is for the RX410, not the RX420 you asked about, so I won't answer from it — its values may not apply to the RX420. Add the RX420 manual (or the page that covers it) to this notebook and ask again.",
+      "Did you mean the RX410? The manual in this notebook is for the RX410, not the RX420 you asked about, so I won't answer from it — its values may not apply to the RX420. If the plate on your unit reads RX410, ask again with RX410 in the question. Otherwise add the RX420 manual (or the page that covers it) to this notebook and ask again.",
     );
   });
   it("says the notebook's machine, not 'you asked about', when the number came from the notebook", () => {
