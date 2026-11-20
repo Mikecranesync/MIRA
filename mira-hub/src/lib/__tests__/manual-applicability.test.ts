@@ -324,3 +324,29 @@ describe("assessApplicability — suffixes, table cells and PDF dashes (Codex #5
     expect(oem("GS11N-20P3", "Model GS11N–20P2 rated 0.25 HP").state).toBe("candidate");
   });
 });
+
+// Codex #5706 r5 F12: an identifier that itself mixes a space and punctuation
+// ("SLC 5/03") is exact when printed literally; the neighbouring-cell cases stay
+// candidates.
+describe("assessApplicability — literal mixed spellings (Codex #5706 r5 F12)", () => {
+  it.each([
+    ["SLC 5/03", "Allen-Bradley SLC 5/03 Modular Hardware Style User Manual"],
+    ["SLC 5/03", "Allen-Bradley SLC 5-03 processor"],
+  ])("%s verifies against %j and records its page", (model, content) => {
+    const v = assessApplicability({ identity: { manufacturer: "Allen-Bradley", model }, chunks: [{ content, page: 12 }], oemHost: true });
+    expect(v.state).toBe("verified");
+    expect(v.identifierPages).toEqual([12]);
+  });
+  it.each([
+    ["GS11N-20P2-230", "Model GS11N-20P2 230V rated"],
+    ["GS11N-20P2-230", "Model GS11N 20P2 230 rated"],
+    ["SLC 5/03", "Allen-Bradley SLC 5 /03"],
+  ])("control: %s stays a candidate against %j, as model and as catalog number", (id, content) => {
+    for (const identity of [
+      { manufacturer: "Allen-Bradley", model: id },
+      { manufacturer: "Allen-Bradley", model: "", catalogNumber: id },
+    ]) {
+      expect(assessApplicability({ identity, chunks: [{ content, page: 12 }], oemHost: true }).state).toBe("candidate");
+    }
+  });
+});

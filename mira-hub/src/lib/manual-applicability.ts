@@ -142,22 +142,21 @@ function identifierMatcher(raw: string): ((text: string) => boolean) | null {
       // ("25B D010 N104") goes to candidate review instead of verifying, while
       // "PowerFlex 40" still verifies for the model that writes the space.
       if (rawSpaceGaps.some((isSpace, g) => !isSpace && /[ \t\u00a0]/.test(m[g + 1] ?? ""))) continue;
-      // Whitespace inside the match is a spelling variant only when the match
-      // prints no punctuation separator at all ("25B D010 N104",
-      // "PowerFlex 525"). A spelling that mixes punctuation with a space is the
-      // identifier followed by the next table cell: "GS11N-20P2 230V",
-      // "GS11N-20P2 IP20" and "GS11N-20P2 N/A" never complete a longer
-      // identifier, for the model or the catalog number (Codex #5706 r2 F4).
-      if (/[ \t\u00a0]/.test(m[0]) && /[-._/\u2010-\u2015]/.test(m[0])) continue;
+      // (Codex #5706 r2 F4's "no space beside punctuation" rule is subsumed by
+      // the per-break rule above, which keeps literal mixed spellings such as
+      // "SLC 5/03" exact — r5 F12 — while "GS11N-20P2 230V" still never
+      // completes a longer identifier.)
       // Every break the identity writes with a separator is spelled the same
       // way in the match: all omitted, all punctuation, or all whitespace. A
       // spelling that omits one and spaces another is the identifier's prefix
       // followed by the next table cell — "GS11N20P2 230" never completes
       // GS11N-20P2-230 — while "25B D010 N104" and "PowerFlex 40" still verify
       // (Codex #5706 r3 F4).
+      // Only the breaks the identity writes with PUNCTUATION are compared; a
+      // break it writes with a space is checked by the rule above (r5 F12).
       const kinds = new Set(
         rawSepGaps.flatMap((isSep, g) => {
-          if (!isSep) return [];
+          if (!isSep || rawSpaceGaps[g]) return [];
           const gap = m[g + 1] ?? "";
           return [gap === "" ? "none" : /[ \t\u00a0]/.test(gap) ? "space" : "punct"];
         }),
