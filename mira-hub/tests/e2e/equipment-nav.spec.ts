@@ -659,6 +659,11 @@ test("on a tablet with the panel open, a tap on Send goes through the actions co
   await auth(context, baseURL!);
   await routes(page, { enabled: true, resolve: "resolved", fullPage: 50 });
   await page.goto(`/v3/?notebook=${NB}&thread=${THREAD}`);
+  // Send is refused until the component read is in; wait for it (the checklist lists its rows), then shut it.
+  await page.getByTestId("bench-asking-about").click();
+  await expect(checklistRow(page, VFD)).toBeVisible();
+  await page.getByTestId("bench-asking-about").click();
+  await expect(checklist(page)).toHaveCount(0);
   await expect(panel(page)).toBeVisible();
   await panel(page).getByRole("button", { name: "Find equipment" }).click();
   await row(page, `notebook:${NB}`).click();
