@@ -808,6 +808,10 @@ describe("photo-to-manual (2026-11-20): a weak label word ending a sentence befo
     "Unit. No#4471",
     "Unit.  No 4471 here",
     "Unit No: U-1234 SY3120-5LZD",
+    "Unit. No AB.1234567",
+    "Unit. No AB\n1234567",
+    "UNIT. NO TP\n1200",
+    "Unit. No ABC. 12345678",
   ])("still a private label: %s", (text) => {
     expect(mentionsAssetLabel(text)).toBe(true);
   });
