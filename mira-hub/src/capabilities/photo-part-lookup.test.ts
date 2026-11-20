@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { PART_SEARCH_CANCEL, asksPartCompatibility, danglingPrivateLabel, confirmedPartSearchCandidate, explicitManualLookupRequest, partSearchConfirmation, mentionsAssetLabel, mentionsSerialLabel, partSearchDecision, unambiguousPartNumber } from "./photo-part-lookup";
 import { resolveModelFromObservationText } from "@/lib/manual-rag";
+import { GS10_CV101_LOOK } from "./__fixtures__/gs10-cv101-look";
 
 describe("photo part lookup", () => {
   it("uses one label-shaped code as a lookup candidate without asserting what it is", () => {
@@ -780,5 +781,37 @@ describe("#5268 Codex r17 F1 (fail closed): a number inside a private annotation
   ])("control: a label owning a real value keeps the model public (%s)", (plate, model) => {
     expect(danglingPrivateLabel(plate)).toBe(false);
     expect(unambiguousPartNumber(plate)).toBe(model);
+  });
+});
+
+describe("photo-to-manual (2026-11-20): a weak label word ending a sentence before 'No …' is prose", () => {
+  it("the archived CV-101 GS10 reading yields its MODEL — '…the unit. No loose wiring…' is not an asset label", () => {
+    expect(mentionsAssetLabel(GS10_CV101_LOOK)).toBe(false);
+    expect(danglingPrivateLabel(GS10_CV101_LOOK)).toBe(false);
+    expect(unambiguousPartNumber(GS10_CV101_LOOK)).toBe("GS11N-20P2");
+  });
+  it.each(["Cables run past the unit. No loose wiring is visible. MODEL: GS11N-20P2", "Mounted in the cell. No damage. MODEL: GS11N-20P2", "Near the area. No burn marks visible"])(
+    "control: %s is prose",
+    (text) => {
+      expect(mentionsAssetLabel(text)).toBe(false);
+    },
+  );
+  it.each([
+    "UNIT NO 4471",
+    "Unit. No. 12345678",
+    "UNIT NO\nAB-1234567",
+    "Unit No ABC 12345678",
+    "unit. No AB 4471",
+    "Unit. No abc 12345678",
+    "UNIT. NO\n4471",
+    "Unit. No: 4471",
+    "Unit. No#4471",
+    "Unit.  No 4471 here",
+    "Unit No: U-1234 SY3120-5LZD",
+  ])("still a private label: %s", (text) => {
+    expect(mentionsAssetLabel(text)).toBe(true);
+  });
+  it("a real unit-number label beside the model still withholds every unlabelled code", () => {
+    expect(unambiguousPartNumber("Cables run past the unit. No 4471 MODEL GS11N-20P2")).toBeNull();
   });
 });

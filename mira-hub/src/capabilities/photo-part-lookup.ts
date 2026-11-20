@@ -40,9 +40,19 @@ const SERIAL_LABEL = new RegExp(
 // code, or — for "tag" — as a suffix right after such a code.
 const ID_WORD = String.raw`(?:tag|ident(?:ifier)?|id|ref(?:erence)?|${NUM_WORD}|#)`;
 const CODE_AHEAD = String.raw`(?=(?:is\b)?[^A-Za-z0-9]*(?=[A-Z0-9./-]*\d)[A-Z0-9][A-Z0-9./-]{3,}(?![A-Z0-9]))`;
+// A weak word that ENDS a sentence, followed by a new sentence opening with the
+// English word "No" and then ordinary words, is prose, not a label: "…the right
+// side of the unit. No loose or disconnected wiring is visible." (a real GS10
+// LOOK reading, 2026-11-20 — it hid the plate's MODEL from the manual search).
+// Narrow on purpose: the separator must be exactly "." plus spaces, "No" must be
+// followed by spaces and a letter (never "No." / "No:" / "No#" / a line break),
+// and the rest of that sentence must carry NO digit. So "Unit. No. 12345678",
+// "UNIT NO 4471", "UNIT NO\nAB-1234567", "Unit No ABC 12345678" and
+// "unit. No AB 4471" all stay labels.
+const PROSE_NO_SENTENCE = String.raw`(?!\.[ \t]+no[ \t]+[a-z][^\d.!?\r\n]*(?:[.!?\r\n]|$))`;
 const ASSET_LABEL = new RegExp(
   String.raw`\b(?:(?:fixed\s*asset|asset|inventory|inv|cmms|sap|work\s*order|wo)(?![a-z])` +
-    String.raw`|(?:tag|equip(?:ment)?|unit|machine|location|loc|site|plant|area|line|cell)(?![a-z])${LABEL_SEP}(?:${ID_WORD}(?![a-z])|${CODE_AHEAD})` +
+    String.raw`|(?:tag|equip(?:ment)?|unit|machine|location|loc|site|plant|area|line|cell)(?![a-z])${PROSE_NO_SENTENCE}${LABEL_SEP}(?:${ID_WORD}(?![a-z])|${CODE_AHEAD})` +
     String.raw`|(?<=\d[A-Z0-9./-]*[^A-Za-z0-9]+)tag(?![a-z]))`,
   "gi",
 );

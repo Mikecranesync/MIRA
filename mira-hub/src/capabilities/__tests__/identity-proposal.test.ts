@@ -5,6 +5,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { modelAfterManufacturer, namesOnlyThisMachine, proposeIdentityFromText, unconfirmedMachineDirective } from "../identity-proposal";
+import { GS10_CV101_LOOK } from "../__fixtures__/gs10-cv101-look";
 
 // corpusManufacturers() CANONICALIZES (normalizeManufacturer): staging's
 // "Allen-Bradley" rows are listed as "Rockwell Automation", "Mitsubishi" as
@@ -532,5 +533,20 @@ describe("a digitless variant code after a known series name", () => {
   });
   it("control: a digit-bearing model after a series name keeps its existing form", () => {
     expect(proposeIdentityFromText("Siemens SINAMICS G120C trips on overvoltage", SEW)).toEqual({ manufacturer: "Siemens", model: "G120C" });
+  });
+});
+
+describe("photo-to-manual (2026-11-20): a nameplate's kVA / kA ratings are not a second machine", () => {
+  it("the archived CV-101 GS10 reading names only the GS11N-20P2", () => {
+    expect(namesOnlyThisMachine(GS10_CV101_LOOK, "GS11N-20P2")).toBe(true);
+  });
+  it.each(["VT: 3PH 0-230V 1.8A 0.7KVA 0.2KW", "SHORT CIRCUIT CURRENT: 100KA", "rated 2.5 kVA at 480V", "1500VA transformer"])(
+    "%s is a rating line",
+    (line) => {
+      expect(namesOnlyThisMachine(`MODEL GS11N-20P2 ${line}`, "GS11N-20P2")).toBe(true);
+    },
+  );
+  it("control: a real second drive model on the same text still blocks", () => {
+    expect(namesOnlyThisMachine("MODEL GS11N-20P2 beside a GS13N-40P2", "GS11N-20P2")).toBe(false);
   });
 });

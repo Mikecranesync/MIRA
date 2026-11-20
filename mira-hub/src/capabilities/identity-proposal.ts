@@ -72,7 +72,9 @@ const GENERIC_DEVICE_WORDS = new Set(["PLC", "VFD", "HMI", "CPU", "DRIVE", "PANE
  * dual-frequency pair ("50/60Hz"), a kW/HP pair ("0.5kW/0.5HP") and a phase
  * count ("1PH", "3PH") are ratings, never a second machine.
  */
-const RATING_UNIT = String.raw`(?:MA|V|VDC|VAC|A|HZ|KHZ|KW|W|HP|PSI|BAR|MM|RPM|MS|S|%|°?C|°?F)`;
+// kVA / VA / kA (apparent power, short-circuit current) are rating units too: a
+// GS10 plate prints "0.7KVA" and "SHORT CIRCUIT CURRENT: 100KA" (2026-11-20).
+const RATING_UNIT = String.raw`(?:MA|V|VDC|VAC|A|KVA|VA|KA|HZ|KHZ|KW|W|HP|PSI|BAR|MM|RPM|MS|S|%|°?C|°?F)`;
 const NON_MACHINE_TOKEN_RE = new RegExp(
   String.raw`^(?:\d+(?:\.\d+)?(?:-|to)\d+(?:\.\d+)?\s*${RATING_UNIT}?|\d+(?:\.\d+)?/\d+(?:\.\d+)?${RATING_UNIT}|\d+(?:\.\d+)?${RATING_UNIT}/\d+(?:\.\d+)?${RATING_UNIT}|\d{1,2}PH|RS-?\d{3}|DH-?\d{3}|DH\+|IEC-?\d+|ISO-?\d+|EN-?\d+|IP\d{2}|NEMA-?\d+[A-Z]?|UL-?\d+|CAT-?\d[A-Z]?|M\d{1,2}|\d+(?:\.\d+)?${RATING_UNIT}|\d+(?:\.\d+)?(?:ST|ND|RD|TH))$`,
   "i",
@@ -82,7 +84,7 @@ const NON_MACHINE_TOKEN_RE = new RegExp(
  * A unit written as its own word after a number ("DC 24 V", "AC 230 volts"):
  * the number is a rating, not a model (Codex #4120 r7 F10).
  */
-const UNIT_WORD_RE = /^(?:V|VAC|VDC|A|MA|HZ|KHZ|KW|W|HP|PSI|BAR|RPM|MM|%|°?C|°?F|VOLTS?|AMPS?|AMPERES?|WATTS?|HERTZ)$/i;
+const UNIT_WORD_RE = /^(?:V|VAC|VDC|A|MA|KVA|VA|KA|HZ|KHZ|KW|W|HP|PSI|BAR|RPM|MM|%|°?C|°?F|VOLTS?|AMPS?|AMPERES?|WATTS?|HERTZ)$/i;
 
 function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
