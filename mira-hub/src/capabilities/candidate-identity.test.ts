@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { extractCandidateIdentity, isSafeCandidateSearchIdentity, makerFromText, wantsManualDocumentation } from "./candidate-identity";
+import { asksToFindManual, extractCandidateIdentity, isSafeCandidateSearchIdentity, makerFromText, wantsManualDocumentation } from "./candidate-identity";
 import { labelledPartCodes } from "./photo-part-lookup";
 
 // Manual-First PRD R1 (#4160 S5): a candidate (manufacturer, part) read from a
@@ -102,6 +102,25 @@ describe("makerFromText — the shared OEM maker table, corpus-independent", () 
 
   it("a maker name inside another word does not count", () => {
     expect(makerFromText("SMCX-200 adapter")).toBeNull();
+  });
+});
+
+describe("asksToFindManual", () => {
+  it.each([
+    "Find me the manual for this drive.",
+    "Manual for GS11N-20P2",
+    "I need the manual for Siemens 6AV2124-0GC01-0AX0",
+    "Do you have the datasheet for Schneider CA3KN22BD?",
+  ])("accepts a request for the document (%s)", (message) => {
+    expect(asksToFindManual(message)).toBe(true);
+  });
+
+  it.each([
+    "What does the manual say about overcurrent?",
+    "What does the Siemens 6AV2124-0GC01-0AX0 manual say about alarms?",
+    "Show me the voltage from the manual",
+  ])("preserves a question that uses manual contents (%s)", (message) => {
+    expect(asksToFindManual(message)).toBe(false);
   });
 });
 

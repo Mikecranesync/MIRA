@@ -138,8 +138,12 @@ export function extractCandidateIdentity(observation: string, typed = ""): Candi
  * effect, not an answer, so a miss just means the search waits for the next
  * turn or an explicit ask — never a wrong answer.
  */
-const MANUAL_INTENT_RE =
-  /\b(?:manuals?|documentation|docs?|datasheet|data\s+sheet|spec\s+sheet|instructions?|user\s+guide|service\s+manual|install(?:ation)?\s+guide)\b/i;
+const MANUAL_NOUN = String.raw`(?:manuals?|documentation|docs?|datasheet|data\s+sheet|spec\s+sheet|instructions?|user\s+guide|service\s+manual|install(?:ation)?\s+guide)`;
+const MANUAL_INTENT_RE = new RegExp(String.raw`\b${MANUAL_NOUN}\b`, "i");
+const MANUAL_REQUEST_RE = new RegExp(
+  String.raw`^(?:(?:can|could|would) you\s+|please\s+)*(?:(?:find|get|open|show|send|look up|give|(?:i\s+)?(?:need|want)|do you have|where (?:can|do) i (?:find|get))\s+(?:me\s+)?)?(?:(?:the|a|an)\s+)?(?:official\s+)?${MANUAL_NOUN}\b(?:[.!?]*$|\s+(?:for|of|on|please)\b)`,
+  "i",
+);
 
 export function wantsManualDocumentation(message: string): boolean {
   return MANUAL_INTENT_RE.test(message);
@@ -147,8 +151,7 @@ export function wantsManualDocumentation(message: string): boolean {
 
 /** A request for the document itself, as opposed to a question about its contents. */
 export function asksToFindManual(message: string): boolean {
-  return /^(?:(?:can|could|would) you\s+|please\s+)*(?:find|get|open|show|send|look up|give|where (?:can|do) I (?:find|get))\b/i
-    .test(message.trim()) && wantsManualDocumentation(message);
+  return MANUAL_REQUEST_RE.test(message.trim());
 }
 
 /**
