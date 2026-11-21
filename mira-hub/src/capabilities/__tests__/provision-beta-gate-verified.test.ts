@@ -27,11 +27,10 @@ vi.mock("pg", () => ({
       if (/^SELECT \(SELECT count/.test(text)) {
         return { rows: [{ users: 0, auth_tenants: 0, tenants: 0 }] };
       }
-      if (/^SELECT NOW\(\)/.test(text)) return { rows: [{ now: "2026-11-21 21:00:00+00" }] };
-      if (/^SELECT tenant_id FROM hub_users/.test(text)) {
-        // Models the real predicate: a created_at filter excludes the prior account.
-        const visible = state.accountExists || (state.priorAccount && !/created_at >=/.test(text));
-        return { rows: visible ? [{ tenant_id: TENANT }] : [] };
+      if (/^SELECT onboarding->>'createdTenantId'/.test(text)) {
+        // Models the real receipt: only a token whose redemption CREATED the
+        // workspace carries it. A prior account under the address never does.
+        return { rows: state.accountExists ? [{ tenant_id: TENANT }] : [] };
       }
       return { rows: [], rowCount: 0 };
     }
@@ -158,19 +157,20 @@ describe("provision-beta-gate when register requires verified setup", () => {
   });
 
   it("F32: a refused setup never deletes an account this run did not create", async () => {
-    // Another run's account already holds the address: the creation-time lookup
-    // (created_at >= this run's database clock) finds nothing attributable.
+    // Another run's account already holds the address: this run's own token
+    // carries no creation receipt, so nothing is attributable to it.
     state.redeemRefused = true;
     state.accountExists = false;
     state.priorAccount = true;
     const mod = await import("../../../scripts/provision-beta-gate");
     await expect(mod.main()).rejects.toThrow(/no session cookie/);
-    const lookups = queries.filter((q) => /^SELECT tenant_id FROM hub_users/.test(q.text));
+    const lookups = queries.filter((q) => /createdTenantId/.test(q.text));
     expect(lookups.length).toBeGreaterThan(0);
     for (const q of lookups) {
-      expect(q.text).toMatch(/created_at >= \$2::timestamptz/);
-      expect(q.values[1]).toBe("2026-11-21 21:00:00+00");
+      expect(q.text).toMatch(/FROM hub_magic_tokens WHERE token = \$1 AND used_at IS NOT NULL/);
+      expect(q.values).toEqual([tokenInserts()[0].values[0]]);
     }
+    expect(queries.some((q) => /FROM hub_users/.test(q.text) && /email/i.test(q.text))).toBe(false);
     expect(queries.some((q) => /^DELETE FROM (hub_tenants|hub_users|tenants)\b/.test(q.text))).toBe(false);
     const del = queries.filter((q) => /^DELETE FROM hub_magic_tokens/.test(q.text));
     expect(del.map((q) => q.values[0])).toEqual([tokenInserts()[0].values[0]]);

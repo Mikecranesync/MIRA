@@ -1,5 +1,5 @@
 import pool from "@/lib/db";
-import { ensureSchema } from "@/lib/users";
+import { ensureSchema, readSessionSnapshot } from "@/lib/users";
 import { publicSignupPolicy, type SignupIntent } from "./free-technician-signup";
 import { ONBOARDING_VERSION, ONBOARDING_SHA256 } from "./onboarding-policy";
 import { claimVerifiedEmail } from "./verified-identity";
@@ -40,8 +40,11 @@ export async function redeemVerifiedOnboarding(token: string, agreementVersion: 
                 await claimVerifiedEmail(client, String(existing.id));
                 await client.query("UPDATE hub_users SET terms_version=$2,terms_sha256=$3,terms_accepted_at=NOW() WHERE id=$1", [existing.id, ONBOARDING_VERSION, ONBOARDING_SHA256]);
                 await client.query("UPDATE hub_magic_tokens SET used_at=NOW() WHERE token=$1", [token]);
+                const snapshot = await readSessionSnapshot(client, String(existing.id));
+                if (!snapshot)
+                    throw new Error("Account vanished during setup.");
                 await client.query("COMMIT");
-                return { id: String(existing.id), tenantId: String(existing.tenant_id), email: address, created: false };
+                return { ...snapshot, created: false };
             }
             // Any other existing account — including a legacy pending pilot — is never
             // retired or rewritten from a setup link: its password, application and
@@ -56,11 +59,17 @@ export async function redeemVerifiedOnboarding(token: string, agreementVersion: 
         const user = await client.query("INSERT INTO hub_users (email,tenant_id,status,trial_expires_at,plan,terms_version,terms_sha256,terms_accepted_at,email_verified_at,password_provenance) VALUES ($1,$2,$3,NULL,$4,$5,$6,NOW(),NOW(),'none') RETURNING id", [address, tenantId, free ? "approved" : "pending", free ? "technician_free" : null, ONBOARDING_VERSION, ONBOARDING_SHA256]);
         const id = String(user.rows[0].id);
         await client.query("UPDATE hub_tenants SET owner_user_id=$1 WHERE id=$2", [id, tenantId]);
-        await client.query("UPDATE hub_magic_tokens SET used_at=NOW() WHERE token=$1", [token]);
+        // Codex F32: the spent token carries a receipt of the workspace IT created,
+        // so cleanup tooling can prove ownership instead of inferring it.
+        await client.query("UPDATE hub_magic_tokens SET used_at=NOW(),onboarding=onboarding||jsonb_build_object('createdTenantId',$2::text) WHERE token=$1", [token, tenantId]);
+        // Codex F34/F35: the session is minted from this in-transaction snapshot.
+        const snapshot = await readSessionSnapshot(client, id);
+        if (!snapshot)
+            throw new Error("Account vanished during setup.");
         await client.query("COMMIT");
         if (!free)
             void handlePilotApplicationSubmitted({ tenantId, userId: id, email: address, name: null, tenantName: address, attribution: receipt.attribution ?? attributionFromRequest(new Request("https://app.factorylm.com/signup/?intent=pilot")) }).catch(() => { });
-        return { id, tenantId, email: address, created: true };
+        return { ...snapshot, created: true };
     }
     catch (error) {
         await client.query("ROLLBACK").catch(() => { });

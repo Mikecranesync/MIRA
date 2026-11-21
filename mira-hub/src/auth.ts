@@ -2,7 +2,7 @@ import type { NextAuthOptions } from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 import CredentialsProvider from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
-import { ensureUserAndTenant, findUserByEmail, findUserById, validateMagicToken, magicTokenPurpose, magicTokenNeedsCredentialReview, redeemInviteToken } from "@/lib/users";
+import { ensureUserAndTenant, findUserByEmail, findUserById, validateMagicToken, magicTokenPurpose, magicTokenNeedsCredentialReview, redeemInviteToken, readSessionSnapshot, type SessionSnapshot } from "@/lib/users";
 import { NO_ROLE, normalizeRole, type ResolvedRole } from "@/lib/role";
 import { refreshEntitlementClaims } from "@/capabilities/session-entitlement";
 import { credentialEpoch } from "@/capabilities/verified-identity";
@@ -81,17 +81,19 @@ const providers: NextAuthOptions["providers"] = [
     credentials: { token: { type: "text" }, agreementVersion: { type:"text" } },
     async authorize(credentials) {
       if (!credentials?.token) return null;
-      let account;
+      // Codex F34/F35: every path ends in ONE row snapshot; the session's
+      // workspace and credential epoch never come from two different reads.
+      let snapshot: SessionSnapshot | null;
       const purpose = await magicTokenPurpose(credentials.token);
       if (purpose === "onboarding") {
-        try { account = await redeemVerifiedOnboarding(credentials.token, credentials.agreementVersion ?? ""); }
+        try { snapshot = await redeemVerifiedOnboarding(credentials.token, credentials.agreementVersion ?? ""); }
         catch { return null; }
       } else {
         // Codex F28: an invitation is admitted, claimed, applied and spent in ONE
         // transaction; a refusal leaves both the token and access unchanged.
         const invite = await redeemInviteToken(credentials.token);
         if (invite === null) return null;
-        if (invite) account = invite;
+        if (invite) snapshot = invite;
         else {
           // Ordinary sign-in link: refuse unknown provenance before spending it.
           if (await magicTokenNeedsCredentialReview(credentials.token)) return null;
@@ -99,20 +101,21 @@ const providers: NextAuthOptions["providers"] = [
           if (!result) return null;
           const existing = await findUserByEmail(result.email);
           if (!existing) return null;
-          account = {id:existing.id,email:existing.email,tenantId:existing.tenantId};
-          try { await claimVerifiedEmail(pool,account.id); } catch { return null; }
+          try { await claimVerifiedEmail(pool,existing.id); } catch { return null; }
+          snapshot = await readSessionSnapshot(pool, existing.id);
+          // Moved to another workspace mid-sign-in: refuse rather than mint a mix.
+          if (!snapshot || snapshot.tenantId !== existing.tenantId) return null;
         }
       }
-      const user=await findUserByEmail(account.email);
-      if(!user) return null;
+      if (!snapshot) return null;
       return {
-        id: account.id,
-        email: account.email,
-        name: user?.name ?? null,
-        tenantId: account.tenantId,
-        status: user?.status ?? "trial",
-        credentialEpoch: credentialEpoch(user),
-        trialExpiresAt: user?.trialExpiresAt?.toISOString() ?? null,
+        id: snapshot.id,
+        email: snapshot.email,
+        name: snapshot.name,
+        tenantId: snapshot.tenantId,
+        status: snapshot.status,
+        credentialEpoch: credentialEpoch(snapshot),
+        trialExpiresAt: snapshot.trialExpiresAt,
       };
     },
   }),

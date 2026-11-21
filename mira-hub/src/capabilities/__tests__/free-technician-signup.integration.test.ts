@@ -319,4 +319,56 @@ describe.skipIf(!READY)("verified onboarding with a restricted production-shaped
         expect((await testPool.query("SELECT count(*)::int AS n FROM hub_users WHERE id IN ($1,$2)", [prior.id, free.id])).rows[0].n).toBe(0);
         expect((await testPool.query("SELECT count(*)::int AS n FROM hub_onboarding_recoveries WHERE previous_user_id=$1", [prior.id])).rows[0].n).toBe(0);
     });
+    it("F34: a user moved to another workspace mid-sign-in gets no mixed session", async () => {
+        const member = await personal();
+        const other = await personal();
+        const token = await createMagicToken(member.email);
+        const real = testPool.query.bind(testPool);
+        const spy = vi.spyOn(testPool, "query").mockImplementation((async (text: unknown, values?: unknown) => {
+            const result = await real(text as string, values as unknown[]);
+            // Right after the identity claim, an operator moves the user and rotates credentials.
+            if (typeof text === "string" && /SET\s+password_hash = CASE/.test(text))
+                await adminPool.query("UPDATE hub_users SET tenant_id=$2,credential_epoch=credential_epoch+1 WHERE id=$1", [member.id, other.tenantId]);
+            return result;
+        }) as never);
+        try {
+            expect(await provider("magic-token")({ token }, {})).toBeNull();
+        }
+        finally {
+            spy.mockRestore();
+        }
+    });
+    it.each([["setup"], ["invite"]])("F35: a failed lookup after the %s commits still yields the committed session", async (kind) => {
+        let token: string;
+        let expected: { tenantId?: string } = {};
+        if (kind === "setup") token = await issue(email());
+        else {
+            vi.stubEnv("MIRA_FREE_TECHNICIANS", "false");
+            vi.stubEnv("MIRA_PILOT_APPROVAL_REQUIRED", "0");
+            const owner = await ensureUserAndTenant({ email: email() });
+            await testPool.query("UPDATE hub_users SET plan='enterprise',status='approved' WHERE id=$1", [owner.id]);
+            token = await createMagicToken(email(), { tenantId: owner.tenantId, role: "technician" });
+            expected = { tenantId: owner.tenantId };
+        }
+        const real = testPool.query.bind(testPool);
+        const spy = vi.spyOn(testPool, "query").mockImplementation((async (text: unknown, values?: unknown) => {
+            if (typeof text === "string" && /FROM hub_users WHERE email_lower/.test(text))
+                throw new Error("synthetic transient lookup failure");
+            return real(text as string, values as unknown[]);
+        }) as never);
+        let session;
+        try {
+            session = await provider("magic-token")({ token, agreementVersion: ONBOARDING_VERSION }, {});
+        }
+        finally {
+            spy.mockRestore();
+        }
+        expect(session).toMatchObject({ ...expected, credentialEpoch: expect.any(Number) });
+        const { rows } = await testPool.query("SELECT tenant_id,credential_epoch FROM hub_users WHERE id=$1", [session!.id]);
+        expect(session).toMatchObject({ tenantId: String(rows[0].tenant_id), credentialEpoch: Number(rows[0].credential_epoch) });
+        if (kind === "setup") {
+            const receipt = (await testPool.query("SELECT onboarding->>'createdTenantId' AS t FROM hub_magic_tokens WHERE token=$1", [token])).rows[0].t;
+            expect(receipt).toBe(session!.tenantId);
+        }
+    });
 });

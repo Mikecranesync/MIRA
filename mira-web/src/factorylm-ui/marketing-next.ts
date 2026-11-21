@@ -41,7 +41,12 @@ export async function marketingAliasRedirect(method: string, requestUrl: string)
   const url = new URL(requestUrl);
   if (!inScope(url.pathname)) return null;
   const { manifest: map } = await manifest();
-  const target = map.redirects[url.pathname];
+  // Codex F33 (round 2): a slash variant of an adapter-owned alias or route is
+  // normalized HERE, so it never reaches the generic 301 to a trusted host.
+  const bare = url.pathname.length > 1 ? url.pathname.replace(/\/+$/, "") : url.pathname;
+  const slashVariant = bare !== url.pathname && bare !== "";
+  const target = map.redirects[url.pathname]
+    ?? (slashVariant ? map.redirects[bare] ?? (Object.hasOwn(map.routes, bare) ? bare : undefined) : undefined);
   return target ? new Response(null, { status: 302, headers: { Location: target + url.search, "Cache-Control": "no-store" } }) : null;
 }
 

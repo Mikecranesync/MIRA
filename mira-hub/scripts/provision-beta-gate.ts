@@ -178,29 +178,18 @@ async function mintSession(provider: "credentials" | "magic-token", fields: Reco
   return `next-auth.session-token=${sessionToken}`;
 }
 
-/** The tenant of an account for this run's email that was created at or after
- * `since` (the database clock read before this run seeded anything). An older
- * account is not this run's and is never adopted or deleted (Codex F32). */
-async function tenantCreatedByThisRun(since: string): Promise<string | null> {
+/** The workspace THIS run's exact setup token created, read from the receipt
+ * the redemption transaction writes onto the spent token (Codex F32). No
+ * receipt means no proof of ownership, so nothing is ever adopted or deleted. */
+async function tenantCreatedByToken(token: string): Promise<string | null> {
   const c = new Client({ connectionString: process.env.NEON_DATABASE_URL, ssl: { rejectUnauthorized: false } });
   await c.connect();
   try {
     const r = await c.query(
-      `SELECT tenant_id FROM hub_users WHERE LOWER(email) = LOWER($1) AND created_at >= $2::timestamptz`,
-      [CREDS.email, since],
+      `SELECT onboarding->>'createdTenantId' AS tenant_id FROM hub_magic_tokens WHERE token = $1 AND used_at IS NOT NULL`,
+      [token],
     );
     return r.rows[0]?.tenant_id ? String(r.rows[0].tenant_id) : null;
-  } finally {
-    await c.end();
-  }
-}
-
-async function databaseNow(): Promise<string> {
-  const c = new Client({ connectionString: process.env.NEON_DATABASE_URL, ssl: { rejectUnauthorized: false } });
-  await c.connect();
-  try {
-    const r = await c.query(`SELECT NOW()::text AS now`);
-    return String(r.rows[0].now);
   } finally {
     await c.end();
   }
@@ -236,20 +225,19 @@ async function verifiedOnboarding(): Promise<string> {
   }
   if (!chosen) throw new Error("register requires verified setup, but no verified signup is open");
   console.error(`register requires verified setup — onboarding as '${chosen.intent}'`);
-  const since = await databaseNow();
   let token: string | null = null;
   try {
     token = await seedMagicToken("onboarding", chosen);
     // This session is minted while the account may still be 'pending'; the
     // status rides in the JWT, so it is discarded and re-minted after un-pend.
     await mintSession("magic-token", { token, agreementVersion: chosen.agreementVersion });
-    const tenantId = await tenantCreatedByThisRun(since);
+    const tenantId = await tenantCreatedByToken(token);
     if (!tenantId) throw new Error("verified setup created no account for this run");
     return tenantId;
   } catch (e) {
-    // Delete a tenant only with evidence THIS run created it (Codex F32). Any
-    // other account under the address is reported, never touched.
-    const orphan = await tenantCreatedByThisRun(since).catch(() => null);
+    // Delete a tenant only with this token's own creation receipt (Codex F32).
+    // Any other account under the address is reported, never touched.
+    const orphan = token ? await tenantCreatedByToken(token).catch(() => null) : null;
     if (!orphan) {
       if (token) await deleteSeededToken(token);
       console.error("verified setup created no account attributable to this run; only its seeded token was removed");

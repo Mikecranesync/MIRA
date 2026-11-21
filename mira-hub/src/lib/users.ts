@@ -1,5 +1,5 @@
 import pool from "@/lib/db";
-import type { PoolClient } from "pg";
+import type { Pool, PoolClient } from "pg";
 import { assertAuthMigrationReady } from "@/capabilities/auth-schema";
 import type { OnboardingReceipt } from "@/capabilities/verified-onboarding";
 import { PILOT_WINDOW_DAYS } from "@/lib/config";
@@ -503,13 +503,41 @@ async function applyInviteOnClient(
   return { id: String(rows[0].id), tenantId: String(rows[0].tenant_id), email: String(rows[0].email) };
 }
 
+/** Everything a session is minted from, read as ONE row snapshot (Codex F34):
+ * workspace and credential epoch can never come from two different reads. */
+export interface SessionSnapshot {
+  id: string;
+  email: string;
+  name: string | null;
+  tenantId: string;
+  status: string;
+  credentialEpoch: number;
+  trialExpiresAt: string | null;
+}
+
+export async function readSessionSnapshot(db: Pick<Pool, "query">, userId: string): Promise<SessionSnapshot | null> {
+  const { rows } = await db.query(
+    `SELECT id, email, name, tenant_id, status, credential_epoch, trial_expires_at FROM hub_users WHERE id = $1`,
+    [userId],
+  );
+  const r = rows[0];
+  if (!r) return null;
+  return {
+    id: String(r.id),
+    email: String(r.email),
+    name: r.name == null ? null : String(r.name),
+    tenantId: String(r.tenant_id),
+    status: String(r.status ?? "trial"),
+    credentialEpoch: Number(r.credential_epoch ?? 0),
+    trialExpiresAt: r.trial_expires_at ? new Date(r.trial_expires_at).toISOString() : null,
+  };
+}
+
 /** Invite redemption as ONE transaction (Codex F28): lock the unused token,
  * admit, claim the identity, change membership, then spend the token. Any
  * refusal rolls all of it back, so the token stays usable and access is
  * unchanged. Returns `undefined` for a token that is not an invitation. */
-export async function redeemInviteToken(
-  token: string,
-): Promise<{ id: string; tenantId: string; email: string } | null | undefined> {
+export async function redeemInviteToken(token: string): Promise<SessionSnapshot | null | undefined> {
   await ensureSchema();
   await ensureMagicSchema();
   const client = await pool.connect();
@@ -539,8 +567,12 @@ export async function redeemInviteToken(
       isPilotApprovalRequired(),
     );
     await client.query("UPDATE hub_magic_tokens SET used_at = NOW() WHERE token = $1", [token]);
+    // Codex F34/F35: the session is built from this in-transaction snapshot, so
+    // nothing after COMMIT can strand the spent link or mix two reads.
+    const snapshot = await readSessionSnapshot(client, account.id);
+    if (!snapshot) throw new Error("invited account vanished inside its own transaction");
     await client.query("COMMIT");
-    return account;
+    return snapshot;
   } catch (err) {
     await client.query("ROLLBACK").catch(() => {});
     if (err instanceof CredentialReviewRequiredError) return null;

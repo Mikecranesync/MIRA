@@ -38,6 +38,22 @@ describe("marketing aliases through the full server", () => {
     expectSameOriginAlias(res, "/mira?x=1");
   });
 
+  test.each([["/pricing/?check=1"], ["/pilot/?check=1"], ["/pricing//?check=1"]])(
+    "rollout on: slash variant %s of a manifest alias stays on staging, 302 no-store", async (path) => {
+      process.env.FACTORYLM_MARKETING_NEXT = "true";
+      process.env.MIRA_FREE_TECHNICIANS = "true";
+      const res = await app.request(`${STAGING}${path}`, { headers: { host: "staging-web.factorylm.test" } });
+      expectSameOriginAlias(res, "/demo?check=1");
+    });
+
+  test("rollout off: /pricing/ is not claimed, so legacy normalization is unchanged", async () => {
+    delete process.env.FACTORYLM_MARKETING_NEXT;
+    process.env.MIRA_FREE_TECHNICIANS = "false";
+    const res = await app.request("https://factorylm.com/pricing/?check=1", { headers: { host: "factorylm.com" } });
+    expect(res.status).toBe(301);
+    expect(res.headers.get("location")).toBe("https://factorylm.com/pricing?check=1");
+  });
+
   test("rollout off: a rollout-only alias is not claimed, so legacy normalization is unchanged", async () => {
     delete process.env.FACTORYLM_MARKETING_NEXT;
     process.env.MIRA_FREE_TECHNICIANS = "false";
