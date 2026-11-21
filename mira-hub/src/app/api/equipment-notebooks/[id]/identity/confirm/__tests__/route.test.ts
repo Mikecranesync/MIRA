@@ -390,9 +390,9 @@ describe("POST identity/confirm", () => {
       expect(body.message).toMatch(/look for its manual/);
     });
 
-    // #5706: the confirm-first card for the archived GS10 plate posts exactly
-    // this; the tap is what starts the search (the chat turn never did).
-    it("the GS10 confirm-first card's tap starts the confirmed search on AUTOMATIONDIRECT GS11N-20P2", async () => {
+    // #5706: the identity card for the typed GS10 model posts exactly this;
+    // the tap is what starts the confirmed search.
+    it("the GS10 identity card's tap starts the confirmed search on AUTOMATIONDIRECT GS11N-20P2", async () => {
       const res = await POST(req({ manufacturer: "AUTOMATIONDIRECT", model: "GS11N-20P2" }), params);
       expect(res.status).toBe(200);
       expect(acqMock.startManualAcquisition).toHaveBeenCalledTimes(1);

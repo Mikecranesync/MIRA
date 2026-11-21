@@ -449,7 +449,7 @@ describe("photo-to-manual (2026-11-20): the archived CV-101 reading + 'Find me t
   });
 
   // #5706 (owner decision 2026-11-20): the confirm-first card for this plate
-  // ships separately (branch bravo/photo-manual-confirm-card), so here the
+  // ships separately (#5713), so here the
   // archived reading offers nothing, exactly as on main, even when its code is
   // printed in the maker's public manuals.
   it("offers no card and no web-search chip for it, even when its code is proven public", async () => {
