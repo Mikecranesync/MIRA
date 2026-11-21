@@ -51,9 +51,11 @@ export default function SignupPage() {
       const result = await signIn("credentials", { email, password, redirect: false });
       if (!result || result.error) {
         setError("Account created — please sign in");
+        setLoading(false);
         router.push("/login");
         return;
       }
+      setLoading(false);
       router.push("/feed");
       router.refresh();
     } catch {
