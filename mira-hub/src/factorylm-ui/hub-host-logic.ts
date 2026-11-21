@@ -319,6 +319,8 @@ export type HubSendRecovery = {
   readonly body: ReturnType<typeof chatBodyFor> & { componentSelection?: ScopeField };
   readonly composition?: ReturnType<typeof chatBodyFor>;
   readonly unposted?: boolean;
+  readonly interruptedByNavigation?: boolean;
+  readonly bannerDismissed?: boolean;
   readonly question: string;
   readonly refusedScope?: ScopeField;
   readonly recoveryId?: string;
@@ -334,7 +336,8 @@ export type HubHostAction =
   | { readonly type: "recover-attachment-draft"; readonly threadId: string; readonly recoveryId: string; readonly text: string; readonly notice: string; readonly restoreDraft?: boolean; readonly allowWithoutAttachment?: boolean }
   | { readonly type: "restore-attachment-draft"; readonly threadId: string; readonly recoveryId: string }
   | { readonly type: "clear-recovery"; readonly threadId: string; readonly recoveryId: string }
-  | { readonly type: "reconcile-send"; readonly threadId: string; readonly requestIds: ReadonlySet<string>; readonly confirmedThreadTitle?: string; readonly confirmed?: boolean }
+  | { readonly type: "dismiss-recovery-error"; readonly threadId: string; readonly recoveryId: string }
+  | { readonly type: "reconcile-send"; readonly threadId: string; readonly requestIds: ReadonlySet<string>; readonly replayableErrorIds?: ReadonlySet<string>; readonly confirmedThreadTitle?: string; readonly confirmed?: boolean }
   | { readonly type: "reconcile-notebook-list"; readonly notebooks: readonly Pick<HubNotebook, "id" | "threads">[] }
   | { readonly type: "clear-attachment-recovery"; readonly threadId: string; readonly recoveryId: string };
 
@@ -427,7 +430,9 @@ export function hubHostReducer(state: HubShellState, action: HubHostAction): Hub
   if (action.type === "reconcile-send") {
     let next = state;
     for (const recovery of state.sendRecoveryByThread?.get(action.threadId) ?? []) {
-      if (recovery.unposted || !action.requestIds.has(recovery.body.clientRequestId)) continue;
+      const requestId = recovery.body.clientRequestId;
+      if (recovery.unposted || !action.requestIds.has(requestId) ||
+          (recovery.interruptedByNavigation && action.replayableErrorIds?.has(requestId))) continue;
       next = hubHostReducer(next, { type: "clear-recovery", threadId: action.threadId, recoveryId: sendRecoveryId(recovery) });
       if (recovery.draftRevision !== undefined) {
         next = hubHostReducer(next, {
@@ -444,6 +449,18 @@ export function hubHostReducer(state: HubShellState, action: HubHostAction): Hub
     return next;
   }
 
+  if (action.type === "dismiss-recovery-error") {
+    const recoveries = state.sendRecoveryByThread?.get(action.threadId);
+    if (!recoveries?.some((recovery) => sendRecoveryId(recovery) === action.recoveryId)) return state;
+    const sendRecoveryByThread = new Map(state.sendRecoveryByThread);
+    sendRecoveryByThread.set(action.threadId, recoveries.map((recovery) =>
+      sendRecoveryId(recovery) === action.recoveryId ? { ...recovery, bannerDismissed: true } : recovery));
+    const next = { ...state, sendRecoveryByThread };
+    return action.threadId === state.thread.id
+      ? shellReducer(next, { type: "set-send-error", error: null })
+      : next;
+  }
+
   if (action.type === "clear-recovery") {
     const recoveries = state.sendRecoveryByThread?.get(action.threadId);
     const remaining = recoveries?.filter((recovery) => sendRecoveryId(recovery) !== action.recoveryId);
@@ -452,8 +469,9 @@ export function hubHostReducer(state: HubShellState, action: HubHostAction): Hub
     if (remaining.length) sendRecoveryByThread.set(action.threadId, remaining);
     else sendRecoveryByThread.delete(action.threadId);
     const next = { ...state, sendRecoveryByThread };
+    const latest = remaining.at(-1);
     return action.threadId === state.thread.id && state.sendError === recoveries?.at(-1)?.error
-      ? shellReducer(next, { type: "set-send-error", error: remaining.at(-1)?.error ?? null })
+      ? shellReducer(next, { type: "set-send-error", error: latest?.bannerDismissed ? null : latest?.error ?? null })
       : next;
   }
 
@@ -485,8 +503,16 @@ export function hubHostReducer(state: HubShellState, action: HubHostAction): Hub
     let next = state;
     if (action.type === "recover-send") {
       const sendRecoveryByThread = new Map(state.sendRecoveryByThread);
-      const recovery = { ...action.recovery, draftRevision: restore ? revision : action.recovery.draftRevision };
-      const peers = sendRecoveryByThread.get(action.threadId)?.filter((item) => sendRecoveryId(item) !== sendRecoveryId(recovery)) ?? [];
+      const existing = sendRecoveryByThread.get(action.threadId) ?? [];
+      const recoveryId = sendRecoveryId(action.recovery);
+      const matching = existing.find((item) => sendRecoveryId(item) === recoveryId &&
+        item.body.clientRequestId === action.recovery.body.clientRequestId);
+      const recovery = {
+        ...action.recovery,
+        interruptedByNavigation: action.recovery.interruptedByNavigation ?? matching?.interruptedByNavigation,
+        draftRevision: restore ? revision : action.recovery.draftRevision,
+      };
+      const peers = existing.filter((item) => sendRecoveryId(item) !== recoveryId);
       sendRecoveryByThread.set(action.threadId, [...peers, recovery]);
       next = { ...state, sendRecoveryByThread };
       if (active) next = shellReducer(next, { type: "set-send-error", error: action.recovery.error });
@@ -526,7 +552,8 @@ export function hubHostReducer(state: HubShellState, action: HubHostAction): Hub
     ? { text: state.draft, revision: state.draftRevision }
     : undefined;
   const incomingDraft = state.draftsByThread?.get(next.thread.id);
-  const incomingError = state.sendRecoveryByThread?.get(next.thread.id)?.at(-1)?.error ?? null;
+  const incomingRecovery = state.sendRecoveryByThread?.get(next.thread.id)?.at(-1);
+  const incomingError = incomingRecovery?.bannerDismissed ? null : incomingRecovery?.error ?? null;
   const opened = shellReducer(next, { type: "set-send-error", error: incomingError });
   if (!outgoingDraft && !incomingDraft) return { ...opened, draftRevision: undefined };
 
