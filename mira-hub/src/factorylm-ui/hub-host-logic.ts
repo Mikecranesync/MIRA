@@ -403,6 +403,23 @@ export function enabledDocIds(sources: readonly Pick<NotebookSource, "docId" | "
   return sources.filter((s) => s.enabledByDefault && (s.matchState === "user_confirmed" || s.matchState === "verified")).map((s) => s.docId);
 }
 
+
+export function currentReadyManualId(
+  status: { sourceState?: string; readySourceDocId?: string } | null | undefined,
+  sources: readonly (Pick<NotebookSource, "docId" | "enabledByDefault" | "matchState"> & { readiness?: { canChat: boolean } })[],
+): string | null {
+  if (status?.sourceState !== "ready" || !status.readySourceDocId) return null;
+  const source = sources.find(source => source.docId === status.readySourceDocId);
+  return source?.readiness?.canChat && enabledDocIds([source]).length > 0 ? source.docId : null;
+}
+
+export function persistedRequest<T extends Pick<PersistedTurn, "clientRequestId">>(
+  turns: readonly T[],
+  requestId: string,
+): T | undefined {
+  return turns.find(turn => turn.clientRequestId === requestId);
+}
+
 /**
  * Re-read a project only while it is still the one on screen (#5456, Codex r1
  * F1 on #5488). A write started in project A can finish after the technician

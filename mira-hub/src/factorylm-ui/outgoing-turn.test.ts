@@ -161,3 +161,14 @@ describe("the outgoing message owns its photo previews (Codex #4289 F2)", () => 
     expect(released).toEqual([]);
   });
 });
+
+it("adds the outgoing photo to its own question when another completed exchange is still live", () => {
+  const earlier = turn("prior-q", "user", "earlier question");
+  const recent = turn("current-q", "user", "new question");
+  const turns = withOutgoing([], {
+    turns: [earlier, turn("prior-a", "assistant", "earlier answer"), recent],
+    outgoingId: "out-1", questionId: recent.id,
+  }, outgoing(), OPEN, OPEN, CONTEXT);
+  expect(turns[0]).toEqual(earlier);
+  expect(turns[2]?.parts.length).toBeGreaterThan(recent.parts.length);
+});

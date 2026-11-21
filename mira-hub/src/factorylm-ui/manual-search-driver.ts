@@ -9,17 +9,8 @@
  * (`vitest.config.ts`: `environment: "node"`), and adding either for ONE
  * driver would itself be the commodity-before-custom violation this slice is
  * trying to avoid (a whole new test environment for one small state driver).
- * So the TIMER-SCHEDULING LOGIC is extracted here, injectable and
- * framework-free, directly unit-testable with vitest's fake timers and no
- * React mount at all. `hub-host.tsx` creates ONE instance of this driver and
- * wires its `onStateChange`/`onRefreshSources` callbacks into its own
- * `useState`/`loadDetail` — see the call site there for the note on why a
- * `HubShellHost` mount test is not attempted.
- *
- * `fetchStatus` is NOT a second fetch path: `hub-host.tsx` passes a closure
- * that calls `loadDetail` (the EXISTING, already-used getJson on the
- * notebook-detail route) and returns its `manualSearch` field — this module
- * owns none of that I/O itself, only the timer and the follower advance.
+ * The host applies the complete detail read before returning its status to
+ * this driver. A poll needs one snapshot for both readiness and sources.
  */
 // Relative import, not the `@factorylm/interaction` alias (matching
 // `to-interaction.ts` in this same directory): the alias is a tsconfig
@@ -28,6 +19,7 @@
 // importable from a plain vitest unit test (see this module's own header).
 import {
   advanceManualSearchFollow,
+  compareManualSearchGeneration,
   observeLiveManualSearchFrame,
   reseedManualSearchFollow,
   type ManualSearchFollowState,
@@ -38,8 +30,6 @@ export interface ManualSearchDriverDeps {
   /** Read the notebook's CURRENT status (reuses the Hub's existing detail fetch — never a second endpoint). */
   readonly fetchStatus: (notebookId: string) => Promise<ManualSearchStatus | null>;
   readonly onStateChange: (state: ManualSearchFollowState | null) => void;
-  /** Called exactly once, the turn a followed search is found to have genuinely settled. */
-  readonly onRefreshSources: () => void;
   readonly setTimeoutFn?: (cb: () => void, ms: number) => ReturnType<typeof setTimeout>;
   readonly clearTimeoutFn?: (id: ReturnType<typeof setTimeout>) => void;
   readonly delayMs?: number;
@@ -109,7 +99,6 @@ export function createManualSearchDriver(deps: ManualSearchDriverDeps): ManualSe
           const result = advanceManualSearchFollow(state, notebookId, status);
           state = result.state;
           deps.onStateChange(state);
-          if (result.refreshSources) deps.onRefreshSources();
           scheduleTick(notebookId);
         })
         .catch(() => {
@@ -136,7 +125,6 @@ export function createManualSearchDriver(deps: ManualSearchDriverDeps): ManualSe
       deps.onStateChange(state);
       scheduleTick(notebookId);
     }
-    if (result.refreshSources) deps.onRefreshSources();
   }
 
   return {
@@ -147,8 +135,13 @@ export function createManualSearchDriver(deps: ManualSearchDriverDeps): ManualSe
       // A detail response may already have observed a newer generation than
       // this stream frame, even though both belong to the current notebook.
       const trackedStartedAt = trackedNotebookId === notebookId ? state?.status.startedAt : undefined;
-      if (trackedStartedAt && status.startedAt && Date.parse(status.startedAt) < Date.parse(trackedStartedAt)) return;
-      applyStatus(notebookId, status, observeLiveManualSearchFrame);
+      if (trackedStartedAt && status.startedAt && compareManualSearchGeneration(status.startedAt, trackedStartedAt) < 0) return;
+      // A stream frame can announce an acquisition, but cannot establish its
+      // readiness. Even a fast terminal frame needs the authoritative detail.
+      const pending = status.running ? status : {
+        manufacturer: status.manufacturer, model: status.model, startedAt: status.startedAt, running: true,
+      };
+      applyStatus(notebookId, pending, observeLiveManualSearchFrame);
     },
     reset() {
       clearTimer();

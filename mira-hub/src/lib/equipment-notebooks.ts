@@ -342,29 +342,44 @@ export async function createNotebook(
   });
 }
 
+async function readNotebooks(
+  c: PoolClient,
+  tenantId: string,
+  opts: { equipmentEntityId?: string | null },
+): Promise<EquipmentNotebook[]> {
+  // The bound asset lets a nameplate/sticker lookup land on its notebook.
+  const assetFilter = opts.equipmentEntityId ? ` AND n.equipment_entity_id = $2` : "";
+  const args: unknown[] = opts.equipmentEntityId ? [tenantId, opts.equipmentEntityId] : [tenantId];
+  const res = await c.query(
+    `SELECT ${notebookReadProjection.columns}
+       FROM equipment_notebooks n${BOUND_ASSET_JOIN}
+      WHERE n.tenant_id = $1::uuid${assetFilter}
+      ORDER BY n.last_opened_at DESC NULLS LAST, n.created_at DESC
+      LIMIT 100`,
+    args,
+  );
+  return res.rows.map((r: Record<string, unknown>) =>
+    rowToNotebook(r, Number(r.source_count ?? 0)),
+  );
+}
+
 export async function listNotebooks(
   tenantId: string,
   opts: { equipmentEntityId?: string | null } = {},
 ): Promise<EquipmentNotebook[]> {
+  return withTenantContext(tenantId, (c) => readNotebooks(c, tenantId, opts));
+}
+
+export async function listNotebooksWithThreads(
+  tenantId: string,
+  viewerUserId: string | null | undefined,
+): Promise<(EquipmentNotebook & { threads: NotebookThreadSummary[] })[]> {
+  // The list and all visible conversation groups use one leased connection.
   return withTenantContext(tenantId, async (c) => {
-    // The reverse lookup (asset -> its notebook) did not exist anywhere before
-    // 081: every equipment_notebooks predicate keyed on id, tenant_id or
-    // node_id. Without it, "scan the sticker and land in the notebook" is
-    // delivered by nothing.
-    const assetFilter = opts.equipmentEntityId ? ` AND n.equipment_entity_id = $2` : "";
-    const args: unknown[] = opts.equipmentEntityId ? [tenantId, opts.equipmentEntityId] : [tenantId];
-    const res = await c.query(
-      `SELECT ${notebookReadProjection.columns}
-         FROM equipment_notebooks n${BOUND_ASSET_JOIN}
-        WHERE n.tenant_id = $1::uuid${assetFilter}
-        ORDER BY n.last_opened_at DESC NULLS LAST, n.created_at DESC
-        LIMIT 100`,
-      args,
-    );
-    return res.rows.map((r: Record<string, unknown>) =>
-      rowToNotebook(r, Number(r.source_count ?? 0)),
-    );
-  });
+    const notebooks = await readNotebooks(c, tenantId, {});
+    const threads = await readNotebookThreads(c, tenantId, notebooks.map(({ id }) => id), 20, viewerUserId);
+    return notebooks.map((notebook) => ({ ...notebook, threads: threads.get(notebook.id) ?? [] }));
+  }, { readOnly: true });
 }
 
 export async function getNotebook(
@@ -1973,51 +1988,76 @@ export async function listTurns(
   }
 }
 
+type NotebookThreadSummary = {
+  id: string;
+  notebookId: string;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+  turnCount: number;
+  sharedLegacy: boolean;
+};
+
+async function readNotebookThreads(
+  c: PoolClient,
+  tenantId: string,
+  notebookIds: string[],
+  limit: number,
+  viewerUserId?: string | null,
+): Promise<Map<string, NotebookThreadSummary[]>> {
+  const byNotebook = new Map<string, NotebookThreadSummary[]>();
+  if (notebookIds.length === 0) return byNotebook;
+  const viewer = viewerUserId?.trim() || null;
+  const ownerPredicate = viewer ? "(owner_user_id = $4 OR owner_user_id IS NULL)" : "owner_user_id IS NULL";
+  const values: unknown[] = [tenantId, notebookIds, limit];
+  if (viewer) values.push(viewer);
+  const res = await c.query(
+    `SELECT requested.notebook_id, thread.*
+       FROM unnest($2::text[]) AS requested(notebook_id)
+       CROSS JOIN LATERAL (
+         SELECT thread_id,
+                min(created_at) AS created_at,
+                max(created_at) AS updated_at,
+                count(*)::int AS turn_count,
+                (array_agg(question ORDER BY created_at ASC, id ASC))[1] AS first_question,
+                bool_or(owner_user_id IS NULL) AS shared_legacy
+           FROM equipment_notebook_turns
+          WHERE tenant_id = $1::uuid AND notebook_id = requested.notebook_id::uuid
+            AND client_request_state = 'complete'
+            AND ${ownerPredicate}
+          GROUP BY thread_id
+          ORDER BY updated_at DESC, thread_id ASC NULLS LAST
+          LIMIT $3
+       ) thread
+      ORDER BY requested.notebook_id, thread.updated_at DESC, thread.thread_id ASC NULLS LAST`,
+    values,
+  );
+  for (const row of res.rows) {
+    const notebookId = String(row.notebook_id);
+    const summary = {
+      id: publicThreadId(row.thread_id),
+      notebookId,
+      title: threadTitleFromQuestion(String(row.first_question ?? "")),
+      createdAt: String(row.created_at),
+      updatedAt: String(row.updated_at),
+      turnCount: Number(row.turn_count ?? 0),
+      sharedLegacy: Boolean(row.shared_legacy),
+    };
+    const previous = byNotebook.get(notebookId);
+    if (previous) previous.push(summary);
+    else byNotebook.set(notebookId, [summary]);
+  }
+  return byNotebook;
+}
+
 export async function listThreads(
   tenantId: string,
   notebookId: string,
   limit = 50,
   opts: { viewerUserId?: string | null } = {},
-): Promise<
-  {
-    id: string;
-    notebookId: string;
-    title: string;
-    createdAt: string;
-    updatedAt: string;
-    turnCount: number;
-    sharedLegacy: boolean;
-  }[]
-> {
-  const viewer = (opts.viewerUserId ?? "").trim() || null;
+): Promise<NotebookThreadSummary[]> {
   return withTenantContext(tenantId, async (c) => {
-    const ownerPredicate = viewer ? `(owner_user_id = $4 OR owner_user_id IS NULL)` : `owner_user_id IS NULL`;
-    const values: unknown[] = [tenantId, notebookId, limit];
-    if (viewer) values.push(viewer);
-    const res = await c.query(
-      `SELECT thread_id,
-              min(created_at) AS created_at,
-              max(created_at) AS updated_at,
-              count(*)::int AS turn_count,
-              (array_agg(question ORDER BY created_at ASC))[1] AS first_question,
-              bool_or(owner_user_id IS NULL) AS shared_legacy
-         FROM equipment_notebook_turns
-        WHERE tenant_id = $1::uuid AND notebook_id = $2::uuid
-          AND client_request_state = 'complete'
-          AND ${ownerPredicate}
-        GROUP BY thread_id
-        ORDER BY updated_at DESC
-        LIMIT $3`,
-      values,
-    );
-    return res.rows.map((r: Record<string, unknown>) => ({
-      id: publicThreadId(r.thread_id),
-      notebookId,
-      title: threadTitleFromQuestion(String(r.first_question ?? "")),
-      createdAt: String(r.created_at),
-      updatedAt: String(r.updated_at),
-      turnCount: Number(r.turn_count ?? 0),
-      sharedLegacy: Boolean(r.shared_legacy),
-    }));
+    const byNotebook = await readNotebookThreads(c, tenantId, [notebookId], limit, opts.viewerUserId);
+    return byNotebook.get(notebookId) ?? [];
   });
 }

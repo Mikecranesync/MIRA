@@ -21,6 +21,18 @@ describe("normalizeIdentifier", () => {
 });
 
 describe("assessApplicability — rule 1: exact catalog number wins", () => {
+  it.each(["25B-D010N104A", "X25B-D010N104", "25B-D010N104-X"])(
+    "does not verify a sibling catalog ID %s with the same normalized substring",
+    (catalog) => {
+      const verdict = assessApplicability({
+        identity: PF525,
+        chunks: [{ content: `Table of catalog numbers: ${catalog}`, page: 5 }],
+        oemHost: true,
+      });
+      expect(verdict.state).toBe("candidate");
+    },
+  );
+
   it("verifies on an exact normalized catalog match and records tokens + pages", () => {
     const v = assessApplicability({
       identity: PF525,
@@ -48,6 +60,37 @@ describe("assessApplicability — rule 1: exact catalog number wins", () => {
 });
 
 describe("assessApplicability — rule 2: model plus attribution", () => {
+  it("needs a short model to appear as a whole code", () => {
+    const identity = { manufacturer: "Festo", model: "A1" };
+    const verdict = (content: string) => assessApplicability({ identity, chunks: [{ content, page: 1 }], oemHost: true });
+
+    expect(verdict("Appendix A 1 lists fasteners.").state).toBe("candidate");
+    expect(verdict("Festo A1 technical data.").state).toBe("verified");
+  });
+
+  it.each([
+    ["FST20-\nA", "verified"],
+    ["FST20‑\r\n  A", "verified"],
+    ["FST20\nA", "candidate"],
+    ["FST20-\nA-X", "candidate"],
+  ])("requires the full model across an explicit separator at a PDF line break (%j)", (content, state) => {
+    const verdict = assessApplicability({
+      identity: { manufacturer: "Festo", model: "FST20-A" },
+      chunks: [{ content, page: 1 }],
+      oemHost: true,
+    });
+    expect(verdict.state).toBe(state);
+  });
+
+  it("does not verify an omitted option suffix on a manufacturer's own document", () => {
+    const verdict = assessApplicability({
+      identity: { manufacturer: "Festo", model: "VUVG-LK10-M52-AT-G14-F" },
+      chunks: [{ content: "Festo VUVG-LK10-M52-AT-G14-F-A valve datasheet", page: 1 }],
+      oemHost: true,
+    });
+    expect(verdict.state).toBe("candidate");
+  });
+
   it("verifies on model + manufacturer named in the text", () => {
     const v = assessApplicability({
       identity: { manufacturer: "Allen-Bradley", model: "525" },

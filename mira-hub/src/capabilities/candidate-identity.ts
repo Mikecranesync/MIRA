@@ -21,7 +21,7 @@
 import { oemMakerTable } from "@/lib/manual-discovery";
 import { catalogIdentifierView } from "./catalog-identifier";
 import { modelNumbersIn } from "./manual-applicability";
-import { modelIdentitiesInText, resolveModelFromObservationText } from "./model-token";
+import { modelIdentitiesInText } from "./model-token";
 import { namesOnlyThisMachine, proposeIdentityFromText, type IdentityProposal } from "./identity-proposal";
 import { reviewedManualFor } from "./reviewed-manual-library";
 import {
@@ -37,6 +37,7 @@ import {
   publicLabelText,
   serialCodes,
   unambiguousPartNumber,
+  unwrapPartLabelMarkup,
 } from "./photo-part-lookup";
 
 export type CandidateIdentity = { manufacturer: string | null; part: string };
@@ -158,13 +159,23 @@ const NAMED_MANUAL_REQUEST_RE = new RegExp(
 const MANUAL_DEVICE = String.raw`(?:drive|vfd|plc|hmi|motor|inverter|controller|panel|valve|relay|sensor|module|pump|machine|equipment|device|unit|part|nameplate|photo|picture)`;
 const MANUAL_MAKER = oemMakerTable().map(({ name }) => escape(name).replace(/\\-| /g, "[ \\t-]+")).join("|");
 const MANUAL_MODEL_CODE = String.raw`(?=[a-z0-9./+-]{0,31}\d)[a-z0-9][a-z0-9./+-]{0,31}`;
+const MANUAL_IDENTIFIER_LABEL = String.raw`(?:model|part|catalog|order)`;
+const MANUAL_IDENTIFIER_FIELD = String.raw`(?:${MANUAL_IDENTIFIER_LABEL}(?:[ \t]+(?:number|no\.?|code))?(?:[ \t]*[:#][ \t]*|[ \t]+))?`;
+const MANUAL_IDENTIFIER_NO = new RegExp(
+  String.raw`^((?:(?:${MANUAL_MAKER})[ \t]+)?${MANUAL_IDENTIFIER_LABEL}[ \t]+no)\.(?=[ \t:#])`,
+  "i",
+);
 const MANUAL_REFERENCE_RE = new RegExp(
   String.raw`^(?:this|that|it|(?:(?:pictured|attached)[ \t]+)?${MANUAL_DEVICE}(?:[ \t]+(?:in|from)[ \t]+(?:this|the|my|your)[ \t]+(?:photo|picture))?|${MANUAL_MAKER})$`,
   "i",
 );
 const MANUAL_MODEL_REFERENCE_RE = new RegExp(
   // A compact code or a printed split code such as SLC 5/03, with at most one adjacent catalog code.
-  String.raw`^(?:(?:${MANUAL_MAKER})[ \t]+)?(?:(?:model|part|catalog)(?:[ \t]+number)?(?:[ \t]*[:#][ \t]*|[ \t]+))?(?:${MANUAL_MODEL_CODE}|([a-z]{2,8})[ \t]+[0-9][0-9./+-]{0,11})(?:[ \t]+(${MANUAL_MODEL_CODE}))?(?:[ \t]+${MANUAL_DEVICE})?$`,
+  String.raw`^(?:(?:${MANUAL_MAKER})[ \t]+)?${MANUAL_IDENTIFIER_FIELD}(?:${MANUAL_MODEL_CODE}|([a-z]{2,8})[ \t]+[0-9][0-9./+-]{0,11})(?:[ \t]+(${MANUAL_MODEL_CODE}))?(?:[ \t]+${MANUAL_DEVICE})?$`,
+  "i",
+);
+const DIRECT_MANUAL_IDENTITY_RE = new RegExp(
+  String.raw`^(?:${MANUAL_MAKER})[ \t]+${MANUAL_IDENTIFIER_FIELD}(${MANUAL_MODEL_CODE})(?:[ \t]+${MANUAL_DEVICE})?$`,
   "i",
 );
 const REVIEWED_MANUAL_REFERENCE_RE = new RegExp(
@@ -195,7 +206,7 @@ function reviewedManualIdentityFromSubject(subject: string): IdentityProposal | 
 /** A request for the document itself, as opposed to a question about its contents. */
 export function asksToFindManual(message: string): boolean {
   const subject = manualRequestSubject(message);
-  if (subject === undefined || /[.!?][ \t]+\S/.test(subject)) return false;
+  if (subject === undefined || /[.!?][ \t]+\S/.test(subject.replace(MANUAL_IDENTIFIER_NO, "$1"))) return false;
   // A remaining clause could ask about the manual. Accept only a whole equipment reference.
   if (!subject || MANUAL_REFERENCE_RE.test(subject) || reviewedManualIdentityFromSubject(subject)) return true;
   const model = MANUAL_MODEL_REFERENCE_RE.exec(subject);
@@ -225,10 +236,25 @@ function photoTextForModelComparison(photo: string): string {
  * permission to start an automatic external search.
  */
 export function exactManualIdentity(photo: string, typed: string): IdentityProposal | null {
+  // LOOK can wrap individual printed fields in Markdown. Keep the field and
+  // private-data rules applied to the unwrapped reading. Egress still checks
+  // the original observation independently before starting a search.
+  const displayed = catalogIdentifierView(unwrapPartLabelMarkup(photo)).text;
+  if ((mentionsSerialLabel(photo) && !mentionsSerialLabel(displayed)) ||
+      (mentionsAssetLabel(photo) && !mentionsAssetLabel(displayed))) return null;
+  photo = displayed;
   if (!photo && !mentionsSerialLabel(typed) && !mentionsAssetLabel(typed)) {
     const subject = manualRequestSubject(typed);
     const reviewed = subject && reviewedManualIdentityFromSubject(subject);
     if (reviewed && !modelIsPrivate(typed, reviewed.model)) return reviewed;
+    const direct = subject && DIRECT_MANUAL_IDENTITY_RE.exec(catalogIdentifierView(subject).text);
+    if (direct) {
+      const model = direct[1].toUpperCase();
+      const manufacturer = makerFromText(typed, model);
+      if (manufacturer && (modelNumbersIn(model).length || modelIdentitiesInText(model).size) && !modelIsPrivate(typed, model)) {
+        return { manufacturer, model };
+      }
+    }
   }
   const candidate = extractCandidateIdentity(photo, typed);
   // Many makers use compact model names that the part-number scanner does not
@@ -262,7 +288,7 @@ export function exactManualIdentity(photo: string, typed: string): IdentityPropo
   if (
     !photo ||
     makerFromText(photo) !== manufacturer ||
-    !reviewed ||
+    (!reviewed && mentionsSerialLabel(photo)) ||
     unambiguousPartNumber(photo)?.toUpperCase() !== key ||
     labelled.length !== 1 ||
     labelled[0] !== key ||
@@ -274,12 +300,12 @@ export function exactManualIdentity(photo: string, typed: string): IdentityPropo
   // A reviewed family marking can describe this same labelled order number.
   // Compare exact identities too: another order number in the same series is
   // still a competing model even if the single-token resolver folds both.
-  if (reviewed.families?.length) {
+  if (reviewed?.families?.length) {
     const exactIdentities = modelIdentitiesInText(part);
     for (const identity of modelIdentitiesInText(photo)) {
       if (!exactIdentities.has(identity) && !reviewed.families.includes(identity)) return null;
     }
-  } else if (resolveModelFromObservationText(photo).ambiguous) {
+  } else if (!namesOnlyThisMachine(photoTextForModelComparison(photo), part)) {
     return null;
   }
 

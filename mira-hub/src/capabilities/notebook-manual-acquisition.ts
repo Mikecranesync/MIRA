@@ -23,6 +23,7 @@
 import { isPublicHttpsUrl, isBlockedHost } from "@/lib/safe-download";
 import { withTenantContext } from "@/lib/tenant-context";
 import type { NotebookSource } from "@/lib/equipment-notebooks";
+import type { ManualSearchStatus } from "../../../packages/factorylm-interaction/src";
 import type { CandidateTrail } from "@/lib/manual-discovery";
 import { attachFileToTargetsTx } from "@/lib/workspace-files";
 import type { SpanContext } from "@opentelemetry/api";
@@ -192,13 +193,14 @@ function matchEvidenceKey(matchEvidence: unknown): string | null {
 /** The shared applicability test both `applicableEnabledSource` and
  *  `applicableReadySource` filter on — see `applicableEnabledSource`'s own
  *  doc comment for the fail-closed rationale on a keyless source. */
-function isApplicableEnabledManual(s: NotebookSource, key: string): boolean {
-  return (
-    s.sourceRole === "manual" &&
-    s.enabledByDefault &&
+function isApplicableTrustedManual(s: NotebookSource, key: string): boolean {
+  return s.sourceRole === "manual" &&
     (s.matchState === "verified" || s.matchState === "user_confirmed") &&
-    matchEvidenceKey(s.matchEvidence) === key
-  );
+    matchEvidenceKey(s.matchEvidence) === key;
+}
+
+function isApplicableEnabledManual(s: NotebookSource, key: string): boolean {
+  return s.enabledByDefault && isApplicableTrustedManual(s, key);
 }
 
 export function applicableEnabledSource(
@@ -278,24 +280,42 @@ function savedCopyPageUrl(fileId: string, page: number, env: Record<string, stri
 }
 
 /** Status from the currently enabled source, regardless of the last acquisition record. */
-export function currentManualSourceMessage(
+function currentManualSourceStatus(
   sources: readonly NotebookSource[],
   identity: ConfirmedIdentity,
-): string | null {
+): Pick<ManualSearchStatus, "running" | "message" | "sourceState" | "readySourceDocId"> | null {
   const { manufacturer, model, catalogNumber } = identity;
   const ready = preferredReadySource(sources, identity);
   if (ready) {
     const evidence = ready.matchEvidence as { reviewedLibraryPage?: number; reviewedLibraryTitle?: string } | null;
     const page = evidence?.reviewedLibraryPage;
     const title = evidence?.reviewedLibraryTitle;
-    if (typeof page === "number" && Number.isSafeInteger(page) && page > 0 && typeof title === "string") {
-      return `${title} is ready in Sources. PDF page ${page} shows coverage for ${catalogNumber?.trim() || model}.`;
-    }
-    return `The ${manufacturer} ${model} manual is ready — I can answer from it.`;
+    const message = typeof page === "number" && Number.isSafeInteger(page) && page > 0 && typeof title === "string"
+      ? `${title} is ready in Sources. PDF page ${page} shows coverage for ${catalogNumber?.trim() || model}.`
+      : `The ${manufacturer} ${model} manual is ready — I can answer from it.`;
+    return { running: false, sourceState: "ready", readySourceDocId: ready.docId, message };
   }
-  return applicableEnabledSource(sources, identity)
-    ? `I found the ${manufacturer} ${model} manual and added it to this notebook's Sources — it's still being prepared to answer from.`
-    : null;
+  const key = acquisitionKey(identity);
+  if (!key) return null;
+  const enabled = sources.filter((source) => isApplicableEnabledManual(source, key));
+  if (!enabled.length) return null;
+  if (enabled.some(({ readiness }) => readiness.state !== "failed" && readiness.state !== "needs_ocr")) {
+    return {
+      running: true, sourceState: "preparing",
+      message: `I found the ${manufacturer} ${model} manual and added it to this notebook's Sources — it's still being prepared to answer from.`,
+    };
+  }
+  return {
+    running: false, sourceState: "unavailable",
+    message: `I found the ${manufacturer} ${model} manual in Sources, but its pages aren't readable for answers.`,
+  };
+}
+
+/** A verified source explicitly turned off by the technician. */
+export function applicableDisabledSource(sources: readonly NotebookSource[], identity: ConfirmedIdentity): NotebookSource | null {
+  const key = acquisitionKey(identity);
+  if (!key || applicableEnabledSource(sources, identity)) return null;
+  return sources.find((source) => !source.enabledByDefault && isApplicableTrustedManual(source, key)) ?? null;
 }
 
 /** The recorded search for this notebook, or null (never attempted, or unreadable). */
@@ -330,19 +350,21 @@ export async function readAcquisition(tenantId: string, notebookId: string): Pro
  * its real outcome is always persisted and a stale miss is never left behind.
  * A background start never passes it.
  */
+type AcquisitionClaim = { gen: string; started_at: string };
+
 async function claim(
   tenantId: string,
   notebookId: string,
   key: string,
   explicit = false,
   reviewedDigest: string | null = null,
-): Promise<string | null> {
+): Promise<AcquisitionClaim | null> {
   try {
     return await withTenantContext(tenantId, async (c) => {
       // Every claim mints a fresh generation; only the holder of the CURRENT
       // generation may write sources or the outcome, so a slow worker whose
       // stale claim was taken over is fenced out (Codex #4118 r3 F6).
-      const r = await c.query<{ gen: string }>(
+      const r = await c.query<AcquisitionClaim>(
         `UPDATE equipment_notebooks
             SET manual_acquisition = jsonb_build_object(
                   'key', $3::text, 'state', 'running', 'gen', gen_random_uuid()::text,
@@ -428,10 +450,11 @@ async function claim(
                      AND manual_acquisition->>'file_id' IS NULL
                      AND manual_acquisition->>'prior_doc_id' IS NULL
                      AND manual_acquisition->>'prior_file_id' IS NULL))
-          RETURNING manual_acquisition->>'gen' AS gen`,
+          RETURNING manual_acquisition->>'gen' AS gen, manual_acquisition->>'started_at' AS started_at`,
         [tenantId, notebookId, key, STALE_RUNNING_MINUTES, UNAVAILABLE_RETRY_MINUTES, MAX_AUTOMATIC_RETRIES, explicit, reviewedDigest, REVIEWED_RETRY_STATES],
       );
-      return r.rows[0]?.gen ?? null;
+      const claimed = r.rows[0];
+      return claimed?.gen ? claimed : null;
     });
   } catch (err) {
     if (!isUndefinedColumn(err)) {
@@ -846,6 +869,8 @@ export interface StartInput {
   basis?: "confirmed" | "candidate";
   /** Set false when the candidate came from a typed request. */
   fromPhoto?: boolean;
+  /** Reports the committed search timestamp directly from the winning claim. */
+  onClaimed?: (startedAt: string) => void;
 }
 
 /**
@@ -862,10 +887,10 @@ export async function startManualAcquisition(
   const key = acquisitionKey(input.identity);
   if (!key) return false;
   const reviewedDigest = reviewedManualFor(input.identity)?.sha256 ?? null;
-  const gen = await claim(input.tenantId, input.notebookId, key, false, reviewedDigest);
-  if (!gen) return false;
+  const claimed = await claim(input.tenantId, input.notebookId, key, false, reviewedDigest);
+  if (!claimed) return false;
+  const { gen, started_at: startedAt } = claimed;
   const acquire = deps.acquire ?? acquireManualForIdentity;
-  const startedAt = new Date().toISOString();
   void (async () => {
     let out: ManualAcquisitionOutcome;
     try {
@@ -899,6 +924,7 @@ export async function startManualAcquisition(
         ` host=${(out.payload as { candidate?: { host?: string } }).candidate?.host ?? "-"}`,
     );
   })();
+  if (startedAt) input.onClaimed?.(startedAt);
   return true;
 }
 
@@ -933,10 +959,10 @@ export async function runManualAcquisition(
   });
   if (!key) return { started: false, outcome: null };
   const reviewedDigest = reviewedManualFor(input.identity)?.sha256 ?? null;
-  const gen = await claim(input.tenantId, input.notebookId, key, true, reviewedDigest);
-  if (!gen) return { started: false, outcome: null };
+  const claimed = await claim(input.tenantId, input.notebookId, key, true, reviewedDigest);
+  if (!claimed) return { started: false, outcome: null };
+  const { gen, started_at: startedAt } = claimed;
   const acquire = deps.acquire ?? acquireManualForIdentity;
-  const startedAt = new Date().toISOString();
   let out: ManualAcquisitionOutcome;
   try {
     // Codex #4177 r5 F7: the attachment is checkpointed IN THE ATTACH
@@ -1086,7 +1112,7 @@ export function acquisitionDeclineText(
         if (opts.sourceOff) {
           return `I found the official documentation for the ${label} and added it to this notebook's Sources, but it's turned off there now, so I can't answer from it. Turn it back on in Sources and ask again — I'll answer from it and show you the page.`;
         }
-        return `I found the official documentation for the ${label} and added it to this notebook's Sources. Ask again and I'll answer from it and show you the page.`;
+        return `I found the official documentation for the ${label} and added it to this notebook's Sources. Its status will appear here.`;
       // candidate_review (Codex post-cap 4 F9 / 13 F13 / 14 F13): the manual's
       // text did NOT verify this model, so the shared copy below gives the one
       // real next step: check it in Sources, or the URL and the upload
@@ -1099,11 +1125,11 @@ export function acquisitionDeclineText(
   const websiteHelp = website ? ` Open this website to look for the ${label} manual: ${website}. Check the model and revision, then download and upload the manual to this notebook for page citations.` : "";
   switch (rec.state) {
     case "running":
-      return `I don't have the ${label} manual yet — I'm looking for the official one now. It will show up in this notebook's Sources when I find it; ask again in a minute and I'll answer from it and show you the page.`;
+      return `I don't have the ${label} manual yet — I'm looking for the official one now. I'll show the result here when the lookup finishes.`;
     case "complete":
       // The client chose this turn's sources before the manual arrived, so this
       // answer did not consult it — say so rather than imply it was searched.
-      return `I found the official ${label} manual and added it to this notebook's Sources. Reopen the notebook (or turn it on in Sources) and ask again — I'll answer from it and show you the page.`;
+      return `I found the official ${label} manual and added it to this notebook's Sources. Its status will appear here.`;
     case "candidate_review":
       // Only name Sources when an indexed document is actually there to review.
       // Garage pilot L2: the document is PART of a manual (one chapter, or pages
@@ -1154,21 +1180,12 @@ export function acquisitionDeclineText(
 
 /** T2 (#4189 F4/F6) — the shape the notebook GET route returns alongside
  *  `notebook`/`sources`/`turns`, for both the Hub and mobile post-refresh
- *  render path. Mirrors `ManualSearchStatus` in `packages/factorylm-interaction`
- *  field-for-field (not imported: that package has no DB-adjacent deps and
- *  this one does, by design — see that package's own header).
+ *  render path. Uses the shared `ManualSearchStatus` contract.
  *  `startedAt` (Codex round 2 F4/F8) identifies the SEARCH GENERATION — the
  *  shared mobile/Hub follower keys its retry budget on `notebookId|startedAt`
  *  so a NEW search (a different `started_at`) always gets a fresh budget,
  *  never one already spent by an earlier search for the same identity. */
-export interface ManualSearchStatus {
-  manufacturer: string;
-  model: string;
-  running: boolean;
-  message?: string;
-  manualUrl?: string;
-  startedAt?: string;
-}
+export type { ManualSearchStatus };
 
 /**
  * The notebook's CURRENT manual-search status — for its own confirmed
@@ -1211,13 +1228,17 @@ export async function currentManualSearchStatus(
 ): Promise<ManualSearchStatus | null> {
   if (!acquisitionEnabled(tenantId, deps.env)) return null;
   const rec = await readAcquisition(tenantId, notebookId);
-  if (!rec) return null;
-
   const confirmedKey = acquisitionKey(confirmed);
-  const candidateIdentity: ConfirmedIdentity | null = proposedIdentity
+  const candidateIdentity: ConfirmedIdentity | null = !confirmedKey && proposedIdentity
     ? { identityStatus: "user_confirmed", manufacturer: proposedIdentity.manufacturer, model: proposedIdentity.model, catalogNumber: "" }
     : null;
   const candidateKey = candidateIdentity ? acquisitionKey(candidateIdentity) : null;
+
+  if (!rec) {
+    const linked = currentManualSourceStatus(sources, confirmed);
+    if (!linked || !confirmed.manufacturer || !confirmed.model) return null;
+    return { manufacturer: confirmed.manufacturer, model: confirmed.model, ...linked };
+  }
 
   let manufacturer: string;
   let model: string;
@@ -1240,36 +1261,40 @@ export async function currentManualSearchStatus(
     return null;
   }
 
-  const startedAt = rec.started_at ?? undefined;
-
-  // F10: the acquired source's CURRENT state wins over the historical record.
-  const messageFromSource = currentManualSourceMessage(sources, identity);
-  if (messageFromSource) {
-    // The technician asked for the manual, so a ready reviewed publication is
-    // handed over as a link that opens MIRA's saved copy at its coverage page
-    // (#5726 F1: never the manufacturer's live URL, whose bytes may since have
-    // changed). The saved copy is the one this search linked for this document,
-    // and its download was checked against the same pinned digest.
+  const status = { manufacturer, model, ...(rec.started_at ? { startedAt: rec.started_at } : {}) };
+  // Only advertise Ready if the applicable manual is in the same response's Sources.
+  const linked = currentManualSourceStatus(sources, identity);
+  if (linked) {
+    // Offer the saved coverage page for the same verified PDF that confers
+    // readiness. The download record and document must prove the pinned bytes.
     const publication = reviewedManualFor({ manufacturer, model, catalogNumber: identity.catalogNumber });
-    const ready = publication ? approvedReadySource(sources, identity, publication) : null;
-    const manualUrl = publication && ready && ready === preferredReadySource(sources, identity) &&
+    const ready = publication && linked.sourceState === "ready" ? approvedReadySource(sources, identity, publication) : null;
+    const manualUrl = publication && ready && ready.docId === linked.readySourceDocId &&
       rec.linked === true && rec.doc_id === ready.docId && rec.reviewed_digest === publication.sha256 && rec.file_id
       ? savedCopyPageUrl(rec.file_id, publication.page, deps.env ?? process.env)
       : null;
+    return { ...status, ...linked, ...(manualUrl ? { manualUrl } : {}) };
+  }
+  if (applicableDisabledSource(sources, identity)) {
     return {
-      manufacturer, model, running: false, message: messageFromSource,
-      ...(manualUrl ? { manualUrl } : {}),
-      ...(startedAt ? { startedAt } : {}),
+      ...status, running: false, sourceState: "disabled",
+      message: `I found the official documentation for the ${manufacturer} ${model} and added it to this notebook's Sources, but it's turned off there now. Turn it back on in Sources to ask from it.`,
     };
   }
-
   const reconciled = await reconcileAcquisition(tenantId, notebookId, rec);
   if (!reconciled) return null;
-  const running = reconciled.state === "running";
-  // Reaching here means no applicable source is enabled right now (the ready /
-  // preparing branches above returned), so a "complete" record's manual is off.
-  const message = running ? null : acquisitionDeclineText(reconciled, key, `${manufacturer} ${model}`, basis, { sourceOff: true });
-  const manualUrl = !running && !reconciled.attached_indexed && !reconciled.source_removed
+  if (reconciled.state === "running") return { ...status, running: true };
+  if (reconciled.state === "complete" && reconciled.doc_id && !reconciled.source_removed &&
+      !sources.some((source) => source.docId === reconciled.doc_id)) {
+    // The claim can settle after this GET's Sources read. Wait for a snapshot
+    // that includes the attachment before treating this generation as settled.
+    return { ...status, running: true, sourceState: "preparing", message: "The manual is being added to Sources." };
+  }
+  const message = acquisitionDeclineText(reconciled, key, `${manufacturer} ${model}`, basis);
+  const manualUrl = !reconciled.attached_indexed && !reconciled.source_removed
     ? acquisitionManualUrl(reconciled) : null;
-  return { manufacturer, model, running, ...(message ? { message } : {}), ...(manualUrl ? { manualUrl } : {}), ...(startedAt ? { startedAt } : {}) };
+  return {
+    ...status, running: false, sourceState: reconciled.source_removed ? "removed" : "unavailable",
+    ...(message ? { message } : {}), ...(manualUrl ? { manualUrl } : {}),
+  };
 }

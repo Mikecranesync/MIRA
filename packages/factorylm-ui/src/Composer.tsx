@@ -61,6 +61,13 @@ export function Composer({ state, dispatch, adapter, hooks, attachmentTrapsTab =
   // previews. A sent attachment has already left `pending`, so its preview —
   // which the host's outgoing message may still show — is not touched.
   const pendingRef = useRef(pending);
+  const submitting = useRef(false);
+  const composerThread = useRef(state.thread.id);
+  const composerDraft = useRef(state.draft);
+  useLayoutEffect(() => {
+    composerThread.current = state.thread.id;
+    composerDraft.current = state.draft;
+  }, [state.thread.id, state.draft]);
   // Publish the composer's real height on the shell (#4620): it grows with the
   // sync banner, send errors, pending attachments and the safe-area inset, and a
   // followed sent turn must stop above it, not under it.
@@ -114,7 +121,7 @@ export function Composer({ state, dispatch, adapter, hooks, attachmentTrapsTab =
   const closeMenu = () => dispatch({ type: "set-attachment-menu-visible", visible: false });
 
   const run = <T,>(operation: AdapterOperation, call: () => Promise<T>, onResult: (value: T) => void) => {
-    if (busy) return;
+    if (busy || submitting.current) return;
     closeMenu();
     setBusy(operation);
     setFailure(null);
@@ -165,39 +172,47 @@ export function Composer({ state, dispatch, adapter, hooks, attachmentTrapsTab =
   });
 
   const send = () => {
-    const text = state.draft.trim();
-    // While an answer is in flight the Send button is replaced by Stop, but
-    // Enter in the field still lands here. A host ignores a send while busy and
-    // returns normally, which below reads as "sent" and clears the draft and
-    // chips -- the technician's next question vanished unsent (#4443). Keep
-    // both until the answer finishes, the same as the disabled button.
-    if (!canSend || hooks?.busy) return;
-    if (hooks?.onSend) {
-      try {
-        const sent = visiblePending;
-        hooks.onSend(text, sent.map((item) => item.attachment));
-        // Clear only what we just handed over. Filtering by identity (not by
-        // thread, and not `setPending([])`) keeps an attachment captured in
-        // another thread, and one captured while this send was in flight.
-        if (sent.length > 0) {
-          const handed = new Set(sent.map((item) => item.attachment.id));
-          setPending((current) => current.filter((item) => !handed.has(item.attachment.id)));
-          // Synchronously too: an unmount in this same tick must not release
-          // what was just handed to the host (its message still shows it).
-          pendingRef.current = pendingRef.current.filter((item) => !handed.has(item.attachment.id));
-        }
-        dispatch({ type: "set-draft", draft: "" });
-        dispatch({ type: "set-send-error", error: null });
-      } catch (error) {
-        // Preserve the question in the composer and show a plain-language error
-        // (no status codes or technical details).
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        const plainMessage = withoutStatusCode(errorMessage);
-        dispatch({ type: "set-send-error", error: plainMessage.trim() || "Couldn't reach MIRA. Your message is saved." });
-      }
-    } else {
+    if (!canSend || hooks?.busy || submitting.current) return;
+    const submittedDraft = state.draft;
+    const text = submittedDraft.trim();
+    const submittedThread = state.thread.id;
+    const sendToHost = hooks?.onComposerSend ?? hooks?.onSend;
+    if (!sendToHost) {
       dispatch({ type: "mock-send" });
       dispatch({ type: "set-send-error", error: null });
+      return;
+    }
+
+    const sent = visiblePending;
+    const accepted = () => {
+      if (sent.length) {
+        const handed = new Set(sent.map(item => item.attachment.id));
+        const keep = (items: readonly PendingAttachment[]) => items.filter(item => !handed.has(item.attachment.id));
+        pendingRef.current = keep(pendingRef.current);
+        setPending(keep);
+      }
+      if (composerThread.current !== submittedThread) return;
+      if (composerDraft.current === submittedDraft) dispatch({ type: "set-draft", draft: "" });
+      dispatch({ type: "set-send-error", error: null });
+    };
+    const rejected = (error: unknown) => {
+      if (composerThread.current !== submittedThread) return;
+      const message = error instanceof Error ? withoutStatusCode(error.message).trim() : "";
+      dispatch({ type: "set-send-error", error: message || "Couldn't reach MIRA. Your message is saved." });
+    };
+    try {
+      const attachments = sent.map(item => item.attachment);
+      const ready = hooks?.onComposerSend
+        ? hooks.onComposerSend(text, attachments)
+        : void sendToHost(text, attachments);
+      if (ready) {
+        submitting.current = true;
+        void ready.then(accepted, rejected).finally(() => { submitting.current = false; });
+      } else {
+        accepted();
+      }
+    } catch (error) {
+      rejected(error);
     }
   };
 
@@ -274,6 +289,7 @@ export function Composer({ state, dispatch, adapter, hooks, attachmentTrapsTab =
           type="button"
           className="fl-composer__pending-remove"
           aria-label={`Remove ${item.attachment.name}`}
+          disabled={hooks?.busy && submitting.current}
           onClick={() => {
             adapter.release?.(item.attachment.id);
             setPending((current) => current.filter((p) => p.attachment.id !== item.attachment.id));

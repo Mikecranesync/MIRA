@@ -3,6 +3,18 @@ import { PART_SEARCH_CANCEL, asksPartCompatibility, danglingPrivateLabel, confir
 import { resolveModelFromObservationText } from "@/lib/manual-rag";
 
 describe("photo part lookup", () => {
+  it.each(["Se**ri**al", "As**se**t tag", "owner**Serial**number"])(
+    "never offers a part that is also marked private in the raw or displayed text (%s)",
+    (field) => {
+      expect(unambiguousPartNumber(`Model: VUVG-LK10-M52-AT-G14-F\n${field}: VUVG-LK10-M52-AT-G14-F`)).toBeNull();
+    },
+  );
+
+  it("recognizes a Markdown-formatted private label before offering a web search", () => {
+    expect(mentionsSerialLabel("Se**ri**al: 00091234")).toBe(true);
+    expect(mentionsAssetLabel("As**se**t tag: 00091234")).toBe(true);
+  });
+
   it("uses one label-shaped code as a lookup candidate without asserting what it is", () => {
     expect(unambiguousPartNumber("Label reads Ni8U-S12-AP6; wiring: 1BN+ 3BU- 4BK")).toBe("Ni8U-S12-AP6");
   });

@@ -86,6 +86,7 @@ export function createOutgoingOwner(release: (attachmentId: string) => void, onC
 export interface Streaming {
   readonly turns: readonly InteractionTurn[];
   readonly outgoingId: string | null;
+  readonly questionId?: string;
 }
 
 /**
@@ -104,10 +105,14 @@ export function withOutgoing(
   context: ContextSnapshot,
 ): InteractionTurn[] {
   if (!outgoing || outgoing.threadId !== openThreadId) return [...persisted, ...streaming.turns];
-  if (streaming.turns.length === 0 || streaming.outgoingId !== outgoing.id) {
+  const question = streaming.questionId
+    ? streaming.turns.find(turn => turn.id === streaming.questionId)
+    : streaming.turns[0];
+  if (!question || streaming.outgoingId !== outgoing.id) {
     return [...persisted, ...streaming.turns, outgoingTurn(outgoing, threadId, context)];
   }
   // The stream's question turn is text-only; give it the photo the technician sent.
-  const [question, ...rest] = streaming.turns;
-  return [...persisted, { ...question, parts: [...question.parts, ...outgoingParts(outgoing)] }, ...rest];
+  return [...persisted, ...streaming.turns.map(turn => turn === question
+    ? { ...turn, parts: [...turn.parts, ...outgoingParts(outgoing)] }
+    : turn)];
 }

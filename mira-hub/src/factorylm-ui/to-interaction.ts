@@ -205,12 +205,21 @@ export function questionPhotoPart(entry: { fileId: string }): InteractionPart {
   };
 }
 
-export function sourceFor(citation: EvidenceCitation, turnId: string): SourceReference {
+export function citationSourceId(
+  citation: EvidenceCitation,
+  turnId: string,
+  requestId?: string | null,
+): string {
+  if (!requestId) return sourceIdFor(turnId, citation.citationId);
+  return JSON.stringify([requestId, citation.citationId, citation.docId, citation.page, citation.fileId, citation.originFileId]);
+}
+
+export function sourceFor(citation: EvidenceCitation, turnId: string, requestId?: string | null): SourceReference {
   const page = citation.page ?? null;
   const locator = page !== null ? `p. ${page}` : citation.quote ? citation.quote.slice(0, 80) : "cited passage";
   const href = citationHref(citation);
   return {
-    id: sourceIdFor(turnId, citation.citationId),
+    id: citationSourceId(citation, turnId, requestId),
     title: citation.sourceTitle,
     kind: citation.fileId ? "workspace_file" : "oem_documentation",
     locator,
@@ -317,12 +326,7 @@ export function hasIdentityDispute(evidence: readonly unknown[]): boolean {
  * `identity_dispute` — no `docId`, not a typed entry it knows — so it is read
  * straight off the raw evidence array here, same pattern as
  * `hasIdentityDispute` above. chat/route.ts persists this entry on EVERY
- * reply path (answered and abstained) so a reload renders the SAME confirm
- * card the live turn offered (T2 acceptance). The live-stream half (while a
- * turn is still in flight) is a narrower, accepted gap: `readNotebookStream`
- * / `StreamResult` (`mira-hub/src/components/equipment/notebook-chat-utils.ts`)
- * are guarded legacy presentation under the Unified UI Cutover and do not
- * carry this field — see the PR body for the BLOCKED note.
+ * reply path (answered and abstained), so reloading preserves the card.
  */
 export function identityProposalOf(evidence: readonly unknown[]): IdentityProposal | null {
   for (const e of evidence) {
@@ -367,7 +371,7 @@ export function livePartsWhileRunning(
 
 export function partsFromStream(
   result: StatusAwareStreamResult,
-  opts: { stopped?: boolean; turnId: string; notebookDocIds?: readonly string[]; componentLabel?: string | null },
+  opts: { stopped?: boolean; turnId: string; requestId?: string; notebookDocIds?: readonly string[]; componentLabel?: string | null; confirmedIdentity?: HubNotebookMeta["confirmedIdentity"] },
 ): InteractionPart[] {
   const parts: InteractionPart[] = [];
   const truncated = !result.sawStatus;
@@ -386,7 +390,13 @@ export function partsFromStream(
   if ((truncated || stopped) && result.safetyNotice) parts.push(safetyNoticePart(result.safetyNotice));
 
   if (!nonAnswer) {
-    for (const c of result.citations) parts.push({ type: "source", source: sourceFor(c, opts.turnId) });
+    if (result.identityProposal) {
+      const priorOutcome = opts.confirmedIdentity
+        ? (sameManufacturerModel(result.identityProposal, opts.confirmedIdentity) ? "confirmed" : "superseded")
+        : undefined;
+      parts.push({ type: "identity_proposal", ...result.identityProposal, ...(priorOutcome ? { priorOutcome } : {}) });
+    }
+    for (const c of result.citations) parts.push({ type: "source", source: sourceFor(c, opts.turnId, opts.requestId) });
     if (result.basis) parts.push(basisPart(result.basis, result.citations, opts.notebookDocIds));
     if (result.machineEvidence) parts.push(machineEvidencePart(result.machineEvidence));
     if (result.visualEvidence) parts.push(visualObservationPart(result.visualEvidence));
@@ -517,7 +527,7 @@ export function turnsFromPersisted(row: PersistedTurn & { createdAt?: string }, 
     parts.push({ type: "identity_proposal", ...proposal, ...(priorOutcome ? { priorOutcome } : {}) });
   }
   if (!stopped && row.answerStatus !== "error") {
-    for (const c of citations) parts.push({ type: "source", source: sourceFor(c, answerId) });
+    for (const c of citations) parts.push({ type: "source", source: sourceFor(c, answerId, row.clientRequestId) });
     if (row.basis) parts.push(basisPart(row.basis, citations, meta.notebookDocIds));
     for (const m of machineEvidence) parts.push(machineEvidencePart(m));
     for (const v of visualEvidence) parts.push(visualObservationPart(v));
@@ -597,53 +607,22 @@ export function withManualSearchStatus(
   return turns.map((t, i) => (i === lastAssistantIndex ? { ...t, parts: [...t.parts, part] } : t));
 }
 
-/** The follow-up suggestions of the answer that just finished streaming, and
- *  the question they answered (#4454). */
+/** Follow-up suggestions belong to one identified, saved answer. */
 export interface SettledFollowups {
-  readonly question: string;
+  readonly answerId: string;
   readonly suggestions: readonly string[];
-  /** Answer turn ids already in the thread when the send started. */
-  readonly answeredBefore: readonly string[];
 }
 
-/** The question text a user turn carried, trimmed; null for any other turn. */
-function askedText(turn: InteractionTurn | undefined): string | null {
-  if (turn?.role !== "user") return null;
-  const text = turn.parts.find((p) => p.type === "text");
-  return text?.type === "text" ? text.text.trim() : null;
-}
-
-/**
- * #4454 — saved rows never carry follow-up suggestions, so once `hub-host.tsx`
- * re-loads the thread after a stream and drops the live turn, the chips the
- * technician just saw vanished. The host keeps the finished answer's
- * suggestions; this puts them back on the answer that send produced: the one
- * answer to that question that was not in the thread when the send started.
- * It must also be the LAST answer and have completed. If another device
- * answered the same question meanwhile, two answers qualify and neither can be
- * told apart from here, so neither gets them. Same overlay shape as
- * `withManualSearchStatus`, applied before it so the order matches the live turn.
- */
 export function withSettledFollowups(
   turns: readonly InteractionTurn[],
   settled: SettledFollowups | null,
 ): InteractionTurn[] {
-  if (!settled || settled.suggestions.length === 0) return [...turns];
-  const before = new Set(settled.answeredBefore);
-  const asked = settled.question.trim();
-  let lastAssistantIndex = -1;
-  const produced: number[] = [];
-  for (let i = 0; i < turns.length; i++) {
-    const t = turns[i]!;
-    if (t.role !== "assistant") continue;
-    lastAssistantIndex = i;
-    if (!before.has(t.id) && askedText(turns[i - 1]) === asked) produced.push(i);
-  }
-  if (produced.length !== 1 || produced[0] !== lastAssistantIndex) return [...turns];
-  const answer = turns[lastAssistantIndex]!;
-  if (answer.lifecycle !== "completed" || answer.parts.some((p) => p.type === "followups")) return [...turns];
+  if (!settled || !settled.suggestions.length) return [...turns];
+  const lastAssistant = [...turns].reverse().find(turn => turn.role === "assistant");
+  if (lastAssistant?.id !== settled.answerId || lastAssistant.lifecycle !== "completed" ||
+      lastAssistant.parts.some(part => part.type === "followups")) return [...turns];
   const part: InteractionPart = { type: "followups", suggestions: settled.suggestions };
-  return turns.map((t, i) => (i === lastAssistantIndex ? { ...t, parts: [...t.parts, part] } : t));
+  return turns.map(turn => turn === lastAssistant ? { ...turn, parts: [...turn.parts, part] } : turn);
 }
 
 export function threadFromPersisted(
@@ -676,13 +655,14 @@ export function citationIndex(
   rows: readonly PersistedTurn[],
   live: readonly EvidenceCitation[] = [],
   liveTurnId: string | null = null,
+  liveRequestId?: string,
 ): ReadonlyMap<string, EvidenceCitation> {
   const index = new Map<string, EvidenceCitation>();
   for (const row of rows) {
     const turnId = answerTurnId(row.id);
-    for (const c of splitEvidence(row.evidence).citations) index.set(sourceIdFor(turnId, c.citationId), c);
+    for (const c of splitEvidence(row.evidence).citations) index.set(citationSourceId(c, turnId, row.clientRequestId), c);
   }
-  if (liveTurnId) for (const c of live) index.set(sourceIdFor(liveTurnId, c.citationId), c);
+  if (liveTurnId) for (const c of live) index.set(citationSourceId(c, liveTurnId, liveRequestId), c);
   return index;
 }
 

@@ -62,6 +62,30 @@ describe("#5069 Back closes the open layer", () => {
     expect(tab.url()).toBe("https://app.test/v3?thread=b");
   });
 
+  it("lets the setup layer finish its browser Back before opening the next project", () => {
+    const { tab, ctl, raised } = setup();
+    ctl.sync(true);
+    let opened = false;
+    ctl.closeThen(() => {
+      opened = true;
+      tab.history.replaceState(tab.history.state, "", "https://app.test/v3?thread=new-project");
+    });
+    expect(opened).toBe(false);
+    expect(tab.backs).toBe(1);
+    tab.pop();
+    expect(opened).toBe(true);
+    expect(raised()).toBe(0);
+    expect(tab.url()).toBe("https://app.test/v3?thread=new-project");
+  });
+
+  it("can open the project immediately when no placeholder was armed", () => {
+    const { tab, ctl } = setup();
+    let opened = false;
+    ctl.closeThen(() => { opened = true; });
+    expect(opened).toBe(true);
+    expect(tab.backs).toBe(0);
+  });
+
   it("Back that closes a sheet over the drawer re-arms for the drawer", () => {
     const { tab, ctl, raised } = setup();
     ctl.sync(true); // drawer

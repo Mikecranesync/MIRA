@@ -13,6 +13,8 @@
  * a model/search result never self-promotes to verified.
  */
 
+import { HYPHEN_EQUIV_CHARS } from "@/capabilities/detection-fold";
+
 export interface ApplicabilityChunk {
   content: string;
   page: number | null;
@@ -49,6 +51,24 @@ function tokensOf(content: string): string[] {
     .toUpperCase()
     .split(/[^A-Z0-9]+/)
     .filter(Boolean);
+}
+
+/** A printed identifier can lose punctuation in a PDF text layer. Compare
+ * across those separators without matching a prefix, suffix, or interior
+ * segment of a longer option code. */
+function identifierPattern(value: string | null | undefined): RegExp | null {
+  const original = value?.toUpperCase() ?? "";
+  const runs = original.match(/[A-Z0-9]+/g) ?? [];
+  if (!runs.length) return null;
+  const punctuation = `[-./+${HYPHEN_EQUIV_CHARS}]`;
+  const separator = `(?:[ \\t]+|${punctuation})?`;
+  // Only a written separator can continue a code onto another line.
+  const wrappedSeparator = `(?:[ \\t]+|${punctuation}(?:[ \\t]*\\r?\\n[ \\t]*)?)?`;
+  const compact = runs.join("");
+  const pattern = compact.length < 4 ? compact : runs.map((run) =>
+    run.replace(/(?<=[A-Z])(?=\d)|(?<=\d)(?=[A-Z])/g, () => separator),
+  ).join(wrappedSeparator);
+  return new RegExp(`(?<![A-Z0-9])(?<![A-Z0-9]${punctuation})${pattern}(?![A-Z0-9]|${punctuation}[A-Z0-9])`, "i");
 }
 
 function sharedPrefixLength(a: string, b: string): number {
@@ -99,6 +119,8 @@ export function assessApplicability(input: {
   const chunks = Array.isArray(input.chunks) ? input.chunks : [];
   const model = normalizeIdentifier(input.identity.model ?? "");
   const catalog = normalizeIdentifier(input.identity.catalogNumber ?? "");
+  const modelPattern = identifierPattern(input.identity.model);
+  const catalogPattern = catalog.length >= 4 ? identifierPattern(input.identity.catalogNumber) : null;
   const mfrFull = normalizeIdentifier(input.identity.manufacturer ?? "");
   // Longest word of a multi-word manufacturer ("Allen-Bradley" → ALLENBRADLEY,
   // but also match a document that only says "BRADLEY" or "ROCKWELL").
@@ -135,14 +157,12 @@ export function assessApplicability(input: {
     const dense = normalizeIdentifier(ch.content ?? "");
     const tokSet = new Set(tokensOf(ch.content ?? "").map(normalizeIdentifier));
 
-    // Catalog numbers are long and punctuation-heavy — a dense (punctuation
-    // stripped) containment test is the right shape for them.
-    if (catalog && catalog.length >= 4 && dense.includes(catalog)) {
+    if (catalogPattern?.test(ch.content)) {
       hits.catalog++;
       if (page !== null) catalogPages.push(page);
     }
     if (model) {
-      if (tokSet.has(model) || (model.length >= 4 && dense.includes(model))) {
+      if (modelPattern?.test(ch.content)) {
         hits.model++;
         if (page !== null) modelPages.push(page);
       } else {

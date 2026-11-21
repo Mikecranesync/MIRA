@@ -27,7 +27,7 @@ vi.mock("@/lib/tenant-context", () => ({
         db.queries.push({ sql, params });
         if (db.failWith) throw Object.assign(new Error("db"), db.failWith);
         if (/^\s*SELECT manual_acquisition/.test(sql)) return { rows: db.readRow ? [{ manual_acquisition: db.readRow }] : [] };
-        if (/RETURNING manual_acquisition->>'gen'/.test(sql)) return { rowCount: db.claimRows, rows: db.claimRows ? [{ gen: "g1" }] : [] };
+        if (/RETURNING manual_acquisition->>'gen'/.test(sql)) return { rowCount: db.claimRows, rows: db.claimRows ? [{ gen: "g1", started_at: "2026-11-21T00:00:00.123456+00:00" }] : [] };
         if (/FOR UPDATE/.test(sql))
           return { rowCount: db.claimRows, rows: db.claimRows ? [{ id: "nb", confirmed_same_key: db.confirmedSameKey }] : [] };
         if (/RETURNING match_state/.test(sql)) return { rowCount: db.updatedSource ? 1 : 0, rows: db.updatedSource ? [db.updatedSource] : [] };
@@ -129,7 +129,9 @@ describe("startManualAcquisition", () => {
       status: "candidate_review" as const,
       payload: { candidate: { host: "www.smcworld.com" }, manual: { matchState: "candidate" } },
     }));
-    expect(await startManualAcquisition(input, { acquire, env: ON })).toBe(true);
+    const onClaimed = vi.fn();
+    expect(await startManualAcquisition({ ...input, onClaimed }, { acquire, env: ON })).toBe(true);
+    expect(onClaimed).toHaveBeenCalledWith("2026-11-21T00:00:00.123456+00:00");
     await vi.waitFor(() => expect(db.queries.some((q) => /jsonb_set/.test(q.sql))).toBe(true));
     expect(acquire).toHaveBeenCalledWith({
       tenantId: "t",
@@ -166,7 +168,7 @@ describe("startManualAcquisition", () => {
     );
     const finishQ = db.queries.find((q) => /jsonb_set/.test(q.sql))!;
     const rec = JSON.parse(finishQ.params[2] as string) as AcquisitionRecord;
-    expect(rec).toMatchObject({ key: "SMC|VQ1000FPGC6C6D|", state: "candidate_review", candidate_host: "www.smcworld.com", match_state: "candidate" });
+    expect(rec).toMatchObject({ key: "SMC|VQ1000FPGC6C6D|", state: "candidate_review", started_at: "2026-11-21T00:00:00.123456+00:00", candidate_host: "www.smcworld.com", match_state: "candidate" });
     // Only OUR claim is overwritten — a re-bind mid-search wins.
     expect(finishQ.params[3]).toBe("SMC|VQ1000FPGC6C6D|");
     expect(finishQ.sql).toMatch(/WHERE tenant_id = \$1 AND id = \$2 AND manual_acquisition->>'key' = \$4/);
@@ -247,7 +249,7 @@ describe("acquisitionDeclineText — honest about what the search did", () => {
   it("complete → never claims this answer consulted the manual", () => {
     const t = acquisitionDeclineText(rec({ state: "complete" }), "K", "SMC VQ1000")!;
     expect(t).toContain("added it to this notebook's Sources");
-    expect(t).toContain("ask again");
+    expect(t).not.toMatch(/reopen|ask again/i);
   });
   it("none found → says so, with the manufacturer's request link when known", () => {
     const t = acquisitionDeclineText(rec({ state: "no_manual_found", oem_request_url: "https://oem.example/request" }), "K", "SMC VQ1000")!;
@@ -1121,6 +1123,17 @@ describe("currentManualSearchStatus — recomputed fresh, never a stale snapshot
       expect(r?.message).toMatch(/ready/i);
     });
 
+    it("never marks the old proposed manual ready once a different machine is confirmed", async () => {
+      db.readRow = candidateReviewRec;
+      const old = { manufacturer: "SMC", model: "SS5Y3-DUW01302" };
+      const current = { ...confirmedIdentity, model: "VQ1000-FPG-C6C6-D" };
+      const sources = [
+        { docId: "d1", enabledByDefault: true, matchState: "verified", sourceRole: "manual", readiness: { canChat: true }, matchEvidence: { autoAcquisitionKey: confirmedKey } },
+      ];
+      const status = await currentManualSearchStatus("t", "nb", current, old, sources as never, { env: ON });
+      expect(status).toBeNull();
+    });
+
     it("names the coverage page only for the currently enabled reviewed source", async () => {
       const url = "https://content2.smcetech.com/pdf/1900A.pdf";
       db.readRow = { ...candidateReviewRec, candidate_url: url, doc_id: "d1" };
@@ -1132,8 +1145,11 @@ describe("currentManualSearchStatus — recomputed fresh, never a stale snapshot
       const getStatus = (sources: unknown[]) => currentManualSearchStatus("t", "nb", confirmedIdentity, null, sources as never, { env: ON });
       const status = await getStatus([source]);
       expect(status?.message).toContain("ready in Sources. PDF page 26");
+      expect(status).toMatchObject({ sourceState: "ready", readySourceDocId: "d1", running: false });
       expect(status?.manualUrl).toBeUndefined();
-      expect((await getStatus([{ ...source, docId: "d2" }]))?.message).toContain("PDF page 26");
+      expect(await getStatus([{ ...source, docId: "d2" }])).toMatchObject({
+        readySourceDocId: "d2", message: expect.stringContaining("PDF page 26"),
+      });
       expect((await getStatus([{ ...source, matchEvidence: { autoAcquisitionKey: confirmedKey } }]))?.message).not.toContain("PDF page 26");
       expect((await getStatus([{ ...source, enabledByDefault: false }]))?.message).not.toContain("PDF page 26");
     });
@@ -1249,9 +1265,35 @@ describe("currentManualSearchStatus — recomputed fresh, never a stale snapshot
         { docId: "d1", enabledByDefault: true, matchState: "verified", sourceRole: "manual", readiness: { canChat: false }, matchEvidence: { autoAcquisitionKey: confirmedKey } },
       ];
       const r = await currentManualSearchStatus("t", "nb", confirmedIdentity, null, sources as never, { env: ON });
-      expect(r?.running).toBe(false);
-      expect(r?.message).not.toMatch(/turn it on/i);
-      expect(r?.message).not.toMatch(/couldn't confirm/i);
+      expect(r).toMatchObject({ sourceState: "preparing", running: true });
+      expect(r?.readySourceDocId).toBeUndefined();
+      expect(r?.message).toMatch(/still being prepared/i);
+    });
+
+    it.each(["failed", "needs_ocr"])("settles an enabled %s manual as unavailable", async (state) => {
+      db.readRow = candidateReviewRec;
+      const sources = [
+        { docId: "d1", enabledByDefault: true, matchState: "verified", sourceRole: "manual", readiness: { canChat: false, state }, matchEvidence: { autoAcquisitionKey: confirmedKey } },
+      ];
+      const r = await currentManualSearchStatus("t", "nb", confirmedIdentity, null, sources as never, { env: ON });
+      expect(r).toMatchObject({ sourceState: "unavailable", running: false });
+      expect(r?.readySourceDocId).toBeUndefined();
+      expect(r?.message).not.toMatch(/still being prepared|turned off/i);
+    });
+
+    it("waits for linked sources when a claim finishes after the response's source snapshot", async () => {
+      db.readRow = { ...candidateReviewRec, state: "complete", match_state: "verified", doc_id: "d1" };
+      db.sourceRow = { match_state: "verified", auto_key: confirmedKey };
+      const status = await currentManualSearchStatus("t", "nb", confirmedIdentity, null, [], { env: ON });
+      expect(status).toMatchObject({ sourceState: "preparing", running: true });
+      expect(status?.readySourceDocId).toBeUndefined();
+    });
+
+    it("reports a removed source separately from a disabled or unavailable source", async () => {
+      db.readRow = { ...candidateReviewRec, state: "complete", match_state: "verified", doc_id: "d1" };
+      const status = await currentManualSearchStatus("t", "nb", confirmedIdentity, null, [], { env: ON });
+      expect(status).toMatchObject({ sourceState: "removed", running: false });
+      expect(status?.readySourceDocId).toBeUndefined();
     });
 
     // #5268 Codex F2: a photo search that COMPLETED and enabled its manual,
@@ -1272,7 +1314,8 @@ describe("currentManualSearchStatus — recomputed fresh, never a stale snapshot
       it("disabled source → says it is turned off and how to use it, never 'switched on'", async () => {
         db.readRow = completeRec;
         const r = await currentManualSearchStatus("t", "nb", unconfirmed, proposed, [photoSource(false)] as never, { env: ON });
-        expect(r?.running).toBe(false);
+        expect(r).toMatchObject({ sourceState: "disabled", running: false });
+        expect(r?.readySourceDocId).toBeUndefined();
         expect(r?.message).toMatch(/turned off there now/);
         expect(r?.message).toMatch(/Turn it back on in Sources/);
         expect(r?.message).not.toMatch(/switched on/i);
@@ -1289,6 +1332,8 @@ describe("currentManualSearchStatus — recomputed fresh, never a stale snapshot
         const text = acquisitionDeclineText(completeRec as never, candidateKey, "SMC SS5Y3-DUW01302", "candidate");
         expect(text).toMatch(/added it to this notebook's Sources/);
         expect(text).not.toMatch(/switched on|turned off/i);
+        expect(acquisitionDeclineText(completeRec as never, candidateKey, "SMC SS5Y3-DUW01302"))
+          .not.toMatch(/reopen|ask again/i);
       });
     });
 

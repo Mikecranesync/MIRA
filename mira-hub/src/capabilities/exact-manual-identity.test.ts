@@ -4,6 +4,45 @@ import { exactManualIdentity, isSafeCandidateSearchIdentity } from "./candidate-
 
 const REQUEST = "Find the manual for this equipment.";
 
+describe("the exact public identifier in a LOOK observation", () => {
+  it("keeps an exact model that LOOK formatted as Markdown beside ratings and a separate private field", () => {
+    const photo = "**Brand:** AutomationDirect\n**Model:** **GS11N-20P2**\n**Input:** 110-120 VAC\n**Serial number:** SYNTH-00081";
+    const request = "Find me the manual for this drive.";
+
+    expect(exactManualIdentity(photo, request)).toEqual({ manufacturer: "AUTOMATIONDIRECT", model: "GS11N-20P2" });
+    expect(isSafeCandidateSearchIdentity(photo, request, "GS11N-20P2", "AUTOMATIONDIRECT")).toBe(false);
+  });
+
+  it("blocks automatic search when Markdown splits the literal private label", () => {
+    const photo = "**Brand:** AutomationDirect\n**Model:** GS11N-20P2\nSe**ri**al: 00091234";
+
+    expect(exactManualIdentity(photo, REQUEST)).toEqual({ manufacturer: "AUTOMATIONDIRECT", model: "GS11N-20P2" });
+    expect(isSafeCandidateSearchIdentity(photo, REQUEST, "GS11N-20P2", "AUTOMATIONDIRECT")).toBe(false);
+  });
+
+  it("offers a labelled model without a pre-reviewed publication when there is no private field", () => {
+    const photo = "**Brand:** Festo\n**Order number:** VUVG-LK10-M52-AT-G14-F";
+
+    expect(exactManualIdentity(photo, REQUEST)).toEqual({ manufacturer: "FESTO", model: "VUVG-LK10-M52-AT-G14-F" });
+  });
+
+  it("requires a reviewed public identity when the photo contains a private field", () => {
+    const photo = "**Brand:** Festo\n**Order number:** VUVG-LK10-M52-AT-G14-F\n**Serial number:** SYNTH-00081";
+
+    expect(exactManualIdentity(photo, REQUEST)).toBeNull();
+    expect(isSafeCandidateSearchIdentity(photo, REQUEST, "VUVG-LK10-M52-AT-G14-F", "FESTO")).toBe(false);
+  });
+
+  it.each([
+    "**Brand:** AutomationDirect\n**Model:** GS11N-20P2\n**Serial number:** GS11N-20P2",
+    "**Brand:** AutomationDirect\n**Model:** GS11N-20P2\n**Serial number:** SYNTH-00081\n**Model:** GS11N-20P5",
+    "**Brand:** Festo\n**Order number:** VUVG-LK10-M52-AT-G14-F\n**Model:** VUVG-LK10-M52-AT-G14-G",
+    "**Brand:** Festo\n**Order number:** VUVG-LK10-M52-AT-G14-F\n**Asset tag:** VUVGLK10M52ATG14F",
+  ])("keeps contradictory or private marked identities ineligible (%j)", (photo) => {
+    expect(exactManualIdentity(photo, REQUEST)).toBeNull();
+  });
+});
+
 describe("exact manual identity for a nameplate with private fields", () => {
   it.each([
     ["ABB", "ACS355", "S/N: TEST-ABB-001", "IP20"],

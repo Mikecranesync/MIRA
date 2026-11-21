@@ -73,8 +73,7 @@ import {
   acquisitionKey,
   acquisitionDeclineText,
   acquisitionManualUrl,
-  applicableEnabledSource,
-  currentManualSourceMessage,
+  applicableDisabledSource,
   canRetryReviewedAcquisition,
   readAcquisition,
   reconcileAcquisition,
@@ -2551,6 +2550,7 @@ async function handleChatTurn(
     Boolean(nb) && boundAsset.state === "unbound" && !(nb?.manufacturer?.trim() || nb?.model?.trim()) &&
     acquisitionEnabled(ctx.tenantId) && asksToFindManual(message);
   const exactManualRequestIdentity = unboundManualRequest ? exactManualIdentity(photoTextForOem, message) : null;
+  const photoManualRequest = unboundManualRequest && Boolean(photoTextForOem);
   const oemManufacturer: { name: string; source: "notebook" | "photo" } | null = await (async () => {
     if (notebookRetrieval) return null; // notebook sources own the turn
     if (nb?.manufacturer?.trim()) return { name: nb.manufacturer.trim(), source: "notebook" };
@@ -2640,7 +2640,7 @@ async function handleChatTurn(
   // A selected component is never answered from the shared library by the
   // notebook's machine: its manuals are the notebook's documents or none.
   const oemRetrieval =
-    !guidedDeadEnd && !componentTurn && !componentHold && !notebookRetrieval && !exactManualRequestIdentity &&
+    !guidedDeadEnd && !componentTurn && !componentHold && !notebookRetrieval && !exactManualRequestIdentity && !photoManualRequest &&
     oemManufacturer !== null && !oemIdentity.ambiguous && !oemIdentity.failed;
   const retrievalExecuted = notebookRetrieval || oemRetrieval;
   // #4687: only when a document search actually runs (Codex #4765 F3).
@@ -2894,7 +2894,10 @@ async function handleChatTurn(
     ) {
       identityProposal = { ...identityProposal, manufacturer: oemManufacturer.name };
     }
-    if (!identityProposal && oemManufacturer === null) {
+    // A dedicated photo lookup has already checked both inputs together. The
+    // legacy text-only and loose plate readers must not pick a different model
+    // when that check withheld the identity.
+    if (!identityProposal && !photoManualRequest && oemManufacturer === null) {
       let client: PoolClient | null = null;
       try {
         client = await pool.connect();
@@ -2914,7 +2917,7 @@ async function handleChatTurn(
     // rollback: the turn reads exactly as it did before the photo built the
     // notebook — the typed corpus proposal above (#4095) and the explicit
     // confirm-first search chip (#4171), nothing read off the plate.
-    if (!identityProposal && acquisitionEnabled(ctx.tenantId)) {
+    if (!identityProposal && !photoManualRequest && acquisitionEnabled(ctx.tenantId)) {
       try {
         // The label reader takes the photo first and the typed text second, so
         // a maker + part typed with no photo at all still proposes (RC1).
@@ -3022,11 +3025,10 @@ async function handleChatTurn(
     // proposal) passes the same candidate validator before any search starts.
     isSafeCandidateSearchIdentity(photoTextForOem, message, identityProposal.model, identityProposal.manufacturer) &&
     ((Boolean(photoTextForOem) && unambiguousPartNumber(photoTextForOem) !== null) || wantsManualDocumentation(message));
-  // A reviewed identity uses the confirmation card even when the photo needs
-  // confirmation before acquisition. Offer only one action for that request.
-  const reviewedConfirmationOwnsTurn = identityProposal !== null && exactManualRequestIdentity !== null &&
-    reviewedManualFor(exactManualRequestIdentity) !== null;
-  const canOfferPartSearch = !candidateAcquisitionOwnsTurn && !reviewedConfirmationOwnsTurn;
+  // An exact identity uses the confirmation card even when search cannot
+  // start until confirmation. A part-only search would be a separate action.
+  const exactConfirmationOwnsTurn = identityProposal !== null && exactManualRequestIdentity !== null;
+  const canOfferPartSearch = !candidateAcquisitionOwnsTurn && !exactConfirmationOwnsTurn;
   // #5268 owner decision 2026-11-07 (option A): a plate that shows a serial or
   // asset label offers its code only when the code is proven public — printed
   // in that maker's own manuals in the shared library. That proof, not how the
@@ -3304,6 +3306,7 @@ async function handleChatTurn(
     if (key) {
       let acq = await readAcquisition(ctx.tenantId, notebookId);
       let started = false;
+      let claimedStartedAt: string | null = null;
       // A matching "running" record also goes back through the atomic claim:
       // its stale-window predicate recovers a search orphaned by a restart,
       // and refuses (started=false) while a live search still holds it. A
@@ -3333,12 +3336,13 @@ async function handleChatTurn(
           nodeId: nb.nodeId,
           identity,
           turnSpanContext: rootSpan.spanContext(),
+          onClaimed: (value) => { claimedStartedAt = value; },
         });
         if (started) {
           acq = {
             key,
             state: "running",
-            started_at: new Date().toISOString(),
+            started_at: claimedStartedAt,
             finished_at: null,
             candidate_host: null,
             match_state: null,
@@ -3408,12 +3412,13 @@ async function handleChatTurn(
             basis: "candidate",
             fromPhoto: Boolean(photoTextForOem && photoPartNumber),
             turnSpanContext: rootSpan.spanContext(),
+            onClaimed: (value) => { candidateSearchStartedAt = value; },
           });
           if (cStarted) {
             cAcq = {
               key: candidateKey,
               state: "running",
-              started_at: new Date().toISOString(),
+              started_at: candidateSearchStartedAt ?? null,
               finished_at: null,
               candidate_host: null,
               match_state: null,
@@ -3424,12 +3429,13 @@ async function handleChatTurn(
           }
         }
         if (cStarted) {
-          // Read back the claim's generation and any outcome the background
-          // worker has already written, such as a search limit or a fast match.
+          // Read back a fast terminal outcome when available. The claim already
+          // supplied the generation, so a failed or stale read cannot erase it.
           const authoritative = await readAcquisition(ctx.tenantId, notebookId);
-          if (authoritative?.key === candidateKey) {
+          if (authoritative?.key === candidateKey &&
+              (!candidateSearchStartedAt || authoritative.started_at === candidateSearchStartedAt)) {
             cAcq = authoritative;
-            candidateSearchStartedAt = authoritative.started_at ?? undefined;
+            candidateSearchStartedAt ??= authoritative.started_at ?? undefined;
           }
         } else {
           cAcq = await reconcileAcquisition(ctx.tenantId, notebookId, cAcq);
@@ -3445,15 +3451,14 @@ async function handleChatTurn(
           // turned off since — judge that from the source's CURRENT state with
           // the same matcher the notebook status uses, never the history.
           const label = `${identityProposal.manufacturer} ${identityProposal.model}`;
-          let sourceOff = cAcq.state === "complete" && sourcesLoaded && !applicableEnabledSource(srcs, candidateIdentity);
+          let sourceOff = cAcq.state === "complete" && sourcesLoaded && applicableDisabledSource(srcs, candidateIdentity) !== null;
           let currentSourceMessage: string | null = null;
           if (cStarted && cAcq.state === "complete" && !cAcq.source_removed) {
             // The worker can attach and index its source before the claim's
             // read-back. The pre-claim source snapshot cannot answer this.
             try {
               const freshSources = await listSources(ctx.tenantId, notebookId);
-              currentSourceMessage = currentManualSourceMessage(freshSources, candidateIdentity);
-              sourceOff = currentSourceMessage === null;
+              sourceOff = applicableDisabledSource(freshSources, candidateIdentity) !== null;
             } catch {
               currentSourceMessage = `I found the ${label} manual, but couldn't check whether it's ready in Sources.`;
             }

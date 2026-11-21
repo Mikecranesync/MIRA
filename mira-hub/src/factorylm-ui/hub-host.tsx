@@ -37,6 +37,7 @@ import {
   type QuestionTarget,
   type ShellState,
   type ProgressStage,
+  compareManualSearchGeneration,
 } from "@factorylm/interaction";
 import {
   FactoryLMShell,
@@ -78,9 +79,9 @@ import { clearSheetDataForSignOut, localStorageStore, parseSheetReceipts } from 
 import { actionsCoveredByLayer, NOTEBOOK_ACTIONS_CSS, notebookActionsStyle } from "./notebook-actions";
 import { NotebookActionsMenu, NotebookActionsMenuProvider } from "./notebook-actions-menu";
 import { BenchComponents } from "./BenchComponents";
-import { SEND_BLOCKED_MESSAGE, benchSendRefusal, createBenchSendGate, expectsComponentFrame, isScopeRefusalCode, parseComponentFrames, prepareChatSend, heldEvidenceNote, heldQuestionForSend, recordBenchScope, retryTargetCheck, targetReviewMessage, withoutScope, type BenchScopes, type BenchState, type ComponentTurnFrame, type ScopeField } from "./bench-components-logic";
+import { SEND_BLOCKED_MESSAGE, benchSendRefusal, createBenchSendGate, expectsComponentFrame, isScopeRefusalCode, parseComponentFrames, prepareChatSend, conversationKey, heldEvidenceNote, heldQuestionForSend, recordBenchScope, retryTargetCheck, targetReviewMessage, withoutScope, type BenchScopes, type BenchState, type ComponentTurnFrame, type ScopeField } from "./bench-components-logic";
 import { LEGACY_THREAD_ID, notebookMachines, notebookProjects, threadRefFromItem, notebookIdFromProject, type HubNotebook } from "./notebook-tree";
-import { answerTurnId, citationIndex, contextFor, lifecycleFromStream, livePartsWhileRunning, partsFromStream, sourceIdFor, threadFromPersisted, withManualSearchStatus, withSettledFollowups, type SettledFollowups } from "./to-interaction";
+import { answerTurnId, citationIndex, contextFor, lifecycleFromStream, livePartsWhileRunning, partsFromStream, questionPhotoPart, threadFromPersisted, withManualSearchStatus, withSettledFollowups, type SettledFollowups } from "./to-interaction";
 import {
   EMPTY_FIXTURE,
   NO_PROJECT_ERROR,
@@ -91,6 +92,9 @@ import {
   detailQueryFor,
   draftAfterSendSucceeded,
   enabledDocIds,
+  currentReadyManualId,
+  NOTEBOOK_LIST_RETRY_DELAYS_MS,
+  persistedRequest,
   reloadIfStillSelected,
   errorMessageFor,
   fixtureFor,
@@ -136,6 +140,7 @@ type Detail = {
 type Live = {
   readonly id: string;
   readonly question: string;
+  readonly requestId: string;
   readonly content: string;
   readonly citations: EvidenceCitation[];
   readonly result: CompatibleStreamResult | null;
@@ -195,11 +200,24 @@ export function HubShellHost() {
   useEffect(() => { selectionRef.current = selection; }, [selection]);
   const [detail, setDetail] = useState<Detail | null>(null);
   const detailRef = useRef(detail);
-  useEffect(() => { detailRef.current = detail; }, [detail]);
+  const [detailUnavailable, setDetailUnavailable] = useState(false);
   const [live, setLive] = useState<Live | null>(null);
+  const [unconfirmedTurns, setUnconfirmedTurns] = useState<Live[]>([]);
   // #4454: the finished answer's follow-up suggestions, kept past the reload
   // that replaces the live turn (saved rows never carry them).
-  const [settledFollowups, setSettledFollowups] = useState<(SettledFollowups & HubSelection) | null>(null);
+  const [settledFollowups, setSettledFollowups] = useState<(Omit<SettledFollowups, "answerId"> & HubSelection & { requestId: string }) | null>(null);
+  const [waitingToSend, setWaitingToSend] = useState(false);
+  const waitingDrafts = useRef(new Map<string, string>());
+  const waitingSend = useRef<{
+    selection: HubSelection;
+    question: string;
+    attachments: readonly Attachment[];
+    manual: ManualSearchStatus | null;
+    scope: ReturnType<BenchScopes["get"]>;
+    signal: AbortController;
+    resolve: () => void;
+    reject: (error: Error) => void;
+  } | null>(null);
   // The technician's message from the moment Send is tapped (outgoing-turn.ts).
   const [outgoing, setOutgoing] = useState<Outgoing | null>(null);
   const [busy, setBusy] = useState(false);
@@ -280,6 +298,7 @@ export function HubShellHost() {
       const next = selectionFromSearch(readSearch(), data.notebooks) ?? landingSelection(data.notebooks);
       if (next) {
         // #4695: an automatic landing keeps what was typed while the list loaded.
+        selectionRef.current = next;
         syncThread(next, "land");
         setSelection(next);
         // A link without a thread opened a freshly minted one (#4444); name it
@@ -300,96 +319,109 @@ export function HubShellHost() {
   // work that completes after unmount can never restart polling. The ref is
   // set true in effect SETUP (see the unmount effect below), so StrictMode's
   // dev-only cleanup/re-setup replay leaves it true (the round-7 F20 lesson).
+  const [follow, setFollow] = useState<ManualSearchFollowState | null>(null);
+  const manualSearchDriverRef = useRef<ManualSearchDriver | null>(null);
   const hostMountedRef = useRef(false);
-  const seedManualSearch = (notebookId: string, status: ManualSearchStatus): void => {
+  const seedManualSearch = useCallback((notebookId: string, status: ManualSearchStatus): void => {
     if (hostMountedRef.current) manualSearchDriverRef.current?.seed(notebookId, status);
-  };
-  const loadDetail = useCallback((sel: HubSelection): Promise<boolean> => detailLoads.start(async (follow) => {
-    const token = detailGate.begin();
-    detailAbortRef.current?.abort();
-    const ctrl = new AbortController();
-    detailAbortRef.current = ctrl;
-    let res: { status: number; data: Detail | null };
-    try {
-      // Always names the thread (legacy included) — an omitted threadId returns EVERY thread's turns.
-      res = await getJson<Detail>(`/api/equipment-notebooks/${encodeURIComponent(sel.notebookId)}/${detailQueryFor(sel)}`, ctrl.signal);
-    } catch (err) {
-      // Superseded by a newer load: report THAT load's outcome, not this abort (#4219 Codex r3 F1).
-      if (isAbortError(err)) return follow();
-      throw err;
-    }
-    // Commit only if no newer load or selection change happened while this one was in flight.
-    if (!detailGate.isCurrent(token)) return follow();
-    if (res.status === 401) { setSignedOut(true); return false; }
-    if (!res.data) return false;
-    setDetail(res.data);
-    // Codex #4195 round 2 F6: hydration follows a running search to completion —
-    // seed the SAME driver a confirm uses, keyed on this notebook's status.
-    if (res.data.manualSearch) seedManualSearch(sel.notebookId, res.data.manualSearch);
-    return true;
-  }), [detailGate, detailLoads]);
+  }, []);
+  const loadDetail = useCallback((sel: HubSelection, fromPoll = false): Promise<boolean> => {
+    const isActive = () => hostMountedRef.current && selectionRef.current === sel;
+    if (!isActive()) return Promise.resolve(false);
+    return detailLoads.start(async (follow) => {
+      const token = detailGate.begin();
+      detailAbortRef.current?.abort();
+      const ctrl = new AbortController();
+      detailAbortRef.current = ctrl;
+      let res: { status: number; data: Detail | null };
+      try {
+        // Always names the thread (legacy included) — an omitted threadId returns EVERY thread's turns.
+        res = await getJson<Detail>(`/api/equipment-notebooks/${encodeURIComponent(sel.notebookId)}/${detailQueryFor(sel)}`, ctrl.signal);
+      } catch (err) {
+        // Superseded by a newer load: report THAT load's outcome, not this abort (#4219 Codex r3 F1).
+        if (!isActive()) return false;
+        if (isAbortError(err)) return follow();
+        return false;
+      }
+      // A superseding read may belong to another conversation.
+      if (!isActive()) return false;
+      if (!detailGate.isCurrent(token)) return follow();
+      if (res.status === 401) { setSignedOut(true); return false; }
+      if (!res.data) return false;
+      detailRef.current = res.data;
+      setDetail(res.data);
+      setDetailUnavailable(false);
+      const savedTurns = res.data.turns;
+      setUnconfirmedTurns(previous => previous.some(turn => persistedRequest(savedTurns, turn.requestId))
+        ? previous.filter(turn => !persistedRequest(savedTurns, turn.requestId))
+        : previous);
+      if (!fromPoll && res.data.manualSearch) seedManualSearch(sel.notebookId, res.data.manualSearch);
+      return true;
+    });
+  }, [detailGate, detailLoads, seedManualSearch]);
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- async data load (codebase precedent: (hub)/equipment/[id]/page.tsx)
-    if (selection) void loadDetail(selection);
+    if (!selection) return;
+    const openProject = async () => {
+      for (const delay of [0, 500, 1500]) {
+        if (delay) await new Promise(resolve => setTimeout(resolve, delay));
+        if (selectionRef.current !== selection || !hostMountedRef.current) return;
+        if (detailRef.current || await loadDetail(selection)) return;
+      }
+      if (selectionRef.current === selection && hostMountedRef.current && !detailRef.current) setDetailUnavailable(true);
+    };
+    void openProject();
   }, [selection, loadDetail]);
   useEffect(() => () => { detailGate.invalidate(); detailAbortRef.current?.abort(); }, [detailGate]);
 
   /** Change what is open: abort any stream and any in-flight detail load, drop the previous notebook's data. */
   const select = useCallback((sel: HubSelection) => {
+    const waiting = waitingSend.current;
+    if (waiting && waiting.selection === selectionRef.current && conversationKey(waiting.selection) !== conversationKey(sel)) {
+      waitingDrafts.current.set(conversationKey(waiting.selection), draftRef.current || waiting.question);
+      waiting.signal.abort();
+    }
     selectionRef.current = sel; // async list hydration must see this selection before React effects run
     abortRef.current?.abort();
     uploadAbortRef.current?.abort();
     detailGate.invalidate();
     detailAbortRef.current?.abort();
+    detailRef.current = null;
     setDetail(null);
+    setDetailUnavailable(false);
+    setBusy(false);
     setLive(null);
+    setUnconfirmedTurns([]);
     setFailedBody(null);
     manualSearchDriverRef.current?.reset();
     setFollow(null);
     syncThread(sel);
+    const draft = waitingDrafts.current.get(conversationKey(sel));
+    if (draft !== undefined) {
+      waitingDrafts.current.delete(conversationKey(sel));
+      dispatch({ type: "set-draft", draft });
+    }
     setSelection(sel);
     writeSearch(searchForSelection(sel));
   }, [syncThread, detailGate]);
 
-  // Codex #4195 round 2 (F4/F6/F8/F9): the Hub side of the ONE shared,
-  // framework-free follower (`manual-search-follow.ts`, packages/factorylm-interaction).
-  // Mobile wires the same state machine directly inside UnifiedChat.tsx's own
-  // effects; the Hub's timer-scheduling is extracted into `manual-search-driver.ts`
-  // (see its header for why — no jsdom/@testing-library/react here). `fetchStatus`
-  // reuses the SAME notebook-detail GET `loadDetail` uses — never a second endpoint.
-  // No `HubShellHost` mount test is attempted for this wiring: this file has no
-  // jsdom/@testing-library/react test here either, so the timer-scheduling
-  // behaviour is proven once, framework-free, in `manual-search-driver.test.ts`;
-  // this block's job is only to plumb that proven driver into useState/loadDetail
-  // (lazy `useRef` init, reset-on-select, seed-on-hydrate, seed-on-confirm),
-  // which `tsc --noEmit` + the driver's own tests cover between them.
-  const [follow, setFollow] = useState<ManualSearchFollowState | null>(null);
-  const manualSearchDriverRef = useRef<ManualSearchDriver | null>(null);
-  if (!manualSearchDriverRef.current) {
-    manualSearchDriverRef.current = createManualSearchDriver({
+  // Apply a complete detail snapshot before handing its status to the poll timer.
+  useEffect(() => {
+    const driver = createManualSearchDriver({
       fetchStatus: async (notebookId) => {
         const sel = selectionRef.current;
-        if (!sel || sel.notebookId !== notebookId) return null;
-        const res = await getJson<Detail>(`/api/equipment-notebooks/${encodeURIComponent(sel.notebookId)}/${detailQueryFor(sel)}`);
-        return res.data?.manualSearch ?? null;
+        if (!sel || sel.notebookId !== notebookId || !await loadDetail(sel, true)) return null;
+        return sel === selectionRef.current ? detailRef.current?.manualSearch ?? null : null;
       },
       onStateChange: setFollow,
-      onRefreshSources: () => {
-        const sel = selectionRef.current;
-        if (sel && hostMountedRef.current) void loadDetail(sel);
-      },
     });
-  }
-  // Codex r14 F29 / r15–r16 F30: stop following when the host unmounts, and
-  // keep it stopped. reset() clears the pending timer and invalidates in-flight
-  // tick continuations (driver epoch).
-  useEffect(() => {
+    manualSearchDriverRef.current = driver;
     hostMountedRef.current = true;
     return () => {
       hostMountedRef.current = false;
-      manualSearchDriverRef.current?.reset();
+      driver.reset();
+      manualSearchDriverRef.current = null;
     };
-  }, []);
+  }, [loadDetail]);
 
   // --- derived shell inputs ---
   const projects = useMemo(() => notebookProjects(notebooks ?? []), [notebooks]);
@@ -403,40 +435,54 @@ export function HubShellHost() {
     [detail, selection, capturedAt],
   );
   const docIds = useMemo(() => enabledDocIds(detail?.sources ?? []), [detail]);
-  // Turn-scoped keys (Codex #3839 F1): every answer numbers its citations from
-  // "[1]", so the index is keyed by (assistant turn id, citation number).
-  const citations = useMemo(
-    () => citationIndex(detail?.turns ?? [], live?.result?.citations ?? live?.citations ?? [], live ? `${live.id}-a` : null),
-    [detail, live],
-  );
+  const unsaved = useMemo(() => [...unconfirmedTurns, ...(live ? [live] : [])].filter(
+    turn => !persistedRequest(detail?.turns ?? [], turn.requestId),
+  ), [detail, live, unconfirmedTurns]);
+  const citations = useMemo(() => {
+    const index = new Map(citationIndex(detail?.turns ?? []));
+    for (const turn of unsaved) {
+      for (const [key, citation] of citationIndex([], turn.result?.citations ?? turn.citations, `${turn.id}-a`, turn.requestId)) {
+        index.set(key, citation);
+      }
+    }
+    return index;
+  }, [detail, unsaved]);
 
   const liveTurns = useMemo<InteractionTurn[]>(() => {
-    if (!live || !meta) return [];
+    if (!meta || !selection) return [];
     const context = contextFor(meta);
-    const threadId = shellThreadId(selection!);
-    const q: InteractionTurn = {
-      id: `${live.id}-q`, threadId, role: "user", parts: [{ type: "text", text: live.question }],
-      lifecycle: "completed", context, createdAt: live.startedAt, updatedAt: live.startedAt,
-    };
-    const aId = `${live.id}-a`;
-    let parts: InteractionPart[];
-    let lifecycle: InteractionTurn["lifecycle"];
-    if (live.result) {
-      parts = partsFromStream(live.result, { stopped: live.stopped, turnId: aId, notebookDocIds: meta.notebookDocIds, componentLabel: live.componentLabel });
-      lifecycle = lifecycleFromStream(live.result, { stopped: live.stopped });
-    } else {
-      parts = livePartsWhileRunning(live.content, live.stopped ? undefined : live.progress, {
-        expected: live.componentExpected === true,
-        label: live.componentLabel ?? null,
-      });
-      lifecycle = live.stopped ? "stopped" : "running";
-    }
-    const a: InteractionTurn = {
-      id: aId, threadId, role: "assistant", parts, lifecycle, context,
-      createdAt: live.startedAt, updatedAt: new Date().toISOString(),
-    };
-    return [q, a];
-  }, [live, meta, selection]);
+    const threadId = shellThreadId(selection);
+    return unsaved.flatMap(turn => {
+      const question: InteractionTurn = {
+        id: `${turn.id}-q`, threadId, role: "user",
+        parts: [{ type: "text", text: turn.question }, ...(turn.result?.visualEvidence ? [questionPhotoPart(turn.result.visualEvidence)] : [])],
+        lifecycle: "completed", context, createdAt: turn.startedAt, updatedAt: turn.startedAt,
+      };
+      const id = `${turn.id}-a`;
+      const parts = turn.result
+        ? partsFromStream(turn.result, { stopped: turn.stopped, turnId: id, requestId: turn.requestId, notebookDocIds: meta.notebookDocIds, componentLabel: turn.componentLabel, confirmedIdentity: meta.confirmedIdentity })
+        : livePartsWhileRunning(turn.content, turn.stopped ? undefined : turn.progress, {
+          expected: turn.componentExpected === true, label: turn.componentLabel ?? null,
+        });
+      const answer: InteractionTurn = {
+        id, threadId, role: "assistant", parts,
+        lifecycle: turn.result ? lifecycleFromStream(turn.result, { stopped: turn.stopped }) : turn.stopped ? "stopped" : "running",
+        context, createdAt: turn.startedAt, updatedAt: turn.startedAt,
+      };
+      return [question, answer];
+    });
+  }, [meta, selection, unsaved]);
+
+  const manualStatus = detail?.manualSearch;
+  const followIsNewer = Boolean(follow?.status.startedAt && manualStatus?.startedAt &&
+    compareManualSearchGeneration(follow.status.startedAt, manualStatus.startedAt) > 0);
+  const readyManualId = followIsNewer ? null : currentReadyManualId(manualStatus, detail?.sources ?? []);
+  const visibleManualStatus = followIsNewer || !manualStatus || (manualStatus.running && follow?.phase === "unresolved")
+    ? (follow?.status.running || follow?.phase === "unresolved" ? follow.status : null)
+    : manualStatus;
+  const displayedManualStatus = visibleManualStatus?.sourceState === "ready" && !readyManualId
+    ? null
+    : visibleManualStatus;
 
   // Live data is a pure projection over the UI state: the reducer's `hydrate`
   // replaces thread/projects/machines/context and keeps drawer, draft, mode and
@@ -449,28 +495,27 @@ export function HubShellHost() {
       const openId = selection ? shellThreadId(selection) : HOME_THREAD;
       const turns = withOutgoing([], { turns: [], outgoingId: null }, outgoing, openId, EMPTY_FIXTURE.thread.id, state.activeContext);
       const thread = loadingThread(selection, turns);
+      const project = notebooks?.find(notebook => notebook.id === selection?.notebookId);
+      if (project) return shellReducer(state, { type: "hydrate", data: { thread: { ...thread, title: project.displayName }, projects, machines } });
       return notebooks ? shellReducer(state, { type: "hydrate", data: { thread, projects, machines } }) : state;
     }
     const base = fixtureFor(detail.notebook, selection, detail.turns, meta, projects, machines);
     // Overlay the current lookup on the last assistant turn without storing a
     // snapshot of progress. The live frame can seed this state before detail loads.
-    const settled =
-      settledFollowups && settledFollowups.notebookId === selection.notebookId && settledFollowups.threadId === selection.threadId
-        ? settledFollowups
-        : null;
+    const saved = settledFollowups && settledFollowups.notebookId === selection.notebookId && settledFollowups.threadId === selection.threadId
+      ? persistedRequest(detail.turns, settledFollowups.requestId)
+      : undefined;
+    const settled = saved && settledFollowups ? { ...settledFollowups, answerId: answerTurnId(saved.id) } : null;
     const turns = withManualSearchStatus(
       withSettledFollowups(
-        withOutgoing(threadFromPersisted(detail.turns, meta).turns, { turns: liveTurns, outgoingId: live?.outgoingId ?? null }, outgoing, shellThreadId(selection), shellThreadId(selection), contextFor(meta)),
+        withOutgoing(threadFromPersisted(detail.turns, meta).turns, { turns: liveTurns, outgoingId: live?.outgoingId ?? null, questionId: live ? `${live.id}-q` : undefined }, outgoing, shellThreadId(selection), shellThreadId(selection), contextFor(meta)),
         settled,
       ),
-      // Codex #4195 round 2 F6: the FOLLOWED status (hydration/confirm-seeded,
-      // ticking toward resolution) takes precedence over the raw per-render
-      // read, so an idle Hub still updates once a backgrounded search settles.
-      follow?.status ?? detail.manualSearch ?? null,
+      displayedManualStatus,
     );
     const thread = { ...base.thread, turns };
     return shellReducer(state, { type: "hydrate", data: { thread, projects, machines, activeContext: base.activeContext } });
-  }, [state, detail, meta, selection, projects, machines, liveTurns, live, notebooks, follow, outgoing, settledFollowups]);
+  }, [state, detail, meta, selection, projects, machines, liveTurns, live, notebooks, outgoing, settledFollowups, displayedManualStatus]);
 
   // The outgoing message owns its photo previews until it is dropped; leaving
   // the hub releases whatever it still holds (Codex #4289 F2).
@@ -490,7 +535,7 @@ export function HubShellHost() {
 
   // --- the send path: the canonical notebook-chat route, streamed ---
   const send = useCallback(async (body: ReturnType<typeof chatBodyFor> & { componentSelection?: ScopeField }, question: string, sel: HubSelection | null = selection) => {
-    if (!sel) return;
+    if (!sel || selectionRef.current !== sel) return;
     // Never while a component change is saving (this send would carry the version the
     // header read before it), and never before this conversation's component selection
     // has been read (#5504 Codex r3 F6: it would go out as whole-machine). Checked before
@@ -518,14 +563,18 @@ export function HubShellHost() {
     abortRef.current?.abort();
     const ctrl = new AbortController();
     abortRef.current = ctrl;
-    const id = `live-${Date.now()}`;
-    const outgoingId = outgoingOwner.current?.id ?? null;
+    const id = `live-${body.clientRequestId}`;
+    const exchange: Live = {
+      id, question, requestId: body.clientRequestId, content: "", citations: [], result: null,
+      stopped: false, startedAt: new Date().toISOString(), outgoingId: outgoingOwner.current?.id ?? null,
+    };
+    const { outgoingId } = exchange;
+    const isActive = () => selectionRef.current === sel && abortRef.current === ctrl;
+    let componentLabel: string | undefined;
     setFailedBody(null);
     setSettledFollowups(null);
-    // #4454: which answers were already there, so the kept follow-ups land on the one this send produces.
-    const answeredBefore = (detailRef.current?.turns ?? []).map((row) => answerTurnId(row.id));
     dispatch({ type: "set-send-error", error: null });
-    setLive({ id, question, content: "", citations: [], result: null, stopped: false, startedAt: new Date().toISOString(), outgoingId });
+    setLive(exchange);
     setBusy(true);
     let outBody = prepared.body;
     // The route refused the scope (the selection moved): a retry is asked again under what the
@@ -569,6 +618,8 @@ export function HubShellHost() {
         const key = `${sel.notebookId}|${sel.threadId}`;
         if (expectsComponentFrame(outBody)) setLive((cur) => (cur && cur.id === id ? { ...cur, componentExpected: true } : cur));
         componentRead = parseComponentFrames(forComponent, (frame) => {
+          if (!isActive()) return;
+          componentLabel = frame.label;
           setComponentFrame({ key, frame });
           setLive((cur) => (cur && cur.id === id ? { ...cur, componentLabel: frame.label } : cur));
         }).catch(() => undefined);
@@ -585,28 +636,42 @@ export function HubShellHost() {
           manualSearchDriverRef.current?.observeLive(sel.notebookId, status);
         },
       });
-      // Both readers end with the stream; the finished answer carries its label.
       if (componentRead) await componentRead;
-      setLive((cur) => (cur && cur.id === id ? { ...cur, result } : cur));
-      // The server row is the source of truth; refresh it (also picks up a
-      // thread created by this first turn) and let the live turn go.
-      await loadDetail(sel);
-      await loadNotebooks();
-      // #4454: keep the follow-ups the live turn showed (same rule as the live
-      // render), for the reloaded answer to that same question.
+      if (!isActive()) return;
+      const finishedExchange = { ...exchange, result, componentLabel };
+      setLive(finishedExchange);
+      // History may be delayed or temporarily unavailable. Keep the finished
+      // exchange until the matching durable row arrives, without another POST.
+      if (result.sawStatus) {
+        setUnconfirmedTurns(previous => [
+          ...previous.filter(turn => !persistedRequest(detailRef.current?.turns ?? [], turn.requestId)),
+          finishedExchange,
+        ]);
+        setLive(null);
+      }
+      void loadNotebooks();
+      // #4454: keep the finished suggestions on the answer that generated them.
       const finished = partsFromStream(result, { turnId: `${id}-a` }).find((p) => p.type === "followups");
       setSettledFollowups(
         finished?.type === "followups"
-          ? { notebookId: sel.notebookId, threadId: sel.threadId, question: body.message, suggestions: finished.suggestions, answeredBefore }
+          ? { notebookId: sel.notebookId, threadId: sel.threadId, requestId: body.clientRequestId, suggestions: finished.suggestions }
           : null,
       );
-      setLive((cur) => (cur && cur.id === id ? null : cur));
+      const reloadHistory = async () => {
+        for (const delay of [0, ...NOTEBOOK_LIST_RETRY_DELAYS_MS]) {
+          if (delay) await new Promise(resolve => setTimeout(resolve, delay));
+          if (selectionRef.current !== sel || !hostMountedRef.current) return;
+          if (await loadDetail(sel) && persistedRequest(detailRef.current?.turns ?? [], exchange.requestId)) return;
+        }
+      };
+      void reloadHistory();
       dropOutgoing(outgoingId);
       // #4311: a failed send put the question back in the composer; a
       // successful retry takes it away again (never a newer draft).
       const draft = draftAfterSendSucceeded(draftRef.current, question);
       if (draft !== null) dispatch({ type: "set-draft", draft });
     } catch (caught) {
+      if (!isActive()) return;
       // #4687: a refusal delivered inside the progress stream is handled exactly
       // like the non-OK response above (signed out, or the route's own message).
       if (caught instanceof NotebookHttpError && caught.status === 401) { setSignedOut(true); return; }
@@ -641,7 +706,7 @@ export function HubShellHost() {
       benchGate.endSend();
       if (abortRef.current === ctrl) { abortRef.current = null; setBusy(false); }
       // A turn can change the checklist (its tallies) or find the selection moved (409).
-      setBenchRefresh((n) => n + 1);
+      if (selectionRef.current === sel) setBenchRefresh((n) => n + 1);
     }
   }, [selection, loadDetail, loadNotebooks, dropOutgoing, outgoingOwner, livingSheetJob, benchGate, gateConversation]);
 
@@ -753,6 +818,8 @@ export function HubShellHost() {
       uploadAbortRef.current?.abort();
       uploadAbortRef.current = ctrl;
     }
+    const requiredManual = currentReadyManualId(detailRef.current?.manualSearch, detailRef.current?.sources ?? []);
+    let sourceChanged = false;
     let outcome: Awaited<ReturnType<typeof runAttachedSend>>;
     try {
       outcome = await runAttachedSend({
@@ -768,16 +835,22 @@ export function HubShellHost() {
         ),
         send: async (composed) => {
           const rider = composed.visualEvidence ? { visualEvidence: composed.visualEvidence } : undefined;
-          await send(chatBodyFor(composed.question, composed.scope ?? fallbackScope, history, sel, rider), composed.question, sel);
+          const current = selectionRef.current === sel ? detailRef.current : null;
+          const presentScope = current ? enabledDocIds(current.sources) : [...fallbackScope];
+          const addedDuringUpload = (composed.scope ?? []).filter(id => !fallbackScope.includes(id));
+          const scope = [...new Set([...presentScope, ...addedDuringUpload])];
+          if (requiredManual && !scope.includes(requiredManual)) { sourceChanged = true; return; }
+          await send(chatBodyFor(composed.question, scope, current ? historyRows(current.turns) : history, sel, rider), composed.question, sel);
         },
       });
+      if (sourceChanged) outcome = { question: text, failure: "The manual is no longer enabled. Your question was saved.", reattach: false };
     } catch {
       outcome = { question: text, failure: "The attachment didn't upload — check the connection." };
     } finally {
       for (const f of files) adapter.forget(f.attachment.id);
       if (uploadAbortRef.current === ctrl) uploadAbortRef.current = null;
     }
-    if (outcome === "sent") return;
+    if (outcome === "sent" || selectionRef.current !== sel) return;
     setBusy(false);
     dropOutgoing();
     // Stopped or navigated away: nothing was posted; the question goes back
@@ -921,6 +994,71 @@ export function HubShellHost() {
     void send(chatBodyFor(q, docIds, historyRows(detail.turns), selection), q);
   }, [adapter, busy, selection, notebooks, detail, docIds, send, sendFromHome, composeAndSend, putOutgoing, benchGate, failedBody, retryCheck]);
 
+  const onComposerSend = useCallback((question: string, attachments: readonly Attachment[]) => {
+    if (!selection) return onSend(question, attachments);
+    const manual = displayedManualStatus?.running ? displayedManualStatus : null;
+    const readingScope = !benchGate.known && !benchGate.changing && !benchGate.pending;
+    if (detail && !readingScope && !manual) return onSend(question, attachments);
+    return new Promise<void>((resolve, reject) => {
+      const signal = new AbortController();
+      const timer = setTimeout(() => signal.abort(), manual ? 185_000 : 15_000);
+      const clear = () => {
+        clearTimeout(timer);
+        if (waitingSend.current?.signal !== signal) return;
+        waitingSend.current = null;
+        setWaitingToSend(false);
+      };
+      const fail = (error: Error) => { clear(); reject(error); };
+      signal.signal.addEventListener("abort", () => fail(new Error("Send paused. Your message and attachments are still here.")), { once: true });
+      waitingSend.current = {
+        selection, question, attachments, manual, signal,
+        scope: benchGate.known ? benchScopesRef.current.get(conversationKey(selection)) : undefined,
+        resolve: () => { clear(); resolve(); },
+        reject: fail,
+      };
+      setWaitingToSend(true);
+      if (readingScope) {
+        setBenchRefresh(count => count + 1);
+      }
+      if (detailUnavailable) {
+        void loadDetail(selection);
+      }
+    });
+  }, [selection, detail, detailUnavailable, benchGate, displayedManualStatus, onSend, loadDetail]);
+
+  useEffect(() => {
+    const waiting = waitingSend.current;
+    if (!waiting) return;
+    if (waiting.selection !== selection || selectionRef.current !== selection) {
+      waiting.signal.abort();
+      return;
+    }
+    if (!detail || !benchGate.known || busy) return;
+    const scope = benchScopesRef.current.get(conversationKey(waiting.selection));
+    if (waiting.scope && JSON.stringify(waiting.scope) !== JSON.stringify(scope)) {
+      waiting.reject(new Error("The question target changed. Review it before sending your message."));
+      return;
+    }
+    if (waiting.manual) {
+      const current = displayedManualStatus;
+      const sameLookup = current?.manufacturer === waiting.manual.manufacturer && current.model === waiting.manual.model &&
+        (!waiting.manual.startedAt || !current.startedAt || compareManualSearchGeneration(waiting.manual.startedAt, current.startedAt) === 0);
+      if (!readyManualId || !sameLookup) {
+        if (sameLookup && current.running && follow?.phase !== "unresolved") return;
+        waiting.reject(new Error("The manual isn't ready. Your message and attachments are still here."));
+        return;
+      }
+    }
+    try {
+      onSend(waiting.question, waiting.attachments);
+      waiting.resolve();
+    } catch (error) {
+      waiting.reject(error instanceof Error ? error : new Error("Couldn't send the message."));
+    }
+  }, [waitingToSend, selection, detail, detailUnavailable, benchGate, benchView, busy, displayedManualStatus, follow, readyManualId, onSend]);
+
+  useEffect(() => () => waitingSend.current?.signal.abort(), []);
+
   // WP-1 guided dead end: sent in general mode with the session id; the route confirms it.
   const onGuidedDeadEnd = useCallback((question: string, sessionId: string) => {
     const q = question.trim();
@@ -929,7 +1067,11 @@ export function HubShellHost() {
     void send(guidedDeadEndBody(q, sessionId, historyRows(detail.turns), selection), q);
   }, [busy, selection, detail, send, putOutgoing]);
 
-  const onStop = useCallback(() => { abortRef.current?.abort(); uploadAbortRef.current?.abort(); }, []);
+  const onStop = useCallback(() => {
+    waitingSend.current?.signal.abort();
+    abortRef.current?.abort();
+    uploadAbortRef.current?.abort();
+  }, []);
   const onRetry = useCallback(() => { if (failedBody && retryCheck?.kind === "retry") void send(failedBody.body, failedBody.question); }, [failedBody, retryCheck, send]);
 
   /** New chat: a fresh thread in the open notebook; from HOME, HOME is already the blank chat. */
@@ -975,14 +1117,16 @@ export function HubShellHost() {
   // citation marks, gated on the turn's own source parts.
   const renderText = useCallback((text: string, turn: InteractionTurn): ReactNode => {
     if (turn.role === "user") return <UserTurnText text={text} />;
-    const own: EvidenceCitation[] = [];
+    const own = new Map<string, { citation: EvidenceCitation; sourceId: string }>();
     for (const part of turn.parts) {
       if (part.type !== "source") continue;
-      const c = citations.get(part.source.id);
-      if (c) own.push(c);
+      const citation = citations.get(part.source.id);
+      if (citation) own.set(citation.citationId, { citation, sourceId: part.source.id });
     }
-    // The marker the reader clicks is this turn's "[n]"; the shell source it opens is this turn's.
-    const markdown = (content: string) => <AnswerMarkdown content={content} citations={own} onCite={(c) => openSource(sourceIdFor(turn.id, c.citationId))} />;
+    const markdown = (content: string) => <AnswerMarkdown content={content} citations={[...own.values()].map(entry => entry.citation)} onCite={(citation) => {
+      const entry = own.get(citation.citationId);
+      if (entry) openSource(entry.sourceId);
+    }} />;
     // #4690: the server's ⚠️ lines above the answer get their own warning block,
     // the shell's safety styling, instead of reading as the answer's first paragraph.
     return <AnswerWithSafety text={text} markdown={markdown} />;
@@ -1076,23 +1220,25 @@ export function HubShellHost() {
         currentSelection: () => (hostMountedRef.current ? selectionRef.current : null),
       },
     );
-    // #4219 Codex r2 F1: the identity is saved, but if the scope refresh did
-    // not apply, the next question would still use the old sources. Say so
-    // instead of claiming the manual is ready to answer from.
-    if (refresh === "failed" && data.manualReady === true) {
-      return {
-        manualReady: false,
-        searching: false,
-        message: "Machine confirmed, but its manual couldn't be loaded. Reload this notebook before asking about it.",
-      };
+    const confirmedDetail = refresh === "refreshed" && selectionRef.current?.notebookId === notebookId
+      ? detailRef.current
+      : null;
+    const status = confirmedDetail?.manualSearch;
+    const manualReady = currentReadyManualId(status, confirmedDetail?.sources ?? []) !== null;
+    if (data.manualReady === true && !manualReady) {
+      if (selectionRef.current?.notebookId === notebookId) {
+        seedManualSearch(notebookId, { ...proposal, running: true, ...(startedAt ? { startedAt } : {}) });
+      }
+      return { manualReady: false, searching: true, message: "Machine confirmed. Preparing the manual." };
     }
     return {
-      manualReady: data.manualReady === true,
-      searching,
+      manualReady,
+      searching: !manualReady && (searching || status?.running === true),
       ...(startedAt ? { startedAt } : {}),
-      ...(typeof data.message === "string" && data.message ? { message: data.message } : {}),
+      ...(manualReady && status?.message ? { message: status.message }
+        : !data.manualReady && typeof data.message === "string" && data.message ? { message: data.message } : {}),
     };
-  }, [loadDetail]);
+  }, [loadDetail, seedManualSearch]);
 
   // Plant memory (migration 095): record what fixed the machine, filed under
   // the question this answer replied to. The platform prompt/alert dialogs are
@@ -1170,6 +1316,7 @@ export function HubShellHost() {
 
   const hooks: HostHooks = {
     onSend,
+    onComposerSend,
     renderText,
     onCopy,
     ...(readAloud ? { onReadAloud } : {}),
@@ -1181,11 +1328,13 @@ export function HubShellHost() {
     onSource: (source) => openSource(source.id),
     onNewChat,
     onCreateProject,
-    ...(busy ? { onStop } : {}),
+    ...(busy || waitingToSend ? { onStop } : {}),
     ...(failedBody && retryCheck?.kind === "retry" ? { onRetry } : {}),
     ...(reviewMessage ? { targetReview: reviewMessage } : {}),
-    groundingLine: () => groundingLineFor(detail?.notebook ?? null, docIds.length),
-    busy,
+    groundingLine: () => selection && !detail
+      ? detailUnavailable ? "Couldn't load this project's details." : "Opening project…"
+      : groundingLineFor(detail?.notebook ?? null, docIds.length),
+    busy: busy || waitingToSend,
   };
 
   const layers = useBackClosesLayers(view); // #5069: phone web Back closes the open layer first

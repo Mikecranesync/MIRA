@@ -277,10 +277,22 @@ describe("listTurns — own turns + labeled legacy, never another user's", () =>
 });
 
 describe("listThreads — notebook as Project, turns as conversations", () => {
+  it("preserves the caller's spelling of a detail route UUID", async () => {
+    const notebookId = "AAAAAAAa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    const calls = wire([
+      { notebook_id: notebookId, thread_id: "saved", first_question: "First" },
+    ]);
+    const out = await listThreads(TENANT, notebookId, 50, { viewerUserId: USER_A });
+    const sel = calls.find((c) => /FROM equipment_notebook_turns/.test(c.sql))!;
+    expect(sel.sql).toContain("unnest($2::text[])");
+    expect(sel.sql).toContain("notebook_id = requested.notebook_id::uuid");
+    expect(out.map((t) => [t.notebookId, t.id])).toEqual([[notebookId, "saved"]]);
+  });
+
   it("derives recent thread summaries from only the viewer-visible rows", async () => {
     const calls = wire([
-      { thread_id: "thrd_b", first_question: "Second thread question with many extra words here", created_at: "2026-09-02T00:00:00Z", updated_at: "2026-09-02T00:05:00Z", turn_count: 2, shared_legacy: false },
-      { thread_id: null, first_question: "Legacy question", created_at: "2026-09-01T00:00:00Z", updated_at: "2026-09-01T00:05:00Z", turn_count: 1, shared_legacy: true },
+      { notebook_id: NB, thread_id: "thrd_b", first_question: "Second thread question with many extra words here", created_at: "2026-09-02T00:00:00Z", updated_at: "2026-09-02T00:05:00Z", turn_count: 2, shared_legacy: false },
+      { notebook_id: NB, thread_id: null, first_question: "Legacy question", created_at: "2026-09-01T00:00:00Z", updated_at: "2026-09-01T00:05:00Z", turn_count: 1, shared_legacy: true },
     ]);
     const out = await listThreads(TENANT, NB, 50, { viewerUserId: USER_A });
     const sel = calls.find((c) => /GROUP BY thread_id/.test(c.sql))!;
