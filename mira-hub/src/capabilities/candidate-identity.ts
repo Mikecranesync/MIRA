@@ -138,10 +138,14 @@ export function extractCandidateIdentity(observation: string, typed = ""): Candi
  * effect, not an answer, so a miss just means the search waits for the next
  * turn or an explicit ask — never a wrong answer.
  */
-const MANUAL_NOUN = String.raw`(?:manuals?|documentation|docs?|datasheet|data\s+sheet|spec\s+sheet|instructions?|user\s+guide|service\s+manual|install(?:ation)?\s+guide)`;
-const MANUAL_INTENT_RE = new RegExp(String.raw`\b${MANUAL_NOUN}\b`, "i");
+const MANUAL_PUBLICATION = String.raw`(?:manuals?|documentation|docs?|datasheet|data\s+sheet|spec\s+sheet|(?:operating|installation)\s+instructions|user\s+guide|service\s+manual|install(?:ation)?\s+guide)`;
+const MANUAL_INTENT_RE = new RegExp(String.raw`\b(?:${MANUAL_PUBLICATION}|instructions?)\b`, "i");
 const MANUAL_REQUEST_RE = new RegExp(
-  String.raw`^(?:(?:can|could|would) you\s+|please\s+)*(?:(?:find|get|open|show|send|look up|give|(?:i\s+)?(?:need|want)|do you have|where (?:can|do) i (?:find|get))\s+(?:me\s+)?)?(?:(?:the|a|an)\s+)?(?:official\s+)?${MANUAL_NOUN}\b(?:[.!?]*$|\s+(?:for|of|on|please)\b)`,
+  String.raw`^(?:(?:can|could|would) you\s+|please\s+)*(?:(?:find|get|open|show|send|look up|give|(?:i\s+)?(?:need|want)|do you have|where (?:can|do) i (?:find|get))\s+(?:me\s+)?)?(?:(?:the|a|an)\s+)?(?:official\s+)?${MANUAL_PUBLICATION}\b(?:[.!?]*$|\s+(?:for|of|on|please)\b)`,
+  "i",
+);
+const NAMED_MANUAL_REQUEST_RE = new RegExp(
+  String.raw`^(?:(?:can|could|would) you\s+|please\s+)*(?:find|get|open|send|look up)\s+(.+?)\s+${MANUAL_PUBLICATION}[.!?]*$`,
   "i",
 );
 
@@ -151,7 +155,10 @@ export function wantsManualDocumentation(message: string): boolean {
 
 /** A request for the document itself, as opposed to a question about its contents. */
 export function asksToFindManual(message: string): boolean {
-  return MANUAL_REQUEST_RE.test(message.trim());
+  const text = message.trim();
+  if (MANUAL_REQUEST_RE.test(text)) return true;
+  const named = NAMED_MANUAL_REQUEST_RE.exec(text)?.[1];
+  return !!named && !/\b(?:from|according to|per|in|about)\b/i.test(named);
 }
 
 /**
@@ -164,9 +171,11 @@ export function exactManualIdentity(photo: string, typed: string): IdentityPropo
   const candidate = extractCandidateIdentity(photo, typed);
   // Many makers use compact model names that the part-number scanner does not
   // recognize. A reviewed record can support displaying a confirmation card.
-  if (!candidate && !photo && !mentionsSerialLabel(typed) && !mentionsAssetLabel(typed)) {
-    const maker = makerFromText(typed);
-    const proposal = maker && proposeIdentityFromText(typed, [maker]);
+  if (!candidate) {
+    const text = photo ? `${photo}\n${typed}` : typed;
+    if (mentionsSerialLabel(text) || mentionsAssetLabel(text)) return null;
+    const maker = makerFromText(text);
+    const proposal = maker && proposeIdentityFromText(text, [maker]);
     return proposal && reviewedManualFor(proposal) ? proposal : null;
   }
   if (!candidate?.manufacturer) return null;
@@ -185,10 +194,9 @@ export function exactManualIdentity(photo: string, typed: string): IdentityPropo
     unambiguousPartNumber(photo)?.toUpperCase() !== key ||
     labelled.length !== 1 ||
     labelled[0] !== key ||
-    mentionsSerialLabel(photo) || mentionsAssetLabel(photo) ||
-    partLabelAfterPrivateLabel(photo) ||
-    privateIdentifierKeys(photo).size > 0 ||
-    privateSuffixTails(photo).length > 0 ||
+    mentionsAssetLabel(photo) || partLabelAfterPrivateLabel(photo) ||
+    [...privateIdentifierKeys(photo)].some((value) => value.includes(identifierKey(part))) ||
+    privateSuffixTails(photo).some((tail) => tail.includes(identifierKey(part))) ||
     !isSafeCandidateSearchIdentity("", `${manufacturer} ${part}\n${typed}`, part, manufacturer)
   ) return null;
 

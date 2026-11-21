@@ -21,4 +21,10 @@ describe("reviewed manual library", () => {
   ])("does not borrow applicability for %s %s", (manufacturer, model) => {
     expect(reviewedManualFor({ manufacturer, model })).toBeNull();
   });
+
+  it("checks the model and catalog together, allowing only a reviewed family", () => {
+    const identity = { manufacturer: "AutomationDirect", catalogNumber: "GS11N-20P2" };
+    expect(reviewedManualFor({ ...identity, model: "GS10" })).toMatchObject({ page: 26 });
+    expect(reviewedManualFor({ ...identity, model: "GS21N-20P2" })).toBeNull();
+  });
 });

@@ -41,7 +41,7 @@ const ragMock = vi.hoisted(() => ({
   manufacturerFromObservationText: vi.fn(() => null as string | null),
   // The real OEM model reader truncates "GS11N-20P2" to its family "GS11N" —
   // the search identity must come from the label reader, never this value.
-  resolveModelFromObservationText: vi.fn(() => ({ model: "GS11N" as string | null, ambiguous: false })),
+  resolveModelFromObservationText: vi.fn((_text: string) => ({ model: "GS11N" as string | null, ambiguous: false })),
 }));
 vi.mock("@/lib/manual-rag", () => ragMock);
 
@@ -102,6 +102,7 @@ vi.mock("@/capabilities/notebook-manual-acquisition", async (importOriginal) => 
 });
 
 import { POST } from "../route";
+import { resolveModelFromObservationText } from "@/capabilities/model-token";
 
 const SERIAL = "7A3K9Q2026X11";
 const MODEL = "GS11N-20P2";
@@ -168,6 +169,7 @@ beforeEach(() => {
   ragMock.retrieveManualChunks.mockResolvedValue([]);
   ragMock.corpusManufacturers.mockResolvedValue([]);
   ragMock.manufacturerFromObservationText.mockReturnValue(null);
+  ragMock.resolveModelFromObservationText.mockReturnValue({ model: "GS11N", ambiguous: false });
   proofMock.publicManualSeries.mockResolvedValue(null);
   acqMock.acquisitionEnabled.mockReturnValue(true);
   acqMock.startManualAcquisition.mockResolvedValue(true);
@@ -199,6 +201,24 @@ it("preserves the exact model when a known maker's label also includes ratings a
   }), params);
   const result = await frames(res);
   expect(result.find((frame) => frame.kind === "identity_proposal")).toMatchObject({ model: MODEL });
+  expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+});
+
+it.each([
+  ["ABB\nACS355", "ACS355"],
+  ["Schneider Electric\nCA3KN22BD", "CA3KN22BD"],
+  [SERIAL_PLATE, MODEL],
+])("offers confirmation from reviewed coverage on the label %s", async (text, model) => {
+  ragMock.resolveModelFromObservationText.mockImplementation(resolveModelFromObservationText);
+  visualMock.loadVisualEvidenceForPhoto.mockResolvedValue({
+    observationId: "obs", sessionId: "session", text, obsKind: "look", trust: "candidate", fileId: PHOTO, hazards: [],
+  });
+  const result = await frames(await POST(req({
+    message: "Find me the manual for this.",
+    mode: "general",
+    visualEvidence: { fileId: PHOTO },
+  }), params));
+  expect(result.find((frame) => frame.kind === "identity_proposal")).toMatchObject({ model });
   expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
 });
 

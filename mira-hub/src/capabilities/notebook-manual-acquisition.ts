@@ -34,6 +34,7 @@ import {
   type SourceStateWriter,
 } from "@/capabilities/manual-acquisition";
 import { MANUAL_SEARCH_LIMIT_COPY, MANUAL_SEARCH_UNAVAILABLE_COPY } from "@/capabilities/manual-search-copy";
+import { reviewedManualFor } from "@/capabilities/reviewed-manual-library";
 
 /** A running claim older than this is treated as abandoned (container restart). */
 export const STALE_RUNNING_MINUTES = 10;
@@ -245,7 +246,7 @@ export async function readAcquisition(tenantId: string, notebookId: string): Pro
  * its real outcome is always persisted and a stale miss is never left behind.
  * A background start never passes it.
  */
-async function claim(tenantId: string, notebookId: string, key: string, explicit = false): Promise<string | null> {
+async function claim(tenantId: string, notebookId: string, key: string, explicit = false, reviewedMiss = false): Promise<string | null> {
   try {
     return await withTenantContext(tenantId, async (c) => {
       // Every claim mints a fresh generation; only the holder of the CURRENT
@@ -321,9 +322,19 @@ async function claim(tenantId: string, notebookId: string, key: string, explicit
                          < date_trunc('day', now(), 'UTC'))
                  OR ($7::boolean
                      AND manual_acquisition->>'key' = $3::text
-                     AND manual_acquisition->>'state' <> 'running'))
+                     AND manual_acquisition->>'state' <> 'running')
+                 -- A newly reviewed publication can supersede an old miss
+                 -- that attached nothing. It cannot replace a removed source.
+                 OR ($8::boolean
+                     AND manual_acquisition->>'state' = 'no_manual_found'
+                     AND manual_acquisition->>'linked' IS DISTINCT FROM 'true'
+                     AND manual_acquisition->>'source_removed' IS DISTINCT FROM 'true'
+                     AND manual_acquisition->>'doc_id' IS NULL
+                     AND manual_acquisition->>'file_id' IS NULL
+                     AND manual_acquisition->>'prior_doc_id' IS NULL
+                     AND manual_acquisition->>'prior_file_id' IS NULL))
           RETURNING manual_acquisition->>'gen' AS gen`,
-        [tenantId, notebookId, key, STALE_RUNNING_MINUTES, UNAVAILABLE_RETRY_MINUTES, MAX_AUTOMATIC_RETRIES, explicit],
+        [tenantId, notebookId, key, STALE_RUNNING_MINUTES, UNAVAILABLE_RETRY_MINUTES, MAX_AUTOMATIC_RETRIES, explicit, reviewedMiss],
       );
       return r.rows[0]?.gen ?? null;
     });
@@ -754,7 +765,8 @@ export async function startManualAcquisition(
   const basis = input.basis ?? "confirmed";
   const key = acquisitionKey(input.identity);
   if (!key) return false;
-  const gen = await claim(input.tenantId, input.notebookId, key);
+  const canRefreshMiss = basis === "confirmed" && reviewedManualFor(input.identity) !== null;
+  const gen = await claim(input.tenantId, input.notebookId, key, false, canRefreshMiss);
   if (!gen) return false;
   const acquire = deps.acquire ?? acquireManualForIdentity;
   const startedAt = new Date().toISOString();
@@ -1039,7 +1051,7 @@ export function acquisitionDeclineText(
         : `I couldn't safely download a manual for the ${label}. Upload the official manual to this notebook so I can answer with page citations.`;
     }
     case "manufacturer_model_required":
-      return null;
+      return "Check the manufacturer, model, and order number before looking up the applicable manual.";
   }
 }
 
@@ -1136,9 +1148,7 @@ export async function currentManualSearchStatus(
   // F10: the acquired source's CURRENT state wins over the historical record.
   const ready = applicableReadySource(sources, identity);
   if (ready) {
-    const evidence = ready.docId === rec.doc_id && !rec.source_removed
-      ? ready.matchEvidence as { reviewedLibraryPage?: number; reviewedLibraryTitle?: string } | null
-      : null;
+    const evidence = ready.matchEvidence as { reviewedLibraryPage?: number; reviewedLibraryTitle?: string } | null;
     const page = evidence?.reviewedLibraryPage;
     const title = evidence?.reviewedLibraryTitle;
     const reviewed = typeof page === "number" && Number.isSafeInteger(page) && page > 0 &&
@@ -1148,7 +1158,7 @@ export async function currentManualSearchStatus(
       model,
       running: false,
       message: reviewed
-        ? `${title} is ready in Sources. PDF page ${page} shows coverage for ${model}.`
+        ? `${title} is ready in Sources. PDF page ${page} shows coverage for ${identity.catalogNumber?.trim() || model}.`
         : `The ${manufacturer} ${model} manual is ready — I can answer from it.`,
       ...(startedAt ? { startedAt } : {}),
     };

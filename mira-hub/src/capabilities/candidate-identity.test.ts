@@ -111,6 +111,7 @@ describe("asksToFindManual", () => {
     "Manual for GS11N-20P2",
     "I need the manual for Siemens 6AV2124-0GC01-0AX0",
     "Do you have the datasheet for Schneider CA3KN22BD?",
+    "Find the ABB ACS355 manual.",
   ])("accepts a request for the document (%s)", (message) => {
     expect(asksToFindManual(message)).toBe(true);
   });
@@ -119,6 +120,7 @@ describe("asksToFindManual", () => {
     "What does the manual say about overcurrent?",
     "What does the Siemens 6AV2124-0GC01-0AX0 manual say about alarms?",
     "Show me the voltage from the manual",
+    "Show me instructions for setting the acceleration time.",
   ])("preserves a question that uses manual contents (%s)", (message) => {
     expect(asksToFindManual(message)).toBe(false);
   });

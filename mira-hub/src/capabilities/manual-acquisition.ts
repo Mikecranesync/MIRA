@@ -309,6 +309,12 @@ async function acquireInner(
   // — set from the discovery result itself, never invented when mira-ask
   // didn't carry search_stats (an old version, or a malformed response).
   const reviewed = reviewedManualFor(identity);
+  if (!reviewed && identity.model && identity.catalogNumber &&
+      reviewedManualFor({ manufacturer: identity.manufacturer, catalogNumber: identity.catalogNumber })) {
+    return outcome("manufacturer_model_required", {
+      message: "The model and order number do not identify the same reviewed equipment. Check both fields before looking up its manual.",
+    });
+  }
   const discovery: DiscoveryResult = await safeSpan("manual_acquisition.search", {}, async () => {
     setActiveSpanAttrs({ "mira.acquisition.lookup": reviewed ? "reviewed_library" : "manufacturer_search" });
     if (reviewed) {

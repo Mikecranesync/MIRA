@@ -216,6 +216,14 @@ it("keeps a revised OEM PDF out of automatic ingestion", async () => {
   expect(filesMock.parkOrReuseFile).not.toHaveBeenCalled();
 });
 
+it("asks to correct conflicting reviewed model and catalog fields before any lookup", async () => {
+  libraryMock.reviewedManualFor.mockImplementation(({ model }) => model ? null : REVIEWED);
+  const out = await acquireManualForIdentity({ ...BASE_INPUT, identity: { ...IDENTITY, model: "GS21N-20P2" } });
+  expect(out.status).toBe("manufacturer_model_required");
+  expect(discoveryMock.discoverManual).not.toHaveBeenCalled();
+  expect(downloadMock.safeDownloadPdf).not.toHaveBeenCalled();
+});
+
 it("does not promote a reviewed PDF when its coverage page was not indexed", async () => {
   libraryMock.reviewedManualFor.mockReturnValue(REVIEWED);
   stored.rows = FULL_ROWS.filter((chunk) => chunk.source_page !== 26);
