@@ -11,8 +11,21 @@ import { useBackClosesLayers } from "../../../../mira-hub/src/factorylm-ui/back-
 // Excluded from the lab typecheck (tsconfig.json): it imports the Hub hook, whose packages resolve
 // only through mira-hub. Bun bundles it at run time. #5069: the Hub's web Back wiring on the phone profile (drawer open at mount), in a real browser.
 function App() {
-  const [state, dispatch] = useReducer(shellReducer, createShellState(getFixture("grounded-answer"), PROFILES.mobile));
+  const params = new URLSearchParams(window.location.search);
+  const original = getFixture("grounded-answer");
+  const fixture = params.get("document") === "1" ? {
+    ...original,
+    thread: { ...original.thread, turns: original.thread.turns.map((turn) => ({
+      ...turn,
+      parts: turn.parts.map((part) => part.type === "source"
+        ? { ...part, source: { ...part.source, href: "https://example.test/manual.pdf#page=42" } }
+        : part),
+    })) },
+  } : original;
+  const profile = params.get("surface") === "hub" ? PROFILES.hub : PROFILES.mobile;
+  const conversationSurface = params.get("thread") === "assistant" ? "assistant" : "classic";
+  const [state, dispatch] = useReducer(shellReducer, createShellState(fixture, profile));
   useBackClosesLayers(state);
-  return <FactoryLMShell state={state} dispatch={dispatch} adapter={fakeAdapter()} />;
+  return <FactoryLMShell state={state} dispatch={dispatch} adapter={fakeAdapter()} conversationSurface={conversationSurface} />;
 }
 createRoot(document.getElementById("root")!).render(<App />);
