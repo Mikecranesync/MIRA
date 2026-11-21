@@ -6,6 +6,9 @@ import { ensureInvitedUser, ensureUserAndTenant, findUserByEmail, findUserById, 
 import { NO_ROLE, normalizeRole, type ResolvedRole } from "@/lib/role";
 import { refreshEntitlementClaims } from "@/capabilities/session-entitlement";
 import { credentialEpoch } from "@/capabilities/verified-identity";
+import { completeVerifiedOnboarding } from "@/capabilities/verified-onboarding";
+import { ONBOARDING_VERSION } from "@/capabilities/onboarding-policy";
+import { publicSignupPolicy } from "@/capabilities/free-technician-signup";
 import { claimVerifiedEmail } from "@/capabilities/verified-identity";
 import pool from "@/lib/db";
 
@@ -75,20 +78,27 @@ const providers: NextAuthOptions["providers"] = [
   CredentialsProvider({
     id: "magic-token",
     name: "Magic Link",
-    credentials: { token: { type: "text" } },
+    credentials: { token: { type: "text" }, agreementVersion: { type:"text" } },
     async authorize(credentials) {
       if (!credentials?.token) return null;
       const result = await validateMagicToken(credentials.token);
       if (!result) return null;
-      const account = result.tenantId
-        ? await ensureInvitedUser({
-            email: result.email,
-            tenantId: result.tenantId,
-            role: result.role ?? "technician",
-          })
-        : await ensureUserAndTenant({ email: result.email, verifiedEmail: true });
-      if (result.tenantId) await claimVerifiedEmail(pool, account.id);
-      const user = await findUserByEmail(result.email);
+      let account;
+      if(result.tenantId) {
+        account=await ensureInvitedUser({email:result.email,tenantId:result.tenantId,role:result.role ?? "technician"});
+        await claimVerifiedEmail(pool,account.id);
+      } else if(result.purpose === "onboarding") {
+        if(!result.onboarding || credentials.agreementVersion!==ONBOARDING_VERSION) return null;
+        try { account=await completeVerifiedOnboarding(result.email,result.onboarding); }
+        catch { return null; }
+      } else {
+        const existing=await findUserByEmail(result.email);
+        if(!existing) return null;
+        await claimVerifiedEmail(pool,existing.id);
+        account={id:existing.id,email:existing.email,tenantId:existing.tenantId};
+      }
+      const user=await findUserByEmail(result.email);
+      if(!user) return null;
       return {
         id: account.id,
         email: account.email,
@@ -138,6 +148,9 @@ export const authOptions: NextAuthOptions = {
     async signIn({ user, account, profile }) {
       if (account?.provider === "google" && profile?.email) {
         if ((profile as { email_verified?: unknown }).email_verified !== true) return false;
+        const knownEmail=await findUserByEmail(profile.email);
+        const knownSubject=await pool.query("SELECT id FROM hub_users WHERE google_sub=$1 LIMIT 1",[account.providerAccountId]);
+        if(!knownEmail && !knownSubject.rows[0] && publicSignupPolicy().kind!=="trial") return "/signup/";
         const existing = await ensureUserAndTenant({
           email: profile.email,
           googleSub: account.providerAccountId,

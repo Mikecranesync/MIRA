@@ -917,6 +917,7 @@ services:
       - PILOT_OWNER_EMAIL=${PILOT_OWNER_EMAIL:-}
       - MIRA_PILOT_APPROVAL_REQUIRED=${MIRA_PILOT_APPROVAL_REQUIRED:-}  # empty = off (open signup)
       - MIRA_FREE_TECHNICIANS=${MIRA_FREE_TECHNICIANS:-false}  # opt-in non-expiring public technician accounts
+      - MIRA_MARKETING_ORIGIN=${MIRA_MARKETING_ORIGIN:-https://factorylm.com}
       - NEXTAUTH_URL=${NEXTAUTH_URL:-https://app.factorylm.com/api/auth}
       - NEXTAUTH_URL_INTERNAL=${NEXTAUTH_URL_INTERNAL:-https://app.factorylm.com/api/auth}
       # Sign-in OAuth client. Named HUB_AUTH_GOOGLE_* to avoid collision with

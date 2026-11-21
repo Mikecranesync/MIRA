@@ -28,10 +28,11 @@ const MIME: Record<string, string> = {
 export function createFactorylmMarketingRouter() {
   const router = new Hono();
   router.use("*", async (c, next) => {
-    if (process.env.MIRA_FREE_TECHNICIANS !== "true" || !["GET", "HEAD"].includes(c.req.method)) return next();
+    if (!["GET", "HEAD"].includes(c.req.method)) return next();
     const url = new URL(c.req.url);
     const freePolicy = ["/free-technicians", "/free-technicians/", "/free-technicians.html"].includes(url.pathname);
     const policyAsset = url.pathname.startsWith("/factorylm-next-assets/");
+    if(process.env.MIRA_FREE_TECHNICIANS !== "true" && !freePolicy && !policyAsset) return next();
     if (process.env.FACTORYLM_MARKETING_NEXT !== "true" && !freePolicy && !policyAsset) return next();
     const { manifest: map, identity } = await manifest();
     if (map.redirects[url.pathname]) return new Response(null, { status: 302, headers: { Location: map.redirects[url.pathname] + url.search, "Cache-Control": "no-store" } });

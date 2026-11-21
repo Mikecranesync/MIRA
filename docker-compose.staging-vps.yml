@@ -522,6 +522,7 @@ services:
       - PILOT_OWNER_EMAIL=${PILOT_OWNER_EMAIL:-}
       - MIRA_PILOT_APPROVAL_REQUIRED=${MIRA_PILOT_APPROVAL_REQUIRED:-}
       - MIRA_FREE_TECHNICIANS=${MIRA_FREE_TECHNICIANS:-false}
+      - MIRA_MARKETING_ORIGIN=${MIRA_MARKETING_ORIGIN:-https://staging.factorylm.com}
       - RESEND_API_KEY=${RESEND_API_KEY:-}  # owner notification (pilot-funnel.ts); same key mira-web uses
     networks:
       - staging-net

@@ -1,5 +1,5 @@
 {
-  "recordedAt": "2026-11-21T15:21:38.731Z",
+  "recordedAt": "2026-11-21T16:09:51.354Z",
   "scope": "Final review repairs; local and private browser rehearsal, not a physical-phone or production acceptance run",
   "privateLayouts": [
     {
@@ -743,92 +743,68 @@
   ],
   "signupLayouts": [
     {
-      "email": true,
-      "googleOffered": false,
-      "h1": "Start your free MIRA workspace",
-      "manualPilotApplication": false,
-      "password": false,
-      "policy": "https://factorylm.com/free-technicians",
-      "scrollWidth": 1440,
-      "url": "http://127.0.0.1:3197/signup/",
-      "width": 1440
-    },
-    {
-      "email": true,
-      "googleOffered": false,
-      "h1": "Apply for a plant pilot",
-      "manualPilotApplication": true,
-      "password": true,
-      "policy": "https://factorylm.com/free-technicians",
-      "scrollWidth": 1440,
-      "url": "http://127.0.0.1:3197/signup/?intent=pilot",
-      "width": 1440
-    },
-    {
-      "email": true,
-      "googleOffered": false,
-      "h1": "Start your free MIRA workspace",
-      "manualPilotApplication": false,
-      "password": false,
-      "policy": "https://factorylm.com/free-technicians",
-      "scrollWidth": 768,
-      "url": "http://127.0.0.1:3197/signup/",
-      "width": 768
-    },
-    {
-      "email": true,
-      "googleOffered": false,
-      "h1": "Apply for a plant pilot",
-      "manualPilotApplication": true,
-      "password": true,
-      "policy": "https://factorylm.com/free-technicians",
-      "scrollWidth": 768,
-      "url": "http://127.0.0.1:3197/signup/?intent=pilot",
-      "width": 768
-    },
-    {
-      "email": true,
-      "googleOffered": false,
-      "h1": "Start your free MIRA workspace",
-      "manualPilotApplication": false,
-      "password": false,
-      "policy": "https://factorylm.com/free-technicians",
-      "scrollWidth": 390,
-      "url": "http://127.0.0.1:3197/signup/",
-      "width": 390
-    },
-    {
-      "email": true,
-      "googleOffered": false,
-      "h1": "Apply for a plant pilot",
-      "manualPilotApplication": true,
-      "password": true,
-      "policy": "https://factorylm.com/free-technicians",
-      "scrollWidth": 390,
-      "url": "http://127.0.0.1:3197/signup/?intent=pilot",
-      "width": 390
-    },
-    {
-      "email": true,
-      "googleOffered": false,
-      "h1": "Start your free MIRA workspace",
-      "manualPilotApplication": false,
-      "password": false,
-      "policy": "https://factorylm.com/free-technicians",
-      "scrollWidth": 320,
-      "url": "http://127.0.0.1:3197/signup/",
+      "page": "personal",
+      "email": 280,
+      "form": 280,
+      "inputHeight": 51.59375,
+      "scroll": 320,
       "width": 320
     },
     {
-      "email": true,
-      "googleOffered": false,
-      "h1": "Apply for a plant pilot",
-      "manualPilotApplication": true,
-      "password": true,
-      "policy": "https://factorylm.com/free-technicians",
-      "scrollWidth": 320,
-      "url": "http://127.0.0.1:3197/signup/?intent=pilot",
+      "page": "personal",
+      "email": 350,
+      "form": 350,
+      "inputHeight": 51.59375,
+      "scroll": 390,
+      "width": 390
+    },
+    {
+      "page": "personal",
+      "email": 390,
+      "form": 390,
+      "inputHeight": 51.59375,
+      "scroll": 430,
+      "width": 430
+    },
+    {
+      "page": "personal",
+      "email": 420,
+      "form": 420,
+      "inputHeight": 51.59375,
+      "scroll": 768,
+      "width": 768
+    },
+    {
+      "page": "pilot",
+      "email": 280,
+      "form": 280,
+      "inputHeight": 51.59375,
+      "scroll": 320,
       "width": 320
+    },
+    {
+      "page": "pilot",
+      "email": 350,
+      "form": 350,
+      "inputHeight": 51.59375,
+      "scroll": 390,
+      "width": 390
+    },
+    {
+      "page": "pilot",
+      "email": 390,
+      "form": 390,
+      "inputHeight": 51.59375,
+      "scroll": 430,
+      "width": 430
+    },
+    {
+      "page": "pilot",
+      "email": 420,
+      "form": 420,
+      "inputHeight": 51.59375,
+      "scroll": 768,
+      "width": 768
     }
   ],
   "demo": {
@@ -842,7 +818,8 @@
     "sameBrowserProfile": true,
     "disabledUrl": "http://127.0.0.1:4188/pricing?utm_source=maintenance",
     "restoredHeading": "Existing pricing restored",
-    "policyAvailableWithoutMarketing": "Your personal MIRA workspace."
+    "policyAvailableWithoutMarketing": "Your personal MIRA workspace.",
+    "policyAvailableWithBothFlagsDisabled": true
   },
   "blog": {
     "upstreamIndex": true,
@@ -861,5 +838,36 @@
     "result": "signed into canonical MIRA workspace",
     "destination": "/v3/",
     "question_or_plant_action": false
+  },
+  "signupVisualVerification": {
+    "replaces": "The previous overflow-only signup pass and collapsed JPG images are superseded.",
+    "inspectedImages": [
+      "local-mira-signup-phone.png",
+      "local-plant-pilot-phone.png",
+      "local-setup-confirm-phone.png"
+    ],
+    "formWidthsAt320And390": [
+      280,
+      350
+    ],
+    "inputHeight": 51.59375,
+    "confirmationMetrics": {
+      "width": 390,
+      "scrollWidth": 390,
+      "cardWidth": 350,
+      "buttonWidth": 350,
+      "disabledUntilAgreement": true
+    },
+    "unknownSignin": "Shows Create account guidance; Create account reaches the canonical verified setup gateway.",
+    "newBrowserAccountCreated": false,
+    "agreementAccepted": false,
+    "deliveredEmail": false
+  },
+  "pilotBothFlagsDisabled": {
+    "closed": true,
+    "contact": true,
+    "forms": 0,
+    "scroll": 1280,
+    "width": 1280
   }
 }

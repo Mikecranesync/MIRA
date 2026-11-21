@@ -1,5 +1,6 @@
 import pool from "@/lib/db";
-import { ensureDataSchema } from "@/lib/data-schema";
+import { assertAuthMigrationReady } from "@/capabilities/auth-schema";
+import type { OnboardingReceipt } from "@/capabilities/verified-onboarding";
 import { PILOT_WINDOW_DAYS } from "@/lib/config";
 import { magicTokenTtlMinutes } from "@/capabilities/trial-access";
 import { admitPilotInvite, isPilotApprovalRequired } from "@/capabilities/pilot-access";
@@ -29,6 +30,8 @@ export interface MagicTokenResult {
   tenantId: string | null;
   role: string | null;
   invitedBy: string | null;
+  purpose: string;
+  onboarding: OnboardingReceipt | null;
 }
 
 let schemaReady: Promise<void> | null = null;
@@ -36,58 +39,7 @@ let schemaReady: Promise<void> | null = null;
 export function ensureSchema(): Promise<void> {
   if (schemaReady) return schemaReady;
   schemaReady = (async () => {
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS hub_tenants (
-        id            TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
-        name          TEXT NOT NULL,
-        owner_user_id TEXT,
-        created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      )
-    `);
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS hub_users (
-        id             TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
-        email          TEXT NOT NULL,
-        email_lower    TEXT GENERATED ALWAYS AS (LOWER(email)) STORED,
-        password_hash  TEXT,
-        google_sub     TEXT,
-        tenant_id      TEXT NOT NULL REFERENCES hub_tenants(id),
-        name           TEXT,
-        role             TEXT NOT NULL DEFAULT 'owner',
-        status           TEXT NOT NULL DEFAULT 'trial',
-        trial_expires_at TIMESTAMPTZ,
-        plan             TEXT,
-        created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      )
-    `);
-    await pool.query(`
-      CREATE UNIQUE INDEX IF NOT EXISTS idx_hub_users_email_lower
-        ON hub_users (email_lower)
-    `);
-    await pool.query(`
-      CREATE UNIQUE INDEX IF NOT EXISTS idx_hub_users_google_sub
-        ON hub_users (google_sub) WHERE google_sub IS NOT NULL
-    `);
-    await pool.query(`
-      CREATE INDEX IF NOT EXISTS idx_hub_users_tenant
-        ON hub_users (tenant_id)
-    `);
-    // Idempotent migrations: add new columns to existing tables
-    await pool.query(`ALTER TABLE hub_users ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'trial'`);
-    await pool.query(`ALTER TABLE hub_users ADD COLUMN IF NOT EXISTS trial_expires_at TIMESTAMPTZ`);
-    await pool.query(`ALTER TABLE hub_users ADD COLUMN IF NOT EXISTS plan TEXT`);
-    await pool.query(`ALTER TABLE hub_users ADD COLUMN IF NOT EXISTS credential_epoch INTEGER NOT NULL DEFAULT 0`);
-    await pool.query(`ALTER TABLE hub_users ADD COLUMN IF NOT EXISTS preferences JSONB NOT NULL DEFAULT '{}'`);
-    // hub_tenants — add slug + settings for Phase 2 multi-tenancy
-    await pool.query(`ALTER TABLE hub_tenants ADD COLUMN IF NOT EXISTS slug TEXT`);
-    await pool.query(`ALTER TABLE hub_tenants ADD COLUMN IF NOT EXISTS settings JSONB NOT NULL DEFAULT '{}'`);
-    await pool.query(`ALTER TABLE hub_tenants ADD COLUMN IF NOT EXISTS signup_offer TEXT`);
-    await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_hub_tenants_slug ON hub_tenants (slug) WHERE slug IS NOT NULL`);
-    // No email-based admin promotion here (#4591): registration does not verify email
-    // ownership, so promoting whatever row carries ADMIN_EMAIL at boot let anyone who
-    // registered that address first become a platform admin. status='admin' is set only by
-    // an existing platform admin (admin users route) or an operator.
+    await assertAuthMigrationReady();
     // #4362: the trial account IS the 30-day pilot. Stretch any still-short window
     // (the old 7-day default caused the day-8 lockout) up to created_at + 30 days.
     // Already-longer or already-elapsed 30-day clocks are left alone.
@@ -125,9 +77,7 @@ export function ensureSchema(): Promise<void> {
          )`,
       [PILOT_WINDOW_DAYS],
     );
-    // Phase 2: idempotent migrations for pipeline-managed tables
-    await ensureDataSchema();
-  })();
+  })().catch(error => { schemaReady = null; throw error; });
   return schemaReady;
 }
 
@@ -220,30 +170,13 @@ function ensureMagicSchema(): Promise<void> {
   if (magicSchemaReady) return magicSchemaReady;
   magicSchemaReady = (async () => {
     await ensureSchema();
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS hub_magic_tokens (
-        token      TEXT PRIMARY KEY,
-        email      TEXT NOT NULL,
-        tenant_id  TEXT,
-        role       TEXT,
-        invited_by TEXT,
-        expires_at TIMESTAMPTZ NOT NULL,
-        used_at    TIMESTAMPTZ
-      )
-    `);
-    await pool.query(`ALTER TABLE hub_magic_tokens ADD COLUMN IF NOT EXISTS tenant_id TEXT`);
-    await pool.query(`ALTER TABLE hub_magic_tokens ADD COLUMN IF NOT EXISTS role TEXT`);
-    await pool.query(`ALTER TABLE hub_magic_tokens ADD COLUMN IF NOT EXISTS invited_by TEXT`);
-    await pool.query(`
-      CREATE INDEX IF NOT EXISTS idx_magic_tokens_email ON hub_magic_tokens (email)
-    `);
-  })();
+  })().catch(error => { magicSchemaReady = null; throw error; });
   return magicSchemaReady;
 }
 
 export async function createMagicToken(
   email: string,
-  opts: { tenantId?: string; role?: string; invitedBy?: string } = {},
+  opts: { tenantId?: string; role?: string; invitedBy?: string; onboarding?: OnboardingReceipt } = {},
 ): Promise<string> {
   await ensureMagicSchema();
   const { randomUUID } = await import("crypto");
@@ -251,8 +184,8 @@ export async function createMagicToken(
   const kind = opts.tenantId ? "invite" : "login";
   const ttlMinutes = magicTokenTtlMinutes(kind);
   await pool.query(
-    `INSERT INTO hub_magic_tokens (token, email, tenant_id, role, invited_by, expires_at)
-     VALUES ($1, $2, $3, $4, $5, NOW() + ($6::int * INTERVAL '1 minute'))
+    `INSERT INTO hub_magic_tokens (token, email, tenant_id, role, invited_by, expires_at, purpose, onboarding)
+     VALUES ($1, $2, $3, $4, $5, NOW() + ($6::int * INTERVAL '1 minute'), $7, $8::jsonb)
      ON CONFLICT (token) DO NOTHING`,
     [
       token,
@@ -261,6 +194,8 @@ export async function createMagicToken(
       opts.role ?? null,
       opts.invitedBy ?? null,
       ttlMinutes,
+      opts.tenantId ? "invite" : opts.onboarding ? "onboarding" : "login",
+      opts.onboarding ? JSON.stringify(opts.onboarding) : null,
     ],
   );
   return token;
@@ -272,7 +207,7 @@ export async function validateMagicToken(token: string): Promise<MagicTokenResul
     `UPDATE hub_magic_tokens
      SET used_at = NOW()
      WHERE token = $1 AND expires_at > NOW() AND used_at IS NULL
-     RETURNING email, tenant_id, role, invited_by`,
+     RETURNING email, tenant_id, role, invited_by, purpose, onboarding`,
     [token],
   );
   return rows[0]
@@ -281,6 +216,8 @@ export async function validateMagicToken(token: string): Promise<MagicTokenResul
         tenantId: rows[0].tenant_id ? String(rows[0].tenant_id) : null,
         role: rows[0].role ? String(rows[0].role) : null,
         invitedBy: rows[0].invited_by ? String(rows[0].invited_by) : null,
+        purpose: String(rows[0].purpose ?? "login"),
+        onboarding: (rows[0].onboarding as OnboardingReceipt) ?? null,
       }
     : null;
 }
@@ -324,7 +261,7 @@ export async function ensureUserAndTenant(
   }
 
   const policy = publicSignupPolicy(input.signupIntent);
-  if (policy.kind === "free_technician" && (!input.verifiedEmail || input.passwordHash)) {
+  if (policy.kind === "free_technician") {
     throw new EmailVerificationRequiredError();
   }
   const client = await pool.connect();
@@ -334,10 +271,8 @@ export async function ensureUserAndTenant(
     const {
       rows: [tenant],
     } = await client.query(
-      policy.kind === "free_technician"
-        ? `INSERT INTO hub_tenants (name, signup_offer) VALUES ($1, $2) RETURNING id`
-        : `INSERT INTO hub_tenants (name) VALUES ($1) RETURNING id`,
-      policy.kind === "free_technician" ? [tenantName, "technician_free"] : [tenantName],
+      `INSERT INTO hub_tenants (name) VALUES ($1) RETURNING id`,
+      [tenantName],
     );
     const tenantId = String(tenant.id);
     // #1899b: the data-side `tenants` table (FK target of knowledge_entries.tenant_id)
@@ -356,9 +291,6 @@ export async function ensureUserAndTenant(
     // (the admin approve route starts it), and the tenant is marked a pilot
     // applicant so the admin cohort view can find it.
     const pilotMode = policy.kind === "pilot_application";
-    // Free personal workspaces never join the plant-pilot cohort. Keep the global
-    // pilot flag intact so existing cohort deadlines, invitations and caps remain enforced.
-    const freeTechnician = policy.kind === "free_technician";
     const {
       rows: [user],
     } = await client.query(
@@ -366,14 +298,10 @@ export async function ensureUserAndTenant(
         ? `INSERT INTO hub_users (email, password_hash, google_sub, tenant_id, name, status, trial_expires_at)
        VALUES ($1, $2, $3, $4, $5, 'pending', NULL)
        RETURNING id, email`
-        : freeTechnician
-        ? `INSERT INTO hub_users (email, password_hash, google_sub, tenant_id, name, status, trial_expires_at, plan)
-       VALUES ($1, $2, $3, $4, $5, 'approved', NULL, 'technician_free')
-       RETURNING id, email`
         : `INSERT INTO hub_users (email, password_hash, google_sub, tenant_id, name, status, trial_expires_at)
        VALUES ($1, $2, $3, $4, $5, 'trial', NOW() + ($6::int * INTERVAL '1 day'))
        RETURNING id, email`,
-      pilotMode || freeTechnician
+      pilotMode
         ? [input.email, input.passwordHash ?? null, input.googleSub ?? null, tenantId, input.name ?? null]
         : [input.email, input.passwordHash ?? null, input.googleSub ?? null, tenantId, input.name ?? null, PILOT_WINDOW_DAYS],
     );

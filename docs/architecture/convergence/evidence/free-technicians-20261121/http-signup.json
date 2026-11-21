@@ -4,9 +4,16 @@
     "version": 1,
     "kind": "free_technician",
     "requiresApproval": false,
-    "trialDays": null
+    "trialDays": null,
+    "agreementVersion": "factorylm-verified-onboarding-v1",
+    "agreementSentence": "I agree to the FactoryLM Terms of Service and free-access policy and Privacy Policy.",
+    "policyUrl": "http://127.0.0.1:4188/free-technicians",
+    "privacyUrl": "http://127.0.0.1:4188/privacy"
   },
   "unverified_password_registration": 403,
+  "unknown_login_request": 409,
+  "ordinary_token_onboarding_bypass": "rejected",
+  "canonical_agreement_bound_onboarding": "passed",
   "verified_email_signin": "passed",
   "account_status": "approved",
   "trial_expiry": null,

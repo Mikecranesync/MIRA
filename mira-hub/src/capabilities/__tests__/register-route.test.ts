@@ -107,13 +107,13 @@ describe("POST /api/auth/register — pilot-funnel hook", () => {
     expect(mockAttributionFromRequest).not.toHaveBeenCalled();
   });
 
-  it("still records an explicitly requested pilot when the free personal offer is active", async () => {
+  it("requires verified onboarding for an explicit pilot rather than reserving an inbox", async () => {
     vi.stubEnv("MIRA_FREE_TECHNICIANS", "true");
     vi.stubEnv("MIRA_PILOT_APPROVAL_REQUIRED", "1");
     const response = await POST(makeRequest({ email: "pilot@example.com", password: "password123", signupIntent: "pilot" }, freshIp()));
-    expect(response.status).toBe(201);
-    expect(mockEnsureUserAndTenant).toHaveBeenCalledWith(expect.objectContaining({ signupIntent: "pilot" }));
-    expect(mockHandlePilotApplicationSubmitted).toHaveBeenCalledOnce();
+    expect(response.status).toBe(403);
+    expect(mockEnsureUserAndTenant).not.toHaveBeenCalled();
+    expect(mockHandlePilotApplicationSubmitted).not.toHaveBeenCalled();
   });
 
   it("rejects an unknown signup intent without creating an account", async () => {

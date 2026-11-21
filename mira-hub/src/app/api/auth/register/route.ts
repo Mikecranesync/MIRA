@@ -99,11 +99,8 @@ export async function POST(req: Request) {
   }
   const intent = signupIntent === "pilot" ? "pilot" : "technician";
   const policy = publicSignupPolicy(intent);
-  if (policy.kind === "free_technician") {
-    return NextResponse.json({ error: "Use the email sign-in link to verify your address and create your free workspace.", code: "email_verification_required" }, { status: 403, headers });
-  }
-  if (intent === "pilot" && publicSignupPolicy().kind === "free_technician" && !policy.requiresApproval) {
-    return NextResponse.json({ error: "Contact mike@factorylm.com to arrange a plant pilot." }, { status: 403, headers });
+  if (policy.kind === "free_technician" || policy.kind === "pilot_application" || intent === "pilot") {
+    return NextResponse.json({error:"Use verified account setup to review the current offer and confirm your email.",code:"verified_onboarding_required",signupUrl:"/signup/"},{status:403,headers});
   }
   if (typeof email !== "string" || typeof password !== "string") {
     return NextResponse.json({ error: "email and password required" }, { status: 400, headers });
@@ -125,7 +122,7 @@ export async function POST(req: Request) {
     }
     const passwordHash = await bcrypt.hash(password, 12);
     const nameStr = typeof name === "string" ? name.trim() || undefined : undefined;
-    const result = await ensureUserAndTenant({ email: trimmed, passwordHash, name: nameStr, ...(intent === "pilot" ? { signupIntent: intent } : {}) });
+    const result = await ensureUserAndTenant({ email: trimmed, passwordHash, name: nameStr });
     captureHubSpotLead(trimmed, nameStr).catch(() => {});
     // #4877 — pilot-application funnel. `existing` above is null, so this is
     // genuinely a NEW account (not the Google-OAuth/magic-link signup paths

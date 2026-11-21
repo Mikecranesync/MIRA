@@ -1,119 +1,17 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
-vi.mock("@/lib/db", () => ({ default: { query: vi.fn(), connect: vi.fn() } }));
-vi.mock("@/lib/data-schema", () => ({ ensureDataSchema: vi.fn() }));
-
+import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
+vi.mock("@/lib/db", () => ({ default: { query: vi.fn(async () => ({ rows: [] })), connect: vi.fn() } }));
 import pool from "@/lib/db";
-import { ensureUserAndTenant } from "@/lib/users";
-import { PILOT_WINDOW_DAYS } from "@/lib/config";
 import { publicSignupPolicy } from "@/capabilities/free-technician-signup";
+import { ensureUserAndTenant } from "@/lib/users";
 import { GET } from "@/app/api/public/signup-policy/route";
-import { signupOfferLabel } from "@/factorylm-ui/SignupOffer";
-
-const query = vi.mocked(pool.query);
-const connect = vi.mocked(pool.connect);
-let writes: { sql: string; values?: unknown[] }[];
-
-beforeEach(() => {
-  vi.clearAllMocks();
-  vi.stubEnv("MIRA_FREE_TECHNICIANS", "false");
-  vi.stubEnv("MIRA_PILOT_APPROVAL_REQUIRED", "false");
-  query.mockResolvedValue({ rows: [] } as never);
-  writes = [];
-  connect.mockResolvedValue({
-    query: vi.fn(async (sql: string, values?: unknown[]) => {
-      writes.push({ sql, values });
-      if (sql.includes("INSERT INTO hub_tenants")) return { rows: [{ id: "tenant-1" }] };
-      if (sql.includes("INSERT INTO hub_users")) return { rows: [{ id: "user-1", email: "tech@example.com" }] };
-      return { rows: [] };
-    }),
-    release: vi.fn(),
-  } as never);
-});
-
+import { ONBOARDING_VERSION } from "@/capabilities/onboarding-policy";
+import { PILOT_WINDOW_DAYS } from "@/lib/config";
+beforeEach(() => { vi.clearAllMocks(); vi.stubEnv("MIRA_FREE_TECHNICIANS", "false"); vi.stubEnv("MIRA_PILOT_APPROVAL_REQUIRED", "0"); });
 afterEach(() => vi.unstubAllEnvs());
-
-describe("free technician signup", () => {
-  it.each([undefined, "false", "TRUE", "1"])("does not activate for ambiguous flag %s", (flag) => {
-    vi.stubEnv("MIRA_FREE_TECHNICIANS", flag);
-    expect(publicSignupPolicy()).toEqual({ version: 1, kind: "trial", requiresApproval: false, trialDays: PILOT_WINDOW_DAYS });
-  });
-
-  it("persists a non-expiring free personal account without platform-admin promotion", async () => {
-    vi.stubEnv("MIRA_FREE_TECHNICIANS", "true");
-    await ensureUserAndTenant({ email: "tech@example.com", verifiedEmail: true });
-    const insert = writes.find((row) => row.sql.includes("INSERT INTO hub_users"))!;
-    expect(insert.sql).toContain("'approved', NULL, 'technician_free'");
-    expect(insert.sql).not.toContain("'admin'");
-    expect(insert.values).toEqual(["tech@example.com", null, null, "tenant-1", null]);
-    expect(writes.some((row) => row.sql.includes("pilot_status"))).toBe(false);
-    expect(writes.at(-1)?.sql).toBe("COMMIT");
-    expect(publicSignupPolicy().kind).toBe("free_technician");
-  });
-
-  it("uses the same free policy for a new federated-login account", async () => {
-    vi.stubEnv("MIRA_FREE_TECHNICIANS", "true");
-    await ensureUserAndTenant({ email: "tech@example.com", googleSub: "subject-1", verifiedEmail: true });
-    const insert = writes.find((row) => row.sql.includes("INSERT INTO hub_users"))!;
-    expect(insert.sql).toContain("'approved', NULL, 'technician_free'");
-    expect(insert.values?.[2]).toBe("subject-1");
-  });
-
-  it("revokes an unproven credential when a concurrent legacy registration wins the email race", async () => {
-    vi.stubEnv("MIRA_FREE_TECHNICIANS", "true");
-    let reads = 0;
-    query.mockImplementation(async (sql) => {
-      if (String(sql).includes("WHERE email_lower = LOWER($1)")) {
-        reads += 1;
-        return { rows: reads === 1 ? [] : [{id:"legacy-user",email:"tech@example.com",tenant_id:"legacy-tenant",password_hash:"unproven",status:"trial"}] } as never;
-      }
-      return {rows:[]} as never;
-    });
-    connect.mockResolvedValueOnce({ query: vi.fn(async (sql: string) => {
-      if(sql.includes("INSERT INTO hub_users")) throw new Error("unique email conflict");
-      return {rows:sql.includes("INSERT INTO hub_tenants") ? [{id:"new-tenant"}] : []};
-    }), release:vi.fn() } as never);
-    expect(await ensureUserAndTenant({email:"tech@example.com",verifiedEmail:true})).toMatchObject({id:"legacy-user",tenantId:"legacy-tenant"});
-    expect(query.mock.calls.some(([sql, values]) => String(sql).includes("credential_epoch = credential_epoch + 1") && (values as unknown[])?.[0] === "legacy-user")).toBe(true);
-  });
-
-  it("keeps explicit pilot applications approval-required even when free personal signup is on", async () => {
-    vi.stubEnv("MIRA_FREE_TECHNICIANS", "true");
-    vi.stubEnv("MIRA_PILOT_APPROVAL_REQUIRED", "1");
-    await ensureUserAndTenant({ email: "tech@example.com", signupIntent: "pilot" });
-    const insert = writes.find((row) => row.sql.includes("INSERT INTO hub_users"))!;
-    expect(insert.sql).toContain("'pending', NULL");
-    expect(insert.sql).not.toContain("technician_free");
-    expect(writes.some((row) => row.sql.includes("pilot_status = 'pending'"))).toBe(true);
-    expect(publicSignupPolicy("pilot")).toMatchObject({ kind: "pilot_application", requiresApproval: true });
-    expect(publicSignupPolicy()).toMatchObject({ kind: "free_technician", requiresApproval: false });
-  });
-
-  it("does not rewrite an existing paid or expired account", async () => {
-    vi.stubEnv("MIRA_FREE_TECHNICIANS", "true");
-    query.mockResolvedValue({ rows: [{ id: "existing", email: "tech@example.com", tenant_id: "paid-tenant", status: "expired", plan: "enterprise" }] } as never);
-    await expect(ensureUserAndTenant({ email: "tech@example.com" })).resolves.toEqual({ id: "existing", tenantId: "paid-tenant", email: "tech@example.com" });
-    expect(connect).not.toHaveBeenCalled();
-    expect(writes).toEqual([]);
-  });
-
-  it("reports only public policy data, uncached, without starting a session", async () => {
-    vi.stubEnv("MIRA_FREE_TECHNICIANS", "true");
-    const response = GET();
-    expect(response.headers.get("cache-control")).toBe("no-store");
-    expect(response.headers.get("set-cookie")).toBeNull();
-    expect(await response.json()).toEqual({ version: 1, kind: "free_technician", requiresApproval: false, trialDays: null });
-    expect(query).not.toHaveBeenCalled();
-  });
-
-  it("shows the current policy and keeps an unreadable offer neutral", () => {
-    expect(signupOfferLabel(null)).toBe("Create your MIRA account.");
-    vi.stubEnv("MIRA_FREE_TECHNICIANS", "true");
-    expect(signupOfferLabel(publicSignupPolicy())).toBe("Free for technicians — no credit card.");
-    vi.stubEnv("MIRA_PILOT_APPROVAL_REQUIRED", "1");
-    expect(signupOfferLabel(publicSignupPolicy("pilot"))).toContain("Approval is required");
-    vi.stubEnv("MIRA_FREE_TECHNICIANS", "false");
-    vi.stubEnv("MIRA_PILOT_APPROVAL_REQUIRED", "false");
-    expect(signupOfferLabel(publicSignupPolicy())).toContain(`${PILOT_WINDOW_DAYS}-day free trial`);
-  });
+describe("public onboarding policy", () => {
+    it.each([undefined, "false", "TRUE", "1"])("never enables the permanent offer from ambiguous flag %s", flag => { vi.stubEnv("MIRA_FREE_TECHNICIANS", flag); expect(publicSignupPolicy()).toMatchObject({ kind: "trial", trialDays: PILOT_WINDOW_DAYS }); });
+    it("keeps personal and reviewed-pilot policy separate", () => { vi.stubEnv("MIRA_FREE_TECHNICIANS", "true"); vi.stubEnv("MIRA_PILOT_APPROVAL_REQUIRED", "1"); expect(publicSignupPolicy().kind).toBe("free_technician"); expect(publicSignupPolicy("pilot").kind).toBe("pilot_application"); });
+    it("ordinary constructors cannot create a free identity even with a generic verified flag", async () => { vi.stubEnv("MIRA_FREE_TECHNICIANS", "true"); await expect(ensureUserAndTenant({ email: "new@example.test", verifiedEmail: true })).rejects.toThrow("Verify your email"); expect(pool.connect).not.toHaveBeenCalled(); });
+    it("reports environment-specific policy and agreement without a session or database write", async () => { vi.stubEnv("MIRA_FREE_TECHNICIANS", "true"); vi.stubEnv("MIRA_MARKETING_ORIGIN", "https://staging.factorylm.com"); const response = GET(); expect(response.headers.get("cache-control")).toBe("no-store"); expect(response.headers.get("set-cookie")).toBeNull(); expect(await response.json()).toMatchObject({ kind: "free_technician", agreementVersion: ONBOARDING_VERSION, policyUrl: "https://staging.factorylm.com/free-technicians" }); expect(pool.query).not.toHaveBeenCalled(); });
+    it.each([["false", "0"], ["false", "1"], ["true", "0"], ["true", "1"]])("explicit pilot policy with free=%s review=%s", async (free, pilot) => { vi.stubEnv("MIRA_FREE_TECHNICIANS", free); vi.stubEnv("MIRA_PILOT_APPROVAL_REQUIRED", pilot); expect((await GET(new Request("https://app.factorylm.com/api/public/signup-policy/?intent=pilot")).json()).kind).toBe(pilot === "1" ? "pilot_application" : "trial"); });
 });

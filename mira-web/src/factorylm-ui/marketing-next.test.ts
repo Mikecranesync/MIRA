@@ -85,9 +85,11 @@ describe("next FactoryLM public adapter", () => {
 
   test("free policy is canonical and available before marketing activation, without changing legacy terms", async () => {
     process.env.FACTORYLM_MARKETING_NEXT = "false";
+    process.env.MIRA_FREE_TECHNICIANS = "false";
     const response = await app().request("/free-technicians");
     expect(response.status).toBe(200);
     expect(await response.text()).toContain('href="https://factorylm.com/terms"');
+    expect((await app().request("/factorylm-next-assets/next.css")).status).toBe(200);
     expect(await (await app().request("/terms")).json()).toMatchObject({ upstream: true });
   });
   test("new database-backed blog articles remain discoverable through the existing index", async () => {
