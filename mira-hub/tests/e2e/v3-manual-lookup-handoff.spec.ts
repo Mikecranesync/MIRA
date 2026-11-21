@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { expect, test } from "@playwright/test";
 import { encode } from "next-auth/jwt";
+import type { BenchState } from "../../src/capabilities/bench-components/http";
 import { DOC, FILE, NB, oracle } from "../fidelity/harness";
 
 const AUTH_SECRET = "cc-e2e-fixed-secret-do-not-use-in-prod";
@@ -11,6 +12,11 @@ const LOOKUP = "Find me the manual for this drive.";
 const QUESTION = "According to the manual, what is the nominal bus voltage?";
 const SAFETY_QUESTION = "According to the manual, can I work on the energized 480V panel?";
 const TITLE = "Exact GS10 fixture";
+const COMPONENT_ID = "33333333-3333-4333-8333-333333333333";
+const COMPONENT_DOC = "44444444-4444-4444-8444-444444444444";
+const COMPONENT_LABEL = "Drive B · ABB ACS355";
+const COMPONENT_MANUAL = "ABB component manual fixture";
+const COMPONENT_VERSION = 3;
 const IDENTITY = { manufacturer: "AutomationDirect", model: "GS11N-20P2" };
 const STARTED_AT = "2026-11-21T12:00:00.000Z";
 const SOURCE = {
@@ -22,6 +28,22 @@ const CITATION = {
   sourceType: "manual", sourceUrl: "https://manual.example.invalid/fixture.pdf",
 };
 const ANSWER = "The bus voltage is 337 volts under idle conditions. [1]";
+const COMPONENT_STATE: BenchState = {
+  components: [{
+    id: COMPONENT_ID, position: 0, kind: "drive", origin: "technician", status: "confirmed",
+    statusLabel: "Confirmed", label: COMPONENT_LABEL, hasOwnDocument: true, evidence: "Confirmed by a technician.",
+    current: {
+      componentId: COMPONENT_ID, revision: 1, rawLabel: "ABB ACS355", inputKind: "typed",
+      manufacturer: "ABB", family: null, catalogNumber: "ACS355", serialNumber: null,
+      hardwareRevision: null, localTag: "Drive B", identityStatus: "user_confirmed",
+      unresolved: [], confirmedAt: STARTED_AT, createdAt: STARTED_AT,
+    },
+    documents: [{ docId: COMPONENT_DOC, filename: COMPONENT_MANUAL, selected: true, model: "covers", declared: [], ready: true, readyLabel: "Ready" }],
+  }],
+  selection: { componentId: COMPONENT_ID, revision: 1, version: COMPONENT_VERSION, current: true, selectedVia: "picker", selectedAt: STARTED_AT },
+  selectionVersion: COMPONENT_VERSION,
+  lastTurn: null, turnComponents: {}, tallies: {}, documentNumbers: [],
+};
 
 const json = (data: unknown, status = 200) => ({ status, contentType: "application/json", json: data });
 const stream = (...frames: unknown[]) => ({
@@ -34,10 +56,12 @@ function latch() {
   return { promise, release };
 }
 
-for (const mode of ["preparing", "ready", "opening", "lookup-failed", "safety", "attached-safety"] as const) {
+for (const mode of ["preparing", "ready", "opening", "lookup-failed", "safety", "attached-safety", "component", "bench-unavailable"] as const) {
   test(`exact manual handoff in the ${mode} case`, async ({ page, context, baseURL }) => {
     const lookupFails = mode === "lookup-failed";
-    const opening = mode === "opening" || lookupFails;
+    const component = mode === "component";
+    const benchUnavailable = mode === "bench-unavailable";
+    const opening = mode === "opening" || lookupFails || component || benchUnavailable;
     const safety = mode === "safety";
     const attachedSafety = mode === "attached-safety";
     const token = await encode({
@@ -60,6 +84,8 @@ for (const mode of ["preparing", "ready", "opening", "lookup-failed", "safety", 
     let savedAnswerReads = 0;
     let lookup: { clientRequestId: string } | undefined;
     let asked: { clientRequestId: string } | undefined;
+    const source = component ? { ...SOURCE, docId: COMPONENT_DOC, filename: COMPONENT_MANUAL } : SOURCE;
+    const citationEntry = component ? { ...CITATION, docId: COMPONENT_DOC, sourceTitle: COMPONENT_MANUAL } : CITATION;
     const chatBodies: { message: string; threadId: string; sourceDocIds: string[] }[] = [];
     const notebook = { ...oracle.detailEmpty.notebook, displayName: "Manual handoff fixture", sourceCount: 0, manufacturer: null, model: null, identityStatus: "unknown" };
     const nbPath = `/api/equipment-notebooks/${NB}`;
@@ -74,7 +100,8 @@ for (const mode of ["preparing", "ready", "opening", "lookup-failed", "safety", 
       if (p === `${nbPath}/components`) {
         scopeRequested.release();
         await scope.promise;
-        return route.fulfill(json({ components: [], selection: null, selectionVersion: null, headings: [] }));
+        if (benchUnavailable) return route.fulfill(json({ error: "components_unavailable" }, 503));
+        return route.fulfill(json(component ? COMPONENT_STATE : { components: [], selection: null, selectionVersion: null, headings: [] }));
       }
       if (p === `${nbPath}/look`) {
         looks += 1;
@@ -115,7 +142,8 @@ for (const mode of ["preparing", "ready", "opening", "lookup-failed", "safety", 
         asked = body;
         return route.fulfill(stream(
           { kind: "content", content: ANSWER },
-          { kind: "sources", citations: [CITATION] },
+          { kind: "sources", citations: [citationEntry] },
+          ...(component ? [{ kind: "component", componentId: COMPONENT_ID, revision: 1, selectionVersion: COMPONENT_VERSION, label: COMPONENT_LABEL, actions: [] }] : []),
           { kind: "status", status: "answered" },
         ));
       }
@@ -136,13 +164,13 @@ for (const mode of ["preparing", "ready", "opening", "lookup-failed", "safety", 
         };
         const savedAnswer = asked && {
           id: "saved-answer", clientRequestId: asked.clientRequestId, question: QUESTION, answerStatus: "answered",
-          answerText: ANSWER, evidence: [CITATION], createdAt: new Date().toISOString(),
+          answerText: ANSWER, evidence: [citationEntry], createdAt: new Date().toISOString(),
         };
         return route.fulfill(json({
           ...oracle.detailEmpty,
           notebook: confirmed ? { ...notebook, ...IDENTITY, identityStatus: "user_confirmed" } : notebook,
           turns: [savedLookup, savedAnswer].filter(Boolean),
-          sources: ready ? [SOURCE] : [],
+          sources: ready || component ? [source] : [],
           manualSearch: confirmed ? {
             ...IDENTITY, startedAt: STARTED_AT, running: !ready && !lostManual,
             ...(ready ? { sourceState: "ready", readySourceDocId: DOC, message: "Exact fixture manual is ready in Sources." } :
@@ -160,6 +188,26 @@ for (const mode of ["preparing", "ready", "opening", "lookup-failed", "safety", 
     await page.goto(`/v3/?notebook=${NB}&thread=${THREAD}`);
     await scopeRequested.promise;
     const composer = page.getByRole("textbox", { name: "Ask MIRA", exact: true });
+    if (component) {
+      initialDetail.release();
+      scope.release();
+      await expect(page.getByText(`Asking about ${COMPONENT_LABEL}`, { exact: true })).toBeVisible();
+      const searching = page.getByText(/Searching AutomationDirect/).last();
+      await expect(searching).toBeVisible();
+      await composer.fill(QUESTION);
+      await page.getByRole("button", { name: "Send", exact: true }).click();
+      const citation = page.getByRole("button", { name: `Open citation 1: ${COMPONENT_MANUAL}, page 1`, exact: true });
+      await expect(citation).toBeVisible({ timeout: 8_000 });
+      expect(chatBodies).toEqual([expect.objectContaining({
+        message: QUESTION, threadId: THREAD, sourceDocIds: [COMPONENT_DOC],
+        componentSelection: { threadId: THREAD, componentId: COMPONENT_ID, selectionVersion: COMPONENT_VERSION },
+      })]);
+      lostManual = true;
+      answerHistory.release();
+      await expect(page.getByText("The fixture manual is unavailable.", { exact: true })).toBeVisible();
+      await expect(citation).toBeVisible();
+      return;
+    }
     const attachPhoto = async () => {
       await page.getByRole("button", { name: "Add attachment", exact: true }).click();
       const chooser = page.waitForEvent("filechooser");

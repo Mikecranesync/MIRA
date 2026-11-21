@@ -58,12 +58,17 @@ function tokensOf(content: string): string[] {
 const OPTION_PUNCTUATION = `[-/+${HYPHEN_EQUIV_CHARS}]`;
 const IDENTIFIER_PUNCTUATION = String.raw`(?:\.|${OPTION_PUNCTUATION})`;
 const OPTION_SPACING = String.raw`(?:[ \t]*\r?\n)?[ \t]*`;
+const OPTION_GROUP = String.raw`(?:[A-Z](?![A-Z0-9])|[A-Z]*\d)`;
 // A period joins adjacent code groups. A period before whitespace ends the
 // code. Hyphens and slashes can carry a group onto the next PDF text line.
 const DOCUMENT_JOIN = String.raw`(?:\.|(?:[ \t]*/|${OPTION_PUNCTUATION})${OPTION_SPACING})`;
-const SPACED_OPTION = String.raw`[ \t]+${OPTION_PUNCTUATION}${OPTION_SPACING}(?:[A-Z](?![A-Z0-9])|[A-Z]*\d)`;
-const IDENTIFIER_LEFT = String.raw`(?<![A-Z0-9])(?<![A-Z0-9]${DOCUMENT_JOIN})`;
-const IDENTIFIER_RIGHT = String.raw`(?![A-Z0-9]|${DOCUMENT_JOIN}[A-Z0-9]|${SPACED_OPTION})`;
+const SPACED_OPTION = String.raw`[ \t]+${OPTION_PUNCTUATION}${OPTION_SPACING}${OPTION_GROUP}`;
+// A line can also wrap before the punctuation. A separated prose word can
+// start a bullet, so require a code-shaped group when there is a gap after it.
+const WRAPPED_BEFORE_OPTION = String.raw`[ \t]*\r?\n[ \t]*${OPTION_PUNCTUATION}`;
+const WRAPPED_OPTION_JOIN = String.raw`${WRAPPED_BEFORE_OPTION}(?=[A-Z0-9]|${OPTION_SPACING}${OPTION_GROUP})${OPTION_SPACING}`;
+const IDENTIFIER_LEFT = String.raw`(?<![A-Z0-9])(?<![A-Z0-9]${DOCUMENT_JOIN}|[A-Z0-9]${WRAPPED_BEFORE_OPTION}|\d[A-Z0-9]*${WRAPPED_OPTION_JOIN})`;
+const IDENTIFIER_RIGHT = String.raw`(?![A-Z0-9]|${DOCUMENT_JOIN}[A-Z0-9]|${SPACED_OPTION}|${WRAPPED_OPTION_JOIN})`;
 
 /** A printed identifier can lose punctuation in a PDF text layer. Compare
  * across those separators without matching a prefix, suffix, or interior
@@ -75,7 +80,7 @@ function identifierPattern(value: string | null | undefined): RegExp | null {
   const inferredSeparator = String.raw`(?:[ \t]+|${IDENTIFIER_PUNCTUATION})?`;
   // Only an explicit boundary in the expected code can match a printed
   // separator with surrounding spaces or a line break.
-  const writtenSeparator = String.raw`(?:[ \t]+|[ \t]*${DOCUMENT_JOIN})?`;
+  const writtenSeparator = String.raw`(?:[ \t]+|[ \t]*${DOCUMENT_JOIN}|${WRAPPED_OPTION_JOIN})?`;
   const compact = runs.join("");
   const pattern = compact.length < 4 ? compact : runs.map((run) =>
     run.replace(/(?<=[A-Z])(?=\d)|(?<=\d)(?=[A-Z])/g, () => inferredSeparator),

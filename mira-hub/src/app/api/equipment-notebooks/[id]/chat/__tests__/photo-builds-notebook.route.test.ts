@@ -73,12 +73,13 @@ vi.mock("@/lib/inference/canonical-cascade", () => seamMock);
 const visualMock = vi.hoisted(() => ({
   photoLinkedToTarget: vi.fn(async () => ({ fileId: PHOTO, capturedAt: "2026-11-07T00:00:00Z" })),
   loadVisualEvidenceForPhoto: vi.fn(),
+  loadRecentLookObservations: vi.fn(),
 }));
 vi.mock("@/lib/workspace-files", () => ({ photoLinkedToTarget: visualMock.photoLinkedToTarget }));
 vi.mock("@/lib/visual-evidence-context", async (original) => ({
   ...(await original<typeof import("@/lib/visual-evidence-context")>()),
   loadVisualEvidenceForPhoto: visualMock.loadVisualEvidenceForPhoto,
-  loadRecentLookObservations: vi.fn(async () => []),
+  loadRecentLookObservations: visualMock.loadRecentLookObservations,
 }));
 
 // #5268 option A: the public-manual proof is a DB read; default "not proven".
@@ -178,6 +179,7 @@ beforeEach(() => {
   acqMock.startManualAcquisition.mockResolvedValue(true);
   acqMock.readAcquisition.mockResolvedValue(null);
   visualMock.photoLinkedToTarget.mockResolvedValue({ fileId: PHOTO, capturedAt: "2026-11-07T00:00:00Z" });
+  visualMock.loadRecentLookObservations.mockResolvedValue([]);
   visualMock.loadVisualEvidenceForPhoto.mockResolvedValue({
     observationId: "obs", sessionId: "session", text: PLATE, obsKind: "look", trust: "candidate", fileId: PHOTO, hazards: [],
   });
@@ -185,6 +187,27 @@ beforeEach(() => {
 });
 
 const EXPECTED_IDENTITY = { identityStatus: "user_confirmed", manufacturer: "AUTOMATIONDIRECT", model: MODEL, catalogNumber: "" };
+
+it.each(["A loose cable is sitting on a workbench.", SERIAL_PLATE])(
+  "offers the explicitly typed ABB model after an earlier, unrelated LOOK",
+  async (text) => {
+    visualMock.loadRecentLookObservations.mockResolvedValue([
+      { observationId: "obs", sessionId: "session", obsKind: "look", trust: "candidate", fileId: PHOTO, hazards: [], text },
+    ]);
+    const res = await POST(req({ message: "Find the manual for ABB ACS355.", mode: "general" }), params);
+    expect(await frames(res)).toContainEqual({ kind: "identity_proposal", manufacturer: "ABB", model: "ACS355" });
+    expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
+  },
+);
+
+it("still withholds a proposal when the typed request conflicts with the current photo", async () => {
+  const res = await POST(req({
+    message: "Find the manual for ABB ACS355.", mode: "general", visualEvidence: { fileId: PHOTO },
+  }), params);
+  expect((await frames(res)).filter(({ kind }) => kind === "identity_proposal")).toEqual([]);
+  expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+});
 
 it("proposes the exact model from a formatted LOOK reading without issuing a search before confirmation", async () => {
   ragMock.manufacturerFromObservationText.mockReturnValue("AutomationDirect");

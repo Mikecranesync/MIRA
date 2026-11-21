@@ -37,7 +37,7 @@ const domain = vi.hoisted(() => ({
   listSources: vi.fn(),
   listTurns: vi.fn(),
   listThreads: vi.fn(async () => []),
-  listNotebooks: vi.fn(),
+  listNotebooksWithThreads: vi.fn(),
   originFileIdsByDoc: vi.fn(async () => new Map<string, string>()),
 }));
 vi.mock("@/lib/equipment-notebooks", async (orig) => ({
@@ -163,7 +163,7 @@ beforeEach(() => {
   sessionMock.sessionOr401.mockResolvedValue({ tenantId: TENANT, userId: USER });
   domain.getNotebook.mockResolvedValue(NOTEBOOK);
   domain.listSources.mockResolvedValue([SOURCE]);
-  domain.listNotebooks.mockResolvedValue([NOTEBOOK]);
+  domain.listNotebooksWithThreads.mockResolvedValue([{ ...NOTEBOOK, threads: [] }]);
   domain.listTurns.mockResolvedValue([]);
   domain.validateChatSources.mockResolvedValue({ ok: true, docIds: [DOC], nodeId: NODE });
   domain.claimNotebookTurnRequest.mockResolvedValue({ status: "claimed", claimToken: "cccccccc-cccc-4ccc-8ccc-cccccccccccc" });
@@ -172,7 +172,10 @@ beforeEach(() => {
 describe("fidelity oracle", () => {
   it("empty notebook: detail + list", async () => {
     oracle.detailEmpty = await (await detailGET(req(`http://t/api/equipment-notebooks/${NB}`), params)).json();
-    oracle.list = await (await (listGET as () => Promise<Response>)()).json();
+    const listResponse = await listGET();
+    expect(listResponse.status).toBe(200);
+    oracle.list = await listResponse.json();
+    expect(oracle.list).toEqual({ notebooks: [{ ...NOTEBOOK, threads: [] }] });
     expect((oracle.detailEmpty as { turns: unknown[] }).turns).toEqual([]);
   });
 

@@ -213,7 +213,7 @@ export function HubShellHost() {
     selection: HubSelection;
     question: string;
     attachments: readonly Attachment[];
-    manual: ManualSearchStatus | null;
+    observedManual: ManualSearchStatus | null;
     waitForManual: boolean;
     scope: ReturnType<BenchScopes["get"]>;
     signal: AbortController;
@@ -352,8 +352,8 @@ export function HubShellHost() {
       if (!res.data) return false;
       detailRef.current = res.data;
       const waiting = waitingSend.current;
-      if (waiting?.selection === sel && waiting.waitForManual && !waiting.manual && res.data.manualSearch?.running) {
-        waiting.manual = res.data.manualSearch;
+      if (waiting?.selection === sel && waiting.waitForManual && !waiting.observedManual && res.data.manualSearch?.running) {
+        waiting.observedManual = res.data.manualSearch;
       }
       setDetail(res.data);
       setDetailUnavailable(false);
@@ -512,9 +512,14 @@ export function HubShellHost() {
       ? persistedRequest(detail.turns, settledFollowups.requestId)
       : undefined;
     const settled = saved && settledFollowups ? { ...settledFollowups, answerId: answerTurnId(saved.id) } : null;
+    const openThread = shellThreadId(selection);
+    // A manual poll can deliver the saved turn before the stream finishes.
+    // Once history owns this request, its outgoing placeholder is redundant.
+    const pendingOutgoing = outgoing && live && outgoing.threadId === openThread && outgoing.id === live.outgoingId &&
+      persistedRequest(detail.turns, live.requestId) ? null : outgoing;
     const turns = withManualSearchStatus(
       withSettledFollowups(
-        withOutgoing(threadFromPersisted(detail.turns, meta).turns, { turns: liveTurns, outgoingId: live?.outgoingId ?? null, questionId: live ? `${live.id}-q` : undefined }, outgoing, shellThreadId(selection), shellThreadId(selection), contextFor(meta)),
+        withOutgoing(threadFromPersisted(detail.turns, meta).turns, { turns: liveTurns, outgoingId: live?.outgoingId ?? null, questionId: live ? `${live.id}-q` : undefined }, pendingOutgoing, openThread, openThread, contextFor(meta)),
         settled,
       ),
       displayedManualStatus,
@@ -999,9 +1004,11 @@ export function HubShellHost() {
   const onComposerSend = useCallback((question: string, attachments: readonly Attachment[]) => {
     if (!selection) return onSend(question, attachments);
     const waitForManual = waitsForManual(question, attachments.length);
-    const manual = waitForManual && displayedManualStatus?.running ? displayedManualStatus : null;
+    const observedManual = waitForManual && displayedManualStatus?.running ? displayedManualStatus : null;
+    const scope = benchGate.known ? benchScopesRef.current.get(conversationKey(selection)) : undefined;
+    const waitsForNotebookLookup = observedManual && (scope === "unavailable" || scope?.componentId === null);
     const readingScope = !benchGate.known && !benchGate.changing && !benchGate.pending;
-    if (detail && !readingScope && !manual) return onSend(question, attachments);
+    if (detail && !readingScope && !waitsForNotebookLookup) return onSend(question, attachments);
     return new Promise<void>((resolve, reject) => {
       const signal = new AbortController();
       const timer = setTimeout(() => signal.abort(), waitForManual ? 185_000 : 15_000);
@@ -1014,8 +1021,7 @@ export function HubShellHost() {
       const fail = (error: Error) => { clear(); reject(error); };
       signal.signal.addEventListener("abort", () => fail(new Error("Send paused. Your message and attachments are still here.")), { once: true });
       waitingSend.current = {
-        selection, question, attachments, manual, waitForManual, signal,
-        scope: benchGate.known ? benchScopesRef.current.get(conversationKey(selection)) : undefined,
+        selection, question, attachments, observedManual, waitForManual, scope, signal,
         resolve: () => { clear(); resolve(); },
         reject: fail,
       };
@@ -1036,18 +1042,25 @@ export function HubShellHost() {
       waiting.signal.abort();
       return;
     }
-    if (!detail || busy) return;
+    if (busy) return;
     const current = displayedManualStatus;
-    if (waiting.waitForManual && !waiting.manual && current?.running) waiting.manual = current;
+    // Remember a lookup seen while the component check is still loading, so
+    // a fast failure cannot erase it from a queued whole-machine submission.
+    if (detail && waiting.waitForManual && !waiting.observedManual && current?.running) waiting.observedManual = current;
     if (!benchGate.known) return;
     const scope = benchScopesRef.current.get(conversationKey(waiting.selection));
     if (waiting.scope && JSON.stringify(waiting.scope) !== JSON.stringify(scope)) {
       waiting.reject(new Error("The question target changed. Review it before sending your message."));
       return;
     }
-    if (waiting.manual) {
-      const sameLookup = current?.manufacturer === waiting.manual.manufacturer && current.model === waiting.manual.model &&
-        (!waiting.manual.startedAt || !current.startedAt || compareManualSearchGeneration(waiting.manual.startedAt, current.startedAt) === 0);
+    waiting.scope ??= scope;
+    if (!detail) return;
+    // Notebook lookup readiness applies to the whole machine. The component's
+    // scope rider lets chat evaluate its own sources.
+    const manual = waiting.observedManual;
+    if (manual && (scope === "unavailable" || scope?.componentId === null)) {
+      const sameLookup = current?.manufacturer === manual.manufacturer && current.model === manual.model &&
+        (!manual.startedAt || !current.startedAt || compareManualSearchGeneration(manual.startedAt, current.startedAt) === 0);
       if (!readyManualId || !sameLookup) {
         if (sameLookup && current.running && follow?.phase !== "unresolved") return;
         waiting.reject(new Error("The manual isn't ready. Your message and attachments are still here."));
