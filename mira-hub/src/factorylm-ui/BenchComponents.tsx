@@ -32,7 +32,10 @@ import {
   retakeCard,
   revisionBodyFor,
   sameSerialButtonName,
+  sameSerialNoticeCurrent,
+  sameSerialPlace,
   sameSerialTarget,
+  savedNotRefreshedMessage,
   selectedComponent,
   selectionChangeFor,
   statusTone,
@@ -46,6 +49,9 @@ import {
   type SameSerialMatch,
   type SameSerialNotice,
 } from "./bench-components-logic";
+import { useMenuChip, useMenuItem } from "./notebook-actions-menu";
+
+const PART_ITEM = { id: "part", label: "Pick a part", description: "Choose what your next question is about" } as const;
 
 const PILL_STYLE: CSSProperties = {
   background: "var(--fl-surface)", color: "var(--fl-ink)", border: "1px solid var(--fl-line)",
@@ -136,6 +142,8 @@ export function BenchComponents({
   const [handled, setHandled] = useState<ComponentTurnFrame | null>(null);
   const [readFailed, setReadFailed] = useState(false);
   const [focused, setFocused] = useState<string | null>(null);
+  // Counts every component shown, so showing the one that is already marked scrolls to it again (#5657 F4).
+  const [shown, setShown] = useState(0);
   // #5649: what the last confirmed save's reply said about its serial number on other components.
   const [serialNotice, setSerialNotice] = useState<SameSerialNotice | null>(null);
   // Which save that notice may come from. A new save, closing the sheet and opening a label all move
@@ -237,6 +245,7 @@ export function BenchComponents({
     consumedFocus.current.add(focus.token);
     if (step === "show") {
       setFocused(focus.componentId);
+      setShown((n) => n + 1);
       setOpen(true);
       onFocusDone?.(focus.token, { ok: true });
       return;
@@ -274,6 +283,9 @@ export function BenchComponents({
   // The warning belongs to the save it came from: opening any label to edit takes it away, so it cannot
   // come back when that card is cancelled. Adjusted while rendering, which React re-renders at once.
   if (card && serialNotice) setSerialNotice(null);
+  // It is also about one revision only (#5656): once the checklist holds a later one, corrected here
+  // or on another screen, the label beside the warning is no longer the one that was checked.
+  else if (serialNotice && !sameSerialNoticeCurrent(serialNotice, bench)) setSerialNotice(null);
   // The same holds for a warning still on its way: once a label has been opened it is not shown,
   // whether its reply is read while the card is open or after the card is gone.
   const cardOpen = card !== null;
@@ -290,7 +302,7 @@ export function BenchComponents({
   }, [serialNotice]);
   useEffect(() => {
     if (open && focused) document.querySelector(`[data-testid="bench-component-${focused}"]`)?.scrollIntoView?.({ block: "nearest" });
-  }, [open, focused]);
+  }, [open, focused, shown]);
 
   const onAction = useCallback(
     async (a: ComponentAction) => {
@@ -352,7 +364,8 @@ export function BenchComponents({
           });
         }
         if (!reread) {
-          setMessage(CONNECTION_MESSAGE);
+          // The server answered that the save is committed; only the list is out of date (#5661 A2).
+          setMessage(savedNotRefreshedMessage(confirm));
           return;
         }
         setMessage(confirm ? "Confirmed. Questions about it now use what you confirmed." : "Saved — not confirmed yet.");
@@ -409,14 +422,21 @@ export function BenchComponents({
   const current = selectedComponent(bench);
   const actions = frame && frame !== handled ? frame.actions : [];
 
+  // Inside the More list (Mike, 2026-11-20) the whole machine is the silent default: the pill shows
+  // only while a part is picked, as a chip beside More, and its x goes back to the whole machine.
+  const pillText = `${askingAbout(bench)}${bench?.selection && !bench.selection.current ? " (identity changed — next question re-checks it)" : ""}`;
+  const { inMenu } = useMenuItem(available ? PART_ITEM : null, () => { if (!open) togglePanel(); });
+  useMenuChip(available && current ? { label: pillText, onOpen: togglePanel, onClear: saving || busy ? null : () => void select(null, "picker") } : null);
+
   if (!available) return null;
 
   return (
     <>
-      <button type="button" style={PILL_STYLE} data-testid="bench-asking-about" aria-expanded={open} onClick={togglePanel}>
-        {askingAbout(bench)}
-        {bench?.selection && !bench.selection.current && " (identity changed — next question re-checks it)"}
-      </button>
+      {inMenu ? null : (
+        <button type="button" style={PILL_STYLE} data-testid="bench-asking-about" aria-expanded={open} onClick={togglePanel}>
+          {pillText}
+        </button>
+      )}
       {lastAnswerNotice(bench) && (
         <p role="status" data-testid="bench-last-answer" style={{ margin: 0, fontSize: "var(--fl-fs-sm)", color: "var(--fl-warn, var(--fl-muted))" }}>
           {lastAnswerNotice(bench)}
@@ -561,6 +581,8 @@ export function SameSerialWarning({ notice, savedLabel, disabled, onOpen, onDism
     );
   }
   const n = notice.matches.length;
+  // "1 of 2" beside each match that reads like another one; null for the rest (#5661 A1).
+  const places = notice.matches.map((m) => sameSerialPlace(notice.matches, m));
   const others = notice.more
     ? n === 1 ? "more than one other component" : `more than ${n} other components`
     : n === 1 ? "another component" : `${n} other components`;
@@ -573,9 +595,10 @@ export function SameSerialWarning({ notice, savedLabel, disabled, onOpen, onDism
         {`${savedLabel ?? "This component"} is saved as confirmed. This may be the same unit. Nothing was blocked, changed or merged.`}
       </p>
       <ul style={{ listStyle: "none", padding: 0, margin: "8px 0 0" }}>
-        {notice.matches.map((m) => (
+        {notice.matches.map((m, i) => (
           <li key={m.componentId} data-testid={`bench-same-serial-match-${m.componentId}`} style={{ borderTop: "1px solid var(--fl-line)", padding: "8px 0" }}>
             <strong>{m.label}</strong>{" "}
+            {places[i] && <span data-testid={`bench-same-serial-place-${m.componentId}`} style={{ marginInlineStart: 4 }}>{`(${places[i]}) `}</span>}
             <span style={{ marginInlineStart: 4 }}>{!m.here ? `in ${m.notebookName}` : m.retired ? "on this machine" : "in this machine's checklist"}</span>
             {m.retired && " "}
             {m.retired && <span data-testid={`bench-same-serial-removed-${m.componentId}`} style={{ marginInlineStart: 4, color: "var(--fl-muted)" }}>(removed from the checklist)</span>}

@@ -300,6 +300,13 @@ export function addRequestFor(prev: AddRequest | null, draft: string, newId: () 
 /** A save that never reached the server (no reply at all). */
 export const CONNECTION_MESSAGE = "That didn't reach the server. Check the connection, then try again.";
 
+/**
+ * A save the server answered as committed, followed by a checklist re-read that failed (#5661 A2).
+ * The save is reported as what it was; only the list is said to be out of date.
+ */
+export const savedNotRefreshedMessage = (confirm: boolean): string =>
+  `${confirm ? "Confirmed." : "Saved — not confirmed yet."} The component list couldn't be refreshed just now.`;
+
 /** True when nothing on the card says what the component is. */
 export const cardIsEmpty = (card: Card) =>
   !card.rawLabel.trim() && CARD_FIELDS.every(([f]) => !card.values[f].trim());
@@ -672,10 +679,14 @@ export type SameSerialMatch = {
   here: boolean;
 };
 
-export type SameSerialNotice =
+export type SameSerialNotice = (
   | { kind: "matches"; componentId: string; matches: SameSerialMatch[]; more: boolean }
   /** The check failed or its result could not be read: not the same as "no match". */
-  | { kind: "not_run"; componentId: string };
+  | { kind: "not_run"; componentId: string }
+) & {
+  /** The revision the save made, when its reply says so. The notice is about that revision only (#5656). */
+  revision?: number;
+};
 
 /** As many as the server lists (same-serial.ts SAME_SERIAL_LIMIT; a test pins the two equal). */
 export const SAME_SERIAL_SHOWN = 10;
@@ -695,7 +706,9 @@ const plainObject = (v: unknown): Record<string, unknown> | null =>
 export function sameSerialNotice(reply: unknown, saved: { notebookId: string; componentId: string }): SameSerialNotice | null {
   const advisory = plainObject(plainObject(reply)?.sameSerial);
   if (!advisory) return null;
-  const notRun: SameSerialNotice = { kind: "not_run", componentId: saved.componentId };
+  const made = plainObject(plainObject(reply)?.current)?.revision;
+  const revision = typeof made === "number" && Number.isInteger(made) && made > 0 ? { revision: made } : {};
+  const notRun: SameSerialNotice = { kind: "not_run", componentId: saved.componentId, ...revision };
   if (advisory.status === "not_checked") return advisory.reason === "lookup_failed" ? notRun : null;
   if (advisory.status !== "checked") return null;
   if (!Array.isArray(advisory.candidates)) return notRun;
@@ -731,7 +744,20 @@ export function sameSerialNotice(reply: unknown, saved: { notebookId: string; co
     componentId: saved.componentId,
     matches: matches.slice(0, SAME_SERIAL_SHOWN),
     more: advisory.truncated === true || unreadable > 0 || matches.length > SAME_SERIAL_SHOWN,
+    ...revision,
   };
+}
+
+/**
+ * False once the checklist holds a later revision of the saved component than the one the notice was
+ * made for (#5656): it was corrected again, here or on another screen, so the label the checklist now
+ * shows is not the one whose serial number was checked. A checklist that is older, has no such row,
+ * or a notice whose reply named no revision leaves the notice standing.
+ */
+export function sameSerialNoticeCurrent(notice: SameSerialNotice, bench: BenchState | null): boolean {
+  if (notice.revision === undefined) return true;
+  const now = bench?.components.find((c) => c.id === notice.componentId)?.current?.revision;
+  return typeof now !== "number" || now <= notice.revision;
 }
 
 /**
@@ -795,9 +821,20 @@ const matchButtonWords = (m: SameSerialMatch): string =>
  * screen reader can tell their buttons apart. A removed component has no button and is not counted.
  */
 export function sameSerialButtonName(matches: readonly SameSerialMatch[], match: SameSerialMatch): string {
+  const place = sameSerialPlace(matches, match);
+  return place ? `${matchButtonWords(match)} (${place})` : matchButtonWords(match);
+}
+
+/**
+ * "1 of 2" for a match that reads like another one in the list, null for one that reads like no other.
+ * The row shows it and the button's name carries it, so the eye and a screen reader tell them apart
+ * the same way (#5661 A1).
+ */
+export function sameSerialPlace(matches: readonly SameSerialMatch[], match: SameSerialMatch): string | null {
+  if (match.retired) return null;
   const name = matchButtonWords(match);
   const alike = matches.filter((m) => !m.retired && matchButtonWords(m) === name);
-  return alike.length > 1 ? `${name} (${alike.indexOf(match) + 1} of ${alike.length})` : name;
+  return alike.length > 1 ? `${alike.indexOf(match) + 1} of ${alike.length}` : null;
 }
 
 /**

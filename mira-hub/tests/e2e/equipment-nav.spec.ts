@@ -180,7 +180,7 @@ const panel = (page: Page) => page.getByTestId("equipment-nav");
 const row = (page: Page, key: string) => panel(page).locator(`[role="tree"] [data-equipment-key="${key}"]`);
 
 async function openTo(page: Page, id: string) {
-  await panel(page).getByRole("button", { name: "Find equipment" }).click();
+  await openEquipment(page);
   await row(page, `notebook:${NB}`).click();
   await expect(row(page, `notebook_component:${id}`)).toBeVisible();
   await row(page, `notebook_component:${id}`).click();
@@ -194,12 +194,25 @@ const offer = (page: Page) => page.getByTestId("equipment-offer");
 const composer = (page: Page) => page.getByRole("textbox", { name: /ask mira/i });
 const showFound = (page: Page) => offer(page).getByRole("button", { name: "Show in checklist" }).click();
 const selectInChecklist = (page: Page, id: string) => checklistRow(page, id).getByRole("button", { name: "Ask about this" }).click();
+// The notebook's tools are behind one More button (Mike, 2026-11-20).
+const more = (page: Page) => page.getByTestId("notebook-more");
+async function openFromMore(page: Page, id: string) {
+  await more(page).click();
+  await page.getByTestId(`notebook-more-item-${id}`).click();
+}
+const openEquipment = (page: Page) => openFromMore(page, "equipment");
+/** The checklist opens from the chip while a part is picked, otherwise from More → Pick a part. */
+async function openChecklist(page: Page) {
+  const chip = page.getByTestId("bench-asking-about");
+  if (await chip.count()) await chip.click();
+  else await openFromMore(page, "part");
+}
 
 test("on: Ask about offers the part; Show in checklist opens it there; the technician's tap selects it", async ({ page, context, baseURL }) => {
   await auth(context, baseURL!);
   const seen = await routes(page, { enabled: true, resolve: "resolved" });
   await page.goto(`/v3/?notebook=${NB}&thread=${THREAD}`);
-  await expect(panel(page)).toBeVisible();
+  await expect(panel(page)).toBeAttached();
 
   await openTo(page, VFD);
   await askAbout(page, "VFD1");
@@ -228,7 +241,7 @@ test("a saved component can be switched to another one", async ({ page, context,
   await auth(context, baseURL!);
   const seen = await routes(page, { enabled: true, resolve: "resolved", initial: { [THREAD]: { componentId: VFD, version: 1 } } });
   await page.goto(`/v3/?notebook=${NB}&thread=${THREAD}`);
-  await expect(panel(page)).toBeVisible();
+  await expect(panel(page)).toBeAttached();
 
   await openTo(page, MLC);
   await askAbout(page, "Q1");
@@ -245,7 +258,7 @@ test("a record that changed elsewhere is refused with a notice and nothing is se
   await auth(context, baseURL!);
   const seen = await routes(page, { enabled: true, resolve: "stale_revision" });
   await page.goto(`/v3/?notebook=${NB}&thread=${THREAD}`);
-  await expect(panel(page)).toBeVisible();
+  await expect(panel(page)).toBeAttached();
 
   await openTo(page, VFD);
   await askAbout(page, "VFD1");
@@ -262,7 +275,7 @@ test("a record corrected after the checklist was read is refused at the write (#
   await auth(context, baseURL!);
   const seen = await routes(page, { enabled: true, resolve: "resolved", put: "stale_revision" });
   await page.goto(`/v3/?notebook=${NB}&thread=${THREAD}`);
-  await expect(panel(page)).toBeVisible();
+  await expect(panel(page)).toBeAttached();
 
   await openTo(page, VFD);
   await askAbout(page, "VFD1");
@@ -279,7 +292,7 @@ test("an answer that arrives after leaving and returning to the chat moves nothi
   await auth(context, baseURL!);
   const seen = await routes(page, { enabled: true, resolve: "resolved", holdResolve: true });
   await page.goto(`/v3/?notebook=${NB}&thread=legacy`);
-  await expect(panel(page)).toBeVisible();
+  await expect(panel(page)).toBeAttached();
 
   await openTo(page, VFD);
   await askAbout(page, "VFD1");
@@ -301,7 +314,7 @@ test("a destination checklist that fails to load ends the hand-off with a notice
   await auth(context, baseURL!);
   const seen = await routes(page, { enabled: true, resolve: "resolved", benchFails: true });
   await page.goto(`/v3/?notebook=${NB}&thread=${THREAD}`);
-  await expect(panel(page)).toBeVisible();
+  await expect(panel(page)).toBeAttached();
 
   await openTo(page, VFD);
   await askAbout(page, "VFD1");
@@ -315,7 +328,7 @@ test("showing a part never saves it, and reopening the chat does not show it aga
   await auth(context, baseURL!);
   const seen = await routes(page, { enabled: true, resolve: "resolved" });
   await page.goto(`/v3/?notebook=${NB}&thread=legacy`);
-  await expect(panel(page)).toBeVisible();
+  await expect(panel(page)).toBeAttached();
 
   await openTo(page, VFD);
   await askAbout(page, "VFD1");
@@ -328,7 +341,7 @@ test("showing a part never saves it, and reopening the chat does not show it aga
   await page.locator(`[data-item-id="notebook-${NB}:thread-legacy"]`).first().click();
   await expect(page).toHaveURL(/thread=legacy/);
   // The reopened checklist has loaded; give a replay time to show.
-  await expect(page.getByTestId("bench-asking-about")).toBeVisible();
+  await expect(page.getByTestId("notebook-more-item-part")).toBeAttached();
   await page.waitForTimeout(1500);
   await expect(checklist(page)).toHaveCount(0);
   expect(seen.selectionPuts).toHaveLength(0);
@@ -338,7 +351,7 @@ test("equipment in another notebook is offered and opens only on the technician'
   await auth(context, baseURL!);
   const seen = await routes(page, { enabled: true, resolve: "resolved" });
   await page.goto(`/v3/`);
-  await expect(panel(page)).toBeVisible();
+  await expect(panel(page)).toBeAttached();
 
   await openTo(page, VFD);
   await askAbout(page, "VFD1");
@@ -360,7 +373,7 @@ test("closing Find equipment cancels a lookup on its way: the chat and the typed
   const OTHER = "99999999-9999-4999-8999-999999999999";
   const seen = await routes(page, { enabled: true, resolve: "resolved", holdResolve: true, resolveNotebook: OTHER });
   await page.goto(`/v3/?notebook=${NB}&thread=${THREAD}`);
-  await expect(panel(page)).toBeVisible();
+  await expect(panel(page)).toBeAttached();
   const url = page.url();
 
   await openTo(page, VFD);
@@ -389,7 +402,7 @@ test("a component added after the checklist was read is still shown: one fresh r
   await auth(context, baseURL!);
   const seen = await routes(page, { enabled: true, resolve: "resolved", firstBenchWithout: MLC });
   await page.goto(`/v3/?notebook=${NB}&thread=${THREAD}`);
-  await expect(panel(page)).toBeVisible();
+  await expect(panel(page)).toBeAttached();
   // Precondition: the checklist on screen was read without Q1.
   await expect.poll(() => seen.benchReads).toBeGreaterThanOrEqual(1);
 
@@ -407,12 +420,12 @@ test("an answer that arrives while a label is being edited never closes the edit
   await auth(context, baseURL!);
   const seen = await routes(page, { enabled: true, resolve: "resolved", holdResolve: true });
   await page.goto(`/v3/?notebook=${NB}&thread=${THREAD}`);
-  await expect(panel(page)).toBeVisible();
+  await expect(panel(page)).toBeAttached();
 
   await openTo(page, MLC);
   await askAbout(page, "Q1");
   await expect.poll(() => seen.resolves.length).toBe(1);
-  await page.getByTestId("bench-asking-about").click();
+  await openChecklist(page);
   await checklistRow(page, VFD).getByRole("button", { name: "Edit label" }).click();
   await page.getByTestId("bench-card-raw").fill("unsaved edit");
   seen.release();
@@ -433,7 +446,7 @@ test("closing Find equipment aborts the lookup: Ask is free again and a late ref
   await auth(context, baseURL!);
   const seen = await routes(page, { enabled: true, resolve: "stale_revision", holdResolve: true });
   await page.goto(`/v3/?notebook=${NB}&thread=${THREAD}`);
-  await expect(panel(page)).toBeVisible();
+  await expect(panel(page)).toBeAttached();
 
   await openTo(page, VFD);
   await askAbout(page, "VFD1");
@@ -454,7 +467,7 @@ test("a failed checklist read does not fail the next lookup: it gets its own fre
   await auth(context, baseURL!);
   const seen = await routes(page, { enabled: true, resolve: "resolved", firstBenchWithout: MLC, failReads: [2] });
   await page.goto(`/v3/?notebook=${NB}&thread=${THREAD}`);
-  await expect(panel(page)).toBeVisible();
+  await expect(panel(page)).toBeAttached();
   await expect.poll(() => seen.benchReads).toBeGreaterThanOrEqual(1);
 
   await openTo(page, MLC);
@@ -476,12 +489,12 @@ test("Close on the checklist drops a part waiting on an open label editor; it is
   await auth(context, baseURL!);
   const seen = await routes(page, { enabled: true, resolve: "resolved", holdResolve: true });
   await page.goto(`/v3/?notebook=${NB}&thread=${THREAD}`);
-  await expect(panel(page)).toBeVisible();
+  await expect(panel(page)).toBeAttached();
 
   await openTo(page, MLC);
   await askAbout(page, "Q1");
   await expect.poll(() => seen.resolves.length).toBe(1);
-  await page.getByTestId("bench-asking-about").click();
+  await openChecklist(page);
   await checklistRow(page, VFD).getByRole("button", { name: "Edit label" }).click();
   await page.getByTestId("bench-card-raw").fill("unsaved edit");
   seen.release();
@@ -493,7 +506,7 @@ test("Close on the checklist drops a part waiting on an open label editor; it is
   // Nothing reopens it by itself, and opening it by hand does not replay the hand-off.
   await page.waitForTimeout(500);
   await expect(checklist(page)).toHaveCount(0);
-  await page.getByTestId("bench-asking-about").click();
+  await openChecklist(page);
   await expect(checklistRow(page, MLC)).toBeVisible();
   await expect(checklistRow(page, MLC)).not.toHaveAttribute("data-found", "true");
   await expect(pickNotice(page)).toHaveCount(0);
@@ -505,9 +518,9 @@ test("a full page of 50 results scrolls inside the panel; Close equipment and th
   await auth(context, baseURL!);
   await routes(page, { enabled: true, resolve: "resolved", fullPage: 50 });
   await page.goto(`/v3/?notebook=${NB}&thread=${THREAD}`);
-  await expect(panel(page)).toBeVisible();
+  await expect(panel(page)).toBeAttached();
 
-  await panel(page).getByRole("button", { name: "Find equipment" }).click();
+  await openEquipment(page);
   await row(page, `notebook:${NB}`).click();
   await expect(row(page, "notebook_component:00000000-0000-4000-8000-000000000049")).toBeAttached();
   const region = page.getByTestId("equipment-scroll");
@@ -517,36 +530,38 @@ test("a full page of 50 results scrolls inside the panel; Close equipment and th
   expect(await region.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true);
 
   const pageScroll = await page.evaluate(() => document.scrollingElement?.scrollTop ?? 0);
-  const more = panel(page).getByRole("button", { name: /show more/i }).first();
-  await more.scrollIntoViewIfNeeded();
-  await expect(more).toBeInViewport();
+  const showMore = panel(page).getByRole("button", { name: /show more/i }).first();
+  await showMore.scrollIntoViewIfNeeded();
+  await expect(showMore).toBeInViewport();
   expect(await region.evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
   expect(await page.evaluate(() => document.scrollingElement?.scrollTop ?? 0)).toBe(pageScroll);
   await expect(panel(page).getByRole("button", { name: "Close equipment" })).toBeInViewport();
-  await expect(page.getByTestId("bench-asking-about")).toBeInViewport();
+  await expect(more(page)).toBeInViewport();
 });
 
 test("on a short landscape screen the results still scroll inside the panel; Close equipment and the checklist stay on screen (#5643)", async ({ page, context, baseURL }) => {
-  await page.setViewportSize({ width: 800, height: 350 });
+  // 400 px: short, but tall enough for Close, a row of results and the checklist above the chat
+  // composer (#5658). Below that the whole panel scrolls; the touch test for #5659 covers it.
+  await page.setViewportSize({ width: 800, height: 400 });
   await auth(context, baseURL!);
   await routes(page, { enabled: true, resolve: "resolved", fullPage: 50 });
   await page.goto(`/v3/?notebook=${NB}&thread=${THREAD}`);
-  await expect(panel(page)).toBeVisible();
+  await expect(panel(page)).toBeAttached();
 
-  await panel(page).getByRole("button", { name: "Find equipment" }).click();
+  await openEquipment(page);
   await row(page, `notebook:${NB}`).click();
   await expect(row(page, "notebook_component:00000000-0000-4000-8000-000000000049")).toBeAttached();
   const region = page.getByTestId("equipment-scroll");
   expect(await region.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true);
 
   const pageScroll = await page.evaluate(() => document.scrollingElement?.scrollTop ?? 0);
-  const more = panel(page).getByRole("button", { name: /show more/i }).first();
-  await more.scrollIntoViewIfNeeded();
-  await expect(more).toBeInViewport();
+  const showMore = panel(page).getByRole("button", { name: /show more/i }).first();
+  await showMore.scrollIntoViewIfNeeded();
+  await expect(showMore).toBeInViewport();
   expect(await region.evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
   expect(await page.evaluate(() => document.scrollingElement?.scrollTop ?? 0)).toBe(pageScroll);
   await expect(panel(page).getByRole("button", { name: "Close equipment" })).toBeInViewport({ ratio: 1 });
-  await expect(page.getByTestId("bench-asking-about")).toBeInViewport({ ratio: 1 });
+  await expect(more(page)).toBeInViewport({ ratio: 1 });
 });
 
 test("on a short landscape screen an offer above the results still leaves the checklist on screen (#5655 r1 F1)", async ({ page, context, baseURL }) => {
@@ -554,22 +569,22 @@ test("on a short landscape screen an offer above the results still leaves the ch
   await auth(context, baseURL!);
   await routes(page, { enabled: true, resolve: "resolved", fullPage: 50 });
   await page.goto(`/v3/?notebook=${NB}&thread=${THREAD}`);
-  await expect(panel(page)).toBeVisible();
+  await expect(panel(page)).toBeAttached();
 
-  await panel(page).getByRole("button", { name: "Find equipment" }).click();
+  await openEquipment(page);
   await row(page, `notebook:${NB}`).click();
   await expect(row(page, "notebook_component:00000000-0000-4000-8000-000000000000")).toBeAttached();
   await row(page, "notebook_component:00000000-0000-4000-8000-000000000000").click();
   await askAbout(page, "M1");
   await expect(offer(page)).toBeVisible();
 
-  await panel(page).getByRole("button", { name: "Find equipment" }).click();
+  await openEquipment(page);
   await row(page, `notebook:${NB}`).click();
   await expect(row(page, "notebook_component:00000000-0000-4000-8000-000000000049")).toBeAttached();
   await expect(offer(page)).toBeVisible();
   const region = page.getByTestId("equipment-scroll");
   expect(await region.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true);
-  await expect(page.getByTestId("bench-asking-about")).toBeInViewport({ ratio: 1 });
+  await expect(more(page)).toBeInViewport({ ratio: 1 });
 });
 
 test("on a short landscape screen an offer and a refusal together still leave the checklist on screen; the panel scrolls itself (#5655 r2 F1)", async ({ page, context, baseURL }) => {
@@ -578,16 +593,16 @@ test("on a short landscape screen an offer and a refusal together still leave th
   const opts: RouteOpts = { enabled: true, resolve: "resolved", fullPage: 50 };
   await routes(page, opts);
   await page.goto(`/v3/?notebook=${NB}&thread=${THREAD}`);
-  await expect(panel(page)).toBeVisible();
+  await expect(panel(page)).toBeAttached();
 
-  await panel(page).getByRole("button", { name: "Find equipment" }).click();
+  await openEquipment(page);
   await row(page, `notebook:${NB}`).click();
   await row(page, "notebook_component:00000000-0000-4000-8000-000000000000").click();
   await askAbout(page, "M1");
   await expect(offer(page)).toBeVisible();
 
   opts.resolve = "stale_revision";
-  await panel(page).getByRole("button", { name: "Find equipment" }).click();
+  await openEquipment(page);
   await row(page, `notebook:${NB}`).click();
   await row(page, "notebook_component:00000000-0000-4000-8000-000000000001").click();
   await askAbout(page, "M2");
@@ -595,12 +610,12 @@ test("on a short landscape screen an offer and a refusal together still leave th
   await expect(offer(page)).toBeAttached();
 
   const pageScroll = await page.evaluate(() => document.scrollingElement?.scrollTop ?? 0);
-  await expect(page.getByTestId("bench-asking-about")).toBeInViewport({ ratio: 1 });
+  await expect(more(page)).toBeInViewport({ ratio: 1 });
   const last = row(page, "notebook_component:00000000-0000-4000-8000-000000000049");
   await last.scrollIntoViewIfNeeded();
   await expect(last).toBeInViewport();
   expect(await page.evaluate(() => document.scrollingElement?.scrollTop ?? 0)).toBe(pageScroll);
-  await expect(page.getByTestId("bench-asking-about")).toBeInViewport({ ratio: 1 });
+  await expect(more(page)).toBeInViewport({ ratio: 1 });
 });
 
 test("the open results sit on the panel's own surface in light and dark, so chat text never shows through (#5654)", async ({ page, context, baseURL }) => {
@@ -609,8 +624,8 @@ test("the open results sit on the panel's own surface in light and dark, so chat
   for (const colorScheme of ["light", "dark"] as const) {
     await page.emulateMedia({ colorScheme });
     await page.goto(`/v3/?notebook=${NB}&thread=${THREAD}`);
-    await expect(panel(page)).toBeVisible();
-    await panel(page).getByRole("button", { name: "Find equipment" }).click();
+    await expect(panel(page)).toBeAttached();
+    await openEquipment(page);
     await row(page, `notebook:${NB}`).click();
     const surface = await page.getByTestId("equipment-scroll").evaluate((el) => {
       const probe = document.createElement("div");
@@ -623,6 +638,179 @@ test("the open results sit on the panel's own surface in light and dark, so chat
     expect(surface.background, colorScheme).not.toBe("rgba(0, 0, 0, 0)");
     expect(surface.background, colorScheme).toBe(surface.token);
   }
+});
+
+test("on a short landscape screen, Send still sends with a full equipment list open; the checklist stays shut (#5658)", async ({ page, context, baseURL }) => {
+  // 300 px is where, before the fix, the checklist trigger sat over the middle of Send in this layout.
+  await page.setViewportSize({ width: 800, height: 300 });
+  await auth(context, baseURL!);
+  await routes(page, { enabled: true, resolve: "resolved", fullPage: 50 });
+  await page.goto(`/v3/?notebook=${NB}&thread=${THREAD}`);
+  await expect(panel(page)).toBeAttached();
+
+  await openEquipment(page);
+  await row(page, `notebook:${NB}`).click();
+  await expect(row(page, "notebook_component:00000000-0000-4000-8000-000000000049")).toBeAttached();
+  await composer(page).fill("does the drive have power");
+  // Nothing else is on top of the middle of Send (before the fix the checklist trigger was).
+  const send = (await page.getByRole("button", { name: "Send", exact: true }).boundingBox())!;
+  const onTop = await page.evaluate(([x, y]) => document.elementFromPoint(x, y)?.closest('button[aria-label="Send"]') !== null, [send.x + send.width / 2, send.y + send.height / 2]);
+  expect(onTop, "Send is on top at its own middle").toBe(true);
+  const sent = page.waitForRequest((r) => r.method() === "POST" && /\/chat\/?$/.test(new URL(r.url()).pathname), { timeout: 5_000 });
+  // Tap where Send is on screen, as a finger would: no scrolling it into view first, and whatever
+  // is on top at that point takes the tap.
+  await page.mouse.click(send.x + send.width / 2, send.y + send.height / 2);
+  await sent;
+  await expect(checklist(page)).toHaveCount(0);
+});
+
+test("on a tablet with the panel open, a tap on Send goes through the actions column's empty area; its rows still take taps (#5658, #5667)", async ({ page, context, baseURL }) => {
+  // The Galaxy Tab S9 FE in landscape. On the device the rows below the panel (Whole machine, Prepare
+  // job, Job sheet) stretch the actions column down over Send and its empty box took the tap. Those
+  // rows need their own feature flags, so here the column is stretched to the bottom the same way.
+  await page.setViewportSize({ width: 1316, height: 648 });
+  await auth(context, baseURL!);
+  await routes(page, { enabled: true, resolve: "resolved", fullPage: 50 });
+  await page.goto(`/v3/?notebook=${NB}&thread=${THREAD}`);
+  // Send is refused until the notebook detail and the component read are in. The grounding line shows the
+  // detail is in; the checklist listing its rows shows the component read is in (then shut it).
+  await expect(page.getByText(/Answers cite \d+ selected sources? for /)).toBeVisible();
+  await openChecklist(page);
+  await expect(checklistRow(page, VFD)).toBeVisible();
+  await checklist(page).getByRole("button", { name: "Close", exact: true }).click();
+  await expect(checklist(page)).toHaveCount(0);
+  await expect(panel(page)).toBeAttached();
+  await openEquipment(page);
+  await row(page, `notebook:${NB}`).click();
+  await expect(row(page, "notebook_component:00000000-0000-4000-8000-000000000049")).toBeAttached();
+  await composer(page).fill("does the drive have power");
+  const column = page.getByTestId("notebook-actions");
+  await column.evaluate((el) => {
+    (el as HTMLElement).style.minHeight = `${window.innerHeight - el.getBoundingClientRect().top}px`;
+  });
+  const send = (await page.getByRole("button", { name: "Send", exact: true }).boundingBox())!;
+  const [x, y] = [send.x + send.width / 2, send.y + send.height / 2];
+  const col = (await column.boundingBox())!;
+  expect(x > col.x && x < col.x + col.width && y > col.y && y < col.y + col.height, "the column's box covers Send").toBe(true);
+  const onTop = await page.evaluate(([px, py]) => document.elementFromPoint(px, py)?.closest('button[aria-label="Send"]') !== null, [x, y]);
+  expect(onTop, "Send is on top at its own middle").toBe(true);
+  const sent = page.waitForRequest((r) => r.method() === "POST" && /\/chat\/?$/.test(new URL(r.url()).pathname), { timeout: 5_000 });
+  await page.mouse.click(x, y);
+  await sent;
+  // Control: the column's own rows still take taps.
+  const close = (await panel(page).getByRole("button", { name: "Close equipment" }).boundingBox())!;
+  await page.mouse.click(close.x + close.width / 2, close.y + close.height / 2);
+  await expect(panel(page).getByRole("button", { name: "Close equipment" })).toHaveCount(0);
+});
+
+/** Open a full list with an offer and a refusal above it at 800×350, so the panel itself must scroll. */
+async function openCrowdedShortPanel(page: Page, context: BrowserContext, baseURL: string) {
+  await page.setViewportSize({ width: 800, height: 350 });
+  await auth(context, baseURL);
+  const opts: RouteOpts = { enabled: true, resolve: "resolved", fullPage: 50 };
+  await routes(page, opts);
+  await page.goto(`/v3/?notebook=${NB}&thread=${THREAD}`);
+  await expect(panel(page)).toBeAttached();
+  await openEquipment(page);
+  await row(page, `notebook:${NB}`).click();
+  await row(page, "notebook_component:00000000-0000-4000-8000-000000000000").click();
+  await askAbout(page, "M1");
+  await expect(offer(page)).toBeVisible();
+  opts.resolve = "stale_revision";
+  await openEquipment(page);
+  await row(page, `notebook:${NB}`).click();
+  await row(page, "notebook_component:00000000-0000-4000-8000-000000000001").click();
+  await askAbout(page, "M2");
+  await expect(panel(page).getByRole("alert").filter({ hasText: "did not change" }).first()).toBeAttached();
+}
+
+const overscrollY = (page: Page, testId: string) =>
+  page.getByTestId(testId).evaluate((el) => getComputedStyle(el).overscrollBehaviorY);
+
+// Deterministic half of #5659, run everywhere including CI: while the panel itself scrolls, the
+// results let a swipe carry on into it; the panel still stops at the page. The finger-level proof
+// is the touch test below, which runs locally and on the device walk.
+test("when the panel itself scrolls, the results hand an overscroll on to it; the panel never scrolls the page (#5659)", async ({ page, context, baseURL }) => {
+  await openCrowdedShortPanel(page, context, baseURL!);
+  expect(await panel(page).evaluate((el) => el.scrollHeight > el.clientHeight), "the panel scrolls").toBe(true);
+  await expect.poll(() => overscrollY(page, "equipment-scroll")).toBe("auto");
+  expect(await overscrollY(page, "equipment-nav")).toBe("contain");
+});
+
+test("when the panel fits, the results keep their overscroll to themselves (#5659 control)", async ({ page, context, baseURL }) => {
+  await page.setViewportSize({ width: 800, height: 1280 });
+  await auth(context, baseURL!);
+  await routes(page, { enabled: true, resolve: "resolved", fullPage: 50 });
+  await page.goto(`/v3/?notebook=${NB}&thread=${THREAD}`);
+  await expect(panel(page)).toBeAttached();
+  await openEquipment(page);
+  await row(page, `notebook:${NB}`).click();
+  await expect(row(page, "notebook_component:00000000-0000-4000-8000-000000000049")).toBeAttached();
+  expect(await panel(page).evaluate((el) => el.scrollHeight > el.clientHeight + 1), "the panel fits").toBe(false);
+  await expect.poll(() => overscrollY(page, "equipment-scroll")).toBe("contain");
+});
+
+test.describe("touch", () => {
+  test.use({ hasTouch: true });
+
+  test("on a very short screen a touch user can swipe into the results and back to the notices and Close equipment (#5659)", async ({ page, context, baseURL }) => {
+    // Chromium's synthesized touch scrolls barely move the results on the GitHub Linux runner (about
+    // one row in 40 swipes, PR #5666), while the same test passes locally at 800×330–380. CI runs
+    // the deterministic overscroll tests above instead; this one runs locally and before device walks.
+    test.skip(!!process.env.CI, "synthesized touch scrolling is unreliable on the CI runner");
+    await openCrowdedShortPanel(page, context, baseURL!);
+    expect(await panel(page).evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true);
+
+    const pageScroll = await page.evaluate(() => document.scrollingElement?.scrollTop ?? 0);
+    const cdp = await context.newCDPSession(page);
+    const results = page.getByTestId("equipment-scroll");
+    /** The part of `target` a finger can touch: inside the panel's scrollport and on screen. */
+    const visible = async (target: typeof results) => {
+      const t = (await target.boundingBox())!;
+      const p = (await panel(page).boundingBox())!;
+      const top = Math.max(t.y, p.y, 0);
+      const bottom = Math.min(t.y + t.height, p.y + p.height, page.viewportSize()!.height);
+      return { x: t.x + t.width / 2, top, bottom, height: bottom - top };
+    };
+    /** A touch swipe starting in the middle of the visible part of `target`. */
+    const swipe = async (target: typeof results, yDistance: number) => {
+      const v = await visible(target);
+      expect(v.height, "the swipe starts on the visible target").toBeGreaterThan(8);
+      await cdp.send("Input.synthesizeScrollGesture", {
+        x: Math.round(v.x), y: Math.round((v.top + v.bottom) / 2),
+        yDistance, gestureSourceType: "touch", speed: 1500, repeatCount: 1,
+      });
+    };
+    const panelScroll = () => panel(page).evaluate((el) => el.scrollTop);
+    const panelMax = () => panel(page).evaluate((el) => el.scrollHeight - el.clientHeight);
+
+    // Swipe the panel itself up as far as it goes, so the results take up as much of it as they can.
+    for (let i = 0; i < 20 && (await panelScroll()) < (await panelMax()) - 1; i++) await swipe(panel(page), -150);
+    expect((await visible(results)).height, "the results are visible in the panel").toBeGreaterThan(20);
+    // Swipe the results to their end (how far one swipe travels depends on the machine).
+    const atEnd = () => results.evaluate((el) => el.scrollTop + el.clientHeight >= el.scrollHeight - 1);
+    for (let i = 0; i < 40 && !(await atEnd()); i++) await swipe(results, -300);
+    expect(await atEnd(), "the results reached their end").toBe(true);
+    const scrolledDown = await panelScroll();
+    expect(scrolledDown).toBeGreaterThan(0);
+
+    // The property (#5659): swipes that start on the results, once the results are back at their
+    // top, carry on into the panel. With overscroll contained they never move the panel.
+    for (let i = 0; i < 40 && (await panelScroll()) === scrolledDown && (await visible(results)).height > 8; i++) {
+      await swipe(results, 300);
+    }
+    expect(await panelScroll(), "a swipe on the results moved the panel").toBeLessThan(scrolledDown);
+    // Then the rest of the way back to Close, wherever the finger lands in the panel.
+    for (let i = 0; i < 20 && (await panelScroll()) > 0; i++) await swipe(panel(page), 300);
+    expect(await panelScroll()).toBe(0);
+    await expect(panel(page).getByRole("button", { name: "Close equipment" })).toBeInViewport({ ratio: 1 });
+
+    await page.touchscreen.tap(
+      ...(await (async () => { const b = (await panel(page).getByRole("button", { name: "Close equipment" }).boundingBox())!; return [b.x + b.width / 2, b.y + b.height / 2] as const; })()),
+    );
+    await expect(panel(page).getByRole("button", { name: "Close equipment" })).toHaveCount(0);
+    expect(await page.evaluate(() => document.scrollingElement?.scrollTop ?? 0)).toBe(pageScroll);
+  });
 });
 
 test("off: the panel is not rendered", async ({ page, context, baseURL }) => {
@@ -683,7 +871,7 @@ async function otherMachine(page: Page) {
 }
 
 async function confirmWithSerial(page: Page) {
-  await page.getByTestId("bench-asking-about").click();
+  await openChecklist(page);
   await checklistRow(page, VFD).getByRole("button", { name: "Edit label" }).click();
   await checklist(page).getByTestId("bench-card-serialNumber").fill(SERIAL);
   await checklist(page).getByTestId("bench-card-confirm").click();
@@ -767,7 +955,7 @@ test("repeated serial: on a short screen, where Confirm is reached by scrolling 
   await routes(page, { enabled: false, resolve: "resolved" });
   await revisions(page, { sameSerial: checked([here, away, gone]) });
   await page.goto(`/v3/?notebook=${NB}&thread=${THREAD}`);
-  await page.getByTestId("bench-asking-about").click();
+  await openChecklist(page);
   await checklistRow(page, VFD).getByRole("button", { name: "Edit label" }).click();
   await checklist(page).getByTestId("bench-card-serialNumber").fill(SERIAL);
   const confirm = checklist(page).getByTestId("bench-card-confirm");
@@ -859,7 +1047,7 @@ test("repeated serial: Save without Confirm shows no warning, whatever the reply
   await routes(page, { enabled: false, resolve: "resolved" });
   const saves = await revisions(page, { sameSerial: checked([away]) });
   await page.goto(`/v3/?notebook=${NB}&thread=${THREAD}`);
-  await page.getByTestId("bench-asking-about").click();
+  await openChecklist(page);
   await checklistRow(page, VFD).getByRole("button", { name: "Edit label" }).click();
   await checklist(page).getByTestId("bench-card-serialNumber").fill(SERIAL);
   await checklist(page).getByTestId("bench-card-save").click();
@@ -900,11 +1088,12 @@ test("repeated serial: a reply whose body never arrives does not hold the save's
 for (const how of ["Close", "the pill"] as const) {
   test(`repeated serial: the sheet is closed with ${how} while the save is on its way; its warning is not shown when the sheet is opened again`, async ({ page, context, baseURL }) => {
     await auth(context, baseURL!);
-    await routes(page, { enabled: false, resolve: "resolved" });
+    // The pill is the chip beside More, which shows only while a part is picked (Mike, 2026-11-20).
+    await routes(page, { enabled: false, resolve: "resolved", ...(how === "the pill" ? { initial: { [THREAD]: { componentId: MLC, version: 1 } } } : {}) });
     let answer!: () => void;
     const saves = await revisions(page, { sameSerial: checked([away]) }, { hold: new Promise<void>((resolve) => { answer = resolve; }) });
     await page.goto(`/v3/?notebook=${NB}&thread=${THREAD}`);
-    await page.getByTestId("bench-asking-about").click();
+    await openChecklist(page);
     await checklistRow(page, VFD).getByRole("button", { name: "Edit label" }).click();
     await checklist(page).getByTestId("bench-card-serialNumber").fill(SERIAL);
     const reply = page.waitForResponse((r) => r.request().method() === "POST" && /\/revisions\/?$/.test(new URL(r.url()).pathname));
@@ -916,7 +1105,7 @@ for (const how of ["Close", "the pill"] as const) {
     answer(); // only now does the save's reply leave the server
     await (await reply).finished();
 
-    await page.getByTestId("bench-asking-about").click();
+    await openChecklist(page);
     // The save itself is reported as it always was; the warning it came with was closed with the sheet.
     await expect(saved(page)).toHaveText("Confirmed. Questions about it now use what you confirmed.");
     await expect(serialWarning(page)).toHaveCount(0);
@@ -926,7 +1115,8 @@ for (const how of ["Close", "the pill"] as const) {
 
 test("repeated serial: a warning that is showing is ended by closing the sheet with the pill, as Close ends it", async ({ page, context, baseURL }) => {
   await auth(context, baseURL!);
-  await routes(page, { enabled: false, resolve: "resolved" });
+  // The pill is the chip beside More, which shows only while a part is picked (Mike, 2026-11-20).
+  await routes(page, { enabled: false, resolve: "resolved", initial: { [THREAD]: { componentId: MLC, version: 1 } } });
   await revisions(page, { sameSerial: checked([away]) });
   await page.goto(`/v3/?notebook=${NB}&thread=${THREAD}`);
   await confirmWithSerial(page);
@@ -934,7 +1124,7 @@ test("repeated serial: a warning that is showing is ended by closing the sheet w
 
   await page.getByTestId("bench-asking-about").press("Enter");
   await expect(checklist(page)).toHaveCount(0);
-  await page.getByTestId("bench-asking-about").click();
+  await openChecklist(page);
   await expect(saved(page)).toHaveText("Confirmed. Questions about it now use what you confirmed.");
   await expect(serialWarning(page)).toHaveCount(0);
 });
@@ -1004,4 +1194,180 @@ test("repeated serial: the warning is kept when the checklist cannot be re-read 
 
   await expect(serialWarning(page)).toContainText("VFD1 · AutomationDirect GS10 is saved as confirmed.");
   await expect(serialWarning(page).getByTestId(`bench-same-serial-match-${AWAY}`)).toContainText("in Packaging line");
+});
+
+// ── The More list (Mike, 2026-11-20): the notebook's tools behind one button at the top right. ──
+
+const menu = (page: Page) => page.getByTestId("notebook-more-menu");
+const menuOpen = (page: Page) => menu(page).evaluate((d) => (d as HTMLDialogElement).open);
+const item = (page: Page, id: string) => page.getByTestId(`notebook-more-item-${id}`);
+const fix = (n: number) => ({ id: `fix-${n}`, symptom: `Will not start ${n}`, faultCode: null, fix: `Reset the drive ${n}`, createdAt: "2026-11-19T12:00:00.000Z" });
+async function savedFixes(page: Page, count: number, assetConfirmed: boolean | null = true) {
+  await page.route(/\/api\/equipment-notebooks\/[^/]+\/fixes\/(\?.*)?$/, (route) =>
+    route.fulfill(json({ fixes: Array.from({ length: count }, (_, i) => fix(i + 1)), nextCursor: null, assetConfirmed })));
+}
+
+test.describe("More", () => {
+  test("lists only the tools that are on, in job order; with nothing picked there is no chip", async ({ page, context, baseURL }) => {
+    await auth(context, baseURL!);
+    await routes(page, { enabled: true, resolve: "resolved" });
+    await savedFixes(page, 2);
+    await page.goto(`/v3/?notebook=${NB}&thread=${THREAD}`);
+    await expect(item(page, "saved-fixes")).toBeAttached();
+    await expect(item(page, "part")).toBeAttached();
+    await more(page).click();
+    await expect(menu(page).getByRole("button")).toHaveText([/^Find equipment/, /^Pick a part/, /^Saved fixes/]);
+    await expect(menu(page).getByRole("heading")).toHaveText(["Find", "Fix"]);
+    await expect(item(page, "job-sheet")).toHaveCount(0);
+    // The whole machine is the silent default: no "Asking about" pill and no Whole machine button.
+    await expect(page.getByTestId("bench-asking-about")).toHaveCount(0);
+    await expect(page.getByTestId("notebook-chip")).toHaveCount(0);
+  });
+
+  for (const [assetConfirmed, wording] of [[null, "Fixes saved in this project"], [true, "Fixes saved in this project for this machine"]] as const) {
+    test(`Saved fixes says whose fixes they are (machine confirmed: ${assetConfirmed}) (#5698)`, async ({ page, context, baseURL }) => {
+      await auth(context, baseURL!);
+      await routes(page, { enabled: false, resolve: "resolved" });
+      await savedFixes(page, 2, assetConfirmed);
+      await page.goto(`/v3/?notebook=${NB}&thread=${THREAD}`);
+      await expect(item(page, "saved-fixes")).toContainText(wording);
+      if (assetConfirmed === null) await expect(item(page, "saved-fixes")).not.toContainText("for this machine");
+    });
+  }
+
+  test("when the last tool goes while the list is open, More comes back closed and opens on the next tap (#5697)", async ({ page, context, baseURL }) => {
+    await auth(context, baseURL!);
+    await routes(page, { enabled: false, resolve: "resolved" });
+    // Registered after routes(), so tried first: the checklist read waits, then says it is unavailable.
+    let answerChecklist!: () => void;
+    const checklistHeld = new Promise<void>((r) => (answerChecklist = r));
+    await page.route(/\/api\/equipment-notebooks\/[^/]+\/components\/(\?.*)?$/, async (route) => {
+      if (route.request().method() !== "GET") return route.fallback();
+      await checklistHeld;
+      return route.fulfill(json({ error: "unavailable" }, 503));
+    });
+    let answerFixes!: () => void;
+    const fixesHeld = new Promise<void>((r) => (answerFixes = r));
+    await page.route(/\/api\/equipment-notebooks\/[^/]+\/fixes\/(\?.*)?$/, async (route) => {
+      await fixesHeld;
+      return route.fulfill(json({ fixes: [fix(1)], nextCursor: null, assetConfirmed: true }));
+    });
+    await page.goto(`/v3/?notebook=${NB}&thread=${THREAD}`);
+
+    await expect(item(page, "part")).toBeAttached();
+    await more(page).click();
+    await expect.poll(() => menuOpen(page)).toBe(true);
+
+    answerChecklist();
+    await expect(item(page, "part")).toHaveCount(0);
+    await expect(more(page)).toHaveCount(0);
+    await expect.poll(() => menuOpen(page)).toBe(false);
+
+    answerFixes();
+    await expect(more(page)).toBeVisible();
+    await expect(more(page)).toHaveAttribute("aria-expanded", "false");
+    await more(page).click();
+    await expect.poll(() => menuOpen(page)).toBe(true);
+    await expect(item(page, "saved-fixes")).toBeVisible();
+  });
+
+  test("a tool that is off is not in the list (Find equipment off, as it ships)", async ({ page, context, baseURL }) => {
+    await auth(context, baseURL!);
+    await routes(page, { enabled: false, resolve: "resolved" });
+    await page.goto(`/v3/?notebook=${NB}&thread=${THREAD}`);
+    await expect(item(page, "part")).toBeAttached();
+    await expect(item(page, "equipment")).toHaveCount(0);
+  });
+
+  test("Pick a part opens the checklist; a picked part shows beside More, and its x goes back to the whole machine", async ({ page, context, baseURL }) => {
+    await auth(context, baseURL!);
+    const seen = await routes(page, { enabled: false, resolve: "resolved" });
+    await page.goto(`/v3/?notebook=${NB}&thread=${THREAD}`);
+    await openFromMore(page, "part");
+    expect(await menuOpen(page), "the list closes when a tool is chosen").toBe(false);
+    await selectInChecklist(page, VFD);
+    await expect(page.getByTestId("bench-asking-about")).toHaveText("Asking about VFD1 · AutomationDirect GS10");
+    if (await checklist(page).count()) await checklist(page).getByRole("button", { name: "Close", exact: true }).click();
+
+    await page.getByTestId("notebook-chip-clear").click();
+    await expect.poll(() => seen.selectionPuts.at(-1)?.componentId).toBe(null);
+    await expect(page.getByTestId("notebook-chip")).toHaveCount(0);
+  });
+
+  test("Escape, a tap outside and Back close the list; focus goes back to More", async ({ page, context, baseURL }) => {
+    await auth(context, baseURL!);
+    await routes(page, { enabled: true, resolve: "resolved" });
+    await page.goto(`/v3/?notebook=${NB}&thread=${THREAD}`);
+    await expect(item(page, "part")).toBeAttached();
+
+    await more(page).click();
+    await expect(more(page)).toHaveAttribute("aria-expanded", "true");
+    await page.keyboard.press("Escape");
+    await expect.poll(() => menuOpen(page)).toBe(false);
+    await expect(more(page)).toBeFocused();
+    await expect(more(page)).toHaveAttribute("aria-expanded", "false");
+
+    await more(page).click();
+    await page.mouse.click(20, (page.viewportSize()!.height) / 2);
+    await expect.poll(() => menuOpen(page)).toBe(false);
+
+    await more(page).click();
+    await page.evaluate(() => document.dispatchEvent(new Event("factorylm:back", { cancelable: true })));
+    await expect.poll(() => menuOpen(page)).toBe(false);
+    await expect(page).toHaveURL(new RegExp(`thread=${THREAD}`));
+  });
+
+  test("choosing Find equipment closes the list before the panel opens, so Back finds no list left open", async ({ page, context, baseURL }) => {
+    await auth(context, baseURL!);
+    await routes(page, { enabled: true, resolve: "resolved" });
+    await page.goto(`/v3/?notebook=${NB}&thread=${THREAD}`);
+    await openEquipment(page);
+    await expect(panel(page).getByRole("button", { name: "Close equipment" })).toBeVisible();
+    expect(await page.evaluate(() => document.querySelectorAll("dialog[open]").length)).toBe(0);
+    await panel(page).getByRole("button", { name: "Close equipment" }).click();
+    await expect(panel(page).getByRole("button", { name: "Close equipment" })).toHaveCount(0);
+  });
+
+  test("on a phone every item is fully on screen, and Send takes a tap once the list is closed", async ({ page, context, baseURL }) => {
+    await page.setViewportSize({ width: 412, height: 915 });
+    await auth(context, baseURL!);
+    await routes(page, { enabled: true, resolve: "resolved" });
+    await savedFixes(page, 1);
+    await page.goto(`/v3/?notebook=${NB}&thread=${THREAD}`);
+    await expect(page.getByText(/Answers cite \d+ selected sources? for /)).toBeVisible();
+    await expect(item(page, "saved-fixes")).toBeAttached();
+    await expect(item(page, "part")).toBeAttached();
+    await more(page).click();
+    for (const id of ["equipment", "part", "saved-fixes"]) {
+      await expect(item(page, id)).toBeInViewport({ ratio: 1 });
+      const box = (await item(page, id).boundingBox())!;
+      expect(box.height, `${id} is a full-size touch target`).toBeGreaterThanOrEqual(56);
+    }
+    await page.keyboard.press("Escape");
+    await expect.poll(() => menuOpen(page)).toBe(false);
+
+    await composer(page).fill("does the drive have power");
+    const send = (await page.getByRole("button", { name: "Send", exact: true }).boundingBox())!;
+    const [x, y] = [send.x + send.width / 2, send.y + send.height / 2];
+    const sent = page.waitForRequest((r) => r.method() === "POST" && /\/chat\/?$/.test(new URL(r.url()).pathname), { timeout: 5_000 });
+    await page.mouse.click(x, y);
+    await sent;
+  });
+
+  test("on a tablet in landscape the list is two columns: Find and Job on the left, Fix on the right", async ({ page, context, baseURL }) => {
+    await page.setViewportSize({ width: 1316, height: 648 });
+    await auth(context, baseURL!);
+    await routes(page, { enabled: true, resolve: "resolved" });
+    await savedFixes(page, 1);
+    await page.goto(`/v3/?notebook=${NB}&thread=${THREAD}`);
+    await expect(item(page, "saved-fixes")).toBeAttached();
+    await more(page).click();
+    const find = (await menu(page).getByRole("group", { name: "Find" }).boundingBox())!;
+    const fixes = (await menu(page).getByRole("group", { name: "Fix" }).boundingBox())!;
+    expect(fixes.x, "Fix sits to the right of Find").toBeGreaterThan(find.x + find.width - 1);
+    expect(Math.abs(fixes.y - find.y), "side by side").toBeLessThan(2);
+    // The wide layout must actually be wide: a 360px sheet split in two wraps every line (Codex F3).
+    expect((await menu(page).boundingBox())!.width, "the two-column list uses the tablet width").toBeGreaterThan(600);
+    await expect(menu(page)).toBeInViewport({ ratio: 1 });
+  });
 });

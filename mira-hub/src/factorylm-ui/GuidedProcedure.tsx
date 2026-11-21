@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { API_BASE } from "@/lib/config";
 import type { SessionView } from "@/capabilities/diagnostic-plan/guided";
+import { useMenuItem } from "./notebook-actions-menu";
 
 type Applicability =
   | { applies: true; revision: "exact"; notice: string }
@@ -167,6 +168,14 @@ export function GuidedProcedure({
   }, [procs]);
 
   const proc = procs?.[0];
+  const resuming = proc?.session?.view?.status === "active" && (proc.session.view.history.length ?? 0) > 0;
+  const pillLabel = !proc ? "" : !proc.applicability.applies
+    ? "Guided troubleshooting unavailable"
+    : resuming ? "Resume troubleshooting" : "Guided troubleshooting";
+  const { inMenu, focusMore } = useMenuItem(
+    proc ? { id: "guided", label: pillLabel, description: "Step-by-step from the manual", ...(resuming ? { status: "In progress" } : {}) } : null,
+    () => setOpen(true),
+  );
   if (!proc) return null;
   const session = proc.session;
   const view = session?.view;
@@ -197,20 +206,17 @@ export function GuidedProcedure({
   const answer = (input: Record<string, unknown>) =>
     call({ op: "answer", sessionId: session!.sessionId, recordCount: session!.recordCount, input: { stepId: step!.id, ...input } });
 
-  const pillLabel = !proc.applicability.applies
-    ? "Guided troubleshooting unavailable"
-    : view?.status === "active" && (view.history.length ?? 0) > 0 ? "Resume troubleshooting" : "Guided troubleshooting";
 
   return (
     <>
       {pillWidth > 0 ? <style data-testid="guided-title-reserve">{titleRowReserveCss(pillWidth)}</style> : null}
-      <button type="button" ref={openerRef} data-testid="guided-open" style={S.pill} onClick={() => setOpen(true)}>{pillLabel}</button>
+      {inMenu ? null : <button type="button" ref={openerRef} data-testid="guided-open" style={S.pill} onClick={() => setOpen(true)}>{pillLabel}</button>}
       <dialog
         ref={dialogRef}
         style={S.dialog}
         aria-label={proc.title}
         data-testid="guided-dialog"
-        onClose={() => { setOpen(false); openerRef.current?.focus(); }}
+        onClose={() => { setOpen(false); if (openerRef.current) openerRef.current.focus(); else focusMore(); }}
       >
         {open && (
           <div style={S.sheet} data-testid="guided-sheet">

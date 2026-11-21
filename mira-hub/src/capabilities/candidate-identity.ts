@@ -19,15 +19,22 @@
  * confirms it (R2/R3).
  */
 import { oemMakerTable } from "@/lib/manual-discovery";
-import { namesOnlyThisMachine } from "./identity-proposal";
+import { catalogIdentifierView } from "./catalog-identifier";
+import { modelNumbersIn } from "./manual-applicability";
+import { modelIdentitiesInText, resolveModelFromObservationText } from "./model-token";
+import { namesOnlyThisMachine, proposeIdentityFromText, type IdentityProposal } from "./identity-proposal";
+import { reviewedManualFor } from "./reviewed-manual-library";
 import {
   identifierKey,
+  hasSeparateSerialField,
+  labelledPartCodes,
   mentionsAssetLabel,
   mentionsSerialLabel,
   partLabelAfterPrivateLabel,
   partCodes,
   privateIdentifierKeys,
   privateSuffixTails,
+  publicLabelText,
   serialCodes,
   unambiguousPartNumber,
 } from "./photo-part-lookup";
@@ -135,11 +142,153 @@ export function extractCandidateIdentity(observation: string, typed = ""): Candi
  * effect, not an answer, so a miss just means the search waits for the next
  * turn or an explicit ask — never a wrong answer.
  */
-const MANUAL_INTENT_RE =
-  /\b(?:manuals?|documentation|docs?|datasheet|data\s+sheet|spec\s+sheet|instructions?|user\s+guide|service\s+manual|install(?:ation)?\s+guide)\b/i;
+const MANUAL_PUBLICATION = String.raw`(?:manuals?|documentation|docs?|pdfs?|datasheet|data\s+sheet|spec\s+sheet|user\s+guide|user(?:['’]s)?\s+manual|service\s+manual|install(?:ation)?\s+guide)`;
+const MANUAL_INTENT_RE = new RegExp(String.raw`\b(?:${MANUAL_PUBLICATION}|instructions?)\b`, "i");
+const MANUAL_REQUEST_START = String.raw`^(?:(?:can|could|would)[ \t]+you[ \t]+|please[ \t]+)*`;
+const MANUAL_REQUEST_VERB = String.raw`(?:find|get|open|show|send|look up|give|(?:i[ \t]+)?(?:need|want)|do you have|where (?:can|do) i (?:find|get))[ \t]+(?:me[ \t]+)?`;
+const MANUAL_REQUEST_END = String.raw`(?:,?[ \t]+please)?[.!?]*$`;
+const MANUAL_REQUEST_RE = new RegExp(
+  String.raw`${MANUAL_REQUEST_START}(?:${MANUAL_REQUEST_VERB})?(?:(?:the|a|an)[ \t]+)?(?:official[ \t]+)?${MANUAL_PUBLICATION}(?:[ \t]+(?:for|of|on)[ \t]+([^\r\n]+?))?${MANUAL_REQUEST_END}`,
+  "i",
+);
+const NAMED_MANUAL_REQUEST_RE = new RegExp(
+  String.raw`${MANUAL_REQUEST_START}${MANUAL_REQUEST_VERB}([^\r\n]+?)[ \t]+${MANUAL_PUBLICATION}${MANUAL_REQUEST_END}`,
+  "i",
+);
+const MANUAL_DEVICE = String.raw`(?:drive|vfd|plc|hmi|motor|inverter|controller|panel|valve|relay|sensor|module|pump|machine|equipment|device|unit|part|nameplate|photo|picture)`;
+const MANUAL_MAKER = oemMakerTable().map(({ name }) => escape(name).replace(/\\-| /g, "[ \\t-]+")).join("|");
+const MANUAL_MODEL_CODE = String.raw`(?=[a-z0-9./+-]{0,31}\d)[a-z0-9][a-z0-9./+-]{0,31}`;
+const MANUAL_REFERENCE_RE = new RegExp(
+  String.raw`^(?:this|that|it|(?:(?:pictured|attached)[ \t]+)?${MANUAL_DEVICE}(?:[ \t]+(?:in|from)[ \t]+(?:this|the|my|your)[ \t]+(?:photo|picture))?|${MANUAL_MAKER})$`,
+  "i",
+);
+const MANUAL_MODEL_REFERENCE_RE = new RegExp(
+  // A compact code or a printed split code such as SLC 5/03, with at most one adjacent catalog code.
+  String.raw`^(?:(?:${MANUAL_MAKER})[ \t]+)?(?:(?:model|part|catalog)(?:[ \t]+number)?(?:[ \t]*[:#][ \t]*|[ \t]+))?(?:${MANUAL_MODEL_CODE}|([a-z]{2,8})[ \t]+[0-9][0-9./+-]{0,11})(?:[ \t]+(${MANUAL_MODEL_CODE}))?(?:[ \t]+${MANUAL_DEVICE})?$`,
+  "i",
+);
+const REVIEWED_MANUAL_REFERENCE_RE = new RegExp(
+  String.raw`^(${MANUAL_MAKER})[ \t]+([a-z0-9][a-z0-9./+\- \t]*?)[ \t]+(${MANUAL_MODEL_CODE})$`,
+  "i",
+);
 
 export function wantsManualDocumentation(message: string): boolean {
   return MANUAL_INTENT_RE.test(message);
+}
+
+function manualRequestSubject(message: string): string | undefined {
+  const text = message.trim();
+  const request = MANUAL_REQUEST_RE.exec(text);
+  return (request ? (request[1] ?? "") : NAMED_MANUAL_REQUEST_RE.exec(text)?.[1])
+    ?.replace(/^(?:(?:the|a|an|my|this|that)[ \t]+)?(?:official[ \t]+)?/i, "");
+}
+
+function reviewedManualIdentityFromSubject(subject: string): IdentityProposal | null {
+  const match = REVIEWED_MANUAL_REFERENCE_RE.exec(catalogIdentifierView(subject).text);
+  if (!match) return null;
+  const [, manufacturer, product, order] = match;
+  const catalogNumber = order.toUpperCase();
+  const reviewed = reviewedManualFor({ manufacturer, model: product.trim().replace(/[ \t]+/g, " "), catalogNumber });
+  return reviewed && { manufacturer: reviewed.manufacturer.toUpperCase(), model: catalogNumber };
+}
+
+/** A request for the document itself, as opposed to a question about its contents. */
+export function asksToFindManual(message: string): boolean {
+  const subject = manualRequestSubject(message);
+  if (subject === undefined || /[.!?][ \t]+\S/.test(subject)) return false;
+  // A remaining clause could ask about the manual. Accept only a whole equipment reference.
+  if (!subject || MANUAL_REFERENCE_RE.test(subject) || reviewedManualIdentityFromSubject(subject)) return true;
+  const model = MANUAL_MODEL_REFERENCE_RE.exec(subject);
+  if (!model || (model[1] && model[1] !== model[1].toUpperCase())) return false;
+  const catalog = model[2];
+  // A second token needs catalog-number evidence. A number followed by a unit can look like a model.
+  return !catalog || (/[a-z]\d/i.test(catalog) && partCodes(catalog).includes(catalog));
+}
+
+// Spaced or segmented standards on equipment labels can resemble a model.
+// Keep the following text visible to the competing-model check.
+const NAMEPLATE_STANDARD = /\b(?:IEC|EN|ISO|UL|CSA|NEMA|ANSI|BS|VDE|JIS|DIN)[ \t-]*[A-Z]?\d+(?:[.-]\d+)*[A-Z]?(?:[ \t]+No\.?[ \t]+\d+)?\b/gi;
+const NUMBER_LED_MARKING = /\b\d(?=[A-Z0-9-]*[A-Z])[A-Z0-9]*(?:-[A-Z0-9]+)*\b/gi;
+
+function photoTextForModelComparison(photo: string): string {
+  // Keep a placeholder when a serial itself looks like a rating so the
+  // comparison reader does not take the next line as the serial.
+  return catalogIdentifierView(photo).text
+    .replace(NAMEPLATE_STANDARD, "_")
+    .replace(NUMBER_LED_MARKING, (marking) => modelNumbersIn(marking).length ? marking : "_");
+}
+
+/**
+ * Select the exact identity for a manual request from either input. A single
+ * explicitly labelled photo model can be offered for confirmation even if the
+ * loose prose scan sees other tokens on the plate. That exception never grants
+ * permission to start an automatic external search.
+ */
+export function exactManualIdentity(photo: string, typed: string): IdentityProposal | null {
+  if (!photo && !mentionsSerialLabel(typed) && !mentionsAssetLabel(typed)) {
+    const subject = manualRequestSubject(typed);
+    const reviewed = subject && reviewedManualIdentityFromSubject(subject);
+    if (reviewed && !modelIsPrivate(typed, reviewed.model)) return reviewed;
+  }
+  const candidate = extractCandidateIdentity(photo, typed);
+  // Many makers use compact model names that the part-number scanner does not
+  // recognize. A reviewed record can support displaying a confirmation card.
+  if (!candidate) {
+    if (mentionsAssetLabel(photo) || partLabelAfterPrivateLabel(photo) ||
+        mentionsSerialLabel(typed) || mentionsAssetLabel(typed)) return null;
+    const publicPhoto = publicLabelText(photo);
+    const text = photo ? `${photoTextForModelComparison(publicPhoto)}\n${typed}` : typed;
+    const maker = makerFromText(text);
+    const proposal = maker && proposeIdentityFromText(text, [maker]);
+    if (!proposal || !reviewedManualFor(proposal)) return null;
+    if (photo) {
+      if (makerFromText(publicPhoto) !== maker) return null;
+      // Only the public prefix can propose a compact model. Scan the full
+      // photo to veto competing model-shaped markings. The shared comparison
+      // reader excludes the actual serial value.
+      if (!namesOnlyThisMachine(photoTextForModelComparison(photo), proposal.model)) return null;
+    }
+    return modelIsPrivate(photo, proposal.model) && !hasSeparateSerialField(photo, proposal.model) ? null : proposal;
+  }
+  if (!candidate?.manufacturer) return null;
+  if (isSafeCandidateSearchIdentity(photo, typed, candidate.part, candidate.manufacturer)) {
+    return { manufacturer: candidate.manufacturer, model: candidate.part };
+  }
+
+  const { part, manufacturer } = candidate;
+  const key = part.toUpperCase();
+  const labelled = labelledPartCodes(photo);
+  const reviewed = reviewedManualFor({ manufacturer, model: part });
+  if (
+    !photo ||
+    makerFromText(photo) !== manufacturer ||
+    !reviewed ||
+    unambiguousPartNumber(photo)?.toUpperCase() !== key ||
+    labelled.length !== 1 ||
+    labelled[0] !== key ||
+    mentionsAssetLabel(photo) || partLabelAfterPrivateLabel(photo) ||
+    modelIsPrivate(photo, part) ||
+    !isSafeCandidateSearchIdentity("", `${manufacturer} MODEL: ${part}\n${typed}`, part, manufacturer)
+  ) return null;
+
+  // A reviewed family marking can describe this same labelled order number.
+  // Compare exact identities too: another order number in the same series is
+  // still a competing model even if the single-token resolver folds both.
+  if (reviewed.families?.length) {
+    const exactIdentities = modelIdentitiesInText(part);
+    for (const identity of modelIdentitiesInText(photo)) {
+      if (!exactIdentities.has(identity) && !reviewed.families.includes(identity)) return null;
+    }
+  } else if (resolveModelFromObservationText(photo).ambiguous) {
+    return null;
+  }
+
+  return { manufacturer, model: part };
+}
+
+function modelIsPrivate(text: string, model: string): boolean {
+  const key = identifierKey(model);
+  return [...privateIdentifierKeys(text), ...privateSuffixTails(text)].some((value) => value.includes(key));
 }
 
 /**

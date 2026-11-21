@@ -36,6 +36,7 @@ import { emptyRecord, parseRecord, type JobRecord } from "@/capabilities/work-pa
 import { CompletionBlock, JobNotesSection, JobPhotosSection, MeasurementRecordInput, PacketCoverage, StepRecordControls } from "./JobRecordView";
 import { BlockersSection, CoverageStop, JhaTable, LeftOutAppendix, MeasurementsTable, PartsTable, PhasedSteps, ReadinessBlock, type RenderField } from "./WorkPacketV2Sections";
 import { pageHeadCss } from "./work-packet-v2-view";
+import { useMenuItem } from "./notebook-actions-menu";
 import {
   badgeText,
   quoteChipLabel,
@@ -620,18 +621,23 @@ export function WorkPacketPanel({
 
   const pillLabel = packet ? "Resume job packet" : "Prepare job";
 
+  const { inMenu, focusMore } = useMenuItem(
+    avail === null ? null : { id: "work-packet", label: pillLabel, description: "Parts, tools and steps from the manuals", ...(packet ? { status: "In progress" } : {}) },
+    () => setOpen(true),
+  );
+
   if (avail === null) return null; // not enabled (404), or the check hasn't resolved yet.
 
   return (
     <>
       <style data-testid="work-packet-print-css">{PRINT_CSS}</style>
-      <button type="button" ref={openerRef} data-testid="wp-open" style={S.pill} onClick={() => setOpen(true)}>{pillLabel}</button>
+      {inMenu ? null : <button type="button" ref={openerRef} data-testid="wp-open" style={S.pill} onClick={() => setOpen(true)}>{pillLabel}</button>}
       <dialog
         ref={dialogRef}
         style={S.dialog}
         aria-label="Prepare job packet"
         data-testid="wp-dialog"
-        onClose={() => { setOpen(false); openerRef.current?.focus(); }}
+        onClose={() => { setOpen(false); if (openerRef.current) openerRef.current.focus(); else focusMore(); }}
       >
         {open && (
           <div className="wp-print-root" style={S.sheet} data-testid="wp-sheet">

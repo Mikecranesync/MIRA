@@ -75,7 +75,8 @@ import { NewProjectSetup } from "./NewProjectSetup";
 import { PendingManuals } from "./PendingManuals";
 import { ParkedSources } from "./ParkedSources";
 import { clearSheetDataForSignOut, localStorageStore, parseSheetReceipts } from "./living-sheet-client";
-import { actionsCoveredByLayer, notebookActionsStyle } from "./notebook-actions";
+import { actionsCoveredByLayer, NOTEBOOK_ACTIONS_CSS, notebookActionsStyle } from "./notebook-actions";
+import { NotebookActionsMenu, NotebookActionsMenuProvider } from "./notebook-actions-menu";
 import { BenchComponents } from "./BenchComponents";
 import { SEND_BLOCKED_MESSAGE, benchSendRefusal, createBenchSendGate, expectsComponentFrame, isScopeRefusalCode, parseComponentFrames, prepareChatSend, heldEvidenceNote, heldQuestionForSend, recordBenchScope, retryTargetCheck, targetReviewMessage, withoutScope, type BenchScopes, type BenchState, type ComponentTurnFrame, type ScopeField } from "./bench-components-logic";
 import { LEGACY_THREAD_ID, notebookMachines, notebookProjects, threadRefFromItem, notebookIdFromProject, type HubNotebook } from "./notebook-tree";
@@ -104,7 +105,6 @@ import {
   loadingThread,
   metaFor,
   newThreadId,
-  openNotebookSelection,
   openOffer,
   pickRouteFor,
   type EquipmentFocus,
@@ -120,6 +120,7 @@ import {
   type CompatibleStreamResult,
   type HubSelection,
 } from "./hub-host-logic";
+import { resumeProjectSelection } from "./project-resume";
 
 type Detail = {
   notebook: EquipmentNotebook;
@@ -944,8 +945,13 @@ export function HubShellHost() {
     const notebookId = notebookIdFromProject(projectId);
     if (!notebookId) return;
     const nb = notebooks?.find((n) => n.id === notebookId);
-    // A fresh chat, not the notebook's last conversation (#4444).
-    if (nb) select(openNotebookSelection(nb));
+    // Resume the project's newest saved conversation; a fresh chat only when it has none (#4681).
+    if (!nb) return;
+    const target = resumeProjectSelection(nb);
+    // Already open: select() would abort a live stream and reset the loaded detail.
+    const open = selectionRef.current;
+    if (open && open.notebookId === target.notebookId && open.threadId === target.threadId) return;
+    select(target);
   }, [notebooks, select]);
 
   /**
@@ -1226,6 +1232,9 @@ export function HubShellHost() {
           />
         }
       />
+      {/* The notebook's tools sit behind one More button (Mike, 2026-11-20); each still decides when it
+          is available and owns what it opens. */}
+      <NotebookActionsMenuProvider>
       {/* WP-1: shown only when the route is enabled and a manufacturer procedure applies. */}
       {selection && detail && (
         <GuidedProcedure
@@ -1247,6 +1256,8 @@ export function HubShellHost() {
       {/* The notebook's action buttons share one column below the guided-procedure pill, each in its
           own row, so Machine state and Work Packet never cover each other (#5102). */}
       <div data-testid="notebook-actions" data-covered={actionsCovered ? "true" : undefined} aria-hidden={actionsCovered || undefined} style={notebookActionsStyle(actionsCovered)}>
+      <style>{NOTEBOOK_ACTIONS_CSS}</style>
+      <NotebookActionsMenu covered={actionsCovered} />
       {/* Equipment-first navigation (MIRA_EQUIPMENT_NAV): renders nothing while the flag is off. */}
       <EquipmentNav
         origin={equipmentOrigin}
@@ -1341,6 +1352,7 @@ export function HubShellHost() {
         />
       )}
       </div>
+      </NotebookActionsMenuProvider>
       {/* #4632: New project setup; a sibling of the notebook actions, never inside them. */}
       <NewProjectSetup
         open={newProjectOpen}

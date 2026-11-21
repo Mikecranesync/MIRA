@@ -31,7 +31,7 @@ describe("notebook action buttons share one column (#5102)", () => {
  * no taps; it stays mounted so an unresolved component-selection write survives.
  */
 import { readFileSync } from "node:fs";
-import { actionsCoveredByLayer, notebookActionsStyle } from "./notebook-actions";
+import { actionsCoveredByLayer, NOTEBOOK_ACTIONS_CSS, notebookActionsStyle } from "./notebook-actions";
 
 describe("the action column stays off an open layer (#5546)", () => {
   it("nothing open: shown", () => {
@@ -57,6 +57,12 @@ describe("the action column stays off an open layer (#5546)", () => {
     expect(s.visibility).toBe("hidden");
     expect(s.pointerEvents).toBe("none");
     expect(s.display).toBe("flex");
+  });
+  it("the column's own box takes no taps; only its rows do, and not while covered (#5658, #5667)", () => {
+    expect(NOTEBOOK_ACTIONS_STYLE.pointerEvents).toBe("none");
+    expect(NOTEBOOK_ACTIONS_CSS).toBe('[data-testid="notebook-actions"]:not([data-covered]) > * { pointer-events: auto; }');
+    const host = readFileSync(new URL("./hub-host.tsx", import.meta.url), "utf8");
+    expect(host).toMatch(/data-testid="notebook-actions"[^\n]*\n\s*<style>\{NOTEBOOK_ACTIONS_CSS\}<\/style>/);
   });
   it("not covered: the unchanged column", () => {
     expect(notebookActionsStyle(false)).toBe(NOTEBOOK_ACTIONS_STYLE);
