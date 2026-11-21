@@ -229,6 +229,66 @@ _EQUIPMENT_ALIASES: dict[str, set[str]] = {
 # wide enough that an ordinary maintenance question loses nothing.
 BM25_MAX_TERMS = int(os.getenv("MIRA_BM25_MAX_TERMS", "32"))
 
+# Catalog / part-number identifiers ("GS13N-22P0", "755-EENET-CM-S1", "GA50UB004").
+# The OR-fanout below splits "GS13N-22P0" into `gs13n | 22p0` and ranks it beside
+# every generic word of the question ("frame", "size", "drive", "number"), so the
+# one row that holds the identifier is buried: the identifier alone ranks it 1st,
+# the same identifier inside a real question misses the top 10 (staging, 2026-11-16).
+# Postgres indexes the hyphenated whole word ('gs13n-22p0'), so an exact-identifier
+# pre-pass can ask for it directly. Shape rules keep product names (ACH580,
+# Micro820, GA500), parameter numbers (T1-07, H3-09) and fault codes (F0004, CE10)
+# out, so a question without an identifier runs exactly the query it ran before.
+_IDENTIFIER_CANDIDATE_RE = re.compile(r"[A-Za-z0-9]+(?:[-./][A-Za-z0-9]+)+|[A-Za-z0-9]{8,}")
+# A number with a unit ("60Hz", "480VAC", "15000rpm") is a rating, not a part of a part number.
+_UNIT_NUMBER_RE = re.compile(
+    r"\d+(?:\.\d+)?(?:v|vac|vdc|kv|hz|khz|w|kw|mw|hp|a|ma|ka|kva|va|mva|mm|cm|ms|s|rpm|ph|"
+    r"phase|volt|volts|pulse|wire|pole|poles|amp|amps|ohm|ohms|kohm|bar|psi|nm|ft|in|ac|dc)",
+    re.IGNORECASE,
+)
+BM25_MAX_IDENTIFIERS = 4
+
+
+def _catalog_identifiers(query_text: str) -> list[str]:
+    """Catalog-number-shaped tokens in the query, original spelling, deduped, capped.
+
+    With a separator (- . /): at least 6 letters+digits, at least one of each, AND at least
+    one identifier-like part — letters and digits mixed but not a number-with-unit (GS13N,
+    22P0, RM002, B1307C), or an all-caps word when the token has 3+ digits (755-EENET-CM).
+    So "3-phase", "24-volt", "6-pulse", "50/60Hz" and "480V/60Hz" are not identifiers.
+    Without a separator: at least 8 characters and 4 digits, a letter, not a rating.
+    """
+    out: list[str] = []
+    seen: set[str] = set()
+    for tok in _IDENTIFIER_CANDIDATE_RE.findall(query_text or ""):
+        alnum = re.sub(r"[-./]", "", tok)
+        digits = sum(ch.isdigit() for ch in alnum)
+        letters = sum(ch.isalpha() for ch in alnum)
+        if not digits or not letters:
+            continue
+        if alnum == tok:
+            if len(alnum) < 8 or digits < 4 or _UNIT_NUMBER_RE.fullmatch(alnum):
+                continue
+        else:
+            if len(alnum) < 6:
+                continue
+            parts = re.split(r"[-./]", tok)
+            mixed = any(
+                re.search(r"[A-Za-z]", p)
+                and re.search(r"\d", p)
+                and not _UNIT_NUMBER_RE.fullmatch(p)
+                for p in parts
+            )
+            caps = digits >= 3 and any(len(p) >= 2 and p.isalpha() and p.isupper() for p in parts)
+            if not (mixed or caps):
+                continue
+        key = tok.lower()
+        if key not in seen:
+            seen.add(key)
+            out.append(tok)
+        if len(out) >= BM25_MAX_IDENTIFIERS:
+            break
+    return out
+
 
 _COMMON_WORDS = frozenset(
     {
@@ -800,15 +860,52 @@ def _recall_bm25(
         # Anonymous surfaces: shared OEM only, never leak private rows
         tenant_filter = "is_private = false"
 
-    try:
-        params = {
-            "tsq": ts_query,
-            "shared_tid": SHARED_TENANT_ID,
-            "lim": limit,
-        }
-        if tenant_id:
-            params["tid"] = tenant_id
+    params = {
+        "tsq": ts_query,
+        "shared_tid": SHARED_TENANT_ID,
+        "lim": limit,
+    }
+    if tenant_id:
+        params["tid"] = tenant_id
 
+    # Exact-identifier pre-pass: rows holding a complete catalog identifier lead
+    # the stream, ranked by the rest of the question. plainto_tsquery ANDs the
+    # identifier's own lexemes ('gs13n-22p0' & 'gs13n' & '22p0'), so a sibling
+    # (GS13N-23P0) or a longer suffix (…-CM-S1 for …-CM) does not qualify. Same
+    # tenant/privacy/approval filters as the main query. A failure here only
+    # drops the pre-pass; the ordinary query below still runs.
+    ident_rows: list[dict] = []
+    identifiers = _catalog_identifiers(query_text)
+    if identifiers:
+        id_params = dict(params)
+        id_terms = []
+        for i, ident in enumerate(identifiers):
+            id_params[f"cid{i}"] = ident
+            id_terms.append(f"plainto_tsquery('english', :cid{i})")
+        try:
+            ident_rows = [
+                dict(r)
+                for r in conn.execute(
+                    text_fn(
+                        "SELECT content, manufacturer, model_number, equipment_type, "
+                        "source_type, source_url, source_page, metadata, verified, "
+                        "ts_rank_cd(content_tsv, to_tsquery('english', :tsq)) AS similarity "
+                        "FROM knowledge_entries "
+                        f"WHERE {tenant_filter} "
+                        f"  AND content_tsv @@ ({' || '.join(id_terms)}){_approval_filter_sql()} "
+                        "ORDER BY similarity DESC "
+                        "LIMIT :lim"
+                    ),
+                    id_params,
+                )
+                .mappings()
+                .fetchall()
+            ]
+        except Exception as exc:
+            logger.warning("BM25 identifier pre-pass failed: %s", exc)
+            ident_rows = []
+
+    try:
         rows = (
             conn.execute(
                 text_fn(
@@ -826,12 +923,16 @@ def _recall_bm25(
             .mappings()
             .fetchall()
         )
-        return [dict(r) for r in rows]
+        if not ident_rows:
+            return [dict(r) for r in rows]
+        seen = {r["content"][:100] for r in ident_rows}
+        rest = [dict(r) for r in rows if r["content"][:100] not in seen]
+        return (ident_rows + rest)[:limit]
     except Exception as exc:
         # Most likely cause: migration 004 not yet applied → content_tsv missing.
         # Degrade silently; RRF merge still works with 3 streams.
         logger.warning("BM25 recall failed (migration 004 applied?): %s", exc)
-        return []
+        return ident_rows  # [] for a query without an identifier, as before
 
 
 def _merge_results(
