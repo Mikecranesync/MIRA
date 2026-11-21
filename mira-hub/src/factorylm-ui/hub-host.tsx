@@ -452,11 +452,8 @@ export function HubShellHost() {
       return notebooks ? shellReducer(state, { type: "hydrate", data: { thread, projects, machines } }) : state;
     }
     const base = fixtureFor(detail.notebook, selection, detail.turns, meta, projects, machines);
-    // T2 (#4189 F6): the post-turn-refresh render path — `withManualSearchStatus`
-    // overlays the CURRENT status onto the last assistant turn. The live
-    // in-flight gap (a turn still streaming) is the documented BLOCKED note:
-    // `notebook-chat-utils.ts` (guarded legacy presentation) carries no such
-    // frame, so this appears only once `loadDetail` has re-fetched.
+    // Overlay the current lookup on the last assistant turn without storing a
+    // snapshot of progress. The live frame can seed this state before detail loads.
     const settled =
       settledFollowups && settledFollowups.notebookId === selection.notebookId && settledFollowups.threadId === selection.threadId
         ? settledFollowups
@@ -581,6 +578,12 @@ export function HubShellHost() {
         setLive((cur) => (cur && cur.id === id ? { ...cur, content, citations: cits } : cur));
       }, null, {
         onProgress: (stage) => setLive((cur) => (cur && cur.id === id ? { ...cur, progress: stage } : cur)),
+        onManualSearchStatus: (status) => {
+          const active = selectionRef.current;
+          if (!hostMountedRef.current || abortRef.current !== ctrl || ctrl.signal.aborted ||
+            active?.notebookId !== sel.notebookId || active.threadId !== sel.threadId) return;
+          manualSearchDriverRef.current?.observeLive(sel.notebookId, status);
+        },
       });
       // Both readers end with the stream; the finished answer carries its label.
       if (componentRead) await componentRead;
