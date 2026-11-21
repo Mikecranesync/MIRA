@@ -6,8 +6,8 @@
  * Why the viewer exists: Android Chrome has no inline PDF viewer
  * (`navigator.pdfViewerEnabled === false`). A framed PDF is swapped for a
  * `data:` placeholder, which the page CSP (`frame-src 'self'`) blocks, so the
- * source viewer showed "This content is blocked" on every phone. Desktop
- * browsers keep their own viewer: the page hands straight over to the file.
+ * source viewer showed "This content is blocked" on phones. Draw pages in an
+ * embed or for an explicit citation. A standalone uncited file can open natively.
  */
 import { API_BASE } from "@/lib/config";
 
@@ -39,9 +39,12 @@ export function parseViewerRequest(search: string): ViewerRequest | null {
   return { fileId, page: Number.isSafeInteger(n) && n > 0 ? n : null };
 }
 
-/** Native viewer when the browser has one; otherwise MIRA draws the page. */
-export function viewerMode(pdfViewerEnabled: boolean | undefined): "native" | "render" {
-  return pdfViewerEnabled === true ? "native" : "render";
+/** The platform handles only a standalone opening with no cited page. */
+export function viewerMode(
+  pdfViewerEnabled: boolean | undefined,
+  request: { readonly embedded: boolean; readonly page: number | null },
+): "native" | "render" {
+  return pdfViewerEnabled === true && !request.embedded && request.page === null ? "native" : "render";
 }
 
 /** The page actually shown: the cited one when it exists, else the first. */

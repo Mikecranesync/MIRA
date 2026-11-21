@@ -12,6 +12,7 @@ import {
   type EvidenceCitation,
   type MachineEvidenceEntry,
   type NotebookChatFrame,
+  type NotebookManualSearchStatusFrame,
   type NotebookProgressFrame,
   type SafetyNoticeEntry,
   type SafetyStopEntry,
@@ -225,7 +226,10 @@ export async function readNotebookStream(
   reader: ReadableStreamDefaultReader<Uint8Array>,
   onUpdate: NotebookStreamListener,
   initialSafetyNotice: SafetyNoticeEntry | null = null,
-  opts: { onProgress?: (stage: NotebookProgressFrame["stage"]) => void } = {},
+  opts: {
+    onProgress?: (stage: NotebookProgressFrame["stage"]) => void;
+    onManualSearchStatus?: (status: Omit<NotebookManualSearchStatusFrame, "kind">) => void;
+  } = {},
 ): Promise<StreamResult> {
   let httpError: NotebookHttpError | null = null;
   const dec = new TextDecoder();
@@ -262,6 +266,9 @@ export async function readNotebookStream(
         if (!frame) continue;
         if (frame.kind === "progress") {
           if (PROGRESS_STAGES.has(frame.stage)) opts.onProgress?.(frame.stage);
+        } else if (frame.kind === "manual_search_status") {
+          const { manufacturer, model, running, message, startedAt, manualUrl } = frame;
+          opts.onManualSearchStatus?.({ manufacturer, model, running, message, startedAt, manualUrl });
         } else if (frame.kind === "http_error") {
           httpError = NotebookHttpError.fromBody(frame.status, frame.body);
           // A refusal is terminal: stop reading so a later transport failure

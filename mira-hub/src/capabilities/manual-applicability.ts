@@ -382,6 +382,8 @@ const hasExclusionPhrase = (line: string) => EXCLUSION_PHRASE_RES.some((re) => r
 // trails off in "…", and those covers stopped declaring their own product.
 const plain = (line: string) =>
   line
+    // Manufacturer drawing fields can put a colon directly after the abbreviation.
+    .replace(/^([ \t]*part[ \t]+)no\.(?=:)/i, "$1number")
     .replace(/\b(?:no|nr)\.(?=\s|$)/gi, "number")
     .replace(/\b(rev|cat|corp|inc|ltd|co|vol|ver|ed|pub|doc|mfg|art|ref|fig|mod|dept|div)\.(?=\s|$)/gi, "$1");
 const strip = (word: string) => word.replace(/^[("'[{<]+|[)"'\]}>:;.!?]+$/g, "");

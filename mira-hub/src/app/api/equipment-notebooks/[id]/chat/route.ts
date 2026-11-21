@@ -62,7 +62,7 @@ import {
   type BudgetReservation,
 } from "@/capabilities/openai-run-budget";
 import { withSupportingQuotes } from "@/capabilities/supporting-quote";
-import { citedPagesFor, extractManualSafetyStatement, manualSafetyStatementForCitations } from "@/capabilities/manual-safety-statement";
+import { citedPagesFor, manualSafetyStatementForCitations } from "@/capabilities/manual-safety-statement";
 import { retrieveSafetyChapterChunks, SAFETY_CHAPTER_DIRECTIVE } from "@/capabilities/manual-safety-chapter";
 import { shadowVerifyCitedTurnResult } from "@/capabilities/claim-verifier-shadow";
 import { judgeEvidenceSufficiencyShadow, type JevShadowResult } from "@/capabilities/observability/jev-shadow";
@@ -79,6 +79,7 @@ import {
   acquisitionDeclineText,
   acquisitionManualUrl,
   applicableEnabledSource,
+  currentManualSourceMessage,
   canRetryReviewedAcquisition,
   readAcquisition,
   reconcileAcquisition,
@@ -287,6 +288,7 @@ import type {
   NotebookBasisEvidenceFrame,
   NotebookEvidenceMarkerFrame,
   NotebookFollowupsFrame,
+  NotebookManualSearchStatusFrame,
   NotebookSafetyFrame,
   NotebookSourcesFrame,
   NotebookStatusFrame,
@@ -1049,7 +1051,7 @@ function manualSearchStatusFrame(
   candidateAcquisitionText: string | null,
   candidateSearchStartedAt?: string,
   candidateManualUrl?: string | null,
-): Record<string, unknown> | null {
+): NotebookManualSearchStatusFrame | null {
   if (!identityProposal) return null;
   const running = manualSearchRunning === "candidate";
   if (!running && !candidateAcquisitionText) return null;
@@ -3614,7 +3616,18 @@ async function handleChatTurn(
             cAcq = await readAcquisition(ctx.tenantId, notebookId);
           }
         }
-        if (!cStarted) cAcq = await reconcileAcquisition(ctx.tenantId, notebookId, cAcq);
+        if (cStarted) {
+          // Read back the claim's generation and any outcome the background
+          // worker has already written, such as a search limit or a fast match.
+          const authoritative = await readAcquisition(ctx.tenantId, notebookId);
+          if (authoritative?.key === candidateKey) {
+            cAcq = authoritative;
+            candidateSearchStartedAt = authoritative.started_at ?? undefined;
+          }
+        } else {
+          cAcq = await reconcileAcquisition(ctx.tenantId, notebookId, cAcq);
+          if (cAcq?.key === candidateKey) candidateSearchStartedAt = cAcq.started_at ?? undefined;
+        }
         if (cAcq && cAcq.key === candidateKey) {
           if (cAcq.state === "running") {
             manualSearchRunning = "candidate";
@@ -3624,40 +3637,22 @@ async function handleChatTurn(
           // #5268 Codex F2: a completed photo search's manual may have been
           // turned off since — judge that from the source's CURRENT state with
           // the same matcher the notebook status uses, never the history.
-          const candidateSourceOff =
-            cAcq.state === "complete" &&
-            sourcesLoaded &&
-            !applicableEnabledSource(srcs, {
-              identityStatus: "user_confirmed",
-              manufacturer: identityProposal.manufacturer,
-              model: identityProposal.model,
-              catalogNumber: "",
-            });
-          candidateAcquisitionText = acquisitionDeclineText(
-            cAcq,
-            candidateKey,
-            `${identityProposal.manufacturer} ${identityProposal.model}`,
-            "candidate",
-            { sourceOff: candidateSourceOff },
-          );
-          // Codex round 5 F15 (#4195): `cAcq.started_at` above is EITHER the
-          // DB's own value (the initial `readAcquisition`/`reconcileAcquisition`
-          // read, never synthesized) OR, when THIS call just claimed the
-          // search, the local placeholder set a few lines up — which is NOT
-          // the DB's `now()` (`claim()`'s own clock) and would drift from
-          // what the GET route (`currentManualSearchStatus`) reports for the
-          // SAME search. Only in that freshly-claimed case, re-read the
-          // record `claim()` actually wrote; every other path already holds
-          // an authoritative value. A failed/mismatched re-read just omits
-          // `startedAt` from the frame (never invents one, never blocks the
-          // reply — same fail-open posture as the rest of this capability).
-          if (cStarted) {
-            const authoritative = await readAcquisition(ctx.tenantId, notebookId);
-            candidateSearchStartedAt =
-              authoritative && authoritative.key === candidateKey ? authoritative.started_at ?? undefined : undefined;
-          } else {
-            candidateSearchStartedAt = cAcq.started_at ?? undefined;
+          const label = `${identityProposal.manufacturer} ${identityProposal.model}`;
+          let sourceOff = cAcq.state === "complete" && sourcesLoaded && !applicableEnabledSource(srcs, candidateIdentity);
+          let currentSourceMessage: string | null = null;
+          if (cStarted && cAcq.state === "complete" && !cAcq.source_removed) {
+            // The worker can attach and index its source before the claim's
+            // read-back. The pre-claim source snapshot cannot answer this.
+            try {
+              const freshSources = await listSources(ctx.tenantId, notebookId);
+              currentSourceMessage = currentManualSourceMessage(freshSources, candidateIdentity);
+              sourceOff = currentSourceMessage === null;
+            } catch {
+              currentSourceMessage = `I found the ${label} manual, but couldn't check whether it's ready in Sources.`;
+            }
           }
+          candidateAcquisitionText = currentSourceMessage ??
+            acquisitionDeclineText(cAcq, candidateKey, label, "candidate", { sourceOff });
         }
       }
     }
@@ -3994,8 +3989,7 @@ async function handleChatTurn(
   // A flagged hazard turn is never swallowed by this abstain (owner decision
   // 2026-09-27): with no documents it takes the general lane, so the tech gets
   // the hazard banner and an answer instead of "couldn't find that".
-  const manualIdentityNeeded = unboundManualRequest && !identityProposal;
-  if (componentHold || (chunks.length === 0 && (!general || libraryNotForAsk || missingModelManual || noEvidenceForMachine || unidentifiedServiceText || photoPartLookup || photoPartCompatibilityText || manualIdentityNeeded) && !groundedMachineEntry && !safetyTrigger)) {
+  if (componentHold || (chunks.length === 0 && (!general || libraryNotForAsk || missingModelManual || noEvidenceForMachine || unidentifiedServiceText || photoPartLookup || photoPartCompatibilityText || unboundManualRequest) && !groundedMachineEntry && !safetyTrigger)) {
     // Gate G — abstain honestly, persist the turn, never call the provider.
     // #4015: "couldn't find that in the documentation I have", not "I don't have
     // the manual" — a zero-hit scoped search does not prove the manual is absent
@@ -4014,8 +4008,6 @@ async function handleChatTurn(
       ? photoPartLookup.message
       : photoPartCompatibilityText
       ? photoPartCompatibilityText
-      : manualIdentityNeeded
-      ? "What manufacturer and model or order number are printed on the equipment label? You can type them or attach a clear photo of that part of the label."
       // No document selected, and the library's pages were for the bound model,
       // not the one this message names: say which, and answer nothing from them.
       : libraryNotForAsk
@@ -4024,9 +4016,14 @@ async function handleChatTurn(
       ? declineText(declineKind(message)!, (missingModelManual ?? noEvidenceForMachine)!, oemManufacturer!.name)
       : acquisitionText
       ? acquisitionText
-      // Codex r1 F1 (#4172, HIGH) — a candidate acquisition's honest status
-      // (never "I haven't searched": the search either started or already
-      // reported a result) outranks a generic "couldn't find" fallback.
+      // Lookup progress is transient. Persist stable instructions so the chat
+      // cannot say it is still searching underneath the eventual ready status.
+      : unboundManualRequest
+      ? candidateAcquisitionText && identityProposal
+        ? `I checked the official manual lookup for the ${identityProposal.manufacturer} ${identityProposal.model}.`
+        : identityProposal
+          ? "Confirm the equipment below so I can look for the matching manual."
+          : "What manufacturer and model or order number are printed on the equipment label? You can type them or attach a clear photo of that part of the label."
       : candidateAcquisitionText
       ? candidateAcquisitionText
       : missingModelManual
@@ -5661,7 +5658,7 @@ async function handleChatTurn(
       if (citedPages.length > 0) {
         try {
           citedPageChunks = await withTenantContext(ctx.tenantId, (c) =>
-            retrieveCitedPageChunks(c, ctx.tenantId, citedPages, { approvedSourceDocIds: docIds, keep: (t) => extractManualSafetyStatement(t) !== null }),
+            retrieveCitedPageChunks(c, ctx.tenantId, citedPages, { approvedSourceDocIds: docIds }),
           );
         } catch (err) {
           console.warn("[notebook-chat] cited-page read failed (notice from retrieved chunks only):", err instanceof Error ? err.message : err);

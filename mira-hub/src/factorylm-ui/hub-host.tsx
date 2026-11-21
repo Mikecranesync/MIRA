@@ -110,7 +110,6 @@ import {
   loadingThread,
   metaFor,
   newThreadId,
-  openNotebookSelection,
   openOffer,
   pickRouteFor,
   type EquipmentFocus,
@@ -127,6 +126,7 @@ import {
   type CompatibleStreamResult,
   type HubSelection,
 } from "./hub-host-logic";
+import { resumeProjectSelection } from "./project-resume";
 
 type RecoveryChatBody = ReturnType<typeof chatBodyFor> & { componentSelection?: ScopeField; expectedEquipmentEntityId?: string | null; expectedNotebookIdentity?: ReturnType<typeof notebookIdentitySnapshot> };
 
@@ -556,11 +556,8 @@ export function HubShellHost() {
       return notebooks ? shellReducer(state, { type: "hydrate", data: { thread, projects, machines } }) : state;
     }
     const base = fixtureFor(detail.notebook, selection, visibleTurns, meta, projects, machines);
-    // T2 (#4189 F6): the post-turn-refresh render path — `withManualSearchStatus`
-    // overlays the CURRENT status onto the last assistant turn. The live
-    // in-flight gap (a turn still streaming) is the documented BLOCKED note:
-    // `notebook-chat-utils.ts` (guarded legacy presentation) carries no such
-    // frame, so this appears only once `loadDetail` has re-fetched.
+    // Overlay the current lookup on the last assistant turn without storing a
+    // snapshot of progress. The live frame can seed this state before detail loads.
     const settled =
       settledFollowups && settledFollowups.notebookId === selection.notebookId && settledFollowups.threadId === selection.threadId
         ? settledFollowups
@@ -713,6 +710,12 @@ export function HubShellHost() {
         setLive((cur) => (cur && cur.id === id ? { ...cur, content, citations: cits } : cur));
       }, null, {
         onProgress: (stage) => setLive((cur) => (cur && cur.id === id ? { ...cur, progress: stage } : cur)),
+        onManualSearchStatus: (status) => {
+          const active = selectionRef.current;
+          if (!hostMountedRef.current || abortRef.current !== ctrl || ctrl.signal.aborted ||
+            active?.notebookId !== sel.notebookId || active.threadId !== sel.threadId) return;
+          manualSearchDriverRef.current?.observeLive(sel.notebookId, status);
+        },
       });
       // Both readers end with the stream; the finished answer carries its label.
       if (componentRead) await componentRead;
@@ -1108,8 +1111,13 @@ export function HubShellHost() {
     const notebookId = notebookIdFromProject(projectId);
     if (!notebookId) return;
     const nb = notebooks?.find((n) => n.id === notebookId);
-    // A fresh chat, not the notebook's last conversation (#4444).
-    if (nb) select(openNotebookSelection(nb));
+    // Resume the project's newest saved conversation; a fresh chat only when it has none (#4681).
+    if (!nb) return;
+    const target = resumeProjectSelection(nb);
+    // Already open: select() would abort a live stream and reset the loaded detail.
+    const open = selectionRef.current;
+    if (open && open.notebookId === target.notebookId && open.threadId === target.threadId) return;
+    select(target);
   }, [notebooks, select]);
 
   /**
