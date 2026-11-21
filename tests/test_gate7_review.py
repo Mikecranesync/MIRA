@@ -930,6 +930,511 @@ def _patch_main(monkeypatch, diff, paid_text, usage):
     return seen
 
 
+def _paid_adjudication_case(tmp_path, monkeypatch, *, diff=None, ruling=None, usage=None):
+    """Real rendered prior/REST comment; only provider and GitHub I/O are replaced."""
+    from cheap_review_check import parse_envelope
+
+    diff = diff or (
+        "diff --git a/docs/a.md b/docs/a.md\n--- a/docs/a.md\n+++ b/docs/a.md\n"
+        "@@ -0,0 +1 @@\n+bounded evidence\n"
+    )
+    ruling = ruling or (
+        "## RULINGS\n- **[ruling: REFUTED] [id: F1]** — contradicted\n"
+        "- **[ruling: REFUTED] [id: F2]** — contradicted\n"
+    )
+    usage = (
+        usage
+        if usage is not None
+        else {
+            "input_tokens": 1000,
+            "cached_input_tokens": 0,
+            "output_tokens": 200,
+            "reasoning_output_tokens": 20,
+        }
+    )
+    _patch_main(monkeypatch, diff, ruling, usage)
+    raw = (
+        "## VERDICT\nBLOCK\n\n## FINDINGS\n"
+        "- **[severity: high] Unsafe default** — docs/a.md lacks a bound\n"
+        "- **[severity: medium] Ambiguous status** — docs/a.md status is unclear\n"
+    )
+    prior = render(
+        Review("BLOCK", parse_findings(raw), "openai (gpt-5.4-mini, single-shot)", raw, []),
+        7,
+        "high",
+        [],
+        [
+            *g7.receipts_block("c" * 40, None, [], g7.redact(diff), "high"),
+            "- lane: single-shot paid · model `gpt-5.4-mini` · tokens in/cached/out/reasoning "
+            "1,000/0/200/20 · cost $0.0017 (budget $0.10) · run `" + "a" * 32 + "`",
+        ],
+    )
+    body = (
+        "[CHEAP-REVIEW]\n\n```\nhead: "
+        + "c" * 40
+        + "\nverdict: BLOCK\nmodel: gpt-5.4-mini\ncost_usd: 0.0017\nrun_id: "
+        + "a" * 32
+        + "\nscope: full\n```\n\n"
+        + prior
+    )
+    assert parse_envelope(body) is not None and len(parse_findings(prior)) == 2
+    comment = {
+        "id": 6701448567,
+        "user": {"login": "Mikecranesync", "type": "User"},
+        "created_at": "2026-11-07T03:00:00Z",
+        "updated_at": "2026-11-07T03:00:00Z",
+        "body": body,
+    }
+    prior_path, rebuttal = tmp_path / "prior.md", tmp_path / "rebuttal.md"
+    prior_path.write_text(prior)
+    rebuttal.write_text("F1/F2: the diff says +bounded evidence.\n")
+    state = {
+        "diff": diff,
+        "head": "c" * 40,
+        "comments": [comment],
+        "paid": [],
+        "free": [],
+        "posted": [],
+        "reads": [],
+        "after_paid": lambda: None,
+    }
+
+    def fetch(number):
+        assert number == 7
+        return "t", "b", ["docs/a.md"], state["diff"], state["head"]
+
+    def gh_json(args):
+        state["reads"].append(args)
+        if any("comments" in arg for arg in args):
+            assert "--paginate" in args, "provenance needs all comment pages"
+            if state.get("read_error"):
+                raise subprocess.CalledProcessError(1, args)
+            return [state["comments"]] if "--slurp" in args else state["comments"]
+        if args[:2] == ["repo", "view"]:
+            return {
+                "nameWithOwner": "Mikecranesync/MIRA",
+                "name": "MIRA",
+                "owner": {"login": "Mikecranesync"},
+            }
+        if args[:2] == ["pr", "view"]:
+            return {
+                "number": 7,
+                "url": "https://github.com/Mikecranesync/MIRA/pull/7",
+                "headRefOid": state["head"],
+                "baseRepository": {
+                    "nameWithOwner": "Mikecranesync/MIRA",
+                    "owner": {"login": "Mikecranesync"},
+                },
+            }
+        pytest.fail(f"unexpected GitHub read: {args}")
+
+    def paid(prompt, model, **kwargs):
+        state["paid"].append((prompt, model, kwargs))
+        state["after_paid"]()
+        return (
+            state.get("reply", ruling),
+            f"openai ({model}, single-shot)",
+            [state.get("attempt", "openai: ok")],
+            usage,
+        )
+
+    def free(prompt, **kwargs):
+        state["free"].append(prompt)
+        return ruling, "free fixture", ["free fixture: ok"]
+
+    def post(args, stdin=None):
+        assert args[:3] == ["pr", "comment", "7"] and "--body-file" in args
+        state["posted"].append(stdin)
+        return "https://github.com/Mikecranesync/MIRA/pull/7#issuecomment-6701448568"
+
+    monkeypatch.setattr(g7, "fetch_pr", fetch)
+    monkeypatch.setattr(g7, "current_head", lambda number: state["head"])
+    monkeypatch.setattr(g7, "_gh_json", gh_json)
+    monkeypatch.setattr(g7, "_gh_text", post)
+    monkeypatch.setattr(g7, "call_paid", paid)
+    monkeypatch.setattr(g7, "call_cascade", free)
+    state["args"] = [
+        "7",
+        "--adjudicate",
+        str(prior_path),
+        "--rebuttal",
+        str(rebuttal),
+        "--paid",
+        "--post",
+        "--ledger",
+        str(tmp_path / "costs.jsonl"),
+        "-o",
+        str(tmp_path / "result.md"),
+    ]
+    return state
+
+
+@pytest.mark.parametrize("completed", [False, True], ids=["unknown-prior", "pass-medium-prior"])
+def test_paid_adjudication_requires_completed_authentic_prior(tmp_path, monkeypatch, completed):
+    from cheap_review_check import parse_envelope
+
+    state = _paid_adjudication_case(tmp_path, monkeypatch)
+    prior_path = tmp_path / "prior.md"
+    old = prior_path.read_text()
+    raw = (
+        ("## VERDICT\nPASS\n\n" if completed else "") + "## FINDINGS\n"
+        "- **[severity: medium] Unsafe default** — docs/a.md lacks a bound\n"
+        "- **[severity: medium] Ambiguous status** — docs/a.md status is unclear\n"
+    )
+    findings = parse_findings(raw)
+    verdict = verdict_of(raw, findings)
+    assert verdict == ("PASS" if completed else "UNKNOWN")
+    assert all(f.severity == "medium" for f in findings)
+    prior = render(
+        Review(verdict, findings, "openai (gpt-5.4-mini, single-shot)", raw, []),
+        7,
+        "high",
+        [],
+        [
+            *g7.receipts_block("c" * 40, None, [], g7.redact(state["diff"]), "high"),
+            next(line for line in old.splitlines() if line.startswith("- lane:")),
+        ],
+    )
+    prior_path.write_text(prior)
+    comment = state["comments"][0]
+    comment["body"] = (
+        comment["body"].replace(old, prior).replace("\nverdict: BLOCK\n", f"\nverdict: {verdict}\n")
+    )
+    assert parse_envelope(comment["body"])["verdict"] == verdict
+    rc = g7.main(state["args"])
+    if completed:
+        assert rc == 0 and len(state["paid"]) == 1 and not state["free"]
+        assert len(state["posted"]) == 1
+        assert parse_envelope(state["posted"][0])["verdict"] == "PASS"
+    else:
+        assert rc != 0
+        assert not state["paid"] and not state["free"] and not state["posted"]
+        assert not (tmp_path / "costs.jsonl").exists()
+
+
+@pytest.mark.parametrize("paths", [[], ["--paths", "docs/"]])
+def test_paid_adjudication_uses_one_bounded_paid_call_and_posts_real_pass(
+    tmp_path, monkeypatch, paths
+):
+    from cheap_review_check import head_state, parse_envelope
+
+    state = _paid_adjudication_case(tmp_path, monkeypatch)
+    assert g7.main(state["args"] + paths) == 0
+    assert len(state["paid"]) == 1 and state["free"] == []
+    rows = [json.loads(line) for line in (tmp_path / "costs.jsonl").read_text().splitlines()]
+    assert len(rows) == 1 and rows[0]["launched"] is True and rows[0]["verdict"] == "PASS"
+    row = rows[0]
+    assert row["cost_usd"] == pytest.approx(
+        round(
+            g7.paid_cost_usd(
+                row["model"],
+                {
+                    "input_tokens": 1000,
+                    "cached_input_tokens": 0,
+                    "output_tokens": 200,
+                    "reasoning_output_tokens": 20,
+                },
+                PRICES,
+            ),
+            4,
+        )
+    )
+    assert 0 < row["estimate_usd"] <= 0.10 and row["usage_unknown"] is False
+    assert len(state["posted"]) == 1
+    posted = state["posted"][0]
+    env = parse_envelope(posted)
+    assert env and env["verdict"] == "PASS" and env["scope"] == "full"
+    assert env["run_id"] == row["run_id"] and env["head"] == "c" * 40
+    assert float(env["cost_usd"]) == row["cost_usd"]
+    assert posted.endswith((tmp_path / "result.md").read_text())
+    live = [*state["comments"], {**state["comments"][0], "id": 6701448568, "body": posted}]
+    assert head_state(live, "Mikecranesync", "c" * 40)[0] == "success"
+
+
+@pytest.mark.parametrize(
+    "invalid",
+    [
+        "missing",
+        "forged_owner",
+        "bot",
+        "stale_head",
+        "partial",
+        "newer_scoped_pass",
+        "edited_local",
+        "wrong_pr",
+        "wrong_receipt_head",
+        "wrong_hash",
+        "truncated_prior",
+        "wrong_run_id",
+        "oversized_prior",
+        "oversized_rebuttal",
+        "oversized_diff",
+    ],
+)
+def test_paid_adjudication_refuses_unbound_or_incomplete_evidence_before_spend(
+    tmp_path, monkeypatch, invalid
+):
+    state = _paid_adjudication_case(tmp_path, monkeypatch)
+    comment = state["comments"][0]
+    prior_path = tmp_path / "prior.md"
+    if invalid == "missing":
+        state["comments"] = []
+    elif invalid == "forged_owner":
+        comment["user"]["login"] = "other-user"
+    elif invalid == "bot":
+        comment["user"]["type"] = "Bot"
+    elif invalid == "stale_head":
+        comment["body"] = comment["body"].replace("c" * 40, "d" * 40)
+        prior_path.write_text(prior_path.read_text().replace("c" * 40, "d" * 40))
+    elif invalid in {"partial", "newer_scoped_pass"}:
+        scoped = comment["body"].replace("scope: full", "scope: partial\nexcluded_files: 1")
+        if invalid == "partial":
+            comment["body"] = scoped
+        else:
+            state["comments"].append(
+                {
+                    **comment,
+                    "id": 6701448568,
+                    "body": scoped.replace("verdict: BLOCK", "verdict: PASS"),
+                }
+            )
+    elif invalid == "edited_local":
+        prior_path.write_text(prior_path.read_text().replace("[severity: high]", "[severity: low]"))
+    elif invalid == "oversized_rebuttal":
+        (tmp_path / "rebuttal.md").write_text("x" * 12001)
+    elif invalid == "oversized_diff":
+        state["args"] += ["--diff-cap", "20"]
+    else:
+        old = prior_path.read_text()
+        if invalid == "wrong_pr":
+            new = old.replace("PR #7", "PR #8")
+        elif invalid == "wrong_receipt_head":
+            new = old.replace("c" * 40, "d" * 40)
+        elif invalid == "wrong_hash":
+            new = re.sub(r"`[0-9a-f]{64}`", "`" + "0" * 64 + "`", old)
+        elif invalid == "truncated_prior":
+            n = len(g7.redact(state["diff"]))
+            new = old.replace(f"{n}/{n} (cap", f"{n - 1}/{n} (cap")
+        elif invalid == "wrong_run_id":
+            new = old.replace("a" * 32, "b" * 32)
+        else:
+            new = old + "\n" + "quoted data " * 1200
+        assert new != old
+        prior_path.write_text(new)
+        comment["body"] = comment["body"].replace(old, new)
+    assert g7.main(state["args"]) != 0
+    assert not state["paid"] and not state["free"] and not state["posted"]
+    assert not (tmp_path / "costs.jsonl").exists()
+
+
+@pytest.mark.parametrize("historical_change", ["typo", "high_content", "deleted"])
+def test_paid_adjudication_superseded_review_changes_preserve_current_window(
+    tmp_path, monkeypatch, historical_change
+):
+    from cheap_review_check import head_state, parse_envelope
+
+    state = _paid_adjudication_case(tmp_path, monkeypatch)
+    selected = state["comments"][0]
+    older = {
+        **selected,
+        "id": selected["id"] - 1,
+        "created_at": "2026-11-07T02:00:00Z",
+        "updated_at": "2026-11-07T02:00:00Z",
+        "body": selected["body"].replace("a" * 32, "b" * 32),
+    }
+    state["comments"].insert(0, older)
+    before = head_state(state["comments"], "Mikecranesync", state["head"])
+    assert before and before[2]["id"] == selected["id"]
+    identity = before[0], dict(before[1]), before[2]["id"]
+    selected_body = selected["body"]
+
+    def historical_edit():
+        if historical_change == "deleted":
+            state["comments"] = [selected]
+        else:
+            older["updated_at"] = "2026-11-07T04:00:00Z"
+            if historical_change == "typo":
+                older["body"] += "\nHistorical typo corrected.\n"
+            else:
+                older["body"] = older["body"].replace(
+                    "[severity: medium] Ambiguous status", "[severity: high] New hostile behavior"
+                )
+        after = head_state(state["comments"], "Mikecranesync", state["head"])
+        assert after and (after[0], after[1], after[2]["id"]) == identity
+        assert selected["body"] == selected_body
+
+    state["after_paid"] = historical_edit
+    assert g7.main(state["args"]) == 0
+    assert len(state["paid"]) == 1 and not state["free"]
+    rows = [json.loads(line) for line in (tmp_path / "costs.jsonl").read_text().splitlines()]
+    assert len(rows) == 1 and rows[0]["cost_usd"] > 0
+    assert len(state["posted"]) == 1
+    body = state["posted"][0]
+    envelope = parse_envelope(body)
+    assert envelope and envelope["verdict"] == "PASS" and envelope["scope"] == "full"
+    posted = {**selected, "id": selected["id"] + 1, "body": body}
+    assert head_state([*state["comments"], posted], "Mikecranesync", state["head"])[0] == "success"
+
+
+@pytest.mark.parametrize(
+    "race",
+    [
+        "new_high",
+        "new_scoped_pass",
+        "edited",
+        "timestamp",
+        "deleted",
+        "read_failed",
+        "head",
+        "diff",
+    ],
+)
+def test_paid_adjudication_rechecks_prior_snapshot_after_spend_and_cannot_certify_race(
+    tmp_path, monkeypatch, race
+):
+    from cheap_review_check import head_state
+
+    state = _paid_adjudication_case(tmp_path, monkeypatch)
+
+    def drift():
+        comment = state["comments"][0]
+        if race in {"new_high", "new_scoped_pass"}:
+            body = comment["body"]
+            if race == "new_scoped_pass":
+                body = body.replace("scope: full", "scope: partial\nexcluded_files: 1").replace(
+                    "verdict: BLOCK", "verdict: PASS"
+                )
+            state["comments"].append({**comment, "id": 6701448568, "body": body})
+        elif race == "edited":
+            comment["body"] += "\nEdited finding evidence\n"
+        elif race == "timestamp":
+            comment["updated_at"] = "2026-11-07T04:00:00Z"
+        elif race == "deleted":
+            state["comments"] = []
+        elif race == "read_failed":
+            state["read_error"] = True
+        elif race == "head":
+            state["head"] = "d" * 40
+        else:
+            state["diff"] += "+different reviewed bytes\n"
+
+    state["after_paid"] = drift
+    g7.main(state["args"])
+    assert len(state["paid"]) == 1 and not state["free"]
+    rows = (tmp_path / "costs.jsonl").read_text().splitlines()
+    assert len(rows) == 1 and json.loads(rows[0])["cost_usd"] > 0
+    for body in state["posted"]:
+        live = [
+            *state["comments"],
+            {"id": 6701448569, "body": body, "user": {"login": "Mikecranesync", "type": "User"}},
+        ]
+        result = head_state(live, "Mikecranesync", state["head"])
+        assert result is None or result[0] != "success"
+
+
+def test_paid_adjudication_budget_decline_never_uses_free_or_spends(tmp_path, monkeypatch):
+    state = _paid_adjudication_case(tmp_path, monkeypatch)
+    assert g7.main(state["args"] + ["--budget-usd", "0.001"]) == 3
+    assert not state["paid"] and not state["free"] and not state["posted"]
+    assert not (tmp_path / "costs.jsonl").exists()
+
+
+@pytest.mark.parametrize(
+    "attempt,usage",
+    [("openai: ReadTimeout", {}), ("openai: empty completion", {"output_tokens": 20})],
+)
+def test_paid_adjudication_failed_completion_is_charged_once_never_posted(
+    tmp_path, monkeypatch, attempt, usage
+):
+    state = _paid_adjudication_case(tmp_path, monkeypatch, usage=usage)
+    state.update(reply=None, attempt=attempt)
+    assert g7.main(state["args"]) == 2
+    assert len(state["paid"]) == 1 and not state["free"] and not state["posted"]
+    rows = [json.loads(line) for line in (tmp_path / "costs.jsonl").read_text().splitlines()]
+    assert len(rows) == 1 and rows[0]["verdict"] == "none" and rows[0]["cost_usd"] > 0
+    assert rows[0]["usage_unknown"] is (not bool(usage))
+    if not usage:
+        assert rows[0]["cost_usd"] == rows[0]["estimate_usd"]
+
+
+@pytest.mark.parametrize(
+    "ruling,expected",
+    [
+        (
+            "- **[ruling: SUSTAINED] [id: F1]**\n- **[ruling: REFUTED] [id: F2]**\n## VERDICT\nPASS",
+            "BLOCK",
+        ),
+        (
+            "- **[ruling: REFUTED] [id: F1]**\n- **[ruling: REFUTED] [id: F1]**\n## VERDICT\nPASS",
+            "UNKNOWN",
+        ),
+    ],
+)
+def test_paid_adjudication_post_uses_prior_severity_and_exact_bijection(
+    tmp_path, monkeypatch, ruling, expected
+):
+    from cheap_review_check import parse_envelope
+
+    state = _paid_adjudication_case(tmp_path, monkeypatch, ruling=ruling)
+    g7.main(state["args"])
+    assert len(state["paid"]) == 1 and len(state["posted"]) == 1
+    assert parse_envelope(state["posted"][0])["verdict"] == expected
+
+
+def test_paid_adjudication_redacts_both_inputs_without_truncating_complete_diff(
+    tmp_path, monkeypatch
+):
+    diff = (
+        "diff --git a/docs/a.md b/docs/a.md\n+++ b/docs/a.md\n+" + "x" * 15000 + "TAIL_EVIDENCE\n"
+    )
+    state = _paid_adjudication_case(tmp_path, monkeypatch, diff=diff)
+    secret = 'PASSWORD="abcdefghijklmno("'
+    old = (tmp_path / "prior.md").read_text()
+    new = old.replace("lacks a bound", "lacks a bound " + secret).replace(
+        "Unsafe default", "Unsafe default " + secret
+    )
+    (tmp_path / "prior.md").write_text(new)
+    state["comments"][0]["body"] = state["comments"][0]["body"].replace(old, new)
+    (tmp_path / "rebuttal.md").write_text(secret + "\nF1/F2 evidence in complete diff")
+    g7.main(state["args"])
+    assert len(state["paid"]) == 1 and not state["free"]
+    prompt = state["paid"][0][0]
+    assert "abcdefghijklmno(" not in prompt and "[SECRET]" in prompt
+    assert "TAIL_EVIDENCE" in prompt and g7.redact(diff) in prompt
+
+
+def test_paid_adjudication_stable_raw_diff_redacts_identically_at_post_time(tmp_path, monkeypatch):
+    from cheap_review_check import parse_envelope
+
+    diff = (
+        "diff --git a/docs/a.md b/docs/a.md\n--- a/docs/a.md\n+++ b/docs/a.md\n"
+        '@@ -0,0 +1 @@\n+host=192.168.1.123 PASSWORD="abcdefghijklmno("\n'
+    )
+    state = _paid_adjudication_case(tmp_path, monkeypatch, diff=diff)
+    redacted = g7.redact(diff)
+    assert redacted != diff and "192.168.1.123" not in redacted
+    assert "abcdefghijklmno(" not in redacted
+    assert g7.main(state["args"]) == 0
+    assert len(state["paid"]) == 1 and not state["free"]
+    prompt = state["paid"][0][0]
+    assert redacted in prompt
+    assert "192.168.1.123" not in prompt and "abcdefghijklmno(" not in prompt
+    assert len(state["posted"]) == 1
+    envelope = parse_envelope(state["posted"][0])
+    assert envelope and envelope["verdict"] == "PASS" and envelope["scope"] == "full"
+    assert envelope["head"] == state["head"] == "c" * 40
+
+
+def test_free_local_adjudication_remains_free_without_provenance_or_post(tmp_path, monkeypatch):
+    state = _paid_adjudication_case(tmp_path, monkeypatch)
+    args = state["args"][: state["args"].index("--paid")] + ["-o", str(tmp_path / "free.md")]
+    state["comments"] = []
+    assert g7.main(args) == 0
+    assert len(state["free"]) == 1 and not state["paid"] and not state["posted"]
+    assert "**Verdict:** PASS" in (tmp_path / "free.md").read_text()
+    assert not (tmp_path / "costs.jsonl").exists()
+
+
 def test_main_paid_picks_by_budget_records_cost_and_receipts(tmp_path, monkeypatch):
     diff = "+" + "x" * 30_000 + "\n"  # ≤ ~35k bounded tokens: mini ≈ $0.08 worst case; sol ≈ $0.19
     usage = {
