@@ -1,0 +1,314 @@
+{
+  "publication_date": "2026-11-15",
+  "repository_base": "c6581cc1c95ad7670f007b655a481797db547f2c",
+  "artifacts": [
+    {
+      "source_group": "thread-visualizations",
+      "source_relative_path": "hub-machine-mockups/01-home.png",
+      "published_path": "2026-11-14/hub-machine-mockups/01-home.png",
+      "source_sha256": "4f298e3c3849abe2c6228e653e12f1af97ea893350a26719c1849b519f38131e",
+      "published_sha256": "4f298e3c3849abe2c6228e653e12f1af97ea893350a26719c1849b519f38131e",
+      "publication_edits": []
+    },
+    {
+      "source_group": "thread-visualizations",
+      "source_relative_path": "hub-machine-mockups/02-machine-workspace.png",
+      "published_path": "2026-11-14/hub-machine-mockups/02-machine-workspace.png",
+      "source_sha256": "083167595df59045238930ddc80b02d8584799e803c8efdeb51e03b7be020573",
+      "published_sha256": "083167595df59045238930ddc80b02d8584799e803c8efdeb51e03b7be020573",
+      "publication_edits": []
+    },
+    {
+      "source_group": "thread-visualizations",
+      "source_relative_path": "hub-machine-mockups/03-mlc-context-and-source.png",
+      "published_path": "2026-11-14/hub-machine-mockups/03-mlc-context-and-source.png",
+      "source_sha256": "a8dad14f09a52842a706d6386bc9d5547568a66358c25149c1fcd73067b49f44",
+      "published_sha256": "a8dad14f09a52842a706d6386bc9d5547568a66358c25149c1fcd73067b49f44",
+      "publication_edits": []
+    },
+    {
+      "source_group": "thread-visualizations",
+      "source_relative_path": "hub-machine-mockups/04-selection-recovery.png",
+      "published_path": "2026-11-14/hub-machine-mockups/04-selection-recovery.png",
+      "source_sha256": "b564431c57a97b4890c36ef2da8ab1ea726752a28a232e70a864fcc86dbadfb7",
+      "published_sha256": "b564431c57a97b4890c36ef2da8ab1ea726752a28a232e70a864fcc86dbadfb7",
+      "publication_edits": []
+    },
+    {
+      "source_group": "thread-visualizations",
+      "source_relative_path": "hub-machine-mockups/05-comparison-board.png",
+      "published_path": "2026-11-14/hub-machine-mockups/05-comparison-board.png",
+      "source_sha256": "6ee00607958df1fdd7261bb31ddf9ed9ee92cb33c460444ad8b5eb77b26234ce",
+      "published_sha256": "6ee00607958df1fdd7261bb31ddf9ed9ee92cb33c460444ad8b5eb77b26234ce",
+      "publication_edits": []
+    },
+    {
+      "source_group": "thread-visualizations",
+      "source_relative_path": "hub-machine-mockups/README.md",
+      "published_path": "2026-11-14/hub-machine-mockups/README.md",
+      "source_sha256": "dfb57e756c61d528b9c07c65d896e72ed8400ab55b6cdd8f11723b1dad78b1bf",
+      "published_sha256": "97975769e699bead83f9a08bd96d6f0ab6d3d4ca6931d2a1f5d63091243f6d82",
+      "publication_edits": [
+        "dated-publication-note",
+        "normalize-final-newline"
+      ]
+    },
+    {
+      "source_group": "thread-visualizations",
+      "source_relative_path": "hub-machine-mockups/index.html",
+      "published_path": "2026-11-14/hub-machine-mockups/index.html",
+      "source_sha256": "4438ecdb4ff4738a1c824ce945d6ef3988f26e3cc6c59a2982fe49c99ac423ff",
+      "published_sha256": "4dc8f29909d90ffe40dffe1e9677b94dd5dea9c9c0df2b49c405878b2c715da8",
+      "publication_edits": [
+        "portable-links",
+        "normalize-final-newline"
+      ]
+    },
+    {
+      "source_group": "thread-visualizations",
+      "source_relative_path": "hub-machine-mockups/manifest.json",
+      "published_path": "2026-11-14/hub-machine-mockups/manifest.json",
+      "source_sha256": "1fb543b168f6cf56dccb71ecdae9d255b8af8960547eb94d4dbacd0a0e128904",
+      "published_sha256": "1fb543b168f6cf56dccb71ecdae9d255b8af8960547eb94d4dbacd0a0e128904",
+      "publication_edits": []
+    },
+    {
+      "source_group": "thread-visualizations",
+      "source_relative_path": "hub-machine-mockups/prompts.json",
+      "published_path": "2026-11-14/hub-machine-mockups/prompts.json",
+      "source_sha256": "6e057589a73fc00f42ab55ad897fb412f81b416b01cb1672c0a7996d0ae1020b",
+      "published_sha256": "6e057589a73fc00f42ab55ad897fb412f81b416b01cb1672c0a7996d0ae1020b",
+      "publication_edits": []
+    },
+    {
+      "source_group": "thread-visualizations",
+      "source_relative_path": "hub-machine-mockups/v2-factory-scale/01-line-equipment.png",
+      "published_path": "2026-11-14/hub-machine-mockups/v2-factory-scale/01-line-equipment.png",
+      "source_sha256": "06b265bd95d213e1bdd02ac97bfef14c11d1f3cb4568feea02da8d9366dab151",
+      "published_sha256": "06b265bd95d213e1bdd02ac97bfef14c11d1f3cb4568feea02da8d9366dab151",
+      "publication_edits": []
+    },
+    {
+      "source_group": "thread-visualizations",
+      "source_relative_path": "hub-machine-mockups/v2-factory-scale/02-find-component.png",
+      "published_path": "2026-11-14/hub-machine-mockups/v2-factory-scale/02-find-component.png",
+      "source_sha256": "b29e9352913991d8d820942c3385560ddbcebd757485c23580bd74b71f807767",
+      "published_sha256": "b29e9352913991d8d820942c3385560ddbcebd757485c23580bd74b71f807767",
+      "publication_edits": []
+    },
+    {
+      "source_group": "thread-visualizations",
+      "source_relative_path": "hub-machine-mockups/v2-factory-scale/03-machine-components.png",
+      "published_path": "2026-11-14/hub-machine-mockups/v2-factory-scale/03-machine-components.png",
+      "source_sha256": "57070b765c48c995383d76acc083a61b1d37044bf6fbd4b8285b25885bb7bd84",
+      "published_sha256": "57070b765c48c995383d76acc083a61b1d37044bf6fbd4b8285b25885bb7bd84",
+      "publication_edits": []
+    },
+    {
+      "source_group": "thread-visualizations",
+      "source_relative_path": "hub-machine-mockups/v2-factory-scale/04-component-workspace.png",
+      "published_path": "2026-11-14/hub-machine-mockups/v2-factory-scale/04-component-workspace.png",
+      "source_sha256": "48bb41f74482b475e899c143e287a7a09ba39842785d873c09c6b4ba66322cc6",
+      "published_sha256": "48bb41f74482b475e899c143e287a7a09ba39842785d873c09c6b4ba66322cc6",
+      "publication_edits": []
+    },
+    {
+      "source_group": "thread-visualizations",
+      "source_relative_path": "hub-machine-mockups/v2-factory-scale/ARCHITECTURE-PLAN.md",
+      "published_path": "2026-11-14/hub-machine-mockups/v2-factory-scale/ARCHITECTURE-PLAN.md",
+      "source_sha256": "0f3b25fc754162e223b660b6efce1c888a7290229ba564aa07ef84c56db7a8bd",
+      "published_sha256": "e85ada209ca1b57f3ada341bb598223c52f1bf83a4e56bdcb192d2f166348111",
+      "publication_edits": [
+        "dated-publication-note",
+        "normalize-final-newline"
+      ]
+    },
+    {
+      "source_group": "thread-visualizations",
+      "source_relative_path": "hub-machine-mockups/v2-factory-scale/DESIGN-NOTES.md",
+      "published_path": "2026-11-14/hub-machine-mockups/v2-factory-scale/DESIGN-NOTES.md",
+      "source_sha256": "84afcd87c9178477250a8c711734e8d35419b74af51f375f93bd4dfd7e9269b2",
+      "published_sha256": "6294b519b318212f7b130582ce0e52a88f81069074c60c6c557e4c1ad55bc029",
+      "publication_edits": [
+        "dated-publication-note",
+        "normalize-final-newline"
+      ]
+    },
+    {
+      "source_group": "thread-visualizations",
+      "source_relative_path": "hub-machine-mockups/v2-factory-scale/HANDOFF-RECONCILIATION.md",
+      "published_path": "2026-11-14/hub-machine-mockups/v2-factory-scale/HANDOFF-RECONCILIATION.md",
+      "source_sha256": "a4ff8dbf6dfc3d6a0cd4cd7d137f1ec1d6281ddb532c520a4ef7549ce5eb4fbc",
+      "published_sha256": "0545103f031c8356b10e0afd3d0ee34cbb01845efe7e5401d916d4edb72b00bb",
+      "publication_edits": [
+        "dated-publication-note",
+        "normalize-final-newline"
+      ]
+    },
+    {
+      "source_group": "thread-visualizations",
+      "source_relative_path": "hub-machine-mockups/v2-factory-scale/SESSION-GOAL-PROMPTS.md",
+      "published_path": "2026-11-14/hub-machine-mockups/v2-factory-scale/SESSION-GOAL-PROMPTS.md",
+      "source_sha256": "dbc3f8cf784a39a46224f9d36c30d7c23978e1462f7a71afa7a38c2366ffdf9d",
+      "published_sha256": "e4e1c5ff62aa74b69ab7e885461d0eeaa0038d2eb552a39b98d6867b6d657162",
+      "publication_edits": [
+        "dated-publication-note",
+        "normalize-final-newline"
+      ]
+    },
+    {
+      "source_group": "thread-visualizations",
+      "source_relative_path": "hub-machine-mockups/v2-factory-scale/factorylm-tokens.css",
+      "published_path": "2026-11-14/hub-machine-mockups/v2-factory-scale/factorylm-tokens.css",
+      "source_sha256": "b51bd0e15d57be0797d712e013fe31ba6f0b7d98dafe924f388f8a691fdc021a",
+      "published_sha256": "b51bd0e15d57be0797d712e013fe31ba6f0b7d98dafe924f388f8a691fdc021a",
+      "publication_edits": []
+    },
+    {
+      "source_group": "thread-visualizations",
+      "source_relative_path": "hub-machine-mockups/v2-factory-scale/index.html",
+      "published_path": "2026-11-14/hub-machine-mockups/v2-factory-scale/index.html",
+      "source_sha256": "9de727fce2ea695538b873c06621d223eac11c8119af66fea064fbe201d6c2ac",
+      "published_sha256": "6bae18eb1f301fd17943711011234a28595e4d8f434d21b354c5aa7002bf963f",
+      "publication_edits": [
+        "portable-links"
+      ]
+    },
+    {
+      "source_group": "thread-visualizations",
+      "source_relative_path": "hub-machine-mockups/v2-factory-scale/manifest.json",
+      "published_path": "2026-11-14/hub-machine-mockups/v2-factory-scale/manifest.json",
+      "source_sha256": "19451039bee509fb21fc91d9650c0e2615ecc4f16047ae91a4f5e439af60ab7c",
+      "published_sha256": "19451039bee509fb21fc91d9650c0e2615ecc4f16047ae91a4f5e439af60ab7c",
+      "publication_edits": []
+    },
+    {
+      "source_group": "thread-visualizations",
+      "source_relative_path": "hub-machine-mockups/v2-factory-scale/prompts.json",
+      "published_path": "2026-11-14/hub-machine-mockups/v2-factory-scale/prompts.json",
+      "source_sha256": "a0999e1b546d645be273250fa37c43add07e2fd710232c23bc09ca0137831f4f",
+      "published_sha256": "a0999e1b546d645be273250fa37c43add07e2fd710232c23bc09ca0137831f4f",
+      "publication_edits": []
+    },
+    {
+      "source_group": "thread-visualizations",
+      "source_relative_path": "hub-machine-rethink/concepts_brief.md",
+      "published_path": "2026-11-14/hub-machine-rethink/concepts_brief.md",
+      "source_sha256": "1913bb86b9af7eeb9c79351fe4c40121cac63e24783bef207d8a3fa666a3e760",
+      "published_sha256": "65d11539f24f2d12586df20338754718f6960212be43c98af8000622834cf3b4",
+      "publication_edits": [
+        "portable-links",
+        "dated-publication-note"
+      ]
+    },
+    {
+      "source_group": "workbench-pilot",
+      "source_relative_path": "AGENT-GOAL-PROMPTS.md",
+      "published_path": "2026-11-14/workbench-pilot/AGENT-GOAL-PROMPTS.md",
+      "source_sha256": "ee4ffa32f773dc0955b5a1921a413ec3675d796ed4b3e24e8351f78438809a2a",
+      "published_sha256": "a12aa5037acb1df1fc980e4304348876476caf600db2bda8161045a038e28046",
+      "publication_edits": [
+        "dated-publication-note",
+        "normalize-final-newline"
+      ]
+    },
+    {
+      "source_group": "workbench-pilot",
+      "source_relative_path": "HANDOFF-SKILL-INSTALLATION.md",
+      "published_path": "2026-11-14/workbench-pilot/HANDOFF-SKILL-INSTALLATION.md",
+      "source_sha256": "3f808f910e3844388ff9a2838eb91be02c1055a21cb263f26d57931c1da64da8",
+      "published_sha256": "c97e801ce94388f9cdd8c87a6354260571d911f0cf39b58721e01ca8f8773b9c",
+      "publication_edits": [
+        "dated-publication-note"
+      ]
+    },
+    {
+      "source_group": "workbench-pilot",
+      "source_relative_path": "QUICK-VERIFICATION-PILOT.md",
+      "published_path": "2026-11-14/workbench-pilot/QUICK-VERIFICATION-PILOT.md",
+      "source_sha256": "280230c2ea307273b5bc64157a03c14222f35ef9e5f46346bf455ecb978e62ff",
+      "published_sha256": "c336ce5d350bbdf957c6c3b42c554c5da816b5665a420c3bc16709310872c271",
+      "publication_edits": [
+        "dated-publication-note"
+      ]
+    },
+    {
+      "source_group": "workbench-pilot",
+      "source_relative_path": "STATUS-2026-11-14-1438-ET.md",
+      "published_path": "2026-11-14/workbench-pilot/STATUS-2026-11-14-1438-ET.md",
+      "source_sha256": "1ed3b322581eefeb622ac63f79a097cfb37f68722a928f3ff88e9c5e0f97d7af",
+      "published_sha256": "4817fbeb64a78ed9fa5bde0d78e7ec1e31bd39accafb4e4d40986aacc6428132",
+      "publication_edits": [
+        "portable-links",
+        "dated-publication-note",
+        "normalize-final-newline"
+      ]
+    },
+    {
+      "source_group": "workbench-pilot",
+      "source_relative_path": "STATUS-2026-11-14-1718-ET.md",
+      "published_path": "2026-11-14/workbench-pilot/STATUS-2026-11-14-1718-ET.md",
+      "source_sha256": "94c0cb870ea5c253e33183dab642b23827915f6f6cda74416ddd53cb6e18eff1",
+      "published_sha256": "2b4bedc2d5c9019f18027b4210369f0e063a2cde8df5356f41e04d32a8999c8b",
+      "publication_edits": [
+        "dated-publication-note",
+        "normalize-final-newline"
+      ]
+    },
+    {
+      "source_group": "workbench-pilot",
+      "source_relative_path": "STATUS-2026-11-14-1722-ET.md",
+      "published_path": "2026-11-14/workbench-pilot/STATUS-2026-11-14-1722-ET.md",
+      "source_sha256": "c25ce72c69b7b905ce0f30871a62a890dddbea8d28919febc0c84658642f0940",
+      "published_sha256": "ec061792811d3ac59f55827f38c5baec6927e62118b2fb1dd29fa0a599bbd30a",
+      "publication_edits": [
+        "portable-links",
+        "dated-publication-note",
+        "normalize-final-newline"
+      ]
+    },
+    {
+      "source_group": "workbench-pilot",
+      "source_relative_path": "WORKBENCH-PILOT-PLAN.md",
+      "published_path": "2026-11-14/workbench-pilot/WORKBENCH-PILOT-PLAN.md",
+      "source_sha256": "3674378dfabfa23c12c4571a4a6e53e52adb9179d07f7055e9854a6b1f0558b9",
+      "published_sha256": "35614711a9930171bcd0463a7872314b7700f006a31c75c7f1ba2c67026a5b61",
+      "publication_edits": [
+        "portable-links",
+        "dated-publication-note"
+      ]
+    },
+    {
+      "source_group": "workbench-pilot",
+      "source_relative_path": "tablet-first-proof/RESULT.md",
+      "published_path": "2026-11-14/workbench-pilot/tablet-first-proof/RESULT.md",
+      "source_sha256": "aed9fd8557e3818a7f326cf91677e4fbf5fe36c9adfa0488dedb54e6e077a587",
+      "published_sha256": "22fda1ff0171fc16867c0ac80b53a742f044391ae0c55d326ae249bb6f619ef4",
+      "publication_edits": [
+        "removed-private-project-link-and-record-ids",
+        "dated-publication-note"
+      ]
+    },
+    {
+      "source_group": "workbench-pilot",
+      "source_relative_path": "tablet-first-proof/MISSION-CONTROL-HANDOFF.md",
+      "published_path": "2026-11-14/workbench-pilot/tablet-first-proof/MISSION-CONTROL-HANDOFF.md",
+      "source_sha256": "9be33cc42876e65230d9f587ce2ee7f3292b30fa23b84329dbcc3ca774e625f7",
+      "published_sha256": "0a38c330136ccdc1459e36fc9b1940b2ee3f3a966a7456484338e4442c6c985c",
+      "publication_edits": [
+        "dated-publication-note"
+      ]
+    },
+    {
+      "source_group": "uns-naming",
+      "source_relative_path": "RESEARCH-AND-NAMING-CONTRACT.md",
+      "published_path": "2026-11-15/uns-naming/RESEARCH-AND-NAMING-CONTRACT.md",
+      "source_sha256": "032e0b4f56be746d55fa33d15443bfa52b658dc8a75fa50f1dfffb1e01174ff2",
+      "published_sha256": "2b86e7baf25f811264218de3cbbd6f6c4f00933ad62c9d3fb76e87035dfceede",
+      "publication_edits": [
+        "portable-links",
+        "dated-publication-note"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,37 @@
+[
+  {
+    "file": "01-home.png",
+    "source": "/Users/charlienode/.codex/generated_images/01a1da9d-4402-7993-ba21-3631ab6bcd1d/exec-a2d2f67c-35a4-48ba-9ebe-3db20ece1382.png",
+    "width": 1586,
+    "height": 992,
+    "sha256": "4f298e3c3849abe2c6228e653e12f1af97ea893350a26719c1849b519f38131e"
+  },
+  {
+    "file": "02-machine-workspace.png",
+    "source": "/Users/charlienode/.codex/generated_images/01a1da9d-4402-7993-ba21-3631ab6bcd1d/exec-36513d96-8cd8-4e44-bd10-6778ba644aaa.png",
+    "width": 1586,
+    "height": 992,
+    "sha256": "083167595df59045238930ddc80b02d8584799e803c8efdeb51e03b7be020573"
+  },
+  {
+    "file": "03-mlc-context-and-source.png",
+    "source": "/Users/charlienode/.codex/generated_images/01a1da9d-4402-7993-ba21-3631ab6bcd1d/exec-3935051f-fc9f-4d5e-9c36-36edca91bdf9.png",
+    "width": 1586,
+    "height": 992,
+    "sha256": "a8dad14f09a52842a706d6386bc9d5547568a66358c25149c1fcd73067b49f44"
+  },
+  {
+    "file": "04-selection-recovery.png",
+    "source": "/Users/charlienode/.codex/generated_images/01a1da9d-4402-7993-ba21-3631ab6bcd1d/exec-4ef0317e-70dc-41d1-ad28-d9f67c3e9c18.png",
+    "width": 1586,
+    "height": 992,
+    "sha256": "b564431c57a97b4890c36ef2da8ab1ea726752a28a232e70a864fcc86dbadfb7"
+  },
+  {
+    "file": "05-comparison-board.png",
+    "source": "/Users/charlienode/.codex/generated_images/01a1da9d-4402-7993-ba21-3631ab6bcd1d/exec-3a91b93a-c38f-4b77-bdfe-49e76c0cb69e.png",
+    "width": 1585,
+    "height": 992,
+    "sha256": "6ee00607958df1fdd7261bb31ddf9ed9ee92cb33c460444ad8b5eb77b26234ce"
+  }
+]
