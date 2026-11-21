@@ -52,4 +52,13 @@ describe("hub-host keeps a finished answer's follow-ups after the reload (#4454)
   it("passes the detail read's withheld scope into the shown status", () => {
     expect(host).toMatch(/manualStatusForThread\([\s\S]*?detail\?\.manualSearchScope,\s*\)/);
   });
+
+  // #5750 r3 F11/F12: the shown status is placed by the answer recorded for
+  // it — from the detail read's named answer, or the send whose live frame
+  // carried it — never by default.
+  it("places the shown status by its recorded origin", () => {
+    expect(host).toMatch(/statusOrigins\.get\(manualStatusKey\(displayedManualStatus\)\)/);
+    expect(host).toMatch(/recordStatusOrigin\(res\.data\.manualSearch, res\.data\.manualSearchAnswer \? \{ turnId: res\.data\.manualSearchAnswer\.turnId \} : null\)/);
+    expect(host).toMatch(/recordStatusOrigin\(status, \{ requestId: body\.clientRequestId \}\);\s*manualSearchDriverRef\.current\?\.observeLive/);
+  });
 });

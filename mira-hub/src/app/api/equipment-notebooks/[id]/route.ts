@@ -24,6 +24,7 @@ import {
 } from "@/capabilities/notebook-manual-acquisition";
 import { confirmedCatalogNumber } from "@/capabilities/notebook-manual-identity";
 import { SUBJECT_READ_STEPS } from "@/capabilities/conversation-subject";
+import { isComponentAttributionEntry } from "@/capabilities/bench-components/attribution";
 
 export const dynamic = "force-dynamic";
 
@@ -166,11 +167,24 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       }
     }
     if (scope === "other") manualSearchScope = "other_model";
+    // #5750 r3 F13: the status is placed under the newest answer. An answer
+    // asked under a selected bench component is about that component, not
+    // the project's machine, so the project's status is withheld there.
+    const newest = turns.at(-1);
+    if (newest && (newest.evidence ?? []).some(isComponentAttributionEntry)) manualSearchScope = "other_model";
     if (manualSearchScope) manualSearch = null;
   }
+  // #5750 r3 F10/F11/F12: on a thread-scoped read, the saved answer this
+  // status was checked against — the newest turn the read saw. Clients show
+  // the status under that answer only, and nowhere when it is null (no answer
+  // yet) or not in their history yet.
+  const manualSearchAnswer = threadId && manualSearch
+    ? (turns.length ? { turnId: turns[turns.length - 1]!.id, clientRequestId: turns[turns.length - 1]!.clientRequestId ?? null } : null)
+    : undefined;
   return NextResponse.json({
     notebook, sources, turns, threads, photos, manualSearch,
     ...(manualSearchScope ? { manualSearchScope } : {}),
+    ...(manualSearchAnswer !== undefined ? { manualSearchAnswer } : {}),
   });
 }
 

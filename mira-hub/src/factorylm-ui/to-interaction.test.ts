@@ -20,6 +20,8 @@ import {
   turnsFromPersisted,
   manualStatusForThread,
   withHostManualStatus,
+  liveAnswerTurnId,
+  manualStatusKey,
   withManualSearchStatus,
   withSettledFollowups,
   type HubNotebookMeta,
@@ -563,33 +565,52 @@ describe("manualStatusForThread (#5750 r3)", () => {
   });
 });
 
-describe("withHostManualStatus — the status stays under the answer it was read with", () => {
-  const READY = { manufacturer: "AutomationDirect", model: "GS11N-20P2", running: false, message: "ready", manualUrl: "https://app.example.test/hub/v3/source/?file=f&page=26" };
+describe("withHostManualStatus — the status sits under the answer it belongs to (#5750 r3)", () => {
+  const READY = { manufacturer: "AutomationDirect", model: "GS11N-20P2", running: false, message: "ready", manualUrl: "https://app.example.test/hub/v3/source/?file=f&page=26", startedAt: "gen-1" };
   const saved = [row(), row({ id: "turn-2", createdAt: "2026-09-17T12:05:00.000Z" })];
   const savedTurns = threadFromPersisted(saved, meta).turns;
   const live = [
-    { ...savedTurns[0]!, id: "live-1-q", role: "user" as const },
-    { ...savedTurns[1]!, id: "live-1-a", role: "assistant" as const, parts: [], lifecycle: "running" as const },
+    { ...savedTurns[0]!, id: "live-req-9-q", role: "user" as const },
+    { ...savedTurns[1]!, id: liveAnswerTurnId("req-9"), role: "assistant" as const, parts: [], lifecycle: "running" as const },
   ];
   const statusOn = (turns: readonly { id: string; parts: readonly { type: string }[] }[]) =>
     turns.filter((t) => t.parts.some((p) => p.type === "manual_search_status")).map((t) => t.id);
 
-  it("keeps the detail status under the read's newest saved answer while a new answer streams", () => {
-    const out = withHostManualStatus([...savedTurns, ...live], READY, READY, saved);
+  it("puts a detail status under the saved answer the read named, not the one streaming", () => {
+    const out = withHostManualStatus([...savedTurns, ...live], READY, { turnId: "turn-1" }, saved);
+    expect(statusOn(out)).toEqual([answerTurnId("turn-1")]);
+  });
+
+  // Codex r3 F11: a running search seeded from detail, then a poll with no
+  // status and no scope; the follower keeps the running status. It stays
+  // with the answer the detail read named, never the sibling streaming now.
+  it("keeps a followed status under its recorded answer while a sibling streams", () => {
+    const running = { ...READY, running: true, message: undefined, manualUrl: undefined };
+    const out = withHostManualStatus([...savedTurns, ...live], running, { turnId: "turn-2" }, saved);
     expect(statusOn(out)).toEqual([answerTurnId("turn-2")]);
   });
 
-  it("shows nothing when the read had no saved answer to check it against", () => {
-    expect(statusOn(withHostManualStatus(live, READY, READY, []))).toEqual([]);
+  it("shows nothing for a status with no recorded answer, or a read that saw no answer", () => {
+    expect(statusOn(withHostManualStatus([...savedTurns, ...live], READY, undefined, saved))).toEqual([]);
+    expect(statusOn(withHostManualStatus([...savedTurns, ...live], READY, null, saved))).toEqual([]);
   });
 
-  it("control: with no answer in flight it sits on the last answer, as before", () => {
-    expect(statusOn(withHostManualStatus(savedTurns, READY, READY, saved))).toEqual([answerTurnId("turn-2")]);
+  it("shows nothing when the named answer is not in the thread yet", () => {
+    expect(statusOn(withHostManualStatus(savedTurns, READY, { turnId: "turn-from-another-device" }, saved))).toEqual([]);
   });
 
-  it("control: a status from this turn's own live lookup stays on the newest answer", () => {
+  it("puts a live lookup under the send that streamed it, then under that send's saved row", () => {
     const own = { ...READY, running: true };
-    expect(statusOn(withHostManualStatus([...savedTurns, ...live], own, READY, saved))).toEqual(["live-1-a"]);
+    expect(statusOn(withHostManualStatus([...savedTurns, ...live], own, { requestId: "req-9" }, saved))).toEqual([liveAnswerTurnId("req-9")]);
+    const afterSave = [...saved, row({ id: "turn-3", createdAt: "2026-09-17T12:10:00.000Z", clientRequestId: "req-9" } as never)];
+    const turns = threadFromPersisted(afterSave, meta).turns;
+    expect(statusOn(withHostManualStatus(turns, own, { requestId: "req-9" }, afterSave as never))).toEqual([answerTurnId("turn-3")]);
+  });
+
+  it("keys a status by its generation and machine", () => {
+    expect(manualStatusKey(READY)).toBe(manualStatusKey({ ...READY, running: true, message: "other" }));
+    expect(manualStatusKey(READY)).not.toBe(manualStatusKey({ ...READY, model: "ACS580", manufacturer: "ABB" }));
+    expect(manualStatusKey(READY)).not.toBe(manualStatusKey({ ...READY, startedAt: undefined }));
   });
 });
 

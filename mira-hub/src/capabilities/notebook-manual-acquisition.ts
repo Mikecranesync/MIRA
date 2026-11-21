@@ -39,6 +39,8 @@ import { reviewedManualFor } from "@/capabilities/reviewed-manual-library";
 import { exactManualIdentity, makerFromText } from "@/capabilities/candidate-identity";
 import { returnsToRecord } from "@/capabilities/conversation-subject";
 import { familyCovers, modelIdentitiesInText } from "@/capabilities/model-token";
+import { modelNumbersIn } from "@/capabilities/manual-applicability";
+import { foldForDetection } from "@/capabilities/detection-fold";
 import { normalizeManufacturer } from "@/lib/manufacturerNormalize";
 
 /** A running claim older than this is treated as abandoned (container restart). */
@@ -1275,9 +1277,30 @@ function catalogCodesIn(text: string): string[] {
     .filter((code) => code.length >= 6 && /[A-Z]/.test(code));
 }
 
-function modelsNamedIn(text: string): Set<string> {
+/** A request for a document about the thing named ("find the manual for X"). */
+const DOCUMENT_REQUEST = /\b(?:manuals?|datasheets?|data\s+sheets?|catalog(?:ue)?s?|spec(?:ification)?s?|wiring\s+diagrams?)\b/i;
+
+/** The models a text names. `own` (the project's identifiers) lets a compact
+ *  code the model patterns do not know count too (#5750 r3 F2): CA3KN31BD in
+ *  a CA3KN22BD project, by its shared leading characters, or any model number
+ *  in a request for a document. Fault codes and parameters (F0004, P09-03)
+ *  never count by request context. Unicode hyphens
+ *  read as the catalog hyphen (the shared detection fold). */
+function modelsNamedIn(raw: string, own?: ReadonlySet<string>): Set<string> {
+  const text = foldForDetection(raw);
   const named = new Set<string>([...modelIdentitiesInText(text)].map(norm));
   for (const code of catalogCodesIn(text)) named.add(code);
+  if (own) {
+    const request = DOCUMENT_REQUEST.test(text);
+    for (const { key } of modelNumbersIn(text)) {
+      const code = norm(key);
+      if (code.length < 4) continue;
+      // One letter then digits is how fault codes and parameters are written
+      // (F0004, E001, P0903): never a model by request context alone.
+      const faultShaped = /^[A-Z]\d+$/.test(code);
+      if ((request && !faultShaped) || [...own].some((o) => o.length >= 4 && o.slice(0, 3) === code.slice(0, 3))) named.add(code);
+    }
+  }
   const exact = exactManualIdentity("", text);
   if (exact?.model) {
     const ids = [...modelIdentitiesInText(exact.model)].map(norm);
@@ -1310,9 +1333,9 @@ export function threadStatusScope(
   const otherMaker = (named: string | null | undefined) => Boolean(named && ownMaker && maker(named) !== ownMaker);
   for (let i = questions.length - 1; i >= 0; i--) {
     const q = questions[i] ?? "";
-    const named = modelsNamedIn(q);
+    const named = modelsNamedIn(q, own);
     if (named.size) {
-      const exact = exactManualIdentity("", q);
+      const exact = exactManualIdentity("", foldForDetection(q));
       return otherMaker(exact?.manufacturer ?? makerFromText(q)) || [...named].some((id) => !isOwn(id)) ? "other" : "own";
     }
     if (machine.recordCatalog && returnsToRecord(q)) return "own";

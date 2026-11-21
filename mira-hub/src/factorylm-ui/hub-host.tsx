@@ -81,7 +81,7 @@ import { NotebookActionsMenu, NotebookActionsMenuProvider } from "./notebook-act
 import { BenchComponents } from "./BenchComponents";
 import { SEND_BLOCKED_MESSAGE, benchSendRefusal, createBenchSendGate, expectsComponentFrame, isScopeRefusalCode, parseComponentFrames, prepareChatSend, conversationKey, heldEvidenceNote, heldQuestionForSend, recordBenchScope, retryTargetCheck, targetReviewMessage, withoutScope, type BenchScopes, type BenchState, type ComponentTurnFrame, type ScopeField } from "./bench-components-logic";
 import { LEGACY_THREAD_ID, notebookMachines, notebookProjects, threadRefFromItem, notebookIdFromProject, type HubNotebook } from "./notebook-tree";
-import { answerTurnId, citationIndex, contextFor, lifecycleFromStream, livePartsWhileRunning, partsFromStream, questionPhotoPart, manualStatusForThread, threadFromPersisted, withHostManualStatus, withSettledFollowups, type SettledFollowups } from "./to-interaction";
+import { answerTurnId, citationIndex, contextFor, lifecycleFromStream, livePartsWhileRunning, partsFromStream, questionPhotoPart, manualStatusForThread, manualStatusKey, threadFromPersisted, withHostManualStatus, withSettledFollowups, type SettledFollowups, type StatusOrigin } from "./to-interaction";
 import {
   EMPTY_FIXTURE,
   NO_PROJECT_ERROR,
@@ -138,6 +138,9 @@ type Detail = {
   // #5750: set when the route withheld the status for this thread (it is
   // about another model, or its subject is out of reach).
   manualSearchScope?: "other_model" | "out_of_reach";
+  // #5750 r3: on a thread-scoped read with a status, the saved answer it was
+  // checked against (null: the thread has no answer yet).
+  manualSearchAnswer?: { turnId: string; clientRequestId: string | null } | null;
 };
 
 /** One in-flight or just-finished exchange the server has not yet returned as a row. */
@@ -325,6 +328,12 @@ export function HubShellHost() {
   // set true in effect SETUP (see the unmount effect below), so StrictMode's
   // dev-only cleanup/re-setup replay leaves it true (the round-7 F20 lesson).
   const [follow, setFollow] = useState<ManualSearchFollowState | null>(null);
+  // #5750 r3 F11: for each status shown, the answer it belongs to
+  // (`manualStatusKey` → origin). A status without one is not placed.
+  const [statusOrigins, setStatusOrigins] = useState<ReadonlyMap<string, StatusOrigin | null>>(() => new Map());
+  const recordStatusOrigin = useCallback((status: ManualSearchStatus, origin: StatusOrigin | null) => {
+    if (hostMountedRef.current) setStatusOrigins((m) => new Map(m).set(manualStatusKey(status), origin));
+  }, []);
   const manualSearchDriverRef = useRef<ManualSearchDriver | null>(null);
   const hostMountedRef = useRef(false);
   const seedManualSearch = useCallback((notebookId: string, status: ManualSearchStatus): void => {
@@ -364,10 +373,13 @@ export function HubShellHost() {
       setUnconfirmedTurns(previous => previous.some(turn => persistedRequest(savedTurns, turn.requestId))
         ? previous.filter(turn => !persistedRequest(savedTurns, turn.requestId))
         : previous);
+      if (res.data.manualSearch && res.data.manualSearchAnswer !== undefined) {
+        recordStatusOrigin(res.data.manualSearch, res.data.manualSearchAnswer ? { turnId: res.data.manualSearchAnswer.turnId } : null);
+      }
       if (!fromPoll && res.data.manualSearch) seedManualSearch(sel.notebookId, res.data.manualSearch);
       return true;
     });
-  }, [detailGate, detailLoads, seedManualSearch]);
+  }, [detailGate, detailLoads, seedManualSearch, recordStatusOrigin]);
   useEffect(() => {
     if (!selection) return;
     const openProject = async () => {
@@ -403,6 +415,7 @@ export function HubShellHost() {
     setFailedBody(null);
     manualSearchDriverRef.current?.reset();
     setFollow(null);
+    setStatusOrigins(new Map());
     syncThread(sel);
     const draft = waitingDrafts.current.get(conversationKey(sel));
     if (draft !== undefined) {
@@ -530,12 +543,12 @@ export function HubShellHost() {
         settled,
       ),
       displayedManualStatus,
-      manualStatus,
+      displayedManualStatus ? statusOrigins.get(manualStatusKey(displayedManualStatus)) : undefined,
       detail.turns,
     );
     const thread = { ...base.thread, turns };
     return shellReducer(state, { type: "hydrate", data: { thread, projects, machines, activeContext: base.activeContext } });
-  }, [state, detail, meta, selection, projects, machines, liveTurns, live, notebooks, outgoing, settledFollowups, displayedManualStatus, manualStatus]);
+  }, [state, detail, meta, selection, projects, machines, liveTurns, live, notebooks, outgoing, settledFollowups, displayedManualStatus, statusOrigins]);
 
   // The outgoing message owns its photo previews until it is dropped; leaving
   // the hub releases whatever it still holds (Codex #4289 F2).
@@ -653,6 +666,8 @@ export function HubShellHost() {
           const active = selectionRef.current;
           if (!hostMountedRef.current || abortRef.current !== ctrl || ctrl.signal.aborted ||
             active?.notebookId !== sel.notebookId || active.threadId !== sel.threadId) return;
+          // #5750 r3 F11: a live lookup belongs to the send that streamed it.
+          recordStatusOrigin(status, { requestId: body.clientRequestId });
           manualSearchDriverRef.current?.observeLive(sel.notebookId, status);
         },
       });

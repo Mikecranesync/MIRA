@@ -136,7 +136,11 @@ describe("UnifiedChat + REAL confirmIdentityProposal/fetchManualSearchStatus wra
     // server JSON, now settled.
     request.mockImplementation(async () => ({
       status: 200,
-      data: { manualSearch: { manufacturer: "SMC", model: "SS5Y3-DUW01302", running: false, message: "Found it.", startedAt: "gen-1" } },
+      // #5750 r3: the route names the saved answer it checked the status against.
+      data: {
+        manualSearch: { manufacturer: "SMC", model: "SS5Y3-DUW01302", running: false, message: "Found it.", startedAt: "gen-1" },
+        manualSearchAnswer: { turnId: "t1", clientRequestId: null },
+      },
       text: "",
     }));
     await act(async () => {

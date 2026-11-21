@@ -22,7 +22,23 @@ import { request } from "./client";
  * read failed or carried nothing. Only `"hidden"` clears a status the chat
  * already shows; `null` never does.
  */
-export type ManualSearchRead = ManualSearchStatus | "hidden" | null;
+export type ManualSearchRead = ManualSearchReadStatus | "hidden" | null;
+
+/** A status read, plus (#5750 r3 F10/F12) the saved answer the server checked
+ *  it against: that answer's key (its `clientRequestId`, else `row:<turn id>`,
+ *  the key the chat gives each answer), `null` when the thread had no answer
+ *  yet, absent when the server named none. The chat shows the status under
+ *  that answer only. */
+export type ManualSearchReadStatus = ManualSearchStatus & { readonly answer?: string | null };
+
+function answerKeyOf(raw: unknown): string | null | undefined {
+  if (raw === null) return null;
+  if (typeof raw !== "object" || raw === undefined) return undefined;
+  const r = raw as { turnId?: unknown; clientRequestId?: unknown };
+  if (typeof r.clientRequestId === "string" && r.clientRequestId) return r.clientRequestId;
+  if (typeof r.turnId === "string" && r.turnId) return `row:${r.turnId}`;
+  return undefined;
+}
 
 export async function fetchManualSearchStatus(
   notebookId: string,
@@ -39,6 +55,7 @@ export async function fetchManualSearchStatus(
   const m = (res.data as { manualSearch?: unknown }).manualSearch;
   if (typeof m !== "object" || m === null) return null;
   const r = m as Record<string, unknown>;
+  const answer = answerKeyOf((res.data as { manualSearchAnswer?: unknown }).manualSearchAnswer);
   if (typeof r.manufacturer !== "string" || typeof r.model !== "string" || typeof r.running !== "boolean") return null;
   return {
     manufacturer: r.manufacturer,
@@ -52,5 +69,6 @@ export async function fetchManualSearchStatus(
     // inherits an already-spent budget. Dropping it here silently broke that
     // keying on mobile.
     ...(typeof r.startedAt === "string" && r.startedAt ? { startedAt: r.startedAt } : {}),
+    ...(answer !== undefined ? { answer } : {}),
   };
 }

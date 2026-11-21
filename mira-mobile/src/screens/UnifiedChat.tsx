@@ -51,7 +51,7 @@ import {
 import { AnswerMarkdown, copyText } from "./AnswerMarkdown";
 import { ApiError, request } from "../api/client";
 import { confirmIdentityProposal } from "../api/identity-confirm";
-import { fetchManualSearchStatus, type ManualSearchRead } from "../api/manual-search-status";
+import { fetchManualSearchStatus, type ManualSearchRead, type ManualSearchReadStatus } from "../api/manual-search-status";
 import { canBeChatSource, enabledDocIds, getNotebookDetail, type NotebookServerTurn } from "../api/resources";
 import { threadMessages } from "../chat-adapter/turns-to-parts";
 import type { ChatCitation, ChatTurn } from "../lib/sse";
@@ -111,7 +111,7 @@ import type { ChatV2Handlers } from "./ChatV2";
 interface MobileManualSearchDriver {
   /** An authoritative read already in hand: hydration's own seed, and the
    *  confirm path's optimistic `searching:true` start. */
-  seed(read: ManualSearchStatus): void;
+  seed(read: ManualSearchReadStatus): void;
   /** A live SSE frame — routed through `observeLiveManualSearchFrame`'s own
    *  stale-replay guard (see that function's header). */
   observeLive(read: ManualSearchStatus): void;
@@ -136,6 +136,14 @@ function manualSearchKey(notebookId: string, generation: string | undefined): st
   return `${notebookId}|${generation ?? ""}`;
 }
 
+/** #5750 r3: one key per status the chat can show — its search generation
+ *  and the machine it names. An answer recorded for one status never places
+ *  another. */
+function manualStatusAnchorKey(s: ManualSearchStatus): string {
+  const norm = (v: string) => v.toUpperCase().replace(/[^A-Z0-9]/g, "");
+  return `${s.startedAt ?? ""}|${norm(s.manufacturer)}|${norm(s.model)}`;
+}
+
 function createMobileManualSearchDriver(deps: {
   readonly notebookId: string;
   readonly fetchStatus: () => Promise<ManualSearchRead>;
@@ -143,16 +151,29 @@ function createMobileManualSearchDriver(deps: {
   readonly onRefreshSources: () => void;
   readonly isAlive: () => boolean;
   readonly delayMs?: number;
-  /** #5750 r2: the newest completed answer (its key) when a read starts, and
-   *  the report that a read started at that point was applied. The status
-   *  shows under that answer, so a later answer only gets it from a read
-   *  that started after it landed. */
-  readonly answersNow?: () => string | null;
-  readonly onValidated?: (answer: string | null) => void;
+  /** #5750 r3 F10/F12: the saved answer the server checked a status
+   *  against, reported for THAT status's key (generation and machine). The
+   *  chat places only the status it shows, by its own key, so an answer
+   *  recorded with a read the follower refused (another generation or
+   *  machine) never moves it; an inconclusive read reports nothing. */
+  readonly onAnchor?: (statusKey: string, answer: string | null) => void;
 }): MobileManualSearchDriver {
   const { notebookId, fetchStatus, onStateChange, onRefreshSources, isAlive } = deps;
-  const answersNow = deps.answersNow ?? (() => null);
-  const validated = (answer: string | null) => deps.onValidated?.(answer);
+  /** The status the follower gets: the read without its answer. */
+  const statusOf = (read: ManualSearchReadStatus): ManualSearchStatus => {
+    const { answer: _answer, ...status } = read;
+    return status;
+  };
+  const recordAnswer = (read: ManualSearchReadStatus, status: ManualSearchStatus) => {
+    if (read.answer !== undefined) deps.onAnchor?.(manualStatusAnchorKey(status), read.answer);
+  };
+  /** A generationless read naming another machine than the one tracked is
+   *  the server's current status for a changed identity, not a replay: the
+   *  follower starts over from it instead of refusing it (#5750 r3 F10). */
+  const sameMachine = (a: ManualSearchStatus, b: ManualSearchStatus) =>
+    manualStatusAnchorKey({ ...a, startedAt: undefined }) === manualStatusAnchorKey({ ...b, startedAt: undefined });
+  const baseFor = (status: ManualSearchStatus) =>
+    state && !status.startedAt && !sameMachine(state.status, status) ? null : state;
   const delayMs = deps.delayMs ?? 4000;
   let state: ManualSearchFollowState | null = null;
   let timer: ReturnType<typeof setTimeout> | null = null;
@@ -214,7 +235,6 @@ function createMobileManualSearchDriver(deps: {
     timer = setTimeout(() => {
       timer = null;
       const mine = ++seq;
-      const answers = answersNow();
       // A discarded tick spends no budget; keep the chain alive if nothing
       // newer already rescheduled it.
       const discard = () => {
@@ -236,11 +256,15 @@ function createMobileManualSearchDriver(deps: {
             discard();
             return;
           }
-          if (read) {
-            lastApplied = mine;
-            validated(answers);
+          if (!read) {
+            commit(advanceManualSearchFollow(state, notebookId, null));
+            return;
           }
-          commit(advanceManualSearchFollow(state, notebookId, read));
+          lastApplied = mine;
+          const status = statusOf(read);
+          const base = baseFor(status);
+          commit(base ? advanceManualSearchFollow(base, notebookId, status) : reseedManualSearchFollow(null, notebookId, status));
+          recordAnswer(read, status);
         })
         .catch(() => {
           if (!isAlive() || !state) return;
@@ -255,9 +279,12 @@ function createMobileManualSearchDriver(deps: {
 
   return {
     seed(read) {
+      // A confirmation names the answer whose card was confirmed (#5750 r3
+      // F11); without one the status is placed only once a read names one.
       lastApplied = ++seq;
-      validated(answersNow());
-      commit(reseedManualSearchFollow(state, notebookId, read));
+      const status = statusOf(read);
+      commit(reseedManualSearchFollow(baseFor(status), notebookId, status));
+      recordAnswer(read, status);
     },
     observeLive(read) {
       // Codex F28 (round 13): `lastApplied`/`seq` order AUTHORITATIVE GET
@@ -283,7 +310,6 @@ function createMobileManualSearchDriver(deps: {
     probe() {
       const capturedKey = currentKey();
       const mine = ++seq;
-      const answers = answersNow();
       void fetchStatus()
         .then((read) => {
           if (!isAlive() || !read) return; // ends quietly — nothing to reconcile.
@@ -296,8 +322,9 @@ function createMobileManualSearchDriver(deps: {
           }
           if (currentKey() !== capturedKey && manualSearchKey(notebookId, read.startedAt) !== currentKey()) return;
           lastApplied = mine;
-          validated(answers);
-          commit(reseedManualSearchFollow(state, notebookId, read));
+          const status = statusOf(read);
+          commit(reseedManualSearchFollow(baseFor(status), notebookId, status));
+          recordAnswer(read, status);
         })
         .catch(() => { /* ends quietly — never retries on its own */ });
     },
@@ -506,6 +533,8 @@ function UnifiedChatForNotebook({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.sendError]);
   const baseThread = useMemo(() => toThread(messages, fullMeta), [messages, fullMeta]);
+  const baseThreadRef = useRef(baseThread);
+  baseThreadRef.current = baseThread;
   // #5750 r2: one stable key per completed answer, in thread order (every
   // saved row and every live turn yields exactly one assistant turn; the one
   // still streaming is not counted). A saved row keys on its clientRequestId,
@@ -521,20 +550,21 @@ function UnifiedChatForNotebook({
     ],
     [turns, liveTurns],
   );
-  // The newest answer a status read can rely on the server having seen. A
-  // stopped or interrupted live answer is saved after its stream closes (or
-  // not at all), so a read started right after it may not include that
-  // question: such a read stays on the answer before it.
-  const newestSeen = useMemo(() => {
-    for (let i = answerKeys.length - 1; i >= 0; i--) {
-      const live = liveTurns[i - turns.length];
-      if (live && (live.a.status === "stopped" || !live.a.status)) continue;
-      return answerKeys[i]!;
+  const answerKeysRef = useRef(answerKeys);
+  answerKeysRef.current = answerKeys;
+  /** The newest answer carrying this identity card (the one confirmed), by
+   *  its key, or null when none does. */
+  const answerWithProposal = (proposal: { manufacturer: string; model: string }): string | null => {
+    const norm = (v: string) => v.toUpperCase().replace(/[^A-Z0-9]/g, "");
+    let n = 0;
+    let found = 0;
+    for (const t of baseThreadRef.current.turns) {
+      if (t.role !== "assistant") continue;
+      n += 1;
+      if (t.parts.some((p) => p.type === "identity_proposal" && norm(p.manufacturer) === norm(proposal.manufacturer) && norm(p.model) === norm(proposal.model))) found = n;
     }
-    return null;
-  }, [answerKeys, liveTurns, turns.length]);
-  const newestAnswerRef = useRef<string | null>(null);
-  newestAnswerRef.current = newestSeen;
+    return found ? answerKeysRef.current[found - 1] ?? null : null;
+  };
 
   // Codex round 2 (#4195 F4/F6/F8/F9): "Searching…" must resolve once the
   // background search settles, must NOT poll forever on a stuck/orphaned
@@ -559,10 +589,10 @@ function UnifiedChatForNotebook({
   const notebookIdRef = useRef(notebookId);
   notebookIdRef.current = notebookId;
   const [follow, setFollow] = useState<ManualSearchFollowState | null>(null);
-  // #5750 F1: true from a send until the status re-read after it settles.
-  // #5750 r2: the answer the tracked status was last read with (its key), or
-  // null when that read saw no answer yet.
-  const [statusAnswer, setStatusAnswer] = useState<string | null | undefined>(undefined);
+  // #5750 r3 F10/F12: for each status the chat has shown, the saved answer
+  // the server checked it against (by `manualStatusAnchorKey`). A status with
+  // no entry, or whose answer is not in this history yet, is placed nowhere.
+  const [statusAnswers, setStatusAnswers] = useState<ReadonlyMap<string, string | null>>(() => new Map());
   // Codex round 6 F17 (#4195): `follow` tracks exactly ONE generation at a
   // time (by design — see `manual-search-follow.ts`'s header). Once a
   // SECOND, different search takes over that one slot, the FIRST search's
@@ -598,7 +628,7 @@ function UnifiedChatForNotebook({
   // overlay a turn on notebook B's thread.
   useEffect(() => {
     setFollow(null);
-    setStatusAnswer(undefined);
+    setStatusAnswers(new Map());
     // A scope stashed for the previous notebook must never reach this one's send.
     confirmedScopeRef.current = null;
     setSettledManualSearches(new Map());
@@ -659,18 +689,14 @@ function UnifiedChatForNotebook({
         orphaned.push({ manufacturer: part.manufacturer, model: part.model, running: false, startedAt: part.startedAt });
       }
     }
-    // #5750 F1 / r2: the active status sits under the answer it was last read
-    // with. A newer answer (a look-alike request, still streaming or already
-    // done) only gets it from a read that started after that answer landed;
-    // until then a failed or inconclusive read leaves it where it was.
-    // The answer the status was read with, by position now. No applied read
-    // yet, a read that saw no answer, or a key no longer in the thread (it
-    // slid out of the saved window, or a legacy live turn was saved under a
-    // new id) places it nowhere until the next read. Never the answer still
-    // streaming: positions count completed answers only.
-    const anchor = statusAnswer == null ? 0 : answerKeys.indexOf(statusAnswer) + 1;
+    // #5750 r3 F10/F12: the active status sits under the saved answer the
+    // server named for THIS status, found by its key in this history. No
+    // answer named, a thread with no answer, or one not synced here yet
+    // places it nowhere; a status part already in a turn updates in place.
+    const named = follow ? statusAnswers.get(manualStatusAnchorKey(follow.status)) : undefined;
+    const anchor = named == null ? 0 : answerKeys.indexOf(named) + 1;
     return withManualSearchOverrides(baseThread, [...historical, ...orphaned], follow?.status ?? null, anchor);
-  }, [baseThread, settledManualSearches, follow?.key, follow?.status, statusAnswer, answerKeys]);
+  }, [baseThread, settledManualSearches, follow?.key, follow?.status, statusAnswers, answerKeys]);
 
   useEffect(() => {
     dispatch({
@@ -736,9 +762,8 @@ function UnifiedChatForNotebook({
       onStateChange: setFollow,
       onRefreshSources: () => void refreshPromotedScopeRef.current(),
       isAlive: () => aliveRef.current,
-      answersNow: () => newestAnswerRef.current,
-      onValidated: (answers) => {
-        if (aliveRef.current) setStatusAnswer(answers);
+      onAnchor: (statusKey, answer) => {
+        if (aliveRef.current) setStatusAnswers((m) => new Map(m).set(statusKey, answer));
       },
     });
   }
@@ -1216,11 +1241,13 @@ function UnifiedChatForNotebook({
             // above; never restart following (seed/probe) for a dead instance.
             if (!aliveRef.current) return result;
             if (result.searching) {
+              const confirmedOn = answerWithProposal(proposal);
               manualSearchDriverRef.current?.seed({
                 manufacturer: proposal.manufacturer,
                 model: proposal.model,
                 running: true,
                 ...(result.startedAt ? { startedAt: result.startedAt } : {}),
+                ...(confirmedOn ? { answer: confirmedOn } : {}),
               });
             } else {
               manualSearchDriverRef.current?.probe();

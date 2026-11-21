@@ -247,6 +247,79 @@ describe("GET /api/equipment-notebooks/[id] — manualSearch (T2 #4189)", () => 
       vi.mocked(listTurns).mockResolvedValue([ask("Find me the manual for AutomationDirect GS11N-20P25")] as never);
       const body = await (await GET(req, params)).json();
       expect(body.manualSearch).toEqual(READY);
+      // No thread, so no answer to place it under (#5750 r3).
+      expect(body).not.toHaveProperty("manualSearchAnswer");
+    });
+
+    // #5750 r3 F10/F11/F12: the read names the saved answer it checked.
+    it("names the newest saved answer the status was checked against", async () => {
+      vi.mocked(listTurns).mockResolvedValue([
+        { id: "t-1", question: "Find me the manual", evidence: [], clientRequestId: "req-1" },
+        { id: "t-2", question: "What is the rated current?", evidence: [], clientRequestId: null },
+      ] as never);
+      const body = await (await GET(threadReq, params)).json();
+      expect(body.manualSearch).toEqual(READY);
+      expect(body.manualSearchAnswer).toEqual({ turnId: "t-2", clientRequestId: null });
+    });
+
+    it("names no answer when the thread has none yet", async () => {
+      const body = await (await GET(threadReq, params)).json();
+      expect(body.manualSearch).toEqual(READY); // precondition: the status itself is returned.
+      expect(body.manualSearchAnswer).toBeNull();
+    });
+
+    it("names no answer when the status is withheld", async () => {
+      vi.mocked(listTurns).mockResolvedValue([ask("Find me the manual for AutomationDirect GS11N-20P25")] as never);
+      const body = await (await GET(threadReq, params)).json();
+      expect(body.manualSearchScope).toBe("other_model"); // precondition.
+      expect(body).not.toHaveProperty("manualSearchAnswer");
+    });
+
+    // #5750 r3 F13: an answer asked under a selected bench component.
+    it("withholds it when the newest answer was asked under a bench component", async () => {
+      const attributed = {
+        id: "t-c", question: "What is the rated current?",
+        evidence: [{ kind: "component_attribution", componentId: "c-acs580", revision: 1, selectionVersion: 1, label: "ABB ACS580" }],
+      };
+      vi.mocked(listTurns).mockResolvedValue([attributed] as never);
+      const body = await (await GET(threadReq, params)).json();
+      expect(body.manualSearch).toBeNull();
+      expect(body.manualSearchScope).toBe("other_model");
+      // Control: the same question with no component keeps it.
+      vi.mocked(listTurns).mockResolvedValue([ask("What is the rated current?")] as never);
+      const control = await (await GET(threadReq, params)).json();
+      expect(control.manualSearch).toEqual(READY);
+    });
+
+    // #5750 r3 F2: a Unicode hyphen reads as the catalog hyphen, and a
+    // compact code the model patterns do not know still names a model.
+    it("decides a catalog request the same way with an ASCII or a nonbreaking hyphen", async () => {
+      vi.mocked(getNotebook).mockResolvedValue({
+        ...NOTEBOOK, identityStatus: "user_confirmed", manufacturer: "Allen-Bradley", model: "PowerFlex 525", catalogNumber: "25B-D017N104",
+      } as never);
+      currentManualSearchStatus.mockResolvedValue({ ...READY, manufacturer: "Allen-Bradley", model: "PowerFlex 525" });
+      const scopeOf = async (question: string) => {
+        vi.mocked(listTurns).mockResolvedValue([ask(question)] as never);
+        const body = await (await GET(threadReq, params)).json();
+        return body.manualSearchScope ?? "shown";
+      };
+      expect(await scopeOf("Find me the manual for 25B-D024N104")).toBe("other_model");
+      expect(await scopeOf("Find me the manual for 25B\u2011D024N104")).toBe("other_model");
+      expect(await scopeOf("Find me the manual for 25B-D017N104")).toBe("shown");
+      expect(await scopeOf("Find me the manual for 25B\u2011D017N104")).toBe("shown");
+    });
+
+    it("drops it for a makerless compact sibling code, and keeps it for the project's own", async () => {
+      vi.mocked(getNotebook).mockResolvedValue({
+        ...NOTEBOOK, identityStatus: "user_confirmed", manufacturer: "Schneider Electric", model: "CA3KN22BD", catalogNumber: "",
+      } as never);
+      currentManualSearchStatus.mockResolvedValue({ ...READY, manufacturer: "Schneider Electric", model: "CA3KN22BD" });
+      vi.mocked(listTurns).mockResolvedValue([ask("Find the manual for CA3KN31BD")] as never);
+      expect((await (await GET(threadReq, params)).json()).manualSearchScope).toBe("other_model");
+      vi.mocked(listTurns).mockResolvedValue([ask("Find the manual for CA3KN22BD")] as never);
+      const own = await (await GET(threadReq, params)).json();
+      expect(own).not.toHaveProperty("manualSearchScope");
+      expect(own.manualSearch).not.toBeNull();
     });
   });
 

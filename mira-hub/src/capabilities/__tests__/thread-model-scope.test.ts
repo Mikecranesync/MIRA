@@ -85,6 +85,32 @@ describe("threadStatusScope", () => {
     expect(threadStatusScope(["Find me the manual for the PowerFlex 525"], pf)).toBe("own");
   });
 
+  // #5750 r3 F2: Unicode hyphens and compact codes.
+  it("reads a nonbreaking-hyphen catalog number as the ASCII one", () => {
+    const pf = { manufacturer: "Allen-Bradley", model: "PowerFlex 525", catalogNumber: "25B-D017N104", recordCatalog: null };
+    expect(threadStatusScope(["Find me the manual for 25B\u2011D024N104"], pf)).toBe("other");
+    expect(threadStatusScope(["Find me the manual for 25B\u2011D017N104"], pf)).toBe("own");
+  });
+
+  it("is other for a compact sibling code, by shared leading characters or in a document request", () => {
+    const ca = { manufacturer: "Schneider Electric", model: "CA3KN22BD", catalogNumber: "", recordCatalog: null };
+    expect(threadStatusScope(["Find the manual for CA3KN31BD"], ca)).toBe("other");
+    expect(threadStatusScope(["does the CA3KN31BD have a 24V coil"], ca)).toBe("other");
+    expect(threadStatusScope(["Find the datasheet for LC1D09BD"], ca)).toBe("other");
+    expect(threadStatusScope(["Find the manual for CA3KN22BD"], ca)).toBe("own");
+  });
+
+  it("is other for a hyphenated catalog code outside a request and without a shared prefix", () => {
+    expect(threadStatusScope(["does the 1756-L71 need a battery"], GS10)).toBe("other");
+  });
+
+  it("control: fault codes and parameters never name a model, even in a document request", () => {
+    const ca = { manufacturer: "Schneider Electric", model: "CA3KN22BD", catalogNumber: "", recordCatalog: null };
+    expect(threadStatusScope(["what does the manual say about F0004"], GS10)).toBe("undecided");
+    expect(threadStatusScope(["what does the manual say about parameter P09-03"], GS10)).toBe("undecided");
+    expect(threadStatusScope(["the coil hums, error E001 on the panel"], ca)).toBe("undecided");
+  });
+
   // #5750 r2 F3: a model named in the same question beats the return phrase.
   it("is other when the return phrase names a sibling in the same question", () => {
     expect(threadStatusScope(["OK, back to my drive. Does the GS11N-20P25 need a brake resistor?"], CONFIRMED)).toBe("other");

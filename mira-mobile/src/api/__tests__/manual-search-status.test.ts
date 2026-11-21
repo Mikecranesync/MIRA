@@ -96,6 +96,26 @@ describe("fetchManualSearchStatus", () => {
     expect(await fetchManualSearchStatus("nb-1", { threadId: "thrd-1" })).toBeNull();
   });
 
+  // #5750 r3 F10/F12: the saved answer the server checked the status against,
+  // keyed the way the chat keys its answers.
+  it("carries the answer the server named, by request id, else by row id", async () => {
+    const status = { manufacturer: "AutomationDirect", model: "GS11N-20P2", running: false };
+    request.mockResolvedValue({ status: 200, data: { manualSearch: status, manualSearchAnswer: { turnId: "t-9", clientRequestId: "req-9" } }, text: "" });
+    expect(await fetchManualSearchStatus("nb-1", { threadId: "thrd-1" })).toEqual({ ...status, answer: "req-9" });
+    request.mockResolvedValue({ status: 200, data: { manualSearch: status, manualSearchAnswer: { turnId: "t-9", clientRequestId: null } }, text: "" });
+    expect(await fetchManualSearchStatus("nb-1", { threadId: "thrd-1" })).toEqual({ ...status, answer: "row:t-9" });
+    request.mockResolvedValue({ status: 200, data: { manualSearch: status, manualSearchAnswer: null }, text: "" });
+    expect(await fetchManualSearchStatus("nb-1", { threadId: "thrd-1" })).toEqual({ ...status, answer: null });
+  });
+
+  it("control: no named answer leaves the field off", async () => {
+    const status = { manufacturer: "AutomationDirect", model: "GS11N-20P2", running: false };
+    request.mockResolvedValue({ status: 200, data: { manualSearch: status }, text: "" });
+    expect(await fetchManualSearchStatus("nb-1", { threadId: "thrd-1" })).toEqual(status);
+    request.mockResolvedValue({ status: 200, data: { manualSearch: status, manualSearchAnswer: { turnId: 7 } }, text: "" });
+    expect(await fetchManualSearchStatus("nb-1", { threadId: "thrd-1" })).toEqual(status);
+  });
+
   it("returns null (never throws) on a non-200 or malformed response", async () => {
     request.mockResolvedValue({ status: 500, data: {}, text: "" });
     expect(await fetchManualSearchStatus("nb-1")).toBeNull();
