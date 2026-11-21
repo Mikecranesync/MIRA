@@ -45,7 +45,7 @@ const ragMock = vi.hoisted(() => ({
   buildManualUserContent: vi.fn((q: string) => q),
   corpusManufacturers: vi.fn(async () => [] as string[]),
   manufacturerFromObservationText: vi.fn(() => null as string | null),
-  resolveModelFromObservationText: vi.fn(() => ({ model: null as string | null, ambiguous: false })),
+  resolveModelFromObservationText: vi.fn((_text: string) => ({ model: null as string | null, ambiguous: false })),
 }));
 vi.mock("@/lib/manual-rag", () => ragMock);
 
@@ -100,6 +100,7 @@ vi.mock("@/capabilities/notebook-manual-acquisition", async (importOriginal) => 
 });
 
 import { POST } from "../route";
+import { resolveModelFromObservationText } from "@/capabilities/model-token";
 
 function providerStream(text: string) {
   const enc = new TextEncoder();
@@ -157,6 +158,33 @@ beforeEach(() => {
 });
 
 const SMC_MESSAGE = "Find the manual for the SMC SS5Y3-DUW01302";
+
+describe("exact catalog number on an explicit manual request", () => {
+  it("asks for missing identification without spending a search or generating a guess", async () => {
+    const res = await POST(req({ message: "Find me the manual", mode: "general" }), params);
+    const result = await frames(res);
+    expect(result.find(({ kind }) => kind === "status")).toMatchObject({
+      status: "insufficient_evidence",
+      message: expect.stringContaining("What manufacturer and model or order number"),
+    });
+    expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["AutomationDirect", "GS11N-20P2"],
+    ["Allen-Bradley", "2080-LC20-20QBB"],
+    ["Siemens", "6AV2124-0GC01-0AX0"],
+    ["Schneider Electric", "CA3KN22BD"],
+    ["ABB", "ACS355"],
+  ])("keeps the catalog number typed for %s", async (maker, part) => {
+    ragMock.corpusManufacturers.mockResolvedValue([maker]);
+    ragMock.resolveModelFromObservationText.mockImplementationOnce(resolveModelFromObservationText);
+    const res = await POST(req({ message: `Find the official manual for ${maker} ${part}.`, mode: "general" }), params);
+    const result = await frames(res);
+    expect(result.find((frame) => frame.kind === "identity_proposal")).toMatchObject({ model: part });
+  });
+});
 
 describe("#4160 S6 RC1 — candidate identity proposal when the corpus misses", () => {
   it("proposes {manufacturer, model} from the label text even though corpusManufacturers() is empty", async () => {
@@ -261,15 +289,14 @@ describe("#4160 S6 R2 — candidate-basis background acquisition triggers from t
     expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
   });
 
-  it("relays the running search's honest status through the system prompt directive (unchanged — the model still gets the same instruction)", async () => {
+  it("relays a typed request's running status without claiming a photo or preempting the result", async () => {
     await (await POST(req({ message: SMC_MESSAGE, mode: "general" }), params)).text();
     const call = vi.mocked(global.fetch).mock.calls.at(-1)!;
     const sentBody = JSON.parse((call[1] as RequestInit).body as string);
     const systemMsg = (sentBody.messages as { role: string; content: string }[]).find((m) => m.role === "system");
     expect(systemMsg?.content).toMatch(/UNCONFIRMED MACHINE/);
-    expect(systemMsg?.content).toMatch(/added to this notebook's Sources and turned on/);
-    expect(systemMsg?.content).not.toMatch(/Use its manuals|confirmed as that machine/);
-    expect(systemMsg?.content).toMatch(/looking for the official SMC SS5Y3-DUW01302 manual/);
+    expect(systemMsg?.content).toMatch(/looking for the official documentation for the SMC SS5Y3-DUW01302/);
+    expect(systemMsg?.content).not.toMatch(/read off the technician's photo|added to this notebook's Sources and turned on/);
   });
 
   // T2 (#4189, mira-84): R16-lite (e41b21a78) deliberately shipped the prose

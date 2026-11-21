@@ -19,9 +19,11 @@
  * confirms it (R2/R3).
  */
 import { oemMakerTable } from "@/lib/manual-discovery";
-import { namesOnlyThisMachine } from "./identity-proposal";
+import { namesOnlyThisMachine, proposeIdentityFromText, type IdentityProposal } from "./identity-proposal";
+import { reviewedManualFor } from "./reviewed-manual-library";
 import {
   identifierKey,
+  labelledPartCodes,
   mentionsAssetLabel,
   mentionsSerialLabel,
   partLabelAfterPrivateLabel,
@@ -140,6 +142,51 @@ const MANUAL_INTENT_RE =
 
 export function wantsManualDocumentation(message: string): boolean {
   return MANUAL_INTENT_RE.test(message);
+}
+
+/** A request for the document itself, as opposed to a question about its contents. */
+export function asksToFindManual(message: string): boolean {
+  return /^(?:(?:can|could|would) you\s+|please\s+)*(?:find|get|open|show|send|look up|give|where (?:can|do) I (?:find|get))\b/i
+    .test(message.trim()) && wantsManualDocumentation(message);
+}
+
+/**
+ * Select the exact identity for a manual request from either input. A single
+ * explicitly labelled photo model can be offered for confirmation even if the
+ * loose prose scan sees other tokens on the plate. That exception never grants
+ * permission to start an automatic external search.
+ */
+export function exactManualIdentity(photo: string, typed: string): IdentityProposal | null {
+  const candidate = extractCandidateIdentity(photo, typed);
+  // Many makers use compact model names that the part-number scanner does not
+  // recognize. A reviewed record can support displaying a confirmation card.
+  if (!candidate && !photo && !mentionsSerialLabel(typed) && !mentionsAssetLabel(typed)) {
+    const maker = makerFromText(typed);
+    const proposal = maker && proposeIdentityFromText(typed, [maker]);
+    return proposal && reviewedManualFor(proposal) ? proposal : null;
+  }
+  if (!candidate?.manufacturer) return null;
+  if (isSafeCandidateSearchIdentity(photo, typed, candidate.part, candidate.manufacturer)) {
+    return { manufacturer: candidate.manufacturer, model: candidate.part };
+  }
+
+  const { part, manufacturer } = candidate;
+  const key = part.toUpperCase();
+  const labelled = labelledPartCodes(photo);
+  if (
+    !photo ||
+    makerFromText(photo) !== manufacturer ||
+    unambiguousPartNumber(photo)?.toUpperCase() !== key ||
+    labelled.length !== 1 ||
+    labelled[0] !== key ||
+    mentionsSerialLabel(photo) || mentionsAssetLabel(photo) ||
+    partLabelAfterPrivateLabel(photo) ||
+    privateIdentifierKeys(photo).size > 0 ||
+    privateSuffixTails(photo).length > 0 ||
+    !isSafeCandidateSearchIdentity("", `${manufacturer} ${part}\n${typed}`, part, manufacturer)
+  ) return null;
+
+  return { manufacturer, model: part };
 }
 
 /**

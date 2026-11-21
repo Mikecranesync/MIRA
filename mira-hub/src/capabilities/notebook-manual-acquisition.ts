@@ -441,7 +441,7 @@ const NOTEBOOK_KEY_SQL = `upper(regexp_replace(coalesce(n.manufacturer, ''), '[^
  * match_state='candidate', enabled_by_default=false regardless of what
  * `patch` asked for — the fence of record, not a formality.
  */
-export function fencedWriter(key: string, gen: string, basis: "confirmed" | "candidate" = "confirmed"): SourceStateWriter {
+export function fencedWriter(key: string, gen: string, basis: "confirmed" | "candidate" = "confirmed", fromPhoto = true): SourceStateWriter {
   return async (tenantId, notebookId, docId, patch) => {
     try {
       return await withTenantContext(tenantId, async (c) => {
@@ -472,7 +472,7 @@ export function fencedWriter(key: string, gen: string, basis: "confirmed" | "can
         const evidence: Record<string, unknown> = {
           ...patch.matchEvidence,
           autoAcquisitionKey: key,
-          ...(basis === "candidate" ? { sourceLabel: "from_photo" } : {}),
+          ...(basis === "candidate" && fromPhoto ? { sourceLabel: "from_photo" } : {}),
         };
         const promoteNow = basis === "candidate" && evidence.candidateApplicability === "verified";
         const matchState = basis === "confirmed" ? patch.matchState : promoteNow ? "verified" : "candidate";
@@ -737,6 +737,8 @@ export interface StartInput {
    * Defaults to "confirmed" — identical to pre-S6 behaviour.
    */
   basis?: "confirmed" | "candidate";
+  /** Set false when the candidate came from a typed request. */
+  fromPhoto?: boolean;
 }
 
 /**
@@ -776,7 +778,7 @@ export async function startManualAcquisition(
         // (nameplate confirm + confirmed-identity notebook) caller.
         ...(basis === "candidate" ? { basis } : {}),
         ...(input.turnSpanContext ? { turnSpanContext: input.turnSpanContext } : {}),
-        writeSourceState: fencedWriter(key, gen, basis),
+        writeSourceState: fencedWriter(key, gen, basis, input.fromPhoto),
         attach: fencedAttach(key, gen, basis),
       });
     } catch (err) {
@@ -967,15 +969,15 @@ export function acquisitionDeclineText(
     // whose text verifies the model lands ON (fencedWriter above).
     switch (rec.state) {
       case "running":
-        return `I read the ${label} off your photo and I'm looking for the official ${label} manual now. When I find it, it'll be added to this notebook's Sources and turned on — ask again and I'll answer from it and show you the page.`;
+        return `I'm looking for the official documentation for the ${label}. I'll show the result here when the lookup finishes.`;
       case "complete":
         // #5268 Codex F2: "complete" is history, not the source's state now.
         // A caller that KNOWS the source is off says so; otherwise the copy
         // claims only what happened (found and added), never "switched on".
         if (opts.sourceOff) {
-          return `I found the official ${label} manual from your photo and added it to this notebook's Sources, but it's turned off there now, so I can't answer from it. Turn it back on in Sources and ask again — I'll answer from it and show you the page.`;
+          return `I found the official documentation for the ${label} and added it to this notebook's Sources, but it's turned off there now, so I can't answer from it. Turn it back on in Sources and ask again — I'll answer from it and show you the page.`;
         }
-        return `I found the official ${label} manual from your photo and added it to this notebook's Sources. Ask again and I'll answer from it and show you the page.`;
+        return `I found the official documentation for the ${label} and added it to this notebook's Sources. Ask again and I'll answer from it and show you the page.`;
       // candidate_review (Codex post-cap 4 F9 / 13 F13 / 14 F13): the manual's
       // text did NOT verify this model, so the shared copy below gives the one
       // real next step: check it in Sources, or the URL and the upload
@@ -1134,11 +1136,20 @@ export async function currentManualSearchStatus(
   // F10: the acquired source's CURRENT state wins over the historical record.
   const ready = applicableReadySource(sources, identity);
   if (ready) {
+    const evidence = ready.docId === rec.doc_id && !rec.source_removed
+      ? ready.matchEvidence as { reviewedLibraryPage?: number; reviewedLibraryTitle?: string } | null
+      : null;
+    const page = evidence?.reviewedLibraryPage;
+    const title = evidence?.reviewedLibraryTitle;
+    const reviewed = typeof page === "number" && Number.isSafeInteger(page) && page > 0 &&
+      typeof title === "string";
     return {
       manufacturer,
       model,
       running: false,
-      message: `The ${manufacturer} ${model} manual is ready — I can answer from it.`,
+      message: reviewed
+        ? `${title} is ready in Sources. PDF page ${page} shows coverage for ${model}.`
+        : `The ${manufacturer} ${model} manual is ready — I can answer from it.`,
       ...(startedAt ? { startedAt } : {}),
     };
   }

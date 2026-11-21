@@ -1,0 +1,35 @@
+[
+  {
+    "manufacturer": "AutomationDirect",
+    "models": ["GS11N-20P2"],
+    "title": "DURApulse GS10 Drive User Manual, Rev C",
+    "url": "https://cdn.automationdirect.com/static/manuals/gs10m/gs10usermanual.pdf",
+    "sha256": "43a66d756b9c53f216316eeb78d13db26f9698859d08b5f70d2ed3715e9602af",
+    "page": 26
+  },
+  {
+    "manufacturer": "Siemens",
+    "models": ["6AV2124-0GC01-0AX0"],
+    "title": "SIMATIC HMI Comfort Panels Operating Instructions, 07/2022",
+    "url": "https://cache.industry.siemens.com/dl/files/233/49313233/att_904646/v1/HWComfortPanelsenUS_en-US.pdf",
+    "sha256": "fa79e60e39d19165e5bdeea45189efff06eca3823948de3c81c436d093170f81",
+    "page": 3
+  },
+  {
+    "manufacturer": "Schneider Electric",
+    "models": ["CA3KN22BD"],
+    "title": "TeSys K CA3KN22BD Product Datasheet, English US",
+    "filename": "CA3KN22BD_DATASHEET_US_en-US.pdf",
+    "url": "https://download.se.com/files?p_Doc_Ref=CA3KN22BD_DATASHEET&p_enDocType=Product+Data+Sheet&p_File_Name=CA3KN22BD_DATASHEET_US_en-US.pdf",
+    "sha256": "196cb5bc89f87584da496dc288791e0f9c0819bd6b81b79f11fe90d39e9db08d",
+    "page": 1
+  },
+  {
+    "manufacturer": "ABB",
+    "models": ["ACS355"],
+    "title": "ABB ACS355 User’s Manual, English",
+    "url": "https://library.e.abb.com/public/805f31a82d524d8aa8a750011e2cd001/EN_ACS355_UM_E_A5.pdf",
+    "sha256": "49aab44098854107ee26a9b702bd23afc004fbb98d7a76d137ba12455699eeac",
+    "page": 1
+  }
+]

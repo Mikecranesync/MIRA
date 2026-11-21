@@ -12,7 +12,9 @@
  * fetcher; a manual enters chat only when its OWN text verifies it
  * (assessApplicability), otherwise it is attached disabled as a candidate.
  */
+import { createHash } from "node:crypto";
 import { MANUAL_SEARCH_LIMIT_COPY, MANUAL_SEARCH_UNAVAILABLE_COPY } from "@/capabilities/manual-search-copy";
+import { reviewedManualFor } from "@/capabilities/reviewed-manual-library";
 import { withTenantContext } from "@/lib/tenant-context";
 import { setSourceState } from "@/lib/equipment-notebooks";
 import {
@@ -29,6 +31,7 @@ import {
   allowedHostsForCandidate,
   isOemDocumentationHost,
   type CandidateTrail,
+  type DiscoveryResult,
 } from "@/lib/manual-discovery";
 import { safeDownloadPdf, safePdfFilename } from "@/lib/safe-download";
 import { assessApplicability, type ApplicabilityVerdict } from "@/lib/manual-applicability";
@@ -167,6 +170,7 @@ function outcome(status: ManualAcquisitionStatus, payload: Record<string, unknow
 async function chunksForDoc(
   tenantId: string,
   docId: string,
+  reviewedPage: number | null = null,
 ): Promise<Array<{ content: string; page: number | null }> | null> {
   try {
     return await withTenantContext(tenantId, async (c) => {
@@ -174,9 +178,10 @@ async function chunksForDoc(
         `SELECT content, source_page
            FROM knowledge_entries
           WHERE tenant_id = $1 AND doc_id = $2::uuid
-          ORDER BY (metadata->>'chunk_index')::int NULLS LAST
+          ORDER BY CASE WHEN source_page = $4::int THEN 0 ELSE 1 END,
+                   (metadata->>'chunk_index')::int NULLS LAST
           LIMIT $3`,
-        [tenantId, docId, APPLICABILITY_CHUNK_LIMIT],
+        [tenantId, docId, APPLICABILITY_CHUNK_LIMIT, reviewedPage],
       );
       return r.rows.map((row) => ({
         content: row.content ?? "",
@@ -303,7 +308,32 @@ async function acquireInner(
   // R15 span: provider-query accounting, cap state and candidates considered
   // — set from the discovery result itself, never invented when mira-ask
   // didn't carry search_stats (an old version, or a malformed response).
-  const discovery = await safeSpan("manual_acquisition.search", {}, async () => {
+  const reviewed = reviewedManualFor(identity);
+  const discovery: DiscoveryResult = await safeSpan("manual_acquisition.search", {}, async () => {
+    setActiveSpanAttrs({ "mira.acquisition.lookup": reviewed ? "reviewed_library" : "manufacturer_search" });
+    if (reviewed) {
+      setActiveSpanAttrs({ "mira.acquisition.provider_queries": 0, "mira.acquisition.cost_usd": 0 });
+      return {
+        serviceAvailable: true,
+        found: true,
+        candidate: {
+          url: reviewed.url,
+          title: reviewed.title,
+          host: new URL(reviewed.url).hostname,
+          score: 0,
+          docType: null,
+          isDirectPdf: true,
+          validated: false,
+        },
+        validated: false,
+        isDirectPdf: true,
+        oemHost: true,
+        trustedDistributorHost: false,
+        reason: "reviewed library publication",
+        oemRequestUrl: null,
+        quotaExceeded: false,
+      };
+    }
     const d = await discoverManual(
       {
         manufacturer: identity.manufacturer,
@@ -414,7 +444,7 @@ async function acquireInner(
   // applicability block below. A photo-basis search ("candidate") is NOT a
   // review hold by itself (owner decision 2026-11-07): the manual's own text
   // decides, exactly as for a confirmed identity.
-  const requiresUserConfirmation = probeUnvalidated;
+  const requiresUserConfirmation = probeUnvalidated && reviewed === null;
 
   const downloadStartedAt = Date.now();
   const download = await safeSpan("manual_acquisition.download", {}, async () => {
@@ -439,8 +469,19 @@ async function acquireInner(
       httpStatus: download.status ?? null,
     });
   }
+  if (
+    reviewed &&
+    (!isOemDocumentationHost(identity.manufacturer, new URL(download.finalUrl).hostname) ||
+      createHash("sha256").update(download.buffer).digest("hex") !== reviewed.sha256)
+  ) {
+    return outcome("candidate_review", {
+      candidate: candidateView,
+      message: "The manufacturer PDF no longer matches the reviewed library copy. Review the current publication before adding it.",
+      reason: "reviewed_library_document_changed",
+    });
+  }
 
-  const manualFilename = safePdfFilename(download.finalUrl);
+  const manualFilename = reviewed?.filename ?? safePdfFilename(download.finalUrl);
   // One attach call: "error" = a database failure (retryable, not a refusal).
   const doAttach = async (
     docId: string | null,
@@ -645,6 +686,7 @@ async function acquireInner(
     // whether WE could independently attribute the host to this manufacturer.
     // A consumer must never read a successful download as "official".
     discoveryValidated: discovery.validated,
+    ...(reviewed ? { reviewedLibrarySha256: reviewed.sha256 } : {}),
     independentlyOemHosted,
     awaitingUserConfirmation: requiresUserConfirmation,
     confirmedIdentity: identity,
@@ -714,7 +756,7 @@ async function acquireInner(
       message: "Manual saved; MIRA could not finish checking it and will try again.",
     });
   if (manualDocId) {
-    const chunks = await chunksForDoc(ctx.tenantId, manualDocId);
+    const chunks = await chunksForDoc(ctx.tenantId, manualDocId, reviewed?.page);
     if (chunks === null) return retryLater();
     const unreadablePagesDocumentWide = await countUnreadablePagesDocumentWide(ctx.tenantId, manualDocId);
     if (unreadablePagesDocumentWide === null) return retryLater();
@@ -726,14 +768,18 @@ async function acquireInner(
           model: identity.model,
           catalogNumber: identity.catalogNumber,
         },
-        chunks,
+        chunks: reviewed ? chunks.filter(({ page }) => page === reviewed.page) : chunks,
         oemHost: discovery.oemHost,
       });
       setActiveSpanAttrs({ "mira.acquisition.match_state": v.state });
       return v;
     });
+    const verified = verdict.state === "verified" &&
+      (!reviewed || verdict.evidencePages.includes(reviewed.page)) &&
+      !requiresUserConfirmation && completeness.complete;
     const verifiedEvidence = {
       ...baseEvidence,
+      ...(verified && reviewed ? { reviewedLibraryPage: reviewed.page, reviewedLibraryTitle: reviewed.title } : {}),
       decisionMethod: verdict.method,
       matchedTokens: verdict.matchedTokens,
       evidencePages: verdict.evidencePages,
@@ -760,7 +806,7 @@ async function acquireInner(
       // or numbers that did not read) — it must never stamp 'verified', or
       // identity confirmation alone would promote it after this run refused to.
       ...(input.basis === "candidate"
-        ? { candidateApplicability: verdict.state === "verified" && !probeUnvalidated && completeness.complete ? "verified" : "candidate" }
+        ? { candidateApplicability: verified ? "verified" : "candidate" }
         : {}),
       completeness,
     };
@@ -773,7 +819,7 @@ async function acquireInner(
     // technician's decision stands, and a source removed meanwhile is not
     // reported as added (F9).
     const write = input.writeSourceState ?? writeUnconditionally;
-    const promote = verdict.state === "verified" && !requiresUserConfirmation && completeness.complete;
+    const promote = verified;
     let persisted: PersistedSource;
     try {
       persisted = await write(ctx.tenantId, notebookId, manualDocId, {

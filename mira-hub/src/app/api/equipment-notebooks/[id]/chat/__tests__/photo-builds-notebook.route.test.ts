@@ -181,6 +181,27 @@ beforeEach(() => {
 
 const EXPECTED_IDENTITY = { identityStatus: "user_confirmed", manufacturer: "AUTOMATIONDIRECT", model: MODEL, catalogNumber: "" };
 
+it("preserves the exact model when a known maker's label also includes ratings and standards", async () => {
+  ragMock.manufacturerFromObservationText.mockReturnValue("AutomationDirect");
+  visualMock.loadVisualEvidenceForPhoto.mockResolvedValue({
+    observationId: "obs",
+    sessionId: "session",
+    text: `${PLATE}\n0.7KVA 0.6KVA 100KA IE2 19XK`,
+    obsKind: "look",
+    trust: "candidate",
+    fileId: PHOTO,
+    hazards: [],
+  });
+  const res = await POST(req({
+    message: "Find me the manual for this drive.",
+    mode: "general",
+    visualEvidence: { fileId: PHOTO },
+  }), params);
+  const result = await frames(res);
+  expect(result.find((frame) => frame.kind === "identity_proposal")).toMatchObject({ model: MODEL });
+  expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+});
+
 describe("a nameplate photo starts the manual search on the same turn", () => {
   it("unbound notebook + plate photo + plain question → proposal from the plate and a candidate-basis search, no confirm", async () => {
     const f = await frames(await plateTurn());
@@ -430,7 +451,7 @@ describe("a nameplate photo starts the manual search on the same turn", () => {
     const call = vi.mocked(global.fetch).mock.calls.at(-1)!;
     const sentBody = JSON.parse((call[1] as RequestInit).body as string);
     const systemMsg = (sentBody.messages as { role: string; content: string }[]).find((m) => m.role === "system");
-    expect(systemMsg?.content).toMatch(/looking for the official AUTOMATIONDIRECT GS11N-20P2 manual/);
+    expect(systemMsg?.content).toMatch(/looking for the official documentation for the AUTOMATIONDIRECT GS11N-20P2/);
     expect(systemMsg?.content).not.toMatch(/once they confirm/);
   });
 });

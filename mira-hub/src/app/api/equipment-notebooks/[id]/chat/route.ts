@@ -177,7 +177,7 @@ import {
   type PartSearchProposalEntry,
 } from "@/capabilities/photo-part-lookup";
 import { publicManualSeries } from "@/capabilities/public-model-proof";
-import { extractCandidateIdentity, isSafeCandidateSearchIdentity, wantsManualDocumentation } from "@/capabilities/candidate-identity";
+import { asksToFindManual, exactManualIdentity, extractCandidateIdentity, isSafeCandidateSearchIdentity, wantsManualDocumentation } from "@/capabilities/candidate-identity";
 import { citationTitle } from "@/capabilities/citation-title";
 import { ratingColumnFinding, ratingColumnText } from "@/capabilities/rating-column";
 import { claimPartSearchProposal } from "@/capabilities/part-search-claim";
@@ -2538,6 +2538,14 @@ async function handleChatTurn(
   const photoTextForOem = notebookRetrieval
     ? ""
     : (lookRow?.text ?? priorLookRows[0]?.text ?? "").trim();
+  // A dedicated manual request uses the exact public model from either input.
+  // Don't let a family-only passage answer the request or suppress its source
+  // confirmation. Ordinary questions keep their existing retrieval path.
+  const unboundManualRequest =
+    general && !notebookRetrieval && !componentTurn && !componentHold &&
+    Boolean(nb) && boundAsset.state === "unbound" && !(nb?.manufacturer?.trim() || nb?.model?.trim()) &&
+    acquisitionEnabled(ctx.tenantId) && asksToFindManual(message);
+  const exactManualRequestIdentity = unboundManualRequest ? exactManualIdentity(photoTextForOem, message) : null;
   const oemManufacturer: { name: string; source: "notebook" | "photo" } | null = await (async () => {
     if (notebookRetrieval) return null; // notebook sources own the turn
     if (nb?.manufacturer?.trim()) return { name: nb.manufacturer.trim(), source: "notebook" };
@@ -2627,7 +2635,8 @@ async function handleChatTurn(
   // A selected component is never answered from the shared library by the
   // notebook's machine: its manuals are the notebook's documents or none.
   const oemRetrieval =
-    !guidedDeadEnd && !componentTurn && !componentHold && !notebookRetrieval && oemManufacturer !== null && !oemIdentity.ambiguous && !oemIdentity.failed;
+    !guidedDeadEnd && !componentTurn && !componentHold && !notebookRetrieval && !exactManualRequestIdentity &&
+    oemManufacturer !== null && !oemIdentity.ambiguous && !oemIdentity.failed;
   const retrievalExecuted = notebookRetrieval || oemRetrieval;
   // #4687: only when a document search actually runs (Codex #4765 F3).
   if (retrievalExecuted) reportProgress(req, "searching_documentation");
@@ -2873,7 +2882,8 @@ async function handleChatTurn(
     !(nb.manufacturer?.trim() || nb.model?.trim()) &&
     chunks.length === 0
   ) {
-    if (oemManufacturer === null) {
+    identityProposal = exactManualRequestIdentity;
+    if (!identityProposal && oemManufacturer === null) {
       let client: PoolClient | null = null;
       try {
         client = await pool.connect();
@@ -3374,6 +3384,7 @@ async function handleChatTurn(
             nodeId: nb.nodeId,
             identity: candidateIdentity,
             basis: "candidate",
+            fromPhoto: Boolean(photoTextForOem && photoPartNumber),
             turnSpanContext: rootSpan.spanContext(),
           });
           if (cStarted) {
@@ -3763,7 +3774,8 @@ async function handleChatTurn(
   // A flagged hazard turn is never swallowed by this abstain (owner decision
   // 2026-09-27): with no documents it takes the general lane, so the tech gets
   // the hazard banner and an answer instead of "couldn't find that".
-  if (componentHold || (chunks.length === 0 && (!general || libraryNotForAsk || missingModelManual || noEvidenceForMachine || unidentifiedServiceText || photoPartLookup || photoPartCompatibilityText) && !groundedMachineEntry && !safetyTrigger)) {
+  const manualIdentityNeeded = unboundManualRequest && !identityProposal;
+  if (componentHold || (chunks.length === 0 && (!general || libraryNotForAsk || missingModelManual || noEvidenceForMachine || unidentifiedServiceText || photoPartLookup || photoPartCompatibilityText || manualIdentityNeeded) && !groundedMachineEntry && !safetyTrigger)) {
     // Gate G — abstain honestly, persist the turn, never call the provider.
     // #4015: "couldn't find that in the documentation I have", not "I don't have
     // the manual" — a zero-hit scoped search does not prove the manual is absent
@@ -3782,6 +3794,8 @@ async function handleChatTurn(
       ? photoPartLookup.message
       : photoPartCompatibilityText
       ? photoPartCompatibilityText
+      : manualIdentityNeeded
+      ? "What manufacturer and model or order number are printed on the equipment label? You can type them or attach a clear photo of that part of the label."
       // No document selected, and the library's pages were for the bound model,
       // not the one this message names: say which, and answer nothing from them.
       : libraryNotForAsk

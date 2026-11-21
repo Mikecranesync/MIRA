@@ -18,6 +18,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const discoveryMock = vi.hoisted(() => ({ discoverManual: vi.fn() }));
+const libraryMock = vi.hoisted(() => ({ reviewedManualFor: vi.fn() }));
+vi.mock("@/capabilities/reviewed-manual-library", () => libraryMock);
 vi.mock("@/lib/manual-discovery", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/manual-discovery")>()),
   discoverManual: discoveryMock.discoverManual,
@@ -164,6 +166,7 @@ const FULL_ROWS = [
 
 beforeEach(() => {
   vi.clearAllMocks();
+  libraryMock.reviewedManualFor.mockReturnValue(null);
   delete process.env.MANUAL_SEARCH_COST_PER_QUERY_USD;
   discoveryMock.discoverManual.mockResolvedValue(FOUND_DISCOVERY);
   downloadMock.safeDownloadPdf.mockResolvedValue({
@@ -177,6 +180,49 @@ beforeEach(() => {
   applicabilityMock.assessApplicability.mockReturnValue(VERIFIED_VERDICT);
   stored.rows = CH1_ROWS;
   stored.documentWideError = false;
+});
+
+const REVIEWED = {
+  url: "https://cdn.automationdirect.com/static/manuals/gs10m/gs10usermanual.pdf",
+  title: "GS10 Drive User Manual",
+  sha256: "316ed32c01f498e315f036d210d8f6264967a43bba53e1f2e99c425b904819f9",
+  page: 26,
+};
+
+it("acquires a reviewed library PDF before web discovery and preserves the evidence page", async () => {
+  stored.rows = FULL_ROWS;
+  libraryMock.reviewedManualFor.mockReturnValue(REVIEWED);
+  downloadMock.safeDownloadPdf.mockResolvedValue({
+    ok: true,
+    buffer: Buffer.from("PDFBYTES"),
+    finalUrl: REVIEWED.url,
+  });
+  applicabilityMock.assessApplicability.mockReturnValue({ ...VERIFIED_VERDICT, evidencePages: [26] });
+  const out = await acquireManualForIdentity(BASE_INPUT);
+  expect(discoveryMock.discoverManual).not.toHaveBeenCalled();
+  expect(downloadMock.safeDownloadPdf).toHaveBeenCalledWith(REVIEWED.url, expect.anything());
+  expect(out.status).toBe("complete");
+  expect(storedPatch().matchEvidence).toMatchObject({
+    discoveryValidated: false,
+    reviewedLibraryPage: 26,
+  });
+});
+
+it("keeps a revised OEM PDF out of automatic ingestion", async () => {
+  libraryMock.reviewedManualFor.mockReturnValue(REVIEWED);
+  downloadMock.safeDownloadPdf.mockResolvedValue({ ok: true, buffer: Buffer.from("different"), finalUrl: REVIEWED.url });
+  const out = await acquireManualForIdentity(BASE_INPUT);
+  expect(out).toMatchObject({ status: "candidate_review", payload: { reason: "reviewed_library_document_changed" } });
+  expect(filesMock.parkOrReuseFile).not.toHaveBeenCalled();
+});
+
+it("does not promote a reviewed PDF when its coverage page was not indexed", async () => {
+  libraryMock.reviewedManualFor.mockReturnValue(REVIEWED);
+  stored.rows = FULL_ROWS.filter((chunk) => chunk.source_page !== 26);
+  const out = await acquireManualForIdentity(BASE_INPUT);
+  expect(out.status).toBe("candidate_review");
+  expect(storedPatch()).toMatchObject({ enabledByDefault: false, matchState: "candidate" });
+  expect(storedPatch().matchEvidence).not.toHaveProperty("reviewedLibraryPage");
 });
 
 function storedPatch(): Patch {
