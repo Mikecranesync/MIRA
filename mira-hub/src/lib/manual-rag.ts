@@ -29,7 +29,7 @@ import { exactModelKey } from "@/capabilities/table-rows";
 import { confirmedCatalogNumber } from "@/capabilities/notebook-manual-identity";
 import { embedQueryDetailed, hybridRetrievalEnabled, rrfMerge, vectorLiteral } from "@/capabilities/hybrid-retrieval";
 import { setSpanAttrs } from "@/capabilities/observability/tracing";
-import { extractManualSafetyStatement } from "@/capabilities/manual-safety-statement";
+import { extractManualSafetyStatement, OPERATING_CAUTION_PATTERN } from "@/capabilities/manual-safety-statement";
 import {
   keepWhatPlainSearchKept,
   logRerankFallback,
@@ -3525,10 +3525,9 @@ export type CitedPageRef = { docId: string; sourceUrl: string; page: number };
  * Case-insensitive superset of every trigger `extractManualSafetyStatement` can hit: the
  * WARNING/DANGER/CAUTION/ATTENTION/SHOCK HAZARD/BURN HAZARD markers and the prose fallbacks
  * (hazardous voltage, discharged capacitors, wait-N-minutes, operating notes that warn of damage).
- * A chunk without one of these words
- * can never yield a statement, so filtering on it never drops a warning (#4509 Codex r3 F1).
+ * A chunk without one of these matches cannot yield a statement (#4509 Codex r3 F1).
  */
-export const CANDIDATE_PATTERN = "warning|danger|caution|attention|shock hazard|burn hazard|hazardous|discharged|wait|damage";
+export const CANDIDATE_PATTERN = `warning|danger|caution|attention|shock hazard|burn hazard|hazardous|discharged|wait|${OPERATING_CAUTION_PATTERN}`;
 /** Rows per keyset batch of the candidate read (#4509 Codex r4 F1). */
 export const CITED_PAGE_BATCH = 200;
 /** Wall-clock bound on the whole cited-page read; past it the caller decides from what was found. */

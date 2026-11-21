@@ -64,13 +64,21 @@ describe("retrieveCitedPageChunks (#4509 Codex F1)", () => {
       "When isolation is not used, hazardous voltages are present at all times.",
       "Make sure the capacitors have been discharged.",
       "Turn off power. Wait at least 5 minutes.",
-      "Note that setting the acceleration time too short may cause motor damage.",
+      "Note that setting the acceleration\n time too short may cause motor damage.",
       "Note: Disabling earth fault (ground fault) may damage drive.",
     ]) {
       expect(extractManualSafetyStatement(hit), hit).not.toBeNull();
       expect(re.test(hit), hit).toBe(true);
     }
-    expect(re.test("Parameter P01 sets the acceleration time in seconds.")).toBe(false);
+    for (const plain of [
+      "Parameter P01 sets the acceleration time in seconds.",
+      "Motor damage found during inspection: replace the failed part.",
+      "Equipment damage is excluded from this warranty.",
+      "Disabling earth fault (ground fault) changes logging behavior.",
+    ]) {
+      expect(extractManualSafetyStatement(plain), plain).toBeNull();
+      expect(re.test(plain), plain).toBe(false);
+    }
   });
 
   it("approval gate on: applies retrieval's predicate with the approved source set bound", async () => {

@@ -14,6 +14,14 @@ export interface ManualSafetyStatement {
   statement: string;
 }
 
+// Shared with the cited-page SQL prefilter. Keep the condition and damage
+// consequence together and allow line breaks in text extracted from a PDF.
+export const OPERATING_CAUTION_PATTERN = String.raw`Note(?:\s+that|:)\s+((?:setting\s+(?:the\s+)?(?:acceleration|deceleration)\s+time\s+too\s+short|disabling\s+earth\s+fault\s+\(ground\s+fault\))\s+may\s+(?:cause\s+(?:motor|drive)\s+damage|damage\s+(?:the\s+)?drive))`;
+const OPERATING_CAUTION_SENTENCE = new RegExp(
+  String.raw`\b${OPERATING_CAUTION_PATTERN}\b([^.!?]{0,160}[.!?])`,
+  'i',
+);
+
 const SAFETY_MARKERS = [
   'WARNING',
   'DANGER',
@@ -205,11 +213,9 @@ function matchProseFallback(text: string): ManualSafetyStatement | null {
 
   // Some manuals label operational cautions as notes. Require both the
   // explicit condition and its stated damage consequence on the cited page.
-  const settingCaution = text.replace(/\s+/g, ' ').match(
-    /\bNote(?: that|:)\s+((?:setting (?:the )?(?:acceleration|deceleration) time too short|disabling earth fault \(ground fault\)) may (?:cause (?:motor|drive) damage|damage (?:the )?drive)\b[^.!?]{0,160}[.!?])/i,
-  );
+  const settingCaution = text.replace(/\s+/g, ' ').match(OPERATING_CAUTION_SENTENCE);
   if (settingCaution) {
-    return { marker: 'CAUTION (manual text)', statement: settingCaution[1] };
+    return { marker: 'CAUTION (manual text)', statement: settingCaution[1] + settingCaution[2] };
   }
 
   return null;
