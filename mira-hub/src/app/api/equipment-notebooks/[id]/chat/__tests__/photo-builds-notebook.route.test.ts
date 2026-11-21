@@ -248,6 +248,8 @@ it.each([
   "Schneider Electric\nCA3KN22BD\nS/N: CA3KN22BD",
   "ABB\nACS355\nSerial No. ACS355\nIP20",
   "ABB\nACS355\nS/N: TEST-ABB-001\nACS580",
+  "ABB\nACS355\nS/N: TEST-ABB-001\nACH580",
+  "ABB\nACS355\nS/N: TEST-ABB-001\nACH580-01-07A3-4",
 ])("F2/F9: refuses a compact model repeated in the serial or seen beside a competing model (%j)", async (text) => {
   ragMock.resolveModelFromObservationText.mockImplementation(resolveModelFromObservationText);
   visualMock.loadVisualEvidenceForPhoto.mockResolvedValue({
@@ -265,6 +267,10 @@ it.each([
     visualEvidence: { fileId: PHOTO },
   }), params));
   expect(result.find((frame) => frame.kind === "identity_proposal")).toBeUndefined();
+  expect(result.find((frame) => frame.kind === "status")).toMatchObject({
+    status: "insufficient_evidence",
+    message: expect.stringContaining("What manufacturer and model or order number"),
+  });
   expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
 });
 

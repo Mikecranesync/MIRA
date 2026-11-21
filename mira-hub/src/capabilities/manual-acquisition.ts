@@ -7,18 +7,15 @@
  * whose identity the technician already confirmed (#4075). Behaviour is
  * unchanged: the route calls this and responds with the returned status.
  *
- * Trust rules are the route's, unchanged: only a validated, direct-PDF,
- * OEM-hosted result is fetched without review; safeDownloadPdf is the only
- * fetcher; a manual enters chat only when its OWN text verifies it
- * (assessApplicability), otherwise it is attached disabled as a candidate.
+ * safeDownloadPdf is the only fetcher and keeps the download trust checks.
+ * Only a reviewed library publication can become eligible automatically.
+ * Other discovery results are saved as disabled candidates for source review.
  */
 import { createHash } from "node:crypto";
 import { catalogIdentifierView } from "@/capabilities/catalog-identifier";
-import { remarksOnCoverage } from "@/capabilities/manual-applicability";
 import { MANUAL_SEARCH_LIMIT_COPY, MANUAL_SEARCH_UNAVAILABLE_COPY } from "@/capabilities/manual-search-copy";
-import { reviewedManualFor } from "@/capabilities/reviewed-manual-library";
+import { manualLookupPart, reviewedManualFor } from "@/capabilities/reviewed-manual-library";
 import { withTenantContext } from "@/lib/tenant-context";
-import { setSourceState } from "@/lib/equipment-notebooks";
 import {
   parkOrReuseFile,
   linkFileToUpload,
@@ -89,19 +86,9 @@ export interface ManualAcquisitionInput {
   /** The CONFIRMED identity — never free text. Extra fields ride into match evidence. */
   identity: { manufacturer?: string; model?: string; catalogNumber?: string } & Record<string, string | undefined>;
   /**
-   * "candidate" when this search is for an identity the technician has NOT
-   * yet confirmed — a proposed/label-read maker+part (#4160 S6, PRD R2).
-   * Forces `promote = false` below (never match_state='verified', never
-   * enabled_by_default=true FROM THIS FUNCTION): the deterministic
-   * applicability verdict is still computed and recorded as
-   * `candidateApplicability` on the written evidence (R8 — the judge may only
-   * reject, never auto-approve), but promotion to a citable, enabled source
-   * happens only when the technician confirms this SAME identity — either
-   * migration 104's trigger (the search finished first) or the fenced writer
-   * itself noticing, at write time, that the notebook was ALREADY confirmed
-   * to the matching key (the common case: confirming is near-instant, the
-   * search can take up to a minute). Defaults to "confirmed" — the nameplate
-   * confirm route's existing unconditional-writer behaviour, unchanged.
+   * When the equipment is only proposed, record whether its publication is
+   * eligible for the guarded writer. Confirming the equipment never approves
+   * a document returned by unreviewed discovery.
    */
   basis?: "confirmed" | "candidate";
   /**
@@ -118,7 +105,7 @@ export interface ManualAcquisitionInput {
    * existing state when the writer declined (a technician's decision, or lost
    * ownership), or null when the notebook has no such source row at all. The
    * outcome reports that — never the state it merely asked for (Codex #4118
-   * F8/F9). Defaults to an unconditional write — the confirm route's behaviour.
+   * F8/F9). The default writer only finalizes a pending, disabled candidate.
    */
   writeSourceState?: SourceStateWriter;
   /**
@@ -151,15 +138,28 @@ export type SourceStateWriter = (
   patch: SourceStatePatch,
 ) => Promise<PersistedSource>;
 
-async function writeUnconditionally(
-  tenantId: string,
-  notebookId: string,
-  docId: string,
-  patch: SourceStatePatch,
-): Promise<PersistedSource> {
-  const updated = await setSourceState(tenantId, notebookId, docId, patch);
-  return updated ? { matchState: patch.matchState, enabledByDefault: patch.enabledByDefault } : null;
-}
+const writePendingSource: SourceStateWriter = async (tenantId, notebookId, docId, patch) =>
+  withTenantContext(tenantId, async (c) => {
+    // An inline search can reuse a source a technician previously approved,
+    // disabled or rejected. Finalize only the acquisition's pending candidate.
+    type SourceRow = { match_state: string; enabled_by_default: boolean };
+    const ids = [tenantId, notebookId, docId];
+    const written = await c.query<SourceRow>(
+      `UPDATE equipment_notebook_sources
+          SET match_state = $4, enabled_by_default = $5, match_evidence = $6::jsonb
+        WHERE tenant_id = $1::uuid AND notebook_id = $2::uuid AND doc_id = $3::uuid
+          AND match_state = 'candidate' AND enabled_by_default = false
+          AND match_evidence->>'decisionMethod' = 'pending_applicability_check'
+        RETURNING match_state, enabled_by_default`,
+      [...ids, patch.matchState, patch.enabledByDefault, JSON.stringify(patch.matchEvidence)],
+    );
+    const row = written.rows[0] ?? (await c.query<SourceRow>(
+      `SELECT match_state, enabled_by_default FROM equipment_notebook_sources
+        WHERE tenant_id = $1::uuid AND notebook_id = $2::uuid AND doc_id = $3::uuid`,
+      ids,
+    )).rows[0];
+    return row ? { matchState: row.match_state, enabledByDefault: row.enabled_by_default } : null;
+  });
 
 function outcome(status: ManualAcquisitionStatus, payload: Record<string, unknown> = {}): ManualAcquisitionOutcome {
   return { status, payload };
@@ -293,21 +293,16 @@ function recordTrailOnSpan(trail: CandidateTrail): void {
   }
 }
 
-/** An unlisted order number with the reviewed base model as its first
- * hyphen-delimited group is a search lead, not reviewed applicability. */
-function unlistedOrderEvidence(model: string, catalogNumber: string): RegExp | null {
+/** A complete order number whose first group is the reviewed base model can
+ * be searched. This relationship alone gives no document approval. */
+function isUnlistedOrderForModel(model: string, catalogNumber: string): boolean {
   const base = model.trim().toUpperCase();
-  if (!/^[A-Z]+[0-9]+$/.test(base)) return null;
+  if (!/^[A-Z]+[0-9]+$/.test(base)) return false;
 
   const { text, spans } = catalogIdentifierView(catalogNumber.trim());
   const [span] = spans;
-  const order = text.toUpperCase();
-  if (spans.length !== 1 || span.start !== 0 || span.end !== text.length || !order.startsWith(base + "-")) return null;
-
-  // Keep the order number whole. A different voltage code or an attached
-  // option suffix is not evidence for the exact order number.
-  const modifier = String.raw`[\p{L}\p{N}\p{Pd}+/_−]|\.[A-Za-z0-9]|[ \t]*\+[ \t]*[A-Za-z0-9]`;
-  return new RegExp(String.raw`(?<![\p{L}\p{N}\p{Pd}+/_−.])${order}(?!${modifier})`, "iu");
+  return spans.length === 1 && span.start === 0 && span.end === text.length &&
+    text.toUpperCase().startsWith(base + "-");
 }
 
 async function acquireInner(
@@ -317,7 +312,8 @@ async function acquireInner(
   const { identity, notebookId } = input;
   const ctx = { tenantId: input.tenantId, userId: input.userId };
   const notebook = { nodeId: input.nodeId };
-  if (!identity.manufacturer || !(identity.model || identity.catalogNumber)) {
+  const lookupPart = manualLookupPart(identity);
+  if (!identity.manufacturer || !lookupPart) {
     return outcome("manufacturer_model_required", {
       message:
         "Add a manufacturer and a model (or catalog number) so MIRA can look for the official manual.",
@@ -328,14 +324,12 @@ async function acquireInner(
   // — set from the discovery result itself, never invented when mira-ask
   // didn't carry search_stats (an old version, or a malformed response).
   const reviewed = reviewedManualFor(identity);
-  let exactUnlistedOrder: RegExp | null = null;
   if (!reviewed && identity.model && identity.catalogNumber) {
     const modelPublication = reviewedManualFor({ manufacturer: identity.manufacturer, model: identity.model });
     const orderPublication = reviewedManualFor({ manufacturer: identity.manufacturer, catalogNumber: identity.catalogNumber });
-    if (modelPublication && !orderPublication) {
-      exactUnlistedOrder = unlistedOrderEvidence(identity.model, identity.catalogNumber);
-    }
-    if (!exactUnlistedOrder && (modelPublication || orderPublication)) {
+    const canSearchUnlistedOrder =
+      modelPublication && !orderPublication && isUnlistedOrderForModel(identity.model, identity.catalogNumber);
+    if (!canSearchUnlistedOrder && (modelPublication || orderPublication)) {
       return outcome("manufacturer_model_required", {
         message: "The model and order number do not identify the same reviewed equipment. Check both fields before looking up its manual.",
       });
@@ -369,8 +363,7 @@ async function acquireInner(
     const d = await discoverManual(
       {
         manufacturer: identity.manufacturer,
-        model: identity.model,
-        catalogNumber: identity.catalogNumber,
+        model: lookupPart,
       },
       ctx,
     );
@@ -469,14 +462,9 @@ async function acquireInner(
     });
   }
 
-  // A download that succeeds proves the bytes are retrievable and are a real
-  // PDF from a host we independently attribute to this manufacturer. It proves
-  // NOTHING about whether this is the right document, so an unvalidated
-  // candidate can never auto-enable — a human confirms it. See the
-  // applicability block below. A photo-basis search ("candidate") is NOT a
-  // review hold by itself (owner decision 2026-11-07): the manual's own text
-  // decides, exactly as for a confirmed identity.
-  const requiresUserConfirmation = probeUnvalidated && reviewed === null;
+  // Candidate validation authorizes a safe download. The reviewed pin is the
+  // only provenance that can authorize automatic use of that downloaded PDF.
+  const requiresSourceReview = reviewed === null;
 
   const downloadStartedAt = Date.now();
   const download = await safeSpan("manual_acquisition.download", {}, async () => {
@@ -706,8 +694,8 @@ async function acquireInner(
   }
 
   // Attach the manual as a CANDIDATE first (enabled_by_default=false is the
-  // upsert's own rule for candidate state) — it cannot enter chat until the
-  // evidence check below promotes it.
+  // upsert's own rule for candidate state). Only a reviewed publication that
+  // passes the evidence checks below can be enabled by this acquisition.
   const baseEvidence = {
     discoveryUrl: candidate.url,
     finalUrl: download.finalUrl,
@@ -720,7 +708,7 @@ async function acquireInner(
     discoveryValidated: discovery.validated,
     ...(reviewed ? { reviewedLibrarySha256: reviewed.sha256 } : {}),
     independentlyOemHosted,
-    awaitingUserConfirmation: requiresUserConfirmation,
+    awaitingUserConfirmation: requiresSourceReview,
     confirmedIdentity: identity,
     reusedExistingDocument: reused,
   };
@@ -794,83 +782,50 @@ async function acquireInner(
     if (unreadablePagesDocumentWide === null) return retryLater();
     completeness = assessCompleteness(chunks, { unreadablePagesDocumentWide });
     verdict = await safeSpan("manual_acquisition.applicability", {}, async () => {
-      const orderEvidence = exactUnlistedOrder;
-      const orderChunks = orderEvidence
-        ? chunks.filter(({ content }) => orderEvidence.test(catalogIdentifierView(content).text))
-        : null;
-      const orderExcluded = orderChunks?.some(({ content }) => remarksOnCoverage(content));
-      const v: ApplicabilityVerdict = orderChunks?.length === 0 || orderExcluded
-        ? {
+      const v: ApplicabilityVerdict = reviewed
+        ? assessApplicability({
+            identity,
+            chunks: chunks.filter(({ page }) => page === reviewed.page),
+            oemHost: discovery.oemHost,
+          })
+        : {
             state: "candidate",
-            method: "no_identifier_evidence",
+            method: "source_review_required",
             matchedTokens: [],
             evidencePages: [],
-            confidence: 0.05,
-            reason: "the document text does not establish coverage for the exact order number",
-          }
-        : assessApplicability({
-            identity: {
-              manufacturer: identity.manufacturer,
-              model: orderEvidence ? undefined : identity.model,
-              catalogNumber: identity.catalogNumber,
-            },
-            chunks: reviewed ? chunks.filter(({ page }) => page === reviewed.page) : orderChunks ?? chunks,
-            oemHost: discovery.oemHost,
-          });
+            confidence: 0,
+            reason: "this publication needs source review before the notebook can answer from it",
+          };
       setActiveSpanAttrs({ "mira.acquisition.match_state": v.state });
       return v;
     });
-    const verified = verdict.state === "verified" &&
-      (!reviewed || verdict.evidencePages.includes(reviewed.page)) &&
-      !requiresUserConfirmation && completeness.complete;
+    const eligible = reviewed !== null && verdict.state === "verified" &&
+      verdict.evidencePages.includes(reviewed.page) && completeness.complete;
     const verifiedEvidence = {
       ...baseEvidence,
-      ...(verified && reviewed ? { reviewedLibraryPage: reviewed.page, reviewedLibraryTitle: reviewed.title } : {}),
+      ...(eligible && reviewed ? { reviewedLibraryPage: reviewed.page, reviewedLibraryTitle: reviewed.title } : {}),
       decisionMethod: verdict.method,
       matchedTokens: verdict.matchedTokens,
       evidencePages: verdict.evidencePages,
       applicabilityConfidence: verdict.confidence,
       reason: verdict.reason,
-      // #4160 S6 — the real verdict, independent of `promote` below (which is
-      // always forced false for candidate basis): the fenced writer reads
-      // this to decide whether a race (the technician already confirmed this
-      // exact identity by the time this write lands) should promote anyway.
-      //
-      // Codex r1 F3 (#4172, HIGH): this must NEVER read 'verified' when the
-      // download itself required a human review hold (probeUnvalidated — an
-      // unvalidated-by-the-service candidate, probed only because it is
-      // independently OEM-hosted). Both promotion paths (fencedWriter's
-      // promoteNow and migration 104) gate purely on this field, so a
-      // 'verified' stamp here would let identity confirmation alone promote a
-      // document whose BYTES were never provenance-validated — bypassing the
-      // unvalidated-download review hold `probeUnvalidated`/
-      // `requiresUserConfirmation` exist to enforce. An exact-matching verdict
-      // on an unvalidated download therefore still stamps 'candidate': a
-      // human must review the SOURCE, not just confirm the identity.
-      //
-      // Garage pilot L2: the same holds for a PARTIAL document (one chapter,
-      // or numbers that did not read) — it must never stamp 'verified', or
-      // identity confirmation alone would promote it after this run refused to.
+      // Identity confirmation can promote only a pinned, applicable and
+      // complete publication. An external result always needs source review.
       ...(input.basis === "candidate"
-        ? { candidateApplicability: verified ? "verified" : "candidate" }
+        ? { candidateApplicability: eligible ? "verified" : "candidate" }
         : {}),
       completeness,
     };
     candidateApplicability =
       (verifiedEvidence as { candidateApplicability?: "verified" | "candidate" }).candidateApplicability ?? null;
-    // The route writes unconditionally (the technician is confirming right
-    // now). A background caller passes a FENCED writer that writes only an
-    // undecided candidate it still owns; otherwise it writes NOTHING (Codex
-    // #4118 F3/F5/F8). Either way the outcome reports what is persisted: a
-    // technician's decision stands, and a source removed meanwhile is not
-    // reported as added (F9).
-    const write = input.writeSourceState ?? writeUnconditionally;
-    const promote = verified;
+    // Report the state that persisted. Even a reused document can have been
+    // approved, rejected or removed while this acquisition was running.
+    const write = input.writeSourceState ?? writePendingSource;
     let persisted: PersistedSource;
     try {
       persisted = await write(ctx.tenantId, notebookId, manualDocId, {
-        matchState: promote ? "verified" : "candidate",
-        enabledByDefault: promote,
+        matchState: eligible ? "verified" : "candidate",
+        enabledByDefault: eligible,
         matchEvidence: verifiedEvidence,
       });
     } catch (err) {
@@ -915,11 +870,13 @@ async function acquireInner(
     message: !attached
       ? "The manual was found, but it is not among this notebook's sources."
       : answering
-        ? `Manual added and enabled — ${verdict?.reason ?? "identity confirmed in the document text"}.`
+        ? requiresSourceReview
+          ? "This manual is already enabled in the notebook's Sources."
+          : `Manual added and enabled — ${verdict?.reason ?? "identity confirmed in the document text"}.`
         : completeness && !completeness.complete
           ? `Manual saved but left off — ${partialManualReason(completeness)}. Add the full manual to this notebook.`
-          : `Manual saved but left off until you confirm it — ${
-              verdict?.reason ?? "its text does not prove it covers this component"
-            }.`,
+          : requiresSourceReview
+            ? "Manual saved as a disabled candidate. Review it in Sources before using it for answers."
+            : `Manual saved but left off — ${verdict?.reason ?? "its text does not prove it covers this component"}.`,
   });
 }

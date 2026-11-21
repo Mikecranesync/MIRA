@@ -19,6 +19,8 @@
  * confirms it (R2/R3).
  */
 import { oemMakerTable } from "@/lib/manual-discovery";
+import { catalogIdentifierView } from "./catalog-identifier";
+import { modelNumbersIn } from "./manual-applicability";
 import { modelIdentitiesInText, resolveModelFromObservationText } from "./model-token";
 import { namesOnlyThisMachine, proposeIdentityFromText, type IdentityProposal } from "./identity-proposal";
 import { reviewedManualFor } from "./reviewed-manual-library";
@@ -165,26 +167,55 @@ const MANUAL_MODEL_REFERENCE_RE = new RegExp(
   String.raw`^(?:(?:${MANUAL_MAKER})[ \t]+)?(?:(?:model|part|catalog)(?:[ \t]+number)?(?:[ \t]*[:#][ \t]*|[ \t]+))?(?:${MANUAL_MODEL_CODE}|([a-z]{2,8})[ \t]+[0-9][0-9./+-]{0,11})(?:[ \t]+(${MANUAL_MODEL_CODE}))?(?:[ \t]+${MANUAL_DEVICE})?$`,
   "i",
 );
+const REVIEWED_MANUAL_REFERENCE_RE = new RegExp(
+  String.raw`^(${MANUAL_MAKER})[ \t]+([a-z0-9][a-z0-9./+\- \t]*?)[ \t]+(${MANUAL_MODEL_CODE})$`,
+  "i",
+);
 
 export function wantsManualDocumentation(message: string): boolean {
   return MANUAL_INTENT_RE.test(message);
 }
 
-/** A request for the document itself, as opposed to a question about its contents. */
-export function asksToFindManual(message: string): boolean {
+function manualRequestSubject(message: string): string | undefined {
   const text = message.trim();
   const request = MANUAL_REQUEST_RE.exec(text);
-  if (request && !request[1]) return true;
-  const subject = (request?.[1] ?? NAMED_MANUAL_REQUEST_RE.exec(text)?.[1])
+  return (request ? (request[1] ?? "") : NAMED_MANUAL_REQUEST_RE.exec(text)?.[1])
     ?.replace(/^(?:(?:the|a|an|my|this|that)[ \t]+)?(?:official[ \t]+)?/i, "");
-  if (!subject || /[.!?][ \t]+\S/.test(subject)) return false;
+}
+
+function reviewedManualIdentityFromSubject(subject: string): IdentityProposal | null {
+  const match = REVIEWED_MANUAL_REFERENCE_RE.exec(catalogIdentifierView(subject).text);
+  if (!match) return null;
+  const [, manufacturer, product, order] = match;
+  const catalogNumber = order.toUpperCase();
+  const reviewed = reviewedManualFor({ manufacturer, model: product.trim().replace(/[ \t]+/g, " "), catalogNumber });
+  return reviewed && { manufacturer: reviewed.manufacturer.toUpperCase(), model: catalogNumber };
+}
+
+/** A request for the document itself, as opposed to a question about its contents. */
+export function asksToFindManual(message: string): boolean {
+  const subject = manualRequestSubject(message);
+  if (subject === undefined || /[.!?][ \t]+\S/.test(subject)) return false;
   // A remaining clause could ask about the manual. Accept only a whole equipment reference.
-  if (MANUAL_REFERENCE_RE.test(subject)) return true;
+  if (!subject || MANUAL_REFERENCE_RE.test(subject) || reviewedManualIdentityFromSubject(subject)) return true;
   const model = MANUAL_MODEL_REFERENCE_RE.exec(subject);
   if (!model || (model[1] && model[1] !== model[1].toUpperCase())) return false;
   const catalog = model[2];
   // A second token needs catalog-number evidence. A number followed by a unit can look like a model.
   return !catalog || (/[a-z]\d/i.test(catalog) && partCodes(catalog).includes(catalog));
+}
+
+// Spaced or segmented standards on equipment labels can resemble a model.
+// Keep the following text visible to the competing-model check.
+const NAMEPLATE_STANDARD = /\b(?:IEC|EN|ISO|UL|CSA|NEMA|ANSI|BS|VDE|JIS|DIN)[ \t-]*[A-Z]?\d+(?:[.-]\d+)*[A-Z]?(?:[ \t]+No\.?[ \t]+\d+)?\b/gi;
+const NUMBER_LED_MARKING = /\b\d(?=[A-Z0-9-]*[A-Z])[A-Z0-9]*(?:-[A-Z0-9]+)*\b/gi;
+
+function photoTextForModelComparison(photo: string): string {
+  // Keep a placeholder when a serial itself looks like a rating so the
+  // comparison reader does not take the next line as the serial.
+  return catalogIdentifierView(photo).text
+    .replace(NAMEPLATE_STANDARD, "_")
+    .replace(NUMBER_LED_MARKING, (marking) => modelNumbersIn(marking).length ? marking : "_");
 }
 
 /**
@@ -194,6 +225,11 @@ export function asksToFindManual(message: string): boolean {
  * permission to start an automatic external search.
  */
 export function exactManualIdentity(photo: string, typed: string): IdentityProposal | null {
+  if (!photo && !mentionsSerialLabel(typed) && !mentionsAssetLabel(typed)) {
+    const subject = manualRequestSubject(typed);
+    const reviewed = subject && reviewedManualIdentityFromSubject(subject);
+    if (reviewed && !modelIsPrivate(typed, reviewed.model)) return reviewed;
+  }
   const candidate = extractCandidateIdentity(photo, typed);
   // Many makers use compact model names that the part-number scanner does not
   // recognize. A reviewed record can support displaying a confirmation card.
@@ -201,18 +237,16 @@ export function exactManualIdentity(photo: string, typed: string): IdentityPropo
     if (mentionsAssetLabel(photo) || partLabelAfterPrivateLabel(photo) ||
         mentionsSerialLabel(typed) || mentionsAssetLabel(typed)) return null;
     const publicPhoto = publicLabelText(photo);
-    const text = photo ? `${publicPhoto}\n${typed}` : typed;
+    const text = photo ? `${photoTextForModelComparison(publicPhoto)}\n${typed}` : typed;
     const maker = makerFromText(text);
     const proposal = maker && proposeIdentityFromText(text, [maker]);
     if (!proposal || !reviewedManualFor(proposal)) return null;
     if (photo) {
       if (makerFromText(publicPhoto) !== maker) return null;
-      // Only the public prefix can propose a compact model. The full photo can
-      // still rule it out if a second recognized model is marked anywhere.
-      const exactIdentities = modelIdentitiesInText(proposal.model);
-      for (const identity of modelIdentitiesInText(photo)) {
-        if (!exactIdentities.has(identity)) return null;
-      }
+      // Only the public prefix can propose a compact model. Scan the full
+      // photo to veto competing model-shaped markings. The shared comparison
+      // reader excludes the actual serial value.
+      if (!namesOnlyThisMachine(photoTextForModelComparison(photo), proposal.model)) return null;
     }
     return modelIsPrivate(photo, proposal.model) && !hasSeparateSerialField(photo, proposal.model) ? null : proposal;
   }

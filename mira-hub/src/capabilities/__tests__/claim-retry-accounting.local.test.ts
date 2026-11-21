@@ -31,6 +31,7 @@ import { POST as confirmIdentity } from "@/app/api/equipment-notebooks/[id]/iden
 import * as manualAcquisition from "../manual-acquisition";
 import { runManualAcquisition, startManualAcquisition } from "../notebook-manual-acquisition";
 import type { ManualAcquisitionInput, ManualAcquisitionOutcome } from "../manual-acquisition";
+import { reviewedManualFor } from "../reviewed-manual-library";
 import { attachFileToTargetsTx } from "@/lib/workspace-files";
 
 // The real attach needs the full workspace schema; the F7 proof stubs it (same
@@ -240,6 +241,37 @@ run("claim retry accounting on real Postgres (#4177 F4)", () => {
     expect(started).toBe(false);
     expect(acquire).not.toHaveBeenCalled();
     expect(await record()).toMatchObject(history);
+  });
+
+  it.each([
+    { model: "6AV2124-0GC01-0AX0", catalogNumber: "" },
+    { model: "TP700 Comfort", catalogNumber: "6AV2124‑0GC01‑0AX0" },
+  ])("claims the same reviewed Siemens publication on confirmation (%j)", async (fields) => {
+    await c.query(
+      "UPDATE equipment_notebooks SET identity_status = 'unknown', manufacturer = NULL, model = NULL WHERE id = $1",
+      [NB],
+    );
+    const identity = { manufacturer: "Siemens", ...fields };
+    const reviewed = reviewedManualFor({ manufacturer: identity.manufacturer, model: "6AV2124-0GC01-0AX0" });
+    expect(reviewed).not.toBeNull();
+    const acquire = vi.spyOn(manualAcquisition, "acquireManualForIdentity")
+      .mockResolvedValue({ status: "candidate_review", payload: {} });
+    try {
+      const response = await confirmIdentity(new NextRequest("http://test/identity/confirm", {
+        method: "POST",
+        body: JSON.stringify(identity),
+      }), { params: Promise.resolve({ id: NB }) });
+      expect(await response.json()).toMatchObject({ ok: true, searching: true, ...identity });
+      await vi.waitFor(async () => expect(await record()).toMatchObject({
+        state: "candidate_review",
+        reviewed_digest: reviewed!.sha256,
+      }));
+      expect(acquire).toHaveBeenCalledWith(expect.objectContaining({
+        identity: { ...identity, catalogNumber: identity.catalogNumber || undefined },
+      }));
+    } finally {
+      acquire.mockRestore();
+    }
   });
 
   it.each([

@@ -66,25 +66,14 @@ vi.mock("@/lib/workspace-files", async (importOriginal) => ({
   ...filesMock,
 }));
 
-const applicabilityMock = vi.hoisted(() => ({ assessApplicability: vi.fn() }));
-vi.mock("@/lib/manual-applicability", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/lib/manual-applicability")>()),
-  assessApplicability: applicabilityMock.assessApplicability,
-}));
-
-const equipmentNotebooksMock = vi.hoisted(() => ({
-  setSourceState: vi.fn(async () => ({ match_state: "verified", enabled_by_default: true })),
-}));
-vi.mock("@/lib/equipment-notebooks", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/lib/equipment-notebooks")>()),
-  setSourceState: equipmentNotebooksMock.setSourceState,
-}));
-
 const db = vi.hoisted(() => ({ claimRows: 1 }));
 vi.mock("@/lib/tenant-context", () => ({
   withTenantContext: vi.fn(async (_t: string, fn: (c: unknown) => unknown) =>
     fn({
-      query: vi.fn(async (sql: string) => {
+      query: vi.fn(async (sql: string, params: unknown[]) => {
+        if (sql.includes("UPDATE equipment_notebook_sources")) {
+          return { rows: [{ match_state: params[3], enabled_by_default: params[4] }] };
+        }
         // startManualAcquisition's claim() — only exercised by the second test.
         if (/RETURNING manual_acquisition->>'gen'/.test(sql)) {
           return { rowCount: db.claimRows, rows: db.claimRows ? [{ gen: "g1" }] : [] };
@@ -123,14 +112,6 @@ const FOUND_DISCOVERY = {
   quotaExceeded: false,
   searchStats: { providerQueries: 4, refusedQueries: 0, quotaDenied: null, candidates: 3 },
 };
-const VERIFIED_VERDICT = {
-  state: "verified" as const,
-  method: "exact_match",
-  matchedTokens: [],
-  evidencePages: [],
-  confidence: 1,
-  reason: "identity confirmed in the document text",
-};
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -144,13 +125,13 @@ beforeEach(() => {
   });
   filesMock.parkOrReuseFile.mockResolvedValue({ fileId: "file-1", reused: false, uploadId: null });
   ingestMock.ingestPdfToNode.mockResolvedValue({ uploadId: "doc-1", chunkCount: 7 });
-  applicabilityMock.assessApplicability.mockReturnValue(VERIFIED_VERDICT);
 });
 
 describe("a throwing tracer/exporter does not change the acquisition outcome", () => {
-  it("acquireManualForIdentity still completes normally", async () => {
+  it("acquireManualForIdentity still saves the disabled candidate", async () => {
     const outcome = await acquireManualForIdentity({ ...BASE_INPUT });
-    expect(outcome.status).toBe("complete");
+    expect(outcome.status).toBe("candidate_review");
+    expect(outcome.payload.manual).toMatchObject({ attached: true, enabledByDefault: false });
     expect((outcome.payload as { manual?: { docId?: string } }).manual?.docId).toBe("doc-1");
     // The real network/db calls still ran exactly once each — tracing failing
     // did not cause a retry or a double-run of any side-effecting call.

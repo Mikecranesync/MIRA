@@ -101,6 +101,7 @@ vi.mock("@/capabilities/notebook-manual-acquisition", async (importOriginal) => 
 
 import { POST } from "../route";
 import { resolveModelFromObservationText } from "@/capabilities/model-token";
+import { reviewedManualFor } from "@/capabilities/reviewed-manual-library";
 
 function providerStream(text: string) {
   const enc = new TextEncoder();
@@ -160,6 +161,35 @@ beforeEach(() => {
 const SMC_MESSAGE = "Find the manual for the SMC SS5Y3-DUW01302";
 
 describe("exact catalog number on an explicit manual request", () => {
+  it.each(["6AV2124-0GC01-0AX0", "6AV2124‑0GC01‑0AX0"])(
+    "offers the Siemens order number %s even when the corpus recognizes only the product name",
+    async (order) => {
+      ragMock.corpusManufacturers.mockResolvedValue(["Siemens"]);
+      ragMock.resolveModelFromObservationText.mockImplementationOnce(resolveModelFromObservationText);
+      const res = await POST(req({
+        message: `Find the manual for Siemens TP700 Comfort ${order}.`, mode: "general",
+      }), params);
+      const proposal = (await frames(res)).find(({ kind }) => kind === "identity_proposal");
+      expect(proposal).toMatchObject({ manufacturer: "SIEMENS", model: "6AV2124-0GC01-0AX0" });
+      expect(reviewedManualFor({ manufacturer: String(proposal?.manufacturer), model: String(proposal?.model) })).toMatchObject({
+        title: "SIMATIC HMI Comfort Panels Operating Instructions, 07/2022", page: 3,
+      });
+      expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    "Find the manual for Siemens TP900 Comfort 6AV2124-0GC01-0AX0.",
+    "Find the manual for Siemens TP700 Comfort S/N: 6AV2124-0GC01-0AX0.",
+    "Find the manual for Siemens TP700 Comfort 6AV2124-0GC01-0AX0. 24V?",
+  ])("does not select the reviewed Siemens order from %s", async (message) => {
+    ragMock.corpusManufacturers.mockResolvedValue(["Siemens"]);
+    ragMock.resolveModelFromObservationText.mockImplementationOnce(resolveModelFromObservationText);
+    const res = await POST(req({ message, mode: "general" }), params);
+    expect(await frames(res)).not.toContainEqual(expect.objectContaining({ kind: "identity_proposal", model: "6AV2124-0GC01-0AX0" }));
+    expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+  });
+
   it("offers the named ABB model for confirmation in a blank notebook with an empty corpus", async () => {
     const res = await POST(req({ message: "Show me the ABB ACS355 manual.", mode: "general" }), params);
     expect(await frames(res)).toContainEqual(expect.objectContaining({ kind: "identity_proposal", manufacturer: "ABB", model: "ACS355" }));

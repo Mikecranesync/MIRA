@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { reviewedManualFor } from "../reviewed-manual-library";
+import { manualLookupPart, reviewedManualFor } from "../reviewed-manual-library";
 
 describe("reviewed manual library", () => {
   it.each([
@@ -31,6 +31,22 @@ describe("reviewed manual library", () => {
     expect(reviewedManualFor({ ...identity, model: "GS11N" })).toMatchObject({ page: 26 });
     expect(reviewedManualFor({ ...identity, model: "GS21" })).toBeNull();
     expect(reviewedManualFor({ ...identity, model: "GS21N-20P2" })).toBeNull();
+  });
+
+  it("uses the same exact order number from either input field", () => {
+    const part = "ACS355-03U-06A7-2";
+    expect(manualLookupPart({ model: part, catalogNumber: " " })).toBe(part);
+    expect(manualLookupPart({ model: "ACS355", catalogNumber: " acs355‑03u‑06a7‑2 " })).toBe(part);
+    expect(manualLookupPart({ model: "", catalogNumber: " " })).toBeNull();
+    expect(manualLookupPart({ model: "ACS355", catalogNumber: `${part}+B063` })).toBe(`${part}+B063`);
+  });
+
+  it("matches a reviewed order number with the same canonical spelling from either field", () => {
+    const manufacturer = "Siemens";
+    const catalogNumber = "6AV2124‑0GC01‑0AX0";
+    expect(reviewedManualFor({ manufacturer, model: catalogNumber })?.page).toBe(3);
+    expect(reviewedManualFor({ manufacturer, model: "TP700 Comfort", catalogNumber })?.page).toBe(3);
+    expect(reviewedManualFor({ manufacturer, model: "TP900 Comfort", catalogNumber })).toBeNull();
   });
 
   it.each([

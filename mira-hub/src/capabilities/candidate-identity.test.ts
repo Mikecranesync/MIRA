@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { asksToFindManual, extractCandidateIdentity, isSafeCandidateSearchIdentity, makerFromText, wantsManualDocumentation } from "./candidate-identity";
+import { asksToFindManual, exactManualIdentity, extractCandidateIdentity, isSafeCandidateSearchIdentity, makerFromText, wantsManualDocumentation } from "./candidate-identity";
 import { labelledPartCodes } from "./photo-part-lookup";
 
 // Manual-First PRD R1 (#4160 S5): a candidate (manufacturer, part) read from a
@@ -110,6 +110,8 @@ describe("asksToFindManual", () => {
     "Find me the manual for this drive.",
     "Manual for GS11N-20P2",
     "I need the manual for Siemens 6AV2124-0GC01-0AX0",
+    "Find the manual for Siemens TP700 Comfort 6AV2124-0GC01-0AX0.",
+    "Show me the Siemens TP700 Comfort 6AV2124-0GC01-0AX0 manual.",
     "Do you have the datasheet for Schneider CA3KN22BD?",
     "Find the ABB ACS355 manual.",
     "Show me the ABB ACS355 manual.",
@@ -130,6 +132,10 @@ describe("asksToFindManual", () => {
   it.each([
     "What does the manual say about overcurrent?",
     "What does the Siemens 6AV2124-0GC01-0AX0 manual say about alarms?",
+    "Find the manual for Siemens TP700 Comfort 6AV2124-0GC01-0AX0 and tell me the voltage.",
+    "Find the manual for Siemens TP700 Comfort 6AV2124-0GC01-0AX0. 24V?",
+    "Find the manual for Siemens TP900 Comfort 6AV2124-0GC01-0AX0.",
+    "Find the manual for Siemens TP700 Comfort S/N: 6AV2124-0GC01-0AX0.",
     "Show me the voltage from the manual",
     "Show me the voltage from the ABB ACS355 manual.",
     "Find the manual for ABB ACS355. 240V?",
@@ -151,6 +157,22 @@ describe("asksToFindManual", () => {
     "Get installation instructions for replacing this drive.",
   ])("preserves a question that uses manual contents (%s)", (message) => {
     expect(asksToFindManual(message)).toBe(false);
+  });
+});
+
+describe("exactManualIdentity — typed reviewed product name and order number", () => {
+  it("preserves the canonical order number from a compatible product name", () => {
+    expect(exactManualIdentity("", "Find the manual for Siemens TP700 Comfort 6av2124-0gc01-0ax0."))
+      .toEqual({ manufacturer: "SIEMENS", model: "6AV2124-0GC01-0AX0" });
+  });
+
+  it.each([
+    "Find the manual for Siemens TP900 Comfort 6AV2124-0GC01-0AX0.",
+    "Find the manual for ABB TP700 Comfort 6AV2124-0GC01-0AX0.",
+    "Find the manual for Siemens TP700 Comfort S/N: 6AV2124-0GC01-0AX0.",
+    "Find the manual for Siemens TP700 Comfort 6AV2124-0GC01-0AX0 (asset tag).",
+  ])("withholds the exact order from contradictory or private evidence (%s)", (message) => {
+    expect(exactManualIdentity("", message)).toBeNull();
   });
 });
 

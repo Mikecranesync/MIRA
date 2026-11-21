@@ -8,12 +8,21 @@ describe("exact manual identity for a nameplate with private fields", () => {
   it.each([
     ["ABB", "ACS355", "S/N: TEST-ABB-001", "IP20"],
     ["ABB", "ACS355", "Serial No. TEST-ABB-001", "IP20"],
+    ["ABB", "ACS355", "Serial No. ACS580", "IP20\n200-240V\n50/60Hz\n100kA\nIEC 61800-5-1\nUL 508\nNEMA 4X"],
     ["SCHNEIDER ELECTRIC", "CA3KN22BD", "S/N: TEST-SE-001", "24VDC"],
+    ["SCHNEIDER ELECTRIC", "CA3KN22BD", "S/N: ACH580-01-07A3-4", "24VDC\nIEC60947-5-1\nCSA C22.2 No. 14"],
   ])("can offer %s %s with a distinct serial line (%j) and a trailing rating", (manufacturer, model, serial, rating) => {
     const photo = [manufacturer, model, serial, rating].join("\r\n");
 
     expect(exactManualIdentity(photo, REQUEST)).toEqual({ manufacturer, model });
     expect(isSafeCandidateSearchIdentity(photo, REQUEST, model, manufacturer)).toBe(false);
+  });
+
+  it("ignores ratings and standards before the distinct serial", () => {
+    const photo = "ABB\nACS355\n100kA\nIEC 61800-5-1\nNEMA 4X\nS/N: TEST-ABB-001";
+
+    expect(exactManualIdentity(photo, REQUEST)).toEqual({ manufacturer: "ABB", model: "ACS355" });
+    expect(isSafeCandidateSearchIdentity(photo, REQUEST, "ACS355", "ABB")).toBe(false);
   });
 
   it.each([
@@ -31,6 +40,12 @@ describe("exact manual identity for a nameplate with private fields", () => {
   it.each([
     ["ABB", "ACS355", "ACS580\nS/N: TEST-ABB-001"],
     ["ABB", "ACS355", "S/N: TEST-ABB-001\nACS580"],
+    ["ABB", "ACS355", "S/N: TEST-ABB-001\nACH580"],
+    ["ABB", "ACS355", "S/N: 1234A\nACH580"],
+    ["ABB", "ACS355", "S/N: TEST-ABB-001\nACH580-01-07A3-4"],
+    ["ABB", "ACS355", "S/N: TEST-ABB-001\nACH580‑01‑07A3‑4"],
+    ["ABB", "ACS355", "S/N: TEST-ABB-001\nIEC 61800-5-1 ACH580"],
+    ["ABB", "ACS355", "S/N: TEST-ABB-001\nMODEL: ACH580"],
     ["ABB", "ACS355", "Serial No. TEST-ABB-001\nIP20\nACS580"],
     ["SCHNEIDER ELECTRIC", "CA3KN22BD", "S/N: TEST-SE-001\nACS580"],
   ])("refuses %s %s beside a second known model (%j)", (manufacturer, model, otherMarking) => {
