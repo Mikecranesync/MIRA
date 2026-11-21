@@ -13,6 +13,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { Pool, type PoolClient } from "pg";
+import { photoModelText } from "@/capabilities/photo-subject";
 import { retrieveNodeChunks } from "../manual-rag";
 
 vi.hoisted(() => {
@@ -86,6 +87,56 @@ beforeAll(async () => {
   }
 });
 
+// Codex r2 on #5764, F1 + F6: other projects, so a photo's Siemens order
+// number and a photo's exact catalog number are judged as if typed.
+const PROJECTS = {
+  v20: {
+    node: "pm-v20",
+    doc: "39700000-0000-4000-8000-0000000005a2",
+    identity: { manufacturer: "Siemens", model: "SINAMICS V20" },
+    file: "v20_operating_instructions.pdf",
+    pages: [
+      [1, "SINAMICS V20 Inverter\nOperating Instructions\nEdition 02/2021"],
+      [5, "SINAMICS V20 technical data. Read this manual before installing. Rated input voltage 380 V to 480 V three phase."],
+    ],
+  },
+  awb: {
+    node: "pm-awb",
+    doc: "39700000-0000-4000-8000-0000000005a3",
+    identity: { manufacturer: "Allen-Bradley", model: "Micro820" },
+    file: "micro820-awb-user-manual.pdf",
+    pages: [
+      [1, "Micro820 Programmable Controllers\nCatalog Number 2080-LC20-20AWB\nUser Manual"],
+      [4, "Micro820 2080-LC20-20AWB input voltage 120/240 V AC. Embedded inputs and outputs."],
+    ],
+  },
+  qwb: {
+    node: "pm-qwb",
+    doc: "39700000-0000-4000-8000-0000000005a4",
+    identity: { manufacturer: "Allen-Bradley", model: "Micro820" },
+    file: "micro820-qwb-user-manual.pdf",
+    pages: [
+      [1, "Micro820 Programmable Controllers\nCatalog Number 2080-LC20-20QWB\nUser Manual"],
+      [4, "Micro820 2080-LC20-20QWB input voltage 24 V DC. Embedded inputs and outputs."],
+    ],
+  },
+} as const;
+
+beforeAll(async () => {
+  for (const p of Object.values(PROJECTS)) {
+    for (const [page, content] of p.pages) {
+      await client.query(
+        `INSERT INTO knowledge_entries
+          (tenant_id, content, manufacturer, model_number, source_url, page_start,
+           doc_id, ingest_route, metadata, verified, is_private)
+         VALUES ($1, $2, '', '', $6, $3, $4, 'v2',
+           jsonb_build_object('node_id', $5::text, 'filename', $7::text, 'chunk_index', $3::int), true, true)`,
+        [TENANT, content, page, p.doc, p.node, `https://test.invalid/${p.file}`, p.file],
+      );
+    }
+  }
+});
+
 afterAll(async () => {
   if (client) {
     await client.query("ROLLBACK");
@@ -97,9 +148,10 @@ afterAll(async () => {
 type Diagnostics = {
   namedModelMismatch?: { requested: string[]; declared: string[]; source?: string };
   siblingOfRecordAsk?: { asked: string[]; record: string; source?: string };
+  photoSubjectUnclear?: { shown: string[]; earlier: string[]; carried?: true };
 } & Record<string, unknown>;
 
-async function ask(message: string, photoText?: string, catalogNumber?: string, earlier?: { subjectQueries?: string[]; subjectOutOfReach?: boolean }) {
+async function ask(message: string, photoText?: string, catalogNumber?: string, earlier?: { subjectQueries?: string[]; subjectOutOfReach?: boolean; subjectUnclear?: boolean[] }) {
   const diagnostics: Diagnostics = {};
   const hits = await retrieveNodeChunks(client, TENANT, message, {
     nodeId: NODE,
@@ -116,6 +168,50 @@ async function ask(message: string, photoText?: string, catalogNumber?: string, 
   } as Parameters<typeof retrieveNodeChunks>[3]);
   return { hits, diagnostics };
 }
+
+async function askIn(key: keyof typeof PROJECTS, message: string, photoText?: string) {
+  const p = PROJECTS[key];
+  const diagnostics: Diagnostics = {};
+  const hits = await retrieveNodeChunks(client, TENANT, message, {
+    nodeId: p.node,
+    unsPath: null,
+    docIds: [p.doc],
+    validatedDocScope: true,
+    rawQuery: message,
+    identity: p.identity,
+    identityStatus: "user_confirmed",
+    diagnostics,
+    ...(photoText !== undefined ? { photoText } : {}),
+  } as Parameters<typeof retrieveNodeChunks>[3]);
+  return { hits, diagnostics };
+}
+
+/** The same question with the photo's public text TYPED into it: the search
+ *  words stay "Find me the manual", only the model check reads the text. */
+async function askTyped(text: string, catalogNumber?: string, earlier?: { subjectQueries?: string[] }) {
+  const diagnostics: Diagnostics = {};
+  const hits = await retrieveNodeChunks(client, TENANT, "Find me the manual", {
+    nodeId: NODE,
+    unsPath: null,
+    docIds: [DOC],
+    validatedDocScope: true,
+    rawQuery: text,
+    identity: { manufacturer: "AutomationDirect", model: "GS11N-20P2" },
+    identityStatus: "user_confirmed",
+    diagnostics,
+    ...(catalogNumber ? { catalogNumber } : {}),
+    ...(earlier ?? {}),
+  } as Parameters<typeof retrieveNodeChunks>[3]);
+  return { hits, diagnostics };
+}
+
+/** What a turn decided, without the photo-vs-typed wording tag. */
+const outcome = ({ hits, diagnostics: d }: { hits: unknown[]; diagnostics: Diagnostics }) => ({
+  served: hits.length > 0,
+  mismatch: d.namedModelMismatch?.requested ?? null,
+  sibling: d.siblingOfRecordAsk?.asked ?? null,
+  unlisted: (d.unlistedModelRefusal as { asked?: string[] } | undefined)?.asked ?? null,
+});
 
 describe("typed model: the existing coverage check (control for the photo path)", () => {
   it("refuses the GS10 manual for a typed GS20-23P0 and names the mismatch", async () => {
@@ -171,12 +267,11 @@ describe("this turn's photo is the asked machine when the question names none", 
     expect(diagnostics.siblingOfRecordAsk).toBeUndefined();
   });
 
-  it("a photo naming several devices leaves the earlier question as the subject", async () => {
+  it("a photo naming several devices beside an earlier open subject asks which machine", async () => {
     const earlier = { subjectQueries: ["Find me the manual for AutomationDirect GS11N-20P5"] };
     const { hits, diagnostics } = await ask("Find me the manual", PANEL_PHOTO, "GS11N-20P2", earlier);
     expect(hits).toEqual([]);
-    expect(diagnostics.siblingOfRecordAsk?.asked).toEqual(["GS11N-20P5"]);
-    expect(diagnostics.siblingOfRecordAsk?.source).toBeUndefined();
+    expect(diagnostics.photoSubjectUnclear?.shown).toEqual(expect.arrayContaining(["GS10", "Micro820"]));
   });
 
   it("a photo that names the machine is a start, even when earlier turns are out of reach", async () => {
@@ -202,13 +297,13 @@ describe("this turn's photo is the asked machine when the question names none", 
 
   // Codex r1 F2: two numbers of one family are two machines, so the photo
   // names no single subject and the earlier question stays in force.
-  it("a photo naming two GS20 drives leaves the earlier question as the subject", async () => {
+  it("a photo naming two GS20 drives keeps the earlier subject in force: it asks which machine", async () => {
     const earlier = { subjectQueries: ["Find me the manual for AutomationDirect GS11N-20P5"] };
     const twoDrives = 'A panel with two drives labeled "GS20-23P0" and "GS20-21P0".';
     const { hits, diagnostics } = await ask("Find me the manual", twoDrives, "GS11N-20P2", earlier);
     expect(hits).toEqual([]);
-    expect(diagnostics.siblingOfRecordAsk).toEqual({ asked: ["GS11N-20P5"], record: "GS11N-20P2" });
-    expect(diagnostics.namedModelMismatch).toBeUndefined();
+    expect(diagnostics.photoSubjectUnclear?.earlier).toEqual(expect.arrayContaining(["GS11N-20P5"]));
+    expect(diagnostics.photoSubjectUnclear?.shown).toEqual(expect.arrayContaining(["GS20-23P0", "GS20-21P0"]));
   });
 
   // Codex r1 F4: nothing after a serial label is read as a model.
@@ -261,9 +356,10 @@ describe("this turn's photo is the asked machine when the question names none", 
     expect(diagnostics.namedModelMismatch).toBeUndefined();
   });
 
-  it("control: a whole-panel photo naming several devices names no single machine", async () => {
+  it("a whole-panel photo the reader cannot resolve to one machine asks which one, one question", async () => {
     const { hits, diagnostics } = await ask("Find me the manual", PANEL_PHOTO);
-    expect(hits.length).toBeGreaterThan(0);
+    expect(hits).toEqual([]);
+    expect(diagnostics.photoSubjectUnclear).toEqual({ shown: ["GS10", "Micro820"], earlier: [] });
     expect(diagnostics.namedModelMismatch).toBeUndefined();
   });
 
@@ -280,4 +376,127 @@ describe("this turn's photo is the asked machine when the question names none", 
     expect(other.hits).toEqual([]);
     expect(other.diagnostics.namedModelMismatch?.source).toBeUndefined();
   });
+});
+
+describe("Codex r2 on #5764: the photo's text is judged exactly as typed", () => {
+  it("F1: a TP700 plate with its order number is refused in a V20 project, as typed", async () => {
+    const tp700 = "A dark gray Siemens panel. The label reads: SIEMENS, TP700 Comfort, 1P 6AV2124-0GC01-0AX0.";
+    const { hits, diagnostics } = await askIn("v20", "Find me the manual", tp700);
+    expect(hits).toHaveLength(0);
+    expect(diagnostics.namedModelMismatch?.source).toBe("photo");
+    expect(diagnostics.namedModelMismatch?.requested).toContain("TP700");
+    // Two different order numbers: the reader cannot tell which is meant, so it
+    // asks — where typing the same text would skip the check (the parity test's
+    // one stated exception).
+    const two = await askIn("v20", "Find me the manual", "SIEMENS TP700 Comfort 6AV2124-0GC01-0AX0 and 6AV2124-0JC01-0AX0");
+    expect(two.hits).toHaveLength(0);
+    expect(two.diagnostics.photoSubjectUnclear?.shown.length).toBeGreaterThan(1);
+    // Control: the project's own V20 plate is served.
+    expect((await askIn("v20", "Find me the manual", "Siemens SINAMICS V20 inverter nameplate.")).hits.length).toBeGreaterThan(0);
+  });
+
+  it("F6: a photo's exact catalog number reaches the exact-number check, as typed", async () => {
+    const typed = await askIn("awb", "What is the input voltage of the Micro820 2080-LC20-20QWB?");
+    expect(typed.hits).toHaveLength(0);
+    const photo = await askIn("awb", "What is the input voltage?", "Allen-Bradley Micro820 plate, catalog 2080-LC20-20QWB");
+    expect(photo.hits).toHaveLength(0);
+    expect(photo.diagnostics.unlistedModelRefusal).toMatchObject({ kind: "other-model", asked: ["2080-LC20-20QWB"], source: "photo" });
+    // A plate that shows only the catalog number, no family name: the same.
+    const numberOnly = await askIn("awb", "What is the input voltage?", "Allen-Bradley plate. Catalog 2080-LC20-20QWB, Series A.");
+    expect(numberOnly.hits).toHaveLength(0);
+    expect(numberOnly.diagnostics.unlistedModelRefusal).toMatchObject({ kind: "other-model", source: "photo" });
+    // Controls: the AWB plate in the AWB project, the QWB plate in a QWB project.
+    expect((await askIn("awb", "What is the input voltage?", "Allen-Bradley Micro820 plate, catalog 2080-LC20-20AWB")).hits.length).toBeGreaterThan(0);
+    expect((await askIn("qwb", "What is the input voltage?", "Allen-Bradley Micro820 plate, catalog 2080-LC20-20QWB")).hits.length).toBeGreaterThan(0);
+  });
+
+  it("F2: a full number beside a longer look-alike is two machines, never one", async () => {
+    const sib = "Two drives labeled GS11N-20P2 and GS11N-20P2A.";
+    // With an earlier open subject: the earlier subject stays in force, so it asks.
+    const withEarlier = await ask("Find me the manual", sib, "GS11N-20P2", { subjectQueries: ["What about the GS13N-21P0?"] });
+    expect(withEarlier.hits).toHaveLength(0);
+    expect(withEarlier.diagnostics.photoSubjectUnclear?.earlier).toEqual(expect.arrayContaining(["GS13N-21P0"]));
+    // On its own: judged as typed, and the look-alike is refused.
+    const alone = await ask("Find me the manual", sib, "GS11N-20P2");
+    expect(alone.hits).toHaveLength(0);
+    expect(alone.diagnostics.siblingOfRecordAsk?.asked).toContain("GS11N-20P2A");
+  });
+
+  it("a follow-up carrying a question whose photo was unclear asks again, never answers", async () => {
+    const unclearQ = "Find me the manual\nTwo drives labeled GS20-23P0 and GS20-21P0.";
+    const carried = await ask("What is its rated current?", undefined, "GS11N-20P2", { subjectQueries: [unclearQ], subjectUnclear: [true] });
+    expect(carried.hits).toHaveLength(0);
+    expect(carried.diagnostics.photoSubjectUnclear).toEqual({ shown: ["GS20-23P0", "GS20-21P0"], earlier: [], carried: true });
+    // The flag is read for the question that is carried, not the newest one.
+    const older = await ask("What is its rated current?", undefined, "GS11N-20P2", {
+      subjectQueries: ["What about its wiring?", unclearQ],
+      subjectUnclear: [false, true],
+    });
+    expect(older.diagnostics.photoSubjectUnclear?.carried).toBe(true);
+    // Control: the same words, not marked unclear, are judged as typed.
+    const clear = await ask("What is its rated current?", undefined, "GS11N-20P2", { subjectQueries: [unclearQ], subjectUnclear: [false] });
+    expect(clear.diagnostics.photoSubjectUnclear).toBeUndefined();
+  });
+
+  it("F4: a serial printed before its label is never read as the asked model", async () => {
+    const { hits, diagnostics } = await ask("Find me the manual", 'The label reads "GS20-23P0 (S/N)". The model is unreadable.');
+    expect(hits.length).toBeGreaterThan(0);
+    expect(diagnostics.namedModelMismatch).toBeUndefined();
+  });
+
+  it("F5: after a return to the unit on record with another drive's photo, the follow-up stays on the record", async () => {
+    const { hits, diagnostics } = await ask("What is its rated current?", undefined, "GS11N-20P2", { subjectQueries: ["Back to mine. What was its original firmware build?"] });
+    expect(hits.length).toBeGreaterThan(0);
+    expect(diagnostics.namedModelMismatch).toBeUndefined();
+  });
+
+  // The property itself: for every reading, with and without a catalog number
+  // on record, the photo turn decides exactly what typing its public text
+  // decides — with ONE stated exception: a photo the reader cannot resolve to
+  // one machine (typed, it would skip the coverage check) is asked about. With
+  // an earlier open subject, a photo naming one machine ends it as a typed
+  // model does; any other photo naming models asks which machine. Never looser.
+  const readings: Record<string, string> = {
+    GS20: GS20_PHOTO,
+    GS11N: GS11N_PHOTO,
+    panel: PANEL_PHOTO,
+    unreadable: UNREADABLE_PHOTO,
+    powerflex4m: "Nameplate: Allen-Bradley PowerFlex 4M AC drive.",
+    tp700: "Siemens TP700 Comfort. Order No. 6AV2124-0GC01-0AX0.",
+    twoGS20: 'A panel with two drives labeled "GS20-23P0" and "GS20-21P0".',
+    lookalike: "Two drives labeled GS11N-20P2 and GS11N-20P2A.",
+    suffixSerial: 'The label reads "GS20-23P0 (S/N)". The model is unreadable.',
+  };
+  const asksAlone = new Set(["panel"]);
+  const releases = new Set(["GS20", "GS11N", "powerflex4m"]);
+  const namesNothing = new Set(["unreadable", "suffixSerial"]);
+  const earlier = { subjectQueries: ["What about the GS13N-21P0?"] };
+  for (const [name, reading] of Object.entries(readings)) {
+    const typedText = ["Find me the manual", photoModelText(reading)].filter(Boolean).join("\n");
+    for (const catalog of [undefined, "GS11N-20P2"]) {
+      it(`parity: ${name} photo = typed (catalog on record: ${catalog ?? "none"})`, async () => {
+        const photo = await ask("Find me the manual", reading, catalog);
+        // ADR-0036: no serial reaches any diagnostic, whatever the outcome.
+        expect(JSON.stringify(photo.diagnostics)).not.toMatch(/GS20-US|0031482/);
+        if (name === "suffixSerial") expect(JSON.stringify(photo.diagnostics)).not.toContain("GS20-23P0");
+        if (asksAlone.has(name)) {
+          expect(photo.hits).toHaveLength(0);
+          expect(photo.diagnostics.photoSubjectUnclear).toBeDefined();
+        } else {
+          expect(photo.diagnostics.photoSubjectUnclear).toBeUndefined();
+          expect(outcome(photo)).toEqual(outcome(await askTyped(typedText, catalog)));
+        }
+      });
+      it(`parity with an earlier subject: ${name} (catalog on record: ${catalog ?? "none"})`, async () => {
+        const photo = await ask("Find me the manual", reading, catalog, earlier);
+        if (releases.has(name) || namesNothing.has(name)) {
+          expect(photo.diagnostics.photoSubjectUnclear).toBeUndefined();
+          expect(outcome(photo)).toEqual(outcome(await askTyped(typedText, catalog, earlier)));
+        } else {
+          expect(photo.hits).toHaveLength(0);
+          expect(photo.diagnostics.photoSubjectUnclear).toBeDefined();
+        }
+      });
+    }
+  }
 });

@@ -118,7 +118,7 @@ async function frames(res: Response): Promise<Record<string, unknown>[]> {
     .map((l) => JSON.parse(l.slice(6)) as Record<string, unknown>);
 }
 
-type Opts = { photoText?: string; subjectQueries?: string[]; diagnostics?: Record<string, unknown> };
+type Opts = { photoText?: string; subjectQueries?: string[]; subjectUnclear?: boolean[]; diagnostics?: Record<string, unknown> };
 const passOpts = () => ragMock.retrieveNodeChunks.mock.calls.map((c) => c[3] as Opts);
 
 beforeEach(() => {
@@ -196,6 +196,72 @@ describe("#5706 — a nameplate photo of another drive is not answered from the 
     expect(status.message).toContain("This project is set up for the GS11N-20P2. Your photo shows the GS11N-20P5, which is a different unit");
   });
 
+  // Codex r2 (F2 + parity): a photo that does not say which machine is meant
+  // gets one focused question — no provider call, no citation, no answer.
+  it("serves the which-machine question for an unclear photo", async () => {
+    filesMock.photoLinkedToTarget.mockResolvedValue({ fileId: PHOTO, capturedAt: "2026-11-21T20:57:06.047Z" });
+    veMock.loadVisualEvidenceForPhoto.mockResolvedValue(lookRow(PHOTO, "A GS10 drive beside a Micro820 module."));
+    ragMock.retrieveNodeChunks.mockImplementation(async (_c: unknown, _t: unknown, _q: unknown, opts: unknown) => {
+      const o = opts as Opts;
+      if (o?.diagnostics) o.diagnostics.photoSubjectUnclear = { shown: ["GS10", "Micro820"], earlier: [] };
+      return [];
+    });
+    const out = await frames(await POST(req({ message: "Find me the manual", sourceDocIds: [DOC_A], visualEvidence: { fileId: PHOTO } }), params));
+    expect(vi.mocked(fetch)).not.toHaveBeenCalled();
+    const status = out.find((f) => f.kind === "status") as { status: string; message?: string };
+    expect(status.status).toBe("insufficient_evidence");
+    expect(status.message).toContain("Your photo shows GS10 / Micro820");
+    expect(status.message).toContain("Which one is this question about?");
+    expect(status.message).not.toContain("I saw your photo");
+    expect(out.some((f) => f.kind === "citation" || f.kind === "citations")).toBe(false);
+  });
+
+  it("serves the photo's unlisted-number refusal ahead of the generic photo text", async () => {
+    filesMock.photoLinkedToTarget.mockResolvedValue({ fileId: PHOTO, capturedAt: "2026-11-21T20:57:06.047Z" });
+    veMock.loadVisualEvidenceForPhoto.mockResolvedValue(lookRow(PHOTO, "Micro820 plate, catalog 2080-LC20-20QWB"));
+    ragMock.retrieveNodeChunks.mockImplementation(async (_c: unknown, _t: unknown, _q: unknown, opts: unknown) => {
+      const o = opts as Opts;
+      if (o?.diagnostics) o.diagnostics.unlistedModelRefusal = { kind: "other-model", asked: ["2080-LC20-20QWB"], declared: ["2080-LC20-20AWB"], source: "photo" };
+      return [];
+    });
+    const out = await frames(await POST(req({ message: "What is the input voltage?", sourceDocIds: [DOC_A], visualEvidence: { fileId: PHOTO } }), params));
+    expect(vi.mocked(fetch)).not.toHaveBeenCalled();
+    const status = out.find((f) => f.kind === "status") as { status: string; message?: string };
+    expect(status.message).toContain("not the 2080-LC20-20QWB in your photo");
+  });
+
+  it("passes which carried questions came from an unclear photo", async () => {
+    nbMock.listTurns.mockResolvedValue([
+      { id: "t0", threadId: THREAD, question: "What about the GS11N-20P5?", answerStatus: "insufficient_evidence", basis: null, evidence: [] },
+      {
+        id: "t1",
+        threadId: THREAD,
+        question: "Find me the manual",
+        answerStatus: "insufficient_evidence",
+        basis: null,
+        evidence: [{ kind: "visual_observation", fileId: PRIOR_PHOTO, capturedAt: "2026-11-21T20:57:06.047Z", provenance: "phone_photo" }],
+      },
+    ]);
+    filesMock.photoLinkedToTarget.mockResolvedValue({ fileId: PRIOR_PHOTO, capturedAt: "2026-11-21T20:57:06.047Z" });
+    veMock.loadVisualEvidenceForPhoto.mockImplementation(async (...args: unknown[]) =>
+      (args[3] as { threadId?: string } | undefined)?.threadId === THREAD ? lookRow(PRIOR_PHOTO, "Two drives labeled GS20-23P0 and GS20-21P0.") : null,
+    );
+    await (await POST(req({ message: "What's its rated current?", sourceDocIds: [DOC_A], threadId: THREAD }), params)).text();
+    expect(passOpts()[0].subjectUnclear).toEqual([true, false]);
+  });
+
+  it("serves the which-machine question for a carried unclear photo", async () => {
+    ragMock.retrieveNodeChunks.mockImplementation(async (_c: unknown, _t: unknown, _q: unknown, opts: unknown) => {
+      const o = opts as Opts;
+      if (o?.diagnostics) o.diagnostics.photoSubjectUnclear = { shown: ["GS20-23P0", "GS20-21P0"], earlier: [], carried: true };
+      return [];
+    });
+    const out = await frames(await POST(req({ message: "What's its rated current?", sourceDocIds: [DOC_A], threadId: THREAD }), params));
+    expect(vi.mocked(fetch)).not.toHaveBeenCalled();
+    const status = out.find((f) => f.kind === "status") as { status: string; message?: string };
+    expect(status.message).toContain("Earlier in this conversation your photo showed GS20-23P0 / GS20-21P0");
+  });
+
   it("the safety stop's searches are held to the photo's machine too", async () => {
     filesMock.photoLinkedToTarget.mockResolvedValue({ fileId: PHOTO, capturedAt: "2026-11-21T20:57:06.047Z" });
     veMock.loadVisualEvidenceForPhoto.mockResolvedValue(lookRow(PHOTO, GS20_READING));
@@ -233,34 +299,50 @@ describe("#5706 — a nameplate photo of another drive is not answered from the 
     expect(passOpts().every((o) => o.photoText === undefined)).toBe(true);
   });
 
-  it("a reading stored under this notebook's legacy thread (app before #3968) is this technician's own", async () => {
+  // Codex r2 F3: another conversation's reading never decides this turn — not
+  // even one stored under the notebook's legacy thread for the same owner.
+  it("a legacy-thread reading of the same file never decides a new thread's photo", async () => {
     filesMock.photoLinkedToTarget.mockResolvedValue({ fileId: PHOTO, capturedAt: "2026-11-21T20:57:06.047Z" });
     veMock.loadVisualEvidenceForPhoto.mockImplementation(async (...args: unknown[]) => {
-      const scope = args[3] as { threadId: string | null } | undefined;
+      const scope = args[3] as { threadId: string | null; allowLegacy?: boolean } | undefined;
       if (!scope) return lookRow(PHOTO, GS20_READING);
-      return scope.threadId === null ? lookRow(PHOTO, GS20_READING) : null;
+      return scope.threadId === null || scope.allowLegacy ? lookRow(PHOTO, GS20_READING) : null;
     });
     await (await POST(req({ message: "Find me the manual", sourceDocIds: [DOC_A], threadId: THREAD, visualEvidence: { fileId: PHOTO } }), params)).text();
+    expect(passOpts().length).toBeGreaterThan(0);
+    expect(passOpts().every((o) => o.photoText === undefined)).toBe(true);
+  });
+
+  it("control: a legacy conversation's own photo is read under its own (legacy) thread", async () => {
+    filesMock.photoLinkedToTarget.mockResolvedValue({ fileId: PHOTO, capturedAt: "2026-11-21T20:57:06.047Z" });
+    veMock.loadVisualEvidenceForPhoto.mockImplementation(async (...args: unknown[]) => {
+      const scope = args[3] as { threadId: string | null; allowLegacy?: boolean } | undefined;
+      return !scope || (scope.threadId === null && !scope.allowLegacy) ? lookRow(PHOTO, GS20_READING) : null;
+    });
+    await (await POST(req({ message: "Find me the manual", sourceDocIds: [DOC_A], visualEvidence: { fileId: PHOTO } }), params)).text();
     expect(passOpts()[0].photoText).toBe(GS20_READING);
   });
 
   // Codex r1 F5: the follow-up to a photo refusal is still about the photo's
-  // machine. The open question's photo is read in this conversation and folded
-  // into its subject (public text only — the serial never travels).
+  // machine. The open question's photo is read exactly as the live turn reads
+  // its own (still linked, exact thread) and joined by the same rule.
+  const openPhotoTurn = (question = "Find me the manual") => ({
+    id: "t1",
+    threadId: THREAD,
+    question,
+    answerStatus: "insufficient_evidence",
+    basis: null,
+    evidence: [{ kind: "visual_observation", fileId: PRIOR_PHOTO, capturedAt: "2026-11-21T20:57:06.047Z", provenance: "phone_photo" }],
+  });
+  const exactThreadReading = async (...args: unknown[]) => {
+    const scope = args[3] as { threadId?: string | null; allowLegacy?: boolean } | undefined;
+    return args[2] === PRIOR_PHOTO && scope?.threadId === THREAD && !scope.allowLegacy ? lookRow(PRIOR_PHOTO, GS20_READING) : null;
+  };
+
   it("a follow-up carries the open question's photo machine into retrieval", async () => {
-    nbMock.listTurns.mockResolvedValue([
-      {
-        id: "t1",
-        threadId: THREAD,
-        question: "Find me the manual",
-        answerStatus: "insufficient_evidence",
-        basis: null,
-        evidence: [{ kind: "visual_observation", fileId: PRIOR_PHOTO, capturedAt: "2026-11-21T20:57:06.047Z", provenance: "phone_photo" }],
-      },
-    ]);
-    veMock.loadVisualEvidenceForPhoto.mockImplementation(async (...args: unknown[]) =>
-      args[2] === PRIOR_PHOTO && (args[3] as { threadId?: string | null } | undefined)?.threadId === THREAD ? lookRow(PRIOR_PHOTO, GS20_READING) : null,
-    );
+    nbMock.listTurns.mockResolvedValue([openPhotoTurn()]);
+    filesMock.photoLinkedToTarget.mockResolvedValue({ fileId: PRIOR_PHOTO, capturedAt: "2026-11-21T20:57:06.047Z" });
+    veMock.loadVisualEvidenceForPhoto.mockImplementation(exactThreadReading);
     await (await POST(req({ message: "What's its rated current?", sourceDocIds: [DOC_A], threadId: THREAD }), params)).text();
     const first = passOpts()[0];
     expect(first.photoText).toBeUndefined();
@@ -269,21 +351,48 @@ describe("#5706 — a nameplate photo of another drive is not answered from the 
     expect(first.subjectQueries?.[0]).not.toContain("GS20-US");
   });
 
-  it("an open question's photo read under the legacy thread is carried too", async () => {
-    nbMock.listTurns.mockResolvedValue([
-      {
-        id: "t1",
-        threadId: THREAD,
-        question: "Find me the manual",
-        answerStatus: "insufficient_evidence",
-        basis: null,
-        evidence: [{ kind: "visual_observation", fileId: PRIOR_PHOTO, capturedAt: "2026-11-21T20:57:06.047Z", provenance: "phone_photo" }],
-      },
-    ]);
-    veMock.loadVisualEvidenceForPhoto.mockImplementation(async (...args: unknown[]) =>
-      (args[3] as { threadId?: string | null } | undefined)?.threadId === null ? lookRow(PRIOR_PHOTO, GS20_READING) : null,
-    );
+  it("a photo since detached from the notebook is never read for the follow-up (Codex r2 F7)", async () => {
+    nbMock.listTurns.mockResolvedValue([openPhotoTurn()]);
+    filesMock.photoLinkedToTarget.mockResolvedValue(null);
+    veMock.loadVisualEvidenceForPhoto.mockImplementation(exactThreadReading);
     await (await POST(req({ message: "What's its rated current?", sourceDocIds: [DOC_A], threadId: THREAD }), params)).text();
+    expect(passOpts()[0].subjectQueries?.[0]).not.toContain("GS20");
+    expect((veMock.loadVisualEvidenceForPhoto.mock.calls as unknown[][]).some((c) => c[2] === PRIOR_PHOTO)).toBe(false);
+  });
+
+  it("an open question's photo read only under the legacy thread is not carried (Codex r2 F3)", async () => {
+    nbMock.listTurns.mockResolvedValue([openPhotoTurn()]);
+    filesMock.photoLinkedToTarget.mockResolvedValue({ fileId: PRIOR_PHOTO, capturedAt: "2026-11-21T20:57:06.047Z" });
+    veMock.loadVisualEvidenceForPhoto.mockImplementation(async (...args: unknown[]) => {
+      const scope = args[3] as { threadId?: string | null; allowLegacy?: boolean } | undefined;
+      return scope?.threadId === null || scope?.allowLegacy ? lookRow(PRIOR_PHOTO, GS20_READING) : null;
+    });
+    await (await POST(req({ message: "What's its rated current?", sourceDocIds: [DOC_A], threadId: THREAD }), params)).text();
+    expect(passOpts()[0].subjectQueries?.[0]).not.toContain("GS20");
+  });
+
+  it("an explicit return to the project's unit keeps its photo out of the follow-up (Codex r2 F5)", async () => {
+    nbMock.getNotebook.mockResolvedValue({
+      id: NB,
+      displayName: "QA BRAVO 7401002fc walk Nov 21",
+      manufacturer: "AutomationDirect",
+      model: "GS11N-20P2",
+      catalogNumber: "GS11N-20P2",
+      identityStatus: "user_confirmed",
+    });
+    nbMock.listTurns.mockResolvedValue([openPhotoTurn("Back to mine. What was its original firmware build?")]);
+    filesMock.photoLinkedToTarget.mockResolvedValue({ fileId: PRIOR_PHOTO, capturedAt: "2026-11-21T20:57:06.047Z" });
+    veMock.loadVisualEvidenceForPhoto.mockImplementation(exactThreadReading);
+    await (await POST(req({ message: "What is its rated current?", sourceDocIds: [DOC_A], threadId: THREAD }), params)).text();
+    expect(passOpts()[0].subjectQueries?.[0]).toContain("Back to mine");
+    expect(passOpts()[0].subjectQueries?.[0]).not.toContain("GS20");
+  });
+
+  it("control: without a catalog number on record 'back to mine' is no return, so its photo joins", async () => {
+    nbMock.listTurns.mockResolvedValue([openPhotoTurn("Back to mine. What was its original firmware build?")]);
+    filesMock.photoLinkedToTarget.mockResolvedValue({ fileId: PRIOR_PHOTO, capturedAt: "2026-11-21T20:57:06.047Z" });
+    veMock.loadVisualEvidenceForPhoto.mockImplementation(exactThreadReading);
+    await (await POST(req({ message: "What is its rated current?", sourceDocIds: [DOC_A], threadId: THREAD }), params)).text();
     expect(passOpts()[0].subjectQueries?.[0]).toContain("GS20-23P0");
   });
 
@@ -299,6 +408,8 @@ describe("#5706 — a nameplate photo of another drive is not answered from the 
       },
       { id: "t2", threadId: THREAD, question: "What is the GS11N-20P2 input voltage?", answerStatus: "answered", basis: "workspace_evidence", evidence: [] },
     ]);
+    // Still linked, so only the closed run keeps it out (not the F7 link check).
+    filesMock.photoLinkedToTarget.mockResolvedValue({ fileId: PRIOR_PHOTO, capturedAt: "2026-11-21T20:57:06.047Z" });
     veMock.loadVisualEvidenceForPhoto.mockImplementation(async () => lookRow(PRIOR_PHOTO, GS20_READING));
     await (await POST(req({ message: "What's its rated current?", sourceDocIds: [DOC_A], threadId: THREAD }), params)).text();
     expect(passOpts()[0].subjectQueries ?? []).toEqual([]);

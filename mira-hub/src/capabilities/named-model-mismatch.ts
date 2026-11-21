@@ -191,3 +191,17 @@ export function siblingOfRecordAskText(d: { asked: string[]; record: string; sou
 export function subjectOutOfReachText(): string {
   return "This conversation has gone a long way without an answer from a manual, so I can't tell which machine this question is about and I won't guess. Name the model in your question, or start a new conversation, and I'll answer from its manual.";
 }
+
+/** #5706: a photo that does not say which machine is meant (manual-rag.ts). */
+export type PhotoSubjectUnclear = { shown: string[]; earlier: string[]; carried?: true };
+
+/** One focused question, static text plus model labels only. */
+export function photoSubjectUnclearText(d: PhotoSubjectUnclear): string {
+  const shown = d.shown.length > 0 ? d.shown.join(" / ") : "more than one model";
+  if (d.carried)
+    return `Earlier in this conversation your photo showed ${shown}, and I can't tell which machine you mean, so I won't answer from a manual yet. Which machine is this question about? Type its model, or send a photo of just its nameplate.`;
+  if (d.earlier.length > 0)
+    return `Your photo shows ${shown}, and earlier in this conversation you asked about ${d.earlier.join(" / ")}. Which machine is this question about? Type its model, or start a new chat for the other one.`;
+  return `Your photo shows ${shown}, and I can't tell which machine you mean, so I won't answer from a manual yet. Which one is this question about? Type its model, or send a photo of just its nameplate.`;
+}
+

@@ -1,60 +1,96 @@
-// Which ONE machine, if any, does a photo's reading name? (#5706)
+// What a photo's reading tells the model check (#5706).
 //
 // Seen on the staging tablet 2026-11-21 (revision 7401002fc): a GS20-23P0
 // nameplate photo plus "Find me the manual" in a project confirmed as
 // GS11N-20P2 was answered from the GS10 manual. The photo had been read; the
-// reading never reached the model check. The photo now names the asked
-// machine when the question names none — judged here, by ONE rule, for the
-// photo sent with this question (manual-rag.ts) and for a photo an earlier
-// open question carried (conversation-subject.ts).
+// reading never reached the model check.
 //
-// Pure: a reading in, the text to judge (or null) out. No model, no network.
+// The photo is now judged EXACTLY as if its public text had been typed with
+// the question (Codex r2 on #5764): the same readers, the same ambiguity,
+// sibling, unlisted-number and exact-catalog checks. There is no second
+// judgment of which model a photo shows. This file only decides WHICH text of
+// the reading may be read at all (no serial ever), and the fail-closed gates:
+// whether the photo is specific enough to end an earlier open subject, and
+// whether the reader can tell which machine it means at all. A photo that
+// fails them is asked about — one focused question — never answered.
+//
+// Pure: a reading in, text out. No model, no network.
 
-import { modelIdentitiesInText, resolveModelFromObservationText } from "./model-token";
-import { publicLabelText } from "./photo-part-lookup";
+import { modelIdentitiesInText, modelMentionsInText, resolveModelFromObservationText } from "./model-token";
+import { unlistedModelNumbers } from "./manual-applicability";
+import { publicLabelText, serialCodes } from "./photo-part-lookup";
 
 /** An explicitly labelled model field ("MODEL: GS11N-20P2", "Model No. GS20-23P0").
  *  One token only, so a value can never run on into a serial printed after it. */
 const MODEL_FIELD = /\bmodel(?:\s*(?:no\.?|number|#))?\s*[:#=]?\s*((?=[A-Z0-9./-]*\d)[A-Z0-9][A-Z0-9./-]{2,})/gi;
 
-/** Does this text name any model — one, several, or a family the reader knows?
+/** Does this text name any model the reader knows — one, several, or a family?
  *  The same test the manual check applies to a typed question. */
 export function namesAnyModel(text: string): boolean {
   const named = resolveModelFromObservationText(text);
   return Boolean(named.model) || named.ambiguous || modelIdentitiesInText(text).size > 0;
 }
 
-/** Exactly one machine: the identity reader's identities after a family root is
- *  folded into the full number it prefixes (GS20 beside GS20-23P0, GS11N beside
- *  GS11N-20P2) — Codex r1 on #5764, F1 + F2. Two distinct numbers of one family
- *  (GS20-23P0 and GS20-21P0) are two machines. A close-name model the single
- *  token cannot carry (PowerFlex 4M, SMC-50) counts as one, exactly as the
- *  typed check scopes it. Every reading the single-token reader calls
- *  ambiguous (GS10 or GS20, Micro820 and Micro850) already names two
- *  identities here, so this count is the one rule. With no identity at all, a
- *  single-token read (a bare "525") is one machine. */
-export function namesOneMachine(text: string): boolean {
-  const read = resolveModelFromObservationText(text);
-  const ids = [...modelIdentitiesInText(text)];
-  const machines = ids.filter((id) => !ids.some((other) => other !== id && other.startsWith(id)));
-  if (machines.length > 1) return false;
-  return machines.length === 1 || Boolean(read.model);
+/**
+ * The text of a photo reading the model check may read, or null when it holds
+ * nothing a model check reads.
+ *
+ * Only PUBLIC text (ADR-0036): the reading up to its first serial or asset
+ * label (photo-part-lookup.ts publicLabelText), with every value the serial
+ * reader finds removed — also one printed BEFORE its label, "GS20-23P0 (S/N)"
+ * (Codex r2 F4) — plus explicitly labelled MODEL fields. A serial is never
+ * read as a model and never reaches any search.
+ */
+export function photoModelText(reading: string | null | undefined): string | null {
+  const raw = reading?.trim();
+  if (!raw) return null;
+  const serials = serialCodes(raw);
+  const strip = (text: string) => serials.reduce((out, serial) => out.split(serial).join(" "), text);
+  const labelled = [...raw.matchAll(MODEL_FIELD)].map((m) => m[1]).filter((value) => !serials.includes(value.toUpperCase()));
+  const text = [strip(publicLabelText(raw)).replace(/\s+/g, " ").trim(), ...labelled].filter(Boolean).join("\n");
+  return text && (namesAnyModel(text) || unlistedModelNumbers(text).length > 0) ? text : null;
 }
 
 /**
- * The part of a photo reading that may name the machine, when it names exactly
- * one; otherwise null (a whole panel, an unreadable plate, two drives).
+ * Is the photo specific enough to END an earlier open subject, the way a typed
+ * model does? Only when the reader finds exactly one machine: a family name is
+ * folded into a full number it prefixes (GS20 beside GS20-23P0), never one full
+ * number into another (GS11N-20P2 beside GS11N-20P2A is two — Codex r2 F2).
  *
- * Only PUBLIC text is read (ADR-0036; Codex r1 on #5764, F4): the reading up to
- * its first serial or asset label (photo-part-lookup.ts publicLabelText — the
- * same split the part lookup uses), plus any explicitly labelled MODEL field.
- * Nothing printed after a serial label is ever taken for a model, so
- * "S/N: PF 525" names no machine and cannot refuse the project's manual.
+ * This gate decides nothing about any manual. A photo it does not pass is
+ * still judged as typed — together WITH the earlier subject — so a miscount
+ * can only make the turn stricter than typing the photo's text, never looser.
  */
-export function photoSubjectText(reading: string | null | undefined): string | null {
-  const raw = reading?.trim();
-  if (!raw) return null;
-  const labelled = [...raw.matchAll(MODEL_FIELD)].map((m) => m[1]);
-  const text = [publicLabelText(raw).trim(), ...labelled].filter(Boolean).join("\n");
-  return text && namesOneMachine(text) ? text : null;
+export function namesOneMachine(text: string): boolean {
+  const ids = [...modelIdentitiesInText(text)];
+  const machines = ids.filter((id) => !ids.some((other) => other !== id && !id.includes("-") && other.startsWith(id)));
+  if (machines.length > 1) return false;
+  if (machines.length === 1) return true;
+  const read = resolveModelFromObservationText(text);
+  return Boolean(read.model) && !read.ambiguous;
 }
+
+/** The reader finds models here but cannot tell which one is meant ("GS10 …
+ *  Micro820", two TP700 order numbers). Typed, such a question skips the
+ *  coverage check; from a photo it is asked about instead (fail closed). */
+export function photoIsAmbiguous(text: string): boolean {
+  return namesAnyModel(text) && resolveModelFromObservationText(text).ambiguous;
+}
+
+/** The models a text names, for a question back to the technician: each
+ *  family as written ("Micro820"), or the full numbers the identity reader
+ *  found under it ("GS20-23P0", "GS20-21P0"). Model labels only (never a serial). */
+export function modelLabels(text: string): string[] {
+  const ids = [...modelIdentitiesInText(text)];
+  const out: string[] = [];
+  const add = (label: string) => {
+    if (!out.includes(label)) out.push(label);
+  };
+  for (const m of modelMentionsInText(text)) {
+    const full = ids.filter((id) => id.startsWith(`${m.id}-`));
+    if (full.length > 0) full.forEach(add);
+    else add(text.slice(m.start, m.end));
+  }
+  return out;
+}
+
