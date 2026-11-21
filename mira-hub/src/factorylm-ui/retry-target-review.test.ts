@@ -138,10 +138,10 @@ describe("the host is wired to the hold (source shape, like hub-host-restore-ret
     expect(host).toMatch(/\.\.\.\(reviewMessage \? \{ targetReview: reviewMessage \} : \{\}\)/);
   });
   it("the held-photo note sits beside the composer, read from the live draft (#5562)", () => {
-    expect(host).toMatch(/const heldNote = heldEvidenceNote\(failedBody, retryCheck, composerOwnsRecovery\);/);
+    expect(host).toMatch(/heldEvidenceNote\(draftRecovery, draftRetryCheck, true\)/);
     expect(host).toContain('aria-label="Kept with this question">{heldNote}');
   });
   it("Send routes the held question through heldQuestionForSend", () => {
-    expect(host).toMatch(/const held = heldQuestionForSend\(failedBody, retryCheck, q, files\.length\);/);
+    expect(host).toMatch(/const held = heldQuestionForSend\(draftRecovery, draftRetryCheck, q, files\.length\);/);
   });
 });

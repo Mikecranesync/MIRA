@@ -334,7 +334,7 @@ export type HubHostAction =
   | { readonly type: "recover-attachment-draft"; readonly threadId: string; readonly recoveryId: string; readonly text: string; readonly notice: string; readonly restoreDraft?: boolean; readonly allowWithoutAttachment?: boolean }
   | { readonly type: "restore-attachment-draft"; readonly threadId: string; readonly recoveryId: string }
   | { readonly type: "clear-recovery"; readonly threadId: string; readonly recoveryId: string }
-  | { readonly type: "reconcile-send"; readonly threadId: string; readonly requestIds: ReadonlySet<string>; readonly confirmedThreadTitle?: string }
+  | { readonly type: "reconcile-send"; readonly threadId: string; readonly requestIds: ReadonlySet<string>; readonly confirmedThreadTitle?: string; readonly confirmed?: boolean }
   | { readonly type: "reconcile-notebook-list"; readonly notebooks: readonly Pick<HubNotebook, "id" | "threads">[] }
   | { readonly type: "clear-attachment-recovery"; readonly threadId: string; readonly recoveryId: string };
 
@@ -435,7 +435,7 @@ export function hubHostReducer(state: HubShellState, action: HubHostAction): Hub
         });
       }
     }
-    if (next !== state && action.confirmedThreadTitle !== undefined &&
+    if ((next !== state || action.confirmed) && action.confirmedThreadTitle !== undefined &&
         state.confirmedThreadTitles?.get(action.threadId) !== action.confirmedThreadTitle) {
       const confirmedThreadTitles = new Map(state.confirmedThreadTitles);
       confirmedThreadTitles.set(action.threadId, action.confirmedThreadTitle);

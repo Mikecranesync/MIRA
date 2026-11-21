@@ -56,7 +56,7 @@ describe("hub-host keeps a finished answer's follow-ups after the reload (#4454)
     const keep = send.indexOf("setSettledFollowups(\n");
     expect(taken).toBeGreaterThan(-1);
     expect(post).toBeGreaterThan(taken);
-    expect(send.slice(keep)).toMatch(/question: body\.message, suggestions: finished\.suggestions, answeredBefore \}/);
+    expect(send.slice(keep)).toMatch(/question: body\.message, suggestions: finished\.suggestions, answeredBefore, clientRequestId: outBody\.clientRequestId \}/);
     // The ref follows the rendered detail, the same way draftRef follows the draft.
     expect(host).toMatch(/useEffect\(\(\) => \{ detailRef\.current = detail; \}, \[detail\]\);/);
   });

@@ -2243,94 +2243,112 @@ test("F23 inline Retry replays the clicked answer's photo request", async ({ pag
   await firstRetry.click();
   await expect.poll(() => requests.length).toBe(3);
   expect(requests[2]).toBe(requests[0]);
-  const second = answers.filter({ hasText: "Partial reply 2" });
-  await expect(second.getByRole("button", { name: "Retry", exact: true })).toBeEnabled();
-  await second.getByRole("button", { name: "Retry", exact: true }).click();
+  await expect(composer(page)).toHaveValue("Second photo question");
+  await page.getByRole("button", { name: "Send", exact: true }).click();
   await expect.poll(() => requests.length).toBe(4);
   expect(requests[3]).toBe(requests[1]);
-  await page.getByRole("button", { name: "Try again", exact: true }).click();
+  const second = answers.filter({ hasText: "Partial reply 4" });
+  await expect(second.getByRole("button", { name: "Retry", exact: true })).toBeEnabled();
+  await second.getByRole("button", { name: "Retry", exact: true }).click();
   await expect.poll(() => requests.length).toBe(5);
   expect(requests[4]).toBe(requests[1]);
+  await page.getByRole("button", { name: "Try again", exact: true }).click();
+  await expect.poll(() => requests.length).toBe(6);
+  expect(requests[5]).toBe(requests[1]);
   expect(uploads).toBe(2);
 });
 
-test("F24 a navigation-aborted safety stop survives failed origin hydration", async ({ page, context, baseURL }) => {
-  await auth(context, baseURL!);
-  await routes(page, { enabled: true, resolve: "resolved" });
-  await otherMachine(page);
-  let detail: "initial" | "failed" | "unrelated" | "saved" = "initial";
-  const question = "Check my synthetic warning.";
-  const warning = "Partial safety response before leaving.";
-  let failedReads = 0;
-  await page.route(new RegExp("/api/equipment-notebooks/" + NB + "/?(\\?.*)?$"), async (route) => {
-    if (detail === "initial") return route.fallback();
-    if (detail === "failed") {
-      failedReads++;
-      return route.fulfill(json({ error: "fixture_detail_failure" }, 503));
+for (const interruption of ["navigation", "explicit Stop"]) {
+  test("F24 safety stop survives failed origin hydration after " + interruption, async ({ page, context, baseURL }) => {
+    await auth(context, baseURL!);
+    await routes(page, { enabled: true, resolve: "resolved" });
+    await otherMachine(page);
+    await page.route(/\/api\/equipment-notebooks\/?(\?.*)?$/, (route) => {
+      const origin = { ...oracle.detailEmpty.notebook, threads: [{
+        id: THREAD, notebookId: NB, title: "Safety fixture origin",
+        createdAt: "", updatedAt: "", turnCount: 1, sharedLegacy: false,
+      }] };
+      const other = { ...oracle.detailEmpty.notebook, id: OTHER_NB, displayName: "Packaging line" };
+      return route.fulfill(json({ notebooks: [origin, other] }));
+    });
+    let detail: "initial" | "failed" | "unrelated" | "saved" = "initial";
+    const question = "Check my synthetic warning.";
+    const warning = "Partial safety response before leaving.";
+    let failedReads = 0;
+    await page.route(new RegExp("/api/equipment-notebooks/" + NB + "/?(\\?.*)?$"), async (route) => {
+      if (detail === "initial") return route.fallback();
+      if (detail === "failed") {
+        failedReads++;
+        return route.fulfill(json({ error: "fixture_detail_failure" }, 503));
+      }
+      const id = detail === "saved"
+        ? await page.locator("html").getAttribute("data-fixture-request")
+        : "another-request";
+      return route.fulfill(json({ ...oracle.detailEmpty,
+        turns: [{ id: "saved-fixture", clientRequestId: id, question, answerStatus: "answered",
+          answerText: "Saved fixture answer.", evidence: [] }],
+      }));
+    });
+    await page.addInitScript((partial) => {
+      const fetchNormally = window.fetch.bind(window);
+      window.fetch = (input, init) => {
+        if (init?.method !== "POST" || !String(input).includes("/chat/")) return fetchNormally(input, init);
+        document.documentElement.dataset.fixtureRequest = JSON.parse(String(init.body)).clientRequestId;
+        const body = new ReadableStream<Uint8Array>({
+          start(controller) {
+            const frames = [
+              { kind: "content", content: partial },
+              { kind: "safety", trigger: "Synthetic safety fixture" },
+              { kind: "sources", citations: [{ citationId: 1, sourceTitle: "Unconfirmed source", page: 1 }] },
+              { kind: "followups", suggestions: ["Unconfirmed suggestion"] },
+            ];
+            controller.enqueue(new TextEncoder().encode(frames.map((frame) => "data: " + JSON.stringify(frame) + "\n\n").join("")));
+            init.signal?.addEventListener("abort", () => controller.error(new DOMException("Navigation", "AbortError")), { once: true });
+          },
+        });
+        return Promise.resolve(new Response(body, { headers: { "Content-Type": "text/event-stream" } }));
+      };
+    }, warning);
+    await page.goto("/v3/?notebook=" + NB + "&thread=" + THREAD);
+    await expect(more(page)).toBeVisible();
+    await composer(page).fill(question);
+    await page.getByRole("button", { name: "Send", exact: true }).click();
+    await expect(page.getByText(warning, { exact: true })).toBeVisible();
+    const projects = page.getByRole("region", { name: "Projects" });
+    const other = projects.locator('[data-item-id="notebook-' + OTHER_NB + ':thread-legacy"]');
+    const stop = page.locator('[data-part-type="safety_notice"][data-severity="stop"]');
+    if (interruption === "explicit Stop") {
+      await page.getByRole("button", { name: "Stop", exact: true }).click();
+      await expect(stop).toBeVisible();
     }
-    const id = detail === "saved"
-      ? await page.locator("html").getAttribute("data-fixture-request")
-      : "another-request";
-    return route.fulfill(json({ ...oracle.detailEmpty,
-      turns: [{ id: "saved-fixture", clientRequestId: id, question, answerStatus: "answered",
-        answerText: "Saved fixture answer.", evidence: [] }],
-    }));
+    await other.click();
+    await expect(page).toHaveURL(new RegExp("notebook=" + OTHER_NB));
+    await expect(stop).toHaveCount(0);
+    await expect(page.getByText(warning, { exact: true })).toHaveCount(0);
+
+    const origin = projects.locator('[data-item-id="notebook-' + NB + ':thread-' + THREAD + '"]');
+    detail = "failed";
+    await origin.click();
+    await expect.poll(() => failedReads).toBeGreaterThan(0);
+    await expect(stop).toBeVisible({ timeout: 6000 });
+    await expect(page.getByText(warning, { exact: true })).toBeVisible();
+    await expect(page.getByText("Unconfirmed source", { exact: true })).toHaveCount(0);
+    await expect(page.getByText("Unconfirmed suggestion", { exact: true })).toHaveCount(0);
+
+    detail = "unrelated";
+    await other.click();
+    await origin.click();
+    await expect(page.getByText("Saved fixture answer.", { exact: true })).toBeVisible();
+    await expect(stop).toBeVisible();
+
+    detail = "saved";
+    await other.click();
+    await origin.click();
+    await expect(page.getByText("Saved fixture answer.", { exact: true })).toHaveCount(1);
+    await expect(stop).toHaveCount(0);
+    await expect(page.getByText(warning, { exact: true })).toHaveCount(0);
   });
-  await page.addInitScript((partial) => {
-    const fetchNormally = window.fetch.bind(window);
-    window.fetch = (input, init) => {
-      if (init?.method !== "POST" || !String(input).includes("/chat/")) return fetchNormally(input, init);
-      document.documentElement.dataset.fixtureRequest = JSON.parse(String(init.body)).clientRequestId;
-      const body = new ReadableStream<Uint8Array>({
-        start(controller) {
-          const frames = [
-            { kind: "content", content: partial },
-            { kind: "safety", trigger: "Synthetic safety fixture" },
-            { kind: "sources", citations: [{ citationId: 1, sourceTitle: "Unconfirmed source", page: 1 }] },
-            { kind: "followups", suggestions: ["Unconfirmed suggestion"] },
-          ];
-          controller.enqueue(new TextEncoder().encode(frames.map((frame) => "data: " + JSON.stringify(frame) + "\n\n").join("")));
-          init.signal?.addEventListener("abort", () => controller.error(new DOMException("Navigation", "AbortError")), { once: true });
-        },
-      });
-      return Promise.resolve(new Response(body, { headers: { "Content-Type": "text/event-stream" } }));
-    };
-  }, warning);
-  await page.goto("/v3/?notebook=" + NB + "&thread=" + THREAD);
-  await expect(more(page)).toBeVisible();
-  await composer(page).fill(question);
-  await page.getByRole("button", { name: "Send", exact: true }).click();
-  await expect(page.getByText(warning, { exact: true })).toBeVisible();
-  const projects = page.getByRole("region", { name: "Projects" });
-  const other = projects.locator('[data-item-id="notebook-' + OTHER_NB + ':thread-legacy"]');
-  await other.click();
-  await expect(page).toHaveURL(new RegExp("notebook=" + OTHER_NB));
-  const stop = page.locator('[data-part-type="safety_notice"][data-severity="stop"]');
-  await expect(stop).toHaveCount(0);
-  await expect(page.getByText(warning, { exact: true })).toHaveCount(0);
-
-  const origin = projects.locator('[data-item-id="notebook-' + NB + ':thread-' + THREAD + '"]');
-  detail = "failed";
-  await origin.click();
-  await expect.poll(() => failedReads).toBeGreaterThan(0);
-  await expect(stop).toBeVisible({ timeout: 6000 });
-  await expect(page.getByText(warning, { exact: true })).toBeVisible();
-  await expect(page.getByText("Unconfirmed source", { exact: true })).toHaveCount(0);
-  await expect(page.getByText("Unconfirmed suggestion", { exact: true })).toHaveCount(0);
-
-  detail = "unrelated";
-  await other.click();
-  await origin.click();
-  await expect(page.getByText("Saved fixture answer.", { exact: true })).toBeVisible();
-  await expect(stop).toBeVisible();
-
-  detail = "saved";
-  await other.click();
-  await origin.click();
-  await expect(page.getByText("Saved fixture answer.", { exact: true })).toHaveCount(1);
-  await expect(stop).toHaveCount(0);
-  await expect(page.getByText(warning, { exact: true })).toHaveCount(0);
-});
+}
 
 test("F25 a second interrupted upload preserves both original questions", async ({ page, context, baseURL }) => {
   await auth(context, baseURL!);
@@ -2407,52 +2425,117 @@ test("F25 a second interrupted upload preserves both original questions", async 
   }
 });
 
-test("F26 Projects keeps a saved first answer when the notebook list lags", async ({ page, context, baseURL }) => {
+for (const settlement of ["early stream cutoff", "terminal retry"]) {
+  test("F26 Projects keeps a saved first answer after " + settlement, async ({ page, context, baseURL }) => {
+    await auth(context, baseURL!);
+    await routes(page, { enabled: true, resolve: "resolved" });
+    let catchUp = false;
+    let listReads = 0;
+    let requestId: string | undefined;
+    let chatPosts = 0;
+    let failedReads = 0;
+    let detailOnline = false;
+    const throughRetry = settlement === "terminal retry";
+    const question = "Find the saved conversation.";
+    const summary = { id: THREAD, notebookId: NB, title: "Saved conversation fixture",
+      createdAt: "2026-11-20T12:00:00.000Z", updatedAt: "2026-11-20T12:00:01.000Z",
+      turnCount: 1, sharedLegacy: false };
+    await page.route(/\/api\/equipment-notebooks\/?(\?.*)?$/, (route) => {
+      listReads++;
+      const notebooks = catchUp
+        ? oracle.list.notebooks.map((nb: { id: string }) => nb.id === NB ? { ...nb, threads: [summary] } : nb)
+        : oracle.list.notebooks;
+      return route.fulfill(json({ notebooks }));
+    });
+    await page.route(new RegExp("/api/equipment-notebooks/" + NB + "/?(\\?.*)?$"), (route) => {
+      if (!requestId || new URL(route.request().url()).searchParams.get("threadId") !== THREAD) return route.fallback();
+      if (throughRetry && !detailOnline) {
+        failedReads++;
+        return route.fulfill(json({ error: "fixture_detail_failure" }, 503));
+      }
+      return route.fulfill(json({ ...oracle.detailEmpty, threads: [summary], turns: [{
+        id: "saved-first-fixture", clientRequestId: requestId, question, answerStatus: "answered",
+        answerText: "Confirmed first answer.", evidence: [],
+      }] }));
+    });
+    await page.route(/\/api\/equipment-notebooks\/[^/]+\/chat\/?$/, (route) => {
+      chatPosts++;
+      const postedId = route.request().postDataJSON().clientRequestId;
+      if (requestId) expect(postedId).toBe(requestId);
+      requestId = postedId;
+      const body = throughRetry && chatPosts === 2 ? 'data: {"kind":"status","status":"answered"}\n\n' : "";
+      return route.fulfill({ status: 200, contentType: "text/event-stream", body });
+    });
+    await page.goto("/v3/?notebook=" + NB + "&thread=" + THREAD);
+    await expect(more(page)).toBeVisible();
+    const origin = page.url();
+    await composer(page).fill(question);
+    await page.getByRole("button", { name: "Send", exact: true }).click();
+    const projects = page.getByRole("region", { name: "Projects" });
+    if (throughRetry) {
+      await expect.poll(() => failedReads).toBeGreaterThan(0);
+      await page.getByRole("button", { name: "Try again", exact: true }).click();
+      await expect.poll(() => failedReads).toBeGreaterThan(1);
+      const pendingRow = projects.getByRole("button", { name: "Saved conversation", exact: true });
+      await page.getByRole("button", { name: "New chat", exact: true }).click();
+      await expect(pendingRow).toBeVisible();
+      detailOnline = true;
+      await pendingRow.click();
+      await expect(page).toHaveURL(origin);
+    }
+    await expect(page.getByText("Confirmed first answer.", { exact: true })).toBeVisible();
+    const savedRow = projects.getByRole("button", { name: summary.title, exact: true });
+    await page.getByRole("button", { name: "New chat", exact: true }).click();
+    await expect(savedRow).toBeVisible({ timeout: 6000 });
+    await expect.poll(() => listReads).toBeGreaterThan(1);
+    await savedRow.click();
+    await expect(page).toHaveURL(origin);
+    await expect(page.getByText("Confirmed first answer.", { exact: true })).toBeVisible();
+    expect(chatPosts).toBe(throughRetry ? 2 : 1);
+    catchUp = true;
+    await page.reload();
+    await expect(savedRow).toHaveCount(1);
+  });
+}
+
+test("F29 an older interrupted answer leaves the newer saved answer and its follow-ups last", async ({ page, context, baseURL }) => {
   await auth(context, baseURL!);
   await routes(page, { enabled: true, resolve: "resolved" });
-  let catchUp = false;
-  let listReads = 0;
-  let requestId: string | undefined;
-  let chatPosts = 0;
-  const question = "Find the saved conversation.";
-  const summary = { id: THREAD, notebookId: NB, title: "Saved conversation fixture",
-    createdAt: "2026-11-20T12:00:00.000Z", updatedAt: "2026-11-20T12:00:01.000Z",
-    turnCount: 1, sharedLegacy: false };
-  await page.route(/\/api\/equipment-notebooks\/?(\?.*)?$/, (route) => {
-    listReads++;
-    const notebooks = catchUp
-      ? oracle.list.notebooks.map((nb: { id: string }) => nb.id === NB ? { ...nb, threads: [summary] } : nb)
-      : oracle.list.notebooks;
-    return route.fulfill(json({ notebooks }));
-  });
-  await page.route(new RegExp("/api/equipment-notebooks/" + NB + "/?(\\?.*)?$"), (route) => {
-    if (!requestId || new URL(route.request().url()).searchParams.get("threadId") !== THREAD) return route.fallback();
-    return route.fulfill(json({ ...oracle.detailEmpty, threads: [summary], turns: [{
-      id: "saved-first-fixture", clientRequestId: requestId, question, answerStatus: "answered",
-      answerText: "Confirmed first answer.", evidence: [],
-    }] }));
-  });
+  const oldQuestion = "Check the older fixture.";
+  const newQuestion = "Check the newer fixture.";
+  const suggestion = "Tell me more about the newer fixture";
+  let saved: Record<string, unknown>[] = [];
+  await page.route(new RegExp("/api/equipment-notebooks/" + NB + "/?(\\?.*)?$"), (route) =>
+    route.fulfill(json({ ...oracle.detailEmpty, turns: saved })));
   await page.route(/\/api\/equipment-notebooks\/[^/]+\/chat\/?$/, (route) => {
-    chatPosts++;
-    requestId = route.request().postDataJSON().clientRequestId;
-    return route.fulfill({ status: 200, contentType: "text/event-stream", body: "" });
+    const request = route.request().postDataJSON();
+    const frames: unknown[] = [{ kind: "content", content: "Older partial answer." }];
+    if (request.message === newQuestion) {
+      const savedAt = new Date();
+      saved = [
+        { id: "other-device-answer", clientRequestId: "other-device-request", question: newQuestion,
+          answerStatus: "answered", answerText: "Saved from another device.", evidence: [],
+          createdAt: new Date(savedAt.getTime() - 1).toISOString() },
+        { id: "newer-fixture-answer", clientRequestId: request.clientRequestId, question: newQuestion,
+          answerStatus: "answered", answerText: "Newer saved answer.", evidence: [], createdAt: savedAt.toISOString() },
+      ];
+      frames.splice(0, 1, { kind: "content", content: "Newer saved answer." },
+        { kind: "followups", suggestions: [suggestion] }, { kind: "status", status: "answered" });
+    }
+    return route.fulfill({ status: 200, contentType: "text/event-stream",
+      body: frames.map((frame) => "data: " + JSON.stringify(frame) + "\n\n").join("") });
   });
   await page.goto("/v3/?notebook=" + NB + "&thread=" + THREAD);
   await expect(more(page)).toBeVisible();
-  const origin = page.url();
-  await composer(page).fill(question);
+  await composer(page).fill(oldQuestion);
   await page.getByRole("button", { name: "Send", exact: true }).click();
-  await expect(page.getByText("Confirmed first answer.", { exact: true })).toBeVisible();
-  const projects = page.getByRole("region", { name: "Projects" });
-  const savedRow = projects.getByRole("button", { name: summary.title, exact: true });
-  await page.getByRole("button", { name: "New chat", exact: true }).click();
-  await expect(savedRow).toBeVisible({ timeout: 6000 });
-  await expect.poll(() => listReads).toBeGreaterThan(1);
-  await savedRow.click();
-  await expect(page).toHaveURL(origin);
-  await expect(page.getByText("Confirmed first answer.", { exact: true })).toBeVisible();
-  expect(chatPosts).toBe(1);
-  catchUp = true;
-  await page.reload();
-  await expect(savedRow).toHaveCount(1);
+  await expect(page.getByRole("button", { name: "Try again", exact: true })).toBeEnabled();
+  await composer(page).fill(newQuestion);
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  const answers = page.locator('.fl-turn--aui[data-role="assistant"]');
+  const persisted = answers.filter({ hasText: "Newer saved answer." });
+  await expect(persisted).toHaveAttribute("data-turn-id", "newer-fixture-answer-a");
+  await expect(answers.first()).toContainText("Older partial answer.", { timeout: 6000 });
+  await expect(answers.last()).toContainText("Newer saved answer.");
+  await expect(persisted.getByRole("button", { name: suggestion, exact: true })).toBeVisible();
 });
