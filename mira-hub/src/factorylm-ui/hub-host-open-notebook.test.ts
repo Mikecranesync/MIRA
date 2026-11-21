@@ -23,9 +23,12 @@ function body(name: string): string {
 }
 
 describe("hub-host opens a notebook on a fresh chat (#4444)", () => {
-  it("a sidebar project click opens a fresh thread, not the most recent one", () => {
+  it("a sidebar project click resumes the newest saved thread; the fresh-chat policy is kept for links and offers (#4681)", () => {
     const onSelectProject = body("onSelectProject");
-    expect(onSelectProject).toMatch(/openNotebookSelection\(nb\)/);
+    expect(onSelectProject).toMatch(/resumeProjectSelection\(nb\)/);
+    expect(onSelectProject).not.toMatch(/openNotebookSelection/);
+    // Clicking the project that is already open is a no-op: select() would abort a stream and reset detail.
+    expect(onSelectProject).toMatch(/selectionRef\.current[\s\S]*return;[\s\S]*select\(target\)/);
     expect(host).not.toMatch(/\binitialSelection\b/);
   });
 
