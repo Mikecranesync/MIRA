@@ -6,6 +6,7 @@ import { renderHome } from "../home.js";
 import { renderCmms, renderSamplePlaceholder } from "../cmms.js";
 import { renderLimitations } from "../limitations.js";
 import { renderSecurity } from "../security.js";
+import { renderOffline } from "../offline.js";
 import { navbar, footer } from "../_topbar.js";
 import {
   FEATURES,
@@ -135,6 +136,7 @@ const RENDERER_SOURCES = [
   "views/cmms.ts",
   "views/limitations.ts",
   "views/security.ts",
+  "views/offline.ts",
 ] as const;
 
 const rendererSources = RENDERER_SOURCES.map((rel) => ({
@@ -147,6 +149,7 @@ const pages: Array<{ name: string; html: string }> = [
   { name: "/cmms", html: renderCmms("https://factorylm.com/cmms") },
   { name: "/limitations", html: renderLimitations("https://factorylm.com/limitations") },
   { name: "/security", html: renderSecurity("https://factorylm.com/security") },
+  { name: "/offline", html: renderOffline("https://factorylm.com/offline") },
   { name: "/sample", html: renderSamplePlaceholder() },
   { name: "/printsense (route)", html: renderPrintsenseLanding() },
   { name: "/blog (renderer)", html: renderBlogIndex(BLOG_POSTS, FAULT_CODES.length) },
@@ -900,3 +903,56 @@ function citationClaims(html: string): string[] {
     text.match(/\bcit(?:e|es|ed|ing)\b[^.!?]{0,40}\b(?:pages?|manuals?)\b/gi) ?? []
   );
 }
+
+// RFI readiness (#5570): trust, security and offline pages.
+const rfiTrust = readFileSync(join(process.cwd(), "public", "trust.html"), "utf-8");
+const rfiSecurity = renderSecurity("https://factorylm.com/security");
+const rfiOffline = renderOffline("https://factorylm.com/offline");
+const rfiDpa = readFileSync(join(process.cwd(), "public", "legal", "dpa.html"), "utf-8");
+
+describe("RFI readiness: trust, security and offline pages", () => {
+  test("/trust no longer names an internal PR number or the secrets vendor in prose", () => {
+    expect(rfiTrust).not.toMatch(/PR #\d+/);
+    expect(rfiTrust).not.toContain("credentials live in Doppler");
+    expect(rfiTrust).not.toContain("compliance roadmap");
+    expect(rfiTrust).toContain('id="compliance"');
+  });
+
+  test("/trust lists the current host, not the retired DigitalOcean droplet", () => {
+    expect(rfiTrust).not.toContain("DigitalOcean");
+    expect(rfiTrust).toContain("OVHcloud");
+  });
+
+  test("legal pages don't claim a corporation that doesn't exist", () => {
+    // terms.html is pinned to main until #5126 lands; it still says "FactoryLM, Inc."
+    for (const f of ["trust.html", "privacy.html", "legal/dpa.html"]) {
+      const html = readFileSync(join(process.cwd(), "public", f), "utf-8");
+      expect(html, f).not.toContain("FactoryLM, Inc.");
+      expect(html, f).not.toContain("Delaware corporation");
+    }
+    expect(rfiDpa).not.toContain("SOC 2 Type II attestation in progress");
+  });
+
+  test("/security names the live providers like /trust does", () => {
+    expect(rfiSecurity).toContain("OpenAI, then OpenRouter");
+    expect(rfiSecurity).not.toContain("We don't name providers");
+    expect(rfiSecurity).toContain('href="/trust"');
+  });
+
+  test("/offline says MIRA works offline and keeps unconfirmed specifics under What's next", () => {
+    expect(rfiOffline).toContain("MIRA works offline");
+    expect(rfiOffline).toContain("What's next");
+    expect(rfiOffline).toContain("Independent network verification.");
+    expect(rfiOffline).toContain("Long disconnected deployments.");
+    expect(rfiOffline).not.toMatch(/180[- ]day|air[- ]gapped|FedRAMP authorized|deterministic/i);
+  });
+
+  // Owner gate: these pages carry [MIKE TO CONFIRM] markers for facts only the owner
+  // can supply (the operator's legal name in the DPA). This test stays red until
+  // every marker is replaced, so the branch cannot merge with a placeholder on a live page.
+  test("no owner placeholder is left on a public page", () => {
+    for (const [name, html] of [["/trust", rfiTrust], ["/security", rfiSecurity], ["/offline", rfiOffline], ["/legal/dpa", rfiDpa]] as const) {
+      expect(html, `${name} still has an owner placeholder`).not.toContain("MIKE TO CONFIRM");
+    }
+  });
+});
