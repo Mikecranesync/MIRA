@@ -1,0 +1,1 @@
+import {defineConfig} from "vitest/config"; import path from "node:path"; export default defineConfig({resolve:{alias:{"@":path.resolve("src")}},test:{include:["proof.test.ts"],testTimeout:180000,pool:"forks",maxWorkers:1,minWorkers:1}});
