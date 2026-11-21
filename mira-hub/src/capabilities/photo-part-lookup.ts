@@ -59,8 +59,6 @@ const trimCode = (code: string) => code.replace(/[./-]+$/, "");
 /** Quotes are label punctuation, never identifier characters (#4150 F1/F4); invisible
  *  characters (soft hyphen, zero-width, BOM) are nothing at all, so "Ser\u00adial" is
  *  still "Serial" (#4172). */
-/** Exported so a caller locating a code read by this module searches the SAME text (#5706 r4 F1). */
-export const normalizeLabelText = (t: string) => normalize(t);
 const normalize = (t: string) => t.replace(/[\u00ad\u200b-\u200d\u2060\ufeff]/g, "").replace(/["'\u2018\u2019\u201c\u201d`]/g, " ");
 
 /**
@@ -272,29 +270,6 @@ export function labelledPartCodes(text: string): string[] {
 }
 
 export function unambiguousPartNumber(photoText: string): string | null {
-  const code = partNumberBeforeDanglingCheck(photoText);
-  // #5268 Codex r16 (owner decision 2026-11-07, fail safe): a serial or asset
-  // label ANYWHERE on the plate with no value of its own cannot say which code
-  // it marks, however the annotation wraps — so the plate offers no code at all.
-  if (code === null || danglingPrivateLabel(photoText)) return null;
-  return code;
-}
-
-/**
- * The plate's one part code when the ONLY thing withholding it from
- * `unambiguousPartNumber` is a value-less ASSET label elsewhere on the plate
- * (no serial label at all, and the code itself never marked private). This
- * authorizes nothing: it never reaches the automatic search or the web. A
- * caller may only SHOW it for the technician to confirm, and only after the
- * code is proven public in that maker's own manuals (#5706, owner option A of
- * 2026-11-07 extended).
- */
-export function partNumberWithheldOnlyByAssetLabel(photoText: string): string | null {
-  if (!danglingPrivateLabel(photoText) || mentionsSerialLabel(photoText) || !mentionsAssetLabel(photoText)) return null;
-  return partNumberBeforeDanglingCheck(photoText);
-}
-
-function partNumberBeforeDanglingCheck(photoText: string): string | null {
   const codes = partCodes(photoText);
   if (codes.length !== 1) return null;
   // #5268 Codex r14: the confirm-first chip searches this value too, and a
@@ -304,6 +279,10 @@ function partNumberBeforeDanglingCheck(photoText: string): string | null {
   if ([...privateIdentifierKeys(photoText)].some((k) => k.includes(key))) return null;
   if (privateSuffixTails(photoText).some((tail) => tail.includes(key))) return null;
   if (labelledPrivateBySuffix(photoText, codes[0])) return null;
+  // #5268 Codex r16 (owner decision 2026-11-07, fail safe): a serial or asset
+  // label ANYWHERE on the plate with no value of its own cannot say which code
+  // it marks, however the annotation wraps — so the plate offers no code at all.
+  if (danglingPrivateLabel(photoText)) return null;
   return codes[0];
 }
 

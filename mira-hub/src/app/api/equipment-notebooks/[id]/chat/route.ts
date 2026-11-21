@@ -180,7 +180,6 @@ import {
 import { publicManualSeries } from "@/capabilities/public-model-proof";
 import {
   extractCandidateIdentity,
-  confirmFirstCandidate,
   isSafeCandidateSearchIdentity,
   refineCorpusProposal,
   wantsManualDocumentation,
@@ -2922,32 +2921,6 @@ async function handleChatTurn(
         }
       } catch (err) {
         console.error("[notebook-chat] candidate identity proposal skipped:", err instanceof Error ? err.message : err);
-      }
-    }
-    // #5706 (owner decision 2026-11-20): a plate whose one code is withheld from
-    // the automatic search only by a value-less asset label elsewhere on it
-    // gets the confirm card instead of nothing — and only when that code is
-    // printed in the maker's own public manuals (option A of 2026-11-07). The
-    // single egress gate below still refuses this turn, so nothing is searched
-    // until the technician taps "Use its manuals" (the confirmed path).
-    if (!identityProposal && acquisitionEnabled(ctx.tenantId) && photoTextForOem && wantsManualDocumentation(message)) {
-      const held = confirmFirstCandidate(photoTextForOem, message);
-      if (held) {
-        let client: PoolClient | null = null;
-        try {
-          client = await pool.connect();
-          if ((await publicManualSeries(client, held.manufacturer, held.part)) !== null) {
-            identityProposal = { manufacturer: held.manufacturer, model: held.part };
-          }
-        } catch (err) {
-          console.error("[notebook-chat] confirm-first proof skipped (not proven):", err instanceof Error ? err.message : err);
-        } finally {
-          try {
-            client?.release();
-          } catch {
-            /* already released */
-          }
-        }
       }
     }
   }

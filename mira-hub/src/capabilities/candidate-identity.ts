@@ -28,8 +28,6 @@ import {
   partCodes,
   privateIdentifierKeys,
   privateSuffixTails,
-  normalizeLabelText,
-  partNumberWithheldOnlyByAssetLabel,
   serialCodes,
   unambiguousPartNumber,
 } from "./photo-part-lookup";
@@ -239,55 +237,4 @@ export function isSafeCandidateSearchIdentity(photoText: string, typed: string, 
   ];
   if (named.some((g) => !proposed.has(g))) return false;
   return namesOnlyThisMachine(texts.join("\n"), part);
-}
-
-/**
- * #5706 (owner decision 2026-11-20): the plate whose one part code is withheld
- * from the automatic search ONLY by a value-less asset label elsewhere on it
- * ("...the right side of the unit. No loose wiring..."). Returns the maker and
- * code a caller may SHOW on the existing confirm card ("Is this a ...? Use its
- * manuals") once the code is proven public in that maker's own manuals. It
- * never starts a search: `isSafeCandidateSearchIdentity` still refuses this
- * turn, and only the technician's tap (the confirmed identity) searches.
- *
- * Every other private-label rule still holds: no serial label on the plate,
- * the code never marked private, no part label after a private label, and the
- * typed text names no private label, no other code and no other maker.
- */
-/** How far (characters, either side) from the code a value-less label must be. */
-const CONFIRM_LABEL_DISTANCE = 120;
-
-export function confirmFirstCandidate(photoText: string, typed: string): { manufacturer: string; part: string } | null {
-  const part = partNumberWithheldOnlyByAssetLabel(photoText);
-  if (!part) return null;
-  const key = part.toUpperCase();
-  const keyNorm = identifierKey(key);
-  const texts = [photoText, typed].filter(Boolean);
-  if (texts.some((t) => serialCodes(t).includes(key))) return null;
-  if (texts.some((t) => [...privateIdentifierKeys(t)].some((k) => k.includes(keyNorm)))) return null;
-  if (texts.some((t) => privateSuffixTails(t).some((tail) => tail.includes(keyNorm)))) return null;
-  if (partLabelAfterPrivateLabel(photoText)) return null;
-  // The value-less label must sit away from the code: one written beside it or
-  // wrapped onto the next line ("TP1200 (customer\nasset tag)") may be marking
-  // that very code, which r16 never lets out.
-  // Codex #5706 r4 F1: locate the code in the SAME normalized text the part
-  // reader extracted it from (an invisible character inside the code must not
-  // hide it), and refuse when it cannot be located at all.
-  const located = normalizeLabelText(photoText);
-  const spans = [...located.matchAll(new RegExp(`(?<![A-Za-z0-9])${part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![A-Za-z0-9])`, "gi"))];
-  if (spans.length === 0) return null;
-  for (const m of spans) {
-    const at = m.index ?? 0;
-    const near = located.slice(Math.max(0, at - CONFIRM_LABEL_DISTANCE), at + part.length + CONFIRM_LABEL_DISTANCE);
-    if (mentionsAssetLabel(near) || mentionsSerialLabel(near)) return null;
-  }
-  if (typed && (mentionsSerialLabel(typed) || mentionsAssetLabel(typed))) return null;
-  if (typed && partCodes(typed).some((c) => c.toUpperCase() !== key)) return null;
-  const manufacturer = makerFromText(photoText);
-  if (!manufacturer) return null;
-  const proposed = new Set(makerGroups(manufacturer).keys());
-  const named = [...makerGroups(photoText).keys(), ...(typed ? [...makerGroups(typed, undefined, true).keys()] : [])];
-  if (named.some((g) => !proposed.has(g))) return null;
-  if (!namesOnlyThisMachine(texts.join("\n"), part)) return null;
-  return { manufacturer, part };
 }
