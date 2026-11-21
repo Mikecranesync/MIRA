@@ -144,7 +144,7 @@ import {
   questionWarningQuery,
 } from "@/capabilities/energized-work-stop";
 import { ambiguousModelAskText, libraryNotForAskedModelText, namedModelMismatchText, siblingOfRecordAskText, subjectOutOfReachText, type NamedModelMismatch } from "@/capabilities/named-model-mismatch";
-import { readSubject, SUBJECT_READ_STEPS } from "@/capabilities/conversation-subject";
+import { DOCUMENT_BASES, readSubject, SUBJECT_READ_STEPS } from "@/capabilities/conversation-subject";
 import { notebookManualIdentity } from "@/capabilities/notebook-manual-identity";
 import { componentAttributionEntry, isComponentAttributionEntry, type ComponentAttributionEntry } from "@/capabilities/bench-components/attribution";
 import { checkWholeMachineScope, componentTurnFrame, noDocumentsForComponentText, readComponentSelection, resolveComponentTurn, selectionMovedText, type ComponentTurn, type ComponentTurnFrame } from "@/capabilities/bench-components/chat-turn";
@@ -2047,11 +2047,25 @@ async function handleChatTurn(
   // read. This happens before retrieval and every answer-provider call so a
   // positive descriptor deterministically owns the turn.
   let lookRow: Awaited<ReturnType<typeof loadVisualEvidenceForPhoto>> = null;
+  // Codex r1 on #5764 (F3, HIGH): which machine this photo names — the reading
+  // retrieval is held to — is THIS conversation's reading of it. Another
+  // conversation (another technician, another correction) can hold a different
+  // reading of the same linked file. `lookRow` stays file-wide: the hazard
+  // stop aggregates every active reading of the photo, whoever made it.
+  let conversationLookText: string | undefined;
   if (visualEntry) {
     try {
-      lookRow = await withTenantContext(ctx.tenantId, (c) =>
-        loadVisualEvidenceForPhoto(c, ctx.tenantId, visualEntry.fileId),
-      );
+      const conversationScope = { notebookId, ownerUserId: ctx.userId, threadId };
+      [lookRow, conversationLookText] = await withTenantContext(ctx.tenantId, async (c) => {
+        const fileWide = await loadVisualEvidenceForPhoto(c, ctx.tenantId, visualEntry.fileId);
+        const ours = fileWide
+          ? (await loadVisualEvidenceForPhoto(c, ctx.tenantId, visualEntry.fileId, { ...conversationScope, allowLegacy: true })) ??
+            // An app build before #3968 uploads with no threadId: the reading sits
+            // under this notebook's "legacy" thread, still this technician's own.
+            (threadId ? await loadVisualEvidenceForPhoto(c, ctx.tenantId, visualEntry.fileId, { ...conversationScope, threadId: null }) : null)
+          : null;
+        return [fileWide, ours?.text] as const;
+      });
     } catch (err) {
       // F2: fail closed when a verified photo's descriptor cannot be loaded.
       console.error("[notebook-chat] look observation load failed (fail-closed for verified photo):", err);
@@ -2512,6 +2526,44 @@ async function handleChatTurn(
   // judged on its own words (subjectOutOfReach, manual-rag.ts).
   let subjectQueries: string[] = [];
   let subjectOutOfReach = false;
+  // Codex r1 on #5764 (F5): a question refused over the photo sent with it
+  // ("Find me the manual" + a GS20 plate) leaves its subject open, and that
+  // subject is the photo's machine — "what's its rated current?" next is still
+  // about the GS20. The open run's photo turns (newest first, at most
+  // OPEN_PHOTO_READS) get this conversation's reading of their photo, and
+  // conversation-subject.ts judges it by the one photo rule. A photo of a turn
+  // a document answer closed is never read (#3966). A failed read carries no
+  // photo: the run is then judged on its words, as before this read existed.
+  const OPEN_PHOTO_READS = 3;
+  const withOpenPhotoReadings = async <T extends { evidence: unknown[]; answerStatus: string; basis: string | null }>(turns: T[]) => {
+    const readings = new Map<T, string>();
+    try {
+      const open: { turn: T; fileId: string }[] = [];
+      for (let i = turns.length - 1; i >= 0 && open.length < OPEN_PHOTO_READS; i--) {
+        const turn = turns[i];
+        if (turn.answerStatus === "answered" && turn.basis !== null && DOCUMENT_BASES.has(turn.basis)) break;
+        const fileId = turn.evidence.find(isVisualObservationEntry)?.fileId;
+        if (fileId) open.push({ turn, fileId });
+      }
+      if (open.length > 0) {
+        const scope = { notebookId, ownerUserId: ctx.userId, threadId };
+        await withTenantContext(ctx.tenantId, async (c) => {
+          for (const { turn, fileId } of open) {
+            // `fileId` comes from this thread's own stored turns (listTurns is
+            // thread-scoped), so the legacy-thread fallback reads no other
+            // conversation (same safety argument as the prior-LOOK read above).
+            const row =
+              (await loadVisualEvidenceForPhoto(c, ctx.tenantId, fileId, { ...scope, allowLegacy: true })) ??
+              (threadId ? await loadVisualEvidenceForPhoto(c, ctx.tenantId, fileId, { ...scope, threadId: null }) : null);
+            if (row?.text) readings.set(turn, row.text);
+          }
+        });
+      }
+    } catch (err) {
+      console.error("[notebook-chat] open-question photo read failed (carrying their words only):", err instanceof Error ? err.message : err);
+    }
+    return turns.map((turn) => ({ ...turn, photoText: readings.get(turn) ?? null }));
+  };
   if (notebookRetrieval) {
     try {
       for (const limit of SUBJECT_READ_STEPS) {
@@ -2524,7 +2576,7 @@ async function handleChatTurn(
               componentScope.selection,
             )
           : readSubject(
-              await listTurns(ctx.tenantId, notebookId, limit, { viewerUserId: ctx.userId, threadId }),
+              await withOpenPhotoReadings(await listTurns(ctx.tenantId, notebookId, limit, { viewerUserId: ctx.userId, threadId })),
               limit,
             );
         subjectQueries = read.questions;
@@ -2737,8 +2789,8 @@ async function handleChatTurn(
             // #5706: the photo sent WITH this question (never an earlier one,
             // #3966) names the machine when the message names none, so a
             // nameplate of another drive is not answered from this project's
-            // manual.
-            photoText: lookRow?.text,
+            // manual. This conversation's reading of it (Codex r1 F3).
+            photoText: conversationLookText,
             includeQueryRecall: Boolean(lookRow?.text && buildRetrievalQuery(message, [], lookRow.text) !== message.trim()),
             // validateChatSources() has already proven tenant + notebook membership
             // for every id in docIds — the validated doc set is the boundary, so a
@@ -3592,7 +3644,7 @@ async function handleChatTurn(
             subjectQuestion: message,
             // The photo sent with this question names the machine when the
             // message does not, for the stop exactly as for the answer (#5706).
-            photoText: lookRow?.text,
+            photoText: conversationLookText,
             // A stop is never withheld over a look-alike catalog number (Mike
             // 2026-11-12, L8): the answer pass refuses such a question, the
             // stop still serves the lockout page and calls the number out.

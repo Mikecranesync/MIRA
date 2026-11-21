@@ -27,7 +27,7 @@ import { type PhotoDocumentKind, photoDocumentShape, productWrittenBody } from "
 import { withoutSharedTableHeader } from "@/capabilities/section-table-scope";
 import { exactModelKey } from "@/capabilities/table-rows";
 import { confirmedCatalogNumber } from "@/capabilities/notebook-manual-identity";
-import { serialCodes } from "@/capabilities/photo-part-lookup";
+import { namesAnyModel, photoSubjectText } from "@/capabilities/photo-subject";
 import { embedQueryDetailed, hybridRetrievalEnabled, rrfMerge, vectorLiteral } from "@/capabilities/hybrid-retrieval";
 import { setSpanAttrs } from "@/capabilities/observability/tracing";
 import { extractCitedOperatingCaution, extractManualSafetyStatement, OPERATING_CAUTION_PATTERN } from "@/capabilities/manual-safety-statement";
@@ -1603,8 +1603,10 @@ export async function retrieveNodeChunks(
      *  other machines). When the question names no model and the photo names
      *  exactly one, the photo is the asked machine: "Find me the manual" with a
      *  GS20 plate is a GS20 ask, held to the same coverage check as a typed
-     *  model, and a refusal reports `source: "photo"`. Serial numbers on the
-     *  plate are never read as a model (photo-part-lookup.ts serialCodes). */
+     *  model, and a refusal reports `source: "photo"`. Which machine a reading
+     *  names is photo-subject.ts photoSubjectText: public text only, so
+     *  nothing after a serial label is read as a model. The caller passes the
+     *  reading of THIS conversation (route.ts, Codex r1 on #5764 F3). */
     photoText?: string;
     /** #4983 — the question rewritten into the manual's vocabulary (search
      *  phrases a model produced from the forum-style post). Rides as one more
@@ -1818,10 +1820,7 @@ export async function retrieveNodeChunks(
   // <another product>" followed by "what voltage does it need?" is about that
   // other product, whatever the notebook is set up for.
   const ownQuestion = opts.subjectQuestion ?? opts.rawQuery ?? q;
-  const namesKnownModel = (text: string) => {
-    const named = resolveModelFromObservationText(text);
-    return Boolean(named.model) || named.ambiguous || modelIdentitiesInText(text).size > 0;
-  };
+  const namesKnownModel = namesAnyModel;
   const ownNumbers = unlistedModelNumbers(ownQuestion);
   // The project's confirmed catalog number — the unit "mine" refers to below,
   // and the record the sibling rule further down judges against.
@@ -1848,16 +1847,11 @@ export async function retrieveNodeChunks(
   // outranks it), and it is newer than every earlier question. Only a reading
   // that names ONE model counts: a whole-panel photo naming several devices,
   // or a plate the camera could not read, names no machine and leaves the
-  // turn exactly as before. Serial numbers are removed first, so a serial is
-  // never taken for a model.
-  const photoQuestion = (() => {
-    const raw = opts.photoText?.trim();
-    if (!raw || namesKnownModel(ownQuestion) || returnsToOwn) return null;
-    let text = raw;
-    for (const serial of serialCodes(raw)) text = text.replace(new RegExp(serial.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi"), " ");
-    const read = resolveModelFromObservationText(text);
-    return read.model && !read.ambiguous ? text : null;
-  })();
+  // turn exactly as before (two numbers of one family are two machines).
+  // Which machine a reading names is ONE rule, shared with the follow-up
+  // carry (photo-subject.ts): public text only — nothing after a serial label
+  // is read as a model — and exactly one machine.
+  const photoQuestion = namesKnownModel(ownQuestion) || returnsToOwn ? null : photoSubjectText(opts.photoText);
   const earlierQuestions =
     namesKnownModel(ownQuestion) || returnsToOwn || photoQuestion ? [] : returnAt >= 0 ? openQuestions.slice(0, returnAt + 1) : openQuestions;
   const modelAt = earlierQuestions.findIndex(namesKnownModel);

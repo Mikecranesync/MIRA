@@ -186,6 +186,62 @@ describe("this turn's photo is the asked machine when the question names none", 
     expect(diagnostics.namedModelMismatch?.source).toBe("photo");
   });
 
+  // Codex r1 on #5764 F1: close-name models the single token cannot carry are
+  // read from a photo exactly as from a typed question.
+  it.each([
+    ["PowerFlex 4M", "Nameplate: Allen-Bradley PowerFlex 4M AC drive."],
+    ["SMC-50", "Nameplate: Allen-Bradley SMC-50 solid-state controller."],
+  ])("a %s plate is refused like the same model typed", async (model, reading) => {
+    const typed = await ask(`Find me the manual for ${model}`);
+    const photo = await ask("Find me the manual", reading);
+    expect(typed.hits).toEqual([]);
+    expect(photo.hits).toEqual([]);
+    expect(photo.diagnostics.namedModelMismatch?.requested).toEqual(typed.diagnostics.namedModelMismatch?.requested);
+    expect(photo.diagnostics.namedModelMismatch?.source).toBe("photo");
+  });
+
+  // Codex r1 F2: two numbers of one family are two machines, so the photo
+  // names no single subject and the earlier question stays in force.
+  it("a photo naming two GS20 drives leaves the earlier question as the subject", async () => {
+    const earlier = { subjectQueries: ["Find me the manual for AutomationDirect GS11N-20P5"] };
+    const twoDrives = 'A panel with two drives labeled "GS20-23P0" and "GS20-21P0".';
+    const { hits, diagnostics } = await ask("Find me the manual", twoDrives, "GS11N-20P2", earlier);
+    expect(hits).toEqual([]);
+    expect(diagnostics.siblingOfRecordAsk).toEqual({ asked: ["GS11N-20P5"], record: "GS11N-20P2" });
+    expect(diagnostics.namedModelMismatch).toBeUndefined();
+  });
+
+  // Codex r1 F4: nothing after a serial label is read as a model.
+  it("a model-shaped serial names no machine and does not refuse the project's manual", async () => {
+    const { hits, diagnostics } = await ask("Find me the manual", 'The plate model is not readable; the only readable field is "S/N: PF 525".');
+    expect(hits.length).toBeGreaterThan(0);
+    expect(diagnostics.namedModelMismatch).toBeUndefined();
+  });
+
+  it("a readable model field decides, not a different model-shaped serial after it", async () => {
+    const { hits, diagnostics } = await ask("Find me the manual", 'Label: "MODEL: GS20-23P0", "S/N: GS11N 20P2".');
+    expect(hits).toEqual([]);
+    expect(diagnostics.namedModelMismatch?.requested).toContain("GS20-23P0");
+    expect(diagnostics.namedModelMismatch?.requested.some((id) => id.startsWith("GS11N"))).toBe(false);
+    const own = await ask("Find me the manual", 'Label: "MODEL: GS11N-20P2", "S/N: GS20 23P0".');
+    expect(own.hits.length).toBeGreaterThan(0);
+    expect(own.diagnostics.namedModelMismatch).toBeUndefined();
+  });
+
+  // Codex r1 F5: a follow-up carries the photo's machine (conversation-subject
+  // folds the photo into the open question; manual-rag judges it as typed).
+  it("a follow-up after the photo refusal is still about the photo's machine", async () => {
+    const { hits, diagnostics } = await ask("What's its rated current?", undefined, undefined, {
+      subjectQueries: ["Find me the manual\nGS20-23P0"],
+    });
+    expect(hits).toEqual([]);
+    expect(diagnostics.namedModelMismatch?.requested).toContain("GS20-23P0");
+    const back = await ask("What's the rated current of the GS11N-20P2?", undefined, undefined, {
+      subjectQueries: ["Find me the manual\nGS20-23P0"],
+    });
+    expect(back.hits.length).toBeGreaterThan(0);
+  });
+
   it("control: the project's own plate is served when its catalog number is on record", async () => {
     const { hits, diagnostics } = await ask("Find me the manual", GS11N_PHOTO, "GS11N-20P2");
     expect(hits.length).toBeGreaterThan(0);

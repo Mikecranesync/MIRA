@@ -14,12 +14,27 @@
 // Pure: stored turns in, question texts out. No model, no network, no clock.
 
 import { foldForDetection } from "./detection-fold";
+import { namesAnyModel, photoSubjectText } from "./photo-subject";
 
 export type PriorTurn = {
   question?: string | null;
   answerStatus?: string | null;
   basis?: string | null;
+  /** The reading of the photo sent with that question, from the same
+   *  conversation (#5706; Codex r1 on #5764, F5). A GS20 plate sent with "Find
+   *  me the manual" was refused; "what's its rated current?" is still about
+   *  the GS20. Carried only when the question itself names no model (a typed
+   *  model outranks the photo) and the reading names exactly one machine. */
+  photoText?: string | null;
 };
+
+/** What a stored question was about: its words, plus the machine its own
+ *  photo named when the words name none. */
+function subjectOf(turn: PriorTurn): string {
+  const question = turn.question?.trim() ?? "";
+  const photo = turn.photoText && !namesAnyModel(question) ? photoSubjectText(turn.photoText) : null;
+  return [question, photo].filter(Boolean).join("\n");
+}
 
 /** An answer that came from a document. Everything else — a refusal, a safety
  *  stop (stored "answered" with no basis), general reasoning, machine history,
@@ -56,7 +71,7 @@ export function readSubject(turns: readonly PriorTurn[], limit: number): Subject
     if (turn.answerStatus === "answered" && typeof turn.basis === "string" && DOCUMENT_BASES.has(turn.basis)) {
       return { questions, complete: true };
     }
-    const question = turn.question?.trim();
+    const question = subjectOf(turn);
     if (question) questions.push(question);
   }
   return { questions, complete: turns.length < limit };
