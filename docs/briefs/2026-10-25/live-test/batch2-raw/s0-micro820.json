@@ -1,0 +1,79 @@
+{
+  "label": "s0-micro820",
+  "notebookId": "3bb54ef7-9fe3-4fa8-beff-b6c7f35b2867",
+  "docId": "1d6acc64-3ba7-4f95-b798-b0f617a68002",
+  "question": "What is the default IP address setting of the Micro820 embedded Ethernet port?",
+  "requestBody": {
+    "message": "What is the default IP address setting of the Micro820 embedded Ethernet port?",
+    "sourceDocIds": [
+      "1d6acc64-3ba7-4f95-b798-b0f617a68002"
+    ],
+    "threadId": "thrd_0c8252477e89176d2bee298256f0574e"
+  },
+  "httpStatus": 200,
+  "headers": {
+    "cache-control": "no-cache, no-transform",
+    "connection": "keep-alive",
+    "content-security-policy": "default-src 'self'; script-src 'self' 'nonce-NWUwMjFmMDItMWU2ZC00YTUyLWExNGQtOThjNzk0Nzg2MDli' https://accounts.google.com https://apis.google.com https://js.stripe.com https://www.dropbox.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://js.stripe.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' https://accounts.google.com https://api.hubapi.com https://api.stripe.com https://js.stripe.com https://www.dropbox.com; frame-src 'self' https://accounts.google.com https://js.stripe.com https://hooks.stripe.com https://mikecranesync.github.io https://www.dropbox.com; frame-ancestors 'self'",
+    "content-type": "text/event-stream",
+    "date": "Sun, 25 Oct 2026 17:32:43 GMT",
+    "referrer-policy": "same-origin",
+    "server": "nginx/1.24.0 (Ubuntu)",
+    "strict-transport-security": "max-age=63072000; includeSubDomains; preload",
+    "transfer-encoding": "chunked",
+    "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch",
+    "x-content-type-options": "nosniff",
+    "x-frame-options": "DENY",
+    "x-mira-trace-id": "efc45388a3ef06b673ebae7fab0f5cf6"
+  },
+  "ttftMs": 14302,
+  "totalMs": 14302,
+  "kinds": [
+    "trace",
+    "sources",
+    "evidence",
+    "usage",
+    "status",
+    "[DONE]"
+  ],
+  "answer": "The loaded excerpts do not state the Micro820 embedded Ethernet port’s default IP address setting; you’ll need the full user manual or the controller’s current configuration to confirm it.",
+  "frames": [
+    {
+      "kind": "trace",
+      "traceId": "efc45388a3ef06b673ebae7fab0f5cf6",
+      "turnId": "a3c29436-c14f-4de8-a4fb-58637f2c1808"
+    },
+    {
+      "kind": "sources",
+      "citations": [],
+      "sourceSnapshot": [
+        "1d6acc64-3ba7-4f95-b798-b0f617a68002"
+      ]
+    },
+    {
+      "kind": "evidence",
+      "basis": "general_reasoning",
+      "label": "General guidance — not grounded in this machine's documents."
+    },
+    {
+      "kind": "usage",
+      "provider": "OpenAI",
+      "model": "gpt-5.4-mini",
+      "routeReason": "primary",
+      "inputTokens": 3214,
+      "cachedInputTokens": 0,
+      "outputTokens": 84,
+      "costUsdEstimate": null,
+      "status": "ok"
+    },
+    {
+      "kind": "status",
+      "status": "insufficient_evidence",
+      "message": "Not found in the selected sources."
+    },
+    {
+      "kind": "[DONE]"
+    }
+  ],
+  "startedAt": "2026-10-25T17:32:30.150Z"
+}

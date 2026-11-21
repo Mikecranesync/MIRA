@@ -1,0 +1,22 @@
+login ok
+health {"status":"ok","service":"mira-hub","version":"3.419.18","gitSha":"feaabc25bfd3fdb4160aa83bff13d9fedd36107a","builtAt":"2026-10-25T17:06:36Z","approvedRetrievalEnforced":true,"telemetry":{"tracing":"enabled","exporter":"otlp-http","environment":"staging","contentCapture":true},"ts":1792949412974}
+nb pf525 fc6519a4-67a8-45f9-b751-6ce5aa4a8a3f
+upload pf525 201 12837 {"ok":true,"indexed":true,"uploadId":"7119eaa1-bc0c-4221-96b5-9fde89d0147c","chunkCount":746,"fileId":"2f4ab9be-8559-48a5-b6a9-bc5c42415501","file":{"id":"2f4ab9be-8559-48a5-b6a9-bc5c42415501","filename":"520-um001.pdf","size_bytes":34469932,"capability":"indexable"}}
+attach 201 {"ok":true}
+nb acs355 8212012f-b47b-4ade-8fb9-718785e5f2fa
+node:fs:573
+  return binding.open(
+                 ^
+
+Error: ENOENT: no such file or directory, open '/workspace/manuals/abb/acs355-um.pdf'
+    at Object.openSync (node:fs:573:18)
+    at readFileSync (node:fs:452:35)
+    at file:///workspace/live-test/batch2-raw/setup.mjs:16:94
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5) {
+  errno: -2,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: '/workspace/manuals/abb/acs355-um.pdf'
+}
+
+Node.js v20.19.2

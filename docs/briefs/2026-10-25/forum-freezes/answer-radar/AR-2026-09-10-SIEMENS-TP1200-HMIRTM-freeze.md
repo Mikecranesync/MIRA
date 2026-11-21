@@ -1,0 +1,21 @@
+# AR freeze — 2026-09-10 Siemens TP1200 Comfort / HMIRTM.EXE
+
+- mission: AR-FIRST-QUESTION-001 daily find-one
+- frozen_at: 2026-09-10T13:58:22+00:00
+- platform: MrPLC
+- url: https://mrplc.com/forums/topic/45898-hmi-tp1200-comfort-panel-error-application-hmirtmexe-encountered-a-serious-error-and-must-shutdown/
+- topic: 45898
+- author: Asilencer
+- posted_at: 2026-09-08T17:41:31Z
+- age: ~44 hours (OP 2026-09-08T17:41:31Z by Asilencer; frozen 2026-09-10T13:58:22+00:00 / ~9:58 AM ET)
+- manufacturer/models: Siemens Simatic HMI TP1200 Comfort; tools TIA Portal V14 + ProSave
+- system: HMI project transfer / backup over PN/IE; HMIRTM.EXE crash; IP change permission denied during operation
+- original_problem: Connecting to TP1200 Comfort with TIA V14 and ProSave fails with HMIRTM.EXE serious-error shutdown; transfer/backup fails; manual IP change on HMI returns "Permission Denied. IP setting cannot be change during operation".
+- technician_version: I'm trying to connect to a Siemens TP1200 Comfort panel with TIA Portal V14 and ProSave. I get "Application HMIRTM.EXE encountered a serious error and must shutdown." I want to back up the HMI first. I set transfer to PN/IE and started transfer on the panel, but it still says it cannot connect to the target. I set the PC IP manually and tried changing the HMI IP, but the panel says "Permission Denied. IP setting cannot be change during operation." How do I get a stable connection for backup/transfer without that HMIRTM crash?
+- community_answers_inspected: NO (freeze uses OP text only; replies not used for answer or research)
+- answer_researched: NO
+- benchmark_eligible: true
+- why_strong_test:
+  - Fresh (~44h, within 48h prefer window) Siemens OEM ask with exact HMI model + concrete tool/fault strings
+  - Manual/config + transfer procedure need-class (not binary file archive) — good mobile/manual-rag candidate once SUT+sources ready
+  - Not a prior dry-run seed or prior daily freeze (45892/45895/45896/45899)

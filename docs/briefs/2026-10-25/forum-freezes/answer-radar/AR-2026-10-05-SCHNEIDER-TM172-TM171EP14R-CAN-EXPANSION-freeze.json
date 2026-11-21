@@ -1,0 +1,23 @@
+{
+  "freeze_id": "AR-2026-10-05-SCHNEIDER-TM172-TM171EP14R-CAN-EXPANSION",
+  "result": "CANDIDATE_FOUND",
+  "source": "https://www.plctalk.net/forums/threads/tm172pdg28r-plc-tm171ep14r-can-expansion-module-communication-not-established.150101/",
+  "topic_id": 150101,
+  "author": "Omkar bhise",
+  "posted_at": "2026-10-05T11:45:17Z",
+  "posted_local_ET": "2026-10-05T07:45:17-0400",
+  "age_hours_at_freeze": 1.95,
+  "replies_at_freeze": 0,
+  "frozen_at": "2026-10-05T13:42:33.124367+00:00",
+  "title": "TM172PDG28R PLC – TM171EP14R CAN Expansion Module Communication Not Established",
+  "technician_version": "I'm working on a Schneider Electric Modicon M172 TM172PDG28R PLC with a TM171EP14R expansion module wired over CAN, and the PLC never establishes communication with the expansion module. I set the expansion module CAN ID to 2 and the PLC parameter Addr_CAN_OB to 1; the module sits right next to the PLC. What are the correct CAN node address, Addr_CAN_OB setting, baud rate, and any DIP-switch settings for the TM171EP14R, do I need 120 ohm termination with only two nodes, and is any extra program configuration needed so the TM172 recognizes the TM171EP14R?",
+  "oem_model_fault": "Schneider Electric Modicon M172 TM172PDG28R + TM171EP14R expansion — CAN expansion communication not established (Addr_CAN_OB=1, module CAN ID 2)",
+  "routine": "AR-FIRST-QUESTION-001",
+  "scan_date": "2026-10-05",
+  "archaeologist": "CONSOLIDATE",
+  "gate": "BLOCKED",
+  "approved_for_factorylm_ops_test": false,
+  "canonical_sut": "mira-mobile→Hub notebook chat→retrieveNodeChunks→citation SSE",
+  "connect_manuals": "Modicon M172 hardware/installation guide; TM171EP14R expansion sheet; M172 CAN expansion wiring/addressing/baud/termination; M172 parameter list (Addr_CAN_OB); Machine Expert – HVAC expansion config notes",
+  "action": "ACK HOLD — prior freezes remain parked; FactoryLM Ops NOT invoked."
+}

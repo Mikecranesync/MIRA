@@ -1,0 +1,16 @@
+data: {"kind":"trace","traceId":"efc45388a3ef06b673ebae7fab0f5cf6","turnId":"a3c29436-c14f-4de8-a4fb-58637f2c1808"}
+
+data: {"kind":"content","content":"The loaded excerpts do not state the Micro820 embedded Ethernet port’s default IP address setting; you’ll need the full "}
+
+data: {"kind":"content","content":"user manual or the controller’s current configuration to confirm it."}
+
+data: {"kind":"sources","citations":[],"sourceSnapshot":["1d6acc64-3ba7-4f95-b798-b0f617a68002"]}
+
+data: {"kind":"evidence","basis":"general_reasoning","label":"General guidance — not grounded in this machine's documents."}
+
+data: {"kind":"usage","provider":"OpenAI","model":"gpt-5.4-mini","routeReason":"primary","inputTokens":3214,"cachedInputTokens":0,"outputTokens":84,"costUsdEstimate":null,"status":"ok"}
+
+data: {"kind":"status","status":"insufficient_evidence","message":"Not found in the selected sources."}
+
+data: [DONE]
+

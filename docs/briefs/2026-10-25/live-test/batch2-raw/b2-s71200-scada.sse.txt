@@ -1,0 +1,8 @@
+data: {"kind":"trace","traceId":"ac54ba1492d50ff527f362323e841b17","turnId":"f23b1097-ffab-45e0-8dc7-22b310716c0c"}
+
+data: {"kind":"sources","citations":[],"sourceSnapshot":["67d09e1e-862a-4b7c-aa82-eb64df83f875"]}
+
+data: {"kind":"status","status":"insufficient_evidence","message":"I couldn't find support for that in this notebook's manuals. Add the manual for the equipment you're asking about, or the page that covers it, and ask again."}
+
+data: [DONE]
+

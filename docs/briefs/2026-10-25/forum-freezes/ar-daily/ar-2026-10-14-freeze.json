@@ -1,0 +1,20 @@
+{
+  "freeze_id": "AR-2026-10-14-ROCKWELL-PANELVIEW-PLUS-FTVIEW-ME-INSUFFICIENT-SPACE-RUNTIME",
+  "source": "PLCTalk",
+  "thread_id": "150129",
+  "url": "https://www.plctalk.net/threads/150129/",
+  "title": "Insufficient disk Space error when loading runtime application",
+  "op_author": "macengizus",
+  "op_posted_utc": "2026-10-12T21:01:25Z",
+  "op_posted_local_et": "2026-10-12T17:01:25-04:00",
+  "age_hours": 40.9,
+  "reply_count_unread": 3,
+  "op_body_verbatim": "Hi everyone'\n\nI need help troubleshooting a Rockwell automation panel running a factorytalk view ME runtime application.\n\nInitially, I was trying to export the Audit data log to a USB drive, but I could not transfer the log files successfully. While troubleshooting the export issue, the machine stopped starting the runtime application and began displaying the follow error:\n\n\"There is insufficient space for opening the run time project.....\n\nThe HMI now returns to the application startup screen isntead of opening the machnine interface.\n\nMay main priorities are:\n\n1. recovery and preserve the existing Audit logs without losing historical records.\n\n2. identify why the logs could not be exported to the USB drive.\n\n3. safely free up enough internal storage space to start the existing runtime application again.\n\nI can access HMI startup screen, including load application, application setting and terminal settings. I have also tried copying the application file to USB drive, but the problem remains.\n\nHas anyone experienced this issue with a Panelview plus HMI? What would be the safest recovery procedure to retrive the audit trail logs first and then restore normal operation?",
+  "technician_version": "A Rockwell PanelView Plus HMI running a FactoryTalk View ME runtime application on a machine. The tech tried to export the Audit data log to a USB drive and the transfer failed. While troubleshooting, the HMI stopped launching the runtime application and now shows 'There is insufficient space for opening the run time project' and drops back to the configuration/startup screen (Load Application, Application Settings, Terminal Settings are reachable). Copying the application file to USB did not help. Need, in priority order: (1) recover and preserve the existing audit logs without losing history, (2) why the audit log export to USB failed, (3) how to safely free internal storage so the existing runtime application starts again.",
+  "oem": "Rockwell Automation / Allen-Bradley",
+  "model": "PanelView Plus (exact model/series and FTView ME version not stated); FactoryTalk View ME runtime",
+  "fault_symptom": "Runtime won't open: 'insufficient space for opening the run time project'; HMI returns to startup screen; audit log export to USB failed beforehand",
+  "scan_date": "2026-10-14",
+  "scan_timezone": "America/New_York",
+  "notes": "Frozen OP-only before reading community replies; 3 replies exist unread. Answer not researched; no MIRA/FactoryLM calls. Promoted from Oct 13 runner-up #2 because no fresh qualifying thread appeared in last 24h (only new PLCTalk thread 150132 is a recruiter post; no new MrPLC topics; Reddit/control.com returned 403). Gap: PanelView Plus model/terminal generation not stated by OP."
+}

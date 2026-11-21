@@ -1,0 +1,16 @@
+{
+  "freeze_id": "AR-2026-10-21-SIEMENS-S7-1215-MEANWELL-DDR-240B-24-EATON-PROP-VALVE-MOBILE-GROUNDING",
+  "source": "PLCTalk",
+  "thread_id": "150164",
+  "url": "https://www.plctalk.net/forums/threads/potential-equalization-between-chassis-and-dc-dc-converter.150164/",
+  "title": "Potential Equalization Between Chassis and DC-DC Converter",
+  "op_author": "Zinko",
+  "op_posted_local_et": "2026-10-20T11:40:03-04:00",
+  "age_hours_at_freeze": 22,
+  "reply_count_unread": 0,
+  "technician_version": "Retrofitting a log-bucking harvester head onto a Terex Fuchs excavator (24 V battery, negative to chassis). New cabinet: Siemens S7-1215 PLC, KTP400 HMI, SICK absolute encoder, powered by a MEAN WELL DDR-240B-24 isolated DC-DC converter. Eaton KBSDG4V-5-92L-80-M2-PH7 proportional valve is powered directly from the excavator battery. Should the converter -Vo be bonded to cabinet/chassis or left floating? How should valve 0 V, PE and PLC 0 V be handled (separate vs single point)? Ground-loop risk through encoder/I/O/shields? Recommended potential equalization for cabinet, converter, valve and chassis, and safety/EMC risks if output is left floating.",
+  "oem": "Siemens; MEAN WELL; Eaton (Vickers); SICK; Terex Fuchs",
+  "model": "S7-1215, KTP400, DDR-240B-24, KBSDG4V-5-92L-80-M2-PH7",
+  "fault_symptom": "No fault yet; grounding/potential-equalization design for mobile 24 V retrofit, EMC and ground-loop concerns",
+  "notes": "Frozen OP-only via browser (Cloudflare). 0 replies at freeze; none read. Answer not researched; no MIRA/FactoryLM calls. Marginal fit: wiring/grounding design question, not an active fault; no clean fault thread in 48h window. First grounding/mobile-hydraulic freeze. Runner-ups: 150159 Mitsubishi FX5U EtherNet/IP to Zebra NS40 (6th Mitsubishi repeat, just outside window), MrPLC 45943 NJ501 + Cognex IS3800 setup."
+}
