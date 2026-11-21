@@ -12,7 +12,13 @@ describe("#5268 option A: a code is offered only when the maker's public manuals
     const [sql, params] = c.query.mock.calls[0] as [string, unknown[]];
     expect(sql).toContain("is_private = false");
     expect(sql).toContain("source_type = ANY ($3::text[])");
-    expect(params).toEqual(["automationdirect", "(^|[^A-Za-z0-9])(?<![A-Za-z0-9][-._/])GS11N-20P2(?![-._/]?[A-Za-z0-9])", [...PUBLIC_MANUAL_SOURCE_TYPES]]);
+    // Owner decision 2026-11-20 (Codex #5706 r6 F13): Drive imports count only as PDFs.
+    expect(sql).toContain("AND (source_type <> 'gdrive' OR source_url ~* '[.]pdf$')");
+    expect(params).toEqual([
+      "automationdirect",
+      "(^|[^A-Za-z0-9])(?<![A-Za-z0-9][-._/\u2010-\u2015])GS11N-20P2(?![-._/\u2010-\u2015]?[A-Za-z0-9])",
+      [...PUBLIC_MANUAL_SOURCE_TYPES],
+    ]);
   });
 
   // Codex #5706 r5 F13: only maker manual documents prove a code public.
@@ -35,6 +41,11 @@ describe("#5268 option A: a code is offered only when the maker's public manuals
     ["X-GS11N-20P2", false],
     ["GS11N-20P25", false],
     ["1.GS11N-20P2.A1 = 1/4.", false],
+    // Codex #5706 r6 F13: PDF en dashes and non-breaking hyphens join parts too.
+    ["GS11N-20P2\u2013EX", false],
+    ["GS11N-20P2\u2011EX", false],
+    ["X\u2013GS11N-20P2", false],
+    ["GS11N-20P2 \u2013 230 V class", true],
   ])("the proof pattern on %j → %s", async (text, hit) => {
     const c = client(() => ({ rows: [] }));
     await publicManualSeries(c, "AutomationDirect", "GS11N-20P2");
@@ -60,7 +71,7 @@ describe("#5268 option A: a code is offered only when the maker's public manuals
   it("escapes regex characters in the code", async () => {
     const c = client(() => ({ rows: [] }));
     await publicManualSeries(c, "Siemens", "6ES7.214+1(AG)");
-    expect((c.query.mock.calls[0] as [string, unknown[]])[1][1]).toBe("(^|[^A-Za-z0-9])(?<![A-Za-z0-9][-._/])6ES7\\.214\\+1\\(AG\\)(?![-._/]?[A-Za-z0-9])");
+    expect((c.query.mock.calls[0] as [string, unknown[]])[1][1]).toBe("(^|[^A-Za-z0-9])(?<![A-Za-z0-9][-._/\u2010-\u2015])6ES7\\.214\\+1\\(AG\\)(?![-._/\u2010-\u2015]?[A-Za-z0-9])");
   });
 
   it.each([

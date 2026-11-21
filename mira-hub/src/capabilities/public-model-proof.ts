@@ -21,6 +21,14 @@ import type { PoolClient } from "pg";
  */
 export const PUBLIC_MANUAL_SOURCE_TYPES = ["equipment_manual", "manual", "installation_manual", "oem_manual", "gdrive"] as const;
 
+/**
+ * The separators that join an identifier's parts — the applicability
+ * matcher's own set (`ID_SEP` in manual-applicability.ts), with PDF en dashes
+ * and non-breaking hyphens written as literal characters for Postgres.
+ * Codex #5706 r6 F13: "GS11N-20P2\u2013EX" never proves GS11N-20P2.
+ */
+const PROOF_SEP = "[-._/\u2010-\u2015]";
+
 export async function publicManualSeries(client: PoolClient, manufacturer: string, code: string): Promise<string | null> {
   const maker = manufacturer.replace(/[^A-Za-z0-9]/g, "").toLowerCase();
   if (maker.length < 3 || !/[A-Za-z]/.test(code) || !/\d/.test(code) || code.replace(/[^A-Za-z0-9]/g, "").length < 4) return null;
@@ -31,13 +39,16 @@ export async function publicManualSeries(client: PoolClient, manufacturer: strin
          FROM knowledge_entries
         WHERE is_private = false
           AND source_type = ANY ($3::text[])
+          -- Owner decision 2026-11-20 (Codex #5706 r6 F13): a Drive import counts
+          -- only when it is a PDF, never an imported text, Markdown or HTML note.
+          AND (source_type <> 'gdrive' OR source_url ~* '[.]pdf$')
           AND lower(regexp_replace(manufacturer, '[^A-Za-z0-9]', '', 'g')) = $1
           AND content ~* $2
         LIMIT 1`,
       // The whole identifier: a separator followed by a letter or digit
       // continues it on either side ("GS11N-20P2-EX", "1.GS11N-20P2.A1" never
       // prove GS11N-20P2) — Codex #5706 r5 F13.
-      [maker, `(^|[^A-Za-z0-9])(?<![A-Za-z0-9][-._/])${escaped}(?![-._/]?[A-Za-z0-9])`, [...PUBLIC_MANUAL_SOURCE_TYPES]],
+      [maker, `(^|[^A-Za-z0-9])(?<![A-Za-z0-9]${PROOF_SEP})${escaped}(?!${PROOF_SEP}?[A-Za-z0-9])`, [...PUBLIC_MANUAL_SOURCE_TYPES]],
     );
     return rows.length > 0 ? (rows[0].model_number ?? "").trim() : null;
   } catch (err) {
