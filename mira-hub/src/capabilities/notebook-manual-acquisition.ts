@@ -88,7 +88,7 @@ export interface AcquisitionRecord {
   /** What an EARLIER attempt attached, carried through every retry until resolved (r15 F20). */
   prior_doc_id?: string | null;
   prior_file_id?: string | null;
-  /** Automatic retries already spent on a retryable failure (capped by MAX_AUTOMATIC_RETRIES). */
+  /** Automatic retries already spent. Ordinary outage retries stop at MAX_AUTOMATIC_RETRIES. */
   retries?: number;
   /** Why a download failed, when it did (safe-download's rejection reason). */
   download_reason?: string | null;
@@ -145,6 +145,7 @@ export function acquisitionKey(id: ConfirmedIdentity): string | null {
 // Keep the route's precheck in step with claim()'s authoritative row predicate.
 const REVIEWED_RETRY_STATES: readonly AcquisitionState[] = [
   "no_manual_found", "candidate_review", "download_rejected", "no_extractable_text",
+  "search_unavailable", "search_limit_reached",
 ];
 
 export function canRetryReviewedAcquisition(record: AcquisitionRecord, identity: ConfirmedIdentity): boolean {
@@ -347,8 +348,9 @@ async function claim(
                  OR ($7::boolean
                      AND manual_acquisition->>'key' = $3::text
                      AND manual_acquisition->>'state' <> 'running')
-                 -- A newly reviewed publication gets one attempt after a terminal
-                 -- miss with no attachment history. Never override a removal.
+                 -- A newly reviewed publication gets one attempt after an
+                 -- unattached miss, outage, or provider quota denial. The
+                 -- same digest still follows the normal retry rules above.
                  OR ($8::text IS NOT NULL
                      AND manual_acquisition->>'state' = ANY($9::text[])
                      AND manual_acquisition->>'reviewed_digest' IS DISTINCT FROM $8::text

@@ -160,6 +160,12 @@ beforeEach(() => {
 const SMC_MESSAGE = "Find the manual for the SMC SS5Y3-DUW01302";
 
 describe("exact catalog number on an explicit manual request", () => {
+  it("offers the named ABB model for confirmation in a blank notebook with an empty corpus", async () => {
+    const res = await POST(req({ message: "Show me the ABB ACS355 manual.", mode: "general" }), params);
+    expect(await frames(res)).toContainEqual(expect.objectContaining({ kind: "identity_proposal", manufacturer: "ABB", model: "ACS355" }));
+    expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+  });
+
   it("asks for missing identification without spending a search or generating a guess", async () => {
     const res = await POST(req({ message: "Find me the manual", mode: "general" }), params);
     const result = await frames(res);

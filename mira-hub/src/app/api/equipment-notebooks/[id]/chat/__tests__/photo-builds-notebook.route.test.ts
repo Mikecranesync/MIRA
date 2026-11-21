@@ -116,6 +116,7 @@ const PLATE = [
   "OUTPUT: 3PH 0-240V 2.2A 0.5kW/0.5HP",
 ].join("\n");
 const SERIAL_PLATE = `${PLATE}\nSERIAL NO: ${SERIAL}`;
+const SERIES_SERIAL_PLATE = SERIAL_PLATE.replace("MODEL:", "GS10\nMODEL:");
 const QUESTION = "What is this drive and how do I clear a fault on it?";
 
 function providerStream(text: string) {
@@ -201,13 +202,14 @@ it("preserves the exact model when a known maker's label also includes ratings a
   }), params);
   const result = await frames(res);
   expect(result.find((frame) => frame.kind === "identity_proposal")).toMatchObject({ model: MODEL });
+  expect(ragMock.retrieveManualChunks).not.toHaveBeenCalled();
   expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
 });
 
 it.each([
   ["ABB\nACS355", "ACS355"],
   ["Schneider Electric\nCA3KN22BD", "CA3KN22BD"],
-  [SERIAL_PLATE, MODEL],
+  [SERIES_SERIAL_PLATE, MODEL],
 ])("offers confirmation from reviewed coverage on the label %s", async (text, model) => {
   ragMock.resolveModelFromObservationText.mockImplementation(resolveModelFromObservationText);
   visualMock.loadVisualEvidenceForPhoto.mockResolvedValue({
@@ -223,9 +225,9 @@ it.each([
 });
 
 it.each([
-  { manufacturer: "ABB", model: "ACS355", text: "ABB\nModel: ACS355\nS/N: TEST-ABB-001" },
-  { manufacturer: "Schneider Electric", model: "CA3KN22BD", text: "Schneider Electric\nCA3KN22BD\nS/N: TEST-SE-002" },
-])("F2: offers $model for confirmation when its label has a separate serial", async ({ manufacturer, model, text }) => {
+  { manufacturer: "ABB", model: "ACS355", text: "ABB\nACS355\nS/N: TEST-ABB-001\nIP20" },
+  { manufacturer: "Schneider Electric", model: "CA3KN22BD", text: "Schneider Electric\nCA3KN22BD\nS/N: TEST-SE-002\n24VDC" },
+])("F2: offers $model for confirmation with a separate serial and trailing rating", async ({ manufacturer, model, text }) => {
   ragMock.resolveModelFromObservationText.mockImplementation(resolveModelFromObservationText);
   visualMock.loadVisualEvidenceForPhoto.mockResolvedValue({
     observationId: "obs", sessionId: "session", text, obsKind: "look", trust: "candidate", fileId: PHOTO, hazards: [],
@@ -259,8 +261,30 @@ it("F2 control: a compact model repeated as the serial is not offered for confir
   expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
 });
 
-it("F5: a request for operating instructions to perform a task still retrieves from the OEM corpus", async () => {
-  const message = "Show me the operating instructions for setting the acceleration time.";
+it("F7: does not offer the model for confirmation when its label names an incompatible family", async () => {
+  ragMock.resolveModelFromObservationText.mockImplementation(resolveModelFromObservationText);
+  visualMock.loadVisualEvidenceForPhoto.mockResolvedValue({
+    observationId: "obs",
+    sessionId: "session",
+    text: SERIES_SERIAL_PLATE.replace("\nGS10\n", "\nGS20\n"),
+    obsKind: "look",
+    trust: "candidate",
+    fileId: PHOTO,
+    hazards: [],
+  });
+  const result = await frames(await POST(req({
+    message: "Find me the manual for this.",
+    mode: "general",
+    visualEvidence: { fileId: PHOTO },
+  }), params));
+  expect(result.find((frame) => frame.kind === "identity_proposal")).toBeUndefined();
+  expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+});
+
+it.each([
+  "Show me the operating instructions for setting the acceleration time.",
+  "Find the manual for this drive and tell me which parameter sets acceleration time.",
+])("F5: retrieves and cites the OEM parameter when asked %s", async (message) => {
   ragMock.corpusManufacturers.mockResolvedValue(["AutomationDirect"]);
   ragMock.manufacturerFromObservationText.mockReturnValue("AutomationDirect");
   const passage = "P01.12 Acceleration Time 1 sets the acceleration time.";
@@ -283,6 +307,39 @@ it("F5: a request for operating instructions to perform a task still retrieves f
   );
   expect(result.find((frame) => frame.kind === "sources")).toMatchObject({
     citations: [expect.objectContaining({ docId: "gs10-manual", page: 139 })],
+  });
+  expect(result.find((frame) => frame.kind === "identity_proposal")).toBeUndefined();
+  expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+});
+
+it("F8 control: a voltage question about the named ABB manual retrieves and cites its contents", async () => {
+  const message = "Show me the voltage from the ABB ACS355 manual.";
+  visualMock.loadVisualEvidenceForPhoto.mockResolvedValue({
+    observationId: "obs", sessionId: "session", text: "ABB\nMODEL: ACS355", obsKind: "look", trust: "candidate", fileId: PHOTO, hazards: [],
+  });
+  ragMock.resolveModelFromObservationText.mockReturnValue({ model: "ACS355", ambiguous: false });
+  ragMock.corpusManufacturers.mockResolvedValue(["ABB"]);
+  ragMock.manufacturerFromObservationText.mockReturnValue("ABB");
+  const passage = "Input voltage depends on the variant: 1-phase 200–240 V AC, 3-phase 200–240 V AC, or 3-phase 380–480 V AC.";
+  ragMock.retrieveManualChunks.mockResolvedValue([{
+    id: "abb-drive-ratings",
+    content: passage,
+    score: 1,
+    manufacturer: "ABB",
+    model: "ACS355",
+    sourceTitle: "ACS355 user's manual",
+    sourcePage: 387,
+    sourceUrl: null,
+    docId: "abb-acs355-manual",
+    chunkIndex: 0,
+  }]);
+  vi.stubGlobal("fetch", vi.fn(async () => new Response(providerStream(passage + " [1]"), { status: 200 })));
+  const result = await frames(await POST(req({ message, mode: "general", visualEvidence: { fileId: PHOTO } }), params));
+  expect(ragMock.retrieveManualChunks).toHaveBeenCalledWith(
+    expect.anything(), TENANT, expect.any(String), expect.objectContaining({ manufacturer: "ABB", rawQuery: message }),
+  );
+  expect(result.find((frame) => frame.kind === "sources")).toMatchObject({
+    citations: [expect.objectContaining({ docId: "abb-acs355-manual", page: 387 })],
   });
   expect(result.find((frame) => frame.kind === "identity_proposal")).toBeUndefined();
   expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();

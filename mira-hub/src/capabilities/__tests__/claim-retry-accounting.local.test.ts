@@ -165,8 +165,11 @@ run("claim retry accounting on real Postgres (#4177 F4)", () => {
     { state: "no_manual_found", basis: "candidate" },
     { state: "candidate_review", basis: "confirmed" },
     { state: "candidate_review", basis: "candidate", reviewed_digest: "a".repeat(64) },
+    { state: "search_unavailable", basis: "candidate", retries: 3 },
+    { state: "search_limit_reached", basis: "candidate" },
   ] as const)("refreshes an unattached $state once for $basis after a new reviewed digest", async ({ basis, ...oldRecord }) => {
-    await seedReviewedRecord(oldRecord);
+    const { rows: [{ now }] } = await c.query<{ now: Date }>("SELECT now() as now");
+    await seedReviewedRecord({ ...oldRecord, finished_at: now });
     const acquire = vi.fn(async (): Promise<ManualAcquisitionOutcome> => ({ status: "candidate_review", payload: {} }));
     const attempt = () => startManualAcquisition({ ...input, identity: reviewedIdentity, basis }, { acquire, env: ON });
 
@@ -178,8 +181,14 @@ run("claim retry accounting on real Postgres (#4177 F4)", () => {
     expect((await record()).reviewed_digest).toMatch(/^[0-9a-f]{64}$/);
   });
 
-  it.each(["no_manual_found", "candidate_review"])("confirmation reuses one reviewed search after an unattached %s", async (state) => {
-    await seedReviewedRecord({ state });
+  it.each([
+    { state: "no_manual_found", repeatsAs: "candidate_review", retries: 0 },
+    { state: "candidate_review", repeatsAs: "candidate_review", retries: 0 },
+    { state: "search_unavailable", repeatsAs: "search_unavailable", retries: 3 },
+    { state: "search_limit_reached", repeatsAs: "search_limit_reached", retries: 0 },
+  ] as const)("confirmation reuses one reviewed search after an unattached $state", async ({ state, repeatsAs, retries }) => {
+    const { rows: [{ now }] } = await c.query<{ now: Date }>("SELECT now() as now");
+    await seedReviewedRecord({ state, retries, finished_at: now });
     let resolveAcquisition!: (outcome: ManualAcquisitionOutcome) => void;
     const pending = new Promise<ManualAcquisitionOutcome>((resolve) => {
       resolveAcquisition = resolve;
@@ -196,15 +205,23 @@ run("claim retry accounting on real Postgres (#4177 F4)", () => {
       const second = await confirm();
       expect(await second.json()).toMatchObject({ ok: true, searching: true });
       expect(acquire).toHaveBeenCalledTimes(1);
-    } finally {
-      resolveAcquisition({ status: "candidate_review", payload: {} });
-      if (acquire.mock.calls.length > 0) {
-        await vi.waitFor(async () => expect((await record()).state).toBe("candidate_review"));
+
+      resolveAcquisition({ status: repeatsAs, payload: {} });
+      await vi.waitFor(async () => expect((await record()).state).toBe(repeatsAs));
+      expect((await record()).reviewed_digest).toMatch(/^[0-9a-f]{64}$/);
+
+      const settled = await confirm();
+      expect(await settled.json()).toMatchObject({ ok: true, searching: false });
+      if (state === "search_unavailable") {
+        await ageFinished(31);
+        const exhausted = await confirm();
+        expect(await exhausted.json()).toMatchObject({ ok: true, searching: false });
       }
+      expect(acquire).toHaveBeenCalledTimes(1);
+    } finally {
+      resolveAcquisition({ status: repeatsAs, payload: {} });
       acquire.mockRestore();
     }
-    const settled = await confirm();
-    expect(await settled.json()).toMatchObject({ ok: true, searching: false });
   });
 
   it.each([
@@ -221,6 +238,20 @@ run("claim retry accounting on real Postgres (#4177 F4)", () => {
     const acquire = vi.fn(outage);
     const started = await startManualAcquisition({ ...input, identity: reviewedIdentity }, { acquire, env: ON });
     expect(started).toBe(false);
+    expect(acquire).not.toHaveBeenCalled();
+    expect(await record()).toMatchObject(history);
+  });
+
+  it.each([
+    { state: "search_unavailable", retries: 3, source_removed: true },
+    { state: "search_unavailable", retries: 3, match_state: "rejected" },
+    { state: "search_limit_reached", retries: 0, source_removed: true },
+    { state: "search_limit_reached", retries: 0, match_state: "rejected" },
+  ])("preserves a historical provider record with removal or rejection %j", async (history) => {
+    const { rows: [{ now }] } = await c.query<{ now: Date }>("SELECT now() as now");
+    await seedReviewedRecord({ ...history, finished_at: now });
+    const acquire = vi.fn(outage);
+    expect(await startManualAcquisition({ ...input, identity: reviewedIdentity }, { acquire, env: ON })).toBe(false);
     expect(acquire).not.toHaveBeenCalled();
     expect(await record()).toMatchObject(history);
   });

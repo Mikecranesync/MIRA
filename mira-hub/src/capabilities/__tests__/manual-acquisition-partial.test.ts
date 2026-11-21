@@ -191,7 +191,14 @@ const REVIEWED = {
 
 it("acquires a reviewed library PDF before web discovery and preserves the evidence page", async () => {
   stored.rows = FULL_ROWS;
-  libraryMock.reviewedManualFor.mockReturnValue(REVIEWED);
+  const library = await vi.importActual<typeof import("@/capabilities/reviewed-manual-library")>(
+    "@/capabilities/reviewed-manual-library",
+  );
+  libraryMock.reviewedManualFor.mockImplementation((identity) => {
+    const publication = library.reviewedManualFor(identity);
+    // Use the real manifest selector; substitute the short PDF fixture's digest.
+    return publication && { ...publication, sha256: REVIEWED.sha256 };
+  });
   downloadMock.safeDownloadPdf.mockResolvedValue({
     ok: true,
     buffer: Buffer.from("PDFBYTES"),
@@ -220,10 +227,10 @@ it.each([
   ["GS21N-20P2", "GS11N-20P2"],
   ["GS11N-20P2", "GS21N-20P2"],
 ])("checks a reviewed identity in either field before lookup (%s, %s)", async (model, catalogNumber) => {
-  libraryMock.reviewedManualFor.mockImplementation((identity) => {
-    const values = [identity.model, identity.catalogNumber].filter(Boolean);
-    return values.length === 1 && values[0] === "GS11N-20P2" ? REVIEWED : null;
-  });
+  const library = await vi.importActual<typeof import("@/capabilities/reviewed-manual-library")>(
+    "@/capabilities/reviewed-manual-library",
+  );
+  libraryMock.reviewedManualFor.mockImplementation(library.reviewedManualFor);
   const out = await acquireManualForIdentity({ ...BASE_INPUT, identity: { ...IDENTITY, model, catalogNumber } });
   expect(out.status).toBe("manufacturer_model_required");
   expect(discoveryMock.discoverManual).not.toHaveBeenCalled();

@@ -19,7 +19,7 @@
  * confirms it (R2/R3).
  */
 import { oemMakerTable } from "@/lib/manual-discovery";
-import { resolveModelFromObservationText } from "./model-token";
+import { modelIdentitiesInText, resolveModelFromObservationText } from "./model-token";
 import { namesOnlyThisMachine, proposeIdentityFromText, type IdentityProposal } from "./identity-proposal";
 import { reviewedManualFor } from "./reviewed-manual-library";
 import {
@@ -140,14 +140,29 @@ export function extractCandidateIdentity(observation: string, typed = ""): Candi
  * effect, not an answer, so a miss just means the search waits for the next
  * turn or an explicit ask — never a wrong answer.
  */
-const MANUAL_PUBLICATION = String.raw`(?:manuals?|documentation|docs?|pdfs?|datasheet|data\s+sheet|spec\s+sheet|user\s+guide|service\s+manual|install(?:ation)?\s+guide)`;
+const MANUAL_PUBLICATION = String.raw`(?:manuals?|documentation|docs?|pdfs?|datasheet|data\s+sheet|spec\s+sheet|user\s+guide|user(?:['’]s)?\s+manual|service\s+manual|install(?:ation)?\s+guide)`;
 const MANUAL_INTENT_RE = new RegExp(String.raw`\b(?:${MANUAL_PUBLICATION}|instructions?)\b`, "i");
+const MANUAL_REQUEST_START = String.raw`^(?:(?:can|could|would)[ \t]+you[ \t]+|please[ \t]+)*`;
+const MANUAL_REQUEST_VERB = String.raw`(?:find|get|open|show|send|look up|give|(?:i[ \t]+)?(?:need|want)|do you have|where (?:can|do) i (?:find|get))[ \t]+(?:me[ \t]+)?`;
+const MANUAL_REQUEST_END = String.raw`(?:,?[ \t]+please)?[.!?]*$`;
 const MANUAL_REQUEST_RE = new RegExp(
-  String.raw`^(?:(?:can|could|would) you\s+|please\s+)*(?:(?:find|get|open|show|send|look up|give|(?:i\s+)?(?:need|want)|do you have|where (?:can|do) i (?:find|get))\s+(?:me\s+)?)?(?:(?:the|a|an)\s+)?(?:official\s+)?${MANUAL_PUBLICATION}\b(?:[.!?]*$|\s+(?:for|of|on|please)\b)`,
+  String.raw`${MANUAL_REQUEST_START}(?:${MANUAL_REQUEST_VERB})?(?:(?:the|a|an)[ \t]+)?(?:official[ \t]+)?${MANUAL_PUBLICATION}(?:[ \t]+(?:for|of|on)[ \t]+([^\r\n]+?))?${MANUAL_REQUEST_END}`,
   "i",
 );
 const NAMED_MANUAL_REQUEST_RE = new RegExp(
-  String.raw`^(?:(?:can|could|would) you\s+|please\s+)*(?:find|get|open|send|look up)\s+(.+?)\s+${MANUAL_PUBLICATION}[.!?]*$`,
+  String.raw`${MANUAL_REQUEST_START}${MANUAL_REQUEST_VERB}([^\r\n]+?)[ \t]+${MANUAL_PUBLICATION}${MANUAL_REQUEST_END}`,
+  "i",
+);
+const MANUAL_DEVICE = String.raw`(?:drive|vfd|plc|hmi|motor|inverter|controller|panel|valve|relay|sensor|module|pump|machine|equipment|device|unit|part|nameplate|photo|picture)`;
+const MANUAL_MAKER = oemMakerTable().map(({ name }) => escape(name).replace(/\\-| /g, "[ \\t-]+")).join("|");
+const MANUAL_MODEL_CODE = String.raw`(?=[a-z0-9./+-]{0,31}\d)[a-z0-9][a-z0-9./+-]{0,31}`;
+const MANUAL_REFERENCE_RE = new RegExp(
+  String.raw`^(?:this|that|it|(?:(?:pictured|attached)[ \t]+)?${MANUAL_DEVICE}(?:[ \t]+(?:in|from)[ \t]+(?:this|the|my|your)[ \t]+(?:photo|picture))?|${MANUAL_MAKER})$`,
+  "i",
+);
+const MANUAL_MODEL_REFERENCE_RE = new RegExp(
+  // A compact code or a printed split code such as SLC 5/03, with at most one adjacent catalog code.
+  String.raw`^(?:(?:${MANUAL_MAKER})[ \t]+)?(?:(?:model|part|catalog)(?:[ \t]+number)?(?:[ \t]*[:#][ \t]*|[ \t]+))?(?:${MANUAL_MODEL_CODE}|([a-z]{2,8})[ \t]+[0-9][0-9./+-]{0,11})(?:[ \t]+${MANUAL_MODEL_CODE})?(?:[ \t]+${MANUAL_DEVICE})?$`,
   "i",
 );
 
@@ -158,9 +173,15 @@ export function wantsManualDocumentation(message: string): boolean {
 /** A request for the document itself, as opposed to a question about its contents. */
 export function asksToFindManual(message: string): boolean {
   const text = message.trim();
-  if (MANUAL_REQUEST_RE.test(text)) return true;
-  const named = NAMED_MANUAL_REQUEST_RE.exec(text)?.[1];
-  return !!named && !/\b(?:from|according to|per|in|about)\b/i.test(named);
+  const request = MANUAL_REQUEST_RE.exec(text);
+  if (request && !request[1]) return true;
+  const subject = (request?.[1] ?? NAMED_MANUAL_REQUEST_RE.exec(text)?.[1])
+    ?.replace(/^(?:(?:the|a|an|my|this|that)[ \t]+)?(?:official[ \t]+)?/i, "");
+  if (!subject) return false;
+  // A remaining clause could ask about the manual. Accept only a whole equipment reference.
+  if (MANUAL_REFERENCE_RE.test(subject)) return true;
+  const model = MANUAL_MODEL_REFERENCE_RE.exec(subject);
+  return !!model && (!model[1] || model[1] === model[1].toUpperCase());
 }
 
 /**
@@ -191,11 +212,11 @@ export function exactManualIdentity(photo: string, typed: string): IdentityPropo
   const { part, manufacturer } = candidate;
   const key = part.toUpperCase();
   const labelled = labelledPartCodes(photo);
+  const reviewed = reviewedManualFor({ manufacturer, model: part });
   if (
     !photo ||
     makerFromText(photo) !== manufacturer ||
-    !reviewedManualFor({ manufacturer, model: part }) ||
-    resolveModelFromObservationText(photo).ambiguous ||
+    !reviewed ||
     unambiguousPartNumber(photo)?.toUpperCase() !== key ||
     labelled.length !== 1 ||
     labelled[0] !== key ||
@@ -203,6 +224,18 @@ export function exactManualIdentity(photo: string, typed: string): IdentityPropo
     modelIsPrivate(photo, part) ||
     !isSafeCandidateSearchIdentity("", `${manufacturer} MODEL: ${part}\n${typed}`, part, manufacturer)
   ) return null;
+
+  // A reviewed family marking can describe this same labelled order number.
+  // Compare exact identities too: another order number in the same series is
+  // still a competing model even if the single-token resolver folds both.
+  if (reviewed.families?.length) {
+    const exactIdentities = modelIdentitiesInText(part);
+    for (const identity of modelIdentitiesInText(photo)) {
+      if (!exactIdentities.has(identity) && !reviewed.families.includes(identity)) return null;
+    }
+  } else if (resolveModelFromObservationText(photo).ambiguous) {
+    return null;
+  }
 
   return { manufacturer, model: part };
 }

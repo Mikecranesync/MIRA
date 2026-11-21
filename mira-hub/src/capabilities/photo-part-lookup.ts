@@ -151,9 +151,12 @@ export function hasSeparateSerialField(text: string, model: string): boolean {
   if (!/\r?\n[ \t]*$/.test(open) || !open.trimEnd().split(/\r?\n/).some((line) => line.trim().toUpperCase() === model.toUpperCase())) {
     return false;
   }
-  const serial = /^(?:s\/n|serial(?:\s+(?:no\.?|number))?)[ \t]*[:#=][ \t]*([a-z0-9][a-z0-9./-]{3,})[ \t]*$/i
-    .exec(secret[0]?.trim() ?? "")?.[1];
-  return !!serial && !identifierKey(serial).includes(identifierKey(model));
+  const privateText = secret[0] ?? "";
+  const serialLine = privateText.split(/[\r\n]/, 1)[0].trim();
+  // Only this line establishes the separate serial. All following text remains
+  // private evidence and can still disqualify the model.
+  return /^(?:s\/n|serial(?:[ \t]+(?:no\.?|number))?)[ \t]*[:#=][ \t]*[a-z0-9][a-z0-9./-]{3,}[ \t]*$/i.test(serialLine) &&
+    !identifierKey(privateText).includes(identifierKey(model));
 }
 
 /** A genuine part label is followed by a separator (":", "#" or a space)

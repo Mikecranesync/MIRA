@@ -2,7 +2,7 @@
   {
     "manufacturer": "AutomationDirect",
     "models": ["GS11N-20P2"],
-    "families": ["GS10"],
+    "families": ["GS10", "GS11N"],
     "title": "DURApulse GS10 Drive User Manual, Rev C",
     "url": "https://cdn.automationdirect.com/static/manuals/gs10m/gs10usermanual.pdf",
     "sha256": "43a66d756b9c53f216316eeb78d13db26f9698859d08b5f70d2ed3715e9602af",
@@ -11,6 +11,7 @@
   {
     "manufacturer": "Siemens",
     "models": ["6AV2124-0GC01-0AX0"],
+    "families": ["TP700", "TP700 COMFORT"],
     "title": "SIMATIC HMI Comfort Panels Operating Instructions, 07/2022",
     "url": "https://cache.industry.siemens.com/dl/files/233/49313233/att_904646/v1/HWComfortPanelsenUS_en-US.pdf",
     "sha256": "fa79e60e39d19165e5bdeea45189efff06eca3823948de3c81c436d093170f81",
@@ -19,6 +20,7 @@
   {
     "manufacturer": "Schneider Electric",
     "models": ["CA3KN22BD"],
+    "families": ["TESYS K", "CA3K"],
     "title": "TeSys K CA3KN22BD Product Datasheet, English US",
     "filename": "CA3KN22BD_DATASHEET_US_en-US.pdf",
     "url": "https://download.se.com/files?p_Doc_Ref=CA3KN22BD_DATASHEET&p_enDocType=Product+Data+Sheet&p_File_Name=CA3KN22BD_DATASHEET_US_en-US.pdf",

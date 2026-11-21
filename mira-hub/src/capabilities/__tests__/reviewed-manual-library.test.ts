@@ -14,10 +14,13 @@ describe("reviewed manual library", () => {
 
   it.each([
     ["AutomationDirect", "GS11N"],
+    ["AutomationDirect", "GS10"],
     ["AutomationDirect", "GS11N-20P2-EX"],
     ["AutomationDirect", "GS11N-20P25"],
     ["Siemens", "6AV2124-0GC01-0AX1"],
+    ["Siemens", "TP700 Comfort"],
     ["Siemens", "GS11N-20P2"],
+    ["Schneider", "CA3K"],
   ])("does not borrow applicability for %s %s", (manufacturer, model) => {
     expect(reviewedManualFor({ manufacturer, model })).toBeNull();
   });
@@ -25,6 +28,16 @@ describe("reviewed manual library", () => {
   it("checks the model and catalog together, allowing only a reviewed family", () => {
     const identity = { manufacturer: "AutomationDirect", catalogNumber: "GS11N-20P2" };
     expect(reviewedManualFor({ ...identity, model: "GS10" })).toMatchObject({ page: 26 });
+    expect(reviewedManualFor({ ...identity, model: "GS11N" })).toMatchObject({ page: 26 });
+    expect(reviewedManualFor({ ...identity, model: "GS21" })).toBeNull();
     expect(reviewedManualFor({ ...identity, model: "GS21N-20P2" })).toBeNull();
+  });
+
+  it.each([
+    ["Siemens", "6AV2124-0GC01-0AX0", "TP700 Comfort", "TP900 Comfort"],
+    ["Schneider", "CA3KN22BD", "CA3K", "LC1D"],
+  ])("checks the published %s family against order number %s", (manufacturer, catalogNumber, model, other) => {
+    expect(reviewedManualFor({ manufacturer, model, catalogNumber })).not.toBeNull();
+    expect(reviewedManualFor({ manufacturer, model: other, catalogNumber })).toBeNull();
   });
 });
