@@ -13,7 +13,7 @@ beforeEach(() => {
   state.availability = {
     enabled: true, documents: [],
     identity: { manufacturer: "AutomationDirect", model: "GS10", status: "user_confirmed", catalogNumber: null },
-    blocking: { reason: "manufacturer_not_supported", message: "This manufacturer is not supported." },
+    blocking: { reason: "no_documents", message: "No documents attached." },
   };
 });
 function documentText() {
