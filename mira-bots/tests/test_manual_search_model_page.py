@@ -343,3 +343,77 @@ def test_control_blank_text_and_no_model_page_is_still_no_text(monkeypatch, firs
     cand = asyncio.run(judge._judge_one("AutomationDirect", MODEL, _cand()))
     assert cand["judge"]["status"] == "no_text"
     assert first_pages_only.calls == []
+
+
+# Codex #5706 r7 F17: MIRA's own English page note is prompt metadata, never
+# document text — it must not make a sparse Spanish manual read as English, nor
+# lend it a fault heading it does not print.
+SPANISH_SPEC = f"Especificaciones del modelo {MODEL}"  # sparse: one Spanish function word
+SPANISH_MANUAL = _pdf(["", "", SPANISH_SPEC])
+
+
+def _spanish(monkeypatch, first_pages_only):
+    async def fetch(url, max_bytes=judge.MAX_BYTES):
+        return SPANISH_MANUAL
+
+    async def extract(data, max_pages=8, max_chars=7000):
+        return ""  # blank lead pages
+
+    async def complete(messages, max_tokens=1024, session_id="x", sanitize=True):
+        first_pages_only.calls.append(messages[-1]["content"])
+        return json.dumps(
+            {
+                "is_manual_for_model": True,
+                "doc_type": "user_manual",
+                "scope": "complete",
+                "confidence": 0.9,
+                "lists_fault_codes": None,
+                "language": "es",
+                "evidence_quote": SPANISH_SPEC,
+                "reason": "Names the model.",
+            }
+        ), {"provider": "fake"}
+
+    monkeypatch.setattr(judge, "fetch_pdf_bytes", fetch)
+    monkeypatch.setattr(judge, "extract_text", extract)
+    monkeypatch.setattr(first_pages_only, "complete", complete)
+    return asyncio.run(judge._judge_one("AutomationDirect", MODEL, _cand()))
+
+
+def test_the_page_note_does_not_make_a_sparse_spanish_manual_english(monkeypatch, first_pages_only):
+    cand = _spanish(monkeypatch, first_pages_only)
+    j = cand["judge"]
+    assert j["status"] == "judged" and j["model_page"] is True  # precondition: the note was added
+    assert (
+        "[Note from MIRA, not text of the PDF: page 3" in first_pages_only.calls[-1]
+    )  # the prompt still carries it
+    assert j["text_language"] != "en"
+    assert judge._language_ok(j) is False
+    assert j["fault_heading"] is False
+
+
+def test_control_the_note_alone_reads_as_english(monkeypatch, first_pages_only):
+    # The precondition that makes the test above meaningful: counted as text, the
+    # note's own words clear the English threshold.
+    note = asyncio.run(judge.model_page_text(SPANISH_MANUAL, MODEL))
+    assert note.startswith("[Note from MIRA")
+    assert judge.text_language(note) == "en"
+    assert judge.text_language(note.split("]\n", 1)[1]) != "en"
+
+
+def test_control_an_english_model_page_still_reads_as_english(monkeypatch, first_pages_only):
+    async def extract(data, max_pages=8, max_chars=7000):
+        return ""
+
+    monkeypatch.setattr(judge, "extract_text", extract)
+    long_en = " ".join(
+        ["The drive is rated for use with the motor and is not for this or the other"] * 2
+    )
+    english = _pdf(["", "", f"{long_en} {MODEL}"])
+
+    async def fetch(url, max_bytes=judge.MAX_BYTES):
+        return english
+
+    monkeypatch.setattr(judge, "fetch_pdf_bytes", fetch)
+    cand = asyncio.run(judge._judge_one("AutomationDirect", MODEL, _cand()))
+    assert cand["judge"]["text_language"] == "en"

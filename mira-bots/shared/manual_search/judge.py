@@ -596,6 +596,10 @@ async def _judge_one(make: str, model: str, cand: dict) -> dict:
     text = await extract_text(data)
     model_rx = model_token_re(model)
     model_page = ""
+    # What the PDF itself says, without MIRA's page note: the deterministic
+    # language and fault-heading signals read only this (Codex #5706 r7 F17 —
+    # the English note made a sparse Spanish manual read as English).
+    pdf_text = text
     # Blank lead pages (a scanned cover, an image-only front matter) are not an
     # unreadable PDF: the later page that names the model is still tried before
     # the candidate is reported as having no text (#5706 r3 F10).
@@ -603,6 +607,12 @@ async def _judge_one(make: str, model: str, cand: dict) -> dict:
         model_page = await model_page_text(data, model)
         if model_page:
             text = f"{text}\n\n{model_page}" if text.strip() else model_page
+            page_body = (
+                model_page.split("]\n", 1)[1]
+                if model_page.startswith("[Note from MIRA")
+                else model_page
+            )
+            pdf_text = f"{pdf_text}\n\n{page_body}" if pdf_text.strip() else page_body
     if not text.strip():
         cand["judge"] = {"status": "no_text", "reason": _READ_REASON.get()}
         return cand
@@ -618,8 +628,8 @@ async def _judge_one(make: str, model: str, cand: dict) -> dict:
     verdict["text_chars"] = len(text)
     verdict["model_page"] = bool(model_page)
     # Deterministic signals from the text the judge read (zero-token).
-    verdict["text_language"] = text_language(text)
-    verdict["fault_heading"] = bool(_FAULT_HEADING.search(text))
+    verdict["text_language"] = text_language(pdf_text)
+    verdict["fault_heading"] = bool(_FAULT_HEADING.search(pdf_text))
     cand["judge"] = verdict
     # One auditable line per judgment (owner canary protocol, 2026-08-26):
     # what was read, what was decided, by which model, how fast.
