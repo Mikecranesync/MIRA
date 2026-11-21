@@ -1,3 +1,4 @@
+import { isAutomatedSignup } from "./automated-signup";
 import pool from "@/lib/db";
 import { isPilotApprovalRequired } from "./pilot-access";
 
@@ -407,6 +408,8 @@ export interface PilotApplicationSubmittedInput {
 export async function handlePilotApplicationSubmitted(
   input: PilotApplicationSubmittedInput,
 ): Promise<void> {
+  if (isAutomatedSignup(input.email)) return;
+
   let isDuplicate = false;
   try {
     const id = await recordPilotApplication({
