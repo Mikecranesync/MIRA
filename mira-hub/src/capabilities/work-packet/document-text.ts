@@ -22,6 +22,7 @@ import { layoutItemsFromTextContent } from "@/capabilities/pdf-layout-items";
 import { figureLinesForPage, figuresForPage, imageBoxesFromOps, type LayoutItem } from "./pdf-figure-lines";
 import { decodedImageToPng, type DecodedImage } from "./pdf-image-png";
 import type { DocText, PageFigure, PageText } from "./types";
+import { activeReleaseSql } from "@/capabilities/table-rule-pins";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -241,6 +242,7 @@ async function chunkDocPages(tenantId: string, notebookId: string, docId: string
        FROM knowledge_entries
       WHERE doc_id = $1::uuid
         AND (is_private = false OR tenant_id = $2::uuid)
+        AND ${activeReleaseSql()}
       ORDER BY source_page ASC NULLS LAST, chunk_index ASC NULLS LAST
       LIMIT $3`,
     [docId, tenantId, MAX_DOC_CHUNK_ROWS],

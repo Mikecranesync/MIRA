@@ -22,8 +22,8 @@ vi.hoisted(() => {
 const db = vi.hoisted(() => ({ client: null as PoolClient | null, gateOpen: false }));
 vi.mock("@/capabilities/model-scope-gate", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/capabilities/model-scope-gate")>();
-  return { ...actual, gatePageRows: <Row extends Parameters<typeof actual.gatePageRows>[0][number]>(rows: readonly Row[], reviewed: string | null | undefined) =>
-    (db.gateOpen ? [...rows] : actual.gatePageRows(rows, reviewed)) };
+  return { ...actual, gatePageRows: <Row extends Parameters<typeof actual.gatePageRows>[0][number]>(rows: readonly Row[], reviewed: string | null | undefined, held?: string | null) =>
+    (db.gateOpen ? [...rows] : actual.gatePageRows(rows, reviewed, held)) };
 });
 // "These bytes are that manual": the page gets its source file's REAL pin, by real fingerprint.
 vi.mock("@/capabilities/table-rule-pins", async (importOriginal) => {

@@ -184,6 +184,17 @@ def approval_gate_enabled() -> bool:
     return os.getenv("MIRA_ENFORCE_APPROVED_RETRIEVAL", "false").lower() == "true"
 
 
+# #5646 (Hub reviewed-table release): the Hub serves an approved file's page only while that
+# approval is enabled in mira-hub/src/capabilities/table-rule-pins.json. This service cannot read
+# that file, so it never serves any row of an approved page: marked, identified by its file hash,
+# or (stored before either existed) recognised by its page (shared/hub_release.py). An approval
+# switched off can then never reach a bot answer; an approved one is served by the Hub only.
+try:  # noqa: E402 — package import; evals/query_stub.py imports this module top-level
+    from .hub_release import HUB_RELEASE_EXCLUDED_SQL as _HUB_RELEASE_EXCLUDED_SQL
+except ImportError:  # no parent package: the sibling module itself (never a silent no-op)
+    from hub_release import HUB_RELEASE_EXCLUDED_SQL as _HUB_RELEASE_EXCLUDED_SQL
+
+
 def _approval_filter_sql() -> str:
     """SQL fragment appended to each knowledge_entries WHERE when the approval gate
     is enabled. Empty string when off → the query is byte-identical to prior behavior."""
@@ -579,7 +590,7 @@ def _like_search(
             0.5 AS similarity
         FROM knowledge_entries
         WHERE {tenant_filter}
-          AND ({where_clause}){_approval_filter_sql()}
+          AND ({where_clause}){_approval_filter_sql()}{_HUB_RELEASE_EXCLUDED_SQL}
         LIMIT :lim
     """)
     rows = conn.execute(sql, params).mappings().fetchall()
@@ -705,7 +716,7 @@ def _product_search(
                     f"  WHERE {tenant_filter} "
                     "  AND model_number ILIKE :pat "
                     "  AND NOT (model_number ~* :exclude_re) "
-                    f"  AND embedding IS NOT NULL{_approval_filter_sql()}"
+                    f"  AND embedding IS NOT NULL{_approval_filter_sql()}{_HUB_RELEASE_EXCLUDED_SQL}"
                     ") "
                     "SELECT content, manufacturer, model_number, equipment_type, "
                     "source_type, source_url, source_page, metadata, verified, "
@@ -817,7 +828,7 @@ def _recall_bm25(
                     "ts_rank_cd(content_tsv, to_tsquery('english', :tsq)) AS similarity "
                     "FROM knowledge_entries "
                     f"WHERE {tenant_filter} "
-                    f"  AND content_tsv @@ to_tsquery('english', :tsq){_approval_filter_sql()} "
+                    f"  AND content_tsv @@ to_tsquery('english', :tsq){_approval_filter_sql()}{_HUB_RELEASE_EXCLUDED_SQL} "
                     "ORDER BY similarity DESC "
                     "LIMIT :lim"
                 ),
@@ -1097,7 +1108,7 @@ def recall_knowledge(
                             1 - (embedding <=> cast(:emb AS vector)) AS similarity
                         FROM knowledge_entries
                         WHERE {tenant_filter}
-                          AND embedding IS NOT NULL{_approval_filter_sql()}
+                          AND embedding IS NOT NULL{_approval_filter_sql()}{_HUB_RELEASE_EXCLUDED_SQL}
                         ORDER BY embedding <=> cast(:emb AS vector)
                         LIMIT :lim
                     """),

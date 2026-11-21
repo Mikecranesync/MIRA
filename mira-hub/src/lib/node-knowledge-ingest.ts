@@ -27,7 +27,7 @@ import { repairExtractedPage, type PageRepair } from "@/capabilities/garbled-tex
 import { ocrExtractPage } from "@/capabilities/garbled-text-ocr";
 import { readPageLabelsBounded } from "@/capabilities/pdf-page-label-reader";
 import { pageLayoutItems } from "@/capabilities/pdf-layout-items";
-import { reviewedRowsDigest, rulePinsForSha } from "@/capabilities/table-rule-pins";
+import { boundDigest, reviewedRowsDigest, rulePinsForSha } from "@/capabilities/table-rule-pins";
 import { gatePageRows } from "@/capabilities/model-scope-gate";
 import { pageWithTables, type TableChunk } from "@/capabilities/table-rows";
 import { contactRatingTable, columnLines, withColumnLines } from "@/capabilities/contact-ratings-table";
@@ -63,6 +63,12 @@ export const EXTRACTION_VERSION = 7;
 
 /** `reviewed`: the page's reviewed-rows digest (`reviewedRowsDigest`); absent/null = not a reviewed page. */
 type PageTable = { remainder: string; chunks: TableChunk[]; sections?: ScopedText[]; reviewed?: string | null };
+
+/** The file a PDF's rows were read from (#5646): its SHA-256, stored on every row as
+ *  `metadata.file_sha256`, and per page (index-aligned) the approval recorded for that page of that
+ *  file whatever its switch (`boundDigest`), null for a page with none. Every row of a page with a
+ *  recorded approval is marked, released or held, so withdrawing the approval withdraws the page. */
+type SourceFile = { sha256: string; bound: ReadonlyArray<string | null> };
 
 // Multi-row INSERT batch size. Bounds BOTH the chunk rows held in memory at once
 // (≤ BATCH_ROWS, instead of every chunk of a 1200-page manual accumulated in one
@@ -480,11 +486,13 @@ async function writeChunkRowsForNode(
    *  is written per `TableChunk`, carrying `metadata.table_models` (+`table_unqualified` for the
    *  one flat-text chunk) instead of the page's ordinary chunk text. */
   tables?: ReadonlyArray<PageTable | null> | null,
+  /** The PDF the pages were read from; absent for text bytes (one page, no approval binds it). */
+  file?: SourceFile | null,
 ): Promise<number> {
   const { tenantId, uploadId, filename } = opts;
   const sourceUrl = nodeDocSourceUrl(uploadId, filename);
 
-  const idx = await withTenantContext(tenantId, (c) => insertChunkRows(c, pages, opts, repairs, pageLabels, tables));
+  const idx = await withTenantContext(tenantId, (c) => insertChunkRows(c, pages, opts, repairs, pageLabels, tables, file));
 
   // Zero chunks = nothing was inserted above; failing here is honest and safe.
   if (idx === 0) throw new NoExtractableTextError(filename);
@@ -525,6 +533,7 @@ async function insertChunkRows(
   repairs?: ReadonlyArray<TextRepair | null>,
   pageLabels?: ReadonlyArray<string | null> | null,
   tables?: ReadonlyArray<PageTable | null> | null,
+  file?: SourceFile | null,
 ): Promise<number> {
   const { tenantId, uploadId, nodeId, unsPath, filename, derivedFrom } = opts;
   const sourceUrl = nodeDocSourceUrl(uploadId, filename);
@@ -539,6 +548,8 @@ async function insertChunkRows(
     tableUnqualified?: boolean;
     tableScope?: SectionScope;
     tableHeader?: string;
+    tableReviewed?: string;
+    tableHeld?: string;
   };
   let idx = 0;
   let batch: ChunkRow[] = [];
@@ -574,6 +585,12 @@ async function insertChunkRows(
           ...(r.tableUnqualified ? { table_unqualified: true } : {}),
           ...(r.tableScope ? { table_scope: r.tableScope } : {}),
           ...(r.tableHeader ? { table_header: r.tableHeader } : {}),
+          // File identity (#5646 r6): the SHA-256 of the bytes this row was read from.
+          ...(file ? { file_sha256: file.sha256 } : {}),
+          // Release provenance (#5646): the reviewed digest this row was released under.
+          ...(r.tableReviewed ? { table_reviewed: r.tableReviewed, table_reviewed_sha: file?.sha256 ?? null } : {}),
+          // Hold provenance (#5646 r6): every other row of a page whose approval is recorded.
+          ...(r.tableHeld ? { table_held: r.tableHeld, table_held_sha: file?.sha256 ?? null } : {}),
         }),
       );
     }
@@ -646,7 +663,9 @@ async function insertChunkRows(
         });
       }
     }
-    for (const row of gatePageRows(pageRows, table?.reviewed)) {
+    // Release needs the table read and the exact reviewed rows; the hold needs neither (#5646 r6):
+    // a page with a recorded approval is bound to it even when its table was not read.
+    for (const row of gatePageRows(pageRows, table?.reviewed, file?.bound[p] ?? null)) {
       batch.push(row);
       if (batch.length >= BATCH_ROWS) await flush();
     }
@@ -757,8 +776,8 @@ export async function writePdfChunksForNode(opts: {
   // PDF peak (see acquireIngestSlot / INGEST_CONCURRENCY above).
   const release = await acquireIngestSlot();
   try {
-    const { pages, markers, labels, pageTables } = await parsePdfForNode(buffer, rest);
-    return await writeChunkRowsForNode(pages, rest, markers, labels, pageTables);
+    const { pages, markers, labels, pageTables, file } = await parsePdfForNode(buffer, rest);
+    return await writeChunkRowsForNode(pages, rest, markers, labels, pageTables, file);
   } finally {
     release();
   }
@@ -772,6 +791,7 @@ interface ParsedPdfForNode {
   markers: Array<TextRepair | null>;
   labels: Array<string | null> | null;
   pageTables: Array<PageTable | null>;
+  file: SourceFile;
 }
 
 /**
@@ -808,6 +828,10 @@ async function parsePdfForNode(buffer: Buffer | Uint8Array, rest: NodeChunkOpts)
   const pageTables: Array<PageTable | null> = [];
   // Per page: the digest of its reviewed model-scope rows, null for a page that is not reviewed.
   const reviewed: Array<string | null> = new Array(pages.length).fill(null);
+  // Per page: the approval recorded for this page of these bytes, read from the pins alone, before
+  // and apart from any page read, so a repaired page or a failed layout read is still bound to it.
+  const filePins = rulePinsForSha(documentSha256);
+  const approvals: Array<string | null> = pages.map((_page, p) => boundDigest(filePins, p + 1));
   // undefined means unreadable/repaired geometry; null means a successful unheaded page.
   const sectionLayouts: Array<ReturnType<typeof sectionTableLayout> | undefined> = [];
   // Pages holding a contact-ratings table the column reader positively recognised (#5510 F17, F22).
@@ -824,7 +848,7 @@ async function parsePdfForNode(buffer: Buffer | Uint8Array, rest: NodeChunkOpts)
     }
     try {
       const items = await pageLayoutItems(pdf, p + 1, documentSha256);
-      reviewed[p] = reviewedRowsDigest(rulePinsForSha(documentSha256), p + 1, items);
+      reviewed[p] = reviewedRowsDigest(filePins, p + 1, items);
       let rating: ReturnType<typeof contactRatingTable> = null;
       try { rating = contactRatingTable(items); }
       catch (err) {
@@ -939,7 +963,7 @@ async function parsePdfForNode(buffer: Buffer | Uint8Array, rest: NodeChunkOpts)
   // this is detection, not a repair.
   pageTables.forEach((table, p) => { if (table) table.reviewed = reviewed[p]; });
   const markers: Array<TextRepair | null> = repairs.map((r, p) => r ?? (hasUnmappedGlyphBetweenDigits(pages[p]) ? "unmapped_glyph" : null));
-  return { pages, markers, labels, pageTables };
+  return { pages, markers, labels, pageTables, file: { sha256: documentSha256, bound: approvals } };
 }
 
 /**
@@ -1352,7 +1376,7 @@ export async function reprocessNodeDocument(opts: {
       [tenantId, uploadId],
     );
     deleted = del.rowCount ?? 0;
-    inserted = await insertChunkRows(client, parsed.pages, chunkOpts, parsed.markers, parsed.labels, parsed.pageTables);
+    inserted = await insertChunkRows(client, parsed.pages, chunkOpts, parsed.markers, parsed.labels, parsed.pageTables, parsed.file);
     if (inserted === 0) throw new NoExtractableTextError(upload.filename);
     await client.query("COMMIT");
   } catch (err) {

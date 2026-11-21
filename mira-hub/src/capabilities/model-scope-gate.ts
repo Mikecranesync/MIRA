@@ -23,6 +23,17 @@ export type ScopedRow = {
   tableUnqualified?: boolean;
   tableScope?: "section" | "shared" | "unresolved";
   tableHeader?: string;
+  /** Set by `gatePageRows` on a row it RELEASES: the reviewed digest it was released under, stored
+   *  as `metadata.table_reviewed` (the writer adds the file's SHA-256 as `table_reviewed_sha`).
+   *  Retrieval honours the release only while the pin of that file and page still carries this
+   *  digest (`isReleaseActive`), and the stamp makes every released row queryable without the
+   *  original file. Not part of `scopeDigest`. */
+  tableReviewed?: string;
+  /** Set by `gatePageRows` on every row it does NOT release on a page whose approval is recorded,
+   *  in either switch state: the recorded digest, stored as `metadata.table_held` (with
+   *  `table_held_sha`). Retrieval serves such a row only while that approval is enabled.
+   *  Not part of `scopeDigest`. */
+  tableHeld?: string;
 };
 
 /** True when retrieval could admit this row for some record BECAUSE of its model scope. */
@@ -68,9 +79,18 @@ export function withheld<Row extends ScopedRow>(row: Row): Row {
 /**
  * One page's rows as they may be stored. `reviewed` is the digest recorded for this page when its
  * rows were checked against the page image, or null when the page is not a reviewed page. Rows
- * are returned unchanged only when they are exactly the reviewed rows.
+ * are released only when they are exactly the reviewed rows; each released (affirming) row is
+ * stamped with that digest and is otherwise unchanged.
+ * `held` is the approval recorded for this page of this file whatever its switch and whatever the
+ * page reads now (`boundDigest`), or null when the page has none. Every row the gate does not
+ * release is marked with it, in either switch state and whether or not the rows match: the
+ * withdrawal of a page must not depend on its extraction reading exactly as it was reviewed.
  */
-export function gatePageRows<Row extends ScopedRow>(rows: readonly Row[], reviewed: string | null | undefined): Row[] {
-  if (typeof reviewed === "string" && reviewed.length === 64 && reviewed === scopeDigest(rows)) return [...rows];
-  return rows.map(withheld);
+export function gatePageRows<Row extends ScopedRow>(rows: readonly Row[], reviewed: string | null | undefined,
+  held?: string | null): Row[] {
+  const out = typeof reviewed === "string" && reviewed.length === 64 && reviewed === scopeDigest(rows)
+    ? rows.map((row) => (affirmsModel(row) ? { ...row, tableReviewed: reviewed } : row))
+    : rows.map(withheld);
+  if (typeof held !== "string" || held.length !== 64) return out;
+  return out.map((row) => (row.tableReviewed ? row : { ...row, tableHeld: held }));
 }

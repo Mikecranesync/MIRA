@@ -10,7 +10,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import micro820 from "../__fixtures__/table-rows/micro820-in009-p16-20-scope.json";
 import { contactTableBeforeInventory, RELAY_CAPTION_BODY, RELAY_CAPTION_PRINTED, relayOnlyInventory } from "../__fixtures__/micro820-relay-subset";
 import gs10p26 from "../__fixtures__/table-rows/gs10-p26-230v-1ph.json";
-import candidateP26 from "../__fixtures__/reviewed-pages/gs10-rev-b-p26.candidate.json";
+import reviewedP26 from "../__fixtures__/reviewed-pages/gs10-rev-b-p26.reviewed.json";
 import pins from "../table-rule-pins.json";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -26,8 +26,8 @@ const gated = vi.hoisted(() => [] as Array<{ input: ScopedRow[]; output: ScopedR
 
 vi.mock("../model-scope-gate", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../model-scope-gate")>();
-  return { ...actual, gatePageRows: <Row extends ScopedRow>(rows: readonly Row[], reviewed: string | null | undefined) => {
-    const output = actual.gatePageRows(rows, reviewed);
+  return { ...actual, gatePageRows: <Row extends ScopedRow>(rows: readonly Row[], reviewed: string | null | undefined, held?: string | null) => {
+    const output = actual.gatePageRows(rows, reviewed, held);
     gated.push({ input: [...rows], output });
     return output;
   } };
@@ -41,7 +41,8 @@ vi.mock("../table-rule-pins", async (importOriginal) => {
     if (!pdf.sha) return null;
     const pins = pinsDouble(actual, pdf.pinnedFrom ?? pdf.pages, [pdf.sha]);
     if (pdf.reviewed === undefined) return pins;
-    return Object.fromEntries(Object.entries(pins).map(([k, pin]) => [k, { ...pin, reviewed: pdf.reviewed }]));
+    // A record a test supplies is an enabled one, whatever the shipped switch says (#5646 r4 F2).
+    return Object.fromEntries(Object.entries(pins).map(([k, pin]) => [k, { ...pin, reviewed: pdf.reviewed, release: "enabled" }]));
   } };
 });
 vi.mock("unpdf", async () => {
@@ -99,8 +100,40 @@ describe("the gate on its own", () => {
     { content: "line", tableModels: ["A", "B"], tableUnqualified: true },
   ];
   it("keeps a page's rows only when the reviewed digest is the digest of what they affirm", () => {
-    expect(gatePageRows(rows, scopeDigest(rows))).toEqual(rows);
-    expect(affirmedIn(gatePageRows(rows, scopeDigest(rows)))).toBe(3);
+    const digest = scopeDigest(rows);
+    const out = gatePageRows(rows, digest);
+    expect(out.map((row) => ({ ...row, tableReviewed: undefined }))).toEqual(rows);
+    expect(affirmedIn(out)).toBe(3);
+    expect(scopeDigest(out)).toBe(digest);
+  });
+  it("marks every row it does not release on a page with a recorded approval, whatever the rows read (#5646 r6)", () => {
+    const digest = scopeDigest(rows);
+    const held = gatePageRows(rows, null, digest);
+    expect(held.every((r) => r.tableHeld === digest)).toBe(true);
+    expect(held.map((r) => ({ ...r, tableHeld: undefined }))).toEqual(rows.map(withheld)); // otherwise exactly withheld
+    expect(held.some((r) => r.tableReviewed !== undefined)).toBe(false);
+    // Drift: rows that are not the approval's rows are still bound to it (withheld and held).
+    const recorded = "0".repeat(64);
+    const drifted = gatePageRows(rows, null, recorded);
+    expect(drifted.map((r) => r.tableHeld)).toEqual(rows.map(() => recorded));
+    expect(drifted.map((r) => ({ ...r, tableHeld: undefined }))).toEqual(rows.map(withheld));
+    // A release in force: the released rows carry the stamp, every other row the hold, no row both.
+    const released = gatePageRows(rows, digest, digest);
+    expect(released.map((r) => (r.tableReviewed ? "stamp" : r.tableHeld ? "hold" : "none"))).toEqual(["hold", "stamp", "stamp", "stamp", "hold"]);
+    expect(released.some((r) => r.tableReviewed && r.tableHeld)).toBe(false);
+    // No recorded approval: no mark at all.
+    for (const none of [null, undefined, "abc", ""]) {
+      expect(gatePageRows(rows, null, none).some((r) => r.tableHeld !== undefined)).toBe(false);
+      expect(gatePageRows(rows, digest, none).some((r) => r.tableHeld !== undefined)).toBe(false);
+    }
+  });
+  it("stamps every released row with the digest it was released under, and only those rows (#5646 r3 F1)", () => {
+    const digest = scopeDigest(rows);
+    const out = gatePageRows(rows, digest);
+    expect(out.map((r) => r.tableReviewed ?? null)).toEqual([null, digest, digest, digest, null]);
+    // A withheld page carries no release stamp at all.
+    expect(gatePageRows(rows, null).some((r) => r.tableReviewed !== undefined)).toBe(false);
+    expect(gatePageRows(rows, scopeDigest(rows.slice(0, 2))).some((r) => r.tableReviewed !== undefined)).toBe(false);
   });
   it.each([["not a reviewed page", null], ["no record", undefined], ["another page's digest", scopeDigest(rows.slice(0, 2))], ["a short string", "abc"]])(
     "withholds every affirming row and keeps all text: %s", (_why, reviewed) => {
@@ -141,12 +174,12 @@ describe("through the writer: a page nobody reviewed affirms no model", () => {
     // The pin (and its reviewed digest) is the one captured from the original page; only the text
     // positions the PDF now yields differ, by one item.
     const moved = [{ ...P26[0], items: P26[0].items.map((i, n) => (n === 0 ? { ...i, x: i.x + 0.5 } : i)) }];
-    const rows = await ingest(moved, candidateP26.sha256, candidateP26.digest, P26);
+    const rows = await ingest(moved, reviewedP26.sha256, reviewedP26.digest, P26);
     expect(affirmedIn(gated.flatMap((g) => g.input))).toBe(5);
     expect(affirmedIn(rows.map(asScoped))).toBe(0);
   });
   it("GS10 page 26 whose reviewed record is for other rows affirms nothing", async () => {
-    const rows = await ingest(P26, candidateP26.sha256, scopeDigest([{ content: "x", tableModels: ["A"] }]));
+    const rows = await ingest(P26, reviewedP26.sha256, scopeDigest([{ content: "x", tableModels: ["A"] }]));
     expect(affirmedIn(gated.flatMap((g) => g.input))).toBe(10); // five models, two chunks each
     expect(affirmedIn(rows.map(asScoped))).toBe(0);
   });
@@ -224,7 +257,7 @@ function backed(gold: readonly Gold[], line: string): boolean {
 const affirmedLines = (rows: ScopedRow[]) => rows.filter(affirmsModel).flatMap((r) => r.content.split("\n").slice(1).filter((l) => l.trim().length > 0));
 
 describe("the exact gold check a page must pass before it is recorded as reviewed", () => {
-  const gold = candidateP26.gold as Gold[];
+  const gold = reviewedP26.gold as Gold[];
   it("backs a line only for its own model, condition, value and unit", () => {
     expect(backed(gold, "GS11N-20P2: CT Rated Input Current 5.1 A")).toBe(true);
     expect(backed(gold, "GS11N-20P2: CT Rated Input Current 7.3 A")).toBe(false);   // the sibling's value
@@ -238,18 +271,18 @@ describe("the exact gold check a page must pass before it is recorded as reviewe
     expect(backed(gold, "GS11N-20P2: Input Rating / VT / Rated Input Current 5.1 A")).toBe(false); // the other duty
     expect(backed(gold, "GS11N-20P2: Output Rating / Max Motor Output 1/4 hp")).toBe(true);
   });
-  it("GS10 page 26 as read now: all 90 lines pass the exact gold check, and the page is still not reviewed", async () => {
+  it("GS10 page 26 as read now: all 90 lines pass the exact gold check, and the page is the owner-reviewed one", async () => {
     // The check is the frozen benchmark scorer's, unchanged. The fixture's gold was corrected to the
     // printed page (25 entries: a unit the page prints once is no longer recorded twice, nor in the
     // label); every entry is verified against the source PDF's word positions. Passing the check
-    // does not record the page as reviewed: that needs the owner's source review.
-    const rows = await ingest(P26, candidateP26.sha256, candidateP26.digest);
+    // did not record the page as reviewed: the owner's source review did (#5232, 2026-11-18).
+    const rows = await ingest(P26, reviewedP26.sha256, reviewedP26.digest);
     const lines = affirmedLines(rows.map(asScoped)).filter((l) => !/\(cont\.\)$/.test(l));
     expect(lines).toHaveLength(90);
     expect(lines.filter((l) => !backed(gold, l))).toEqual([]);
     expect(new Set(lines).size).toBe(90);
     expect(lines).toContain("GS11N-20P2: Input Rating / CT / Rated Input Current 5.1 A");
-    expect(candidateP26.status).toBe("not reviewed");
+    expect(reviewedP26.status).toBe("reviewed");
   });
   it("the corrected gold still rejects a line that misstates the printed unit", () => {
     expect(backed(gold, "GS11N-20P2: IE2 Efficiency - Relative Power Loss 4.7")).toBe(false);
@@ -262,35 +295,80 @@ describe("the exact gold check a page must pass before it is recorded as reviewe
 describe("a reviewed record exists only for a page that passes the exact gold check", () => {
   const dir = join(__dirname, "../__fixtures__/reviewed-pages");
   const fixtures = readdirSync(dir).filter((f) => f.endsWith(".json")).map((f) => JSON.parse(readFileSync(join(dir, f), "utf8")) as
-    { sha256: string; page: number; status: string; digest: string; rows: ScopedRow[]; gold: Gold[] });
+    { sha256: string; alsoSha256?: string[]; page: number; status: string; digest: string; rows: ScopedRow[]; gold: Gold[] });
+  /** Every file a fixture stands for: its own hash and the files that render the page identically. */
+  const shasOf = (f: (typeof fixtures)[number]) => [f.sha256, ...(f.alsoSha256 ?? [])];
   const recorded = Object.entries((pins as unknown as { documents: Record<string, { pages: Record<string, { reviewed?: string }> }> }).documents)
     .flatMap(([sha, doc]) => Object.entries(doc.pages).filter(([, pin]) => pin.reviewed !== undefined).map(([page, pin]) => ({ sha, page: Number(page), reviewed: pin.reviewed! })));
   it("every reviewed record has a reviewed fixture with the same digest", () => {
     for (const r of recorded) {
-      const f = fixtures.find((x) => x.sha256 === r.sha && x.page === r.page && x.status === "reviewed");
+      const f = fixtures.find((x) => shasOf(x).includes(r.sha) && x.page === r.page && x.status === "reviewed");
       expect(f, `${r.sha.slice(0, 12)} p${r.page}`).toBeDefined();
       expect(scopeDigest(f!.rows)).toBe(r.reviewed);
+      expect(f!.digest).toBe(r.reviewed);
     }
   });
   it("every reviewed fixture affirms only lines that pass the exact gold check", () => {
     for (const f of fixtures.filter((x) => x.status === "reviewed")) {
       expect(affirmedLines(f.rows).filter((l) => !backed(f.gold, l))).toEqual([]);
-      expect(recorded.some((r) => r.sha === f.sha256 && r.page === f.page)).toBe(true);
+      for (const sha of shasOf(f)) expect(recorded.filter((r) => r.sha === sha && r.page === f.page).map((r) => r.reviewed)).toEqual([f.digest]);
     }
   });
   it("a fixture that is not reviewed has no reviewed record", () => {
-    for (const f of fixtures.filter((x) => x.status !== "reviewed")) expect(recorded.some((r) => r.sha === f.sha256 && r.page === f.page)).toBe(false);
+    for (const f of fixtures.filter((x) => x.status !== "reviewed")) for (const sha of shasOf(f)) expect(recorded.some((r) => r.sha === sha && r.page === f.page)).toBe(false);
     expect(fixtures.length).toBeGreaterThan(0);
   });
 });
 
 describe("through the writer: a page with a matching reviewed record stores its rows as read", () => {
-  // No page is recorded as reviewed in production yet; this is the gate's affirm path with a
-  // reviewed record a test supplies: the digest of exactly the rows the reader produces.
+  // The gate's affirm path with a reviewed record a test supplies: the digest of exactly the rows
+  // the reader produces. The real recorded pin is exercised in gs10-group-labels.test.ts.
   it("GS10 page 26 with a matching record stores its five model columns unchanged", async () => {
-    const rows = await ingest(P26, candidateP26.sha256, candidateP26.digest);
+    const rows = await ingest(P26, reviewedP26.sha256, reviewedP26.digest);
     expect(rows.map(asScoped).filter(affirmsModel).map((r) => r.tableModels)).toEqual(
       ["GS11N20P2", "GS11N20P5", "GS11N21P0", "GS11N22P0", "GS11N23P0"].flatMap((m) => [[m], [m]])); // two chunks per model
-    expect(gated.flatMap((g) => g.output)).toEqual(gated.flatMap((g) => g.input));
+    const output = gated.flatMap((g) => g.output);
+    expect(output.map((row) => ({ ...row, tableReviewed: undefined, tableHeld: undefined }))).toEqual(gated.flatMap((g) => g.input));
+    expect(output.filter(affirmsModel).every((r) => r.tableReviewed === reviewedP26.digest)).toBe(true);
+    expect(output.filter((r) => !affirmsModel(r)).some((r) => r.tableReviewed !== undefined)).toBe(false);
+    // Every other row of the recorded page is bound to the same approval, and every row to its file (#5646 r6).
+    const others = output.filter((r) => !affirmsModel(r));
+    expect(others.length).toBeGreaterThan(0);
+    expect(others.every((r) => r.tableHeld === reviewedP26.digest)).toBe(true);
+    expect(rows.every((r) => /^[0-9a-f]{64}$/.test(String(r.meta.file_sha256)))).toBe(true);
+  });
+});
+
+describe("retrieval reads the release stamp wherever it reads a row's model scope (#5646 r3 F1)", () => {
+  it("every SELECT in manual-rag.ts that reads table_models also reads table_reviewed and table_reviewed_sha", () => {
+    const source = readFileSync(join(__dirname, "..", "..", "lib", "manual-rag.ts"), "utf8");
+    const lines = source.split("\n").filter((l) => l.includes("AS table_models"));
+    expect(lines.length).toBeGreaterThanOrEqual(5);
+    for (const line of lines) expect(line).toContain("metadata->>'table_reviewed' AS table_reviewed, metadata->>'table_reviewed_sha' AS table_reviewed_sha");
+  });
+  it("every passage query in manual-rag.ts carries the release guard, so a disabled approval reaches no answer (#5646 r4 F1)", () => {
+    const lines = readFileSync(join(__dirname, "..", "..", "lib", "manual-rag.ts"), "utf8").split("\n");
+    // Each retrieval SELECT (the lines reading table_models), up to its LIMIT, must add the guard.
+    const starts = lines.flatMap((l, i) => (l.includes("AS table_models") ? [i] : []));
+    expect(starts.length).toBeGreaterThanOrEqual(5);
+    for (const start of starts) {
+      const end = lines.findIndex((l, i) => i > start && /\bLIMIT\b/.test(l));
+      expect(end, `LIMIT after line ${start + 1}`).toBeGreaterThan(start);
+      expect(lines.slice(start, end).some((l) => /AND \$\{releaseGuard(On)?\}/.test(l)), `guard in the query at line ${start + 1}`).toBe(true);
+    }
+    // The cited-page read (safety statements) returns passages too.
+    const cited = lines.findIndex((l) => l.startsWith("export async function retrieveCitedPageChunks("));
+    const next = lines.findIndex((l, i) => i > cited && l.startsWith("}"));
+    expect(cited).toBeGreaterThan(-1);
+    expect(lines.slice(cited, next).some((l) => l.includes("AND ${activeReleaseSql()}"))).toBe(true);
+  });
+  it.each([
+    ["lib/manual-rag.ts", 3], // the library search's BM25 and code lanes, and the cited-page read
+    ["capabilities/manual-safety-chapter.ts", 1], // Safety-chapter excerpts added to answers
+    ["capabilities/work-packet/document-text.ts", 1], // work-packet text when the file cannot be re-read
+    ["lib/agents/asset-intelligence.ts", 3], // asset enrichment hits (vector and text), and a saved report's hits re-read
+  ] as const)("%s guards each of its %i other passage queries with the release guard (#5646 r4 F1)", (file, n) => {
+    const source = readFileSync(join(__dirname, "..", "..", file), "utf8");
+    expect(source.split("AND ${activeReleaseSql()}").length - 1).toBe(n);
   });
 });

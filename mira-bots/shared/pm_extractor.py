@@ -22,6 +22,11 @@ import os
 import re
 from typing import Any
 
+try:  # package import; the sibling module when imported top-level (never a silent no-op)
+    from .hub_release import HUB_RELEASE_EXCLUDED_SQL
+except ImportError:
+    from hub_release import HUB_RELEASE_EXCLUDED_SQL
+
 logger = logging.getLogger("mira-pm-extractor")
 
 # ---------------------------------------------------------------------------
@@ -104,7 +109,7 @@ def get_chunks_for_model(
             # (uuid = uuid is case-insensitive natively; the cast loses that).
             rows = conn.execute(
                 text(
-                    """
+                    f"""
                     SELECT id, content, source_url, source_page, metadata, chunk_type
                     FROM knowledge_entries
                     WHERE LOWER(manufacturer) ILIKE :mfr
@@ -112,6 +117,9 @@ def get_chunks_for_model(
                       AND (is_private = false
                            OR (:tenant_id IS NOT NULL
                                AND LOWER(tenant_id::text) = LOWER(:tenant_id)))
+                      -- #5646: never a row of a Hub-approved table page (the Hub alone
+                      -- decides whether that approval is enabled; shared/hub_release.py).
+                      {HUB_RELEASE_EXCLUDED_SQL}
                     ORDER BY source_page ASC NULLS LAST, created_at ASC
                     LIMIT :lim
                     """

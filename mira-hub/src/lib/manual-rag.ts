@@ -26,6 +26,7 @@ import {
 import { type PhotoDocumentKind, photoDocumentShape, productWrittenBody } from "@/capabilities/photo-document-text";
 import { withoutSharedTableHeader } from "@/capabilities/section-table-scope";
 import { exactModelKey } from "@/capabilities/table-rows";
+import { activeReleaseSql, isReleaseActive } from "@/capabilities/table-rule-pins";
 import { confirmedCatalogNumber } from "@/capabilities/notebook-manual-identity";
 import { embedQueryDetailed, hybridRetrievalEnabled, rrfMerge, vectorLiteral } from "@/capabilities/hybrid-retrieval";
 import { setSpanAttrs } from "@/capabilities/observability/tracing";
@@ -1408,6 +1409,7 @@ async function runBm25Query(
           ts_rank_cd(content_tsv, ${tsquery}) AS rank
         FROM knowledge_entries
         WHERE (is_private = false OR tenant_id = $1)
+          AND ${activeReleaseSql()}
           ${approvalFilterSql()}
           ${mfrClause}
           ${modelClause}
@@ -1496,6 +1498,7 @@ async function runBm25Query(
           2::float4 AS rank
         FROM knowledge_entries
         WHERE (is_private = false OR tenant_id = $1)
+          AND ${activeReleaseSql()}
           ${approvalFilterSql()}
           ${codeScope.mfrClause}
           ${codeScope.modelClause}
@@ -1698,6 +1701,11 @@ export async function retrieveNodeChunks(
   const q = query.trim();
   if (!q) return [];
   const topK = opts.topK ?? 6;
+  // #5646 r4 F1: a row released under a reviewed approval is a candidate only while that approval
+  // is enabled for its file and page. Added to every query that returns passages, so a disabled
+  // approval removes its rows from every lane and every caller, named model or not.
+  const releaseGuard = activeReleaseSql();
+  const releaseGuardOn = activeReleaseSql("knowledge_entries");
 
   // In-scope node ids = the node itself + every descendant (uns_path <@ nodePath,
   // which is ancestor-or-equal so it includes the node). `<@ NULL` matches nothing,
@@ -2027,13 +2035,14 @@ export async function retrieveNodeChunks(
           ${PAGE_LABEL_SQL},
           section_path,
           metadata->>'filename' AS filename,
-          metadata->'table_models' AS table_models, metadata->'table_unqualified' AS table_unqualified, metadata->>'table_scope' AS table_scope, metadata->>'table_header' AS table_header,
+          metadata->'table_models' AS table_models, metadata->'table_unqualified' AS table_unqualified, metadata->>'table_scope' AS table_scope, metadata->>'table_header' AS table_header, metadata->>'table_reviewed' AS table_reviewed, metadata->>'table_reviewed_sha' AS table_reviewed_sha,
           ${documentHeadingSql},
           verified,
           tsvector_to_array(content_tsv) AS lexemes,
           scored.score::float8 AS rank
         FROM scored JOIN knowledge_entries ON knowledge_entries.id = scored.id
         WHERE knowledge_entries.tenant_id = $1
+          AND ${releaseGuardOn}
         ORDER BY rank DESC, doc_id, page_start NULLS LAST, source_page NULLS LAST, metadata->>'chunk_index', knowledge_entries.id
         LIMIT $4`;
 
@@ -2085,13 +2094,14 @@ export async function retrieveNodeChunks(
           ${PAGE_LABEL_SQL},
           section_path,
           metadata->>'filename' AS filename,
-          metadata->'table_models' AS table_models, metadata->'table_unqualified' AS table_unqualified, metadata->>'table_scope' AS table_scope, metadata->>'table_header' AS table_header,
+          metadata->'table_models' AS table_models, metadata->'table_unqualified' AS table_unqualified, metadata->>'table_scope' AS table_scope, metadata->>'table_header' AS table_header, metadata->>'table_reviewed' AS table_reviewed, metadata->>'table_reviewed_sha' AS table_reviewed_sha,
           ${documentHeadingSql},
           verified,
           tsvector_to_array(content_tsv) AS lexemes,
           ts_rank_cd(content_tsv, q.tsq) AS rank
         FROM knowledge_entries, q
         WHERE tenant_id = $1
+          AND ${releaseGuard}
           AND ingest_route = 'v2'
           ${approvalClauseMain}
           ${nodeClauseMain}
@@ -2201,13 +2211,14 @@ export async function retrieveNodeChunks(
             ${PAGE_LABEL_SQL},
             section_path,
             metadata->>'filename' AS filename,
-            metadata->'table_models' AS table_models, metadata->'table_unqualified' AS table_unqualified, metadata->>'table_scope' AS table_scope, metadata->>'table_header' AS table_header,
+            metadata->'table_models' AS table_models, metadata->'table_unqualified' AS table_unqualified, metadata->>'table_scope' AS table_scope, metadata->>'table_header' AS table_header, metadata->>'table_reviewed' AS table_reviewed, metadata->>'table_reviewed_sha' AS table_reviewed_sha,
             ${documentHeadingSql},
             verified,
             tsvector_to_array(content_tsv) AS lexemes,
             ts_rank_cd(content_tsv, ${tsquery}) AS rank
           FROM knowledge_entries
           WHERE tenant_id = $1
+            AND ${releaseGuard}
             AND ingest_route = 'v2'
             ${approvalClauseMain}
             ${nodeClauseMain}
@@ -2374,12 +2385,13 @@ export async function retrieveNodeChunks(
         `SELECT
             content, doc_id::text AS doc_id, source_url, source_page, page_start,
             ${PAGE_LABEL_SQL},
-            section_path, metadata->>'filename' AS filename, metadata->'table_models' AS table_models, metadata->'table_unqualified' AS table_unqualified, metadata->>'table_scope' AS table_scope, metadata->>'table_header' AS table_header, verified,
+            section_path, metadata->>'filename' AS filename, metadata->'table_models' AS table_models, metadata->'table_unqualified' AS table_unqualified, metadata->>'table_scope' AS table_scope, metadata->>'table_header' AS table_header, metadata->>'table_reviewed' AS table_reviewed, metadata->>'table_reviewed_sha' AS table_reviewed_sha, verified,
             ${documentHeadingSql},
             tsvector_to_array(content_tsv) AS lexemes,
             0::float4 AS rank
           FROM knowledge_entries
           WHERE tenant_id = $1
+            AND ${releaseGuard}
             AND ingest_route = 'v2'
             ${approvalClauseExact}
             ${nodeClauseExact}
@@ -2693,6 +2705,14 @@ export async function retrieveNodeChunks(
   // model-applicability rule as one BM25 found.
   const admit = (r: Record<string, unknown>): boolean => {
       judgedDocs.add(String(r.doc_id ?? ""));
+      // #5646: a row the model-scope gate released carries the reviewed digest it was released
+      // under and the SHA-256 of its file. Its release holds only while that file's pin for the
+      // row's page carries the digest with the approval enabled. A withdrawn release is not
+      // evidence for anyone (r4 F1): the row is dropped here, whatever the question names, as the
+      // SQL guard (`releaseGuard`) already drops it from every query that returns passages.
+      if (r.table_reviewed != null && !isReleaseActive(r.table_reviewed_sha, r.page_start ?? r.source_page, r.table_reviewed)) {
+        return false;
+      }
       if (requestedIdentities || notebookScoped) {
         // F2 — affirmative title/heading applicability only (see
         // affirmativeModelIdentities): the heading's own title segment is
@@ -2983,7 +3003,7 @@ export async function retrieveNodeChunks(
                 page_start,
                 section_path,
                 metadata->>'filename' AS filename,
-                metadata->'table_models' AS table_models, metadata->'table_unqualified' AS table_unqualified, metadata->>'table_scope' AS table_scope, metadata->>'table_header' AS table_header,
+                metadata->'table_models' AS table_models, metadata->'table_unqualified' AS table_unqualified, metadata->>'table_scope' AS table_scope, metadata->>'table_header' AS table_header, metadata->>'table_reviewed' AS table_reviewed, metadata->>'table_reviewed_sha' AS table_reviewed_sha,
                 ${documentHeadingSql},
                 verified,
                 tsvector_to_array(content_tsv) AS lexemes,
@@ -2991,6 +3011,7 @@ export async function retrieveNodeChunks(
                 (1 - (embedding <=> $${vecSlot}::vector))::float4 AS vscore
               FROM knowledge_entries
               WHERE tenant_id = $1
+                AND ${releaseGuard}
                 AND ($2::text IS NOT NULL)
                 AND ingest_route = 'v2'
                 ${approvalClauseMain}
@@ -3578,6 +3599,7 @@ export async function retrieveCitedPageChunks(
       `SELECT id, content, source_url, COALESCE(page_start, source_page) AS page
          FROM knowledge_entries
         WHERE tenant_id = $1
+          AND ${activeReleaseSql()}
           AND ingest_route = 'v2'
           ${approvedSourceFilterSql(admitApproved ? 6 : null)}
           AND (doc_id::text, source_url, COALESCE(page_start, source_page)) IN (
