@@ -1,0 +1,12 @@
+{
+  "url": "http://127.0.0.1:4199/signup/?intent=technician",
+  "metrics": {
+    "buttonWidth": 350,
+    "disabled": true,
+    "scrollWidth": 390,
+    "width": 390
+  },
+  "agreementAccepted": false,
+  "accountCreatedInBrowser": false,
+  "scope": "Compiled local app through loopback forwarding proxy; valid synthetic setup token"
+}

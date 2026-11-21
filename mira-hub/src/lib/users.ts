@@ -23,6 +23,8 @@ export interface HubUser {
   plan: string | null;
   preferences: Record<string, unknown>;
   credentialEpoch?: number;
+  emailVerifiedAt?: Date | null;
+  passwordProvenance?: string;
 }
 
 export interface MagicTokenResult {
@@ -97,10 +99,12 @@ function rowToUser(r: Record<string, unknown>): HubUser {
     plan: (r.plan as string) ?? null,
     preferences: (r.preferences as Record<string, unknown>) ?? {},
     credentialEpoch: Number(r.credential_epoch ?? 0),
+    emailVerifiedAt: r.email_verified_at ? new Date(String(r.email_verified_at)) : null,
+    passwordProvenance: String(r.password_provenance ?? 'unknown'),
   };
 }
 
-const USER_COLS = "id, email, password_hash, google_sub, tenant_id, name, role, status, trial_expires_at, plan, preferences, credential_epoch";
+const USER_COLS = "id, email, password_hash, google_sub, tenant_id, name, role, status, trial_expires_at, plan, preferences, credential_epoch, email_verified_at, password_provenance";
 
 export async function findUserByEmail(email: string): Promise<HubUser | null> {
   await ensureSchema();
@@ -222,6 +226,12 @@ export async function validateMagicToken(token: string): Promise<MagicTokenResul
     : null;
 }
 
+export async function magicTokenPurpose(token: string): Promise<string | null> {
+  await ensureMagicSchema();
+  const result = await pool.query("SELECT purpose FROM hub_magic_tokens WHERE token=$1 AND expires_at>NOW() AND used_at IS NULL",[token]);
+  return result.rows[0] ? String(result.rows[0].purpose) : null;
+}
+
 export interface EnsureUserAndTenantInput {
   email: string;
   googleSub?: string;
@@ -308,6 +318,7 @@ export async function ensureUserAndTenant(
     if (pilotMode) {
       await client.query(`UPDATE hub_tenants SET pilot_status = 'pending' WHERE id = $1`, [tenantId]);
     }
+    await client.query("UPDATE hub_users SET password_provenance=$2,email_verified_at=CASE WHEN $3::boolean THEN NOW() ELSE NULL END WHERE id=$1",[String(user.id),input.passwordHash ? (input.verifiedEmail ? "verified" : "public_unverified") : "none",Boolean(input.verifiedEmail)]);
     await client.query(
       `UPDATE hub_tenants SET owner_user_id = $1 WHERE id = $2`,
       [String(user.id), tenantId],

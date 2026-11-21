@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { signIn } from "next-auth/react";
 import { API_BASE } from "@/lib/config";
 import type { PublicSignupPolicy } from "@/capabilities/free-technician-signup";
+import { usePrivateLinkToken } from "./usePrivateLinkToken";
 type Policy = PublicSignupPolicy & {
     agreementVersion: string;
     agreementSentence: string;
@@ -26,10 +27,10 @@ function Agreement({ policy, accepted, onChange }: {
 export function SignupGateway({ children }: {
     children: ReactNode;
 }) {
+    const verificationToken = usePrivateLinkToken();
     const [state, setState] = useState<{
         policy: Policy;
         pilot: boolean;
-        verify: string | null;
         legacy: boolean;
     } | null>(null);
     const [error, setError] = useState(false);
@@ -50,7 +51,7 @@ export function SignupGateway({ children }: {
             }
             if (policy.version !== 1 || !policy.policyUrl || !policy.agreementVersion)
                 throw new Error();
-            setState({ policy, pilot, verify: query.get("verify"), legacy: !pilot && policy.kind === "trial" });
+            setState({ policy, pilot, legacy: !pilot && policy.kind === "trial" });
         }
         load().catch(() => { if (!controller.signal.aborted)
             setError(true); });
@@ -58,8 +59,8 @@ export function SignupGateway({ children }: {
     }, []);
     if (!state)
         return <div role="main" style={outer}><div style={card}><p role="status">{error ? "Account setup is temporarily unavailable. Please try again or contact support@factorylm.com." : "Loading account setup…"}</p></div></div>;
-    if (state.verify)
-        return <ConfirmSetup token={state.verify} policy={state.policy}/>;
+    if (verificationToken)
+        return <ConfirmSetup token={verificationToken} policy={state.policy}/>;
     if (state.legacy)
         return children;
     return <RequestSetup policy={state.policy} pilot={state.pilot}/>;
@@ -90,7 +91,7 @@ function RequestSetup({ policy, pilot }: {
             if (!response.ok)
                 throw new Error(result.error || "Could not send your setup link.");
             setDone(true);
-            setMessage("Check your email. Open the link, review the agreement and confirm setup. No workspace is created until you verify your address.");
+            setMessage("If this address is eligible, look for a setup link in your inbox. Open it, review the agreement and confirm setup. Already have an account? Sign in below or contact Mike about access.");
         }
         catch (e) {
             setMessage(e instanceof Error ? e.message : "Please try again.");

@@ -1,0 +1,12 @@
+{
+  "scope": "Compiled Hub behind a local standard-library forwarding proxy; production nginx and email delivery are not exercised",
+  "opening_link_created_account": false,
+  "opening_link_consumed_token": false,
+  "explicit_post_completed": true,
+  "replay_rejected": true,
+  "request_uri_or_referrer_contains_credential": false,
+  "app_log_contains_credential": false,
+  "inspected_request_count": 144,
+  "browser_proof": "fragment-browser.json",
+  "real_email_or_plant_action": false
+}

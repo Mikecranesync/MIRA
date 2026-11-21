@@ -53,25 +53,27 @@ export async function requestAuthLink(req: Request, onboarding: boolean) {
         if ((intent === "pilot" && policy.kind !== "pilot_application") || (intent === "technician" && policy.kind !== "free_technician"))
             return NextResponse.json({ error: "This signup offer is unavailable. Contact mike@factorylm.com." }, { status: 403 });
     }
+    const neutral = () => NextResponse.json({ ok: true });
+    if (!process.env.RESEND_API_KEY)
+        return NextResponse.json({ error: "Email delivery is temporarily unavailable. Contact support@factorylm.com." }, { status: 503 });
+    const cooldown = rateLimit(req, email);
+    if (cooldown)
+        return NextResponse.json({ error: "Too many requests. Try again later." }, { status: 429, headers: { "Retry-After": String(cooldown) } });
     try {
         const existing = await findUserByEmail(email);
         if (!onboarding && !existing)
-            return NextResponse.json({ error: "New to FactoryLM? Choose Create account to review the offer and set up your workspace.", signupUrl: "/signup/" }, { status: 409 });
-        if (onboarding && existing && (intent === "pilot" || (existing.plan !== "technician_free" && existing.status !== "pending")))
-            return NextResponse.json({ error: "This address already has an account. Sign in or email mike@factorylm.com to arrange a plant pilot or account change." }, { status: 409 });
-        if (!process.env.RESEND_API_KEY)
-            return NextResponse.json({ error: "Email delivery is temporarily unavailable. Contact support@factorylm.com." }, { status: 503 });
-        const cooldown = rateLimit(req, email);
-        if (cooldown)
-            return NextResponse.json({ error: "Too many requests. Try again later." }, { status: 429, headers: { "Retry-After": String(cooldown) } });
+            return neutral();
+        if (onboarding && existing && (intent === "pilot" || (existing.plan !== "technician_free" && (existing.status !== "pending" || existing.emailVerifiedAt || existing.googleSub))))
+            return neutral();
         const token = await createMagicToken(email, onboarding ? { onboarding: { intent: intent as "technician" | "pilot", agreementVersion: ONBOARDING_VERSION, attribution: attributionFromRequest(req) } } : {});
         const origin = new URL(process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_APP_URL || "https://app.factorylm.com").origin;
         const prefix = process.env.NEXT_PUBLIC_API_BASE ?? "/hub";
-        const link = origin + prefix + (onboarding ? `/signup/?verify=${encodeURIComponent(token)}&intent=${intent}` : `/magic/?token=${encodeURIComponent(token)}`);
-        const response = await fetch("https://api.resend.com/emails", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.RESEND_API_KEY}` }, body: JSON.stringify({ from: "FactoryLM <noreply@factorylm.com>", to: [email], subject: onboarding ? "Verify your FactoryLM account" : "Your FactoryLM sign-in link", html: `<p>${onboarding ? "Verify your email and confirm the account agreement to finish setup." : "Use this single-use link to sign in to your existing workspace."}</p><p><a href="${link}">${onboarding ? "Review and finish setup" : "Sign in to FactoryLM"}</a></p><p>This link expires in 15 minutes. If you did not request it, ignore this email.</p>` }) });
-        if (!response.ok)
-            throw new Error("Email provider did not accept the request");
-        return NextResponse.json({ ok: true });
+        const link = origin + prefix + (onboarding ? `/signup/?intent=${intent}#token=${encodeURIComponent(token)}` : `/magic/#token=${encodeURIComponent(token)}`);
+        try {
+            await fetch("https://api.resend.com/emails", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.RESEND_API_KEY}` }, body: JSON.stringify({ from: "FactoryLM <noreply@factorylm.com>", to: [email], subject: onboarding ? "Verify your FactoryLM account" : "Your FactoryLM sign-in link", html: `<p>${onboarding ? "Verify your email and confirm the account agreement to finish setup." : "Use this single-use link to sign in to your existing workspace."}</p><p><a href="${link}">${onboarding ? "Review and finish setup" : "Sign in to FactoryLM"}</a></p><p>This link expires in 15 minutes. If you did not request it, ignore this email.</p>` }) });
+        }
+        catch { /* Keep delivery/eligibility private. No delivery success is claimed. */ }
+        return neutral();
     }
     catch {
         return NextResponse.json({ error: "Could not send the email. Please try again." }, { status: 500 });

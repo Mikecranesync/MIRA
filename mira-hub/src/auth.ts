@@ -2,11 +2,11 @@ import type { NextAuthOptions } from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 import CredentialsProvider from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
-import { ensureInvitedUser, ensureUserAndTenant, findUserByEmail, findUserById, validateMagicToken } from "@/lib/users";
+import { ensureInvitedUser, ensureUserAndTenant, findUserByEmail, findUserById, validateMagicToken, magicTokenPurpose } from "@/lib/users";
 import { NO_ROLE, normalizeRole, type ResolvedRole } from "@/lib/role";
 import { refreshEntitlementClaims } from "@/capabilities/session-entitlement";
 import { credentialEpoch } from "@/capabilities/verified-identity";
-import { completeVerifiedOnboarding } from "@/capabilities/verified-onboarding";
+import { redeemVerifiedOnboarding } from "@/capabilities/verified-onboarding";
 import { ONBOARDING_VERSION } from "@/capabilities/onboarding-policy";
 import { publicSignupPolicy } from "@/capabilities/free-technician-signup";
 import { claimVerifiedEmail } from "@/capabilities/verified-identity";
@@ -81,23 +81,23 @@ const providers: NextAuthOptions["providers"] = [
     credentials: { token: { type: "text" }, agreementVersion: { type:"text" } },
     async authorize(credentials) {
       if (!credentials?.token) return null;
-      const result = await validateMagicToken(credentials.token);
-      if (!result) return null;
       let account;
-      if(result.tenantId) {
-        account=await ensureInvitedUser({email:result.email,tenantId:result.tenantId,role:result.role ?? "technician"});
-        await claimVerifiedEmail(pool,account.id);
-      } else if(result.purpose === "onboarding") {
-        if(!result.onboarding || credentials.agreementVersion!==ONBOARDING_VERSION) return null;
-        try { account=await completeVerifiedOnboarding(result.email,result.onboarding); }
+      const purpose = await magicTokenPurpose(credentials.token);
+      if (purpose === "onboarding") {
+        try { account = await redeemVerifiedOnboarding(credentials.token, credentials.agreementVersion ?? ""); }
         catch { return null; }
       } else {
-        const existing=await findUserByEmail(result.email);
-        if(!existing) return null;
-        await claimVerifiedEmail(pool,existing.id);
-        account={id:existing.id,email:existing.email,tenantId:existing.tenantId};
+        const result = await validateMagicToken(credentials.token);
+        if (!result) return null;
+        if (result.tenantId) account = await ensureInvitedUser({email:result.email,tenantId:result.tenantId,role:result.role ?? "technician"});
+        else {
+          const existing = await findUserByEmail(result.email);
+          if (!existing) return null;
+          account = {id:existing.id,email:existing.email,tenantId:existing.tenantId};
+        }
+        try { await claimVerifiedEmail(pool,account.id); } catch { return null; }
       }
-      const user=await findUserByEmail(result.email);
+      const user=await findUserByEmail(account.email);
       if(!user) return null;
       return {
         id: account.id,

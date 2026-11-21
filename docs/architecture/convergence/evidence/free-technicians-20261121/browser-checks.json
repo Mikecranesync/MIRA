@@ -1,5 +1,5 @@
 {
-  "recordedAt": "2026-11-21T16:09:51.354Z",
+  "recordedAt": "2026-11-21T16:37:43.753Z",
   "scope": "Final review repairs; local and private browser rehearsal, not a physical-phone or production acceptance run",
   "privateLayouts": [
     {
@@ -858,7 +858,7 @@
       "buttonWidth": 350,
       "disabledUntilAgreement": true
     },
-    "unknownSignin": "Shows Create account guidance; Create account reaches the canonical verified setup gateway.",
+    "unknownSignin": "Public known/unknown responses are uniform; Create account guidance is available to everyone.",
     "newBrowserAccountCreated": false,
     "agreementAccepted": false,
     "deliveredEmail": false
@@ -869,5 +869,22 @@
     "forms": 0,
     "scroll": 1280,
     "width": 1280
+  },
+  "compiledLinkPrivacy": {
+    "historyCredentialCleared": true,
+    "agreementAccepted": false,
+    "validSyntheticLinkObserved": true,
+    "keyboardEntryAndTabFocus": true,
+    "receipt": "fragment-browser.json",
+    "runtime": "Compiled production build behind a local forwarding proxy; not production nginx"
+  },
+  "returningFragmentSignin": {
+    "scope": "Existing synthetic account in compiled local Hub",
+    "credentialRemovedFromUrl": true,
+    "destination": "/v3/",
+    "observed": "FactoryLM navigation, account and empty canonical conversation workspace",
+    "agreementAccepted": false,
+    "questionSent": false,
+    "plantAction": false
   }
 }

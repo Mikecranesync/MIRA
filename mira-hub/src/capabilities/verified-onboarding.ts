@@ -12,25 +12,27 @@ export interface OnboardingReceipt {
 export class ExistingOnboardingAccountError extends Error {
     constructor() { super("This address already has an account. Sign in, or contact Mike to arrange a plant pilot or account change."); }
 }
-/** Only called with metadata from a consumed server-issued onboarding token and
- * the recipient's agreement confirmation. Ordinary sign-in cannot call this path.
- */
-export async function completeVerifiedOnboarding(email: string, receipt: OnboardingReceipt) {
-    if (!["technician", "pilot"].includes(receipt.intent))
-        throw new Error("Invalid onboarding intent");
-    if (receipt.agreementVersion !== ONBOARDING_VERSION)
-        throw new Error("Please review the current account agreement.");
-    const policy = publicSignupPolicy(receipt.intent);
-    if ((receipt.intent === "technician" && policy.kind !== "free_technician") || (receipt.intent === "pilot" && policy.kind !== "pilot_application"))
-        throw new Error("This signup offer is unavailable. Contact Mike to discuss access.");
+/** Token lock, agreement, workspace and consumption commit as one unit. */
+export async function redeemVerifiedOnboarding(token: string, agreementVersion: string) {
+    if (agreementVersion !== ONBOARDING_VERSION)
+        throw new Error("Review the current account agreement.");
     await ensureSchema();
     const client = await pool.connect();
-    const address = email.trim().toLowerCase();
     let recoveryId: string | undefined;
     try {
         await client.query("BEGIN");
+        const proof = await client.query("SELECT email,onboarding FROM hub_magic_tokens WHERE token=$1 AND purpose='onboarding' AND expires_at>NOW() AND used_at IS NULL FOR UPDATE", [token]);
+        if (!proof.rows[0])
+            throw new Error("Setup link is invalid or already used.");
+        const receipt = proof.rows[0].onboarding as OnboardingReceipt;
+        if (!receipt || receipt.agreementVersion !== ONBOARDING_VERSION || !["technician", "pilot"].includes(receipt.intent))
+            throw new Error("Invalid account agreement or intent.");
+        const policy = publicSignupPolicy(receipt.intent);
+        if ((receipt.intent === "technician" && policy.kind !== "free_technician") || (receipt.intent === "pilot" && policy.kind !== "pilot_application"))
+            throw new Error("Signup is closed. Contact Mike.");
+        const address = String(proof.rows[0].email).trim().toLowerCase();
         await client.query("SELECT pg_advisory_xact_lock($1, hashtext($2))", [71234011, address]);
-        const { rows } = await client.query("SELECT u.id,u.tenant_id,u.status,u.plan,t.pilot_status,t.signup_offer FROM hub_users u JOIN hub_tenants t ON t.id=u.tenant_id WHERE u.email_lower=LOWER($1) FOR UPDATE OF u,t", [address]);
+        const { rows } = await client.query("SELECT u.id,u.tenant_id,u.status,u.plan,u.email_verified_at,u.google_sub,u.terms_version,t.pilot_status,t.signup_offer FROM hub_users u JOIN hub_tenants t ON t.id=u.tenant_id WHERE u.email_lower=LOWER($1) FOR UPDATE OF u,t", [address]);
         const existing = rows[0];
         if (existing) {
             if (receipt.intent === "pilot")
@@ -38,10 +40,11 @@ export async function completeVerifiedOnboarding(email: string, receipt: Onboard
             if (existing.plan === "technician_free" && existing.status === "approved" && existing.signup_offer === "technician_free") {
                 await claimVerifiedEmail(client, String(existing.id));
                 await client.query("UPDATE hub_users SET terms_version=$2,terms_sha256=$3,terms_accepted_at=NOW() WHERE id=$1", [existing.id, ONBOARDING_VERSION, ONBOARDING_SHA256]);
+                await client.query("UPDATE hub_magic_tokens SET used_at=NOW() WHERE token=$1", [token]);
                 await client.query("COMMIT");
                 return { id: String(existing.id), tenantId: String(existing.tenant_id), email: address, created: false };
             }
-            if (existing.status !== "pending" || existing.pilot_status !== "pending")
+            if (existing.status !== "pending" || existing.pilot_status !== "pending" || existing.email_verified_at || existing.google_sub || existing.terms_version === ONBOARDING_VERSION)
                 throw new ExistingOnboardingAccountError();
             // A verified inbox owner chooses a fresh personal workspace. Preserve the
             // old unapproved application for review; never copy its untrusted state.
@@ -53,11 +56,12 @@ export async function completeVerifiedOnboarding(email: string, receipt: Onboard
         const tenant = await client.query("INSERT INTO hub_tenants (name,signup_offer,pilot_status) VALUES ($1,$2,$3) RETURNING id", [address, free ? "technician_free" : null, free ? null : "pending"]);
         const tenantId = String(tenant.rows[0].id);
         await client.query("INSERT INTO tenants (id,name,contact_email) VALUES ($1::uuid,$2,$3) ON CONFLICT (id) DO NOTHING", [tenantId, address, address]);
-        const user = await client.query("INSERT INTO hub_users (email,tenant_id,status,trial_expires_at,plan,terms_version,terms_sha256,terms_accepted_at) VALUES ($1,$2,$3,NULL,$4,$5,$6,NOW()) RETURNING id", [address, tenantId, free ? "approved" : "pending", free ? "technician_free" : null, ONBOARDING_VERSION, ONBOARDING_SHA256]);
+        const user = await client.query("INSERT INTO hub_users (email,tenant_id,status,trial_expires_at,plan,terms_version,terms_sha256,terms_accepted_at,email_verified_at,password_provenance) VALUES ($1,$2,$3,NULL,$4,$5,$6,NOW(),NOW(),'none') RETURNING id", [address, tenantId, free ? "approved" : "pending", free ? "technician_free" : null, ONBOARDING_VERSION, ONBOARDING_SHA256]);
         const id = String(user.rows[0].id);
         await client.query("UPDATE hub_tenants SET owner_user_id=$1 WHERE id=$2", [id, tenantId]);
         if (recoveryId)
             await client.query("UPDATE hub_onboarding_recoveries SET personal_user_id=$2 WHERE id=$1", [recoveryId, id]);
+        await client.query("UPDATE hub_magic_tokens SET used_at=NOW() WHERE token=$1", [token]);
         await client.query("COMMIT");
         if (!free)
             void handlePilotApplicationSubmitted({ tenantId, userId: id, email: address, name: null, tenantName: address, attribution: receipt.attribution ?? attributionFromRequest(new Request("https://app.factorylm.com/signup/?intent=pilot")) }).catch(() => { });
