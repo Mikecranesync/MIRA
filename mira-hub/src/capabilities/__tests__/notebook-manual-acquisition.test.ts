@@ -1067,6 +1067,35 @@ describe("currentManualSearchStatus — recomputed fresh, never a stale snapshot
     expect(r).toBeNull();
   });
 
+  describe("already-usable Sources with automatic acquisition disabled", () => {
+    const env = { MIRA_NOTEBOOK_MANUAL_ACQUISITION: "0" };
+    const readyManual = {
+      docId: "ready-doc",
+      enabledByDefault: true,
+      matchState: "verified",
+      sourceRole: "manual",
+      readiness: { canChat: true },
+      matchEvidence: { autoAcquisitionKey: confirmedKey },
+    };
+
+    it.each([false, true])("returns the exact ready source without looking up acquisition records (historical record exists: %s)", async (hasRecord) => {
+      db.readRow = hasRecord ? { key: confirmedKey, state: "running", started_at: "2026-01-01T00:00:00Z" } : null;
+      const status = await currentManualSearchStatus("t", "nb", confirmedIdentity, null, [readyManual] as never, { env });
+      expect(status).toMatchObject({ sourceState: "ready", readySourceDocId: "ready-doc", running: false });
+      expect(status?.startedAt).toBeUndefined();
+      expect(db.queries).toEqual([]);
+    });
+
+    it.each([
+      { ...readyManual, enabledByDefault: false },
+      { ...readyManual, matchEvidence: { autoAcquisitionKey: "OTHER|MODEL|" } },
+      { ...readyManual, readiness: { canChat: false, state: "stored" } },
+    ])("does not report ready or start following an ineligible source %j", async (source) => {
+      expect(await currentManualSearchStatus("t", "nb", confirmedIdentity, null, [source] as never, { env })).toBeNull();
+      expect(db.queries).toEqual([]);
+    });
+  });
+
   it("returns null when there is no acquisition record at all", async () => {
     db.readRow = null;
     const r = await currentManualSearchStatus("t", "nb", confirmedIdentity, null, [], { env: ON });

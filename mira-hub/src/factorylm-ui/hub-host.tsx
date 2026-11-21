@@ -93,6 +93,7 @@ import {
   draftAfterSendSucceeded,
   enabledDocIds,
   currentReadyManualId,
+  waitsForManual,
   NOTEBOOK_LIST_RETRY_DELAYS_MS,
   persistedRequest,
   reloadIfStillSelected,
@@ -213,6 +214,7 @@ export function HubShellHost() {
     question: string;
     attachments: readonly Attachment[];
     manual: ManualSearchStatus | null;
+    waitForManual: boolean;
     scope: ReturnType<BenchScopes["get"]>;
     signal: AbortController;
     resolve: () => void;
@@ -996,12 +998,13 @@ export function HubShellHost() {
 
   const onComposerSend = useCallback((question: string, attachments: readonly Attachment[]) => {
     if (!selection) return onSend(question, attachments);
-    const manual = displayedManualStatus?.running ? displayedManualStatus : null;
+    const waitForManual = waitsForManual(question, attachments.length);
+    const manual = waitForManual && displayedManualStatus?.running ? displayedManualStatus : null;
     const readingScope = !benchGate.known && !benchGate.changing && !benchGate.pending;
     if (detail && !readingScope && !manual) return onSend(question, attachments);
     return new Promise<void>((resolve, reject) => {
       const signal = new AbortController();
-      const timer = setTimeout(() => signal.abort(), manual ? 185_000 : 15_000);
+      const timer = setTimeout(() => signal.abort(), waitForManual ? 185_000 : 15_000);
       const clear = () => {
         clearTimeout(timer);
         if (waitingSend.current?.signal !== signal) return;
@@ -1011,7 +1014,7 @@ export function HubShellHost() {
       const fail = (error: Error) => { clear(); reject(error); };
       signal.signal.addEventListener("abort", () => fail(new Error("Send paused. Your message and attachments are still here.")), { once: true });
       waitingSend.current = {
-        selection, question, attachments, manual, signal,
+        selection, question, attachments, manual, waitForManual, signal,
         scope: benchGate.known ? benchScopesRef.current.get(conversationKey(selection)) : undefined,
         resolve: () => { clear(); resolve(); },
         reject: fail,
@@ -1039,8 +1042,11 @@ export function HubShellHost() {
       waiting.reject(new Error("The question target changed. Review it before sending your message."));
       return;
     }
+    const current = displayedManualStatus;
+    // A document-bound turn submitted while the project is opening learns
+    // which lookup it depends on from the first scoped detail snapshot.
+    if (waiting.waitForManual && !waiting.manual && current?.running) waiting.manual = current;
     if (waiting.manual) {
-      const current = displayedManualStatus;
       const sameLookup = current?.manufacturer === waiting.manual.manufacturer && current.model === waiting.manual.model &&
         (!waiting.manual.startedAt || !current.startedAt || compareManualSearchGeneration(waiting.manual.startedAt, current.startedAt) === 0);
       if (!readyManualId || !sameLookup) {
@@ -1225,11 +1231,12 @@ export function HubShellHost() {
       : null;
     const status = confirmedDetail?.manualSearch;
     const manualReady = currentReadyManualId(status, confirmedDetail?.sources ?? []) !== null;
-    if (data.manualReady === true && !manualReady) {
-      if (selectionRef.current?.notebookId === notebookId) {
-        seedManualSearch(notebookId, { ...proposal, running: true, ...(startedAt ? { startedAt } : {}) });
-      }
-      return { manualReady: false, searching: true, message: "Machine confirmed. Preparing the manual." };
+    if (data.manualReady === true && !manualReady && !searching) {
+      return {
+        manualReady: false,
+        searching: false,
+        message: "Machine confirmed. I couldn't verify its manual in Sources.",
+      };
     }
     return {
       manualReady,

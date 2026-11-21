@@ -1215,8 +1215,9 @@ export type { ManualSearchStatus };
  * "added, still preparing" (never "turn it on" for a source that already is
  * on); otherwise falls through to the historical decline text, unchanged.
  *
- * Returns null when acquisition is disabled, there is no record, or the
- * record belongs to neither identity (nothing current to report).
+ * An already usable manual for the confirmed identity stays ready with
+ * automatic acquisition disabled. Other flag-off states have no lookup
+ * progress, and a record for a different identity is ignored.
  */
 export async function currentManualSearchStatus(
   tenantId: string,
@@ -1226,19 +1227,20 @@ export async function currentManualSearchStatus(
   sources: readonly NotebookSource[],
   deps: { env?: Record<string, string | undefined> } = {},
 ): Promise<ManualSearchStatus | null> {
-  if (!acquisitionEnabled(tenantId, deps.env)) return null;
-  const rec = await readAcquisition(tenantId, notebookId);
+  const automaticAcquisition = acquisitionEnabled(tenantId, deps.env);
+  const rec = automaticAcquisition ? await readAcquisition(tenantId, notebookId) : null;
+  if (!rec) {
+    const linked = currentManualSourceStatus(sources, confirmed);
+    if (!linked || !confirmed.manufacturer || !confirmed.model ||
+        (!automaticAcquisition && linked.sourceState !== "ready")) return null;
+    return { manufacturer: confirmed.manufacturer, model: confirmed.model, ...linked };
+  }
+
   const confirmedKey = acquisitionKey(confirmed);
   const candidateIdentity: ConfirmedIdentity | null = !confirmedKey && proposedIdentity
     ? { identityStatus: "user_confirmed", manufacturer: proposedIdentity.manufacturer, model: proposedIdentity.model, catalogNumber: "" }
     : null;
   const candidateKey = candidateIdentity ? acquisitionKey(candidateIdentity) : null;
-
-  if (!rec) {
-    const linked = currentManualSourceStatus(sources, confirmed);
-    if (!linked || !confirmed.manufacturer || !confirmed.model) return null;
-    return { manufacturer: confirmed.manufacturer, model: confirmed.model, ...linked };
-  }
 
   let manufacturer: string;
   let model: string;

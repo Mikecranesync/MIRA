@@ -8,7 +8,8 @@ const AUTH_SECRET = "cc-e2e-fixed-secret-do-not-use-in-prod";
 const TENANT = "11111111-1111-4111-8111-111111111111";
 const THREAD = "manual-handoff";
 const LOOKUP = "Find me the manual for this drive.";
-const QUESTION = "What is the nominal bus voltage?";
+const QUESTION = "According to the manual, what is the nominal bus voltage?";
+const SAFETY_QUESTION = "According to the manual, can I work on the energized 480V panel?";
 const TITLE = "Exact GS10 fixture";
 const IDENTITY = { manufacturer: "AutomationDirect", model: "GS11N-20P2" };
 const STARTED_AT = "2026-11-21T12:00:00.000Z";
@@ -33,8 +34,10 @@ function latch() {
   return { promise, release };
 }
 
-for (const sendWhilePreparing of [true, false]) {
-  test(`exact manual handoff ${sendWhilePreparing ? "queues one early question" : "uses the first Ready snapshot"} and preserves the first inline page`, async ({ page, context, baseURL }) => {
+for (const mode of ["preparing", "ready", "opening", "safety"] as const) {
+  test(`exact manual handoff in the ${mode} case`, async ({ page, context, baseURL }) => {
+    const opening = mode === "opening";
+    const safety = mode === "safety";
     const token = await encode({
       token: { uid: "e2e-manual-handoff", tid: TENANT, status: "trial", trialExpiresAt: new Date(Date.now() + 86_400_000).toISOString() },
       secret: AUTH_SECRET,
@@ -44,7 +47,8 @@ for (const sendWhilePreparing of [true, false]) {
     const scopeRequested = latch();
     const scope = latch();
     const answerHistory = latch();
-    let confirmed = false;
+    const initialDetail = latch();
+    let confirmed = opening;
     let ready = false;
     let looks = 0;
     let failFirstHistory = true;
@@ -91,6 +95,11 @@ for (const sendWhilePreparing of [true, false]) {
             { kind: "identity_proposal", ...IDENTITY },
           ));
         }
+        if (body.message === SAFETY_QUESTION) return route.fulfill(stream(
+          { kind: "content", content: "Make the equipment safe before working on it." },
+          { kind: "safety", trigger: "energized-electrical-hazard" },
+          { kind: "status", status: "answered" },
+        ));
         asked = body;
         return route.fulfill(stream(
           { kind: "content", content: ANSWER },
@@ -100,6 +109,7 @@ for (const sendWhilePreparing of [true, false]) {
       }
       if (p === nbPath && method === "GET") {
         expect(url.searchParams.get("threadId")).toBe(THREAD);
+        if (opening) await initialDetail.promise;
         if (lookup && failFirstHistory) {
           failFirstHistory = false;
           return route.fulfill(json({ error: "temporary_fixture_read_failure" }, 500));
@@ -108,8 +118,8 @@ for (const sendWhilePreparing of [true, false]) {
           await answerHistory.promise;
           savedAnswerReads += 1;
         }
-        const savedLookup = lookup && {
-          id: "saved-lookup", clientRequestId: lookup.clientRequestId, question: LOOKUP, answerStatus: "insufficient_evidence",
+        const savedLookup = (lookup || opening) && {
+          id: "saved-lookup", clientRequestId: lookup?.clientRequestId ?? "reopened-lookup", question: LOOKUP, answerStatus: "insufficient_evidence",
           answerText: "Confirm the equipment.", evidence: [{ kind: "identity_proposal", ...IDENTITY }], createdAt: STARTED_AT,
         };
         const savedAnswer = asked && {
@@ -137,41 +147,56 @@ for (const sendWhilePreparing of [true, false]) {
     await page.goto(`/v3/?notebook=${NB}&thread=${THREAD}`);
     await scopeRequested.promise;
     const composer = page.getByRole("textbox", { name: "Ask MIRA", exact: true });
-    await page.getByRole("button", { name: "Add attachment", exact: true }).click();
-    const chooser = page.waitForEvent("filechooser");
-    await page.getByRole("button", { name: "Photo", exact: true }).click();
-    await (await chooser).setFiles({ name: "nameplate.jpg", mimeType: "image/jpeg", buffer: Buffer.from("synthetic nameplate bytes") });
-    const pending = page.getByRole("list", { name: "Pending attachments" });
-    await expect(pending.getByText("nameplate.jpg")).toBeVisible();
-    await composer.fill(LOOKUP);
-    await page.getByRole("button", { name: "Send", exact: true }).click();
-    await expect(pending.getByText("nameplate.jpg")).toBeVisible();
-    await expect(page.getByRole("button", { name: "Stop", exact: true })).toBeVisible();
-    expect(looks).toBe(0);
-    scope.release();
-    await page.getByRole("button", { name: "Use its manuals", exact: true }).click({ timeout: 15_000 });
-    await expect(page.getByText("Confirmed.", { exact: true })).toBeVisible();
+    if (!opening) {
+      await page.getByRole("button", { name: "Add attachment", exact: true }).click();
+      const chooser = page.waitForEvent("filechooser");
+      await page.getByRole("button", { name: "Photo", exact: true }).click();
+      await (await chooser).setFiles({ name: "nameplate.jpg", mimeType: "image/jpeg", buffer: Buffer.from("synthetic nameplate bytes") });
+      const pending = page.getByRole("list", { name: "Pending attachments" });
+      await expect(pending.getByText("nameplate.jpg")).toBeVisible();
+      await composer.fill(LOOKUP);
+      await page.getByRole("button", { name: "Send", exact: true }).click();
+      await expect(pending.getByText("nameplate.jpg")).toBeVisible();
+      await expect(page.getByRole("button", { name: "Stop", exact: true })).toBeVisible();
+      expect(looks).toBe(0);
+      scope.release();
+      await page.getByRole("button", { name: "Use its manuals", exact: true }).click({ timeout: 15_000 });
+      await expect(page.getByText("Confirmed.", { exact: true })).toBeVisible();
+    }
 
     const sourceReady = page.getByText("Exact fixture manual is ready in Sources.", { exact: true }).last();
-    if (!sendWhilePreparing) {
+    if (mode === "ready") {
       ready = true;
       await expect(sourceReady).toBeVisible();
     }
-    await composer.fill(QUESTION);
+    await composer.fill(safety ? SAFETY_QUESTION : QUESTION);
     await page.getByRole("button", { name: "Send", exact: true }).click();
-    if (sendWhilePreparing) {
+    if (opening) {
       await expect(composer).toHaveValue(QUESTION);
-      expect(chatBodies).toHaveLength(1);
+      expect(chatBodies).toHaveLength(0);
+      initialDetail.release();
+      scope.release();
+      await expect(page.getByText(/Searching AutomationDirect/).last()).toBeVisible();
+    }
+    if (safety) {
+      await expect(page.getByText("Make the equipment safe before working on it.", { exact: true })).toBeVisible();
+      expect(chatBodies.at(-1)).toMatchObject({ message: SAFETY_QUESTION, sourceDocIds: [] });
+      expect(ready).toBe(false);
+      return;
+    }
+    if (mode !== "ready") {
+      await expect(composer).toHaveValue(QUESTION);
+      expect(chatBodies).toHaveLength(opening ? 0 : 1);
       ready = true;
     }
 
     const citation = page.getByRole("button", { name: /^Open citation 1: Exact GS10 fixture, page 1$/ });
     await citation.click();
     expect(chatBodies).toEqual([
-      expect.objectContaining({ message: LOOKUP, sourceDocIds: [], threadId: THREAD }),
+      ...(opening ? [] : [expect.objectContaining({ message: LOOKUP, sourceDocIds: [], threadId: THREAD })]),
       expect.objectContaining({ message: QUESTION, sourceDocIds: [DOC], threadId: THREAD }),
     ]);
-    expect(looks).toBe(1);
+    expect(looks).toBe(opening ? 0 : 1);
     expect(context.pages()).toHaveLength(1);
     const dialog = page.getByRole("dialog", { name: "Source viewer", exact: true });
     const canvas = dialog.frameLocator("iframe").locator('canvas[data-rendered-page="1"]');

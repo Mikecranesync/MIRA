@@ -16,6 +16,7 @@ import {
   enabledDocIds,
   currentReadyManualId,
   persistedRequest,
+  waitsForManual,
   errorMessageFor,
   fixtureFor,
   NETWORK_FAILURE_MESSAGE,
@@ -732,4 +733,17 @@ it("reconciles by request ID, including when identical questions are saved twice
   const current = { ...older, id: "new", clientRequestId: "current" };
   expect(persistedRequest([older], "current")).toBeUndefined();
   expect(persistedRequest([older, current], "current")).toEqual(current);
+});
+
+describe("the manual wait applies only to requests that depend on it", () => {
+  it("waits for an explicit document-bound question", () => {
+    expect(waitsForManual("According to the manual, what is the nominal supply voltage?", 0)).toBe(true);
+    expect(waitsForManual("What is the voltage when its manual is ready?", 0)).toBe(true);
+  });
+
+  it("keeps ordinary questions, replacement evidence, and safety intake available", () => {
+    expect(waitsForManual("What is the nominal voltage?", 0)).toBe(false);
+    expect(waitsForManual("Check this from the manual.", 1)).toBe(false);
+    expect(waitsForManual("According to the manual, can I work on the energized 480V panel?", 0)).toBe(false);
+  });
 });

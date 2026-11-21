@@ -60,6 +60,29 @@ describe("assessApplicability — rule 1: exact catalog number wins", () => {
 });
 
 describe("assessApplicability — rule 2: model plus attribution", () => {
+  it.each([
+    ["PowerFlex 525", "PowerFlex® 525 User Manual", "verified"],
+    ["PowerFlex 525", "PowerFlex™ 525 User Manual", "verified"],
+    ["ACS355", "ABB ACS355/ACS310 User Manual", "verified"],
+    ["ACS310", "ABB ACS355 / ACS310 User Manual", "verified"],
+    ["ACS355", "ABB ACS355/24V User Manual", "candidate"],
+    ["ACS355", "ABB ACS355 / 24V User Manual", "candidate"],
+    ["ACS355", "ABB ACS355/ACS310/02 User Manual", "candidate"],
+    ["ACS355", "ABB ACS355/ACS310-\nA User Manual", "candidate"],
+    ["ACS355/24V", "ABB ACS355 / 24V User Manual", "verified"],
+    ["FST20", "FST20-\nA Product Datasheet", "candidate"],
+    ["6AV2124-0GC01-0AX0", "SIMATIC HMI 6AV2124 - 0GC01 - 0AX0", "verified"],
+    ["6AV2124-0GC01-0AX0", "SIMATIC HMI 6AV2124 - 0GC01 - 0AX0A", "candidate"],
+    ["6AV2124-0GC01-0AX0", "SIMATIC HMI 6AV2124 - 0GC01 - 0AX0 - A", "candidate"],
+  ])("judges %s against the written model and option boundaries in %j", (model, content, state) => {
+    const verdict = assessApplicability({
+      identity: { manufacturer: "OEM", model },
+      chunks: [{ content, page: 1 }],
+      oemHost: true,
+    });
+    expect(verdict.state).toBe(state);
+  });
+
   it("needs a short model to appear as a whole code", () => {
     const identity = { manufacturer: "Festo", model: "A1" };
     const verdict = (content: string) => assessApplicability({ identity, chunks: [{ content, page: 1 }], oemHost: true });

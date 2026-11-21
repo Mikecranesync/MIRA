@@ -14,6 +14,8 @@
  */
 
 import { HYPHEN_EQUIV_CHARS } from "@/capabilities/detection-fold";
+import { sameModelFamily } from "@/capabilities/manual-applicability";
+import { modelMentionsInText } from "@/capabilities/model-token";
 
 export interface ApplicabilityChunk {
   content: string;
@@ -53,6 +55,12 @@ function tokensOf(content: string): string[] {
     .filter(Boolean);
 }
 
+const IDENTIFIER_PUNCTUATION = `[-./+${HYPHEN_EQUIV_CHARS}]`;
+const DOCUMENT_JOIN = String.raw`(?:[ \t]*/[ \t]*|${IDENTIFIER_PUNCTUATION}(?:[ \t]*\r?\n)?[ \t]*)`;
+const SPACED_OPTION = String.raw`[ \t]+${IDENTIFIER_PUNCTUATION}[ \t]*(?:[A-Z](?![A-Z0-9])|[A-Z]*\d)`;
+const IDENTIFIER_LEFT = String.raw`(?<![A-Z0-9])(?<![A-Z0-9]${DOCUMENT_JOIN})`;
+const IDENTIFIER_RIGHT = String.raw`(?![A-Z0-9]|${DOCUMENT_JOIN}[A-Z0-9]|${SPACED_OPTION})`;
+
 /** A printed identifier can lose punctuation in a PDF text layer. Compare
  * across those separators without matching a prefix, suffix, or interior
  * segment of a longer option code. */
@@ -60,15 +68,39 @@ function identifierPattern(value: string | null | undefined): RegExp | null {
   const original = value?.toUpperCase() ?? "";
   const runs = original.match(/[A-Z0-9]+/g) ?? [];
   if (!runs.length) return null;
-  const punctuation = `[-./+${HYPHEN_EQUIV_CHARS}]`;
-  const separator = `(?:[ \\t]+|${punctuation})?`;
-  // Only a written separator can continue a code onto another line.
-  const wrappedSeparator = `(?:[ \\t]+|${punctuation}(?:[ \\t]*\\r?\\n[ \\t]*)?)?`;
+  const inferredSeparator = String.raw`(?:[ \t]+|${IDENTIFIER_PUNCTUATION})?`;
+  // Only an explicit boundary in the expected code can match a printed
+  // separator with surrounding spaces or a line break.
+  const writtenSeparator = String.raw`(?:[ \t]+|[ \t]*${DOCUMENT_JOIN})?`;
   const compact = runs.join("");
   const pattern = compact.length < 4 ? compact : runs.map((run) =>
-    run.replace(/(?<=[A-Z])(?=\d)|(?<=\d)(?=[A-Z])/g, () => separator),
-  ).join(wrappedSeparator);
-  return new RegExp(`(?<![A-Z0-9])(?<![A-Z0-9]${punctuation})${pattern}(?![A-Z0-9]|${punctuation}[A-Z0-9])`, "i");
+    run.replace(/(?<=[A-Z])(?=\d)|(?<=\d)(?=[A-Z])/g, () => inferredSeparator),
+  ).join(writtenSeparator);
+  return new RegExp(`${IDENTIFIER_LEFT}${pattern}${IDENTIFIER_RIGHT}`, "i");
+}
+
+const LIST_MEMBER = `[A-Z0-9]+(?:[-.+${HYPHEN_EQUIV_CHARS}][A-Z0-9]+)*`;
+const SLASH_CHAIN = new RegExp(String.raw`${IDENTIFIER_LEFT}${LIST_MEMBER}(?:[ \t]*/[ \t]*${LIST_MEMBER})+${IDENTIFIER_RIGHT}`, "gi");
+
+/** A slash is part of a code unless the complete chain lists independent
+ * siblings such as ACS355/ACS310. The model reader must cover each item in
+ * full; a rating, partial match, or extra option segment keeps the chain intact. */
+function separateListedModels(content: string): string {
+  return content.replace(SLASH_CHAIN, (chain) => {
+    const members = chain.split("/").map((member) => member.trim());
+    const models = members.map((member) => {
+      const mentions = modelMentionsInText(member);
+      const match = mentions[0];
+      return mentions.length === 1 && match.start === 0 && match.end === member.length
+        ? { key: match.id, label: member }
+        : null;
+    });
+    const first = models[0];
+    return first && new Set(models.map((model) => model?.key)).size === members.length &&
+      models.every((model) => model && sameModelFamily(model, first))
+      ? members.join(", ")
+      : chain;
+  });
 }
 
 function sharedPrefixLength(a: string, b: string): number {
@@ -156,13 +188,14 @@ export function assessApplicability(input: {
       typeof ch.page === "number" && Number.isFinite(ch.page) && ch.page > 0 ? ch.page : null;
     const dense = normalizeIdentifier(ch.content ?? "");
     const tokSet = new Set(tokensOf(ch.content ?? "").map(normalizeIdentifier));
+    const written = (ch.content ?? "").replace(/[®™]/g, "");
 
-    if (catalogPattern?.test(ch.content)) {
+    if (catalogPattern?.test(written)) {
       hits.catalog++;
       if (page !== null) catalogPages.push(page);
     }
     if (model) {
-      if (modelPattern?.test(ch.content)) {
+      if (modelPattern?.test(written) || (written.includes("/") && modelPattern?.test(separateListedModels(written)))) {
         hits.model++;
         if (page !== null) modelPages.push(page);
       } else {

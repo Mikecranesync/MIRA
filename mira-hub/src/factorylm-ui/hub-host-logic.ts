@@ -8,6 +8,7 @@ import { PROFILES, createShellState, shellReducer, type InteractionTurn, type Ma
 import type { EquipmentNotebook, NotebookSource } from "@/lib/equipment-notebooks";
 import { buildChatBody, isAbortError, type ChatBody, type PersistedTurn, type StreamResult } from "@/components/equipment/notebook-chat-utils";
 import { isSafetyNoticeEntry } from "@/lib/notebook-chat-types";
+import { detectEnergizedElectricalHazardIntent, isEnergizedWorkAsk, notebookSafetyTrigger } from "@/lib/safety-classifier";
 import { LEGACY_THREAD_ID, machineNameFor, notebookLabel, threadItemId, type HubNotebook } from "./notebook-tree";
 import { historyFromSavedTurns, type HistoryRow } from "@/capabilities/conversation-history";
 import { contextFor, threadFromPersisted, type HubNotebookMeta } from "./to-interaction";
@@ -403,6 +404,16 @@ export function enabledDocIds(sources: readonly Pick<NotebookSource, "docId" | "
   return sources.filter((s) => s.enabledByDefault && (s.matchState === "user_confirmed" || s.matchState === "verified")).map((s) => s.docId);
 }
 
+
+/** A lookup in progress only defers an explicitly document-bound question.
+ * Safety prompts and new evidence always reach the normal server intake. */
+export function waitsForManual(question: string, attachmentCount: number): boolean {
+  const manualReference = /\b(?:(?:according\s+to|using|from|in)\s+(?:the|this|that|its)\s+(?:official\s+)?manual|(?:when|once)\s+(?:the|this|its)\s+manual\s+is\s+ready)\b/i;
+  const safetyLanguage = /\b(?:energized|energised|live|arc flash|shock|sparks?|fire|smoke|emergency|unsafe|injur(?:y|ed)|hazard|lockout|tagout|interlock|bypass|guard)\b/i;
+  return attachmentCount === 0 && manualReference.test(question) && !safetyLanguage.test(question) &&
+    !notebookSafetyTrigger(question) && !isEnergizedWorkAsk(question) &&
+    !detectEnergizedElectricalHazardIntent(question);
+}
 
 export function currentReadyManualId(
   status: { sourceState?: string; readySourceDocId?: string } | null | undefined,
