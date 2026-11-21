@@ -132,7 +132,7 @@ import {
   withSafetyFlag,
 } from "@/lib/safety-classifier";
 import { RESTART_BANNER, RESTART_DIRECTIVE, isFaultResetAsk } from "@/capabilities/restart-advisory";
-import { BYPASS_STOP_TRIGGER, bypassStopText, safetyBypassAsk } from "@/capabilities/safety-bypass-advisory";
+import { BYPASS_BANNER, BYPASS_STOP_TRIGGER, bypassStopText, safetyBypassAsk, safetyBypassWarning } from "@/capabilities/safety-bypass-advisory";
 import { pageFromRetrievedChunks, withPageCitation } from "@/lib/citation-page";
 import {
   ENERGIZED_WORK_TRIGGER,
@@ -1772,12 +1772,17 @@ async function handleChatTurn(
   // conversation, a pick on another screen), a saved component is never answered as the
   // whole machine; an explicit whole-machine scope must have read the saved version.
   let wholeMachine: Awaited<ReturnType<typeof checkWholeMachineScope>> | null = null;
-  if (!componentRequest) {
+  // #5670 native 2 F7: the generic fixed refusal reads no selection and moves none. Resolving
+  // a component here can advance the stored selection after an identity revision, and a refusal
+  // that sent no component frame would leave the screen on the old version (the next ordinary
+  // send would then be rejected as stale). The refusal needs no component, so it touches none:
+  // no advance, no stamp, no attribution; live, replay and hydration agree.
+  if (!componentRequest && !bypassStopEarly) {
     wholeMachine = await releaseClaimOnFailure(() =>
       checkWholeMachineScope(ctx.tenantId, notebookId, ctx.userId, threadId, wholeMachineRequest),
     );
   }
-  const resolved = componentRequest && clientRequestId
+  const resolved = componentRequest && clientRequestId && !bypassStopEarly
     ? await releaseClaimOnFailure(() =>
       resolveComponentTurn(ctx.tenantId, notebookId, ctx.userId, threadId ?? LEGACY_THREAD_ID, componentRequest, message, clientRequestId),
     )
@@ -2298,11 +2303,19 @@ async function handleChatTurn(
   // an ADVISORY, never a safetyTrigger — a trigger lets a turn be answered with
   // no evidence, and an invented reset procedure is the #4645 failure itself.
   const restartAdvisory = !safetyTrigger && !electricalHazardDirective && isFaultResetAsk(message);
+  // #5670 native 2 F6: a message that REPORTS an unsafe state ("the safety relay is bypassed; how
+  // do I restore it") asks for nothing to be defeated, so it is answered normally from approved
+  // evidence with the fixed card above it. An ADVISORY like the restart banner: no safetyTrigger,
+  // no prompt directive, no page. (An operative ask never gets here: it ended as a refusal.)
+  const bypassWarnAsk = !safetyTrigger && !electricalHazardDirective && !bypassStopEarly ? safetyBypassWarning(message) : null;
+  const advisoryBanner = Boolean(bypassWarnAsk) || restartAdvisory;
   const flagBannerBase = safetyTrigger && !electricalHazardDirective
     ? hazardBanner(safetyTrigger)
-    : restartAdvisory
-      ? RESTART_BANNER
-      : null;
+    : bypassWarnAsk
+      ? restartAdvisory ? `${BYPASS_BANNER}\n\n${RESTART_BANNER}` : BYPASS_BANNER
+      : restartAdvisory
+        ? RESTART_BANNER
+        : null;
 
   // Snapshot for every persisted turn, including abstains and safety stops: a
   // refusal about a specific machine is still a record about that machine —
@@ -2323,7 +2336,14 @@ async function handleChatTurn(
   // lane and adds no prompt. The turn's own claim, owner, tenant and request id
   // are the ones the ordinary persistence path uses; nothing is retargeted.
   if (bypassStopEarly) {
-    const stopText = bypassStopText(safetyTrigger && !electricalHazardDirective ? hazardBanner(safetyTrigger) : electricalHazardDirective ? hazardBanner(ENERGIZED_ELECTRICAL_HAZARD) : null);
+    // #5670 native 2 F3: the same ask that is also energized work keeps the EXISTING fixed
+    // energized-work guidance (de-energize, lock out and tag out every source, verify zero energy;
+    // no search, no page, no citation), under the same feature switch. One terminal row.
+    const energizedGuidance = energizedWorkAsk ? energizedWorkStop(null, { notSearched: true }) : null;
+    const stopText = bypassStopText(
+      safetyTrigger && !electricalHazardDirective ? hazardBanner(safetyTrigger) : electricalHazardDirective ? hazardBanner(ENERGIZED_ELECTRICAL_HAZARD) : null,
+      energizedGuidance,
+    );
     console.warn(`[notebook-chat] safety-device bypass STOP (${BYPASS_STOP_TRIGGER}) — fixed refusal, no retrieval, no provider`);
     const stopGateSpan = tracer.startSpan("answer_gate.evaluate", undefined, rootCtx);
     lifecycleOutcome = "safety_stop";
@@ -2364,6 +2384,7 @@ async function handleChatTurn(
         ...disputeEntries,
         ...(visualEntry ? [visualEntry] : []),
         { kind: "safety_notice", trigger: BYPASS_STOP_TRIGGER } satisfies SafetyNoticeEntry,
+        ...(energizedGuidance ? [{ kind: "safety_notice", trigger: ENERGIZED_WORK_TRIGGER } satisfies SafetyNoticeEntry] : []),
         { kind: "safety_stop", trigger: BYPASS_STOP_TRIGGER } satisfies SafetyStopEntry,
       ],
       model: null,
@@ -2915,9 +2936,9 @@ async function handleChatTurn(
   // Banner is classified before retrieval; the page citation can only be
   // written now that chunks exist. Prefer the WARNING/CAUTION/DANGER chunk's
   // printed label (TQ-29: p.2-15) over INTEGER source_page.
-  // The restart banner is site safety practice, not a manual claim: no page.
+  // The restart and bypass banners are site safety practice, not manual claims: no page.
   const flagBanner = flagBannerBase
-    ? restartAdvisory
+    ? advisoryBanner
       ? flagBannerBase
       : withPageCitation(flagBannerBase, pageFromRetrievedChunks(chunks))
     : null;
@@ -3939,7 +3960,7 @@ async function handleChatTurn(
     // (staging holds 11 GS10 rows; a carrier-frequency query still hit none).
     // A held component turn keeps the question's safety banner: the hold answers
     // nothing, and the hazard is still flagged above it.
-    const abstainAnswerText = componentHold
+    const abstainAnswerBase = componentHold
       ? withSafetyFlag(componentHold.text, safetyTrigger)
       : componentScope && !notebookRetrieval
       ? noDocumentsForComponentText(componentScope.label)
@@ -4010,6 +4031,8 @@ async function handleChatTurn(
       : notebookRetrieval
         ? "I couldn't find support for that in this notebook's manuals. Add the manual for the equipment you're asking about, or the page that covers it, and ask again."
         : null;
+    // A reported unsafe state keeps its card on the honest refusal too (#5670 native 2 F6).
+    const abstainAnswerText = bypassWarnAsk && abstainAnswerBase ? `${BYPASS_BANNER}\n\n${abstainAnswerBase}` : abstainAnswerBase;
     const gateAnswerGateSpan = tracer.startSpan("answer_gate.evaluate", undefined, rootCtx);
     lifecycleOutcome = "abstained";
     rec.stage("answer_gate", {
@@ -4960,7 +4983,7 @@ async function handleChatTurn(
                     responseBuffer.push(norm);
                     // B2: under the gate the candidate is buffered, not shown.
                     if (!gate) {
-                      if (restartAdvisory && flagBanner && !restartBannerStreamed) {
+                      if (advisoryBanner && flagBanner && !restartBannerStreamed) {
                         restartBannerStreamed = true;
                         controller.enqueue(
                           enc.encode(sse({ kind: "content", content: `${flagBanner}\n\n` } as NotebookContentFrame)),
@@ -5580,7 +5603,7 @@ async function handleChatTurn(
       }
 
       // #5466: the ratings floor replaces the draft but the turn's hazard still stands, so its banner stays.
-      if (flagBanner && served && (!refused || ratingColumn !== null) && !outputRejected && answerText) answerText = `${flagBanner}\n\n${answerText}`;
+      if (flagBanner && served && (!refused || ratingColumn !== null || Boolean(bypassWarnAsk)) && !outputRejected && answerText) answerText = `${flagBanner}\n\n${answerText}`;
 
       // #4068 — owner decision 2026-09-27 ("allow with a warning"): an answer
       // grounded on related-manual pages (the same-family fallback) may relay

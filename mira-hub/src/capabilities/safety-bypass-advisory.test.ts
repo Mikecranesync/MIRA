@@ -18,7 +18,7 @@ import { describe, expect, it } from "vitest";
 import { notebookSafetyTrigger } from "@/lib/safety-classifier";
 import { isOffTopic } from "./scope-check";
 import { RESTART_BANNER } from "./restart-advisory";
-import { BYPASS_BANNER, NOT_CARRIED_PYTHON_ACTIONS, PYTHON_BYPASS_PHRASES, safetyBypassAsk } from "./safety-bypass-advisory";
+import { BYPASS_BANNER, NOT_CARRIED_PYTHON_ACTIONS, PYTHON_BYPASS_PHRASES, safetyBypassAsk, safetyBypassWarning } from "./safety-bypass-advisory";
 
 const GUARDRAILS_PATH = join(__dirname, "..", "..", "..", "mira-bots", "shared", "guardrails.py");
 
@@ -58,9 +58,12 @@ describe("parity with guardrails.py SAFETY_ACTION_PHRASES", () => {
   });
 
   for (const phrase of PYTHON_BYPASS_PHRASES) {
-    it(`carried phrase gets the card, bare and in a sentence: "${phrase}"`, () => {
-      expect(safetyBypassAsk(phrase)).not.toBeNull();
-      expect(safetyBypassAsk(`can i ${phrase} it real quick`)).not.toBeNull();
+    // #5670 native 2: the historical-state phrases keep their WARNING (card over a normal
+    // answer); the verb-first ones are REFUSED. Either way the phrase is never silent.
+    it(`carried phrase is a refusal or a warning, bare and in a sentence: "${phrase}"`, () => {
+      expect(safetyBypassAsk(phrase) ?? safetyBypassWarning(phrase), phrase).not.toBeNull();
+      const sentence = `can i ${phrase} it real quick`;
+      expect(safetyBypassAsk(sentence) ?? safetyBypassWarning(sentence), sentence).not.toBeNull();
     });
   }
 });

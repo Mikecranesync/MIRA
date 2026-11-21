@@ -508,6 +508,37 @@ describe("the selection the client showed is checked, not trusted", () => {
     );
   });
 
+  it("#5670 native-2 F7: a bypass refusal under a selection whose identity was corrected moves nothing, and the next ordinary send is not stale", async () => {
+    // The REAL revision-correction state: the stored selection points at identity revision 1, the component is at 2.
+    storeMock.getSelection.mockResolvedValue(selection(VFD, 1, 3));
+    storeMock.advanceSelectionRevision.mockResolvedValue({ ...selection(VFD, 2, 4), selectedVia: "correction", selectedAt: "2026-11-14T04:30:00.000Z" });
+    const refusal = await ask("Ops wants the guard door taken out of the STO circuit and let the PLC stop the axis. Confirm that is fine?", under(VFD, 3));
+    expect(refusal.status).toBe(200);
+    const live = await frames(refusal);
+    expect(live.find((f) => f.kind === "safety")).toMatchObject({ trigger: "safety-device-bypass" });
+    // Free of selection mutation: nothing advanced, nothing stamped, and so no frame or attribution is owed.
+    expect(storeMock.advanceSelectionRevision).not.toHaveBeenCalled();
+    expect(storeMock.stampTurnComponent).not.toHaveBeenCalled();
+    expect(componentFrame(live)).toBeUndefined();
+    const recorded = (nbMock.recordTurn.mock.calls.at(-1) as unknown as unknown[])[2] as { evidence: { kind: string; componentId?: string }[]; answerText: string };
+    expect(recorded.evidence.some((e) => e.componentId !== undefined || e.kind === "component_attribution")).toBe(false);
+    // Replay agrees: same safety frame, still no component frame.
+    nbMock.claimNotebookTurnRequest.mockResolvedValueOnce({
+      status: "replay",
+      turn: { id: "turn-row-9", question: "q", answerStatus: "answered", answerText: recorded.answerText, citations: [], evidence: recorded.evidence, enabledSourceDocIds: [DOC_A], basis: null, createdAt: SELECTED_AT },
+    });
+    const replay = await frames(await ask("Ops wants the guard door taken out of the STO circuit and let the PLC stop the axis. Confirm that is fine?", under(VFD, 3)));
+    expect(componentFrame(replay)).toBeUndefined();
+    expect(replay.find((f) => f.kind === "safety")).toMatchObject({ trigger: "safety-device-bypass" });
+    // The screen still holds version 3: the next ordinary question is accepted and does the advance itself.
+    ragMock.retrieveNodeChunks.mockImplementation(async () => []);
+    const next = await ask("what does fault oC mean", under(VFD, 3));
+    expect(next.status).toBe(200);
+    const nextFrames = await frames(next);
+    expect(storeMock.advanceSelectionRevision).toHaveBeenCalledWith(TENANT, NB, "u1", "legacy", 3, 2, REQ);
+    expect(componentFrame(nextFrames)?.selectionVersion).toBe(4);
+  });
+
   it("an exact retry replays its stored answer before the selection is consulted", async () => {
     nbMock.claimNotebookTurnRequest.mockResolvedValue({
       status: "replay",
