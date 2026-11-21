@@ -50,6 +50,38 @@ describe("middleware — unauthenticated callback preservation (#1952)", () => {
     const res = await unauth("/assets/");
     expect(callbackOf(res).callbackUrl).toBe("/assets/");
   });
+
+  // #5726 F5: the ready-manual link opens the source viewer at a file and page.
+  // Without a Hub session the query was dropped, so after sign-in the viewer
+  // opened with no document.
+  it("keeps the source viewer's file and page through the sign-in bounce", async () => {
+    const res = await unauth("/v3/source/?file=6da4f531-e67a-4fa3-96ed-c678649ab1dc&page=26");
+    expect(callbackOf(res).pathname).toBe("/login");
+    expect(callbackOf(res).callbackUrl).toBe("/v3/source/?file=6da4f531-e67a-4fa3-96ed-c678649ab1dc&page=26");
+  });
+
+  it("keeps the file and page when an expired session is bounced to sign-in", async () => {
+    const prior = process.env.AUTH_SECRET;
+    process.env.AUTH_SECRET = "test-secret-for-expired-session-branch-0123456789";
+    try {
+      const req = new NextRequest(new URL("http://localhost/v3/source/?file=f1&page=26"), {
+        headers: { cookie: "next-auth.session-token=not-a-valid-session" },
+      });
+      expect(req.cookies.get("next-auth.session-token")?.value).toBe("not-a-valid-session");
+      const res = await middleware(req, {} as NextFetchEvent);
+      expect(callbackOf(res).pathname).toBe("/login");
+      expect(callbackOf(res).callbackUrl).toBe("/v3/source/?file=f1&page=26");
+    } finally {
+      if (prior === undefined) delete process.env.AUTH_SECRET; else process.env.AUTH_SECRET = prior;
+    }
+  });
+
+  it("never returns a two-slash path, which would read as another host", async () => {
+    const req = new NextRequest(new URL("http://localhost/x"));
+    Object.defineProperty(req.nextUrl, "pathname", { value: "//evil.example/x" });
+    const res = await middleware(req, {} as NextFetchEvent);
+    expect(callbackOf(res).callbackUrl).toBe("/");
+  });
 });
 
 // The CSP header is applied to EVERY response (incl. the unauth redirect), so we
