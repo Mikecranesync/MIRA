@@ -64,6 +64,12 @@ describe("readNotebookStream — progress frames", () => {
       expect("partial" in e).toBe(false); // not an interrupted answer
     });
   });
+  it("delivers a recovery safety warning through a progress refusal without changing its held request code", async () => {
+    const warning = "⚠️ Possible active incident. Get clear and isolate power from a safe distance.";
+    const p = readNotebookStream(streamOf([frame({ kind: "http_error", status: 409,
+      body: { error: warning, code: "retry_photo_unavailable", safetyWarning: warning } }), "data: [DONE]\n\n"]), () => {});
+    await expect(p).rejects.toMatchObject({ status: 409, code: "retry_photo_unavailable", safetyWarning: warning });
+  });
 });
 
 function streamThenFail(chunks: string[], err: Error) {

@@ -30,6 +30,7 @@ vi.mock("@/lib/session", () => sessionMock);
 const domain = vi.hoisted(() => ({
   validateChatSources: vi.fn(),
   claimNotebookTurnRequest: vi.fn(),
+  acceptNotebookTurnContext: vi.fn(async () => true),
   abandonNotebookTurnRequest: vi.fn(async () => undefined),
   recordTurn: vi.fn(async () => "turn-id"),
   resolveBoundAsset: vi.fn(async () => ({ state: "unbound" })),

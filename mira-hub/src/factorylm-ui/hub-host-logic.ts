@@ -513,6 +513,23 @@ export function guidedDeadEndBody(
  */
 export function errorMessageFor(code: string, status: number): string {
   switch (code) {
+    case "equipment_binding_changed":
+    case "notebook_identity_changed":
+    case "retry_target_unknown":
+    case "component_revision_changed":
+      return "The original question target changed or is unknown. Review the machine and component before sending again.";
+    case "retry_photo_changed":
+      return "The original photo reading changed. Review the photo and send a new question.";
+    case "retry_photo_unavailable":
+      return "The original photo is unavailable. Attach it again before sending.";
+    case "retry_request_not_found":
+    case "retry_context_unknown":
+    case "retry_request_unavailable":
+    case "retry_request_invalid":
+      return "The original request cannot be recovered. Review the target and send a new question.";
+    case "request_in_progress":
+    case "request_superseded":
+      return "This request is still being completed. Checking its saved result…";
     case "no_sources_selected":
       return "This notebook has no selected sources yet. Add a manual to it, then ask.";
     case "approved_context":
@@ -555,6 +572,19 @@ export function sendFailureMessage(err: unknown): string {
   const raw = (err instanceof Error ? err.message : String(err ?? "")).trim();
   if (NETWORK_FAILURE_RE.test(raw)) return NETWORK_FAILURE_MESSAGE;
   return raw || "MIRA couldn't answer that just now.";
+}
+
+/**
+ * #4924 — Send turns into Stop in the same spot, so the second tap of a
+ * double-tap lands on Stop and kills the question it just sent ("Stopped
+ * before the answer completed."). Stop is not armed for this long after a
+ * send starts; after that a deliberate Stop works as before.
+ */
+export const STOP_ARM_DELAY_MS = 400;
+
+/** `busySince` is when the running send started (ms), or null when none is running. */
+export function stopArmed(busySince: number | null, now: number): boolean {
+  return busySince !== null && now - busySince >= STOP_ARM_DELAY_MS;
 }
 
 /**

@@ -17,6 +17,8 @@ export const HOME_THREAD = "home";
 
 export interface Outgoing {
   readonly id: string;
+  /** The accepted chat request that may later settle after Stop. */
+  readonly requestId?: string;
   /** The thread the message was sent from; it never renders anywhere else. */
   readonly threadId: string;
   readonly question: string;

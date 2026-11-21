@@ -22,6 +22,7 @@ const nbMock = vi.hoisted(() => ({
   getNotebook: vi.fn(),
   resolveBoundAsset: vi.fn(),
   recordTurn: vi.fn<(...args: unknown[]) => Promise<undefined>>(async () => undefined),
+  acceptNotebookTurnContext: vi.fn(async () => true),
   claimNotebookTurnRequest: vi.fn<(...args: unknown[]) => Promise<unknown>>(async () => ({ status: "claimed", claimToken: "tok" })),
   listSources: vi.fn(async () => [] as { filename: string | null }[]),
   originFileIdsByDoc: vi.fn(async () => new Map<string, string>()),

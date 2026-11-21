@@ -38,6 +38,11 @@
  * Together). The legacy list still contains Gemini; that divergence is exactly
  * what the seam removes (P0004 map §10 Q4).
  */
+import { equipmentExpectation, matchesEquipmentExpectation, type EquipmentExpectation } from "@/capabilities/turn-recovery/contract";
+import { readTurnRetry } from "@/capabilities/turn-recovery/store";
+import { notebookIdentitySnapshot, sameNotebookIdentity, sameManualIdentity, sameVisualObservation, type AcceptedTurnContext } from "@/capabilities/turn-recovery/accepted-context";
+import { resolveRecoveredComponent } from "@/capabilities/turn-recovery/component";
+import { acceptNotebookTurnContext, stampClaimedTurnComponent } from "@/lib/equipment-notebooks";
 import { createHash } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { context, SpanStatusCode, trace, type Context, type Span } from "@opentelemetry/api";
@@ -148,7 +153,7 @@ import { notebookManualIdentity } from "@/capabilities/notebook-manual-identity"
 import { componentAttributionEntry, isComponentAttributionEntry, type ComponentAttributionEntry } from "@/capabilities/bench-components/attribution";
 import { checkWholeMachineScope, componentTurnFrame, noDocumentsForComponentText, readComponentSelection, resolveComponentTurn, selectionMovedText, type ComponentTurn, type ComponentTurnFrame } from "@/capabilities/bench-components/chat-turn";
 import { historyForWholeMachine, historyUnderSelection, readSubjectUnderSelection } from "@/capabilities/bench-components/selection";
-import { listSelectionTurns, stampTurnComponent } from "@/capabilities/bench-components/store";
+import { listSelectionTurns } from "@/capabilities/bench-components/store";
 import {
   excludedTablesRefusalText,
   otherProductRefusalText,
@@ -1240,7 +1245,7 @@ async function handleChatTurn(
   { params }: { params: Promise<{ id: string }> },
   ingress: IngressRecord,
 ) {
-  const ctx = await sessionOr401();
+  const ctx = await sessionOr401({ requireCurrentUser: true });
   if (ctx instanceof NextResponse) return ctx;
   // The arrival row was written before auth and therefore carries no tenant.
   // Attribute it now, so a lost start is still countable against the tenant it
@@ -1255,6 +1260,9 @@ async function handleChatTurn(
     mode?: string;
     threadId?: unknown;
     clientRequestId?: unknown;
+    expectedEquipmentEntityId?: unknown;
+    expectedNotebookIdentity?: unknown;
+    retryRequestId?: unknown;
     /** Sensor REPLAY (contract §4.4): the fault window the technician selected.
      *  Only the SELECTION is trusted — the server re-fetches the rows itself. */
     machineEvidence?: { assetId?: unknown; anchorAt?: unknown; pre?: unknown; post?: unknown };
@@ -1286,6 +1294,27 @@ async function handleChatTurn(
   } catch {
     return NextResponse.json({ error: "invalid_json" }, { status: 400 });
   }
+  let recoveredTarget: EquipmentExpectation | null = null;
+  let recoveredComponent: { componentId: string; revision: number } | null = null;
+  let originalContext: AcceptedTurnContext | null = null;
+  const recovering = body.retryRequestId !== undefined;
+  if (recovering) {
+    const retryId = body.retryRequestId;
+    const retryThread = body.threadId == null ? null : normalizeNotebookThreadId(body.threadId);
+    if (typeof retryId !== "string" || !isUuid(retryId)
+        || (body.threadId != null && !retryThread)
+        || Object.keys(body).some(key => key !== "retryRequestId" && key !== "threadId")) {
+      return NextResponse.json({ error: "retry_request_invalid" }, { status: 400 });
+    }
+    const retry = await readTurnRetry(ctx.tenantId, notebookId, ctx.userId, retryThread, retryId, req.signal);
+    if ("error" in retry) return NextResponse.json({ error: retry.error }, { status: retry.status });
+    body = retry.body as typeof body;
+    recoveredTarget = retry.target;
+    recoveredComponent = retry.component;
+    originalContext = retry.acceptedContext;
+  }
+  let expectedTarget = recoveredTarget ?? equipmentExpectation(body);
+  if (expectedTarget.kind === "invalid") return NextResponse.json({ error: "invalid_equipment_expectation" }, { status: 400 });
   // Machine-evidence selection (§4.4). Validated up front so a malformed
   // window is a 400, never a silent "answered without the machine".
   let machineRequest: { assetId: string; at: string; pre: number; post: number } | null = null;
@@ -1670,6 +1699,7 @@ async function handleChatTurn(
   // a completed turn remains replayable even if a source is later detached;
   // a changed payload fails closed instead of inheriting that terminal truth.
   let requestClaimToken: string | null = null;
+  let preserveFailedTurn = false;
   if (clientRequestId) {
     try {
       const claim = await claimNotebookTurnRequest(ctx.tenantId, notebookId, {
@@ -1708,6 +1738,9 @@ async function handleChatTurn(
         );
       }
       requestClaimToken = claim.claimToken;
+      preserveFailedTurn = claim.preserveFailedTurn === true;
+      originalContext = claim.acceptedContext ?? originalContext;
+      recoveredComponent = originalContext?.component ?? recoveredComponent;
     } catch (err) {
       if (err instanceof NotebookNotFoundError) {
         endRoot();
@@ -1724,6 +1757,7 @@ async function handleChatTurn(
         ctx.userId,
         clientRequestId,
         requestClaimToken,
+        ...(preserveFailedTurn ? [true] as const : [] as const),
       )
     : Promise.resolve();
   const releaseClaimOnFailure = async <T>(operation: () => Promise<T>): Promise<T> => {
@@ -1749,6 +1783,54 @@ async function handleChatTurn(
     }
   };
 
+  const retryingClaim = recovering || preserveFailedTurn;
+  // Both retry transports use the binding captured by the server at acceptance,
+  // including an explicitly unbound notebook. Legacy clients need not send it.
+  if (originalContext) expectedTarget = { kind: "known", equipmentEntityId: originalContext.target.equipmentEntityId };
+  const refuseRecovery = async (problem: { error: string; status: number; code?: string }, trigger = questionSafetyTrigger, energized = energizedAskEarly) => {
+    // A warning is independent of diagnostic eligibility. Deliver it without
+    // completing/replacing the reclaimed original exchange or its evidence.
+    const warning = energized && trigger !== ENERGIZED_ELECTRICAL_HAZARD
+      ? energizedWorkStop(null, { machineUnclear: true })
+      : trigger ? withSafetyFlag(`${trigger === ENERGIZED_ELECTRICAL_HAZARD ? `${ELECTRICAL_HAZARD_DIRECTIVE}\n\n` : ""}The original target or evidence needs review. This warning provides no diagnostic guidance; restore the original context before retrying.`, trigger) : null;
+    await abandonRequestClaim();
+    if (warning) lifecycleOutcome = energized ? "safety_stop" : "abstained";
+    endRoot();
+    return NextResponse.json({ error: warning ?? problem.error, ...(warning ? { code: problem.code ?? problem.error, safetyWarning: warning } : problem.code ? { code: problem.code } : {}) },
+      { status: problem.status, headers: safetyFlagHeaders(trigger) });
+  };
+  let guardedNotebook: Awaited<ReturnType<typeof getNotebook>> | undefined;
+  let guardedBoundAsset: ResolvedAsset | null = null;
+  let equipmentTargetHold: { text: string; reason: string } | null = null;
+  let targetProblem: { error: string; status: number; code?: string } | null = null;
+  if (expectedTarget.kind === "known" || originalContext || body.expectedNotebookIdentity !== undefined) {
+    guardedNotebook = await releaseClaimOnFailure(() => getNotebook(ctx.tenantId, notebookId));
+    if (!guardedNotebook) { await abandonRequestClaim(); endRoot(); return NextResponse.json({ error: "notebook_not_found" }, { status: 404 }); }
+    // Retrieval and prompts use this same capture; a later rebind cannot silently
+    // substitute the replacement machine after the precondition was checked.
+    guardedBoundAsset = await releaseClaimOnFailure(() => resolveBoundAsset(ctx.tenantId, notebookId));
+    const bindingChanged = !matchesEquipmentExpectation(expectedTarget, guardedNotebook.asset?.entityId ?? null)
+      || !matchesEquipmentExpectation(expectedTarget, guardedBoundAsset.state === "unbound" ? null : guardedBoundAsset.entityId);
+    const expectedIdentity = originalContext?.target.notebookIdentity ?? body.expectedNotebookIdentity;
+    const identityChanged = expectedIdentity !== undefined && !sameNotebookIdentity(expectedIdentity, guardedNotebook);
+    const disputed = !!machineRequest && guardedBoundAsset.state === "resolved" && machineRequest.assetId !== guardedBoundAsset.entityId;
+    const effectiveChanged = originalContext && !sameManualIdentity(originalContext.target.manualIdentity, notebookManualIdentity(guardedNotebook, guardedBoundAsset, disputed));
+    if (bindingChanged) targetProblem = { error: "equipment_binding_changed", status: 409 };
+    else if (identityChanged || effectiveChanged) targetProblem = { error: "notebook_identity_changed", status: 409 };
+    else if (guardedBoundAsset.state === "unresolvable") targetProblem = { error: "This notebook points at equipment that is no longer available in your account. Re-select the machine before asking about it.", code: "uns_required", status: 422 };
+  }
+  if (retryingClaim && !originalContext) targetProblem = { error: "retry_context_unknown", status: 409 };
+  // A photo-only hazard is classified only after its tenant/link/descriptor is
+  // verified below. Defer target refusal for that bounded check, never for RAG.
+  if (targetProblem) {
+    if (retryingClaim && (questionSafetyTrigger || energizedAskEarly)) return refuseRecovery(targetProblem);
+    if (!questionSafetyTrigger && !energizedAskEarly && !visualClaimFileId) {
+      await abandonRequestClaim(); endRoot();
+      return NextResponse.json({ error: targetProblem.error, ...(targetProblem.code ? { code: targetProblem.code } : {}) }, { status: targetProblem.status });
+    }
+    equipmentTargetHold = { text: "The original equipment target cannot be confirmed, so this reply contains only the safety warning. Review the machine before asking for diagnostic guidance.", reason: "equipment_target_changed" };
+  }
+
   // Bench components: checked after the claim, so an exact retry still replays
   // its stored answer even if the selection moved since. A selection that no
   // longer matches what the client showed answers nothing and writes nothing —
@@ -1762,21 +1844,32 @@ async function handleChatTurn(
   // conversation, a pick on another screen), a saved component is never answered as the
   // whole machine; an explicit whole-machine scope must have read the saved version.
   let wholeMachine: Awaited<ReturnType<typeof checkWholeMachineScope>> | null = null;
-  if (!componentRequest) {
+  if (!componentRequest && !equipmentTargetHold) {
     wholeMachine = await releaseClaimOnFailure(() =>
       checkWholeMachineScope(ctx.tenantId, notebookId, ctx.userId, threadId, wholeMachineRequest),
     );
   }
-  const resolved = componentRequest && clientRequestId
+  let resolved = !equipmentTargetHold && componentRequest && clientRequestId
     ? await releaseClaimOnFailure(() =>
-      resolveComponentTurn(ctx.tenantId, notebookId, ctx.userId, threadId ?? LEGACY_THREAD_ID, componentRequest, message, clientRequestId),
+      originalContext?.component
+        ? resolveRecoveredComponent(ctx.tenantId, notebookId, ctx.userId, threadId ?? LEGACY_THREAD_ID, originalContext.component, message)
+        : resolveComponentTurn(ctx.tenantId, notebookId, ctx.userId, threadId ?? LEGACY_THREAD_ID, componentRequest, message, clientRequestId),
     )
     : wholeMachine?.kind === "conflict"
       ? wholeMachine
       : null;
+  if (resolved?.kind === "revision_changed") {
+    if (!questionSafetyTrigger && !energizedAskEarly && !visualClaimFileId) {
+      await abandonRequestClaim(); endRoot();
+      return NextResponse.json({ error: "component_revision_changed", message: "The original component revision changed. Review the target before sending again." }, { status: 409 });
+    }
+    targetProblem = { error: "component_revision_changed", status: 409 };
+    equipmentTargetHold = { text: selectionMovedText, reason: "component_revision_changed" };
+    resolved = null;
+  }
   if (resolved) {
     if (resolved.kind === "conflict") {
-      if (!questionSafetyTrigger && !energizedAskEarly) {
+      if (!questionSafetyTrigger && !energizedAskEarly && !visualClaimFileId) {
         await abandonRequestClaim();
         endRoot();
         return NextResponse.json(
@@ -1785,20 +1878,30 @@ async function handleChatTurn(
         );
       }
       selectionMoved = true;
+      targetProblem = { error: "selection_changed", status: 409 };
     } else if (clientRequestId) {
       componentTurn = resolved;
       const revision = resolved.kind === "hold" ? resolved.revision : resolved.revision.revision;
-      const stamped = await releaseClaimOnFailure(() =>
-        stampTurnComponent(ctx.tenantId, notebookId, ctx.userId, clientRequestId, resolved.component.id, revision),
-      );
-      if (!stamped) console.error("[notebook-chat] component stamp matched no turn row (turn kept unlabelled)");
+      if (!retryingClaim && requestClaimToken) {
+        const stamped = await releaseClaimOnFailure(() => stampClaimedTurnComponent(
+          ctx.tenantId, notebookId, ctx.userId, clientRequestId, requestClaimToken, resolved.component.id, revision));
+        if (!stamped) { await abandonRequestClaim(); endRoot(); return NextResponse.json({ error: "request_superseded" }, { status: 409 }); }
+      }
     }
   }
+  if (!equipmentTargetHold && recoveredComponent && (!componentTurn
+      || componentTurn.component.id !== recoveredComponent.componentId
+      || (componentTurn.kind === "hold" ? componentTurn.revision : componentTurn.revision.revision) !== recoveredComponent.revision)) {
+    targetProblem ??= { error: "component_revision_changed", status: 409 };
+    if (!visualClaimFileId || questionSafetyTrigger || energizedAskEarly) return refuseRecovery(targetProblem);
+    equipmentTargetHold = { text: selectionMovedText, reason: targetProblem.error };
+  }
+  if (retryingClaim && targetProblem && (questionSafetyTrigger || energizedAskEarly)) return refuseRecovery(targetProblem);
   // A held turn (component not confirmed, no model number, the question names
   // another component of this bench, or the selection moved under a hazard
   // report) reads no manual and calls no provider — a safety flag included.
-  const componentHold: { text: string; reason: string } | null =
-    componentTurn?.kind === "hold" ? componentTurn : selectionMoved ? { text: selectionMovedText, reason: "selection_changed" } : null;
+  let componentHold: { text: string; reason: string } | null =
+    equipmentTargetHold ?? (componentTurn?.kind === "hold" ? componentTurn : selectionMoved ? { text: selectionMovedText, reason: "selection_changed" } : null);
   const componentScope = componentTurn?.kind === "scoped" ? componentTurn : null;
   // #5504 Codex r2 F1: the component an answer is about is saved WITH the turn, from the
   // same frame the stream sends, so a reload, a retry replay or a later header change
@@ -1811,7 +1914,10 @@ async function handleChatTurn(
   // carries nothing.
   let turnHistory = history;
   let selectionTurnIds: Set<string> | null = null;
-  if (componentScope) {
+  if (originalContext) {
+    turnHistory = originalContext.history;
+    selectionTurnIds = originalContext.selectionTurnIds === null ? null : new Set(originalContext.selectionTurnIds);
+  } else if (componentScope) {
     try {
       const scoped = historyUnderSelection(
         await listSelectionTurns(ctx.tenantId, notebookId, ctx.userId, threadId, 50, { withAnswers: true }),
@@ -1902,6 +2008,7 @@ async function handleChatTurn(
           : validated.error === "no_sources_selected"
             ? 422
             : 403;
+      if (retryingClaim && (questionSafetyTrigger || energizedAskEarly)) return refuseRecovery({ error: validated.error, status });
       await abandonRequestClaim();
       endRoot();
       return NextResponse.json({ error: validated.error }, { status });
@@ -1926,6 +2033,12 @@ async function handleChatTurn(
     verifyVisualEntry(ctx.tenantId, notebookId, visualClaimFileId),
   );
 
+  if (retryingClaim && visualClaimFileId && !visualEntry) {
+    evidenceMaterializeSpan.end();
+    return refuseRecovery({ error: "retry_photo_unavailable", status: 409 });
+  }
+
+
   // #3786 (T-5 part 2, option A) — deterministic scope reply. BEFORE
   // retrieval and BEFORE every provider call: `offTopicTrigger` was computed
   // purely from the question text, and is now combined with `!visualEntry`
@@ -1941,7 +2054,7 @@ async function handleChatTurn(
   // row is the source of truth on reload either way, matching every other
   // terminal path in this route). `@/capabilities/scope-check` has the
   // parity note.
-  if (offTopicTrigger && !visualEntry) {
+  if (offTopicTrigger && !visualEntry && !equipmentTargetHold) {
     const offTopicGateSpan = tracer.startSpan("answer_gate.evaluate", undefined, rootCtx);
     lifecycleOutcome = "abstained";
     rec.stage("answer_gate", {
@@ -2054,10 +2167,15 @@ async function handleChatTurn(
       // F2: fail closed when a verified photo's descriptor cannot be loaded.
       console.error("[notebook-chat] look observation load failed (fail-closed for verified photo):", err);
       evidenceMaterializeSpan.end();
+      if (retryingClaim && (questionSafetyTrigger || energizedAskEarly)) return refuseRecovery({ error: "visual_descriptor_load_failed", status: 503 });
       await abandonRequestClaim();
       endRoot();
       return NextResponse.json({ error: "visual_descriptor_load_failed" }, { status: 500 });
     }
+  }
+  if (originalContext && !sameVisualObservation(originalContext.currentLookRow, lookRow)) {
+    targetProblem = { error: "retry_photo_changed", status: 409 };
+    equipmentTargetHold = componentHold = { text: "The original photo reading changed. This reply contains only the safety warning; review the photo before sending a new question.", reason: "original_photo_changed" };
   }
   // Evidence continuity (2026-09-22, staging trace ae30230b…): a text-only
   // follow-up ("what voltage was it?") lost the photos from earlier turns —
@@ -2069,7 +2187,27 @@ async function handleChatTurn(
   // A current explicit photo owns its turn, so prior recall is skipped then.
   let priorLookRows: VisualEvidenceRow[] = [];
   let priorLookFileIds: string[] = [];
-  if (!visualEntry) {
+  if (!visualEntry && originalContext) {
+    // Reauthorize only the accepted photo references. Never replace them with
+    // newer LOOK observations from a different topic during a retry.
+    for (const original of originalContext.priorLookRows) {
+      const fileId = original.fileId;
+      if (!fileId || !await releaseClaimOnFailure(() => verifyVisualEntry(ctx.tenantId, notebookId, fileId))) {
+        evidenceMaterializeSpan.end();
+        return refuseRecovery({ error: "retry_photo_unavailable", status: 409 });
+      }
+      const scope = { notebookId, ownerUserId: ctx.userId, threadId };
+      const current = await releaseClaimOnFailure(() => withTenantContext(ctx.tenantId, async c =>
+        (await loadVisualEvidenceForPhoto(c, ctx.tenantId, fileId, { ...scope, allowLegacy: true }))
+          ?? (threadId ? await loadVisualEvidenceForPhoto(c, ctx.tenantId, fileId, { ...scope, threadId: null }) : null)));
+      if (!sameVisualObservation(original, current)) {
+        evidenceMaterializeSpan.end();
+        return refuseRecovery({ error: "retry_photo_changed", status: 409 });
+      }
+    }
+    priorLookRows = originalContext.priorLookRows;
+    priorLookFileIds = originalContext.priorLookFileIds;
+  } else if (!visualEntry && !equipmentTargetHold) {
     try {
       const recent = await listTurns(ctx.tenantId, notebookId, 6, { viewerUserId: ctx.userId, threadId });
       const seen = new Set<string>();
@@ -2148,6 +2286,14 @@ async function handleChatTurn(
   // judgement belongs rather than keyed off whether an image was attached.
   const energizedWorkAsk =
     !electricalHazardDirective && energizedHardStopEnabled() && isEnergizedWorkAsk(message);
+  if (retryingClaim && (targetProblem || componentHold)) {
+    evidenceMaterializeSpan.end();
+    return refuseRecovery(targetProblem ?? { error: componentHold!.reason, status: 409 }, safetyTrigger, energizedWorkAsk);
+  }
+  if (targetProblem && !safetyTrigger && !energizedWorkAsk) {
+    evidenceMaterializeSpan.end(); await abandonRequestClaim(); endRoot();
+    return NextResponse.json({ error: targetProblem.error, ...(targetProblem.code ? { code: targetProblem.code } : {}) }, { status: targetProblem.status });
+  }
   // `observation_available`/`observation_in_context` are derived from
   // `lookRow`/its rendered section later (renderLookObservationSection), not
   // hardcoded — the LOOK observation DOES reach the prompt (buildManualUserContent
@@ -2189,9 +2335,15 @@ async function handleChatTurn(
   const identityResolveSpan = startStage("identity.resolve");
   reportProgress(req, "finding_equipment"); // #4687: a no-op unless this request opted in
   openChildren.add(identityResolveSpan);
-  const boundAsset: ResolvedAsset = await releaseClaimOnFailure(() =>
-    resolveBoundAsset(ctx.tenantId, notebookId),
-  );
+  const boundAsset: ResolvedAsset = equipmentTargetHold ? { state: "unbound" }
+    : guardedBoundAsset ?? await releaseClaimOnFailure(() => resolveBoundAsset(ctx.tenantId, notebookId));
+  // Compare the SAME captured binding that retrieval/inference below uses.
+  // A rebind between acceptance and this read must not retarget the question.
+  if (!equipmentTargetHold && !matchesEquipmentExpectation(expectedTarget, boundAsset.state === "unbound" ? null : boundAsset.entityId)) {
+    await abandonRequestClaim();
+    endRoot();
+    return NextResponse.json({ error: "equipment_binding_changed", message: "The machine changed. Review the target before asking again." }, { status: 409 });
+  }
   rec.stage("identity", {
     ran: true,
     state: boundAsset.state === "resolved" ? "verified" : "unknown",
@@ -2448,15 +2600,13 @@ async function handleChatTurn(
   // Only a notebook-source turn consumes it — a general turn or an OEM-corpus
   // turn (both `general || nodeId === null`, see notebookRetrieval below) must
   // not pay for or wait on a rewrite nothing reads (Codex F3 on #5003).
-  const queryRewritePromise: Promise<QueryRewrite> =
-    general || nodeId === null || componentHold
-      ? Promise.resolve({ rewritten: null, status: "off", provider: null, durationMs: 0 })
-      : rewriteForManualSearch(message);
   // A failed source read is UNKNOWN state, never "no sources" (#5268: the
   // photo-manual status must not claim a source is off because a read failed).
   let sourcesLoaded = true;
   const [nb, srcs] = await Promise.all([
     (async () => {
+      if (equipmentTargetHold) return null;
+      if (guardedNotebook !== undefined) return guardedNotebook;
       try {
         return await getNotebook(ctx.tenantId, notebookId);
       } catch {
@@ -2473,11 +2623,6 @@ async function handleChatTurn(
     })(),
   ]);
 
-  // Non-English questions search the English corpus in English (answered in their own language).
-  // A held turn reads no manual, so it needs no translated search query either (#5504 Codex r3 F8).
-  const retrievalQuery = componentHold
-    ? buildRetrievalQuery(message, turnHistory, lookRow?.text)
-    : await englishSearchQuery(buildRetrievalQuery(message, turnHistory, lookRow?.text), translateForSearch);
   const retrievalSpan = startStage("retrieval.execute");
   // Retrieval policy (docs/plans/2026-09-22-retrieval-routing-evidence-continuity.md):
   //   1. notebook sources validated       → notebook_sources_bm25 (unchanged)
@@ -2510,7 +2655,10 @@ async function handleChatTurn(
   // judged on its own words (subjectOutOfReach, manual-rag.ts).
   let subjectQueries: string[] = [];
   let subjectOutOfReach = false;
-  if (notebookRetrieval) {
+  if (originalContext) {
+    subjectQueries = originalContext.subjectQueries;
+    subjectOutOfReach = originalContext.subjectOutOfReach;
+  } else if (notebookRetrieval && !componentHold) {
     try {
       for (const limit of SUBJECT_READ_STEPS) {
         // Under a selected component only the questions asked under this
@@ -2535,6 +2683,49 @@ async function handleChatTurn(
       console.error("[notebook-chat] earlier-question read failed (follow-up judged on what was read):", err instanceof Error ? err.message : err);
     }
   }
+  let priorReportContext = originalContext?.priorReportContext ?? buildPriorReportContext([], turnHistory, "not_requested");
+  // An explicit modern thread is the case boundary. Legacy/unscoped callers
+  // keep their existing client history; never guess a case from a notebook.
+  if (!originalContext && !componentHold && threadId && threadId !== "legacy" && !identityDisputed) try {
+    // One lookahead row exposes omission at the 24-report window boundary.
+    const reports = await listTurns(ctx.tenantId, notebookId, 25, {
+      viewerUserId: ctx.userId, threadId, expectedEquipmentEntityId: assetSnapshot.equipmentEntityId,
+    });
+    priorReportContext = buildPriorReportContext(
+      reports.filter(report => report.ownerUserId === ctx.userId && (!selectionTurnIds || selectionTurnIds.has(report.id))),
+      turnHistory,
+    );
+  } catch (err) {
+    console.error("[notebook-chat] prior technician reports unavailable:", err instanceof Error ? err.message : err);
+    priorReportContext = buildPriorReportContext([], turnHistory, "unavailable");
+    rec.error("context", "prior_reports_unavailable");
+  }
+  // The original body is an idempotency key, not server context. Freeze the
+  // accepted, scope-filtered inputs separately before any query rewrite,
+  // translation, retrieval or diagnostic provider can run.
+  if (clientRequestId && requestClaimToken && !originalContext && !componentHold) {
+    const accepted: AcceptedTurnContext = {
+      version: 1,
+      target: { equipmentEntityId: boundAsset.state === "unbound" ? null : boundAsset.entityId,
+        notebookIdentity: notebookIdentitySnapshot(nb), manualIdentity: notebookManualIdentity(nb, boundAsset, identityDisputed) },
+      component: componentTurn ? { componentId: componentTurn.component.id,
+        revision: componentTurn.kind === "hold" ? componentTurn.revision : componentTurn.revision.revision,
+        selection: componentTurn.selection } : null,
+      history: turnHistory, selectionTurnIds: selectionTurnIds === null ? null : [...selectionTurnIds],
+      subjectQueries, subjectOutOfReach, priorLookRows, currentLookRow: lookRow, priorLookFileIds, priorReportContext,
+    };
+    const saved = await releaseClaimOnFailure(() => acceptNotebookTurnContext(ctx.tenantId, notebookId, ctx.userId, clientRequestId, requestClaimToken, accepted));
+    if (!saved) { await abandonRequestClaim(); endRoot(); return NextResponse.json({ error: "request_superseded" }, { status: 409 }); }
+  }
+  const queryRewritePromise: Promise<QueryRewrite> =
+    general || nodeId === null || componentHold
+      ? Promise.resolve({ rewritten: null, status: "off", provider: null, durationMs: 0 })
+      : rewriteForManualSearch(message);
+  // Non-English questions search the English corpus in English (answered in their own language).
+  // A held turn reads no manual, so it needs no translated search query either (#5504 Codex r3 F8).
+  const retrievalQuery = componentHold
+    ? buildRetrievalQuery(message, turnHistory, lookRow?.text)
+    : await englishSearchQuery(buildRetrievalQuery(message, turnHistory, lookRow?.text), translateForSearch);
   // Resolve OEM identity from one observation: this turn's LOOK, otherwise the
   // newest prior LOOK. Earlier photos still reach context, but may be different
   // machines and must not contaminate retrieval identity (#3966).
@@ -3072,7 +3263,9 @@ async function handleChatTurn(
   let previousTurnId: string | null = null;
   if (partSearchEligible) {
     try {
-      const last = (await listTurns(ctx.tenantId, notebookId, 1, { viewerUserId: ctx.userId, threadId })).at(-1);
+      const last = (await listTurns(ctx.tenantId, notebookId, 1, { viewerUserId: ctx.userId, threadId,
+        ...(clientRequestId ? { beforeRequestId: clientRequestId } : {}),
+      })).at(-1);
       if (last && last.ownerUserId === ctx.userId) {
         previousTurnEvidence = last.evidence;
         previousTurnId = last.id;
@@ -3574,7 +3767,7 @@ async function handleChatTurn(
     type StopDiagnostics = { machineKnown?: boolean; admittedCovers?: Record<string, AdmittedCover> };
     const lockoutDiagnostics: StopDiagnostics = {};
     const warningDiagnostics: StopDiagnostics = {};
-    if (notebookRetrieval && nodeId !== null) {
+    if (!equipmentTargetHold && notebookRetrieval && nodeId !== null) {
       const stopPass = (query: string, rawQuery: string, label: string, diagnostics: StopDiagnostics) =>
         withTenantContext(ctx.tenantId, (client) =>
           retrieveNodeChunks(client, ctx.tenantId, query, {
@@ -4418,23 +4611,6 @@ async function handleChatTurn(
   // Restore literal older technician reports from this viewer/thread only.
   // Existing per-turn machine snapshots prevent a notebook rebind from turning
   // a different machine's conversation into this machine's prior reports.
-  let priorReportContext = buildPriorReportContext([], turnHistory, "not_requested");
-  // An explicit modern thread is the case boundary. Legacy/unscoped callers
-  // keep their existing client history; never guess a case from a notebook.
-  if (threadId && threadId !== "legacy" && !identityDisputed) try {
-    // One lookahead row exposes omission at the 24-report window boundary.
-    const reports = await listTurns(ctx.tenantId, notebookId, 25, {
-      viewerUserId: ctx.userId, threadId, expectedEquipmentEntityId: assetSnapshot.equipmentEntityId,
-    });
-    priorReportContext = buildPriorReportContext(
-      reports.filter(report => report.ownerUserId === ctx.userId && (!selectionTurnIds || selectionTurnIds.has(report.id))),
-      turnHistory,
-    );
-  } catch (err) {
-    console.error("[notebook-chat] prior technician reports unavailable:", err instanceof Error ? err.message : err);
-    priorReportContext = buildPriorReportContext([], turnHistory, "unavailable");
-    rec.error("context", "prior_reports_unavailable");
-  }
   // R2-33: the Living Work Sheet job section rides into the SAME
   // injection-hardened user-data channel as the LOOK photo context
   // (buildManualUserContent's visual-context arg), never systemPrompt.
@@ -6129,11 +6305,21 @@ export async function POST(req: NextRequest, routeCtx: { params: Promise<{ id: s
   let sheetReceiptCtx: SheetReceiptContext | null = null;
   if (livingSheetEnabled() && notebookId) {
     try {
-      const b = await req.clone().json();
+      let b = await req.clone().json();
+      // Recovery carries a pointer on the wire. The deterministic receipt
+      // must use the same original job/question/key as the canonical handler.
+      if (typeof b?.retryRequestId === "string" && isUuid(b.retryRequestId)) {
+        const actor = await sessionOr401({ requireCurrentUser: true });
+        const thread = b.threadId == null ? null : normalizeNotebookThreadId(b.threadId);
+        if (!(actor instanceof NextResponse) && (b.threadId == null || thread)) {
+          const recovered = await readTurnRetry(actor.tenantId, notebookId, actor.userId, thread, b.retryRequestId, req.signal);
+          b = "body" in recovered ? recovered.body : {};
+        } else b = {};
+      }
       const text = typeof b?.message === "string" ? b.message.trim() : "";
       const jobId = b?.livingSheetJobId;
       if (text && typeof jobId === "string" && isUuid(jobId)) {
-        const sctx = await sessionOr401();
+        const sctx = await sessionOr401({ requireCurrentUser: true });
         if (!(sctx instanceof NextResponse)) {
           // F08: the turn's own id keys the proposals, so the same words in two
           // turns are two proposals and a replay of one turn stays one.

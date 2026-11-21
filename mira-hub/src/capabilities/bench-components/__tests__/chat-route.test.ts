@@ -29,6 +29,8 @@ const nbMock = vi.hoisted(() => ({
   validateChatSources: vi.fn(),
   getNotebook: vi.fn(),
   resolveBoundAsset: vi.fn(async () => ({ state: "unbound" as const })),
+  acceptNotebookTurnContext: vi.fn(async () => true),
+  stampClaimedTurnComponent: vi.fn(async () => true),
   claimNotebookTurnRequest: vi.fn(async (): Promise<unknown> => ({ status: "claimed", claimToken: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb" })),
   abandonNotebookTurnRequest: vi.fn(async () => undefined),
   recordTurn: vi.fn(async () => "turn-row-1"),
@@ -160,7 +162,7 @@ beforeEach(() => {
   nbMock.claimNotebookTurnRequest.mockResolvedValue({ status: "claimed", claimToken: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb" });
   storeMock.listComponents.mockResolvedValue([VFD_ROW, K1_ROW, B1_ROW]);
   storeMock.getSelection.mockResolvedValue(selection(VFD, 2, 3));
-  storeMock.stampTurnComponent.mockResolvedValue(true);
+  nbMock.stampClaimedTurnComponent.mockResolvedValue(true);
   storeMock.listSelectionTurns.mockResolvedValue([]);
   ragMock.retrieveNodeChunks.mockImplementation(async () => []);
   vi.stubGlobal("fetch", vi.fn(async () => new Response("data: [DONE]\n\n", { status: 200, headers: { "Content-Type": "text/event-stream" } })));
@@ -180,7 +182,7 @@ describe("no component selected — today's behaviour", () => {
     expect(storeMock.getSelectionState).toHaveBeenCalledTimes(1);
     expect(storeMock.getSelection).not.toHaveBeenCalled();
     expect(storeMock.listComponents).not.toHaveBeenCalled();
-    expect(storeMock.stampTurnComponent).not.toHaveBeenCalled();
+    expect(nbMock.stampClaimedTurnComponent).not.toHaveBeenCalled();
     expect(retrievalOpts()?.catalogNumber).toBe("2080-LC20-20QWB");
     expect(storeMock.listSelectionTurns).not.toHaveBeenCalled();
     expect(systemPrompt()).toContain("- Catalog number on record: 2080-LC20-20QWB.");
@@ -196,7 +198,7 @@ describe("a confirmed component is the record for the turn", () => {
       identityStatus: "user_confirmed",
       identity: { manufacturer: "AutomationDirect", model: "GS10" },
     });
-    expect(storeMock.stampTurnComponent).toHaveBeenCalledWith(TENANT, NB, "u1", REQ, VFD, 2);
+    expect(nbMock.stampClaimedTurnComponent).toHaveBeenCalledWith(TENANT, NB, "u1", REQ, "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", VFD, 2);
     // The header the model reads names the component, never the project's own machine.
     const prompt = systemPrompt();
     expect(prompt).toContain("- Equipment: AutomationDirect GS10");
@@ -401,7 +403,7 @@ describe("a held turn reads no manual and calls no provider", () => {
     expect(status.message).toBe("B1 · IDEC YW1B isn't confirmed yet, so I won't answer from the manuals for it. Check what its label says and tap Confirm, then ask again.");
     expect(componentFrame(out)?.actions).toEqual([{ action: "confirm", componentId: B1, label: "B1 · IDEC YW1B" }]);
     expect(nbMock.recordTurn).toHaveBeenCalledWith(TENANT, NB, expect.objectContaining({ answerStatus: "insufficient_evidence", clientRequestId: REQ }));
-    expect(storeMock.stampTurnComponent).toHaveBeenCalledWith(TENANT, NB, "u1", REQ, B1, 1);
+    expect(nbMock.stampClaimedTurnComponent).toHaveBeenCalledWith(TENANT, NB, "u1", REQ, "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", B1, 1);
   });
 
   it("a question naming another component's exact catalog number asks to switch, and never switches by itself", async () => {
@@ -469,7 +471,7 @@ describe("the selection the client showed is checked, not trusted", () => {
     expect(nbMock.abandonNotebookTurnRequest).toHaveBeenCalled();
     expect(nbMock.recordTurn).not.toHaveBeenCalled();
     expect(ragMock.retrieveNodeChunks).not.toHaveBeenCalled();
-    expect(storeMock.stampTurnComponent).not.toHaveBeenCalled();
+    expect(nbMock.stampClaimedTurnComponent).not.toHaveBeenCalled();
   });
 
   it("a hazard report under a stale selection is not turned away: the banner is served and nothing is answered for any component", async () => {
@@ -480,7 +482,7 @@ describe("the selection the client showed is checked, not trusted", () => {
     expect(vi.mocked(fetch)).not.toHaveBeenCalled();
     expect(statusOf(out)).toMatchObject({ status: "insufficient_evidence", message: withSafetyFlag(selectionMovedText, "smell burning") });
     expect(componentFrame(out)).toBeUndefined();
-    expect(storeMock.stampTurnComponent).not.toHaveBeenCalled();
+    expect(nbMock.stampClaimedTurnComponent).not.toHaveBeenCalled();
     expect(nbMock.recordTurn).toHaveBeenCalledWith(TENANT, NB, expect.objectContaining({ answerStatus: "insufficient_evidence", clientRequestId: REQ }));
   });
 
@@ -769,7 +771,7 @@ describe("every question's scope is checked against the saved choice", () => {
     const out = await frames(res);
     expect(componentFrame(out)).toBeUndefined();
     expect(retrievalOpts()?.catalogNumber).toBe("2080-LC20-20QWB");
-    expect(storeMock.stampTurnComponent).not.toHaveBeenCalled();
+    expect(nbMock.stampClaimedTurnComponent).not.toHaveBeenCalled();
   });
 
   it("F10: a question for B carrying the scope read for conversation A is refused before anything is claimed", async () => {
