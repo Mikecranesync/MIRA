@@ -757,19 +757,20 @@ function scoreToken(tok: string, position: number, total: number): number {
   if (/[A-Z]/.test(tok[0])) score += 15; // Capitalized (before lowercasing)
   if (tok.includes("_") || tok.includes("-")) score += 10;
   
-  // Position: slight preference to distribute across the query
-  // Tokens from the second half get a small boost to prevent dropping them entirely
+  // Position: distribute across the query without over-favoring either end
+  // Slight boost to prevent total loss of later parts, balanced with early parts
   const positionRatio = position / total;
-  if (positionRatio > 0.5) score += 25; // Second half boost
-  if (positionRatio < 0.2) score += 10; // First 20% slight boost
+  if (positionRatio > 0.5) score += 15; // Second half boost (reduced from 25)
+  if (positionRatio < 0.25) score += 15; // First quarter boost (increased from 10 and widened to 25%)
   
   // Domain-specific terms (common technical vocabulary)
   const technical = new Set([
     "error", "fault", "code", "alarm", "warning", "shutdown", "trip",
     "overcurrent", "overvoltage", "undervoltage", "overload", "short", "ground",
     "motor", "drive", "controller", "contactor", "relay", "circuit", "cable",
-    "supply", "voltage", "current", "power", "phase", "frequency", "torque",
-    "parameter", "configure", "diagnostic", "troubleshoot", "remedy", "cause",
+    "supply", "voltage", "volts", "current", "amps", "ampere", "power", "phase", 
+    "frequency", "torque", "parameter", "configure", "diagnostic", "troubleshoot", 
+    "remedy", "cause", "terminal", "rectifier",
   ]);
   if (technical.has(tok)) score += 35;
   
