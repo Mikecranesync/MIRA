@@ -67,6 +67,7 @@ import {
   applicableReadySource,
   currentManualSearchStatus,
   DISCOVERY_REVISION,
+  handoffManualUrl,
   partialRefreshDue,
   readAcquisition,
   reconcileAcquisition,
@@ -1185,6 +1186,52 @@ describe("applicableEnabledSource / applicableReadySource (#4195 F3/F10)", () =>
 // T2 (#4189 F4/F6) — the notebook GET route's current (never-stale) status,
 // recomputed on every call instead of read from a persisted "running"
 // snapshot captured at some earlier point in time.
+describe("Codex #5706 r6 F15: a source rejected while its check ran is never offered as the link", () => {
+  const gs10 = { identityStatus: "user_confirmed", manufacturer: "AutomationDirect", model: "GS11N-20P2", catalogNumber: "" };
+  const key = acquisitionKey(gs10)!;
+  const URL = "https://cdn.automationdirect.com/static/manuals/gs10m/gs10usermanual.pdf";
+  // What runManualAcquisition returns when the technician rejected the linked
+  // source while applicability ran: the writer keeps the rejected row's state.
+  const outcome = (matchState: string, enabledByDefault: boolean, attached: boolean) => ({
+    status: "candidate_review" as const,
+    payload: {
+      linked: true,
+      manual: { fileId: "f1", docId: "d1", finalUrl: URL, discoveryUrl: "https://www.automationdirect.com/gs10", matchState, enabledByDefault, indexed: true, attached },
+      candidate: { host: "cdn.automationdirect.com", url: "https://www.automationdirect.com/gs10" },
+    },
+  });
+
+  it("the recorded outcome is a removal: no PDF, no fallback link, and the reply says it left Sources", () => {
+    const r = recordFromOutcome(key, "2026-11-20T00:00:00Z", outcome("rejected", false, false) as never);
+    expect(r.source_removed).toBe(true);
+    expect(handoffManualUrl(r)).toBeNull();
+    const text = acquisitionDeclineText(r, key, "AutomationDirect GS11N-20P2") ?? "";
+    expect(text).toContain("no longer in this notebook's Sources");
+    expect(text).not.toContain("automationdirect.com");
+  });
+
+  it("an older record that only carries the rejected match state is reconciled to a removal", async () => {
+    const older = { ...recordFromOutcome(key, "2026-11-20T00:00:00Z", outcome("candidate", false, true) as never), match_state: "rejected", attached_indexed: false };
+    delete (older as { source_removed?: boolean }).source_removed;
+    expect(handoffManualUrl(older as AcquisitionRecord)).toBeNull();
+    const r = await reconcileAcquisition("t", "nb", older as AcquisitionRecord);
+    expect(r?.source_removed).toBe(true);
+  });
+
+  it("the polled status omits the link for it", async () => {
+    db.readRow = recordFromOutcome(key, "2026-11-20T00:00:00Z", outcome("rejected", false, false) as never);
+    const r = await currentManualSearchStatus("t", "nb", gs10, { manufacturer: "AutomationDirect", model: "GS11N-20P2" }, [] as never, { env: ON });
+    expect(r?.manualUrl).toBeUndefined();
+    expect(JSON.stringify(r ?? {})).not.toContain("gs10usermanual.pdf");
+  });
+
+  it("control: a merely disabled source keeps its PDF handoff", () => {
+    const r = recordFromOutcome(key, "2026-11-20T00:00:00Z", outcome("candidate", false, true) as never);
+    expect(r.source_removed).toBeUndefined();
+    expect(handoffManualUrl(r)).toBe(URL);
+  });
+});
+
 describe("currentManualSearchStatus — the polled status carries the acquired manual (Codex #5706 r1 F3)", () => {
   const gs10 = { identityStatus: "user_confirmed", manufacturer: "AutomationDirect", model: "GS11N-20P2", catalogNumber: "" };
   const key = acquisitionKey(gs10)!;

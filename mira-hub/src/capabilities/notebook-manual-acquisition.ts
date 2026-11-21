@@ -477,7 +477,10 @@ export function recordFromOutcome(key: string, startedAt: string | null, out: Ma
     download_reason: downloadReason,
     discovery_rev: DISCOVERY_REVISION,
     linked: p.linked === true,
-    ...(p.removedByTechnician === true ? { source_removed: true } : {}),
+    // Codex #5706 r6 F15: a source the technician rejected while the check ran
+    // comes back as matchState "rejected" (the writer keeps a rejected row's
+    // state) — the same removal as deleting it, so no link is ever offered.
+    ...(p.removedByTechnician === true || str(p.manual?.matchState) === "rejected" ? { source_removed: true } : {}),
     ...(out.candidateTrail ? { candidate_trail: out.candidateTrail } : {}),
   };
 }
@@ -945,6 +948,9 @@ export async function reconcileAcquisition(
   rec: AcquisitionRecord | null,
 ): Promise<AcquisitionRecord | null> {
   if (!rec) return rec;
+  // Codex #5706 r6 F15: a record written before the rejection was mapped to a
+  // removal still says so by its match state.
+  if (rec.match_state === "rejected" && !rec.source_removed) return { ...rec, attached_indexed: false, source_removed: true };
   // An indexed document is checked against the notebook's sources (r8 F13); a
   // file-only outcome (a scanned manual) against the notebook's file link (r9 F14).
   // A retryable record whose attempt attached a manual is checked too, so a
@@ -1061,7 +1067,7 @@ export function acquisitionManualUrl(rec: AcquisitionRecord): string | null {
  * and nothing once the technician removed the manual.
  */
 export function handoffManualUrl(rec: AcquisitionRecord): string | null {
-  if (rec.state === "running" || rec.source_removed) return null;
+  if (rec.state === "running" || rec.source_removed || rec.match_state === "rejected") return null;
   return savedManualUrl(rec) ?? (rec.attached_indexed ? null : acquisitionManualUrl(rec));
 }
 
