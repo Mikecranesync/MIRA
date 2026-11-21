@@ -1987,6 +1987,63 @@ jobs:
           grep -qE "(^|[^0-9])[1-9][0-9]* passed" /tmp/quota-pg.plain || {
             echo "::error::could not confirm a positive passing test count"; exit 1; }
 
+  ontology-db-contract:
+    name: Ontology bench contract (disposable Postgres; must RUN, not skip)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: testpw
+          POSTGRES_DB: mira_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgres://postgres:testpw@127.0.0.1:5432/mira_test
+      MIRA_TEST_DB_CONFIRM: DISPOSABLE
+      MIRA_INTEGRATION_EXTRA_MIGRATIONS: "018_relationship_proposals.sql,021_namespace_builder.sql,028_drives_relationship_type.sql,032_inferred_relationship_types.sql,038_relationship_type_asset_graph.sql,043_has_work_order_relationship_type.sql,050_kg_relationships_proposal_id.sql"
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      # Always run: these real-database contracts are excluded from Hub unit CI.
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: package.json
+
+      - name: Install mira-hub dependencies
+        working-directory: mira-hub
+        run: bun install --frozen-lockfile
+
+      - name: Apply the integration schema
+        working-directory: mira-hub
+        run: node scripts/setup-integration-db.mjs
+      - name: Ontology database contract (must RUN, not skip)
+        working-directory: mira-hub
+        run: |
+          set -euo pipefail
+          node node_modules/vitest/vitest.mjs run \
+            --config vitest.integration.config.ts \
+            tests/integration/ontology/ \
+            2>&1 | tee "${RUNNER_TEMP}/ontology.out"
+          sed -E 's/\x1b\[[0-9;]*[A-Za-z]//g' "${RUNNER_TEMP}/ontology.out" > "${RUNNER_TEMP}/ontology.plain"
+          if grep -qiE "no test files found" "${RUNNER_TEMP}/ontology.plain"; then
+            echo "::error::no test file matched — the gate proved nothing"; exit 1
+          fi
+          if grep -qE "Tests +.*[0-9]+ skipped" "${RUNNER_TEMP}/ontology.plain"; then
+            echo "::error::ontology database suite SKIPPED — skipped is not passed"; exit 1
+          fi
+          grep -qE "Tests +[1-9][0-9]* passed" "${RUNNER_TEMP}/ontology.plain" || {
+            echo "::error::could not confirm a positive passing test count"; exit 1; }
+          for f in bench-context-contract bench-notebook-chat-route bench-notebook-source-scope bench-pilot-live-evidence; do
+            grep -qE "✓ tests/integration/ontology/${f}\.integration\.test\.ts" "${RUNNER_TEMP}/ontology.plain" || {
+              echo "::error::${f} did not run and pass"; exit 1; }
+          done
+
   ci-gate:
     name: CI Gate
     runs-on: ubuntu-latest
@@ -2003,6 +2060,7 @@ jobs:
       - turn-lifecycle-reconciliation
       - manual-search-quota-pg
       - notebook-event-outbox-pg
+      - ontology-db-contract
       - mobile-unit-tests
       - mira-web-pack-tests
       - architecture-check
@@ -2032,6 +2090,7 @@ jobs:
           LIFECYCLE_RECON_RESULT: ${{ needs.turn-lifecycle-reconciliation.result }}
           QUOTA_PG_RESULT: ${{ needs.manual-search-quota-pg.result }}
           OUTBOX_PG_RESULT: ${{ needs.notebook-event-outbox-pg.result }}
+          ONTOLOGY_DB_RESULT: ${{ needs.ontology-db-contract.result }}
           MOBILE_UNIT_RESULT: ${{ needs.mobile-unit-tests.result }}
           WEB_PACK_RESULT: ${{ needs.mira-web-pack-tests.result }}
           ARCH_RESULT: ${{ needs.architecture-check.result }}
@@ -2074,6 +2133,7 @@ jobs:
           # #4160 S4: same shape — step-level paths filter, never job-level skipped.
           require_success manual-search-quota-pg "$QUOTA_PG_RESULT"
           require_success notebook-event-outbox-pg "$OUTBOX_PG_RESULT"
+          require_success ontology-db-contract "$ONTOLOGY_DB_RESULT"
           # Added 2026-09-19: mobile-unit-tests was never in `needs` NOR read
           # here, so a red mobile suite could not fail the merge (observed on
           # #3837: "Mobile Unit Tests" FAIL while CI Gate was green). Same shape

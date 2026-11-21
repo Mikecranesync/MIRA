@@ -1,0 +1,18 @@
+# EXPECT-VIOLATION: mirash:MeasurementCompletenessShape
+#
+# R1 — a measurement observation missing the full VQT+unit tuple. A bare number a technician
+# might act on: no quantity_kind (is 480 volts, hertz or amps?), no unit, no timestamp, no
+# quality, no freshness, no source. Each absence is independently a violation.
+#
+# This is the OPEN-WORLD trap the rule exists to close: in RDF, absent does not mean false, so
+# without minCount an incomplete reading is indistinguishable from a complete one.
+
+@prefix mira: <https://ontology.factorylm.com/mira#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix ex:   <https://example.org/fx#> .
+
+ex:dc_bus a mira:MeasurementSignal .
+
+ex:obs_bad a mira:Observation ;
+    mira:observed_signal ex:dc_bus ;
+    mira:value 600 .

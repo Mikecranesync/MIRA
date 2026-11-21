@@ -1,0 +1,16 @@
+# EXPECT-VIOLATION: mirash:RegisterInterpretationShape
+#
+# R5 — a register actually USED as an engineering value (it `decodes` a signal) but carrying no
+# datatype, no ScalingRule and no unit. GS10 DC-bus raw 6000 is 600.0 V at scaling 0.01;
+# unscaled it reads as a ten-fold overvoltage that does not exist. Signed vs unsigned differs
+# by 65536.
+#
+# A register catalogued WITHOUT a decode is honest incompleteness and is deliberately not
+# targeted — see the valid counterpart.
+
+@prefix mira: <https://ontology.factorylm.com/mira#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix ex:   <https://example.org/fx#> .
+
+ex:dc_bus  a mira:MeasurementSignal .
+ex:reg_bad a mira:Register ; mira:decodes ex:dc_bus ; mira:register_addr 2103 .

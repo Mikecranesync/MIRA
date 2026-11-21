@@ -1,3 +1,5 @@
+# PROTECTS: mirash:InferenceCannotSelfApproveShape
+#
 # R10a satisfied — an inferred assertion IS allowed to reach verified, but only through a
 # distinct human approval event. Same derived_from, same evidence; the approver is a Technician
 # who is not the proposer.

@@ -1,0 +1,9 @@
+# EXPECT-VIOLATION: mirash:DriveFamilyIdentityShape
+#
+# A drive family names no manufacturer. A series name alone is ambiguous across vendors.
+
+@prefix mira: <https://ontology.factorylm.com/mira#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix ex:   <https://example.org/fx#> .
+
+ex:gs10 a mira:DriveFamily .
