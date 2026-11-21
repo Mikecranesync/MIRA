@@ -335,15 +335,18 @@ class TestHandleCmmsPending:
         state["context"]["cmms_pending"] = True
         state["context"]["cmms_wo_draft"] = {
             "title": "[MIRA] GS10 — power action",
-            "description": "...",
+            "fault_description": "...",
             "priority": "HIGH",
-            "asset_label": "GS10",
+            "asset": "GS10",
+            "tenant_id": "test-tenant",
         }
 
         sv._record_exchange = MagicMock()
         sv._post_cmms_work_order = AsyncMock(return_value="Work order #99 created. Asset: GS10.")
 
-        result = await sv._handle_cmms_pending("chat-1", "yes", state, "trace-1")
+        result = await sv._handle_cmms_pending(
+            "chat-1", "yes", state, "trace-1", tenant_id="test-tenant"
+        )
 
         sv._post_cmms_work_order.assert_awaited_once()
         assert "Work order #99" in result["reply"]
@@ -353,12 +356,14 @@ class TestHandleCmmsPending:
         sv = self._get_supervisor()
         state = _make_engine_state()
         state["context"]["cmms_pending"] = True
-        state["context"]["cmms_wo_draft"] = {"title": "T", "description": "D", "priority": "M", "asset_label": "X"}
+        state["context"]["cmms_wo_draft"] = {"title": "T", "fault_description": "D", "priority": "M", "asset": "X", "tenant_id": "test-tenant"}
 
         sv._record_exchange = MagicMock()
         sv._post_cmms_work_order = AsyncMock()
 
-        result = await sv._handle_cmms_pending("chat-1", "no thanks", state, "trace-1")
+        result = await sv._handle_cmms_pending(
+            "chat-1", "no thanks", state, "trace-1", tenant_id="test-tenant"
+        )
 
         sv._post_cmms_work_order.assert_not_awaited()
         assert "no work order" in result["reply"].lower()
@@ -367,12 +372,14 @@ class TestHandleCmmsPending:
         sv = self._get_supervisor()
         state = _make_engine_state()
         state["context"]["cmms_pending"] = True
-        state["context"]["cmms_wo_draft"] = {"title": "T", "description": "D", "priority": "M", "asset_label": "X"}
+        state["context"]["cmms_wo_draft"] = {"title": "T", "fault_description": "D", "priority": "M", "asset": "X", "tenant_id": "test-tenant"}
 
         sv._record_exchange = MagicMock()
         sv._post_cmms_work_order = AsyncMock(side_effect=RuntimeError("HTTP 503"))
 
-        result = await sv._handle_cmms_pending("chat-1", "yes", state, "trace-1")
+        result = await sv._handle_cmms_pending(
+            "chat-1", "yes", state, "trace-1", tenant_id="test-tenant"
+        )
 
         assert "manually" in result["reply"].lower()
         assert result["next_state"] == "RESOLVED"
@@ -381,12 +388,14 @@ class TestHandleCmmsPending:
         sv = self._get_supervisor()
         state = _make_engine_state()
         state["context"]["cmms_pending"] = True
-        state["context"]["cmms_wo_draft"] = {"title": "T", "description": "D", "priority": "M", "asset_label": "X"}
+        state["context"]["cmms_wo_draft"] = {"title": "T", "fault_description": "D", "priority": "M", "asset": "X", "tenant_id": "test-tenant"}
 
         sv._record_exchange = MagicMock()
         sv._post_cmms_work_order = AsyncMock(return_value="Work order #1 created.")
 
-        await sv._handle_cmms_pending("chat-1", "yes", state, "trace-1")
+        await sv._handle_cmms_pending(
+            "chat-1", "yes", state, "trace-1", tenant_id="test-tenant"
+        )
 
         assert "cmms_pending" not in state["context"]
         assert "cmms_wo_draft" not in state["context"]
@@ -398,11 +407,13 @@ class TestHandleCmmsPending:
             state = _make_engine_state()
             state["context"]["cmms_pending"] = True
             state["context"]["cmms_wo_draft"] = {
-                "title": "T", "description": "D", "priority": "M", "asset_label": "X"
+                "title": "T", "fault_description": "D", "priority": "M", "asset": "X", "tenant_id": "test-tenant"
             }
             sv._record_exchange = MagicMock()
             sv._post_cmms_work_order = AsyncMock(return_value="Work order #1 created.")
 
-            await sv._handle_cmms_pending("chat-1", phrase, state, "trace-1")
+            await sv._handle_cmms_pending(
+                "chat-1", phrase, state, "trace-1", tenant_id="test-tenant"
+            )
 
             sv._post_cmms_work_order.assert_awaited_once(), f"'{phrase}' should trigger creation"

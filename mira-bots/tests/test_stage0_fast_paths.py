@@ -377,7 +377,9 @@ class TestCmmsPendingIsActuallyTagged:
                 },
             )
             state = supervisor._load_state(chat)
-            result = await supervisor._handle_cmms_pending(chat, message, state, "trace-x")
+            result = await supervisor._handle_cmms_pending(
+                chat, message, state, "trace-x", tenant_id="stage0-tenant"
+            )
             assert result.get("dispatch_kind") == "cmms_pending", (
                 f"branch {name!r} returned dispatch_kind="
                 f"{result.get('dispatch_kind')!r} — the quality-gate bypass keys on "
