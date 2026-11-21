@@ -129,7 +129,7 @@ describe("the host is wired to the hold (source shape, like hub-host-restore-ret
     expect(host).not.toMatch(/\.\.\.\(failedBody \? \{ onRetry \} : \{\}\)/);
     // #4846: the stored-failure Retry exists only while no live failure is held, so a held
     // review (failedBody set, target moved) can never be retried through it.
-    expect(host).toMatch(/!failedBody && !state\.sendError \? persistedRetryTarget\(detail\.turns, headerComponentId, detail\.notebook\.asset\?\.entityId\)/);
+    expect(host).toMatch(/!failedBody && !state\.sendError \? persistedRetryTarget\(visibleTurns, headerComponentId, detail\.notebook\.asset\?\.entityId\)/);
   });
   it("a target refusal keeps the refused scope and the review message is shown", () => {
     expect(host).toMatch(/refusedScope \? \{ refusedScope \} : \{\}/);

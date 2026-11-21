@@ -8,13 +8,11 @@ import { beforeAll, afterAll, describe, expect, it, vi } from "vitest";
 import { NextRequest, NextResponse } from "next/server";
 import type { Pool } from "pg";
 
-const db = vi.hoisted(() => {
-  const target = process.env.TEST_DATABASE_URL ? new URL(process.env.TEST_DATABASE_URL) : null;
-  if (!target || !["127.0.0.1", "localhost", "[::1]"].includes(target.hostname) || /prod|prd|staging/i.test(`${target.hostname} ${target.pathname}`)
-      || process.env.MIRA_TEST_DB_CONFIRM !== "DISPOSABLE") throw new Error("Loopback disposable fixture required");
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { Pool: PgPool } = require("pg");
-  return { pool: new PgPool({ connectionString: process.env.TEST_DATABASE_URL, max: 5 }) as Pool };
+const db = await vi.hoisted(async () => {
+  const { recoveryTestDatabaseUrl } = await import("../../../scripts/recovery-test-database.mjs");
+  const { Pool: PgPool } = await import("pg");
+  const connectionString = recoveryTestDatabaseUrl(process.env.TEST_DATABASE_URL, process.env.MIRA_TEST_DB_CONFIRM, process.env.MIRA_TEST_PROFILE);
+  return { pool: new PgPool({ connectionString, max: 5 }) as Pool };
 });
 vi.mock("@/lib/db", () => ({ default: db.pool }));
 const auth = vi.hoisted(() => {
@@ -28,6 +26,8 @@ import { POST } from "@/app/api/equipment-notebooks/[id]/chat/route";
 
 import { notebookIdentitySnapshot, type AcceptedTurnContext } from "./accepted-context";
 import { acceptNotebookTurnContext } from "@/lib/equipment-notebooks";
+import { recordLookObservation, loadVisualEvidenceForPhoto } from "@/lib/visual-evidence-context";
+import { withTenantContext } from "@/lib/tenant-context";
 const acceptedFixture = (equipmentEntityId: string | null): AcceptedTurnContext => ({
   version: 1, target: { equipmentEntityId, notebookIdentity: notebookIdentitySnapshot({ identityStatus: "unknown" }),
     manualIdentity: { identity: { manufacturer: null, model: null }, catalogNumber: null, identityStatus: "unknown" } },
@@ -136,5 +136,43 @@ describe("recovered chat acceptance HTTP/PostgreSQL", () => {
       expect(await response.text()).toContain("Original machine A answer");
       expect(externalCalls).toBe(0);
     } finally { await db.pool.query("UPDATE equipment_notebooks SET equipment_entity_id='machine-A' WHERE id=$1", [notebook]); }
+  });
+
+  it("native round4 F1: a detached manual does not hide the original photo's warning (real HTTP/PostgreSQL)", async () => {
+    const detachedManual = uuid();
+    // The accepted machine must still resolve, so the manual is the only thing that changed.
+    await db.pool.query("INSERT INTO kg_entities(tenant_id,entity_type,entity_id,name,approval_state,uns_path) VALUES($1,'equipment','machine-A','A','verified','factory.machineA'::ltree)", [tenant]);
+    try {
+    const accept = async (hazards: { code: string; confidence: number }[]) => {
+      const photo = uuid();
+      await db.pool.query("INSERT INTO namespace_direct_uploads (id, tenant_id, filename, mime_type) VALUES ($1,$2,'cabinet.jpg','image/jpeg')", [photo, tenant]);
+      await db.pool.query("INSERT INTO workspace_file_links (tenant_id, file_id, target_type, target_id, role) VALUES ($1,$2,'equipment_notebook',$3,'photo')", [tenant, photo, notebook]);
+      await recordLookObservation({ tenantId: tenant, fileId: photo, photoHash: uuid(), text: "Cabinet interior", model: "fixture",
+        hazards: hazards as never, capturedAt: new Date().toISOString(), notebookId: notebook, threadId: thread, createdBy: owner });
+      const id = uuid(), body = { ...payload(id), mode: "grounded", sourceDocIds: [detachedManual], visualEvidence: { fileId: photo } };
+      const claim = await notebooks.claimNotebookTurnRequest(tenant, notebook, { ownerUserId: owner, clientRequestId: id, question: body.message, threadId: thread, requestPayload: body });
+      if (claim.status !== "claimed") throw new Error("claim failed");
+      const look = await withTenantContext(tenant, c => loadVisualEvidenceForPhoto(c, tenant, photo));
+      expect(look).not.toBeNull();
+      expect(await acceptNotebookTurnContext(tenant, notebook, owner, id, claim.claimToken, { ...acceptedFixture("machine-A"), currentLookRow: look })).toBe(true);
+      await notebooks.recordTurn(tenant, notebook, { question: body.message, answerStatus: "error", answerText: null, enabledSourceDocIds: [detachedManual], evidence: [{ kind: "visual_observation", fileId: photo }], model: null,
+        ownerUserId: owner, threadId: thread, clientRequestId: id, claimToken: claim.claimToken, equipmentEntityId: "machine-A" });
+      return id;
+    };
+    const stored = async (id: string) => (await notebooks.listTurns(tenant, notebook, 50, { viewerUserId: owner, threadId: thread })).find(row => row.clientRequestId === id);
+    // Hazardous photo, manual detached: the independent warning is delivered and the original row is untouched.
+    const hazardous = await accept([{ code: "smoke", confidence: 0.99 }]);
+    const original = await stored(hazardous);
+    expect(original).toMatchObject({ answerStatus: "error" });
+    const direct = await post({ retryRequestId: hazardous, threadId: thread });
+    const directBody = await direct.json();
+    expect(direct.status).toBe(403); expect(directBody.code).toBe("source_not_in_notebook"); expect(directBody.safetyWarning).toContain("⚠️");
+    expect(await stored(hazardous)).toEqual(original);
+    // Nonhazardous photo: a plain refusal with no warning.
+    const plain = await accept([]);
+    const plainResponse = await post({ retryRequestId: plain, threadId: thread });
+    expect(plainResponse.status).toBe(403); expect(await plainResponse.json()).toEqual({ error: "source_not_in_notebook" });
+    expect(externalCalls).toBe(0);
+    } finally { await db.pool.query("DELETE FROM kg_entities WHERE tenant_id=$1 AND entity_id='machine-A'", [tenant]); }
   });
 });

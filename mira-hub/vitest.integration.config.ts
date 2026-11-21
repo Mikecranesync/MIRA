@@ -8,7 +8,9 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["src/**/*.integration.test.ts", "tests/integration/**/*.integration.test.ts"],
-    exclude: ["node_modules/**", "tests/e2e/**", "src/capabilities/equipment-browser/**/*.integration.test.ts"],
+    exclude: ["node_modules/**", "tests/e2e/**", "src/capabilities/equipment-browser/**/*.integration.test.ts",
+      // Loopback-only recovery suites: run through vitest.turn-recovery.config.ts (npm run test:integration:turn-recovery).
+      "src/capabilities/turn-recovery/**/*.integration.test.ts"],
     testTimeout: 30000,
   },
   resolve: {

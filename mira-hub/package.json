@@ -13,6 +13,7 @@
     "test:integration:dev": "node scripts/run-dev-integration-tests.mjs",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "test:integration:equipment-browser": "node scripts/setup-integration-db.mjs --equipment-browser && vitest run --config vitest.equipment-browser.config.ts",
+    "test:integration:turn-recovery": "node scripts/setup-integration-db.mjs --equipment-browser && vitest run --config vitest.turn-recovery.config.ts",
     "test:integration:db": "npm run db:integration:setup && npm run test:integration",
     "db:check-order": "node db/check-migration-order.mjs",
     "sitemap": "node scripts/sitemap.mjs",

@@ -262,3 +262,102 @@ describe("native round3 safety and server-target regressions", () => {
     expect(nbMock.recordTurn).not.toHaveBeenCalled(); expect(fetch).not.toHaveBeenCalled(); expect(ragMock.retrieveNodeChunks).not.toHaveBeenCalled();
   });
 });
+
+describe("native round4 F1: accepted photo warning survives a held source", () => {
+  type Row = import("@/lib/visual-evidence-context").VisualEvidenceRow;
+  const look = (hazards: unknown[]) => ({ observationId: "o1", sessionId: "s1", fileId: DOC_A, text: "Cabinet photo", hazards, photoHash: "h1" }) as unknown as Row;
+  function acceptedPhotoRetry(row: Row) {
+    const body = { ...originalBody(), message: "What fuse should this drive use?", mode: "grounded", sourceDocIds: [DOC_A], visualEvidence: { fileId: DOC_A } };
+    recoveryMock.readTurnRetry.mockResolvedValue({ body, target: { kind: "known", equipmentEntityId: null }, component: null,
+      acceptedContext: { ...acceptedContext, currentLookRow: row } });
+    nbMock.claimNotebookTurnRequest.mockResolvedValue({ status: "claimed", claimToken: TOKEN, preserveFailedTurn: true });
+    // The selected manual was disabled/detached after acceptance.
+    nbMock.validateChatSources.mockResolvedValue({ ok: false, error: "source_not_in_notebook" });
+    filesMock.photoLinkedToTarget.mockResolvedValue({ fileId: DOC_A, capturedAt: FAULT_AT });
+    lookMock.loadVisualEvidenceForPhoto.mockResolvedValue(row);
+  }
+  const quiet = () => {
+    expect(fetch).not.toHaveBeenCalled(); expect(ragMock.retrieveNodeChunks).not.toHaveBeenCalled();
+    expect(nbMock.recordTurn).not.toHaveBeenCalled(); expect(nbMock.acceptNotebookTurnContext).not.toHaveBeenCalled();
+  };
+  it("delivers the photo warning directly", async () => {
+    acceptedPhotoRetry(look([{ code: "smoke", confidence: 0.99 }]));
+    const response = await POST(req({ retryRequestId: REQUEST, threadId: null }), params);
+    expect(response.status).toBe(403);
+    const body = await response.json();
+    expect(body.safetyWarning).toContain("⚠️"); expect(body.code).toBe("source_not_in_notebook");
+    quiet();
+  });
+  it("delivers the photo warning to a progress-stream client", async () => {
+    process.env.MIRA_CHAT_PROGRESS = "1";
+    try {
+      acceptedPhotoRetry(look([{ code: "smoke", confidence: 0.99 }]));
+      const r = new NextRequest("http://test/api/equipment-notebooks/x/chat", { method: "POST", body: JSON.stringify({ retryRequestId: REQUEST, threadId: null }),
+        headers: { "Content-Type": "application/json", "x-mira-progress": "1" } });
+      const text = await (await POST(r, params)).text();
+      expect(text).toContain("⚠️"); expect(text).toContain("source_not_in_notebook");
+      quiet();
+    } finally { delete process.env.MIRA_CHAT_PROGRESS; }
+  });
+  it("keeps a plain source refusal when the photo is not hazardous", async () => {
+    acceptedPhotoRetry(look([]));
+    const response = await POST(req({ retryRequestId: REQUEST, threadId: null }), params);
+    expect(response.status).toBe(403);
+    const body = await response.json();
+    expect(body).toEqual({ error: "source_not_in_notebook" });
+    quiet();
+  });
+  it("does not disclose a hazard when the original photo is unavailable", async () => {
+    acceptedPhotoRetry(look([{ code: "smoke", confidence: 0.99 }]));
+    filesMock.photoLinkedToTarget.mockResolvedValue(null);
+    const response = await POST(req({ retryRequestId: REQUEST, threadId: null }), params);
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({ error: "retry_photo_unavailable" });
+    quiet();
+  });
+  it("does not disclose a replacement photo's hazard", async () => {
+    acceptedPhotoRetry(look([]));
+    lookMock.loadVisualEvidenceForPhoto.mockResolvedValue(look([{ code: "smoke", confidence: 0.99 }]) as Row);
+    const response = await POST(req({ retryRequestId: REQUEST, threadId: null }), params);
+    const text = await response.text();
+    expect(response.status).toBe(409); expect(text).not.toContain("⚠️"); expect(text).toContain("retry_photo_changed");
+    quiet();
+  });
+  it("keeps the descriptor-load failure closed and never discloses or writes", async () => {
+    acceptedPhotoRetry(look([{ code: "smoke", confidence: 0.99 }]));
+    lookMock.loadVisualEvidenceForPhoto.mockRejectedValue(new Error("descriptor store down"));
+    const response = await POST(req({ retryRequestId: REQUEST, threadId: null }), params);
+    expect(response.status).toBe(500);
+    const body = await response.json();
+    expect(body.safetyWarning).toBeUndefined(); expect(body.error).toBe("visual_descriptor_load_failed");
+    quiet();
+    expect(nbMock.stampClaimedTurnComponent).not.toHaveBeenCalled(); expect(benchMock.advanceSelectionRevision).not.toHaveBeenCalled();
+  });
+  it("PINNED BEHAVIOUR CHANGE (human decision): a descriptor that first appears after acceptance is 'changed' and its hazard is withheld too", async () => {
+    acceptedPhotoRetry(look([]));
+    recoveryMock.readTurnRetry.mockResolvedValue({ body: { ...originalBody(), message: "What fuse should this drive use?", mode: "grounded", sourceDocIds: [DOC_A], visualEvidence: { fileId: DOC_A } },
+      target: { kind: "known", equipmentEntityId: null }, component: null, acceptedContext: { ...acceptedContext, currentLookRow: null } });
+    lookMock.loadVisualEvidenceForPhoto.mockResolvedValue(look([{ code: "smoke", confidence: 0.99 }]) as Row);
+    const response = await POST(req({ retryRequestId: REQUEST, threadId: null }), params);
+    const text = await response.text();
+    expect(response.status).toBe(409); expect(text).toContain("retry_photo_changed"); expect(text).not.toContain("⚠️");
+    quiet();
+  });
+  it("control: with the source NOT held, a replaced photo's hazard still never drives the retry", async () => {
+    acceptedPhotoRetry(look([]));
+    nbMock.validateChatSources.mockResolvedValue({ ok: true, docIds: [DOC_A], nodeId: "node-1" });
+    lookMock.loadVisualEvidenceForPhoto.mockResolvedValue(look([{ code: "smoke", confidence: 0.99 }]) as Row);
+    const response = await POST(req({ retryRequestId: REQUEST, threadId: null }), params);
+    const text = await response.text();
+    expect(response.status).toBe(409); expect(text).not.toContain("⚠️"); expect(text).toContain("retry_photo_changed");
+    quiet();
+  });
+  it("still warns about a question hazard when the source is held", async () => {
+    acceptedPhotoRetry(look([]));
+    const body = { ...originalBody(), message: "There is smoke coming from the drive panel", mode: "grounded", sourceDocIds: [DOC_A], visualEvidence: { fileId: DOC_A } };
+    recoveryMock.readTurnRetry.mockResolvedValue({ body, target: { kind: "known", equipmentEntityId: null }, component: null, acceptedContext: { ...acceptedContext, currentLookRow: look([]) } });
+    const response = await POST(req({ retryRequestId: REQUEST, threadId: null }), params);
+    expect((await response.json()).safetyWarning).toContain("⚠️");
+    quiet();
+  });
+});

@@ -9,9 +9,9 @@ import { NextRequest, NextResponse } from "next/server";
 import type { Pool } from "pg";
 
 const db = await vi.hoisted(async () => {
-  const { equipmentTestDatabaseUrl } = await import("../../../scripts/equipment-test-database.mjs");
+  const { recoveryTestDatabaseUrl } = await import("../../../scripts/recovery-test-database.mjs");
   const { Pool: PgPool } = await import("pg");
-  const connectionString = equipmentTestDatabaseUrl(process.env.TEST_DATABASE_URL, process.env.MIRA_TEST_DB_CONFIRM);
+  const connectionString = recoveryTestDatabaseUrl(process.env.TEST_DATABASE_URL, process.env.MIRA_TEST_DB_CONFIRM, process.env.MIRA_TEST_PROFILE);
   return { pool: new PgPool({ connectionString, max: 5 }) as Pool };
 });
 vi.mock("@/lib/db", () => ({ default: db.pool }));

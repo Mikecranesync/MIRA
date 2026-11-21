@@ -9,7 +9,7 @@ import { LEGACY_THREAD_ID } from "./notebook-tree";
 import { withLivingSheetRider, chatBodyFor, errorMessageFor, sendFailureMessage, retainedStreamInterruption } from "./hub-host-logic";
 import { draftAfterSendFailed, readRecoveryPointer, recoveryPointerKey } from "./turn-recovery-client";
 import { notebookIdentitySnapshot } from "@/capabilities/turn-recovery/accepted-context";
-import { draftAfterSendSucceeded } from "./hub-host-logic";
+import { draftAfterSendSucceeded, rowSignature } from "./hub-host-logic";
 import { NotebookHttpError, readNotebookStream } from "@/components/equipment/notebook-chat-utils";
 import { partsFromStream } from "./to-interaction";
 
@@ -42,7 +42,7 @@ function realSend(draft: string, scopeRefusal = false, succeed = false, refusalC
     recoveryPointerKey, window: { localStorage: storage }, API_BASE: "", abortRef: { current: null },
     selectionRef: { current: sel }, setFailedBody, setSettledFollowups: vi.fn(), setLive, setBusy: vi.fn(),
     setComponentFrame: vi.fn(), setRecoveries: vi.fn(), setRecoveryEpoch: vi.fn(), setSignedOut: vi.fn(), setBenchView: vi.fn(),
-    dropOutgoing: vi.fn(), outgoingOwner: { current: null }, dispatch, fetch, hydrateRecovery: async () => null,
+    dropOutgoing: vi.fn(), outgoingOwner: { current: null }, dispatch, fetch, hydrateRecovery: async () => null, setPinnedTurns: vi.fn(), visibleRef: { current: [] }, rowSignature,
     setBenchRefresh: vi.fn(), loadDetail: vi.fn(), loadNotebooks: vi.fn(),
   };
   const compiled = ts.transpileModule(`const send = ${initializer};`, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } }).outputText;
@@ -92,7 +92,7 @@ function retryCallback(recoveries: unknown[], recoveryRetries: unknown[]) {
   const send = vi.fn();
   const deps = { recoveries, recoveryRetries, send, selection: { notebookId: "notebook", threadId: "thread" },
     failedBody: { body: { message: "Question B" }, question: "Question B" }, machineRetryMatches: true,
-    retryCheck: { kind: "retry" }, persistedRetry: null, detail: null, dispatch: vi.fn(), chatBodyFor,
+    retryCheck: { kind: "retry" }, persistedRetry: null, detail: null, visibleTurns: [], dispatch: vi.fn(), chatBodyFor,
     answerTurnId: (id: string) => `${id}-a` };
   const compiled = ts.transpileModule(`const onRetry = ${initializer};`, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } }).outputText;
   const retry = new Function(...Object.keys(deps), "useCallback", `${compiled}\nreturn onRetry;`)(...Object.values(deps), (fn: unknown) => fn);
@@ -137,7 +137,7 @@ describe("native round3 live recovery regressions", () => {
   });
 });
 
-function terminalCallback(liveRequestId: string) {
+function terminalCallback(liveRequestId: string, liveResult: { status: string } | null = null, hydrate?: (...a: unknown[]) => Promise<unknown>) {
   const source = readFileSync(new URL("./hub-host.tsx", import.meta.url), "utf8");
   const parsed = ts.createSourceFile("host.tsx", source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   let initializer = "";
@@ -154,7 +154,8 @@ function terminalCallback(liveRequestId: string) {
   const pointer = { ...selection, requestId, question: "Question A" };
   const drop = vi.fn();
   const deps = { isCurrent: () => true, selection, loadDetail: async () => true,
-    detailRef: { current: { turns: [{ id: "saved-A", clientRequestId: requestId }] } }, hydrateRecovery: async () => ({ id: "saved-A", clientRequestId: requestId }),
+    detailRef: { current: { turns: [{ id: "saved-A", clientRequestId: requestId }] } }, liveRef: { current: { requestId: liveRequestId, result: liveResult } },
+    hydrateRecovery: hydrate ?? (async () => ({ id: "saved-A", clientRequestId: requestId })),
     removeRecoveryPointer: vi.fn(), window: { localStorage: {} }, recoveryActor: "owner", setRecoveries: vi.fn(),
     setLive: (fn: (previous: typeof live) => typeof live) => { live = fn(live); },
     outgoingOwner: { current: { id: "outgoing-A", requestId }, drop }, dropOutgoing: drop };
@@ -169,6 +170,17 @@ describe("native round3 late persistence", () => {
     await h.terminal(h.pointer, { state: "complete", answerStatus: "error" });
     expect(h.live()).toBeNull();
     expect(h.drop).toHaveBeenCalledWith("outgoing-A");
+  });
+  it("round4 F9: the follower tells hydration how the live stream ended, and an old row of the other outcome cannot retire it", async () => {
+    const seen: unknown[][] = [];
+    const h = terminalCallback("original-A", { status: "answered" }, async (...a) => { seen.push(a); return null; }); // read returned the OLD failure -> not confirmed
+    expect(await h.terminal(h.pointer, { state: "complete", answerStatus: "error" })).toBe(false);
+    expect(seen[0]![2]).toEqual({ error: false });
+    expect(h.live()).toEqual({ requestId: "original-A" }); // live success kept
+    const failed = terminalCallback("original-A", { status: "error" }, async (...a) => { seen.push(a); return { id: "saved-A", clientRequestId: "original-A" }; });
+    await failed.terminal(failed.pointer, { state: "complete", answerStatus: "error" });
+    expect(seen[1]![2]).toEqual({ error: true });
+    expect(failed.live()).toBeNull();
   });
   it("does not retire another request's live exchange", async () => {
     const h = terminalCallback("newer-B");

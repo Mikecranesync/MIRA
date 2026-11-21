@@ -2011,9 +2011,20 @@ async function handleChatTurn(
             ? 422
             : 403;
       if (retryingClaim && (questionSafetyTrigger || energizedAskEarly)) return refuseRecovery({ error: validated.error, status });
-      await abandonRequestClaim();
-      endRoot();
-      return NextResponse.json({ error: validated.error }, { status });
+      if (retryingClaim && visualClaimFileId) {
+        // Native round4 F1: a held manual must not hide a warning from the
+        // ORIGINAL accepted photo. Defer this refusal to the bounded photo
+        // authorization + unchanged-descriptor check below; the refusal
+        // (and any independently verified warning) is then served by
+        // refuseRecovery, so no retrieval, provider call or write follows.
+        targetProblem ??= { error: validated.error, status };
+        equipmentTargetHold ??= { text: "The selected source is unavailable, so this reply contains only the safety warning. Review the sources before asking for diagnostic guidance.", reason: "source_unavailable" };
+        componentHold ??= equipmentTargetHold;
+      } else {
+        await abandonRequestClaim();
+        endRoot();
+        return NextResponse.json({ error: validated.error }, { status });
+      }
     }
   }
 
@@ -2178,6 +2189,8 @@ async function handleChatTurn(
   if (originalContext && !sameVisualObservation(originalContext.currentLookRow, lookRow)) {
     targetProblem = { error: "retry_photo_changed", status: 409 };
     equipmentTargetHold = componentHold = { text: "The original photo reading changed. This reply contains only the safety warning; review the photo before sending a new question.", reason: "original_photo_changed" };
+    // A replaced reading is not the accepted evidence: never let its hazards (or text) drive this retry.
+    lookRow = null;
   }
   // Evidence continuity (2026-09-22, staging trace ae30230b…): a text-only
   // follow-up ("what voltage was it?") lost the photos from earlier turns —

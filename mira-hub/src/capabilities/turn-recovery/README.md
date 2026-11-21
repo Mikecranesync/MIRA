@@ -1,13 +1,15 @@
 # Notebook turn recovery checks
 
-Use an explicitly disposable loopback PostgreSQL database and the standard Hub
-integration runner. No particular port, role or database name is required.
+Use an explicitly disposable loopback PostgreSQL database and the dedicated
+`turn-recovery` profile. No particular port, role or database name is required.
+The three `*.integration.test.ts` suites here run ONLY in that profile: the default
+integration config (and therefore the shared-dev runner, `test:integration:dev`)
+excludes them, and each suite refuses to load outside the profile.
 
 ```sh
 export TEST_DATABASE_URL=postgresql://test_user@127.0.0.1:55432/notebook_test
 export MIRA_TEST_DB_CONFIRM=DISPOSABLE
-npm run db:integration:setup
-npm run test:integration -- src/capabilities/turn-recovery/
+npm run test:integration:turn-recovery   # provisions the schema, then runs the 29 cases
 ```
 
 The database must already exist. Setup provisions the normal integration schema,

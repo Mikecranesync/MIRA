@@ -123,6 +123,13 @@ import {
   shellThreadId,
   withLivingSheetRider,
   stopArmed,
+  mergeTurnRows,
+  reconcileLiveRows,
+  rowSignature,
+  rowConfirmsStreamOutcome,
+  pinsAfterDetailLoad,
+  withStoppedExchangeRetry,
+  recoveryRetryList,
   type CompatibleStreamResult,
   type HubSelection,
 } from "./hub-host-logic";
@@ -158,6 +165,8 @@ type Live = {
    *  send's own component frame and shows its label — never the header's. */
   readonly componentExpected?: boolean;
   readonly componentLabel?: string | null;
+  /** What this request's persisted row said when the send began (null: none), so a row committed later is recognised. */
+  readonly baseline: string | null;
 };
 
 async function getJson<T>(path: string, signal?: AbortSignal): Promise<{ status: number; data: T | null }> {
@@ -209,6 +218,8 @@ export function HubShellHost() {
   const detailRef = useRef(detail);
   useEffect(() => { detailRef.current = detail; }, [detail]);
   const [live, setLive] = useState<Live | null>(null);
+  const liveRef = useRef(live);
+  useEffect(() => { liveRef.current = live; }, [live]);
   // Exact owned rows recovered outside the ordinary fifty-turn window. Only
   // request pointers survive reload; answer bytes remain server-authoritative.
   const [pinnedTurns, setPinnedTurns] = useState<NonNullable<TurnRecovery["turn"]>[]>([]);
@@ -348,6 +359,7 @@ export function HubShellHost() {
     if (!res.data) return false;
     detailRef.current = res.data;
     setDetail(res.data);
+    setPinnedTurns(cur => pinsAfterDetailLoad(cur, res.data!.turns));
     // Codex #4195 round 2 F6: hydration follows a running search to completion —
     // seed the SAME driver a confirm uses, keyed on this notebook's status.
     if (res.data.manualSearch) seedManualSearch(sel.notebookId, res.data.manualSearch);
@@ -359,20 +371,24 @@ export function HubShellHost() {
   }, [selection, loadDetail]);
   useEffect(() => () => { detailGate.invalidate(); detailAbortRef.current?.abort(); }, [detailGate]);
 
-  const hydrateRecovery = useCallback(async (pointer: RecoveryPointer, signal?: AbortSignal) => {
+  // Round4 F9: only a FRESH read counts. A failed refresh must never fall back to the cached
+  // transcript (it can still hold this request's earlier failure), and when the caller knows the
+  // result it just streamed, a row of the opposite outcome is the old record, not confirmation.
+  const hydrateRecovery = useCallback(async (pointer: RecoveryPointer, signal?: AbortSignal, outcome?: { error: boolean }) => {
     const current = () => !signal?.aborted && selectionRef.current?.notebookId === pointer.notebookId
       && selectionRef.current?.threadId === pointer.threadId;
     if (!current()) return null;
     try {
-      await loadDetail(pointer);
+      const fresh = await loadDetail(pointer);
       if (!current()) return null;
-      const recent = detailRef.current?.turns.find(row => (row as PersistedTurn & { clientRequestId?: string }).clientRequestId === pointer.requestId);
-      if (recent) return recent;
+      const confirms = (row: { answerStatus: string }) => rowConfirmsStreamOutcome(row, outcome);
+      const recent = fresh ? detailRef.current?.turns.find(row => (row as PersistedTurn & { clientRequestId?: string }).clientRequestId === pointer.requestId) : undefined;
+      if (recent) return confirms(recent) ? recent : null;
       const res = await getJson<TurnRecovery>(`/api/equipment-notebooks/${encodeURIComponent(pointer.notebookId)}/requests/${encodeURIComponent(pointer.requestId)}/?threadId=${encodeURIComponent(pointer.threadId)}&includeTurn=1`, signal);
       if (!current()) return null;
       if (res.status === 401) { setSignedOut(true); return null; }
       const row = res.data?.turn;
-      if (!row || row.clientRequestId !== pointer.requestId) return null;
+      if (!row || row.clientRequestId !== pointer.requestId || !confirms(row)) return null;
       setPinnedTurns(cur => [...cur.filter(t => t.clientRequestId !== pointer.requestId), row]);
       return row;
     } catch { return null; } // Keep the live answer/pointer until a later read succeeds.
@@ -395,7 +411,9 @@ export function HubShellHost() {
       observe: observation => { if (isCurrent()) setRecoveries(cur => cur.map(item => item.pointer.requestId === observation.pointer.requestId ? observation : item)); },
       terminal: async (pointer, value, signal) => {
         if (!isCurrent()) return;
-        const row = await hydrateRecovery(pointer, signal);
+        // A live exchange for this request already knows how it ended; an old row of the opposite outcome is not proof.
+        const mine = liveRef.current?.requestId === pointer.requestId ? liveRef.current : null;
+        const row = await hydrateRecovery(pointer, signal, mine?.result ? { error: mine.result.status === "error" } : undefined);
         if (!isCurrent()) return;
         if (!row) return false;
         setLive(cur => cur?.requestId === pointer.requestId ? null : cur);
@@ -483,9 +501,21 @@ export function HubShellHost() {
   const docIds = useMemo(() => enabledDocIds(detail?.sources ?? []), [detail]);
   // Turn-scoped keys (Codex #3839 F1): every answer numbers its citations from
   // "[1]", so the index is keyed by (assistant turn id, citation number).
+  // Round4 F11: the index covers the SAME merged rows the transcript renders (an exact-recovered
+  // older answer is pinned outside detail.turns), plus the live answer's evidence.
+  const visibleTurns = useMemo(
+    () => mergeTurnRows(pinnedTurns as (PersistedTurn & { createdAt?: string })[], (detail?.turns ?? []) as (PersistedTurn & { createdAt?: string })[]),
+    [detail, pinnedTurns],
+  );
+  // Round4 F9: a retry reuses its request id, so the request's earlier persisted row is the OLD
+  // record. While the live exchange exists it owns that id; the row is shown again once the live
+  // view is retired by a fresh authoritative read.
+  const visibleRef = useRef(visibleTurns);
+  useEffect(() => { visibleRef.current = visibleTurns; }, [visibleTurns]);
+  const { rows: renderRows, hideLive } = useMemo(() => reconcileLiveRows(visibleTurns, live), [visibleTurns, live]);
   const citations = useMemo(
-    () => citationIndex(detail?.turns ?? [], live?.result?.citations ?? live?.citations ?? [], live ? `${live.id}-a` : null),
-    [detail, live],
+    () => citationIndex(renderRows, live?.result?.citations ?? live?.citations ?? [], live ? `${live.id}-a` : null),
+    [renderRows, live],
   );
 
   const liveTurns = useMemo<InteractionTurn[]>(() => {
@@ -526,21 +556,17 @@ export function HubShellHost() {
       ? (benchView.state?.selection?.componentId ?? null)
       : undefined;
   const persistedRetry = useMemo(
-    () => (detail && !busy && !live && !failedBody && !state.sendError ? persistedRetryTarget(detail.turns, headerComponentId, detail.notebook.asset?.entityId) : null),
-    [detail, busy, live, failedBody, state.sendError, headerComponentId],
+    () => (detail && !busy && !live && !failedBody && !state.sendError ? persistedRetryTarget(visibleTurns, headerComponentId, detail.notebook.asset?.entityId) : null),
+    [detail, busy, live, failedBody, state.sendError, headerComponentId, visibleTurns],
   );
 
-  const recoveryRetries = useMemo(() => !busy && !live && detail
-    ? recoveries.flatMap(recovery => recovery.value
-      && recoveryMatchesTarget(recovery.value, detail.notebook.asset?.entityId ?? null, headerComponentId, detail.notebook)
-      ? [{ answerId: answerTurnId(recovery.value.turnId), question: recovery.value.question, requestId: recovery.value.requestId }] : []) : [],
-    [recoveries, busy, live, detail, headerComponentId]);
-
-  const visibleTurns = useMemo(() => {
-    const rows = new Map<string, PersistedTurn & { createdAt?: string }>(pinnedTurns.map(row => [row.id, row as PersistedTurn & { createdAt?: string }]));
-    for (const row of detail?.turns ?? []) rows.set(row.id, row);
-    return [...rows.values()].sort((a, b) => Date.parse(a.createdAt ?? "") - Date.parse(b.createdAt ?? "") || a.id.localeCompare(b.id));
-  }, [detail, pinnedTurns]);
+  // Round4 F10: a Stop leaves its live exchange on screen. When THIS request's own status later
+  // reads interrupted + retryable, Retry attaches to that exchange (partial text kept, same
+  // request id). Another request's observation never reaches it; nothing is sent until a click.
+  const recoveryRetries = useMemo(
+    () => !busy && detail ? recoveryRetryList(recoveries, live, { equipmentEntityId: detail.notebook.asset?.entityId ?? null, componentId: headerComponentId, notebook: detail.notebook }) : [],
+    [recoveries, busy, live, detail, headerComponentId],
+  );
 
   // Live data is a pure projection over the UI state: the reducer's `hydrate`
   // replaces thread/projects/machines/context and keeps drawer, draft, mode and
@@ -555,7 +581,7 @@ export function HubShellHost() {
       const thread = loadingThread(selection, turns);
       return notebooks ? shellReducer(state, { type: "hydrate", data: { thread, projects, machines } }) : state;
     }
-    const base = fixtureFor(detail.notebook, selection, visibleTurns, meta, projects, machines);
+    const base = fixtureFor(detail.notebook, selection, renderRows, meta, projects, machines);
     // Overlay the current lookup on the last assistant turn without storing a
     // snapshot of progress. The live frame can seed this state before detail loads.
     const settled =
@@ -566,8 +592,8 @@ export function HubShellHost() {
       withSettledFollowups(
         withOutgoing(
           // #4846: a failure asked again right after is not shown twice; the newest one offers Retry.
-          withPersistedRetry(threadFromPersisted(withoutRetriedFailures(visibleTurns), meta).turns, persistedRetry?.answerId ?? null),
-          { turns: visibleTurns.some(row => (row as PersistedTurn & { clientRequestId?: string }).clientRequestId === live?.requestId) ? [] : liveTurns, outgoingId: live?.outgoingId ?? null },
+          withPersistedRetry(threadFromPersisted(withoutRetriedFailures(renderRows), meta).turns, persistedRetry?.answerId ?? null),
+          { turns: hideLive ? [] : liveTurns, outgoingId: live?.outgoingId ?? null },
           outgoing?.requestId && visibleTurns.some(row => (row as PersistedTurn & { clientRequestId?: string }).clientRequestId === outgoing.requestId) ? null : outgoing,
           shellThreadId(selection), shellThreadId(selection), contextFor(meta),
         ),
@@ -586,10 +612,12 @@ export function HubShellHost() {
           lifecycle: recovery.value?.state === "complete" ? "running" as const : recovery.value?.state !== "pending" && recovery.value !== null || recovery.unavailable ? "failed" as const : "running" as const,
           parts: recoveryRetries.some(retry => retry.requestId === recovery.pointer.requestId) ? turn.parts : [{ type: "text" as const, text: recovery.value?.state === "complete" ? "Loading the saved answer…" : recovery.unavailable ? "Could not confirm the saved request. Your question is kept here; check the connection before sending again." : recovery.value?.state === "interrupted" ? "The saved request was interrupted. Review its original target and attachments before sending again." : "Checking the saved request…" }],
         } : turn) : []) : [];
-    const projected = recoveryRetries.reduce((items, retry) => withPersistedRetry(items, retry.answerId), [...turns, ...recoveredTurns]);
+    const stoppedRetryId = live && recoveryRetries.some(retry => retry.requestId === live.requestId) ? `${live.id}-a` : null;
+    const withStoppedRetry = withStoppedExchangeRetry(turns, stoppedRetryId);
+    const projected = recoveryRetries.reduce((items, retry) => withPersistedRetry(items, retry.answerId), [...withStoppedRetry, ...recoveredTurns]);
     const thread = { ...base.thread, turns: projected };
     return shellReducer(state, { type: "hydrate", data: { thread, projects, machines, activeContext: base.activeContext } });
-  }, [state, detail, meta, selection, projects, machines, liveTurns, live, notebooks, follow, outgoing, settledFollowups, persistedRetry, recoveries, recoveryRetries, busy, visibleTurns]);
+  }, [state, detail, meta, selection, projects, machines, liveTurns, live, notebooks, follow, outgoing, settledFollowups, persistedRetry, recoveries, recoveryRetries, busy, visibleTurns, renderRows, hideLive]);
 
   // #5504 Codex r2: one send/change gate per conversation, shared with the component panel.
   // Keyed on the conversation (not a bare ref), so a gate never outlives a thread switch.
@@ -642,10 +670,14 @@ export function HubShellHost() {
     const outgoingId = outgoingOwner.current?.id ?? null;
     setFailedBody(null);
     setSettledFollowups(null);
+    // Round4 F9: a retry's earlier pinned row is the old record, not this attempt.
+    if (retryRequestId) setPinnedTurns(cur => cur.filter(row => row.clientRequestId !== retryRequestId));
     // #4454: which answers were already there, so the kept follow-ups land on the one this send produces.
     const answeredBefore = (detailRef.current?.turns ?? []).map((row) => answerTurnId(row.id));
     dispatch({ type: "set-send-error", error: null });
-    setLive({ id, requestId: retryRequestId ?? prepared.body.clientRequestId, question, content: "", citations: [], result: null, stopped: false, startedAt: new Date().toISOString(), outgoingId });
+    const liveRequestId = retryRequestId ?? prepared.body.clientRequestId;
+    const earlier = visibleRef.current.find(row => (row as PersistedTurn & { clientRequestId?: string }).clientRequestId === liveRequestId);
+    setLive({ id, requestId: liveRequestId, question, content: "", citations: [], result: null, stopped: false, startedAt: new Date().toISOString(), outgoingId, baseline: earlier ? rowSignature(earlier) : null });
     setBusy(true);
     let outBody = prepared.body;
     // The route refused the scope (the selection moved): a retry is asked again under what the
@@ -723,7 +755,7 @@ export function HubShellHost() {
       setLive((cur) => (cur && cur.id === id ? { ...cur, result } : cur));
       // The server row is the source of truth; refresh it (also picks up a
       // thread created by this first turn) and let the live turn go.
-      const saved = await hydrateRecovery(pointer, ctrl.signal);
+      const saved = await hydrateRecovery(pointer, ctrl.signal, { error: result.status === "error" });
       await loadNotebooks();
       // #4454: keep the follow-ups the live turn showed (same rule as the live
       // render), for the reloaded answer to that same question.
@@ -739,7 +771,7 @@ export function HubShellHost() {
       }
       // #4311: a failed send put the question back in the composer; a
       // successful retry takes it away again (never a newer draft).
-      if (result.status !== "error" && detailRef.current?.turns.some(row => (row as PersistedTurn & { clientRequestId?: string }).clientRequestId === pointer.requestId)) clearPointer();
+      if (saved && result.status !== "error" && detailRef.current?.turns.some(row => (row as PersistedTurn & { clientRequestId?: string }).clientRequestId === pointer.requestId)) clearPointer();
       const draft = origin === "composer" ? draftAfterSendSucceeded(draftRef.current, question) : null;
       if (draft !== null) dispatch({ type: "set-draft", draft });
     } catch (caught) {
@@ -1090,10 +1122,10 @@ export function HubShellHost() {
     // #4846/#5463: a stored failure is asked again through the ordinary send path, as if
     // typed again: a new request, scoped from what the header shows now.
     if (!persistedRetry || !selection || !detail || (turnId && turnId !== persistedRetry.answerId)) return;
-    const row = detail.turns.find(row => answerTurnId(row.id) === persistedRetry.answerId) as (PersistedTurn & { clientRequestId?: string | null }) | undefined;
+    const row = visibleTurns.find(row => answerTurnId(row.id) === persistedRetry.answerId) as (PersistedTurn & { clientRequestId?: string | null }) | undefined;
     if (!row?.clientRequestId) { dispatch({ type: "set-send-error", error: "The original request cannot be recovered. Review the target and send a new question." }); return; }
     void send(chatBodyFor(persistedRetry.question, [], [], selection), persistedRetry.question, selection, "retry", row.clientRequestId);
-  }, [failedBody, retryCheck, send, persistedRetry, selection, detail, recoveryRetries, recoveries, machineRetryMatches]);
+  }, [failedBody, retryCheck, send, persistedRetry, selection, detail, recoveryRetries, recoveries, machineRetryMatches, visibleTurns]);
 
   /** New chat: a fresh thread in the open notebook; from HOME, HOME is already the blank chat. */
   const onNewChat = useCallback(() => {

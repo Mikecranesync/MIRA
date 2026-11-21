@@ -7,11 +7,11 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { NextResponse } from "next/server";
 import type { Pool } from "pg";
 
-const db = vi.hoisted(() => {
-  if (!process.env.TEST_DATABASE_URL || process.env.MIRA_TEST_DB_CONFIRM !== "DISPOSABLE") throw new Error("Disposable database required");
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { Pool: PgPool } = require("pg");
-  return { pool: new PgPool({ connectionString: process.env.TEST_DATABASE_URL, max: 5 }) as Pool };
+const db = await vi.hoisted(async () => {
+  const { recoveryTestDatabaseUrl } = await import("../../../scripts/recovery-test-database.mjs");
+  const { Pool: PgPool } = await import("pg");
+  const connectionString = recoveryTestDatabaseUrl(process.env.TEST_DATABASE_URL, process.env.MIRA_TEST_DB_CONFIRM, process.env.MIRA_TEST_PROFILE);
+  return { pool: new PgPool({ connectionString, max: 5 }) as Pool };
 });
 vi.mock("@/lib/db", () => ({ default: db.pool }));
 const auth = vi.hoisted(() => {
