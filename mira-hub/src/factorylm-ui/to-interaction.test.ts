@@ -18,6 +18,7 @@ import {
   sourceIdFor,
   threadFromPersisted,
   turnsFromPersisted,
+  manualStatusForThread,
   withHostManualStatus,
   withManualSearchStatus,
   withSettledFollowups,
@@ -550,6 +551,18 @@ describe("withManualSearchStatus — the post-refresh render path (#4189 F6)", (
 // thread as that read saw it. While a look-alike answer streams (or before a
 // read includes it), the line must stay under the saved answer, not move onto
 // the new one.
+describe("manualStatusForThread (#5750 r3)", () => {
+  const RUNNING = { running: true, model: "GS11N-20P2" };
+  it("shows nothing when the detail read withheld the status for this thread", () => {
+    expect(manualStatusForThread(RUNNING, "other_model")).toBeNull();
+    expect(manualStatusForThread(RUNNING, "out_of_reach")).toBeNull();
+  });
+  it("control: without a withheld scope the status the host follows still shows", () => {
+    expect(manualStatusForThread(RUNNING, undefined)).toBe(RUNNING);
+    expect(manualStatusForThread(null, undefined)).toBeNull();
+  });
+});
+
 describe("withHostManualStatus — the status stays under the answer it was read with", () => {
   const READY = { manufacturer: "AutomationDirect", model: "GS11N-20P2", running: false, message: "ready", manualUrl: "https://app.example.test/hub/v3/source/?file=f&page=26" };
   const saved = [row(), row({ id: "turn-2", createdAt: "2026-09-17T12:05:00.000Z" })];

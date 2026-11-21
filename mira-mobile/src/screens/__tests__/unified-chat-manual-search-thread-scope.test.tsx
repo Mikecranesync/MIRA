@@ -47,6 +47,7 @@ vi.mock("../../api/resources", async (importOriginal) => {
 
 import { UnifiedChat, type UnifiedChatProps } from "../UnifiedChat";
 import type { ChatTurn } from "../../lib/sse";
+import type { NotebookServerTurn } from "../../api/resources";
 
 const NB = "nb-1";
 const READY_MESSAGE = "The AutomationDirect GS11N-20P2 manual is ready to answer from.";
@@ -186,6 +187,99 @@ describe("UnifiedChat — a look-alike request drops the project's ready line (#
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  // #5750 r3: the saved window slides when a reload moves live answers into
+  // the newest 50 rows. The line stays on the answer it was read with, by
+  // that answer's request id, not by its position.
+  const row = (id: string, question: string, answerText: string, clientRequestId?: string) =>
+    ({ id, question, answerStatus: "answered", answerText, evidence: [], ...(clientRequestId ? { clientRequestId } : {}) }) as unknown as NotebookServerTurn;
+  const R1 = row("r1", "What is the input voltage of the GS11N-20P2?", "230 V single phase.");
+  const R2 = row("r2", EXACT.q, "Here it is.");
+  const SAME_Q = "What is the rated current of the GS11N-20P2?";
+  const SAME_A: ChatTurn = { answer: "1.6 A.", citations: [], status: "answered" };
+  const PENDING = (q: string) => ({ q, a: { answer: "", citations: [], status: "" } as ChatTurn });
+  const settle = async () => { await act(async () => { await Promise.resolve(); await Promise.resolve(); }); };
+
+  it("after the saved window slides, a streaming look-alike answer never gets the line", async () => {
+    fetchManualSearchStatus.mockResolvedValue(READY);
+    const view = render(<UnifiedChat {...props({ turns: [R1, R2] })} />);
+    await settle();
+    expect(lineUnder(EXACT.q)).toBe(true); // precondition: hydration placed it under the newest saved answer.
+    view.rerender(<UnifiedChat {...props({ turns: [R1, R2], pending: PENDING(SAME_Q), busy: true })} />);
+    await settle();
+    view.rerender(<UnifiedChat {...props({ turns: [R1, R2], liveTurns: [{ q: SAME_Q, a: SAME_A, requestId: "req-3" }] })} />);
+    await settle();
+    expect(lineUnder(SAME_Q)).toBe(true); // precondition: the re-read placed it under the new answer.
+    // Reload: the answer is saved and the window drops the oldest row.
+    const saved = [R2, row("r3", SAME_Q, SAME_A.answer, "req-3")];
+    view.rerender(<UnifiedChat {...props({ turns: saved })} />);
+    await settle();
+    expect(lineUnder(SAME_Q)).toBe(true);
+    fetchManualSearchStatus.mockImplementation(() => new Promise(() => {}));
+    view.rerender(<UnifiedChat {...props({ turns: saved, pending: PENDING(LOOKALIKE_Q), busy: true })} />);
+    await settle();
+    expect(lineUnder(LOOKALIKE_Q)).toBe(false);
+    expect(lineUnder(SAME_Q)).toBe(true);
+  });
+
+  it("after a failed re-read and a window slide, the line stays on the earlier answer", async () => {
+    fetchManualSearchStatus.mockResolvedValue(READY);
+    const view = render(<UnifiedChat {...props({ turns: [R1, R2] })} />);
+    await settle();
+    expect(lineUnder(EXACT.q)).toBe(true); // precondition.
+    fetchManualSearchStatus.mockResolvedValue(null);
+    view.rerender(<UnifiedChat {...props({ turns: [R1, R2], pending: PENDING(LOOKALIKE_Q), busy: true })} />);
+    await settle();
+    view.rerender(<UnifiedChat {...props({ turns: [R1, R2], liveTurns: [{ q: LOOKALIKE_Q, a: LOOKALIKE_A, requestId: "req-la" }] })} />);
+    await settle();
+    expect(lineUnder(EXACT.q)).toBe(true); // precondition: the failed read left it in place.
+    view.rerender(<UnifiedChat {...props({ turns: [R2, row("rla", LOOKALIKE_Q, LOOKALIKE_A.answer, "req-la")] })} />);
+    await settle();
+    expect(lineUnder(LOOKALIKE_Q)).toBe(false);
+    expect(lineUnder(EXACT.q)).toBe(true);
+  });
+
+  // #5750 r3: a read on a thread with no answer yet has nothing to sit under,
+  // so the first question's streaming answer never inherits it.
+  it("a status read on an empty thread never lands on the first streaming answer", async () => {
+    fetchManualSearchStatus.mockResolvedValue(READY);
+    const view = render(<UnifiedChat {...props()} />);
+    await settle();
+    expect(fetchManualSearchStatus).toHaveBeenCalled(); // precondition: the mount read ran.
+    fetchManualSearchStatus.mockImplementation(() => new Promise(() => {}));
+    view.rerender(<UnifiedChat {...props({ pending: PENDING(LOOKALIKE_Q), busy: true })} />);
+    await settle();
+    expect(lineUnder(LOOKALIKE_Q)).toBe(false);
+  });
+
+  // #5750 r3: a stopped answer is saved after its stream closes, so the read
+  // that starts when it stops may not include the look-alike question.
+  it("a read after a stopped look-alike answer keeps the line on the earlier answer", async () => {
+    fetchManualSearchStatus.mockResolvedValue(READY);
+    const view = render(<UnifiedChat {...props({ liveTurns: [EXACT] })} />);
+    await settle();
+    expect(lineUnder(EXACT.q)).toBe(true); // precondition.
+    const callsBefore = fetchManualSearchStatus.mock.calls.length;
+    view.rerender(<UnifiedChat {...props({ liveTurns: [EXACT], pending: PENDING(LOOKALIKE_Q), busy: true })} />);
+    await settle();
+    const stopped: ChatTurn = { answer: "GS11N-20P25 is", citations: [], status: "stopped" };
+    view.rerender(<UnifiedChat {...props({ liveTurns: [EXACT, { q: LOOKALIKE_Q, a: stopped, requestId: "req-stop" }] })} />);
+    await settle();
+    expect(fetchManualSearchStatus.mock.calls.length).toBeGreaterThan(callsBefore); // precondition: it re-read.
+    expect(lineUnder(LOOKALIKE_Q)).toBe(false);
+    expect(lineUnder(EXACT.q)).toBe(true);
+  });
+
+  it("control: a read after a finished answer places the line under that answer", async () => {
+    fetchManualSearchStatus.mockResolvedValue(READY);
+    const view = render(<UnifiedChat {...props({ liveTurns: [EXACT] })} />);
+    await settle();
+    view.rerender(<UnifiedChat {...props({ liveTurns: [EXACT], pending: PENDING(SAME_Q), busy: true })} />);
+    await settle();
+    view.rerender(<UnifiedChat {...props({ liveTurns: [EXACT, { q: SAME_Q, a: SAME_A, requestId: "req-done" }] })} />);
+    await settle();
+    expect(lineUnder(SAME_Q)).toBe(true);
   });
 
   // #5750 r2 F8: the re-read for an earlier send settles after a newer send.

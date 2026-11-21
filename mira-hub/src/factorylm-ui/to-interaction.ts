@@ -633,6 +633,17 @@ export function withHostManualStatus(
   return withManualSearchStatus(turns, shown, lastSaved ? answerTurnId(lastSaved.id) : null);
 }
 
+/**
+ * #5750 r3: the newest detail read withheld the project's status for this
+ * thread (it is about another model, or its subject is out of reach). No
+ * status shows then — not the detail's, and not one the host was still
+ * following from an earlier read, such as the project's search still running.
+ * A lookup this turn starts renders in place in its own answer, not here.
+ */
+export function manualStatusForThread<S>(visible: S | null, scope: string | null | undefined): S | null {
+  return scope ? null : visible;
+}
+
 /** Follow-up suggestions belong to one identified, saved answer. */
 export interface SettledFollowups {
   readonly answerId: string;

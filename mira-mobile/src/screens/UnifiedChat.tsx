@@ -143,16 +143,16 @@ function createMobileManualSearchDriver(deps: {
   readonly onRefreshSources: () => void;
   readonly isAlive: () => boolean;
   readonly delayMs?: number;
-  /** #5750 r2: how many answers the thread has when a read starts, and the
-   *  report that a read started at that point was applied. The status shows
-   *  under that answer, so a later answer only gets it from a read that
-   *  started after it landed. */
-  readonly answersNow?: () => number;
-  readonly onValidated?: (answers: number) => void;
+  /** #5750 r2: the newest completed answer (its key) when a read starts, and
+   *  the report that a read started at that point was applied. The status
+   *  shows under that answer, so a later answer only gets it from a read
+   *  that started after it landed. */
+  readonly answersNow?: () => string | null;
+  readonly onValidated?: (answer: string | null) => void;
 }): MobileManualSearchDriver {
   const { notebookId, fetchStatus, onStateChange, onRefreshSources, isAlive } = deps;
-  const answersNow = deps.answersNow ?? (() => 0);
-  const validated = (answers: number) => deps.onValidated?.(answers);
+  const answersNow = deps.answersNow ?? (() => null);
+  const validated = (answer: string | null) => deps.onValidated?.(answer);
   const delayMs = deps.delayMs ?? 4000;
   let state: ManualSearchFollowState | null = null;
   let timer: ReturnType<typeof setTimeout> | null = null;
@@ -322,7 +322,7 @@ const COMPOSING_TURN: ChatTurn = { answer: "", citations: [], status: "" };
 
 export interface UnifiedChatProps {
   readonly turns: NotebookServerTurn[];
-  readonly liveTurns: { q: string; a: ChatTurn }[];
+  readonly liveTurns: { q: string; a: ChatTurn; requestId?: string }[];
   readonly pending: { q: string; a: ChatTurn } | null;
   readonly busy: boolean;
   readonly canStop: boolean;
@@ -506,12 +506,35 @@ function UnifiedChatForNotebook({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.sendError]);
   const baseThread = useMemo(() => toThread(messages, fullMeta), [messages, fullMeta]);
-  // #5750 r2: completed answers in the thread — every assistant turn but the
-  // one still streaming (or composing). A status read that starts now is
-  // checked against the thread as it is, so it may sit under answer N.
-  const answeredCount = baseThread.turns.filter((t) => t.role === "assistant").length - (shownPending ? 1 : 0);
-  const answeredRef = useRef(answeredCount);
-  answeredRef.current = answeredCount;
+  // #5750 r2: one stable key per completed answer, in thread order (every
+  // saved row and every live turn yields exactly one assistant turn; the one
+  // still streaming is not counted). A saved row keys on its clientRequestId,
+  // which is the live turn's requestId once that answer is saved, so the key
+  // survives the reload that moves a live answer into the saved rows and the
+  // 50-turn window sliding forward. A status read that starts now was checked
+  // against the thread up to the newest of these, so it is placed under that
+  // answer and no other.
+  const answerKeys = useMemo(
+    () => [
+      ...turns.map((r) => (r as { clientRequestId?: string | null }).clientRequestId || `row:${r.id}`),
+      ...liveTurns.map((t, i) => t.requestId || `live:${i}:${t.q}`),
+    ],
+    [turns, liveTurns],
+  );
+  // The newest answer a status read can rely on the server having seen. A
+  // stopped or interrupted live answer is saved after its stream closes (or
+  // not at all), so a read started right after it may not include that
+  // question: such a read stays on the answer before it.
+  const newestSeen = useMemo(() => {
+    for (let i = answerKeys.length - 1; i >= 0; i--) {
+      const live = liveTurns[i - turns.length];
+      if (live && (live.a.status === "stopped" || !live.a.status)) continue;
+      return answerKeys[i]!;
+    }
+    return null;
+  }, [answerKeys, liveTurns, turns.length]);
+  const newestAnswerRef = useRef<string | null>(null);
+  newestAnswerRef.current = newestSeen;
 
   // Codex round 2 (#4195 F4/F6/F8/F9): "Searching…" must resolve once the
   // background search settles, must NOT poll forever on a stuck/orphaned
@@ -537,8 +560,9 @@ function UnifiedChatForNotebook({
   notebookIdRef.current = notebookId;
   const [follow, setFollow] = useState<ManualSearchFollowState | null>(null);
   // #5750 F1: true from a send until the status re-read after it settles.
-  // #5750 r2: the answer (1-based) the tracked status was last read with.
-  const [statusAnswer, setStatusAnswer] = useState<number | undefined>(undefined);
+  // #5750 r2: the answer the tracked status was last read with (its key), or
+  // null when that read saw no answer yet.
+  const [statusAnswer, setStatusAnswer] = useState<string | null | undefined>(undefined);
   // Codex round 6 F17 (#4195): `follow` tracks exactly ONE generation at a
   // time (by design — see `manual-search-follow.ts`'s header). Once a
   // SECOND, different search takes over that one slot, the FIRST search's
@@ -639,8 +663,14 @@ function UnifiedChatForNotebook({
     // with. A newer answer (a look-alike request, still streaming or already
     // done) only gets it from a read that started after that answer landed;
     // until then a failed or inconclusive read leaves it where it was.
-    return withManualSearchOverrides(baseThread, [...historical, ...orphaned], follow?.status ?? null, statusAnswer);
-  }, [baseThread, settledManualSearches, follow?.key, follow?.status, statusAnswer]);
+    // The answer the status was read with, by position now. No applied read
+    // yet, a read that saw no answer, or a key no longer in the thread (it
+    // slid out of the saved window, or a legacy live turn was saved under a
+    // new id) places it nowhere until the next read. Never the answer still
+    // streaming: positions count completed answers only.
+    const anchor = statusAnswer == null ? 0 : answerKeys.indexOf(statusAnswer) + 1;
+    return withManualSearchOverrides(baseThread, [...historical, ...orphaned], follow?.status ?? null, anchor);
+  }, [baseThread, settledManualSearches, follow?.key, follow?.status, statusAnswer, answerKeys]);
 
   useEffect(() => {
     dispatch({
@@ -706,7 +736,7 @@ function UnifiedChatForNotebook({
       onStateChange: setFollow,
       onRefreshSources: () => void refreshPromotedScopeRef.current(),
       isAlive: () => aliveRef.current,
-      answersNow: () => answeredRef.current,
+      answersNow: () => newestAnswerRef.current,
       onValidated: (answers) => {
         if (aliveRef.current) setStatusAnswer(answers);
       },

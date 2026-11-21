@@ -81,7 +81,7 @@ import { NotebookActionsMenu, NotebookActionsMenuProvider } from "./notebook-act
 import { BenchComponents } from "./BenchComponents";
 import { SEND_BLOCKED_MESSAGE, benchSendRefusal, createBenchSendGate, expectsComponentFrame, isScopeRefusalCode, parseComponentFrames, prepareChatSend, conversationKey, heldEvidenceNote, heldQuestionForSend, recordBenchScope, retryTargetCheck, targetReviewMessage, withoutScope, type BenchScopes, type BenchState, type ComponentTurnFrame, type ScopeField } from "./bench-components-logic";
 import { LEGACY_THREAD_ID, notebookMachines, notebookProjects, threadRefFromItem, notebookIdFromProject, type HubNotebook } from "./notebook-tree";
-import { answerTurnId, citationIndex, contextFor, lifecycleFromStream, livePartsWhileRunning, partsFromStream, questionPhotoPart, threadFromPersisted, withHostManualStatus, withSettledFollowups, type SettledFollowups } from "./to-interaction";
+import { answerTurnId, citationIndex, contextFor, lifecycleFromStream, livePartsWhileRunning, partsFromStream, questionPhotoPart, manualStatusForThread, threadFromPersisted, withHostManualStatus, withSettledFollowups, type SettledFollowups } from "./to-interaction";
 import {
   EMPTY_FIXTURE,
   NO_PROJECT_ERROR,
@@ -135,6 +135,9 @@ type Detail = {
   // fresh by the GET route on every read (`currentManualSearchStatus`) —
   // absent/null on a server that predates it, or when nothing is running.
   manualSearch?: ManualSearchStatus | null;
+  // #5750: set when the route withheld the status for this thread (it is
+  // about another model, or its subject is out of reach).
+  manualSearchScope?: "other_model" | "out_of_reach";
 };
 
 /** One in-flight or just-finished exchange the server has not yet returned as a row. */
@@ -483,9 +486,12 @@ export function HubShellHost() {
   const followIsNewer = Boolean(follow?.status.startedAt && manualStatus?.startedAt &&
     compareManualSearchGeneration(follow.status.startedAt, manualStatus.startedAt) > 0);
   const readyManualId = followIsNewer ? null : currentReadyManualId(manualStatus, detail?.sources ?? []);
-  const visibleManualStatus = followIsNewer || !manualStatus || (manualStatus.running && follow?.phase === "unresolved")
-    ? (follow?.status.running || follow?.phase === "unresolved" ? follow.status : null)
-    : manualStatus;
+  const visibleManualStatus = manualStatusForThread(
+    followIsNewer || !manualStatus || (manualStatus.running && follow?.phase === "unresolved")
+      ? (follow?.status.running || follow?.phase === "unresolved" ? follow.status : null)
+      : manualStatus,
+    detail?.manualSearchScope,
+  );
   const displayedManualStatus = visibleManualStatus?.sourceState === "ready" && !readyManualId
     ? null
     : visibleManualStatus;

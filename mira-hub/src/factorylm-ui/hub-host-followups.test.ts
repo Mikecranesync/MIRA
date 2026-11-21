@@ -46,4 +46,10 @@ describe("hub-host keeps a finished answer's follow-ups after the reload (#4454)
     expect(host.indexOf("displayedManualStatus,", overlay)).toBeGreaterThan(overlay);
     expect(host).toMatch(/settledFollowups\.notebookId === selection\.notebookId && settledFollowups\.threadId === selection\.threadId/);
   });
+
+  // #5750 r3: a detail read that withheld the status for this thread hides
+  // the status the host is still following, too.
+  it("passes the detail read's withheld scope into the shown status", () => {
+    expect(host).toMatch(/manualStatusForThread\([\s\S]*?detail\?\.manualSearchScope,\s*\)/);
+  });
 });
