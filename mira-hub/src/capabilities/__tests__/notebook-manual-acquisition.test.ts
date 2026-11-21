@@ -1202,7 +1202,7 @@ describe("currentManualSearchStatus — recomputed fresh, never a stale snapshot
         reviewed_digest: SHA, ...extra,
       });
       const gs10Source = (evidence: Record<string, unknown> = {}, extra: Record<string, unknown> = {}) => ({
-        docId: "d1", enabledByDefault: true, matchState: "verified", sourceRole: "manual", readiness: { canChat: true },
+        docId: "d1", fileId: FILE, enabledByDefault: true, matchState: "verified", sourceRole: "manual", readiness: { canChat: true },
         matchEvidence: {
           autoAcquisitionKey: gs10Key, reviewedLibraryPage: 26, reviewedLibraryTitle: "DURApulse GS10 Drive User Manual, Rev C",
           reviewedLibrarySha256: SHA, ...evidence,
@@ -1224,6 +1224,28 @@ describe("currentManualSearchStatus — recomputed fresh, never a stale snapshot
         expect(r?.manualUrl).toBe(expected);
         expect(parseViewerRequest(new URL(r!.manualUrl!).search)).toEqual({ fileId: FILE, page: 26 });
         expect(r?.manualUrl).not.toContain(OEM);
+      });
+
+      it("uses the confirmed ready source when the historical search was for another model", async () => {
+        const other = { ...gs10, model: "GS11N-20P5" };
+        const otherKey = acquisitionKey(other);
+        const otherSource = gs10Source({ autoAcquisitionKey: otherKey }, { docId: "other-doc" });
+        db.readRow = record({ key: otherKey });
+        const r = await currentManualSearchStatus("t", "nb", gs10, other, [otherSource, gs10Source()] as never, { env: ENV });
+        expect(r).toMatchObject({ sourceState: "ready", readySourceDocId: "d1", running: false });
+        expect(r?.message).toContain("PDF page 26 shows coverage for GS11N-20P2");
+        expect(r?.startedAt).toBeUndefined();
+        expect(r?.manualUrl).toBeUndefined();
+
+        const onlyOther = await currentManualSearchStatus("t", "nb", gs10, other, [otherSource] as never, { env: ENV });
+        expect(onlyOther).toBeNull();
+      });
+
+      it("keeps Ready but withholds a link when the linked file differs from the ready source", async () => {
+        const source = gs10Source({}, { fileId: "40404040-4040-4040-8040-404040404040" });
+        const r = await status([source]);
+        expect(r).toMatchObject({ sourceState: "ready", readySourceDocId: "d1", running: false });
+        expect(r?.manualUrl).toBeUndefined();
       });
 
       it("typed (proposed, unconfirmed) GS11N-20P2 gets the same link", async () => {
@@ -1281,9 +1303,11 @@ describe("currentManualSearchStatus — recomputed fresh, never a stale snapshot
         const older = gs10Source({ reviewedLibrarySha256: "1".repeat(64), reviewedLibraryPage: 9 }, { docId: "d0" });
         const r = await status([older, gs10Source()]);
         expect(r?.message).toContain("PDF page 26");
+        expect(r?.readySourceDocId).toBe(gs10Source().docId);
         expect(r?.manualUrl).toBe(expected);
         const off = await status([older, gs10Source({}, { enabledByDefault: false })]);
         expect(off?.manualUrl).toBeUndefined();
+        expect(off?.readySourceDocId).toBe(older.docId);
         expect(off?.message).toContain("PDF page 9");
       });
     });

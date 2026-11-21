@@ -125,6 +125,21 @@ describe("operating cautions written as manual notes", () => {
     },
   );
 
+  it.each(["if a listed condition still needs verification", "rather than " + "waiting for the project review ".repeat(8)])(
+    "keeps the later complete caution after an unpunctuated note (%s)",
+    incomplete => {
+      const truncated = `Note: Disabling earth fault (ground fault) may damage drive ${incomplete}`.trim();
+      expect(manualSafetyStatementForCitations([cite("1", 139)], [page(139, truncated)])).toBeNull();
+      const content = `${truncated}\n${ACCELERATION_CAUTION}`;
+      expect(manualSafetyStatementForCitations([cite("1", 139)], [page(139, content)])).toMatchObject({
+        marker: "CAUTION (manual text)",
+        statement: "setting the acceleration time too short may cause motor damage or trigger drive protection due to over-current during the drive's acceleration.",
+        sourceCitationId: "1",
+        page: 139,
+      });
+    },
+  );
+
   it("disregards a benign setting note and a caution on an uncited page", () => {
     expect(manualSafetyStatementForCitations([cite("1", 140)], [
       page(140, "Note that setting the acceleration time too short may trigger a message."),

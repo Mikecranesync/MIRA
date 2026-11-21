@@ -72,8 +72,13 @@ describe("assessApplicability — rule 2: model plus attribution", () => {
     ["ACS355/24V", "ABB ACS355 / 24V User Manual", "verified"],
     ["FST20", "FST20-\nA Product Datasheet", "candidate"],
     ["6AV2124-0GC01-0AX0", "SIMATIC HMI 6AV2124 - 0GC01 - 0AX0", "verified"],
+    ["6AV2124-0GC01-0AX0", "Applies to Siemens model 6AV2124-0GC01-0AX0. Installation instructions follow.", "verified"],
+    ["6AV2124-0GC01-0AX0", "Applies to Siemens model 6AV2124 - 0GC01 - 0AX0.\nInstallation instructions follow.", "verified"],
     ["6AV2124-0GC01-0AX0", "SIMATIC HMI 6AV2124 - 0GC01 - 0AX0A", "candidate"],
     ["6AV2124-0GC01-0AX0", "SIMATIC HMI 6AV2124 - 0GC01 - 0AX0 - A", "candidate"],
+    ["6AV2124-0GC01-0AX0", "SIMATIC HMI 6AV2124 - 0GC01 - 0AX0.A", "candidate"],
+    ["6AV2124-0GC01-0AX0", "SIMATIC HMI 6AV2124 - 0GC01 - 0AX0 -\n A", "candidate"],
+    ["6AV2124-0GC01-0AX0", "SIMATIC HMI 6AV2124 - 0GC01 - 0AX0 /\r\n A", "candidate"],
   ])("judges %s against the written model and option boundaries in %j", (model, content, state) => {
     const verdict = assessApplicability({
       identity: { manufacturer: "OEM", model },

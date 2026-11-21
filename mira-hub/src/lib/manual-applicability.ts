@@ -55,9 +55,13 @@ function tokensOf(content: string): string[] {
     .filter(Boolean);
 }
 
-const IDENTIFIER_PUNCTUATION = `[-./+${HYPHEN_EQUIV_CHARS}]`;
-const DOCUMENT_JOIN = String.raw`(?:[ \t]*/[ \t]*|${IDENTIFIER_PUNCTUATION}(?:[ \t]*\r?\n)?[ \t]*)`;
-const SPACED_OPTION = String.raw`[ \t]+${IDENTIFIER_PUNCTUATION}[ \t]*(?:[A-Z](?![A-Z0-9])|[A-Z]*\d)`;
+const OPTION_PUNCTUATION = `[-/+${HYPHEN_EQUIV_CHARS}]`;
+const IDENTIFIER_PUNCTUATION = String.raw`(?:\.|${OPTION_PUNCTUATION})`;
+const OPTION_SPACING = String.raw`(?:[ \t]*\r?\n)?[ \t]*`;
+// A period joins adjacent code groups. A period before whitespace ends the
+// code. Hyphens and slashes can carry a group onto the next PDF text line.
+const DOCUMENT_JOIN = String.raw`(?:\.|(?:[ \t]*/|${OPTION_PUNCTUATION})${OPTION_SPACING})`;
+const SPACED_OPTION = String.raw`[ \t]+${OPTION_PUNCTUATION}${OPTION_SPACING}(?:[A-Z](?![A-Z0-9])|[A-Z]*\d)`;
 const IDENTIFIER_LEFT = String.raw`(?<![A-Z0-9])(?<![A-Z0-9]${DOCUMENT_JOIN})`;
 const IDENTIFIER_RIGHT = String.raw`(?![A-Z0-9]|${DOCUMENT_JOIN}[A-Z0-9]|${SPACED_OPTION})`;
 

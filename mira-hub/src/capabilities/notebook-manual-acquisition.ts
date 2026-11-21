@@ -1229,14 +1229,14 @@ export async function currentManualSearchStatus(
 ): Promise<ManualSearchStatus | null> {
   const automaticAcquisition = acquisitionEnabled(tenantId, deps.env);
   const rec = automaticAcquisition ? await readAcquisition(tenantId, notebookId) : null;
-  if (!rec) {
+  const confirmedKey = acquisitionKey(confirmed);
+  if (!rec || (confirmedKey && rec.key !== confirmedKey)) {
     const linked = currentManualSourceStatus(sources, confirmed);
     if (!linked || !confirmed.manufacturer || !confirmed.model ||
         (!automaticAcquisition && linked.sourceState !== "ready")) return null;
     return { manufacturer: confirmed.manufacturer, model: confirmed.model, ...linked };
   }
 
-  const confirmedKey = acquisitionKey(confirmed);
   const candidateIdentity: ConfirmedIdentity | null = !confirmedKey && proposedIdentity
     ? { identityStatus: "user_confirmed", manufacturer: proposedIdentity.manufacturer, model: proposedIdentity.model, catalogNumber: "" }
     : null;
@@ -1272,7 +1272,8 @@ export async function currentManualSearchStatus(
     const publication = reviewedManualFor({ manufacturer, model, catalogNumber: identity.catalogNumber });
     const ready = publication && linked.sourceState === "ready" ? approvedReadySource(sources, identity, publication) : null;
     const manualUrl = publication && ready && ready.docId === linked.readySourceDocId &&
-      rec.linked === true && rec.doc_id === ready.docId && rec.reviewed_digest === publication.sha256 && rec.file_id
+      rec.linked === true && rec.doc_id === ready.docId && rec.reviewed_digest === publication.sha256 &&
+      rec.file_id && rec.file_id === ready.fileId
       ? savedCopyPageUrl(rec.file_id, publication.page, deps.env ?? process.env)
       : null;
     return { ...status, ...linked, ...(manualUrl ? { manualUrl } : {}) };

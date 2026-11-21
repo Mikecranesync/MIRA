@@ -34,10 +34,12 @@ function latch() {
   return { promise, release };
 }
 
-for (const mode of ["preparing", "ready", "opening", "safety"] as const) {
+for (const mode of ["preparing", "ready", "opening", "lookup-failed", "safety", "attached-safety"] as const) {
   test(`exact manual handoff in the ${mode} case`, async ({ page, context, baseURL }) => {
-    const opening = mode === "opening";
+    const lookupFails = mode === "lookup-failed";
+    const opening = mode === "opening" || lookupFails;
     const safety = mode === "safety";
+    const attachedSafety = mode === "attached-safety";
     const token = await encode({
       token: { uid: "e2e-manual-handoff", tid: TENANT, status: "trial", trialExpiresAt: new Date(Date.now() + 86_400_000).toISOString() },
       secret: AUTH_SECRET,
@@ -48,6 +50,9 @@ for (const mode of ["preparing", "ready", "opening", "safety"] as const) {
     const scope = latch();
     const answerHistory = latch();
     const initialDetail = latch();
+    const secondLookRequested = latch();
+    const secondLook = latch();
+    let lostManual = false;
     let confirmed = opening;
     let ready = false;
     let looks = 0;
@@ -73,6 +78,10 @@ for (const mode of ["preparing", "ready", "opening", "safety"] as const) {
       }
       if (p === `${nbPath}/look`) {
         looks += 1;
+        if (attachedSafety && looks === 2) {
+          secondLookRequested.release();
+          await secondLook.promise;
+        }
         return route.fulfill(json({
           fileId: FILE, attachment: { linkId: "attachment" }, observationPersisted: true,
           observation: { text: "AutomationDirect, MODEL: GS11N-20P2", capturedAt: STARTED_AT },
@@ -95,11 +104,14 @@ for (const mode of ["preparing", "ready", "opening", "safety"] as const) {
             { kind: "identity_proposal", ...IDENTITY },
           ));
         }
-        if (body.message === SAFETY_QUESTION) return route.fulfill(stream(
+        if (body.message === SAFETY_QUESTION) {
+          if (attachedSafety) expect(body.visualEvidence.fileId).toBe(FILE);
+          return route.fulfill(stream(
           { kind: "content", content: "Make the equipment safe before working on it." },
           { kind: "safety", trigger: "energized-electrical-hazard" },
           { kind: "status", status: "answered" },
-        ));
+          ));
+        }
         asked = body;
         return route.fulfill(stream(
           { kind: "content", content: ANSWER },
@@ -132,8 +144,9 @@ for (const mode of ["preparing", "ready", "opening", "safety"] as const) {
           turns: [savedLookup, savedAnswer].filter(Boolean),
           sources: ready ? [SOURCE] : [],
           manualSearch: confirmed ? {
-            ...IDENTITY, startedAt: STARTED_AT, running: !ready,
+            ...IDENTITY, startedAt: STARTED_AT, running: !ready && !lostManual,
             ...(ready ? { sourceState: "ready", readySourceDocId: DOC, message: "Exact fixture manual is ready in Sources." } :
+              lostManual ? { sourceState: "unavailable", message: "The fixture manual is unavailable." } :
               { sourceState: "preparing", message: "Preparing the fixture manual." }),
           } : null,
         }));
@@ -147,11 +160,14 @@ for (const mode of ["preparing", "ready", "opening", "safety"] as const) {
     await page.goto(`/v3/?notebook=${NB}&thread=${THREAD}`);
     await scopeRequested.promise;
     const composer = page.getByRole("textbox", { name: "Ask MIRA", exact: true });
-    if (!opening) {
+    const attachPhoto = async () => {
       await page.getByRole("button", { name: "Add attachment", exact: true }).click();
       const chooser = page.waitForEvent("filechooser");
       await page.getByRole("button", { name: "Photo", exact: true }).click();
       await (await chooser).setFiles({ name: "nameplate.jpg", mimeType: "image/jpeg", buffer: Buffer.from("synthetic nameplate bytes") });
+    };
+    if (!opening) {
+      await attachPhoto();
       const pending = page.getByRole("list", { name: "Pending attachments" });
       await expect(pending.getByText("nameplate.jpg")).toBeVisible();
       await composer.fill(LOOKUP);
@@ -165,7 +181,7 @@ for (const mode of ["preparing", "ready", "opening", "safety"] as const) {
     }
 
     const sourceReady = page.getByText("Exact fixture manual is ready in Sources.", { exact: true }).last();
-    if (mode === "ready") {
+    if (mode === "ready" || attachedSafety) {
       ready = true;
       await expect(sourceReady).toBeVisible();
     }
@@ -175,8 +191,17 @@ for (const mode of ["preparing", "ready", "opening", "safety"] as const) {
       await expect(composer).toHaveValue(QUESTION);
       expect(chatBodies).toHaveLength(0);
       initialDetail.release();
-      scope.release();
+      if (!lookupFails) scope.release();
       await expect(page.getByText(/Searching AutomationDirect/).last()).toBeVisible();
+      if (lookupFails) {
+        lostManual = true;
+        await expect(page.getByText("The fixture manual is unavailable.", { exact: true })).toBeVisible();
+        scope.release();
+        await expect(page.getByText(/The manual isn't ready/)).toBeVisible();
+        await expect(composer).toHaveValue(QUESTION);
+        expect(chatBodies).toHaveLength(0);
+        return;
+      }
     }
     if (safety) {
       await expect(page.getByText("Make the equipment safe before working on it.", { exact: true })).toBeVisible();
@@ -184,13 +209,29 @@ for (const mode of ["preparing", "ready", "opening", "safety"] as const) {
       expect(ready).toBe(false);
       return;
     }
-    if (mode !== "ready") {
+    if (mode !== "ready" && !attachedSafety) {
       await expect(composer).toHaveValue(QUESTION);
       expect(chatBodies).toHaveLength(opening ? 0 : 1);
       ready = true;
     }
 
     const citation = page.getByRole("button", { name: /^Open citation 1: Exact GS10 fixture, page 1$/ });
+    if (attachedSafety) {
+      await expect(citation).toBeVisible();
+      await attachPhoto();
+      await composer.fill(SAFETY_QUESTION);
+      await page.getByRole("button", { name: "Send", exact: true }).click();
+      await secondLookRequested.promise;
+      ready = false;
+      lostManual = true;
+      answerHistory.release();
+      await expect(page.getByText("The fixture manual is unavailable.", { exact: true })).toBeVisible();
+      secondLook.release();
+      await expect(page.getByText("Make the equipment safe before working on it.", { exact: true })).toBeVisible();
+      expect(chatBodies.at(-1)).toMatchObject({ message: SAFETY_QUESTION, sourceDocIds: [] });
+      expect(looks).toBe(2);
+      return;
+    }
     await citation.click();
     expect(chatBodies).toEqual([
       ...(opening ? [] : [expect.objectContaining({ message: LOOKUP, sourceDocIds: [], threadId: THREAD })]),

@@ -351,6 +351,10 @@ export function HubShellHost() {
       if (res.status === 401) { setSignedOut(true); return false; }
       if (!res.data) return false;
       detailRef.current = res.data;
+      const waiting = waitingSend.current;
+      if (waiting?.selection === sel && waiting.waitForManual && !waiting.manual && res.data.manualSearch?.running) {
+        waiting.manual = res.data.manualSearch;
+      }
       setDetail(res.data);
       setDetailUnavailable(false);
       const savedTurns = res.data.turns;
@@ -820,8 +824,6 @@ export function HubShellHost() {
       uploadAbortRef.current?.abort();
       uploadAbortRef.current = ctrl;
     }
-    const requiredManual = currentReadyManualId(detailRef.current?.manualSearch, detailRef.current?.sources ?? []);
-    let sourceChanged = false;
     let outcome: Awaited<ReturnType<typeof runAttachedSend>>;
     try {
       outcome = await runAttachedSend({
@@ -841,11 +843,9 @@ export function HubShellHost() {
           const presentScope = current ? enabledDocIds(current.sources) : [...fallbackScope];
           const addedDuringUpload = (composed.scope ?? []).filter(id => !fallbackScope.includes(id));
           const scope = [...new Set([...presentScope, ...addedDuringUpload])];
-          if (requiredManual && !scope.includes(requiredManual)) { sourceChanged = true; return; }
           await send(chatBodyFor(composed.question, scope, current ? historyRows(current.turns) : history, sel, rider), composed.question, sel);
         },
       });
-      if (sourceChanged) outcome = { question: text, failure: "The manual is no longer enabled. Your question was saved.", reattach: false };
     } catch {
       outcome = { question: text, failure: "The attachment didn't upload — check the connection." };
     } finally {
@@ -1036,16 +1036,15 @@ export function HubShellHost() {
       waiting.signal.abort();
       return;
     }
-    if (!detail || !benchGate.known || busy) return;
+    if (!detail || busy) return;
+    const current = displayedManualStatus;
+    if (waiting.waitForManual && !waiting.manual && current?.running) waiting.manual = current;
+    if (!benchGate.known) return;
     const scope = benchScopesRef.current.get(conversationKey(waiting.selection));
     if (waiting.scope && JSON.stringify(waiting.scope) !== JSON.stringify(scope)) {
       waiting.reject(new Error("The question target changed. Review it before sending your message."));
       return;
     }
-    const current = displayedManualStatus;
-    // A document-bound turn submitted while the project is opening learns
-    // which lookup it depends on from the first scoped detail snapshot.
-    if (waiting.waitForManual && !waiting.manual && current?.running) waiting.manual = current;
     if (waiting.manual) {
       const sameLookup = current?.manufacturer === waiting.manual.manufacturer && current.model === waiting.manual.model &&
         (!waiting.manual.startedAt || !current.startedAt || compareManualSearchGeneration(waiting.manual.startedAt, current.startedAt) === 0);

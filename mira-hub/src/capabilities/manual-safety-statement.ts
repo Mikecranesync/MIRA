@@ -17,7 +17,7 @@ export interface ManualSafetyStatement {
 // Shared with the cited-page SQL prefilter. Keep the condition and damage
 // consequence together and allow line breaks in text extracted from a PDF.
 export const OPERATING_CAUTION_PATTERN = String.raw`Note(?:\s+that|:)\s+((?:setting\s+(?:the\s+)?(?:acceleration|deceleration)\s+time\s+too\s+short|disabling\s+earth\s+fault\s+\(ground\s+fault\))\s+may\s+(?:cause\s+(?:motor|drive)\s+damage|damage\s+(?:the\s+)?drive))`;
-const OPERATING_CAUTION_START = new RegExp(String.raw`\b${OPERATING_CAUTION_PATTERN}\b`, 'i');
+const OPERATING_CAUTION_START = new RegExp(String.raw`\b${OPERATING_CAUTION_PATTERN}\b`, 'gi');
 const NUMBERED_CAUTION_ABBREVIATION = /\b(?:approx|min|max|figs?|secs?|refs?|no)$/i;
 const INCOMPLETE_CAUTION_END = /\b(?:[a-z]{1,4}\d+|[ad]\.\s*c|figs?|secs?|refs?|no|approx)$/i;
 
@@ -237,24 +237,25 @@ export function extractManualSafetyStatement(text: string): ManualSafetyStatemen
  */
 export function extractCitedOperatingCaution(text: string): ManualSafetyStatement | null {
   const normalized = text.replace(/\s+/g, ' ');
-  const start = OPERATING_CAUTION_START.exec(normalized);
-  if (!start) return null;
-
-  const suffix = normalized.slice(start.index + start[0].length);
-  for (const punctuation of suffix.slice(0, 161).matchAll(/[.!?]/g)) {
-    const offset = punctuation.index;
-    if (punctuation[0] === '.') {
-      const before = suffix.slice(0, offset);
-      const after = suffix.slice(offset + 1);
-      // A dot in a parameter or a decimal, and a reference followed by its number.
-      if (/^\d/.test(after) || (NUMBERED_CAUTION_ABBREVIATION.test(before) && /^\s*[+-]?\d/.test(after))) continue;
-      // The first dot of a.c. or d.c. and its final dot before a continuation.
-      if (/\b[ad]$/i.test(before) && /^\s*[cC]\./.test(after)) continue;
-      if (/\b[ad]\.\s*c$/i.test(before) && /^\s+[a-z0-9]/.test(after)) continue;
-      // An apparent end inside an identifier or abbreviation is ambiguous.
-      if (INCOMPLETE_CAUTION_END.test(before) || /\b[ad]$/.test(before)) return null;
+  const openers = [...normalized.matchAll(OPERATING_CAUTION_START)];
+  for (const [index, start] of openers.entries()) {
+    // A later caution cannot provide the sentence ending for an earlier note.
+    const suffix = normalized.slice(start.index + start[0].length, openers[index + 1]?.index);
+    for (const punctuation of suffix.slice(0, 161).matchAll(/[.!?]/g)) {
+      const offset = punctuation.index;
+      if (punctuation[0] === '.') {
+        const before = suffix.slice(0, offset);
+        const after = suffix.slice(offset + 1);
+        // A dot in a parameter or a decimal, and a reference followed by its number.
+        if (/^\d/.test(after) || (NUMBERED_CAUTION_ABBREVIATION.test(before) && /^\s*[+-]?\d/.test(after))) continue;
+        // The first dot of a.c. or d.c. and its final dot before a continuation.
+        if (/\b[ad]$/i.test(before) && /^\s*[cC]\./.test(after)) continue;
+        if (/\b[ad]\.\s*c$/i.test(before) && /^\s+[a-z0-9]/.test(after)) continue;
+        // An apparent end inside an identifier or abbreviation is ambiguous.
+        if (INCOMPLETE_CAUTION_END.test(before) || /\b[ad]$/.test(before)) break;
+      }
+      return { marker: 'CAUTION (manual text)', statement: start[1] + suffix.slice(0, offset + 1) };
     }
-    return { marker: 'CAUTION (manual text)', statement: start[1] + suffix.slice(0, offset + 1) };
   }
   return null;
 }
