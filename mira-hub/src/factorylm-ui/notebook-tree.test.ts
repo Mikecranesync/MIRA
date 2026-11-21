@@ -100,6 +100,7 @@ describe("notebookProjects", () => {
     const nb = notebook();
     const threadId = threadItemId(nb.id, "new-thread");
     const confirmed = new Map([[threadId, ""], [threadItemId("other-notebook", "new-thread"), "Other Notebook"]]);
+    expect(notebookProjects([], undefined, [threadId], confirmed)).toEqual([]);
     const [stale] = notebookProjects([nb], undefined, [threadId], confirmed);
     expect(stale.children.filter((row) => row.id === threadId)).toEqual([{
       kind: "thread", id: threadId, label: "Saved conversation",

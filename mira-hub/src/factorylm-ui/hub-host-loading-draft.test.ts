@@ -254,7 +254,14 @@ describe("Hub draft isolation across notebook navigation (#5684)", () => {
     const confirmed = hubHostReducer(failed, { ...reconcile, requestIds: new Set([body.clientRequestId]) });
     expect(confirmed.confirmedThreadTitles?.get(threadId)).toBe("Saved from detail");
     expect(confirmed.sendRecoveryByThread?.has(threadId)).toBe(false);
-    const stale = hubHostReducer(confirmed, { type: "reconcile-notebook-list", notebooks: [{ id: SEL.notebookId, threads: [] }] });
+    const omitted = hubHostReducer(confirmed, { type: "reconcile-notebook-list", notebooks: [{
+      id: destination.notebookId, threads: [{
+        id: SEL.threadId, notebookId: destination.notebookId, title: "Same thread ID in another project",
+        createdAt: AT, updatedAt: AT, turnCount: 1, sharedLegacy: false,
+      }],
+    }] });
+    expect(omitted).toBe(confirmed);
+    const stale = hubHostReducer(omitted, { type: "reconcile-notebook-list", notebooks: [{ id: SEL.notebookId, threads: [] }] });
     expect(stale).toBe(confirmed);
     const current = hubHostReducer(stale, { type: "reconcile-notebook-list", notebooks: [{
       id: SEL.notebookId, threads: [{

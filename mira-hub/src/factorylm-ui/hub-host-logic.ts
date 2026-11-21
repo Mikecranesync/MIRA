@@ -415,7 +415,11 @@ export function hubHostReducer(state: HubShellState, action: HubHostAction): Hub
     for (const id of pending.keys()) {
       const ref = threadRefFromItem(id);
       const notebook = action.notebooks.find((item) => item.id === ref?.notebookId);
-      if (!notebook || notebook.threads?.some((thread) => thread.id === ref?.threadId)) pending.delete(id);
+      // A list response can omit the parent temporarily. The Projects
+      // projection hides the row in that case, but keeps its confirmed title.
+      if (notebook?.threads?.some((thread) => thread.id === ref?.threadId && thread.notebookId === notebook.id)) {
+        pending.delete(id);
+      }
     }
     return pending.size === confirmedThreadTitles.size ? state : { ...state, confirmedThreadTitles: pending };
   }
