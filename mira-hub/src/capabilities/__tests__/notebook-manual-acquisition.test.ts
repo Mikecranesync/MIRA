@@ -62,6 +62,7 @@ import {
   startManualAcquisition,
   type AcquisitionRecord,
 } from "../notebook-manual-acquisition";
+import { parseViewerRequest, viewerHref } from "@/factorylm-ui/document-page-viewer-logic";
 
 const confirmed = { identityStatus: "user_confirmed", manufacturer: "SMC", model: "VQ1000-FPG-C6C6-D", catalogNumber: null };
 const ON = { MIRA_NOTEBOOK_MANUAL_ACQUISITION: "1" };
@@ -1139,15 +1140,22 @@ describe("currentManualSearchStatus — recomputed fresh, never a stale snapshot
 
     // 2026-11-21 tablet walk: the GS10 manual was verified and ready, yet the
     // reply offered no link — the PDF was reachable only through a follow-up
-    // question's citation. A ready REVIEWED publication links to its official
-    // PDF at the coverage page, and only when the source's evidence carries the
-    // same pinned digest the library approves (the download was checked
-    // against it), so a stale or foreign source never borrows the link.
-    describe("a ready reviewed publication links to its official PDF at the coverage page", () => {
+    // question's citation. A ready REVIEWED publication links to MIRA's saved
+    // copy at the coverage page, in the same viewer citations use (#5726 F1:
+    // never the manufacturer's live URL, whose bytes may have changed since).
+    describe("a ready reviewed publication links to its saved copy at the coverage page", () => {
       const gs10 = { identityStatus: "user_confirmed", manufacturer: "AutomationDirect", model: "GS11N-20P2", catalogNumber: "" };
       const gs10Key = acquisitionKey(gs10)!;
-      const PDF = "https://cdn.automationdirect.com/static/manuals/gs10m/gs10usermanual.pdf";
+      const OEM = "https://cdn.automationdirect.com/static/manuals/gs10m/gs10usermanual.pdf";
       const SHA = "43a66d756b9c53f216316eeb78d13db26f9698859d08b5f70d2ed3715e9602af";
+      const FILE = "6da4f531-e67a-4fa3-96ed-c678649ab1dc";
+      const ORIGIN = "https://app-staging.factorylm.com";
+      const ENV = { ...ON, NEXTAUTH_URL: `${ORIGIN}/api/auth` };
+      const expected = `${ORIGIN}${viewerHref(FILE, 26)}`;
+      const record = (extra: Record<string, unknown> = {}) => ({
+        ...candidateReviewRec, key: gs10Key, state: "complete", doc_id: "d1", file_id: FILE, linked: true,
+        reviewed_digest: SHA, ...extra,
+      });
       const gs10Source = (evidence: Record<string, unknown> = {}, extra: Record<string, unknown> = {}) => ({
         docId: "d1", enabledByDefault: true, matchState: "verified", sourceRole: "manual", readiness: { canChat: true },
         matchEvidence: {
@@ -1156,24 +1164,30 @@ describe("currentManualSearchStatus — recomputed fresh, never a stale snapshot
         },
         ...extra,
       });
-      const status = (sources: unknown[], identity = gs10) => {
-        db.readRow = { ...candidateReviewRec, key: acquisitionKey(identity) };
-        return currentManualSearchStatus("t", "nb", identity, null, sources as never, { env: ON });
+      const status = (
+        sources: unknown[],
+        { identity = gs10, rec = record(), env = ENV as Record<string, string | undefined> }:
+          { identity?: typeof gs10; rec?: Record<string, unknown>; env?: Record<string, string | undefined> } = {},
+      ) => {
+        db.readRow = { ...rec, key: acquisitionKey(identity) };
+        return currentManualSearchStatus("t", "nb", identity, null, sources as never, { env });
       };
 
-      it("confirmed GS11N-20P2: the status carries the official PDF opened at page 26", async () => {
+      it("confirmed GS11N-20P2: the status opens the saved copy at page 26, not the manufacturer URL", async () => {
         const r = await status([gs10Source()]);
         expect(r?.message).toContain("PDF page 26 shows coverage for GS11N-20P2");
-        expect(r?.manualUrl).toBe(`${PDF}#page=26`);
+        expect(r?.manualUrl).toBe(expected);
+        expect(parseViewerRequest(new URL(r!.manualUrl!).search)).toEqual({ fileId: FILE, page: 26 });
+        expect(r?.manualUrl).not.toContain(OEM);
       });
 
       it("typed (proposed, unconfirmed) GS11N-20P2 gets the same link", async () => {
-        db.readRow = { ...candidateReviewRec, key: gs10Key };
+        db.readRow = record();
         const r = await currentManualSearchStatus(
           "t", "nb", { identityStatus: "unknown", manufacturer: "", model: "", catalogNumber: "" },
-          { manufacturer: "AUTOMATIONDIRECT", model: "GS11N-20P2" }, [gs10Source()] as never, { env: ON },
+          { manufacturer: "AUTOMATIONDIRECT", model: "GS11N-20P2" }, [gs10Source()] as never, { env: ENV },
         );
-        expect(r?.manualUrl).toBe(`${PDF}#page=26`);
+        expect(r?.manualUrl).toBe(expected);
       });
 
       it("no link when the source's digest is not the approved one", async () => {
@@ -1189,12 +1203,43 @@ describe("currentManualSearchStatus — recomputed fresh, never a stale snapshot
 
       it("no link for a look-alike identity, even with the GS10 evidence attached", async () => {
         const lookAlike = { ...gs10, model: "GS11N-20P25" };
-        const r = await status([gs10Source({ autoAcquisitionKey: acquisitionKey(lookAlike) })], lookAlike);
+        const r = await status([gs10Source({ autoAcquisitionKey: acquisitionKey(lookAlike) })], { identity: lookAlike });
         expect(r?.manualUrl).toBeUndefined();
       });
 
       it("no link once the source is turned off", async () => {
         expect((await status([gs10Source({}, { enabledByDefault: false })]))?.manualUrl).toBeUndefined();
+      });
+
+      it("no link when this search did not link the file", async () => {
+        expect((await status([gs10Source()], { rec: record({ linked: false }) }))?.manualUrl).toBeUndefined();
+      });
+
+      it("no link when the saved file belongs to a different document", async () => {
+        expect((await status([gs10Source()], { rec: record({ doc_id: "d9" }) }))?.manualUrl).toBeUndefined();
+      });
+
+      it("no link when this search's download was not checked against the approved digest", async () => {
+        expect((await status([gs10Source()], { rec: record({ reviewed_digest: "0".repeat(64) }) }))?.manualUrl).toBeUndefined();
+      });
+
+      it("no link when the search recorded no saved file", async () => {
+        expect((await status([gs10Source()], { rec: record({ file_id: null }) }))?.manualUrl).toBeUndefined();
+      });
+
+      it("no link without an https public origin", async () => {
+        expect((await status([gs10Source()], { env: { ...ON, NEXTAUTH_URL: "http://100.68.120.99:4101/api/auth" } }))?.manualUrl).toBeUndefined();
+        expect((await status([gs10Source()], { env: ON }))?.manualUrl).toBeUndefined();
+      });
+
+      it("F2: an older ready source does not hide the approved one", async () => {
+        const older = gs10Source({ reviewedLibrarySha256: "1".repeat(64), reviewedLibraryPage: 9 }, { docId: "d0" });
+        const r = await status([older, gs10Source()]);
+        expect(r?.message).toContain("PDF page 26");
+        expect(r?.manualUrl).toBe(expected);
+        const off = await status([older, gs10Source({}, { enabledByDefault: false })]);
+        expect(off?.manualUrl).toBeUndefined();
+        expect(off?.message).toContain("PDF page 9");
       });
     });
 
