@@ -134,6 +134,8 @@ def env_version(get, url: str) -> dict:
     return {
         "git_sha": body.get("gitSha") if ok else None,
         "built_at": body.get("builtAt") if ok else None,
+        "generation": body.get("runtimeGeneration") if ok else None,
+        "configuration_sha256": body.get("configurationSha256") if ok else None,
         "ok": 1 if ok else 0,
         "fetched_at": now,
         "url": url,
@@ -190,6 +192,7 @@ def gather(
                 for name, row in env_rows.items()
             }
         row = lifecycle.derive(item, ev)
+        row["head_sha"] = item.get("head_sha")
         row["title"], row["url"], row["state"] = (
             item.get("title"),
             item.get("url"),
