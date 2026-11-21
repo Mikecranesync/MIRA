@@ -31,7 +31,9 @@ import { randomBytes } from "node:crypto";
 import { Client } from "pg";
 
 const HUB = process.env.HUB_BASE ?? "http://localhost:3100";
-const SUFFIX = Date.now().toString();
+// Codex F32: a clock reading alone collides across runs that start in the same
+// millisecond; the random part makes each run's fixture identity its own.
+const SUFFIX = `${Date.now()}${randomBytes(6).toString("hex")}`;
 // Cryptographically fresh per run. Never logged, never emitted on stdout/stderr:
 // the gate authenticates with the minted session cookie, not the password, and
 // the run's auth rows are swept afterwards (--cleanup).
@@ -176,12 +178,39 @@ async function mintSession(provider: "credentials" | "magic-token", fields: Reco
   return `next-auth.session-token=${sessionToken}`;
 }
 
-async function tenantForEmail(): Promise<string | null> {
+/** The tenant of an account for this run's email that was created at or after
+ * `since` (the database clock read before this run seeded anything). An older
+ * account is not this run's and is never adopted or deleted (Codex F32). */
+async function tenantCreatedByThisRun(since: string): Promise<string | null> {
   const c = new Client({ connectionString: process.env.NEON_DATABASE_URL, ssl: { rejectUnauthorized: false } });
   await c.connect();
   try {
-    const r = await c.query(`SELECT tenant_id FROM hub_users WHERE LOWER(email) = LOWER($1)`, [CREDS.email]);
+    const r = await c.query(
+      `SELECT tenant_id FROM hub_users WHERE LOWER(email) = LOWER($1) AND created_at >= $2::timestamptz`,
+      [CREDS.email, since],
+    );
     return r.rows[0]?.tenant_id ? String(r.rows[0].tenant_id) : null;
+  } finally {
+    await c.end();
+  }
+}
+
+async function databaseNow(): Promise<string> {
+  const c = new Client({ connectionString: process.env.NEON_DATABASE_URL, ssl: { rejectUnauthorized: false } });
+  await c.connect();
+  try {
+    const r = await c.query(`SELECT NOW()::text AS now`);
+    return String(r.rows[0].now);
+  } finally {
+    await c.end();
+  }
+}
+
+async function deleteSeededToken(token: string): Promise<void> {
+  const c = new Client({ connectionString: process.env.NEON_DATABASE_URL, ssl: { rejectUnauthorized: false } });
+  await c.connect();
+  try {
+    await c.query(`DELETE FROM hub_magic_tokens WHERE token = $1`, [token]);
   } finally {
     await c.end();
   }
@@ -207,26 +236,23 @@ async function verifiedOnboarding(): Promise<string> {
   }
   if (!chosen) throw new Error("register requires verified setup, but no verified signup is open");
   console.error(`register requires verified setup — onboarding as '${chosen.intent}'`);
+  const since = await databaseNow();
+  let token: string | null = null;
   try {
-    const token = await seedMagicToken("onboarding", chosen);
+    token = await seedMagicToken("onboarding", chosen);
     // This session is minted while the account may still be 'pending'; the
     // status rides in the JWT, so it is discarded and re-minted after un-pend.
     await mintSession("magic-token", { token, agreementVersion: chosen.agreementVersion });
-    const tenantId = await tenantForEmail();
-    if (!tenantId) throw new Error("verified setup created no account");
+    const tenantId = await tenantCreatedByThisRun(since);
+    if (!tenantId) throw new Error("verified setup created no account for this run");
     return tenantId;
   } catch (e) {
-    // A failure between creation and lookup still leaves rows: sweep by email.
-    const orphan = await tenantForEmail().catch(() => null);
+    // Delete a tenant only with evidence THIS run created it (Codex F32). Any
+    // other account under the address is reported, never touched.
+    const orphan = await tenantCreatedByThisRun(since).catch(() => null);
     if (!orphan) {
-      // No account was created: only this run's seeded token can remain.
-      const c = new Client({ connectionString: process.env.NEON_DATABASE_URL, ssl: { rejectUnauthorized: false } });
-      await c.connect();
-      try {
-        await c.query(`DELETE FROM hub_magic_tokens WHERE LOWER(email) = LOWER($1)`, [CREDS.email]);
-      } finally {
-        await c.end();
-      }
+      if (token) await deleteSeededToken(token);
+      console.error("verified setup created no account attributable to this run; only its seeded token was removed");
     } else {
       try {
         await cleanup(orphan);

@@ -1,4 +1,5 @@
 import pool from "@/lib/db";
+import type { PoolClient } from "pg";
 import { assertAuthMigrationReady } from "@/capabilities/auth-schema";
 import type { OnboardingReceipt } from "@/capabilities/verified-onboarding";
 import { PILOT_WINDOW_DAYS } from "@/lib/config";
@@ -423,79 +424,126 @@ export async function ensureInvitedUser(input: {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
-    const admission = await admitPilotInvite(client, input.tenantId, email);
-    const pilotActive = admission.isPilotTenant;
+    const account = await applyInviteOnClient(client, email, input.tenantId, role, true);
+    await client.query("COMMIT");
+    return account;
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
+}
 
-    const { rows: existingRows } = await client.query(
-      `SELECT id, tenant_id, email FROM hub_users WHERE email_lower = LOWER($1) LIMIT 1`,
-      [email],
-    );
-    const existing = existingRows[0] as
-      | { id: string; tenant_id: string; email: string }
-      | undefined;
+/** The invite's admission, identity claim and membership write, on a client the
+ * caller has already put in a transaction. Nothing here commits. */
+async function applyInviteOnClient(
+  client: PoolClient,
+  email: string,
+  tenantId: string,
+  role: string,
+  pilotMode: boolean,
+): Promise<{ id: string; tenantId: string; email: string }> {
+  const admission = pilotMode ? await admitPilotInvite(client, tenantId, email) : null;
+  const pilotActive = Boolean(admission?.isPilotTenant);
 
-    if (existing) {
-      if (String(existing.tenant_id) !== input.tenantId) {
-        throw new Error("email already belongs to another workspace");
-      }
-      // Codex F28: identity claim in the SAME transaction as the access change;
-      // a rejection rolls back role, status, deadline and reservation together.
-      await claimVerifiedEmail(client, String(existing.id));
-      await client.query(
-        pilotActive
-          ? `UPDATE hub_users
+  const { rows: existingRows } = await client.query(
+    `SELECT id, tenant_id, email FROM hub_users WHERE email_lower = LOWER($1) LIMIT 1 FOR UPDATE`,
+    [email],
+  );
+  const existing = existingRows[0] as { id: string; tenant_id: string; email: string } | undefined;
+
+  if (existing) {
+    if (String(existing.tenant_id) !== tenantId) {
+      throw new Error("email already belongs to another workspace");
+    }
+    // Codex F28: identity claim in the SAME transaction as the access change;
+    // a rejection rolls back role, status, deadline and reservation together.
+    await claimVerifiedEmail(client, String(existing.id));
+    await client.query(
+      pilotActive
+        ? `UPDATE hub_users
          SET role = $1,
              status = CASE WHEN status = 'admin' THEN status ELSE 'trial' END,
              trial_expires_at = CASE WHEN status = 'admin' THEN trial_expires_at ELSE $3 END,
              updated_at = NOW()
          WHERE id = $2`
-          : `UPDATE hub_users
+        : `UPDATE hub_users
          SET role = $1,
              status = CASE WHEN status = 'admin' THEN status ELSE 'approved' END,
              updated_at = NOW()
          WHERE id = $2`,
-        pilotActive ? [role, existing.id, admission.pilotExpiresAt] : [role, existing.id],
-      );
-      await client.query("COMMIT");
-      return {
-        id: String(existing.id),
-        tenantId: String(existing.tenant_id),
-        email: String(existing.email),
-      };
-    }
+      pilotActive ? [role, existing.id, admission!.pilotExpiresAt] : [role, existing.id],
+    );
+    return { id: String(existing.id), tenantId: String(existing.tenant_id), email: String(existing.email) };
+  }
 
-    const { rows } = await client.query(
-      pilotActive
-        ? `INSERT INTO hub_users (email, tenant_id, name, role, status, trial_expires_at)
+  const { rows } = await client.query(
+    pilotActive
+      ? `INSERT INTO hub_users (email, tenant_id, name, role, status, trial_expires_at)
        VALUES ($1, $2, NULL, $3, 'trial', $4)
        RETURNING id, email, tenant_id`
-        : `INSERT INTO hub_users (email, tenant_id, name, role, status)
+      : `INSERT INTO hub_users (email, tenant_id, name, role, status)
        VALUES ($1, $2, NULL, $3, 'approved')
        RETURNING id, email, tenant_id`,
-      pilotActive
-        ? [email, input.tenantId, role, admission.pilotExpiresAt]
-        : [email, input.tenantId, role],
-    );
-    if (pilotActive) {
-      // Inlined (not the pool-based redeemPilotSeat helper): this MUST run
-      // on `client`, inside the same transaction/lock admitPilotInvite used,
-      // or the reservation and the membership row could commit on different
-      // snapshots. Idempotent no-op if no matching pending row exists.
-      await client.query(
-        `UPDATE pilot_seat_reservations
+    pilotActive ? [email, tenantId, role, admission!.pilotExpiresAt] : [email, tenantId, role],
+  );
+  if (pilotActive) {
+    // Inlined (not the pool-based redeemPilotSeat helper): this MUST run
+    // on `client`, inside the same transaction/lock admitPilotInvite used,
+    // or the reservation and the membership row could commit on different
+    // snapshots. Idempotent no-op if no matching pending row exists.
+    await client.query(
+      `UPDATE pilot_seat_reservations
          SET status = 'redeemed', redeemed_at = NOW()
          WHERE tenant_id = $1 AND email_lower = $2 AND status = 'pending'`,
-        [input.tenantId, email],
-      );
+      [tenantId, email],
+    );
+  }
+  return { id: String(rows[0].id), tenantId: String(rows[0].tenant_id), email: String(rows[0].email) };
+}
+
+/** Invite redemption as ONE transaction (Codex F28): lock the unused token,
+ * admit, claim the identity, change membership, then spend the token. Any
+ * refusal rolls all of it back, so the token stays usable and access is
+ * unchanged. Returns `undefined` for a token that is not an invitation. */
+export async function redeemInviteToken(
+  token: string,
+): Promise<{ id: string; tenantId: string; email: string } | null | undefined> {
+  await ensureSchema();
+  await ensureMagicSchema();
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const { rows } = await client.query(
+      `SELECT email, tenant_id, role FROM hub_magic_tokens
+       WHERE token = $1 AND expires_at > NOW() AND used_at IS NULL FOR UPDATE`,
+      [token],
+    );
+    if (!rows[0]) {
+      await client.query("ROLLBACK");
+      return null;
     }
+    if (!rows[0].tenant_id) {
+      await client.query("ROLLBACK");
+      return undefined;
+    }
+    const tenantId = String(rows[0].tenant_id);
+    const role = String(rows[0].role ?? "").trim() || "technician";
+    await assertTeamInvitesAllowed(client, tenantId);
+    const account = await applyInviteOnClient(
+      client,
+      String(rows[0].email).trim().toLowerCase(),
+      tenantId,
+      role,
+      isPilotApprovalRequired(),
+    );
+    await client.query("UPDATE hub_magic_tokens SET used_at = NOW() WHERE token = $1", [token]);
     await client.query("COMMIT");
-    return {
-      id: String(rows[0].id),
-      tenantId: String(rows[0].tenant_id),
-      email: String(rows[0].email),
-    };
+    return account;
   } catch (err) {
     await client.query("ROLLBACK").catch(() => {});
+    if (err instanceof CredentialReviewRequiredError) return null;
     throw err;
   } finally {
     client.release();

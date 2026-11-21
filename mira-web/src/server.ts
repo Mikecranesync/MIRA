@@ -36,7 +36,7 @@ import { cors } from "hono/cors";
 import { deployIdentity } from "./capabilities/deploy-identity.js";
 import { hubUrl } from "./capabilities/hub-origin.js";
 import { isCheckoutEnabled } from "./capabilities/checkout-gate.js";
-import { createFactorylmMarketingRouter } from "./factorylm-ui/marketing-next.js";
+import { createFactorylmMarketingRouter, marketingAliasRedirect } from "./factorylm-ui/marketing-next.js";
 import {
   submitPilotRequest,
   ensurePilotRequestSchema,
@@ -200,6 +200,10 @@ export const app = new Hono();
 // Middleware
 // Trim trailing slashes — /pricing/ → /pricing (simplifies routing, fixes #2179)
 app.use("*", async (c, next) => {
+  // Codex F33: the bounded marketing adapter answers its own aliases first
+  // (same-origin 302/no-store); generic normalization would 301 to production.
+  const alias = await marketingAliasRedirect(c.req.method, c.req.url);
+  if (alias) return alias;
   const target = trailingSlashRedirectTarget(c.req.url, c.req.raw.headers);
   if (target) return c.redirect(target, 301);
   await next();

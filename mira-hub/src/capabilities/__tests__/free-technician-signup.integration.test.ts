@@ -167,6 +167,33 @@ describe.skipIf(!READY)("verified onboarding with a restricted production-shaped
         expect((await snapshot()).role).toBe("admin");
         expect(await provider("magic-token")({ token: ok }, {})).toBeNull();
     });
+    it.each([["0"], ["1"]])("a failed invite write rolls back the identity claim and leaves the token usable, pilot review=%s (F28)", async (pilot) => {
+        vi.stubEnv("MIRA_FREE_TECHNICIANS", "false");
+        vi.stubEnv("MIRA_PILOT_APPROVAL_REQUIRED", pilot);
+        const owner = await ensureUserAndTenant({ email: email(), signupIntent: pilot === "1" ? "pilot" : undefined });
+        await testPool.query("UPDATE hub_users SET plan='enterprise',status='approved' WHERE id=$1", [owner.id]);
+        if (pilot === "1")
+            await testPool.query("UPDATE hub_tenants SET pilot_status='active',pilot_expires_at=NOW()+INTERVAL '30 days' WHERE id=$1", [owner.tenantId]);
+        const address = email();
+        const member = await ensureInvitedUser({ email: address, tenantId: owner.tenantId, role: "technician" });
+        // An unproven password the identity claim would remove (and revoke sessions for).
+        await testPool.query("UPDATE hub_users SET password_hash=$2,password_provenance='public_unverified' WHERE id=$1", [member.id, await bcrypt.hash("unproven-member", 4)]);
+        const snapshot = async () => (await testPool.query("SELECT role,status,credential_epoch,password_hash,email_verified_at FROM hub_users WHERE id=$1", [member.id])).rows[0];
+        const before = await snapshot();
+        const token = await createMagicToken(address, { tenantId: owner.tenantId, role: "f28-fail" });
+        await adminPool.query("CREATE FUNCTION f28_fail_role() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.role = 'f28-fail' THEN RAISE EXCEPTION 'synthetic role write failure'; END IF; RETURN NEW; END $$; CREATE TRIGGER f28_fail_role BEFORE UPDATE ON hub_users FOR EACH ROW EXECUTE FUNCTION f28_fail_role()");
+        try {
+            await expect(provider("magic-token")({ token }, {})).rejects.toThrow("synthetic role write failure");
+        }
+        finally {
+            await adminPool.query("DROP TRIGGER f28_fail_role ON hub_users; DROP FUNCTION f28_fail_role()");
+        }
+        expect(await snapshot()).toEqual(before);
+        expect((await testPool.query("SELECT used_at FROM hub_magic_tokens WHERE token=$1", [token])).rows[0].used_at).toBeNull();
+        // With the transient fault gone, the same link redeems once.
+        expect((await provider("magic-token")({ token }, {}))?.id).toBe(member.id);
+        expect(await snapshot()).toMatchObject({ role: "f28-fail", password_hash: null });
+    });
     it("a technician setup request for a legacy pending pilot sends no mail and mints no token (F29)", async () => {
         vi.stubEnv("MIRA_FREE_TECHNICIANS", "false");
         const legacy = email();

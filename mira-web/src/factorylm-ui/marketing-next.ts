@@ -25,17 +25,35 @@ const MIME: Record<string, string> = {
   webp: "image/webp", xml: "application/xml; charset=utf-8", txt: "text/plain; charset=utf-8",
 };
 
+/** Whether this adapter owns the path under the current rollout flags. */
+function inScope(pathname: string): boolean {
+  const freePolicy = ["/free-technicians", "/free-technicians/", "/free-technicians.html"].includes(pathname);
+  const policyAsset = pathname.startsWith("/factorylm-next-assets/");
+  if (freePolicy || policyAsset) return true;
+  return process.env.MIRA_FREE_TECHNICIANS === "true" && process.env.FACTORYLM_MARKETING_NEXT === "true";
+}
+
+/** The adapter's own alias redirect (same-origin, 302, no-store), or null. The
+ * server calls this BEFORE generic trailing-slash normalization, which would
+ * otherwise send a cacheable 301 to a trusted (production) host (Codex F33). */
+export async function marketingAliasRedirect(method: string, requestUrl: string): Promise<Response | null> {
+  if (!["GET", "HEAD"].includes(method)) return null;
+  const url = new URL(requestUrl);
+  if (!inScope(url.pathname)) return null;
+  const { manifest: map } = await manifest();
+  const target = map.redirects[url.pathname];
+  return target ? new Response(null, { status: 302, headers: { Location: target + url.search, "Cache-Control": "no-store" } }) : null;
+}
+
 export function createFactorylmMarketingRouter() {
   const router = new Hono();
   router.use("*", async (c, next) => {
     if (!["GET", "HEAD"].includes(c.req.method)) return next();
     const url = new URL(c.req.url);
-    const freePolicy = ["/free-technicians", "/free-technicians/", "/free-technicians.html"].includes(url.pathname);
-    const policyAsset = url.pathname.startsWith("/factorylm-next-assets/");
-    if(process.env.MIRA_FREE_TECHNICIANS !== "true" && !freePolicy && !policyAsset) return next();
-    if (process.env.FACTORYLM_MARKETING_NEXT !== "true" && !freePolicy && !policyAsset) return next();
+    if (!inScope(url.pathname)) return next();
+    const alias = await marketingAliasRedirect(c.req.method, c.req.url);
+    if (alias) return alias;
     const { manifest: map, identity } = await manifest();
-    if (map.redirects[url.pathname]) return new Response(null, { status: 302, headers: { Location: map.redirects[url.pathname] + url.search, "Cache-Control": "no-store" } });
     let file = map.routes[url.pathname];
     if (url.pathname.startsWith("/factorylm-next-assets/")) {
       const candidate = url.pathname.slice(1);

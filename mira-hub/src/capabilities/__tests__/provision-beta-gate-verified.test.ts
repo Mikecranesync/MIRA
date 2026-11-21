@@ -10,6 +10,10 @@ const state = {
   verified: false,
   openKind: { technician: "trial", pilot: "trial" } as Record<"technician" | "pilot", string>,
   accountExists: true,
+  // The setup callback refuses (e.g. the address already holds another run's account).
+  redeemRefused: false,
+  // An account under the same email that predates this run (another run's).
+  priorAccount: false,
 };
 const calls: Array<{ url: string; body: string }> = [];
 vi.mock("pg", () => ({
@@ -23,8 +27,11 @@ vi.mock("pg", () => ({
       if (/^SELECT \(SELECT count/.test(text)) {
         return { rows: [{ users: 0, auth_tenants: 0, tenants: 0 }] };
       }
+      if (/^SELECT NOW\(\)/.test(text)) return { rows: [{ now: "2026-11-21 21:00:00+00" }] };
       if (/^SELECT tenant_id FROM hub_users/.test(text)) {
-        return { rows: state.accountExists ? [{ tenant_id: TENANT }] : [] };
+        // Models the real predicate: a created_at filter excludes the prior account.
+        const visible = state.accountExists || (state.priorAccount && !/created_at >=/.test(text));
+        return { rows: visible ? [{ tenant_id: TENANT }] : [] };
       }
       return { rows: [], rowCount: 0 };
     }
@@ -56,6 +63,7 @@ function fetchMock(): typeof fetch {
       });
     }
     if (url.endsWith("/api/auth/callback/magic-token/")) {
+      if (state.redeemRefused) return new Response("", { status: 401 });
       return new Response("", { status: 200, headers: { "set-cookie": "next-auth.session-token=MINTED; Path=/" } });
     }
     if (url.endsWith("/api/auth/csrf/")) {
@@ -87,6 +95,8 @@ describe("provision-beta-gate when register requires verified setup", () => {
     state.verified = true;
     state.openKind = { technician: "pilot_application", pilot: "pilot_application" };
     state.accountExists = true;
+    state.redeemRefused = false;
+    state.priorAccount = false;
     log.mockClear();
     err.mockClear();
     vi.stubGlobal("fetch", fetchMock());
@@ -136,13 +146,42 @@ describe("provision-beta-gate when register requires verified setup", () => {
     expect(log.mock.calls.map((c) => c.join(" ")).join("\n")).not.toMatch(/^ENV:/m);
   });
 
-  it("redeem created no account: removes this run's seeded token by email and fails", async () => {
+  it("redeem created no account: removes exactly this run's seeded token and fails", async () => {
     state.accountExists = false;
     const mod = await import("../../../scripts/provision-beta-gate");
-    await expect(mod.main()).rejects.toThrow(/verified setup created no account/);
-    const del = queries.find((q) => /^DELETE FROM hub_magic_tokens WHERE LOWER\(email\) = LOWER\(\$1\)/.test(q.text));
-    expect(String(del?.values[0])).toMatch(/^betagate-\d+@factorylm\.com$/);
+    await expect(mod.main()).rejects.toThrow(/verified setup created no account for this run/);
+    const del = queries.filter((q) => /^DELETE FROM hub_magic_tokens/.test(q.text));
+    expect(del).toHaveLength(1);
+    expect(del[0].text).toMatch(/WHERE token = \$1/);
+    expect(del[0].values[0]).toBe(tokenInserts()[0].values[0]);
     expect(log.mock.calls.map((c) => c.join(" ")).join("\n")).not.toMatch(/^ENV:/m);
+  });
+
+  it("F32: a refused setup never deletes an account this run did not create", async () => {
+    // Another run's account already holds the address: the creation-time lookup
+    // (created_at >= this run's database clock) finds nothing attributable.
+    state.redeemRefused = true;
+    state.accountExists = false;
+    state.priorAccount = true;
+    const mod = await import("../../../scripts/provision-beta-gate");
+    await expect(mod.main()).rejects.toThrow(/no session cookie/);
+    const lookups = queries.filter((q) => /^SELECT tenant_id FROM hub_users/.test(q.text));
+    expect(lookups.length).toBeGreaterThan(0);
+    for (const q of lookups) {
+      expect(q.text).toMatch(/created_at >= \$2::timestamptz/);
+      expect(q.values[1]).toBe("2026-11-21 21:00:00+00");
+    }
+    expect(queries.some((q) => /^DELETE FROM (hub_tenants|hub_users|tenants)\b/.test(q.text))).toBe(false);
+    const del = queries.filter((q) => /^DELETE FROM hub_magic_tokens/.test(q.text));
+    expect(del.map((q) => q.values[0])).toEqual([tokenInserts()[0].values[0]]);
+  });
+
+  it("F32: each run's fixture email carries a random part", async () => {
+    const mod = await import("../../../scripts/provision-beta-gate");
+    await mod.main();
+    const email = String(tokenInserts()[0].values[1]);
+    // 13-digit clock reading + 12 random hex characters (a bare timestamp is 13 chars).
+    expect(email).toMatch(/^betagate-\d{13}[0-9a-f]{12}@factorylm\.com$/);
   });
 
   it("forced failure after signin sweeps the tenant, its tokens before its users", async () => {
