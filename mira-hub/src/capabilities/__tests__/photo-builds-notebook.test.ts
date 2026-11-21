@@ -163,17 +163,16 @@ describe("plain copy: searching, found, or failed — never 'turned off until yo
   const rec = (state: string, extra: Record<string, unknown> = {}) =>
     ({ key: "K", state, started_at: null, finished_at: null, candidate_host: null, match_state: null, oem_request_url: null, ...extra }) as never;
 
-  it("running: says it is searching from the photo and will answer from the manual", () => {
+  it("running: names the equipment and states that it is searching", () => {
     const t = acquisitionDeclineText(rec("running"), "K", "AUTOMATIONDIRECT GS11N-20P2", "candidate")!;
-    expect(t).toMatch(/looking for the official AUTOMATIONDIRECT GS11N-20P2 manual now/);
-    expect(t).toMatch(/photo/i);
+    expect(t).toMatch(/looking for the official documentation for the AUTOMATIONDIRECT GS11N-20P2/);
     expect(t).not.toMatch(/turned off until you check it/);
   });
 
-  it("complete: says the manual was found from the photo and is on", () => {
+  it("complete: states that the document was added in Sources", () => {
     const t = acquisitionDeclineText(rec("complete"), "K", "AUTOMATIONDIRECT GS11N-20P2", "candidate")!;
-    expect(t).toMatch(/found the official AUTOMATIONDIRECT GS11N-20P2 manual/);
-    expect(t).toMatch(/photo/i);
+    expect(t).toMatch(/found the official documentation for the AUTOMATIONDIRECT GS11N-20P2/);
+    expect(t).toMatch(/added it to this notebook's Sources/);
     expect(t).not.toMatch(/turn it on/);
   });
 });

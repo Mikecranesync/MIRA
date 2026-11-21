@@ -742,11 +742,10 @@ export function unconfirmedMachineDirective(p: IdentityProposal, acquisitionStat
     `service procedure as fact. Answer only what is true in general, and say that once they confirm the ${name} you ` +
     `will look up its manual and show them the page.`;
   if (!acquisitionStatus) return base;
-  // A search is already running or finished for this exact identity (read off
-  // the nameplate photo — owner decision 2026-11-07): nothing to confirm, so
-  // the "once they confirm" line is replaced by the search's own status.
+  // Both typed and nameplate identities can already have a lookup in flight.
+  // Relay its actual status without inferring the source of the identity.
   return (
-    `\n\nUNCONFIRMED MACHINE — the ${name} was read off the technician's photo. None of its manuals are loaded yet. ` +
+    `\n\nUNCONFIRMED MACHINE — the lookup is for the ${name}. This answer did not use its manual. ` +
     `Do NOT state its ratings, specifications, settings, part numbers, wiring, fault meanings, or any reset, firmware or ` +
     `service procedure as fact. Answer only what is true in general, and tell the technician, in your own words, this: "${acquisitionStatus}"`
   );

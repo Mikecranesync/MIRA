@@ -53,22 +53,15 @@ vi.mock("@/lib/workspace-files", async (importOriginal) => ({
   ...filesMock,
 }));
 
-const applicabilityMock = vi.hoisted(() => ({ assessApplicability: vi.fn() }));
-vi.mock("@/lib/manual-applicability", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/lib/manual-applicability")>()),
-  assessApplicability: applicabilityMock.assessApplicability,
-}));
-
-const equipmentNotebooksMock = vi.hoisted(() => ({
-  setSourceState: vi.fn(async () => ({ match_state: "verified", enabled_by_default: true })),
-}));
-vi.mock("@/lib/equipment-notebooks", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/lib/equipment-notebooks")>()),
-  setSourceState: equipmentNotebooksMock.setSourceState,
-}));
-
 vi.mock("@/lib/tenant-context", () => ({
-  withTenantContext: vi.fn(async (_t: string, fn: (c: unknown) => unknown) => fn({ query: vi.fn(async () => ({ rows: [] })) })),
+  withTenantContext: vi.fn(async (_t: string, fn: (c: unknown) => unknown) => fn({
+    query: vi.fn(async (sql: string, params: unknown[]) => {
+      if (sql.includes("UPDATE equipment_notebook_sources")) {
+        return { rows: [{ match_state: params[3], enabled_by_default: params[4] }] };
+      }
+      return { rows: [] };
+    }),
+  })),
 }));
 
 import { acquireManualForIdentity } from "@/capabilities/manual-acquisition";
@@ -105,14 +98,6 @@ const FOUND_DISCOVERY = {
   searchStats: { providerQueries: 4, refusedQueries: 0, quotaDenied: null, candidates: 3 },
 };
 
-const VERIFIED_VERDICT = {
-  state: "verified" as const,
-  method: "exact_match",
-  matchedTokens: [],
-  evidencePages: [],
-  confidence: 1,
-  reason: "identity confirmed in the document text",
-};
 
 let handle: ReturnType<typeof __testing__installInMemoryExporter>;
 beforeAll(() => {
@@ -132,7 +117,6 @@ beforeEach(() => {
   });
   filesMock.parkOrReuseFile.mockResolvedValue({ fileId: "test-file-file1", reused: false, uploadId: null });
   ingestMock.ingestPdfToNode.mockResolvedValue({ uploadId: "test-doc-doc1", chunkCount: 7 });
-  applicabilityMock.assessApplicability.mockReturnValue(VERIFIED_VERDICT);
 });
 
 function allAttrValues(spans: ReturnType<typeof handle.finished>): string[] {
@@ -142,7 +126,8 @@ function allAttrValues(spans: ReturnType<typeof handle.finished>): string[] {
 describe("acquireManualForIdentity — R15 span tree", () => {
   it("a successful acquisition produces manual_acquisition.search/.download/.ingest/.applicability; provider_queries=4 and cost_usd=0.004 are on the search span", async () => {
     const outcome = await acquireManualForIdentity({ ...BASE_INPUT });
-    expect(outcome.status).toBe("complete");
+    expect(outcome.status).toBe("candidate_review");
+    expect(outcome.payload.manual).toMatchObject({ attached: true, enabledByDefault: false });
 
     const spans = handle.finished();
     const names = spans.map((s) => s.name);
@@ -172,7 +157,7 @@ describe("acquireManualForIdentity — R15 span tree", () => {
     expect(typeof ingest.attributes["mira.acquisition.ingest_ms"]).toBe("number");
 
     const applicability = spans.find((s) => s.name === "manual_acquisition.applicability")!;
-    expect(applicability.attributes["mira.acquisition.match_state"]).toBe("verified");
+    expect(applicability.attributes["mira.acquisition.match_state"]).toBe("candidate");
 
     const recall = spans.find((s) => s.name === "manual_acquisition.recall")!;
     expect(recall.attributes["mira.acquisition.recall_hit"]).toBe(false);
@@ -222,7 +207,7 @@ describe("acquireManualForIdentity — R15 span tree", () => {
 
   it("no exported attribute value contains the test manufacturer, model or part string", async () => {
     const outcome = await acquireManualForIdentity({ ...BASE_INPUT });
-    expect(outcome.status).toBe("complete");
+    expect(outcome.status).toBe("candidate_review");
 
     const spans = handle.finished();
     expect(spans.length).toBeGreaterThan(0);
@@ -234,11 +219,11 @@ describe("acquireManualForIdentity — R15 span tree", () => {
     }
   });
 
-  it("a discovery response WITHOUT search_stats still completes, and provider_queries is absent or null (never a fabricated 0)", async () => {
+  it("a discovery response WITHOUT search_stats still saves the candidate, and provider_queries is absent or null (never a fabricated 0)", async () => {
     discoveryMock.discoverManual.mockResolvedValue({ ...FOUND_DISCOVERY, searchStats: null });
 
     const outcome = await acquireManualForIdentity({ ...BASE_INPUT });
-    expect(outcome.status).toBe("complete");
+    expect(outcome.status).toBe("candidate_review");
 
     const search = handle.finished().find((s) => s.name === "manual_acquisition.search")!;
     expect(search.attributes["mira.acquisition.provider_queries"]).toBeUndefined();
@@ -255,7 +240,7 @@ describe("acquireManualForIdentity — R15 span tree", () => {
       ...FOUND_DISCOVERY,
       searchStats: { providerQueries: 2, refusedQueries: 1, quotaDenied: "user_cap", candidates: 1 },
     });
-    expect((await acquireManualForIdentity({ ...BASE_INPUT })).status).toBe("complete");
+    expect((await acquireManualForIdentity({ ...BASE_INPUT })).status).toBe("candidate_review");
     const search = handle.finished().find((s) => s.name === "manual_acquisition.search")!;
     expect(search.attributes["mira.acquisition.cap_hit"]).toBe(true);
     expect(search.attributes["mira.acquisition.cap_scope"]).toBe("user_cap");
