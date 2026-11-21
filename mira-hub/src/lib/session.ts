@@ -25,7 +25,7 @@ export interface SessionContext {
   /**
    * Platform (cross-tenant, FactoryLM-staff) admin: `hub_users.status = 'admin'`, derived fresh
    * from the DB on every request, exactly like `role` (#4591). This is the ONLY platform-admin
-   * authority: public registration creates `trial` rows, invites create `approved`, and only an
+   * authority: public registration creates trial or approved personal rows, invites create `approved`, and only an
    * existing platform admin (the admin users route) or an operator can set `admin`. Never the
    * JWT's copy of `status` (stale/forgeable for this purpose) and never an email match.
    * Absent/false = not a platform admin; a failed lookup resolves to false.

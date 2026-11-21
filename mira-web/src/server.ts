@@ -36,6 +36,8 @@ import { cors } from "hono/cors";
 import { deployIdentity } from "./capabilities/deploy-identity.js";
 import { hubUrl } from "./capabilities/hub-origin.js";
 import { isCheckoutEnabled } from "./capabilities/checkout-gate.js";
+import { createFactorylmMarketingRouter } from "./factorylm-ui/marketing-next.js";
+import { withFreeTechnicianTerms } from "./factorylm-ui/free-technician-terms.js";
 import {
   submitPilotRequest,
   ensurePilotRequestSchema,
@@ -357,6 +359,8 @@ app.use("/public/*", serveStatic({ root: "./" }));
 // /images/app-screenshot-desktop.png and that the v0.3.0 hero swap
 // also tripped on. Fixed here for v0.3.1.
 app.use("/images/*", serveStatic({ root: "./public" }));
+// Exact marketing routes only; default off. Existing API/policy/article handlers continue below.
+app.route("/", createFactorylmMarketingRouter());
 app.use("/manifest.json", serveStatic({ path: "./public/manifest.json" }));
 app.use("/sw.js", serveStatic({ path: "./public/sw.js" }));
 app.use("/robots.txt", serveStatic({ path: "./public/robots.txt" }));
@@ -515,7 +519,7 @@ app.get("/privacy", async (c) => {
 
 app.get("/terms", async (c) => {
   const file = Bun.file("./public/terms.html");
-  return new Response(await file.text(), {
+  return new Response(withFreeTechnicianTerms(await file.text()), {
     headers: { "Content-Type": "text/html; charset=utf-8" },
   });
 });

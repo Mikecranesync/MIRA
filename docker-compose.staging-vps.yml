@@ -521,6 +521,7 @@ services:
       - PLG_POSTHOG_HOST=${PLG_POSTHOG_HOST:-}
       - PILOT_OWNER_EMAIL=${PILOT_OWNER_EMAIL:-}
       - MIRA_PILOT_APPROVAL_REQUIRED=${MIRA_PILOT_APPROVAL_REQUIRED:-}
+      - MIRA_FREE_TECHNICIANS=${MIRA_FREE_TECHNICIANS:-false}
       - RESEND_API_KEY=${RESEND_API_KEY:-}  # owner notification (pilot-funnel.ts); same key mira-web uses
     networks:
       - staging-net
@@ -550,6 +551,9 @@ services:
     ports:
       - "127.0.0.1:4200:3000"
     environment:
+      - FACTORYLM_MARKETING_NEXT=${FACTORYLM_MARKETING_NEXT:-false}
+      - MIRA_FREE_TECHNICIANS=${MIRA_FREE_TECHNICIANS:-false}
+      - MIRA_PILOT_APPROVAL_REQUIRED=${MIRA_PILOT_APPROVAL_REQUIRED:-}
       - PORT=3000
       - PLG_JWT_SECRET=${PLG_JWT_SECRET}
       # Staging web must hand off to STAGING hub only (#3930); Doppler stg may override.

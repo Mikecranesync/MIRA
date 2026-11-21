@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="index, follow">
+<title>Limitations &amp; safety · FactoryLM</title>
+<meta name="description" content="A plain account of where MIRA helps, where it stops, and how to use it safely.">
+<link rel="icon" href="/factorylm-next-assets/favicon.svg" type="image/svg+xml">
+<meta name="theme-color" content="#0B1220">
+<link rel="stylesheet" href="/factorylm-next-assets/assets/mira-workspace-tokens.css">
+<link rel="stylesheet" href="/factorylm-next-assets/styles.css">
+<link rel="stylesheet" href="/factorylm-next-assets/next.css?v=9014148addfb">
+<link rel="canonical" href="https://factorylm.com/limitations">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Limitations &amp; safety · FactoryLM">
+<meta property="og:description" content="A plain account of where MIRA helps, where it stops, and how to use it safely.">
+<meta property="og:url" content="https://factorylm.com/limitations">
+<meta property="og:image" content="https://factorylm.com/factorylm-next-assets/assets/factory-floor-hero.webp">
+<meta name="twitter:card" content="summary_large_image">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <a class="logo" href="/" aria-label="FactoryLM home"><svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true"><rect width="28" height="28" rx="7" fill="#FF6B1A"/><path d="M7 20V8h3.2l3.8 6 3.8-6H21v12h-3v-7.2l-4 6.2-4-6.2V20z" fill="#0B1220"/></svg><span>FactoryLM</span></a>
+    <nav class="nav-links" aria-label="Primary">
+      <a href="/mira">MIRA</a>
+      <a href="/#how-it-works">How it works</a>
+      <a href="/#for-teams">For teams</a>
+      <a href="/about">About</a>
+    </nav>
+    <div class="nav-cta">
+      <a class="link-quiet" href="https://app.factorylm.com/login/">Sign in</a>
+      <a class="btn btn-primary btn-sm" href="https://app.factorylm.com/signup/">Start free</a>
+      <button class="burger" type="button" data-burger aria-controls="drawer" aria-expanded="false" aria-label="Open menu"><span></span><span></span><span></span></button>
+    </div>
+  </div>
+  <div class="drawer" id="drawer" hidden>
+    <a href="/mira">MIRA</a>
+    <a href="/#how-it-works">How it works</a>
+    <a href="/#for-teams">For teams</a>
+    <a href="/about">About</a>
+    <a href="/blog">Blog</a>
+    <a href="https://factorylm.com/security">Security</a>
+    <div class="drawer-ctas">
+      <a class="btn btn-primary" href="https://app.factorylm.com/signup/">Start free</a>
+      <a class="btn btn-ghost" href="/demo">Request a demo</a>
+      <a class="btn btn-ghost" href="https://app.factorylm.com/login/">Sign in</a>
+    </div>
+  </div>
+</header>
+<main id="main">
+<section class="page-hero"><div class="wrap"><p class="eyebrow">Limitations & safety</p><h1>What MIRA does, and what it doesn’t</h1><p class="lede">A plain account of where MIRA helps, where it stops, and how to use it safely.</p></div></section>
+<section class="doc"><div class="wrap doc-grid"><nav class="toc" aria-label="On this page"><a href="#does">What MIRA does</a><a href="#doesnt">What it doesn’t do</a><a href="#prints">Electrical prints</a><a href="#namespace">Namespace & integrations</a><a href="#tested">What we’ve tested</a><a href="#safety">Safety</a><a href="#feedback">Feedback</a></nav><div><h2 id="does">What MIRA does</h2>
+<ul class="fact-list">
+  <li><i>✓</i><div><b>Answers from the documents you attach</b><span class="muted">In an equipment notebook, ask about your OEM manuals or readable PDF electrical prints, with a source page to check.</span></div></li>
+  <li><i>✓</i><div><b>Says when the manual doesn't cover it</b><span class="muted">If the attached manual doesn't answer the question, MIRA says it can't find it there instead of guessing.</span></div></li>
+  <li><i>✓</i><div><b>Opens the cited page on desktop</b><span class="muted">Tap a citation to open the source document at that page.</span></div></li>
+  <li><i>✓</i><div><b>Web and Android continuity was tested</b><span class="muted">Prior testing used an emulator. Continuity on a physical phone has not been proven.</span></div></li>
+</ul>
+<h2 id="doesnt">What MIRA doesn't do</h2>
+<ul>
+  <li>It isn't a CMMS and doesn't replace yours. There's nothing to switch. CMMS connections are optional add-ons.</li>
+  <li>It doesn't read PLC data or write work orders to your CMMS.</li>
+  <li>It doesn't replace qualified maintenance personnel, your safety program or the manufacturer's procedures.</li>
+</ul>
+<h2 id="prints">Electrical prints and drawing sets</h2>
+<p>Attach electrical prints as a PDF to the equipment notebook. Ask about the component references, device schedules and drawing notes available as readable text. A cited answer points you back to the document so you can check the original sheet.</p>
+<p>Searchable text matters. A scan or a drawing made mainly of symbols and lines may contain too little text to answer a question. Uploading a file alone does not prove every sheet is searchable. Check the drawing revision and sheet against the equipment.</p>
+<p>Complete circuit tracing and reliable interpretation of every symbol, wire number or terminal are not established capabilities. Verify circuit connections on the original prints and with qualified personnel.</p>
+<h2 id="namespace">Namespace building and plant integrations</h2>
+<p>MIRA’s namespace-building approach connects equipment context, evidence and human-reviewed relationships to support digital transformation. The self-service starting point is an equipment notebook with document questions. A complete plant namespace, live PLC/Ignition context and work-order integrations require a separately scoped rollout and confirmation of available connections. A conversation or saved note alone does not become approved diagnostic knowledge.</p>
+<h2 id="tested">What we've tested</h2>
+<p>In production we've tested Rockwell, Festo and ABB manuals so far, in earlier production tests. This is not a current-build certification. Opening the cited page from a phone is still being improved; on a phone, check the page on desktop when it matters.</p>
+<p>An earlier staging test answered a PLC-identification question from CV-101's nine-sheet electrical print set and cited page 1. That demonstrates one documented lookup, not coverage of the whole drawing set or current-build acceptance.</p>
+<h2 id="safety">Safety</h2>
+<div class="safety-card"><p>Disconnect power per the equipment manual and lock out per site procedure.</p></div>
+<p style="margin-top:16px">MIRA's answers are suggestions grounded in your equipment documents, not directives. Always check the cited page before acting, and follow your site's lockout/tagout, arc flash and confined-space procedures. Don't rely on any AI tool for those.</p>
+<h2 id="feedback">See something we should add?</h2>
+<p>Email <a href="mailto:mike@factorylm.com">mike@factorylm.com</a> and we'll add it to this page.</p><div class="related"><a href="https://factorylm.com/security"><b>Security</b><span>How we protect your data</span></a><a href="https://factorylm.com/trust"><b>Trust center</b><span>Sub-processors and disclosure</span></a><a href="https://factorylm.com/privacy"><b>Privacy</b><span>What we collect and why</span></a></div></div></div></section>
+</main>
+<footer class="footer">
+  <div class="wrap foot-grid">
+    <div class="foot-brand">
+      <a class="logo" href="/"><svg width="24" height="24" viewBox="0 0 28 28" aria-hidden="true"><rect width="28" height="28" rx="7" fill="#FF6B1A"/><path d="M7 20V8h3.2l3.8 6 3.8-6H21v12h-3v-7.2l-4 6.2-4-6.2V20z" fill="#0B1220"/></svg><span>FactoryLM</span></a>
+      <p>Maintenance intelligence for your digital transformation. Start with your equipment manuals and electrical prints.</p>
+      <p class="safety">Check answers against the cited document. Disconnect power per the equipment manual and lock out per site procedure.</p>
+    </div>
+    <div><h4>Product</h4><a href="/mira">MIRA</a><a href="/#how-it-works">How it works</a><a href="/#for-teams">For teams</a><a href="https://app.factorylm.com/signup/">Start free</a><a href="/blog">Blog</a></div>
+    <div><h4>Company</h4><a href="/about">About</a><a href="/demo">Request a demo</a><a href="https://factorylm.com/status">Status</a></div>
+    <div><h4>Trust</h4><a href="https://factorylm.com/security">Security</a><a href="https://factorylm.com/trust">Trust center</a><a href="/limitations">Limitations &amp; safety</a></div>
+    <div><h4>Legal</h4><a href="https://factorylm.com/privacy">Privacy</a><a href="https://factorylm.com/terms">Terms</a></div>
+  </div>
+  <div class="wrap foot-bottom"><span>© 2026 FactoryLM, Inc. · Delaware, USA</span><span>Free for technicians.</span></div>
+</footer>
+<script src="/factorylm-next-assets/site.js?v=7d3961066bf1" defer></script>
+</body>
+</html>

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { ensureUserAndTenant, findUserByEmail } from "@/lib/users";
 import { attributionFromRequest, handlePilotApplicationSubmitted } from "@/capabilities/pilot-funnel";
+import { publicSignupPolicy } from "@/capabilities/free-technician-signup";
 
 export const dynamic = "force-dynamic";
 
@@ -91,7 +92,11 @@ export async function POST(req: Request) {
   } catch {
     return NextResponse.json({ error: "invalid JSON" }, { status: 400, headers });
   }
-  const { email, password, name } = body as { email?: unknown; password?: unknown; name?: unknown };
+  const { email, password, name, signupIntent } = body as { email?: unknown; password?: unknown; name?: unknown; signupIntent?: unknown };
+  if (signupIntent !== undefined && signupIntent !== "technician" && signupIntent !== "pilot") {
+    return NextResponse.json({ error: "invalid signup intent" }, { status: 400, headers });
+  }
+  const intent = signupIntent === "pilot" ? "pilot" : "technician";
   if (typeof email !== "string" || typeof password !== "string") {
     return NextResponse.json({ error: "email and password required" }, { status: 400, headers });
   }
@@ -112,7 +117,7 @@ export async function POST(req: Request) {
     }
     const passwordHash = await bcrypt.hash(password, 12);
     const nameStr = typeof name === "string" ? name.trim() || undefined : undefined;
-    const result = await ensureUserAndTenant({ email: trimmed, passwordHash, name: nameStr });
+    const result = await ensureUserAndTenant({ email: trimmed, passwordHash, name: nameStr, ...(intent === "pilot" ? { signupIntent: intent } : {}) });
     captureHubSpotLead(trimmed, nameStr).catch(() => {});
     // #4877 — pilot-application funnel. `existing` above is null, so this is
     // genuinely a NEW account (not the Google-OAuth/magic-link signup paths
@@ -120,7 +125,7 @@ export async function POST(req: Request) {
     // for that gap). Fire-and-forget: must never fail or slow this response.
     // tenantName mirrors ensureUserAndTenant's own fallback
     // (mira-hub/src/lib/users.ts) rather than a second DB read.
-    void handlePilotApplicationSubmitted({
+    if (publicSignupPolicy(intent).kind !== "free_technician") void handlePilotApplicationSubmitted({
       tenantId: result.tenantId,
       userId: result.id,
       email: trimmed,

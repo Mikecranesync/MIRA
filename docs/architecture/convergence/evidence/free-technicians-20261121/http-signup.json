@@ -1,0 +1,18 @@
+{
+  "scope": "Local synthetic registration and real NextAuth cookie session; not a live customer acceptance run",
+  "policy": {
+    "version": 1,
+    "kind": "free_technician",
+    "requiresApproval": false,
+    "trialDays": null
+  },
+  "registration_status": 201,
+  "password_signin": "passed",
+  "account_status": "approved",
+  "trial_expiry": null,
+  "tenant_role": "owner",
+  "matching_user_and_workspace": true,
+  "public_account_created": false,
+  "email_sent": false,
+  "payment_or_plant_action": false
+}

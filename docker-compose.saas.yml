@@ -170,6 +170,9 @@ services:
     ports:
       - "127.0.0.1:3200:3000"
     environment:
+      - FACTORYLM_MARKETING_NEXT=${FACTORYLM_MARKETING_NEXT:-false}
+      - MIRA_FREE_TECHNICIANS=${MIRA_FREE_TECHNICIANS:-false}
+      - MIRA_PILOT_APPROVAL_REQUIRED=${MIRA_PILOT_APPROVAL_REQUIRED:-}
       - PORT=3000
       - PLG_JWT_SECRET=${PLG_JWT_SECRET}
       - PLG_API_ALLOWED_ORIGINS=${PLG_API_ALLOWED_ORIGINS:-}
@@ -913,6 +916,7 @@ services:
       - PLG_POSTHOG_HOST=${PLG_POSTHOG_HOST:-}
       - PILOT_OWNER_EMAIL=${PILOT_OWNER_EMAIL:-}
       - MIRA_PILOT_APPROVAL_REQUIRED=${MIRA_PILOT_APPROVAL_REQUIRED:-}  # empty = off (open signup)
+      - MIRA_FREE_TECHNICIANS=${MIRA_FREE_TECHNICIANS:-false}  # opt-in non-expiring public technician accounts
       - NEXTAUTH_URL=${NEXTAUTH_URL:-https://app.factorylm.com/api/auth}
       - NEXTAUTH_URL_INTERNAL=${NEXTAUTH_URL_INTERNAL:-https://app.factorylm.com/api/auth}
       # Sign-in OAuth client. Named HUB_AUTH_GOOGLE_* to avoid collision with

@@ -3,6 +3,7 @@ import { ensureDataSchema } from "@/lib/data-schema";
 import { PILOT_WINDOW_DAYS } from "@/lib/config";
 import { magicTokenTtlMinutes } from "@/capabilities/trial-access";
 import { admitPilotInvite, isPilotApprovalRequired } from "@/capabilities/pilot-access";
+import { publicSignupPolicy, type SignupIntent } from "@/capabilities/free-technician-signup";
 
 export type UserStatus = "pending" | "trial" | "approved" | "expired" | "admin";
 
@@ -283,6 +284,7 @@ export interface EnsureUserAndTenantInput {
   googleSub?: string;
   name?: string;
   passwordHash?: string;
+  signupIntent?: SignupIntent;
 }
 
 export async function ensureUserAndTenant(
@@ -337,7 +339,11 @@ export async function ensureUserAndTenant(
     // query). On: the new owner is 'pending' with no trial clock running yet
     // (the admin approve route starts it), and the tenant is marked a pilot
     // applicant so the admin cohort view can find it.
-    const pilotMode = isPilotApprovalRequired();
+    const policy = publicSignupPolicy(input.signupIntent);
+    const pilotMode = policy.kind === "pilot_application";
+    // Free personal workspaces never join the plant-pilot cohort. Keep the global
+    // pilot flag intact so existing cohort deadlines, invitations and caps remain enforced.
+    const freeTechnician = policy.kind === "free_technician";
     const {
       rows: [user],
     } = await client.query(
@@ -345,10 +351,14 @@ export async function ensureUserAndTenant(
         ? `INSERT INTO hub_users (email, password_hash, google_sub, tenant_id, name, status, trial_expires_at)
        VALUES ($1, $2, $3, $4, $5, 'pending', NULL)
        RETURNING id, email`
+        : freeTechnician
+        ? `INSERT INTO hub_users (email, password_hash, google_sub, tenant_id, name, status, trial_expires_at, plan)
+       VALUES ($1, $2, $3, $4, $5, 'approved', NULL, 'technician_free')
+       RETURNING id, email`
         : `INSERT INTO hub_users (email, password_hash, google_sub, tenant_id, name, status, trial_expires_at)
        VALUES ($1, $2, $3, $4, $5, 'trial', NOW() + ($6::int * INTERVAL '1 day'))
        RETURNING id, email`,
-      pilotMode
+      pilotMode || freeTechnician
         ? [input.email, input.passwordHash ?? null, input.googleSub ?? null, tenantId, input.name ?? null]
         : [input.email, input.passwordHash ?? null, input.googleSub ?? null, tenantId, input.name ?? null, PILOT_WINDOW_DAYS],
     );

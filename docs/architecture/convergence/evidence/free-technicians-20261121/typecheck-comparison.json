@@ -1,0 +1,20 @@
+{
+  "hub": {
+    "base_sha": "dfa344f32",
+    "baseline_errors": 76,
+    "candidate_errors": 76,
+    "identical_normalized_diagnostics": true,
+    "new_diagnostics": [],
+    "missing_diagnostics": [],
+    "normalization": "workspace prefix"
+  },
+  "web": {
+    "base_sha": "dfa344f32",
+    "baseline_errors": 34,
+    "candidate_errors": 34,
+    "identical_normalized_diagnostics": true,
+    "new_diagnostics": [],
+    "missing_diagnostics": [],
+    "normalization": "workspace prefix; server.ts line offsets for inserted mounts"
+  }
+}
