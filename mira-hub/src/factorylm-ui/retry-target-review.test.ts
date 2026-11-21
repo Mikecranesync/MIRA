@@ -101,32 +101,32 @@ describe("the held photo is shown while the question waits for review (#5562)", 
   const review = retryTargetCheck(REFUSED, cleared(5));
 
   it("unchanged question: says the photo is kept and goes with the next Send, and when it would not", () => {
-    expect(heldEvidenceNote(failed, review, "  what is this bracket for?  ")).toBe(
+    expect(heldEvidenceNote(failed, review, true)).toBe(
       "Your photo is kept with this question and goes with the next Send to the whole machine, unless you change the question or attach something new.",
     );
   });
   it("edited question: says the kept photo will not go (heldQuestionForSend drops it)", () => {
     const edited = "what is this bracket for on VFD1?";
     expect(heldQuestionForSend(failed, review, edited, 0)).toBeNull();
-    expect(heldEvidenceNote(failed, review, edited)).toBe(
-      "You changed the question, so the kept photo will not go with it. Attach the photo again if you need it.",
+    expect(heldEvidenceNote(failed, review, false)).toBe(
+      "Your photo is kept with the saved question below. Send the saved question to include it.",
     );
   });
   it("control: no photo held, no note", () => {
-    expect(heldEvidenceNote({ ...failed, body: { message: failed.question } }, review, failed.question)).toBeNull();
+    expect(heldEvidenceNote({ ...failed, body: { message: failed.question } }, review, true)).toBeNull();
   });
   it("control: no review pending (same target, or not a target refusal), no note", () => {
-    expect(heldEvidenceNote(failed, retryTargetCheck(REFUSED, selected(A, 5)), failed.question)).toBeNull();
-    expect(heldEvidenceNote({ body: failed.body, question: failed.question }, review, failed.question)).toBeNull();
-    expect(heldEvidenceNote(null, null, failed.question)).toBeNull();
+    expect(heldEvidenceNote(failed, retryTargetCheck(REFUSED, selected(A, 5)), true)).toBeNull();
+    expect(heldEvidenceNote({ body: failed.body, question: failed.question }, review, true)).toBeNull();
+    expect(heldEvidenceNote(null, null, true)).toBeNull();
   });
 });
 
 describe("the host is wired to the hold (source shape, like hub-host-restore-retry)", () => {
   const host = readFileSync(new URL("./hub-host.tsx", import.meta.url), "utf8");
   it("Retry is offered only when the target did not move", () => {
-    expect(host).toMatch(/\.\.\.\(failedBody && retryCheck\?\.kind === "retry" \? \{ onRetry \} : \{\}\)/);
-    expect(host).not.toMatch(/\.\.\.\(failedBody \? \{ onRetry \} : \{\}\)/);
+    expect(host).toContain('onRetrySendError: recoveryIsVisible && !failedBody?.unposted && retryCheck?.kind === "retry" ? onRetry : null');
+    expect(host).toContain('failedBody?.error && retryCheck?.kind === "retry" ? { onRetry }');
   });
   it("a target refusal keeps the refused scope and the review message is shown", () => {
     expect(host).toMatch(/refusedScope \? \{ refusedScope \} : \{\}/);
@@ -136,8 +136,8 @@ describe("the host is wired to the hold (source shape, like hub-host-restore-ret
     expect(host).toMatch(/\.\.\.\(reviewMessage \? \{ targetReview: reviewMessage \} : \{\}\)/);
   });
   it("the held-photo note sits beside the composer, read from the live draft (#5562)", () => {
-    expect(host).toMatch(/const heldNote = heldEvidenceNote\(failedBody, retryCheck, view\.draft\);/);
-    expect(host).toMatch(/heldNote \? \{ composerAccessory: <p className="fl-qtarget__browsing" role="status" aria-label="Kept with this question">\{heldNote\}<\/p> \}/);
+    expect(host).toMatch(/const heldNote = heldEvidenceNote\(failedBody, retryCheck, composerOwnsRecovery\);/);
+    expect(host).toContain('aria-label="Kept with this question">{heldNote}');
   });
   it("Send routes the held question through heldQuestionForSend", () => {
     expect(host).toMatch(/const held = heldQuestionForSend\(failedBody, retryCheck, q, files\.length\);/);

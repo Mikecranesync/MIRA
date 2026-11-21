@@ -101,15 +101,36 @@ export function notebookMachines(notebooks: readonly HubNotebook[]): readonly Ma
   return Array.from(seen.values());
 }
 
-export function notebookProjects(notebooks: readonly HubNotebook[]): readonly Project[] {
-  return notebooks.map((nb) => ({
-    id: projectIdForNotebook(nb.id),
-    name: notebookLabel(nb),
-    children: [
-      ...(nb.asset
-        ? [{ kind: "machine-link" as const, id: `link-${nb.id}`, label: machineNameFor(nb), machineId: nb.asset.entityId }]
-        : []),
-      ...threadRows(nb),
-    ],
-  }));
+export function notebookProjects(
+  notebooks: readonly HubNotebook[],
+  draftsByThread?: ReadonlyMap<string, { readonly text: string }>,
+  extraDraftThreads: Iterable<string> = [],
+): readonly Project[] {
+  // A new chat has no server thread row until the first send. Make parked
+  // drafts reachable by their actual thread ID, through the normal sidebar.
+  const draftRows = new Map<string, ProjectNode[]>();
+  for (const id of new Set([...(draftsByThread?.keys() ?? []), ...extraDraftThreads])) {
+    const thread = threadRefFromItem(id);
+    if (!thread) continue;
+    const excerpt = (draftsByThread?.get(id)?.text ?? "").trim().replace(/\s+/g, " ").slice(0, 48);
+    const drafts = draftRows.get(thread.notebookId) ?? [];
+    drafts.push({ kind: "thread", id, label: excerpt ? `Unsent draft · ${excerpt}` : "Unsent draft" });
+    draftRows.set(thread.notebookId, drafts);
+  }
+  return notebooks.map((nb) => {
+    const threads = threadRows(nb);
+    const knownThreads = new Set(threads.map((thread) => thread.id));
+    const drafts = draftRows.get(nb.id)?.filter((draft) => !knownThreads.has(draft.id)) ?? [];
+    return {
+      id: projectIdForNotebook(nb.id),
+      name: notebookLabel(nb),
+      children: [
+        ...(nb.asset
+          ? [{ kind: "machine-link" as const, id: `link-${nb.id}`, label: machineNameFor(nb), machineId: nb.asset.entityId }]
+          : []),
+        ...threads,
+        ...drafts,
+      ],
+    };
+  });
 }
