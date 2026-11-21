@@ -14,6 +14,14 @@ export interface ManualSafetyStatement {
   statement: string;
 }
 
+// Shared with the cited-page SQL prefilter. Keep the condition and damage
+// consequence together and allow line breaks in text extracted from a PDF.
+export const OPERATING_CAUTION_PATTERN = String.raw`Note(?:\s+that|:)\s+((?:setting\s+(?:the\s+)?(?:acceleration|deceleration)\s+time\s+too\s+short|disabling\s+earth\s+fault\s+\(ground\s+fault\))\s+may\s+(?:cause\s+(?:motor|drive)\s+damage|damage\s+(?:the\s+)?drive))`;
+const OPERATING_CAUTION_SENTENCE = new RegExp(
+  String.raw`\b${OPERATING_CAUTION_PATTERN}\b((?:\b(?:approx|min|max)\.(?=\s*[+-]?\d)|[^.!?]|\.(?=\d)){0,160}(?:[!?]|\.(?!\d)))`,
+  'i',
+);
+
 const SAFETY_MARKERS = [
   'WARNING',
   'DANGER',
@@ -224,6 +232,19 @@ export function extractManualSafetyStatement(text: string): ManualSafetyStatemen
   }
 }
 
+/**
+ * Only cited-page notices use this fallback. It must not compete with existing
+ * warnings in retrieval ranking, Safety chapter selection, or reported notices.
+ */
+export function extractCitedOperatingCaution(text: string): ManualSafetyStatement | null {
+  const match = text.replace(/\s+/g, ' ').match(OPERATING_CAUTION_SENTENCE);
+  if (!match) return null;
+  const statement = match[1] + match[2];
+  // A chunk can break at the dot inside a parameter identifier.
+  if (/\b[a-z]{1,4}\d+\.$/i.test(statement)) return null;
+  return { marker: 'CAUTION (manual text)', statement };
+}
+
 /** The cited-source fields the helper reads (a subset of `EvidenceCitation`). */
 type CitedSource = { citationId: string; docId: string; sourceTitle: string; page: number | null };
 /** The retrieved-chunk fields the helper reads (a subset of `ManualChunk`). */
@@ -264,7 +285,8 @@ export function citedPagesFor(
  * `${sourceUrl}::${sourcePage ?? ""}`, citationId n = the n-th distinct key.
  * Only the pages behind `citations` are read — the caller passes the EMITTED
  * citations, so a retrieved page the answer did not cite never counts. The
- * citations are walked in ascending citation number; the first hit wins.
+ * citations are walked in ascending citation number. An operating note is
+ * reported only when none of the cited pages carries an existing warning.
  */
 export function manualSafetyStatementForCitations(
   citations: readonly CitedSource[],
@@ -281,21 +303,24 @@ export function manualSafetyStatementForCitations(
     if (i !== undefined) pages[i].push(c.content);
   }
   const ordered = [...citations].sort((a, b) => Number(a.citationId) - Number(b.citationId));
+  let fallback: ManualSafetyStatementEntry | null = null;
   for (const c of ordered) {
     for (const content of pages[Number(c.citationId) - 1] ?? []) {
-      const hit = extractManualSafetyStatement(content);
-      if (hit) {
-        return {
-          kind: 'manual_safety_statement',
-          marker: hit.marker,
-          statement: hit.statement,
-          sourceDocId: c.docId,
-          sourceCitationId: c.citationId,
-          sourceTitle: c.sourceTitle,
-          page: c.page,
-        };
-      }
+      const warning = extractManualSafetyStatement(content);
+      const hit = warning ?? (fallback ? null : extractCitedOperatingCaution(content));
+      if (!hit) continue;
+      const notice: ManualSafetyStatementEntry = {
+        kind: 'manual_safety_statement',
+        marker: hit.marker,
+        statement: hit.statement,
+        sourceDocId: c.docId,
+        sourceCitationId: c.citationId,
+        sourceTitle: c.sourceTitle,
+        page: c.page,
+      };
+      if (warning) return notice;
+      fallback = notice;
     }
   }
-  return null;
+  return fallback;
 }

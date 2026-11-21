@@ -232,6 +232,27 @@ export function applicableReadySource(
   return sources.find((s) => isApplicableEnabledManual(s, key) && s.readiness.canChat) ?? null;
 }
 
+/** Status from the currently enabled source, regardless of the last acquisition record. */
+export function currentManualSourceMessage(
+  sources: readonly NotebookSource[],
+  identity: ConfirmedIdentity,
+): string | null {
+  const { manufacturer, model, catalogNumber } = identity;
+  const ready = applicableReadySource(sources, identity);
+  if (ready) {
+    const evidence = ready.matchEvidence as { reviewedLibraryPage?: number; reviewedLibraryTitle?: string } | null;
+    const page = evidence?.reviewedLibraryPage;
+    const title = evidence?.reviewedLibraryTitle;
+    if (typeof page === "number" && Number.isSafeInteger(page) && page > 0 && typeof title === "string") {
+      return `${title} is ready in Sources. PDF page ${page} shows coverage for ${catalogNumber?.trim() || model}.`;
+    }
+    return `The ${manufacturer} ${model} manual is ready — I can answer from it.`;
+  }
+  return applicableEnabledSource(sources, identity)
+    ? `I found the ${manufacturer} ${model} manual and added it to this notebook's Sources — it's still being prepared to answer from.`
+    : null;
+}
+
 /** The recorded search for this notebook, or null (never attempted, or unreadable). */
 export async function readAcquisition(tenantId: string, notebookId: string): Promise<AcquisitionRecord | null> {
   try {
@@ -1177,32 +1198,9 @@ export async function currentManualSearchStatus(
   const startedAt = rec.started_at ?? undefined;
 
   // F10: the acquired source's CURRENT state wins over the historical record.
-  const ready = applicableReadySource(sources, identity);
-  if (ready) {
-    const evidence = ready.matchEvidence as { reviewedLibraryPage?: number; reviewedLibraryTitle?: string } | null;
-    const page = evidence?.reviewedLibraryPage;
-    const title = evidence?.reviewedLibraryTitle;
-    const reviewed = typeof page === "number" && Number.isSafeInteger(page) && page > 0 &&
-      typeof title === "string";
-    return {
-      manufacturer,
-      model,
-      running: false,
-      message: reviewed
-        ? `${title} is ready in Sources. PDF page ${page} shows coverage for ${identity.catalogNumber?.trim() || model}.`
-        : `The ${manufacturer} ${model} manual is ready — I can answer from it.`,
-      ...(startedAt ? { startedAt } : {}),
-    };
-  }
-  const enabledButPreparing = applicableEnabledSource(sources, identity);
-  if (enabledButPreparing) {
-    return {
-      manufacturer,
-      model,
-      running: false,
-      message: `I found the ${manufacturer} ${model} manual and added it to this notebook's Sources — it's still being prepared to answer from.`,
-      ...(startedAt ? { startedAt } : {}),
-    };
+  const messageFromSource = currentManualSourceMessage(sources, identity);
+  if (messageFromSource) {
+    return { manufacturer, model, running: false, message: messageFromSource, ...(startedAt ? { startedAt } : {}) };
   }
 
   const reconciled = await reconcileAcquisition(tenantId, notebookId, rec);
