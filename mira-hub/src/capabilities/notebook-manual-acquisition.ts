@@ -1030,8 +1030,12 @@ export { MANUAL_SEARCH_LIMIT_COPY, MANUAL_SEARCH_UNAVAILABLE_COPY };
 /** A download handoff is not source admission. Never hand a security-rejected
  * URL to the browser as a workaround for the hardened downloader. */
 /** The saved manual's own link, when it is a public https URL (the same safety
- *  rules as acquisitionManualUrl). */
+ *  rules as acquisitionManualUrl) and this search actually linked it to the
+ *  notebook. An attach that failed (or was fenced) records the PDF it downloaded
+ *  but linked nothing, so that URL never outranks an older ready source or is
+ *  handed over as "the manual saved here" (Codex #5706 r7 F19). */
 function savedManualUrl(rec: AcquisitionRecord): string | null {
+  if (rec.linked !== true) return null;
   const raw = rec.manual_url;
   if (!raw || /[\\\s<>"']/.test(raw)) return null;
   try {

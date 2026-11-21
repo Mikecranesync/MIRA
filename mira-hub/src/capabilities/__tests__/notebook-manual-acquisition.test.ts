@@ -1240,6 +1240,7 @@ describe("currentManualSearchStatus — the polled status carries the acquired m
     key, state: "complete", started_at: "2026-11-20T00:00:00Z", finished_at: "2026-11-20T00:01:00Z",
     candidate_host: "cdn.automationdirect.com", match_state: "verified", oem_request_url: null,
     doc_id: "d-gs10", manual_url: URL, identifier_pages: [26], identifier_text: "GS11N-20P2", identifier_kind: "model", attached_indexed: true,
+    linked: true,
   };
   const src = (docId: string, canChat: boolean) => ({
     docId, enabledByDefault: true, matchState: "verified", sourceRole: "manual", readiness: { canChat }, matchEvidence: { autoAcquisitionKey: key },
@@ -1335,6 +1336,34 @@ describe("currentManualSearchStatus — the polled status carries the acquired m
     expect(r?.message).toContain(URL);
   });
 
+  // Codex #5706 r7 F19: an attach error records the PDF it downloaded but links
+  // nothing; an older ready source must stay visible, and the unlinked PDF is
+  // never offered as the manual saved here.
+  it("Codex r7 F19: an attach error does not hide an older ready source, and its unlinked PDF is omitted", async () => {
+    db.readRow = {
+      key, state: "candidate_review", started_at: "2026-11-20T00:00:00Z", finished_at: "2026-11-20T00:01:00Z",
+      candidate_host: "cdn.automationdirect.com", match_state: null, oem_request_url: null,
+      candidate_url: URL, manual_url: URL, attached_indexed: false, linked: false, file_id: "f-new", doc_id: null, retries: 0,
+    };
+    const r = await currentManualSearchStatus("t", "nb", unbound, proposed, [src("d-upload", true)] as never, { env: ON });
+    expect(r?.running).toBe(false);
+    expect(r?.message).toContain("ready");
+    expect(r?.manualUrl).toBeUndefined();
+    expect(r?.message ?? "").not.toContain(URL);
+  });
+
+  it("Codex r7 F19 control: a linked file-only replacement still takes precedence over an older ready source", async () => {
+    db.readRow = {
+      key, state: "search_unavailable", started_at: "2026-11-20T00:00:00Z", finished_at: "2026-11-20T00:01:00Z",
+      candidate_host: "cdn.automationdirect.com", match_state: null, oem_request_url: null,
+      candidate_url: URL, manual_url: URL, ingest_failed: true, attached_indexed: false, linked: true, file_id: "f-new", retries: 0,
+    };
+    db.fileLinked = true;
+    const r = await currentManualSearchStatus("t", "nb", unbound, proposed, [src("d-upload", true)] as never, { env: ON });
+    expect(r?.manualUrl).toBe(URL);
+    expect(r?.message).toContain(URL);
+  });
+
   it("control: a ready source this search did not acquire gets neither the record's link nor its pages", async () => {
     db.readRow = rec;
     const r = await currentManualSearchStatus("t", "nb", unbound, proposed, [src("d-upload", true)] as never, { env: ON });
@@ -1347,7 +1376,10 @@ describe("handoffManualUrl — one link for the live frame and the polled status
   const URL = "https://cdn.automationdirect.com/static/manuals/gs10m/gs10usermanual.pdf";
   const base = { key: "K", started_at: null, finished_at: null, candidate_host: "cdn.automationdirect.com", match_state: null, oem_request_url: null };
   it.each([
-    ["a completed, indexed manual (on or off)", { state: "complete", attached_indexed: true, doc_id: "d", manual_url: URL }, URL],
+    ["a completed, indexed manual (on or off)", { state: "complete", attached_indexed: true, doc_id: "d", manual_url: URL, linked: true }, URL],
+    // Codex #5706 r7 F19: an attach that failed linked nothing, so the PDF it
+    // downloaded is never handed over as the saved manual.
+    ["an attach that failed: no saved-manual link", { state: "candidate_review", attached_indexed: false, linked: false, file_id: "f", manual_url: URL }, null],
     ["a redirected copy saved but not searchable", { state: "search_unavailable", ingest_failed: true, linked: true, candidate_url: "https://www.automationdirect.com/gs10", manual_url: URL }, URL],
     ["a download the site refused: the page it was found on", { state: "download_rejected", download_reason: "wrong_content_type", candidate_url: "https://www.automationdirect.com/gs10" }, "https://www.automationdirect.com/gs10"],
     ["a running search", { state: "running", manual_url: URL }, null],

@@ -312,7 +312,7 @@ describe("#4160 S6 R2 — candidate-basis background acquisition triggers from t
     const done = {
       key: "SMC|SS5Y3DUW01302|", state: "complete", started_at: null, finished_at: null, candidate_host: "www.smcusa.com",
       match_state: "verified", oem_request_url: null, candidate_url: "https://www.smcusa.com/ss5y3", manual_url: PDF,
-      attached_indexed: true, doc_id: "d-ss5y3",
+      attached_indexed: true, doc_id: "d-ss5y3", linked: true,
     };
     acqMock.startManualAcquisition.mockResolvedValue(false);
     acqMock.readAcquisition.mockResolvedValue(done);
