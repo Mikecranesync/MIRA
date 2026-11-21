@@ -5,6 +5,7 @@
 **Created:** 2026-05-25
 **Adapters touched:** `mira-bots/telegram` (read-only, via Telethon test client)
 **Companion:**
+- [Regression protection research and implementation plan](../testing/regression-protection.md) — proposed 2026-11 extension across Hub, saved state and release evidence; existing acceptance policies remain authoritative.
 - `tests/mira_bench.py` — direct engine benchmark (no bot in the loop)
 - `tests/regime1_telethon/batch_survey_driver.py` — multi-turn photo driver (Telethon → live bot)
 - `.github/workflows/mira-benchmark-weekly.yml` — weekly baseline gate
