@@ -2307,15 +2307,18 @@ async function handleChatTurn(
   // do I restore it") asks for nothing to be defeated, so it is answered normally from approved
   // evidence with the fixed card above it. An ADVISORY like the restart banner: no safetyTrigger,
   // no prompt directive, no page. (An operative ask never gets here: it ended as a refusal.)
-  const bypassWarnAsk = !safetyTrigger && !electricalHazardDirective && !bypassStopEarly ? safetyBypassWarning(message) : null;
+  // #5670 native 3 F9: computed INDEPENDENTLY of any text or photo hazard. A reported bypass
+  // beside visible smoke gets both warnings, each once: the hazard banner keeps its priority
+  // (first, with its page citation); the advisory card follows it, never replaces it.
+  const bypassWarnAsk = !bypassStopEarly ? safetyBypassWarning(message) : null;
   const advisoryBanner = Boolean(bypassWarnAsk) || restartAdvisory;
-  const flagBannerBase = safetyTrigger && !electricalHazardDirective
-    ? hazardBanner(safetyTrigger)
-    : bypassWarnAsk
-      ? restartAdvisory ? `${BYPASS_BANNER}\n\n${RESTART_BANNER}` : BYPASS_BANNER
-      : restartAdvisory
-        ? RESTART_BANNER
-        : null;
+  const hazardBannerBase = safetyTrigger && !electricalHazardDirective ? hazardBanner(safetyTrigger) : null;
+  const advisoryBannerBase = bypassWarnAsk
+    ? restartAdvisory ? `${BYPASS_BANNER}\n\n${RESTART_BANNER}` : BYPASS_BANNER
+    : restartAdvisory
+      ? RESTART_BANNER
+      : null;
+  const flagBannerBase = hazardBannerBase ?? advisoryBannerBase;
 
   // Snapshot for every persisted turn, including abstains and safety stops: a
   // refusal about a specific machine is still a record about that machine —
@@ -2383,8 +2386,10 @@ async function handleChatTurn(
       evidence: [
         ...disputeEntries,
         ...(visualEntry ? [visualEntry] : []),
+        // ONE terminal display notice for the response (#5670 native 3 F10): the energized-work
+        // isolation guidance is part of the saved answer text; a second safety_notice would render
+        // as a second terminal notice on hydration where the live stream and replay show one.
         { kind: "safety_notice", trigger: BYPASS_STOP_TRIGGER } satisfies SafetyNoticeEntry,
-        ...(energizedGuidance ? [{ kind: "safety_notice", trigger: ENERGIZED_WORK_TRIGGER } satisfies SafetyNoticeEntry] : []),
         { kind: "safety_stop", trigger: BYPASS_STOP_TRIGGER } satisfies SafetyStopEntry,
       ],
       model: null,
@@ -2938,9 +2943,9 @@ async function handleChatTurn(
   // printed label (TQ-29: p.2-15) over INTEGER source_page.
   // The restart and bypass banners are site safety practice, not manual claims: no page.
   const flagBanner = flagBannerBase
-    ? advisoryBanner
-      ? flagBannerBase
-      : withPageCitation(flagBannerBase, pageFromRetrievedChunks(chunks))
+    ? hazardBannerBase
+      ? [withPageCitation(hazardBannerBase, pageFromRetrievedChunks(chunks)), advisoryBannerBase].filter(Boolean).join("\n\n")
+      : flagBannerBase
     : null;
   {
     // Notebook chunks carry a doc id; shared-OEM chunks carry no doc id but a
@@ -4983,10 +4988,10 @@ async function handleChatTurn(
                     responseBuffer.push(norm);
                     // B2: under the gate the candidate is buffered, not shown.
                     if (!gate) {
-                      if (advisoryBanner && flagBanner && !restartBannerStreamed) {
+                      if (advisoryBannerBase && !restartBannerStreamed) {
                         restartBannerStreamed = true;
                         controller.enqueue(
-                          enc.encode(sse({ kind: "content", content: `${flagBanner}\n\n` } as NotebookContentFrame)),
+                          enc.encode(sse({ kind: "content", content: `${advisoryBannerBase}\n\n` } as NotebookContentFrame)),
                         );
                       }
                       if (relatedManualWarning && !relatedWarningStreamed) {

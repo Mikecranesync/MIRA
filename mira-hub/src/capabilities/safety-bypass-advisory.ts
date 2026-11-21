@@ -219,6 +219,20 @@ const OUT_OF_CIRCUIT_DEVICE_FIRST = new RegExp(
   "i",
 );
 
+/**
+ * A defeat part: the plug, jumper or link that makes a safety input read healthy ("STO disable
+ * plug", "bypass plug", "defeat plug", "a jumper in the e-stop loop").
+ */
+const DEFEAT_PART =
+  `(?:(?:bypass|defeat|disable|disabling|override|dummy|shorting|cheater|loop-?back|mute|muting|jumper)\\s+(?:plug|jumper|dongle|connector|link|key|block|shunt|bridge|loopback)` +
+  `|(?:plug|jumper|shunt|dummy\\s+plug|cheater)\\s+(?:in|into|across|on|for)\\s+(?:the\\s+)?${DEVICE})`;
+/** Putting one in, or using one: base and -ing forms only ("used"/"left" would be a report). */
+const INSERT_VERB =
+  "(?:stick(?:ing)?|put(?:ting)?|plug(?:ging)?|insert(?:ing)?|fit(?:ting)?|install(?:ing)?|us(?:e|ing)|connect(?:ing)?|add(?:ing)?|place|placing|jam(?:ming)?|slot(?:ting)?|wire|wiring|leav(?:e|ing)|keep(?:ing)?)";
+const USE_DEFEAT_PART = new RegExp(`\\b${INSERT_VERB}\\b[^.?!]{0,30}?\\b${DEFEAT_PART}`, "i");
+/** "the bypass plug is in", "a bypass plug installed": a state report. */
+const DEFEAT_PART_IN_PLACE = new RegExp(`\\b${DEFEAT_PART}\\s+(?:(?:is|are|was|were|still)\\s+)?(?:in\\s+place|installed|fitted|inserted|plugged\\s+in|in)\\b`, "gi");
+
 /** Cutting, removing or defeating someone else's lockout lock. */
 const OTHERS_LOCK =
   /\b(?:cut|cutting|remove|removing|take\s+off|taking\s+off|pull|pulling|break|breaking|drill|drilling|bolt[-\s]?cut|bypass|bypassing|override|overriding)\s+(?:\S+\s+){0,3}(?:someone\s+else's|another\s+(?:person's|worker's|tech's|technician's)|their)\s+(?:lock|tag|lockout)/i;
@@ -256,7 +270,7 @@ const SYMPTOM_FRAME = /^(?:also\s+|and\s+)?why\b/;
 const NEGATED_BEFORE = /\b(?:do\s+not|don't|dont|never|must\s+not|mustn't|should\s+not|shouldn't|not\s+to|no\s+one\s+should)\s+(?:\S+\s+){0,2}$/i;
 /** Before the match: prevention or detection ("prevent someone from bypassing", "alarm on a bypassed"). */
 const PREVENT_BEFORE =
-  /\b(?:prevent\w*|avoid\w*|stop\w*|detect\w*|alarm\w*|alert\w*|monitor\w*|block\w*|catch\w*|discourag\w*|prohibit\w*|disallow\w*|forbid\w*|guard\s+against|protect\s+against)(?:\s+(?!(?:by|using|via|and|so|to)\b)\S+){0,5}\s*$|\bkeep\w*(?:\s+\S+){0,3}\s+from\s+$/i;
+  /\b(?:prevent\w*|avoid\w*|stop\w*|detect\w*|alarm\w*|alert\w*|monitor\w*|block\w*|catch\w*|discourag\w*|prohibit\w*|disallow\w*|forbid\w*|guard\s+against|protect\s+against)(?:\s+(?!(?:by|using|via|and|so|to)\b)\S+){0,8}\s*$|\bkeep\w*(?:\s+\S+){0,3}\s+from\s+$/i;
 
 /** The clauses of a message: sentences, semicolons, dashes, commas and "and can I ...". */
 function clausesOf(msg: string): string[] {
@@ -288,7 +302,7 @@ function judgeClause(clause: string, messageNamesDevice: boolean): { kind: Kind;
     return match;
   };
 
-  const candidates: { re: RegExp; needs?: boolean; reportable?: boolean; run?: boolean }[] = [
+  const candidates: { re: RegExp; needs?: boolean; reportable?: boolean; run?: boolean; removal?: boolean }[] = [
     { re: VERB_THEN_DEVICE, reportable: true },
     { re: TURN_OFF_FIRST, reportable: true },
     { re: TURN_OFF_SEPARATED, reportable: true },
@@ -297,18 +311,28 @@ function judgeClause(clause: string, messageNamesDevice: boolean): { kind: Kind;
     { re: RUN_WITHOUT, run: true },
     { re: RUN_WITH_PRONOUN, needs: true, run: true },
     { re: VERB_THEN_PRONOUN, needs: true, reportable: true },
-    { re: OUT_OF_CIRCUIT_VERB_FIRST },
-    { re: OUT_OF_CIRCUIT_DEVICE_FIRST },
+    { re: OUT_OF_CIRCUIT_VERB_FIRST, removal: true },
+    { re: OUT_OF_CIRCUIT_DEVICE_FIRST, removal: true },
+    { re: USE_DEFEAT_PART },
     { re: OTHERS_LOCK },
   ];
+  // EVERY occurrence of EVERY family is judged on its own: a report, a prevention or a negation
+  // on one occurrence never hides a distinct operative one (#5670 native 3 F8).
   for (const c of candidates) {
     if (c.needs && !messageNamesDevice) continue;
     // "Why does it fault when I run with the guard open?" reports a symptom; it asks for nothing.
     if (c.run && SYMPTOM_FRAME.test(clause)) continue;
-    const m = c.re.exec(clause);
-    if (!m) continue;
-    const hit = operative(m[0], m.index, c.reportable === true);
-    if (hit) return { kind: "refuse", match: hit };
+    for (const m of allMatches(c.re, clause)) {
+      const index = m.index ?? 0;
+      // A circuit removal that has already happened ("was taken out of the STO circuit",
+      // "someone has taken the door switch from the chain") is a report; a proposal is not.
+      if (c.removal && isCompletedRemoval(m[0], clause.slice(0, index))) {
+        if (!NEGATED_BEFORE.test(clause.slice(0, index))) warn ??= m[0];
+        continue;
+      }
+      const hit = operative(m[0], index, c.reportable === true);
+      if (hit) return { kind: "refuse", match: hit };
+    }
   }
   const phrase = REFUSE_PHRASES.find((p) => clause.includes(p));
   if (phrase) {
@@ -317,12 +341,28 @@ function judgeClause(clause: string, messageNamesDevice: boolean): { kind: Kind;
   }
 
   // A reported state, with no request in the clause.
-  for (const m of clause.matchAll(DEVICE_THEN_STATE)) {
-    if (!READOUT_BEFORE.test(clause.slice(0, m.index))) warn ??= m[0];
+  for (const m of allMatches(DEVICE_THEN_STATE, clause)) {
+    if (!READOUT_BEFORE.test(clause.slice(0, m.index ?? 0))) warn ??= m[0];
+  }
+  for (const m of allMatches(DEFEAT_PART_IN_PLACE, clause)) {
+    if (!NEGATED_BEFORE.test(clause.slice(0, m.index ?? 0))) warn ??= m[0];
   }
   const warned = WARN_PHRASES.find((p) => clause.includes(p));
   if (warned) warn ??= warned;
   return warn ? { kind: "warn", match: warn } : { kind: null, match: null };
+}
+
+/** Fresh global copy per call, so no RegExp.lastIndex state is ever shared between messages. */
+function allMatches(re: RegExp, s: string): RegExpMatchArray[] {
+  return [...s.matchAll(new RegExp(re.source, re.flags.includes("g") ? re.flags : `${re.flags}g`))];
+}
+
+/** "was taken out of", "has been removed from", "took ... out of": the act is done, not proposed. */
+const COMPLETED_REMOVAL =
+  /\b(?:was|were|been|is|are|got|gets|had|has|have)\s+(?:\w+\s+){0,2}(?:taken|removed|pulled|dropped|lifted|deleted)\b|^(?:took|taken|removed|pulled|dropped|lifted|deleted)\b/;
+const PERFECT_BEFORE = /\b(?:has|have|had|was|were|been|having)\s+(?:\w+\s+)?$/;
+function isCompletedRemoval(matched: string, before: string): boolean {
+  return COMPLETED_REMOVAL.test(matched) || (/^(?:taken|removed|pulled|dropped|lifted|deleted)\b/.test(matched) && PERFECT_BEFORE.test(before));
 }
 
 /**
@@ -342,9 +382,51 @@ function normalizeAsk(raw: string): string {
     .trim();
 }
 
-/** "can we keep running", asked in a clause of its own: a permission to carry on. */
+/**
+ * A request to carry on, in a clause of its own: "can I keep running", "is it safe to keep going",
+ * "may we continue operating", "can we leave it running like this". First person only (a question
+ * ABOUT the indicator, "can you explain the run light", is not a request to run).
+ */
 const ASKS_TO_CARRY_ON =
-  /^(?:also\s+|actually\s+)?(?:can|could|may|might|is\s+it\s+(?:ok|okay|fine|safe|alright|allowed))\b[^?]*\b(?:keep|keeping|continue|continuing|leave|leaving)\s+(?:it\s+|them\s+|this\s+|the\s+\w+\s+)?(?:running|operating|going|like\s+(?:that|this))\b/;
+  /^(?:also\s+|actually\s+|and\s+|so\s+|but\s+)?(?:(?:can|could|may|might|would|should|shall|will)\s+(?:i|we)\b|is\s+it\s+(?:ok|okay|fine|safe|alright|allowed|acceptable)\b|are\s+we\s+(?:ok|okay|allowed|good)\b|am\s+i\s+(?:ok|allowed)\b|(?:ok|okay)\s+to\b)[^?]*?\b(?:keep(?:ing)?|continu\w+|carry(?:ing)?\s+on|go(?:ing)?\s+on|leav(?:e|ing)|resum\w+|restart\w*|start\w*|run(?!\s+(?:indicator|light|lamp|led|mode|status|signal|command|input|output|relay|contact|time|hours?|(?:the\s+|a\s+|some\s+)?(?:diagnostics?|tests?|checks?|reports?|scans?|self[- ]?tests?)\b))\w*|operat\w+|cycl\w+|jog\w*|produc\w+|proceed\w*)\b/;
+
+/** A device-state mention that is CURRENT: "the guard door is open", "the light curtain is still out of service". */
+const STATE_AFTER_MENTION = new RegExp(
+  `\\b${DEVICE_PHRASE}\\s+((?:(?:is|are|was|were|got|been|being|still|currently|now|all|has|have|had|remains?|stays?|keeps?)\\s+){0,3})${STATE}\\b`,
+  "gi",
+);
+/** "an open guard door", "a bypassed interlock", "an out-of-service light curtain": the state comes first. */
+const STATE_BEFORE_MENTION = new RegExp(`\\b${STATE_ADJ}\\s+(?:${ADJ}\\s+){0,2}${DEVICE_PHRASE}\\b`, "gi");
+/** Before a mention: the act of putting it right, or the past ("was", "had"), is not a current state. */
+const NOT_CURRENT_BEFORE = /\b(?:restor\w*|reinstat\w*|repair\w*|fix\w*|replac\w*|reconnect\w*|re-?enabl\w*|re-?install\w*|was|were|had|used\s+to\s+be)\s+(?:\w+\s+){0,3}$/;
+
+const RESTORED_CUE = /\b(?:restored|reinstated|repaired|put\s+back|back\s+in|re-?connected|reconnected|replaced)\b/;
+
+/** Does this clause report a safeguard that is unsafe NOW (not restored, not historical, not a read-out)? */
+function reportsCurrentUnsafeState(clause: string): boolean {
+  for (const m of allMatches(STATE_AFTER_MENTION, clause)) {
+    const index = m.index ?? 0;
+    if (/\b(?:was|were|had)\b/.test(m[1] ?? "")) continue;
+    if (READOUT_BEFORE.test(clause.slice(0, index))) continue;
+    if (NEGATED_BEFORE.test(clause.slice(0, index)) || PREVENT_BEFORE.test(clause.slice(0, index))) continue;
+    return true;
+  }
+  for (const m of allMatches(STATE_BEFORE_MENTION, clause)) {
+    const before = clause.slice(0, m.index ?? 0);
+    if (NOT_CURRENT_BEFORE.test(before) || NEGATED_BEFORE.test(before) || PREVENT_BEFORE.test(before) || READOUT_BEFORE.test(before)) continue;
+    return true;
+  }
+  // A device taken out of its circuit and not put back is a current unsafe state too.
+  if (!RESTORED_CUE.test(clause)) {
+    for (const re of [OUT_OF_CIRCUIT_VERB_FIRST, OUT_OF_CIRCUIT_DEVICE_FIRST]) {
+      for (const m of allMatches(re, clause)) {
+        const before = clause.slice(0, m.index ?? 0);
+        if (isCompletedRemoval(m[0], before) && !NEGATED_BEFORE.test(before) && !PREVENT_BEFORE.test(before)) return true;
+      }
+    }
+  }
+  return false;
+}
 
 function classify(message: string): { refuse: string | null; warn: string | null } {
   const msg = normalizeAsk(message);
@@ -357,11 +439,10 @@ function classify(message: string): { refuse: string | null; warn: string | null
     if (j.kind === "refuse") return { refuse: j.match, warn: null };
     if (j.kind === "warn") warn ??= j.match;
   }
-  // A reported unsafe state followed by a clause that asks to carry on with it.
-  if (warn) {
-    const carry = clauses.find((c) => ASKS_TO_CARRY_ON.test(c));
-    if (carry) return { refuse: carry, warn: null };
-  }
+  // A safeguard reported unsafe NOW, followed by a clause that asks to carry on. Another device being
+  // restored in a different clause does not reset this one (each mention is judged in its own clause).
+  const carry = clauses.find((c) => ASKS_TO_CARRY_ON.test(c) && !DEFINITION.test(c) && !SYMPTOM_FRAME.test(c));
+  if (carry && clauses.some(reportsCurrentUnsafeState)) return { refuse: carry, warn: null };
   return { refuse: null, warn };
 }
 
