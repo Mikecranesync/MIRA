@@ -2,9 +2,15 @@ import type { NextAuthOptions } from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 import CredentialsProvider from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
-import { ensureInvitedUser, ensureUserAndTenant, findUserByEmail, findUserById, validateMagicToken } from "@/lib/users";
+import { ensureInvitedUser, ensureUserAndTenant, findUserByEmail, findUserById, validateMagicToken, magicTokenPurpose } from "@/lib/users";
 import { NO_ROLE, normalizeRole, type ResolvedRole } from "@/lib/role";
 import { refreshEntitlementClaims } from "@/capabilities/session-entitlement";
+import { credentialEpoch } from "@/capabilities/verified-identity";
+import { redeemVerifiedOnboarding } from "@/capabilities/verified-onboarding";
+import { ONBOARDING_VERSION } from "@/capabilities/onboarding-policy";
+import { publicSignupPolicy } from "@/capabilities/free-technician-signup";
+import { claimVerifiedEmail } from "@/capabilities/verified-identity";
+import pool from "@/lib/db";
 
 declare module "next-auth" {
   interface Session {
@@ -21,6 +27,7 @@ declare module "next-auth" {
     };
   }
   interface User {
+    credentialEpoch?: number;
     id: string;
     email?: string | null;
     tenantId?: string;
@@ -31,6 +38,7 @@ declare module "next-auth" {
 
 declare module "next-auth/jwt" {
   interface JWT {
+    credentialEpoch?: number;
     uid?: string;
     tid?: string;
     status?: string;
@@ -62,6 +70,7 @@ const providers: NextAuthOptions["providers"] = [
         name: user.name ?? null,
         tenantId: user.tenantId,
         status: user.status,
+        credentialEpoch: credentialEpoch(user),
         trialExpiresAt: user.trialExpiresAt?.toISOString() ?? null,
       };
     },
@@ -69,25 +78,34 @@ const providers: NextAuthOptions["providers"] = [
   CredentialsProvider({
     id: "magic-token",
     name: "Magic Link",
-    credentials: { token: { type: "text" } },
+    credentials: { token: { type: "text" }, agreementVersion: { type:"text" } },
     async authorize(credentials) {
       if (!credentials?.token) return null;
-      const result = await validateMagicToken(credentials.token);
-      if (!result) return null;
-      const account = result.tenantId
-        ? await ensureInvitedUser({
-            email: result.email,
-            tenantId: result.tenantId,
-            role: result.role ?? "technician",
-          })
-        : await ensureUserAndTenant({ email: result.email });
-      const user = await findUserByEmail(result.email);
+      let account;
+      const purpose = await magicTokenPurpose(credentials.token);
+      if (purpose === "onboarding") {
+        try { account = await redeemVerifiedOnboarding(credentials.token, credentials.agreementVersion ?? ""); }
+        catch { return null; }
+      } else {
+        const result = await validateMagicToken(credentials.token);
+        if (!result) return null;
+        if (result.tenantId) account = await ensureInvitedUser({email:result.email,tenantId:result.tenantId,role:result.role ?? "technician"});
+        else {
+          const existing = await findUserByEmail(result.email);
+          if (!existing) return null;
+          account = {id:existing.id,email:existing.email,tenantId:existing.tenantId};
+        }
+        try { await claimVerifiedEmail(pool,account.id); } catch { return null; }
+      }
+      const user=await findUserByEmail(account.email);
+      if(!user) return null;
       return {
         id: account.id,
         email: account.email,
         name: user?.name ?? null,
         tenantId: account.tenantId,
         status: user?.status ?? "trial",
+        credentialEpoch: credentialEpoch(user),
         trialExpiresAt: user?.trialExpiresAt?.toISOString() ?? null,
       };
     },
@@ -129,16 +147,22 @@ export const authOptions: NextAuthOptions = {
   callbacks: {
     async signIn({ user, account, profile }) {
       if (account?.provider === "google" && profile?.email) {
+        if ((profile as { email_verified?: unknown }).email_verified !== true) return false;
+        const knownEmail=await findUserByEmail(profile.email);
+        const knownSubject=await pool.query("SELECT id FROM hub_users WHERE google_sub=$1 LIMIT 1",[account.providerAccountId]);
+        if(!knownEmail && !knownSubject.rows[0] && publicSignupPolicy().kind!=="trial") return "/signup/";
         const existing = await ensureUserAndTenant({
           email: profile.email,
           googleSub: account.providerAccountId,
           name: (profile as { name?: string }).name,
+          verifiedEmail: true,
         });
         const fullUser = await findUserByEmail(existing.email);
         user.id = existing.id;
         user.email = existing.email;
         user.tenantId = existing.tenantId;
         user.status = fullUser?.status ?? "trial";
+        user.credentialEpoch = credentialEpoch(fullUser);
         user.trialExpiresAt = fullUser?.trialExpiresAt?.toISOString() ?? null;
       }
       return true;
@@ -148,6 +172,7 @@ export const authOptions: NextAuthOptions = {
         token.uid = user.id;
         token.tid = user.tenantId;
         token.status = user.status ?? "trial";
+        token.credentialEpoch = user.credentialEpoch ?? 0;
         token.trialExpiresAt = user.trialExpiresAt ?? null;
         return token;
       }

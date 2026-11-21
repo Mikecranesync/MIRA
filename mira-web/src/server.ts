@@ -36,6 +36,7 @@ import { cors } from "hono/cors";
 import { deployIdentity } from "./capabilities/deploy-identity.js";
 import { hubUrl } from "./capabilities/hub-origin.js";
 import { isCheckoutEnabled } from "./capabilities/checkout-gate.js";
+import { createFactorylmMarketingRouter } from "./factorylm-ui/marketing-next.js";
 import {
   submitPilotRequest,
   ensurePilotRequestSchema,
@@ -357,6 +358,8 @@ app.use("/public/*", serveStatic({ root: "./" }));
 // /images/app-screenshot-desktop.png and that the v0.3.0 hero swap
 // also tripped on. Fixed here for v0.3.1.
 app.use("/images/*", serveStatic({ root: "./public" }));
+// Exact marketing routes only; default off. Existing API/policy/article handlers continue below.
+app.route("/", createFactorylmMarketingRouter());
 app.use("/manifest.json", serveStatic({ path: "./public/manifest.json" }));
 app.use("/sw.js", serveStatic({ path: "./public/sw.js" }));
 app.use("/robots.txt", serveStatic({ path: "./public/robots.txt" }));
@@ -1260,7 +1263,7 @@ app.post("/api/checkout/start", async (c) => {
     return c.json(
       {
         error:
-          `Online checkout is not available. FactoryLM pilots are free for 30 days — apply at ${hubUrl("/signup")}`,
+          `Online checkout is not available. Apply for a reviewed plant pilot at ${hubUrl("/signup?intent=pilot")}`,
       },
       410
     );

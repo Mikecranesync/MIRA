@@ -57,7 +57,7 @@ describe("team invite magic tokens", () => {
       return Promise.resolve({ rows: [] });
     });
 
-    await expect(validateMagicToken("tok_123")).resolves.toEqual({
+    await expect(validateMagicToken("tok_123")).resolves.toMatchObject({
       email: "invited@example.com",
       tenantId: "tenant-1",
       role: "admin",

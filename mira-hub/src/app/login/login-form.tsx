@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, Suspense } from "react";
-import Link from "next/link";
+import { CreateAccountLink, signInLinkFailure } from "@/factorylm-ui/CreateAccountLink";
 import { useRouter, useSearchParams } from "next/navigation";
 import { signIn } from "next-auth/react";
 import { Factory, Loader2, Eye, EyeOff, Mail, ChevronDown } from "lucide-react";
@@ -107,14 +107,13 @@ function LoginFormInner() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: email.trim() }),
       });
-      // The route returns 200 for any valid email whether or not the account
-      // exists (anti-enumeration by construction), 400 for a malformed email.
+      // The canonical account adapter owns offer and setup guidance.
       if (res.ok) {
         setMagicSent(true);
       } else if (res.status === 400) {
         setEmailError("Enter a valid work email.");
       } else {
-        setError("Couldn't send the link. Try again.");
+        setError(signInLinkFailure(res.status));
       }
     } catch {
       setError("Network error. Please try again.");
@@ -347,9 +346,7 @@ function LoginFormInner() {
 
           <p className="text-center text-sm text-slate-400 mt-6">
             Don&apos;t have an account?{" "}
-            <Link href="/signup" className="text-blue-400 hover:text-blue-300 font-medium">
-              Start free trial
-            </Link>
+            <CreateAccountLink />
           </p>
         </div>
       </div>

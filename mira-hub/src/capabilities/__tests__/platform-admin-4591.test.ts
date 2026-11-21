@@ -2,6 +2,7 @@
 // public registration cannot mint. That authority is hub_users.status = 'admin', read fresh from the
 // DB per request — never an email match, never the JWT's copy of status — and nothing may set it
 // from an email address.
+import { readFileSync } from "node:fs";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("next/headers", () => ({ cookies: vi.fn() }));
@@ -145,7 +146,8 @@ describe("no code path mints admin from an email address (#4591)", () => {
     expect(sql.length).toBeGreaterThan(0);
     expect(sql.some((s) => /status\s*=\s*'admin'/i.test(s) && /UPDATE\s+hub_users/i.test(s))).toBe(false);
     // Duplicate identities: one account per case-folded email ("Mike@…" cannot be a second row).
-    expect(sql.some((s) => /CREATE UNIQUE INDEX IF NOT EXISTS idx_hub_users_email_lower[\s\S]*\(email_lower\)/i.test(s))).toBe(true);
+    expect(sql.some((s) => /\b(CREATE|ALTER)\s+(TABLE|INDEX)/i.test(s))).toBe(false);
+    expect(readFileSync("db/migrations/116_verified_personal_onboarding.sql","utf8")).toMatch(/CREATE UNIQUE INDEX IF NOT EXISTS idx_hub_users_email_lower[\s\S]*\(email_lower\)/i);
     delete process.env.ADMIN_EMAIL;
   });
 });
