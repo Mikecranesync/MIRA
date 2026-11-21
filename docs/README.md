@@ -6,6 +6,10 @@
 
 ---
 
+## GTM source discovery
+
+[FactoryLM / MIRA GTM source map](gtm/README.md) — informative draft index of current records, historical plans, marketing assets, evidence limits and agent contributions. Pilot remains NO-GO; use linked owner decisions and trust gates.
+
 ## Architecture
 
 | Diagram | Description |
