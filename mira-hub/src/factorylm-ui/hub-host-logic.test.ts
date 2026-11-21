@@ -14,6 +14,9 @@ import {
   detailQueryFor,
   draftAfterSendSucceeded,
   enabledDocIds,
+  currentReadyManualId,
+  persistedRequest,
+  waitsForManual,
   errorMessageFor,
   fixtureFor,
   NETWORK_FAILURE_MESSAGE,
@@ -517,7 +520,7 @@ describe("applyConfirmIdentityResult — the post-await confirm race (Codex roun
   it("the technician having moved to B before the POST resolves: A's confirm seeds NOTHING and refreshes NOTHING", async () => {
     const loadDetail = vi.fn(async () => undefined);
     const fetchStatus = vi.fn(async () => null); // the driver's own GET seam — never reached
-    const driver = createManualSearchDriver({ fetchStatus, onStateChange: () => {}, onRefreshSources: () => {} });
+    const driver = createManualSearchDriver({ fetchStatus, onStateChange: () => {} });
 
     await applyConfirmIdentityResult(
       A.notebookId,
@@ -542,7 +545,7 @@ describe("applyConfirmIdentityResult — the post-await confirm race (Codex roun
   it("control: the technician is STILL on A when the POST resolves — loadDetail refreshes A and the driver follows A's generation", async () => {
     const loadDetail = vi.fn(async () => undefined);
     const fetchStatus = vi.fn(async () => ({ manufacturer: "SMC", model: "SS5Y3-DUW01302", running: false, message: "Found it.", startedAt: "gen-a" }));
-    const driver = createManualSearchDriver({ fetchStatus, onStateChange: () => {}, onRefreshSources: () => {} });
+    const driver = createManualSearchDriver({ fetchStatus, onStateChange: () => {} });
 
     await applyConfirmIdentityResult(
       A.notebookId,
@@ -567,7 +570,7 @@ describe("applyConfirmIdentityResult — the post-await confirm race (Codex roun
   it("returning to A later hydrates normally from A's OWN authoritative GET — never from the discarded confirm", async () => {
     const loadDetail = vi.fn(async () => undefined);
     const fetchStatus = vi.fn(async () => null);
-    const driver = createManualSearchDriver({ fetchStatus, onStateChange: () => {}, onRefreshSources: () => {} });
+    const driver = createManualSearchDriver({ fetchStatus, onStateChange: () => {} });
 
     // A's confirm is discarded (navigated to B mid-flight — proven above).
     await applyConfirmIdentityResult(
@@ -710,5 +713,37 @@ describe("guidedDeadEndBody — the guided dead-end hand-off (WP-1, owner decisi
   });
   it("an ordinary send never carries the dead-end claim", () => {
     expect("guidedEscalation" in chatBodyFor("q", [], history, sel)).toBe(false);
+  });
+});
+
+describe("manual readiness is scoped to the committed sources", () => {
+  const status = { manufacturer: "ABB", model: "ACS355", running: false, sourceState: "ready" as const, readySourceDocId: "exact" };
+  const exact = { docId: "exact", enabledByDefault: true, matchState: "verified", readiness: { canChat: true } };
+
+  it("binds ready to the very document supplied to the next send", () => {
+    expect(currentReadyManualId(status, [exact])).toBe("exact");
+    expect(currentReadyManualId(status, [{ ...exact, docId: "different" }])).toBeNull();
+    expect(currentReadyManualId(status, [{ ...exact, enabledByDefault: false }])).toBeNull();
+    expect(currentReadyManualId(status, [{ ...exact, readiness: { canChat: false } }])).toBeNull();
+  });
+});
+
+it("reconciles by request ID, including when identical questions are saved twice", () => {
+  const older = { id: "old", question: "Which parameter?", clientRequestId: "previous" };
+  const current = { ...older, id: "new", clientRequestId: "current" };
+  expect(persistedRequest([older], "current")).toBeUndefined();
+  expect(persistedRequest([older, current], "current")).toEqual(current);
+});
+
+describe("the manual wait applies only to requests that depend on it", () => {
+  it("waits for an explicit document-bound question", () => {
+    expect(waitsForManual("According to the manual, what is the nominal supply voltage?", 0)).toBe(true);
+    expect(waitsForManual("What is the voltage when its manual is ready?", 0)).toBe(true);
+  });
+
+  it("keeps ordinary questions, replacement evidence, and safety intake available", () => {
+    expect(waitsForManual("What is the nominal voltage?", 0)).toBe(false);
+    expect(waitsForManual("Check this from the manual.", 1)).toBe(false);
+    expect(waitsForManual("According to the manual, can I work on the energized 480V panel?", 0)).toBe(false);
   });
 });

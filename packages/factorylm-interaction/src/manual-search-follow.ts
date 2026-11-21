@@ -80,6 +80,21 @@ function generationOfKey(key: string): string {
   return i === -1 ? "" : key.slice(i + 1);
 }
 
+/** Compare committed claim timestamps, including Postgres's sub-millisecond precision. */
+export function compareManualSearchGeneration(left: string, right: string): number {
+  const milliseconds = Date.parse(left) - Date.parse(right);
+  if (!Number.isFinite(milliseconds)) return 0;
+  if (milliseconds !== 0) return milliseconds;
+  const fraction = (value: string) => Number(value.match(/\.\d+(?=Z$|[+-]\d{2}:\d{2}$)/)?.[0] ?? 0);
+  return fraction(left) - fraction(right);
+}
+
+function olderGeneration(current: ManualSearchFollowState | null, notebookId: string, read: ManualSearchStatus | null): boolean {
+  const tracked = current?.status.startedAt;
+  return Boolean(tracked && read?.startedAt && current?.key === followKey(notebookId, tracked) &&
+    compareManualSearchGeneration(read.startedAt, tracked) < 0);
+}
+
 /** Start following a notebook's search. Call once — on hydration, when a
  *  live frame first shows `running: true`, or right after a confirmation
  *  that started a search (optimistically, before the first real read). */
@@ -116,6 +131,7 @@ export function advanceManualSearchFollow(
   notebookId: string,
   read: ManualSearchStatus | null,
 ): ManualSearchFollowResult {
+  if (olderGeneration(state, notebookId, read)) read = null;
   const knownGenerationChanged = Boolean(read?.startedAt) && followKey(notebookId, read!.startedAt) !== state.key;
 
   if (!knownGenerationChanged && state.phase !== "following") {
@@ -216,7 +232,8 @@ export function reseedManualSearchFollow(
   read: ManualSearchStatus,
   maxAttempts: number = DEFAULT_MANUAL_SEARCH_FOLLOW_ATTEMPTS,
 ): ManualSearchFollowResult {
-  if (!read.startedAt && current !== null && generationOfKey(current.key) !== "") {
+  if (current && (olderGeneration(current, notebookId, read) ||
+      (!read.startedAt && generationOfKey(current.key) !== ""))) {
     return { state: current, refreshSources: false };
   }
 
@@ -282,6 +299,7 @@ export function observeLiveManualSearchFrame(
   read: ManualSearchStatus,
   maxAttempts: number = DEFAULT_MANUAL_SEARCH_FOLLOW_ATTEMPTS,
 ): ManualSearchFollowResult {
+  if (current && olderGeneration(current, notebookId, read)) return { state: current, refreshSources: false };
   if (!read.startedAt) {
     // Backward-compat (Codex F14, round 4): a generation-less live frame
     // never clobbers an already-known generation.

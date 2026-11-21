@@ -139,6 +139,13 @@ export function FactoryLMShell({ state, dispatch, adapter, hooks, onOpenItem, on
       hooks.onSend!(...args);
       setSendRevision((revision) => revision + 1);
     },
+    ...(hooks.onComposerSend ? {
+      onComposerSend: (...args: Parameters<NonNullable<HostHooks["onComposerSend"]>>) => {
+        const accepted = hooks.onComposerSend!(...args);
+        if (accepted) return accepted.then(() => setSendRevision(revision => revision + 1));
+        setSendRevision(revision => revision + 1);
+      },
+    } : {}),
   } : hooks;
   const composerDispatch: Dispatch<ShellAction> = (action) => {
     dispatch(action);

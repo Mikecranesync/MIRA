@@ -21,6 +21,18 @@ describe("normalizeIdentifier", () => {
 });
 
 describe("assessApplicability — rule 1: exact catalog number wins", () => {
+  it.each(["25B-D010N104A", "X25B-D010N104", "25B-D010N104-X"])(
+    "does not verify a sibling catalog ID %s with the same normalized substring",
+    (catalog) => {
+      const verdict = assessApplicability({
+        identity: PF525,
+        chunks: [{ content: `Table of catalog numbers: ${catalog}`, page: 5 }],
+        oemHost: true,
+      });
+      expect(verdict.state).toBe("candidate");
+    },
+  );
+
   it("verifies on an exact normalized catalog match and records tokens + pages", () => {
     const v = assessApplicability({
       identity: PF525,
@@ -48,6 +60,73 @@ describe("assessApplicability — rule 1: exact catalog number wins", () => {
 });
 
 describe("assessApplicability — rule 2: model plus attribution", () => {
+  it.each([
+    ["PowerFlex 525", "PowerFlex® 525 User Manual", "verified"],
+    ["PowerFlex 525", "PowerFlex™ 525 User Manual", "verified"],
+    ["ACS355", "ABB ACS355/ACS310 User Manual", "verified"],
+    ["ACS310", "ABB ACS355 / ACS310 User Manual", "verified"],
+    ["ACS355", "ABB ACS355/24V User Manual", "candidate"],
+    ["ACS355", "ABB ACS355 / 24V User Manual", "candidate"],
+    ["ACS355", "ABB ACS355/ACS310/02 User Manual", "candidate"],
+    ["ACS355", "ABB ACS355/ACS310-\nA User Manual", "candidate"],
+    ["ACS355", "ABB ACS355-03U-06A7-2 User Manual", "candidate"],
+    ["ACS355", "ABB ACS355\n-03U-06A7-2 User Manual", "candidate"],
+    ["ACS355", "ABB ACS355 \r\n  - 03U-06A7-2 User Manual", "candidate"],
+    ["ACS355-03U-06A7-2", "ABB ACS355\n-03U\n-06A7-2 User Manual", "verified"],
+    ["03U-06A7-2", "ABB ACS355\n-03U-06A7-2 User Manual", "candidate"],
+    ["ACS355", "ABB ACS355.\n- 24 V input", "verified"],
+    ["ACS355", "ABB ACS355\n- Installation instructions", "verified"],
+    ["ACS355", "Applicable ABB model\n- ACS355", "verified"],
+    ["ACS355/24V", "ABB ACS355 / 24V User Manual", "verified"],
+    ["FST20", "FST20-\nA Product Datasheet", "candidate"],
+    ["6AV2124-0GC01-0AX0", "SIMATIC HMI 6AV2124 - 0GC01 - 0AX0", "verified"],
+    ["6AV2124-0GC01-0AX0", "Applies to Siemens model 6AV2124-0GC01-0AX0. Installation instructions follow.", "verified"],
+    ["6AV2124-0GC01-0AX0", "Applies to Siemens model 6AV2124 - 0GC01 - 0AX0.\nInstallation instructions follow.", "verified"],
+    ["6AV2124-0GC01-0AX0", "SIMATIC HMI 6AV2124 - 0GC01 - 0AX0A", "candidate"],
+    ["6AV2124-0GC01-0AX0", "SIMATIC HMI 6AV2124 - 0GC01 - 0AX0 - A", "candidate"],
+    ["6AV2124-0GC01-0AX0", "SIMATIC HMI 6AV2124 - 0GC01 - 0AX0.A", "candidate"],
+    ["6AV2124-0GC01-0AX0", "SIMATIC HMI 6AV2124 - 0GC01 - 0AX0 -\n A", "candidate"],
+    ["6AV2124-0GC01-0AX0", "SIMATIC HMI 6AV2124 - 0GC01 - 0AX0 /\r\n A", "candidate"],
+  ])("judges %s against the written model and option boundaries in %j", (model, content, state) => {
+    const verdict = assessApplicability({
+      identity: { manufacturer: "OEM", model },
+      chunks: [{ content, page: 1 }],
+      oemHost: true,
+    });
+    expect(verdict.state).toBe(state);
+  });
+
+  it("needs a short model to appear as a whole code", () => {
+    const identity = { manufacturer: "Festo", model: "A1" };
+    const verdict = (content: string) => assessApplicability({ identity, chunks: [{ content, page: 1 }], oemHost: true });
+
+    expect(verdict("Appendix A 1 lists fasteners.").state).toBe("candidate");
+    expect(verdict("Festo A1 technical data.").state).toBe("verified");
+  });
+
+  it.each([
+    ["FST20-\nA", "verified"],
+    ["FST20‑\r\n  A", "verified"],
+    ["FST20\nA", "candidate"],
+    ["FST20-\nA-X", "candidate"],
+  ])("requires the full model across an explicit separator at a PDF line break (%j)", (content, state) => {
+    const verdict = assessApplicability({
+      identity: { manufacturer: "Festo", model: "FST20-A" },
+      chunks: [{ content, page: 1 }],
+      oemHost: true,
+    });
+    expect(verdict.state).toBe(state);
+  });
+
+  it("does not verify an omitted option suffix on a manufacturer's own document", () => {
+    const verdict = assessApplicability({
+      identity: { manufacturer: "Festo", model: "VUVG-LK10-M52-AT-G14-F" },
+      chunks: [{ content: "Festo VUVG-LK10-M52-AT-G14-F-A valve datasheet", page: 1 }],
+      oemHost: true,
+    });
+    expect(verdict.state).toBe("candidate");
+  });
+
   it("verifies on model + manufacturer named in the text", () => {
     const v = assessApplicability({
       identity: { manufacturer: "Allen-Bradley", model: "525" },

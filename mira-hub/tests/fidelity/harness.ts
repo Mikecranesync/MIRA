@@ -86,7 +86,12 @@ export async function installRoutes(page: Page, scenario: Scenario) {
     if (m === "GET" && p === nbPath) {
       if (!answered) return route.fulfill(json(oracle.detailEmpty));
       await released;
-      return route.fulfill(json(oracle[scenario].detailAfter)).catch(() => undefined);
+      const detail = oracle[scenario].detailAfter;
+      const clientRequestId = cap.chatBodies[0]?.clientRequestId;
+      return route.fulfill(json({
+        ...detail,
+        turns: detail.turns.map((turn: Record<string, unknown>) => ({ ...turn, clientRequestId })),
+      })).catch(() => undefined);
     }
     if (m === "POST" && p === `${nbPath}/chat`) {
       cap.chatBodies.push(req.postDataJSON());

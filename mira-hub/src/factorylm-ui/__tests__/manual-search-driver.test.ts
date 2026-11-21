@@ -37,11 +37,10 @@ afterEach(() => {
 describe("createManualSearchDriver — hydration follows a running search to completion (F6)", () => {
   it("keeps following live lookup progress when the first detail read has no status", async () => {
     const readDetail = vi.fn().mockResolvedValueOnce({ manualSearch: null }).mockResolvedValueOnce({ manualSearch: SETTLED });
-    const refreshSources = vi.fn();
+
     const driver = createManualSearchDriver({
       fetchStatus: async () => (await readDetail()).manualSearch,
       onStateChange: vi.fn(),
-      onRefreshSources: refreshSources,
     });
     const body = new Response([
       { kind: "status", status: "insufficient_evidence" },
@@ -58,13 +57,13 @@ describe("createManualSearchDriver — hydration follows a running search to com
     await vi.advanceTimersByTimeAsync(4000);
     expect(driver.current()).toMatchObject({ phase: "resolved", status: SETTLED });
     expect(readDetail).toHaveBeenCalledTimes(2);
-    expect(refreshSources).toHaveBeenCalledTimes(1);
+
   });
 
   it("does not let an older stream frame replace a newer detail snapshot", async () => {
     const fetchStatus = vi.fn();
     const onStateChange = vi.fn();
-    const driver = createManualSearchDriver({ fetchStatus, onStateChange, onRefreshSources: vi.fn() });
+    const driver = createManualSearchDriver({ fetchStatus, onStateChange });
     const newer = { ...SETTLED_G2, startedAt: "2026-11-21T11:20:05Z" };
     driver.seed(NB, newer);
 
@@ -93,8 +92,8 @@ describe("createManualSearchDriver — hydration follows a running search to com
   it("seeds from a running status, schedules a re-check, and renders the settled outcome once it resolves", async () => {
     const states: unknown[] = [];
     const fetchStatus = vi.fn().mockResolvedValue(SETTLED);
-    const onRefreshSources = vi.fn();
-    const driver = createManualSearchDriver({ fetchStatus, onStateChange: (s) => states.push(s), onRefreshSources });
+
+    const driver = createManualSearchDriver({ fetchStatus, onStateChange: (s) => states.push(s) });
 
     driver.seed(NB, RUNNING);
     expect(driver.current()?.phase).toBe("following");
@@ -104,13 +103,13 @@ describe("createManualSearchDriver — hydration follows a running search to com
     expect(fetchStatus).toHaveBeenCalledWith(NB);
     expect(driver.current()?.phase).toBe("resolved");
     expect(driver.current()?.status).toEqual(SETTLED);
-    expect(onRefreshSources).toHaveBeenCalledTimes(1);
+
   });
 
   it("an idle Hub (no send, no navigation) still updates once the search settles", async () => {
     const onStateChange = vi.fn();
     const fetchStatus = vi.fn().mockResolvedValueOnce(RUNNING).mockResolvedValueOnce(SETTLED);
-    const driver = createManualSearchDriver({ fetchStatus, onStateChange, onRefreshSources: vi.fn() });
+    const driver = createManualSearchDriver({ fetchStatus, onStateChange });
     driver.seed(NB, RUNNING);
     await vi.advanceTimersByTimeAsync(4000); // still running
     expect(driver.current()?.phase).toBe("following");
@@ -124,16 +123,16 @@ describe("createManualSearchDriver — hydration follows a running search to com
     const running = { manufacturer: "ABB", model: "ACS355", running: true, startedAt: "2026-11-21T09:00:00Z" };
     const ready = { ...running, running: false, message: "The ABB ACS355 manual is ready in Sources." };
     const fetchStatus = vi.fn(async () => Date.now() - start < finishAfter ? running : ready);
-    const refreshSources = vi.fn();
-    const driver = createManualSearchDriver({ fetchStatus, onStateChange: vi.fn(), onRefreshSources: refreshSources });
+
+    const driver = createManualSearchDriver({ fetchStatus, onStateChange: vi.fn() });
 
     driver.seed(NB, running);
     await vi.advanceTimersByTimeAsync(finishAfter - 1);
     expect(driver.current()?.phase).toBe("following");
-    expect(refreshSources).not.toHaveBeenCalled();
+
     await vi.advanceTimersByTimeAsync(10_001);
     expect(driver.current()).toMatchObject({ phase: "resolved", status: ready });
-    expect(refreshSources).toHaveBeenCalledTimes(1);
+
     const reads = fetchStatus.mock.calls.length;
     await vi.advanceTimersByTimeAsync(180_000);
     expect(fetchStatus).toHaveBeenCalledTimes(reads);
@@ -143,7 +142,7 @@ describe("createManualSearchDriver — hydration follows a running search to com
     const start = Date.now();
     const failed = { ...RUNNING, running: false, message: "I found the manual but could not finish indexing it." };
     const fetchStatus = vi.fn(async () => Date.now() - start < 36_000 ? RUNNING : failed);
-    const driver = createManualSearchDriver({ fetchStatus, onStateChange: vi.fn(), onRefreshSources: vi.fn() });
+    const driver = createManualSearchDriver({ fetchStatus, onStateChange: vi.fn() });
 
     driver.seed(NB, RUNNING);
     await vi.advanceTimersByTimeAsync(45_000);
@@ -157,7 +156,7 @@ describe("createManualSearchDriver — hydration follows a running search to com
 describe("createManualSearchDriver — a confirmation that starts a search is followed (F4)", () => {
   it("seeds from the optimistic post-confirm status the same way as hydration", async () => {
     const fetchStatus = vi.fn().mockResolvedValue(SETTLED);
-    const driver = createManualSearchDriver({ fetchStatus, onStateChange: vi.fn(), onRefreshSources: vi.fn() });
+    const driver = createManualSearchDriver({ fetchStatus, onStateChange: vi.fn() });
     driver.seed(NB, { manufacturer: "SMC", model: "SS5Y3-DUW01302", running: true });
     expect(driver.current()?.phase).toBe("following");
     await vi.advanceTimersByTimeAsync(4000);
@@ -166,7 +165,7 @@ describe("createManualSearchDriver — a confirmation that starts a search is fo
 
   it("seeding twice for the SAME notebook while already tracking is a no-op (does not restart the budget)", async () => {
     const fetchStatus = vi.fn().mockResolvedValue(RUNNING);
-    const driver = createManualSearchDriver({ fetchStatus, onStateChange: vi.fn(), onRefreshSources: vi.fn() });
+    const driver = createManualSearchDriver({ fetchStatus, onStateChange: vi.fn() });
     driver.seed(NB, RUNNING);
     await vi.advanceTimersByTimeAsync(4000);
     const attemptsAfterOneTick = driver.current()?.attempts;
@@ -178,7 +177,7 @@ describe("createManualSearchDriver — a confirmation that starts a search is fo
 describe("createManualSearchDriver — the fixed attempt budget (F8) and inconclusive reads (F9)", () => {
   it("does not reset the budget on repeated running responses and stops scheduling once unresolved", async () => {
     const fetchStatus = vi.fn().mockResolvedValue(RUNNING);
-    const driver = createManualSearchDriver({ fetchStatus, onStateChange: vi.fn(), onRefreshSources: vi.fn() });
+    const driver = createManualSearchDriver({ fetchStatus, onStateChange: vi.fn() });
     driver.seed(NB, RUNNING);
     await vi.advanceTimersByTimeAsync(20_000);
     expect(driver.current()?.phase).toBe("following");
@@ -197,7 +196,7 @@ describe("createManualSearchDriver — the fixed attempt budget (F8) and inconcl
     const fetchStatus = vi.fn()
       .mockRejectedValueOnce(new Error("network"))
       .mockResolvedValueOnce(SETTLED);
-    const driver = createManualSearchDriver({ fetchStatus, onStateChange: vi.fn(), onRefreshSources: vi.fn() });
+    const driver = createManualSearchDriver({ fetchStatus, onStateChange: vi.fn() });
     driver.seed(NB, RUNNING);
     await vi.advanceTimersByTimeAsync(4000);
     expect(driver.current()?.phase).toBe("following");
@@ -210,7 +209,7 @@ describe("createManualSearchDriver — the fixed attempt budget (F8) and inconcl
 describe("createManualSearchDriver — reset() stops the timer and drops state (notebook change)", () => {
   it("cancels a pending timer so the stale notebook's fetch never fires", async () => {
     const fetchStatus = vi.fn().mockResolvedValue(RUNNING);
-    const driver = createManualSearchDriver({ fetchStatus, onStateChange: vi.fn(), onRefreshSources: vi.fn() });
+    const driver = createManualSearchDriver({ fetchStatus, onStateChange: vi.fn() });
     driver.seed(NB, RUNNING);
     driver.reset();
     expect(driver.current()).toBeNull();
@@ -222,8 +221,8 @@ describe("createManualSearchDriver — reset() stops the timer and drops state (
 describe("createManualSearchDriver — Codex round 3 F6: a later authoritative reseed is never permanently masked", () => {
   it("a settled candidate, then confirm/promotion for the SAME generation replaces the message (no second timer, same driver)", () => {
     const onStateChange = vi.fn();
-    const onRefreshSources = vi.fn();
-    const driver = createManualSearchDriver({ fetchStatus: vi.fn(), onStateChange, onRefreshSources });
+
+    const driver = createManualSearchDriver({ fetchStatus: vi.fn(), onStateChange });
 
     // Hydration: a candidate search already settled, not yet confirmed.
     driver.seed(NB, { manufacturer: "SMC", model: "SS5Y3-DUW01302", running: false, message: "Found a candidate.", startedAt: "gen-1" });
@@ -233,12 +232,12 @@ describe("createManualSearchDriver — Codex round 3 F6: a later authoritative r
     // Confirm promotes it — SAME generation (gen-1), a new message.
     driver.seed(NB, { manufacturer: "SMC", model: "SS5Y3-DUW01302", running: false, message: "Confirmed — ready to answer from.", startedAt: "gen-1" });
     expect(driver.current()?.status.message).toBe("Confirmed — ready to answer from.");
-    expect(onRefreshSources).toHaveBeenCalledTimes(1); // the promotion itself, not the hydration
+
   });
 
   it("a second, different search in the SAME notebook starts polling after the first one already resolved", async () => {
     const fetchStatus = vi.fn().mockResolvedValue({ manufacturer: "Rockwell", model: "1756-L71", running: false, message: "Found it.", startedAt: "gen-2" });
-    const driver = createManualSearchDriver({ fetchStatus, onStateChange: vi.fn(), onRefreshSources: vi.fn() });
+    const driver = createManualSearchDriver({ fetchStatus, onStateChange: vi.fn() });
 
     // First search (gen-1) already resolved.
     driver.seed(NB, { manufacturer: "SMC", model: "SS5Y3-DUW01302", running: false, message: "Found it.", startedAt: "gen-1" });
@@ -256,7 +255,7 @@ describe("createManualSearchDriver — Codex round 3 F6: a later authoritative r
 
   it("a second, different search in the SAME notebook starts polling even after the first one EXHAUSTED its budget", async () => {
     const fetchStatus = vi.fn().mockResolvedValue({ manufacturer: "SMC", model: "SS5Y3-DUW01302", running: true, startedAt: "gen-1" });
-    const driver = createManualSearchDriver({ fetchStatus, onStateChange: vi.fn(), onRefreshSources: vi.fn() });
+    const driver = createManualSearchDriver({ fetchStatus, onStateChange: vi.fn() });
     driver.seed(NB, { manufacturer: "SMC", model: "SS5Y3-DUW01302", running: true, startedAt: "gen-1" });
     await vi.advanceTimersByTimeAsync(180_000);
     expect(driver.current()?.phase).toBe("unresolved");
@@ -280,7 +279,7 @@ describe("createManualSearchDriver — Codex round 7 F21: an obsolete in-flight 
       return Promise.resolve(SETTLED_G2); // G2's own, later tick.
     });
     const onStateChange = vi.fn();
-    const driver = createManualSearchDriver({ fetchStatus, onStateChange, onRefreshSources: vi.fn() });
+    const driver = createManualSearchDriver({ fetchStatus, onStateChange });
 
     driver.seed(NB, RUNNING);
     await vi.advanceTimersByTimeAsync(4000); // G1's tick fires; fetchStatus call #1 is now in flight.
@@ -320,7 +319,7 @@ describe("createManualSearchDriver — Codex round 7 F21: an obsolete in-flight 
       if (call === 1) return g1Read.promise;
       return Promise.resolve(SETTLED_G2);
     });
-    const driver = createManualSearchDriver({ fetchStatus, onStateChange: vi.fn(), onRefreshSources: vi.fn() });
+    const driver = createManualSearchDriver({ fetchStatus, onStateChange: vi.fn() });
 
     driver.seed(NB, RUNNING);
     await vi.advanceTimersByTimeAsync(4000);
@@ -353,7 +352,7 @@ describe("createManualSearchDriver — Codex round 7 F21: an obsolete in-flight 
       if (call === 1) return g1Read.promise;
       return Promise.resolve(SETTLED_G2);
     });
-    const driver = createManualSearchDriver({ fetchStatus, onStateChange: vi.fn(), onRefreshSources: vi.fn() });
+    const driver = createManualSearchDriver({ fetchStatus, onStateChange: vi.fn() });
 
     driver.seed(NB, RUNNING);
     await vi.advanceTimersByTimeAsync(4000);
@@ -373,4 +372,17 @@ describe("createManualSearchDriver — Codex round 7 F21: an obsolete in-flight 
     expect(driver.current()?.phase).toBe("resolved");
     expect(driver.current()?.status).toEqual(SETTLED_G2);
   });
+});
+
+it("follows a terminal stream event until the authorized detail snapshot reports the source", async () => {
+  const fetchStatus = vi.fn().mockResolvedValueOnce(null).mockResolvedValueOnce(SETTLED);
+  const driver = createManualSearchDriver({ fetchStatus, onStateChange: vi.fn() });
+  driver.observeLive(NB, SETTLED);
+  expect(driver.current()?.phase).toBe("following");
+  await vi.advanceTimersByTimeAsync(8_000);
+  expect(fetchStatus).toHaveBeenCalledTimes(2);
+  expect(driver.current()?.phase).toBe("resolved");
+  driver.observeLive(NB, SETTLED);
+  await vi.advanceTimersByTimeAsync(8_000);
+  expect(fetchStatus).toHaveBeenCalledTimes(2);
 });

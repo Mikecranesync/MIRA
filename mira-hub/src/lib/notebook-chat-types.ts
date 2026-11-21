@@ -460,9 +460,17 @@ export type NotebookManualSearchStatusFrame = {
   manualUrl?: string;
 };
 
+export type NotebookIdentityProposalEvent = {
+  kind: "identity_proposal";
+  manufacturer: string;
+  model: string;
+  catalogNumber?: string;
+};
+
 export type NotebookChatFrame =
   | NotebookProgressFrame
   | NotebookManualSearchStatusFrame
+  | NotebookIdentityProposalEvent
   | NotebookHttpErrorFrame
   | NotebookSourcesFrame
   | NotebookContentFrame
@@ -520,6 +528,7 @@ const FRAME_KINDS = new Set([
   "http_error",
   "sheet_receipt",
   "manual_search_status",
+  "identity_proposal",
 ]);
 
 export function parseFrame(data: string): NotebookChatFrame | null {
@@ -533,6 +542,11 @@ export function parseFrame(data: string): NotebookChatFrame | null {
       typeof obj.running !== "boolean" || (obj.message !== undefined && typeof obj.message !== "string") ||
       (obj.startedAt !== undefined && typeof obj.startedAt !== "string") ||
       (obj.manualUrl !== undefined && typeof obj.manualUrl !== "string")
+    )) return null;
+    if (obj?.kind === "identity_proposal" && (
+      typeof obj.manufacturer !== "string" || !obj.manufacturer.trim() ||
+      typeof obj.model !== "string" || !obj.model.trim() ||
+      (obj.catalogNumber !== undefined && typeof obj.catalogNumber !== "string")
     )) return null;
     if (obj && FRAME_KINDS.has(obj.kind)) {
       return obj as NotebookChatFrame;

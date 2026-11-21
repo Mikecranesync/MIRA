@@ -551,8 +551,7 @@ describe("withManualSearchStatus — the post-refresh render path (#4189 F6)", (
 // at settle). The host keeps the just-finished answer's suggestions and this
 // overlay puts them back on that answer.
 describe("withSettledFollowups — follow-ups survive the post-stream reload (#4454)", () => {
-  // `answeredBefore`: the answers already in the thread when the send started.
-  const settled = { question: "what should I check first", suggestions: ["What does P9.02 do"], answeredBefore: [] as string[] };
+  const settled = { answerId: answerTurnId("turn-1"), suggestions: ["What does P9.02 do"] };
   const lastAssistant = (turns: readonly { role: string }[]) => [...turns].reverse().find((t) => t.role === "assistant")! as (typeof turns)[number] & { parts: readonly { type: string }[] };
   const hasFollowups = (t: { parts: readonly { type: string }[] }) => t.parts.some((p) => p.type === "followups");
   const sameQuestionTwice = () => threadFromPersisted(
@@ -570,7 +569,7 @@ describe("withSettledFollowups — follow-ups survive the post-stream reload (#4
 
   it("an earlier answer to the same question, already there before the send, stays as it was", () => {
     const turns = sameQuestionTwice();
-    const out = withSettledFollowups(turns, { ...settled, answeredBefore: [answerTurnId("turn-1")] });
+    const out = withSettledFollowups(turns, { ...settled, answerId: answerTurnId("turn-2") });
     const answers = out.filter((t) => t.role === "assistant");
     expect(hasFollowups(answers[0]!)).toBe(false);
     expect(hasFollowups(answers[1]!)).toBe(true);
@@ -579,7 +578,7 @@ describe("withSettledFollowups — follow-ups survive the post-stream reload (#4
   // Cheap-lane finding on #4456: matching on the question alone let another
   // device's answer to the SAME question inherit them. Two new answers to it
   // cannot be told apart from here, so neither gets them.
-  it("another device answered the same question meanwhile: neither answer gets them", () => {
+  it("a later answer to identical text does not inherit the suggestions", () => {
     const turns = sameQuestionTwice();
     expect(withSettledFollowups(turns, settled)).toEqual(turns);
   });

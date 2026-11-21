@@ -31,44 +31,18 @@ describe("hub-host keeps a finished answer's follow-ups after the reload (#4454)
     expect(post).toBeGreaterThan(clear);
   });
 
-  it("the finished answer's follow-ups are kept, from the same rule the live turn renders with, before the live turn is dropped", () => {
+  it("keeps suggestions from the streamed result until the matching durable answer is available", () => {
     const send = sendBody();
-    const reload = send.indexOf("await loadDetail(sel)");
-    const keep = send.indexOf("setSettledFollowups(\n");
-    const drop = send.indexOf("setLive((cur) => (cur && cur.id === id ? null : cur))", reload);
-    expect(reload).toBeGreaterThan(-1);
-    expect(keep).toBeGreaterThan(reload);
-    expect(drop).toBeGreaterThan(keep);
-    expect(send.slice(reload, keep)).toMatch(/partsFromStream\(result,/);
-    // Kept exactly when the live render showed follow-ups, for the question sent.
-    expect(send.slice(keep, drop)).toMatch(/finished\?\.type === "followups"\s*\?\s*\{/);
-    expect(send.slice(keep, drop)).toMatch(/suggestions: finished\.suggestions/);
-    expect(send.slice(keep, drop)).toMatch(/question: body\.message/);
+    expect(send).toMatch(/partsFromStream\(result,/);
+    expect(send).toMatch(/requestId: body\.clientRequestId, suggestions: finished\.suggestions/);
+    expect(host).toMatch(/persistedRequest\(detail\.turns, settledFollowups\.requestId\)/);
+    expect(host).toMatch(/answerId: answerTurnId\(saved\.id\)/);
   });
 
-  // Cheap-lane finding on #4456: the overlay must know which answers were
-  // already there, or another device's later answer to the same question
-  // could inherit them.
-  it("the answers already in the thread are recorded before the send goes out, and travel with the kept follow-ups", () => {
-    const send = sendBody();
-    const taken = send.indexOf("const answeredBefore = (detailRef.current?.turns ?? []).map((row) => answerTurnId(row.id));");
-    const post = send.indexOf("await fetch(");
-    const keep = send.indexOf("setSettledFollowups(\n");
-    expect(taken).toBeGreaterThan(-1);
-    expect(post).toBeGreaterThan(taken);
-    expect(send.slice(keep)).toMatch(/question: body\.message, suggestions: finished\.suggestions, answeredBefore \}/);
-    // The ref follows the rendered detail, the same way draftRef follows the draft.
-    expect(host).toMatch(/useEffect\(\(\) => \{ detailRef\.current = detail; \}, \[detail\]\);/);
-  });
-
-  it("the view overlays them on the reloaded thread, only for the thread they were answered in, before the manual-search status", () => {
+  it("applies follow-ups within their thread, before appending the manual status", () => {
     const overlay = host.indexOf("withSettledFollowups(");
-    const status = host.lastIndexOf("withManualSearchStatus(", overlay);
-    // withManualSearchStatus's SECOND argument; the overlay must sit inside its first.
-    const statusArg = host.indexOf("follow?.status ?? detail.manualSearch", status);
-    expect(overlay).toBeGreaterThan(-1);
-    expect(status).toBeGreaterThan(-1);
-    expect(statusArg).toBeGreaterThan(overlay);
+    expect(host.lastIndexOf("withManualSearchStatus(", overlay)).toBeGreaterThan(-1);
+    expect(host.indexOf("displayedManualStatus,", overlay)).toBeGreaterThan(overlay);
     expect(host).toMatch(/settledFollowups\.notebookId === selection\.notebookId && settledFollowups\.threadId === selection\.threadId/);
   });
 });

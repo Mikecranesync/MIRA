@@ -2,7 +2,7 @@
  * Narrow photo-part guards for unconfirmed label readings. A LOOK transcription
  * is useful search input, but is not proof of a device class or compatibility.
  */
-const PART_CODE = /\b(?=[A-Z0-9/-]{8,}\b)(?=[A-Z0-9/-]*[A-Z])(?=[A-Z0-9/-]*\d)[A-Z0-9]+(?:[-/][A-Z0-9]+){1,4}\b/gi;
+const PART_CODE = /\b(?=[A-Z0-9/-]{8,}\b)(?=[A-Z0-9/-]*[A-Z])(?=[A-Z0-9/-]*\d)[A-Z0-9]+(?:[-/][A-Z0-9]+)+\b/gi;
 
 // A serial label is the label TOKEN plus any run of NON-ALPHANUMERIC characters
 // — never an enumerated punctuation list (Codex #4172 post-cap 7–10: ":",
@@ -53,13 +53,23 @@ const ASSET_LABEL = new RegExp(
 // count exactly like P/N. The value must carry a digit: "model number please"
 // and "which type is it" are prose, never a code.
 const PART_LABEL =
-  /\b(?:P\/?N|part\s*(?:no\.?|number)|catalog(?:ue)?\s*(?:no\.?|number)|cat\.?(?:\s*(?:no\.?|number))?|model(?:\s*(?:no\.?|number))?|mod\.?|type|1P)\s*[:#]?\s*((?=[A-Z0-9./-]*\d)[A-Z0-9][A-Z0-9./-]{5,})/gi;
+  /\b(?:P\/?N|part\s*(?:no\.?|number)|order\s*(?:no\.?|number|code)|catalog(?:ue)?\s*(?:no\.?|number)|cat\.?(?:\s*(?:no\.?|number))?|model(?:\s*(?:no\.?|number))?|mod\.?|type|1P)\s*[:#]?\s*((?=[A-Z0-9./-]*\d)[A-Z0-9][A-Z0-9./-]{5,})/gi;
 /** A trailing "." / "-" / "/" is sentence punctuation, not part of the code (#4150 F4). */
 const trimCode = (code: string) => code.replace(/[./-]+$/, "");
 /** Quotes are label punctuation, never identifier characters (#4150 F1/F4); invisible
  *  characters (soft hyphen, zero-width, BOM) are nothing at all, so "Ser\u00adial" is
  *  still "Serial" (#4172). */
 const normalize = (t: string) => t.replace(/[\u00ad\u200b-\u200d\u2060\ufeff]/g, "").replace(/["'\u2018\u2019\u201c\u201d`]/g, " ");
+
+/** LOOK can add Markdown emphasis even inside the printed text of a label. */
+export function unwrapPartLabelMarkup(text: string): string {
+  return text.replace(/\*\*([^*\r\n]+)\*\*/g, "$1");
+}
+
+function partLabelReadings(text: string): string[] {
+  const unwrapped = unwrapPartLabelMarkup(text);
+  return unwrapped === text ? [text] : [text, unwrapped];
+}
 
 /**
  * Every distinct, serial-safe part code in the text (#4172: exported so a caller
@@ -78,8 +88,7 @@ export function partCodes(photoText: string): string[] {
   // is safe, even when the serial's value could not be parsed ("AB-1234567 S/N",
   // "AB-1234567 serial number") — #4150 review r4 F1. A customer-assigned
   // identifier label (asset tag, unit id, …) is the same signal (F14, ADR-0036).
-  const serialLabelPresent =
-    serials.size > 0 || new RegExp(SERIAL_LABEL.source, "i").test(text) || new RegExp(ASSET_LABEL.source, "i").test(text);
+  const serialLabelPresent = serials.size > 0 || mentionsSerialLabel(photoText) || mentionsAssetLabel(photoText);
   // Vision descriptions such as "RJ45-style" are prose, not printed codes.
   // An explicit P/N label remains a candidate, even with that suffix.
   const unlabelled = serialLabelPresent ? [] : [...text.matchAll(PART_CODE)]
@@ -171,7 +180,9 @@ const GENUINE_PART_LABEL = new RegExp(PART_LABEL.source.replace(String.raw`\s*[:
  * label, is ambiguous and must not search at all.
  */
 export function partLabelAfterPrivateLabel(text: string): boolean {
-  return splitFields(normalize(text)).secret.some((seg) => new RegExp(GENUINE_PART_LABEL.source, "i").test(seg));
+  return partLabelReadings(text).some((reading) =>
+    splitFields(normalize(reading)).secret.some((seg) => new RegExp(GENUINE_PART_LABEL.source, "i").test(seg)),
+  );
 }
 
 /**
@@ -193,6 +204,10 @@ export function privateSuffixTails(text: string): string[] {
  * "TP1200X…"), so retyping it without the spaces does not launder it.
  */
 export function privateIdentifierKeys(text: string, tails: string[] = []): Set<string> {
+  return new Set(partLabelReadings(text).flatMap((reading) => [...privateIdentifierKeysInReading(reading, tails)]));
+}
+
+function privateIdentifierKeysInReading(text: string, tails: string[]): Set<string> {
   const t = normalize(text);
   const keys = new Set<string>(serialCodes(text).map(identifierKey));
   const labelledParts = new Set([...t.matchAll(PART_LABEL)].map((m) => trimCode(m[1]).toUpperCase()));
@@ -301,11 +316,10 @@ export function unambiguousPartNumber(photoText: string): string | null {
   const key = identifierKey(codes[0]);
   if ([...privateIdentifierKeys(photoText)].some((k) => k.includes(key))) return null;
   if (privateSuffixTails(photoText).some((tail) => tail.includes(key))) return null;
-  if (labelledPrivateBySuffix(photoText, codes[0])) return null;
   // #5268 Codex r16 (owner decision 2026-11-07, fail safe): a serial or asset
   // label ANYWHERE on the plate with no value of its own cannot say which code
   // it marks, however the annotation wraps — so the plate offers no code at all.
-  if (danglingPrivateLabel(photoText)) return null;
+  if (partLabelReadings(photoText).some((reading) => labelledPrivateBySuffix(reading, codes[0]) || danglingPrivateLabel(reading))) return null;
   return codes[0];
 }
 
@@ -380,11 +394,13 @@ function labelledPrivateBySuffix(photoText: string, code: string): boolean {
  * another parser (the OEM retrieval model reader) picked out (ADR-0036).
  */
 export function mentionsAssetLabel(text: string): boolean {
-  return new RegExp(ASSET_LABEL.source, "i").test(normalize(text));
+  const label = new RegExp(ASSET_LABEL.source, "i");
+  return partLabelReadings(text).some((reading) => label.test(normalize(reading)));
 }
 
 export function mentionsSerialLabel(text: string): boolean {
-  return new RegExp(SERIAL_LABEL.source, "i").test(normalize(text));
+  const label = new RegExp(SERIAL_LABEL.source, "i");
+  return partLabelReadings(text).some((reading) => label.test(normalize(reading)));
 }
 
 const LOOKUP_VERB = String.raw`(?:find|look\s+up|search(?:\s+for)?|locate|get|download)`;

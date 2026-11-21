@@ -19,7 +19,12 @@ export type BackDeps = {
   readonly raiseBack: () => void;
 };
 
-export type LayerBack = { sync(layerOpen: boolean): void; dispose(): void };
+export type LayerBack = {
+  sync(layerOpen: boolean): void;
+  /** Run a route change once the layer's own Back has settled. */
+  closeThen(afterClose: () => void): void;
+  dispose(): void;
+};
 
 export function createLayerBack(deps: BackDeps): LayerBack {
   // Our placeholder is the current history entry. A reload keeps the entry (and its mark), so
@@ -29,26 +34,36 @@ export function createLayerBack(deps: BackDeps): LayerBack {
   // Pops we caused ourselves, each with the address to keep: the host rewrites the address in place
   // when a thread is picked (writeSearch -> replaceState), which can land on the placeholder just
   // before we pop it, so the pop would otherwise restore the previous thread's URL.
-  const swallow: string[] = [];
+  const swallow: { keep: string; afterClose?: () => void }[] = [];
   const unsubscribe = deps.onPopState(() => {
-    const keep = swallow.shift();
-    if (keep !== undefined) { deps.history.replaceState(deps.history.state, "", keep); return; }
+    const closed = swallow.shift();
+    if (closed) {
+      if (deps.currentUrl() !== closed.keep) deps.history.replaceState(deps.history.state, "", closed.keep);
+      closed.afterClose?.();
+      return;
+    }
     if (!armed) return; // ordinary navigation, not ours
     armed = false;
     deps.raiseBack(); // closes the top layer; sync() re-arms if another layer is still open
   });
+  const closeLayer = (afterClose?: () => void) => {
+    if (!armed) { afterClose?.(); return; }
+    armed = false;
+    swallow.push({ keep: deps.currentUrl(), afterClose });
+    deps.history.back();
+  };
+
   return {
     sync(layerOpen) {
       if (layerOpen && !armed) {
         const state = deps.history.state;
         deps.history.pushState({ ...(state && typeof state === "object" ? state : {}), [MARK]: true }, "");
         armed = true;
-      } else if (!layerOpen && armed) {
-        armed = false;
-        swallow.push(deps.currentUrl());
-        deps.history.back();
+      } else if (!layerOpen) {
+        closeLayer();
       }
     },
+    closeThen: closeLayer,
     dispose: unsubscribe,
   };
 }

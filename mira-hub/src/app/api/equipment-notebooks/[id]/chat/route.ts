@@ -73,8 +73,7 @@ import {
   acquisitionKey,
   acquisitionDeclineText,
   acquisitionManualUrl,
-  applicableEnabledSource,
-  currentManualSourceMessage,
+  applicableDisabledSource,
   canRetryReviewedAcquisition,
   readAcquisition,
   reconcileAcquisition,
@@ -179,7 +178,6 @@ import {
   type PartSearchProposalEntry,
 } from "@/capabilities/photo-part-lookup";
 import { publicManualSeries } from "@/capabilities/public-model-proof";
-import { reviewedManualFor } from "@/capabilities/reviewed-manual-library";
 import { asksToFindManual, exactManualIdentity, extractCandidateIdentity, isSafeCandidateSearchIdentity, wantsManualDocumentation } from "@/capabilities/candidate-identity";
 import { manufacturerInGroup } from "@/lib/manufacturerNormalize";
 import { citationTitle } from "@/capabilities/citation-title";
@@ -1849,59 +1847,29 @@ async function handleChatTurn(
   const validated = await releaseClaimOnFailure(() =>
     validateChatSources(ctx.tenantId, notebookId, body.sourceDocIds ?? []),
   );
+  // A source may be disabled in another session while a photo is uploading.
+  // A deterministic energized-work stop can be served without that source.
+  const staleSourceSafetyStop = !validated.ok && validated.error === "source_not_in_notebook" &&
+    energizedAskEarly && questionSafetyTrigger !== ENERGIZED_ELECTRICAL_HAZARD;
   if (!validated.ok) {
-    // 086 / private conversations §2: `no_sources_selected` is returned from an
-    // early `requestedDocIds.length === 0` check that never touches the
-    // database, so it proves NOTHING about ownership — yet both zero-source
-    // branches below (the safety stop, which persists, and general mode, which
-    // spends provider budget) used to trust it. Prove tenant ownership here,
-    // once, before either. getNotebook() is tenant-scoped: a foreign or
-    // nonexistent id is a 404 with nothing spent and nothing written. The
-    // grounded path needs no extra query — validateChatSources already proved
-    // membership for every id in docIds.
+    // Empty selection is rejected without a database read. Prove notebook
+    // ownership before either zero-source path may spend or persist anything.
+    const noSources = validated.error === "no_sources_selected";
     if (
-      validated.error === "no_sources_selected" &&
+      (noSources || staleSourceSafetyStop) &&
       !(await releaseClaimOnFailure(() => getNotebook(ctx.tenantId, notebookId)))
     ) {
       await abandonRequestClaim();
       endRoot();
       return NextResponse.json({ error: "notebook_not_found" }, { status: 404 });
     }
-    // "Smoke is coming from the panel" in a notebook with nothing attached must
-    // not be answered with a filing complaint. Ownership was proven by the
-    // getNotebook check just above (086) — `no_sources_selected` itself proves
-    // nothing — so the stop is safe to serve. It is NOT served here: a stop
-    // persisted before the machine binding is resolved carried no asset
-    // snapshot and no identity dispute, unlike every other turn, so a reload
-    // could not say which machine the hazard was reported at (or that the
-    // client's asset claim was disputed). The zero-source stop falls through
-    // to the single post-resolution safety stop below.
-    //
-    // A notebook with nothing attached is exactly the case the Universal
-    // Technician Rule exists for: the technician is standing at a machine with
-    // no manual loaded and still needs help.
-    //
-    // OWNERSHIP MUST BE PROVEN HERE, EXPLICITLY. `no_sources_selected` is
-    // returned from an early `requestedDocIds.length === 0` check that never
-    // touches the database, so — contrary to the comment on the safety-stop
-    // branch above — it does NOT establish that this notebook belongs to the
-    // caller. Letting it stand in for ownership would let any notebook id spend
-    // this tenant's provider budget. getNotebook() is tenant-scoped.
-    // Codex F5 (round 3): the energized-work stop passes this gate too
-    // (energizedAskEarly). Ownership is already proven above.
-    // #3786: offTopicTrigger passes this gate too — a scope reply needs no
-    // sources any more than a safety stop does.
-    if (
-      (general || questionSafetyTrigger || visualClaimFileId || energizedAskEarly || offTopicTrigger) &&
-      validated.error === "no_sources_selected"
-    ) {
-      // Ownership was proven above for every zero-source turn; a safety stop
-      // needs neither sources nor general mode to be served.
-    } else {
+    const allowEmptySelection = noSources &&
+      (general || questionSafetyTrigger || visualClaimFileId || energizedAskEarly || offTopicTrigger);
+    if (!allowEmptySelection && !staleSourceSafetyStop) {
       const status =
         validated.error === "notebook_not_found"
           ? 404
-          : validated.error === "no_sources_selected"
+          : noSources
             ? 422
             : 403;
       await abandonRequestClaim();
@@ -2148,8 +2116,7 @@ async function handleChatTurn(
   // the photo no longer suppresses it. An ACTIVE incident is still excluded,
   // but inside `isEnergizedWorkAsk` (ACTIVE_INCIDENT_RE), which is where that
   // judgement belongs rather than keyed off whether an image was attached.
-  const energizedWorkAsk =
-    !electricalHazardDirective && energizedHardStopEnabled() && isEnergizedWorkAsk(message);
+  const energizedWorkAsk = !electricalHazardDirective && energizedAskEarly;
   // `observation_available`/`observation_in_context` are derived from
   // `lookRow`/its rendered section later (renderLookObservationSection), not
   // hardcoded — the LOOK observation DOES reach the prompt (buildManualUserContent
@@ -2288,7 +2255,7 @@ async function handleChatTurn(
   // A hazard report is never answered with "re-select the machine": a flagged
   // turn skips this 422 and is answered (banner + general answer) about no
   // machine in particular — the null snapshot below is the honest record.
-  if (boundAsset.state === "unresolvable" && !safetyTrigger) {
+  if (boundAsset.state === "unresolvable" && !safetyTrigger && !staleSourceSafetyStop) {
     // Fail closed. Quietly answering as if unbound is the downgrade
     // .claude/rules/direct-connection-uns-certified.md forbids — the notebook
     // would keep showing the last stored machine name while answering about
@@ -2398,7 +2365,7 @@ async function handleChatTurn(
   // answered: nothing recorded) vs `machine_history_unavailable` (no source
   // to ask). `error` is a sentence (mira-mobile renders it verbatim); `code`
   // is the discriminator. Nothing is recorded: a refused replay is not a turn.
-  if (machineRequest && !groundedMachineEntry) {
+  if (machineRequest && !groundedMachineEntry && !staleSourceSafetyStop) {
     // A transient read failure is NOT "history unavailable": the source
     // exists, the read failed. Say so and let the client retry (503), rather
     // than telling the technician the machine has no history.
@@ -2477,7 +2444,7 @@ async function handleChatTurn(
 
   // Non-English questions search the English corpus in English (answered in their own language).
   // A held turn reads no manual, so it needs no translated search query either (#5504 Codex r3 F8).
-  const retrievalQuery = componentHold
+  const retrievalQuery = componentHold || staleSourceSafetyStop
     ? buildRetrievalQuery(message, turnHistory, lookRow?.text)
     : await englishSearchQuery(buildRetrievalQuery(message, turnHistory, lookRow?.text), translateForSearch);
   const retrievalSpan = startStage("retrieval.execute");
@@ -2550,7 +2517,14 @@ async function handleChatTurn(
     general && !notebookRetrieval && !componentTurn && !componentHold &&
     Boolean(nb) && boundAsset.state === "unbound" && !(nb?.manufacturer?.trim() || nb?.model?.trim()) &&
     acquisitionEnabled(ctx.tenantId) && asksToFindManual(message);
-  const exactManualRequestIdentity = unboundManualRequest ? exactManualIdentity(photoTextForOem, message) : null;
+  // A complete typed request can name equipment beyond the earlier photos in
+  // this conversation. Check it on its own before recalling a photo, while
+  // keeping the joint conflict check for a photo attached to this request.
+  // The acquisition egress gate below still checks the full observation.
+  const exactManualRequestIdentity = unboundManualRequest
+    ? (!visualEntry ? exactManualIdentity("", message) : null) ?? exactManualIdentity(photoTextForOem, message)
+    : null;
+  const photoManualRequest = unboundManualRequest && Boolean(photoTextForOem);
   const oemManufacturer: { name: string; source: "notebook" | "photo" } | null = await (async () => {
     if (notebookRetrieval) return null; // notebook sources own the turn
     if (nb?.manufacturer?.trim()) return { name: nb.manufacturer.trim(), source: "notebook" };
@@ -2640,7 +2614,7 @@ async function handleChatTurn(
   // A selected component is never answered from the shared library by the
   // notebook's machine: its manuals are the notebook's documents or none.
   const oemRetrieval =
-    !guidedDeadEnd && !componentTurn && !componentHold && !notebookRetrieval && !exactManualRequestIdentity &&
+    !guidedDeadEnd && !componentTurn && !componentHold && !notebookRetrieval && !staleSourceSafetyStop && !exactManualRequestIdentity && !photoManualRequest &&
     oemManufacturer !== null && !oemIdentity.ambiguous && !oemIdentity.failed;
   const retrievalExecuted = notebookRetrieval || oemRetrieval;
   // #4687: only when a document search actually runs (Codex #4765 F3).
@@ -2894,7 +2868,10 @@ async function handleChatTurn(
     ) {
       identityProposal = { ...identityProposal, manufacturer: oemManufacturer.name };
     }
-    if (!identityProposal && oemManufacturer === null) {
+    // A dedicated photo lookup has already checked both inputs together. The
+    // legacy text-only and loose plate readers must not pick a different model
+    // when that check withheld the identity.
+    if (!identityProposal && !photoManualRequest && oemManufacturer === null) {
       let client: PoolClient | null = null;
       try {
         client = await pool.connect();
@@ -2914,7 +2891,7 @@ async function handleChatTurn(
     // rollback: the turn reads exactly as it did before the photo built the
     // notebook — the typed corpus proposal above (#4095) and the explicit
     // confirm-first search chip (#4171), nothing read off the plate.
-    if (!identityProposal && acquisitionEnabled(ctx.tenantId)) {
+    if (!identityProposal && !photoManualRequest && acquisitionEnabled(ctx.tenantId)) {
       try {
         // The label reader takes the photo first and the typed text second, so
         // a maker + part typed with no photo at all still proposes (RC1).
@@ -3022,11 +2999,10 @@ async function handleChatTurn(
     // proposal) passes the same candidate validator before any search starts.
     isSafeCandidateSearchIdentity(photoTextForOem, message, identityProposal.model, identityProposal.manufacturer) &&
     ((Boolean(photoTextForOem) && unambiguousPartNumber(photoTextForOem) !== null) || wantsManualDocumentation(message));
-  // A reviewed identity uses the confirmation card even when the photo needs
-  // confirmation before acquisition. Offer only one action for that request.
-  const reviewedConfirmationOwnsTurn = identityProposal !== null && exactManualRequestIdentity !== null &&
-    reviewedManualFor(exactManualRequestIdentity) !== null;
-  const canOfferPartSearch = !candidateAcquisitionOwnsTurn && !reviewedConfirmationOwnsTurn;
+  // An exact identity uses the confirmation card even when search cannot
+  // start until confirmation. A part-only search would be a separate action.
+  const exactConfirmationOwnsTurn = identityProposal !== null && exactManualRequestIdentity !== null;
+  const canOfferPartSearch = !candidateAcquisitionOwnsTurn && !exactConfirmationOwnsTurn;
   // #5268 owner decision 2026-11-07 (option A): a plate that shows a serial or
   // asset label offers its code only when the code is proven public — printed
   // in that maker's own manuals in the shared library. That proof, not how the
@@ -3304,6 +3280,7 @@ async function handleChatTurn(
     if (key) {
       let acq = await readAcquisition(ctx.tenantId, notebookId);
       let started = false;
+      let claimedStartedAt: string | null = null;
       // A matching "running" record also goes back through the atomic claim:
       // its stale-window predicate recovers a search orphaned by a restart,
       // and refuses (started=false) while a live search still holds it. A
@@ -3333,12 +3310,13 @@ async function handleChatTurn(
           nodeId: nb.nodeId,
           identity,
           turnSpanContext: rootSpan.spanContext(),
+          onClaimed: (value) => { claimedStartedAt = value; },
         });
         if (started) {
           acq = {
             key,
             state: "running",
-            started_at: new Date().toISOString(),
+            started_at: claimedStartedAt,
             finished_at: null,
             candidate_host: null,
             match_state: null,
@@ -3408,12 +3386,13 @@ async function handleChatTurn(
             basis: "candidate",
             fromPhoto: Boolean(photoTextForOem && photoPartNumber),
             turnSpanContext: rootSpan.spanContext(),
+            onClaimed: (value) => { candidateSearchStartedAt = value; },
           });
           if (cStarted) {
             cAcq = {
               key: candidateKey,
               state: "running",
-              started_at: new Date().toISOString(),
+              started_at: candidateSearchStartedAt ?? null,
               finished_at: null,
               candidate_host: null,
               match_state: null,
@@ -3424,12 +3403,13 @@ async function handleChatTurn(
           }
         }
         if (cStarted) {
-          // Read back the claim's generation and any outcome the background
-          // worker has already written, such as a search limit or a fast match.
+          // Read back a fast terminal outcome when available. The claim already
+          // supplied the generation, so a failed or stale read cannot erase it.
           const authoritative = await readAcquisition(ctx.tenantId, notebookId);
-          if (authoritative?.key === candidateKey) {
+          if (authoritative?.key === candidateKey &&
+              (!candidateSearchStartedAt || authoritative.started_at === candidateSearchStartedAt)) {
             cAcq = authoritative;
-            candidateSearchStartedAt = authoritative.started_at ?? undefined;
+            candidateSearchStartedAt ??= authoritative.started_at ?? undefined;
           }
         } else {
           cAcq = await reconcileAcquisition(ctx.tenantId, notebookId, cAcq);
@@ -3445,15 +3425,14 @@ async function handleChatTurn(
           // turned off since — judge that from the source's CURRENT state with
           // the same matcher the notebook status uses, never the history.
           const label = `${identityProposal.manufacturer} ${identityProposal.model}`;
-          let sourceOff = cAcq.state === "complete" && sourcesLoaded && !applicableEnabledSource(srcs, candidateIdentity);
+          let sourceOff = cAcq.state === "complete" && sourcesLoaded && applicableDisabledSource(srcs, candidateIdentity) !== null;
           let currentSourceMessage: string | null = null;
           if (cStarted && cAcq.state === "complete" && !cAcq.source_removed) {
             // The worker can attach and index its source before the claim's
             // read-back. The pre-claim source snapshot cannot answer this.
             try {
               const freshSources = await listSources(ctx.tenantId, notebookId);
-              currentSourceMessage = currentManualSourceMessage(freshSources, candidateIdentity);
-              sourceOff = currentSourceMessage === null;
+              sourceOff = applicableDisabledSource(freshSources, candidateIdentity) !== null;
             } catch {
               currentSourceMessage = `I found the ${label} manual, but couldn't check whether it's ready in Sources.`;
             }
