@@ -63,7 +63,7 @@ export async function requestAuthLink(req: Request, onboarding: boolean) {
         const existing = await findUserByEmail(email);
         if (!onboarding && !existing)
             return neutral();
-        if (onboarding && existing && (intent === "pilot" || (existing.plan !== "technician_free" && (existing.status !== "pending" || existing.emailVerifiedAt || existing.googleSub))))
+        if (onboarding && existing && (intent === "pilot" || existing.plan !== "technician_free" || existing.status !== "approved"))
             return neutral();
         const token = await createMagicToken(email, onboarding ? { onboarding: { intent: intent as "technician" | "pilot", agreementVersion: ONBOARDING_VERSION, attribution: attributionFromRequest(req) } } : {});
         const origin = new URL(process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_APP_URL || "https://app.factorylm.com").origin;

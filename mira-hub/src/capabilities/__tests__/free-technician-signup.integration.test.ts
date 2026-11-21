@@ -130,6 +130,62 @@ describe.skipIf(!READY)("verified onboarding with a restricted production-shaped
         expect((await testPool.query("SELECT google_sub FROM hub_users WHERE id=$1", [user.id])).rows[0].google_sub).toBe(linked);
         expect(await provider("credentials")({ email: address, password: "legacy-linked-password" }, {})).not.toBeNull();
     });
+    it("a linked Google subject with a renamed address signs in without verifying the old stored address (F27)", async () => {
+        vi.stubEnv("MIRA_FREE_TECHNICIANS", "false");
+        vi.stubEnv("MIRA_PILOT_APPROVAL_REQUIRED", "0");
+        const stored = email(), renamed = email(), linked = "google-renamed-" + randomUUID();
+        const user = await ensureUserAndTenant({ email: stored, passwordHash: await bcrypt.hash("renamed-password", 4) });
+        await testPool.query("UPDATE hub_users SET google_sub=$2 WHERE id=$1", [user.id, linked]);
+        const before = (await testPool.query("SELECT email,password_hash,credential_epoch,email_verified_at FROM hub_users WHERE id=$1", [user.id])).rows[0];
+        expect(before.email_verified_at).toBeNull();
+        expect(await authOptions.callbacks!.signIn!({ user: { id: "google-user" }, account: { provider: "google", providerAccountId: linked }, profile: { email: renamed, email_verified: true } } as never)).toBe(true);
+        expect((await testPool.query("SELECT email,password_hash,credential_epoch,email_verified_at FROM hub_users WHERE id=$1", [user.id])).rows[0]).toEqual(before);
+    });
+    it.each([["0"], ["1"]])("a re-invite cannot change access for an unknown-provenance identity, pilot review=%s (F28)", async (pilot) => {
+        vi.stubEnv("MIRA_FREE_TECHNICIANS", "false");
+        vi.stubEnv("MIRA_PILOT_APPROVAL_REQUIRED", pilot);
+        const owner = await ensureUserAndTenant({ email: email(), signupIntent: pilot === "1" ? "pilot" : undefined });
+        await testPool.query("UPDATE hub_users SET plan='enterprise',status='approved' WHERE id=$1", [owner.id]);
+        if (pilot === "1")
+            await testPool.query("UPDATE hub_tenants SET pilot_status='active',pilot_expires_at=NOW()+INTERVAL '30 days' WHERE id=$1", [owner.tenantId]);
+        const address = email();
+        const member = await ensureInvitedUser({ email: address, tenantId: owner.tenantId, role: "technician" });
+        await testPool.query("UPDATE hub_users SET password_hash=$2,password_provenance='unknown',status='expired' WHERE id=$1", [member.id, await bcrypt.hash("unknown-member-password", 4)]);
+        const snapshot = async () => (await testPool.query("SELECT role,status,credential_epoch,password_hash,email_verified_at,trial_expires_at FROM hub_users WHERE id=$1", [member.id])).rows[0];
+        const before = await snapshot();
+        const token = await createMagicToken(address, { tenantId: owner.tenantId, role: "admin" });
+        expect(await provider("magic-token")({ token }, {})).toBeNull();
+        expect(await snapshot()).toEqual(before);
+        expect((await testPool.query("SELECT used_at FROM hub_magic_tokens WHERE token=$1", [token])).rows[0].used_at).toBeNull();
+        // The in-transaction guard holds even if the pre-check is bypassed.
+        await expect(ensureInvitedUser({ email: address, tenantId: owner.tenantId, role: "admin" })).rejects.toThrow("operator review");
+        expect(await snapshot()).toEqual(before);
+        // Eligible control: an operator-provenance identity is re-invited exactly once.
+        await testPool.query("UPDATE hub_users SET password_provenance='operator' WHERE id=$1", [member.id]);
+        const ok = await createMagicToken(address, { tenantId: owner.tenantId, role: "admin" });
+        expect((await provider("magic-token")({ token: ok }, {}))?.id).toBe(member.id);
+        expect((await snapshot()).role).toBe("admin");
+        expect(await provider("magic-token")({ token: ok }, {})).toBeNull();
+    });
+    it("a technician setup request for a legacy pending pilot sends no mail and mints no token (F29)", async () => {
+        vi.stubEnv("MIRA_FREE_TECHNICIANS", "false");
+        const legacy = email();
+        await ensureUserAndTenant({ email: legacy, signupIntent: "pilot", passwordHash: await bcrypt.hash("legacy-pending", 4) });
+        vi.stubEnv("MIRA_FREE_TECHNICIANS", "true");
+        vi.stubEnv("RESEND_API_KEY", "synthetic-local-transport");
+        const mail = vi.fn(async () => new Response("{}", { status: 200 }));
+        vi.stubGlobal("fetch", mail);
+        const body = (address: string) => ({ email: address, intent: "technician", accepted: true, agreementVersion: ONBOARDING_VERSION });
+        const refused = await requestSetup(request(body(legacy)));
+        expect(mail).not.toHaveBeenCalled();
+        expect((await testPool.query("SELECT count(*)::int AS n FROM hub_magic_tokens WHERE email=$1", [legacy])).rows[0].n).toBe(0);
+        const control = email();
+        const accepted = await requestSetup(request(body(control)));
+        expect(mail).toHaveBeenCalledTimes(1);
+        expect((await testPool.query("SELECT count(*)::int AS n FROM hub_magic_tokens WHERE email=$1", [control])).rows[0].n).toBe(1);
+        expect(refused.status).toBe(accepted.status);
+        expect(await refused.json()).toEqual(await accepted.json());
+    });
     it("a pilot token issued before a personal account wins cannot record a false application", async () => { const address = email(), pilotToken = await issue(address, "pilot"); const free = await personal(address); expect(await confirm(pilotToken)).toBeNull(); expect((await testPool.query("SELECT count(*)::int AS n FROM pilot_applications WHERE tenant_id=$1", [free.tenantId])).rows[0].n).toBe(0); expect((await findUserByEmail(address))?.plan).toBe("technician_free"); });
     it("ordinary verified claim removes an unproven password and old sessions", async () => { vi.stubEnv("MIRA_FREE_TECHNICIANS", "false"); vi.stubEnv("MIRA_PILOT_APPROVAL_REQUIRED", "0"); const address = email(); await ensureUserAndTenant({ email: address, passwordHash: await bcrypt.hash("legacy-password", 4) }); const old = await provider("credentials")({ email: address, password: "legacy-password" }, {}); expect(await provider("magic-token")({ token: await createMagicToken(address) }, {})).not.toBeNull(); const user = await findUserByEmail(address); expect(user?.passwordHash).toBeNull(); expect(credentialsAreCurrent({ credentialEpoch: old!.credentialEpoch }, user)).toBe(false); expect(await provider("credentials")({ email: address, password: "legacy-password" }, {})).toBeNull(); });
     it("free seats stay personal after rollback while paid invitations still work", async () => { const free = await personal(); vi.stubEnv("MIRA_FREE_TECHNICIANS", "false"); vi.stubEnv("MIRA_PILOT_APPROVAL_REQUIRED", "0"); await testPool.query("UPDATE hub_users SET preferences='{\"signupOffer\":null}'::jsonb WHERE id=$1", [free.id]); await expect(assertTeamInvitesAllowed(testPool, free.tenantId)).rejects.toThrow("one person"); await expect(ensureInvitedUser({ email: email(), tenantId: free.tenantId, role: "technician" })).rejects.toThrow("one person"); expect((await provider("magic-token")({ token: await createMagicToken(free.email) }, {}))?.status).toBe("approved"); const paid = await ensureUserAndTenant({ email: email() }); await testPool.query("UPDATE hub_users SET plan='enterprise',status='approved' WHERE id=$1", [paid.id]); expect((await ensureInvitedUser({ email: email(), tenantId: paid.tenantId, role: "technician" })).tenantId).toBe(paid.tenantId); });

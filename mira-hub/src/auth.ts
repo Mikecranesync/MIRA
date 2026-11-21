@@ -2,14 +2,14 @@ import type { NextAuthOptions } from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 import CredentialsProvider from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
-import { ensureInvitedUser, ensureUserAndTenant, findUserByEmail, findUserById, validateMagicToken, magicTokenPurpose } from "@/lib/users";
+import { ensureInvitedUser, ensureUserAndTenant, findUserByEmail, findUserById, validateMagicToken, magicTokenPurpose, magicTokenNeedsCredentialReview } from "@/lib/users";
 import { NO_ROLE, normalizeRole, type ResolvedRole } from "@/lib/role";
 import { refreshEntitlementClaims } from "@/capabilities/session-entitlement";
 import { credentialEpoch } from "@/capabilities/verified-identity";
 import { redeemVerifiedOnboarding } from "@/capabilities/verified-onboarding";
 import { ONBOARDING_VERSION } from "@/capabilities/onboarding-policy";
 import { publicSignupPolicy } from "@/capabilities/free-technician-signup";
-import { claimVerifiedEmail } from "@/capabilities/verified-identity";
+import { claimVerifiedEmail, CredentialReviewRequiredError } from "@/capabilities/verified-identity";
 import pool from "@/lib/db";
 
 declare module "next-auth" {
@@ -87,9 +87,14 @@ const providers: NextAuthOptions["providers"] = [
         try { account = await redeemVerifiedOnboarding(credentials.token, credentials.agreementVersion ?? ""); }
         catch { return null; }
       } else {
+        // Codex F28: refuse unknown-provenance identities before the token is spent.
+        if (await magicTokenNeedsCredentialReview(credentials.token)) return null;
         const result = await validateMagicToken(credentials.token);
         if (!result) return null;
-        if (result.tenantId) account = await ensureInvitedUser({email:result.email,tenantId:result.tenantId,role:result.role ?? "technician"});
+        if (result.tenantId) {
+          try { account = await ensureInvitedUser({email:result.email,tenantId:result.tenantId,role:result.role ?? "technician"}); }
+          catch (err) { if (err instanceof CredentialReviewRequiredError) return null; throw err; }
+        }
         else {
           const existing = await findUserByEmail(result.email);
           if (!existing) return null;

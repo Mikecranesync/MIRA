@@ -226,6 +226,21 @@ export async function validateMagicToken(token: string): Promise<MagicTokenResul
     : null;
 }
 
+/** Non-consuming check: the token's address belongs to a row whose password has
+ * unknown provenance, so redemption must refuse WITHOUT spending the token (F28). */
+export async function magicTokenNeedsCredentialReview(token: string): Promise<boolean> {
+  await ensureMagicSchema();
+  const result = await pool.query(
+    `SELECT 1 FROM hub_magic_tokens t JOIN hub_users u ON u.email_lower = LOWER(t.email)
+     WHERE t.token=$1 AND t.expires_at>NOW() AND t.used_at IS NULL
+       AND u.password_hash IS NOT NULL
+       AND u.password_provenance NOT IN ('public_unverified','operator','verified')
+     LIMIT 1`,
+    [token],
+  );
+  return Boolean(result.rows[0]);
+}
+
 export async function magicTokenPurpose(token: string): Promise<string | null> {
   await ensureMagicSchema();
   const result = await pool.query("SELECT purpose FROM hub_magic_tokens WHERE token=$1 AND expires_at>NOW() AND used_at IS NULL",[token]);
@@ -257,7 +272,10 @@ export async function ensureUserAndTenant(
       // on the row (Codex F24): an unknown-provenance password stays untouched and
       // isolated, and this returning sign-in still works. A NEW subject reaching the
       // same row by email (below) still requires operator review.
-      if (input.verifiedEmail) {
+      // Codex F27: only claim the mailbox Google just verified. If the stored
+      // address differs (renamed account), sign in without stamping the old one.
+      const sameAddress = String(rows[0].email).trim().toLowerCase() === input.email.trim().toLowerCase();
+      if (input.verifiedEmail && sameAddress) {
         try {
           await claimVerifiedEmail(pool, String(rows[0].id));
         } catch (err) {
@@ -367,6 +385,9 @@ export async function ensureInvitedUser(input: {
       if (existing.tenantId !== input.tenantId) {
         throw new Error("email already belongs to another workspace");
       }
+      // Codex F28: establish the identity BEFORE changing access. An
+      // unknown-provenance password throws here, so role/status stay unchanged.
+      await claimVerifiedEmail(pool, existing.id);
       await pool.query(
         `UPDATE hub_users
          SET role = $1,
@@ -417,6 +438,9 @@ export async function ensureInvitedUser(input: {
       if (String(existing.tenant_id) !== input.tenantId) {
         throw new Error("email already belongs to another workspace");
       }
+      // Codex F28: identity claim in the SAME transaction as the access change;
+      // a rejection rolls back role, status, deadline and reservation together.
+      await claimVerifiedEmail(client, String(existing.id));
       await client.query(
         pilotActive
           ? `UPDATE hub_users

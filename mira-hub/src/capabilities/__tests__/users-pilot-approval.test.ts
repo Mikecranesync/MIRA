@@ -154,13 +154,19 @@ describe("ensureInvitedUser — #4878 crew follow the organization", () => {
           rows: [{ id: "user-existing", email: "existing@example.com", tenant_id: "tenant-1" }],
         };
       }
+      // Codex F28: the identity claim runs first, on the same client.
+      if (/SET\s+password_hash = CASE/.test(sql)) return { rows: [{ id: "user-existing" }] };
       return { rows: [] };
     });
     connectMock.mockResolvedValue({ query: clientQuery, release: vi.fn() });
 
     await ensureInvitedUser({ email: "existing@example.com", tenantId: "tenant-1", role: "admin" });
 
-    const update = clientQuery.mock.calls.find((a) => /UPDATE hub_users/.test(String(a[0])));
+    const claim = clientQuery.mock.calls.findIndex((a) => /SET\s+password_hash = CASE/.test(String(a[0])));
+    const roleWrite = clientQuery.mock.calls.findIndex((a) => /SET role = \$1/.test(String(a[0])));
+    expect(claim).toBeGreaterThanOrEqual(0);
+    expect(claim).toBeLessThan(roleWrite);
+    const update = clientQuery.mock.calls[roleWrite];
     expect(String(update?.[0])).toMatch(/ELSE 'trial' END/);
     expect(String(update?.[0])).toMatch(/WHEN status = 'admin' THEN status/);
     expect(update?.[1]).toEqual(["admin", "user-existing", new Date("2026-11-27T00:00:00.000Z")]);
