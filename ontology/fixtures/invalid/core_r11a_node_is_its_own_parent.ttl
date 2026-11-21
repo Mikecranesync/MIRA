@@ -1,0 +1,10 @@
+# EXPECT-VIOLATION: mirash:SelfParentShape
+# ALSO-FIRES: mirash:ContainmentCycleShape a self-parent is a one-step has_parent cycle, so R11b always fires with this form
+#
+# R11a. A node is its own parent. A self-loop is also a one-step cycle, so R11b fires with it.
+
+@prefix mira: <https://ontology.factorylm.com/mira#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix ex:   <https://example.org/fx#> .
+
+ex:cell_1 a mira:WorkCell ; mira:has_parent ex:cell_1 .

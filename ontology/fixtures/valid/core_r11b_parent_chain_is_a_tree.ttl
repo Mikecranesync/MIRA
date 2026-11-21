@@ -1,0 +1,11 @@
+# PROTECTS: mirash:ContainmentCycleShape
+#
+# R11b. A normal site > line > cell chain: every node has one way up and none leads back.
+
+@prefix mira: <https://ontology.factorylm.com/mira#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix ex:   <https://example.org/fx#> .
+
+ex:site_1 a mira:Site .
+ex:line_1 a mira:Line     ; mira:has_parent ex:site_1 .
+ex:cell_1 a mira:WorkCell ; mira:has_parent ex:line_1 .

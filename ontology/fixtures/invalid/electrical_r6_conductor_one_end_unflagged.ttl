@@ -1,0 +1,10 @@
+# EXPECT-VIOLATION: mirash:ConductorEndpointsShape
+#
+# R6. A wire with one landing and no admission that the other end was never read.
+
+@prefix mira: <https://ontology.factorylm.com/mira#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix ex:   <https://example.org/fx#> .
+
+ex:x1_3 a mira:ConnectionPoint ; mira:terminal_label "X1:3" .
+ex:w101 a mira:Conductor ; mira:wire_number "101" ; mira:terminates_at ex:x1_3 .

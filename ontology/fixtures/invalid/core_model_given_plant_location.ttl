@@ -1,0 +1,10 @@
+# EXPECT-VIOLATION: mirash:AssetClassHasNoUnsPathShape
+#
+# A reusable model carries a plant address. Only something installed has a UNS path; a model's
+# knowledge-base path is a different address space (uns.py::model_path()).
+
+@prefix mira: <https://ontology.factorylm.com/mira#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix ex:   <https://example.org/fx#> .
+
+ex:gs10_2p0 a mira:AssetClass ; mira:uns_path "enterprise.garage.demo_cell.cv_101.vfd_101" .

@@ -1,0 +1,14 @@
+# EXPECT-VIOLATION: mirash:ReadOnlyPolicyShape
+#
+# R13 — a control action presented to the technician as something MIRA may currently perform.
+# MIRA is read-only troubleshooting intelligence; no control writes in beta
+# (.claude/rules/fieldbus-readonly.md, NORTH_STAR "read-only for OT by default"). A control
+# action may be DESCRIBED ("someone must reset the drive"), never OFFERED as an available act.
+
+@prefix mira: <https://ontology.factorylm.com/mira#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix ex:   <https://example.org/fx#> .
+
+ex:claim_reset a mira:ControlActionClaim ;
+    mira:predicate "mira_can_reset_the_drive_fault" ;
+    mira:presents_action_as_permitted true .
