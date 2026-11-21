@@ -18,7 +18,6 @@ export async function redeemVerifiedOnboarding(token: string, agreementVersion: 
         throw new Error("Review the current account agreement.");
     await ensureSchema();
     const client = await pool.connect();
-    let recoveryId: string | undefined;
     try {
         await client.query("BEGIN");
         const proof = await client.query("SELECT email,onboarding FROM hub_magic_tokens WHERE token=$1 AND purpose='onboarding' AND expires_at>NOW() AND used_at IS NULL FOR UPDATE", [token]);
@@ -44,13 +43,11 @@ export async function redeemVerifiedOnboarding(token: string, agreementVersion: 
                 await client.query("COMMIT");
                 return { id: String(existing.id), tenantId: String(existing.tenant_id), email: address, created: false };
             }
-            if (existing.status !== "pending" || existing.pilot_status !== "pending" || existing.email_verified_at || existing.google_sub || existing.terms_version === ONBOARDING_VERSION)
-                throw new ExistingOnboardingAccountError();
-            // A verified inbox owner chooses a fresh personal workspace. Preserve the
-            // old unapproved application for review; never copy its untrusted state.
-            const archived = await client.query("INSERT INTO hub_onboarding_recoveries (previous_user_id,previous_tenant_id,original_email) VALUES ($1,$2,$3) RETURNING id", [existing.id, existing.tenant_id, address]);
-            recoveryId = String(archived.rows[0].id);
-            await client.query("UPDATE hub_users SET email=$2,password_hash=NULL,google_sub=NULL,status='expired',credential_epoch=credential_epoch+1,updated_at=NOW() WHERE id=$1", [existing.id, `recovered-${existing.id}@identity.invalid`]);
+            // Any other existing account — including a legacy pending pilot — is never
+            // retired or rewritten from a setup link: its password, application and
+            // cohort eligibility stay exactly as they are, and an operator decides
+            // (Codex F17/F23 — automatic recovery removed).
+            throw new ExistingOnboardingAccountError();
         }
         const free = receipt.intent === "technician";
         const tenant = await client.query("INSERT INTO hub_tenants (name,signup_offer,pilot_status) VALUES ($1,$2,$3) RETURNING id", [address, free ? "technician_free" : null, free ? null : "pending"]);
@@ -59,8 +56,6 @@ export async function redeemVerifiedOnboarding(token: string, agreementVersion: 
         const user = await client.query("INSERT INTO hub_users (email,tenant_id,status,trial_expires_at,plan,terms_version,terms_sha256,terms_accepted_at,email_verified_at,password_provenance) VALUES ($1,$2,$3,NULL,$4,$5,$6,NOW(),NOW(),'none') RETURNING id", [address, tenantId, free ? "approved" : "pending", free ? "technician_free" : null, ONBOARDING_VERSION, ONBOARDING_SHA256]);
         const id = String(user.rows[0].id);
         await client.query("UPDATE hub_tenants SET owner_user_id=$1 WHERE id=$2", [id, tenantId]);
-        if (recoveryId)
-            await client.query("UPDATE hub_onboarding_recoveries SET personal_user_id=$2 WHERE id=$1", [recoveryId, id]);
         await client.query("UPDATE hub_magic_tokens SET used_at=NOW() WHERE token=$1", [token]);
         await client.query("COMMIT");
         if (!free)

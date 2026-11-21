@@ -5,7 +5,7 @@ import { PILOT_WINDOW_DAYS } from "@/lib/config";
 import { magicTokenTtlMinutes } from "@/capabilities/trial-access";
 import { admitPilotInvite, isPilotApprovalRequired } from "@/capabilities/pilot-access";
 import { publicSignupPolicy, type SignupIntent } from "@/capabilities/free-technician-signup";
-import { claimVerifiedEmail, EmailVerificationRequiredError } from "@/capabilities/verified-identity";
+import { claimVerifiedEmail, CredentialReviewRequiredError, EmailVerificationRequiredError } from "@/capabilities/verified-identity";
 import { assertTeamInvitesAllowed } from "@/capabilities/free-workspace";
 
 export type UserStatus = "pending" | "trial" | "approved" | "expired" | "admin";
@@ -253,7 +253,17 @@ export async function ensureUserAndTenant(
       [input.googleSub],
     );
     if (rows[0]) {
-      if (input.verifiedEmail) await claimVerifiedEmail(pool, String(rows[0].id));
+      // Authenticating through an ALREADY-linked Google subject is not a new claim
+      // on the row (Codex F24): an unknown-provenance password stays untouched and
+      // isolated, and this returning sign-in still works. A NEW subject reaching the
+      // same row by email (below) still requires operator review.
+      if (input.verifiedEmail) {
+        try {
+          await claimVerifiedEmail(pool, String(rows[0].id));
+        } catch (err) {
+          if (!(err instanceof CredentialReviewRequiredError)) throw err;
+        }
+      }
       return { id: String(rows[0].id), tenantId: String(rows[0].tenant_id), email: String(rows[0].email) };
     }
   }

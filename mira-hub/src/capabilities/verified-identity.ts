@@ -24,7 +24,11 @@ export async function claimVerifiedEmail(db: Pick<Pool, "query">, userId: string
     WHERE id=$1 AND (password_hash IS NULL OR password_provenance IN ('public_unverified','operator','verified'))
     RETURNING id`, [userId]);
     if (!result.rows[0])
-        throw new Error("Credential provenance requires operator review. Your existing password is unchanged; contact support@factorylm.com.");
+        throw new CredentialReviewRequiredError();
+}
+/** The stored password's provenance is unknown: a NEW identity may not claim the row. */
+export class CredentialReviewRequiredError extends Error {
+    constructor() { super("Credential provenance requires operator review. Your existing password is unchanged; contact support@factorylm.com."); }
 }
 export class EmailVerificationRequiredError extends Error {
     constructor() { super("Verify your email using the sign-in link before creating a free workspace."); }

@@ -96,7 +96,40 @@ describe.skipIf(!READY)("verified onboarding with a restricted production-shaped
             await vi.waitFor(async () => expect((await testPool.query("SELECT count(*)::int AS n FROM pilot_applications WHERE tenant_id=$1", [account!.tenantId])).rows[0].n).toBe(1));
         }
     });
-    it("verified owner escapes an untrusted pending application into a fresh personal workspace", async () => { vi.stubEnv("MIRA_FREE_TECHNICIANS", "false"); const address = email(); const prior = await ensureUserAndTenant({ email: address, signupIntent: "pilot", passwordHash: await bcrypt.hash("unproven-password", 4) }); await testPool.query("INSERT INTO pilot_applications(tenant_id,user_id) VALUES ($1,$2)", [prior.tenantId, prior.id]); const old = await provider("credentials")({ email: address, password: "unproven-password" }, {}); vi.stubEnv("MIRA_FREE_TECHNICIANS", "true"); const recovered = await personal(address); expect(recovered.tenantId).not.toBe(prior.tenantId); expect((await findUserByEmail(address))?.status).toBe("approved"); const previous = (await testPool.query("SELECT u.status,u.password_hash,u.credential_epoch,t.pilot_status FROM hub_users u JOIN hub_tenants t ON t.id=u.tenant_id WHERE u.id=$1", [prior.id])).rows[0]; expect(previous).toMatchObject({ status: "expired", password_hash: null, pilot_status: "pending" }); expect(credentialsAreCurrent({ credentialEpoch: old!.credentialEpoch }, { credentialEpoch: previous.credential_epoch })).toBe(false); expect((await testPool.query("SELECT original_email,personal_user_id FROM hub_onboarding_recoveries WHERE previous_user_id=$1", [prior.id])).rows[0]).toMatchObject({ original_email: address, personal_user_id: recovered.id }); expect((await testPool.query("SELECT count(*)::int AS n FROM pilot_applications WHERE tenant_id=$1", [recovered.tenantId])).rows[0].n).toBe(0); });
+    it("a personal setup link never retires a legacy pending pilot: password, application and session stay intact (F17/F23)", async () => {
+        vi.stubEnv("MIRA_FREE_TECHNICIANS", "false");
+        const address = email();
+        const prior = await ensureUserAndTenant({ email: address, signupIntent: "pilot", passwordHash: await bcrypt.hash("unproven-password", 4) });
+        await testPool.query("INSERT INTO pilot_applications(tenant_id,user_id) VALUES ($1,$2)", [prior.tenantId, prior.id]);
+        const old = await provider("credentials")({ email: address, password: "unproven-password" }, {});
+        const before = (await testPool.query("SELECT password_hash,credential_epoch FROM hub_users WHERE id=$1", [prior.id])).rows[0];
+        vi.stubEnv("MIRA_FREE_TECHNICIANS", "true");
+        const token = await issue(address);
+        expect(await confirm(token)).toBeNull();
+        const after = (await testPool.query("SELECT u.email,u.status,u.password_hash,u.credential_epoch,u.google_sub,t.pilot_status,t.owner_user_id FROM hub_users u JOIN hub_tenants t ON t.id=u.tenant_id WHERE u.id=$1", [prior.id])).rows[0];
+        expect(after).toMatchObject({ email: address, status: "pending", password_hash: before.password_hash, credential_epoch: before.credential_epoch, pilot_status: "pending" });
+        expect(credentialsAreCurrent({ credentialEpoch: old!.credentialEpoch }, { credentialEpoch: after.credential_epoch })).toBe(true);
+        expect(await provider("credentials")({ email: address, password: "unproven-password" }, {})).not.toBeNull();
+        expect((await testPool.query("SELECT count(*)::int AS n FROM hub_users WHERE email_lower=LOWER($1)", [address])).rows[0].n).toBe(1);
+        expect((await testPool.query("SELECT count(*)::int AS n FROM hub_onboarding_recoveries WHERE previous_user_id=$1", [prior.id])).rows[0].n).toBe(0);
+        expect((await testPool.query("SELECT count(*)::int AS n FROM pilot_applications WHERE tenant_id=$1", [prior.tenantId])).rows[0].n).toBe(1);
+        // The refused link was not consumed by a half-done recovery.
+        expect((await testPool.query("SELECT used_at FROM hub_magic_tokens WHERE token=$1", [token])).rows[0].used_at).toBeNull();
+    });
+    it("an already-linked Google subject still signs in over an unknown-provenance password; a new subject cannot claim it (F24)", async () => {
+        vi.stubEnv("MIRA_FREE_TECHNICIANS", "false");
+        vi.stubEnv("MIRA_PILOT_APPROVAL_REQUIRED", "0");
+        const address = email(), linked = "google-linked-" + randomUUID();
+        const user = await ensureUserAndTenant({ email: address, passwordHash: await bcrypt.hash("legacy-linked-password", 4) });
+        await testPool.query("UPDATE hub_users SET password_provenance='unknown',google_sub=$2 WHERE id=$1", [user.id, linked]);
+        const google = (sub: string) => authOptions.callbacks!.signIn!({ user: { id: "google-user" }, account: { provider: "google", providerAccountId: sub }, profile: { email: address, email_verified: true } } as never);
+        expect(await google(linked)).toBe(true);
+        expect(await findUserByEmail(address)).toMatchObject({ id: user.id, passwordProvenance: "unknown", credentialEpoch: 0 });
+        expect(await provider("credentials")({ email: address, password: "legacy-linked-password" }, {})).not.toBeNull();
+        await expect(google("google-new-" + randomUUID())).rejects.toThrow("operator review");
+        expect((await testPool.query("SELECT google_sub FROM hub_users WHERE id=$1", [user.id])).rows[0].google_sub).toBe(linked);
+        expect(await provider("credentials")({ email: address, password: "legacy-linked-password" }, {})).not.toBeNull();
+    });
     it("a pilot token issued before a personal account wins cannot record a false application", async () => { const address = email(), pilotToken = await issue(address, "pilot"); const free = await personal(address); expect(await confirm(pilotToken)).toBeNull(); expect((await testPool.query("SELECT count(*)::int AS n FROM pilot_applications WHERE tenant_id=$1", [free.tenantId])).rows[0].n).toBe(0); expect((await findUserByEmail(address))?.plan).toBe("technician_free"); });
     it("ordinary verified claim removes an unproven password and old sessions", async () => { vi.stubEnv("MIRA_FREE_TECHNICIANS", "false"); vi.stubEnv("MIRA_PILOT_APPROVAL_REQUIRED", "0"); const address = email(); await ensureUserAndTenant({ email: address, passwordHash: await bcrypt.hash("legacy-password", 4) }); const old = await provider("credentials")({ email: address, password: "legacy-password" }, {}); expect(await provider("magic-token")({ token: await createMagicToken(address) }, {})).not.toBeNull(); const user = await findUserByEmail(address); expect(user?.passwordHash).toBeNull(); expect(credentialsAreCurrent({ credentialEpoch: old!.credentialEpoch }, user)).toBe(false); expect(await provider("credentials")({ email: address, password: "legacy-password" }, {})).toBeNull(); });
     it("free seats stay personal after rollback while paid invitations still work", async () => { const free = await personal(); vi.stubEnv("MIRA_FREE_TECHNICIANS", "false"); vi.stubEnv("MIRA_PILOT_APPROVAL_REQUIRED", "0"); await testPool.query("UPDATE hub_users SET preferences='{\"signupOffer\":null}'::jsonb WHERE id=$1", [free.id]); await expect(assertTeamInvitesAllowed(testPool, free.tenantId)).rejects.toThrow("one person"); await expect(ensureInvitedUser({ email: email(), tenantId: free.tenantId, role: "technician" })).rejects.toThrow("one person"); expect((await provider("magic-token")({ token: await createMagicToken(free.email) }, {}))?.status).toBe("approved"); const paid = await ensureUserAndTenant({ email: email() }); await testPool.query("UPDATE hub_users SET plan='enterprise',status='approved' WHERE id=$1", [paid.id]); expect((await ensureInvitedUser({ email: email(), tenantId: paid.tenantId, role: "technician" })).tenantId).toBe(paid.tenantId); });
@@ -189,12 +222,11 @@ describe.skipIf(!READY)("verified onboarding with a restricted production-shaped
         expect(results.filter(Boolean)).toHaveLength(1);
         expect((await testPool.query("SELECT count(*)::int AS n FROM hub_users WHERE email_lower=LOWER($1)", [address])).rows[0].n).toBe(1);
     });
-    it("existing bounded QA cleanup deletes recovered synthetic accounts and their audit", async () => {
+    it("existing bounded QA cleanup deletes synthetic pending-pilot and free accounts", async () => {
         vi.stubEnv("MIRA_FREE_TECHNICIANS", "false");
-        const address = email();
-        const prior = await ensureUserAndTenant({ email: address, signupIntent: "pilot" });
+        const prior = await ensureUserAndTenant({ email: email(), signupIntent: "pilot" });
         vi.stubEnv("MIRA_FREE_TECHNICIANS", "true");
-        const free = await personal(address);
+        const free = await personal();
         await testPool.query("UPDATE hub_users SET status='trial',plan=NULL,created_at='2000-01-01',email=CASE WHEN id=$1 THEN 'cleanup-old@example.test' ELSE email END WHERE id IN ($1,$2)", [prior.id, free.id]);
         for (const table of ["knowledge_entries", "namespace_direct_uploads", "equipment_notebook_turns", "equipment_notebook_sources", "equipment_notebooks", "kg_relationships", "kg_entities", "hub_uploads"])
             await adminPool.query(`CREATE TABLE IF NOT EXISTS ${table} (tenant_id TEXT, is_private BOOLEAN, verified BOOLEAN)`);
