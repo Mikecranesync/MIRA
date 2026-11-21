@@ -85,6 +85,28 @@ describe("operating cautions written as manual notes", () => {
     });
   });
 
+  it("never lets an operating note mask an existing warning on either cited page", () => {
+    const danger = "DANGER: Hazardous voltage. Isolate the power supply.";
+    const chunks = [page(139, ACCELERATION_CAUTION), page(140, PLAIN)];
+    expect(manualSafetyStatementForCitations([cite("1", 139)], chunks, [page(139, danger)]))
+      .toMatchObject({ marker: "DANGER", sourceCitationId: "1", page: 139 });
+    expect(manualSafetyStatementForCitations([cite("1", 139), cite("2", 140)], chunks, [page(140, danger)]))
+      .toMatchObject({ marker: "DANGER", sourceCitationId: "2", page: 140 });
+  });
+
+  it("preserves a complete condition with a dotted parameter and decimal threshold", () => {
+    const condition = "Disabling earth fault (ground fault) may damage drive if parameter P1.02 exceeds 1.5 amps.";
+    const chunks = [page(363, `Note: ${condition} See the next chapter.`)];
+    expect(manualSafetyStatementForCitations([cite("1", 363)], chunks)).toMatchObject({ statement: condition });
+    expect(manualSafetyStatementForCitations([cite("1", 363)], [page(363, `Note: ${condition.split(".02")[0]}.`)])).toBeNull();
+    const abbreviated = "Disabling earth fault (ground fault) may damage drive if voltage exceeds approx. 50 V.";
+    expect(manualSafetyStatementForCitations([cite("1", 363)], [page(363, `Note: ${abbreviated} See the appendix.`)]))
+      .toMatchObject({ statement: abbreviated });
+    expect(manualSafetyStatementForCitations([cite("1", 363)], [
+      page(363, "Note: Disabling earth fault (ground fault) may damage drive if P1."),
+    ])).toBeNull();
+  });
+
   it("disregards a benign setting note and a caution on an uncited page", () => {
     expect(manualSafetyStatementForCitations([cite("1", 140)], [
       page(140, "Note that setting the acceleration time too short may trigger a message."),

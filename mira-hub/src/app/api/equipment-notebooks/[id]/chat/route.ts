@@ -57,7 +57,7 @@ import {
   type BudgetReservation,
 } from "@/capabilities/openai-run-budget";
 import { withSupportingQuotes } from "@/capabilities/supporting-quote";
-import { citedPagesFor, extractManualSafetyStatement, manualSafetyStatementForCitations } from "@/capabilities/manual-safety-statement";
+import { citedPagesFor, manualSafetyStatementForCitations } from "@/capabilities/manual-safety-statement";
 import { retrieveSafetyChapterChunks, SAFETY_CHAPTER_DIRECTIVE } from "@/capabilities/manual-safety-chapter";
 import { shadowVerifyCitedTurnResult } from "@/capabilities/claim-verifier-shadow";
 import { judgeEvidenceSufficiencyShadow, type JevShadowResult } from "@/capabilities/observability/jev-shadow";
@@ -74,6 +74,7 @@ import {
   acquisitionDeclineText,
   acquisitionManualUrl,
   applicableEnabledSource,
+  currentManualSourceMessage,
   canRetryReviewedAcquisition,
   readAcquisition,
   reconcileAcquisition,
@@ -282,6 +283,7 @@ import type {
   NotebookBasisEvidenceFrame,
   NotebookEvidenceMarkerFrame,
   NotebookFollowupsFrame,
+  NotebookManualSearchStatusFrame,
   NotebookSafetyFrame,
   NotebookSourcesFrame,
   NotebookStatusFrame,
@@ -1044,7 +1046,7 @@ function manualSearchStatusFrame(
   candidateAcquisitionText: string | null,
   candidateSearchStartedAt?: string,
   candidateManualUrl?: string | null,
-): Record<string, unknown> | null {
+): NotebookManualSearchStatusFrame | null {
   if (!identityProposal) return null;
   const running = manualSearchRunning === "candidate";
   if (!running && !candidateAcquisitionText) return null;
@@ -3442,22 +3444,22 @@ async function handleChatTurn(
           // #5268 Codex F2: a completed photo search's manual may have been
           // turned off since — judge that from the source's CURRENT state with
           // the same matcher the notebook status uses, never the history.
-          const candidateSourceOff =
-            cAcq.state === "complete" &&
-            sourcesLoaded &&
-            !applicableEnabledSource(srcs, {
-              identityStatus: "user_confirmed",
-              manufacturer: identityProposal.manufacturer,
-              model: identityProposal.model,
-              catalogNumber: "",
-            });
-          candidateAcquisitionText = acquisitionDeclineText(
-            cAcq,
-            candidateKey,
-            `${identityProposal.manufacturer} ${identityProposal.model}`,
-            "candidate",
-            { sourceOff: candidateSourceOff },
-          );
+          const label = `${identityProposal.manufacturer} ${identityProposal.model}`;
+          let sourceOff = cAcq.state === "complete" && sourcesLoaded && !applicableEnabledSource(srcs, candidateIdentity);
+          let currentSourceMessage: string | null = null;
+          if (cStarted && cAcq.state === "complete" && !cAcq.source_removed) {
+            // The worker can attach and index its source before the claim's
+            // read-back. The pre-claim source snapshot cannot answer this.
+            try {
+              const freshSources = await listSources(ctx.tenantId, notebookId);
+              currentSourceMessage = currentManualSourceMessage(freshSources, candidateIdentity);
+              sourceOff = currentSourceMessage === null;
+            } catch {
+              currentSourceMessage = `I found the ${label} manual, but couldn't check whether it's ready in Sources.`;
+            }
+          }
+          candidateAcquisitionText = currentSourceMessage ??
+            acquisitionDeclineText(cAcq, candidateKey, label, "candidate", { sourceOff });
         }
       }
     }
@@ -3824,8 +3826,8 @@ async function handleChatTurn(
       // Lookup progress is transient. Persist stable instructions so the chat
       // cannot say it is still searching underneath the eventual ready status.
       : unboundManualRequest
-      ? candidateAcquisitionText
-        ? "The manual lookup status appears below."
+      ? candidateAcquisitionText && identityProposal
+        ? `I checked the official manual lookup for the ${identityProposal.manufacturer} ${identityProposal.model}.`
         : identityProposal
           ? "Confirm the equipment below so I can look for the matching manual."
           : "What manufacturer and model or order number are printed on the equipment label? You can type them or attach a clear photo of that part of the label."
@@ -5480,7 +5482,7 @@ async function handleChatTurn(
       if (citedPages.length > 0) {
         try {
           citedPageChunks = await withTenantContext(ctx.tenantId, (c) =>
-            retrieveCitedPageChunks(c, ctx.tenantId, citedPages, { approvedSourceDocIds: docIds, keep: (t) => extractManualSafetyStatement(t) !== null }),
+            retrieveCitedPageChunks(c, ctx.tenantId, citedPages, { approvedSourceDocIds: docIds }),
           );
         } catch (err) {
           console.warn("[notebook-chat] cited-page read failed (notice from retrieved chunks only):", err instanceof Error ? err.message : err);

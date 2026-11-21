@@ -449,8 +449,20 @@ export type NotebookProgressFrame = {
  *  progress stream had already opened. Carries the status and JSON body it would have sent. */
 export type NotebookHttpErrorFrame = { kind: "http_error"; status: number; body: unknown };
 
+/** Live acquisition progress, intentionally separate from the stored turn. */
+export type NotebookManualSearchStatusFrame = {
+  kind: "manual_search_status";
+  manufacturer: string;
+  model: string;
+  running: boolean;
+  message?: string;
+  startedAt?: string;
+  manualUrl?: string;
+};
+
 export type NotebookChatFrame =
   | NotebookProgressFrame
+  | NotebookManualSearchStatusFrame
   | NotebookHttpErrorFrame
   | NotebookSourcesFrame
   | NotebookContentFrame
@@ -507,6 +519,7 @@ const FRAME_KINDS = new Set([
   "progress",
   "http_error",
   "sheet_receipt",
+  "manual_search_status",
 ]);
 
 export function parseFrame(data: string): NotebookChatFrame | null {
@@ -515,6 +528,12 @@ export function parseFrame(data: string): NotebookChatFrame | null {
     // Every kind in the union passes through. This list previously stopped at
     // the original three, which silently dropped `evidence` (the live basis
     // badge on web never fired) — keep it in lockstep with NotebookChatFrame.
+    if (obj?.kind === "manual_search_status" && (
+      typeof obj.manufacturer !== "string" || typeof obj.model !== "string" ||
+      typeof obj.running !== "boolean" || (obj.message !== undefined && typeof obj.message !== "string") ||
+      (obj.startedAt !== undefined && typeof obj.startedAt !== "string") ||
+      (obj.manualUrl !== undefined && typeof obj.manualUrl !== "string")
+    )) return null;
     if (obj && FRAME_KINDS.has(obj.kind)) {
       return obj as NotebookChatFrame;
     }

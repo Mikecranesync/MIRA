@@ -29,7 +29,7 @@ import { exactModelKey } from "@/capabilities/table-rows";
 import { confirmedCatalogNumber } from "@/capabilities/notebook-manual-identity";
 import { embedQueryDetailed, hybridRetrievalEnabled, rrfMerge, vectorLiteral } from "@/capabilities/hybrid-retrieval";
 import { setSpanAttrs } from "@/capabilities/observability/tracing";
-import { extractManualSafetyStatement, OPERATING_CAUTION_PATTERN } from "@/capabilities/manual-safety-statement";
+import { extractCitedOperatingCaution, extractManualSafetyStatement, OPERATING_CAUTION_PATTERN } from "@/capabilities/manual-safety-statement";
 import {
   keepWhatPlainSearchKept,
   logRerankFallback,
@@ -3522,7 +3522,7 @@ export function chunksToSources(chunks: ManualChunk[]): ManualSource[] {
 export type CitedPageRef = { docId: string; sourceUrl: string; page: number };
 
 /**
- * Case-insensitive superset of every trigger `extractManualSafetyStatement` can hit: the
+ * Case-insensitive superset of the cited-page warning and fallback triggers: the
  * WARNING/DANGER/CAUTION/ATTENTION/SHOCK HAZARD/BURN HAZARD markers and the prose fallbacks
  * (hazardous voltage, discharged capacitors, wait-N-minutes, operating notes that warn of damage).
  * A chunk without one of these matches cannot yield a statement (#4509 Codex r3 F1).
@@ -3542,16 +3542,16 @@ export const CITED_PAGE_DEADLINE_MS = 4_000;
  *
  * Bounded without a total-row cap (Codex r4 F1: a cap let 500 chunks that merely say "wait" hide
  * the page's only WARNING): only chunks matching CANDIDATE_PATTERN are read, in keyset batches of
- * CITED_PAGE_BATCH ordered by id, each under a transaction-local statement timeout. With `keep`,
- * only the chunks it accepts are retained (memory stays batch-bounded) and the scan stops as soon
- * as every cited page has one; the whole read stops at CITED_PAGE_DEADLINE_MS. The caller fails
- * open on any error.
+ * CITED_PAGE_BATCH ordered by id, each under a transaction-local statement timeout. Keep one
+ * chunk per cited page and let existing warnings replace operating notes. The scan stops when
+ * all cited pages have an existing warning or at CITED_PAGE_DEADLINE_MS. The caller fails open
+ * on any error.
  */
 export async function retrieveCitedPageChunks(
   client: Pick<PoolClient, "query">,
   tenantId: string,
   pages: readonly CitedPageRef[],
-  opts: { approvedSourceDocIds?: string[]; keep?: (content: string) => boolean; now?: () => number } = {},
+  opts: { approvedSourceDocIds?: string[]; now?: () => number } = {},
 ): Promise<Array<{ content: string; sourceUrl: string; sourcePage: number }>> {
   if (pages.length === 0) return [];
   const base: unknown[] = [
@@ -3568,8 +3568,8 @@ export async function retrieveCitedPageChunks(
   const deadline = now() + CITED_PAGE_DEADLINE_MS;
   const keyOf = (url: string, page: number) => `${url}\u0000${page}`;
   const wanted = new Set(pages.map((p) => keyOf(p.sourceUrl, p.page)));
-  const found = new Set<string>();
-  const out: Array<{ content: string; sourceUrl: string; sourcePage: number }> = [];
+  const warned = new Set<string>();
+  const selected = new Map<string, { content: string; sourceUrl: string; sourcePage: number }>();
   await client.query("SET LOCAL statement_timeout = '3s'");
   let cursor: string | null = null;
   for (;;) {
@@ -3592,12 +3592,17 @@ export async function retrieveCitedPageChunks(
     const rows = res.rows as Array<Record<string, unknown>>;
     for (const r of rows) {
       const row = { content: String(r.content ?? ""), sourceUrl: String(r.source_url ?? ""), sourcePage: Number(r.page) };
-      if (opts.keep && !opts.keep(row.content)) continue;
-      out.push(row);
-      found.add(keyOf(row.sourceUrl, row.sourcePage));
+      const key = keyOf(row.sourceUrl, row.sourcePage);
+      if (warned.has(key)) continue;
+      if (extractManualSafetyStatement(row.content)) {
+        selected.set(key, row);
+        warned.add(key);
+      } else if (!selected.has(key) && extractCitedOperatingCaution(row.content)) {
+        selected.set(key, row);
+      }
     }
     if (rows.length < CITED_PAGE_BATCH) break;
-    if (opts.keep && [...wanted].every((k) => found.has(k))) break;
+    if ([...wanted].every((k) => warned.has(k))) break;
     if (now() >= deadline) {
       console.warn(`[manual-rag] cited-page read stopped at its ${CITED_PAGE_DEADLINE_MS}ms deadline (notice from what was found)`);
       break;
@@ -3606,5 +3611,5 @@ export async function retrieveCitedPageChunks(
     if (typeof last !== "string" || last === cursor) break;
     cursor = last;
   }
-  return out;
+  return [...selected.values()];
 }

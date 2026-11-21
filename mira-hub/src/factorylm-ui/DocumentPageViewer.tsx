@@ -146,15 +146,22 @@ export function DocumentPageViewer() {
     return { ...current, page: nextPage, outOfRange: false, rendered: false };
   });
   const rendered = state.kind === "ready" && state.rendered;
-  const openHref = request ? nativeFileHref(request.fileId, request.page) : undefined;
+  const openDocument = request ? (
+    <a href={nativeFileHref(request.fileId, request.page)} target="_blank" rel="noopener noreferrer">Open document</a>
+  ) : null;
 
   return (
     <main style={wrap} data-viewer-state={state.kind === "ready" && !rendered ? "loading" : state.kind}>
-      {state.kind === "loading" ? <p role="status">Opening the cited page…</p> : null}
+      {state.kind === "loading" ? (
+        <>
+          <p role="status">Opening the cited page…</p>
+          {openDocument ? <p>{openDocument}</p> : null}
+        </>
+      ) : null}
       {state.kind === "failed" ? (
         <div role="alert">
           <p>{state.message}</p>
-          {openHref ? <p><a href={openHref} target="_blank" rel="noopener noreferrer">Open document</a></p> : null}
+          {openDocument ? <p>{openDocument}</p> : null}
         </div>
       ) : null}
       {state.kind === "ready" && request ? (
@@ -172,7 +179,7 @@ export function DocumentPageViewer() {
           <nav style={bar} aria-label="Pages">
             <button type="button" style={button} onClick={() => go(-1)} disabled={!rendered || state.page <= 1}>Previous page</button>
             <button type="button" style={button} onClick={() => go(1)} disabled={!rendered || state.page >= state.numPages}>Next page</button>
-            {openHref ? <a href={openHref} target="_blank" rel="noopener noreferrer">Open document</a> : null}
+            {openDocument}
           </nav>
         </>
       ) : null}

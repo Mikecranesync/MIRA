@@ -300,12 +300,8 @@ describe("the rest of a cited page is read (#4509 Codex F1)", () => {
     expect(ragMock.retrieveCitedPageChunks.mock.calls[0].slice(1)).toEqual([
       expect.any(String),
       [{ docId: DOC_A, sourceUrl: "pf40.pdf", page: 73 }],
-      { approvedSourceDocIds: [DOC_A], keep: expect.any(Function) },
+      { approvedSourceDocIds: [DOC_A] },
     ]);
-    // Codex r4 F1: the route keeps only chunks the extractor can turn into a statement.
-    const keep = ((ragMock.retrieveCitedPageChunks.mock.calls[0] as unknown[])[3] as { keep: (t: string) => boolean }).keep;
-    expect(keep(ATTENTION_TEXT)).toBe(true);
-    expect(keep(PLAIN_TEXT)).toBe(false);
     const entries = recorded().evidence.filter(isManualSafetyStatementEntry);
     expect(entries).toEqual([expect.objectContaining({ marker: "ATTENTION", sourceCitationId: "1", page: 73 })]);
   });
@@ -329,6 +325,31 @@ describe("the rest of a cited page is read (#4509 Codex F1)", () => {
         marker: "CAUTION (manual text)", statement: expect.stringContaining("motor damage"), sourceCitationId: "1", page: 139,
       }),
     ]);
+  });
+
+  it("preserves the cited DANGER notice when a hit chunk contains an operating note", async () => {
+    const caution = "Note that setting the acceleration time too short may cause motor damage.";
+    const danger = "DANGER: Hazardous voltage. Isolate the power supply.";
+    const answerText = "P01.12 controls acceleration time [1].";
+    const question = "Which parameter controls acceleration time, and what cautions apply?";
+    ragMock.retrieveNodeChunks.mockResolvedValue([chunk(139, `P01.12 controls acceleration time. ${caution}`)]);
+    ragMock.retrieveCitedPageChunks.mockResolvedValue([sibling(139, danger)]);
+    stubProvider(answerText);
+
+    await (await POST(chatReq({ message: question, sourceDocIds: [DOC_A] }), params)).text();
+
+    const evidence = recorded().evidence;
+    expect(evidence.filter(isManualSafetyStatementEntry)).toEqual([
+      expect.objectContaining({ marker: "DANGER", sourceCitationId: "1", page: 139 }),
+    ]);
+    const [, assistant] = turnsFromPersisted(
+      { id: "t1", question, answerStatus: "answered", answerText, evidence: evidence as never, basis: "oem_documentation" },
+      { notebookId: NB, title: "Drive", identityConfirmed: false, capturedAt: "2026-11-21T00:00:00.000Z" },
+    );
+    expect(assistant.parts[0]).toMatchObject({
+      type: "safety_notice",
+      notice: { message: expect.stringMatching(/^DANGER: Hazardous voltage/) },
+    });
   });
 
   it("control: without the page read, the same turn has no notice", async () => {

@@ -5,7 +5,7 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CANDIDATE_PATTERN, retrieveCitedPageChunks } from "@/lib/manual-rag";
-import { extractManualSafetyStatement } from "@/capabilities/manual-safety-statement";
+import { extractCitedOperatingCaution, extractManualSafetyStatement } from "@/capabilities/manual-safety-statement";
 
 const TENANT = "11111111-1111-4111-8111-111111111111";
 const DOC = "22222222-2222-4222-8222-222222222222";
@@ -67,7 +67,7 @@ describe("retrieveCitedPageChunks (#4509 Codex F1)", () => {
       "Note that setting the acceleration\n time too short may cause motor damage.",
       "Note: Disabling earth fault (ground fault) may damage drive.",
     ]) {
-      expect(extractManualSafetyStatement(hit), hit).not.toBeNull();
+      expect(extractManualSafetyStatement(hit) ?? extractCitedOperatingCaution(hit), hit).not.toBeNull();
       expect(re.test(hit), hit).toBe(true);
     }
     for (const plain of [
@@ -76,7 +76,7 @@ describe("retrieveCitedPageChunks (#4509 Codex F1)", () => {
       "Equipment damage is excluded from this warranty.",
       "Disabling earth fault (ground fault) changes logging behavior.",
     ]) {
-      expect(extractManualSafetyStatement(plain), plain).toBeNull();
+      expect(extractManualSafetyStatement(plain) ?? extractCitedOperatingCaution(plain), plain).toBeNull();
       expect(re.test(plain), plain).toBe(false);
     }
   });
@@ -126,14 +126,13 @@ function pagedClient(n: number, contentAt: (i: number) => string) {
   });
   return { client: { query } as never, query, peak: () => peak };
 }
-const keep = (t: string) => extractManualSafetyStatement(t) !== null;
 const onePage = { docId: DOC, sourceUrl: "manual.txt", page: 1 };
 
 describe("cited-page read: keyset batches, no total-row cap (#4509 Codex r4 F1)", () => {
   it("finds the only WARNING in the final batch of a 59,000-chunk one-page upload", async () => {
     const N = 59_000;
     const { client, query, peak } = pagedClient(N, (i) => (i === N - 1 ? "WARNING: Hazardous voltage. Disconnect power before servicing." : `Please wait while the parameter saves (${i}).`));
-    const out = await retrieveCitedPageChunks(client, TENANT, [onePage], { keep });
+    const out = await retrieveCitedPageChunks(client, TENANT, [onePage]);
     expect(out.map((r) => r.content)).toEqual(["WARNING: Hazardous voltage. Disconnect power before servicing."]);
     const reads = query.mock.calls.filter(([q]) => !/SET LOCAL/.test(q));
     expect(reads.length).toBe(Math.ceil(N / 200));
@@ -142,9 +141,19 @@ describe("cited-page read: keyset batches, no total-row cap (#4509 Codex r4 F1)"
     expect(peak()).toBeLessThanOrEqual(200);
   });
 
+  it("retains an operating note only until a warning in a later batch is found", async () => {
+    const caution = "Note that setting acceleration time too short may cause motor damage.";
+    const danger = "DANGER: Hazardous voltage. Isolate the power supply.";
+    const { client, query } = pagedClient(402, (i) =>
+      i === 0 ? caution : i === 205 ? danger : `Please wait (${i}).`);
+    const out = await retrieveCitedPageChunks(client, TENANT, [onePage]);
+    expect(out.map((row) => row.content)).toEqual([danger]);
+    expect(query.mock.calls.filter(([q]) => !/SET LOCAL/.test(q))).toHaveLength(2);
+  });
+
   it("stops as soon as every cited page has a statement", async () => {
     const { client, query } = pagedClient(5_000, (i) => (i === 10 ? "WARNING: Hot surface. Allow to cool." : `Please wait (${i}).`));
-    const out = await retrieveCitedPageChunks(client, TENANT, [onePage], { keep });
+    const out = await retrieveCitedPageChunks(client, TENANT, [onePage]);
     expect(out).toHaveLength(1);
     expect(query.mock.calls.filter(([q]) => !/SET LOCAL/.test(q))).toHaveLength(1);
   });
@@ -153,7 +162,7 @@ describe("cited-page read: keyset batches, no total-row cap (#4509 Codex r4 F1)"
     vi.spyOn(console, "warn").mockImplementation(() => {});
     let t = 0;
     const { client, query } = pagedClient(10_000, (i) => `Please wait (${i}).`);
-    const out = await retrieveCitedPageChunks(client, TENANT, [onePage], { keep, now: () => (t += 1_000) });
+    const out = await retrieveCitedPageChunks(client, TENANT, [onePage], { now: () => (t += 1_000) });
     expect(out).toEqual([]);
     expect(query.mock.calls.filter(([q]) => !/SET LOCAL/.test(q)).length).toBeLessThan(10);
   });

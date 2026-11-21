@@ -7,6 +7,7 @@
 //
 // Run: cd mira-hub && npx vitest run src/factorylm-ui/__tests__/manual-search-driver
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { readNotebookStream } from "@/components/equipment/notebook-chat-utils";
 import { createManualSearchDriver } from "../manual-search-driver";
 
 const NB = "nb-1";
@@ -34,6 +35,61 @@ afterEach(() => {
 });
 
 describe("createManualSearchDriver — hydration follows a running search to completion (F6)", () => {
+  it("keeps following live lookup progress when the first detail read has no status", async () => {
+    const readDetail = vi.fn().mockResolvedValueOnce({ manualSearch: null }).mockResolvedValueOnce({ manualSearch: SETTLED });
+    const refreshSources = vi.fn();
+    const driver = createManualSearchDriver({
+      fetchStatus: async () => (await readDetail()).manualSearch,
+      onStateChange: vi.fn(),
+      onRefreshSources: refreshSources,
+    });
+    const body = new Response([
+      { kind: "status", status: "insufficient_evidence" },
+      { kind: "manual_search_status", ...RUNNING },
+    ].map((frame) => `data: ${JSON.stringify(frame)}\n\n`).join("")).body!;
+
+    await readNotebookStream(body.getReader(), () => {}, null, {
+      onManualSearchStatus: (status) => driver.observeLive(NB, status),
+    });
+    const firstDetail = await readDetail();
+    if (firstDetail.manualSearch) driver.seed(NB, firstDetail.manualSearch);
+    expect(driver.current()?.phase).toBe("following");
+
+    await vi.advanceTimersByTimeAsync(4000);
+    expect(driver.current()).toMatchObject({ phase: "resolved", status: SETTLED });
+    expect(readDetail).toHaveBeenCalledTimes(2);
+    expect(refreshSources).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not let an older stream frame replace a newer detail snapshot", async () => {
+    const fetchStatus = vi.fn();
+    const onStateChange = vi.fn();
+    const driver = createManualSearchDriver({ fetchStatus, onStateChange, onRefreshSources: vi.fn() });
+    const newer = { ...SETTLED_G2, startedAt: "2026-11-21T11:20:05Z" };
+    driver.seed(NB, newer);
+
+    driver.observeLive(NB, { ...RUNNING, startedAt: "2026-11-21T11:20:00Z" });
+    await vi.advanceTimersByTimeAsync(4000);
+
+    expect(driver.current()).toMatchObject({ phase: "resolved", status: newer });
+    expect(onStateChange).toHaveBeenCalledTimes(1);
+    expect(fetchStatus).not.toHaveBeenCalled();
+  });
+
+  it("ignores a malformed lookup-progress frame without altering the answer", async () => {
+    const onManualSearchStatus = vi.fn();
+    const body = new Response([
+      { kind: "manual_search_status", ...RUNNING, running: "yes" },
+      { kind: "content", content: "Answer" },
+      { kind: "status", status: "answered" },
+    ].map((frame) => `data: ${JSON.stringify(frame)}\n\n`).join("")).body!;
+
+    const result = await readNotebookStream(body.getReader(), () => {}, null, { onManualSearchStatus });
+
+    expect(onManualSearchStatus).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ content: "Answer", status: "answered" });
+  });
+
   it("seeds from a running status, schedules a re-check, and renders the settled outcome once it resolves", async () => {
     const states: unknown[] = [];
     const fetchStatus = vi.fn().mockResolvedValue(SETTLED);

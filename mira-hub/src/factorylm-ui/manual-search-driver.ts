@@ -28,6 +28,7 @@
 // importable from a plain vitest unit test (see this module's own header).
 import {
   advanceManualSearchFollow,
+  observeLiveManualSearchFrame,
   reseedManualSearchFollow,
   type ManualSearchFollowState,
   type ManualSearchStatus,
@@ -49,6 +50,8 @@ export interface ManualSearchDriver {
    *  confirmation's optimistic start). No-op if ALREADY tracking this exact
    *  notebook (the tick loop owns advancing it from here). */
   seed(notebookId: string, status: ManualSearchStatus): void;
+  /** A current chat stream may start following a lookup before the detail GET. */
+  observeLive(notebookId: string, status: ManualSearchStatus): void;
   /** Stop any pending timer and drop the followed state (notebook change / unmount). */
   reset(): void;
   /** The current state, or null if nothing is being followed. */
@@ -119,27 +122,33 @@ export function createManualSearchDriver(deps: ManualSearchDriverDeps): ManualSe
     }, delay);
   }
 
+  function applyStatus(
+    notebookId: string,
+    status: ManualSearchStatus,
+    observe: typeof reseedManualSearchFollow,
+  ): void {
+    const current = trackedNotebookId === notebookId ? state : null;
+    const result = observe(current, notebookId, status, MAX_POLL_ATTEMPTS);
+    trackedNotebookId = notebookId;
+    state = result.state;
+    if (current !== state) {
+      epoch += 1;
+      deps.onStateChange(state);
+      scheduleTick(notebookId);
+    }
+    if (result.refreshSources) deps.onRefreshSources();
+  }
+
   return {
     seed(notebookId, status) {
-      // Codex round 3 F6: a blanket "already tracking this notebook, do
-      // nothing" no-op permanently masked a LATER authoritative update —
-      // a promotion after confirm (same generation), or a second, different
-      // search in the same notebook (a new generation) once the first one
-      // resolved or exhausted its budget. `reseedManualSearchFollow` is the
-      // one state machine every seed call now goes through; it keeps the
-      // true no-op ONLY for a duplicate seed of an ACTIVELY following
-      // generation (the tick owns advancing that one).
-      const current = trackedNotebookId === notebookId ? state : null;
-      const result = reseedManualSearchFollow(current, notebookId, status, MAX_POLL_ATTEMPTS);
-      const changed = current !== result.state;
-      trackedNotebookId = notebookId;
-      state = result.state;
-      if (changed) {
-        epoch += 1; // F21: this reseed just replaced tracked state — invalidate any in-flight tick from before it.
-        deps.onStateChange(state);
-        scheduleTick(notebookId);
-      }
-      if (result.refreshSources) deps.onRefreshSources();
+      applyStatus(notebookId, status, reseedManualSearchFollow);
+    },
+    observeLive(notebookId, status) {
+      // A detail response may already have observed a newer generation than
+      // this stream frame, even though both belong to the current notebook.
+      const trackedStartedAt = trackedNotebookId === notebookId ? state?.status.startedAt : undefined;
+      if (trackedStartedAt && status.startedAt && Date.parse(status.startedAt) < Date.parse(trackedStartedAt)) return;
+      applyStatus(notebookId, status, observeLiveManualSearchFrame);
     },
     reset() {
       clearTimer();

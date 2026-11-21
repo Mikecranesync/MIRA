@@ -355,7 +355,7 @@ describe("#4160 S6 R2 — candidate-basis background acquisition triggers from t
   it("relays a typed request's running status without calling the provider or preempting the result", async () => {
     const f = await frames(await POST(req({ message: SMC_MESSAGE, mode: "general" }), params));
     const status = f.find((x) => x.kind === "status");
-    expect(status?.message).toBe("The manual lookup status appears below.");
+    expect(status?.message).toBe("I checked the official manual lookup for the SMC SS5Y3-DUW01302.");
     expect(f.find((x) => x.kind === "manual_search_status")).toMatchObject({
       manufacturer: "SMC", model: "SS5Y3-DUW01302", running: true,
     });
@@ -483,11 +483,15 @@ describe("#4160 gate — no 'fetch it yourself' advice while the search runs", (
       .join("");
   }
 
-  it("reports the running search without sending the technician away or promising source approval", async () => {
+  it("saves a self-contained lookup acknowledgement and reports progress separately", async () => {
     const text = await answerText();
     expect(acqMock.startManualAcquisition).toHaveBeenCalled();
-    expect(text).toBe("The manual lookup status appears below.");
-    expect(text).not.toMatch(/manufacturer's support|turned on|turned off/);
+    const acknowledgement = "I checked the official manual lookup for the SMC SS5Y3-DUW01302.";
+    expect(text).toBe(acknowledgement);
+    expect(nbMock.recordTurn).toHaveBeenCalledWith(TENANT, NB, expect.objectContaining({
+      answerText: acknowledgement,
+      evidence: expect.not.arrayContaining([expect.objectContaining({ kind: "manual_search_status" })]),
+    }));
     expect(fetch).not.toHaveBeenCalled();
   });
 
@@ -511,7 +515,7 @@ describe("#4160 gate — no 'fetch it yourself' advice while the search runs", (
     });
     const f = await frames(await POST(req({ message: SMC_MESSAGE, mode: "general" }), params));
     expect(acqMock.startManualAcquisition).toHaveBeenCalled();
-    expect(f.find((x) => x.kind === "status")?.message).toBe("The manual lookup status appears below.");
+    expect(f.find((x) => x.kind === "status")?.message).toBe("I checked the official manual lookup for the SMC SS5Y3-DUW01302.");
     expect(f.find((x) => x.kind === "manual_search_status")).toMatchObject({
       running: false, message: MANUAL_SEARCH_LIMIT_COPY,
     });
