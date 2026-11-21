@@ -1,0 +1,8 @@
+{
+  "qaActor": true,
+  "qaTenant": true,
+  "notebookHttp": 200,
+  "notebookId": "d36d1927-d466-4cb4-8cad-3ce8394c3201",
+  "hasJobSheetButton": false,
+  "url": "https://app-staging.factorylm.com/v3/?notebook=d36d1927-d466-4cb4-8cad-3ce8394c3201&thread=1451abea-da56-4d77-beee-2d90e3e1c942"
+}

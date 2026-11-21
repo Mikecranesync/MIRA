@@ -1,0 +1,6 @@
+signin http=200
+order id=1652 http=200 identity=True status=OPEN priority=MEDIUM create_marker=1 job_ref=True
+duplicates scan_complete=True pages=2 marker_orders=[1652]
+comments http=200 total=1 finish_marker=1
+{"exactTitle": true, "correctMachine": true, "photoReference": true, "safetyBoundary": true, "status": "OPEN"}
+VERDICT: PASS (read-only; no completion status changed)
