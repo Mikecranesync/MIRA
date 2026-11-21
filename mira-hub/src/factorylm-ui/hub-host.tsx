@@ -105,7 +105,6 @@ import {
   loadingThread,
   metaFor,
   newThreadId,
-  openNotebookSelection,
   openOffer,
   pickRouteFor,
   type EquipmentFocus,
@@ -121,6 +120,7 @@ import {
   type CompatibleStreamResult,
   type HubSelection,
 } from "./hub-host-logic";
+import { resumeProjectSelection } from "./project-resume";
 
 type Detail = {
   notebook: EquipmentNotebook;
@@ -948,8 +948,13 @@ export function HubShellHost() {
     const notebookId = notebookIdFromProject(projectId);
     if (!notebookId) return;
     const nb = notebooks?.find((n) => n.id === notebookId);
-    // A fresh chat, not the notebook's last conversation (#4444).
-    if (nb) select(openNotebookSelection(nb));
+    // Resume the project's newest saved conversation; a fresh chat only when it has none (#4681).
+    if (!nb) return;
+    const target = resumeProjectSelection(nb);
+    // Already open: select() would abort a live stream and reset the loaded detail.
+    const open = selectionRef.current;
+    if (open && open.notebookId === target.notebookId && open.threadId === target.threadId) return;
+    select(target);
   }, [notebooks, select]);
 
   /**
