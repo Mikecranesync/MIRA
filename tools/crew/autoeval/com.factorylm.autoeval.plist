@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  autoeval: unattended MIRA judge runs. NOT LOADED by default. Dry is the default, so a
+  scheduled run makes no paid call; paid needs paid.json in the state dir (see README).
+  Install:  cp tools/crew/autoeval/com.factorylm.autoeval.plist ~/Library/LaunchAgents/
+            launchctl load ~/Library/LaunchAgents/com.factorylm.autoeval.plist
+  Remove:   launchctl unload ~/Library/LaunchAgents/com.factorylm.autoeval.plist
+  Run once: launchctl start com.factorylm.autoeval
+  Kill switch: touch ~/.factorylm/autoeval/STOP (every paid reserve is refused).
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.factorylm.autoeval</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/Users/bravonode/Mira/tools/crew/autoeval/run.sh</string>
+  </array>
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>3</integer>
+    <key>Minute</key>
+    <integer>17</integer>
+  </dict>
+  <key>RunAtLoad</key>
+  <false/>
+  <key>StandardOutPath</key>
+  <string>/Users/bravonode/.factorylm/autoeval/launchd.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/bravonode/.factorylm/autoeval/launchd.err.log</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/Users/bravonode/.local/bin:/Users/bravonode/.bun/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
+</dict>
+</plist>
