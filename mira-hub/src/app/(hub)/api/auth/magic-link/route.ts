@@ -4,6 +4,16 @@ import { createMagicToken } from "@/lib/users";
 export const dynamic = "force-dynamic";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const attempts = new Map<string, { since: number; count: number }>();
+
+function allowRequest(req: Request): boolean {
+  const key = req.headers.get("x-real-ip") ?? req.headers.get("x-forwarded-for")?.split(",")[0].trim() ?? "unknown";
+  const now = Date.now();
+  for (const [ip, bucket] of attempts) if (now - bucket.since >= 3_600_000) attempts.delete(ip);
+  const bucket = attempts.get(key) ?? { since: now, count: 0 };
+  if (bucket.count >= 5 || (!attempts.has(key) && attempts.size >= 10_000)) return false;
+  bucket.count += 1; attempts.set(key, bucket); return true;
+}
 
 async function sendMagicLinkEmail(email: string, token: string): Promise<void> {
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://app.factorylm.com";
@@ -11,9 +21,7 @@ async function sendMagicLinkEmail(email: string, token: string): Promise<void> {
   const magicUrl = `${appUrl}${apiBase}/magic?token=${token}`;
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) {
-    console.warn("[magic-link] RESEND_API_KEY not set — skipping email send");
-    console.log("[magic-link] Magic URL:", magicUrl);
-    return;
+    throw new Error("Email delivery is not configured");
   }
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
@@ -42,19 +50,20 @@ async function sendMagicLinkEmail(email: string, token: string): Promise<void> {
     }),
   });
   if (!res.ok) {
-    const body = await res.text();
-    console.error("[magic-link] Resend error:", res.status, body);
     throw new Error("Failed to send magic link email");
   }
 }
 
 export async function POST(req: Request) {
+  if (!process.env.RESEND_API_KEY) return NextResponse.json({ error: "Email delivery is temporarily unavailable. Please contact support@factorylm.com." }, { status: 503 });
+  if (!allowRequest(req)) return NextResponse.json({ error: "Too many requests. Try again later." }, { status: 429, headers: { "Retry-After": "3600" } });
   let body: unknown;
   try {
     body = await req.json();
   } catch {
     return NextResponse.json({ error: "invalid JSON" }, { status: 400 });
   }
+  if (!body || typeof body !== "object" || Array.isArray(body)) return NextResponse.json({ error: "valid email required" }, { status: 400 });
   const { email } = body as { email?: unknown };
   if (typeof email !== "string" || !EMAIL_RE.test(email.trim())) {
     return NextResponse.json({ error: "valid email required" }, { status: 400 });

@@ -82,16 +82,4 @@
   });
   updateSummary();
 
-  /* ---- load the real booking calendar only when requested ---- */
-  var calendarButton = document.querySelector('[data-load-calendar]');
-  var calendarFrame = document.getElementById('booking-calendar');
-  if (calendarButton && calendarFrame) {
-    calendarButton.addEventListener('click', function () {
-      if (!calendarFrame.getAttribute('src')) calendarFrame.src = calendarFrame.getAttribute('data-booking-src');
-      calendarFrame.hidden = false;
-      calendarButton.setAttribute('aria-expanded', 'true');
-      calendarButton.textContent = 'Calendar opened below';
-    });
-  }
-
 })();

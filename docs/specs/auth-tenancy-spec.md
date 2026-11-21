@@ -1,6 +1,9 @@
+---
+last_updated: 2026-11-21
+---
 # Auth & Tenancy Specification
-**Version:** 1.0
-**Last Updated:** 2026-05-05
+**Version:** 1.1
+**Last Updated:** 2026-11-21
 **Owner:** Mike Harper / FactoryLM
 
 ## Purpose
@@ -20,7 +23,20 @@ Single specification for **how a request becomes a tenant-scoped session** acros
 - Atlas CMMS authentication (lives inside Atlas; surfaced through `mira-mcp` only)
 - API-key auth between internal services (covered in each service's spec)
 
-## Architecture
+## Free personal technician signup — November 21, 2026
+
+Owner decision: retain **free for technicians**. This opt-in extension supersedes the historical trial-only new-user description for personal workspaces when enabled. The older architecture/contracts below are preserved as May documentation, not a fresh re-certification of all authentication paths.
+
+- `MIRA_FREE_TECHNICIANS` defaults to false. Exactly `true` enables free personal signup.
+- A new personal workspace requires a consumed email link or a verified Google identity; unverified password registration is rejected. Its owner is persisted as `status=approved`, `trial_expires_at=NULL`, `plan=technician_free`; the existing tenant binding and password/OAuth/magic-link constructors remain canonical. This does not grant platform-admin authority.
+- Existing users, expired trials, paid tenants and invitations are not migrated or reactivated by the new-user policy. Disabling future free signup does not revoke existing free accounts.
+- Explicit `signupIntent=pilot` preserves the existing plant-pilot admission policy. Free personal signup does not disable the global pilot flag or join the governed cohort. Invalid signup intents are rejected.
+- Public `GET /api/public/signup-policy/` is versioned, no-store and requires no session or database. Its free response is version 1, kind `free_technician`, `requiresApproval=false`, `trialDays=null`. Other responses reflect the current pilot/trial policy.
+- The bounded signup gateway fetches that policy and displays neutral copy while unavailable. Personal signup sends a single-use email link; pilot signup preserves explicit intent and offers no identity provider that can lose it. Existing account holders can contact Mike from the pilot screen to apply without changing their current workspace. It must never advertise a hardcoded trial or promise free access when the free policy is disabled. Existing account forms remain in MIRA; the website collects no credentials.
+
+Acceptance: real handler plus disposable PostgreSQL proves free persistence and tenant identity, no expiry after the trial window, rollback retention, original trial behavior, explicit pilot control, free/pilot coexistence and duplicate rejection. Existing invitation/admin tests must pass. Actual local NextAuth email-token sessions prove approved status, null expiry and matching user/workspace. A verified claim removes an unproven legacy password and increments the protected credential_epoch column; stale passwords and cookies cannot retain access. A durable signup_offer column on the tenant enforces a one-person workspace at invite creation and redemption. Neither value can be reset through preferences/settings. Both columns are additive in the existing idempotent initializer; existing account status, plan and expiry are not migrated. Production first-account and current-release product acceptance remain separate release gates. See `docs/runbooks/2026-11-21-factorylm-next-free-technicians.md` and its linked evidence.
+
+## Architecture (historical May baseline)
 
 ```
 Marketing site (mira-web)

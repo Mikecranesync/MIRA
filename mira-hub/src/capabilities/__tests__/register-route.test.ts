@@ -98,11 +98,11 @@ describe("POST /api/auth/register — pilot-funnel hook", () => {
     expect(mockAttributionFromRequest).toHaveBeenCalledTimes(1);
   });
 
-  it("creates a free technician account without recording a pilot application", async () => {
+  it("rejects unverified password signup for the free offer without creating an account", async () => {
     vi.stubEnv("MIRA_FREE_TECHNICIANS", "true");
     const response = await POST(makeRequest({ email: "tech@example.com", password: "password123" }, freshIp()));
-    expect(response.status).toBe(201);
-    expect(mockEnsureUserAndTenant).toHaveBeenCalledOnce();
+    expect(response.status).toBe(403);
+    expect(mockEnsureUserAndTenant).not.toHaveBeenCalled();
     expect(mockHandlePilotApplicationSubmitted).not.toHaveBeenCalled();
     expect(mockAttributionFromRequest).not.toHaveBeenCalled();
   });
@@ -119,6 +119,11 @@ describe("POST /api/auth/register — pilot-funnel hook", () => {
   it("rejects an unknown signup intent without creating an account", async () => {
     const response = await POST(makeRequest({ email: "tech@example.com", password: "password123", signupIntent: "admin" }, freshIp()));
     expect(response.status).toBe(400);
+    expect(mockEnsureUserAndTenant).not.toHaveBeenCalled();
+  });
+
+  it("rejects JSON null without throwing or creating an account", async () => {
+    expect((await POST(makeRequest(null, freshIp()))).status).toBe(400);
     expect(mockEnsureUserAndTenant).not.toHaveBeenCalled();
   });
 

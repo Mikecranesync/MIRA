@@ -7,7 +7,7 @@
     "/start": "start.html",
     "/demo": "demo.html",
     "/limitations": "limitations.html",
-    "/blog": "blog.html",
+    "/free-technicians": "free-technicians.html",
     "/404": "404.html"
   },
   "redirects": {
@@ -17,14 +17,14 @@
     "/start.html": "/start",
     "/demo.html": "/demo",
     "/limitations.html": "/limitations",
-    "/blog.html": "/blog",
+    "/free-technicians.html": "/free-technicians",
     "/404.html": "/404",
     "/mira/": "/mira",
     "/about/": "/about",
     "/start/": "/start",
     "/demo/": "/demo",
     "/limitations/": "/limitations",
-    "/blog/": "/blog",
+    "/free-technicians/": "/free-technicians",
     "/404/": "/404",
     "/guide.html": "/",
     "/checks.html": "/",
@@ -34,6 +34,7 @@
   "preserve_existing": [
     "/api/",
     "/hub/",
+    "/blog",
     "/blog/",
     "/legal/",
     "/.well-known/",
@@ -48,22 +49,22 @@
     "/status"
   ],
   "files": {
-    "404.html": "1f0110f37d375d1e936aadfeb80e7900073be3237077403b9250d0cbac71811f",
-    "about.html": "9838edcad34def3f34548307c6fc6bb85e2ec7f9aa9b610cde35c69be295d4fb",
-    "blog.html": "3148bf5393124150fc932caad4fd664ef55109a96283cf8517e830f44e649815",
-    "demo.html": "bc592ea6d55493852aa57b8c4b87f0dc3847ef20572ef6b2ccfa39a6f3576dd6",
+    "404.html": "196c12d1d43fa245aeaa24079977f118161c35e0e8bc0324af0fa521eccdc40b",
+    "about.html": "e1e94cf213d41a33b27b14661f69ecb2a6ed2041bb6c46490eaf5578dbbaefef",
+    "demo.html": "bc329eacc9efa5a6cc2322a25b6a7566bf124c50ce9785687a3f32505d464f62",
     "factorylm-next-assets/assets/factory-floor-hero.webp": "378c3beddf128595108e64e98d7219a5a0bd20116c056479539e57e80a82eb51",
     "factorylm-next-assets/assets/mira-workspace-tokens.css": "b51bd0e15d57be0797d712e013fe31ba6f0b7d98dafe924f388f8a691fdc021a",
     "factorylm-next-assets/assets/technician-reference.webp": "6d166b60a0a6272e560cf0b72d0e1f35e4036faf42a61fd05888f605d98ce30f",
     "factorylm-next-assets/favicon.svg": "0dc6741f86a36c642b7a8c1fa6449d49a9e48fd30cfee3ac936e1737a8a492d5",
     "factorylm-next-assets/next.css": "9014148addfb46ed724c873d8ebf0bb4e0b2c73ff3843678e2e3a10c188cf345",
-    "factorylm-next-assets/site.js": "7d3961066bf121a5c13178170bbbba5e9c0cce1c215213224375e74ffaae881e",
+    "factorylm-next-assets/site.js": "2abeac5339a8da4aeb6324dfa6c78a84a3c10e1c04711a3a632968feffea80fd",
     "factorylm-next-assets/styles.css": "e15c78700c672dfb3f23ad8ae663fa8c7ff57ba7cbb1a8cad3ea70b3ea507cc4",
-    "index.html": "9f6edc635a7c7b4e0cb5625160cbfbd943a2d6686d9edef2d5cc490c191f69fd",
-    "limitations.html": "45029bd1fadcb0abf0832be4a7b83618b8677953344fda520c2b430498848ed0",
-    "mira.html": "b3ba5dbf7134a51bf23ab193bce733058d816ac1ea06dd66d65513951866d75e",
+    "free-technicians.html": "a135ce75d0364952011ea340174f1b5fad9e5ae6f213678277ef81dc6c55a64f",
+    "index.html": "3b066ccbb0b0914063e12e4a4e6d3d4e4c628ff32629fbf2a2333a70d678ff06",
+    "limitations.html": "84a0671e19b29780d4a5d023e44e4bbe26576be7fddcd7f421dbb635d7632a46",
+    "mira.html": "2c27a04209cfd54067e61dc4691a5123541124157be992eb31400b069d74ffc9",
     "robots.txt": "ae9dbebb1aedd62a30b2d567585285f6a5badd8dbe98021d2666b8141f9faa5b",
-    "sitemap-site.xml": "bea02c18f7efb5f1c65b84867b1c663104111360aceeb5f350e3410773776747",
-    "start.html": "0982ab1450d7859346f71b2bcfc61194380ab0fd878391d30c780c9663997535"
+    "sitemap-site.xml": "5ab29fc3142ec1ccd2ac0019facf3c964a077713b3e212a93020a2aa5d9a6ceb",
+    "start.html": "15ee6d36dd508764a0377f7099cf30ee7131acc42ea3f9acab743bf3dfe6f8de"
   }
 }

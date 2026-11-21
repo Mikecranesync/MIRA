@@ -1,10 +1,9 @@
 {
-  "recordedAt": "2026-11-21T14:55:33.231Z",
-  "scope": "Connected browser rehearsal; physical phone and live customer/product acceptance remain separate",
+  "recordedAt": "2026-11-21T15:21:38.731Z",
+  "scope": "Final review repairs; local and private browser rehearsal, not a physical-phone or production acceptance run",
   "privateLayouts": [
     {
       "forms": 0,
-      "h1": "Fix machinesfaster.Answers frommanuals & prints.",
       "robots": "noindex, nofollow",
       "scrollWidth": 1440,
       "url": "/factorylm-guide/",
@@ -12,7 +11,6 @@
     },
     {
       "forms": 0,
-      "h1": "Turn maintenance knowledge into plant intelligence.",
       "robots": "noindex, nofollow",
       "scrollWidth": 1440,
       "url": "/factorylm-guide/mira.html",
@@ -20,7 +18,6 @@
     },
     {
       "forms": 0,
-      "h1": "Your equipment manuals.Your electrical prints.Answers you can check.",
       "robots": "noindex, nofollow",
       "scrollWidth": 1440,
       "url": "/factorylm-guide/about.html",
@@ -28,7 +25,6 @@
     },
     {
       "forms": 0,
-      "h1": "One machine.Your manuals & prints.Your first question.",
       "robots": "noindex, nofollow",
       "scrollWidth": 1440,
       "url": "/factorylm-guide/start.html",
@@ -36,7 +32,6 @@
     },
     {
       "forms": 0,
-      "h1": "Bring your manualor electrical prints.",
       "robots": "noindex, nofollow",
       "scrollWidth": 1440,
       "url": "/factorylm-guide/demo.html",
@@ -44,7 +39,6 @@
     },
     {
       "forms": 0,
-      "h1": "What MIRA does, and what it doesn’t",
       "robots": "noindex, nofollow",
       "scrollWidth": 1440,
       "url": "/factorylm-guide/limitations.html",
@@ -52,7 +46,13 @@
     },
     {
       "forms": 0,
-      "h1": "Maintenance guides from the factory floor",
+      "robots": "noindex, nofollow",
+      "scrollWidth": 1440,
+      "url": "/factorylm-guide/free-technicians.html",
+      "width": 1440
+    },
+    {
+      "forms": 0,
       "robots": "noindex, nofollow",
       "scrollWidth": 1440,
       "url": "/factorylm-guide/blog.html",
@@ -60,7 +60,6 @@
     },
     {
       "forms": 0,
-      "h1": "This page isn’t on the floor.",
       "robots": "noindex, nofollow",
       "scrollWidth": 1440,
       "url": "/factorylm-guide/404.html",
@@ -68,7 +67,6 @@
     },
     {
       "forms": 0,
-      "h1": "Privacy Policy",
       "robots": "noindex, nofollow",
       "scrollWidth": 1440,
       "url": "/factorylm-guide/privacy.html",
@@ -76,7 +74,6 @@
     },
     {
       "forms": 0,
-      "h1": "Security at FactoryLM",
       "robots": "noindex, nofollow",
       "scrollWidth": 1440,
       "url": "/factorylm-guide/security.html",
@@ -84,7 +81,6 @@
     },
     {
       "forms": 0,
-      "h1": "System status",
       "robots": "noindex, nofollow",
       "scrollWidth": 1440,
       "url": "/factorylm-guide/status.html",
@@ -92,7 +88,6 @@
     },
     {
       "forms": 0,
-      "h1": "Terms of Service",
       "robots": "noindex, nofollow",
       "scrollWidth": 1440,
       "url": "/factorylm-guide/terms.html",
@@ -100,7 +95,6 @@
     },
     {
       "forms": 0,
-      "h1": "Trust center",
       "robots": "noindex, nofollow",
       "scrollWidth": 1440,
       "url": "/factorylm-guide/trust.html",
@@ -108,7 +102,6 @@
     },
     {
       "forms": 0,
-      "h1": "Fix machinesfaster.Answers frommanuals & prints.",
       "robots": "noindex, nofollow",
       "scrollWidth": 1440,
       "url": "/factorylm-guide/",
@@ -116,7 +109,6 @@
     },
     {
       "forms": 0,
-      "h1": "Fix machinesfaster.Answers frommanuals & prints.",
       "robots": "noindex, nofollow",
       "scrollWidth": 1440,
       "url": "/factorylm-guide/",
@@ -124,7 +116,6 @@
     },
     {
       "forms": 0,
-      "h1": "Fix machinesfaster.Answers frommanuals & prints.",
       "robots": "noindex, nofollow",
       "scrollWidth": 768,
       "url": "/factorylm-guide/",
@@ -132,7 +123,6 @@
     },
     {
       "forms": 0,
-      "h1": "Turn maintenance knowledge into plant intelligence.",
       "robots": "noindex, nofollow",
       "scrollWidth": 768,
       "url": "/factorylm-guide/mira.html",
@@ -140,7 +130,6 @@
     },
     {
       "forms": 0,
-      "h1": "Your equipment manuals.Your electrical prints.Answers you can check.",
       "robots": "noindex, nofollow",
       "scrollWidth": 768,
       "url": "/factorylm-guide/about.html",
@@ -148,7 +137,6 @@
     },
     {
       "forms": 0,
-      "h1": "One machine.Your manuals & prints.Your first question.",
       "robots": "noindex, nofollow",
       "scrollWidth": 768,
       "url": "/factorylm-guide/start.html",
@@ -156,7 +144,6 @@
     },
     {
       "forms": 0,
-      "h1": "Bring your manualor electrical prints.",
       "robots": "noindex, nofollow",
       "scrollWidth": 768,
       "url": "/factorylm-guide/demo.html",
@@ -164,7 +151,6 @@
     },
     {
       "forms": 0,
-      "h1": "What MIRA does, and what it doesn’t",
       "robots": "noindex, nofollow",
       "scrollWidth": 768,
       "url": "/factorylm-guide/limitations.html",
@@ -172,7 +158,13 @@
     },
     {
       "forms": 0,
-      "h1": "Maintenance guides from the factory floor",
+      "robots": "noindex, nofollow",
+      "scrollWidth": 768,
+      "url": "/factorylm-guide/free-technicians.html",
+      "width": 768
+    },
+    {
+      "forms": 0,
       "robots": "noindex, nofollow",
       "scrollWidth": 768,
       "url": "/factorylm-guide/blog.html",
@@ -180,7 +172,6 @@
     },
     {
       "forms": 0,
-      "h1": "This page isn’t on the floor.",
       "robots": "noindex, nofollow",
       "scrollWidth": 768,
       "url": "/factorylm-guide/404.html",
@@ -188,7 +179,6 @@
     },
     {
       "forms": 0,
-      "h1": "Privacy Policy",
       "robots": "noindex, nofollow",
       "scrollWidth": 768,
       "url": "/factorylm-guide/privacy.html",
@@ -196,7 +186,6 @@
     },
     {
       "forms": 0,
-      "h1": "Security at FactoryLM",
       "robots": "noindex, nofollow",
       "scrollWidth": 768,
       "url": "/factorylm-guide/security.html",
@@ -204,7 +193,6 @@
     },
     {
       "forms": 0,
-      "h1": "System status",
       "robots": "noindex, nofollow",
       "scrollWidth": 768,
       "url": "/factorylm-guide/status.html",
@@ -212,7 +200,6 @@
     },
     {
       "forms": 0,
-      "h1": "Terms of Service",
       "robots": "noindex, nofollow",
       "scrollWidth": 768,
       "url": "/factorylm-guide/terms.html",
@@ -220,7 +207,6 @@
     },
     {
       "forms": 0,
-      "h1": "Trust center",
       "robots": "noindex, nofollow",
       "scrollWidth": 768,
       "url": "/factorylm-guide/trust.html",
@@ -228,7 +214,6 @@
     },
     {
       "forms": 0,
-      "h1": "Fix machinesfaster.Answers frommanuals & prints.",
       "robots": "noindex, nofollow",
       "scrollWidth": 768,
       "url": "/factorylm-guide/",
@@ -236,7 +221,6 @@
     },
     {
       "forms": 0,
-      "h1": "Fix machinesfaster.Answers frommanuals & prints.",
       "robots": "noindex, nofollow",
       "scrollWidth": 768,
       "url": "/factorylm-guide/",
@@ -244,7 +228,6 @@
     },
     {
       "forms": 0,
-      "h1": "Fix machinesfaster.Answers frommanuals & prints.",
       "robots": "noindex, nofollow",
       "scrollWidth": 390,
       "url": "/factorylm-guide/",
@@ -252,7 +235,6 @@
     },
     {
       "forms": 0,
-      "h1": "Turn maintenance knowledge into plant intelligence.",
       "robots": "noindex, nofollow",
       "scrollWidth": 390,
       "url": "/factorylm-guide/mira.html",
@@ -260,7 +242,6 @@
     },
     {
       "forms": 0,
-      "h1": "Your equipment manuals.Your electrical prints.Answers you can check.",
       "robots": "noindex, nofollow",
       "scrollWidth": 390,
       "url": "/factorylm-guide/about.html",
@@ -268,7 +249,6 @@
     },
     {
       "forms": 0,
-      "h1": "One machine.Your manuals & prints.Your first question.",
       "robots": "noindex, nofollow",
       "scrollWidth": 390,
       "url": "/factorylm-guide/start.html",
@@ -276,7 +256,6 @@
     },
     {
       "forms": 0,
-      "h1": "Bring your manualor electrical prints.",
       "robots": "noindex, nofollow",
       "scrollWidth": 390,
       "url": "/factorylm-guide/demo.html",
@@ -284,7 +263,6 @@
     },
     {
       "forms": 0,
-      "h1": "What MIRA does, and what it doesn’t",
       "robots": "noindex, nofollow",
       "scrollWidth": 390,
       "url": "/factorylm-guide/limitations.html",
@@ -292,7 +270,13 @@
     },
     {
       "forms": 0,
-      "h1": "Maintenance guides from the factory floor",
+      "robots": "noindex, nofollow",
+      "scrollWidth": 390,
+      "url": "/factorylm-guide/free-technicians.html",
+      "width": 390
+    },
+    {
+      "forms": 0,
       "robots": "noindex, nofollow",
       "scrollWidth": 390,
       "url": "/factorylm-guide/blog.html",
@@ -300,7 +284,6 @@
     },
     {
       "forms": 0,
-      "h1": "This page isn’t on the floor.",
       "robots": "noindex, nofollow",
       "scrollWidth": 390,
       "url": "/factorylm-guide/404.html",
@@ -308,7 +291,6 @@
     },
     {
       "forms": 0,
-      "h1": "Privacy Policy",
       "robots": "noindex, nofollow",
       "scrollWidth": 390,
       "url": "/factorylm-guide/privacy.html",
@@ -316,7 +298,6 @@
     },
     {
       "forms": 0,
-      "h1": "Security at FactoryLM",
       "robots": "noindex, nofollow",
       "scrollWidth": 390,
       "url": "/factorylm-guide/security.html",
@@ -324,7 +305,6 @@
     },
     {
       "forms": 0,
-      "h1": "System status",
       "robots": "noindex, nofollow",
       "scrollWidth": 390,
       "url": "/factorylm-guide/status.html",
@@ -332,7 +312,6 @@
     },
     {
       "forms": 0,
-      "h1": "Terms of Service",
       "robots": "noindex, nofollow",
       "scrollWidth": 390,
       "url": "/factorylm-guide/terms.html",
@@ -340,7 +319,6 @@
     },
     {
       "forms": 0,
-      "h1": "Trust center",
       "robots": "noindex, nofollow",
       "scrollWidth": 390,
       "url": "/factorylm-guide/trust.html",
@@ -348,7 +326,6 @@
     },
     {
       "forms": 0,
-      "h1": "Fix machinesfaster.Answers frommanuals & prints.",
       "robots": "noindex, nofollow",
       "scrollWidth": 390,
       "url": "/factorylm-guide/",
@@ -356,7 +333,6 @@
     },
     {
       "forms": 0,
-      "h1": "Fix machinesfaster.Answers frommanuals & prints.",
       "robots": "noindex, nofollow",
       "scrollWidth": 390,
       "url": "/factorylm-guide/",
@@ -364,7 +340,6 @@
     },
     {
       "forms": 0,
-      "h1": "Fix machinesfaster.Answers frommanuals & prints.",
       "robots": "noindex, nofollow",
       "scrollWidth": 320,
       "url": "/factorylm-guide/",
@@ -372,7 +347,6 @@
     },
     {
       "forms": 0,
-      "h1": "Turn maintenance knowledge into plant intelligence.",
       "robots": "noindex, nofollow",
       "scrollWidth": 320,
       "url": "/factorylm-guide/mira.html",
@@ -380,7 +354,6 @@
     },
     {
       "forms": 0,
-      "h1": "Your equipment manuals.Your electrical prints.Answers you can check.",
       "robots": "noindex, nofollow",
       "scrollWidth": 320,
       "url": "/factorylm-guide/about.html",
@@ -388,7 +361,6 @@
     },
     {
       "forms": 0,
-      "h1": "One machine.Your manuals & prints.Your first question.",
       "robots": "noindex, nofollow",
       "scrollWidth": 320,
       "url": "/factorylm-guide/start.html",
@@ -396,7 +368,6 @@
     },
     {
       "forms": 0,
-      "h1": "Bring your manualor electrical prints.",
       "robots": "noindex, nofollow",
       "scrollWidth": 320,
       "url": "/factorylm-guide/demo.html",
@@ -404,7 +375,6 @@
     },
     {
       "forms": 0,
-      "h1": "What MIRA does, and what it doesn’t",
       "robots": "noindex, nofollow",
       "scrollWidth": 320,
       "url": "/factorylm-guide/limitations.html",
@@ -412,7 +382,13 @@
     },
     {
       "forms": 0,
-      "h1": "Maintenance guides from the factory floor",
+      "robots": "noindex, nofollow",
+      "scrollWidth": 320,
+      "url": "/factorylm-guide/free-technicians.html",
+      "width": 320
+    },
+    {
+      "forms": 0,
       "robots": "noindex, nofollow",
       "scrollWidth": 320,
       "url": "/factorylm-guide/blog.html",
@@ -420,7 +396,6 @@
     },
     {
       "forms": 0,
-      "h1": "This page isn’t on the floor.",
       "robots": "noindex, nofollow",
       "scrollWidth": 320,
       "url": "/factorylm-guide/404.html",
@@ -428,7 +403,6 @@
     },
     {
       "forms": 0,
-      "h1": "Privacy Policy",
       "robots": "noindex, nofollow",
       "scrollWidth": 320,
       "url": "/factorylm-guide/privacy.html",
@@ -436,7 +410,6 @@
     },
     {
       "forms": 0,
-      "h1": "Security at FactoryLM",
       "robots": "noindex, nofollow",
       "scrollWidth": 320,
       "url": "/factorylm-guide/security.html",
@@ -444,7 +417,6 @@
     },
     {
       "forms": 0,
-      "h1": "System status",
       "robots": "noindex, nofollow",
       "scrollWidth": 320,
       "url": "/factorylm-guide/status.html",
@@ -452,7 +424,6 @@
     },
     {
       "forms": 0,
-      "h1": "Terms of Service",
       "robots": "noindex, nofollow",
       "scrollWidth": 320,
       "url": "/factorylm-guide/terms.html",
@@ -460,7 +431,6 @@
     },
     {
       "forms": 0,
-      "h1": "Trust center",
       "robots": "noindex, nofollow",
       "scrollWidth": 320,
       "url": "/factorylm-guide/trust.html",
@@ -468,7 +438,6 @@
     },
     {
       "forms": 0,
-      "h1": "Fix machinesfaster.Answers frommanuals & prints.",
       "robots": "noindex, nofollow",
       "scrollWidth": 320,
       "url": "/factorylm-guide/",
@@ -476,7 +445,6 @@
     },
     {
       "forms": 0,
-      "h1": "Fix machinesfaster.Answers frommanuals & prints.",
       "robots": "noindex, nofollow",
       "scrollWidth": 320,
       "url": "/factorylm-guide/",
@@ -487,8 +455,7 @@
     {
       "canonical": "https://factorylm.com/",
       "forms": 0,
-      "h1": "Fix machinesfaster.Answers frommanuals & prints.",
-      "preview": false,
+      "iframes": 0,
       "robots": "index, follow",
       "scrollWidth": 1440,
       "url": "/",
@@ -497,8 +464,7 @@
     {
       "canonical": "https://factorylm.com/mira",
       "forms": 0,
-      "h1": "Turn maintenance knowledge into plant intelligence.",
-      "preview": false,
+      "iframes": 0,
       "robots": "index, follow",
       "scrollWidth": 1440,
       "url": "/mira",
@@ -507,8 +473,7 @@
     {
       "canonical": "https://factorylm.com/about",
       "forms": 0,
-      "h1": "Your equipment manuals.Your electrical prints.Answers you can check.",
-      "preview": false,
+      "iframes": 0,
       "robots": "index, follow",
       "scrollWidth": 1440,
       "url": "/about",
@@ -517,8 +482,7 @@
     {
       "canonical": "https://factorylm.com/start",
       "forms": 0,
-      "h1": "One machine.Your manuals & prints.Your first question.",
-      "preview": false,
+      "iframes": 0,
       "robots": "index, follow",
       "scrollWidth": 1440,
       "url": "/start",
@@ -527,8 +491,7 @@
     {
       "canonical": "https://factorylm.com/demo",
       "forms": 0,
-      "h1": "Bring your manualor electrical prints.",
-      "preview": false,
+      "iframes": 0,
       "robots": "index, follow",
       "scrollWidth": 1440,
       "url": "/demo",
@@ -537,28 +500,25 @@
     {
       "canonical": "https://factorylm.com/limitations",
       "forms": 0,
-      "h1": "What MIRA does, and what it doesn’t",
-      "preview": false,
+      "iframes": 0,
       "robots": "index, follow",
       "scrollWidth": 1440,
       "url": "/limitations",
       "width": 1440
     },
     {
-      "canonical": "https://factorylm.com/blog",
+      "canonical": "https://factorylm.com/free-technicians",
       "forms": 0,
-      "h1": "Maintenance guides from the factory floor",
-      "preview": false,
+      "iframes": 0,
       "robots": "index, follow",
       "scrollWidth": 1440,
-      "url": "/blog",
+      "url": "/free-technicians",
       "width": 1440
     },
     {
       "canonical": "https://factorylm.com/404",
       "forms": 0,
-      "h1": "This page isn’t on the floor.",
-      "preview": false,
+      "iframes": 0,
       "robots": "noindex, nofollow",
       "scrollWidth": 1440,
       "url": "/404",
@@ -567,8 +527,7 @@
     {
       "canonical": "https://factorylm.com/",
       "forms": 0,
-      "h1": "Fix machinesfaster.Answers frommanuals & prints.",
-      "preview": false,
+      "iframes": 0,
       "robots": "index, follow",
       "scrollWidth": 768,
       "url": "/",
@@ -577,8 +536,7 @@
     {
       "canonical": "https://factorylm.com/mira",
       "forms": 0,
-      "h1": "Turn maintenance knowledge into plant intelligence.",
-      "preview": false,
+      "iframes": 0,
       "robots": "index, follow",
       "scrollWidth": 768,
       "url": "/mira",
@@ -587,8 +545,7 @@
     {
       "canonical": "https://factorylm.com/about",
       "forms": 0,
-      "h1": "Your equipment manuals.Your electrical prints.Answers you can check.",
-      "preview": false,
+      "iframes": 0,
       "robots": "index, follow",
       "scrollWidth": 768,
       "url": "/about",
@@ -597,8 +554,7 @@
     {
       "canonical": "https://factorylm.com/start",
       "forms": 0,
-      "h1": "One machine.Your manuals & prints.Your first question.",
-      "preview": false,
+      "iframes": 0,
       "robots": "index, follow",
       "scrollWidth": 768,
       "url": "/start",
@@ -607,8 +563,7 @@
     {
       "canonical": "https://factorylm.com/demo",
       "forms": 0,
-      "h1": "Bring your manualor electrical prints.",
-      "preview": false,
+      "iframes": 0,
       "robots": "index, follow",
       "scrollWidth": 768,
       "url": "/demo",
@@ -617,28 +572,25 @@
     {
       "canonical": "https://factorylm.com/limitations",
       "forms": 0,
-      "h1": "What MIRA does, and what it doesn’t",
-      "preview": false,
+      "iframes": 0,
       "robots": "index, follow",
       "scrollWidth": 768,
       "url": "/limitations",
       "width": 768
     },
     {
-      "canonical": "https://factorylm.com/blog",
+      "canonical": "https://factorylm.com/free-technicians",
       "forms": 0,
-      "h1": "Maintenance guides from the factory floor",
-      "preview": false,
+      "iframes": 0,
       "robots": "index, follow",
       "scrollWidth": 768,
-      "url": "/blog",
+      "url": "/free-technicians",
       "width": 768
     },
     {
       "canonical": "https://factorylm.com/404",
       "forms": 0,
-      "h1": "This page isn’t on the floor.",
-      "preview": false,
+      "iframes": 0,
       "robots": "noindex, nofollow",
       "scrollWidth": 768,
       "url": "/404",
@@ -647,8 +599,7 @@
     {
       "canonical": "https://factorylm.com/",
       "forms": 0,
-      "h1": "Fix machinesfaster.Answers frommanuals & prints.",
-      "preview": false,
+      "iframes": 0,
       "robots": "index, follow",
       "scrollWidth": 390,
       "url": "/",
@@ -657,8 +608,7 @@
     {
       "canonical": "https://factorylm.com/mira",
       "forms": 0,
-      "h1": "Turn maintenance knowledge into plant intelligence.",
-      "preview": false,
+      "iframes": 0,
       "robots": "index, follow",
       "scrollWidth": 390,
       "url": "/mira",
@@ -667,8 +617,7 @@
     {
       "canonical": "https://factorylm.com/about",
       "forms": 0,
-      "h1": "Your equipment manuals.Your electrical prints.Answers you can check.",
-      "preview": false,
+      "iframes": 0,
       "robots": "index, follow",
       "scrollWidth": 390,
       "url": "/about",
@@ -677,8 +626,7 @@
     {
       "canonical": "https://factorylm.com/start",
       "forms": 0,
-      "h1": "One machine.Your manuals & prints.Your first question.",
-      "preview": false,
+      "iframes": 0,
       "robots": "index, follow",
       "scrollWidth": 390,
       "url": "/start",
@@ -687,8 +635,7 @@
     {
       "canonical": "https://factorylm.com/demo",
       "forms": 0,
-      "h1": "Bring your manualor electrical prints.",
-      "preview": false,
+      "iframes": 0,
       "robots": "index, follow",
       "scrollWidth": 390,
       "url": "/demo",
@@ -697,28 +644,25 @@
     {
       "canonical": "https://factorylm.com/limitations",
       "forms": 0,
-      "h1": "What MIRA does, and what it doesn’t",
-      "preview": false,
+      "iframes": 0,
       "robots": "index, follow",
       "scrollWidth": 390,
       "url": "/limitations",
       "width": 390
     },
     {
-      "canonical": "https://factorylm.com/blog",
+      "canonical": "https://factorylm.com/free-technicians",
       "forms": 0,
-      "h1": "Maintenance guides from the factory floor",
-      "preview": false,
+      "iframes": 0,
       "robots": "index, follow",
       "scrollWidth": 390,
-      "url": "/blog",
+      "url": "/free-technicians",
       "width": 390
     },
     {
       "canonical": "https://factorylm.com/404",
       "forms": 0,
-      "h1": "This page isn’t on the floor.",
-      "preview": false,
+      "iframes": 0,
       "robots": "noindex, nofollow",
       "scrollWidth": 390,
       "url": "/404",
@@ -727,8 +671,7 @@
     {
       "canonical": "https://factorylm.com/",
       "forms": 0,
-      "h1": "Fix machinesfaster.Answers frommanuals & prints.",
-      "preview": false,
+      "iframes": 0,
       "robots": "index, follow",
       "scrollWidth": 320,
       "url": "/",
@@ -737,8 +680,7 @@
     {
       "canonical": "https://factorylm.com/mira",
       "forms": 0,
-      "h1": "Turn maintenance knowledge into plant intelligence.",
-      "preview": false,
+      "iframes": 0,
       "robots": "index, follow",
       "scrollWidth": 320,
       "url": "/mira",
@@ -747,8 +689,7 @@
     {
       "canonical": "https://factorylm.com/about",
       "forms": 0,
-      "h1": "Your equipment manuals.Your electrical prints.Answers you can check.",
-      "preview": false,
+      "iframes": 0,
       "robots": "index, follow",
       "scrollWidth": 320,
       "url": "/about",
@@ -757,8 +698,7 @@
     {
       "canonical": "https://factorylm.com/start",
       "forms": 0,
-      "h1": "One machine.Your manuals & prints.Your first question.",
-      "preview": false,
+      "iframes": 0,
       "robots": "index, follow",
       "scrollWidth": 320,
       "url": "/start",
@@ -767,8 +707,7 @@
     {
       "canonical": "https://factorylm.com/demo",
       "forms": 0,
-      "h1": "Bring your manualor electrical prints.",
-      "preview": false,
+      "iframes": 0,
       "robots": "index, follow",
       "scrollWidth": 320,
       "url": "/demo",
@@ -777,103 +716,150 @@
     {
       "canonical": "https://factorylm.com/limitations",
       "forms": 0,
-      "h1": "What MIRA does, and what it doesn’t",
-      "preview": false,
+      "iframes": 0,
       "robots": "index, follow",
       "scrollWidth": 320,
       "url": "/limitations",
       "width": 320
     },
     {
-      "canonical": "https://factorylm.com/blog",
+      "canonical": "https://factorylm.com/free-technicians",
       "forms": 0,
-      "h1": "Maintenance guides from the factory floor",
-      "preview": false,
+      "iframes": 0,
       "robots": "index, follow",
       "scrollWidth": 320,
-      "url": "/blog",
+      "url": "/free-technicians",
       "width": 320
     },
     {
       "canonical": "https://factorylm.com/404",
       "forms": 0,
-      "h1": "This page isn’t on the floor.",
-      "preview": false,
+      "iframes": 0,
       "robots": "noindex, nofollow",
       "scrollWidth": 320,
       "url": "/404",
       "width": 320
     }
   ],
-  "signupLoadedPolicyLayouts": [
+  "signupLayouts": [
     {
-      "freeOffer": true,
-      "hasPassword": true,
-      "scrollWidth": 1434,
-      "trialOffer": false,
+      "email": true,
+      "googleOffered": false,
+      "h1": "Start your free MIRA workspace",
+      "manualPilotApplication": false,
+      "password": false,
+      "policy": "https://factorylm.com/free-technicians",
+      "scrollWidth": 1440,
+      "url": "http://127.0.0.1:3197/signup/",
       "width": 1440
     },
     {
-      "freeOffer": true,
-      "hasPassword": true,
-      "scrollWidth": 762,
-      "trialOffer": false,
+      "email": true,
+      "googleOffered": false,
+      "h1": "Apply for a plant pilot",
+      "manualPilotApplication": true,
+      "password": true,
+      "policy": "https://factorylm.com/free-technicians",
+      "scrollWidth": 1440,
+      "url": "http://127.0.0.1:3197/signup/?intent=pilot",
+      "width": 1440
+    },
+    {
+      "email": true,
+      "googleOffered": false,
+      "h1": "Start your free MIRA workspace",
+      "manualPilotApplication": false,
+      "password": false,
+      "policy": "https://factorylm.com/free-technicians",
+      "scrollWidth": 768,
+      "url": "http://127.0.0.1:3197/signup/",
       "width": 768
     },
     {
-      "freeOffer": true,
-      "hasPassword": true,
-      "scrollWidth": 384,
-      "trialOffer": false,
+      "email": true,
+      "googleOffered": false,
+      "h1": "Apply for a plant pilot",
+      "manualPilotApplication": true,
+      "password": true,
+      "policy": "https://factorylm.com/free-technicians",
+      "scrollWidth": 768,
+      "url": "http://127.0.0.1:3197/signup/?intent=pilot",
+      "width": 768
+    },
+    {
+      "email": true,
+      "googleOffered": false,
+      "h1": "Start your free MIRA workspace",
+      "manualPilotApplication": false,
+      "password": false,
+      "policy": "https://factorylm.com/free-technicians",
+      "scrollWidth": 390,
+      "url": "http://127.0.0.1:3197/signup/",
       "width": 390
     },
     {
-      "freeOffer": true,
-      "hasPassword": true,
-      "scrollWidth": 314,
-      "trialOffer": false,
+      "email": true,
+      "googleOffered": false,
+      "h1": "Apply for a plant pilot",
+      "manualPilotApplication": true,
+      "password": true,
+      "policy": "https://factorylm.com/free-technicians",
+      "scrollWidth": 390,
+      "url": "http://127.0.0.1:3197/signup/?intent=pilot",
+      "width": 390
+    },
+    {
+      "email": true,
+      "googleOffered": false,
+      "h1": "Start your free MIRA workspace",
+      "manualPilotApplication": false,
+      "password": false,
+      "policy": "https://factorylm.com/free-technicians",
+      "scrollWidth": 320,
+      "url": "http://127.0.0.1:3197/signup/",
+      "width": 320
+    },
+    {
+      "email": true,
+      "googleOffered": false,
+      "h1": "Apply for a plant pilot",
+      "manualPilotApplication": true,
+      "password": true,
+      "policy": "https://factorylm.com/free-technicians",
+      "scrollWidth": 320,
+      "url": "http://127.0.0.1:3197/signup/?intent=pilot",
       "width": 320
     }
   ],
-  "demoDraft": [
-    {
-      "case": "selected-context",
-      "href": "mailto:mike@factorylm.com?subject=FactoryLM%20demo%20request&body=Demo%20request%20for%201%20plant.%20Focus%3A%20Electrical%20print%20lookup.%20Bring%20one%20real%20question%20about%20your%20equipment%20manual%20or%20electrical%20prints.%0A%0AEquipment%20and%20question%3A%0A",
-      "summary": "Demo request for 1 plant. Focus: Electrical print lookup. Bring one real question about your equipment manual or electrical prints."
-    },
-    {
-      "case": "cleared-context",
-      "href": "mailto:mike@factorylm.com?subject=FactoryLM%20demo%20request",
-      "iframes": 1
-    }
-  ],
-  "calendar": {
-    "loadsOnRequest": true,
-    "novemberNoOpenings": true,
-    "decemberNoOpenings": true,
-    "settingsChanged": false,
-    "meetingBooked": false,
-    "decemberDisabledDates": 31
+  "demo": {
+    "selectedDraft": "mailto:mike@factorylm.com?subject=FactoryLM%20demo%20request&body=Demo%20request%20for%20my%20team.%20Focus%3A%20Electrical%20print%20lookup.%20Bring%20one%20real%20question%20about%20your%20equipment%20manual%20or%20electrical%20prints.%0A%0AEquipment%20and%20question%3A%0A",
+    "clearedDraft": "mailto:mike@factorylm.com?subject=FactoryLM%20demo%20request",
+    "externalCalendar": "https://calendly.com/mike-cranesync/30min",
+    "iframes": 0
   },
-  "interactions": [
-    {
-      "case": "mobile-menu-MIRA",
-      "passed": true
-    },
-    {
-      "case": "UNS-FAQ",
-      "expanded": true
-    },
-    {
-      "case": "legacy-pricing-query-redirect",
-      "url": "http://127.0.0.1:4188/demo?utm_source=release-test"
-    },
-    {
-      "case": "existing-terms-with-free-scope",
-      "free": "Free for technicians. Accounts created under the free-technician offer have no trial deadline. Creating a free technician account does not require a credit card or enroll you in a paid plan. Paid assessments, plant pilots, team services and other separately ordered services are distinct offers agreed with FactoryLM.",
-      "sections": 11
-    }
-  ],
-  "accountCreatedInBrowser": false,
-  "emailSent": false
+  "rollback": {
+    "enabledUrl": "http://127.0.0.1:4188/demo?utm_source=maintenance",
+    "sameBrowserProfile": true,
+    "disabledUrl": "http://127.0.0.1:4188/pricing?utm_source=maintenance",
+    "restoredHeading": "Existing pricing restored",
+    "policyAvailableWithoutMarketing": "Your personal MIRA workspace."
+  },
+  "blog": {
+    "upstreamIndex": true,
+    "fixtureArticleUrl": "http://127.0.0.1:4188/blog/fresh-published-article",
+    "articleHeading": "Fresh database article",
+    "scope": "Local upstream fixture; existing database-backed blog implementation is preserved"
+  },
+  "mobileMenu": {
+    "miraUrl": "http://127.0.0.1:4188/mira"
+  },
+  "termsResponse": "Existing upstream response preserved; canonical free policy links to the full Terms",
+  "emailSent": false,
+  "browserAccountCreated": false,
+  "emailLinkBrowserSignin": {
+    "scope": "Already-created local synthetic account; no agreement accepted or account created in browser",
+    "result": "signed into canonical MIRA workspace",
+    "destination": "/v3/",
+    "question_or_plant_action": false
+  }
 }

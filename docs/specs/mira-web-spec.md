@@ -1,14 +1,27 @@
+---
+last_updated: 2026-11-21
+---
 # mira-web Specification
-**Version:** 1.0
-**Last Updated:** 2026-05-05
+**Version:** 1.1
+**Last Updated:** 2026-11-21
 **Owner:** Mike Harper / FactoryLM
 
 ## Purpose
 Public marketing site + **PLG onboarding funnel** for FactoryLM. Visitor → "Join the Beta" → email/name/company → tenant created `pending` → 7-day Loom nurture → Stripe Checkout $97/mo → tenant flipped to `active` → Atlas CMMS account provisioned → unlimited Mira AI chat. Hosts the public `/cmms` landing, `/sample`, `/activated`, the magic-inbox PDF intake, and the embedded Mira AI chat for evaluation prospects.
 
-No free tier. Pricing is hidden until Day 7 email.
+The May paid PLG funnel below is separate from the new personal technician offer. It is preserved as historical service documentation; this update does not re-certify every legacy endpoint.
 
-## Scope
+## Next marketing site adapter — November 21, 2026
+
+`src/factorylm-ui/marketing-next.ts` is the bounded public adapter. It serves the checked eight-page/seven-asset payload only when both `FACTORYLM_MARKETING_NEXT` and `MIRA_FREE_TECHNICIANS` are exactly `true`; both default false. It handles only GET/HEAD for allowlisted marketing routes, redirects and scoped assets, plus robots and a supplemental sitemap. Rollout redirects are temporary 302 responses with no-store. The canonical free-access policy and its assets can load when free signup is on before marketing activation. Existing app/API/policy/status/old sitemap/dynamic blog index and article routes continue to their current handlers. Other methods remain upstream.
+
+The export excludes private preview notices, draft policies and retired walkthrough files; it includes canonical/share metadata and preserves query strings on legacy redirects. Staging signup/login links use the existing hub-origin configuration and staging pages receive noindex headers. Start free and Sign in lead to canonical MIRA account pages. The website collects no account details or simulates success. The free-account scope is a canonical page linking to the existing full Terms and Privacy Policy. The legacy Terms response is byte-identical and no new adapter reads its markup.
+
+Request a demo opens a reviewable email draft with optional context. The existing calendar opens externally as an alternative; no iframe or CSP change is introduced. Site copy covers manuals, electrical prints, the Maintenance Intelligence Resource Agent, reviewed UNS relationships and digital transformation; illustrations and capability limits stay disclosed.
+
+Acceptance: default-off and free-policy gating, checked payload, staging origin/noindex, HEAD length/body, query-preserving redirects, preserved upstream paths/methods, asset allowlisting/404 and flag rollback pass adapter tests. Existing Terms is byte-identical with both flag states. The canonical free-policy response is independent of legacy heading markup. Browser rehearsal covers 1440/768/390/320 layouts, phone navigation, demo draft/reset, calendar loading and representative redirects. Source export and MIRA payload hashes must match. Product/legal review, native exact-snapshot review, required CI and paired app-policy qualification precede an authorized release. Rollback restores old marketing immediately and never rewrites existing accounts.
+
+## Scope (existing paid PLG service)
 **IN scope**
 - Public marketing routes (`/`, `/cmms`, `/sample`, `/activated`, etc.)
 - PLG funnel API: `/api/register`, `/api/checkout`, `/api/stripe/webhook`, `/api/billing-portal`, `/api/me`, `/api/activation/retry`, `/api/admin/activation-health`, `/api/mira/chat`

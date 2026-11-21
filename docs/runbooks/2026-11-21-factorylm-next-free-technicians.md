@@ -1,37 +1,39 @@
-# FactoryLM next site and free technician access
+# FactoryLM next site and verified free technician access
 
-Owner decision: Mike retained **free for technicians** on November 21, 2026. This change is prepared source, not a deployment or approval of all product claims.
+Mike retained **free for technicians** on November 21, 2026. This is prepared source, not a deployment or approval of every product claim.
 
-## Behavior
+## Account and workspace policy
 
-`MIRA_FREE_TECHNICIANS=true` makes new personal workspaces approved, with no trial expiry and plan `technician_free`. Existing users, paid tenants, expired trials, invitations, administrative roles and explicit plant-pilot requests retain their existing controls. No migration runs. Keep the global pilot-approval setting intact: a personal free workspace and a governed plant pilot are different signup intents.
+`MIRA_FREE_TECHNICIANS=true` enables approved, non-expiring personal workspaces. Each technician can create their own one-person workspace with no credit card. Team workspaces and plant pilots are separately arranged. The durable `hub_tenants.signup_offer` marker enforces the personal boundary at invite creation and redemption, including after the flag is off. Existing paid/trial/pilot tenants keep their controls.
 
-The public, no-store `/api/public/signup-policy/` contract drives the signup offer label. The marketing site's Start free and Sign in actions go directly to MIRA's real account pages. Registration still uses work email and password; existing alternative sign-in methods remain available. The website collects no account details and simulates no signup success. A scoped paragraph in the existing Terms distinguishes new free accounts from separately ordered paid services.
+Free password registration is rejected. A new free workspace requires a consumed, single-use email token or a verified Google identity; the canonical signup adapter offers only configured providers. Missing email configuration returns 503 and never creates/logs a bearer link or claims delivery. Email requests are rate limited. An address owner's verified claim clears a legacy unproven password and increments a protected `hub_users.credential_epoch`. Credentials carry the epoch at authentication time; session refresh and protected requests reject stale epochs. User preferences cannot reset it. Existing account access terms are not promoted by the claim.
 
-`FACTORYLM_MARKETING_NEXT=true` activates the bounded public adapter only when the free-technician flag is also true. Eight generated public pages and seven assets live under `mira-web/src/factorylm-ui/marketing-next/`; source is the private factorylm-site-preview repository. The adapter preserves existing API, application, policy, status, legacy sitemap and blog-article routes. Existing policy content is not replaced by preview drafts. Staging signup links follow `PLG_HUB_URL` and receive noindex headers.
+Two additive fields are installed by the existing idempotent auth schema initializer: `hub_users.credential_epoch INTEGER NOT NULL DEFAULT 0` and `hub_tenants.signup_offer TEXT`. No production schema change or account migration was run. Old rows retain their status, plan and expiry.
 
-Demo requests use a reviewable email draft to Mike, with optional context. The existing Calendly event remains an alternative. Its November and December 2026 calendars showed no available times during browser review; no availability or meetings were changed.
+Plant applications use `/signup/?intent=pilot`. With pilot approval enabled, the bounded adapter submits explicit pilot intent, creates a pending tenant and records the existing pilot application event. It offers no Google button that could lose that intent. An existing account holder can email Mike directly from that screen to request a separately reviewed pilot without changing their personal workspace. If pilot intake is unavailable, the screen offers that contact path instead of creating a free workspace as a substitute. Keep the existing global pilot flag intact.
 
-## Rebuild and synchronize
+## Public website
 
-From the private preview checkout, run `python3 build/build.py`, `python3 build/check.py`, `python3 build/release.py` and `python3 build/check_release.py`. Then run `python3 build/sync_mira.py --checkout /absolute/path/to/the/codex/MIRA/worktree` and review the generated adapter payload. This command copies only the checked release files; it does not deploy.
+Start free and Sign in go directly to MIRA; the website collects no account details or simulates signup success. The no-store public signup-policy contract drives the current offer. The canonical `/free-technicians` policy is available when free signup is enabled, even before the marketing cutover. It links to the preserved full Terms and Privacy Policy. Legacy Terms is byte-identical and has no new markup dependency.
 
-The release package removes the private preview notice and draft policies, creates clean routes and canonical/share metadata, excludes retired walkthrough assets, and retains indexing controls for 404. Old pricing/pilot URLs redirect to the demo request; article paths remain with the existing application.
+`FACTORYLM_MARKETING_NEXT=true` enables the eight-page/seven-asset public adapter only alongside the free flag. Clean routes, canonical/share metadata and a supplemental sitemap are included. Private notices, draft policies and walkthrough files are excluded. API, app, policy/status, original sitemap, dynamic blog index and articles remain upstream. Staging account links follow the configured hub origin and staging pages receive noindex headers.
 
-## Qualification
+Rollout redirects use temporary 302 responses with `Cache-Control: no-store`. Demo requests open a reviewable email draft with optional context. Calendar availability opens the existing external Calendly page; no iframe/CSP change is needed. Earlier read-only calendar checks showed no November/December 2026 openings; availability and meetings were not changed.
 
-The evidence directory is `docs/architecture/convergence/evidence/free-technicians-20261121/`. Local synthetic registration and an actual NextAuth credentials session proved an approved, non-expiring account and matching workspace. Disposable PostgreSQL integration covers persistence, old trials, explicit pilots, existing-account behavior and duplicate registration. Router tests cover opt-in activation, rollback, HEAD, staging, allowlisting and preserved paths.
+## Build and qualification
 
-Whole-project TypeScript checks have existing baseline failures; compare exact diagnostics rather than claiming a green typecheck. The locked Next.js CLI also reports an existing security advisory. This change does not upgrade framework dependencies or certify that advisory as resolved. Current-build document/source behavior, physical-phone acceptance and recorded product/legal review holds remain separate from marketing and signup tests.
+In the private preview checkout, run `python3 build/build.py`, `python3 build/check.py`, `python3 build/release.py`, `python3 build/check_release.py`, then `python3 build/sync_mira.py --checkout /absolute/path/to/the/codex/MIRA/worktree`. Synchronization copies only the checked payload and never deploys.
+
+Evidence and command details are under `docs/architecture/convergence/evidence/free-technicians-20261121/`. Local unit, real PostgreSQL, actual NextAuth/HTTP and browser checks qualify the prepared source. TypeScript retains existing baseline errors, and the locked framework reports an existing security advisory. Current-release product claims, actual delivered email, physical devices and legal approval remain separate gates.
 
 ## Reviewed activation order
 
-1. Complete exact-head and exact-body native Codex review, required CI and the recorded framework/security and product/legal release gates.
-2. Deploy the paired app and web source to staging through the existing release process. Enable `MIRA_FREE_TECHNICIANS=true` consistently for hub and web; preserve the existing pilot-approval value. Leave marketing off initially.
-3. Verify `/api/public/signup-policy/` reports version 1, `free_technician`, no approval and null trial days. Qualify a new approved, non-expiring account and real session in the authorized staging environment.
-4. Enable `FACTORYLM_MARKETING_NEXT=true` on staging; check real signup/login destinations, Terms scope, demo email draft and unchanged API/policy/article routes. Verify required current-release product claims separately.
-5. Use the existing approved release/cutover process for production. This runbook does not authorize deployment, secret edits, production account creation, DNS or access changes. No new hosting service or DNS connection is needed.
+1. Obtain exact-head/body native Codex review and required CI. Resolve the recorded framework, current-product and legal release gates.
+2. Deploy the paired source to authorized staging through the existing release process, keeping marketing off. Confirm the two additive fields and existing pilot migrations are present. Enable the free flag consistently for web and hub while retaining the global pilot-approval value.
+3. Verify both public policies, delivered email to an authorized test inbox, token consumption/replay, a new approved non-expiring personal session, stale credential/cookie revocation, personal invite denial, and an explicit pending pilot with its recorded application. Test paid and active pilot controls.
+4. Enable marketing on staging. Check real account destinations, preserved full Terms and dynamic blog, external calendar, temporary redirects and same-profile rollback. Verify required current-release document/source claims separately.
+5. Use the existing authorized production cutover process. This document grants no deploy, secret, DNS, production-account, paid or plant authority. No new hosting service or DNS connection is needed.
 
 ## Rollback
 
-Set `FACTORYLM_MARKETING_NEXT=false` to restore existing public pages. Set `MIRA_FREE_TECHNICIANS=false` to stop issuing new free workspaces and restore the prior signup policy for new accounts. Already-created free accounts remain approved and non-expiring; rollback must not revoke them or rewrite existing tenant rows. The two flags default to false. No schema rollback is necessary.
+Turn marketing off to restore existing public rendering. Turn free signup off to stop issuing new personal free workspaces. Existing free accounts stay approved and non-expiring; their one-person boundary persists. Keep the credential-revocation fixes and additive fields in any rollback runtime: an older image that ignores credential epochs must not restore revoked sessions. Do not drop those fields or migrate account access during a flag rollback. Existing paid and pilot controls remain active.

@@ -4,6 +4,8 @@ import { PILOT_WINDOW_DAYS } from "@/lib/config";
 import { magicTokenTtlMinutes } from "@/capabilities/trial-access";
 import { admitPilotInvite, isPilotApprovalRequired } from "@/capabilities/pilot-access";
 import { publicSignupPolicy, type SignupIntent } from "@/capabilities/free-technician-signup";
+import { claimVerifiedEmail, EmailVerificationRequiredError } from "@/capabilities/verified-identity";
+import { assertTeamInvitesAllowed } from "@/capabilities/free-workspace";
 
 export type UserStatus = "pending" | "trial" | "approved" | "expired" | "admin";
 
@@ -19,6 +21,7 @@ export interface HubUser {
   trialExpiresAt: Date | null;
   plan: string | null;
   preferences: Record<string, unknown>;
+  credentialEpoch?: number;
 }
 
 export interface MagicTokenResult {
@@ -74,10 +77,12 @@ export function ensureSchema(): Promise<void> {
     await pool.query(`ALTER TABLE hub_users ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'trial'`);
     await pool.query(`ALTER TABLE hub_users ADD COLUMN IF NOT EXISTS trial_expires_at TIMESTAMPTZ`);
     await pool.query(`ALTER TABLE hub_users ADD COLUMN IF NOT EXISTS plan TEXT`);
+    await pool.query(`ALTER TABLE hub_users ADD COLUMN IF NOT EXISTS credential_epoch INTEGER NOT NULL DEFAULT 0`);
     await pool.query(`ALTER TABLE hub_users ADD COLUMN IF NOT EXISTS preferences JSONB NOT NULL DEFAULT '{}'`);
     // hub_tenants — add slug + settings for Phase 2 multi-tenancy
     await pool.query(`ALTER TABLE hub_tenants ADD COLUMN IF NOT EXISTS slug TEXT`);
     await pool.query(`ALTER TABLE hub_tenants ADD COLUMN IF NOT EXISTS settings JSONB NOT NULL DEFAULT '{}'`);
+    await pool.query(`ALTER TABLE hub_tenants ADD COLUMN IF NOT EXISTS signup_offer TEXT`);
     await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_hub_tenants_slug ON hub_tenants (slug) WHERE slug IS NOT NULL`);
     // No email-based admin promotion here (#4591): registration does not verify email
     // ownership, so promoting whatever row carries ADMIN_EMAIL at boot let anyone who
@@ -141,10 +146,11 @@ function rowToUser(r: Record<string, unknown>): HubUser {
     trialExpiresAt: r.trial_expires_at ? new Date(r.trial_expires_at as string) : null,
     plan: (r.plan as string) ?? null,
     preferences: (r.preferences as Record<string, unknown>) ?? {},
+    credentialEpoch: Number(r.credential_epoch ?? 0),
   };
 }
 
-const USER_COLS = "id, email, password_hash, google_sub, tenant_id, name, role, status, trial_expires_at, plan, preferences";
+const USER_COLS = "id, email, password_hash, google_sub, tenant_id, name, role, status, trial_expires_at, plan, preferences, credential_epoch";
 
 export async function findUserByEmail(email: string): Promise<HubUser | null> {
   await ensureSchema();
@@ -285,6 +291,8 @@ export interface EnsureUserAndTenantInput {
   name?: string;
   passwordHash?: string;
   signupIntent?: SignupIntent;
+  /** Internal proof from a consumed email token or verified identity provider. Never accepted from registration JSON. */
+  verifiedEmail?: boolean;
 }
 
 export async function ensureUserAndTenant(
@@ -298,12 +306,14 @@ export async function ensureUserAndTenant(
       [input.googleSub],
     );
     if (rows[0]) {
+      if (input.verifiedEmail) await claimVerifiedEmail(pool, String(rows[0].id));
       return { id: String(rows[0].id), tenantId: String(rows[0].tenant_id), email: String(rows[0].email) };
     }
   }
 
   const existingByEmail = await findUserByEmail(input.email);
   if (existingByEmail) {
+    if (input.verifiedEmail) await claimVerifiedEmail(pool, existingByEmail.id);
     if (input.googleSub && !existingByEmail.googleSub) {
       await pool.query(
         `UPDATE hub_users SET google_sub = $1, updated_at = NOW() WHERE id = $2`,
@@ -313,6 +323,10 @@ export async function ensureUserAndTenant(
     return { id: existingByEmail.id, tenantId: existingByEmail.tenantId, email: existingByEmail.email };
   }
 
+  const policy = publicSignupPolicy(input.signupIntent);
+  if (policy.kind === "free_technician" && (!input.verifiedEmail || input.passwordHash)) {
+    throw new EmailVerificationRequiredError();
+  }
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
@@ -320,8 +334,10 @@ export async function ensureUserAndTenant(
     const {
       rows: [tenant],
     } = await client.query(
-      `INSERT INTO hub_tenants (name) VALUES ($1) RETURNING id`,
-      [tenantName],
+      policy.kind === "free_technician"
+        ? `INSERT INTO hub_tenants (name, signup_offer) VALUES ($1, $2) RETURNING id`
+        : `INSERT INTO hub_tenants (name) VALUES ($1) RETURNING id`,
+      policy.kind === "free_technician" ? [tenantName, "technician_free"] : [tenantName],
     );
     const tenantId = String(tenant.id);
     // #1899b: the data-side `tenants` table (FK target of knowledge_entries.tenant_id)
@@ -339,7 +355,6 @@ export async function ensureUserAndTenant(
     // query). On: the new owner is 'pending' with no trial clock running yet
     // (the admin approve route starts it), and the tenant is marked a pilot
     // applicant so the admin cohort view can find it.
-    const policy = publicSignupPolicy(input.signupIntent);
     const pilotMode = policy.kind === "pilot_application";
     // Free personal workspaces never join the plant-pilot cohort. Keep the global
     // pilot flag intact so existing cohort deadlines, invitations and caps remain enforced.
@@ -374,7 +389,10 @@ export async function ensureUserAndTenant(
   } catch (err) {
     await client.query("ROLLBACK");
     const conflict = await findUserByEmail(input.email);
-    if (conflict) return { id: conflict.id, tenantId: conflict.tenantId, email: conflict.email };
+    if (conflict) {
+      if (input.verifiedEmail) await claimVerifiedEmail(pool, conflict.id);
+      return { id: conflict.id, tenantId: conflict.tenantId, email: conflict.email };
+    }
     throw err;
   } finally {
     client.release();
@@ -389,6 +407,7 @@ export async function ensureInvitedUser(input: {
   await ensureSchema();
   const email = input.email.trim().toLowerCase();
   const role = input.role.trim() || "technician";
+  await assertTeamInvitesAllowed(pool, input.tenantId);
 
   // Flag off: the exact pre-#4878 code path — no transaction, no pilot_*
   // query, zero overhead, and safe in any environment migration 107 hasn't

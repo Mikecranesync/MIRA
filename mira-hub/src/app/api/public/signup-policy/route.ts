@@ -3,6 +3,7 @@ import { publicSignupPolicy } from "@/capabilities/free-technician-signup";
 
 export const dynamic = "force-dynamic";
 
-export function GET() {
-  return NextResponse.json(publicSignupPolicy(), { headers: { "Cache-Control": "no-store" } });
+export function GET(req?: Request) {
+  const intent = req && new URL(req.url).searchParams.get("intent") === "pilot" ? "pilot" : "technician";
+  return NextResponse.json(publicSignupPolicy(intent), { headers: { "Cache-Control": "no-store" } });
 }

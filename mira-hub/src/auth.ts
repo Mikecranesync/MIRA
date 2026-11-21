@@ -5,6 +5,9 @@ import bcrypt from "bcryptjs";
 import { ensureInvitedUser, ensureUserAndTenant, findUserByEmail, findUserById, validateMagicToken } from "@/lib/users";
 import { NO_ROLE, normalizeRole, type ResolvedRole } from "@/lib/role";
 import { refreshEntitlementClaims } from "@/capabilities/session-entitlement";
+import { credentialEpoch } from "@/capabilities/verified-identity";
+import { claimVerifiedEmail } from "@/capabilities/verified-identity";
+import pool from "@/lib/db";
 
 declare module "next-auth" {
   interface Session {
@@ -21,6 +24,7 @@ declare module "next-auth" {
     };
   }
   interface User {
+    credentialEpoch?: number;
     id: string;
     email?: string | null;
     tenantId?: string;
@@ -31,6 +35,7 @@ declare module "next-auth" {
 
 declare module "next-auth/jwt" {
   interface JWT {
+    credentialEpoch?: number;
     uid?: string;
     tid?: string;
     status?: string;
@@ -62,6 +67,7 @@ const providers: NextAuthOptions["providers"] = [
         name: user.name ?? null,
         tenantId: user.tenantId,
         status: user.status,
+        credentialEpoch: credentialEpoch(user),
         trialExpiresAt: user.trialExpiresAt?.toISOString() ?? null,
       };
     },
@@ -80,7 +86,8 @@ const providers: NextAuthOptions["providers"] = [
             tenantId: result.tenantId,
             role: result.role ?? "technician",
           })
-        : await ensureUserAndTenant({ email: result.email });
+        : await ensureUserAndTenant({ email: result.email, verifiedEmail: true });
+      if (result.tenantId) await claimVerifiedEmail(pool, account.id);
       const user = await findUserByEmail(result.email);
       return {
         id: account.id,
@@ -88,6 +95,7 @@ const providers: NextAuthOptions["providers"] = [
         name: user?.name ?? null,
         tenantId: account.tenantId,
         status: user?.status ?? "trial",
+        credentialEpoch: credentialEpoch(user),
         trialExpiresAt: user?.trialExpiresAt?.toISOString() ?? null,
       };
     },
@@ -129,16 +137,19 @@ export const authOptions: NextAuthOptions = {
   callbacks: {
     async signIn({ user, account, profile }) {
       if (account?.provider === "google" && profile?.email) {
+        if ((profile as { email_verified?: unknown }).email_verified !== true) return false;
         const existing = await ensureUserAndTenant({
           email: profile.email,
           googleSub: account.providerAccountId,
           name: (profile as { name?: string }).name,
+          verifiedEmail: true,
         });
         const fullUser = await findUserByEmail(existing.email);
         user.id = existing.id;
         user.email = existing.email;
         user.tenantId = existing.tenantId;
         user.status = fullUser?.status ?? "trial";
+        user.credentialEpoch = credentialEpoch(fullUser);
         user.trialExpiresAt = fullUser?.trialExpiresAt?.toISOString() ?? null;
       }
       return true;
@@ -148,6 +159,7 @@ export const authOptions: NextAuthOptions = {
         token.uid = user.id;
         token.tid = user.tenantId;
         token.status = user.status ?? "trial";
+        token.credentialEpoch = user.credentialEpoch ?? 0;
         token.trialExpiresAt = user.trialExpiresAt ?? null;
         return token;
       }

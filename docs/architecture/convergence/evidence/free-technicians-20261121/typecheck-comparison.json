@@ -1,20 +1,24 @@
 {
   "hub": {
-    "base_sha": "dfa344f32",
+    "base_sha": "dfa344f32a2e6bd5f988eeac0be01a5b2a33c662",
     "baseline_errors": 76,
     "candidate_errors": 76,
-    "identical_normalized_diagnostics": true,
-    "new_diagnostics": [],
-    "missing_diagnostics": [],
-    "normalization": "workspace prefix"
+    "same_error_locations_and_codes": true,
+    "new_error_locations_and_codes": [],
+    "changed_baseline_diagnostic_wording": [
+      "src/capabilities/__tests__/openai-vision.test.ts(110,25): error TS2345: Argument of type 'MockInstance<{ (input: URL | RequestInfo, init?: RequestInit | undefined): Promise<Response>; (input: string | Request | URL, init?: RequestInit | undefined): Promise<...>; }>' is not assignable to parameter of type 'MockInstance<(this: unknown, ...args: unknown[]) => unknown>'.",
+      "src/capabilities/__tests__/openai-vision.test.ts(141,25): error TS2345: Argument of type 'MockInstance<{ (input: URL | RequestInfo, init?: RequestInit | undefined): Promise<Response>; (input: string | Request | URL, init?: RequestInit | undefined): Promise<...>; }>' is not assignable to parameter of type 'MockInstance<(this: unknown, ...args: unknown[]) => unknown>'.",
+      "src/capabilities/__tests__/openai-vision.test.ts(163,25): error TS2345: Argument of type 'MockInstance<{ (input: URL | RequestInfo, init?: RequestInit | undefined): Promise<Response>; (input: string | Request | URL, init?: RequestInit | undefined): Promise<...>; }>' is not assignable to parameter of type 'MockInstance<(this: unknown, ...args: unknown[]) => unknown>'."
+    ],
+    "normalization": "workspace path; expected server mount line offsets for web"
   },
   "web": {
-    "base_sha": "dfa344f32",
+    "base_sha": "dfa344f32a2e6bd5f988eeac0be01a5b2a33c662",
     "baseline_errors": 34,
     "candidate_errors": 34,
-    "identical_normalized_diagnostics": true,
-    "new_diagnostics": [],
-    "missing_diagnostics": [],
-    "normalization": "workspace prefix; server.ts line offsets for inserted mounts"
+    "same_error_locations_and_codes": true,
+    "new_error_locations_and_codes": [],
+    "changed_baseline_diagnostic_wording": [],
+    "normalization": "workspace path; expected server mount line offsets for web"
   }
 }

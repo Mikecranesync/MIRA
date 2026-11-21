@@ -72,14 +72,34 @@ describe("next FactoryLM public adapter", () => {
   test("legacy redirects preserve campaign query strings", async () => {
     process.env.FACTORYLM_MARKETING_NEXT = "true";
     const response = await app().request("/pricing?utm_source=maintenance");
-    expect(response.status).toBe(301);
+    expect(response.status).toBe(302);
+    expect(response.headers.get("cache-control")).toBe("no-store");
     expect(response.headers.get("location")).toBe("/demo?utm_source=maintenance");
   });
 
-  test.each(["/api/health", "/api/stripe/webhook", "/privacy", "/terms", "/security", "/trust", "/status", "/cmms", "/signup", "/sitemap.xml", "/blog/fault-codes"])("leaves %s with its existing handler", async (path) => {
+  test.each(["/api/health", "/api/stripe/webhook", "/privacy", "/terms", "/security", "/trust", "/status", "/cmms", "/signup", "/sitemap.xml", "/blog", "/blog/", "/blog/fault-codes"])("leaves %s with its existing handler", async (path) => {
     process.env.FACTORYLM_MARKETING_NEXT = "true";
     const response = await app().request(path);
     expect(await response.json()).toMatchObject({ upstream: true, path });
+  });
+
+  test("free policy is canonical and available before marketing activation, without changing legacy terms", async () => {
+    process.env.FACTORYLM_MARKETING_NEXT = "false";
+    const response = await app().request("/free-technicians");
+    expect(response.status).toBe(200);
+    expect(await response.text()).toContain('href="https://factorylm.com/terms"');
+    expect(await (await app().request("/terms")).json()).toMatchObject({ upstream: true });
+  });
+  test("new database-backed blog articles remain discoverable through the existing index", async () => {
+    process.env.FACTORYLM_MARKETING_NEXT = "true";
+    const server = new Hono().route("/", createFactorylmMarketingRouter()).get("/blog", c => c.html('<a href="/blog/fresh-published-article">Fresh database article</a>'));
+    expect(await (await server.request("/blog")).text()).toContain("fresh-published-article");
+  });
+  test("calendar availability is external and works under the existing CSP", async () => {
+    process.env.FACTORYLM_MARKETING_NEXT = "true";
+    const html = await (await app().request("/demo")).text();
+    expect(html).not.toContain("<iframe");
+    expect(html).toContain('href="https://calendly.com/mike-cranesync/30min"');
   });
 
   test("POST remains POST and reaches the existing API handler", async () => {

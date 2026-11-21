@@ -92,11 +92,19 @@ export async function POST(req: Request) {
   } catch {
     return NextResponse.json({ error: "invalid JSON" }, { status: 400, headers });
   }
+  if (!body || typeof body !== "object" || Array.isArray(body)) return NextResponse.json({ error: "invalid request body" }, { status: 400, headers });
   const { email, password, name, signupIntent } = body as { email?: unknown; password?: unknown; name?: unknown; signupIntent?: unknown };
   if (signupIntent !== undefined && signupIntent !== "technician" && signupIntent !== "pilot") {
     return NextResponse.json({ error: "invalid signup intent" }, { status: 400, headers });
   }
   const intent = signupIntent === "pilot" ? "pilot" : "technician";
+  const policy = publicSignupPolicy(intent);
+  if (policy.kind === "free_technician") {
+    return NextResponse.json({ error: "Use the email sign-in link to verify your address and create your free workspace.", code: "email_verification_required" }, { status: 403, headers });
+  }
+  if (intent === "pilot" && publicSignupPolicy().kind === "free_technician" && !policy.requiresApproval) {
+    return NextResponse.json({ error: "Contact mike@factorylm.com to arrange a plant pilot." }, { status: 403, headers });
+  }
   if (typeof email !== "string" || typeof password !== "string") {
     return NextResponse.json({ error: "email and password required" }, { status: 400, headers });
   }

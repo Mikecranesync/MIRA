@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { decode } from "next-auth/jwt";
 import { cookies } from "next/headers";
 import { findUserById } from "@/lib/users";
+import { credentialsAreCurrent } from "@/capabilities/verified-identity";
 
 export interface SessionContext {
   userId: string;
@@ -177,6 +178,7 @@ export async function requireSession(options?: { requireCurrentUser?: boolean })
   }
 
   if (options?.requireCurrentUser && (!user || user.tenantId !== tid)) throw new UnauthorizedError();
+  if (user && !credentialsAreCurrent(token, user)) throw new UnauthorizedError();
 
   role = (user?.role ?? "").toLowerCase().trim();
   platformAdmin = user?.status === "admin";

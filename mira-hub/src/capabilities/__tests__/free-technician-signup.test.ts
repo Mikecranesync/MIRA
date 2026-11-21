@@ -41,11 +41,11 @@ describe("free technician signup", () => {
 
   it("persists a non-expiring free personal account without platform-admin promotion", async () => {
     vi.stubEnv("MIRA_FREE_TECHNICIANS", "true");
-    await ensureUserAndTenant({ email: "tech@example.com", passwordHash: "hash" });
+    await ensureUserAndTenant({ email: "tech@example.com", verifiedEmail: true });
     const insert = writes.find((row) => row.sql.includes("INSERT INTO hub_users"))!;
     expect(insert.sql).toContain("'approved', NULL, 'technician_free'");
     expect(insert.sql).not.toContain("'admin'");
-    expect(insert.values).toEqual(["tech@example.com", "hash", null, "tenant-1", null]);
+    expect(insert.values).toEqual(["tech@example.com", null, null, "tenant-1", null]);
     expect(writes.some((row) => row.sql.includes("pilot_status"))).toBe(false);
     expect(writes.at(-1)?.sql).toBe("COMMIT");
     expect(publicSignupPolicy().kind).toBe("free_technician");
@@ -53,10 +53,28 @@ describe("free technician signup", () => {
 
   it("uses the same free policy for a new federated-login account", async () => {
     vi.stubEnv("MIRA_FREE_TECHNICIANS", "true");
-    await ensureUserAndTenant({ email: "tech@example.com", googleSub: "subject-1" });
+    await ensureUserAndTenant({ email: "tech@example.com", googleSub: "subject-1", verifiedEmail: true });
     const insert = writes.find((row) => row.sql.includes("INSERT INTO hub_users"))!;
     expect(insert.sql).toContain("'approved', NULL, 'technician_free'");
     expect(insert.values?.[2]).toBe("subject-1");
+  });
+
+  it("revokes an unproven credential when a concurrent legacy registration wins the email race", async () => {
+    vi.stubEnv("MIRA_FREE_TECHNICIANS", "true");
+    let reads = 0;
+    query.mockImplementation(async (sql) => {
+      if (String(sql).includes("WHERE email_lower = LOWER($1)")) {
+        reads += 1;
+        return { rows: reads === 1 ? [] : [{id:"legacy-user",email:"tech@example.com",tenant_id:"legacy-tenant",password_hash:"unproven",status:"trial"}] } as never;
+      }
+      return {rows:[]} as never;
+    });
+    connect.mockResolvedValueOnce({ query: vi.fn(async (sql: string) => {
+      if(sql.includes("INSERT INTO hub_users")) throw new Error("unique email conflict");
+      return {rows:sql.includes("INSERT INTO hub_tenants") ? [{id:"new-tenant"}] : []};
+    }), release:vi.fn() } as never);
+    expect(await ensureUserAndTenant({email:"tech@example.com",verifiedEmail:true})).toMatchObject({id:"legacy-user",tenantId:"legacy-tenant"});
+    expect(query.mock.calls.some(([sql, values]) => String(sql).includes("credential_epoch = credential_epoch + 1") && (values as unknown[])?.[0] === "legacy-user")).toBe(true);
   });
 
   it("keeps explicit pilot applications approval-required even when free personal signup is on", async () => {

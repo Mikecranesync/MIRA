@@ -37,7 +37,6 @@ import { deployIdentity } from "./capabilities/deploy-identity.js";
 import { hubUrl } from "./capabilities/hub-origin.js";
 import { isCheckoutEnabled } from "./capabilities/checkout-gate.js";
 import { createFactorylmMarketingRouter } from "./factorylm-ui/marketing-next.js";
-import { withFreeTechnicianTerms } from "./factorylm-ui/free-technician-terms.js";
 import {
   submitPilotRequest,
   ensurePilotRequestSchema,
@@ -519,7 +518,7 @@ app.get("/privacy", async (c) => {
 
 app.get("/terms", async (c) => {
   const file = Bun.file("./public/terms.html");
-  return new Response(withFreeTechnicianTerms(await file.text()), {
+  return new Response(await file.text(), {
     headers: { "Content-Type": "text/html; charset=utf-8" },
   });
 });
@@ -1264,7 +1263,7 @@ app.post("/api/checkout/start", async (c) => {
     return c.json(
       {
         error:
-          `Online checkout is not available. FactoryLM pilots are free for 30 days — apply at ${hubUrl("/signup")}`,
+          `Online checkout is not available. Apply for a reviewed plant pilot at ${hubUrl("/signup?intent=pilot")}`,
       },
       410
     );
