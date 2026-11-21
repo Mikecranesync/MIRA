@@ -1,15 +1,8 @@
 "use client";
 /**
- * The cited-page viewer (#5333): shows one page of a parked document so a
- * citation opens the right source at the right page on a phone.
- *
- * Commodity first (`.claude/rules/commodity-before-custom.md`): the platform
- * viewer is used wherever the browser has one — desktop hands straight over
- * to the file at `#page=N`. Android Chrome has none, so the page is drawn by
- * pdf.js (the `unpdf` build the hub already ships for text extraction),
- * loaded only here. MIRA owns only which file and which page; pdf.js owns the
- * drawing. No zoom/gesture code: the canvas is drawn at screen width and the
- * browser's own pinch-zoom applies.
+ * Draws cited pages and embedded PDFs with the PDF.js build the Hub already
+ * uses for text extraction. A native viewer can still open the original in a
+ * standalone tab.
  */
 import type { CSSProperties } from "react";
 import { useEffect, useRef, useState } from "react";
@@ -25,11 +18,8 @@ import {
   type ViewerRequest,
 } from "./document-page-viewer-logic";
 
-type PdfDoc = { numPages: number; getPage(n: number): Promise<PdfPage> };
-type PdfPage = {
-  getViewport(o: { scale: number }): { width: number; height: number };
-  render(o: { canvas: HTMLCanvasElement; canvasContext: CanvasRenderingContext2D; viewport: unknown }): { promise: Promise<void> };
-};
+type PdfDoc = Awaited<ReturnType<typeof import("unpdf").getDocumentProxy>>;
+type RenderTask = ReturnType<Awaited<ReturnType<PdfDoc["getPage"]>>["render"]>;
 
 type ViewState =
   | { kind: "loading" }
@@ -56,7 +46,6 @@ export function DocumentPageViewer() {
   const [doc, setDoc] = useState<PdfDoc | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
-  // Which file, which page; desktop browsers with a viewer get the file itself.
   useEffect(() => {
     const req = parseViewerRequest(window.location.search);
     setRequest(req);
@@ -64,39 +53,55 @@ export function DocumentPageViewer() {
       setState({ kind: "failed", message: "No document was given to open." });
       return;
     }
-    if (viewerMode(navigator.pdfViewerEnabled) === "native") {
-      window.location.replace(nativeFileHref(req.fileId, req.page));
+    const embedded = window.self !== window.top;
+    if (viewerMode(navigator.pdfViewerEnabled, { embedded, page: req.page }) === "native") {
+      window.location.replace(nativeFileHref(req.fileId, null));
       return;
     }
-    let cancelled = false;
+    const abort = new AbortController();
+    let loaded: PdfDoc | null = null;
     void (async () => {
       try {
-        const res = await fetch(nativeFileHref(req.fileId, null), { credentials: "same-origin" });
+        const res = await fetch(nativeFileHref(req.fileId, null), {
+          credentials: "same-origin",
+          signal: abort.signal,
+        });
+        if (abort.signal.aborted) return;
         if (!res.ok) {
-          if (!cancelled) setState({ kind: "failed", message: failureMessage(res.status) });
+          setState({ kind: "failed", message: failureMessage(res.status) });
           return;
         }
         if (!isPdf(res.headers.get("content-type"))) {
-          // Not a PDF (a photo or other original): let the browser open it.
-          window.location.replace(nativeFileHref(req.fileId, null));
+          if (embedded) {
+            setState({ kind: "failed", message: "Use Open document to view the original file." });
+          } else {
+            window.location.replace(nativeFileHref(req.fileId, null));
+          }
           return;
         }
         const name = filenameFromDisposition(res.headers.get("content-disposition")) ?? "Document";
         const data = new Uint8Array(await res.arrayBuffer());
         const { getDocumentProxy } = await import("unpdf");
-        // The page CSP has no 'unsafe-eval'; tell pdf.js not to probe for it.
-        const pdf = (await getDocumentProxy(data, { isEvalSupported: false })) as unknown as PdfDoc;
-        if (cancelled) return;
+        if (abort.signal.aborted) return;
+        // Keep PDF-supplied code disabled and use the bundled PDF.js runtime.
+        const pdf = await getDocumentProxy(data, { isEvalSupported: false });
+        if (abort.signal.aborted) {
+          await pdf.destroy();
+          return;
+        }
+        loaded = pdf;
         const shown = pageToShow(req.page, pdf.numPages);
         setDoc(pdf);
         setState({ kind: "ready", name, numPages: pdf.numPages, page: shown.page, outOfRange: shown.outOfRange });
       } catch (err) {
+        if (abort.signal.aborted) return;
         console.error("[DocumentPageViewer]", err);
-        if (!cancelled) setState({ kind: "failed", message: failureMessage(500) });
+        setState({ kind: "failed", message: failureMessage(500) });
       }
     })();
     return () => {
-      cancelled = true;
+      abort.abort();
+      void loaded?.destroy().catch(() => {});
     };
   }, []);
 
@@ -104,10 +109,12 @@ export function DocumentPageViewer() {
   useEffect(() => {
     if (!doc || page < 1) return;
     let cancelled = false;
+    let renderTask: RenderTask | null = null;
     void (async () => {
       const canvas = canvasRef.current;
       const context = canvas?.getContext("2d");
-      if (!canvas || !context) return;
+      if (!canvas || !context) throw new Error("PDF canvas unavailable");
+      delete canvas.dataset.renderedPage;
       const p = await doc.getPage(page);
       if (cancelled) return;
       const cssWidth = Math.max(240, canvas.parentElement?.clientWidth ?? window.innerWidth);
@@ -115,11 +122,17 @@ export function DocumentPageViewer() {
       const viewport = p.getViewport({ scale });
       canvas.width = Math.floor(viewport.width);
       canvas.height = Math.floor(viewport.height);
-      await p.render({ canvas, canvasContext: context, viewport }).promise;
+      renderTask = p.render({ canvas, canvasContext: context, viewport });
+      await renderTask.promise;
       if (!cancelled) canvas.dataset.renderedPage = String(page);
-    })().catch((err) => console.error("[DocumentPageViewer] render", err));
+    })().catch((err) => {
+      if (cancelled) return;
+      console.error("[DocumentPageViewer] render", err);
+      setState({ kind: "failed", message: failureMessage(500) });
+    });
     return () => {
       cancelled = true;
+      renderTask?.cancel();
     };
   }, [doc, page]);
 
@@ -149,6 +162,7 @@ export function DocumentPageViewer() {
           <nav style={bar} aria-label="Pages">
             <button type="button" style={button} onClick={() => go(-1)} disabled={state.page <= 1}>Previous page</button>
             <button type="button" style={button} onClick={() => go(1)} disabled={state.page >= state.numPages}>Next page</button>
+            {openHref ? <a href={openHref} target="_blank" rel="noopener noreferrer">Open document</a> : null}
           </nav>
         </>
       ) : null}

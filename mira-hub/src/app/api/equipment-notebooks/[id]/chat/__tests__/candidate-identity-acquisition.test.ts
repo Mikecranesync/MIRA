@@ -82,7 +82,7 @@ vi.mock("@/lib/inference/canonical-cascade", () => seamMock);
 // (notebook-manual-acquisition.test.ts, migration-104 integration test).
 const acqMock = vi.hoisted(() => ({
   acquisitionEnabled: vi.fn(() => true),
-  startManualAcquisition: vi.fn(async () => true),
+  startManualAcquisition: vi.fn(async (_input: Pick<Parameters<typeof import("@/capabilities/notebook-manual-acquisition").startManualAcquisition>[0], "identity">) => true),
   readAcquisition: vi.fn(async () => null as unknown),
   reconcileAcquisition: vi.fn(async (_t: string, _n: string, rec: unknown) => rec),
 }));
@@ -352,24 +352,15 @@ describe("#4160 S6 R2 — candidate-basis background acquisition triggers from t
     expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
   });
 
-  it("relays a typed request's running status without claiming a photo or preempting the result", async () => {
-    await (await POST(req({ message: SMC_MESSAGE, mode: "general" }), params)).text();
-    const call = vi.mocked(global.fetch).mock.calls.at(-1)!;
-    const sentBody = JSON.parse((call[1] as RequestInit).body as string);
-    const systemMsg = (sentBody.messages as { role: string; content: string }[]).find((m) => m.role === "system");
-    expect(systemMsg?.content).toMatch(/UNCONFIRMED MACHINE/);
-    expect(systemMsg?.content).toMatch(/looking for the official documentation for the SMC SS5Y3-DUW01302/);
-    expect(systemMsg?.content).not.toMatch(/read off the technician's photo|added to this notebook's Sources and turned on/);
+  it("relays a typed request's running status without calling the provider or preempting the result", async () => {
+    const f = await frames(await POST(req({ message: SMC_MESSAGE, mode: "general" }), params));
+    const status = f.find((x) => x.kind === "status");
+    expect(status?.message).toMatch(/looking for the official documentation for the SMC SS5Y3-DUW01302/);
+    expect(status?.message).not.toMatch(/technician's photo|turned on/);
+    expect(fetch).not.toHaveBeenCalled();
   });
 
-  // T2 (#4189, mira-84): R16-lite (e41b21a78) deliberately shipped the prose
-  // directive ABOVE with "no new SSE frame, no client change" — there was no
-  // client to render one yet. #4175/#4189 ship that client, so this is the
-  // other half landing, not a reversal: the prompt directive (proven above,
-  // unchanged byte-for-byte) and this frame now coexist on the SAME wire —
-  // one steers the model, the other gives a non-LLM surface a live status
-  // line to render instantly instead of waiting for the model to mention it
-  // in prose. See manualSearchStatusFrame's own header in route.ts.
+  // The status frame lets clients follow acquisition independently of the reply.
   it("ALSO emits a transient manual_search_status frame (running) for the proposed identity — #4189", async () => {
     const f = await frames(await POST(req({ message: SMC_MESSAGE, mode: "general" }), params));
     expect(f.find((x) => x.kind === "manual_search_status")).toMatchObject({
@@ -485,57 +476,41 @@ describe("#4160 gate — no 'fetch it yourself' advice while the search runs", (
   async function answerText(): Promise<string> {
     const f = await frames(await POST(req({ message: SMC_MESSAGE, mode: "general" }), params));
     return f
-      .filter((x) => x.kind === "content" || x.kind === "replace")
-      .map((x) => String(x.content ?? x.text ?? ""))
+      .filter((x) => x.kind === "content" || x.kind === "replace" || x.kind === "status")
+      .map((x) => String(x.content ?? x.text ?? x.message ?? ""))
       .join("");
   }
 
-  it("the candidate search is running → the fallback says MIRA is already searching", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => new Response(providerStream(UNSUPPORTED), { status: 200 })));
+  it("reports the running search without sending the technician away or promising source approval", async () => {
     const text = await answerText();
     expect(acqMock.startManualAcquisition).toHaveBeenCalled();
-    expect(text).not.toContain("manufacturer's support");
-    expect(text).toContain("I'm already searching for the official manual");
-    // A manual found from the photo is verified before it lands, so it lands
-    // turned on; the fallback must not tell the technician to switch it on.
-    expect(text).toContain("turned on");
-    expect(text).not.toContain("turned off");
+    expect(text).toContain("I'm looking for the official documentation");
+    expect(text).not.toMatch(/manufacturer's support|turned on|turned off/);
+    expect(fetch).not.toHaveBeenCalled();
   });
 
-  it("#4718: the search is refused by the cap while the answer is generated → no 'already searching' claim", async () => {
-    // The claim succeeds, then the background search hits the manual-search
-    // cap and records search_limit_reached before the answer is chosen
-    // (staging, 2026-10-24: global monthly cap exhausted).
-    const { acquisitionKey } = await vi.importActual<typeof import("@/capabilities/notebook-manual-acquisition")>(
+  it("reports the limit if the accepted claim has already settled at read-back", async () => {
+    const { acquisitionKey, MANUAL_SEARCH_LIMIT_COPY } = await vi.importActual<typeof import("@/capabilities/notebook-manual-acquisition")>(
       "@/capabilities/notebook-manual-acquisition",
     );
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => {
-        const started = (acqMock.startManualAcquisition.mock.calls[0] as unknown[])[0] as {
-          identity: Parameters<typeof acquisitionKey>[0];
-        };
-        acqMock.readAcquisition.mockResolvedValue({
-          key: acquisitionKey(started.identity),
-          state: "search_limit_reached",
-          started_at: new Date().toISOString(),
-          finished_at: new Date().toISOString(),
-          candidate_host: null,
-          match_state: null,
-          oem_request_url: null,
-        });
-        return new Response(providerStream(UNSUPPORTED), { status: 200 });
-      }),
-    );
+    acqMock.startManualAcquisition.mockImplementationOnce(async ({ identity }: {
+      identity: Parameters<typeof acquisitionKey>[0];
+    }) => {
+      acqMock.readAcquisition.mockResolvedValue({
+        key: acquisitionKey(identity),
+        state: "search_limit_reached",
+        started_at: new Date().toISOString(),
+        finished_at: new Date().toISOString(),
+        candidate_host: null,
+        match_state: null,
+        oem_request_url: null,
+      });
+      return true;
+    });
     const f = await frames(await POST(req({ message: SMC_MESSAGE, mode: "general" }), params));
-    const text = f
-      .filter((x) => x.kind === "content" || x.kind === "replace")
-      .map((x) => String(x.content ?? x.text ?? ""))
-      .join("");
     expect(acqMock.startManualAcquisition).toHaveBeenCalled();
-    expect(text).not.toContain("I'm already searching");
-    expect(text).not.toContain("turned off until you check it");
-    expect(text).toContain("manufacturer's support");
+    expect(f.find((x) => x.kind === "status")?.message).toBe(MANUAL_SEARCH_LIMIT_COPY);
+    expect(fetch).not.toHaveBeenCalled();
     // Codex #4719 F1: the status frame must never say "not running" while still
     // promising a search is underway (the app does not re-check a settled frame).
     const status = f.filter((x) => x.kind === "manual_search_status");

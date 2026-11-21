@@ -67,3 +67,28 @@ describe("the rest of a cited page (#4509 Codex r2 F1)", () => {
     expect(manualSafetyStatementForCitations([cite("1", 1)], [page(1, PLAIN)], rest)).toMatchObject({ marker: "WARNING", page: 1 });
   });
 });
+
+
+describe("operating cautions written as manual notes", () => {
+  const ACCELERATION_CAUTION = "Note that setting the acceleration time too short may cause motor damage or trigger drive\nprotection due to over-current during the drive's acceleration.";
+  const EARTH_FAULT_CAUTION = "Note: Disabling earth fault (ground\nfault) may damage drive.";
+
+  it.each([
+    [139, ACCELERATION_CAUTION, "motor damage"],
+    [363, EARTH_FAULT_CAUTION, "may damage drive"],
+  ])("carries the caution from cited PDF page %s", (p, caution, expected) => {
+    expect(manualSafetyStatementForCitations([cite("1", p)], [page(p, PLAIN)], [page(p, caution)])).toMatchObject({
+      marker: "CAUTION (manual text)",
+      statement: expect.stringContaining(expected),
+      sourceCitationId: "1",
+      page: p,
+    });
+  });
+
+  it("disregards a benign setting note and a caution on an uncited page", () => {
+    expect(manualSafetyStatementForCitations([cite("1", 140)], [
+      page(140, "Note that setting the acceleration time too short may trigger a message."),
+      page(139, ACCELERATION_CAUTION),
+    ])).toBeNull();
+  });
+});

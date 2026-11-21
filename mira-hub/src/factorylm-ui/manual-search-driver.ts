@@ -55,10 +55,17 @@ export interface ManualSearchDriver {
   current(): ManualSearchFollowState | null;
 }
 
+// Keep quick lookups responsive. Slower lookups may spend 60s in discovery
+// and 30s downloading before indexing even starts. Spread the remaining reads
+// out so an idle tab can follow that work without hammering notebook detail.
+const FAST_POLL_ATTEMPTS = 5;
+const FAST_POLL_DELAY_MS = 4_000;
+const SLOW_POLL_DELAY_MS = 10_000;
+const MAX_POLL_ATTEMPTS = 21; // 20s of fast polling and 160s of slower polling.
+
 export function createManualSearchDriver(deps: ManualSearchDriverDeps): ManualSearchDriver {
   const schedule = deps.setTimeoutFn ?? ((cb, ms) => setTimeout(cb, ms));
   const cancel = deps.clearTimeoutFn ?? ((id) => clearTimeout(id));
-  const delay = deps.delayMs ?? 4000;
 
   let state: ManualSearchFollowState | null = null;
   let timer: ReturnType<typeof setTimeout> | null = null;
@@ -87,6 +94,7 @@ export function createManualSearchDriver(deps: ManualSearchDriverDeps): ManualSe
     clearTimer();
     if (!state || state.phase !== "following") return;
     const tickEpoch = epoch;
+    const delay = deps.delayMs ?? (state.attempts < FAST_POLL_ATTEMPTS ? FAST_POLL_DELAY_MS : SLOW_POLL_DELAY_MS);
     timer = schedule(() => {
       timer = null;
       void deps
@@ -122,7 +130,7 @@ export function createManualSearchDriver(deps: ManualSearchDriverDeps): ManualSe
       // true no-op ONLY for a duplicate seed of an ACTIVELY following
       // generation (the tick owns advancing that one).
       const current = trackedNotebookId === notebookId ? state : null;
-      const result = reseedManualSearchFollow(current, notebookId, status);
+      const result = reseedManualSearchFollow(current, notebookId, status, MAX_POLL_ATTEMPTS);
       const changed = current !== result.state;
       trackedNotebookId = notebookId;
       state = result.state;

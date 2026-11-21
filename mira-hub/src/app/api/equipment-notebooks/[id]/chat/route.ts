@@ -3421,7 +3421,18 @@ async function handleChatTurn(
             cAcq = await readAcquisition(ctx.tenantId, notebookId);
           }
         }
-        if (!cStarted) cAcq = await reconcileAcquisition(ctx.tenantId, notebookId, cAcq);
+        if (cStarted) {
+          // Read back the claim's generation and any outcome the background
+          // worker has already written, such as a search limit or a fast match.
+          const authoritative = await readAcquisition(ctx.tenantId, notebookId);
+          if (authoritative?.key === candidateKey) {
+            cAcq = authoritative;
+            candidateSearchStartedAt = authoritative.started_at ?? undefined;
+          }
+        } else {
+          cAcq = await reconcileAcquisition(ctx.tenantId, notebookId, cAcq);
+          if (cAcq?.key === candidateKey) candidateSearchStartedAt = cAcq.started_at ?? undefined;
+        }
         if (cAcq && cAcq.key === candidateKey) {
           if (cAcq.state === "running") {
             manualSearchRunning = "candidate";
@@ -3447,24 +3458,6 @@ async function handleChatTurn(
             "candidate",
             { sourceOff: candidateSourceOff },
           );
-          // Codex round 5 F15 (#4195): `cAcq.started_at` above is EITHER the
-          // DB's own value (the initial `readAcquisition`/`reconcileAcquisition`
-          // read, never synthesized) OR, when THIS call just claimed the
-          // search, the local placeholder set a few lines up — which is NOT
-          // the DB's `now()` (`claim()`'s own clock) and would drift from
-          // what the GET route (`currentManualSearchStatus`) reports for the
-          // SAME search. Only in that freshly-claimed case, re-read the
-          // record `claim()` actually wrote; every other path already holds
-          // an authoritative value. A failed/mismatched re-read just omits
-          // `startedAt` from the frame (never invents one, never blocks the
-          // reply — same fail-open posture as the rest of this capability).
-          if (cStarted) {
-            const authoritative = await readAcquisition(ctx.tenantId, notebookId);
-            candidateSearchStartedAt =
-              authoritative && authoritative.key === candidateKey ? authoritative.started_at ?? undefined : undefined;
-          } else {
-            candidateSearchStartedAt = cAcq.started_at ?? undefined;
-          }
         }
       }
     }
@@ -3801,8 +3794,7 @@ async function handleChatTurn(
   // A flagged hazard turn is never swallowed by this abstain (owner decision
   // 2026-09-27): with no documents it takes the general lane, so the tech gets
   // the hazard banner and an answer instead of "couldn't find that".
-  const manualIdentityNeeded = unboundManualRequest && !identityProposal;
-  if (componentHold || (chunks.length === 0 && (!general || libraryNotForAsk || missingModelManual || noEvidenceForMachine || unidentifiedServiceText || photoPartLookup || photoPartCompatibilityText || manualIdentityNeeded) && !groundedMachineEntry && !safetyTrigger)) {
+  if (componentHold || (chunks.length === 0 && (!general || libraryNotForAsk || missingModelManual || noEvidenceForMachine || unidentifiedServiceText || photoPartLookup || photoPartCompatibilityText || unboundManualRequest) && !groundedMachineEntry && !safetyTrigger)) {
     // Gate G — abstain honestly, persist the turn, never call the provider.
     // #4015: "couldn't find that in the documentation I have", not "I don't have
     // the manual" — a zero-hit scoped search does not prove the manual is absent
@@ -3821,8 +3813,6 @@ async function handleChatTurn(
       ? photoPartLookup.message
       : photoPartCompatibilityText
       ? photoPartCompatibilityText
-      : manualIdentityNeeded
-      ? "What manufacturer and model or order number are printed on the equipment label? You can type them or attach a clear photo of that part of the label."
       // No document selected, and the library's pages were for the bound model,
       // not the one this message names: say which, and answer nothing from them.
       : libraryNotForAsk
@@ -3836,6 +3826,12 @@ async function handleChatTurn(
       // reported a result) outranks a generic "couldn't find" fallback.
       : candidateAcquisitionText
       ? candidateAcquisitionText
+      // A lookup request owns this response. The model can name the wrong
+      // family while the confirmation card is still waiting for the technician.
+      : unboundManualRequest
+      ? identityProposal
+        ? "Confirm the equipment below so I can look for the matching manual."
+        : "What manufacturer and model or order number are printed on the equipment label? You can type them or attach a clear photo of that part of the label."
       : missingModelManual
       ? `I couldn't find that in the ${missingModelManual} manual pages I have, so I won't guess a documented value. Upload the manual (or the page that covers it) to this notebook, or photograph the nameplate, and ask again — I'll answer from it and show you the page.`
       : noEvidenceForMachine

@@ -1425,6 +1425,43 @@ describe("what a cover declares it is for (numbers the detector does not read)",
   });
 });
 
+describe("part number on the Schneider CA3KN22BD manufacturer drawing", () => {
+  const filename = "CA3KN22BD_2DSalesDrawing.pdf";
+  const heading = [
+    "Schneider Electric United States",
+    "Part No.:",
+    "CA3KN22BD",
+    "Specification:",
+    "Description TeSys K IEC Control Relay - 2NO,2NC",
+    "Voltages Code: BD at 24VDC",
+  ].join("\n");
+
+  it.each([
+    ["wrapped", heading],
+    ["inline", heading.replace("Part No.:\n", "Part No.: ")],
+  ])("admits the exact part named by the %s drawing field", (_layout, drawing) => {
+    expect(verdict("CA3KN22BD coil voltage?", drawing, filename)).toEqual({ admit: true });
+  });
+
+  it("declares the exact part and refuses to use it for a sibling relay", () => {
+    expect(coverDeclaredNumbers(heading).map(({ label }) => label)).toEqual(["CA3KN22BD"]);
+    expect(verdict("CA3KN31BD coil voltage?", heading, filename)).toMatchObject({
+      admit: false, kind: "other-model", declared: ["CA3KN22BD"],
+    });
+  });
+
+  it.each([
+    `Not covered:\n${heading}`,
+    `No coverage:\n${heading}`,
+    heading.replace("Part No.:\nCA3KN22BD", "Part No.: CA3KN22BD not covered"),
+    heading.replace("Part No.:", "No.:"),
+  ])("preserves an exclusion or unqualified negation: %j", (drawing) => {
+    expect(verdict("CA3KN22BD coil voltage?", drawing, filename)).toMatchObject({
+      admit: false, kind: "coverage-not-shown",
+    });
+  });
+});
+
 // Real CEF-republished Schneider sheet, printed Oct 6 2022: the lowercase
 // product title is a noun phrase below its catalog line, not a sentence.
 describe("catalog line above a product title has the same meaning in either case", () => {

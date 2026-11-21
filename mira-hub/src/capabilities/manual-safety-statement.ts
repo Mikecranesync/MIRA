@@ -203,6 +203,15 @@ function matchProseFallback(text: string): ManualSafetyStatement | null {
     }
   }
 
+  // Some manuals label operational cautions as notes. Require both the
+  // explicit condition and its stated damage consequence on the cited page.
+  const settingCaution = text.replace(/\s+/g, ' ').match(
+    /\bNote(?: that|:)\s+((?:setting (?:the )?(?:acceleration|deceleration) time too short|disabling earth fault \(ground fault\)) may (?:cause (?:motor|drive) damage|damage (?:the )?drive)\b[^.!?]{0,160}[.!?])/i,
+  );
+  if (settingCaution) {
+    return { marker: 'CAUTION (manual text)', statement: settingCaution[1] };
+  }
+
   return null;
 }
 

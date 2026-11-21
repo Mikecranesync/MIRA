@@ -204,6 +204,10 @@ it("preserves the exact model when a known maker's label also includes ratings a
   }), params);
   const result = await frames(res);
   expect(result.find((frame) => frame.kind === "identity_proposal")).toMatchObject({ model: MODEL });
+  expect(result.find((frame) => frame.kind === "status")).toMatchObject({
+    message: expect.stringContaining("Confirm the equipment"),
+  });
+  expect(fetch).not.toHaveBeenCalled();
   expect(ragMock.retrieveManualChunks).not.toHaveBeenCalled();
   expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
 });
