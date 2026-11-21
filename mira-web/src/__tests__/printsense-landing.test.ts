@@ -17,6 +17,14 @@ test("GET /printsense renders honest positioning", async () => {
   expect(html).not.toContain("Telegram");
   expect(html).toContain("advanced_reasoning_unavailable");
   expect(html).not.toContain("#0"); // no hardcoded hex — tokens only
+  expect(html).toContain("Print-package inquiry");
+  expect(html).toContain("Ask Mike about a full print package");
+  expect(html).toContain("I want to discuss a complete print package with Mike");
+  expect(html).toContain("This page does not publish amounts.");
+  expect(html).not.toContain("Nothing trains models");
+  expect(html).not.toContain("Managed package pilot");
+  expect(html).not.toContain("complete-package pilot");
+  expect(html).not.toContain("Analyze my complete machine package");
 });
 
 test("POST validates work email", async () => {
@@ -39,6 +47,7 @@ test("POST captures lead; analytics stays content-free", async () => {
   expect(funnel).toContain("package_request_submitted");
   expect(funnel).not.toContain("tech@example.com"); // analytics never does
   expect(existsSync(join(dir, "funnel.jsonl"))).toBe(true);
+  expect(await ok.text()).toContain("Thanks. We'll reach out. Fastest path: talk to Mike.");
 });
 
 test("2026-07-17 rebuild: showcase structure with honest claims, no slop markers", async () => {

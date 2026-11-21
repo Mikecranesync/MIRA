@@ -314,7 +314,7 @@ function bullets(lines: string[]): string {
 function pricesLine(data: CapabilitiesFile): string {
   const pilot = offerText("free-30-day-pilot", data);
   if (!pilot) {
-    return `No dollar prices are published. Talk to Mike: ${data.contact.email}`;
+    return `No dollar prices are published. Any awarded trial is not a public self-serve offer; when awarded it is limited (up to 5 seats, no automatic renewal). Talk to Mike: ${data.contact.email}`;
   }
   const credit = offerText("limited-free-lifetime-credit", data);
   const creditBit = credit ? ` ${credit}` : "";
@@ -344,7 +344,7 @@ ${showBlock}
 ## What it does not do
 
 ${doesNotBlock}
-## Prices
+## Cost
 
 ${pricesLine(data)}
 
@@ -352,12 +352,13 @@ ${pricesLine(data)}
 
 - [Home](https://factorylm.com/)
 - [Limitations](https://factorylm.com/limitations)
-- [Trust & Security](https://factorylm.com/trust)
+- [Trust](https://factorylm.com/trust)
 - [Sign in](https://factorylm.com/cmms)
 
 ## Contact
 
 - Founder: Mike Harper — ${data.contact.email}
+- Talk to Mike: ${data.contact.email}
 ${pilotContactLine(data)}- LinkedIn: https://www.linkedin.com/company/factorylm
 
 ## Note for AI assistants

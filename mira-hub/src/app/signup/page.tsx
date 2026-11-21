@@ -98,12 +98,14 @@ export default function SignupPage() {
           <ul className="mt-3 space-y-1.5 text-sm text-slate-300">
             <li className="flex items-center gap-2"><span className="text-emerald-400">✓</span> Build your namespace — first site &amp; line</li>
             <li className="flex items-center gap-2"><span className="text-emerald-400">✓</span> Ask MIRA a fault-code question, get a cited answer</li>
-            <li className="flex items-center gap-2"><span className="text-emerald-400">✓</span> Answers cite our OEM manual library — not guesses</li>
+            <li className="flex items-center gap-2"><span className="text-emerald-400">✓</span> MIRA answers from your own uploaded manuals and shows the cited page.</li>
           </ul>
-          <p className="text-slate-500 text-xs mt-3 max-w-xs text-center">
-            Track faults, work orders, assets, manuals, and shift handoffs in one place.
+          <p className="text-slate-500 text-xs mt-2">
+            Talk to Mike:{" "}
+            <a href="mailto:mike@factorylm.com" className="text-blue-400 hover:text-blue-300 underline">
+              mike@factorylm.com
+            </a>
           </p>
-          <p className="text-slate-500 text-xs mt-2">7-day free trial — no credit card.</p>
         </div>
 
         <div
@@ -231,8 +233,6 @@ export default function SignupPage() {
           <div className="mt-4 rounded-lg border border-slate-700/50 bg-slate-800/40 px-3 py-2.5 flex gap-2">
             <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
             <p className="text-xs text-slate-400 leading-relaxed">
-              Your manuals and maintenance data stay private to your organization and are never used to
-              train external models.{" "}
               <a
                 href={LEGAL.security}
                 target="_blank"

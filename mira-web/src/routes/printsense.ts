@@ -16,7 +16,7 @@
  * undervoltage" was itself a misread and died here).
  *
  * No browser upload here: the public path is Talk to Mike; the
- * complete-package path is the managed pilot. Analytics
+ * complete-package path is an inquiry, not a published offer. Analytics
  * lines carry event names and counts only — never emails, questions, or file content.
  */
 import { Hono } from "hono";
@@ -64,8 +64,7 @@ printsensePage.post("/printsense/interest", async (c) => {
     event: wantsPilot ? "package_request_submitted" : "interest_submitted",
   });
   return c.html(renderPrintsenseLanding(undefined,
-    `<p class="ps-msg ps-msg-ok">Thanks — we'll reach out within one
-     business day. Fastest path: talk to Mike.</p>`));
+    `<p class="ps-msg ps-msg-ok">Thanks. We'll reach out. Fastest path: talk to Mike.</p>`));
 });
 
 // Inline SVG micro-icons (stroke:currentColor) — never emoji.
@@ -214,7 +213,7 @@ export function renderPrintsenseLanding(
     reconstruction.</strong> Send one print page and a question &mdash; a human-reviewed, cited
     answer comes back, every claim tied to a page and a location on it.</p>
     <a class="ps-cta" href="${escHtml(href)}">${escHtml(cta)}</a>
-    <a class="ps-cta-ghost" href="#pilot">Analyze my complete machine package</a>
+    <a class="ps-cta-ghost" href="#pilot">Ask Mike about a full print package</a>
     <p class="ps-note">Read-only &middot; anything we can't prove is listed as unresolved, never guessed</p>
   </div>
 
@@ -313,7 +312,7 @@ advanced_reasoning_unavailable</div></div>
   review</strong>. Anything we can&rsquo;t prove is listed as unresolved &mdash; never guessed.</p></div>
   <h2 style="margin-top:34px">Confidentiality &amp; retention</h2>
   <div class="ps-card"><p>Files are stored content-addressed and tenant-isolated. Logs carry
-  hashes, never content. Nothing trains models. Deletion on request. Every report passes a
+  hashes, never content. Deletion on request. Every report passes a
   human reviewer before you see it.</p></div>
 </section>
 
@@ -337,13 +336,11 @@ advanced_reasoning_unavailable</div></div>
 
 ${message}
 <section class="ps-block" id="pilot">
-  <h2>Managed package pilot</h2>
-  <div class="ps-card"><p>Send the complete print package; we return searchable, cited
-  troubleshooting knowledge for the whole machine &mdash; reviewed, confidential.
-  Talk to Mike for fit; this page does not publish amounts.</p>
+  <h2>Print-package inquiry</h2>
+  <div class="ps-card"><p>Send a complete print package to discuss with Mike. This page does not publish amounts.</p>
   <form method="post" action="/printsense/interest" class="ps-form">
     <label>Work email <input type="email" name="email" required></label>
-    <label><input type="checkbox" name="pilot"> I want the complete-package pilot</label>
+    <label><input type="checkbox" name="pilot"> I want to discuss a complete print package with Mike</label>
     <button class="ps-cta" type="submit">Contact me</button>
   </form></div>
 </section>
