@@ -99,7 +99,7 @@ function isFamilyPrefix(model: string, token: string): boolean {
  * "GS11N-20" / "GS11N-2" verify as the exact model.
  */
 const ID_SEP = "[-._/\\u2010-\\u2015]";
-function identifierMatcher(raw: string): ((text: string) => boolean) | null {
+function identifierMatcher(raw: string): ((text: string, samePage?: readonly string[]) => boolean) | null {
   const chars: string[] = [];
   const breakBefore: boolean[] = [];
   // Which breaks the identity itself writes with a separator ("GS11N-20P2-230":
@@ -133,8 +133,30 @@ function identifierMatcher(raw: string): ((text: string) => boolean) | null {
     `(?<![A-Za-z0-9])(?<![A-Za-z0-9]${ID_SEP})${body}(?![A-Za-z0-9])(?!${ID_SEP}[A-Za-z0-9])`,
     "gi",
   );
-  return (text: string) => {
-    for (const m of (text ?? "").matchAll(re)) {
+  const sepChar = new RegExp(`^${ID_SEP}$`);
+  // Codex #5706 r7 F16: a chunk edge is not always a token boundary. A window
+  // cut right after "GS11N-20P2" may be cutting "GS11N-20P2-EX" (and one that
+  // starts at it may have lost "X-"). A match is at an edge when the chunk
+  // shows fewer than two characters beside it, or just a separator. The
+  // chunker's overlapping neighbour window holds what the cut removed, so an
+  // edge match is refuted when another chunk of the same page prints that
+  // same text continuing into a longer identifier. An edge nothing refutes —
+  // a page start, a table-row break, the end of the text — still counts.
+  const bordered = (side: string) => side.length >= 2 || (side.length === 1 && !sepChar.test(side));
+  const esc = (x: string) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return (text: string, samePage: readonly string[] = []) => {
+    const t = text ?? "";
+    for (const m of t.matchAll(re)) {
+      const at = m.index ?? 0;
+      const lit = esc(m[0]);
+      if (!bordered(t.slice(at + m[0].length, at + m[0].length + 2))) {
+        const continued = new RegExp(`${lit}${ID_SEP}?[A-Za-z0-9]`, "i");
+        if (samePage.some((o) => continued.test(o))) continue;
+      }
+      if (!bordered(t.slice(Math.max(0, at - 2), at))) {
+        const preceded = new RegExp(`[A-Za-z0-9]${ID_SEP}?${lit}`, "i");
+        if (samePage.some((o) => preceded.test(o))) continue;
+      }
       // Owner decision 2026-11-20 (Codex #5706 r4 F4): whitespace may stand in
       // for a break only where the identity itself writes whitespace. Flattened
       // PDF text cannot show where a table cell ends, so "GS11N 20P2 230" never
@@ -223,23 +245,28 @@ export function assessApplicability(input: {
   const familyTokens = new Set<string>();
   const mfrTokens = new Set<string>();
 
+  const pageOf = (c: ApplicabilityChunk) =>
+    typeof c.page === "number" && Number.isFinite(c.page) && c.page > 0 ? c.page : null;
+  const byPage = new Map<number | null, ApplicabilityChunk[]>();
+  for (const c of chunks) byPage.set(pageOf(c), [...(byPage.get(pageOf(c)) ?? []), c]);
   for (const ch of chunks) {
-    const page =
-      typeof ch.page === "number" && Number.isFinite(ch.page) && ch.page > 0 ? ch.page : null;
+    const page = pageOf(ch);
+    // The other windows of this chunk's page: what a chunk edge may have cut (r7 F16).
+    const samePage = (byPage.get(page) ?? []).filter((o) => o !== ch).map((o) => o.content ?? "");
     const dense = normalizeIdentifier(ch.content ?? "");
     const tokSet = new Set(tokensOf(ch.content ?? "").map(normalizeIdentifier));
 
     // Catalog numbers are long and punctuation-heavy, so separators may
     // drift — but only inside the number, never across a neighbouring token
     // (identifierMatcher).
-    if (catalog && catalog.length >= 4 && catalogMatches?.(ch.content ?? "")) {
+    if (catalog && catalog.length >= 4 && catalogMatches?.(ch.content ?? "", samePage)) {
       hits.catalog++;
       if (page !== null) catalogPages.push(page);
     }
     if (model) {
       // The whole-identifier matcher for every spelling, compact ones included:
       // a token-set hit let "GS11N20P2" verify against "GS11N20P2-EX".
-      if (modelMatches?.(ch.content ?? "")) {
+      if (modelMatches?.(ch.content ?? "", samePage)) {
         hits.model++;
         if (page !== null) modelPages.push(page);
       } else {

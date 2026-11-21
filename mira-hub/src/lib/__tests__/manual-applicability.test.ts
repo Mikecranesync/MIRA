@@ -8,6 +8,7 @@
 
 import { describe, it, expect } from "vitest";
 import { normalizeIdentifier, assessApplicability } from "@/lib/manual-applicability";
+import { chunkText } from "@/lib/node-knowledge-ingest";
 
 const PF525 = { manufacturer: "Allen-Bradley", model: "525", catalogNumber: "25B-D010N104" };
 
@@ -348,5 +349,56 @@ describe("assessApplicability — literal mixed spellings (Codex #5706 r5 F12)",
     ]) {
       expect(assessApplicability({ identity, chunks: [{ content, page: 12 }], oemHost: true }).state).toBe("candidate");
     }
+  });
+});
+
+// Codex #5706 r7 F16: a chunk edge is not a token boundary. Pages go through
+// the PRODUCTION chunker with the window ending exactly after "GS11N-20P2".
+describe("assessApplicability — identifiers cut at a chunk edge (Codex #5706 r7 F16)", () => {
+  const FILL = "Specifications for the drive family and its ratings follow in this table x ".repeat(2); // no ". ", no blank line; ends in a space
+  const cutAfterModel = (tail: string) => {
+    const size = FILL.length + "GS11N-20P2".length;
+    const pieces = chunkText(`${FILL}GS11N-20P2${tail}`, size, 40);
+    expect(pieces[0].endsWith(" GS11N-20P2")).toBe(true); // precondition: the cut lands right after a standalone model
+    // precondition: on its own, the first window verifies the model — so a candidate below is the edge rule's doing
+    expect(assessApplicability({ identity: { manufacturer: "AutomationDirect", model: "GS11N-20P2" }, chunks: [{ content: pieces[0], page: 26 }], oemHost: true }).state).toBe("verified");
+    expect(pieces.length).toBeGreaterThan(1);
+    return pieces.map((content) => ({ content, page: 26 }));
+  };
+  const verdict = (identity: { model: string; catalogNumber?: string }, chunks: { content: string; page: number }[]) =>
+    assessApplicability({ identity: { manufacturer: "AutomationDirect", ...identity }, chunks, oemHost: true });
+
+  it("a page listing only GS11N-20P2-EX, cut after GS11N-20P2, stays a candidate — as model and as catalog number", () => {
+    const chunks = cutAfterModel("-EX rated 230 V single phase input with braking");
+    for (const id of [{ model: "GS11N-20P2" }, { model: "", catalogNumber: "GS11N-20P2" }]) {
+      const v = verdict(id, chunks);
+      expect(v.state).toBe("candidate");
+      expect(v.identifierPages ?? []).toEqual([]);
+    }
+  });
+
+  it("the same cut over a PDF en dash or a run-on digit stays a candidate too", () => {
+    expect(verdict({ model: "GS11N-20P2" }, cutAfterModel("\u2013EX rated 230 V single phase input")).state).toBe("candidate");
+    expect(verdict({ model: "GS11N-20P2" }, cutAfterModel("5 rated 230 V single phase input with braking")).state).toBe("candidate");
+  });
+
+  it("control: a genuine GS11N-20P2 at the same cut verifies with its page", () => {
+    const v = verdict({ model: "GS11N-20P2" }, cutAfterModel(" rated 230 V single phase input with braking"));
+    expect(v.state).toBe("verified");
+    expect(v.identifierPages).toEqual([26]);
+  });
+
+  it("control: a model at the very start or end of a page's only chunk still verifies", () => {
+    expect(verdict({ model: "GS11N-20P2" }, [{ content: "GS11N-20P2 AC drive quick start", page: 3 }]).state).toBe("verified");
+    expect(verdict({ model: "GS11N-20P2" }, [{ content: "This guide covers the AutomationDirect GS11N-20P2.", page: 4 }]).state).toBe("verified");
+  });
+
+  it("control: another page's suffixed variant does not refute this page's edge", () => {
+    const v = verdict({ model: "GS11N-20P2" }, [
+      { content: "This guide covers the AutomationDirect GS11N-20P2", page: 4 },
+      { content: "Accessory kit for GS11N-20P2-EX", page: 9 },
+    ]);
+    expect(v.state).toBe("verified");
+    expect(v.identifierPages).toEqual([4]);
   });
 });
