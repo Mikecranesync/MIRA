@@ -4,7 +4,7 @@
  * the shell's context snapshot says about the machine, which sources a turn is
  * allowed to cite, and what history the canonical route receives.
  */
-import { PROFILES, createShellState, shellReducer, type InteractionTurn, type ManualSearchStatus, type ShellAction, type QuestionTarget, type ShellFixture, type ShellState } from "../../../packages/factorylm-interaction/src";
+import { PROFILES, createShellState, shellReducer, type Attachment, type InteractionTurn, type ManualSearchStatus, type ShellAction, type QuestionTarget, type ShellFixture, type ShellState } from "../../../packages/factorylm-interaction/src";
 import type { EquipmentNotebook, NotebookSource } from "@/lib/equipment-notebooks";
 import { buildChatBody, isAbortError, type ChatBody, type PersistedTurn, type StreamResult } from "@/components/equipment/notebook-chat-utils";
 import { isSafetyNoticeEntry } from "@/lib/notebook-chat-types";
@@ -334,7 +334,7 @@ export type HubHostAction =
   | { readonly type: "pending-attachments"; readonly threadIds: ReadonlySet<string>; readonly editedThreadId?: string }
   | { readonly type: "sent-draft"; readonly threadId: string; readonly question: string; readonly revision: number }
   | { readonly type: "recover-send"; readonly threadId: string; readonly recovery: HubSendRecovery; readonly restoreDraft: boolean }
-  | { readonly type: "recover-attachment-draft"; readonly threadId: string; readonly recoveryId: string; readonly text: string; readonly notice: string; readonly restoreDraft?: boolean; readonly allowWithoutAttachment?: boolean }
+  | { readonly type: "recover-attachment-draft"; readonly threadId: string; readonly recoveryId: string; readonly text: string; readonly notice: string; readonly restoreDraft?: boolean; readonly requiredAttachmentKinds?: readonly Attachment["kind"][] }
   | { readonly type: "restore-attachment-draft"; readonly threadId: string; readonly recoveryId: string }
   | { readonly type: "clear-recovery"; readonly threadId: string; readonly recoveryId: string }
   | { readonly type: "dismiss-recovery-error"; readonly threadId: string; readonly recoveryId: string }
@@ -360,7 +360,8 @@ type AttachmentRecovery = {
   readonly notice: string;
   readonly noticeDismissed?: boolean;
   readonly draftRevision?: number;
-  readonly allowWithoutAttachment?: boolean;
+
+  readonly requiredAttachmentKinds?: readonly Attachment["kind"][];
 };
 
 type HubShellState = ShellState & {
@@ -519,7 +520,7 @@ export function hubHostReducer(state: HubShellState, action: HubHostAction): Hub
         record.draftRevision === revision && state.attachmentDraftThreads?.has(action.threadId)) return state;
     const attachmentRecoveries = new Map(state.attachmentRecoveries);
     if (action.type === "restore-attachment-draft") {
-      if (action.threadId !== state.thread.id || state.draft) return state;
+      if (action.threadId !== state.thread.id || state.draft || state.attachmentDraftThreads?.has(action.threadId)) return state;
       const restored = hubHostReducer(state, { type: "set-draft", draft: record.question });
       attachmentRecoveries.set(action.threadId, records.map((item) =>
         item === record ? { ...item, draftRevision: restored.draftRevision } : item));
@@ -543,7 +544,7 @@ export function hubHostReducer(state: HubShellState, action: HubHostAction): Hub
     const active = action.threadId === state.thread.id;
     const saved = state.draftsByThread?.get(action.threadId);
     const restore = (action.type === "recover-attachment-draft" ? action.restoreDraft !== false : action.restoreDraft)
-      && !(active ? state.draft : saved);
+      && !(active ? state.draft : saved) && !state.attachmentDraftThreads?.has(action.threadId);
     const revision = (state.draftSequence ?? 0) + 1;
 
     let next = state;
@@ -567,7 +568,7 @@ export function hubHostReducer(state: HubShellState, action: HubHostAction): Hub
       const recovery: AttachmentRecovery = {
         id: action.recoveryId, question: action.text, notice: action.notice,
         draftRevision: restore ? revision : undefined,
-        allowWithoutAttachment: action.allowWithoutAttachment,
+        requiredAttachmentKinds: action.requiredAttachmentKinds,
       };
       const peers = attachmentRecoveries.get(action.threadId) ?? [];
       attachmentRecoveries.set(action.threadId, [...peers.filter((item) => item.id !== recovery.id), recovery]);
@@ -589,7 +590,18 @@ export function hubHostReducer(state: HubShellState, action: HubHostAction): Hub
   const next = shellReducer(state, action);
   if (action.type === "set-draft" && next !== state) {
     const revision = (state.draftSequence ?? 0) + 1;
-    return { ...next, draftSequence: revision, draftRevision: next.draft ? revision : undefined };
+    const draftRevision = next.draft ? revision : undefined;
+    const threadId = state.thread.id;
+    const records = state.attachmentRecoveries?.get(threadId);
+    const edited = { ...next, draftSequence: revision, draftRevision };
+    if (state.draftRevision === undefined || !records?.some((record) => record.draftRevision === state.draftRevision)) return edited;
+    // Editing the recovered question does not waive the need for its files.
+    // Clearing the field saves the interrupted question separately.
+    const attachmentRecoveries = new Map(state.attachmentRecoveries);
+    attachmentRecoveries.set(threadId, records.map((record) => record.draftRevision === state.draftRevision
+      ? { ...record, draftRevision, question: next.draft.trim() || record.question }
+      : record));
+    return { ...edited, attachmentRecoveries };
   }
   if (action.type !== "hydrate" || next.thread.id === state.thread.id) return next;
 

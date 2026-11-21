@@ -351,7 +351,12 @@ export function Composer({ state, dispatch, adapter, hooks, attachmentTrapsTab =
         onPaste={onPaste}
       />
       {hooks?.busy && hooks.onStop
-        ? <button type="button" className="fl-composer__send" aria-label="Stop" onClick={hooks.onStop}><span aria-hidden="true">■</span><span className="fl-composer__label">Stop</span></button>
+        ? <button type="button" className="fl-composer__send" aria-label="Stop" onClick={(event) => {
+            // A synchronous abort can render the Send control before the
+            // browser finishes processing this click.
+            event.preventDefault();
+            hooks.onStop?.();
+          }}><span aria-hidden="true">■</span><span className="fl-composer__label">Stop</span></button>
         : <button type="submit" className="fl-composer__send" aria-label="Send" disabled={!canSend || Boolean(hooks?.busy)}><span aria-hidden="true">↑</span><span className="fl-composer__label">Send</span></button>}
     </div>
   </form>;

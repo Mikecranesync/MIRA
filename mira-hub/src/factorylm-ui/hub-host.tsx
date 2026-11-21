@@ -62,7 +62,7 @@ import { AnswerWithSafety } from "./answer-with-safety";
 import { UserTurnText } from "./user-turn-text";
 import { browserAdapterDeps, createWebAdapter } from "./web-adapter";
 import { HOME_THREAD, createOutgoingOwner, withOutgoing, type Outgoing } from "./outgoing-turn";
-import { composeHubSend, pairAttachments, resolveUploadNode, runAttachedSend, type HeldFile } from "./hub-attachments";
+import { composeHubSend, missingAttachmentKinds, pairAttachments, resolveUploadNode, runAttachedSend, type HeldFile } from "./hub-attachments";
 import { createManualSearchDriver, type ManualSearchDriver } from "./manual-search-driver";
 import { GuidedProcedure } from "./GuidedProcedure";
 import { MachineObservations } from "./MachineObservations";
@@ -239,7 +239,7 @@ export function HubShellHost() {
   );
   const confirmedExchange = retainedExchanges?.findLast((exchange) => exchange.result.sawStatus);
   const livePersisted = live ? persistedByRequest.get(live.clientRequestId) : undefined;
-  const liveReplacesError = live?.result === null && livePersisted?.answerStatus === "error";
+  const liveReplacesError = !!live && (live.result === null || live.stopped) && livePersisted?.answerStatus === "error";
   // #4454: the finished answer's follow-up suggestions, kept past the reload
   // that replaces the live turn (saved rows never carry them).
   const [settledFollowups, setSettledFollowups] = useState<(SettledFollowups & HubSelection & { clientRequestId: string }) | null>(null);
@@ -737,6 +737,21 @@ export function HubShellHost() {
       retainedByThreadRef.current = next;
       setRetainedByThread(next);
     };
+    const settleRetry = () => {
+      if (!ownsAttempt() || !retry) return;
+      dispatch({ type: "clear-recovery", threadId, recoveryId });
+      if (retry.draftRevision !== undefined) {
+        dispatch({ type: "sent-draft", threadId, question, revision: retry.draftRevision });
+      }
+    };
+    const settleExplicitStop = (result: CompatibleStreamResult) => {
+      settleRetry();
+      if (ownsVisibleSend()) {
+        setLive((cur) => (cur?.id === id ? { ...cur, content: result.content, result, stopped: true } : cur));
+      } else {
+        dropOutgoing(outgoingId);
+      }
+    };
     setBusy(true);
     // The route refused the scope (the selection moved): a retry is asked again under what the
     // header shows after the re-read, never replayed under the scope that was refused.
@@ -808,9 +823,7 @@ export function HubShellHost() {
       if (ownsAttempt() && (observed.sawStatus || observed.content || observed.safetyNotice)) retainExchange(observed, stopped);
       if (!result.sawStatus) {
         if (stopped && explicitStops.current.has(ctrl)) {
-          if (ownsVisibleSend()) {
-            setLive((cur) => (cur?.id === id ? { ...cur, content: observed.content, result: observed, stopped: true } : cur));
-          } else dropOutgoing(outgoingId);
+          settleExplicitStop(observed);
           return;
         }
         if (ownsAttempt()) {
@@ -825,12 +838,7 @@ export function HubShellHost() {
         }
         if (ownsVisibleSend()) void loadDetail(sel).catch(() => false);
       } else {
-        if (ownsAttempt() && retry) {
-          dispatch({ type: "clear-recovery", threadId, recoveryId });
-          if (retry.draftRevision !== undefined) {
-            dispatch({ type: "sent-draft", threadId, question, revision: retry.draftRevision });
-          }
-        }
+        settleRetry();
         setLive((cur) => (cur && cur.id === id ? null : cur));
         dropOutgoing(outgoingId);
         if (ownsVisibleSend()) {
@@ -862,6 +870,12 @@ export function HubShellHost() {
       const refusedScope = scopeRefused ? outBody.componentSelection ?? {
         threadId: outBody.threadId, componentId: null, selectionVersion: null,
       } : undefined;
+      if (rejectionStatus !== 401 && explicitStops.current.has(ctrl)) {
+        const stopped = stoppedStreamResult(caught);
+        if (stopped.safetyNotice || stopped.content) retainExchange(stopped, true);
+        settleExplicitStop(stopped);
+        return;
+      }
       const retained = rejectionStatus === undefined ? retainedStreamInterruption(caught) : null;
       if (retained && (retained.result.safetyNotice || retained.result.content)) {
         retainExchange(retained.result, retained.stopped);
@@ -870,7 +884,7 @@ export function HubShellHost() {
         dropOutgoing(outgoingId);
         // The POST may already have reached the server. Preserve its request ID
         // and the submitted payload so replay can reconcile it in the origin.
-        if (rejectionStatus === 401 || explicitStops.current.has(ctrl)) return;
+        if (rejectionStatus === 401) return;
         dispatch({
           type: "recover-send", threadId, restoreDraft: true,
           recovery: {
@@ -1087,7 +1101,7 @@ export function HubShellHost() {
       type: "recover-attachment-draft", threadId, recoveryId,
       text: text || (outcome === "cancelled" ? "Review the attachment." : outcome.question),
       notice, restoreDraft: ownsAttempt,
-      allowWithoutAttachment: outcome !== "cancelled" && outcome.reattach === false,
+      requiredAttachmentKinds: files.map(({ attachment }) => attachment.kind),
     });
   }, [adapter, send, dropOutgoing, outgoingOwner]);
 
@@ -1201,8 +1215,12 @@ export function HubShellHost() {
       return;
     }
     if (!detail) throw new Error(NO_PROJECT_ERROR);
-    if (attachmentDraftRecovery && !attachmentDraftRecovery.allowWithoutAttachment && files.length === 0) {
-      throw new Error("Attach the file again before sending.");
+    if (attachmentDraftRecovery) {
+      if (files.length === 0) throw new Error("Attach the file again before sending.");
+      const missing = missingAttachmentKinds(attachmentDraftRecovery.requiredAttachmentKinds ?? [], attachments);
+      if (missing.length) throw new Error(missing.includes("photo")
+        ? "Attach the missing photo before sending."
+        : "Attach the missing files before sending.");
     }
     // A deliberately reviewed target can reuse the held photo.
     const held = heldQuestionForSend(draftRecovery, draftRetryCheck, q, files.length);
@@ -1255,6 +1273,7 @@ export function HubShellHost() {
   };
   const onRetrySendError = () => { if (failedBody) retryRecovery(failedBody); };
   const discardRecovery = (recovery: HubSendRecovery) => {
+    if (abortRef.current || uploadAbortRef.current) return;
     const threadId = state.thread.id;
     if (recovery.draftRevision !== undefined &&
         recoveryOwnsDraft(recovery, state.draftRevision, view.draft, attachmentDraftThreads.has(threadId))) {
@@ -1570,7 +1589,7 @@ export function HubShellHost() {
                 onClick={() => retryRecovery(recovery, check.kind === "review")}>
                 {check.kind === "review" ? "Send saved question to current target" : "Retry saved question"}
               </button>
-              <button type="button" onClick={() => discardRecovery(recovery)}>Discard saved question</button>
+              <button type="button" disabled={busy} onClick={() => discardRecovery(recovery)}>Discard saved question</button>
             </div>;
           })}
           {draftTargetMessage && <p className="fl-qtarget__browsing" role="status">{draftTargetMessage}</p>}
@@ -1587,6 +1606,10 @@ export function HubShellHost() {
             {!recovery.noticeDismissed && <button type="button" disabled={busy}
               onClick={() => dispatch({ type: "dismiss-attachment-notice", threadId: state.thread.id, recoveryId: recovery.id })}>
               Dismiss attachment notice
+            </button>}
+            {attachmentDraftRecovery === recovery && <button type="button" disabled={busy}
+              onClick={() => dispatch({ type: "clear-attachment-recovery", threadId: state.thread.id, recoveryId: recovery.id })}>
+              Continue without the missing files
             </button>}
             <button type="button" disabled={busy || (attachmentDraftRecovery === recovery && attachmentDraftThreads.has(state.thread.id))}
               onClick={() => dispatch({ type: "discard-attachment-question", threadId: state.thread.id, recoveryId: recovery.id })}>

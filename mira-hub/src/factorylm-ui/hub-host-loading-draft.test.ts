@@ -191,6 +191,28 @@ describe("Hub draft isolation across notebook navigation (#5684)", () => {
   });
 
 
+  it.each(["active", "parked"])("keeps a late upload failure out of a %s photo-only draft", (location) => {
+    const threadId = shellThreadId(SEL);
+    const opened = hubHostReducer(initialHubShellState(), openThreadAction(SEL, AT));
+    const withPhoto = hubHostReducer(opened, {
+      type: "pending-attachments", threadIds: new Set([threadId]), editedThreadId: threadId,
+    });
+    const visible = location === "active" ? withPhoto : hubHostReducer(withPhoto, openThreadAction(destination, AT));
+    const recovered = hubHostReducer(visible, {
+      type: "recover-attachment-draft", threadId, recoveryId: "late-upload",
+      text: "Original question", notice: "Upload interrupted",
+    });
+    const returned = hubHostReducer(recovered, openThreadAction(SEL, AT));
+    expect(returned.draft).toBe("");
+    expect(returned.attachmentRecoveries?.get(threadId)).toMatchObject([{ id: "late-upload", question: "Original question" }]);
+    expect(hubHostReducer(returned, { type: "restore-attachment-draft", threadId, recoveryId: "late-upload" })).toBe(returned);
+    const withoutPhoto = hubHostReducer(returned, {
+      type: "pending-attachments", threadIds: new Set(), editedThreadId: threadId,
+    });
+    expect(hubHostReducer(withoutPhoto, { type: "restore-attachment-draft", threadId, recoveryId: "late-upload" }).draft)
+      .toBe("Original question");
+  });
+
   it("F25 keeps separate interrupted uploads with identical wording", () => {
     const threadId = shellThreadId(SEL);
     const origin = hubHostReducer(initialHubShellState(), openThreadAction(SEL, AT));

@@ -78,6 +78,20 @@ export function pairAttachments(
   return files;
 }
 
+/** Return the kinds still missing from a recovered upload, including repeats. */
+export function missingAttachmentKinds(
+  required: readonly Attachment["kind"][],
+  attachments: readonly Attachment[],
+): Attachment["kind"][] {
+  const available = attachments.map((attachment) => attachment.kind);
+  return required.filter((kind) => {
+    const index = available.indexOf(kind);
+    if (index < 0) return true;
+    available.splice(index, 1);
+    return false;
+  });
+}
+
 /**
  * Resolve the namespace node a HOME send uploads into (every notebook owns one).
  * Never throws: the Composer has already cleared the draft, so a rejected read

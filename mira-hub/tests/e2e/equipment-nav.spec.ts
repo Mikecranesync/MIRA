@@ -820,10 +820,14 @@ for (const settlement of ["terminal retry", "attachment added during retry", "de
   });
 }
 
-for (const interruption of ["navigation", "Stop", "navigation with clean close", "Stop with clean close"]) {
-  test("F31/F34 saved stopped turn keeps the right recovery after " + interruption, async ({ page, context, baseURL }) => {
+for (const interruption of [
+  "navigation", "Stop", "navigation with clean close", "Stop with clean close",
+  "retry Stop on abort", "retry Stop with clean close", "retry Discard",
+]) {
+  test("F31/F34/F37/F38 the correct recovery survives " + interruption, async ({ page, context, baseURL }) => {
     const explicitStop = interruption.startsWith("Stop");
     const cleanClose = interruption.endsWith("clean close");
+    const holdRetry = interruption.startsWith("retry");
     await auth(context, baseURL!);
     await routes(page, { enabled: true, resolve: "resolved", initial: { [THREAD]: { componentId: VFD, version: 2 } } });
     await otherMachine(page);
@@ -853,19 +857,21 @@ for (const interruption of ["navigation", "Stop", "navigation with clean close",
           answerText: saved === "stopped" ? "Saved partial answer." : "Completed replay.", evidence: [] }],
       }));
     });
-    await page.addInitScript(({ deferStop, cleanClose }) => {
+    await page.addInitScript(({ deferStop, cleanClose, holdRetry }) => {
       const fetchNormally = window.fetch.bind(window);
-      let intercepted = false;
+      let intercepted = 0;
       window.fetch = (input, init) => {
-        if (intercepted || init?.method !== "POST" || !String(input).includes("/chat/")) return fetchNormally(input, init);
-        intercepted = true;
-        document.documentElement.dataset.stoppedRequest = String(init.body);
+        if (intercepted >= (holdRetry ? 2 : 1) || init?.method !== "POST" || !String(input).includes("/chat/")) return fetchNormally(input, init);
+        intercepted++;
+        const retrying = intercepted === 2;
+        const partial = retrying ? "Retry partial answer." : "Live partial answer.";
+        document.documentElement.dataset[retrying ? "fixtureRetryRequest" : "stoppedRequest"] = String(init.body);
         const { componentId, selectionVersion } = JSON.parse(String(init.body)).componentSelection;
         const stream = new ReadableStream<Uint8Array>({
           start(controller) {
             const component = JSON.stringify({ kind: "component", componentId, selectionVersion, label: "VFD1", actions: [] });
             controller.enqueue(new TextEncoder().encode(
-              'data: ' + component + '\n\ndata: {"kind":"content","content":"Live partial answer."}\n\n',
+              'data: ' + component + '\n\ndata: ' + JSON.stringify({ kind: "content", content: partial }) + '\n\n',
             ));
             init.signal?.addEventListener("abort", () => {
               const finish = () => {
@@ -880,7 +886,7 @@ for (const interruption of ["navigation", "Stop", "navigation with clean close",
         });
         return Promise.resolve(new Response(stream, { headers: { "Content-Type": "text/event-stream" } }));
       };
-    }, { deferStop: explicitStop, cleanClose });
+    }, { deferStop: explicitStop, cleanClose, holdRetry });
     await page.route(/\/api\/equipment-notebooks\/[^/]+\/chat\/?$/, (route) => {
       retry = route.request().postData() ?? "";
       const body = 'data: {"kind":"content","content":"Completed replay."}\n\ndata: {"kind":"status","status":"answered"}\n\n';
@@ -918,6 +924,30 @@ for (const interruption of ["navigation", "Stop", "navigation with clean close",
     }
     await expect(composer(page)).toHaveValue(question, { timeout: 6000 });
     await tryAgain.click({ timeout: 6000 });
+    if (holdRetry) {
+      await expect(html).toHaveAttribute("data-fixture-retry-request", original);
+      await expect(page.getByText("Retry partial answer.", { exact: true })).toBeVisible();
+      const discard = page.getByRole("button", { name: "Discard saved question", exact: true });
+      if (interruption === "retry Discard") {
+        await expect(discard.and(page.locator(":enabled"))).toHaveCount(0, { timeout: 3500 });
+        await page.getByRole("button", { name: "Stop", exact: true }).click();
+        return;
+      }
+      const preserved = cleanClose ? "A newer independent question." : "";
+      if (preserved) await composer(page).fill(preserved);
+      saved = "unavailable";
+      await page.getByRole("button", { name: "Stop", exact: true }).click();
+      await expect(page.getByText("Stopped before the answer completed.", { exact: true })).toBeVisible();
+      await projects.locator('[data-item-id="notebook-' + OTHER_NB + ':thread-legacy"]').click();
+      await projects.getByRole("button", { name: "Stopped turn fixture", exact: true }).click();
+      await expect(page.getByText("Retry partial answer.", { exact: true })).toBeVisible();
+      await expect(tryAgain).toHaveCount(0, { timeout: 3500 });
+      await expect(discard).toHaveCount(0);
+      await expect(composer(page)).toHaveValue(preserved);
+      expect(retry).toBe("");
+      expect(uploads).toBe(1);
+      return;
+    }
     await expect.poll(() => retry).toBe(original);
     expect(uploads).toBe(1);
     await expect(answers).toHaveCount(1);
@@ -2614,57 +2644,81 @@ for (const interruption of ["navigation", "explicit Stop", "explicit Stop in a f
   });
 }
 
-test("F35 dismissing an interrupted upload notice keeps reattachment required", async ({ page, context, baseURL }) => {
-  await auth(context, baseURL!);
-  await routes(page, { enabled: true, resolve: "resolved", initial: { [THREAD]: { componentId: VFD, version: 2 } } });
-  await otherMachine(page);
-  let uploads = 0;
-  const requests: unknown[] = [];
-  let release = () => {};
-  const finish = new Promise<void>((resolve) => { release = resolve; });
-  await page.route(/\/api\/equipment-notebooks\/[^/]+\/look\/?$/, async (route) => {
-    if (++uploads === 1) {
-      await finish;
-      return route.fulfill(json({ error: "fixture_upload_cancelled" }, 503)).catch(() => {});
+for (const files of ["photo", "photo and manual"]) {
+  test("F35/F36 an edited recovered question keeps its " + files + " requirement", async ({ page, context, baseURL }) => {
+    const withManual = files === "photo and manual";
+    const attachManual = (name: string) => composer(page).evaluate((field, filename) => {
+      const clipboardData = new DataTransfer();
+      clipboardData.items.add(new File(["Synthetic manual"], filename, { type: "text/plain" }));
+      field.dispatchEvent(new ClipboardEvent("paste", { clipboardData, bubbles: true, cancelable: true }));
+    }, name);
+    await auth(context, baseURL!);
+    await routes(page, { enabled: true, resolve: "resolved", initial: { [THREAD]: { componentId: VFD, version: 2 } } });
+    await otherMachine(page);
+    await page.route(/\/api\/namespace\/node\/[^/]+\/files\/?$/, (route) =>
+      route.fulfill(json({ indexed: true, uploadId: "f36-manual-doc" })));
+    await page.route(/\/api\/equipment-notebooks\/[^/]+\/sources\/?$/, (route) =>
+      route.request().method() === "POST" ? route.fulfill(json({ ok: true })) : route.fallback());
+    let uploads = 0;
+    const requests: unknown[] = [];
+    let release = () => {};
+    const finish = new Promise<void>((resolve) => { release = resolve; });
+    await page.route(/\/api\/equipment-notebooks\/[^/]+\/look\/?$/, async (route) => {
+      if (++uploads === 1) {
+        await finish;
+        return route.fulfill(json({ error: "fixture_upload_cancelled" }, 503)).catch(() => {});
+      }
+      return route.fulfill(json({ fileId: "f35-reattached-photo", observation: { text: "Drive photo" },
+        attachment: { linkId: "link" }, observationPersisted: true }));
+    });
+    await page.route(/\/api\/equipment-notebooks\/[^/]+\/chat\/?$/, (route) => {
+      requests.push(route.request().postDataJSON());
+      return route.fulfill({ status: 200, contentType: "text/event-stream", body: 'data: {"kind":"status","status":"answered"}\n\n' });
+    });
+    try {
+      await page.goto("/v3/?notebook=" + NB + "&thread=" + THREAD);
+      await expect(page.getByTestId("bench-asking-about")).toBeVisible();
+      const question = "Wait for this question's photo.";
+      const edited = withManual ? question : "Wait for the equipment photo.";
+      await composer(page).fill(question);
+      await attachDraftPhoto(page, "f35-original.png");
+      if (withManual) await attachManual("original-manual.txt");
+      const send = page.getByRole("button", { name: "Send", exact: true });
+      await send.click();
+      await expect.poll(() => uploads).toBe(1);
+      const projects = page.getByRole("region", { name: "Projects" });
+      await projects.locator('[data-item-id="notebook-' + OTHER_NB + ':thread-legacy"]').click();
+      await projects.locator('[data-item-id="notebook-' + NB + ':thread-' + THREAD + '"]').click();
+      await expect(page.getByTestId("bench-asking-about")).toBeVisible();
+      await expect(composer(page)).toHaveValue(question);
+      const card = page.getByRole("group", { name: "Interrupted attachment" });
+      await card.getByRole("button", { name: "Dismiss attachment notice" }).click();
+      await expect(card.getByRole("status")).toHaveCount(0);
+      const error = page.getByRole("alert", { name: "Send error" });
+      if (!withManual) {
+        await composer(page).fill(edited);
+        await send.click();
+        await expect(error).toContainText("Attach the file again before sending.", { timeout: 4500 });
+        expect(requests).toHaveLength(0);
+        await expect(composer(page)).toHaveValue(edited);
+      }
+      if (withManual) {
+        await attachManual("replacement-manual.txt");
+        await expect(page.getByRole("button", { name: /Remove replacement-manual/ })).toBeVisible();
+        await send.click();
+        await expect(error).toContainText("Attach the missing photo before sending.", { timeout: 4500 });
+        expect(requests).toHaveLength(0);
+      }
+      await attachDraftPhoto(page, "f35-replacement.png");
+      await send.click();
+      await expect.poll(() => requests.length).toBe(1);
+      expect(requests[0]).toMatchObject({ message: edited, visualEvidence: { fileId: "f35-reattached-photo" } });
+      await expect(card).toHaveCount(0);
+    } finally {
+      release();
     }
-    return route.fulfill(json({ fileId: "f35-reattached-photo", observation: { text: "Drive photo" },
-      attachment: { linkId: "link" }, observationPersisted: true }));
   });
-  await page.route(/\/api\/equipment-notebooks\/[^/]+\/chat\/?$/, (route) => {
-    requests.push(route.request().postDataJSON());
-    return route.fulfill({ status: 200, contentType: "text/event-stream", body: 'data: {"kind":"status","status":"answered"}\n\n' });
-  });
-  try {
-    await page.goto("/v3/?notebook=" + NB + "&thread=" + THREAD);
-    await expect(page.getByTestId("bench-asking-about")).toBeVisible();
-    const question = "Wait for this question's photo.";
-    await composer(page).fill(question);
-    await attachDraftPhoto(page, "f35-original.png");
-    const send = page.getByRole("button", { name: "Send", exact: true });
-    await send.click();
-    await expect.poll(() => uploads).toBe(1);
-    const projects = page.getByRole("region", { name: "Projects" });
-    await projects.locator('[data-item-id="notebook-' + OTHER_NB + ':thread-legacy"]').click();
-    await projects.locator('[data-item-id="notebook-' + NB + ':thread-' + THREAD + '"]').click();
-    await expect(page.getByTestId("bench-asking-about")).toBeVisible();
-    await expect(composer(page)).toHaveValue(question);
-    const card = page.getByRole("group", { name: "Interrupted attachment" });
-    await card.getByRole("button", { name: "Dismiss attachment notice" }).click();
-    await expect(card.getByRole("status")).toHaveCount(0);
-    await send.click();
-    await expect(page.getByRole("alert", { name: "Send error" })).toContainText("Attach the file again before sending.");
-    expect(requests).toHaveLength(0);
-    await expect(composer(page)).toHaveValue(question);
-
-    await attachDraftPhoto(page, "f35-replacement.png");
-    await send.click();
-    await expect.poll(() => requests.length).toBe(1);
-    expect(requests[0]).toMatchObject({ message: question, visualEvidence: { fileId: "f35-reattached-photo" } });
-    await expect(card).toHaveCount(0);
-  } finally {
-    release();
-  }
-});
+}
 
 test("F25 a second interrupted upload preserves both original questions", async ({ page, context, baseURL }) => {
   await auth(context, baseURL!);
@@ -2863,4 +2917,42 @@ test("F29 an older interrupted answer leaves the newer saved answer and its foll
   await expect(answers.nth(1)).toContainText("Older partial answer.", { timeout: 6000 });
   await expect(answers.last()).toContainText("Newer saved answer.");
   await expect(persisted.getByRole("button", { name: suggestion, exact: true })).toBeVisible();
+});
+
+test("a late chat cutoff keeps a newer photo-only draft independent", async ({ page, context, baseURL }) => {
+  await auth(context, baseURL!);
+  await routes(page, { enabled: true, resolve: "resolved", initial: { [THREAD]: { componentId: VFD, version: 2 } } });
+  let release = () => {};
+  const finish = new Promise<void>((resolve) => { release = resolve; });
+  const requests: Record<string, unknown>[] = [];
+  await page.route(/\/api\/equipment-notebooks\/[^/]+\/chat\/?$/, async (route) => {
+    requests.push(route.request().postDataJSON());
+    await finish;
+    const body = requests.length === 1 ? "" : 'data: {"kind":"status","status":"answered"}\n\n';
+    return route.fulfill({ status: 200, contentType: "text/event-stream", body });
+  });
+  try {
+    await page.goto("/v3/?notebook=" + NB + "&thread=" + THREAD);
+    await expect(page.getByTestId("bench-asking-about")).toBeVisible();
+    const oldQuestion = "Keep this old question separate from the next photo.";
+    await composer(page).fill(oldQuestion);
+    await page.getByRole("button", { name: "Send", exact: true }).click();
+    await expect.poll(() => requests.length).toBe(1);
+    await expect(composer(page)).toHaveValue("");
+    await attachDraftPhoto(page, "reserved-new-photo.png");
+    const removeNewPhoto = page.getByRole("button", { name: /Remove reserved-new-photo/ });
+    await expect(removeNewPhoto).toBeVisible();
+    release();
+    await expect(page.getByRole("alert", { name: "Send error" })).toContainText("didn't confirm");
+    await expect(composer(page)).toHaveValue("", { timeout: 3500 });
+    await expect(removeNewPhoto).toBeVisible();
+    const retry = page.getByRole("button", { name: "Try again", exact: true });
+    await retry.click();
+    await expect.poll(() => requests.length).toBe(2);
+    expect(requests[1]).toEqual(requests[0]);
+    await expect(composer(page)).toHaveValue("");
+    await expect(removeNewPhoto).toBeVisible();
+  } finally {
+    release();
+  }
 });
