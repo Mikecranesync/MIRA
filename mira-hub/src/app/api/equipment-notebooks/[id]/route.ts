@@ -19,11 +19,18 @@ import {
 import { listFilesForTarget } from "@/lib/workspace-files";
 import {
   currentManualSearchStatus,
-  threadNamesOtherModel,
+  threadStatusScope,
   type ManualSearchStatus,
 } from "@/capabilities/notebook-manual-acquisition";
+import { confirmedCatalogNumber } from "@/capabilities/notebook-manual-identity";
+import { SUBJECT_READ_STEPS } from "@/capabilities/conversation-subject";
 
 export const dynamic = "force-dynamic";
+
+/** The conversation history the GET returns. */
+const TURN_WINDOW = 50;
+/** How far back the manual-status subject is read when the window settles nothing. */
+const WIDEST_SUBJECT_READ = SUBJECT_READ_STEPS[SUBJECT_READ_STEPS.length - 1];
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -72,7 +79,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     // 086: history is read AS the authenticated technician — own turns plus
     // labeled legacy rows, never another user's. Same endpoint for Mobile and
     // Web, so this is where "your conversation on any device" is decided.
-    listTurns(ctx.tenantId, id, 50, { viewerUserId: ctx.userId, ...(threadId ? { threadId } : {}) }),
+    listTurns(ctx.tenantId, id, TURN_WINDOW, { viewerUserId: ctx.userId, ...(threadId ? { threadId } : {}) }),
     // 087 / THRD-0: the notebook is the Project; these are its conversations.
     // Derived from rows the same viewer may read, so isolation matches history.
     listThreads(ctx.tenantId, id, 50, { viewerUserId: ctx.userId }),
@@ -124,20 +131,37 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   } catch (err) {
     console.error("[equipment-notebooks] manual search status read failed (continuing without it):", err);
   }
-  // The status names the project's machine. A thread that asked about another
-  // exact model must not show that machine's ready line and manual link under
-  // its own answer. Only a thread-scoped read knows which questions belong to
-  // the open conversation; a whole-notebook read keeps the status.
-  if (
-    manualSearch && threadId &&
-    threadNamesOtherModel(turns.map((t) => t.question), {
+  // #5750: the status names the project's machine. A thread that asked about
+  // another exact model must not show that machine's ready line and manual
+  // link under its own answer. Only a thread-scoped read knows which questions
+  // belong to the open conversation; a whole-notebook read keeps the status.
+  // The response says why it was withheld (`manualSearchScope`), so a client
+  // can tell it apart from a failed read and clear a status it already shows.
+  let manualSearchScope: "other_model" | "out_of_reach" | undefined;
+  if (manualSearch && threadId) {
+    const machine = {
+      manufacturer: manualSearch.manufacturer,
       model: manualSearch.model,
       catalogNumber: manualSearch.model === notebook.model ? notebook.catalogNumber : null,
-    })
-  ) {
-    manualSearch = null;
+      recordCatalog: confirmedCatalogNumber(notebook),
+    };
+    let scope = threadStatusScope(turns.map((t) => t.question), machine);
+    // The newest 50 turns settle nothing, and older ones exist: read further
+    // back (the same widest step the chat path's subject read uses) before
+    // trusting that the thread never named another model. Still nothing past
+    // that bound: the subject is out of reach, so the status is withheld.
+    if (scope === "undecided" && turns.length >= TURN_WINDOW) {
+      const wider = await listTurns(ctx.tenantId, id, WIDEST_SUBJECT_READ, { viewerUserId: ctx.userId, threadId });
+      scope = threadStatusScope(wider.map((t) => t.question), machine);
+      if (scope === "undecided" && wider.length >= WIDEST_SUBJECT_READ) manualSearchScope = "out_of_reach";
+    }
+    if (scope === "other") manualSearchScope = "other_model";
+    if (manualSearchScope) manualSearch = null;
   }
-  return NextResponse.json({ notebook, sources, turns, threads, photos, manualSearch });
+  return NextResponse.json({
+    notebook, sources, turns, threads, photos, manualSearch,
+    ...(manualSearchScope ? { manualSearchScope } : {}),
+  });
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

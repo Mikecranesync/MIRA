@@ -36,7 +36,10 @@ import {
 } from "@/capabilities/manual-acquisition";
 import { MANUAL_SEARCH_LIMIT_COPY, MANUAL_SEARCH_UNAVAILABLE_COPY } from "@/capabilities/manual-search-copy";
 import { reviewedManualFor } from "@/capabilities/reviewed-manual-library";
-import { exactManualIdentity } from "@/capabilities/candidate-identity";
+import { exactManualIdentity, makerFromText } from "@/capabilities/candidate-identity";
+import { returnsToRecord } from "@/capabilities/conversation-subject";
+import { modelIdentitiesInText } from "@/capabilities/model-token";
+import { normalizeManufacturer } from "@/lib/manufacturerNormalize";
 
 /** A running claim older than this is treated as abandoned (container restart). */
 export const STALE_RUNNING_MINUTES = 10;
@@ -81,6 +84,11 @@ export interface AcquisitionRecord {
    *  Only then may the chat call it "part of the <model> manual"; a partial
    *  document never checked against the model is a possible manual. */
   model_verified?: boolean;
+  /** Set with `partial`: why the document was judged partial (#5750 F5) —
+   *  "chapter_start" (it reads like one chapter, an excerpt) and/or
+   *  "unmapped_glyphs" (numbers on some pages did not read). Absent on
+   *  records written before it was kept. */
+  partial_reasons?: Array<"chapter_start" | "unmapped_glyphs">;
   /** The claim generation that wrote this record (Codex #4118 r3 F6). */
   gen?: string;
   /** Reviewed publication digest attempted by this generation, even on a miss. */
@@ -501,7 +509,11 @@ export function recordFromOutcome(key: string, startedAt: string | null, out: Ma
   // Garage pilot L2: the acquisition judged the document partial (one chapter,
   // or numbers that did not read). It stamped candidateApplicability='candidate'
   // so confirmation cannot promote it; the record says so explicitly.
-  const partial = (p.manual?.completeness as { complete?: unknown } | null | undefined)?.complete === false;
+  const completeness = p.manual?.completeness as { complete?: unknown; reasons?: unknown } | null | undefined;
+  const partial = completeness?.complete === false;
+  const partialReasons = Array.isArray(completeness?.reasons)
+    ? (["chapter_start", "unmapped_glyphs"] as const).filter((r) => (completeness.reasons as unknown[]).includes(r))
+    : [];
   // Another request is indexing these exact bytes: nothing is attached here YET.
   // Leave the claim "running" so the stale-claim recovery retries it and the
   // retry reuses the finished document instead of reporting a phantom source.
@@ -531,7 +543,13 @@ export function recordFromOutcome(key: string, startedAt: string | null, out: Ma
     candidate_url: str(p.candidate?.url),
     attached_indexed: attachedIndexed,
     promotes_on_confirm: attachedIndexed && p.manual?.candidateApplicability === "verified" && !partial,
-    ...(partial ? { partial: true, ...(p.applicability?.state === "verified" ? { model_verified: true } : {}) } : {}),
+    ...(partial
+      ? {
+          partial: true,
+          ...(p.applicability?.state === "verified" ? { model_verified: true } : {}),
+          ...(partialReasons.length ? { partial_reasons: [...partialReasons] } : {}),
+        }
+      : {}),
     doc_id: str(p.manual?.docId),
     file_id: str(p.manual?.fileId),
     download_reason: downloadReason,
@@ -1141,14 +1159,35 @@ export function acquisitionDeclineText(
       // Garage pilot L2: the document is PART of a manual (one chapter, or pages
       // whose numbers did not read). It is never turned on by confirming it —
       // the one real next step is the full manual.
-      if (rec.attached_indexed && rec.partial && rec.model_verified) {
-        return `I found part of the ${label} manual${rec.candidate_host ? ` (from ${rec.candidate_host})` : ""}, but not the whole manual — one chapter, or pages whose numbers did not read — so it isn't turned on. Add the full manual for the ${label} to this notebook and ask again — I'll answer from it and show you the page.`;
-      }
-      // Partial, and its text never verified this model (staging walk
-      // 2026-11-21: gs1m.pdf for "GS11N-20P25"): neither "part of the <model>
-      // manual" nor "turn it on" is true. The next step is still the full manual.
       if (rec.attached_indexed && rec.partial) {
-        return `I found a possible manual for the ${label}${rec.candidate_host ? ` (from ${rec.candidate_host})` : ""}, but I couldn't confirm it covers this exact model, and it is only part of a manual, so it isn't turned on. Add the full manual for the ${label} to this notebook and ask again — I'll answer from it and show you the page.`;
+        const from = rec.candidate_host ? ` (from ${rec.candidate_host})` : "";
+        // #5750 F5: say what was actually wrong with the copy. "One chapter"
+        // is an excerpt: the next step is the full manual. Unreadable numbers
+        // alone are a whole manual that did not read: the next step is a
+        // readable copy, not "the rest of it". A record written before the
+        // reasons were kept says only that it could not be fully read.
+        const reasons = rec.partial_reasons ?? [];
+        const excerpt = reasons.includes("chapter_start");
+        const unreadable = reasons.includes("unmapped_glyphs");
+        const problem = excerpt && unreadable
+          ? "it reads like one chapter of a manual, not the whole manual, and numbers on some of its pages did not read"
+          : excerpt
+            ? "it reads like one chapter of a manual, not the whole manual"
+            : unreadable
+              ? "numbers on some of its pages did not read"
+              : "I couldn't fully read or check it";
+        const next = excerpt
+          ? `Add the full manual for the ${label} to this notebook`
+          : unreadable
+            ? `Add a readable copy of the ${label} manual to this notebook`
+            : `Add the full, readable manual for the ${label} to this notebook`;
+        // Garage pilot L2 + staging walk 2026-11-21 (gs1m.pdf for
+        // "GS11N-20P25"): only a document whose own text verified this exact
+        // model is called the <model> manual; any other is a possible manual.
+        const found = rec.model_verified
+          ? excerpt ? `I found part of the ${label} manual${from}` : `I found a copy of the ${label} manual${from}`
+          : `I found a possible manual for the ${label}${from}, but I couldn't confirm it covers this exact model`;
+        return `${found}${rec.model_verified ? ", but" : ", and"} ${problem}, so it isn't turned on. ${next} and ask again — I'll answer from it and show you the page.`;
       }
       if (rec.attached_indexed) {
         return `I found a possible manual for the ${label}${rec.candidate_host ? ` (from ${rec.candidate_host})` : ""}, but I couldn't confirm it covers this exact model, so it isn't turned on. Check it in this notebook's Sources — turn it on if it's right and ask again.`;
@@ -1200,25 +1239,48 @@ export function acquisitionDeclineText(
 export type { ManualSearchStatus };
 
 /**
- * Whether a thread's own latest model request names a model other than the
- * one a project status is about. The status is project-wide, so without this
- * a thread that asked about a look-alike model shows the project machine's
- * ready line and manual link under its answer (staging tablet walk
- * 2026-11-21). `questions` is chronological. Fails open: a thread whose
- * questions name no exact model (the photo turn, a general question) keeps
- * the status. Reuses the chat route's exact-request reader, not a new parser.
+ * Which machine a thread is about, for the project's manual status (#5750).
+ * The status is project-wide, so without this a thread that asked about a
+ * look-alike model shows the project machine's ready line and manual link
+ * under its answer (staging tablet walk 2026-11-21).
+ *
+ * `questions` is chronological. The newest question that settles it wins:
+ * - a return to the confirmed unit ("ok, back to my drive", the same reader
+ *   retrieval uses, and only when a catalog number is on record) is "own";
+ * - an exact catalog number (GS11N-20P25) or an exact manual request names a
+ *   model; it is "own" when it is the project's model or catalog number and
+ *   names no other maker (aliases count as the same maker), else "other";
+ * - a question that names no exact model (the photo turn, a follow-up, the
+ *   family name GS10) settles nothing.
+ * "undecided" means nothing read settles it. Reuses the chat path's
+ * detectors; this adds no new parser.
  */
-export function threadNamesOtherModel(
+export type ThreadStatusScope = "own" | "other" | "undecided";
+
+export function threadStatusScope(
   questions: readonly string[],
-  identity: { model: string | null | undefined; catalogNumber: string | null | undefined },
-): boolean {
+  machine: {
+    manufacturer: string | null | undefined;
+    model: string | null | undefined;
+    catalogNumber: string | null | undefined;
+    /** The confirmed catalog number, or null — what "my drive" refers to. */
+    recordCatalog: string | null;
+  },
+): ThreadStatusScope {
   const norm = (s: string | null | undefined) => (s ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
-  const own = new Set([norm(identity.model), norm(identity.catalogNumber)].filter(Boolean));
+  const maker = (s: string | null | undefined) => normalizeManufacturer(s).canonical.toUpperCase().replace(/[^A-Z0-9]/g, "");
+  const own = new Set([norm(machine.model), norm(machine.catalogNumber)].filter(Boolean));
+  const ownMaker = maker(machine.manufacturer);
+  const otherMaker = (named: string | null | undefined) => Boolean(named && ownMaker && maker(named) !== ownMaker);
   for (let i = questions.length - 1; i >= 0; i--) {
-    const asked = exactManualIdentity("", questions[i] ?? "");
-    if (asked) return !own.has(norm(asked.model));
+    const q = questions[i] ?? "";
+    if (machine.recordCatalog && returnsToRecord(q)) return "own";
+    const exact = exactManualIdentity("", q);
+    if (exact) return otherMaker(exact.manufacturer) || !own.has(norm(exact.model)) ? "other" : "own";
+    const catalogs = [...modelIdentitiesInText(q)].filter((id) => /-[A-Z0-9]*\d/i.test(id)).map(norm);
+    if (catalogs.length) return otherMaker(makerFromText(q)) || catalogs.some((c) => !own.has(c)) ? "other" : "own";
   }
-  return false;
+  return "undecided";
 }
 
 /**

@@ -15,13 +15,27 @@
 import type { ManualSearchStatus } from "@factorylm/interaction";
 import { request } from "./client";
 
+/**
+ * One status read: the status, `"hidden"` when the server withheld the
+ * project status because this thread is about a different model (#5750 —
+ * the route reports a `manualSearchScope`), or `null` when the
+ * read failed or carried nothing. Only `"hidden"` clears a status the chat
+ * already shows; `null` never does.
+ */
+export type ManualSearchRead = ManualSearchStatus | "hidden" | null;
+
 export async function fetchManualSearchStatus(
   notebookId: string,
   opts: { threadId?: string | null } = {},
-): Promise<ManualSearchStatus | null> {
+): Promise<ManualSearchRead> {
   const query = opts.threadId ? `?threadId=${encodeURIComponent(opts.threadId)}` : "";
   const res = await request(`/api/equipment-notebooks/${encodeURIComponent(notebookId)}/${query}`);
   if (res.status !== 200 || typeof res.data !== "object" || res.data === null) return null;
+  // The route withheld the project status for this thread: it is about
+  // another model ("other_model"), or its subject is too far back to read
+  // ("out_of_reach"). Either way the status must not be shown here.
+  const scope = (res.data as { manualSearchScope?: unknown }).manualSearchScope;
+  if (opts.threadId && (scope === "other_model" || scope === "out_of_reach")) return "hidden";
   const m = (res.data as { manualSearch?: unknown }).manualSearch;
   if (typeof m !== "object" || m === null) return null;
   const r = m as Record<string, unknown>;

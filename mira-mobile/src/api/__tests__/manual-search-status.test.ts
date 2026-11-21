@@ -67,7 +67,8 @@ describe("fetchManualSearchStatus", () => {
 
   it("preserves the server's manual download link", async () => {
     request.mockResolvedValue({ status: 200, data: { manualSearch: { manufacturer: "KEYENCE", model: "GL-R", running: false, manualUrl: "https://www.keyence.com/manual" } }, text: "" });
-    expect((await fetchManualSearchStatus("nb-1"))?.manualUrl).toBe("https://www.keyence.com/manual");
+    const read = await fetchManualSearchStatus("nb-1");
+    expect(read !== "hidden" && read?.manualUrl).toBe("https://www.keyence.com/manual");
   });
 
   it("returns null when the server has no manualSearch (older Hub, or nothing running)", async () => {
@@ -75,6 +76,24 @@ describe("fetchManualSearchStatus", () => {
     expect(await fetchManualSearchStatus("nb-1")).toBeNull();
     request.mockResolvedValue({ status: 200, data: {}, text: "" });
     expect(await fetchManualSearchStatus("nb-1")).toBeNull();
+  });
+
+  // #5750 F1: the route withheld the project status for this thread. That is
+  // an answer ("hidden"), not a failed read (null), so the chat clears it.
+  it("returns hidden when a thread-scoped read says the status was withheld", async () => {
+    for (const manualSearchScope of ["other_model", "out_of_reach"]) {
+      request.mockResolvedValue({ status: 200, data: { manualSearch: null, manualSearchScope }, text: "" });
+      expect(await fetchManualSearchStatus("nb-1", { threadId: "thrd-1" })).toBe("hidden");
+    }
+  });
+
+  it("control: without the scope field, or on a whole-notebook read, it is not hidden", async () => {
+    request.mockResolvedValue({ status: 200, data: { manualSearch: null }, text: "" });
+    expect(await fetchManualSearchStatus("nb-1", { threadId: "thrd-1" })).toBeNull();
+    request.mockResolvedValue({ status: 200, data: { manualSearch: null, manualSearchScope: "other_model" }, text: "" });
+    expect(await fetchManualSearchStatus("nb-1")).toBeNull();
+    request.mockResolvedValue({ status: 200, data: { manualSearch: null, manualSearchScope: "something_new" }, text: "" });
+    expect(await fetchManualSearchStatus("nb-1", { threadId: "thrd-1" })).toBeNull();
   });
 
   it("returns null (never throws) on a non-200 or malformed response", async () => {

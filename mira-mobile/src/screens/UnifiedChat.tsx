@@ -51,7 +51,7 @@ import {
 import { AnswerMarkdown, copyText } from "./AnswerMarkdown";
 import { ApiError, request } from "../api/client";
 import { confirmIdentityProposal } from "../api/identity-confirm";
-import { fetchManualSearchStatus } from "../api/manual-search-status";
+import { fetchManualSearchStatus, type ManualSearchRead } from "../api/manual-search-status";
 import { canBeChatSource, enabledDocIds, getNotebookDetail, type NotebookServerTurn } from "../api/resources";
 import { threadMessages } from "../chat-adapter/turns-to-parts";
 import type { ChatCitation, ChatTurn } from "../lib/sse";
@@ -118,8 +118,10 @@ interface MobileManualSearchDriver {
   /** Fetch ONE authoritative status right now and reconcile with it if
    *  present. Ends quietly on `null`/error — never retries on its own; the
    *  periodic tick (started by `seed`/`observeLive` when the result is
-   *  `following`) owns re-checking. */
-  probe(): void;
+   *  `following`) owns re-checking. A `"hidden"` read (#5750: the thread
+   *  turned to a different model) drops the tracked status. `onSettled`
+   *  runs once the read has been handled, whatever it returned. */
+  probe(onSettled?: () => void): void;
   /** Stop any pending timer and drop tracked state (unmount only — a
    *  notebook switch already remounts the whole component that owns this
    *  driver; see the `UnifiedChat` wrapper below). */
@@ -137,7 +139,7 @@ function manualSearchKey(notebookId: string, generation: string | undefined): st
 
 function createMobileManualSearchDriver(deps: {
   readonly notebookId: string;
-  readonly fetchStatus: () => Promise<ManualSearchStatus | null>;
+  readonly fetchStatus: () => Promise<ManualSearchRead>;
   readonly onStateChange: (state: ManualSearchFollowState | null) => void;
   readonly onRefreshSources: () => void;
   readonly isAlive: () => boolean;
@@ -164,6 +166,16 @@ function createMobileManualSearchDriver(deps: {
       clearTimeout(timer);
       timer = null;
     }
+  }
+  /** #5750 F1: the server withheld the project status for this thread (it
+   *  is about a different model). Unlike a null read this is authoritative:
+   *  the tracked status, and with it the ready line and link the renderer
+   *  attaches to the latest answer, go away. */
+  function drop(): void {
+    clearTimer();
+    if (state === null) return;
+    state = null;
+    onStateChange(null);
   }
   function commit(result: ManualSearchFollowResult): void {
     const changed = state !== result.state;
@@ -203,6 +215,15 @@ function createMobileManualSearchDriver(deps: {
       void fetchStatus()
         .then((read) => {
           if (!isAlive() || !state) return;
+          if (read === "hidden") {
+            if (mine < lastApplied || currentKey() !== capturedKey) {
+              discard();
+              return;
+            }
+            lastApplied = mine;
+            drop();
+            return;
+          }
           if (mine < lastApplied || currentKey() !== capturedKey && (!read || manualSearchKey(notebookId, read.startedAt) !== currentKey())) {
             discard();
             return;
@@ -247,18 +268,25 @@ function createMobileManualSearchDriver(deps: {
       // longer matches what's now current.
       commit(observeLiveManualSearchFrame(state, notebookId, read));
     },
-    probe() {
+    probe(onSettled) {
       const capturedKey = currentKey();
       const mine = ++seq;
       void fetchStatus()
         .then((read) => {
           if (!isAlive() || !read) return; // ends quietly — nothing to reconcile.
           if (mine < lastApplied) return;
+          if (read === "hidden") {
+            if (currentKey() !== capturedKey) return; // a newer generation started since; this read is about the old one.
+            lastApplied = mine;
+            drop();
+            return;
+          }
           if (currentKey() !== capturedKey && manualSearchKey(notebookId, read.startedAt) !== currentKey()) return;
           lastApplied = mine;
           commit(reseedManualSearchFollow(state, notebookId, read));
         })
-        .catch(() => { /* ends quietly — never retries on its own */ });
+        .catch(() => { /* ends quietly — never retries on its own */ })
+        .finally(() => onSettled?.());
     },
     reset() {
       clearTimer();
@@ -489,6 +517,8 @@ function UnifiedChatForNotebook({
   const notebookIdRef = useRef(notebookId);
   notebookIdRef.current = notebookId;
   const [follow, setFollow] = useState<ManualSearchFollowState | null>(null);
+  // #5750 F1: true from a send until the status re-read after it settles.
+  const [awaitingPostSendRead, setAwaitingPostSendRead] = useState(false);
   // Codex round 6 F17 (#4195): `follow` tracks exactly ONE generation at a
   // time (by design — see `manual-search-follow.ts`'s header). Once a
   // SECOND, different search takes over that one slot, the FIRST search's
@@ -584,8 +614,17 @@ function UnifiedChatForNotebook({
         orphaned.push({ manufacturer: part.manufacturer, model: part.model, running: false, startedAt: part.startedAt });
       }
     }
-    return withManualSearchOverrides(baseThread, [...historical, ...orphaned], follow?.status ?? null);
-  }, [baseThread, settledManualSearches, follow?.key, follow?.status]);
+    // #5750 F1: while a send or its status re-read is pending, the active
+    // status only replaces a part already in the thread; it is never moved
+    // onto the new answer, which may be about a different model.
+    const active = follow?.status ?? null;
+    const hold = busy || awaitingPostSendRead;
+    return withManualSearchOverrides(
+      baseThread,
+      hold && active ? [...historical, ...orphaned, active] : [...historical, ...orphaned],
+      hold ? null : active,
+    );
+  }, [baseThread, settledManualSearches, follow?.key, follow?.status, busy, awaitingPostSendRead]);
 
   useEffect(() => {
     dispatch({
@@ -699,6 +738,31 @@ function UnifiedChatForNotebook({
   useEffect(() => {
     manualSearchDriverRef.current?.probe();
   }, [notebookId, attachmentThreadId]);
+
+  // #5750 F1: a finished answer can change the thread's subject (a
+  // look-alike model). The server then withholds the project status for this
+  // thread, so re-read it once the answer lands; a "hidden" read clears the
+  // line and link the renderer would otherwise move onto the new answer.
+  //
+  // Until that read settles, the tracked status is not attached to any
+  // answer it was not already on: while an answer streams, and while the
+  // re-read is in flight, it only updates a status part already in the thread.
+  // Set during the send, so the first render after `busy` clears is held too.
+  const wasBusyRef = useRef(busy);
+  useEffect(() => {
+    const finished = wasBusyRef.current && !busy;
+    wasBusyRef.current = busy;
+    if (busy) setAwaitingPostSendRead(true);
+    if (!finished) return;
+    const driver = manualSearchDriverRef.current;
+    if (!driver) {
+      setAwaitingPostSendRead(false);
+      return;
+    }
+    driver.probe(() => {
+      if (aliveRef.current) setAwaitingPostSendRead(false);
+    });
+  }, [busy]);
 
   // Open shell layers join the app's one BACK stack (lib/transient-layer.ts):
   // hardware BACK closes the top layer before any tab navigation happens.

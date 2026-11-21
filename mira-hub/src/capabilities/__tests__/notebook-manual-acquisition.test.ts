@@ -1444,8 +1444,42 @@ describe("garage pilot L2 — a partial manual (one chapter / unreadable numbers
     expect(t).not.toMatch(/part of the AUTOMATIONDIRECT GS11N-20P25 manual/);
     expect(t).toContain("couldn't confirm it covers this exact model");
     expect(t).toContain("isn't turned on");
-    expect(t).toContain("full manual");
+    // #5750 F5: unreadable numbers alone are not missing pages.
+    expect(t).toContain("numbers on some of its pages did not read");
+    expect(t).toContain("readable copy");
+    expect(t).not.toMatch(/one chapter|part of a manual|full manual/);
     expect(t).not.toContain("turn it on if it's right");
+  });
+
+  // #5750 Codex F5: the copy names the real problem, and neither turns it on.
+  it("a complete manual whose numbers did not read asks for a readable copy, not the full manual", () => {
+    const rec = recordFromOutcome("K", null, partialOutcome({ complete: false, reasons: ["unmapped_glyphs"], unreadablePages: 3 }));
+    expect(rec.partial_reasons).toEqual(["unmapped_glyphs"]);
+    expect(rec.promotes_on_confirm).toBe(false);
+    const t = acquisitionDeclineText(rec, "K", "AutomationDirect GS11N-20P2")!;
+    expect(t).toContain("copy of the AutomationDirect GS11N-20P2 manual");
+    expect(t).toContain("readable copy");
+    expect(t).toContain("isn't turned on");
+    expect(t).not.toMatch(/one chapter|part of the|full manual/);
+  });
+
+  it("a one-chapter excerpt says it may be an excerpt and asks for the full manual", () => {
+    const rec = recordFromOutcome("K", null, partialOutcome({ complete: false, reasons: ["chapter_start"], unreadablePages: 0 }, "candidate"));
+    expect(rec.partial_reasons).toEqual(["chapter_start"]);
+    expect(rec.promotes_on_confirm).toBe(false);
+    const t = acquisitionDeclineText(rec, "K", "AutomationDirect GS11N-20P2")!;
+    expect(t).toContain("one chapter of a manual");
+    expect(t).toContain("full manual");
+    expect(t).toContain("isn't turned on");
+    expect(t).not.toContain("did not read");
+  });
+
+  it("a stored partial record without reasons says it could not be fully read or checked", () => {
+    const rec = { ...recordFromOutcome("K", null, partialOutcome({ complete: false, reasons: ["unmapped_glyphs"], unreadablePages: 3 })) };
+    delete (rec as { partial_reasons?: unknown }).partial_reasons;
+    const t = acquisitionDeclineText(rec, "K", "AutomationDirect GS11N-20P2")!;
+    expect(t).toContain("couldn't fully read or check it");
+    expect(t).not.toMatch(/one chapter|did not read/);
   });
 
   it("a stored partial record from before the model check reads as a possible manual", () => {

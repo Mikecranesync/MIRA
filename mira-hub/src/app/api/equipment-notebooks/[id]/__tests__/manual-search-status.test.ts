@@ -26,7 +26,7 @@ vi.mock("@/lib/workspace-files", () => ({ listFilesForTarget: vi.fn(async () => 
 const currentManualSearchStatus = vi.hoisted(() => vi.fn());
 vi.mock("@/capabilities/notebook-manual-acquisition", async (importOriginal) => ({
   currentManualSearchStatus,
-  threadNamesOtherModel: (await importOriginal<typeof import("@/capabilities/notebook-manual-acquisition")>()).threadNamesOtherModel,
+  threadStatusScope: (await importOriginal<typeof import("@/capabilities/notebook-manual-acquisition")>()).threadStatusScope,
 }));
 
 import { GET } from "../route";
@@ -134,12 +134,73 @@ describe("GET /api/equipment-notebooks/[id] — manualSearch (T2 #4189)", () => 
       const body = await (await GET(threadReq, params)).json();
       expect(vi.mocked(listTurns)).toHaveBeenCalledWith(TENANT, NB, 50, expect.objectContaining({ threadId: THREAD }));
       expect(body.manualSearch).toBeNull();
+      // #5750 F1: says why, so a client clears a status it already shows.
+      expect(body.manualSearchScope).toBe("other_model");
     });
 
     it("keeps it in a thread that asked for the project's own model", async () => {
       vi.mocked(listTurns).mockResolvedValue([ask("Find me the manual for AutomationDirect GS11N-20P2")] as never);
       const body = await (await GET(threadReq, params)).json();
       expect(body.manualSearch).toEqual(READY);
+      expect(body).not.toHaveProperty("manualSearchScope");
+    });
+
+    // #5750 F2
+    it("drops it for a model-only look-alike request and for another maker's same code", async () => {
+      for (const question of ["Find me the manual for GS11N-20P25", "Find me the manual for Siemens GS11N-20P2"]) {
+        vi.mocked(listTurns).mockResolvedValue([ask(question)] as never);
+        const body = await (await GET(threadReq, params)).json();
+        expect(body.manualSearch, question).toBeNull();
+        expect(body.manualSearchScope, question).toBe("other_model");
+      }
+    });
+
+    it("keeps it for an alias of the project's maker", async () => {
+      vi.mocked(listTurns).mockResolvedValue([ask("Find me the manual for Automation Direct GS11N-20P2")] as never);
+      const body = await (await GET(threadReq, params)).json();
+      expect(body.manualSearch).toEqual(READY);
+    });
+
+    // #5750 F3
+    it("restores it on an explicit return to the confirmed unit, and keeps it on the follow-up", async () => {
+      vi.mocked(getNotebook).mockResolvedValue({
+        ...NOTEBOOK, identityStatus: "user_confirmed", manufacturer: "AutomationDirect", model: "GS11N-20P2", catalogNumber: "GS11N-20P2",
+      } as never);
+      const sibling = ask("Find me the manual for AutomationDirect GS11N-20P25");
+      const back = ask("OK, back to my drive. Find me the manual.");
+      for (const turns of [[sibling, back], [sibling, back, ask("What is the rated current?")]]) {
+        vi.mocked(listTurns).mockResolvedValue(turns as never);
+        const body = await (await GET(threadReq, params)).json();
+        expect(body.manualSearch).toEqual(READY);
+      }
+    });
+
+    // #5750 F4: the request is older than the 50 turns the response carries.
+    it("still drops it when the look-alike request is older than the returned window", async () => {
+      const followUps = Array.from({ length: 50 }, (_, i) => ask(`follow-up ${i + 1}: what does the keypad show?`));
+      const all = [ask("Find me the manual for AutomationDirect GS11N-20P25"), ...followUps];
+      vi.mocked(listTurns).mockImplementation((async (_t: string, _n: string, limit: number) => all.slice(-limit)) as never);
+      const body = await (await GET(threadReq, params)).json();
+      expect(body.turns).toHaveLength(50);
+      expect(body.turns[0].question).toBe("follow-up 1: what does the keypad show?");
+      expect(body.manualSearch).toBeNull();
+      expect(body.manualSearchScope).toBe("other_model");
+    });
+
+    it("control: a long thread that never named a model keeps it", async () => {
+      const all = Array.from({ length: 120 }, (_, i) => ask(`follow-up ${i + 1}: what does the keypad show?`));
+      vi.mocked(listTurns).mockImplementation((async (_t: string, _n: string, limit: number) => all.slice(-limit)) as never);
+      const body = await (await GET(threadReq, params)).json();
+      expect(body.manualSearch).toEqual(READY);
+    });
+
+    it("withholds it when even the widest read settles nothing", async () => {
+      const all = Array.from({ length: 400 }, (_, i) => ask(`follow-up ${i + 1}: what does the keypad show?`));
+      vi.mocked(listTurns).mockImplementation((async (_t: string, _n: string, limit: number) => all.slice(-limit)) as never);
+      const body = await (await GET(threadReq, params)).json();
+      expect(body.turns).toHaveLength(50);
+      expect(body.manualSearch).toBeNull();
+      expect(body.manualSearchScope).toBe("out_of_reach");
     });
 
     it("keeps it in the photo thread, whose question names no model", async () => {
