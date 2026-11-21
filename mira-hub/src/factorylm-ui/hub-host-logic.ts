@@ -10,6 +10,7 @@ import { buildChatBody, isAbortError, type ChatBody, type PersistedTurn, type St
 import { isSafetyNoticeEntry } from "@/lib/notebook-chat-types";
 import { LEGACY_THREAD_ID, machineNameFor, notebookLabel, threadItemId, type HubNotebook } from "./notebook-tree";
 import { historyFromSavedTurns, type HistoryRow } from "@/capabilities/conversation-history";
+import type { ScopeField } from "./bench-components-logic";
 import { contextFor, threadFromPersisted, type HubNotebookMeta } from "./to-interaction";
 
 /** The shell's fixture before any notebook loads: an empty, untitled thread. */
@@ -34,7 +35,7 @@ export const EMPTY_FIXTURE = {
  * desktop the sidebar is static and this flag has no effect (the drawer CSS,
  * `inert` and `topLayer` all key on the narrow-viewport query).
  */
-export function initialHubShellState(): ShellState {
+export function initialHubShellState(): HubShellState {
   return shellReducer(createShellState(EMPTY_FIXTURE, PROFILES.hub), { type: "set-navigation-visible", visible: false });
 }
 
@@ -314,22 +315,177 @@ export function openThreadAction(sel: HubSelection, at: string): ShellAction {
 }
 
 /** The host's actions: the shell's, plus an automatic landing (deep link, reload, first load). */
-export type HubHostAction = ShellAction | { readonly type: "land-thread"; readonly selection: HubSelection; readonly at: string };
+export type HubSendRecovery = {
+  readonly body: ReturnType<typeof chatBodyFor> & { componentSelection?: ScopeField };
+  readonly composition?: ReturnType<typeof chatBodyFor>;
+  readonly unposted?: boolean;
+  readonly question: string;
+  readonly refusedScope?: ScopeField;
+  readonly recoveryId?: string;
+  readonly error: string | null;
+  readonly draftRevision?: number;
+};
+
+export type HubHostAction =
+  | ShellAction
+  | { readonly type: "land-thread"; readonly selection: HubSelection; readonly at: string }
+  | { readonly type: "sent-draft"; readonly threadId: string; readonly question: string; readonly revision: number }
+  | { readonly type: "recover-send"; readonly threadId: string; readonly recovery: HubSendRecovery; readonly restoreDraft: boolean }
+  | { readonly type: "recover-attachment-draft"; readonly threadId: string; readonly text: string; readonly notice: string }
+  | { readonly type: "clear-recovery"; readonly threadId: string; readonly recoveryId: string }
+  | { readonly type: "reconcile-send"; readonly threadId: string; readonly requestIds: ReadonlySet<string> }
+  | { readonly type: "clear-attachment-recovery"; readonly threadId: string };
 
 /**
- * #4695: the Hub host's reducer. The shell's `hydrate` blanks the draft whenever
- * the thread id changes, which is right when the technician CHOOSES another
- * thread. An automatic landing is not a choice: what was already typed on HOME
- * belongs to the conversation that is opening. `land-thread` opens the thread
- * and keeps the draft of the SAME state it transitions, in one step, so no
- * separately held copy can be stale. That is a safeguard: the lost first word
- * seen on staging was text typed before hydration, fixed in the Composer
- * (#4695 part 4). Every other action is the shell's.
+ * #4311 — successful retry clears the question it retried. The Hub also checks
+ * draft revision so newly typed text survives even when it has the same words.
  */
-export function hubHostReducer(state: ShellState, action: HubHostAction): ShellState {
-  if (action.type !== "land-thread") return shellReducer(state, action);
-  const landed = shellReducer(state, openThreadAction(action.selection, action.at));
-  return state.draft && landed.draft !== state.draft ? shellReducer(landed, { type: "set-draft", draft: state.draft }) : landed;
+export function draftAfterSendSucceeded(draft: string, question: string): string | null {
+  return draft !== "" && draft.trim() === question.trim() ? "" : null;
+}
+
+type ParkedDraft = { readonly text: string; readonly revision: number };
+
+type HubShellState = ShellState & {
+  readonly draftRevision?: number;
+  readonly draftSequence?: number;
+  readonly draftsByThread?: ReadonlyMap<string, ParkedDraft>;
+  readonly sendRecoveryByThread?: ReadonlyMap<string, readonly HubSendRecovery[]>;
+  readonly attachmentRecoveries?: ReadonlyMap<string, { readonly question: string; readonly notice: string }>;
+};
+
+/**
+ * Use the same composite conversation ID for parked text, pending photos and
+ * send recovery. The reducer sees the latest edit when navigation commits.
+ */
+export function sendRecoveryId(recovery: HubSendRecovery): string {
+  return recovery.recoveryId ?? recovery.body.clientRequestId;
+}
+
+export function recoveryOwnsDraft(
+  recovery: HubSendRecovery,
+  revision: number | undefined,
+  text: string,
+  hasAttachments: boolean,
+): boolean {
+  return recovery.draftRevision !== undefined && recovery.draftRevision === revision &&
+    recovery.question.trim() === text.trim() && !hasAttachments;
+}
+
+export function recoverySendBody(recovery: HubSendRecovery): HubSendRecovery["body"] {
+  if (recovery.unposted) return recovery.composition ?? recovery.body;
+  if (!recovery.refusedScope) return recovery.body;
+  return { ...(recovery.composition ?? recovery.body), clientRequestId: crypto.randomUUID() };
+}
+
+export function hubHostReducer(state: HubShellState, action: HubHostAction): HubShellState {
+  if (action.type === "land-thread") {
+    // #4695: automatic landing keeps what was typed on HOME during loading.
+    const landed = shellReducer(state, openThreadAction(action.selection, action.at));
+    return state.draft && landed.draft !== state.draft ? shellReducer(landed, { type: "set-draft", draft: state.draft }) : landed;
+  }
+
+  if (action.type === "sent-draft") {
+    const active = action.threadId === state.thread.id;
+    const draft = active && state.draftRevision !== undefined
+      ? { text: state.draft, revision: state.draftRevision }
+      : state.draftsByThread?.get(action.threadId);
+    if (!draft || draft.revision !== action.revision || draftAfterSendSucceeded(draft.text, action.question) === null) return state;
+    if (active) return hubHostReducer(state, { type: "set-draft", draft: "" });
+    const draftsByThread = new Map(state.draftsByThread);
+    draftsByThread.delete(action.threadId);
+    return { ...state, draftsByThread };
+  }
+
+  if (action.type === "reconcile-send") {
+    let next = state;
+    for (const recovery of state.sendRecoveryByThread?.get(action.threadId) ?? []) {
+      if (recovery.unposted || !action.requestIds.has(recovery.body.clientRequestId)) continue;
+      next = hubHostReducer(next, { type: "clear-recovery", threadId: action.threadId, recoveryId: sendRecoveryId(recovery) });
+      if (recovery.draftRevision !== undefined) {
+        next = hubHostReducer(next, {
+          type: "sent-draft", threadId: action.threadId, question: recovery.question, revision: recovery.draftRevision,
+        });
+      }
+    }
+    return next;
+  }
+
+  if (action.type === "clear-recovery") {
+    const recoveries = state.sendRecoveryByThread?.get(action.threadId);
+    const remaining = recoveries?.filter((recovery) => sendRecoveryId(recovery) !== action.recoveryId);
+    if (!remaining || remaining.length === recoveries?.length) return state;
+    const sendRecoveryByThread = new Map(state.sendRecoveryByThread);
+    if (remaining.length) sendRecoveryByThread.set(action.threadId, remaining);
+    else sendRecoveryByThread.delete(action.threadId);
+    const next = { ...state, sendRecoveryByThread };
+    return action.threadId === state.thread.id && state.sendError === recoveries?.at(-1)?.error
+      ? shellReducer(next, { type: "set-send-error", error: remaining.at(-1)?.error ?? null })
+      : next;
+  }
+
+  if (action.type === "clear-attachment-recovery") {
+    const attachmentRecoveries = new Map(state.attachmentRecoveries);
+    attachmentRecoveries.delete(action.threadId);
+    return { ...state, attachmentRecoveries };
+  }
+
+  if (action.type === "recover-send" || action.type === "recover-attachment-draft") {
+    const active = action.threadId === state.thread.id;
+    const saved = state.draftsByThread?.get(action.threadId);
+    const restore = (action.type === "recover-attachment-draft" || action.restoreDraft)
+      && !(active ? state.draft : saved);
+    const revision = (state.draftSequence ?? 0) + 1;
+
+    let next = state;
+    if (action.type === "recover-send") {
+      const sendRecoveryByThread = new Map(state.sendRecoveryByThread);
+      const recovery = { ...action.recovery, draftRevision: restore ? revision : action.recovery.draftRevision };
+      const peers = sendRecoveryByThread.get(action.threadId)?.filter((item) => sendRecoveryId(item) !== sendRecoveryId(recovery)) ?? [];
+      sendRecoveryByThread.set(action.threadId, [...peers, recovery]);
+      next = { ...state, sendRecoveryByThread };
+      if (active) next = shellReducer(next, { type: "set-send-error", error: action.recovery.error });
+    } else {
+      const attachmentRecoveries = new Map(state.attachmentRecoveries);
+      attachmentRecoveries.set(action.threadId, { question: action.text, notice: action.notice });
+      next = { ...state, attachmentRecoveries };
+      if (active) next = shellReducer(next, { type: "set-send-error", error: null });
+    }
+    if (!restore) return next;
+
+    const text = action.type === "recover-send" ? action.recovery.question : action.text;
+    if (active) {
+      const restored = shellReducer(next, { type: "set-draft", draft: text });
+      return { ...restored, draftSequence: revision, draftRevision: revision };
+    }
+    const draftsByThread = new Map(state.draftsByThread);
+    draftsByThread.set(action.threadId, { text, revision });
+    return { ...next, draftsByThread, draftSequence: revision };
+  }
+
+  const next = shellReducer(state, action);
+  if (action.type === "set-draft" && next !== state) {
+    const revision = (state.draftSequence ?? 0) + 1;
+    return { ...next, draftSequence: revision, draftRevision: next.draft ? revision : undefined };
+  }
+  if (action.type !== "hydrate" || next.thread.id === state.thread.id) return next;
+
+  const outgoingDraft = state.thread.id !== EMPTY_FIXTURE.thread.id
+    && state.draft && state.draftRevision !== undefined
+    ? { text: state.draft, revision: state.draftRevision }
+    : undefined;
+  const incomingDraft = state.draftsByThread?.get(next.thread.id);
+  const incomingError = state.sendRecoveryByThread?.get(next.thread.id)?.at(-1)?.error ?? null;
+  const opened = shellReducer(next, { type: "set-send-error", error: incomingError });
+  if (!outgoingDraft && !incomingDraft) return { ...opened, draftRevision: undefined };
+
+  const draftsByThread = new Map(state.draftsByThread);
+  if (outgoingDraft) draftsByThread.set(state.thread.id, outgoingDraft);
+  // The active composer owns the current draft. Clearing or sending it must
+  // never bring back an older parked copy on a later visit.
+  draftsByThread.delete(next.thread.id);
+  const restored = incomingDraft ? shellReducer(opened, { type: "set-draft", draft: incomingDraft.text }) : opened;
+  return { ...restored, draftsByThread, draftRevision: incomingDraft?.revision };
 }
 
 /**
@@ -555,15 +711,6 @@ export function sendFailureMessage(err: unknown): string {
   const raw = (err instanceof Error ? err.message : String(err ?? "")).trim();
   if (NETWORK_FAILURE_RE.test(raw)) return NETWORK_FAILURE_MESSAGE;
   return raw || "MIRA couldn't answer that just now.";
-}
-
-/**
- * #4311 — a failed send hands the question back to the composer; a successful
- * host retry must take it away again, but never clobber something new the
- * technician typed meanwhile. Returns the draft to set, or null to leave it.
- */
-export function draftAfterSendSucceeded(draft: string, question: string): string | null {
-  return draft !== "" && draft.trim() === question.trim() ? "" : null;
 }
 
 /** The initial shell fixture for a hydrated notebook. */

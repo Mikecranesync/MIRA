@@ -33,8 +33,8 @@ describe("hub-host keeps a finished answer's follow-ups after the reload (#4454)
 
   it("the finished answer's follow-ups are kept, from the same rule the live turn renders with, before the live turn is dropped", () => {
     const send = sendBody();
-    const reload = send.indexOf("await loadDetail(sel)");
     const keep = send.indexOf("setSettledFollowups(\n");
+    const reload = send.lastIndexOf("await loadDetail(sel)", keep);
     const drop = send.indexOf("setLive((cur) => (cur && cur.id === id ? null : cur))", reload);
     expect(reload).toBeGreaterThan(-1);
     expect(keep).toBeGreaterThan(reload);

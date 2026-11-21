@@ -93,6 +93,11 @@ export function Composer({ state, dispatch, adapter, hooks, attachmentTrapsTab =
     if (typed && typed !== draftAtMount.current) dispatch({ type: "set-draft", draft: typed });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- deliberately once, at mount (#4695)
   }, []);
+  const onPendingAttachmentThreads = hooks?.onPendingAttachmentThreads;
+  useEffect(() => {
+    onPendingAttachmentThreads?.(new Set(pending.map((item) => item.threadId)));
+  }, [onPendingAttachmentThreads, pending]);
+  useEffect(() => () => onPendingAttachmentThreads?.(new Set()), [onPendingAttachmentThreads]);
   pendingRef.current = pending;
   useEffect(() => () => {
     for (const item of pendingRef.current) adapter.release?.(item.attachment.id);
