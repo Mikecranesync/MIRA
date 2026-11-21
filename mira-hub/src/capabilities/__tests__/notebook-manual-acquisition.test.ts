@@ -1137,6 +1137,67 @@ describe("currentManualSearchStatus — recomputed fresh, never a stale snapshot
       expect((await getStatus([{ ...source, enabledByDefault: false }]))?.message).not.toContain("PDF page 26");
     });
 
+    // 2026-11-21 tablet walk: the GS10 manual was verified and ready, yet the
+    // reply offered no link — the PDF was reachable only through a follow-up
+    // question's citation. A ready REVIEWED publication links to its official
+    // PDF at the coverage page, and only when the source's evidence carries the
+    // same pinned digest the library approves (the download was checked
+    // against it), so a stale or foreign source never borrows the link.
+    describe("a ready reviewed publication links to its official PDF at the coverage page", () => {
+      const gs10 = { identityStatus: "user_confirmed", manufacturer: "AutomationDirect", model: "GS11N-20P2", catalogNumber: "" };
+      const gs10Key = acquisitionKey(gs10)!;
+      const PDF = "https://cdn.automationdirect.com/static/manuals/gs10m/gs10usermanual.pdf";
+      const SHA = "43a66d756b9c53f216316eeb78d13db26f9698859d08b5f70d2ed3715e9602af";
+      const gs10Source = (evidence: Record<string, unknown> = {}, extra: Record<string, unknown> = {}) => ({
+        docId: "d1", enabledByDefault: true, matchState: "verified", sourceRole: "manual", readiness: { canChat: true },
+        matchEvidence: {
+          autoAcquisitionKey: gs10Key, reviewedLibraryPage: 26, reviewedLibraryTitle: "DURApulse GS10 Drive User Manual, Rev C",
+          reviewedLibrarySha256: SHA, ...evidence,
+        },
+        ...extra,
+      });
+      const status = (sources: unknown[], identity = gs10) => {
+        db.readRow = { ...candidateReviewRec, key: acquisitionKey(identity) };
+        return currentManualSearchStatus("t", "nb", identity, null, sources as never, { env: ON });
+      };
+
+      it("confirmed GS11N-20P2: the status carries the official PDF opened at page 26", async () => {
+        const r = await status([gs10Source()]);
+        expect(r?.message).toContain("PDF page 26 shows coverage for GS11N-20P2");
+        expect(r?.manualUrl).toBe(`${PDF}#page=26`);
+      });
+
+      it("typed (proposed, unconfirmed) GS11N-20P2 gets the same link", async () => {
+        db.readRow = { ...candidateReviewRec, key: gs10Key };
+        const r = await currentManualSearchStatus(
+          "t", "nb", { identityStatus: "unknown", manufacturer: "", model: "", catalogNumber: "" },
+          { manufacturer: "AUTOMATIONDIRECT", model: "GS11N-20P2" }, [gs10Source()] as never, { env: ON },
+        );
+        expect(r?.manualUrl).toBe(`${PDF}#page=26`);
+      });
+
+      it("no link when the source's digest is not the approved one", async () => {
+        expect((await status([gs10Source({ reviewedLibrarySha256: "0".repeat(64) })]))?.manualUrl).toBeUndefined();
+        expect((await status([gs10Source({ reviewedLibrarySha256: undefined })]))?.manualUrl).toBeUndefined();
+      });
+
+      it("no link when the recorded coverage page is not the approved page", async () => {
+        const r = await status([gs10Source({ reviewedLibraryPage: 27 })]);
+        expect(r?.message).toContain("PDF page 27");
+        expect(r?.manualUrl).toBeUndefined();
+      });
+
+      it("no link for a look-alike identity, even with the GS10 evidence attached", async () => {
+        const lookAlike = { ...gs10, model: "GS11N-20P25" };
+        const r = await status([gs10Source({ autoAcquisitionKey: acquisitionKey(lookAlike) })], lookAlike);
+        expect(r?.manualUrl).toBeUndefined();
+      });
+
+      it("no link once the source is turned off", async () => {
+        expect((await status([gs10Source({}, { enabledByDefault: false })]))?.manualUrl).toBeUndefined();
+      });
+    });
+
     it("reports 'added, still preparing' for an applicable+enabled manual that has not finished materializing yet — never 'turn it on'", async () => {
       db.readRow = candidateReviewRec;
       const sources = [
