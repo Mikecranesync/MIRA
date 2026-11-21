@@ -36,6 +36,7 @@ import {
 } from "@/capabilities/manual-acquisition";
 import { MANUAL_SEARCH_LIMIT_COPY, MANUAL_SEARCH_UNAVAILABLE_COPY } from "@/capabilities/manual-search-copy";
 import { reviewedManualFor } from "@/capabilities/reviewed-manual-library";
+import { exactManualIdentity } from "@/capabilities/candidate-identity";
 
 /** A running claim older than this is treated as abandoned (container restart). */
 export const STALE_RUNNING_MINUTES = 10;
@@ -76,6 +77,10 @@ export interface AcquisitionRecord {
    *  or pages whose numbers did not read). Confirming it never turns it on;
    *  the chat says "add the full manual". Absent when complete. */
   partial?: boolean;
+  /** Set with `partial`: the document's own text verified this exact model.
+   *  Only then may the chat call it "part of the <model> manual"; a partial
+   *  document never checked against the model is a possible manual. */
+  model_verified?: boolean;
   /** The claim generation that wrote this record (Codex #4118 r3 F6). */
   gen?: string;
   /** Reviewed publication digest attempted by this generation, even on a miss. */
@@ -486,6 +491,7 @@ export function recordFromOutcome(key: string, startedAt: string | null, out: Ma
     retryable?: unknown;
     linked?: unknown;
     removedByTechnician?: unknown;
+    applicability?: { state?: unknown } | null;
   };
   const str = (v: unknown) => (typeof v === "string" && v.trim() ? v : null);
   // A source that was removed (or rejected) meanwhile is not "attached" — the
@@ -525,7 +531,7 @@ export function recordFromOutcome(key: string, startedAt: string | null, out: Ma
     candidate_url: str(p.candidate?.url),
     attached_indexed: attachedIndexed,
     promotes_on_confirm: attachedIndexed && p.manual?.candidateApplicability === "verified" && !partial,
-    ...(partial ? { partial: true } : {}),
+    ...(partial ? { partial: true, ...(p.applicability?.state === "verified" ? { model_verified: true } : {}) } : {}),
     doc_id: str(p.manual?.docId),
     file_id: str(p.manual?.fileId),
     download_reason: downloadReason,
@@ -1135,8 +1141,14 @@ export function acquisitionDeclineText(
       // Garage pilot L2: the document is PART of a manual (one chapter, or pages
       // whose numbers did not read). It is never turned on by confirming it —
       // the one real next step is the full manual.
-      if (rec.attached_indexed && rec.partial) {
+      if (rec.attached_indexed && rec.partial && rec.model_verified) {
         return `I found part of the ${label} manual${rec.candidate_host ? ` (from ${rec.candidate_host})` : ""}, but not the whole manual — one chapter, or pages whose numbers did not read — so it isn't turned on. Add the full manual for the ${label} to this notebook and ask again — I'll answer from it and show you the page.`;
+      }
+      // Partial, and its text never verified this model (staging walk
+      // 2026-11-21: gs1m.pdf for "GS11N-20P25"): neither "part of the <model>
+      // manual" nor "turn it on" is true. The next step is still the full manual.
+      if (rec.attached_indexed && rec.partial) {
+        return `I found a possible manual for the ${label}${rec.candidate_host ? ` (from ${rec.candidate_host})` : ""}, but I couldn't confirm it covers this exact model, and it is only part of a manual, so it isn't turned on. Add the full manual for the ${label} to this notebook and ask again — I'll answer from it and show you the page.`;
       }
       if (rec.attached_indexed) {
         return `I found a possible manual for the ${label}${rec.candidate_host ? ` (from ${rec.candidate_host})` : ""}, but I couldn't confirm it covers this exact model, so it isn't turned on. Check it in this notebook's Sources — turn it on if it's right and ask again.`;
@@ -1186,6 +1198,28 @@ export function acquisitionDeclineText(
  *  so a NEW search (a different `started_at`) always gets a fresh budget,
  *  never one already spent by an earlier search for the same identity. */
 export type { ManualSearchStatus };
+
+/**
+ * Whether a thread's own latest model request names a model other than the
+ * one a project status is about. The status is project-wide, so without this
+ * a thread that asked about a look-alike model shows the project machine's
+ * ready line and manual link under its answer (staging tablet walk
+ * 2026-11-21). `questions` is chronological. Fails open: a thread whose
+ * questions name no exact model (the photo turn, a general question) keeps
+ * the status. Reuses the chat route's exact-request reader, not a new parser.
+ */
+export function threadNamesOtherModel(
+  questions: readonly string[],
+  identity: { model: string | null | undefined; catalogNumber: string | null | undefined },
+): boolean {
+  const norm = (s: string | null | undefined) => (s ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  const own = new Set([norm(identity.model), norm(identity.catalogNumber)].filter(Boolean));
+  for (let i = questions.length - 1; i >= 0; i--) {
+    const asked = exactManualIdentity("", questions[i] ?? "");
+    if (asked) return !own.has(norm(asked.model));
+  }
+  return false;
+}
 
 /**
  * The notebook's CURRENT manual-search status — for its own confirmed

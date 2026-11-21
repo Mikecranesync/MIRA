@@ -17,7 +17,11 @@ import {
   updateNotebook,
 } from "@/lib/equipment-notebooks";
 import { listFilesForTarget } from "@/lib/workspace-files";
-import { currentManualSearchStatus, type ManualSearchStatus } from "@/capabilities/notebook-manual-acquisition";
+import {
+  currentManualSearchStatus,
+  threadNamesOtherModel,
+  type ManualSearchStatus,
+} from "@/capabilities/notebook-manual-acquisition";
 
 export const dynamic = "force-dynamic";
 
@@ -119,6 +123,19 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     );
   } catch (err) {
     console.error("[equipment-notebooks] manual search status read failed (continuing without it):", err);
+  }
+  // The status names the project's machine. A thread that asked about another
+  // exact model must not show that machine's ready line and manual link under
+  // its own answer. Only a thread-scoped read knows which questions belong to
+  // the open conversation; a whole-notebook read keeps the status.
+  if (
+    manualSearch && threadId &&
+    threadNamesOtherModel(turns.map((t) => t.question), {
+      model: manualSearch.model,
+      catalogNumber: manualSearch.model === notebook.model ? notebook.catalogNumber : null,
+    })
+  ) {
+    manualSearch = null;
   }
   return NextResponse.json({ notebook, sources, turns, threads, photos, manualSearch });
 }

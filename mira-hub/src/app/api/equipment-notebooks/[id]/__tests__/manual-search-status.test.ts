@@ -24,7 +24,10 @@ vi.mock("@/lib/equipment-notebooks", () => ({
 vi.mock("@/lib/workspace-files", () => ({ listFilesForTarget: vi.fn(async () => []) }));
 
 const currentManualSearchStatus = vi.hoisted(() => vi.fn());
-vi.mock("@/capabilities/notebook-manual-acquisition", () => ({ currentManualSearchStatus }));
+vi.mock("@/capabilities/notebook-manual-acquisition", async (importOriginal) => ({
+  currentManualSearchStatus,
+  threadNamesOtherModel: (await importOriginal<typeof import("@/capabilities/notebook-manual-acquisition")>()).threadNamesOtherModel,
+}));
 
 import { GET } from "../route";
 import { sessionOr401 } from "@/lib/session";
@@ -105,6 +108,51 @@ describe("GET /api/equipment-notebooks/[id] — manualSearch (T2 #4189)", () => 
     vi.mocked(listSources).mockResolvedValue(sources as never);
     await GET(req, params);
     expect(currentManualSearchStatus).toHaveBeenCalledWith(TENANT, NB, expect.anything(), null, sources);
+  });
+
+  // Staging tablet walk 2026-11-21: in a project confirmed as GS11N-20P2, a
+  // thread asking for GS11N-20P25 showed the GS11N-20P2 ready line and link.
+  describe("thread scope", () => {
+    const THREAD = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+    const threadReq = { nextUrl: { searchParams: new URLSearchParams({ threadId: THREAD }) } } as unknown as NextRequest;
+    const READY = {
+      manufacturer: "AutomationDirect", model: "GS11N-20P2", running: false,
+      message: "DURApulse GS10 Drive User Manual, Rev C is ready in Sources. PDF page 26 shows coverage for GS11N-20P2.",
+      manualUrl: "https://app.example.test/hub/v3/source/?file=f&page=26",
+    };
+    const ask = (question: string) => ({ id: "t", question, evidence: [] });
+
+    beforeEach(() => {
+      vi.mocked(getNotebook).mockResolvedValue({
+        ...NOTEBOOK, identityStatus: "user_confirmed", manufacturer: "AutomationDirect", model: "GS11N-20P2", catalogNumber: "",
+      } as never);
+      currentManualSearchStatus.mockResolvedValue(READY);
+    });
+
+    it("drops the project status in a thread that asked for a look-alike model", async () => {
+      vi.mocked(listTurns).mockResolvedValue([ask("Find me the manual for AutomationDirect GS11N-20P25")] as never);
+      const body = await (await GET(threadReq, params)).json();
+      expect(vi.mocked(listTurns)).toHaveBeenCalledWith(TENANT, NB, 50, expect.objectContaining({ threadId: THREAD }));
+      expect(body.manualSearch).toBeNull();
+    });
+
+    it("keeps it in a thread that asked for the project's own model", async () => {
+      vi.mocked(listTurns).mockResolvedValue([ask("Find me the manual for AutomationDirect GS11N-20P2")] as never);
+      const body = await (await GET(threadReq, params)).json();
+      expect(body.manualSearch).toEqual(READY);
+    });
+
+    it("keeps it in the photo thread, whose question names no model", async () => {
+      vi.mocked(listTurns).mockResolvedValue([ask("Find me the manual")] as never);
+      const body = await (await GET(threadReq, params)).json();
+      expect(body.manualSearch).toEqual(READY);
+    });
+
+    it("keeps it on a whole-notebook read, which spans every thread", async () => {
+      vi.mocked(listTurns).mockResolvedValue([ask("Find me the manual for AutomationDirect GS11N-20P25")] as never);
+      const body = await (await GET(req, params)).json();
+      expect(body.manualSearch).toEqual(READY);
+    });
   });
 
   it("degrades to manualSearch:null (not a 500) when the computation throws", async () => {

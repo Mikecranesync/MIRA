@@ -1400,11 +1400,12 @@ describe("currentManualSearchStatus — recomputed fresh, never a stale snapshot
 });
 
 describe("garage pilot L2 — a partial manual (one chapter / unreadable numbers) never promotes and says so", () => {
-  const partialOutcome = (completeness: unknown) => ({
+  const partialOutcome = (completeness: unknown, applicabilityState: "verified" | "candidate" = "verified") => ({
     status: "candidate_review" as const,
     payload: {
       candidate: { host: "cdn.automationdirect.com", url: "https://cdn.automationdirect.com/static/manuals/gs10m/ch1.pdf" },
       manual: { docId: "d1", indexed: true, attached: true, candidateApplicability: "candidate", completeness },
+      applicability: { state: applicabilityState },
     },
   });
 
@@ -1429,5 +1430,27 @@ describe("garage pilot L2 — a partial manual (one chapter / unreadable numbers
     expect(t).not.toContain("turn it on if it's right");
     // Photo basis uses the same shared candidate_review copy.
     expect(acquisitionDeclineText(base, "K", "AutomationDirect GS11N-20P2", "candidate")).toBe(t);
+  });
+
+  // Staging tablet walk 2026-11-21: "Find me the manual for AutomationDirect
+  // GS11N-20P25" picked gs1m.pdf (the GS1 drive manual). 46 pages did not read,
+  // so it was partial, and the chat called it "part of the AUTOMATIONDIRECT
+  // GS11N-20P25 manual" although its text was never shown to name that model.
+  it("a partial document whose text did not verify the model is a POSSIBLE manual, never 'part of the <model> manual'", () => {
+    const rec = recordFromOutcome("K", null, partialOutcome({ complete: false, reasons: ["unmapped_glyphs"], unreadablePages: 46 }, "candidate"));
+    expect(rec.partial).toBe(true);
+    expect(rec.promotes_on_confirm).toBe(false);
+    const t = acquisitionDeclineText(rec, "K", "AUTOMATIONDIRECT GS11N-20P25")!;
+    expect(t).not.toMatch(/part of the AUTOMATIONDIRECT GS11N-20P25 manual/);
+    expect(t).toContain("couldn't confirm it covers this exact model");
+    expect(t).toContain("isn't turned on");
+    expect(t).toContain("full manual");
+    expect(t).not.toContain("turn it on if it's right");
+  });
+
+  it("a stored partial record from before the model check reads as a possible manual", () => {
+    const rec = { ...recordFromOutcome("K", null, partialOutcome({ complete: false, reasons: ["chapter_start"], unreadablePages: 0 })) };
+    delete (rec as { model_verified?: boolean }).model_verified;
+    expect(acquisitionDeclineText(rec, "K", "AutomationDirect GS11N-20P2")).toContain("couldn't confirm it covers this exact model");
   });
 });
