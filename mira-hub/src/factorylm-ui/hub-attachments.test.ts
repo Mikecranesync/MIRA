@@ -172,6 +172,13 @@ describe("composeHubSend — observation not persisted", () => {
 // Codex #4024 round 2 F2: Stop or opening another thread during an upload must
 // not let the question post afterwards.
 describe("runAttachedSend", () => {
+  it("reports when composition succeeded but the host could not start the Chat POST", async () => {
+    const send = vi.fn(async () => "deferred" as const);
+    const out = await runAttachedSend({ signal: new AbortController().signal, compose: async () => ({ question: "q" }), send });
+    expect(out).toBe("deferred");
+    expect(send).toHaveBeenCalledOnce();
+  });
+
   it("sends the composed turn when nothing cancelled it", async () => {
     const send = vi.fn(async () => {});
     const out = await runAttachedSend({ signal: new AbortController().signal, compose: async () => ({ question: "q", scope: ["d"] }), send });
