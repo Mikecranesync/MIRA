@@ -1178,6 +1178,80 @@ describe("boundBm25Query (#1766)", () => {
     expect(bounded.length).toBeGreaterThan(0);
     expect(tokenCount(bounded)).toBeLessThanOrEqual(32);
   });
+
+  it("keeps critical terms from both halves of a two-part question (Indramat #5127)", () => {
+    // Reproduce the Indramat error-61 freeze: a long two-part question where
+    // the first half asks about supply LEDs and the second half asks about
+    // error 61, DDS02, motor cable, ground short. The old first-come bound
+    // dropped every token from "error" onward; the importance-based bound must
+    // keep codes, error numbers, and technical terms from both halves.
+    const question = 
+      "I have an Indramat TVD 1.3-08-03 supply with NAM 1.3-08 and DDS02.1-W100-D drive. " +
+      "The LEDs show +24V and ±15V on, Bb1 off, MAINS on, POWER off. " +
+      "I measure 0 volts on every DC terminal at the supply and drive. " +
+      "The TVD manual shows Bb1 off means fault in supply or drive, and POWER off means " +
+      "mains contactor not on or power rectifier faulty. I want to check further before " +
+      "getting a new NAM. What does error code 61 mean on the DDS02 drive, what is the " +
+      "remedy, could this be caused by a motor cable or earth short to ground, and would " +
+      "a missing 300VDC supply cause this error or is it something else?";
+    
+    const bounded = boundBm25Query(question);
+    const kept = bounded.toLowerCase().split(/\s+/);
+    
+    // Must keep critical second-half terms that were dropped by the old bound
+    expect(kept).toContain("error");      // error code 61
+    expect(kept).toContain("dds02");      // DDS02 drive part number
+    expect(kept).toContain("motor");      // motor cable
+    expect(kept).toContain("cable");      // motor cable
+    expect(kept).toContain("ground");     // ground short
+    expect(kept).toContain("remedy");     // what is the remedy
+    
+    // Should also keep first-half technical terms
+    expect(kept).toContain("supply");     // first-half context
+    expect(kept).toContain("drive");      // appears in both halves
+    expect(kept.includes("voltage") || kept.includes("volts")).toBe(true); // 0 volts
+    
+    // Verify the bound is respected
+    expect(tokenCount(bounded)).toBeLessThanOrEqual(32);
+  });
+
+  it("keeps code-like tokens regardless of position (part numbers, fault codes)", () => {
+    // A query with important codes scattered throughout
+    const q = 
+      "The Allen Bradley PowerFlex 525 drive shows fault F004 after wiring and " +
+      "the GS10 VFD parameter b005 is set wrong and now I see error E001 and " +
+      "the Micro820 PLC tag shows alarm A123 in the status word";
+    
+    const bounded = boundBm25Query(q);
+    const kept = bounded.toLowerCase().split(/\s+/);
+    
+    // All code-like tokens should be kept due to high importance scores
+    expect(kept).toContain("f004");  // fault code
+    expect(kept).toContain("b005");  // parameter
+    expect(kept).toContain("e001");  // error code
+    expect(kept).toContain("a123");  // alarm code
+    expect(kept).toContain("gs10");  // model with number
+    expect(kept).toContain("micro820"); // model with number
+  });
+
+  it("preserves technical vocabulary from throughout the query", () => {
+    // Long query with technical terms distributed across the text
+    const q = 
+      "The motor shows overcurrent on startup and trips after two seconds " +
+      "with undervoltage alarm then the contactor relay drops out and " +
+      "the overload protection circuit breaker kicks in before the drive " +
+      "controller can ramp up torque and the frequency parameter resets";
+    
+    const bounded = boundBm25Query(q);
+    const kept = bounded.toLowerCase().split(/\s+/);
+    
+    // Should keep technical terms from both early and late in the query
+    expect(kept).toContain("overcurrent");  // early technical term
+    expect(kept).toContain("undervoltage"); // mid technical term
+    expect(kept).toContain("overload");     // late technical term
+    expect(kept).toContain("torque");       // late technical term
+    expect(kept).toContain("frequency");    // late technical term
+  });
 });
 
 describe("retrieveManualChunks term bounding (#1766)", () => {

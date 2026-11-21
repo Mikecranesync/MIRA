@@ -736,11 +736,54 @@ const BM25_STOPWORDS = new Set<string>([
 ]);
 
 /**
+ * Score a token for importance in retrieval. Higher scores = more important.
+ * Prioritizes: codes/part numbers, rare-looking terms, technical vocabulary.
+ */
+function scoreToken(tok: string, position: number, total: number): number {
+  let score = 0;
+  
+  // Code-like patterns: fault codes (F004, Error 61), part numbers (DDS02), model numbers
+  if (/^[a-z]\d{2,4}$/i.test(tok)) score += 100; // F004, E001, A002
+  if (/^[a-z]{2,5}\d+$/i.test(tok)) score += 80;  // DDS02, VFD52, PF525
+  if (/\d/.test(tok) && tok.length >= 3) score += 60; // Any token with numbers (3+ chars)
+  
+  // Length: longer tokens are often more specific/rare
+  if (tok.length >= 8) score += 40;
+  else if (tok.length >= 6) score += 30;
+  else if (tok.length >= 4) score += 20;
+  else if (tok.length === 3) score += 10;
+  
+  // Technical markers
+  if (/[A-Z]/.test(tok[0])) score += 15; // Capitalized (before lowercasing)
+  if (tok.includes("_") || tok.includes("-")) score += 10;
+  
+  // Position: slight preference to distribute across the query
+  // Tokens from the second half get a small boost to prevent dropping them entirely
+  const positionRatio = position / total;
+  if (positionRatio > 0.5) score += 25; // Second half boost
+  if (positionRatio < 0.2) score += 10; // First 20% slight boost
+  
+  // Domain-specific terms (common technical vocabulary)
+  const technical = new Set([
+    "error", "fault", "code", "alarm", "warning", "shutdown", "trip",
+    "overcurrent", "overvoltage", "undervoltage", "overload", "short", "ground",
+    "motor", "drive", "controller", "contactor", "relay", "circuit", "cable",
+    "supply", "voltage", "current", "power", "phase", "frequency", "torque",
+    "parameter", "configure", "diagnostic", "troubleshoot", "remedy", "cause",
+  ]);
+  if (technical.has(tok)) score += 35;
+  
+  return score;
+}
+
+/**
  * Bound the text handed to `plainto_tsquery` so a runaway query can't blow up
  * the OR-fallback fanout. No-op for queries of <= BM25_MAX_TERMS raw tokens;
- * caps longer ones. Never returns empty: if every token of a long query is
- * filtered out, falls back to the deduped raw tokens (capped). Exported for
- * unit testing.
+ * caps longer ones by IMPORTANCE rather than position: keeps codes, part numbers,
+ * rare-looking terms, and technical vocabulary from throughout the query, so a
+ * two-part question ("supply issue… error 61 on the drive") keeps tokens from
+ * both halves. Never returns empty: if every token of a long query is filtered
+ * out, falls back to the deduped raw tokens (capped). Exported for unit testing.
  */
 export function boundBm25Query(query: string): string {
   const rawAll = query.match(/\w+/g) ?? [];
@@ -748,18 +791,32 @@ export function boundBm25Query(query: string): string {
 
   const lowered = query.toLowerCase().match(/\w+/g) ?? [];
   const seen = new Set<string>();
-  const tokens: string[] = [];
-  for (const tok of lowered) {
+  
+  // Score each unique token by importance
+  type ScoredToken = { token: string; score: number };
+  const scored: ScoredToken[] = [];
+  
+  for (let i = 0; i < lowered.length; i++) {
+    const tok = lowered[i];
     if (seen.has(tok)) continue;
     seen.add(tok);
+    
+    // Filter noise
     if (tok.length <= 2 || /^\d+$/.test(tok) || BM25_STOPWORDS.has(tok)) continue;
-    tokens.push(tok);
-    if (tokens.length >= BM25_MAX_TERMS) break;
+    
+    const score = scoreToken(tok, i, lowered.length);
+    scored.push({ token: tok, score });
   }
-  if (tokens.length === 0) {
+  
+  // Sort by score descending, keep top BM25_MAX_TERMS
+  scored.sort((a, b) => b.score - a.score);
+  const kept = scored.slice(0, BM25_MAX_TERMS).map(s => s.token);
+  
+  if (kept.length === 0) {
     return Array.from(new Set(lowered)).slice(0, BM25_MAX_TERMS).join(" ");
   }
-  return tokens.join(" ");
+  
+  return kept.join(" ");
 }
 
 // #1875 — fault-code token detector. A SINGLE letter followed by 2-4 digits:
