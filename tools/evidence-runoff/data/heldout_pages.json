@@ -1,0 +1,3 @@
+{"rule": "ARCHITECTURE_MISSION_PLAN.md T2: next two qualifying pages per manual after every page round 1 examined; same screen rule",
+ "deviations": {"pf40": "p139 and p95 both qualify on their SECOND table (first tables have one value column / one data row); p101 not used",
+                "acs355": "p101 failed the screen on full-resolution view (single bullet-list row); replaced by next qualifying candidate p297"}}

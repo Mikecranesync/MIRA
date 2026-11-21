@@ -1,0 +1,1309 @@
+{
+ "summary": {
+  "n": 148,
+  "coverage_all": {
+   "k": 23,
+   "n": 148,
+   "rate": 0.155,
+   "wilson95": [
+    0.106,
+    0.222
+   ]
+  },
+  "catch_all_wrong": {
+   "k": 11,
+   "n": 95,
+   "rate": 0.116,
+   "wilson95": [
+    0.066,
+    0.196
+   ]
+  },
+  "catch_given_opinion": {
+   "k": 11,
+   "n": 14,
+   "rate": 0.786,
+   "wilson95": [
+    0.524,
+    0.924
+   ]
+  },
+  "false_flag_all_correct": {
+   "k": 2,
+   "n": 53,
+   "rate": 0.038,
+   "wilson95": [
+    0.01,
+    0.128
+   ]
+  },
+  "false_flag_given_opinion": {
+   "k": 2,
+   "n": 9,
+   "rate": 0.222,
+   "wilson95": [
+    0.063,
+    0.547
+   ]
+  },
+  "by_variant": {
+   "correct": {
+    "coverage": {
+     "k": 9,
+     "n": 53,
+     "rate": 0.17,
+     "wilson95": [
+      0.092,
+      0.292
+     ]
+    },
+    "flagged": {
+     "k": 2,
+     "n": 53,
+     "rate": 0.038,
+     "wilson95": [
+      0.01,
+      0.128
+     ]
+    }
+   },
+   "wrong_cell": {
+    "coverage": {
+     "k": 5,
+     "n": 42,
+     "rate": 0.119,
+     "wilson95": [
+      0.052,
+      0.25
+     ]
+    },
+    "flagged": {
+     "k": 2,
+     "n": 42,
+     "rate": 0.048,
+     "wilson95": [
+      0.013,
+      0.158
+     ]
+    }
+   },
+   "wrong_page": {
+    "coverage": {
+     "k": 9,
+     "n": 53,
+     "rate": 0.17,
+     "wilson95": [
+      0.092,
+      0.292
+     ]
+    },
+    "flagged": {
+     "k": 9,
+     "n": 53,
+     "rate": 0.17,
+     "wilson95": [
+      0.092,
+      0.292
+     ]
+    }
+   }
+  },
+  "verdicts": {
+   "correct:supported:all_bound": 7,
+   "wrong_page:unsupported:absent": 9,
+   "correct:unsupported:absent": 2,
+   "correct:no_opinion:no_typed_claim": 44,
+   "wrong_cell:no_opinion:no_typed_claim": 37,
+   "wrong_page:no_opinion:no_typed_claim": 44,
+   "wrong_cell:unsupported:absent": 1,
+   "wrong_cell:supported:all_bound": 3,
+   "wrong_cell:unsupported:unbound": 1
+  }
+ },
+ "per_item": [
+  {
+   "id": "pf40:22:0:correct",
+   "variant": "correct",
+   "truth": "correct",
+   "verdict": "supported",
+   "reason": "all_bound",
+   "claims": "[[\"qty:15|m\",\"supported\",22],[\"qty:49|ft\",\"supported\",22]]"
+  },
+  {
+   "id": "pf40:22:0:wrong_page",
+   "variant": "wrong_page",
+   "truth": "wrong",
+   "verdict": "unsupported",
+   "reason": "absent",
+   "claims": "[[\"qty:15|m\",\"absent\",null],[\"qty:49|ft\",\"absent\",null]]"
+  },
+  {
+   "id": "pf40:22:1:correct",
+   "variant": "correct",
+   "truth": "correct",
+   "verdict": "supported",
+   "reason": "all_bound",
+   "claims": "[[\"qty:40|m\",\"supported\",22],[\"qty:131|ft\",\"supported\",22]]"
+  },
+  {
+   "id": "pf40:22:1:wrong_page",
+   "variant": "wrong_page",
+   "truth": "wrong",
+   "verdict": "unsupported",
+   "reason": "absent",
+   "claims": "[[\"qty:40|m\",\"absent\",null],[\"qty:131|ft\",\"absent\",null]]"
+  },
+  {
+   "id": "pf40:22:2:correct",
+   "variant": "correct",
+   "truth": "correct",
+   "verdict": "supported",
+   "reason": "all_bound",
+   "claims": "[[\"qty:170|m\",\"supported\",22],[\"qty:558|ft\",\"supported\",22]]"
+  },
+  {
+   "id": "pf40:22:2:wrong_page",
+   "variant": "wrong_page",
+   "truth": "wrong",
+   "verdict": "unsupported",
+   "reason": "absent",
+   "claims": "[[\"qty:170|m\",\"absent\",null],[\"qty:558|ft\",\"absent\",null]]"
+  },
+  {
+   "id": "pf40:25:0:correct",
+   "variant": "correct",
+   "truth": "correct",
+   "verdict": "unsupported",
+   "reason": "absent",
+   "claims": "[[\"qty:0.8|mm\u00b2\",\"absent\",null],[\"qty:18|AWG\",\"absent\",null],[\"qty:100|%\",\"supported\",25]]"
+  },
+  {
+   "id": "pf40:25:0:wrong_page",
+   "variant": "wrong_page",
+   "truth": "wrong",
+   "verdict": "unsupported",
+   "reason": "absent",
+   "claims": "[[\"qty:0.8|mm\u00b2\",\"absent\",null],[\"qty:18|AWG\",\"absent\",null],[\"qty:100|%\",\"absent\",null]]"
+  },
+  {
+   "id": "pf40:25:2:correct",
+   "variant": "correct",
+   "truth": "correct",
+   "verdict": "unsupported",
+   "reason": "absent",
+   "claims": "[[\"qty:0.8|mm\u00b2\",\"absent\",null],[\"qty:18|AWG\",\"absent\",null]]"
+  },
+  {
+   "id": "pf40:25:2:wrong_page",
+   "variant": "wrong_page",
+   "truth": "wrong",
+   "verdict": "unsupported",
+   "reason": "absent",
+   "claims": "[[\"qty:0.8|mm\u00b2\",\"absent\",null],[\"qty:18|AWG\",\"absent\",null]]"
+  },
+  {
+   "id": "pf4m:80:0:correct",
+   "variant": "correct",
+   "truth": "correct",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "pf4m:80:0:wrong_cell",
+   "variant": "wrong_cell",
+   "truth": "wrong",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "pf4m:80:0:wrong_page",
+   "variant": "wrong_page",
+   "truth": "wrong",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "pf4m:80:1:correct",
+   "variant": "correct",
+   "truth": "correct",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "pf4m:80:1:wrong_cell",
+   "variant": "wrong_cell",
+   "truth": "wrong",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "pf4m:80:1:wrong_page",
+   "variant": "wrong_page",
+   "truth": "wrong",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "pf4m:86:1:correct",
+   "variant": "correct",
+   "truth": "correct",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "pf4m:86:1:wrong_cell",
+   "variant": "wrong_cell",
+   "truth": "wrong",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "pf4m:86:1:wrong_page",
+   "variant": "wrong_page",
+   "truth": "wrong",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "pf4m:86:2:correct",
+   "variant": "correct",
+   "truth": "correct",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "pf4m:86:2:wrong_cell",
+   "variant": "wrong_cell",
+   "truth": "wrong",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "pf4m:86:2:wrong_page",
+   "variant": "wrong_page",
+   "truth": "wrong",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "micro820-um:193:1:correct",
+   "variant": "correct",
+   "truth": "correct",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "micro820-um:193:1:wrong_page",
+   "variant": "wrong_page",
+   "truth": "wrong",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "micro820-um:100:0:correct",
+   "variant": "correct",
+   "truth": "correct",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "micro820-um:100:0:wrong_cell",
+   "variant": "wrong_cell",
+   "truth": "wrong",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "micro820-um:100:0:wrong_page",
+   "variant": "wrong_page",
+   "truth": "wrong",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "micro820-um:100:2:correct",
+   "variant": "correct",
+   "truth": "correct",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "micro820-um:100:2:wrong_cell",
+   "variant": "wrong_cell",
+   "truth": "wrong",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "micro820-um:100:2:wrong_page",
+   "variant": "wrong_page",
+   "truth": "wrong",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "ml1100:11:0:correct",
+   "variant": "correct",
+   "truth": "correct",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "ml1100:11:0:wrong_cell",
+   "variant": "wrong_cell",
+   "truth": "wrong",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "ml1100:11:0:wrong_page",
+   "variant": "wrong_page",
+   "truth": "wrong",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "ml1100:11:1:correct",
+   "variant": "correct",
+   "truth": "correct",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "ml1100:11:1:wrong_cell",
+   "variant": "wrong_cell",
+   "truth": "wrong",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "ml1100:11:1:wrong_page",
+   "variant": "wrong_page",
+   "truth": "wrong",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "ml1100:11:2:correct",
+   "variant": "correct",
+   "truth": "correct",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "ml1100:11:2:wrong_cell",
+   "variant": "wrong_cell",
+   "truth": "wrong",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "ml1100:11:2:wrong_page",
+   "variant": "wrong_page",
+   "truth": "wrong",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "ml1100:73:0:correct",
+   "variant": "correct",
+   "truth": "correct",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "ml1100:73:0:wrong_cell",
+   "variant": "wrong_cell",
+   "truth": "wrong",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "ml1100:73:0:wrong_page",
+   "variant": "wrong_page",
+   "truth": "wrong",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "ml1100:73:2:correct",
+   "variant": "correct",
+   "truth": "correct",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "ml1100:73:2:wrong_cell",
+   "variant": "wrong_cell",
+   "truth": "wrong",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "ml1100:73:2:wrong_page",
+   "variant": "wrong_page",
+   "truth": "wrong",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "smcflex:107:0:correct",
+   "variant": "correct",
+   "truth": "correct",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "smcflex:107:0:wrong_cell",
+   "variant": "wrong_cell",
+   "truth": "wrong",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "smcflex:107:0:wrong_page",
+   "variant": "wrong_page",
+   "truth": "wrong",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "smcflex:107:2:correct",
+   "variant": "correct",
+   "truth": "correct",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "smcflex:107:2:wrong_cell",
+   "variant": "wrong_cell",
+   "truth": "wrong",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "smcflex:107:2:wrong_page",
+   "variant": "wrong_page",
+   "truth": "wrong",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "e3plus:262:2:correct",
+   "variant": "correct",
+   "truth": "correct",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "e3plus:262:2:wrong_page",
+   "variant": "wrong_page",
+   "truth": "wrong",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "e3plus:258:2:correct",
+   "variant": "correct",
+   "truth": "correct",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "e3plus:258:2:wrong_cell",
+   "variant": "wrong_cell",
+   "truth": "wrong",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "e3plus:258:2:wrong_page",
+   "variant": "wrong_page",
+   "truth": "wrong",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "smc50:232:0:correct",
+   "variant": "correct",
+   "truth": "correct",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "smc50:232:0:wrong_cell",
+   "variant": "wrong_cell",
+   "truth": "wrong",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "smc50:232:0:wrong_page",
+   "variant": "wrong_page",
+   "truth": "wrong",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "smc50:232:1:correct",
+   "variant": "correct",
+   "truth": "correct",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "smc50:232:1:wrong_cell",
+   "variant": "wrong_cell",
+   "truth": "wrong",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "smc50:232:1:wrong_page",
+   "variant": "wrong_page",
+   "truth": "wrong",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "smc50:232:2:correct",
+   "variant": "correct",
+   "truth": "correct",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "smc50:232:2:wrong_cell",
+   "variant": "wrong_cell",
+   "truth": "wrong",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "smc50:232:2:wrong_page",
+   "variant": "wrong_page",
+   "truth": "wrong",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "smc50:75:0:correct",
+   "variant": "correct",
+   "truth": "correct",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "smc50:75:0:wrong_cell",
+   "variant": "wrong_cell",
+   "truth": "wrong",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "smc50:75:0:wrong_page",
+   "variant": "wrong_page",
+   "truth": "wrong",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "smc50:75:1:correct",
+   "variant": "correct",
+   "truth": "correct",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "smc50:75:1:wrong_cell",
+   "variant": "wrong_cell",
+   "truth": "wrong",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "smc50:75:1:wrong_page",
+   "variant": "wrong_page",
+   "truth": "wrong",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "smc50:75:2:correct",
+   "variant": "correct",
+   "truth": "correct",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "smc50:75:2:wrong_cell",
+   "variant": "wrong_cell",
+   "truth": "wrong",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "smc50:75:2:wrong_page",
+   "variant": "wrong_page",
+   "truth": "wrong",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "se-m172-hardware-guide-EIO0000002015:153:0:correct",
+   "variant": "correct",
+   "truth": "correct",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "se-m172-hardware-guide-EIO0000002015:153:0:wrong_cell",
+   "variant": "wrong_cell",
+   "truth": "wrong",
+   "verdict": "unsupported",
+   "reason": "absent",
+   "claims": "[[\"qty:0~5|V\",\"absent\",null]]"
+  },
+  {
+   "id": "se-m172-hardware-guide-EIO0000002015:153:0:wrong_page",
+   "variant": "wrong_page",
+   "truth": "wrong",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "se-m172-hardware-guide-EIO0000002015:156:0:correct",
+   "variant": "correct",
+   "truth": "correct",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "se-m172-hardware-guide-EIO0000002015:156:0:wrong_cell",
+   "variant": "wrong_cell",
+   "truth": "wrong",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "se-m172-hardware-guide-EIO0000002015:156:0:wrong_page",
+   "variant": "wrong_page",
+   "truth": "wrong",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "gs10-ch6:30:0:correct",
+   "variant": "correct",
+   "truth": "correct",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "gs10-ch6:30:0:wrong_cell",
+   "variant": "wrong_cell",
+   "truth": "wrong",
+   "verdict": "supported",
+   "reason": "all_bound",
+   "claims": "[[\"qty:4~20|mA\",\"supported\",30]]"
+  },
+  {
+   "id": "gs10-ch6:30:0:wrong_page",
+   "variant": "wrong_page",
+   "truth": "wrong",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "gs10-ch6:30:1:correct",
+   "variant": "correct",
+   "truth": "correct",
+   "verdict": "supported",
+   "reason": "all_bound",
+   "claims": "[[\"qty:4~20|mA\",\"supported\",30]]"
+  },
+  {
+   "id": "gs10-ch6:30:1:wrong_cell",
+   "variant": "wrong_cell",
+   "truth": "wrong",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "gs10-ch6:30:1:wrong_page",
+   "variant": "wrong_page",
+   "truth": "wrong",
+   "verdict": "unsupported",
+   "reason": "absent",
+   "claims": "[[\"qty:4~20|mA\",\"absent\",null]]"
+  },
+  {
+   "id": "gs10-ch6:7:0:correct",
+   "variant": "correct",
+   "truth": "correct",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "gs10-ch6:7:0:wrong_page",
+   "variant": "wrong_page",
+   "truth": "wrong",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "acs355:258:0:correct",
+   "variant": "correct",
+   "truth": "correct",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "acs355:258:0:wrong_cell",
+   "variant": "wrong_cell",
+   "truth": "wrong",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "acs355:258:0:wrong_page",
+   "variant": "wrong_page",
+   "truth": "wrong",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "acs355:258:1:correct",
+   "variant": "correct",
+   "truth": "correct",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "acs355:258:1:wrong_cell",
+   "variant": "wrong_cell",
+   "truth": "wrong",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "acs355:258:1:wrong_page",
+   "variant": "wrong_page",
+   "truth": "wrong",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "acs355:258:2:correct",
+   "variant": "correct",
+   "truth": "correct",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "acs355:258:2:wrong_cell",
+   "variant": "wrong_cell",
+   "truth": "wrong",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "acs355:258:2:wrong_page",
+   "variant": "wrong_page",
+   "truth": "wrong",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "micro820-in:15:0:correct",
+   "variant": "correct",
+   "truth": "correct",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "micro820-in:15:0:wrong_page",
+   "variant": "wrong_page",
+   "truth": "wrong",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "micro820-in:20:0:correct",
+   "variant": "correct",
+   "truth": "correct",
+   "verdict": "supported",
+   "reason": "all_bound",
+   "claims": "[[\"qty:3|A\",\"supported\",20]]"
+  },
+  {
+   "id": "micro820-in:20:0:wrong_cell",
+   "variant": "wrong_cell",
+   "truth": "wrong",
+   "verdict": "supported",
+   "reason": "all_bound",
+   "claims": "[[\"qty:2.5|\u00b5s\",\"supported\",20]]"
+  },
+  {
+   "id": "micro820-in:20:0:wrong_page",
+   "variant": "wrong_page",
+   "truth": "wrong",
+   "verdict": "unsupported",
+   "reason": "absent",
+   "claims": "[[\"qty:3|A\",\"absent\",null]]"
+  },
+  {
+   "id": "micro820-in:20:1:correct",
+   "variant": "correct",
+   "truth": "correct",
+   "verdict": "supported",
+   "reason": "all_bound",
+   "claims": "[[\"qty:2.5|\u00b5s\",\"supported\",20]]"
+  },
+  {
+   "id": "micro820-in:20:1:wrong_cell",
+   "variant": "wrong_cell",
+   "truth": "wrong",
+   "verdict": "supported",
+   "reason": "all_bound",
+   "claims": "[[\"qty:3|A\",\"supported\",20]]"
+  },
+  {
+   "id": "micro820-in:20:1:wrong_page",
+   "variant": "wrong_page",
+   "truth": "wrong",
+   "verdict": "unsupported",
+   "reason": "absent",
+   "claims": "[[\"qty:2.5|\u00b5s\",\"absent\",null]]"
+  },
+  {
+   "id": "micro820-in:20:2:correct",
+   "variant": "correct",
+   "truth": "correct",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "micro820-in:20:2:wrong_cell",
+   "variant": "wrong_cell",
+   "truth": "wrong",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "micro820-in:20:2:wrong_page",
+   "variant": "wrong_page",
+   "truth": "wrong",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "oem-manual-micro810:10:1:correct",
+   "variant": "correct",
+   "truth": "correct",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "oem-manual-micro810:10:1:wrong_cell",
+   "variant": "wrong_cell",
+   "truth": "wrong",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "oem-manual-micro810:10:1:wrong_page",
+   "variant": "wrong_page",
+   "truth": "wrong",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "oem-manual-micro810:10:2:correct",
+   "variant": "correct",
+   "truth": "correct",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "oem-manual-micro810:10:2:wrong_cell",
+   "variant": "wrong_cell",
+   "truth": "wrong",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "oem-manual-micro810:10:2:wrong_page",
+   "variant": "wrong_page",
+   "truth": "wrong",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "oem-manual-micro810:28:1:correct",
+   "variant": "correct",
+   "truth": "correct",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "oem-manual-micro810:28:1:wrong_cell",
+   "variant": "wrong_cell",
+   "truth": "wrong",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "oem-manual-micro810:28:1:wrong_page",
+   "variant": "wrong_page",
+   "truth": "wrong",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "se-m171-performance-hardware-guide-EIO0000002030:107:0:correct",
+   "variant": "correct",
+   "truth": "correct",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "se-m171-performance-hardware-guide-EIO0000002030:107:0:wrong_cell",
+   "variant": "wrong_cell",
+   "truth": "wrong",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "se-m171-performance-hardware-guide-EIO0000002030:107:0:wrong_page",
+   "variant": "wrong_page",
+   "truth": "wrong",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "se-m171-performance-hardware-guide-EIO0000002030:107:2:correct",
+   "variant": "correct",
+   "truth": "correct",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "se-m171-performance-hardware-guide-EIO0000002030:107:2:wrong_cell",
+   "variant": "wrong_cell",
+   "truth": "wrong",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "se-m171-performance-hardware-guide-EIO0000002030:107:2:wrong_page",
+   "variant": "wrong_page",
+   "truth": "wrong",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "se-x80-analog-io-35011978:337:0:correct",
+   "variant": "correct",
+   "truth": "correct",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "se-x80-analog-io-35011978:337:0:wrong_cell",
+   "variant": "wrong_cell",
+   "truth": "wrong",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "se-x80-analog-io-35011978:337:0:wrong_page",
+   "variant": "wrong_page",
+   "truth": "wrong",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "se-x80-analog-io-35011978:337:1:correct",
+   "variant": "correct",
+   "truth": "correct",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "se-x80-analog-io-35011978:337:1:wrong_cell",
+   "variant": "wrong_cell",
+   "truth": "wrong",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "se-x80-analog-io-35011978:337:1:wrong_page",
+   "variant": "wrong_page",
+   "truth": "wrong",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "se-x80-analog-io-35011978:337:2:correct",
+   "variant": "correct",
+   "truth": "correct",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "se-x80-analog-io-35011978:337:2:wrong_cell",
+   "variant": "wrong_cell",
+   "truth": "wrong",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "se-x80-analog-io-35011978:337:2:wrong_page",
+   "variant": "wrong_page",
+   "truth": "wrong",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "se-x80-analog-io-35011978:81:1:correct",
+   "variant": "correct",
+   "truth": "correct",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "se-x80-analog-io-35011978:81:1:wrong_cell",
+   "variant": "wrong_cell",
+   "truth": "wrong",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "se-x80-analog-io-35011978:81:1:wrong_page",
+   "variant": "wrong_page",
+   "truth": "wrong",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "se-x80-analog-io-35011978:81:2:correct",
+   "variant": "correct",
+   "truth": "correct",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "se-x80-analog-io-35011978:81:2:wrong_cell",
+   "variant": "wrong_cell",
+   "truth": "wrong",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "se-x80-analog-io-35011978:81:2:wrong_page",
+   "variant": "wrong_page",
+   "truth": "wrong",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "se-lxm32a-canopen-0198441113779:51:0:correct",
+   "variant": "correct",
+   "truth": "correct",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "se-lxm32a-canopen-0198441113779:51:0:wrong_cell",
+   "variant": "wrong_cell",
+   "truth": "wrong",
+   "verdict": "unsupported",
+   "reason": "unbound",
+   "claims": "[[\"qty:2|ms\",\"unbound\",51]]"
+  },
+  {
+   "id": "se-lxm32a-canopen-0198441113779:51:0:wrong_page",
+   "variant": "wrong_page",
+   "truth": "wrong",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "se-lxm32a-canopen-0198441113779:22:1:correct",
+   "variant": "correct",
+   "truth": "correct",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "se-lxm32a-canopen-0198441113779:22:1:wrong_cell",
+   "variant": "wrong_cell",
+   "truth": "wrong",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "se-lxm32a-canopen-0198441113779:22:1:wrong_page",
+   "variant": "wrong_page",
+   "truth": "wrong",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "se-premium-async-serial-35006178:362:2:correct",
+   "variant": "correct",
+   "truth": "correct",
+   "verdict": "supported",
+   "reason": "all_bound",
+   "claims": "[[\"bit:8\",\"supported\",362]]"
+  },
+  {
+   "id": "se-premium-async-serial-35006178:362:2:wrong_page",
+   "variant": "wrong_page",
+   "truth": "wrong",
+   "verdict": "unsupported",
+   "reason": "absent",
+   "claims": "[[\"bit:8\",\"absent\",null]]"
+  },
+  {
+   "id": "se-premium-async-serial-35006178:180:0:correct",
+   "variant": "correct",
+   "truth": "correct",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  },
+  {
+   "id": "se-premium-async-serial-35006178:180:0:wrong_page",
+   "variant": "wrong_page",
+   "truth": "wrong",
+   "verdict": "no_opinion",
+   "reason": "no_typed_claim",
+   "claims": "[]"
+  }
+ ]
+}

@@ -1,0 +1,8 @@
+{"raw_agreement": {"cells": 318, "agree": 314, "rate": 0.987},
+ "labeller": "blind Claude Sonnet subagent (same model family as the gold labeller; not provider-independent)",
+ "adjudication": [
+  {"cells": "se-lxm32a p51 row i=2, cols 1/3/4", "verdict": "task ambiguity, gold correct",
+   "why": "the identifying cell '3022 hex' occurs on two rows; the blind labeller took the first, the gold row is the last (subindex 5 hex), confirmed on the image"},
+  {"cells": "se-m171 p107 row i=0, col 5", "verdict": "convention difference, not an error",
+   "why": "printed 'cur-' / 'rent' across a line break; gold keeps the printed hyphen, blind joined the word"}],
+ "gold_errors_found": 0}
