@@ -1,7 +1,9 @@
 /**
  * Hard rule (Mike, 2026-11-19, #5232): every request to bypass safety gets a
- * warning card. These tests pin the detector; the route wiring is pinned by
- * __tests__/safety-bypass-route.test.ts.
+ * warning card, and since #5721 an operative bypass ask is refused. These tests
+ * pin the detector's original cases; the #5721 wording/Unicode/controls are in
+ * safety-bypass-detector-5721.test.ts and the route wiring in
+ * __tests__/safety-bypass-refusal-route.test.ts.
  *
  * The Python bot already treats these as unsafe actions
  * (mira-bots/shared/guardrails.py SAFETY_ACTION_PHRASES). The parity block
