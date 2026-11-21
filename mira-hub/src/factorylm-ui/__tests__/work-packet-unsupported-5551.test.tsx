@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { isSupportedManufacturer, manufacturerRefusalMessage } from "@/capabilities/work-packet/manufacturer";
-import { SyntheticDemoControls, UnsupportedNotice } from "../WorkPacketPanel";
+import { ConfirmationFeedback, SyntheticDemoControls, UnsupportedNotice } from "../WorkPacketPanel";
 import { unsupportedManufacturerMessage } from "../work-packet-view";
 
 const noop = () => {};
@@ -47,5 +47,50 @@ describe("rendering", () => {
     expect(panel).toContain("packet.workOrder.synthetic && <div style={S.stamp}");
     const host = readFileSync(join(__dirname, "..", "hub-host.tsx"), "utf8");
     expect(host).not.toContain("allowSyntheticDemo");
+  });
+});
+
+describe("#5731 F3 — the confirmation outcome is its own labelled block", () => {
+  const OUTCOMES = [
+    "Confirmed — I found the Siemens X1 manual and it's ready to answer from.",
+    "Confirmed as a Siemens X1. I'll look for its manual.",
+    "Confirmed as a Siemens X1. No automatic manual search was started — add its manual in Sources.",
+    "Your nameplate was saved but is still being indexed (or indexing failed). Retry in a moment — the manual search runs once the nameplate is citable.",
+  ];
+  it("renders nothing when there is no outcome", () => {
+    expect(renderToStaticMarkup(<ConfirmationFeedback nameplate={null} typed={null} />)).toBe("");
+  });
+  it.each(OUTCOMES)("shows the server's words for the typed path, verbatim and labelled: %s", (message) => {
+    const html = renderToStaticMarkup(<ConfirmationFeedback nameplate={null} typed={message} />);
+    expect(html).toContain("Identity and manual search");
+    expect(html).toContain('data-testid="wp-typed-outcome"');
+    expect(html).toContain(message.replace(/'/g, "&#x27;"));
+    expect(html).not.toContain("wp-nameplate-outcome");
+  });
+  it("keeps the two paths distinct when both have spoken", () => {
+    const html = renderToStaticMarkup(<ConfirmationFeedback nameplate="Nameplate confirmed. Manual search was not requested." typed="Confirmed as a Siemens X1. I'll look for its manual." />);
+    expect(html).toContain('data-testid="wp-nameplate-outcome"');
+    expect(html).toContain('data-testid="wp-typed-outcome"');
+  });
+  it("the outcome elements live outside the gated form: the panel renders the block before the unsupported notice, once", () => {
+    const panel = readFileSync(join(__dirname, "..", "WorkPacketPanel.tsx"), "utf8");
+    expect(panel.match(/<ConfirmationFeedback /g)).toHaveLength(1);
+    expect(panel.indexOf("<ConfirmationFeedback ")).toBeLessThan(panel.indexOf("{unsupportedMessage && <UnsupportedNotice"));
+    expect(panel.match(/data-testid="wp-typed-outcome"/g)).toHaveLength(1); // not duplicated inside the form
+  });
+});
+
+describe("#5731 F2 — the refusal gates a saved packet too", () => {
+  const panel = readFileSync(join(__dirname, "..", "WorkPacketPanel.tsx"), "utf8");
+  it("the unsupported message no longer depends on whether a packet exists", () => {
+    expect(panel).toContain("const unsupportedMessage = unsupportedManufacturerMessage(avail);");
+    expect(panel).not.toContain("packet ? null : unsupportedManufacturerMessage");
+  });
+  it("Resume stays offered for a saved packet: only a packet-less unsupported panel hides the entry", () => {
+    expect(panel).toContain("(unsupportedMessage && !packet && !open)");
+  });
+  it("a saved packet under an unsupported maker is stale, so Export (disabled when stale) stays off", () => {
+    expect(panel).toMatch(/unsupportedMessage\s*\?\s*"job packets are not available/);
+    expect(panel).toContain("disabled={stale !== null}");
   });
 });
