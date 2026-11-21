@@ -1,0 +1,39 @@
+# New MIRA issues triage, 2026-10-26 (read-only)
+
+Read-only triage. Nothing was posted, labelled, opened or built. Priorities: P0 means drop everything, P3 means whenever.
+Sellable path: mira-mobile → Hub equipment-notebook chat → manual-rag.
+
+| # | What | Dup/regression? | Board | Pri | Next step |
+|---|---|---|---|---|---|
+| [#4821](https://github.com/Mikecranesync/MIRA/issues/4821) | PF525 overload answer scores 72/100. It misses the nameplate re-entry step (P031–P036) and the P040 autotune caution. | New. It's the same case as our local `/workspace/live-test/pf525-overload-nameplate-2026-10-26/`, so it is effectively the draft issue we hadn't filed. Not a dup. | #4732 round-trip (answer quality on the sellable path) | P2 | It was filed from a summary only. Attach case.json, the raw answer and the cited passages from the local case dir. That counts as a GitHub comment, so it needs Mike's yes. Then rerun after any retrieval or prompt fix. |
+| [#4822](https://github.com/Mikecranesync/MIRA/issues/4822) | The env-vars doc says the seam is OpenAI→OpenRouter, but the code still falls through to Groq, Cerebras and Together. | Overlaps [#4438](https://github.com/Mikecranesync/MIRA/issues/4438) (provider retirement). It's a docs follow-up to #4789 Codex F1. | Neither | P3 | Fold it into the #4438 retirement work. If retirement slips, fix the doc only and add the parity test. |
+| [#4823](https://github.com/Mikecranesync/MIRA/issues/4823) | CLAUDE.md and known-issues say Telegram voice notes are dead, but they work through OpenAI. | Stale docs after #4438's voice migration (commit 4682cf47b). Not a dup. | Neither (bots are off the sellable path) | P3 | A two-line docs PR. It can be batched with #4822. |
+| [#4829](https://github.com/Mikecranesync/MIRA/issues/4829) | Phone: closing the citation viewer leaves the header half clipped. | Sibling of [#4749](https://github.com/Mikecranesync/MIRA/issues/4749) (viewer covers the header) and [#4630](https://github.com/Mikecranesync/MIRA/issues/4630) (header not sticky). A sticky header (#4630) would likely fix this too. | #4372 readiness (phone UI on the sellable path) | P2 | Fix together with #4630/#4749 in one PR in the shared UI lane (#3626, one writer). |
+| [#4830](https://github.com/Mikecranesync/MIRA/issues/4830) | Source row tap target is about 20px tall, the page label is 13px grey, and contrast is about 4.4:1. | Same family as [#4668](https://github.com/Mikecranesync/MIRA/issues/4668), [#4629](https://github.com/Mikecranesync/MIRA/issues/4629) and [#4563](https://github.com/Mikecranesync/MIRA/issues/4563). Not an exact dup. | #4372 readiness | P2 | Gloved techs can't tap the citation, which is the proof feature. Batch it with #4829 in the UI lane. |
+| [#4831](https://github.com/Mikecranesync/MIRA/issues/4831) | The "Lockout conflict" warning quotes a step cut off mid-word and flags a step that already says lock out. | Related to [#4565](https://github.com/Mikecranesync/MIRA/issues/4565) (safety warning content). It's in the [#3980](https://github.com/Mikecranesync/MIRA/issues/3980) safety-rule family. Not a dup. | #4732 round-trip (safety layer on answers) | **P1** | A false or contradictory safety warning teaches techs to ignore safety warnings. Fix it structurally: quote on word boundaries, and skip the warning when the step already has lockout or verify-dead wording. That check must parse the step's grammar, not match a list of phrases. Use a fixture from the F013 question. Run Gate-7 first. |
+| [#4833](https://github.com/Mikecranesync/MIRA/issues/4833) | Under the flag, long spec tables can be classed as an index (Codex F1 on #4832). | Follow-up to PR [#4832](https://github.com/Mikecranesync/MIRA/pull/4832). Not a dup. | #4732 round-trip (retrieval), as a latent risk | P3 | The flag is off in prod and no current manual is affected. Fix it before `NOTEBOOK_LEXICAL_V2` is turned on in prod, which makes it a gate for the flag flip. Add the 20-row fixture test. |
+| [#4834](https://github.com/Mikecranesync/MIRA/issues/4834) | Re-typed fault codes ("fault 33" for F33) lose the page about half the time. | Earlier attempt [#4483](https://github.com/Mikecranesync/MIRA/issues/4483) widened code detection and measured a net loss. That makes this a known open problem, not a regression. | #4732 round-trip | **P1** | Fault-code lookup is the core tech question, and only 37% of re-typed codes reach the top 5 in prod. Pre-register a bar on the 77 real questions plus the fault-code and reworded sets, the same way #4832 was gated, then design the normalization. |
+| [#4836](https://github.com/Mikecranesync/MIRA/issues/4836) | The Firebase distribute step prints a tokenized APK download URL in the public Actions log. | New. No earlier issue on log redaction. | Neither (ops/security hygiene) | P2 | See below. |
+
+## #4836 severity verdict: low, and already self-healed
+
+- **What leaked.** I checked `.github/workflows/mobile-release-distribute.yml`, job `firebase-distribute`. The step runs `firebase appdistribution:distribute ... --non-interactive` and doesn't filter its output. The CLI prints a **short-lived signed download link** for the release binary, which the CLI itself labels "link expires in 1 hour".
+  - That token is minted per release by Firebase. It is **not** our credential.
+  - The real secrets in that step don't reach the log. The service-account JSON is written to a 0700 temp dir, never echoed, and deleted by a trap. `FIREBASE_ANDROID_APP_ID` is masked with `::add-mask::`. `DOPPLER_TOKEN` is unset before the CLI runs.
+- **Does it expire?** Yes, after 1 hour.
+  - The run was 40425041773, early 2026-10-27 UTC, which is the evening of Oct 26 ET. The issue was filed at 8:20 PM EDT.
+  - The link is expired by now, or will be within minutes. Any later distribute run would print a new link.
+- **What it grants.** A download of the same signed APK that is already public at updates.factorylm.com/download. No tester data and no upload rights.
+- **Delete the log or run?** Not required for safety, because the link is dead and the APK is public anyway. Deleting the run's logs would be tidy but optional. Note that the run also holds the signed APK/AAB artifacts and the provenance record, kept for 14 days. Deleting the whole run would throw away that evidence, so if Mike wants cleanup, delete only the logs.
+- **Rotate anything?** **No rotation needed.** The Firebase service account and the Doppler token were never exposed. Rotating them would be churn with no benefit.
+- **Fix.** Pipe the CLI output through a redaction filter. It should drop the binary-download line or strip `token=` query strings, while keeping the "uploaded" and "distributed successfully" lines. Keep `set -o pipefail` so a CLI failure still fails the step. This is a guarded workflow change, so it needs a lifecycle rationale, then Gate-7, then Codex on the final SHA.
+- **When it matters.** Before the next `distribute=yes` run, and before any non-public (internal-only) build is ever distributed.
+
+## Decisions for Mike
+1. #4836: OK a cheap remediator, ideally a grok-4.6 launch, for the redaction-filter PR? Gate-7 runs first, then Codex on the final SHA, which also needs your OK.
+2. #4836: delete run 40425041773's logs, yes or no? I recommend logs only, not the run, or simply leave it since the link is expired. **No credential rotation is recommended.**
+3. #4836: hold `distribute=yes` releases until the filter merges? I recommend yes, unless a release is urgent; each extra run leaks only a 1-hour link.
+4. #4831 and #4834 (P1): approve build lanes? #4831 goes through the shared UI/answer lane, one writer. #4834 needs a pre-registered eval bar first.
+5. #4821: OK posting the local case artifacts (case.json, raw answer, cited passages) as a comment on #4821?
+6. #4829/#4830: batch with #4630/#4749 into one UI-lane PR when #3626 is free?
+7. #4822/#4823: one combined docs PR, or fold them into #4438?
