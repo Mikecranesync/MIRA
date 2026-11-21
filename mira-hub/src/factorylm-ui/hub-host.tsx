@@ -79,7 +79,7 @@ import { actionsCoveredByLayer, NOTEBOOK_ACTIONS_CSS, notebookActionsStyle } fro
 import { NotebookActionsMenu, NotebookActionsMenuProvider } from "./notebook-actions-menu";
 import { BenchComponents } from "./BenchComponents";
 import { benchSendRefusal, createBenchSendGate, expectsComponentFrame, isScopeRefusalCode, parseComponentFrames, prepareChatSend, heldEvidenceNote, heldQuestionForSend, recordBenchScope, retryTargetCheck, targetReviewMessage, type BenchScopes, type BenchState, type ComponentTurnFrame, type ScopeField } from "./bench-components-logic";
-import { LEGACY_THREAD_ID, notebookMachines, notebookProjects, threadRefFromItem, notebookIdFromProject, type HubNotebook } from "./notebook-tree";
+import { LEGACY_THREAD_ID, notebookMachines, notebookProjects, threadRefFromItem, notebookIdFromProject, projectIdForNotebook, type HubNotebook, type HubThreadSummary } from "./notebook-tree";
 import { answerTurnId, citationIndex, contextFor, lifecycleFromStream, livePartsWhileRunning, partsFromStream, sourceIdFor, threadFromPersisted, withManualSearchStatus, withSettledFollowups, type SettledFollowups } from "./to-interaction";
 import {
   EMPTY_FIXTURE,
@@ -129,6 +129,7 @@ type Detail = {
   notebook: EquipmentNotebook;
   sources: NotebookSource[];
   turns: (PersistedTurn & { createdAt?: string; clientRequestId?: string | null })[];
+  threads?: HubThreadSummary[];
   // T2 (#4189 F6): the notebook's CURRENT manual-search status, computed
   // fresh by the GET route on every read (`currentManualSearchStatus`) —
   // absent/null on a server that predates it, or when nothing is running.
@@ -139,6 +140,8 @@ type Detail = {
 type Live = {
   readonly id: string;
   readonly clientRequestId: string;
+  readonly recoveryId: string;
+  readonly context: InteractionTurn["context"];
   readonly question: string;
   readonly content: string;
   readonly citations: EvidenceCitation[];
@@ -293,6 +296,7 @@ export function HubShellHost() {
     if (status === 401) { setSignedOut(true); return; }
     if (!data) return;
     setNotebooks(data.notebooks);
+    dispatch({ type: "reconcile-notebook-list", notebooks: data.notebooks });
     // A deep link / reload names its conversation (#3922); otherwise HOME (L0).
     // Opening from the URL goes through the same two steps as a click: the
     // reducer is told the thread id FIRST (`syncThread`), or its hydrate case
@@ -316,6 +320,9 @@ export function HubShellHost() {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- async data load (codebase precedent: (hub)/equipment/[id]/page.tsx)
     void loadNotebooks();
   }, [loadNotebooks]);
+  useEffect(() => {
+    if (state.confirmedThreadTitles?.size) void loadNotebooks().catch(() => undefined);
+  }, [loadNotebooks, state.confirmedThreadTitles]);
 
   // Codex r15–r16 F30: the ONE gate for starting manual-search following. Every
   // seed (hydration in loadDetail, confirm) goes through seedManualSearch, so
@@ -349,7 +356,10 @@ export function HubShellHost() {
       if (!res.data) return false;
       const threadId = shellThreadId(sel);
       const requestIds = terminalRequestIds(res.data.turns);
-      dispatch({ type: "reconcile-send", threadId, requestIds });
+      const confirmedThreadTitle = res.data.notebook.id === sel.notebookId
+        ? res.data.threads?.find((thread) => thread.notebookId === sel.notebookId && thread.id === sel.threadId)?.title.trim() ?? ""
+        : undefined;
+      dispatch({ type: "reconcile-send", threadId, requestIds, confirmedThreadTitle });
       setRetainedByThread((current) => {
         const exchanges = current.get(threadId);
         if (!exchanges?.some((exchange) => requestIds.has(exchange.clientRequestId))) return current;
@@ -434,8 +444,8 @@ export function HubShellHost() {
       ...attachmentDraftThreads,
       ...(state.sendRecoveryByThread?.keys() ?? []),
       ...(state.attachmentRecoveries?.keys() ?? []),
-    ]),
-    [notebooks, state.draftsByThread, attachmentDraftThreads, state.sendRecoveryByThread, state.attachmentRecoveries],
+    ], state.confirmedThreadTitles),
+    [notebooks, state.draftsByThread, attachmentDraftThreads, state.sendRecoveryByThread, state.attachmentRecoveries, state.confirmedThreadTitles],
   );
   const approvedManuals = useMemo(
     () => new Set(selection ? pendingApprovals[selection.notebookId] ?? [] : []),
@@ -457,10 +467,38 @@ export function HubShellHost() {
     return index;
   }, [detail, live, retainedExchanges]);
 
+  // #5504 Codex r2: one send/change gate per conversation, shared with the component panel.
+  // Keyed on the conversation (not a bare ref), so a gate never outlives a thread switch.
+  const gateConversation = selection ? `${selection.notebookId}|${selection.threadId}` : null;
+  const [, setBenchGateRevision] = useState(0);
+  const benchGate = useMemo(() => {
+    void gateConversation; // a new conversation gets a new gate
+    return createBenchSendGate(() => setBenchGateRevision((revision) => revision + 1));
+  }, [gateConversation]);
+
+  const recoveryBlocked = busy ? "Wait for the current send to finish." : benchSendRefusal(benchGate);
+  const reviewedBench = benchView?.key === gateConversation ? benchView?.state : undefined;
+
+  // The shell passes the clicked assistant turn. A later retry can keep the
+  // recovery ID but post a new wire ID after explicit target review.
+  const inlineRecoveries = useMemo(() => {
+    const byTurn = new Map<string, HubSendRecovery>();
+    if (recoveryBlocked) return byTurn;
+    const exchanges = [...(retainedExchanges ?? []), ...(live?.result ? [live] : [])];
+    for (const exchange of exchanges) {
+      const recovery = sendRecoveries?.find((item) => sendRecoveryId(item) === exchange.recoveryId &&
+        item.body.clientRequestId === exchange.clientRequestId);
+      if (recovery?.error && !recovery.unposted && retryTargetCheck(recovery.refusedScope, reviewedBench).kind === "retry") {
+        byTurn.set(exchange.id + "-a", recovery);
+      }
+    }
+    return byTurn;
+  }, [live, recoveryBlocked, retainedExchanges, reviewedBench, sendRecoveries]);
+
   const exchangeTurns = useCallback((live: Live | null): InteractionTurn[] => {
-    if (!live || !meta) return [];
-    const context = contextFor(meta);
-    const threadId = shellThreadId(selection!);
+    if (!live || !selection) return [];
+    const { context } = live;
+    const threadId = shellThreadId(selection);
     const q: InteractionTurn = {
       id: `${live.id}-q`, threadId, role: "user", parts: [{ type: "text", text: live.question }],
       lifecycle: "completed", context, createdAt: live.startedAt, updatedAt: live.startedAt,
@@ -469,8 +507,13 @@ export function HubShellHost() {
     let parts: InteractionPart[];
     let lifecycle: InteractionTurn["lifecycle"];
     if (live.result) {
-      parts = partsFromStream(live.result, { stopped: live.stopped, turnId: aId, notebookDocIds: meta.notebookDocIds, componentLabel: live.componentLabel });
+      parts = partsFromStream(live.result, { stopped: live.stopped, turnId: aId, notebookDocIds: meta?.notebookDocIds, componentLabel: live.componentLabel });
       lifecycle = lifecycleFromStream(live.result, { stopped: live.stopped });
+      if (!inlineRecoveries.has(aId)) {
+        parts = parts.map((part) => part.type === "error" && part.error.retryable
+          ? { ...part, error: { ...part.error, retryable: false } }
+          : part);
+      }
     } else {
       parts = livePartsWhileRunning(live.content, live.stopped ? undefined : live.progress, {
         expected: live.componentExpected === true,
@@ -483,7 +526,7 @@ export function HubShellHost() {
       createdAt: live.startedAt, updatedAt: new Date().toISOString(),
     };
     return [q, a];
-  }, [meta, selection]);
+  }, [inlineRecoveries, meta, selection]);
   const liveTurns = useMemo(() => {
     if (!live || persistedRequestIds.has(live.clientRequestId) ||
       retainedExchanges?.some((exchange) => exchange.clientRequestId === live.clientRequestId)) return [];
@@ -500,7 +543,7 @@ export function HubShellHost() {
       // HOME, or a thread whose detail is still loading: the outgoing message
       // still shows (a first send creates its project before anything else).
       const openId = selection ? shellThreadId(selection) : HOME_THREAD;
-      const turns = withOutgoing([], { turns: [], outgoingId: null }, outgoing, openId, EMPTY_FIXTURE.thread.id, state.activeContext);
+      const turns = withOutgoing(retainedTurns, { turns: [], outgoingId: null }, outgoing, openId, EMPTY_FIXTURE.thread.id, state.activeContext);
       const thread = loadingThread(selection, turns);
       return notebooks ? shellReducer(state, { type: "hydrate", data: { thread, projects, machines } }) : state;
     }
@@ -532,15 +575,6 @@ export function HubShellHost() {
   const putOutgoing = outgoingOwner.put;
   /** The outgoing message is done: the server's row (or the restored draft) takes over. */
   const dropOutgoing = outgoingOwner.drop;
-
-  // #5504 Codex r2: one send/change gate per conversation, shared with the component panel.
-  // Keyed on the conversation (not a bare ref), so a gate never outlives a thread switch.
-  const gateConversation = selection ? `${selection.notebookId}|${selection.threadId}` : null;
-  const [, setBenchGateRevision] = useState(0);
-  const benchGate = useMemo(() => {
-    void gateConversation; // a new conversation gets a new gate
-    return createBenchSendGate(() => setBenchGateRevision((revision) => revision + 1));
-  }, [gateConversation]);
 
   // --- the send path: the canonical notebook-chat route, streamed ---
   const send = useCallback(async (
@@ -605,7 +639,23 @@ export function HubShellHost() {
     const startedAt = new Date().toISOString();
     // An unclassified failure can be replayed only with the original request payload.
     const outBody = replayOriginal ? body : prepared.body;
-    setLive({ id, clientRequestId: outBody.clientRequestId, question, content: "", citations: [], result: null, stopped: false, startedAt, outgoingId });
+    const originDetail = detailRef.current?.notebook.id === sel.notebookId ? detailRef.current : null;
+    const context = originDetail
+      ? contextFor(metaFor(originDetail.notebook, sel, null, startedAt, originDetail.sources))
+      : { ...EMPTY_FIXTURE.activeContext, projectId: projectIdForNotebook(sel.notebookId), capturedAt: startedAt };
+    const exchange = { id, clientRequestId: outBody.clientRequestId, recoveryId, question, context, startedAt, outgoingId };
+    setLive({ ...exchange, content: "", citations: [], result: null, stopped: false });
+
+    let componentLabel: string | null = null;
+    const retainExchange = (result: CompatibleStreamResult, stopped: boolean) => {
+      const retained: RetainedExchange = {
+        ...exchange, result, content: result.content, citations: result.citations, stopped, componentLabel,
+      };
+      setRetainedByThread((current) => {
+        const peers = current.get(threadId)?.filter((item) => item.clientRequestId !== retained.clientRequestId) ?? [];
+        return new Map(current).set(threadId, [...peers, retained]);
+      });
+    };
     setBusy(true);
     // The route refused the scope (the selection moved): a retry is asked again under what the
     // header shows after the re-read, never replayed under the scope that was refused.
@@ -645,7 +695,6 @@ export function HubShellHost() {
       // The frame's label goes onto THIS send's live turn (keyed by its id), so a later
       // header change or another send cannot relabel it (#5504 Codex r2 F1).
       let componentRead: Promise<void> | null = null;
-      let componentLabel: string | null = null;
       if ("componentSelection" in outBody) {
         const [forChat, forComponent] = stream.tee();
         stream = forChat;
@@ -671,16 +720,7 @@ export function HubShellHost() {
       });
       // Both readers end with the stream; the finished answer carries its label.
       if (componentRead) await componentRead;
-      if (ownsAttempt() && (result.sawStatus || result.content || result.safetyNotice)) {
-        const exchange: RetainedExchange = {
-          id, clientRequestId: outBody.clientRequestId, question, content: result.content,
-          citations: result.citations, result, stopped: false, startedAt, outgoingId, componentLabel,
-        };
-        setRetainedByThread((current) => {
-          const peers = current.get(threadId)?.filter((item) => item.clientRequestId !== exchange.clientRequestId) ?? [];
-          return new Map(current).set(threadId, [...peers, exchange]);
-        });
-      }
+      if (ownsAttempt() && (result.sawStatus || result.content || result.safetyNotice)) retainExchange(result, false);
       if (!result.sawStatus) {
         if (ownsAttempt()) {
           dispatch({
@@ -730,7 +770,11 @@ export function HubShellHost() {
       const refusedScope = scopeRefused ? outBody.componentSelection ?? {
         threadId: outBody.threadId, componentId: null, selectionVersion: null,
       } : undefined;
+      const retained = rejectionStatus === undefined ? retainedStreamInterruption(caught) : null;
       if (!ownsVisibleSend()) {
+        if (retained && (retained.result.safetyNotice || retained.result.content)) {
+          retainExchange(retained.result, retained.stopped);
+        }
         dropOutgoing(outgoingId);
         // The POST may already have reached the server. Preserve its request ID
         // and the submitted payload so replay can reconcile it in the origin.
@@ -750,7 +794,6 @@ export function HubShellHost() {
       if (caught instanceof NotebookHttpError && caught.status === 401) { setSignedOut(true); return; }
       // The same refusal inside the progress stream re-scopes the retry too (#5504 F12, #5534).
       const err = caught instanceof NotebookHttpError ? new Error(errorMessageFor(caught.code, caught.status)) : caught;
-      const retained = retainedStreamInterruption(err);
       if (retained) {
         setLive((cur) =>
           cur && cur.id === id
@@ -860,7 +903,9 @@ export function HubShellHost() {
   const targetMessage = failedBody?.error && retryCheck?.kind === "review" ? targetReviewMessage(retryCheck.review) : null;
   const recoveryIsVisible = Boolean(failedBody?.error && (view.sendError === failedBody.error || view.sendError === targetMessage));
   const reviewMessage = recoveryIsVisible ? targetMessage : null;
-  const attachmentRecovery = state.attachmentRecoveries?.get(state.thread.id);
+  const attachmentRecoveries = state.attachmentRecoveries?.get(state.thread.id);
+  const attachmentDraftRecovery = state.draftRevision === undefined ? undefined
+    : attachmentRecoveries?.find((recovery) => recovery.draftRevision === state.draftRevision);
   // #5562: the held photo is shown beside the composer while the question waits for review.
   const composerOwnsRecovery = failedBody !== null &&
     recoveryOwnsDraft(failedBody, state.draftRevision, view.draft, attachmentDraftThreads.has(state.thread.id));
@@ -885,6 +930,7 @@ export function HubShellHost() {
     fallbackScope: readonly string[],
     history: ReturnType<typeof historyRows>,
     existing?: AbortController,
+    recoveryId = crypto.randomUUID(),
   ) => {
     setBusy(true);
     dispatch({ type: "set-send-error", error: null });
@@ -930,18 +976,21 @@ export function HubShellHost() {
     }
     const ownsAttempt = sendAttempts.current.get(threadId) === ctrl;
     if (ownsAttempt) sendAttempts.current.delete(threadId);
-    if (outcome === "sent") return;
+    if (outcome === "sent" || outcome === "deferred") {
+      dispatch({ type: "clear-attachment-recovery", threadId, recoveryId });
+      if (outcome === "sent") return;
+    }
     if (!uploadAbortRef.current && !abortRef.current) setBusy(false);
     dropOutgoing(outgoingId);
-    if (outcome === "deferred") return;
-    if (!ownsAttempt) return;
+    if (outcome === "deferred" || !hostMountedRef.current) return;
     const notice = outcome === "cancelled"
       ? "The question was not sent. Attach the file again before sending."
       : outcome.reattach === false ? outcome.failure! : `${outcome.failure} Attach it again, then send.`;
     dispatch({
-      type: "recover-attachment-draft", threadId,
+      type: "recover-attachment-draft", threadId, recoveryId,
       text: text || (outcome === "cancelled" ? "Review the attachment." : outcome.question),
-      notice,
+      notice, restoreDraft: ownsAttempt,
+      allowWithoutAttachment: outcome !== "cancelled" && outcome.reattach === false,
     });
   }, [adapter, send, dropOutgoing, outgoingOwner]);
 
@@ -1055,6 +1104,9 @@ export function HubShellHost() {
       return;
     }
     if (!detail) throw new Error(NO_PROJECT_ERROR);
+    if (attachmentDraftRecovery && !attachmentDraftRecovery.allowWithoutAttachment && files.length === 0) {
+      throw new Error("Attach the file again before sending.");
+    }
     // A deliberately reviewed target can reuse the held photo.
     const held = heldQuestionForSend(failedBody, retryCheck, q, files.length);
     if (failedBody && recoveryOwnsDraft(failedBody, state.draftRevision, q, files.length > 0)) {
@@ -1066,12 +1118,12 @@ export function HubShellHost() {
     }
     beginOutgoing(shellThreadId(selection));
     if (files.length > 0) {
-      if (attachmentRecovery?.question === q) dispatch({ type: "clear-attachment-recovery", threadId: shellThreadId(selection) });
-      void composeAndSend(q, files, selection, detail.notebook.nodeId, docIds, historyRows(detail.turns));
+      void composeAndSend(q, files, selection, detail.notebook.nodeId, docIds, historyRows(detail.turns),
+        undefined, attachmentDraftRecovery?.id);
       return;
     }
     void send(chatBodyFor(q, docIds, historyRows(detail.turns), selection), q);
-  }, [adapter, busy, selection, notebooks, detail, docIds, send, sendFromHome, composeAndSend, putOutgoing, benchGate, failedBody, retryCheck, attachmentRecovery, state.draftRevision]);
+  }, [adapter, busy, selection, notebooks, detail, docIds, send, sendFromHome, composeAndSend, putOutgoing, benchGate, failedBody, retryCheck, attachmentDraftRecovery, state.draftRevision]);
 
   // WP-1 guided dead end: sent in general mode with the session id; the route confirms it.
   const onGuidedDeadEnd = useCallback((question: string, sessionId: string) => {
@@ -1082,8 +1134,6 @@ export function HubShellHost() {
   }, [busy, selection, detail, send, putOutgoing]);
 
   const onStop = useCallback(() => { abortRef.current?.abort(); uploadAbortRef.current?.abort(); }, []);
-  const recoveryBlocked = busy ? "Wait for the current send to finish." : benchSendRefusal(benchGate);
-  const reviewedBench = benchView?.key === gateConversation ? benchView?.state : undefined;
   const retryRecovery = (recovery: HubSendRecovery, confirmTarget = false) => {
     if (!selection || selectionRef.current !== selection || uploadAbortRef.current || abortRef.current || benchSendRefusal(benchGate)) return;
     const check = retryTargetCheck(recovery.refusedScope, reviewedBench);
@@ -1095,7 +1145,11 @@ export function HubShellHost() {
         current.selectionVersion !== (reviewedBench?.selectionVersion ?? null)))) return;
     void send(recoverySendBody(recovery), recovery.question, selection, recovery);
   };
-  const onRetry = () => { if (failedBody) retryRecovery(failedBody); };
+  const onRetry = (turnId: string) => {
+    const recovery = inlineRecoveries.get(turnId);
+    if (recovery) retryRecovery(recovery);
+  };
+  const onRetrySendError = () => { if (failedBody) retryRecovery(failedBody); };
   const dismissRecovery = (recovery: HubSendRecovery) => {
     dispatch({ type: "clear-recovery", threadId: state.thread.id, recoveryId: sendRecoveryId(recovery) });
     if (recovery === failedBody && recoveryIsVisible) dispatch({ type: "set-send-error", error: null });
@@ -1357,8 +1411,8 @@ export function HubShellHost() {
     onNewChat,
     onCreateProject,
     ...(busy ? { onStop } : {}),
-    ...(failedBody?.error && retryCheck?.kind === "retry" ? { onRetry } : {}),
-    ...(failedBody || attachmentRecovery ? { onRetrySendError: recoveryIsVisible && !failedBody?.unposted && retryCheck?.kind === "retry" ? onRetry : null } : {}),
+    ...(inlineRecoveries.size ? { onRetry } : {}),
+    ...(failedBody || attachmentRecoveries?.length ? { onRetrySendError: recoveryIsVisible && !failedBody?.unposted && retryCheck?.kind === "retry" ? onRetrySendError : null } : {}),
     ...(recoveryIsVisible && recoveryBlocked ? { retrySendErrorDisabledReason: recoveryBlocked } : {}),
     ...(failedBody && recoveryIsVisible ? { onDismissSendError: () => dismissRecovery(failedBody) } : {}),
     onPendingAttachmentThreads: setAttachmentDraftThreads,
@@ -1388,7 +1442,7 @@ export function HubShellHost() {
         adapter={adapter}
         hooks={hooks}
         conversationSurface="assistant"
-        {...(heldNote || attachmentRecovery || extraRecoveries?.length || hasConfirmedExchange ? { composerAccessory: <>
+        {...(heldNote || attachmentRecoveries?.length || extraRecoveries?.length || hasConfirmedExchange ? { composerAccessory: <>
           {hasConfirmedExchange && <div className="fl-qtarget__browsing">
             <p role="status">The answer is ready. Refresh the conversation to load the saved answer.</p>
             <button type="button" onClick={refreshConfirmed}>Refresh conversation</button>
@@ -1408,13 +1462,20 @@ export function HubShellHost() {
             </div>;
           })}
           {heldNote && <p className="fl-qtarget__browsing" role="status" aria-label="Kept with this question">{heldNote}</p>}
-          {attachmentRecovery && <div className="fl-qtarget__browsing">
-            <p role="status">{attachmentRecovery.notice}</p>
-            {view.draft !== attachmentRecovery.question && <p aria-label="Interrupted question">{attachmentRecovery.question}</p>}
-            <button type="button" onClick={() => dispatch({ type: "clear-attachment-recovery", threadId: state.thread.id })}>
+          {attachmentRecoveries?.map((recovery) => <div className="fl-qtarget__browsing" key={recovery.id}
+            role="group" aria-label="Interrupted attachment">
+            <p role="status">{recovery.notice}</p>
+            {attachmentDraftRecovery !== recovery && <p aria-label="Interrupted question">{recovery.question}</p>}
+            {attachmentDraftRecovery !== recovery && <button type="button"
+              disabled={busy || Boolean(view.draft) || attachmentDraftThreads.has(state.thread.id)}
+              onClick={() => dispatch({ type: "restore-attachment-draft", threadId: state.thread.id, recoveryId: recovery.id })}>
+              Restore question
+            </button>}
+            <button type="button" disabled={busy}
+              onClick={() => dispatch({ type: "clear-attachment-recovery", threadId: state.thread.id, recoveryId: recovery.id })}>
               Dismiss attachment notice
             </button>
-          </div>}
+          </div>)}
         </> } : {})}
         onOpenItem={onOpenItem}
         onSelectProject={onSelectProject}

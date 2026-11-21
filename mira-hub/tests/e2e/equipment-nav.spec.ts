@@ -2185,3 +2185,274 @@ test("F22 a refused exact replay can be reviewed as a new general question", asy
   expect(requests[2]).toMatchObject({ message: question, mode: "general", sourceDocIds: [], componentSelection: { componentId: null } });
   expect(requests[2].clientRequestId).not.toBe(requests[0].clientRequestId);
 });
+
+test("F23 inline Retry replays the clicked answer's photo request", async ({ page, context, baseURL }) => {
+  await auth(context, baseURL!);
+  await routes(page, { enabled: true, resolve: "resolved", initial: { [THREAD]: { componentId: VFD, version: 2 } } });
+  let uploads = 0;
+  await page.route(/\/api\/equipment-notebooks\/[^/]+\/look\/?$/, (route) =>
+    route.fulfill(json({
+      fileId: "retry-photo-" + ++uploads,
+      observation: { text: "Synthetic photo", capturedAt: "2026-11-20T12:00:00.000Z" },
+      attachment: { linkId: "link" }, observationPersisted: true,
+    })));
+  const requests: (string | null)[] = [];
+  await page.route(/\/api\/equipment-notebooks\/[^/]+\/chat\/?$/, (route) => {
+    requests.push(route.request().postData());
+    const frame = { kind: "content", content: "Partial reply " + requests.length };
+    return route.fulfill({ status: 200, contentType: "text/event-stream", body: "data: " + JSON.stringify(frame) + "\n\n" });
+  });
+  await page.goto("/v3/?notebook=" + NB + "&thread=" + THREAD);
+  await expect(page.getByTestId("bench-asking-about")).toBeVisible();
+  const answers = page.locator('.fl-turn--aui[data-role="assistant"]');
+  for (const name of ["First", "Second"]) {
+    await composer(page).fill(name + " photo question");
+    await attachDraftPhoto(page, name + ".png");
+    await page.getByRole("button", { name: "Send", exact: true }).click();
+    await expect(answers.filter({ hasText: "Partial reply " + (name === "First" ? 1 : 2) })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Try again", exact: true })).toBeEnabled();
+  }
+  expect(JSON.parse(requests[0]!)).toMatchObject({
+    message: "First photo question", visualEvidence: { fileId: "retry-photo-1" },
+    componentSelection: { componentId: VFD, selectionVersion: 2 },
+  });
+  expect(JSON.parse(requests[1]!)).toMatchObject({
+    message: "Second photo question", visualEvidence: { fileId: "retry-photo-2" },
+  });
+  const firstRetry = answers.filter({ hasText: "Partial reply 1" }).getByRole("button", { name: "Retry", exact: true });
+  let finishWrite = () => {};
+  const heldWrite = new Promise<void>((resolve) => { finishWrite = resolve; });
+  let writes = 0;
+  await page.route(/\/api\/equipment-notebooks\/[^/]+\/components\/(\?.*)?$/, async (route) => {
+    if (route.request().method() !== "POST") return route.fallback();
+    writes++;
+    await heldWrite;
+    return route.fulfill(json({ componentId: "66666666-6666-4666-8666-666666666666" }, 201));
+  });
+  try {
+    await openChecklist(page);
+    await checklist(page).getByTestId("bench-add-label").fill("Concurrent fixture component");
+    await checklist(page).getByTestId("bench-add").click();
+    await expect.poll(() => writes).toBe(1);
+    await checklist(page).getByRole("button", { name: "Close", exact: true }).click();
+    await expect(firstRetry).toHaveCount(0);
+    expect(requests).toHaveLength(2);
+  } finally {
+    finishWrite();
+  }
+  await firstRetry.click();
+  await expect.poll(() => requests.length).toBe(3);
+  expect(requests[2]).toBe(requests[0]);
+  const second = answers.filter({ hasText: "Partial reply 2" });
+  await expect(second.getByRole("button", { name: "Retry", exact: true })).toBeEnabled();
+  await second.getByRole("button", { name: "Retry", exact: true }).click();
+  await expect.poll(() => requests.length).toBe(4);
+  expect(requests[3]).toBe(requests[1]);
+  await page.getByRole("button", { name: "Try again", exact: true }).click();
+  await expect.poll(() => requests.length).toBe(5);
+  expect(requests[4]).toBe(requests[1]);
+  expect(uploads).toBe(2);
+});
+
+test("F24 a navigation-aborted safety stop survives failed origin hydration", async ({ page, context, baseURL }) => {
+  await auth(context, baseURL!);
+  await routes(page, { enabled: true, resolve: "resolved" });
+  await otherMachine(page);
+  let detail: "initial" | "failed" | "unrelated" | "saved" = "initial";
+  const question = "Check my synthetic warning.";
+  const warning = "Partial safety response before leaving.";
+  let failedReads = 0;
+  await page.route(new RegExp("/api/equipment-notebooks/" + NB + "/?(\\?.*)?$"), async (route) => {
+    if (detail === "initial") return route.fallback();
+    if (detail === "failed") {
+      failedReads++;
+      return route.fulfill(json({ error: "fixture_detail_failure" }, 503));
+    }
+    const id = detail === "saved"
+      ? await page.locator("html").getAttribute("data-fixture-request")
+      : "another-request";
+    return route.fulfill(json({ ...oracle.detailEmpty,
+      turns: [{ id: "saved-fixture", clientRequestId: id, question, answerStatus: "answered",
+        answerText: "Saved fixture answer.", evidence: [] }],
+    }));
+  });
+  await page.addInitScript((partial) => {
+    const fetchNormally = window.fetch.bind(window);
+    window.fetch = (input, init) => {
+      if (init?.method !== "POST" || !String(input).includes("/chat/")) return fetchNormally(input, init);
+      document.documentElement.dataset.fixtureRequest = JSON.parse(String(init.body)).clientRequestId;
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          const frames = [
+            { kind: "content", content: partial },
+            { kind: "safety", trigger: "Synthetic safety fixture" },
+            { kind: "sources", citations: [{ citationId: 1, sourceTitle: "Unconfirmed source", page: 1 }] },
+            { kind: "followups", suggestions: ["Unconfirmed suggestion"] },
+          ];
+          controller.enqueue(new TextEncoder().encode(frames.map((frame) => "data: " + JSON.stringify(frame) + "\n\n").join("")));
+          init.signal?.addEventListener("abort", () => controller.error(new DOMException("Navigation", "AbortError")), { once: true });
+        },
+      });
+      return Promise.resolve(new Response(body, { headers: { "Content-Type": "text/event-stream" } }));
+    };
+  }, warning);
+  await page.goto("/v3/?notebook=" + NB + "&thread=" + THREAD);
+  await expect(more(page)).toBeVisible();
+  await composer(page).fill(question);
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  await expect(page.getByText(warning, { exact: true })).toBeVisible();
+  const projects = page.getByRole("region", { name: "Projects" });
+  const other = projects.locator('[data-item-id="notebook-' + OTHER_NB + ':thread-legacy"]');
+  await other.click();
+  await expect(page).toHaveURL(new RegExp("notebook=" + OTHER_NB));
+  const stop = page.locator('[data-part-type="safety_notice"][data-severity="stop"]');
+  await expect(stop).toHaveCount(0);
+  await expect(page.getByText(warning, { exact: true })).toHaveCount(0);
+
+  const origin = projects.locator('[data-item-id="notebook-' + NB + ':thread-' + THREAD + '"]');
+  detail = "failed";
+  await origin.click();
+  await expect.poll(() => failedReads).toBeGreaterThan(0);
+  await expect(stop).toBeVisible({ timeout: 6000 });
+  await expect(page.getByText(warning, { exact: true })).toBeVisible();
+  await expect(page.getByText("Unconfirmed source", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Unconfirmed suggestion", { exact: true })).toHaveCount(0);
+
+  detail = "unrelated";
+  await other.click();
+  await origin.click();
+  await expect(page.getByText("Saved fixture answer.", { exact: true })).toBeVisible();
+  await expect(stop).toBeVisible();
+
+  detail = "saved";
+  await other.click();
+  await origin.click();
+  await expect(page.getByText("Saved fixture answer.", { exact: true })).toHaveCount(1);
+  await expect(stop).toHaveCount(0);
+  await expect(page.getByText(warning, { exact: true })).toHaveCount(0);
+});
+
+test("F25 a second interrupted upload preserves both original questions", async ({ page, context, baseURL }) => {
+  await auth(context, baseURL!);
+  await routes(page, { enabled: true, resolve: "resolved", initial: { [THREAD]: { componentId: VFD, version: 2 } } });
+  let uploads = 0;
+  const requests: unknown[] = [];
+  let finish = () => {};
+  const heldUpload = new Promise<void>((resolve) => { finish = resolve; });
+  await page.route(/\/api\/equipment-notebooks\/[^/]+\/look\/?$/, async (route) => {
+    if (++uploads === 1) await heldUpload;
+    if (uploads < 4) return route.fulfill(json({ error: "fixture_upload_failure" }, 503)).catch(() => {});
+    return route.fulfill(json({
+      fileId: "reattached-drive-photo", observation: { text: "Synthetic reattachment" },
+      attachment: { linkId: "link" }, observationPersisted: true,
+    }));
+  });
+  await page.route(/\/api\/equipment-notebooks\/[^/]+\/chat\/?$/, (route) => {
+    requests.push(route.request().postDataJSON());
+    return route.fulfill({ status: 200, contentType: "text/event-stream",
+      body: 'data: {"kind":"status","status":"answered"}\n\n' });
+  });
+  await page.goto("/v3/?notebook=" + NB + "&thread=" + THREAD);
+  await expect(page.getByTestId("bench-asking-about")).toBeVisible();
+  const first = "Keep the interrupted drive question.";
+  const second = "Keep the newer conveyor question.";
+  const send = page.getByRole("button", { name: "Send", exact: true });
+  const origin = page.getByRole("region", { name: "Projects" })
+    .locator('[data-item-id="notebook-' + NB + ':thread-' + THREAD + '"]');
+  try {
+    await composer(page).fill(first);
+    await attachDraftPhoto(page, "first-interruption.png");
+    await send.click();
+    await expect.poll(() => uploads).toBe(1);
+    await composer(page).fill(second);
+    await page.getByRole("button", { name: "New chat", exact: true }).click();
+    await expect(composer(page)).toHaveValue("");
+    await origin.click();
+    await expect(composer(page)).toHaveValue(second);
+    await expect(page.getByText(first, { exact: true })).toBeVisible();
+    await attachDraftPhoto(page, "second-interruption.png");
+    await send.click();
+    await expect.poll(() => uploads).toBe(2);
+    await expect(composer(page)).toHaveValue(second);
+    const dismissals = page.getByRole("button", { name: "Dismiss attachment notice", exact: true });
+    await expect(dismissals).toHaveCount(2, { timeout: 6000 });
+    const firstRecovery = page.getByRole("group", { name: "Interrupted attachment" }).filter({ hasText: first });
+    const restore = firstRecovery.getByRole("button", { name: "Restore question" });
+    await expect(restore).toBeDisabled();
+    await composer(page).fill("");
+    await restore.click();
+    await expect(composer(page)).toHaveValue(first);
+    await send.click();
+    await expect(composer(page)).toHaveValue(first);
+    expect(requests).toHaveLength(0);
+
+    await attachDraftPhoto(page, "failed-reattachment.png");
+    await send.click();
+    await expect.poll(() => uploads).toBe(3);
+    await expect(composer(page)).toHaveValue(first);
+    await expect(dismissals).toHaveCount(2);
+    expect(requests).toHaveLength(0);
+
+    await attachDraftPhoto(page, "successful-reattachment.png");
+    await send.click();
+    await expect.poll(() => requests.length).toBe(1);
+    expect(requests[0]).toMatchObject({ message: first, visualEvidence: { fileId: "reattached-drive-photo" } });
+    await expect(dismissals).toHaveCount(1);
+    const remaining = page.getByRole("group", { name: "Interrupted attachment" });
+    await expect(remaining).toContainText(second);
+    await dismissals.click();
+    await expect(remaining).toHaveCount(0);
+  } finally {
+    finish();
+  }
+});
+
+test("F26 Projects keeps a saved first answer when the notebook list lags", async ({ page, context, baseURL }) => {
+  await auth(context, baseURL!);
+  await routes(page, { enabled: true, resolve: "resolved" });
+  let catchUp = false;
+  let listReads = 0;
+  let requestId: string | undefined;
+  let chatPosts = 0;
+  const question = "Find the saved conversation.";
+  const summary = { id: THREAD, notebookId: NB, title: "Saved conversation fixture",
+    createdAt: "2026-11-20T12:00:00.000Z", updatedAt: "2026-11-20T12:00:01.000Z",
+    turnCount: 1, sharedLegacy: false };
+  await page.route(/\/api\/equipment-notebooks\/?(\?.*)?$/, (route) => {
+    listReads++;
+    const notebooks = catchUp
+      ? oracle.list.notebooks.map((nb: { id: string }) => nb.id === NB ? { ...nb, threads: [summary] } : nb)
+      : oracle.list.notebooks;
+    return route.fulfill(json({ notebooks }));
+  });
+  await page.route(new RegExp("/api/equipment-notebooks/" + NB + "/?(\\?.*)?$"), (route) => {
+    if (!requestId || new URL(route.request().url()).searchParams.get("threadId") !== THREAD) return route.fallback();
+    return route.fulfill(json({ ...oracle.detailEmpty, threads: [summary], turns: [{
+      id: "saved-first-fixture", clientRequestId: requestId, question, answerStatus: "answered",
+      answerText: "Confirmed first answer.", evidence: [],
+    }] }));
+  });
+  await page.route(/\/api\/equipment-notebooks\/[^/]+\/chat\/?$/, (route) => {
+    chatPosts++;
+    requestId = route.request().postDataJSON().clientRequestId;
+    return route.fulfill({ status: 200, contentType: "text/event-stream", body: "" });
+  });
+  await page.goto("/v3/?notebook=" + NB + "&thread=" + THREAD);
+  await expect(more(page)).toBeVisible();
+  const origin = page.url();
+  await composer(page).fill(question);
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  await expect(page.getByText("Confirmed first answer.", { exact: true })).toBeVisible();
+  const projects = page.getByRole("region", { name: "Projects" });
+  const savedRow = projects.getByRole("button", { name: summary.title, exact: true });
+  await page.getByRole("button", { name: "New chat", exact: true }).click();
+  await expect(savedRow).toBeVisible({ timeout: 6000 });
+  await expect.poll(() => listReads).toBeGreaterThan(1);
+  await savedRow.click();
+  await expect(page).toHaveURL(origin);
+  await expect(page.getByText("Confirmed first answer.", { exact: true })).toBeVisible();
+  expect(chatPosts).toBe(1);
+  catchUp = true;
+  await page.reload();
+  await expect(savedRow).toHaveCount(1);
+});

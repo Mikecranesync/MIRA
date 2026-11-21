@@ -105,22 +105,26 @@ export function notebookProjects(
   notebooks: readonly HubNotebook[],
   draftsByThread?: ReadonlyMap<string, { readonly text: string }>,
   extraDraftThreads: Iterable<string> = [],
+  confirmedThreadTitles?: ReadonlyMap<string, string>,
 ): readonly Project[] {
-  // A new chat has no server thread row until the first send. Make parked
-  // drafts reachable by their actual thread ID, through the normal sidebar.
-  const draftRows = new Map<string, ProjectNode[]>();
-  for (const id of new Set([...(draftsByThread?.keys() ?? []), ...extraDraftThreads])) {
+  // Keep chats reachable while the notebook list lacks their thread row.
+  const localRows = new Map<string, ProjectNode[]>();
+  const ids = new Set([...(draftsByThread?.keys() ?? []), ...extraDraftThreads, ...(confirmedThreadTitles?.keys() ?? [])]);
+  for (const id of ids) {
     const thread = threadRefFromItem(id);
     if (!thread) continue;
     const excerpt = (draftsByThread?.get(id)?.text ?? "").trim().replace(/\s+/g, " ").slice(0, 48);
-    const drafts = draftRows.get(thread.notebookId) ?? [];
-    drafts.push({ kind: "thread", id, label: excerpt ? `Unsent draft · ${excerpt}` : "Unsent draft" });
-    draftRows.set(thread.notebookId, drafts);
+    const savedTitle = confirmedThreadTitles?.get(id);
+    const label = savedTitle !== undefined ? savedTitle || "Saved conversation"
+      : excerpt ? `Unsent draft · ${excerpt}` : "Unsent draft";
+    const rows = localRows.get(thread.notebookId) ?? [];
+    rows.push({ kind: "thread", id, label });
+    localRows.set(thread.notebookId, rows);
   }
   return notebooks.map((nb) => {
     const threads = threadRows(nb);
     const knownThreads = new Set(threads.map((thread) => thread.id));
-    const drafts = draftRows.get(nb.id)?.filter((draft) => !knownThreads.has(draft.id)) ?? [];
+    const missingFromList = localRows.get(nb.id)?.filter((row) => !knownThreads.has(row.id)) ?? [];
     return {
       id: projectIdForNotebook(nb.id),
       name: notebookLabel(nb),
@@ -129,7 +133,7 @@ export function notebookProjects(
           ? [{ kind: "machine-link" as const, id: `link-${nb.id}`, label: machineNameFor(nb), machineId: nb.asset.entityId }]
           : []),
         ...threads,
-        ...drafts,
+        ...missingFromList,
       ],
     };
   });

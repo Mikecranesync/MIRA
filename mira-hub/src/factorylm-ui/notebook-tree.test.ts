@@ -96,6 +96,24 @@ describe("notebookProjects", () => {
     expect(notebookProjects([nb])[0].children.map((item) => item.id)).toEqual([saved]);
   });
 
+  it("F26 prefers the saved list row over the matching confirmed detail row", () => {
+    const nb = notebook();
+    const threadId = threadItemId(nb.id, "new-thread");
+    const confirmed = new Map([[threadId, ""], [threadItemId("other-notebook", "new-thread"), "Other Notebook"]]);
+    const [stale] = notebookProjects([nb], undefined, [threadId], confirmed);
+    expect(stale.children.filter((row) => row.id === threadId)).toEqual([{
+      kind: "thread", id: threadId, label: "Saved conversation",
+    }]);
+    expect(stale.children.some((row) => row.label === "Other Notebook")).toBe(false);
+    const current = { ...nb, threads: [{
+      id: "new-thread", notebookId: nb.id, title: "Saved title",
+      createdAt: "", updatedAt: "", turnCount: 1, sharedLegacy: false,
+    }] };
+    expect(notebookProjects([current], undefined, [threadId], confirmed)[0].children).toEqual([{
+      kind: "thread", id: threadId, label: "Saved title",
+    }]);
+  });
+
   it("an untitled notebook is labelled honestly", () => {
     const [project] = notebookProjects([notebook({ displayName: "  ", manufacturer: null, model: null })]);
     expect(project.name).toBe("Untitled notebook");

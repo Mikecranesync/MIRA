@@ -8,7 +8,7 @@ import { PROFILES, createShellState, shellReducer, type InteractionTurn, type Ma
 import type { EquipmentNotebook, NotebookSource } from "@/lib/equipment-notebooks";
 import { buildChatBody, isAbortError, type ChatBody, type PersistedTurn, type StreamResult } from "@/components/equipment/notebook-chat-utils";
 import { isSafetyNoticeEntry } from "@/lib/notebook-chat-types";
-import { LEGACY_THREAD_ID, machineNameFor, notebookLabel, threadItemId, type HubNotebook } from "./notebook-tree";
+import { LEGACY_THREAD_ID, machineNameFor, notebookLabel, threadItemId, threadRefFromItem, type HubNotebook } from "./notebook-tree";
 import { historyFromSavedTurns, type HistoryRow } from "@/capabilities/conversation-history";
 import type { ScopeField } from "./bench-components-logic";
 import { contextFor, threadFromPersisted, type HubNotebookMeta } from "./to-interaction";
@@ -331,10 +331,12 @@ export type HubHostAction =
   | { readonly type: "land-thread"; readonly selection: HubSelection; readonly at: string }
   | { readonly type: "sent-draft"; readonly threadId: string; readonly question: string; readonly revision: number }
   | { readonly type: "recover-send"; readonly threadId: string; readonly recovery: HubSendRecovery; readonly restoreDraft: boolean }
-  | { readonly type: "recover-attachment-draft"; readonly threadId: string; readonly text: string; readonly notice: string }
+  | { readonly type: "recover-attachment-draft"; readonly threadId: string; readonly recoveryId: string; readonly text: string; readonly notice: string; readonly restoreDraft?: boolean; readonly allowWithoutAttachment?: boolean }
+  | { readonly type: "restore-attachment-draft"; readonly threadId: string; readonly recoveryId: string }
   | { readonly type: "clear-recovery"; readonly threadId: string; readonly recoveryId: string }
-  | { readonly type: "reconcile-send"; readonly threadId: string; readonly requestIds: ReadonlySet<string> }
-  | { readonly type: "clear-attachment-recovery"; readonly threadId: string };
+  | { readonly type: "reconcile-send"; readonly threadId: string; readonly requestIds: ReadonlySet<string>; readonly confirmedThreadTitle?: string }
+  | { readonly type: "reconcile-notebook-list"; readonly notebooks: readonly Pick<HubNotebook, "id" | "threads">[] }
+  | { readonly type: "clear-attachment-recovery"; readonly threadId: string; readonly recoveryId: string };
 
 /**
  * #4311 — successful retry clears the question it retried. The Hub also checks
@@ -346,12 +348,21 @@ export function draftAfterSendSucceeded(draft: string, question: string): string
 
 type ParkedDraft = { readonly text: string; readonly revision: number };
 
+type AttachmentRecovery = {
+  readonly id: string;
+  readonly question: string;
+  readonly notice: string;
+  readonly draftRevision?: number;
+  readonly allowWithoutAttachment?: boolean;
+};
+
 type HubShellState = ShellState & {
   readonly draftRevision?: number;
   readonly draftSequence?: number;
   readonly draftsByThread?: ReadonlyMap<string, ParkedDraft>;
   readonly sendRecoveryByThread?: ReadonlyMap<string, readonly HubSendRecovery[]>;
-  readonly attachmentRecoveries?: ReadonlyMap<string, { readonly question: string; readonly notice: string }>;
+  readonly confirmedThreadTitles?: ReadonlyMap<string, string>;
+  readonly attachmentRecoveries?: ReadonlyMap<string, readonly AttachmentRecovery[]>;
 };
 
 /**
@@ -397,6 +408,18 @@ export function hubHostReducer(state: HubShellState, action: HubHostAction): Hub
     return { ...state, draftsByThread };
   }
 
+  if (action.type === "reconcile-notebook-list") {
+    const confirmedThreadTitles = state.confirmedThreadTitles;
+    if (!confirmedThreadTitles?.size) return state;
+    const pending = new Map(confirmedThreadTitles);
+    for (const id of pending.keys()) {
+      const ref = threadRefFromItem(id);
+      const notebook = action.notebooks.find((item) => item.id === ref?.notebookId);
+      if (!notebook || notebook.threads?.some((thread) => thread.id === ref?.threadId)) pending.delete(id);
+    }
+    return pending.size === confirmedThreadTitles.size ? state : { ...state, confirmedThreadTitles: pending };
+  }
+
   if (action.type === "reconcile-send") {
     let next = state;
     for (const recovery of state.sendRecoveryByThread?.get(action.threadId) ?? []) {
@@ -407,6 +430,12 @@ export function hubHostReducer(state: HubShellState, action: HubHostAction): Hub
           type: "sent-draft", threadId: action.threadId, question: recovery.question, revision: recovery.draftRevision,
         });
       }
+    }
+    if (next !== state && action.confirmedThreadTitle !== undefined &&
+        state.confirmedThreadTitles?.get(action.threadId) !== action.confirmedThreadTitle) {
+      const confirmedThreadTitles = new Map(state.confirmedThreadTitles);
+      confirmedThreadTitles.set(action.threadId, action.confirmedThreadTitle);
+      return { ...next, confirmedThreadTitles };
     }
     return next;
   }
@@ -424,16 +453,28 @@ export function hubHostReducer(state: HubShellState, action: HubHostAction): Hub
       : next;
   }
 
-  if (action.type === "clear-attachment-recovery") {
+  if (action.type === "clear-attachment-recovery" || action.type === "restore-attachment-draft") {
+    const records = state.attachmentRecoveries?.get(action.threadId);
+    const record = records?.find((item) => item.id === action.recoveryId);
+    if (!records || !record) return state;
     const attachmentRecoveries = new Map(state.attachmentRecoveries);
-    attachmentRecoveries.delete(action.threadId);
+    if (action.type === "restore-attachment-draft") {
+      if (action.threadId !== state.thread.id || state.draft) return state;
+      const restored = hubHostReducer(state, { type: "set-draft", draft: record.question });
+      attachmentRecoveries.set(action.threadId, records.map((item) =>
+        item === record ? { ...item, draftRevision: restored.draftRevision } : item));
+      return { ...restored, attachmentRecoveries };
+    }
+    const remaining = records.filter((item) => item !== record);
+    if (remaining.length) attachmentRecoveries.set(action.threadId, remaining);
+    else attachmentRecoveries.delete(action.threadId);
     return { ...state, attachmentRecoveries };
   }
 
   if (action.type === "recover-send" || action.type === "recover-attachment-draft") {
     const active = action.threadId === state.thread.id;
     const saved = state.draftsByThread?.get(action.threadId);
-    const restore = (action.type === "recover-attachment-draft" || action.restoreDraft)
+    const restore = (action.type === "recover-attachment-draft" ? action.restoreDraft !== false : action.restoreDraft)
       && !(active ? state.draft : saved);
     const revision = (state.draftSequence ?? 0) + 1;
 
@@ -447,9 +488,15 @@ export function hubHostReducer(state: HubShellState, action: HubHostAction): Hub
       if (active) next = shellReducer(next, { type: "set-send-error", error: action.recovery.error });
     } else {
       const attachmentRecoveries = new Map(state.attachmentRecoveries);
-      attachmentRecoveries.set(action.threadId, { question: action.text, notice: action.notice });
+      const recovery: AttachmentRecovery = {
+        id: action.recoveryId, question: action.text, notice: action.notice,
+        draftRevision: restore ? revision : undefined,
+        allowWithoutAttachment: action.allowWithoutAttachment,
+      };
+      const peers = attachmentRecoveries.get(action.threadId) ?? [];
+      attachmentRecoveries.set(action.threadId, [...peers.filter((item) => item.id !== recovery.id), recovery]);
       next = { ...state, attachmentRecoveries };
-      if (active) next = shellReducer(next, { type: "set-send-error", error: null });
+      if (active && action.restoreDraft !== false) next = shellReducer(next, { type: "set-send-error", error: null });
     }
     if (!restore) return next;
 

@@ -190,6 +190,26 @@ describe("Hub draft isolation across notebook navigation (#5684)", () => {
     expect(hubHostReducer(retyped, completion).draft).toBe(question);
   });
 
+
+  it("F25 keeps separate interrupted uploads with identical wording", () => {
+    const threadId = shellThreadId(SEL);
+    const origin = hubHostReducer(initialHubShellState(), openThreadAction(SEL, AT));
+    const draft = hubHostReducer(origin, { type: "set-draft", draft: "A newer draft" });
+    const first = hubHostReducer(draft, {
+      type: "recover-attachment-draft", threadId, recoveryId: "upload-a", text: "Same question", notice: "First upload interrupted.",
+    });
+    const both = hubHostReducer(first, {
+      type: "recover-attachment-draft", threadId, recoveryId: "upload-b", text: "Same question", notice: "Second upload interrupted.",
+    });
+    expect(both.attachmentRecoveries?.get(threadId)).toMatchObject([{ id: "upload-a" }, { id: "upload-b" }]);
+    expect(both.draft).toBe("A newer draft");
+    for (const [dismissed, kept] of [["upload-a", "upload-b"], ["upload-b", "upload-a"]]) {
+      const remaining = hubHostReducer(both, { type: "clear-attachment-recovery", threadId, recoveryId: dismissed });
+      expect(remaining.attachmentRecoveries?.get(threadId)).toMatchObject([{ id: kept }]);
+      expect(remaining.draft).toBe("A newer draft");
+    }
+  });
+
   it("keeps a dismissed failure hidden after reopening the conversation", () => {
     const threadId = shellThreadId(SEL);
     const origin = hubHostReducer(initialHubShellState(), openThreadAction(SEL, AT));
@@ -221,19 +241,45 @@ describe("Hub draft isolation across notebook navigation (#5684)", () => {
     expect(settled.sendError).toBe("Second failed");
   });
 
+  it("F26 keeps a reconciled chat until the notebook list includes it", () => {
+    const threadId = shellThreadId(SEL);
+    const origin = hubHostReducer(initialHubShellState(), openThreadAction(SEL, AT));
+    const body = chatBodyFor("Same wording", [], [], SEL);
+    const failed = hubHostReducer(origin, {
+      type: "recover-send", threadId, restoreDraft: true, recovery: { body, question: body.message, error: "Unconfirmed" },
+    });
+    const reconcile = { type: "reconcile-send", threadId, confirmedThreadTitle: "Saved from detail" } as const;
+    const unrelated = hubHostReducer(failed, { ...reconcile, requestIds: new Set(["different-request"]) });
+    expect(unrelated).toBe(failed);
+    const confirmed = hubHostReducer(failed, { ...reconcile, requestIds: new Set([body.clientRequestId]) });
+    expect(confirmed.confirmedThreadTitles?.get(threadId)).toBe("Saved from detail");
+    expect(confirmed.sendRecoveryByThread?.has(threadId)).toBe(false);
+    const stale = hubHostReducer(confirmed, { type: "reconcile-notebook-list", notebooks: [{ id: SEL.notebookId, threads: [] }] });
+    expect(stale).toBe(confirmed);
+    const current = hubHostReducer(stale, { type: "reconcile-notebook-list", notebooks: [{
+      id: SEL.notebookId, threads: [{
+        id: SEL.threadId, notebookId: SEL.notebookId, title: "List title",
+        createdAt: AT, updatedAt: AT, turnCount: 1, sharedLegacy: false,
+      }],
+    }] });
+    expect(current.confirmedThreadTitles?.has(threadId)).toBe(false);
+  });
+
   it("parks an interrupted upload draft only in its own conversation", () => {
     const origin = hubHostReducer(initialHubShellState(), openThreadAction(SEL, AT));
     const switched = hubHostReducer(origin, openThreadAction(destination, AT));
     const typed = hubHostReducer(switched, { type: "set-draft", draft: "Destination draft" });
     const threadId = shellThreadId(SEL);
     const interrupted = hubHostReducer(typed, {
-      type: "recover-attachment-draft", threadId, text: "Origin question", notice: "Attach the photo again.",
+      type: "recover-attachment-draft", threadId, recoveryId: "origin-upload", text: "Origin question", notice: "Attach the photo again.",
     });
     expect(interrupted.draft).toBe("Destination draft");
     expect(interrupted.attachmentRecoveries?.has(switched.thread.id)).toBe(false);
     const reopened = hubHostReducer(interrupted, openThreadAction(SEL, AT));
     expect(reopened.draft).toBe("Origin question");
-    expect(reopened.attachmentRecoveries?.get(threadId)).toEqual({ question: "Origin question", notice: "Attach the photo again." });
+    expect(reopened.attachmentRecoveries?.get(threadId)).toMatchObject([{
+      id: "origin-upload", question: "Origin question", notice: "Attach the photo again.", draftRevision: reopened.draftRevision,
+    }]);
   });
 
 });
