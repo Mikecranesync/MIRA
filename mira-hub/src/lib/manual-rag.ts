@@ -3524,10 +3524,11 @@ export type CitedPageRef = { docId: string; sourceUrl: string; page: number };
 /**
  * Case-insensitive superset of every trigger `extractManualSafetyStatement` can hit: the
  * WARNING/DANGER/CAUTION/ATTENTION/SHOCK HAZARD/BURN HAZARD markers and the prose fallbacks
- * (hazardous voltage, discharged capacitors, wait-N-minutes). A chunk without one of these words
+ * (hazardous voltage, discharged capacitors, wait-N-minutes, operating notes that warn of damage).
+ * A chunk without one of these words
  * can never yield a statement, so filtering on it never drops a warning (#4509 Codex r3 F1).
  */
-export const CANDIDATE_PATTERN = "warning|danger|caution|attention|shock hazard|burn hazard|hazardous|discharged|wait";
+export const CANDIDATE_PATTERN = "warning|danger|caution|attention|shock hazard|burn hazard|hazardous|discharged|wait|damage";
 /** Rows per keyset batch of the candidate read (#4509 Codex r4 F1). */
 export const CITED_PAGE_BATCH = 200;
 /** Wall-clock bound on the whole cited-page read; past it the caller decides from what was found. */

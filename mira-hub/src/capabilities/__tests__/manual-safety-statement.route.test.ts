@@ -310,6 +310,27 @@ describe("the rest of a cited page is read (#4509 Codex F1)", () => {
     expect(entries).toEqual([expect.objectContaining({ marker: "ATTENTION", sourceCitationId: "1", page: 73 })]);
   });
 
+  it("carries an operating note from a separate qualifying chunk of the cited page", async () => {
+    const { CANDIDATE_PATTERN } = await vi.importActual<typeof import("@/lib/manual-rag")>("@/lib/manual-rag");
+    const warning = "Note that setting the acceleration time too short may cause motor damage.";
+    const definition = "P01.12 [Acceleration Time 1] controls how quickly the drive accelerates.";
+    ragMock.retrieveNodeChunks.mockResolvedValue([chunk(139, definition)]);
+    const candidates = new RegExp(CANDIDATE_PATTERN, "i").test(warning) ? [sibling(139, warning)] : [];
+    ragMock.retrieveCitedPageChunks.mockResolvedValue(candidates);
+    stubProvider("P01.12 controls acceleration time [1].");
+
+    const text = await (await POST(chatReq({
+      message: "Which parameter controls acceleration time, and what cautions apply?",
+      sourceDocIds: [DOC_A],
+    }), params)).text();
+    expect(sourcesFrame(text).citations.map((c) => c.citationId)).toEqual(["1"]);
+    expect(recorded().evidence.filter(isManualSafetyStatementEntry)).toEqual([
+      expect.objectContaining({
+        marker: "CAUTION (manual text)", statement: expect.stringContaining("motor damage"), sourceCitationId: "1", page: 139,
+      }),
+    ]);
+  });
+
   it("control: without the page read, the same turn has no notice", async () => {
     ragMock.retrieveNodeChunks.mockResolvedValue([chunk(73, PLAIN_TEXT)]);
     stubProvider("Set A092 to the number of restart attempts [1].");

@@ -64,6 +64,8 @@ describe("retrieveCitedPageChunks (#4509 Codex F1)", () => {
       "When isolation is not used, hazardous voltages are present at all times.",
       "Make sure the capacitors have been discharged.",
       "Turn off power. Wait at least 5 minutes.",
+      "Note that setting the acceleration time too short may cause motor damage.",
+      "Note: Disabling earth fault (ground fault) may damage drive.",
     ]) {
       expect(extractManualSafetyStatement(hit), hit).not.toBeNull();
       expect(re.test(hit), hit).toBe(true);

@@ -355,8 +355,10 @@ describe("#4160 S6 R2 — candidate-basis background acquisition triggers from t
   it("relays a typed request's running status without calling the provider or preempting the result", async () => {
     const f = await frames(await POST(req({ message: SMC_MESSAGE, mode: "general" }), params));
     const status = f.find((x) => x.kind === "status");
-    expect(status?.message).toMatch(/looking for the official documentation for the SMC SS5Y3-DUW01302/);
-    expect(status?.message).not.toMatch(/technician's photo|turned on/);
+    expect(status?.message).toBe("The manual lookup status appears below.");
+    expect(f.find((x) => x.kind === "manual_search_status")).toMatchObject({
+      manufacturer: "SMC", model: "SS5Y3-DUW01302", running: true,
+    });
     expect(fetch).not.toHaveBeenCalled();
   });
 
@@ -484,7 +486,7 @@ describe("#4160 gate — no 'fetch it yourself' advice while the search runs", (
   it("reports the running search without sending the technician away or promising source approval", async () => {
     const text = await answerText();
     expect(acqMock.startManualAcquisition).toHaveBeenCalled();
-    expect(text).toContain("I'm looking for the official documentation");
+    expect(text).toBe("The manual lookup status appears below.");
     expect(text).not.toMatch(/manufacturer's support|turned on|turned off/);
     expect(fetch).not.toHaveBeenCalled();
   });
@@ -509,7 +511,10 @@ describe("#4160 gate — no 'fetch it yourself' advice while the search runs", (
     });
     const f = await frames(await POST(req({ message: SMC_MESSAGE, mode: "general" }), params));
     expect(acqMock.startManualAcquisition).toHaveBeenCalled();
-    expect(f.find((x) => x.kind === "status")?.message).toBe(MANUAL_SEARCH_LIMIT_COPY);
+    expect(f.find((x) => x.kind === "status")?.message).toBe("The manual lookup status appears below.");
+    expect(f.find((x) => x.kind === "manual_search_status")).toMatchObject({
+      running: false, message: MANUAL_SEARCH_LIMIT_COPY,
+    });
     expect(fetch).not.toHaveBeenCalled();
     // Codex #4719 F1: the status frame must never say "not running" while still
     // promising a search is underway (the app does not re-check a settled frame).

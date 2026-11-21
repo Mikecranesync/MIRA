@@ -24,7 +24,7 @@ type RenderTask = ReturnType<Awaited<ReturnType<PdfDoc["getPage"]>>["render"]>;
 type ViewState =
   | { kind: "loading" }
   | { kind: "failed"; message: string }
-  | { kind: "ready"; name: string; numPages: number; page: number; outOfRange: boolean };
+  | { kind: "ready"; name: string; numPages: number; page: number; outOfRange: boolean; rendered: boolean };
 
 const wrap: CSSProperties = {
   minHeight: "100dvh",
@@ -92,7 +92,7 @@ export function DocumentPageViewer() {
         loaded = pdf;
         const shown = pageToShow(req.page, pdf.numPages);
         setDoc(pdf);
-        setState({ kind: "ready", name, numPages: pdf.numPages, page: shown.page, outOfRange: shown.outOfRange });
+        setState({ kind: "ready", name, numPages: pdf.numPages, ...shown, rendered: false });
       } catch (err) {
         if (abort.signal.aborted) return;
         console.error("[DocumentPageViewer]", err);
@@ -114,7 +114,6 @@ export function DocumentPageViewer() {
       const canvas = canvasRef.current;
       const context = canvas?.getContext("2d");
       if (!canvas || !context) throw new Error("PDF canvas unavailable");
-      delete canvas.dataset.renderedPage;
       const p = await doc.getPage(page);
       if (cancelled) return;
       const cssWidth = Math.max(240, canvas.parentElement?.clientWidth ?? window.innerWidth);
@@ -124,7 +123,11 @@ export function DocumentPageViewer() {
       canvas.height = Math.floor(viewport.height);
       renderTask = p.render({ canvas, canvasContext: context, viewport });
       await renderTask.promise;
-      if (!cancelled) canvas.dataset.renderedPage = String(page);
+      if (!cancelled) {
+        setState((current) => current.kind === "ready" && current.page === page
+          ? { ...current, rendered: true }
+          : current);
+      }
     })().catch((err) => {
       if (cancelled) return;
       console.error("[DocumentPageViewer] render", err);
@@ -136,12 +139,17 @@ export function DocumentPageViewer() {
     };
   }, [doc, page]);
 
-  const go = (delta: number) =>
-    setState((s) => (s.kind === "ready" ? { ...s, page: Math.min(s.numPages, Math.max(1, s.page + delta)), outOfRange: false } : s));
+  const go = (delta: number) => setState((current) => {
+    if (current.kind !== "ready" || !current.rendered) return current;
+    const nextPage = Math.min(current.numPages, Math.max(1, current.page + delta));
+    if (nextPage === current.page) return current;
+    return { ...current, page: nextPage, outOfRange: false, rendered: false };
+  });
+  const rendered = state.kind === "ready" && state.rendered;
   const openHref = request ? nativeFileHref(request.fileId, request.page) : undefined;
 
   return (
-    <main style={wrap} data-viewer-state={state.kind}>
+    <main style={wrap} data-viewer-state={state.kind === "ready" && !rendered ? "loading" : state.kind}>
       {state.kind === "loading" ? <p role="status">Opening the cited page…</p> : null}
       {state.kind === "failed" ? (
         <div role="alert">
@@ -151,22 +159,29 @@ export function DocumentPageViewer() {
       ) : null}
       {state.kind === "ready" && request ? (
         <>
-          <p data-testid="viewer-caption" style={{ margin: "0 0 var(--fl-workspace-space-1)", fontWeight: 700, overflowWrap: "anywhere" }}>
-            {pageCaption(state.name, state.page, state.numPages, request.fileId)}
-          </p>
-          {state.outOfRange ? (
+          {rendered ? (
+            <p data-testid="viewer-caption" style={{ margin: "0 0 var(--fl-workspace-space-1)", fontWeight: 700, overflowWrap: "anywhere" }}>
+              {pageCaption(state.name, state.page, state.numPages, request.fileId)}
+            </p>
+          ) : <p role="status">Opening page {state.page}…</p>}
+          {rendered && state.outOfRange ? (
             <p role="status" style={{ margin: "0 0 var(--fl-workspace-space-1)", color: "var(--fl-workspace-muted)" }}>
               The cited page {request.page} isn&apos;t in this file; showing page 1.
             </p>
           ) : null}
           <nav style={bar} aria-label="Pages">
-            <button type="button" style={button} onClick={() => go(-1)} disabled={state.page <= 1}>Previous page</button>
-            <button type="button" style={button} onClick={() => go(1)} disabled={state.page >= state.numPages}>Next page</button>
+            <button type="button" style={button} onClick={() => go(-1)} disabled={!rendered || state.page <= 1}>Previous page</button>
+            <button type="button" style={button} onClick={() => go(1)} disabled={!rendered || state.page >= state.numPages}>Next page</button>
             {openHref ? <a href={openHref} target="_blank" rel="noopener noreferrer">Open document</a> : null}
           </nav>
         </>
       ) : null}
-      <canvas ref={canvasRef} style={state.kind === "ready" ? canvasStyle : { display: "none" }} aria-label={state.kind === "ready" ? `Page ${state.page} of ${state.name}` : undefined} />
+      <canvas
+        ref={canvasRef}
+        style={rendered ? canvasStyle : { display: "none" }}
+        aria-label={rendered ? `Page ${state.page} of ${state.name}` : undefined}
+        data-rendered-page={rendered ? state.page : undefined}
+      />
     </main>
   );
 }

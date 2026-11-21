@@ -3821,17 +3821,16 @@ async function handleChatTurn(
       ? declineText(declineKind(message)!, (missingModelManual ?? noEvidenceForMachine)!, oemManufacturer!.name)
       : acquisitionText
       ? acquisitionText
-      // Codex r1 F1 (#4172, HIGH) — a candidate acquisition's honest status
-      // (never "I haven't searched": the search either started or already
-      // reported a result) outranks a generic "couldn't find" fallback.
+      // Lookup progress is transient. Persist stable instructions so the chat
+      // cannot say it is still searching underneath the eventual ready status.
+      : unboundManualRequest
+      ? candidateAcquisitionText
+        ? "The manual lookup status appears below."
+        : identityProposal
+          ? "Confirm the equipment below so I can look for the matching manual."
+          : "What manufacturer and model or order number are printed on the equipment label? You can type them or attach a clear photo of that part of the label."
       : candidateAcquisitionText
       ? candidateAcquisitionText
-      // A lookup request owns this response. The model can name the wrong
-      // family while the confirmation card is still waiting for the technician.
-      : unboundManualRequest
-      ? identityProposal
-        ? "Confirm the equipment below so I can look for the matching manual."
-        : "What manufacturer and model or order number are printed on the equipment label? You can type them or attach a clear photo of that part of the label."
       : missingModelManual
       ? `I couldn't find that in the ${missingModelManual} manual pages I have, so I won't guess a documented value. Upload the manual (or the page that covers it) to this notebook, or photograph the nameplate, and ask again — I'll answer from it and show you the page.`
       : noEvidenceForMachine
