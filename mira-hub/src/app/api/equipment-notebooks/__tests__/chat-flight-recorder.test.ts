@@ -2396,6 +2396,29 @@ describe("#4075 — a confirmed identity with no manual starts, and then reports
       expect(status).toEqual([{ kind: "manual_search_status", manufacturer: "Siemens", model: "TP700 Comfort", running: true, startedAt: "2026-11-20T23:30:00.000Z" }]);
     });
 
+    it("Codex #5706 r6 F14: a claimed retry of a failed search for this machine emits its generation", async () => {
+      acqMock.acquisitionEnabled.mockReturnValue(true);
+      acqMock.readAcquisition
+        .mockResolvedValueOnce(partial({ state: "search_unavailable", partial: undefined }))
+        .mockResolvedValue({ key: KEY, state: "running", started_at: "2026-11-20T23:30:00.000Z", finished_at: null, candidate_host: null, match_state: null, oem_request_url: null });
+      acqMock.startManualAcquisition.mockResolvedValue(true);
+      domainMock.getNotebook.mockResolvedValue(confirmed() as never);
+      const fr = await askForManual();
+      expect(fr.filter((f) => f.kind === "manual_search_status")).toEqual([{ kind: "manual_search_status", manufacturer: "Siemens", model: "TP700 Comfort", running: true, startedAt: "2026-11-20T23:30:00.000Z" }]);
+    });
+
+    it("control: a first-ever search for this machine keeps the prose-only reply", async () => {
+      acqMock.acquisitionEnabled.mockReturnValue(true);
+      acqMock.readAcquisition
+        .mockResolvedValueOnce(null)
+        .mockResolvedValue({ key: KEY, state: "running", started_at: "2026-11-20T23:30:00.000Z", finished_at: null, candidate_host: null, match_state: null, oem_request_url: null });
+      acqMock.startManualAcquisition.mockResolvedValue(true);
+      domainMock.getNotebook.mockResolvedValue(confirmed() as never);
+      const fr = await askForManual();
+      expect(acqMock.startManualAcquisition).toHaveBeenCalledTimes(1);
+      expect(fr.filter((f) => f.kind === "manual_search_status")).toEqual([]);
+    });
+
     it("control: a turn that refreshes nothing emits no status frame", async () => {
       acqMock.acquisitionEnabled.mockReturnValue(true);
       acqMock.readAcquisition.mockResolvedValue(partial());
@@ -2608,13 +2631,24 @@ describe("#4075 — a confirmed identity with no manual starts, and then reports
         expect(status).toEqual([{ kind: "manual_search_status", manufacturer: "Siemens", model: "TP700 Comfort", running: true, startedAt: "2026-11-20T23:30:00.000Z" }]);
       });
 
-      it("control: a retry of a failed search (not a partial refresh) keeps the prose-only reply", async () => {
+      it("Codex #5706 r6 F14: a claimed retry of a failed search emits its generation too, even once it has settled", async () => {
         acqMock.acquisitionEnabled.mockReturnValue(true);
-        acqMock.readAcquisition.mockResolvedValue(partial({ state: "search_unavailable", partial: undefined }));
+        acqMock.readAcquisition
+          .mockResolvedValueOnce(partial({ state: "search_unavailable", partial: undefined }))
+          .mockResolvedValue({ key: KEY, state: "search_unavailable", started_at: "2026-11-20T23:30:00.000Z", finished_at: "2026-11-20T23:30:05.000Z", candidate_host: null, match_state: null, oem_request_url: null });
         acqMock.startManualAcquisition.mockResolvedValue(true);
         domainMock.getNotebook.mockResolvedValue(confirmed() as never);
         const fr = await askForManualWithSources();
         expect(acqMock.startManualAcquisition).toHaveBeenCalledTimes(1);
+        expect(fr.filter((f) => f.kind === "manual_search_status")).toEqual([{ kind: "manual_search_status", manufacturer: "Siemens", model: "TP700 Comfort", running: true, startedAt: "2026-11-20T23:30:00.000Z" }]);
+      });
+
+      it("control: a retry the claim refused emits no status frame", async () => {
+        acqMock.acquisitionEnabled.mockReturnValue(true);
+        acqMock.readAcquisition.mockResolvedValue(partial({ state: "search_unavailable", partial: undefined }));
+        acqMock.startManualAcquisition.mockResolvedValue(false);
+        domainMock.getNotebook.mockResolvedValue(confirmed() as never);
+        const fr = await askForManualWithSources();
         expect(fr.filter((f) => f.kind === "manual_search_status")).toEqual([]);
       });
 

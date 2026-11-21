@@ -3294,16 +3294,20 @@ async function handleChatTurn(
   // "candidate" wins over "confirmed": its manual lands turned off, so the
   // fallback must also say to turn it on (Codex #4183 F1).
   let manualSearchRunning: "confirmed" | "candidate" | null = null;
-  // Codex #5706 r5 F14: a confirmed-notebook turn that STARTS a refresh of a
-  // cached partial manual emits one running status frame (this generation's
-  // own DB startedAt), so the live follower on mobile starts following it in
-  // the same chat. Other confirmed searches keep their prose-only UX.
+  // Codex #5706 r5/r6 F14: a confirmed-notebook turn that STARTS a refresh of a
+  // cached partial manual, a retry of a failed search, or a recovered orphaned
+  // search — any new search for a machine that already had a search record —
+  // emits one running status frame carrying the generation it just claimed
+  // (the DB startedAt), so the live follower on mobile follows it in the same
+  // chat. It is emitted even if that search already settled: the follower's
+  // next status read then returns its terminal result. A first-ever confirmed
+  // search keeps its prose-only UX.
   let confirmedRefreshFrame: { kind: "manual_search_status"; manufacturer: string; model: string; running: true; startedAt: string } | null = null;
   const noteConfirmedRefresh = async (key: string, manufacturer: string | null, model: string | null) => {
     if (!manufacturer || !model) return;
     try {
       const fresh = await readAcquisition(ctx.tenantId, notebookId);
-      if (fresh && fresh.key === key && fresh.state === "running" && fresh.started_at) {
+      if (fresh && fresh.key === key && fresh.started_at) {
         confirmedRefreshFrame = { kind: "manual_search_status", manufacturer, model, running: true, startedAt: fresh.started_at };
       }
     } catch (err) {
@@ -3370,7 +3374,9 @@ async function handleChatTurn(
           turnSpanContext: rootSpan.spanContext(),
           ...(refresh ? { refreshPartial: true } : {}),
         });
-        if (started && refresh) await noteConfirmedRefresh(key, oemManufacturer.name, oemModel.value);
+        if (started && acq !== null && acq.key === key) {
+          await noteConfirmedRefresh(key, oemManufacturer.name, oemModel.value);
+        }
         if (started) {
           acq = {
             key,
@@ -3554,7 +3560,7 @@ async function handleChatTurn(
             turnSpanContext: rootSpan.spanContext(),
             ...(refresh ? { refreshPartial: true } : {}),
           });
-          if (started && refresh) await noteConfirmedRefresh(key, nb.manufacturer, nb.model);
+          if (started) await noteConfirmedRefresh(key, nb.manufacturer, nb.model);
           manualAcquisition = started
             ? { state: "running", started_this_turn: true, candidate_host: null }
             : { state: acq.state, started_this_turn: false, candidate_host: acq.candidate_host };

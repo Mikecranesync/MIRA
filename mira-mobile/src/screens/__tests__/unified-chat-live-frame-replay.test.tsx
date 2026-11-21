@@ -520,3 +520,65 @@ describe("UnifiedChat — a delayed hydration read never replaces a newer live s
     expect(await screen.findByText("Found it.")).toBeTruthy();
   });
 });
+
+// Codex #5706 r5/r6 F14: on a CONFIRMED notebook there is no identity
+// proposal. When a turn retries (or refreshes) the machine's manual search,
+// the chat route now emits one running frame with the generation it claimed;
+// the follower must leave the old settled card and show the new result's
+// clickable PDF in the same chat — no remount, thread switch or card tap.
+describe("UnifiedChat — a confirmed notebook follows a retried manual search in the same chat (Codex #5706 r5/r6 F14)", () => {
+  const CONFIRMED_TURN: NotebookServerTurn = {
+    id: "t9",
+    question: "Find me the manual",
+    answerStatus: "answered",
+    answerText: "I saved the full manual, but it could not be indexed yet.",
+    evidence: [],
+    basis: null,
+  };
+  const confirmedProps = (liveTurns: { q: string; a: ChatTurn }[]): UnifiedChatProps => {
+    const p = props(liveTurns, [CONFIRMED_TURN]);
+    return { ...p, meta: { ...p.meta, identityConfirmed: true } };
+  };
+
+  it("a retry's live frame replaces the settled failure, and its PDF link appears when it settles", async () => {
+    vi.useFakeTimers();
+    fetchManualSearchStatus.mockResolvedValueOnce({
+      manufacturer: "AutomationDirect", model: "GS11N-20P2", running: false,
+      message: "The manual was saved but could not be indexed.", startedAt: "gen-1",
+    });
+    const view = render(<UnifiedChat {...confirmedProps([])} />);
+    await act(async () => { await Promise.resolve(); });
+    expect(screen.getByText("The manual was saved but could not be indexed.")).toBeTruthy();
+    const callsAtSettle = fetchManualSearchStatus.mock.calls.length;
+
+    // The same-thread retry turn: the route's running frame for gen-2.
+    view.rerender(<UnifiedChat {...confirmedProps([liveFrame("AutomationDirect", "GS11N-20P2", true, "gen-2")])} />);
+    await act(async () => { await Promise.resolve(); });
+    expect(screen.getByText(/Searching AutomationDirect's documentation for GS11N-20P2…/)).toBeTruthy();
+
+    fetchManualSearchStatus.mockResolvedValue({
+      manufacturer: "AutomationDirect", model: "GS11N-20P2", running: false,
+      message: "Found the official manual.", manualUrl: "https://cdn.automationdirect.com/static/manuals/gs10m/gs10usermanual.pdf", startedAt: "gen-2",
+    });
+    await act(async () => { await vi.advanceTimersByTimeAsync(4000); });
+    expect(fetchManualSearchStatus.mock.calls.length).toBeGreaterThan(callsAtSettle);
+    expect(screen.getByText("Found the official manual.")).toBeTruthy();
+    const links = screen.getAllByRole("link").map((a) => a.getAttribute("href"));
+    expect(links).toContain("https://cdn.automationdirect.com/static/manuals/gs10m/gs10usermanual.pdf");
+  });
+
+  it("control: without the retry's frame, the settled failure card stays and nothing is fetched", async () => {
+    vi.useFakeTimers();
+    fetchManualSearchStatus.mockResolvedValueOnce({
+      manufacturer: "AutomationDirect", model: "GS11N-20P2", running: false,
+      message: "The manual was saved but could not be indexed.", startedAt: "gen-1",
+    });
+    const view = render(<UnifiedChat {...confirmedProps([])} />);
+    await act(async () => { await Promise.resolve(); });
+    const callsAtSettle = fetchManualSearchStatus.mock.calls.length;
+    view.rerender(<UnifiedChat {...confirmedProps([{ q: "Find me the manual", a: { answer: "Searching again.", citations: [], status: "answered", unknownFrames: [] } }])} />);
+    await act(async () => { await vi.advanceTimersByTimeAsync(8000); });
+    expect(fetchManualSearchStatus.mock.calls.length).toBe(callsAtSettle);
+    expect(screen.getByText("The manual was saved but could not be indexed.")).toBeTruthy();
+  });
+});
