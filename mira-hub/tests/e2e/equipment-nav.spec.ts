@@ -753,8 +753,77 @@ test("F30 dismissing the banner keeps photo replay through a notebook switch", a
   expect(requests).toHaveLength(2);
 });
 
-for (const interruption of ["navigation", "Stop"]) {
-  test("F31 saved stopped turn keeps the right recovery after " + interruption, async ({ page, context, baseURL }) => {
+for (const settlement of ["terminal retry", "attachment added during retry", "detail hydration"]) {
+  test("F33 an old request leaves the newer draft photo and its text after " + settlement, async ({ page, context, baseURL }) => {
+    await auth(context, baseURL!);
+    await routes(page, { enabled: true, resolve: "resolved", initial: { [THREAD]: { componentId: VFD, version: 2 } } });
+    await otherMachine(page);
+    const question = "Keep this question with the replacement photo.";
+    const persisted = settlement === "detail hydration";
+    let release = () => {};
+    const finish = new Promise<void>((resolve) => { release = resolve; });
+    const requests: (string | null)[] = [];
+    await page.route(/\/api\/equipment-notebooks\/[^/]+\/look\/?$/, (route) => route.fulfill(json({
+      fileId: "original-f33-photo", observation: { text: "Drive photo", capturedAt: "2026-11-20T12:00:00.000Z" },
+      attachment: { linkId: "link" }, observationPersisted: true,
+    })));
+    await page.route(new RegExp("/api/equipment-notebooks/" + NB + "/?(\\?.*)?$"), async (route) => {
+      if (!persisted || requests.length === 0 || new URL(route.request().url()).searchParams.get("threadId") !== THREAD) return route.fallback();
+      await finish;
+      return route.fulfill(json({ ...oracle.detailEmpty, turns: [{
+        id: "f33-saved-turn", clientRequestId: JSON.parse(requests[0]!).clientRequestId, question,
+        answerStatus: "answered", answerText: "Settled original answer.", evidence: [],
+      }] }));
+    });
+    await page.route(/\/api\/equipment-notebooks\/[^/]+\/chat\/?$/, async (route) => {
+      requests.push(route.request().postData());
+      if (requests.length === 1) return route.fulfill({ status: 200, contentType: "text/event-stream", body: "" });
+      await finish;
+      const body = 'data: {"kind":"content","content":"Settled original answer."}\n\ndata: {"kind":"status","status":"answered"}\n\n';
+      return route.fulfill({ status: 200, contentType: "text/event-stream", body });
+    });
+    try {
+      await page.goto("/v3/?notebook=" + NB + "&thread=" + THREAD);
+      await expect(page.getByTestId("bench-asking-about")).toBeVisible();
+      await composer(page).fill(question);
+      await attachDraftPhoto(page, "f33-original.png");
+      await page.getByRole("button", { name: "Send", exact: true }).click();
+      await expect(composer(page)).toHaveValue(question);
+      const retry = page.getByRole("button", { name: "Try again", exact: true });
+      await expect(retry).toBeEnabled();
+      if (settlement === "attachment added during retry") {
+        await retry.click();
+        await expect.poll(() => requests.length).toBe(2);
+      }
+      await attachDraftPhoto(page, "f33-replacement.png");
+      if (settlement === "terminal retry") await retry.click();
+      if (!persisted) {
+        await expect.poll(() => requests.length).toBe(2);
+        expect(requests[1]).toBe(requests[0]);
+        expect(JSON.parse(requests[1]!).visualEvidence.fileId).toBe("original-f33-photo");
+      }
+      release();
+      await expect(page.getByText("Settled original answer.", { exact: true })).toBeVisible();
+      await expect(retry).toHaveCount(0);
+      await expect(composer(page)).toHaveValue(question);
+      const chip = page.getByRole("button", { name: /Remove f33-replacement/ });
+      await expect(chip).toBeVisible();
+      const projects = page.getByRole("region", { name: "Projects" });
+      await projects.locator('[data-item-id="notebook-' + OTHER_NB + ':thread-legacy"]').click();
+      await expect(chip).toHaveCount(0);
+      await projects.locator('[data-item-id="notebook-' + NB + ':thread-' + THREAD + '"]').click();
+      await expect(composer(page)).toHaveValue(question);
+      await expect(chip).toBeVisible();
+    } finally {
+      release();
+    }
+  });
+}
+
+for (const interruption of ["navigation", "Stop", "navigation with clean close", "Stop with clean close"]) {
+  test("F31/F34 saved stopped turn keeps the right recovery after " + interruption, async ({ page, context, baseURL }) => {
+    const explicitStop = interruption.startsWith("Stop");
+    const cleanClose = interruption.endsWith("clean close");
     await auth(context, baseURL!);
     await routes(page, { enabled: true, resolve: "resolved", initial: { [THREAD]: { componentId: VFD, version: 2 } } });
     await otherMachine(page);
@@ -767,7 +836,7 @@ for (const interruption of ["navigation", "Stop"]) {
       }));
     });
     const question = "Resume the interrupted photo question.";
-    let saved: "stopped" | "answered" | undefined;
+    let saved: "stopped" | "answered" | "unavailable" | undefined;
     let original = "";
     let retry = "";
     await page.route(/\/api\/equipment-notebooks\/?(\?.*)?$/, (route) => {
@@ -777,13 +846,14 @@ for (const interruption of ["navigation", "Stop"]) {
     });
     await page.route(new RegExp("/api/equipment-notebooks/" + NB + "/?(\\?.*)?$"), (route) => {
       if (!saved || new URL(route.request().url()).searchParams.get("threadId") !== THREAD) return route.fallback();
+      if (saved === "unavailable") return route.fulfill(json({ error: "fixture_detail_failure" }, 503));
       return route.fulfill(json({ ...oracle.detailEmpty,
         turns: [{ id: "saved-stopped-turn", clientRequestId: JSON.parse(original).clientRequestId, question,
           answerStatus: saved === "stopped" ? "error" : "answered",
           answerText: saved === "stopped" ? "Saved partial answer." : "Completed replay.", evidence: [] }],
       }));
     });
-    await page.addInitScript((deferStop) => {
+    await page.addInitScript(({ deferStop, cleanClose }) => {
       const fetchNormally = window.fetch.bind(window);
       let intercepted = false;
       window.fetch = (input, init) => {
@@ -800,7 +870,8 @@ for (const interruption of ["navigation", "Stop"]) {
             init.signal?.addEventListener("abort", () => {
               const finish = () => {
                 document.documentElement.dataset.requestStopped = "yes";
-                controller.error(new DOMException("Stopped", "AbortError"));
+                if (cleanClose) controller.close();
+                else controller.error(new DOMException("Stopped", "AbortError"));
               };
               if (deferStop) window.addEventListener("fixture-release-stop", finish, { once: true });
               else finish();
@@ -809,7 +880,7 @@ for (const interruption of ["navigation", "Stop"]) {
         });
         return Promise.resolve(new Response(stream, { headers: { "Content-Type": "text/event-stream" } }));
       };
-    }, interruption === "Stop");
+    }, { deferStop: explicitStop, cleanClose });
     await page.route(/\/api\/equipment-notebooks\/[^/]+\/chat\/?$/, (route) => {
       retry = route.request().postData() ?? "";
       const body = 'data: {"kind":"content","content":"Completed replay."}\n\ndata: {"kind":"status","status":"answered"}\n\n';
@@ -826,20 +897,20 @@ for (const interruption of ["navigation", "Stop"]) {
     original = (await html.getAttribute("data-stopped-request"))!;
     await expect(page.getByText("Live partial answer.", { exact: true })).toBeVisible();
     const projects = page.getByRole("region", { name: "Projects" });
-    if (interruption === "Stop") await page.getByRole("button", { name: "Stop", exact: true }).click();
+    if (explicitStop) await page.getByRole("button", { name: "Stop", exact: true }).click();
     await projects.locator('[data-item-id="notebook-' + OTHER_NB + ':thread-legacy"]').click();
-    if (interruption === "Stop") {
+    if (explicitStop) {
       await expect(page).toHaveURL(new RegExp("notebook=" + OTHER_NB));
       await page.evaluate(() => window.dispatchEvent(new Event("fixture-release-stop")));
     }
     await expect(html).toHaveAttribute("data-request-stopped", "yes");
-    saved = "stopped";
+    saved = explicitStop && cleanClose ? "unavailable" : "stopped";
     await projects.getByRole("button", { name: "Stopped turn fixture", exact: true }).click();
     const answers = page.locator('.fl-turn--aui[data-role="assistant"]');
     await expect(answers).toHaveCount(1);
-    await expect(answers.first()).toContainText("Saved partial answer.");
+    await expect(answers.first()).toContainText(saved === "unavailable" ? "Live partial answer." : "Saved partial answer.");
     const tryAgain = page.getByRole("button", { name: "Try again", exact: true });
-    if (interruption === "Stop") {
+    if (explicitStop) {
       await expect(tryAgain).toHaveCount(0);
       await expect(composer(page)).toHaveValue("");
       expect(retry).toBe("");
@@ -2543,6 +2614,58 @@ for (const interruption of ["navigation", "explicit Stop", "explicit Stop in a f
   });
 }
 
+test("F35 dismissing an interrupted upload notice keeps reattachment required", async ({ page, context, baseURL }) => {
+  await auth(context, baseURL!);
+  await routes(page, { enabled: true, resolve: "resolved", initial: { [THREAD]: { componentId: VFD, version: 2 } } });
+  await otherMachine(page);
+  let uploads = 0;
+  const requests: unknown[] = [];
+  let release = () => {};
+  const finish = new Promise<void>((resolve) => { release = resolve; });
+  await page.route(/\/api\/equipment-notebooks\/[^/]+\/look\/?$/, async (route) => {
+    if (++uploads === 1) {
+      await finish;
+      return route.fulfill(json({ error: "fixture_upload_cancelled" }, 503)).catch(() => {});
+    }
+    return route.fulfill(json({ fileId: "f35-reattached-photo", observation: { text: "Drive photo" },
+      attachment: { linkId: "link" }, observationPersisted: true }));
+  });
+  await page.route(/\/api\/equipment-notebooks\/[^/]+\/chat\/?$/, (route) => {
+    requests.push(route.request().postDataJSON());
+    return route.fulfill({ status: 200, contentType: "text/event-stream", body: 'data: {"kind":"status","status":"answered"}\n\n' });
+  });
+  try {
+    await page.goto("/v3/?notebook=" + NB + "&thread=" + THREAD);
+    await expect(page.getByTestId("bench-asking-about")).toBeVisible();
+    const question = "Wait for this question's photo.";
+    await composer(page).fill(question);
+    await attachDraftPhoto(page, "f35-original.png");
+    const send = page.getByRole("button", { name: "Send", exact: true });
+    await send.click();
+    await expect.poll(() => uploads).toBe(1);
+    const projects = page.getByRole("region", { name: "Projects" });
+    await projects.locator('[data-item-id="notebook-' + OTHER_NB + ':thread-legacy"]').click();
+    await projects.locator('[data-item-id="notebook-' + NB + ':thread-' + THREAD + '"]').click();
+    await expect(page.getByTestId("bench-asking-about")).toBeVisible();
+    await expect(composer(page)).toHaveValue(question);
+    const card = page.getByRole("group", { name: "Interrupted attachment" });
+    await card.getByRole("button", { name: "Dismiss attachment notice" }).click();
+    await expect(card.getByRole("status")).toHaveCount(0);
+    await send.click();
+    await expect(page.getByRole("alert", { name: "Send error" })).toContainText("Attach the file again before sending.");
+    expect(requests).toHaveLength(0);
+    await expect(composer(page)).toHaveValue(question);
+
+    await attachDraftPhoto(page, "f35-replacement.png");
+    await send.click();
+    await expect.poll(() => requests.length).toBe(1);
+    expect(requests[0]).toMatchObject({ message: question, visualEvidence: { fileId: "f35-reattached-photo" } });
+    await expect(card).toHaveCount(0);
+  } finally {
+    release();
+  }
+});
+
 test("F25 a second interrupted upload preserves both original questions", async ({ page, context, baseURL }) => {
   await auth(context, baseURL!);
   await routes(page, { enabled: true, resolve: "resolved", initial: { [THREAD]: { componentId: VFD, version: 2 } } });
@@ -2612,6 +2735,9 @@ test("F25 a second interrupted upload preserves both original questions", async 
     const remaining = page.getByRole("group", { name: "Interrupted attachment" });
     await expect(remaining).toContainText(second);
     await dismissals.click();
+    await expect(remaining.getByRole("status")).toHaveCount(0);
+    await expect(remaining).toContainText(second);
+    await remaining.getByRole("button", { name: "Discard interrupted question" }).click();
     await expect(remaining).toHaveCount(0);
   } finally {
     finish();

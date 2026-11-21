@@ -111,6 +111,7 @@ import {
   type PickOrigin,
   openThreadAction,
   retainedStreamInterruption,
+  stoppedStreamResult,
   searchForSelection,
   selectionFromSearch,
   sendFailureMessage,
@@ -124,6 +125,8 @@ import {
   recoverySendBody,
 } from "./hub-host-logic";
 import { resumeProjectSelection } from "./project-resume";
+
+const NO_ATTACHMENT_DRAFTS: ReadonlySet<string> = new Set();
 
 type Detail = {
   notebook: EquipmentNotebook;
@@ -286,7 +289,10 @@ export function HubShellHost() {
   const [state, dispatch] = useReducer(hubHostReducer, undefined, initialHubShellState);
   const sendRecoveries = state.sendRecoveryByThread?.get(state.thread.id);
   const failedBody = sendRecoveries?.at(-1) ?? null;
-  const [attachmentDraftThreads, setAttachmentDraftThreads] = useState<ReadonlySet<string>>(() => new Set());
+  const attachmentDraftThreads = state.attachmentDraftThreads ?? NO_ATTACHMENT_DRAFTS;
+  const onPendingAttachmentThreads = useCallback((threadIds: ReadonlySet<string>, editedThreadId?: string) => {
+    dispatch({ type: "pending-attachments", threadIds, editedThreadId });
+  }, []);
   /**
    * Tell the reducer WHICH thread is open, from event handlers (never effects).
    * The live turns are projected onto the state at render time via `hydrate`
@@ -795,13 +801,24 @@ export function HubShellHost() {
       });
       // Both readers end with the stream; the finished answer carries its label.
       if (componentRead) await componentRead;
-      if (ownsAttempt() && (result.sawStatus || result.content || result.safetyNotice)) retainExchange(result, false);
+      const stopped = !result.sawStatus && ctrl.signal.aborted;
+      const observed = stopped
+        ? stoppedStreamResult({ partial: result.content, safetyNotice: result.safetyNotice })
+        : result;
+      if (ownsAttempt() && (observed.sawStatus || observed.content || observed.safetyNotice)) retainExchange(observed, stopped);
       if (!result.sawStatus) {
+        if (stopped && explicitStops.current.has(ctrl)) {
+          if (ownsVisibleSend()) {
+            setLive((cur) => (cur?.id === id ? { ...cur, content: observed.content, result: observed, stopped: true } : cur));
+          } else dropOutgoing(outgoingId);
+          return;
+        }
         if (ownsAttempt()) {
           dispatch({
             type: "recover-send", threadId, restoreDraft: true,
             recovery: {
               body: outBody, composition, question, recoveryId, draftRevision: retry?.draftRevision,
+              interruptedByNavigation: stopped || undefined,
               error: "MIRA didn't confirm the send. Try again to check the original request.",
             },
           });
@@ -1508,7 +1525,7 @@ export function HubShellHost() {
     ...(failedBody && recoveryIsVisible ? { onDismissSendError: () => dispatch({
       type: "dismiss-recovery-error", threadId: state.thread.id, recoveryId: sendRecoveryId(failedBody),
     }) } : {}),
-    onPendingAttachmentThreads: setAttachmentDraftThreads,
+    onPendingAttachmentThreads,
     ...(reviewMessage ? { targetReview: reviewMessage } : {}),
     groundingLine: () => groundingLineFor(detail?.notebook ?? null, docIds.length),
     busy,
@@ -1560,16 +1577,20 @@ export function HubShellHost() {
           {heldNote && <p className="fl-qtarget__browsing" role="status" aria-label="Kept with this question">{heldNote}</p>}
           {attachmentRecoveries?.map((recovery) => <div className="fl-qtarget__browsing" key={recovery.id}
             role="group" aria-label="Interrupted attachment">
-            <p role="status">{recovery.notice}</p>
+            {!recovery.noticeDismissed && <p role="status">{recovery.notice}</p>}
             {attachmentDraftRecovery !== recovery && <p aria-label="Interrupted question">{recovery.question}</p>}
             {attachmentDraftRecovery !== recovery && <button type="button"
               disabled={busy || Boolean(view.draft) || attachmentDraftThreads.has(state.thread.id)}
               onClick={() => dispatch({ type: "restore-attachment-draft", threadId: state.thread.id, recoveryId: recovery.id })}>
               Restore question
             </button>}
-            <button type="button" disabled={busy}
-              onClick={() => dispatch({ type: "clear-attachment-recovery", threadId: state.thread.id, recoveryId: recovery.id })}>
+            {!recovery.noticeDismissed && <button type="button" disabled={busy}
+              onClick={() => dispatch({ type: "dismiss-attachment-notice", threadId: state.thread.id, recoveryId: recovery.id })}>
               Dismiss attachment notice
+            </button>}
+            <button type="button" disabled={busy || (attachmentDraftRecovery === recovery && attachmentDraftThreads.has(state.thread.id))}
+              onClick={() => dispatch({ type: "discard-attachment-question", threadId: state.thread.id, recoveryId: recovery.id })}>
+              Discard interrupted question
             </button>
           </div>)}
         </> } : {})}

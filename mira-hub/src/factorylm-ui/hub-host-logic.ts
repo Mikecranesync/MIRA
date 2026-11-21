@@ -331,6 +331,7 @@ export type HubSendRecovery = {
 export type HubHostAction =
   | ShellAction
   | { readonly type: "land-thread"; readonly selection: HubSelection; readonly at: string }
+  | { readonly type: "pending-attachments"; readonly threadIds: ReadonlySet<string>; readonly editedThreadId?: string }
   | { readonly type: "sent-draft"; readonly threadId: string; readonly question: string; readonly revision: number }
   | { readonly type: "recover-send"; readonly threadId: string; readonly recovery: HubSendRecovery; readonly restoreDraft: boolean }
   | { readonly type: "recover-attachment-draft"; readonly threadId: string; readonly recoveryId: string; readonly text: string; readonly notice: string; readonly restoreDraft?: boolean; readonly allowWithoutAttachment?: boolean }
@@ -339,7 +340,9 @@ export type HubHostAction =
   | { readonly type: "dismiss-recovery-error"; readonly threadId: string; readonly recoveryId: string }
   | { readonly type: "reconcile-send"; readonly threadId: string; readonly requestIds: ReadonlySet<string>; readonly replayableErrorIds?: ReadonlySet<string>; readonly confirmedThreadTitle?: string; readonly confirmed?: boolean }
   | { readonly type: "reconcile-notebook-list"; readonly notebooks: readonly Pick<HubNotebook, "id" | "threads">[] }
-  | { readonly type: "clear-attachment-recovery"; readonly threadId: string; readonly recoveryId: string };
+  | { readonly type: "clear-attachment-recovery"; readonly threadId: string; readonly recoveryId: string }
+  | { readonly type: "dismiss-attachment-notice"; readonly threadId: string; readonly recoveryId: string }
+  | { readonly type: "discard-attachment-question"; readonly threadId: string; readonly recoveryId: string };
 
 /**
  * #4311 — successful retry clears the question it retried. The Hub also checks
@@ -355,6 +358,7 @@ type AttachmentRecovery = {
   readonly id: string;
   readonly question: string;
   readonly notice: string;
+  readonly noticeDismissed?: boolean;
   readonly draftRevision?: number;
   readonly allowWithoutAttachment?: boolean;
 };
@@ -363,6 +367,7 @@ type HubShellState = ShellState & {
   readonly draftRevision?: number;
   readonly draftSequence?: number;
   readonly draftsByThread?: ReadonlyMap<string, ParkedDraft>;
+  readonly attachmentDraftThreads?: ReadonlySet<string>;
   readonly sendRecoveryByThread?: ReadonlyMap<string, readonly HubSendRecovery[]>;
   readonly confirmedThreadTitles?: ReadonlyMap<string, string>;
   readonly attachmentRecoveries?: ReadonlyMap<string, readonly AttachmentRecovery[]>;
@@ -399,12 +404,40 @@ export function hubHostReducer(state: HubShellState, action: HubHostAction): Hub
     return state.draft && landed.draft !== state.draft ? shellReducer(landed, { type: "set-draft", draft: state.draft }) : landed;
   }
 
+  if (action.type === "pending-attachments") {
+    let next = { ...state, attachmentDraftThreads: action.threadIds };
+    const threadId = action.editedThreadId;
+    if (!threadId) return next;
+    const active = threadId === state.thread.id;
+    const parked = state.draftsByThread?.get(threadId);
+    const previousRevision = active ? state.draftRevision : parked?.revision;
+    if (previousRevision === undefined) return next;
+    const revision = (state.draftSequence ?? 0) + 1;
+    if (active) {
+      next = { ...next, draftRevision: revision, draftSequence: revision };
+    } else if (parked) {
+      const draftsByThread = new Map(state.draftsByThread);
+      draftsByThread.set(threadId, { ...parked, revision });
+      next = { ...next, draftsByThread, draftSequence: revision };
+    }
+    // A replacement file still belongs to an interrupted-upload question.
+    // Move that requirement with the draft while invalidating any older POST's
+    // ownership of the text.
+    const records = state.attachmentRecoveries?.get(threadId);
+    if (!records?.some((record) => record.draftRevision === previousRevision)) return next;
+    const attachmentRecoveries = new Map(state.attachmentRecoveries);
+    attachmentRecoveries.set(threadId, records.map((record) =>
+      record.draftRevision === previousRevision ? { ...record, draftRevision: revision } : record));
+    return { ...next, attachmentRecoveries };
+  }
+
   if (action.type === "sent-draft") {
     const active = action.threadId === state.thread.id;
     const draft = active && state.draftRevision !== undefined
       ? { text: state.draft, revision: state.draftRevision }
       : state.draftsByThread?.get(action.threadId);
-    if (!draft || draft.revision !== action.revision || draftAfterSendSucceeded(draft.text, action.question) === null) return state;
+    if (!draft || draft.revision !== action.revision || state.attachmentDraftThreads?.has(action.threadId) ||
+        draftAfterSendSucceeded(draft.text, action.question) === null) return state;
     if (active) return hubHostReducer(state, { type: "set-draft", draft: "" });
     const draftsByThread = new Map(state.draftsByThread);
     draftsByThread.delete(action.threadId);
@@ -475,10 +508,15 @@ export function hubHostReducer(state: HubShellState, action: HubHostAction): Hub
       : next;
   }
 
-  if (action.type === "clear-attachment-recovery" || action.type === "restore-attachment-draft") {
+  if (action.type === "clear-attachment-recovery" || action.type === "restore-attachment-draft" ||
+      action.type === "dismiss-attachment-notice" || action.type === "discard-attachment-question") {
     const records = state.attachmentRecoveries?.get(action.threadId);
     const record = records?.find((item) => item.id === action.recoveryId);
     if (!records || !record) return state;
+    const revision = action.threadId === state.thread.id
+      ? state.draftRevision : state.draftsByThread?.get(action.threadId)?.revision;
+    if (action.type === "discard-attachment-question" && record.draftRevision !== undefined &&
+        record.draftRevision === revision && state.attachmentDraftThreads?.has(action.threadId)) return state;
     const attachmentRecoveries = new Map(state.attachmentRecoveries);
     if (action.type === "restore-attachment-draft") {
       if (action.threadId !== state.thread.id || state.draft) return state;
@@ -487,10 +525,18 @@ export function hubHostReducer(state: HubShellState, action: HubHostAction): Hub
         item === record ? { ...item, draftRevision: restored.draftRevision } : item));
       return { ...restored, attachmentRecoveries };
     }
+    if (action.type === "dismiss-attachment-notice") {
+      attachmentRecoveries.set(action.threadId, records.map((item) =>
+        item === record ? { ...item, noticeDismissed: true } : item));
+      return { ...state, attachmentRecoveries };
+    }
     const remaining = records.filter((item) => item !== record);
     if (remaining.length) attachmentRecoveries.set(action.threadId, remaining);
     else attachmentRecoveries.delete(action.threadId);
-    return { ...state, attachmentRecoveries };
+    const next = { ...state, attachmentRecoveries };
+    return action.type === "discard-attachment-question" && record.draftRevision !== undefined
+      ? hubHostReducer(next, { type: "sent-draft", threadId: action.threadId, question: record.question, revision: record.draftRevision })
+      : next;
   }
 
   if (action.type === "recover-send" || action.type === "recover-attachment-draft") {
