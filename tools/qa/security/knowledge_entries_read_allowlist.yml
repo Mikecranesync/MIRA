@@ -389,9 +389,9 @@ approved:
     approved_classification: TENANT-ONLY
     query_sha256: "732263844a55d35d5e13c1e4fd2e0ce3aeda3b27d8531cf1eda274c5674d2d11"
     reason: "Test-only cleanup DELETE against the disposable integration DB (TEST_DATABASE_URL + MIRA_TEST_DB_CONFIRM=DISPOSABLE); never runs against a shared corpus."
-  "mira-hub/src/lib/__tests__/t2108-doc-chat.integration.test.ts:150":
+  "mira-hub/src/lib/__tests__/t2108-doc-chat.integration.test.ts:187":
     approved_classification: TENANT-ONLY
-    query_sha256: "810fe3d8cbb6abfc21452e1f24ae8a0d897e57509fc006898c9d32bac1294481"
+    query_sha256: "7232f087eedc784bb1791040e9d991b6066ea6058a3d7abef3e265836c7d9462"
     reason: "Test-only cleanup DELETE against the disposable integration DB; see :125."
   "mira-hub/src/lib/__tests__/t2108-doc-chat.integration.test.ts:162":
     approved_classification: TENANT-ONLY

@@ -1691,6 +1691,16 @@ jobs:
           filters: |
             lifecycle:
               - 'package.json'
+              # PDF→writer→real SQL→citation contract: include both source
+              # trees so transitive parser/admission changes cannot bypass it.
+              - 'mira-hub/src/lib/**'
+              - 'mira-hub/src/capabilities/**'
+              - 'mira-hub/package.json'
+              - 'mira-hub/bun.lock*'
+              - 'mira-hub/vitest.integration.config.ts'
+              - 'mira-hub/tsconfig.json'
+              - 'tests/test_hub_unit_filter_contract.py'
+              - '.github/workflows/ci.yml'
               - 'mira-hub/db/migrations/09*.sql'
               - 'mira-hub/db/migrations/032_decision_traces.sql'
               - 'mira-hub/src/capabilities/observability/**'
@@ -1770,6 +1780,61 @@ jobs:
             echo "::error::CV101 catalog SQL isolation suite did not run and pass"; exit 1; }
           grep -qE "✓ src/capabilities/__tests__/cv101-photo-recall\.integration\.test\.ts" /tmp/reconciliation.plain || {
             echo "::error::CV101 photo recall SQL suite did not run and pass"; exit 1; }
+
+      - name: PDF pipeline contract (must execute all eight)
+        if: steps.changes.outputs.lifecycle == 'true'
+        working-directory: mira-hub
+        run: |
+          set -euo pipefail
+          : "${TEST_DATABASE_URL:?PDF pipeline requires a disposable database}"
+          if [ "${MIRA_TEST_DB_CONFIRM:-}" != DISPOSABLE ]; then
+            echo "::error::PDF pipeline requires MIRA_TEST_DB_CONFIRM=DISPOSABLE"; exit 1
+          fi
+          report="$RUNNER_TEMP/pdf-pipeline.json"
+          rm -f "$report"
+          node node_modules/vitest/vitest.mjs run --config vitest.integration.config.ts \
+            src/lib/__tests__/t2108-doc-chat.integration.test.ts -t 'PDF pipeline contract' \
+            --reporter=default --reporter=json --outputFile="$report"
+          python3 - "$report" <<'PY'
+          import json, re, sys
+
+          def require(condition, reason):
+              if not condition:
+                  raise ValueError(reason)
+
+          try:
+              with open(sys.argv[1], encoding="utf-8") as stream:
+                  report = json.load(stream)
+              require(report.get("success") is True, "run did not succeed")
+              files = report["testResults"]
+              require(isinstance(files, list) and len(files) == 1, "expected exactly one test file")
+              file = files[0]
+              target = "src/lib/__tests__/t2108-doc-chat.integration.test.ts"
+              name = file["name"].replace("\\", "/")
+              require(name == target or name.endswith("/" + target), "wrong test file")
+              require(file["status"] == "passed", "test file did not pass")
+              required = {"baseline", "rename", "unrelated", "order", "wrong-model", "foreign-tenant", "page-anchor", "blank"}
+              cases = file["assertionResults"]
+              require(isinstance(cases, list), "case results missing")
+              seen, not_run = set(), 0
+              for case in cases:
+                  match = re.match(r"^\[pipeline:([a-z-]+)\](?:\s|$)", case["title"])
+                  if match:
+                      case_id = match.group(1)
+                      require(case_id in required and case_id not in seen, "duplicate or unknown required case")
+                      require(case["status"] == "passed" and case.get("failureMessages") == [], "required case failed or skipped")
+                      seen.add(case_id)
+                  else:
+                      require(case["status"] in {"pending", "skipped"}, "legacy audit unexpectedly executed")
+                      not_run += 1
+              require(seen == required, "required cases missing")
+              for key, value in {"numTotalTests": len(cases), "numPassedTests": 8, "numFailedTests": 0,
+                                 "numPendingTests": not_run, "numTodoTests": 0}.items():
+                  require(type(report[key]) is int and report[key] == value, "inconsistent test counts")
+          except (OSError, ValueError, KeyError, TypeError, AttributeError):
+              sys.exit("PDF pipeline contract: missing/invalid report or incomplete successful execution")
+          print(f"PDF pipeline contract: 8/8 required cases passed; {not_run} legacy audit cases NOT RUN")
+          PY
 
   notebook-event-outbox-pg:
     name: Notebook event outbox + CMMS dispatcher (disposable Postgres, migration 111)
