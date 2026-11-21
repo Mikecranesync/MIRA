@@ -1,3 +1,14 @@
+# Capability roadmap — 2026-11-18
+
+Current capability: **Find the Right Equipment**. Read the
+[roadmap](../docs/plans/capability-roadmap.md) and
+[FIND-01–10 acceptance plan](../docs/plans/find-the-right-equipment.md).
+The connected Hub/tablet verdict is still unproven. Refresh live #5625/#5617 and
+the existing #5232 owner records before acting. The plan preserves all five sessions'
+claims and existing authority; it does not mark a merged API or lab UI accepted.
+
+---
+
 # Honest landing Codex round 2 — 2026-10-29
 
 Draft PR #4570 (`cursor/honest-landing-capabilities-ded8`). Codex round 2 on `c08384e0` (ISSUES_FOUND, 4 P2) fixed on the same draft: Drive Commander `/drive-commander/powerflex-525` drops `$197/yr` and checkout, CTA is Talk to Mike / free 30-day pilot; blog articles no longer claim auto work-order creation, a free CMMS tier, or "in seconds"; `provenText()` no longer falls back when a claim is unproven; honest-claims is recursive over public HTML, renders every real blog post plus Drive Commander and marketing renderers, uses semantic bans (auto+CMMS/work order, any `$`, timing promises), and has mutation + notebook-cited-answer flip tests. No merge, deploy, labels, ready, or Codex. mira-web full suite at new tip: 598 pass / 18 fail (21 fail on `origin/main`; the 18 remaining are pre-existing Neon/cookie/admin/DC-Pro).
