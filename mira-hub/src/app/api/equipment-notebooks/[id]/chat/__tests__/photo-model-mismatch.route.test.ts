@@ -271,6 +271,31 @@ describe("#5706 — a nameplate photo of another drive is not answered from the 
     expect(passOpts().every((o) => o.photoText === GS20_READING)).toBe(true);
   });
 
+  // The which-machine ask never withholds the safety stop: an energized-work
+  // ask with an unclear photo still stops before any provider call, whether
+  // the photo is this turn's or carried from an earlier one.
+  it("an unclear photo still gets the safety stop, live and carried", async () => {
+    const unclear = async (_c: unknown, _t: unknown, _q: unknown, opts: unknown) => {
+      const o = opts as Opts;
+      if (o?.diagnostics) o.diagnostics.photoSubjectUnclear = { shown: ["GS10", "Micro820"], earlier: [] };
+      return [];
+    };
+    filesMock.photoLinkedToTarget.mockResolvedValue({ fileId: PHOTO, capturedAt: "2026-11-21T20:57:06.047Z" });
+    veMock.loadVisualEvidenceForPhoto.mockResolvedValue(lookRow(PHOTO, "A GS10 drive beside a Micro820 module."));
+    ragMock.retrieveNodeChunks.mockImplementation(unclear);
+    const live = await frames(await POST(req({ message: "How do I pull the RFI jumper with it powered?", sourceDocIds: [DOC_A], visualEvidence: { fileId: PHOTO } }), params));
+    expect(live.some((f) => f.kind === "safety")).toBe(true);
+    expect(vi.mocked(fetch)).not.toHaveBeenCalled();
+    ragMock.retrieveNodeChunks.mockImplementation(async (_c: unknown, _t: unknown, _q: unknown, opts: unknown) => {
+      const o = opts as Opts;
+      if (o?.diagnostics) o.diagnostics.photoSubjectUnclear = { shown: ["GS20-23P0", "GS20-21P0"], earlier: [], carried: true };
+      return [];
+    });
+    const carried = await frames(await POST(req({ message: "How do I pull the RFI jumper with it powered?", sourceDocIds: [DOC_A], threadId: THREAD }), params));
+    expect(carried.some((f) => f.kind === "safety")).toBe(true);
+    expect(vi.mocked(fetch)).not.toHaveBeenCalled();
+  });
+
   // Codex r1 on #5764 F3: another conversation's newer reading of the same
   // linked file never decides which manual this conversation is held to; the
   // hazard stop still reads the photo file-wide.

@@ -1,8 +1,9 @@
 /**
  * #5706 / Codex r1 + r2 on #5764 — what a photo reading gives the model check.
  * The photo's public text is judged exactly as if typed (manual-rag.ts); these
- * pin which text that is (never a serial), the one fail-closed gate on ending an
- * earlier subject, and the one join rule shared by the live turn and the carry.
+ * pin which text that is (never a serial), the fail-closed gates (ending an
+ * earlier subject; telling which machine is meant at all), the one join rule
+ * shared by the live turn and the carry, and the one question asked instead.
  * Readings are verbatim staging observations where noted; the rest isolate one
  * field each.
  *

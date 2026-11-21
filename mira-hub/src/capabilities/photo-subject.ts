@@ -57,9 +57,10 @@ export function photoModelText(reading: string | null | undefined): string | nul
  * folded into a full number it prefixes (GS20 beside GS20-23P0), never one full
  * number into another (GS11N-20P2 beside GS11N-20P2A is two — Codex r2 F2).
  *
- * This gate decides nothing about any manual. A photo it does not pass is
- * still judged as typed — together WITH the earlier subject — so a miscount
- * can only make the turn stricter than typing the photo's text, never looser.
+ * This gate decides nothing about any manual. A photo naming models that does
+ * not pass it, beside an earlier open subject, is asked about (manual-rag.ts),
+ * so a miscount can only make the turn stricter than typing the photo's text,
+ * never looser.
  */
 export function namesOneMachine(text: string): boolean {
   const ids = [...modelIdentitiesInText(text)];
