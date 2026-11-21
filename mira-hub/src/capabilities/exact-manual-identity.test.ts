@@ -6,10 +6,11 @@ const REQUEST = "Find the manual for this equipment.";
 
 describe("exact manual identity for a nameplate with private fields", () => {
   it.each([
-    ["ABB", "ACS355", "TEST-ABB-001", "IP20"],
-    ["SCHNEIDER ELECTRIC", "CA3KN22BD", "TEST-SE-001", "24VDC"],
-  ])("can offer the %s model with a rating after a distinct serial", (manufacturer, model, serial, rating) => {
-    const photo = [manufacturer, model, `S/N: ${serial}`, rating].join("\r\n");
+    ["ABB", "ACS355", "S/N: TEST-ABB-001", "IP20"],
+    ["ABB", "ACS355", "Serial No. TEST-ABB-001", "IP20"],
+    ["SCHNEIDER ELECTRIC", "CA3KN22BD", "S/N: TEST-SE-001", "24VDC"],
+  ])("can offer %s %s with a distinct serial line (%j) and a trailing rating", (manufacturer, model, serial, rating) => {
+    const photo = [manufacturer, model, serial, rating].join("\r\n");
 
     expect(exactManualIdentity(photo, REQUEST)).toEqual({ manufacturer, model });
     expect(isSafeCandidateSearchIdentity(photo, REQUEST, model, manufacturer)).toBe(false);
@@ -17,6 +18,7 @@ describe("exact manual identity for a nameplate with private fields", () => {
 
   it.each([
     "S/N: ACS355\nIP20",
+    "Serial No. ACS355\nIP20",
     "S/N: TEST-ABB-001\nIP20\nSerial: ACS 355",
     "S/N: TEST-ABB-001\nIP20\nAsset tag: ACS-355",
   ])("refuses a compact model repeated in a private field (%j)", (privateFields) => {
@@ -25,6 +27,25 @@ describe("exact manual identity for a nameplate with private fields", () => {
     expect(exactManualIdentity(photo, REQUEST)).toBeNull();
     expect(isSafeCandidateSearchIdentity(photo, REQUEST, "ACS355", "ABB")).toBe(false);
   });
+
+  it.each([
+    ["ABB", "ACS355", "ACS580\nS/N: TEST-ABB-001"],
+    ["ABB", "ACS355", "S/N: TEST-ABB-001\nACS580"],
+    ["ABB", "ACS355", "Serial No. TEST-ABB-001\nIP20\nACS580"],
+    ["SCHNEIDER ELECTRIC", "CA3KN22BD", "S/N: TEST-SE-001\nACS580"],
+  ])("refuses %s %s beside a second known model (%j)", (manufacturer, model, otherMarking) => {
+    const photo = [manufacturer, model, otherMarking].join("\n");
+
+    expect(exactManualIdentity(photo, REQUEST)).toBeNull();
+    expect(isSafeCandidateSearchIdentity(photo, REQUEST, model, manufacturer)).toBe(false);
+  });
+
+  it.each(["Serial Number", "Serial Numero", "Serial Warranty"])(
+    "requires a serial value on the line (%j)",
+    (line) => {
+      expect(exactManualIdentity(`ABB\nACS355\n${line}\nTEST-ABB-001\nIP20`, REQUEST)).toBeNull();
+    },
+  );
 
   it.each(["GS10", "GS11N", "GS10\nGS11N"])("can offer one exact reviewed model beside its compatible family (%j)", (family) => {
     const photo = `AutomationDirect\n${family}\nMODEL: GS11N-20P2\nS/N: TEST-AD-001`;

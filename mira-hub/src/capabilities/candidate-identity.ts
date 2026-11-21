@@ -162,7 +162,7 @@ const MANUAL_REFERENCE_RE = new RegExp(
 );
 const MANUAL_MODEL_REFERENCE_RE = new RegExp(
   // A compact code or a printed split code such as SLC 5/03, with at most one adjacent catalog code.
-  String.raw`^(?:(?:${MANUAL_MAKER})[ \t]+)?(?:(?:model|part|catalog)(?:[ \t]+number)?(?:[ \t]*[:#][ \t]*|[ \t]+))?(?:${MANUAL_MODEL_CODE}|([a-z]{2,8})[ \t]+[0-9][0-9./+-]{0,11})(?:[ \t]+${MANUAL_MODEL_CODE})?(?:[ \t]+${MANUAL_DEVICE})?$`,
+  String.raw`^(?:(?:${MANUAL_MAKER})[ \t]+)?(?:(?:model|part|catalog)(?:[ \t]+number)?(?:[ \t]*[:#][ \t]*|[ \t]+))?(?:${MANUAL_MODEL_CODE}|([a-z]{2,8})[ \t]+[0-9][0-9./+-]{0,11})(?:[ \t]+(${MANUAL_MODEL_CODE}))?(?:[ \t]+${MANUAL_DEVICE})?$`,
   "i",
 );
 
@@ -177,11 +177,14 @@ export function asksToFindManual(message: string): boolean {
   if (request && !request[1]) return true;
   const subject = (request?.[1] ?? NAMED_MANUAL_REQUEST_RE.exec(text)?.[1])
     ?.replace(/^(?:(?:the|a|an|my|this|that)[ \t]+)?(?:official[ \t]+)?/i, "");
-  if (!subject) return false;
+  if (!subject || /[.!?][ \t]+\S/.test(subject)) return false;
   // A remaining clause could ask about the manual. Accept only a whole equipment reference.
   if (MANUAL_REFERENCE_RE.test(subject)) return true;
   const model = MANUAL_MODEL_REFERENCE_RE.exec(subject);
-  return !!model && (!model[1] || model[1] === model[1].toUpperCase());
+  if (!model || (model[1] && model[1] !== model[1].toUpperCase())) return false;
+  const catalog = model[2];
+  // A second token needs catalog-number evidence. A number followed by a unit can look like a model.
+  return !catalog || (/[a-z]\d/i.test(catalog) && partCodes(catalog).includes(catalog));
 }
 
 /**
@@ -197,11 +200,20 @@ export function exactManualIdentity(photo: string, typed: string): IdentityPropo
   if (!candidate) {
     if (mentionsAssetLabel(photo) || partLabelAfterPrivateLabel(photo) ||
         mentionsSerialLabel(typed) || mentionsAssetLabel(typed)) return null;
-    const text = photo ? `${publicLabelText(photo)}\n${typed}` : typed;
+    const publicPhoto = publicLabelText(photo);
+    const text = photo ? `${publicPhoto}\n${typed}` : typed;
     const maker = makerFromText(text);
     const proposal = maker && proposeIdentityFromText(text, [maker]);
     if (!proposal || !reviewedManualFor(proposal)) return null;
-    if (photo && makerFromText(publicLabelText(photo)) !== maker) return null;
+    if (photo) {
+      if (makerFromText(publicPhoto) !== maker) return null;
+      // Only the public prefix can propose a compact model. The full photo can
+      // still rule it out if a second recognized model is marked anywhere.
+      const exactIdentities = modelIdentitiesInText(proposal.model);
+      for (const identity of modelIdentitiesInText(photo)) {
+        if (!exactIdentities.has(identity)) return null;
+      }
+    }
     return modelIsPrivate(photo, proposal.model) && !hasSeparateSerialField(photo, proposal.model) ? null : proposal;
   }
   if (!candidate?.manufacturer) return null;

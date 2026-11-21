@@ -154,8 +154,9 @@ export function hasSeparateSerialField(text: string, model: string): boolean {
   const privateText = secret[0] ?? "";
   const serialLine = privateText.split(/[\r\n]/, 1)[0].trim();
   // Only this line establishes the separate serial. All following text remains
-  // private evidence and can still disqualify the model.
-  return /^(?:s\/n|serial(?:[ \t]+(?:no\.?|number))?)[ \t]*[:#=][ \t]*[a-z0-9][a-z0-9./-]{3,}[ \t]*$/i.test(serialLine) &&
+  // private evidence. A whitespace-only separator needs a digit-bearing value
+  // so ordinary words or an incomplete "Serial Number" label do not qualify.
+  return /^(?:s\/n|serial(?:[ \t]+(?:no\.?|number))?)(?:[ \t]*[:#=][ \t]*|[ \t]+(?=[a-z0-9./-]*\d))[a-z0-9][a-z0-9./-]{3,}$/i.test(serialLine) &&
     !identifierKey(privateText).includes(identifierKey(model));
 }
 

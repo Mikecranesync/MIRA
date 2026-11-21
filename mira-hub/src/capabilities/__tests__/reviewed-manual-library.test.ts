@@ -40,4 +40,14 @@ describe("reviewed manual library", () => {
     expect(reviewedManualFor({ manufacturer, model, catalogNumber })).not.toBeNull();
     expect(reviewedManualFor({ manufacturer, model: other, catalogNumber })).toBeNull();
   });
+
+  it("uses the fixed Schneider product drawing for the exact relay", () => {
+    const document = reviewedManualFor({ manufacturer: "Schneider Electric", model: "CA3KN22BD" });
+    expect(document).toMatchObject({
+      title: "TeSys K CA3KN22BD Product Drawing, English US",
+      filename: "CA3KN22BD_2DSalesDrawing.pdf",
+      page: 1,
+    });
+    expect(new URL(document!.url).searchParams.get("p_Doc_Ref")).toBe("CA3KN22BD_2DSalesDrawing");
+  });
 });

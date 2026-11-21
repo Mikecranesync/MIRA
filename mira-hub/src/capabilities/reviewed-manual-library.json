@@ -21,10 +21,10 @@
     "manufacturer": "Schneider Electric",
     "models": ["CA3KN22BD"],
     "families": ["TESYS K", "CA3K"],
-    "title": "TeSys K CA3KN22BD Product Datasheet, English US",
-    "filename": "CA3KN22BD_DATASHEET_US_en-US.pdf",
-    "url": "https://download.se.com/files?p_Doc_Ref=CA3KN22BD_DATASHEET&p_enDocType=Product+Data+Sheet&p_File_Name=CA3KN22BD_DATASHEET_US_en-US.pdf",
-    "sha256": "196cb5bc89f87584da496dc288791e0f9c0819bd6b81b79f11fe90d39e9db08d",
+    "title": "TeSys K CA3KN22BD Product Drawing, English US",
+    "filename": "CA3KN22BD_2DSalesDrawing.pdf",
+    "url": "https://download.se.com/files?p_Doc_Ref=CA3KN22BD_2DSalesDrawing",
+    "sha256": "038da6a15c58eef9d17d72933150b91d650e44107cfc3382ba54db30728fc8e5",
     "page": 1
   },
   {

@@ -13,6 +13,8 @@
  * (assessApplicability), otherwise it is attached disabled as a candidate.
  */
 import { createHash } from "node:crypto";
+import { catalogIdentifierView } from "@/capabilities/catalog-identifier";
+import { remarksOnCoverage } from "@/capabilities/manual-applicability";
 import { MANUAL_SEARCH_LIMIT_COPY, MANUAL_SEARCH_UNAVAILABLE_COPY } from "@/capabilities/manual-search-copy";
 import { reviewedManualFor } from "@/capabilities/reviewed-manual-library";
 import { withTenantContext } from "@/lib/tenant-context";
@@ -291,6 +293,23 @@ function recordTrailOnSpan(trail: CandidateTrail): void {
   }
 }
 
+/** An unlisted order number with the reviewed base model as its first
+ * hyphen-delimited group is a search lead, not reviewed applicability. */
+function unlistedOrderEvidence(model: string, catalogNumber: string): RegExp | null {
+  const base = model.trim().toUpperCase();
+  if (!/^[A-Z]+[0-9]+$/.test(base)) return null;
+
+  const { text, spans } = catalogIdentifierView(catalogNumber.trim());
+  const [span] = spans;
+  const order = text.toUpperCase();
+  if (spans.length !== 1 || span.start !== 0 || span.end !== text.length || !order.startsWith(base + "-")) return null;
+
+  // Keep the order number whole. A different voltage code or an attached
+  // option suffix is not evidence for the exact order number.
+  const modifier = String.raw`[\p{L}\p{N}\p{Pd}+/_−]|\.[A-Za-z0-9]|[ \t]*\+[ \t]*[A-Za-z0-9]`;
+  return new RegExp(String.raw`(?<![\p{L}\p{N}\p{Pd}+/_−.])${order}(?!${modifier})`, "iu");
+}
+
 async function acquireInner(
   input: ManualAcquisitionInput,
   sink: { trail: CandidateTrail | null } = { trail: null },
@@ -309,13 +328,18 @@ async function acquireInner(
   // — set from the discovery result itself, never invented when mira-ask
   // didn't carry search_stats (an old version, or a malformed response).
   const reviewed = reviewedManualFor(identity);
-  if (!reviewed && identity.model && identity.catalogNumber && (
-    reviewedManualFor({ manufacturer: identity.manufacturer, model: identity.model }) ||
-    reviewedManualFor({ manufacturer: identity.manufacturer, catalogNumber: identity.catalogNumber })
-  )) {
-    return outcome("manufacturer_model_required", {
-      message: "The model and order number do not identify the same reviewed equipment. Check both fields before looking up its manual.",
-    });
+  let exactUnlistedOrder: RegExp | null = null;
+  if (!reviewed && identity.model && identity.catalogNumber) {
+    const modelPublication = reviewedManualFor({ manufacturer: identity.manufacturer, model: identity.model });
+    const orderPublication = reviewedManualFor({ manufacturer: identity.manufacturer, catalogNumber: identity.catalogNumber });
+    if (modelPublication && !orderPublication) {
+      exactUnlistedOrder = unlistedOrderEvidence(identity.model, identity.catalogNumber);
+    }
+    if (!exactUnlistedOrder && (modelPublication || orderPublication)) {
+      return outcome("manufacturer_model_required", {
+        message: "The model and order number do not identify the same reviewed equipment. Check both fields before looking up its manual.",
+      });
+    }
   }
   const discovery: DiscoveryResult = await safeSpan("manual_acquisition.search", {}, async () => {
     setActiveSpanAttrs({ "mira.acquisition.lookup": reviewed ? "reviewed_library" : "manufacturer_search" });
@@ -770,15 +794,29 @@ async function acquireInner(
     if (unreadablePagesDocumentWide === null) return retryLater();
     completeness = assessCompleteness(chunks, { unreadablePagesDocumentWide });
     verdict = await safeSpan("manual_acquisition.applicability", {}, async () => {
-      const v = assessApplicability({
-        identity: {
-          manufacturer: identity.manufacturer,
-          model: identity.model,
-          catalogNumber: identity.catalogNumber,
-        },
-        chunks: reviewed ? chunks.filter(({ page }) => page === reviewed.page) : chunks,
-        oemHost: discovery.oemHost,
-      });
+      const orderEvidence = exactUnlistedOrder;
+      const orderChunks = orderEvidence
+        ? chunks.filter(({ content }) => orderEvidence.test(catalogIdentifierView(content).text))
+        : null;
+      const orderExcluded = orderChunks?.some(({ content }) => remarksOnCoverage(content));
+      const v: ApplicabilityVerdict = orderChunks?.length === 0 || orderExcluded
+        ? {
+            state: "candidate",
+            method: "no_identifier_evidence",
+            matchedTokens: [],
+            evidencePages: [],
+            confidence: 0.05,
+            reason: "the document text does not establish coverage for the exact order number",
+          }
+        : assessApplicability({
+            identity: {
+              manufacturer: identity.manufacturer,
+              model: orderEvidence ? undefined : identity.model,
+              catalogNumber: identity.catalogNumber,
+            },
+            chunks: reviewed ? chunks.filter(({ page }) => page === reviewed.page) : orderChunks ?? chunks,
+            oemHost: discovery.oemHost,
+          });
       setActiveSpanAttrs({ "mira.acquisition.match_state": v.state });
       return v;
     });

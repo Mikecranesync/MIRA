@@ -178,6 +178,7 @@ import {
   type PartSearchProposalEntry,
 } from "@/capabilities/photo-part-lookup";
 import { publicManualSeries } from "@/capabilities/public-model-proof";
+import { reviewedManualFor } from "@/capabilities/reviewed-manual-library";
 import { asksToFindManual, exactManualIdentity, extractCandidateIdentity, isSafeCandidateSearchIdentity, wantsManualDocumentation } from "@/capabilities/candidate-identity";
 import { manufacturerInGroup } from "@/lib/manufacturerNormalize";
 import { citationTitle } from "@/capabilities/citation-title";
@@ -3019,6 +3020,11 @@ async function handleChatTurn(
     // proposal) passes the same candidate validator before any search starts.
     isSafeCandidateSearchIdentity(photoTextForOem, message, identityProposal.model, identityProposal.manufacturer) &&
     ((Boolean(photoTextForOem) && unambiguousPartNumber(photoTextForOem) !== null) || wantsManualDocumentation(message));
+  // A reviewed identity uses the confirmation card even when the photo needs
+  // confirmation before acquisition. Offer only one action for that request.
+  const reviewedConfirmationOwnsTurn = identityProposal !== null && exactManualRequestIdentity !== null &&
+    reviewedManualFor(exactManualRequestIdentity) !== null;
+  const canOfferPartSearch = !candidateAcquisitionOwnsTurn && !reviewedConfirmationOwnsTurn;
   // #5268 owner decision 2026-11-07 (option A): a plate that shows a serial or
   // asset label offers its code only when the code is proven public — printed
   // in that maker's own manuals in the shared library. That proof, not how the
@@ -3037,7 +3043,7 @@ async function handleChatTurn(
     const makerKey = (m: string) => m.replace(/[^A-Za-z0-9]/g, "").toLowerCase();
     const proofMaker =
       photoMaker && (oemManufacturer === null || makerKey(oemManufacturer.name) === makerKey(photoMaker)) ? photoMaker : null;
-    if (proofMaker && chunks.length === 0 && general && !candidateAcquisitionOwnsTurn) {
+    if (proofMaker && chunks.length === 0 && general && canOfferPartSearch) {
       let client: PoolClient | null = null;
       try {
         client = await pool.connect();
@@ -3055,7 +3061,7 @@ async function handleChatTurn(
     if (!publicModelProven) offeredPartNumber = null;
   }
   const partSearchEligible =
-    chunks.length === 0 && general && (oemManufacturer === null || publicModelProven) && !candidateAcquisitionOwnsTurn;
+    chunks.length === 0 && general && (oemManufacturer === null || publicModelProven) && canOfferPartSearch;
   // The technician's own immediately preceding turn in this thread carries any
   // pending proposal. #4185/#4186 (the #4160 Pixel walk incident): read it on
   // EVERY eligible turn, not only an exact confirm/cancel string — otherwise a

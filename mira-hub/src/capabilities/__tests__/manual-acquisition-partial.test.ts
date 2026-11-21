@@ -237,6 +237,44 @@ it.each([
   expect(downloadMock.safeDownloadPdf).not.toHaveBeenCalled();
 });
 
+it.each([
+  { text: "Order number ACS355-03U-06A7-2.", status: "complete", enabled: true },
+  { text: "ACS355 family overview", status: "candidate_review", enabled: false },
+  { text: "Order number ACS355-03U-06A7-20.", status: "candidate_review", enabled: false },
+  { text: "Order number ACS355-03U-06A7-2+B063.", status: "candidate_review", enabled: false },
+  { text: "Order number ACS355-03U-06A7-2 + B063.", status: "candidate_review", enabled: false },
+  { text: "This manual does not cover ACS355-03U-06A7-2.", status: "candidate_review", enabled: false },
+])("uses manufacturer discovery for an unlisted ABB order number ($text)", async ({ text, status, enabled }) => {
+  const library = await vi.importActual<typeof import("@/capabilities/reviewed-manual-library")>(
+    "@/capabilities/reviewed-manual-library",
+  );
+  const applicability = await vi.importActual<typeof import("@/lib/manual-applicability")>("@/lib/manual-applicability");
+  libraryMock.reviewedManualFor.mockImplementation(library.reviewedManualFor);
+  applicabilityMock.assessApplicability.mockImplementation(applicability.assessApplicability);
+
+  const identity = { manufacturer: "ABB", model: "ACS355", catalogNumber: "ACS355-03U-06A7-2" };
+  const url = "https://library.e.abb.com/public/bd17d6eae7b744e3b62479373704c852/3AUA0000081917_US_RevI.pdf";
+  discoveryMock.discoverManual.mockResolvedValue({
+    ...FOUND_DISCOVERY,
+    candidate: { ...CANDIDATE, url, host: "library.e.abb.com", title: "ABB ACS355 catalog" },
+  });
+  downloadMock.safeDownloadPdf.mockResolvedValue({ ok: true, buffer: Buffer.from("PDFBYTES"), finalUrl: url });
+  stored.rows = [
+    { content: "ABB machinery drives ACS355", source_page: 1 },
+    { content: text, source_page: 10 },
+  ];
+
+  const result = await acquireManualForIdentity({ ...BASE_INPUT, identity, basis: "candidate" });
+  expect(discoveryMock.discoverManual).toHaveBeenCalledWith(identity, expect.anything());
+  expect(result.status).toBe(status);
+  expect(storedPatch()).toMatchObject({
+    matchState: enabled ? "verified" : "candidate",
+    enabledByDefault: enabled,
+    matchEvidence: { candidateApplicability: enabled ? "verified" : "candidate" },
+  });
+  expect(storedPatch().matchEvidence).not.toHaveProperty("reviewedLibraryPage");
+});
+
 it("does not promote a reviewed PDF when its coverage page was not indexed", async () => {
   libraryMock.reviewedManualFor.mockReturnValue(REVIEWED);
   stored.rows = FULL_ROWS.filter((chunk) => chunk.source_page !== 26);
