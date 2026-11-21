@@ -328,14 +328,14 @@ export function HubShellHost() {
   // set true in effect SETUP (see the unmount effect below), so StrictMode's
   // dev-only cleanup/re-setup replay leaves it true (the round-7 F20 lesson).
   const [follow, setFollow] = useState<ManualSearchFollowState | null>(null);
+  const manualSearchDriverRef = useRef<ManualSearchDriver | null>(null);
+  const hostMountedRef = useRef(false);
   // #5750 r3 F11: for each status shown, the answer it belongs to
   // (`manualStatusKey` → origin). A status without one is not placed.
   const [statusOrigins, setStatusOrigins] = useState<ReadonlyMap<string, StatusOrigin | null>>(() => new Map());
   const recordStatusOrigin = useCallback((status: ManualSearchStatus, origin: StatusOrigin | null) => {
     if (hostMountedRef.current) setStatusOrigins((m) => new Map(m).set(manualStatusKey(status), origin));
   }, []);
-  const manualSearchDriverRef = useRef<ManualSearchDriver | null>(null);
-  const hostMountedRef = useRef(false);
   const seedManualSearch = useCallback((notebookId: string, status: ManualSearchStatus): void => {
     if (hostMountedRef.current) manualSearchDriverRef.current?.seed(notebookId, status);
   }, []);
@@ -743,7 +743,7 @@ export function HubShellHost() {
       // A turn can change the checklist (its tallies) or find the selection moved (409).
       if (selectionRef.current === sel) setBenchRefresh((n) => n + 1);
     }
-  }, [selection, loadDetail, loadNotebooks, dropOutgoing, outgoingOwner, livingSheetJob, benchGate, gateConversation]);
+  }, [selection, loadDetail, loadNotebooks, dropOutgoing, outgoingOwner, livingSheetJob, benchGate, gateConversation, recordStatusOrigin]);
 
   // Stable per conversation, so the panel's read does not re-run on every render.
   const benchNotebookId = selection?.notebookId ?? null;

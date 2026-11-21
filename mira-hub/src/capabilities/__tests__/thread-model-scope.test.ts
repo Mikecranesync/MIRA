@@ -104,11 +104,21 @@ describe("threadStatusScope", () => {
     expect(threadStatusScope(["does the 1756-L71 need a battery"], GS10)).toBe("other");
   });
 
+  it("is other for a one-letter model family the document is asked for", () => {
+    expect(threadStatusScope(["Find me the G120 manual"], GS10)).toBe("other");
+    expect(threadStatusScope(["Find the manual for E300"], GS10)).toBe("other");
+    expect(threadStatusScope(["Find the manual for the I550"], GS10)).toBe("other");
+  });
+
   it("control: fault codes and parameters never name a model, even in a document request", () => {
     const ca = { manufacturer: "Schneider Electric", model: "CA3KN22BD", catalogNumber: "", recordCatalog: null };
     expect(threadStatusScope(["what does the manual say about F0004"], GS10)).toBe("undecided");
     expect(threadStatusScope(["what does the manual say about parameter P09-03"], GS10)).toBe("undecided");
     expect(threadStatusScope(["the coil hums, error E001 on the panel"], ca)).toBe("undecided");
+    expect(threadStatusScope(["Find the manual for parameter P09-03"], GS10)).toBe("undecided");
+    expect(threadStatusScope(["what does E001 mean in the manual"], GS10)).toBe("undecided");
+    expect(threadStatusScope(["Find the manual for fault F0004"], GS10)).toBe("undecided");
+    expect(threadStatusScope(["Check the manual for error E001"], GS10)).toBe("undecided");
   });
 
   // #5750 r2 F3: a model named in the same question beats the return phrase.

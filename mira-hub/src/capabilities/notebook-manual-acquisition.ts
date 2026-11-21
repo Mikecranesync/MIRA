@@ -1278,13 +1278,22 @@ function catalogCodesIn(text: string): string[] {
 }
 
 /** A request for a document about the thing named ("find the manual for X"). */
-const DOCUMENT_REQUEST = /\b(?:manuals?|datasheets?|data\s+sheets?|catalog(?:ue)?s?|spec(?:ification)?s?|wiring\s+diagrams?)\b/i;
+const DOCUMENT_WORD = String.raw`(?:manuals?|datasheets?|data\s+sheets?|catalog(?:ue)?s?|spec(?:ification)?s?|wiring\s+diagrams?)`;
+const DOCUMENT_REQUEST = new RegExp(String.raw`\b${DOCUMENT_WORD}\b`, "i");
+// The code a document is asked for: "the manual for (the) G120", "the G120
+// manual". A one-letter model family (G120, E300, I550) is written like a
+// fault code, so only this position tells them apart.
+const DOCUMENT_SUBJECT = [
+  new RegExp(String.raw`\b${DOCUMENT_WORD}\s+(?:for|of)\s+(?:the\s+|an?\s+|my\s+|this\s+)?([A-Za-z]\d{2,})\b`, "gi"),
+  new RegExp(String.raw`\b([A-Za-z]\d{2,})\s+${DOCUMENT_WORD}\b`, "gi"),
+];
 
 /** The models a text names. `own` (the project's identifiers) lets a compact
  *  code the model patterns do not know count too (#5750 r3 F2): CA3KN31BD in
  *  a CA3KN22BD project, by its shared leading characters, or any model number
  *  in a request for a document. Fault codes and parameters (F0004, P09-03)
- *  never count by request context. Unicode hyphens
+ *  never count by request context, unless one is the code the document is
+ *  asked for ("the G120 manual"). Unicode hyphens
  *  read as the catalog hyphen (the shared detection fold). */
 function modelsNamedIn(raw: string, own?: ReadonlySet<string>): Set<string> {
   const text = foldForDetection(raw);
@@ -1292,13 +1301,15 @@ function modelsNamedIn(raw: string, own?: ReadonlySet<string>): Set<string> {
   for (const code of catalogCodesIn(text)) named.add(code);
   if (own) {
     const request = DOCUMENT_REQUEST.test(text);
+    const subjects = new Set(DOCUMENT_SUBJECT.flatMap((re) => [...text.matchAll(re)].map((m) => norm(m[1]!))));
     for (const { key } of modelNumbersIn(text)) {
       const code = norm(key);
       if (code.length < 4) continue;
       // One letter then digits is how fault codes and parameters are written
-      // (F0004, E001, P0903): never a model by request context alone.
+      // (F0004, E001, P0903): never a model by request context alone, only
+      // as the code the document is asked for.
       const faultShaped = /^[A-Z]\d+$/.test(code);
-      if ((request && !faultShaped) || [...own].some((o) => o.length >= 4 && o.slice(0, 3) === code.slice(0, 3))) named.add(code);
+      if ((request && (!faultShaped || subjects.has(code))) || [...own].some((o) => o.length >= 4 && o.slice(0, 3) === code.slice(0, 3))) named.add(code);
     }
   }
   const exact = exactManualIdentity("", text);
