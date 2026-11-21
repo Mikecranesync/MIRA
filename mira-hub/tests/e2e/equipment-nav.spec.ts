@@ -823,11 +823,14 @@ for (const settlement of ["terminal retry", "attachment added during retry", "de
 for (const interruption of [
   "navigation", "Stop", "navigation with clean close", "Stop with clean close",
   "retry Stop on abort", "retry Stop with clean close", "retry Discard",
+  "retry Stop with stale detail", "retry Stop in a fresh chat",
 ]) {
   test("F31/F34/F37/F38 the correct recovery survives " + interruption, async ({ page, context, baseURL }) => {
     const explicitStop = interruption.startsWith("Stop");
     const cleanClose = interruption.endsWith("clean close");
     const holdRetry = interruption.startsWith("retry");
+    const staleDetail = interruption.endsWith("stale detail");
+    const fresh = interruption.endsWith("fresh chat");
     await auth(context, baseURL!);
     await routes(page, { enabled: true, resolve: "resolved", initial: { [THREAD]: { componentId: VFD, version: 2 } } });
     await otherMachine(page);
@@ -845,7 +848,7 @@ for (const interruption of [
     let retry = "";
     await page.route(/\/api\/equipment-notebooks\/?(\?.*)?$/, (route) => {
       const origin = { ...oracle.detailEmpty.notebook, threads: [{ id: THREAD, notebookId: NB,
-        title: "Stopped turn fixture", createdAt: "", updatedAt: "", turnCount: 1, sharedLegacy: false }] };
+        title: "Stopped turn fixture", createdAt: "", updatedAt: "", turnCount: 1, sharedLegacy: false }].filter(() => !fresh) };
       return route.fulfill(json({ notebooks: [origin, { ...origin, id: OTHER_NB, displayName: "Packaging line", threads: [] }] }));
     });
     await page.route(new RegExp("/api/equipment-notebooks/" + NB + "/?(\\?.*)?$"), (route) => {
@@ -910,11 +913,13 @@ for (const interruption of [
       await page.evaluate(() => window.dispatchEvent(new Event("fixture-release-stop")));
     }
     await expect(html).toHaveAttribute("data-request-stopped", "yes");
-    saved = explicitStop && cleanClose ? "unavailable" : "stopped";
-    await projects.getByRole("button", { name: "Stopped turn fixture", exact: true }).click();
+    saved = fresh ? undefined : explicitStop && cleanClose ? "unavailable" : "stopped";
+    const origin = projects.locator('[data-item-id="notebook-' + NB + ':thread-' + THREAD + '"]');
+    await expect(origin).toBeVisible({ timeout: 4000 });
+    await origin.click();
     const answers = page.locator('.fl-turn--aui[data-role="assistant"]');
     await expect(answers).toHaveCount(1);
-    await expect(answers.first()).toContainText(saved === "unavailable" ? "Live partial answer." : "Saved partial answer.");
+    await expect(answers.first()).toContainText(fresh || saved === "unavailable" ? "Live partial answer." : "Saved partial answer.");
     const tryAgain = page.getByRole("button", { name: "Try again", exact: true });
     if (explicitStop) {
       await expect(tryAgain).toHaveCount(0);
@@ -935,12 +940,21 @@ for (const interruption of [
       }
       const preserved = cleanClose ? "A newer independent question." : "";
       if (preserved) await composer(page).fill(preserved);
-      saved = "unavailable";
+      saved = staleDetail ? "stopped" : "unavailable";
       await page.getByRole("button", { name: "Stop", exact: true }).click();
       await expect(page.getByText("Stopped before the answer completed.", { exact: true })).toBeVisible();
       await projects.locator('[data-item-id="notebook-' + OTHER_NB + ':thread-legacy"]').click();
-      await projects.getByRole("button", { name: "Stopped turn fixture", exact: true }).click();
-      await expect(page.getByText("Retry partial answer.", { exact: true })).toBeVisible();
+      if (fresh) await expect(origin).toHaveAccessibleName("Stopped conversation", { timeout: 4000 });
+      await origin.click();
+      if (staleDetail) {
+        // More mounts after the old error response has been accepted.
+        await expect(more(page)).toBeVisible();
+        await expect(page.getByText("Retry partial answer.", { exact: true })).toBeVisible({ timeout: 4000 });
+        saved = "unavailable";
+        await projects.locator('[data-item-id="notebook-' + OTHER_NB + ':thread-legacy"]').click();
+        await origin.click();
+      }
+      await expect(page.getByText("Retry partial answer.", { exact: true })).toBeVisible({ timeout: 4000 });
       await expect(tryAgain).toHaveCount(0, { timeout: 3500 });
       await expect(discard).toHaveCount(0);
       await expect(composer(page)).toHaveValue(preserved);
@@ -2549,12 +2563,16 @@ test("F23 inline Retry replays the clicked answer's photo request", async ({ pag
   expect(uploads).toBe(2);
 });
 
-for (const interruption of ["navigation", "explicit Stop", "explicit Stop in a fresh chat"]) {
-  test("F24 safety stop survives failed origin hydration after " + interruption, async ({ page, context, baseURL }) => {
+for (const interruption of [
+  "navigation", "explicit Stop", "explicit Stop in a fresh chat", "progress headers cutoff", "direct header abort",
+]) {
+  test("F24/F39 safety stop survives failed origin hydration after " + interruption, async ({ page, context, baseURL }) => {
     await auth(context, baseURL!);
     await routes(page, { enabled: true, resolve: "resolved" });
     await otherMachine(page);
     const fresh = interruption === "explicit Stop in a fresh chat";
+    const progressHeader = interruption === "progress headers cutoff";
+    const directHeader = interruption === "direct header abort";
     await page.route(/\/api\/equipment-notebooks\/?(\?.*)?$/, (route) => {
       const origin = { ...oracle.detailEmpty.notebook, threads: [{
         id: THREAD, notebookId: NB, title: "Safety fixture origin",
@@ -2581,30 +2599,47 @@ for (const interruption of ["navigation", "explicit Stop", "explicit Stop in a f
           answerText: "Saved fixture answer.", evidence: [] }],
       }));
     });
-    await page.addInitScript((partial) => {
+    await page.addInitScript(({ partial, progressHeader, directHeader }) => {
       const fetchNormally = window.fetch.bind(window);
+      let first = true;
       window.fetch = (input, init) => {
         if (init?.method !== "POST" || !String(input).includes("/chat/")) return fetchNormally(input, init);
-        document.documentElement.dataset.fixtureRequest = JSON.parse(String(init.body)).clientRequestId;
+        const requestId = JSON.parse(String(init.body)).clientRequestId;
+        document.documentElement.dataset.fixtureRequest = requestId;
+        if ((progressHeader || directHeader) && first) {
+          first = false;
+          document.documentElement.dataset.firstFixtureRequest = requestId;
+          return Promise.resolve(new Response("", { headers: { "Content-Type": "text/event-stream" } }));
+        }
         const body = new ReadableStream<Uint8Array>({
           start(controller) {
             const frames = [
               { kind: "content", content: partial },
-              { kind: "safety", trigger: "Synthetic safety fixture" },
+              ...(progressHeader ? [{ kind: "headers", headers: { "x-safety-stop": "Synthetic safety fixture" } }]
+                : directHeader ? [] : [{ kind: "safety", trigger: "Synthetic safety fixture" }]),
               { kind: "sources", citations: [{ citationId: 1, sourceTitle: "Unconfirmed source", page: 1 }] },
               { kind: "followups", suggestions: ["Unconfirmed suggestion"] },
             ];
             controller.enqueue(new TextEncoder().encode(frames.map((frame) => "data: " + JSON.stringify(frame) + "\n\n").join("")));
-            init.signal?.addEventListener("abort", () => controller.error(new DOMException("Navigation", "AbortError")), { once: true });
+            if (progressHeader) controller.close();
+            else init.signal?.addEventListener("abort", () => controller.error(new DOMException("Navigation", "AbortError")), { once: true });
           },
         });
-        return Promise.resolve(new Response(body, { headers: { "Content-Type": "text/event-stream" } }));
+        const headers = new Headers({ "Content-Type": "text/event-stream" });
+        if (directHeader) headers.set("X-Safety-Stop", "Synthetic safety fixture");
+        return Promise.resolve(new Response(body, { headers }));
       };
-    }, warning);
+    }, { partial: warning, progressHeader, directHeader });
     await page.goto("/v3/?notebook=" + NB + "&thread=" + THREAD);
     await expect(more(page)).toBeVisible();
     await composer(page).fill(question);
     await page.getByRole("button", { name: "Send", exact: true }).click();
+    if (progressHeader || directHeader) {
+      const firstRequest = await page.locator("html").getAttribute("data-first-fixture-request");
+      expect(firstRequest).toBeTruthy();
+      await page.getByRole("button", { name: "Try again", exact: true }).click();
+      await expect(page.locator("html")).toHaveAttribute("data-fixture-request", firstRequest!);
+    }
     await expect(page.getByText(warning, { exact: true })).toBeVisible();
     const projects = page.getByRole("region", { name: "Projects" });
     const other = projects.locator('[data-item-id="notebook-' + OTHER_NB + ':thread-legacy"]');

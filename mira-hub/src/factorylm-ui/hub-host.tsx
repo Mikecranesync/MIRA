@@ -55,6 +55,7 @@ import {
   isAbortError,
   NotebookHttpError,
   readNotebookStream,
+  safetyNoticeFromHeader,
   type PersistedTurn,
 } from "@/components/equipment/notebook-chat-utils";
 import { AnswerMarkdown } from "@/components/equipment/notebook-markdown";
@@ -165,6 +166,7 @@ type RetainedExchange = Live & {
   readonly result: CompatibleStreamResult;
   readonly precedingAnswerIds: ReadonlySet<string>;
   readonly precedingRequestIds: ReadonlySet<string>;
+  readonly replayedRequest: boolean;
 };
 
 function terminalRowsByRequest(turns: Detail["turns"]): Map<string, Detail["turns"][number]> {
@@ -178,9 +180,12 @@ function terminalRowsByRequest(turns: Detail["turns"]): Map<string, Detail["turn
 }
 
 function savedExchangeMatches(exchange: RetainedExchange, row: Detail["turns"][number] | undefined): boolean {
-  // An exact re-POST can replace a previously saved error. A stale read of
-  // that error must not erase the successful reply the retry just returned.
-  return !!row && (!exchange.result.sawStatus || exchange.result.status === row.answerStatus);
+  if (!row) return false;
+  // An exact replay can reclaim a saved error without changing its request ID.
+  // Keep the stopped replay's partial until the saved text reflects this attempt.
+  if (exchange.replayedRequest && exchange.stopped && row.answerStatus === "error" &&
+      exchange.result.content !== (row.answerText ?? "")) return false;
+  return !exchange.result.sawStatus || exchange.result.status === row.answerStatus;
 }
 
 async function getJson<T>(path: string, signal?: AbortSignal): Promise<{ status: number; data: T | null }> {
@@ -479,10 +484,10 @@ export function HubShellHost() {
     for (const [threadId, exchanges] of retainedByThread) {
       if (localTitles.has(threadId)) continue;
       if (exchanges.some((exchange) => exchange.result.sawStatus)) localTitles.set(threadId, "");
-      // A stopped first answer can have a warning and no draft or saved row.
-      // Keep the origin reachable so the technician can see it after leaving.
+      // An explicit Stop may retire the draft before the notebook list sees
+      // the reply. Keep the stopped conversation reachable in Projects.
       else if (!unsentThreads.has(threadId) && !state.draftsByThread?.has(threadId) &&
-        exchanges.some((exchange) => exchange.stopped && exchange.result.safetyNotice)) {
+        exchanges.some((exchange) => exchange.stopped)) {
         localTitles.set(threadId, "Stopped conversation");
       }
     }
@@ -726,7 +731,7 @@ export function HubShellHost() {
     const retainExchange = (result: CompatibleStreamResult, stopped: boolean) => {
       const retained: RetainedExchange = {
         ...exchange, result, content: result.content, citations: result.citations, stopped, componentLabel,
-        precedingAnswerIds, precedingRequestIds,
+        precedingAnswerIds, precedingRequestIds, replayedRequest: Boolean(replayOriginal),
       };
       const current = retainedByThreadRef.current;
       const peers = current.get(threadId) ?? [];
@@ -765,6 +770,8 @@ export function HubShellHost() {
         method: "POST", headers: { "Content-Type": "application/json", "x-mira-progress": "1" }, body: JSON.stringify(outBody), signal: ctrl.signal,
       });
       if (res.status === 401) { setSignedOut(true); return; }
+      const headerSafety = safetyNoticeFromHeader(res.headers.get("X-Safety-Stop"));
+      if (res.ok && !res.body && headerSafety) throw Object.assign(new Error("no_stream"), { safetyNotice: headerSafety });
       if (!res.ok || !res.body) {
         if (!res.ok) rejectionStatus = res.status;
         // The route's own error codes, in plain language; never a bare status code.
@@ -805,7 +812,7 @@ export function HubShellHost() {
       const reader = stream.getReader();
       const result = await readNotebookStream(reader, (content, cits) => {
         setLive((cur) => (cur && cur.id === id ? { ...cur, content, citations: cits } : cur));
-      }, null, {
+      }, headerSafety, {
         onProgress: (stage) => setLive((cur) => (cur && cur.id === id ? { ...cur, progress: stage } : cur)),
         onManualSearchStatus: (status) => {
           const active = selectionRef.current;

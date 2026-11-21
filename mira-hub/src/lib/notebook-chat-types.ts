@@ -461,6 +461,7 @@ export type NotebookManualSearchStatusFrame = {
 };
 
 export type NotebookChatFrame =
+  | { kind: "headers"; headers?: Record<string, unknown> }
   | NotebookProgressFrame
   | NotebookManualSearchStatusFrame
   | NotebookHttpErrorFrame
@@ -520,6 +521,7 @@ const FRAME_KINDS = new Set([
   "http_error",
   "sheet_receipt",
   "manual_search_status",
+  "headers",
 ]);
 
 export function parseFrame(data: string): NotebookChatFrame | null {

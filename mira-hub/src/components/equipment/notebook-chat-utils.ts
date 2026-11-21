@@ -217,6 +217,10 @@ export class NotebookHttpError extends Error {
 
 const PROGRESS_STAGES = new Set(["finding_equipment", "searching_documentation", "generating_answer", "checking_answer"]);
 
+export function safetyNoticeFromHeader(value: unknown): SafetyNoticeEntry | null {
+  return typeof value === "string" && value.trim() ? { kind: "safety_notice", trigger: value } : null;
+}
+
 export async function readNotebookStream(
   reader: ReadableStreamDefaultReader<Uint8Array>,
   onUpdate: NotebookStreamListener,
@@ -259,7 +263,13 @@ export async function readNotebookStream(
         if (data === "[DONE]") continue;
         const frame: NotebookChatFrame | null = parseFrame(data);
         if (!frame) continue;
-        if (frame.kind === "progress") {
+        if (frame.kind === "headers") {
+          const notice = safetyNoticeFromHeader(frame.headers?.["x-safety-stop"]);
+          if (notice) {
+            out.safetyNotice = notice;
+            onUpdate(out.content, out.citations, notice);
+          }
+        } else if (frame.kind === "progress") {
           if (PROGRESS_STAGES.has(frame.stage)) opts.onProgress?.(frame.stage);
         } else if (frame.kind === "manual_search_status") {
           const { manufacturer, model, running, message, startedAt, manualUrl } = frame;
@@ -398,10 +408,7 @@ export async function postNotebookChat(
   // Input-side hard stops also carry an authoritative response header. Use it
   // as the safety identity before reading the body so an empty/broken stream
   // cannot fall back to the ordinary Retry path after the turn was persisted.
-  const safetyHeader = res.headers.get("X-Safety-Stop");
-  const headerSafety = safetyHeader === null
-    ? null
-    : { kind: "safety_notice", trigger: safetyHeader } satisfies SafetyNoticeEntry;
+  const headerSafety = safetyNoticeFromHeader(res.headers.get("X-Safety-Stop"));
   if (headerSafety) onUpdate("", [], headerSafety);
   const carryHeaderSafety = (err: unknown): unknown => {
     if (!headerSafety || !err || typeof err !== "object") return err;
