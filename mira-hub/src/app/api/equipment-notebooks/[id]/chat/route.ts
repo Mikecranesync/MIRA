@@ -178,6 +178,7 @@ import {
 } from "@/capabilities/photo-part-lookup";
 import { publicManualSeries } from "@/capabilities/public-model-proof";
 import { asksToFindManual, exactManualIdentity, extractCandidateIdentity, isSafeCandidateSearchIdentity, wantsManualDocumentation } from "@/capabilities/candidate-identity";
+import { manufacturerInGroup } from "@/lib/manufacturerNormalize";
 import { citationTitle } from "@/capabilities/citation-title";
 import { ratingColumnFinding, ratingColumnText } from "@/capabilities/rating-column";
 import { claimPartSearchProposal } from "@/capabilities/part-search-claim";
@@ -2883,6 +2884,12 @@ async function handleChatTurn(
     chunks.length === 0
   ) {
     identityProposal = exactManualRequestIdentity;
+    if (
+      identityProposal && oemManufacturer &&
+      manufacturerInGroup(oemManufacturer.name, identityProposal.manufacturer)
+    ) {
+      identityProposal = { ...identityProposal, manufacturer: oemManufacturer.name };
+    }
     if (!identityProposal && oemManufacturer === null) {
       let client: PoolClient | null = null;
       try {

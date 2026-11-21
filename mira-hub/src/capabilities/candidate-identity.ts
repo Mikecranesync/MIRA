@@ -19,6 +19,7 @@
  * confirms it (R2/R3).
  */
 import { oemMakerTable } from "@/lib/manual-discovery";
+import { resolveModelFromObservationText } from "./model-token";
 import { namesOnlyThisMachine, proposeIdentityFromText, type IdentityProposal } from "./identity-proposal";
 import { reviewedManualFor } from "./reviewed-manual-library";
 import {
@@ -176,6 +177,8 @@ export function exactManualIdentity(photo: string, typed: string): IdentityPropo
   if (
     !photo ||
     makerFromText(photo) !== manufacturer ||
+    !reviewedManualFor({ manufacturer, model: part }) ||
+    resolveModelFromObservationText(photo).ambiguous ||
     unambiguousPartNumber(photo)?.toUpperCase() !== key ||
     labelled.length !== 1 ||
     labelled[0] !== key ||
