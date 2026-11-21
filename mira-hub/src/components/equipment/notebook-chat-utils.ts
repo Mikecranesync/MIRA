@@ -6,6 +6,7 @@ import {
   isMachineEvidenceEntry,
   isSafetyNoticeEntry,
   isSafetyStopEntry,
+  NOTEBOOK_ATTEMPT_HEADER,
   isVisualObservationEntry,
   parseFrame,
   type EvidenceBasis,
@@ -16,6 +17,7 @@ import {
   type NotebookProgressFrame,
   type SafetyNoticeEntry,
   type SafetyStopEntry,
+  type StoppedAttemptEntry,
   type VisualObservationEntry,
 } from "@/lib/notebook-chat-types";
 
@@ -227,6 +229,7 @@ export async function readNotebookStream(
   initialSafetyNotice: SafetyNoticeEntry | null = null,
   opts: {
     onProgress?: (stage: NotebookProgressFrame["stage"]) => void;
+    onAttempt?: (attemptId: string) => void;
     onManualSearchStatus?: (status: Omit<NotebookManualSearchStatusFrame, "kind">) => void;
   } = {},
 ): Promise<StreamResult> {
@@ -264,7 +267,11 @@ export async function readNotebookStream(
         const frame: NotebookChatFrame | null = parseFrame(data);
         if (!frame) continue;
         if (frame.kind === "headers") {
-          const notice = safetyNoticeFromHeader(frame.headers?.["x-safety-stop"]);
+          const headers = Object.entries(frame.headers ?? {});
+          const header = (key: string) => headers.find(([name]) => name.toLowerCase() === key)?.[1];
+          const attemptId = header(NOTEBOOK_ATTEMPT_HEADER);
+          if (typeof attemptId === "string" && attemptId) opts.onAttempt?.(attemptId);
+          const notice = safetyNoticeFromHeader(header("x-safety-stop"));
           if (notice) {
             out.safetyNotice = notice;
             onUpdate(out.content, out.citations, notice);
@@ -438,7 +445,7 @@ export type PersistedTurn = {
    *  pair (`safety_notice` display data + `safety_stop` terminal identity).
    *  Non-document entries are split out, never rendered as citations. */
   evidence: Array<
-    EvidenceCitation | MachineEvidenceEntry | VisualObservationEntry | SafetyNoticeEntry | SafetyStopEntry
+    EvidenceCitation | MachineEvidenceEntry | VisualObservationEntry | SafetyNoticeEntry | SafetyStopEntry | StoppedAttemptEntry
   >;
   basis?: string | null;
 };

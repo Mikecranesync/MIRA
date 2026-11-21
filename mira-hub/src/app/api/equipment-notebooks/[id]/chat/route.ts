@@ -38,6 +38,7 @@
  * Together). The legacy list still contains Gemini; that divergence is exactly
  * what the seam removes (P0004 map §10 Q4).
  */
+import { NOTEBOOK_ATTEMPT_HEADER } from "@/lib/notebook-chat-types";
 import { createHash } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { context, SpanStatusCode, trace, type Context, type Span } from "@opentelemetry/api";
@@ -290,6 +291,7 @@ import type {
   NotebookTraceFrame,
   NotebookChatFrame,
   SafetyNoticeEntry,
+  StoppedAttemptEntry,
   SafetyStopEntry,
   ProviderFailureEntry,
   VisualObservationEntry,
@@ -3788,6 +3790,7 @@ async function handleChatTurn(
         "Cache-Control": "no-cache, no-transform",
         "X-Accel-Buffering": "no",
         ...safetyFlagHeaders(stopTrigger),
+        "X-Safety-Stop": stopTrigger,
         ...(rootTraceId ? { "x-mira-trace-id": rootTraceId } : {}),
       },
     });
@@ -5068,7 +5071,10 @@ async function handleChatTurn(
             // F3); a stop is still not an answer — hydration shows no
             // observation, citation or basis on a stopped answer, and prior-look
             // grounding reads answered turns only.
-            evidence: [...hazardEntries, ...disputeEntries, ...componentEntries, ...(visualEntry ? [visualEntry] : [])],
+            evidence: [
+              ...hazardEntries, ...disputeEntries, ...componentEntries, ...(visualEntry ? [visualEntry] : []),
+              ...(clientRequestId ? [{ kind: "stopped_attempt", attemptId: ingress.attemptId } satisfies StoppedAttemptEntry] : []),
+            ],
             model: stoppedModel,
             basis: null,
             ...assetSnapshot,
@@ -6056,6 +6062,7 @@ async function handleChatTurn(
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache, no-transform",
       "X-Accel-Buffering": "no",
+      ...(clientRequestId ? { [NOTEBOOK_ATTEMPT_HEADER]: ingress.attemptId } : {}),
       ...(rootTraceId ? { "x-mira-trace-id": rootTraceId } : {}),
     },
   });

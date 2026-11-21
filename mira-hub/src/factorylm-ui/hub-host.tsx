@@ -50,7 +50,7 @@ import {
 } from "@factorylm/ui";
 import { API_BASE, MAX_UPLOAD_MB } from "@/lib/config";
 import type { EquipmentNotebook, NotebookSource } from "@/lib/equipment-notebooks";
-import type { EvidenceCitation, NotebookSheetReceiptFrame } from "@/lib/notebook-chat-types";
+import { NOTEBOOK_ATTEMPT_HEADER, type EvidenceCitation, type NotebookSheetReceiptFrame } from "@/lib/notebook-chat-types";
 import {
   isAbortError,
   NotebookHttpError,
@@ -167,6 +167,7 @@ type RetainedExchange = Live & {
   readonly precedingAnswerIds: ReadonlySet<string>;
   readonly precedingRequestIds: ReadonlySet<string>;
   readonly replayedRequest: boolean;
+  readonly attemptId: string | null;
 };
 
 function terminalRowsByRequest(turns: Detail["turns"]): Map<string, Detail["turns"][number]> {
@@ -182,9 +183,14 @@ function terminalRowsByRequest(turns: Detail["turns"]): Map<string, Detail["turn
 function savedExchangeMatches(exchange: RetainedExchange, row: Detail["turns"][number] | undefined): boolean {
   if (!row) return false;
   // An exact replay can reclaim a saved error without changing its request ID.
-  // Keep the stopped replay's partial until the saved text reflects this attempt.
-  if (exchange.replayedRequest && exchange.stopped && row.answerStatus === "error" &&
-      exchange.result.content !== (row.answerText ?? "")) return false;
+  // The saved text can be longer than what reached the browser before Stop.
+  // Match the server's execution receipt when present. Older servers can only
+  // confirm the local partial by returning the same text for that request.
+  if (exchange.replayedRequest && exchange.stopped && row.answerStatus === "error") {
+    if (!exchange.attemptId) return exchange.result.content === (row.answerText ?? "");
+    return row.evidence.some((entry) => "kind" in entry && entry.kind === "stopped_attempt" &&
+      entry.attemptId === exchange.attemptId);
+  }
   return !exchange.result.sawStatus || exchange.result.status === row.answerStatus;
 }
 
@@ -728,10 +734,11 @@ export function HubShellHost() {
     setLive({ ...exchange, content: "", citations: [], result: null, stopped: false });
 
     let componentLabel: string | null = null;
+    let attemptId: string | null = null;
     const retainExchange = (result: CompatibleStreamResult, stopped: boolean) => {
       const retained: RetainedExchange = {
         ...exchange, result, content: result.content, citations: result.citations, stopped, componentLabel,
-        precedingAnswerIds, precedingRequestIds, replayedRequest: Boolean(replayOriginal),
+        precedingAnswerIds, precedingRequestIds, replayedRequest: Boolean(replayOriginal), attemptId,
       };
       const current = retainedByThreadRef.current;
       const peers = current.get(threadId) ?? [];
@@ -771,6 +778,7 @@ export function HubShellHost() {
       });
       if (res.status === 401) { setSignedOut(true); return; }
       const headerSafety = safetyNoticeFromHeader(res.headers.get("X-Safety-Stop"));
+      attemptId = res.headers.get(NOTEBOOK_ATTEMPT_HEADER);
       if (res.ok && !res.body && headerSafety) throw Object.assign(new Error("no_stream"), { safetyNotice: headerSafety });
       if (!res.ok || !res.body) {
         if (!res.ok) rejectionStatus = res.status;
@@ -813,6 +821,7 @@ export function HubShellHost() {
       const result = await readNotebookStream(reader, (content, cits) => {
         setLive((cur) => (cur && cur.id === id ? { ...cur, content, citations: cits } : cur));
       }, headerSafety, {
+        onAttempt: (id) => { attemptId = id; },
         onProgress: (stage) => setLive((cur) => (cur && cur.id === id ? { ...cur, progress: stage } : cur)),
         onManualSearchStatus: (status) => {
           const active = selectionRef.current;

@@ -843,7 +843,7 @@ for (const interruption of [
       }));
     });
     const question = "Resume the interrupted photo question.";
-    let saved: "stopped" | "answered" | "unavailable" | undefined;
+    let saved: "stopped" | "answered" | "unavailable" | "current stop" | undefined;
     let original = "";
     let retry = "";
     await page.route(/\/api\/equipment-notebooks\/?(\?.*)?$/, (route) => {
@@ -856,8 +856,10 @@ for (const interruption of [
       if (saved === "unavailable") return route.fulfill(json({ error: "fixture_detail_failure" }, 503));
       return route.fulfill(json({ ...oracle.detailEmpty,
         turns: [{ id: "saved-stopped-turn", clientRequestId: JSON.parse(original).clientRequestId, question,
-          answerStatus: saved === "stopped" ? "error" : "answered",
-          answerText: saved === "stopped" ? "Saved partial answer." : "Completed replay.", evidence: [] }],
+          answerStatus: saved === "answered" ? "answered" : "error",
+          answerText: saved === "current stop" ? "Retry partial answer. Extra saved text."
+            : saved === "stopped" ? "Saved partial answer." : "Completed replay.",
+          evidence: [{ kind: "stopped_attempt", attemptId: saved === "current stop" ? "retry-fixture-attempt" : "old-fixture-attempt" }] }],
       }));
     });
     await page.addInitScript(({ deferStop, cleanClose, holdRetry }) => {
@@ -873,8 +875,11 @@ for (const interruption of [
         const stream = new ReadableStream<Uint8Array>({
           start(controller) {
             const component = JSON.stringify({ kind: "component", componentId, selectionVersion, label: "VFD1", actions: [] });
+            const headers = JSON.stringify({ kind: "headers", headers: {
+              "x-mira-turn-attempt": retrying ? "retry-fixture-attempt" : "old-fixture-attempt",
+            } });
             controller.enqueue(new TextEncoder().encode(
-              'data: ' + component + '\n\ndata: ' + JSON.stringify({ kind: "content", content: partial }) + '\n\n',
+              'data: ' + headers + '\n\ndata: ' + component + '\n\ndata: ' + JSON.stringify({ kind: "content", content: partial }) + '\n\n',
             ));
             init.signal?.addEventListener("abort", () => {
               const finish = () => {
@@ -960,6 +965,15 @@ for (const interruption of [
       await expect(composer(page)).toHaveValue(preserved);
       expect(retry).toBe("");
       expect(uploads).toBe(1);
+      if (staleDetail) {
+        saved = "current stop";
+        await projects.locator('[data-item-id="notebook-' + OTHER_NB + ':thread-legacy"]').click();
+        await origin.click();
+        await expect(page.getByText("Retry partial answer. Extra saved text.", { exact: true })).toBeVisible({ timeout: 4500 });
+        await expect(answers).toHaveCount(1);
+        await expect(answers.first()).toHaveAttribute("data-turn-id", "saved-stopped-turn-a");
+        await expect(tryAgain).toHaveCount(0);
+      }
       return;
     }
     await expect.poll(() => retry).toBe(original);
