@@ -40,13 +40,22 @@ describe("viewerHref and parseViewerRequest round-trip the file and the cited pa
   });
 });
 
-describe("viewerMode: platform viewer first, drawn page only where there is none", () => {
-  it("desktop with a PDF viewer gets the file itself", () => {
-    expect(viewerMode(true)).toBe("native");
+describe("viewerMode", () => {
+  it("draws the cited page inside an iframe even when Chromium has a native PDF viewer", () => {
+    expect(viewerMode(true, { embedded: true, page: 18 })).toBe("render");
   });
-  it("Android Chrome (false) and browsers without the flag draw the page", () => {
-    expect(viewerMode(false)).toBe("render");
-    expect(viewerMode(undefined)).toBe("render");
+  it("draws the cited page in a new tab even when Chromium has a native PDF viewer", () => {
+    expect(viewerMode(true, { embedded: false, page: 18 })).toBe("render");
+  });
+  it("draws the first page for an embedded document without a citation page", () => {
+    expect(viewerMode(true, { embedded: true, page: null })).toBe("render");
+  });
+  it("lets a top-level uncited desktop viewer open the original directly", () => {
+    expect(viewerMode(true, { embedded: false, page: null })).toBe("native");
+  });
+  it("draws the page for Android Chrome and browsers without a viewer flag", () => {
+    expect(viewerMode(false, { embedded: false, page: null })).toBe("render");
+    expect(viewerMode(undefined, { embedded: false, page: null })).toBe("render");
   });
 });
 

@@ -204,6 +204,10 @@ it("preserves the exact model when a known maker's label also includes ratings a
   }), params);
   const result = await frames(res);
   expect(result.find((frame) => frame.kind === "identity_proposal")).toMatchObject({ model: MODEL });
+  expect(result.find((frame) => frame.kind === "status")).toMatchObject({
+    message: expect.stringContaining("Confirm the equipment"),
+  });
+  expect(fetch).not.toHaveBeenCalled();
   expect(ragMock.retrieveManualChunks).not.toHaveBeenCalled();
   expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
 });
@@ -606,6 +610,34 @@ describe("a nameplate photo starts the manual search on the same turn", () => {
     };
     const statusMessage = (f: Record<string, unknown>[]) =>
       String((f.find((x) => x.kind === "manual_search_status") as { message?: string } | undefined)?.message ?? "");
+    const requestManual = () => POST(req({
+      message: "Find the manual for this drive.", mode: "general", visualEvidence: { fileId: PHOTO },
+    }), params);
+
+    it("re-reads Sources when a new photo lookup has already completed", async () => {
+      const c = await completeRec();
+      nbMock.listSources.mockResolvedValueOnce([]).mockResolvedValue([c.source(true)] as never);
+      acqMock.readAcquisition.mockResolvedValueOnce(null).mockResolvedValue(c.rec);
+
+      const msg = statusMessage(await frames(await requestManual()));
+
+      expect(acqMock.startManualAcquisition).toHaveBeenCalledTimes(1);
+      expect(nbMock.listSources).toHaveBeenCalledTimes(2);
+      expect(msg).toMatch(/manual is ready/i);
+      expect(msg).not.toMatch(/turned off|turn it back on/i);
+    });
+
+    it("does not claim the new manual is off or ready when the fresh Sources read fails", async () => {
+      const c = await completeRec();
+      nbMock.listSources.mockResolvedValueOnce([]).mockRejectedValueOnce(new Error("db down"));
+      acqMock.readAcquisition.mockResolvedValueOnce(null).mockResolvedValue(c.rec);
+
+      const msg = statusMessage(await frames(await requestManual()));
+
+      expect(nbMock.listSources).toHaveBeenCalledTimes(2);
+      expect(msg).toMatch(/couldn't check whether/);
+      expect(msg).not.toMatch(/turned off|turn it back on|I can answer from it/i);
+    });
 
     it("source off → the status says it is turned off and to turn it back on", async () => {
       const c = await completeRec();
