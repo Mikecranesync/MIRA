@@ -141,7 +141,7 @@ describe("startManualAcquisition", () => {
     });
     const claimQ = db.queries.find((q) => /RETURNING manual_acquisition->>'gen'/.test(q.sql))!;
     // A background start is NOT an explicit technician confirmation ($7 false).
-    expect(claimQ.params).toEqual(["t", "nb", "SMC|VQ1000FPGC6C6D|", 10, 30, 3, false]);
+    expect(claimQ.params.slice(0, 8)).toEqual(["t", "nb", "SMC|VQ1000FPGC6C6D|", 10, 30, 3, false, null]);
     expect(claimQ.sql).toMatch(/state' = 'search_unavailable'/);
     // #4160 S4 — anchored to the specific WHERE-clause predicates (not just
     // "appears somewhere in the query"):
@@ -598,20 +598,10 @@ describe("#4160 S6 — acquisitionDeclineText basis='candidate' copy", () => {
     oem_request_url: null,
   });
 
-  // Codex post-cap 13/14 F13 (#4172): no shipping client renders the
-  // identity_proposal frame, offers "Use its manuals", or can confirm an
-  // EXISTING notebook's make/model (#4095 / #3626). The one action a
-  // technician has on the acquired manual is turning it on in Sources (Hub
-  // notebook page, classic mobile notebook screen), so the copy points there
-  // and promises nothing about confirmation.
-  it("'running' says the search is on and that the manual lands in Sources, turned on — no button, no confirmation promise", () => {
+  it("describes a running lookup without attributing a typed identity to a photo", () => {
     const t = acquisitionDeclineText(rec("running"), "K", "SMC SS5Y3-DUW01302", "candidate")!;
-    expect(t).toMatch(/I read the SMC SS5Y3-DUW01302 off your photo/);
-    expect(t).toMatch(/looking for the official SMC SS5Y3-DUW01302 manual now/);
-    expect(t).toMatch(/added to this notebook's Sources and turned on/);
-    expect(t).not.toMatch(/Use its manuals|Tap|tap |confirmed as that machine|once you do/);
-    expect(t).not.toMatch(/ask again in a minute/);
-    expect(t).not.toMatch(/turned off/);
+    expect(t).toMatch(/looking for the official documentation for the SMC SS5Y3-DUW01302/);
+    expect(t).not.toMatch(/photo|turned on/);
   });
 
   // Codex post-cap 4 F9 (#4172): only promise "confirm and I'll answer from it"
@@ -1128,6 +1118,23 @@ describe("currentManualSearchStatus — recomputed fresh, never a stale snapshot
       expect(r?.running).toBe(false);
       expect(r?.message).not.toMatch(/couldn't confirm|isn't turned on/i);
       expect(r?.message).toMatch(/ready/i);
+    });
+
+    it("names the coverage page only for the currently enabled reviewed source", async () => {
+      const url = "https://content2.smcetech.com/pdf/1900A.pdf";
+      db.readRow = { ...candidateReviewRec, candidate_url: url, doc_id: "d1" };
+      const source = {
+        docId: "d1", enabledByDefault: true, matchState: "verified", sourceRole: "manual",
+        readiness: { canChat: true },
+        matchEvidence: { autoAcquisitionKey: confirmedKey, reviewedLibraryPage: 26, reviewedLibraryTitle: "OEM User Manual" },
+      };
+      const getStatus = (sources: unknown[]) => currentManualSearchStatus("t", "nb", confirmedIdentity, null, sources as never, { env: ON });
+      const status = await getStatus([source]);
+      expect(status?.message).toContain("ready in Sources. PDF page 26");
+      expect(status?.manualUrl).toBeUndefined();
+      expect((await getStatus([{ ...source, docId: "d2" }]))?.message).toContain("PDF page 26");
+      expect((await getStatus([{ ...source, matchEvidence: { autoAcquisitionKey: confirmedKey } }]))?.message).not.toContain("PDF page 26");
+      expect((await getStatus([{ ...source, enabledByDefault: false }]))?.message).not.toContain("PDF page 26");
     });
 
     it("reports 'added, still preparing' for an applicable+enabled manual that has not finished materializing yet — never 'turn it on'", async () => {

@@ -76,6 +76,7 @@ import { PendingManuals } from "./PendingManuals";
 import { ParkedSources } from "./ParkedSources";
 import { clearSheetDataForSignOut, localStorageStore, parseSheetReceipts } from "./living-sheet-client";
 import { actionsCoveredByLayer, NOTEBOOK_ACTIONS_CSS, notebookActionsStyle } from "./notebook-actions";
+import { NotebookActionsMenu, NotebookActionsMenuProvider } from "./notebook-actions-menu";
 import { BenchComponents } from "./BenchComponents";
 import { SEND_BLOCKED_MESSAGE, benchSendRefusal, createBenchSendGate, expectsComponentFrame, isScopeRefusalCode, parseComponentFrames, prepareChatSend, heldEvidenceNote, heldQuestionForSend, recordBenchScope, retryTargetCheck, targetReviewMessage, withoutScope, type BenchScopes, type BenchState, type ComponentTurnFrame, type ScopeField } from "./bench-components-logic";
 import { LEGACY_THREAD_ID, notebookMachines, notebookProjects, threadRefFromItem, notebookIdFromProject, type HubNotebook } from "./notebook-tree";
@@ -1398,6 +1399,9 @@ export function HubShellHost() {
           />
         }
       />
+      {/* The notebook's tools sit behind one More button (Mike, 2026-11-20); each still decides when it
+          is available and owns what it opens. */}
+      <NotebookActionsMenuProvider>
       {/* WP-1: shown only when the route is enabled and a manufacturer procedure applies. */}
       {selection && detail && (
         <GuidedProcedure
@@ -1420,6 +1424,7 @@ export function HubShellHost() {
           own row, so Machine state and Work Packet never cover each other (#5102). */}
       <div data-testid="notebook-actions" data-covered={actionsCovered ? "true" : undefined} aria-hidden={actionsCovered || undefined} style={notebookActionsStyle(actionsCovered)}>
       <style>{NOTEBOOK_ACTIONS_CSS}</style>
+      <NotebookActionsMenu covered={actionsCovered} />
       {/* Equipment-first navigation (MIRA_EQUIPMENT_NAV): renders nothing while the flag is off. */}
       <EquipmentNav
         origin={equipmentOrigin}
@@ -1514,6 +1519,7 @@ export function HubShellHost() {
         />
       )}
       </div>
+      </NotebookActionsMenuProvider>
       {/* #4632: New project setup; a sibling of the notebook actions, never inside them. */}
       <NewProjectSetup
         open={newProjectOpen}

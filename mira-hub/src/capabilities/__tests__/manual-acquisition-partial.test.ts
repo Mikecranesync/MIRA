@@ -18,6 +18,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const discoveryMock = vi.hoisted(() => ({ discoverManual: vi.fn() }));
+const libraryMock = vi.hoisted(() => ({ reviewedManualFor: vi.fn() }));
+vi.mock("@/capabilities/reviewed-manual-library", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/capabilities/reviewed-manual-library")>()),
+  ...libraryMock,
+}));
 vi.mock("@/lib/manual-discovery", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/manual-discovery")>()),
   discoverManual: discoveryMock.discoverManual,
@@ -74,6 +79,7 @@ vi.mock("@/lib/equipment-notebooks", async (importOriginal) => ({
 const stored = vi.hoisted(() => ({
   rows: [] as Array<{ content: string; source_page: number | null }>,
   documentWideError: false,
+  previousSource: undefined as { match_state: string; enabled_by_default: boolean } | null | undefined,
 }));
 vi.mock("@/lib/tenant-context", () => ({
   withTenantContext: vi.fn(async (_t: string, fn: (c: unknown) => unknown) =>
@@ -82,6 +88,19 @@ vi.mock("@/lib/tenant-context", () => ({
       // query's `LIMIT $3` (APPLICABILITY_CHUNK_LIMIT) — otherwise a fixture with >80 rows
       // could never exercise "the bounded sample misses it" (Codex #5429 r1 F3).
       query: vi.fn(async (sql: string, params?: unknown[]) => {
+        if (/UPDATE equipment_notebook_sources/.test(sql)) {
+          expect(sql).toContain("match_state = 'candidate' AND enabled_by_default = false");
+          expect(sql).toContain("match_evidence->>'decisionMethod' = 'pending_applicability_check'");
+          if (stored.previousSource !== undefined) return { rows: [] };
+          const [tenant, notebook, doc, matchState, enabledByDefault, evidence] = params as [string, string, string, string, boolean, string];
+          await equipmentNotebooksMock.setSourceState(tenant, notebook, doc, {
+            matchState, enabledByDefault, matchEvidence: JSON.parse(evidence),
+          });
+          return { rows: [{ match_state: matchState, enabled_by_default: enabledByDefault }] };
+        }
+        if (/SELECT match_state, enabled_by_default FROM equipment_notebook_sources/.test(sql)) {
+          return { rows: stored.previousSource ? [stored.previousSource] : [] };
+        }
         if (/SELECT content, source_page/.test(sql)) {
           const limit = (params?.[2] as number | undefined) ?? stored.rows.length;
           return { rows: stored.rows.slice(0, limit) };
@@ -164,6 +183,7 @@ const FULL_ROWS = [
 
 beforeEach(() => {
   vi.clearAllMocks();
+  libraryMock.reviewedManualFor.mockReturnValue(null);
   delete process.env.MANUAL_SEARCH_COST_PER_QUERY_USD;
   discoveryMock.discoverManual.mockResolvedValue(FOUND_DISCOVERY);
   downloadMock.safeDownloadPdf.mockResolvedValue({
@@ -177,6 +197,114 @@ beforeEach(() => {
   applicabilityMock.assessApplicability.mockReturnValue(VERIFIED_VERDICT);
   stored.rows = CH1_ROWS;
   stored.documentWideError = false;
+  stored.previousSource = undefined;
+});
+
+const REVIEWED = {
+  url: "https://cdn.automationdirect.com/static/manuals/gs10m/gs10usermanual.pdf",
+  title: "GS10 Drive User Manual",
+  sha256: "316ed32c01f498e315f036d210d8f6264967a43bba53e1f2e99c425b904819f9",
+  page: 26,
+};
+
+it("acquires a reviewed library PDF before web discovery and preserves the evidence page", async () => {
+  stored.rows = FULL_ROWS;
+  const library = await vi.importActual<typeof import("@/capabilities/reviewed-manual-library")>(
+    "@/capabilities/reviewed-manual-library",
+  );
+  libraryMock.reviewedManualFor.mockImplementation((identity) => {
+    const publication = library.reviewedManualFor(identity);
+    // Use the real manifest selector; substitute the short PDF fixture's digest.
+    return publication && { ...publication, sha256: REVIEWED.sha256 };
+  });
+  downloadMock.safeDownloadPdf.mockResolvedValue({
+    ok: true,
+    buffer: Buffer.from("PDFBYTES"),
+    finalUrl: REVIEWED.url,
+  });
+  applicabilityMock.assessApplicability.mockReturnValue({ ...VERIFIED_VERDICT, evidencePages: [26] });
+  const out = await acquireManualForIdentity(BASE_INPUT);
+  expect(discoveryMock.discoverManual).not.toHaveBeenCalled();
+  expect(downloadMock.safeDownloadPdf).toHaveBeenCalledWith(REVIEWED.url, expect.anything());
+  expect(out.status).toBe("complete");
+  expect(storedPatch().matchEvidence).toMatchObject({
+    discoveryValidated: false,
+    reviewedLibraryPage: 26,
+  });
+});
+
+it("keeps a revised OEM PDF out of automatic ingestion", async () => {
+  libraryMock.reviewedManualFor.mockReturnValue(REVIEWED);
+  downloadMock.safeDownloadPdf.mockResolvedValue({ ok: true, buffer: Buffer.from("different"), finalUrl: REVIEWED.url });
+  const out = await acquireManualForIdentity(BASE_INPUT);
+  expect(out).toMatchObject({ status: "candidate_review", payload: { reason: "reviewed_library_document_changed" } });
+  expect(filesMock.parkOrReuseFile).not.toHaveBeenCalled();
+});
+
+it.each([
+  ["GS21N-20P2", "GS11N-20P2"],
+  ["GS11N-20P2", "GS21N-20P2"],
+])("checks a reviewed identity in either field before lookup (%s, %s)", async (model, catalogNumber) => {
+  const library = await vi.importActual<typeof import("@/capabilities/reviewed-manual-library")>(
+    "@/capabilities/reviewed-manual-library",
+  );
+  libraryMock.reviewedManualFor.mockImplementation(library.reviewedManualFor);
+  const out = await acquireManualForIdentity({ ...BASE_INPUT, identity: { ...IDENTITY, model, catalogNumber } });
+  expect(out.status).toBe("manufacturer_model_required");
+  expect(discoveryMock.discoverManual).not.toHaveBeenCalled();
+  expect(downloadMock.safeDownloadPdf).not.toHaveBeenCalled();
+});
+
+it.each([
+  { field: "model", rows: ["Order number ACS355-03U-06A7-20."] },
+  { field: "model", rows: ["Order number ACS355-03U-06A7-2+B063."] },
+  { field: "catalog", rows: ["Order number ACS355-03U-06A7-2 + B063."] },
+  { field: "catalog", rows: ["Recommended replacement: ACS355-03U-06A7-2."] },
+  { field: "catalog", rows: ["Order number ACS355-03U-06A7-2.", "This model is not covered by the present manual."] },
+  { field: "catalog", rows: ["Order number ACS355-03U-06A7-2."] },
+  { field: "model", rows: ["Order number ACS355-03U-06A7-2."] },
+])("keeps manufacturer discovery as a disabled review candidate ($field, $rows)", async ({ field, rows }) => {
+  const library = await vi.importActual<typeof import("@/capabilities/reviewed-manual-library")>(
+    "@/capabilities/reviewed-manual-library",
+  );
+  const applicability = await vi.importActual<typeof import("@/lib/manual-applicability")>("@/lib/manual-applicability");
+  libraryMock.reviewedManualFor.mockImplementation(library.reviewedManualFor);
+  applicabilityMock.assessApplicability.mockImplementation(applicability.assessApplicability);
+
+  const orderNumber = "ACS355-03U-06A7-2";
+  const identity = field === "model"
+    ? { manufacturer: "ABB", model: orderNumber }
+    : { manufacturer: "ABB", model: "ACS355", catalogNumber: orderNumber };
+  const url = "https://library.e.abb.com/public/bd17d6eae7b744e3b62479373704c852/3AUA0000081917_US_RevI.pdf";
+  discoveryMock.discoverManual.mockResolvedValue({
+    ...FOUND_DISCOVERY,
+    candidate: { ...CANDIDATE, url, host: "library.e.abb.com", title: "ABB ACS355 catalog" },
+  });
+  downloadMock.safeDownloadPdf.mockResolvedValue({ ok: true, buffer: Buffer.from("PDFBYTES"), finalUrl: url });
+  stored.rows = [
+    { content: "ABB machinery drives ACS355", source_page: 1 },
+    ...rows.map((content) => ({ content, source_page: 10 })),
+  ];
+
+  const result = await acquireManualForIdentity({ ...BASE_INPUT, identity, basis: "candidate" });
+  expect(discoveryMock.discoverManual).toHaveBeenCalledWith({ manufacturer: "ABB", model: orderNumber }, expect.anything());
+  expect(result.status).toBe("candidate_review");
+  expect(result.payload.manual).toMatchObject({ attached: true, enabledByDefault: false });
+  expect(storedPatch()).toMatchObject({
+    matchState: "candidate",
+    enabledByDefault: false,
+    matchEvidence: { awaitingUserConfirmation: true, candidateApplicability: "candidate" },
+  });
+  expect(storedPatch().matchEvidence).not.toHaveProperty("reviewedLibraryPage");
+});
+
+it("does not promote a reviewed PDF when its coverage page was not indexed", async () => {
+  libraryMock.reviewedManualFor.mockReturnValue(REVIEWED);
+  stored.rows = FULL_ROWS.filter((chunk) => chunk.source_page !== 26);
+  const out = await acquireManualForIdentity(BASE_INPUT);
+  expect(out.status).toBe("candidate_review");
+  expect(storedPatch()).toMatchObject({ enabledByDefault: false, matchState: "candidate" });
+  expect(storedPatch().matchEvidence).not.toHaveProperty("reviewedLibraryPage");
 });
 
 function storedPatch(): Patch {
@@ -220,23 +348,47 @@ describe("a one-chapter candidate with a VERIFIED applicability verdict", () => 
 });
 
 describe("controls", () => {
-  it("the whole manual with the same verdict promotes exactly as today: verified, enabled, complete", async () => {
+  it("a complete but unreviewed manual remains off", async () => {
     stored.rows = FULL_ROWS;
     const out = await acquireManualForIdentity(BASE_INPUT);
-    expect(out.status).toBe("complete");
+    expect(out.status).toBe("candidate_review");
     const patch = storedPatch();
-    expect(patch.matchState).toBe("verified");
-    expect(patch.enabledByDefault).toBe(true);
+    expect(patch.matchState).toBe("candidate");
+    expect(patch.enabledByDefault).toBe(false);
     const evidence = patch.matchEvidence as { completeness?: { complete: boolean; reasons: string[] } };
     expect(evidence.completeness).toEqual({ complete: true, reasons: [], firstPage: 1, unreadablePages: 0 });
     expect(String(out.payload.message)).not.toMatch(/full manual/i);
   });
 
-  it("photo basis, whole manual: candidateApplicability stays 'verified' (unchanged)", async () => {
+  it("photo basis: a complete, hash-pinned manual retains automatic eligibility", async () => {
     stored.rows = FULL_ROWS;
-    await acquireManualForIdentity({ ...BASE_INPUT, basis: "candidate" });
-    const evidence = storedPatch().matchEvidence as { candidateApplicability?: string };
-    expect(evidence.candidateApplicability).toBe("verified");
+    libraryMock.reviewedManualFor.mockReturnValue(REVIEWED);
+    applicabilityMock.assessApplicability.mockReturnValue({ ...VERIFIED_VERDICT, evidencePages: [26] });
+    const out = await acquireManualForIdentity({ ...BASE_INPUT, basis: "candidate" });
+    expect(out.status).toBe("complete");
+    expect(storedPatch()).toMatchObject({
+      enabledByDefault: true,
+      matchState: "verified",
+      matchEvidence: { candidateApplicability: "verified", reviewedLibraryPage: 26 },
+    });
+  });
+
+  it.each([
+    { match_state: "verified", enabled_by_default: true },
+    { match_state: "user_confirmed", enabled_by_default: true },
+    { match_state: "verified", enabled_by_default: false },
+    { match_state: "rejected", enabled_by_default: false },
+    null,
+  ])("preserves a prior technician source disposition (%j)", async (prior) => {
+    stored.rows = FULL_ROWS;
+    stored.previousSource = prior;
+    const out = await acquireManualForIdentity(BASE_INPUT);
+    expect(equipmentNotebooksMock.setSourceState).not.toHaveBeenCalled();
+    expect(out.payload.manual).toMatchObject({
+      attached: prior !== null && prior.match_state !== "rejected",
+      enabledByDefault: prior?.enabled_by_default ?? false,
+    });
+    expect(out.status).toBe(prior?.enabled_by_default ? "complete" : "candidate_review");
   });
 
   it("a chapter file whose text does NOT verify the model stays a candidate and still says 'full manual'", async () => {
@@ -277,7 +429,7 @@ describe("the document-wide unreadable-glyph scan sees past the bounded sample (
   it("control — the same long document with no glyph anywhere stays complete", async () => {
     stored.rows = LONG_CLEAN_ROWS;
     const out = await acquireManualForIdentity(BASE_INPUT);
-    expect(out.status).toBe("complete");
+    expect(out.status).toBe("candidate_review");
     const evidence = storedPatch().matchEvidence as { completeness?: { complete: boolean } };
     expect(evidence.completeness?.complete).toBe(true);
   });
@@ -305,7 +457,7 @@ describe("the document-wide unreadable-glyph scan sees past the bounded sample (
   it("control — a clean chunk with no page number does not count as unreadable", async () => {
     stored.rows = [COVER, { content: "Input Rating2 CT Rated Input Current A 5.1 7.3", source_page: null }, ...LONG_CLEAN_ROWS.slice(1, 10)];
     const out = await acquireManualForIdentity(BASE_INPUT);
-    expect(out.status).toBe("complete");
+    expect(out.status).toBe("candidate_review");
     const evidence = storedPatch().matchEvidence as { completeness?: { complete: boolean; unreadablePages: number } };
     expect(evidence.completeness?.complete).toBe(true);
     expect(evidence.completeness?.unreadablePages).toBe(0);

@@ -49,6 +49,9 @@ import {
   type SameSerialMatch,
   type SameSerialNotice,
 } from "./bench-components-logic";
+import { useMenuChip, useMenuItem } from "./notebook-actions-menu";
+
+const PART_ITEM = { id: "part", label: "Pick a part", description: "Choose what your next question is about" } as const;
 
 const PILL_STYLE: CSSProperties = {
   background: "var(--fl-surface)", color: "var(--fl-ink)", border: "1px solid var(--fl-line)",
@@ -419,14 +422,21 @@ export function BenchComponents({
   const current = selectedComponent(bench);
   const actions = frame && frame !== handled ? frame.actions : [];
 
+  // Inside the More list (Mike, 2026-11-20) the whole machine is the silent default: the pill shows
+  // only while a part is picked, as a chip beside More, and its x goes back to the whole machine.
+  const pillText = `${askingAbout(bench)}${bench?.selection && !bench.selection.current ? " (identity changed — next question re-checks it)" : ""}`;
+  const { inMenu } = useMenuItem(available ? PART_ITEM : null, () => { if (!open) togglePanel(); });
+  useMenuChip(available && current ? { label: pillText, onOpen: togglePanel, onClear: saving || busy ? null : () => void select(null, "picker") } : null);
+
   if (!available) return null;
 
   return (
     <>
-      <button type="button" style={PILL_STYLE} data-testid="bench-asking-about" aria-expanded={open} onClick={togglePanel}>
-        {askingAbout(bench)}
-        {bench?.selection && !bench.selection.current && " (identity changed — next question re-checks it)"}
-      </button>
+      {inMenu ? null : (
+        <button type="button" style={PILL_STYLE} data-testid="bench-asking-about" aria-expanded={open} onClick={togglePanel}>
+          {pillText}
+        </button>
+      )}
       {lastAnswerNotice(bench) && (
         <p role="status" data-testid="bench-last-answer" style={{ margin: 0, fontSize: "var(--fl-fs-sm)", color: "var(--fl-warn, var(--fl-muted))" }}>
           {lastAnswerNotice(bench)}

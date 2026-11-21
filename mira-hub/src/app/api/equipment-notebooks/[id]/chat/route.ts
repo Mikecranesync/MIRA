@@ -79,6 +79,7 @@ import {
   acquisitionDeclineText,
   acquisitionManualUrl,
   applicableEnabledSource,
+  canRetryReviewedAcquisition,
   readAcquisition,
   reconcileAcquisition,
   startManualAcquisition,
@@ -182,7 +183,9 @@ import {
   type PartSearchProposalEntry,
 } from "@/capabilities/photo-part-lookup";
 import { publicManualSeries } from "@/capabilities/public-model-proof";
-import { extractCandidateIdentity, isSafeCandidateSearchIdentity, wantsManualDocumentation } from "@/capabilities/candidate-identity";
+import { reviewedManualFor } from "@/capabilities/reviewed-manual-library";
+import { asksToFindManual, exactManualIdentity, extractCandidateIdentity, isSafeCandidateSearchIdentity, wantsManualDocumentation } from "@/capabilities/candidate-identity";
+import { manufacturerInGroup } from "@/lib/manufacturerNormalize";
 import { citationTitle } from "@/capabilities/citation-title";
 import { ratingColumnFinding, ratingColumnText } from "@/capabilities/rating-column";
 import { claimPartSearchProposal } from "@/capabilities/part-search-claim";
@@ -2729,6 +2732,14 @@ async function handleChatTurn(
   const photoTextForOem = notebookRetrieval
     ? ""
     : (lookRow?.text ?? priorLookRows[0]?.text ?? "").trim();
+  // A dedicated manual request uses the exact public model from either input.
+  // Don't let a family-only passage answer the request or suppress its source
+  // confirmation. Ordinary questions keep their existing retrieval path.
+  const unboundManualRequest =
+    general && !notebookRetrieval && !componentTurn && !componentHold &&
+    Boolean(nb) && boundAsset.state === "unbound" && !(nb?.manufacturer?.trim() || nb?.model?.trim()) &&
+    acquisitionEnabled(ctx.tenantId) && asksToFindManual(message);
+  const exactManualRequestIdentity = unboundManualRequest ? exactManualIdentity(photoTextForOem, message) : null;
   const oemManufacturer: { name: string; source: "notebook" | "photo" } | null = await (async () => {
     if (notebookRetrieval) return null; // notebook sources own the turn
     if (nb?.manufacturer?.trim()) return { name: nb.manufacturer.trim(), source: "notebook" };
@@ -2818,7 +2829,8 @@ async function handleChatTurn(
   // A selected component is never answered from the shared library by the
   // notebook's machine: its manuals are the notebook's documents or none.
   const oemRetrieval =
-    !guidedDeadEnd && !componentTurn && !componentHold && !notebookRetrieval && oemManufacturer !== null && !oemIdentity.ambiguous && !oemIdentity.failed;
+    !guidedDeadEnd && !componentTurn && !componentHold && !notebookRetrieval && !exactManualRequestIdentity &&
+    oemManufacturer !== null && !oemIdentity.ambiguous && !oemIdentity.failed;
   const retrievalExecuted = notebookRetrieval || oemRetrieval;
   // #4687: only when a document search actually runs (Codex #4765 F3).
   if (retrievalExecuted) reportProgress(req, "searching_documentation");
@@ -3064,7 +3076,14 @@ async function handleChatTurn(
     !(nb.manufacturer?.trim() || nb.model?.trim()) &&
     chunks.length === 0
   ) {
-    if (oemManufacturer === null) {
+    identityProposal = exactManualRequestIdentity;
+    if (
+      identityProposal && oemManufacturer &&
+      manufacturerInGroup(oemManufacturer.name, identityProposal.manufacturer)
+    ) {
+      identityProposal = { ...identityProposal, manufacturer: oemManufacturer.name };
+    }
+    if (!identityProposal && oemManufacturer === null) {
       let client: PoolClient | null = null;
       try {
         client = await pool.connect();
@@ -3192,6 +3211,11 @@ async function handleChatTurn(
     // proposal) passes the same candidate validator before any search starts.
     isSafeCandidateSearchIdentity(photoTextForOem, message, identityProposal.model, identityProposal.manufacturer) &&
     ((Boolean(photoTextForOem) && unambiguousPartNumber(photoTextForOem) !== null) || wantsManualDocumentation(message));
+  // A reviewed identity uses the confirmation card even when the photo needs
+  // confirmation before acquisition. Offer only one action for that request.
+  const reviewedConfirmationOwnsTurn = identityProposal !== null && exactManualRequestIdentity !== null &&
+    reviewedManualFor(exactManualRequestIdentity) !== null;
+  const canOfferPartSearch = !candidateAcquisitionOwnsTurn && !reviewedConfirmationOwnsTurn;
   // #5268 owner decision 2026-11-07 (option A): a plate that shows a serial or
   // asset label offers its code only when the code is proven public — printed
   // in that maker's own manuals in the shared library. That proof, not how the
@@ -3210,7 +3234,7 @@ async function handleChatTurn(
     const makerKey = (m: string) => m.replace(/[^A-Za-z0-9]/g, "").toLowerCase();
     const proofMaker =
       photoMaker && (oemManufacturer === null || makerKey(oemManufacturer.name) === makerKey(photoMaker)) ? photoMaker : null;
-    if (proofMaker && chunks.length === 0 && general && !candidateAcquisitionOwnsTurn) {
+    if (proofMaker && chunks.length === 0 && general && canOfferPartSearch) {
       let client: PoolClient | null = null;
       try {
         client = await pool.connect();
@@ -3228,7 +3252,7 @@ async function handleChatTurn(
     if (!publicModelProven) offeredPartNumber = null;
   }
   const partSearchEligible =
-    chunks.length === 0 && general && (oemManufacturer === null || publicModelProven) && !candidateAcquisitionOwnsTurn;
+    chunks.length === 0 && general && (oemManufacturer === null || publicModelProven) && canOfferPartSearch;
   // The technician's own immediately preceding turn in this thread carries any
   // pending proposal. #4185/#4186 (the #4160 Pixel walk incident): read it on
   // EVERY eligible turn, not only an exact confirm/cancel string — otherwise a
@@ -3485,11 +3509,13 @@ async function handleChatTurn(
       if (acq && acq.key === key && retryable(acq.state)) {
         acq = await reconcileAcquisition(ctx.tenantId, notebookId, acq);
       }
+      const retryReviewed = acq !== null && canRetryReviewedAcquisition(acq, identity);
       if (
         !acq ||
         acq.key !== key ||
         acq.state === "running" ||
-        (retryable(acq.state) && !acq.source_removed)
+        (retryable(acq.state) && !acq.source_removed) ||
+        retryReviewed
       ) {
         started = await startManualAcquisition({
           tenantId: ctx.tenantId,
@@ -3509,6 +3535,8 @@ async function handleChatTurn(
             match_state: null,
             oem_request_url: null,
           };
+        } else if (retryReviewed) {
+          acq = await readAcquisition(ctx.tenantId, notebookId);
         }
       }
       if (!started) acq = await reconcileAcquisition(ctx.tenantId, notebookId, acq);
@@ -3554,11 +3582,13 @@ async function handleChatTurn(
         if (cAcq && cAcq.key === candidateKey && retryableState(cAcq.state)) {
           cAcq = await reconcileAcquisition(ctx.tenantId, notebookId, cAcq);
         }
+        const retryReviewed = cAcq !== null && canRetryReviewedAcquisition(cAcq, candidateIdentity);
         if (
           !cAcq ||
           cAcq.key !== candidateKey ||
           cAcq.state === "running" ||
-          (retryableState(cAcq.state) && !cAcq.source_removed)
+          (retryableState(cAcq.state) && !cAcq.source_removed) ||
+          retryReviewed
         ) {
           cStarted = await startManualAcquisition({
             tenantId: ctx.tenantId,
@@ -3567,6 +3597,7 @@ async function handleChatTurn(
             nodeId: nb.nodeId,
             identity: candidateIdentity,
             basis: "candidate",
+            fromPhoto: Boolean(photoTextForOem && photoPartNumber),
             turnSpanContext: rootSpan.spanContext(),
           });
           if (cStarted) {
@@ -3579,6 +3610,8 @@ async function handleChatTurn(
               match_state: null,
               oem_request_url: null,
             };
+          } else if (retryReviewed) {
+            cAcq = await readAcquisition(ctx.tenantId, notebookId);
           }
         }
         if (!cStarted) cAcq = await reconcileAcquisition(ctx.tenantId, notebookId, cAcq);
@@ -3643,8 +3676,9 @@ async function handleChatTurn(
   // as running on concurrent indexing, and refuses while a live search holds
   // it (same as the #4075 block). The claim keeps every existing rule
   // (UTC-day boundary, 30-minute backoff, MAX_AUTOMATIC_RETRIES, live-running
-  // refusal); reconcile keeps the source-removal rule. Nothing here starts a
-  // NEW search, changes retrieval, or alters the reply — the turn stays
+  // refusal); reconcile keeps the source-removal rule. An explicit manual
+  // request may also retry an unattached miss for a newly reviewed publication.
+  // This recovery does not change retrieval or the reply — the turn stays
   // grounded in its selected sources; the packet records the recovery
   // (`manual_acquisition`) for the flight recorder.
   if (manualAcquisition === null && nb && acquisitionEnabled(ctx.tenantId)) {
@@ -3658,7 +3692,8 @@ async function handleChatTurn(
     if (key) {
       let acq = await readAcquisition(ctx.tenantId, notebookId);
       const retryable = acq !== null && (acq.state === "search_unavailable" || acq.state === "search_limit_reached");
-      if (acq && acq.key === key && (retryable || acq.state === "running")) {
+      const retryReviewed = acq !== null && asksToFindManual(message) && canRetryReviewedAcquisition(acq, identity);
+      if (acq && acq.key === key && (retryable || acq.state === "running" || retryReviewed)) {
         if (retryable) acq = await reconcileAcquisition(ctx.tenantId, notebookId, acq);
         if (acq && acq.key === key && !acq.source_removed) {
           const started = await startManualAcquisition({
@@ -3669,10 +3704,13 @@ async function handleChatTurn(
             identity,
             turnSpanContext: rootSpan.spanContext(),
           });
-          manualAcquisition = started
-            ? { state: "running", started_this_turn: true, candidate_host: null }
-            : { state: acq.state, started_this_turn: false, candidate_host: acq.candidate_host };
-          if (manualAcquisition.state === "running" && manualSearchRunning === null) manualSearchKey = key;
+          if (!started && retryReviewed) acq = await readAcquisition(ctx.tenantId, notebookId);
+          if (started) {
+            manualAcquisition = { state: "running", started_this_turn: true, candidate_host: null };
+          } else if (acq?.key === key) {
+            manualAcquisition = { state: acq.state, started_this_turn: false, candidate_host: acq.candidate_host };
+          }
+          if (manualAcquisition?.state === "running" && manualSearchRunning === null) manualSearchKey = key;
         }
       }
     }
@@ -3956,7 +3994,8 @@ async function handleChatTurn(
   // A flagged hazard turn is never swallowed by this abstain (owner decision
   // 2026-09-27): with no documents it takes the general lane, so the tech gets
   // the hazard banner and an answer instead of "couldn't find that".
-  if (componentHold || (chunks.length === 0 && (!general || libraryNotForAsk || missingModelManual || noEvidenceForMachine || unidentifiedServiceText || photoPartLookup || photoPartCompatibilityText) && !groundedMachineEntry && !safetyTrigger)) {
+  const manualIdentityNeeded = unboundManualRequest && !identityProposal;
+  if (componentHold || (chunks.length === 0 && (!general || libraryNotForAsk || missingModelManual || noEvidenceForMachine || unidentifiedServiceText || photoPartLookup || photoPartCompatibilityText || manualIdentityNeeded) && !groundedMachineEntry && !safetyTrigger)) {
     // Gate G — abstain honestly, persist the turn, never call the provider.
     // #4015: "couldn't find that in the documentation I have", not "I don't have
     // the manual" — a zero-hit scoped search does not prove the manual is absent
@@ -3975,6 +4014,8 @@ async function handleChatTurn(
       ? photoPartLookup.message
       : photoPartCompatibilityText
       ? photoPartCompatibilityText
+      : manualIdentityNeeded
+      ? "What manufacturer and model or order number are printed on the equipment label? You can type them or attach a clear photo of that part of the label."
       // No document selected, and the library's pages were for the bound model,
       // not the one this message names: say which, and answer nothing from them.
       : libraryNotForAsk
