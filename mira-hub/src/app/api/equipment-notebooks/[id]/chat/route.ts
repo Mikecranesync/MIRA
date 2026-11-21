@@ -2670,7 +2670,7 @@ async function handleChatTurn(
      *  question named a sibling and retrieval suspended it) — what the shadow
      *  claim verifier binds rows by, so it is gated exactly as the exclusion. */
     recordNumber?: string | null;
-    siblingOfRecordAsk?: { asked: string[]; record: string };
+    siblingOfRecordAsk?: { asked: string[]; record: string; source?: "photo" };
   } = {};
   const queryRewrite = await queryRewritePromise;
   retrievalDiagnostics.queryRewrite = queryRewrite.status;
@@ -2734,6 +2734,11 @@ async function handleChatTurn(
             ...manualIdentity,
             subjectQueries,
             subjectOutOfReach,
+            // #5706: the photo sent WITH this question (never an earlier one,
+            // #3966) names the machine when the message names none, so a
+            // nameplate of another drive is not answered from this project's
+            // manual.
+            photoText: lookRow?.text,
             includeQueryRecall: Boolean(lookRow?.text && buildRetrievalQuery(message, [], lookRow.text) !== message.trim()),
             // validateChatSources() has already proven tenant + notebook membership
             // for every id in docIds — the validated doc set is the boundary, so a
@@ -3585,6 +3590,9 @@ async function handleChatTurn(
             // round 3 on #5389, F7).
             ...manualIdentity,
             subjectQuestion: message,
+            // The photo sent with this question names the machine when the
+            // message does not, for the stop exactly as for the answer (#5706).
+            photoText: lookRow?.text,
             // A stop is never withheld over a look-alike catalog number (Mike
             // 2026-11-12, L8): the answer pass refuses such a question, the
             // stop still serves the lockout page and calls the number out.
@@ -3837,6 +3845,14 @@ async function handleChatTurn(
       ? `I couldn't find that in the ${missingModelManual} manual pages I have, so I won't guess a documented value. Upload the manual (or the page that covers it) to this notebook, or photograph the nameplate, and ask again — I'll answer from it and show you the page.`
       : noEvidenceForMachine
         ? `I couldn't find anything about this in the ${noEvidenceForMachine} manuals I have${oemEquipmentType && oemEquipmentType !== "Other" ? ", or in related manuals from the same maker" : ""}, so I won't guess at a procedure for your machine. Upload the manual for the equipment this is about (or the page that covers it) to this notebook, or photograph the nameplate, and ask again — I'll answer from it and show you the page.`
+      // #5706: the photo sent with this question shows a different machine (or
+      // a look-alike of the record's number) from the project's manual. That
+      // names the reason and asks one question, so it outranks the generic
+      // photo refusal below.
+      : notebookRetrieval && retrievalDiagnostics.siblingOfRecordAsk?.source === "photo"
+        ? siblingOfRecordAskText(retrievalDiagnostics.siblingOfRecordAsk)
+      : notebookRetrieval && retrievalDiagnostics.namedModelMismatch?.source === "photo"
+        ? namedModelMismatchText(retrievalDiagnostics.namedModelMismatch)
       : visualEntry
         ? "I saw your photo, but I couldn't find anything about it in the selected sources."
       // CV-101 S6: the question named a model and every refused manual declares a

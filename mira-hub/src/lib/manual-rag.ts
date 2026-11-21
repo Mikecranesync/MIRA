@@ -27,6 +27,7 @@ import { type PhotoDocumentKind, photoDocumentShape, productWrittenBody } from "
 import { withoutSharedTableHeader } from "@/capabilities/section-table-scope";
 import { exactModelKey } from "@/capabilities/table-rows";
 import { confirmedCatalogNumber } from "@/capabilities/notebook-manual-identity";
+import { serialCodes } from "@/capabilities/photo-part-lookup";
 import { embedQueryDetailed, hybridRetrievalEnabled, rrfMerge, vectorLiteral } from "@/capabilities/hybrid-retrieval";
 import { setSpanAttrs } from "@/capabilities/observability/tracing";
 import { extractCitedOperatingCaution, extractManualSafetyStatement, OPERATING_CAUTION_PATTERN } from "@/capabilities/manual-safety-statement";
@@ -1597,6 +1598,14 @@ export async function retrieveNodeChunks(
      *  names no model, with no model named in what WAS read, is then refused
      *  (`diagnostics.subjectOutOfReach`) instead of being judged on its own. */
     subjectOutOfReach?: boolean;
+    /** The reading of the photo sent WITH this question (its LOOK
+     *  observation), never an earlier photo's (#3966: earlier photos may show
+     *  other machines). When the question names no model and the photo names
+     *  exactly one, the photo is the asked machine: "Find me the manual" with a
+     *  GS20 plate is a GS20 ask, held to the same coverage check as a typed
+     *  model, and a refusal reports `source: "photo"`. Serial numbers on the
+     *  plate are never read as a model (photo-part-lookup.ts serialCodes). */
+    photoText?: string;
     /** #4983 — the question rewritten into the manual's vocabulary (search
      *  phrases a model produced from the forum-style post). Rides as one more
      *  query variant: its own OR pass for recall and its terms in the rerank's
@@ -1649,7 +1658,7 @@ export async function retrieveNodeChunks(
       /** CV-101 S6: set only when a named ask refused pages and EVERY refused
        *  page declared its own model — the evidence that the notebook's manual
        *  is for a different model than the one asked about. */
-      namedModelMismatch?: { requested: string[]; declared: string[]; source?: "conversation" };
+      namedModelMismatch?: { requested: string[]; declared: string[]; source?: "conversation" | "photo" };
       /** #5355: the question named two sibling models with no comparison cue;
        *  nothing was retrieved and the reply asks which one. */
       ambiguousModelAsk?: { named: string[] };
@@ -1691,7 +1700,7 @@ export async function retrieveNodeChunks(
        *  number and the question (or an earlier open one) named ANOTHER number of
        *  that number's family — a different unit. Nothing was retrieved; the reply
        *  names both numbers and gives no value (named-model-mismatch.ts). */
-      siblingOfRecordAsk?: { asked: string[]; record: string };
+      siblingOfRecordAsk?: { asked: string[]; record: string; source?: "photo" };
     };
   },
 ): Promise<ManualChunk[]> {
@@ -1830,8 +1839,27 @@ export async function retrieveNodeChunks(
   const openQuestions = opts.subjectQueries ?? [];
   const returnsToOwn = Boolean(recordText) && returnsToRecord(ownQuestion);
   const returnAt = recordText ? openQuestions.findIndex(returnsToRecord) : -1;
+  // Photo-to-manual (#5706, staging tablet walk 2026-11-21): a GS20-23P0
+  // nameplate photo with "Find me the manual" in a project confirmed as
+  // GS11N-20P2 was answered from the GS10 manual, because the photo's reading
+  // never reached this check and the project's machine scoped the ask. The
+  // photo sent with THIS question names the machine when the question itself
+  // names none (a typed model, or a return to the technician's own unit,
+  // outranks it), and it is newer than every earlier question. Only a reading
+  // that names ONE model counts: a whole-panel photo naming several devices,
+  // or a plate the camera could not read, names no machine and leaves the
+  // turn exactly as before. Serial numbers are removed first, so a serial is
+  // never taken for a model.
+  const photoQuestion = (() => {
+    const raw = opts.photoText?.trim();
+    if (!raw || namesKnownModel(ownQuestion) || returnsToOwn) return null;
+    let text = raw;
+    for (const serial of serialCodes(raw)) text = text.replace(new RegExp(serial.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi"), " ");
+    const read = resolveModelFromObservationText(text);
+    return read.model && !read.ambiguous ? text : null;
+  })();
   const earlierQuestions =
-    namesKnownModel(ownQuestion) || returnsToOwn ? [] : returnAt >= 0 ? openQuestions.slice(0, returnAt + 1) : openQuestions;
+    namesKnownModel(ownQuestion) || returnsToOwn || photoQuestion ? [] : returnAt >= 0 ? openQuestions.slice(0, returnAt + 1) : openQuestions;
   const modelAt = earlierQuestions.findIndex(namesKnownModel);
   // The open run is longer than the caller could read, this question names
   // no model, and nothing read names one: a model named further back would
@@ -1839,12 +1867,12 @@ export async function retrieveNodeChunks(
   // judge the question on its own words. A model named in what was read is
   // carried as usual (it is the newest one; nothing older than it matters).
   // A return to the record, in this question or in one read, is a start too.
-  if (opts.subjectOutOfReach && !namesKnownModel(ownQuestion) && !returnsToOwn && returnAt < 0 && modelAt < 0) {
+  if (opts.subjectOutOfReach && !namesKnownModel(ownQuestion) && !returnsToOwn && !photoQuestion && returnAt < 0 && modelAt < 0) {
     if (opts.diagnostics) opts.diagnostics.subjectOutOfReach = true;
     return [];
   }
   const carriedModelQuestion = modelAt >= 0 ? earlierQuestions[modelAt] : null;
-  const modelQuestion = carriedModelQuestion ?? ownQuestion;
+  const modelQuestion = photoQuestion ?? carriedModelQuestion ?? ownQuestion;
   const carriedNumbers = (modelAt >= 0 ? earlierQuestions.slice(0, modelAt + 1) : earlierQuestions)
     .flatMap((text) => unlistedModelNumbers(text))
     .filter((carried) => !ownNumbers.some((own) => sameModelFamily(own, carried)));
@@ -1898,9 +1926,11 @@ export async function retrieveNodeChunks(
     ].filter((n) => (seen.has(n.key) ? false : (seen.add(n.key), true)));
   };
   const recordFamilyNumbers = recordText ? catalogNumbersIn(recordText) : [];
-  const siblingAsked = [...catalogNumbersIn(ownQuestion), ...catalogNumbersIn(carriedModelQuestion ?? ""), ...carriedNumbers].filter((n) =>
-    recordFamilyNumbers.some((own) => own.key !== n.key && sameModelFamily(own, n)),
-  );
+  const isSiblingOfRecord = (n: ModelNumber) =>
+    recordFamilyNumbers.some((own) => own.key !== n.key && sameModelFamily(own, n));
+  // #5706: a look-alike plate in the photo is judged like the same number typed.
+  const photoSiblings = catalogNumbersIn(photoQuestion ?? "").filter(isSiblingOfRecord);
+  const siblingAsked = [...catalogNumbersIn(ownQuestion), ...catalogNumbersIn(carriedModelQuestion ?? ""), ...carriedNumbers].filter(isSiblingOfRecord).concat(photoSiblings);
   const asksSiblingOfRecord = Boolean(recordText) && siblingAsked.length > 0;
   if (asksSiblingOfRecord && opts.siblingAsk !== "serve") {
     if (opts.diagnostics) {
@@ -1908,6 +1938,7 @@ export async function retrieveNodeChunks(
       opts.diagnostics.siblingOfRecordAsk = {
         asked: siblingAsked.filter((n, i) => siblingAsked.findIndex((m) => m.key === n.key) === i).map((n) => n.label),
         record: recordText as string,
+        ...(photoSiblings.length > 0 ? { source: "photo" as const } : {}),
       };
     }
     return [];
@@ -2432,7 +2463,7 @@ export async function retrieveNodeChunks(
       opts.diagnostics.namedModelMismatch = {
         requested: [...requestedIdentities],
         declared: [...refusedDeclared],
-        ...(carriedModelQuestion !== null ? { source: "conversation" as const } : {}),
+        ...(photoQuestion !== null ? { source: "photo" as const } : carriedModelQuestion !== null ? { source: "conversation" as const } : {}),
       };
   };
   const noteNamedAskRefusal = (docId: string, headingDeclared: Set<string>) => {

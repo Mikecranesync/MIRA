@@ -19,8 +19,10 @@ export type NamedModelMismatch = {
   requested: string[];
   declared: string[];
   /** Set when the model was named in an earlier question of this conversation
-   *  that was not answered from a document, not in this one. */
-  source?: "conversation";
+   *  that was not answered from a document, not in this one. `photo`: the
+   *  question named no model and the photo sent with it did (manual-rag.ts
+   *  `photoText`). */
+  source?: "conversation" | "photo";
 };
 
 /** "MICRO850" → "Micro850", "PF525" → "PowerFlex 525"; other identities as stored. */
@@ -41,6 +43,13 @@ const list = (ids: string[]) => ids.map(displayModelIdentity).join(" / ");
 export function namedModelMismatchText(m: NamedModelMismatch): string {
   const asked = list(m.requested);
   const have = list(m.declared);
+  // #5706: the photo names a different machine from the project's manual.
+  // One question — is it a different machine? — with the way forward for
+  // each answer. A new project is where a photo starts a manual lookup; a
+  // misread plate is fixed by a readable photo, never by guessing.
+  if (m.source === "photo") {
+    return `Your photo shows a ${asked}, but the manual in this notebook is for the ${have}, so I won't answer from it — its values may not apply to the ${asked}. Is this a different machine from the one this project is for? If it is, start a new project with this photo and I'll look up the ${asked} manual there. If it is this project's machine, retake the photo so the model on its nameplate is readable.`;
+  }
   if (m.source === "conversation") {
     return `The manual in this notebook is for the ${have}, not the ${asked} you asked about earlier in this conversation, so I won't answer from it — its values may not apply to the ${asked}. ${EARLIER_SUBJECT_WAY_OUT} Otherwise add the ${asked} manual (or the page that covers it) to this notebook and ask again.`;
   }
@@ -170,10 +179,11 @@ export function ambiguousModelAskText(ids: string[]): string {
  *  catalog number and the question names a sibling of that number's family. Both
  *  numbers are named, no value is given, and the wording is one the pilot
  *  harness's refusal rule reads as a refusal that names the manual. */
-export function siblingOfRecordAskText(d: { asked: string[]; record: string }): string {
+export function siblingOfRecordAskText(d: { asked: string[]; record: string; source?: "photo" }): string {
   const asked = d.asked.map((a) => `the ${a}`);
   const listed = asked.length <= 1 ? asked.join("") : `${asked.slice(0, -1).join(", ")} or ${asked[asked.length - 1]}`;
-  return `This project is set up for the ${d.record}. Your question is about ${listed}, which is a different unit, so I can't give its values from this project's manual — the pages here answer for the ${d.record} only. If you are working on ${listed}, open or create a project for that unit and ask there; I'll answer from its manual and show you the page.`;
+  const subject = d.source === "photo" ? `Your photo shows ${listed}` : `Your question is about ${listed}`;
+  return `This project is set up for the ${d.record}. ${subject}, which is a different unit, so I can't give its values from this project's manual — the pages here answer for the ${d.record} only. If you are working on ${listed}, open or create a project for that unit and ask there; I'll answer from its manual and show you the page.`;
 }
 
 /** The conversation has run further without an answer from a manual than the
