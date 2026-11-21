@@ -81,7 +81,7 @@ import { NotebookActionsMenu, NotebookActionsMenuProvider } from "./notebook-act
 import { BenchComponents } from "./BenchComponents";
 import { SEND_BLOCKED_MESSAGE, benchSendRefusal, createBenchSendGate, expectsComponentFrame, isScopeRefusalCode, parseComponentFrames, prepareChatSend, conversationKey, heldEvidenceNote, heldQuestionForSend, recordBenchScope, retryTargetCheck, targetReviewMessage, withoutScope, type BenchScopes, type BenchState, type ComponentTurnFrame, type ScopeField } from "./bench-components-logic";
 import { LEGACY_THREAD_ID, notebookMachines, notebookProjects, threadRefFromItem, notebookIdFromProject, type HubNotebook } from "./notebook-tree";
-import { answerTurnId, citationIndex, contextFor, lifecycleFromStream, livePartsWhileRunning, partsFromStream, questionPhotoPart, threadFromPersisted, withManualSearchStatus, withSettledFollowups, type SettledFollowups } from "./to-interaction";
+import { answerTurnId, citationIndex, contextFor, lifecycleFromStream, livePartsWhileRunning, partsFromStream, questionPhotoPart, threadFromPersisted, withHostManualStatus, withSettledFollowups, type SettledFollowups } from "./to-interaction";
 import {
   EMPTY_FIXTURE,
   NO_PROJECT_ERROR,
@@ -517,16 +517,19 @@ export function HubShellHost() {
     // Once history owns this request, its outgoing placeholder is redundant.
     const pendingOutgoing = outgoing && live && outgoing.threadId === openThread && outgoing.id === live.outgoingId &&
       persistedRequest(detail.turns, live.requestId) ? null : outgoing;
-    const turns = withManualSearchStatus(
+    // #5750 r2 F7: under the answer the status was checked against.
+    const turns = withHostManualStatus(
       withSettledFollowups(
         withOutgoing(threadFromPersisted(detail.turns, meta).turns, { turns: liveTurns, outgoingId: live?.outgoingId ?? null, questionId: live ? `${live.id}-q` : undefined }, pendingOutgoing, openThread, openThread, contextFor(meta)),
         settled,
       ),
       displayedManualStatus,
+      manualStatus,
+      detail.turns,
     );
     const thread = { ...base.thread, turns };
     return shellReducer(state, { type: "hydrate", data: { thread, projects, machines, activeContext: base.activeContext } });
-  }, [state, detail, meta, selection, projects, machines, liveTurns, live, notebooks, outgoing, settledFollowups, displayedManualStatus]);
+  }, [state, detail, meta, selection, projects, machines, liveTurns, live, notebooks, outgoing, settledFollowups, displayedManualStatus, manualStatus]);
 
   // The outgoing message owns its photo previews until it is dropped; leaving
   // the hub releases whatever it still holds (Codex #4289 F2).

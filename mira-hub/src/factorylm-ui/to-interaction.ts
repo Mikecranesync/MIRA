@@ -589,11 +589,18 @@ export function turnsFromPersisted(row: PersistedTurn & { createdAt?: string }, 
 export function withManualSearchStatus(
   turns: readonly InteractionTurn[],
   status: ManualSearchStatus | null,
+  /** #5750 r2: the answer this status was read with. A status is only shown
+   *  under the answer it was checked against, so a later answer (a streaming
+   *  look-alike request) never inherits the project's ready line before a
+   *  read that includes it. `null`: the read had no answer, so nothing to
+   *  attach to. Omitted: the last assistant turn, as before. */
+  anchorTurnId?: string | null,
 ): InteractionTurn[] {
-  if (!status) return [...turns];
+  if (!status || anchorTurnId === null) return [...turns];
   let lastAssistantIndex = -1;
   for (let i = 0; i < turns.length; i++) {
-    if (turns[i]!.role === "assistant") lastAssistantIndex = i;
+    if (turns[i]!.role !== "assistant") continue;
+    if (anchorTurnId === undefined || turns[i]!.id === anchorTurnId) lastAssistantIndex = i;
   }
   if (lastAssistantIndex === -1) return [...turns];
   const part: InteractionPart = {
@@ -605,6 +612,25 @@ export function withManualSearchStatus(
     ...(status.manualUrl ? { manualUrl: status.manualUrl } : {}),
   };
   return turns.map((t, i) => (i === lastAssistantIndex ? { ...t, parts: [...t.parts, part] } : t));
+}
+
+/**
+ * #5750 r2 F7: the status the host shows, placed under the answer it was
+ * checked against. The detail read's status was computed for the thread as
+ * that read saw it, so it goes under that read's newest saved answer: never
+ * under an answer still streaming, or one the read had not yet seen. A status
+ * that is not the detail read's (a live lookup this turn started) keeps the
+ * old placement, the last assistant turn.
+ */
+export function withHostManualStatus(
+  turns: readonly InteractionTurn[],
+  shown: ManualSearchStatus | null,
+  detailStatus: ManualSearchStatus | null | undefined,
+  savedRows: readonly { readonly id: string }[],
+): InteractionTurn[] {
+  if (!shown || shown !== detailStatus) return withManualSearchStatus(turns, shown);
+  const lastSaved = savedRows.at(-1);
+  return withManualSearchStatus(turns, shown, lastSaved ? answerTurnId(lastSaved.id) : null);
 }
 
 /** Follow-up suggestions belong to one identified, saved answer. */

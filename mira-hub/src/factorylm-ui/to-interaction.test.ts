@@ -18,6 +18,7 @@ import {
   sourceIdFor,
   threadFromPersisted,
   turnsFromPersisted,
+  withHostManualStatus,
   withManualSearchStatus,
   withSettledFollowups,
   type HubNotebookMeta,
@@ -542,6 +543,40 @@ describe("withManualSearchStatus — the post-refresh render path (#4189 F6)", (
     const userOnly = [{ ...threadFromPersisted([row()], meta).turns[0]! }];
     const out = withManualSearchStatus(userOnly, { manufacturer: "SMC", model: "X", running: true });
     expect(out).toEqual(userOnly);
+  });
+});
+
+// #5750 r2 F7 (web): the detail read's ready line was checked against the
+// thread as that read saw it. While a look-alike answer streams (or before a
+// read includes it), the line must stay under the saved answer, not move onto
+// the new one.
+describe("withHostManualStatus — the status stays under the answer it was read with", () => {
+  const READY = { manufacturer: "AutomationDirect", model: "GS11N-20P2", running: false, message: "ready", manualUrl: "https://app.example.test/hub/v3/source/?file=f&page=26" };
+  const saved = [row(), row({ id: "turn-2", createdAt: "2026-09-17T12:05:00.000Z" })];
+  const savedTurns = threadFromPersisted(saved, meta).turns;
+  const live = [
+    { ...savedTurns[0]!, id: "live-1-q", role: "user" as const },
+    { ...savedTurns[1]!, id: "live-1-a", role: "assistant" as const, parts: [], lifecycle: "running" as const },
+  ];
+  const statusOn = (turns: readonly { id: string; parts: readonly { type: string }[] }[]) =>
+    turns.filter((t) => t.parts.some((p) => p.type === "manual_search_status")).map((t) => t.id);
+
+  it("keeps the detail status under the read's newest saved answer while a new answer streams", () => {
+    const out = withHostManualStatus([...savedTurns, ...live], READY, READY, saved);
+    expect(statusOn(out)).toEqual([answerTurnId("turn-2")]);
+  });
+
+  it("shows nothing when the read had no saved answer to check it against", () => {
+    expect(statusOn(withHostManualStatus(live, READY, READY, []))).toEqual([]);
+  });
+
+  it("control: with no answer in flight it sits on the last answer, as before", () => {
+    expect(statusOn(withHostManualStatus(savedTurns, READY, READY, saved))).toEqual([answerTurnId("turn-2")]);
+  });
+
+  it("control: a status from this turn's own live lookup stays on the newest answer", () => {
+    const own = { ...READY, running: true };
+    expect(statusOn(withHostManualStatus([...savedTurns, ...live], own, READY, saved))).toEqual(["live-1-a"]);
   });
 });
 

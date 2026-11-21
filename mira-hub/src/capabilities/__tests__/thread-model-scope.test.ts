@@ -26,8 +26,22 @@ describe("threadStatusScope", () => {
     expect(threadStatusScope([], GS10)).toBe("undecided");
   });
 
-  it("settles nothing for the family name the manual is titled with", () => {
-    expect(threadStatusScope(["Find me the GS10 manual"], GS10)).toBe("undecided");
+  // #5750 r2: the family whose manual covers the project's drive is the
+  // project's own manual, with or without its maker (was a known limit).
+  it("is own for the family whose manual covers the project's drive", () => {
+    expect(threadStatusScope(["Find me the GS10 manual"], GS10)).toBe("own");
+    expect(threadStatusScope(["Find me the AutomationDirect GS10 manual"], GS10)).toBe("own");
+    expect(threadStatusScope(["Find me the AutomationDirect GS10 manual"], CONFIRMED)).toBe("own");
+  });
+
+  it("control: another drive family of the same maker is other", () => {
+    expect(threadStatusScope(["Find me the manual for the GS1 drive"], GS10)).toBe("other");
+    expect(threadStatusScope(["Find me the AutomationDirect GS20 manual"], GS10)).toBe("other");
+  });
+
+  it("control: fault codes, ratings and wiring words name no model", () => {
+    expect(threadStatusScope(["what does oC mean, it is 3-phase 230V on RS-485"], GS10)).toBe("undecided");
+    expect(threadStatusScope(["I set P09-03 to 5, the input is 0-10V, installed 2026-11-21"], GS10)).toBe("undecided");
   });
 
   it("matches the catalog number as the project's identifier", () => {
@@ -58,6 +72,23 @@ describe("threadStatusScope", () => {
   it("is own for the project's model under an alias of its maker, or with no maker", () => {
     expect(threadStatusScope(["Find me the manual for Automation Direct GS11N-20P2"], GS10)).toBe("own");
     expect(threadStatusScope(["what does oC mean on the GS11N-20P2"], GS10)).toBe("own");
+  });
+
+  // #5750 r2 F2: model-only requests the catalog regex did not read.
+  it("is other for a model-only sibling outside the GS catalog pattern", () => {
+    const acs = { manufacturer: "ABB", model: "ACS355", catalogNumber: "", recordCatalog: null };
+    expect(threadStatusScope(["Find the manual for ACS580"], acs)).toBe("other");
+    expect(threadStatusScope(["Find the manual for ACS355"], acs)).toBe("own");
+    const pf = { manufacturer: "Allen-Bradley", model: "PowerFlex 525", catalogNumber: "25B-D017N104", recordCatalog: null };
+    expect(threadStatusScope(["Find me the manual for 25B-D024N104"], pf)).toBe("other");
+    expect(threadStatusScope(["Find me the manual for 25B-D017N104"], pf)).toBe("own");
+    expect(threadStatusScope(["Find me the manual for the PowerFlex 525"], pf)).toBe("own");
+  });
+
+  // #5750 r2 F3: a model named in the same question beats the return phrase.
+  it("is other when the return phrase names a sibling in the same question", () => {
+    expect(threadStatusScope(["OK, back to my drive. Does the GS11N-20P25 need a brake resistor?"], CONFIRMED)).toBe("other");
+    expect(threadStatusScope(["OK, back to my drive, the GS11N-20P2. Does it need a brake resistor?"], CONFIRMED)).toBe("own");
   });
 
   // #5750 Codex F3: an explicit return to the confirmed unit is a boundary.

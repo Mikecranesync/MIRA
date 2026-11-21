@@ -203,6 +203,40 @@ describe("GET /api/equipment-notebooks/[id] — manualSearch (T2 #4189)", () => 
       expect(body.manualSearchScope).toBe("out_of_reach");
     });
 
+    // #5750 r2 F1: a client can still show a status from an earlier read, so
+    // the scope is reported even when there is no current status to withhold.
+    it("reports the scope even when there is no current status", async () => {
+      currentManualSearchStatus.mockResolvedValue(null);
+      vi.mocked(listTurns).mockResolvedValue([ask("Find me the manual for AutomationDirect GS11N-20P25")] as never);
+      const body = await (await GET(threadReq, params)).json();
+      expect(body.manualSearch).toBeNull();
+      expect(body.manualSearchScope).toBe("other_model");
+    });
+
+    it("control: no current status and the project's own model reports no scope", async () => {
+      currentManualSearchStatus.mockResolvedValue(null);
+      vi.mocked(listTurns).mockResolvedValue([ask("Find me the manual for AutomationDirect GS11N-20P2")] as never);
+      const body = await (await GET(threadReq, params)).json();
+      expect(body.manualSearch).toBeNull();
+      expect(body).not.toHaveProperty("manualSearchScope");
+    });
+
+    // #5750 r2 F9: the wider read is optional; its failure must not fail the page.
+    it("returns the notebook, sources and turns when the wider read fails, withholding the status", async () => {
+      const all = Array.from({ length: 60 }, (_, i) => ask(`follow-up ${i + 1}: what does the keypad show?`));
+      vi.mocked(listTurns).mockImplementation((async (_t: string, _n: string, limit: number) => {
+        if (limit > 50) throw new Error("statement timeout");
+        return all.slice(-limit);
+      }) as never);
+      const res = await GET(threadReq, params);
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.notebook).toBeTruthy();
+      expect(body.turns).toHaveLength(50);
+      expect(body.manualSearch).toBeNull();
+      expect(body).not.toHaveProperty("manualSearchScope");
+    });
+
     it("keeps it in the photo thread, whose question names no model", async () => {
       vi.mocked(listTurns).mockResolvedValue([ask("Find me the manual")] as never);
       const body = await (await GET(threadReq, params)).json();

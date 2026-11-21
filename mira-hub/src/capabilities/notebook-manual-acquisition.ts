@@ -38,7 +38,7 @@ import { MANUAL_SEARCH_LIMIT_COPY, MANUAL_SEARCH_UNAVAILABLE_COPY } from "@/capa
 import { reviewedManualFor } from "@/capabilities/reviewed-manual-library";
 import { exactManualIdentity, makerFromText } from "@/capabilities/candidate-identity";
 import { returnsToRecord } from "@/capabilities/conversation-subject";
-import { modelIdentitiesInText } from "@/capabilities/model-token";
+import { familyCovers, modelIdentitiesInText } from "@/capabilities/model-token";
 import { normalizeManufacturer } from "@/lib/manufacturerNormalize";
 
 /** A running claim older than this is treated as abandoned (container restart). */
@@ -1244,18 +1244,48 @@ export type { ManualSearchStatus };
  * look-alike model shows the project machine's ready line and manual link
  * under its answer (staging tablet walk 2026-11-21).
  *
- * `questions` is chronological. The newest question that settles it wins:
- * - a return to the confirmed unit ("ok, back to my drive", the same reader
- *   retrieval uses, and only when a catalog number is on record) is "own";
- * - an exact catalog number (GS11N-20P25) or an exact manual request names a
- *   model; it is "own" when it is the project's model or catalog number and
- *   names no other maker (aliases count as the same maker), else "other";
- * - a question that names no exact model (the photo turn, a follow-up, the
- *   family name GS10) settles nothing.
- * "undecided" means nothing read settles it. Reuses the chat path's
- * detectors; this adds no new parser.
+ * `questions` is chronological. The newest question that settles it wins.
+ * A question settles it when it names a model, or returns to the confirmed
+ * unit:
+ * - the models it names are read with the chat path's detectors
+ *   (`modelIdentitiesInText`, `exactManualIdentity`) plus any code-shaped
+ *   catalog number (25B-D024N104, GS11N-20P25). It is "own" when every model
+ *   named is the project's model, its catalog number, a series that catalog
+ *   number is written in (GS11N for GS11N-20P2), or a family whose manual
+ *   covers it (GS10), and no other maker is named (aliases count as the same
+ *   maker). Any other model makes it "other";
+ * - a named model is read before a return phrase, so "back to my drive, does
+ *   the GS11N-20P25 need a brake resistor" is "other" (#5750 r2 F3);
+ * - a return to the confirmed unit with no model named ("ok, back to my
+ *   drive", the same reader retrieval uses, and only when a catalog number is
+ *   on record) is "own".
+ * "undecided" means nothing read settles it.
  */
 export type ThreadStatusScope = "own" | "other" | "undecided";
+
+const norm = (s: string | null | undefined) => (s ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+
+/** A code-shaped catalog number the model patterns do not know: hyphenated,
+ *  six or more letters and digits, a digit on both sides of a hyphen, and at
+ *  least one letter ("25B-D024N104"; not "3-phase", "RS-485" or a date). */
+const CATALOG_CODE = /(?<![A-Za-z0-9-])[A-Za-z0-9]*\d[A-Za-z0-9]*(?:-[A-Za-z0-9]*\d[A-Za-z0-9]*)+(?![A-Za-z0-9-])/g;
+function catalogCodesIn(text: string): string[] {
+  return [...text.matchAll(CATALOG_CODE)]
+    .map((m) => norm(m[0]))
+    .filter((code) => code.length >= 6 && /[A-Z]/.test(code));
+}
+
+function modelsNamedIn(text: string): Set<string> {
+  const named = new Set<string>([...modelIdentitiesInText(text)].map(norm));
+  for (const code of catalogCodesIn(text)) named.add(code);
+  const exact = exactManualIdentity("", text);
+  if (exact?.model) {
+    const ids = [...modelIdentitiesInText(exact.model)].map(norm);
+    for (const id of ids.length ? ids : [norm(exact.model)]) named.add(id);
+  }
+  named.delete("");
+  return named;
+}
 
 export function threadStatusScope(
   questions: readonly string[],
@@ -1267,18 +1297,25 @@ export function threadStatusScope(
     recordCatalog: string | null;
   },
 ): ThreadStatusScope {
-  const norm = (s: string | null | undefined) => (s ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
   const maker = (s: string | null | undefined) => normalizeManufacturer(s).canonical.toUpperCase().replace(/[^A-Z0-9]/g, "");
-  const own = new Set([norm(machine.model), norm(machine.catalogNumber)].filter(Boolean));
+  const own = new Set<string>();
+  for (const value of [machine.model, machine.catalogNumber]) {
+    if (!value) continue;
+    own.add(norm(value));
+    for (const id of modelsNamedIn(value)) own.add(id);
+  }
+  own.delete("");
+  const isOwn = (id: string) => own.has(id) || [...own].some((o) => familyCovers(id, o));
   const ownMaker = maker(machine.manufacturer);
   const otherMaker = (named: string | null | undefined) => Boolean(named && ownMaker && maker(named) !== ownMaker);
   for (let i = questions.length - 1; i >= 0; i--) {
     const q = questions[i] ?? "";
+    const named = modelsNamedIn(q);
+    if (named.size) {
+      const exact = exactManualIdentity("", q);
+      return otherMaker(exact?.manufacturer ?? makerFromText(q)) || [...named].some((id) => !isOwn(id)) ? "other" : "own";
+    }
     if (machine.recordCatalog && returnsToRecord(q)) return "own";
-    const exact = exactManualIdentity("", q);
-    if (exact) return otherMaker(exact.manufacturer) || !own.has(norm(exact.model)) ? "other" : "own";
-    const catalogs = [...modelIdentitiesInText(q)].filter((id) => /-[A-Z0-9]*\d/i.test(id)).map(norm);
-    if (catalogs.length) return otherMaker(makerFromText(q)) || catalogs.some((c) => !own.has(c)) ? "other" : "own";
   }
   return "undecided";
 }

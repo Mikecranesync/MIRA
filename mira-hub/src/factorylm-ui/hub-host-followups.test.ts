@@ -41,7 +41,8 @@ describe("hub-host keeps a finished answer's follow-ups after the reload (#4454)
 
   it("applies follow-ups within their thread, before appending the manual status", () => {
     const overlay = host.indexOf("withSettledFollowups(");
-    expect(host.lastIndexOf("withManualSearchStatus(", overlay)).toBeGreaterThan(-1);
+    // #5750 r2: the host places the status through withHostManualStatus.
+    expect(host.lastIndexOf("withHostManualStatus(", overlay)).toBeGreaterThan(-1);
     expect(host.indexOf("displayedManualStatus,", overlay)).toBeGreaterThan(overlay);
     expect(host).toMatch(/settledFollowups\.notebookId === selection\.notebookId && settledFollowups\.threadId === selection\.threadId/);
   });

@@ -137,12 +137,15 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   // belong to the open conversation; a whole-notebook read keeps the status.
   // The response says why it was withheld (`manualSearchScope`), so a client
   // can tell it apart from a failed read and clear a status it already shows.
+  // That holds even when there is no current status to withhold (r2 F1): a
+  // client may still be showing one from an earlier read.
   let manualSearchScope: "other_model" | "out_of_reach" | undefined;
-  if (manualSearch && threadId) {
+  const machineModel = manualSearch?.model ?? notebook.model;
+  if (threadId && (machineModel || notebook.catalogNumber)) {
     const machine = {
-      manufacturer: manualSearch.manufacturer,
-      model: manualSearch.model,
-      catalogNumber: manualSearch.model === notebook.model ? notebook.catalogNumber : null,
+      manufacturer: manualSearch?.manufacturer ?? notebook.manufacturer,
+      model: machineModel,
+      catalogNumber: machineModel === notebook.model ? notebook.catalogNumber : null,
       recordCatalog: confirmedCatalogNumber(notebook),
     };
     let scope = threadStatusScope(turns.map((t) => t.question), machine);
@@ -150,10 +153,17 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     // back (the same widest step the chat path's subject read uses) before
     // trusting that the thread never named another model. Still nothing past
     // that bound: the subject is out of reach, so the status is withheld.
+    // A failed wider read is inconclusive (r2 F9): the status is withheld
+    // without a scope, and the rest of the response still returns.
     if (scope === "undecided" && turns.length >= TURN_WINDOW) {
-      const wider = await listTurns(ctx.tenantId, id, WIDEST_SUBJECT_READ, { viewerUserId: ctx.userId, threadId });
-      scope = threadStatusScope(wider.map((t) => t.question), machine);
-      if (scope === "undecided" && wider.length >= WIDEST_SUBJECT_READ) manualSearchScope = "out_of_reach";
+      try {
+        const wider = await listTurns(ctx.tenantId, id, WIDEST_SUBJECT_READ, { viewerUserId: ctx.userId, threadId });
+        scope = threadStatusScope(wider.map((t) => t.question), machine);
+        if (scope === "undecided" && wider.length >= WIDEST_SUBJECT_READ) manualSearchScope = "out_of_reach";
+      } catch (err) {
+        console.error("[equipment-notebooks] wider thread read failed (withholding the manual status):", err);
+        manualSearch = null;
+      }
     }
     if (scope === "other") manualSearchScope = "other_model";
     if (manualSearchScope) manualSearch = null;
