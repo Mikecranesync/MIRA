@@ -21,6 +21,7 @@ TENANT_TABLES: frozenset[str] = frozenset(
         "identity_links",
         "tenant_invites",
         "conversation_state",
+        "conversation_state_v2",
         "feedback_log",
         "api_usage",
         "asset_qr_tags",
