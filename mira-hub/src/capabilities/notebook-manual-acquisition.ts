@@ -77,6 +77,8 @@ export interface AcquisitionRecord {
   partial?: boolean;
   /** The claim generation that wrote this record (Codex #4118 r3 F6). */
   gen?: string;
+  /** Reviewed publication digest attempted by this generation, even on a miss. */
+  reviewed_digest?: string | null;
   /** The acquired document — reconciled against the notebook's current sources (Codex #4118 r8 F13). */
   doc_id?: string | null;
   /** The acquired file — reconciled for file-only (scanned) outcomes (Codex #4118 r9 F14). */
@@ -138,6 +140,21 @@ export function acquisitionKey(id: ConfirmedIdentity): string | null {
   if (!mfr || !(model || catalog)) return null;
   const norm = (s: string) => s.toUpperCase().replace(/[^A-Z0-9]/g, "");
   return [norm(mfr), norm(model), norm(catalog)].join("|");
+}
+
+// Keep the route's precheck in step with claim()'s authoritative row predicate.
+const REVIEWED_RETRY_STATES: readonly AcquisitionState[] = [
+  "no_manual_found", "candidate_review", "download_rejected", "no_extractable_text",
+];
+
+export function canRetryReviewedAcquisition(record: AcquisitionRecord, identity: ConfirmedIdentity): boolean {
+  if (record.key !== acquisitionKey(identity) || !REVIEWED_RETRY_STATES.includes(record.state)) return false;
+  if (
+    record.linked || record.attached_indexed || record.source_removed || record.match_state === "rejected" ||
+    record.doc_id != null || record.file_id != null || record.prior_doc_id != null || record.prior_file_id != null
+  ) return false;
+  const digest = reviewedManualFor(identity)?.sha256;
+  return Boolean(digest && digest !== record.reviewed_digest);
 }
 
 function isUndefinedColumn(err: unknown): boolean {
@@ -246,7 +263,13 @@ export async function readAcquisition(tenantId: string, notebookId: string): Pro
  * its real outcome is always persisted and a stale miss is never left behind.
  * A background start never passes it.
  */
-async function claim(tenantId: string, notebookId: string, key: string, explicit = false, reviewedMiss = false): Promise<string | null> {
+async function claim(
+  tenantId: string,
+  notebookId: string,
+  key: string,
+  explicit = false,
+  reviewedDigest: string | null = null,
+): Promise<string | null> {
   try {
     return await withTenantContext(tenantId, async (c) => {
       // Every claim mints a fresh generation; only the holder of the CURRENT
@@ -258,6 +281,7 @@ async function claim(tenantId: string, notebookId: string, key: string, explicit
                   'key', $3::text, 'state', 'running', 'gen', gen_random_uuid()::text,
                   'started_at', to_jsonb(now()), 'finished_at', NULL,
                   'candidate_host', NULL, 'match_state', NULL, 'oem_request_url', NULL,
+                  'reviewed_digest', $8::text,
                   -- Automatic retries of a retryable failure are counted and capped
                   -- (Codex #4118 r12 F16): a PDF that never reads stops, eventually.
                   -- search_limit_reached (#4160 S4) is retried on a DIFFERENT
@@ -323,18 +347,21 @@ async function claim(tenantId: string, notebookId: string, key: string, explicit
                  OR ($7::boolean
                      AND manual_acquisition->>'key' = $3::text
                      AND manual_acquisition->>'state' <> 'running')
-                 -- A newly reviewed publication can supersede an old miss
-                 -- that attached nothing. It cannot replace a removed source.
-                 OR ($8::boolean
-                     AND manual_acquisition->>'state' = 'no_manual_found'
+                 -- A newly reviewed publication gets one attempt after a terminal
+                 -- miss with no attachment history. Never override a removal.
+                 OR ($8::text IS NOT NULL
+                     AND manual_acquisition->>'state' = ANY($9::text[])
+                     AND manual_acquisition->>'reviewed_digest' IS DISTINCT FROM $8::text
                      AND manual_acquisition->>'linked' IS DISTINCT FROM 'true'
+                     AND manual_acquisition->>'attached_indexed' IS DISTINCT FROM 'true'
                      AND manual_acquisition->>'source_removed' IS DISTINCT FROM 'true'
+                     AND manual_acquisition->>'match_state' IS DISTINCT FROM 'rejected'
                      AND manual_acquisition->>'doc_id' IS NULL
                      AND manual_acquisition->>'file_id' IS NULL
                      AND manual_acquisition->>'prior_doc_id' IS NULL
                      AND manual_acquisition->>'prior_file_id' IS NULL))
           RETURNING manual_acquisition->>'gen' AS gen`,
-        [tenantId, notebookId, key, STALE_RUNNING_MINUTES, UNAVAILABLE_RETRY_MINUTES, MAX_AUTOMATIC_RETRIES, explicit, reviewedMiss],
+        [tenantId, notebookId, key, STALE_RUNNING_MINUTES, UNAVAILABLE_RETRY_MINUTES, MAX_AUTOMATIC_RETRIES, explicit, reviewedDigest, REVIEWED_RETRY_STATES],
       );
       return r.rows[0]?.gen ?? null;
     });
@@ -718,6 +745,7 @@ async function finish(tenantId: string, notebookId: string, rec: AcquisitionReco
                   '{retries}', COALESCE(manual_acquisition->'retries', '0'::jsonb)),
                   '{prior_doc_id}', COALESCE(manual_acquisition->'prior_doc_id', 'null'::jsonb)),
                   '{prior_file_id}', COALESCE(manual_acquisition->'prior_file_id', 'null'::jsonb))
+                || jsonb_build_object('reviewed_digest', manual_acquisition->'reviewed_digest')
           WHERE tenant_id = $1 AND id = $2 AND manual_acquisition->>'key' = $4
             AND manual_acquisition->>'gen' = $5`,
         [tenantId, notebookId, JSON.stringify(rec), rec.key, rec.gen ?? ""],
@@ -765,8 +793,8 @@ export async function startManualAcquisition(
   const basis = input.basis ?? "confirmed";
   const key = acquisitionKey(input.identity);
   if (!key) return false;
-  const canRefreshMiss = basis === "confirmed" && reviewedManualFor(input.identity) !== null;
-  const gen = await claim(input.tenantId, input.notebookId, key, false, canRefreshMiss);
+  const reviewedDigest = reviewedManualFor(input.identity)?.sha256 ?? null;
+  const gen = await claim(input.tenantId, input.notebookId, key, false, reviewedDigest);
   if (!gen) return false;
   const acquire = deps.acquire ?? acquireManualForIdentity;
   const startedAt = new Date().toISOString();
@@ -836,7 +864,8 @@ export async function runManualAcquisition(
     catalogNumber: input.identity.catalogNumber ?? null,
   });
   if (!key) return { started: false, outcome: null };
-  const gen = await claim(input.tenantId, input.notebookId, key, true);
+  const reviewedDigest = reviewedManualFor(input.identity)?.sha256 ?? null;
+  const gen = await claim(input.tenantId, input.notebookId, key, true, reviewedDigest);
   if (!gen) return { started: false, outcome: null };
   const acquire = deps.acquire ?? acquireManualForIdentity;
   const startedAt = new Date().toISOString();

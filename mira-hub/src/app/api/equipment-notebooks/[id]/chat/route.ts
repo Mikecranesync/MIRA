@@ -74,6 +74,7 @@ import {
   acquisitionDeclineText,
   acquisitionManualUrl,
   applicableEnabledSource,
+  canRetryReviewedAcquisition,
   readAcquisition,
   reconcileAcquisition,
   startManualAcquisition,
@@ -3309,11 +3310,13 @@ async function handleChatTurn(
       if (acq && acq.key === key && retryable(acq.state)) {
         acq = await reconcileAcquisition(ctx.tenantId, notebookId, acq);
       }
+      const retryReviewed = acq !== null && canRetryReviewedAcquisition(acq, identity);
       if (
         !acq ||
         acq.key !== key ||
         acq.state === "running" ||
-        (retryable(acq.state) && !acq.source_removed)
+        (retryable(acq.state) && !acq.source_removed) ||
+        retryReviewed
       ) {
         started = await startManualAcquisition({
           tenantId: ctx.tenantId,
@@ -3333,6 +3336,8 @@ async function handleChatTurn(
             match_state: null,
             oem_request_url: null,
           };
+        } else if (retryReviewed) {
+          acq = await readAcquisition(ctx.tenantId, notebookId);
         }
       }
       if (!started) acq = await reconcileAcquisition(ctx.tenantId, notebookId, acq);
@@ -3378,11 +3383,13 @@ async function handleChatTurn(
         if (cAcq && cAcq.key === candidateKey && retryableState(cAcq.state)) {
           cAcq = await reconcileAcquisition(ctx.tenantId, notebookId, cAcq);
         }
+        const retryReviewed = cAcq !== null && canRetryReviewedAcquisition(cAcq, candidateIdentity);
         if (
           !cAcq ||
           cAcq.key !== candidateKey ||
           cAcq.state === "running" ||
-          (retryableState(cAcq.state) && !cAcq.source_removed)
+          (retryableState(cAcq.state) && !cAcq.source_removed) ||
+          retryReviewed
         ) {
           cStarted = await startManualAcquisition({
             tenantId: ctx.tenantId,
@@ -3404,6 +3411,8 @@ async function handleChatTurn(
               match_state: null,
               oem_request_url: null,
             };
+          } else if (retryReviewed) {
+            cAcq = await readAcquisition(ctx.tenantId, notebookId);
           }
         }
         if (!cStarted) cAcq = await reconcileAcquisition(ctx.tenantId, notebookId, cAcq);
@@ -3468,8 +3477,9 @@ async function handleChatTurn(
   // as running on concurrent indexing, and refuses while a live search holds
   // it (same as the #4075 block). The claim keeps every existing rule
   // (UTC-day boundary, 30-minute backoff, MAX_AUTOMATIC_RETRIES, live-running
-  // refusal); reconcile keeps the source-removal rule. Nothing here starts a
-  // NEW search, changes retrieval, or alters the reply — the turn stays
+  // refusal); reconcile keeps the source-removal rule. An explicit manual
+  // request may also retry an unattached miss for a newly reviewed publication.
+  // This recovery does not change retrieval or the reply — the turn stays
   // grounded in its selected sources; the packet records the recovery
   // (`manual_acquisition`) for the flight recorder.
   if (manualAcquisition === null && nb && acquisitionEnabled(ctx.tenantId)) {
@@ -3483,7 +3493,8 @@ async function handleChatTurn(
     if (key) {
       let acq = await readAcquisition(ctx.tenantId, notebookId);
       const retryable = acq !== null && (acq.state === "search_unavailable" || acq.state === "search_limit_reached");
-      if (acq && acq.key === key && (retryable || acq.state === "running")) {
+      const retryReviewed = acq !== null && asksToFindManual(message) && canRetryReviewedAcquisition(acq, identity);
+      if (acq && acq.key === key && (retryable || acq.state === "running" || retryReviewed)) {
         if (retryable) acq = await reconcileAcquisition(ctx.tenantId, notebookId, acq);
         if (acq && acq.key === key && !acq.source_removed) {
           const started = await startManualAcquisition({
@@ -3494,10 +3505,13 @@ async function handleChatTurn(
             identity,
             turnSpanContext: rootSpan.spanContext(),
           });
-          manualAcquisition = started
-            ? { state: "running", started_this_turn: true, candidate_host: null }
-            : { state: acq.state, started_this_turn: false, candidate_host: acq.candidate_host };
-          if (manualAcquisition.state === "running" && manualSearchRunning === null) manualSearchKey = key;
+          if (!started && retryReviewed) acq = await readAcquisition(ctx.tenantId, notebookId);
+          if (started) {
+            manualAcquisition = { state: "running", started_this_turn: true, candidate_host: null };
+          } else if (acq?.key === key) {
+            manualAcquisition = { state: acq.state, started_this_turn: false, candidate_host: acq.candidate_host };
+          }
+          if (manualAcquisition?.state === "running" && manualSearchRunning === null) manualSearchKey = key;
         }
       }
     }

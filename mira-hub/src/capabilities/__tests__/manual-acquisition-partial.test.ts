@@ -216,9 +216,15 @@ it("keeps a revised OEM PDF out of automatic ingestion", async () => {
   expect(filesMock.parkOrReuseFile).not.toHaveBeenCalled();
 });
 
-it("asks to correct conflicting reviewed model and catalog fields before any lookup", async () => {
-  libraryMock.reviewedManualFor.mockImplementation(({ model }) => model ? null : REVIEWED);
-  const out = await acquireManualForIdentity({ ...BASE_INPUT, identity: { ...IDENTITY, model: "GS21N-20P2" } });
+it.each([
+  ["GS21N-20P2", "GS11N-20P2"],
+  ["GS11N-20P2", "GS21N-20P2"],
+])("checks a reviewed identity in either field before lookup (%s, %s)", async (model, catalogNumber) => {
+  libraryMock.reviewedManualFor.mockImplementation((identity) => {
+    const values = [identity.model, identity.catalogNumber].filter(Boolean);
+    return values.length === 1 && values[0] === "GS11N-20P2" ? REVIEWED : null;
+  });
+  const out = await acquireManualForIdentity({ ...BASE_INPUT, identity: { ...IDENTITY, model, catalogNumber } });
   expect(out.status).toBe("manufacturer_model_required");
   expect(discoveryMock.discoverManual).not.toHaveBeenCalled();
   expect(downloadMock.safeDownloadPdf).not.toHaveBeenCalled();

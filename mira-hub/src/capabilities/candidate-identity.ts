@@ -24,6 +24,7 @@ import { namesOnlyThisMachine, proposeIdentityFromText, type IdentityProposal } 
 import { reviewedManualFor } from "./reviewed-manual-library";
 import {
   identifierKey,
+  hasSeparateSerialField,
   labelledPartCodes,
   mentionsAssetLabel,
   mentionsSerialLabel,
@@ -31,6 +32,7 @@ import {
   partCodes,
   privateIdentifierKeys,
   privateSuffixTails,
+  publicLabelText,
   serialCodes,
   unambiguousPartNumber,
 } from "./photo-part-lookup";
@@ -138,7 +140,7 @@ export function extractCandidateIdentity(observation: string, typed = ""): Candi
  * effect, not an answer, so a miss just means the search waits for the next
  * turn or an explicit ask — never a wrong answer.
  */
-const MANUAL_PUBLICATION = String.raw`(?:manuals?|documentation|docs?|datasheet|data\s+sheet|spec\s+sheet|(?:operating|installation)\s+instructions|user\s+guide|service\s+manual|install(?:ation)?\s+guide)`;
+const MANUAL_PUBLICATION = String.raw`(?:manuals?|documentation|docs?|pdfs?|datasheet|data\s+sheet|spec\s+sheet|user\s+guide|service\s+manual|install(?:ation)?\s+guide)`;
 const MANUAL_INTENT_RE = new RegExp(String.raw`\b(?:${MANUAL_PUBLICATION}|instructions?)\b`, "i");
 const MANUAL_REQUEST_RE = new RegExp(
   String.raw`^(?:(?:can|could|would) you\s+|please\s+)*(?:(?:find|get|open|show|send|look up|give|(?:i\s+)?(?:need|want)|do you have|where (?:can|do) i (?:find|get))\s+(?:me\s+)?)?(?:(?:the|a|an)\s+)?(?:official\s+)?${MANUAL_PUBLICATION}\b(?:[.!?]*$|\s+(?:for|of|on|please)\b)`,
@@ -172,11 +174,14 @@ export function exactManualIdentity(photo: string, typed: string): IdentityPropo
   // Many makers use compact model names that the part-number scanner does not
   // recognize. A reviewed record can support displaying a confirmation card.
   if (!candidate) {
-    const text = photo ? `${photo}\n${typed}` : typed;
-    if (mentionsSerialLabel(text) || mentionsAssetLabel(text)) return null;
+    if (mentionsAssetLabel(photo) || partLabelAfterPrivateLabel(photo) ||
+        mentionsSerialLabel(typed) || mentionsAssetLabel(typed)) return null;
+    const text = photo ? `${publicLabelText(photo)}\n${typed}` : typed;
     const maker = makerFromText(text);
     const proposal = maker && proposeIdentityFromText(text, [maker]);
-    return proposal && reviewedManualFor(proposal) ? proposal : null;
+    if (!proposal || !reviewedManualFor(proposal)) return null;
+    if (photo && makerFromText(publicLabelText(photo)) !== maker) return null;
+    return modelIsPrivate(photo, proposal.model) && !hasSeparateSerialField(photo, proposal.model) ? null : proposal;
   }
   if (!candidate?.manufacturer) return null;
   if (isSafeCandidateSearchIdentity(photo, typed, candidate.part, candidate.manufacturer)) {
@@ -195,12 +200,16 @@ export function exactManualIdentity(photo: string, typed: string): IdentityPropo
     labelled.length !== 1 ||
     labelled[0] !== key ||
     mentionsAssetLabel(photo) || partLabelAfterPrivateLabel(photo) ||
-    [...privateIdentifierKeys(photo)].some((value) => value.includes(identifierKey(part))) ||
-    privateSuffixTails(photo).some((tail) => tail.includes(identifierKey(part))) ||
-    !isSafeCandidateSearchIdentity("", `${manufacturer} ${part}\n${typed}`, part, manufacturer)
+    modelIsPrivate(photo, part) ||
+    !isSafeCandidateSearchIdentity("", `${manufacturer} MODEL: ${part}\n${typed}`, part, manufacturer)
   ) return null;
 
   return { manufacturer, model: part };
+}
+
+function modelIsPrivate(text: string, model: string): boolean {
+  const key = identifierKey(model);
+  return [...privateIdentifierKeys(text), ...privateSuffixTails(text)].some((value) => value.includes(key));
 }
 
 /**

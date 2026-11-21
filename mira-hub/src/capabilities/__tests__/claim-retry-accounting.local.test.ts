@@ -26,6 +26,9 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { Client } from "pg";
+import { NextRequest } from "next/server";
+import { POST as confirmIdentity } from "@/app/api/equipment-notebooks/[id]/identity/confirm/route";
+import * as manualAcquisition from "../manual-acquisition";
 import { runManualAcquisition, startManualAcquisition } from "../notebook-manual-acquisition";
 import type { ManualAcquisitionInput, ManualAcquisitionOutcome } from "../manual-acquisition";
 import { attachFileToTargetsTx } from "@/lib/workspace-files";
@@ -37,6 +40,17 @@ vi.mock("@/lib/workspace-files", async () => {
   const actual = await vi.importActual<typeof import("@/lib/workspace-files")>("@/lib/workspace-files");
   return { ...actual, attachFileToTargetsTx: vi.fn(actual.attachFileToTargetsTx) };
 });
+
+// Keep the confirmation route and its claims real while isolating session and
+// Sources reads that otherwise require the full Hub fixture.
+vi.mock("@/lib/session", () => ({
+  sessionOr401: async () => ({ tenantId: TENANT, userId: input.userId }),
+}));
+vi.mock("@/lib/equipment-notebooks", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@/lib/equipment-notebooks")>(),
+  getNotebook: async () => ({ nodeId: input.nodeId }),
+  listSources: async () => [],
+}));
 
 const run = process.env.PG_104 === "1" ? describe : describe.skip;
 const DOC = "33333333-3333-4333-8333-333333333333";
@@ -69,6 +83,8 @@ run("claim retry accounting on real Postgres (#4177 F4)", () => {
       DO $$ BEGIN CREATE ROLE factorylm_app; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
       CREATE TABLE IF NOT EXISTS equipment_notebooks (id uuid PRIMARY KEY, tenant_id uuid NOT NULL, manufacturer text,
         model text, catalog_number text, identity_status text NOT NULL DEFAULT 'unknown', manual_acquisition jsonb);
+      ALTER TABLE equipment_notebooks ADD COLUMN IF NOT EXISTS identity_source_type text;
+      ALTER TABLE equipment_notebooks ADD COLUMN IF NOT EXISTS updated_at timestamptz;
       CREATE TABLE IF NOT EXISTS equipment_notebook_sources (tenant_id uuid NOT NULL, notebook_id uuid NOT NULL,
         doc_id uuid NOT NULL, match_state text, enabled_by_default boolean NOT NULL DEFAULT false, match_evidence jsonb,
         source_role text, added_by text, origin_file_id uuid, PRIMARY KEY (notebook_id, doc_id));
@@ -126,6 +142,87 @@ run("claim retry accounting on real Postgres (#4177 F4)", () => {
     expect(await startManualAcquisition({ ...input, identity: { identityStatus: "user_confirmed", manufacturer: "SMC", model: "VQ1000-FPG-C6C6-D", catalogNumber: null } }, { acquire: vi.fn(outage), env: ON })).toBe(true);
     await vi.waitFor(async () => expect((await record()).state).toBe("search_unavailable"));
     expect(Number((await record()).retries)).toBe(1);
+  });
+
+  const reviewedIdentity = {
+    identityStatus: "user_confirmed",
+    manufacturer: "AutomationDirect",
+    model: "GS11N-20P2",
+    catalogNumber: "",
+  };
+  const reviewedKey = "AUTOMATIONDIRECT|GS11N20P2|";
+
+  const seedReviewedRecord = async (data: Record<string, unknown>) => {
+    await c.query(
+      `UPDATE equipment_notebooks
+          SET manufacturer = $2, model = $3, manual_acquisition = $4::jsonb
+        WHERE id = $1`,
+      [NB, reviewedIdentity.manufacturer, reviewedIdentity.model, JSON.stringify({ key: reviewedKey, ...data })],
+    );
+  };
+
+  it.each([
+    { state: "no_manual_found", basis: "candidate" },
+    { state: "candidate_review", basis: "confirmed" },
+    { state: "candidate_review", basis: "candidate", reviewed_digest: "a".repeat(64) },
+  ] as const)("refreshes an unattached $state once for $basis after a new reviewed digest", async ({ basis, ...oldRecord }) => {
+    await seedReviewedRecord(oldRecord);
+    const acquire = vi.fn(async (): Promise<ManualAcquisitionOutcome> => ({ status: "candidate_review", payload: {} }));
+    const attempt = () => startManualAcquisition({ ...input, identity: reviewedIdentity, basis }, { acquire, env: ON });
+
+    const claimed = await Promise.all([attempt(), attempt()]);
+    expect(claimed.filter(Boolean)).toHaveLength(1);
+    await vi.waitFor(async () => expect((await record()).state).toBe("candidate_review"));
+    expect(await attempt()).toBe(false);
+    expect(acquire).toHaveBeenCalledTimes(1);
+    expect((await record()).reviewed_digest).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it.each(["no_manual_found", "candidate_review"])("confirmation reuses one reviewed search after an unattached %s", async (state) => {
+    await seedReviewedRecord({ state });
+    let resolveAcquisition!: (outcome: ManualAcquisitionOutcome) => void;
+    const pending = new Promise<ManualAcquisitionOutcome>((resolve) => {
+      resolveAcquisition = resolve;
+    });
+    const acquire = vi.spyOn(manualAcquisition, "acquireManualForIdentity").mockReturnValue(pending);
+    const confirm = () => confirmIdentity(new NextRequest("http://test/identity/confirm", {
+      method: "POST",
+      body: JSON.stringify({ manufacturer: reviewedIdentity.manufacturer, model: reviewedIdentity.model }),
+    }), { params: Promise.resolve({ id: NB }) });
+
+    try {
+      const first = await confirm();
+      expect(await first.json()).toMatchObject({ ok: true, searching: true });
+      const second = await confirm();
+      expect(await second.json()).toMatchObject({ ok: true, searching: true });
+      expect(acquire).toHaveBeenCalledTimes(1);
+    } finally {
+      resolveAcquisition({ status: "candidate_review", payload: {} });
+      if (acquire.mock.calls.length > 0) {
+        await vi.waitFor(async () => expect((await record()).state).toBe("candidate_review"));
+      }
+      acquire.mockRestore();
+    }
+    const settled = await confirm();
+    expect(await settled.json()).toMatchObject({ ok: true, searching: false });
+  });
+
+  it.each([
+    { linked: true },
+    { attached_indexed: true },
+    { doc_id: DOC },
+    { file_id: FILE },
+    { prior_doc_id: DOC },
+    { prior_file_id: FILE },
+    { source_removed: true },
+    { match_state: "rejected" },
+  ])("preserves a terminal record with acquisition history %j", async (history) => {
+    await seedReviewedRecord({ state: "candidate_review", ...history });
+    const acquire = vi.fn(outage);
+    const started = await startManualAcquisition({ ...input, identity: reviewedIdentity }, { acquire, env: ON });
+    expect(started).toBe(false);
+    expect(acquire).not.toHaveBeenCalled();
+    expect(await record()).toMatchObject(history);
   });
 
   it("a live running search refuses an explicit confirmation (it is not taken over)", async () => {

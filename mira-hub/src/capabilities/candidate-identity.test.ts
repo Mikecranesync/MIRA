@@ -121,6 +121,8 @@ describe("asksToFindManual", () => {
     "What does the Siemens 6AV2124-0GC01-0AX0 manual say about alarms?",
     "Show me the voltage from the manual",
     "Show me instructions for setting the acceleration time.",
+    "Show me the operating instructions for setting the acceleration time.",
+    "Get installation instructions for replacing this drive.",
   ])("preserves a question that uses manual contents (%s)", (message) => {
     expect(asksToFindManual(message)).toBe(false);
   });

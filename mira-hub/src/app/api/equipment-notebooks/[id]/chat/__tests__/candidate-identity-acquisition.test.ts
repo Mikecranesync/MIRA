@@ -171,6 +171,33 @@ describe("exact catalog number on an explicit manual request", () => {
     expect(global.fetch).not.toHaveBeenCalled();
   });
 
+  it.each(["no_manual_found", "candidate_review"])("tries an exact reviewed lookup after an unattached %s", async (state) => {
+    const key = "AUTOMATIONDIRECT|GS11N20P2|";
+    acqMock.readAcquisition
+      .mockResolvedValueOnce({ key, state, linked: false, attached_indexed: false })
+      .mockResolvedValue({ key, state: "running", started_at: "2026-11-21T00:00:00Z" });
+    const res = await POST(req({ message: "Find the official manual for AutomationDirect GS11N-20P2.", mode: "general" }), params);
+    const result = await frames(res);
+    expect(acqMock.startManualAcquisition).toHaveBeenCalledTimes(1);
+    expect(acqMock.startManualAcquisition).toHaveBeenCalledWith(expect.objectContaining({
+      basis: "candidate", identity: expect.objectContaining({ model: "GS11N-20P2" }),
+    }));
+    expect(result).toContainEqual(expect.objectContaining({ kind: "manual_search_status", running: true }));
+  });
+
+  it("reports the winning reviewed search when another request claims the stale record first", async () => {
+    const key = "AUTOMATIONDIRECT|GS11N20P2|";
+    const startedAt = "2026-11-21T00:00:00Z";
+    acqMock.readAcquisition
+      .mockResolvedValueOnce({ key, state: "candidate_review" })
+      .mockResolvedValue({ key, state: "running", started_at: startedAt });
+    acqMock.startManualAcquisition.mockResolvedValue(false);
+    const res = await POST(req({ message: "Find the official manual for AutomationDirect GS11N-20P2.", mode: "general" }), params);
+    expect(await frames(res)).toContainEqual(expect.objectContaining({
+      kind: "manual_search_status", running: true, startedAt,
+    }));
+  });
+
   it.each([
     ["AutomationDirect", "GS11N-20P2"],
     ["Allen-Bradley", "2080-LC20-20QBB"],

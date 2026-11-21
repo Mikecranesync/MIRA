@@ -309,8 +309,10 @@ async function acquireInner(
   // — set from the discovery result itself, never invented when mira-ask
   // didn't carry search_stats (an old version, or a malformed response).
   const reviewed = reviewedManualFor(identity);
-  if (!reviewed && identity.model && identity.catalogNumber &&
-      reviewedManualFor({ manufacturer: identity.manufacturer, catalogNumber: identity.catalogNumber })) {
+  if (!reviewed && identity.model && identity.catalogNumber && (
+    reviewedManualFor({ manufacturer: identity.manufacturer, model: identity.model }) ||
+    reviewedManualFor({ manufacturer: identity.manufacturer, catalogNumber: identity.catalogNumber })
+  )) {
     return outcome("manufacturer_model_required", {
       message: "The model and order number do not identify the same reviewed equipment. Check both fields before looking up its manual.",
     });

@@ -222,6 +222,72 @@ it.each([
   expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
 });
 
+it.each([
+  { manufacturer: "ABB", model: "ACS355", text: "ABB\nModel: ACS355\nS/N: TEST-ABB-001" },
+  { manufacturer: "Schneider Electric", model: "CA3KN22BD", text: "Schneider Electric\nCA3KN22BD\nS/N: TEST-SE-002" },
+])("F2: offers $model for confirmation when its label has a separate serial", async ({ manufacturer, model, text }) => {
+  ragMock.resolveModelFromObservationText.mockImplementation(resolveModelFromObservationText);
+  visualMock.loadVisualEvidenceForPhoto.mockResolvedValue({
+    observationId: "obs", sessionId: "session", text, obsKind: "look", trust: "candidate", fileId: PHOTO, hazards: [],
+  });
+  const result = await frames(await POST(req({
+    message: "Find me the manual for this.",
+    mode: "general",
+    visualEvidence: { fileId: PHOTO },
+  }), params));
+  expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+  expect(result.find((frame) => frame.kind === "identity_proposal")).toMatchObject({ manufacturer, model });
+});
+
+it("F2 control: a compact model repeated as the serial is not offered for confirmation", async () => {
+  ragMock.resolveModelFromObservationText.mockImplementation(resolveModelFromObservationText);
+  visualMock.loadVisualEvidenceForPhoto.mockResolvedValue({
+    observationId: "obs",
+    sessionId: "session",
+    text: "Schneider Electric\nCA3KN22BD\nS/N: CA3KN22BD",
+    obsKind: "look",
+    trust: "candidate",
+    fileId: PHOTO,
+    hazards: [],
+  });
+  const result = await frames(await POST(req({
+    message: "Find me the manual for this.",
+    mode: "general",
+    visualEvidence: { fileId: PHOTO },
+  }), params));
+  expect(result.find((frame) => frame.kind === "identity_proposal")).toBeUndefined();
+  expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+});
+
+it("F5: a request for operating instructions to perform a task still retrieves from the OEM corpus", async () => {
+  const message = "Show me the operating instructions for setting the acceleration time.";
+  ragMock.corpusManufacturers.mockResolvedValue(["AutomationDirect"]);
+  ragMock.manufacturerFromObservationText.mockReturnValue("AutomationDirect");
+  const passage = "P01.12 Acceleration Time 1 sets the acceleration time.";
+  ragMock.retrieveManualChunks.mockResolvedValue([{
+    id: "acceleration-time",
+    content: passage,
+    score: 1,
+    manufacturer: "AutomationDirect",
+    model: "GS10",
+    sourceTitle: "GS10 user manual",
+    sourcePage: 139,
+    sourceUrl: null,
+    docId: "gs10-manual",
+    chunkIndex: 0,
+  }]);
+  vi.stubGlobal("fetch", vi.fn(async () => new Response(providerStream(passage + " [1]"), { status: 200 })));
+  const result = await frames(await POST(req({ message, mode: "general", visualEvidence: { fileId: PHOTO } }), params));
+  expect(ragMock.retrieveManualChunks).toHaveBeenCalledWith(
+    expect.anything(), TENANT, expect.any(String), expect.objectContaining({ manufacturer: "AutomationDirect", rawQuery: message }),
+  );
+  expect(result.find((frame) => frame.kind === "sources")).toMatchObject({
+    citations: [expect.objectContaining({ docId: "gs10-manual", page: 139 })],
+  });
+  expect(result.find((frame) => frame.kind === "identity_proposal")).toBeUndefined();
+  expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+});
+
 describe("a nameplate photo starts the manual search on the same turn", () => {
   it("unbound notebook + plate photo + plain question → proposal from the plate and a candidate-basis search, no confirm", async () => {
     const f = await frames(await plateTurn());

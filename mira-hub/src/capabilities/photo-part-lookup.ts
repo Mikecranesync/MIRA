@@ -137,6 +137,25 @@ function splitFields(t: string): { open: string; secret: string[] } {
   return { open: t.slice(0, from), secret: [t.slice(from)] };
 }
 
+/** Only the public prefix may supply an unlabelled model for confirmation. */
+export function publicLabelText(text: string): string {
+  return splitFields(normalize(text)).open;
+}
+
+/**
+ * Display-only evidence for an unlabelled model on its own line before one
+ * explicitly valued serial field. This does not change the search veto.
+ */
+export function hasSeparateSerialField(text: string, model: string): boolean {
+  const { open, secret } = splitFields(normalize(text));
+  if (!/\r?\n[ \t]*$/.test(open) || !open.trimEnd().split(/\r?\n/).some((line) => line.trim().toUpperCase() === model.toUpperCase())) {
+    return false;
+  }
+  const serial = /^(?:s\/n|serial(?:\s+(?:no\.?|number))?)[ \t]*[:#=][ \t]*([a-z0-9][a-z0-9./-]{3,})[ \t]*$/i
+    .exec(secret[0]?.trim() ?? "")?.[1];
+  return !!serial && !identifierKey(serial).includes(identifierKey(model));
+}
+
 /** A genuine part label is followed by a separator (":", "#" or a space)
  *  before its value — "PN12345678" is one token, not a label and a value. */
 const GENUINE_PART_LABEL = new RegExp(PART_LABEL.source.replace(String.raw`\s*[:#]?\s*(`, String.raw`(?:\s*[:#]\s*|\s+)(`), "gi");

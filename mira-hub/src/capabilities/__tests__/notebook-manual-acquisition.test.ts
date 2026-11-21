@@ -123,20 +123,6 @@ describe("acquisitionEnabled — the tenant argument changes nothing", () => {
 });
 
 describe("startManualAcquisition", () => {
-  it("allows a reviewed publication to replace a stored miss without restoring a removed source", async () => {
-    const acquire = vi.fn(async () => ({ status: "complete" as const, payload: {} }));
-    await startManualAcquisition({
-      ...input,
-      identity: { ...input.identity, manufacturer: "AutomationDirect", model: "GS11N-20P2" },
-    }, { acquire, env: ON });
-    const claimQ = db.queries.find((q) => /RETURNING manual_acquisition->>'gen'/.test(q.sql))!;
-    expect(claimQ.params[7]).toBe(true);
-    expect(claimQ.sql).toMatch(/\$8::boolean\s+AND manual_acquisition->>'state' = 'no_manual_found'/);
-    expect(claimQ.sql).toContain("manual_acquisition->>'source_removed' IS DISTINCT FROM 'true'");
-    expect(claimQ.sql).toContain("manual_acquisition->>'prior_file_id' IS NULL");
-    await vi.waitFor(() => expect(db.queries.some((q) => /jsonb_set/.test(q.sql))).toBe(true));
-  });
-
   it("claims, runs the pipeline in the background with the CONFIRMED identity, and records the outcome", async () => {
     const acquire = vi.fn(async () => ({
       status: "candidate_review" as const,
@@ -155,7 +141,7 @@ describe("startManualAcquisition", () => {
     });
     const claimQ = db.queries.find((q) => /RETURNING manual_acquisition->>'gen'/.test(q.sql))!;
     // A background start is NOT an explicit technician confirmation ($7 false).
-    expect(claimQ.params).toEqual(["t", "nb", "SMC|VQ1000FPGC6C6D|", 10, 30, 3, false, false]);
+    expect(claimQ.params.slice(0, 8)).toEqual(["t", "nb", "SMC|VQ1000FPGC6C6D|", 10, 30, 3, false, null]);
     expect(claimQ.sql).toMatch(/state' = 'search_unavailable'/);
     // #4160 S4 — anchored to the specific WHERE-clause predicates (not just
     // "appears somewhere in the query"):
