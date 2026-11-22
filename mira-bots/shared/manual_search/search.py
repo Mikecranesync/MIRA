@@ -290,6 +290,22 @@ def _is_oem_host(host: str, make: str) -> bool:
     return any(host == d or host.endswith("." + d) for d in _oem_domains_for(make))
 
 
+def _may_offer_unread(c: dict, make: str) -> bool:
+    """Whether a candidate the judge could not read may still be offered for review.
+
+    A web page (not a direct PDF) is never read, so all it shares with the machine
+    may be the model string: "GS10" is an AutomationDirect drive and a Boss Audio
+    amplifier (#5789). Such a page is offered only if it names the confirmed make or
+    sits on that make's own site. A direct PDF keeps the older rule, since the judge
+    tried to read it. The caller skips this check when there is no make to compare
+    against, or when the identifier is an exact part number.
+    """
+    if c.get("is_direct_pdf"):
+        return True
+    host = c.get("host") or urlparse(c.get("url") or "").netloc
+    return _judge._mentions_make(c, make) or _is_oem_host(host, make)
+
+
 def _is_denied(host: str) -> bool:
     host = host.lower()
     return any(host == d or host.endswith("." + d) for d in DENY_HOSTS)
@@ -998,6 +1014,7 @@ async def search_manual(
     model: str,
     deadline_at: float | None = None,
     identification_link: str | None = None,
+    exact_part_number: bool = False,
 ) -> dict | None:
     """Multi-pass real-time search for a (make, model) manual.
 
@@ -1015,12 +1032,18 @@ async def search_manual(
     (#5070). It joins the pool as the top-ranked candidate ONLY when it is https
     on the OEM list for ``make``; it never changes the queries (the nameplate
     reading drives them) and, like any hit, must validate to be trusted.
+
+    ``exact_part_number`` says ``model`` is a full catalog number read off a label
+    (the photo part search). Such a number is specific enough that an unread page
+    naming it may be the part, so the make check on unread pages (#5789), which
+    exists because short model strings are reused by other makers, is skipped.
     """
     started_at = time.monotonic()  # the judge's upgrade deadline counts from here
     make = (make or "").strip()
     model = (model or "").strip()
     if not (make or model):
         return None
+    screen_unread = bool(make) and not exact_part_number
 
     candidates: list[dict] = []
     # Availability is judged from requests actually SENT (#4171 Codex F2): a
@@ -1234,7 +1257,11 @@ async def search_manual(
         # candidate was read and rejected, say so (top rejection + reasons)
         # rather than surfacing an unread stranger.
         unread = [c for c in ranked if not _judge.is_rejected(c)]
-        deduped = [c for c in unread if _judge.relevant(c, make, model)]
+        deduped = [
+            c
+            for c in unread
+            if _judge.relevant(c, make, model) and (not screen_unread or _may_offer_unread(c, make))
+        ]
         if not deduped and not rejected:
             # #4400: nothing names the make or the model and nothing was judged. The
             # old fallback to EVERY unread candidate offered a reseller's company
@@ -1260,6 +1287,13 @@ async def search_manual(
             worst["judged_rejected"] = rejected
             worst["validated"] = False
             return worst
+
+    # The judge-off path offers from the same pool, so it drops the same strangers
+    # (#5789). With the judge on this is already done above.
+    if screen_unread:
+        deduped = [c for c in deduped if _may_offer_unread(c, make)]
+    if not deduped:
+        return None
 
     # HEAD-validate the top few; first one that confirms PDF wins.
     for c in deduped[:5]:
