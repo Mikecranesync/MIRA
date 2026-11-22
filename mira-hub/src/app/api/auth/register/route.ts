@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { ensureUserAndTenant, findUserByEmail } from "@/lib/users";
 import { attributionFromRequest, handlePilotApplicationSubmitted } from "@/capabilities/pilot-funnel";
+import { publicSignupPolicy } from "@/capabilities/free-technician-signup";
 
 export const dynamic = "force-dynamic";
 
@@ -91,7 +92,16 @@ export async function POST(req: Request) {
   } catch {
     return NextResponse.json({ error: "invalid JSON" }, { status: 400, headers });
   }
-  const { email, password, name } = body as { email?: unknown; password?: unknown; name?: unknown };
+  if (!body || typeof body !== "object" || Array.isArray(body)) return NextResponse.json({ error: "invalid request body" }, { status: 400, headers });
+  const { email, password, name, signupIntent } = body as { email?: unknown; password?: unknown; name?: unknown; signupIntent?: unknown };
+  if (signupIntent !== undefined && signupIntent !== "technician" && signupIntent !== "pilot") {
+    return NextResponse.json({ error: "invalid signup intent" }, { status: 400, headers });
+  }
+  const intent = signupIntent === "pilot" ? "pilot" : "technician";
+  const policy = publicSignupPolicy(intent);
+  if (policy.kind === "free_technician" || policy.kind === "pilot_application" || intent === "pilot") {
+    return NextResponse.json({error:"Use verified account setup to review the current offer and confirm your email.",code:"verified_onboarding_required",signupUrl:"/signup/"},{status:403,headers});
+  }
   if (typeof email !== "string" || typeof password !== "string") {
     return NextResponse.json({ error: "email and password required" }, { status: 400, headers });
   }
@@ -120,7 +130,7 @@ export async function POST(req: Request) {
     // for that gap). Fire-and-forget: must never fail or slow this response.
     // tenantName mirrors ensureUserAndTenant's own fallback
     // (mira-hub/src/lib/users.ts) rather than a second DB read.
-    void handlePilotApplicationSubmitted({
+    if (publicSignupPolicy(intent).kind !== "free_technician") void handlePilotApplicationSubmitted({
       tenantId: result.tenantId,
       userId: result.id,
       email: trimmed,

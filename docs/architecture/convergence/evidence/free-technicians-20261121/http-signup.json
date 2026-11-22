@@ -1,0 +1,31 @@
+{
+  "scope": "Actual local NextAuth email-token sessions and protected HTTP APIs; synthetic disposable fixtures only",
+  "policy": {
+    "version": 1,
+    "kind": "free_technician",
+    "requiresApproval": false,
+    "trialDays": null,
+    "agreementVersion": "factorylm-verified-onboarding-v1",
+    "agreementSentence": "I agree to the FactoryLM Terms of Service and free-access policy and Privacy Policy.",
+    "policyUrl": "https://staging.factorylm.com/free-technicians",
+    "privacyUrl": "https://staging.factorylm.com/privacy"
+  },
+  "unverified_password_registration": 403,
+  "unknown_login_request": 503,
+  "ordinary_token_onboarding_bypass": "rejected",
+  "canonical_agreement_bound_onboarding": "passed",
+  "verified_email_signin": "passed",
+  "account_status": "approved",
+  "trial_expiry": null,
+  "tenant_role": "owner",
+  "matching_user_and_workspace": true,
+  "token_replay": "rejected",
+  "free_team_invite": 403,
+  "old_password_after_verified_claim": "rejected",
+  "old_cookie_after_verified_claim": 401,
+  "verified_owner_access": 200,
+  "email_delivery": "not tested; local tokens seeded internally",
+  "public_account_created": false,
+  "email_sent": false,
+  "payment_or_plant_action": false
+}

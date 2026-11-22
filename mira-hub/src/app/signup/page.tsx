@@ -8,6 +8,8 @@ import { Factory, Loader2, Eye, EyeOff, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { API_BASE } from "@/lib/config";
+import { SignupOffer } from "@/factorylm-ui/SignupOffer";
+import { SignupGateway } from "@/factorylm-ui/SignupGateway";
 
 const MIN_PW = 8;
 // Public legal + trust pages are served by the marketing site (factorylm.com),
@@ -19,7 +21,7 @@ const LEGAL = {
 } as const;
 const SUPPORT_EMAIL = "support@factorylm.com";
 
-export default function SignupPage() {
+function LegacySignupPage() {
   const router = useRouter();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -103,7 +105,7 @@ export default function SignupPage() {
           <p className="text-slate-500 text-xs mt-3 max-w-xs text-center">
             Track faults, work orders, assets, manuals, and shift handoffs in one place.
           </p>
-          <p className="text-slate-500 text-xs mt-2">7-day free trial — no credit card.</p>
+          <SignupOffer />
         </div>
 
         <div
@@ -269,4 +271,8 @@ export default function SignupPage() {
       </div>
     </div>
   );
+}
+
+export default function SignupPage() {
+  return <SignupGateway><LegacySignupPage /></SignupGateway>;
 }
