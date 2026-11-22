@@ -4,6 +4,18 @@ Status date: 2026-11-08. Owner: CHARLIE Codex, integration role.
 Strategy: [NORTH_STAR.md](NORTH_STAR.md).
 Live acceptance and agent updates: [#5232](https://github.com/Mikecranesync/MIRA/issues/5232).
 
+## Current capability — Find the Right Equipment
+
+Mike's 2026-11-18 direction is to deliver one technician capability at a time.
+Follow the [capability roadmap](docs/plans/capability-roadmap.md) and
+[Step 1 acceptance contract](docs/plans/find-the-right-equipment.md), revision 1.
+Step 1 stays current until FIND-01–10 pass on the identified connected build and
+Mike's acceptance is recorded in #5232. Then advance to **Open Its Workbench**.
+All five existing sessions acknowledge the plan commit in their existing owner
+records; the ontology specialist remains separate from the shared-UI writer.
+This adds no implementation owner, release authority or replacement capability
+registry, and preserves the complete integrated product milestone below.
+
 ## North stars and end goals
 
 1. **Trustworthy context:** turn messy maintenance information into human-approved,
