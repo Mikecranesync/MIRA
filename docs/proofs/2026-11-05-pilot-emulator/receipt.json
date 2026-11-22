@@ -1,0 +1,156 @@
+{
+  "verdict": "NOT YET ACCEPTED - physical Pixel and two real technicians remain",
+  "emulatorScenarioChecks": {
+    "pass": 11,
+    "fail": 0,
+    "unverifiedMandatory": "physical Pixel/camera and two real technicians"
+  },
+  "sha": "090c8e15bfcbd85f0091103cf5a6f5fc6b221056",
+  "runtime": {
+    "gitSha": "090c8e15bfcbd85f0091103cf5a6f5fc6b221056",
+    "builtAt": "2026-11-05T23:57:57Z",
+    "version": "3.444.8"
+  },
+  "emulator": {
+    "serial": "emulator-5584",
+    "avd": "mira35",
+    "android": "15/API35",
+    "chrome": "124.0.6367.219"
+  },
+  "jobId": "04bce10d-1acc-4a21-b5ba-fa06d3d14b05",
+  "notebookId": "d36d1927-d466-4cb4-8cad-3ce8394c3201",
+  "orderId": 1652,
+  "atlasStatus": "OPEN",
+  "events": [
+    {
+      "id": "db2f691f-c811-4a34-b39d-efd7df29f779",
+      "seq": 1,
+      "kind": "job_started",
+      "clientEventId": "eeb8ad3b-549c-44c2-8521-391f90d754ca"
+    },
+    {
+      "id": "3e31df8e-3d88-4006-86db-178f528d554d",
+      "seq": 2,
+      "kind": "note_added",
+      "clientEventId": "15ccf0c4-df63-44bb-8eb4-8095b16a84c0"
+    },
+    {
+      "id": "a37780e9-76e0-42fa-89a0-31d0d92964f1",
+      "seq": 3,
+      "kind": "note_added",
+      "clientEventId": "12414a52-2b1d-41e6-ab47-e37661c02173"
+    },
+    {
+      "id": "4ba851f9-8d55-4151-87bc-20f90feaa2e9",
+      "seq": 4,
+      "kind": "handover_written",
+      "clientEventId": "258715c8-ca7b-4ed0-9e01-e9e7d2c0264b"
+    },
+    {
+      "id": "6c87a5c4-507c-44ca-9372-9853ec93a385",
+      "seq": 5,
+      "kind": "photo_attached",
+      "clientEventId": "f0328522-e332-473d-b575-93f617502cf9"
+    },
+    {
+      "id": "2421fd67-8917-41d2-8b20-7fa167580289",
+      "seq": 6,
+      "kind": "job_finished",
+      "clientEventId": "f051e6da-28fa-49cf-af2d-04715b210451"
+    }
+  ],
+  "deliveries": [
+    {
+      "event_id": "2a9fe6a8-6df4-483d-9849-cbf73811fd7b",
+      "event_type": "work_order_requested",
+      "state": "verified_by_readback",
+      "attempts": 1,
+      "external_ref": "1652",
+      "updated_at": "2026-11-06T00:17:39.613Z"
+    },
+    {
+      "event_id": "9d68cf61-e69e-46b3-9d9d-dcb4be3af6e5",
+      "event_type": "job_finished",
+      "state": "verified_by_readback",
+      "attempts": 1,
+      "external_ref": "2",
+      "updated_at": "2026-11-06T00:19:41.956Z"
+    }
+  ],
+  "privacy": {
+    "historyStatus": 200,
+    "privateTurnAbsent": true,
+    "privateThreadAbsent": true,
+    "turnsReturned": 0,
+    "diagnosticContentKeys": [],
+    "diagnostic": {
+      "status": 200
+    },
+    "replay": {
+      "status": 200,
+      "body": {
+        "eventId": "2a9fe6a8-6df4-483d-9849-cbf73811fd7b",
+        "replayed": true,
+        "delivery": {
+          "deliveryId": "ae448834-d74a-46a5-a7f2-bd50943ee6b0",
+          "state": "queued"
+        }
+      }
+    },
+    "sheetSeq": 6
+  },
+  "privateOwnerReadback": {
+    "account": "00000000-0000-0000-0000-000000000091",
+    "status": 200,
+    "ownTurnPresent": true,
+    "ownThreadPresent": true,
+    "turnsReturned": 1
+  },
+  "crossTenant": {
+    "actorId": "00000000-0000-0000-0000-000000000197",
+    "tenantId": "00000000-0000-0000-0000-000000000199",
+    "results": [
+      {
+        "name": "notebook",
+        "status": 404,
+        "mime": "application/json",
+        "bytes": 21
+      },
+      {
+        "name": "job",
+        "status": 404,
+        "mime": "application/json",
+        "bytes": 30
+      },
+      {
+        "name": "work-order",
+        "status": 404,
+        "mime": "application/json",
+        "bytes": 30
+      },
+      {
+        "name": "photo",
+        "status": 404,
+        "mime": "application/json",
+        "bytes": 26
+      }
+    ],
+    "scope": "actual authenticated emulator requests; approved other-tenant QA identity"
+  },
+  "restart": {
+    "method": "adb force-stop Chrome then launch existing app; no URL supplied on launch",
+    "beforeUrl": "https://app-staging.factorylm.com/v3/?notebook=d36d1927-d466-4cb4-8cad-3ce8394c3201&thread=1215202a-0e74-47ab-b69f-2985ae420bea",
+    "afterUrl": "https://app-staging.factorylm.com/v3/?notebook=d36d1927-d466-4cb4-8cad-3ce8394c3201&thread=1215202a-0e74-47ab-b69f-2985ae420bea",
+    "sameNotebookAndThread": true,
+    "authRestored": true,
+    "canonicalSeq": 6,
+    "photoReadable": true,
+    "health": {
+      "gitSha": "090c8e15bfcbd85f0091103cf5a6f5fc6b221056",
+      "builtAt": "2026-11-05T23:57:57Z",
+      "version": "3.444.8"
+    }
+  },
+  "humanParticipants": 0,
+  "productionChanged": false
+}
