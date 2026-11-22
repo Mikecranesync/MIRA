@@ -293,7 +293,7 @@ ${related.map((r) => `      <li><a href="/blog/${r.slug}">${escHtml(r.title)}</a
     "@context": "https://schema.org",
     "@graph": [
       {
-        "@type": "TroubleshootingGuide",
+        "@type": "HowTo",
         "@id": `${canonical}#guide`,
         name: fc.title,
         description: fc.metaDescription,
