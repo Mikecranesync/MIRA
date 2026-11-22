@@ -287,7 +287,13 @@ it.each([
   ];
 
   const result = await acquireManualForIdentity({ ...BASE_INPUT, identity, basis: "candidate" });
-  expect(discoveryMock.discoverManual).toHaveBeenCalledWith({ manufacturer: "ABB", model: orderNumber }, expect.anything());
+  // #5828: a catalog-field order number travels as catalogNumber, beside its model.
+  expect(discoveryMock.discoverManual).toHaveBeenCalledWith(
+    field === "model"
+      ? { manufacturer: "ABB", model: orderNumber }
+      : { manufacturer: "ABB", model: "ACS355", catalogNumber: orderNumber },
+    expect.anything(),
+  );
   expect(result.status).toBe("candidate_review");
   expect(result.payload.manual).toMatchObject({ attached: true, enabledByDefault: false });
   expect(storedPatch()).toMatchObject({

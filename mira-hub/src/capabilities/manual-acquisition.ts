@@ -305,6 +305,17 @@ function isUnlistedOrderForModel(model: string, catalogNumber: string): boolean 
     text.toUpperCase().startsWith(base + "-");
 }
 
+/**
+ * A whole catalog number: the shape the photo lookup already trusts as a part
+ * code (photo-part-lookup.ts PART_CODE, matched against the whole value). It
+ * needs 8 or more letters, digits and separators, at least one letter, at least
+ * one digit, and a - or / between letter-digit groups. mira-ask lets an unread
+ * page through without naming the maker when it names this exact value (#5789),
+ * so a short or loose value ("GS10", "525") must go as a model and be screened
+ * as one (#5828).
+ */
+const WHOLE_CATALOG_NUMBER = /^(?=[A-Z0-9/-]{8,}$)(?=[A-Z0-9/-]*[A-Z])(?=[A-Z0-9/-]*\d)[A-Z0-9]+(?:[-/][A-Z0-9]+){1,4}$/;
+
 async function acquireInner(
   input: ManualAcquisitionInput,
   sink: { trail: CandidateTrail | null } = { trail: null },
@@ -360,11 +371,15 @@ async function acquireInner(
         quotaExceeded: false,
       };
     }
+    // #5828: a confirmed whole catalog number travels as catalogNumber, so
+    // mira-ask applies its exact-part-number rule (#5789), and the model keeps
+    // its own field. Anything else goes as the model, exactly as before.
+    const modelPart = manualLookupPart({ model: identity.model });
+    const catalogPart = manualLookupPart({ catalogNumber: identity.catalogNumber });
     const d = await discoverManual(
-      {
-        manufacturer: identity.manufacturer,
-        model: lookupPart,
-      },
+      catalogPart && WHOLE_CATALOG_NUMBER.test(catalogPart)
+        ? { manufacturer: identity.manufacturer, ...(modelPart ? { model: modelPart } : {}), catalogNumber: catalogPart }
+        : { manufacturer: identity.manufacturer, model: lookupPart },
       ctx,
     );
     const providerQueries = d.searchStats?.providerQueries ?? null;

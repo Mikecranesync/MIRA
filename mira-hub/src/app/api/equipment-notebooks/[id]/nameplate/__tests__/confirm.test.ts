@@ -713,10 +713,47 @@ describe("manual import: candidate until the document proves itself", () => {
     vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());
     provingText();
     await acquireManualForIdentity(acquireInput);
-    expect(discoverManual).toHaveBeenCalledWith(
-      { manufacturer: "Allen-Bradley", model: "25B-D010N104" },
-      { tenantId: TENANT_ID, userId: "u1" },
-    );
+    // #5828: the confirmed catalog number travels as catalogNumber (mira-ask's
+    // exact-part-number rule keys on catalog_number), and the model keeps its
+    // own field. Exact call shape: no extra keys.
+    const [calledIdentity, calledCtx] = vi.mocked(discoverManual).mock.calls.at(-1)!;
+    expect(calledIdentity).toStrictEqual({ manufacturer: "Allen-Bradley", model: "525", catalogNumber: "25B-D010N104" });
+    expect(calledCtx).toStrictEqual({ tenantId: TENANT_ID, userId: "u1" });
+  });
+
+  // #5828: as catalog_number, a short or loose value would let an unread page
+  // that names only "GS10" through for another maker: the #5789 leak. Each row
+  // misses one clause of the whole-catalog-number shape and must go as a model,
+  // exactly as before #5828.
+  it.each([
+    { why: "repeats the model", model: "GS10", catalogNumber: "gs10", sent: "GS10" },
+    { why: "has no model beside it", model: undefined, catalogNumber: "GS10", sent: "GS10" },
+    { why: "differs from a longer model", model: "GS10 drive", catalogNumber: "GS10", sent: "GS10" },
+    { why: "is digits only", model: "PowerFlex 525", catalogNumber: "525", sent: "525" },
+    { why: "is under 8 characters", model: undefined, catalogNumber: "AB-12", sent: "AB-12" },
+    { why: "has no separator", model: undefined, catalogNumber: "ABCD1234", sent: "ABCD1234" },
+    { why: "has no letter", model: undefined, catalogNumber: "1234-5678", sent: "1234-5678" },
+    { why: "has no digit", model: undefined, catalogNumber: "ABCD-EFGH", sent: "ABCD-EFGH" },
+    { why: "has a space", model: undefined, catalogNumber: "25B D010N104", sent: "25B D010N104" },
+    { why: "carries other text", model: undefined, catalogNumber: "see 25B-D010N104", sent: "SEE 25B-D010N104" },
+  ])("#5828: a catalog number that $why is sent as the model, so the exact-part rule stays off", async ({ model, catalogNumber, sent }) => {
+    vi.mocked(discoverManual).mockResolvedValue({ ...importableDiscovery(), oemRequestUrl: null, quotaExceeded: false });
+    vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());
+    provingText();
+    const loose = { ...acquireInput, identity: { manufacturer: "AutomationDirect", model, catalogNumber } };
+    await acquireManualForIdentity(loose);
+    const [calledIdentity] = vi.mocked(discoverManual).mock.calls.at(-1)!;
+    expect(calledIdentity).toStrictEqual({ manufacturer: "AutomationDirect", model: sent });
+  });
+
+  it("#5828: a catalog number with no model is sent as catalogNumber alone", async () => {
+    vi.mocked(discoverManual).mockResolvedValue({ ...importableDiscovery(), oemRequestUrl: null, quotaExceeded: false });
+    vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());
+    provingText();
+    const catalogOnly = { ...acquireInput, identity: { manufacturer: "Allen-Bradley", catalogNumber: "25B-D010N104" } };
+    await acquireManualForIdentity(catalogOnly);
+    const [calledIdentity] = vi.mocked(discoverManual).mock.calls.at(-1)!;
+    expect(calledIdentity).toStrictEqual({ manufacturer: "Allen-Bradley", catalogNumber: "25B-D010N104" });
   });
 
   it("Codex #4118 r3 F5: a refusing attach hook (lost ownership) skips every later write", async () => {
