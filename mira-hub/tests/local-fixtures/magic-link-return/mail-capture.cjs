@@ -25,6 +25,13 @@
  *    run.sh waits for that exact answer, so a different server that happens
  *    to hold the port can never pass readiness.
  *
+ * 4. Private listener (#5817). The Hub's HTTP server is moved off TCP onto
+ *    MLR_LISTEN_SOCKET, a Unix socket inside the run's private work directory.
+ *    The browser reaches it only through run.sh's relay (`relay.cjs`), which
+ *    holds the Hub port for the whole run, so if the server dies another
+ *    process can take neither the port nor the requests. Any other TCP listen
+ *    by an HTTP server is refused.
+ *
  * The shared fixture guard (`../harness/egress-guard.cjs`) is not reused
  * because it refuses every Unix socket, and this test needs one database.
  */
@@ -40,9 +47,10 @@ const capturePath = process.env.MLR_MAIL_CAPTURE;
 const hubPort = Number(process.env.MLR_ALLOW_HUB_PORT || 0);
 const dbSocket = process.env.MLR_ALLOW_DB_SOCKET || "";
 const readyToken = process.env.MLR_READY_TOKEN || "";
-if (!capturePath || !hubPort || !dbSocket || !readyToken) {
+const listenSocket = process.env.MLR_LISTEN_SOCKET || "";
+if (!capturePath || !hubPort || !dbSocket || !readyToken || !listenSocket) {
   throw new Error(
-    "magic-link mail-capture: MLR_MAIL_CAPTURE, MLR_ALLOW_HUB_PORT, MLR_ALLOW_DB_SOCKET and MLR_READY_TOKEN are required",
+    "magic-link mail-capture: MLR_MAIL_CAPTURE, MLR_ALLOW_HUB_PORT, MLR_ALLOW_DB_SOCKET, MLR_READY_TOKEN and MLR_LISTEN_SOCKET are required",
   );
 }
 
@@ -143,4 +151,21 @@ http.Server.prototype.emit = function markerEmit(event, req, res) {
     return true;
   }
   return originalEmit.apply(this, arguments);
+};
+
+// ---- 4. Private listener ---------------------------------------------------
+// `next start -p <port>` calls server.listen(port, hostname). That call is
+// moved to the private socket; Next reads back a path from server.address()
+// and keeps the port it was given, so its own URLs still name the relay.
+const originalListen = net.Server.prototype.listen;
+net.Server.prototype.listen = function privateListen(...args) {
+  if (!(this instanceof http.Server)) return originalListen.apply(this, args);
+  const first = args[0];
+  const tcpPort = typeof first === "object" && first !== null ? first.port : first;
+  if (typeof first === "object" && first !== null && first.path) return originalListen.apply(this, args);
+  if (Number(tcpPort) === hubPort) {
+    const callback = args.find((a) => typeof a === "function");
+    return callback ? originalListen.call(this, listenSocket, callback) : originalListen.call(this, listenSocket);
+  }
+  throw refusal("listen", `tcp ${String(tcpPort)}`);
 };
