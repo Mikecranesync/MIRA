@@ -2398,3 +2398,82 @@ def test_post_cap_human_authorized_review_only_never_invokes_claude(tmp_path):
     assert len(res) == 1
     assert "mode: review_only" in res[0]
     assert "human_authorized: true" in res[0]
+
+
+# ── CONVERGED stop (#4524 part 1) ──────────────────────────────────────────
+MEDIUM_ONLY_ENVELOPE = {
+    **ISSUES_ENVELOPE,
+    "findings": [{**ISSUES_ENVELOPE["findings"][0], "severity": "MEDIUM"}],
+}
+
+
+def test_loop_stops_before_remediation_on_a_converged_verdict(tmp_path):
+    """(a) A fresh MEDIUM-only verdict ends the loop with exit 5 and never
+    launches Claude, and the escalation does not suggest a post-cap pass."""
+    h = Harness(tmp_path)
+    h.set_envelope(MEDIUM_ONLY_ENVELOPE)
+    r = h.run("adversarial-review-loop.sh", "99")
+    assert r.returncode == 5, r.stdout + r.stderr
+    assert h.codex_runs() == 1
+    assert h.claude_runs() == 0
+    posted = h.posted()
+    assert "CONVERGED" in posted and "[REVIEW-FOLLOWUPS]" in posted
+    assert "ADV_REVIEW_HUMAN_AUTHORIZED" not in posted
+    assert "post-cap" not in posted.lower()
+
+
+@pytest.mark.parametrize("severity", ["HIGH", "BLOCKER"])
+def test_loop_still_remediates_a_high_finding(tmp_path, severity):
+    """(b) One HIGH or BLOCKER is not converged: remediation still launches."""
+    h = Harness(tmp_path)
+    h.set_envelope(
+        {**ISSUES_ENVELOPE, "findings": [{**ISSUES_ENVELOPE["findings"][0], "severity": severity}]}
+    )
+    r = h.run("adversarial-review-loop.sh", "99", "--max-iter", "2")
+    assert r.returncode != 5, r.stdout + r.stderr
+    assert h.claude_runs() == 1
+    assert "CONVERGED" not in h.posted()
+
+
+def test_loop_max_iter_one_reviews_a_high_finding_but_never_remediates(tmp_path):
+    """Why the controller's full mode asks for two cycles: one cycle stops before the fix."""
+    h = Harness(tmp_path)
+    h.set_envelope(
+        {**ISSUES_ENVELOPE, "findings": [{**ISSUES_ENVELOPE["findings"][0], "severity": "HIGH"}]}
+    )
+    r = h.run("adversarial-review-loop.sh", "99", "--max-iter", "1")
+    assert r.returncode == 1, r.stdout + r.stderr
+    assert h.claude_runs() == 0
+
+
+def test_loop_green_verdict_is_unchanged_by_the_converged_stop(tmp_path):
+    """(c) GREEN keeps its meaning and its exit code."""
+    h = Harness(tmp_path)
+    h.set_envelope(GREEN_ENVELOPE)
+    r = h.run("adversarial-review-loop.sh", "99")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "ADVERSARIAL GATE: GREEN" in r.stdout
+    assert "CONVERGED" not in r.stdout + h.posted()
+
+
+def test_loop_malformed_severity_never_converges(tmp_path):
+    """(d) A malformed count source fails closed: no CONVERGED, no Claude."""
+    h = Harness(tmp_path)
+    bad = {
+        **ISSUES_ENVELOPE,
+        "findings": [{**ISSUES_ENVELOPE["findings"][0], "severity": "CRITICAL"}],
+    }
+    h.set_envelope(bad)
+    r = h.run("adversarial-review-loop.sh", "99")
+    assert r.returncode == 2, r.stdout + r.stderr
+    assert h.claude_runs() == 0
+    assert "CONVERGED" not in r.stdout + h.posted()
+
+
+def test_review_only_medium_verdict_keeps_exit_1(tmp_path):
+    """--review-only never remediated; its MEDIUM-only exit code stays 1."""
+    h = Harness(tmp_path)
+    h.set_envelope(MEDIUM_ONLY_ENVELOPE)
+    r = h.run("adversarial-review-loop.sh", "99", "--review-only")
+    assert r.returncode == 1, r.stdout + r.stderr
+    assert h.claude_runs() == 0

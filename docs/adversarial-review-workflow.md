@@ -233,9 +233,11 @@ both, the PR is CONVERGED: do not request another pass. File each MEDIUM as a
 follow-up issue, post the `[REVIEW-FOLLOWUPS]` record (format in charter §3 of
 `docs/architecture/convergence/UNIFIED_UI_CUTOVER.md`), dispatch a fresh guard
 run, and hand the merge to the owner (`docs/architecture/mira-sdlc-v1.md` §4.3).
-The Lifecycle Guard accepts that state. The full loop does **not** yet stop on
-it by itself (#4524): on a CONVERGED verdict use `--review-only` passes and
-never start remediation. Stopping the loop must not change what GREEN means.
+The Lifecycle Guard accepts that state. The full loop stops on it by itself
+(#4524): a fresh full-mode verdict with zero BLOCKER and zero HIGH exits 5 before
+remediation and posts a CONVERGED escalation. Stopping the loop does not change
+what GREEN means. `tools/pr_completion.py` (`docs/pr-completion-workflow.md`)
+drives this loop, CI and the follow-up record end to end.
 
 ### Atomic round reservation (Codex iteration-4 F1, 2026-08-17)
 
