@@ -1,0 +1,16 @@
+# EXPECT-VIOLATION: mirash:AssetClassInstanceShape
+# ALSO-FIRES: mirash:InstanceOfDirectionShape the object is declared an installed asset, which is exactly what the direction rule rejects; the two rules cannot be separated on this input
+#
+# Direction error: an installed drive is declared instance_of ANOTHER installed drive.
+#
+# Two rules reject it. RDFS inference types vfd_102 as an asset class (the range of instance_of),
+# so it now reads as both a model and an installed thing: AssetClassInstanceShape. And it was
+# declared an installed asset, which is not an asset class: InstanceOfDirectionShape. The fixture
+# that isolates the direction rule on its own is core_instance_of_a_manufacturer.ttl.
+
+@prefix mira: <https://ontology.factorylm.com/mira#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix ex:   <https://example.org/fx#> .
+
+ex:vfd_101 a mira:AssetInstance ; mira:instance_of ex:vfd_102 .
+ex:vfd_102 a mira:AssetInstance .

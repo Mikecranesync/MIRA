@@ -1,0 +1,18 @@
+# EXPECT-VIOLATION: mirash:FaultAppliedToWrongFamilyShape
+#
+# R4c, the rule the drives module exists for. The drive on the conveyor is a GS10. It is attributed
+# fault F007 as the PowerFlex 40 defines it. The mnemonic matches; the meaning does not transfer.
+
+@prefix mira: <https://ontology.factorylm.com/mira#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix ex:   <https://example.org/fx#> .
+
+ex:automationdirect a mira:Manufacturer .
+ex:rockwell         a mira:Manufacturer .
+ex:gs10 a mira:DriveFamily ; mira:manufactured_by ex:automationdirect .
+ex:pf40 a mira:DriveFamily ; mira:manufactured_by ex:rockwell .
+ex:manual a mira:SourceDocument .
+ex:cite   a mira:Citation ; mira:cite_doc ex:manual ; mira:cite_locator "p.114" .
+ex:f007_pf40 a mira:FaultCode ; mira:fault_mnemonic "F007" ; mira:scoped_to ex:pf40 ;
+             mira:supported_by ex:cite .
+ex:vfd_101 a mira:AssetInstance ; mira:member_of_family ex:gs10 ; mira:has_fault ex:f007_pf40 .

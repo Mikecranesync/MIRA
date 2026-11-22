@@ -1,0 +1,13 @@
+# EXPECT-VIOLATION: mirash:PrintObservationSeparationShape
+#
+# R8. Observation vs physical wiring. One node is BOTH a symbol seen on a sheet and a component
+# that exists in the panel. It carries its region and trust state so only the separation rule fires.
+
+@prefix mira: <https://ontology.factorylm.com/mira#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix ex:   <https://example.org/fx#> .
+
+ex:sheet_4 a mira:Sheet .
+ex:region_k1 a mira:ImageRegion .
+ex:k1 a mira:DeviceSymbol , mira:Component ;
+      mira:supported_by ex:region_k1 ; mira:trust mira:trust_proposed .

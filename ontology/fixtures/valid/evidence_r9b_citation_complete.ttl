@@ -1,3 +1,5 @@
+# PROTECTS: mirash:CitationCompletenessShape
+#
 # R9b satisfied — document + locator, so the claim can be re-checked against the source.
 
 @prefix mira: <https://ontology.factorylm.com/mira#> .

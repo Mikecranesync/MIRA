@@ -1,4 +1,5 @@
 # EXPECT-VIOLATION: mirash:InferenceCannotSelfApproveShape
+# ALSO-FIRES: mirash:ApprovedAssertionEvidenceShape R10a is subsumed by R9: a verified assertion with no approving Technician always violates R9's approved_by rule too
 #
 # R10a — THE highest-risk rule in the ontology. An assertion carrying derived_from was INFERRED.
 # Here the inference worker's own output is marked verified with a SoftwareAgent in the approver

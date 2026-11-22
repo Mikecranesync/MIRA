@@ -1,0 +1,14 @@
+# PROTECTS: mirash:InstanceOfDirectionShape
+#
+# The legitimate objects of instance_of: a plain asset class, a device family and a drive model
+# (both are kinds of asset class). None of them may be rejected by the direction rule.
+
+@prefix mira: <https://ontology.factorylm.com/mira#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix ex:   <https://example.org/fx#> .
+
+ex:generic_motor a mira:AssetClass .
+ex:acme          a mira:Manufacturer .
+ex:acme_x        a mira:DeviceFamily ; mira:manufactured_by ex:acme .
+ex:m_101 a mira:AssetInstance ; mira:instance_of ex:generic_motor .
+ex:d_101 a mira:AssetInstance ; mira:instance_of ex:acme_x .

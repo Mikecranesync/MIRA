@@ -1,0 +1,27 @@
+# EXPECT-VIOLATION: mirash:QuantityKindNeedsNonBoolShape
+#
+# R2b — the signal declares a quantity_kind (it claims to be a physical quantity) yet is
+# observed as value_type 'bool'. Distinct from R2: R2 keys on the MeasurementSignal CLASS,
+# R2b keys on the quantity_kind DECLARATION, so it also catches a plain Signal that was given
+# an engineering kind it cannot carry.
+#
+# Deliberately typed as a bare mira:Signal (not MeasurementSignal) so R2 cannot fire and this
+# fixture isolates R2b.
+
+@prefix mira: <https://ontology.factorylm.com/mira#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix ex:   <https://example.org/fx#> .
+
+ex:plc     a mira:SourceDocument .
+ex:tag_src a mira:Citation ; mira:cite_doc ex:plc ; mira:cite_locator "enterprise.site.line.cv101.dc_bus" .
+ex:run_bit a mira:Signal ; mira:quantity_kind mira:qk_current .
+
+ex:obs_r2b a mira:Observation ;
+    mira:observed_signal ex:run_bit ;
+    mira:value true ;
+    mira:value_type mira:valuetype_bool ;
+    mira:event_timestamp "2026-07-26T14:03:00Z"^^xsd:dateTime ;
+    mira:clock_source mira:clock_plc ;
+    mira:quality mira:quality_good ;
+    mira:freshness mira:freshness_live ;
+    mira:supported_by ex:tag_src .

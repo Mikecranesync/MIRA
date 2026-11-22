@@ -1,0 +1,10 @@
+# PROTECTS: mirash:ResolutionEvidenceShape
+#
+# The resolution is what a work order was closed by.
+
+@prefix mira: <https://ontology.factorylm.com/mira#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix ex:   <https://example.org/fx#> .
+
+ex:wo_1602 a mira:WorkOrder ; mira:closed_by ex:tightened_lug .
+ex:tightened_lug a mira:Resolution .

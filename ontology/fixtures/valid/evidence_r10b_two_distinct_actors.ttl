@@ -1,3 +1,5 @@
+# PROTECTS: mirash:ApproverIsNotProposerShape
+#
 # R10b satisfied — proposer and approver are different actors (here: two different humans, which
 # is also legitimate; the rule is about independence, not about machine-vs-human).
 
