@@ -310,14 +310,23 @@ def _names_make(c: dict, make: str) -> bool:
     )
 
 
+# What may follow a part number without making it a longer one (#5827, #5837).
+# A letter or digit may not, as before ("GS10-20P5X"). Neither may an order option
+# ("+B063") nor a further code group after a hyphen or underscore: a group with a
+# digit ("-2", "_B063") or of one or two letters ("-X"). A space, punctuation, a
+# path or file-extension separator, or a word ("-user-manual") still ends it.
+_PART_NUMBER_END = r"(?![a-z0-9])(?!\+[a-z0-9])(?![\-_](?:[a-z0-9]*\d|[a-z]{1,2}(?![a-z0-9])))"
+
+
 def _names_part_number(c: dict, part_number: str) -> bool:
     """Whether the title or URL names the whole part number, allowing the usual
     separator differences ("GS10-20P5", "GS10 20P5", "GS1020P5") but not a prefix
-    of it ("GS10") or a longer number that starts with it ("GS10-20P5X")."""
+    of it ("GS10") or a longer number that starts with it ("GS10-20P5X",
+    "GS10-20P5-X", "ACS355-03U-06A7-2+B063")."""
     chunks = re.findall(r"[a-z0-9]+", (part_number or "").lower())
     if not chunks:
         return False
-    pattern = r"(?<![a-z0-9])" + r"[\s\-_./]*".join(map(re.escape, chunks)) + r"(?![a-z0-9])"
+    pattern = r"(?<![a-z0-9])" + r"[\s\-_./]*".join(map(re.escape, chunks)) + _PART_NUMBER_END
     return re.search(pattern, f"{c.get('title') or ''} {c.get('url') or ''}".lower()) is not None
 
 

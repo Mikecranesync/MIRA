@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 import pathlib
 import sys
+from urllib.parse import urlparse
 
 import pytest
 
@@ -1395,6 +1396,81 @@ async def test_an_exact_part_number_lookup_offers_a_page_naming_it_in_both_modes
         assert search_mod._names_part_number({"title": spelled}, "GS10-20P5"), spelled
     for other in ("GS10-20P5X", "GS10", "XGS10-20P5"):
         assert not search_mod._names_part_number({"title": other}, "GS10-20P5"), other
+
+
+# #5827 / #5837: a longer order number that starts with the part is a different part.
+# The haystack is title + URL, so the table covers both. Rows marked "decided" are
+# ambiguous and fail toward NOT offering an unread maker-less page: such a page is
+# only ever offered for review, and a miss still hands over the maker's own site.
+_DIST = "https://www.example-distributor.com"
+_PART_NUMBER_TABLE = [
+    # (part, field, text, names_it, why)
+    ("GS10-20P5", "title", "GS10-20P5-X micro drive", False, "#5827 hyphen code suffix"),
+    ("GS10-20P5", "title", "GS10-20P5X micro drive", False, "attached suffix (as before)"),
+    ("ACS355-03U-06A7-2", "title", "ACS355-03U-06A7-2+B063 drive", False, "#5837 order option"),
+    ("ACS355-03U-06A7-2", "url", f"{_DIST}/p/acs355-03u-06a7-2+b063", False, "#5837 in a URL"),
+    ("ACS355-03U-06A7-2", "title", "ACS355-03U-06A7-2-01 drive", False, "hyphen digit group"),
+    ("GS10-20P5", "title", "GS10-20P5_B063 drive", False, "underscore code group"),
+    ("GS10-20P5", "title", "GS10-20P5-EN data", False, "decided: two letters read as a code"),
+    ("GS10-20P5", "url", f"{_DIST}/search?q=gs10-20p5+manual", False, "decided: + is an option"),
+    ("GS10-20P5", "title", "GS10 20P5 micro drive", True, "space between groups"),
+    ("GS10-20P5", "title", "GS1020P5 micro drive", True, "no separator"),
+    ("GS10-20P5", "title", "gs10_20p5 micro drive", True, "underscore between groups"),
+    ("ACS355-03U-06A7-2", "title", "ACS355-03U-06A7-2 user manual", True, "#5837 control"),
+    ("GS10-20P5", "url", f"{_DIST}/p/gs10-20p5-user-manual", True, "slug word after a hyphen"),
+    ("GS10-20P5", "url", f"{_DIST}/gs10-20p5/manual.html", True, "path segment"),
+    ("GS10-20P5", "url", f"{_DIST}/p/gs10-20p5.html", True, "file extension"),
+    ("GS10-20P5", "title", "Drive GS10-20P5: manual (0.5 hp), 230 V", True, "punctuation"),
+    ("1756-L83E", "title", "1756-L83E/B ControlLogix controller", True, "decided: /B series mark"),
+    ("GS10-20P5", "url", f"{_DIST}/p/ad-gs10-20p5", True, "decided: leading side unchanged"),
+]
+
+
+@pytest.mark.parametrize("part,field,text,names_it,why", _PART_NUMBER_TABLE)
+def test_the_part_number_table(part, field, text, names_it, why):
+    assert search_mod._names_part_number({field: text}, part) is names_it, why
+
+
+def _maker_less_stranger(url: str, title: str, make: str) -> dict:
+    """A candidate that reaches the part-number check: it does not name the make,
+    is not on the make's site, and is not a direct PDF."""
+    cand = {"url": url, "title": title}
+    assert not search_mod._names_make(cand, make), cand
+    assert not search_mod._is_oem_host(urlparse(url).netloc, make), cand
+    assert not search_mod._is_direct_pdf(url), cand
+    return cand
+
+
+async def test_a_longer_order_number_is_not_offered_in_either_mode(wired, monkeypatch):
+    option = _maker_less_stranger(
+        f"{_DIST}/p/acs355-03u-06a7-2-b063", "ACS355-03U-06A7-2+B063 frequency converter", "ABB"
+    )
+    variant = _maker_less_stranger(
+        f"{_DIST}/p/gs10-20p5-x", "GS10-20P5-X micro drive", "AutomationDirect"
+    )
+    for enabled in ("1", "0"):
+        monkeypatch.setenv("MANUAL_JUDGE_ENABLED", enabled)
+        _serve(monkeypatch, [(option["url"], option["title"])])
+        assert (
+            await search_mod.search_manual("ABB", "ACS355-03U-06A7-2", exact_part_number=True)
+            is None
+        ), enabled
+        _serve(monkeypatch, [(variant["url"], variant["title"])])
+        assert (
+            await search_mod.search_manual("AutomationDirect", "GS10-20P5", exact_part_number=True)
+            is None
+        ), enabled
+
+
+async def test_the_exact_order_number_with_ordinary_text_is_still_offered(wired, monkeypatch):
+    page = _maker_less_stranger(
+        f"{_DIST}/p/acs355-03u-06a7-2-user-manual", "ACS355-03U-06A7-2 user manual", "ABB"
+    )
+    for enabled in ("1", "0"):
+        monkeypatch.setenv("MANUAL_JUDGE_ENABLED", enabled)
+        _serve(monkeypatch, [(page["url"], page["title"])])
+        r = await search_mod.search_manual("ABB", "ACS355-03U-06A7-2", exact_part_number=True)
+        assert r is not None and r["url"] == page["url"] and r["validated"] is False, enabled
 
 
 # F4: the content probe runs before the screen, so a real PDF at an extensionless
