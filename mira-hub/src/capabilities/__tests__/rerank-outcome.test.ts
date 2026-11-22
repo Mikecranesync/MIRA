@@ -181,7 +181,9 @@ describe("search path and rerank wait on the retrieval span", () => {
   it("records no wait when the service is never called", async () => {
     vi.stubEnv("NOTEBOOK_RERANK", "0");
     await ask(NARROW);
-    expect(attr("mira.retrieval.rerank_ms")).toEqual([null]);
+    // Exported contract (#5168): omit the key rather than set null. The mocked
+    // setSpanAttrs sees the producer bag; a real exporter is in rerank-ms-export.test.ts.
+    expect(attr("mira.retrieval.rerank_ms")).toEqual([]);
     expect(attr("mira.retrieval.search_path")).toEqual(["lexical"]);
   });
 
