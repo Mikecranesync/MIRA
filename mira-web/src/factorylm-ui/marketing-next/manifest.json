@@ -29,7 +29,9 @@
     "/guide.html": "/",
     "/checks.html": "/",
     "/pricing": "/demo",
-    "/pilot": "/demo"
+    "/pilot": "/demo",
+    "/assess": "/demo",
+    "/buy": "/demo"
   },
   "preserve_existing": [
     "/api/",
@@ -50,6 +52,7 @@
   ],
   "files": {
     "404.html": "208270ee83736e679f91f241c7ec673cc524a5e612224560293a899769deda9e",
+    "5f78aeeffc5661a1811fb08975c2c8e4.txt": "934a9dcdc5daabf35a0466823b827ea48e7d4371e834b72be6547f3dba83ae54",
     "about.html": "d116208fa40cfc208f41e02eed39d834ac274621bb3cb0d5a6d82a5485ff0111",
     "demo.html": "c4f84a0ace5a84d772a4d79c36106d83ae07d57f5e8cf1a2cd913b7af6a38251",
     "factorylm-next-assets/assets/factory-floor-hero.webp": "378c3beddf128595108e64e98d7219a5a0bd20116c056479539e57e80a82eb51",

@@ -106,4 +106,16 @@ describe("marketing aliases through the full server", () => {
     expect(res.status).toBe(301);
     expect(res.headers.get("location")).toBe("https://factorylm.com/mira");
   });
+  test("rollout on: the real legacy sitemap keeps blog and fault-code pages, drops retired pages, adds new ones", async () => {
+    process.env.FACTORYLM_MARKETING_NEXT = "true";
+    process.env.MIRA_FREE_TECHNICIANS = "true";
+    const res = await app.request("https://factorylm.com/sitemap.xml", { headers: { host: "factorylm.com" } });
+    const xml = await res.text();
+    const locs = [...xml.matchAll(/<loc>https:\/\/factorylm\.com([^<]*)<\/loc>/g)].map((m) => m[1]);
+    expect(res.status).toBe(200);
+    expect(locs.filter((path) => path.startsWith("/blog/")).length).toBeGreaterThan(5);
+    for (const gone of ["/pricing", "/cmms", "/assess", "/buy"]) expect(locs).not.toContain(gone);
+    for (const added of ["/mira", "/free-technicians", "/start", "/demo", "/about"]) expect(locs).toContain(added);
+    expect(new Set(locs).size).toBe(locs.length);
+  });
 });

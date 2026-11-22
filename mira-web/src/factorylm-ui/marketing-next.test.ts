@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Hono } from "hono";
-import { createFactorylmMarketingRouter } from "./marketing-next";
+import { createFactorylmMarketingRouter, INDEXNOW_KEY } from "./marketing-next";
 
 const priorFlag = process.env.FACTORYLM_MARKETING_NEXT;
 const priorHub = process.env.PLG_HUB_URL;
@@ -152,6 +152,41 @@ describe("next FactoryLM public adapter", () => {
     const image = await app().request("/factorylm-next-assets/assets/og-image.jpg");
     expect(image.status).toBe(200);
     expect(image.headers.get("content-type")).toBe("image/jpeg");
+  });
+
+  test("the legacy sitemap drops retired pages and lists every new page, only while the new site is on", async () => {
+    const legacy = '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
+      + ["/", "/cmms", "/pricing", "/blog", "/blog/fault-codes", "/assess", "/buy", "/limitations", "/drive-commander/siemens-g120/faults/F7011"]
+        .map((path) => `\n  <url>\n    <loc>https://factorylm.com${path}</loc>\n  </url>`).join("") + "\n</urlset>\n";
+    const server = new Hono().route("/", createFactorylmMarketingRouter())
+      .get("/sitemap.xml", () => new Response(legacy, { headers: { "Content-Type": "application/xml; charset=utf-8" } }));
+    process.env.FACTORYLM_MARKETING_NEXT = "true";
+    const response = await server.request("/sitemap.xml");
+    const xml = await response.text();
+    const locs = [...xml.matchAll(/<loc>https:\/\/factorylm\.com([^<]*)<\/loc>/g)].map((m) => m[1]);
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("xml");
+    for (const gone of ["/pricing", "/cmms", "/assess", "/buy", "/404"]) expect(locs).not.toContain(gone);
+    for (const kept of ["/", "/blog", "/blog/fault-codes", "/limitations", "/drive-commander/siemens-g120/faults/F7011"]) expect(locs).toContain(kept);
+    for (const added of ["/mira", "/about", "/start", "/demo", "/free-technicians"]) expect(locs).toContain(added);
+    expect(new Set(locs).size).toBe(locs.length);
+    expect(xml.trim().endsWith("</urlset>")).toBe(true);
+    process.env.FACTORYLM_MARKETING_NEXT = "false";
+    expect(await (await server.request("/sitemap.xml")).text()).toBe(legacy);
+  });
+
+  test.each(["/assess", "/buy", "/assess/"])("retired offer page %s goes to the demo page", async (path) => {
+    process.env.FACTORYLM_MARKETING_NEXT = "true";
+    const response = await app().request(path);
+    expect(response.status).toBe(302);
+    expect(response.headers.get("location")).toBe("/demo");
+  });
+
+  test("serves the IndexNow ownership key at its documented path", async () => {
+    process.env.FACTORYLM_MARKETING_NEXT = "true";
+    const response = await app().request(`/${INDEXNOW_KEY}.txt`);
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe(INDEXNOW_KEY);
   });
 
   test("disabling the flag immediately restores upstream rendering", async () => {
