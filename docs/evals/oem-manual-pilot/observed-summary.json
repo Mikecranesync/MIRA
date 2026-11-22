@@ -1,0 +1,239 @@
+{
+  "source_sha": "2cd7cb3aa55bdea0343087652bbe695471eb8cd5",
+  "scope": "offline MIRA extraction/chunking/SQL/lexical retrieval only",
+  "total_pages": 403,
+  "chunks": {
+    "battenfeld-plus-b2": 273,
+    "battenfeld-vmr-b6": 427,
+    "apsx-pim-v3": 75
+  },
+  "query_count": 16,
+  "network_attempts": 0,
+  "paid_calls": 0,
+  "acceptance_counts": {
+    "pass": 5,
+    "fail": 1,
+    "inconclusive": 10
+  },
+  "acceptance_status": "fail",
+  "source_page_mismatches": 0,
+  "generation": "not_run",
+  "hosted_citation_opening": "not_run",
+  "cases": [
+    {
+      "id": "PLUS-CHANGEOVER",
+      "returned_pdf_pages": [
+        84,
+        65,
+        66,
+        66,
+        35,
+        52
+      ],
+      "document_isolation": true,
+      "foreign_tenant_hits": 0
+    },
+    {
+      "id": "PLUS-RESTART",
+      "returned_pdf_pages": [
+        92,
+        55,
+        93,
+        52,
+        56,
+        8
+      ],
+      "document_isolation": true,
+      "foreign_tenant_hits": 0
+    },
+    {
+      "id": "VMR-LEVEL",
+      "returned_pdf_pages": [
+        64,
+        51,
+        64,
+        51,
+        106,
+        56
+      ],
+      "document_isolation": true,
+      "foreign_tenant_hits": 0
+    },
+    {
+      "id": "VMR-NOZZLE",
+      "returned_pdf_pages": [
+        7,
+        53,
+        107,
+        26,
+        112,
+        118
+      ],
+      "document_isolation": true,
+      "foreign_tenant_hits": 0
+    },
+    {
+      "id": "APSX-MOLD",
+      "returned_pdf_pages": [
+        25,
+        36,
+        36,
+        14,
+        8,
+        39
+      ],
+      "document_isolation": true,
+      "foreign_tenant_hits": 0
+    },
+    {
+      "id": "APSX-PURGE",
+      "returned_pdf_pages": [
+        11,
+        38,
+        38,
+        45,
+        42,
+        33,
+        11,
+        37,
+        8,
+        43,
+        36,
+        10,
+        12
+      ],
+      "document_isolation": true,
+      "foreign_tenant_hits": 0
+    },
+    {
+      "id": "APSX-DEFECT",
+      "returned_pdf_pages": [
+        42,
+        9,
+        9,
+        4,
+        19,
+        25
+      ],
+      "document_isolation": true,
+      "foreign_tenant_hits": 0
+    },
+    {
+      "id": "battenfeld-plus-b2-IDENTITY",
+      "returned_pdf_pages": [
+        11,
+        98,
+        99,
+        52,
+        43,
+        44
+      ],
+      "document_isolation": true,
+      "foreign_tenant_hits": 0
+    },
+    {
+      "id": "battenfeld-plus-b2-UNSUPPORTED",
+      "returned_pdf_pages": [
+        62,
+        66,
+        66,
+        72,
+        7,
+        36
+      ],
+      "document_isolation": true,
+      "foreign_tenant_hits": 0
+    },
+    {
+      "id": "battenfeld-plus-b2-SAFETY",
+      "returned_pdf_pages": [
+        98,
+        56,
+        42,
+        112,
+        93,
+        57
+      ],
+      "document_isolation": true,
+      "foreign_tenant_hits": 0
+    },
+    {
+      "id": "battenfeld-vmr-b6-IDENTITY",
+      "returned_pdf_pages": [
+        158,
+        3,
+        182,
+        100,
+        200,
+        109
+      ],
+      "document_isolation": true,
+      "foreign_tenant_hits": 0
+    },
+    {
+      "id": "battenfeld-vmr-b6-UNSUPPORTED",
+      "returned_pdf_pages": [
+        54,
+        121,
+        53,
+        114,
+        125,
+        128
+      ],
+      "document_isolation": true,
+      "foreign_tenant_hits": 0
+    },
+    {
+      "id": "battenfeld-vmr-b6-SAFETY",
+      "returned_pdf_pages": [
+        93,
+        94,
+        182,
+        200,
+        85,
+        176
+      ],
+      "document_isolation": true,
+      "foreign_tenant_hits": 0
+    },
+    {
+      "id": "apsx-pim-v3-IDENTITY",
+      "returned_pdf_pages": [
+        3,
+        37,
+        38,
+        34,
+        37,
+        30
+      ],
+      "document_isolation": true,
+      "foreign_tenant_hits": 0
+    },
+    {
+      "id": "apsx-pim-v3-UNSUPPORTED",
+      "returned_pdf_pages": [
+        9,
+        15,
+        15,
+        26,
+        28,
+        17
+      ],
+      "document_isolation": true,
+      "foreign_tenant_hits": 0
+    },
+    {
+      "id": "apsx-pim-v3-SAFETY",
+      "returned_pdf_pages": [
+        36,
+        38,
+        29,
+        45,
+        36,
+        33
+      ],
+      "document_isolation": true,
+      "foreign_tenant_hits": 0
+    }
+  ]
+}
