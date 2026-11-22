@@ -14,12 +14,70 @@
 // Pure: stored turns in, question texts out. No model, no network, no clock.
 
 import { foldForDetection } from "./detection-fold";
+import { namesAnyModel, namesOneMachine, photoIsAmbiguous, readPhotoModel } from "./photo-subject";
 
 export type PriorTurn = {
   question?: string | null;
   answerStatus?: string | null;
   basis?: string | null;
+  /** The reading of the photo sent with that question, from the same
+   *  conversation (#5706; Codex r1 on #5764, F5): a GS20 plate sent with "Find
+   *  me the manual" was refused; "what's its rated current?" is still about
+   *  the GS20. Joined exactly as the live turn joins it (questionWithPhoto). */
+  photoText?: string | null;
+  /** That question had a photo whose reading could not be read back (a failed
+   *  read, or past the read limit): its machine is unknown, so it is asked
+   *  about, never answered (#5706). */
+  photoUnread?: boolean;
 };
+
+export type QuestionWithPhoto = {
+  /** What the model check reads: the question, plus the photo's public text when it joins. */
+  text: string;
+  /** The photo's public text that joined, or null. */
+  photo: string | null;
+  /** The photo ends an earlier open subject, as a typed model does. */
+  releases: boolean;
+  /** The photo names models but the reader cannot tell which one is meant. */
+  ambiguous: boolean;
+  /** The photo's machine cannot be known (readPhotoModel, or an unread photo). */
+  unknown: boolean;
+  /** Private-field codes of the joined photo (readPhotoModel `hidden`). */
+  hidden: string[];
+};
+
+/**
+ * ONE rule for a question and the photo sent with it — the live turn
+ * (manual-rag.ts) and every carried turn (readSubject) use it, so a follow-up
+ * is never judged on a machine its own turn was not judged on.
+ *
+ * The photo joins when the question names no model and does not return to the
+ * technician's own unit (a return counts only with a catalog number on record,
+ * the same condition manual-rag.ts applies). Joined, its public text is read
+ * exactly as if typed (photo-subject.ts).
+ */
+export function questionWithPhoto(
+  question: string,
+  reading: string | null | undefined,
+  recordOnFile: boolean,
+  unread = false,
+): QuestionWithPhoto {
+  const asked = question.trim();
+  const joins = !namesAnyModel(asked) && !(recordOnFile && returnsToRecord(asked));
+  const read = joins ? readPhotoModel(reading) : { text: null, unknown: false, hidden: [] };
+  const unknown = joins && (unread || read.unknown);
+  const photo = read.text;
+  const hidden = read.hidden;
+  if (!photo) return { text: asked, photo: null, releases: false, ambiguous: false, unknown, hidden };
+  return {
+    text: [asked, photo].filter(Boolean).join("\n"),
+    photo,
+    releases: !unknown && namesAnyModel(photo) && namesOneMachine(photo),
+    ambiguous: photoIsAmbiguous(photo),
+    unknown,
+    hidden,
+  };
+}
 
 /** An answer that came from a document. Everything else — a refusal, a safety
  *  stop (stored "answered" with no basis), general reasoning, machine history,
@@ -36,6 +94,12 @@ export const SUBJECT_READ_STEPS: readonly number[] = [6, 60, 300];
 export type SubjectRead = {
   /** The questions whose subject is still open, NEWEST FIRST. */
   questions: string[];
+  /** Per question: its machine came from a photo that does not say which
+   *  machine is meant (#5706). Absent when no question is. */
+  unclear?: boolean[];
+  /** Per question: its photo's private-field codes (readPhotoModel `hidden`),
+   *  for manual-rag.ts to check only. Absent when no question has any. */
+  hidden?: string[][];
   /**
    * True when the start of the open run was seen: a document answer closed
    * what came before it, or the conversation began inside what was read.
@@ -49,17 +113,51 @@ export type SubjectRead = {
  * `turns` is the newest `limit` completed turns of one conversation, OLDEST
  * FIRST (listTurns' order).
  */
-export function readSubject(turns: readonly PriorTurn[], limit: number): SubjectRead {
-  const questions: string[] = [];
+export function readSubject(turns: readonly PriorTurn[], limit: number, recordOnFile = false): SubjectRead {
+  const read: QuestionWithPhoto[] = [];
+  let complete = turns.length < limit;
   for (let i = turns.length - 1; i >= 0; i--) {
     const turn = turns[i];
     if (turn.answerStatus === "answered" && typeof turn.basis === "string" && DOCUMENT_BASES.has(turn.basis)) {
-      return { questions, complete: true };
+      complete = true;
+      break;
     }
-    const question = turn.question?.trim();
-    if (question) questions.push(question);
+    const subject = questionWithPhoto(turn.question ?? "", turn.photoText, recordOnFile, turn.photoUnread === true);
+    if (subject.text || subject.unknown) read.push(subject);
   }
-  return { questions, complete: turns.length < limit };
+  const unclear = unclearPhotos(read, recordOnFile);
+  const hidden = read.map((q) => q.hidden);
+  return {
+    questions: read.map((q) => q.text),
+    ...(unclear.some(Boolean) ? { unclear } : {}),
+    ...(hidden.some((h) => h.length > 0) ? { hidden } : {}),
+    complete,
+  };
+}
+
+/**
+ * Which open questions took their machine from a photo that does not say
+ * which machine is meant — the same two cases the live turn asks about
+ * (manual-rag.ts): the photo's machine is unknown (a model among its private
+ * fields, or its reading could not be read back), the reader finds several
+ * models it cannot tell apart, or a photo naming models is not specific
+ * enough to end the subject before it (two drives, a model beside an order
+ * code). `read` is NEWEST FIRST; the
+ * subject before a question is the nearest older question naming a model, up
+ * to a return to the technician's own unit.
+ */
+function unclearPhotos(read: readonly QuestionWithPhoto[], recordOnFile: boolean): boolean[] {
+  return read.map((q, i) => {
+    if (q.unknown) return true;
+    if (!q.photo || !namesAnyModel(q.photo)) return false;
+    if (q.ambiguous) return true;
+    if (q.releases) return false;
+    for (let j = i + 1; j < read.length; j++) {
+      if (recordOnFile && returnsToRecord(read[j].text)) return false;
+      if (namesAnyModel(read[j].text)) return true;
+    }
+    return false;
+  });
 }
 
 /**

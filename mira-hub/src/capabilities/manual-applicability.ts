@@ -157,9 +157,10 @@ export type UnlistedModelRefusal = {
   /** What the refused covers declare. Never a filename's number. */
   declared: string[];
   /** Whether the number came from the question, from the notebook's confirmed
-   *  machine, or from an earlier question of this conversation that was not
-   *  answered from a document (conversation-subject.ts). */
-  source: "question" | "notebook" | "conversation";
+   *  machine, from an earlier question of this conversation that was not
+   *  answered from a document (conversation-subject.ts), or from the photo sent
+   *  with this question (#5706). */
+  source: "question" | "notebook" | "conversation" | "photo";
   /** Set when every refused document is a photo reading the product wrote, not a manual. */
   reading?: true;
 };
@@ -961,6 +962,7 @@ export function unlistedModelRefusalText(r: UnlistedModelRefusal): string {
   const whose =
     r.source === "notebook" ? "this notebook is set up for"
     : r.source === "conversation" ? "you asked about earlier in this conversation"
+    : r.source === "photo" ? "in your photo"
     : "you asked about";
   const add =
     r.source === "conversation"
