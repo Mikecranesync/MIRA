@@ -100,6 +100,8 @@ const CTA_RULES: ReadonlyArray<[pattern: RegExp, cta: string]> = [
   [/^\/demo\/?(?:[?#].*)?$/, "request_demo"],
   [/^mailto:[^?]*\?(?:.*&)?subject=[^&]*demo/i, "demo_email"],
   [/^\/start\/?(?:[?#].*)?$/, "start_guide"],
+  // Every other email link still counts, as a general contact click.
+  [/^mailto:/i, "email_contact"],
 ];
 const POSTHOG_TAG = '<script src="/posthog-init.js" defer></script>';
 

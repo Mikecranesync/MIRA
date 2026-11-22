@@ -199,7 +199,9 @@ describe("new marketing site conversion tracking", () => {
     expect(tag("/demonstration")).toBeNull();
     expect(tag("https://evil.example/signup/")).toBeNull();
     expect(tag("https://app.factorylm.com.evil.example/signup/")).toBeNull();
-    expect(tag("mailto:mike@factorylm.com")).toBeNull();
+    expect(tag("mailto:mike@factorylm.com?subject=Request%20a%20demo")).toBe("demo_email");
+    expect(tag("mailto:mike@factorylm.com")).toBe("email_contact");
+    expect(tag("mailto:hello@factorylm.com?body=hi")).toBe("email_contact");
   });
 
   for (const route of [...ROUTES, "/404"]) {
