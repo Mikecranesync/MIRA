@@ -51,6 +51,8 @@ jobs:
           filters: |
             hub:
               - 'mira-hub/**'
+              # The magic-link return fixture builds its schema from this core migration.
+              - 'mira-core/mira-ingest/db/migrations/008_hub_users_tenants.sql'
 
       - uses: oven-sh/setup-bun@v2
         if: steps.changes.outputs.hub == 'true'
@@ -140,6 +142,21 @@ jobs:
           STATUS=$?
           kill "$SERVER_PID" 2>/dev/null || true
           exit $STATUS
+
+      # --- magic-link return to the cited page (#5753, port 3953) ---
+      # Real login form -> captured sign-in email -> real verify page -> page 26.
+      # Reuses the build above. No staging secret: the runner's own PostgreSQL 16,
+      # on a private Unix socket with per-run passwords, holds one synthetic user,
+      # tenant and PDF. The server starts with an allowlisted env (env -i) and a
+      # fresh AUTH_SECRET, and a Node preload captures the email instead of
+      # sending it and allows no other connection. Fails on any skip.
+      - name: E2E — magic-link return to the cited page
+        if: steps.changes.outputs.hub == 'true'
+        working-directory: mira-hub
+        env:
+          MLR_SKIP_BUILD: '1'
+          MLR_PGBIN: /usr/lib/postgresql/16/bin
+        run: bash tests/local-fixtures/magic-link-return/run.sh
 
       - name: Upload failure screenshots
         if: failure() && steps.changes.outputs.hub == 'true'
