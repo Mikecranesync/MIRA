@@ -41,25 +41,23 @@ test.describe("factorylm.com — marketing site", () => {
     await expect(page).toHaveTitle(/FactoryLM/i);
   });
 
-  test("pricing: 200 OK, no published price, Talk to Mike CTA visible", async ({ page }) => {
+  test("pricing: redirects to the demo page, no published price, Email Mike CTA visible", async ({ page }) => {
+    // #5747: the new site retired /pricing; it 302s to /demo. #4570 still holds:
+    // no dollar prices, and the page routes a visitor to Mike.
     const res = await page.goto(WEB + "/pricing", { waitUntil: "domcontentloaded" });
     expect(res?.status()).toBe(200);
-
-    // #4570: the public site publishes no dollar prices and no checkout. The
-    // page's job is now to route a visitor to Mike, so assert that instead of
-    // the retired price cards.
-    // Route identity first, so a homepage served at /pricing cannot pass.
+    expect(new URL(page.url()).pathname).toBe("/demo");
+    // Route identity first, so a homepage served at /demo cannot pass.
     await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
       "href",
-      "https://factorylm.com/pricing",
+      "https://factorylm.com/demo",
     );
-    await expect(page.getByText(/No published price menu/i).first()).toBeVisible({ timeout: 10_000 });
     await expect(page).toHaveTitle(/FactoryLM/i);
 
     const body = await page.locator("body").innerText();
     expect(body).not.toMatch(/\$\s?\d/);
 
-    const cta = page.locator('a[href="mailto:mike@factorylm.com"]', { hasText: /Talk to Mike/i }).first();
+    const cta = page.locator('a[href^="mailto:mike@factorylm.com"]', { hasText: /Email Mike/i }).first();
     await expect(cta).toBeVisible();
   });
 
