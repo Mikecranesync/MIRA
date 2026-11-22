@@ -308,10 +308,13 @@ ${related.map((r) => `      <li><a href="/blog/${r.slug}">${escHtml(r.title)}</a
           name: "FactoryLM",
           logo: { "@type": "ImageObject", url: `${BASE_URL}/public/icons/mira-512.png` },
         },
+        // A plain Thing, not a Product: Google treats any Product without
+        // offers/review/aggregateRating as a critical Product-snippet error,
+        // and we don't sell the equipment these pages describe.
         about: {
-          "@type": "Product",
+          "@type": "Thing",
           name: fc.equipment,
-          manufacturer: { "@type": "Organization", name: fc.manufacturer },
+          description: `Equipment by ${fc.manufacturer}`,
         },
         step: fixStepsLd,
         mainEntity: {
