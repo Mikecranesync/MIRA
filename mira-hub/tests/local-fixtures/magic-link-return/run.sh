@@ -20,8 +20,22 @@
 #   - The server starts with an allowlisted environment (env -i) and a fresh
 #     random AUTH_SECRET. Its Resend key is a dummy, and the preload allows only
 #     its own port and the one database socket.
-#   - Passwords are passed by environment or file, never on a command line,
-#     and never printed.
+#   - Secrets (passwords, database URLs, AUTH_SECRET) never appear on a command
+#     line (#5800): the build and the server read them from a mode-0600 file in
+#     the private work directory, sourced by a clean shell, and the seed gets
+#     them as environment. They are never printed.
+#   - The runner refuses to start if anything already listens on the Hub port,
+#     and before Playwright runs, the server must answer a per-run marker that
+#     only this run's preload knows (#5799), so the tests can never drive
+#     another server.
+#   - The Hub port is held for the whole run by a relay this runner starts
+#     first and stops last (#5817). The Hub itself listens only on a Unix
+#     socket in the private work directory, so if it dies mid-run, the browser's
+#     requests fail at the relay instead of reaching whatever binds the port
+#     next, and the run fails.
+#   - Every startup probe has a connect and a total timeout, and startup has an
+#     overall deadline, so a listener that never answers cannot hang the run
+#     (#5818).
 set -euo pipefail
 
 HUB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
@@ -30,12 +44,16 @@ cd "$HUB_DIR"
 
 PORT="${MLR_PORT:-3953}"
 PG_PORT=55753          # only names the socket file; nothing listens on TCP
-EXPECTED_TESTS=4
+EXPECTED_TESTS=7
 umask 077
 TMP_ROOT="${TMPDIR:-/tmp}"
 WORK="$(mktemp -d "${TMP_ROOT%/}/mlr.XXXXXX")"
 chmod 700 "$WORK"
+HUB_SOCKET="$WORK/hub.sock"
+RELAY_FAILURES="$WORK/relay-failures.log"
+STARTUP_SECONDS=90
 SERVER_PID=""
+RELAY_PID=""
 PGBIN=""
 
 # shellcheck disable=SC2329  # invoked by the EXIT trap below
@@ -43,6 +61,10 @@ cleanup() {
   if [ -n "$SERVER_PID" ]; then
     kill "$SERVER_PID" 2>/dev/null || true
     wait "$SERVER_PID" 2>/dev/null || true
+  fi
+  if [ -n "$RELAY_PID" ]; then
+    kill "$RELAY_PID" 2>/dev/null || true
+    wait "$RELAY_PID" 2>/dev/null || true
   fi
   if [ -n "$PGBIN" ] && [ -f "$WORK/pg/postmaster.pid" ]; then
     "$PGBIN/pg_ctl" -D "$WORK/pg" -m fast -w stop >/dev/null 2>&1 || true
@@ -65,6 +87,33 @@ refuse_dotenv() {
 
 random_hex() { od -An -N32 -tx1 /dev/urandom | tr -d ' \n'; }
 
+# A bounded startup probe: no user curlrc (-q must come first), no proxy, a
+# connect timeout, and a total time limit given as the first argument.
+probe() {
+  local max_time="$1"
+  shift
+  curl -q -fsS --noproxy '*' --connect-timeout 2 --max-time "$max_time" "$@"
+}
+
+# Writes `export NAME=<quoted value>` lines to an env file. printf is a shell
+# builtin, so the values never become a process argument.
+env_file() {
+  local file="$1"
+  shift
+  : > "$file"
+  while [ "$#" -ge 2 ]; do
+    printf 'export %s=%q\n' "$1" "$2" >> "$file"
+    shift 2
+  done
+}
+
+# Inner script for `env -i PATH=... HOME=... bash -c "$WITH_ENV_FILE" mlr-env
+# <env file> <command...>`: an empty environment plus PATH, HOME and the file.
+# Used as a plain command (not a function) so that, run in the background, $!
+# is the process that becomes the server, and stopping it stops the server.
+# shellcheck disable=SC2016  # the single-quoted text is the inner shell's script
+WITH_ENV_FILE='set -e; . "$1"; shift; exec "$@"'
+
 find_pgbin() {
   local dir
   for dir in "${MLR_PGBIN:-}" /opt/homebrew/opt/postgresql@16/bin /usr/local/opt/postgresql@16/bin /usr/lib/postgresql/16/bin; do
@@ -77,6 +126,24 @@ find_pgbin() {
 }
 
 refuse_dotenv
+if (exec 3<>"/dev/tcp/127.0.0.1/$PORT") 2>/dev/null; then
+  echo "refusing to run: something already listens on 127.0.0.1:$PORT; stop it or set MLR_PORT" >&2; exit 1
+fi
+# Take the Hub port now and keep it until the end (#5817). The relay gets only
+# a port and paths, and an empty environment apart from PATH and HOME.
+: > "$RELAY_FAILURES"
+env -i PATH="$PATH" HOME="$HOME" node "$HERE/relay.cjs" "$PORT" "$HUB_SOCKET" "$RELAY_FAILURES" "$WORK/relay.ready" \
+  >"$WORK/relay.log" 2>&1 &
+RELAY_PID=$!
+relay_deadline=$((SECONDS + 10))
+until [ -s "$WORK/relay.ready" ]; do
+  if ! kill -0 "$RELAY_PID" 2>/dev/null || [ "$SECONDS" -ge "$relay_deadline" ]; then
+    echo "startup error: the relay could not take 127.0.0.1:$PORT" >&2
+    cat "$WORK/relay.log" >&2
+    exit 1
+  fi
+  sleep 0.2
+done
 PGBIN="$(find_pgbin)" || { echo "PostgreSQL 16 not found; set MLR_PGBIN" >&2; exit 1; }
 random_hex > "$WORK/su.pw"
 HUB_DB_PASSWORD="$(random_hex)"
@@ -102,44 +169,100 @@ MIRA_TEST_DB_CONFIRM=DISPOSABLE MLR_ADMIN_DATABASE_URL="$ADMIN_URL" MLR_DATABASE
   MLR_HUB_DB_PASSWORD="$HUB_DB_PASSWORD" node "$HERE/seed.mjs"
 unset ADMIN_URL
 
-AUTH_SECRET_VALUE="$(random_hex)"
 BUILD_ENV=(
-  "NEXT_PUBLIC_BASE_PATH="
-  "NEXT_PUBLIC_API_BASE="
-  "AUTH_SECRET=$AUTH_SECRET_VALUE"
-  "NODE_ENV=production"
-  "NEXT_TELEMETRY_DISABLED=1"
+  NEXT_PUBLIC_BASE_PATH ""
+  NEXT_PUBLIC_API_BASE ""
+  AUTH_SECRET "$(random_hex)"
+  NODE_ENV production
+  NEXT_TELEMETRY_DISABLED 1
 )
+env_file "$WORK/build.env" "${BUILD_ENV[@]}"
 if [ "${MLR_SKIP_BUILD:-0}" != "1" ]; then
   refuse_dotenv
-  env -i PATH="$PATH" HOME="$HOME" "${BUILD_ENV[@]}" ./node_modules/.bin/next build
+  env -i PATH="$PATH" HOME="$HOME" bash -c "$WITH_ENV_FILE" mlr-env "$WORK/build.env" ./node_modules/.bin/next build
 fi
 
 MAIL="$WORK/mail.jsonl"
 : > "$MAIL"
+READY_TOKEN="$(random_hex)"
+# The preload path is quoted inside NODE_OPTIONS, so a checkout path with a
+# space still loads it (#5800).
+env_file "$WORK/server.env" "${BUILD_ENV[@]}" \
+  NEXTAUTH_URL "http://127.0.0.1:$PORT" \
+  NEON_DATABASE_URL "$DB_URL" \
+  RESEND_API_KEY "re_e2e_capture_only_not_a_key" \
+  MLR_MAIL_CAPTURE "$MAIL" \
+  MLR_ALLOW_HUB_PORT "$PORT" \
+  MLR_ALLOW_DB_SOCKET "$DB_SOCKET" \
+  MLR_READY_TOKEN "$READY_TOKEN" \
+  MLR_LISTEN_SOCKET "$HUB_SOCKET" \
+  NODE_OPTIONS "--require \"$HERE/mail-capture.cjs\""
+unset DB_URL HUB_DB_PASSWORD
 refuse_dotenv
-env -i PATH="$PATH" HOME="$HOME" "${BUILD_ENV[@]}" \
-  NEXTAUTH_URL="http://127.0.0.1:$PORT" \
-  NEON_DATABASE_URL="$DB_URL" \
-  RESEND_API_KEY="re_e2e_capture_only_not_a_key" \
-  MLR_MAIL_CAPTURE="$MAIL" \
-  MLR_ALLOW_HUB_PORT="$PORT" \
-  MLR_ALLOW_DB_SOCKET="$DB_SOCKET" \
-  NODE_OPTIONS="--require $HERE/mail-capture.cjs" \
+env -i PATH="$PATH" HOME="$HOME" bash -c "$WITH_ENV_FILE" mlr-env "$WORK/server.env" \
   ./node_modules/.bin/next start -p "$PORT" -H 127.0.0.1 >"$WORK/server.log" 2>&1 &
 SERVER_PID=$!
 
-for _ in $(seq 1 60); do
-  if curl -fsS -o /dev/null "http://127.0.0.1:$PORT/login/" 2>/dev/null; then break; fi
-  if ! kill -0 "$SERVER_PID" 2>/dev/null; then cat "$WORK/server.log" >&2; exit 1; fi
+# Ready means THIS run's server answers: the preload serves the per-run marker,
+# so another listener can never pass, even one that serves /login/. The marker
+# is asked on the private socket first, then through the relay, which proves
+# the path the browser will use. Startup has one overall deadline (#5818).
+startup_deadline=$((SECONDS + STARTUP_SECONDS))
+ready=0
+while [ "$SECONDS" -lt "$startup_deadline" ]; do
+  if ! kill -0 "$SERVER_PID" 2>/dev/null; then
+    echo "startup error: the Hub server exited before it was ready" >&2
+    tail -n 40 "$WORK/server.log" >&2
+    exit 1
+  fi
+  if [ -S "$HUB_SOCKET" ] &&
+    [ "$(probe 5 --unix-socket "$HUB_SOCKET" "http://127.0.0.1:$PORT/__mlr_ready__" 2>/dev/null || true)" = "$READY_TOKEN" ]; then
+    ready=1
+    break
+  fi
   sleep 1
 done
-curl -fsS -o /dev/null "http://127.0.0.1:$PORT/login/"
+if [ "$ready" != 1 ]; then
+  echo "startup error: the Hub server did not answer this run's marker within ${STARTUP_SECONDS}s" >&2
+  tail -n 40 "$WORK/server.log" >&2
+  exit 1
+fi
+if [ "$(probe 5 "http://127.0.0.1:$PORT/__mlr_ready__" 2>/dev/null || true)" != "$READY_TOKEN" ]; then
+  echo "startup error: the marker did not come back through the relay on 127.0.0.1:$PORT" >&2
+  exit 1
+fi
+# The first render of /login/ compiles nothing but can be slow on a cold CI
+# runner, so it gets a longer limit, still bounded.
+if ! probe 60 -o /dev/null "http://127.0.0.1:$PORT/login/"; then
+  echo "startup error: /login/ did not answer within 60s" >&2
+  tail -n 40 "$WORK/server.log" >&2
+  exit 1
+fi
+kill -0 "$SERVER_PID" 2>/dev/null || { echo "startup error: the Hub server exited after the readiness probe" >&2; exit 1; }
+if [ -s "$RELAY_FAILURES" ]; then
+  echo "startup error: the relay could not reach the Hub during startup" >&2; cat "$RELAY_FAILURES" >&2; exit 1
+fi
+echo "server identity: this run's marker answered on the private socket and through the relay on 127.0.0.1:$PORT"
 
 status=0
 MLR_HUB_URL="http://127.0.0.1:$PORT" MLR_MAIL_CAPTURE="$MAIL" \
   PLAYWRIGHT_JSON_OUTPUT_NAME="$WORK/report.json" \
   npx playwright test --config tests/local-fixtures/magic-link-return/playwright.config.ts --reporter=list,json || status=$?
+
+# The run counts only if the same server and relay served all of it (#5817).
+if ! kill -0 "$SERVER_PID" 2>/dev/null; then
+  echo "run error: the Hub server exited during the run" >&2
+  status=1
+fi
+if ! kill -0 "$RELAY_PID" 2>/dev/null; then
+  echo "run error: the relay exited during the run" >&2
+  status=1
+fi
+if [ -s "$RELAY_FAILURES" ]; then
+  echo "run error: the relay could not reach the Hub $(wc -l < "$RELAY_FAILURES" | tr -d ' ') time(s):" >&2
+  cat "$RELAY_FAILURES" >&2
+  status=1
+fi
 
 if [ "$status" -ne 0 ]; then
   echo "---- last Hub server log lines ----" >&2

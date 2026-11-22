@@ -3,7 +3,7 @@
  * browser test (#5753). Loaded with `NODE_OPTIONS=--require <this file>` by
  * `run.sh` next to it, and nowhere else; production code is untouched.
  *
- * Two walls, both fail closed:
+ * Two walls, both fail closed, and a run marker:
  *
  * 1. Mail capture. The server's global fetch is replaced so that every POST to
  *    api.resend.com is written to MLR_MAIL_CAPTURE (one JSON line per email)
@@ -20,12 +20,25 @@
  *    name other than a loopback name or address is refused with code MLR_EGRESS_BLOCKED and
  *    logged to stderr (host and port only, never a value).
  *
+ * 3. Run marker (#5799). GET /__mlr_ready__ is answered by this preload, before
+ *    Next sees it, with MLR_READY_TOKEN, a random value fresh for each run.
+ *    run.sh waits for that exact answer, so a different server that happens
+ *    to hold the port can never pass readiness.
+ *
+ * 4. Private listener (#5817). The Hub's HTTP server is moved off TCP onto
+ *    MLR_LISTEN_SOCKET, a Unix socket inside the run's private work directory.
+ *    The browser reaches it only through run.sh's relay (`relay.cjs`), which
+ *    holds the Hub port for the whole run, so if the server dies another
+ *    process can take neither the port nor the requests. Any other TCP listen
+ *    by an HTTP server is refused.
+ *
  * The shared fixture guard (`../harness/egress-guard.cjs`) is not reused
  * because it refuses every Unix socket, and this test needs one database.
  */
 "use strict";
 
 const fs = require("node:fs");
+const http = require("node:http");
 const net = require("node:net");
 const dns = require("node:dns");
 const dgram = require("node:dgram");
@@ -33,8 +46,12 @@ const dgram = require("node:dgram");
 const capturePath = process.env.MLR_MAIL_CAPTURE;
 const hubPort = Number(process.env.MLR_ALLOW_HUB_PORT || 0);
 const dbSocket = process.env.MLR_ALLOW_DB_SOCKET || "";
-if (!capturePath || !hubPort || !dbSocket) {
-  throw new Error("magic-link mail-capture: MLR_MAIL_CAPTURE, MLR_ALLOW_HUB_PORT and MLR_ALLOW_DB_SOCKET are required");
+const readyToken = process.env.MLR_READY_TOKEN || "";
+const listenSocket = process.env.MLR_LISTEN_SOCKET || "";
+if (!capturePath || !hubPort || !dbSocket || !readyToken || !listenSocket) {
+  throw new Error(
+    "magic-link mail-capture: MLR_MAIL_CAPTURE, MLR_ALLOW_HUB_PORT, MLR_ALLOW_DB_SOCKET, MLR_READY_TOKEN and MLR_LISTEN_SOCKET are required",
+  );
 }
 
 const LOOPBACK = new Set(["127.0.0.1", "localhost", "[::1]", "::1", "::ffff:127.0.0.1"]);
@@ -122,4 +139,33 @@ globalThis.fetch = async function captureFetch(input, init) {
   }
   if (!LOOPBACK.has(url.hostname)) throw new TypeError(refusal("fetch", url.hostname).message);
   return realFetch.call(this, input, init);
+};
+
+// ---- 3. Run marker ---------------------------------------------------------
+const READY_PATH = "/__mlr_ready__";
+const originalEmit = http.Server.prototype.emit;
+http.Server.prototype.emit = function markerEmit(event, req, res) {
+  if (event === "request" && req && req.method === "GET" && req.url === READY_PATH) {
+    res.writeHead(200, { "content-type": "text/plain", "cache-control": "no-store" });
+    res.end(readyToken);
+    return true;
+  }
+  return originalEmit.apply(this, arguments);
+};
+
+// ---- 4. Private listener ---------------------------------------------------
+// `next start -p <port>` calls server.listen(port, hostname). That call is
+// moved to the private socket; Next reads back a path from server.address()
+// and keeps the port it was given, so its own URLs still name the relay.
+const originalListen = net.Server.prototype.listen;
+net.Server.prototype.listen = function privateListen(...args) {
+  if (!(this instanceof http.Server)) return originalListen.apply(this, args);
+  const first = args[0];
+  const tcpPort = typeof first === "object" && first !== null ? first.port : first;
+  if (typeof first === "object" && first !== null && first.path) return originalListen.apply(this, args);
+  if (Number(tcpPort) === hubPort) {
+    const callback = args.find((a) => typeof a === "function");
+    return callback ? originalListen.call(this, listenSocket, callback) : originalListen.call(this, listenSocket);
+  }
+  throw refusal("listen", `tcp ${String(tcpPort)}`);
 };

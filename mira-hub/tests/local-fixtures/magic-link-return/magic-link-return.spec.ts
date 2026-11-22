@@ -13,12 +13,14 @@
  *
  *   cd mira-hub && bash tests/local-fixtures/magic-link-return/run.sh
  *
- * Every URL here is absolute (MLR_HUB_URL, loopback only), and every browser
- * request to a non-loopback host is aborted.
+ * Every URL here is absolute (MLR_HUB_URL, loopback only). The browser can
+ * reach only that origin, redirect hops included (`browser-isolation.ts`,
+ * proven by `browser-isolation.spec.ts`).
  */
-import { test, expect, type BrowserContext, type Page } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { isolatedContext, offOrigin, type IsolatedContext } from "./browser-isolation";
 
 const LOOPBACK = new Set(["127.0.0.1", "localhost", "[::1]"]);
 
@@ -69,24 +71,20 @@ async function nextSignInLink(before: number): Promise<URL> {
   return link;
 }
 
-/** A fresh, signed-out browser whose requests can reach only loopback.
- *  `blocked` records every other host the page tried to reach. */
-async function freshContext(
+/** Runs `body` in a fresh, signed-out browser that can reach only the local
+ *  Hub, then checks that nothing else was attempted and closes it. */
+async function withIsolatedHub(
   browser: import("@playwright/test").Browser,
-): Promise<{ context: BrowserContext; page: Page; blocked: string[]; paths: string[] }> {
-  const context = await browser.newContext();
-  const blocked: string[] = [];
-  const paths: string[] = [];
-  await context.route("**/*", (route) => {
-    const url = new URL(route.request().url());
-    if (!LOOPBACK.has(url.hostname)) {
-      blocked.push(url.hostname);
-      return route.abort("blockedbyclient");
-    }
-    paths.push(url.pathname);
-    return route.continue();
-  });
-  return { context, page: await context.newPage(), blocked, paths };
+  body: (iso: IsolatedContext) => Promise<void>,
+): Promise<void> {
+  const iso = await isolatedContext(browser, HUB);
+  try {
+    await body(iso);
+    expect(iso.blocked, "no request left the local Hub").toEqual([]);
+    expect(offOrigin(iso.attempted, HUB), "the browser asked for nothing but the local Hub").toEqual([]);
+  } finally {
+    await iso.close();
+  }
 }
 
 /** Submits the email form and returns the JSON body the form posted. */
@@ -102,51 +100,51 @@ async function requestSignInLink(page: Page): Promise<Record<string, unknown>> {
 
 test.describe("email sign-in returns to the cited manual page (#5753)", () => {
   test("a signed-out technician who opens page 26 lands back on page 26 after email sign-in", async ({ browser }) => {
-    const { context, page } = await freshContext(browser);
-    expect(await context.cookies(), "the browser starts signed out").toEqual([]);
+    await withIsolatedHub(browser, async ({ context, page }) => {
+      expect(await context.cookies(), "the browser starts signed out").toEqual([]);
 
-    // 1. The cited-page link, opened signed out, lands on /login carrying it.
-    await page.goto(HUB + VIEWER);
-    await expect(page).toHaveURL((u) => u.pathname === "/login/");
-    expect(new URL(page.url()).searchParams.get("callbackUrl")).toBe(VIEWER);
+      // 1. The cited-page link, opened signed out, lands on /login carrying it.
+      await page.goto(HUB + VIEWER);
+      await expect(page).toHaveURL((u) => u.pathname === "/login/");
+      expect(new URL(page.url()).searchParams.get("callbackUrl")).toBe(VIEWER);
 
-    // 2. The email form posts that page as the return path.
-    const before = capturedEmails().length;
-    const body = await requestSignInLink(page);
-    expect(body).toEqual({ email: seed.email, returnTo: VIEWER });
+      // 2. The email form posts that page as the return path.
+      const before = capturedEmails().length;
+      const body = await requestSignInLink(page);
+      expect(body).toEqual({ email: seed.email, returnTo: VIEWER });
 
-    // 3. The captured email's link carries it as `next`, token in the fragment.
-    const link = await nextSignInLink(before);
-    expect(link.searchParams.get("next")).toBe(VIEWER);
+      // 3. The captured email's link carries it as `next`, token in the fragment.
+      const link = await nextSignInLink(before);
+      expect(link.searchParams.get("next")).toBe(VIEWER);
 
-    // 4. Opening the link signs in and shows that file at page 26.
-    await page.goto(link.href);
-    await page.waitForURL((u) => u.pathname === "/v3/source/", { timeout: 20_000 });
-    const landed = new URL(page.url());
-    expect(landed.searchParams.get("file")).toBe(seed.fileId);
-    expect(landed.searchParams.get("page")).toBe(String(seed.citedPage));
-    await expect(page.getByTestId("viewer-caption")).toHaveText(
-      `${seed.filename} · page ${seed.citedPage} of ${seed.pages} · file ${seed.fileId.slice(0, 8)}`,
-      { timeout: 20_000 },
-    );
-    await expect(page.locator(`canvas[data-rendered-page="${seed.citedPage}"]`)).toBeVisible();
-    expect(page.url()).not.toContain("token");
+      // 4. Opening the link signs in and shows that file at page 26.
+      await page.goto(link.href);
+      await page.waitForURL((u) => u.pathname === "/v3/source/", { timeout: 20_000 });
+      const landed = new URL(page.url());
+      expect(landed.searchParams.get("file")).toBe(seed.fileId);
+      expect(landed.searchParams.get("page")).toBe(String(seed.citedPage));
+      await expect(page.getByTestId("viewer-caption")).toHaveText(
+        `${seed.filename} · page ${seed.citedPage} of ${seed.pages} · file ${seed.fileId.slice(0, 8)}`,
+        { timeout: 20_000 },
+      );
+      await expect(page.locator(`canvas[data-rendered-page="${seed.citedPage}"]`)).toBeVisible();
+      expect(page.url()).not.toContain("token");
 
-    // 5. The verify page removed the token from its own history entry before
-    //    leaving (#5795 review F5): going back must not reveal the fragment.
-    //    The URL is read when the back navigation commits, before the verify
-    //    page could redirect again.
-    const backUrl = new Promise<string>((resolve) => {
-      page.on("framenavigated", (frame) => {
-        if (frame === page.mainFrame()) resolve(frame.url());
+      // 5. The verify page removed the token from its own history entry before
+      //    leaving (#5795 review F5): going back must not reveal the fragment.
+      //    The URL is read when the back navigation commits, before the verify
+      //    page could redirect again.
+      const backUrl = new Promise<string>((resolve) => {
+        page.on("framenavigated", (frame) => {
+          if (frame === page.mainFrame()) resolve(frame.url());
+        });
       });
+      await page.goBack({ waitUntil: "commit" });
+      const back = new URL(await backUrl);
+      expect(back.pathname).toBe("/magic/");
+      expect(back.hash, "the verify entry in history keeps no token").toBe("");
+      expect(back.href).not.toContain("token");
     });
-    await page.goBack({ waitUntil: "commit" });
-    const back = new URL(await backUrl);
-    expect(back.pathname).toBe("/magic/");
-    expect(back.hash, "the verify entry in history keeps no token").toBe("");
-    expect(back.href).not.toContain("token");
-    await context.close();
   });
 
   const rejected = [
@@ -156,33 +154,33 @@ test.describe("email sign-in returns to the cited manual page (#5753)", () => {
   ];
   for (const { label, value } of rejected) {
     test(`a return path to ${label} is dropped at every hop and sign-in lands on /feed`, async ({ browser }) => {
-      const { context, page, blocked, paths } = await freshContext(browser);
-      await page.goto(`${HUB}/login/?callbackUrl=${encodeURIComponent(value)}`);
-      await expect(page.locator("#magic-email")).toBeVisible();
+      await withIsolatedHub(browser, async ({ page, paths }) => {
+        await page.goto(`${HUB}/login/?callbackUrl=${encodeURIComponent(value)}`);
+        await expect(page.locator("#magic-email")).toBeVisible();
 
-      // The form never posts it.
-      const before = capturedEmails().length;
-      const body = await requestSignInLink(page);
-      expect(body).toEqual({ email: seed.email });
+        // The form never posts it.
+        const before = capturedEmails().length;
+        const body = await requestSignInLink(page);
+        expect(body).toEqual({ email: seed.email });
 
-      // The email never carries it.
-      const link = await nextSignInLink(before);
-      expect(link.searchParams.has("next")).toBe(false);
+        // The email never carries it.
+        const link = await nextSignInLink(before);
+        expect(link.searchParams.has("next")).toBe(false);
 
-      // The verify page re-checks `next` too: an edited link still goes to
-      // /feed (DEFAULT_RETURN_PATH), which the middleware then forwards to
-      // the /v3 shell in every environment (capabilities/hub-landing.ts, #3880).
-      link.searchParams.set("next", value);
-      const feed = page.waitForRequest((r) => ["/feed", "/feed/"].includes(new URL(r.url()).pathname), { timeout: 20_000 });
-      await page.goto(link.href);
-      await feed;
-      await page.waitForURL((u) => u.pathname === "/v3/" || u.pathname === "/v3", { timeout: 20_000 });
-      expect(new URL(page.url()).origin).toBe(new URL(HUB).origin);
-      expect(blocked, "no request left the local Hub").toEqual([]);
-      // Neither the rejected path nor a host-stripped copy of it was opened.
-      const forbidden = new URL(value, "http://unused.invalid").pathname.replace(/\/$/, "");
-      expect(paths.filter((p) => p.replace(/\/$/, "") === forbidden), "the rejected destination was never requested").toEqual([]);
-      await context.close();
+        // The verify page re-checks `next` too: an edited link still goes to
+        // /feed (DEFAULT_RETURN_PATH), which the middleware then forwards to
+        // the /v3 shell in every environment (capabilities/hub-landing.ts, #3880).
+        link.searchParams.set("next", value);
+        const feed = page.waitForRequest((r) => ["/feed", "/feed/"].includes(new URL(r.url()).pathname), { timeout: 20_000 });
+        await page.goto(link.href);
+        await feed;
+        await page.waitForURL((u) => u.pathname === "/v3/" || u.pathname === "/v3", { timeout: 20_000 });
+        expect(new URL(page.url()).origin).toBe(new URL(HUB).origin);
+        // Neither the rejected path nor a host-stripped copy of it was opened,
+        // on any request or redirect hop.
+        const forbidden = new URL(value, "http://unused.invalid").pathname.replace(/\/$/, "");
+        expect(paths.filter((p) => p.replace(/\/$/, "") === forbidden), "the rejected destination was never requested").toEqual([]);
+      });
     });
   }
 });

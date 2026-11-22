@@ -53,6 +53,11 @@ jobs:
               - 'mira-hub/**'
               # The magic-link return fixture builds its schema from this core migration.
               - 'mira-core/mira-ingest/db/migrations/008_hub_users_tenants.sql'
+              # The Hub compiles the shared FactoryLM shell from source (@factorylm/theme,
+              # /ui, /interaction), so a change there can change what these tests render.
+              - 'packages/factorylm-theme/**'
+              - 'packages/factorylm-ui/**'
+              - 'packages/factorylm-interaction/**'
 
       - uses: oven-sh/setup-bun@v2
         if: steps.changes.outputs.hub == 'true'
