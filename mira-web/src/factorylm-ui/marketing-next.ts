@@ -22,7 +22,7 @@ function manifest() {
 const MIME: Record<string, string> = {
   html: "text/html; charset=utf-8", css: "text/css; charset=utf-8",
   js: "application/javascript; charset=utf-8", svg: "image/svg+xml",
-  webp: "image/webp", xml: "application/xml; charset=utf-8", txt: "text/plain; charset=utf-8",
+  webp: "image/webp", jpg: "image/jpeg", xml: "application/xml; charset=utf-8", txt: "text/plain; charset=utf-8",
 };
 
 /** Whether this adapter owns the path under the current rollout flags. */
@@ -61,6 +61,34 @@ export async function marketingAliasRedirect(method: string, requestUrl: string,
   return target ? new Response(null, { status: 302, headers: { Location: target + url.search, "Cache-Control": "no-store" } }) : null;
 }
 
+/** IndexNow ownership key (public by design: https://www.indexnow.org/documentation). */
+export const INDEXNOW_KEY = "5f78aeeffc5661a1811fb08975c2c8e4";
+const INDEXNOW_KEY_PATH = "/" + INDEXNOW_KEY + ".txt";
+/** Legacy pages the new site retired; dropped from the legacy /sitemap.xml while it is on. */
+const RETIRED_FROM_SITEMAP = new Set(["/pricing", "/cmms", "/assess", "/buy"]);
+
+/** The legacy sitemap, minus retired pages, plus every page this adapter serves.
+ * The legacy generator (blog + fault-code pages) stays the source of the rest. */
+export function rewriteLegacySitemap(xml: string, routes: string[], origin: string, lastmods: Record<string, string>): string {
+  // Case- and trailing-slash-insensitive, so /CMMS or /cmms/ cannot slip past the retired set.
+  const pathOf = (loc: string) => {
+    let path: string;
+    try { path = new URL(loc).pathname; } catch { path = loc; }
+    return (path.length > 1 ? path.replace(/\/+$/, "") : path).toLowerCase();
+  };
+  const seen = new Set<string>();
+  const kept = xml.replace(/\s*<url>[\s\S]*?<\/url>/g, (block) => {
+    const loc = block.match(/<loc>([^<]*)<\/loc>/)?.[1] ?? "";
+    const path = pathOf(loc);
+    if (RETIRED_FROM_SITEMAP.has(path) || seen.has(path)) return "";
+    seen.add(path);
+    return block;
+  });
+  const added = routes.filter((route) => !seen.has(route))
+    .map((route) => `\n  <url>\n    <loc>${origin}${route}</loc>${lastmods[route] ? `\n    <lastmod>${lastmods[route]}</lastmod>` : ""}\n  </url>`).join("");
+  return kept.replace("</urlset>", added + "\n</urlset>");
+}
+
 export function createFactorylmMarketingRouter() {
   const router = new Hono();
   router.use("*", async (c, next) => {
@@ -70,11 +98,27 @@ export function createFactorylmMarketingRouter() {
     if (alias) return alias;
     if (onHubHost(url, c.req.raw.headers) || !inScope(url.pathname)) return next();
     const { manifest: map, identity } = await manifest();
+    if (url.pathname === "/sitemap.xml") {
+      await next();
+      const legacy = c.res;
+      if (legacy.status !== 200 || !(legacy.headers.get("content-type") ?? "").includes("xml")) return;
+      const routes = Object.keys(map.routes).filter((route) => route !== "/404");
+      // lastmod is the edit date recorded in the checked sitemap-site.xml, never the request date.
+      const own = (await readFile(new URL("site/sitemap-site.xml", directory), "utf8"))
+        .matchAll(/<loc>https:\/\/factorylm\.com([^<]*)<\/loc><lastmod>([^<]*)<\/lastmod>/g);
+      const lastmods = Object.fromEntries([...own].map((m) => [m[1], m[2]]));
+      const xml = rewriteLegacySitemap(await legacy.text(), routes, "https://factorylm.com", lastmods);
+      c.res = new Response(c.req.method === "HEAD" ? null : xml, {
+        status: 200,
+        headers: { "Content-Type": "application/xml; charset=utf-8", "X-FactoryLM-Site": "next-" + identity },
+      });
+      return;
+    }
     let file = map.routes[url.pathname];
     if (url.pathname.startsWith("/factorylm-next-assets/")) {
       const candidate = url.pathname.slice(1);
       file = Object.hasOwn(map.files, candidate) ? candidate : "404.html";
-    } else if (["/robots.txt", "/sitemap-site.xml"].includes(url.pathname)) {
+    } else if (["/robots.txt", "/sitemap-site.xml", "/llms.txt", "/llms-full.txt", INDEXNOW_KEY_PATH].includes(url.pathname)) {
       file = url.pathname.slice(1);
     }
     if (!file) return next();
