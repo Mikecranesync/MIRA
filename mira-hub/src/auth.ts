@@ -2,14 +2,13 @@ import type { NextAuthOptions } from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 import CredentialsProvider from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
-import { ensureUserAndTenant, findUserByEmail, findUserById, validateMagicToken, magicTokenPurpose, magicTokenNeedsCredentialReview, redeemInviteToken, readSessionSnapshot, type SessionSnapshot } from "@/lib/users";
+import { ensureUserAndTenant, findUserByEmail, findUserById, magicTokenPurpose, redeemInviteToken, redeemLoginToken, readSessionSnapshot, type SessionSnapshot } from "@/lib/users";
 import { NO_ROLE, normalizeRole, type ResolvedRole } from "@/lib/role";
 import { refreshEntitlementClaims } from "@/capabilities/session-entitlement";
 import { credentialEpoch } from "@/capabilities/verified-identity";
 import { redeemVerifiedOnboarding } from "@/capabilities/verified-onboarding";
 import { ONBOARDING_VERSION } from "@/capabilities/onboarding-policy";
 import { publicSignupPolicy } from "@/capabilities/free-technician-signup";
-import { claimVerifiedEmail } from "@/capabilities/verified-identity";
 import pool from "@/lib/db";
 
 declare module "next-auth" {
@@ -94,18 +93,9 @@ const providers: NextAuthOptions["providers"] = [
         const invite = await redeemInviteToken(credentials.token);
         if (invite === null) return null;
         if (invite) snapshot = invite;
-        else {
-          // Ordinary sign-in link: refuse unknown provenance before spending it.
-          if (await magicTokenNeedsCredentialReview(credentials.token)) return null;
-          const result = await validateMagicToken(credentials.token);
-          if (!result) return null;
-          const existing = await findUserByEmail(result.email);
-          if (!existing) return null;
-          try { await claimVerifiedEmail(pool,existing.id); } catch { return null; }
-          snapshot = await readSessionSnapshot(pool, existing.id);
-          // Moved to another workspace mid-sign-in: refuse rather than mint a mix.
-          if (!snapshot || snapshot.tenantId !== existing.tenantId) return null;
-        }
+        // Codex F37: an ordinary sign-in link is locked, claimed, read and spent
+        // in ONE transaction; any failure leaves the link and the account unchanged.
+        else snapshot = await redeemLoginToken(credentials.token);
       }
       if (!snapshot) return null;
       return {
@@ -166,13 +156,17 @@ export const authOptions: NextAuthOptions = {
           name: (profile as { name?: string }).name,
           verifiedEmail: true,
         });
-        const fullUser = await findUserByEmail(existing.email);
-        user.id = existing.id;
-        user.email = existing.email;
-        user.tenantId = existing.tenantId;
-        user.status = fullUser?.status ?? "trial";
-        user.credentialEpoch = credentialEpoch(fullUser);
-        user.trialExpiresAt = fullUser?.trialExpiresAt?.toISOString() ?? null;
+        // Codex F36: workspace and credential epoch come from ONE row snapshot,
+        // and a move between identity resolution and this read is refused
+        // rather than minted as an old-workspace/new-epoch mix.
+        const snapshot = await readSessionSnapshot(pool, existing.id);
+        if (!snapshot || snapshot.tenantId !== existing.tenantId) return false;
+        user.id = snapshot.id;
+        user.email = snapshot.email;
+        user.tenantId = snapshot.tenantId;
+        user.status = snapshot.status;
+        user.credentialEpoch = credentialEpoch(snapshot);
+        user.trialExpiresAt = snapshot.trialExpiresAt;
       }
       return true;
     },

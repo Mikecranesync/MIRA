@@ -54,6 +54,31 @@ describe("marketing aliases through the full server", () => {
     expect(res.headers.get("location")).toBe("https://factorylm.com/pricing?check=1");
   });
 
+  test.each([["/free-technicians.html/?check=1"], ["/free-technicians//?check=1"]])(
+    "rollout off: always-on policy slash variant %s stays on staging, 302 no-store", async (path) => {
+      delete process.env.FACTORYLM_MARKETING_NEXT;
+      process.env.MIRA_FREE_TECHNICIANS = "false";
+      const res = await app.request(`${STAGING}${path}`, {
+        headers: { host: "internal:3000", "x-forwarded-host": "staging-web.factorylm.test", "x-forwarded-proto": "https" },
+      });
+      expectSameOriginAlias(res, "/free-technicians?check=1");
+    });
+
+  test("rollout on: the app host's /pricing is NOT claimed, so it never redirects into the Hub", async () => {
+    process.env.FACTORYLM_MARKETING_NEXT = "true";
+    process.env.MIRA_FREE_TECHNICIANS = "true";
+    const res = await app.request("https://app.factorylm.com/pricing", { headers: { host: "app.factorylm.com" } });
+    expect(res.status).not.toBe(302);
+    expect(res.headers.get("location")).toBeNull();
+  });
+
+  test("rollout on: the marketing host's /pricing still goes to /demo", async () => {
+    process.env.FACTORYLM_MARKETING_NEXT = "true";
+    process.env.MIRA_FREE_TECHNICIANS = "true";
+    const res = await app.request("https://factorylm.com/pricing?check=1", { headers: { host: "factorylm.com" } });
+    expectSameOriginAlias(res, "/demo?check=1");
+  });
+
   test("rollout off: a rollout-only alias is not claimed, so legacy normalization is unchanged", async () => {
     delete process.env.FACTORYLM_MARKETING_NEXT;
     process.env.MIRA_FREE_TECHNICIANS = "false";

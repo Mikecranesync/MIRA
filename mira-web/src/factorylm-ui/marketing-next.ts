@@ -33,18 +33,29 @@ function inScope(pathname: string): boolean {
   return process.env.MIRA_FREE_TECHNICIANS === "true" && process.env.FACTORYLM_MARKETING_NEXT === "true";
 }
 
+/** The marketing site never answers on the Hub's own host (Codex F38): nginx
+ * proxies a few app-host paths such as /pricing to this service, and a relative
+ * redirect there would land in the Hub. The first forwarded host wins, as in
+ * the trailing-slash normalizer. */
+function onHubHost(url: URL, headers?: Headers): boolean {
+  const forwarded = headers?.get("x-forwarded-host")?.split(",")[0]?.trim();
+  const host = (forwarded || headers?.get("host") || url.host).toLowerCase();
+  return host === new URL(hubOrigin()).host.toLowerCase();
+}
+
 /** The adapter's own alias redirect (same-origin, 302, no-store), or null. The
  * server calls this BEFORE generic trailing-slash normalization, which would
  * otherwise send a cacheable 301 to a trusted (production) host (Codex F33). */
-export async function marketingAliasRedirect(method: string, requestUrl: string): Promise<Response | null> {
+export async function marketingAliasRedirect(method: string, requestUrl: string, headers?: Headers): Promise<Response | null> {
   if (!["GET", "HEAD"].includes(method)) return null;
   const url = new URL(requestUrl);
-  if (!inScope(url.pathname)) return null;
-  const { manifest: map } = await manifest();
-  // Codex F33 (round 2): a slash variant of an adapter-owned alias or route is
-  // normalized HERE, so it never reaches the generic 301 to a trusted host.
+  if (onHubHost(url, headers)) return null;
+  // Codex F33: a slash variant of an adapter-owned alias or route is normalized
+  // HERE, and scoped by its normalized path, so it never reaches the generic 301.
   const bare = url.pathname.length > 1 ? url.pathname.replace(/\/+$/, "") : url.pathname;
   const slashVariant = bare !== url.pathname && bare !== "";
+  if (!inScope(url.pathname) && !(slashVariant && inScope(bare))) return null;
+  const { manifest: map } = await manifest();
   const target = map.redirects[url.pathname]
     ?? (slashVariant ? map.redirects[bare] ?? (Object.hasOwn(map.routes, bare) ? bare : undefined) : undefined);
   return target ? new Response(null, { status: 302, headers: { Location: target + url.search, "Cache-Control": "no-store" } }) : null;
@@ -55,9 +66,9 @@ export function createFactorylmMarketingRouter() {
   router.use("*", async (c, next) => {
     if (!["GET", "HEAD"].includes(c.req.method)) return next();
     const url = new URL(c.req.url);
-    if (!inScope(url.pathname)) return next();
-    const alias = await marketingAliasRedirect(c.req.method, c.req.url);
+    const alias = await marketingAliasRedirect(c.req.method, c.req.url, c.req.raw.headers);
     if (alias) return alias;
+    if (onHubHost(url, c.req.raw.headers) || !inScope(url.pathname)) return next();
     const { manifest: map, identity } = await manifest();
     let file = map.routes[url.pathname];
     if (url.pathname.startsWith("/factorylm-next-assets/")) {

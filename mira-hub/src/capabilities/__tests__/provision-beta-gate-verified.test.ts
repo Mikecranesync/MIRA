@@ -14,6 +14,8 @@ const state = {
   redeemRefused: false,
   // An account under the same email that predates this run (another run's).
   priorAccount: false,
+  // Receipt reads that fail before one succeeds (a transient database error).
+  receiptReadFailures: 0,
 };
 const calls: Array<{ url: string; body: string }> = [];
 vi.mock("pg", () => ({
@@ -26,6 +28,10 @@ vi.mock("pg", () => ({
       }
       if (/^SELECT \(SELECT count/.test(text)) {
         return { rows: [{ users: 0, auth_tenants: 0, tenants: 0 }] };
+      }
+      if (/^SELECT onboarding->>'createdTenantId'/.test(text) && state.receiptReadFailures > 0) {
+        state.receiptReadFailures -= 1;
+        throw new Error("simulated transient receipt read failure");
       }
       if (/^SELECT onboarding->>'createdTenantId'/.test(text)) {
         // Models the real receipt: only a token whose redemption CREATED the
@@ -96,6 +102,7 @@ describe("provision-beta-gate when register requires verified setup", () => {
     state.accountExists = true;
     state.redeemRefused = false;
     state.priorAccount = false;
+    state.receiptReadFailures = 0;
     log.mockClear();
     err.mockClear();
     vi.stubGlobal("fetch", fetchMock());
@@ -154,6 +161,21 @@ describe("provision-beta-gate when register requires verified setup", () => {
     expect(del[0].text).toMatch(/WHERE token = \$1/);
     expect(del[0].values[0]).toBe(tokenInserts()[0].values[0]);
     expect(log.mock.calls.map((c) => c.join(" ")).join("\n")).not.toMatch(/^ENV:/m);
+  });
+
+  it("F39: an unreadable receipt keeps the seeded token and reports, never deletes", async () => {
+    state.receiptReadFailures = 99;
+    const mod = await import("../../../scripts/provision-beta-gate");
+    await expect(mod.main()).rejects.toThrow(/creation receipt could not be read; the seeded token was kept/);
+    expect(queries.some((q) => /^DELETE FROM/.test(q.text))).toBe(false);
+  });
+
+  it("F39: a receipt that reads on retry lets the committed fixture be swept", async () => {
+    state.receiptReadFailures = 1;
+    const mod = await import("../../../scripts/provision-beta-gate");
+    await expect(mod.main()).rejects.toThrow(/simulated transient receipt read failure/);
+    const swept = queries.filter((q) => /^DELETE FROM hub_tenants/.test(q.text));
+    expect(swept.map((q) => q.values[0])).toEqual([TENANT]);
   });
 
   it("F32: a refused setup never deletes an account this run did not create", async () => {

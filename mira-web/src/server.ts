@@ -202,7 +202,7 @@ export const app = new Hono();
 app.use("*", async (c, next) => {
   // Codex F33: the bounded marketing adapter answers its own aliases first
   // (same-origin 302/no-store); generic normalization would 301 to production.
-  const alias = await marketingAliasRedirect(c.req.method, c.req.url);
+  const alias = await marketingAliasRedirect(c.req.method, c.req.url, c.req.raw.headers);
   if (alias) return alias;
   const target = trailingSlashRedirectTarget(c.req.url, c.req.raw.headers);
   if (target) return c.redirect(target, 301);

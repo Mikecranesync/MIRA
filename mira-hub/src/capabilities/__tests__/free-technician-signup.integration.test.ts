@@ -319,24 +319,76 @@ describe.skipIf(!READY)("verified onboarding with a restricted production-shaped
         expect((await testPool.query("SELECT count(*)::int AS n FROM hub_users WHERE id IN ($1,$2)", [prior.id, free.id])).rows[0].n).toBe(0);
         expect((await testPool.query("SELECT count(*)::int AS n FROM hub_onboarding_recoveries WHERE previous_user_id=$1", [prior.id])).rows[0].n).toBe(0);
     });
-    it("F34: a user moved to another workspace mid-sign-in gets no mixed session", async () => {
+    it("F34: a workspace move racing an email sign-in yields a session coherent with the live row", async () => {
         const member = await personal();
         const other = await personal();
         const token = await createMagicToken(member.email);
+        // An operator moves the user and rotates credentials, holding the row lock.
+        const operator = await adminPool.connect();
+        let session;
+        try {
+            await operator.query("BEGIN");
+            await operator.query("UPDATE hub_users SET tenant_id=$2,credential_epoch=credential_epoch+1 WHERE id=$1", [member.id, other.tenantId]);
+            const pending = provider("magic-token")({ token }, {});
+            await new Promise((r) => setTimeout(r, 300));
+            await operator.query("COMMIT");
+            session = await pending;
+        }
+        finally {
+            operator.release();
+        }
+        const { rows } = await testPool.query("SELECT tenant_id,credential_epoch FROM hub_users WHERE id=$1", [member.id]);
+        if (session) expect(session).toMatchObject({ tenantId: String(rows[0].tenant_id), credentialEpoch: Number(rows[0].credential_epoch) });
+    });
+    it("F36: a linked Google user moved to another workspace mid-sign-in gets no mixed session", async () => {
+        const member = await personal();
+        const other = await personal();
+        vi.stubEnv("MIRA_FREE_TECHNICIANS", "false");
+        vi.stubEnv("MIRA_PILOT_APPROVAL_REQUIRED", "0");
+        const linked = "google-f36-" + randomUUID();
+        await testPool.query("UPDATE hub_users SET google_sub=$2 WHERE id=$1", [member.id, linked]);
         const real = testPool.query.bind(testPool);
         const spy = vi.spyOn(testPool, "query").mockImplementation((async (text: unknown, values?: unknown) => {
             const result = await real(text as string, values as unknown[]);
-            // Right after the identity claim, an operator moves the user and rotates credentials.
-            if (typeof text === "string" && /SET\s+password_hash = CASE/.test(text))
+            // Right after identity resolution reads the linked row, the operator moves it.
+            if (typeof text === "string" && /SELECT id, email, tenant_id FROM hub_users WHERE google_sub/.test(text))
                 await adminPool.query("UPDATE hub_users SET tenant_id=$2,credential_epoch=credential_epoch+1 WHERE id=$1", [member.id, other.tenantId]);
             return result;
         }) as never);
+        const user: Record<string, unknown> = { id: "google-user" };
+        let allowed;
         try {
-            expect(await provider("magic-token")({ token }, {})).toBeNull();
+            allowed = await authOptions.callbacks!.signIn!({ user, account: { provider: "google", providerAccountId: linked }, profile: { email: member.email, email_verified: true } } as never);
         }
         finally {
             spy.mockRestore();
         }
+        expect(allowed).toBe(false);
+        expect(user.tenantId).toBeUndefined();
+    });
+    it("F37: a failure during plain email sign-in leaves the link, password and epoch unchanged", async () => {
+        vi.stubEnv("MIRA_FREE_TECHNICIANS", "false");
+        vi.stubEnv("MIRA_PILOT_APPROVAL_REQUIRED", "0");
+        const member = await ensureUserAndTenant({ email: email(), passwordHash: await bcrypt.hash("public-password", 4) });
+        await testPool.query("UPDATE hub_users SET password_provenance='public_unverified' WHERE id=$1", [member.id]);
+        const snapshot = async () => (await testPool.query("SELECT password_hash,credential_epoch,email_verified_at FROM hub_users WHERE id=$1", [member.id])).rows[0];
+        const before = await snapshot();
+        const token = await createMagicToken(member.email);
+        await adminPool.query(`CREATE FUNCTION f37_fail() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.id = '${member.id}' THEN RAISE EXCEPTION 'synthetic claim failure'; END IF; RETURN NEW; END $$; CREATE TRIGGER f37_fail BEFORE UPDATE ON hub_users FOR EACH ROW EXECUTE FUNCTION f37_fail()`);
+        try {
+            await expect(provider("magic-token")({ token }, {})).rejects.toThrow("synthetic claim failure");
+        }
+        finally {
+            await adminPool.query("DROP TRIGGER f37_fail ON hub_users; DROP FUNCTION f37_fail()");
+        }
+        expect(await snapshot()).toEqual(before);
+        expect((await testPool.query("SELECT used_at FROM hub_magic_tokens WHERE token=$1", [token])).rows[0].used_at).toBeNull();
+        const session = await provider("magic-token")({ token }, {});
+        expect(session?.id).toBe(member.id);
+        const after = await snapshot();
+        expect(after.password_hash).toBeNull();
+        expect(session?.credentialEpoch).toBe(Number(after.credential_epoch));
+        expect((await testPool.query("SELECT used_at FROM hub_magic_tokens WHERE token=$1", [token])).rows[0].used_at).not.toBeNull();
     });
     it.each([["setup"], ["invite"]])("F35: a failed lookup after the %s commits still yields the committed session", async (kind) => {
         let token: string;

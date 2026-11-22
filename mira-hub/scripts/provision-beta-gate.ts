@@ -181,6 +181,8 @@ async function mintSession(provider: "credentials" | "magic-token", fields: Reco
 /** The workspace THIS run's exact setup token created, read from the receipt
  * the redemption transaction writes onto the spent token (Codex F32). No
  * receipt means no proof of ownership, so nothing is ever adopted or deleted. */
+const RECEIPT_READ_ATTEMPTS = 3;
+
 async function tenantCreatedByToken(token: string): Promise<string | null> {
   const c = new Client({ connectionString: process.env.NEON_DATABASE_URL, ssl: { rejectUnauthorized: false } });
   await c.connect();
@@ -236,8 +238,24 @@ async function verifiedOnboarding(): Promise<string> {
     return tenantId;
   } catch (e) {
     // Delete a tenant only with this token's own creation receipt (Codex F32).
-    // Any other account under the address is reported, never touched.
-    const orphan = token ? await tenantCreatedByToken(token).catch(() => null) : null;
+    // Any other account under the address is reported, never touched. A FAILED
+    // receipt read is not a missing receipt (Codex F39): the token, which holds
+    // the only receipt, is kept and the uncertainty is reported.
+    let orphan: string | null = null;
+    if (token) {
+      let lastReadErr: unknown = null;
+      for (let attempt = 1; attempt <= RECEIPT_READ_ATTEMPTS; attempt++) {
+        try {
+          orphan = await tenantCreatedByToken(token);
+          lastReadErr = null;
+          break;
+        } catch (readErr) {
+          lastReadErr = readErr;
+        }
+      }
+      if (lastReadErr)
+        throw new AggregateError([e, lastReadErr], "verified setup failed AND its creation receipt could not be read; the seeded token was kept so cleanup can be retried");
+    }
     if (!orphan) {
       if (token) await deleteSeededToken(token);
       console.error("verified setup created no account attributable to this run; only its seeded token was removed");

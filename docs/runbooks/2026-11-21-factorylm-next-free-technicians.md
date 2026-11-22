@@ -31,10 +31,11 @@ Evidence and command details are under `docs/architecture/convergence/evidence/f
 ## Reviewed activation order
 
 1. Obtain exact-head/body native Codex review and required CI. Resolve the recorded framework, current-product and legal release gates.
-2. Deploy the paired source to authorized staging through the existing release process, keeping marketing off. Apply migrations 116 and 117 through the governed migration workflow and verify readiness using the non-DDL runtime role. Enable the free flag consistently for web and hub while retaining the global pilot-approval value.
-3. Verify environment-specific policy links and policy retention with signup closed, delivered email to an authorized test inbox, token consumption/replay, a new approved non-expiring personal session, stale credential/cookie revocation, personal invite denial, and an explicit pending pilot with its recorded application. Test paid and active pilot controls.
-4. Enable marketing on staging. Check real account destinations, preserved full Terms and dynamic blog, external calendar, temporary redirects and same-profile rollback. Verify required current-release document/source claims separately.
-5. Use the existing authorized production cutover process. This document grants no deploy, secret, DNS, production-account, paid or plant authority. No new hosting service or DNS connection is needed.
+2. **First**, on staging, apply migrations 116 and 117 through the governed migration workflow (`dry-run`, then `apply`) and confirm both are recorded, while the current runtime is still serving. The new runtime refuses readiness and sign-in on a schema below 117 even with both flags off, so it must never be deployed first (Codex F40).
+3. Then deploy the paired source to authorized staging through the existing release process, keeping both flags off. Verify health and an existing password sign-in using the non-DDL runtime role. Only then enable the free flag consistently for web and hub while retaining the global pilot-approval value.
+4. Verify environment-specific policy links and policy retention with signup closed, delivered email to an authorized test inbox, token consumption/replay, a new approved non-expiring personal session, stale credential/cookie revocation, personal invite denial, and an explicit pending pilot with its recorded application. Test paid and active pilot controls.
+5. Enable marketing on staging. Check real account destinations, preserved full Terms and dynamic blog, external calendar, temporary redirects and same-profile rollback. Verify required current-release document/source claims separately.
+6. Use the existing authorized production cutover process. This document grants no deploy, secret, DNS, production-account, paid or plant authority. No new hosting service or DNS connection is needed.
 
 ## Rollback
 

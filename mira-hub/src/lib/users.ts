@@ -227,21 +227,6 @@ export async function validateMagicToken(token: string): Promise<MagicTokenResul
     : null;
 }
 
-/** Non-consuming check: the token's address belongs to a row whose password has
- * unknown provenance, so redemption must refuse WITHOUT spending the token (F28). */
-export async function magicTokenNeedsCredentialReview(token: string): Promise<boolean> {
-  await ensureMagicSchema();
-  const result = await pool.query(
-    `SELECT 1 FROM hub_magic_tokens t JOIN hub_users u ON u.email_lower = LOWER(t.email)
-     WHERE t.token=$1 AND t.expires_at>NOW() AND t.used_at IS NULL
-       AND u.password_hash IS NOT NULL
-       AND u.password_provenance NOT IN ('public_unverified','operator','verified')
-     LIMIT 1`,
-    [token],
-  );
-  return Boolean(result.rows[0]);
-}
-
 export async function magicTokenPurpose(token: string): Promise<string | null> {
   await ensureMagicSchema();
   const result = await pool.query("SELECT purpose FROM hub_magic_tokens WHERE token=$1 AND expires_at>NOW() AND used_at IS NULL",[token]);
@@ -537,6 +522,52 @@ export async function readSessionSnapshot(db: Pick<Pool, "query">, userId: strin
  * admit, claim the identity, change membership, then spend the token. Any
  * refusal rolls all of it back, so the token stays usable and access is
  * unchanged. Returns `undefined` for a token that is not an invitation. */
+/** Ordinary (non-invite, non-setup) email sign-in as ONE transaction (Codex
+ * F37): the token and the account row are locked, the identity is claimed, the
+ * session snapshot is read and the token is spent together. Any refusal or
+ * failure rolls all of it back, so the link stays usable and the password and
+ * credential epoch are unchanged. Returns null for no session. */
+export async function redeemLoginToken(token: string): Promise<SessionSnapshot | null> {
+  await ensureSchema();
+  await ensureMagicSchema();
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const link = await client.query(
+      `SELECT email FROM hub_magic_tokens
+       WHERE token = $1 AND expires_at > NOW() AND used_at IS NULL
+         AND tenant_id IS NULL AND COALESCE(purpose, 'login') = 'login' FOR UPDATE`,
+      [token],
+    );
+    if (!link.rows[0]) {
+      await client.query("ROLLBACK");
+      return null;
+    }
+    const user = await client.query(
+      `SELECT id FROM hub_users WHERE email_lower = LOWER($1) LIMIT 1 FOR UPDATE`,
+      [String(link.rows[0].email)],
+    );
+    if (!user.rows[0]) {
+      // Email sign-in never creates the permanent account.
+      await client.query("ROLLBACK");
+      return null;
+    }
+    const id = String(user.rows[0].id);
+    await claimVerifiedEmail(client, id);
+    const snapshot = await readSessionSnapshot(client, id);
+    if (!snapshot) throw new Error("account vanished inside its own sign-in transaction");
+    await client.query("UPDATE hub_magic_tokens SET used_at = NOW() WHERE token = $1", [token]);
+    await client.query("COMMIT");
+    return snapshot;
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => {});
+    if (err instanceof CredentialReviewRequiredError) return null;
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
 export async function redeemInviteToken(token: string): Promise<SessionSnapshot | null | undefined> {
   await ensureSchema();
   await ensureMagicSchema();
