@@ -137,6 +137,8 @@ beforeEach(() => {
   filesMock.photoLinkedToTarget.mockResolvedValue(null);
   veMock.loadVisualEvidenceForPhoto.mockResolvedValue(null);
   veMock.loadRecentLookObservations.mockResolvedValue([]);
+  // clearAllMocks keeps a mockResolvedValue: each test states its own turns.
+  nbMock.listTurns.mockResolvedValue([]);
   vi.stubGlobal(
     "fetch",
     vi.fn(
@@ -547,16 +549,55 @@ describe("#5706 — a nameplate photo of another drive is not answered from the 
     expect(passOpts()[0].subjectQueries ?? []).toEqual([]);
   });
 
+  // Advisor check 3: the LOOK ledger also holds the photos SENT with questions.
+  // A LOOK of a turn's own photo is that turn's — never a second, unjoined turn.
+  it("a LOOK of an open turn's own photo is not carried twice (the turn's join rule speaks for it)", async () => {
+    nbMock.listTurns.mockResolvedValue([{ ...openPhotoTurn("Find me the manual for AutomationDirect GS11N-20P2"), createdAt: "2026-11-21T20:50:00Z" }]);
+    // Corrected AFTER its turn, so it is newer than the turn.
+    veMock.loadRecentLookObservations.mockResolvedValue([look("2026-11-21T20:58:00Z")]);
+    filesMock.photoLinkedToTarget.mockResolvedValue({ fileId: PRIOR_PHOTO, capturedAt: "2026-11-21T20:57:06.047Z" });
+    veMock.loadVisualEvidenceForPhoto.mockImplementation(exactThreadReading);
+    await (await POST(req({ message: "What's its rated current?", sourceDocIds: [DOC_A], threadId: THREAD }), params)).text();
+    // The typed model outranks that turn's photo; no unjoined GS20 turn appears.
+    expect(passOpts()[0].subjectQueries).toEqual(["Find me the manual for AutomationDirect GS11N-20P2"]);
+  });
+
+  it("a LOOK of a closed turn's own photo stays closed, whichever is newer", async () => {
+    for (const observedAt of ["2026-11-21T20:40:00Z", "2026-11-21T21:10:00Z"]) {
+      vi.clearAllMocks();
+      nbMock.listTurns.mockResolvedValue([
+        { ...openPhotoTurn(), answerStatus: "answered", basis: "workspace_evidence", createdAt: "2026-11-21T20:50:00Z" },
+      ]);
+      veMock.loadRecentLookObservations.mockResolvedValue([look(observedAt)]);
+      filesMock.photoLinkedToTarget.mockResolvedValue({ fileId: PRIOR_PHOTO, capturedAt: "2026-11-21T20:57:06.047Z" });
+      await (await POST(req({ message: "What's its rated current?", sourceDocIds: [DOC_A], threadId: THREAD }), params)).text();
+      expect(passOpts()[0].subjectQueries ?? []).toEqual([]);
+    }
+  });
+
+  it("passes the open questions' private-field codes for the check", async () => {
+    nbMock.listTurns.mockResolvedValue([openPhotoTurn()]);
+    filesMock.photoLinkedToTarget.mockResolvedValue({ fileId: PRIOR_PHOTO, capturedAt: "2026-11-21T20:57:06.047Z" });
+    veMock.loadVisualEvidenceForPhoto.mockImplementation(async () => lookRow(PRIOR_PHOTO, "Allen-Bradley Micro820. Unit: 2080-LC20-20QWB"));
+    await (await POST(req({ message: "What's its rated current?", sourceDocIds: [DOC_A], threadId: THREAD }), params)).text();
+    const first = passOpts()[0] as Opts & { subjectHidden?: string[][] };
+    expect(first.subjectHidden).toEqual([["2080-LC20-20QWB"]]);
+    expect(first.subjectQueries?.[0]).not.toContain("QWB");
+  });
+
   it("control: a question with no photo passes no photo reading", async () => {
     await (await POST(req({ message: "Find me the manual", sourceDocIds: [DOC_A] }), params)).text();
     expect(passOpts().length).toBeGreaterThan(0);
     expect(passOpts().every((o) => o.photoText === undefined)).toBe(true);
   });
 
-  it("an earlier photo's reading is never passed (#3966: it may show another machine)", async () => {
+  it("an earlier photo's reading is never passed as this turn's photo (#3966); an open LOOK carries as a subject", async () => {
     veMock.loadRecentLookObservations.mockResolvedValue([lookRow(PRIOR_PHOTO, GS20_READING)]);
+    filesMock.photoLinkedToTarget.mockResolvedValue({ fileId: PRIOR_PHOTO, capturedAt: "2026-11-21T20:57:06.047Z" });
     await (await POST(req({ message: "Find me the manual", sourceDocIds: [DOC_A] }), params)).text();
     expect(passOpts().length).toBeGreaterThan(0);
     expect(passOpts().every((o) => o.photoText === undefined)).toBe(true);
+    // Never this turn's photo — but an open subject of the conversation (finding 2).
+    expect(passOpts()[0].subjectQueries?.[0]).toContain("GS20-23P0");
   });
 });

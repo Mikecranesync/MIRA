@@ -1593,6 +1593,9 @@ export async function retrieveNodeChunks(
      *  names no model and no confirmed notebook identity scopes it: the model
      *  an earlier, unanswered question named is then still the subject. */
     subjectQueries?: readonly string[];
+    /** Per `subjectQueries` entry: its photo's private-field codes
+     *  (conversation-subject.ts SubjectRead `hidden`). Checked, never read. */
+    subjectHidden?: readonly (readonly string[])[];
     /** True when the caller's widest read of earlier turns found no start to
      *  the open run (conversation-subject.ts `complete: false`): a model named
      *  further back than was read would still be the subject. A question that
@@ -1977,6 +1980,57 @@ export async function retrieveNodeChunks(
       };
     }
     return [];
+  }
+
+  // #5706 (fail closed, the exact-number lane): a model-number-shaped code among
+  // a photo's private fields ("Unit: 2080-LC20-20QWB", a serial-labelled value)
+  // is never read as the model — but it is not ignored either. When the record
+  // or a scoped manual's cover would refuse it (the same verdicts the exact-
+  // number lane gives a typed number: a sibling of the record, another model's
+  // cover), the photo does not say which machine it is: one question, no
+  // answer, naming nothing it read there. Codes a cover says nothing about (a
+  // lot, certificate or barcode number) leave the turn as it was. The open
+  // questions' photos are checked the same way, up to the carried subject.
+  const hiddenLabels = [
+    ...live.hidden,
+    ...(modelAt >= 0 ? earlierQuestions.slice(0, modelAt + 1) : earlierQuestions).flatMap((_, i) => opts.subjectHidden?.[i] ?? []),
+  ];
+  const hiddenNumbers = unlistedModelNumbers(hiddenLabels.join("\n"));
+  if (hiddenNumbers.length > 0) {
+    let refuses = hiddenNumbers.some(isSiblingOfRecord);
+    if (!refuses && allowedDocIds.length > 0) {
+      try {
+        const covers = await client.query(
+          `/* hidden-code-eligibility */ SELECT DISTINCT ON (doc_id)
+              doc_id::text AS doc_id,
+              metadata->>'filename' AS filename,
+              left(content, 2000) AS document_heading
+            FROM knowledge_entries
+            WHERE tenant_id = $1
+              AND doc_id::text = ANY($2::text[])
+              AND ingest_route = 'v2'
+            ORDER BY doc_id, page_start NULLS LAST, source_page NULLS LAST,
+              (metadata->>'chunk_index')::int NULLS LAST, id`,
+          [tenantId, allowedDocIds],
+        );
+        refuses = covers.rows.some(
+          (r: Record<string, unknown>) =>
+            !manualAnswersFor(hiddenNumbers, String(r.document_heading ?? ""), String(r.filename ?? "")).admit,
+        );
+      } catch (err) {
+        // A cover that cannot be read cannot clear the code: ask.
+        console.error("[manual-rag] hidden-code cover read failed (asking which machine):", err instanceof Error ? err.message : err);
+        refuses = true;
+      }
+    }
+    if (refuses) {
+      if (opts.diagnostics) {
+        opts.diagnostics.photoSubjectUnclear = live.hidden.length > 0 && unlistedModelNumbers(live.hidden.join("\n")).length > 0
+          ? { shown: [], earlier: [], unknown: true }
+          : { shown: [], earlier: [], carried: true };
+      }
+      return [];
+    }
   }
 
   const requestedModel = resolveModelFromObservationText(modelQuestion);

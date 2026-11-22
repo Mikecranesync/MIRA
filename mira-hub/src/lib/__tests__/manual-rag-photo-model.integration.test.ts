@@ -479,6 +479,44 @@ describe("Codex r2 on #5764: the photo's text is judged exactly as typed", () =>
     expect(diagnostics.photoSubjectUnclear).toBeUndefined();
   });
 
+  // The exact-number lane (F6) for a code among the private fields: the cover
+  // would refuse it, so the photo asks — naming nothing it read there.
+  for (const reading of ["Allen-Bradley Micro820. Serial No 12345678 2080-LC20-20QWB", "Unit: 2080-LC20-20QWB", "Serial No 12345678 2080-LC20-20QWB"]) {
+    it(`a QWB code in a private field is never answered from the AWB manual: ${reading}`, async () => {
+      const awb = await askIn("awb", "Find me the manual", reading);
+      expect(awb.hits).toEqual([]);
+      expect(awb.diagnostics.photoSubjectUnclear).toEqual({ shown: [], earlier: [], unknown: true });
+      expect(JSON.stringify(awb.diagnostics)).not.toMatch(/QWB|12345678/);
+      // Control: the manual that covers the code is served.
+      expect((await askIn("qwb", "Find me the manual", reading)).hits.length).toBeGreaterThan(0);
+    });
+  }
+
+  it("control: a lot or barcode code a cover says nothing about leaves the turn as it was", async () => {
+    expect((await askIn("awb", "Find me the manual", "Allen-Bradley Micro820. Serial No 12345678 Lot K25310021")).hits.length).toBeGreaterThan(0);
+    expect((await askIn("awb", "Find me the manual", "Allen-Bradley Micro820. Serial No 12345678 2080-LC20-20AWB")).hits.length).toBeGreaterThan(0);
+  });
+
+  it("a carried question's private code is checked the same way, up to the carried subject", async () => {
+    const carried = await askIn("awb", "What is its input voltage?", undefined);
+    expect(carried.hits.length).toBeGreaterThan(0);
+    const diagnostics: Diagnostics = {};
+    const hits = await retrieveNodeChunks(client, TENANT, "What is its input voltage?", {
+      nodeId: PROJECTS.awb.node, unsPath: null, docIds: [PROJECTS.awb.doc], validatedDocScope: true, rawQuery: "What is its input voltage?",
+      identity: PROJECTS.awb.identity, identityStatus: "user_confirmed", diagnostics,
+      subjectQueries: ["Find me the manual"], subjectHidden: [["2080-LC20-20QWB"]],
+    } as Parameters<typeof retrieveNodeChunks>[3]);
+    expect(hits).toEqual([]);
+    expect(diagnostics.photoSubjectUnclear).toEqual({ shown: [], earlier: [], carried: true });
+  });
+
+  it("a record sibling in a private field asks (GS11N-20P2 on record, GS11N-20P5 after the serial)", async () => {
+    const { hits, diagnostics } = await ask("Find me the manual", "AutomationDirect drive. Serial No 12345678 GS11N 20P5", "GS11N-20P2");
+    expect(hits).toEqual([]);
+    expect(diagnostics.photoSubjectUnclear?.unknown).toBe(true);
+    expect(diagnostics.siblingOfRecordAsk).toBeUndefined();
+  });
+
   it("a carried question whose photo could not be told asks, even naming no model itself", async () => {
     const { hits, diagnostics } = await ask("What is its rated current?", undefined, "GS11N-20P2", { subjectQueries: ["Find me the manual"], subjectUnclear: [true] });
     expect(hits).toEqual([]);

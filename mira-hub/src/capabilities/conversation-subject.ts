@@ -42,6 +42,8 @@ export type QuestionWithPhoto = {
   ambiguous: boolean;
   /** The photo's machine cannot be known (readPhotoModel, or an unread photo). */
   unknown: boolean;
+  /** Private-field codes of the joined photo (readPhotoModel `hidden`). */
+  hidden: string[];
 };
 
 /**
@@ -62,16 +64,18 @@ export function questionWithPhoto(
 ): QuestionWithPhoto {
   const asked = question.trim();
   const joins = !namesAnyModel(asked) && !(recordOnFile && returnsToRecord(asked));
-  const read = joins ? readPhotoModel(reading) : { text: null, unknown: false };
+  const read = joins ? readPhotoModel(reading) : { text: null, unknown: false, hidden: [] };
   const unknown = joins && (unread || read.unknown);
   const photo = read.text;
-  if (!photo) return { text: asked, photo: null, releases: false, ambiguous: false, unknown };
+  const hidden = read.hidden;
+  if (!photo) return { text: asked, photo: null, releases: false, ambiguous: false, unknown, hidden };
   return {
     text: [asked, photo].filter(Boolean).join("\n"),
     photo,
     releases: !unknown && namesAnyModel(photo) && namesOneMachine(photo),
     ambiguous: photoIsAmbiguous(photo),
     unknown,
+    hidden,
   };
 }
 
@@ -93,6 +97,9 @@ export type SubjectRead = {
   /** Per question: its machine came from a photo that does not say which
    *  machine is meant (#5706). Absent when no question is. */
   unclear?: boolean[];
+  /** Per question: its photo's private-field codes (readPhotoModel `hidden`),
+   *  for manual-rag.ts to check only. Absent when no question has any. */
+  hidden?: string[][];
   /**
    * True when the start of the open run was seen: a document answer closed
    * what came before it, or the conversation began inside what was read.
@@ -119,7 +126,13 @@ export function readSubject(turns: readonly PriorTurn[], limit: number, recordOn
     if (subject.text || subject.unknown) read.push(subject);
   }
   const unclear = unclearPhotos(read, recordOnFile);
-  return { questions: read.map((q) => q.text), ...(unclear.some(Boolean) ? { unclear } : {}), complete };
+  const hidden = read.map((q) => q.hidden);
+  return {
+    questions: read.map((q) => q.text),
+    ...(unclear.some(Boolean) ? { unclear } : {}),
+    ...(hidden.some((h) => h.length > 0) ? { hidden } : {}),
+    complete,
+  };
 }
 
 /**

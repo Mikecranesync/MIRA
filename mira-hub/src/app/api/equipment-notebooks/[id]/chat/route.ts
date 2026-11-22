@@ -2525,6 +2525,7 @@ async function handleChatTurn(
   let subjectQueries: string[] = [];
   let subjectOutOfReach = false;
   let subjectUnclear: boolean[] | undefined;
+  let subjectHidden: string[][] | undefined;
   // Codex r1 on #5764 (F5): a question refused over the photo sent with it
   // ("Find me the manual" + a GS20 plate) leaves its subject open, and that
   // subject is the photo's machine — "what's its rated current?" next is still
@@ -2583,14 +2584,20 @@ async function handleChatTurn(
   // is carried as a photo-only turn at its place in time — judged by the same
   // rule as a photo sent with a question. Not under a selected component (a
   // standalone LOOK records none, #5504 Codex r3 F7), and not when this turn
-  // sends its own photo (that photo owns the turn). A failed ledger read
-  // cannot show a photo exists, so it adds none.
-  const withRecentLook = async <T extends PriorTurn & { createdAt: string }>(turns: T[]): Promise<{ turns: PriorTurn[]; added: number }> => {
+  // sends its own photo (that photo owns the turn). A LOOK of a photo that a
+  // turn in the window was sent with is that turn's photo, already judged by
+  // its join rule (or closed by its answer) — never a second, unjoined turn.
+  // A failed ledger read cannot show a photo exists, so it adds none.
+  const withRecentLook = async <T extends PriorTurn & { createdAt: string; evidence: unknown[] }>(
+    turns: T[],
+  ): Promise<{ turns: PriorTurn[]; added: number }> => {
     if (visualEntry || componentScope) return { turns, added: 0 };
     try {
       const scope = { notebookId, ownerUserId: ctx.userId, threadId };
       const look = (await withTenantContext(ctx.tenantId, (c) => loadRecentLookObservations(c, ctx.tenantId, scope)))?.[0];
       if (!look?.text || !look.fileId) return { turns, added: 0 };
+      const sentWithTurn = turns.some((t) => t.evidence.some((e) => isVisualObservationEntry(e) && e.fileId === look.fileId));
+      if (sentWithTurn) return { turns, added: 0 };
       const at = Date.parse(look.observedAt ?? "");
       const closedAt = turns.reduce(
         // An unreadable closing time hides nothing (fail closed: the LOOK is judged).
@@ -2631,6 +2638,7 @@ async function handleChatTurn(
         }
         subjectQueries = read.questions;
         subjectUnclear = read.unclear;
+        subjectHidden = read.hidden;
         subjectOutOfReach = !read.complete;
         if (read.complete) break;
       }
@@ -2839,6 +2847,7 @@ async function handleChatTurn(
             subjectQueries,
             subjectOutOfReach,
             subjectUnclear,
+            subjectHidden,
             // #5706: the photo sent WITH this question (never an earlier one,
             // #3966) names the machine when the message names none, so a
             // nameplate of another drive is not answered from this project's
@@ -3705,6 +3714,7 @@ async function handleChatTurn(
             subjectQueries,
             subjectOutOfReach,
             subjectUnclear,
+            subjectHidden,
             validatedDocScope: true,
             approvedSourceDocIds: docIds,
             diagnostics,

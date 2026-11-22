@@ -79,7 +79,7 @@ describe("questionWithPhoto: one join rule", () => {
   });
 
   it("a model typed in the question outranks the photo", () => {
-    expect(questionWithPhoto("Manual for the GS11N-20P2", GS20, false)).toEqual({ text: "Manual for the GS11N-20P2", photo: null, releases: false, ambiguous: false, unknown: false });
+    expect(questionWithPhoto("Manual for the GS11N-20P2", GS20, false)).toEqual({ text: "Manual for the GS11N-20P2", photo: null, releases: false, ambiguous: false, unknown: false, hidden: [] });
   });
 
   it("a return to the unit on record outranks the photo; with no record it is no return", () => {
@@ -208,6 +208,15 @@ describe("readPhotoModel: a model among the private fields makes the machine unk
     const read = readSubject([{ question: "Find me the manual", answerStatus: "insufficient_evidence", basis: null, photoUnread: true }], 6);
     expect(read.questions).toEqual(["Find me the manual"]);
     expect(read.unclear).toEqual([true]);
+  });
+
+  it("private-field codes are kept for the check only, and never with a labelled MODEL field", () => {
+    expect(readPhotoModel("Allen-Bradley Micro820. Serial No 12345678 2080-LC20-20QWB").hidden).toContain("2080-LC20-20QWB");
+    expect(readPhotoModel("Allen-Bradley Micro820. Serial No 12345678 2080-LC20-20QWB").text).not.toContain("QWB");
+    expect(readPhotoModel('Label: "MODEL: 2080-LC20-20AWB", "Unit: 2080-LC20-20QWB".').hidden).toEqual([]);
+    const read = readSubject([{ question: "Find me the manual", answerStatus: "insufficient_evidence", basis: null, photoText: "Unit: 2080-LC20-20QWB" }], 6);
+    expect(read.hidden).toEqual([["2080-LC20-20QWB"]]);
+    expect(readSubject([{ question: "Find me the manual", answerStatus: "insufficient_evidence", basis: null }], 6).hidden).toBeUndefined();
   });
 
   it("a photo-only turn (a LOOK with no question) is carried by the same rule", () => {

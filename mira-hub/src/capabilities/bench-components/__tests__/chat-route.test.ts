@@ -387,6 +387,15 @@ describe("a confirmed component is the record for the turn", () => {
     expect(queries[0]).not.toContain("GS20");
   });
 
+  it("under a component, a standalone LOOK is not carried as a subject (it records no component)", async () => {
+    storeMock.listSelectionTurns.mockResolvedValue([]);
+    lookMock.loadRecentLookObservations.mockResolvedValue([
+      { observationId: "o9", sessionId: "s1", text: 'Plate reads "GS20-23P0".', obsKind: "nameplate", trust: "candidate", confidence: 0.9, fileId: "77777777-7777-4777-8777-777777777776", photoHash: null, observedAt: "2026-11-14T04:06:00.000Z", hazards: [] },
+    ]);
+    await frames(await ask("and its rated current?", under(VFD, 3)));
+    expect((retrievalOpts()!.subjectQueries as string[] | undefined) ?? []).toEqual([]);
+  });
+
   it("under a component, an open photo that cannot be read back is flagged, not dropped", async () => {
     const PHOTO = "77777777-7777-4777-8777-777777777774";
     storeMock.listSelectionTurns.mockResolvedValue([

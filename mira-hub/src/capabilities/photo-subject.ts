@@ -52,6 +52,12 @@ export type PhotoModelRead = {
    *  label) where it cannot be told from a serial or an asset number. Its
    *  machine is unknown: the turn asks, never answers (#5706). */
   unknown: boolean;
+  /** Model-number-shaped codes among the private fields (the serial values
+   *  included) that no model reader knows ("2080-LC20-20QWB" after "Unit:").
+   *  Never read as the model, never named back, never searched: manual-rag.ts
+   *  only checks whether the record or a scoped manual's cover would refuse
+   *  one, and then asks which machine. With a labelled MODEL field, none. */
+  hidden: string[];
 };
 
 /**
@@ -72,7 +78,7 @@ export type PhotoModelRead = {
  */
 export function readPhotoModel(reading: string | null | undefined): PhotoModelRead {
   const raw = reading?.trim();
-  if (!raw) return { text: null, unknown: false };
+  if (!raw) return { text: null, unknown: false, hidden: [] };
   const serials = serialCodes(raw);
   const labelled = [...raw.matchAll(MODEL_FIELD)].map((m) => m[1]).filter((value) => !serials.includes(value.toUpperCase()));
   const open = without(publicLabelText(raw), serials).replace(/\s+/g, " ").trim();
@@ -87,9 +93,11 @@ export function readPhotoModel(reading: string | null | undefined): PhotoModelRe
   // does not name ("GS20-23P0 (S/N)" with nothing else readable) is unknown.
   const families = new Set(text ? modelMentionsInText(text).map((m) => labelKey(m.id)) : []);
   const serialNamesNew = serials.some((serial) => modelMentionsInText(serial).some((m) => !families.has(labelKey(m.id))));
+  const hidden = labelled.length > 0 ? [] : [...new Set(unlistedModelNumbers([rest, ...serials].join("\n")).map((n) => n.label))];
   return {
     text: text && (namesAnyModel(text) || unlistedModelNumbers(text).length > 0) ? text : null,
     unknown: labelled.length === 0 && (restNamesNew || serialNamesNew),
+    hidden,
   };
 }
 
