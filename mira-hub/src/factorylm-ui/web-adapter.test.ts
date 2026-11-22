@@ -301,35 +301,74 @@ describe("browser file picker settles only on a real outcome (#5788)", () => {
     expect(attached.has(input)).toBe(false);
   });
 
-  it("still settles when a browser never sends cancel, once the page has kept focus, so the composer is not left busy", async () => {
+  // Codex #5821 r1 F1: Chrome on Android resolves the chosen file on a
+  // background task after focus returns, so `change` can come well after it.
+  it.each([750, 30_000])("takes a file whose change arrives %i ms after focus returns", async (lateMs) => {
     const { input, settled } = pick();
-    fire(win, "blur");
-    await vi.advanceTimersByTimeAsync(3_600);
-    fire(win, "focus");
-    await vi.advanceTimersByTimeAsync(5_000);
-    expect(settled()).toEqual({ file: null });
-    expect(attached.has(input)).toBe(false);
-  });
+    fire(win, "blur");                       // chooser open
+    await vi.advanceTimersByTimeAsync(4_000);
+    fire(win, "focus");                      // file chosen, Chrome still resolving it
+    await vi.advanceTimersByTimeAsync(lateMs);
+    expect(settled()).toBeUndefined();
+    expect(attached.has(input)).toBe(true);
 
-  it("the focus fallback takes a file that is already on the input when change never fired", async () => {
-    const { input, settled } = pick();
-    fire(win, "blur");
-    const pdf = file("manual.pdf", "application/pdf");
-    input.files = [pdf];
-    fire(win, "focus");
-    await vi.advanceTimersByTimeAsync(5_000);
-    expect(settled()).toEqual({ file: pdf });
-  });
-
-  it("a late focus after the pick settled does nothing", async () => {
-    const { input, settled } = pick();
     const pdf = file("manual.pdf", "application/pdf");
     input.files = [pdf];
     fire(input, "change");
     await flush();
     expect(settled()).toEqual({ file: pdf });
+    expect(attached.has(input)).toBe(false);
+  });
+
+  // The Attachment attachFile returns is what the Composer renders as the chip.
+  it("attachFile returns the chip's attachment for a late change, and holds its bytes", async () => {
+    const adapter = createWebAdapter(browserAdapterDeps());
+    let chip: Awaited<ReturnType<typeof adapter.attachFile>> | undefined;
+    void adapter.attachFile().then((a) => { chip = a; });
+    const input = inputs[inputs.length - 1]!;
+    fire(win, "blur");
     fire(win, "focus");
-    await vi.advanceTimersByTimeAsync(5_000);
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(chip).toBeUndefined();
+
+    const pdf = file("manual.pdf", "application/pdf");
+    input.files = [pdf];
+    fire(input, "change");
+    await flush();
+    expect(chip).toMatchObject({ name: "manual.pdf", kind: "pdf", status: "ready" });
+    expect(adapter.heldFile(chip!.id)).toBe(pdf);
+  });
+
+  it("a dismissed pick frees the next one, which takes its file", async () => {
+    const first = pick();
+    fire(first.input, "cancel");
+    await flush();
+    expect(first.settled()).toEqual({ file: null });
+
+    const second = pick();
+    expect(second.input).not.toBe(first.input);
+    const pdf = file("manual.pdf", "application/pdf");
+    second.input.files = [pdf];
+    fire(second.input, "change");
+    await flush();
+    expect(second.settled()).toEqual({ file: pdf });
+  });
+
+  // Codex #5821 r1 F2: window focus must schedule nothing, during a pick or after it.
+  it("window focus never schedules a timer or settles a pick", async () => {
+    const { input, settled } = pick();
+    fire(win, "blur");
+    fire(win, "focus");
+    expect(vi.getTimerCount()).toBe(0);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(settled()).toBeUndefined();
+
+    const pdf = file("manual.pdf", "application/pdf");
+    input.files = [pdf];
+    fire(input, "change");
+    await flush();
+    fire(win, "focus");
+    expect(vi.getTimerCount()).toBe(0);
     expect(settled()).toEqual({ file: pdf });
   });
 });

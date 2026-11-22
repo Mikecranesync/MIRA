@@ -191,35 +191,21 @@ export function browserAdapterDeps(): WebAdapterDeps {
         input.accept = accept;
         if (capture) input.setAttribute("capture", capture);
         input.style.display = "none";
-        // A dismissed chooser fires `cancel` in current browsers. The focus
-        // fallback settles the pick in a browser that never sends it, so the
-        // composer is not left busy. It may only fire once the page has KEPT
-        // focus: on Android a permission prompt hands focus back for a moment
-        // before the chooser opens, and settling then lost the file the
-        // technician picked next (#5788). So a blur disarms it.
-        let fallback: ReturnType<typeof setTimeout> | undefined;
-        let settled = false;
-        const disarm = () => {
-          if (fallback !== undefined) clearTimeout(fallback);
-          fallback = undefined;
-        };
+        // The pick settles only on the browser's own outcome: `change` with the
+        // chosen file, or `cancel` when the chooser is dismissed. Window focus
+        // says neither. On Android, Chrome hands focus back before it has
+        // finished resolving the chosen file, and after a permission prompt it
+        // hands focus back before the chooser even opens. A focus timer settled
+        // too early in both cases and lost the file (#5788). Every browser in the
+        // Hub's build target sends `cancel` except Chrome and Edge 111 and 112
+        // (it arrived in 113). There, a dismissed chooser leaves the picker items
+        // busy until the page reloads; typing, sending, paste and drop still work.
         const done = (file: File | null) => {
-          if (settled) return;
-          settled = true;
-          disarm();
-          window.removeEventListener("focus", arm);
-          window.removeEventListener("blur", disarm);
           input.remove();
           resolve(file);
         };
-        function arm() {
-          disarm();
-          fallback = setTimeout(() => done(input.files?.[0] ?? null), 500);
-        }
         input.addEventListener("change", () => done(input.files?.[0] ?? null), { once: true });
         input.addEventListener("cancel", () => done(null), { once: true });
-        window.addEventListener("focus", arm);
-        window.addEventListener("blur", disarm);
         document.body.appendChild(input);
         input.click();
       }),
