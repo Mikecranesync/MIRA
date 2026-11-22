@@ -12,6 +12,6 @@ export function isSupportedManufacturer(manufacturer: string | null): boolean {
 
 export function manufacturerRefusalMessage(manufacturer: string | null): string {
   return manufacturer && manufacturer.trim()
-    ? `This tool drafts job packets from CAT Pumps documents only, and this machine is confirmed as made by "${manufacturer.trim()}". Use that manufacturer's own documents, or correct the confirmed identity.`
+    ? `Job packets aren't available for ${manufacturer.trim()} equipment yet. Job packets currently cover CAT Pumps equipment only.`
     : "This machine's confirmed identity has no manufacturer. Confirm the manufacturer (this tool supports CAT Pumps) before drafting a job packet.";
 }

@@ -61,7 +61,7 @@ describe("the tools register with the menu instead of drawing their own pills", 
     ["GuidedProcedure.tsx", /useMenuItem\(\s*proc \? \{ id: "guided"/],
     ["MachineObservations.tsx", /useMenuItem\(enabled \? MACHINE_STATE_ITEM : null/],
     ["SavedFixes.tsx", /useMenuItem\(\s*state && state\.fixes\.length > 0/],
-    ["WorkPacketPanel.tsx", /useMenuItem\(\s*avail === null \? null : \{ id: "work-packet"/],
+    ["WorkPacketPanel.tsx", /useMenuItem\(\s*avail === null(?: \|\| \([^)]*\))? \? null : \{ id: "work-packet"/],
     ["LivingSheet.tsx", /useMenuItem\(enabled === true \? JOB_SHEET_ITEM : null/],
   ])("%s registers before it can return nothing", (file, call) => {
     const src = read(file);

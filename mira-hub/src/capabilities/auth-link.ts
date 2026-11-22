@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createMagicToken, findUserByEmail } from "@/lib/users";
 import { publicSignupPolicy } from "./free-technician-signup";
 import { ONBOARDING_VERSION } from "./onboarding-policy";
+import { magicLinkUrl } from "./magic-link-return";
 import { attributionFromRequest } from "./pilot-funnel";
 const recipients = new Map<string, {
     since: number;
@@ -68,7 +69,8 @@ export async function requestAuthLink(req: Request, onboarding: boolean) {
         const token = await createMagicToken(email, onboarding ? { onboarding: { intent: intent as "technician" | "pilot", agreementVersion: ONBOARDING_VERSION, attribution: attributionFromRequest(req) } } : {});
         const origin = new URL(process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_APP_URL || "https://app.factorylm.com").origin;
         const prefix = process.env.NEXT_PUBLIC_API_BASE ?? "/hub";
-        const link = origin + prefix + (onboarding ? `/signup/?intent=${intent}#token=${encodeURIComponent(token)}` : `/magic/#token=${encodeURIComponent(token)}`);
+        // #5744: a sign-in link returns to the cited page the technician opened.
+        const link = onboarding ? origin + prefix + `/signup/?intent=${intent}#token=${encodeURIComponent(token)}` : magicLinkUrl(origin, prefix, token, body.returnTo);
         try {
             await fetch("https://api.resend.com/emails", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.RESEND_API_KEY}` }, body: JSON.stringify({ from: "FactoryLM <noreply@factorylm.com>", to: [email], subject: onboarding ? "Verify your FactoryLM account" : "Your FactoryLM sign-in link", html: `<p>${onboarding ? "Verify your email and confirm the account agreement to finish setup." : "Use this single-use link to sign in to your existing workspace."}</p><p><a href="${link}">${onboarding ? "Review and finish setup" : "Sign in to FactoryLM"}</a></p><p>This link expires in 15 minutes. If you did not request it, ignore this email.</p>` }) });
         }
