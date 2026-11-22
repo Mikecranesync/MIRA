@@ -156,7 +156,7 @@ describe("next FactoryLM public adapter", () => {
 
   test("the legacy sitemap drops retired pages and lists every new page, only while the new site is on", async () => {
     const legacy = '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
-      + ["/", "/cmms", "/pricing", "/blog", "/blog/fault-codes", "/assess", "/buy", "/limitations", "/drive-commander/siemens-g120/faults/F7011"]
+      + ["/", "/cmms", "/pricing", "/blog", "/blog/fault-codes", "/assess", "/buy", "/limitations", "/drive-commander/siemens-g120/faults/F7011", "/CMMS", "/buy/", "/Pricing/"]
         .map((path) => `\n  <url>\n    <loc>https://factorylm.com${path}</loc>\n  </url>`).join("") + "\n</urlset>\n";
     const server = new Hono().route("/", createFactorylmMarketingRouter())
       .get("/sitemap.xml", () => new Response(legacy, { headers: { "Content-Type": "application/xml; charset=utf-8" } }));
@@ -166,7 +166,7 @@ describe("next FactoryLM public adapter", () => {
     const locs = [...xml.matchAll(/<loc>https:\/\/factorylm\.com([^<]*)<\/loc>/g)].map((m) => m[1]);
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toContain("xml");
-    for (const gone of ["/pricing", "/cmms", "/assess", "/buy", "/404"]) expect(locs).not.toContain(gone);
+    for (const gone of ["/pricing", "/cmms", "/assess", "/buy", "/404", "/CMMS", "/buy/", "/Pricing/"]) expect(locs).not.toContain(gone);
     for (const kept of ["/", "/blog", "/blog/fault-codes", "/limitations", "/drive-commander/siemens-g120/faults/F7011"]) expect(locs).toContain(kept);
     for (const added of ["/mira", "/about", "/start", "/demo", "/free-technicians"]) expect(locs).toContain(added);
     expect(new Set(locs).size).toBe(locs.length);

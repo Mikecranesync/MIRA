@@ -70,7 +70,12 @@ const RETIRED_FROM_SITEMAP = new Set(["/pricing", "/cmms", "/assess", "/buy"]);
 /** The legacy sitemap, minus retired pages, plus every page this adapter serves.
  * The legacy generator (blog + fault-code pages) stays the source of the rest. */
 export function rewriteLegacySitemap(xml: string, routes: string[], origin: string, lastmods: Record<string, string>): string {
-  const pathOf = (loc: string) => { try { return new URL(loc).pathname; } catch { return loc; } };
+  // Case- and trailing-slash-insensitive, so /CMMS or /cmms/ cannot slip past the retired set.
+  const pathOf = (loc: string) => {
+    let path: string;
+    try { path = new URL(loc).pathname; } catch { path = loc; }
+    return (path.length > 1 ? path.replace(/\/+$/, "") : path).toLowerCase();
+  };
   const seen = new Set<string>();
   const kept = xml.replace(/\s*<url>[\s\S]*?<\/url>/g, (block) => {
     const loc = block.match(/<loc>([^<]*)<\/loc>/)?.[1] ?? "";
