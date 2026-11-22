@@ -20,8 +20,14 @@
 #   - The server starts with an allowlisted environment (env -i) and a fresh
 #     random AUTH_SECRET. Its Resend key is a dummy, and the preload allows only
 #     its own port and the one database socket.
-#   - Passwords are passed by environment or file, never on a command line,
-#     and never printed.
+#   - Secrets (passwords, database URLs, AUTH_SECRET) never appear on a command
+#     line (#5800): the build and the server read them from a mode-0600 file in
+#     the private work directory, sourced by a clean shell, and the seed gets
+#     them as environment. They are never printed.
+#   - The runner refuses to start if anything already listens on the Hub port,
+#     and before Playwright runs, the server must answer a per-run marker that
+#     only this run's preload knows (#5799), so the tests can never drive
+#     another server.
 set -euo pipefail
 
 HUB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
@@ -30,7 +36,7 @@ cd "$HUB_DIR"
 
 PORT="${MLR_PORT:-3953}"
 PG_PORT=55753          # only names the socket file; nothing listens on TCP
-EXPECTED_TESTS=4
+EXPECTED_TESTS=7
 umask 077
 TMP_ROOT="${TMPDIR:-/tmp}"
 WORK="$(mktemp -d "${TMP_ROOT%/}/mlr.XXXXXX")"
@@ -65,6 +71,25 @@ refuse_dotenv() {
 
 random_hex() { od -An -N32 -tx1 /dev/urandom | tr -d ' \n'; }
 
+# Writes `export NAME=<quoted value>` lines to an env file. printf is a shell
+# builtin, so the values never become a process argument.
+env_file() {
+  local file="$1"
+  shift
+  : > "$file"
+  while [ "$#" -ge 2 ]; do
+    printf 'export %s=%q\n' "$1" "$2" >> "$file"
+    shift 2
+  done
+}
+
+# Inner script for `env -i PATH=... HOME=... bash -c "$WITH_ENV_FILE" mlr-env
+# <env file> <command...>`: an empty environment plus PATH, HOME and the file.
+# Used as a plain command (not a function) so that, run in the background, $!
+# is the process that becomes the server, and stopping it stops the server.
+# shellcheck disable=SC2016  # the single-quoted text is the inner shell's script
+WITH_ENV_FILE='set -e; . "$1"; shift; exec "$@"'
+
 find_pgbin() {
   local dir
   for dir in "${MLR_PGBIN:-}" /opt/homebrew/opt/postgresql@16/bin /usr/local/opt/postgresql@16/bin /usr/lib/postgresql/16/bin; do
@@ -77,6 +102,9 @@ find_pgbin() {
 }
 
 refuse_dotenv
+if (exec 3<>"/dev/tcp/127.0.0.1/$PORT") 2>/dev/null; then
+  echo "refusing to run: something already listens on 127.0.0.1:$PORT; stop it or set MLR_PORT" >&2; exit 1
+fi
 PGBIN="$(find_pgbin)" || { echo "PostgreSQL 16 not found; set MLR_PGBIN" >&2; exit 1; }
 random_hex > "$WORK/su.pw"
 HUB_DB_PASSWORD="$(random_hex)"
@@ -102,39 +130,61 @@ MIRA_TEST_DB_CONFIRM=DISPOSABLE MLR_ADMIN_DATABASE_URL="$ADMIN_URL" MLR_DATABASE
   MLR_HUB_DB_PASSWORD="$HUB_DB_PASSWORD" node "$HERE/seed.mjs"
 unset ADMIN_URL
 
-AUTH_SECRET_VALUE="$(random_hex)"
 BUILD_ENV=(
-  "NEXT_PUBLIC_BASE_PATH="
-  "NEXT_PUBLIC_API_BASE="
-  "AUTH_SECRET=$AUTH_SECRET_VALUE"
-  "NODE_ENV=production"
-  "NEXT_TELEMETRY_DISABLED=1"
+  NEXT_PUBLIC_BASE_PATH ""
+  NEXT_PUBLIC_API_BASE ""
+  AUTH_SECRET "$(random_hex)"
+  NODE_ENV production
+  NEXT_TELEMETRY_DISABLED 1
 )
+env_file "$WORK/build.env" "${BUILD_ENV[@]}"
 if [ "${MLR_SKIP_BUILD:-0}" != "1" ]; then
   refuse_dotenv
-  env -i PATH="$PATH" HOME="$HOME" "${BUILD_ENV[@]}" ./node_modules/.bin/next build
+  env -i PATH="$PATH" HOME="$HOME" bash -c "$WITH_ENV_FILE" mlr-env "$WORK/build.env" ./node_modules/.bin/next build
 fi
 
 MAIL="$WORK/mail.jsonl"
 : > "$MAIL"
+READY_TOKEN="$(random_hex)"
+# The preload path is quoted inside NODE_OPTIONS, so a checkout path with a
+# space still loads it (#5800).
+env_file "$WORK/server.env" "${BUILD_ENV[@]}" \
+  NEXTAUTH_URL "http://127.0.0.1:$PORT" \
+  NEON_DATABASE_URL "$DB_URL" \
+  RESEND_API_KEY "re_e2e_capture_only_not_a_key" \
+  MLR_MAIL_CAPTURE "$MAIL" \
+  MLR_ALLOW_HUB_PORT "$PORT" \
+  MLR_ALLOW_DB_SOCKET "$DB_SOCKET" \
+  MLR_READY_TOKEN "$READY_TOKEN" \
+  NODE_OPTIONS "--require \"$HERE/mail-capture.cjs\""
+unset DB_URL HUB_DB_PASSWORD
 refuse_dotenv
-env -i PATH="$PATH" HOME="$HOME" "${BUILD_ENV[@]}" \
-  NEXTAUTH_URL="http://127.0.0.1:$PORT" \
-  NEON_DATABASE_URL="$DB_URL" \
-  RESEND_API_KEY="re_e2e_capture_only_not_a_key" \
-  MLR_MAIL_CAPTURE="$MAIL" \
-  MLR_ALLOW_HUB_PORT="$PORT" \
-  MLR_ALLOW_DB_SOCKET="$DB_SOCKET" \
-  NODE_OPTIONS="--require $HERE/mail-capture.cjs" \
+env -i PATH="$PATH" HOME="$HOME" bash -c "$WITH_ENV_FILE" mlr-env "$WORK/server.env" \
   ./node_modules/.bin/next start -p "$PORT" -H 127.0.0.1 >"$WORK/server.log" 2>&1 &
 SERVER_PID=$!
 
-for _ in $(seq 1 60); do
-  if curl -fsS -o /dev/null "http://127.0.0.1:$PORT/login/" 2>/dev/null; then break; fi
-  if ! kill -0 "$SERVER_PID" 2>/dev/null; then cat "$WORK/server.log" >&2; exit 1; fi
+# Ready means THIS run's server answers: the preload serves the per-run marker,
+# so another listener on the port can never pass, even one that serves /login/.
+ready=0
+for _ in $(seq 1 90); do
+  if ! kill -0 "$SERVER_PID" 2>/dev/null; then
+    echo "startup error: the Hub server exited before it was ready" >&2
+    tail -n 40 "$WORK/server.log" >&2
+    exit 1
+  fi
+  if [ "$(curl -fsS "http://127.0.0.1:$PORT/__mlr_ready__" 2>/dev/null || true)" = "$READY_TOKEN" ]; then
+    ready=1
+    break
+  fi
   sleep 1
 done
+if [ "$ready" != 1 ]; then
+  echo "startup error: nothing on 127.0.0.1:$PORT answered this run's marker" >&2
+  exit 1
+fi
 curl -fsS -o /dev/null "http://127.0.0.1:$PORT/login/"
+kill -0 "$SERVER_PID" 2>/dev/null || { echo "startup error: the Hub server exited after the readiness probe" >&2; exit 1; }
+echo "server identity: this run's marker answered on 127.0.0.1:$PORT"
 
 status=0
 MLR_HUB_URL="http://127.0.0.1:$PORT" MLR_MAIL_CAPTURE="$MAIL" \

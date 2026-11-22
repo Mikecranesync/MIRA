@@ -3,7 +3,7 @@
  * browser test (#5753). Loaded with `NODE_OPTIONS=--require <this file>` by
  * `run.sh` next to it, and nowhere else; production code is untouched.
  *
- * Two walls, both fail closed:
+ * Two walls, both fail closed, and a run marker:
  *
  * 1. Mail capture. The server's global fetch is replaced so that every POST to
  *    api.resend.com is written to MLR_MAIL_CAPTURE (one JSON line per email)
@@ -20,12 +20,18 @@
  *    name other than a loopback name or address is refused with code MLR_EGRESS_BLOCKED and
  *    logged to stderr (host and port only, never a value).
  *
+ * 3. Run marker (#5799). GET /__mlr_ready__ is answered by this preload, before
+ *    Next sees it, with MLR_READY_TOKEN, a random value fresh for each run.
+ *    run.sh waits for that exact answer, so a different server that happens
+ *    to hold the port can never pass readiness.
+ *
  * The shared fixture guard (`../harness/egress-guard.cjs`) is not reused
  * because it refuses every Unix socket, and this test needs one database.
  */
 "use strict";
 
 const fs = require("node:fs");
+const http = require("node:http");
 const net = require("node:net");
 const dns = require("node:dns");
 const dgram = require("node:dgram");
@@ -33,8 +39,11 @@ const dgram = require("node:dgram");
 const capturePath = process.env.MLR_MAIL_CAPTURE;
 const hubPort = Number(process.env.MLR_ALLOW_HUB_PORT || 0);
 const dbSocket = process.env.MLR_ALLOW_DB_SOCKET || "";
-if (!capturePath || !hubPort || !dbSocket) {
-  throw new Error("magic-link mail-capture: MLR_MAIL_CAPTURE, MLR_ALLOW_HUB_PORT and MLR_ALLOW_DB_SOCKET are required");
+const readyToken = process.env.MLR_READY_TOKEN || "";
+if (!capturePath || !hubPort || !dbSocket || !readyToken) {
+  throw new Error(
+    "magic-link mail-capture: MLR_MAIL_CAPTURE, MLR_ALLOW_HUB_PORT, MLR_ALLOW_DB_SOCKET and MLR_READY_TOKEN are required",
+  );
 }
 
 const LOOPBACK = new Set(["127.0.0.1", "localhost", "[::1]", "::1", "::ffff:127.0.0.1"]);
@@ -122,4 +131,16 @@ globalThis.fetch = async function captureFetch(input, init) {
   }
   if (!LOOPBACK.has(url.hostname)) throw new TypeError(refusal("fetch", url.hostname).message);
   return realFetch.call(this, input, init);
+};
+
+// ---- 3. Run marker ---------------------------------------------------------
+const READY_PATH = "/__mlr_ready__";
+const originalEmit = http.Server.prototype.emit;
+http.Server.prototype.emit = function markerEmit(event, req, res) {
+  if (event === "request" && req && req.method === "GET" && req.url === READY_PATH) {
+    res.writeHead(200, { "content-type": "text/plain", "cache-control": "no-store" });
+    res.end(readyToken);
+    return true;
+  }
+  return originalEmit.apply(this, arguments);
 };
