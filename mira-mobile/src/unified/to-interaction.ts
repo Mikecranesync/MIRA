@@ -375,7 +375,14 @@ export function latestManualSearchStatus(
 export function withManualSearchOverride(
   thread: InteractionThread,
   override: ManualSearchStatus | null,
-  options: { readonly allowAppend?: boolean } = {},
+  options: {
+    readonly allowAppend?: boolean;
+    /** #5750 r2: append under the Nth answer (1-based), the answer this
+     *  status was read with, instead of the newest one. A later answer never
+     *  inherits the status before a read that includes it. 0, or an answer
+     *  the thread does not have, appends nowhere. */
+    readonly appendAt?: number;
+  } = {},
 ): InteractionThread {
   if (!override) return thread;
   const allowAppend = options.allowAppend ?? true;
@@ -406,7 +413,12 @@ export function withManualSearchOverride(
   if (replaced) return { ...thread, turns: replacedTurns };
   if (!allowAppend) return thread;
   let lastAssistantIndex = -1;
-  for (let i = 0; i < replacedTurns.length; i++) if (replacedTurns[i]!.role === "assistant") lastAssistantIndex = i;
+  let answers = 0;
+  for (let i = 0; i < replacedTurns.length; i++) {
+    if (replacedTurns[i]!.role !== "assistant") continue;
+    answers += 1;
+    if (options.appendAt === undefined || answers === options.appendAt) lastAssistantIndex = i;
+  }
   if (lastAssistantIndex === -1) return thread;
   return {
     ...thread,
@@ -443,12 +455,14 @@ export function withManualSearchOverrides(
   thread: InteractionThread,
   historical: readonly ManualSearchStatus[],
   active: ManualSearchStatus | null,
+  /** #5750 r2: the answer (1-based) the active status was read with. */
+  activeAnchor?: number,
 ): InteractionThread {
   const afterHistorical = historical.reduce(
     (acc, status) => withManualSearchOverride(acc, status, { allowAppend: false }),
     thread,
   );
-  return withManualSearchOverride(afterHistorical, active);
+  return withManualSearchOverride(afterHistorical, active, activeAnchor === undefined ? {} : { appendAt: activeAnchor });
 }
 
 /** Citation lookup so the host's own viewer opens the real `ChatCitation` behind a shell `source`. */

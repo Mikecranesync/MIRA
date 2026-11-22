@@ -17,9 +17,21 @@ import {
   updateNotebook,
 } from "@/lib/equipment-notebooks";
 import { listFilesForTarget } from "@/lib/workspace-files";
-import { currentManualSearchStatus, type ManualSearchStatus } from "@/capabilities/notebook-manual-acquisition";
+import {
+  currentManualSearchStatus,
+  threadStatusScope,
+  type ManualSearchStatus,
+} from "@/capabilities/notebook-manual-acquisition";
+import { confirmedCatalogNumber } from "@/capabilities/notebook-manual-identity";
+import { SUBJECT_READ_STEPS } from "@/capabilities/conversation-subject";
+import { isComponentAttributionEntry } from "@/capabilities/bench-components/attribution";
 
 export const dynamic = "force-dynamic";
+
+/** The conversation history the GET returns. */
+const TURN_WINDOW = 50;
+/** How far back the manual-status subject is read when the window settles nothing. */
+const WIDEST_SUBJECT_READ = SUBJECT_READ_STEPS[SUBJECT_READ_STEPS.length - 1];
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -68,7 +80,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     // 086: history is read AS the authenticated technician — own turns plus
     // labeled legacy rows, never another user's. Same endpoint for Mobile and
     // Web, so this is where "your conversation on any device" is decided.
-    listTurns(ctx.tenantId, id, 50, { viewerUserId: ctx.userId, ...(threadId ? { threadId } : {}) }),
+    listTurns(ctx.tenantId, id, TURN_WINDOW, { viewerUserId: ctx.userId, ...(threadId ? { threadId } : {}) }),
     // 087 / THRD-0: the notebook is the Project; these are its conversations.
     // Derived from rows the same viewer may read, so isolation matches history.
     listThreads(ctx.tenantId, id, 50, { viewerUserId: ctx.userId }),
@@ -120,7 +132,60 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   } catch (err) {
     console.error("[equipment-notebooks] manual search status read failed (continuing without it):", err);
   }
-  return NextResponse.json({ notebook, sources, turns, threads, photos, manualSearch });
+  // #5750: the status names the project's machine. A thread that asked about
+  // another exact model must not show that machine's ready line and manual
+  // link under its own answer. Only a thread-scoped read knows which questions
+  // belong to the open conversation; a whole-notebook read keeps the status.
+  // The response says why it was withheld (`manualSearchScope`), so a client
+  // can tell it apart from a failed read and clear a status it already shows.
+  // That holds even when there is no current status to withhold (r2 F1): a
+  // client may still be showing one from an earlier read.
+  let manualSearchScope: "other_model" | "out_of_reach" | undefined;
+  const machineModel = manualSearch?.model ?? notebook.model;
+  if (threadId && (machineModel || notebook.catalogNumber)) {
+    const machine = {
+      manufacturer: manualSearch?.manufacturer ?? notebook.manufacturer,
+      model: machineModel,
+      catalogNumber: machineModel === notebook.model ? notebook.catalogNumber : null,
+      recordCatalog: confirmedCatalogNumber(notebook),
+    };
+    let scope = threadStatusScope(turns.map((t) => t.question), machine);
+    // The newest 50 turns settle nothing, and older ones exist: read further
+    // back (the same widest step the chat path's subject read uses) before
+    // trusting that the thread never named another model. Still nothing past
+    // that bound: the subject is out of reach, so the status is withheld.
+    // A failed wider read is inconclusive (r2 F9): the status is withheld
+    // without a scope, and the rest of the response still returns.
+    if (scope === "undecided" && turns.length >= TURN_WINDOW) {
+      try {
+        const wider = await listTurns(ctx.tenantId, id, WIDEST_SUBJECT_READ, { viewerUserId: ctx.userId, threadId });
+        scope = threadStatusScope(wider.map((t) => t.question), machine);
+        if (scope === "undecided" && wider.length >= WIDEST_SUBJECT_READ) manualSearchScope = "out_of_reach";
+      } catch (err) {
+        console.error("[equipment-notebooks] wider thread read failed (withholding the manual status):", err);
+        manualSearch = null;
+      }
+    }
+    if (scope === "other") manualSearchScope = "other_model";
+    // #5750 r3 F13: the status is placed under the newest answer. An answer
+    // asked under a selected bench component is about that component, not
+    // the project's machine, so the project's status is withheld there.
+    const newest = turns.at(-1);
+    if (newest && (newest.evidence ?? []).some(isComponentAttributionEntry)) manualSearchScope = "other_model";
+    if (manualSearchScope) manualSearch = null;
+  }
+  // #5750 r3 F10/F11/F12: on a thread-scoped read, the saved answer this
+  // status was checked against — the newest turn the read saw. Clients show
+  // the status under that answer only, and nowhere when it is null (no answer
+  // yet) or not in their history yet.
+  const manualSearchAnswer = threadId && manualSearch
+    ? (turns.length ? { turnId: turns[turns.length - 1]!.id, clientRequestId: turns[turns.length - 1]!.clientRequestId ?? null } : null)
+    : undefined;
+  return NextResponse.json({
+    notebook, sources, turns, threads, photos, manualSearch,
+    ...(manualSearchScope ? { manualSearchScope } : {}),
+    ...(manualSearchAnswer !== undefined ? { manualSearchAnswer } : {}),
+  });
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

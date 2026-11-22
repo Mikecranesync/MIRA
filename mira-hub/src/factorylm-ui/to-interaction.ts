@@ -589,11 +589,18 @@ export function turnsFromPersisted(row: PersistedTurn & { createdAt?: string }, 
 export function withManualSearchStatus(
   turns: readonly InteractionTurn[],
   status: ManualSearchStatus | null,
+  /** #5750 r2: the answer this status was read with. A status is only shown
+   *  under the answer it was checked against, so a later answer (a streaming
+   *  look-alike request) never inherits the project's ready line before a
+   *  read that includes it. `null`: the read had no answer, so nothing to
+   *  attach to. Omitted: the last assistant turn, as before. */
+  anchorTurnId?: string | null,
 ): InteractionTurn[] {
-  if (!status) return [...turns];
+  if (!status || anchorTurnId === null) return [...turns];
   let lastAssistantIndex = -1;
   for (let i = 0; i < turns.length; i++) {
-    if (turns[i]!.role === "assistant") lastAssistantIndex = i;
+    if (turns[i]!.role !== "assistant") continue;
+    if (anchorTurnId === undefined || turns[i]!.id === anchorTurnId) lastAssistantIndex = i;
   }
   if (lastAssistantIndex === -1) return [...turns];
   const part: InteractionPart = {
@@ -605,6 +612,58 @@ export function withManualSearchStatus(
     ...(status.manualUrl ? { manualUrl: status.manualUrl } : {}),
   };
   return turns.map((t, i) => (i === lastAssistantIndex ? { ...t, parts: [...t.parts, part] } : t));
+}
+
+/** #5750 r3: the answer a status shown by the host belongs to — a saved answer
+ *  a detail read named (`manualSearchAnswer`), or the send whose live frame
+ *  carried it. */
+export type StatusOrigin = { readonly turnId: string } | { readonly requestId: string };
+
+/** One key per status the host can show: its search generation and the
+ *  machine it names. An origin recorded for one status never places another. */
+export function manualStatusKey(s: ManualSearchStatus): string {
+  const norm = (v: string) => v.toUpperCase().replace(/[^A-Z0-9]/g, "");
+  return `${s.startedAt ?? ""}|${norm(s.manufacturer)}|${norm(s.model)}`;
+}
+
+/** The assistant-turn id the host gives a send still being shown live. */
+export function liveAnswerTurnId(requestId: string): string {
+  return `live-${requestId}-a`;
+}
+
+/**
+ * #5750 r2 F7 / r3 F11: the status the host shows, placed under the answer it
+ * belongs to and nowhere else. A detail read's status goes under the saved
+ * answer that read named; a live lookup's under the send that streamed it
+ * (the saved row of that send once it is saved). A status with no recorded
+ * origin, or whose answer is not in the thread, is not shown — never under
+ * the newest or a streaming answer by default.
+ */
+export function withHostManualStatus(
+  turns: readonly InteractionTurn[],
+  shown: ManualSearchStatus | null,
+  origin: StatusOrigin | null | undefined,
+  savedRows: readonly { readonly id: string; readonly clientRequestId?: string | null }[],
+): InteractionTurn[] {
+  if (!shown || !origin) return [...turns];
+  let anchor: string;
+  if ("turnId" in origin) anchor = answerTurnId(origin.turnId);
+  else {
+    const saved = savedRows.find((r) => r.clientRequestId === origin.requestId);
+    anchor = saved ? answerTurnId(saved.id) : liveAnswerTurnId(origin.requestId);
+  }
+  return withManualSearchStatus(turns, shown, anchor);
+}
+
+/**
+ * #5750 r3: the newest detail read withheld the project's status for this
+ * thread (it is about another model, or its subject is out of reach). No
+ * status shows then — not the detail's, and not one the host was still
+ * following from an earlier read, such as the project's search still running.
+ * A lookup this turn starts renders in place in its own answer, not here.
+ */
+export function manualStatusForThread<S>(visible: S | null, scope: string | null | undefined): S | null {
+  return scope ? null : visible;
 }
 
 /** Follow-up suggestions belong to one identified, saved answer. */

@@ -67,7 +67,15 @@ const { confirmIdentityProposal, getNotebookDetail, fetchManualSearchStatus } = 
   fetchManualSearchStatus: vi.fn(async (_notebookId: string, _opts?: { threadId?: string }) => null as unknown),
 }));
 vi.mock("../../api/identity-confirm", () => ({ confirmIdentityProposal }));
-vi.mock("../../api/manual-search-status", () => ({ fetchManualSearchStatus }));
+// #5750 r3: the notebook GET names the saved answer it checked a status
+// against (the newest saved turn of the thread). This file tests following,
+// not placement, so every status read names the newest answer the test mounted.
+const server = vi.hoisted(() => ({ answers: new Map<string, string | null>() }));
+vi.mock("../../api/manual-search-status", () => ({
+  fetchManualSearchStatus: (notebookId: string, ...rest: unknown[]) =>
+    Promise.resolve((fetchManualSearchStatus as (...a: unknown[]) => unknown)(notebookId, ...rest)).then((r) =>
+      r && typeof r === "object" && !("answer" in r) && server.answers.has(notebookId) ? { ...r, answer: server.answers.get(notebookId) } : r),
+}));
 vi.mock("../../api/resources", async (importOriginal) => {
   const real = await importOriginal<typeof import("../../api/resources")>();
   return { ...real, getNotebookDetail };
@@ -151,6 +159,7 @@ const PLAIN_TURN_B: NotebookServerTurn = {
 };
 
 function props(notebookId: string, turns: NotebookServerTurn[]): UnifiedChatProps {
+  server.answers.set(notebookId, turns.length ? `row:${turns[turns.length - 1]!.id}` : null);
   return {
     turns,
     liveTurns: [],

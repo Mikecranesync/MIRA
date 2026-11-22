@@ -18,6 +18,10 @@ import {
   sourceIdFor,
   threadFromPersisted,
   turnsFromPersisted,
+  manualStatusForThread,
+  withHostManualStatus,
+  liveAnswerTurnId,
+  manualStatusKey,
   withManualSearchStatus,
   withSettledFollowups,
   type HubNotebookMeta,
@@ -542,6 +546,71 @@ describe("withManualSearchStatus — the post-refresh render path (#4189 F6)", (
     const userOnly = [{ ...threadFromPersisted([row()], meta).turns[0]! }];
     const out = withManualSearchStatus(userOnly, { manufacturer: "SMC", model: "X", running: true });
     expect(out).toEqual(userOnly);
+  });
+});
+
+// #5750 r2 F7 (web): the detail read's ready line was checked against the
+// thread as that read saw it. While a look-alike answer streams (or before a
+// read includes it), the line must stay under the saved answer, not move onto
+// the new one.
+describe("manualStatusForThread (#5750 r3)", () => {
+  const RUNNING = { running: true, model: "GS11N-20P2" };
+  it("shows nothing when the detail read withheld the status for this thread", () => {
+    expect(manualStatusForThread(RUNNING, "other_model")).toBeNull();
+    expect(manualStatusForThread(RUNNING, "out_of_reach")).toBeNull();
+  });
+  it("control: without a withheld scope the status the host follows still shows", () => {
+    expect(manualStatusForThread(RUNNING, undefined)).toBe(RUNNING);
+    expect(manualStatusForThread(null, undefined)).toBeNull();
+  });
+});
+
+describe("withHostManualStatus — the status sits under the answer it belongs to (#5750 r3)", () => {
+  const READY = { manufacturer: "AutomationDirect", model: "GS11N-20P2", running: false, message: "ready", manualUrl: "https://app.example.test/hub/v3/source/?file=f&page=26", startedAt: "gen-1" };
+  const saved = [row(), row({ id: "turn-2", createdAt: "2026-09-17T12:05:00.000Z" })];
+  const savedTurns = threadFromPersisted(saved, meta).turns;
+  const live = [
+    { ...savedTurns[0]!, id: "live-req-9-q", role: "user" as const },
+    { ...savedTurns[1]!, id: liveAnswerTurnId("req-9"), role: "assistant" as const, parts: [], lifecycle: "running" as const },
+  ];
+  const statusOn = (turns: readonly { id: string; parts: readonly { type: string }[] }[]) =>
+    turns.filter((t) => t.parts.some((p) => p.type === "manual_search_status")).map((t) => t.id);
+
+  it("puts a detail status under the saved answer the read named, not the one streaming", () => {
+    const out = withHostManualStatus([...savedTurns, ...live], READY, { turnId: "turn-1" }, saved);
+    expect(statusOn(out)).toEqual([answerTurnId("turn-1")]);
+  });
+
+  // Codex r3 F11: a running search seeded from detail, then a poll with no
+  // status and no scope; the follower keeps the running status. It stays
+  // with the answer the detail read named, never the sibling streaming now.
+  it("keeps a followed status under its recorded answer while a sibling streams", () => {
+    const running = { ...READY, running: true, message: undefined, manualUrl: undefined };
+    const out = withHostManualStatus([...savedTurns, ...live], running, { turnId: "turn-2" }, saved);
+    expect(statusOn(out)).toEqual([answerTurnId("turn-2")]);
+  });
+
+  it("shows nothing for a status with no recorded answer, or a read that saw no answer", () => {
+    expect(statusOn(withHostManualStatus([...savedTurns, ...live], READY, undefined, saved))).toEqual([]);
+    expect(statusOn(withHostManualStatus([...savedTurns, ...live], READY, null, saved))).toEqual([]);
+  });
+
+  it("shows nothing when the named answer is not in the thread yet", () => {
+    expect(statusOn(withHostManualStatus(savedTurns, READY, { turnId: "turn-from-another-device" }, saved))).toEqual([]);
+  });
+
+  it("puts a live lookup under the send that streamed it, then under that send's saved row", () => {
+    const own = { ...READY, running: true };
+    expect(statusOn(withHostManualStatus([...savedTurns, ...live], own, { requestId: "req-9" }, saved))).toEqual([liveAnswerTurnId("req-9")]);
+    const afterSave = [...saved, row({ id: "turn-3", createdAt: "2026-09-17T12:10:00.000Z", clientRequestId: "req-9" } as never)];
+    const turns = threadFromPersisted(afterSave, meta).turns;
+    expect(statusOn(withHostManualStatus(turns, own, { requestId: "req-9" }, afterSave as never))).toEqual([answerTurnId("turn-3")]);
+  });
+
+  it("keys a status by its generation and machine", () => {
+    expect(manualStatusKey(READY)).toBe(manualStatusKey({ ...READY, running: true, message: "other" }));
+    expect(manualStatusKey(READY)).not.toBe(manualStatusKey({ ...READY, model: "ACS580", manufacturer: "ABB" }));
+    expect(manualStatusKey(READY)).not.toBe(manualStatusKey({ ...READY, startedAt: undefined }));
   });
 });
 

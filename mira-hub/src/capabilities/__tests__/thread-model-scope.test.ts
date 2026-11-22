@@ -1,0 +1,142 @@
+// A project's manual status names the project's machine. A thread inside that
+// project that asked about a DIFFERENT exact model must not show it (staging
+// tablet walk 2026-11-21: "Find me the manual for AutomationDirect GS11N-20P25"
+// in a GS11N-20P2 project showed "…coverage for GS11N-20P2" plus the manual
+// link under an answer that said GS11N-20P25 is not listed). #5750.
+//
+// Run: cd mira-hub && npx vitest run src/capabilities/__tests__/thread-model-scope
+import { describe, it, expect } from "vitest";
+import { threadStatusScope } from "@/capabilities/notebook-manual-acquisition";
+
+const GS10 = { manufacturer: "AutomationDirect", model: "GS11N-20P2", catalogNumber: "", recordCatalog: null };
+const CONFIRMED = { manufacturer: "AutomationDirect", model: "DURApulse GS10", catalogNumber: "GS11N-20P2", recordCatalog: "GS11N-20P2" };
+
+describe("threadStatusScope", () => {
+  it("is other for a look-alike model named with its maker", () => {
+    expect(threadStatusScope(["Find me the manual for AutomationDirect GS11N-20P25"], GS10)).toBe("other");
+  });
+
+  it("is own for the project's own model", () => {
+    expect(threadStatusScope(["Find me the manual for AutomationDirect GS11N-20P2"], GS10)).toBe("own");
+  });
+
+  it("settles nothing for the photo turn, a follow-up, or an empty thread", () => {
+    expect(threadStatusScope(["Find me the manual"], GS10)).toBe("undecided");
+    expect(threadStatusScope(["What does the keypad show?"], GS10)).toBe("undecided");
+    expect(threadStatusScope([], GS10)).toBe("undecided");
+  });
+
+  // #5750 r2: the family whose manual covers the project's drive is the
+  // project's own manual, with or without its maker (was a known limit).
+  it("is own for the family whose manual covers the project's drive", () => {
+    expect(threadStatusScope(["Find me the GS10 manual"], GS10)).toBe("own");
+    expect(threadStatusScope(["Find me the AutomationDirect GS10 manual"], GS10)).toBe("own");
+    expect(threadStatusScope(["Find me the AutomationDirect GS10 manual"], CONFIRMED)).toBe("own");
+  });
+
+  it("control: another drive family of the same maker is other", () => {
+    expect(threadStatusScope(["Find me the manual for the GS1 drive"], GS10)).toBe("other");
+    expect(threadStatusScope(["Find me the AutomationDirect GS20 manual"], GS10)).toBe("other");
+  });
+
+  it("control: fault codes, ratings and wiring words name no model", () => {
+    expect(threadStatusScope(["what does oC mean, it is 3-phase 230V on RS-485"], GS10)).toBe("undecided");
+    expect(threadStatusScope(["I set P09-03 to 5, the input is 0-10V, installed 2026-11-21"], GS10)).toBe("undecided");
+  });
+
+  it("matches the catalog number as the project's identifier", () => {
+    expect(threadStatusScope(["Find me the manual for AutomationDirect GS11N-20P2"], CONFIRMED)).toBe("own");
+    expect(threadStatusScope(["Find me the manual for AutomationDirect GS11N-20P25"], CONFIRMED)).toBe("other");
+  });
+
+  it("decides on the newest question that settles it", () => {
+    const questions = [
+      "Find me the manual for AutomationDirect GS11N-20P25",
+      "What does the keypad show?",
+      "Find me the manual for AutomationDirect GS11N-20P2",
+    ];
+    expect(threadStatusScope(questions, GS10)).toBe("own");
+    expect(threadStatusScope([...questions].reverse(), GS10)).toBe("other");
+  });
+
+  // #5750 Codex F2: a model-only request and a conflicting maker.
+  it("is other for a look-alike named without a maker", () => {
+    expect(threadStatusScope(["Find me the manual for GS11N-20P25"], GS10)).toBe("other");
+    expect(threadStatusScope(["what does oC mean on a GS11N-20P25"], GS10)).toBe("other");
+  });
+
+  it("is other for the same model code under another maker", () => {
+    expect(threadStatusScope(["Find me the manual for Siemens GS11N-20P2"], GS10)).toBe("other");
+  });
+
+  it("is own for the project's model under an alias of its maker, or with no maker", () => {
+    expect(threadStatusScope(["Find me the manual for Automation Direct GS11N-20P2"], GS10)).toBe("own");
+    expect(threadStatusScope(["what does oC mean on the GS11N-20P2"], GS10)).toBe("own");
+  });
+
+  // #5750 r2 F2: model-only requests the catalog regex did not read.
+  it("is other for a model-only sibling outside the GS catalog pattern", () => {
+    const acs = { manufacturer: "ABB", model: "ACS355", catalogNumber: "", recordCatalog: null };
+    expect(threadStatusScope(["Find the manual for ACS580"], acs)).toBe("other");
+    expect(threadStatusScope(["Find the manual for ACS355"], acs)).toBe("own");
+    const pf = { manufacturer: "Allen-Bradley", model: "PowerFlex 525", catalogNumber: "25B-D017N104", recordCatalog: null };
+    expect(threadStatusScope(["Find me the manual for 25B-D024N104"], pf)).toBe("other");
+    expect(threadStatusScope(["Find me the manual for 25B-D017N104"], pf)).toBe("own");
+    expect(threadStatusScope(["Find me the manual for the PowerFlex 525"], pf)).toBe("own");
+  });
+
+  // #5750 r3 F2: Unicode hyphens and compact codes.
+  it("reads a nonbreaking-hyphen catalog number as the ASCII one", () => {
+    const pf = { manufacturer: "Allen-Bradley", model: "PowerFlex 525", catalogNumber: "25B-D017N104", recordCatalog: null };
+    expect(threadStatusScope(["Find me the manual for 25B\u2011D024N104"], pf)).toBe("other");
+    expect(threadStatusScope(["Find me the manual for 25B\u2011D017N104"], pf)).toBe("own");
+  });
+
+  it("is other for a compact sibling code, by shared leading characters or in a document request", () => {
+    const ca = { manufacturer: "Schneider Electric", model: "CA3KN22BD", catalogNumber: "", recordCatalog: null };
+    expect(threadStatusScope(["Find the manual for CA3KN31BD"], ca)).toBe("other");
+    expect(threadStatusScope(["does the CA3KN31BD have a 24V coil"], ca)).toBe("other");
+    expect(threadStatusScope(["Find the datasheet for LC1D09BD"], ca)).toBe("other");
+    expect(threadStatusScope(["Find the manual for CA3KN22BD"], ca)).toBe("own");
+  });
+
+  it("is other for a hyphenated catalog code outside a request and without a shared prefix", () => {
+    expect(threadStatusScope(["does the 1756-L71 need a battery"], GS10)).toBe("other");
+  });
+
+  it("is other for a one-letter model family the document is asked for", () => {
+    expect(threadStatusScope(["Find me the G120 manual"], GS10)).toBe("other");
+    expect(threadStatusScope(["Find the manual for E300"], GS10)).toBe("other");
+    expect(threadStatusScope(["Find the manual for the I550"], GS10)).toBe("other");
+  });
+
+  it("control: fault codes and parameters never name a model, even in a document request", () => {
+    const ca = { manufacturer: "Schneider Electric", model: "CA3KN22BD", catalogNumber: "", recordCatalog: null };
+    expect(threadStatusScope(["what does the manual say about F0004"], GS10)).toBe("undecided");
+    expect(threadStatusScope(["what does the manual say about parameter P09-03"], GS10)).toBe("undecided");
+    expect(threadStatusScope(["the coil hums, error E001 on the panel"], ca)).toBe("undecided");
+    expect(threadStatusScope(["Find the manual for parameter P09-03"], GS10)).toBe("undecided");
+    expect(threadStatusScope(["what does E001 mean in the manual"], GS10)).toBe("undecided");
+    expect(threadStatusScope(["Find the manual for fault F0004"], GS10)).toBe("undecided");
+    expect(threadStatusScope(["Check the manual for error E001"], GS10)).toBe("undecided");
+  });
+
+  // #5750 r2 F3: a model named in the same question beats the return phrase.
+  it("is other when the return phrase names a sibling in the same question", () => {
+    expect(threadStatusScope(["OK, back to my drive. Does the GS11N-20P25 need a brake resistor?"], CONFIRMED)).toBe("other");
+    expect(threadStatusScope(["OK, back to my drive, the GS11N-20P2. Does it need a brake resistor?"], CONFIRMED)).toBe("own");
+  });
+
+  // #5750 Codex F3: an explicit return to the confirmed unit is a boundary.
+  it("is own after a return to the confirmed unit, and on the follow-up after it", () => {
+    const sibling = "Find me the manual for AutomationDirect GS11N-20P25";
+    const back = "OK, back to my drive. Find me the manual.";
+    expect(threadStatusScope([sibling, back], CONFIRMED)).toBe("own");
+    expect(threadStatusScope([sibling, back, "What is the rated current?"], CONFIRMED)).toBe("own");
+  });
+
+  it("control: without a confirmed catalog number, 'my drive' refers to nothing on record", () => {
+    const back = "OK, back to my drive. Find me the manual.";
+    expect(threadStatusScope(["Find me the manual for AutomationDirect GS11N-20P25", back], GS10)).toBe("other");
+  });
+});
