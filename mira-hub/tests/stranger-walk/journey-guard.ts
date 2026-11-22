@@ -3,7 +3,7 @@
  * is unit-tested on its own: the same per-dispatch check the stranger walk makes (walk.spec.ts),
  * applied to every paid turn the journey sends, including the one it cancels.
  */
-import { runtimeDrift, type BudgetMeter, type LedgerVerdict, type RuntimeIdentity } from "./staging";
+import { checkFingerprint, runtimeDrift, type BudgetMeter, type LedgerVerdict, type RuntimeIdentity } from "./staging";
 
 /**
  * The paid turn admitted but not yet reconciled against the ledger, per meter. Every admitted turn
@@ -65,4 +65,16 @@ export async function recoverSetupTenant(classify: () => Promise<string | null>,
     }
   }
   return { tenantId: null, error: `setup token receipt unreadable after ${attempts} attempts (${error}); token kept for recovery` };
+}
+
+/**
+ * The deployed Hub's own report of its paid lanes, checked against the prices the run books at.
+ * The stranger walk tolerates a Hub that serves none (#5045); a paid journey does not: without it
+ * nothing proves staging bills at or below the booking, so the run refuses before any reservation
+ * (Codex r5 F23). Returns the fingerprint hash for the receipt.
+ */
+export function requireDeployedPricing(fingerprint: unknown, prices: Record<string, { input: number; output: number }>): string {
+  const fp = checkFingerprint(fingerprint, prices);
+  if (!fp.available) throw new Error("inference fingerprint: staging serves none, so its pricing cannot be checked — refusing to spend");
+  return fp.hash;
 }

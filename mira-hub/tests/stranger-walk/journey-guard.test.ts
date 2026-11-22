@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { admitPaidTurn, reconcilePaidTurn, recoverSetupTenant, settlementOf } from "./journey-guard";
+import { admitPaidTurn, reconcilePaidTurn, recoverSetupTenant, requireDeployedPricing, settlementOf } from "./journey-guard";
 import fx from "./fixtures-accounting.json";
-import { BudgetMeter, type LedgerVerdict, type RuntimeIdentity } from "./staging";
+import { BudgetMeter, pricesFromEnv, type LedgerVerdict, type RuntimeIdentity } from "./staging";
 
 /** A turn the meter can verify: the recorded energized-work stop with its proven zero-call ledger verdict. */
 const STOP_SSE = fx.safetyStop.sse;
@@ -95,5 +95,22 @@ describe("unreconciled paid turn", () => {
     admitPaidTurn(m, start, start, "S5b");
     reconcilePaidTurn(m, "S5b", STOP_SSE, ZERO_CALL);
     expect(settlementOf(m, 1)).toMatchObject({ settle: true });
+  });
+});
+
+describe("requireDeployedPricing", () => {
+  // The shape accounting.test.ts uses for a fingerprint booked at or above every lane's price.
+  const fp = { hash: "a".repeat(16), summary: {
+    canonicalSeam: true, maxOutputTokens: 4000,
+    providers: [{ name: "OpenAI", model: "gpt-5.4-mini", pricePerMtok: { input: 0.75, output: 4.5 } }, { name: "OpenRouter", model: "meta-llama/llama-3.3-70b-instruct", pricePerMtok: { input: 0.2, output: 0.52 } }],
+    optionalMetered: { jevShadow: true, jevDecision: true, queryRewrite: { enabled: false } },
+  } };
+  const prices = pricesFromEnv({});
+  it("refuses a paid run when staging serves no fingerprint", () => {
+    expect(() => requireDeployedPricing(undefined, prices)).toThrow(/serves none.*refusing to spend/);
+    expect(() => requireDeployedPricing(null, prices)).toThrow(/serves none.*refusing to spend/);
+  });
+  it("control: a fingerprint booked at or above every lane's price passes, and its hash is returned", () => {
+    expect(requireDeployedPricing(fp, prices)).toBe("a".repeat(16));
   });
 });

@@ -23,9 +23,9 @@ import { extractTurn, UI } from "../fidelity/surfaces";
 import { cardsOf, viewerTargetOf } from "./extract";
 import { githubToken } from "./required-fixes";
 import { reserveWalkSpend, settleWalkSpend } from "./spend-ledger";
-import { assertOpenRouterCeiling, BudgetMeter, checkFingerprint, identity, ledgerVerdictFor, pricesFromEnv, releaseOwnPilotHold, runtimeDrift, runtimeOf, stagingBase, teardownTenant, worstCaseTurnUsd, type RuntimeIdentity } from "./staging";
+import { assertOpenRouterCeiling, BudgetMeter, identity, ledgerVerdictFor, pricesFromEnv, releaseOwnPilotHold, runtimeDrift, runtimeOf, stagingBase, teardownTenant, worstCaseTurnUsd, type RuntimeIdentity } from "./staging";
 import { decodeChatBody } from "./stream-decode";
-import { admitPaidTurn, reconcilePaidTurn, recoverSetupTenant, settlementOf } from "./journey-guard";
+import { admitPaidTurn, reconcilePaidTurn, recoverSetupTenant, requireDeployedPricing, settlementOf } from "./journey-guard";
 import { exitOk, receiptOf, type Step } from "./journey-receipt";
 
 const TARGET = (process.env.CV_TARGET ?? "desktop") as "desktop" | "phone" | "pixel" | "tablet";
@@ -350,9 +350,10 @@ test("cv101 journey", async () => {
   // lane fingerprint and the OpenRouter ceiling are checked before any reservation (Codex r1 F1).
   // Each refusal throws here, before an account, a reservation or a paid turn exists.
   const prices = PAID ? pricesFromEnv() : undefined;
+  let pricingHash = "";
   const meter = new BudgetMeter(RUN_BUDGET_USD, worstCaseTurnUsd(prices));
   if (PAID) {
-    checkFingerprint(start.inferenceFingerprint, prices!);
+    pricingHash = requireDeployedPricing(start.inferenceFingerprint, prices!);
     await assertOpenRouterCeiling();
     paidRuntime = { base, start: runtimeOf(start) };
     paidPrices = prices;
@@ -777,7 +778,7 @@ test("cv101 journey", async () => {
     persist();
     const receipt = receiptOf({ build: start.gitSha, target: TARGET, paid: PAID, runId: RUN_ID }, steps, STEP_IDS);
     overall = receipt.overall;
-    writeFileSync(path.join(OUT, "receipt.md"), `${receipt.md}\n${drift ? `Runtime drift during the run: ${drift}\n` : ""}`);
+    writeFileSync(path.join(OUT, "receipt.md"), `${receipt.md}\n${PAID ? `Deployed pricing: fingerprint ${pricingHash || "not checked (run refused before pricing)"}\n` : ""}${drift ? `Runtime drift during the run: ${drift}\n` : ""}`);
     if (reservation?.ok) {
       const r = reservation;
       const plan = settlementOf(meter, r.reservedUsd);
