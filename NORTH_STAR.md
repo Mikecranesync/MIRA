@@ -369,3 +369,146 @@ seed — and prove it with a cited, scored answer?"** If not, it waits.
 7. **Vision ZTA:** visual inference is local-first, deterministic-first, review-before-paid, and
    compile-to-artifact. FactoryLM-owned adapters/weights are a product moat only when provenance,
    consent, evals, and rollback are recorded.
+
+---
+
+## Repeatable product end-state vision
+
+**Owner-requested direction, 2026-11-17. Future target, not a shipped-capability claim.**
+This section extends the context-layer wedge, read-only boundary, train-before-deploy
+and materialized-evidence principles above. It is not a replacement architecture,
+a new roadmap or permission to start every capability at once. Historical dates,
+market comparisons and status elsewhere in this document remain historical, not
+current proof. [DELIVERY.md](DELIVERY.md) and [#5232](https://github.com/Mikecranesync/MIRA/issues/5232)
+retain current delivery ownership and controlling acceptance requirements.
+
+### The finished-product promise
+
+**A new supported customer supplies its equipment, references and access constraints;
+a trained operator configures the product; ordinary technicians complete useful,
+traceable maintenance work without Mike writing customer-specific code or operating
+the system behind the scenes.**
+
+FactoryLM supplies the reusable trusted-context foundation. MIRA is the grounded
+technician experience that proves its value. Keep the existing clean conversational
+app, equipment context, manuals, photos and recoverable work connected as one journey,
+not a collection of demos or separate specialist assistants.
+
+The goal is not “every buyer, every machine, anytime.” Publish a supported customer
+profile, equipment/content requirements, deployment options and exclusions. A good
+product makes evaluation and adoption low-risk; it cannot guarantee buyer budget,
+procurement approval, mission fit or an award.
+
+### One reusable core, configured rather than forked
+
+- Reuse the canonical industrial asset graph, ISA-95/UNS identity, evidence contracts,
+  approval systems, Living Sheet/work records and approved-context answer path.
+  Align interoperability work with existing CESMII/i3X direction where applicable;
+  do not create another identity model, evidence ledger or conversational brain.
+- Keep deterministic processing and recall first. Materialize expensive discovery;
+  preserve source bytes, hashes, lineage, revision, producer versions and known gaps.
+  Compile verified reusable knowledge into versioned Capability Packs. The LLM
+  interprets and communicates within those boundaries; it does not manufacture truth.
+- Package supported equipment/content/workflow configurations and versioned adapter
+  interfaces. A new site should map to these, not receive a permanent code fork.
+  Novel integrations are explicit scoped engineering, not concealed “configuration.”
+- Offer a small, documented set of deployment profiles using mature infrastructure.
+  Build the differentiating context and technician workflow, not replacements for
+  every customer's historian, CMMS, identity provider or industrial data platform.
+- Preserve all existing cloud/provider, licensing, privacy and safety restrictions.
+  This vision does not select new vendors, models, spending or hosting permissions.
+
+### What “ready” must mean to a customer
+
+| Outcome | End-state delivery | Evidence required before claiming it |
+|---|---|---|
+| **1. Trust the machine and answer** | Bind the installed asset, model/variant and applicable document revision. Preserve table/value/unit/condition relationships, exact source locations, cautions and uncertainty. Keep observations, ratings, measurements and hypotheses distinct. Unsupported or hazardous requests do not become invented procedures. | Independent frozen correct-model, wrong-model, missing-data, conflicting-source and hazard cases, followed by deployed technician acceptance. Measure harmful errors **and useful-answer coverage**; indiscriminate refusal is not success. |
+| **2. Finish and recover a real job** | Identify equipment → obtain applicable cited help → capture photos, readings, actions and outcome → review/verify → reopen later against the correct asset and permissions. A source packet becomes a durable work record, not a dead-end chat. | The complete supported journey on real devices, across restart, device changes and interrupted connectivity; original sources and review state recover intact. Another qualified person can understand what happened and what remains unknown. |
+| **3. Onboard without the founder** | Import equipment and references, resolve identity, configure roles/templates, show truthful indexing readiness and recover failed processing through supported controls. No silent document loss. | Someone other than Mike onboards an unfamiliar supported equipment family, then a second site without code changes; record time, errors and every intervention. |
+| **4. Integrate predictably** | Standalone MIRA remains useful with CMMS off. Chosen connectors use versioned mappings, source freshness/quality, bounded retries, deduplication, disconnect recovery and least-privilege credentials. | Contract and failure-path tests plus actual supported-system integration receipts. OT stays read-only, always. Any optional business-system write requires separately approved scope and auditable outcome; this document grants none. |
+| **5. Operate and support it** | Repeatable install, upgrade, rollback, backup/restore, monitoring, capacity/cost limits, incident handling and support handoff. The product cannot depend on undocumented rescue commands. | A nonauthor installs and operates a supported profile, restores data and rolls back a failed upgrade. Publish measured limits and agreed service targets, not invented uptime or recovery guarantees. |
+| **6. Pass a serious security review** | Tenant isolation, roles, auditability, documented data flows/retention/providers, secret management and vulnerability/incident processes match the chosen deployment. | Independent boundary tests and a maintained security evidence package. Certifications, authorization and regulatory compliance remain unclaimed until the specific required evidence exists. |
+| **7. Demonstrate customer value** | Useful work improves relative to the customer's current process with manageable training and support. | Real maintainers and buyers: baseline comparison, time to correct information, task success, repeat use, support burden and buyer acceptance or paid continuation. Synthetic personas, a seeded bench and leads are not customer demand. |
+| **8. Be straightforward to buy** | Defined scope/exclusions, approved price, onboarding plan, pilot acceptance, support terms and procurement/security package; repeatable delivery by an operator or implementation partner. | Buyer-understandable offer and acceptance record, viable economics including onboarding/support/model costs, and separately verified commercial agreement/payment. Mike decides offer and price. |
+
+Saved technician work is **user-verified evidence, not automatically authoritative
+procedure**. Preserve author, asset binding, source identity, time, review state,
+corrections and provenance. Qualified human review is required where appropriate;
+candidate, rejected and superseded records cannot silently become approved knowledge
+or be reused across unauthorized users/customers. No model promotes its own output.
+
+### Specialized disconnected / Navy deployment profile
+
+The same core should eventually support a rigorously qualified disconnected profile,
+not a parallel Navy-only product. This is a **future deployment target**, not a claim
+of Navy endorsement, solicitation compliance or current air-gapped readiness.
+
+- Cold boot without network; supported fresh local authentication; local retrieval,
+  grounded answers and exact citations; capture work and recover it after restart.
+  Cached PDFs, a previously authenticated session or disabling a cloud model alone
+  do not prove this profile.
+- Define what remains usable offline, model/hardware limits, content updates and
+  operator recovery. Prove monitored isolation with positive controls and explicit
+  network windows, not merely a failed ping.
+- Reconnect safely: two devices, conflicting edits, loss/duplication, document and
+  model versions, identity/permission revocation and reconciliation must have
+  explicit behavior and evidence. Retain history rather than silently choosing.
+- Evaluate mixed technical documents and equipment history with representative
+  maintainers. Tailor guidance to role and context without bypassing safety.
+- Determine deployment-specific cyber, export, classification, clearance and
+  acquisition obligations from the controlling requirements. No assumed
+  certification, clearance, authorization to operate or approved data handling.
+
+**Proposal readiness is not finished-product readiness.** A Phase I feasibility
+proposal may address an explicitly bounded research gap; it does not require every
+end-state feature to exist. Conversely, submitting or winning a proposal proves
+neither operational acceptance nor a production-ready product. Verify the official
+solicitation, amendments, eligibility, required evidence and submission rules for
+each opportunity. Keep bid strategy, solicitation-specific details, pricing and
+private customer/interview evidence in the private repository, not this public file.
+
+### Sequence, evidence and agent decision filter
+
+1. Finish **one trustworthy deployed technician journey** within the current supported
+   scope and existing safety/data-integrity gates.
+2. Prove usefulness with **real maintainers and a buyer** on unfamiliar information.
+3. Make that success **repeatable at a second site without founder coding**.
+4. Package operations, security, support and procurement for the supported offer.
+   Necessary security and customer-discovery work runs alongside the journey.
+5. Qualify the specialized disconnected profile against its actual requirements.
+   Do not require every future connector or Navy feature before the first customer.
+
+This ordering guides investment; it does not reorder existing active claims or
+weaken any G01–G12/W0–W5 requirement. Use the canonical tracker and current owners to
+turn gaps into small owned work, not a competing implementation or second backlog.
+
+For every slice ask: **Which supported customer outcome does this improve, what can
+we reuse, who owns the seam, and what exact evidence will prove the improvement?**
+If it only adds infrastructure or a new surface without advancing that outcome, defer it.
+
+Mission Control is the visibility layer for this same delivery system: show the
+current goal, owner, candidate, evidence, blocker and next action by linking existing
+records. It is not a second project brain, replacement issue tracker or permission
+to build an unrelated dashboard before the customer journey works.
+
+Keep these evidence states separate:
+
+- **Vision / proposed:** desired behavior, acceptance design or feasibility hypothesis.
+- **Implemented / tested:** named source SHA, configuration, dataset and bounded test
+  results; not automatically deployed, accepted or useful.
+- **Staged / device-proven:** exact deployed candidate and repeatable physical workflow
+  receipts, including failures and remaining unknowns.
+- **Human / customer accepted:** representative qualified users complete the controlling
+  journey and the buyer's explicit acceptance criteria; not synthetic stand-ins.
+- **Released / commercially supported:** required exact-head review/CI and promotion
+  gates, deployment/rollback/support evidence and the approved offer all hold.
+
+Every pass must name the artifact it certifies. A merged PR, short offline run,
+automated score or persuasive demo cannot substitute for missing evidence. Existing
+SDLC, independent review, human merge/deploy decisions and safety boundaries remain
+in force. This vision grants no new implementation, external submission, purchase,
+data sharing, equipment control or release authority.
+
+The outcome is a **repeatable, trusted product and delivery system**. Mike supplies
+domain judgment, product direction and customer relationships; the product and its
+operators carry the routine delivery burden.
