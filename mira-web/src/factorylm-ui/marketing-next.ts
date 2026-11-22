@@ -69,7 +69,7 @@ const RETIRED_FROM_SITEMAP = new Set(["/pricing", "/cmms", "/assess", "/buy"]);
 
 /** The legacy sitemap, minus retired pages, plus every page this adapter serves.
  * The legacy generator (blog + fault-code pages) stays the source of the rest. */
-export function rewriteLegacySitemap(xml: string, routes: string[], origin: string, today: string): string {
+export function rewriteLegacySitemap(xml: string, routes: string[], origin: string, lastmods: Record<string, string>): string {
   const pathOf = (loc: string) => { try { return new URL(loc).pathname; } catch { return loc; } };
   const seen = new Set<string>();
   const kept = xml.replace(/\s*<url>[\s\S]*?<\/url>/g, (block) => {
@@ -80,7 +80,7 @@ export function rewriteLegacySitemap(xml: string, routes: string[], origin: stri
     return block;
   });
   const added = routes.filter((route) => !seen.has(route))
-    .map((route) => `\n  <url>\n    <loc>${origin}${route}</loc>\n    <lastmod>${today}</lastmod>\n  </url>`).join("");
+    .map((route) => `\n  <url>\n    <loc>${origin}${route}</loc>${lastmods[route] ? `\n    <lastmod>${lastmods[route]}</lastmod>` : ""}\n  </url>`).join("");
   return kept.replace("</urlset>", added + "\n</urlset>");
 }
 
@@ -98,7 +98,11 @@ export function createFactorylmMarketingRouter() {
       const legacy = c.res;
       if (legacy.status !== 200 || !(legacy.headers.get("content-type") ?? "").includes("xml")) return;
       const routes = Object.keys(map.routes).filter((route) => route !== "/404");
-      const xml = rewriteLegacySitemap(await legacy.text(), routes, "https://factorylm.com", new Date().toISOString().slice(0, 10));
+      // lastmod is the edit date recorded in the checked sitemap-site.xml, never the request date.
+      const own = (await readFile(new URL("site/sitemap-site.xml", directory), "utf8"))
+        .matchAll(/<loc>https:\/\/factorylm\.com([^<]*)<\/loc><lastmod>([^<]*)<\/lastmod>/g);
+      const lastmods = Object.fromEntries([...own].map((m) => [m[1], m[2]]));
+      const xml = rewriteLegacySitemap(await legacy.text(), routes, "https://factorylm.com", lastmods);
       c.res = new Response(c.req.method === "HEAD" ? null : xml, {
         status: 200,
         headers: { "Content-Type": "application/xml; charset=utf-8", "X-FactoryLM-Site": "next-" + identity },

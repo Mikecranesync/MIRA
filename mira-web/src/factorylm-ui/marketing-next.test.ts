@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, setSystemTime, test } from "bun:test";
 import { Hono } from "hono";
 import { createFactorylmMarketingRouter, INDEXNOW_KEY } from "./marketing-next";
 
@@ -171,6 +171,12 @@ describe("next FactoryLM public adapter", () => {
     for (const added of ["/mira", "/about", "/start", "/demo", "/free-technicians"]) expect(locs).toContain(added);
     expect(new Set(locs).size).toBe(locs.length);
     expect(xml.trim().endsWith("</urlset>")).toBe(true);
+    // Codex cheap-lane finding: added pages carry their recorded edit date, not the request date.
+    expect(xml).toContain("<loc>https://factorylm.com/mira</loc>\n    <lastmod>2026-11-22</lastmod>");
+    setSystemTime(new Date("2031-06-15T12:00:00Z"));
+    try {
+      expect(await (await server.request("/sitemap.xml")).text()).not.toContain("2031-06-15");
+    } finally { setSystemTime(); }
     process.env.FACTORYLM_MARKETING_NEXT = "false";
     expect(await (await server.request("/sitemap.xml")).text()).toBe(legacy);
   });
