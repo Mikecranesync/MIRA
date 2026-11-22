@@ -102,7 +102,7 @@ describe("retry sweep start", () => {
   });
 
   it("/api/health keeps its response shape (the sweep adds no field)", async () => {
-    const body = await healthGET().json();
+    const body = await (await healthGET()).json();
     expect(body.status).toBe("ok");
     expect(body).not.toHaveProperty("embedder");
   });

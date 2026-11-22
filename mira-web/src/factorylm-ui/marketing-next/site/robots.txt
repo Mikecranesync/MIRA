@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /hub/
+Sitemap: https://factorylm.com/sitemap.xml
+Sitemap: https://factorylm.com/sitemap-site.xml

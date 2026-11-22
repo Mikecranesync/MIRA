@@ -13,7 +13,9 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("@/capabilities/auth-schema", () => ({ assertAuthMigrationReady: vi.fn().mockResolvedValue(undefined) }));
 
 import { detectAnomalies } from "../anomalies";
 import { productionRouteDetected } from "../config";
@@ -153,7 +155,7 @@ describe("/api/health never leaks OTEL_EXPORTER_OTLP_HEADERS or the endpoint hos
     const headerValue = "Authorization=Basic cGstbGYtc2VjcmV0LXZhbHVlOnNrLWxmLXNlY3JldC12YWx1ZQ==";
     process.env.OTEL_EXPORTER_OTLP_HEADERS = headerValue;
 
-    const res = healthGET();
+    const res = await healthGET();
     const body = await res.json();
     const text = JSON.stringify(body);
 
@@ -175,7 +177,7 @@ describe("/api/health never leaks OTEL_EXPORTER_OTLP_HEADERS or the endpoint hos
     delete process.env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT;
     delete process.env.OTEL_EXPORTER_OTLP_HEADERS;
 
-    const res = healthGET();
+    const res = await healthGET();
     const body = await res.json();
     expect(body.telemetry.tracing).toBe("disabled");
     expect(body.telemetry.exporter).toBeNull();

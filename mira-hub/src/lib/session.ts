@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { decode } from "next-auth/jwt";
 import { cookies } from "next/headers";
 import { findUserById } from "@/lib/users";
+import { credentialsAreCurrent } from "@/capabilities/verified-identity";
 
 export interface SessionContext {
   userId: string;
@@ -25,7 +26,7 @@ export interface SessionContext {
   /**
    * Platform (cross-tenant, FactoryLM-staff) admin: `hub_users.status = 'admin'`, derived fresh
    * from the DB on every request, exactly like `role` (#4591). This is the ONLY platform-admin
-   * authority: public registration creates `trial` rows, invites create `approved`, and only an
+   * authority: public registration creates trial or approved personal rows, invites create `approved`, and only an
    * existing platform admin (the admin users route) or an operator can set `admin`. Never the
    * JWT's copy of `status` (stale/forgeable for this purpose) and never an email match.
    * Absent/false = not a platform admin; a failed lookup resolves to false.
@@ -177,6 +178,7 @@ export async function requireSession(options?: { requireCurrentUser?: boolean })
   }
 
   if (options?.requireCurrentUser && (!user || user.tenantId !== tid)) throw new UnauthorizedError();
+  if (user && !credentialsAreCurrent(token, user)) throw new UnauthorizedError();
 
   role = (user?.role ?? "").toLowerCase().trim();
   platformAdmin = user?.status === "admin";

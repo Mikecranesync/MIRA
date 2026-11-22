@@ -1,0 +1,890 @@
+{
+  "recordedAt": "2026-11-21T16:37:43.753Z",
+  "scope": "Final review repairs; local and private browser rehearsal, not a physical-phone or production acceptance run",
+  "privateLayouts": [
+    {
+      "forms": 0,
+      "robots": "noindex, nofollow",
+      "scrollWidth": 1440,
+      "url": "/factorylm-guide/",
+      "width": 1440
+    },
+    {
+      "forms": 0,
+      "robots": "noindex, nofollow",
+      "scrollWidth": 1440,
+      "url": "/factorylm-guide/mira.html",
+      "width": 1440
+    },
+    {
+      "forms": 0,
+      "robots": "noindex, nofollow",
+      "scrollWidth": 1440,
+      "url": "/factorylm-guide/about.html",
+      "width": 1440
+    },
+    {
+      "forms": 0,
+      "robots": "noindex, nofollow",
+      "scrollWidth": 1440,
+      "url": "/factorylm-guide/start.html",
+      "width": 1440
+    },
+    {
+      "forms": 0,
+      "robots": "noindex, nofollow",
+      "scrollWidth": 1440,
+      "url": "/factorylm-guide/demo.html",
+      "width": 1440
+    },
+    {
+      "forms": 0,
+      "robots": "noindex, nofollow",
+      "scrollWidth": 1440,
+      "url": "/factorylm-guide/limitations.html",
+      "width": 1440
+    },
+    {
+      "forms": 0,
+      "robots": "noindex, nofollow",
+      "scrollWidth": 1440,
+      "url": "/factorylm-guide/free-technicians.html",
+      "width": 1440
+    },
+    {
+      "forms": 0,
+      "robots": "noindex, nofollow",
+      "scrollWidth": 1440,
+      "url": "/factorylm-guide/blog.html",
+      "width": 1440
+    },
+    {
+      "forms": 0,
+      "robots": "noindex, nofollow",
+      "scrollWidth": 1440,
+      "url": "/factorylm-guide/404.html",
+      "width": 1440
+    },
+    {
+      "forms": 0,
+      "robots": "noindex, nofollow",
+      "scrollWidth": 1440,
+      "url": "/factorylm-guide/privacy.html",
+      "width": 1440
+    },
+    {
+      "forms": 0,
+      "robots": "noindex, nofollow",
+      "scrollWidth": 1440,
+      "url": "/factorylm-guide/security.html",
+      "width": 1440
+    },
+    {
+      "forms": 0,
+      "robots": "noindex, nofollow",
+      "scrollWidth": 1440,
+      "url": "/factorylm-guide/status.html",
+      "width": 1440
+    },
+    {
+      "forms": 0,
+      "robots": "noindex, nofollow",
+      "scrollWidth": 1440,
+      "url": "/factorylm-guide/terms.html",
+      "width": 1440
+    },
+    {
+      "forms": 0,
+      "robots": "noindex, nofollow",
+      "scrollWidth": 1440,
+      "url": "/factorylm-guide/trust.html",
+      "width": 1440
+    },
+    {
+      "forms": 0,
+      "robots": "noindex, nofollow",
+      "scrollWidth": 1440,
+      "url": "/factorylm-guide/",
+      "width": 1440
+    },
+    {
+      "forms": 0,
+      "robots": "noindex, nofollow",
+      "scrollWidth": 1440,
+      "url": "/factorylm-guide/",
+      "width": 1440
+    },
+    {
+      "forms": 0,
+      "robots": "noindex, nofollow",
+      "scrollWidth": 768,
+      "url": "/factorylm-guide/",
+      "width": 768
+    },
+    {
+      "forms": 0,
+      "robots": "noindex, nofollow",
+      "scrollWidth": 768,
+      "url": "/factorylm-guide/mira.html",
+      "width": 768
+    },
+    {
+      "forms": 0,
+      "robots": "noindex, nofollow",
+      "scrollWidth": 768,
+      "url": "/factorylm-guide/about.html",
+      "width": 768
+    },
+    {
+      "forms": 0,
+      "robots": "noindex, nofollow",
+      "scrollWidth": 768,
+      "url": "/factorylm-guide/start.html",
+      "width": 768
+    },
+    {
+      "forms": 0,
+      "robots": "noindex, nofollow",
+      "scrollWidth": 768,
+      "url": "/factorylm-guide/demo.html",
+      "width": 768
+    },
+    {
+      "forms": 0,
+      "robots": "noindex, nofollow",
+      "scrollWidth": 768,
+      "url": "/factorylm-guide/limitations.html",
+      "width": 768
+    },
+    {
+      "forms": 0,
+      "robots": "noindex, nofollow",
+      "scrollWidth": 768,
+      "url": "/factorylm-guide/free-technicians.html",
+      "width": 768
+    },
+    {
+      "forms": 0,
+      "robots": "noindex, nofollow",
+      "scrollWidth": 768,
+      "url": "/factorylm-guide/blog.html",
+      "width": 768
+    },
+    {
+      "forms": 0,
+      "robots": "noindex, nofollow",
+      "scrollWidth": 768,
+      "url": "/factorylm-guide/404.html",
+      "width": 768
+    },
+    {
+      "forms": 0,
+      "robots": "noindex, nofollow",
+      "scrollWidth": 768,
+      "url": "/factorylm-guide/privacy.html",
+      "width": 768
+    },
+    {
+      "forms": 0,
+      "robots": "noindex, nofollow",
+      "scrollWidth": 768,
+      "url": "/factorylm-guide/security.html",
+      "width": 768
+    },
+    {
+      "forms": 0,
+      "robots": "noindex, nofollow",
+      "scrollWidth": 768,
+      "url": "/factorylm-guide/status.html",
+      "width": 768
+    },
+    {
+      "forms": 0,
+      "robots": "noindex, nofollow",
+      "scrollWidth": 768,
+      "url": "/factorylm-guide/terms.html",
+      "width": 768
+    },
+    {
+      "forms": 0,
+      "robots": "noindex, nofollow",
+      "scrollWidth": 768,
+      "url": "/factorylm-guide/trust.html",
+      "width": 768
+    },
+    {
+      "forms": 0,
+      "robots": "noindex, nofollow",
+      "scrollWidth": 768,
+      "url": "/factorylm-guide/",
+      "width": 768
+    },
+    {
+      "forms": 0,
+      "robots": "noindex, nofollow",
+      "scrollWidth": 768,
+      "url": "/factorylm-guide/",
+      "width": 768
+    },
+    {
+      "forms": 0,
+      "robots": "noindex, nofollow",
+      "scrollWidth": 390,
+      "url": "/factorylm-guide/",
+      "width": 390
+    },
+    {
+      "forms": 0,
+      "robots": "noindex, nofollow",
+      "scrollWidth": 390,
+      "url": "/factorylm-guide/mira.html",
+      "width": 390
+    },
+    {
+      "forms": 0,
+      "robots": "noindex, nofollow",
+      "scrollWidth": 390,
+      "url": "/factorylm-guide/about.html",
+      "width": 390
+    },
+    {
+      "forms": 0,
+      "robots": "noindex, nofollow",
+      "scrollWidth": 390,
+      "url": "/factorylm-guide/start.html",
+      "width": 390
+    },
+    {
+      "forms": 0,
+      "robots": "noindex, nofollow",
+      "scrollWidth": 390,
+      "url": "/factorylm-guide/demo.html",
+      "width": 390
+    },
+    {
+      "forms": 0,
+      "robots": "noindex, nofollow",
+      "scrollWidth": 390,
+      "url": "/factorylm-guide/limitations.html",
+      "width": 390
+    },
+    {
+      "forms": 0,
+      "robots": "noindex, nofollow",
+      "scrollWidth": 390,
+      "url": "/factorylm-guide/free-technicians.html",
+      "width": 390
+    },
+    {
+      "forms": 0,
+      "robots": "noindex, nofollow",
+      "scrollWidth": 390,
+      "url": "/factorylm-guide/blog.html",
+      "width": 390
+    },
+    {
+      "forms": 0,
+      "robots": "noindex, nofollow",
+      "scrollWidth": 390,
+      "url": "/factorylm-guide/404.html",
+      "width": 390
+    },
+    {
+      "forms": 0,
+      "robots": "noindex, nofollow",
+      "scrollWidth": 390,
+      "url": "/factorylm-guide/privacy.html",
+      "width": 390
+    },
+    {
+      "forms": 0,
+      "robots": "noindex, nofollow",
+      "scrollWidth": 390,
+      "url": "/factorylm-guide/security.html",
+      "width": 390
+    },
+    {
+      "forms": 0,
+      "robots": "noindex, nofollow",
+      "scrollWidth": 390,
+      "url": "/factorylm-guide/status.html",
+      "width": 390
+    },
+    {
+      "forms": 0,
+      "robots": "noindex, nofollow",
+      "scrollWidth": 390,
+      "url": "/factorylm-guide/terms.html",
+      "width": 390
+    },
+    {
+      "forms": 0,
+      "robots": "noindex, nofollow",
+      "scrollWidth": 390,
+      "url": "/factorylm-guide/trust.html",
+      "width": 390
+    },
+    {
+      "forms": 0,
+      "robots": "noindex, nofollow",
+      "scrollWidth": 390,
+      "url": "/factorylm-guide/",
+      "width": 390
+    },
+    {
+      "forms": 0,
+      "robots": "noindex, nofollow",
+      "scrollWidth": 390,
+      "url": "/factorylm-guide/",
+      "width": 390
+    },
+    {
+      "forms": 0,
+      "robots": "noindex, nofollow",
+      "scrollWidth": 320,
+      "url": "/factorylm-guide/",
+      "width": 320
+    },
+    {
+      "forms": 0,
+      "robots": "noindex, nofollow",
+      "scrollWidth": 320,
+      "url": "/factorylm-guide/mira.html",
+      "width": 320
+    },
+    {
+      "forms": 0,
+      "robots": "noindex, nofollow",
+      "scrollWidth": 320,
+      "url": "/factorylm-guide/about.html",
+      "width": 320
+    },
+    {
+      "forms": 0,
+      "robots": "noindex, nofollow",
+      "scrollWidth": 320,
+      "url": "/factorylm-guide/start.html",
+      "width": 320
+    },
+    {
+      "forms": 0,
+      "robots": "noindex, nofollow",
+      "scrollWidth": 320,
+      "url": "/factorylm-guide/demo.html",
+      "width": 320
+    },
+    {
+      "forms": 0,
+      "robots": "noindex, nofollow",
+      "scrollWidth": 320,
+      "url": "/factorylm-guide/limitations.html",
+      "width": 320
+    },
+    {
+      "forms": 0,
+      "robots": "noindex, nofollow",
+      "scrollWidth": 320,
+      "url": "/factorylm-guide/free-technicians.html",
+      "width": 320
+    },
+    {
+      "forms": 0,
+      "robots": "noindex, nofollow",
+      "scrollWidth": 320,
+      "url": "/factorylm-guide/blog.html",
+      "width": 320
+    },
+    {
+      "forms": 0,
+      "robots": "noindex, nofollow",
+      "scrollWidth": 320,
+      "url": "/factorylm-guide/404.html",
+      "width": 320
+    },
+    {
+      "forms": 0,
+      "robots": "noindex, nofollow",
+      "scrollWidth": 320,
+      "url": "/factorylm-guide/privacy.html",
+      "width": 320
+    },
+    {
+      "forms": 0,
+      "robots": "noindex, nofollow",
+      "scrollWidth": 320,
+      "url": "/factorylm-guide/security.html",
+      "width": 320
+    },
+    {
+      "forms": 0,
+      "robots": "noindex, nofollow",
+      "scrollWidth": 320,
+      "url": "/factorylm-guide/status.html",
+      "width": 320
+    },
+    {
+      "forms": 0,
+      "robots": "noindex, nofollow",
+      "scrollWidth": 320,
+      "url": "/factorylm-guide/terms.html",
+      "width": 320
+    },
+    {
+      "forms": 0,
+      "robots": "noindex, nofollow",
+      "scrollWidth": 320,
+      "url": "/factorylm-guide/trust.html",
+      "width": 320
+    },
+    {
+      "forms": 0,
+      "robots": "noindex, nofollow",
+      "scrollWidth": 320,
+      "url": "/factorylm-guide/",
+      "width": 320
+    },
+    {
+      "forms": 0,
+      "robots": "noindex, nofollow",
+      "scrollWidth": 320,
+      "url": "/factorylm-guide/",
+      "width": 320
+    }
+  ],
+  "productionAdapterLayouts": [
+    {
+      "canonical": "https://factorylm.com/",
+      "forms": 0,
+      "iframes": 0,
+      "robots": "index, follow",
+      "scrollWidth": 1440,
+      "url": "/",
+      "width": 1440
+    },
+    {
+      "canonical": "https://factorylm.com/mira",
+      "forms": 0,
+      "iframes": 0,
+      "robots": "index, follow",
+      "scrollWidth": 1440,
+      "url": "/mira",
+      "width": 1440
+    },
+    {
+      "canonical": "https://factorylm.com/about",
+      "forms": 0,
+      "iframes": 0,
+      "robots": "index, follow",
+      "scrollWidth": 1440,
+      "url": "/about",
+      "width": 1440
+    },
+    {
+      "canonical": "https://factorylm.com/start",
+      "forms": 0,
+      "iframes": 0,
+      "robots": "index, follow",
+      "scrollWidth": 1440,
+      "url": "/start",
+      "width": 1440
+    },
+    {
+      "canonical": "https://factorylm.com/demo",
+      "forms": 0,
+      "iframes": 0,
+      "robots": "index, follow",
+      "scrollWidth": 1440,
+      "url": "/demo",
+      "width": 1440
+    },
+    {
+      "canonical": "https://factorylm.com/limitations",
+      "forms": 0,
+      "iframes": 0,
+      "robots": "index, follow",
+      "scrollWidth": 1440,
+      "url": "/limitations",
+      "width": 1440
+    },
+    {
+      "canonical": "https://factorylm.com/free-technicians",
+      "forms": 0,
+      "iframes": 0,
+      "robots": "index, follow",
+      "scrollWidth": 1440,
+      "url": "/free-technicians",
+      "width": 1440
+    },
+    {
+      "canonical": "https://factorylm.com/404",
+      "forms": 0,
+      "iframes": 0,
+      "robots": "noindex, nofollow",
+      "scrollWidth": 1440,
+      "url": "/404",
+      "width": 1440
+    },
+    {
+      "canonical": "https://factorylm.com/",
+      "forms": 0,
+      "iframes": 0,
+      "robots": "index, follow",
+      "scrollWidth": 768,
+      "url": "/",
+      "width": 768
+    },
+    {
+      "canonical": "https://factorylm.com/mira",
+      "forms": 0,
+      "iframes": 0,
+      "robots": "index, follow",
+      "scrollWidth": 768,
+      "url": "/mira",
+      "width": 768
+    },
+    {
+      "canonical": "https://factorylm.com/about",
+      "forms": 0,
+      "iframes": 0,
+      "robots": "index, follow",
+      "scrollWidth": 768,
+      "url": "/about",
+      "width": 768
+    },
+    {
+      "canonical": "https://factorylm.com/start",
+      "forms": 0,
+      "iframes": 0,
+      "robots": "index, follow",
+      "scrollWidth": 768,
+      "url": "/start",
+      "width": 768
+    },
+    {
+      "canonical": "https://factorylm.com/demo",
+      "forms": 0,
+      "iframes": 0,
+      "robots": "index, follow",
+      "scrollWidth": 768,
+      "url": "/demo",
+      "width": 768
+    },
+    {
+      "canonical": "https://factorylm.com/limitations",
+      "forms": 0,
+      "iframes": 0,
+      "robots": "index, follow",
+      "scrollWidth": 768,
+      "url": "/limitations",
+      "width": 768
+    },
+    {
+      "canonical": "https://factorylm.com/free-technicians",
+      "forms": 0,
+      "iframes": 0,
+      "robots": "index, follow",
+      "scrollWidth": 768,
+      "url": "/free-technicians",
+      "width": 768
+    },
+    {
+      "canonical": "https://factorylm.com/404",
+      "forms": 0,
+      "iframes": 0,
+      "robots": "noindex, nofollow",
+      "scrollWidth": 768,
+      "url": "/404",
+      "width": 768
+    },
+    {
+      "canonical": "https://factorylm.com/",
+      "forms": 0,
+      "iframes": 0,
+      "robots": "index, follow",
+      "scrollWidth": 390,
+      "url": "/",
+      "width": 390
+    },
+    {
+      "canonical": "https://factorylm.com/mira",
+      "forms": 0,
+      "iframes": 0,
+      "robots": "index, follow",
+      "scrollWidth": 390,
+      "url": "/mira",
+      "width": 390
+    },
+    {
+      "canonical": "https://factorylm.com/about",
+      "forms": 0,
+      "iframes": 0,
+      "robots": "index, follow",
+      "scrollWidth": 390,
+      "url": "/about",
+      "width": 390
+    },
+    {
+      "canonical": "https://factorylm.com/start",
+      "forms": 0,
+      "iframes": 0,
+      "robots": "index, follow",
+      "scrollWidth": 390,
+      "url": "/start",
+      "width": 390
+    },
+    {
+      "canonical": "https://factorylm.com/demo",
+      "forms": 0,
+      "iframes": 0,
+      "robots": "index, follow",
+      "scrollWidth": 390,
+      "url": "/demo",
+      "width": 390
+    },
+    {
+      "canonical": "https://factorylm.com/limitations",
+      "forms": 0,
+      "iframes": 0,
+      "robots": "index, follow",
+      "scrollWidth": 390,
+      "url": "/limitations",
+      "width": 390
+    },
+    {
+      "canonical": "https://factorylm.com/free-technicians",
+      "forms": 0,
+      "iframes": 0,
+      "robots": "index, follow",
+      "scrollWidth": 390,
+      "url": "/free-technicians",
+      "width": 390
+    },
+    {
+      "canonical": "https://factorylm.com/404",
+      "forms": 0,
+      "iframes": 0,
+      "robots": "noindex, nofollow",
+      "scrollWidth": 390,
+      "url": "/404",
+      "width": 390
+    },
+    {
+      "canonical": "https://factorylm.com/",
+      "forms": 0,
+      "iframes": 0,
+      "robots": "index, follow",
+      "scrollWidth": 320,
+      "url": "/",
+      "width": 320
+    },
+    {
+      "canonical": "https://factorylm.com/mira",
+      "forms": 0,
+      "iframes": 0,
+      "robots": "index, follow",
+      "scrollWidth": 320,
+      "url": "/mira",
+      "width": 320
+    },
+    {
+      "canonical": "https://factorylm.com/about",
+      "forms": 0,
+      "iframes": 0,
+      "robots": "index, follow",
+      "scrollWidth": 320,
+      "url": "/about",
+      "width": 320
+    },
+    {
+      "canonical": "https://factorylm.com/start",
+      "forms": 0,
+      "iframes": 0,
+      "robots": "index, follow",
+      "scrollWidth": 320,
+      "url": "/start",
+      "width": 320
+    },
+    {
+      "canonical": "https://factorylm.com/demo",
+      "forms": 0,
+      "iframes": 0,
+      "robots": "index, follow",
+      "scrollWidth": 320,
+      "url": "/demo",
+      "width": 320
+    },
+    {
+      "canonical": "https://factorylm.com/limitations",
+      "forms": 0,
+      "iframes": 0,
+      "robots": "index, follow",
+      "scrollWidth": 320,
+      "url": "/limitations",
+      "width": 320
+    },
+    {
+      "canonical": "https://factorylm.com/free-technicians",
+      "forms": 0,
+      "iframes": 0,
+      "robots": "index, follow",
+      "scrollWidth": 320,
+      "url": "/free-technicians",
+      "width": 320
+    },
+    {
+      "canonical": "https://factorylm.com/404",
+      "forms": 0,
+      "iframes": 0,
+      "robots": "noindex, nofollow",
+      "scrollWidth": 320,
+      "url": "/404",
+      "width": 320
+    }
+  ],
+  "signupLayouts": [
+    {
+      "page": "personal",
+      "email": 280,
+      "form": 280,
+      "inputHeight": 51.59375,
+      "scroll": 320,
+      "width": 320
+    },
+    {
+      "page": "personal",
+      "email": 350,
+      "form": 350,
+      "inputHeight": 51.59375,
+      "scroll": 390,
+      "width": 390
+    },
+    {
+      "page": "personal",
+      "email": 390,
+      "form": 390,
+      "inputHeight": 51.59375,
+      "scroll": 430,
+      "width": 430
+    },
+    {
+      "page": "personal",
+      "email": 420,
+      "form": 420,
+      "inputHeight": 51.59375,
+      "scroll": 768,
+      "width": 768
+    },
+    {
+      "page": "pilot",
+      "email": 280,
+      "form": 280,
+      "inputHeight": 51.59375,
+      "scroll": 320,
+      "width": 320
+    },
+    {
+      "page": "pilot",
+      "email": 350,
+      "form": 350,
+      "inputHeight": 51.59375,
+      "scroll": 390,
+      "width": 390
+    },
+    {
+      "page": "pilot",
+      "email": 390,
+      "form": 390,
+      "inputHeight": 51.59375,
+      "scroll": 430,
+      "width": 430
+    },
+    {
+      "page": "pilot",
+      "email": 420,
+      "form": 420,
+      "inputHeight": 51.59375,
+      "scroll": 768,
+      "width": 768
+    }
+  ],
+  "demo": {
+    "selectedDraft": "mailto:mike@factorylm.com?subject=FactoryLM%20demo%20request&body=Demo%20request%20for%20my%20team.%20Focus%3A%20Electrical%20print%20lookup.%20Bring%20one%20real%20question%20about%20your%20equipment%20manual%20or%20electrical%20prints.%0A%0AEquipment%20and%20question%3A%0A",
+    "clearedDraft": "mailto:mike@factorylm.com?subject=FactoryLM%20demo%20request",
+    "externalCalendar": "https://calendly.com/mike-cranesync/30min",
+    "iframes": 0
+  },
+  "rollback": {
+    "enabledUrl": "http://127.0.0.1:4188/demo?utm_source=maintenance",
+    "sameBrowserProfile": true,
+    "disabledUrl": "http://127.0.0.1:4188/pricing?utm_source=maintenance",
+    "restoredHeading": "Existing pricing restored",
+    "policyAvailableWithoutMarketing": "Your personal MIRA workspace.",
+    "policyAvailableWithBothFlagsDisabled": true
+  },
+  "blog": {
+    "upstreamIndex": true,
+    "fixtureArticleUrl": "http://127.0.0.1:4188/blog/fresh-published-article",
+    "articleHeading": "Fresh database article",
+    "scope": "Local upstream fixture; existing database-backed blog implementation is preserved"
+  },
+  "mobileMenu": {
+    "miraUrl": "http://127.0.0.1:4188/mira"
+  },
+  "termsResponse": "Existing upstream response preserved; canonical free policy links to the full Terms",
+  "emailSent": false,
+  "browserAccountCreated": false,
+  "emailLinkBrowserSignin": {
+    "scope": "Already-created local synthetic account; no agreement accepted or account created in browser",
+    "result": "signed into canonical MIRA workspace",
+    "destination": "/v3/",
+    "question_or_plant_action": false
+  },
+  "signupVisualVerification": {
+    "replaces": "The previous overflow-only signup pass and collapsed JPG images are superseded.",
+    "inspectedImages": [
+      "local-mira-signup-phone.png",
+      "local-plant-pilot-phone.png",
+      "local-setup-confirm-phone.png"
+    ],
+    "formWidthsAt320And390": [
+      280,
+      350
+    ],
+    "inputHeight": 51.59375,
+    "confirmationMetrics": {
+      "width": 390,
+      "scrollWidth": 390,
+      "cardWidth": 350,
+      "buttonWidth": 350,
+      "disabledUntilAgreement": true
+    },
+    "unknownSignin": "Public known/unknown responses are uniform; Create account guidance is available to everyone.",
+    "newBrowserAccountCreated": false,
+    "agreementAccepted": false,
+    "deliveredEmail": false
+  },
+  "pilotBothFlagsDisabled": {
+    "closed": true,
+    "contact": true,
+    "forms": 0,
+    "scroll": 1280,
+    "width": 1280
+  },
+  "compiledLinkPrivacy": {
+    "historyCredentialCleared": true,
+    "agreementAccepted": false,
+    "validSyntheticLinkObserved": true,
+    "keyboardEntryAndTabFocus": true,
+    "receipt": "fragment-browser.json",
+    "runtime": "Compiled production build behind a local forwarding proxy; not production nginx"
+  },
+  "returningFragmentSignin": {
+    "scope": "Existing synthetic account in compiled local Hub",
+    "credentialRemovedFromUrl": true,
+    "destination": "/v3/",
+    "observed": "FactoryLM navigation, account and empty canonical conversation workspace",
+    "agreementAccepted": false,
+    "questionSent": false,
+    "plantAction": false
+  }
+}

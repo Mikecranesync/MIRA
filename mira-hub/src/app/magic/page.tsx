@@ -5,11 +5,12 @@ import { useSearchParams, useRouter } from "next/navigation";
 import { signIn } from "next-auth/react";
 import { Factory, Loader2, XCircle } from "lucide-react";
 import { Suspense } from "react";
+import { usePrivateLinkToken } from "@/factorylm-ui/usePrivateLinkToken";
 
 function MagicVerify() {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const token = searchParams.get("token");
+  const token = usePrivateLinkToken(searchParams.get("token"));
   const [status, setStatus] = useState<"verifying" | "error">("verifying");
 
   useEffect(() => {

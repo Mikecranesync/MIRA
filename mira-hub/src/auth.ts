@@ -2,9 +2,14 @@ import type { NextAuthOptions } from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 import CredentialsProvider from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
-import { ensureInvitedUser, ensureUserAndTenant, findUserByEmail, findUserById, validateMagicToken } from "@/lib/users";
+import { ensureUserAndTenant, findUserByEmail, findUserById, magicTokenPurpose, redeemInviteToken, redeemLoginToken, readSessionSnapshot, type SessionSnapshot } from "@/lib/users";
 import { NO_ROLE, normalizeRole, type ResolvedRole } from "@/lib/role";
 import { refreshEntitlementClaims } from "@/capabilities/session-entitlement";
+import { credentialEpoch } from "@/capabilities/verified-identity";
+import { redeemVerifiedOnboarding } from "@/capabilities/verified-onboarding";
+import { ONBOARDING_VERSION } from "@/capabilities/onboarding-policy";
+import { publicSignupPolicy } from "@/capabilities/free-technician-signup";
+import pool from "@/lib/db";
 
 declare module "next-auth" {
   interface Session {
@@ -21,6 +26,7 @@ declare module "next-auth" {
     };
   }
   interface User {
+    credentialEpoch?: number;
     id: string;
     email?: string | null;
     tenantId?: string;
@@ -31,6 +37,7 @@ declare module "next-auth" {
 
 declare module "next-auth/jwt" {
   interface JWT {
+    credentialEpoch?: number;
     uid?: string;
     tid?: string;
     status?: string;
@@ -62,6 +69,7 @@ const providers: NextAuthOptions["providers"] = [
         name: user.name ?? null,
         tenantId: user.tenantId,
         status: user.status,
+        credentialEpoch: credentialEpoch(user),
         trialExpiresAt: user.trialExpiresAt?.toISOString() ?? null,
       };
     },
@@ -69,26 +77,35 @@ const providers: NextAuthOptions["providers"] = [
   CredentialsProvider({
     id: "magic-token",
     name: "Magic Link",
-    credentials: { token: { type: "text" } },
+    credentials: { token: { type: "text" }, agreementVersion: { type:"text" } },
     async authorize(credentials) {
       if (!credentials?.token) return null;
-      const result = await validateMagicToken(credentials.token);
-      if (!result) return null;
-      const account = result.tenantId
-        ? await ensureInvitedUser({
-            email: result.email,
-            tenantId: result.tenantId,
-            role: result.role ?? "technician",
-          })
-        : await ensureUserAndTenant({ email: result.email });
-      const user = await findUserByEmail(result.email);
+      // Codex F34/F35: every path ends in ONE row snapshot; the session's
+      // workspace and credential epoch never come from two different reads.
+      let snapshot: SessionSnapshot | null;
+      const purpose = await magicTokenPurpose(credentials.token);
+      if (purpose === "onboarding") {
+        try { snapshot = await redeemVerifiedOnboarding(credentials.token, credentials.agreementVersion ?? ""); }
+        catch { return null; }
+      } else {
+        // Codex F28: an invitation is admitted, claimed, applied and spent in ONE
+        // transaction; a refusal leaves both the token and access unchanged.
+        const invite = await redeemInviteToken(credentials.token);
+        if (invite === null) return null;
+        if (invite) snapshot = invite;
+        // Codex F37: an ordinary sign-in link is locked, claimed, read and spent
+        // in ONE transaction; any failure leaves the link and the account unchanged.
+        else snapshot = await redeemLoginToken(credentials.token);
+      }
+      if (!snapshot) return null;
       return {
-        id: account.id,
-        email: account.email,
-        name: user?.name ?? null,
-        tenantId: account.tenantId,
-        status: user?.status ?? "trial",
-        trialExpiresAt: user?.trialExpiresAt?.toISOString() ?? null,
+        id: snapshot.id,
+        email: snapshot.email,
+        name: snapshot.name,
+        tenantId: snapshot.tenantId,
+        status: snapshot.status,
+        credentialEpoch: credentialEpoch(snapshot),
+        trialExpiresAt: snapshot.trialExpiresAt,
       };
     },
   }),
@@ -129,17 +146,27 @@ export const authOptions: NextAuthOptions = {
   callbacks: {
     async signIn({ user, account, profile }) {
       if (account?.provider === "google" && profile?.email) {
+        if ((profile as { email_verified?: unknown }).email_verified !== true) return false;
+        const knownEmail=await findUserByEmail(profile.email);
+        const knownSubject=await pool.query("SELECT id FROM hub_users WHERE google_sub=$1 LIMIT 1",[account.providerAccountId]);
+        if(!knownEmail && !knownSubject.rows[0] && publicSignupPolicy().kind!=="trial") return "/signup/";
         const existing = await ensureUserAndTenant({
           email: profile.email,
           googleSub: account.providerAccountId,
           name: (profile as { name?: string }).name,
+          verifiedEmail: true,
         });
-        const fullUser = await findUserByEmail(existing.email);
-        user.id = existing.id;
-        user.email = existing.email;
-        user.tenantId = existing.tenantId;
-        user.status = fullUser?.status ?? "trial";
-        user.trialExpiresAt = fullUser?.trialExpiresAt?.toISOString() ?? null;
+        // Codex F36: workspace and credential epoch come from ONE row snapshot,
+        // and a move between identity resolution and this read is refused
+        // rather than minted as an old-workspace/new-epoch mix.
+        const snapshot = await readSessionSnapshot(pool, existing.id);
+        if (!snapshot || snapshot.tenantId !== existing.tenantId) return false;
+        user.id = snapshot.id;
+        user.email = snapshot.email;
+        user.tenantId = snapshot.tenantId;
+        user.status = snapshot.status;
+        user.credentialEpoch = credentialEpoch(snapshot);
+        user.trialExpiresAt = snapshot.trialExpiresAt;
       }
       return true;
     },
@@ -148,6 +175,7 @@ export const authOptions: NextAuthOptions = {
         token.uid = user.id;
         token.tid = user.tenantId;
         token.status = user.status ?? "trial";
+        token.credentialEpoch = user.credentialEpoch ?? 0;
         token.trialExpiresAt = user.trialExpiresAt ?? null;
         return token;
       }
