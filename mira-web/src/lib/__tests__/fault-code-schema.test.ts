@@ -44,4 +44,13 @@ describe("fault-code page structured data", () => {
       description: `Equipment by ${fc.manufacturer}`,
     });
   });
+
+  test("the manufacturer stays a machine-readable Organization", () => {
+    for (const fc of FAULT_CODES) {
+      const html = renderFaultCodePage(fc, FAULT_CODES);
+      const graph = (jsonLdBlocks(html)[0] as { "@graph": Array<Record<string, any>> })["@graph"];
+      const guide = graph.find((n) => String(n["@id"]).endsWith("#guide"));
+      expect(guide?.mentions).toEqual({ "@type": "Organization", name: fc.manufacturer });
+    }
+  });
 });

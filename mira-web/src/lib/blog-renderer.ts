@@ -316,6 +316,9 @@ ${related.map((r) => `      <li><a href="/blog/${r.slug}">${escHtml(r.title)}</a
           name: fc.equipment,
           description: `Equipment by ${fc.manufacturer}`,
         },
+        // Keeps the manufacturer as a machine-readable entity (Thing has no
+        // manufacturer property; CreativeWork.mentions is valid here).
+        mentions: { "@type": "Organization", name: fc.manufacturer },
         step: fixStepsLd,
         mainEntity: {
           "@type": "FAQPage",
