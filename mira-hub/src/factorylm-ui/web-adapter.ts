@@ -191,20 +191,35 @@ export function browserAdapterDeps(): WebAdapterDeps {
         input.accept = accept;
         if (capture) input.setAttribute("capture", capture);
         input.style.display = "none";
-        // A dismissed chooser fires no event in most browsers, so the element
-        // would leak and the promise would never settle. `cancel` is supported
-        // broadly enough to rely on, and the focus fallback covers the rest.
+        // A dismissed chooser fires `cancel` in current browsers. The focus
+        // fallback settles the pick in a browser that never sends it, so the
+        // composer is not left busy. It may only fire once the page has KEPT
+        // focus: on Android a permission prompt hands focus back for a moment
+        // before the chooser opens, and settling then lost the file the
+        // technician picked next (#5788). So a blur disarms it.
+        let fallback: ReturnType<typeof setTimeout> | undefined;
+        let settled = false;
+        const disarm = () => {
+          if (fallback !== undefined) clearTimeout(fallback);
+          fallback = undefined;
+        };
         const done = (file: File | null) => {
+          if (settled) return;
+          settled = true;
+          disarm();
+          window.removeEventListener("focus", arm);
+          window.removeEventListener("blur", disarm);
           input.remove();
           resolve(file);
         };
+        function arm() {
+          disarm();
+          fallback = setTimeout(() => done(input.files?.[0] ?? null), 500);
+        }
         input.addEventListener("change", () => done(input.files?.[0] ?? null), { once: true });
         input.addEventListener("cancel", () => done(null), { once: true });
-        window.addEventListener(
-          "focus",
-          () => setTimeout(() => { if (document.body.contains(input)) done(input.files?.[0] ?? null); }, 500),
-          { once: true },
-        );
+        window.addEventListener("focus", arm);
+        window.addEventListener("blur", disarm);
         document.body.appendChild(input);
         input.click();
       }),
