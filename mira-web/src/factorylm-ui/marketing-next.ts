@@ -89,6 +89,28 @@ export function rewriteLegacySitemap(xml: string, routes: string[], origin: stri
   return kept.replace("</urlset>", added + "\n</urlset>");
 }
 
+/** Conversion CTAs, matched by exact href. The existing /posthog-init.js click
+ * listener sends `cta_click {cta, href, page}` for any [data-cta] element, so
+ * tagging the links is all the new site needs to show up in funnels. */
+const CTA_BY_HREF: ReadonlyArray<[href: string, cta: string]> = [
+  [PRODUCTION_HUB_ORIGIN + "/signup/", "start_free"],
+  [PRODUCTION_HUB_ORIGIN + "/login/", "sign_in"],
+  ["/demo", "request_demo"],
+  ["mailto:mike@factorylm.com?subject=FactoryLM%20demo%20request", "demo_email"],
+  ["/start", "start_guide"],
+];
+const POSTHOG_TAG = '<script src="/posthog-init.js" defer></script>';
+
+/** Loads the shared analytics script and tags every conversion link. Runs on the
+ * checked HTML before any staging origin rewrite, so the hrefs match exactly. */
+export function instrumentMarketingHtml(html: string): string {
+  let out = html;
+  for (const [href, cta] of CTA_BY_HREF) {
+    out = out.replaceAll(`href="${href}"`, `data-cta="${cta}" href="${href}"`);
+  }
+  return out.includes(POSTHOG_TAG) ? out : out.replace("</head>", `  ${POSTHOG_TAG}\n</head>`);
+}
+
 export function createFactorylmMarketingRouter() {
   const router = new Hono();
   router.use("*", async (c, next) => {
@@ -127,7 +149,7 @@ export function createFactorylmMarketingRouter() {
     const bytes = await readFile(new URL("site/" + file, directory));
     const html = file.endsWith(".html");
     const staging = hubOrigin() !== PRODUCTION_HUB_ORIGIN;
-    const body = html ? bytes.toString("utf8")
+    const body = html ? instrumentMarketingHtml(bytes.toString("utf8"))
       .replaceAll(PRODUCTION_HUB_ORIGIN + "/signup/", hubUrl("/signup/"))
       .replaceAll(PRODUCTION_HUB_ORIGIN + "/login/", hubUrl("/login/")) : bytes;
     const headers = {

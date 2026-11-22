@@ -146,3 +146,59 @@ describe("service worker never serves /posthog-init.js from cache (Codex #4900 F
     expect(sw).not.toContain("const CACHE_NAME = 'factorylm-v4'");
   });
 });
+
+// The new marketing site (src/factorylm-ui/marketing-next) must load this same
+// script and tag its conversion links, so "Start free" / "Request a demo" clicks
+// arrive as cta_click {cta, href, page}. Kept in this CI-selected suite because
+// the adapter's own test files are not in ci.yml's web list.
+describe("new marketing site conversion tracking", () => {
+  const ROUTES = ["/", "/mira", "/about", "/start", "/demo", "/limitations", "/free-technicians"];
+  const CONVERSION_HREF = /href="(?:https:\/\/[^"]+\/signup\/|\/demo|mailto:[^"]*demo[^"]*)"/;
+
+  async function servePage(route: string, hubUrl?: string) {
+    const env = { next: process.env.FACTORYLM_MARKETING_NEXT, free: process.env.MIRA_FREE_TECHNICIANS, hub: process.env.PLG_HUB_URL };
+    process.env.FACTORYLM_MARKETING_NEXT = "true";
+    process.env.MIRA_FREE_TECHNICIANS = "true";
+    if (hubUrl) process.env.PLG_HUB_URL = hubUrl; else delete process.env.PLG_HUB_URL;
+    try {
+      const { app } = await import("../server.js");
+      const res = await app.request(`https://factorylm.com${route}`, { headers: { host: "factorylm.com" } });
+      expect(res.status).toBe(route === "/404" ? 404 : 200);
+      expect(res.headers.get("x-factorylm-site") ?? "").toStartWith("next-");
+      return await res.text();
+    } finally {
+      for (const [k, v] of [["FACTORYLM_MARKETING_NEXT", env.next], ["MIRA_FREE_TECHNICIANS", env.free], ["PLG_HUB_URL", env.hub]] as const) {
+        if (v === undefined) delete process.env[k]; else process.env[k] = v;
+      }
+    }
+  }
+
+  test("instrumentMarketingHtml tags known links, adds the script once, and is idempotent", async () => {
+    const { instrumentMarketingHtml } = await import("../factorylm-ui/marketing-next.js");
+    const page = '<html><head><title>x</title></head><body><a class="b" href="https://app.factorylm.com/signup/">Start free</a><a href="/demo">Demo</a><a href="/about">About</a></body></html>';
+    const once = instrumentMarketingHtml(page);
+    expect(once).toContain('<a class="b" data-cta="start_free" href="https://app.factorylm.com/signup/">');
+    expect(once).toContain('<a data-cta="request_demo" href="/demo">');
+    expect(once).toContain('<a href="/about">');
+    expect(once.split('src="/posthog-init.js"').length - 1).toBe(1);
+    expect(once.indexOf('src="/posthog-init.js"')).toBeLessThan(once.indexOf("</head>"));
+    expect(instrumentMarketingHtml(once).split('src="/posthog-init.js"').length - 1).toBe(1);
+  });
+
+  for (const route of [...ROUTES, "/404"]) {
+    test(`${route} loads posthog-init.js once and every conversion link carries data-cta`, async () => {
+      const html = await servePage(route);
+      expect(html.split('<script src="/posthog-init.js" defer></script>').length - 1).toBe(1);
+      const links = [...html.matchAll(/<a\b[^>]*>/g)].map((m) => m[0]);
+      const conversions = links.filter((a) => CONVERSION_HREF.test(a));
+      expect(conversions.length).toBeGreaterThan(0);
+      for (const a of conversions) expect(a).toMatch(/data-cta="(start_free|request_demo|demo_email)"/);
+    });
+  }
+
+  test("on staging the rewritten signup link keeps its start_free tag", async () => {
+    const html = await servePage("/", "https://staging-app.factorylm.test");
+    expect(html).toContain('data-cta="start_free" href="https://staging-app.factorylm.test/signup/"');
+    expect(html).not.toContain("https://app.factorylm.com/signup/");
+  });
+});
