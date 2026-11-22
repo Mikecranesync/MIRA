@@ -191,20 +191,21 @@ export function browserAdapterDeps(): WebAdapterDeps {
         input.accept = accept;
         if (capture) input.setAttribute("capture", capture);
         input.style.display = "none";
-        // A dismissed chooser fires no event in most browsers, so the element
-        // would leak and the promise would never settle. `cancel` is supported
-        // broadly enough to rely on, and the focus fallback covers the rest.
+        // The pick settles only on the browser's own outcome: `change` with the
+        // chosen file, or `cancel` when the chooser is dismissed. Window focus
+        // says neither. On Android, Chrome hands focus back before it has
+        // finished resolving the chosen file, and after a permission prompt it
+        // hands focus back before the chooser even opens. A focus timer settled
+        // too early in both cases and lost the file (#5788). Every browser in the
+        // Hub's build target sends `cancel` except Chrome and Edge 111 and 112
+        // (it arrived in 113). There, a dismissed chooser leaves the picker items
+        // busy until the page reloads; typing, sending, paste and drop still work.
         const done = (file: File | null) => {
           input.remove();
           resolve(file);
         };
         input.addEventListener("change", () => done(input.files?.[0] ?? null), { once: true });
         input.addEventListener("cancel", () => done(null), { once: true });
-        window.addEventListener(
-          "focus",
-          () => setTimeout(() => { if (document.body.contains(input)) done(input.files?.[0] ?? null); }, 500),
-          { once: true },
-        );
         document.body.appendChild(input);
         input.click();
       }),
