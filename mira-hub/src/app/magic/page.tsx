@@ -6,11 +6,15 @@ import { signIn } from "next-auth/react";
 import { Factory, Loader2, XCircle } from "lucide-react";
 import { Suspense } from "react";
 import { usePrivateLinkToken } from "@/factorylm-ui/usePrivateLinkToken";
+import { redeemMagicToken } from "@/capabilities/magic-link-return";
 
 function MagicVerify() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const token = usePrivateLinkToken(searchParams.get("token"));
+  // #5744: the cited page the technician opened before signing in. The helper
+  // re-checks it, because anyone holding the emailed link can edit its query.
+  const next = searchParams.get("next");
   const [status, setStatus] = useState<"verifying" | "error">("verifying");
 
   useEffect(() => {
@@ -18,17 +22,17 @@ function MagicVerify() {
       const timeout = window.setTimeout(() => setStatus("error"), 0);
       return () => window.clearTimeout(timeout);
     }
-    signIn("magic-token", { token, redirect: false })
-      .then(result => {
-        if (result?.ok) {
-          router.push("/feed");
+    redeemMagicToken((t) => signIn("magic-token", { token: t, redirect: false }), token, next)
+      .then(destination => {
+        if (destination) {
+          router.push(destination);
         } else {
           setStatus("error");
         }
       })
       .catch(() => setStatus("error"));
     return undefined;
-  }, [token, router]);
+  }, [token, next, router]);
 
   return (
     <div

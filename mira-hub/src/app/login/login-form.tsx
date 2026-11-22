@@ -8,6 +8,7 @@ import { Factory, Loader2, Eye, EyeOff, Mail, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { API_BASE } from "@/lib/config";
+import { magicLinkRequestBody } from "@/capabilities/magic-link-return";
 
 const MIN_PW = 8;
 // Matches the server-side check in api/auth/magic-link.
@@ -105,7 +106,8 @@ function LoginFormInner() {
       const res = await fetch(`${API_BASE}/api/auth/magic-link/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: email.trim() }),
+        // #5744: the sign-in link returns to the page that sent you here.
+        body: JSON.stringify(magicLinkRequestBody(email, searchParams.get("callbackUrl"))),
       });
       // The canonical account adapter owns offer and setup guidance.
       if (res.ok) {
