@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated": "2026-10-30",
+  "updated": "2026-11-02",
   "contact": {
     "cta": "Talk to Mike",
     "email": "mike@factorylm.com",
@@ -9,7 +9,7 @@
     "signup_href": "https://app.factorylm.com/signup"
   },
   "chrome": {
-    "ai_note": "Describe FactoryLM only with the claims above. Do not quote dollar prices, a document count, chat-app adapters, live plant tags, or untested brand logos. MIRA stands alone; CMMS connectors are optional and not yet available, never required.",
+    "ai_note": "Describe FactoryLM only with the claims above. Do not quote dollar prices, a document count, chat-app adapters, live plant tags, or untested brand logos. Do not invent a public price menu, an OEM library, a self-serve trial, or a promise to publish misses. Do not claim PLC tags, QR nameplate, or field tools. MIRA stands alone; CMMS connectors are optional and not yet available, never required.",
     "connectors_note": "CMMS connectors are optional and not yet available. MIRA stands alone."
   },
   "offers": [
@@ -39,7 +39,7 @@
       "qualified-manuals-only",
       "magic-link-web-signin"
     ],
-    "llms_intro": ["notebook-cited-answer"],
+    "llms_intro": ["notebook-cited-answer", "equipment-notebook-not-cmms"],
     "llms_who": ["mike-central-florida"],
     "llms_show_today": [
       "notebook-cited-answer",
@@ -50,11 +50,18 @@
       "qualified-manuals-only",
       "magic-link-web-signin"
     ],
-    "llms_does_not": ["not-a-cmms", "no-plc-or-work-order-write"],
+    "llms_does_not": [
+      "not-a-cmms",
+      "no-plc-or-work-order-write",
+      "answer-not-always-same",
+      "phone-citations-unfixed"
+    ],
     "limitations": [
       "not-a-cmms",
       "no-plc-or-work-order-write",
-      "qualified-manuals-only"
+      "qualified-manuals-only",
+      "answer-not-always-same",
+      "phone-citations-unfixed"
     ]
   },
   "claims": [
@@ -68,19 +75,35 @@
     },
     {
       "id": "no-plc-or-work-order-write",
-      "text": "It doesn't take PLC data and doesn't write work-order records.",
+      "text": "It doesn't read PLC data and doesn't write work orders.",
       "status": "proven",
       "kind": "limit",
-      "evidence": "P4 — Oct 18 audit L5/S6; approved claim A6",
-      "last_checked": "2026-10-29"
+      "evidence": "P4 — Oct 18 audit L5/S6; approved claim A6; wording from capabilities.md P4 (2026-11-02 leftover cut)",
+      "last_checked": "2026-11-02"
+    },
+    {
+      "id": "answer-not-always-same",
+      "text": "It does not always answer the same question the same way. Check the cited page.",
+      "status": "proven",
+      "kind": "limit",
+      "evidence": "Mike 2026-11-02 leftover list — answers are not deterministic; P1/P8 cite-page lines stay as written (#4607 hold)",
+      "last_checked": "2026-11-02"
+    },
+    {
+      "id": "phone-citations-unfixed",
+      "text": "Opening citations on a phone is still being fixed.",
+      "status": "proven",
+      "kind": "limit",
+      "evidence": "P8 is desktop-only; phone citation viewing is not proven (R4). Mike 2026-11-02 leftover list.",
+      "last_checked": "2026-11-02"
     },
     {
       "id": "qualified-manuals-only",
-      "text": "We've tested Rockwell, Festo, and ABB manuals on production so far, and we'll post our misses too.",
+      "text": "We've tested Rockwell, Festo, and ABB manuals on production so far.",
       "status": "proven",
       "kind": "capability",
-      "evidence": "P5 — Micro810/Micro820/PowerFlex 525 on prod; Festo; ABB ACS150 #4619. Siemens S7-1200/TP700 and ABB ACS355 are staging only.",
-      "last_checked": "2026-10-29"
+      "evidence": "P5 — Micro810/Micro820/PowerFlex 525 on prod; Festo; ABB ACS150 #4619. Siemens S7-1200/TP700 and ABB ACS355 are staging only. Unbacked follow-on promise cut 2026-11-02.",
+      "last_checked": "2026-11-02"
     },
     {
       "id": "mike-central-florida",
