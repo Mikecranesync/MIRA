@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self'; style-src 'self' 'unsafe-inline'; base-uri 'none'; form-action 'none'">
+<title>FactoryLM Hub — factory hierarchy revision</title>
+<link rel="stylesheet" href="factorylm-tokens.css">
+<style>
+*{box-sizing:border-box}body{margin:0;font:var(--fl-fs-body)/1.55 var(--fl-font);background:var(--fl-bg);color:var(--fl-ink)}
+header{padding:var(--fl-space-6);background:var(--fl-header);color:var(--fl-header-ink)}
+h1{margin:0;font-size:calc(var(--fl-fs-title)*1.5);font-weight:600}header p{margin:var(--fl-gap) 0 0;color:var(--fl-header-muted)}
+a{color:var(--fl-accent-ink);text-underline-offset:var(--fl-space-1)}a:focus-visible{outline:2px solid var(--fl-accent);outline-offset:var(--fl-space-1)}
+nav{display:flex;flex-wrap:wrap;gap:var(--fl-space-4);padding:var(--fl-space-3) var(--fl-space-6);background:var(--fl-surface);border-bottom:1px solid var(--fl-line)}
+nav a{min-height:44px;display:inline-flex;align-items:center;font-size:var(--fl-fs-body)}
+main{max-width:1650px;margin:auto;padding:var(--fl-space-6)}h2{font-size:calc(var(--fl-fs-title)*1.2);font-weight:600;margin:0 0 var(--fl-gap)}
+p{margin:var(--fl-gap) 0 var(--fl-space-4)}.intro{background:var(--fl-surface);padding:var(--fl-space-4);border:1px solid var(--fl-line);margin-bottom:var(--fl-space-8)}
+.path{font:var(--fl-fs-body)/1.8 var(--fl-mono);overflow-wrap:anywhere}section{margin-bottom:var(--fl-space-8)}
+figure{margin:0;border:1px solid var(--fl-line);background:var(--fl-surface)}figure img{display:block;width:100%;height:auto}
+figcaption{padding:var(--fl-space-3);font-size:var(--fl-fs);color:var(--fl-muted)}ul{padding-left:var(--fl-space-6)}li{margin-bottom:var(--fl-gap)}
+table{width:100%;border-collapse:collapse;background:var(--fl-surface)}th,td{text-align:left;padding:var(--fl-space-3);border-bottom:1px solid var(--fl-line);vertical-align:top}
+th{font-weight:600;background:var(--fl-bg)}details{padding:var(--fl-space-4);border:1px solid var(--fl-line);background:var(--fl-surface)}summary{cursor:pointer;font-weight:600;min-height:44px;display:flex;align-items:center}
+footer{padding:var(--fl-space-6);background:var(--fl-surface);border-top:1px solid var(--fl-line);font-size:var(--fl-fs)}
+@media(max-width:700px){main{padding:var(--fl-space-3)}header,nav{padding:var(--fl-space-4)}table{font-size:var(--fl-fs)}th,td{padding:var(--fl-gap)}}
+</style></head>
+<body>
+<header><h1>FactoryLM Hub — factory hierarchy revision</h1><p>Several lines. Thousands of components. Find the installed instance without opening every branch.</p></header>
+<nav aria-label="Review sections"><a href="#line">1. Browse a line</a><a href="#search">2. Find the correct MLC</a><a href="#machine">3. Work within one machine</a><a href="#component">4. Ask about that installed component</a><a href="#rules">Hierarchy decisions</a><a href="../index.html">Earlier bench mockups</a></nav>
+<main>
+<div class="intro"><p><strong>Design proposal · Example plant data.</strong> Four revised static mockups, generated from today's Hub screenshot. No deployed interface or plant-capacity result is claimed.</p><p class="path">Site → Area → Line / cell → Machine → Assembly, when useful → Component</p><p>Search, recent items and direct equipment links bypass the tree. Company sits above site when needed. Utilities and standalone equipment do not need a fictional production line.</p></div>
+<p><a href="ARCHITECTURE-PLAN.md">Architecture estimate and phased delivery plan</a> · <a href="HANDOFF-RECONCILIATION.md">Current handoffs and reconciled agent queue</a>. Provisional from-resume estimate: connected bench 7–12 working days; factory-scale pilot 4–6 weeks, including current closeout allowance.</p>
+<section id="line"><h2>1. Browse a line</h2><p>Show machines first. Expand only the branch in use; search can jump directly to a component.</p><figure><a href="01-line-equipment.png" aria-label="Open full-size mockup: 1. Browse a line"><img src="01-line-equipment.png" alt="1. Browse a line. Show machines first. Expand only the branch in use; search can jump directly to a component." loading="eager"></a><figcaption><a href="01-line-equipment.png">Open full-size image</a> · Example data, not a live plant</figcaption></figure></section>
+<section id="search"><h2>2. Find the correct MLC</h2><p>Repeated tags stay separate. Each result shows the machine, line and location before it can be opened.</p><figure><a href="02-find-component.png" aria-label="Open full-size mockup: 2. Find the correct MLC"><img src="02-find-component.png" alt="2. Find the correct MLC. Repeated tags stay separate. Each result shows the machine, line and location before it can be opened." loading="lazy"></a><figcaption><a href="02-find-component.png">Open full-size image</a> · Example data, not a live plant</figcaption></figure></section>
+<section id="machine"><h2>3. Work within one machine</h2><p>Search and filter component rows. Assembly and cabinet location help a technician find the physical item.</p><figure><a href="03-machine-components.png" aria-label="Open full-size mockup: 3. Work within one machine"><img src="03-machine-components.png" alt="3. Work within one machine. Search and filter component rows. Assembly and cabinet location help a technician find the physical item." loading="lazy"></a><figcaption><a href="03-machine-components.png">Open full-size image</a> · Example data, not a live plant</figcaption></figure></section>
+<section id="component"><h2>4. Ask about that installed component</h2><p>Keep the exact target beside the question. A catalog value does not prove the installed component's identity.</p><figure><a href="04-component-workspace.png" aria-label="Open full-size mockup: 4. Ask about that installed component"><img src="04-component-workspace.png" alt="4. Ask about that installed component. Keep the exact target beside the question. A catalog value does not prove the installed component's identity." loading="lazy"></a><figcaption><a href="04-component-workspace.png">Open full-size image</a> · Example data, not a live plant</figcaption></figure></section>
+<section id="rules"><h2>Hierarchy decisions</h2>
+<table><thead><tr><th>Concern</th><th>Decision</th></tr></thead><tbody>
+<tr><td>Thousands of components</td><td>Browse one branch at a time. Search on the server and return bounded pages. Do not download the whole plant to open the picker.</td></tr>
+<tr><td>Repeated tags and models</td><td>Identify by the canonical record, never tag text alone. Show machine and location beside every matching result.</td></tr>
+<tr><td>Containment and connections</td><td>Keep drives and motors as peers within their assembly. Show verified control, power and wiring relationships separately.</td></tr>
+<tr><td>Functional position and replacement</td><td>Keep the machine position and its history distinct from the physical item installed there. A replacement does not inherit identity or condition verification.</td></tr>
+<tr><td>Projects and conversations</td><td>Keep permissions and collaboration boundaries. A project is not another physical machine. Browsing a line must not silently change an active question's target.</td></tr>
+<tr><td>Unknown identity or location</td><td>Say what is missing. Make unplaced equipment findable; do not silently hide it or fill gaps with guesses.</td></tr>
+<tr><td>Style and copy</td><td>Flat token-based surfaces, thin rules, compact rows, one action accent, useful labels. No hero cards, decorative status, AI sparkles or claims without evidence.</td></tr>
+</tbody></table></section>
+<section><h2>What still needs engineering proof</h2><p>The inspected picker filters a fetched asset array in the browser, and the namespace route constructs a full tree. The scale revision needs bounded search and child loading, tenant-aware results, and performance tests. The former bench-only assumption of no API work no longer holds.</p><p>Proposed test fixture: 8 lines × 50 machines × 50 components = 20,000 components, with repeated MLC and VFD1 tags. Test correct selection, search cancellation, pagination, deep links, moved and replaced equipment, permissions, stale context, and offline recovery. These tests have not been run.</p></section>
+<details><summary>Sources, prompts and design limitations</summary>
+<ul><li><a href="https://github.com/Mikecranesync/MIRA/blob/c6581cc1c95ad7670f007b655a481797db547f2c/docs/design/factorylm-style.md">FactoryLM UI style guide</a> and <a href="factorylm-tokens.css">unchanged canonical token copy</a>. The HTML gallery imports these tokens; raster mockups are visual interpretations, not pixel-exact token compliance.</li>
+<li><a href="https://github.com/Mikecranesync/MIRA/blob/c6581cc1c95ad7670f007b655a481797db547f2c/docs/adr/0018-component-hierarchy-siblings-with-control-edges.md">Existing containment and control-relationship decision</a>.</li>
+<li><a href="https://reference.opcfoundation.org/specs/OPC-10030/7.4.1">OPC Foundation ISA-95 equipment levels</a>: site, area and production structures inform the model. Optional machine/assembly/component navigation is our product design, not a claim of a mandated universal ISA-95 tree.</li>
+<li><a href="https://www.w3.org/WAI/WCAG22/Understanding/contrast-minimum.html">W3C contrast guidance</a>. Target accessible text contrast and large touch controls in implementation; image inspection alone does not certify accessibility.</li>
+<li><a href="prompts.json">Exact prompts</a> · <a href="manifest.json">Image hashes and token provenance</a> · <a href="DESIGN-NOTES.md">Engineering handoff and review cases</a>.</li></ul>
+<p>The built-in image generation tool made these images. Component identity, relationships, navigation, examples and counts are simulated. The source panel illustrates catalog facts, not a reproduced manufacturer PDF. No production UI, asset hierarchy, UNS path or database was changed.</p></details>
+</main><footer>Review task: Find MLC on Line 03 / CV-301, distinguish it from the same tag on another line, locate it in CP-01, and explain which facts are verified before asking a question.</footer>
+</body></html>
