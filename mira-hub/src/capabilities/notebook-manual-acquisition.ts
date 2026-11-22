@@ -232,13 +232,58 @@ export function applicableReadySource(
   return sources.find((s) => isApplicableEnabledManual(s, key) && s.readiness.canChat) ?? null;
 }
 
+/** The applicable, ready source whose evidence names the approved reviewed
+ *  publication: its pinned digest and its coverage page (#5726 F2). */
+function approvedReadySource(
+  sources: readonly NotebookSource[],
+  identity: ConfirmedIdentity,
+  publication: { sha256: string; page: number },
+): NotebookSource | null {
+  const key = acquisitionKey(identity);
+  if (!key) return null;
+  return sources.find((s) => {
+    if (!isApplicableEnabledManual(s, key) || !s.readiness.canChat) return false;
+    const e = s.matchEvidence as { reviewedLibraryPage?: unknown; reviewedLibrarySha256?: unknown } | null;
+    return e?.reviewedLibrarySha256 === publication.sha256 && e?.reviewedLibraryPage === publication.page;
+  }) ?? null;
+}
+
+/** #5726 F2: when several applicable manuals are ready, the approved reviewed
+ *  publication speaks for the notebook, so an older ready source cannot hide
+ *  it; otherwise the first ready one, as before. */
+function preferredReadySource(sources: readonly NotebookSource[], identity: ConfirmedIdentity): NotebookSource | null {
+  const publication = reviewedManualFor({
+    manufacturer: identity.manufacturer, model: identity.model, catalogNumber: identity.catalogNumber,
+  });
+  return (publication ? approvedReadySource(sources, identity, publication) : null) ??
+    applicableReadySource(sources, identity);
+}
+
+/** An absolute link to the same-origin cited-page viewer (/v3/source/?file=&page=,
+ *  the route the citation viewer uses) for a saved file. The status renderers
+ *  open only https links, so the Hub's public origin comes from NEXTAUTH_URL;
+ *  without an https origin there is no link. */
+function savedCopyPageUrl(fileId: string, page: number, env: Record<string, string | undefined>): string | null {
+  let origin: string;
+  try {
+    const u = new URL(env.NEXTAUTH_URL ?? "");
+    if (u.protocol !== "https:") return null;
+    origin = u.origin;
+  } catch {
+    return null;
+  }
+  const base = process.env.NEXT_PUBLIC_BASE_PATH ?? "/hub";
+  const query = new URLSearchParams({ file: fileId, page: String(page) });
+  return `${origin}${base}/v3/source/?${query.toString()}`;
+}
+
 /** Status from the currently enabled source, regardless of the last acquisition record. */
 export function currentManualSourceMessage(
   sources: readonly NotebookSource[],
   identity: ConfirmedIdentity,
 ): string | null {
   const { manufacturer, model, catalogNumber } = identity;
-  const ready = applicableReadySource(sources, identity);
+  const ready = preferredReadySource(sources, identity);
   if (ready) {
     const evidence = ready.matchEvidence as { reviewedLibraryPage?: number; reviewedLibraryTitle?: string } | null;
     const page = evidence?.reviewedLibraryPage;
@@ -1200,7 +1245,22 @@ export async function currentManualSearchStatus(
   // F10: the acquired source's CURRENT state wins over the historical record.
   const messageFromSource = currentManualSourceMessage(sources, identity);
   if (messageFromSource) {
-    return { manufacturer, model, running: false, message: messageFromSource, ...(startedAt ? { startedAt } : {}) };
+    // The technician asked for the manual, so a ready reviewed publication is
+    // handed over as a link that opens MIRA's saved copy at its coverage page
+    // (#5726 F1: never the manufacturer's live URL, whose bytes may since have
+    // changed). The saved copy is the one this search linked for this document,
+    // and its download was checked against the same pinned digest.
+    const publication = reviewedManualFor({ manufacturer, model, catalogNumber: identity.catalogNumber });
+    const ready = publication ? approvedReadySource(sources, identity, publication) : null;
+    const manualUrl = publication && ready && ready === preferredReadySource(sources, identity) &&
+      rec.linked === true && rec.doc_id === ready.docId && rec.reviewed_digest === publication.sha256 && rec.file_id
+      ? savedCopyPageUrl(rec.file_id, publication.page, deps.env ?? process.env)
+      : null;
+    return {
+      manufacturer, model, running: false, message: messageFromSource,
+      ...(manualUrl ? { manualUrl } : {}),
+      ...(startedAt ? { startedAt } : {}),
+    };
   }
 
   const reconciled = await reconcileAcquisition(tenantId, notebookId, rec);

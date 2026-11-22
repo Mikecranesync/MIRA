@@ -152,6 +152,19 @@ function applySecurityHeaders(
 }
 
 // btoa is a global in the edge runtime; use it instead of Buffer for nonce encoding.
+/**
+ * Where sign-in returns to: this request's own path AND query, so a deep link
+ * such as the source viewer's file and page survives the login bounce (#5726
+ * F5; the query used to be dropped and the viewer opened empty). Built only
+ * from the request itself, so it is always a same-site path; a path starting
+ * with two slashes would read as another host, so it returns home instead.
+ */
+function loginCallback(req: NextRequest): string {
+  const { pathname, search } = req.nextUrl;
+  if (!pathname.startsWith("/") || pathname.startsWith("//")) return "/";
+  return `${pathname}${search}`;
+}
+
 function b64Nonce(raw: string): string {
   return btoa(raw).replace(/=+$/, "");
 }
@@ -189,7 +202,7 @@ export default async function middleware(req: NextRequest, _ev: NextFetchEvent) 
     const url = req.nextUrl.clone();
     url.pathname = "/login";
     url.search = "";
-    url.searchParams.set("callbackUrl", pathname);
+    url.searchParams.set("callbackUrl", loginCallback(req));
     return applySecurityHeaders(NextResponse.redirect(url), pathname, csp);
   }
 
@@ -205,7 +218,7 @@ export default async function middleware(req: NextRequest, _ev: NextFetchEvent) 
     const url = req.nextUrl.clone();
     url.pathname = "/login";
     url.search = "";
-    url.searchParams.set("callbackUrl", pathname);
+    url.searchParams.set("callbackUrl", loginCallback(req));
     return applySecurityHeaders(NextResponse.redirect(url), pathname, csp);
   }
 
