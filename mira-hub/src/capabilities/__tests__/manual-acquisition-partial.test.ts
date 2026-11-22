@@ -287,11 +287,11 @@ it.each([
   ];
 
   const result = await acquireManualForIdentity({ ...BASE_INPUT, identity, basis: "candidate" });
-  // #5828: a catalog-field order number travels as catalogNumber, beside its model.
+  // #5828: a catalog-field order number travels as catalogNumber, without the model.
   expect(discoveryMock.discoverManual).toHaveBeenCalledWith(
     field === "model"
       ? { manufacturer: "ABB", model: orderNumber }
-      : { manufacturer: "ABB", model: "ACS355", catalogNumber: orderNumber },
+      : { manufacturer: "ABB", catalogNumber: orderNumber },
     expect.anything(),
   );
   expect(result.status).toBe("candidate_review");

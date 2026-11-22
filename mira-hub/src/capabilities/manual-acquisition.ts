@@ -308,13 +308,29 @@ function isUnlistedOrderForModel(model: string, catalogNumber: string): boolean 
 /**
  * A whole catalog number: the shape the photo lookup already trusts as a part
  * code (photo-part-lookup.ts PART_CODE, matched against the whole value). It
- * needs 8 or more letters, digits and separators, at least one letter, at least
- * one digit, and a - or / between letter-digit groups. mira-ask lets an unread
- * page through without naming the maker when it names this exact value (#5789),
- * so a short or loose value ("GS10", "525") must go as a model and be screened
- * as one (#5828).
+ * needs 8 or more letters, digits and separators, at least one digit, and a - or
+ * / between letter-digit groups. PART_CODE also needs a letter; here a value
+ * without one is all digit groups, which the rating check below already
+ * refuses. mira-ask lets an unread page through without naming the maker when
+ * it names this exact value (#5789), so a short or loose value ("GS10", "525")
+ * must go as a model and be screened as one (#5828).
  */
-const WHOLE_CATALOG_NUMBER = /^(?=[A-Z0-9/-]{8,}$)(?=[A-Z0-9/-]*[A-Z])(?=[A-Z0-9/-]*\d)[A-Z0-9]+(?:[-/][A-Z0-9]+){1,4}$/;
+const WHOLE_CATALOG_NUMBER = /^(?=[A-Z0-9/-]{8,}$)(?=[A-Z0-9/-]*\d)[A-Z0-9]+(?:[-/][A-Z0-9]+){1,4}$/;
+/** One group of an electrical rating: a number, optionally with its unit ("24", "48VDC", "50HZ"). */
+const RATING_GROUP = /^\d+(?:VAC|VDC|V|MA|A|KHZ|HZ|KVA|VA|KW|W|KV|HP|PH|RPM)?$/;
+
+/**
+ * Whether a confirmed catalog-field value may be sent to mira-ask as an exact
+ * catalog number. Besides the shape, it excludes what the photo lookup excludes
+ * from part codes (photo-part-lookup.ts partCodes): an electrical rating
+ * ("24-48VDC", "380-480V/50HZ": every group a number with an optional unit) and
+ * vision prose ("RJ45-STYLE"). Anything excluded goes as a model, as on main.
+ */
+function isWholeCatalogNumber(value: string): boolean {
+  if (!WHOLE_CATALOG_NUMBER.test(value)) return false;
+  if (/-(?:STYLE|LIKE|SHAPED)$/.test(value)) return false;
+  return !value.split(/[-/]/).every((group) => RATING_GROUP.test(group));
+}
 
 async function acquireInner(
   input: ManualAcquisitionInput,
@@ -372,13 +388,15 @@ async function acquireInner(
       };
     }
     // #5828: a confirmed whole catalog number travels as catalogNumber, so
-    // mira-ask applies its exact-part-number rule (#5789), and the model keeps
-    // its own field. Anything else goes as the model, exactly as before.
-    const modelPart = manualLookupPart({ model: identity.model });
+    // mira-ask applies its exact-part-number rule (#5789). The model is not sent
+    // with it: mira-ask searches by catalog_number alone when one is present, and
+    // a long stored model would fail its 200-character field limit (#5835 r1 F1).
+    // This is the photo lookup's request shape. Anything else goes as the model,
+    // exactly as before.
     const catalogPart = manualLookupPart({ catalogNumber: identity.catalogNumber });
     const d = await discoverManual(
-      catalogPart && WHOLE_CATALOG_NUMBER.test(catalogPart)
-        ? { manufacturer: identity.manufacturer, ...(modelPart ? { model: modelPart } : {}), catalogNumber: catalogPart }
+      catalogPart && isWholeCatalogNumber(catalogPart)
+        ? { manufacturer: identity.manufacturer, catalogNumber: catalogPart }
         : { manufacturer: identity.manufacturer, model: lookupPart },
       ctx,
     );

@@ -714,11 +714,37 @@ describe("manual import: candidate until the document proves itself", () => {
     provingText();
     await acquireManualForIdentity(acquireInput);
     // #5828: the confirmed catalog number travels as catalogNumber (mira-ask's
-    // exact-part-number rule keys on catalog_number), and the model keeps its
-    // own field. Exact call shape: no extra keys.
+    // exact-part-number rule keys on catalog_number). The model is not sent with
+    // it, as in the photo lookup: mira-ask searches by catalog_number alone.
+    // Exact call shape: no extra keys.
     const [calledIdentity, calledCtx] = vi.mocked(discoverManual).mock.calls.at(-1)!;
-    expect(calledIdentity).toStrictEqual({ manufacturer: "Allen-Bradley", model: "525", catalogNumber: "25B-D010N104" });
+    expect(calledIdentity).toStrictEqual({ manufacturer: "Allen-Bradley", catalogNumber: "25B-D010N104" });
     expect(calledCtx).toStrictEqual({ tenantId: TENANT_ID, userId: "u1" });
+  });
+
+  it("#5835 r1 F1: a model longer than mira-ask's 200-character field limit does not block a catalog lookup", async () => {
+    vi.mocked(discoverManual).mockResolvedValue({ ...importableDiscovery(), oemRequestUrl: null, quotaExceeded: false });
+    vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());
+    provingText();
+    const longModel = "PowerFlex 525 ".repeat(15);
+    expect(longModel.length).toBeGreaterThan(200);
+    await acquireManualForIdentity({ ...acquireInput, identity: { manufacturer: "Allen-Bradley", model: longModel, catalogNumber: "25B-D010N104" } });
+    const [calledIdentity] = vi.mocked(discoverManual).mock.calls.at(-1)!;
+    expect(calledIdentity).toStrictEqual({ manufacturer: "Allen-Bradley", catalogNumber: "25B-D010N104" });
+  });
+
+  // Positive controls: each is a whole catalog number and must go as catalogNumber.
+  it.each([
+    { why: "is numeric-led", catalogNumber: "1756-L83E/B", sent: "1756-L83E/B" },
+    { why: "ends in a group that reads like a rating", catalogNumber: "GS11N-20A", sent: "GS11N-20A" },
+    { why: "has four groups", catalogNumber: "acs355-03u-06a7-2", sent: "ACS355-03U-06A7-2" },
+  ])("#5828: a catalog number that $why is sent as catalogNumber", async ({ catalogNumber, sent }) => {
+    vi.mocked(discoverManual).mockResolvedValue({ ...importableDiscovery(), oemRequestUrl: null, quotaExceeded: false });
+    vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());
+    provingText();
+    await acquireManualForIdentity({ ...acquireInput, identity: { manufacturer: "Allen-Bradley", model: "525", catalogNumber } });
+    const [calledIdentity] = vi.mocked(discoverManual).mock.calls.at(-1)!;
+    expect(calledIdentity).toStrictEqual({ manufacturer: "Allen-Bradley", catalogNumber: sent });
   });
 
   // #5828: as catalog_number, a short or loose value would let an unread page
@@ -736,6 +762,12 @@ describe("manual import: candidate until the document proves itself", () => {
     { why: "has no digit", model: undefined, catalogNumber: "ABCD-EFGH", sent: "ABCD-EFGH" },
     { why: "has a space", model: undefined, catalogNumber: "25B D010N104", sent: "25B D010N104" },
     { why: "carries other text", model: undefined, catalogNumber: "see 25B-D010N104", sent: "SEE 25B-D010N104" },
+    // #5835 r1 F2: what the photo lookup also refuses as a part code.
+    { why: "is a DC voltage range", model: "PS-5R", catalogNumber: "24-48VDC", sent: "24-48VDC" },
+    { why: "is an AC voltage range", model: undefined, catalogNumber: "240-480VAC", sent: "240-480VAC" },
+    { why: "is a voltage range without a current type", model: undefined, catalogNumber: "100-240V", sent: "100-240V" },
+    { why: "is a compound rating", model: undefined, catalogNumber: "380-480V/50HZ", sent: "380-480V/50HZ" },
+    { why: "is vision prose", model: undefined, catalogNumber: "RJ45-style", sent: "RJ45-STYLE" },
   ])("#5828: a catalog number that $why is sent as the model, so the exact-part rule stays off", async ({ model, catalogNumber, sent }) => {
     vi.mocked(discoverManual).mockResolvedValue({ ...importableDiscovery(), oemRequestUrl: null, quotaExceeded: false });
     vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());
