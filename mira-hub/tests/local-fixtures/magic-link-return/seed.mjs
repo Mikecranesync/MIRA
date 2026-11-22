@@ -5,11 +5,17 @@
  * Builds only the schema the sign-in and source-viewer path reads, from the
  * real migration files (the same set the free-technician-signup integration
  * test uses, plus the parked-upload table), then writes one synthetic tenant,
- * one synthetic user and one generated 30-page PDF from
- * `fixtures/magic-link-return-seed.json`.
+ * one synthetic user and one generated 30-page PDF from `seed.json`.
  *
- * Refuses any database that is not on loopback, and requires
- * MIRA_TEST_DB_CONFIRM=DISPOSABLE. Never point it at staging or production.
+ * Two connections, like production: the bootstrap superuser
+ * (MLR_ADMIN_DATABASE_URL) only creates the roles, the database and the
+ * extensions; the migrations and rows run as the non-superuser Hub role
+ * (MLR_DATABASE_URL), which therefore owns the tables the Hub reads. The Hub
+ * role's password comes from MLR_HUB_DB_PASSWORD, never from argv.
+ *
+ * Refuses any database that is not a local Unix socket or loopback, and
+ * requires MIRA_TEST_DB_CONFIRM=DISPOSABLE. Never point it at staging or
+ * production.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -19,21 +25,35 @@ import pg from "pg";
 
 const require = createRequire(import.meta.url);
 const PDFDocument = require("pdfkit");
+const { parse: parseConnectionString } = require("pg-connection-string");
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const hubRoot = path.resolve(here, "..", "..");
+const hubRoot = path.resolve(here, "..", "..", "..");
 const repoRoot = path.resolve(hubRoot, "..");
-const seed = JSON.parse(fs.readFileSync(path.join(here, "fixtures", "magic-link-return-seed.json"), "utf8"));
+const seed = JSON.parse(fs.readFileSync(path.join(here, "seed.json"), "utf8"));
 
-const url = process.env.MLR_DATABASE_URL;
-if (!url) throw new Error("MLR_DATABASE_URL is required");
 if (process.env.MIRA_TEST_DB_CONFIRM !== "DISPOSABLE") {
   throw new Error("Set MIRA_TEST_DB_CONFIRM=DISPOSABLE to confirm this database is throwaway");
 }
-const host = new URL(url).hostname;
-if (!["127.0.0.1", "localhost", "[::1]", "::1"].includes(host)) {
-  throw new Error(`Refusing a non-loopback database host: ${host}`);
+/** The connection string in `name`, refused unless it is a local socket or loopback. */
+function localUrl(name) {
+  const url = process.env[name];
+  if (!url) throw new Error(`${name} is required`);
+  // Parse it the way the driver will, so a `?host=` override cannot hide a remote host.
+  const host = String(parseConnectionString(url).host ?? "");
+  if (!(path.isAbsolute(host) || ["127.0.0.1", "localhost", "::1"].includes(host))) {
+    throw new Error(`Refusing ${name}: host ${host || "(none)"} is not a local socket or loopback`);
+  }
+  return url;
 }
+const adminUrl = localUrl("MLR_ADMIN_DATABASE_URL");
+const hubUrl = localUrl("MLR_DATABASE_URL");
+const hubPassword = process.env.MLR_HUB_DB_PASSWORD;
+if (!hubPassword || hubPassword.length < 32) throw new Error("MLR_HUB_DB_PASSWORD (per-run, 32+ chars) is required");
+const hubConn = parseConnectionString(hubUrl);
+const HUB_ROLE = hubConn.user;
+const HUB_DB = hubConn.database;
+if (!HUB_ROLE || !HUB_DB) throw new Error("MLR_DATABASE_URL must name a user and a database");
 
 const MIGRATIONS = [
   path.join(repoRoot, "mira-core/mira-ingest/db/migrations/008_hub_users_tenants.sql"),
@@ -65,13 +85,37 @@ function manualPdf(pages) {
   });
 }
 
-const client = new pg.Client({ connectionString: url });
+// ---- bootstrap, as the superuser: roles, database, extensions only ----------
+{
+  // Parsed config, not connectionString: pg lets a connection string override `database`.
+  const adminConfig = parseConnectionString(adminUrl);
+  const admin = new pg.Client({ ...adminConfig, database: "postgres" });
+  await admin.connect();
+  try {
+    const role = admin.escapeIdentifier(HUB_ROLE);
+    await admin.query("DO $$ BEGIN CREATE ROLE factorylm_app NOLOGIN; EXCEPTION WHEN duplicate_object THEN NULL; END $$");
+    await admin.query(`CREATE ROLE ${role} LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE PASSWORD ${admin.escapeLiteral(hubPassword)}`);
+    await admin.query(`GRANT factorylm_app TO ${role}`);
+    await admin.query(`CREATE DATABASE ${admin.escapeIdentifier(HUB_DB)} OWNER ${role}`);
+  } finally {
+    await admin.end();
+  }
+  const adminDb = new pg.Client({ ...adminConfig, database: HUB_DB });
+  await adminDb.connect();
+  try {
+    await adminDb.query("CREATE EXTENSION IF NOT EXISTS pgcrypto");
+    await adminDb.query("CREATE EXTENSION IF NOT EXISTS ltree");
+  } finally {
+    await adminDb.end();
+  }
+}
+
+// ---- schema and rows, as the non-superuser Hub role ------------------------
+const client = new pg.Client({ connectionString: hubUrl });
 await client.connect();
 try {
-  await client.query("CREATE EXTENSION IF NOT EXISTS pgcrypto");
-  await client.query("CREATE EXTENSION IF NOT EXISTS ltree");
-  await client.query("DO $$ BEGIN CREATE ROLE factorylm_app NOLOGIN; EXCEPTION WHEN duplicate_object THEN NULL; END $$");
-  await client.query("DO $$ BEGIN EXECUTE format('GRANT factorylm_app TO %I', current_user); END $$");
+  const who = await client.query("SELECT current_user AS name, rolsuper FROM pg_roles WHERE rolname = current_user");
+  if (who.rows[0]?.rolsuper !== false) throw new Error("the Hub role must not be a superuser");
   for (const step of MIGRATIONS) {
     await client.query(step.endsWith(".sql") ? fs.readFileSync(step, "utf8") : step);
   }
@@ -94,7 +138,7 @@ try {
     [seed.fileId, seed.tenantId, seed.filename, pdf.length, pdf, seed.userId],
   );
   await client.query("COMMIT");
-  console.log(JSON.stringify({ seeded: true, tenant: seed.tenantId, file: seed.fileId, pages: seed.pages, pdfBytes: pdf.length }));
+  console.log(JSON.stringify({ seeded: true, hubRole: HUB_ROLE, hubRoleSuperuser: false, tenant: seed.tenantId, file: seed.fileId, pages: seed.pages, pdfBytes: pdf.length }));
 } finally {
   await client.end();
 }

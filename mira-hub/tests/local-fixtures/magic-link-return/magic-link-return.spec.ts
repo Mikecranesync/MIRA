@@ -4,16 +4,17 @@
  * (`login-form.tsx`), the real sign-in route (`capabilities/auth-link.ts`)
  * and the real verify page (`magic/page.tsx`).
  *
- * Runs ONLY against a local Hub on a disposable database, started by
- * `tests/e2e/magic-link-return.run.sh`, which seeds one synthetic user, tenant
- * and 30-page PDF and captures the sign-in email with a Node preload
- * (`fixtures/magic-link-mail-capture.cjs`) instead of sending it.
+ * TEST ONLY. Runs ONLY against a local Hub on a disposable database, started
+ * by `run.sh` next to this file, which seeds one synthetic user, tenant and
+ * 30-page PDF and captures the sign-in email with a Node preload
+ * (`mail-capture.cjs`) instead of sending it. It lives outside tests/e2e and
+ * has its own config (`playwright.config.ts` next to it), so the
+ * default suite never collects it.
  *
- *   cd mira-hub && bash tests/e2e/magic-link-return.run.sh
+ *   cd mira-hub && bash tests/local-fixtures/magic-link-return/run.sh
  *
  * Every URL here is absolute (MLR_HUB_URL, loopback only), and every browser
- * request to a non-loopback host is aborted, so nothing can reach staging or
- * production even though playwright.config.ts names production as baseURL.
+ * request to a non-loopback host is aborted.
  */
 import { test, expect, type BrowserContext, type Page } from "@playwright/test";
 import * as fs from "node:fs";
@@ -24,12 +25,12 @@ const LOOPBACK = new Set(["127.0.0.1", "localhost", "[::1]"]);
 const HUB = (process.env.MLR_HUB_URL ?? "").replace(/\/$/, "");
 const CAPTURE = process.env.MLR_MAIL_CAPTURE ?? "";
 if (!HUB || !LOOPBACK.has(new URL(HUB).hostname)) {
-  throw new Error("MLR_HUB_URL must be a loopback Hub (run tests/e2e/magic-link-return.run.sh)");
+  throw new Error("MLR_HUB_URL must be a loopback Hub (run tests/local-fixtures/magic-link-return/run.sh)");
 }
 if (!CAPTURE) throw new Error("MLR_MAIL_CAPTURE must name the server's mail capture file");
 
 const seed = JSON.parse(
-  fs.readFileSync(path.join(__dirname, "fixtures", "magic-link-return-seed.json"), "utf8"),
+  fs.readFileSync(path.join(__dirname, "seed.json"), "utf8"),
 ) as { email: string; fileId: string; filename: string; pages: number; citedPage: number };
 
 const VIEWER = `/v3/source/?file=${seed.fileId}&page=${seed.citedPage}`;
@@ -129,8 +130,22 @@ test.describe("email sign-in returns to the cited manual page (#5753)", () => {
       { timeout: 20_000 },
     );
     await expect(page.locator(`canvas[data-rendered-page="${seed.citedPage}"]`)).toBeVisible();
-    // The verify page strips the token from history before leaving.
     expect(page.url()).not.toContain("token");
+
+    // 5. The verify page removed the token from its own history entry before
+    //    leaving (#5795 review F5): going back must not reveal the fragment.
+    //    The URL is read when the back navigation commits, before the verify
+    //    page could redirect again.
+    const backUrl = new Promise<string>((resolve) => {
+      page.on("framenavigated", (frame) => {
+        if (frame === page.mainFrame()) resolve(frame.url());
+      });
+    });
+    await page.goBack({ waitUntil: "commit" });
+    const back = new URL(await backUrl);
+    expect(back.pathname).toBe("/magic/");
+    expect(back.hash, "the verify entry in history keeps no token").toBe("");
+    expect(back.href).not.toContain("token");
     await context.close();
   });
 
