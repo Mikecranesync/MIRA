@@ -1232,15 +1232,15 @@ _OTHER_MAKERS = [
 ]
 
 
-def _serve(monkeypatch, hits):
+def _serve(monkeypatch, hits, pdfs=frozenset()):
     async def serper(query, num=10):
         return [{"link": u, "title": t} for u, t in hits]
 
-    async def not_a_pdf(url):  # a web page never HEAD-validates as a PDF
-        return False
+    async def probe(url):  # a web page never HEAD-validates as a PDF; `pdfs` do
+        return url in pdfs
 
     monkeypatch.setattr(search_mod, "_serper_search", serper)
-    monkeypatch.setattr(search_mod, "validate_pdf", not_a_pdf)
+    monkeypatch.setattr(search_mod, "validate_pdf", probe)
 
 
 async def test_a_page_naming_only_the_model_is_not_offered_for_another_makers_machine(
@@ -1326,6 +1326,122 @@ async def test_a_lookup_with_no_make_screens_nothing(wired, monkeypatch):
     _serve(monkeypatch, [(page, title)])
     r = await search_mod.search_manual("", "GS10")
     assert r is not None and r["url"] == page and r["validated"] is False
+
+
+# Codex #5823 round 1. F1: the make is matched as a whole name, not a fragment.
+async def test_a_fragment_of_the_make_does_not_count_as_naming_it(wired, monkeypatch):
+    page = "https://www.example-audio.com/boss-audio-gs10"
+    title = "Boss Audio GS10 Direct-Drive Amplifier Manual"
+    assert judge._mentions_make({"url": page, "title": title}, "Automation Direct")
+    _serve(monkeypatch, [(page, title)])
+    assert await search_mod.search_manual("Automation Direct", "GS10") is None
+
+
+async def test_a_page_naming_another_spelling_of_the_make_is_offered(wired, monkeypatch):
+    # Control: "Automation Direct" and "AutomationDirect" share one OEM entry.
+    page = "https://www.manualslib.com/products/gs10-ac-drive-12345.html"
+    _serve(monkeypatch, [(page, "AutomationDirect GS10 Manuals")])
+    r = await search_mod.search_manual("Automation Direct", "GS10")
+    assert r is not None and r["url"] == page and r["validated"] is False
+
+
+async def test_a_short_make_named_in_full_is_offered(wired, monkeypatch):
+    page = "https://www.example-motors.com/products/5ks184saa205"
+    title = "GE 5KS184SAA205 Motor Manual"
+    assert not judge._mentions_make({"url": page, "title": title}, "GE")
+    _serve(monkeypatch, [(page, title)])
+    r = await search_mod.search_manual("GE", "5KS184SAA205")
+    assert r is not None and r["url"] == page and r["validated"] is False
+
+
+async def test_an_unread_direct_pdf_that_does_not_probe_keeps_the_older_rule(wired, monkeypatch):
+    # A direct PDF the judge could not fetch and the probe could not confirm is still
+    # offered for review on the model alone, as before #5789: only web pages are screened.
+    pdf = "https://www.example-files.com/library/gs10-manual.pdf"
+    assert pdf not in TEXT
+    _serve(monkeypatch, [(pdf, "GS10 manual")])
+    r = await search_mod.search_manual("AutomationDirect", "GS10")
+    assert r is not None and r["url"] == pdf and r["validated"] is False
+
+
+# F2: an exact part number lets a page through only when it names the whole number.
+async def test_an_exact_part_number_lookup_screens_a_page_naming_only_the_family(
+    wired, monkeypatch
+):
+    page = "https://www.example-audio.com/products/sony-gs10"
+    _serve(monkeypatch, [(page, "Sony GS10 amplifier manual")])
+    assert (
+        await search_mod.search_manual("AutomationDirect", "GS10-20P5", exact_part_number=True)
+        is None
+    )
+    monkeypatch.setenv("MANUAL_JUDGE_ENABLED", "0")
+    assert not judge.judge_enabled()
+    assert (
+        await search_mod.search_manual("AutomationDirect", "GS10-20P5", exact_part_number=True)
+        is None
+    )
+
+
+async def test_an_exact_part_number_lookup_offers_a_page_naming_it_in_both_modes(
+    wired, monkeypatch
+):
+    page = "https://www.example-distributor.com/p/gs10-20p5"
+    _serve(monkeypatch, [(page, "GS10-20P5 micro drive manual")])
+    for enabled in ("1", "0"):
+        monkeypatch.setenv("MANUAL_JUDGE_ENABLED", enabled)
+        r = await search_mod.search_manual("AutomationDirect", "GS10-20P5", exact_part_number=True)
+        assert r is not None and r["url"] == page and r["validated"] is False, enabled
+    for spelled in ("GS10 20P5", "GS1020P5", "gs10_20p5"):
+        assert search_mod._names_part_number({"title": spelled}, "GS10-20P5"), spelled
+    for other in ("GS10-20P5X", "GS10", "XGS10-20P5"):
+        assert not search_mod._names_part_number({"title": other}, "GS10-20P5"), other
+
+
+# F4: the content probe runs before the screen, so a real PDF at an extensionless
+# URL is still found; the same URL serving a web page is screened.
+_EXTENSIONLESS = "https://www.example-distributor.com/docs/download?id=8812"
+
+
+async def test_judge_off_a_real_pdf_at_an_extensionless_url_is_still_found(wired, monkeypatch):
+    monkeypatch.setenv("MANUAL_JUDGE_ENABLED", "0")
+    _serve(monkeypatch, [(_EXTENSIONLESS, "GS10 user manual")], pdfs={_EXTENSIONLESS})
+    r = await search_mod.search_manual("AutomationDirect", "GS10")
+    assert r is not None and r["url"] == _EXTENSIONLESS and r["validated"] is True
+
+
+async def test_judge_on_a_real_pdf_at_an_extensionless_url_is_offered_for_review(
+    wired, monkeypatch
+):
+    _serve(monkeypatch, [(_EXTENSIONLESS, "GS10 user manual")], pdfs={_EXTENSIONLESS})
+    r = await search_mod.search_manual("AutomationDirect", "GS10")
+    assert r is not None and r["url"] == _EXTENSIONLESS
+    assert r["validated"] is False and r["reason"] == judge.REASON_JUDGE_UNAVAILABLE
+
+
+async def test_an_extensionless_url_serving_a_web_page_is_screened(wired, monkeypatch):
+    for enabled in ("1", "0"):
+        monkeypatch.setenv("MANUAL_JUDGE_ENABLED", enabled)
+        _serve(monkeypatch, [(_EXTENSIONLESS, "GS10 user manual")])
+        assert await search_mod.search_manual("AutomationDirect", "GS10") is None, enabled
+
+
+async def test_the_website_handoff_is_not_sent_twice(wired, monkeypatch):
+    # When the wide pass already sent "<make> <model> manual support" and only a
+    # stranger came back, the miss does not send the same query again.
+    page, title = _OTHER_MAKERS[0]
+
+    async def serper(query, num=10):
+        return [{"link": page, "title": title}] if query.endswith("manual support") else []
+
+    async def probe(url):
+        return False
+
+    monkeypatch.setattr(search_mod, "_serper_search", serper)
+    monkeypatch.setattr(search_mod, "validate_pdf", probe)
+    with search_mod.acquisition_trail() as trail:
+        assert await search_mod.search_manual("AutomationDirect", "GS10") is None
+    sent = [q["query"] for q in trail.queries if q["query"].endswith("manual support")]
+    assert sent == ["AutomationDirect GS10 manual support"], trail.queries
 
 
 # ── OEM publication code outranks the model (staging 2026-10-19, PF525 25B-D010N104) ─

@@ -290,20 +290,54 @@ def _is_oem_host(host: str, make: str) -> bool:
     return any(host == d or host.endswith("." + d) for d in _oem_domains_for(make))
 
 
-def _may_offer_unread(c: dict, make: str) -> bool:
-    """Whether a candidate the judge could not read may still be offered for review.
+def _make_spellings(make: str) -> set[str]:
+    """The make, plus the spellings that share its OEM_DOMAINS entry
+    ("AutomationDirect" and "Automation Direct")."""
+    m = _norm(make)
+    domains = OEM_DOMAINS.get(m)
+    return {m} | ({k for k, v in OEM_DOMAINS.items() if v == domains} if domains else set())
 
-    A web page (not a direct PDF) is never read, so all it shares with the machine
-    may be the model string: "GS10" is an AutomationDirect drive and a Boss Audio
-    amplifier (#5789). Such a page is offered only if it names the confirmed make or
-    sits on that make's own site. A direct PDF keeps the older rule, since the judge
-    tried to read it. The caller skips this check when there is no make to compare
-    against, or when the identifier is an exact part number.
+
+def _names_make(c: dict, make: str) -> bool:
+    """Whether the title or URL names the make as a whole name, the same boundary
+    rule the website handoff uses in `_send`. A fragment does not count: "direct" in
+    "Direct-Drive Amplifier" is not "Automation Direct" (#5789 Codex F1), while
+    "GE" in "GE 5KS184SAA205 Motor Manual" is GE."""
+    hay = f"{c.get('title') or ''} {c.get('url') or ''}"
+    return any(
+        len(name) >= 2 and re.search(r"(?<!\w)" + re.escape(name) + r"(?!\w)", hay, re.I)
+        for name in _make_spellings(make)
+    )
+
+
+def _names_part_number(c: dict, part_number: str) -> bool:
+    """Whether the title or URL names the whole part number, allowing the usual
+    separator differences ("GS10-20P5", "GS10 20P5", "GS1020P5") but not a prefix
+    of it ("GS10") or a longer number that starts with it ("GS10-20P5X")."""
+    chunks = re.findall(r"[a-z0-9]+", (part_number or "").lower())
+    if not chunks:
+        return False
+    pattern = r"(?<![a-z0-9])" + r"[\s\-_./]*".join(map(re.escape, chunks)) + r"(?![a-z0-9])"
+    return re.search(pattern, f"{c.get('title') or ''} {c.get('url') or ''}".lower()) is not None
+
+
+def _may_offer_unread(c: dict, make: str, part_number: str | None = None) -> bool:
+    """Whether a candidate that did not prove to be the manual may still be offered for review.
+
+    A web page is never read, so all it shares with the machine may be the model
+    string: "GS10" is an AutomationDirect drive and a Boss Audio amplifier (#5789).
+    Such a page is offered only if it names the confirmed make, sits on that make's
+    own site, or names the whole exact part number when the lookup is for one. A
+    direct PDF keeps the older rule, since the judge tried to read it, and so does
+    anything the content probe found to be a PDF; the caller only screens what did
+    not probe as one. The caller skips this check when there is no make to compare.
     """
     if c.get("is_direct_pdf"):
         return True
     host = c.get("host") or urlparse(c.get("url") or "").netloc
-    return _judge._mentions_make(c, make) or _is_oem_host(host, make)
+    if _names_make(c, make) or _is_oem_host(host, make):
+        return True
+    return bool(part_number) and _names_part_number(c, part_number)
 
 
 def _is_denied(host: str) -> bool:
@@ -1034,16 +1068,18 @@ async def search_manual(
     reading drives them) and, like any hit, must validate to be trusted.
 
     ``exact_part_number`` says ``model`` is a full catalog number read off a label
-    (the photo part search). Such a number is specific enough that an unread page
-    naming it may be the part, so the make check on unread pages (#5789), which
-    exists because short model strings are reused by other makers, is skipped.
+    (the photo part search). An unread page that names that whole number may be the
+    part, so it passes the make check on unread pages (#5789), which exists because
+    short model strings are reused by other makers. A page naming less than the
+    whole number is checked like any other.
     """
     started_at = time.monotonic()  # the judge's upgrade deadline counts from here
     make = (make or "").strip()
     model = (model or "").strip()
     if not (make or model):
         return None
-    screen_unread = bool(make) and not exact_part_number
+    screen_unread = bool(make)
+    part_number = model if exact_part_number else None
 
     candidates: list[dict] = []
     # Availability is judged from requests actually SENT (#4171 Codex F2): a
@@ -1054,6 +1090,18 @@ async def search_manual(
     failures = 0
 
     trail = _trail.get()
+
+    async def _website_handoff() -> None:
+        # On a miss, look for the make's own website to hand the technician, unless
+        # one was already found or this same query was already sent in this call.
+        query = f"{make} {model} manual support"
+        if (
+            trail is not None
+            and not trail.search_page_url
+            and not any(q.get("query") == query for q in trail.queries)
+            and (deadline_at is None or deadline_at - time.monotonic() > SEARCH_TIMEOUT)
+        ):
+            await _send(query, "q3 (website handoff)")
 
     async def _send(query: str, label: str) -> list[dict] | None:
         nonlocal sent, failures
@@ -1201,6 +1249,7 @@ async def search_manual(
     # Any judge failure leaves the legacy HEAD-validate path below untouched.
     judged_any = False
     rejected_out: list[dict] = []
+    worst_rejected: dict | None = None
     # A catalog-only query may be based on text read from a user photo. Keep
     # that narrowly scoped lookup from sending candidate PDF text to the LLM
     # judge; the result remains an unconfirmed search candidate.
@@ -1257,45 +1306,22 @@ async def search_manual(
         # candidate was read and rejected, say so (top rejection + reasons)
         # rather than surfacing an unread stranger.
         unread = [c for c in ranked if not _judge.is_rejected(c)]
-        deduped = [
-            c
-            for c in unread
-            if _judge.relevant(c, make, model) and (not screen_unread or _may_offer_unread(c, make))
-        ]
+        deduped = [c for c in unread if _judge.relevant(c, make, model)]
+        worst_rejected = next((c for c in ranked if _judge.is_rejected(c)), None)
         if not deduped and not rejected:
             # #4400: nothing names the make or the model and nothing was judged. The
             # old fallback to EVERY unread candidate offered a reseller's company
             # profile as "a possible manual"; a stranger may win only by being read
             # and judged the manual (above). An honest miss instead.
-            if (
-                trail is not None
-                and not trail.search_page_url
-                and (deadline_at is None or deadline_at - time.monotonic() > SEARCH_TIMEOUT)
-            ):
-                await _send(f"{make} {model} manual support", "q3 (website handoff)")
+            await _website_handoff()
             return None
         if not deduped:
-            if (
-                trail is not None
-                and not trail.search_page_url
-                and (deadline_at is None or deadline_at - time.monotonic() > SEARCH_TIMEOUT)
-            ):
-                await _send(f"{make} {model} manual support", "q3 (website handoff)")
-            worst = next((c for c in ranked if _judge.is_rejected(c)), ranked[0])
-            code, line = _judge.judge_summary(worst)
-            worst["reason"], worst["reason_detail"] = code, line
-            worst["judged_rejected"] = rejected
-            worst["validated"] = False
-            return worst
+            await _website_handoff()
+            return _as_judged_rejection(worst_rejected or ranked[0], rejected)
 
-    # The judge-off path offers from the same pool, so it drops the same strangers
-    # (#5789). With the judge on this is already done above.
-    if screen_unread:
-        deduped = [c for c in deduped if _may_offer_unread(c, make)]
-    if not deduped:
-        return None
-
-    # HEAD-validate the top few; first one that confirms PDF wins.
+    # HEAD-validate the top few; first one that confirms PDF wins. This probe runs
+    # before the #5789 screen below, so a real PDF served from a URL that does not
+    # look like one is still found (#5789 Codex F4).
     for c in deduped[:5]:
         if not c.get("validated"):
             # #4401: a probe that cannot finish before the caller's deadline is not
@@ -1330,7 +1356,14 @@ async def search_manual(
 
     # Nothing validated — return the top scorer as a candidate so the
     # caller can hold it for human review. Never promote an unvalidated
-    # candidate to a trusted manual link.
+    # candidate to a trusted manual link. A page that only shares the model
+    # string with the machine is not offered (#5789): what is left is the judged
+    # rejection, if there was one, or an honest miss.
+    if screen_unread:
+        deduped = [c for c in deduped if _may_offer_unread(c, make, part_number)]
+    if not deduped:
+        await _website_handoff()
+        return _as_judged_rejection(worst_rejected, rejected_out) if worst_rejected else None
     deduped[0]["validated"] = False
     if use_judge:
         deduped[0].setdefault("reason", _judge.REASON_JUDGE_UNAVAILABLE)
@@ -1339,6 +1372,15 @@ async def search_manual(
         )
         deduped[0]["judged_rejected"] = rejected_out
     return deduped[0]
+
+
+def _as_judged_rejection(worst: dict, rejected: list[dict]) -> dict:
+    """The judge's top rejection, returned unvalidated with every rejection's reason."""
+    code, line = _judge.judge_summary(worst)
+    worst["reason"], worst["reason_detail"] = code, line
+    worst["judged_rejected"] = rejected
+    worst["validated"] = False
+    return worst
 
 
 from . import judge as _judge  # noqa: E402 — circular-safe: judge imports this module lazily
