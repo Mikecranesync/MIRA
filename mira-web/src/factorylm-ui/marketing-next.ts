@@ -89,6 +89,33 @@ export function rewriteLegacySitemap(xml: string, routes: string[], origin: stri
   return kept.replace("</urlset>", added + "\n</urlset>");
 }
 
+/** Conversion CTAs by link target. The existing /posthog-init.js click listener
+ * sends `cta_click {cta, href, page}` for any [data-cta] element, so tagging the
+ * links is all the new site needs to show up in funnels. Each pattern tolerates
+ * a trailing slash, query or fragment so a content edit cannot silently untag. */
+const HUB = PRODUCTION_HUB_ORIGIN.replace(/[.]/g, "\\.");
+const CTA_RULES: ReadonlyArray<[pattern: RegExp, cta: string]> = [
+  [new RegExp(`^${HUB}/signup/?(?:[?#].*)?$`), "start_free"],
+  [new RegExp(`^${HUB}/login/?(?:[?#].*)?$`), "sign_in"],
+  [/^\/demo\/?(?:[?#].*)?$/, "request_demo"],
+  [/^mailto:[^?]*\?(?:.*&)?subject=[^&]*demo/i, "demo_email"],
+  [/^\/start\/?(?:[?#].*)?$/, "start_guide"],
+  // Every other email link still counts, as a general contact click.
+  [/^mailto:/i, "email_contact"],
+];
+const POSTHOG_TAG = '<script src="/posthog-init.js" defer></script>';
+
+/** Loads the shared analytics script and tags every conversion link. Runs on the
+ * checked HTML before any staging origin rewrite, so Hub links use the production origin. */
+export function instrumentMarketingHtml(html: string): string {
+  const out = html.replace(/<a\b([^>]*?)\bhref="([^"]*)"/g, (tag, before: string, href: string) => {
+    if (/\bdata-cta=/.test(tag)) return tag;
+    const cta = CTA_RULES.find(([pattern]) => pattern.test(href))?.[1];
+    return cta ? `<a${before}data-cta="${cta}" href="${href}"` : tag;
+  });
+  return out.includes(POSTHOG_TAG) ? out : out.replace("</head>", `  ${POSTHOG_TAG}\n</head>`);
+}
+
 export function createFactorylmMarketingRouter() {
   const router = new Hono();
   router.use("*", async (c, next) => {
@@ -127,7 +154,7 @@ export function createFactorylmMarketingRouter() {
     const bytes = await readFile(new URL("site/" + file, directory));
     const html = file.endsWith(".html");
     const staging = hubOrigin() !== PRODUCTION_HUB_ORIGIN;
-    const body = html ? bytes.toString("utf8")
+    const body = html ? instrumentMarketingHtml(bytes.toString("utf8"))
       .replaceAll(PRODUCTION_HUB_ORIGIN + "/signup/", hubUrl("/signup/"))
       .replaceAll(PRODUCTION_HUB_ORIGIN + "/login/", hubUrl("/login/")) : bytes;
     const headers = {
