@@ -23,9 +23,10 @@ import { extractTurn, UI } from "../fidelity/surfaces";
 import { cardsOf, viewerTargetOf } from "./extract";
 import { githubToken } from "./required-fixes";
 import { reserveWalkSpend, settleWalkSpend } from "./spend-ledger";
-import { BudgetMeter, identity, ledgerVerdictFor, releaseOwnPilotHold, runtimeDrift, runtimeOf, stagingBase, teardownTenant, worstCaseTurnUsd } from "./staging";
+import { assertOpenRouterCeiling, BudgetMeter, checkFingerprint, identity, ledgerVerdictFor, pricesFromEnv, releaseOwnPilotHold, runtimeDrift, runtimeOf, stagingBase, teardownTenant, worstCaseTurnUsd, type RuntimeIdentity } from "./staging";
 import { decodeChatBody } from "./stream-decode";
-import { receiptOf, type Step } from "./journey-receipt";
+import { admitPaidTurn } from "./journey-guard";
+import { exitOk, receiptOf, type Step } from "./journey-receipt";
 
 const TARGET = (process.env.CV_TARGET ?? "desktop") as "desktop" | "phone" | "pixel" | "tablet";
 /** A real Android device driven over CDP: the attached Pixel or the Level-3 tablet. */
@@ -165,16 +166,21 @@ async function openProject(page: Page, name: string) {
 
 type Ask = { text: string; status: string | null; stop: boolean; citations: { n: string; title: string; page: string | null }[]; viewer: { fileId: string | null; page: string | null } | null; ledger: string; machineLabel: string; ms: number };
 
+/** Set once the run is priced: identity read + drift check before every paid dispatch (Codex r1 F1). */
+let paidRuntime: { base: string; start: RuntimeIdentity } | null = null;
+async function admitPaid(meter: BudgetMeter, id: string): Promise<void> {
+  if (!paidRuntime) throw new Error("refused before dispatch: run was never priced");
+  const rt = paidRuntime;
+  admitPaidTurn(meter, rt.start, await identity(rt.base).then(runtimeOf, () => null), id);
+}
+
 async function ask(page: Page, q: string, meter: BudgetMeter, tenantId: string, openCitation: boolean): Promise<Ask> {
   if (!PAID) throw new Error("NOT_TESTED: $0 mode, no question sent");
   const t0 = Date.now();
   const sel = '.fl-turn--aui[data-role="assistant"]';
   const before = await page.locator(sel).count();
   await UI.clone.composer(page).fill(q);
-  if (PAID) {
-    if (!meter.canAfford()) throw new Error("budget stop: next turn's worst case would cross the run cap");
-    meter.book();
-  }
+  await admitPaid(meter, q.slice(0, 24));
   const chat = page.waitForResponse((r) => r.request().method() === "POST" && /\/chat\/?$/.test(new URL(r.url()).pathname), { timeout: 180_000 });
   await press(page, page.getByRole("button", { name: "Send" }));
   const res = await chat.catch(() => null);
@@ -323,20 +329,36 @@ test("cv101 journey", async () => {
   const base = stagingBase();
   const start = await identity(base);
   writeFileSync(path.join(OUT, "run.json"), JSON.stringify({ RUN_ID, TARGET, PAID, email: EMAIL, build: start.gitSha, builtAt: start.builtAt, generation: start.deploymentGeneration, startedAt: new Date().toISOString() }, null, 1));
-  const meter = new BudgetMeter(RUN_BUDGET_USD, worstCaseTurnUsd());
-  let reservation: Awaited<ReturnType<typeof reserveWalkSpend>> | null = null;
+  // Priced the way the stranger walk prices (walk.spec.ts): the deployed env's own rates, the Hub's
+  // lane fingerprint and the OpenRouter ceiling are checked before any reservation (Codex r1 F1).
+  // Each refusal throws here, before an account, a reservation or a paid turn exists.
+  const prices = PAID ? pricesFromEnv() : undefined;
+  const meter = new BudgetMeter(RUN_BUDGET_USD, worstCaseTurnUsd(prices));
   if (PAID) {
-    reservation = await reserveWalkSpend({ token: githubToken(), repo: process.env.GITHUB_REPOSITORY, entryId: `cv101-${RUN_ID}`, usd: RUN_BUDGET_USD, note: `CV-101 journey ${RUN_ID} on ${start.gitSha.slice(0, 9)} (${TARGET})` });
-    if (!reservation.ok) throw new Error(`spend refused: ${reservation.reason}`);
+    checkFingerprint(start.inferenceFingerprint, prices!);
+    await assertOpenRouterCeiling();
+    paidRuntime = { base, start: runtimeOf(start) };
   }
+  let reservation: Awaited<ReturnType<typeof reserveWalkSpend>> | null = null;
   let tenantId = "";
   let setupToken = "";
-  let { browser, ctx } = await newBrowser();
-  traceContext(ctx);
-  let page = await ctx.newPage();
-  if (!PAID) await page.route(/\/chat\/?$/, (r) => (r.request().method() === "POST" ? r.abort() : r.fallback()));
+  let browser!: Browser;
+  let ctx!: BrowserContext;
+  let started = false;
   const ids: Record<string, string | undefined> = {};
+  let overall: Parameters<typeof exitOk>[0] = "INCOMPLETE";
   try {
+    // Reservation and browser start inside the lifecycle, so a CDP failure still writes the
+    // receipt and settles the reservation (Codex r1 F5).
+    if (PAID) {
+      reservation = await reserveWalkSpend({ token: githubToken(), repo: process.env.GITHUB_REPOSITORY, entryId: `cv101-${RUN_ID}`, usd: RUN_BUDGET_USD, note: `CV-101 journey ${RUN_ID} on ${start.gitSha.slice(0, 9)} (${TARGET})` });
+      if (!reservation.ok) throw new Error(`spend refused: ${reservation.reason}`);
+    }
+    ({ browser, ctx } = await newBrowser());
+    started = true;
+    traceContext(ctx);
+    let page = await ctx.newPage();
+    if (!PAID) await page.route(/\/chat\/?$/, (r) => (r.request().method() === "POST" ? r.abort() : r.fallback()));
     // ── S0 sign up: verified setup (#5747), the form a stranger fills ───
     // Two declared non-UI exceptions, both the beta-gate provisioner's: the "Email me a setup link"
     // request is answered here so staging's live mail key sends nothing, and the single-use setup
@@ -714,8 +736,7 @@ test("cv101 journey", async () => {
       if (!PAID) { s.verdict = "NOT TESTED"; s.actual = "$0 mode"; return; }
       await openProject(page, MACHINE);
       await newChat(page);
-      if (!meter.canAfford()) throw new Error("budget stop");
-      meter.book();
+      await admitPaid(meter, "S17");
       await UI.clone.composer(page).fill("Explain every specification table in this Micro820 manual in detail with page numbers.");
       await press(page, page.getByRole("button", { name: "Send" }));
       await page.waitForTimeout(1_200);
@@ -736,15 +757,26 @@ test("cv101 journey", async () => {
     writeFileSync(path.join(OUT, "run-end.json"), JSON.stringify({ endedAt: new Date().toISOString(), drift, booked: meter.booked, turns: meter.turns, ids }, null, 1));
     persist();
     const receipt = receiptOf({ build: start.gitSha, target: TARGET, paid: PAID, runId: RUN_ID }, steps, STEP_IDS);
+    overall = receipt.overall;
     writeFileSync(path.join(OUT, "receipt.md"), `${receipt.md}\n${drift ? `Runtime drift during the run: ${drift}\n` : ""}`);
     if (reservation?.ok) {
       const r = reservation;
       await bounded("settle", 60_000, () => settleWalkSpend({ token: githubToken(), repo: process.env.GITHUB_REPOSITORY, entryId: r.entryId, reservedUsd: r.reservedUsd, bookedUsd: meter.booked, note: `${meter.turns} turns booked` }));
     }
-    await bounded("storage-state", 15_000, () => ctx.storageState({ path: path.join(OUT, "state.json") }));
-    await bounded("context-close", 15_000, () => ctx.close());
-    if (!DEVICE) await bounded("browser-close", 15_000, () => browser.close());
-    if (setupToken && !tenantId) await bounded("setup-token", 20_000, () => dropUnusedSetupToken(setupToken));
+    if (started) {
+      await bounded("storage-state", 15_000, () => ctx.storageState({ path: path.join(OUT, "state.json") }));
+      await bounded("context-close", 15_000, () => ctx.close());
+      if (!DEVICE) await bounded("browser-close", 15_000, () => browser.close());
+    }
+    // A redeemed token whose redirect or receipt read was lost still names its tenant: read it
+    // again before giving up on the sweep, and drop the token only if it never made one (Codex r1 F4).
+    if (setupToken && !tenantId) {
+      tenantId = (await bounded("setup-receipt", 20_000, () => tenantCreatedBySetup(setupToken))) ?? "";
+      if (tenantId) writeFileSync(path.join(OUT, "tenant.txt"), tenantId);
+      else await bounded("setup-token", 20_000, () => dropUnusedSetupToken(setupToken));
+    }
     if (tenantId && process.env.CV_KEEP !== "1") writeFileSync(path.join(OUT, "teardown.txt"), JSON.stringify(teardownTenant(tenantId)));
   }
+  // Receipt written and cleanup done: now the command's exit agrees with it (Codex r1 F2).
+  if (!exitOk(overall, PAID)) throw new Error(`journey ${overall}${PAID ? " (paid run)" : ""}: see ${path.join(OUT, "receipt.md")}`);
 });

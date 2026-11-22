@@ -3,7 +3,7 @@
  *   npx vitest run --config tests/stranger-walk/vitest.stranger-walk.config.ts journey-receipt
  */
 import { describe, expect, it } from "vitest";
-import { receiptOf, type Step, type Verdict } from "./journey-receipt";
+import { exitOk, receiptOf, type Step, type Verdict } from "./journey-receipt";
 
 const RUN = { build: "abc123", target: "tablet", paid: true, runId: "t1" };
 const IDS = ["S1", "S2", "S3"] as const;
@@ -43,5 +43,20 @@ describe("journey receipt", () => {
 
   it("names the build, target and whether money was spent", () => {
     expect(receiptOf({ ...RUN, paid: false }, [], IDS).md).toContain("Build abc123 · target tablet · $0 run (no question sent) · run t1");
+  });
+});
+
+describe("exitOk", () => {
+  it("never exits 0 on a FAIL receipt, paid or not", () => {
+    expect(exitOk("FAIL", false)).toBe(false);
+    expect(exitOk("FAIL", true)).toBe(false);
+  });
+  it("a paid run exits 0 only on PASS", () => {
+    expect(exitOk("INCOMPLETE", true)).toBe(false);
+    expect(exitOk("PASS", true)).toBe(true);
+  });
+  it("a $0 run's INCOMPLETE (questions it cannot ask) exits 0", () => {
+    expect(exitOk("INCOMPLETE", false)).toBe(true);
+    expect(exitOk("PASS", false)).toBe(true);
   });
 });

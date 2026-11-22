@@ -34,3 +34,14 @@ export function receiptOf(run: { build: string; target: string; paid: boolean; r
   ].join("\n");
   return { overall, md };
 }
+
+/**
+ * Whether the run's process should exit 0 once the receipt is written. A FAIL never does. A paid
+ * run exists to answer every step, so it exits 0 only on PASS; a $0 run's INCOMPLETE (the
+ * question steps it cannot ask) is its expected result.
+ */
+export function exitOk(overall: "PASS" | "FAIL" | "INCOMPLETE", paid: boolean): boolean {
+  if (overall === "FAIL") return false;
+  if (paid && overall !== "PASS") return false;
+  return true;
+}
