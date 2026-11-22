@@ -830,3 +830,208 @@ describe("#5670 review 4: a client-side selection error or a lost header cannot 
     expect(out.res.headers.get("X-Safety-Stop")).toBeNull();
   });
 });
+
+describe("#5670 review 5 F15: a malformed optional machine-evidence window cannot erase the refusal", () => {
+  const ASSET = "55555555-5555-4555-8555-555555555555";
+  const MALFORMED = [
+    { assetId: ASSET },
+    { assetId: ASSET, anchorAt: "yesterday" },
+    { anchorAt: "2026-11-22T10:00:00Z" },
+    "garbage",
+  ] as const;
+
+  it("preconditions: the audit ask is a bypass refusal and no other trigger", () => {
+    expect(safetyBypassAsk(AUDIT_ASK)).not.toBeNull();
+    expect(notebookSafetyTrigger(AUDIT_ASK)).toBeNull();
+  });
+
+  it("the exact #5721 ask with each malformed window is one persisted terminal stop, nothing read or called", async () => {
+    for (const machineEvidence of MALFORMED) {
+      vi.clearAllMocks();
+      domainMock.validateChatSources.mockResolvedValue({ ok: true, docIds: [DOC_A], nodeId: "n1" } as never);
+      const { turn } = await expectRefusal(AUDIT_ASK, { machineEvidence });
+      expect(domainMock.recordTurn).toHaveBeenCalledTimes(1);
+      expect(turn.evidence.some((e) => e.kind === "machine_evidence")).toBe(false);
+      expect(turn.clientRequestId).toBe(REQ_ID);
+    }
+  });
+
+  it("the same over the progress stream: the refusal, not an http_error frame", async () => {
+    process.env.MIRA_CHAT_PROGRESS = "1";
+    const fetchMock = spendingProvider();
+    const out = await post(AUDIT_ASK, { machineEvidence: { assetId: ASSET } }, { "x-mira-progress": "1" });
+    expect(out.status).toBe(200);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(frames(out.text).some((f) => f.kind === "http_error")).toBe(false);
+    expect(frames(out.text).some((f) => f.kind === "safety")).toBe(true);
+    expect(streamed(out.text).includes(BYPASS_BANNER)).toBe(true);
+    expect(lastTurn()?.evidence.some((e) => e.kind === "safety_stop")).toBe(true);
+  });
+
+  it("on a notebook the caller does not own it stays a 404 with nothing written", async () => {
+    domainMock.validateChatSources.mockResolvedValue({ ok: false, error: "notebook_not_found" } as never);
+    const fetchMock = spendingProvider();
+    const out = await post(AUDIT_ASK, { machineEvidence: { assetId: ASSET } });
+    expect(out.status).toBe(404);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(domainMock.recordTurn).not.toHaveBeenCalled();
+  });
+
+  it("control: an ordinary question with the same malformed window keeps its 400, nothing claimed or written", async () => {
+    for (const machineEvidence of MALFORMED) {
+      vi.clearAllMocks();
+      const fetchMock = spendingProvider();
+      const out = await post("how do i test the e-stop", { machineEvidence });
+      expect(out.status).toBe(400);
+      expect(JSON.parse(out.text).error).toBe("machine_evidence_invalid");
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(domainMock.claimNotebookTurnRequest).not.toHaveBeenCalled();
+      expect(domainMock.recordTurn).not.toHaveBeenCalled();
+    }
+  });
+
+  it("control: a well-formed window on the audit ask is still the refusal and is never read", async () => {
+    const { turn } = await expectRefusal(AUDIT_ASK, { machineEvidence: { assetId: ASSET, anchorAt: "2026-11-22T10:00:00Z" } });
+    expect(turn.evidence.some((e) => e.kind === "machine_evidence")).toBe(false);
+  });
+});
+
+import { readNotebookStream } from "@/components/equipment/notebook-chat-utils";
+import { trackSafetyStop } from "@/factorylm-ui/safety-stop-marker";
+import { retainedStreamInterruption } from "@/factorylm-ui/hub-host-logic";
+import { partsFromStream } from "@/factorylm-ui/to-interaction";
+
+// #5670 review 5 F14: what the canonical Hub shows when the REAL route's response breaks after
+// the stop is named (its X-Safety-Stop header, or the progress transport's forwarded headers
+// frame) and before the safety frame. The sequence below is the host's own (hub-host.tsx send):
+// track the response, read through the tracker, and on a throw ask retainedStreamInterruption
+// whether a live turn is kept; partsFromStream is what renders it.
+describe("#5670 review 5 F14: a stream cut after the stop is named still shows the stop", () => {
+  type View =
+    | { kind: "finished" | "retained" | "stopped"; parts: ReturnType<typeof partsFromStream> }
+    | { kind: "failed" };
+  const abort = () => Object.assign(new Error("The operation was aborted."), { name: "AbortError" });
+
+  /** A body that delivers `prefix`, then fails with `err` (or closes cleanly when `err` is null). */
+  function cutBody(prefix: string, err: unknown): ReadableStream<Uint8Array> {
+    let sent = !prefix;
+    return new ReadableStream<Uint8Array>({
+      pull(c) {
+        if (!sent) {
+          sent = true;
+          c.enqueue(enc.encode(prefix));
+          return;
+        }
+        if (err === null) c.close();
+        else c.error(err);
+      },
+    });
+  }
+
+  async function hostView(headers: Headers, body: ReadableStream<Uint8Array>): Promise<View> {
+    const stop = trackSafetyStop(headers);
+    try {
+      const result = stop.settle(await readNotebookStream(stop.watch(body.getReader()), () => undefined, stop.current()));
+      return { kind: "finished", parts: partsFromStream(result, { turnId: "t" }) };
+    } catch (err) {
+      const retained = retainedStreamInterruption(stop.carry(err));
+      if (!retained) return { kind: "failed" };
+      return { kind: retained.stopped ? "stopped" : "retained", parts: partsFromStream(retained.result, { stopped: retained.stopped, turnId: "t" }) };
+    }
+  }
+
+  const notices = (v: View) => (v.kind === "failed" ? [] : v.parts.filter((p) => p.type === "safety_notice")) as { type: string; notice: { severity: string; trigger?: string } }[];
+  const errorPart = (v: View) => (v.kind === "failed" ? undefined : v.parts.find((p) => p.type === "error")) as { error: { code: string; retryable: boolean } } | undefined;
+
+  /** Text up to and including the first frame whose JSON has `kind`. */
+  function through(raw: string, kind: string): string {
+    const blocks = raw.split("\n\n");
+    const at = blocks.findIndex((b) => b.includes(`"kind":"${kind}"`));
+    expect(at).toBeGreaterThanOrEqual(0);
+    return blocks.slice(0, at + 1).join("\n\n") + "\n\n";
+  }
+
+  function expectStopShown(v: View) {
+    expect(v.kind).toBe("retained");
+    const n = notices(v);
+    expect(n).toHaveLength(1);
+    expect(n[0].notice).toMatchObject({ severity: "stop", trigger: BYPASS_STOP_TRIGGER });
+    // Retry is still offered beside the stop; a retry replays the stored refusal (see "replay").
+    expect(errorPart(v)?.error).toMatchObject({ code: "provider_failure", retryable: true });
+  }
+
+  it("direct response cut before any body byte: the header's stop is shown", async () => {
+    spendingProvider();
+    const out = await post(AUDIT_ASK);
+    expect(out.res.headers.get("X-Safety-Stop")).toBe(BYPASS_STOP_TRIGGER);
+    expectStopShown(await hostView(out.res.headers, cutBody("", new TypeError("network reset"))));
+  });
+
+  it("direct response cut after its first frame, before the safety frame: the stop is shown", async () => {
+    spendingProvider();
+    const out = await post(AUDIT_ASK);
+    const prefix = out.text.split("\n\n")[0] + "\n\n";
+    expect(prefix).not.toContain('"kind":"safety"');
+    expectStopShown(await hostView(out.res.headers, cutBody(prefix, new TypeError("network reset"))));
+  });
+
+  it("progress transport cut right after the forwarded headers frame: the stop is shown", async () => {
+    process.env.MIRA_CHAT_PROGRESS = "1";
+    spendingProvider();
+    const out = await post(AUDIT_ASK, {}, { "x-mira-progress": "1" });
+    // Preconditions: the outer response does not carry the stop; the headers frame does, before the safety frame.
+    expect(out.res.headers.get("X-Safety-Stop")).toBeNull();
+    const prefix = through(out.text, "headers");
+    expect(prefix.toLowerCase()).toContain('"x-safety-stop":"safety-device-bypass"');
+    expect(prefix).not.toContain('"kind":"safety"');
+    expectStopShown(await hostView(out.res.headers, cutBody(prefix, new TypeError("network reset"))));
+  });
+
+  it("progress transport closed cleanly after the headers frame: the truncated turn still shows the stop", async () => {
+    process.env.MIRA_CHAT_PROGRESS = "1";
+    spendingProvider();
+    const out = await post(AUDIT_ASK, {}, { "x-mira-progress": "1" });
+    const v = await hostView(out.res.headers, cutBody(through(out.text, "headers"), null));
+    expect(v.kind).toBe("finished");
+    expect(notices(v)).toHaveLength(1);
+    expect(notices(v)[0].notice).toMatchObject({ severity: "stop", trigger: BYPASS_STOP_TRIGGER });
+  });
+
+  it("the safety frame also arrived before the cut: still exactly one stop notice, direct and progress", async () => {
+    spendingProvider();
+    const direct = await post(AUDIT_ASK);
+    const d = await hostView(direct.res.headers, cutBody(through(direct.text, "safety"), new TypeError("network reset")));
+    expectStopShown(d);
+    process.env.MIRA_CHAT_PROGRESS = "1";
+    const progress = await post(AUDIT_ASK, {}, { "x-mira-progress": "1" });
+    expectStopShown(await hostView(progress.res.headers, cutBody(through(progress.text, "safety"), new TypeError("network reset"))));
+  });
+
+  it("Stop pressed after the stop was named ends as stopped, with the stop shown", async () => {
+    spendingProvider();
+    const out = await post(AUDIT_ASK);
+    const v = await hostView(out.res.headers, cutBody("", abort()));
+    expect(v.kind).toBe("stopped");
+    expect(notices(v)).toHaveLength(1);
+    expect(errorPart(v)?.error.code).toBe("stopped");
+  });
+
+  it("control: Stop pressed on an ordinary turn ends as stopped with no stop notice", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => completingProvider("Fault F004 is DC bus undervoltage [1].")));
+    const out = await post("What does fault F004 mean?");
+    expect(out.res.headers.get("X-Safety-Stop")).toBeNull();
+    const v = await hostView(out.res.headers, cutBody(out.text.split("\n\n")[0] + "\n\n", abort()));
+    expect(v.kind).toBe("stopped");
+    expect(notices(v)).toHaveLength(0);
+    expect(errorPart(v)?.error.code).toBe("stopped");
+  });
+
+  it("control: an ordinary turn interrupted by the network keeps its plain failure and Retry (no live turn kept)", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => completingProvider("Fault F004 is DC bus undervoltage [1].")));
+    const direct = await post("What does fault F004 mean?");
+    expect((await hostView(direct.res.headers, cutBody(direct.text.split("\n\n")[0] + "\n\n", new TypeError("network reset")))).kind).toBe("failed");
+    process.env.MIRA_CHAT_PROGRESS = "1";
+    const progress = await post("What does fault F004 mean?", {}, { "x-mira-progress": "1" });
+    expect((await hostView(progress.res.headers, cutBody(progress.text.split("\n\n")[0] + "\n\n", new TypeError("network reset")))).kind).toBe("failed");
+  });
+});

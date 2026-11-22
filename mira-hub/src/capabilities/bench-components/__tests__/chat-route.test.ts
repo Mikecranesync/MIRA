@@ -106,7 +106,8 @@ vi.mock("@/lib/inference/canonical-cascade", () => seamMock);
 
 import { POST } from "@/app/api/equipment-notebooks/[id]/chat/route";
 import { noDocumentsForComponentText, selectionMovedText } from "@/capabilities/bench-components/chat-turn";
-import { ENERGIZED_ELECTRICAL_HAZARD, notebookSafetyTrigger, withSafetyFlag } from "@/lib/safety-classifier";
+import { ENERGIZED_ELECTRICAL_HAZARD, hazardBanner, notebookSafetyTrigger, withSafetyFlag } from "@/lib/safety-classifier";
+import { BYPASS_BANNER, safetyBypassAsk, safetyBypassWarning } from "@/capabilities/safety-bypass-advisory";
 import { photoLinkedToTarget } from "@/lib/workspace-files";
 
 function req(body: unknown) {
@@ -443,6 +444,78 @@ describe("a held turn reads no manual and calls no provider", () => {
       message: withSafetyFlag("B1 · IDEC YW1B isn't confirmed yet, so I won't answer from the manuals for it. Check what its label says and tap Confirm, then ask again.", "smell burning"),
     });
     expect(componentFrame(out)?.actions).toEqual([{ action: "confirm", componentId: B1, label: "B1 · IDEC YW1B" }]);
+  });
+
+  // #5670 review 5 F9 (#5785): a reported bypass beside an immediate hazard, under a component
+  // that is not confirmed. The hazard banner keeps first place, the bypass card follows it, and
+  // the hold text comes last — live, saved and on replay, each once, reading nothing.
+  describe("#5670 review 5 F9: a held turn with a bypass report and a hazard", () => {
+    const HOLD = "B1 · IDEC YW1B isn't confirmed yet, so I won't answer from the manuals for it. Check what its label says and tap Confirm, then ask again.";
+    const SMOKE = "The safety relay is bypassed and I can see smoke coming off the panel. How do I restore the relay?";
+    const PLAIN = "The safety relay is bypassed. How do I restore it?";
+    const once = (text: string, part: string) => text.split(part).length - 1;
+
+    it("preconditions: a hazard flag and the bypass warning both apply, it is no refusal, and the control has no hazard", () => {
+      expect(notebookSafetyTrigger(SMOKE)).not.toBeNull();
+      expect(safetyBypassWarning(SMOKE)).not.toBeNull();
+      expect(safetyBypassAsk(SMOKE)).toBeNull();
+      expect(notebookSafetyTrigger(PLAIN)).toBeNull();
+      expect(safetyBypassWarning(PLAIN)).not.toBeNull();
+      expect(safetyBypassAsk(PLAIN)).toBeNull();
+    });
+
+    it("live status and saved row: hazard banner, then the card, then the hold, each once, with no manual and no provider", async () => {
+      storeMock.getSelection.mockResolvedValue(selection(B1, 1, 1));
+      const trigger = notebookSafetyTrigger(SMOKE)!;
+      const out = await frames(await ask(SMOKE, under(B1, 1)));
+      expect(ragMock.retrieveNodeChunks).not.toHaveBeenCalled();
+      expect(vi.mocked(fetch)).not.toHaveBeenCalled();
+      const expected = withSafetyFlag(`${BYPASS_BANNER}\n\n${HOLD}`, trigger);
+      const live = statusOf(out);
+      expect(live.status).toBe("insufficient_evidence");
+      expect(live.message).toBe(expected);
+      const hazard = hazardBanner(trigger);
+      expect(once(live.message!, hazard)).toBe(1);
+      expect(once(live.message!, BYPASS_BANNER)).toBe(1);
+      expect(once(live.message!, HOLD)).toBe(1);
+      expect(live.message!.indexOf(hazard)).toBe(0);
+      expect(live.message!.indexOf(hazard)).toBeLessThan(live.message!.indexOf(BYPASS_BANNER));
+      expect(live.message!.indexOf(BYPASS_BANNER)).toBeLessThan(live.message!.indexOf(HOLD));
+      expect(out.some((f) => f.kind === "content")).toBe(false);
+      expect(nbMock.recordTurn).toHaveBeenCalledWith(TENANT, NB, expect.objectContaining({ answerStatus: "insufficient_evidence", answerText: expected }));
+    });
+
+    it("replay: the stored held turn replays the same order", async () => {
+      storeMock.getSelection.mockResolvedValue(selection(B1, 1, 1));
+      await frames(await ask(SMOKE, under(B1, 1)));
+      const stored = (nbMock.recordTurn.mock.calls.at(-1) as unknown as [string, string, { answerStatus: string; answerText: string; evidence: unknown[] }])[2];
+      vi.clearAllMocks();
+      nbMock.validateChatSources.mockResolvedValue({ ok: true, docIds: [DOC_A], nodeId: "node-1" });
+      nbMock.claimNotebookTurnRequest.mockResolvedValueOnce({
+        status: "replay",
+        turn: { id: "t1", question: SMOKE, answerStatus: stored.answerStatus, answerText: stored.answerText, citations: [], evidence: stored.evidence, enabledSourceDocIds: [DOC_A], basis: null, createdAt: "2026-11-22T00:00:00Z" },
+      });
+      const replay = await frames(await ask(SMOKE, under(B1, 1)));
+      expect(nbMock.recordTurn).not.toHaveBeenCalled();
+      expect(vi.mocked(fetch)).not.toHaveBeenCalled();
+      expect(statusOf(replay).message).toBe(stored.answerText);
+    });
+
+    it("control: a held bypass report with no hazard is the card above the hold, no banner", async () => {
+      storeMock.getSelection.mockResolvedValue(selection(B1, 1, 1));
+      const out = await frames(await ask(PLAIN, under(B1, 1)));
+      expect(vi.mocked(fetch)).not.toHaveBeenCalled();
+      expect(statusOf(out).message).toBe(`${BYPASS_BANNER}\n\n${HOLD}`);
+    });
+
+    it("control: a held hazard with no bypass report keeps the banner above the hold and no card", async () => {
+      storeMock.getSelection.mockResolvedValue(selection(B1, 1, 1));
+      const msg = "I can see smoke coming off the panel. What voltage is this button rated for?";
+      expect(safetyBypassWarning(msg)).toBeNull();
+      const out = await frames(await ask(msg, under(B1, 1)));
+      expect(statusOf(out).message).toBe(withSafetyFlag(HOLD, notebookSafetyTrigger(msg)));
+      expect(statusOf(out).message).not.toContain(BYPASS_BANNER);
+    });
   });
 
   it("the energized-electrical notice on a held turn is saved with it, so a reload shows the same flag", async () => {

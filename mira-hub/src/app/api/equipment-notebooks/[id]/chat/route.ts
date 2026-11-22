@@ -1289,21 +1289,6 @@ async function handleChatTurn(
   } catch {
     return NextResponse.json({ error: "invalid_json" }, { status: 400 });
   }
-  // Machine-evidence selection (§4.4). Validated up front so a malformed
-  // window is a 400, never a silent "answered without the machine".
-  let machineRequest: { assetId: string; at: string; pre: number; post: number } | null = null;
-  if (body.machineEvidence !== undefined && body.machineEvidence !== null) {
-    const me = body.machineEvidence;
-    const assetId = typeof me?.assetId === "string" ? me.assetId.trim() : "";
-    const at = parseAnchor(me?.anchorAt);
-    if (!assetId || !at) {
-      return NextResponse.json(
-        { error: "machine_evidence_invalid", message: "machineEvidence needs assetId and an ISO-8601 anchorAt." },
-        { status: 400 },
-      );
-    }
-    machineRequest = { assetId, at, pre: clampSpan(me.pre, 5), post: clampSpan(me.post, 2) };
-  }
   // Visual-evidence claim (D3). Never a 4xx: a malformed or foreign claim is
   // dropped silently and the turn is answered without it. The claim is a FILE
   // ID and nothing else — `capturedAt` is client-supplied, so it is neither
@@ -1356,6 +1341,25 @@ async function handleChatTurn(
   // alone, before the optional component scope is read, so a malformed scope
   // cannot turn the refusal into a 400. The refusal reads no scope at all.
   const bypassStopEarly = safetyBypassAsk(message) !== null;
+  // Machine-evidence selection (§4.4): a malformed window is a 400, never a silent
+  // "answered without the machine". #5670 review 5 F15: read after the message and the
+  // request's own identity, and a recognized bypass request drops a malformed window
+  // instead (as it ignores the component scope above), so an optional rider cannot turn
+  // the fixed refusal into a 400. A well-formed window is read exactly as before.
+  let machineRequest: { assetId: string; at: string; pre: number; post: number } | null = null;
+  if (body.machineEvidence !== undefined && body.machineEvidence !== null) {
+    const me = body.machineEvidence;
+    const assetId = typeof me?.assetId === "string" ? me.assetId.trim() : "";
+    const at = parseAnchor(me?.anchorAt);
+    if (assetId && at) {
+      machineRequest = { assetId, at, pre: clampSpan(me.pre, 5), post: clampSpan(me.post, 2) };
+    } else if (!bypassStopEarly) {
+      return NextResponse.json(
+        { error: "machine_evidence_invalid", message: "machineEvidence needs assetId and an ISO-8601 anchorAt." },
+        { status: 400 },
+      );
+    }
+  }
   const scopeRequest = bypassStopEarly ? null : readComponentSelection(body.componentSelection, threadId);
   if (scopeRequest && "error" in scopeRequest) {
     return NextResponse.json({ error: scopeRequest.error }, { status: 400 });
@@ -3971,8 +3975,12 @@ async function handleChatTurn(
     // (staging holds 11 GS10 rows; a carrier-frequency query still hit none).
     // A held component turn keeps the question's safety banner: the hold answers
     // nothing, and the hazard is still flagged above it.
+    // #5670 review 5 F9 (#5785): a reported bypass on a held turn puts its card BELOW the
+    // hazard banner and above the hold text — the immediate hazard keeps first place, as it
+    // does on an answered turn. Composed here, from the raw hold text, so no later step can
+    // put the card above the banner.
     const abstainAnswerBase = componentHold
-      ? withSafetyFlag(componentHold.text, safetyTrigger)
+      ? withSafetyFlag(bypassWarnAsk ? `${BYPASS_BANNER}\n\n${componentHold.text}` : componentHold.text, safetyTrigger)
       : componentScope && !notebookRetrieval
       ? noDocumentsForComponentText(componentScope.label)
       : oemRetrievalFailed && (missingModelManual || noEvidenceForMachine)
@@ -4043,7 +4051,8 @@ async function handleChatTurn(
         ? "I couldn't find support for that in this notebook's manuals. Add the manual for the equipment you're asking about, or the page that covers it, and ask again."
         : null;
     // A reported unsafe state keeps its card on the honest refusal too (#5670 native 2 F6).
-    const abstainAnswerText = bypassWarnAsk && abstainAnswerBase ? `${BYPASS_BANNER}\n\n${abstainAnswerBase}` : abstainAnswerBase;
+    // (A held turn already carries the card, in its place under any hazard banner: F9 above.)
+    const abstainAnswerText = bypassWarnAsk && abstainAnswerBase && !componentHold ? `${BYPASS_BANNER}\n\n${abstainAnswerBase}` : abstainAnswerBase;
     const gateAnswerGateSpan = tracer.startSpan("answer_gate.evaluate", undefined, rootCtx);
     lifecycleOutcome = "abstained";
     rec.stage("answer_gate", {
