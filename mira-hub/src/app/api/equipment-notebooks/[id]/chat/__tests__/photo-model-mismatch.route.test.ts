@@ -508,6 +508,32 @@ describe("#5706 — a nameplate photo of another drive is not answered from the 
     expect(passOpts()[0].subjectQueries?.[1]).toContain("GS11N-20P5");
   });
 
+  it("a LOOK whose time cannot be read is placed newest (it is judged, never hidden)", async () => {
+    nbMock.listTurns.mockResolvedValue([{ ...openPhotoTurn("What about the GS11N-20P5?"), evidence: [], createdAt: "2026-11-21T20:50:00Z" }]);
+    veMock.loadRecentLookObservations.mockResolvedValue([{ ...lookRow(PRIOR_PHOTO, GS20_READING), observedAt: null }]);
+    filesMock.photoLinkedToTarget.mockResolvedValue({ fileId: PRIOR_PHOTO, capturedAt: "2026-11-21T20:57:06.047Z" });
+    await (await POST(req({ message: "Find me the manual", sourceDocIds: [DOC_A], threadId: THREAD }), params)).text();
+    expect(passOpts()[0].subjectQueries?.[0]).toContain("GS20-23P0");
+    // Only this conversation's LOOKs: the exact notebook, owner and thread.
+    // Every ledger read (the recall above and the subject carry) uses that scope.
+    expect(veMock.loadRecentLookObservations.mock.calls.length).toBeGreaterThanOrEqual(2);
+    for (const call of veMock.loadRecentLookObservations.mock.calls) {
+      expect((call as unknown[])[2]).toMatchObject({ notebookId: expect.any(String), ownerUserId: expect.any(String), threadId: THREAD });
+    }
+  });
+
+  it("the carried LOOK does not use up the read window: one turn short of each limit plus a LOOK is still a complete read", async () => {
+    // Every read returns one turn fewer than asked: complete only if the LOOK is not counted against the limit.
+    nbMock.listTurns.mockImplementation((async (_t: string, _n: string, limit: number) =>
+      Array.from({ length: limit - 1 }, (_, n) => ({ ...openPhotoTurn(`Question ${n}`), id: `q${n}`, evidence: [], createdAt: "2026-11-21T20:40:00Z" }))) as never);
+    veMock.loadRecentLookObservations.mockResolvedValue([look("2026-11-21T20:57:09Z")]);
+    filesMock.photoLinkedToTarget.mockResolvedValue({ fileId: PRIOR_PHOTO, capturedAt: "2026-11-21T20:57:06.047Z" });
+    await (await POST(req({ message: "Find me the manual", sourceDocIds: [DOC_A], threadId: THREAD }), params)).text();
+    const first = passOpts()[0] as Opts & { subjectOutOfReach?: boolean };
+    expect(first.subjectQueries?.[0]).toContain("GS20-23P0");
+    expect(first.subjectOutOfReach).toBe(false);
+  });
+
   it("control: a LOOK older than the run's closing document answer is not carried", async () => {
     nbMock.listTurns.mockResolvedValue([
       { id: "t2", threadId: THREAD, question: "What is the input voltage?", answerStatus: "answered", basis: "workspace_evidence", evidence: [], createdAt: "2026-11-21T21:00:00Z" },

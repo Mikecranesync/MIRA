@@ -2583,7 +2583,8 @@ async function handleChatTurn(
   // conversation, still linked, newer than the run's closing document answer,
   // is carried as a photo-only turn at its place in time — judged by the same
   // rule as a photo sent with a question. Not under a selected component (a
-  // standalone LOOK records none, #5504 Codex r3 F7), and not when this turn
+  // standalone LOOK records none, #5504 Codex r3 F7 — that branch below never
+  // calls this), and not when this turn
   // sends its own photo (that photo owns the turn). A LOOK of a photo that a
   // turn in the window was sent with is that turn's photo, already judged by
   // its join rule (or closed by its answer) — never a second, unjoined turn.
@@ -2591,7 +2592,7 @@ async function handleChatTurn(
   const withRecentLook = async <T extends PriorTurn & { createdAt: string; evidence: unknown[] }>(
     turns: T[],
   ): Promise<{ turns: PriorTurn[]; added: number }> => {
-    if (visualEntry || componentScope) return { turns, added: 0 };
+    if (visualEntry) return { turns, added: 0 };
     try {
       const scope = { notebookId, ownerUserId: ctx.userId, threadId };
       const look = (await withTenantContext(ctx.tenantId, (c) => loadRecentLookObservations(c, ctx.tenantId, scope)))?.[0];
@@ -2599,15 +2600,11 @@ async function handleChatTurn(
       const sentWithTurn = turns.some((t) => t.evidence.some((e) => isVisualObservationEntry(e) && e.fileId === look.fileId));
       if (sentWithTurn) return { turns, added: 0 };
       const at = Date.parse(look.observedAt ?? "");
-      const closedAt = turns.reduce(
-        // An unreadable closing time hides nothing (fail closed: the LOOK is judged).
-        (last, t) => (t.answerStatus === "answered" && typeof t.basis === "string" && DOCUMENT_BASES.has(t.basis) ? Math.max(last, Date.parse(t.createdAt) || Number.NEGATIVE_INFINITY) : last),
-        Number.NEGATIVE_INFINITY,
-      );
-      // An unreadable time is placed newest (fail closed: it is judged).
-      if (!Number.isNaN(at) && !(at > closedAt)) return { turns, added: 0 };
       if (!(await photoLinkedToTarget(ctx.tenantId, look.fileId, "equipment_notebook", notebookId))) return { turns, added: 0 };
       const lookTurn: PriorTurn = { question: "", answerStatus: "look", basis: null, photoText: look.text };
+      // Placed at its time: a LOOK older than the run's closing document answer
+      // sits behind it, so readSubject stops before it. An unreadable time (the
+      // LOOK's or a turn's) is placed newest — fail closed: it is judged.
       const before = Number.isNaN(at) ? turns.length : turns.filter((t) => !(Date.parse(t.createdAt) > at)).length;
       return { turns: [...turns.slice(0, before), lookTurn, ...turns.slice(before)], added: 1 };
     } catch (err) {

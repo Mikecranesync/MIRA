@@ -200,6 +200,10 @@ describe("readPhotoModel: a model among the private fields makes the machine unk
     const q = questionWithPhoto("Find me the manual", "Serial No 12345678 GS20-23P0 AC drive", false);
     expect(q).toMatchObject({ photo: null, unknown: true, releases: false });
     expect(questionWithPhoto("Manual for the GS11N-20P2", "Serial No 12345678 GS20-23P0", false).unknown).toBe(false);
+    // Public text naming one machine does not release when a private model is unknown.
+    const both = questionWithPhoto("Find me the manual", "GS11N-20P2 AC drive Serial No 2507A123 GS20-23P0", false);
+    expect(both).toMatchObject({ unknown: true, releases: false });
+    expect(both.photo).toContain("GS11N-20P2");
   });
 
   it("an open photo that could not be read back is unknown, and the carry flags it", () => {
@@ -208,6 +212,16 @@ describe("readPhotoModel: a model among the private fields makes the machine unk
     const read = readSubject([{ question: "Find me the manual", answerStatus: "insufficient_evidence", basis: null, photoUnread: true }], 6);
     expect(read.questions).toEqual(["Find me the manual"]);
     expect(read.unclear).toEqual([true]);
+  });
+
+  it("a serial value is removed as a whole code: a model it begins stays readable", () => {
+    expect(readPhotoModel("GS11N-20P2 drive S/N: GS11N").text).toContain("GS11N-20P2");
+  });
+
+  it("a carried 'back to mine' keeps its photo out only with a catalog number on record", () => {
+    const turns = [{ question: "Back to mine. What was its firmware build?", answerStatus: "insufficient_evidence", basis: null, photoText: 'Plate reads "GS20-23P0".' }];
+    expect(readSubject(turns, 6, true).questions[0]).not.toContain("GS20");
+    expect(readSubject(turns, 6, false).questions[0]).toContain("GS20-23P0");
   });
 
   it("private-field codes are kept for the check only, and never with a labelled MODEL field", () => {

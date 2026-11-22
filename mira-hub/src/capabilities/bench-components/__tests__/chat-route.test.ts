@@ -387,13 +387,17 @@ describe("a confirmed component is the record for the turn", () => {
     expect(queries[0]).not.toContain("GS20");
   });
 
-  it("under a component, a standalone LOOK is not carried as a subject (it records no component)", async () => {
-    storeMock.listSelectionTurns.mockResolvedValue([]);
+  it("under a component, a standalone LOOK is not carried and does not cut the selection's own run", async () => {
+    storeMock.listSelectionTurns.mockResolvedValue([
+      { id: "t2", question: "what is the GS13N-20P2 input current", answerStatus: "insufficient_evidence", basis: null, createdAt: "2026-11-14T04:05:00.000Z", componentId: VFD, componentRevision: 2, clientRequestId: null, answerText: null, evidence: [] },
+    ]);
+    // Linked, so only the component rule keeps it out.
+    vi.mocked(photoLinkedToTarget).mockImplementation(async (_t: string, fileId: string) => ({ fileId, capturedAt: "2026-11-14T04:06:00.000Z" }) as never);
     lookMock.loadRecentLookObservations.mockResolvedValue([
       { observationId: "o9", sessionId: "s1", text: 'Plate reads "GS20-23P0".', obsKind: "nameplate", trust: "candidate", confidence: 0.9, fileId: "77777777-7777-4777-8777-777777777776", photoHash: null, observedAt: "2026-11-14T04:06:00.000Z", hazards: [] },
     ]);
     await frames(await ask("and its rated current?", under(VFD, 3)));
-    expect((retrievalOpts()!.subjectQueries as string[] | undefined) ?? []).toEqual([]);
+    expect(retrievalOpts()!.subjectQueries).toEqual(["what is the GS13N-20P2 input current"]);
   });
 
   it("under a component, an open photo that cannot be read back is flagged, not dropped", async () => {

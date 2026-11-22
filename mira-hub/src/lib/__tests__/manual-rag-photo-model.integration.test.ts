@@ -510,6 +510,47 @@ describe("Codex r2 on #5764: the photo's text is judged exactly as typed", () =>
     expect(diagnostics.photoSubjectUnclear).toEqual({ shown: [], earlier: [], carried: true });
   });
 
+  const askHidden = async (tenant: string, docIds: string[], catalogNumber: string) => {
+    const diagnostics: Diagnostics = {};
+    const hits = await retrieveNodeChunks(client, tenant, "Find me the manual", {
+      nodeId: PROJECTS.awb.node, unsPath: null, docIds, validatedDocScope: true, rawQuery: "Find me the manual",
+      identity: PROJECTS.awb.identity, identityStatus: "user_confirmed", diagnostics, catalogNumber,
+      photoText: "Allen-Bradley Micro820. Unit: 2080-LC20-20QWB",
+    } as Parameters<typeof retrieveNodeChunks>[3]);
+    return { hits, diagnostics };
+  };
+
+  it("a private code that is a sibling of the record asks, with no cover to read", async () => {
+    const { hits, diagnostics } = await askHidden(TENANT, [], "2080-LC20-20AWB");
+    expect(hits).toEqual([]);
+    expect(diagnostics.photoSubjectUnclear).toEqual({ shown: [], earlier: [], unknown: true });
+  });
+
+  it("a cover that cannot be read cannot clear a private code: it asks", async () => {
+    // Only the private-code cover read fails; every other query is real.
+    const failing = new Proxy(client, {
+      get(target, prop) {
+        if (prop === "query") {
+          return (sql: unknown, ...rest: unknown[]) =>
+            typeof sql === "string" && sql.includes("hidden-code-eligibility")
+              ? Promise.reject(new Error("cover read failed"))
+              : (target.query as (...a: unknown[]) => unknown)(sql, ...rest);
+        }
+        const value = (target as unknown as Record<PropertyKey, unknown>)[prop];
+        return typeof value === "function" ? (value as (...a: unknown[]) => unknown).bind(target) : value;
+      },
+    });
+    const diagnostics: Diagnostics = {};
+    const hits = await retrieveNodeChunks(failing, TENANT, "Find me the manual", {
+      nodeId: PROJECTS.awb.node, unsPath: null, docIds: [PROJECTS.awb.doc], validatedDocScope: true, rawQuery: "Find me the manual",
+      identity: PROJECTS.awb.identity, identityStatus: "user_confirmed", diagnostics,
+      photoText: "Allen-Bradley Micro820. Unit: 2080-LC20-20QWB",
+    } as Parameters<typeof retrieveNodeChunks>[3]);
+    expect(hits).toEqual([]);
+    expect(diagnostics.photoSubjectUnclear).toEqual({ shown: [], earlier: [], unknown: true });
+  });
+
+
   it("a record sibling in a private field asks (GS11N-20P2 on record, GS11N-20P5 after the serial)", async () => {
     const { hits, diagnostics } = await ask("Find me the manual", "AutomationDirect drive. Serial No 12345678 GS11N 20P5", "GS11N-20P2");
     expect(hits).toEqual([]);
