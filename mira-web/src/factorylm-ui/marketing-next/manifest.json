@@ -49,22 +49,22 @@
     "/status"
   ],
   "files": {
-    "404.html": "196c12d1d43fa245aeaa24079977f118161c35e0e8bc0324af0fa521eccdc40b",
-    "about.html": "e1e94cf213d41a33b27b14661f69ecb2a6ed2041bb6c46490eaf5578dbbaefef",
-    "demo.html": "bc329eacc9efa5a6cc2322a25b6a7566bf124c50ce9785687a3f32505d464f62",
+    "404.html": "208270ee83736e679f91f241c7ec673cc524a5e612224560293a899769deda9e",
+    "about.html": "467fdd53ea528ccee40681b894d11fb6c81d54e344c14de4985bb4692ed4222e",
+    "demo.html": "6e4962a547afe041ec390cdb97742903138c43836c4ec8dcb46b91531f822947",
     "factorylm-next-assets/assets/factory-floor-hero.webp": "378c3beddf128595108e64e98d7219a5a0bd20116c056479539e57e80a82eb51",
     "factorylm-next-assets/assets/mira-workspace-tokens.css": "b51bd0e15d57be0797d712e013fe31ba6f0b7d98dafe924f388f8a691fdc021a",
     "factorylm-next-assets/assets/technician-reference.webp": "6d166b60a0a6272e560cf0b72d0e1f35e4036faf42a61fd05888f605d98ce30f",
     "factorylm-next-assets/favicon.svg": "0dc6741f86a36c642b7a8c1fa6449d49a9e48fd30cfee3ac936e1737a8a492d5",
-    "factorylm-next-assets/next.css": "9014148addfb46ed724c873d8ebf0bb4e0b2c73ff3843678e2e3a10c188cf345",
+    "factorylm-next-assets/next.css": "8d920f251c4a577abea64a8d833a62a3b3601cc9c3827cb0a91f9437be5fdb84",
     "factorylm-next-assets/site.js": "2abeac5339a8da4aeb6324dfa6c78a84a3c10e1c04711a3a632968feffea80fd",
     "factorylm-next-assets/styles.css": "e15c78700c672dfb3f23ad8ae663fa8c7ff57ba7cbb1a8cad3ea70b3ea507cc4",
-    "free-technicians.html": "c602cd21063bc3d0a6bea8af834fd2d7253b4d229eb028d49ffed24d86613b7c",
-    "index.html": "3b066ccbb0b0914063e12e4a4e6d3d4e4c628ff32629fbf2a2333a70d678ff06",
-    "limitations.html": "84a0671e19b29780d4a5d023e44e4bbe26576be7fddcd7f421dbb635d7632a46",
-    "mira.html": "2c27a04209cfd54067e61dc4691a5123541124157be992eb31400b069d74ffc9",
+    "free-technicians.html": "aa792eec2661edd3dcf9c48745b62249d5dd116bad62cdee6cfa83920c33ce7b",
+    "index.html": "829e60515fedac7144f2317a76ae9abf33e4b21c51d0980f4fb3fac875e47be3",
+    "limitations.html": "25f6b0f3c8d1e1e89ad496cc3fb9d06cca9348df053cc843a612725a644172bc",
+    "mira.html": "9f6746414da33e4ab085bdba8a25d1fa925d2cd1a572f8293f9a29ab22c113c9",
     "robots.txt": "ae9dbebb1aedd62a30b2d567585285f6a5badd8dbe98021d2666b8141f9faa5b",
     "sitemap-site.xml": "5ab29fc3142ec1ccd2ac0019facf3c964a077713b3e212a93020a2aa5d9a6ceb",
-    "start.html": "15ee6d36dd508764a0377f7099cf30ee7131acc42ea3f9acab743bf3dfe6f8de"
+    "start.html": "689a16e11325a863b4bc046111a34d220c71f927fb18151960bd49224233ccda"
   }
 }

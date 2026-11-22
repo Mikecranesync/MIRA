@@ -424,3 +424,10 @@ img { display: block; }
   html { scroll-behavior: auto; }
   *, *::before, *::after { transition: none !important; animation: none !important; }
 }
+
+/* Long-form policy text (free-technicians): section rhythm and readable measure. */
+.prose h2 { font-size: clamp(1.5rem, 2.2vw, 1.875rem); line-height: 1.2; letter-spacing: -.03em; font-weight: 650; margin: 0 0 14px; }
+.prose * + h2 { margin-top: 48px; padding-top: 40px; border-top: 1px solid var(--line); }
+.prose p { color: var(--muted); font-size: 1.0625rem; line-height: 1.8; margin: 0; }
+.prose p + p { margin-top: 16px; }
+.prose a { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
