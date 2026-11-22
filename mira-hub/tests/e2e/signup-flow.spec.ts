@@ -2,7 +2,7 @@
  * E2E signup-flow test — trial CTA + magic link + login gate (#108)
  *
  * Walks the critical acquisition path:
- *   factorylm.com/pricing  → Talk to Mike (no self-serve offer, #4570)
+ *   factorylm.com/pricing  → /demo → Email Mike (no self-serve offer, #4570, #5747)
  *   factorylm.com/cmms     → magic link form → success / rate-limited
  *   app.factorylm.com/login → all 3 auth options visible
  *
@@ -44,20 +44,21 @@ test.describe("factorylm.com/pricing — contact CTA (no self-serve offer)", () 
     });
     expect(res?.status()).toBe(200);
 
-    // #4570 retired the paid Assessment offer and every published price. The
-    // acquisition path from /pricing is now an email to Mike.
+    // #4570 retired the paid Assessment offer and every published price. #5747
+    // then retired the /pricing page itself: it 302s to /demo, whose job is the
+    // same — route the visitor to Mike.
+    expect(new URL(page.url()).pathname).toBe("/demo");
     await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
       "href",
-      "https://factorylm.com/pricing",
+      "https://factorylm.com/demo",
     );
-    await expect(page.getByText(/No published price menu/i).first()).toBeVisible({ timeout: 10_000 });
 
     await expect(page.locator(".pricing-card.featured")).toHaveCount(0);
     await expect(page.locator('[data-cta="pricing-assessment"]')).toHaveCount(0);
     await expect(page.locator('a[href$="/buy"], a[href*="/buy?"]')).toHaveCount(0);
     expect(await page.locator("body").innerText()).not.toMatch(/\$\s?\d|book assessment/i);
 
-    const cta = page.locator('a[href="mailto:mike@factorylm.com"]', { hasText: /Talk to Mike/i }).first();
+    const cta = page.locator('a[href^="mailto:mike@factorylm.com"]', { hasText: /Email Mike/i }).first();
     await expect(cta).toBeVisible();
   });
 
