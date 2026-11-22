@@ -22,7 +22,7 @@ function manifest() {
 const MIME: Record<string, string> = {
   html: "text/html; charset=utf-8", css: "text/css; charset=utf-8",
   js: "application/javascript; charset=utf-8", svg: "image/svg+xml",
-  webp: "image/webp", xml: "application/xml; charset=utf-8", txt: "text/plain; charset=utf-8",
+  webp: "image/webp", jpg: "image/jpeg", xml: "application/xml; charset=utf-8", txt: "text/plain; charset=utf-8",
 };
 
 /** Whether this adapter owns the path under the current rollout flags. */
@@ -74,7 +74,7 @@ export function createFactorylmMarketingRouter() {
     if (url.pathname.startsWith("/factorylm-next-assets/")) {
       const candidate = url.pathname.slice(1);
       file = Object.hasOwn(map.files, candidate) ? candidate : "404.html";
-    } else if (["/robots.txt", "/sitemap-site.xml"].includes(url.pathname)) {
+    } else if (["/robots.txt", "/sitemap-site.xml", "/llms.txt", "/llms-full.txt"].includes(url.pathname)) {
       file = url.pathname.slice(1);
     }
     if (!file) return next();

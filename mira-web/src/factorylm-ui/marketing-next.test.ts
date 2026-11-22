@@ -120,6 +120,40 @@ describe("next FactoryLM public adapter", () => {
     expect(await missing.text()).toContain("This page isn’t on the floor");
   });
 
+  test("AI-assistant summaries come from the new site while it is on, and the old ones when it is off", async () => {
+    process.env.FACTORYLM_MARKETING_NEXT = "true";
+    for (const path of ["/llms.txt", "/llms-full.txt"]) {
+      const response = await app().request(path);
+      const text = await response.text();
+      expect(response.status).toBe(200);
+      expect(response.headers.get("content-type")).toContain("text/plain");
+      expect(text).toContain("Free for individual technicians");
+      expect(text).toContain("https://app.factorylm.com/signup/");
+      expect(text).not.toContain("factorylm.com/cmms");
+    }
+    process.env.FACTORYLM_MARKETING_NEXT = "false";
+    expect(await (await app().request("/llms.txt")).json()).toMatchObject({ upstream: true });
+  });
+
+  test.each(["/", "/mira", "/about", "/start", "/demo", "/limitations", "/free-technicians"])("%s has search-length tags, a JPEG preview and valid structured data", async (path) => {
+    process.env.FACTORYLM_MARKETING_NEXT = "true";
+    const html = await (await app().request(path)).text();
+    const decode = (s: string) => s.replaceAll("&#x27;", "'").replaceAll("&quot;", '"').replaceAll("&amp;", "&");
+    const title = decode(html.match(/<title>(.*?)<\/title>/)![1]);
+    const description = decode(html.match(/<meta name="description" content="([^"]*)">/)![1]);
+    expect(title.length).toBeLessThanOrEqual(60);
+    expect(description.length).toBeGreaterThanOrEqual(120);
+    expect(description.length).toBeLessThanOrEqual(160);
+    expect(html).toContain('<meta property="og:image" content="https://factorylm.com/factorylm-next-assets/assets/og-image.jpg">');
+    const blocks = [...html.matchAll(/<script type="application\/ld\+json">(.*?)<\/script>/gs)];
+    expect(blocks).toHaveLength(1);
+    const graph = JSON.parse(blocks[0][1])["@graph"] as { "@type": string }[];
+    expect(graph.map((node) => node["@type"])).toEqual(expect.arrayContaining(["Organization", "WebSite"]));
+    const image = await app().request("/factorylm-next-assets/assets/og-image.jpg");
+    expect(image.status).toBe(200);
+    expect(image.headers.get("content-type")).toBe("image/jpeg");
+  });
+
   test("disabling the flag immediately restores upstream rendering", async () => {
     const server = app();
     process.env.FACTORYLM_MARKETING_NEXT = "true";
