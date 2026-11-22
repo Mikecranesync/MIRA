@@ -118,7 +118,7 @@ async function frames(res: Response): Promise<Record<string, unknown>[]> {
     .map((l) => JSON.parse(l.slice(6)) as Record<string, unknown>);
 }
 
-type Opts = { photoText?: string; subjectQueries?: string[]; subjectUnclear?: boolean[]; diagnostics?: Record<string, unknown> };
+type Opts = { photoText?: string; photoUnread?: boolean; subjectQueries?: string[]; subjectUnclear?: boolean[]; diagnostics?: Record<string, unknown> };
 const passOpts = () => ragMock.retrieveNodeChunks.mock.calls.map((c) => c[3] as Opts);
 
 beforeEach(() => {
@@ -164,6 +164,7 @@ describe("#5706 — a nameplate photo of another drive is not answered from the 
     await (await POST(req({ message: "Find me the manual", sourceDocIds: [DOC_A], visualEvidence: { fileId: PHOTO } }), params)).text();
     expect(passOpts().length).toBeGreaterThan(0);
     expect(passOpts()[0].photoText).toBe(GS20_READING);
+    expect(passOpts().every((o) => o.photoUnread === false)).toBe(true);
   });
 
   it("serves the photo refusal: names both models, asks one question, no provider call, no citation", async () => {
@@ -324,6 +325,27 @@ describe("#5706 — a nameplate photo of another drive is not answered from the 
     await (await POST(req({ message: "Find me the manual", sourceDocIds: [DOC_A], threadId: THREAD, visualEvidence: { fileId: PHOTO } }), params)).text();
     expect(passOpts().length).toBeGreaterThan(0);
     expect(passOpts().every((o) => o.photoText === undefined)).toBe(true);
+    // Codex r3 F3: not "no photo" — the photo's machine is unknown, on every pass.
+    expect(passOpts().every((o) => o.photoUnread === true)).toBe(true);
+  });
+
+  it("the safety stop's searches get the unread flag too", async () => {
+    filesMock.photoLinkedToTarget.mockResolvedValue({ fileId: PHOTO, capturedAt: "2026-11-21T20:57:06.047Z" });
+    veMock.loadVisualEvidenceForPhoto.mockImplementation(async (...args: unknown[]) => (args[3] ? null : lookRow(PHOTO, GS20_READING)));
+    await (
+      await POST(req({ message: "How do I pull the RFI jumper with it powered?", sourceDocIds: [DOC_A], threadId: THREAD, visualEvidence: { fileId: PHOTO } }), params)
+    ).text();
+    expect(passOpts().length).toBeGreaterThan(1);
+    expect(passOpts().every((o) => o.photoUnread === true)).toBe(true);
+  });
+
+  it("a sent photo with no active reading anywhere (rejected) is unread too; the hazard read stays file-wide", async () => {
+    filesMock.photoLinkedToTarget.mockResolvedValue({ fileId: PHOTO, capturedAt: "2026-11-21T20:57:06.047Z" });
+    veMock.loadVisualEvidenceForPhoto.mockResolvedValue(null);
+    await (await POST(req({ message: "Find me the manual", sourceDocIds: [DOC_A], threadId: THREAD, visualEvidence: { fileId: PHOTO } }), params)).text();
+    expect(passOpts().length).toBeGreaterThan(0);
+    expect(passOpts().every((o) => o.photoUnread === true)).toBe(true);
+    expect(veMock.loadVisualEvidenceForPhoto).toHaveBeenCalledWith(expect.anything(), expect.any(String), PHOTO);
   });
 
   // Codex r2 F3: another conversation's reading never decides this turn — not
@@ -396,6 +418,8 @@ describe("#5706 — a nameplate photo of another drive is not answered from the 
     });
     await (await POST(req({ message: "What's its rated current?", sourceDocIds: [DOC_A], threadId: THREAD }), params)).text();
     expect(passOpts()[0].subjectQueries?.[0]).not.toContain("GS20");
+    // Codex r3 F3: still linked, but no reading here — its machine is unknown, so it asks.
+    expect(passOpts()[0].subjectUnclear).toEqual([true]);
   });
 
   it("an explicit return to the project's unit keeps its photo out of the follow-up (Codex r2 F5)", async () => {
@@ -615,6 +639,7 @@ describe("#5706 — a nameplate photo of another drive is not answered from the 
     await (await POST(req({ message: "Find me the manual", sourceDocIds: [DOC_A] }), params)).text();
     expect(passOpts().length).toBeGreaterThan(0);
     expect(passOpts().every((o) => o.photoText === undefined)).toBe(true);
+    expect(passOpts().every((o) => o.photoUnread === false)).toBe(true);
   });
 
   it("an earlier photo's reading is never passed as this turn's photo (#3966); an open LOOK carries as a subject", async () => {

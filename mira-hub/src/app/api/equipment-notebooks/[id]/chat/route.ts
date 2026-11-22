@@ -2055,6 +2055,11 @@ async function handleChatTurn(
   // words. `lookRow` stays file-wide: the hazard stop aggregates every active
   // reading of the photo, whoever made it.
   let conversationLookText: string | undefined;
+  // Codex r3 F3 on #5764: a verified photo with no active reading in this
+  // conversation (rejected, or read only in another one) names no machine we
+  // may use — it is not "no photo". Retrieval asks which machine (unless the
+  // question names one). The hazard stop still reads the file-wide row.
+  let conversationPhotoUnread = false;
   if (visualEntry) {
     try {
       [lookRow, conversationLookText] = await withTenantContext(ctx.tenantId, async (c) => {
@@ -2064,6 +2069,7 @@ async function handleChatTurn(
           : null;
         return [fileWide, ours?.text] as const;
       });
+      conversationPhotoUnread = !conversationLookText;
     } catch (err) {
       // F2: fail closed when a verified photo's descriptor cannot be loaded.
       console.error("[notebook-chat] look observation load failed (fail-closed for verified photo):", err);
@@ -2567,7 +2573,9 @@ async function handleChatTurn(
         await withTenantContext(ctx.tenantId, async (c) => {
           for (const { turn, fileId } of linked) {
             const row = await loadVisualEvidenceForPhoto(c, ctx.tenantId, fileId, scope);
+            // Still linked but no active reading here (Codex r3 F3): unread, which asks.
             if (row?.text) readings.set(turn, row.text);
+            else unread.add(turn);
           }
         });
       }
@@ -2850,6 +2858,7 @@ async function handleChatTurn(
             // nameplate of another drive is not answered from this project's
             // manual. This conversation's reading of it (Codex r1 F3).
             photoText: conversationLookText,
+            photoUnread: conversationPhotoUnread,
             includeQueryRecall: Boolean(lookRow?.text && buildRetrievalQuery(message, [], lookRow.text) !== message.trim()),
             // validateChatSources() has already proven tenant + notebook membership
             // for every id in docIds — the validated doc set is the boundary, so a
@@ -3704,6 +3713,7 @@ async function handleChatTurn(
             // The photo sent with this question names the machine when the
             // message does not, for the stop exactly as for the answer (#5706).
             photoText: conversationLookText,
+            photoUnread: conversationPhotoUnread,
             // A stop is never withheld over a look-alike catalog number (Mike
             // 2026-11-12, L8): the answer pass refuses such a question, the
             // stop still serves the lockout page and calls the number out.

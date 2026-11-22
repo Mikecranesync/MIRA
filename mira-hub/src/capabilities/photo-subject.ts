@@ -93,10 +93,15 @@ export function readPhotoModel(reading: string | null | undefined): PhotoModelRe
   // does not name ("GS20-23P0 (S/N)" with nothing else readable) is unknown.
   const families = new Set(text ? modelMentionsInText(text).map((m) => labelKey(m.id)) : []);
   const serialNamesNew = serials.some((serial) => modelMentionsInText(serial).some((m) => !families.has(labelKey(m.id))));
-  const hidden = labelled.length > 0 ? [] : [...new Set(unlistedModelNumbers([rest, ...serials].join("\n")).map((n) => n.label))];
+  // Codex r3 F1 on #5764: a MODEL field decides only when it names a full
+  // number. "MODEL: Micro820" names a family, so a "Catalog No. 2080-LC20-20QWB"
+  // after the serial is still checked: the family can never vouch for which
+  // catalog number it is.
+  const deciding = labelled.filter((value) => [...modelIdentitiesInText(value)].some((id) => id.includes("-")) || unlistedModelNumbers(value).length > 0);
+  const hidden = deciding.length > 0 ? [] : [...new Set(unlistedModelNumbers([rest, ...serials].join("\n")).map((n) => n.label))];
   return {
     text: text && (namesAnyModel(text) || unlistedModelNumbers(text).length > 0) ? text : null,
-    unknown: labelled.length === 0 && (restNamesNew || serialNamesNew),
+    unknown: deciding.length === 0 && (restNamesNew || serialNamesNew),
     hidden,
   };
 }
@@ -127,10 +132,16 @@ export function namesOneMachine(text: string): boolean {
 }
 
 /** The reader finds models here but cannot tell which one is meant ("GS10 …
- *  Micro820", two TP700 order numbers). Typed, such a question skips the
- *  coverage check; from a photo it is asked about instead (fail closed). */
+ *  Micro820", two TP700 order numbers), or the photo shows two full numbers
+ *  ("GS20-23P0" beside "GS20-21P0", Codex r3 F2 on #5764: the family reader
+ *  sees one GS20). Typed, such a question skips the coverage check; from a
+ *  photo it is asked about instead (fail closed), on a first turn too. A
+ *  family name beside its own full number (TP700 with its order number, GS20
+ *  with GS20-23P0) is one machine: only full numbers count here. */
 export function photoIsAmbiguous(text: string): boolean {
-  return namesAnyModel(text) && resolveModelFromObservationText(text).ambiguous;
+  if (!namesAnyModel(text)) return false;
+  if (resolveModelFromObservationText(text).ambiguous) return true;
+  return [...modelIdentitiesInText(text)].filter((id) => id.includes("-")).length > 1;
 }
 
 /** The models a text names, for a question back to the technician: each

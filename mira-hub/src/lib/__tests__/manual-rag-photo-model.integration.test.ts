@@ -151,7 +151,7 @@ type Diagnostics = {
   photoSubjectUnclear?: { shown: string[]; earlier: string[]; carried?: true; unknown?: true };
 } & Record<string, unknown>;
 
-async function ask(message: string, photoText?: string, catalogNumber?: string, earlier?: { subjectQueries?: string[]; subjectOutOfReach?: boolean; subjectUnclear?: boolean[] }) {
+async function ask(message: string, photoText?: string, catalogNumber?: string, earlier?: { subjectQueries?: string[]; subjectOutOfReach?: boolean; subjectUnclear?: boolean[]; photoUnread?: boolean }) {
   const diagnostics: Diagnostics = {};
   const hits = await retrieveNodeChunks(client, TENANT, message, {
     nodeId: NODE,
@@ -420,10 +420,10 @@ describe("Codex r2 on #5764: the photo's text is judged exactly as typed", () =>
     const withEarlier = await ask("Find me the manual", sib, "GS11N-20P2", { subjectQueries: ["What about the GS13N-21P0?"] });
     expect(withEarlier.hits).toHaveLength(0);
     expect(withEarlier.diagnostics.photoSubjectUnclear?.earlier).toEqual(expect.arrayContaining(["GS13N-21P0"]));
-    // On its own: judged as typed, and the look-alike is refused.
+    // On its own too (Codex r3 F2): two full numbers on one photo ask which machine.
     const alone = await ask("Find me the manual", sib, "GS11N-20P2");
     expect(alone.hits).toHaveLength(0);
-    expect(alone.diagnostics.siblingOfRecordAsk?.asked).toContain("GS11N-20P2A");
+    expect(alone.diagnostics.photoSubjectUnclear).toEqual({ shown: ["GS11N-20P2", "GS11N-20P2A"], earlier: [] });
   });
 
   it("a follow-up carrying a question whose photo was unclear asks again, never answers", async () => {
@@ -551,6 +551,44 @@ describe("Codex r2 on #5764: the photo's text is judged exactly as typed", () =>
   });
 
 
+  // Codex r3 F1: a MODEL field naming only the family never vouches for the
+  // catalog number printed after the serial.
+  it("a family-only MODEL field keeps the private catalog check: QWB after the serial asks in the AWB project", async () => {
+    const reading = "MODEL: Micro820. S/N: 12345678. Catalog No. 2080-LC20-20QWB.";
+    const awb = await askIn("awb", "What is its input voltage?", reading);
+    expect(awb.hits).toEqual([]);
+    expect(awb.diagnostics.photoSubjectUnclear).toEqual({ shown: [], earlier: [], unknown: true });
+    expect(JSON.stringify(awb.diagnostics)).not.toMatch(/QWB|12345678/);
+    // Controls: the matching catalog number, and a plate with no catalog number, are served.
+    expect((await askIn("awb", "What is its input voltage?", "MODEL: Micro820. S/N: 12345678. Catalog No. 2080-LC20-20AWB.")).hits.length).toBeGreaterThan(0);
+    expect((await askIn("awb", "What is its input voltage?", "MODEL: Micro820. S/N: 12345678.")).hits.length).toBeGreaterThan(0);
+    // A MODEL field naming the full number still decides.
+    expect((await askIn("awb", "What is its input voltage?", "MODEL: 2080-LC20-20AWB. S/N: 12345678. Lot 2080-LC20-20QWB.")).hits.length).toBeGreaterThan(0);
+  });
+
+  // Codex r3 F2: a first turn, no history, no catalog number on record.
+  it("a first-turn photo of two drives in one family asks which machine, with no answer", async () => {
+    const { hits, diagnostics } = await ask("What is its rated current?", 'A panel with two drives labeled "GS20-23P0" and "GS20-21P0".');
+    expect(hits).toEqual([]);
+    expect(diagnostics.photoSubjectUnclear).toEqual({ shown: ["GS20-23P0", "GS20-21P0"], earlier: [] });
+    // Control: one drive with its family name and its full number is one machine (judged as typed).
+    const one = await ask("What is its rated current?", 'Plate reads "GS20-23P0". GS20 series AC drive.');
+    expect(one.diagnostics.photoSubjectUnclear).toBeUndefined();
+    expect(one.diagnostics.namedModelMismatch?.source).toBe("photo");
+  });
+
+  // Codex r3 F3: a verified photo with no reading of its own in this conversation.
+  it("a sent photo with no reading here asks when the question names no model; a typed model still decides", async () => {
+    const unread = await ask("Find me the manual", undefined, undefined, { photoUnread: true });
+    expect(unread.hits).toEqual([]);
+    expect(unread.diagnostics.photoSubjectUnclear).toEqual({ shown: [], earlier: [], unknown: true });
+    const typed = await ask("Find me the manual for the GS11N-20P2", undefined, undefined, { photoUnread: true });
+    expect(typed.diagnostics.photoSubjectUnclear).toBeUndefined();
+    expect(typed.hits.length).toBeGreaterThan(0);
+    // Control: no photo at all is judged on its words.
+    expect((await ask("Find me the manual")).hits.length).toBeGreaterThan(0);
+  });
+
   it("a record sibling in a private field asks (GS11N-20P2 on record, GS11N-20P5 after the serial)", async () => {
     const { hits, diagnostics } = await ask("Find me the manual", "AutomationDirect drive. Serial No 12345678 GS11N 20P5", "GS11N-20P2");
     expect(hits).toEqual([]);
@@ -577,7 +615,8 @@ describe("Codex r2 on #5764: the photo's text is judged exactly as typed", () =>
   // on record, the photo turn decides exactly what typing its public text
   // decides — with stated exceptions that ask instead: a photo the reader
   // cannot resolve to one machine (typed, it would skip the coverage check),
-  // and one whose model sits among its private fields (never read, so its
+  // one showing two full numbers (Codex r3 F2: typed, the family reader sees
+  // one series and may answer from it), and one whose model sits among its private fields (never read, so its
   // machine is unknown: "GS20-23P0 (S/N)", #5706 review of 185f15c). With
   // an earlier open subject, a photo naming one machine ends it as a typed
   // model does; any other photo naming models asks which machine. Never looser.
@@ -592,7 +631,7 @@ describe("Codex r2 on #5764: the photo's text is judged exactly as typed", () =>
     lookalike: "Two drives labeled GS11N-20P2 and GS11N-20P2A.",
     suffixSerial: 'The label reads "GS20-23P0 (S/N)". The model is unreadable.',
   };
-  const asksAlone = new Set(["panel", "suffixSerial"]);
+  const asksAlone = new Set(["panel", "suffixSerial", "twoGS20", "lookalike"]);
   const releases = new Set(["GS20", "GS11N", "powerflex4m"]);
   const namesNothing = new Set(["unreadable"]);
   const earlier = { subjectQueries: ["What about the GS13N-21P0?"] };

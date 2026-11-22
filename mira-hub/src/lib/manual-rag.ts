@@ -1614,6 +1614,10 @@ export async function retrieveNodeChunks(
      *  GS20 ask, and a refusal reports `source: "photo"`. The caller passes the
      *  reading of THIS conversation, exactly scoped (route.ts, Codex r1/r2 F3). */
     photoText?: string;
+    /** This turn sent a verified photo that has no active reading in this
+     *  conversation (rejected, or read only in another one): its machine is
+     *  unknown, so a question naming no model asks (Codex r3 F3 on #5764). */
+    photoUnread?: boolean;
     /** #4983 — the question rewritten into the manual's vocabulary (search
      *  phrases a model produced from the forum-style post). Rides as one more
      *  query variant: its own OR pass for recall and its terms in the rerank's
@@ -1847,7 +1851,7 @@ export async function retrieveNodeChunks(
   // (photo-subject.ts). The same rule joins a carried turn's photo
   // (conversation-subject.ts questionWithPhoto), so a follow-up is judged on
   // the machine its turn was judged on.
-  const live = questionWithPhoto(typedQuestion, opts.photoText, Boolean(recordText));
+  const live = questionWithPhoto(typedQuestion, opts.photoText, Boolean(recordText), opts.photoUnread === true);
   const ownQuestion = live.text;
   const photoNamesModel = live.photo !== null && namesKnownModel(live.photo);
   const ownNumbers = unlistedModelNumbers(ownQuestion);

@@ -124,9 +124,11 @@ describe("readSubject carries a turn's photo by the same rule (Codex r1 F5)", ()
   });
 
   it("an earlier subject behind a return to the unit on record does not make the photo unclear", async () => {
-    const twoGS20 = "Two drives labeled GS20-23P0 and GS20-21P0.";
-    expect(readSubject([open("What about the GS11N-20P5?"), open("ok back to mine"), open("Find me the manual", twoGS20)], 6, true).unclear).toBeUndefined();
-    expect(readSubject([open("What about the GS11N-20P5?"), open("ok back to mine"), open("Find me the manual", twoGS20)], 6, false).unclear?.[0]).toBe(true);
+    // A plate naming a model that is not specific enough to end a subject, yet
+    // not ambiguous on its own (a family name beside its order number).
+    const tp700 = "Siemens TP700 Comfort. Order No. 6AV2124-0GC01-0AX0.";
+    expect(readSubject([open("What about the GS11N-20P5?"), open("ok back to mine"), open("Find me the manual", tp700)], 6, true).unclear).toBeUndefined();
+    expect(readSubject([open("What about the GS11N-20P5?"), open("ok back to mine"), open("Find me the manual", tp700)], 6, false).unclear?.[0]).toBe(true);
   });
 
   it("a document answer still closes the run", () => {
@@ -212,6 +214,20 @@ describe("readPhotoModel: a model among the private fields makes the machine unk
     const read = readSubject([{ question: "Find me the manual", answerStatus: "insufficient_evidence", basis: null, photoUnread: true }], 6);
     expect(read.questions).toEqual(["Find me the manual"]);
     expect(read.unclear).toEqual([true]);
+  });
+
+  it("Codex r3 F1: a MODEL field decides only when it names a full number", () => {
+    expect(readPhotoModel("MODEL: Micro820. S/N: 12345678. Catalog No. 2080-LC20-20QWB.").hidden).toContain("2080-LC20-20QWB");
+    expect(readPhotoModel("MODEL: GS11N. S/N: 12345678 GS20-23P0").unknown).toBe(true);
+    expect(readPhotoModel("MODEL: 2080-LC20-20AWB. Unit: 2080-LC20-20QWB").hidden).toEqual([]);
+    expect(readPhotoModel("MODEL: GS20-23P0. S/N: 12345678 GS11N-20P2").unknown).toBe(false);
+  });
+
+  it("Codex r3 F2: two full numbers are ambiguous; a family beside its own number is not", () => {
+    expect(photoIsAmbiguous('Two drives labeled "GS20-23P0" and "GS20-21P0".')).toBe(true);
+    expect(photoIsAmbiguous("Two drives labeled GS11N-20P2 and GS11N-20P2A.")).toBe(true);
+    expect(photoIsAmbiguous('Plate reads "GS20-23P0". GS20 series AC drive.')).toBe(false);
+    expect(photoIsAmbiguous("Siemens TP700 Comfort. Order No. 6AV2124-0GC01-0AX0.")).toBe(false);
   });
 
   it("a serial value is removed as a whole code: a model it begins stays readable", () => {
