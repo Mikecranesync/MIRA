@@ -153,7 +153,8 @@ describe("service worker never serves /posthog-init.js from cache (Codex #4900 F
 // the adapter's own test files are not in ci.yml's web list.
 describe("new marketing site conversion tracking", () => {
   const ROUTES = ["/", "/mira", "/about", "/start", "/demo", "/limitations", "/free-technicians"];
-  const CONVERSION_HREF = /href="(?:https:\/\/[^"]+\/signup\/|\/demo|mailto:[^"]*demo[^"]*)"/;
+  // Deliberately broader than the tagger: any signup, demo or demo-mailto link.
+  const CONVERSION_HREF = /href="[^"]*(?:\/signup|\/demo|mailto:[^"]*demo)[^"]*"/i;
 
   async function servePage(route: string, hubUrl?: string) {
     const env = { next: process.env.FACTORYLM_MARKETING_NEXT, free: process.env.MIRA_FREE_TECHNICIANS, hub: process.env.PLG_HUB_URL };
@@ -183,6 +184,22 @@ describe("new marketing site conversion tracking", () => {
     expect(once.split('src="/posthog-init.js"').length - 1).toBe(1);
     expect(once.indexOf('src="/posthog-init.js"')).toBeLessThan(once.indexOf("</head>"));
     expect(instrumentMarketingHtml(once).split('src="/posthog-init.js"').length - 1).toBe(1);
+    expect(instrumentMarketingHtml(once)).toBe(once);
+  });
+
+  test("tagging tolerates slash, query and fragment variants but not look-alikes", async () => {
+    const { instrumentMarketingHtml } = await import("../factorylm-ui/marketing-next.js");
+    const tag = (href: string) => instrumentMarketingHtml(`<head></head><a href="${href}">x</a>`).match(/data-cta="([^"]+)"/)?.[1] ?? null;
+    expect(tag("https://app.factorylm.com/signup/?ref=vfd")).toBe("start_free");
+    expect(tag("https://app.factorylm.com/signup")).toBe("start_free");
+    expect(tag("/demo#form")).toBe("request_demo");
+    expect(tag("/demo/")).toBe("request_demo");
+    expect(tag("mailto:mike@factorylm.com?subject=FactoryLM%20demo%20request")).toBe("demo_email");
+    expect(tag("/start?manual=1")).toBe("start_guide");
+    expect(tag("/demonstration")).toBeNull();
+    expect(tag("https://evil.example/signup/")).toBeNull();
+    expect(tag("https://app.factorylm.com.evil.example/signup/")).toBeNull();
+    expect(tag("mailto:mike@factorylm.com")).toBeNull();
   });
 
   for (const route of [...ROUTES, "/404"]) {

@@ -89,25 +89,28 @@ export function rewriteLegacySitemap(xml: string, routes: string[], origin: stri
   return kept.replace("</urlset>", added + "\n</urlset>");
 }
 
-/** Conversion CTAs, matched by exact href. The existing /posthog-init.js click
- * listener sends `cta_click {cta, href, page}` for any [data-cta] element, so
- * tagging the links is all the new site needs to show up in funnels. */
-const CTA_BY_HREF: ReadonlyArray<[href: string, cta: string]> = [
-  [PRODUCTION_HUB_ORIGIN + "/signup/", "start_free"],
-  [PRODUCTION_HUB_ORIGIN + "/login/", "sign_in"],
-  ["/demo", "request_demo"],
-  ["mailto:mike@factorylm.com?subject=FactoryLM%20demo%20request", "demo_email"],
-  ["/start", "start_guide"],
+/** Conversion CTAs by link target. The existing /posthog-init.js click listener
+ * sends `cta_click {cta, href, page}` for any [data-cta] element, so tagging the
+ * links is all the new site needs to show up in funnels. Each pattern tolerates
+ * a trailing slash, query or fragment so a content edit cannot silently untag. */
+const HUB = PRODUCTION_HUB_ORIGIN.replace(/[.]/g, "\\.");
+const CTA_RULES: ReadonlyArray<[pattern: RegExp, cta: string]> = [
+  [new RegExp(`^${HUB}/signup/?(?:[?#].*)?$`), "start_free"],
+  [new RegExp(`^${HUB}/login/?(?:[?#].*)?$`), "sign_in"],
+  [/^\/demo\/?(?:[?#].*)?$/, "request_demo"],
+  [/^mailto:[^?]*\?(?:.*&)?subject=[^&]*demo/i, "demo_email"],
+  [/^\/start\/?(?:[?#].*)?$/, "start_guide"],
 ];
 const POSTHOG_TAG = '<script src="/posthog-init.js" defer></script>';
 
 /** Loads the shared analytics script and tags every conversion link. Runs on the
- * checked HTML before any staging origin rewrite, so the hrefs match exactly. */
+ * checked HTML before any staging origin rewrite, so Hub links use the production origin. */
 export function instrumentMarketingHtml(html: string): string {
-  let out = html;
-  for (const [href, cta] of CTA_BY_HREF) {
-    out = out.replaceAll(`href="${href}"`, `data-cta="${cta}" href="${href}"`);
-  }
+  const out = html.replace(/<a\b([^>]*?)\bhref="([^"]*)"/g, (tag, before: string, href: string) => {
+    if (/\bdata-cta=/.test(tag)) return tag;
+    const cta = CTA_RULES.find(([pattern]) => pattern.test(href))?.[1];
+    return cta ? `<a${before}data-cta="${cta}" href="${href}"` : tag;
+  });
   return out.includes(POSTHOG_TAG) ? out : out.replace("</head>", `  ${POSTHOG_TAG}\n</head>`);
 }
 
