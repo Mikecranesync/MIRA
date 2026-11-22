@@ -25,7 +25,7 @@ import { githubToken } from "./required-fixes";
 import { reserveWalkSpend, settleWalkSpend } from "./spend-ledger";
 import { assertOpenRouterCeiling, BudgetMeter, checkFingerprint, identity, ledgerVerdictFor, pricesFromEnv, releaseOwnPilotHold, runtimeDrift, runtimeOf, stagingBase, teardownTenant, worstCaseTurnUsd, type RuntimeIdentity } from "./staging";
 import { decodeChatBody } from "./stream-decode";
-import { admitPaidTurn, recoverSetupTenant, settlementOf } from "./journey-guard";
+import { admitPaidTurn, closeCancelledTurn, recoverSetupTenant, settlementOf } from "./journey-guard";
 import { exitOk, receiptOf, type Step } from "./journey-receipt";
 
 const TARGET = (process.env.CV_TARGET ?? "desktop") as "desktop" | "phone" | "pixel" | "tablet";
@@ -753,6 +753,9 @@ test("cv101 journey", async () => {
       await openProject(page, MACHINE);
       await newChat(page);
       await admitPaid(meter, "S17");
+      // A cancelled stream has no ledger evidence of its cost: keep the whole reservation (Codex r3 F1).
+      // Closed before Send, so no failure between dispatch and Stop can skip it.
+      closeCancelledTurn(meter, "S17");
       await UI.clone.composer(page).fill("Explain every specification table in this Micro820 manual in detail with page numbers.");
       await press(page, page.getByRole("button", { name: "Send" }));
       await page.waitForTimeout(1_200);
@@ -761,8 +764,6 @@ test("cv101 journey", async () => {
       if (had) await stop.click();
       await page.waitForTimeout(4_000);
       const t = (await page.locator('.fl-turn--aui[data-role="assistant"]').last().innerText().catch(() => "")).replace(/\s+/g, " ");
-      // No ledger check for a cancelled stream, by design: its booked worst case still bounds it, so
-      // it does not unbound the meter. S17 is the last paid turn (Codex r2 F1).
       s.actual = `stop button=${had}; turn: "${t.slice(0, 300)}"`;
       s.verdict = had && !/answered/i.test(t) ? "PASS" : "FAIL";
     });

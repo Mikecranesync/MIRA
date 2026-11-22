@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { admitPaidTurn, recoverSetupTenant, settlementOf } from "./journey-guard";
+import { admitPaidTurn, closeCancelledTurn, recoverSetupTenant, settlementOf } from "./journey-guard";
 import { BudgetMeter, type RuntimeIdentity } from "./staging";
 
 const start: RuntimeIdentity = { gitSha: "a6e27e244", builtAt: "2026-11-22T13:01:24Z", deploymentGeneration: "gen-1", fingerprintHash: "fp-1" };
@@ -67,5 +67,16 @@ describe("recoverSetupTenant", () => {
     const r = await recoverSetupTenant(async () => { throw new Error("db down"); });
     expect(r.tenantId).toBeNull();
     expect(r.error).toMatch(/unreadable after 3 attempts \(db down\); token kept/);
+  });
+});
+
+describe("closeCancelledTurn", () => {
+  it("keeps the whole reservation after a deliberately cancelled paid turn", () => {
+    const m = new BudgetMeter(1, 0.1);
+    admitPaidTurn(m, start, start, "S17");
+    expect(settlementOf(m, 1).settle).toBe(true); // precondition: bounded before the cancel
+    closeCancelledTurn(m, "S17");
+    expect(settlementOf(m, 1)).toMatchObject({ settle: false });
+    expect(settlementOf(m, 1).note).toMatch(/S17 \(cancelled stream/);
   });
 });

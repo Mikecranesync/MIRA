@@ -47,3 +47,12 @@ export async function recoverSetupTenant(classify: () => Promise<string | null>,
   }
   return { tenantId: null, error: `setup token receipt unreadable after ${attempts} attempts (${error}); token kept for recovery` };
 }
+
+/**
+ * After a paid turn the run cancels on purpose (S17), there is no ledger evidence of what it cost:
+ * Stop may not have cut the answer off. Unbound the meter, so the whole reservation stays counted
+ * until someone reconciles it by hand (Codex r3 F1, Mike chose A 2026-11-22).
+ */
+export function closeCancelledTurn(meter: Pick<BudgetMeter, "halt">, id: string): void {
+  meter.halt(id, "cancelled stream: its cost is not reconciled, so the full reservation stays counted");
+}
