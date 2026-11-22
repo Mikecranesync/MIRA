@@ -124,13 +124,11 @@ async function notebookRecord(page: Page): Promise<NbRecord | null> {
  */
 async function press(page: Page, target: Locator) {
   if (!DEVICE) return target.click();
-  await target.scrollIntoViewIfNeeded();
-  // Let the page settle first: the on-screen keyboard closing after typing shifts the layout, and a
-  // tap measured before that lands beside the control (tablet sign-up, dry3).
-  await page.waitForTimeout(400);
-  const box = await target.boundingBox();
-  if (!box) return target.click();
-  await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
+  // Playwright's tap waits until the control is visible, stable, enabled and the one under the
+  // finger, then sends a touch at its centre. A raw coordinate tap measured too early (keyboard
+  // closing, a sheet sliding in) landed beside the control on the tablet (dry3, dry4).
+  void page;
+  await target.tap();
 }
 
 /** Settle a cleanup step within `ms` so one hung call cannot stop the steps after it. */
@@ -419,7 +417,7 @@ test("cv101 journey", async () => {
       await press(page, page.getByRole("button", { name: "New project" }));
       const machineBtn = page.getByRole("button", { name: new RegExp(`^${MACHINE.replace(/[()]/g, ".")}`) });
       s.actual = `machine row: ${(await machineBtn.innerText()).replace(/\s+/g, " ")}`;
-      await machineBtn.click();
+      await press(page, machineBtn);
       await press(page, page.getByRole("button", { name: "Next" }));
       await page.getByLabel("Upload PDF").setInputFiles({ name: MANUAL.name, mimeType: "application/pdf", buffer: readFileSync(MANUAL.file) });
       await press(page, page.getByRole("button", { name: "Review" }));
