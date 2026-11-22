@@ -35,3 +35,4 @@ mira-hub/src/lib/knowledge-graph/__tests__/hierarchy-backfill-propose.test.ts  #
 tools/seeds/demo-conveyor-001.sql                          # demo seed (commented inserts)
 tools/seeds/demo-hub-tenant.sql                            # demo seed — ground-truth garage-cell topology (PLC CONTROLS VFD, VFD DRIVES conveyor), not MIRA-inferred
 tools/seeds/northwind-bottling-hub.sql                     # demo seed — Northwind CV-200 line topology (GS10 DRIVES motor, PLC CONTROLS line), not MIRA-inferred
+tests/test_ontology_runtime_contract.py                    # test site — seeds two rows in a throwaway local PostgreSQL to reproduce #5523 through the real apply_kg_approval; no shared DB (#5528)

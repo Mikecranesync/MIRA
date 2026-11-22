@@ -1,3 +1,5 @@
+# PROTECTS: mirash:InvalidatedNotCurrentShape
+#
 # R14b satisfied — the refuted claim is kept for audit but is not exposed as current.
 
 @prefix mira: <https://ontology.factorylm.com/mira#> .

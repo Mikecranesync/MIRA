@@ -236,6 +236,22 @@ mirash:WritableSignalShape
     a sh:NodeShape ;
     sh:targetClass mira:CommandSignal ;
     rdfs:label "R13b command signals are read-only to MIRA" ;
+    rdfs:comment """FAILS CLOSED on missing capability metadata (Phase 2 correction).
+
+The original form carried only `sh:not [ sh:in (false) ]`, which SHACL evaluates per VALUE: a
+CommandSignal declaring no mira:read_only at all has zero values, so the constraint passed
+vacuously. That is exactly backwards for a capability flag — an undeclared command point is one
+whose writability is UNKNOWN, and unknown must never read as safe. `.claude/rules/fieldbus-readonly.md`
+is a default-deny rule; the shape now mirrors that.
+
+Two property shapes rather than one so the two failure modes carry distinct messages: absent
+metadata (fail closed) and an explicit `read_only=false` (an actual declared write path).""" ;
+    sh:property [
+        sh:path mira:read_only ;
+        sh:minCount 1 ;
+        sh:message "R13b read-only: command signal {$this} declares no read_only capability at all. Undeclared writability is NOT permission — a command point whose capability metadata is missing must fail closed, never default to safe. Declare read_only=true explicitly." ;
+        sh:severity sh:Violation ;
+    ] ;
     sh:property [
         sh:path mira:read_only ;
         sh:not [ sh:in ( false ) ] ;

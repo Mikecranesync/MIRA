@@ -1,0 +1,12 @@
+# EXPECT-VIOLATION: mirash:RemedySafetyShape
+#
+# A remedy declares no safety prerequisite. NOTE the severity: this shape is sh:Warning, an advisory
+# for review, not a hard stop. The harness treats it as non-conforming (pyshacl reports
+# conforms=False for a Warning-only result), which is what this fixture pins. Real hazard
+# escalation is SAFETY_KEYWORDS in guardrails.py, a code path, not this shape.
+
+@prefix mira: <https://ontology.factorylm.com/mira#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix ex:   <https://example.org/fx#> .
+
+ex:reset_under_power a mira:Remedy .

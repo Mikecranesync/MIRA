@@ -1,0 +1,11 @@
+# PROTECTS: mirash:PrintObservationEvidenceShape
+#
+# R8b. The reading cites its region and is tagged proposed.
+
+@prefix mira: <https://ontology.factorylm.com/mira#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix ex:   <https://example.org/fx#> .
+
+ex:sheet_4 a mira:Sheet .
+ex:region_k1 a mira:ImageRegion .
+ex:k1_symbol a mira:DeviceSymbol ; mira:supported_by ex:region_k1 ; mira:trust mira:trust_proposed .

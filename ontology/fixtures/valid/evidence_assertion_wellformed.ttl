@@ -1,3 +1,5 @@
+# PROTECTS: mirash:AssertionShape
+#
 # AssertionShape satisfied — one approval_state drawn from the mig-029 CHECK set, confidence
 # inside [0,1].
 

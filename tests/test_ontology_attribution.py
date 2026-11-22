@@ -28,13 +28,17 @@ walk regressed, every one of them would fail). This file adds what the fixtures 
 from __future__ import annotations
 
 import importlib.util
+import re
+import subprocess
 import sys
 from pathlib import Path
 
 import pytest
 
 pytest.importorskip("rdflib", reason="ontology toolchain: pip install -r ontology/requirements.txt")
-pytest.importorskip("pyshacl", reason="ontology toolchain: pip install -r ontology/requirements.txt")
+pytest.importorskip(
+    "pyshacl", reason="ontology toolchain: pip install -r ontology/requirements.txt"
+)
 
 from rdflib import BNode, Graph, URIRef  # noqa: E402
 
@@ -121,8 +125,9 @@ class TestNamedAncestors:
         No fixture exercises this path yet (FaultCodeScopeTargetShape is Phase 3), so this test
         is the only thing standing between the list-walk and an untested regression.
         """
-        head = next(shapes.objects(URIRef(
-            "https://ontology.factorylm.com/mira/shapes#OrShape"), SH_OR))
+        head = next(
+            shapes.objects(URIRef("https://ontology.factorylm.com/mira/shapes#OrShape"), SH_OR)
+        )
         member = next(shapes.objects(head, RDF_FIRST))
         assert isinstance(member, BNode)
         assert V._named_ancestors(member, shapes) == {"OrShape"}
@@ -215,3 +220,48 @@ class TestValidatorExitContract:
         """Partial fixture coverage must never be able to read as full coverage."""
         V.main([])
         assert "shapes:fixture-coverage" in capsys.readouterr().out
+
+
+# ── CI bridge (#5528) ──────────────────────────────────────────────────────────────────────
+#
+# The CI step "Ontology validation (ADR-0032)" names THIS file and no other, and workflow files
+# are a guarded control path that needs a maintainer exception to edit. So the other ontology
+# suites are run from here. A new tests/test_ontology_*.py is picked up automatically; it cannot
+# be added and then never executed.
+
+REQUIRED_SIBLINGS = {
+    "test_ontology_controls_phase2.py",
+    "test_ontology_coverage_gate.py",
+    "test_ontology_runtime_contract.py",
+}
+
+
+def test_every_other_ontology_suite_passes_with_nothing_skipped() -> None:
+    here = Path(__file__).resolve()
+    siblings = sorted(p for p in here.parent.glob("test_ontology_*.py") if p != here)
+    missing = REQUIRED_SIBLINGS - {p.name for p in siblings}
+    assert not missing, f"ontology suites deleted or renamed: {sorted(missing)}"
+
+    run = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            *map(str, siblings),
+            "-q",
+            "-rxs",
+            "-p",
+            "no:cacheprovider",
+        ],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+    )
+    tail = run.stdout[-6000:] + run.stderr[-2000:]
+    assert run.returncode == 0, tail
+    summary = run.stdout.strip().splitlines()[-1]
+    # A skip here would be a contract that silently did not run (for example the PostgreSQL
+    # check when no database binaries are installed). Expected failures are allowed: each one
+    # is strict and names the audit issue that owns the repair.
+    assert not re.search(r"\b\d+ skipped\b", summary), tail
+    assert re.search(r"\b\d+ passed\b", summary), tail

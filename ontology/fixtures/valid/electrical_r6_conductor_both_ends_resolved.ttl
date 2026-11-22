@@ -1,0 +1,11 @@
+# PROTECTS: mirash:ConductorEndpointsShape
+#
+# R6, first legitimate form: both ends land on labelled terminals.
+
+@prefix mira: <https://ontology.factorylm.com/mira#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix ex:   <https://example.org/fx#> .
+
+ex:x1_3 a mira:ConnectionPoint ; mira:terminal_label "X1:3" .
+ex:k1_a1 a mira:ConnectionPoint ; mira:terminal_label "K1:A1" .
+ex:w101 a mira:Conductor ; mira:wire_number "101" ; mira:terminates_at ex:x1_3 , ex:k1_a1 .

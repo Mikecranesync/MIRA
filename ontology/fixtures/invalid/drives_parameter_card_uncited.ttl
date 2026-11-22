@@ -1,0 +1,9 @@
+# EXPECT-VIOLATION: mirash:ParameterCardCitationShape
+#
+# A parameter card with no citation: a setting value with nothing behind it.
+
+@prefix mira: <https://ontology.factorylm.com/mira#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix ex:   <https://example.org/fx#> .
+
+ex:p09_03 a mira:ParameterCard .
