@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { admitPaidTurn, closeCancelledTurn, recoverSetupTenant, settlementOf } from "./journey-guard";
-import { BudgetMeter, type RuntimeIdentity } from "./staging";
+import { admitPaidTurn, reconcilePaidTurn, recoverSetupTenant, settlementOf } from "./journey-guard";
+import fx from "./fixtures-accounting.json";
+import { BudgetMeter, type LedgerVerdict, type RuntimeIdentity } from "./staging";
 
+/** A turn the meter can verify: the recorded energized-work stop with its proven zero-call ledger verdict. */
+const STOP_SSE = fx.safetyStop.sse;
+const ZERO_CALL: LedgerVerdict = { ok: true, kind: "zero_call", answerUsd: 0, jevInputTokens: 0 };
 const start: RuntimeIdentity = { gitSha: "a6e27e244", builtAt: "2026-11-22T13:01:24Z", deploymentGeneration: "gen-1", fingerprintHash: "fp-1" };
 
 describe("admitPaidTurn", () => {
@@ -30,7 +34,9 @@ describe("admitPaidTurn", () => {
   it("refuses a turn whose worst case would cross the cap", () => {
     const m = new BudgetMeter(0.25, 0.1);
     admitPaidTurn(m, start, start, "S5");
+    reconcilePaidTurn(m, "S5", STOP_SSE, ZERO_CALL);
     admitPaidTurn(m, start, start, "S5b");
+    reconcilePaidTurn(m, "S5b", STOP_SSE, ZERO_CALL);
     expect(() => admitPaidTurn(m, start, start, "S6")).toThrow(/budget stop/);
     expect(m.turns).toBe(2);
   });
@@ -40,11 +46,13 @@ describe("settlementOf", () => {
   it("settles a bounded run at what it booked", () => {
     const m = new BudgetMeter(1, 0.1);
     admitPaidTurn(m, start, start, "S5");
+    reconcilePaidTurn(m, "S5", STOP_SSE, ZERO_CALL);
     expect(settlementOf(m, 1)).toMatchObject({ settle: true });
   });
   it("keeps the whole reservation once the meter lost its bound", () => {
     const m = new BudgetMeter(1, 0.1);
     admitPaidTurn(m, start, start, "S5");
+    reconcilePaidTurn(m, "S5", STOP_SSE, ZERO_CALL);
     m.halt("S5", "served turn with tokens above the booked bound");
     const s = settlementOf(m, 1);
     expect(s.settle).toBe(false);
@@ -70,13 +78,22 @@ describe("recoverSetupTenant", () => {
   });
 });
 
-describe("closeCancelledTurn", () => {
-  it("keeps the whole reservation after a deliberately cancelled paid turn", () => {
+describe("unreconciled paid turn", () => {
+  it("a turn sent but never reconciled (cancelled, or its step threw) blocks later turns and keeps the reservation", () => {
     const m = new BudgetMeter(1, 0.1);
-    admitPaidTurn(m, start, start, "S17");
-    expect(settlementOf(m, 1).settle).toBe(true); // precondition: bounded before the cancel
-    closeCancelledTurn(m, "S17");
-    expect(settlementOf(m, 1)).toMatchObject({ settle: false });
-    expect(settlementOf(m, 1).note).toMatch(/S17 \(cancelled stream/);
+    admitPaidTurn(m, start, start, "S5");
+    expect(() => admitPaidTurn(m, start, start, "S5b")).toThrow(/paid turn S5 was never reconciled/);
+    expect(m.turns).toBe(1);
+    const s = settlementOf(m, 1);
+    expect(s.settle).toBe(false);
+    expect(s.note).toMatch(/paid turn S5 was sent but never reconciled/);
+  });
+  it("control: once reconciled, the next turn is admitted and the run settles", () => {
+    const m = new BudgetMeter(1, 0.1);
+    admitPaidTurn(m, start, start, "S5");
+    reconcilePaidTurn(m, "S5", STOP_SSE, ZERO_CALL);
+    admitPaidTurn(m, start, start, "S5b");
+    reconcilePaidTurn(m, "S5b", STOP_SSE, ZERO_CALL);
+    expect(settlementOf(m, 1)).toMatchObject({ settle: true });
   });
 });

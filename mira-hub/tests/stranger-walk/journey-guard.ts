@@ -3,7 +3,15 @@
  * is unit-tested on its own: the same per-dispatch check the stranger walk makes (walk.spec.ts),
  * applied to every paid turn the journey sends, including the one it cancels.
  */
-import { runtimeDrift, type BudgetMeter, type RuntimeIdentity } from "./staging";
+import { runtimeDrift, type BudgetMeter, type LedgerVerdict, type RuntimeIdentity } from "./staging";
+
+/**
+ * The paid turn admitted but not yet reconciled against the ledger, per meter. Every admitted turn
+ * is unconfirmed spend until reconcilePaidTurn() verifies it: while one is open no further turn is
+ * admitted and the reservation is never settled down. This one rule covers a cancelled turn (S17,
+ * Codex r3 F1), a turn whose step threw after Send (r4 F15) and any exit in between.
+ */
+const openTurn = new WeakMap<object, string>();
 
 /**
  * Book one paid turn, or throw before anything is sent. Staging that changed since the run was
@@ -16,8 +24,17 @@ export function admitPaidTurn(meter: BudgetMeter, start: RuntimeIdentity, now: R
     meter.halt(id, drift);
     throw new Error(`refused before dispatch: ${drift}`);
   }
+  const open = openTurn.get(meter);
+  if (open) throw new Error(`refused before dispatch: paid turn ${open} was never reconciled`);
   if (!meter.canAfford()) throw new Error(meter.unbounded ? `budget stop: ${meter.unbounded} — ${meter.unboundedReason}` : "budget stop: next turn's worst case would cross the run cap");
   meter.book();
+  openTurn.set(meter, id);
+}
+
+/** Verify an admitted turn's usage against the ledger (BudgetMeter.verify), then close it. */
+export function reconcilePaidTurn(meter: BudgetMeter, id: string, sse: string | null, ledger: LedgerVerdict | undefined): void {
+  meter.verify(id, sse, ledger);
+  openTurn.delete(meter);
 }
 
 /**
@@ -26,6 +43,8 @@ export function admitPaidTurn(meter: BudgetMeter, start: RuntimeIdentity, now: R
  * reservation stays counted until reconciled by hand, as the stranger walk does (Codex r2 F1).
  */
 export function settlementOf(meter: Pick<BudgetMeter, "unbounded" | "unboundedReason" | "booked" | "turns">, reservedUsd: number): { settle: boolean; note: string } {
+  const open = openTurn.get(meter);
+  if (open) return { settle: false, note: `NOT settled: paid turn ${open} was sent but never reconciled against the ledger; the full $${reservedUsd.toFixed(2)} reservation stays counted until reconciled by hand` };
   if (meter.unbounded) return { settle: false, note: `NOT settled: meter unbounded at ${meter.unbounded} (${meter.unboundedReason}); the full $${reservedUsd.toFixed(2)} reservation stays counted until reconciled by hand` };
   return { settle: true, note: `settled at $${Math.min(meter.booked, reservedUsd).toFixed(4)} booked over ${meter.turns} turns` };
 }
@@ -46,13 +65,4 @@ export async function recoverSetupTenant(classify: () => Promise<string | null>,
     }
   }
   return { tenantId: null, error: `setup token receipt unreadable after ${attempts} attempts (${error}); token kept for recovery` };
-}
-
-/**
- * After a paid turn the run cancels on purpose (S17), there is no ledger evidence of what it cost:
- * Stop may not have cut the answer off. Unbound the meter, so the whole reservation stays counted
- * until someone reconciles it by hand (Codex r3 F1, Mike chose A 2026-11-22).
- */
-export function closeCancelledTurn(meter: Pick<BudgetMeter, "halt">, id: string): void {
-  meter.halt(id, "cancelled stream: its cost is not reconciled, so the full reservation stays counted");
 }

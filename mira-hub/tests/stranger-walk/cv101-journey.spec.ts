@@ -25,7 +25,7 @@ import { githubToken } from "./required-fixes";
 import { reserveWalkSpend, settleWalkSpend } from "./spend-ledger";
 import { assertOpenRouterCeiling, BudgetMeter, checkFingerprint, identity, ledgerVerdictFor, pricesFromEnv, releaseOwnPilotHold, runtimeDrift, runtimeOf, stagingBase, teardownTenant, worstCaseTurnUsd, type RuntimeIdentity } from "./staging";
 import { decodeChatBody } from "./stream-decode";
-import { admitPaidTurn, closeCancelledTurn, recoverSetupTenant, settlementOf } from "./journey-guard";
+import { admitPaidTurn, reconcilePaidTurn, recoverSetupTenant, settlementOf } from "./journey-guard";
 import { exitOk, receiptOf, type Step } from "./journey-receipt";
 
 const TARGET = (process.env.CV_TARGET ?? "desktop") as "desktop" | "phone" | "pixel" | "tablet";
@@ -194,8 +194,10 @@ async function ask(page: Page, q: string, meter: BudgetMeter, tenantId: string, 
   }
   const lv = PAID && sse ? await ledgerVerdictFor(tenantId, sse, undefined, paidPrices) : null;
   // Keep the ledger row itself: teardown deletes it, and a failing verdict needs its evidence.
+  // Accounting first, artifacts after: the turn stays unreconciled (no more paid turns, no settle)
+  // until its usage is verified (Codex r4 F15).
+  if (PAID) reconcilePaidTurn(meter, q.slice(0, 24), sse, lv?.verdict);
   if (lv) writeFileSync(path.join(OUT, `ledger-${lv.traceId ?? "none"}.json`), JSON.stringify({ verdict: lv.verdict, rows: lv.rows }, null, 1));
-  if (PAID) meter.verify(q.slice(0, 24), sse, lv?.verdict);
   if (!res) {
     const failed = trace.filter((r) => r.status === -1 && /\/chat\/?$/.test(r.path)).slice(-1)[0];
     const alert = await page.getByText(/Couldn.t reach MIRA|Send error|Something went wrong/i).first().innerText().catch(() => "");
@@ -753,9 +755,8 @@ test("cv101 journey", async () => {
       await openProject(page, MACHINE);
       await newChat(page);
       await admitPaid(meter, "S17");
-      // A cancelled stream has no ledger evidence of its cost: keep the whole reservation (Codex r3 F1).
-      // Closed before Send, so no failure between dispatch and Stop can skip it.
-      closeCancelledTurn(meter, "S17");
+      // Never reconciled, by design: a cancelled stream has no ledger evidence of its cost, so the
+      // open turn keeps the whole reservation counted (Codex r3 F1).
       await UI.clone.composer(page).fill("Explain every specification table in this Micro820 manual in detail with page numbers.");
       await press(page, page.getByRole("button", { name: "Send" }));
       await page.waitForTimeout(1_200);
