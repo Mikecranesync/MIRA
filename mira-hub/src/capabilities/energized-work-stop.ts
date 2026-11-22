@@ -263,6 +263,11 @@ export type EnergizedStopOptions = {
    *  family name (a family word and its digits) or a plain number is ever
    *  printed; anything else is dropped. */
   pageFrom?: { models?: readonly string[]; unlisted?: readonly string[] } | null;
+  /** No manual was searched for this stop (the turn ended before retrieval, as the
+   *  safety-device bypass refusal does). It then claims no search, offers no page and
+   *  leaves out the "ask again and I'll walk you through the job" line, which would
+   *  read as an offer to help with the job the other refusal just declined. */
+  notSearched?: boolean;
 };
 
 // What may be printed from `pageFrom`.
@@ -311,7 +316,9 @@ export function energizedWorkStop(cite: LockoutCitation | null, opts: EnergizedS
   const asked = [...new Set(opts.pageFrom?.unlisted ?? [])];
   const named = asked.filter((n) => PLAIN_NUMBER_RE.test(n)).slice(0, 3).map((n) => `**${n}**`);
   const them = asked.length === 1 ? "it" : "them";
-  const where = unmatched
+  const where = opts.notSearched
+    ? "Follow your site's lockout/tagout procedure."
+    : unmatched
     ? "No manual is selected for this question and I can't match one to the machine you're asking about, so I'm not pointing you to a lockout page — follow your site's lockout/tagout procedure. Select or attach that machine's manual and I can look for the lockout page in it."
     : unclear
     ? "This notebook has more than one document and I can't tell from your question which machine's manual to use, so I'm not pointing you to a lockout page — follow your site's lockout/tagout procedure. Name the machine's model in your question and I can look for the lockout page in its own manual."
@@ -342,11 +349,12 @@ export function energizedWorkStop(cite: LockoutCitation | null, opts: EnergizedS
     : warningPage
       ? `\n\nThe cited manual has a related warning on **p.${warningPage}** — read it before you go any further.`
       : "\n\nThe cited manual has a related warning in the document cited below — read it before you go any further.";
+  const closing = opts.notSearched
+    ? ""
+    : "\n\nOnce it is locked out and verified, ask again and I'll walk you through the job from the manual.";
   return `⛔ **SAFETY STOP — energized work.**
 
 I won't give steps for working on this equipment while it is powered.
 
-De-energize it, lock out and tag out every energy source, and verify zero energy. ${where}${callOut}${warning}
-
-Once it is locked out and verified, ask again and I'll walk you through the job from the manual.`;
+De-energize it, lock out and tag out every energy source, and verify zero energy. ${where}${callOut}${warning}${closing}`;
 }

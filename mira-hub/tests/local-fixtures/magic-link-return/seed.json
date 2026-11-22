@@ -1,0 +1,10 @@
+{
+  "tenantId": "5753e2e0-0000-4000-8000-000000000001",
+  "tenantName": "Magic link return e2e (synthetic)",
+  "userId": "5753e2e0-0000-4000-8000-000000000002",
+  "email": "e2e-magic-return@example.test",
+  "fileId": "5753e2e0-0000-4000-8000-0000000000f1",
+  "filename": "Synthetic drive manual.pdf",
+  "pages": 30,
+  "citedPage": 26
+}
