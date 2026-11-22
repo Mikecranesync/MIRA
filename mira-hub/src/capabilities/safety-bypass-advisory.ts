@@ -148,6 +148,8 @@ const VERB =
 
 /** turn / switch / shut / power ... off, in either order ("turn off the interlock", "turn the interlock off"). */
 const VERB_OFF = "(?:turn(?:s|ed|ing)?|switch(?:es|ed|ing)?|shut(?:s|ting)?|power(?:s|ed|ing)?|flip(?:s|ped|ping)?|knock(?:s|ed|ing)?)";
+/** The off-verbs that also take "out". "Switch out" means replace ("switch out the e-stop for a new one"). */
+const VERB_OFF_OUT = "(?:turn(?:s|ed|ing)?|shut(?:s|ting)?|power(?:s|ed|ing)?|flip(?:s|ped|ping)?|knock(?:s|ed|ing)?)";
 
 /** What a device reads as when it is not protecting anyone. */
 const STATE =
@@ -172,15 +174,20 @@ const DEVICE_PHRASE = `${DEVICE}(?:\\s+(?:doors?|gates?|covers?|panels?|hatch(?:
 /** A state said BEFORE the device: "a bypassed light curtain", "an open guard", "an unlatched guard door". */
 const STATE_ADJ =
   "(?:bypassed|disabled|disconnected|unplugged|inactive|deactivated|muted|missing|unlatched|unhooked|removed|overridden|defeated|jumpered|shorted|open|opened|propped|pulled|broken|faulty|defective|failed" +
-  // #5670 review 4 F11: the multiword states of STATE, said before the device.
-  "|out[-\\s]of[-\\s](?:service|order))";
+  // #5670 review 4 F11: every state in STATE may also come before the device ("an out-of-service
+  // light curtain", "a switched-off scanner", "a not-working e-stop"), its words joined by spaces or hyphens.
+  `|${STATE.replaceAll("\\s+", "[-\\s]+")})`;
 
 /** "bypass the e-stop", "jump out the estop circuit", "wire around the safety relay", "unplug the light curtain". */
 const VERB_THEN_DEVICE = new RegExp(`\\b${VERB}(?:\\s+${GAP}){0,4}\\s+${DEVICE}\\b`, "i");
-const TURN_OFF_FIRST = new RegExp(`\\b${VERB_OFF}\\s+(?:off|down|out)(?:\\s+${GAP}){0,4}\\s+${DEVICE}\\b`, "i");
+const TURN_OFF_FIRST = new RegExp(
+  `\\b(?:${VERB_OFF}\\s+(?:off|down)|${VERB_OFF_OUT}\\s+out)(?:\\s+${GAP}){0,4}\\s+${DEVICE}\\b`,
+  "i",
+);
 // #5670 review 4 F11: the device as people name it ("the guard door switch off", "the guard door off").
+const OFF_TARGET = `(?:\\s+${GAP}){0,4}\\s+(?:${ADJ}\\s+){0,2}${DEVICE_PHRASE}`;
 const TURN_OFF_SEPARATED = new RegExp(
-  `\\b${VERB_OFF}(?:\\s+${GAP}){0,4}\\s+(?:${ADJ}\\s+){0,2}${DEVICE_PHRASE}\\s+(?:off|down|out)\\b`,
+  `\\b(?:${VERB_OFF}${OFF_TARGET}\\s+(?:off|down)|${VERB_OFF_OUT}${OFF_TARGET}\\s+out)\\b`,
   "i",
 );
 
@@ -200,6 +207,12 @@ const RUN_WITH_STATE_FIRST = new RegExp(
 const RUN_WITHOUT = new RegExp(`\\b${RUNV}(?:\\s+\\S+){0,5}?\\s+without\\s+${ART}(?:${ADJ}\\s+){0,2}${DEVICE_PHRASE}\\b`, "i");
 /** "can I keep running with it bypassed": the device is named in another clause. */
 const RUN_WITH_PRONOUN = new RegExp(`\\b${RUNV}(?:\\s+\\S+){0,5}?\\s+(?:with|while)\\s+(?:it|them|that|this)\\s+${STATE}\\b`, "i");
+
+/**
+ * The detector's own word lists, as regular-expression source. Exported only so the coverage matrix
+ * test (safety-bypass-matrix-5670r4.test.ts) generates its requests from them; not an API.
+ */
+export const BYPASS_VOCABULARY = { DEVICE, DEVICE_PHRASE, ADJ, VERB, VERB_OFF, VERB_OFF_OUT, STATE, STATE_ADJ, RUNV, RUN_CONNECTOR } as const;
 
 /** "the e-stop is bypassed", "with the interlock jumpered". Global: every mention is judged alone. */
 const DEVICE_THEN_STATE = new RegExp(`\\b${DEVICE}\\s+(?:(?:is|are|was|were|got|been|being|still|all)\\s+){0,2}${REPORT_STATE}\\b`, "gi");
@@ -385,6 +398,8 @@ function normalizeAsk(raw: string): string {
     .replace(/[‘’ʼ]/g, "'")
     .replace(/\s+/g, " ")
     .toLowerCase()
+    // #5670 review 4: "e. stop" is one device, not the end of a sentence at "e.".
+    .replace(/\be ?\. ?(stops?)\b/g, "e-$1")
     .trim();
 }
 
@@ -392,11 +407,12 @@ function normalizeAsk(raw: string): string {
  * A request to carry on, in a clause of its own: "can I keep running", "is it safe to keep going",
  * "may we continue operating", "can we leave it running like this". First person only (a question
  * ABOUT the indicator, "can you explain the run light", is not a request to run).
- * #5670 review 4 F12: "keep" or "leave" followed by an isolated state ("keep it locked out",
- * "keep the machine stopped", "leave it tagged") asks to stay safe, not to carry on.
+ * #5670 review 4 F12: "keep" or "leave", an optional object, then an isolated state ("keep it locked
+ * out", "keep the machine stopped", "leave it tagged") asks to stay safe, not to carry on. Any other word
+ * after the object ("leave it bypassed and tagged", "keep going while it is tagged") is not exempt.
  */
 const ASKS_TO_CARRY_ON =
-  /^(?:also\s+|actually\s+|and\s+|so\s+|but\s+)?(?:(?:can|could|may|might|would|should|shall|will)\s+(?:i|we)\b|is\s+it\s+(?:ok|okay|fine|safe|alright|allowed|acceptable)\b|are\s+we\s+(?:ok|okay|allowed|good)\b|am\s+i\s+(?:ok|allowed)\b|(?:ok|okay)\s+to\b)[^?]*?\b(?:(?:keep(?:ing)?|leav(?:e|ing))(?!(?:\s+\S+){0,3}?\s+(?:locked|stopped|isolated|tagged|de-?energi[sz]ed|shut\s+down)\b)|continu\w+|carry(?:ing)?\s+on|go(?:ing)?\s+on|resum\w+|restart\w*|start\w*|run(?!\s+(?:indicator|light|lamp|led|mode|status|signal|command|input|output|relay|contact|time|hours?|(?:the\s+|a\s+|some\s+)?(?:diagnostics?|tests?|checks?|reports?|scans?|self[- ]?tests?)\b))\w*|operat\w+|cycl\w+|jog\w*|produc\w+|proceed\w*)\b/;
+  /^(?:also\s+|actually\s+|and\s+|so\s+|but\s+)?(?:(?:can|could|may|might|would|should|shall|will)\s+(?:i|we)\b|is\s+it\s+(?:ok|okay|fine|safe|alright|allowed|acceptable)\b|are\s+we\s+(?:ok|okay|allowed|good)\b|am\s+i\s+(?:ok|allowed)\b|(?:ok|okay)\s+to\b)[^?]*?\b(?:(?:keep(?:ing)?|leav(?:e|ing))(?!\s+(?:(?:it|this|that|them|everything|(?:(?:the|this|that)\s+)?(?:machine|line|cell|conveyor|press|equipment|drive|robot|unit|system|area)s?)\s+)?(?:locked|stopped|isolated|tagged|de-?energi[sz]ed|shut\s+down)\b)|continu\w+|carry(?:ing)?\s+on|go(?:ing)?\s+on|resum\w+|restart\w*|start\w*|run(?!\s+(?:indicator|light|lamp|led|mode|status|signal|command|input|output|relay|contact|time|hours?|(?:the\s+|a\s+|some\s+)?(?:diagnostics?|tests?|checks?|reports?|scans?|self[- ]?tests?)\b))\w*|operat\w+|cycl\w+|jog\w*|produc\w+|proceed\w*)\b/;
 
 /** A device-state mention that is CURRENT: "the guard door is open", "the light curtain is still out of service". */
 const STATE_AFTER_MENTION = new RegExp(

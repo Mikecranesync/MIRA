@@ -391,7 +391,8 @@ describe("an unusable attachment or machine read never erases the refusal (#5721
     expect(domainMock.recordTurn).not.toHaveBeenCalled();
   });
 
-  it("sources the notebook cannot use (stale or foreign ids) do not erase the refusal, and no foreign id is stored", async () => {
+  // The private request claim still keeps the raw request body for exact-retry matching (#5787).
+  it("sources the notebook cannot use (stale or foreign ids) do not erase the refusal, and none is stored as a turn source", async () => {
     domainMock.validateChatSources.mockResolvedValue({ ok: false, error: "source_not_in_notebook" } as never);
     await expectRefusal(AUDIT_ASK, { sourceDocIds: ["99999999-9999-4999-8999-999999999999"] });
     const calls = domainMock.recordTurn.mock.calls as unknown as unknown[][];
