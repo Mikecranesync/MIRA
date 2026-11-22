@@ -72,6 +72,26 @@ describe("marketing aliases through the full server", () => {
     expect(res.headers.get("location")).toBeNull();
   });
 
+  test("rollout on: a forged X-Forwarded-Host cannot make the app host's /pricing redirect into the Hub (#5775)", async () => {
+    process.env.FACTORYLM_MARKETING_NEXT = "true";
+    process.env.MIRA_FREE_TECHNICIANS = "true";
+    const res = await app.request("https://app.factorylm.com/pricing", {
+      headers: { host: "app.factorylm.com", "x-forwarded-host": "factorylm.com", "x-forwarded-proto": "https" },
+    });
+    expect(res.status).not.toBe(302);
+    expect(res.headers.get("location")).toBeNull();
+  });
+
+  test("the app ingress sets Host on every route it proxies to this service (#5775)", async () => {
+    // onHubHost trusts Host only because the ingress controls it. Every location
+    // in the app server block that reaches mira-web (:3200) must set it.
+    const conf = await Bun.file(new URL("../../../deployment/nginx-app-factorylm.conf", import.meta.url)).text();
+    const blocks = conf.split(/\n\s*location\s/).slice(1).filter((b) => /proxy_pass http:\/\/127\.0\.0\.1:3200/.test(b.split(/\n\s*}/)[0]));
+    expect(blocks.length).toBeGreaterThan(5);
+    const missing = blocks.map((b) => b.split(/\n\s*}/)[0]).filter((b) => !/proxy_set_header Host \$host;/.test(b));
+    expect(missing.map((b) => b.split("\n")[0])).toEqual([]);
+  });
+
   test("rollout on: the marketing host's /pricing still goes to /demo", async () => {
     process.env.FACTORYLM_MARKETING_NEXT = "true";
     process.env.MIRA_FREE_TECHNICIANS = "true";

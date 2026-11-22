@@ -197,11 +197,27 @@ async function tenantCreatedByToken(token: string): Promise<string | null> {
   }
 }
 
-async function deleteSeededToken(token: string): Promise<void> {
+/** Recovery classification of this run's seeded token, under its row lock
+ * (#5776). FOR UPDATE waits for an in-flight redemption to commit or roll back,
+ * so a receipt that commits during cleanup is SEEN, never deleted. A token
+ * without a receipt is deleted under that same lock; a token WITH a receipt is
+ * kept for the tenant sweep. Throws on any database error (nothing deleted). */
+export async function classifySeededToken(token: string): Promise<string | null> {
   const c = new Client({ connectionString: process.env.NEON_DATABASE_URL, ssl: { rejectUnauthorized: false } });
   await c.connect();
   try {
-    await c.query(`DELETE FROM hub_magic_tokens WHERE token = $1`, [token]);
+    await c.query("BEGIN");
+    const r = await c.query(
+      `SELECT used_at, onboarding->>'createdTenantId' AS tenant_id FROM hub_magic_tokens WHERE token = $1 FOR UPDATE`,
+      [token],
+    );
+    const tenantId = r.rows[0]?.used_at && r.rows[0]?.tenant_id ? String(r.rows[0].tenant_id) : null;
+    if (r.rows[0] && !tenantId) await c.query(`DELETE FROM hub_magic_tokens WHERE token = $1`, [token]);
+    await c.query("COMMIT");
+    return tenantId;
+  } catch (err) {
+    await c.query("ROLLBACK").catch(() => {});
+    throw err;
   } finally {
     await c.end();
   }
@@ -246,7 +262,7 @@ async function verifiedOnboarding(): Promise<string> {
       let lastReadErr: unknown = null;
       for (let attempt = 1; attempt <= RECEIPT_READ_ATTEMPTS; attempt++) {
         try {
-          orphan = await tenantCreatedByToken(token);
+          orphan = await classifySeededToken(token);
           lastReadErr = null;
           break;
         } catch (readErr) {
@@ -257,7 +273,6 @@ async function verifiedOnboarding(): Promise<string> {
         throw new AggregateError([e, lastReadErr], "verified setup failed AND its creation receipt could not be read; the seeded token was kept so cleanup can be retried");
     }
     if (!orphan) {
-      if (token) await deleteSeededToken(token);
       console.error("verified setup created no account attributable to this run; only its seeded token was removed");
     } else {
       try {

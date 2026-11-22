@@ -35,11 +35,11 @@ function inScope(pathname: string): boolean {
 
 /** The marketing site never answers on the Hub's own host (Codex F38): nginx
  * proxies a few app-host paths such as /pricing to this service, and a relative
- * redirect there would land in the Hub. The first forwarded host wins, as in
- * the trailing-slash normalizer. */
+ * redirect there would land in the Hub. Classified by Host ONLY: every ingress
+ * that reaches this service sets `proxy_set_header Host $host` from the server
+ * block it matched, while X-Forwarded-Host can arrive from the client (#5775). */
 function onHubHost(url: URL, headers?: Headers): boolean {
-  const forwarded = headers?.get("x-forwarded-host")?.split(",")[0]?.trim();
-  const host = (forwarded || headers?.get("host") || url.host).toLowerCase();
+  const host = (headers?.get("host") || url.host).toLowerCase();
   return host === new URL(hubOrigin()).host.toLowerCase();
 }
 

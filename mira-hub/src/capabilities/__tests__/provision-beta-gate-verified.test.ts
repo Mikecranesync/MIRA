@@ -29,9 +29,13 @@ vi.mock("pg", () => ({
       if (/^SELECT \(SELECT count/.test(text)) {
         return { rows: [{ users: 0, auth_tenants: 0, tenants: 0 }] };
       }
-      if (/^SELECT onboarding->>'createdTenantId'/.test(text) && state.receiptReadFailures > 0) {
+      if (/onboarding->>'createdTenantId'/.test(text) && state.receiptReadFailures > 0) {
         state.receiptReadFailures -= 1;
         throw new Error("simulated transient receipt read failure");
+      }
+      if (/^SELECT used_at, onboarding->>'createdTenantId'/.test(text)) {
+        // The locked recovery read: a refused setup leaves the token unused.
+        return { rows: [{ used_at: state.redeemRefused ? null : "2026-11-21", tenant_id: state.accountExists ? TENANT : null }] };
       }
       if (/^SELECT onboarding->>'createdTenantId'/.test(text)) {
         // Models the real receipt: only a token whose redemption CREATED the
@@ -189,7 +193,7 @@ describe("provision-beta-gate when register requires verified setup", () => {
     const lookups = queries.filter((q) => /createdTenantId/.test(q.text));
     expect(lookups.length).toBeGreaterThan(0);
     for (const q of lookups) {
-      expect(q.text).toMatch(/FROM hub_magic_tokens WHERE token = \$1 AND used_at IS NOT NULL/);
+      expect(q.text).toMatch(/FROM hub_magic_tokens WHERE token = \$1( AND used_at IS NOT NULL| FOR UPDATE)/);
       expect(q.values).toEqual([tokenInserts()[0].values[0]]);
     }
     expect(queries.some((q) => /FROM hub_users/.test(q.text) && /email/i.test(q.text))).toBe(false);

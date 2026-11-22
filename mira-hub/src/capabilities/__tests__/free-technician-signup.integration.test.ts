@@ -423,4 +423,46 @@ describe.skipIf(!READY)("verified onboarding with a restricted production-shaped
             expect(receipt).toBe(session!.tenantId);
         }
     });
+    it("#5776: beta-gate recovery waits for an in-flight setup and keeps the receipt it commits", async () => {
+        const { classifySeededToken } = await import("../../../scripts/provision-beta-gate");
+        // The provisioner connects as the database owner (NEON_DATABASE_URL), not the app role.
+        const runtime = new URL(process.env.TEST_DATABASE_ADMIN_URL!);
+        runtime.searchParams.set("options", "-c search_path=" + scope);
+        vi.stubEnv("NEON_DATABASE_URL", runtime.toString());
+        const token = await issue(email());
+        const createdTenantId = randomUUID();
+        // A redemption is in flight: it holds the token row lock and has not committed.
+        const redemption = await adminPool.connect();
+        let committedAt = 0;
+        try {
+            await redemption.query("BEGIN");
+            await redemption.query("SELECT 1 FROM hub_magic_tokens WHERE token=$1 FOR UPDATE", [token]);
+            // The callback connection failed, so recovery starts now.
+            const recovery = classifySeededToken(token).then((t) => ({ t, at: Date.now() }));
+            await new Promise((r) => setTimeout(r, 300));
+            await redemption.query("UPDATE hub_magic_tokens SET used_at=NOW(),onboarding=onboarding||jsonb_build_object('createdTenantId',$2::text) WHERE token=$1", [token, createdTenantId]);
+            committedAt = Date.now();
+            await redemption.query("COMMIT");
+            const result = await recovery;
+            expect(result.at).toBeGreaterThanOrEqual(committedAt);
+            expect(result.t).toBe(createdTenantId);
+        }
+        finally {
+            redemption.release();
+            vi.stubEnv("NEON_DATABASE_URL", process.env.TEST_DATABASE_URL!);
+        }
+        const kept = (await testPool.query("SELECT onboarding->>'createdTenantId' AS t FROM hub_magic_tokens WHERE token=$1", [token])).rows[0];
+        expect(kept?.t).toBe(createdTenantId);
+        // Without a receipt, the same locked recovery removes only its own token.
+        const unused = await issue(email());
+        vi.stubEnv("NEON_DATABASE_URL", runtime.toString());
+        try {
+            expect(await classifySeededToken(unused)).toBeNull();
+        }
+        finally {
+            vi.stubEnv("NEON_DATABASE_URL", process.env.TEST_DATABASE_URL!);
+        }
+        expect((await testPool.query("SELECT 1 FROM hub_magic_tokens WHERE token=$1", [unused])).rows).toHaveLength(0);
+        expect((await testPool.query("SELECT 1 FROM hub_magic_tokens WHERE token=$1", [token])).rows).toHaveLength(1);
+});
 });
