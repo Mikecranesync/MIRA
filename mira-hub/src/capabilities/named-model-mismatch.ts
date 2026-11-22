@@ -193,10 +193,14 @@ export function subjectOutOfReachText(): string {
 }
 
 /** #5706: a photo that does not say which machine is meant (manual-rag.ts). */
-export type PhotoSubjectUnclear = { shown: string[]; earlier: string[]; carried?: true };
+export type PhotoSubjectUnclear = { shown: string[]; earlier: string[]; carried?: true; unknown?: true };
 
 /** One focused question, static text plus model labels only. */
 export function photoSubjectUnclearText(d: PhotoSubjectUnclear): string {
+  if (d.unknown)
+    return "I can't tell from your photo which machine you mean: a model on its label is printed among the serial or asset numbers, which I don't read, so I won't answer from a manual yet. Which machine is this question about? Type its model, or send a photo of just its model label.";
+  if (d.carried && d.shown.length === 0)
+    return "Earlier in this conversation you sent a photo I can't tell the machine from, so I won't answer from a manual yet. Which machine is this question about? Type its model, or send a photo of just its nameplate.";
   const shown = d.shown.length > 0 ? d.shown.join(" / ") : "more than one model";
   if (d.carried)
     return `Earlier in this conversation your photo showed ${shown}, and I can't tell which machine you mean, so I won't answer from a manual yet. Which machine is this question about? Type its model, or send a photo of just its nameplate.`;

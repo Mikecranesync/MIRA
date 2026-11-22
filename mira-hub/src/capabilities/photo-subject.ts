@@ -18,7 +18,7 @@
 
 import { modelIdentitiesInText, modelMentionsInText, resolveModelFromObservationText } from "./model-token";
 import { unlistedModelNumbers } from "./manual-applicability";
-import { publicLabelText, serialCodes } from "./photo-part-lookup";
+import { privateLabelText, publicLabelText, serialCodes } from "./photo-part-lookup";
 
 /** An explicitly labelled model field ("MODEL: GS11N-20P2", "Model No. GS20-23P0").
  *  One token only, so a value can never run on into a serial printed after it. */
@@ -31,24 +31,71 @@ export function namesAnyModel(text: string): boolean {
   return Boolean(named.model) || named.ambiguous || modelIdentitiesInText(text).size > 0;
 }
 
+const labelKey = (label: string) => label.toUpperCase().replace(/[^A-Z0-9]/g, "");
+const escape = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/** `values` removed from `text` as whole codes only: a serial "20P2" never
+ *  takes the "20P2" out of "GS11N-20P2" (a "-", "." or "/" between two
+ *  alphanumerics is inside a code), while "12345678." at a sentence end is
+ *  still removed. */
+function without(text: string, values: readonly string[]): string {
+  return values.reduce(
+    (out, value) => out.replace(new RegExp(`(?<![A-Z0-9]|[A-Z0-9][./-])${escape(value)}(?![A-Z0-9]|[./-][A-Z0-9])`, "gi"), " "),
+    text,
+  );
+}
+
+export type PhotoModelRead = {
+  /** The text the model check may read, or null when it holds nothing a model check reads. */
+  text: string | null;
+  /** A model sits among the reading's private fields (after a serial or asset
+   *  label) where it cannot be told from a serial or an asset number. Its
+   *  machine is unknown: the turn asks, never answers (#5706). */
+  unknown: boolean;
+};
+
 /**
- * The text of a photo reading the model check may read, or null when it holds
- * nothing a model check reads.
+ * What a photo reading gives the model check.
  *
- * Only PUBLIC text (ADR-0036): the reading up to its first serial or asset
- * label (photo-part-lookup.ts publicLabelText), with every value the serial
- * reader finds removed — also one printed BEFORE its label, "GS20-23P0 (S/N)"
- * (Codex r2 F4) — plus explicitly labelled MODEL fields. A serial is never
- * read as a model and never reaches any search.
+ * Only PUBLIC text is read (ADR-0036): the reading up to its first serial or
+ * asset label (photo-part-lookup.ts publicLabelText), with every value the
+ * serial reader finds removed — also one printed BEFORE its label, "GS20-23P0
+ * (S/N)" (Codex r2 F4) — plus explicitly labelled MODEL fields. A serial is
+ * never read as a model and never reaches any search.
+ *
+ * Fail closed on the rest (#5706 review of 185f15c): with no labelled MODEL
+ * field (which decides), a model the readers find among the private fields —
+ * after a serial or asset label ("Serial No 12345678 GS20-23P0", "Machine:
+ * GS20-23P0") or as a serial value itself ("GS20-23P0 (S/N)") — is never read,
+ * and never ignored either: unless the public text already names it (the
+ * plate's own model repeated in a barcode), the photo's machine is `unknown`.
  */
-export function photoModelText(reading: string | null | undefined): string | null {
+export function readPhotoModel(reading: string | null | undefined): PhotoModelRead {
   const raw = reading?.trim();
-  if (!raw) return null;
+  if (!raw) return { text: null, unknown: false };
   const serials = serialCodes(raw);
-  const strip = (text: string) => serials.reduce((out, serial) => out.split(serial).join(" "), text);
   const labelled = [...raw.matchAll(MODEL_FIELD)].map((m) => m[1]).filter((value) => !serials.includes(value.toUpperCase()));
-  const text = [strip(publicLabelText(raw)).replace(/\s+/g, " ").trim(), ...labelled].filter(Boolean).join("\n");
-  return text && (namesAnyModel(text) || unlistedModelNumbers(text).length > 0) ? text : null;
+  const open = without(publicLabelText(raw), serials).replace(/\s+/g, " ").trim();
+  const text = [open, ...labelled].filter(Boolean).join("\n");
+  // Private text left once the serial values are out: a model there counts
+  // unless the public text names that exact model (or a fuller one of it).
+  const named = text ? modelLabels(text).map(labelKey) : [];
+  const rest = without(privateLabelText(raw), [...serials, ...labelled]);
+  const restNamesNew = namesAnyModel(rest) && modelLabels(rest).some((l) => !named.some((n) => n.startsWith(labelKey(l))));
+  // A serial value counts by FAMILY: a maker's serials begin with the family
+  // ("GS20-US-0031482" on a GS20-23P0 plate), so only a family the public text
+  // does not name ("GS20-23P0 (S/N)" with nothing else readable) is unknown.
+  const families = new Set(text ? modelMentionsInText(text).map((m) => labelKey(m.id)) : []);
+  const serialNamesNew = serials.some((serial) => modelMentionsInText(serial).some((m) => !families.has(labelKey(m.id))));
+  return {
+    text: text && (namesAnyModel(text) || unlistedModelNumbers(text).length > 0) ? text : null,
+    unknown: labelled.length === 0 && (restNamesNew || serialNamesNew),
+  };
+}
+
+/** The text a photo reading gives the model check, or null (readPhotoModel). */
+export function photoModelText(reading: string | null | undefined): string | null {
+  return readPhotoModel(reading).text;
 }
 
 /**

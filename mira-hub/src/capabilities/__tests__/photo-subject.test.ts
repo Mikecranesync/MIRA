@@ -12,7 +12,7 @@
 import { describe, expect, it } from "vitest";
 import { questionWithPhoto, readSubject } from "../conversation-subject";
 import { photoSubjectUnclearText } from "../named-model-mismatch";
-import { modelLabels, namesOneMachine, photoIsAmbiguous, photoModelText } from "../photo-subject";
+import { modelLabels, namesOneMachine, photoIsAmbiguous, photoModelText, readPhotoModel } from "../photo-subject";
 
 // Staging turn b6429301 (tablet walk 2026-11-21).
 const GS20 =
@@ -79,7 +79,7 @@ describe("questionWithPhoto: one join rule", () => {
   });
 
   it("a model typed in the question outranks the photo", () => {
-    expect(questionWithPhoto("Manual for the GS11N-20P2", GS20, false)).toEqual({ text: "Manual for the GS11N-20P2", photo: null, releases: false, ambiguous: false });
+    expect(questionWithPhoto("Manual for the GS11N-20P2", GS20, false)).toEqual({ text: "Manual for the GS11N-20P2", photo: null, releases: false, ambiguous: false, unknown: false });
   });
 
   it("a return to the unit on record outranks the photo; with no record it is no return", () => {
@@ -151,7 +151,71 @@ describe("the which-machine question: one question, model labels only", () => {
     expect(earlier).toContain("earlier in this conversation you asked about GS11N-20P5. Which machine is this question about?");
     const carried = photoSubjectUnclearText({ shown: ["GS20-23P0", "GS20-21P0"], earlier: [], carried: true });
     expect(carried).toContain("Earlier in this conversation your photo showed GS20-23P0 / GS20-21P0");
-    for (const text of [alone, earlier, carried]) expect(text.split("?").length - 1).toBe(1);
+    const unknown = photoSubjectUnclearText({ shown: [], earlier: [], unknown: true });
+    expect(unknown).toContain("a model on its label is printed among the serial or asset numbers");
+    const carriedUnknown = photoSubjectUnclearText({ shown: [], earlier: [], carried: true });
+    expect(carriedUnknown).toContain("you sent a photo I can't tell the machine from");
+    for (const text of [alone, earlier, carried, unknown, carriedUnknown]) expect(text.split("?").length - 1).toBe(1);
   });
 });
 
+
+// #5706 review of 185f15c, finding 1 (reproduced as a wrong-model answer): the
+// public-text cut dropped a model printed after a serial or asset label, so the
+// photo named nothing and the project's manual answered. Such a model is still
+// never read (ADR-0036) — it makes the photo's machine unknown, which asks.
+describe("readPhotoModel: a model among the private fields makes the machine unknown", () => {
+  it.each([
+    ["after a serial label", "Serial No 12345678 GS20-23P0 AC drive"],
+    ["after a unit label", "Unit: GS20-23P0 240V 3PH"],
+    ["after a machine label", "Machine: GS20-23P0 AC drive"],
+    ["as the serial value itself, nothing else readable", 'The label reads "GS20-23P0 (S/N)". The model is unreadable.'],
+    ["a look-alike after the serial", "GS11N-20P2 AC drive Serial No 2507A123 GS11N-20P2A"],
+    ["another family after the serial", "GS11N-20P2 AC drive Serial No 2507A123 GS20-23P0"],
+  ])("%s", (_name, reading) => {
+    const read = readPhotoModel(reading);
+    expect(read.unknown).toBe(true);
+    // Never read: nothing after the label reaches the model text.
+    expect(read.text ?? "").not.toMatch(/12345678|2507A123|GS20-23P0 240V|GS11N-20P2A/);
+  });
+
+  it.each([
+    ["the model before the serial", "GS20-23P0 AC drive. Serial No 12345678"],
+    ["the plate's own model repeated after the serial", "GS11N-20P2 AC drive Serial No 2507A123 GS11N-20P2"],
+    ["a serial beginning with the plate's family (staging b6429301)", GS20],
+    ["a labelled MODEL field decides", 'Label: "MODEL: GS20-23P0", "S/N: GS11N 20P2".'],
+    ["no model anywhere", "A keypad with MENU and ENTER. Serial No 12345678."],
+  ])("control: %s is not unknown", (_name, reading) => {
+    expect(readPhotoModel(reading).unknown).toBe(false);
+  });
+
+  it("removes a serial as a whole code only, never from inside a model", () => {
+    expect(photoModelText("GS11N-20P2 drive S/N: 20P2")).toContain("GS11N-20P2");
+    const suffix = photoModelText("GS11N-20P2 AC drive, 2507A123 (S/N).") ?? "";
+    expect(suffix).toContain("GS11N-20P2");
+    expect(suffix).not.toContain("2507A123");
+  });
+
+  it("joins as unknown: never releases an earlier subject; a typed model still outranks it", () => {
+    const q = questionWithPhoto("Find me the manual", "Serial No 12345678 GS20-23P0 AC drive", false);
+    expect(q).toMatchObject({ photo: null, unknown: true, releases: false });
+    expect(questionWithPhoto("Manual for the GS11N-20P2", "Serial No 12345678 GS20-23P0", false).unknown).toBe(false);
+  });
+
+  it("an open photo that could not be read back is unknown, and the carry flags it", () => {
+    expect(questionWithPhoto("Find me the manual", null, false, true).unknown).toBe(true);
+    expect(questionWithPhoto("Manual for the GS20-23P0", null, false, true).unknown).toBe(false);
+    const read = readSubject([{ question: "Find me the manual", answerStatus: "insufficient_evidence", basis: null, photoUnread: true }], 6);
+    expect(read.questions).toEqual(["Find me the manual"]);
+    expect(read.unclear).toEqual([true]);
+  });
+
+  it("a photo-only turn (a LOOK with no question) is carried by the same rule", () => {
+    const look = { question: "", answerStatus: "look", basis: null, photoText: GS20 };
+    expect(readSubject([look], 6).questions[0]).toContain("GS20-23P0");
+    const hidden = { question: "", answerStatus: "look", basis: null, photoText: "Serial No 12345678 GS20-23P0" };
+    const read = readSubject([hidden], 6);
+    expect(read.questions).toEqual([""]);
+    expect(read.unclear).toEqual([true]);
+  });
+});

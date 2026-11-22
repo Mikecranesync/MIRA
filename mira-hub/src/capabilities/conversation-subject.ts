@@ -14,7 +14,7 @@
 // Pure: stored turns in, question texts out. No model, no network, no clock.
 
 import { foldForDetection } from "./detection-fold";
-import { namesAnyModel, namesOneMachine, photoIsAmbiguous, photoModelText } from "./photo-subject";
+import { namesAnyModel, namesOneMachine, photoIsAmbiguous, readPhotoModel } from "./photo-subject";
 
 export type PriorTurn = {
   question?: string | null;
@@ -25,6 +25,10 @@ export type PriorTurn = {
    *  me the manual" was refused; "what's its rated current?" is still about
    *  the GS20. Joined exactly as the live turn joins it (questionWithPhoto). */
   photoText?: string | null;
+  /** That question had a photo whose reading could not be read back (a failed
+   *  read, or past the read limit): its machine is unknown, so it is asked
+   *  about, never answered (#5706). */
+  photoUnread?: boolean;
 };
 
 export type QuestionWithPhoto = {
@@ -36,6 +40,8 @@ export type QuestionWithPhoto = {
   releases: boolean;
   /** The photo names models but the reader cannot tell which one is meant. */
   ambiguous: boolean;
+  /** The photo's machine cannot be known (readPhotoModel, or an unread photo). */
+  unknown: boolean;
 };
 
 /**
@@ -48,16 +54,24 @@ export type QuestionWithPhoto = {
  * the same condition manual-rag.ts applies). Joined, its public text is read
  * exactly as if typed (photo-subject.ts).
  */
-export function questionWithPhoto(question: string, reading: string | null | undefined, recordOnFile: boolean): QuestionWithPhoto {
+export function questionWithPhoto(
+  question: string,
+  reading: string | null | undefined,
+  recordOnFile: boolean,
+  unread = false,
+): QuestionWithPhoto {
   const asked = question.trim();
   const joins = !namesAnyModel(asked) && !(recordOnFile && returnsToRecord(asked));
-  const photo = joins ? photoModelText(reading) : null;
-  if (!photo) return { text: asked, photo: null, releases: false, ambiguous: false };
+  const read = joins ? readPhotoModel(reading) : { text: null, unknown: false };
+  const unknown = joins && (unread || read.unknown);
+  const photo = read.text;
+  if (!photo) return { text: asked, photo: null, releases: false, ambiguous: false, unknown };
   return {
     text: [asked, photo].filter(Boolean).join("\n"),
     photo,
-    releases: namesAnyModel(photo) && namesOneMachine(photo),
+    releases: !unknown && namesAnyModel(photo) && namesOneMachine(photo),
     ambiguous: photoIsAmbiguous(photo),
+    unknown,
   };
 }
 
@@ -101,8 +115,8 @@ export function readSubject(turns: readonly PriorTurn[], limit: number, recordOn
       complete = true;
       break;
     }
-    const subject = questionWithPhoto(turn.question ?? "", turn.photoText, recordOnFile);
-    if (subject.text) read.push(subject);
+    const subject = questionWithPhoto(turn.question ?? "", turn.photoText, recordOnFile, turn.photoUnread === true);
+    if (subject.text || subject.unknown) read.push(subject);
   }
   const unclear = unclearPhotos(read, recordOnFile);
   return { questions: read.map((q) => q.text), ...(unclear.some(Boolean) ? { unclear } : {}), complete };
@@ -111,14 +125,17 @@ export function readSubject(turns: readonly PriorTurn[], limit: number, recordOn
 /**
  * Which open questions took their machine from a photo that does not say
  * which machine is meant — the same two cases the live turn asks about
- * (manual-rag.ts): the reader finds several models it cannot tell apart, or a
- * photo naming models that is not specific enough to end the subject before
- * it (two drives, a model beside an order code). `read` is NEWEST FIRST; the
+ * (manual-rag.ts): the photo's machine is unknown (a model among its private
+ * fields, or its reading could not be read back), the reader finds several
+ * models it cannot tell apart, or a photo naming models is not specific
+ * enough to end the subject before it (two drives, a model beside an order
+ * code). `read` is NEWEST FIRST; the
  * subject before a question is the nearest older question naming a model, up
  * to a return to the technician's own unit.
  */
 function unclearPhotos(read: readonly QuestionWithPhoto[], recordOnFile: boolean): boolean[] {
   return read.map((q, i) => {
+    if (q.unknown) return true;
     if (!q.photo || !namesAnyModel(q.photo)) return false;
     if (q.ambiguous) return true;
     if (q.releases) return false;

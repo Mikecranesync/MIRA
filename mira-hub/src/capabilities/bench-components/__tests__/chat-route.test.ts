@@ -350,7 +350,52 @@ describe("a confirmed component is the record for the turn", () => {
     const opts = retrievalOpts()!;
     expect(opts.subjectQueries).toEqual(["what is the GS13N-20P2 input current"]);
     expect(opts.subjectOutOfReach).toBe(false);
-    expect(storeMock.listSelectionTurns).toHaveBeenCalledWith(TENANT, NB, "u1", null, 6);
+    expect(storeMock.listSelectionTurns).toHaveBeenCalledWith(TENANT, NB, "u1", null, 6, { withAnswers: true });
+  });
+
+  // #5706 review of 185f15c, finding 3: under a component, an open question's
+  // photo carries its machine by the same rule as on the whole machine.
+  it("a photo asked about under this selection carries its machine into the follow-up", async () => {
+    const PHOTO = "77777777-7777-4777-8777-777777777773";
+    storeMock.listSelectionTurns.mockResolvedValue([
+      { id: "t2", question: "Find me the manual", answerStatus: "insufficient_evidence", basis: null, createdAt: "2026-11-14T04:05:00.000Z", componentId: VFD, componentRevision: 2, clientRequestId: null, answerText: null,
+        evidence: [{ kind: "visual_observation", fileId: PHOTO, capturedAt: "2026-11-14T04:04:00.000Z", provenance: "phone_photo" }] },
+    ]);
+    vi.mocked(photoLinkedToTarget).mockImplementation(async (_t: string, fileId: string) => ({ fileId, capturedAt: "2026-11-14T04:04:00.000Z" }) as never);
+    lookMock.loadVisualEvidenceForPhoto.mockImplementation(async (...args: unknown[]) =>
+      args[2] === PHOTO ? { observationId: "o1", sessionId: "s1", text: 'Plate reads "GS20-23P0", "S/N: GS20-US-0031482".', obsKind: "nameplate", trust: "candidate", confidence: 0.9, fileId: PHOTO, photoHash: null, observedAt: "2026-11-14T04:04:00.000Z", hazards: [] } : null,
+    );
+    await frames(await ask("and its rated current?", under(VFD, 3)));
+    const opts = retrievalOpts()!;
+    expect((opts.subjectQueries as string[])[0]).toContain("GS20-23P0");
+    expect((opts.subjectQueries as string[])[0]).not.toContain("GS20-US");
+  });
+
+  it("under a component with a catalog number on record, 'back to mine' keeps its photo out", async () => {
+    const PHOTO = "77777777-7777-4777-8777-777777777775";
+    storeMock.listSelectionTurns.mockResolvedValue([
+      { id: "t2", question: "Back to mine. What was its firmware build?", answerStatus: "insufficient_evidence", basis: null, createdAt: "2026-11-14T04:05:00.000Z", componentId: VFD, componentRevision: 2, clientRequestId: null, answerText: null,
+        evidence: [{ kind: "visual_observation", fileId: PHOTO, capturedAt: "2026-11-14T04:04:00.000Z", provenance: "phone_photo" }] },
+    ]);
+    vi.mocked(photoLinkedToTarget).mockImplementation(async (_t: string, fileId: string) => ({ fileId, capturedAt: "2026-11-14T04:04:00.000Z" }) as never);
+    lookMock.loadVisualEvidenceForPhoto.mockImplementation(async (...args: unknown[]) =>
+      args[2] === PHOTO ? { observationId: "o1", sessionId: "s1", text: 'Plate reads "GS20-23P0".', obsKind: "nameplate", trust: "candidate", confidence: 0.9, fileId: PHOTO, photoHash: null, observedAt: "2026-11-14T04:04:00.000Z", hazards: [] } : null,
+    );
+    await frames(await ask("and its rated current?", under(VFD, 3)));
+    const queries = retrievalOpts()!.subjectQueries as string[];
+    expect(queries[0]).toContain("Back to mine");
+    expect(queries[0]).not.toContain("GS20");
+  });
+
+  it("under a component, an open photo that cannot be read back is flagged, not dropped", async () => {
+    const PHOTO = "77777777-7777-4777-8777-777777777774";
+    storeMock.listSelectionTurns.mockResolvedValue([
+      { id: "t2", question: "Find me the manual", answerStatus: "insufficient_evidence", basis: null, createdAt: "2026-11-14T04:05:00.000Z", componentId: VFD, componentRevision: 2, clientRequestId: null, answerText: null,
+        evidence: [{ kind: "visual_observation", fileId: PHOTO, capturedAt: "2026-11-14T04:04:00.000Z", provenance: "phone_photo" }] },
+    ]);
+    vi.mocked(photoLinkedToTarget).mockRejectedValue(new Error("pool exhausted"));
+    await frames(await ask("and its rated current?", under(VFD, 3)));
+    expect(retrievalOpts()!.subjectUnclear).toEqual([true]);
   });
 
   it("a refusal under the component offers Return to it as an action, and names both numbers", async () => {

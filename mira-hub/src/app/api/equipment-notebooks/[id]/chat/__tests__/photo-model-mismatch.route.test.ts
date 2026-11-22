@@ -442,6 +442,111 @@ describe("#5706 — a nameplate photo of another drive is not answered from the 
     expect((veMock.loadVisualEvidenceForPhoto.mock.calls as unknown[][]).some((c) => c[2] === PRIOR_PHOTO)).toBe(false);
   });
 
+  // #5706 review of 185f15c, findings 4 + 5: an open photo whose reading
+  // cannot be read back is marked unread, so the follow-up asks (never answers).
+  it("a failed link check on an open photo marks it unread (finding 4)", async () => {
+    nbMock.listTurns.mockResolvedValue([openPhotoTurn()]);
+    filesMock.photoLinkedToTarget.mockRejectedValue(new Error("pool exhausted"));
+    veMock.loadVisualEvidenceForPhoto.mockImplementation(exactThreadReading);
+    await (await POST(req({ message: "What's its rated current?", sourceDocIds: [DOC_A], threadId: THREAD }), params)).text();
+    expect(passOpts()[0].subjectUnclear).toEqual([true]);
+  });
+
+  it("a failed reading of an open photo marks it unread (finding 4)", async () => {
+    nbMock.listTurns.mockResolvedValue([openPhotoTurn()]);
+    filesMock.photoLinkedToTarget.mockResolvedValue({ fileId: PRIOR_PHOTO, capturedAt: "2026-11-21T20:57:06.047Z" });
+    veMock.loadVisualEvidenceForPhoto.mockRejectedValue(new Error("connection reset"));
+    await (await POST(req({ message: "What's its rated current?", sourceDocIds: [DOC_A], threadId: THREAD }), params)).text();
+    expect(passOpts()[0].subjectUnclear).toEqual([true]);
+  });
+
+  it("control: a cleanly detached open photo is not read and not flagged (F7)", async () => {
+    nbMock.listTurns.mockResolvedValue([openPhotoTurn()]);
+    filesMock.photoLinkedToTarget.mockResolvedValue(null);
+    await (await POST(req({ message: "What's its rated current?", sourceDocIds: [DOC_A], threadId: THREAD }), params)).text();
+    expect(passOpts()[0].subjectUnclear).toBeUndefined();
+  });
+
+  it("an open photo past the read limit is marked unread, not silently dropped (finding 5)", async () => {
+    const turns = [1, 2, 3, 4].map((n) => ({
+      ...openPhotoTurn(`Photo ${n}`),
+      id: `t${n}`,
+      evidence: [{ kind: "visual_observation", fileId: `9999999${n}-9999-4999-8999-999999999999`, capturedAt: "2026-11-21T20:57:06.047Z", provenance: "phone_photo" }],
+    }));
+    nbMock.listTurns.mockResolvedValue(turns); // oldest first
+    filesMock.photoLinkedToTarget.mockImplementation((async (_t: string, fileId: string) => ({ fileId, capturedAt: "2026-11-21T20:57:06.047Z" })) as never);
+    veMock.loadVisualEvidenceForPhoto.mockImplementation(async (...args: unknown[]) => lookRow(args[2] as string, "A drive label too blurred to read."));
+    await (await POST(req({ message: "What's its rated current?", sourceDocIds: [DOC_A], threadId: THREAD }), params)).text();
+    // Newest first: the three newest are read (nothing named), the oldest is unread.
+    expect(passOpts()[0].subjectUnclear).toEqual([false, false, false, true]);
+    expect((veMock.loadVisualEvidenceForPhoto.mock.calls as unknown[][]).some((c) => c[2] === turns[0].evidence[0].fileId)).toBe(false);
+  });
+
+  // #5706 review of 185f15c, finding 2: a photo LOOKed at in this conversation
+  // but not sent with a question is part of the open run too.
+  const look = (observedAt: string) => ({ ...lookRow(PRIOR_PHOTO, GS20_READING), observedAt });
+  it("a text follow-up after a LOOK carries the LOOK's machine (finding 2)", async () => {
+    veMock.loadRecentLookObservations.mockResolvedValue([look("2026-11-21T20:57:09Z")]);
+    filesMock.photoLinkedToTarget.mockResolvedValue({ fileId: PRIOR_PHOTO, capturedAt: "2026-11-21T20:57:06.047Z" });
+    await (await POST(req({ message: "Find me the manual", sourceDocIds: [DOC_A], threadId: THREAD }), params)).text();
+    const first = passOpts()[0];
+    expect(first.photoText).toBeUndefined();
+    expect(first.subjectQueries?.[0]).toContain("GS20-23P0");
+    expect(first.subjectQueries?.[0]).not.toContain("GS20-US");
+    // This conversation's LOOKs only, by exact scope.
+    expect(veMock.loadRecentLookObservations).toHaveBeenCalledWith(expect.anything(), TENANT, { notebookId: NB, ownerUserId: "u1", threadId: THREAD });
+  });
+
+  it("the LOOK sits at its place in time: newer than an open question, it is the newest subject", async () => {
+    nbMock.listTurns.mockResolvedValue([{ ...openPhotoTurn("What about the GS11N-20P5?"), evidence: [], createdAt: "2026-11-21T20:50:00Z" }]);
+    veMock.loadRecentLookObservations.mockResolvedValue([look("2026-11-21T20:57:09Z")]);
+    filesMock.photoLinkedToTarget.mockResolvedValue({ fileId: PRIOR_PHOTO, capturedAt: "2026-11-21T20:57:06.047Z" });
+    await (await POST(req({ message: "Find me the manual", sourceDocIds: [DOC_A], threadId: THREAD }), params)).text();
+    expect(passOpts()[0].subjectQueries?.[0]).toContain("GS20-23P0");
+    expect(passOpts()[0].subjectQueries?.[1]).toContain("GS11N-20P5");
+  });
+
+  it("control: a LOOK older than the run's closing document answer is not carried", async () => {
+    nbMock.listTurns.mockResolvedValue([
+      { id: "t2", threadId: THREAD, question: "What is the input voltage?", answerStatus: "answered", basis: "workspace_evidence", evidence: [], createdAt: "2026-11-21T21:00:00Z" },
+    ]);
+    veMock.loadRecentLookObservations.mockResolvedValue([look("2026-11-21T20:57:09Z")]);
+    filesMock.photoLinkedToTarget.mockResolvedValue({ fileId: PRIOR_PHOTO, capturedAt: "2026-11-21T20:57:06.047Z" });
+    await (await POST(req({ message: "Find me the manual", sourceDocIds: [DOC_A], threadId: THREAD }), params)).text();
+    expect(passOpts()[0].subjectQueries ?? []).toEqual([]);
+  });
+
+  it("control: a LOOK newer than the closing answer is carried; an unreadable closing time hides nothing", async () => {
+    nbMock.listTurns.mockResolvedValue([
+      { id: "t2", threadId: THREAD, question: "What is the input voltage?", answerStatus: "answered", basis: "workspace_evidence", evidence: [], createdAt: "2026-11-21T20:50:00Z" },
+    ]);
+    veMock.loadRecentLookObservations.mockResolvedValue([look("2026-11-21T20:57:09Z")]);
+    filesMock.photoLinkedToTarget.mockResolvedValue({ fileId: PRIOR_PHOTO, capturedAt: "2026-11-21T20:57:06.047Z" });
+    await (await POST(req({ message: "Find me the manual", sourceDocIds: [DOC_A], threadId: THREAD }), params)).text();
+    expect(passOpts()[0].subjectQueries?.[0]).toContain("GS20-23P0");
+    vi.clearAllMocks();
+    nbMock.listTurns.mockResolvedValue([
+      { id: "t2", threadId: THREAD, question: "What is the input voltage?", answerStatus: "answered", basis: "workspace_evidence", evidence: [], createdAt: "not a time" },
+    ]);
+    await (await POST(req({ message: "Find me the manual", sourceDocIds: [DOC_A], threadId: THREAD }), params)).text();
+    expect(passOpts()[0].subjectQueries?.[0]).toContain("GS20-23P0");
+  });
+
+  it("control: a LOOK whose photo is no longer linked is not carried", async () => {
+    veMock.loadRecentLookObservations.mockResolvedValue([look("2026-11-21T20:57:09Z")]);
+    filesMock.photoLinkedToTarget.mockResolvedValue(null);
+    await (await POST(req({ message: "Find me the manual", sourceDocIds: [DOC_A], threadId: THREAD }), params)).text();
+    expect(passOpts()[0].subjectQueries ?? []).toEqual([]);
+  });
+
+  it("control: a turn sending its own photo does not carry a LOOK (that photo owns the turn)", async () => {
+    filesMock.photoLinkedToTarget.mockResolvedValue({ fileId: PHOTO, capturedAt: "2026-11-21T20:57:06.047Z" });
+    veMock.loadVisualEvidenceForPhoto.mockResolvedValue(lookRow(PHOTO, "A drive label too blurred to read."));
+    veMock.loadRecentLookObservations.mockResolvedValue([look("2026-11-21T20:57:09Z")]);
+    await (await POST(req({ message: "Find me the manual", sourceDocIds: [DOC_A], visualEvidence: { fileId: PHOTO }, threadId: THREAD }), params)).text();
+    expect(passOpts()[0].subjectQueries ?? []).toEqual([]);
+  });
+
   it("control: a question with no photo passes no photo reading", async () => {
     await (await POST(req({ message: "Find me the manual", sourceDocIds: [DOC_A] }), params)).text();
     expect(passOpts().length).toBeGreaterThan(0);

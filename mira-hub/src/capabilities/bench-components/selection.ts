@@ -115,15 +115,20 @@ export function instantMicros(iso: string): number {
   return ms * 1000 + Number((frac + "000000").slice(3, 6));
 }
 
-export function readSubjectUnderSelection(turns: readonly SelectionTurn[], limit: number, selection: SelectedComponent): SubjectRead {
+export function readSubjectUnderSelection(
+  turns: readonly SelectionTurn[],
+  limit: number,
+  selection: SelectedComponent,
+  recordOnFile = false,
+): SubjectRead {
   const since = instantMicros(selection.selectedAt);
   const under = (t: SelectionTurn) =>
     t.componentId === selection.componentId && t.componentRevision === selection.revision && instantMicros(t.createdAt) > since;
   let start = turns.length;
   while (start > 0 && under(turns[start - 1])) start--;
   const run = turns.slice(start);
-  if (start > 0) return readSubject(run, Number.POSITIVE_INFINITY);
-  return readSubject(run, limit);
+  if (start > 0) return readSubject(run, Number.POSITIVE_INFINITY, recordOnFile);
+  return readSubject(run, limit, recordOnFile);
 }
 
 /**

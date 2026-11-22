@@ -1867,7 +1867,10 @@ export async function retrieveNodeChunks(
   // text would be).
   const earlierQuestions =
     namesKnownModel(typedQuestion) || returnsToOwn || live.releases ? [] : returnAt >= 0 ? openQuestions.slice(0, returnAt + 1) : openQuestions;
-  const modelAt = earlierQuestions.findIndex(namesKnownModel);
+  // The subject is the newest earlier question naming a model — or one whose
+  // photo did not say which machine (`subjectUnclear`): its machine is still
+  // the subject, unknown, so it is asked about below rather than skipped over.
+  const modelAt = earlierQuestions.findIndex((question, i) => namesKnownModel(question) || opts.subjectUnclear?.[i] === true);
   // The open run is longer than the caller could read, this question names
   // no model, and nothing read names one: a model named further back would
   // still be the subject, and it cannot be seen. Retrieve nothing rather than
@@ -1888,12 +1891,14 @@ export async function retrieveNodeChunks(
   // either machine would be a guess. The same two cases hold for a carried
   // photo question (`subjectUnclear`, conversation-subject.ts), so a follow-up
   // never answers what its own turn asked about.
-  const photoUnclear = photoNamesModel && (live.ambiguous || (!live.releases && carriedModelQuestion !== null));
+  const photoUnclear = live.unknown || (photoNamesModel && (live.ambiguous || (!live.releases && carriedModelQuestion !== null)));
   const carriedUnclear = modelAt >= 0 && opts.subjectUnclear?.[modelAt] === true;
   if (photoUnclear || carriedUnclear) {
     if (opts.diagnostics) {
       opts.diagnostics.photoSubjectUnclear = photoUnclear
-        ? { shown: modelLabels(live.photo ?? ""), earlier: carriedModelQuestion !== null ? modelLabels(carriedModelQuestion) : [] }
+        ? live.unknown
+          ? { shown: [], earlier: [], unknown: true }
+          : { shown: modelLabels(live.photo ?? ""), earlier: carriedModelQuestion !== null ? modelLabels(carriedModelQuestion) : [] }
         : { shown: modelLabels(carriedModelQuestion ?? ""), earlier: [], carried: true };
     }
     return [];

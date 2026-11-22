@@ -148,7 +148,7 @@ afterAll(async () => {
 type Diagnostics = {
   namedModelMismatch?: { requested: string[]; declared: string[]; source?: string };
   siblingOfRecordAsk?: { asked: string[]; record: string; source?: string };
-  photoSubjectUnclear?: { shown: string[]; earlier: string[]; carried?: true };
+  photoSubjectUnclear?: { shown: string[]; earlier: string[]; carried?: true; unknown?: true };
 } & Record<string, unknown>;
 
 async function ask(message: string, photoText?: string, catalogNumber?: string, earlier?: { subjectQueries?: string[]; subjectOutOfReach?: boolean; subjectUnclear?: boolean[] }) {
@@ -306,11 +306,15 @@ describe("this turn's photo is the asked machine when the question names none", 
     expect(diagnostics.photoSubjectUnclear?.shown).toEqual(expect.arrayContaining(["GS20-23P0", "GS20-21P0"]));
   });
 
-  // Codex r1 F4: nothing after a serial label is read as a model.
-  it("a model-shaped serial names no machine and does not refuse the project's manual", async () => {
+  // Codex r1 F4: nothing after a serial label is read as a model — and
+  // (#5706 review of 185f15c) a model there is not ignored either: the photo's
+  // machine is unknown, so it asks, naming nothing it read there.
+  it("a model-shaped serial is never read as the model, and the photo asks which machine", async () => {
     const { hits, diagnostics } = await ask("Find me the manual", 'The plate model is not readable; the only readable field is "S/N: PF 525".');
-    expect(hits.length).toBeGreaterThan(0);
+    expect(hits).toEqual([]);
+    expect(diagnostics.photoSubjectUnclear).toEqual({ shown: [], earlier: [], unknown: true });
     expect(diagnostics.namedModelMismatch).toBeUndefined();
+    expect(JSON.stringify(diagnostics)).not.toContain("525");
   });
 
   it("a readable model field decides, not a different model-shaped serial after it", async () => {
@@ -438,10 +442,50 @@ describe("Codex r2 on #5764: the photo's text is judged exactly as typed", () =>
     expect(clear.diagnostics.photoSubjectUnclear).toBeUndefined();
   });
 
-  it("F4: a serial printed before its label is never read as the asked model", async () => {
+  it("F4: a serial printed before its label is never read as the asked model; the photo asks", async () => {
     const { hits, diagnostics } = await ask("Find me the manual", 'The label reads "GS20-23P0 (S/N)". The model is unreadable.');
-    expect(hits.length).toBeGreaterThan(0);
+    expect(hits).toEqual([]);
+    expect(diagnostics.photoSubjectUnclear).toEqual({ shown: [], earlier: [], unknown: true });
     expect(diagnostics.namedModelMismatch).toBeUndefined();
+  });
+
+  // #5706 review of 185f15c, finding 1 — reproduced as a wrong-model answer at
+  // that head: each of these returned 3 GS10 chunks in this GS11N-20P2 project.
+  for (const reading of ["Serial No 12345678 GS20-23P0 AC drive", "Unit: GS20-23P0 240V 3PH", "Machine: GS20-23P0 AC drive"]) {
+    it(`a model printed after a private label is never answered from the project's manual: ${reading}`, async () => {
+      for (const catalog of [undefined, "GS11N-20P2"]) {
+        const { hits, diagnostics } = await ask("Find me the manual", reading, catalog);
+        expect(hits).toEqual([]);
+        expect(diagnostics.photoSubjectUnclear).toEqual({ shown: [], earlier: [], unknown: true });
+        expect(JSON.stringify(diagnostics)).not.toMatch(/12345678|GS20/);
+      }
+      // With an earlier open subject it still asks (it never ends that subject).
+      const earlier = await ask("Find me the manual", reading, "GS11N-20P2", { subjectQueries: ["What about the GS13N-21P0?"] });
+      expect(earlier.hits).toEqual([]);
+      expect(earlier.diagnostics.photoSubjectUnclear?.unknown).toBe(true);
+    });
+  }
+
+  it("control: the same plate with its model before the serial is judged as typed (refused)", async () => {
+    const { hits, diagnostics } = await ask("Find me the manual", "GS20-23P0 AC drive. Serial No 12345678");
+    expect(hits).toEqual([]);
+    expect(diagnostics.namedModelMismatch?.source).toBe("photo");
+    expect(diagnostics.photoSubjectUnclear).toBeUndefined();
+  });
+
+  it("control: the project's own plate with its model repeated after the serial is served", async () => {
+    const { hits, diagnostics } = await ask("Find me the manual", "AutomationDirect GS11N-20P2 AC drive. Serial No 2507A123. Barcode GS11N-20P2");
+    expect(hits.length).toBeGreaterThan(0);
+    expect(diagnostics.photoSubjectUnclear).toBeUndefined();
+  });
+
+  it("a carried question whose photo could not be told asks, even naming no model itself", async () => {
+    const { hits, diagnostics } = await ask("What is its rated current?", undefined, "GS11N-20P2", { subjectQueries: ["Find me the manual"], subjectUnclear: [true] });
+    expect(hits).toEqual([]);
+    expect(diagnostics.photoSubjectUnclear).toEqual({ shown: [], earlier: [], carried: true });
+    // Control: the same words, not flagged, are judged as typed (served).
+    const clear = await ask("What is its rated current?", undefined, "GS11N-20P2", { subjectQueries: ["Find me the manual"], subjectUnclear: [false] });
+    expect(clear.hits.length).toBeGreaterThan(0);
   });
 
   it("F5: after a return to the unit on record with another drive's photo, the follow-up stays on the record", async () => {
@@ -452,8 +496,10 @@ describe("Codex r2 on #5764: the photo's text is judged exactly as typed", () =>
 
   // The property itself: for every reading, with and without a catalog number
   // on record, the photo turn decides exactly what typing its public text
-  // decides — with ONE stated exception: a photo the reader cannot resolve to
-  // one machine (typed, it would skip the coverage check) is asked about. With
+  // decides — with stated exceptions that ask instead: a photo the reader
+  // cannot resolve to one machine (typed, it would skip the coverage check),
+  // and one whose model sits among its private fields (never read, so its
+  // machine is unknown: "GS20-23P0 (S/N)", #5706 review of 185f15c). With
   // an earlier open subject, a photo naming one machine ends it as a typed
   // model does; any other photo naming models asks which machine. Never looser.
   const readings: Record<string, string> = {
@@ -467,9 +513,9 @@ describe("Codex r2 on #5764: the photo's text is judged exactly as typed", () =>
     lookalike: "Two drives labeled GS11N-20P2 and GS11N-20P2A.",
     suffixSerial: 'The label reads "GS20-23P0 (S/N)". The model is unreadable.',
   };
-  const asksAlone = new Set(["panel"]);
+  const asksAlone = new Set(["panel", "suffixSerial"]);
   const releases = new Set(["GS20", "GS11N", "powerflex4m"]);
-  const namesNothing = new Set(["unreadable", "suffixSerial"]);
+  const namesNothing = new Set(["unreadable"]);
   const earlier = { subjectQueries: ["What about the GS13N-21P0?"] };
   for (const [name, reading] of Object.entries(readings)) {
     const typedText = ["Find me the manual", photoModelText(reading)].filter(Boolean).join("\n");

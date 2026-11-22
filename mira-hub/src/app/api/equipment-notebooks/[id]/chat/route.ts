@@ -144,7 +144,7 @@ import {
   questionWarningQuery,
 } from "@/capabilities/energized-work-stop";
 import { ambiguousModelAskText, libraryNotForAskedModelText, namedModelMismatchText, photoSubjectUnclearText, siblingOfRecordAskText, subjectOutOfReachText, type NamedModelMismatch, type PhotoSubjectUnclear } from "@/capabilities/named-model-mismatch";
-import { DOCUMENT_BASES, readSubject, SUBJECT_READ_STEPS } from "@/capabilities/conversation-subject";
+import { DOCUMENT_BASES, readSubject, SUBJECT_READ_STEPS, type PriorTurn } from "@/capabilities/conversation-subject";
 import { confirmedCatalogNumber, notebookManualIdentity } from "@/capabilities/notebook-manual-identity";
 import { componentAttributionEntry, isComponentAttributionEntry, type ComponentAttributionEntry } from "@/capabilities/bench-components/attribution";
 import { checkWholeMachineScope, componentTurnFrame, noDocumentsForComponentText, readComponentSelection, resolveComponentTurn, selectionMovedText, type ComponentTurn, type ComponentTurnFrame } from "@/capabilities/bench-components/chat-turn";
@@ -2534,22 +2534,32 @@ async function handleChatTurn(
   // before the tenant client is taken, as the prior-LOOK read does), and the
   // reading is this conversation's by exact notebook, owner and thread.
   // conversation-subject.ts joins it by the live turn's rule. A photo of a turn
-  // a document answer closed is never read (#3966). A failed read carries no
-  // photo: the run is then judged on its words, as before this read existed.
+  // a document answer closed is never read (#3966).
+  //
+  // Fail closed (#5706 review of 185f15c, findings 4 + 5): an open photo turn
+  // whose reading cannot be read back — a failed link check or read, or one
+  // past the read limit — is marked `photoUnread`. Its machine is unknown, so
+  // a follow-up carrying it is asked about, never answered from the project's
+  // manual. A photo since detached from the notebook (a clean "not linked")
+  // is not read at all (F7).
   const OPEN_PHOTO_READS = 3;
-  const withOpenPhotoReadings = async <T extends { evidence: unknown[]; answerStatus: string; basis: string | null }>(turns: T[]) => {
+  const withOpenPhotoReadings = async <T extends { evidence: unknown[]; answerStatus?: string | null; basis?: string | null }>(turns: T[]) => {
     const readings = new Map<T, string>();
+    const unread = new Set<T>();
+    const open: { turn: T; fileId: string }[] = [];
+    for (let i = turns.length - 1; i >= 0; i--) {
+      const turn = turns[i];
+      if (turn.answerStatus === "answered" && typeof turn.basis === "string" && DOCUMENT_BASES.has(turn.basis)) break;
+      const fileId = turn.evidence.find(isVisualObservationEntry)?.fileId;
+      if (!fileId) continue;
+      if (open.length < OPEN_PHOTO_READS) open.push({ turn, fileId });
+      else unread.add(turn);
+    }
     try {
-      const open: { turn: T; fileId: string }[] = [];
-      for (let i = turns.length - 1; i >= 0 && open.length < OPEN_PHOTO_READS; i--) {
-        const turn = turns[i];
-        if (turn.answerStatus === "answered" && turn.basis !== null && DOCUMENT_BASES.has(turn.basis)) break;
-        const fileId = turn.evidence.find(isVisualObservationEntry)?.fileId;
-        if (fileId) open.push({ turn, fileId });
-      }
       const linked: typeof open = [];
       for (const entry of open) {
-        if (await verifyVisualEntry(ctx.tenantId, notebookId, entry.fileId)) linked.push(entry);
+        // Not verifyVisualEntry: it reads a failed check as "not linked".
+        if (await photoLinkedToTarget(ctx.tenantId, entry.fileId, "equipment_notebook", notebookId)) linked.push(entry);
       }
       if (linked.length > 0) {
         const scope = { notebookId, ownerUserId: ctx.userId, threadId };
@@ -2561,9 +2571,42 @@ async function handleChatTurn(
         });
       }
     } catch (err) {
-      console.error("[notebook-chat] open-question photo read failed (carrying their words only):", err instanceof Error ? err.message : err);
+      console.error("[notebook-chat] open-question photo read failed (asking which machine):", err instanceof Error ? err.message : err);
+      for (const { turn } of open) if (!readings.has(turn)) unread.add(turn);
     }
-    return turns.map((turn) => ({ ...turn, photoText: readings.get(turn) ?? null }));
+    return turns.map((turn) => ({ ...turn, photoText: readings.get(turn) ?? null, photoUnread: unread.has(turn) }));
+  };
+  // #5706 review of 185f15c, finding 2: a photo LOOKed at in this conversation
+  // but never sent with a question (the app's LOOK, then a typed question) is
+  // part of the open run too. The newest such reading of this exact
+  // conversation, still linked, newer than the run's closing document answer,
+  // is carried as a photo-only turn at its place in time — judged by the same
+  // rule as a photo sent with a question. Not under a selected component (a
+  // standalone LOOK records none, #5504 Codex r3 F7), and not when this turn
+  // sends its own photo (that photo owns the turn). A failed ledger read
+  // cannot show a photo exists, so it adds none.
+  const withRecentLook = async <T extends PriorTurn & { createdAt: string }>(turns: T[]): Promise<{ turns: PriorTurn[]; added: number }> => {
+    if (visualEntry || componentScope) return { turns, added: 0 };
+    try {
+      const scope = { notebookId, ownerUserId: ctx.userId, threadId };
+      const look = (await withTenantContext(ctx.tenantId, (c) => loadRecentLookObservations(c, ctx.tenantId, scope)))?.[0];
+      if (!look?.text || !look.fileId) return { turns, added: 0 };
+      const at = Date.parse(look.observedAt ?? "");
+      const closedAt = turns.reduce(
+        // An unreadable closing time hides nothing (fail closed: the LOOK is judged).
+        (last, t) => (t.answerStatus === "answered" && typeof t.basis === "string" && DOCUMENT_BASES.has(t.basis) ? Math.max(last, Date.parse(t.createdAt) || Number.NEGATIVE_INFINITY) : last),
+        Number.NEGATIVE_INFINITY,
+      );
+      // An unreadable time is placed newest (fail closed: it is judged).
+      if (!Number.isNaN(at) && !(at > closedAt)) return { turns, added: 0 };
+      if (!(await photoLinkedToTarget(ctx.tenantId, look.fileId, "equipment_notebook", notebookId))) return { turns, added: 0 };
+      const lookTurn: PriorTurn = { question: "", answerStatus: "look", basis: null, photoText: look.text };
+      const before = Number.isNaN(at) ? turns.length : turns.filter((t) => !(Date.parse(t.createdAt) > at)).length;
+      return { turns: [...turns.slice(0, before), lookTurn, ...turns.slice(before)], added: 1 };
+    } catch (err) {
+      console.error("[notebook-chat] recent LOOK read failed (carrying the questions only):", err instanceof Error ? err.message : err);
+      return { turns, added: 0 };
+    }
   };
   // "Back to mine" counts only with a catalog number on record — the same
   // condition retrieveNodeChunks applies to the live turn.
@@ -2573,17 +2616,19 @@ async function handleChatTurn(
       for (const limit of SUBJECT_READ_STEPS) {
         // Under a selected component only the questions asked under this
         // selection carry: a pick, a Return or a correction starts a new run.
-        const read = componentScope
-          ? readSubjectUnderSelection(
-              await listSelectionTurns(ctx.tenantId, notebookId, ctx.userId, threadId, limit),
-              limit,
-              componentScope.selection,
-            )
-          : readSubject(
-              await withOpenPhotoReadings(await listTurns(ctx.tenantId, notebookId, limit, { viewerUserId: ctx.userId, threadId })),
-              limit,
-              recordOnFile,
-            );
+        // Their photos are read by the same rule (finding 3 of the 185f15c review).
+        let read;
+        if (componentScope) {
+          read = readSubjectUnderSelection(
+            await withOpenPhotoReadings(await listSelectionTurns(ctx.tenantId, notebookId, ctx.userId, threadId, limit, { withAnswers: true })),
+            limit,
+            componentScope.selection,
+            recordOnFile,
+          );
+        } else {
+          const recent = await withRecentLook(await withOpenPhotoReadings(await listTurns(ctx.tenantId, notebookId, limit, { viewerUserId: ctx.userId, threadId })));
+          read = readSubject(recent.turns, limit + recent.added, recordOnFile);
+        }
         subjectQueries = read.questions;
         subjectUnclear = read.unclear;
         subjectOutOfReach = !read.complete;
