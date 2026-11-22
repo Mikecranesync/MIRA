@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { admitPaidTurn } from "./journey-guard";
+import { admitPaidTurn, recoverSetupTenant, settlementOf } from "./journey-guard";
 import { BudgetMeter, type RuntimeIdentity } from "./staging";
 
 const start: RuntimeIdentity = { gitSha: "a6e27e244", builtAt: "2026-11-22T13:01:24Z", deploymentGeneration: "gen-1", fingerprintHash: "fp-1" };
@@ -33,5 +33,39 @@ describe("admitPaidTurn", () => {
     admitPaidTurn(m, start, start, "S5b");
     expect(() => admitPaidTurn(m, start, start, "S6")).toThrow(/budget stop/);
     expect(m.turns).toBe(2);
+  });
+});
+
+describe("settlementOf", () => {
+  it("settles a bounded run at what it booked", () => {
+    const m = new BudgetMeter(1, 0.1);
+    admitPaidTurn(m, start, start, "S5");
+    expect(settlementOf(m, 1)).toMatchObject({ settle: true });
+  });
+  it("keeps the whole reservation once the meter lost its bound", () => {
+    const m = new BudgetMeter(1, 0.1);
+    admitPaidTurn(m, start, start, "S5");
+    m.halt("S5", "served turn with tokens above the booked bound");
+    const s = settlementOf(m, 1);
+    expect(s.settle).toBe(false);
+    expect(s.note).toMatch(/full \$1\.00 reservation stays counted/);
+  });
+});
+
+describe("recoverSetupTenant", () => {
+  it("returns the tenant the token's own receipt names", async () => {
+    expect(await recoverSetupTenant(async () => "t-1")).toEqual({ tenantId: "t-1", error: null });
+  });
+  it("reports no tenant, without error, when the token created none", async () => {
+    expect(await recoverSetupTenant(async () => null)).toEqual({ tenantId: null, error: null });
+  });
+  it("retries a failed read before giving up", async () => {
+    let n = 0;
+    expect(await recoverSetupTenant(async () => { if (++n < 3) throw new Error("conn reset"); return "t-2"; })).toEqual({ tenantId: "t-2", error: null });
+  });
+  it("never reads an unreadable receipt as 'no account'", async () => {
+    const r = await recoverSetupTenant(async () => { throw new Error("db down"); });
+    expect(r.tenantId).toBeNull();
+    expect(r.error).toMatch(/unreadable after 3 attempts \(db down\); token kept/);
   });
 });

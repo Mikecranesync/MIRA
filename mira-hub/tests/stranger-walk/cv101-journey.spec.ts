@@ -16,16 +16,17 @@
  */
 import { execFileSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { chromium, devices, test, type Browser, type BrowserContext, type Locator, type Page } from "@playwright/test";
 import { extractTurn, UI } from "../fidelity/surfaces";
 import { cardsOf, viewerTargetOf } from "./extract";
 import { githubToken } from "./required-fixes";
 import { reserveWalkSpend, settleWalkSpend } from "./spend-ledger";
-import { assertOpenRouterCeiling, BudgetMeter, checkFingerprint, identity, ledgerVerdictFor, pricesFromEnv, releaseOwnPilotHold, runtimeDrift, runtimeOf, stagingBase, teardownTenant, tenantIdForEmail, worstCaseTurnUsd, type RuntimeIdentity } from "./staging";
+import { assertOpenRouterCeiling, BudgetMeter, checkFingerprint, identity, ledgerVerdictFor, pricesFromEnv, releaseOwnPilotHold, runtimeDrift, runtimeOf, stagingBase, teardownTenant, worstCaseTurnUsd, type RuntimeIdentity } from "./staging";
 import { decodeChatBody } from "./stream-decode";
-import { admitPaidTurn } from "./journey-guard";
+import { classifySeededToken } from "../../scripts/provision-beta-gate";
+import { admitPaidTurn, recoverSetupTenant, settlementOf } from "./journey-guard";
 import { exitOk, receiptOf, type Step } from "./journey-receipt";
 
 const TARGET = (process.env.CV_TARGET ?? "desktop") as "desktop" | "phone" | "pixel" | "tablet";
@@ -168,6 +169,8 @@ type Ask = { text: string; status: string | null; stop: boolean; citations: { n:
 
 /** Set once the run is priced: identity read + drift check before every paid dispatch (Codex r1 F1). */
 let paidRuntime: { base: string; start: RuntimeIdentity } | null = null;
+/** The validated prices the run booked at: reconciliation uses the same ones (Codex r2 F1). */
+let paidPrices: Record<string, { input: number; output: number }> | undefined;
 async function admitPaid(meter: BudgetMeter, id: string): Promise<void> {
   if (!paidRuntime) throw new Error("refused before dispatch: run was never priced");
   const rt = paidRuntime;
@@ -190,7 +193,7 @@ async function ask(page: Page, q: string, meter: BudgetMeter, tenantId: string, 
     if (!line.startsWith("data: ")) continue;
     try { const f = JSON.parse(line.slice(6)); if (f?.kind === "status") status = String(f.status); } catch { /* [DONE] */ }
   }
-  const lv = PAID && sse ? await ledgerVerdictFor(tenantId, sse) : null;
+  const lv = PAID && sse ? await ledgerVerdictFor(tenantId, sse, undefined, paidPrices) : null;
   // Keep the ledger row itself: teardown deletes it, and a failing verdict needs its evidence.
   if (lv) writeFileSync(path.join(OUT, `ledger-${lv.traceId ?? "none"}.json`), JSON.stringify({ verdict: lv.verdict, rows: lv.rows }, null, 1));
   if (PAID) meter.verify(q.slice(0, 24), sse, lv?.verdict);
@@ -311,18 +314,6 @@ async function tenantCreatedBySetup(token: string): Promise<string | null> {
   }
 }
 
-/** A setup token that never created an account is this run's only leftover row: remove it. */
-async function dropUnusedSetupToken(token: string): Promise<void> {
-  const { Client } = await import("pg");
-  const c = new Client({ connectionString: process.env.NEON_DATABASE_URL, ssl: { rejectUnauthorized: false } });
-  await c.connect();
-  try {
-    await c.query(`DELETE FROM hub_magic_tokens WHERE token = $1 AND used_at IS NULL`, [token]);
-  } finally {
-    await c.end();
-  }
-}
-
 test("cv101 journey", async () => {
   test.setTimeout(90 * 60_000);
   mkdirSync(path.join(OUT, "shots"), { recursive: true });
@@ -338,6 +329,7 @@ test("cv101 journey", async () => {
     checkFingerprint(start.inferenceFingerprint, prices!);
     await assertOpenRouterCeiling();
     paidRuntime = { base, start: runtimeOf(start) };
+    paidPrices = prices;
   }
   let reservation: Awaited<ReturnType<typeof reserveWalkSpend>> | null = null;
   let tenantId = "";
@@ -745,7 +737,8 @@ test("cv101 journey", async () => {
       if (had) await stop.click();
       await page.waitForTimeout(4_000);
       const t = (await page.locator('.fl-turn--aui[data-role="assistant"]').last().innerText().catch(() => "")).replace(/\s+/g, " ");
-      meter.halt("S17", "cancelled stream: usage not readable by design"); // nothing paid follows
+      // No ledger check for a cancelled stream, by design: its booked worst case still bounds it, so
+      // it does not unbound the meter. S17 is the last paid turn (Codex r2 F1).
       s.actual = `stop button=${had}; turn: "${t.slice(0, 300)}"`;
       s.verdict = had && !/answered/i.test(t) ? "PASS" : "FAIL";
     });
@@ -761,20 +754,27 @@ test("cv101 journey", async () => {
     writeFileSync(path.join(OUT, "receipt.md"), `${receipt.md}\n${drift ? `Runtime drift during the run: ${drift}\n` : ""}`);
     if (reservation?.ok) {
       const r = reservation;
-      await bounded("settle", 60_000, () => settleWalkSpend({ token: githubToken(), repo: process.env.GITHUB_REPOSITORY, entryId: r.entryId, reservedUsd: r.reservedUsd, bookedUsd: meter.booked, note: `${meter.turns} turns booked` }));
+      const plan = settlementOf(meter, r.reservedUsd);
+      if (plan.settle) await bounded("settle", 60_000, () => settleWalkSpend({ token: githubToken(), repo: process.env.GITHUB_REPOSITORY, entryId: r.entryId, reservedUsd: r.reservedUsd, bookedUsd: meter.booked, note: `${meter.turns} turns booked` }));
+      appendFileSync(path.join(OUT, "receipt.md"), `Campaign spend: ${plan.note}\n`);
     }
     if (started) {
       await bounded("storage-state", 15_000, () => ctx.storageState({ path: path.join(OUT, "state.json") }));
       await bounded("context-close", 15_000, () => ctx.close());
       if (!DEVICE) await bounded("browser-close", 15_000, () => browser.close());
     }
-    // A redeemed token whose redirect or receipt read was lost still names its tenant: read it
-    // again before giving up on the sweep, and drop the token only if it never made one (Codex r1 F4).
+    // A redeemed token whose redirect or receipt read was lost still names its tenant. Only that
+    // receipt, read under the token's row lock, may name a tenant to sweep; the lock also waits out
+    // a redemption still in flight, and a token without a receipt is deleted under it (Codex r1/r2 F4).
     if (setupToken && !tenantId) {
-      // The run's email is unique to it, so the account holding it is this run's (as walk.spec.ts falls back).
-      tenantId = (await bounded("setup-receipt", 20_000, () => tenantCreatedBySetup(setupToken))) ?? (await bounded("tenant-by-email", 20_000, () => tenantIdForEmail(EMAIL))) ?? "";
+      const rec = await recoverSetupTenant(() => classifySeededToken(setupToken));
+      tenantId = rec.tenantId ?? "";
       if (tenantId) writeFileSync(path.join(OUT, "tenant.txt"), tenantId);
-      else await bounded("setup-token", 20_000, () => dropUnusedSetupToken(setupToken));
+      if (rec.error) {
+        writeFileSync(path.join(OUT, "cleanup-error-setup-receipt.txt"), rec.error);
+        appendFileSync(path.join(OUT, "receipt.md"), `Cleanup FAILED: ${rec.error}\n`);
+        overall = "FAIL";
+      }
     }
     if (tenantId && process.env.CV_KEEP !== "1") writeFileSync(path.join(OUT, "teardown.txt"), JSON.stringify(teardownTenant(tenantId)));
   }

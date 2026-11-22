@@ -19,3 +19,31 @@ export function admitPaidTurn(meter: BudgetMeter, start: RuntimeIdentity, now: R
   if (!meter.canAfford()) throw new Error(meter.unbounded ? `budget stop: ${meter.unbounded} — ${meter.unboundedReason}` : "budget stop: next turn's worst case would cross the run cap");
   meter.book();
 }
+
+/**
+ * Whether the run's reservation may be settled down to what was booked. Once the meter lost its
+ * bound (usage out of bound or unreadable), booked no longer bounds true spend, so the whole
+ * reservation stays counted until reconciled by hand, as the stranger walk does (Codex r2 F1).
+ */
+export function settlementOf(meter: Pick<BudgetMeter, "unbounded" | "unboundedReason" | "booked" | "turns">, reservedUsd: number): { settle: boolean; note: string } {
+  if (meter.unbounded) return { settle: false, note: `NOT settled: meter unbounded at ${meter.unbounded} (${meter.unboundedReason}); the full $${reservedUsd.toFixed(2)} reservation stays counted until reconciled by hand` };
+  return { settle: true, note: `settled at $${Math.min(meter.booked, reservedUsd).toFixed(4)} booked over ${meter.turns} turns` };
+}
+
+/**
+ * The tenant this run's setup token created, read under the token's row lock (the beta-gate
+ * provisioner's classifySeededToken). Only that receipt is authority to sweep: an account the token
+ * merely signed into is never touched. A read that keeps failing is reported, never read as
+ * "no account" (Codex r2 F4).
+ */
+export async function recoverSetupTenant(classify: () => Promise<string | null>, attempts = 3): Promise<{ tenantId: string | null; error: string | null }> {
+  let error: string | null = null;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return { tenantId: await classify(), error: null };
+    } catch (e) {
+      error = (e as Error).message;
+    }
+  }
+  return { tenantId: null, error: `setup token receipt unreadable after ${attempts} attempts (${error}); token kept for recovery` };
+}
