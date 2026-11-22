@@ -25,7 +25,6 @@ import { githubToken } from "./required-fixes";
 import { reserveWalkSpend, settleWalkSpend } from "./spend-ledger";
 import { assertOpenRouterCeiling, BudgetMeter, checkFingerprint, identity, ledgerVerdictFor, pricesFromEnv, releaseOwnPilotHold, runtimeDrift, runtimeOf, stagingBase, teardownTenant, worstCaseTurnUsd, type RuntimeIdentity } from "./staging";
 import { decodeChatBody } from "./stream-decode";
-import { classifySeededToken } from "../../scripts/provision-beta-gate";
 import { admitPaidTurn, recoverSetupTenant, settlementOf } from "./journey-guard";
 import { exitOk, receiptOf, type Step } from "./journey-receipt";
 
@@ -309,6 +308,31 @@ async function tenantCreatedBySetup(token: string): Promise<string | null> {
   try {
     const r = await c.query(`SELECT onboarding->>'createdTenantId' AS t FROM hub_magic_tokens WHERE token = $1 AND used_at IS NOT NULL`, [token]);
     return r.rows[0]?.t ? String(r.rows[0].t) : null;
+  } finally {
+    await c.end();
+  }
+}
+
+/**
+ * The beta-gate provisioner's classifySeededToken (scripts/provision-beta-gate.ts, #5776), restated
+ * because Playwright cannot load that ES-module script (static or dynamic import). Under the token's
+ * row lock: an in-flight redemption is waited out, a receipt names the tenant to sweep, and a token
+ * with no receipt is deleted. Throws on any database error, deleting nothing.
+ */
+async function classifySetupToken(token: string): Promise<string | null> {
+  const { Client } = await import("pg");
+  const c = new Client({ connectionString: process.env.NEON_DATABASE_URL, ssl: { rejectUnauthorized: false } });
+  await c.connect();
+  try {
+    await c.query("BEGIN");
+    const r = await c.query(`SELECT used_at, onboarding->>'createdTenantId' AS tenant_id FROM hub_magic_tokens WHERE token = $1 FOR UPDATE`, [token]);
+    const tenantId = r.rows[0]?.used_at && r.rows[0]?.tenant_id ? String(r.rows[0].tenant_id) : null;
+    if (r.rows[0] && !tenantId) await c.query(`DELETE FROM hub_magic_tokens WHERE token = $1`, [token]);
+    await c.query("COMMIT");
+    return tenantId;
+  } catch (err) {
+    await c.query("ROLLBACK").catch(() => {});
+    throw err;
   } finally {
     await c.end();
   }
@@ -767,7 +791,7 @@ test("cv101 journey", async () => {
     // receipt, read under the token's row lock, may name a tenant to sweep; the lock also waits out
     // a redemption still in flight, and a token without a receipt is deleted under it (Codex r1/r2 F4).
     if (setupToken && !tenantId) {
-      const rec = await recoverSetupTenant(() => classifySeededToken(setupToken));
+      const rec = await recoverSetupTenant(() => classifySetupToken(setupToken));
       tenantId = rec.tenantId ?? "";
       if (tenantId) writeFileSync(path.join(OUT, "tenant.txt"), tenantId);
       if (rec.error) {
