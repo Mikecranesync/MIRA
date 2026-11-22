@@ -23,7 +23,7 @@ import { extractTurn, UI } from "../fidelity/surfaces";
 import { cardsOf, viewerTargetOf } from "./extract";
 import { githubToken } from "./required-fixes";
 import { reserveWalkSpend, settleWalkSpend } from "./spend-ledger";
-import { assertOpenRouterCeiling, BudgetMeter, checkFingerprint, identity, ledgerVerdictFor, pricesFromEnv, releaseOwnPilotHold, runtimeDrift, runtimeOf, stagingBase, teardownTenant, worstCaseTurnUsd, type RuntimeIdentity } from "./staging";
+import { assertOpenRouterCeiling, BudgetMeter, checkFingerprint, identity, ledgerVerdictFor, pricesFromEnv, releaseOwnPilotHold, runtimeDrift, runtimeOf, stagingBase, teardownTenant, tenantIdForEmail, worstCaseTurnUsd, type RuntimeIdentity } from "./staging";
 import { decodeChatBody } from "./stream-decode";
 import { admitPaidTurn } from "./journey-guard";
 import { exitOk, receiptOf, type Step } from "./journey-receipt";
@@ -771,7 +771,8 @@ test("cv101 journey", async () => {
     // A redeemed token whose redirect or receipt read was lost still names its tenant: read it
     // again before giving up on the sweep, and drop the token only if it never made one (Codex r1 F4).
     if (setupToken && !tenantId) {
-      tenantId = (await bounded("setup-receipt", 20_000, () => tenantCreatedBySetup(setupToken))) ?? "";
+      // The run's email is unique to it, so the account holding it is this run's (as walk.spec.ts falls back).
+      tenantId = (await bounded("setup-receipt", 20_000, () => tenantCreatedBySetup(setupToken))) ?? (await bounded("tenant-by-email", 20_000, () => tenantIdForEmail(EMAIL))) ?? "";
       if (tenantId) writeFileSync(path.join(OUT, "tenant.txt"), tenantId);
       else await bounded("setup-token", 20_000, () => dropUnusedSetupToken(setupToken));
     }
