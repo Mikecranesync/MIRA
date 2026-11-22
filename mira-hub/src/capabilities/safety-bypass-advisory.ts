@@ -171,12 +171,18 @@ const ART = "(?:(?:the|a|an|my|our|its|their|this|that)\\s+)?";
 const DEVICE_PHRASE = `${DEVICE}(?:\\s+(?:doors?|gates?|covers?|panels?|hatch(?:es)?))?`;
 /** A state said BEFORE the device: "a bypassed light curtain", "an open guard", "an unlatched guard door". */
 const STATE_ADJ =
-  "(?:bypassed|disabled|disconnected|unplugged|inactive|deactivated|muted|missing|unlatched|unhooked|removed|overridden|defeated|jumpered|shorted|open|opened|propped|pulled|broken|faulty|defective|failed)";
+  "(?:bypassed|disabled|disconnected|unplugged|inactive|deactivated|muted|missing|unlatched|unhooked|removed|overridden|defeated|jumpered|shorted|open|opened|propped|pulled|broken|faulty|defective|failed" +
+  // #5670 review 4 F11: the multiword states of STATE, said before the device.
+  "|out[-\\s]of[-\\s](?:service|order))";
 
 /** "bypass the e-stop", "jump out the estop circuit", "wire around the safety relay", "unplug the light curtain". */
 const VERB_THEN_DEVICE = new RegExp(`\\b${VERB}(?:\\s+${GAP}){0,4}\\s+${DEVICE}\\b`, "i");
 const TURN_OFF_FIRST = new RegExp(`\\b${VERB_OFF}\\s+(?:off|down|out)(?:\\s+${GAP}){0,4}\\s+${DEVICE}\\b`, "i");
-const TURN_OFF_SEPARATED = new RegExp(`\\b${VERB_OFF}(?:\\s+${GAP}){0,4}\\s+${DEVICE}\\s+(?:off|down|out)\\b`, "i");
+// #5670 review 4 F11: the device as people name it ("the guard door switch off", "the guard door off").
+const TURN_OFF_SEPARATED = new RegExp(
+  `\\b${VERB_OFF}(?:\\s+${GAP}){0,4}\\s+(?:${ADJ}\\s+){0,2}${DEVICE_PHRASE}\\s+(?:off|down|out)\\b`,
+  "i",
+);
 
 /** "run with the light curtain off", "cycle the press while the scanner is disabled", "jog it w the guard open". */
 const RUN_CONNECTOR = "(?:with|w/?|while|even\\s+with|even\\s+though|despite)";
@@ -386,9 +392,11 @@ function normalizeAsk(raw: string): string {
  * A request to carry on, in a clause of its own: "can I keep running", "is it safe to keep going",
  * "may we continue operating", "can we leave it running like this". First person only (a question
  * ABOUT the indicator, "can you explain the run light", is not a request to run).
+ * #5670 review 4 F12: "keep" or "leave" followed by an isolated state ("keep it locked out",
+ * "keep the machine stopped", "leave it tagged") asks to stay safe, not to carry on.
  */
 const ASKS_TO_CARRY_ON =
-  /^(?:also\s+|actually\s+|and\s+|so\s+|but\s+)?(?:(?:can|could|may|might|would|should|shall|will)\s+(?:i|we)\b|is\s+it\s+(?:ok|okay|fine|safe|alright|allowed|acceptable)\b|are\s+we\s+(?:ok|okay|allowed|good)\b|am\s+i\s+(?:ok|allowed)\b|(?:ok|okay)\s+to\b)[^?]*?\b(?:keep(?:ing)?|continu\w+|carry(?:ing)?\s+on|go(?:ing)?\s+on|leav(?:e|ing)|resum\w+|restart\w*|start\w*|run(?!\s+(?:indicator|light|lamp|led|mode|status|signal|command|input|output|relay|contact|time|hours?|(?:the\s+|a\s+|some\s+)?(?:diagnostics?|tests?|checks?|reports?|scans?|self[- ]?tests?)\b))\w*|operat\w+|cycl\w+|jog\w*|produc\w+|proceed\w*)\b/;
+  /^(?:also\s+|actually\s+|and\s+|so\s+|but\s+)?(?:(?:can|could|may|might|would|should|shall|will)\s+(?:i|we)\b|is\s+it\s+(?:ok|okay|fine|safe|alright|allowed|acceptable)\b|are\s+we\s+(?:ok|okay|allowed|good)\b|am\s+i\s+(?:ok|allowed)\b|(?:ok|okay)\s+to\b)[^?]*?\b(?:(?:keep(?:ing)?|leav(?:e|ing))(?!(?:\s+\S+){0,3}?\s+(?:locked|stopped|isolated|tagged|de-?energi[sz]ed|shut\s+down)\b)|continu\w+|carry(?:ing)?\s+on|go(?:ing)?\s+on|resum\w+|restart\w*|start\w*|run(?!\s+(?:indicator|light|lamp|led|mode|status|signal|command|input|output|relay|contact|time|hours?|(?:the\s+|a\s+|some\s+)?(?:diagnostics?|tests?|checks?|reports?|scans?|self[- ]?tests?)\b))\w*|operat\w+|cycl\w+|jog\w*|produc\w+|proceed\w*)\b/;
 
 /** A device-state mention that is CURRENT: "the guard door is open", "the light curtain is still out of service". */
 const STATE_AFTER_MENTION = new RegExp(

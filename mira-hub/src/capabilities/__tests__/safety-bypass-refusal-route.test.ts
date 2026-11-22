@@ -772,3 +772,60 @@ describe("controls: scope is not widened", () => {
     });
   }
 });
+
+import { BYPASS_STOP_TRIGGER } from "@/capabilities/safety-bypass-advisory";
+
+describe("#5670 review 4: a client-side selection error or a lost header cannot erase the refusal", () => {
+  const MALFORMED = [
+    "garbage",
+    { kind: "component", componentId: "not-a-uuid" },
+  ] as const;
+
+  it("F13: the exact #5721 ask with a malformed component selection is the refusal, on an owned notebook", async () => {
+    for (const componentSelection of MALFORMED) {
+      vi.clearAllMocks();
+      domainMock.validateChatSources.mockResolvedValue({ ok: true, docIds: [DOC_A], nodeId: "n1" } as never);
+      await expectRefusal(AUDIT_ASK, { componentSelection });
+    }
+  });
+
+  it("F13: the same request on a notebook the caller does not own stays a 404 with nothing written", async () => {
+    domainMock.validateChatSources.mockResolvedValue({ ok: false, error: "notebook_not_found" } as never);
+    const fetchMock = spendingProvider();
+    const out = await post(AUDIT_ASK, { componentSelection: "garbage" });
+    expect(out.status).toBe(404);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(domainMock.recordTurn).not.toHaveBeenCalled();
+  });
+
+  it("F13 control: an ordinary question with the same malformed selection keeps its 400", async () => {
+    const fetchMock = spendingProvider();
+    const out = await post("how do i test the e-stop", { componentSelection: "garbage" });
+    expect(out.status).toBe(400);
+    expect(JSON.parse(out.text)).toEqual({ error: "invalid_component_selection" });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(domainMock.recordTurn).not.toHaveBeenCalled();
+  });
+
+  it("F14: the live refusal names the stop in X-Safety-Stop, the same value its exact replay sends", async () => {
+    const { out, turn } = await expectRefusal(AUDIT_ASK);
+    const live = out.res.headers.get("X-Safety-Stop");
+    expect(live).toBe(BYPASS_STOP_TRIGGER);
+    vi.clearAllMocks();
+    domainMock.validateChatSources.mockResolvedValue({ ok: true, docIds: [DOC_A], nodeId: "n1" } as never);
+    domainMock.claimNotebookTurnRequest.mockResolvedValueOnce({
+      status: "replay",
+      turn: { id: "t1", question: AUDIT_ASK, answerStatus: turn.answerStatus, answerText: turn.answerText, citations: [], evidence: turn.evidence, enabledSourceDocIds: [DOC_A], basis: null, createdAt: "2026-11-22T00:00:00Z" },
+    } as never);
+    const replay = await post(AUDIT_ASK);
+    expect(domainMock.recordTurn).not.toHaveBeenCalled();
+    expect(replay.res.headers.get("X-Safety-Stop")).toBe(live);
+  });
+
+  it("F14 control: an ordinary answered question carries no X-Safety-Stop", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => completingProvider("Fault F004 is DC bus undervoltage [1].")));
+    const out = await post("What does fault F004 mean?");
+    expect(out.status).toBe(200);
+    expect(out.res.headers.get("X-Safety-Stop")).toBeNull();
+  });
+});
