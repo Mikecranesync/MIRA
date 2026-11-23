@@ -2185,6 +2185,507 @@ async def test_a_caller_timeout_while_reading_a_retry_pdf_keeps_it_on_the_trail(
     )
 
 
+# #5848: the website handoff only adds a support page. A handoff that never answers must
+# not turn the search's answer into an outage, and the caller's own timeout must still
+# cancel the search. Where the typed-pass retry follows and can still start, the retry
+# keeps its window and the handoff gets what is left (#5866 Codex F2). These tests use
+# the shrunken timing: the retry needs 1.1 s, so a handoff before it keeps 1.4 s back.
+_HANDOFF_TIMEOUT_ROW = {"pass": "q3", "query": _HANDOFF, "result": "timeout"}
+
+
+def test_a_stalled_website_handoff_leaves_the_retry_its_window(wired, monkeypatch):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    import ask_api.manual_discovery as md
+    import shared.manual_search.quota as quota
+
+    _scale(monkeypatch, search_timeout=0.5, batch=0.3, reserve=0.3)
+    monkeypatch.setenv("MANUAL_DISCOVERY_API_KEY", "k")
+    monkeypatch.setenv("MANUAL_DISCOVERY_TIMEOUT", "2.5")
+    router, sent = _stall(monkeypatch, q2_hits=[_GS10_MANUAL_HIT], delays={_HANDOFF: 30})
+
+    async def no_link(make):
+        return None
+
+    async def ok(_identity):
+        return "ok"
+
+    monkeypatch.setattr(md, "oem_request_link", no_link)
+    monkeypatch.setattr(quota, "reserve_provider_query", ok)
+    app = FastAPI()
+    app.include_router(md.router)
+    client = TestClient(app, headers={"X-Mira-Key": "k", "X-Mira-Tenant": "t", "X-Mira-User": "u"})
+    started = search_mod.time.monotonic()
+    body = client.post(
+        "/manual-discovery/search", json={"manufacturer": "AutomationDirect", "model": "GS10"}
+    ).json()
+    assert search_mod.time.monotonic() - started < 2.5
+    # The handoff is cut off at 1.1 s, and the retry still has the 1.4 s it needs.
+    assert body["reason"] == judge.REASON_JUDGED_MATCH, body.get("reason")
+    assert sent[:2] == [sent[0], _HANDOFF] and _typed(sent) == _GS10_TYPED
+    assert len(router.calls) == 7  # six drawings in round one, then the manual
+    assert _HANDOFF_TIMEOUT_ROW in body["candidate_trail"]["queries"]
+
+
+async def test_a_website_handoff_stalled_on_the_quota_reservation_is_cut_off_too(
+    wired, monkeypatch
+):
+    # The cutoff covers the whole provider call: here the real _serper_search waits on
+    # the handoff's quota reservation, so the handoff is never posted.
+    import shared.manual_search.quota as quota
+
+    _scale(monkeypatch, search_timeout=0.5, batch=0.3, reserve=0.3)
+    router, _ = _stall(monkeypatch)
+    reservations = 0
+    posted: list[str] = []
+
+    async def reserve(_identity):
+        nonlocal reservations
+        reservations += 1
+        if reservations == 2:  # q1, then the handoff
+            await asyncio.sleep(30)
+        return "ok"
+
+    async def post(query, num):
+        posted.append(query)
+        if "site:" in query:
+            return [{"link": u, "title": t} for u, t in _AD_READ]
+        if "filetype:pdf" in query:
+            return [{"link": _GS10_MANUAL_HIT[0], "title": _GS10_MANUAL_HIT[1]}]
+        return []
+
+    monkeypatch.setattr(search_mod, "_serper_search", _REAL_SERPER_SEARCH)
+    monkeypatch.setattr(search_mod, "SERPER_API_KEY", "k")
+    monkeypatch.setattr(search_mod, "_serper_post", post)
+    monkeypatch.setattr(quota, "reserve_provider_query", reserve)
+    with (
+        quota.provider_query_quota(quota.QuotaIdentity(tenant_id="t", user_id="u")),
+        search_mod.acquisition_trail() as trail,
+        search_mod.provider_query_budget(limit=4) as budget,
+    ):
+        r = await asyncio.wait_for(
+            search_mod.search_manual("AutomationDirect", "GS10", deadline_at=_deadline(2.5)),
+            timeout=2.5,
+        )
+    assert r is not None and r["url"] == _GS10_MANUAL and r["validated"] is True, r
+    assert _HANDOFF not in posted and _typed(posted) == _GS10_TYPED
+    assert reservations == 4 and budget.used == 3  # the stalled handoff was never sent
+    assert _HANDOFF_TIMEOUT_ROW in trail.queries
+
+
+async def test_a_caller_timeout_during_the_website_handoff_is_still_a_cancellation(
+    wired, monkeypatch
+):
+    # Control: with a 60 s deadline the handoff's own cutoff is far away, so the
+    # caller's 0.5 s timeout lands first and must reach the caller, not be absorbed.
+    router, sent = _stall(monkeypatch, delays={_HANDOFF: 30})
+    with search_mod.acquisition_trail() as trail:
+        with pytest.raises(TimeoutError):
+            await asyncio.wait_for(
+                search_mod.search_manual("AutomationDirect", "GS10", deadline_at=_deadline(60)),
+                timeout=0.5,
+            )
+    assert sent[-1] == _HANDOFF and len(router.calls) == 6
+    assert _HANDOFF_TIMEOUT_ROW not in trail.queries  # the caller cancelled, not the cutoff
+
+
+async def test_a_handoff_window_too_short_to_use_is_not_sent_and_the_retry_runs(wired, monkeypatch):
+    # 1.5 s left: the retry keeps 1.4 s, which leaves the handoff no more than a return
+    # reserve, so the handoff is not sent and the retry starts at once.
+    _scale(monkeypatch, search_timeout=0.5, batch=0.3, reserve=0.3)
+    router, sent = _stall(monkeypatch, q2_hits=[_GS10_MANUAL_HIT], handoff_hits=[_SUPPORT])
+    with search_mod.acquisition_trail() as trail:
+        r = await asyncio.wait_for(
+            search_mod.search_manual("AutomationDirect", "GS10", deadline_at=_deadline(1.5)),
+            timeout=1.5,
+        )
+    assert r is not None and r["url"] == _GS10_MANUAL and r["validated"] is True, r
+    assert _HANDOFF not in sent and _typed(sent) == _GS10_TYPED
+    assert trail.search_page_url is None and _HANDOFF_TIMEOUT_ROW not in trail.queries
+
+
+# The endpoint reasons the Hub records as retryable (search_unavailable, and
+# quota_exceeded, which it stores as search_limit_reached).
+_HUB_RETRIES = {"search_unavailable", "quota_exceeded"}
+
+
+def _discovery(monkeypatch, timeout_s, reserve=None):
+    """The real discovery endpoint with a ``timeout_s`` budget. ``reserve`` replaces
+    the quota reservation; by default every query is allowed."""
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    import ask_api.manual_discovery as md
+    import shared.manual_search.quota as quota
+
+    async def no_link(make):
+        return None
+
+    async def ok(_identity):
+        return "ok"
+
+    monkeypatch.setenv("MANUAL_DISCOVERY_API_KEY", "k")
+    monkeypatch.setenv("MANUAL_DISCOVERY_TIMEOUT", str(timeout_s))
+    monkeypatch.setattr(md, "oem_request_link", no_link)
+    monkeypatch.setattr(quota, "reserve_provider_query", reserve or ok)
+    app = FastAPI()
+    app.include_router(md.router)
+    client = TestClient(app, headers={"X-Mira-Key": "k", "X-Mira-Tenant": "t", "X-Mira-User": "u"})
+    started = search_mod.time.monotonic()
+    body = client.post(
+        "/manual-discovery/search", json={"manufacturer": "AutomationDirect", "model": "GS10"}
+    ).json()
+    return body, search_mod.time.monotonic() - started
+
+
+# After a handoff cut off where the retry follows, a retry that ran short of time did
+# not finish: unless it found the manual, that is the outage main returns for any
+# stalled search, which the Hub retries. A judged rejection there would be recorded as
+# final (#5866 Codex round 2, F2 and F4). A retry that ran to its end keeps its judged
+# rejection, as a completed search does.
+async def test_a_stall_once_the_retry_cannot_start_is_the_outage_main_returns(wired, monkeypatch):
+    # 1.0 s left is less than the retry needs, so the handoff keeps today's cutoff and
+    # the retry cannot start.
+    _scale(monkeypatch, search_timeout=0.5, batch=0.3, reserve=0.3)
+    router, sent = _stall(monkeypatch, q2_hits=[_GS10_MANUAL_HIT], delays={_HANDOFF: 30})
+    body, took = await asyncio.to_thread(_discovery, monkeypatch, 1.0)
+    assert took < 1.0
+    assert body["reason"] == "search_unavailable", body.get("reason")
+    assert body["reason_detail"] == "Manual search ran out of time before it finished."
+    assert sent[-1] == _HANDOFF and _typed(sent) == []
+    assert _HANDOFF_TIMEOUT_ROW in body["candidate_trail"]["queries"]
+
+
+def _first_spelling_empty(monkeypatch, sent, delay):
+    # The first typed spelling answers after ``delay`` with nothing; the second, if it
+    # is sent, gets the stub's answer (the manual).
+    inner = search_mod._serper_search
+
+    async def serper(query, num=10):
+        if query == _GS10_TYPED[0]:
+            budget = search_mod._provider_budget.get()
+            budget.used += 1  # sent and answered, as _serper_search counts a send
+            sent.append(query)
+            await asyncio.sleep(delay)
+            return []
+        return await inner(query, num)
+
+    monkeypatch.setattr(search_mod, "_serper_search", serper)
+
+
+async def test_a_stall_that_cuts_the_typed_pass_short_is_the_outage_main_returns(
+    wired, monkeypatch
+):
+    # Codex F2: the handoff is cut off at 1.1 s, the first spelling then takes 0.6 s
+    # and finds nothing, and the second, which holds the manual, no longer fits.
+    _scale(monkeypatch, search_timeout=0.5, batch=0.3, reserve=0.3)
+    router, sent = _stall(monkeypatch, q2_hits=[_GS10_MANUAL_HIT], delays={_HANDOFF: 30})
+    _first_spelling_empty(monkeypatch, sent, 0.6)
+    body, took = await asyncio.to_thread(_discovery, monkeypatch, 2.5)
+    assert took < 2.5
+    assert body["reason"] == "search_unavailable", body.get("reason")
+    assert _typed(sent) == _GS10_TYPED[:1] and len(router.calls) == 6
+    assert _HANDOFF_TIMEOUT_ROW in body["candidate_trail"]["queries"]
+
+
+async def test_control_without_the_stall_the_second_spelling_finds_the_manual(wired, monkeypatch):
+    _scale(monkeypatch, search_timeout=0.5, batch=0.3, reserve=0.3)
+    router, sent = _stall(monkeypatch, q2_hits=[_GS10_MANUAL_HIT])
+    _first_spelling_empty(monkeypatch, sent, 0.6)
+    body, took = await asyncio.to_thread(_discovery, monkeypatch, 2.5)
+    assert body["reason"] == judge.REASON_JUDGED_MATCH, body.get("reason")
+    assert _typed(sent) == _GS10_TYPED
+
+
+async def test_a_stall_then_a_retry_query_cut_off_mid_flight_is_the_outage_main_returns(
+    wired, monkeypatch
+):
+    # The handoff is cut off at 1.1 s, and the first spelling then never answers: the
+    # retry's own cutoff ends it with nothing back, and the second is never sent.
+    _scale(monkeypatch, search_timeout=0.5, batch=0.3, reserve=0.3)
+    router, sent = _stall(
+        monkeypatch, q2_hits=[_GS10_MANUAL_HIT], delays={_HANDOFF: 30, _GS10_TYPED[0]: 30}
+    )
+    body, took = await asyncio.to_thread(_discovery, monkeypatch, 2.5)
+    assert took < 2.5
+    assert body["reason"] == "search_unavailable", body.get("reason")
+    assert _typed(sent) == _GS10_TYPED[:1] and len(router.calls) == 6
+    rows = body["candidate_trail"]["queries"]
+    assert _HANDOFF_TIMEOUT_ROW in rows
+    assert {"pass": "q2", "query": _GS10_TYPED[0], "result": "timeout"} in rows
+
+
+async def test_a_stall_before_a_retry_that_runs_to_its_end_keeps_its_judged_rejection(
+    wired, monkeypatch
+):
+    # The handoff is cut off at 1.1 s, and the retry still sends both spellings and
+    # reads the one new PDF they return, a drawing. The search finished, so its judged
+    # rejection is final, as when the handoff answers.
+    _scale(monkeypatch, search_timeout=0.5, batch=0.3, reserve=0.3)
+    router, sent = _stall(monkeypatch, q2_hits=[_OTHER], delays={_HANDOFF: 30})
+    monkeypatch.setitem(TEXT, _OTHER[0], "DURApulse GS10 dimensional drawing")
+    body, took = await asyncio.to_thread(_discovery, monkeypatch, 2.5)
+    assert took < 2.5
+    assert body["reason"] == "judged_not_applicable", body.get("reason")
+    assert _typed(sent) == _GS10_TYPED and len(router.calls) == 7
+    assert _HANDOFF_TIMEOUT_ROW in body["candidate_trail"]["queries"]
+    assert body["candidate_trail"]["stop"] == "queue_exhausted"
+
+
+@pytest.mark.parametrize("delays", [{_HANDOFF: 30}, None], ids=["handoff_stalls", "no_stall"])
+async def test_control_a_retry_stopped_by_the_query_ceiling_keeps_its_judged_rejection(
+    wired, monkeypatch, delays
+):
+    # The ceiling is three queries: q1, the handoff and the first spelling. The second
+    # spelling is stopped by the ceiling, not by time, and a prompt handoff stops it the
+    # same way, so a stall changes nothing: the judged rejection stands either way.
+    _scale(monkeypatch, search_timeout=0.5, batch=0.3, reserve=0.3)
+    monkeypatch.setenv("MANUAL_SEARCH_MAX_PROVIDER_QUERIES", "3")
+    router, sent = _stall(monkeypatch, delays=delays)
+    body, took = await asyncio.to_thread(_discovery, monkeypatch, 2.5)
+    assert took < 2.5
+    assert body["reason"] == "judged_not_applicable", body.get("reason")
+    assert sent[1] == _HANDOFF and _typed(sent) == _GS10_TYPED[:1]
+    assert (_HANDOFF_TIMEOUT_ROW in body["candidate_trail"]["queries"]) == bool(delays)
+
+
+async def test_a_stall_that_leaves_the_retry_read_unfinished_is_the_outage_main_returns(
+    wired, monkeypatch
+):
+    # The retry sends both spellings, but the new PDF never finishes downloading, so
+    # its read stops at the deadline: the search did not finish.
+    _scale(monkeypatch, search_timeout=0.5, batch=0.3, reserve=0.3)
+    router, sent = _stall(monkeypatch, q2_hits=[_OTHER], delays={_HANDOFF: 30})
+    monkeypatch.setitem(TEXT, _OTHER[0], "DURApulse GS10 dimensional drawing")
+    fetch = judge.fetch_pdf_bytes
+
+    async def stalled_fetch(url, max_bytes=judge.MAX_BYTES):
+        if url == _OTHER[0]:
+            await asyncio.sleep(30)
+        return await fetch(url, max_bytes)
+
+    monkeypatch.setattr(judge, "fetch_pdf_bytes", stalled_fetch)
+    body, took = await asyncio.to_thread(_discovery, monkeypatch, 2.5)
+    assert took < 2.5
+    assert body["reason"] == "search_unavailable", body.get("reason")
+    assert _typed(sent) == _GS10_TYPED and len(router.calls) == 6
+    assert _HANDOFF_TIMEOUT_ROW in body["candidate_trail"]["queries"]
+
+
+async def test_a_quota_answer_held_past_the_cutoff_is_the_outage_not_a_final_miss(
+    wired, monkeypatch
+):
+    # Codex F4: the handoff's reservation would answer user_cap at 0.82 s, after the
+    # 0.7 s cutoff, with no time left for the retry. On main that is quota_exceeded,
+    # the Hub's next-day retry. It must not become a judged rejection with no denial.
+    _scale(monkeypatch, search_timeout=0.5, batch=0.3, reserve=0.3)
+    router, _ = _stall(monkeypatch)
+    reservations = 0
+    posted: list[str] = []
+
+    async def reserve(_identity):
+        nonlocal reservations
+        reservations += 1
+        if reservations == 2:  # q1, then the handoff
+            await asyncio.sleep(0.82)
+            return "user_cap"
+        return "ok"
+
+    async def post(query, num):
+        posted.append(query)
+        if "site:" in query:
+            return [{"link": u, "title": t} for u, t in _AD_READ]
+        return []
+
+    monkeypatch.setattr(search_mod, "_serper_search", _REAL_SERPER_SEARCH)
+    monkeypatch.setattr(search_mod, "SERPER_API_KEY", "k")
+    monkeypatch.setattr(search_mod, "_serper_post", post)
+    body, took = await asyncio.to_thread(_discovery, monkeypatch, 1.0, reserve)
+    # Either answer the Hub retries: the outage (ordinary backoff, which asks the
+    # quota again) or, where the denial lands in time, the next-day cap retry.
+    assert body["reason"] in _HUB_RETRIES, body.get("reason")
+    assert _HANDOFF not in posted and reservations == 2
+    assert _HANDOFF_TIMEOUT_ROW in body["candidate_trail"]["queries"]
+
+
+# A retry that ended early for a reason other than time did not finish either: a
+# spelling that failed or was refused went unanswered, and a PDF it queued but could not
+# read was not read. After a handoff cutoff that is main's outage. Without the stall the
+# same retry ends in the judged rejection, as it does on main.
+_STALL_OR_NOT = pytest.mark.parametrize(
+    ("delays", "reason"),
+    [({_HANDOFF: 30}, "search_unavailable"), (None, "judged_not_applicable")],
+    ids=["handoff_stalls", "no_stall"],
+)
+
+
+@_STALL_OR_NOT
+async def test_a_stall_before_a_retry_whose_spellings_fail_is_the_outage_main_returns(
+    wired, monkeypatch, delays, reason
+):
+    _scale(monkeypatch, search_timeout=0.5, batch=0.3, reserve=0.3)
+    router, sent = _stall(monkeypatch, q2_hits=[_GS10_MANUAL_HIT], q2_raises=True, delays=delays)
+    body, took = await asyncio.to_thread(_discovery, monkeypatch, 2.5)
+    assert took < 2.5
+    assert body["reason"] == reason, body.get("reason")
+    assert _typed(sent) == _GS10_TYPED and len(router.calls) == 6
+    assert (_HANDOFF_TIMEOUT_ROW in body["candidate_trail"]["queries"]) == bool(delays)
+
+
+async def test_a_stall_before_a_retry_refused_by_a_quota_outage_is_the_outage_main_returns(
+    wired, monkeypatch
+):
+    # q1 and the handoff are reserved; the handoff's request never answers. The quota
+    # store then fails for the retry's first spelling, and the second is refused on the
+    # same denial: no spelling was answered. Without the stall this is #5849's case.
+    _scale(monkeypatch, search_timeout=0.5, batch=0.3, reserve=0.3)
+    router, _ = _stall(monkeypatch)
+    reservations = 0
+    posted: list[str] = []
+
+    async def reserve(_identity):
+        nonlocal reservations
+        reservations += 1
+        return "ok" if reservations <= 2 else "quota_unavailable"
+
+    async def post(query, num):
+        posted.append(query)
+        if query == _HANDOFF:
+            await asyncio.sleep(30)
+        if "site:" in query:
+            return [{"link": u, "title": t} for u, t in _AD_READ]
+        return [{"link": u, "title": t} for u, t in [_GS10_MANUAL_HIT]]
+
+    monkeypatch.setattr(search_mod, "_serper_search", _REAL_SERPER_SEARCH)
+    monkeypatch.setattr(search_mod, "SERPER_API_KEY", "k")
+    monkeypatch.setattr(search_mod, "_serper_post", post)
+    body, took = await asyncio.to_thread(_discovery, monkeypatch, 2.5, reserve)
+    assert took < 2.5
+    assert body["reason"] == "search_unavailable", body.get("reason")
+    assert posted[1] == _HANDOFF and _typed(posted) == [] and reservations == 3
+    assert _HANDOFF_TIMEOUT_ROW in body["candidate_trail"]["queries"]
+
+
+@_STALL_OR_NOT
+async def test_a_stall_before_a_retry_that_cannot_read_its_pdf_is_the_outage_main_returns(
+    wired, monkeypatch, delays, reason
+):
+    # Both spellings answer with one new PDF, and the download fails, so it is unread.
+    _scale(monkeypatch, search_timeout=0.5, batch=0.3, reserve=0.3)
+    router, sent = _stall(monkeypatch, q2_hits=[_OTHER], delays=delays)
+    assert _OTHER[0] not in TEXT  # the wired fetch returns nothing for it
+    body, took = await asyncio.to_thread(_discovery, monkeypatch, 2.5)
+    assert took < 2.5
+    assert body["reason"] == reason, body.get("reason")
+    assert _typed(sent) == _GS10_TYPED and len(router.calls) == 6
+    assert (_HANDOFF_TIMEOUT_ROW in body["candidate_trail"]["queries"]) == bool(delays)
+
+
+@_STALL_OR_NOT
+async def test_a_stall_before_a_retry_that_raises_is_the_outage_main_returns(
+    wired, monkeypatch, delays, reason
+):
+    # The retry's judge call raises; the caller logs it and today's answer stands.
+    _scale(monkeypatch, search_timeout=0.5, batch=0.3, reserve=0.3)
+    router, sent = _stall(monkeypatch, q2_hits=[_OTHER], delays=delays)
+    monkeypatch.setitem(TEXT, _OTHER[0], "DURApulse GS10 dimensional drawing")
+    real, calls = judge.judge_candidates, []
+
+    async def second_call_raises(*args, **kwargs):
+        calls.append(1)
+        if len(calls) == 2:
+            raise RuntimeError("judge broke")
+        return await real(*args, **kwargs)
+
+    monkeypatch.setattr(judge, "judge_candidates", second_call_raises)
+    body, took = await asyncio.to_thread(_discovery, monkeypatch, 2.5)
+    assert took < 2.5
+    assert body["reason"] == reason, body.get("reason")
+    assert _typed(sent) == _GS10_TYPED and len(calls) == 2 and len(router.calls) == 6
+
+
+async def test_control_with_no_retry_to_follow_a_slow_handoff_keeps_its_whole_window(
+    wired, monkeypatch
+):
+    # No site-scoped PDF, so round one ran the typed pass and no retry can follow. The
+    # handoff answers at 0.9 s, inside today's 1.2 s cutoff, and the page is kept.
+    _scale(monkeypatch, search_timeout=0.5, batch=0.3, reserve=0.3)
+    router, sent = _stall(
+        monkeypatch, q1_hits=(), q2_hits=_AD_READ, handoff_hits=[_SUPPORT], delays={_HANDOFF: 0.9}
+    )
+    with search_mod.acquisition_trail() as trail:
+        r = await asyncio.wait_for(
+            search_mod.search_manual("AutomationDirect", "GS10", deadline_at=_deadline(1.5)),
+            timeout=1.5,
+        )
+    assert r is not None and r["reason"] == judge.REASON_JUDGED_REJECTED, r
+    assert sent[-1] == _HANDOFF and len(router.calls) == 6
+    assert trail.search_page_url == _SUPPORT[0]
+    assert _HANDOFF_TIMEOUT_ROW not in trail.queries
+
+
+async def test_after_the_screen_a_stalled_handoff_also_leaves_the_retry_its_window(
+    wired, monkeypatch
+):
+    # The other place the retry follows the handoff: round one's web pages naming only
+    # "GS10" (the staging pool) are probed and screened out first, then it stalls.
+    _scale(monkeypatch, search_timeout=0.5, batch=0.3, reserve=0.3)
+    monkeypatch.setattr(search_mod, "HEAD_TIMEOUT", 0.2)
+    router, sent = _stall(
+        monkeypatch,
+        q1_hits=_AD_READ + _OTHER_MAKERS,
+        q2_hits=[_GS10_MANUAL_HIT],
+        delays={_HANDOFF: 30},
+    )
+    with search_mod.acquisition_trail() as trail:
+        r = await asyncio.wait_for(
+            search_mod.search_manual("AutomationDirect", "GS10", deadline_at=_deadline(2.5)),
+            timeout=2.5,
+        )
+    assert r is not None and r["url"] == _GS10_MANUAL and r["validated"] is True, r
+    assert sorted(router.probed) == sorted(u for u, _ in _OTHER_MAKERS)
+    assert sent[1:] == [_HANDOFF, *_GS10_TYPED]
+    assert _HANDOFF_TIMEOUT_ROW in trail.queries
+
+
+async def test_after_the_screen_a_stall_once_the_retry_cannot_start_is_the_outage_too(
+    wired, monkeypatch
+):
+    _scale(monkeypatch, search_timeout=0.5, batch=0.3, reserve=0.3)
+    monkeypatch.setattr(search_mod, "HEAD_TIMEOUT", 0.2)
+    router, sent = _stall(
+        monkeypatch,
+        q1_hits=_AD_READ + _OTHER_MAKERS,
+        q2_hits=[_GS10_MANUAL_HIT],
+        delays={_HANDOFF: 30},
+    )
+    with search_mod.acquisition_trail() as trail:
+        with pytest.raises(TimeoutError, match="website handoff stalled"):
+            await asyncio.wait_for(
+                search_mod.search_manual("AutomationDirect", "GS10", deadline_at=_deadline(1.0)),
+                timeout=1.0,
+            )
+    assert sorted(router.probed) == sorted(u for u, _ in _OTHER_MAKERS)
+    assert sent[1:] == [_HANDOFF] and _HANDOFF_TIMEOUT_ROW in trail.queries
+
+
+async def test_control_a_finished_search_keeps_its_answer_when_the_handoff_stalls(
+    wired, monkeypatch
+):
+    # Round one ran the typed pass itself, so no retry follows: the search finished,
+    # and a stalled handoff leaves its judged rejection standing, as #5848 intends.
+    _scale(monkeypatch, search_timeout=0.5, batch=0.3, reserve=0.3)
+    router, sent = _stall(monkeypatch, q1_hits=(), q2_hits=_AD_READ, delays={_HANDOFF: 30})
+    with search_mod.acquisition_trail() as trail:
+        r = await asyncio.wait_for(
+            search_mod.search_manual("AutomationDirect", "GS10", deadline_at=_deadline(1.5)),
+            timeout=1.5,
+        )
+    assert r is not None and r["reason"] == judge.REASON_JUDGED_REJECTED, r
+    assert sent[-1] == _HANDOFF and _HANDOFF_TIMEOUT_ROW in trail.queries
+
+
 # #5844 Codex review round 2. The retry now runs only where this search ends with the
 # judged rejection, after the website handoff, at either of the two places it does.
 # Only a judged match from it changes the answer; nothing it adds is probed.
