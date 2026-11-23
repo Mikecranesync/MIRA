@@ -1952,3 +1952,65 @@ async def test_an_error_in_the_retry_leaves_todays_answer(wired, monkeypatch):
     assert rounds == 2 and _typed(sent) == _GS10_TYPED
     assert r is not None and r["reason"] == judge.REASON_JUDGED_REJECTED and r["validated"] is False
     assert len(r["judged_rejected"]) == 6
+
+
+def _discovery_with_quota(monkeypatch, deny_on, reason):
+    """POST the discovery endpoint through the real _serper_search: the reservation
+    numbered ``deny_on`` (1 = q1, 2 = the handoff, 3 = the first typed query) is
+    denied with ``reason``; every other one succeeds."""
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    import ask_api.manual_discovery as md
+    import shared.manual_search.quota as quota
+
+    monkeypatch.setenv("MANUAL_DISCOVERY_API_KEY", "k")
+    reservations = 0
+
+    async def reserve(_identity):
+        nonlocal reservations
+        reservations += 1
+        return reason if reservations == deny_on else "ok"
+
+    async def post(query, num):
+        if "site:" in query:
+            return [{"link": u, "title": t} for u, t in _AD_READ]
+        return []
+
+    async def no_link(make):
+        return None
+
+    monkeypatch.setattr(search_mod, "_serper_search", _REAL_SERPER_SEARCH)
+    monkeypatch.setattr(search_mod, "SERPER_API_KEY", "k")
+    monkeypatch.setattr(search_mod, "_serper_post", post)
+    monkeypatch.setattr(quota, "reserve_provider_query", reserve)
+    monkeypatch.setattr(md, "oem_request_link", no_link)
+    app = FastAPI()
+    app.include_router(md.router)
+    client = TestClient(app, headers={"X-Mira-Key": "k", "X-Mira-Tenant": "t", "X-Mira-User": "u"})
+    body = client.post(
+        "/manual-discovery/search", json={"manufacturer": "AutomationDirect", "model": "GS10"}
+    ).json()
+    return body, reservations
+
+
+@pytest.mark.parametrize("reason", ["user_cap", "quota_unavailable"])
+def test_a_quota_denial_on_the_retry_query_keeps_the_judged_rejection(wired, monkeypatch, reason):
+    # Today's search finished with the judged rejection; only the retry's own query was
+    # denied. That must not turn the answer into a limit or an outage.
+    router, _ = _stall(monkeypatch)
+    body, reservations = _discovery_with_quota(monkeypatch, deny_on=3, reason=reason)
+    assert reservations == 3 and len(router.calls) == 6
+    assert body["reason"] == "judged_not_applicable", body.get("reason")
+    assert body["search_stats"]["quota_denied"] is None
+    assert body["search_stats"]["refused_queries"] == 2  # both typed variants
+    rows = body["candidate_trail"]["queries"]
+    assert {"pass": "q2", "query": _GS10_TYPED[0], "result": "refused", "hits": 0} in rows
+
+
+def test_a_quota_denial_before_the_retry_still_reports_the_limit(wired, monkeypatch):
+    # Control: the handoff's own denial is today's behaviour, unchanged.
+    router, _ = _stall(monkeypatch)
+    body, _ = _discovery_with_quota(monkeypatch, deny_on=2, reason="user_cap")
+    assert body["reason"] == "quota_exceeded", body.get("reason")
+    assert body["search_stats"]["quota_denied"] == "user_cap"

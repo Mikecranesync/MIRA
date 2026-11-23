@@ -1311,15 +1311,22 @@ async def search_manual(
         (#5844 Codex F5, F6)."""
         if not use_judge or typed_pass_ran or not _every_queued_pdf_rejected(ranked, judge_trace):
             return None
+        budget = _provider_budget.get()
+        denied = budget.quota_denied if budget is not None else None
         try:
             both = await _retry_typed_pass(ranked, judge_trace)
         except Exception:
             logger.exception("MANUAL_SEARCH_RETRY_FAILED")  # today's answer stands
-            return None
-        if not both or not _judge.is_match(both[0]):
-            return None
-        logger.info("MANUAL_SEARCH_RETRY_MATCH url=%s", both[0]["url"][:200])
-        return _as_judged_match(both[0], _rejections(both))
+            both = []
+        if both and _judge.is_match(both[0]):
+            logger.info("MANUAL_SEARCH_RETRY_MATCH url=%s", both[0]["url"][:200])
+            return _as_judged_match(both[0], _rejections(both))
+        if budget is not None:
+            # A quota denial met only by the retry's own queries did not stop today's
+            # search, which had finished. It must not turn today's answer into a limit
+            # or outage reason; the refused query stays counted and on the trail.
+            budget.quota_denied = denied
+        return None
 
     typed_pass_ran = not any(c["is_direct_pdf"] for c in candidates)
     if typed_pass_ran:
