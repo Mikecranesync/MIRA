@@ -1366,6 +1366,144 @@ async def test_an_unread_direct_pdf_that_does_not_probe_keeps_the_older_rule(wir
     assert r is not None and r["url"] == pdf and r["validated"] is False
 
 
+# #5830: that older rule holds only while the probe cannot tell what the link serves.
+# A .pdf link whose probe gets a successful answer starting with markup serves a page,
+# so the make screen applies to it as to one. These run the real validate_pdf against
+# canned answers, with the judge on and off.
+_REAL_VALIDATE_PDF = search_mod.validate_pdf  # captured before any fixture replaces it
+_BOSS_PDF = "https://www.example-files.com/boss-audio/gs10-brochure.pdf"
+_BOSS_PAGE = b"<!DOCTYPE html><html><title>Boss Audio GS10 amplifier support</title></html>"
+_OTHER_PDF = "https://www.example-files.com/library/gs10-manual.pdf"
+
+
+def _answer(monkeypatch, answers):
+    """Serve the probe through the real validate_pdf. ``answers`` maps a URL to a
+    function of the request; returns the list of (method, url) the probe sent."""
+    import httpx
+
+    sent: list[tuple[str, str]] = []
+
+    def respond(request):
+        sent.append((request.method, str(request.url)))
+        return answers[str(request.url)](request)
+
+    monkeypatch.setattr(search_mod, "_url_is_probeable", lambda u: True)
+    monkeypatch.setattr(search_mod, "_transport_for_tests", httpx.MockTransport(respond))
+    monkeypatch.setattr(search_mod, "validate_pdf", _REAL_VALIDATE_PDF)
+    return sent
+
+
+def _page(status=200, body=_BOSS_PAGE, content_type="text/html"):
+    import httpx
+
+    return lambda request: httpx.Response(
+        status, headers={"content-type": content_type}, content=body
+    )
+
+
+def _unreachable(request):
+    import httpx
+
+    raise httpx.ConnectError("no route to host", request=request)
+
+
+async def test_a_pdf_link_that_serves_a_web_page_is_screened_like_one(wired, monkeypatch):
+    c = {"url": _BOSS_PDF, "title": "GS10 brochure"}
+    assert search_mod._is_direct_pdf(_BOSS_PDF) and _BOSS_PDF not in TEXT
+    assert not search_mod._names_make(c, "AutomationDirect")
+    assert not search_mod._is_oem_host(urlparse(_BOSS_PDF).netloc, "AutomationDirect")
+    # The markup is the proof, whatever the content type claims.
+    for content_type in ("text/html", "application/octet-stream"):
+        for enabled in ("1", "0"):
+            monkeypatch.setenv("MANUAL_JUDGE_ENABLED", enabled)
+            _serve(monkeypatch, [(_BOSS_PDF, c["title"])])
+            sent = _answer(monkeypatch, {_BOSS_PDF: _page(content_type=content_type)})
+            r = await search_mod.search_manual("AutomationDirect", "GS10")
+            assert r is None, (content_type, enabled)
+            assert ("GET", _BOSS_PDF) in sent, (enabled, sent)  # the screen followed a probe
+            assert search_mod._probed_not_pdf.get() is None
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [
+        _page(status=403),
+        _page(status=404),
+        _page(status=503),
+        _page(body=b""),
+        _page(body=b"\n\x00\x00%PDF-1.7", content_type="application/octet-stream"),
+        _unreachable,
+    ],
+    ids=["forbidden", "missing", "unavailable", "empty", "bytes_before_header", "unreachable"],
+)
+async def test_control_a_pdf_link_whose_probe_cannot_tell_keeps_the_older_rule(
+    wired, monkeypatch, answer
+):
+    for enabled in ("1", "0"):
+        monkeypatch.setenv("MANUAL_JUDGE_ENABLED", enabled)
+        _serve(monkeypatch, [(_BOSS_PDF, "GS10 brochure")])
+        sent = _answer(monkeypatch, {_BOSS_PDF: answer})
+        r = await search_mod.search_manual("AutomationDirect", "GS10")
+        assert r is not None and r["url"] == _BOSS_PDF and r["validated"] is False, enabled
+        assert "probed_not_pdf" not in r and ("GET", _BOSS_PDF) in sent, (enabled, sent)
+
+
+async def test_control_a_pdf_link_serving_a_page_that_names_the_make_is_still_offered(
+    wired, monkeypatch
+):
+    title = "AutomationDirect GS10 manual"
+    assert search_mod._names_make({"url": _BOSS_PDF, "title": title}, "AutomationDirect")
+    for enabled in ("1", "0"):
+        monkeypatch.setenv("MANUAL_JUDGE_ENABLED", enabled)
+        _serve(monkeypatch, [(_BOSS_PDF, title)])
+        _answer(monkeypatch, {_BOSS_PDF: _page()})
+        r = await search_mod.search_manual("AutomationDirect", "GS10")
+        assert r is not None and r["url"] == _BOSS_PDF and r["validated"] is False, enabled
+        assert r["probed_not_pdf"] is True
+
+
+async def test_control_a_pdf_link_serving_a_pdf_is_never_marked(wired, monkeypatch):
+    import httpx
+
+    def pdf(request):
+        return httpx.Response(206, headers={"content-type": ""}, content=b"%PDF-1.7")
+
+    monkeypatch.setenv("MANUAL_JUDGE_ENABLED", "0")
+    _serve(monkeypatch, [(_BOSS_PDF, "GS10 brochure")])
+    _answer(monkeypatch, {_BOSS_PDF: pdf})
+    r = await search_mod.search_manual("AutomationDirect", "GS10")
+    assert r is not None and r["url"] == _BOSS_PDF and r["validated"] is True
+    assert "probed_not_pdf" not in r
+
+
+async def test_a_pdf_link_that_redirects_to_a_web_page_is_screened_like_one(wired, monkeypatch):
+    import httpx
+
+    support = "https://www.example-files.com/boss-audio/support/gs10"
+
+    def moved(request):
+        return httpx.Response(301, headers={"location": support})
+
+    for enabled in ("1", "0"):
+        monkeypatch.setenv("MANUAL_JUDGE_ENABLED", enabled)
+        _serve(monkeypatch, [(_BOSS_PDF, "GS10 brochure")])
+        sent = _answer(monkeypatch, {_BOSS_PDF: moved, support: _page()})
+        assert await search_mod.search_manual("AutomationDirect", "GS10") is None, enabled
+        assert ("GET", support) in sent, (enabled, sent)
+
+
+async def test_only_the_link_that_served_a_page_loses_the_older_rule(wired, monkeypatch):
+    # The issue's shape: a stranger's brochure link now serving its support page, and
+    # a PDF link the probe cannot reach. Only the first is screened.
+    for enabled in ("1", "0"):
+        monkeypatch.setenv("MANUAL_JUDGE_ENABLED", enabled)
+        _serve(monkeypatch, [(_BOSS_PDF, "GS10 brochure"), (_OTHER_PDF, "GS10 manual")])
+        sent = _answer(monkeypatch, {_BOSS_PDF: _page(), _OTHER_PDF: _page(status=403)})
+        r = await search_mod.search_manual("AutomationDirect", "GS10")
+        assert r is not None and r["url"] == _OTHER_PDF and r["validated"] is False, enabled
+        assert {u for _, u in sent} == {_BOSS_PDF, _OTHER_PDF}, (enabled, sent)
+
+
 # F2: an exact part number lets a page through only when it names the whole number.
 async def test_an_exact_part_number_lookup_screens_a_page_naming_only_the_family(
     wired, monkeypatch

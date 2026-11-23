@@ -342,9 +342,11 @@ def _may_offer_unread(c: dict, make: str, part_number: str | None = None) -> boo
     own site, or names the whole exact part number when the lookup is for one. A
     direct PDF keeps the older rule, since the judge tried to read it, and so does
     anything the content probe found to be a PDF; the caller only screens what did
-    not probe as one. The caller skips this check when there is no make to compare.
+    not probe as one. A link that only looks like a PDF loses that rule once the
+    probe got a successful answer that is a page, and it is screened as one
+    (#5830). The caller skips this check when there is no make.
     """
-    if c.get("is_direct_pdf"):
+    if c.get("is_direct_pdf") and not c.get("probed_not_pdf"):
         return True
     host = c.get("host") or urlparse(c.get("url") or "").netloc
     if _names_make(c, make) or _is_oem_host(host, make):
@@ -962,6 +964,14 @@ async def _guarded_probe(
     return None
 
 
+# #5830: the URLs whose probe got a successful answer that is a page (it starts with
+# markup), as opposed to a probe that failed, was refused or could not tell.
+# _probe_candidate sets it for one call; validate_pdf's own answer stays a bool.
+_probed_not_pdf: contextvars.ContextVar[set[str] | None] = contextvars.ContextVar(
+    "manual_search_probed_not_pdf", default=None
+)
+
+
 async def validate_pdf(url: str) -> bool:
     """Confirm the URL actually serves a PDF.
 
@@ -1014,11 +1024,35 @@ async def validate_pdf(url: str) -> bool:
                         head += chunk
                         if len(head) >= _PROBE_READ_CAP:
                             break
-                    return head[:5] == b"%PDF-"
+                    if head[:5] == b"%PDF-":
+                        return True
+                    # Not proof of a PDF. Only a successful answer that starts with
+                    # markup is proof of a page (#5830); bytes before a PDF header, an
+                    # empty body or an error status prove nothing either way.
+                    noted = _probed_not_pdf.get()
+                    if noted is not None and 200 <= r.status_code < 300:
+                        if head.lstrip(b"\xef\xbb\xbf \t\r\n").startswith(b"<"):
+                            noted.add(url)
+                    return False
             return False
     except Exception:
         logger.info("PDF validation failed for %s — skipping", url[:120])
         return False
+
+
+async def _probe_candidate(c: dict) -> bool:
+    """validate_pdf for one candidate. When the probe got a successful answer that is
+    a page, the candidate is marked, so the make screen treats a link that only looks
+    like a PDF as the page it serves (#5830)."""
+    noted: set[str] = set()
+    token = _probed_not_pdf.set(noted)
+    try:
+        ok = await validate_pdf(c["url"])
+    finally:
+        _probed_not_pdf.reset(token)
+    if not ok and c["url"] in noted:
+        c["probed_not_pdf"] = True
+    return ok
 
 
 def _tagged(found: list[dict], label: str) -> list[dict]:
@@ -1483,7 +1517,7 @@ async def search_manual(
             ):
                 break
             _note_examined([c["url"]])
-        if c.get("validated") or await validate_pdf(c["url"]):
+        if c.get("validated") or await _probe_candidate(c):
             c["validated"] = True
             if use_judge:
                 # The judge is on but this candidate was never READ (fetch
