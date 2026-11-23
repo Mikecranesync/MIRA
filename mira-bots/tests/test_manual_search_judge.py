@@ -1472,10 +1472,11 @@ def test_the_part_number_table(part, field, text, names_it, why):
 
 # #5842: the title and the URL are read on their own. A title naming only a longer
 # number names a different part, whatever the URL says; one that lists the exact part
-# too still covers it. In the URL path or a document value, an order option or a
-# letter or digit run straight onto the number names a different part that a
-# shortened title cannot outvote. A code group after a hyphen there does not refuse a
-# clean title: slugs join words that way ("Gis-Gs10-150-260" for "Gis GS10/150/260").
+# too still covers it. In the URL path, an order option or a letter or digit run
+# straight onto the number names a different part that a shortened title cannot
+# outvote; no query value is read (#5855 round 3). A code group after a hyphen in the
+# path does not refuse a clean title: slugs join words that way ("Gis-Gs10-150-260"
+# for "Gis GS10/150/260").
 _ACS = "ACS355-03U-06A7-2"
 _TWO_FIELD_TABLE = [
     # (part, title, url, names_it, why)
