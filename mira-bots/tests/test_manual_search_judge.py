@@ -1912,6 +1912,136 @@ async def test_when_every_site_pdf_is_not_the_manual_the_typed_pass_finds_it(wir
     assert budget.used == 3 and budget.refused == 0
 
 
+_DRAWING_TEXT = "DURApulse GS10 dimensional drawing / cut sheet"
+
+
+async def test_fragment_variants_of_rejected_pdfs_do_not_use_up_the_retry_batch(wired, monkeypatch):
+    # #5850: the typed pass returns "#page=1" forms of four drawings round one already
+    # rejected, ahead of the manual (equal score, provider order). A server never sees
+    # a fragment, so they are the same documents: the retry reads only the manual.
+    variants = [(f"{u}#page=1", t) for u, t in _AD_READ[:4]]
+    router, sent = _stall(monkeypatch, q2_hits=variants + [(_GS10_MANUAL, "GS10 drive")])
+    for u, _ in variants:
+        monkeypatch.setitem(TEXT, u, _DRAWING_TEXT)
+    with search_mod.acquisition_trail() as trail:
+        r = await search_mod.search_manual("AutomationDirect", "GS10", deadline_at=_deadline(60))
+    assert r is not None and r["url"] == _GS10_MANUAL and r["validated"] is True, r
+    assert r["reason"] == judge.REASON_JUDGED_MATCH
+    assert len(router.calls) == 7  # six drawings in round one, then only the manual
+    added = {c["url"] for c in trail.candidates[len(_AD_READ) :]}
+    assert added == {_GS10_MANUAL}
+
+
+async def test_control_a_query_string_variant_is_still_a_new_document_for_the_retry(
+    wired, monkeypatch
+):
+    # The key keeps the query string: "?rev=2" can select another document, so it is read.
+    rev = (f"{_AD_READ[1][0]}?rev=2", _AD_READ[1][1])
+    router, sent = _stall(monkeypatch, q2_hits=[_GS10_MANUAL_HIT, rev])
+    monkeypatch.setitem(TEXT, rev[0], _DRAWING_TEXT)
+    r = await search_mod.search_manual("AutomationDirect", "GS10", deadline_at=_deadline(60))
+    assert r is not None and r["url"] == _GS10_MANUAL and r["validated"] is True, r
+    assert len(router.calls) == 8  # the manual and the revision were both read
+
+
+async def test_control_a_new_document_keeps_its_fragment_for_display(wired, monkeypatch):
+    # Only the comparison drops the fragment; the URL the technician sees is unchanged.
+    # Forms of a document round one did not reject are compared by their exact URL,
+    # as on main, so both forms stay candidates for the judge.
+    page, other = f"{_GS10_MANUAL}#page=3", f"{_GS10_MANUAL}#page=1"
+    router, sent = _stall(
+        monkeypatch, q2_hits=[(page, _GS10_MANUAL_HIT[1]), (other, _GS10_MANUAL_HIT[1])]
+    )
+    monkeypatch.setitem(TEXT, page, TEXT[_GS10_MANUAL])
+    monkeypatch.setitem(TEXT, other, TEXT[_GS10_MANUAL])
+    with search_mod.acquisition_trail() as trail:
+        r = await search_mod.search_manual("AutomationDirect", "GS10", deadline_at=_deadline(60))
+    assert r is not None and r["url"] == page and r["validated"] is True, r
+    assert {c["url"] for c in trail.candidates[len(_AD_READ) :]} == {page, other}
+
+
+# #5870 Codex F1 and F2: only a PDF the judge read and rejected is matched without its
+# fragment. A first-round copy the judge never read, and a second form of a new
+# document, are compared by exact URL, as on main.
+_SERIES_MANUAL = "https://www.example-files.com/library/series-ac-drive-manual.pdf"
+
+
+async def test_an_unread_first_round_copy_does_not_hide_its_retry_form(wired, monkeypatch):
+    # Round one finds the manual under a generic title the judge does not queue, and a
+    # drawing it rejects. The typed pass returns the manual with a page fragment and a
+    # title naming the model: that form is read and found.
+    generic = (_SERIES_MANUAL, "AC drive user manual")
+    titled = (f"{_SERIES_MANUAL}#page=3", "DURApulse GS10 AC Drive User Manual")
+    assert not judge.relevant({"url": generic[0], "title": generic[1]}, "AutomationDirect", "GS10")
+    router, sent = _stall(monkeypatch, q1_hits=[_AD_READ[0], generic], q2_hits=[titled])
+    monkeypatch.setitem(TEXT, titled[0], TEXT[_GS10_MANUAL])
+    with search_mod.acquisition_trail() as trail:
+        r = await search_mod.search_manual("AutomationDirect", "GS10", deadline_at=_deadline(60))
+    assert trail.judge["not_queued"][_SERIES_MANUAL] == "not_relevant"
+    assert r is not None and r["url"] == titled[0] and r["validated"] is True, r
+    assert r["reason"] == judge.REASON_JUDGED_MATCH
+    assert _typed(sent) == _GS10_TYPED
+    assert len(router.calls) == 2  # the drawing in round one, the titled form in the retry
+
+
+async def test_a_second_form_of_a_new_document_is_kept_for_the_judge(wired, monkeypatch):
+    # The typed pass returns two equal-scoring forms of a new manual, the generic one
+    # first, plus a new drawing. The judge skips the generic form and reads the form
+    # whose title names the model in another spelling, so that form has to be there.
+    first = (f"{_SERIES_MANUAL}#page=1", "AC drive user manual")
+    spelled = (f"{_SERIES_MANUAL}#page=3", "GS 10 AC drive user manual")
+    drawing = (f"{_AD}/drawings/gs10-enclosure.pdf", "GS10 enclosure drawing")
+    model = "GS10"
+    score = search_mod._score
+    assert score(*first, "AutomationDirect", model) == score(*spelled, "AutomationDirect", model)
+    assert not judge.relevant({"url": first[0], "title": first[1]}, "AutomationDirect", model)
+    assert judge.relevant({"url": spelled[0], "title": spelled[1]}, "AutomationDirect", model)
+    router, sent = _stall(monkeypatch, q2_hits=[first, spelled, drawing])
+    monkeypatch.setitem(TEXT, first[0], TEXT[_GS10_MANUAL])
+    monkeypatch.setitem(TEXT, spelled[0], TEXT[_GS10_MANUAL])
+    monkeypatch.setitem(TEXT, drawing[0], _DRAWING_TEXT)
+    r = await search_mod.search_manual("AutomationDirect", model, deadline_at=_deadline(60))
+    assert r is not None and r["url"] == spelled[0] and r["validated"] is True, r
+    assert r["reason"] == judge.REASON_JUDGED_MATCH
+
+
+class _TitleSensitiveJudge(_SaysGs10Manual):
+    """Reads the GS10 manual's text as the manual unless the title calls it an
+    accessory, which it then rejects with low confidence."""
+
+    async def complete(self, messages, max_tokens=1024, session_id="x", sanitize=True):
+        user = messages[-1]["content"]
+        self.calls.append(user)
+        line = next((x for x in user.splitlines() if x.startswith("Candidate title:")), "")
+        yes = "GS10-MANUAL-TEXT" in user and "accessory" not in line.lower()
+        v = {
+            "is_manual_for_model": yes,
+            "doc_type": "user_manual" if yes else "accessory_guide",
+            "confidence": 0.9 if yes else 0.35,
+            "evidence_quote": "GS10 user manual" if yes else "",
+            "reason": "The GS10 user manual." if yes else "An accessory card.",
+        }
+        return json.dumps(v), {"provider": "fake"}
+
+
+async def test_a_fragment_form_under_a_new_title_is_judged_again(wired, monkeypatch):
+    # Codex round 2 F4: round one reads the manual under an accessory-card title and
+    # rejects it. The typed pass returns it with "#page=3" and the user-manual title,
+    # which is new input for the judge, so it is read, as on main, and matches.
+    accessory = (_SERIES_MANUAL, "GS10 accessory card")
+    titled = (f"{_SERIES_MANUAL}#page=3", "DURApulse GS10 AC Drive User Manual")
+    router, sent = _stall(monkeypatch, q1_hits=[_AD_READ[0], accessory], q2_hits=[titled])
+    router = _TitleSensitiveJudge()
+    monkeypatch.setattr(judge, "_router", router)
+    monkeypatch.setitem(TEXT, accessory[0], TEXT[_GS10_MANUAL])
+    monkeypatch.setitem(TEXT, titled[0], TEXT[_GS10_MANUAL])
+    r = await search_mod.search_manual("AutomationDirect", "GS10", deadline_at=_deadline(60))
+    assert r is not None and r["url"] == titled[0] and r["validated"] is True, r
+    assert r["reason"] == judge.REASON_JUDGED_MATCH
+    assert [c["url"] for c in r["judged_rejected"]] == [_AD_READ[0][0], _SERIES_MANUAL]
+    assert len(router.calls) == 3  # the drawing and the accessory title, then the retry form
+
+
 async def test_a_site_pdf_judged_the_manual_sends_no_typed_pass(wired, monkeypatch):
     router, sent = _stall(monkeypatch, q1_hits=_AD_READ + [_GS10_MANUAL_HIT])
     r = await search_mod.search_manual("AutomationDirect", "GS10", deadline_at=_deadline(60))
