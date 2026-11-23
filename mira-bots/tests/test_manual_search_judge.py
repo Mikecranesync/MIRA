@@ -2220,6 +2220,23 @@ async def test_a_stall_before_a_retry_that_runs_to_its_end_keeps_its_judged_reje
     assert body["candidate_trail"]["stop"] == "queue_exhausted"
 
 
+@pytest.mark.parametrize("delays", [{_HANDOFF: 30}, None], ids=["handoff_stalls", "no_stall"])
+async def test_control_a_retry_stopped_by_the_query_ceiling_keeps_its_judged_rejection(
+    wired, monkeypatch, delays
+):
+    # The ceiling is three queries: q1, the handoff and the first spelling. The second
+    # spelling is stopped by the ceiling, not by time, and a prompt handoff stops it the
+    # same way, so a stall changes nothing: the judged rejection stands either way.
+    _scale(monkeypatch, search_timeout=0.5, batch=0.3, reserve=0.3)
+    monkeypatch.setenv("MANUAL_SEARCH_MAX_PROVIDER_QUERIES", "3")
+    router, sent = _stall(monkeypatch, delays=delays)
+    body, took = await asyncio.to_thread(_discovery, monkeypatch, 2.5)
+    assert took < 2.5
+    assert body["reason"] == "judged_not_applicable", body.get("reason")
+    assert sent[1] == _HANDOFF and _typed(sent) == _GS10_TYPED[:1]
+    assert (_HANDOFF_TIMEOUT_ROW in body["candidate_trail"]["queries"]) == bool(delays)
+
+
 async def test_a_stall_that_leaves_the_retry_read_unfinished_is_the_outage_main_returns(
     wired, monkeypatch
 ):
