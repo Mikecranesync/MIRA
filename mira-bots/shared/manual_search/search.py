@@ -517,10 +517,6 @@ class ProviderQueryBudget:
     examined: set[str] = field(default_factory=set)
 
 
-# Quota denials the discovery endpoint reports as a cap (`quota_exceeded`), the same set
-# as its `_QUOTA_CAP_REASONS`; a test pins that the two stay equal.
-_CAP_DENIALS = frozenset({"user_cap", "tenant_cap", "global_cap"})
-
 _provider_budget: contextvars.ContextVar[ProviderQueryBudget | None] = contextvars.ContextVar(
     "manual_search_provider_budget", default=None
 )
@@ -1322,13 +1318,17 @@ async def search_manual(
         website handoff, at either of the two places it does. If every site-scoped PDF
         was read and judged not the manual, which is what skipped the typed pass, run
         it once and return a judged match from it. Otherwise return None, and the
-        caller returns exactly what it returns without the retry. Only ``return``
-        follows this call, so nothing the retry adds is ever probed or offered unread
-        (#5844 Codex F5, F6)."""
+        caller returns what it returns without the retry, except that a quota denial
+        the retry's own queries met stays on the budget. Only ``return`` follows this
+        call, so nothing the retry adds is ever probed or offered unread (#5844 Codex
+        F5, F6).
+
+        A quota denial is never cached as a miss (PRD R5, #4168): the endpoint reports
+        a cap as the limit and an infrastructure denial as an outage, which the Hub
+        retries, where it would record the judged rejection as a terminal
+        no_manual_found (#5849)."""
         if not use_judge or typed_pass_ran or not _every_queued_pdf_rejected(ranked, judge_trace):
             return None
-        budget = _provider_budget.get()
-        denied = budget.quota_denied if budget is not None else None
         try:
             both = await _retry_typed_pass(ranked, judge_trace)
         except Exception:
@@ -1337,14 +1337,6 @@ async def search_manual(
         if both and _judge.is_match(both[0]):
             logger.info("MANUAL_SEARCH_RETRY_MATCH url=%s", both[0]["url"][:200])
             return _as_judged_match(both[0], _rejections(both))
-        if budget is not None and budget.quota_denied not in _CAP_DENIALS:
-            # An infrastructure denial met only by the retry's own queries leaves
-            # today's answer, as a provider error or the cutoff does: today's search
-            # had finished, so it is not an outage. A cap the retry met is still
-            # reported, as any cap is: a cap denial is never cached as a miss (PRD R5,
-            # #4168), and the next-day retry gives the typed pass its chance. The
-            # refused query stays counted and on the trail either way.
-            budget.quota_denied = denied
         return None
 
     typed_pass_ran = not any(c["is_direct_pdf"] for c in candidates)

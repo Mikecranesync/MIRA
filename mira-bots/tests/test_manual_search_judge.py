@@ -2075,10 +2075,17 @@ async def test_a_retry_miss_scores_its_pages_as_support_pages_like_any_query(wir
     assert trail.search_page_url == _SUPPORT[0]  # equal score: the handoff's page stays
 
 
-def _discovery_with_quota(monkeypatch, deny_on, reason):
+_OEM_FORM = "https://www.automationdirect.com/support/manual-request"
+
+
+def _discovery_with_quota(
+    monkeypatch, deny_on, reason, *, typed_hits=(), handoff_hits=(), oem_link=None
+):
     """POST the discovery endpoint through the real _serper_search: the reservation
     numbered ``deny_on`` (1 = q1, 2 = the handoff, 3 = the first typed query) is
-    denied with ``reason``; every other one succeeds."""
+    denied with ``reason``; every other one succeeds (``deny_on=None``: none is
+    denied). The typed pass answers ``typed_hits``, the handoff ``handoff_hits``,
+    and the manufacturer's request link is ``oem_link``."""
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
 
@@ -2095,17 +2102,21 @@ def _discovery_with_quota(monkeypatch, deny_on, reason):
 
     async def post(query, num):
         if "site:" in query:
-            return [{"link": u, "title": t} for u, t in _AD_READ]
-        return []
+            hits = _AD_READ
+        elif "filetype:pdf" in query:
+            hits = typed_hits
+        else:
+            hits = handoff_hits
+        return [{"link": u, "title": t} for u, t in hits]
 
-    async def no_link(make):
-        return None
+    async def link(make):
+        return oem_link
 
     monkeypatch.setattr(search_mod, "_serper_search", _REAL_SERPER_SEARCH)
     monkeypatch.setattr(search_mod, "SERPER_API_KEY", "k")
     monkeypatch.setattr(search_mod, "_serper_post", post)
     monkeypatch.setattr(quota, "reserve_provider_query", reserve)
-    monkeypatch.setattr(md, "oem_request_link", no_link)
+    monkeypatch.setattr(md, "oem_request_link", link)
     app = FastAPI()
     app.include_router(md.router)
     client = TestClient(app, headers={"X-Mira-Key": "k", "X-Mira-Tenant": "t", "X-Mira-User": "u"})
@@ -2116,19 +2127,43 @@ def _discovery_with_quota(monkeypatch, deny_on, reason):
 
 
 @pytest.mark.parametrize("reason", ["quota_unavailable", "global_cap_unconfigured"])
-def test_an_infrastructure_denial_on_the_retry_query_keeps_the_judged_rejection(
-    wired, monkeypatch, reason
-):
-    # Today's search finished with the judged rejection; only the retry's own query was
-    # denied, by infrastructure. That must not turn the answer into an outage.
+def test_an_infrastructure_denial_on_the_retry_query_is_retryable(wired, monkeypatch, reason):
+    # #5849: round one read every site PDF and judged none the manual, and the retry
+    # that asks for it by name was denied by quota infrastructure. A judged rejection
+    # is terminal (the Hub records no_manual_found and never searches again), so the
+    # denial is reported as the outage it is, as one in round one is (#4168), and the
+    # Hub searches again after its backoff.
     router, _ = _stall(monkeypatch)
-    body, reservations = _discovery_with_quota(monkeypatch, deny_on=3, reason=reason)
+    body, reservations = _discovery_with_quota(
+        monkeypatch,
+        deny_on=3,
+        reason=reason,
+        typed_hits=[_GS10_MANUAL_HIT],
+        handoff_hits=[_SUPPORT],
+        oem_link=_OEM_FORM,
+    )
     assert reservations == 3 and len(router.calls) == 6
-    assert body["reason"] == "judged_not_applicable", body.get("reason")
-    assert body["search_stats"]["quota_denied"] is None
+    assert body["reason"] == "search_unavailable", body.get("reason")
+    assert body["found"] is False
+    assert body["search_stats"]["quota_denied"] == reason
     assert body["search_stats"]["refused_queries"] == 2  # both typed variants
-    rows = body["candidate_trail"]["queries"]
-    assert {"pass": "q2", "query": _GS10_TYPED[0], "result": "refused", "hits": 0} in rows
+    # The support page, the manufacturer's request form and round one's reads stay.
+    assert body["search_page_url"] == _SUPPORT[0]
+    assert body["oem_request_url"] == _OEM_FORM
+    trail = body["candidate_trail"]
+    assert {"pass": "q2", "query": _GS10_TYPED[0], "result": "refused", "hits": 0} in trail[
+        "queries"
+    ]
+    judged = [r for r in trail["candidates"] if r["read"] == "judged"]
+    assert len(judged) == len(_AD_READ) and not any(r["is_manual"] for r in judged)
+
+    # With quota restored, the same lookup asks for the manual by name and finds it.
+    body, _ = _discovery_with_quota(
+        monkeypatch, deny_on=None, reason=reason, typed_hits=[_GS10_MANUAL_HIT]
+    )
+    assert body["found"] is True, body.get("reason")
+    assert body["candidate"]["url"] == _GS10_MANUAL
+    assert body["search_stats"]["quota_denied"] is None
 
 
 @pytest.mark.parametrize("reason", ["user_cap", "tenant_cap", "global_cap"])
@@ -2140,12 +2175,6 @@ def test_a_cap_the_retry_query_meets_is_reported_as_the_limit(wired, monkeypatch
     assert len(router.calls) == 6
     assert body["reason"] == "quota_exceeded", body.get("reason")
     assert body["search_stats"]["quota_denied"] == reason
-
-
-def test_the_cap_denials_match_the_endpoint():
-    import ask_api.manual_discovery as md
-
-    assert search_mod._CAP_DENIALS == md._QUOTA_CAP_REASONS
 
 
 def test_a_quota_denial_before_the_retry_still_reports_the_limit(wired, monkeypatch):
