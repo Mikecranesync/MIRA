@@ -1179,17 +1179,27 @@ async def search_manual(
         if hits:
             candidates.extend(_tagged(_collect(hits, make, model), "q1"))
 
-    async def _typed_pdf_pass(second: bool = False) -> list[dict]:
+    typed_in_flight: str | None = None  # the retry's unanswered query, for the trail
+
+    async def _typed_pdf_pass(
+        second: bool = False, found_all: list[dict] | None = None
+    ) -> list[dict]:
         """Pass 2: typed PDF — broader, still PDFs only.
 
-        ``second`` is the run after every site-scoped PDF was read and judged not
-        the manual (#5822). It also keeps the final query for the website handoff on
-        its first variant, and sends a query only while the caller's deadline still
-        covers it plus one judge batch, so it can never turn a miss into a timeout."""
-        found_all: list[dict] = []
+        ``second`` is the retry after every site-scoped PDF was read and judged not
+        the manual (#5822). Its caller has already sent the website handoff, so it
+        keeps no query back for one, and it sends a query only while the caller's
+        deadline still covers one plus a judge batch. That check only saves a query
+        that could not be used; what bounds the retry is the cutoff its caller sets
+        (:func:`_retry_typed_pass`). Hits are added to ``found_all`` as each query
+        answers, so a cutoff keeps what already came back."""
+        nonlocal typed_in_flight
+        found_all = [] if found_all is None else found_all
         for i, variant in enumerate(_model_variants(model) or [model]):
             budget = _provider_budget.get()
-            if (i or second) and budget is not None and budget.used >= budget.limit - 1:
+            if budget is not None and not second and i and budget.used >= budget.limit - 1:
+                break
+            if budget is not None and second and budget.used >= budget.limit:
                 break
             if (
                 second
@@ -1201,7 +1211,10 @@ async def search_manual(
             ):
                 break
             q2 = f"{make} {variant} manual filetype:pdf"
+            if second:
+                typed_in_flight = q2
             hits = await _send(q2, "q2 (filetype:pdf)")
+            typed_in_flight = None
             if hits is None:
                 continue
             found = _tagged(_collect(hits, make, model), "q2")
@@ -1212,6 +1225,86 @@ async def search_manual(
                     c["score"] -= 5
             found_all.extend(found)
         return found_all
+
+    async def _retry_typed_pass(ranked: list[dict], judge_trace: dict) -> list[dict]:
+        """#5822: every site-scoped PDF was read and judged not the manual, which is
+        what skipped the typed pass. Run it once and read only what it adds, at most
+        one judge batch; both rounds rank together. Returns ``ranked`` unchanged when
+        the retry adds nothing or runs out of time."""
+        nonlocal typed_in_flight
+        if trail is not None:
+            trail.ranked = ranked  # round one stays on the trail if the retry is cancelled
+        try:
+            # This miss sends the website handoff today. Sending it before the retry
+            # means a slow retry cannot cost the technician the support page
+            # (#5844 Codex F2).
+            await _website_handoff()
+            found: list[dict] = []
+            try:
+                # The typed queries must answer while one judge batch still fits; past
+                # that they are abandoned and today's answer stands (#5844 Codex F1).
+                # The judge stays outside this block: it stops itself at the deadline.
+                cutoff = (
+                    None
+                    if deadline_at is None
+                    else deadline_at
+                    - _judge.UPGRADE_MIN_BATCH_S
+                    - _judge.RETURN_RESERVE_S
+                    - time.monotonic()
+                )
+                async with asyncio.timeout(cutoff):
+                    await _typed_pdf_pass(second=True, found_all=found)
+            except TimeoutError:
+                logger.info("MANUAL_SEARCH_RETRY_CUTOFF query=%s", (typed_in_flight or "")[:120])
+                if trail is not None and typed_in_flight:
+                    trail.queries.append(
+                        {"pass": "q2", "query": typed_in_flight, "result": "timeout"}
+                    )
+                typed_in_flight = None
+            seen_urls = {c["url"] for c in ranked}
+            more: list[dict] = []
+            for c in sorted(found, key=lambda c: -c["score"]):
+                if c["url"] not in seen_urls:
+                    seen_urls.add(c["url"])
+                    more.append(c)
+            if not more:
+                return ranked
+            if trail is not None:
+                # On the trail before any read, after round one, so a read the caller
+                # cancels is still listed (#5844 Codex F3).
+                trail.candidates = list(trail.candidates) + more
+                trail.ranked = ranked + more
+            second_trace: dict = {}
+            try:
+                more = await _judge.judge_candidates(
+                    make,
+                    model,
+                    more,
+                    started_at=started_at,
+                    deadline_at=deadline_at,
+                    trace=second_trace,
+                    max_total=_judge.MAX_CANDIDATES,
+                )
+            finally:
+                # One trail for both rounds, kept even when a read is cancelled: round
+                # one's queue positions first, then round two's.
+                judge_trace["queue"] = list(judge_trace.get("queue") or []) + list(
+                    second_trace.get("queue") or []
+                )
+                judge_trace.setdefault("not_queued", {}).update(
+                    second_trace.get("not_queued") or {}
+                )
+                if second_trace.get("stop"):
+                    judge_trace["stop"] = second_trace["stop"]
+            ranked = _judge.rank(ranked + more)
+            if trail is not None:
+                trail.ranked = ranked
+            return ranked
+        except asyncio.CancelledError:
+            # The caller's own timeout cancelled the search during the retry. This
+            # handler sits outside the cutoff, whose expiry arrives as TimeoutError.
+            judge_trace["stop"] = "cancelled"
+            raise
 
     typed_pass_ran = not any(c["is_direct_pdf"] for c in candidates)
     if typed_pass_ran:
@@ -1285,37 +1378,7 @@ async def search_manual(
             trace=judge_trace,
         )
         if not typed_pass_ran and _every_queued_pdf_rejected(ranked, judge_trace):
-            # #5822: the site-scoped pass found only PDFs that are not the manual
-            # (drawings, cut sheets), which is what skipped the typed pass. Run it
-            # once now and read what it adds: one judge batch, never the rejects again.
-            seen_urls = {c["url"] for c in ranked}
-            more: list[dict] = []
-            for c in sorted(await _typed_pdf_pass(second=True), key=lambda c: -c["score"]):
-                if c["url"] not in seen_urls:
-                    seen_urls.add(c["url"])
-                    more.append(c)
-            if more:
-                second_trace: dict = {}
-                more = await _judge.judge_candidates(
-                    make,
-                    model,
-                    more,
-                    started_at=started_at,
-                    deadline_at=deadline_at,
-                    trace=second_trace,
-                    max_total=_judge.MAX_CANDIDATES,
-                )
-                ranked = _judge.rank(ranked + more)
-                # One trail for both rounds: round one keeps its queue positions.
-                judge_trace["queue"] = list(judge_trace.get("queue") or []) + second_trace.get(
-                    "queue", []
-                )
-                judge_trace.setdefault("not_queued", {}).update(
-                    second_trace.get("not_queued") or {}
-                )
-                judge_trace["stop"] = second_trace.get("stop")
-                if trail is not None:
-                    trail.candidates = deduped + more
+            ranked = await _retry_typed_pass(ranked, judge_trace)
         if trail is not None:
             trail.ranked = ranked
         # What discovery hands downstream, and why — pairs with MANUAL_JUDGE_VERDICT
