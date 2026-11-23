@@ -1701,6 +1701,52 @@ async def test_when_every_site_pdf_is_not_the_manual_the_typed_pass_finds_it(wir
     assert budget.used == 3 and budget.refused == 0
 
 
+_DRAWING_TEXT = "DURApulse GS10 dimensional drawing / cut sheet"
+
+
+async def test_fragment_variants_of_rejected_pdfs_do_not_use_up_the_retry_batch(wired, monkeypatch):
+    # #5850: the typed pass returns "#page=1" forms of four drawings round one already
+    # rejected, ahead of the manual (equal score, provider order). A server never sees
+    # a fragment, so they are the same documents: the retry reads only the manual.
+    variants = [(f"{u}#page=1", t) for u, t in _AD_READ[:4]]
+    router, sent = _stall(monkeypatch, q2_hits=variants + [(_GS10_MANUAL, "GS10 drive")])
+    for u, _ in variants:
+        monkeypatch.setitem(TEXT, u, _DRAWING_TEXT)
+    with search_mod.acquisition_trail() as trail:
+        r = await search_mod.search_manual("AutomationDirect", "GS10", deadline_at=_deadline(60))
+    assert r is not None and r["url"] == _GS10_MANUAL and r["validated"] is True, r
+    assert r["reason"] == judge.REASON_JUDGED_MATCH
+    assert len(router.calls) == 7  # six drawings in round one, then only the manual
+    added = {c["url"] for c in trail.candidates[len(_AD_READ) :]}
+    assert added == {_GS10_MANUAL}
+
+
+async def test_control_a_query_string_variant_is_still_a_new_document_for_the_retry(
+    wired, monkeypatch
+):
+    # The key keeps the query string: "?rev=2" can select another document, so it is read.
+    rev = (f"{_AD_READ[1][0]}?rev=2", _AD_READ[1][1])
+    router, sent = _stall(monkeypatch, q2_hits=[_GS10_MANUAL_HIT, rev])
+    monkeypatch.setitem(TEXT, rev[0], _DRAWING_TEXT)
+    r = await search_mod.search_manual("AutomationDirect", "GS10", deadline_at=_deadline(60))
+    assert r is not None and r["url"] == _GS10_MANUAL and r["validated"] is True, r
+    assert len(router.calls) == 8  # the manual and the revision were both read
+
+
+async def test_control_a_new_document_keeps_its_fragment_for_display(wired, monkeypatch):
+    # Only the comparison drops the fragment; the URL the technician sees is unchanged.
+    # Two forms of one new document are read once, as the first form returned.
+    page, other = f"{_GS10_MANUAL}#page=3", f"{_GS10_MANUAL}#page=1"
+    router, sent = _stall(
+        monkeypatch, q2_hits=[(page, _GS10_MANUAL_HIT[1]), (other, _GS10_MANUAL_HIT[1])]
+    )
+    monkeypatch.setitem(TEXT, page, TEXT[_GS10_MANUAL])
+    monkeypatch.setitem(TEXT, other, TEXT[_GS10_MANUAL])
+    r = await search_mod.search_manual("AutomationDirect", "GS10", deadline_at=_deadline(60))
+    assert r is not None and r["url"] == page and r["validated"] is True, r
+    assert len(router.calls) == 7
+
+
 async def test_a_site_pdf_judged_the_manual_sends_no_typed_pass(wired, monkeypatch):
     router, sent = _stall(monkeypatch, q1_hits=_AD_READ + [_GS10_MANUAL_HIT])
     r = await search_mod.search_manual("AutomationDirect", "GS10", deadline_at=_deadline(60))

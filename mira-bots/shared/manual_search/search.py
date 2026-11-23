@@ -571,6 +571,13 @@ _TRAIL_JUDGE_FIELDS = (
 )
 
 
+def _document_key(url: str) -> str:
+    """The document a server is asked for: the URL without its fragment, which never
+    leaves the client, but with its query string, which can select another document
+    (#5850). Compared only; the URL shown to the technician keeps its fragment."""
+    return (url or "").split("#", 1)[0]
+
+
 def trail_url(url: str) -> str:
     """The URL without its query string or fragment: signed download tokens
     (ABB's ``x-sign``) are credentials-like and would make one document look
@@ -1272,11 +1279,12 @@ async def search_manual(
                         {"pass": "q2", "query": typed_in_flight, "result": "timeout"}
                     )
                 typed_in_flight = None
-            seen_urls = {c["url"] for c in ranked}
+            seen_urls = {_document_key(c["url"]) for c in ranked}
             more: list[dict] = []
             for c in sorted(found, key=lambda c: -c["score"]):
-                if c["url"] not in seen_urls:
-                    seen_urls.add(c["url"])
+                key = _document_key(c["url"])
+                if key not in seen_urls:
+                    seen_urls.add(key)
                     more.append(c)
             if not more:
                 return ranked
