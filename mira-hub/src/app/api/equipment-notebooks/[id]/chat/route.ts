@@ -101,7 +101,7 @@ import { authorizeGuidedDeadEnd, guidedProcedureEnabled } from "@/capabilities/g
 import { isUuid } from "@/capabilities/fix-records";
 import { livingSheetEnabled } from "@/capabilities/living-sheet/flag";
 import { withSheetReceipt, type SheetReceiptContext } from "@/capabilities/living-sheet/receipt";
-import { loadJob } from "@/capabilities/living-sheet/store";
+import { listJobs, loadJob, type JobSummary } from "@/capabilities/living-sheet/store";
 import type { SheetView } from "@/capabilities/living-sheet/reduce";
 import {
   abandonNotebookTurnRequest,
@@ -1235,7 +1235,37 @@ function renderLivingSheetJobSection(view: SheetView): string {
         .join("; ")}`,
     );
   }
+  // #5335: the technician's own notes, photos and handover on the job, as they
+  // recorded them. Newest last, bounded so one long job cannot crowd out the turn.
+  const clip = (t: string) => (t.length > SHEET_TEXT_MAX ? `${t.slice(0, SHEET_TEXT_MAX)}…` : t);
+  for (const n of view.notes.slice(-SHEET_NOTES_MAX)) {
+    lines.push(`- Note (written by ${n.by ?? "unknown"} at ${n.at}): ${clip(n.text)}`);
+  }
+  if (view.photos.length > 0) {
+    lines.push(
+      `- Photos attached: ${view.photos.length} (${view.photos
+        .slice(-SHEET_NOTES_MAX)
+        .map((p) => `${p.caption ? `"${clip(p.caption)}"` : "no caption"} by ${p.by ?? "unknown"} at ${p.at}`)
+        .join("; ")})`,
+    );
+  }
+  if (view.handover.current) {
+    const h = view.handover.current;
+    lines.push(`- Handover (written by ${h.by ?? "unknown"} at ${h.at}): ${clip(h.text)}`);
+  }
   return lines.join("\n");
+}
+
+const SHEET_NOTES_MAX = 20;
+const SHEET_TEXT_MAX = 600;
+
+/** #5335: several unfinished jobs and none chosen on the sheet: name them, read none,
+ *  so an answer about "the open job" can ask which one instead of guessing. */
+function renderOpenJobTitlesSection(jobs: JobSummary[]): string {
+  return [
+    `## Living Work Sheet — ${jobs.length} unfinished jobs on this machine (none is open on the sheet; everything below is technician-reported, not verified)`,
+    ...jobs.slice(0, 10).map((j) => `- "${j.title}" started by ${j.startedBy ?? "unknown"} at ${j.startedAt}`),
+  ].join("\n");
 }
 
 async function handleChatTurn(
@@ -4304,11 +4334,21 @@ async function handleChatTurn(
   // every other sheet read) — no asset-confirmation requirement, matching
   // every other living-sheet read route. Own try/catch: a missing table or
   // unknown job answers without this section, never a broken turn.
+  //
+  // #5335: a new chat with the sheet closed carries no job id, yet "what did I
+  // note on the open job?" is asked exactly then. With no id on the turn, the
+  // notebook's single unfinished job is the open one; several are named only.
   let sheetSection = "";
-  if (livingSheetEnabled() && livingSheetJobId) {
+  if (livingSheetEnabled()) {
     try {
-      const sheet = await loadJob(ctx.tenantId, notebookId, livingSheetJobId);
-      if (sheet.status === "ok") sheetSection = renderLivingSheetJobSection(sheet.view);
+      let jobId = livingSheetJobId;
+      if (!jobId) {
+        const unfinished = (await listJobs(ctx.tenantId, notebookId)).filter((j) => !j.finished);
+        if (unfinished.length === 1) jobId = unfinished[0]!.jobId;
+        else if (unfinished.length > 1) sheetSection = renderOpenJobTitlesSection(unfinished);
+      }
+      const sheet = jobId ? await loadJob(ctx.tenantId, notebookId, jobId) : null;
+      if (sheet?.status === "ok") sheetSection = renderLivingSheetJobSection(sheet.view);
     } catch (err) {
       console.error(
         `[notebook-chat] living sheet job load failed code=${(err as { code?: string }).code ?? "?"} ` +
