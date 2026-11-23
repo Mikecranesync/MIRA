@@ -1794,6 +1794,43 @@ async def test_a_second_form_of_a_new_document_is_kept_for_the_judge(wired, monk
     assert r["reason"] == judge.REASON_JUDGED_MATCH
 
 
+class _TitleSensitiveJudge(_SaysGs10Manual):
+    """Reads the GS10 manual's text as the manual unless the title calls it an
+    accessory, which it then rejects with low confidence."""
+
+    async def complete(self, messages, max_tokens=1024, session_id="x", sanitize=True):
+        user = messages[-1]["content"]
+        self.calls.append(user)
+        line = next((x for x in user.splitlines() if x.startswith("Candidate title:")), "")
+        yes = "GS10-MANUAL-TEXT" in user and "accessory" not in line.lower()
+        v = {
+            "is_manual_for_model": yes,
+            "doc_type": "user_manual" if yes else "accessory_guide",
+            "confidence": 0.9 if yes else 0.35,
+            "evidence_quote": "GS10 user manual" if yes else "",
+            "reason": "The GS10 user manual." if yes else "An accessory card.",
+        }
+        return json.dumps(v), {"provider": "fake"}
+
+
+async def test_a_fragment_form_under_a_new_title_is_judged_again(wired, monkeypatch):
+    # Codex round 2 F4: round one reads the manual under an accessory-card title and
+    # rejects it. The typed pass returns it with "#page=3" and the user-manual title,
+    # which is new input for the judge, so it is read, as on main, and matches.
+    accessory = (_SERIES_MANUAL, "GS10 accessory card")
+    titled = (f"{_SERIES_MANUAL}#page=3", "DURApulse GS10 AC Drive User Manual")
+    router, sent = _stall(monkeypatch, q1_hits=[_AD_READ[0], accessory], q2_hits=[titled])
+    router = _TitleSensitiveJudge()
+    monkeypatch.setattr(judge, "_router", router)
+    monkeypatch.setitem(TEXT, accessory[0], TEXT[_GS10_MANUAL])
+    monkeypatch.setitem(TEXT, titled[0], TEXT[_GS10_MANUAL])
+    r = await search_mod.search_manual("AutomationDirect", "GS10", deadline_at=_deadline(60))
+    assert r is not None and r["url"] == titled[0] and r["validated"] is True, r
+    assert r["reason"] == judge.REASON_JUDGED_MATCH
+    assert [c["url"] for c in r["judged_rejected"]] == [_AD_READ[0][0], _SERIES_MANUAL]
+    assert len(router.calls) == 3  # the drawing and the accessory title, then the retry form
+
+
 async def test_a_site_pdf_judged_the_manual_sends_no_typed_pass(wired, monkeypatch):
     router, sent = _stall(monkeypatch, q1_hits=_AD_READ + [_GS10_MANUAL_HIT])
     r = await search_mod.search_manual("AutomationDirect", "GS10", deadline_at=_deadline(60))
