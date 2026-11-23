@@ -1306,11 +1306,27 @@ async def search_manual(
             ]
             if pdfs:
                 trace: dict = {}
-                read = await _judge.judge_candidates(
-                    make, model, pdfs, started_at=started_at, deadline_at=deadline_at, trace=trace
-                )
-                if trail is not None:
-                    trail.judge["extra"] = trace
+                try:
+                    read = await _judge.judge_candidates(
+                        make,
+                        model,
+                        pdfs,
+                        started_at=started_at,
+                        deadline_at=deadline_at,
+                        trace=trace,
+                    )
+                finally:
+                    if trail is not None:
+                        # One trail for every round, as for the retry: these queue
+                        # positions follow the others, and a PDF queued here is no
+                        # longer listed as not queued.
+                        queued = list(trace.get("queue") or [])
+                        trail.judge["queue"] = list(trail.judge.get("queue") or []) + queued
+                        not_queued = trail.judge.setdefault("not_queued", {})
+                        for u in queued:
+                            not_queued.pop(u, None)
+                        if trace.get("stop"):
+                            trail.judge["stop"] = trace["stop"]
                 if read and _judge.is_match(read[0]):
                     return _as_judged_match(read[0], rejected + _rejections(read))
         result = answer()
@@ -1322,6 +1338,9 @@ async def search_manual(
             if c["url"] in offered or _judge.is_rejected(c):
                 continue
             offered.add(c["url"])
+            # Every unread offer goes through the one make screen. It cannot refuse
+            # one of these today, since each names the make or the whole part number,
+            # but a stricter screen must apply to them too.
             if screen_unread and not _may_offer_unread(c, make, part_number):
                 continue
             c["validated"] = False

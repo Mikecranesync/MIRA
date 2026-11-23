@@ -16,6 +16,7 @@ import asyncio
 import json
 import pathlib
 import sys
+import types
 from urllib.parse import urlparse
 
 import pytest
@@ -3980,3 +3981,99 @@ async def test_a_set_aside_copy_of_a_candidate_is_left_to_that_candidate(
     monkeypatch.setenv("MANUAL_JUDGE_ENABLED", enabled)
     _serve_by_pass(monkeypatch, site=[aside], typed=[kept])
     assert await search_mod.search_manual("Siemens", _SIMATIC, exact_part_number=True) is None
+
+
+# Round 2 review: the guards inside the reads and offers at main's endings.
+_AD_PLAIN_PDF = (
+    f"{_FILES}/variable-frequency-drive-user-manual.pdf",
+    "Variable frequency drive user manual",
+)
+
+
+@pytest.mark.parametrize("is_manual", [True, False])
+async def test_an_extra_pdf_judged_not_the_manual_is_neither_returned_nor_offered(
+    wired, monkeypatch, is_manual
+):
+    # Main's cap lets it read one PDF, the first served, which cannot be fetched: it
+    # ends with nothing judged. The extra PDF is read there. Judged the manual, it is
+    # returned; judged not the manual, it is neither returned nor offered unread.
+    for u, t in (_AD_PLAIN_PDF, _AD_EXTRA_PDF):
+        assert not judge.relevant({"url": u, "title": t}, "AutomationDirect", "GS10")
+    plain, extra = ({"url": u, "title": t} for u, t in (_AD_PLAIN_PDF, _AD_EXTRA_PDF))
+    assert not search_mod._names_make(plain, "AutomationDirect")
+    assert search_mod._names_make(extra, "AutomationDirect")
+    assert _AD_PLAIN_PDF[0] not in TEXT
+    monkeypatch.setattr(judge, "MAX_TOTAL", 1)
+    _readable(monkeypatch, _AD_EXTRA_PDF[0])
+    router = _Verdicts({_AD_EXTRA_PDF[0]} if is_manual else ())
+    monkeypatch.setattr(judge, "_router", router)
+    _serve(monkeypatch, [_AD_PLAIN_PDF, _AD_EXTRA_PDF])
+    r = await search_mod.search_manual("AutomationDirect", "GS10")
+    assert router.read == [_AD_EXTRA_PDF[0]], router.read
+    if is_manual:
+        assert r is not None and r["url"] == _AD_EXTRA_PDF[0] and r["validated"] is True, r
+    else:
+        assert r is None, r
+
+
+async def test_a_pdf_main_already_read_is_not_read_again(wired, monkeypatch):
+    # No PDF passes the judge's own check, so main reads both PDFs naming GE and
+    # rejects them. Its rejection ending does not read them a second time.
+    a = (f"{_FILES}/ge-motors-catalog.pdf", "GE Motors catalog")
+    b = (f"{_FILES}/ge-motors-drive-manual.pdf", "GE motors drive manual")
+    for u, t in (a, b):
+        c = {"url": u, "title": t}
+        assert not judge.relevant(c, "GE", "M100") and search_mod._names_make(c, "GE")
+    _readable(monkeypatch, a[0], b[0])
+    router = _Verdicts(())
+    monkeypatch.setattr(judge, "_router", router)
+    _serve(monkeypatch, [a, b])
+    r = await search_mod.search_manual("GE", "M100")
+    assert sorted(router.read) == sorted([a[0], b[0]]), router.read
+    assert r is not None and judge.is_rejected(r) and r["validated"] is False, r
+
+
+@pytest.mark.parametrize("spent", [True, False])
+async def test_an_extra_pdf_is_read_only_in_the_time_the_deadline_leaves(wired, monkeypatch, spent):
+    brochure = (f"{_FILES}/ge-m100-brochure.pdf", "GE M100 brochure")
+    extra = (f"{_FILES}/ge-motors-drive-manual.pdf", "GE motors drive manual")
+    assert judge.relevant({"url": brochure[0], "title": brochure[1]}, "GE", "M100")
+    assert not judge.relevant({"url": extra[0], "title": extra[1]}, "GE", "M100")
+    clock = [1000.0]
+    fake_time = types.SimpleNamespace(monotonic=lambda: clock[0])
+    monkeypatch.setattr(search_mod, "time", fake_time)
+    monkeypatch.setattr(judge, "time", fake_time)
+    _readable(monkeypatch, brochure[0], extra[0])
+
+    class _Slow(_Verdicts):
+        async def complete(self, messages, **kw):
+            out = await super().complete(messages, **kw)
+            if spent and self.read[-1] == brochure[0]:
+                clock[0] += 30.0  # main's own read uses up what the deadline left
+            return out
+
+    router = _Slow({extra[0]})
+    monkeypatch.setattr(judge, "_router", router)
+    _serve(monkeypatch, [brochure, extra])
+    deadline = 1000.0 + judge.RETURN_RESERVE_S + 10.0
+    r = await search_mod.search_manual("GE", "M100", deadline_at=deadline)
+    if spent:
+        assert router.read == [brochure[0]], router.read
+        assert r is not None and r["url"] == brochure[0] and judge.is_rejected(r), r
+    else:
+        assert router.read == [brochure[0], extra[0]], router.read
+        assert r is not None and r["url"] == extra[0] and r["validated"] is True, r
+
+
+async def test_the_trail_lists_an_extra_read_after_mains_own(wired, monkeypatch):
+    _readable(monkeypatch, _AD_BROCHURE[0], _AD_EXTRA_PDF[0])
+    monkeypatch.setattr(judge, "_router", _Verdicts({_AD_EXTRA_PDF[0]}))
+    _serve(monkeypatch, [_AD_BROCHURE, _AD_EXTRA_PDF])
+    with search_mod.acquisition_trail() as trail:
+        r = await search_mod.search_manual("AutomationDirect", "GS10")
+    assert r is not None and r["url"] == _AD_EXTRA_PDF[0] and r["validated"] is True, r
+    rows = {row["url"]: row for row in trail.to_dict(r["url"])["candidates"]}
+    own, won = rows[_AD_BROCHURE[0]], rows[_AD_EXTRA_PDF[0]]
+    assert own["queue_pos"] == 0 and own["read"] == "judged", own
+    assert won["queue_pos"] == 1 and won["not_queued"] is None, won
+    assert won["read"] == "judged" and won["selected"] is True, won
