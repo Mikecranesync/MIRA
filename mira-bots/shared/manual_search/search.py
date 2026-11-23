@@ -574,7 +574,8 @@ _TRAIL_JUDGE_FIELDS = (
 def _document_key(url: str) -> str:
     """The document a server is asked for: the URL without its fragment, which never
     leaves the client, but with its query string, which can select another document
-    (#5850). Compared only; the URL shown to the technician keeps its fragment."""
+    (#5850). Compared only, against PDFs the judge rejected; the URL shown to the
+    technician keeps its fragment."""
     return (url or "").split("#", 1)[0]
 
 
@@ -1279,12 +1280,16 @@ async def search_manual(
                         {"pass": "q2", "query": typed_in_flight, "result": "timeout"}
                     )
                 typed_in_flight = None
-            seen_urls = {_document_key(c["url"]) for c in ranked}
+            # A fragment form of a PDF the judge read and rejected is that same
+            # document (#5850). Anything else is compared by its exact URL, as
+            # before, so an unread first-round copy or a second form of a new
+            # document stays readable (#5870 Codex F1, F2).
+            rejected_docs = {_document_key(c["url"]) for c in ranked if _judge.is_rejected(c)}
+            seen_urls = {c["url"] for c in ranked}
             more: list[dict] = []
             for c in sorted(found, key=lambda c: -c["score"]):
-                key = _document_key(c["url"])
-                if key not in seen_urls:
-                    seen_urls.add(key)
+                if c["url"] not in seen_urls and _document_key(c["url"]) not in rejected_docs:
+                    seen_urls.add(c["url"])
                     more.append(c)
             if not more:
                 return ranked
