@@ -1179,11 +1179,26 @@ async def search_manual(
         if hits:
             candidates.extend(_tagged(_collect(hits, make, model), "q1"))
 
-    # Pass 2: typed PDF — broader, still PDFs only.
-    if not any(c["is_direct_pdf"] for c in candidates):
+    async def _typed_pdf_pass(second: bool = False) -> list[dict]:
+        """Pass 2: typed PDF — broader, still PDFs only.
+
+        ``second`` is the run after every site-scoped PDF was read and judged not
+        the manual (#5822). It also keeps the final query for the website handoff on
+        its first variant, and sends a query only while the caller's deadline still
+        covers it plus one judge batch, so it can never turn a miss into a timeout."""
+        found_all: list[dict] = []
         for i, variant in enumerate(_model_variants(model) or [model]):
             budget = _provider_budget.get()
-            if i and budget is not None and budget.used >= budget.limit - 1:
+            if (i or second) and budget is not None and budget.used >= budget.limit - 1:
+                break
+            if (
+                second
+                and deadline_at is not None
+                and (
+                    deadline_at - time.monotonic()
+                    < SEARCH_TIMEOUT + _judge.UPGRADE_MIN_BATCH_S + _judge.RETURN_RESERVE_S
+                )
+            ):
                 break
             q2 = f"{make} {variant} manual filetype:pdf"
             hits = await _send(q2, "q2 (filetype:pdf)")
@@ -1195,7 +1210,12 @@ async def search_manual(
                 # from the nameplate's own spelling: it must not win a tie.
                 for c in found:
                     c["score"] -= 5
-            candidates.extend(found)
+            found_all.extend(found)
+        return found_all
+
+    typed_pass_ran = not any(c["is_direct_pdf"] for c in candidates)
+    if typed_pass_ran:
+        candidates.extend(await _typed_pdf_pass())
 
     # Pass 3: widest fallback — websites as well as PDFs. A bounded call
     # reserves its final query for this instead of spending it on spelling variants.
@@ -1255,14 +1275,47 @@ async def search_manual(
     # judge; the result remains an unconfirmed search candidate.
     use_judge = bool(make) and _judge.judge_enabled()
     if use_judge:
+        judge_trace: dict = trail.judge if trail is not None else {}
         ranked = await _judge.judge_candidates(  # records what it reads
             make,
             model,
             deduped,
             started_at=started_at,
             deadline_at=deadline_at,
-            trace=trail.judge if trail is not None else None,
+            trace=judge_trace,
         )
+        if not typed_pass_ran and _every_queued_pdf_rejected(ranked, judge_trace):
+            # #5822: the site-scoped pass found only PDFs that are not the manual
+            # (drawings, cut sheets), which is what skipped the typed pass. Run it
+            # once now and read what it adds: one judge batch, never the rejects again.
+            seen_urls = {c["url"] for c in ranked}
+            more: list[dict] = []
+            for c in sorted(await _typed_pdf_pass(second=True), key=lambda c: -c["score"]):
+                if c["url"] not in seen_urls:
+                    seen_urls.add(c["url"])
+                    more.append(c)
+            if more:
+                second_trace: dict = {}
+                more = await _judge.judge_candidates(
+                    make,
+                    model,
+                    more,
+                    started_at=started_at,
+                    deadline_at=deadline_at,
+                    trace=second_trace,
+                    max_total=_judge.MAX_CANDIDATES,
+                )
+                ranked = _judge.rank(ranked + more)
+                # One trail for both rounds: round one keeps its queue positions.
+                judge_trace["queue"] = list(judge_trace.get("queue") or []) + second_trace.get(
+                    "queue", []
+                )
+                judge_trace.setdefault("not_queued", {}).update(
+                    second_trace.get("not_queued") or {}
+                )
+                judge_trace["stop"] = second_trace.get("stop")
+                if trail is not None:
+                    trail.candidates = deduped + more
         if trail is not None:
             trail.ranked = ranked
         # What discovery hands downstream, and why — pairs with MANUAL_JUDGE_VERDICT
@@ -1372,6 +1425,22 @@ async def search_manual(
         )
         deduped[0]["judged_rejected"] = rejected_out
     return deduped[0]
+
+
+def _every_queued_pdf_rejected(ranked: list[dict], trace: dict) -> bool:
+    """Whether the judge read every PDF it queued and rejected each one (#5822).
+
+    Not when a queued PDF went unread (unfetched, no text, cut off by the deadline),
+    when the queue was over its cap, or when nothing was queued: any of those can
+    still be the manual, and the existing review path handles them."""
+    queue = trace.get("queue") or []
+    by_url = {c["url"]: c for c in ranked}
+    return (
+        trace.get("stop") == "queue_exhausted"
+        and bool(queue)
+        and all(u in by_url and _judge.is_rejected(by_url[u]) for u in queue)
+        and "over_max_total" not in (trace.get("not_queued") or {}).values()
+    )
 
 
 def _as_judged_rejection(worst: dict, rejected: list[dict]) -> dict:

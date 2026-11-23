@@ -645,11 +645,12 @@ async def judge_candidates(
     started_at: float | None = None,
     deadline_at: float | None = None,
     trace: dict | None = None,
+    max_total: int | None = None,
 ) -> list[dict]:
     """Read direct-PDF candidates in batches of ``MAX_CANDIDATES`` — candidates
     that mention the make in their URL/title first, then by heuristic score —
-    until one is judged the manual or ``MAX_TOTAL`` have been read. Returns the
-    full list re-ranked via :func:`rank`. Never raises.
+    until one is judged the manual or ``max_total`` (default ``MAX_TOTAL``) have
+    been read. Returns the full list re-ranked via :func:`rank`. Never raises.
 
     Batches matter (measured 2026-08-26): a hyphen variant of the model pulled
     state tax forms into the pool at heuristic score 40, above the real
@@ -666,8 +667,9 @@ async def judge_candidates(
     queue.sort(key=lambda c: (_mentions_make(c, make), c.get("score", 0)), reverse=True)
     not_queued = {c["url"]: "not_direct_pdf" for c in candidates if not c.get("is_direct_pdf")}
     not_queued.update({c["url"]: "not_relevant" for c in pdfs if c not in queue})
-    not_queued.update({c["url"]: "over_max_total" for c in queue[MAX_TOTAL:]})
-    queue = queue[:MAX_TOTAL]
+    limit = MAX_TOTAL if max_total is None else max_total
+    not_queued.update({c["url"]: "over_max_total" for c in queue[limit:]})
+    queue = queue[:limit]
     trace["queue"] = [c["url"] for c in queue]
     trace["not_queued"] = not_queued
     try:
