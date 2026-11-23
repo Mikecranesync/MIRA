@@ -25,6 +25,7 @@ import asyncio
 import contextvars
 import logging
 import os
+import threading
 from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -142,9 +143,121 @@ def _windows(now: datetime) -> tuple[date, date]:
     return today, today.replace(day=1)
 
 
-def _reserve_sync(identity: QuotaIdentity, now: datetime) -> str:
+def _locked_rows(identity: QuotaIdentity, now: datetime) -> list[tuple[str, str, date]]:
+    """(scope, scope_key, window_start) for the three counters EVERY reservation
+    touches, in the fixed lock order. A release takes exactly these rows, from the
+    reservation's own ``now``. Never log scope_key in clear text (it may embed a
+    user id); only the reason/scope are logged.
+
+    Fixed lock order (scope, scope_key, window_start) — every reservation
+    (any tenant, any user) takes these three locks in the SAME order, so two
+    concurrent reservations can never deadlock waiting on each other's locks
+    in reverse order. The spec's single IN-list UPDATE does not guarantee
+    this ordering (the planner may walk a multi-value index scan in a
+    different order per execution); three ordered single-row UPDATEs inside
+    one transaction give the same atomicity with a provable lock order."""
+    today, month_start = _windows(now)
+    return sorted(
+        [
+            ("user_day", identity.user_key, today),
+            ("tenant_day", identity.tenant_id, today),
+            ("global_month", GLOBAL_SCOPE_KEY, month_start),
+        ]
+    )
+
+
+# What _reserve_sync returns once its awaiting task was cancelled. No caller ever
+# sees it: the task that would have received it is gone.
+_ABANDONED = "abandoned"
+_RELEASE_THREAD_NAME = "manual-search-quota-release"
+
+
+class _Handoff:
+    """Decides, once, who owns a reservation's charge when its awaiting task is
+    cancelled (#5847). asyncio cannot stop the worker thread, so without this a
+    cancelled reservation could still commit and charge all three counters for a
+    provider query that is never sent.
+
+    The worker and the awaiter each flip state under a lock that is never held
+    across I/O, so exactly one of them acts on a cancel:
+      - before the commit, the worker rolls back;
+      - during the commit, the worker releases what it committed;
+      - after the worker delivered "ok" but before the awaiter resumed, the
+        awaiter starts a release thread.
+    A reservation that ends in a denial or an error commits nothing, so nothing
+    is released."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._abandoned = False
+        self._delivered = False
+
+    def may_commit(self) -> bool:
+        """Worker, just before the commit: False once the awaiter is gone."""
+        with self._lock:
+            return not self._abandoned
+
+    def deliver(self) -> bool:
+        """Worker, just after the commit. True hands the charge to the awaiter, which
+        sends the query or, if it is cancelled before it resumes, releases it. False
+        means the awaiter was cancelled during the commit: the worker releases."""
+        with self._lock:
+            self._delivered = not self._abandoned
+            return self._delivered
+
+    def abandon(self) -> bool:
+        """Awaiter, on cancellation. True when the worker already delivered a
+        committed reservation, which the awaiter must now release."""
+        with self._lock:
+            self._abandoned = True
+            return self._delivered
+
+
+def _release_sync(identity: QuotaIdentity, now: datetime) -> None:
+    """Give back one committed reservation whose query was never sent (#5847).
+
+    The same three rows as the reservation (its own ``now``, so a UTC rollover
+    since then cannot move the release to another window), in the same lock
+    order, in one transaction, never below zero. Never raises: a failed release
+    leaves the charge, which over-counts rather than under-counts (fail closed)."""
+    conn = None
+    try:
+        import psycopg2
+
+        conn = psycopg2.connect(os.environ.get("NEON_DATABASE_URL", "").strip(), connect_timeout=5)
+        with conn.cursor() as cur:
+            cur.execute("SET LOCAL statement_timeout = '5s'")
+            for scope, key, window in _locked_rows(identity, now):
+                cur.execute(
+                    """
+                    UPDATE manual_search_quota
+                       SET used = used - 1, updated_at = now()
+                     WHERE scope = %s AND scope_key = %s AND window_start = %s
+                       AND used > 0
+                    """,
+                    (scope, key, window),
+                )
+        conn.commit()
+        logger.info("MANUAL_SEARCH_QUOTA_RELEASED")
+    except Exception:
+        logger.error("MANUAL_SEARCH_QUOTA_RELEASE_FAILED", exc_info=True)
+        try:
+            if conn is not None:
+                conn.rollback()
+        except Exception:  # noqa: BLE001 - best-effort cleanup only
+            pass
+    finally:
+        try:
+            if conn is not None:
+                conn.close()
+        except Exception:  # noqa: BLE001 - best-effort cleanup only
+            pass
+
+
+def _reserve_sync(identity: QuotaIdentity, now: datetime, handoff: _Handoff | None = None) -> str:
     """The synchronous (blocking) Postgres round trip. Never raises — any
-    import/connection/SQL error maps to "quota_unavailable" (fail closed)."""
+    import/connection/SQL error maps to "quota_unavailable" (fail closed).
+    ``handoff`` is the cancellation protocol with the awaiting task (#5847)."""
     # Checked FIRST, before any I/O: an unconfigured global cap means there is
     # no number to reserve against, so no query is sent and no database
     # connection is even attempted (owner decision D4 pending — see
@@ -165,25 +278,18 @@ def _reserve_sync(identity: QuotaIdentity, now: datetime) -> str:
         logger.error("MANUAL_SEARCH_QUOTA_UNAVAILABLE reason=psycopg2_missing")
         return "quota_unavailable"
 
-    today, month_start = _windows(now)
-    # (scope, scope_key, window_start, cap) — the three counters EVERY
-    # reservation touches. Never log scope_key in clear text beyond this
-    # (it may embed a user id); only the reason/scope are logged.
-    rows: list[tuple[str, str, date, int]] = [
-        ("user_day", identity.user_key, today, user_daily_cap()),
-        ("tenant_day", identity.tenant_id, today, tenant_daily_cap()),
-        ("global_month", GLOBAL_SCOPE_KEY, month_start, global_cap),
+    # (scope, scope_key, window_start, cap), in the fixed lock order (_locked_rows).
+    caps = {
+        "user_day": user_daily_cap(),
+        "tenant_day": tenant_daily_cap(),
+        "global_month": global_cap,
+    }
+    ordered = [
+        (scope, key, window, caps[scope]) for scope, key, window in _locked_rows(identity, now)
     ]
-    # Fixed lock order (scope, scope_key, window_start) — every reservation
-    # (any tenant, any user) takes these three locks in the SAME order, so two
-    # concurrent reservations can never deadlock waiting on each other's locks
-    # in reverse order. The spec's single IN-list UPDATE does not guarantee
-    # this ordering (the planner may walk a multi-value index scan in a
-    # different order per execution); three ordered single-row UPDATEs inside
-    # one transaction give the same atomicity with a provable lock order.
-    ordered = sorted(rows, key=lambda r: (r[0], r[1], r[2]))
 
     conn = None
+    release = False
     try:
         conn = psycopg2.connect(db_url, connect_timeout=5)
         with conn.cursor() as cur:
@@ -212,9 +318,16 @@ def _reserve_sync(identity: QuotaIdentity, now: datetime) -> str:
                 if cur.fetchone() is not None:
                     updated.add(scope)
             if len(updated) == len(ordered):
+                if handoff is not None and not handoff.may_commit():
+                    conn.rollback()
+                    logger.info("MANUAL_SEARCH_QUOTA_ABANDONED stage=before_commit")
+                    return _ABANDONED
                 conn.commit()
-                return "ok"
-            conn.rollback()
+                if handoff is None or handoff.deliver():
+                    return "ok"
+                release = True  # cancelled during the commit: give the charge back
+            else:
+                conn.rollback()
     except Exception:
         logger.error("MANUAL_SEARCH_QUOTA_UNAVAILABLE reason=query_failed", exc_info=True)
         try:
@@ -229,6 +342,11 @@ def _reserve_sync(identity: QuotaIdentity, now: datetime) -> str:
                 conn.close()
         except Exception:  # noqa: BLE001 - best-effort cleanup only
             pass
+
+    if release:
+        logger.info("MANUAL_SEARCH_QUOTA_ABANDONED stage=commit")
+        _release_sync(identity, now)
+        return _ABANDONED
 
     # Fewer than 3 rows reserved — at least one scope was at cap. Priority:
     # user -> tenant -> global (the missing ones, in that order).
@@ -249,6 +367,23 @@ async def reserve_provider_query(identity: QuotaIdentity, *, now: datetime | Non
     | "global_cap_unconfigured" | "quota_unavailable". psycopg2 is
     synchronous, so the round trip runs in a thread (asyncio.to_thread) —
     same pattern as wo_evidence.py.
+
+    If this await is cancelled (the endpoint's timeout, the retry cutoff), the
+    query it reserved for is never sent, so the reservation is rolled back or
+    released rather than charged (#5847, see _Handoff). Once it has returned
+    "ok", the reservation belongs to the caller and is counted as sent.
     """
     moment = now or datetime.now(timezone.utc)
-    return await asyncio.to_thread(_reserve_sync, identity, moment)
+    handoff = _Handoff()
+    try:
+        return await asyncio.to_thread(_reserve_sync, identity, moment, handoff)
+    except asyncio.CancelledError:
+        if handoff.abandon():
+            # Never touch the database on the event loop: release in a thread.
+            threading.Thread(
+                target=_release_sync,
+                args=(identity, moment),
+                name=_RELEASE_THREAD_NAME,
+                daemon=True,
+            ).start()
+        raise
