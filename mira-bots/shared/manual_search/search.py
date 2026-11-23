@@ -54,7 +54,7 @@ import time
 from collections.abc import Generator, Iterable
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from urllib.parse import unquote, urljoin, urlparse
+from urllib.parse import parse_qsl, unquote, urljoin, urlparse, urlsplit
 
 import httpcore
 import httpx
@@ -311,26 +311,65 @@ def _names_make(c: dict, make: str) -> bool:
 
 
 # What may follow a part number without making it a longer one (#5827, #5837).
-# A letter or digit may not, as before ("GS10-20P5X"). Neither may an order option
-# ("+B063") nor a further code group after a hyphen or underscore: a group with a
-# digit ("-2", "_B063") or of one or two letters ("-X"). A space, punctuation, a
-# path or file-extension separator, or a word ("-user-manual") still ends it.
-_PART_NUMBER_END = r"(?![a-z0-9])(?!\+[a-z0-9])(?![\-_](?:[a-z0-9]*\d|[a-z]{1,2}(?![a-z0-9])))"
+# A letter or digit may not, as before ("GS10-20P5X"), and neither may an order
+# option ("+B063"): those two always name a different part. Nor may a further code
+# group after a hyphen, underscore or dash: a group with a digit ("-2", "_B063") or
+# of one or two letters ("-X"). A space, punctuation, a path or file-extension
+# separator, or a word ("-user-manual") still ends it.
+_DIFFERENT_PART = r"(?:[a-z0-9]|\+[a-z0-9])"
+_CODE_GROUP = r"(?:[\-_–—﹘](?:[a-z0-9]*\d|[a-z]{1,2}(?![a-z0-9])))"
+_PART_NUMBER_END = "(?!" + _DIFFERENT_PART + "|" + _CODE_GROUP + ")"
+
+# The Hub's catalog hyphens (mira-hub/src/capabilities/detection-fold.ts
+# HYPHEN_EQUIV_CHARS) read as "-" for the match only (#5843). An en or em dash is
+# not one, as in the Hub: it joins no groups, though it still starts a code group.
+_CATALOG_HYPHENS = str.maketrans(dict.fromkeys("‐‑‒−﹣－", "-"))
+
+# The query fields that can name the document itself on a download endpoint
+# ("/download?document=..."). A referral or search value, a path parameter, the
+# fragment and the host never say which part a page is about (#5853).
+_DOCUMENT_QUERY_FIELDS = frozenset({"doc", "document", "file", "filename"})
+
+
+def _part_number_texts(c: dict) -> list[str] | None:
+    """The texts that may name an unread page's part, each read on its own: the
+    title, the percent-decoded URL path, and the form-decoded value of any document
+    field, where a raw "+" is a space and "%2B" a plus (#5854). None when the URL
+    cannot be parsed or names its document twice, so the page is refused."""
+    try:
+        url = urlsplit(c.get("url") or "")
+        fields = [(k.lower(), v) for k, v in parse_qsl(url.query)]
+    except ValueError:
+        return None
+    values = [v for k, v in fields if k in _DOCUMENT_QUERY_FIELDS]
+    if len(values) != len({k for k, _ in fields if k in _DOCUMENT_QUERY_FIELDS}):
+        return None
+    path = re.split(r"[?#]", unquote(url.path), maxsplit=1)[0]
+    path = re.sub(r";[^/]*", "", path)
+    texts = (c.get("title") or "", path, *values)
+    return [t.translate(_CATALOG_HYPHENS).lower() for t in texts if t]
 
 
 def _names_part_number(c: dict, part_number: str) -> bool:
-    """Whether the title or URL names the whole part number, allowing the usual
-    separator differences ("GS10-20P5", "GS10 20P5", "GS1020P5") but not a prefix
-    of it ("GS10") or a longer number that starts with it ("GS10-20P5X",
-    "GS10-20P5-X", "ACS355-03U-06A7-2+B063"). The URL is percent-decoded first, so
-    an encoded "%2BB063" is the same option as "+B063" (#5841 Codex F1); only the
-    match reads the decoded form, never the fetch or the display."""
+    """Whether the page names the whole part number, allowing the usual separator
+    differences ("GS10-20P5", "GS10 20P5", "GS1020P5") but not a prefix of it
+    ("GS10") or a longer number that starts with it ("GS10-20P5X", "GS10-20P5-X",
+    "ACS355-03U-06A7-2+B063").
+
+    Each text from `_part_number_texts` is read on its own (#5842). A longer number
+    with an attached letter, digit or "+" option, in any of them, is a different
+    part that a shortened form elsewhere cannot outvote. A code group after a hyphen
+    only stops its own text from matching, because slugs join words that way
+    ("Gis-Gs10-150-260" for "Gis GS10/150/260"). Only the match reads the decoded
+    forms, never the fetch or the display."""
     chunks = re.findall(r"[a-z0-9]+", (part_number or "").lower())
-    if not chunks:
+    texts = _part_number_texts(c) if chunks else None
+    if not texts:
         return False
-    pattern = r"(?<![a-z0-9])" + r"[\s\-_./]*".join(map(re.escape, chunks)) + _PART_NUMBER_END
-    url = unquote(c.get("url") or "")
-    return re.search(pattern, f"{c.get('title') or ''} {url}".lower()) is not None
+    number = r"(?<![a-z0-9])" + r"[\s\-_./]*".join(map(re.escape, chunks))
+    if any(re.search(number + "(?=" + _DIFFERENT_PART + ")", t) for t in texts):
+        return False
+    return any(re.search(number + _PART_NUMBER_END, t) for t in texts)
 
 
 def _may_offer_unread(c: dict, make: str, part_number: str | None = None) -> bool:
