@@ -1570,6 +1570,51 @@ async def test_control_a_pdf_content_type_still_validates_when_the_bytes_prove_n
     assert "probed_not_pdf" not in r and ("GET", _BOSS_PDF) in sent
 
 
+async def _stalled_get(request):
+    import httpx
+
+    if request.method == "HEAD":
+        return httpx.Response(200, headers={"content-type": _AS_PDF})
+    await asyncio.sleep(30)
+    return httpx.Response(200, headers={"content-type": _AS_PDF}, content=_BOSS_PAGE)
+
+
+def _stalled_body(request):
+    import httpx
+
+    async def body():
+        await asyncio.sleep(30)
+        yield _BOSS_PAGE
+
+    if request.method == "HEAD":
+        return httpx.Response(405)
+    return httpx.Response(200, headers={"content-type": _AS_PDF}, content=body())
+
+
+@pytest.mark.parametrize(
+    "answer", [_stalled_get, _stalled_body], ids=["head_says_pdf", "get_says_pdf"]
+)
+async def test_control_a_stalled_read_after_a_pdf_content_type_still_beats_the_deadline(
+    wired, monkeypatch, answer
+):
+    # Main returns as soon as it sees a PDF content type. The extra read must not
+    # push the search past the endpoint's cutoff, which the probe guard leaves
+    # only HEAD_TIMEOUT plus the return reserve for each probe.
+    import time
+
+    monkeypatch.setattr(search_mod, "HEAD_TIMEOUT", 0.3)
+    monkeypatch.setenv("MANUAL_JUDGE_ENABLED", "0")
+    _serve(monkeypatch, [(_BOSS_PDF, "GS10 brochure")])
+    sent = _answer(monkeypatch, {_BOSS_PDF: answer})
+    budget = search_mod.HEAD_TIMEOUT + judge.RETURN_RESERVE_S + 0.5
+    r = await asyncio.wait_for(
+        search_mod.search_manual("AutomationDirect", "GS10", deadline_at=time.monotonic() + budget),
+        timeout=budget,
+    )
+    assert r is not None and r["url"] == _BOSS_PDF and r["validated"] is True
+    assert "probed_not_pdf" not in r and ("GET", _BOSS_PDF) in sent
+
+
 async def test_control_outside_a_candidate_probe_a_pdf_content_type_ends_the_check(monkeypatch):
     # Only a candidate probe pays for the extra GET; every other caller stops at HEAD.
     sent = _answer(monkeypatch, {_BOSS_PDF: _page(content_type=_AS_PDF)})

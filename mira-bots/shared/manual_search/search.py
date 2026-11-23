@@ -986,17 +986,25 @@ async def validate_pdf(url: str) -> bool:
     bytes say otherwise: the GET is still read, and a successful answer that
     starts with markup is a page, whatever type it was served as. When the bytes
     prove nothing either way, a PDF content type still validates, as before.
+    Reading those bytes must not make the probe slower than the caller's
+    deadline allows (each probe is budgeted HEAD_TIMEOUT): once a PDF content
+    type is seen, the rest of the probe ends HEAD_TIMEOUT after it began, and
+    an unfinished read leaves the content type standing.
     """
     noted = _probed_not_pdf.get()  # set only by _probe_candidate
     says_pdf = False  # a PDF content type seen during a candidate probe
+    started = asyncio.get_running_loop().time()
     try:
-        async with httpx.AsyncClient(
-            timeout=HEAD_TIMEOUT,
-            follow_redirects=False,
-            transport=_probe_transport(),
-            trust_env=False,  # never route an untrusted probe through an env proxy
-            headers={"User-Agent": "Mozilla/5.0 (compatible; mira-manual-search/0.1)"},
-        ) as client:
+        async with (
+            asyncio.timeout(None) as confirm_by,
+            httpx.AsyncClient(
+                timeout=HEAD_TIMEOUT,
+                follow_redirects=False,
+                transport=_probe_transport(),
+                trust_env=False,  # never route an untrusted probe through an env proxy
+                headers={"User-Agent": "Mozilla/5.0 (compatible; mira-manual-search/0.1)"},
+            ) as client,
+        ):
             try:
                 r = await _guarded_probe(client, "HEAD", url)
                 if r is not None:
@@ -1005,6 +1013,7 @@ async def validate_pdf(url: str) -> bool:
                         if noted is None:
                             return True
                         says_pdf = True
+                        confirm_by.reschedule(started + HEAD_TIMEOUT)
             except httpx.HTTPError:
                 pass
 
@@ -1032,7 +1041,9 @@ async def validate_pdf(url: str) -> bool:
                     if "pdf" in ct:
                         if noted is None:
                             return True
-                        says_pdf = True
+                        if not says_pdf:
+                            says_pdf = True
+                            confirm_by.reschedule(started + HEAD_TIMEOUT)
                     head = b""
                     async for chunk in r.aiter_bytes():
                         head += chunk
@@ -1049,6 +1060,9 @@ async def validate_pdf(url: str) -> bool:
                             return False
                     return says_pdf
             return says_pdf
+    except TimeoutError:
+        logger.info("PDF validation ran out of its probe budget for %s", url[:120])
+        return says_pdf
     except Exception:
         logger.info("PDF validation failed for %s — skipping", url[:120])
         return says_pdf
