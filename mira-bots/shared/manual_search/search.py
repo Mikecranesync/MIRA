@@ -51,7 +51,7 @@ import re
 import socket
 import ssl
 import time
-from collections.abc import Generator, Iterable
+from collections.abc import Callable, Generator, Iterable
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from urllib.parse import unquote, urljoin, urlparse, urlsplit
@@ -298,16 +298,48 @@ def _make_spellings(make: str) -> set[str]:
     return {m} | ({k for k, v in OEM_DOMAINS.items() if v == domains} if domains else set())
 
 
+# What may join the words of a make name: "Automation-Direct", "Automation_Direct"
+# and a "+" slug are "Automation Direct" (#5826). A slash, a bar, a colon or a full
+# stop may not, so "Home Automation | Direct-Drive" and "/automation/direct-drive"
+# still do not name it.
+_MAKE_JOINER = r"[\s\-_+]{1,3}"
+
+
+def _make_name_pattern(name: str) -> str | None:
+    """A whole-name pattern for one spelling of a make: its words in order, any gap
+    of spaces, hyphens, underscores or "+" between them matching any such gap, and
+    any other gap ("Co., Ltd.") matching only itself. No letter or digit may touch
+    either end; an underscore there ends the name, as a hyphen does."""
+    spans = [m.span() for m in re.finditer(r"[^\W_]+", name)]
+    if len(name) < 2 or not spans:
+        return None
+    out = [re.escape(name[spans[0][0] : spans[0][1]])]
+    for (_, end), (start, stop) in zip(spans, spans[1:]):
+        gap = name[end:start]
+        out.append(_MAKE_JOINER if re.fullmatch(r"[\s\-_+]+", gap) else re.escape(gap))
+        out.append(re.escape(name[start:stop]))
+    return r"(?<![^\W_])" + "".join(out) + r"(?![^\W_])"
+
+
 def _names_make(c: dict, make: str) -> bool:
-    """Whether the title or URL names the make as a whole name, the same boundary
-    rule the website handoff uses in `_send`. A fragment does not count: "direct" in
-    "Direct-Drive Amplifier" is not "Automation Direct" (#5789 Codex F1), while
-    "GE" in "GE 5KS184SAA205 Motor Manual" is GE."""
-    hay = f"{c.get('title') or ''} {c.get('url') or ''}"
-    return any(
-        len(name) >= 2 and re.search(r"(?<!\w)" + re.escape(name) + r"(?!\w)", hay, re.I)
-        for name in _make_spellings(make)
-    )
+    """Whether the title or the URL path names the make as a whole name.
+
+    A fragment does not count: "direct" in "Direct-Drive Amplifier" is not
+    "Automation Direct" (#5789 Codex F1), while "GE" in "GE 5KS184SAA205 Motor
+    Manual" is GE. The words of a make name may be joined by a space, hyphen,
+    underscore or "+" (#5826). The host is not read: ".ge" in a Georgian catalog's
+    domain is not GE (#5826), and the make's own site is `_is_oem_host`'s job. The
+    query and the fragment are not read either. Title and path are the texts the
+    part-number check reads (`_part_number_texts`), each read on its own; when the
+    URL cannot be parsed only the title is read. The spellings are folded the way
+    those texts are, so "Allen‑Bradley" typed with a non-breaking hyphen still
+    names itself (#5890 F4)."""
+    texts = _part_number_texts(c)
+    if texts is None:
+        texts = ((c.get("title") or "").translate(_CATALOG_HYPHENS).lower(),)
+    spellings = {s.translate(_CATALOG_HYPHENS) for s in _make_spellings(make)}
+    patterns = [p for p in map(_make_name_pattern, spellings) if p]
+    return any(re.search(p, text, re.I) for p in patterns for text in texts)
 
 
 # What may follow a part number without making it a longer one (#5827, #5837).
@@ -1142,7 +1174,21 @@ def _tagged(found: list[dict], label: str) -> list[dict]:
     return found
 
 
-def _collect(organic: list[dict], make: str, model: str) -> list[dict]:
+def _collect(
+    organic: list[dict],
+    make: str,
+    model: str,
+    part_number: str | None = None,
+    set_aside: list[dict] | None = None,
+) -> list[dict]:
+    """Score and keep the hits worth a candidate, exactly as main does.
+
+    On a part-number lookup, `_score` looks for the hyphenated spelling only, so a
+    hit that names the whole number another way ("6ES7214_1AG40_0XB0", as
+    `_names_part_number` reads it) and has no other credit scores 0 and is dropped
+    (#5829). Such a hit is appended to ``set_aside`` instead. It is never a
+    candidate, so it changes nothing the search reads, sends or answers; the search
+    offers it only where it would otherwise end with no manual (#5890 F1, F5)."""
     out: list[dict] = []
     for hit in organic:
         url = hit.get("link") or ""
@@ -1151,18 +1197,28 @@ def _collect(organic: list[dict], make: str, model: str) -> list[dict]:
             continue
         s = _score(url, title, make, model)
         if s <= 0:
+            if (
+                s == 0
+                and part_number
+                and set_aside is not None
+                and _norm(part_number) not in f"{title} {url}".lower()
+                and _names_part_number({"url": url, "title": title}, part_number)
+            ):
+                set_aside.append(_candidate(url, title, s))
             continue
-        out.append(
-            {
-                "url": url,
-                "title": _clean_title(title),
-                "host": urlparse(url).netloc,
-                "score": s,
-                "doc_type": _guess_doc_type(title, url),
-                "is_direct_pdf": _is_direct_pdf(url),
-            }
-        )
+        out.append(_candidate(url, title, s))
     return out
+
+
+def _candidate(url: str, title: str, score: int) -> dict:
+    return {
+        "url": url,
+        "title": _clean_title(title),
+        "host": urlparse(url).netloc,
+        "score": score,
+        "doc_type": _guess_doc_type(title, url),
+        "is_direct_pdf": _is_direct_pdf(url),
+    }
 
 
 class ManualSearchUnavailable(RuntimeError):
@@ -1212,6 +1268,91 @@ async def search_manual(
     part_number = model if exact_part_number else None
 
     candidates: list[dict] = []
+    # Pages the search leaves aside although they name the make, or on a part-number
+    # lookup the whole part number, in a spelling the judge's relevance check and
+    # `_score` miss (#5826, #5829). They get a turn only where the search would end
+    # without a manual (`_unless_extras`), so they never change what it reads, sends,
+    # retries or answers before then (#5890 round 2).
+    set_aside: list[dict] = []  # hits `_collect` drops
+    retry_extras: list[dict] = []  # extra PDFs the typed-pass retry did not read
+
+    def _extra(c: dict) -> bool:
+        """The judge's relevance check misses it, but it names the make as a whole
+        name in another joining ("Automation-Direct" for "AutomationDirect") or, on a
+        part-number lookup, the whole number in another spelling."""
+        return not _judge.relevant(c, make, model) and (
+            _names_make(c, make) or bool(part_number and _names_part_number(c, part_number))
+        )
+
+    async def _unless_extras(
+        answer: Callable[[], dict | None],
+        pool: list[dict],
+        judged: bool,
+        rejected: list[dict],
+    ) -> dict | None:
+        """The search is about to end with no manual. ``answer`` gives what it
+        returns there: a judged rejection, or nothing.
+
+        With the judge on, the extra PDFs in ``pool`` and from the retry that were
+        never read are read first, in whatever time the deadline leaves, and a judged
+        match among them is returned. Otherwise ``answer`` stands, untouched. Where
+        that is nothing, the first extra page in ``pool`` or ``set_aside`` the make
+        screen accepts is offered unread, as the search offers an unread page. The
+        retry's extras are read but never offered (#5844 Codex F5, F6)."""
+        extras = [c for c in pool if _extra(c)]
+        if judged:
+            pdfs = [
+                c for c in (*extras, *retry_extras) if c.get("is_direct_pdf") and not c.get("judge")
+            ]
+            if pdfs:
+                trace: dict = {}
+                try:
+                    read = await _judge.judge_candidates(
+                        make,
+                        model,
+                        pdfs,
+                        started_at=started_at,
+                        deadline_at=deadline_at,
+                        trace=trace,
+                    )
+                finally:
+                    if trail is not None:
+                        # One trail for every round, as for the retry: these queue
+                        # positions follow the others, and a PDF queued here is no
+                        # longer listed as not queued.
+                        queued = list(trace.get("queue") or [])
+                        trail.judge["queue"] = list(trail.judge.get("queue") or []) + queued
+                        not_queued = trail.judge.setdefault("not_queued", {})
+                        for u in queued:
+                            not_queued.pop(u, None)
+                        if trace.get("stop"):
+                            trail.judge["stop"] = trace["stop"]
+                if read and _judge.is_match(read[0]):
+                    return _as_judged_match(read[0], rejected + _rejections(read))
+        result = answer()
+        if result is not None:
+            return result
+        # A set-aside hit whose URL is also a candidate is that candidate's business.
+        offered = {c["url"] for c in candidates} - {c["url"] for c in extras}
+        for c in (*extras, *set_aside):
+            if c["url"] in offered or _judge.is_rejected(c):
+                continue
+            offered.add(c["url"])
+            # Every unread offer goes through the one make screen. It cannot refuse
+            # one of these today, since each names the make or the whole part number,
+            # but a stricter screen must apply to them too.
+            if screen_unread and not _may_offer_unread(c, make, part_number):
+                continue
+            c["validated"] = False
+            if judged:
+                c.setdefault("reason", _judge.REASON_JUDGE_UNAVAILABLE)
+                c.setdefault(
+                    "reason_detail", "Could not read the candidate PDF — review before use."
+                )
+                c["judged_rejected"] = rejected
+            return c
+        return None
+
     # Availability is judged from requests actually SENT (#4171 Codex F2): a
     # pass refused by the per-call ceiling or the quota returns [] without a
     # request, and must not count as "searched and found nothing" — otherwise a
@@ -1357,7 +1498,7 @@ async def search_manual(
         q1 = f'"{model}" manual filetype:pdf site:{oem_domains[0]}'
         hits = await _send(q1, "q1 (site-scoped)")
         if hits:
-            candidates.extend(_tagged(_collect(hits, make, model), "q1"))
+            candidates.extend(_tagged(_collect(hits, make, model, part_number, set_aside), "q1"))
 
     typed_in_flight: str | None = None  # the retry's unanswered query, for the trail
     retry_unfinished = False  # the retry left a spelling unanswered or a PDF unread
@@ -1403,7 +1544,9 @@ async def search_manual(
                 retry_unfinished = True
             if hits is None:
                 continue
-            found = _tagged(_collect(hits, make, model), "q2")
+            found = _tagged(
+                _collect(hits, make, model, part_number, None if second else set_aside), "q2"
+            )
             if i:
                 # A hit from a re-hyphenated form is a weaker signal than one
                 # from the nameplate's own spelling: it must not win a tie.
@@ -1492,6 +1635,10 @@ async def search_manual(
                 )
                 if second_trace.get("stop"):
                     judge_trace["stop"] = second_trace["stop"]
+            # Read at the end, only where the search would end without a manual.
+            retry_extras.extend(
+                c for c in more if c.get("is_direct_pdf") and not c.get("judge") and _extra(c)
+            )
             queued = set(second_trace.get("queue") or [])
             if any(
                 (c.get("judge") or {}).get("status") != "judged" for c in more if c["url"] in queued
@@ -1548,7 +1695,7 @@ async def search_manual(
         q3 = f"{make} {model} manual support"
         hits = await _send(q3, "q3 (wide)")
         if hits:
-            candidates.extend(_tagged(_collect(hits, make, model), "q3"))
+            candidates.extend(_tagged(_collect(hits, make, model, part_number, set_aside), "q3"))
 
     if identification_link:
         from ..drive_packs.identification_link import classify_payload  # noqa: PLC0415
@@ -1572,7 +1719,7 @@ async def search_manual(
     if not candidates:
         if sent and failures == sent:
             raise ManualSearchUnavailable(f"all {sent} sent search requests failed")
-        return None
+        return await _unless_extras(lambda: None, [], bool(make) and _judge.judge_enabled(), [])
 
     # Dedupe on URL while preserving order, then sort by score desc.
     seen: set[str] = set()
@@ -1654,12 +1801,19 @@ async def search_manual(
             # profile as "a possible manual"; a stranger may win only by being read
             # and judged the manual (above). An honest miss instead.
             await _website_handoff()
-            return None
+            return await _unless_extras(lambda: None, ranked, True, rejected)
         if not deduped:
             stalled = await _website_handoff(ranked, judge_trace)
             retried = await _manual_from_retry(ranked, judge_trace)
             _unfinished_after_handoff_cutoff(stalled, retried)
-            return retried or _as_judged_rejection(worst_rejected or ranked[0], rejected)
+            if retried is not None:
+                return retried
+            return await _unless_extras(
+                lambda: _as_judged_rejection(worst_rejected or ranked[0], rejected),
+                ranked,
+                True,
+                rejected,
+            )
 
     # HEAD-validate the top few; first one that confirms PDF wins. This probe runs
     # before the #5789 screen below, so a real PDF served from a URL that does not
@@ -1709,7 +1863,13 @@ async def search_manual(
         _unfinished_after_handoff_cutoff(stalled, retried)
         if retried is not None:
             return retried
-        return _as_judged_rejection(worst_rejected, rejected_out) if worst_rejected else None
+        worst = worst_rejected
+        return await _unless_extras(
+            lambda: _as_judged_rejection(worst, rejected_out) if worst else None,
+            ranked,
+            use_judge,
+            rejected_out,
+        )
     deduped[0]["validated"] = False
     if use_judge:
         deduped[0].setdefault("reason", _judge.REASON_JUDGE_UNAVAILABLE)

@@ -16,6 +16,7 @@ import asyncio
 import json
 import pathlib
 import sys
+import types
 from urllib.parse import urlparse
 
 import pytest
@@ -1356,6 +1357,189 @@ async def test_a_short_make_named_in_full_is_offered(wired, monkeypatch):
     assert r is not None and r["url"] == page and r["validated"] is False
 
 
+# #5826 (Codex #5823 round 2, F1): the make is read from the title and the URL path,
+# never the host, and the words of a make name may be joined by a hyphen, an
+# underscore or "+". Each table row is one field: the other names nothing.
+_NAMES_MAKE_ROWS = [
+    ("GE", "Siemens M100 motor manual", "https://catalog.example.ge/siemens/m100", False),
+    ("GE", "M100 motor manual", "https://ge.example-catalog.com/p/m100", False),
+    ("GE", "GE M100 Motor Manual", "https://catalog.example.ge/p/m100", True),
+    ("GE", "M100 motor manual", "https://www.example-motors.com/brands/ge/m100", True),
+    ("GE", "M100 motor manual", "https://www.example-motors.com/p/m100_ge_motor", True),
+    ("GE", "M100 motor manual", "https://www.example-motors.com/p/m100?brand=GE", False),
+    ("GE", "M100 motor manual", "https://www.example-motors.com/p/m100#GE", False),
+    ("GE", "GE M100 motor manual", "https://[ge/p/m100", True),
+    ("GE", "M100 motor manual", "https://[ge/p/m100", False),
+    ("Automation Direct", "Automation-Direct GS10 User Manual", "https://m.example.com/d/1", True),
+    ("Automation Direct", "Automation_Direct GS10 drive", "https://m.example.com/d/1", True),
+    ("Automation Direct", "Automation - Direct GS10 drive", "https://m.example.com/d/1", True),
+    ("Automation Direct", "GS10 drive", "https://m.example.com/automation%20direct/gs10", True),
+    ("Automation Direct", "GS10 drive", "https://m.example.com/p/automation_direct_gs10", True),
+    ("AutomationDirect", "GS10 drive", "https://m.example.com/brands/automation-direct/gs10", True),
+    ("Automation Direct", "Home Automation | Direct-Drive Amplifier", "https://a.example/1", False),
+    ("Automation Direct", "Home Automation. Direct-Drive Amplifier", "https://a.example/1", False),
+    (
+        "Automation Direct",
+        "GS10 amplifier",
+        "https://a.example.com/automation/direct-drive/gs10",
+        False,
+    ),
+    ("Automation Direct", "Boss Audio GS10 Direct-Drive Amplifier", "https://a.example/1", False),
+    (
+        "Automation Direct",
+        "GS10 drive",
+        "https://m.example.com/p/gs10?brand=AutomationDirect",
+        False,
+    ),
+    ("Square D", "Squared QO120 breaker", "https://b.example.com/p/qo120", False),
+    ("Square D", "Square_D QO120 breaker", "https://b.example.com/p/qo120", True),
+    ("Oriental Motor", "Oriental-Motor BLH series manual", "https://o.example.com/p/blh", True),
+    ("Oriental Motor", "Oriental Motor Co., Ltd. BLH manual", "https://o.example.com/p/blh", True),
+    ("Pepperl+Fuchs", "Pepperl Fuchs NBB5 sensor", "https://s.example.com/p/nbb5", True),
+    ("Pepperl+Fuchs", "Pepperl-Fuchs NBB5 sensor", "https://s.example.com/p/nbb5", True),
+    # #5890 F4: a make typed with a non-breaking hyphen is folded as the texts are.
+    ("Allen‑Bradley", "Allen‑Bradley 1756-L73 manual", "https://p.example.com/p/l73", True),
+    ("Allen‑Bradley", "Allen-Bradley 1756-L73 manual", "https://p.example.com/p/l73", True),
+]
+
+
+@pytest.mark.parametrize("make,title,url,names_it", _NAMES_MAKE_ROWS)
+def test_the_make_is_read_from_the_title_and_the_path(make, title, url, names_it):
+    assert search_mod._names_make({"url": url, "title": title}, make) is names_it
+
+
+async def _search_one_page(monkeypatch, enabled, make, model, page, exact_part_number=False):
+    """One lookup in one judge mode whose only hit is `page`. Returns the result
+    and what the make screen decided for each URL it saw, so a page dropped before
+    the screen cannot pass or fail a screen test vacuously."""
+    screened: dict[str, bool] = {}
+    screen = search_mod._may_offer_unread
+
+    def spy(c, make_, part_number=None):
+        screened[c.get("url")] = verdict = screen(c, make_, part_number)
+        return verdict
+
+    monkeypatch.setattr(search_mod, "_may_offer_unread", spy)
+    monkeypatch.setenv("MANUAL_JUDGE_ENABLED", enabled)
+    assert judge.judge_enabled() is (enabled == "1")
+    _serve(monkeypatch, [(page["url"], page["title"])])
+    r = await search_mod.search_manual(make, model, exact_part_number=exact_part_number)
+    return r, screened
+
+
+def _unread_page(url: str, title: str, make: str) -> dict:
+    """A page the make screen decides: not on the make's site and not a direct PDF."""
+    assert not search_mod._is_oem_host(urlparse(url).netloc, make), url
+    assert not search_mod._is_direct_pdf(url), url
+    return {"url": url, "title": title}
+
+
+@pytest.mark.parametrize("enabled", ["1", "0"])
+async def test_a_country_code_host_does_not_name_a_short_make(wired, monkeypatch, enabled):
+    page = _unread_page(
+        "https://catalog.example.ge/siemens/m100", "Siemens M100 motor manual", "GE"
+    )
+    r, screened = await _search_one_page(monkeypatch, enabled, "GE", "M100", page)
+    assert screened == {page["url"]: False} and r is None
+
+
+@pytest.mark.parametrize("enabled", ["1", "0"])
+async def test_control_the_same_host_titled_with_the_make_is_offered(wired, monkeypatch, enabled):
+    page = _unread_page("https://catalog.example.ge/p/m100", "GE M100 Motor Manual", "GE")
+    r, screened = await _search_one_page(monkeypatch, enabled, "GE", "M100", page)
+    assert screened == {page["url"]: True}
+    assert r is not None and r["url"] == page["url"] and r["validated"] is False
+
+
+@pytest.mark.parametrize(
+    "url,title",
+    [
+        (
+            "https://www.example-manuals.com/drives/gs10-user-manual",
+            "Automation-Direct GS10 User Manual",
+        ),
+        ("https://www.example-manuals.com/brands/automation_direct/gs10", "GS10 drive user manual"),
+    ],
+    ids=["hyphenated_title", "underscored_path"],
+)
+@pytest.mark.parametrize("enabled", ["1", "0"])
+async def test_a_joined_make_name_is_offered(wired, monkeypatch, enabled, url, title):
+    assert "automationdirect" not in url.lower() and "automationdirect" not in title.lower()
+    page = _unread_page(url, title, "Automation Direct")
+    r, screened = await _search_one_page(monkeypatch, enabled, "Automation Direct", "GS10", page)
+    assert screened == {page["url"]: True}
+    assert r is not None and r["url"] == page["url"] and r["validated"] is False
+
+
+@pytest.mark.parametrize(
+    "url,title",
+    [
+        (
+            "https://www.example-audio.com/automation/direct-drive-amps/gs10",
+            "GS10 amplifier manual",
+        ),
+        ("https://www.example-audio.com/amps/gs10", "Home Automation | Direct-Drive GS10 manual"),
+        ("https://www.example-audio.com/amps/gs10", "Home Automation. Direct-Drive GS10 manual"),
+    ],
+    ids=["path_segments", "title_bar", "title_full_stop"],
+)
+@pytest.mark.parametrize("enabled", ["1", "0"])
+async def test_words_split_by_other_punctuation_do_not_name_the_make(
+    wired, monkeypatch, enabled, url, title
+):
+    page = _unread_page(url, title, "Automation Direct")
+    r, screened = await _search_one_page(monkeypatch, enabled, "Automation Direct", "GS10", page)
+    assert screened == {page["url"]: False} and r is None
+
+
+# #5890 F3: with the judge on, the unread pool used the judge's own make check, which
+# looks for "automationdirect" only. A joined make name with no model in sight was
+# dropped there, while the judge-off search offered the same page.
+_JOINED_NO_MODEL = (
+    "https://www.example-manuals.com/library/drive-installation",
+    "Automation-Direct Drive Installation Manual",
+)
+
+
+@pytest.mark.parametrize("enabled", ["1", "0"])
+async def test_a_joined_make_without_the_model_reaches_the_screen(wired, monkeypatch, enabled):
+    page = _unread_page(*_JOINED_NO_MODEL, "AutomationDirect")
+    assert not judge.relevant(page, "AutomationDirect", "GS10")  # the judge's check alone drops it
+    r, screened = await _search_one_page(monkeypatch, enabled, "AutomationDirect", "GS10", page)
+    assert screened == {page["url"]: True}, screened
+    assert r is not None and r["url"] == page["url"] and r["validated"] is False
+
+
+@pytest.mark.parametrize("enabled", ["1", "0"])
+async def test_control_split_make_words_without_the_model_are_not_offered(
+    wired, monkeypatch, enabled
+):
+    page = _unread_page(
+        "https://www.example-audio.com/amps/installation",
+        "Home Automation | Direct-Drive Installation Manual",
+        "AutomationDirect",
+    )
+    r, screened = await _search_one_page(monkeypatch, enabled, "AutomationDirect", "GS10", page)
+    assert r is None and screened.get(page["url"]) is not True
+
+
+# #5890 F4: the texts are folded (U+2011 reads as "-"), so the make must be too.
+@pytest.mark.parametrize(
+    "title",
+    ["Allen‑Bradley 1756-L73 User Manual", "Allen-Bradley 1756-L73 User Manual"],
+    ids=["nonbreaking_hyphen", "ascii_hyphen"],
+)
+@pytest.mark.parametrize("enabled", ["1", "0"])
+async def test_a_make_typed_with_a_nonbreaking_hyphen_names_itself(
+    wired, monkeypatch, enabled, title
+):
+    make = "Allen‑Bradley"
+    page = _unread_page("https://www.example-plc.com/p/1756-l73", title, make)
+    r, screened = await _search_one_page(monkeypatch, enabled, make, "1756-L73", page)
+    assert screened == {page["url"]: True}, screened
+    assert r is not None and r["url"] == page["url"] and r["validated"] is False
+
+
 async def test_an_unread_direct_pdf_that_does_not_probe_keeps_the_older_rule(wired, monkeypatch):
     # A direct PDF the judge could not fetch and the probe could not confirm is still
     # offered for review on the model alone, as before #5789: only web pages are screened.
@@ -1867,6 +2051,475 @@ async def test_the_exact_order_number_with_ordinary_text_is_still_offered(wired,
         _serve(monkeypatch, [(page["url"], page["title"])])
         r = await search_mod.search_manual("ABB", "ACS355-03U-06A7-2", exact_part_number=True)
         assert r is not None and r["url"] == page["url"] and r["validated"] is False, enabled
+
+
+# #5829 (Codex #5823 round 2, F8): an exact catalog number spelled with underscores
+# reaches the screen in both judge modes. The scorer looked only for the hyphenated
+# spelling, and the judge's model check strips only spaces and hyphens, so the page
+# was dropped before the screen's own catalog match could run.
+_SIMATIC = "6ES7214-1AG40-0XB0"
+_UNDERSCORED = [
+    (f"{_DIST}/p/6es7214_1ag40_0xb0", "6ES7214_1AG40_0XB0 CPU 1214C compact"),
+    (f"{_DIST}/p/6es7214_1ag40_0xb0", "6ES7214_1AG40_0XB0 CPU 1214C manual"),
+]
+
+
+@pytest.mark.parametrize("url,title", _UNDERSCORED, ids=["no_manual_word", "manual_word"])
+@pytest.mark.parametrize("enabled", ["1", "0"])
+async def test_an_underscored_exact_part_number_is_offered(wired, monkeypatch, enabled, url, title):
+    page = _maker_less_stranger(url, title, "Siemens")
+    assert not judge.relevant(page, "Siemens", _SIMATIC)  # the judge's check alone drops it
+    r, screened = await _search_one_page(
+        monkeypatch, enabled, "Siemens", _SIMATIC, page, exact_part_number=True
+    )
+    assert screened == {url: True}, screened
+    assert r is not None and r["url"] == url and r["validated"] is False
+
+
+@pytest.mark.parametrize("url,title", _UNDERSCORED, ids=["no_manual_word", "manual_word"])
+@pytest.mark.parametrize("enabled", ["1", "0"])
+async def test_control_the_same_page_on_a_model_lookup_is_not_offered(
+    wired, monkeypatch, enabled, url, title
+):
+    page = _maker_less_stranger(url, title, "Siemens")
+    r, _ = await _search_one_page(monkeypatch, enabled, "Siemens", _SIMATIC, page)
+    assert r is None
+
+
+@pytest.mark.parametrize("enabled", ["1", "0"])
+async def test_a_longer_underscored_number_is_not_offered(wired, monkeypatch, enabled):
+    page = _maker_less_stranger(
+        f"{_DIST}/p/6es7214_1ag40_0xb0_z", "6ES7214_1AG40_0XB0_Z CPU 1214C manual", "Siemens"
+    )
+    r, screened = await _search_one_page(
+        monkeypatch, enabled, "Siemens", _SIMATIC, page, exact_part_number=True
+    )
+    assert r is None and screened.get(page["url"]) is not True
+
+
+class _Verdicts:
+    """Judge verdict per URL: the manual for each URL in `yes`, a plain match (no fault
+    code list) for each in `plain`, not the manual for any other. Records what it read."""
+
+    enabled = True
+
+    def __init__(self, yes, plain=()):
+        self.yes, self.plain, self.read = set(yes), set(plain), []
+
+    async def complete(self, messages, max_tokens=1024, session_id="x", sanitize=True):
+        user = messages[-1]["content"]
+        url = max((u for u in TEXT if u in user), key=len)
+        self.read.append(url)
+        yes = url in self.yes or url in self.plain
+        return json.dumps(
+            {
+                "is_manual_for_model": yes,
+                "doc_type": "user_manual" if yes else "brochure_or_catalog",
+                "scope": "complete",
+                "confidence": 0.9,
+                "lists_fault_codes": url not in self.plain,
+                "language": "en",
+                "reason": "r",
+            }
+        ), {"provider": "fake"}
+
+
+def _serve_by_pass(monkeypatch, site=(), typed=(), wide=(), pdfs=frozenset()):
+    """Serve each query pass its own hits: `site` to the site-scoped query, `typed` to
+    the typed PDF queries, `wide` to the wide query and the website handoff (they are
+    one query string). Returns the queries sent, in order."""
+    sent: list[str] = []
+
+    async def serper(query, num=10):
+        sent.append(query)
+        hits = site if "site:" in query else typed if "filetype:pdf" in query else wide
+        return [{"link": u, "title": t} for u, t in hits]
+
+    async def probe(url):
+        return url in pdfs
+
+    monkeypatch.setattr(search_mod, "_serper_search", serper)
+    monkeypatch.setattr(search_mod, "validate_pdf", probe)
+    return sent
+
+
+def _wide(sent: list[str]) -> bool:
+    return any(q.endswith(" manual support") for q in sent)
+
+
+# #5890 F1: a page kept only for the part-number credit does not stand in for the wide
+# search. Main dropped it, found no candidate, and sent the wide query, which found the
+# manual. Skipping that query returned the unvalidated product page instead.
+_SIMATIC_MANUAL = "https://www.example-files.com/docs/s7-1200-6ES7214-1AG40-0XB0-system-manual.pdf"
+
+
+@pytest.mark.parametrize("enabled", ["1", "0"])
+async def test_a_page_kept_only_for_the_part_number_does_not_skip_the_wide_search(
+    wired, monkeypatch, enabled
+):
+    url, title = _UNDERSCORED[0]  # no other credit: main scored it 0
+    assert search_mod._score(url, title, "Siemens", _SIMATIC) == 0
+    assert search_mod._oem_domains_for("Siemens")  # so the site-scoped query is sent
+    monkeypatch.setitem(TEXT, _SIMATIC_MANUAL, "S7-1200 system manual 6ES7214-1AG40-0XB0")
+    monkeypatch.setattr(judge, "_router", _Verdicts({_SIMATIC_MANUAL}))
+    monkeypatch.setenv("MANUAL_JUDGE_ENABLED", enabled)
+    sent = _serve_by_pass(
+        monkeypatch,
+        site=[(url, title)],
+        typed=[(url, title)],
+        wide=[(_SIMATIC_MANUAL, "S7-1200 6ES7214-1AG40-0XB0 system manual")],
+        pdfs=frozenset({_SIMATIC_MANUAL}),
+    )
+    r = await search_mod.search_manual("Siemens", _SIMATIC, exact_part_number=True)
+    assert _wide(sent), sent
+    assert r is not None and r["url"] == _SIMATIC_MANUAL and r["validated"] is True, r
+
+
+@pytest.mark.parametrize("enabled", ["1", "0"])
+async def test_control_a_page_main_also_kept_still_skips_the_wide_search(
+    wired, monkeypatch, enabled
+):
+    url, title = _UNDERSCORED[1]  # "manual" in the title: main kept it, at 10
+    assert search_mod._score(url, title, "Siemens", _SIMATIC) > 0
+    monkeypatch.setenv("MANUAL_JUDGE_ENABLED", enabled)
+    sent = _serve_by_pass(
+        monkeypatch,
+        site=[(url, title)],
+        typed=[(url, title)],
+        wide=[(_SIMATIC_MANUAL, "S7-1200 6ES7214-1AG40-0XB0 system manual")],
+        pdfs=frozenset({_SIMATIC_MANUAL}),
+    )
+    r = await search_mod.search_manual("Siemens", _SIMATIC, exact_part_number=True)
+    assert not _wide(sent), sent
+    assert r is not None and r["url"] == url and r["validated"] is False
+
+
+# #5890 F2: the judge queues the whole number in another spelling as worth a read, in
+# the first round and in the typed-pass retry. Before, a make-named brochure filled the
+# queue and the exact PDF was never read.
+_EXACT_PDF = "https://www.example-files.com/docs/6es7214_1ag40_0xb0.pdf"
+_BROCHURE_PDF = "https://www.example-files.com/docs/siemens-simatic-s7-1200-brochure.pdf"
+_OTHER_PDF = "https://www.example-files.com/docs/siemens-s7-1200-price-list.pdf"
+
+
+def _pdfs_to_read(monkeypatch, *urls):
+    for u in urls:
+        monkeypatch.setitem(TEXT, u, f"first pages of {u}")
+    exact, brochure = (
+        {"url": _EXACT_PDF, "title": "6ES7214_1AG40_0XB0"},
+        {"url": _BROCHURE_PDF, "title": "Siemens SIMATIC S7-1200 brochure"},
+    )
+    assert not judge.relevant(exact, "Siemens", _SIMATIC)
+    assert judge.relevant(brochure, "Siemens", _SIMATIC)
+    router = _Verdicts({_EXACT_PDF})
+    monkeypatch.setattr(judge, "_router", router)
+    return router
+
+
+async def test_an_exact_pdf_in_another_spelling_is_read_beside_a_brochure(wired, monkeypatch):
+    router = _pdfs_to_read(monkeypatch, _EXACT_PDF, _BROCHURE_PDF)
+    _serve(
+        monkeypatch,
+        [(_EXACT_PDF, "6ES7214_1AG40_0XB0"), (_BROCHURE_PDF, "Siemens SIMATIC S7-1200 brochure")],
+    )
+    r = await search_mod.search_manual("Siemens", _SIMATIC, exact_part_number=True)
+    assert set(router.read) == {_EXACT_PDF, _BROCHURE_PDF}, router.read
+    assert r is not None and r["url"] == _EXACT_PDF and r["validated"] is True, r
+
+
+async def test_control_on_a_model_lookup_the_exact_pdf_is_not_queued(wired, monkeypatch):
+    router = _pdfs_to_read(monkeypatch, _EXACT_PDF, _BROCHURE_PDF)
+    _serve(
+        monkeypatch,
+        [(_EXACT_PDF, "6ES7214_1AG40_0XB0"), (_BROCHURE_PDF, "Siemens SIMATIC S7-1200 brochure")],
+    )
+    r = await search_mod.search_manual("Siemens", _SIMATIC)
+    assert router.read == [_BROCHURE_PDF], router.read
+    assert r is None or r["url"] != _EXACT_PDF
+
+
+async def test_the_typed_pass_retry_reads_an_exact_pdf_in_another_spelling(wired, monkeypatch):
+    # Round one reads the only site-scoped PDF and rejects it, which skipped the typed
+    # pass, so the retry runs it (#5822). The retry's pool holds a make-named PDF too,
+    # so the exact one is read only if the retry's queue counts it as worth a read.
+    router = _pdfs_to_read(monkeypatch, _EXACT_PDF, _BROCHURE_PDF, _OTHER_PDF)
+    sent = _serve_by_pass(
+        monkeypatch,
+        site=[(_BROCHURE_PDF, "Siemens SIMATIC S7-1200 brochure")],
+        typed=[(_OTHER_PDF, "Siemens S7-1200 price list"), (_EXACT_PDF, "6ES7214_1AG40_0XB0")],
+    )
+    r = await search_mod.search_manual("Siemens", _SIMATIC, exact_part_number=True)
+    assert any("filetype:pdf" in q and "site:" not in q for q in sent), sent  # the retry ran
+    assert set(router.read) == {_BROCHURE_PDF, _OTHER_PDF, _EXACT_PDF}, router.read
+    assert r is not None and r["url"] == _EXACT_PDF and r["validated"] is True, r
+
+
+# #5890 F5 and round 2: `_collect` keeps exactly main's candidates, at main's scores. A
+# hit main drops at 0 that names the whole number in another spelling is set aside.
+_ACS = "ACS355-03U-06A7-2"
+
+
+@pytest.mark.parametrize(
+    "title,part_number,aside",
+    [
+        ("ACS355-03U-06A7-2 drive", _ACS, False),  # main keeps it, at 25
+        ("ACS355-03U-06A7 2 drive", _ACS, False),  # main keeps it, at the shorter-token 10
+        ("ACS355_03U_06A7_2 drive", _ACS, True),  # main drops it at 0
+        ("ACS355_03U_06A7_2 drive", None, False),  # a model lookup sets nothing aside
+        ("ACS355-03U-06A7 drive", _ACS, False),  # a prefix: main keeps it, nothing more
+    ],
+    ids=["literal", "mixed_separators", "underscores", "model_lookup", "prefix_only"],
+)
+def test_collect_keeps_mains_candidates_and_sets_aside_what_main_drops(title, part_number, aside):
+    url = "https://www.example-drives.com/p/a"
+    hits = [{"link": url, "title": title}]
+    kept: list[dict] = []
+    assert search_mod._collect(hits, "ABB", _ACS, part_number, kept) == search_mod._collect(
+        hits, "ABB", _ACS
+    )
+    assert [c["url"] for c in kept] == ([url] if aside else [])
+
+
+# Round 2: the pages the search leaves aside get a turn only where main's search ends
+# without a manual, so main's reads, queries, retries and answers are main's.
+_FILES = "https://www.example-files.com/docs"
+
+
+async def _read_and_match(monkeypatch, make, model, hits, manual, exact_part_number=False):
+    """Serve `hits`, every PDF readable, `manual` the only one judged the manual. No
+    hit passes the judge's own check, so main reads every PDF and finds the manual."""
+    assert not any(judge.relevant({"url": u, "title": t}, make, model) for u, t in hits)
+    for u, _ in hits:
+        monkeypatch.setitem(TEXT, u, f"first pages of {u}")
+    router = _Verdicts({manual})
+    monkeypatch.setattr(judge, "_router", router)
+    _serve(monkeypatch, hits)
+    r = await search_mod.search_manual(make, model, exact_part_number=exact_part_number)
+    return r, router
+
+
+async def test_with_no_pdf_of_its_own_the_judge_still_reads_every_pdf(wired, monkeypatch):
+    catalog, manual = f"{_FILES}/ge-motors-catalog.pdf", f"{_FILES}/5ks-motor-instructions.pdf"
+    hits = [(catalog, "GE Motors catalog"), (manual, "Motor instructions")]
+    assert search_mod._names_make({"url": catalog, "title": "GE Motors catalog"}, "GE")
+    r, router = await _read_and_match(monkeypatch, "GE", "M100", hits, manual)
+    assert manual in router.read, router.read
+    assert r is not None and r["url"] == manual and r["validated"] is True, r
+
+
+async def test_with_no_pdf_of_its_own_a_part_number_lookup_reads_every_pdf(wired, monkeypatch):
+    manual = f"{_FILES}/cpu-system-handbook.pdf"
+    hits = [(_EXACT_PDF, "6ES7214_1AG40_0XB0"), (manual, "CPU system handbook")]
+    r, router = await _read_and_match(
+        monkeypatch, "Siemens", _SIMATIC, hits, manual, exact_part_number=True
+    )
+    assert manual in router.read, router.read
+    assert r is not None and r["url"] == manual and r["validated"] is True, r
+
+
+_AD_BROCHURE = (f"{_FILES}/automationdirect-gs10-brochure.pdf", "AutomationDirect GS10 brochure")
+_AD_EXTRA_PDF = (f"{_FILES}/automation-direct-drive-manual.pdf", "Automation-Direct drive manual")
+_AD_EXTRA_PAGE = (
+    "https://www.example-manuals.com/library/drive-installation",
+    "Automation-Direct Drive Installation Manual",
+)
+_AD_MANUAL = (f"{_FILES}/gs10-user-manual.pdf", "GS10 user manual")
+_SIEMENS_BROCHURE = (_BROCHURE_PDF, "Siemens SIMATIC S7-1200 brochure")
+_SIEMENS_MANUAL = (_SIMATIC_MANUAL, "S7-1200 6ES7214-1AG40-0XB0 system manual")
+
+
+def _readable(monkeypatch, *urls):
+    for u in urls:
+        monkeypatch.setitem(TEXT, u, f"first pages of {u}")
+
+
+def _retry_ran(sent: list[str]) -> bool:
+    return any("filetype:pdf" in q and "site:" not in q for q in sent)
+
+
+async def _site_then_retry(monkeypatch, make, model, site, manual, readable, exact=False):
+    """Round one gets only `site`; the judge reads its own PDFs there and rejects them,
+    which skipped the typed pass, so the retry runs it and finds `manual`."""
+    assert search_mod._oem_domains_for(make)  # so the site-scoped query is sent
+    assert judge.relevant({"url": manual[0], "title": manual[1]}, make, model)
+    _readable(monkeypatch, manual[0], *readable)
+    router = _Verdicts({manual[0]})
+    monkeypatch.setattr(judge, "_router", router)
+    sent = _serve_by_pass(monkeypatch, site=site, typed=[manual])
+    r = await search_mod.search_manual(make, model, exact_part_number=exact)
+    return r, router, sent
+
+
+async def test_an_unreadable_extra_pdf_does_not_stop_mains_retry(wired, monkeypatch):
+    assert _EXACT_PDF not in TEXT  # the judge cannot read it
+    r, router, sent = await _site_then_retry(
+        monkeypatch,
+        "Siemens",
+        _SIMATIC,
+        [_SIEMENS_BROCHURE, (_EXACT_PDF, "6ES7214_1AG40_0XB0")],
+        _SIEMENS_MANUAL,
+        [_BROCHURE_PDF],
+        exact=True,
+    )
+    assert _retry_ran(sent), sent
+    assert r is not None and r["url"] == _SIMATIC_MANUAL and r["validated"] is True, r
+
+
+async def test_an_extra_pdf_past_the_cap_does_not_stop_mains_retry(wired, monkeypatch):
+    monkeypatch.setattr(judge, "MAX_TOTAL", 1)  # the brochure alone fills round one
+    r, router, sent = await _site_then_retry(
+        monkeypatch,
+        "Siemens",
+        _SIMATIC,
+        [_SIEMENS_BROCHURE, (_EXACT_PDF, "6ES7214_1AG40_0XB0")],
+        _SIEMENS_MANUAL,
+        [_BROCHURE_PDF, _EXACT_PDF],
+        exact=True,
+    )
+    assert _retry_ran(sent), sent
+    assert r is not None and r["url"] == _SIMATIC_MANUAL and r["validated"] is True, r
+
+
+@pytest.mark.parametrize(
+    "make,model,site,manual,readable,exact",
+    [
+        (
+            "AutomationDirect",
+            "GS10",
+            [_AD_BROCHURE, _AD_EXTRA_PAGE],
+            _AD_MANUAL,
+            [_AD_BROCHURE[0]],
+            False,
+        ),
+        (
+            "Siemens",
+            _SIMATIC,
+            [_SIEMENS_BROCHURE, _UNDERSCORED[1]],
+            _SIEMENS_MANUAL,
+            [_BROCHURE_PDF],
+            True,
+        ),
+    ],
+    ids=["joined_make", "part_number"],
+)
+async def test_an_extra_page_does_not_stand_in_for_mains_retry(
+    wired, monkeypatch, make, model, site, manual, readable, exact
+):
+    page = {"url": site[1][0], "title": site[1][1]}
+    assert not judge.relevant(page, make, model)
+    assert search_mod._may_offer_unread(page, make, model if exact else None)
+    r, router, sent = await _site_then_retry(
+        monkeypatch, make, model, site, manual, readable, exact
+    )
+    assert _retry_ran(sent), sent
+    assert r is not None and r["url"] == manual[0] and r["validated"] is True, r
+
+
+async def test_an_extra_page_does_not_replace_mains_judged_rejection(wired, monkeypatch):
+    # GE has no site-scoped query, so the typed pass runs in round one and no retry
+    # follows: main ends with the brochure's judged rejection, and that stands.
+    brochure = (f"{_FILES}/ge-m100-brochure.pdf", "GE M100 brochure")
+    page = ("https://www.example-motors.com/library/ge-motors", "GE motors installation manual")
+    assert not search_mod._oem_domains_for("GE")
+    assert not judge.relevant({"url": page[0], "title": page[1]}, "GE", "M100")
+    assert search_mod._score(*page, "GE", "M100") > 0
+    assert search_mod._may_offer_unread({"url": page[0], "title": page[1]}, "GE", None)
+    _readable(monkeypatch, brochure[0])
+    monkeypatch.setattr(judge, "_router", _Verdicts(()))
+    _serve(monkeypatch, [brochure, page])
+    r = await search_mod.search_manual("GE", "M100")
+    assert r is not None and r["url"] == brochure[0], r
+    assert r["validated"] is False and judge.is_rejected(r), r
+
+
+async def test_a_plain_match_of_the_judges_own_stands_beside_an_ideal_extra(wired, monkeypatch):
+    own = (f"{_FILES}/automationdirect-gs10-quick-start.pdf", "AutomationDirect GS10 quick start")
+    _readable(monkeypatch, own[0], _AD_EXTRA_PDF[0])
+    router = _Verdicts({_AD_EXTRA_PDF[0]}, plain={own[0]})
+    monkeypatch.setattr(judge, "_router", router)
+    _serve(monkeypatch, [own, _AD_EXTRA_PDF])
+    r = await search_mod.search_manual("AutomationDirect", "GS10")
+    assert router.read == [own[0]], router.read
+    assert r is not None and r["url"] == own[0] and r["validated"] is True, r
+
+
+async def test_where_main_offers_its_own_page_no_extra_pdf_is_read(wired, monkeypatch):
+    # Main's own PDF cannot be read, so main offers its own page on the make's site
+    # unread. That is main's answer: the extra PDF is not read in its place.
+    own_pdf = (f"{_FILES}/automationdirect-gs10-datasheet.pdf", "AutomationDirect GS10 datasheet")
+    page = ("https://www.automationdirect.com/adc/overview/catalog/drives/gs10", "GS10 drive")
+    assert own_pdf[0] not in TEXT
+    _readable(monkeypatch, _AD_EXTRA_PDF[0])
+    router = _Verdicts({_AD_EXTRA_PDF[0]})
+    monkeypatch.setattr(judge, "_router", router)
+    _serve(monkeypatch, [page, own_pdf, _AD_EXTRA_PDF])
+    r = await search_mod.search_manual("AutomationDirect", "GS10")
+    assert router.read == [], router.read
+    assert r is not None and r["url"] == page[0] and r["validated"] is False, r
+
+
+async def test_where_mains_own_page_is_refused_an_extra_page_is_offered(wired, monkeypatch):
+    # Main's only page names the model but another make, so the screen refuses it and
+    # main ends with nothing. The page naming GE is offered there instead.
+    stranger = ("https://www.example-drives.com/p/m100", "Siemens M100 drive")
+    page = ("https://www.example-motors.com/library/ge-motors", "GE motors installation manual")
+    assert judge.relevant({"url": stranger[0], "title": stranger[1]}, "GE", "M100")
+    assert not search_mod._may_offer_unread({"url": stranger[0], "title": stranger[1]}, "GE", None)
+    _serve(monkeypatch, [stranger, page])
+    r = await search_mod.search_manual("GE", "M100")
+    assert r is not None and r["url"] == page[0] and r["validated"] is False, r
+
+
+async def test_a_joined_make_pdf_is_read_beside_the_judges_own(wired, monkeypatch):
+    brochure = f"{_FILES}/automationdirect-gs10-brochure.pdf"
+    joined = f"{_FILES}/automation-direct-drive-manual.pdf"
+    hits = [
+        (brochure, "AutomationDirect GS10 brochure"),
+        (joined, "Automation-Direct drive manual"),
+    ]
+    assert judge.relevant({"url": brochure, "title": hits[0][1]}, "AutomationDirect", "GS10")
+    assert not judge.relevant({"url": joined, "title": hits[1][1]}, "AutomationDirect", "GS10")
+    for u, _ in hits:
+        monkeypatch.setitem(TEXT, u, f"first pages of {u}")
+    router = _Verdicts({joined})
+    monkeypatch.setattr(judge, "_router", router)
+    _serve(monkeypatch, hits)
+    r = await search_mod.search_manual("AutomationDirect", "GS10")
+    assert set(router.read) == {brochure, joined}, router.read
+    assert r is not None and r["url"] == joined and r["validated"] is True, r
+
+
+async def test_an_extra_pdf_does_not_take_the_probe_from_the_judges_own_page(wired, monkeypatch):
+    # The judge's own pick is a page on the make's site, which main offers after its
+    # probe fails. An extra PDF that would probe as one is not probed in its place.
+    page = ("https://www.automationdirect.com/adc/overview/catalog/drives/gs10", "GS10 drive")
+    extra = (
+        f"{_FILES}/automation-direct-drive-installation-manual.pdf",
+        "Automation-Direct drive manual",
+    )
+    assert search_mod._is_oem_host(urlparse(page[0]).netloc, "AutomationDirect")
+    assert judge.relevant({"url": page[0], "title": page[1]}, "AutomationDirect", "GS10")
+    assert not judge.relevant({"url": extra[0], "title": extra[1]}, "AutomationDirect", "GS10")
+    assert extra[0] not in TEXT  # the judge cannot read it, so it stays unread
+    _serve(monkeypatch, [page, extra], pdfs=frozenset({extra[0]}))
+    r = await search_mod.search_manual("AutomationDirect", "GS10")
+    assert r is not None and r["url"] == page[0] and r["validated"] is False, r
+
+
+async def test_with_the_judge_on_its_own_page_is_offered_before_an_extra_one(wired, monkeypatch):
+    extra = (
+        "https://www.example-manuals.com/pdf/automation-direct-drive-installation",
+        "Automation-Direct drive installation manual",
+    )
+    own = ("https://www.example-manuals.com/p/gs10-drive", "AutomationDirect GS10 drive")
+    # A tie on score, the extra page served first: only the order of the pool decides.
+    assert search_mod._score(*extra, "AutomationDirect", "GS10") == search_mod._score(
+        *own, "AutomationDirect", "GS10"
+    )
+    assert not search_mod._is_direct_pdf(extra[0]) and not search_mod._is_direct_pdf(own[0])
+    _serve(monkeypatch, [extra, own])
+    r = await search_mod.search_manual("AutomationDirect", "GS10")
+    assert r is not None and r["url"] == own[0] and r["validated"] is False, r
 
 
 async def _assert_screen(monkeypatch, make, part, refused, offered):
@@ -3310,3 +3963,140 @@ def test_a_quota_denial_before_the_retry_still_reports_the_limit(wired, monkeypa
     body, _ = _discovery_with_quota(monkeypatch, deny_on=2, reason="user_cap")
     assert body["reason"] == "quota_exceeded", body.get("reason")
     assert body["search_stats"]["quota_denied"] == "user_cap"
+
+
+@pytest.mark.parametrize("enabled", ["1", "0"])
+async def test_a_set_aside_copy_of_a_candidate_is_left_to_that_candidate(
+    wired, monkeypatch, enabled
+):
+    # One URL, two snippets: the site-scoped one spells the whole number with
+    # underscores (set aside), the typed one names only a prefix (a candidate the screen
+    # refuses). The URL is the candidate's: the set-aside copy is not offered for it.
+    url = "https://www.example-distributor.com/p/12345"
+    aside, kept = (url, "6ES7214_1AG40_0XB0"), (url, "6ES7214 CPU module manual")
+    assert search_mod._score(*aside, "Siemens", _SIMATIC) == 0
+    assert search_mod._score(*kept, "Siemens", _SIMATIC) > 0
+    assert search_mod._may_offer_unread({"url": url, "title": aside[1]}, "Siemens", _SIMATIC)
+    assert not search_mod._may_offer_unread({"url": url, "title": kept[1]}, "Siemens", _SIMATIC)
+    monkeypatch.setenv("MANUAL_JUDGE_ENABLED", enabled)
+    _serve_by_pass(monkeypatch, site=[aside], typed=[kept])
+    assert await search_mod.search_manual("Siemens", _SIMATIC, exact_part_number=True) is None
+
+
+# Round 2 review: the guards inside the reads and offers at main's endings.
+_AD_PLAIN_PDF = (
+    f"{_FILES}/variable-frequency-drive-user-manual.pdf",
+    "Variable frequency drive user manual",
+)
+
+
+@pytest.mark.parametrize("is_manual", [True, False])
+async def test_an_extra_pdf_judged_not_the_manual_is_neither_returned_nor_offered(
+    wired, monkeypatch, is_manual
+):
+    # Main's cap lets it read one PDF, the first served, which cannot be fetched: it
+    # ends with nothing judged. The extra PDF is read there. Judged the manual, it is
+    # returned; judged not the manual, it is neither returned nor offered unread.
+    for u, t in (_AD_PLAIN_PDF, _AD_EXTRA_PDF):
+        assert not judge.relevant({"url": u, "title": t}, "AutomationDirect", "GS10")
+    plain, extra = ({"url": u, "title": t} for u, t in (_AD_PLAIN_PDF, _AD_EXTRA_PDF))
+    assert not search_mod._names_make(plain, "AutomationDirect")
+    assert search_mod._names_make(extra, "AutomationDirect")
+    assert _AD_PLAIN_PDF[0] not in TEXT
+    monkeypatch.setattr(judge, "MAX_TOTAL", 1)
+    _readable(monkeypatch, _AD_EXTRA_PDF[0])
+    router = _Verdicts({_AD_EXTRA_PDF[0]} if is_manual else ())
+    monkeypatch.setattr(judge, "_router", router)
+    _serve(monkeypatch, [_AD_PLAIN_PDF, _AD_EXTRA_PDF])
+    r = await search_mod.search_manual("AutomationDirect", "GS10")
+    assert router.read == [_AD_EXTRA_PDF[0]], router.read
+    if is_manual:
+        assert r is not None and r["url"] == _AD_EXTRA_PDF[0] and r["validated"] is True, r
+    else:
+        assert r is None, r
+
+
+async def test_a_pdf_main_already_read_is_not_read_again(wired, monkeypatch):
+    # No PDF passes the judge's own check, so main reads both PDFs naming GE and
+    # rejects them. Its rejection ending does not read them a second time.
+    a = (f"{_FILES}/ge-motors-catalog.pdf", "GE Motors catalog")
+    b = (f"{_FILES}/ge-motors-drive-manual.pdf", "GE motors drive manual")
+    for u, t in (a, b):
+        c = {"url": u, "title": t}
+        assert not judge.relevant(c, "GE", "M100") and search_mod._names_make(c, "GE")
+    _readable(monkeypatch, a[0], b[0])
+    router = _Verdicts(())
+    monkeypatch.setattr(judge, "_router", router)
+    _serve(monkeypatch, [a, b])
+    r = await search_mod.search_manual("GE", "M100")
+    assert sorted(router.read) == sorted([a[0], b[0]]), router.read
+    assert r is not None and judge.is_rejected(r) and r["validated"] is False, r
+
+
+@pytest.mark.parametrize("spent", [True, False])
+async def test_an_extra_pdf_is_read_only_in_the_time_the_deadline_leaves(wired, monkeypatch, spent):
+    brochure = (f"{_FILES}/ge-m100-brochure.pdf", "GE M100 brochure")
+    extra = (f"{_FILES}/ge-motors-drive-manual.pdf", "GE motors drive manual")
+    assert judge.relevant({"url": brochure[0], "title": brochure[1]}, "GE", "M100")
+    assert not judge.relevant({"url": extra[0], "title": extra[1]}, "GE", "M100")
+    clock = [1000.0]
+    fake_time = types.SimpleNamespace(monotonic=lambda: clock[0])
+    monkeypatch.setattr(search_mod, "time", fake_time)
+    monkeypatch.setattr(judge, "time", fake_time)
+    _readable(monkeypatch, brochure[0], extra[0])
+
+    class _Slow(_Verdicts):
+        async def complete(self, messages, **kw):
+            out = await super().complete(messages, **kw)
+            if spent and self.read[-1] == brochure[0]:
+                clock[0] += 30.0  # main's own read uses up what the deadline left
+            return out
+
+    router = _Slow({extra[0]})
+    monkeypatch.setattr(judge, "_router", router)
+    _serve(monkeypatch, [brochure, extra])
+    deadline = 1000.0 + judge.RETURN_RESERVE_S + 10.0
+    r = await search_mod.search_manual("GE", "M100", deadline_at=deadline)
+    if spent:
+        assert router.read == [brochure[0]], router.read
+        assert r is not None and r["url"] == brochure[0] and judge.is_rejected(r), r
+    else:
+        assert router.read == [brochure[0], extra[0]], router.read
+        assert r is not None and r["url"] == extra[0] and r["validated"] is True, r
+
+
+async def test_the_trail_lists_an_extra_read_after_mains_own(wired, monkeypatch):
+    _readable(monkeypatch, _AD_BROCHURE[0], _AD_EXTRA_PDF[0])
+    monkeypatch.setattr(judge, "_router", _Verdicts({_AD_EXTRA_PDF[0]}))
+    _serve(monkeypatch, [_AD_BROCHURE, _AD_EXTRA_PDF])
+    with search_mod.acquisition_trail() as trail:
+        r = await search_mod.search_manual("AutomationDirect", "GS10")
+    assert r is not None and r["url"] == _AD_EXTRA_PDF[0] and r["validated"] is True, r
+    rows = {row["url"]: row for row in trail.to_dict(r["url"])["candidates"]}
+    own, won = rows[_AD_BROCHURE[0]], rows[_AD_EXTRA_PDF[0]]
+    assert own["queue_pos"] == 0 and own["read"] == "judged", own
+    assert won["queue_pos"] == 1 and won["not_queued"] is None, won
+    assert won["read"] == "judged" and won["selected"] is True, won
+
+
+async def test_a_pdf_main_could_not_fetch_is_not_fetched_again(wired, monkeypatch):
+    # No PDF passes the judge's own check, so main queues every PDF, this one too, and
+    # its fetch fails: main ends with nothing judged. The extra reads at that ending
+    # skip it, so it is fetched once and listed once on the trail.
+    pdf = (f"{_FILES}/ge-motors-drive-manual.pdf", "GE motors drive manual")
+    c = {"url": pdf[0], "title": pdf[1]}
+    assert not judge.relevant(c, "GE", "M100") and search_mod._names_make(c, "GE")
+    fetched: list[str] = []
+
+    async def fetch(url, max_bytes=judge.MAX_BYTES):
+        fetched.append(url)
+        return None
+
+    monkeypatch.setattr(judge, "fetch_pdf_bytes", fetch)
+    _serve(monkeypatch, [pdf])
+    with search_mod.acquisition_trail() as trail:
+        await search_mod.search_manual("GE", "M100")
+    assert fetched == [pdf[0]], fetched
+    assert list(trail.judge.get("queue") or []).count(pdf[0]) == 1, trail.judge
+    row = {r["url"]: r for r in trail.to_dict(None)["candidates"]}[pdf[0]]
+    assert row["queue_pos"] == 0, row
