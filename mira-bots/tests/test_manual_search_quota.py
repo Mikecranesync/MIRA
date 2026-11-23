@@ -12,8 +12,11 @@ Run: cd mira-bots && python -m pytest tests/test_manual_search_quota.py -q
 
 from __future__ import annotations
 
+import asyncio
+import logging
 import pathlib
 import sys
+import threading
 from datetime import datetime, timezone
 
 import pytest
@@ -199,7 +202,18 @@ class _FakeCursor:
     def execute(self, sql, params=None):
         norm = " ".join(sql.split())
         self.executed.append(norm)
+        self.conn.executed.append(norm)
         if norm.startswith("SET LOCAL"):
+            self._last = None
+        elif norm.startswith("UPDATE manual_search_quota SET used = used - 1"):
+            # #5847: the release of a reservation that was committed but never sent.
+            scope, key, window = params
+            if "release" in self.conn.hooks:
+                self.conn.hooks["release"](scope)
+            k = (scope, key, window)
+            used = self.conn.pending.get(k, self.conn.store.get(k, 0))
+            if used > 0:
+                self.conn.pending[k] = used - 1
             self._last = None
         elif norm.startswith("INSERT INTO manual_search_quota"):
             scope, key, window = params
@@ -209,6 +223,8 @@ class _FakeCursor:
             self._last = None
         elif norm.startswith("UPDATE manual_search_quota"):
             scope, key, window, cap = params
+            if "update" in self.conn.hooks:
+                self.conn.hooks["update"](scope)
             k = (scope, key, window)
             used = self.conn.pending.get(k, self.conn.store.get(k, 0))
             if used < cap:
@@ -230,17 +246,24 @@ class _FakeCursor:
 
 
 class _FakeConn:
-    def __init__(self, store):
+    def __init__(self, store, hooks=None):
         self.store = store  # the "committed" state the test asserts against
         self.pending: dict[tuple[str, str, object], int] = {}
         self.committed = False
         self.rolled_back = False
         self.closed = False
+        self.executed: list[str] = []
+        # Optional test hooks: "update" runs before each cap UPDATE and "release"
+        # before each release decrement (both with the scope), "commit" before a
+        # commit applies, so a test can hold the worker thread there or fail a row.
+        self.hooks = hooks or {}
 
     def cursor(self):
         return _FakeCursor(self)
 
     def commit(self):
+        if "commit" in self.hooks:
+            self.hooks["commit"]()
         self.store.update(self.pending)
         self.pending.clear()
         self.committed = True
@@ -253,7 +276,7 @@ class _FakeConn:
         self.closed = True
 
 
-def _install_fake_psycopg2(monkeypatch, store, connect_spy=None):
+def _install_fake_psycopg2(monkeypatch, store, connect_spy=None, conns=None, hooks=None):
     import types
 
     fake = types.ModuleType("psycopg2")
@@ -261,7 +284,10 @@ def _install_fake_psycopg2(monkeypatch, store, connect_spy=None):
     def connect(url, connect_timeout=None):
         if connect_spy is not None:
             connect_spy.append((url, connect_timeout))
-        return _FakeConn(store)
+        conn = _FakeConn(store, hooks)
+        if conns is not None:
+            conns.append(conn)
+        return conn
 
     fake.connect = connect
     monkeypatch.setitem(sys.modules, "psycopg2", fake)
@@ -451,3 +477,268 @@ async def test_utc_window_rollover_starts_a_fresh_row(monkeypatch):
     assert reason == "ok"
     assert store[("user_day", "t1:u1", tomorrow.date())] == 1
     assert store[("user_day", "t1:u1", NOW.date())] == 1  # untouched
+
+
+# ---------------------------------------------------------------------------
+# #5847: a reservation whose caller is cancelled never charges for a query that
+# was never sent. The cancel can land before the commit, during it, or after the
+# worker returned but before the awaiting task resumed; each test stages one
+# ordering and asserts which party acted before it asserts the counters.
+# ---------------------------------------------------------------------------
+
+_PRE = 3  # every counter starts here, so a wrong release reads 2, not a silent no-op
+
+
+def _charged_store():
+    return {
+        ("user_day", "t1:u1", NOW.date()): _PRE,
+        ("tenant_day", "t1", NOW.date()): _PRE,
+        ("global_month", "*", NOW.date().replace(day=1)): _PRE,
+    }
+
+
+def _spies(monkeypatch):
+    """Record every _reserve_sync result and every release (with the thread it ran
+    on), each with an event the test waits on instead of sleeping."""
+    worker: list[str] = []
+    worker_done = threading.Event()
+    released: list[str] = []
+    release_done = threading.Event()
+    real_reserve, real_release = quota_mod._reserve_sync, quota_mod._release_sync
+
+    def reserve(*args):
+        result = real_reserve(*args)
+        worker.append(result)
+        worker_done.set()
+        return result
+
+    def release(identity, now):
+        released.append(threading.current_thread().name)
+        real_release(identity, now)
+        release_done.set()
+
+    monkeypatch.setattr(quota_mod, "_reserve_sync", reserve)
+    monkeypatch.setattr(quota_mod, "_release_sync", release)
+    return worker, worker_done, released, release_done
+
+
+def _held_at(stage, scope="user_day"):
+    """A hook that holds the worker thread at ``stage`` until the test opens the
+    gate. The user_day UPDATE is the last of the three, so holding there stops
+    the worker after every cap check and before the commit decision."""
+    reached, gate = threading.Event(), threading.Event()
+
+    def hold(*args):
+        if stage == "update" and args[0] != scope:
+            return
+        reached.set()
+        assert gate.wait(5), "the test never opened the gate"
+
+    return {stage: hold}, reached, gate
+
+
+async def _cancel_while_held(identity, reached):
+    task = asyncio.create_task(quota_mod.reserve_provider_query(identity, now=NOW))
+    assert await asyncio.to_thread(reached.wait, 5), "the worker never reached the hold"
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+
+async def test_a_cancel_before_the_commit_rolls_the_reservation_back(monkeypatch):
+    monkeypatch.setenv("NEON_DATABASE_URL", "postgres://fake/db")
+    store, conns = _charged_store(), []
+    hooks, reached, gate = _held_at("update")
+    _install_fake_psycopg2(monkeypatch, store, conns=conns, hooks=hooks)
+    worker, worker_done, released, _ = _spies(monkeypatch)
+    identity = quota_mod.QuotaIdentity(tenant_id="t1", user_id="u1")
+
+    await _cancel_while_held(identity, reached)
+    gate.set()
+    assert await asyncio.to_thread(worker_done.wait, 5)
+
+    # The path: the worker saw the cancel before committing and rolled back.
+    assert worker == ["abandoned"]
+    assert len(conns) == 1 and conns[0].rolled_back and not conns[0].committed
+    assert released == []
+    assert store == _charged_store()
+
+
+async def test_a_cancel_during_the_commit_is_released_by_the_worker(monkeypatch):
+    monkeypatch.setenv("NEON_DATABASE_URL", "postgres://fake/db")
+    store, conns = _charged_store(), []
+    hooks, reached, gate = _held_at("commit")
+    _install_fake_psycopg2(monkeypatch, store, conns=conns, hooks=hooks)
+    worker, worker_done, released, release_done = _spies(monkeypatch)
+    identity = quota_mod.QuotaIdentity(tenant_id="t1", user_id="u1")
+
+    await _cancel_while_held(identity, reached)
+    gate.set()
+    assert await asyncio.to_thread(worker_done.wait, 5)
+    assert await asyncio.to_thread(release_done.wait, 5)
+
+    # The path: the charge committed, then the worker itself gave it back.
+    assert worker == ["abandoned"]
+    assert conns[0].committed
+    assert len(released) == 1 and released[0] != quota_mod._RELEASE_THREAD_NAME
+    assert len(conns) == 2 and conns[1].committed
+    assert (
+        sum(
+            s.startswith("UPDATE manual_search_quota SET used = used - 1")
+            for s in conns[1].executed
+        )
+        == 3
+    )
+    assert store == _charged_store()
+
+
+async def test_a_cancel_after_the_worker_returned_is_released_by_the_awaiter(monkeypatch):
+    monkeypatch.setenv("NEON_DATABASE_URL", "postgres://fake/db")
+    store, conns = _charged_store(), []
+    _install_fake_psycopg2(monkeypatch, store, conns=conns)
+    worker, worker_done, released, release_done = _spies(monkeypatch)
+    identity = quota_mod.QuotaIdentity(tenant_id="t1", user_id="u1")
+
+    task = asyncio.create_task(quota_mod.reserve_provider_query(identity, now=NOW))
+    await asyncio.sleep(0)  # the task starts and hands the reservation to its thread
+    # Hold the event loop until the worker has returned, so the task cannot resume
+    # with the result before it is cancelled.
+    assert worker_done.wait(5)
+    assert worker == ["ok"] and store[("user_day", "t1:u1", NOW.date())] == _PRE + 1
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert await asyncio.to_thread(release_done.wait, 5)
+
+    # The path: the worker had delivered "ok", so the cancelled awaiter released.
+    assert released == [quota_mod._RELEASE_THREAD_NAME]
+    assert len(conns) == 2 and conns[1].committed
+    assert store == _charged_store()
+
+
+async def test_control_an_uncancelled_reservation_charges_and_releases_nothing(monkeypatch):
+    monkeypatch.setenv("NEON_DATABASE_URL", "postgres://fake/db")
+    store, conns = _charged_store(), []
+    _install_fake_psycopg2(monkeypatch, store, conns=conns)
+    worker, _, released, _ = _spies(monkeypatch)
+    identity = quota_mod.QuotaIdentity(tenant_id="t1", user_id="u1")
+
+    assert await quota_mod.reserve_provider_query(identity, now=NOW) == "ok"
+    assert worker == ["ok"] and released == [] and len(conns) == 1
+    assert store == {k: _PRE + 1 for k in _charged_store()}
+
+
+async def test_control_a_cancelled_cap_denial_releases_nothing(monkeypatch):
+    monkeypatch.setenv("NEON_DATABASE_URL", "postgres://fake/db")
+    monkeypatch.setenv("MANUAL_SEARCH_USER_DAILY_CAP", str(_PRE))  # user_day is at its cap
+    store, conns = _charged_store(), []
+    hooks, reached, gate = _held_at("update")
+    _install_fake_psycopg2(monkeypatch, store, conns=conns, hooks=hooks)
+    worker, worker_done, released, _ = _spies(monkeypatch)
+    identity = quota_mod.QuotaIdentity(tenant_id="t1", user_id="u1")
+
+    await _cancel_while_held(identity, reached)
+    gate.set()
+    assert await asyncio.to_thread(worker_done.wait, 5)
+
+    assert worker == ["user_cap"]
+    assert len(conns) == 1 and conns[0].rolled_back and not conns[0].committed
+    assert released == []
+    assert store == _charged_store()
+
+
+def test_a_release_that_fails_midway_leaves_the_whole_charge_and_never_raises(monkeypatch, caplog):
+    monkeypatch.setenv("NEON_DATABASE_URL", "postgres://fake/db")
+    store, conns, decrements = _charged_store(), [], []
+
+    def fail_the_second_row(scope):
+        decrements.append(scope)
+        if len(decrements) == 2:
+            raise RuntimeError("statement timeout")
+
+    _install_fake_psycopg2(monkeypatch, store, conns=conns, hooks={"release": fail_the_second_row})
+    identity = quota_mod.QuotaIdentity(tenant_id="t1", user_id="u1")
+    with caplog.at_level(logging.INFO, logger="mira.manual_search"):
+        quota_mod._release_sync(identity, NOW)  # must not raise
+
+    # The path: the first row was decremented, the second failed, and the
+    # transaction was rolled back rather than committed half-released.
+    assert len(decrements) == 2
+    assert len(conns) == 1 and conns[0].rolled_back and not conns[0].committed and conns[0].closed
+    assert store == _charged_store()  # over-counts rather than under-counts
+    assert "MANUAL_SEARCH_QUOTA_RELEASE_FAILED" in caplog.text
+    assert "MANUAL_SEARCH_QUOTA_RELEASED" not in caplog.text
+    assert "t1:u1" not in caplog.text  # the scope key may embed a user id
+
+
+def test_a_release_that_cannot_connect_never_raises(monkeypatch, caplog):
+    monkeypatch.setenv("NEON_DATABASE_URL", "postgres://fake/db")
+    import types
+
+    fake = types.ModuleType("psycopg2")
+
+    def boom(url, connect_timeout=None):
+        raise RuntimeError("connection refused")
+
+    fake.connect = boom
+    monkeypatch.setitem(sys.modules, "psycopg2", fake)
+    identity = quota_mod.QuotaIdentity(tenant_id="t1", user_id="u1")
+    with caplog.at_level(logging.ERROR, logger="mira.manual_search"):
+        quota_mod._release_sync(identity, NOW)  # must not raise
+    assert "MANUAL_SEARCH_QUOTA_RELEASE_FAILED" in caplog.text
+    assert "t1:u1" not in caplog.text
+
+
+@pytest.mark.parametrize("stage", ["update", "commit"])
+async def test_the_endpoint_timeout_during_a_stalled_reservation_charges_nothing(
+    monkeypatch, stage
+):
+    """#5847's own evidence, through the real caller: the discovery endpoint wraps
+    the search in asyncio.wait_for, and its timeout fires while _serper_search is
+    awaiting a stalled reservation. No query is sent, so nothing may be charged,
+    whether the stall is in the cap UPDATE or in the commit."""
+    import functools
+
+    import shared.manual_search.search as search_mod
+
+    monkeypatch.setenv("NEON_DATABASE_URL", "postgres://fake/db")
+    monkeypatch.setattr(search_mod, "SERPER_API_KEY", "test-key")
+    sends: list[str] = []
+
+    async def post(query, num):
+        sends.append(query)
+        return []
+
+    monkeypatch.setattr(search_mod, "_serper_post", post)
+    # The real wrapper, pinned to NOW so the counters it touches are the test's.
+    monkeypatch.setattr(
+        quota_mod,
+        "reserve_provider_query",
+        functools.partial(quota_mod.reserve_provider_query, now=NOW),
+    )
+    store, conns = _charged_store(), []
+    hooks, reached, gate = _held_at(stage)
+    _install_fake_psycopg2(monkeypatch, store, conns=conns, hooks=hooks)
+    worker, worker_done, released, release_done = _spies(monkeypatch)
+    identity = quota_mod.QuotaIdentity(tenant_id="t1", user_id="u1")
+
+    with quota_mod.provider_query_quota(identity):
+        with pytest.raises(TimeoutError):
+            await asyncio.wait_for(
+                search_mod._serper_search("gs10 manual filetype:pdf"), timeout=0.5
+            )
+    assert reached.is_set(), "the timeout did not land during the reservation"
+    gate.set()
+    assert await asyncio.to_thread(worker_done.wait, 5)
+    if stage == "commit":
+        assert await asyncio.to_thread(release_done.wait, 5)
+
+    assert sends == []
+    assert worker == ["abandoned"]
+    if stage == "update":
+        assert released == []  # rolled back before the commit
+    else:
+        assert (
+            len(released) == 1 and released[0] != quota_mod._RELEASE_THREAD_NAME
+        )  # the worker released
+    assert store == _charged_store()
