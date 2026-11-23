@@ -1413,6 +1413,9 @@ _PART_NUMBER_TABLE = [
     ("GS10-20P5", "title", "GS10-20P5_B063 drive", False, "underscore code group"),
     ("GS10-20P5", "title", "GS10-20P5-EN data", False, "decided: two letters read as a code"),
     ("GS10-20P5", "url", f"{_DIST}/search?q=gs10-20p5+manual", False, "decided: + is an option"),
+    ("ACS355-03U-06A7-2", "url", f"{_DIST}/p/ACS355-03U-06A7-2%2BB063", False, "encoded plus"),
+    ("GS10-20P5", "url", f"{_DIST}/p/gs10-20p5-0-5-hp-drive", False, "decided: numeric slug"),
+    ("ACS355-03U-06A7-2", "url", f"{_DIST}/p/acs355-03u-06a7-2%20manual", True, "encoded space"),
     ("GS10-20P5", "title", "GS10 20P5 micro drive", True, "space between groups"),
     ("GS10-20P5", "title", "GS1020P5 micro drive", True, "no separator"),
     ("GS10-20P5", "title", "gs10_20p5 micro drive", True, "underscore between groups"),
@@ -1460,6 +1463,24 @@ async def test_a_longer_order_number_is_not_offered_in_either_mode(wired, monkey
             await search_mod.search_manual("AutomationDirect", "GS10-20P5", exact_part_number=True)
             is None
         ), enabled
+
+
+async def test_an_encoded_order_option_in_the_url_is_not_offered(wired, monkeypatch):
+    # #5841 Codex F1: the title says nothing, so only the URL can identify the part.
+    encoded = _maker_less_stranger(
+        f"{_DIST}/p/ACS355-03U-06A7-2%2BB063", "Frequency converter", "ABB"
+    )
+    exact = _maker_less_stranger(f"{_DIST}/p/ACS355-03U-06A7-2", "Frequency converter", "ABB")
+    for enabled in ("1", "0"):
+        monkeypatch.setenv("MANUAL_JUDGE_ENABLED", enabled)
+        _serve(monkeypatch, [(encoded["url"], encoded["title"])])
+        assert (
+            await search_mod.search_manual("ABB", "ACS355-03U-06A7-2", exact_part_number=True)
+            is None
+        ), enabled
+        _serve(monkeypatch, [(exact["url"], exact["title"])])
+        r = await search_mod.search_manual("ABB", "ACS355-03U-06A7-2", exact_part_number=True)
+        assert r is not None and r["url"] == exact["url"] and r["validated"] is False, enabled
 
 
 async def test_the_exact_order_number_with_ordinary_text_is_still_offered(wired, monkeypatch):
