@@ -31,10 +31,13 @@ wrapper) ever defaults -n auto on:
 
 from __future__ import annotations
 
+import asyncio
 import concurrent.futures
 import os
 import pathlib
 import sys
+import threading
+import time
 from datetime import datetime, timezone
 
 import pytest
@@ -281,3 +284,145 @@ def test_concurrent_reservations_across_users_in_one_tenant_do_not_deadlock(monk
     assert results == ["ok"] * 10, f"expected 10 clean reservations, got {results}"
     assert _used("tenant_day", "t-fanout", NOW.date()) == 10
     assert _used("global_month", quota_mod.GLOBAL_SCOPE_KEY, NOW.date().replace(day=1)) == 10
+
+
+# ---------------------------------------------------------------------------
+# #5847: a cancelled reservation never charges for a query that was never sent.
+# The fake-driver tests stage every ordering; these prove the rollback and the
+# release SQL against real rows and a real row lock.
+# ---------------------------------------------------------------------------
+
+
+def _spy_worker_and_release(monkeypatch):
+    worker: list[str] = []
+    worker_done = threading.Event()
+    released: list[str] = []
+    release_done = threading.Event()
+    real_reserve, real_release = quota_mod._reserve_sync, quota_mod._release_sync
+
+    def reserve(*args):
+        result = real_reserve(*args)
+        worker.append(result)
+        worker_done.set()
+        return result
+
+    def release(identity, now):
+        released.append(threading.current_thread().name)
+        real_release(identity, now)
+        release_done.set()
+
+    monkeypatch.setattr(quota_mod, "_reserve_sync", reserve)
+    monkeypatch.setattr(quota_mod, "_release_sync", release)
+    return worker, worker_done, released, release_done
+
+
+def _counters(identity):
+    return (
+        _used("user_day", identity.user_key, NOW.date()),
+        _used("tenant_day", identity.tenant_id, NOW.date()),
+        _used("global_month", quota_mod.GLOBAL_SCOPE_KEY, NOW.date().replace(day=1)),
+    )
+
+
+def _wait_for_a_lock_wait(timeout_s=4.0) -> bool:
+    """True once another backend is waiting on a row lock (inside the reservation's
+    5 second statement timeout)."""
+    deadline = time.monotonic() + timeout_s
+    conn = psycopg2.connect(TEST_DATABASE_URL)
+    conn.autocommit = True
+    try:
+        with conn.cursor() as cur:
+            while time.monotonic() < deadline:
+                cur.execute(
+                    "SELECT count(*) FROM pg_stat_activity "
+                    "WHERE wait_event_type = 'Lock' AND query ILIKE %s",
+                    ("%manual_search_quota%",),
+                )
+                if cur.fetchone()[0] >= 1:
+                    return True
+                time.sleep(0.05)
+        return False
+    finally:
+        conn.close()
+
+
+async def test_a_cancel_before_the_commit_rolls_back_against_a_real_row_lock(monkeypatch):
+    monkeypatch.setenv("MANUAL_SEARCH_USER_DAILY_CAP", "100")
+    monkeypatch.setenv("MANUAL_SEARCH_TENANT_DAILY_CAP", "100")
+    monkeypatch.setenv("MANUAL_SEARCH_GLOBAL_MONTHLY_CAP", "1000")
+    identity = quota_mod.QuotaIdentity(tenant_id="t-cancel-lock", user_id="u-cancel-lock")
+    assert quota_mod._reserve_sync(identity, NOW) == "ok"  # the rows exist, at 1
+    assert _counters(identity) == (1, 1, 1)
+    worker, worker_done, released, _ = _spy_worker_and_release(monkeypatch)
+
+    # Hold the user_day row (the last of the three in lock order) from a second
+    # connection, so the reservation is parked before its commit decision.
+    locker = psycopg2.connect(TEST_DATABASE_URL)
+    try:
+        with locker.cursor() as cur:
+            cur.execute(
+                "SELECT used FROM manual_search_quota "
+                "WHERE scope = 'user_day' AND scope_key = %s AND window_start = %s FOR UPDATE",
+                (identity.user_key, NOW.date()),
+            )
+        task = asyncio.create_task(quota_mod.reserve_provider_query(identity, now=NOW))
+        assert await asyncio.to_thread(_wait_for_a_lock_wait), "the reservation never blocked"
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+    finally:
+        locker.rollback()
+        locker.close()
+    assert await asyncio.to_thread(worker_done.wait, 10)
+
+    assert worker == ["abandoned"] and released == []
+    assert _counters(identity) == (1, 1, 1)
+
+
+async def test_a_cancel_after_the_worker_returned_releases_the_real_rows(monkeypatch):
+    monkeypatch.setenv("MANUAL_SEARCH_USER_DAILY_CAP", "100")
+    monkeypatch.setenv("MANUAL_SEARCH_TENANT_DAILY_CAP", "100")
+    monkeypatch.setenv("MANUAL_SEARCH_GLOBAL_MONTHLY_CAP", "1000")
+    identity = quota_mod.QuotaIdentity(tenant_id="t-cancel-after", user_id="u-cancel-after")
+    for _ in range(3):
+        assert quota_mod._reserve_sync(identity, NOW) == "ok"
+    assert _counters(identity) == (3, 3, 3)
+    worker, worker_done, released, release_done = _spy_worker_and_release(monkeypatch)
+
+    task = asyncio.create_task(quota_mod.reserve_provider_query(identity, now=NOW))
+    await asyncio.sleep(0)  # the task starts and hands the reservation to its thread
+    # Hold the event loop until the worker has committed and returned, so the task
+    # cannot resume with the result before it is cancelled.
+    assert worker_done.wait(10)
+    assert worker == ["ok"] and _counters(identity) == (4, 4, 4)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert await asyncio.to_thread(release_done.wait, 10)
+
+    assert released == [quota_mod._RELEASE_THREAD_NAME]
+    assert _counters(identity) == (3, 3, 3)
+
+
+def test_a_release_skips_a_row_already_at_zero_and_still_releases_the_others(monkeypatch):
+    """Migration 103 has CHECK (used >= 0). A row already at zero (a counter reset
+    by hand since the reservation) must not abort the release of the other two."""
+    monkeypatch.setenv("MANUAL_SEARCH_USER_DAILY_CAP", "100")
+    monkeypatch.setenv("MANUAL_SEARCH_TENANT_DAILY_CAP", "100")
+    monkeypatch.setenv("MANUAL_SEARCH_GLOBAL_MONTHLY_CAP", "1000")
+    identity = quota_mod.QuotaIdentity(tenant_id="t-release-zero", user_id="u-release-zero")
+    assert quota_mod._reserve_sync(identity, NOW) == "ok"
+    admin = _admin_conn()
+    try:
+        with admin.cursor() as cur:
+            cur.execute(
+                "UPDATE manual_search_quota SET used = 0 WHERE scope = 'global_month' AND scope_key = %s",
+                (quota_mod.GLOBAL_SCOPE_KEY,),
+            )
+    finally:
+        admin.close()
+    assert _counters(identity) == (1, 1, 0)
+
+    quota_mod._release_sync(identity, NOW)
+
+    assert _counters(identity) == (0, 0, 0)
