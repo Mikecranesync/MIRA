@@ -84,7 +84,7 @@ vi.mock("@/capabilities/living-sheet/store", () => storeMock);
 // this suite is purely about what reaches the ANSWER, so make it a passthrough.
 vi.mock("@/capabilities/living-sheet/receipt", () => ({ withSheetReceipt: vi.fn(async (res: Response) => res) }));
 
-import { POST, isJobRecordAsk } from "../route";
+import { POST } from "../route";
 
 function providerStream(text: string) {
   const enc = new TextEncoder();
@@ -156,7 +156,8 @@ beforeEach(() => {
   process.env.GROQ_API_KEY = "k";
   delete process.env.NOTEBOOK_LIVING_SHEET;
   nbMock.getNotebook.mockResolvedValue({ id: NB, displayName: "Pump 07" });
-  nbMock.resolveBoundAsset.mockResolvedValue({ state: "unbound" });
+  // Job records ride along only on a confirmed binding (Codex #5874 r2 F1/F4).
+  nbMock.resolveBoundAsset.mockResolvedValue(RESOLVED as never);
   nbMock.validateChatSources.mockResolvedValue({ ok: false, error: "no_sources_selected" });
   storeMock.loadJob.mockResolvedValue({ status: "ok", view: SHEET_VIEW });
   storeMock.listOpenJobIdsForMachine.mockResolvedValue([]);
@@ -313,6 +314,33 @@ describe("#5335 — the open job's own records reach the answer", () => {
     // control for this isolation is the one-open-job test above: same turn, no dispute → looked up
   });
 
+  it("an explicitly opened job from an earlier binding is never presented for the current machine", async () => {
+    process.env.NOTEBOOK_LIVING_SHEET = "1";
+    storeMock.loadJob.mockResolvedValue({ status: "ok", view: { ...RECORDED_VIEW, machine: { entityId: "cmms-old-machine", name: "Old machine" } } });
+    await (await POST(req({ message: "What did I note?", mode: "general", livingSheetJobId: JOB_ID }), params)).text();
+    expect(storeMock.loadJob).toHaveBeenCalledWith(TENANT, NB, JOB_ID); // precondition: it was loaded
+    expect(sentUserContent()).not.toContain(NOTE);
+    expect(sentUserContent()).not.toContain("Living Work Sheet");
+  });
+
+  it("a scanned but unconfirmed machine: no open-job lookup, and an opened job's records are not sent", async () => {
+    autoOpen();
+    nbMock.resolveBoundAsset.mockResolvedValue({ ...RESOLVED, confirmedAt: null } as never);
+    await (await POST(req({ message: "What did I note on the open job?", mode: "general" }), params)).text();
+    expect(storeMock.listOpenJobIdsForMachine).not.toHaveBeenCalled();
+    expect(sentUserContent()).not.toContain(NOTE);
+    vi.mocked(fetch).mockClear();
+    await (await POST(req({ message: "What did I note?", mode: "general", livingSheetJobId: JOB_ID }), params)).text();
+    expect(sentUserContent()).not.toContain(NOTE);
+  });
+
+  it("control: an explicitly opened, finished job on the confirmed machine keeps today's behaviour (shown)", async () => {
+    process.env.NOTEBOOK_LIVING_SHEET = "1";
+    storeMock.loadJob.mockResolvedValue({ status: "ok", view: { ...RECORDED_VIEW, finished: { by: EMAIL, at: "2026-11-03T12:00:00.000Z", summary: null } } });
+    await (await POST(req({ message: "What did I note?", mode: "general", livingSheetJobId: JOB_ID }), params)).text();
+    expect(sentUserContent()).toContain(NOTE);
+  });
+
   it("a job started on an earlier binding is never presented for the current machine", async () => {
     autoOpen({ ...RECORDED_VIEW, machine: { entityId: "cmms-old-machine", name: "Old machine" } });
     await (await POST(req({ message: "What did I note on the open job?", mode: "general" }), params)).text();
@@ -358,31 +386,6 @@ describe("#5335 — the open job's own records reach the answer", () => {
     expect(user).toContain("note-5 ");
     expect(user).toContain(`note-24 ${"x".repeat(592)}…`);
     expect(user).not.toContain("x".repeat(600));
-  });
-});
-
-describe("#5335 — an empty manual search does not abstain on a question about the job's own record", () => {
-  beforeEach(() => {
-    autoOpen();
-    nbMock.validateChatSources.mockResolvedValue({ ok: true, docIds: ["d1"], nodeId: "n1" } as never);
-    ragMock.retrieveNodeChunks.mockResolvedValue([]);
-  });
-
-  it("'What did I note on the open job?' with zero hits reaches the model with the record", async () => {
-    await (await POST(req({ message: "What did I note on the open CV-101 job?" }), params)).text();
-    expect(fetch).toHaveBeenCalled();
-    expect(sentUserContent()).toContain(NOTE);
-  });
-
-  it("control: a specification question with zero hits still abstains with no provider call", async () => {
-    await (await POST(req({ message: "What is the default of P01.12?" }), params)).text();
-    expect(fetch).not.toHaveBeenCalled();
-  });
-
-  it("control: a record question with no open job still abstains", async () => {
-    storeMock.listOpenJobIdsForMachine.mockResolvedValue([]);
-    await (await POST(req({ message: "What did I note on the open CV-101 job?" }), params)).text();
-    expect(fetch).not.toHaveBeenCalled();
   });
 });
 
@@ -464,17 +467,3 @@ describe("F08 wiring — the chat route keys sheet proposals on the turn id", ()
   });
 });
 
-describe("#5335 — isJobRecordAsk: only questions about the job's own record", () => {
-  it.each([
-    "What did I note on the open CV-101 job?",
-    "What have I already recorded on the CV-101 job today, and what motor current did I measure at start?",
-    "Show me the saved notes on this job",
-    "what's in the handover on the work order",
-  ])("matches: %s", (q) => expect(isJobRecordAsk(q)).toBe(true));
-  it.each([
-    "What is the default of P01.12?",
-    "What are the relay contact ratings at 120 V AC?",
-    "How do I record a reading?",
-    "I noted the drive trips on start — what does F004 mean?",
-  ])("control, does not match: %s", (q) => expect(isJobRecordAsk(q)).toBe(false));
-});

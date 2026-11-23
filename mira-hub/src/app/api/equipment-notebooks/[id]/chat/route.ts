@@ -1275,19 +1275,6 @@ export const SHEET_RECORDS_DIRECTIVE = `LIVING WORK SHEET RECORDS — the user m
 - When the question asks what was recorded on the job (a note, reading, photo or handover), answer from that block, say it is the technician's own record and not verified, and cite no manual excerpt for it.
 - Never use it as the source of a specification, procedure, setting or rating; those still come only from the numbered excerpts.`;
 
-/** #5335 (Codex r1 F2): the question asks what was recorded on the job itself,
- *  so an empty manual search must not answer "couldn't find that" before the
- *  job is read. Deterministic and narrow: a past-tense recording verb or a
- *  named job record, together with the job. */
-export function isJobRecordAsk(message: string): boolean {
-  const m = message.toLowerCase();
-  if (!/\b(job|sheet|work ?order|handover|hand-over)\b/.test(m)) return false;
-  return (
-    /\b(i|we|you|they|he|she|someone|tech|technician)\s+(already\s+)?(note|noted|record|recorded|log|logged|wrote|write|writ|save|saved|enter|entered|measure|measured|photograph|photographed|attach|attached)\b/.test(m) ||
-    /\b(my|our|the|saved|recorded)\s+(notes?|readings?|photos?|handover)\b/.test(m)
-  );
-}
-
 async function handleChatTurn(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -4026,24 +4013,30 @@ async function handleChatTurn(
   // note on the open job?" is asked exactly then. With no id on the turn, the
   // open job is the single unfinished job started on this notebook's CONFIRMED,
   // undisputed machine (Codex r1 F1/F4): never a job from an earlier binding,
-  // never a guess between several, never a job that finished meanwhile. Read
-  // before Gate G so a record question is not abstained on an empty search.
+  // never a guess between several, never a job that finished meanwhile.
   let sheetSection = "";
   if (livingSheetEnabled()) {
     try {
-      let sheet: Awaited<ReturnType<typeof loadJob>> | null = null;
-      if (livingSheetJobId) {
-        sheet = await loadJob(ctx.tenantId, notebookId, livingSheetJobId);
-      } else if (boundAsset.state === "resolved" && !identityDisputed) {
-        const open = await listOpenJobIdsForMachine(ctx.tenantId, notebookId, boundAsset.entityId);
-        if (open.length === 1) {
-          const loaded = await loadJob(ctx.tenantId, notebookId, open[0]!);
-          if (loaded.status === "ok" && loaded.view.machine.entityId === boundAsset.entityId && loaded.view.finished === null) {
-            sheet = loaded;
-          }
+      // Codex #5874 r2 F1/F4: a job's records ride along only for the machine
+      // they were recorded on, and only while that machine is the notebook's
+      // CONFIRMED (not merely scanned), undisputed binding — on both paths.
+      const machineId = boundAsset.state === "resolved" && boundAsset.confirmedAt && !identityDisputed ? boundAsset.entityId : null;
+      if (machineId) {
+        let jobId = livingSheetJobId;
+        if (!jobId) {
+          const open = await listOpenJobIdsForMachine(ctx.tenantId, notebookId, machineId);
+          if (open.length === 1) jobId = open[0]!;
+        }
+        const sheet = jobId ? await loadJob(ctx.tenantId, notebookId, jobId) : null;
+        if (
+          sheet?.status === "ok" &&
+          sheet.view.machine.entityId === machineId &&
+          // an explicitly opened job keeps today's behaviour; a discovered one must still be open
+          (livingSheetJobId !== null || sheet.view.finished === null)
+        ) {
+          sheetSection = renderLivingSheetJobSection(sheet.view);
         }
       }
-      if (sheet?.status === "ok") sheetSection = renderLivingSheetJobSection(sheet.view);
     } catch (err) {
       console.error(
         `[notebook-chat] living sheet job load failed code=${(err as { code?: string }).code ?? "?"} ` +
@@ -4052,12 +4045,11 @@ async function handleChatTurn(
       );
     }
   }
-  const jobRecordAsk = Boolean(sheetSection) && isJobRecordAsk(message);
 
   // A flagged hazard turn is never swallowed by this abstain (owner decision
   // 2026-09-27): with no documents it takes the general lane, so the tech gets
   // the hazard banner and an answer instead of "couldn't find that".
-  if (componentHold || (chunks.length === 0 && (!general || libraryNotForAsk || missingModelManual || noEvidenceForMachine || unidentifiedServiceText || photoPartLookup || photoPartCompatibilityText || unboundManualRequest) && !groundedMachineEntry && !safetyTrigger && !jobRecordAsk)) {
+  if (componentHold || (chunks.length === 0 && (!general || libraryNotForAsk || missingModelManual || noEvidenceForMachine || unidentifiedServiceText || photoPartLookup || photoPartCompatibilityText || unboundManualRequest) && !groundedMachineEntry && !safetyTrigger)) {
     // Gate G — abstain honestly, persist the turn, never call the provider.
     // #4015: "couldn't find that in the documentation I have", not "I don't have
     // the manual" — a zero-hit scoped search does not prove the manual is absent
