@@ -1109,10 +1109,11 @@ async def search_manual(
 
     async def _website_handoff(
         ranked: list[dict] | None = None, judge_trace: dict | None = None
-    ) -> None:
+    ) -> bool:
         # On a miss, look for the make's own website to hand the technician, unless
         # one was already found or this same query was already sent in this call.
         # ``ranked`` and ``judge_trace`` are passed where the typed-pass retry follows.
+        # Returns True only when the send was cut off where that retry follows.
         query = f"{make} {model} manual support"
         if (
             trail is not None
@@ -1128,22 +1129,22 @@ async def search_manual(
             # is not worth a query, so the handoff is then not sent (#5866 Codex F2).
             # The retry condition is `_manual_from_retry`'s own. Only the cutoff's own
             # expiry becomes TimeoutError, so a caller's cancellation still propagates.
+            retry_follows = (
+                ranked is not None
+                and use_judge
+                and not typed_pass_ran
+                and _every_queued_pdf_rejected(ranked, judge_trace or {})
+            )
             cutoff = None
             if deadline_at is not None:
                 left = deadline_at - time.monotonic()
                 retry_window = SEARCH_TIMEOUT + _judge.UPGRADE_MIN_BATCH_S
                 retry_window += _judge.RETURN_RESERVE_S
-                if (
-                    ranked is not None
-                    and use_judge
-                    and not typed_pass_ran
-                    and _every_queued_pdf_rejected(ranked, judge_trace or {})
-                    and left >= retry_window
-                ):
+                if retry_follows and left >= retry_window:
                     cutoff = left - retry_window - _judge.RETURN_RESERVE_S
                     if cutoff <= _judge.RETURN_RESERVE_S:
                         logger.info("MANUAL_SEARCH_HANDOFF_SKIPPED_FOR_RETRY")
-                        return
+                        return False
                 else:
                     cutoff = left - _judge.RETURN_RESERVE_S
             try:
@@ -1152,6 +1153,18 @@ async def search_manual(
             except TimeoutError:
                 logger.info("MANUAL_SEARCH_HANDOFF_CUTOFF")
                 trail.queries.append({"pass": "q3", "query": query, "result": "timeout"})
+                return retry_follows
+        return False
+
+    def _unfinished_after_handoff_cutoff(stalled: bool, retried: dict | None) -> None:
+        """A handoff cut off before the typed-pass retry leaves a search that did not
+        finish: the retry may not have run, or not every query of it. Only a match
+        from it changes that, so anything else ends as main ends a stalled search,
+        in the timeout the caller reports as a retryable outage. A judged rejection
+        here would be recorded as final (#5866 Codex F2, F4)."""
+        if stalled and retried is None:
+            logger.info("MANUAL_SEARCH_UNFINISHED_AFTER_HANDOFF_CUTOFF")
+            raise TimeoutError("the website handoff stalled before the typed-pass retry")
 
     async def _send(query: str, label: str) -> list[dict] | None:
         nonlocal sent, failures
@@ -1499,8 +1512,9 @@ async def search_manual(
             await _website_handoff()
             return None
         if not deduped:
-            await _website_handoff(ranked, judge_trace)
+            stalled = await _website_handoff(ranked, judge_trace)
             retried = await _manual_from_retry(ranked, judge_trace)
+            _unfinished_after_handoff_cutoff(stalled, retried)
             return retried or _as_judged_rejection(worst_rejected or ranked[0], rejected)
 
     # HEAD-validate the top few; first one that confirms PDF wins. This probe runs
@@ -1546,8 +1560,9 @@ async def search_manual(
     if screen_unread:
         deduped = [c for c in deduped if _may_offer_unread(c, make, part_number)]
     if not deduped:
-        await _website_handoff(ranked, judge_trace)
+        stalled = await _website_handoff(ranked, judge_trace)
         retried = await _manual_from_retry(ranked, judge_trace)
+        _unfinished_after_handoff_cutoff(stalled, retried)
         if retried is not None:
             return retried
         return _as_judged_rejection(worst_rejected, rejected_out) if worst_rejected else None
