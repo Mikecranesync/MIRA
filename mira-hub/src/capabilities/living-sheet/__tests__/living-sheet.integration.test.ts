@@ -33,7 +33,7 @@ const { testPool } = vi.hoisted(() => {
 });
 vi.mock("@/lib/db", () => ({ default: testPool }));
 
-import { appendEvent, listJobs, loadJob, startJob, type AppendEventResult, type StartJobResult } from "../store";
+import { appendEvent, listJobs, listOpenJobIdsForMachine, loadJob, startJob, type AppendEventResult, type StartJobResult } from "../store";
 import type { JobSheetBody } from "../types";
 import { withTenantContext } from "@/lib/tenant-context";
 
@@ -513,5 +513,58 @@ describe("living sheet — migration 114 applies twice cleanly; documented rollb
 
     const still = await testPool.query<{ r: string | null }>(`SELECT to_regclass('public.work_sheet_events')::text AS r`);
     expect(still.rows[0]!.r).toBe("work_sheet_events");
+  });
+});
+
+describe("living sheet — #5335 open job on one machine", () => {
+  const finish = (tenant: string, nb: string, jobId: string) =>
+    appendEvent(tenant, nb, jobId, {
+      clientEventId: uuid(), baseSeq: 1, occurredAt: new Date().toISOString(), workOrderId: null,
+      kind: "job_finished", payload: { summary: null, openItemsAcknowledged: true },
+    } as Parameters<typeof appendEvent>[3], ACTOR);
+
+  it("finds the one unfinished job behind more than 200 newer finished ones", async () => {
+    const tenant = uuid();
+    const machine = { entityId: `cmms-${uuid()}`, name: "Pump 07" };
+    const nb = await makeNotebook(tenant, machine.entityId, true);
+    const open = created(await startJob(tenant, nb, machine, startInput({ occurredAt: "2026-01-01T00:00:00.000Z" }), ACTOR));
+    for (let i = 0; i < 205; i++) {
+      const j = created(await startJob(tenant, nb, machine, startInput({ occurredAt: new Date(Date.UTC(2026, 1, 1, 0, i)).toISOString() }), ACTOR));
+      appendCreated(await finish(tenant, nb, j.jobId));
+    }
+    // precondition: the capped history list cannot see it
+    expect((await listJobs(tenant, nb)).some((j) => j.jobId === open.jobId)).toBe(false);
+    expect(await listOpenJobIdsForMachine(tenant, nb, machine.entityId)).toEqual([open.jobId]);
+  }, 60_000);
+
+  it("returns both of two unfinished jobs, newest first, so the caller never guesses", async () => {
+    const tenant = uuid();
+    const machine = { entityId: `cmms-${uuid()}`, name: "Pump 07" };
+    const nb = await makeNotebook(tenant, machine.entityId, true);
+    const older = created(await startJob(tenant, nb, machine, startInput({ occurredAt: "2026-01-01T00:00:00.000Z" }), ACTOR));
+    const newer = created(await startJob(tenant, nb, machine, startInput({ occurredAt: "2026-01-02T00:00:00.000Z" }), ACTOR));
+    expect(await listOpenJobIdsForMachine(tenant, nb, machine.entityId)).toEqual([newer.jobId, older.jobId]);
+  });
+
+  it("never returns a job started on another machine of the same notebook (an earlier binding)", async () => {
+    const tenant = uuid();
+    const machineA = { entityId: `cmms-${uuid()}`, name: "Pump 07" };
+    const machineB = { entityId: `cmms-${uuid()}`, name: "Pump 08" };
+    const nb = await makeNotebook(tenant, machineA.entityId, true);
+    created(await startJob(tenant, nb, machineA, startInput(), ACTOR));
+    expect(await listOpenJobIdsForMachine(tenant, nb, machineB.entityId)).toEqual([]);
+  });
+
+  it("control: a finished job is not open; another tenant sees nothing", async () => {
+    const tenant = uuid();
+    const machine = { entityId: `cmms-${uuid()}`, name: "Pump 07" };
+    const nb = await makeNotebook(tenant, machine.entityId, true);
+    const j = created(await startJob(tenant, nb, machine, startInput(), ACTOR));
+    expect(await listOpenJobIdsForMachine(tenant, nb, machine.entityId)).toEqual([j.jobId]);
+    appendCreated(await finish(tenant, nb, j.jobId));
+    expect(await listOpenJobIdsForMachine(tenant, nb, machine.entityId)).toEqual([]);
+    const k = created(await startJob(tenant, nb, machine, startInput(), ACTOR));
+    expect(await listOpenJobIdsForMachine(uuid(), nb, machine.entityId)).toEqual([]);
+    expect(await listOpenJobIdsForMachine(tenant, nb, machine.entityId)).toEqual([k.jobId]);
   });
 });

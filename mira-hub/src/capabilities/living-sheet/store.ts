@@ -504,6 +504,33 @@ export async function listJobs(tenantId: string, notebookId: string): Promise<Jo
   });
 }
 
+/** #5335: the notebook's unfinished jobs started on one machine, newest first,
+ *  at most `limit`. Filters before the limit, so a long history of finished
+ *  jobs cannot hide an open one (listJobs caps at 200 starts of any state). */
+export async function listOpenJobIdsForMachine(
+  tenantId: string,
+  notebookId: string,
+  entityId: string,
+  limit = 2,
+): Promise<string[]> {
+  return withTenantContext(tenantId, async (c) => {
+    const res = await c.query<{ job_id: string }>(
+      `SELECT e.job_id::text AS job_id
+         FROM work_sheet_events e
+        WHERE e.tenant_id = $1::uuid AND e.notebook_id = $2::uuid AND e.kind = 'job_started'
+          AND e.payload->'machine'->>'entityId' = $3
+          AND NOT EXISTS (
+            SELECT 1 FROM work_sheet_events f
+             WHERE f.tenant_id = e.tenant_id AND f.job_id = e.job_id AND f.kind = 'job_finished'
+          )
+        ORDER BY e.occurred_at DESC
+        LIMIT $4`,
+      [tenantId, notebookId, entityId, limit],
+    );
+    return res.rows.map((r) => r.job_id);
+  });
+}
+
 // ---------------------------------------------------------------------------
 // listJobsActiveBetween (S6 — shift report)
 // ---------------------------------------------------------------------------
