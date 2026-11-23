@@ -390,9 +390,11 @@ def _may_offer_unread(c: dict, make: str, part_number: str | None = None) -> boo
     own site, or names the whole exact part number when the lookup is for one. A
     direct PDF keeps the older rule, since the judge tried to read it, and so does
     anything the content probe found to be a PDF; the caller only screens what did
-    not probe as one. The caller skips this check when there is no make to compare.
+    not probe as one. A link that only looks like a PDF loses that rule once the
+    probe got a successful answer that is a page, and it is screened as one
+    (#5830). The caller skips this check when there is no make.
     """
-    if c.get("is_direct_pdf"):
+    if c.get("is_direct_pdf") and not c.get("probed_not_pdf"):
         return True
     host = c.get("host") or urlparse(c.get("url") or "").netloc
     if _names_make(c, make) or _is_oem_host(host, make):
@@ -1014,6 +1016,14 @@ async def _guarded_probe(
     return None
 
 
+# #5830: the URLs whose probe got a successful answer that is a page (it starts with
+# markup), as opposed to a probe that failed, was refused or could not tell.
+# _probe_candidate sets it for one call; validate_pdf's own answer stays a bool.
+_probed_not_pdf: contextvars.ContextVar[set[str] | None] = contextvars.ContextVar(
+    "manual_search_probed_not_pdf", default=None
+)
+
+
 async def validate_pdf(url: str) -> bool:
     """Confirm the URL actually serves a PDF.
 
@@ -1023,54 +1033,106 @@ async def validate_pdf(url: str) -> bool:
     passes the SSRF guard above; the GET is streamed and capped at
     _PROBE_READ_CAP bytes so a server that ignores Range cannot make us buffer
     an arbitrary body.
+
+    For a candidate probe (#5830), a PDF content type is trusted only until the
+    bytes say otherwise: the GET is still read, and a successful answer that
+    starts with markup is a page, whatever type it was served as. When the bytes
+    prove nothing either way, a PDF content type still validates, as before.
+    Reading those bytes must not make the probe slower than the caller's
+    deadline allows (each probe is budgeted HEAD_TIMEOUT): once a PDF content
+    type is seen, the rest of the probe ends HEAD_TIMEOUT after it began, and
+    an unfinished read leaves the content type standing.
     """
+    noted = _probed_not_pdf.get()  # set only by _probe_candidate
+    says_pdf = False  # a PDF content type seen during a candidate probe
+    started = asyncio.get_running_loop().time()
     try:
-        async with httpx.AsyncClient(
-            timeout=HEAD_TIMEOUT,
-            follow_redirects=False,
-            transport=_probe_transport(),
-            trust_env=False,  # never route an untrusted probe through an env proxy
-            headers={"User-Agent": "Mozilla/5.0 (compatible; mira-manual-search/0.1)"},
-        ) as client:
+        async with (
+            asyncio.timeout(None) as confirm_by,
+            httpx.AsyncClient(
+                timeout=HEAD_TIMEOUT,
+                follow_redirects=False,
+                transport=_probe_transport(),
+                trust_env=False,  # never route an untrusted probe through an env proxy
+                headers={"User-Agent": "Mozilla/5.0 (compatible; mira-manual-search/0.1)"},
+            ) as client,
+        ):
             try:
                 r = await _guarded_probe(client, "HEAD", url)
                 if r is not None:
                     ct = (r.headers.get("content-type") or "").lower()
                     if "pdf" in ct and r.status_code < 400:
-                        return True
+                        if noted is None:
+                            return True
+                        says_pdf = True
+                        confirm_by.reschedule(started + HEAD_TIMEOUT)
             except httpx.HTTPError:
                 pass
 
             # Some hosts 405 on HEAD or strip Content-Type — pull the first
             # bytes and look for the PDF magic number. Stream + cap: a server
-            # that ignores the Range header must not be able to flood us.
+            # that ignores the Range header must not be able to flood us. The
+            # range asks for the whole cap, so a page whose markup follows some
+            # leading whitespace is still seen as one (#5871 Codex F2).
+            rng = {"Range": f"bytes=0-{_PROBE_READ_CAP - 1}"}
             current = url
             for _ in range(_MAX_REDIRECT_HOPS + 1):
                 if not await asyncio.to_thread(_url_is_probeable, current):
                     logger.info("manual-search probe blocked by SSRF guard: %s", current[:120])
-                    return False
-                async with client.stream("GET", current, headers={"Range": "bytes=0-7"}) as r:
+                    return says_pdf
+                async with client.stream("GET", current, headers=rng) as r:
                     if r.status_code in (301, 302, 303, 307, 308):
                         loc = r.headers.get("location")
                         if not loc:
-                            return False
+                            return says_pdf
                         current = urljoin(current, loc)
                         continue
                     if r.status_code >= 400:
-                        return False
+                        return says_pdf
                     ct = (r.headers.get("content-type") or "").lower()
                     if "pdf" in ct:
-                        return True
+                        if noted is None:
+                            return True
+                        if not says_pdf:
+                            says_pdf = True
+                            confirm_by.reschedule(started + HEAD_TIMEOUT)
                     head = b""
                     async for chunk in r.aiter_bytes():
                         head += chunk
                         if len(head) >= _PROBE_READ_CAP:
                             break
-                    return head[:5] == b"%PDF-"
-            return False
+                    if head[:5] == b"%PDF-":
+                        return True
+                    # Not proof of a PDF. Only a successful answer that starts with
+                    # markup is proof of a page (#5830); bytes before a PDF header, an
+                    # empty body or an error status prove nothing either way.
+                    if noted is not None and 200 <= r.status_code < 300:
+                        if head.lstrip(b"\xef\xbb\xbf \t\r\n").startswith(b"<"):
+                            noted.add(url)
+                            return False
+                    return says_pdf
+            return says_pdf
+    except TimeoutError:
+        logger.info("PDF validation ran out of its probe budget for %s", url[:120])
+        return says_pdf
     except Exception:
         logger.info("PDF validation failed for %s — skipping", url[:120])
-        return False
+        return says_pdf
+
+
+async def _probe_candidate(c: dict) -> bool:
+    """validate_pdf for one candidate. When the probe got a successful answer that is
+    a page, the candidate is marked, so the make screen treats a link that only looks
+    like a PDF as the page it serves (#5830)."""
+    noted: set[str] = set()
+    token = _probed_not_pdf.set(noted)
+    try:
+        ok = await validate_pdf(c["url"])
+    finally:
+        _probed_not_pdf.reset(token)
+    if not ok and c["url"] in noted:
+        c["probed_not_pdf"] = True
+    return ok
 
 
 def _tagged(found: list[dict], label: str) -> list[dict]:
@@ -1613,7 +1675,7 @@ async def search_manual(
             ):
                 break
             _note_examined([c["url"]])
-        if c.get("validated") or await validate_pdf(c["url"]):
+        if c.get("validated") or await _probe_candidate(c):
             c["validated"] = True
             if use_judge:
                 # The judge is on but this candidate was never READ (fetch
