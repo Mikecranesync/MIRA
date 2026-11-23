@@ -331,11 +331,14 @@ def _names_make(c: dict, make: str) -> bool:
     domain is not GE (#5826), and the make's own site is `_is_oem_host`'s job. The
     query and the fragment are not read either. Title and path are the texts the
     part-number check reads (`_part_number_texts`), each read on its own; when the
-    URL cannot be parsed only the title is read."""
+    URL cannot be parsed only the title is read. The spellings are folded the way
+    those texts are, so "Allen‑Bradley" typed with a non-breaking hyphen still
+    names itself (#5890 F4)."""
     texts = _part_number_texts(c)
     if texts is None:
         texts = ((c.get("title") or "").translate(_CATALOG_HYPHENS).lower(),)
-    patterns = [p for p in map(_make_name_pattern, _make_spellings(make)) if p]
+    spellings = {s.translate(_CATALOG_HYPHENS) for s in _make_spellings(make)}
+    patterns = [p for p in map(_make_name_pattern, spellings) if p]
     return any(re.search(p, text, re.I) for p in patterns for text in texts)
 
 
@@ -1172,13 +1175,26 @@ def _tagged(found: list[dict], label: str) -> list[dict]:
 
 
 def _collect(
-    organic: list[dict], make: str, model: str, part_number: str | None = None
+    organic: list[dict],
+    make: str,
+    model: str,
+    part_number: str | None = None,
+    credit_only: list[dict] | None = None,
 ) -> list[dict]:
-    """Score and keep the hits worth a candidate. On a part-number lookup a hit
-    naming the whole number, as `_names_part_number` reads it, is scored as naming
-    the model even when it spells the number another way ("6ES7214_1AG40_0XB0"):
-    `_score` looks for the hyphenated spelling only, and the make screen would
-    otherwise never see the page (#5829)."""
+    """Score and keep the hits worth a candidate.
+
+    On a part-number lookup a hit naming the whole number, as `_names_part_number`
+    reads it, is scored as naming the model even when it spells the number another
+    way ("6ES7214_1AG40_0XB0"): `_score` looks for the hyphenated spelling only, and
+    the make screen would otherwise never see the page (#5829). That is one model
+    credit, the full 25, in place of the shorter-token 10 `_score` may have given
+    (#5890 F5).
+
+    A hit that scored 0 before that credit, so that main would have dropped it, is
+    also appended to ``credit_only``. The caller uses that list so such a hit does
+    not stand in for the wide search (#5890 F1). It is a list the caller owns, not a
+    key on the candidate, because candidates are returned as they are. Such a hit
+    is never a direct PDF, since both direct-PDF forms score in `_score`."""
     out: list[dict] = []
     for hit in organic:
         url = hit.get("link") or ""
@@ -1186,25 +1202,32 @@ def _collect(
         if not url:
             continue
         s = _score(url, title, make, model)
+        hay = f"{title} {url}".lower()
+        kept_by_credit = False
         if (
             part_number
             and s >= 0
-            and _norm(part_number) not in f"{title} {url}".lower()
+            and _norm(part_number) not in hay
             and _names_part_number({"url": url, "title": title}, part_number)
         ):
-            s += 25
+            # The full model token is absent (the guard above), so any model credit
+            # `_score` gave is the shorter-token 10.
+            shorter = 10 if any(t in hay for t in _model_tokens(model)) else 0
+            kept_by_credit = s <= 0
+            s += 25 - shorter
         if s <= 0:
             continue
-        out.append(
-            {
-                "url": url,
-                "title": _clean_title(title),
-                "host": urlparse(url).netloc,
-                "score": s,
-                "doc_type": _guess_doc_type(title, url),
-                "is_direct_pdf": _is_direct_pdf(url),
-            }
-        )
+        cand = {
+            "url": url,
+            "title": _clean_title(title),
+            "host": urlparse(url).netloc,
+            "score": s,
+            "doc_type": _guess_doc_type(title, url),
+            "is_direct_pdf": _is_direct_pdf(url),
+        }
+        if kept_by_credit and credit_only is not None:
+            credit_only.append(cand)
+        out.append(cand)
     return out
 
 
@@ -1254,7 +1277,21 @@ async def search_manual(
     screen_unread = bool(make)
     part_number = model if exact_part_number else None
 
+    def _worth_a_read(c: dict) -> bool:
+        """What the judge's read queue and the unread pool both count as relevant:
+        the judge's own check, the make named as a whole name in another joining
+        ("Automation-Direct" for "AutomationDirect", #5826), or on a part-number
+        lookup the whole number in another spelling (#5829). One predicate, so a page
+        the unread pool keeps was also worth a read (#5890 F2, F3)."""
+        return (
+            _judge.relevant(c, make, model)
+            or _names_make(c, make)
+            or bool(part_number and _names_part_number(c, part_number))
+        )
+
     candidates: list[dict] = []
+    # Hits kept only for the part-number credit (see `_collect`).
+    credit_only: list[dict] = []
     # Availability is judged from requests actually SENT (#4171 Codex F2): a
     # pass refused by the per-call ceiling or the quota returns [] without a
     # request, and must not count as "searched and found nothing" — otherwise a
@@ -1400,7 +1437,7 @@ async def search_manual(
         q1 = f'"{model}" manual filetype:pdf site:{oem_domains[0]}'
         hits = await _send(q1, "q1 (site-scoped)")
         if hits:
-            candidates.extend(_tagged(_collect(hits, make, model, part_number), "q1"))
+            candidates.extend(_tagged(_collect(hits, make, model, part_number, credit_only), "q1"))
 
     typed_in_flight: str | None = None  # the retry's unanswered query, for the trail
     retry_unfinished = False  # the retry left a spelling unanswered or a PDF unread
@@ -1446,7 +1483,7 @@ async def search_manual(
                 retry_unfinished = True
             if hits is None:
                 continue
-            found = _tagged(_collect(hits, make, model, part_number), "q2")
+            found = _tagged(_collect(hits, make, model, part_number, credit_only), "q2")
             if i:
                 # A hit from a re-hyphenated form is a weaker signal than one
                 # from the nameplate's own spelling: it must not win a tie.
@@ -1523,6 +1560,7 @@ async def search_manual(
                     deadline_at=deadline_at,
                     trace=second_trace,
                     max_total=_judge.MAX_CANDIDATES,
+                    also_relevant=_worth_a_read,
                 )
             finally:
                 # One trail for both rounds, kept even when a read is cancelled: round
@@ -1587,7 +1625,9 @@ async def search_manual(
 
     # Pass 3: widest fallback — websites as well as PDFs. A bounded call
     # reserves its final query for this instead of spending it on spelling variants.
-    if not candidates:
+    # A hit kept only for the part-number credit does not count as a candidate here:
+    # main would have dropped it and sent this query (#5890 F1).
+    if all(any(c is k for k in credit_only) for c in candidates):
         q3 = f"{make} {model} manual support"
         hits = await _send(q3, "q3 (wide)")
         if hits:
@@ -1653,6 +1693,7 @@ async def search_manual(
             started_at=started_at,
             deadline_at=deadline_at,
             trace=judge_trace,
+            also_relevant=_worth_a_read,
         )
         if trail is not None:
             trail.ranked = ranked
@@ -1687,17 +1728,12 @@ async def search_manual(
         # legacy HEAD path below may still pick an UNJUDGED candidate — but
         # only one that at least names the make/model. If every relevant
         # candidate was read and rejected, say so (top rejection + reasons)
-        # rather than surfacing an unread stranger. On a part-number lookup a page
-        # naming the whole number is relevant however it spells it, the same match
-        # the scoring and the make screen use (#5829): the judge's own model check
-        # strips only spaces and hyphens.
+        # rather than surfacing an unread stranger. Relevant is what the read queue
+        # counted (`_worth_a_read`): it adds the whole make name in another joining
+        # and, on a part-number lookup, the whole number in another spelling, which
+        # the judge's own make and model checks miss (#5826, #5829).
         unread = [c for c in ranked if not _judge.is_rejected(c)]
-        deduped = [
-            c
-            for c in unread
-            if _judge.relevant(c, make, model)
-            or (part_number and _names_part_number(c, part_number))
-        ]
+        deduped = [c for c in unread if _worth_a_read(c)]
         worst_rejected = next((c for c in ranked if _judge.is_rejected(c)), None)
         if not deduped and not rejected:
             # #4400: nothing names the make or the model and nothing was judged. The
