@@ -505,6 +505,10 @@ class ProviderQueryBudget:
     examined: set[str] = field(default_factory=set)
 
 
+# Quota denials the discovery endpoint reports as a cap (`quota_exceeded`), the same set
+# as its `_QUOTA_CAP_REASONS`; a test pins that the two stay equal.
+_CAP_DENIALS = frozenset({"user_cap", "tenant_cap", "global_cap"})
+
 _provider_budget: contextvars.ContextVar[ProviderQueryBudget | None] = contextvars.ContextVar(
     "manual_search_provider_budget", default=None
 )
@@ -1321,10 +1325,13 @@ async def search_manual(
         if both and _judge.is_match(both[0]):
             logger.info("MANUAL_SEARCH_RETRY_MATCH url=%s", both[0]["url"][:200])
             return _as_judged_match(both[0], _rejections(both))
-        if budget is not None:
-            # A quota denial met only by the retry's own queries did not stop today's
-            # search, which had finished. It must not turn today's answer into a limit
-            # or outage reason; the refused query stays counted and on the trail.
+        if budget is not None and budget.quota_denied not in _CAP_DENIALS:
+            # An infrastructure denial met only by the retry's own queries leaves
+            # today's answer, as a provider error or the cutoff does: today's search
+            # had finished, so it is not an outage. A cap the retry met is still
+            # reported, as any cap is: a cap denial is never cached as a miss (PRD R5,
+            # #4168), and the next-day retry gives the typed pass its chance. The
+            # refused query stays counted and on the trail either way.
             budget.quota_denied = denied
         return None
 

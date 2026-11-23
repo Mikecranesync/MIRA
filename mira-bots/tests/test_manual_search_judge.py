@@ -2018,10 +2018,12 @@ def _discovery_with_quota(monkeypatch, deny_on, reason):
     return body, reservations
 
 
-@pytest.mark.parametrize("reason", ["user_cap", "quota_unavailable"])
-def test_a_quota_denial_on_the_retry_query_keeps_the_judged_rejection(wired, monkeypatch, reason):
+@pytest.mark.parametrize("reason", ["quota_unavailable", "global_cap_unconfigured"])
+def test_an_infrastructure_denial_on_the_retry_query_keeps_the_judged_rejection(
+    wired, monkeypatch, reason
+):
     # Today's search finished with the judged rejection; only the retry's own query was
-    # denied. That must not turn the answer into a limit or an outage.
+    # denied, by infrastructure. That must not turn the answer into an outage.
     router, _ = _stall(monkeypatch)
     body, reservations = _discovery_with_quota(monkeypatch, deny_on=3, reason=reason)
     assert reservations == 3 and len(router.calls) == 6
@@ -2030,6 +2032,23 @@ def test_a_quota_denial_on_the_retry_query_keeps_the_judged_rejection(wired, mon
     assert body["search_stats"]["refused_queries"] == 2  # both typed variants
     rows = body["candidate_trail"]["queries"]
     assert {"pass": "q2", "query": _GS10_TYPED[0], "result": "refused", "hits": 0} in rows
+
+
+@pytest.mark.parametrize("reason", ["user_cap", "tenant_cap", "global_cap"])
+def test_a_cap_the_retry_query_meets_is_reported_as_the_limit(wired, monkeypatch, reason):
+    # PRD R5 (#4168): a cap denial is never cached as a miss. The next-day retry then
+    # runs the typed pass the cap stopped.
+    router, _ = _stall(monkeypatch)
+    body, _ = _discovery_with_quota(monkeypatch, deny_on=3, reason=reason)
+    assert len(router.calls) == 6
+    assert body["reason"] == "quota_exceeded", body.get("reason")
+    assert body["search_stats"]["quota_denied"] == reason
+
+
+def test_the_cap_denials_match_the_endpoint():
+    import ask_api.manual_discovery as md
+
+    assert search_mod._CAP_DENIALS == md._QUOTA_CAP_REASONS
 
 
 def test_a_quota_denial_before_the_retry_still_reports_the_limit(wired, monkeypatch):
