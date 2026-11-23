@@ -1117,7 +1117,21 @@ async def search_manual(
             and not any(q.get("query") == query for q in trail.queries)
             and (deadline_at is None or deadline_at - time.monotonic() > SEARCH_TIMEOUT)
         ):
-            await _send(query, "q3 (website handoff)")
+            # The lookup has already finished; the handoff only adds a support page.
+            # It must answer while the return still fits, or it is abandoned and the
+            # finished answer stands (#5848). Only the cutoff's own expiry becomes
+            # TimeoutError, so a caller's cancellation still propagates.
+            cutoff = (
+                None
+                if deadline_at is None
+                else deadline_at - _judge.RETURN_RESERVE_S - time.monotonic()
+            )
+            try:
+                async with asyncio.timeout(cutoff):
+                    await _send(query, "q3 (website handoff)")
+            except TimeoutError:
+                logger.info("MANUAL_SEARCH_HANDOFF_CUTOFF")
+                trail.queries.append({"pass": "q3", "query": query, "result": "timeout"})
 
     async def _send(query: str, label: str) -> list[dict] | None:
         nonlocal sent, failures
