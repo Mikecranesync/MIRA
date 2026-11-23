@@ -2153,6 +2153,8 @@ def _first_spelling_empty(monkeypatch, sent, delay):
 
     async def serper(query, num=10):
         if query == _GS10_TYPED[0]:
+            budget = search_mod._provider_budget.get()
+            budget.used += 1  # sent and answered, as _serper_search counts a send
             sent.append(query)
             await asyncio.sleep(delay)
             return []
@@ -2294,6 +2296,102 @@ async def test_a_quota_answer_held_past_the_cutoff_is_the_outage_not_a_final_mis
     assert body["reason"] in _HUB_RETRIES, body.get("reason")
     assert _HANDOFF not in posted and reservations == 2
     assert _HANDOFF_TIMEOUT_ROW in body["candidate_trail"]["queries"]
+
+
+# A retry that ended early for a reason other than time did not finish either: a
+# spelling that failed or was refused went unanswered, and a PDF it queued but could not
+# read was not read. After a handoff cutoff that is main's outage. Without the stall the
+# same retry ends in the judged rejection, as it does on main.
+_STALL_OR_NOT = pytest.mark.parametrize(
+    ("delays", "reason"),
+    [({_HANDOFF: 30}, "search_unavailable"), (None, "judged_not_applicable")],
+    ids=["handoff_stalls", "no_stall"],
+)
+
+
+@_STALL_OR_NOT
+async def test_a_stall_before_a_retry_whose_spellings_fail_is_the_outage_main_returns(
+    wired, monkeypatch, delays, reason
+):
+    _scale(monkeypatch, search_timeout=0.5, batch=0.3, reserve=0.3)
+    router, sent = _stall(monkeypatch, q2_hits=[_GS10_MANUAL_HIT], q2_raises=True, delays=delays)
+    body, took = await asyncio.to_thread(_discovery, monkeypatch, 2.5)
+    assert took < 2.5
+    assert body["reason"] == reason, body.get("reason")
+    assert _typed(sent) == _GS10_TYPED and len(router.calls) == 6
+    assert (_HANDOFF_TIMEOUT_ROW in body["candidate_trail"]["queries"]) == bool(delays)
+
+
+async def test_a_stall_before_a_retry_refused_by_a_quota_outage_is_the_outage_main_returns(
+    wired, monkeypatch
+):
+    # q1 and the handoff are reserved; the handoff's request never answers. The quota
+    # store then fails for the retry's first spelling, and the second is refused on the
+    # same denial: no spelling was answered. Without the stall this is #5849's case.
+    _scale(monkeypatch, search_timeout=0.5, batch=0.3, reserve=0.3)
+    router, _ = _stall(monkeypatch)
+    reservations = 0
+    posted: list[str] = []
+
+    async def reserve(_identity):
+        nonlocal reservations
+        reservations += 1
+        return "ok" if reservations <= 2 else "quota_unavailable"
+
+    async def post(query, num):
+        posted.append(query)
+        if query == _HANDOFF:
+            await asyncio.sleep(30)
+        if "site:" in query:
+            return [{"link": u, "title": t} for u, t in _AD_READ]
+        return [{"link": u, "title": t} for u, t in [_GS10_MANUAL_HIT]]
+
+    monkeypatch.setattr(search_mod, "_serper_search", _REAL_SERPER_SEARCH)
+    monkeypatch.setattr(search_mod, "SERPER_API_KEY", "k")
+    monkeypatch.setattr(search_mod, "_serper_post", post)
+    body, took = await asyncio.to_thread(_discovery, monkeypatch, 2.5, reserve)
+    assert took < 2.5
+    assert body["reason"] == "search_unavailable", body.get("reason")
+    assert posted[1] == _HANDOFF and _typed(posted) == [] and reservations == 3
+    assert _HANDOFF_TIMEOUT_ROW in body["candidate_trail"]["queries"]
+
+
+@_STALL_OR_NOT
+async def test_a_stall_before_a_retry_that_cannot_read_its_pdf_is_the_outage_main_returns(
+    wired, monkeypatch, delays, reason
+):
+    # Both spellings answer with one new PDF, and the download fails, so it is unread.
+    _scale(monkeypatch, search_timeout=0.5, batch=0.3, reserve=0.3)
+    router, sent = _stall(monkeypatch, q2_hits=[_OTHER], delays=delays)
+    assert _OTHER[0] not in TEXT  # the wired fetch returns nothing for it
+    body, took = await asyncio.to_thread(_discovery, monkeypatch, 2.5)
+    assert took < 2.5
+    assert body["reason"] == reason, body.get("reason")
+    assert _typed(sent) == _GS10_TYPED and len(router.calls) == 6
+    assert (_HANDOFF_TIMEOUT_ROW in body["candidate_trail"]["queries"]) == bool(delays)
+
+
+@_STALL_OR_NOT
+async def test_a_stall_before_a_retry_that_raises_is_the_outage_main_returns(
+    wired, monkeypatch, delays, reason
+):
+    # The retry's judge call raises; the caller logs it and today's answer stands.
+    _scale(monkeypatch, search_timeout=0.5, batch=0.3, reserve=0.3)
+    router, sent = _stall(monkeypatch, q2_hits=[_OTHER], delays=delays)
+    monkeypatch.setitem(TEXT, _OTHER[0], "DURApulse GS10 dimensional drawing")
+    real, calls = judge.judge_candidates, []
+
+    async def second_call_raises(*args, **kwargs):
+        calls.append(1)
+        if len(calls) == 2:
+            raise RuntimeError("judge broke")
+        return await real(*args, **kwargs)
+
+    monkeypatch.setattr(judge, "judge_candidates", second_call_raises)
+    body, took = await asyncio.to_thread(_discovery, monkeypatch, 2.5)
+    assert took < 2.5
+    assert body["reason"] == reason, body.get("reason")
+    assert _typed(sent) == _GS10_TYPED and len(calls) == 2 and len(router.calls) == 6
 
 
 async def test_control_with_no_retry_to_follow_a_slow_handoff_keeps_its_whole_window(
