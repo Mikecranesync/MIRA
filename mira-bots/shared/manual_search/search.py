@@ -298,16 +298,45 @@ def _make_spellings(make: str) -> set[str]:
     return {m} | ({k for k, v in OEM_DOMAINS.items() if v == domains} if domains else set())
 
 
+# What may join the words of a make name: "Automation-Direct", "Automation_Direct"
+# and a "+" slug are "Automation Direct" (#5826). A slash, a bar, a colon or a full
+# stop may not, so "Home Automation | Direct-Drive" and "/automation/direct-drive"
+# still do not name it.
+_MAKE_JOINER = r"[\s\-_+]{1,3}"
+
+
+def _make_name_pattern(name: str) -> str | None:
+    """A whole-name pattern for one spelling of a make: its words in order, any gap
+    of spaces, hyphens, underscores or "+" between them matching any such gap, and
+    any other gap ("Co., Ltd.") matching only itself. No letter or digit may touch
+    either end; an underscore there ends the name, as a hyphen does."""
+    spans = [m.span() for m in re.finditer(r"[^\W_]+", name)]
+    if len(name) < 2 or not spans:
+        return None
+    out = [re.escape(name[spans[0][0] : spans[0][1]])]
+    for (_, end), (start, stop) in zip(spans, spans[1:]):
+        gap = name[end:start]
+        out.append(_MAKE_JOINER if re.fullmatch(r"[\s\-_+]+", gap) else re.escape(gap))
+        out.append(re.escape(name[start:stop]))
+    return r"(?<![^\W_])" + "".join(out) + r"(?![^\W_])"
+
+
 def _names_make(c: dict, make: str) -> bool:
-    """Whether the title or URL names the make as a whole name, the same boundary
-    rule the website handoff uses in `_send`. A fragment does not count: "direct" in
-    "Direct-Drive Amplifier" is not "Automation Direct" (#5789 Codex F1), while
-    "GE" in "GE 5KS184SAA205 Motor Manual" is GE."""
-    hay = f"{c.get('title') or ''} {c.get('url') or ''}"
-    return any(
-        len(name) >= 2 and re.search(r"(?<!\w)" + re.escape(name) + r"(?!\w)", hay, re.I)
-        for name in _make_spellings(make)
-    )
+    """Whether the title or the URL path names the make as a whole name.
+
+    A fragment does not count: "direct" in "Direct-Drive Amplifier" is not
+    "Automation Direct" (#5789 Codex F1), while "GE" in "GE 5KS184SAA205 Motor
+    Manual" is GE. The words of a make name may be joined by a space, hyphen,
+    underscore or "+" (#5826). The host is not read: ".ge" in a Georgian catalog's
+    domain is not GE (#5826), and the make's own site is `_is_oem_host`'s job. The
+    query and the fragment are not read either. Title and path are the texts the
+    part-number check reads (`_part_number_texts`), each read on its own; when the
+    URL cannot be parsed only the title is read."""
+    texts = _part_number_texts(c)
+    if texts is None:
+        texts = ((c.get("title") or "").translate(_CATALOG_HYPHENS).lower(),)
+    patterns = [p for p in map(_make_name_pattern, _make_spellings(make)) if p]
+    return any(re.search(p, text, re.I) for p in patterns for text in texts)
 
 
 # What may follow a part number without making it a longer one (#5827, #5837).
@@ -1142,7 +1171,14 @@ def _tagged(found: list[dict], label: str) -> list[dict]:
     return found
 
 
-def _collect(organic: list[dict], make: str, model: str) -> list[dict]:
+def _collect(
+    organic: list[dict], make: str, model: str, part_number: str | None = None
+) -> list[dict]:
+    """Score and keep the hits worth a candidate. On a part-number lookup a hit
+    naming the whole number, as `_names_part_number` reads it, is scored as naming
+    the model even when it spells the number another way ("6ES7214_1AG40_0XB0"):
+    `_score` looks for the hyphenated spelling only, and the make screen would
+    otherwise never see the page (#5829)."""
     out: list[dict] = []
     for hit in organic:
         url = hit.get("link") or ""
@@ -1150,6 +1186,13 @@ def _collect(organic: list[dict], make: str, model: str) -> list[dict]:
         if not url:
             continue
         s = _score(url, title, make, model)
+        if (
+            part_number
+            and s >= 0
+            and _norm(part_number) not in f"{title} {url}".lower()
+            and _names_part_number({"url": url, "title": title}, part_number)
+        ):
+            s += 25
         if s <= 0:
             continue
         out.append(
@@ -1357,7 +1400,7 @@ async def search_manual(
         q1 = f'"{model}" manual filetype:pdf site:{oem_domains[0]}'
         hits = await _send(q1, "q1 (site-scoped)")
         if hits:
-            candidates.extend(_tagged(_collect(hits, make, model), "q1"))
+            candidates.extend(_tagged(_collect(hits, make, model, part_number), "q1"))
 
     typed_in_flight: str | None = None  # the retry's unanswered query, for the trail
     retry_unfinished = False  # the retry left a spelling unanswered or a PDF unread
@@ -1403,7 +1446,7 @@ async def search_manual(
                 retry_unfinished = True
             if hits is None:
                 continue
-            found = _tagged(_collect(hits, make, model), "q2")
+            found = _tagged(_collect(hits, make, model, part_number), "q2")
             if i:
                 # A hit from a re-hyphenated form is a weaker signal than one
                 # from the nameplate's own spelling: it must not win a tie.
@@ -1548,7 +1591,7 @@ async def search_manual(
         q3 = f"{make} {model} manual support"
         hits = await _send(q3, "q3 (wide)")
         if hits:
-            candidates.extend(_tagged(_collect(hits, make, model), "q3"))
+            candidates.extend(_tagged(_collect(hits, make, model, part_number), "q3"))
 
     if identification_link:
         from ..drive_packs.identification_link import classify_payload  # noqa: PLC0415
@@ -1644,9 +1687,17 @@ async def search_manual(
         # legacy HEAD path below may still pick an UNJUDGED candidate — but
         # only one that at least names the make/model. If every relevant
         # candidate was read and rejected, say so (top rejection + reasons)
-        # rather than surfacing an unread stranger.
+        # rather than surfacing an unread stranger. On a part-number lookup a page
+        # naming the whole number is relevant however it spells it, the same match
+        # the scoring and the make screen use (#5829): the judge's own model check
+        # strips only spaces and hyphens.
         unread = [c for c in ranked if not _judge.is_rejected(c)]
-        deduped = [c for c in unread if _judge.relevant(c, make, model)]
+        deduped = [
+            c
+            for c in unread
+            if _judge.relevant(c, make, model)
+            or (part_number and _names_part_number(c, part_number))
+        ]
         worst_rejected = next((c for c in ranked if _judge.is_rejected(c)), None)
         if not deduped and not rejected:
             # #4400: nothing names the make or the model and nothing was judged. The

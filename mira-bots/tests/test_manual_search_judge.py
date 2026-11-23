@@ -1356,6 +1356,138 @@ async def test_a_short_make_named_in_full_is_offered(wired, monkeypatch):
     assert r is not None and r["url"] == page and r["validated"] is False
 
 
+# #5826 (Codex #5823 round 2, F1): the make is read from the title and the URL path,
+# never the host, and the words of a make name may be joined by a hyphen, an
+# underscore or "+". Each table row is one field: the other names nothing.
+_NAMES_MAKE_ROWS = [
+    ("GE", "Siemens M100 motor manual", "https://catalog.example.ge/siemens/m100", False),
+    ("GE", "M100 motor manual", "https://ge.example-catalog.com/p/m100", False),
+    ("GE", "GE M100 Motor Manual", "https://catalog.example.ge/p/m100", True),
+    ("GE", "M100 motor manual", "https://www.example-motors.com/brands/ge/m100", True),
+    ("GE", "M100 motor manual", "https://www.example-motors.com/p/m100_ge_motor", True),
+    ("GE", "M100 motor manual", "https://www.example-motors.com/p/m100?brand=GE", False),
+    ("GE", "M100 motor manual", "https://www.example-motors.com/p/m100#GE", False),
+    ("GE", "GE M100 motor manual", "https://[ge/p/m100", True),
+    ("GE", "M100 motor manual", "https://[ge/p/m100", False),
+    ("Automation Direct", "Automation-Direct GS10 User Manual", "https://m.example.com/d/1", True),
+    ("Automation Direct", "Automation_Direct GS10 drive", "https://m.example.com/d/1", True),
+    ("Automation Direct", "Automation - Direct GS10 drive", "https://m.example.com/d/1", True),
+    ("Automation Direct", "GS10 drive", "https://m.example.com/automation%20direct/gs10", True),
+    ("Automation Direct", "GS10 drive", "https://m.example.com/p/automation_direct_gs10", True),
+    ("AutomationDirect", "GS10 drive", "https://m.example.com/brands/automation-direct/gs10", True),
+    ("Automation Direct", "Home Automation | Direct-Drive Amplifier", "https://a.example/1", False),
+    ("Automation Direct", "Home Automation. Direct-Drive Amplifier", "https://a.example/1", False),
+    (
+        "Automation Direct",
+        "GS10 amplifier",
+        "https://a.example.com/automation/direct-drive/gs10",
+        False,
+    ),
+    ("Automation Direct", "Boss Audio GS10 Direct-Drive Amplifier", "https://a.example/1", False),
+    (
+        "Automation Direct",
+        "GS10 drive",
+        "https://m.example.com/p/gs10?brand=AutomationDirect",
+        False,
+    ),
+    ("Square D", "Squared QO120 breaker", "https://b.example.com/p/qo120", False),
+    ("Square D", "Square_D QO120 breaker", "https://b.example.com/p/qo120", True),
+    ("Oriental Motor", "Oriental-Motor BLH series manual", "https://o.example.com/p/blh", True),
+    ("Oriental Motor", "Oriental Motor Co., Ltd. BLH manual", "https://o.example.com/p/blh", True),
+    ("Pepperl+Fuchs", "Pepperl Fuchs NBB5 sensor", "https://s.example.com/p/nbb5", True),
+    ("Pepperl+Fuchs", "Pepperl-Fuchs NBB5 sensor", "https://s.example.com/p/nbb5", True),
+]
+
+
+@pytest.mark.parametrize("make,title,url,names_it", _NAMES_MAKE_ROWS)
+def test_the_make_is_read_from_the_title_and_the_path(make, title, url, names_it):
+    assert search_mod._names_make({"url": url, "title": title}, make) is names_it
+
+
+async def _search_one_page(monkeypatch, enabled, make, model, page, exact_part_number=False):
+    """One lookup in one judge mode whose only hit is `page`. Returns the result
+    and what the make screen decided for each URL it saw, so a page dropped before
+    the screen cannot pass or fail a screen test vacuously."""
+    screened: dict[str, bool] = {}
+    screen = search_mod._may_offer_unread
+
+    def spy(c, make_, part_number=None):
+        screened[c.get("url")] = verdict = screen(c, make_, part_number)
+        return verdict
+
+    monkeypatch.setattr(search_mod, "_may_offer_unread", spy)
+    monkeypatch.setenv("MANUAL_JUDGE_ENABLED", enabled)
+    assert judge.judge_enabled() is (enabled == "1")
+    _serve(monkeypatch, [(page["url"], page["title"])])
+    r = await search_mod.search_manual(make, model, exact_part_number=exact_part_number)
+    return r, screened
+
+
+def _unread_page(url: str, title: str, make: str) -> dict:
+    """A page the make screen decides: not on the make's site and not a direct PDF."""
+    assert not search_mod._is_oem_host(urlparse(url).netloc, make), url
+    assert not search_mod._is_direct_pdf(url), url
+    return {"url": url, "title": title}
+
+
+@pytest.mark.parametrize("enabled", ["1", "0"])
+async def test_a_country_code_host_does_not_name_a_short_make(wired, monkeypatch, enabled):
+    page = _unread_page(
+        "https://catalog.example.ge/siemens/m100", "Siemens M100 motor manual", "GE"
+    )
+    r, screened = await _search_one_page(monkeypatch, enabled, "GE", "M100", page)
+    assert screened == {page["url"]: False} and r is None
+
+
+@pytest.mark.parametrize("enabled", ["1", "0"])
+async def test_control_the_same_host_titled_with_the_make_is_offered(wired, monkeypatch, enabled):
+    page = _unread_page("https://catalog.example.ge/p/m100", "GE M100 Motor Manual", "GE")
+    r, screened = await _search_one_page(monkeypatch, enabled, "GE", "M100", page)
+    assert screened == {page["url"]: True}
+    assert r is not None and r["url"] == page["url"] and r["validated"] is False
+
+
+@pytest.mark.parametrize(
+    "url,title",
+    [
+        (
+            "https://www.example-manuals.com/drives/gs10-user-manual",
+            "Automation-Direct GS10 User Manual",
+        ),
+        ("https://www.example-manuals.com/brands/automation_direct/gs10", "GS10 drive user manual"),
+    ],
+    ids=["hyphenated_title", "underscored_path"],
+)
+@pytest.mark.parametrize("enabled", ["1", "0"])
+async def test_a_joined_make_name_is_offered(wired, monkeypatch, enabled, url, title):
+    assert "automationdirect" not in url.lower() and "automationdirect" not in title.lower()
+    page = _unread_page(url, title, "Automation Direct")
+    r, screened = await _search_one_page(monkeypatch, enabled, "Automation Direct", "GS10", page)
+    assert screened == {page["url"]: True}
+    assert r is not None and r["url"] == page["url"] and r["validated"] is False
+
+
+@pytest.mark.parametrize(
+    "url,title",
+    [
+        (
+            "https://www.example-audio.com/automation/direct-drive-amps/gs10",
+            "GS10 amplifier manual",
+        ),
+        ("https://www.example-audio.com/amps/gs10", "Home Automation | Direct-Drive GS10 manual"),
+        ("https://www.example-audio.com/amps/gs10", "Home Automation. Direct-Drive GS10 manual"),
+    ],
+    ids=["path_segments", "title_bar", "title_full_stop"],
+)
+@pytest.mark.parametrize("enabled", ["1", "0"])
+async def test_words_split_by_other_punctuation_do_not_name_the_make(
+    wired, monkeypatch, enabled, url, title
+):
+    page = _unread_page(url, title, "Automation Direct")
+    r, screened = await _search_one_page(monkeypatch, enabled, "Automation Direct", "GS10", page)
+    assert screened == {page["url"]: False} and r is None
+
+
 async def test_an_unread_direct_pdf_that_does_not_probe_keeps_the_older_rule(wired, monkeypatch):
     # A direct PDF the judge could not fetch and the probe could not confirm is still
     # offered for review on the model alone, as before #5789: only web pages are screened.
@@ -1867,6 +1999,50 @@ async def test_the_exact_order_number_with_ordinary_text_is_still_offered(wired,
         _serve(monkeypatch, [(page["url"], page["title"])])
         r = await search_mod.search_manual("ABB", "ACS355-03U-06A7-2", exact_part_number=True)
         assert r is not None and r["url"] == page["url"] and r["validated"] is False, enabled
+
+
+# #5829 (Codex #5823 round 2, F8): an exact catalog number spelled with underscores
+# reaches the screen in both judge modes. The scorer looked only for the hyphenated
+# spelling, and the judge's model check strips only spaces and hyphens, so the page
+# was dropped before the screen's own catalog match could run.
+_SIMATIC = "6ES7214-1AG40-0XB0"
+_UNDERSCORED = [
+    (f"{_DIST}/p/6es7214_1ag40_0xb0", "6ES7214_1AG40_0XB0 CPU 1214C compact"),
+    (f"{_DIST}/p/6es7214_1ag40_0xb0", "6ES7214_1AG40_0XB0 CPU 1214C manual"),
+]
+
+
+@pytest.mark.parametrize("url,title", _UNDERSCORED, ids=["no_manual_word", "manual_word"])
+@pytest.mark.parametrize("enabled", ["1", "0"])
+async def test_an_underscored_exact_part_number_is_offered(wired, monkeypatch, enabled, url, title):
+    page = _maker_less_stranger(url, title, "Siemens")
+    assert not judge.relevant(page, "Siemens", _SIMATIC)  # the judge's check alone drops it
+    r, screened = await _search_one_page(
+        monkeypatch, enabled, "Siemens", _SIMATIC, page, exact_part_number=True
+    )
+    assert screened == {url: True}, screened
+    assert r is not None and r["url"] == url and r["validated"] is False
+
+
+@pytest.mark.parametrize("url,title", _UNDERSCORED, ids=["no_manual_word", "manual_word"])
+@pytest.mark.parametrize("enabled", ["1", "0"])
+async def test_control_the_same_page_on_a_model_lookup_is_not_offered(
+    wired, monkeypatch, enabled, url, title
+):
+    page = _maker_less_stranger(url, title, "Siemens")
+    r, _ = await _search_one_page(monkeypatch, enabled, "Siemens", _SIMATIC, page)
+    assert r is None
+
+
+@pytest.mark.parametrize("enabled", ["1", "0"])
+async def test_a_longer_underscored_number_is_not_offered(wired, monkeypatch, enabled):
+    page = _maker_less_stranger(
+        f"{_DIST}/p/6es7214_1ag40_0xb0_z", "6ES7214_1AG40_0XB0_Z CPU 1214C manual", "Siemens"
+    )
+    r, screened = await _search_one_page(
+        monkeypatch, enabled, "Siemens", _SIMATIC, page, exact_part_number=True
+    )
+    assert r is None and screened.get(page["url"]) is not True
 
 
 async def _assert_screen(monkeypatch, make, part, refused, offered):
