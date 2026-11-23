@@ -21,7 +21,7 @@
 import { test, expect, type Page } from "@playwright/test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { isolatedContext, offOrigin, type IsolatedContext } from "./browser-isolation";
+import { offOrigin, withIsolatedContext, type IsolatedContext } from "./browser-isolation";
 
 const LOOPBACK = new Set(["127.0.0.1", "localhost", "[::1]"]);
 
@@ -75,20 +75,16 @@ async function nextSignInLink(before: number): Promise<URL> {
 }
 
 /** Runs `body` in a fresh, signed-out browser that can reach only the local
- *  Hub, then checks that nothing else was attempted and closes it. */
+ *  Hub, closes it, then checks that every request reached this run's Hub and
+ *  that nothing else was attempted (#5840: checked after teardown). */
 async function withIsolatedHub(
   browser: import("@playwright/test").Browser,
   body: (iso: IsolatedContext) => Promise<void>,
 ): Promise<void> {
-  const iso = await isolatedContext(browser, HUB, HUB_SOCKET);
-  try {
-    await body(iso);
-    expect(iso.upstreamFailures, "every request reached this run's Hub server").toEqual([]);
+  await withIsolatedContext(browser, HUB, HUB_SOCKET, body, (iso) => {
     expect(iso.blocked, "no request left the local Hub").toEqual([]);
     expect(offOrigin(iso.attempted, HUB), "the browser asked for nothing but the local Hub").toEqual([]);
-  } finally {
-    await iso.close();
-  }
+  });
 }
 
 /** Submits the email form and returns the JSON body the form posted. */

@@ -1,6 +1,7 @@
 /**
- * #5798, #5831: the magic-link fixture's browser isolation sees every redirect
- * hop, and the allowed origin is only a name. TEST ONLY and self-contained:
+ * #5798, #5831, #5839, #5840: the magic-link fixture's browser isolation sees
+ * every redirect hop, the allowed origin is only a name, and every failed
+ * forward is recorded and checked after teardown. TEST ONLY and self-contained:
  * throwaway HTTP servers, no Hub. `fixture` stands in for the Hub and listens
  * on a Unix socket, as the Hub does; `occupant` holds the TCP port that the
  * fixture's origin names, and `outside` is a second local listener. Neither
@@ -15,7 +16,7 @@ import * as http from "node:http";
 import type { AddressInfo } from "node:net";
 import * as os from "node:os";
 import * as path from "node:path";
-import { isolatedContext, offOrigin, type IsolatedContext } from "./browser-isolation";
+import { isolatedContext, offOrigin, withIsolatedContext, type IsolatedContext } from "./browser-isolation";
 
 let fixture: http.Server;
 let occupant: http.Server;
@@ -66,6 +67,17 @@ test.beforeAll(async () => {
         return send(302, { location: "/landed" });
       case "/hang":
         return; // never answered; the browser abandons it
+      case "/truncated":
+        // Promises 20 bytes, sends 7, then the connection closes.
+        res.writeHead(200, { "content-type": "text/plain", "content-length": "20" });
+        res.write("partial");
+        setTimeout(() => res.socket?.destroy(), 50);
+        return;
+      case "/stall-body":
+        // Promises 100 bytes, sends 7, and never sends the rest.
+        res.writeHead(200, { "content-type": "text/plain", "content-length": "100" });
+        res.write("partial");
+        return;
       case "/landed":
         return send(200, { "content-type": "text/html" }, '<p id="landed">landed</p>');
       default:
@@ -90,18 +102,13 @@ test.beforeEach(() => {
   occupantHits.length = 0;
 });
 
-async function withIsolation(browser: import("@playwright/test").Browser, body: (iso: IsolatedContext) => Promise<void>) {
-  const iso = await isolatedContext(browser, fixtureOrigin, fixtureSocket);
-  try {
-    await body(iso);
-  } finally {
-    await iso.close();
-  }
-  expect(occupantHits, "the listener on the fixture origin's own port received nothing").toEqual([]);
-  expect(iso.upstreamFailures).toEqual([]);
+function withIsolation(browser: import("@playwright/test").Browser, body: (iso: IsolatedContext) => Promise<void>) {
+  return withIsolatedContext(browser, fixtureOrigin, fixtureSocket, body, () => {
+    expect(occupantHits, "the listener on the fixture origin's own port received nothing").toEqual([]);
+  });
 }
 
-test.describe("browser isolation for the magic-link fixture (#5798, #5831)", () => {
+test.describe("browser isolation for the magic-link fixture (#5798, #5831, #5839, #5840)", () => {
   test("a navigation that redirects to another local listener is refused before it is sent", async ({ browser }) => {
     await withIsolation(browser, async (iso) => {
       await iso.page.goto(`${fixtureOrigin}/away`).catch(() => undefined);
@@ -165,6 +172,56 @@ test.describe("browser isolation for the magic-link fixture (#5798, #5831)", () 
       expect(iso.paths).toEqual(["/hang", "/landed"]);
       expect(iso.upstreamFailures).toEqual([]);
     });
+  });
+
+  test("an answer cut off mid-body is recorded once and fails the browser's request promptly", async ({ browser }) => {
+    const iso = await isolatedContext(browser, fixtureOrigin, fixtureSocket);
+    try {
+      await iso.page.goto(`${fixtureOrigin}/landed`);
+      const outcome = await iso.page.evaluate(() =>
+        Promise.race([
+          fetch("/truncated").then((r) => r.text()).then(() => "complete", () => "failed"),
+          new Promise<string>((resolve) => setTimeout(() => resolve("still waiting"), 3_000)),
+        ]),
+      );
+      expect(outcome).toBe("failed");
+      expect(iso.upstreamFailures).toEqual([`${fixtureOrigin}/truncated response cut short`]);
+      expect(iso.blocked).toEqual([]);
+    } finally {
+      await iso.close();
+    }
+    expect(occupantHits).toEqual([]);
+  });
+
+  test("an answer the browser abandons mid-body is not counted as an upstream failure", async ({ browser }) => {
+    await withIsolation(browser, async (iso) => {
+      await iso.page.goto(`${fixtureOrigin}/landed`);
+      const outcome = await iso.page.evaluate(async () => {
+        const abort = new AbortController();
+        const answer = await fetch("/stall-body", { signal: abort.signal });
+        await answer.body!.getReader().read();
+        abort.abort();
+        return "abandoned after the first bytes";
+      });
+      expect(outcome).toBe("abandoned after the first bytes");
+      // Give the proxy time to see the browser leave before teardown.
+      await iso.page.waitForTimeout(300);
+      expect(iso.upstreamFailures).toEqual([]);
+    });
+  });
+
+  test("a failure recorded while the context closes still fails the check (#5840)", async ({ browser }) => {
+    const outcome = await withIsolatedContext(browser, fixtureOrigin, fixtureSocket, async (iso) => {
+      await iso.page.goto(`${fixtureOrigin}/landed`);
+      // Stands in for a request whose upstream fails after the body returned,
+      // while the context is closing.
+      iso.context.once("close", () => iso.upstreamFailures.push(`${fixtureOrigin}/late teardown`));
+    }).then(
+      () => "passed",
+      (err: Error) => err.message,
+    );
+    expect(outcome).toContain("every forwarded request reached the server behind the socket");
+    expect(outcome).toContain("/late teardown");
   });
 
   test("a same-origin redirect is still followed", async ({ browser }) => {
