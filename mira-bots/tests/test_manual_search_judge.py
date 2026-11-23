@@ -1954,6 +1954,30 @@ async def test_an_error_in_the_retry_leaves_todays_answer(wired, monkeypatch):
     assert len(r["judged_rejected"]) == 6
 
 
+_GS10_PAGE = (
+    "https://www.automationdirect.com/adc/overview/catalog/drives/gs10",
+    "DURApulse GS10 AC Drives manual downloads",
+)
+
+
+async def test_a_retry_miss_scores_its_pages_as_support_pages_like_any_query(wired, monkeypatch):
+    # Not "exactly today's answer": every query's non-PDF hits are scored as support
+    # pages, the retry's too. A better page from a typed query is offered on a miss;
+    # one that does not outscore the handoff's own page is not.
+    _stall(monkeypatch, q2_hits=[_GS10_PAGE])
+    with search_mod.acquisition_trail() as trail:
+        r = await search_mod.search_manual("AutomationDirect", "GS10")
+    assert r is not None and r["reason"] == judge.REASON_JUDGED_REJECTED, r
+    assert len(r["judged_rejected"]) == 6
+    assert trail.search_page_url == _GS10_PAGE[0]
+
+    _stall(monkeypatch, q2_hits=[_GS10_PAGE], handoff_hits=[_SUPPORT])
+    with search_mod.acquisition_trail() as trail:
+        r = await search_mod.search_manual("AutomationDirect", "GS10")
+    assert r is not None and r["reason"] == judge.REASON_JUDGED_REJECTED, r
+    assert trail.search_page_url == _SUPPORT[0]  # equal score: the handoff's page stays
+
+
 def _discovery_with_quota(monkeypatch, deny_on, reason):
     """POST the discovery endpoint through the real _serper_search: the reservation
     numbered ``deny_on`` (1 = q1, 2 = the handoff, 3 = the first typed query) is
