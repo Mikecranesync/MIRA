@@ -1494,6 +1494,90 @@ async def test_control_a_pdf_link_serving_a_pdf_is_never_marked(wired, monkeypat
     assert "probed_not_pdf" not in r
 
 
+def _by_method(head, get):
+    return lambda request: head(request) if request.method == "HEAD" else get(request)
+
+
+_AS_PDF = "application/pdf"
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [
+        _page(content_type=_AS_PDF),
+        _by_method(_page(content_type="text/html"), _page(content_type=_AS_PDF)),
+        _by_method(_page(status=405, body=b""), _page(content_type=_AS_PDF)),
+    ],
+    ids=["head_and_get_say_pdf", "only_get_says_pdf", "head_refused"],
+)
+async def test_a_pdf_link_that_serves_a_page_as_a_pdf_is_screened_like_one(
+    wired, monkeypatch, answer
+):
+    # #5871 Codex F1: the content type claims a PDF, the bytes are a web page.
+    for enabled in ("1", "0"):
+        monkeypatch.setenv("MANUAL_JUDGE_ENABLED", enabled)
+        _serve(monkeypatch, [(_BOSS_PDF, "GS10 brochure")])
+        sent = _answer(monkeypatch, {_BOSS_PDF: answer})
+        assert await search_mod.search_manual("AutomationDirect", "GS10") is None, enabled
+        assert ("GET", _BOSS_PDF) in sent, (enabled, sent)
+
+
+async def test_a_page_whose_markup_follows_leading_whitespace_is_screened_like_one(
+    wired, monkeypatch
+):
+    # #5871 Codex F2: the server honours the requested range, and the page starts
+    # with eight bytes of whitespace before its markup.
+    import httpx
+
+    body = b" \t\r\n    " + _BOSS_PAGE
+    assert len(body) - len(_BOSS_PAGE) == 8
+
+    def ranged(request):
+        if request.method == "HEAD":
+            return httpx.Response(200, headers={"content-type": "text/html"})
+        first, last = request.headers["range"].removeprefix("bytes=").split("-")
+        part = body[int(first) : int(last) + 1]
+        return httpx.Response(
+            206,
+            headers={
+                "content-type": "text/html",
+                "content-range": f"bytes {first}-{int(first) + len(part) - 1}/{len(body)}",
+            },
+            content=part,
+        )
+
+    for enabled in ("1", "0"):
+        monkeypatch.setenv("MANUAL_JUDGE_ENABLED", enabled)
+        _serve(monkeypatch, [(_BOSS_PDF, "GS10 brochure")])
+        sent = _answer(monkeypatch, {_BOSS_PDF: ranged})
+        assert await search_mod.search_manual("AutomationDirect", "GS10") is None, enabled
+        assert ("GET", _BOSS_PDF) in sent, (enabled, sent)
+
+
+@pytest.mark.parametrize(
+    "get",
+    [_page(body=b"", content_type=_AS_PDF), _page(status=403), _unreachable],
+    ids=["empty", "forbidden", "unreachable"],
+)
+async def test_control_a_pdf_content_type_still_validates_when_the_bytes_prove_nothing(
+    wired, monkeypatch, get
+):
+    monkeypatch.setenv("MANUAL_JUDGE_ENABLED", "0")
+    _serve(monkeypatch, [(_BOSS_PDF, "GS10 brochure")])
+    sent = _answer(monkeypatch, {_BOSS_PDF: _by_method(_page(content_type=_AS_PDF), get)})
+    r = await search_mod.search_manual("AutomationDirect", "GS10")
+    assert r is not None and r["url"] == _BOSS_PDF and r["validated"] is True
+    assert "probed_not_pdf" not in r and ("GET", _BOSS_PDF) in sent
+
+
+async def test_control_outside_a_candidate_probe_a_pdf_content_type_ends_the_check(monkeypatch):
+    # Only a candidate probe pays for the extra GET; every other caller stops at HEAD.
+    sent = _answer(monkeypatch, {_BOSS_PDF: _page(content_type=_AS_PDF)})
+    assert search_mod._probed_not_pdf.get() is None
+    assert await search_mod.validate_pdf(_BOSS_PDF) is True
+    assert sent == [("HEAD", _BOSS_PDF)]
+
+
 async def test_a_pdf_link_that_redirects_to_a_web_page_is_screened_like_one(wired, monkeypatch):
     import httpx
 

@@ -981,7 +981,14 @@ async def validate_pdf(url: str) -> bool:
     passes the SSRF guard above; the GET is streamed and capped at
     _PROBE_READ_CAP bytes so a server that ignores Range cannot make us buffer
     an arbitrary body.
+
+    For a candidate probe (#5830), a PDF content type is trusted only until the
+    bytes say otherwise: the GET is still read, and a successful answer that
+    starts with markup is a page, whatever type it was served as. When the bytes
+    prove nothing either way, a PDF content type still validates, as before.
     """
+    noted = _probed_not_pdf.get()  # set only by _probe_candidate
+    says_pdf = False  # a PDF content type seen during a candidate probe
     try:
         async with httpx.AsyncClient(
             timeout=HEAD_TIMEOUT,
@@ -995,30 +1002,37 @@ async def validate_pdf(url: str) -> bool:
                 if r is not None:
                     ct = (r.headers.get("content-type") or "").lower()
                     if "pdf" in ct and r.status_code < 400:
-                        return True
+                        if noted is None:
+                            return True
+                        says_pdf = True
             except httpx.HTTPError:
                 pass
 
             # Some hosts 405 on HEAD or strip Content-Type — pull the first
             # bytes and look for the PDF magic number. Stream + cap: a server
-            # that ignores the Range header must not be able to flood us.
+            # that ignores the Range header must not be able to flood us. The
+            # range asks for the whole cap, so a page whose markup follows some
+            # leading whitespace is still seen as one (#5871 Codex F2).
+            rng = {"Range": f"bytes=0-{_PROBE_READ_CAP - 1}"}
             current = url
             for _ in range(_MAX_REDIRECT_HOPS + 1):
                 if not await asyncio.to_thread(_url_is_probeable, current):
                     logger.info("manual-search probe blocked by SSRF guard: %s", current[:120])
-                    return False
-                async with client.stream("GET", current, headers={"Range": "bytes=0-7"}) as r:
+                    return says_pdf
+                async with client.stream("GET", current, headers=rng) as r:
                     if r.status_code in (301, 302, 303, 307, 308):
                         loc = r.headers.get("location")
                         if not loc:
-                            return False
+                            return says_pdf
                         current = urljoin(current, loc)
                         continue
                     if r.status_code >= 400:
-                        return False
+                        return says_pdf
                     ct = (r.headers.get("content-type") or "").lower()
                     if "pdf" in ct:
-                        return True
+                        if noted is None:
+                            return True
+                        says_pdf = True
                     head = b""
                     async for chunk in r.aiter_bytes():
                         head += chunk
@@ -1029,15 +1043,15 @@ async def validate_pdf(url: str) -> bool:
                     # Not proof of a PDF. Only a successful answer that starts with
                     # markup is proof of a page (#5830); bytes before a PDF header, an
                     # empty body or an error status prove nothing either way.
-                    noted = _probed_not_pdf.get()
                     if noted is not None and 200 <= r.status_code < 300:
                         if head.lstrip(b"\xef\xbb\xbf \t\r\n").startswith(b"<"):
                             noted.add(url)
-                    return False
-            return False
+                            return False
+                    return says_pdf
+            return says_pdf
     except Exception:
         logger.info("PDF validation failed for %s — skipping", url[:120])
-        return False
+        return says_pdf
 
 
 async def _probe_candidate(c: dict) -> bool:
