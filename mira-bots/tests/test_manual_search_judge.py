@@ -4077,3 +4077,26 @@ async def test_the_trail_lists_an_extra_read_after_mains_own(wired, monkeypatch)
     assert own["queue_pos"] == 0 and own["read"] == "judged", own
     assert won["queue_pos"] == 1 and won["not_queued"] is None, won
     assert won["read"] == "judged" and won["selected"] is True, won
+
+
+async def test_a_pdf_main_could_not_fetch_is_not_fetched_again(wired, monkeypatch):
+    # No PDF passes the judge's own check, so main queues every PDF, this one too, and
+    # its fetch fails: main ends with nothing judged. The extra reads at that ending
+    # skip it, so it is fetched once and listed once on the trail.
+    pdf = (f"{_FILES}/ge-motors-drive-manual.pdf", "GE motors drive manual")
+    c = {"url": pdf[0], "title": pdf[1]}
+    assert not judge.relevant(c, "GE", "M100") and search_mod._names_make(c, "GE")
+    fetched: list[str] = []
+
+    async def fetch(url, max_bytes=judge.MAX_BYTES):
+        fetched.append(url)
+        return None
+
+    monkeypatch.setattr(judge, "fetch_pdf_bytes", fetch)
+    _serve(monkeypatch, [pdf])
+    with search_mod.acquisition_trail() as trail:
+        await search_mod.search_manual("GE", "M100")
+    assert fetched == [pdf[0]], fetched
+    assert list(trail.judge.get("queue") or []).count(pdf[0]) == 1, trail.judge
+    row = {r["url"]: r for r in trail.to_dict(None)["candidates"]}[pdf[0]]
+    assert row["queue_pos"] == 0, row
