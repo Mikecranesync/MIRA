@@ -1302,13 +1302,20 @@ async def search_manual(
         finally:
             if trail is not None:
                 # One trail for every round, as for the retry: these queue
-                # positions follow the others, and a PDF queued here is no
-                # longer listed as not queued.
+                # positions follow the others, a URL keeps the first position it
+                # was queued at, a PDF queued here is no longer listed as not
+                # queued, and one this round left out carries this round's reason
+                # unless an earlier round queued it (#5899 Codex F2).
                 queued = list(trace.get("queue") or [])
-                trail.judge["queue"] = list(trail.judge.get("queue") or []) + queued
+                prior = list(trail.judge.get("queue") or [])
+                queue = prior + [u for u in queued if u not in prior]
+                trail.judge["queue"] = queue
                 not_queued = trail.judge.setdefault("not_queued", {})
                 for u in queued:
                     not_queued.pop(u, None)
+                for u, why in (trace.get("not_queued") or {}).items():
+                    if u not in queue:
+                        not_queued[u] = why
                 if trace.get("stop"):
                     trail.judge["stop"] = trace["stop"]
         if read and _judge.is_match(read[0]):
@@ -1323,6 +1330,13 @@ async def search_manual(
         only the make still wait for main's miss endings (``_unless_extras``)."""
         if not part_number:
             return None
+        # A fragment form of a PDF the judge read and rejected, under the same title,
+        # would give the judge the text it already rejected: the typed-pass retry's
+        # rule (#5850), applied here (#5899 Codex F1). No retry has run before main's
+        # offer, so ``pool`` holds every PDF read so far.
+        judged = {
+            (_document_key(c["url"]), c.get("title") or "") for c in pool if _judge.is_rejected(c)
+        }
         pdfs = [
             c
             for c in pool
@@ -1330,6 +1344,7 @@ async def search_manual(
             and not c.get("judge")
             and not _judge.relevant(c, make, model)
             and _names_part_number(c, part_number)
+            and (_document_key(c["url"]), c.get("title") or "") not in judged
         ]
         return await _judged_extra(pdfs, rejected)
 
