@@ -517,6 +517,10 @@ class ProviderQueryBudget:
     examined: set[str] = field(default_factory=set)
 
 
+# Quota denials the discovery endpoint reports as a cap (`quota_exceeded`), the same set
+# as its `_QUOTA_CAP_REASONS`; a test pins that the two stay equal.
+_CAP_DENIALS = frozenset({"user_cap", "tenant_cap", "global_cap"})
+
 _provider_budget: contextvars.ContextVar[ProviderQueryBudget | None] = contextvars.ContextVar(
     "manual_search_provider_budget", default=None
 )
@@ -1191,14 +1195,42 @@ async def search_manual(
         if hits:
             candidates.extend(_tagged(_collect(hits, make, model), "q1"))
 
-    # Pass 2: typed PDF — broader, still PDFs only.
-    if not any(c["is_direct_pdf"] for c in candidates):
+    typed_in_flight: str | None = None  # the retry's unanswered query, for the trail
+
+    async def _typed_pdf_pass(
+        second: bool = False, found_all: list[dict] | None = None
+    ) -> list[dict]:
+        """Pass 2: typed PDF — broader, still PDFs only.
+
+        ``second`` is the retry after every site-scoped PDF was read and judged not
+        the manual (#5822). Its caller has already sent the website handoff, so it
+        keeps no query back for one, and it sends a query only while the caller's
+        deadline still covers one plus a judge batch. That check only saves a query
+        that could not be used; what bounds the retry is the cutoff its caller sets
+        (:func:`_retry_typed_pass`). Hits are added to ``found_all`` as each query
+        answers, so a cutoff keeps what already came back."""
+        nonlocal typed_in_flight
+        found_all = [] if found_all is None else found_all
         for i, variant in enumerate(_model_variants(model) or [model]):
             budget = _provider_budget.get()
-            if i and budget is not None and budget.used >= budget.limit - 1:
+            if budget is not None and not second and i and budget.used >= budget.limit - 1:
+                break
+            if budget is not None and second and budget.used >= budget.limit:
+                break
+            if (
+                second
+                and deadline_at is not None
+                and (
+                    deadline_at - time.monotonic()
+                    < SEARCH_TIMEOUT + _judge.UPGRADE_MIN_BATCH_S + _judge.RETURN_RESERVE_S
+                )
+            ):
                 break
             q2 = f"{make} {variant} manual filetype:pdf"
+            if second:
+                typed_in_flight = q2
             hits = await _send(q2, "q2 (filetype:pdf)")
+            typed_in_flight = None
             if hits is None:
                 continue
             found = _tagged(_collect(hits, make, model), "q2")
@@ -1207,7 +1239,117 @@ async def search_manual(
                 # from the nameplate's own spelling: it must not win a tie.
                 for c in found:
                     c["score"] -= 5
-            candidates.extend(found)
+            found_all.extend(found)
+        return found_all
+
+    async def _retry_typed_pass(ranked: list[dict], judge_trace: dict) -> list[dict]:
+        """#5822: every site-scoped PDF was read and judged not the manual, which is
+        what skipped the typed pass. Run it once and read only what it adds, at most
+        one judge batch; both rounds rank together. Returns ``ranked`` unchanged when
+        the retry adds nothing or runs out of time. Round one is already on the trail,
+        so a cancelled retry still shows it."""
+        nonlocal typed_in_flight
+        try:
+            found: list[dict] = []
+            try:
+                # The typed queries must answer while one judge batch still fits; past
+                # that they are abandoned and today's answer stands (#5844 Codex F1).
+                # The judge stays outside this block: it stops itself at the deadline.
+                cutoff = (
+                    None
+                    if deadline_at is None
+                    else deadline_at
+                    - _judge.UPGRADE_MIN_BATCH_S
+                    - _judge.RETURN_RESERVE_S
+                    - time.monotonic()
+                )
+                async with asyncio.timeout(cutoff):
+                    await _typed_pdf_pass(second=True, found_all=found)
+            except TimeoutError:
+                logger.info("MANUAL_SEARCH_RETRY_CUTOFF query=%s", (typed_in_flight or "")[:120])
+                if trail is not None and typed_in_flight:
+                    trail.queries.append(
+                        {"pass": "q2", "query": typed_in_flight, "result": "timeout"}
+                    )
+                typed_in_flight = None
+            seen_urls = {c["url"] for c in ranked}
+            more: list[dict] = []
+            for c in sorted(found, key=lambda c: -c["score"]):
+                if c["url"] not in seen_urls:
+                    seen_urls.add(c["url"])
+                    more.append(c)
+            if not more:
+                return ranked
+            if trail is not None:
+                # On the trail before any read, after round one, so a read the caller
+                # cancels is still listed (#5844 Codex F3).
+                trail.candidates = list(trail.candidates) + more
+                trail.ranked = ranked + more
+            second_trace: dict = {}
+            try:
+                more = await _judge.judge_candidates(
+                    make,
+                    model,
+                    more,
+                    started_at=started_at,
+                    deadline_at=deadline_at,
+                    trace=second_trace,
+                    max_total=_judge.MAX_CANDIDATES,
+                )
+            finally:
+                # One trail for both rounds, kept even when a read is cancelled: round
+                # one's queue positions first, then round two's.
+                judge_trace["queue"] = list(judge_trace.get("queue") or []) + list(
+                    second_trace.get("queue") or []
+                )
+                judge_trace.setdefault("not_queued", {}).update(
+                    second_trace.get("not_queued") or {}
+                )
+                if second_trace.get("stop"):
+                    judge_trace["stop"] = second_trace["stop"]
+            ranked = _judge.rank(ranked + more)
+            if trail is not None:
+                trail.ranked = ranked
+            return ranked
+        except asyncio.CancelledError:
+            # The caller's own timeout cancelled the search during the retry. This
+            # handler sits outside the cutoff, whose expiry arrives as TimeoutError.
+            judge_trace["stop"] = "cancelled"
+            raise
+
+    async def _manual_from_retry(ranked: list[dict], judge_trace: dict) -> dict | None:
+        """#5822: this search is about to end with the judged rejection, after the
+        website handoff, at either of the two places it does. If every site-scoped PDF
+        was read and judged not the manual, which is what skipped the typed pass, run
+        it once and return a judged match from it. Otherwise return None, and the
+        caller returns exactly what it returns without the retry. Only ``return``
+        follows this call, so nothing the retry adds is ever probed or offered unread
+        (#5844 Codex F5, F6)."""
+        if not use_judge or typed_pass_ran or not _every_queued_pdf_rejected(ranked, judge_trace):
+            return None
+        budget = _provider_budget.get()
+        denied = budget.quota_denied if budget is not None else None
+        try:
+            both = await _retry_typed_pass(ranked, judge_trace)
+        except Exception:
+            logger.exception("MANUAL_SEARCH_RETRY_FAILED")  # today's answer stands
+            both = []
+        if both and _judge.is_match(both[0]):
+            logger.info("MANUAL_SEARCH_RETRY_MATCH url=%s", both[0]["url"][:200])
+            return _as_judged_match(both[0], _rejections(both))
+        if budget is not None and budget.quota_denied not in _CAP_DENIALS:
+            # An infrastructure denial met only by the retry's own queries leaves
+            # today's answer, as a provider error or the cutoff does: today's search
+            # had finished, so it is not an outage. A cap the retry met is still
+            # reported, as any cap is: a cap denial is never cached as a miss (PRD R5,
+            # #4168), and the next-day retry gives the typed pass its chance. The
+            # refused query stays counted and on the trail either way.
+            budget.quota_denied = denied
+        return None
+
+    typed_pass_ran = not any(c["is_direct_pdf"] for c in candidates)
+    if typed_pass_ran:
+        candidates.extend(await _typed_pdf_pass())
 
     # Pass 3: widest fallback — websites as well as PDFs. A bounded call
     # reserves its final query for this instead of spending it on spelling variants.
@@ -1262,18 +1404,21 @@ async def search_manual(
     judged_any = False
     rejected_out: list[dict] = []
     worst_rejected: dict | None = None
+    ranked: list[dict] = []
+    judge_trace: dict = {}
     # A catalog-only query may be based on text read from a user photo. Keep
     # that narrowly scoped lookup from sending candidate PDF text to the LLM
     # judge; the result remains an unconfirmed search candidate.
     use_judge = bool(make) and _judge.judge_enabled()
     if use_judge:
+        judge_trace = trail.judge if trail is not None else {}
         ranked = await _judge.judge_candidates(  # records what it reads
             make,
             model,
             deduped,
             started_at=started_at,
             deadline_at=deadline_at,
-            trace=trail.judge if trail is not None else None,
+            trace=judge_trace,
         )
         if trail is not None:
             trail.ranked = ranked
@@ -1298,20 +1443,12 @@ async def search_manual(
                 }
             ),
         )
-        rejected = [
-            {"url": c["url"], "reason": (c.get("judge") or {}).get("reason", "")}
-            for c in ranked
-            if _judge.is_rejected(c)
-        ]
+        rejected = _rejections(ranked)
         judged_any = bool(rejected) or any(_judge.is_match(c) for c in ranked)
         rejected_out = rejected
         top = ranked[0]
         if _judge.is_match(top):
-            code, line = _judge.judge_summary(top)
-            top["reason"], top["reason_detail"] = code, line
-            top["judged_rejected"] = [r for r in rejected if r["url"] != top["url"]]
-            top["validated"] = True
-            return top
+            return _as_judged_match(top, rejected)
         # No judged match. Rejections are NEVER returned as validated; the
         # legacy HEAD path below may still pick an UNJUDGED candidate — but
         # only one that at least names the make/model. If every relevant
@@ -1329,7 +1466,8 @@ async def search_manual(
             return None
         if not deduped:
             await _website_handoff()
-            return _as_judged_rejection(worst_rejected or ranked[0], rejected)
+            retried = await _manual_from_retry(ranked, judge_trace)
+            return retried or _as_judged_rejection(worst_rejected or ranked[0], rejected)
 
     # HEAD-validate the top few; first one that confirms PDF wins. This probe runs
     # before the #5789 screen below, so a real PDF served from a URL that does not
@@ -1375,6 +1513,9 @@ async def search_manual(
         deduped = [c for c in deduped if _may_offer_unread(c, make, part_number)]
     if not deduped:
         await _website_handoff()
+        retried = await _manual_from_retry(ranked, judge_trace)
+        if retried is not None:
+            return retried
         return _as_judged_rejection(worst_rejected, rejected_out) if worst_rejected else None
     deduped[0]["validated"] = False
     if use_judge:
@@ -1384,6 +1525,40 @@ async def search_manual(
         )
         deduped[0]["judged_rejected"] = rejected_out
     return deduped[0]
+
+
+def _every_queued_pdf_rejected(ranked: list[dict], trace: dict) -> bool:
+    """Whether the judge read every PDF it queued and rejected each one (#5822).
+
+    Not when a queued PDF went unread (unfetched, no text, cut off by the deadline),
+    when the queue was over its cap, or when nothing was queued: any of those can
+    still be the manual, and the existing review path handles them."""
+    queue = trace.get("queue") or []
+    by_url = {c["url"]: c for c in ranked}
+    return (
+        trace.get("stop") == "queue_exhausted"
+        and bool(queue)
+        and all(u in by_url and _judge.is_rejected(by_url[u]) for u in queue)
+        and "over_max_total" not in (trace.get("not_queued") or {}).values()
+    )
+
+
+def _rejections(ranked: list[dict]) -> list[dict]:
+    """Every judged rejection in ``ranked``, with the judge's reason."""
+    return [
+        {"url": c["url"], "reason": (c.get("judge") or {}).get("reason", "")}
+        for c in ranked
+        if _judge.is_rejected(c)
+    ]
+
+
+def _as_judged_match(top: dict, rejected: list[dict]) -> dict:
+    """The judge's match, validated, with every other candidate's rejection reason."""
+    code, line = _judge.judge_summary(top)
+    top["reason"], top["reason_detail"] = code, line
+    top["judged_rejected"] = [r for r in rejected if r["url"] != top["url"]]
+    top["validated"] = True
+    return top
 
 
 def _as_judged_rejection(worst: dict, rejected: list[dict]) -> dict:

@@ -14,8 +14,9 @@
  *   cd mira-hub && bash tests/local-fixtures/magic-link-return/run.sh
  *
  * Every URL here is absolute (MLR_HUB_URL, loopback only). The browser can
- * reach only that origin, redirect hops included (`browser-isolation.ts`,
- * proven by `browser-isolation.spec.ts`).
+ * reach only that origin, redirect hops included, and its requests are carried
+ * to the Hub's private Unix socket (MLR_HUB_SOCKET), never to the TCP port the
+ * URL names (`browser-isolation.ts`, proven by `browser-isolation.spec.ts`).
  */
 import { test, expect, type Page } from "@playwright/test";
 import * as fs from "node:fs";
@@ -26,10 +27,12 @@ const LOOPBACK = new Set(["127.0.0.1", "localhost", "[::1]"]);
 
 const HUB = (process.env.MLR_HUB_URL ?? "").replace(/\/$/, "");
 const CAPTURE = process.env.MLR_MAIL_CAPTURE ?? "";
+const HUB_SOCKET = process.env.MLR_HUB_SOCKET ?? "";
 if (!HUB || !LOOPBACK.has(new URL(HUB).hostname)) {
   throw new Error("MLR_HUB_URL must be a loopback Hub (run tests/local-fixtures/magic-link-return/run.sh)");
 }
 if (!CAPTURE) throw new Error("MLR_MAIL_CAPTURE must name the server's mail capture file");
+if (!HUB_SOCKET) throw new Error("MLR_HUB_SOCKET must name the Hub server's Unix socket");
 
 const seed = JSON.parse(
   fs.readFileSync(path.join(__dirname, "seed.json"), "utf8"),
@@ -77,9 +80,10 @@ async function withIsolatedHub(
   browser: import("@playwright/test").Browser,
   body: (iso: IsolatedContext) => Promise<void>,
 ): Promise<void> {
-  const iso = await isolatedContext(browser, HUB);
+  const iso = await isolatedContext(browser, HUB, HUB_SOCKET);
   try {
     await body(iso);
+    expect(iso.upstreamFailures, "every request reached this run's Hub server").toEqual([]);
     expect(iso.blocked, "no request left the local Hub").toEqual([]);
     expect(offOrigin(iso.attempted, HUB), "the browser asked for nothing but the local Hub").toEqual([]);
   } finally {
