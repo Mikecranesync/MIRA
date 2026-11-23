@@ -1462,6 +1462,24 @@ async def test_control_a_pdf_link_serving_a_page_that_names_the_make_is_still_of
         assert r["probed_not_pdf"] is True
 
 
+async def test_control_a_pdf_link_serving_a_page_on_the_makes_own_site_is_still_offered(
+    wired, monkeypatch
+):
+    # The other way a page passes the screen: the host is on the make's OEM list,
+    # although neither the host nor the title spells the make.
+    url = "https://literature.rockwellautomation.com/idc/groups/literature/520-um001.pdf"
+    c = {"url": url, "title": "PowerFlex 525 installation instructions"}
+    assert url not in TEXT and not search_mod._names_make(c, "Allen-Bradley")
+    assert search_mod._is_oem_host(urlparse(url).netloc, "Allen-Bradley")
+    for enabled in ("1", "0"):
+        monkeypatch.setenv("MANUAL_JUDGE_ENABLED", enabled)
+        _serve(monkeypatch, [(url, c["title"])])
+        _answer(monkeypatch, {url: _page()})
+        r = await search_mod.search_manual("Allen-Bradley", "PowerFlex 525")
+        assert r is not None and r["url"] == url and r["validated"] is False, enabled
+        assert r["probed_not_pdf"] is True
+
+
 async def test_control_a_pdf_link_serving_a_pdf_is_never_marked(wired, monkeypatch):
     import httpx
 
