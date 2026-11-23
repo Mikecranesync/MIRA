@@ -54,7 +54,7 @@ import time
 from collections.abc import Generator, Iterable
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from urllib.parse import parse_qsl, unquote, urljoin, urlparse, urlsplit
+from urllib.parse import unquote, urljoin, urlparse, urlsplit
 
 import httpcore
 import httpx
@@ -325,33 +325,29 @@ _PART_NUMBER_END = "(?!" + _DIFFERENT_PART + "|" + _CODE_GROUP + ")"
 # not one, as in the Hub: it joins no groups, though it still starts a code group.
 _CATALOG_HYPHENS = str.maketrans(dict.fromkeys("\u2010\u2011\u2012\u2212\ufe63\uff0d", "-"))
 
-# The query fields that name the document on a download endpoint
-# ("/download?document=..."). Their values may only refuse a page, never admit one:
-# a product page can carry another part's file name in them (#5855 Codex F1), and a
-# real PDF behind such an endpoint is found by the content probe, which runs before
-# this screen. Any other query value, a path parameter, the fragment and the host
-# are not read at all (#5853).
-_DOCUMENT_QUERY_FIELDS = frozenset({"doc", "document", "file", "filename"})
+# No query value is read, in either direction (#5855 round 3). A referral or
+# related-file value may name another part, so it cannot admit a page (#5853), and
+# a product page can carry a related file's name there, so it cannot refuse one
+# either (#5855 Codex F7). A real PDF behind a download endpoint is still found by
+# the content probe, which runs before this screen. A path parameter, the fragment
+# and the host are not read either.
 
 
-def _part_number_texts(c: dict) -> tuple[str, str, list[str]] | None:
-    """An unread page's title, its URL path (percent-decoded, cut at a decoded "?"
-    or "#", without ";" parameters) and its document-field values (form-decoded, so
-    a raw "+" is a space and "%2B" a plus, #5854), each folded for the match. None
-    when the URL cannot be parsed, so the page is refused."""
+def _part_number_texts(c: dict) -> tuple[str, str] | None:
+    """An unread page's title and its URL path (percent-decoded, cut at a decoded
+    "?" or "#", without ";" parameters), each folded for the match. None when the
+    URL cannot be parsed, so the page is refused."""
     try:
         url = urlsplit(c.get("url") or "")
-        query = parse_qsl(url.query)
     except ValueError:
         return None
     path = re.split(r"[?#]", unquote(url.path), maxsplit=1)[0]
     path = re.sub(r";[^/]*", "", path)
-    values = [v for k, v in query if k.lower() in _DOCUMENT_QUERY_FIELDS]
 
     def fold(text: str) -> str:
         return text.translate(_CATALOG_HYPHENS).lower()
 
-    return fold(c.get("title") or ""), fold(path), [fold(v) for v in values]
+    return fold(c.get("title") or ""), fold(path)
 
 
 def _names_part_number(c: dict, part_number: str) -> bool:
@@ -364,23 +360,23 @@ def _names_part_number(c: dict, part_number: str) -> bool:
     - a title that names a longer number and not the exact one is about a different
       part, whatever the URL says. A title that lists the exact part as well still
       covers it ("GS10-20P5 and GS10-20P5X user manual");
-    - a URL path or document value with an attached letter, digit or "+" option names
-      a different part that a shortened title cannot outvote. A code group after a
-      hyphen there does not refuse a clean title, because slugs join words that way
+    - a URL path with an attached letter, digit or "+" option names a different part
+      that a shortened title cannot outvote. A code group after a hyphen there does
+      not refuse a clean title, because slugs join words that way
       ("Gis-Gs10-150-260" for "Gis GS10/150/260").
     Only the match reads the decoded forms, never the fetch or the display."""
     chunks = re.findall(r"[a-z0-9]+", (part_number or "").lower())
     texts = _part_number_texts(c) if chunks else None
     if texts is None:
         return False
-    title, path, values = texts
+    title, path = texts
     number = r"(?<![a-z0-9])" + r"[\s\-_./]*".join(map(re.escape, chunks))
     exact = re.compile(number + _PART_NUMBER_END)
     longer_title = re.search(number + "(?=" + _DIFFERENT_PART + "|" + _CODE_GROUP + ")", title)
     if longer_title and not exact.search(title):
         return False
     different = re.compile(number + "(?=" + _DIFFERENT_PART + ")")
-    if any(different.search(t) for t in (path, *values)):
+    if different.search(path):
         return False
     return bool(exact.search(title) or exact.search(path))
 

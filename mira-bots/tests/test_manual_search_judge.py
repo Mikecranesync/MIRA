@@ -1481,7 +1481,7 @@ _TWO_FIELD_TABLE = [
     # (part, title, url, names_it, why)
     (_ACS, f"{_ACS} frequency converter", f"{_DIST}/p/acs355-03u-06a7-2%2BB063", False, "#5842"),
     (_ACS, f"{_ACS}+B063 frequency converter", f"{_DIST}/p/acs355-03u-06a7-2", False, "title"),
-    (_ACS, f"{_ACS} frequency converter", f"{_DIST}/dl?file={_ACS}%2BB063", False, "value"),
+    (_ACS, f"{_ACS} frequency converter", f"{_DIST}/dl?file={_ACS}%2BB063", True, "value unread"),
     ("GS10-20P5", "GS10-20P5 micro drive", f"{_DIST}/p/gs10-20p5x", False, "attached letter"),
     ("GS10-20P5", "GS10-20P5X micro drive", f"{_DIST}/p/gs10-20p5", False, "attached in title"),
     (_ACS, f"{_ACS} frequency converter", f"{_DIST}/p/acs355-03u-06a7-2", True, "#5842 control"),
@@ -1494,6 +1494,13 @@ _TWO_FIELD_TABLE = [
         "decided: slug",
     ),
     ("GS10-20P5", "GS10-20P5 micro drive", f"{_DIST}/p/gs10-20p5?ref=GS10-20P5X", True, "ref"),
+    (
+        "GS10-20P5",
+        "GS10-20P5 drive manual",
+        f"{_DIST}/p/gs10-20p5?file=GS10-20P5X+Quick+Start",
+        True,
+        "F7 related file",
+    ),
     ("GS10-20P5", "GS10-20P6 micro drive", f"{_DIST}/p/gs10-20p6?ref=GS10-20P5", False, "#5853"),
     ("GS10-20P5", "GS10-20P6 micro drive", f"{_DIST}/p/gs10-20p6?file=GS10-20P5", False, "F1"),
     ("GS10-20P5", "GS10-20P5\u2011X micro drive", f"{_DIST}/p/gs10-20p5", False, "F2"),
@@ -1622,13 +1629,22 @@ async def test_a_part_named_only_in_a_referral_or_fragment_is_not_offered(wired,
     await _assert_screen(monkeypatch, ad, "GS10-20P5", refused, offered)
 
 
-async def test_a_form_encoded_document_value_does_not_refuse_a_clean_title(wired, monkeypatch):
-    # #5854: a raw + in a document value is a space, so it is not an order option;
-    # an encoded %2B is a literal + and refuses the page.
+async def test_a_query_value_neither_refuses_nor_admits_a_page(wired, monkeypatch):
+    # #5855 round 3: no query value is read. A value naming a longer part does not
+    # refuse a page whose title names the part, and a related-file value does not
+    # refuse a product page whose title and path name it (Codex F7). A value naming
+    # the part does not admit a page that otherwise names nothing (#5853).
     title = f"{_ACS} frequency converter"
-    refused = [_maker_less_stranger(f"{_DIST}/download?document={_ACS}%2BB063", title, "ABB")]
-    offered = _maker_less_stranger(f"{_DIST}/download?document={_ACS}+User+Manual", title, "ABB")
+    refused = [
+        _maker_less_stranger(f"{_DIST}/download?document={_ACS}%20User%20Manual", "Download", "ABB")
+    ]
+    offered = _maker_less_stranger(f"{_DIST}/download?document={_ACS}%2BB063", title, "ABB")
     await _assert_screen(monkeypatch, "ABB", _ACS, refused, offered)
+    ad = "AutomationDirect"
+    offered = _maker_less_stranger(
+        f"{_DIST}/p/gs10-20p5?file=GS10-20P5X+Quick+Start", "GS10-20P5 drive manual", ad
+    )
+    await _assert_screen(monkeypatch, ad, "GS10-20P5", [], offered)
 
 
 async def test_a_pdf_behind_a_download_endpoint_is_found_by_the_probe(wired, monkeypatch):
