@@ -4389,3 +4389,23 @@ async def test_the_trail_gives_a_pdf_over_the_extra_cap_that_rounds_reason(wired
     assert rows[read_one]["queue_pos"] == 1 and rows[read_one]["read"] == "judged", rows[read_one]
     assert rows[left]["queue_pos"] is None, rows[left]
     assert rows[left]["not_queued"] == "over_max_total", rows[left]
+
+
+async def test_an_exact_part_pdf_main_could_not_fetch_is_not_fetched_again_before_its_offer(
+    wired, monkeypatch
+):
+    # No PDF passes the judge's own check, so main queues the exact PDF itself, and its
+    # fetch fails: it is unread but not rejected, so only its read state keeps it out
+    # of the read before main's offer.
+    _offer_preconditions()
+    fetched: list[str] = []
+
+    async def fetch(url, max_bytes=judge.MAX_BYTES):
+        fetched.append(url)
+        return None
+
+    monkeypatch.setattr(judge, "fetch_pdf_bytes", fetch)
+    _serve(monkeypatch, [_SIEMENS_PAGE, _SIEMENS_EXACT])
+    r = await search_mod.search_manual("Siemens", _SIMATIC, exact_part_number=True)
+    assert fetched == [_EXACT_PDF], fetched
+    assert r is not None and r["url"] == _SIEMENS_PAGE[0] and r["validated"] is False, r
