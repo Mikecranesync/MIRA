@@ -1230,15 +1230,10 @@ async def search_manual(
         """#5822: every site-scoped PDF was read and judged not the manual, which is
         what skipped the typed pass. Run it once and read only what it adds, at most
         one judge batch; both rounds rank together. Returns ``ranked`` unchanged when
-        the retry adds nothing or runs out of time."""
+        the retry adds nothing or runs out of time. Round one is already on the trail,
+        so a cancelled retry still shows it."""
         nonlocal typed_in_flight
-        if trail is not None:
-            trail.ranked = ranked  # round one stays on the trail if the retry is cancelled
         try:
-            # This miss sends the website handoff today. Sending it before the retry
-            # means a slow retry cannot cost the technician the support page
-            # (#5844 Codex F2).
-            await _website_handoff()
             found: list[dict] = []
             try:
                 # The typed queries must answer while one judge batch still fits; past
@@ -1306,6 +1301,26 @@ async def search_manual(
             judge_trace["stop"] = "cancelled"
             raise
 
+    async def _manual_from_retry(ranked: list[dict], judge_trace: dict) -> dict | None:
+        """#5822: this search is about to end with the judged rejection, after the
+        website handoff, at either of the two places it does. If every site-scoped PDF
+        was read and judged not the manual, which is what skipped the typed pass, run
+        it once and return a judged match from it. Otherwise return None, and the
+        caller returns exactly what it returns without the retry. Only ``return``
+        follows this call, so nothing the retry adds is ever probed or offered unread
+        (#5844 Codex F5, F6)."""
+        if not use_judge or typed_pass_ran or not _every_queued_pdf_rejected(ranked, judge_trace):
+            return None
+        try:
+            both = await _retry_typed_pass(ranked, judge_trace)
+        except Exception:
+            logger.exception("MANUAL_SEARCH_RETRY_FAILED")  # today's answer stands
+            return None
+        if not both or not _judge.is_match(both[0]):
+            return None
+        logger.info("MANUAL_SEARCH_RETRY_MATCH url=%s", both[0]["url"][:200])
+        return _as_judged_match(both[0], _rejections(both))
+
     typed_pass_ran = not any(c["is_direct_pdf"] for c in candidates)
     if typed_pass_ran:
         candidates.extend(await _typed_pdf_pass())
@@ -1363,12 +1378,14 @@ async def search_manual(
     judged_any = False
     rejected_out: list[dict] = []
     worst_rejected: dict | None = None
+    ranked: list[dict] = []
+    judge_trace: dict = {}
     # A catalog-only query may be based on text read from a user photo. Keep
     # that narrowly scoped lookup from sending candidate PDF text to the LLM
     # judge; the result remains an unconfirmed search candidate.
     use_judge = bool(make) and _judge.judge_enabled()
     if use_judge:
-        judge_trace: dict = trail.judge if trail is not None else {}
+        judge_trace = trail.judge if trail is not None else {}
         ranked = await _judge.judge_candidates(  # records what it reads
             make,
             model,
@@ -1377,8 +1394,6 @@ async def search_manual(
             deadline_at=deadline_at,
             trace=judge_trace,
         )
-        if not typed_pass_ran and _every_queued_pdf_rejected(ranked, judge_trace):
-            ranked = await _retry_typed_pass(ranked, judge_trace)
         if trail is not None:
             trail.ranked = ranked
         # What discovery hands downstream, and why — pairs with MANUAL_JUDGE_VERDICT
@@ -1402,20 +1417,12 @@ async def search_manual(
                 }
             ),
         )
-        rejected = [
-            {"url": c["url"], "reason": (c.get("judge") or {}).get("reason", "")}
-            for c in ranked
-            if _judge.is_rejected(c)
-        ]
+        rejected = _rejections(ranked)
         judged_any = bool(rejected) or any(_judge.is_match(c) for c in ranked)
         rejected_out = rejected
         top = ranked[0]
         if _judge.is_match(top):
-            code, line = _judge.judge_summary(top)
-            top["reason"], top["reason_detail"] = code, line
-            top["judged_rejected"] = [r for r in rejected if r["url"] != top["url"]]
-            top["validated"] = True
-            return top
+            return _as_judged_match(top, rejected)
         # No judged match. Rejections are NEVER returned as validated; the
         # legacy HEAD path below may still pick an UNJUDGED candidate — but
         # only one that at least names the make/model. If every relevant
@@ -1433,7 +1440,8 @@ async def search_manual(
             return None
         if not deduped:
             await _website_handoff()
-            return _as_judged_rejection(worst_rejected or ranked[0], rejected)
+            retried = await _manual_from_retry(ranked, judge_trace)
+            return retried or _as_judged_rejection(worst_rejected or ranked[0], rejected)
 
     # HEAD-validate the top few; first one that confirms PDF wins. This probe runs
     # before the #5789 screen below, so a real PDF served from a URL that does not
@@ -1479,6 +1487,9 @@ async def search_manual(
         deduped = [c for c in deduped if _may_offer_unread(c, make, part_number)]
     if not deduped:
         await _website_handoff()
+        retried = await _manual_from_retry(ranked, judge_trace)
+        if retried is not None:
+            return retried
         return _as_judged_rejection(worst_rejected, rejected_out) if worst_rejected else None
     deduped[0]["validated"] = False
     if use_judge:
@@ -1504,6 +1515,24 @@ def _every_queued_pdf_rejected(ranked: list[dict], trace: dict) -> bool:
         and all(u in by_url and _judge.is_rejected(by_url[u]) for u in queue)
         and "over_max_total" not in (trace.get("not_queued") or {}).values()
     )
+
+
+def _rejections(ranked: list[dict]) -> list[dict]:
+    """Every judged rejection in ``ranked``, with the judge's reason."""
+    return [
+        {"url": c["url"], "reason": (c.get("judge") or {}).get("reason", "")}
+        for c in ranked
+        if _judge.is_rejected(c)
+    ]
+
+
+def _as_judged_match(top: dict, rejected: list[dict]) -> dict:
+    """The judge's match, validated, with every other candidate's rejection reason."""
+    code, line = _judge.judge_summary(top)
+    top["reason"], top["reason_detail"] = code, line
+    top["judged_rejected"] = [r for r in rejected if r["url"] != top["url"]]
+    top["validated"] = True
+    return top
 
 
 def _as_judged_rejection(worst: dict, rejected: list[dict]) -> dict:

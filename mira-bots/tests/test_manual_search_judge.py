@@ -1510,6 +1510,8 @@ _GS10_TYPED = [
 
 
 class _SaysGs10Manual(FakeRouter):
+    probed: list[str]  # the URLs search_manual probed, set by _stall
+
     async def complete(self, messages, max_tokens=1024, session_id="x", sanitize=True):
         user = messages[-1]["content"]
         self.calls.append(user)
@@ -1525,12 +1527,21 @@ class _SaysGs10Manual(FakeRouter):
 
 
 def _stall(
-    monkeypatch, *, q1_hits=_AD_READ, q2_hits=(), q2_raises=False, handoff_hits=(), delays=None
+    monkeypatch,
+    *,
+    q1_hits=_AD_READ,
+    q2_hits=(),
+    q2_raises=False,
+    handoff_hits=(),
+    delays=None,
+    pdfs=frozenset(),
 ):
     """q1 (site-scoped) answers ``q1_hits``, the typed pass ``q2_hits``, anything else
     (the website handoff) ``handoff_hits``. A query in ``delays`` answers that many
-    seconds after it is sent. Every AutomationDirect drawing reads as one."""
+    seconds after it is sent. Every AutomationDirect drawing reads as one. Only the
+    URLs in ``pdfs`` probe as PDFs; every probed URL is kept in ``router.probed``."""
     router = _SaysGs10Manual()
+    router.probed = []
     monkeypatch.setattr(judge, "_router", router)
     for url, _ in _AD_READ:
         monkeypatch.setitem(TEXT, url, "DURApulse GS10 dimensional drawing / cut sheet")
@@ -1559,8 +1570,9 @@ def _stall(
             hits = handoff_hits
         return [{"link": u, "title": t} for u, t in hits]
 
-    async def probe(url):  # no unread candidate HEAD-validates
-        return False
+    async def probe(url):
+        router.probed.append(url)
+        return url in pdfs
 
     monkeypatch.setattr(search_mod, "_serper_search", serper)
     monkeypatch.setattr(search_mod, "validate_pdf", probe)
@@ -1648,7 +1660,8 @@ async def test_a_miss_after_the_typed_pass_still_hands_off_within_four_queries(w
         r = await search_mod.search_manual("AutomationDirect", "GS10", deadline_at=_deadline(60))
         row = trail.to_dict()
     assert r is not None and r["validated"] is False and r["reason"] == judge.REASON_JUDGED_REJECTED
-    assert len(r["judged_rejected"]) == 7 and len(router.calls) == 7
+    # Today's answer exactly: round one's rejections. Round two's read is on the trail.
+    assert len(r["judged_rejected"]) == 6 and len(router.calls) == 7
     assert sent[1] == _HANDOFF  # sent before the retry, where this miss sends it today
     assert budget.used == 4 and budget.refused == 0
     # One trail for both rounds: round one keeps its queue positions, round two follows.
@@ -1862,3 +1875,80 @@ async def test_a_caller_timeout_while_reading_a_retry_pdf_keeps_it_on_the_trail(
     assert sorted(by_url[search_mod.trail_url(u)]["queue_pos"] for u, _ in _AD_READ) == list(
         range(6)
     )
+
+
+# #5844 Codex review round 2. The retry now runs only where this search ends with the
+# judged rejection, after the website handoff, at either of the two places it does.
+# Only a judged match from it changes the answer; nothing it adds is probed.
+_PAGES = [u for u, _ in _OTHER_MAKERS]
+
+
+async def test_with_the_staging_pool_the_retry_runs_after_the_screen(wired, monkeypatch):
+    # The staging GS10 pools: the site-scoped query also returned web pages naming only
+    # "GS10". They are probed and screened out first, then the retry finds the manual.
+    router, sent = _stall(monkeypatch, q1_hits=_AD_READ + _OTHER_MAKERS, q2_hits=[_GS10_MANUAL_HIT])
+    with search_mod.acquisition_trail():
+        r = await search_mod.search_manual("AutomationDirect", "GS10", deadline_at=_deadline(60))
+    assert r is not None and r["url"] == _GS10_MANUAL and r["validated"] is True, r
+    assert r["reason"] == judge.REASON_JUDGED_MATCH and len(r["judged_rejected"]) == 6
+    assert sorted(router.probed) == sorted(_PAGES)  # round one's pages, before the retry
+    assert sent[1:] == [_HANDOFF, *_GS10_TYPED] and len(router.calls) == 7
+
+
+async def test_an_unread_retry_hit_is_listed_but_never_probed_or_offered(wired, monkeypatch):
+    unread = (f"{_AD}/manuals/gs10m/gs10m_ch1.pdf", "DURApulse GS10 user manual chapter 1")
+    pool = _AD_READ + _OTHER_MAKERS
+    router, _ = _stall(monkeypatch, q1_hits=pool)
+    without = await search_mod.search_manual("AutomationDirect", "GS10", deadline_at=_deadline(60))
+    router, _ = _stall(monkeypatch, q1_hits=pool, q2_hits=[unread])  # not fetchable
+    with search_mod.acquisition_trail() as trail:
+        r = await search_mod.search_manual("AutomationDirect", "GS10", deadline_at=_deadline(60))
+        row = trail.to_dict()
+    assert r is not None and without is not None
+    assert r["reason"] == judge.REASON_JUDGED_REJECTED and r["validated"] is False
+    assert (r["url"], r["judged_rejected"]) == (without["url"], without["judged_rejected"])
+    assert sorted(router.probed) == sorted(_PAGES)
+    by_url = {c["url"]: c for c in row["candidates"]}
+    assert by_url[search_mod.trail_url(unread[0])]["read"] == "unfetched"
+
+
+async def test_a_page_round_one_can_offer_sends_no_typed_query(wired, monkeypatch):
+    # F5: base probes this page and offers it for review, so the search never ends
+    # with the judged rejection and the retry never runs.
+    page = (_EXTENSIONLESS, "AutomationDirect GS10 installation guide")
+    router, sent = _stall(monkeypatch, q1_hits=_AD_READ + [page], q2_hits=[_GS10_MANUAL_HIT])
+    r = await search_mod.search_manual("AutomationDirect", "GS10", deadline_at=_deadline(60))
+    assert r is not None and r["url"] == _EXTENSIONLESS and r["validated"] is False, r
+    assert _typed(sent) == [] and len(sent) == 1
+
+
+async def test_a_page_that_probes_as_a_pdf_sends_no_typed_query(wired, monkeypatch):
+    page = (_EXTENSIONLESS, "GS10 drive documentation")
+    router, sent = _stall(
+        monkeypatch,
+        q1_hits=_AD_READ + [page],
+        q2_hits=[_GS10_MANUAL_HIT],
+        pdfs=frozenset({_EXTENSIONLESS}),
+    )
+    r = await search_mod.search_manual("AutomationDirect", "GS10", deadline_at=_deadline(60))
+    assert r is not None and r["url"] == _EXTENSIONLESS and r["validated"] is False, r
+    assert _typed(sent) == [] and router.probed == [_EXTENSIONLESS]
+
+
+async def test_an_error_in_the_retry_leaves_todays_answer(wired, monkeypatch):
+    router, sent = _stall(monkeypatch, q2_hits=[_GS10_MANUAL_HIT])
+    real = judge.judge_candidates
+    rounds = 0
+
+    async def second_round_raises(*args, **kwargs):
+        nonlocal rounds
+        rounds += 1
+        if rounds == 2:
+            raise RuntimeError("judge down")
+        return await real(*args, **kwargs)
+
+    monkeypatch.setattr(judge, "judge_candidates", second_round_raises)
+    r = await search_mod.search_manual("AutomationDirect", "GS10", deadline_at=_deadline(60))
+    assert rounds == 2 and _typed(sent) == _GS10_TYPED
+    assert r is not None and r["reason"] == judge.REASON_JUDGED_REJECTED and r["validated"] is False
+    assert len(r["judged_rejected"]) == 6
