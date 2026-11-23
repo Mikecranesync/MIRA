@@ -1240,42 +1240,100 @@ function renderLivingSheetJobSection(view: SheetView): string {
 
 /** #5335: the question asks to read back what was already recorded on the job
  *  (a note, reading, photo or handover), and asks nothing else. Deterministic
- *  and deliberately narrow: a past-tense read-back of the asker's own record,
- *  and no specification, setting, procedure or advice in the same message. */
-export function isJobRecordQuestion(message: string): boolean {
+ *  and deliberately narrow: a past-tense read-back of a record, with no
+ *  specification, setting, procedure, advice, restart or "can I" in the same
+ *  message (those keep the normal, safety-aware path). `mine` = first person
+ *  singular ("what did I note", "my notes"); `target` = the job or machine the
+ *  question names ("on the CV-101 job"), null for "this job" / "the job". */
+export type JobRecordQuestion = { mine: boolean; target: string | null };
+
+const JOB_RECORD_GENERIC = new Set(["open", "current", "active", "last", "latest", "the", "this", "that", "my", "our", "same", "today's", "todays"]);
+
+export function parseJobRecordQuestion(message: string): JobRecordQuestion | null {
   const m = message.toLowerCase().replace(/\s+/g, " ").trim();
-  if (/\b(should|recommend\w*|default|rated|ratings?|spec|specs|specification|setting|set (it|to)|torque|how (do|to|should|can|much|many)|why|safe|procedure|steps? to)\b/.test(m)) return false;
+  if (/\b(should|recommend\w*|default|rated|ratings?|spec|specs|specification|setting|set (it|to)|torque|how (do|to|should|can|much|many)|why|safe|safely|procedure|steps? to|can|could|would|will|may|might|restart\w*|reset\w*|start (it )?(back )?up|bypass\w*|jumper\w*|mean|means|cause[sd]?|fix|replace|next)\b/.test(m)) return null;
   const verb = "(note|noted|record|recorded|log|logged|write|wrote|written|save|saved|enter|entered|measure|measured|read|photograph|photographed|attach|attached|leave|left)";
-  return (
+  const asks =
     new RegExp(`\\bwhat (did|have|has) (i|we) (already |just )?${verb}\\b`).test(m) ||
     new RegExp(`\\bwhat (did|have) (i|we) (already )?(put|got) (down|on)\\b`).test(m) ||
     /\b(show|read|give|tell)( me)? (back )?(my|our|the) (saved |recorded |last )?(notes?|readings?|photos?|handover)\b/.test(m) ||
-    /\bwhat('s| is) (in|on) the handover\b/.test(m)
-  );
+    /\bwhat('s| is) (in|on) the handover\b/.test(m);
+  if (!asks) return null;
+  const mine = /\b(i|my|i've|i'd)\b/.test(m) && !/\b(we|our)\b/.test(m);
+  const named = /\b(?:on|for|from|in|about) ((?:[a-z0-9][a-z0-9./'-]*\s){0,4}?)(?:job|machine)\b/.exec(m);
+  const words = (named?.[1] ?? "").trim().split(" ").filter((w) => w && !JOB_RECORD_GENERIC.has(w));
+  return { mine, target: words.length > 0 ? words.join(" ") : null };
+}
+
+export function isJobRecordQuestion(message: string): boolean {
+  return parseJobRecordQuestion(message) !== null;
+}
+
+/** #5335: does a named target ("cv-101", "pump 07") match one of the trusted
+ *  identifiers of this notebook's machine or job? Compared without spacing or
+ *  punctuation, in either direction ("cv-101 conveyor" ⊇ "CV-101"). */
+export function jobRecordTargetMatches(target: string, identifiers: readonly (string | null | undefined)[]): boolean {
+  const norm = (x: string) => x.toLowerCase().replace(/[^a-z0-9]/g, "");
+  const t = norm(target);
+  if (!t) return true;
+  return identifiers.some((id) => {
+    const n = id ? norm(id) : "";
+    return n.length > 0 && (n.includes(t) || t.includes(n));
+  });
+}
+
+/** #5335 r4 F8: every record read-back starts with this fixed line, so the
+ *  turn can be recognised when the conversation comes back as history and its
+ *  records kept away from the provider and the search query. */
+export const JOB_RECORD_HEADER = "Job sheet read-back — technician records, not verified; no manual page is cited.";
+const JOB_RECORD_HISTORY_STUB = "(Job sheet records were shown to the technician here; they are not repeated.)";
+
+/** Replace the body of any earlier record read-back in the conversation with a
+ *  stub, keeping the turn order. Client history is text-only, so the server
+ *  recognises its own fixed header. */
+export function withoutJobRecordAnswers<T extends { role: string; content: string }>(history: readonly T[]): T[] {
+  return history.map((t) => (t.role === "assistant" && t.content.trimStart().startsWith(JOB_RECORD_HEADER) ? { ...t, content: JOB_RECORD_HISTORY_STUB } : t));
 }
 
 /** #5335: the server's own read-back of the job's records. No model sees it,
  *  so nothing recorded leaves the server, and every record is shown in full
  *  with its real author ("you" for the asker) and the job's real status. */
-export function renderJobRecordAnswer(view: SheetView, viewer: { email: string; userId: string }): string {
+export function renderJobRecordAnswer(
+  view: SheetView,
+  viewer: { email: string; userId: string },
+  scope: { mine: boolean } = { mine: false },
+): string {
   // An actor is recorded by label (the account email) or, without one, by user id.
-  const who = (by: string | null) =>
-    by && ((viewer.email && by === viewer.email) || (viewer.userId && by === viewer.userId)) ? "you" : by ?? "an unknown technician";
+  const isViewer = (by: string | null) => Boolean(by && ((viewer.email && by === viewer.email) || (viewer.userId && by === viewer.userId)));
+  const who = (by: string | null) => (isViewer(by) ? "you" : by ?? "an unknown technician");
+  // "What did I note": the asker's own records, selected BEFORE the note cap so
+  // coworkers' later notes can never crowd them out. The handover (one per job)
+  // is always shown, with its author.
+  const keep = (by: string | null) => !scope.mine || isViewer(by);
+  const allNotes = view.notes.filter((n) => keep(n.by));
+  const readings = view.readings.filter((r) => keep(r.current.by));
+  const photos = view.photos.filter((p) => keep(p.by));
+  const others = scope.mine
+    ? view.notes.length - allNotes.length + (view.readings.length - readings.length) + (view.photos.length - photos.length)
+    : 0;
   const status = view.finished ? `finished ${view.finished.at}` : "in progress";
-  const lines = [`From the job sheet for "${view.title}" (${status}). These are technician records, not verified, and no manual page is cited for them.`];
-  const notes = view.notes.slice(-JOB_RECORD_NOTES_MAX);
-  const earlier = view.notes.length - notes.length;
+  const lines = [JOB_RECORD_HEADER, `Job: "${view.title}" (${status}).`];
+  const notes = allNotes.slice(-JOB_RECORD_NOTES_MAX);
+  const earlier = allNotes.length - notes.length;
   if (earlier > 0) lines.push(`- ${earlier} earlier note${earlier === 1 ? " is" : "s are"} on the job sheet and not repeated here.`);
   for (const n of notes) lines.push(`- Note by ${who(n.by)} at ${n.at}: ${n.text}`);
-  for (const r of view.readings) lines.push(`- Reading: ${r.what} = ${r.current.value} ${r.current.unit}, recorded by ${who(r.current.by)} at ${r.current.at}`);
-  if (view.photos.length > 0) {
-    lines.push(`- Photos attached: ${view.photos.length} (${view.photos.map((p) => `${p.caption ? `"${p.caption}"` : "no caption"} by ${who(p.by)} at ${p.at}`).join("; ")})`);
+  for (const r of readings) lines.push(`- Reading: ${r.what} = ${r.current.value} ${r.current.unit}, recorded by ${who(r.current.by)} at ${r.current.at}`);
+  if (photos.length > 0) {
+    lines.push(`- Photos attached: ${photos.length} (${photos.map((p) => `${p.caption ? `"${p.caption}"` : "no caption"} by ${who(p.by)} at ${p.at}`).join("; ")})`);
   }
   if (view.handover.current) {
     const h = view.handover.current;
     lines.push(`- Handover by ${who(h.by)} at ${h.at}: ${h.text}`);
   }
-  if (lines.length === 1) lines.push("- Nothing has been recorded on this job yet: no notes, readings, photos or handover.");
+  if (lines.length === 2) {
+    lines.push(scope.mine ? "- You have not recorded anything on this job yet." : "- Nothing has been recorded on this job yet: no notes, readings, photos or handover.");
+  }
+  if (others > 0) lines.push(`- ${others} record${others === 1 ? " by another technician is" : "s by other technicians are"} on the job sheet and not shown here.`);
   return lines.join("\n");
 }
 
@@ -1906,6 +1964,9 @@ async function handleChatTurn(
       selectionTurnIds = new Set();
     }
   }
+  // #5335 r4 F8: an earlier job-record read-back never travels on — not to the
+  // provider, the search query, the topic hint or prior reports.
+  turnHistory = withoutJobRecordAnswers(turnHistory);
 
   // PRD §27: no sources selected is an explicit, honest state — not a silent
   // fall-through to the global corpus.
@@ -2652,6 +2713,143 @@ async function handleChatTurn(
       },
       { status: 422, headers: safetyFlagHeaders(safetyTrigger) },
     );
+  }
+
+  // #5335: "what did I note on the open job?" is answered by the server from
+  // the job sheet itself — no model call, so no recorded text reaches a
+  // provider and no document gate can discard a correct answer. It runs here,
+  // after identity and safety and BEFORE query rewrite and manual retrieval,
+  // so a slow or failing manual search can neither delay nor break it.
+  // Only the notebook's CONFIRMED (not scanned), undisputed machine qualifies,
+  // only a job started on that machine (the one opened on the sheet, else the
+  // single unfinished one), and never a turn with a hazard, bypass, restart or
+  // energized-work flag: those keep the normal, safety-aware path. A question
+  // naming another job or machine is answered with what this notebook has,
+  // never with this machine's records. Any read failure falls through.
+  const recordQuestion =
+    livingSheetEnabled() &&
+    !componentHold &&
+    !safetyTrigger &&
+    !electricalHazardDirective &&
+    !energizedWorkAsk &&
+    flagBannerBase === null &&
+    !visualEntry
+      ? parseJobRecordQuestion(message)
+      : null;
+  const recordMachine = boundAsset.state === "resolved" && boundAsset.confirmedAt && !identityDisputed ? boundAsset : null;
+  let jobRecordAnswer: string | null = null;
+  if (recordQuestion && recordMachine) {
+    try {
+      const assetIds = [recordMachine.name, recordMachine.entityId, recordMachine.unsPath.split(".").pop()];
+      const elsewhere = (ids: readonly (string | null | undefined)[]) =>
+        recordQuestion.target !== null && !jobRecordTargetMatches(recordQuestion.target, ids);
+      const notHere = `No records were read: this notebook's machine is ${recordMachine.name}, and "${recordQuestion.target?.slice(0, 40) ?? ""}" does not match it or its job. Ask from that machine's notebook, or open the job you mean in the Job sheet.`;
+      let recordJobId = livingSheetJobId;
+      if (!recordJobId) {
+        const open = await listOpenJobIdsForMachine(ctx.tenantId, notebookId, recordMachine.entityId, 11);
+        if (open.length === 1) recordJobId = open[0]!;
+        else if (elsewhere(assetIds)) jobRecordAnswer = notHere;
+        else if (open.length === 0) jobRecordAnswer = "There is no unfinished job on this machine's job sheet. Open a job in the Job sheet and ask again.";
+        else jobRecordAnswer = `There are ${open.length > 10 ? "more than 10" : open.length} unfinished jobs on this machine's job sheet. Open the one you mean in the Job sheet and ask again.`;
+      }
+      if (recordJobId) {
+        const job = await loadJob(ctx.tenantId, notebookId, recordJobId);
+        if (job.status === "ok" && job.view.machine.entityId === recordMachine.entityId) {
+          jobRecordAnswer = elsewhere([...assetIds, job.view.title, job.view.machine.name])
+            ? notHere
+            : renderJobRecordAnswer(job.view, { email: ctx.email, userId: ctx.userId }, { mine: recordQuestion.mine });
+        }
+      }
+    } catch (err) {
+      jobRecordAnswer = null;
+      console.error(
+        `[notebook-chat] job record read failed code=${(err as { code?: string }).code ?? "?"} (continuing on the normal path):`,
+        err,
+      );
+    }
+  }
+  if (jobRecordAnswer !== null) {
+    const recordText = jobRecordAnswer;
+    const recordGateSpan = tracer.startSpan("answer_gate.evaluate", undefined, rootCtx);
+    lifecycleOutcome = "answered";
+    rec.stage("answer_gate", {
+      invoked: true,
+      decision: "answered",
+      reason: "job_record_readback",
+      answer_chars: recordText.length,
+      refusal_phrase_matched: false,
+      evidence_phrase_matched: false,
+      safety_classification: "none",
+      evidence_sufficient: true,
+      ungrounded_unit_claim: false,
+      safety_outcome: { layer: "none", outcome: "allow", flagged: false, violation: null, semantic_verdict: "not_run" },
+    });
+    setSpanAttrs(
+      {
+        "mira.answer_gate.invoked": true,
+        "mira.answer_gate.decision": "answered",
+        "mira.answer_gate.reason": "job_record_readback",
+        "mira.answer_gate.answer_chars": recordText.length,
+      },
+      recordGateSpan,
+    );
+    recordGateSpan.end();
+    const recordPersistSpan = startStage("turn.persist");
+    const recordTurnRowId = await releaseClaimOnFailure(() => recordTurn(ctx.tenantId, notebookId, {
+      ownerUserId: ctx.userId,
+      threadId,
+      clientRequestId,
+      claimToken: requestClaimToken,
+      question: message,
+      answerStatus: "answered",
+      answerText: recordText,
+      enabledSourceDocIds: docIds,
+      evidence: [],
+      model: null,
+      basis: null,
+      ...assetSnapshot,
+    }));
+    const recordUsage: TurnUsage = {
+      provider: null,
+      model: null,
+      routeReason: "legacy_cascade",
+      inputTokens: null,
+      cachedInputTokens: null,
+      outputTokens: null,
+      costUsdEstimate: null,
+      status: "empty",
+      attempted: [],
+    };
+    await finishAndPersist(recordTurnRowId, recordUsage, { answerText: recordText, citationsPresent: false, latencyMs: null });
+    setSpanAttrs({ "mira.persist.outcome": "ok", "mira.turn.row_id": recordTurnRowId }, recordPersistSpan);
+    endTimed(recordPersistSpan, "persist");
+    endRoot();
+    const recordEnc = new TextEncoder();
+    const recordStream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        if (rootTraceId) {
+          const traceFrame: NotebookTraceFrame = { kind: "trace", traceId: rootTraceId, turnId };
+          controller.enqueue(recordEnc.encode(sse(traceFrame)));
+        }
+        const sources: NotebookSourcesFrame = { kind: "sources", citations: [], sourceSnapshot: docIds };
+        controller.enqueue(recordEnc.encode(sse(sources)));
+        for (const piece of chunkForRelease(recordText)) {
+          controller.enqueue(recordEnc.encode(sse({ kind: "content", content: piece })));
+        }
+        const status: NotebookStatusFrame = { kind: "status", status: "answered" };
+        controller.enqueue(recordEnc.encode(sse(status)));
+        controller.enqueue(recordEnc.encode("data: [DONE]\n\n"));
+        controller.close();
+      },
+    });
+    return new Response(recordStream, {
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache, no-transform",
+        "X-Accel-Buffering": "no",
+        ...(rootTraceId ? { "x-mira-trace-id": rootTraceId } : {}),
+      },
+    });
   }
 
   // Machine-context inputs, loaded BEFORE retrieval (moved up 2026-09-22):
@@ -4003,121 +4201,6 @@ async function handleChatTurn(
         "Cache-Control": "no-cache, no-transform",
         "X-Accel-Buffering": "no",
         ...safetyFlagHeaders(stopTrigger),
-        ...(rootTraceId ? { "x-mira-trace-id": rootTraceId } : {}),
-      },
-    });
-  }
-
-  // #5335: "what did I note on the open job?" is answered by the server from
-  // the job sheet itself — no model call, so no recorded text reaches a
-  // provider and no document gate can discard a correct answer. Only the
-  // notebook's CONFIRMED (not scanned), undisputed machine qualifies, and only
-  // a job started on that machine: the one opened on the sheet, or else the
-  // single unfinished one. Several open jobs are named, never guessed between.
-  // Any read failure falls through to the turn's normal path.
-  const recordMachineId =
-    boundAsset.state === "resolved" && boundAsset.confirmedAt && !identityDisputed ? boundAsset.entityId : null;
-  let jobRecordAnswer: string | null = null;
-  if (livingSheetEnabled() && recordMachineId && !componentHold && !safetyTrigger && !visualEntry && isJobRecordQuestion(message)) {
-    try {
-      let recordJobId = livingSheetJobId;
-      if (!recordJobId) {
-        const open = await listOpenJobIdsForMachine(ctx.tenantId, notebookId, recordMachineId, 11);
-        if (open.length === 1) recordJobId = open[0]!;
-        else if (open.length === 0) jobRecordAnswer = "There is no unfinished job on this machine's job sheet. Open a job in the Job sheet and ask again.";
-        else jobRecordAnswer = `There are ${open.length > 10 ? "more than 10" : open.length} unfinished jobs on this machine's job sheet. Open the one you mean in the Job sheet and ask again.`;
-      }
-      if (recordJobId) {
-        const job = await loadJob(ctx.tenantId, notebookId, recordJobId);
-        if (job.status === "ok" && job.view.machine.entityId === recordMachineId) {
-          jobRecordAnswer = renderJobRecordAnswer(job.view, { email: ctx.email, userId: ctx.userId });
-        }
-      }
-    } catch (err) {
-      console.error(
-        `[notebook-chat] job record read failed code=${(err as { code?: string }).code ?? "?"} (continuing on the normal path):`,
-        err,
-      );
-    }
-  }
-  if (jobRecordAnswer !== null) {
-    const recordText = jobRecordAnswer;
-    const recordGateSpan = tracer.startSpan("answer_gate.evaluate", undefined, rootCtx);
-    lifecycleOutcome = "answered";
-    rec.stage("answer_gate", {
-      invoked: true,
-      decision: "answered",
-      reason: "job_record_readback",
-      answer_chars: recordText.length,
-      refusal_phrase_matched: false,
-      evidence_phrase_matched: false,
-      safety_classification: "none",
-      evidence_sufficient: true,
-      ungrounded_unit_claim: false,
-      safety_outcome: { layer: "none", outcome: "allow", flagged: false, violation: null, semantic_verdict: "not_run" },
-    });
-    setSpanAttrs(
-      {
-        "mira.answer_gate.invoked": true,
-        "mira.answer_gate.decision": "answered",
-        "mira.answer_gate.reason": "job_record_readback",
-        "mira.answer_gate.answer_chars": recordText.length,
-      },
-      recordGateSpan,
-    );
-    recordGateSpan.end();
-    const recordPersistSpan = startStage("turn.persist");
-    const recordTurnRowId = await releaseClaimOnFailure(() => recordTurn(ctx.tenantId, notebookId, {
-      ownerUserId: ctx.userId,
-      threadId,
-      clientRequestId,
-      claimToken: requestClaimToken,
-      question: message,
-      answerStatus: "answered",
-      answerText: recordText,
-      enabledSourceDocIds: docIds,
-      evidence: [...proposalEntries],
-      model: null,
-      basis: null,
-      ...assetSnapshot,
-    }));
-    const recordUsage: TurnUsage = {
-      provider: null,
-      model: null,
-      routeReason: "legacy_cascade",
-      inputTokens: null,
-      cachedInputTokens: null,
-      outputTokens: null,
-      costUsdEstimate: null,
-      status: "empty",
-      attempted: [],
-    };
-    await finishAndPersist(recordTurnRowId, recordUsage, { answerText: recordText, citationsPresent: false, latencyMs: null });
-    setSpanAttrs({ "mira.persist.outcome": "ok", "mira.turn.row_id": recordTurnRowId }, recordPersistSpan);
-    endTimed(recordPersistSpan, "persist");
-    endRoot();
-    const recordStream = new ReadableStream<Uint8Array>({
-      start(controller) {
-        if (rootTraceId) {
-          const traceFrame: NotebookTraceFrame = { kind: "trace", traceId: rootTraceId, turnId };
-          controller.enqueue(enc.encode(sse(traceFrame)));
-        }
-        const sources: NotebookSourcesFrame = { kind: "sources", citations: [], sourceSnapshot: docIds };
-        controller.enqueue(enc.encode(sse(sources)));
-        for (const piece of chunkForRelease(recordText)) {
-          controller.enqueue(enc.encode(sse({ kind: "content", content: piece })));
-        }
-        const status: NotebookStatusFrame = { kind: "status", status: "answered" };
-        controller.enqueue(enc.encode(sse(status)));
-        controller.enqueue(enc.encode("data: [DONE]\n\n"));
-        controller.close();
-      },
-    });
-    return new Response(recordStream, {
-      headers: {
-        "Content-Type": "text/event-stream",
-        "Cache-Control": "no-cache, no-transform",
-        "X-Accel-Buffering": "no",
         ...(rootTraceId ? { "x-mira-trace-id": rootTraceId } : {}),
       },
     });

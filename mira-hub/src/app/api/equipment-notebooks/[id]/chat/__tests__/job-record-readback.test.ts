@@ -65,7 +65,7 @@ vi.mock("@/capabilities/living-sheet/store", () => storeMock);
 // this suite is purely about what reaches the ANSWER, so make it a passthrough.
 vi.mock("@/capabilities/living-sheet/receipt", () => ({ withSheetReceipt: vi.fn(async (res: Response) => res) }));
 
-import { POST, isJobRecordQuestion, renderJobRecordAnswer } from "../route";
+import { JOB_RECORD_HEADER, POST, isJobRecordQuestion, parseJobRecordQuestion, renderJobRecordAnswer, withoutJobRecordAnswers } from "../route";
 
 function providerStream(text: string) {
   const enc = new TextEncoder();
@@ -139,7 +139,7 @@ afterEach(() => {
 });
 
 
-const RESOLVED = { state: "resolved" as const, entityId: "cmms-pump07", name: "Pump 07", unsPath: "enterprise.site.pump07", selectedVia: "qr_scan" as const, confirmedAt: "2026-11-03T09:00:00.000Z" };
+const RESOLVED = { state: "resolved" as const, entityId: "cmms-pump07", name: "CV-101 conveyor drive (GS11N-20P2)", unsPath: "enterprise.site.pump07", selectedVia: "qr_scan" as const, confirmedAt: "2026-11-03T09:00:00.000Z" };
 const NOTE = "Synthetic test note: conveyor motor relay output suspected. PLC program and I/O NOT read.";
 const LONG_HANDOVER = `Next shift: ${"re-check the relay output wiring at the terminal block. ".repeat(14)}CORRECTION: lock out the drive first.`;
 const RECORDED_VIEW = {
@@ -169,7 +169,7 @@ describe("#5335 — job record read-back", () => {
     expect(storeMock.listOpenJobIdsForMachine).toHaveBeenCalledWith(TENANT, NB, "cmms-pump07", 11);
     expect(storeMock.loadJob).toHaveBeenCalledWith(TENANT, NB, JOB_ID);
     const text = contentOf(f);
-    expect(text).toContain('From the job sheet for "PM — Pump 07" (in progress). These are technician records, not verified');
+    expect(text.startsWith(`${JOB_RECORD_HEADER}\nJob: "PM — Pump 07" (in progress).`)).toBe(true);
     expect(text).toContain(`- Note by you at 2026-11-03T11:05:00.000Z: ${NOTE}`);
     expect(f.find((x) => x.kind === "status")).toMatchObject({ status: "answered" });
     expect(f.find((x) => x.kind === "sources")).toMatchObject({ citations: [] });
@@ -177,16 +177,77 @@ describe("#5335 — job record read-back", () => {
     expect(turn).toMatchObject({ answerStatus: "answered", answerText: text, model: null, basis: null });
   });
 
-  it("an unrelated manual passage is retrieved: still answered from the sheet, no provider call, no citation", async () => {
-    ragMock.retrieveNodeChunks.mockResolvedValue([{ docId: "d1", filename: "PF525.pdf", page: 87, content: "Fault F004 is DC bus undervoltage." }] as never);
-    const f = await framesOf(await POST(req({ message: Q }), params));
+  it("answers before the manual search and query rewrite: a failing search cannot break or delay it (r4 F2)", async () => {
+    process.env.NOTEBOOK_QUERY_REWRITE = "1";
+    ragMock.retrieveNodeChunks.mockRejectedValue(new Error("statement timeout"));
+    try {
+      const f = await framesOf(await POST(req({ message: Q }), params));
+      expect(contentOf(f)).toContain(NOTE);
+      expect(ragMock.retrieveNodeChunks).not.toHaveBeenCalled();
+      expect(fetch).not.toHaveBeenCalled(); // no rewrite call either
+    } finally {
+      delete process.env.NOTEBOOK_QUERY_REWRITE;
+    }
+  });
+
+  it("'what did I note' lists the asker's own notes first-hand, never crowded out by coworkers' later notes (r4 F11)", async () => {
+    const coworker = Array.from({ length: 21 }, (_, k) => ({ id: `c${k}`, text: `coworker-${k}`, by: "other@example.com", at: `2026-11-03T12:${String(k).padStart(2, "0")}:00.000Z`, eventId: `ec${k}` }));
+    storeMock.loadJob.mockResolvedValue({ status: "ok", view: { ...RECORDED_VIEW, notes: [RECORDED_VIEW.notes[0]!, ...coworker] } });
+    const text = contentOf(await framesOf(await POST(req({ message: "Show me my notes" }), params)));
+    expect(text).toContain(`- Note by you at 2026-11-03T11:05:00.000Z: ${NOTE}`);
+    expect(text).not.toContain("coworker-");
+    expect(text).not.toContain("earlier note");
+    expect(text).toContain("- 21 records by other technicians are on the job sheet and not shown here.");
+  });
+
+  it("a question naming another machine's job is never answered with this machine's records (r4 F10)", async () => {
+    const f = await framesOf(await POST(req({ message: "What did I note on the open CV-202 job?" }), params));
+    const text = contentOf(f);
+    expect(text).not.toContain(NOTE);
+    expect(text).toContain('No records were read: this notebook\'s machine is CV-101 conveyor drive (GS11N-20P2), and "cv-202" does not match it');
     expect(fetch).not.toHaveBeenCalled();
-    expect(contentOf(f)).toContain(NOTE);
-    expect(f.find((x) => x.kind === "sources")).toMatchObject({ citations: [] });
+  });
+
+  it("the same with a job opened on the sheet: its records are not read back for another named machine", async () => {
+    const text = contentOf(await framesOf(await POST(req({ message: "What did I note on the CV-202 job?", livingSheetJobId: JOB_ID }), params)));
+    expect(text).not.toContain(NOTE);
+    expect(text).toContain("No records were read");
+  });
+
+  it("control: naming this machine (any spelling) reads its job", async () => {
+    const text = contentOf(await framesOf(await POST(req({ message: "What did I note on the cv101 conveyor job?" }), params)));
+    expect(text).toContain(NOTE);
+  });
+
+  it("a mixed record + restart question keeps the normal, safety-aware path and its restart warning (r4 F9)", async () => {
+    await (await POST(req({ message: "What did I note, and can I restart it after the fault?", mode: "general" }), params)).text();
+    expect(storeMock.listOpenJobIdsForMachine).not.toHaveBeenCalled();
+    expect(fetch).toHaveBeenCalled();
+  });
+
+  it.each([
+    ["a reported hazard (smoke)", "What did I note about the smoke coming out of the motor?"],
+  ])("%s that the matcher accepts still keeps the safety-aware path (r4 F9, gate on the route's own flags)", async (_l, q) => {
+    expect(isJobRecordQuestion(q)).toBe(true); // precondition: only the route's flags can stop it
+    await (await POST(req({ message: q, mode: "general" }), params)).text();
+    expect(storeMock.listOpenJobIdsForMachine).not.toHaveBeenCalled();
+  });
+
+  it("an earlier read-back in the conversation never reaches the provider on a later question (r4 F8)", async () => {
+    const earlier = `${JOB_RECORD_HEADER}\nJob: "PM — Pump 07" (in progress).\n- Note by other@example.com at 2026-11-03T11:07:00.000Z: ${NOTE}`;
+    await (
+      await POST(req({ message: "What is the discharge pressure rating?", mode: "general", history: [{ role: "user", content: Q }, { role: "assistant", content: earlier }] }), params)
+    ).text();
+    const body = String((vi.mocked(fetch).mock.calls[0]![1] as RequestInit).body);
+    expect(body).toContain("What is the discharge pressure rating?"); // precondition: this is the provider call
+    expect(body).not.toContain(NOTE);
+    expect(body).not.toContain("other@example.com");
+    expect(body).toContain("Job sheet records were shown to the technician here");
   });
 
   it("names each record's real author: 'you' for the asker (by email or user id), the coworker by label", async () => {
-    const text = contentOf(await framesOf(await POST(req({ message: Q }), params)));
+    const text = contentOf(await framesOf(await POST(req({ message: "Show me the notes on this job" }), params)));
+    expect(text).toContain(`- Note by you at 2026-11-03T11:05:00.000Z: ${NOTE}`);
     expect(text).toContain("- Note by other@example.com at 2026-11-03T11:07:00.000Z: Coworker note: belt tension fine.");
     expect(text).toContain("- Reading: Discharge pressure = 48 psi, recorded by you at 2026-11-03T11:00:00.000Z");
     expect(text).toContain('- Photos attached: 1 ("relay output terminal block" by you at 2026-11-03T11:06:00.000Z)');
@@ -308,5 +369,17 @@ describe("#5335 — isJobRecordQuestion: a pure read-back of the record, nothing
     "I noted the drive trips on start — what does F004 mean?",
     "What did I measure, and is that safe?",
     "What is the discharge pressure rating?",
+    "What did I note, and can I restart it after the fault?",
+    "What did I record before the reset?",
   ])("control, does not match: %s", (q) => expect(isJobRecordQuestion(q)).toBe(false));
+  it("first person singular is 'mine'; 'we' and 'the' are the whole job; a named job is the target", () => {
+    expect(parseJobRecordQuestion("What did I note on the open CV-101 job?")).toEqual({ mine: true, target: "cv-101" });
+    expect(parseJobRecordQuestion("Show me my notes")).toEqual({ mine: true, target: null });
+    expect(parseJobRecordQuestion("what did we log on this job")).toEqual({ mine: false, target: null });
+    expect(parseJobRecordQuestion("Show me the notes on the open job")).toEqual({ mine: false, target: null });
+  });
+  it("withoutJobRecordAnswers stubs only the server's own read-backs", () => {
+    const h = [{ role: "user", content: "q" }, { role: "assistant", content: `${JOB_RECORD_HEADER}\nsecret` }, { role: "assistant", content: "other" }];
+    expect(withoutJobRecordAnswers(h).map((t) => t.content)).toEqual(["q", "(Job sheet records were shown to the technician here; they are not repeated.)", "other"]);
+  });
 });
