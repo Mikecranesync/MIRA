@@ -12,6 +12,7 @@ Run: cd mira-bots && python -m pytest tests/test_manual_search_judge.py -q
 
 from __future__ import annotations
 
+import asyncio
 import json
 import pathlib
 import sys
@@ -1495,3 +1496,564 @@ async def test_non_rockwell_url_with_a_pc_segment_is_untouched(monkeypatch):
     url = "https://example.com/idc/groups/literature/documents/pc/x.pdf"
     v = await judge.judge_text("X", "Y", {"url": url, "title": ""}, "t")
     assert v is not None and v["is_manual"] is True
+
+
+# #5822: the site-scoped pass found only PDFs that are not the manual (the six
+# staging AutomationDirect drawings and cut sheet), which skipped the typed pass, so
+# no query ever asked for the manual by name. The search stub answers per query.
+_GS10_MANUAL = f"{_AD}/manuals/gs10m/gs10m.pdf"
+_GS10_MANUAL_HIT = (_GS10_MANUAL, "DURApulse GS10 AC Drive User Manual")
+_GS10_TYPED = [
+    "AutomationDirect GS10 manual filetype:pdf",
+    "AutomationDirect GS-10 manual filetype:pdf",
+]
+
+
+class _SaysGs10Manual(FakeRouter):
+    probed: list[str]  # the URLs search_manual probed, set by _stall
+
+    async def complete(self, messages, max_tokens=1024, session_id="x", sanitize=True):
+        user = messages[-1]["content"]
+        self.calls.append(user)
+        yes = "GS10-MANUAL-TEXT" in user
+        v = {
+            "is_manual_for_model": yes,
+            "doc_type": "user_manual" if yes else "datasheet",
+            "confidence": 0.9,
+            "evidence_quote": "GS10 user manual" if yes else "",
+            "reason": "The GS10 user manual." if yes else "A drawing, not the manual.",
+        }
+        return json.dumps(v), {"provider": "fake"}
+
+
+def _stall(
+    monkeypatch,
+    *,
+    q1_hits=_AD_READ,
+    q2_hits=(),
+    q2_raises=False,
+    handoff_hits=(),
+    delays=None,
+    pdfs=frozenset(),
+):
+    """q1 (site-scoped) answers ``q1_hits``, the typed pass ``q2_hits``, anything else
+    (the website handoff) ``handoff_hits``. A query in ``delays`` answers that many
+    seconds after it is sent. Every AutomationDirect drawing reads as one. Only the
+    URLs in ``pdfs`` probe as PDFs; every probed URL is kept in ``router.probed``."""
+    router = _SaysGs10Manual()
+    router.probed = []
+    monkeypatch.setattr(judge, "_router", router)
+    for url, _ in _AD_READ:
+        monkeypatch.setitem(TEXT, url, "DURApulse GS10 dimensional drawing / cut sheet")
+    monkeypatch.setitem(TEXT, _GS10_MANUAL, "DURApulse GS10 user manual GS10-MANUAL-TEXT")
+    sent: list[str] = []
+
+    async def serper(query, num=10):
+        # The per-call ceiling exactly as _serper_search applies it: checked first,
+        # and a query counts as used only when it is sent.
+        budget = search_mod._provider_budget.get()
+        if budget is not None:
+            if budget.used >= budget.limit:
+                budget.refused += 1
+                return []
+            budget.used += 1
+        sent.append(query)
+        if delays and query in delays:
+            await asyncio.sleep(delays[query])
+        if "site:" in query:
+            hits = q1_hits
+        elif "filetype:pdf" in query:
+            if q2_raises:
+                raise RuntimeError("provider down")
+            hits = q2_hits
+        else:
+            hits = handoff_hits
+        return [{"link": u, "title": t} for u, t in hits]
+
+    async def probe(url):
+        router.probed.append(url)
+        return url in pdfs
+
+    monkeypatch.setattr(search_mod, "_serper_search", serper)
+    monkeypatch.setattr(search_mod, "validate_pdf", probe)
+    return router, sent
+
+
+_HANDOFF = "AutomationDirect GS10 manual support"
+
+
+def _typed(sent):
+    return [q for q in sent if q in _GS10_TYPED]
+
+
+def _deadline(seconds):
+    return search_mod.time.monotonic() + seconds
+
+
+async def test_when_every_site_pdf_is_not_the_manual_the_typed_pass_finds_it(wired, monkeypatch):
+    # The typed pass also returns a drawing round one already rejected.
+    router, sent = _stall(monkeypatch, q2_hits=[_AD_READ[1], _GS10_MANUAL_HIT])
+    with search_mod.provider_query_budget(limit=4) as budget:
+        r = await search_mod.search_manual("AutomationDirect", "GS10", deadline_at=_deadline(60))
+    assert r is not None and r["url"] == _GS10_MANUAL and r["validated"] is True, r
+    assert r["reason"] == judge.REASON_JUDGED_MATCH
+    assert _typed(sent) == _GS10_TYPED
+    # Six reads in round one and one in round two: no rejected drawing is read twice.
+    assert len(router.calls) == 7
+    assert len(r["judged_rejected"]) == 6
+    assert budget.used == 3 and budget.refused == 0
+
+
+async def test_a_site_pdf_judged_the_manual_sends_no_typed_pass(wired, monkeypatch):
+    router, sent = _stall(monkeypatch, q1_hits=_AD_READ + [_GS10_MANUAL_HIT])
+    r = await search_mod.search_manual("AutomationDirect", "GS10", deadline_at=_deadline(60))
+    assert r is not None and r["url"] == _GS10_MANUAL and r["validated"] is True, r
+    assert _typed(sent) == []
+
+
+async def test_with_the_judge_off_the_typed_pass_is_skipped_as_before(wired, monkeypatch):
+    monkeypatch.setenv("MANUAL_JUDGE_ENABLED", "0")
+    router, sent = _stall(monkeypatch, q2_hits=[_GS10_MANUAL_HIT])
+    await search_mod.search_manual("AutomationDirect", "GS10", deadline_at=_deadline(60))
+    assert _typed(sent) == [] and router.calls == []
+
+
+async def test_an_unread_site_pdf_sends_no_typed_pass(wired, monkeypatch):
+    router, sent = _stall(monkeypatch, q2_hits=[_GS10_MANUAL_HIT])
+    monkeypatch.delitem(TEXT, _AD_READ[0][0])  # fetch fails: it may still be the manual
+    await search_mod.search_manual("AutomationDirect", "GS10", deadline_at=_deadline(60))
+    assert len(router.calls) == 5  # the other five were read and rejected
+    assert _typed(sent) == []
+
+
+async def test_a_nearly_spent_deadline_sends_no_typed_pass(wired, monkeypatch):
+    # One query plus one judge batch plus the return reserve does not fit in 20 s.
+    router, sent = _stall(monkeypatch, q2_hits=[_GS10_MANUAL_HIT])
+    r = await search_mod.search_manual("AutomationDirect", "GS10", deadline_at=_deadline(20))
+    assert _typed(sent) == [] and len(router.calls) == 6
+    assert r is not None and r["validated"] is False and r["reason"] == judge.REASON_JUDGED_REJECTED
+
+
+async def test_the_retry_never_costs_the_website_handoff_its_query(wired, monkeypatch):
+    router, sent = _stall(monkeypatch, q2_hits=[_GS10_MANUAL_HIT])
+    with search_mod.acquisition_trail(), search_mod.provider_query_budget(limit=2) as budget:
+        await search_mod.search_manual("AutomationDirect", "GS10", deadline_at=_deadline(60))
+    assert sent[1:] == [_HANDOFF]  # the handoff was sent; nothing was left for the retry
+    assert budget.used == 2 and budget.refused == 0
+
+
+async def test_a_failing_typed_pass_leaves_todays_answer(wired, monkeypatch):
+    router, sent = _stall(monkeypatch, q2_raises=True)
+    r = await search_mod.search_manual("AutomationDirect", "GS10", deadline_at=_deadline(60))
+    assert _typed(sent) == _GS10_TYPED and len(router.calls) == 6
+    assert r is not None and r["validated"] is False and r["reason"] == judge.REASON_JUDGED_REJECTED
+
+
+async def test_a_miss_after_the_typed_pass_still_hands_off_within_four_queries(wired, monkeypatch):
+    other = (f"{_AD}/drawings/2d/GS11N-21P0.pdf", "DURAPULSE GS10 SERIES AC MICRO DRIVE, 230V")
+    router, sent = _stall(monkeypatch, q2_hits=[other])
+    monkeypatch.setitem(TEXT, other[0], "DURApulse GS10 dimensional drawing")
+    with (
+        search_mod.acquisition_trail() as trail,
+        search_mod.provider_query_budget(limit=4) as budget,
+    ):
+        r = await search_mod.search_manual("AutomationDirect", "GS10", deadline_at=_deadline(60))
+        row = trail.to_dict()
+    assert r is not None and r["validated"] is False and r["reason"] == judge.REASON_JUDGED_REJECTED
+    # Today's answer exactly: round one's rejections. Round two's read is on the trail.
+    assert len(r["judged_rejected"]) == 6 and len(router.calls) == 7
+    assert sent[1] == _HANDOFF  # sent before the retry, where this miss sends it today
+    assert budget.used == 4 and budget.refused == 0
+    # One trail for both rounds: round one keeps its queue positions, round two follows.
+    pos = {c["url"]: c["queue_pos"] for c in row["candidates"]}
+    assert sorted(pos[search_mod.trail_url(u)] for u, _ in _AD_READ) == list(range(6))
+    assert pos[search_mod.trail_url(other[0])] == 6
+    assert row["stop"] == "queue_exhausted"
+    assert [q["pass"] for q in row["queries"]] == ["q1", "q3", "q2", "q2"]
+
+
+async def test_the_typed_pass_reads_at_most_one_more_batch(wired, monkeypatch):
+    more = [
+        (f"{_AD}/drawings/2d/GS1xN-{i}.pdf", f"DURAPULSE GS10 DRIVE drawing {i}") for i in range(6)
+    ]
+    router, sent = _stall(monkeypatch, q2_hits=more)
+    for url, _ in more:
+        monkeypatch.setitem(TEXT, url, "DURApulse GS10 dimensional drawing")
+    with search_mod.acquisition_trail() as trail:
+        await search_mod.search_manual("AutomationDirect", "GS10", deadline_at=_deadline(60))
+    assert len(router.calls) == 6 + judge.MAX_CANDIDATES
+    over = [u for u, why in trail.judge["not_queued"].items() if why == "over_max_total"]
+    assert len(over) == 6 - judge.MAX_CANDIDATES
+
+
+async def test_a_site_pass_over_the_read_cap_sends_no_typed_pass(wired, monkeypatch):
+    extra = [
+        (f"{_AD}/drawings/2d/GS1yN-{i}.pdf", f"DURAPULSE GS10 DRIVE sheet {i}") for i in range(3)
+    ]
+    router, sent = _stall(monkeypatch, q1_hits=_AD_READ + extra, q2_hits=[_GS10_MANUAL_HIT])
+    for url, _ in extra:
+        monkeypatch.setitem(TEXT, url, "DURApulse GS10 dimensional drawing")
+    await search_mod.search_manual("AutomationDirect", "GS10", deadline_at=_deadline(60))
+    assert len(router.calls) == judge.MAX_TOTAL  # one site PDF was never read
+    assert _typed(sent) == []
+
+
+async def test_a_typed_pass_that_already_ran_is_not_run_again(wired, monkeypatch):
+    # The site-scoped pass found no PDF, so the typed pass ran in round one as before.
+    other = (f"{_AD}/drawings/2d/GS11N-21P0.pdf", "DURAPULSE GS10 SERIES AC MICRO DRIVE, 230V")
+    router, sent = _stall(monkeypatch, q1_hits=(), q2_hits=[other])
+    monkeypatch.setitem(TEXT, other[0], "DURApulse GS10 dimensional drawing")
+    await search_mod.search_manual("AutomationDirect", "GS10", deadline_at=_deadline(60))
+    assert _typed(sent) == _GS10_TYPED and len(router.calls) == 1
+
+
+# #5844 Codex review round 1. The judge bounds its own reads by the caller's deadline;
+# these pin the retry's typed queries, the support page and cancellation.
+_REAL_SERPER_SEARCH = search_mod._serper_search  # captured before any fixture replaces it
+_OTHER = (f"{_AD}/drawings/2d/GS11N-21P0.pdf", "DURAPULSE GS10 SERIES AC MICRO DRIVE, 230V")
+_SUPPORT = ("https://www.automationdirect.com/support/manuals", "AutomationDirect manuals support")
+
+
+def _scale(monkeypatch, search_timeout, batch, reserve):
+    """Shrink the deadline arithmetic so a timing test runs in about a second."""
+    monkeypatch.setattr(search_mod, "SEARCH_TIMEOUT", search_timeout)
+    monkeypatch.setattr(judge, "UPGRADE_MIN_BATCH_S", batch)
+    monkeypatch.setattr(judge, "RETURN_RESERVE_S", reserve)
+
+
+def test_a_stalled_retry_query_still_returns_the_judged_rejection(wired, monkeypatch):
+    # F1: the typed query never answers. The endpoint must answer with the judged
+    # rejection before its own timeout, not report an outage.
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    import ask_api.manual_discovery as md
+    import shared.manual_search.quota as quota
+
+    _scale(monkeypatch, search_timeout=0.5, batch=0.3, reserve=0.1)
+    monkeypatch.setenv("MANUAL_DISCOVERY_API_KEY", "k")
+    monkeypatch.setenv("MANUAL_DISCOVERY_TIMEOUT", "1.5")
+    router, sent = _stall(monkeypatch, delays={_GS10_TYPED[0]: 30})
+
+    async def no_link(make):
+        return None
+
+    async def ok(_identity):
+        return "ok"
+
+    monkeypatch.setattr(md, "oem_request_link", no_link)
+    monkeypatch.setattr(quota, "reserve_provider_query", ok)
+    app = FastAPI()
+    app.include_router(md.router)
+    client = TestClient(app, headers={"X-Mira-Key": "k", "X-Mira-Tenant": "t", "X-Mira-User": "u"})
+    started = search_mod.time.monotonic()
+    body = client.post(
+        "/manual-discovery/search", json={"manufacturer": "AutomationDirect", "model": "GS10"}
+    ).json()
+    assert search_mod.time.monotonic() - started < 1.5
+    assert body["reason"] == "judged_not_applicable", body.get("reason")
+    assert _typed(sent) == [_GS10_TYPED[0]] and len(router.calls) == 6
+    rows = body["candidate_trail"]["queries"]
+    assert {"pass": "q2", "query": _GS10_TYPED[0], "result": "timeout"} in rows
+
+
+async def test_a_retry_stalled_on_the_quota_reservation_is_cut_off_too(wired, monkeypatch):
+    # The cutoff covers the whole provider call, not only the HTTP request: here the
+    # real _serper_search waits on the quota reservation and never sends.
+    import shared.manual_search.quota as quota
+
+    _scale(monkeypatch, search_timeout=0.5, batch=0.3, reserve=0.1)
+    router, _ = _stall(monkeypatch)
+    reservations = 0
+
+    async def reserve(_identity):
+        nonlocal reservations
+        reservations += 1
+        if reservations == 3:  # q1, the handoff, then the typed query
+            await asyncio.sleep(30)
+        return "ok"
+
+    async def post(query, num):
+        if "site:" in query:
+            return [{"link": u, "title": t} for u, t in _AD_READ]
+        return []
+
+    monkeypatch.setattr(search_mod, "_serper_search", _REAL_SERPER_SEARCH)
+    monkeypatch.setattr(search_mod, "SERPER_API_KEY", "k")
+    monkeypatch.setattr(search_mod, "_serper_post", post)
+    monkeypatch.setattr(quota, "reserve_provider_query", reserve)
+    with (
+        quota.provider_query_quota(quota.QuotaIdentity(tenant_id="t", user_id="u")),
+        search_mod.acquisition_trail() as trail,
+        search_mod.provider_query_budget(limit=4) as budget,
+    ):
+        r = await asyncio.wait_for(
+            search_mod.search_manual("AutomationDirect", "GS10", deadline_at=_deadline(1.5)),
+            timeout=1.5,
+        )
+    assert r is not None and r["reason"] == judge.REASON_JUDGED_REJECTED, r
+    assert reservations == 3 and budget.used == 2  # the stalled query was never sent
+    assert trail.queries[-1] == {"pass": "q2", "query": _GS10_TYPED[0], "result": "timeout"}
+
+
+async def test_a_slow_retry_query_never_costs_the_support_page(wired, monkeypatch):
+    # F2: the typed query answers just before its cutoff, too late for a handoff sent
+    # after it. The handoff goes first, so the support page is in the answer.
+    _scale(monkeypatch, search_timeout=1.6, batch=0.8, reserve=0.2)
+    router, sent = _stall(
+        monkeypatch, q2_hits=[_OTHER], handoff_hits=[_SUPPORT], delays={_GS10_TYPED[0]: 2.4}
+    )
+    monkeypatch.setitem(TEXT, _OTHER[0], "DURApulse GS10 dimensional drawing")
+    with search_mod.acquisition_trail() as trail:
+        r = await search_mod.search_manual("AutomationDirect", "GS10", deadline_at=_deadline(4.0))
+    assert r is not None and r["reason"] == judge.REASON_JUDGED_REJECTED, r
+    assert len(router.calls) == 7  # the late hit was still read, and rejected
+    assert sent[:3] == [sent[0], _HANDOFF, _GS10_TYPED[0]]
+    assert trail.search_page_url == _SUPPORT[0]
+
+
+async def test_a_cut_off_second_variant_keeps_the_first_variants_hits(wired, monkeypatch):
+    _scale(monkeypatch, search_timeout=0.5, batch=0.3, reserve=0.1)
+    router, sent = _stall(monkeypatch, q2_hits=[_GS10_MANUAL_HIT], delays={_GS10_TYPED[1]: 30})
+    with search_mod.acquisition_trail() as trail:
+        r = await asyncio.wait_for(
+            search_mod.search_manual("AutomationDirect", "GS10", deadline_at=_deadline(1.5)),
+            timeout=1.5,
+        )
+    assert r is not None and r["url"] == _GS10_MANUAL and r["validated"] is True, r
+    assert _typed(sent) == _GS10_TYPED
+    assert trail.queries[-1] == {"pass": "q2", "query": _GS10_TYPED[1], "result": "timeout"}
+
+
+async def test_a_caller_timeout_during_the_retry_query_is_still_a_cancellation(wired, monkeypatch):
+    # A site PDF naming neither the make nor the model is never queued, so it stays
+    # unread; round one's ranking lists it above the rejected drawings.
+    stray = ("https://www.example-distributor.com/files/terminal-blocks.pdf", "Terminal blocks")
+    router, sent = _stall(monkeypatch, q1_hits=_AD_READ + [stray], delays={_GS10_TYPED[0]: 30})
+    with search_mod.acquisition_trail() as trail:
+        with pytest.raises(TimeoutError):
+            await asyncio.wait_for(
+                search_mod.search_manual("AutomationDirect", "GS10", deadline_at=_deadline(60)),
+                timeout=0.5,
+            )
+        row = trail.to_dict()
+    assert _typed(sent) == [_GS10_TYPED[0]]
+    assert row["stop"] == "cancelled"
+    # Round one stays on the trail, in its judged order.
+    by_url = {c["url"]: c for c in row["candidates"]}
+    assert by_url[search_mod.trail_url(stray[0])]["not_queued"] == "not_relevant"
+    assert row["candidates"][0]["url"] == search_mod.trail_url(stray[0])
+    assert sorted(by_url[search_mod.trail_url(u)]["queue_pos"] for u, _ in _AD_READ) == list(
+        range(6)
+    )
+
+
+async def test_a_caller_timeout_while_reading_a_retry_pdf_keeps_it_on_the_trail(wired, monkeypatch):
+    # F3: the read the caller interrupted is on the trail, after round one's reads.
+    router, sent = _stall(monkeypatch, q2_hits=[_OTHER])
+    monkeypatch.setitem(TEXT, _OTHER[0], "DURApulse GS10 dimensional drawing")
+    fetch = judge.fetch_pdf_bytes
+
+    async def stalled_fetch(url, max_bytes=judge.MAX_BYTES):
+        if url == _OTHER[0]:
+            await asyncio.sleep(30)
+        return await fetch(url, max_bytes)
+
+    monkeypatch.setattr(judge, "fetch_pdf_bytes", stalled_fetch)
+    with search_mod.acquisition_trail() as trail:
+        with pytest.raises(TimeoutError):
+            await asyncio.wait_for(
+                search_mod.search_manual("AutomationDirect", "GS10", deadline_at=_deadline(60)),
+                timeout=0.5,
+            )
+        row = trail.to_dict()
+    assert row["stop"] == "cancelled"
+    by_url = {c["url"]: c for c in row["candidates"]}
+    late = by_url[search_mod.trail_url(_OTHER[0])]
+    assert late["read"] == "interrupted" and late["read_reason"] == "cancelled_during_fetch"
+    assert late["queue_pos"] == 6
+    assert sorted(by_url[search_mod.trail_url(u)]["queue_pos"] for u, _ in _AD_READ) == list(
+        range(6)
+    )
+
+
+# #5844 Codex review round 2. The retry now runs only where this search ends with the
+# judged rejection, after the website handoff, at either of the two places it does.
+# Only a judged match from it changes the answer; nothing it adds is probed.
+_PAGES = [u for u, _ in _OTHER_MAKERS]
+
+
+async def test_with_the_staging_pool_the_retry_runs_after_the_screen(wired, monkeypatch):
+    # The staging GS10 pools: the site-scoped query also returned web pages naming only
+    # "GS10". They are probed and screened out first, then the retry finds the manual.
+    router, sent = _stall(monkeypatch, q1_hits=_AD_READ + _OTHER_MAKERS, q2_hits=[_GS10_MANUAL_HIT])
+    with search_mod.acquisition_trail():
+        r = await search_mod.search_manual("AutomationDirect", "GS10", deadline_at=_deadline(60))
+    assert r is not None and r["url"] == _GS10_MANUAL and r["validated"] is True, r
+    assert r["reason"] == judge.REASON_JUDGED_MATCH and len(r["judged_rejected"]) == 6
+    assert sorted(router.probed) == sorted(_PAGES)  # round one's pages, before the retry
+    assert sent[1:] == [_HANDOFF, *_GS10_TYPED] and len(router.calls) == 7
+
+
+async def test_an_unread_retry_hit_is_listed_but_never_probed_or_offered(wired, monkeypatch):
+    unread = (f"{_AD}/manuals/gs10m/gs10m_ch1.pdf", "DURApulse GS10 user manual chapter 1")
+    pool = _AD_READ + _OTHER_MAKERS
+    router, _ = _stall(monkeypatch, q1_hits=pool)
+    without = await search_mod.search_manual("AutomationDirect", "GS10", deadline_at=_deadline(60))
+    router, _ = _stall(monkeypatch, q1_hits=pool, q2_hits=[unread])  # not fetchable
+    with search_mod.acquisition_trail() as trail:
+        r = await search_mod.search_manual("AutomationDirect", "GS10", deadline_at=_deadline(60))
+        row = trail.to_dict()
+    assert r is not None and without is not None
+    assert r["reason"] == judge.REASON_JUDGED_REJECTED and r["validated"] is False
+    assert (r["url"], r["judged_rejected"]) == (without["url"], without["judged_rejected"])
+    assert sorted(router.probed) == sorted(_PAGES)
+    by_url = {c["url"]: c for c in row["candidates"]}
+    assert by_url[search_mod.trail_url(unread[0])]["read"] == "unfetched"
+
+
+async def test_a_page_round_one_can_offer_sends_no_typed_query(wired, monkeypatch):
+    # F5: base probes this page and offers it for review, so the search never ends
+    # with the judged rejection and the retry never runs.
+    page = (_EXTENSIONLESS, "AutomationDirect GS10 installation guide")
+    router, sent = _stall(monkeypatch, q1_hits=_AD_READ + [page], q2_hits=[_GS10_MANUAL_HIT])
+    r = await search_mod.search_manual("AutomationDirect", "GS10", deadline_at=_deadline(60))
+    assert r is not None and r["url"] == _EXTENSIONLESS and r["validated"] is False, r
+    assert _typed(sent) == [] and len(sent) == 1
+
+
+async def test_a_page_that_probes_as_a_pdf_sends_no_typed_query(wired, monkeypatch):
+    page = (_EXTENSIONLESS, "GS10 drive documentation")
+    router, sent = _stall(
+        monkeypatch,
+        q1_hits=_AD_READ + [page],
+        q2_hits=[_GS10_MANUAL_HIT],
+        pdfs=frozenset({_EXTENSIONLESS}),
+    )
+    r = await search_mod.search_manual("AutomationDirect", "GS10", deadline_at=_deadline(60))
+    assert r is not None and r["url"] == _EXTENSIONLESS and r["validated"] is False, r
+    assert _typed(sent) == [] and router.probed == [_EXTENSIONLESS]
+
+
+async def test_an_error_in_the_retry_leaves_todays_answer(wired, monkeypatch):
+    router, sent = _stall(monkeypatch, q2_hits=[_GS10_MANUAL_HIT])
+    real = judge.judge_candidates
+    rounds = 0
+
+    async def second_round_raises(*args, **kwargs):
+        nonlocal rounds
+        rounds += 1
+        if rounds == 2:
+            raise RuntimeError("judge down")
+        return await real(*args, **kwargs)
+
+    monkeypatch.setattr(judge, "judge_candidates", second_round_raises)
+    r = await search_mod.search_manual("AutomationDirect", "GS10", deadline_at=_deadline(60))
+    assert rounds == 2 and _typed(sent) == _GS10_TYPED
+    assert r is not None and r["reason"] == judge.REASON_JUDGED_REJECTED and r["validated"] is False
+    assert len(r["judged_rejected"]) == 6
+
+
+_GS10_PAGE = (
+    "https://www.automationdirect.com/adc/overview/catalog/drives/gs10",
+    "DURApulse GS10 AC Drives manual downloads",
+)
+
+
+async def test_a_retry_miss_scores_its_pages_as_support_pages_like_any_query(wired, monkeypatch):
+    # Not "exactly today's answer": every query's non-PDF hits are scored as support
+    # pages, the retry's too. A better page from a typed query is offered on a miss;
+    # one that does not outscore the handoff's own page is not.
+    _stall(monkeypatch, q2_hits=[_GS10_PAGE])
+    with search_mod.acquisition_trail() as trail:
+        r = await search_mod.search_manual("AutomationDirect", "GS10")
+    assert r is not None and r["reason"] == judge.REASON_JUDGED_REJECTED, r
+    assert len(r["judged_rejected"]) == 6
+    assert trail.search_page_url == _GS10_PAGE[0]
+
+    _stall(monkeypatch, q2_hits=[_GS10_PAGE], handoff_hits=[_SUPPORT])
+    with search_mod.acquisition_trail() as trail:
+        r = await search_mod.search_manual("AutomationDirect", "GS10")
+    assert r is not None and r["reason"] == judge.REASON_JUDGED_REJECTED, r
+    assert trail.search_page_url == _SUPPORT[0]  # equal score: the handoff's page stays
+
+
+def _discovery_with_quota(monkeypatch, deny_on, reason):
+    """POST the discovery endpoint through the real _serper_search: the reservation
+    numbered ``deny_on`` (1 = q1, 2 = the handoff, 3 = the first typed query) is
+    denied with ``reason``; every other one succeeds."""
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    import ask_api.manual_discovery as md
+    import shared.manual_search.quota as quota
+
+    monkeypatch.setenv("MANUAL_DISCOVERY_API_KEY", "k")
+    reservations = 0
+
+    async def reserve(_identity):
+        nonlocal reservations
+        reservations += 1
+        return reason if reservations == deny_on else "ok"
+
+    async def post(query, num):
+        if "site:" in query:
+            return [{"link": u, "title": t} for u, t in _AD_READ]
+        return []
+
+    async def no_link(make):
+        return None
+
+    monkeypatch.setattr(search_mod, "_serper_search", _REAL_SERPER_SEARCH)
+    monkeypatch.setattr(search_mod, "SERPER_API_KEY", "k")
+    monkeypatch.setattr(search_mod, "_serper_post", post)
+    monkeypatch.setattr(quota, "reserve_provider_query", reserve)
+    monkeypatch.setattr(md, "oem_request_link", no_link)
+    app = FastAPI()
+    app.include_router(md.router)
+    client = TestClient(app, headers={"X-Mira-Key": "k", "X-Mira-Tenant": "t", "X-Mira-User": "u"})
+    body = client.post(
+        "/manual-discovery/search", json={"manufacturer": "AutomationDirect", "model": "GS10"}
+    ).json()
+    return body, reservations
+
+
+@pytest.mark.parametrize("reason", ["quota_unavailable", "global_cap_unconfigured"])
+def test_an_infrastructure_denial_on_the_retry_query_keeps_the_judged_rejection(
+    wired, monkeypatch, reason
+):
+    # Today's search finished with the judged rejection; only the retry's own query was
+    # denied, by infrastructure. That must not turn the answer into an outage.
+    router, _ = _stall(monkeypatch)
+    body, reservations = _discovery_with_quota(monkeypatch, deny_on=3, reason=reason)
+    assert reservations == 3 and len(router.calls) == 6
+    assert body["reason"] == "judged_not_applicable", body.get("reason")
+    assert body["search_stats"]["quota_denied"] is None
+    assert body["search_stats"]["refused_queries"] == 2  # both typed variants
+    rows = body["candidate_trail"]["queries"]
+    assert {"pass": "q2", "query": _GS10_TYPED[0], "result": "refused", "hits": 0} in rows
+
+
+@pytest.mark.parametrize("reason", ["user_cap", "tenant_cap", "global_cap"])
+def test_a_cap_the_retry_query_meets_is_reported_as_the_limit(wired, monkeypatch, reason):
+    # PRD R5 (#4168): a cap denial is never cached as a miss. The next-day retry then
+    # runs the typed pass the cap stopped.
+    router, _ = _stall(monkeypatch)
+    body, _ = _discovery_with_quota(monkeypatch, deny_on=3, reason=reason)
+    assert len(router.calls) == 6
+    assert body["reason"] == "quota_exceeded", body.get("reason")
+    assert body["search_stats"]["quota_denied"] == reason
+
+
+def test_the_cap_denials_match_the_endpoint():
+    import ask_api.manual_discovery as md
+
+    assert search_mod._CAP_DENIALS == md._QUOTA_CAP_REASONS
+
+
+def test_a_quota_denial_before_the_retry_still_reports_the_limit(wired, monkeypatch):
+    # Control: the handoff's own denial is today's behaviour, unchanged.
+    router, _ = _stall(monkeypatch)
+    body, _ = _discovery_with_quota(monkeypatch, deny_on=2, reason="user_cap")
+    assert body["reason"] == "quota_exceeded", body.get("reason")
+    assert body["search_stats"]["quota_denied"] == "user_cap"
