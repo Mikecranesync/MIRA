@@ -1413,7 +1413,13 @@ _PART_NUMBER_TABLE = [
     ("ACS355-03U-06A7-2", "title", "ACS355-03U-06A7-2-01 drive", False, "hyphen digit group"),
     ("GS10-20P5", "title", "GS10-20P5_B063 drive", False, "underscore code group"),
     ("GS10-20P5", "title", "GS10-20P5-EN data", False, "decided: two letters read as a code"),
-    ("GS10-20P5", "url", f"{_DIST}/search?q=gs10-20p5+manual", False, "decided: + is an option"),
+    (
+        "GS10-20P5",
+        "url",
+        f"{_DIST}/search?q=gs10-20p5+manual",
+        False,
+        "a search term is not the document",
+    ),
     ("ACS355-03U-06A7-2", "url", f"{_DIST}/p/ACS355-03U-06A7-2%2BB063", False, "encoded plus"),
     ("GS10-20P5", "url", f"{_DIST}/p/gs10-20p5-0-5-hp-drive", False, "decided: numeric slug"),
     ("ACS355-03U-06A7-2", "url", f"{_DIST}/p/acs355-03u-06a7-2%20manual", True, "encoded space"),
@@ -1427,12 +1433,95 @@ _PART_NUMBER_TABLE = [
     ("GS10-20P5", "title", "Drive GS10-20P5: manual (0.5 hp), 230 V", True, "punctuation"),
     ("1756-L83E", "title", "1756-L83E/B ControlLogix controller", True, "decided: /B series mark"),
     ("GS10-20P5", "url", f"{_DIST}/p/ad-gs10-20p5", True, "decided: leading side unchanged"),
+    # #5853: only the path and a document-name value of the URL count.
+    ("GS10-20P5", "url", f"{_DIST}/p/gs10-20p6?ref=GS10%2D20P5", False, "#5853 referral value"),
+    ("GS10-20P5", "url", f"{_DIST}/p/gs10-20p6#related-GS10%2D20P5", False, "#5853 fragment"),
+    (
+        "GS10-20P5",
+        "url",
+        f"{_DIST}/p/gs10-20p6%3Fref%3DGS10-20P5",
+        False,
+        "an encoded ? in the path",
+    ),
+    ("GS10-20P5", "url", f"{_DIST}/p/gs10-20p6;ref=GS10-20P5", False, "a path parameter"),
+    ("GS10-20P5", "url", "https://gs10-20p5.example-distributor.com/p/drive", False, "the host"),
+    ("GS10-20P5", "url", f"{_DIST}/p/GS10%2D20P5", True, "#5853 control: encoded in the path"),
+    # A query value never admits a page (#5855 Codex F1, F4). A real PDF behind a
+    # download endpoint is found by the content probe before this screen runs.
+    ("GS10-20P5", "url", f"{_DIST}/download?document=GS10-20P5+User+Manual", False, "query"),
+    ("GS10-20P5", "url", f"{_DIST}/download?FileName=GS10-20P5.pdf", False, "file-name value"),
+    ("ACS355-03U-06A7-2", "url", f"{_DIST}/dl?document=ACS355-03U-06A7-2%2BB063", False, "%2B"),
+    ("GS10-20P5", "url", f"{_DIST}/download?file=&file=GS10-20P5+Manual", False, "F4 blank"),
+    ("GS10-20P5", "url", f"{_DIST}/dl?file=GS10-20P6&filename=GS10-20P5+Manual", False, "F4"),
+    ("GS10-20P5", "url", f"{_DIST}/dl?name=GS10-20P5", False, "not a document field"),
+    # #5843: the Hub's catalog hyphens read as "-"; an en or em dash does not.
+    ("GS10-20P5", "title", "GS10-20P5\u2011X micro drive", False, "#5843 nonbreaking hyphen"),
+    ("GS10-20P5", "url", f"{_DIST}/p/gs10-20p5%E2%80%91X", False, "#5843 encoded"),
+    ("GS10-20P5", "title", "GS10-20P5\uff0d2 micro drive", False, "fullwidth hyphen-minus"),
+    ("GS10-20P5", "title", "GS10\u201120P5 micro drive", True, "nonbreaking hyphen between groups"),
+    ("GS10-20P5", "title", "GS10\u201320P5 micro drive", False, "an en dash joins no groups (Hub)"),
+    ("GS10-20P5", "title", "GS10-20P5\u2013X micro drive", False, "decided: a dash before a code"),
+    ("GS10-20P5", "title", "GS10-20P5 \u2013 user manual", True, "a spaced dash ends it"),
 ]
 
 
 @pytest.mark.parametrize("part,field,text,names_it,why", _PART_NUMBER_TABLE)
 def test_the_part_number_table(part, field, text, names_it, why):
     assert search_mod._names_part_number({field: text}, part) is names_it, why
+
+
+# #5842: the title and the URL are read on their own. A title naming only a longer
+# number names a different part, whatever the URL says; one that lists the exact part
+# too still covers it. In the URL path, an order option or a letter or digit run
+# straight onto the number names a different part that a shortened title cannot
+# outvote; no query value is read (#5855 round 3). A code group after a hyphen in the
+# path does not refuse a clean title: slugs join words that way ("Gis-Gs10-150-260"
+# for "Gis GS10/150/260").
+_ACS = "ACS355-03U-06A7-2"
+_TWO_FIELD_TABLE = [
+    # (part, title, url, names_it, why)
+    (_ACS, f"{_ACS} frequency converter", f"{_DIST}/p/acs355-03u-06a7-2%2BB063", False, "#5842"),
+    (_ACS, f"{_ACS}+B063 frequency converter", f"{_DIST}/p/acs355-03u-06a7-2", False, "title"),
+    (_ACS, f"{_ACS} frequency converter", f"{_DIST}/dl?file={_ACS}%2BB063", True, "value unread"),
+    ("GS10-20P5", "GS10-20P5 micro drive", f"{_DIST}/p/gs10-20p5x", False, "attached letter"),
+    ("GS10-20P5", "GS10-20P5X micro drive", f"{_DIST}/p/gs10-20p5", False, "attached in title"),
+    (_ACS, f"{_ACS} frequency converter", f"{_DIST}/p/acs355-03u-06a7-2", True, "#5842 control"),
+    ("GS10-20P5", "GS10-20P5 0.5 hp drive", f"{_DIST}/p/gs10-20p5-0-5-hp-drive", True, "spec slug"),
+    (
+        _ACS,
+        f"{_ACS} frequency converter",
+        f"{_DIST}/p/acs355-03u-06a7-2-b063",
+        True,
+        "decided: slug",
+    ),
+    ("GS10-20P5", "GS10-20P5 micro drive", f"{_DIST}/p/gs10-20p5?ref=GS10-20P5X", True, "ref"),
+    (
+        "GS10-20P5",
+        "GS10-20P5 drive manual",
+        f"{_DIST}/p/gs10-20p5?file=GS10-20P5X+Quick+Start",
+        True,
+        "F7 related file",
+    ),
+    ("GS10-20P5", "GS10-20P6 micro drive", f"{_DIST}/p/gs10-20p6?ref=GS10-20P5", False, "#5853"),
+    ("GS10-20P5", "GS10-20P6 micro drive", f"{_DIST}/p/gs10-20p6?file=GS10-20P5", False, "F1"),
+    ("GS10-20P5", "GS10-20P5\u2011X micro drive", f"{_DIST}/p/gs10-20p5", False, "F2"),
+    ("GS10-20P5", "GS10-20P5-X micro drive", f"{_DIST}/p/gs10-20p5", False, "code in title"),
+    ("GS10-20P5", "GS10-20P5 and GS10-20P5X manual", f"{_DIST}/docs/item-8812", True, "F3"),
+    ("GS10-20P5", "GS10-20P5 and GS10-20P5X manual", f"{_DIST}/p/gs10-20p5x", False, "F3 URL"),
+    (_ACS, "Frequency converter", f"{_DIST}/{_ACS}/{_ACS}+B063", False, "decided: path names both"),
+    (_ACS, f"{_ACS} drive", f"{_DIST}/download?document={_ACS}+User+Manual", True, "#5854 space"),
+]
+
+
+@pytest.mark.parametrize("part,title,url,names_it,why", _TWO_FIELD_TABLE)
+def test_the_title_and_url_are_read_separately(part, title, url, names_it, why):
+    assert search_mod._names_part_number({"title": title, "url": url}, part) is names_it, why
+
+
+def test_an_unparseable_url_is_not_evidence():
+    # urlsplit raises on an unbalanced IPv6 host; the screen refuses instead of failing.
+    cand = {"title": "GS10-20P5 micro drive", "url": "https://[gs10-20p5/p/x"}
+    assert search_mod._names_part_number(cand, "GS10-20P5") is False
 
 
 def _maker_less_stranger(url: str, title: str, make: str) -> dict:
@@ -1493,6 +1582,128 @@ async def test_the_exact_order_number_with_ordinary_text_is_still_offered(wired,
         _serve(monkeypatch, [(page["url"], page["title"])])
         r = await search_mod.search_manual("ABB", "ACS355-03U-06A7-2", exact_part_number=True)
         assert r is not None and r["url"] == page["url"] and r["validated"] is False, enabled
+
+
+async def _assert_screen(monkeypatch, make, part, refused, offered):
+    """In both judge modes, each `refused` page alone is a miss and the `offered`
+    control alone comes back unvalidated. A refused page must reach the screen and
+    be refused there, so a page the scorer dropped earlier cannot pass vacuously."""
+    screened: dict[str, bool] = {}
+    screen = search_mod._may_offer_unread
+
+    def spy(c, make_, part_number=None):
+        screened[c.get("url")] = verdict = screen(c, make_, part_number)
+        return verdict
+
+    monkeypatch.setattr(search_mod, "_may_offer_unread", spy)
+    for enabled in ("1", "0"):
+        monkeypatch.setenv("MANUAL_JUDGE_ENABLED", enabled)
+        assert judge.judge_enabled() is (enabled == "1")
+        for page in refused:
+            screened.clear()
+            _serve(monkeypatch, [(page["url"], page["title"])])
+            r = await search_mod.search_manual(make, part, exact_part_number=True)
+            assert r is None, (enabled, page["url"])
+            assert screened == {page["url"]: False}, (enabled, page["url"], screened)
+        _serve(monkeypatch, [(offered["url"], offered["title"])])
+        r = await search_mod.search_manual(make, part, exact_part_number=True)
+        assert r is not None and r["url"] == offered["url"] and r["validated"] is False, enabled
+
+
+async def test_a_part_named_only_in_a_referral_or_fragment_is_not_offered(wired, monkeypatch):
+    # #5853: the title and the product path name GS10-20P6; only the referral value
+    # or the fragment names the requested GS10-20P5.
+    ad = "AutomationDirect"
+    refused = [
+        _maker_less_stranger(f"{_DIST}/p/gs10-20p6?ref=GS10%2D20P5", "GS10-20P6 micro drive", ad),
+        _maker_less_stranger(
+            f"{_DIST}/p/gs10-20p6#related-GS10%2D20P5", "GS10-20P6 micro drive", ad
+        ),
+        # #5855 Codex F1: a document field on a product page names another part's file.
+        _maker_less_stranger(
+            f"{_DIST}/p/gs10-20p6?file=GS10-20P5+User+Manual", "GS10-20P6 micro drive", ad
+        ),
+    ]
+    # The scorer reads the raw URL, so the title carries "manual" to reach the screen;
+    # the title does not name the part, so the offer rests on the encoded path.
+    offered = _maker_less_stranger(f"{_DIST}/p/GS10%2D20P5", "Micro drive manual", ad)
+    await _assert_screen(monkeypatch, ad, "GS10-20P5", refused, offered)
+
+
+async def test_a_query_value_neither_refuses_nor_admits_a_page(wired, monkeypatch):
+    # #5855 round 3: no query value is read. A value naming a longer part does not
+    # refuse a page whose title names the part, and a related-file value does not
+    # refuse a product page whose title and path name it (Codex F7). A value naming
+    # the part does not admit a page that otherwise names nothing (#5853).
+    title = f"{_ACS} frequency converter"
+    refused = [
+        _maker_less_stranger(f"{_DIST}/download?document={_ACS}%20User%20Manual", "Download", "ABB")
+    ]
+    offered = _maker_less_stranger(f"{_DIST}/download?document={_ACS}%2BB063", title, "ABB")
+    await _assert_screen(monkeypatch, "ABB", _ACS, refused, offered)
+    ad = "AutomationDirect"
+    offered = _maker_less_stranger(
+        f"{_DIST}/p/gs10-20p5?file=GS10-20P5X+Quick+Start", "GS10-20P5 drive manual", ad
+    )
+    await _assert_screen(monkeypatch, ad, "GS10-20P5", [], offered)
+
+
+async def test_a_pdf_behind_a_download_endpoint_is_found_by_the_probe(wired, monkeypatch):
+    # #5855 Codex F1: the query never admits a page, so a download endpoint is found
+    # only when it serves a PDF. The probe runs before the screen; the same URL serving
+    # a web page reaches the screen and is refused.
+    url = f"{_DIST}/download?document=GS10-20P5+User+Manual"
+    _maker_less_stranger(url, "Download", "AutomationDirect")
+    screened: list[bool] = []
+    screen = search_mod._may_offer_unread
+
+    def spy(c, make_, part_number=None):
+        screened.append(verdict := screen(c, make_, part_number))
+        return verdict
+
+    monkeypatch.setattr(search_mod, "_may_offer_unread", spy)
+    for enabled in ("1", "0"):
+        monkeypatch.setenv("MANUAL_JUDGE_ENABLED", enabled)
+        assert judge.judge_enabled() is (enabled == "1")
+        screened.clear()
+        _serve(monkeypatch, [(url, "Download")], pdfs={url})
+        r = await search_mod.search_manual("AutomationDirect", "GS10-20P5", exact_part_number=True)
+        assert r is not None and r["url"] == url and r["validated"] is (enabled == "0"), enabled
+        assert screened == [], (enabled, screened)
+        _serve(monkeypatch, [(url, "Download")])
+        r = await search_mod.search_manual("AutomationDirect", "GS10-20P5", exact_part_number=True)
+        assert r is None and screened == [False], (enabled, screened)
+
+
+async def test_a_shortened_title_does_not_outvote_an_order_option_in_the_url(wired, monkeypatch):
+    # #5842: the URL names the longer +B063 order number; the title shortens it.
+    title = f"{_ACS} frequency converter"
+    refused = [_maker_less_stranger(f"{_DIST}/p/acs355-03u-06a7-2%2BB063", title, "ABB")]
+    offered = _maker_less_stranger(f"{_DIST}/p/acs355-03u-06a7-2", title, "ABB")
+    await _assert_screen(monkeypatch, "ABB", _ACS, refused, offered)
+
+
+async def test_a_nonbreaking_hyphen_does_not_end_the_part_number(wired, monkeypatch):
+    # #5843: U+2011 before a code group, in the title and encoded in the URL.
+    ad = "AutomationDirect"
+    refused = [
+        _maker_less_stranger(f"{_DIST}/p/item-8812", "GS10-20P5\u2011X micro drive", ad),
+        _maker_less_stranger(f"{_DIST}/p/gs10-20p5%E2%80%91X", "Micro drive", ad),
+        # #5855 Codex F2: a shortened slug does not outvote the title's longer number.
+        _maker_less_stranger(f"{_DIST}/p/gs10-20p5", "GS10-20P5\u2011X micro drive", ad),
+    ]
+    offered = _maker_less_stranger(f"{_DIST}/p/item-8812", "GS10-20P5 micro drive", ad)
+    await _assert_screen(monkeypatch, ad, "GS10-20P5", refused, offered)
+
+
+async def test_a_title_listing_the_part_with_a_longer_one_is_still_offered(wired, monkeypatch):
+    # #5855 Codex F3: a shared manual names the exact part among others. A URL naming
+    # the longer number alone still refuses it.
+    ad = "AutomationDirect"
+    title = "GS10-20P5 and GS10-20P5X user manual"
+    refused = [_maker_less_stranger(f"{_DIST}/p/gs10-20p5x", title, ad)]
+    offered = _maker_less_stranger(f"{_DIST}/docs/item-8812", title, ad)
+    await _assert_screen(monkeypatch, ad, "GS10-20P5", refused, offered)
 
 
 # F4: the content probe runs before the screen, so a real PDF at an extensionless
