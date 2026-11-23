@@ -4139,16 +4139,20 @@ async def test_an_exact_part_pdf_is_read_before_mains_unread_page_offer(
     with search_mod.acquisition_trail() as trail:
         r = await search_mod.search_manual("Siemens", _SIMATIC, exact_part_number=True)
     assert router.read == [_BROCHURE_PDF, _EXACT_PDF], router.read
+    # The exact PDF's read is on the trail either way, after main's own. Its verdict
+    # is recorded there; a rejection is not added to the offer's `judged_rejected`,
+    # as at #5890's miss endings. The trail's stop is the last round's.
+    assert r is not None and [x["url"] for x in r["judged_rejected"]] == [_BROCHURE_PDF], r
+    rows = {row["url"]: row for row in trail.to_dict(r["url"])["candidates"]}
+    assert rows[_BROCHURE_PDF]["queue_pos"] == 0, rows[_BROCHURE_PDF]
+    read = rows[_EXACT_PDF]
+    assert read["queue_pos"] == 1 and read["not_queued"] is None, read
+    assert read["read"] == "judged" and read["selected"] is is_manual, read
+    assert trail.judge.get("stop") == ("ideal_match" if is_manual else "queue_exhausted")
     if is_manual:
-        assert r is not None and r["url"] == _EXACT_PDF and r["validated"] is True, r
-        assert [x["url"] for x in r["judged_rejected"]] == [_BROCHURE_PDF], r
-        rows = {row["url"]: row for row in trail.to_dict(r["url"])["candidates"]}
-        assert rows[_BROCHURE_PDF]["queue_pos"] == 0, rows[_BROCHURE_PDF]
-        won = rows[_EXACT_PDF]
-        assert won["queue_pos"] == 1 and won["not_queued"] is None, won
-        assert won["read"] == "judged" and won["selected"] is True, won
+        assert r["url"] == _EXACT_PDF and r["validated"] is True, r
     else:
-        assert r is not None and r["url"] == _SIEMENS_PAGE[0], r
+        assert r["url"] == _SIEMENS_PAGE[0], r
         assert r["validated"] is False and r["reason"] == judge.REASON_JUDGE_UNAVAILABLE, r
 
 
@@ -4199,12 +4203,17 @@ async def test_an_exact_part_pdf_before_mains_offer_is_read_only_in_the_time_lef
     monkeypatch.setattr(judge, "_router", router)
     _serve(monkeypatch, [_SIEMENS_PAGE, _SIEMENS_BROCHURE, _SIEMENS_EXACT])
     deadline = 1000.0 + judge.RETURN_RESERVE_S + search_mod.HEAD_TIMEOUT + 10.0
-    r = await search_mod.search_manual(
-        "Siemens", _SIMATIC, deadline_at=deadline, exact_part_number=True
-    )
+    with search_mod.acquisition_trail() as trail:
+        r = await search_mod.search_manual(
+            "Siemens", _SIMATIC, deadline_at=deadline, exact_part_number=True
+        )
     if spent:
         assert router.read == [_BROCHURE_PDF], router.read
         assert r is not None and r["url"] == _SIEMENS_PAGE[0] and r["validated"] is False, r
+        # The trail says the deadline, not an exhausted queue, left it unread.
+        row = {x["url"]: x for x in trail.to_dict(r["url"])["candidates"]}[_EXACT_PDF]
+        assert row["queue_pos"] == 1 and row["read"] == "unread", row
+        assert trail.judge.get("stop") == "search_deadline", trail.judge
     else:
         assert router.read == [_BROCHURE_PDF, _EXACT_PDF], router.read
         assert r is not None and r["url"] == _EXACT_PDF and r["validated"] is True, r
@@ -4220,6 +4229,19 @@ async def test_control_on_a_model_lookup_the_exact_pdf_is_not_read_before_mains_
     _serve(monkeypatch, [_SIEMENS_PAGE, _SIEMENS_BROCHURE, _SIEMENS_EXACT])
     r = await search_mod.search_manual("Siemens", _SIMATIC)
     assert router.read == [_BROCHURE_PDF], router.read
+    assert r is not None and r["url"] == _SIEMENS_PAGE[0] and r["validated"] is False, r
+
+
+async def test_control_with_the_judge_off_nothing_is_read_before_mains_offer(wired, monkeypatch):
+    _offer_preconditions()
+    monkeypatch.setenv("MANUAL_JUDGE_ENABLED", "0")
+    assert not judge.judge_enabled()
+    _readable(monkeypatch, _BROCHURE_PDF, _EXACT_PDF)
+    router = _Verdicts({_EXACT_PDF})
+    monkeypatch.setattr(judge, "_router", router)
+    _serve(monkeypatch, [_SIEMENS_PAGE, _SIEMENS_BROCHURE, _SIEMENS_EXACT])
+    r = await search_mod.search_manual("Siemens", _SIMATIC, exact_part_number=True)
+    assert router.read == [], router.read
     assert r is not None and r["url"] == _SIEMENS_PAGE[0] and r["validated"] is False, r
 
 
