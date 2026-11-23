@@ -28,11 +28,12 @@
 #     and before Playwright runs, the server must answer a per-run marker that
 #     only this run's preload knows (#5799), so the tests can never drive
 #     another server.
-#   - The Hub port is held for the whole run by a relay this runner starts
-#     first and stops last (#5817). The Hub itself listens only on a Unix
-#     socket in the private work directory, so if it dies mid-run, the browser's
-#     requests fail at the relay instead of reaching whatever binds the port
-#     next, and the run fails.
+#   - The Hub server has no TCP listener: it listens only on a Unix socket in
+#     the private work directory (#5817). The browser's isolation proxy, which
+#     lives in the Playwright process, carries every Hub request to that socket,
+#     so the Hub port is only a name in the URL. Whatever listens on it, before
+#     or during the run, never receives a browser request (#5831), and if the
+#     Hub dies mid-run its requests fail and the run fails.
 #   - Every startup probe has a connect and a total timeout, and startup has an
 #     overall deadline, so a listener that never answers cannot hang the run
 #     (#5818).
@@ -44,16 +45,14 @@ cd "$HUB_DIR"
 
 PORT="${MLR_PORT:-3953}"
 PG_PORT=55753          # only names the socket file; nothing listens on TCP
-EXPECTED_TESTS=7
+EXPECTED_TESTS=10
 umask 077
 TMP_ROOT="${TMPDIR:-/tmp}"
 WORK="$(mktemp -d "${TMP_ROOT%/}/mlr.XXXXXX")"
 chmod 700 "$WORK"
 HUB_SOCKET="$WORK/hub.sock"
-RELAY_FAILURES="$WORK/relay-failures.log"
 STARTUP_SECONDS=90
 SERVER_PID=""
-RELAY_PID=""
 PGBIN=""
 
 # shellcheck disable=SC2329  # invoked by the EXIT trap below
@@ -61,10 +60,6 @@ cleanup() {
   if [ -n "$SERVER_PID" ]; then
     kill "$SERVER_PID" 2>/dev/null || true
     wait "$SERVER_PID" 2>/dev/null || true
-  fi
-  if [ -n "$RELAY_PID" ]; then
-    kill "$RELAY_PID" 2>/dev/null || true
-    wait "$RELAY_PID" 2>/dev/null || true
   fi
   if [ -n "$PGBIN" ] && [ -f "$WORK/pg/postmaster.pid" ]; then
     "$PGBIN/pg_ctl" -D "$WORK/pg" -m fast -w stop >/dev/null 2>&1 || true
@@ -129,21 +124,6 @@ refuse_dotenv
 if (exec 3<>"/dev/tcp/127.0.0.1/$PORT") 2>/dev/null; then
   echo "refusing to run: something already listens on 127.0.0.1:$PORT; stop it or set MLR_PORT" >&2; exit 1
 fi
-# Take the Hub port now and keep it until the end (#5817). The relay gets only
-# a port and paths, and an empty environment apart from PATH and HOME.
-: > "$RELAY_FAILURES"
-env -i PATH="$PATH" HOME="$HOME" node "$HERE/relay.cjs" "$PORT" "$HUB_SOCKET" "$RELAY_FAILURES" "$WORK/relay.ready" \
-  >"$WORK/relay.log" 2>&1 &
-RELAY_PID=$!
-relay_deadline=$((SECONDS + 10))
-until [ -s "$WORK/relay.ready" ]; do
-  if ! kill -0 "$RELAY_PID" 2>/dev/null || [ "$SECONDS" -ge "$relay_deadline" ]; then
-    echo "startup error: the relay could not take 127.0.0.1:$PORT" >&2
-    cat "$WORK/relay.log" >&2
-    exit 1
-  fi
-  sleep 0.2
-done
 PGBIN="$(find_pgbin)" || { echo "PostgreSQL 16 not found; set MLR_PGBIN" >&2; exit 1; }
 random_hex > "$WORK/su.pw"
 HUB_DB_PASSWORD="$(random_hex)"
@@ -204,9 +184,9 @@ env -i PATH="$PATH" HOME="$HOME" bash -c "$WITH_ENV_FILE" mlr-env "$WORK/server.
 SERVER_PID=$!
 
 # Ready means THIS run's server answers: the preload serves the per-run marker,
-# so another listener can never pass, even one that serves /login/. The marker
-# is asked on the private socket first, then through the relay, which proves
-# the path the browser will use. Startup has one overall deadline (#5818).
+# so another listener can never pass, even one that serves /login/. Both probes
+# go to the private socket, the same path the browser's requests take. Startup
+# has one overall deadline (#5818).
 startup_deadline=$((SECONDS + STARTUP_SECONDS))
 ready=0
 while [ "$SECONDS" -lt "$startup_deadline" ]; do
@@ -227,40 +207,24 @@ if [ "$ready" != 1 ]; then
   tail -n 40 "$WORK/server.log" >&2
   exit 1
 fi
-if [ "$(probe 5 "http://127.0.0.1:$PORT/__mlr_ready__" 2>/dev/null || true)" != "$READY_TOKEN" ]; then
-  echo "startup error: the marker did not come back through the relay on 127.0.0.1:$PORT" >&2
-  exit 1
-fi
 # The first render of /login/ compiles nothing but can be slow on a cold CI
 # runner, so it gets a longer limit, still bounded.
-if ! probe 60 -o /dev/null "http://127.0.0.1:$PORT/login/"; then
+if ! probe 60 -o /dev/null --unix-socket "$HUB_SOCKET" "http://127.0.0.1:$PORT/login/"; then
   echo "startup error: /login/ did not answer within 60s" >&2
   tail -n 40 "$WORK/server.log" >&2
   exit 1
 fi
 kill -0 "$SERVER_PID" 2>/dev/null || { echo "startup error: the Hub server exited after the readiness probe" >&2; exit 1; }
-if [ -s "$RELAY_FAILURES" ]; then
-  echo "startup error: the relay could not reach the Hub during startup" >&2; cat "$RELAY_FAILURES" >&2; exit 1
-fi
-echo "server identity: this run's marker answered on the private socket and through the relay on 127.0.0.1:$PORT"
+echo "server identity: this run's marker answered on the private socket; the Hub has no TCP listener"
 
 status=0
-MLR_HUB_URL="http://127.0.0.1:$PORT" MLR_MAIL_CAPTURE="$MAIL" \
+MLR_HUB_URL="http://127.0.0.1:$PORT" MLR_HUB_SOCKET="$HUB_SOCKET" MLR_MAIL_CAPTURE="$MAIL" \
   PLAYWRIGHT_JSON_OUTPUT_NAME="$WORK/report.json" \
   npx playwright test --config tests/local-fixtures/magic-link-return/playwright.config.ts --reporter=list,json || status=$?
 
-# The run counts only if the same server and relay served all of it (#5817).
+# The run counts only if the same server served all of it (#5817).
 if ! kill -0 "$SERVER_PID" 2>/dev/null; then
   echo "run error: the Hub server exited during the run" >&2
-  status=1
-fi
-if ! kill -0 "$RELAY_PID" 2>/dev/null; then
-  echo "run error: the relay exited during the run" >&2
-  status=1
-fi
-if [ -s "$RELAY_FAILURES" ]; then
-  echo "run error: the relay could not reach the Hub $(wc -l < "$RELAY_FAILURES" | tr -d ' ') time(s):" >&2
-  cat "$RELAY_FAILURES" >&2
   status=1
 fi
 

@@ -13,9 +13,10 @@
  *
  * 2. Transport allowlist (#5795 review F2). Code that opens sockets directly
  *    (database drivers, SDK clients) never goes through fetch, so the socket
- *    layer is guarded too. The process may open exactly two kinds of
- *    connection: TCP to its own Hub port on loopback (MLR_ALLOW_HUB_PORT), and
- *    the one Unix socket of the disposable database (MLR_ALLOW_DB_SOCKET).
+ *    layer is guarded too. The process may open exactly one kind of
+ *    connection: the one Unix socket of the disposable database
+ *    (MLR_ALLOW_DB_SOCKET). Even TCP to the Hub's own port is refused, because
+ *    nothing of this run listens there (see 4).
  *    Every other TCP or Unix-socket connection, every UDP send, and DNS for any
  *    name other than a loopback name or address is refused with code MLR_EGRESS_BLOCKED and
  *    logged to stderr (host and port only, never a value).
@@ -25,12 +26,12 @@
  *    run.sh waits for that exact answer, so a different server that happens
  *    to hold the port can never pass readiness.
  *
- * 4. Private listener (#5817). The Hub's HTTP server is moved off TCP onto
- *    MLR_LISTEN_SOCKET, a Unix socket inside the run's private work directory.
- *    The browser reaches it only through run.sh's relay (`relay.cjs`), which
- *    holds the Hub port for the whole run, so if the server dies another
- *    process can take neither the port nor the requests. Any other TCP listen
- *    by an HTTP server is refused.
+ * 4. Private listener (#5817, #5831). The Hub's HTTP server is moved off TCP
+ *    onto MLR_LISTEN_SOCKET, a Unix socket inside the run's private work
+ *    directory. The browser reaches it only through the isolation proxy in the
+ *    Playwright process (`browser-isolation.ts`), which forwards to that
+ *    socket, so the Hub port (MLR_ALLOW_HUB_PORT) is only the name Next is
+ *    started with. Any other TCP listen by an HTTP server is refused.
  *
  * The shared fixture guard (`../harness/egress-guard.cjs`) is not reused
  * because it refuses every Unix socket, and this test needs one database.
@@ -75,7 +76,6 @@ net.Socket.prototype.connect = function guardedConnect(...args) {
   }
   const host = String((options && options.host) || "localhost");
   const port = Number(options && options.port);
-  if (LOOPBACK.has(host) && port === hubPort) return originalConnect.apply(this, args);
   const err = refusal("tcp", `${host}:${port}`);
   process.nextTick(() => this.destroy(err));
   return this;
@@ -156,7 +156,8 @@ http.Server.prototype.emit = function markerEmit(event, req, res) {
 // ---- 4. Private listener ---------------------------------------------------
 // `next start -p <port>` calls server.listen(port, hostname). That call is
 // moved to the private socket; Next reads back a path from server.address()
-// and keeps the port it was given, so its own URLs still name the relay.
+// and keeps the port it was given, so its own URLs still name the browser's
+// origin. A server-side call to that port is refused by section 2.
 const originalListen = net.Server.prototype.listen;
 net.Server.prototype.listen = function privateListen(...args) {
   if (!(this instanceof http.Server)) return originalListen.apply(this, args);
