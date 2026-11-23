@@ -317,37 +317,41 @@ def _names_make(c: dict, make: str) -> bool:
 # of one or two letters ("-X"). A space, punctuation, a path or file-extension
 # separator, or a word ("-user-manual") still ends it.
 _DIFFERENT_PART = r"(?:[a-z0-9]|\+[a-z0-9])"
-_CODE_GROUP = r"(?:[\-_–—﹘](?:[a-z0-9]*\d|[a-z]{1,2}(?![a-z0-9])))"
+_CODE_GROUP = r"(?:[\-_\u2013\u2014\ufe58](?:[a-z0-9]*\d|[a-z]{1,2}(?![a-z0-9])))"
 _PART_NUMBER_END = "(?!" + _DIFFERENT_PART + "|" + _CODE_GROUP + ")"
 
 # The Hub's catalog hyphens (mira-hub/src/capabilities/detection-fold.ts
 # HYPHEN_EQUIV_CHARS) read as "-" for the match only (#5843). An en or em dash is
 # not one, as in the Hub: it joins no groups, though it still starts a code group.
-_CATALOG_HYPHENS = str.maketrans(dict.fromkeys("‐‑‒−﹣－", "-"))
+_CATALOG_HYPHENS = str.maketrans(dict.fromkeys("\u2010\u2011\u2012\u2212\ufe63\uff0d", "-"))
 
-# The query fields that can name the document itself on a download endpoint
-# ("/download?document=..."). A referral or search value, a path parameter, the
-# fragment and the host never say which part a page is about (#5853).
+# The query fields that name the document on a download endpoint
+# ("/download?document=..."). Their values may only refuse a page, never admit one:
+# a product page can carry another part's file name in them (#5855 Codex F1), and a
+# real PDF behind such an endpoint is found by the content probe, which runs before
+# this screen. Any other query value, a path parameter, the fragment and the host
+# are not read at all (#5853).
 _DOCUMENT_QUERY_FIELDS = frozenset({"doc", "document", "file", "filename"})
 
 
-def _part_number_texts(c: dict) -> list[str] | None:
-    """The texts that may name an unread page's part, each read on its own: the
-    title, the percent-decoded URL path, and the form-decoded value of any document
-    field, where a raw "+" is a space and "%2B" a plus (#5854). None when the URL
-    cannot be parsed or names its document twice, so the page is refused."""
+def _part_number_texts(c: dict) -> tuple[str, str, list[str]] | None:
+    """An unread page's title, its URL path (percent-decoded, cut at a decoded "?"
+    or "#", without ";" parameters) and its document-field values (form-decoded, so
+    a raw "+" is a space and "%2B" a plus, #5854), each folded for the match. None
+    when the URL cannot be parsed, so the page is refused."""
     try:
         url = urlsplit(c.get("url") or "")
-        fields = [(k.lower(), v) for k, v in parse_qsl(url.query)]
+        query = parse_qsl(url.query)
     except ValueError:
-        return None
-    values = [v for k, v in fields if k in _DOCUMENT_QUERY_FIELDS]
-    if len(values) != len({k for k, _ in fields if k in _DOCUMENT_QUERY_FIELDS}):
         return None
     path = re.split(r"[?#]", unquote(url.path), maxsplit=1)[0]
     path = re.sub(r";[^/]*", "", path)
-    texts = (c.get("title") or "", path, *values)
-    return [t.translate(_CATALOG_HYPHENS).lower() for t in texts if t]
+    values = [v for k, v in query if k.lower() in _DOCUMENT_QUERY_FIELDS]
+
+    def fold(text: str) -> str:
+        return text.translate(_CATALOG_HYPHENS).lower()
+
+    return fold(c.get("title") or ""), fold(path), [fold(v) for v in values]
 
 
 def _names_part_number(c: dict, part_number: str) -> bool:
@@ -356,20 +360,29 @@ def _names_part_number(c: dict, part_number: str) -> bool:
     ("GS10") or a longer number that starts with it ("GS10-20P5X", "GS10-20P5-X",
     "ACS355-03U-06A7-2+B063").
 
-    Each text from `_part_number_texts` is read on its own (#5842). A longer number
-    with an attached letter, digit or "+" option, in any of them, is a different
-    part that a shortened form elsewhere cannot outvote. A code group after a hyphen
-    only stops its own text from matching, because slugs join words that way
-    ("Gis-Gs10-150-260" for "Gis GS10/150/260"). Only the match reads the decoded
-    forms, never the fetch or the display."""
+    Only the title or the URL path can name it, and each is read on its own (#5842):
+    - a title that names a longer number and not the exact one is about a different
+      part, whatever the URL says. A title that lists the exact part as well still
+      covers it ("GS10-20P5 and GS10-20P5X user manual");
+    - a URL path or document value with an attached letter, digit or "+" option names
+      a different part that a shortened title cannot outvote. A code group after a
+      hyphen there does not refuse a clean title, because slugs join words that way
+      ("Gis-Gs10-150-260" for "Gis GS10/150/260").
+    Only the match reads the decoded forms, never the fetch or the display."""
     chunks = re.findall(r"[a-z0-9]+", (part_number or "").lower())
     texts = _part_number_texts(c) if chunks else None
-    if not texts:
+    if texts is None:
         return False
+    title, path, values = texts
     number = r"(?<![a-z0-9])" + r"[\s\-_./]*".join(map(re.escape, chunks))
-    if any(re.search(number + "(?=" + _DIFFERENT_PART + ")", t) for t in texts):
+    exact = re.compile(number + _PART_NUMBER_END)
+    longer_title = re.search(number + "(?=" + _DIFFERENT_PART + "|" + _CODE_GROUP + ")", title)
+    if longer_title and not exact.search(title):
         return False
-    return any(re.search(number + _PART_NUMBER_END, t) for t in texts)
+    different = re.compile(number + "(?=" + _DIFFERENT_PART + ")")
+    if any(different.search(t) for t in (path, *values)):
+        return False
+    return bool(exact.search(title) or exact.search(path))
 
 
 def _may_offer_unread(c: dict, make: str, part_number: str | None = None) -> bool:

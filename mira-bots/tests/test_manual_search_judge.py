@@ -1446,26 +1446,22 @@ _PART_NUMBER_TABLE = [
     ("GS10-20P5", "url", f"{_DIST}/p/gs10-20p6;ref=GS10-20P5", False, "a path parameter"),
     ("GS10-20P5", "url", "https://gs10-20p5.example-distributor.com/p/drive", False, "the host"),
     ("GS10-20P5", "url", f"{_DIST}/p/GS10%2D20P5", True, "#5853 control: encoded in the path"),
-    # #5854: a document-name value is form-decoded, so a raw + is a space.
-    ("GS10-20P5", "url", f"{_DIST}/download?document=GS10-20P5+User+Manual", True, "#5854"),
-    ("GS10-20P5", "url", f"{_DIST}/download?FileName=GS10-20P5.pdf", True, "a file-name value"),
+    # A query value never admits a page (#5855 Codex F1, F4). A real PDF behind a
+    # download endpoint is found by the content probe before this screen runs.
+    ("GS10-20P5", "url", f"{_DIST}/download?document=GS10-20P5+User+Manual", False, "query"),
+    ("GS10-20P5", "url", f"{_DIST}/download?FileName=GS10-20P5.pdf", False, "file-name value"),
     ("ACS355-03U-06A7-2", "url", f"{_DIST}/dl?document=ACS355-03U-06A7-2%2BB063", False, "%2B"),
-    (
-        "GS10-20P5",
-        "url",
-        f"{_DIST}/dl?file=GS10-20P5&file=GS10-20P6",
-        False,
-        "decided: named twice",
-    ),
-    ("GS10-20P5", "url", f"{_DIST}/dl?name=GS10-20P5", False, "decided: not a document field"),
+    ("GS10-20P5", "url", f"{_DIST}/download?file=&file=GS10-20P5+Manual", False, "F4 blank"),
+    ("GS10-20P5", "url", f"{_DIST}/dl?file=GS10-20P6&filename=GS10-20P5+Manual", False, "F4"),
+    ("GS10-20P5", "url", f"{_DIST}/dl?name=GS10-20P5", False, "not a document field"),
     # #5843: the Hub's catalog hyphens read as "-"; an en or em dash does not.
-    ("GS10-20P5", "title", "GS10-20P5‑X micro drive", False, "#5843 nonbreaking hyphen"),
+    ("GS10-20P5", "title", "GS10-20P5\u2011X micro drive", False, "#5843 nonbreaking hyphen"),
     ("GS10-20P5", "url", f"{_DIST}/p/gs10-20p5%E2%80%91X", False, "#5843 encoded"),
-    ("GS10-20P5", "title", "GS10-20P5－2 micro drive", False, "fullwidth hyphen-minus"),
-    ("GS10-20P5", "title", "GS10‑20P5 micro drive", True, "nonbreaking hyphen between groups"),
-    ("GS10-20P5", "title", "GS10–20P5 micro drive", False, "an en dash joins no groups (Hub)"),
-    ("GS10-20P5", "title", "GS10-20P5–X micro drive", False, "decided: a dash before a code"),
-    ("GS10-20P5", "title", "GS10-20P5 – user manual", True, "a spaced dash ends it"),
+    ("GS10-20P5", "title", "GS10-20P5\uff0d2 micro drive", False, "fullwidth hyphen-minus"),
+    ("GS10-20P5", "title", "GS10\u201120P5 micro drive", True, "nonbreaking hyphen between groups"),
+    ("GS10-20P5", "title", "GS10\u201320P5 micro drive", False, "an en dash joins no groups (Hub)"),
+    ("GS10-20P5", "title", "GS10-20P5\u2013X micro drive", False, "decided: a dash before a code"),
+    ("GS10-20P5", "title", "GS10-20P5 \u2013 user manual", True, "a spaced dash ends it"),
 ]
 
 
@@ -1474,10 +1470,11 @@ def test_the_part_number_table(part, field, text, names_it, why):
     assert search_mod._names_part_number({field: text}, part) is names_it, why
 
 
-# #5842: the title, the path and each document-name value are read on their own. An
-# order option, or a letter or digit run straight onto the number, in any of them
-# names a different part, and a shortened form elsewhere cannot outvote it. A hyphen
-# or underscore group still makes its own text a longer number but does not outvote a
+# #5842: the title and the URL are read on their own. A title naming only a longer
+# number names a different part, whatever the URL says; one that lists the exact part
+# too still covers it. In the URL path or a document value, an order option or a
+# letter or digit run straight onto the number names a different part that a
+# shortened title cannot outvote. A code group after a hyphen there does not refuse a
 # clean title: slugs join words that way ("Gis-Gs10-150-260" for "Gis GS10/150/260").
 _ACS = "ACS355-03U-06A7-2"
 _TWO_FIELD_TABLE = [
@@ -1498,6 +1495,13 @@ _TWO_FIELD_TABLE = [
     ),
     ("GS10-20P5", "GS10-20P5 micro drive", f"{_DIST}/p/gs10-20p5?ref=GS10-20P5X", True, "ref"),
     ("GS10-20P5", "GS10-20P6 micro drive", f"{_DIST}/p/gs10-20p6?ref=GS10-20P5", False, "#5853"),
+    ("GS10-20P5", "GS10-20P6 micro drive", f"{_DIST}/p/gs10-20p6?file=GS10-20P5", False, "F1"),
+    ("GS10-20P5", "GS10-20P5\u2011X micro drive", f"{_DIST}/p/gs10-20p5", False, "F2"),
+    ("GS10-20P5", "GS10-20P5-X micro drive", f"{_DIST}/p/gs10-20p5", False, "code in title"),
+    ("GS10-20P5", "GS10-20P5 and GS10-20P5X manual", f"{_DIST}/docs/item-8812", True, "F3"),
+    ("GS10-20P5", "GS10-20P5 and GS10-20P5X manual", f"{_DIST}/p/gs10-20p5x", False, "F3 URL"),
+    (_ACS, "Frequency converter", f"{_DIST}/{_ACS}/{_ACS}+B063", False, "decided: path names both"),
+    (_ACS, f"{_ACS} drive", f"{_DIST}/download?document={_ACS}+User+Manual", True, "#5854 space"),
 ]
 
 
@@ -1607,6 +1611,10 @@ async def test_a_part_named_only_in_a_referral_or_fragment_is_not_offered(wired,
         _maker_less_stranger(
             f"{_DIST}/p/gs10-20p6#related-GS10%2D20P5", "GS10-20P6 micro drive", ad
         ),
+        # #5855 Codex F1: a document field on a product page names another part's file.
+        _maker_less_stranger(
+            f"{_DIST}/p/gs10-20p6?file=GS10-20P5+User+Manual", "GS10-20P6 micro drive", ad
+        ),
     ]
     # The scorer reads the raw URL, so the title carries "manual" to reach the screen;
     # the title does not name the part, so the offer rests on the encoded path.
@@ -1614,13 +1622,40 @@ async def test_a_part_named_only_in_a_referral_or_fragment_is_not_offered(wired,
     await _assert_screen(monkeypatch, ad, "GS10-20P5", refused, offered)
 
 
-async def test_a_form_encoded_document_name_is_read_as_words(wired, monkeypatch):
-    # #5854: a raw + in a document value is a space; an encoded %2B is a literal +.
-    refused = [_maker_less_stranger(f"{_DIST}/download?document={_ACS}%2BB063", "Download", "ABB")]
-    offered = _maker_less_stranger(
-        f"{_DIST}/download?document={_ACS}+User+Manual", "Download", "ABB"
-    )
+async def test_a_form_encoded_document_value_does_not_refuse_a_clean_title(wired, monkeypatch):
+    # #5854: a raw + in a document value is a space, so it is not an order option;
+    # an encoded %2B is a literal + and refuses the page.
+    title = f"{_ACS} frequency converter"
+    refused = [_maker_less_stranger(f"{_DIST}/download?document={_ACS}%2BB063", title, "ABB")]
+    offered = _maker_less_stranger(f"{_DIST}/download?document={_ACS}+User+Manual", title, "ABB")
     await _assert_screen(monkeypatch, "ABB", _ACS, refused, offered)
+
+
+async def test_a_pdf_behind_a_download_endpoint_is_found_by_the_probe(wired, monkeypatch):
+    # #5855 Codex F1: the query never admits a page, so a download endpoint is found
+    # only when it serves a PDF. The probe runs before the screen; the same URL serving
+    # a web page reaches the screen and is refused.
+    url = f"{_DIST}/download?document=GS10-20P5+User+Manual"
+    _maker_less_stranger(url, "Download", "AutomationDirect")
+    screened: list[bool] = []
+    screen = search_mod._may_offer_unread
+
+    def spy(c, make_, part_number=None):
+        screened.append(verdict := screen(c, make_, part_number))
+        return verdict
+
+    monkeypatch.setattr(search_mod, "_may_offer_unread", spy)
+    for enabled in ("1", "0"):
+        monkeypatch.setenv("MANUAL_JUDGE_ENABLED", enabled)
+        assert judge.judge_enabled() is (enabled == "1")
+        screened.clear()
+        _serve(monkeypatch, [(url, "Download")], pdfs={url})
+        r = await search_mod.search_manual("AutomationDirect", "GS10-20P5", exact_part_number=True)
+        assert r is not None and r["url"] == url and r["validated"] is (enabled == "0"), enabled
+        assert screened == [], (enabled, screened)
+        _serve(monkeypatch, [(url, "Download")])
+        r = await search_mod.search_manual("AutomationDirect", "GS10-20P5", exact_part_number=True)
+        assert r is None and screened == [False], (enabled, screened)
 
 
 async def test_a_shortened_title_does_not_outvote_an_order_option_in_the_url(wired, monkeypatch):
@@ -1635,10 +1670,22 @@ async def test_a_nonbreaking_hyphen_does_not_end_the_part_number(wired, monkeypa
     # #5843: U+2011 before a code group, in the title and encoded in the URL.
     ad = "AutomationDirect"
     refused = [
-        _maker_less_stranger(f"{_DIST}/p/item-8812", "GS10-20P5‑X micro drive", ad),
+        _maker_less_stranger(f"{_DIST}/p/item-8812", "GS10-20P5\u2011X micro drive", ad),
         _maker_less_stranger(f"{_DIST}/p/gs10-20p5%E2%80%91X", "Micro drive", ad),
+        # #5855 Codex F2: a shortened slug does not outvote the title's longer number.
+        _maker_less_stranger(f"{_DIST}/p/gs10-20p5", "GS10-20P5\u2011X micro drive", ad),
     ]
     offered = _maker_less_stranger(f"{_DIST}/p/item-8812", "GS10-20P5 micro drive", ad)
+    await _assert_screen(monkeypatch, ad, "GS10-20P5", refused, offered)
+
+
+async def test_a_title_listing_the_part_with_a_longer_one_is_still_offered(wired, monkeypatch):
+    # #5855 Codex F3: a shared manual names the exact part among others. A URL naming
+    # the longer number alone still refuses it.
+    ad = "AutomationDirect"
+    title = "GS10-20P5 and GS10-20P5X user manual"
+    refused = [_maker_less_stranger(f"{_DIST}/p/gs10-20p5x", title, ad)]
+    offered = _maker_less_stranger(f"{_DIST}/docs/item-8812", title, ad)
     await _assert_screen(monkeypatch, ad, "GS10-20P5", refused, offered)
 
 
