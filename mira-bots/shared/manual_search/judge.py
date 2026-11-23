@@ -34,7 +34,6 @@ import logging
 import os
 import re
 import time
-from collections.abc import Callable
 from typing import Any
 
 import httpx
@@ -647,18 +646,11 @@ async def judge_candidates(
     deadline_at: float | None = None,
     trace: dict | None = None,
     max_total: int | None = None,
-    also_relevant: Callable[[dict], bool] | None = None,
 ) -> list[dict]:
     """Read direct-PDF candidates in batches of ``MAX_CANDIDATES`` — candidates
     that mention the make in their URL/title first, then by heuristic score —
     until one is judged the manual or ``max_total`` (default ``MAX_TOTAL``) have
     been read. Returns the full list re-ranked via :func:`rank`. Never raises.
-
-    ``also_relevant`` marks more PDFs as worth a read than :func:`relevant` does.
-    The search passes the same predicate its unread pool uses: the whole make name
-    in another joining, and on a part-number lookup the whole number in another
-    spelling. So a PDF the search could offer unread was also queued for a read
-    (#5826, #5829, #5890 F2, F3).
 
     Batches matter (measured 2026-08-26): a hyphen variant of the model pulled
     state tax forms into the pool at heuristic score 40, above the real
@@ -671,11 +663,7 @@ async def judge_candidates(
         trace["stop"] = "no_candidates"
         return candidates
     pdfs = [c for c in candidates if c.get("is_direct_pdf")]
-    queue = [
-        c
-        for c in pdfs
-        if relevant(c, make, model) or (also_relevant is not None and also_relevant(c))
-    ] or pdfs
+    queue = [c for c in pdfs if relevant(c, make, model)] or pdfs
     queue.sort(key=lambda c: (_mentions_make(c, make), c.get("score", 0)), reverse=True)
     not_queued = {c["url"]: "not_direct_pdf" for c in candidates if not c.get("is_direct_pdf")}
     not_queued.update({c["url"]: "not_relevant" for c in pdfs if c not in queue})

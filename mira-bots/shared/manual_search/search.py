@@ -51,7 +51,7 @@ import re
 import socket
 import ssl
 import time
-from collections.abc import Generator, Iterable
+from collections.abc import Callable, Generator, Iterable
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from urllib.parse import unquote, urljoin, urlparse, urlsplit
@@ -1179,22 +1179,16 @@ def _collect(
     make: str,
     model: str,
     part_number: str | None = None,
-    credit_only: list[dict] | None = None,
+    set_aside: list[dict] | None = None,
 ) -> list[dict]:
-    """Score and keep the hits worth a candidate.
+    """Score and keep the hits worth a candidate, exactly as main does.
 
-    On a part-number lookup a hit naming the whole number, as `_names_part_number`
-    reads it, is scored as naming the model even when it spells the number another
-    way ("6ES7214_1AG40_0XB0"): `_score` looks for the hyphenated spelling only, and
-    the make screen would otherwise never see the page (#5829). That is one model
-    credit, the full 25, in place of the shorter-token 10 `_score` may have given
-    (#5890 F5).
-
-    A hit that scored 0 before that credit, so that main would have dropped it, is
-    also appended to ``credit_only``. The caller uses that list so such a hit does
-    not stand in for the wide search (#5890 F1). It is a list the caller owns, not a
-    key on the candidate, because candidates are returned as they are. Such a hit
-    is never a direct PDF, since both direct-PDF forms score in `_score`."""
+    On a part-number lookup, `_score` looks for the hyphenated spelling only, so a
+    hit that names the whole number another way ("6ES7214_1AG40_0XB0", as
+    `_names_part_number` reads it) and has no other credit scores 0 and is dropped
+    (#5829). Such a hit is appended to ``set_aside`` instead. It is never a
+    candidate, so it changes nothing the search reads, sends or answers; the search
+    offers it only where it would otherwise end with no manual (#5890 F1, F5)."""
     out: list[dict] = []
     for hit in organic:
         url = hit.get("link") or ""
@@ -1202,33 +1196,29 @@ def _collect(
         if not url:
             continue
         s = _score(url, title, make, model)
-        hay = f"{title} {url}".lower()
-        kept_by_credit = False
-        if (
-            part_number
-            and s >= 0
-            and _norm(part_number) not in hay
-            and _names_part_number({"url": url, "title": title}, part_number)
-        ):
-            # The full model token is absent (the guard above), so any model credit
-            # `_score` gave is the shorter-token 10.
-            shorter = 10 if any(t in hay for t in _model_tokens(model)) else 0
-            kept_by_credit = s <= 0
-            s += 25 - shorter
         if s <= 0:
+            if (
+                s == 0
+                and part_number
+                and set_aside is not None
+                and _norm(part_number) not in f"{title} {url}".lower()
+                and _names_part_number({"url": url, "title": title}, part_number)
+            ):
+                set_aside.append(_candidate(url, title, s))
             continue
-        cand = {
-            "url": url,
-            "title": _clean_title(title),
-            "host": urlparse(url).netloc,
-            "score": s,
-            "doc_type": _guess_doc_type(title, url),
-            "is_direct_pdf": _is_direct_pdf(url),
-        }
-        if kept_by_credit and credit_only is not None:
-            credit_only.append(cand)
-        out.append(cand)
+        out.append(_candidate(url, title, s))
     return out
+
+
+def _candidate(url: str, title: str, score: int) -> dict:
+    return {
+        "url": url,
+        "title": _clean_title(title),
+        "host": urlparse(url).netloc,
+        "score": score,
+        "doc_type": _guess_doc_type(title, url),
+        "is_direct_pdf": _is_direct_pdf(url),
+    }
 
 
 class ManualSearchUnavailable(RuntimeError):
@@ -1277,21 +1267,73 @@ async def search_manual(
     screen_unread = bool(make)
     part_number = model if exact_part_number else None
 
-    def _worth_a_read(c: dict) -> bool:
-        """What the judge's read queue and the unread pool both count as relevant:
-        the judge's own check, the make named as a whole name in another joining
-        ("Automation-Direct" for "AutomationDirect", #5826), or on a part-number
-        lookup the whole number in another spelling (#5829). One predicate, so a page
-        the unread pool keeps was also worth a read (#5890 F2, F3)."""
-        return (
-            _judge.relevant(c, make, model)
-            or _names_make(c, make)
-            or bool(part_number and _names_part_number(c, part_number))
+    candidates: list[dict] = []
+    # Pages the search leaves aside although they name the make, or on a part-number
+    # lookup the whole part number, in a spelling the judge's relevance check and
+    # `_score` miss (#5826, #5829). They get a turn only where the search would end
+    # without a manual (`_unless_extras`), so they never change what it reads, sends,
+    # retries or answers before then (#5890 round 2).
+    set_aside: list[dict] = []  # hits `_collect` drops
+    retry_extras: list[dict] = []  # extra PDFs the typed-pass retry did not read
+
+    def _extra(c: dict) -> bool:
+        """The judge's relevance check misses it, but it names the make as a whole
+        name in another joining ("Automation-Direct" for "AutomationDirect") or, on a
+        part-number lookup, the whole number in another spelling."""
+        return not _judge.relevant(c, make, model) and (
+            _names_make(c, make) or bool(part_number and _names_part_number(c, part_number))
         )
 
-    candidates: list[dict] = []
-    # Hits kept only for the part-number credit (see `_collect`).
-    credit_only: list[dict] = []
+    async def _unless_extras(
+        answer: Callable[[], dict | None],
+        pool: list[dict],
+        judged: bool,
+        rejected: list[dict],
+    ) -> dict | None:
+        """The search is about to end with no manual. ``answer`` gives what it
+        returns there: a judged rejection, or nothing.
+
+        With the judge on, the extra PDFs in ``pool`` and from the retry that were
+        never read are read first, in whatever time the deadline leaves, and a judged
+        match among them is returned. Otherwise ``answer`` stands, untouched. Where
+        that is nothing, the first extra page in ``pool`` or ``set_aside`` the make
+        screen accepts is offered unread, as the search offers an unread page. The
+        retry's extras are read but never offered (#5844 Codex F5, F6)."""
+        extras = [c for c in pool if _extra(c)]
+        if judged:
+            pdfs = [
+                c for c in (*extras, *retry_extras) if c.get("is_direct_pdf") and not c.get("judge")
+            ]
+            if pdfs:
+                trace: dict = {}
+                read = await _judge.judge_candidates(
+                    make, model, pdfs, started_at=started_at, deadline_at=deadline_at, trace=trace
+                )
+                if trail is not None:
+                    trail.judge["extra"] = trace
+                if read and _judge.is_match(read[0]):
+                    return _as_judged_match(read[0], rejected + _rejections(read))
+        result = answer()
+        if result is not None:
+            return result
+        # A set-aside hit whose URL is also a candidate is that candidate's business.
+        offered = {c["url"] for c in candidates} - {c["url"] for c in extras}
+        for c in (*extras, *set_aside):
+            if c["url"] in offered or _judge.is_rejected(c):
+                continue
+            offered.add(c["url"])
+            if screen_unread and not _may_offer_unread(c, make, part_number):
+                continue
+            c["validated"] = False
+            if judged:
+                c.setdefault("reason", _judge.REASON_JUDGE_UNAVAILABLE)
+                c.setdefault(
+                    "reason_detail", "Could not read the candidate PDF — review before use."
+                )
+                c["judged_rejected"] = rejected
+            return c
+        return None
+
     # Availability is judged from requests actually SENT (#4171 Codex F2): a
     # pass refused by the per-call ceiling or the quota returns [] without a
     # request, and must not count as "searched and found nothing" — otherwise a
@@ -1437,7 +1479,7 @@ async def search_manual(
         q1 = f'"{model}" manual filetype:pdf site:{oem_domains[0]}'
         hits = await _send(q1, "q1 (site-scoped)")
         if hits:
-            candidates.extend(_tagged(_collect(hits, make, model, part_number, credit_only), "q1"))
+            candidates.extend(_tagged(_collect(hits, make, model, part_number, set_aside), "q1"))
 
     typed_in_flight: str | None = None  # the retry's unanswered query, for the trail
     retry_unfinished = False  # the retry left a spelling unanswered or a PDF unread
@@ -1483,7 +1525,9 @@ async def search_manual(
                 retry_unfinished = True
             if hits is None:
                 continue
-            found = _tagged(_collect(hits, make, model, part_number, credit_only), "q2")
+            found = _tagged(
+                _collect(hits, make, model, part_number, None if second else set_aside), "q2"
+            )
             if i:
                 # A hit from a re-hyphenated form is a weaker signal than one
                 # from the nameplate's own spelling: it must not win a tie.
@@ -1560,7 +1604,6 @@ async def search_manual(
                     deadline_at=deadline_at,
                     trace=second_trace,
                     max_total=_judge.MAX_CANDIDATES,
-                    also_relevant=_worth_a_read,
                 )
             finally:
                 # One trail for both rounds, kept even when a read is cancelled: round
@@ -1573,6 +1616,10 @@ async def search_manual(
                 )
                 if second_trace.get("stop"):
                     judge_trace["stop"] = second_trace["stop"]
+            # Read at the end, only where the search would end without a manual.
+            retry_extras.extend(
+                c for c in more if c.get("is_direct_pdf") and not c.get("judge") and _extra(c)
+            )
             queued = set(second_trace.get("queue") or [])
             if any(
                 (c.get("judge") or {}).get("status") != "judged" for c in more if c["url"] in queued
@@ -1625,13 +1672,11 @@ async def search_manual(
 
     # Pass 3: widest fallback — websites as well as PDFs. A bounded call
     # reserves its final query for this instead of spending it on spelling variants.
-    # A hit kept only for the part-number credit does not count as a candidate here:
-    # main would have dropped it and sent this query (#5890 F1).
-    if all(any(c is k for k in credit_only) for c in candidates):
+    if not candidates:
         q3 = f"{make} {model} manual support"
         hits = await _send(q3, "q3 (wide)")
         if hits:
-            candidates.extend(_tagged(_collect(hits, make, model, part_number), "q3"))
+            candidates.extend(_tagged(_collect(hits, make, model, part_number, set_aside), "q3"))
 
     if identification_link:
         from ..drive_packs.identification_link import classify_payload  # noqa: PLC0415
@@ -1655,7 +1700,7 @@ async def search_manual(
     if not candidates:
         if sent and failures == sent:
             raise ManualSearchUnavailable(f"all {sent} sent search requests failed")
-        return None
+        return await _unless_extras(lambda: None, [], bool(make) and _judge.judge_enabled(), [])
 
     # Dedupe on URL while preserving order, then sort by score desc.
     seen: set[str] = set()
@@ -1693,7 +1738,6 @@ async def search_manual(
             started_at=started_at,
             deadline_at=deadline_at,
             trace=judge_trace,
-            also_relevant=_worth_a_read,
         )
         if trail is not None:
             trail.ranked = ranked
@@ -1728,12 +1772,9 @@ async def search_manual(
         # legacy HEAD path below may still pick an UNJUDGED candidate — but
         # only one that at least names the make/model. If every relevant
         # candidate was read and rejected, say so (top rejection + reasons)
-        # rather than surfacing an unread stranger. Relevant is what the read queue
-        # counted (`_worth_a_read`): it adds the whole make name in another joining
-        # and, on a part-number lookup, the whole number in another spelling, which
-        # the judge's own make and model checks miss (#5826, #5829).
+        # rather than surfacing an unread stranger.
         unread = [c for c in ranked if not _judge.is_rejected(c)]
-        deduped = [c for c in unread if _worth_a_read(c)]
+        deduped = [c for c in unread if _judge.relevant(c, make, model)]
         worst_rejected = next((c for c in ranked if _judge.is_rejected(c)), None)
         if not deduped and not rejected:
             # #4400: nothing names the make or the model and nothing was judged. The
@@ -1741,12 +1782,19 @@ async def search_manual(
             # profile as "a possible manual"; a stranger may win only by being read
             # and judged the manual (above). An honest miss instead.
             await _website_handoff()
-            return None
+            return await _unless_extras(lambda: None, ranked, True, rejected)
         if not deduped:
             stalled = await _website_handoff(ranked, judge_trace)
             retried = await _manual_from_retry(ranked, judge_trace)
             _unfinished_after_handoff_cutoff(stalled, retried)
-            return retried or _as_judged_rejection(worst_rejected or ranked[0], rejected)
+            if retried is not None:
+                return retried
+            return await _unless_extras(
+                lambda: _as_judged_rejection(worst_rejected or ranked[0], rejected),
+                ranked,
+                True,
+                rejected,
+            )
 
     # HEAD-validate the top few; first one that confirms PDF wins. This probe runs
     # before the #5789 screen below, so a real PDF served from a URL that does not
@@ -1796,7 +1844,13 @@ async def search_manual(
         _unfinished_after_handoff_cutoff(stalled, retried)
         if retried is not None:
             return retried
-        return _as_judged_rejection(worst_rejected, rejected_out) if worst_rejected else None
+        worst = worst_rejected
+        return await _unless_extras(
+            lambda: _as_judged_rejection(worst, rejected_out) if worst else None,
+            ranked,
+            use_judge,
+            rejected_out,
+        )
     deduped[0]["validated"] = False
     if use_judge:
         deduped[0].setdefault("reason", _judge.REASON_JUDGE_UNAVAILABLE)
