@@ -2128,10 +2128,11 @@ def _discovery(monkeypatch, timeout_s, reserve=None):
     return body, search_mod.time.monotonic() - started
 
 
-# After a handoff cut off where the retry follows, the search did not finish: only a
-# match from the retry ends it, and anything else is the outage main returns for any
+# After a handoff cut off where the retry follows, a retry that ran short of time did
+# not finish: unless it found the manual, that is the outage main returns for any
 # stalled search, which the Hub retries. A judged rejection there would be recorded as
-# final (#5866 Codex round 2, F2 and F4).
+# final (#5866 Codex round 2, F2 and F4). A retry that ran to its end keeps its judged
+# rejection, as a completed search does.
 async def test_a_stall_once_the_retry_cannot_start_is_the_outage_main_returns(wired, monkeypatch):
     # 1.0 s left is less than the retry needs, so the handoff keeps today's cutoff and
     # the retry cannot start.
@@ -2182,6 +2183,64 @@ async def test_control_without_the_stall_the_second_spelling_finds_the_manual(wi
     body, took = await asyncio.to_thread(_discovery, monkeypatch, 2.5)
     assert body["reason"] == judge.REASON_JUDGED_MATCH, body.get("reason")
     assert _typed(sent) == _GS10_TYPED
+
+
+async def test_a_stall_then_a_retry_query_cut_off_mid_flight_is_the_outage_main_returns(
+    wired, monkeypatch
+):
+    # The handoff is cut off at 1.1 s, and the first spelling then never answers: the
+    # retry's own cutoff ends it with nothing back, and the second is never sent.
+    _scale(monkeypatch, search_timeout=0.5, batch=0.3, reserve=0.3)
+    router, sent = _stall(
+        monkeypatch, q2_hits=[_GS10_MANUAL_HIT], delays={_HANDOFF: 30, _GS10_TYPED[0]: 30}
+    )
+    body, took = await asyncio.to_thread(_discovery, monkeypatch, 2.5)
+    assert took < 2.5
+    assert body["reason"] == "search_unavailable", body.get("reason")
+    assert _typed(sent) == _GS10_TYPED[:1] and len(router.calls) == 6
+    rows = body["candidate_trail"]["queries"]
+    assert _HANDOFF_TIMEOUT_ROW in rows
+    assert {"pass": "q2", "query": _GS10_TYPED[0], "result": "timeout"} in rows
+
+
+async def test_a_stall_before_a_retry_that_runs_to_its_end_keeps_its_judged_rejection(
+    wired, monkeypatch
+):
+    # The handoff is cut off at 1.1 s, and the retry still sends both spellings and
+    # reads the one new PDF they return, a drawing. The search finished, so its judged
+    # rejection is final, as when the handoff answers.
+    _scale(monkeypatch, search_timeout=0.5, batch=0.3, reserve=0.3)
+    router, sent = _stall(monkeypatch, q2_hits=[_OTHER], delays={_HANDOFF: 30})
+    monkeypatch.setitem(TEXT, _OTHER[0], "DURApulse GS10 dimensional drawing")
+    body, took = await asyncio.to_thread(_discovery, monkeypatch, 2.5)
+    assert took < 2.5
+    assert body["reason"] == "judged_not_applicable", body.get("reason")
+    assert _typed(sent) == _GS10_TYPED and len(router.calls) == 7
+    assert _HANDOFF_TIMEOUT_ROW in body["candidate_trail"]["queries"]
+    assert body["candidate_trail"]["stop"] == "queue_exhausted"
+
+
+async def test_a_stall_that_leaves_the_retry_read_unfinished_is_the_outage_main_returns(
+    wired, monkeypatch
+):
+    # The retry sends both spellings, but the new PDF never finishes downloading, so
+    # its read stops at the deadline: the search did not finish.
+    _scale(monkeypatch, search_timeout=0.5, batch=0.3, reserve=0.3)
+    router, sent = _stall(monkeypatch, q2_hits=[_OTHER], delays={_HANDOFF: 30})
+    monkeypatch.setitem(TEXT, _OTHER[0], "DURApulse GS10 dimensional drawing")
+    fetch = judge.fetch_pdf_bytes
+
+    async def stalled_fetch(url, max_bytes=judge.MAX_BYTES):
+        if url == _OTHER[0]:
+            await asyncio.sleep(30)
+        return await fetch(url, max_bytes)
+
+    monkeypatch.setattr(judge, "fetch_pdf_bytes", stalled_fetch)
+    body, took = await asyncio.to_thread(_discovery, monkeypatch, 2.5)
+    assert took < 2.5
+    assert body["reason"] == "search_unavailable", body.get("reason")
+    assert _typed(sent) == _GS10_TYPED and len(router.calls) == 6
+    assert _HANDOFF_TIMEOUT_ROW in body["candidate_trail"]["queries"]
 
 
 async def test_a_quota_answer_held_past_the_cutoff_is_the_outage_not_a_final_miss(

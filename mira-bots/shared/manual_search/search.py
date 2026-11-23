@@ -1157,12 +1157,14 @@ async def search_manual(
         return False
 
     def _unfinished_after_handoff_cutoff(stalled: bool, retried: dict | None) -> None:
-        """A handoff cut off before the typed-pass retry leaves a search that did not
-        finish: the retry may not have run, or not every query of it. Only a match
-        from it changes that, so anything else ends as main ends a stalled search,
-        in the timeout the caller reports as a retryable outage. A judged rejection
-        here would be recorded as final (#5866 Codex F2, F4)."""
-        if stalled and retried is None:
+        """After a handoff cut off before the typed-pass retry, a retry that ran short
+        of time did not finish: it could not start, a spelling was skipped or cut off,
+        or its read stopped at the deadline. Unless it found the manual, that ends as
+        main ends a stalled search, in the timeout the caller reports as a retryable
+        outage; a judged rejection there would be recorded as final (#5866 Codex F2,
+        F4). A retry that ran to its end keeps its judged rejection, as it does when
+        the handoff answers."""
+        if stalled and retried is None and retry_short_of_time:
             logger.info("MANUAL_SEARCH_UNFINISHED_AFTER_HANDOFF_CUTOFF")
             raise TimeoutError("the website handoff stalled before the typed-pass retry")
 
@@ -1243,6 +1245,7 @@ async def search_manual(
             candidates.extend(_tagged(_collect(hits, make, model), "q1"))
 
     typed_in_flight: str | None = None  # the retry's unanswered query, for the trail
+    retry_short_of_time = False  # the retry lost a query or its read to the deadline
 
     async def _typed_pdf_pass(
         second: bool = False, found_all: list[dict] | None = None
@@ -1256,7 +1259,7 @@ async def search_manual(
         that could not be used; what bounds the retry is the cutoff its caller sets
         (:func:`_retry_typed_pass`). Hits are added to ``found_all`` as each query
         answers, so a cutoff keeps what already came back."""
-        nonlocal typed_in_flight
+        nonlocal typed_in_flight, retry_short_of_time
         found_all = [] if found_all is None else found_all
         for i, variant in enumerate(_model_variants(model) or [model]):
             budget = _provider_budget.get()
@@ -1272,6 +1275,7 @@ async def search_manual(
                     < SEARCH_TIMEOUT + _judge.UPGRADE_MIN_BATCH_S + _judge.RETURN_RESERVE_S
                 )
             ):
+                retry_short_of_time = True
                 break
             q2 = f"{make} {variant} manual filetype:pdf"
             if second:
@@ -1295,7 +1299,7 @@ async def search_manual(
         one judge batch; both rounds rank together. Returns ``ranked`` unchanged when
         the retry adds nothing or runs out of time. Round one is already on the trail,
         so a cancelled retry still shows it."""
-        nonlocal typed_in_flight
+        nonlocal typed_in_flight, retry_short_of_time
         try:
             found: list[dict] = []
             try:
@@ -1313,6 +1317,7 @@ async def search_manual(
                 async with asyncio.timeout(cutoff):
                     await _typed_pdf_pass(second=True, found_all=found)
             except TimeoutError:
+                retry_short_of_time = True
                 logger.info("MANUAL_SEARCH_RETRY_CUTOFF query=%s", (typed_in_flight or "")[:120])
                 if trail is not None and typed_in_flight:
                     trail.queries.append(
@@ -1354,6 +1359,8 @@ async def search_manual(
                 )
                 if second_trace.get("stop"):
                     judge_trace["stop"] = second_trace["stop"]
+                if second_trace.get("stop") == "search_deadline":
+                    retry_short_of_time = True
             ranked = _judge.rank(ranked + more)
             if trail is not None:
                 trail.ranked = ranked
