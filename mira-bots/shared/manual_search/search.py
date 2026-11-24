@@ -1702,20 +1702,26 @@ async def search_manual(
             raise
 
     async def _manual_from_retry(ranked: list[dict], judge_trace: dict) -> dict | None:
-        """#5822: this search is about to end with the judged rejection, after the
-        website handoff, at either of the two places it does. If every site-scoped PDF
-        was read and judged not the manual, which is what skipped the typed pass, run
-        it once and return a judged match from it. Otherwise return None, and the
-        caller returns what it returns without the retry, except that a quota denial
-        the retry's own queries met stays on the budget. Only ``return`` follows this
-        call, so nothing the retry adds is ever probed or offered unread (#5844 Codex
-        F5, F6).
+        """#5822: this search is about to end without a manual: with the judged
+        rejection, after the website handoff, or (#5904) by offering a candidate it
+        could not validate, at either of the two places it does each. If round one
+        read every site-scoped PDF and judged none the manual, which is what skipped
+        the typed pass, run it once and return a judged match from it. Otherwise
+        return None, and the caller returns what it returns without the retry, except
+        that a quota denial the retry's own queries met stays on the budget. Only
+        ``return`` follows this call, so nothing the retry adds is ever probed or
+        offered unread (#5844 Codex F5, F6).
+
+        Before an offer no website handoff is sent: the retry is bounded by its own
+        cutoff, and on a miss, a stall or an error the offer stands, so the retry
+        never costs it (#5844 Codex F5).
 
         A quota denial is never cached as a miss (PRD R5, #4168): the endpoint reports
         a cap as the limit and an infrastructure denial as an outage, which the Hub
         retries, where it would record the judged rejection as a terminal
-        no_manual_found (#5849)."""
-        if not use_judge or typed_pass_ran or not _every_queued_pdf_rejected(ranked, judge_trace):
+        no_manual_found (#5849). An offer stands over a denial, as it does over one in
+        round one."""
+        if not use_judge or typed_pass_ran or not every_pdf_rejected:
             return None
         try:
             both = await _retry_typed_pass(ranked, judge_trace)
@@ -1786,6 +1792,10 @@ async def search_manual(
     worst_rejected: dict | None = None
     ranked: list[dict] = []
     judge_trace: dict = {}
+    # Round one's verdict, taken before any later read: an exact-part read before an
+    # offer joins the trail's judge record, so the live record would make the retry
+    # depend on whether the caller opened a trail (#5904).
+    every_pdf_rejected = False
     # A catalog-only query may be based on text read from a user photo. Keep
     # that narrowly scoped lookup from sending candidate PDF text to the LLM
     # judge; the result remains an unconfirmed search candidate.
@@ -1826,6 +1836,7 @@ async def search_manual(
         rejected = _rejections(ranked)
         judged_any = bool(rejected) or any(_judge.is_match(c) for c in ranked)
         rejected_out = rejected
+        every_pdf_rejected = _every_queued_pdf_rejected(ranked, judge_trace)
         top = ranked[0]
         if _judge.is_match(top):
             return _as_judged_match(top, rejected)
@@ -1873,8 +1884,11 @@ async def search_manual(
             _note_examined([c["url"]])
         if c.get("validated") or await _probe_candidate(c):
             if use_judge:
-                # It is offered unread below; an exact-part PDF is read first.
+                # It is offered unread below. An exact-part PDF is read first, then
+                # the typed-pass retry runs if round one rejected every PDF (#5904).
                 match = await _exact_part_match(ranked, rejected_out)
+                if match is None:
+                    match = await _manual_from_retry(ranked, judge_trace)
                 if match is not None:
                     return match
             c["validated"] = True
@@ -1918,7 +1932,10 @@ async def search_manual(
             rejected_out,
         )
     if use_judge:
+        # As before the probe's offer: the exact-part read, then the retry (#5904).
         match = await _exact_part_match(ranked, rejected_out)
+        if match is None:
+            match = await _manual_from_retry(ranked, judge_trace)
         if match is not None:
             return match
     deduped[0]["validated"] = False
