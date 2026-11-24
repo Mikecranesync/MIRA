@@ -4616,8 +4616,14 @@ def test_a_quota_denial_on_the_retry_before_an_offer_keeps_the_offer(wired, monk
     assert {"pass": "q2", "query": _GS10_TYPED[0], "result": "refused", "hits": 0} in queries
 
 
+_SIEMENS_SITES = pytest.mark.parametrize(
+    "pdfs", [frozenset(), frozenset({_SIEMENS_PAGE[0]})], ids=["unread_offer", "probe_offer"]
+)
+
+
+@_SIEMENS_SITES
 async def test_on_a_part_number_lookup_the_exact_part_pdf_is_read_before_the_retry(
-    wired, monkeypatch
+    wired, monkeypatch, pdfs
 ):
     # The exact-part read (#5895) needs no query, so it goes first: a match there sends
     # no typed query, although the retry would also find a manual.
@@ -4629,6 +4635,7 @@ async def test_on_a_part_number_lookup_the_exact_part_pdf_is_read_before_the_ret
         monkeypatch,
         site=[_SIEMENS_PAGE, _SIEMENS_BROCHURE, _SIEMENS_EXACT],
         typed=[_SIEMENS_MANUAL],
+        pdfs=pdfs,
     )
     with search_mod.acquisition_trail():
         r = await search_mod.search_manual("Siemens", _SIMATIC, exact_part_number=True)
@@ -4636,8 +4643,9 @@ async def test_on_a_part_number_lookup_the_exact_part_pdf_is_read_before_the_ret
     assert router.read == [_BROCHURE_PDF, _EXACT_PDF] and not _retry_ran(sent), sent
 
 
+@_SIEMENS_SITES
 async def test_on_a_part_number_lookup_the_retry_follows_a_rejected_exact_part_pdf(
-    wired, monkeypatch
+    wired, monkeypatch, pdfs
 ):
     _offer_preconditions()
     _readable(monkeypatch, _BROCHURE_PDF, _EXACT_PDF, _SIMATIC_MANUAL)
@@ -4647,6 +4655,7 @@ async def test_on_a_part_number_lookup_the_retry_follows_a_rejected_exact_part_p
         monkeypatch,
         site=[_SIEMENS_PAGE, _SIEMENS_BROCHURE, _SIEMENS_EXACT],
         typed=[_SIEMENS_MANUAL],
+        pdfs=pdfs,
     )
     with search_mod.acquisition_trail():
         r = await search_mod.search_manual("Siemens", _SIMATIC, exact_part_number=True)
@@ -4655,8 +4664,9 @@ async def test_on_a_part_number_lookup_the_retry_follows_a_rejected_exact_part_p
 
 
 @pytest.mark.parametrize("with_trail", [True, False], ids=["trail", "no_trail"])
+@_SIEMENS_SITES
 async def test_an_exact_part_pdf_it_could_not_fetch_does_not_decide_the_retry(
-    wired, monkeypatch, with_trail
+    wired, monkeypatch, with_trail, pdfs
 ):
     # The retry runs on round one's verdict, as #5822 defines it. The exact-part read
     # before the offer joins the trail's judge record, and its PDF could not be
@@ -4669,6 +4679,7 @@ async def test_an_exact_part_pdf_it_could_not_fetch_does_not_decide_the_retry(
         monkeypatch,
         site=[_SIEMENS_PAGE, _SIEMENS_BROCHURE, _SIEMENS_EXACT],
         typed=[_SIEMENS_MANUAL],
+        pdfs=pdfs,
     )
     if with_trail:
         with search_mod.acquisition_trail():
@@ -4677,3 +4688,93 @@ async def test_an_exact_part_pdf_it_could_not_fetch_does_not_decide_the_retry(
         r = await search_mod.search_manual("Siemens", _SIMATIC, exact_part_number=True)
     assert r is not None and r["url"] == _SIMATIC_MANUAL and r["validated"] is True, r
     assert router.read == [_BROCHURE_PDF, _SIMATIC_MANUAL] and _retry_ran(sent), sent
+
+
+async def test_control_with_no_manual_from_the_retry_the_probed_page_is_offered_as_before(
+    wired, monkeypatch
+):
+    # The miss control again, before the HEAD-probe offer: a page that probes as a PDF.
+    router, sent = _stall(
+        monkeypatch,
+        q1_hits=_AD_READ + [_PROBED_PAGE],
+        q2_hits=[_OTHER],
+        pdfs=frozenset({_EXTENSIONLESS}),
+    )
+    monkeypatch.setitem(TEXT, _OTHER[0], _DRAWING_TEXT)
+    r = await search_mod.search_manual("AutomationDirect", "GS10", deadline_at=_deadline(60))
+    assert r is not None and r["url"] == _EXTENSIONLESS and r["validated"] is False, r
+    assert r["reason"] == judge.REASON_JUDGE_UNAVAILABLE
+    assert sorted(x["url"] for x in r["judged_rejected"]) == sorted(u for u, _ in _AD_READ)
+    assert sent[1:] == _GS10_TYPED and len(router.calls) == 7
+    assert router.probed == [_EXTENSIONLESS]
+
+
+@pytest.mark.parametrize(
+    "page,pdfs",
+    [(_AD_MANUALSLIB, frozenset()), (_PROBED_PAGE, frozenset({_EXTENSIONLESS}))],
+    ids=["unread_offer", "probe_offer"],
+)
+def test_a_retry_pdf_read_that_hangs_before_an_offer_still_returns_the_offer(
+    wired, monkeypatch, page, pdfs
+):
+    # #5844 F6's shape, before an offer: the typed query answers at once, and reading
+    # the PDF it found never finishes. The judge stops at the deadline less the return
+    # reserve, so the endpoint returns the offer before its own timeout.
+    _scale(monkeypatch, search_timeout=0.5, batch=0.3, reserve=0.3)
+    monkeypatch.setattr(search_mod, "HEAD_TIMEOUT", 0.05)
+    monkeypatch.setenv("MANUAL_DISCOVERY_TIMEOUT", "1.5")
+    router, sent = _stall(
+        monkeypatch, q1_hits=_AD_READ + [page], q2_hits=[_GS10_MANUAL_HIT], pdfs=pdfs
+    )
+    real_fetch = judge.fetch_pdf_bytes
+    hung: list[str] = []
+
+    async def fetch(url, max_bytes=judge.MAX_BYTES):
+        if url == _GS10_MANUAL:
+            hung.append(url)
+            await asyncio.sleep(30)
+        return await real_fetch(url, max_bytes)
+
+    monkeypatch.setattr(judge, "fetch_pdf_bytes", fetch)
+    client = _discovery_endpoint(monkeypatch)
+    started = search_mod.time.monotonic()
+    body = client.post(
+        "/manual-discovery/search", json={"manufacturer": "AutomationDirect", "model": "GS10"}
+    ).json()
+    assert search_mod.time.monotonic() - started < 1.5
+    assert hung == [_GS10_MANUAL]  # the retry reached the read
+    assert body["found"] is True and body["validated"] is False, body.get("reason")
+    assert body["candidate"]["url"] == page[0]
+    assert body["reason"] == judge.REASON_JUDGE_UNAVAILABLE
+    assert _typed(sent) == _GS10_TYPED and len(router.calls) == 6
+
+
+# An offerable OEM page that is not a support page: no manual, support, download or
+# documentation in its title or path. A website handoff, if one ran before the offer,
+# would be sent here, since no support page is in hand.
+_AD_CATALOG_PAGE = (
+    "https://www.automationdirect.com/adc/overview/catalog/drives/gs10",
+    "DURApulse GS10 AC Drives",
+)
+
+
+@pytest.mark.parametrize(
+    "pdfs", [frozenset(), frozenset({_AD_CATALOG_PAGE[0]})], ids=["unread_offer", "probe_offer"]
+)
+async def test_no_website_handoff_is_sent_before_an_offer(wired, monkeypatch, pdfs):
+    # #5844 F5: the handoff could use up the deadline and cost round one's offer, so
+    # before an offer only the typed queries follow round one.
+    c = {"url": _AD_CATALOG_PAGE[0], "title": _AD_CATALOG_PAGE[1]}
+    assert judge.relevant(c, "AutomationDirect", "GS10")
+    assert search_mod._may_offer_unread(c, "AutomationDirect")
+    router, sent = _stall(
+        monkeypatch, q1_hits=_AD_READ + [_AD_CATALOG_PAGE], q2_hits=[_OTHER], pdfs=pdfs
+    )
+    monkeypatch.setitem(TEXT, _OTHER[0], _DRAWING_TEXT)
+    with search_mod.acquisition_trail() as trail:
+        r = await search_mod.search_manual("AutomationDirect", "GS10", deadline_at=_deadline(60))
+        page_url = trail.search_page_url
+    assert page_url is None  # no support page in hand, so a handoff would be sent
+    assert r is not None and r["url"] == _AD_CATALOG_PAGE[0] and r["validated"] is False, r
+    assert sent[1:] == _GS10_TYPED and _HANDOFF not in sent, sent
+    assert router.probed == [_AD_CATALOG_PAGE[0]]
