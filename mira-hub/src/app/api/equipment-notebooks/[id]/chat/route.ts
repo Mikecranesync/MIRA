@@ -133,7 +133,7 @@ import {
 } from "@/lib/safety-classifier";
 import { RESTART_BANNER, RESTART_DIRECTIVE, isFaultResetAsk } from "@/capabilities/restart-advisory";
 import { BYPASS_BANNER, BYPASS_STOP_TRIGGER, bypassStopText, safetyBypassAsk, safetyBypassWarning } from "@/capabilities/safety-bypass-advisory";
-import { unsafePracticeWarning } from "@/capabilities/unsafe-practice-advisory";
+import { UNSAFE_PRACTICE_NO_EVIDENCE_TEXT, unsafePracticeWarning } from "@/capabilities/unsafe-practice-advisory";
 import { pageFromRetrievedChunks, withPageCitation } from "@/lib/citation-page";
 import {
   ENERGIZED_WORK_TRIGGER,
@@ -294,6 +294,7 @@ import type {
   SafetyNoticeEntry,
   SafetyStopEntry,
   ProviderFailureEntry,
+  AdvisoryCardEntry,
   VisualObservationEntry,
   IdentityDisputeEntry,
   EvidenceBasis,
@@ -304,6 +305,7 @@ import {
   isSafetyNoticeEntry,
   isSafetyStopEntry,
   isProviderFailureEntry,
+  isAdvisoryCardEntry,
   isVisualObservationEntry,
   isWeakEvidenceEntry,
 } from "@/lib/notebook-chat-types";
@@ -1134,8 +1136,11 @@ function replayNotebookTurnResponse(turn: StoredNotebookTurn): Response {
         emit(sources);
         if (visualEvidence) emit(visualEvidenceMarker(visualEvidence));
       } else {
-        if (turn.answerText) {
-          for (const piece of chunkForRelease(turn.answerText)) emit({ kind: "content", content: piece });
+        // #5905 F4: a turn no provider answered replays its fixed card, as it streamed live.
+        const replayText =
+          turn.answerText ?? (turn.answerStatus === "error" ? (turn.evidence.find(isAdvisoryCardEntry)?.text ?? null) : null);
+        if (replayText) {
+          for (const piece of chunkForRelease(replayText)) emit({ kind: "content", content: piece });
         }
         emit(sources);
         if (basis) {
@@ -3974,7 +3979,10 @@ async function handleChatTurn(
   // A flagged hazard turn is never swallowed by this abstain (owner decision
   // 2026-09-27): with no documents it takes the general lane, so the tech gets
   // the hazard banner and an answer instead of "couldn't find that".
-  if (componentHold || (chunks.length === 0 && (!general || libraryNotForAsk || missingModelManual || noEvidenceForMachine || unidentifiedServiceText || photoPartLookup || photoPartCompatibilityText || unboundManualRequest) && !groundedMachineEntry && !safetyTrigger)) {
+  // #5905 Codex r1 F2: an unsafe-practice card (#5864) never sits above an answer with no
+  // evidence, so it joins this abstain in general mode too. A real hazard trigger still
+  // takes the general lane, as above.
+  if (componentHold || (chunks.length === 0 && (!general || libraryNotForAsk || missingModelManual || noEvidenceForMachine || unidentifiedServiceText || photoPartLookup || photoPartCompatibilityText || unboundManualRequest || unsafePracticeCard) && !groundedMachineEntry && !safetyTrigger)) {
     // Gate G — abstain honestly, persist the turn, never call the provider.
     // #4015: "couldn't find that in the documentation I have", not "I don't have
     // the manual" — a zero-hit scoped search does not prove the manual is absent
@@ -4055,6 +4063,9 @@ async function handleChatTurn(
         ? excludedTablesRefusalText(manualIdentity.catalogNumber.trim(), retrievalDiagnostics.excludedTables ?? [])
       : notebookRetrieval
         ? "I couldn't find support for that in this notebook's manuals. Add the manual for the equipment you're asking about, or the page that covers it, and ask again."
+      // #5905 F2: no search ran (an empty project in general mode), so say that, under the card.
+      : unsafePracticeCard
+        ? UNSAFE_PRACTICE_NO_EVIDENCE_TEXT
         : null;
     // A reported unsafe state keeps its card on the honest refusal too (#5670 native 2 F6).
     // (A held turn already carries the card, in its place under any hazard banner: F9 above.)
@@ -5999,6 +6010,11 @@ async function handleChatTurn(
       const providerFailureEntries: ProviderFailureEntry[] = exhaustion
         ? [{ kind: "provider_failure", reason: exhaustion.reason }]
         : [];
+      // #5905 Codex r1 F4: the fixed card (#5864 / reported bypass) was decided before
+      // generation, so a turn no provider answered still carries it, live, stored and
+      // replayed, above the failure. Independent of the seam. Not when it already streamed.
+      const failureAdvisory = !served && advisoryCard && !restartBannerStreamed ? advisoryCard : null;
+      const advisoryCardEntries: AdvisoryCardEntry[] = failureAdvisory ? [{ kind: "advisory_card", text: failureAdvisory }] : [];
       const finalPersistSpan = startStage("turn.persist");
       let finalTurnRowId: string | null = null;
       try {
@@ -6025,7 +6041,7 @@ async function handleChatTurn(
               : [...hazardEntries, ...(manualSafetyEntry ? [manualSafetyEntry] : []), ...emittedCitations, ...(machineEntry ? [machineEntry] : []), ...(visualEntry ? [visualEntry] : []), ...disputeEntries, ...componentEntries, ...proposalEntries, ...(observedPersistEntry ? [observedPersistEntry] : []), ...(weakEntry ? [weakEntry] : [])]
             // Not served: the technician's own photo still stays on their saved
             // question (#4289 F4); hydration shows no observation on a failed answer.
-            : [...hazardEntries, ...emittedCitations, ...disputeEntries, ...componentEntries, ...proposalEntries, ...(visualEntry ? [visualEntry] : []), ...providerFailureEntries],
+            : [...hazardEntries, ...emittedCitations, ...disputeEntries, ...componentEntries, ...proposalEntries, ...(visualEntry ? [visualEntry] : []), ...providerFailureEntries, ...advisoryCardEntries],
           model: servedModel,
           basis: served ? (outputRejected?.kind === "unsafe_answer" ? null : evidenceFrame.basis) : null,
           ...assetSnapshot,
@@ -6065,6 +6081,11 @@ async function handleChatTurn(
         controller.enqueue(
           enc.encode(sse({ kind: "safety", trigger: outputRejected.violation } as NotebookSafetyFrame)),
         );
+      }
+
+      // #5905 F4: the card above the provider failure; the error status below is unchanged.
+      if (failureAdvisory) {
+        controller.enqueue(enc.encode(sse({ kind: "content", content: failureAdvisory } as NotebookContentFrame)));
       }
 
       // B2: release the ACCEPTED answer. Content precedes sources/basis/status

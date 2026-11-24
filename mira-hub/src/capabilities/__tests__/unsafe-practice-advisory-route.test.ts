@@ -254,3 +254,110 @@ describe("#5864: with evidence, the turn is answered normally under the card", (
     expect(count(streamed(out.text), LIVE_SCREEN_CLEANING_CARD)).toBe(1);
   });
 });
+
+import { UNSAFE_PRACTICE_NO_EVIDENCE_TEXT } from "@/capabilities/unsafe-practice-advisory";
+
+/** #5905 Codex r1 F2: a new, unbound project with nothing enabled, asked in general mode (hub-host-logic sends this). */
+async function postGeneral(message: string) {
+  domainMock.validateChatSources.mockResolvedValue({ ok: false, error: "no_sources_selected" } as never);
+  domainMock.getNotebook.mockResolvedValue({ id: NB, displayName: "Unknown machine" } as never);
+  domainMock.listSources.mockResolvedValue([] as never);
+  ragMock.retrieveNodeChunks.mockResolvedValue([] as never);
+  const fetchMock = vi.fn(async () => completingProvider("Sure, that's fine, prop it open overnight."));
+  vi.stubGlobal("fetch", fetchMock);
+  const req = new NextRequest("http://test/api/equipment-notebooks/nb/chat", {
+    method: "POST",
+    body: JSON.stringify({ message, mode: "general", clientRequestId: REQ_ID }),
+    headers: { "Content-Type": "application/json" },
+  });
+  const res = await POST(req, params);
+  const text = await res.text();
+  await vi.waitFor(() => expect(domainMock.recordTurn).toHaveBeenCalled(), { timeout: 2000 });
+  return { status: res.status, text, fetchMock, turn: lastTurn()! };
+}
+
+describe("#5905 F2: an empty project in general mode gets the card and an honest no-manual reply, no model answer", () => {
+  it("precondition: an ordinary general question on the same project does reach the provider", async () => {
+    const { status, fetchMock, turn } = await postGeneral("ABB drive trips on acceleration, what should I check");
+    expect(status).toBe(200);
+    expect(fetchMock).toHaveBeenCalled();
+    expect(turn.answerText).toContain("prop it open overnight");
+    expect(turn.answerText).not.toContain(OPEN_ENCLOSURE_CARD);
+  });
+
+  for (const [label, message, card] of [
+    ["open cabinet", "Can I leave the electrical cabinet door open overnight?", OPEN_ENCLOSURE_CARD],
+    ["live screen", ROSA_SCREEN, LIVE_SCREEN_CLEANING_CARD],
+  ] as const) {
+    it(`${label}: the card over the no-manual reply, stored and live, with no provider or judge call`, async () => {
+      const { status, text, fetchMock, turn } = await postGeneral(message);
+      expect(status).toBe(200);
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(semanticSafetyCheck).not.toHaveBeenCalled();
+      expect(turn.answerStatus).toBe("insufficient_evidence");
+      expect(turn.answerText).toBe(`${card}\n\n${UNSAFE_PRACTICE_NO_EVIDENCE_TEXT}`);
+      expect(liveStatus(text)).toBe(turn.answerText);
+      expect(streamed(text)).toBe("");
+    });
+  }
+});
+
+const frames = (raw: string) =>
+  raw
+    .split("\n\n")
+    .map((l) => l.replace(/^data: /, "").trim())
+    .filter((l) => l && l !== "[DONE]")
+    .map((l) => {
+      try {
+        return JSON.parse(l) as { kind?: string; status?: string; citations?: unknown[] };
+      } catch {
+        return {};
+      }
+    });
+
+/** #5905 Codex r1 F4: approved chunks retrieved, then every answer provider fails (seam off, the default). */
+async function allProvidersFail(message: string) {
+  domainMock.getNotebook.mockResolvedValue({ id: NB, displayName: "PF525 — Line 1", manufacturer: "Allen-Bradley", model: "PowerFlex 525" } as never);
+  domainMock.listSources.mockResolvedValue([{ filename: "PF525.pdf", docId: DOC_A }] as never);
+  domainMock.validateChatSources.mockResolvedValue({ ok: true, docIds: [DOC_A], nodeId: "n1" } as never);
+  ragMock.retrieveNodeChunks.mockResolvedValue(groundedChunks as never);
+  const fetchMock = vi.fn(async () => new Response("upstream unavailable", { status: 503 }));
+  vi.stubGlobal("fetch", fetchMock);
+  const out = await post(message);
+  await vi.waitFor(() => expect(domainMock.recordTurn).toHaveBeenCalled(), { timeout: 2000 });
+  return { out, fetchMock, turn: lastTurn()! };
+}
+
+describe("#5905 F4: when every provider fails, the card stays above the failure, live, stored and replayed", () => {
+  it("open cabinet: an error turn with no answer text, one advisory_card marker, the card streamed once", async () => {
+    expect(process.env.MIRA_CANONICAL_SEAM).toBeUndefined();
+    const { out, fetchMock, turn } = await allProvidersFail(ROSA_CABINET);
+    expect(fetchMock).toHaveBeenCalled();
+    expect(turn.answerStatus).toBe("error");
+    expect(turn.answerText).toBeNull();
+    expect(turn.evidence.filter((e) => e.kind === "advisory_card")).toEqual([{ kind: "advisory_card", text: OPEN_ENCLOSURE_CARD }]);
+    expect(streamed(out.text)).toBe(OPEN_ENCLOSURE_CARD);
+    const f = frames(out.text);
+    expect(f.find((x) => x.kind === "status")?.status).toBe("error");
+    expect(f.find((x) => x.kind === "sources")?.citations ?? []).toEqual([]);
+  });
+
+  it("control: an ordinary question that fails keeps the old shape, no marker and no content", async () => {
+    const { out, turn } = await allProvidersFail("What does fault F004 mean?");
+    expect(turn.answerStatus).toBe("error");
+    expect(turn.evidence.some((e) => e.kind === "advisory_card")).toBe(false);
+    expect(streamed(out.text)).toBe("");
+  });
+
+  it("replay: the stored error turn streams the same card before its error status", async () => {
+    const { turn } = await allProvidersFail(ROSA_SCREEN);
+    expect(turn.evidence.filter((e) => e.kind === "advisory_card")).toHaveLength(1);
+    domainMock.claimNotebookTurnRequest.mockResolvedValueOnce({
+      status: "replay",
+      turn: { id: "t-1", question: ROSA_SCREEN, answerStatus: "error", answerText: null, enabledSourceDocIds: [DOC_A], evidence: turn.evidence, model: null, basis: null },
+    } as never);
+    const replayed = await post(ROSA_SCREEN);
+    expect(streamed(replayed.text)).toBe(LIVE_SCREEN_CLEANING_CARD);
+    expect(frames(replayed.text).find((x) => x.kind === "status")?.status).toBe("error");
+  });
+});

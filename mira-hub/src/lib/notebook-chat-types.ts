@@ -358,6 +358,18 @@ export function isProviderFailureEntry(e: unknown): e is ProviderFailureEntry {
   return kind === "provider_failure" && (reason === "all_providers_failed" || reason === "no_provider_configured" || reason === "budget_exhausted");
 }
 
+/** #5905 Codex r1 F4: the fixed advisory card (an unsafe-practice or reported-bypass warning)
+ * the server decided before generation, kept on a turn that no provider answered, so a reload
+ * and a replay show it above the failure as the live turn did. Server text, never model text.
+ * Like the markers above it rides `evidence[]`, has no `docId`, and older clients skip it. */
+export type AdvisoryCardEntry = { kind: "advisory_card"; text: string };
+
+export function isAdvisoryCardEntry(e: unknown): e is AdvisoryCardEntry {
+  if (typeof e !== "object" || e === null) return false;
+  const { kind, text } = e as { kind?: unknown; text?: unknown };
+  return kind === "advisory_card" && typeof text === "string" && text.length > 0;
+}
+
 export function isSafetyStopEntry(e: unknown): e is SafetyStopEntry {
   return (
     typeof e === "object" &&
