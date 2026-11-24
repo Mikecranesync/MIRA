@@ -5252,6 +5252,91 @@ async def test_a_freed_read_goes_to_a_form_of_a_document_with_no_verdict(wired, 
     assert trace["not_queued"] == {c2[0]: "same_document", b[0]: "over_max_total"}, trace
 
 
+async def test_a_form_in_a_later_batch_is_not_read_once_its_document_has_a_verdict(
+    wired, monkeypatch
+):
+    # One read a batch, so a's forms are in separate batches. a1 is rejected, so a2,
+    # the same text, is not read again: one verdict per document.
+    a1, a2 = (f"{_FILES}/a.pdf#p1", 60), (f"{_FILES}/a.pdf#p2", 59)
+    cands = _round(a1, a2)
+    monkeypatch.setattr(judge, "MAX_CANDIDATES", 1)
+    _readable(monkeypatch, a1[0], a2[0])
+    router = _Verdicts(())
+    monkeypatch.setattr(judge, "_router", router)
+    trace: dict = {}
+    out = await judge.judge_candidates("Acme", "X100", cands, trace=trace)
+    assert router.read == [a1[0]], router.read
+    assert not (next(x for x in out if x["url"] == a2[0]).get("judge")), out
+    assert trace["queue"] == [a1[0]] and trace["not_queued"] == {a2[0]: "same_document"}, trace
+
+
+async def test_a_freed_read_comes_after_every_read_main_makes(wired, monkeypatch):
+    # Two reads a batch. a1 is a plain match, so one more batch: main reads x and y and
+    # finds y, the ideal manual. a2's freed read goes to b, past the cap, after them; read
+    # first, b would take y's place in that last batch.
+    a1, a2 = (f"{_FILES}/a.pdf#p1", 60), (f"{_FILES}/a.pdf#p2", 59)
+    x, y, b = (f"{_FILES}/x.pdf", 55), (f"{_FILES}/y.pdf", 50), (f"{_FILES}/b.pdf", 45)
+    cands = _round(a1, a2, x, y, b)
+    monkeypatch.setattr(judge, "MAX_CANDIDATES", 2)
+    monkeypatch.setattr(judge, "MAX_TOTAL", 4)
+    _readable(monkeypatch, *(c["url"] for c in cands))
+    fetched = _fetch_fails(monkeypatch)
+    monkeypatch.setattr(judge, "_router", _Verdicts({y[0]}, plain={a1[0]}))
+    trace: dict = {}
+    out = await judge.judge_candidates("Acme", "X100", cands, trace=trace)
+    assert fetched == [a1[0], x[0], y[0]], fetched
+    assert judge.is_ideal(out[0]) and out[0]["url"] == y[0], out[0]
+    assert trace["not_queued"] == {a2[0]: "same_document", b[0]: "upgrade_batch_limit"}, trace
+
+
+async def test_a_form_left_unread_keeps_its_reason_past_the_batch_limit(wired, monkeypatch):
+    # a1 is a plain match, so one more batch, x. a2 and y are cut there. a2 is left out
+    # because its document has a verdict, so it keeps that reason; y has the batch limit.
+    a1, x = (f"{_FILES}/a.pdf#p1", 60), (f"{_FILES}/x.pdf", 55)
+    a2, y = (f"{_FILES}/a.pdf#p2", 50), (f"{_FILES}/y.pdf", 45)
+    cands = _round(a1, x, a2, y)
+    monkeypatch.setattr(judge, "MAX_CANDIDATES", 1)
+    _readable(monkeypatch, *(c["url"] for c in cands))
+    monkeypatch.setattr(judge, "_router", _Verdicts((), plain={a1[0]}))
+    trace: dict = {}
+    await judge.judge_candidates("Acme", "X100", cands, trace=trace)
+    assert trace["queue"] == [a1[0], x[0], y[0]], trace
+    assert trace["not_queued"] == {a2[0]: "same_document", y[0]: "upgrade_batch_limit"}, trace
+
+
+async def test_a_freed_read_is_spent_in_the_next_batch_beside_mains_read(wired, monkeypatch):
+    # Two reads a batch. a1 is rejected, so a2 is left unread and its read freed. Past
+    # the cap, a3 is another form of a, so the read goes to b, which is read in the next
+    # batch beside x, where main read a2.
+    a1, a2, x = (f"{_FILES}/a.pdf#p1", 60), (f"{_FILES}/a.pdf#p2", 59), (f"{_FILES}/x.pdf", 55)
+    a3, b = (f"{_FILES}/a.pdf#p3", 50), (f"{_FILES}/b.pdf", 45)
+    cands = _round(a1, a2, x, a3, b)
+    monkeypatch.setattr(judge, "MAX_CANDIDATES", 2)
+    monkeypatch.setattr(judge, "MAX_TOTAL", 3)
+    _readable(monkeypatch, *(c["url"] for c in cands))
+    real_fetch = judge.fetch_pdf_bytes
+    started: list[str] = []
+    beside_x: list[bool] = []
+
+    async def fetch(url, *args, **kwargs):
+        started.append(url)
+        if url == x[0]:
+            for _ in range(50):  # up to half a second for b's read to start beside x's
+                if b[0] in started:
+                    break
+                await asyncio.sleep(0.01)
+            beside_x.append(b[0] in started)
+        return await real_fetch(url, *args, **kwargs)
+
+    monkeypatch.setattr(judge, "fetch_pdf_bytes", fetch)
+    monkeypatch.setattr(judge, "_router", _Verdicts(()))
+    trace: dict = {}
+    await judge.judge_candidates("Acme", "X100", cands, trace=trace)
+    assert sorted(started) == sorted([a1[0], x[0], b[0]]), started
+    assert beside_x == [True], started
+    assert trace["not_queued"] == {a2[0]: "same_document", a3[0]: "same_document"}, trace
+
+
 def _fetch_fails(monkeypatch, *urls):
     """Every fetch of `urls` returns nothing; the rest are served. Returns the URLs
     fetched, in order."""
