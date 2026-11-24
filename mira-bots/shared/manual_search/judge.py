@@ -495,6 +495,11 @@ async def _judge_one(make: str, model: str, cand: dict) -> dict:
     return cand
 
 
+# A finished read that gave no verdict on the document: it was not fetched, held no
+# text, or the judge could not answer. An interrupted read stops the round instead.
+_NO_VERDICT = frozenset({"unfetched", "no_text", "unavailable"})
+
+
 def _mark_interrupted(cands: list[dict], why: str) -> None:
     """Annotate reads that started but never finished; drop the stage marker from all."""
     for c in cands:
@@ -684,14 +689,17 @@ async def judge_candidates(
     # One read per document, before the cap (#5902): a second form would take a read
     # from a distinct document, and a second verdict on the same text could contradict
     # the first. The highest-ranked form is read; the rest are left out with their own
-    # reason, unread, so the trail never shows a verdict nobody gave them.
-    forms: set[tuple[str, str]] = set()
+    # reason, unread, so the trail never shows a verdict nobody gave them. They stay
+    # spare, in case that read ends with no verdict (#5913 review round 1).
+    spares: dict[tuple[str, str], list[dict]] = {}
     kept: list[dict] = []
     for c in queue:
-        if same_document_key(c) in forms:
+        key = same_document_key(c)
+        if key in spares:
             not_queued[c["url"]] = "same_document"
+            spares[key].append(c)
             continue
-        forms.add(same_document_key(c))
+        spares[key] = []
         kept.append(c)
     queue = kept
     limit = MAX_TOTAL if max_total is None else max_total
@@ -708,6 +716,8 @@ async def judge_candidates(
             started_at=started_at,
             deadline_at=deadline_at,
             trace=trace,
+            spares=spares,
+            room=limit - len(queue),
         )
     except asyncio.CancelledError:
         # The caller's own timeout cancelled the search mid-read: say so, and keep
@@ -726,6 +736,8 @@ async def _judge_queue(
     started_at: float | None,
     deadline_at: float | None,
     trace: dict,
+    spares: dict[tuple[str, str], list[dict]] | None = None,
+    room: int = 0,
 ) -> list[dict]:
     # The upgrade deadline counts from when the whole search began (search_manual
     # passes it): judging that starts late must not run past the discovery timeout.
@@ -780,6 +792,19 @@ async def _judge_queue(
         if any(is_ideal(c) for c in batch):
             trace["stop"] = "ideal_match"
             break
+        # A read that ended with no verdict covers nothing (#5870): the document's next
+        # form is read next, as main read every form, but only in a read the cap still
+        # has room for, so it never takes a distinct document's read (#5902).
+        retry: list[dict] = []
+        for c in batch:
+            left = (spares or {}).get(same_document_key(c))
+            if room > 0 and left and (c.get("judge") or {}).get("status") in _NO_VERDICT:
+                spare = left.pop(0)
+                room -= 1
+                retry.append(spare)
+                trace["queue"].append(spare["url"])
+                trace["not_queued"].pop(spare["url"], None)
+        queue = retry + queue
         if any(is_match(c) for c in candidates) and len(queue) > MAX_CANDIDATES:
             for c in queue[MAX_CANDIDATES:]:
                 trace["not_queued"][c["url"]] = "upgrade_batch_limit"

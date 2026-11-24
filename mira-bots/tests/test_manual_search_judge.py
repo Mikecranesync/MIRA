@@ -5050,6 +5050,93 @@ async def test_two_forms_of_one_pdf_never_split_its_verdict(wired, monkeypatch):
     assert r["url"] != _S7_FORMS[1][0], r
 
 
+def _first_read_of(monkeypatch, url, stage):
+    """The first read of `url` ends without a verdict at `stage`; later reads succeed.
+    Returns the URLs fetched, in order."""
+    fetched: list[str] = []
+    real_fetch, real_extract, real_judge = (
+        judge.fetch_pdf_bytes,
+        judge.extract_text,
+        judge.judge_text,
+    )
+    failed: list[str] = []
+
+    async def judge_text(make, model, cand, text):
+        if cand["url"] == url and stage == "judge" and not failed:
+            failed.append(url)
+            return None
+        return await real_judge(make, model, cand, text)
+
+    async def fetch(u, max_bytes=judge.MAX_BYTES):
+        fetched.append(u)
+        if u == url and stage == "fetch" and not failed:
+            failed.append(u)
+            return None
+        return await real_fetch(u, max_bytes)
+
+    async def extract(data, max_pages=8, max_chars=7000):
+        if data[9:].decode() == url and stage == "text" and not failed:
+            failed.append(url)
+            return ""
+        return await real_extract(data, max_pages, max_chars)
+
+    monkeypatch.setattr(judge, "fetch_pdf_bytes", fetch)
+    monkeypatch.setattr(judge, "extract_text", extract)
+    monkeypatch.setattr(judge, "judge_text", judge_text)
+    return fetched
+
+
+@pytest.mark.parametrize(
+    ("stage", "status"),
+    [("fetch", "unfetched"), ("text", "no_text"), ("judge", "unavailable")],
+)
+async def test_a_form_whose_read_gave_no_verdict_is_read_under_its_other_form(
+    wired, monkeypatch, stage, status
+):
+    # #5913 review round 1: a read that ends with no verdict covers nothing (#5870), so
+    # the document's other form is read next, as main read both. Before this, the
+    # other form was left out unread and the search offered the unread first form.
+    _s7_forms_ahead_of_the_easy_book()
+    _readable(monkeypatch, _S7_FORMS[0][0], _S7_FORMS[1][0], _S7_EASY_BOOK[0])
+    fetched = _first_read_of(monkeypatch, _S7_FORMS[0][0], stage)
+    router = _Verdicts({_S7_FORMS[0][0], _S7_FORMS[1][0]})
+    monkeypatch.setattr(judge, "_router", router)
+    _serve(monkeypatch, [*_S7_FORMS])
+    with search_mod.acquisition_trail() as trail:
+        r = await search_mod.search_manual("Siemens", _SIMATIC)
+    assert fetched == [_S7_FORMS[0][0], _S7_FORMS[1][0]], fetched
+    assert router.read == [_S7_FORMS[1][0]], router.read
+    assert r is not None and r["url"] == _S7_FORMS[1][0] and r["validated"] is True, r
+    assert r["reason"] == judge.REASON_JUDGED_MATCH, r
+    # The trail queues the other form, with no reason left from the collapse.
+    assert trail.judge["queue"] == [_S7_FORMS[0][0], _S7_FORMS[1][0]], trail.judge
+    assert _S7_FORMS[1][0] not in trail.judge["not_queued"], trail.judge
+    # Trail rows drop the fragment: the first form's row shows its read without a
+    # verdict, the other form's row the verdict, each at its own queue position.
+    rows = [x for x in trail.to_dict(r["url"])["candidates"] if x["url"] == _SIMATIC_MANUAL]
+    got = sorted((x["queue_pos"], x["read"], x["not_queued"]) for x in rows)
+    assert got == [(0, status, None), (1, "judged", None)], rows
+
+
+async def test_control_a_form_never_takes_a_distinct_documents_read(wired, monkeypatch):
+    # The other form is read only while the cap has room. With room for two reads, the
+    # distinct manual keeps its read (#5902), and the other form stays out, unread. The
+    # distinct manual is rejected, so the round goes on past its first batch.
+    _s7_forms_ahead_of_the_easy_book()
+    monkeypatch.setattr(judge, "MAX_TOTAL", 2)
+    _readable(monkeypatch, _S7_FORMS[0][0], _S7_FORMS[1][0], _S7_EASY_BOOK[0])
+    fetched = _first_read_of(monkeypatch, _S7_FORMS[0][0], "fetch")
+    router = _Verdicts(())
+    monkeypatch.setattr(judge, "_router", router)
+    _serve(monkeypatch, [*_S7_FORMS, _S7_EASY_BOOK])
+    with search_mod.acquisition_trail() as trail:
+        await search_mod.search_manual("Siemens", _SIMATIC)
+    assert _S7_FORMS[1][0] not in fetched, fetched
+    assert fetched[:2] == [_S7_FORMS[0][0], _S7_EASY_BOOK[0]], fetched
+    assert router.read[:1] == [_S7_EASY_BOOK[0]], router.read
+    assert trail.judge["not_queued"][_S7_FORMS[1][0]] == "same_document", trail.judge
+
+
 @pytest.mark.parametrize(
     "second",
     [
