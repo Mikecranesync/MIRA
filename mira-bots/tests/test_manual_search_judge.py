@@ -5118,23 +5118,152 @@ async def test_a_form_whose_read_gave_no_verdict_is_read_under_its_other_form(
     assert got == [(0, status, None), (1, "judged", None)], rows
 
 
-async def test_control_a_form_never_takes_a_distinct_documents_read(wired, monkeypatch):
-    # The other form is read only while the cap has room. With room for two reads, the
-    # distinct manual keeps its read (#5902), and the other form stays out, unread. The
-    # distinct manual is rejected, so the round goes on past its first batch.
+async def test_a_failed_form_keeps_the_read_main_gave_its_other_form(wired, monkeypatch):
+    # #5913 review round 2: the cap counts every form, as main's does. With room for two
+    # reads, main reads both forms and validates the second when the first fails. The
+    # distinct manual is past the cap, on main and here; it takes a held form's read
+    # only after a verdict on the document (the crowd-out test above).
     _s7_forms_ahead_of_the_easy_book()
     monkeypatch.setattr(judge, "MAX_TOTAL", 2)
     _readable(monkeypatch, _S7_FORMS[0][0], _S7_FORMS[1][0], _S7_EASY_BOOK[0])
     fetched = _first_read_of(monkeypatch, _S7_FORMS[0][0], "fetch")
-    router = _Verdicts(())
+    router = _Verdicts({_S7_FORMS[0][0], _S7_FORMS[1][0]})
     monkeypatch.setattr(judge, "_router", router)
     _serve(monkeypatch, [*_S7_FORMS, _S7_EASY_BOOK])
     with search_mod.acquisition_trail() as trail:
-        await search_mod.search_manual("Siemens", _SIMATIC)
-    assert _S7_FORMS[1][0] not in fetched, fetched
-    assert fetched[:2] == [_S7_FORMS[0][0], _S7_EASY_BOOK[0]], fetched
-    assert router.read[:1] == [_S7_EASY_BOOK[0]], router.read
-    assert trail.judge["not_queued"][_S7_FORMS[1][0]] == "same_document", trail.judge
+        r = await search_mod.search_manual("Siemens", _SIMATIC)
+    assert fetched == [_S7_FORMS[0][0], _S7_FORMS[1][0]], fetched
+    assert r is not None and r["url"] == _S7_FORMS[1][0] and r["validated"] is True, r
+    assert trail.judge["not_queued"][_S7_EASY_BOOK[0]] == "over_max_total", trail.judge
+
+
+def _round(*urls_scores):
+    """Direct-PDF candidates for one judge round, in the given rank order."""
+    return [
+        {
+            "url": u,
+            "title": u.rsplit("/", 1)[-1].split("#", 1)[0],
+            "host": "www.example-files.com",
+            "score": s,
+            "doc_type": "installation_manual",
+            "is_direct_pdf": True,
+        }
+        for u, s in urls_scores
+    ]
+
+
+async def test_a_failed_form_is_read_when_distinct_documents_fill_the_cap(wired, monkeypatch):
+    # #5913 review round 2, at the default cap: six distinct documents, then two forms
+    # of one manual, then a seventh document. Main reads the six and both forms, and
+    # validates the second form when the first is not fetched.
+    docs = [(f"{_FILES}/doc{i}.pdf", 60 - i) for i in range(6)]
+    p1, p2 = f"{_FILES}/drive-manual.pdf#p1", f"{_FILES}/drive-manual.pdf#p2"
+    last = (f"{_FILES}/doc6.pdf", 30)
+    cands = _round(*docs, (p1, 40), (p2, 39), last)
+    assert judge.MAX_TOTAL == len(docs) + 2
+    _readable(monkeypatch, *(c["url"] for c in cands))
+    fetched = _first_read_of(monkeypatch, p1, "fetch")
+    monkeypatch.setattr(judge, "_router", _Verdicts({p2}))
+    trace: dict = {}
+    out = await judge.judge_candidates("Acme", "X100", cands, trace=trace)
+    assert sorted(fetched) == sorted([u for u, _ in docs] + [p1, p2]), fetched
+    assert judge.is_match(out[0]) and out[0]["url"] == p2, out[0]
+    assert trace["not_queued"] == {last[0]: "over_max_total"}, trace
+
+
+async def test_a_failed_form_is_read_before_the_next_document(wired, monkeypatch):
+    # One read per batch: the other form is read next, where main read it, so the
+    # round returns the manual main's round returns.
+    a1, a2, b = (f"{_FILES}/a.pdf#p1", 60), (f"{_FILES}/a.pdf#p2", 59), (f"{_FILES}/b.pdf", 50)
+    cands = _round(a1, a2, b)
+    monkeypatch.setattr(judge, "MAX_CANDIDATES", 1)
+    _readable(monkeypatch, a1[0], a2[0], b[0])
+    fetched = _first_read_of(monkeypatch, a1[0], "fetch")
+    monkeypatch.setattr(judge, "_router", _Verdicts({a1[0], a2[0], b[0]}))
+    out = await judge.judge_candidates("Acme", "X100", cands)
+    assert fetched == [a1[0], a2[0]], fetched
+    assert judge.is_ideal(out[0]) and out[0]["url"] == a2[0], out[0]
+
+
+async def test_a_freed_read_skips_another_form_of_a_judged_document(wired, monkeypatch):
+    # A verdict on a document frees its held form's read for the next PDF past the cap.
+    # A form of a document the round already has is not that PDF.
+    a = [(f"{_FILES}/a.pdf#p{k}", 60) for k in (1, 2, 3)]
+    b = (f"{_FILES}/b.pdf", 50)
+    cands = _round(*a, b)
+    monkeypatch.setattr(judge, "MAX_TOTAL", 2)
+    _readable(monkeypatch, *(c["url"] for c in cands))
+    fetched = _first_read_of(monkeypatch, "none", "fetch")
+    monkeypatch.setattr(judge, "_router", _Verdicts(()))
+    trace: dict = {}
+    await judge.judge_candidates("Acme", "X100", cands, trace=trace)
+    assert fetched == [a[0][0], b[0]], fetched
+    assert trace["queue"] == [a[0][0], b[0]], trace
+    assert trace["not_queued"] == {a[1][0]: "same_document", a[2][0]: "same_document"}, trace
+
+
+async def test_a_failed_forms_other_form_is_read_in_its_own_rank_place(wired, monkeypatch):
+    # Main reads a1 (not fetched), b (not fetched), a2 (a plain match), then one more
+    # batch: c, the ideal manual. Read ahead of b, a2 would take that last batch and c
+    # would be cut, so the other form is read where main read it.
+    a1, b = (f"{_FILES}/a.pdf#p1", 60), (f"{_FILES}/b.pdf", 55)
+    a2, c = (f"{_FILES}/a.pdf#p2", 50), (f"{_FILES}/c.pdf", 45)
+    cands = _round(a1, b, a2, c)
+    monkeypatch.setattr(judge, "MAX_CANDIDATES", 1)
+    _readable(monkeypatch, a1[0], b[0], a2[0], c[0])
+    fetched = _fetch_fails(monkeypatch, a1[0], b[0])
+    monkeypatch.setattr(judge, "_router", _Verdicts({c[0]}, plain={a2[0]}))
+    out = await judge.judge_candidates("Acme", "X100", cands)
+    assert fetched == [a1[0], b[0], a2[0], c[0]], fetched
+    assert judge.is_ideal(out[0]) and out[0]["url"] == c[0], out[0]
+
+
+async def test_the_batches_stay_mains_when_a_documents_forms_give_no_verdict(wired, monkeypatch):
+    # Two reads a batch. Main's first batch is both forms of a, neither fetched; its
+    # second finds b, a plain match, which earns one more batch: d, the ideal manual.
+    # Reading a's second form a batch later would move d out of that last batch.
+    a1, a2 = (f"{_FILES}/a.pdf#p1", 60), (f"{_FILES}/a.pdf#p2", 59)
+    b, c, d = (f"{_FILES}/b.pdf", 55), (f"{_FILES}/c.pdf", 50), (f"{_FILES}/d.pdf", 45)
+    cands = _round(a1, a2, b, c, d)
+    monkeypatch.setattr(judge, "MAX_CANDIDATES", 2)
+    _readable(monkeypatch, *(x["url"] for x in cands))
+    fetched = _fetch_fails(monkeypatch, a1[0], a2[0], c[0])
+    monkeypatch.setattr(judge, "_router", _Verdicts({d[0]}, plain={b[0]}))
+    out = await judge.judge_candidates("Acme", "X100", cands)
+    assert fetched == [a1[0], a2[0], b[0], c[0], d[0]], fetched
+    assert judge.is_ideal(out[0]) and out[0]["url"] == d[0], out[0]
+
+
+async def test_a_freed_read_goes_to_a_form_of_a_document_with_no_verdict(wired, monkeypatch):
+    # A verdict on c leaves c2 unread and frees its read. The next PDF past the cap is
+    # a's other form, and a has no verdict yet (its only read was not fetched), so the
+    # freed read is a2's. b stays past the cap.
+    a1, c1, c2 = (f"{_FILES}/a.pdf#p1", 60), (f"{_FILES}/c.pdf#p1", 55), (f"{_FILES}/c.pdf#p2", 54)
+    a2, b = (f"{_FILES}/a.pdf#p2", 50), (f"{_FILES}/b.pdf", 45)
+    cands = _round(a1, c1, c2, a2, b)
+    monkeypatch.setattr(judge, "MAX_TOTAL", 3)
+    _readable(monkeypatch, *(x["url"] for x in cands))
+    fetched = _first_read_of(monkeypatch, a1[0], "fetch")
+    monkeypatch.setattr(judge, "_router", _Verdicts(()))
+    trace: dict = {}
+    await judge.judge_candidates("Acme", "X100", cands, trace=trace)
+    assert fetched == [a1[0], c1[0], a2[0]], fetched
+    assert trace["queue"] == [a1[0], c1[0], a2[0]], trace
+    assert trace["not_queued"] == {c2[0]: "same_document", b[0]: "over_max_total"}, trace
+
+
+def _fetch_fails(monkeypatch, *urls):
+    """Every fetch of `urls` returns nothing; the rest are served. Returns the URLs
+    fetched, in order."""
+    real_fetch = judge.fetch_pdf_bytes
+    fetched: list[str] = []
+
+    async def fetch(url, *args, **kwargs):
+        fetched.append(url)
+        return None if url in urls else await real_fetch(url, *args, **kwargs)
+
+    monkeypatch.setattr(judge, "fetch_pdf_bytes", fetch)
+    return fetched
 
 
 @pytest.mark.parametrize(

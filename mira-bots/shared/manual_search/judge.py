@@ -495,9 +495,19 @@ async def _judge_one(make: str, model: str, cand: dict) -> dict:
     return cand
 
 
-# A finished read that gave no verdict on the document: it was not fetched, held no
-# text, or the judge could not answer. An interrupted read stops the round instead.
-_NO_VERDICT = frozenset({"unfetched", "no_text", "unavailable"})
+def _has_verdict(c: dict) -> bool:
+    """Whether the judge read ``c`` and gave a verdict. A read that was not fetched,
+    held no text, or got no answer from the judge covers nothing (#5870)."""
+    return (c.get("judge") or {}).get("status") == "judged"
+
+
+async def _judge_forms(make: str, model: str, forms: list[dict]) -> None:
+    """Read the forms of one document from one batch, in rank order, until one gives a
+    verdict: the next form is read only if the one before it gave none (#5902)."""
+    for c in forms:
+        await _judge_one(make, model, c)
+        if _has_verdict(c):
+            return
 
 
 def _mark_interrupted(cands: list[dict], why: str) -> None:
@@ -686,24 +696,9 @@ async def judge_candidates(
     queue.sort(key=lambda c: (_mentions_make(c, make), c.get("score", 0)), reverse=True)
     not_queued = {c["url"]: "not_direct_pdf" for c in candidates if not c.get("is_direct_pdf")}
     not_queued.update({c["url"]: "not_relevant" for c in pdfs if c not in queue})
-    # One read per document, before the cap (#5902): a second form would take a read
-    # from a distinct document, and a second verdict on the same text could contradict
-    # the first. The highest-ranked form is read; the rest are left out with their own
-    # reason, unread, so the trail never shows a verdict nobody gave them. They stay
-    # spare, in case that read ends with no verdict (#5913 review round 1).
-    spares: dict[tuple[str, str], list[dict]] = {}
-    kept: list[dict] = []
-    for c in queue:
-        key = same_document_key(c)
-        if key in spares:
-            not_queued[c["url"]] = "same_document"
-            spares[key].append(c)
-            continue
-        spares[key] = []
-        kept.append(c)
-    queue = kept
     limit = MAX_TOTAL if max_total is None else max_total
-    not_queued.update({c["url"]: "over_max_total" for c in queue[limit:]})
+    over = queue[limit:]
+    not_queued.update({c["url"]: "over_max_total" for c in over})
     queue = queue[:limit]
     trace["queue"] = [c["url"] for c in queue]
     trace["not_queued"] = not_queued
@@ -716,8 +711,7 @@ async def judge_candidates(
             started_at=started_at,
             deadline_at=deadline_at,
             trace=trace,
-            spares=spares,
-            room=limit - len(queue),
+            over=over,
         )
     except asyncio.CancelledError:
         # The caller's own timeout cancelled the search mid-read: say so, and keep
@@ -736,9 +730,17 @@ async def _judge_queue(
     started_at: float | None,
     deadline_at: float | None,
     trace: dict,
-    spares: dict[tuple[str, str], list[dict]] | None = None,
-    room: int = 0,
+    over: list[dict] | None = None,
 ) -> list[dict]:
+    over = [] if over is None else over
+    # Every batch is main's batch, so every stop and every cut falls where main's does
+    # (#5913 review rounds 1 and 2). What changes is one verdict per document (#5902):
+    # a form of a document that already has a verdict is not read, and the forms of
+    # one document in one batch are read one after another, each only if the one
+    # before it gave no verdict. A form not read frees its read for the next PDF past
+    # the cap, read after every PDF main's round reads.
+    judged: set[tuple[str, str]] = set()
+    set_aside: set[str] = set()
     # The upgrade deadline counts from when the whole search began (search_manual
     # passes it): judging that starts late must not run past the discovery timeout.
     t0 = time.monotonic() if started_at is None else started_at
@@ -761,7 +763,11 @@ async def _judge_queue(
                     trace["stop"] = "search_deadline"
                     _mark_interrupted(batch, "search_deadline")
                     break
-            reads = asyncio.gather(*(_judge_one(make, model, c) for c in batch))
+            forms: dict[tuple[str, str], list[dict]] = {}
+            for c in batch:
+                if same_document_key(c) not in judged:
+                    forms.setdefault(same_document_key(c), []).append(c)
+            reads = asyncio.gather(*(_judge_forms(make, model, f) for f in forms.values()))
             if upgrading:
                 remaining = upgrade_until - time.monotonic()
                 if remaining < UPGRADE_MIN_BATCH_S:
@@ -787,27 +793,36 @@ async def _judge_queue(
             break
         except Exception as e:  # noqa: BLE001 — belt and braces; _judge_one never raises
             logger.info("judge_candidates degraded: %s", e)
+        # A verdict covers every form of the document. The forms it leaves unread are
+        # left out with their own reason, so the trail never shows a verdict nobody
+        # gave them. They stay in the queue, unread, so the batches stay main's.
+        judged.update(same_document_key(c) for c in batch if _has_verdict(c))
+        freed = 0
+        for c in (*batch, *queue):
+            if c["url"] in set_aside or c.get("judge") or same_document_key(c) not in judged:
+                continue
+            set_aside.add(c["url"])
+            trace["queue"] = [u for u in trace["queue"] if u != c["url"]]
+            trace["not_queued"][c["url"]] = "same_document"
+            freed += 1
         # Stop on an ideal match. A plain match (wrong volume, wrong language, or
         # a chapter) earns one more batch, then the best match so far stands.
         if any(is_ideal(c) for c in batch):
             trace["stop"] = "ideal_match"
             break
-        # A read that ended with no verdict covers nothing (#5870): the document's next
-        # form is read next, as main read every form, but only in a read the cap still
-        # has room for, so it never takes a distinct document's read (#5902).
-        retry: list[dict] = []
-        for c in batch:
-            left = (spares or {}).get(same_document_key(c))
-            if room > 0 and left and (c.get("judge") or {}).get("status") in _NO_VERDICT:
-                spare = left.pop(0)
-                room -= 1
-                retry.append(spare)
-                trace["queue"].append(spare["url"])
-                trace["not_queued"].pop(spare["url"], None)
-        queue = retry + queue
+        while freed and over:
+            c = over.pop(0)
+            if same_document_key(c) in judged:
+                trace["not_queued"][c["url"]] = "same_document"
+                continue
+            queue.append(c)
+            trace["queue"].append(c["url"])
+            trace["not_queued"].pop(c["url"], None)
+            freed -= 1
         if any(is_match(c) for c in candidates) and len(queue) > MAX_CANDIDATES:
             for c in queue[MAX_CANDIDATES:]:
-                trace["not_queued"][c["url"]] = "upgrade_batch_limit"
+                if c["url"] not in set_aside:
+                    trace["not_queued"][c["url"]] = "upgrade_batch_limit"
             queue = queue[:MAX_CANDIDATES]
     else:
         trace["stop"] = "queue_exhausted"
