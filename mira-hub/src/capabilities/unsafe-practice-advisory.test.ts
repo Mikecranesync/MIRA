@@ -39,6 +39,11 @@ describe("live touch screen while cleaning", () => {
     "we usually wash the operator panel while the line runs",
     "the hmi gets cleaned every shift, can we keep it on while we do it? we wipe the screen fast",
     "Can they wipe the screen while it’s still powered up?",
+    // #5905 Codex r1 F1: a "what is" opener, and a report of the running line in its own sentence.
+    "What is the safest way to wipe the touch screen while the line runs?",
+    "The line is running. Can I wipe the HMI now?",
+    "explain how to wipe the hmi while it's on",
+    "the conveyor is running, the operators clean the touch screen anyway",
   ]) {
     it(`flags: ${msg}`, () => {
       expect(unsafePractices(msg)).toContain("live-screen-cleaning");
@@ -54,6 +59,13 @@ describe("live touch screen while cleaning", () => {
     "What is the cleaning screen on a Basic Panel?",
     "How do I recalibrate the touch screen after an OS update?",
     "the screen is dirty",
+    // #5905 Codex r1 F3: the live state belongs to other equipment.
+    "I turn off the HMI before wiping the touch screen. Should I leave the exhaust fan on?",
+    "wipe the hmi while the exhaust fan runs",
+    // "on" as a place, and a machine that is stopped.
+    "The HMI is on the left side of the panel, how do I clean it?",
+    "The machine is off. Can I wipe the screen now?",
+    "the line is on break, can I wipe the screen",
   ]) {
     it(`quiet: ${msg}`, () => {
       expect(unsafePractices(msg)).not.toContain("live-screen-cleaning");
@@ -70,6 +82,14 @@ describe("electrical cabinet left open or unlocked", () => {
     "Leaving the enclosure door open so it cools down, fine?",
     "we keep the panel door ajar so the operators can get to the breaker",
     "prop open the cabinet so I can see the drive display",
+    // #5905 Codex r1 F1: a direct report of the unsecured cabinet.
+    "The electrical cabinet is open and unlocked.",
+    "the MCC door was left open all night",
+    "the cabinet's been open all night, is that ok",
+    "the panel door is ajar",
+    "the enclosure lid got left open",
+    "the junction box cover is unlatched",
+    "close the cabinet door without locking it, ok?",
   ]) {
     it(`flags: ${msg}`, () => {
       expect(unsafePractices(msg)).toContain("open-electrical-enclosure");
@@ -86,6 +106,18 @@ describe("electrical cabinet left open or unlocked", () => {
     "Close the enclosure door before you energize",
     "What is an enclosure rating like IP65?",
     "leave the project open on the tablet",
+    // #5905 Codex r1 F3: the open door is not the cabinet's.
+    "The control cabinet is locked. Can I leave the shop door open for ventilation?",
+    "the shop door is propped open, the control cabinet is fine",
+    "close the shop door without locking it, the panel cabinet is shut",
+    "The cabinet is closed. The door to the shop is open, can I clean the HMI?",
+    // A cabinet open for work, a negated report, alarm labels and a definition.
+    "the cabinet is open now, I'm replacing the fan filter, LOTO is done",
+    "the panel door is not ajar",
+    "Is the cabinet unlocked alarm a real fault?",
+    "The enclosure door is ajar alarm keeps showing on the HMI",
+    "the panel door was left open alarm is latched",
+    "What is a cabinet door switch?",
   ]) {
     it(`quiet: ${msg}`, () => {
       expect(unsafePractices(msg)).not.toContain("open-electrical-enclosure");
