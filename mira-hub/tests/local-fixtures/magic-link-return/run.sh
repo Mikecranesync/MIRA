@@ -45,7 +45,7 @@ cd "$HUB_DIR"
 
 PORT="${MLR_PORT:-3953}"
 PG_PORT=55753          # only names the socket file; nothing listens on TCP
-EXPECTED_TESTS=10
+EXPECTED_TESTS=13
 umask 077
 TMP_ROOT="${TMPDIR:-/tmp}"
 WORK="$(mktemp -d "${TMP_ROOT%/}/mlr.XXXXXX")"

@@ -1,6 +1,6 @@
 /**
  * TEST ONLY. A fresh, signed-out browser context that can reach exactly one
- * origin, for the magic-link return fixture (#5753, #5798, #5831).
+ * origin, for the magic-link return fixture (#5753, #5798, #5831, #5839, #5840).
  *
  * A route handler is not enough: Playwright runs it once per request, and
  * Chromium follows the redirect hops of a request the handler continued (or
@@ -20,15 +20,18 @@
  *
  * The proxy lives in the Playwright process and is stopped only after the
  * context closes, so the browser can never outlive it. If the socket cannot be
- * reached while the browser is still waiting for the answer, the failure is
- * recorded in `upstreamFailures` and the browser's connection is dropped; a
- * request the browser itself abandoned is not counted.
+ * reached, or its answer ends before it is complete (#5839), while the browser
+ * is still waiting, the failure is recorded once in `upstreamFailures` and the
+ * browser's connection is dropped; a request the browser itself abandoned is
+ * not counted. `withIsolatedContext` checks that record only after the context
+ * and the proxy have closed, so a request still in flight when the test body
+ * returned is settled first (#5840).
  *
  * `attempted` and `paths` come from the context's `request` event, which fires
  * for every request including each redirect hop, independently of the proxy.
  * Service workers are blocked so none can answer a request out of sight.
  */
-import type { Browser, BrowserContext, Page } from "@playwright/test";
+import { expect, type Browser, type BrowserContext, type Page } from "@playwright/test";
 import * as http from "node:http";
 import type { AddressInfo, Socket } from "node:net";
 
@@ -95,9 +98,18 @@ async function startProxy(
       return;
     }
     let browserGone = false;
+    let failed = false;
     res.on("close", () => {
       if (!res.writableFinished) browserGone = true;
     });
+    // Records one failure while the browser still waits, then drops its
+    // connection so it does not wait for the rest.
+    const fail = (reason: string) => {
+      if (failed || browserGone) return;
+      failed = true;
+      upstreamFailures.push(`${originAndPath(req.url ?? "")} ${reason}`);
+      req.socket.destroy();
+    };
     const upstream = http.request(
       {
         socketPath: upstreamSocket,
@@ -107,13 +119,15 @@ async function startProxy(
       },
       (answer) => {
         res.writeHead(answer.statusCode ?? 502, answer.statusMessage, forwardableResponseHeaders(answer.rawHeaders));
+        // An answer whose connection closes before its end is cut short (#5839).
+        answer.on("error", () => fail("response cut short"));
+        answer.on("close", () => {
+          if (!answer.complete) fail("response cut short");
+        });
         answer.pipe(res);
       },
     );
-    upstream.on("error", (err: NodeJS.ErrnoException) => {
-      if (!browserGone) upstreamFailures.push(`${originAndPath(req.url ?? "")} ${err.code ?? err.message}`);
-      req.socket.destroy();
-    });
+    upstream.on("error", (err: NodeJS.ErrnoException) => fail(err.code ?? err.message));
     res.on("close", () => {
       if (browserGone) upstream.destroy();
     });
@@ -176,6 +190,27 @@ export async function isolatedContext(
       await proxy.stop();
     },
   };
+}
+
+/** Runs `body` in an isolated context, closes the context and the proxy, and
+ *  only then checks that every forwarded request reached the socket, followed
+ *  by the caller's own `finalChecks` (#5840). The context is closed even when
+ *  `body` throws. */
+export async function withIsolatedContext(
+  browser: Browser,
+  allowedOrigin: string,
+  upstreamSocket: string,
+  body: (iso: IsolatedContext) => Promise<void>,
+  finalChecks?: (iso: IsolatedContext) => void,
+): Promise<void> {
+  const iso = await isolatedContext(browser, allowedOrigin, upstreamSocket);
+  try {
+    await body(iso);
+  } finally {
+    await iso.close();
+  }
+  expect(iso.upstreamFailures, "every forwarded request reached the server behind the socket").toEqual([]);
+  finalChecks?.(iso);
 }
 
 /** The URLs in `urls` that are not on `origin`. `data:` and `blob:` URLs never
