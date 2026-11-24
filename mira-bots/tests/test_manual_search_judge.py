@@ -4876,3 +4876,32 @@ async def test_a_retry_match_before_an_offer_keeps_the_support_page_it_found(wir
         page_url = trail.search_page_url
     assert r is not None and r["url"] == _GS10_MANUAL and r["validated"] is True, r
     assert page_url == _RETRY_SUPPORT_PAGE[0]
+
+
+# Another maker's GS10 page, which the make screen removes before main's offer.
+_GIS_GS10_PAGE = (
+    "https://www.manualslib.com/products/Gis-Gs10-150-260-11628317.html",
+    "Gis GS10/150/260 Manuals",
+)
+
+
+async def test_control_the_retry_after_the_make_screen_still_records_its_support_page(
+    wired, monkeypatch
+):
+    # Main's second miss ending: round one's only unread page is another maker's and
+    # the make screen removes it, so no offer is made. As at the first ending, a
+    # support page the retry's queries find is the technician's browser handoff.
+    c = {"url": _GIS_GS10_PAGE[0], "title": _GIS_GS10_PAGE[1]}
+    assert judge.relevant(c, "AutomationDirect", "GS10")
+    assert not search_mod._may_offer_unread(c, "AutomationDirect")
+    router, sent = _stall(
+        monkeypatch, q1_hits=_AD_READ + [_GIS_GS10_PAGE], q2_hits=[_OTHER, _RETRY_SUPPORT_PAGE]
+    )
+    monkeypatch.setitem(TEXT, _OTHER[0], _DRAWING_TEXT)
+    with search_mod.acquisition_trail() as trail:
+        r = await search_mod.search_manual("AutomationDirect", "GS10", deadline_at=_deadline(60))
+        page_url = trail.search_page_url
+    assert r is not None and r["reason"] == judge.REASON_JUDGED_REJECTED, r
+    # The page is probed (not a PDF), then screened: this is the ending after the screen.
+    assert _typed(sent) == _GS10_TYPED and router.probed == [_GIS_GS10_PAGE[0]]
+    assert page_url == _RETRY_SUPPORT_PAGE[0]
