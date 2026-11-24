@@ -4905,3 +4905,75 @@ async def test_control_the_retry_after_the_make_screen_still_records_its_support
     # The page is probed (not a PDF), then screened: this is the ending after the screen.
     assert _typed(sent) == _GS10_TYPED and router.probed == [_GIS_GS10_PAGE[0]]
     assert page_url == _RETRY_SUPPORT_PAGE[0]
+
+
+# An official support page round one's site query can find (#5907 review).
+_R1_OEM_SUPPORT_PAGE = (
+    "https://www.automationdirect.com/support/gs10-support",
+    "AutomationDirect GS10 support and manuals",
+)
+
+
+@pytest.mark.parametrize(
+    ("pdfs", "offered"),
+    [
+        (frozenset(), _R1_OEM_SUPPORT_PAGE[0]),
+        (frozenset({_AD_CATALOG_PAGE[0]}), _AD_CATALOG_PAGE[0]),
+    ],
+    ids=["unread_offer", "probe_offer"],
+)
+async def test_a_retry_miss_keeps_a_support_page_round_one_found(wired, monkeypatch, pdfs, offered):
+    # The common case: round one's site query already found an official support
+    # page, which is the offer's browser handoff on main. A retry miss must leave
+    # exactly that page, not clear it and not replace it. The offer is main's: the
+    # unread support page itself, or the catalog page when it probes as a PDF.
+    router, sent = _stall(
+        monkeypatch,
+        q1_hits=_AD_READ + [_AD_CATALOG_PAGE, _R1_OEM_SUPPORT_PAGE],
+        q2_hits=[_OTHER, _RETRY_SUPPORT_PAGE],
+        pdfs=pdfs,
+    )
+    monkeypatch.setitem(TEXT, _OTHER[0], _DRAWING_TEXT)
+    with search_mod.acquisition_trail() as trail:
+        r = await search_mod.search_manual("AutomationDirect", "GS10", deadline_at=_deadline(60))
+        page = (trail.search_page_url, trail.search_page_score)
+    assert r is not None and r["url"] == offered and r["validated"] is False, r
+    assert sent[1:] == _GS10_TYPED, sent
+    assert page == (_R1_OEM_SUPPORT_PAGE[0], 120), page
+
+
+@pytest.mark.parametrize(
+    "pdfs", [frozenset(), frozenset({_AD_CATALOG_PAGE[0]})], ids=["unread_offer", "probe_offer"]
+)
+async def test_a_caller_cancel_during_the_offer_retry_keeps_round_ones_handoff(
+    wired, monkeypatch, pdfs
+):
+    # The caller cancels while the retry's PDF read hangs, after the retry's queries
+    # recorded a third-party support page. The trail the endpoint exports must still
+    # carry round one's handoff (none here), as a miss does.
+    real_fetch = judge.fetch_pdf_bytes
+    hung: list[str] = []
+
+    async def hang_on_the_manual(url, max_bytes=judge.MAX_BYTES):
+        if url == _GS10_MANUAL:
+            hung.append(url)
+            await asyncio.sleep(30)
+        return await real_fetch(url, max_bytes)
+
+    monkeypatch.setattr(judge, "fetch_pdf_bytes", hang_on_the_manual)
+    router, sent = _stall(
+        monkeypatch,
+        q1_hits=_AD_READ + [_AD_CATALOG_PAGE],
+        q2_hits=[_RETRY_SUPPORT_PAGE, _GS10_MANUAL_HIT],
+        pdfs=pdfs,
+    )
+    with search_mod.acquisition_trail() as trail:
+        with pytest.raises(TimeoutError):
+            await asyncio.wait_for(
+                search_mod.search_manual("AutomationDirect", "GS10", deadline_at=_deadline(60)),
+                timeout=1.0,
+            )
+        page = (trail.search_page_url, trail.search_page_score)
+    # Preconditions: the retry ran its queries and was cancelled inside its read.
+    assert _typed(sent) and hung == [_GS10_MANUAL], (sent, hung)
+    assert page == (None, -1), page

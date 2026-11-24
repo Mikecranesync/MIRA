@@ -1737,11 +1737,15 @@ async def search_manual(
         """The retry before an unvalidated offer (#5904). On a miss the offer goes out
         with round one's browser handoff: a support page the retry's queries found
         must not replace it, since the Hub prefers that page to the OEM request link
-        (#5907 Codex F1). The retry's queries stay on the trail."""
+        (#5907 Codex F1). The retry's queries stay on the trail. A cancelled retry
+        restores it too, so the trail the endpoint exports is round one's."""
         page = (trail.search_page_url, trail.search_page_score) if trail is not None else None
-        match = await _manual_from_retry(ranked, judge_trace)
-        if match is None and trail is not None and page is not None:
-            trail.search_page_url, trail.search_page_score = page
+        match = None
+        try:
+            match = await _manual_from_retry(ranked, judge_trace)
+        finally:
+            if match is None and trail is not None and page is not None:
+                trail.search_page_url, trail.search_page_score = page
         return match
 
     typed_pass_ran = not any(c["is_direct_pdf"] for c in candidates)
