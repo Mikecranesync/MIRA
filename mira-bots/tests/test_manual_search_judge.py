@@ -4100,3 +4100,312 @@ async def test_a_pdf_main_could_not_fetch_is_not_fetched_again(wired, monkeypatc
     assert list(trail.judge.get("queue") or []).count(pdf[0]) == 1, trail.judge
     row = {r["url"]: r for r in trail.to_dict(None)["candidates"]}[pdf[0]]
     assert row["queue_pos"] == 0, row
+
+
+# #5895 (#5890 Codex F2): main ends by offering an unread candidate while a PDF naming
+# the whole part number in a spelling the judge's relevance check misses sits unread.
+# On a part-number lookup that PDF is read first, after main's own reads, in the time
+# the deadline leaves. A judged match wins; otherwise main's offer stands unchanged.
+_SIEMENS_PAGE = (
+    "https://mall.industry.siemens.com/mall/en/WW/Catalog/Product/6ES7214-1AG40-0XB0",
+    "6ES7214-1AG40-0XB0 SIMATIC S7-1200 CPU 1214C",
+)
+_SIEMENS_SHEET = (
+    "https://cache.industry.siemens.com/dl/files/6ES7214-1AG40-0XB0-data-sheet.pdf",
+    "6ES7214-1AG40-0XB0 data sheet",
+)
+_SIEMENS_EXACT = (_EXACT_PDF, "6ES7214_1AG40_0XB0")
+
+
+def _offer_preconditions():
+    page = {"url": _SIEMENS_PAGE[0], "title": _SIEMENS_PAGE[1]}
+    assert judge.relevant(page, "Siemens", _SIMATIC)
+    assert search_mod._may_offer_unread(page, "Siemens", _SIMATIC)
+    assert not search_mod._is_direct_pdf(page["url"])
+    exact = {"url": _SIEMENS_EXACT[0], "title": _SIEMENS_EXACT[1]}
+    assert not judge.relevant(exact, "Siemens", _SIMATIC)
+    assert search_mod._names_part_number(exact, _SIMATIC)
+
+
+@pytest.mark.parametrize("is_manual", [True, False])
+async def test_an_exact_part_pdf_is_read_before_mains_unread_page_offer(
+    wired, monkeypatch, is_manual
+):
+    _offer_preconditions()
+    _readable(monkeypatch, _BROCHURE_PDF, _EXACT_PDF)
+    router = _Verdicts({_EXACT_PDF} if is_manual else ())
+    monkeypatch.setattr(judge, "_router", router)
+    _serve(monkeypatch, [_SIEMENS_PAGE, _SIEMENS_BROCHURE, _SIEMENS_EXACT])
+    with search_mod.acquisition_trail() as trail:
+        r = await search_mod.search_manual("Siemens", _SIMATIC, exact_part_number=True)
+    assert router.read == [_BROCHURE_PDF, _EXACT_PDF], router.read
+    # The exact PDF's read is on the trail either way, after main's own. Its verdict
+    # is recorded there; a rejection is not added to the offer's `judged_rejected`,
+    # as at #5890's miss endings. The trail's stop is the last round's.
+    assert r is not None and [x["url"] for x in r["judged_rejected"]] == [_BROCHURE_PDF], r
+    rows = {row["url"]: row for row in trail.to_dict(r["url"])["candidates"]}
+    assert rows[_BROCHURE_PDF]["queue_pos"] == 0, rows[_BROCHURE_PDF]
+    read = rows[_EXACT_PDF]
+    assert read["queue_pos"] == 1 and read["not_queued"] is None, read
+    assert read["read"] == "judged" and read["selected"] is is_manual, read
+    assert trail.judge.get("stop") == ("ideal_match" if is_manual else "queue_exhausted")
+    if is_manual:
+        assert r["url"] == _EXACT_PDF and r["validated"] is True, r
+    else:
+        assert r["url"] == _SIEMENS_PAGE[0], r
+        assert r["validated"] is False and r["reason"] == judge.REASON_JUDGE_UNAVAILABLE, r
+
+
+@pytest.mark.parametrize("is_manual", [True, False])
+async def test_an_exact_part_pdf_is_read_before_mains_unread_pdf_offer(
+    wired, monkeypatch, is_manual
+):
+    # The OEM data sheet is HEAD-validated as a PDF but cannot be fetched for the
+    # judge, so main offers it unread from its HEAD-probe loop.
+    sheet = {"url": _SIEMENS_SHEET[0], "title": _SIEMENS_SHEET[1]}
+    assert judge.relevant(sheet, "Siemens", _SIMATIC) and sheet["url"] not in TEXT
+    _readable(monkeypatch, _BROCHURE_PDF, _EXACT_PDF)
+    router = _Verdicts({_EXACT_PDF} if is_manual else ())
+    monkeypatch.setattr(judge, "_router", router)
+    _serve(
+        monkeypatch,
+        [_SIEMENS_SHEET, _SIEMENS_BROCHURE, _SIEMENS_EXACT],
+        pdfs={_SIEMENS_SHEET[0]},
+    )
+    r = await search_mod.search_manual("Siemens", _SIMATIC, exact_part_number=True)
+    assert router.read == [_BROCHURE_PDF, _EXACT_PDF], router.read
+    if is_manual:
+        assert r is not None and r["url"] == _EXACT_PDF and r["validated"] is True, r
+    else:
+        assert r is not None and r["url"] == _SIEMENS_SHEET[0], r
+        assert r["validated"] is False and r["reason"] == judge.REASON_JUDGE_UNAVAILABLE, r
+
+
+@pytest.mark.parametrize("spent", [True, False])
+async def test_an_exact_part_pdf_before_mains_offer_is_read_only_in_the_time_left(
+    wired, monkeypatch, spent
+):
+    _offer_preconditions()
+    clock = [1000.0]
+    fake_time = types.SimpleNamespace(monotonic=lambda: clock[0])
+    monkeypatch.setattr(search_mod, "time", fake_time)
+    monkeypatch.setattr(judge, "time", fake_time)
+    _readable(monkeypatch, _BROCHURE_PDF, _EXACT_PDF)
+
+    class _Slow(_Verdicts):
+        async def complete(self, messages, **kw):
+            out = await super().complete(messages, **kw)
+            if spent and self.read[-1] == _BROCHURE_PDF:
+                clock[0] += 30.0  # main's own read uses up what the deadline left
+            return out
+
+    router = _Slow({_EXACT_PDF})
+    monkeypatch.setattr(judge, "_router", router)
+    _serve(monkeypatch, [_SIEMENS_PAGE, _SIEMENS_BROCHURE, _SIEMENS_EXACT])
+    deadline = 1000.0 + judge.RETURN_RESERVE_S + search_mod.HEAD_TIMEOUT + 10.0
+    with search_mod.acquisition_trail() as trail:
+        r = await search_mod.search_manual(
+            "Siemens", _SIMATIC, deadline_at=deadline, exact_part_number=True
+        )
+    if spent:
+        assert router.read == [_BROCHURE_PDF], router.read
+        assert r is not None and r["url"] == _SIEMENS_PAGE[0] and r["validated"] is False, r
+        # The trail says the deadline, not an exhausted queue, left it unread.
+        row = {x["url"]: x for x in trail.to_dict(r["url"])["candidates"]}[_EXACT_PDF]
+        assert row["queue_pos"] == 1 and row["read"] == "unread", row
+        assert trail.judge.get("stop") == "search_deadline", trail.judge
+    else:
+        assert router.read == [_BROCHURE_PDF, _EXACT_PDF], router.read
+        assert r is not None and r["url"] == _EXACT_PDF and r["validated"] is True, r
+
+
+async def test_control_on_a_model_lookup_the_exact_pdf_is_not_read_before_mains_offer(
+    wired, monkeypatch
+):
+    _offer_preconditions()
+    _readable(monkeypatch, _BROCHURE_PDF, _EXACT_PDF)
+    router = _Verdicts({_EXACT_PDF})
+    monkeypatch.setattr(judge, "_router", router)
+    _serve(monkeypatch, [_SIEMENS_PAGE, _SIEMENS_BROCHURE, _SIEMENS_EXACT])
+    r = await search_mod.search_manual("Siemens", _SIMATIC)
+    assert router.read == [_BROCHURE_PDF], router.read
+    assert r is not None and r["url"] == _SIEMENS_PAGE[0] and r["validated"] is False, r
+
+
+async def test_control_with_the_judge_off_nothing_is_read_before_mains_offer(wired, monkeypatch):
+    _offer_preconditions()
+    monkeypatch.setenv("MANUAL_JUDGE_ENABLED", "0")
+    assert not judge.judge_enabled()
+    _readable(monkeypatch, _BROCHURE_PDF, _EXACT_PDF)
+    router = _Verdicts({_EXACT_PDF})
+    monkeypatch.setattr(judge, "_router", router)
+    _serve(monkeypatch, [_SIEMENS_PAGE, _SIEMENS_BROCHURE, _SIEMENS_EXACT])
+    r = await search_mod.search_manual("Siemens", _SIMATIC, exact_part_number=True)
+    assert router.read == [], router.read
+    assert r is not None and r["url"] == _SIEMENS_PAGE[0] and r["validated"] is False, r
+
+
+_AD_PART = "GS10-20P5"
+_AD_PART_PAGE = (
+    "https://www.automationdirect.com/adc/shopping/catalog/drives/gs10-20p5",
+    "GS10-20P5 DURApulse GS10 AC drive",
+)
+_AD_PART_BROCHURE = (f"{_FILES}/gs10-20p5-brochure.pdf", "GS10-20P5 brochure")
+
+
+async def test_control_a_pdf_naming_only_the_make_is_not_read_before_mains_offer(
+    wired, monkeypatch
+):
+    # Only a PDF naming the whole part number is read before main's offer. A PDF that
+    # names just the make, in a joining the relevance check misses, waits for main's
+    # miss endings, as before.
+    page = {"url": _AD_PART_PAGE[0], "title": _AD_PART_PAGE[1]}
+    assert judge.relevant(page, "AutomationDirect", _AD_PART)
+    assert search_mod._may_offer_unread(page, "AutomationDirect", _AD_PART)
+    extra = {"url": _AD_EXTRA_PDF[0], "title": _AD_EXTRA_PDF[1]}
+    assert not judge.relevant(extra, "AutomationDirect", _AD_PART)
+    assert search_mod._names_make(extra, "AutomationDirect")
+    assert not search_mod._names_part_number(extra, _AD_PART)
+    _readable(monkeypatch, _AD_PART_BROCHURE[0], _AD_EXTRA_PDF[0])
+    router = _Verdicts({_AD_EXTRA_PDF[0]})
+    monkeypatch.setattr(judge, "_router", router)
+    _serve(monkeypatch, [_AD_PART_PAGE, _AD_PART_BROCHURE, _AD_EXTRA_PDF])
+    r = await search_mod.search_manual("AutomationDirect", _AD_PART, exact_part_number=True)
+    assert router.read == [_AD_PART_BROCHURE[0]], router.read
+    assert r is not None and r["url"] == _AD_PART_PAGE[0] and r["validated"] is False, r
+
+
+async def test_an_exact_part_pdf_main_already_read_is_not_read_again_before_its_offer(
+    wired, monkeypatch
+):
+    # No PDF passes the judge's own check, so main queues every PDF, the exact one too,
+    # and rejects it. Its unread page offer does not read that PDF a second time.
+    _offer_preconditions()
+    _readable(monkeypatch, _EXACT_PDF)
+    router = _Verdicts(())
+    monkeypatch.setattr(judge, "_router", router)
+    _serve(monkeypatch, [_SIEMENS_PAGE, _SIEMENS_EXACT])
+    r = await search_mod.search_manual("Siemens", _SIMATIC, exact_part_number=True)
+    assert router.read == [_EXACT_PDF], router.read
+    assert r is not None and r["url"] == _SIEMENS_PAGE[0] and r["validated"] is False, r
+    assert [x["url"] for x in r["judged_rejected"]] == [_EXACT_PDF], r
+
+
+# #5899 Codex F1: a fragment form of a PDF the judge read and rejected, under the same
+# title, is the same document (the server never sees a fragment). It is not read again
+# before main's offer, as the typed-pass retry already refuses (#5850). The fragment
+# here names the make, so main's own round reads and rejects that form.
+_SIEMENS_EXACT_FRAG = (_EXACT_PDF + "#siemens", _SIEMENS_EXACT[1])
+
+
+def _fragment_preconditions(plain_title: str):
+    frag = {"url": _SIEMENS_EXACT_FRAG[0], "title": _SIEMENS_EXACT_FRAG[1]}
+    plain = {"url": _EXACT_PDF, "title": plain_title}
+    assert judge.relevant(frag, "Siemens", _SIMATIC)
+    assert not judge.relevant(plain, "Siemens", _SIMATIC)
+    assert search_mod._names_part_number(plain, _SIMATIC)
+    assert search_mod._document_key(frag["url"]) == search_mod._document_key(plain["url"])
+
+
+async def test_a_fragment_form_of_a_rejected_pdf_is_not_read_again_before_mains_offer(
+    wired, monkeypatch
+):
+    _offer_preconditions()
+    _fragment_preconditions(_SIEMENS_EXACT[1])
+    _readable(monkeypatch, _SIEMENS_EXACT_FRAG[0], _EXACT_PDF)
+    router = _Verdicts({_EXACT_PDF})  # a second read would be accepted
+    monkeypatch.setattr(judge, "_router", router)
+    _serve(monkeypatch, [_SIEMENS_PAGE, _SIEMENS_EXACT_FRAG, _SIEMENS_EXACT])
+    r = await search_mod.search_manual("Siemens", _SIMATIC, exact_part_number=True)
+    assert router.read == [_SIEMENS_EXACT_FRAG[0]], router.read
+    assert r is not None and r["url"] == _SIEMENS_PAGE[0] and r["validated"] is False, r
+    assert [x["url"] for x in r["judged_rejected"]] == [_SIEMENS_EXACT_FRAG[0]], r
+
+
+async def test_control_a_fragment_form_under_another_title_is_read_before_mains_offer(
+    wired, monkeypatch
+):
+    # A different title tells the judge something new, so that form stays readable.
+    other = (_EXACT_PDF, "6ES7214_1AG40_0XB0 system manual")
+    _offer_preconditions()
+    _fragment_preconditions(other[1])
+    _readable(monkeypatch, _SIEMENS_EXACT_FRAG[0], _EXACT_PDF)
+    router = _Verdicts({_EXACT_PDF})
+    monkeypatch.setattr(judge, "_router", router)
+    _serve(monkeypatch, [_SIEMENS_PAGE, _SIEMENS_EXACT_FRAG, other])
+    r = await search_mod.search_manual("Siemens", _SIMATIC, exact_part_number=True)
+    assert router.read == [_SIEMENS_EXACT_FRAG[0], _EXACT_PDF], router.read
+    assert r is not None and r["url"] == _EXACT_PDF and r["validated"] is True, r
+
+
+# #5899 Codex F2: the read before main's offer is folded into the trail without
+# repeating a URL an earlier round queued, and a PDF it leaves out carries its reason.
+async def test_the_trail_keeps_a_pdf_main_queued_at_its_first_position(wired, monkeypatch):
+    # No PDF passes the judge's own check, so main queues the exact PDF itself, but its
+    # judge has no time left: the PDF is queued and unread, and queued again before the
+    # offer. The trail lists it once, at main's position.
+    _offer_preconditions()
+    search_clock, judge_clock = [1000.0], [5000.0]  # the judge's own clock is spent
+    monkeypatch.setattr(
+        search_mod, "time", types.SimpleNamespace(monotonic=lambda: search_clock[0])
+    )
+    monkeypatch.setattr(judge, "time", types.SimpleNamespace(monotonic=lambda: judge_clock[0]))
+    _readable(monkeypatch, _EXACT_PDF)
+    router = _Verdicts({_EXACT_PDF})
+    monkeypatch.setattr(judge, "_router", router)
+    _serve(monkeypatch, [_SIEMENS_PAGE, _SIEMENS_EXACT])
+    deadline = 1000.0 + judge.RETURN_RESERVE_S + search_mod.HEAD_TIMEOUT + 10.0
+    with search_mod.acquisition_trail() as trail:
+        r = await search_mod.search_manual(
+            "Siemens", _SIMATIC, deadline_at=deadline, exact_part_number=True
+        )
+    assert router.read == [], router.read
+    assert r is not None and r["url"] == _SIEMENS_PAGE[0] and r["validated"] is False, r
+    assert trail.judge.get("queue") == [_EXACT_PDF], trail.judge
+    row = {x["url"]: x for x in trail.to_dict(r["url"])["candidates"]}[_EXACT_PDF]
+    assert row["queue_pos"] == 0 and row["read"] == "unread", row
+
+
+async def test_the_trail_gives_a_pdf_over_the_extra_cap_that_rounds_reason(wired, monkeypatch):
+    # One read per round. Main reads the brochure; two exact-part PDFs qualify for the
+    # read before main's offer, which reads one and leaves the other over its cap.
+    second = (f"{_FILES}/6es7214_1ag40_0xb0-manual.pdf", "6ES7214_1AG40_0XB0 manual")
+    c = {"url": second[0], "title": second[1]}
+    assert not judge.relevant(c, "Siemens", _SIMATIC)
+    assert search_mod._names_part_number(c, _SIMATIC)
+    _offer_preconditions()
+    monkeypatch.setattr(judge, "MAX_TOTAL", 1)
+    _readable(monkeypatch, _BROCHURE_PDF, _EXACT_PDF, second[0])
+    router = _Verdicts(())
+    monkeypatch.setattr(judge, "_router", router)
+    _serve(monkeypatch, [_SIEMENS_PAGE, _SIEMENS_BROCHURE, _SIEMENS_EXACT, second])
+    with search_mod.acquisition_trail() as trail:
+        r = await search_mod.search_manual("Siemens", _SIMATIC, exact_part_number=True)
+    assert len(router.read) == 2 and router.read[0] == _BROCHURE_PDF, router.read
+    assert r is not None and r["url"] == _SIEMENS_PAGE[0] and r["validated"] is False, r
+    rows = {x["url"]: x for x in trail.to_dict(r["url"])["candidates"]}
+    (read_one,) = (u for u in (_EXACT_PDF, second[0]) if u in router.read)
+    left = second[0] if read_one == _EXACT_PDF else _EXACT_PDF
+    assert rows[read_one]["queue_pos"] == 1 and rows[read_one]["read"] == "judged", rows[read_one]
+    assert rows[left]["queue_pos"] is None, rows[left]
+    assert rows[left]["not_queued"] == "over_max_total", rows[left]
+
+
+async def test_an_exact_part_pdf_main_could_not_fetch_is_not_fetched_again_before_its_offer(
+    wired, monkeypatch
+):
+    # No PDF passes the judge's own check, so main queues the exact PDF itself, and its
+    # fetch fails: it is unread but not rejected, so only its read state keeps it out
+    # of the read before main's offer.
+    _offer_preconditions()
+    fetched: list[str] = []
+
+    async def fetch(url, max_bytes=judge.MAX_BYTES):
+        fetched.append(url)
+        return None
+
+    monkeypatch.setattr(judge, "fetch_pdf_bytes", fetch)
+    _serve(monkeypatch, [_SIEMENS_PAGE, _SIEMENS_EXACT])
+    r = await search_mod.search_manual("Siemens", _SIMATIC, exact_part_number=True)
+    assert fetched == [_EXACT_PDF], fetched
+    assert r is not None and r["url"] == _SIEMENS_PAGE[0] and r["validated"] is False, r

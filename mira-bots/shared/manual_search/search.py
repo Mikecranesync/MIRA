@@ -1284,6 +1284,70 @@ async def search_manual(
             _names_make(c, make) or bool(part_number and _names_part_number(c, part_number))
         )
 
+    async def _judged_extra(pdfs: list[dict], rejected: list[dict]) -> dict | None:
+        """Read ``pdfs`` in whatever time the deadline leaves and return a judged match
+        among them, with ``rejected`` and the new rejections; otherwise None."""
+        if not pdfs:
+            return None
+        trace: dict = {}
+        try:
+            read = await _judge.judge_candidates(
+                make,
+                model,
+                pdfs,
+                started_at=started_at,
+                deadline_at=deadline_at,
+                trace=trace,
+            )
+        finally:
+            if trail is not None:
+                # One trail for every round, as for the retry: these queue
+                # positions follow the others, a URL keeps the first position it
+                # was queued at, a PDF queued here is no longer listed as not
+                # queued, and one this round left out carries this round's reason
+                # unless an earlier round queued it (#5899 Codex F2).
+                queued = list(trace.get("queue") or [])
+                prior = list(trail.judge.get("queue") or [])
+                queue = prior + [u for u in queued if u not in prior]
+                trail.judge["queue"] = queue
+                not_queued = trail.judge.setdefault("not_queued", {})
+                for u in queued:
+                    not_queued.pop(u, None)
+                for u, why in (trace.get("not_queued") or {}).items():
+                    if u not in queue:
+                        not_queued[u] = why
+                if trace.get("stop"):
+                    trail.judge["stop"] = trace["stop"]
+        if read and _judge.is_match(read[0]):
+            return _as_judged_match(read[0], rejected + _rejections(read))
+        return None
+
+    async def _exact_part_match(pool: list[dict], rejected: list[dict]) -> dict | None:
+        """Main is about to offer a candidate it could not validate (#5895). On a
+        part-number lookup, the unread PDFs in ``pool`` that name the whole number in a
+        spelling the judge's relevance check misses are read first, and a judged match
+        among them is returned. Otherwise None, and main's offer stands. PDFs naming
+        only the make still wait for main's miss endings (``_unless_extras``)."""
+        if not part_number:
+            return None
+        # A fragment form of a PDF the judge read and rejected, under the same title,
+        # would give the judge the text it already rejected: the typed-pass retry's
+        # rule (#5850), applied here (#5899 Codex F1). No retry has run before main's
+        # offer, so ``pool`` holds every PDF read so far.
+        judged = {
+            (_document_key(c["url"]), c.get("title") or "") for c in pool if _judge.is_rejected(c)
+        }
+        pdfs = [
+            c
+            for c in pool
+            if c.get("is_direct_pdf")
+            and not c.get("judge")
+            and not _judge.relevant(c, make, model)
+            and _names_part_number(c, part_number)
+            and (_document_key(c["url"]), c.get("title") or "") not in judged
+        ]
+        return await _judged_extra(pdfs, rejected)
+
     async def _unless_extras(
         answer: Callable[[], dict | None],
         pool: list[dict],
@@ -1304,31 +1368,9 @@ async def search_manual(
             pdfs = [
                 c for c in (*extras, *retry_extras) if c.get("is_direct_pdf") and not c.get("judge")
             ]
-            if pdfs:
-                trace: dict = {}
-                try:
-                    read = await _judge.judge_candidates(
-                        make,
-                        model,
-                        pdfs,
-                        started_at=started_at,
-                        deadline_at=deadline_at,
-                        trace=trace,
-                    )
-                finally:
-                    if trail is not None:
-                        # One trail for every round, as for the retry: these queue
-                        # positions follow the others, and a PDF queued here is no
-                        # longer listed as not queued.
-                        queued = list(trace.get("queue") or [])
-                        trail.judge["queue"] = list(trail.judge.get("queue") or []) + queued
-                        not_queued = trail.judge.setdefault("not_queued", {})
-                        for u in queued:
-                            not_queued.pop(u, None)
-                        if trace.get("stop"):
-                            trail.judge["stop"] = trace["stop"]
-                if read and _judge.is_match(read[0]):
-                    return _as_judged_match(read[0], rejected + _rejections(read))
+            match = await _judged_extra(pdfs, rejected)
+            if match is not None:
+                return match
         result = answer()
         if result is not None:
             return result
@@ -1830,6 +1872,11 @@ async def search_manual(
                 break
             _note_examined([c["url"]])
         if c.get("validated") or await _probe_candidate(c):
+            if use_judge:
+                # It is offered unread below; an exact-part PDF is read first.
+                match = await _exact_part_match(ranked, rejected_out)
+                if match is not None:
+                    return match
             c["validated"] = True
             if use_judge:
                 # The judge is on but this candidate was never READ (fetch
@@ -1870,6 +1917,10 @@ async def search_manual(
             use_judge,
             rejected_out,
         )
+    if use_judge:
+        match = await _exact_part_match(ranked, rejected_out)
+        if match is not None:
+            return match
     deduped[0]["validated"] = False
     if use_judge:
         deduped[0].setdefault("reason", _judge.REASON_JUDGE_UNAVAILABLE)
