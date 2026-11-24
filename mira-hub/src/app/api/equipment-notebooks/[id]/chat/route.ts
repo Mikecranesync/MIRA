@@ -134,6 +134,7 @@ import {
 import { RESTART_BANNER, RESTART_DIRECTIVE, isFaultResetAsk } from "@/capabilities/restart-advisory";
 import { BYPASS_BANNER, BYPASS_STOP_TRIGGER, bypassStopText, safetyBypassAsk, safetyBypassWarning } from "@/capabilities/safety-bypass-advisory";
 import { UNSAFE_PRACTICE_NO_EVIDENCE_TEXT, unsafePracticeWarning } from "@/capabilities/unsafe-practice-advisory";
+import { judgeQuestion, questionJudgeEnabled, shouldBlock as shouldBlockQuestion, logJudgeResult, QUESTION_JUDGE_BLANKET_REPLY, type QuestionJudgeResult } from "@/capabilities/question-judge";
 import { pageFromRetrievedChunks, withPageCitation } from "@/lib/citation-page";
 import {
   ENERGIZED_WORK_TRIGGER,
@@ -2328,6 +2329,94 @@ async function handleChatTurn(
   // cabinet left open, gets its fixed card the same way: an ADVISORY beside the bypass card,
   // never a safetyTrigger, so a zero-hit notebook keeps the card above its honest refusal.
   const unsafePracticeCard = !bypassStopEarly ? unsafePracticeWarning(message) : null;
+
+  // #5905 question judge (owner decision 2026-11-24): pre-retrieval AI judge classifies
+  // questions as clear/unclear/unsafe. SHADOW MODE by default (logs only); enforcement mode
+  // blocks unclear (>=0.90) and unsafe (>=0.75) with blanket reply. FAIL-OPEN on error/timeout.
+  // The #5905 deterministic hazard warning is KEPT; the judge is additive, never a replacement.
+  let judgeResult: QuestionJudgeResult | null = null;
+  let judgeBlocked = false;
+  if (questionJudgeEnabled() && !bypassStopEarly) {
+    judgeResult = await judgeQuestion(message);
+    judgeBlocked = shouldBlockQuestion(judgeResult);
+    logJudgeResult({ tenantId: ctx.tenantId, notebookId }, message, judgeResult, judgeBlocked);
+
+    if (judgeBlocked) {
+      console.warn(
+        `[notebook-chat] question judge BLOCK (${judgeResult.verdict}, confidence ${judgeResult.confidence}) — blanket reply, no retrieval, no provider`,
+      );
+      const judgeStopSpan = tracer.startSpan("answer_gate.evaluate", undefined, rootCtx);
+      lifecycleOutcome = "abstain";
+      rec.stage("answer_gate", {
+        invoked: true,
+        decision: "blocked",
+        reason: "question_judge_block",
+        answer_chars: QUESTION_JUDGE_BLANKET_REPLY.length,
+        refusal_phrase_matched: false,
+        evidence_phrase_matched: false,
+        safety_classification: "none",
+        evidence_sufficient: false,
+        ungrounded_unit_claim: false,
+        safety_outcome: {
+          layer: "pre_retrieval_judge",
+          outcome: "block",
+          flagged: true,
+          violation: `${judgeResult.verdict}_question`,
+          semantic_verdict: "not_run",
+        },
+      });
+      setSpanAttrs(
+        {
+          "mira.answer_gate.invoked": true,
+          "mira.answer_gate.decision": "blocked",
+          "mira.answer_gate.reason": "question_judge_block",
+          "mira.answer_gate.answer_chars": QUESTION_JUDGE_BLANKET_REPLY.length,
+          "mira.question_judge.verdict": judgeResult.verdict,
+          "mira.question_judge.confidence": judgeResult.confidence,
+          "mira.question_judge.latency_ms": judgeResult.latencyMs,
+        },
+        judgeStopSpan,
+      );
+      judgeStopSpan.end();
+      const judgeStopPersistSpan = startStage("turn.persist");
+      const judgeStopTurnRowId = await releaseClaimOnFailure(() =>
+        recordTurn(ctx.tenantId, notebookId, {
+          ownerUserId: ctx.userId,
+          threadId,
+          clientRequestId,
+          claimToken: requestClaimToken,
+          threadRowId,
+          ...assetSnapshot,
+          userMessage: message,
+          attachmentKeys: [],
+          contentMarkdown: QUESTION_JUDGE_BLANKET_REPLY,
+          contentType: "abstain",
+          safetyTrigger: null,
+          sources: [],
+          sseFrames: [
+            { kind: "clear_session", sessionId: message },
+            { kind: "text", text: QUESTION_JUDGE_BLANKET_REPLY },
+            { kind: "done" },
+          ],
+          statusCode: "ok",
+          traceId,
+        }),
+      );
+      judgeStopPersistSpan.end();
+      rec.stage("done");
+      rec.end(tracer);
+      await notebookQueueEntry({ tenantId: ctx.tenantId, notebookId });
+      await releaseThreadClaim(claimRow.id);
+      await onReplyReady(judgeStopTurnRowId);
+      return corsResponse(
+        new Response(
+          `data: ${JSON.stringify({ kind: "clear_session", sessionId: message })}\n\ndata: ${JSON.stringify({ kind: "text", text: QUESTION_JUDGE_BLANKET_REPLY })}\n\ndata: ${JSON.stringify({ kind: "done" })}\n\n`,
+          { status: 200, headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", "X-MIRA-Notebook-Chat": "v1" } },
+        ),
+      );
+    }
+  }
+
   const advisoryCard = [bypassWarnAsk ? BYPASS_BANNER : null, unsafePracticeCard].filter(Boolean).join("\n\n") || null;
   const advisoryBanner = Boolean(advisoryCard) || restartAdvisory;
   const hazardBannerBase = safetyTrigger && !electricalHazardDirective ? hazardBanner(safetyTrigger) : null;
