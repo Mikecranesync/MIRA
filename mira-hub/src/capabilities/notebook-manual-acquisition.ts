@@ -20,7 +20,7 @@
  * missing column (prod applies migrations after merge), a database error, or a
  * disabled flag means "no automatic search", never a failed request.
  */
-import { isPublicHttpsUrl, isBlockedHost } from "@/lib/safe-download";
+import { offerableLinkUrl } from "@/capabilities/offerable-link";
 import { withTenantContext } from "@/lib/tenant-context";
 import type { NotebookSource } from "@/lib/equipment-notebooks";
 import type { CandidateTrail } from "@/lib/manual-discovery";
@@ -499,7 +499,8 @@ export function recordFromOutcome(key: string, startedAt: string | null, out: Ma
     match_state: str(p.manual?.matchState),
     oem_request_url: str(p.oemRequestUrl),
     search_page_url: str(p.searchPageUrl),
-    candidate_url: str(p.candidate?.url),
+    // #5910: a link that fails the public-https policy is never stored.
+    candidate_url: offerableLinkUrl(str(p.candidate?.url)),
     attached_indexed: attachedIndexed,
     promotes_on_confirm: attachedIndexed && p.manual?.candidateApplicability === "verified" && !partial,
     ...(partial ? { partial: true } : {}),
@@ -1051,12 +1052,9 @@ export function acquisitionManualUrl(rec: AcquisitionRecord): string | null {
   const downloadableFailure = !rec.download_reason ||
     ["http_error", "network_error", "timeout", "wrong_content_type", "not_pdf", "too_large", "empty_body"].includes(rec.download_reason);
   for (const raw of [downloadableFailure ? rec.candidate_url : null, rec.search_page_url, rec.oem_request_url]) {
-    if (!raw || /[\\\s<>"']/.test(raw) || (!downloadableFailure && raw === rec.candidate_url)) continue;
-    try {
-      const url = new URL(raw);
-      if (!isPublicHttpsUrl(raw) || isBlockedHost(url.hostname)) continue;
-      return raw;
-    } catch { continue; }
+    if (!raw || (!downloadableFailure && raw === rec.candidate_url)) continue;
+    const url = offerableLinkUrl(raw);
+    if (url) return url;
   }
   return null;
 }
@@ -1115,7 +1113,8 @@ export function acquisitionDeclineText(
       if (rec.attached_indexed) {
         return `I found a possible manual for the ${label}${rec.candidate_host ? ` (from ${rec.candidate_host})` : ""}, but I couldn't confirm it covers this exact model, so it isn't turned on. Check it in this notebook's Sources — turn it on if it's right and ask again.`;
       }
-      return `I found a possible manual for the ${label}${rec.candidate_url ? ` at ${rec.candidate_url}` : rec.candidate_host ? ` on ${rec.candidate_host}` : ""}, but I couldn't confirm it's the official document for this model, so I didn't add it. If it's right, upload it to this notebook and ask again — I'll answer from it and show you the page.`;
+      // #5910: a record stored before the fix can still hold an http link.
+      return `I found a possible manual for the ${label}${offerableLinkUrl(rec.candidate_url) ? ` at ${rec.candidate_url}` : rec.candidate_host ? ` on ${rec.candidate_host}` : ""}, but I couldn't confirm it's the official document for this model, so I didn't add it. If it's right, upload it to this notebook and ask again — I'll answer from it and show you the page.`;
     case "no_extractable_text":
       return `I found a manual for the ${label}, but it's a scanned image I can't read, so I can't answer from it. It's saved in this notebook's Sources for you to open.`;
     case "no_manual_found":

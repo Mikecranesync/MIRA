@@ -61,7 +61,9 @@ vi.mock("@/lib/manual-discovery", async (importOriginal) => {
     allowedHostsForCandidate: vi.fn(() => ["rockwellautomation.com"]),
   };
 });
-vi.mock("@/lib/safe-download", () => ({
+// The URL policy stays real (#5910): only the network fetch is mocked.
+vi.mock("@/lib/safe-download", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/safe-download")>()),
   safeDownloadPdf: vi.fn(),
   safePdfFilename: vi.fn(() => "520-um001.pdf"),
 }));
@@ -2095,5 +2097,67 @@ describe("#4160 S7 — confirm-time acquisition is recorded for server-side reco
       expect(claimed(queries)).toBe(false);
       expect(finishedState(queries)).toBeNull();
     });
+  });
+});
+
+// #5910 (#5906 Codex r1 F1): mira-ask accepts http candidates. Before #5906 a
+// marked (probed_not_pdf) http candidate reached the downloader and was refused
+// as not_https; #5906 sent it to review instead, and its raw http URL became a
+// tappable link on the phone. No candidate link that fails the public-https
+// policy may leave the server, and the downloader never sees it either.
+describe("#5910: a non-https candidate link is never offered", () => {
+  const HTTP_URL = "http://literature.rockwellautomation.com/idc/520-um001_-en-e.pdf";
+  const REQUEST_PAGE = "https://www.rockwellautomation.com/en-us/support/documentation/literature-request.html";
+  function discovery(over: { url: string; probedNotPdf?: true; oemHost?: boolean; oemRequestUrl?: string | null }) {
+    return {
+      ...importableDiscoveryTyped(),
+      validated: false,
+      oemHost: over.oemHost ?? true,
+      oemRequestUrl: over.oemRequestUrl ?? REQUEST_PAGE,
+      candidate: {
+        ...CANDIDATE,
+        url: over.url,
+        validated: false,
+        ...(over.probedNotPdf ? { probedNotPdf: true as const } : {}),
+      },
+    };
+  }
+
+  it("a marked http candidate: download_rejected, no http link anywhere, downloader skipped", async () => {
+    vi.mocked(discoverManual).mockResolvedValue(discovery({ url: HTTP_URL, probedNotPdf: true }) as never);
+    const res = await POST(makeReq(baseBody), makeParams(NOTEBOOK_ID));
+    const body = await res.json();
+    expect(body.status).toBe("download_rejected");
+    expect(body.reason).toBe("not_https");
+    expect(JSON.stringify(body)).not.toContain("http://");
+    expect(body.candidate?.url).toBeUndefined();
+    // The separately validated OEM request page is still offered.
+    expect(body.oemRequestUrl).toBe(REQUEST_PAGE);
+    expect(safeDownloadPdf).not.toHaveBeenCalled();
+  });
+
+  it("an unmarked http candidate from a non-OEM host is not offered for review either", async () => {
+    vi.mocked(discoverManual).mockResolvedValue(discovery({ url: HTTP_URL, oemHost: false }) as never);
+    const body = await (await POST(makeReq(baseBody), makeParams(NOTEBOOK_ID))).json();
+    expect(body.status).toBe("download_rejected");
+    expect(JSON.stringify(body)).not.toContain("http://");
+    expect(safeDownloadPdf).not.toHaveBeenCalled();
+  });
+
+  it("a request page on a blocked host is withheld too", async () => {
+    vi.mocked(discoverManual).mockResolvedValue(
+      discovery({ url: HTTP_URL, probedNotPdf: true, oemRequestUrl: "https://169.254.169.254/latest/meta-data" }) as never,
+    );
+    const body = await (await POST(makeReq(baseBody), makeParams(NOTEBOOK_ID))).json();
+    expect(body.status).toBe("download_rejected");
+    expect(body.oemRequestUrl).toBeNull();
+  });
+
+  it("control: a marked public https candidate still reaches review with its link", async () => {
+    vi.mocked(discoverManual).mockResolvedValue(discovery({ url: CANDIDATE.url, probedNotPdf: true }) as never);
+    const body = await (await POST(makeReq(baseBody), makeParams(NOTEBOOK_ID))).json();
+    expect(body.status).toBe("candidate_review");
+    expect(body.candidate).toMatchObject({ url: CANDIDATE.url });
+    expect(safeDownloadPdf).not.toHaveBeenCalled();
   });
 });
