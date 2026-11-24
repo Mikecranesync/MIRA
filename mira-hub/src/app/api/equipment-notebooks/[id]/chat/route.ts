@@ -133,6 +133,7 @@ import {
 } from "@/lib/safety-classifier";
 import { RESTART_BANNER, RESTART_DIRECTIVE, isFaultResetAsk } from "@/capabilities/restart-advisory";
 import { BYPASS_BANNER, BYPASS_STOP_TRIGGER, bypassStopText, safetyBypassAsk, safetyBypassWarning } from "@/capabilities/safety-bypass-advisory";
+import { unsafePracticeWarning } from "@/capabilities/unsafe-practice-advisory";
 import { pageFromRetrievedChunks, withPageCitation } from "@/lib/citation-page";
 import {
   ENERGIZED_WORK_TRIGGER,
@@ -2318,10 +2319,15 @@ async function handleChatTurn(
   // beside visible smoke gets both warnings, each once: the hazard banner keeps its priority
   // (first, with its page citation); the advisory card follows it, never replaces it.
   const bypassWarnAsk = !bypassStopEarly ? safetyBypassWarning(message) : null;
-  const advisoryBanner = Boolean(bypassWarnAsk) || restartAdvisory;
+  // #5864 (owner decision 2026-11-24): a live touch screen while cleaning, or an electrical
+  // cabinet left open, gets its fixed card the same way: an ADVISORY beside the bypass card,
+  // never a safetyTrigger, so a zero-hit notebook keeps the card above its honest refusal.
+  const unsafePracticeCard = !bypassStopEarly ? unsafePracticeWarning(message) : null;
+  const advisoryCard = [bypassWarnAsk ? BYPASS_BANNER : null, unsafePracticeCard].filter(Boolean).join("\n\n") || null;
+  const advisoryBanner = Boolean(advisoryCard) || restartAdvisory;
   const hazardBannerBase = safetyTrigger && !electricalHazardDirective ? hazardBanner(safetyTrigger) : null;
-  const advisoryBannerBase = bypassWarnAsk
-    ? restartAdvisory ? `${BYPASS_BANNER}\n\n${RESTART_BANNER}` : BYPASS_BANNER
+  const advisoryBannerBase = advisoryCard
+    ? restartAdvisory ? `${advisoryCard}\n\n${RESTART_BANNER}` : advisoryCard
     : restartAdvisory
       ? RESTART_BANNER
       : null;
@@ -3980,7 +3986,7 @@ async function handleChatTurn(
     // does on an answered turn. Composed here, from the raw hold text, so no later step can
     // put the card above the banner.
     const abstainAnswerBase = componentHold
-      ? withSafetyFlag(bypassWarnAsk ? `${BYPASS_BANNER}\n\n${componentHold.text}` : componentHold.text, safetyTrigger)
+      ? withSafetyFlag(advisoryCard ? `${advisoryCard}\n\n${componentHold.text}` : componentHold.text, safetyTrigger)
       : componentScope && !notebookRetrieval
       ? noDocumentsForComponentText(componentScope.label)
       : oemRetrievalFailed && (missingModelManual || noEvidenceForMachine)
@@ -4052,7 +4058,7 @@ async function handleChatTurn(
         : null;
     // A reported unsafe state keeps its card on the honest refusal too (#5670 native 2 F6).
     // (A held turn already carries the card, in its place under any hazard banner: F9 above.)
-    const abstainAnswerText = bypassWarnAsk && abstainAnswerBase && !componentHold ? `${BYPASS_BANNER}\n\n${abstainAnswerBase}` : abstainAnswerBase;
+    const abstainAnswerText = advisoryCard && abstainAnswerBase && !componentHold ? `${advisoryCard}\n\n${abstainAnswerBase}` : abstainAnswerBase;
     const gateAnswerGateSpan = tracer.startSpan("answer_gate.evaluate", undefined, rootCtx);
     lifecycleOutcome = "abstained";
     rec.stage("answer_gate", {
@@ -5623,7 +5629,7 @@ async function handleChatTurn(
       }
 
       // #5466: the ratings floor replaces the draft but the turn's hazard still stands, so its banner stays.
-      if (flagBanner && served && (!refused || ratingColumn !== null || Boolean(bypassWarnAsk)) && !outputRejected && answerText) answerText = `${flagBanner}\n\n${answerText}`;
+      if (flagBanner && served && (!refused || ratingColumn !== null || Boolean(advisoryCard)) && !outputRejected && answerText) answerText = `${flagBanner}\n\n${answerText}`;
 
       // #4068 — owner decision 2026-09-27 ("allow with a warning"): an answer
       // grounded on related-manual pages (the same-family fallback) may relay
