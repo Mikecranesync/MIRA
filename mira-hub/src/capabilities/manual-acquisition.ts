@@ -474,12 +474,20 @@ async function acquireInner(
   //                     explicitly not sufficient trust on its own, and
   //                     allowedHostsForCandidate cannot serve here because it
   //                     trusts the candidate host by construction.
+  //   - not probedNotPdf : #5873. The relaxation is for a probe that could not
+  //                     TELL. When the service's probe got a web page instead
+  //                     (`probed_not_pdf`), the download can only reject it as
+  //                     text/html, so the link is offered for review instead.
   // A candidate failing ANY of these keeps the old review path. safeDownloadPdf
   // is unchanged and remains the only fetcher, with every SSRF, redirect,
   // size, MIME and magic-byte guard intact.
   const independentlyOemHosted = isOemDocumentationHost(identity.manufacturer, candidate.host);
   const probeUnvalidated =
-    !discovery.validated && discovery.isDirectPdf && discovery.oemHost && independentlyOemHosted;
+    !discovery.validated &&
+    discovery.isDirectPdf &&
+    discovery.oemHost &&
+    independentlyOemHosted &&
+    candidate.probedNotPdf !== true;
 
   if (!autoImport && !probeUnvalidated) {
     return outcome("candidate_review", {
