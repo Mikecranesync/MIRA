@@ -649,14 +649,6 @@ _TRAIL_JUDGE_FIELDS = (
 )
 
 
-def _document_key(url: str) -> str:
-    """The document a server is asked for: the URL without its fragment, which never
-    leaves the client, but with its query string, which can select another document
-    (#5850). Compared only, against PDFs the judge rejected; the URL shown to the
-    technician keeps its fragment."""
-    return (url or "").split("#", 1)[0]
-
-
 def trail_url(url: str) -> str:
     """The URL without its query string or fragment: signed download tokens
     (ABB's ``x-sign``) are credentials-like and would make one document look
@@ -1275,6 +1267,18 @@ async def search_manual(
     # retries or answers before then (#5890 round 2).
     set_aside: list[dict] = []  # hits `_collect` drops
     retry_extras: list[dict] = []  # extra PDFs the typed-pass retry did not read
+    retry_read: list[dict] = []  # PDFs the typed-pass retry sent to the judge
+
+    def _rejected_documents() -> set[tuple[str, str]]:
+        """Every PDF this search has read and the judge rejected, in any round, as
+        :func:`_judge.same_document_key`. A form of one of these is never read again or
+        offered unread: the server never sees a fragment, so the judge would get the
+        text it already rejected, under the same title (#5850, #5900, #5897). Round
+        one's reads and the extra reads are in ``candidates``; the retry's are kept in
+        ``retry_read``, since its result is discarded on a miss."""
+        return {
+            _judge.same_document_key(c) for c in (*candidates, *retry_read) if _judge.is_rejected(c)
+        }
 
     def _extra(c: dict) -> bool:
         """The judge's relevance check misses it, but it names the make as a whole
@@ -1330,13 +1334,8 @@ async def search_manual(
         only the make still wait for main's miss endings (``_unless_extras``)."""
         if not part_number:
             return None
-        # A fragment form of a PDF the judge read and rejected, under the same title,
-        # would give the judge the text it already rejected: the typed-pass retry's
-        # rule (#5850), applied here (#5899 Codex F1). No retry has run before main's
-        # offer, so ``pool`` holds every PDF read so far.
-        judged = {
-            (_document_key(c["url"]), c.get("title") or "") for c in pool if _judge.is_rejected(c)
-        }
+        # A form of a PDF the judge read and rejected is not read again (#5899 Codex F1).
+        rejected_documents = _rejected_documents()
         pdfs = [
             c
             for c in pool
@@ -1344,7 +1343,7 @@ async def search_manual(
             and not c.get("judge")
             and not _judge.relevant(c, make, model)
             and _names_part_number(c, part_number)
-            and (_document_key(c["url"]), c.get("title") or "") not in judged
+            and _judge.same_document_key(c) not in rejected_documents
         ]
         return await _judged_extra(pdfs, rejected)
 
@@ -1362,11 +1361,19 @@ async def search_manual(
         match among them is returned. Otherwise ``answer`` stands, untouched. Where
         that is nothing, the first extra page in ``pool`` or ``set_aside`` the make
         screen accepts is offered unread, as the search offers an unread page. The
-        retry's extras are read but never offered (#5844 Codex F5, F6)."""
+        retry's extras are read but never offered (#5844 Codex F5, F6).
+
+        A form of a document the judge rejected, in any round, is neither read nor
+        offered (#5900, #5897)."""
         extras = [c for c in pool if _extra(c)]
         if judged:
+            rejected_documents = _rejected_documents()
             pdfs = [
-                c for c in (*extras, *retry_extras) if c.get("is_direct_pdf") and not c.get("judge")
+                c
+                for c in (*extras, *retry_extras)
+                if c.get("is_direct_pdf")
+                and not c.get("judge")
+                and _judge.same_document_key(c) not in rejected_documents
             ]
             match = await _judged_extra(pdfs, rejected)
             if match is not None:
@@ -1374,10 +1381,17 @@ async def search_manual(
         result = answer()
         if result is not None:
             return result
+        # After the reads above, whose rejections count too: the judge reads one form
+        # of a document per round, and leaves the others unread (#5902).
+        rejected_documents = _rejected_documents()
         # A set-aside hit whose URL is also a candidate is that candidate's business.
         offered = {c["url"] for c in candidates} - {c["url"] for c in extras}
         for c in (*extras, *set_aside):
-            if c["url"] in offered or _judge.is_rejected(c):
+            if (
+                c["url"] in offered
+                or _judge.is_rejected(c)
+                or _judge.same_document_key(c) in rejected_documents
+            ):
                 continue
             offered.add(c["url"])
             # Every unread offer goes through the one make screen. It cannot refuse
@@ -1634,17 +1648,13 @@ async def search_manual(
             # compared by its exact URL, as before, so an unread first-round copy,
             # a second form of a new document, or a form whose title tells the
             # judge something new stays readable (#5870 Codex F1, F2, F4).
-            judged = {
-                (_document_key(c["url"]), c.get("title") or "")
-                for c in ranked
-                if _judge.is_rejected(c)
-            }
+            judged = _rejected_documents()
             seen_urls = {c["url"] for c in ranked}
             more: list[dict] = []
             for c in sorted(found, key=lambda c: -c["score"]):
                 if c["url"] in seen_urls:
                     continue
-                if (_document_key(c["url"]), c.get("title") or "") in judged:
+                if _judge.same_document_key(c) in judged:
                     continue
                 seen_urls.add(c["url"])
                 more.append(c)
@@ -1677,6 +1687,9 @@ async def search_manual(
                 )
                 if second_trace.get("stop"):
                     judge_trace["stop"] = second_trace["stop"]
+            # Its rejections hold for the rest of the search, though a miss discards
+            # what this returns (#5900).
+            retry_read.extend(more)
             # Read at the end, only where the search would end without a manual.
             retry_extras.extend(
                 c for c in more if c.get("is_direct_pdf") and not c.get("judge") and _extra(c)
@@ -1859,8 +1872,15 @@ async def search_manual(
         # legacy HEAD path below may still pick an UNJUDGED candidate — but
         # only one that at least names the make/model. If every relevant
         # candidate was read and rejected, say so (top rejection + reasons)
-        # rather than surfacing an unread stranger.
-        unread = [c for c in ranked if not _judge.is_rejected(c)]
+        # rather than surfacing an unread stranger. A form the judge left unread
+        # because another form of the document was read and rejected is that
+        # rejection, not an unread candidate (#5902).
+        rejected_documents = _rejected_documents()
+        unread = [
+            c
+            for c in ranked
+            if not _judge.is_rejected(c) and _judge.same_document_key(c) not in rejected_documents
+        ]
         deduped = [c for c in unread if _judge.relevant(c, make, model)]
         worst_rejected = next((c for c in ranked if _judge.is_rejected(c)), None)
         if not deduped and not rejected:

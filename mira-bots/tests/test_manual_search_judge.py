@@ -4317,7 +4317,7 @@ def _fragment_preconditions(plain_title: str):
     assert judge.relevant(frag, "Siemens", _SIMATIC)
     assert not judge.relevant(plain, "Siemens", _SIMATIC)
     assert search_mod._names_part_number(plain, _SIMATIC)
-    assert search_mod._document_key(frag["url"]) == search_mod._document_key(plain["url"])
+    assert frag["url"].split("#", 1)[0] == plain["url"].split("#", 1)[0]
 
 
 async def test_a_fragment_form_of_a_rejected_pdf_is_not_read_again_before_mains_offer(
@@ -4977,3 +4977,226 @@ async def test_a_caller_cancel_during_the_offer_retry_keeps_round_ones_handoff(
     # Preconditions: the retry ran its queries and was cancelled inside its read.
     assert _typed(sent) and hung == [_GS10_MANUAL], (sent, hung)
     assert page == (None, -1), page
+
+
+# #5900, #5902, #5897: two URLs that differ only by a fragment, under the same title,
+# are one document. The server never sees a fragment, so the judge would read the same
+# text under the same title. A search reads such a document once: once in a round
+# (#5902), and never again after a rejection, in any later round (#5900, #5897). A form
+# of a rejected document is never offered unread either. A different title or query
+# string is another input, so those forms stay separate.
+def _same_document(a, b) -> bool:
+    return a[0].split("#", 1)[0] == b[0].split("#", 1)[0] and a[1] == b[1]
+
+
+_S7_FORMS = (
+    (_SIMATIC_MANUAL + "#p1", _SIEMENS_MANUAL[1]),
+    (_SIMATIC_MANUAL + "#p2", _SIEMENS_MANUAL[1]),
+)
+_S7_EASY_BOOK = (
+    f"{_FILES}/s7-1200-6ES7214-1AG40-0XB0-easy-book.pdf",
+    "S7-1200 6ES7214-1AG40-0XB0 easy book",
+)
+
+
+def _s7_forms_ahead_of_the_easy_book():
+    score = search_mod._score
+    (p1, title), (p2, _) = _S7_FORMS
+    for u, t in (*_S7_FORMS, _S7_EASY_BOOK):
+        assert judge.relevant({"url": u, "title": t}, "Siemens", _SIMATIC)
+    assert score(p1, title, "Siemens", _SIMATIC) == score(p2, title, "Siemens", _SIMATIC)
+    assert score(*_S7_EASY_BOOK, "Siemens", _SIMATIC) < score(p1, title, "Siemens", _SIMATIC)
+    assert _same_document(*_S7_FORMS)
+
+
+async def test_two_forms_of_one_pdf_do_not_crowd_a_distinct_manual_out_of_the_reads(
+    wired, monkeypatch
+):
+    # #5902: with room for two reads, the two forms of one system manual would fill
+    # both, and the distinct manual would go over the cap. One form is read.
+    _s7_forms_ahead_of_the_easy_book()
+    monkeypatch.setattr(judge, "MAX_TOTAL", 2)
+    _readable(monkeypatch, _S7_FORMS[0][0], _S7_FORMS[1][0], _S7_EASY_BOOK[0])
+    router = _Verdicts({_S7_EASY_BOOK[0]})
+    monkeypatch.setattr(judge, "_router", router)
+    _serve(monkeypatch, [*_S7_FORMS, _S7_EASY_BOOK])
+    with search_mod.acquisition_trail() as trail:
+        r = await search_mod.search_manual("Siemens", _SIMATIC)
+    assert router.read == [_S7_FORMS[0][0], _S7_EASY_BOOK[0]], router.read
+    assert r is not None and r["url"] == _S7_EASY_BOOK[0] and r["validated"] is True, r
+    assert r["reason"] == judge.REASON_JUDGED_MATCH
+    # The form left out has its own reason on the trail, not the cap's.
+    assert trail.judge["not_queued"][_S7_FORMS[1][0]] == "same_document", trail.judge
+    # Trail rows drop the fragment, so the two forms share a row URL: one was read at
+    # its queue position, the other left out unread with that reason.
+    rows = [x for x in trail.to_dict(r["url"])["candidates"] if x["url"] == _SIMATIC_MANUAL]
+    got = sorted((x["read"], x["queue_pos"], x["not_queued"]) for x in rows)
+    assert got == [("judged", 0, None), ("unread", None, "same_document")], rows
+
+
+async def test_two_forms_of_one_pdf_never_split_its_verdict(wired, monkeypatch):
+    # #5902: a second read of the same text could disagree with the first, and the
+    # result would list one document as both the manual and not the manual. Only the
+    # first form is read; its rejection stands, and the other form is not offered.
+    _s7_forms_ahead_of_the_easy_book()
+    _readable(monkeypatch, _S7_FORMS[0][0], _S7_FORMS[1][0], _S7_EASY_BOOK[0])
+    router = _Verdicts({_S7_FORMS[1][0]})  # a read of the second form would say yes
+    monkeypatch.setattr(judge, "_router", router)
+    _serve(monkeypatch, [*_S7_FORMS, _S7_EASY_BOOK])
+    r = await search_mod.search_manual("Siemens", _SIMATIC)
+    assert router.read == [_S7_FORMS[0][0], _S7_EASY_BOOK[0]], router.read
+    assert r is not None and r["validated"] is False, r
+    assert r["reason"] == judge.REASON_JUDGED_REJECTED, r
+    assert r["url"] != _S7_FORMS[1][0], r
+
+
+@pytest.mark.parametrize(
+    "second",
+    [
+        (_SIMATIC_MANUAL + "#p2", "S7-1200 6ES7214-1AG40-0XB0 system manual, volume 2"),
+        (_SIMATIC_MANUAL + "?rev=2", _SIEMENS_MANUAL[1]),
+    ],
+    ids=["another-title", "another-query-string"],
+)
+async def test_control_another_title_or_query_string_is_another_read(wired, monkeypatch, second):
+    first = _S7_FORMS[0]
+    assert not _same_document(first, second)
+    _readable(monkeypatch, first[0], second[0])
+    router = _Verdicts(())
+    monkeypatch.setattr(judge, "_router", router)
+    _serve(monkeypatch, [first, second])
+    r = await search_mod.search_manual("Siemens", _SIMATIC)
+    assert sorted(router.read) == sorted([first[0], second[0]]), router.read
+    assert r is not None and r["validated"] is False, r
+
+
+_EXACT_FORMS = ((_EXACT_PDF + "#p1", _SIEMENS_EXACT[1]), (_EXACT_PDF + "#p2", _SIEMENS_EXACT[1]))
+_EXACT_REV_B = (f"{_FILES}/6es7214_1ag40_0xb0_rev_b.pdf", "6ES7214_1AG40_0XB0 rev B")
+
+
+async def test_two_forms_of_one_pdf_do_not_crowd_out_a_miss_ending_extra(wired, monkeypatch):
+    # #5902 at #5890's miss ending: main rejects the brochure, and the extra reads there
+    # have room for two. The two forms of one exact-part PDF would fill both.
+    score = search_mod._score
+    for u, t in (*_EXACT_FORMS, _EXACT_REV_B):
+        c = {"url": u, "title": t}
+        assert not judge.relevant(c, "Siemens", _SIMATIC)
+        assert search_mod._names_part_number(c, _SIMATIC)
+    assert score(*_EXACT_REV_B, "Siemens", _SIMATIC) == score(*_EXACT_FORMS[0], "Siemens", _SIMATIC)
+    monkeypatch.setattr(judge, "MAX_TOTAL", 2)
+    _readable(monkeypatch, _BROCHURE_PDF, _EXACT_FORMS[0][0], _EXACT_FORMS[1][0], _EXACT_REV_B[0])
+    router = _Verdicts({_EXACT_REV_B[0]})
+    monkeypatch.setattr(judge, "_router", router)
+    _serve(monkeypatch, [_SIEMENS_BROCHURE, *_EXACT_FORMS, _EXACT_REV_B])
+    r = await search_mod.search_manual("Siemens", _SIMATIC, exact_part_number=True)
+    assert router.read == [_BROCHURE_PDF, _EXACT_FORMS[0][0], _EXACT_REV_B[0]], router.read
+    assert r is not None and r["url"] == _EXACT_REV_B[0] and r["validated"] is True, r
+
+
+async def test_a_miss_ending_does_not_read_a_form_of_a_pdf_main_rejected(wired, monkeypatch):
+    # #5900, reproduced on main 13e0d3ef7: the "#siemens" form names the make, so main
+    # reads and rejects it. The plain form names the whole part number, so the miss
+    # ending would read it again and could return it validated.
+    _fragment_preconditions(_SIEMENS_EXACT[1])
+    _readable(monkeypatch, _SIEMENS_EXACT_FRAG[0], _EXACT_PDF)
+    router = _Verdicts({_EXACT_PDF})  # a second read would be accepted
+    monkeypatch.setattr(judge, "_router", router)
+    _serve(monkeypatch, [_SIEMENS_EXACT_FRAG, _SIEMENS_EXACT])
+    r = await search_mod.search_manual("Siemens", _SIMATIC, exact_part_number=True)
+    assert router.read == [_SIEMENS_EXACT_FRAG[0]], router.read
+    assert r is not None and r["url"] == _SIEMENS_EXACT_FRAG[0], r
+    assert r["validated"] is False and r["reason"] == judge.REASON_JUDGED_REJECTED, r
+
+
+async def test_control_a_miss_ending_reads_a_form_under_another_title(wired, monkeypatch):
+    other = (_EXACT_PDF, "6ES7214_1AG40_0XB0 system manual")
+    _fragment_preconditions(other[1])
+    _readable(monkeypatch, _SIEMENS_EXACT_FRAG[0], _EXACT_PDF)
+    router = _Verdicts({_EXACT_PDF})
+    monkeypatch.setattr(judge, "_router", router)
+    _serve(monkeypatch, [_SIEMENS_EXACT_FRAG, other])
+    r = await search_mod.search_manual("Siemens", _SIMATIC, exact_part_number=True)
+    assert router.read == [_SIEMENS_EXACT_FRAG[0], _EXACT_PDF], router.read
+    assert r is not None and r["url"] == _EXACT_PDF and r["validated"] is True, r
+
+
+async def test_a_miss_ending_does_not_read_a_form_the_retry_rejected(wired, monkeypatch):
+    # #5900: the typed-pass retry's own reads are not in round one's pool. Here round
+    # one rejects the brochure, the retry reads and rejects the "#siemens" form, and
+    # the plain form, an extra in round one's pool, is the same document.
+    _fragment_preconditions(_SIEMENS_EXACT[1])
+    _readable(monkeypatch, _BROCHURE_PDF, _SIEMENS_EXACT_FRAG[0], _EXACT_PDF)
+    router = _Verdicts({_EXACT_PDF})  # a read of the plain form would be accepted
+    monkeypatch.setattr(judge, "_router", router)
+    sent = _serve_by_pass(
+        monkeypatch, site=[_SIEMENS_BROCHURE, _SIEMENS_EXACT], typed=[_SIEMENS_EXACT_FRAG]
+    )
+    r = await search_mod.search_manual("Siemens", _SIMATIC, exact_part_number=True)
+    assert _retry_ran(sent), sent
+    assert router.read == [_BROCHURE_PDF, _SIEMENS_EXACT_FRAG[0]], router.read
+    assert r is not None and r["validated"] is False, r
+    assert r["reason"] == judge.REASON_JUDGED_REJECTED, r
+
+
+_AD_EXTRA_GS10 = (_AD_EXTRA_PDF[0] + "#gs10", _AD_EXTRA_PDF[1])
+
+
+@pytest.mark.parametrize("same_title", [True, False])
+async def test_a_miss_ending_reads_a_rejected_document_once_on_a_model_lookup(
+    wired, monkeypatch, same_title
+):
+    # #5897: the "#gs10" form names the model, so main reads and rejects it. The plain
+    # form names the make in another joining, so the miss ending would read it again.
+    # Control: a title with distinct evidence is new input, and is still read.
+    plain = (
+        _AD_EXTRA_PDF if same_title else (_AD_EXTRA_PDF[0], "Automation-Direct drive manual rev 3")
+    )
+    assert judge.relevant(
+        {"url": _AD_EXTRA_GS10[0], "title": _AD_EXTRA_GS10[1]}, "AutomationDirect", "GS10"
+    )
+    c = {"url": plain[0], "title": plain[1]}
+    assert not judge.relevant(c, "AutomationDirect", "GS10")
+    assert search_mod._names_make(c, "AutomationDirect")
+    assert _same_document(_AD_EXTRA_GS10, plain) is same_title
+    _readable(monkeypatch, _AD_EXTRA_GS10[0], plain[0])
+    router = _Verdicts(())
+    monkeypatch.setattr(judge, "_router", router)
+    _serve(monkeypatch, [_AD_EXTRA_GS10, plain])
+    r = await search_mod.search_manual("AutomationDirect", "GS10")
+    expected = [_AD_EXTRA_GS10[0]] if same_title else [_AD_EXTRA_GS10[0], plain[0]]
+    assert router.read == expected, router.read
+    assert r is not None and r["validated"] is False, r
+
+
+_AD_EXTRA_FORMS = (
+    (_AD_EXTRA_PDF[0] + "#p1", _AD_EXTRA_PDF[1]),
+    (_AD_EXTRA_PDF[0] + "#p2", _AD_EXTRA_PDF[1]),
+)
+
+
+@pytest.mark.parametrize("is_manual", [True, False])
+async def test_a_form_of_a_rejected_extra_is_not_offered_unread(wired, monkeypatch, is_manual):
+    # As in test_an_extra_pdf_judged_not_the_manual_is_neither_returned_nor_offered:
+    # main reads one PDF, which cannot be fetched, and ends with nothing judged. The
+    # extra reads there read one form. A rejection there covers the other form too, so
+    # it is not offered unread.
+    score = search_mod._score
+    for u, t in (_AD_PLAIN_PDF, *_AD_EXTRA_FORMS):
+        assert not judge.relevant({"url": u, "title": t}, "AutomationDirect", "GS10")
+        assert score(u, t, "AutomationDirect", "GS10") == score(
+            *_AD_PLAIN_PDF, "AutomationDirect", "GS10"
+        )
+    for u, t in _AD_EXTRA_FORMS:
+        assert search_mod._may_offer_unread({"url": u, "title": t}, "AutomationDirect")
+    assert _AD_PLAIN_PDF[0] not in TEXT
+    monkeypatch.setattr(judge, "MAX_TOTAL", 1)
+    _readable(monkeypatch, *(u for u, _ in _AD_EXTRA_FORMS))
+    router = _Verdicts({_AD_EXTRA_FORMS[0][0]} if is_manual else ())
+    monkeypatch.setattr(judge, "_router", router)
+    _serve(monkeypatch, [_AD_PLAIN_PDF, *_AD_EXTRA_FORMS])
+    r = await search_mod.search_manual("AutomationDirect", "GS10")
+    assert router.read == [_AD_EXTRA_FORMS[0][0]], router.read
+    if is_manual:
+        assert r is not None and r["url"] == _AD_EXTRA_FORMS[0][0] and r["validated"] is True, r
+    else:
+        assert r is None, r

@@ -513,6 +513,20 @@ def is_rejected(c: dict) -> bool:
     return j.get("status") == "judged" and not j.get("is_manual")
 
 
+def document_key(url: str) -> str:
+    """The document a server is asked for: the URL without its fragment, which never
+    leaves the client, but with its query string, which can select another document
+    (#5850). Compared only; the URL shown to the technician keeps its fragment."""
+    return (url or "").split("#", 1)[0]
+
+
+def same_document_key(c: dict) -> tuple[str, str]:
+    """Two candidates equal here would give the judge the same text under the same
+    title, so one read decides both (#5850, #5900, #5902). A different title or query
+    string is new input and stays a separate read."""
+    return document_key(c.get("url") or ""), c.get("title") or ""
+
+
 def _make_tokens(make: str) -> list[str]:
     return [t for t in re.split(r"[^a-z0-9]+", (make or "").lower()) if len(t) >= 3]
 
@@ -667,6 +681,19 @@ async def judge_candidates(
     queue.sort(key=lambda c: (_mentions_make(c, make), c.get("score", 0)), reverse=True)
     not_queued = {c["url"]: "not_direct_pdf" for c in candidates if not c.get("is_direct_pdf")}
     not_queued.update({c["url"]: "not_relevant" for c in pdfs if c not in queue})
+    # One read per document, before the cap (#5902): a second form would take a read
+    # from a distinct document, and a second verdict on the same text could contradict
+    # the first. The highest-ranked form is read; the rest are left out with their own
+    # reason, unread, so the trail never shows a verdict nobody gave them.
+    forms: set[tuple[str, str]] = set()
+    kept: list[dict] = []
+    for c in queue:
+        if same_document_key(c) in forms:
+            not_queued[c["url"]] = "same_document"
+            continue
+        forms.add(same_document_key(c))
+        kept.append(c)
+    queue = kept
     limit = MAX_TOTAL if max_total is None else max_total
     not_queued.update({c["url"]: "over_max_total" for c in queue[limit:]})
     queue = queue[:limit]
