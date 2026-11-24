@@ -1733,6 +1733,17 @@ async def search_manual(
             return _as_judged_match(both[0], _rejections(both))
         return None
 
+    async def _retry_before_offer(ranked: list[dict], judge_trace: dict) -> dict | None:
+        """The retry before an unvalidated offer (#5904). On a miss the offer goes out
+        with round one's browser handoff: a support page the retry's queries found
+        must not replace it, since the Hub prefers that page to the OEM request link
+        (#5907 Codex F1). The retry's queries stay on the trail."""
+        page = (trail.search_page_url, trail.search_page_score) if trail is not None else None
+        match = await _manual_from_retry(ranked, judge_trace)
+        if match is None and trail is not None and page is not None:
+            trail.search_page_url, trail.search_page_score = page
+        return match
+
     typed_pass_ran = not any(c["is_direct_pdf"] for c in candidates)
     if typed_pass_ran:
         candidates.extend(await _typed_pdf_pass())
@@ -1888,7 +1899,7 @@ async def search_manual(
                 # the typed-pass retry runs if round one rejected every PDF (#5904).
                 match = await _exact_part_match(ranked, rejected_out)
                 if match is None:
-                    match = await _manual_from_retry(ranked, judge_trace)
+                    match = await _retry_before_offer(ranked, judge_trace)
                 if match is not None:
                     return match
             c["validated"] = True
@@ -1935,7 +1946,7 @@ async def search_manual(
         # As before the probe's offer: the exact-part read, then the retry (#5904).
         match = await _exact_part_match(ranked, rejected_out)
         if match is None:
-            match = await _manual_from_retry(ranked, judge_trace)
+            match = await _retry_before_offer(ranked, judge_trace)
         if match is not None:
             return match
     deduped[0]["validated"] = False

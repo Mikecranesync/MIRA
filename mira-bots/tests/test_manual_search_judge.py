@@ -4778,3 +4778,101 @@ async def test_no_website_handoff_is_sent_before_an_offer(wired, monkeypatch, pd
     assert r is not None and r["url"] == _AD_CATALOG_PAGE[0] and r["validated"] is False, r
     assert sent[1:] == _GS10_TYPED and _HANDOFF not in sent, sent
     assert router.probed == [_AD_CATALOG_PAGE[0]]
+
+
+# A make-named support page that only the typed retry finds (#5907 Codex F1).
+_RETRY_SUPPORT_PAGE = (
+    "https://www.drive-parts-example.com/automationdirect/gs10-support",
+    "AutomationDirect GS10 drive support and manuals",
+)
+
+
+@pytest.mark.parametrize(
+    "pdfs", [frozenset(), frozenset({_AD_CATALOG_PAGE[0]})], ids=["unread_offer", "probe_offer"]
+)
+async def test_a_retry_miss_before_an_offer_keeps_round_ones_browser_handoff(
+    wired, monkeypatch, pdfs
+):
+    # Main sends nothing after round one before its offer, so the offer goes out with
+    # round one's browser handoff (here none, so the Hub falls back to the OEM request
+    # link). A support page one of the retry's queries found must not replace it on a
+    # miss; the retry's queries stay on the trail.
+    assert not search_mod._is_denied("www.drive-parts-example.com")
+    router, sent = _stall(
+        monkeypatch,
+        q1_hits=_AD_READ + [_AD_CATALOG_PAGE],
+        q2_hits=[_OTHER, _RETRY_SUPPORT_PAGE],
+        pdfs=pdfs,
+    )
+    monkeypatch.setitem(TEXT, _OTHER[0], _DRAWING_TEXT)
+    with search_mod.acquisition_trail() as trail:
+        r = await search_mod.search_manual("AutomationDirect", "GS10", deadline_at=_deadline(60))
+        page = (trail.search_page_url, trail.search_page_score)
+        typed_rows = [q for q in trail.queries if q.get("pass") == "q2"]
+    assert r is not None and r["url"] == _AD_CATALOG_PAGE[0] and r["validated"] is False, r
+    assert page == (None, -1), page
+    assert sent[1:] == _GS10_TYPED and len(typed_rows) == 2, trail.queries
+
+
+def test_control_a_retry_miss_still_reports_round_ones_handoff_at_the_endpoint(wired, monkeypatch):
+    # The same miss through the discovery endpoint: the exported handoff is round one's.
+    router, sent = _stall(
+        monkeypatch, q1_hits=_AD_READ + [_AD_CATALOG_PAGE], q2_hits=[_OTHER, _RETRY_SUPPORT_PAGE]
+    )
+    monkeypatch.setitem(TEXT, _OTHER[0], _DRAWING_TEXT)
+    client = _discovery_endpoint(monkeypatch)
+    body = client.post(
+        "/manual-discovery/search", json={"manufacturer": "AutomationDirect", "model": "GS10"}
+    ).json()
+    assert body["candidate"]["url"] == _AD_CATALOG_PAGE[0] and body["validated"] is False, body
+    assert body["search_page_url"] is None, body["search_page_url"]
+    assert _typed(sent) == _GS10_TYPED
+
+
+async def test_control_the_miss_ending_retry_still_records_a_support_page_it_finds(
+    wired, monkeypatch
+):
+    # Main's own #5822 retry at a miss ending is unchanged: there no offer is made,
+    # and a support page its queries find is the technician's browser handoff.
+    router, sent = _stall(monkeypatch, q1_hits=_AD_READ, q2_hits=[_OTHER, _RETRY_SUPPORT_PAGE])
+    monkeypatch.setitem(TEXT, _OTHER[0], _DRAWING_TEXT)
+    with search_mod.acquisition_trail() as trail:
+        r = await search_mod.search_manual("AutomationDirect", "GS10", deadline_at=_deadline(60))
+        page_url = trail.search_page_url
+    assert r is not None and r["reason"] == judge.REASON_JUDGED_REJECTED, r
+    assert page_url == _RETRY_SUPPORT_PAGE[0]
+
+
+async def test_the_offer_retry_spends_at_most_the_lookups_query_ceiling(wired, monkeypatch):
+    # #5907 Codex F2: a model with four spellings. After the site query, the retry
+    # before an offer sends three typed queries, the same allowance round one's own
+    # typed pass gets. The retry takes only the slots the per-lookup ceiling leaves,
+    # so the fourth spelling is never tried and the lookup sends exactly that ceiling.
+    model = "GS10-20P5"
+    variants = search_mod._model_variants(model)
+    assert len(variants) == 4 and search_mod.max_provider_queries() == 4
+    c = {"url": _AD_CATALOG_PAGE[0], "title": _AD_CATALOG_PAGE[1]}
+    assert judge.relevant(c, "AutomationDirect", model)
+    router, sent = _stall(monkeypatch, q1_hits=_AD_READ + [_AD_CATALOG_PAGE], q2_hits=[_OTHER])
+    monkeypatch.setitem(TEXT, _OTHER[0], _DRAWING_TEXT)
+    with search_mod.provider_query_budget() as budget:
+        r = await search_mod.search_manual("AutomationDirect", model, deadline_at=_deadline(60))
+    assert r is not None and r["url"] == _AD_CATALOG_PAGE[0] and r["validated"] is False, r
+    typed = [q for q in sent if "filetype:pdf" in q and "site:" not in q]
+    assert typed == [f"AutomationDirect {v} manual filetype:pdf" for v in variants[:3]], sent
+    assert budget.used == 4 and budget.refused == 0, (budget.used, budget.refused)
+
+
+async def test_a_retry_match_before_an_offer_keeps_the_support_page_it_found(wired, monkeypatch):
+    # Only a miss restores round one's handoff. A match returns the manual, and the
+    # support page beside it stays, as it does after main's own #5822 retry.
+    router, sent = _stall(
+        monkeypatch,
+        q1_hits=_AD_READ + [_AD_CATALOG_PAGE],
+        q2_hits=[_GS10_MANUAL_HIT, _RETRY_SUPPORT_PAGE],
+    )
+    with search_mod.acquisition_trail() as trail:
+        r = await search_mod.search_manual("AutomationDirect", "GS10", deadline_at=_deadline(60))
+        page_url = trail.search_page_url
+    assert r is not None and r["url"] == _GS10_MANUAL and r["validated"] is True, r
+    assert page_url == _RETRY_SUPPORT_PAGE[0]
