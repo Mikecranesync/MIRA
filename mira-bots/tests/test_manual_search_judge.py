@@ -2076,6 +2076,41 @@ async def test_an_underscored_exact_part_number_is_offered(wired, monkeypatch, e
     assert r is not None and r["url"] == url and r["validated"] is False
 
 
+# A page main keeps at a low score that names neither the make nor the part number:
+# main ranks it, and the make screen refuses to offer it.
+_UNRELATED_PAGE = ("https://www.example-drives.com/p/cpu-1214c", "CPU 1214C compact manual")
+
+
+@pytest.mark.parametrize("beside", [[], [_UNRELATED_PAGE]], ids=["alone", "beside_a_ranked_page"])
+@pytest.mark.parametrize("enabled", ["1", "0"])
+async def test_an_offered_set_aside_page_is_on_the_trail_unread_and_selected(
+    wired, monkeypatch, enabled, beside
+):
+    # #5896 (#5890 Codex F7): main drops this page at score 0, so it is set aside and
+    # offered only at main's ending. The trail lists it once, as the offer: unread,
+    # selected, with the query pass that found it. It never joins main's pools. Beside
+    # a page main ranks, the judge's ranking is the trail's list, so it joins that too.
+    url, title = _UNDERSCORED[0]
+    assert search_mod._score(url, title, "Siemens", _SIMATIC) == 0  # set aside, not a candidate
+    for u, t in beside:
+        assert search_mod._score(u, t, "Siemens", _SIMATIC) > 0
+        assert not judge.relevant({"url": u, "title": t}, "Siemens", _SIMATIC)
+    hits = [*beside, (url, title)]
+    monkeypatch.setenv("MANUAL_JUDGE_ENABLED", enabled)
+    _serve(monkeypatch, hits)
+    with search_mod.acquisition_trail() as trail:
+        r = await search_mod.search_manual("Siemens", _SIMATIC, exact_part_number=True)
+        record = trail.to_dict(r and r["url"])
+    assert r is not None and r["url"] == url and r["validated"] is False, r
+    assert (trail.ranked is not None) is bool(enabled == "1" and beside), trail.ranked
+    first = trail.queries[0]["pass"].split()[0]  # every query returns the page
+    rows = [c for c in record["candidates"] if c["url"] == url]
+    assert len(rows) == 1, record["candidates"]
+    assert (rows[0]["read"], rows[0]["selected"], rows[0]["pass"]) == ("unread", True, first)
+    assert rows[0]["queue_pos"] is None and not trail.judge.get("queue"), trail.judge
+    assert record["candidate_count"] == len(hits), record
+
+
 @pytest.mark.parametrize("url,title", _UNDERSCORED, ids=["no_manual_word", "manual_word"])
 @pytest.mark.parametrize("enabled", ["1", "0"])
 async def test_control_the_same_page_on_a_model_lookup_is_not_offered(
@@ -2252,6 +2287,33 @@ async def test_the_typed_pass_retry_reads_an_exact_pdf_in_another_spelling(wired
     assert any("filetype:pdf" in q and "site:" not in q for q in sent), sent  # the retry ran
     assert set(router.read) == {_BROCHURE_PDF, _OTHER_PDF, _EXACT_PDF}, router.read
     assert r is not None and r["url"] == _EXACT_PDF and r["validated"] is True, r
+    # The retry's queue holds only the price list, so the exact PDF is read at main's
+    # ending, and that match lists both rounds' rejections, once each (#5898).
+    assert router.read[-1] == _EXACT_PDF, router.read
+    assert [x["url"] for x in r["judged_rejected"]] == [_BROCHURE_PDF, _OTHER_PDF], r
+
+
+async def test_an_extra_round_match_lists_a_retry_pdf_it_rejected_once(wired, monkeypatch):
+    # #5898: the retry leaves two exact-part PDFs unread, and main's ending reads both,
+    # rejecting one and matching the other. The rejected one is both a retry PDF and an
+    # extra-round read, and the match lists it once.
+    second = (f"{_FILES}/6es7214_1ag40_0xb0-manual.pdf", "6ES7214_1AG40_0XB0 manual")
+    router = _pdfs_to_read(monkeypatch, _EXACT_PDF, _BROCHURE_PDF, _OTHER_PDF, second[0])
+    sent = _serve_by_pass(
+        monkeypatch,
+        site=[(_BROCHURE_PDF, "Siemens SIMATIC S7-1200 brochure")],
+        typed=[
+            (_OTHER_PDF, "Siemens S7-1200 price list"),
+            (_EXACT_PDF, "6ES7214_1AG40_0XB0"),
+            second,
+        ],
+    )
+    r = await search_mod.search_manual("Siemens", _SIMATIC, exact_part_number=True)
+    assert _retry_ran(sent), sent
+    assert router.read[:2] == [_BROCHURE_PDF, _OTHER_PDF], router.read
+    assert sorted(router.read[2:]) == sorted([_EXACT_PDF, second[0]]), router.read
+    assert r is not None and r["url"] == _EXACT_PDF and r["validated"] is True, r
+    assert [x["url"] for x in r["judged_rejected"]] == [_BROCHURE_PDF, _OTHER_PDF, second[0]], r
 
 
 # #5890 F5 and round 2: `_collect` keeps exactly main's candidates, at main's scores. A
@@ -2468,6 +2530,22 @@ async def test_where_mains_own_page_is_refused_an_extra_page_is_offered(wired, m
     _serve(monkeypatch, [stranger, page])
     r = await search_mod.search_manual("GE", "M100")
     assert r is not None and r["url"] == page[0] and r["validated"] is False, r
+
+
+async def test_control_an_extra_page_from_mains_pool_is_on_the_trail_once(wired, monkeypatch):
+    # #5896 control: this extra page is main's own candidate, already on the trail, so
+    # offering it adds no second row. Only a set-aside page, on no list, joins it.
+    stranger = ("https://www.example-drives.com/p/m100", "Siemens M100 drive")
+    page = ("https://www.example-motors.com/library/ge-motors", "GE motors installation manual")
+    _serve(monkeypatch, [stranger, page])
+    with search_mod.acquisition_trail() as trail:
+        r = await search_mod.search_manual("GE", "M100")
+        record = trail.to_dict(r and r["url"])
+    assert r is not None and r["url"] == page[0], r
+    assert search_mod.trail_url(page[0]) == page[0]  # the row's URL is the page's
+    rows = [c for c in record["candidates"] if c["url"] == page[0]]
+    assert [x["selected"] for x in rows] == [True], record["candidates"]
+    assert record["candidate_count"] == 2, record
 
 
 async def test_a_joined_make_pdf_is_read_beside_the_judges_own(wired, monkeypatch):
@@ -4404,6 +4482,47 @@ async def test_the_trail_gives_a_pdf_over_the_extra_cap_that_rounds_reason(wired
     assert rows[left]["not_queued"] == "over_max_total", rows[left]
 
 
+_EXACT_MANUAL = (f"{_FILES}/6es7214_1ag40_0xb0-manual.pdf", "6ES7214_1AG40_0XB0 manual")
+_EXACT_GUIDE = (f"{_FILES}/6es7214_1ag40_0xb0-guide.pdf", "6ES7214_1AG40_0XB0 guide")
+
+
+@pytest.mark.parametrize("ending", ["before_the_offer", "at_the_miss_ending"])
+async def test_the_trail_keeps_an_extra_rounds_upgrade_batch_limit(wired, monkeypatch, ending):
+    # #5903 (#5899 Codex F5): one PDF per batch. Main reads only the brochure; the
+    # extra round reads three exact-part PDFs. The first is a plain match, which earns
+    # one more batch, so the third is left unread for the batch limit. The trail gives
+    # it that reason, as main's round and the retry do; it does not list it as queued
+    # and unread with no reason.
+    for u, t in (_EXACT_MANUAL, _EXACT_GUIDE):
+        assert not judge.relevant({"url": u, "title": t}, "Siemens", _SIMATIC)
+        assert search_mod._names_part_number({"url": u, "title": t}, _SIMATIC)
+    _offer_preconditions()
+    monkeypatch.setattr(judge, "MAX_CANDIDATES", 1)
+    _readable(monkeypatch, _BROCHURE_PDF, _EXACT_PDF, _EXACT_MANUAL[0], _EXACT_GUIDE[0])
+    router = _Verdicts((), plain={_EXACT_MANUAL[0]})
+    monkeypatch.setattr(judge, "_router", router)
+    real, rounds = judge.judge_candidates, []
+
+    async def main_reads_one(make, model, candidates, **kw):
+        rounds.append(kw.get("max_total"))
+        if len(rounds) == 1:
+            kw["max_total"] = 1  # main's round: the brochure only
+        return await real(make, model, candidates, **kw)
+
+    monkeypatch.setattr(judge, "judge_candidates", main_reads_one)
+    page = [_SIEMENS_PAGE] if ending == "before_the_offer" else []
+    _serve(monkeypatch, page + [_SIEMENS_BROCHURE, _SIEMENS_EXACT, _EXACT_MANUAL, _EXACT_GUIDE])
+    with search_mod.acquisition_trail() as trail:
+        r = await search_mod.search_manual("Siemens", _SIMATIC, exact_part_number=True)
+    # Preconditions: main's round, then one extra round, read in this order.
+    assert len(rounds) == 2, rounds
+    assert router.read == [_BROCHURE_PDF, _EXACT_MANUAL[0], _EXACT_PDF], router.read
+    assert r is not None and r["url"] == _EXACT_MANUAL[0] and r["validated"] is True, r
+    row = {x["url"]: x for x in trail.to_dict(r["url"])["candidates"]}[_EXACT_GUIDE[0]]
+    assert row["read"] == "unread", row
+    assert row["not_queued"] == "upgrade_batch_limit", row
+
+
 async def test_an_exact_part_pdf_main_could_not_fetch_is_not_fetched_again_before_its_offer(
     wired, monkeypatch
 ):
@@ -4943,14 +5062,21 @@ async def test_a_retry_miss_keeps_a_support_page_round_one_found(wired, monkeypa
 
 
 @pytest.mark.parametrize(
+    ("round_one", "handoff"),
+    [([], (None, -1)), ([_R1_OEM_SUPPORT_PAGE], (_R1_OEM_SUPPORT_PAGE[0], 120))],
+    ids=["no_round_one_page", "round_one_page"],
+)
+@pytest.mark.parametrize(
     "pdfs", [frozenset(), frozenset({_AD_CATALOG_PAGE[0]})], ids=["unread_offer", "probe_offer"]
 )
 async def test_a_caller_cancel_during_the_offer_retry_keeps_round_ones_handoff(
-    wired, monkeypatch, pdfs
+    wired, monkeypatch, pdfs, round_one, handoff
 ):
     # The caller cancels while the retry's PDF read hangs, after the retry's queries
     # recorded a third-party support page. The trail the endpoint exports must still
-    # carry round one's handoff (none here), as a miss does.
+    # carry round one's handoff, as a miss does: none, or the official support page
+    # round one's site query found, at its score (#5912). Restoring "none" alone would
+    # pass the first case and clear the page the Hub prefers in the second.
     real_fetch = judge.fetch_pdf_bytes
     hung: list[str] = []
 
@@ -4963,7 +5089,7 @@ async def test_a_caller_cancel_during_the_offer_retry_keeps_round_ones_handoff(
     monkeypatch.setattr(judge, "fetch_pdf_bytes", hang_on_the_manual)
     router, sent = _stall(
         monkeypatch,
-        q1_hits=_AD_READ + [_AD_CATALOG_PAGE],
+        q1_hits=_AD_READ + [_AD_CATALOG_PAGE] + round_one,
         q2_hits=[_RETRY_SUPPORT_PAGE, _GS10_MANUAL_HIT],
         pdfs=pdfs,
     )
@@ -4976,7 +5102,7 @@ async def test_a_caller_cancel_during_the_offer_retry_keeps_round_ones_handoff(
         page = (trail.search_page_url, trail.search_page_score)
     # Preconditions: the retry ran its queries and was cancelled inside its read.
     assert _typed(sent) and hung == [_GS10_MANUAL], (sent, hung)
-    assert page == (None, -1), page
+    assert page == handoff, page
 
 
 # #5900, #5902, #5897: two URLs that differ only by a fragment, under the same title,

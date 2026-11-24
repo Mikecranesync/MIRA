@@ -1304,6 +1304,14 @@ async def search_manual(
             form, listed + [r for r in _rejections(read) if r["url"] not in known]
         )
 
+    def _found(hits: list[dict], label: str, aside: list[dict] | None) -> list[dict]:
+        """`_collect` for one query pass. Its candidates, and the hits it sets aside in
+        ``aside``, carry the pass that found them (acquisition trail only, #5896)."""
+        before = len(set_aside)
+        found = _tagged(_collect(hits, make, model, part_number, aside), label)
+        _tagged(set_aside[before:], label)
+        return found
+
     def _extra(c: dict) -> bool:
         """The judge's relevance check misses it, but it names the make as a whole
         name in another joining ("Automation-Direct" for "AutomationDirect") or, on a
@@ -1333,7 +1341,8 @@ async def search_manual(
                 # positions follow the others, a URL keeps the first position it
                 # was queued at, a PDF queued here is no longer listed as not
                 # queued, and one this round left out carries this round's reason
-                # unless an earlier round queued it (#5899 Codex F2).
+                # unless an earlier round queued it (#5899 Codex F2). That includes
+                # a PDF this round queued and then cut at its batch limit (#5903).
                 queued = list(trace.get("queue") or [])
                 prior = list(trail.judge.get("queue") or [])
                 queue = prior + [u for u in queued if u not in prior]
@@ -1342,12 +1351,18 @@ async def search_manual(
                 for u in queued:
                     not_queued.pop(u, None)
                 for u, why in (trace.get("not_queued") or {}).items():
-                    if u not in queue:
+                    if u not in prior:
                         not_queued[u] = why
                 if trace.get("stop"):
                     trail.judge["stop"] = trace["stop"]
         if read and _judge.is_match(read[0]):
-            return _as_judged_match(read[0], rejected + _rejections(read))
+            # The typed-pass retry's rejections too, as the retry's own match lists
+            # them, though a miss discards what the retry returns (#5898). A PDF the
+            # retry left unread and this round read is this round's, so each is listed
+            # once, in the order the rounds read them.
+            here = {c["url"] for c in read}
+            retry = [r for r in _rejections(retry_read) if r["url"] not in here]
+            return _as_judged_match(read[0], rejected + retry + _rejections(read))
         return None
 
     async def _exact_part_match(pool: list[dict], rejected: list[dict]) -> dict | None:
@@ -1427,6 +1442,14 @@ async def search_manual(
                     "reason_detail", "Could not read the candidate PDF — review before use."
                 )
                 c["judged_rejected"] = rejected
+            if trail is not None:
+                # A set-aside page is on no list the trail shows. It joins the trail's
+                # own copy as the offer, never main's candidate or judge pools (#5896).
+                shown = trail.ranked if trail.ranked is not None else trail.candidates
+                if all(x["url"] != c["url"] for x in shown):
+                    trail.candidates = list(trail.candidates) + [c]
+                    if trail.ranked is not None:
+                        trail.ranked = list(trail.ranked) + [c]
             return c
         return None
 
@@ -1575,7 +1598,7 @@ async def search_manual(
         q1 = f'"{model}" manual filetype:pdf site:{oem_domains[0]}'
         hits = await _send(q1, "q1 (site-scoped)")
         if hits:
-            candidates.extend(_tagged(_collect(hits, make, model, part_number, set_aside), "q1"))
+            candidates.extend(_found(hits, "q1", set_aside))
 
     typed_in_flight: str | None = None  # the retry's unanswered query, for the trail
     retry_unfinished = False  # the retry left a spelling unanswered or a PDF unread
@@ -1621,9 +1644,7 @@ async def search_manual(
                 retry_unfinished = True
             if hits is None:
                 continue
-            found = _tagged(
-                _collect(hits, make, model, part_number, None if second else set_aside), "q2"
-            )
+            found = _found(hits, "q2", None if second else set_aside)
             if i:
                 # A hit from a re-hyphenated form is a weaker signal than one
                 # from the nameplate's own spelling: it must not win a tie.
@@ -1792,7 +1813,7 @@ async def search_manual(
         q3 = f"{make} {model} manual support"
         hits = await _send(q3, "q3 (wide)")
         if hits:
-            candidates.extend(_tagged(_collect(hits, make, model, part_number, set_aside), "q3"))
+            candidates.extend(_found(hits, "q3", set_aside))
 
     if identification_link:
         from ..drive_packs.identification_link import classify_payload  # noqa: PLC0415
