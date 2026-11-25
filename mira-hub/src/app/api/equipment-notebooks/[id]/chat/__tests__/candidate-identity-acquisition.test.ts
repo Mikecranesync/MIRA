@@ -44,6 +44,7 @@ const ragMock = vi.hoisted(() => ({
   appendManualContext: vi.fn((p: string) => p),
   buildManualUserContent: vi.fn((q: string) => q),
   corpusManufacturers: vi.fn(async () => [] as string[]),
+  corpusModelLabels: vi.fn(async () => [] as { manufacturer: string; model: string; rows: number }[]),
   manufacturerFromObservationText: vi.fn(() => null as string | null),
   resolveModelFromObservationText: vi.fn((_text: string) => ({ model: null as string | null, ambiguous: false })),
 }));
@@ -148,6 +149,7 @@ beforeEach(() => {
   nbMock.validateChatSources.mockResolvedValue({ ok: false, error: "no_sources_selected" });
   ragMock.retrieveNodeChunks.mockResolvedValue([]);
   ragMock.corpusManufacturers.mockResolvedValue([]); // RC1: the corpus does not know this maker
+  ragMock.corpusModelLabels.mockResolvedValue([]);
   acqMock.acquisitionEnabled.mockReturnValue(true);
   acqMock.startManualAcquisition.mockResolvedValue(true);
   acqMock.readAcquisition.mockResolvedValue(null);
@@ -278,6 +280,33 @@ describe("#4160 S6 RC1 — candidate identity proposal when the corpus misses", 
     const f = await frames(res);
     expect(f.find((x) => x.kind === "identity_proposal")).toBeUndefined();
     expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+  });
+});
+
+describe("#4095 gap 1 — a library model typed with no maker (AI-panel battery 2026-11-25)", () => {
+  const PF525 = [{ manufacturer: "Rockwell Automation", model: "PowerFlex 525", rows: 7547 }];
+
+  it("proposes the library's maker for 'PowerFlex 525' and starts no search for a fault question", async () => {
+    ragMock.corpusManufacturers.mockResolvedValue(["Rockwell Automation"]);
+    ragMock.corpusModelLabels.mockResolvedValue(PF525);
+    const f = await frames(await POST(req({ message: "What does PowerFlex 525 fault F004 mean?", mode: "general" }), params));
+    expect(f.find((x) => x.kind === "identity_proposal")).toMatchObject({ manufacturer: "Rockwell Automation", model: "PowerFlex 525" });
+    expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+    expect(ragMock.retrieveManualChunks).not.toHaveBeenCalled();
+  });
+
+  it("control: a typed maker keeps the corpus reader's proposal, in the technician's spelling", async () => {
+    ragMock.corpusManufacturers.mockResolvedValue(["Rockwell Automation"]);
+    ragMock.corpusModelLabels.mockResolvedValue([...PF525, { manufacturer: "Rockwell Automation", model: "SLC 5/03", rows: 900 }]);
+    const f = await frames(await POST(req({ message: "Find the manual for my Allen-Bradley SLC 5/03", mode: "general" }), params));
+    expect(f.find((x) => x.kind === "identity_proposal")).toMatchObject({ manufacturer: "Allen-Bradley", model: "SLC 5/03" });
+  });
+
+  it("control: a model the library does not hold proposes nothing", async () => {
+    ragMock.corpusManufacturers.mockResolvedValue(["Rockwell Automation"]);
+    ragMock.corpusModelLabels.mockResolvedValue([]);
+    const f = await frames(await POST(req({ message: "What does PowerFlex 525 fault F004 mean?", mode: "general" }), params));
+    expect(f.find((x) => x.kind === "identity_proposal")).toBeUndefined();
   });
 });
 
