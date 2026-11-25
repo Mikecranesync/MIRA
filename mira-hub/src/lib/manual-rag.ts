@@ -1,5 +1,6 @@
 import type { PoolClient } from "pg";
 import { citationPageLabel } from "@/lib/citation-page";
+import { displayPage } from "@/capabilities/citation-display-page";
 import type { IdentityStatus } from "@/lib/equipment-notebooks";
 import { familySqlTerms, inferEquipmentType } from "@/lib/equipment-type";
 import { manufacturerInGroup, manufacturerSearchNames, normalizeManufacturer } from "@/lib/manufacturerNormalize";
@@ -3409,11 +3410,9 @@ function citationIndex(chunks: ManualChunk[]): Map<string, number> {
  * chunkIndex is null) still render it. Display-only — never mutates stored data,
  * and `sourceKey` still keys on the raw page so citation numbering is unchanged.
  */
-export function displayPage(c: Pick<ManualChunk, "sourcePage" | "chunkIndex">): number | null {
-  if (c.sourcePage == null) return null;
-  if (c.chunkIndex != null && c.sourcePage === c.chunkIndex) return null;
-  return c.sourcePage;
-}
+// Implementation lives in capabilities/citation-display-page.ts so routes can use it without
+// importing this module (tests mock manual-rag wholesale). Re-exported: callers are unchanged.
+export { displayPage };
 
 /**
  * Build the grounded context block for the system prompt. Each chunk is labelled

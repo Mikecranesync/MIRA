@@ -234,6 +234,7 @@ import {
   type AdmittedCover,
   type ManualChunk,
 } from "@/lib/manual-rag";
+import { displayPage } from "@/capabilities/citation-display-page";
 import { inferEquipmentType } from "@/lib/equipment-type";
 import {
   sanitizeHistory,
@@ -503,6 +504,21 @@ export const FIELD_OBSERVATION_DIRECTIVE = `FIELD OBSERVATIONS — this rule out
 
 /** Build numbered, per-doc citations consistent with appendManualContext's [n]
  *  blocks (same ordering source: the chunk array). */
+/** The raw-page dedup key shared by buildCitations and the ratings gate, so [n] stays aligned. */
+function citationKeyOf(c: ManualChunk): string {
+  return `${c.sourceUrl}::${c.sourcePage ?? ""}`;
+}
+
+/** Per chunk, the citationId buildCitations gives it (same raw-page key, same order). */
+export function chunkCitationIds(chunks: ManualChunk[]): string[] {
+  const ids = new Map<string, string>();
+  return chunks.map((c) => {
+    const key = citationKeyOf(c);
+    if (!ids.has(key)) ids.set(key, String(ids.size + 1));
+    return ids.get(key)!;
+  });
+}
+
 async function buildCitations(
   tenantId: string,
   notebookId: string,
@@ -511,13 +527,14 @@ async function buildCitations(
 ): Promise<EvidenceCitation[]> {
   const seen = new Map<string, EvidenceCitation>();
   for (const c of chunks) {
-    const key = `${c.sourceUrl}::${c.sourcePage ?? ""}`;
+    const key = citationKeyOf(c);
     if (seen.has(key)) continue;
     seen.set(key, {
       citationId: String(seen.size + 1),
       docId: c.docId ?? "",
       sourceTitle: citationTitle(c),
-      page: c.sourcePage,
+      // Shown page: the #2910 guard hides a page that is only the chunk ordinal (#5955).
+      page: displayPage(c),
       fileId: null,
       // A manufacturer manual's own address, so the reader can open it; only a
       // place a browser can actually go (http/https) is carried.
@@ -5358,13 +5375,17 @@ async function handleChatTurn(
         // excerpts do not say …" still approves, and a refusal's text is shown to the technician.
         if (!gate || !served || !docGrounded || uncitedDocumentClaim) return null;
         const used = citationsUsedInAnswer(answerText, citations);
+        const usedIds = new Set(used.map((u) => u.citationId));
+        const idOfChunk = chunkCitationIds(chunks);
         return ratingColumnFinding(
           message,
           answerText,
-          chunks.map((c) => {
-            const title = citationTitle(c);
-            return { content: c.content, title, page: c.sourcePage, cited: used.some((u) => u.sourceTitle === title && u.page === c.sourcePage) };
-          }),
+          chunks.map((c, i) => ({
+            content: c.content,
+            title: citationTitle(c),
+            page: displayPage(c),
+            cited: usedIds.has(idOfChunk[i]),
+          })),
         );
       })();
       if (ratingColumn) {
