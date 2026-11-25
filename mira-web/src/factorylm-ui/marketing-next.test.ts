@@ -135,7 +135,7 @@ describe("next FactoryLM public adapter", () => {
     expect(await (await app().request("/llms.txt")).json()).toMatchObject({ upstream: true });
   });
 
-  test.each(["/", "/mira", "/about", "/start", "/demo", "/limitations", "/free-technicians"])("%s has search-length tags, a JPEG preview and valid structured data", async (path) => {
+  test.each(["/", "/mira", "/about", "/start", "/demo", "/limitations", "/free-technicians", "/powerflex-525-fault-codes"])("%s has search-length tags, a JPEG preview and valid structured data", async (path) => {
     process.env.FACTORYLM_MARKETING_NEXT = "true";
     const html = await (await app().request(path)).text();
     const decode = (s: string) => s.replaceAll("&#x27;", "'").replaceAll("&quot;", '"').replaceAll("&amp;", "&");
@@ -152,6 +152,19 @@ describe("next FactoryLM public adapter", () => {
     const image = await app().request("/factorylm-next-assets/assets/og-image.jpg");
     expect(image.status).toBe(200);
     expect(image.headers.get("content-type")).toBe("image/jpeg");
+  });
+
+  test("the PowerFlex 525 fault list serves all 48 manual-cited codes, and the old /faults URL lands on it", async () => {
+    process.env.FACTORYLM_MARKETING_NEXT = "true";
+    const html = await (await app().request("/powerflex-525-fault-codes")).text();
+    const rows = [...html.matchAll(/<tr><td><a href="\/drive-commander\/powerflex-525\/faults\/(F\d{3})">/g)].map((m) => m[1]);
+    expect(rows).toHaveLength(48);
+    expect(new Set(rows).size).toBe(48);
+    expect(html).toContain("<td>UnderVoltage</td><td>Type 1</td><td>p.161</td>");
+    expect(html).toContain("520-UM001O-EN-E");
+    const moved = await app().request("/drive-commander/powerflex-525/faults");
+    expect(moved.status).toBe(302);
+    expect(moved.headers.get("location")).toBe("/powerflex-525-fault-codes");
   });
 
   test("the legacy sitemap drops retired pages and lists every new page, only while the new site is on", async () => {
