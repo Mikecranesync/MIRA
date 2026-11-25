@@ -1361,6 +1361,13 @@ describe("currentManualSearchStatus — recomputed fresh, never a stale snapshot
       expect(status?.readySourceDocId).toBeUndefined();
     });
 
+    it("#5958 composition: after a grounded answer it still waits for linked sources rather than settling", async () => {
+      db.readRow = { ...candidateReviewRec, state: "complete", match_state: "verified", doc_id: "d1" };
+      db.sourceRow = { match_state: "verified", auto_key: confirmedKey };
+      const status = await currentManualSearchStatus("t", "nb", confirmedIdentity, null, [], { env: ON, groundedTurn: true });
+      expect(status).toMatchObject({ sourceState: "preparing", running: true, message: "The manual is being added to Sources." });
+    });
+
     it("reports a removed source separately from a disabled or unavailable source", async () => {
       db.readRow = { ...candidateReviewRec, state: "complete", match_state: "verified", doc_id: "d1" };
       const status = await currentManualSearchStatus("t", "nb", confirmedIdentity, null, [], { env: ON });

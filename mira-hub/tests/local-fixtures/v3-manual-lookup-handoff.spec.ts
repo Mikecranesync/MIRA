@@ -17,6 +17,8 @@ const COMPONENT_DOC = "44444444-4444-4444-8444-444444444444";
 const COMPONENT_LABEL = "Drive B · ABB ACS355";
 const COMPONENT_MANUAL = "ABB component manual fixture";
 const COMPONENT_VERSION = 3;
+// What the chat route saves on an answer asked under a selected component (componentAttributionEntry).
+const COMPONENT_ATTRIBUTION = { kind: "component_attribution", componentId: COMPONENT_ID, revision: 1, selectionVersion: COMPONENT_VERSION, label: COMPONENT_LABEL };
 const IDENTITY = { manufacturer: "AutomationDirect", model: "GS11N-20P2" };
 const STARTED_AT = "2026-11-21T12:00:00.000Z";
 const SOURCE = {
@@ -163,22 +165,26 @@ for (const mode of ["preparing", "ready", "opening", "lookup-failed", "safety", 
         };
         const savedAnswer = asked && {
           id: "saved-answer", clientRequestId: asked.clientRequestId, question: QUESTION, answerStatus: "answered",
-          answerText: ANSWER, evidence: [citationEntry], createdAt: new Date().toISOString(),
+          answerText: ANSWER, evidence: component ? [citationEntry, COMPONENT_ATTRIBUTION] : [citationEntry], createdAt: new Date().toISOString(),
         };
-        const savedTurns = [savedLookup, savedAnswer].filter(Boolean) as { id: string; clientRequestId: string }[];
-        const manualSearch = confirmed ? {
+        const savedTurns = [savedLookup, savedAnswer].filter(Boolean) as { id: string; clientRequestId: string; evidence: { kind?: string }[] }[];
+        const newest = savedTurns.at(-1);
+        // #5750: as the detail route does, an answer asked under a selected component is about that
+        // component, so the project's status is withheld there (manualSearchScope "other_model").
+        const componentAnswer = Boolean(newest?.evidence.some(entry => entry.kind === "component_attribution"));
+        const manualSearch = confirmed && !componentAnswer ? {
           ...IDENTITY, startedAt: STARTED_AT, running: !ready && !lostManual,
           ...(ready ? { sourceState: "ready", readySourceDocId: DOC, message: "Exact fixture manual is ready in Sources." } :
             lostManual ? { sourceState: "unavailable", message: "The fixture manual is unavailable." } :
             { sourceState: "preparing", message: "Preparing the fixture manual." }),
         } : null;
-        const newest = savedTurns.at(-1);
         return route.fulfill(json({
           ...oracle.detailEmpty,
           notebook: confirmed ? { ...notebook, ...IDENTITY, identityStatus: "user_confirmed" } : notebook,
           turns: savedTurns,
           sources: ready || component ? [source] : [],
           manualSearch,
+          ...(confirmed && componentAnswer ? { manualSearchScope: "other_model" } : {}),
           // #5750: as the detail route does, a thread-scoped read names the saved answer its status
           // was checked against (the newest turn); the Hub shows the status under that answer only.
           ...(manualSearch ? { manualSearchAnswer: newest ? { turnId: newest.id, clientRequestId: newest.clientRequestId ?? null } : null } : {}),
@@ -209,7 +215,11 @@ for (const mode of ["preparing", "ready", "opening", "lookup-failed", "safety", 
       })]);
       lostManual = true;
       answerHistory.release();
-      await expect(page.getByText("The fixture manual is unavailable.", { exact: true })).toBeVisible();
+      await expect.poll(() => savedAnswerReads).toBeGreaterThan(0);
+      await expect(page.locator('[data-turn-id="saved-answer-a"]')).toHaveCount(1);
+      // The saved answer was asked under the selected component: the project's status is withheld
+      // there, so no project status line is shown, and the component's citation stays.
+      await expect(page.locator('[data-part-type="manual_search_status"]')).toHaveCount(0);
       await expect(citation).toBeVisible();
       return;
     }
