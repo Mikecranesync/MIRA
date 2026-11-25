@@ -2358,7 +2358,7 @@ async function handleChatTurn(
         evidence_sufficient: false,
         ungrounded_unit_claim: false,
         safety_outcome: {
-          layer: "pre_retrieval_judge",
+          layer: "pre_llm_trigger",
           outcome: "block",
           flagged: true,
           violation: `${judgeResult.verdict}_question`,
