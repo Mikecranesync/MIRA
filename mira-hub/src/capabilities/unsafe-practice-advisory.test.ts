@@ -32,12 +32,11 @@ describe("corpus: the shape is what this file asserts", () => {
   it("has the two reported asks, every Codex scenario and both contracts", () => {
     expect(cases.filter((c) => c.src === "rosa")).toHaveLength(3);
     const codex = new Set(cases.filter((c) => c.src.startsWith("codex-")).map((c) => c.src));
-    for (const f of ["codex-r1-F1", "codex-r1-F2", "codex-r1-F3", "codex-r2-F1", "codex-r2-F3", "codex-r2-F5", "codex-r3-F7", "codex-r3-F8", "codex-r3-F9", "codex-r3-F10", "codex-r3-F11"]) {
+    for (const f of ["codex-r1-F1", "codex-r1-F2", "codex-r1-F3", "codex-r2-F1", "codex-r2-F3", "codex-r2-F5", "codex-r3-F7", "codex-r3-F8", "codex-r3-F9", "codex-r3-F10", "codex-r3-F11", "codex-r4-F12", "codex-r4-F13"]) {
       expect(codex.has(f)).toBe(true);
     }
     expect(cases.filter((c) => c.must?.length).length).toBeGreaterThanOrEqual(80);
-    expect(cases.filter((c) => c.never?.length).length).toBeGreaterThanOrEqual(45);
-    for (const c of cases) for (const k of [...(c.must ?? []), ...(c.never ?? [])]) expect(CLASS[k]).toBeDefined();
+    expect(cases.filter((c) => c.never?.length).length).toBeGreaterThanOrEqual(35);    for (const c of cases) for (const k of [...(c.must ?? []), ...(c.never ?? [])]) expect(CLASS[k]).toBeDefined();
   });
 });
 

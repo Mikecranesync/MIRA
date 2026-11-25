@@ -3984,9 +3984,11 @@ async function handleChatTurn(
   // takes the general lane, as above.
   // One invariant, photo or not: the card with no retrieved chunks gets the fixed reply. A photo
   // reading cannot tell whether it supports the question asked (#5905 Codex r3 F11), so it
-  // unlocks nothing here; answering the photo-backed part under the card is a follow-up.
+  // unlocks nothing here; answering the photo-backed part under the card is a follow-up (#5936).
+  // The same holds for a recorded machine window (#5905 Codex r4 F15): telemetry cannot support a
+  // cleaning or cabinet procedure, so a grounded machine entry does not lift this abstain either.
   const unsafePracticeAbstain = Boolean(unsafePracticeCard);
-  if (componentHold || (chunks.length === 0 && (!general || libraryNotForAsk || missingModelManual || noEvidenceForMachine || unidentifiedServiceText || photoPartLookup || photoPartCompatibilityText || unboundManualRequest || unsafePracticeAbstain) && !groundedMachineEntry && !safetyTrigger)) {
+  if (componentHold || (chunks.length === 0 && (((!general || libraryNotForAsk || missingModelManual || noEvidenceForMachine || unidentifiedServiceText || photoPartLookup || photoPartCompatibilityText || unboundManualRequest) && !groundedMachineEntry) || unsafePracticeAbstain) && !safetyTrigger)) {
     // Gate G — abstain honestly, persist the turn, never call the provider.
     // #4015: "couldn't find that in the documentation I have", not "I don't have
     // the manual" — a zero-hit scoped search does not prove the manual is absent

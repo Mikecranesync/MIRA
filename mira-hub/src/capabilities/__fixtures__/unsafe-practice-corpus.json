@@ -1,5 +1,5 @@
 {
- "_doc": "#5864 / #5905 frozen corpus, written BEFORE the topic detector so it is not fitted to it. must = classes that must get their caution; never = classes that must stay silent; a class in neither list may get its caution (a standing caution is acceptable there). src: rosa = the two reported staging asks; codex-rN-Fk = a Codex finding; test = an earlier unit-test case; gen = a generated variant. Cases with src=held were a held-out adversarial batch written after the first topic detector, scored once before any change (topic 20/30 recall and 5/12 silent; old grammar detector 6/30 and 11/12), then folded in with the words they exposed. Cases with src=paired put a real hazard beside each exclusion word (written by tracing the exclusions, so a worst case); scored once before any change: topic 0/18 recall and 1/3 silent, old 2/18 and 3/3. Fixed by clause breaks and narrower exclusions, then folded in. Cases with src=pin were added after the mutation proof showed two narrowing rules unpinned (the state after a copula; the verb object stopping at 'and').",
+ "_doc": "#5864 / #5905 frozen corpus, written BEFORE the topic detector so it is not fitted to it. must = classes that must get their caution; never = classes that must stay silent; a class in neither list may get its caution (a standing caution is acceptable there). src: rosa = the two reported staging asks; codex-rN-Fk = a Codex finding; test = an earlier unit-test case; gen = a generated variant. Cases with src=held were a held-out adversarial batch written after the first topic detector, scored once before any change (topic 20/30 recall and 5/12 silent; old grammar detector 6/30 and 11/12), then folded in with the words they exposed. Cases with src=paired put a real hazard beside each exclusion word (written by tracing the exclusions, so a worst case); scored once before any change: topic 0/18 recall and 1/3 silent, old 2/18 and 3/3. Fixed by clause breaks and narrower exclusions, then folded in. Cases with src=pin were added after the mutation proof showed two narrowing rules unpinned (the state after a copula; the verb object stopping at 'and'). Codex round 4 (post-cap) found two hazards eaten by exclusions that read past the next word (F12 an alarm word, F13 a nearby disconnect); those exclusions were removed, so the ten never cases they guarded became accepted cautions (each carries a note), and the r4 cases were added.",
  "cases": [
   {
    "src": "rosa",
@@ -733,38 +733,28 @@
   },
   {
    "src": "test",
-   "never": [
-    "enclosure"
-   ],
-   "text": "In the breaker panel, leave the breaker open and lock it out before you start"
+   "text": "In the breaker panel, leave the breaker open and lock it out before you start",
+   "note": "accepted caution since Codex r4: exclusions that read past the next word were removed (F12, F13)"
   },
   {
    "src": "test",
-   "never": [
-    "enclosure"
-   ],
-   "text": "Can I leave the MCC breaker open and lock it out?"
+   "text": "Can I leave the MCC breaker open and lock it out?",
+   "note": "accepted caution since Codex r4: exclusions that read past the next word were removed (F12, F13)"
   },
   {
    "src": "test",
-   "never": [
-    "enclosure"
-   ],
-   "text": "leave the MCC disconnect open"
+   "text": "leave the MCC disconnect open",
+   "note": "accepted caution since Codex r4: exclusions that read past the next word were removed (F12, F13)"
   },
   {
    "src": "test",
-   "never": [
-    "enclosure"
-   ],
-   "text": "Can I leave the switchgear disconnect open?"
+   "text": "Can I leave the switchgear disconnect open?",
+   "note": "accepted caution since Codex r4: exclusions that read past the next word were removed (F12, F13)"
   },
   {
    "src": "test",
-   "never": [
-    "enclosure"
-   ],
-   "text": "leave the electrical panel breaker open"
+   "text": "leave the electrical panel breaker open",
+   "note": "accepted caution since Codex r4: exclusions that read past the next word were removed (F12, F13)"
   },
   {
    "src": "codex-r3-F10",
@@ -881,10 +871,8 @@
   },
   {
    "src": "gen",
-   "never": [
-    "enclosure"
-   ],
-   "text": "open the MCC drawing in the manual"
+   "text": "open the MCC drawing in the manual",
+   "note": "accepted caution since Codex r4: exclusions that read past the next word were removed (F12, F13)"
   },
   {
    "src": "gen",
@@ -895,10 +883,8 @@
   },
   {
    "src": "gen",
-   "never": [
-    "enclosure"
-   ],
-   "text": "switch the disconnect to open on the switchgear before you start"
+   "text": "switch the disconnect to open on the switchgear before you start",
+   "note": "accepted caution since Codex r4: exclusions that read past the next word were removed (F12, F13)"
   },
   {
    "src": "gen",
@@ -931,10 +917,8 @@
   },
   {
    "src": "gen",
-   "never": [
-    "enclosure"
-   ],
-   "text": "open the valve on the coolant tank next to the electrical cabinet"
+   "text": "open the valve on the coolant tank next to the electrical cabinet",
+   "note": "accepted caution since Codex r4: exclusions that read past the next word were removed (F12, F13)"
   },
   {
    "src": "test",
@@ -1212,10 +1196,8 @@
   },
   {
    "src": "held",
-   "never": [
-    "screen"
-   ],
-   "text": "how do I clean up the alarm history on the HMI"
+   "text": "how do I clean up the alarm history on the HMI",
+   "note": "accepted caution since Codex r4: exclusions that read past the next word were removed (F12, F13)"
   },
   {
    "src": "held",
@@ -1339,10 +1321,8 @@
   },
   {
    "src": "held",
-   "never": [
-    "enclosure"
-   ],
-   "text": "open the MCC bucket breaker"
+   "text": "open the MCC bucket breaker",
+   "note": "accepted caution since Codex r4: exclusions that read past the next word were removed (F12, F13)"
   },
   {
    "src": "held",
@@ -1548,6 +1528,37 @@
     "enclosure"
    ],
    "text": "leave the MCC open and the manual says otherwise"
+  },
+  {
+   "src": "codex-r4-F12",
+   "must": [
+    "screen"
+   ],
+   "text": "Can I wipe the HMI while alarms are active and the line is running?"
+  },
+  {
+   "src": "codex-r4-F12",
+   "text": "clean up the HMI alarm log",
+   "note": "accepted caution since Codex r4: the alarm/log exclusion was removed"
+  },
+  {
+   "src": "codex-r4-F13",
+   "must": [
+    "enclosure"
+   ],
+   "text": "The electrical cabinet door is open beside the disconnect. Can I leave it that way overnight?"
+  },
+  {
+   "src": "codex-r4-F13",
+   "must": [
+    "enclosure"
+   ],
+   "text": "MCC cabinet door open near the breaker"
+  },
+  {
+   "src": "codex-r4-F13",
+   "text": "leave the MCC breaker open",
+   "note": "accepted caution since Codex r4: the switching-device exclusion was removed"
   }
  ]
 }
