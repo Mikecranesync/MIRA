@@ -273,25 +273,44 @@ const sameFamily = (a: ModelNumber, b: ModelNumber) => a.key === b.key || lookAl
 /** The same number, or two numbers of one family. */
 export const sameModelFamily = sameFamily;
 
-// #5720/#5416: Fault codes (F/A/C/N + 5 digits), port names (PORT + digits),
-// and registers (R + 4+ digits) are not model numbers. Neither are display codes
-// like "L24" or fault-code variants like "F.30001." (first-of-several notation).
-const FAULT_CODE_RE = /^[FACN]\d{5}$/;
+// #5720/#5416: Port names (PORT + digits) and registers (R + 4+ digits) are not
+// model numbers. Display codes like "L24" (single letter + 1-2 digits, excluding
+// fault/alarm prefixes) are also filtered. NOTE: Fault codes (F/A/C/N + digits)
+// are NOT filtered here because safety stops need to call them out in the unlisted
+// numbers. Instead, they are handled separately in the model-mismatch logic.
 const PORT_RE = /^PORT\d+$/;
 const REGISTER_RE = /^R\d{4,}$/;
-const DISPLAY_CODE_RE = /^[A-Z]\d{1,3}$/;
-// F.xxxxx. notation (first of several faults) — 1-6 digits, optionally with dots.
-const FAULT_DOT_RE = /^F\.?\d{1,6}\.?$/;
+// Display codes: single letter + 1-2 digits, but NOT F/A/C/N/R (those are faults/registers).
+// This excludes real short model names like S7, M171 while catching L24, etc.
+// Conservative: only 1-2 digits to avoid catching legitimate 3-digit model suffixes.
+const DISPLAY_CODE_RE = /^[BDEGHIJKLMOPQSTUVWXYZ]\d{1,2}$/;
 
-/** #5720/#5416: A token is not a model number when it matches fault-code,
- *  port, register, or display-code shapes. */
+/** #5720/#5416: A token is not a model number when it matches port, register,
+ *  or display-code shapes. Fault codes are handled separately. */
 function isNotModelNumber(n: ModelNumber): boolean {
   return (
-    FAULT_CODE_RE.test(n.key) ||
     PORT_RE.test(n.key) ||
     REGISTER_RE.test(n.key) ||
-    DISPLAY_CODE_RE.test(n.key) ||
-    FAULT_DOT_RE.test(n.key)
+    DISPLAY_CODE_RE.test(n.key)
+  );
+}
+
+// Fault codes (F/A/C/N + 4-5 digits) and fault-dot notation (F.xxxxx.)
+// are recognized but NOT filtered from unlistedModelNumbers - they're needed
+// for safety stops to call them out. Instead, they're filtered from causing
+// model-mismatch refusals (see isFaultOrDisplayCode below).
+const FAULT_CODE_RE = /^[FACN]\d{4,5}$/;
+const FAULT_DOT_RE = /^F\.?\d{1,6}\.?$/;
+
+/** Check if a model number is actually a fault/alarm/display code that shouldn't
+ *  cause model-mismatch refusals (but can still be called out in safety stops). */
+export function isFaultOrDisplayCode(n: ModelNumber): boolean {
+  return (
+    FAULT_CODE_RE.test(n.key) ||
+    FAULT_DOT_RE.test(n.key) ||
+    PORT_RE.test(n.key) ||
+    REGISTER_RE.test(n.key) ||
+    DISPLAY_CODE_RE.test(n.key)
   );
 }
 
