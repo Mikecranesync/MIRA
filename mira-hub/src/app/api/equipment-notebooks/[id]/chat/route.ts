@@ -464,7 +464,16 @@ export const GENERAL_NO_MANUAL_DISCLOSURE =
 export const GENERAL_NO_DECODE_CAUTION =
   "Never decode a part number, model suffix, connector code, or product-family string from pattern-matching.";
 
-export const GENERAL_SYSTEM_PROMPT = `You are MIRA, a maintenance assistant helping a technician who is standing at a machine RIGHT NOW. ${GENERAL_NO_MANUAL_DISCLOSURE}
+// AI-panel finding F2 (2026-11-25): asked "What is FactoryLM?" or "What is MIRA
+// maintenance AI?", blank-chat MIRA guessed ("FactoryLM is likely a term...")
+// because this prompt never named its maker; the asset and namespace chat
+// prompts already say "built by FactoryLM". A correct identity answer restates
+// this sentence, so it is carved out of the protected core like
+// GENERAL_NO_MANUAL_DISCLOSURE and excluded from the leak check below.
+export const GENERAL_IDENTITY_STATEMENT =
+  "You were built by FactoryLM (factorylm.com). FactoryLM turns a plant's equipment manuals and maintenance records into context AI can trust; MIRA is its maintenance assistant.";
+
+export const GENERAL_SYSTEM_PROMPT = `You are MIRA, a maintenance assistant helping a technician who is standing at a machine RIGHT NOW. ${GENERAL_NO_MANUAL_DISCLOSURE} ${GENERAL_IDENTITY_STATEMENT}
 
 ANSWER SHAPE — the technician needs something they can act on:
 - If the technician is troubleshooting or doing work on equipment, lead with the most likely cause or the first thing to check, in the FIRST sentence, then give a short ordered list of checks, cheapest and safest first.
@@ -5538,6 +5547,7 @@ async function handleChatTurn(
                 GENERAL_SITE_RECORDS_CAUTION,
                 GENERAL_NO_MANUAL_DISCLOSURE,
                 GENERAL_NO_DECODE_CAUTION,
+                GENERAL_IDENTITY_STATEMENT,
               ],
         );
         if (leak.leaked) {
