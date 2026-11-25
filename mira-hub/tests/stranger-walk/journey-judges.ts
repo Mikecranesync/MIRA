@@ -58,6 +58,26 @@ export type RenderedPart = { text: string; opacities: readonly number[] };
 export const readableTexts = (parts: readonly RenderedPart[]): string[] =>
   parts.filter((p) => p.opacities.every((o) => o > 0)).map((p) => p.text);
 
+/** One rendered conversation turn as the browser shows it (`.fl-turn--aui`). */
+export type RenderedTurn = { id: string; role: string; text: string };
+
+/**
+ * The saved answer row for THIS send, or null (#5965). A persisted row renders as `<rowId>-q` (the
+ * question) and `<rowId>-a` (the answer) (to-interaction.ts `turnsFromPersisted`). The answer must be
+ * the one assistant row that was not on screen before the send, and its question turn must show the
+ * question that was sent. A stale history (an older identical stop and no new row), or more than one
+ * new row, binds nothing.
+ */
+export function savedRowFor(beforeIds: readonly string[], after: readonly RenderedTurn[], question: string): string | null {
+  const fresh = after.filter(
+    (t) => t.role === "assistant" && t.id.endsWith("-a") && !t.id.startsWith("live-") && !beforeIds.includes(t.id),
+  );
+  if (fresh.length !== 1) return null;
+  const id = fresh[0].id;
+  const asked = after.find((t) => t.role === "user" && t.id === `${id.slice(0, -2)}-q`);
+  return asked && collapse(asked.text).includes(collapse(question)) ? id : null;
+}
+
 /** The served title of the stop's manual-warning pointer (route.ts pointerCitations, #5349). */
 export const WARNING_POINTER_TITLE = "Manual warning";
 

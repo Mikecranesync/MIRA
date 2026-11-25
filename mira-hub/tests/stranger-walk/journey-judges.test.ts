@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { energizedWorkStop } from "@/capabilities/energized-work-stop";
 
-import { PINNED_S5B_STOP, WARNING_POINTER_TITLE, judgeCautionPointer, readableTexts, servedTurnOf, visible } from "./journey-judges";
+import { PINNED_S5B_STOP, WARNING_POINTER_TITLE, judgeCautionPointer, readableTexts, savedRowFor, servedTurnOf, visible } from "./journey-judges";
 
 const FILE = "55026402-a378-449f-ab8a-2d6a3ee9e101";
 const WARNING_CITE = { citationId: "1", docId: "d", sourceTitle: WARNING_POINTER_TITLE, page: 5, fileId: FILE, quote: null, originFileId: null };
@@ -196,5 +196,41 @@ describe("readableTexts (#5946: a fully transparent part is not readable)", () =
       FILE,
     );
     expect(j.pass).toBe(false);
+  });
+});
+
+describe("savedRowFor (#5965: the saved row must be THIS send's answer)", () => {
+  const Q = "Can I disconnect the Micro820 serial cable while it is powered?";
+  const OLD = [
+    { id: "r1-q", role: "user", text: Q },
+    { id: "r1-a", role: "assistant", text: PAID2_RENDERED },
+  ];
+  const before = OLD.filter((t) => t.role === "assistant").map((t) => t.id);
+  const fresh = [{ id: "r2-q", role: "user", text: Q }, { id: "r2-a", role: "assistant", text: PAID2_RENDERED }];
+  it("control: the one new row, paired with the question sent, is bound", () => {
+    expect(savedRowFor(before, [...OLD, ...fresh], Q)).toBe("r2-a");
+  });
+  it("control: the question turn may carry other text around the question", () => {
+    expect(savedRowFor(before, [...OLD, { ...fresh[0], text: `You\n${Q}\n10:41` }, fresh[1]], Q)).toBe("r2-a");
+  });
+  it("stale history: only the older identical stop is shown → nothing bound", () => {
+    expect(savedRowFor(before, OLD, Q)).toBeNull();
+  });
+  it("the live turn is never bound, even when a question turn pairs with it", () => {
+    const live = [{ id: "live-1700000000000-q", role: "user", text: Q }, { id: "live-1700000000000-a", role: "assistant", text: PAID2_RENDERED }];
+    expect(savedRowFor(before, [...OLD, ...live], Q)).toBeNull();
+  });
+  it("a new row paired with a different question → nothing bound", () => {
+    expect(savedRowFor(before, [...OLD, { ...fresh[0], text: "What is the GS10 fault code F004?" }, fresh[1]], Q)).toBeNull();
+  });
+  it("a new row whose question turn is missing → nothing bound", () => {
+    expect(savedRowFor(before, [...OLD, fresh[1]], Q)).toBeNull();
+  });
+  it("two new rows → ambiguous, nothing bound", () => {
+    const more = [{ id: "r3-q", role: "user", text: Q }, { id: "r3-a", role: "assistant", text: PAID2_RENDERED }];
+    expect(savedRowFor(before, [...OLD, ...fresh, ...more], Q)).toBeNull();
+  });
+  it("a new assistant node that is not a persisted answer id → nothing bound, even when a question turn pairs with it", () => {
+    expect(savedRowFor(before, [...OLD, fresh[0], { id: "r2-x", role: "assistant", text: PAID2_RENDERED }], Q)).toBeNull();
   });
 });
