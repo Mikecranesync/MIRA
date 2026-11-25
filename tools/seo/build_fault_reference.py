@@ -66,9 +66,9 @@ def rows() -> list[dict]:
 # The flattened manual text shows ONE Type cell shared by each grouped row, which the
 # per-code pack excerpts miss: "F038/F039/F040 ... 2 detected between the drive and
 # motor" and "F041/F042/F043 ... 2 detected between these two output terminals"
-# (520-UM001O-EN-E pp.161-162). F013 is "1(2)": footnote (2), it may be auto-cleared once.
+# (520-UM001O-EN-E pp.161-162). F013 is "1(2)": shown as printed, pointing at footnote (2); its text is not in our corpus.
 TYPE_OVERRIDES = {38: "2", 39: "2", 40: "2", 41: "2", 42: "2", 43: "2"}
-TYPE_NOTES = {13: "Type 1 (auto-restart may clear it, attempted once, ignoring A541)"}
+TYPE_NOTES = {13: "Type 1(2), see footnote (2) on page 161"}
 
 
 FAQ = [
@@ -88,7 +88,10 @@ FAQ = [
         " Rstrt Tries] above 0, the drive attempts to reset the fault itself after A542 [Auto"
         " Rstrt Delay]. Type 2 is Non-Resettable: it may require drive or motor repair, or is"
         " caused by wiring or programming errors, and the cause must be corrected before the"
-        " fault can be cleared. Auto Restart never resets a Type 2 fault.",
+        " fault can be cleared. FactoryLM note (our reading of the table, not Rockwell's wording): the"
+        " manual describes automatic reset only for Type 1 and calls Type 2 Non-Resettable, so do not"
+        " expect Auto Restart to clear a Type 2 fault. Auto Restart makes the drive start itself; see"
+        " the Auto Restart caution on this page.",
     ),
     (
         "Where is the full PowerFlex 525 fault table?",
@@ -124,15 +127,15 @@ def body(rs: list[dict]) -> str:
 {trs}
 </tbody></table></div>
 <h2 id="types">Fault types</h2>
-<p>From the manual's Fault Types table (page 159): <strong>Type 1, Auto-Reset/Run.</strong> When A541 [Auto Rstrt Tries] is set above 0, a timer (A542 [Auto Rstrt Delay]) starts, then the drive attempts to reset the fault itself; if the condition is gone, the fault resets and the drive restarts. <strong>Type 2, Non-Resettable.</strong> "This type of fault may require drive or motor repair, or is caused by wiring or programming errors. The cause of the fault must be corrected before the fault can be cleared." Auto Restart never resets a Type 2 fault.</p>
+<p>From the manual's Fault Types table (page 159): <strong>Type 1, Auto-Reset/Run.</strong> When A541 [Auto Rstrt Tries] is set above 0, a timer (A542 [Auto Rstrt Delay]) starts, then the drive attempts to reset the fault itself; if the condition is gone, the fault resets and the drive restarts. <strong>Type 2, Non-Resettable.</strong> "This type of fault may require drive or motor repair, or is caused by wiring or programming errors. The cause of the fault must be corrected before the fault can be cleared." FactoryLM note (our reading of the table, not Rockwell's wording): the manual describes automatic reset only for Type 1 and calls Type 2 Non-Resettable, so do not expect Auto Restart to clear a Type 2 fault.</p>
 <p>Type 2 in this list: {type2}.</p>
 <div class="safety-card"><p>Auto Restart (A541 [Auto Rstrt Tries], A542 [Auto Rstrt Delay]) makes the drive restart itself. Rockwell: "Use caution when enabling this feature, since the drive attempts to issue its own start command based on user selected programming." Equipment damage and/or personal injury may result if these parameters are used in an inappropriate application. "Do not use this function without considering applicable local, national, and international codes, standards, regulations or industry guidelines."</p></div>
 <h2 id="clear">Clearing a fault (steps from manual page 160)</h2>
-<div class="safety-card"><p>FactoryLM note: lock out per site procedure before working on a faulted drive. Confirm it is safe for the drive and the machine to run before clearing a fault.</p></div>
+<div class="safety-card"><p>FactoryLM note: lock out per site procedure before working on a faulted drive. Confirm it is safe for the drive and the machine to run before clearing a fault, and confirm no run command is present: clearing can let the drive start.</p></div>
 <ol>
 <li>Press Esc to acknowledge the fault. Check b007 [Fault 1 Code] for the most recent fault.</li>
 <li>Address the condition that caused the fault. The cause must be corrected before the fault can be cleared. For a Type 2 fault, do the corrective action listed for that code (pages 161 to 163) before clearing.</li>
-<li>Clear the fault: press Stop if P045 [Stop Mode] is set between 0 and 3, cycle drive power, set A551 [Fault Clear] to 1 "Reset Fault" or 2 "Clear Buffer", or cycle a digital input set to 13 "Clear Fault".</li>
+<li>Once the cause is corrected, clear the fault: press Stop if P045 [Stop Mode] is set between 0 and 3, cycle drive power, set A551 [Fault Clear] to 1 "Reset Fault" or 2 "Clear Buffer", or cycle a digital input set to 13 "Clear Fault".</li>
 </ol>
 <h2 id="faq">Questions</h2>
 {faq}
