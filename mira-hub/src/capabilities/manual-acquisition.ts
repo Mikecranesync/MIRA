@@ -33,6 +33,7 @@ import {
   type DiscoveryResult,
 } from "@/lib/manual-discovery";
 import { safeDownloadPdf, safePdfFilename } from "@/lib/safe-download";
+import { offerableLinkUrl } from "@/capabilities/offerable-link";
 import { assessApplicability, type ApplicabilityVerdict } from "@/lib/manual-applicability";
 import { assessCompleteness, partialManualReason, DIGIT_GLYPH_DIGIT, type Completeness } from "@/capabilities/manual-completeness";
 import type { SpanContext } from "@opentelemetry/api";
@@ -453,6 +454,32 @@ async function acquireInner(
     validated: discovery.validated,
     oemHost: discovery.oemHost,
   };
+
+  // #5910 (#5906 Codex r1 F1): mira-ask accepts http candidates. A link that
+  // fails the public-https policy is neither downloaded (safeDownloadPdf would
+  // refuse it anyway) nor offered for review, where it would become a tappable
+  // insecure link on the phone, a stored URL and a URL in the chat. Only the
+  // host survives; the request and search pages pass the same policy.
+  if (offerableLinkUrl(candidate.url) === null) {
+    let notHttps = true;
+    try {
+      notHttps = new URL(candidate.url).protocol !== "https:";
+    } catch {
+      notHttps = false;
+    }
+    return outcome("download_rejected", {
+      oemRequestUrl: offerableLinkUrl(discovery.oemRequestUrl),
+      searchPageUrl: offerableLinkUrl(discovery.searchPageUrl),
+      candidate: {
+        host: candidate.host,
+        isDirectPdf: discovery.isDirectPdf,
+        validated: discovery.validated,
+        oemHost: discovery.oemHost,
+      },
+      message: "MIRA found a possible manual, but its link is not a secure public web address, so MIRA did not open it. Nothing was added to this notebook.",
+      reason: notHttps ? "not_https" : "invalid_url",
+    });
+  }
 
   // Auto-import ONLY a validated, direct-PDF, OEM-hosted result.
   const autoImport = discovery.validated && discovery.isDirectPdf && discovery.oemHost;
