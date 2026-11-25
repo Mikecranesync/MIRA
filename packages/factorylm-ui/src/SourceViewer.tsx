@@ -1,5 +1,5 @@
 import type { ShellAction, ShellState } from "@factorylm/interaction";
-import type { Dispatch } from "react";
+import { useEffect, type Dispatch } from "react";
 import { isSameSite, openableUrl } from "./links";
 
 export interface SourceViewerProps {
@@ -15,6 +15,20 @@ const KIND_LABEL = {
 
 export function SourceViewer({ state, dispatch }: SourceViewerProps) {
   const source = state.selectedSource;
+
+  useEffect(() => {
+    if (!source) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        dispatch({ type: "select-source", sourceId: null });
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [source, dispatch]);
+
   if (!source) return null;
 
   // Open the document the way any site does: a same-site original (a parked
