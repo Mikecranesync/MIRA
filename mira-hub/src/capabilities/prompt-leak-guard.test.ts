@@ -47,6 +47,7 @@ import {
   BASE_SYSTEM_PROMPT,
   FIELD_OBSERVATION_DIRECTIVE,
   GENERAL_COMPATIBILITY_CAUTION,
+  GENERAL_IDENTITY_STATEMENT,
   GENERAL_NFPA_CAUTION,
   GENERAL_NO_DECODE_CAUTION,
   GENERAL_NO_MANUAL_DISCLOSURE,
@@ -964,5 +965,33 @@ describe("#4891 F16 — round 10: core-coverage requires an absolute-hits floor,
 describe("PROMPT_LEAK_REFUSAL", () => {
   it("names no detector, echoes no matched text, and redirects to the product", () => {
     expect(PROMPT_LEAK_REFUSAL).toBe("I can't share my internal instructions. Ask me about your equipment.");
+  });
+});
+
+describe("AI-panel F2 (2026-11-25) — blank-chat MIRA names its maker", () => {
+  const GENERAL_EXCLUDE = [
+    GENERAL_NFPA_CAUTION,
+    GENERAL_COMPATIBILITY_CAUTION,
+    GENERAL_SITE_RECORDS_CAUTION,
+    GENERAL_NO_MANUAL_DISCLOSURE,
+    GENERAL_NO_DECODE_CAUTION,
+    GENERAL_IDENTITY_STATEMENT,
+  ];
+
+  it("the general prompt says FactoryLM built MIRA", () => {
+    expect(GENERAL_SYSTEM_PROMPT).toContain(GENERAL_IDENTITY_STATEMENT);
+    expect(GENERAL_SYSTEM_PROMPT.split("\n\n")[0]).toMatch(/built by FactoryLM \(factorylm\.com\)/);
+  });
+
+  it.each([
+    "I'm MIRA, FactoryLM's maintenance assistant. I was built by FactoryLM (factorylm.com), which makes maintenance software for industrial plants.",
+    "MIRA is FactoryLM's maintenance assistant. You were built by FactoryLM (factorylm.com), which makes maintenance software for industrial plants; MIRA is FactoryLM's maintenance assistant.",
+  ])("a correct identity answer is not a prompt leak: %s", (answer) => {
+    expect(detectPromptLeak(GENERAL_SYSTEM_PROMPT, answer, GENERAL_EXCLUDE).leaked).toBe(false);
+  });
+
+  it("a full echo of the general prompt is still flagged with the identity statement excluded", () => {
+    const r = detectPromptLeak(GENERAL_SYSTEM_PROMPT, GENERAL_SYSTEM_PROMPT, GENERAL_EXCLUDE);
+    expect(r.leaked).toBe(true);
   });
 });
