@@ -116,7 +116,7 @@ def ask(hub, q: dict[str, Any], stamp: str, diagnostics: bool = False) -> dict[s
     diag: Any = None
     if diagnostics:
         try:  # the turn's own record: which gate replaced or flagged the draft
-            diag = hub.diagnostics(nb["id"], hd.get("x-mira-trace-id"))
+            diag = hub.diagnostics(nb["id"], body["clientRequestId"])  # keyed on it, not trace id
         except RuntimeError as exc:
             diag = {"error": str(exc)[:200]}
     return {
