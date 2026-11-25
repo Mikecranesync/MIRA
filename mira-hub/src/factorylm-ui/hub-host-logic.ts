@@ -9,7 +9,7 @@ import type { EquipmentNotebook, NotebookSource } from "@/lib/equipment-notebook
 import { buildChatBody, isAbortError, type ChatBody, type PersistedTurn, type StreamResult } from "@/components/equipment/notebook-chat-utils";
 import { isSafetyNoticeEntry } from "@/lib/notebook-chat-types";
 import { LEGACY_THREAD_ID, machineNameFor, notebookLabel, threadItemId, type HubNotebook } from "./notebook-tree";
-import { historyFromSavedTurns, type HistoryRow } from "@/capabilities/conversation-history";
+import { hasTerminalSafetyStop, historyFromSavedTurns, type HistoryRow } from "@/capabilities/conversation-history";
 import { contextFor, threadFromPersisted, type HubNotebookMeta } from "./to-interaction";
 
 /** The shell's fixture before any notebook loads: an empty, untitled thread. */

@@ -19,7 +19,7 @@ function sendBody(): string {
 describe("hub-host arms Retry after a retained user abort", () => {
   it("keeps failedBody on a retained interruption that may be retried", () => {
     const send = sendBody();
-    const retained = send.indexOf("const retained = retainedStreamInterruption(err);");
+    const retained = send.indexOf("const retained = retainedStreamInterruption(stop ? stop.carry(err) : err);");
     const arm = send.indexOf("if (shouldArmRetryAfterInterruption(retained)) {");
     const endRetained = send.indexOf("return;", arm);
     expect(retained).toBeGreaterThan(-1);
