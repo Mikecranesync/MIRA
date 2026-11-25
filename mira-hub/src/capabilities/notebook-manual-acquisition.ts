@@ -1392,7 +1392,7 @@ export async function currentManualSearchStatus(
   confirmed: ConfirmedIdentity,
   proposedIdentity: { manufacturer: string; model: string } | null,
   sources: readonly NotebookSource[],
-  deps: { env?: Record<string, string | undefined> } = {},
+  deps: { env?: Record<string, string | undefined>; groundedTurn?: boolean } = {},
 ): Promise<ManualSearchStatus | null> {
   const automaticAcquisition = acquisitionEnabled(tenantId, deps.env);
   const rec = automaticAcquisition ? await readAcquisition(tenantId, notebookId) : null;
@@ -1460,6 +1460,12 @@ export async function currentManualSearchStatus(
     // that includes the attachment before treating this generation as settled.
     return { ...status, running: true, sourceState: "preparing", message: "The manual is being added to Sources." };
   }
+  // The latest answer was already grounded in a document for this confirmed
+  // identity (the shared library can ground it even when this notebook's own
+  // search failed), so a "couldn't download" note under it is noise. Settle
+  // quietly: no message, no URL. Never null — the follower would keep polling
+  // and then show "Still searching". (#5958)
+  if (deps.groundedTurn && basis === "confirmed") return { ...status, running: false };
   const message = acquisitionDeclineText(reconciled, key, `${manufacturer} ${model}`, basis);
   const manualUrl = !reconciled.attached_indexed && !reconciled.source_removed
     ? acquisitionManualUrl(reconciled) : null;

@@ -2,7 +2,8 @@
  * Reopening a project from the sidebar resumes its newest saved conversation (#4681),
  * in a real browser against the production build.
  *
- * Fixture, not acceptance: every /api/** request is answered here, so nothing reaches a
+ * LOCAL fixture (tests/local-fixtures, outside the production-targeting tests/e2e): the server is the
+ * shared loopback-only, credential-free harness (#5731). Fixture, not acceptance: every /api/** request is answered here, so nothing reaches a
  * database or a provider. It proves the host's click policy and what the technician sees;
  * it is NOT staging, provider or device evidence.
  *
@@ -17,10 +18,10 @@
  *   - New chat still mints a fresh thread; a deep link still opens exactly the thread it names.
  */
 import { test, expect, type BrowserContext, type Page } from "@playwright/test";
-import { encode } from "next-auth/jwt";
 import { oracle } from "../fidelity/harness";
+import { installSessionCookie } from "./harness/fixture-harness.cjs";
 
-const AUTH_SECRET = "cc-e2e-fixed-secret-do-not-use-in-prod";
+const PORT = 3941; // must match playwright.v3-project-resume.config.ts
 const TENANT = "11111111-1111-4111-8111-111111111111";
 const USER = "44444444-4444-4444-8444-444444444444";
 const NB_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
@@ -79,11 +80,11 @@ const detailGets: string[] = [];
 type CreateFixture = { created: boolean; listFailures: number };
 
 async function mount(context: BrowserContext, page: Page, baseURL: string, create?: CreateFixture) {
-  const token = await encode({
-    token: { uid: "e2e-project-resume", tid: TENANT, status: "trial", trialExpiresAt: new Date(Date.now() + 30 * 86_400_000).toISOString(), email: "e2e-project-resume@factorylm-test.com" },
-    secret: AUTH_SECRET,
+  // Origin check first, then the per-run secret: nothing is minted for any other origin.
+  await installSessionCookie(context, baseURL, PORT, {
+    uid: "e2e-project-resume", tid: TENANT, status: "trial",
+    trialExpiresAt: new Date(Date.now() + 30 * 86_400_000).toISOString(), email: "e2e-project-resume@factorylm-test.com",
   });
-  await context.addCookies([{ name: "next-auth.session-token", value: token, url: baseURL }]);
   const writes: string[] = [];
   detailGets.length = 0;
   await page.route("**/api/**", async (route) => {

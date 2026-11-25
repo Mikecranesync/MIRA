@@ -1,13 +1,14 @@
 "use client";
 
 import { useState, Suspense } from "react";
-import Link from "next/link";
+import { CreateAccountLink, signInLinkFailure } from "@/factorylm-ui/CreateAccountLink";
 import { useRouter, useSearchParams } from "next/navigation";
 import { signIn } from "next-auth/react";
 import { Factory, Loader2, Eye, EyeOff, Mail, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { API_BASE } from "@/lib/config";
+import { magicLinkRequestBody } from "@/capabilities/magic-link-return";
 
 const MIN_PW = 8;
 // Matches the server-side check in api/auth/magic-link.
@@ -105,16 +106,16 @@ function LoginFormInner() {
       const res = await fetch(`${API_BASE}/api/auth/magic-link/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: email.trim() }),
+        // #5744: the sign-in link returns to the page that sent you here.
+        body: JSON.stringify(magicLinkRequestBody(email, searchParams.get("callbackUrl"))),
       });
-      // The route returns 200 for any valid email whether or not the account
-      // exists (anti-enumeration by construction), 400 for a malformed email.
+      // The canonical account adapter owns offer and setup guidance.
       if (res.ok) {
         setMagicSent(true);
       } else if (res.status === 400) {
         setEmailError("Enter a valid work email.");
       } else {
-        setError("Couldn't send the link. Try again.");
+        setError(signInLinkFailure(res.status));
       }
     } catch {
       setError("Network error. Please try again.");
@@ -347,9 +348,7 @@ function LoginFormInner() {
 
           <p className="text-center text-sm text-slate-400 mt-6">
             Don&apos;t have an account?{" "}
-            <Link href="/signup" className="text-blue-400 hover:text-blue-300 font-medium">
-              Start free trial
-            </Link>
+            <CreateAccountLink />
           </p>
         </div>
       </div>

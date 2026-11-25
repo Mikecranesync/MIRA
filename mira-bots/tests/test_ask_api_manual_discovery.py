@@ -787,9 +787,10 @@ class TestManualDiscoveryCatalogPriority:
     def test_catalog_number_used_when_supplied(self, monkeypatch):
         received = {}
 
-        async def fake_search_manual(make, model, deadline_at=None):
+        async def fake_search_manual(make, model, deadline_at=None, **kwargs):
             received["make"] = make
             received["model"] = model
+            received.update(kwargs)
             return None
 
         monkeypatch.setattr("ask_api.manual_discovery.search_manual", fake_search_manual)
@@ -804,13 +805,16 @@ class TestManualDiscoveryCatalogPriority:
         )
         assert resp.status_code == 200
         assert received["model"] == "25B-D2P3N104"
+        # #5789: an exact part number is not screened like a model string.
+        assert received.get("exact_part_number") is True
 
     def test_model_used_when_no_catalog_number(self, monkeypatch):
         received = {}
 
-        async def fake_search_manual(make, model, deadline_at=None):
+        async def fake_search_manual(make, model, deadline_at=None, **kwargs):
             received["make"] = make
             received["model"] = model
+            received.update(kwargs)
             return None
 
         monkeypatch.setattr("ask_api.manual_discovery.search_manual", fake_search_manual)
@@ -821,6 +825,7 @@ class TestManualDiscoveryCatalogPriority:
         )
         assert resp.status_code == 200
         assert received["model"] == "PowerFlex 525"
+        assert "exact_part_number" not in received
 
 
 class TestIsOemHost:

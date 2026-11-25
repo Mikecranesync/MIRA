@@ -23,7 +23,7 @@ import {
   type ManualSearchStatus,
 } from "@/capabilities/notebook-manual-acquisition";
 import { confirmedCatalogNumber } from "@/capabilities/notebook-manual-identity";
-import { SUBJECT_READ_STEPS } from "@/capabilities/conversation-subject";
+import { DOCUMENT_BASES, SUBJECT_READ_STEPS } from "@/capabilities/conversation-subject";
 import { isComponentAttributionEntry } from "@/capabilities/bench-components/attribution";
 
 export const dynamic = "force-dynamic";
@@ -62,6 +62,14 @@ function latestIdentityProposal(
     }
   }
   return null;
+}
+
+/** True when the newest turn is an answer that came from a document. */
+function latestTurnIsGrounded(
+  turns: readonly { answerStatus?: string | null; basis?: string | null }[],
+): boolean {
+  const last = turns[turns.length - 1];
+  return !!last && last.answerStatus === "answered" && !!last.basis && DOCUMENT_BASES.has(last.basis);
 }
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -128,6 +136,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       },
       latestIdentityProposal(turns),
       sources,
+      ...(latestTurnIsGrounded(turns) ? [{ groundedTurn: true }] : []),
     );
   } catch (err) {
     console.error("[equipment-notebooks] manual search status read failed (continuing without it):", err);

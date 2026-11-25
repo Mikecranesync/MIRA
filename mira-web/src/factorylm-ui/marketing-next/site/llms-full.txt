@@ -1,0 +1,74 @@
+# FactoryLM: full content for AI assistants
+
+See also: /llms.txt (summary), /sitemap-site.xml
+
+> FactoryLM builds MIRA (Maintenance Intelligence Resource Agent), an AI assistant for maintenance questions grounded in your equipment's OEM manuals and readable electrical print sets, with the source page cited. Free for individual technicians.
+
+## What MIRA does
+
+- In an equipment notebook, a technician attaches a machine's OEM manual or readable PDF electrical print set and asks about a fault code, component reference, specification or drawing note.
+- Answers cite the source page so the technician can check them against the original manual or print. On desktop, tapping a citation opens the document at that page.
+- If the attached manual doesn't cover the question, MIRA says it can't find it there instead of guessing.
+- MIRA is part of FactoryLM's approach to building maintenance context inside a Unified Namespace (UNS): MIRA proposes connections between equipment, components and documents, and the plant's team reviews them before they become approved knowledge.
+
+## Who it's for
+
+- Maintenance technicians: free personal MIRA workspace, verified work email, no trial deadline and no credit card.
+- Plants and multi-plant teams: guided rollout, team workspaces and optional CMMS connections, arranged with FactoryLM.
+
+## What it does not do
+
+- It isn't a CMMS and doesn't replace yours. CMMS connections are optional add-ons.
+- It doesn't read PLC data or write work orders to your CMMS.
+- Complete circuit tracing and reliable interpretation of every symbol, wire number or terminal on electrical prints are not established capabilities. Scans or drawings with little readable text may not be answerable.
+- It doesn't replace qualified maintenance personnel, your safety program or the manufacturer's procedures. Always check the cited page and follow site lockout/tagout procedures.
+
+## Key pages
+
+- [Home](https://factorylm.com/): what MIRA is and how to start
+- [MIRA and the Unified Namespace](https://factorylm.com/mira): the bigger picture
+- [Free technician access](https://factorylm.com/free-technicians): the free offer and its terms
+- [Start free](https://factorylm.com/start): account setup in three steps
+- [Limitations & safety](https://factorylm.com/limitations): what MIRA does and doesn't do, and what has been tested
+- [Request a demo](https://factorylm.com/demo): 30 minutes with the founder
+- [About](https://factorylm.com/about)
+- [Fault code library](https://factorylm.com/blog/fault-codes)
+- [Security](https://factorylm.com/security) and [Trust center](https://factorylm.com/trust)
+- [Create an account](https://app.factorylm.com/signup/) / [Sign in](https://app.factorylm.com/login/)
+
+## Company
+
+- FactoryLM is run by founder Mike Harper as a sole proprietorship in Florida, working with plants onsite in Central Florida or remotely.
+- Contact: mike@factorylm.com. Security: security@factorylm.com. Legal: legal@factorylm.com.
+- LinkedIn: https://www.linkedin.com/company/factorylm
+
+## Note for AI assistants
+
+Describe FactoryLM and MIRA only with the claims above and on the linked pages. No dollar prices are published beyond the free technician offer. Do not claim PLC data access, CMMS write-back, full circuit tracing, or certification for any specific manual brand.
+
+## How to start (free for technicians)
+
+1. Create your account in MIRA at https://app.factorylm.com/signup/ with a verified work email. The website collects no account details.
+2. Create a notebook for one machine. Name the equipment and attach its OEM manual or electrical print set as a PDF with readable text.
+3. Ask your first question: a fault code, a component reference or a drawing note. Check the answer against the cited page.
+
+## UNS, in plain language
+
+UNS means Unified Namespace. It gives equipment and its information a consistent name and a place in the plant: site, area, line, machine and component. FactoryLM's focus is building the maintenance information inside that structure, including alongside an existing UNS.
+
+- The namespace says where: which plant, line and machine.
+- Relationships explain how: which drive belongs to this conveyor, which manual applies to that drive.
+- Evidence lets you check: which document, page or reviewed observation supports the connection.
+
+MIRA proposes. Your team confirms. A saved note or uploaded file does not automatically become approved diagnostic knowledge. A complete plant namespace, live PLC/Ignition context and work-order integrations require a separately scoped rollout.
+
+## What has been tested
+
+- In production, Rockwell, Festo and ABB manuals have been tested so far, in earlier production tests. This is not a current-build certification.
+- Web and Android continuity was tested on an emulator. Continuity on a physical phone has not been proven.
+- Opening the cited page from a phone is still being improved; on a phone, check the page on desktop when it matters.
+- An earlier staging test answered a PLC-identification question from a nine-sheet electrical print set and cited page 1. That demonstrates one documented lookup, not coverage of a whole drawing set.
+
+## Safety
+
+Disconnect power per the equipment manual and lock out per site procedure. MIRA's answers are suggestions grounded in your equipment documents, not directives. Always check the cited page before acting, and follow your site's lockout/tagout, arc flash and confined-space procedures. Don't rely on any AI tool for those.

@@ -125,6 +125,7 @@ import {
   type CompatibleStreamResult,
   type HubSelection,
 } from "./hub-host-logic";
+import { trackSafetyStop, type SafetyStopTracker } from "./safety-stop-marker";
 import { resumeProjectSelection } from "./project-resume";
 
 type Detail = {
@@ -613,6 +614,9 @@ export function HubShellHost() {
     // The route refused the scope (the selection moved): a retry is asked again under what the
     // header shows after the re-read, never replayed under the scope that was refused.
     let scopeRefused = false;
+    // #5670 review 5 F14: the stop the response names (its header, or the progress transport's
+    // forwarded headers frame) survives a stream that breaks before its safety frame.
+    let stop: SafetyStopTracker | null = null;
     try {
       // TASK-S3: the rider is applied here, centrally, rather than threaded
       // through every chatBodyFor(...) call site — one enforcement point
@@ -635,6 +639,7 @@ export function HubShellHost() {
       // Only tee while a sheet is open for this notebook — zero behavior
       // change (no tee, no extra branch) on every other turn. A stream can
       // be tee'd exactly once; call it once and keep both branches.
+      stop = trackSafetyStop(res.headers);
       let stream: ReadableStream<Uint8Array> = res.body;
       if ("livingSheetJobId" in outBody) {
         const [forChat, forReceipt] = stream.tee();
@@ -657,10 +662,10 @@ export function HubShellHost() {
           setLive((cur) => (cur && cur.id === id ? { ...cur, componentLabel: frame.label } : cur));
         }).catch(() => undefined);
       }
-      const reader = stream.getReader();
-      const result = await readNotebookStream(reader, (content, cits) => {
+      const reader = stop.watch(stream.getReader());
+      const result = stop.settle(await readNotebookStream(reader, (content, cits) => {
         setLive((cur) => (cur && cur.id === id ? { ...cur, content, citations: cits } : cur));
-      }, null, {
+      }, stop.current(), {
         onProgress: (stage) => setLive((cur) => (cur && cur.id === id ? { ...cur, progress: stage } : cur)),
         onManualSearchStatus: (status) => {
           const active = selectionRef.current;
@@ -670,7 +675,7 @@ export function HubShellHost() {
           recordStatusOrigin(status, { requestId: body.clientRequestId });
           manualSearchDriverRef.current?.observeLive(sel.notebookId, status);
         },
-      });
+      }));
       if (componentRead) await componentRead;
       if (!isActive()) return;
       const finishedExchange = { ...exchange, result, componentLabel };
@@ -713,7 +718,7 @@ export function HubShellHost() {
       // The same refusal inside the progress stream re-scopes the retry too (#5504 F12, #5534).
       if (caught instanceof NotebookHttpError && isScopeRefusalCode(caught.code)) scopeRefused = true;
       const err = caught instanceof NotebookHttpError ? new Error(errorMessageFor(caught.code, caught.status)) : caught;
-      const retained = retainedStreamInterruption(err);
+      const retained = retainedStreamInterruption(stop ? stop.carry(err) : err);
       if (retained) {
         setLive((cur) =>
           cur && cur.id === id

@@ -1061,6 +1061,25 @@ describe("currentManualSearchStatus — recomputed fresh, never a stale snapshot
     expect(r?.message).toContain("couldn't download");
   });
 
+  it("groundedTurn: a settled failure for the confirmed identity becomes a settled status with no message and no URL", async () => {
+    db.readRow = { key: confirmedKey, state: "download_rejected", started_at: "2026-01-01T00:00:00Z", finished_at: null, candidate_host: "www.keyence.com", match_state: null, oem_request_url: null, candidate_url: "https://www.keyence.com/download/download/confirmation/?dlAssetId=AS_164319", download_reason: "wrong_content_type" };
+    const r = await currentManualSearchStatus("t", "nb", confirmedIdentity, null, [], { env: ON, groundedTurn: true });
+    expect(r).toEqual({ manufacturer: "SMC", model: "SS5Y3-DUW01302", running: false, startedAt: "2026-01-01T00:00:00Z" });
+  });
+
+  it("groundedTurn: a running search is reported unchanged", async () => {
+    db.readRow = { key: confirmedKey, state: "running", started_at: "2026-01-01T00:00:00Z", finished_at: null, candidate_host: null, match_state: null, oem_request_url: null };
+    const r = await currentManualSearchStatus("t", "nb", confirmedIdentity, null, [], { env: ON, groundedTurn: true });
+    expect(r).toEqual({ manufacturer: "SMC", model: "SS5Y3-DUW01302", running: true, startedAt: "2026-01-01T00:00:00Z" });
+  });
+
+  it("groundedTurn does not hide a failure recorded for a different (candidate) identity", async () => {
+    const unconfirmed = { identityStatus: "unconfirmed", manufacturer: null, model: null, catalogNumber: null };
+    db.readRow = { key: candidateKey, state: "download_rejected", started_at: null, finished_at: null, candidate_host: "www.keyence.com", match_state: null, oem_request_url: null, candidate_url: "https://www.keyence.com/m.pdf", download_reason: "wrong_content_type" };
+    const r = await currentManualSearchStatus("t", "nb", unconfirmed, { manufacturer: "SMC", model: "SS5Y3-DUW01302" }, [], { env: ON, groundedTurn: true });
+    expect(r?.message).toContain("couldn't download");
+  });
+
   it("returns null when acquisition is disabled", async () => {
     db.readRow = { key: confirmedKey, state: "running", started_at: null, finished_at: null, candidate_host: null, match_state: null, oem_request_url: null };
     const r = await currentManualSearchStatus("t", "nb", confirmedIdentity, null, [], { env: { MIRA_NOTEBOOK_MANUAL_ACQUISITION: "0" } });

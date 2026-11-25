@@ -718,7 +718,7 @@ describe("guidedDeadEndBody — the guided dead-end hand-off (WP-1, owner decisi
 
 describe("manual readiness is scoped to the committed sources", () => {
   const status = { manufacturer: "ABB", model: "ACS355", running: false, sourceState: "ready" as const, readySourceDocId: "exact" };
-  const exact = { docId: "exact", enabledByDefault: true, matchState: "verified", readiness: { canChat: true } };
+  const exact = { docId: "exact", enabledByDefault: true, matchState: "verified" as const, readiness: { canChat: true } };
 
   it("binds ready to the very document supplied to the next send", () => {
     expect(currentReadyManualId(status, [exact])).toBe("exact");

@@ -1,11 +1,11 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { expect, test } from "@playwright/test";
-import { encode } from "next-auth/jwt";
 import type { BenchState } from "../../src/capabilities/bench-components/http";
 import { DOC, FILE, NB, oracle } from "../fidelity/harness";
+import { installSessionCookie } from "./harness/fixture-harness.cjs";
 
-const AUTH_SECRET = "cc-e2e-fixed-secret-do-not-use-in-prod";
+const PORT = 3941; // must match playwright.v3-project-resume.config.ts
 const TENANT = "11111111-1111-4111-8111-111111111111";
 const THREAD = "manual-handoff";
 const LOOKUP = "Find me the manual for this drive.";
@@ -64,11 +64,10 @@ for (const mode of ["preparing", "ready", "opening", "lookup-failed", "safety", 
     const opening = mode === "opening" || lookupFails || component || benchUnavailable;
     const safety = mode === "safety";
     const attachedSafety = mode === "attached-safety";
-    const token = await encode({
-      token: { uid: "e2e-manual-handoff", tid: TENANT, status: "trial", trialExpiresAt: new Date(Date.now() + 86_400_000).toISOString() },
-      secret: AUTH_SECRET,
+    // Origin check first, then the per-run secret: nothing is minted for any other origin.
+    await installSessionCookie(context, baseURL, PORT, {
+      uid: "e2e-manual-handoff", tid: TENANT, status: "trial", trialExpiresAt: new Date(Date.now() + 86_400_000).toISOString(),
     });
-    await context.addCookies([{ name: "next-auth.session-token", value: token, url: baseURL }]);
     const pdf = await readFile(path.join(__dirname, "../equipment/fixtures/diagnostic-fixture.pdf"));
     const scopeRequested = latch();
     const scope = latch();
@@ -166,17 +165,23 @@ for (const mode of ["preparing", "ready", "opening", "lookup-failed", "safety", 
           id: "saved-answer", clientRequestId: asked.clientRequestId, question: QUESTION, answerStatus: "answered",
           answerText: ANSWER, evidence: [citationEntry], createdAt: new Date().toISOString(),
         };
+        const savedTurns = [savedLookup, savedAnswer].filter(Boolean) as { id: string; clientRequestId: string }[];
+        const manualSearch = confirmed ? {
+          ...IDENTITY, startedAt: STARTED_AT, running: !ready && !lostManual,
+          ...(ready ? { sourceState: "ready", readySourceDocId: DOC, message: "Exact fixture manual is ready in Sources." } :
+            lostManual ? { sourceState: "unavailable", message: "The fixture manual is unavailable." } :
+            { sourceState: "preparing", message: "Preparing the fixture manual." }),
+        } : null;
+        const newest = savedTurns.at(-1);
         return route.fulfill(json({
           ...oracle.detailEmpty,
           notebook: confirmed ? { ...notebook, ...IDENTITY, identityStatus: "user_confirmed" } : notebook,
-          turns: [savedLookup, savedAnswer].filter(Boolean),
+          turns: savedTurns,
           sources: ready || component ? [source] : [],
-          manualSearch: confirmed ? {
-            ...IDENTITY, startedAt: STARTED_AT, running: !ready && !lostManual,
-            ...(ready ? { sourceState: "ready", readySourceDocId: DOC, message: "Exact fixture manual is ready in Sources." } :
-              lostManual ? { sourceState: "unavailable", message: "The fixture manual is unavailable." } :
-              { sourceState: "preparing", message: "Preparing the fixture manual." }),
-          } : null,
+          manualSearch,
+          // #5750: as the detail route does, a thread-scoped read names the saved answer its status
+          // was checked against (the newest turn); the Hub shows the status under that answer only.
+          ...(manualSearch ? { manualSearchAnswer: newest ? { turnId: newest.id, clientRequestId: newest.clientRequestId ?? null } : null } : {}),
         }));
       }
       if (p === `/api/namespace/files/${FILE}`) return route.fulfill({

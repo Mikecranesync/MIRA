@@ -1,0 +1,22 @@
+{
+  "hub": {
+    "base_sha": "dfa344f32a2e6bd5f988eeac0be01a5b2a33c662",
+    "baseline_errors": 76,
+    "candidate_errors": 76,
+    "same_error_locations_and_codes": true,
+    "new_error_locations_and_codes": [],
+    "changed_baseline_diagnostic_wording": [],
+    "normalization": "workspace path; expected server mount line offsets for web",
+    "removed_error_locations_and_codes": []
+  },
+  "web": {
+    "base_sha": "dfa344f32a2e6bd5f988eeac0be01a5b2a33c662",
+    "baseline_errors": 34,
+    "candidate_errors": 34,
+    "same_error_locations_and_codes": true,
+    "new_error_locations_and_codes": [],
+    "changed_baseline_diagnostic_wording": [],
+    "normalization": "workspace path; expected server mount line offsets for web",
+    "removed_error_locations_and_codes": []
+  }
+}

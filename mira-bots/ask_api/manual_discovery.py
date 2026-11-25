@@ -274,6 +274,9 @@ async def manual_discovery_search(
                 extra = {}
                 if req.identification_link and os.getenv("MIRA_QR_IDENTIFICATION_LINK", "0") == "1":
                     extra["identification_link"] = req.identification_link
+                if catalog_number:
+                    # A part number read off a label, not a model string (#5789).
+                    extra["exact_part_number"] = True
                 candidate = await asyncio.wait_for(
                     search_manual(
                         manufacturer,

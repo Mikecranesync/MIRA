@@ -14,7 +14,10 @@
  * exactly as it was — a refresh can never grant access the stored claims did not.
  */
 
+import { credentialsAreCurrent } from "./verified-identity";
+
 export interface EntitlementRow {
+  credentialEpoch?: number;
   status: string;
   trialExpiresAt: Date | null;
 }
@@ -22,6 +25,7 @@ export interface EntitlementRow {
 export type EntitlementLookup = (userId: string) => Promise<EntitlementRow | null>;
 
 export interface EntitlementClaims {
+  credentialEpoch?: unknown;
   uid?: unknown;
   status?: unknown;
   trialExpiresAt?: unknown;
@@ -40,6 +44,9 @@ export async function refreshEntitlementClaims<T extends EntitlementClaims>(
     return token;
   }
   if (!row) return token;
+  if (!credentialsAreCurrent(token, row)) {
+    return { ...token, uid: undefined, tid: undefined, status: "expired", trialExpiresAt: null };
+  }
   return {
     ...token,
     status: row.status,
