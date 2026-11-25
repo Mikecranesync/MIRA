@@ -1,5 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { createHash } from "node:crypto";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { renderHome } from "../home.js";
@@ -257,21 +256,6 @@ const OFFER_RULE: ClaimRule = {
 
 const ALL_BANS: ClaimRule[] = [...CLAIM_CATEGORIES, ...DONT_SAY, OFFER_RULE];
 
-/**
- * /terms is byte-identical to main (Codex iteration 3 F3: Terms changes need a dated
- * amendment, not an edit in this PR). Its pre-amendment claims are pinned exactly, so any
- * NEW claim or price on /terms still fails.
- */
-const TERMS_MAIN_SHA256 = "265519dc9e77574bcfa7b46e5c4f03f96687d08f4b8431437808f8c859002bfd";
-const TERMS_KNOWN_HITS = [
-  "price: any dollar amount",
-  "overclaim: CMMS write-back",
-  "adapter: Telegram as answer surface",
-  "adapter: Slack as answer surface",
-  "overclaim: Digital Transformation title",
-  "overclaim: Operating Layer",
-];
-const TERMS_KNOWN_DOLLARS = ["$500", "$2,000", "$5,000", "$499"];
 
 function dollarAmounts(html: string): string[] {
   return html.match(/\$[\d,]+/g) ?? [];
@@ -303,18 +287,16 @@ function claimHits(name: string, html: string): string[] {
 }
 
 describe("public marketing copy — don't-say list and no published prices", () => {
-  test("/terms is byte-identical to main and carries only its known pre-amendment claims", () => {
+  test("/terms (Nov 25, 2026 amendment) publishes no prices and names the real operator", () => {
     const terms = pages.find((p) => p.name === "/terms")!.html;
-    expect(createHash("sha256").update(readPublic("terms.html")).digest("hex")).toBe(
-      TERMS_MAIN_SHA256,
-    );
-    expect(claimHits("/terms", terms)).toEqual(TERMS_KNOWN_HITS);
-    expect(dollarAmounts(terms)).toEqual(TERMS_KNOWN_DOLLARS);
+    expect(dollarAmounts(terms)).toEqual([]);
     expect(schemaPriceValues(terms)).toEqual([]);
+    expect(terms).toContain("Michael J. Harper, an individual doing business as FactoryLM");
+    expect(terms).toContain("laws of the State of Florida");
+    expect(terms).not.toContain("Delaware");
   });
 
   for (const page of pages) {
-    if (page.name === "/terms") continue;
     test(`${page.name}: drops the don't-say list and removed claims`, () => {
       const hits = claimHits(page.name, page.html);
       expect(hits, `${page.name} still contains: ${hits.join("; ")}`).toEqual([]);
@@ -973,11 +955,10 @@ describe("RFI readiness: trust, security and offline pages", () => {
   });
 
   test("legal pages don't claim a corporation that doesn't exist", () => {
-    // terms.html is pinned to main until #5126 lands; it still says "FactoryLM, Inc."
-    for (const f of ["trust.html", "privacy.html", "legal/dpa.html"]) {
+    for (const f of ["terms.html", "trust.html", "privacy.html", "legal/dpa.html"]) {
       const html = readFileSync(join(process.cwd(), "public", f), "utf-8");
       expect(html, f).not.toContain("FactoryLM, Inc.");
-      expect(html, f).not.toContain("Delaware corporation");
+      expect(html, f).not.toContain("Delaware");
     }
     expect(rfiDpa).not.toContain("SOC 2 Type II attestation in progress");
   });
