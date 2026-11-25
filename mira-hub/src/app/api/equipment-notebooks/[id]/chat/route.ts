@@ -63,6 +63,7 @@ import { shadowVerifyCitedTurnResult } from "@/capabilities/claim-verifier-shado
 import { judgeEvidenceSufficiencyShadow, type JevShadowResult } from "@/capabilities/observability/jev-shadow";
 import { isWeakEvidence, WEAK_EVIDENCE_LABEL, WEAK_EVIDENCE_RULE } from "@/capabilities/observability/jev-weak-evidence";
 import {
+  proposeFromLibraryModel,
   proposeIdentityFromText,
   unconfirmedMachineDirective,
   type IdentityProposal,
@@ -224,6 +225,7 @@ import {
   appendManualContext,
   buildManualUserContent,
   corpusManufacturers,
+  corpusModelLabels,
   manufacturerFromObservationText,
   resolveModelFromObservationText,
   retrieveManualChunks,
@@ -464,7 +466,16 @@ export const GENERAL_NO_MANUAL_DISCLOSURE =
 export const GENERAL_NO_DECODE_CAUTION =
   "Never decode a part number, model suffix, connector code, or product-family string from pattern-matching.";
 
-export const GENERAL_SYSTEM_PROMPT = `You are MIRA, a maintenance assistant helping a technician who is standing at a machine RIGHT NOW. ${GENERAL_NO_MANUAL_DISCLOSURE}
+// AI-panel finding F2 (2026-11-25): asked "What is FactoryLM?" or "What is MIRA
+// maintenance AI?", blank-chat MIRA guessed ("FactoryLM is likely a term...")
+// because this prompt never named its maker; the asset and namespace chat
+// prompts already say "built by FactoryLM". A correct identity answer restates
+// this sentence, so it is carved out of the protected core like
+// GENERAL_NO_MANUAL_DISCLOSURE and excluded from the leak check below.
+export const GENERAL_IDENTITY_STATEMENT =
+  "You were built by FactoryLM (factorylm.com). FactoryLM turns a plant's equipment manuals and maintenance records into context AI can trust; MIRA is its maintenance assistant.";
+
+export const GENERAL_SYSTEM_PROMPT = `You are MIRA, a maintenance assistant helping a technician who is standing at a machine RIGHT NOW. ${GENERAL_NO_MANUAL_DISCLOSURE} ${GENERAL_IDENTITY_STATEMENT}
 
 ANSWER SHAPE — the technician needs something they can act on:
 - If the technician is troubleshooting or doing work on equipment, lead with the most likely cause or the first thing to check, in the FIRST sentence, then give a short ordered list of checks, cheapest and safest first.
@@ -3070,7 +3081,16 @@ async function handleChatTurn(
       let client: PoolClient | null = null;
       try {
         client = await pool.connect();
-        identityProposal = proposeIdentityFromText(message, await corpusManufacturers(client));
+        const libraryMakers = await corpusManufacturers(client);
+        identityProposal = proposeIdentityFromText(message, libraryMakers);
+        // #4095 gap 1: a library model typed with no maker ("PowerFlex 525").
+        // The maker comes from the library label, and only when it is one group.
+        // Never on a photo turn (the label reader owns those) and never on a
+        // manual request: a maker the technician did not type must not key an
+        // automatic web search, so those turns keep their pre-existing paths.
+        if (!identityProposal && !photoTextForOem && !wantsManualDocumentation(message)) {
+          identityProposal = proposeFromLibraryModel(message, await corpusModelLabels(client), libraryMakers);
+        }
       } catch (err) {
         console.error("[notebook-chat] identity proposal skipped:", err instanceof Error ? err.message : err);
       } finally {
@@ -5538,6 +5558,7 @@ async function handleChatTurn(
                 GENERAL_SITE_RECORDS_CAUTION,
                 GENERAL_NO_MANUAL_DISCLOSURE,
                 GENERAL_NO_DECODE_CAUTION,
+                GENERAL_IDENTITY_STATEMENT,
               ],
         );
         if (leak.leaked) {

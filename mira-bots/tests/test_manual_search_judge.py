@@ -5639,3 +5639,70 @@ async def test_a_form_of_a_rejected_extra_is_not_offered_unread(wired, monkeypat
     else:
         assert r["validated"] is False and r["reason"] == judge.REASON_JUDGED_REJECTED, r
         assert [x["url"] for x in r["judged_rejected"]] == [_AD_EXTRA_FORMS[0][0]], r
+
+
+# ── Rockwell communications-adapter filename rule ───────────────────────────
+
+_RA = "https://literature.rockwellautomation.com/idc/groups/literature/documents/"
+
+
+@pytest.mark.parametrize(
+    ("url", "kind"),
+    [
+        (_RA + "um/520com-um001_-en-e.pdf", "communications_adapter"),
+        (_RA + "um/520com-um002_-en-e.pdf", "communications_adapter"),
+        (_RA + "um/20comm-um010_-en-p.pdf", "communications_adapter"),
+        (_RA + "um/520-um001_-en-e.pdf", None),
+        (_RA + "du/520-du001_-en-e.pdf", None),
+        (_RA + "qs/520-qs001_-en-e.pdf", None),
+        ("https://other.example.com/um/520com-um001_-en-e.pdf", None),
+        ("", None),
+    ],
+)
+def test_oem_com_adapter_kind_is_a_rockwell_filename_fact(url, kind):
+    assert judge.oem_com_adapter_kind(url) == kind
+
+
+def _stored(url, is_manual=True, **extra):
+    return {
+        "url": url,
+        "judge": {"status": "judged", "is_manual": is_manual, "doc_type": "user_manual", **extra},
+    }
+
+
+def test_a_stored_yes_on_a_com_adapter_book_is_not_a_match():
+    c = _stored(_RA + "um/520com-um001_-en-e.pdf")
+    assert not judge.is_match(c) and judge.is_rejected(c)
+
+
+def test_a_stored_yes_on_a_coded_profile_is_not_a_match():
+    c = _stored(_RA + "pc/520-pc001_-en-p.pdf")
+    assert not judge.is_match(c) and judge.is_rejected(c)
+
+
+def test_a_stored_yes_on_the_drive_guide_stays_a_match():
+    c = _stored(_RA + "du/520-du001_-en-e.pdf")
+    assert judge.is_match(c) and not judge.is_rejected(c)
+
+
+def test_the_rule_is_off_when_the_identity_is_itself_a_com_part():
+    c = _stored(_RA + "um/520com-um001_-en-e.pdf", com_identity=True)
+    assert judge.is_match(c)
+
+
+@pytest.mark.parametrize(
+    ("model", "is_com"),
+    [("25-COMM-E2P", True), ("520COM", True), ("20-COMM-D", True), ("525", False), ("GS10", False)],
+)
+def test_identity_model_is_a_com_part(model, is_com):
+    assert judge.identity_is_com_part(model) is is_com
+
+
+async def test_a_fresh_verdict_on_a_com_book_is_downgraded_for_a_drive_identity(monkeypatch):
+    monkeypatch.setattr(judge, "_router", _SaysInstallManual())
+    cand = {"url": _RA + "um/520com-um001_-en-e.pdf", "title": ""}
+    drive = await judge.judge_text("Allen-Bradley", "525", dict(cand), "t")
+    assert drive["is_manual"] is False and drive["doc_type"] == "communications_adapter"
+    assert drive["downgraded"] is True
+    com = await judge.judge_text("Allen-Bradley", "25-COMM-E2P", dict(cand), "t")
+    assert com["is_manual"] is True and com["com_identity"] is True

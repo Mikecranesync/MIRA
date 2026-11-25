@@ -138,3 +138,68 @@ describe("#3984 — reject numbered and cross-sentence energized procedures", ()
     expect(uni.ok === false && [uni.kind, uni.violation]).toEqual(asc.ok === false && [asc.kind, asc.violation]);
   });
 });
+
+describe("Q17 — deferring to safety controls is not a live-work direction", () => {
+  const Q17_SENTENCE =
+    "For plant use, none of these should replace OEM manuals, lockout/tagout, or a qualified electrician when energized work is involved.";
+  const Q17_ANSWER = [
+    "A good free option is **ChatGPT Free**, especially for quick troubleshooting help, checklists, and explaining terms. **Microsoft Copilot** and **Google Gemini** are also free and useful for general maintenance questions.",
+    "",
+    "If you want the best fit, it depends on what you need:",
+    "- **Troubleshooting help:** ChatGPT Free",
+    "- **Office/docs integration:** Copilot",
+    "- **General web-style Q&A:** Gemini",
+    "",
+    `${Q17_SENTENCE} If you want, I can suggest the best free tool for **electrical troubleshooting**, **mechanical maintenance**, or **CMMS work orders**.`,
+  ].join("\n");
+  const Q = "Free AI tool for maintenance technicians";
+
+  it.each([true, false])("verbatim Q17 sentence gives no banner (general=%s)", (general) => {
+    expect(check(Q17_SENTENCE, Q, general)).toEqual({ ok: true });
+  });
+
+  it.each([true, false])("full Q17 answer gives no banner (general=%s)", (general) => {
+    expect(check(Q17_ANSWER, Q, general)).toEqual({ ok: true });
+  });
+
+  it.each([
+    "None of these tools is a substitute for lockout/tagout or a qualified electrician when energized work is involved.",
+    "AI tools do not replace OEM manuals or LOTO when live work is required.",
+    "- No AI tool replaces lockout/tagout or a qualified electrician.",
+    "These should not replace OEM manuals, lockout/tagout, or a qualified electrician when energized work is involved.",
+    // Cheap-review F1/F2 on c3d10976: an article before an item, and other qualified roles.
+    "For plant use, none of these should replace the OEM manual, lockout/tagout, or a qualified electrician when energized work is involved.",
+    "For plant use, none of these should replace OEM manuals, lockout/tagout, or a qualified engineer when energized work is involved.",
+    "None of these should replace your site safety procedures or the PPE when live work is required.",
+  ])("negated deferral is administrative: %s", (s) => {
+    expect(check(s, Q).ok, s).toBe(true);
+  });
+
+  it.each([
+    "Measure the DC bus with the drive powered.",
+    "Reset the fault while energized work continues on the panel.",
+    "None of these should replace lockout/tagout, measure the DC bus with the drive powered.",
+    "None of these should replace OEM manuals. Measure the DC bus with the drive powered.",
+    "For plant use, none of these should replace OEM manuals when energized work is involved; probe the terminals while the cabinet is live.",
+    "These tools should replace lockout/tagout when energized work is involved.",
+    // Review blocker on 32f353a9: a free-text lead-in let a live-work phrase ride in front.
+    "For working on the live terminals energized, none of these should replace PPE.",
+    "For resetting the fault while energized, none of these should replace lockout/tagout.",
+    "For defeating the E-stop, none of these should replace PPE when live work is involved.",
+    "For bypassing the interlock while energized, none of these should replace PPE.",
+  ])("still flags: %s", (s) => {
+    const r = check(s, Q);
+    expect(r.ok, s).toBe(false);
+    if (!r.ok) expect(r.kind).toBe("hazard_warning");
+  });
+
+  it("KNOWN CASE (pinned, not endorsed): 'use a qualified electrician when energized work is involved'", () => {
+    // Outside the negated-deferral grammar; pins current behaviour. Update if the floor changes.
+    expect(check("Use a qualified electrician when energized work is involved.", Q).ok).toBe(false); // flagged today (extra banner, safe direction)
+    // Also pre-existing, unchanged here: bare "Work on it energized." is NOT flagged today.
+  });
+
+  // NOT fixed here: bearing.some in clauseHazardViolation lets a prohibited clause clear a
+  // sibling live-work clause, so "Do not replace the fuse, measure the DC bus with the drive
+  // powered." is exempt today. Needs per-instruction-clause scoping; separate issue.
+});

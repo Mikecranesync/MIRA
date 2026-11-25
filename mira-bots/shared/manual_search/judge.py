@@ -35,6 +35,7 @@ import os
 import re
 import time
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 
@@ -114,6 +115,41 @@ def oem_non_manual_kind(url: str) -> str | None:
     """The doc kind an OEM publication code proves is NOT a manual, else ``None``."""
     m = _ROCKWELL_LIT_RE.match(url or "")
     return _ROCKWELL_NON_MANUAL_CODES.get(m.group(1).lower()) if m else None
+
+
+# A Rockwell communications-adapter book (520COM-UM001 "Embedded EtherNet/IP Adapter",
+# 520COM-UM002 DeviceNet, 20COMM-*, 22COMM-*) sits under /um/ like the drive's own user
+# manual, so the publication code above cannot tell them apart; the FILENAME can. The model
+# calls it a complete user manual that lists fault codes and it ties the drive's On-Drive
+# guide, so the search engine's result order picked the winner (PF525, 2026-10-05 replay).
+# For a drive identity it is an accessory book, never "the manual". Off when the identity
+# is itself a COM part, whose own manual this is.
+_COM_ADAPTER_FILE_RE = re.compile(r"^\d{2,4}-?comm?-", re.IGNORECASE)
+_COM_IDENTITY_RE = re.compile(r"\d{2,4}-?comm?(?:-|$)", re.IGNORECASE)
+
+
+def oem_com_adapter_kind(url: str) -> str | None:
+    """``"communications_adapter"`` for a Rockwell literature URL whose file is a COM book."""
+    if not _ROCKWELL_LIT_RE.match(url or ""):
+        return None
+    name = urlparse(url).path.rsplit("/", 1)[-1]
+    return "communications_adapter" if _COM_ADAPTER_FILE_RE.match(name) else None
+
+
+def identity_is_com_part(model: str) -> bool:
+    """True when the technician's own model is a communications part (25-COMM-E2P, 520COM)."""
+    return bool(_COM_IDENTITY_RE.search((model or "").strip()))
+
+
+def _oem_not_manual_kind(c: dict) -> str | None:
+    """The OEM-filename fact that says this candidate is not the manual, else ``None``."""
+    url = str(c.get("url") or "")
+    kind = oem_non_manual_kind(url)
+    if kind:
+        return kind
+    if (c.get("judge") or {}).get("com_identity"):
+        return None
+    return oem_com_adapter_kind(url)
 
 
 # Verdict strings the caller can show verbatim.
@@ -397,7 +433,10 @@ async def _judge_text_once(
     said_yes = bool(verdict.get("is_manual_for_model"))
     # The OEM's own publication code outranks the model's classification (see
     # oem_non_manual_kind): a "yes" on a coded profile/datasheet/catalog is downgraded.
-    oem_kind = oem_non_manual_kind(str(cand.get("url") or ""))
+    com_identity = identity_is_com_part(model)
+    oem_kind = oem_non_manual_kind(str(cand.get("url") or "")) or (
+        None if com_identity else oem_com_adapter_kind(str(cand.get("url") or ""))
+    )
     if oem_kind:
         doc_type = oem_kind
     fault_codes = verdict.get("lists_fault_codes")
@@ -407,6 +446,7 @@ async def _judge_text_once(
         # the model's own classification as the reason.
         "is_manual": said_yes and doc_type in MANUAL_DOC_TYPES,
         "doc_type": doc_type,
+        "com_identity": com_identity,
         "downgraded": said_yes and doc_type not in MANUAL_DOC_TYPES,
         "scope": "section"
         if str(verdict.get("scope") or "").lower().startswith("sec")
@@ -504,13 +544,15 @@ def _mark_interrupted(cands: list[dict], why: str) -> None:
 
 
 def is_match(c: dict) -> bool:
+    # The OEM filename facts apply to a STORED verdict too (a replay, a cached judgment):
+    # a yes the model gave before the rule existed must not outrank the rule.
     j = c.get("judge") or {}
-    return j.get("status") == "judged" and bool(j.get("is_manual"))
+    return j.get("status") == "judged" and bool(j.get("is_manual")) and not _oem_not_manual_kind(c)
 
 
 def is_rejected(c: dict) -> bool:
     j = c.get("judge") or {}
-    return j.get("status") == "judged" and not j.get("is_manual")
+    return j.get("status") == "judged" and not is_match(c)
 
 
 def document_key(url: str) -> str:

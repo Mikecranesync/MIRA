@@ -205,6 +205,10 @@ tiers:
       format: pdf
       manufacturer: Siemens
       equipment_id: SINAMICS-G120C
+      # model-bound retrieval filters on model_number
+      model_number: "SINAMICS G120C"
+      # List Manual runs ~758 pages; faults/alarms sit well past the 300-page parser default.
+      max_pages: 780
       crawl_pattern: direct
       description: "SINAMICS G120C List Manual (02/2023) — parameters, faults (Fxxxxx), alarms (Axxxxx)"
 
