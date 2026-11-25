@@ -1,6 +1,9 @@
 // Provisioner contract when /api/auth/register refuses unverified accounts
 // (403 verified_onboarding_required: pilot review or free signup on). The
 // password-register contract lives in src/lib/__tests__/provision-beta-gate.test.ts.
+import { existsSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const queries: Array<{ text: string; values: unknown[] }> = [];
@@ -112,6 +115,7 @@ describe("provision-beta-gate when register requires verified setup", () => {
     vi.stubGlobal("fetch", fetchMock());
     process.env.NEON_DATABASE_URL = "postgres://x";
     delete process.env.BETA_GATE_FAIL_AFTER;
+    delete process.env.BETA_GATE_MOBILE_LINK_FILE;
   });
   afterEach(() => {
     process.env = { ...savedEnv };
@@ -208,6 +212,54 @@ describe("provision-beta-gate when register requires verified setup", () => {
     const email = String(tokenInserts()[0].values[1]);
     // 13-digit clock reading + 12 random hex characters (a bare timestamp is 13 chars).
     expect(email).toMatch(/^betagate-\d{13}[0-9a-f]{12}@factorylm\.com$/);
+  });
+
+  // #5942: the mobile harness signs the stranger in through the app's link box,
+  // which accepts only a UUID token in `/magic/?token=`. The provisioner seeds one
+  // (no mail) and hands it over in a private file, never on stdout or stderr.
+  describe("mobile sign-in link (#5942)", () => {
+    const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+    const linkFile = () => join(mkdtempSync(join(tmpdir(), "betagate-link-")), "login-link");
+
+    it("writes a UUID login link to a private file and prints only where it is", async () => {
+      const file = linkFile();
+      process.env.BETA_GATE_MOBILE_LINK_FILE = file;
+      const mod = await import("../../../scripts/provision-beta-gate");
+      await mod.main();
+      const logins = tokenInserts().filter((q) => q.values[2] === "login");
+      expect(logins).toHaveLength(2); // the session's, then the phone's
+      const phone = logins[1];
+      expect(String(phone.values[0])).toMatch(UUID);
+      expect(phone.values[3]).toBeNull();
+      expect(phone.text).toMatch(/INTERVAL '15 minutes'/);
+      expect(readFileSync(file, "utf8")).toBe(`http://localhost:3100/magic/?token=${phone.values[0]}`);
+      expect(statSync(file).mode & 0o777).toBe(0o600);
+      const out = log.mock.calls.map((c) => c.join(" ")).join("\n");
+      expect(out).toMatch(/^ENV:FLM_EMAIL=betagate-\d{13}[0-9a-f]{12}@factorylm\.com$/m);
+      expect(out).toContain(`ENV:FLM_LOGIN_LINK_FILE=${file}`);
+      expect(printedAll()).not.toContain(String(phone.values[0]));
+      // Minted before the ENV lines: a failure there still sweeps the tenant.
+      expect(queries.indexOf(phone)).toBeGreaterThan(-1);
+    });
+
+    it("refuses to write into a file that already exists, and sweeps", async () => {
+      const file = linkFile();
+      writeFileSync(file, "someone else's", { mode: 0o644 });
+      process.env.BETA_GATE_MOBILE_LINK_FILE = file;
+      const mod = await import("../../../scripts/provision-beta-gate");
+      await expect(mod.main()).rejects.toThrow(/EEXIST|already exists/);
+      expect(readFileSync(file, "utf8")).toBe("someone else's");
+      expect(queries.some((q) => /^DELETE FROM hub_tenants/.test(q.text))).toBe(true);
+      expect(log.mock.calls.map((c) => c.join(" ")).join("\n")).not.toMatch(/^ENV:/m);
+    });
+
+    it("without the option, seeds no phone token and emits no FLM lines (control)", async () => {
+      const mod = await import("../../../scripts/provision-beta-gate");
+      await mod.main();
+      expect(tokenInserts().filter((q) => q.values[2] === "login")).toHaveLength(1);
+      expect(log.mock.calls.map((c) => c.join(" ")).join("\n")).not.toMatch(/^ENV:FLM_/m);
+      expect(existsSync(join(tmpdir(), "login-link"))).toBe(false);
+    });
   });
 
   it("forced failure after signin sweeps the tenant, its tokens before its users", async () => {

@@ -26,8 +26,14 @@
  *   # XPASS(strict) == the gate is MET.
  *
  * HUB defaults to http://localhost:3100 (override with HUB_BASE).
+ *
+ * Mobile harness (#5942): set BETA_GATE_MOBILE_LINK_FILE=<new file> and the run also
+ * writes a single-use sign-in link there (0600, never printed) and emits FLM_EMAIL
+ * plus FLM_LOGIN_LINK_FILE. Then, within 15 minutes:
+ *   FLM_LOGIN_LINK="$(cat <file>)" bash tools/mobile-e2e/run.sh <pdf> "<question>" <page>
  */
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
+import { writeFileSync } from "node:fs";
 import { Client } from "pg";
 
 const HUB = process.env.HUB_BASE ?? "http://localhost:3100";
@@ -140,8 +146,11 @@ function failAfter(stage: "mirror" | "signin" | "node") {
  *  stand-in for the stranger clicking the emailed link. The magic-link REQUEST
  *  endpoint is deliberately not used: staging has a live mail key, so it would
  *  send real email every run. The token is never printed. */
-async function seedMagicToken(purpose: "onboarding" | "login", onboarding: object | null): Promise<string> {
-  const token = randomBytes(32).toString("base64url");
+async function seedMagicToken(
+  purpose: "onboarding" | "login",
+  onboarding: object | null,
+  token: string = randomBytes(32).toString("base64url"),
+): Promise<string> {
   const c = new Client({ connectionString: process.env.NEON_DATABASE_URL, ssl: { rejectUnauthorized: false } });
   await c.connect();
   try {
@@ -387,6 +396,18 @@ async function provisionAfterRegister(tenantId: string, passwordless = false) {
   console.error(`created node ${nodeId}`);
   failAfter("node");
 
+  // #5942: a sign-in link for the mobile harness (tools/mobile-e2e, FLM_LOGIN_LINK).
+  // The app's link box accepts only a UUID token in `/magic/?token=`, so this one is
+  // a UUID, like the ones createMagicToken mints. It goes to a file the caller names,
+  // created 0600 and never over an existing file; only the file's path is printed.
+  // Single-use, 15 minutes, swept with the tenant by --cleanup.
+  const linkFile = process.env.BETA_GATE_MOBILE_LINK_FILE;
+  if (linkFile) {
+    const token = await seedMagicToken("login", null, randomUUID());
+    writeFileSync(linkFile, `${HUB}/magic/?token=${token}`, { mode: 0o600, flag: "wx" });
+    console.error("wrote the mobile sign-in link (single-use, 15 minutes)");
+  }
+
   // Emit env for the gate (trailing-slash canonical doors; cookie auth).
   console.log(`ENV:BETA_GATE_UPLOAD_URL=${HUB}/api/namespace/node/${nodeId}/files/`);
   console.log(`ENV:BETA_GATE_CHAT_URL=${HUB}/api/namespace/node/${nodeId}/chat/`);
@@ -398,6 +419,10 @@ async function provisionAfterRegister(tenantId: string, passwordless = false) {
   // contract, so only the Hub base and the session are needed.
   console.log(`ENV:BETA_PROBE_HUB_BASE=${HUB}`);
   console.log(`ENV:BETA_PROBE_COOKIE=${cookieHeader}`);
+  if (linkFile) {
+    console.log(`ENV:FLM_EMAIL=${CREDS.email}`);
+    console.log(`ENV:FLM_LOGIN_LINK_FILE=${linkFile}`);
+  }
 }
 
 export { cleanup };
