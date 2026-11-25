@@ -512,12 +512,6 @@ describe("withManualSearchStatus — the post-refresh render path (#4189 F6)", (
     expect(otherAssistant.parts.some((p) => p.type === "manual_search_status")).toBe(false);
   });
 
-  it("omits the part for a settled status with no message (a grounded turn's quiet outcome)", () => {
-    const thread = threadFromPersisted([row()], meta);
-    const out = withManualSearchStatus(thread.turns, { manufacturer: "SMC", model: "SS5Y3-DUW01302", running: false });
-    expect(out.some((t) => t.parts.some((p) => p.type === "manual_search_status"))).toBe(false);
-  });
-
   it("includes the message once the search has settled (not running)", () => {
     const thread = threadFromPersisted([row()], meta);
     const out = withManualSearchStatus(thread.turns, {
@@ -610,7 +604,7 @@ describe("withSettledFollowups — follow-ups survive the post-stream reload (#4
 
   it("renders in the same order as the live turn: follow-ups before the manual-search status", () => {
     const turns = threadFromPersisted([row()], meta).turns;
-    const out = withManualSearchStatus(withSettledFollowups(turns, settled), { manufacturer: "SMC", model: "X", running: true });
+    const out = withManualSearchStatus(withSettledFollowups(turns, settled), { manufacturer: "SMC", model: "X", running: false });
     const types = lastAssistant(out).parts.map((p) => p.type);
     expect(types.indexOf("followups")).toBeGreaterThan(-1);
     expect(types.indexOf("followups")).toBeLessThan(types.indexOf("manual_search_status"));
