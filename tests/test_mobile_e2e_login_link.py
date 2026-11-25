@@ -85,7 +85,9 @@ class SignInPhone:
         self.interrupt = False  # Ctrl-C lands while the link is being exchanged
         self.projects: list[str] = []  # drawer rows above the account footer
         self.rm_fails = False  # the device stops answering: cleanup cannot run
-        self.dumpfile = ""  # what /sdcard/window_dump.xml holds on the device
+        self.files: dict[str, str] = {}  # device path -> contents of a view dump there
+        self.dirs: set[str] = set()
+        self.wrote: list[tuple[str, str]] = []  # every dump the device ever wrote
         self.adb_calls: list[list[str]] = []
         self.fields = {"email": "", "password": "", "link": ""}
         self.focus: str | None = None
@@ -157,6 +159,14 @@ class SignInPhone:
         )
         return f"<?xml version='1.0' encoding='UTF-8'?><hierarchy>{rows}</hierarchy>"
 
+    @property
+    def dumpfile(self) -> str:
+        """Every dump still on the device, concatenated."""
+        return "".join(self.files.values())
+
+    def shared_ever_held(self, secret: str) -> bool:
+        return any(p.startswith("/sdcard") and secret in x for p, x in self.wrote)
+
     def link_on_screen(self) -> bool:
         return self.state == "invite" and bool(self.fields["link"])
 
@@ -164,17 +174,24 @@ class SignInPhone:
         self.adb_calls.append(list(args))
         a = args[1:]
         if a[:2] == ["uiautomator", "dump"]:
-            self.dumpfile = self.xml()
-        elif a[:3] == ["rm", "-f", "/sdcard/window_dump.xml"]:
+            self.files[a[2]] = self.xml()
+            self.wrote.append((a[2], self.files[a[2]]))
+        elif a[:3] == ["mkdir", "-m", "700"]:
+            self.dirs.add(a[3])
+        elif a[:2] == ["test", "-d"]:
+            return _Proc("OK" if a[2] in self.dirs else "")
+        elif a[:2] in (["rm", "-f"], ["rm", "-rf"]):
             if self.rm_fails:
                 return _Proc("", 1)
-            self.dumpfile = ""
-        elif a[:3] == ["test", "-e", "/sdcard/window_dump.xml"]:
+            self.files = {k: v for k, v in self.files.items() if not (k == a[2] or k.startswith(a[2] + "/"))}
+            self.dirs.discard(a[2])
+        elif a[:2] == ["test", "-e"]:
             if self.rm_fails:
                 return _Proc("", 1)
-            return _Proc("PRESENT" if self.dumpfile else "GONE")
-        elif a[:2] == ["cat", "/sdcard/window_dump.xml"]:
-            return _Proc(self.xml())
+            present = a[2] in self.dirs or any(k == a[2] or k.startswith(a[2] + "/") for k in self.files)
+            return _Proc("PRESENT" if present else "GONE")
+        elif a[:1] == ["cat"]:
+            return _Proc(self.files.get(a[1], ""))
         if a[:2] == ["input", "tap"]:
             self.tap(int(a[2]), int(a[3]))
         elif a[:2] == ["input", "text"] and self.focus:
@@ -282,6 +299,10 @@ def _no_credential_left(phone) -> None:
     leaked = [name for name, on_screen in phone.shots if on_screen]
     assert leaked == [], f"screenshots taken with the link on screen: {leaked}"
     assert TOKEN not in phone.dumpfile, "a dump holding the link was left on the device"
+    # Codex r3 F1: shared storage must never receive it, not even briefly.
+    assert not phone.shared_ever_held(TOKEN), "the link was dumped to shared storage"
+    private = [c for c in phone.adb_calls if c[1:4] == ["mkdir", "-m", "700"]]
+    assert private and private[0][4].startswith("/data/local/tmp/"), private
 
 
 def test_a_successful_link_sign_in_leaves_no_credential_behind(rig):
@@ -314,9 +335,11 @@ def test_a_link_sign_in_fails_loudly_when_the_dump_cannot_be_removed(rig):
     # then the device stops answering. The cleanup must not be assumed to have worked.
     journey, dev, phone = rig(link_works=False)
     phone.rm_fails = True
-    with pytest.raises(journey.Fail, match="window_dump.xml"):
+    with pytest.raises(journey.Fail, match="could not confirm"):
         journey.sign_in(dev, EMAIL, login_link=LINK)
     assert TOKEN in phone.dumpfile, "precondition: the dump really was left behind"
+    # ...but only in the shell-private directory, never in shared storage.
+    assert not phone.shared_ever_held(TOKEN)
     assert TOKEN not in str(phone.adb_calls[-1]), "the failure path must not echo the link"
 
 
@@ -357,6 +380,15 @@ def test_sign_in_finds_the_footer_account_below_project_rows(rig):
     phone.projects = ["Line 3 press", "someone-else@factorylm.com"]
     journey.sign_in(dev, EMAIL, login_link=LINK)
     assert "Close navigation" in phone.taps
+
+
+def test_sign_in_is_not_fooled_by_a_conversation_named_like_the_footer(rig):
+    # Codex r3 F5: two drawer rows, the expected email then "About & updates",
+    # above a footer that shows another account.
+    journey, dev, phone = rig(account="someone-else@factorylm.com")
+    phone.projects = [EMAIL, "About & updates"]
+    with pytest.raises(journey.Fail, match="wrong account"):
+        journey.sign_in(dev, EMAIL, login_link=LINK)
 
 
 def test_sign_in_needs_exactly_one_credential(rig):
@@ -429,6 +461,41 @@ def test_main_refuses_without_any_credential(monkeypatch, tmp_path, capsys):
     )
     assert journey.main() == 2
     assert "FLM_LOGIN_LINK" in capsys.readouterr().err
+
+
+# ------------------------------------------------------------------ child env
+# Codex r3 F1: adb (whose server outlives the run), screencap and aapt2 must not
+# inherit the credential.
+
+
+def test_no_child_process_inherits_the_credential(monkeypatch, tmp_path):
+    journey = _load(monkeypatch)
+    monkeypatch.setenv("FLM_LOGIN_LINK", LINK)
+    monkeypatch.setenv("FLM_PASSWORD", "not-a-real-secret")
+    monkeypatch.setenv("AAPT2", "aapt2")
+    seen: list[dict] = []
+
+    class _Done:
+        def __init__(self, out):
+            self.returncode, self.stdout, self.stderr = 0, out, ""
+
+    def fake_run(args, **kw):
+        seen.append(kw.get("env") or dict(__import__("os").environ))
+        return _Done(b"" if "screencap" in args else "package\nList of devices attached\n")
+
+    monkeypatch.setattr(journey.subprocess, "run", fake_run)
+    dev = journey.Device("adb", "emulator-5554", tmp_path / "shots")
+    dev.shell("echo", "hi")
+    dev.screenshot("x")
+    journey.apk_package(tmp_path / "a.apk", "adb")
+    try:
+        journey.pick_device("adb", False)
+    except journey.Fail:
+        pass  # no device listed: the call still happened
+    assert len(seen) == 4, seen
+    for env in seen:
+        assert "FLM_LOGIN_LINK" not in env and "FLM_PASSWORD" not in env
+        assert env.get("PATH"), "the rest of the environment is kept"
 
 
 # ------------------------------------------------------------------ apk package
@@ -641,6 +708,68 @@ def _run_sh_gradle(tmp_path: Path, *, path_java: str | None, java_home: str | No
            "MIRA_JAVA_HOME_CMD": str(bin_dir / "java_home_stub")}
     return subprocess.run(["bash", str(RUN_SH), "m.pdf", "q", "1"], capture_output=True,
                           text=True, env=env, timeout=60)
+
+
+def _run_sh_full(tmp_path: Path, *, apk_exists: bool, extra_env: dict | None = None):
+    """run.sh end to end with fakes that log the FLM_* they inherit."""
+    sdk, bin_dir, mobile = tmp_path / "sdk", tmp_path / "bin", tmp_path / "mobile"
+    log = tmp_path / "env.log"
+    leak = f'echo "$(basename "$0") ${{FLM_LOGIN_LINK:-none}} ${{FLM_PASSWORD:-none}}" >> {log}\n'
+    _exe(sdk / "platform-tools" / "adb",
+         leak + 'if [ "$1" = devices ]; then printf "List\\nemulator-5554\\tdevice\\n"; fi\n')
+    _exe(sdk / "emulator" / "emulator", leak)
+    _exe(bin_dir / "java", "echo 'openjdk version \"21.0.5\" 2024' >&2\n")
+    _exe(bin_dir / "node", leak)
+    _exe(mobile / "node_modules" / ".bin" / "vite", leak)
+    apk = mobile / "android" / "app" / "build" / "outputs" / "apk" / "staging" / "debug" / "app-staging-debug.apk"
+    _exe(mobile / "android" / "gradlew", leak + f'mkdir -p "{apk.parent}"; echo NEW > "{apk}"\n')
+    if apk_exists:
+        apk.parent.mkdir(parents=True, exist_ok=True)
+        apk.write_text("OLD")
+    _exe(bin_dir / "python3", f'echo "journey ${{FLM_LOGIN_LINK:-none}} ${{FLM_PASSWORD:-none}}" >> {log}\n')
+    _exe(bin_dir / "java_home_stub", "exit 1\n")
+    env = {"PATH": f"{bin_dir}:/usr/bin:/bin", "HOME": str(tmp_path),
+           "ANDROID_SDK_ROOT": str(sdk), "MIRA_MOBILE_DIR": str(mobile),
+           "MIRA_JAVA_HOME_CMD": str(bin_dir / "java_home_stub"),
+           "FLM_EMAIL": EMAIL, "FLM_LOGIN_LINK": LINK, **(extra_env or {})}
+    r = subprocess.run(["bash", str(RUN_SH), "m.pdf", "q", "1"], capture_output=True,
+                       text=True, env=env, timeout=60)
+    return r, (log.read_text() if log.exists() else ""), apk
+
+
+def test_run_sh_gives_the_credential_to_the_journey_only(tmp_path):
+    r, log, _apk = _run_sh_full(tmp_path, apk_exists=False)
+    lines = log.splitlines()
+    assert f"journey {LINK} none" in lines, r.stdout + r.stderr + log
+    others = [ln for ln in lines if not ln.startswith("journey ")]
+    assert others, "precondition: adb and the build tools ran"
+    assert not [ln for ln in others if TOKEN in ln], others
+
+
+def test_run_sh_rebuilds_a_stale_apk_by_default(tmp_path):
+    # Codex r3 F10: an APK left by another checkout must not be what gets tested.
+    r, _log, apk = _run_sh_full(tmp_path, apk_exists=True)
+    assert "building staging debug APK" in r.stdout, r.stdout + r.stderr
+    assert apk.read_text().strip() == "NEW"
+
+
+def test_run_sh_reuses_an_apk_only_when_told_to_and_names_it(tmp_path):
+    r, _log, apk = _run_sh_full(tmp_path, apk_exists=True, extra_env={"MIRA_REUSE_APK": "1"})
+    assert "building staging debug APK" not in r.stdout, r.stdout
+    assert apk.read_text() == "OLD"
+    assert "sha256" in r.stdout, "the reused APK's identity is recorded"
+
+
+def test_run_sh_skips_a_jdk_newer_than_gradle_supports(tmp_path):
+    # Codex r3 F11: Gradle 8.14.3 runs on 21 to 24, not 25.
+    r = _run_sh_gradle(tmp_path, path_java="25.0.1", java_home=None, brew_java="21.0.5")
+    assert "GRADLE_JAVA=21" in r.stdout, r.stdout + r.stderr
+
+
+def test_run_sh_with_only_a_jdk_25_gives_the_jdk_instruction(tmp_path):
+    r = _run_sh_gradle(tmp_path, path_java="25.0.1", java_home=None, brew_java=None)
+    assert r.returncode == 2, r.stdout + r.stderr
+    assert "needs JDK 21" in r.stderr and "GRADLE_JAVA" not in r.stdout
 
 
 def test_run_sh_falls_through_a_failing_java_shim_to_homebrew(tmp_path):

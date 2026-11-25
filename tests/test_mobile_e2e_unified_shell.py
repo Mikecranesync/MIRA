@@ -70,7 +70,11 @@ class FakePhone:
         pixel=False,
         chip_file=None,
         sheet_file=None,
+        passage=PASSAGE,
+        stray=None,
     ):
+        self.passage = passage  # None: the sheet opens without a stored quote
+        self.stray = stray  # an unrelated chat row rendered on the same screen
         # chip_file / sheet_file: the answer cites, or the sheet names, a DIFFERENT manual.
         self.chip_file, self.sheet_file = chip_file, sheet_file
         self.pixel = pixel  # Pixel 9a font metrics on the create form (see the test)
@@ -200,6 +204,8 @@ class FakePhone:
                         )
                     )
                 n.append(("Copy", "Button", (42, 1519, 160, 1637), True, None))
+                if self.stray:
+                    n.append((self.stray, "TextView", (42, 1650, 1042, 1700), False, None))
         if self.pending:
             # The Pixel's WebView does not expose the list's "Pending attachments" label;
             # the chip's name and its Remove button show on both devices.
@@ -237,8 +243,9 @@ class FakePhone:
                     False,
                     None,
                 ),
-                (PASSAGE, "TextView", (42, 1233, 1042, 1734), False, None),
             ]
+            if self.passage:
+                n.append((self.passage, "TextView", (42, 1233, 1042, 1734), False, None))
             if self.sheet == "citation":
                 n.append(
                     (
@@ -488,6 +495,34 @@ def test_citation_without_an_expected_page_passes_when_they_agree(rig):
     journey, phone, dev = rig(start="answered", chip_page=4, sheet_page=4)
     journey.verify_citation(dev, None, source=PDF)
     assert phone.opened is True
+
+
+# Codex r3 F9: the passage must come from the open sheet.
+
+
+def test_citation_rejects_a_sheet_with_no_passage_despite_an_ellipsis_elsewhere(rig):
+    journey, phone, dev = rig(start="answered", passage=None, stray="Searching the manual…")
+    with pytest.raises(journey.Fail, match="no passage"):
+        journey.verify_citation(dev, 3, source=PDF)
+    assert phone.opened is False
+
+
+def test_citation_takes_the_passage_from_the_sheet_not_a_longer_chat_row(rig):
+    # Control: a real passage in the sheet passes even with a longer stray row.
+    journey, phone, dev = rig(start="answered", stray="“" + "x" * 400 + "…")
+    passage = journey.verify_citation(dev, 3, source=PDF)
+    assert passage == PASSAGE.replace("\n", " ") or PASSAGE.split("\n")[0] in passage
+
+
+# Codex r3 F7: the locator is the last one in the label.
+
+
+def test_cited_pages_takes_the_last_locator_after_a_title_with_pdf_and_p_inside(rig):
+    journey, _phone, _dev = rig()
+    for title in ("manual.pdf revision p. 7 final.pdf", "manual.pdf p. 7 final.pdf"):
+        assert journey.cited_pages([f"FILE {title} p. 31"]) == [(title, 31)]
+        assert journey.cited_pages([f"[1] {title} \u2014 p.31"]) == [(title, 31)]
+    assert journey.cited_pages(["FILE PowerFlex 525.pdf p. 3 F004"]) == [("PowerFlex 525.pdf", 3)]
 
 
 def test_ask_reads_the_spaced_page_chip(rig):

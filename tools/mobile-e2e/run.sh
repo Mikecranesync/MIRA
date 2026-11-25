@@ -8,6 +8,12 @@
 #
 set -euo pipefail
 
+# The credential goes to journey.py only: not to adb (whose server can outlive the
+# run), the emulator, or the build tools. Held here, exported just before the exec.
+_flm_link="${FLM_LOGIN_LINK:-}"
+_flm_pass="${FLM_PASSWORD:-}"
+unset FLM_LOGIN_LINK FLM_PASSWORD
+
 PDF="${1:?usage: run.sh <manual.pdf> <question-without-questionmark> [expected-page]}"
 QUESTION="${2:?question required}"
 EXPECT_PAGE="${3:-}"
@@ -37,12 +43,17 @@ java_major() {
   # version, which rejects the candidate rather than aborting run.sh under errexit.
   { "$1" -version 2>&1 || true; } | sed -nE 's/.*version "([0-9]+).*/\1/p' | head -1
 }
+# Capacitor 8 compiles for 21; the pinned Gradle wrapper (8.14.3) runs on 21 to 24.
+# Raise the ceiling when the wrapper moves past it.
+jdk_ok() {
+  [ -n "$1" ] && [ "$1" -ge 21 ] && [ "$1" -le 24 ]
+}
 ensure_jdk21() {
   local bin major home
   if [ -n "${JAVA_HOME:-}" ]; then
     if [ -x "$JAVA_HOME/bin/java" ]; then
       major="$(java_major "$JAVA_HOME/bin/java")"
-      if [ -n "$major" ] && [ "$major" -ge 21 ]; then return 0; fi
+      if jdk_ok "$major"; then return 0; fi
     fi
     # gradlew prefers JAVA_HOME over PATH, so a rejected one must not stay set.
     unset JAVA_HOME
@@ -50,7 +61,7 @@ ensure_jdk21() {
   bin="$(command -v java || true)"
   if [ -n "$bin" ] && [ -x "$bin" ]; then
     major="$(java_major "$bin")"
-    if [ -n "$major" ] && [ "$major" -ge 21 ]; then return 0; fi
+    if jdk_ok "$major"; then return 0; fi
   fi
   # macOS: /usr/libexec/java_home, then Homebrew's openjdk@21 (not linked by default).
   # Each is probed on its own: java_home may offer an older JDK while brew has 21.
@@ -63,13 +74,13 @@ ensure_jdk21() {
   for home in "$jh" "$bh"; do
     [ -n "$home" ] && [ -x "$home/bin/java" ] || continue
     major="$(java_major "$home/bin/java")"
-    if [ -n "$major" ] && [ "$major" -ge 21 ]; then
+    if jdk_ok "$major"; then
       export JAVA_HOME="$home"
       export PATH="$JAVA_HOME/bin:$PATH"
       return 0
     fi
   done
-  echo "The APK build needs JDK 21 (Capacitor 8). Install it (macOS: brew install openjdk@21)" >&2
+  echo "The APK build needs JDK 21 (Capacitor 8; Gradle 8.14.3 runs on 21 to 24). Install it (macOS: brew install openjdk@21)" >&2
   echo "and set JAVA_HOME to it, or build the APK separately first." >&2
   exit 2
 }
@@ -99,7 +110,12 @@ fi
 
 # --------------------------------------------------------------- 2. apk
 APK="$MOBILE/android/app/build/outputs/apk/staging/debug/app-staging-debug.apk"
-if [ ! -f "$APK" ]; then
+# Built from the current sources every run: an APK left by another branch or checkout
+# would otherwise be what gets tested. MIRA_REUSE_APK=1 reuses one on purpose, and its
+# identity goes into the run's output.
+if [ "${MIRA_REUSE_APK:-0}" = 1 ] && [ -f "$APK" ]; then
+  echo "==> reusing $APK (MIRA_REUSE_APK=1), sha256 $(shasum -a 256 "$APK" | cut -d' ' -f1)"
+else
   ensure_jdk21
   echo "==> building staging debug APK"
   ( cd "$MOBILE"
@@ -122,4 +138,6 @@ ARGS=(--apk "$APK" --pdf "$PDF" --question "$QUESTION" --adb "$ADB")
 
 PY="$(command -v python3 || command -v python)"
 echo "==> replaying journey"
+[ -z "$_flm_link" ] || export FLM_LOGIN_LINK="$_flm_link"
+[ -z "$_flm_pass" ] || export FLM_PASSWORD="$_flm_pass"
 exec "$PY" "$REPO_ROOT/tools/mobile-e2e/journey.py" "${ARGS[@]}"

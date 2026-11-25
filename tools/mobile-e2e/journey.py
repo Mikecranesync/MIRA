@@ -58,6 +58,16 @@ from pathlib import Path
 PKG = os.environ.get("MIRA_PKG", "com.factorylm.mira")
 DEVICE_TMP = "/sdcard/Download"
 UI_XML = "/sdcard/window_dump.xml"
+# Shell-owned and not readable by apps: where dumps go while a sign-in link can be on
+# screen, in a fresh 0700 directory per sign-in, so shared storage never holds it.
+PRIVATE_TMP = "/data/local/tmp"
+# Credentials go to this process only. Not to adb (whose server outlives the run),
+# screencap or aapt2.
+CREDENTIAL_ENV = ("FLM_LOGIN_LINK", "FLM_PASSWORD")
+
+
+def child_env() -> dict[str, str]:
+    return {k: v for k, v in os.environ.items() if k not in CREDENTIAL_ENV}
 
 # adb rewrites /sdcard/... into a Windows path under Git Bash without this.
 os.environ.setdefault("MSYS_NO_PATHCONV", "1")
@@ -95,6 +105,8 @@ class Device:
         self.outdir = outdir
         self.outdir.mkdir(parents=True, exist_ok=True)
         self._shot = 0
+        self.ui_xml = UI_XML
+        self._private_dir: str | None = None
 
     def _run(self, args: list[str], **kw) -> subprocess.CompletedProcess:
         # encoding= is mandatory on Windows: text=True alone fails OPEN -- the decode
@@ -106,6 +118,7 @@ class Device:
             text=True,
             encoding="utf-8",
             errors="replace",
+            env=child_env(),
             **kw,
         )
 
@@ -138,6 +151,7 @@ class Device:
         raw = subprocess.run(
             [self.adb, "-s", self.serial, "exec-out", "screencap", "-p"],
             capture_output=True,
+            env=child_env(),
         ).stdout
         path.write_bytes(raw)
         return path
@@ -147,8 +161,8 @@ class Device:
     def dump(self) -> list[Node]:
         """Snapshot the view hierarchy. Retries: dump races app transitions."""
         for _ in range(6):
-            self.shell("uiautomator", "dump", UI_XML)
-            xml = self.shell("cat", UI_XML)
+            self.shell("uiautomator", "dump", self.ui_xml)
+            xml = self.shell("cat", self.ui_xml)
             if xml.startswith("<?xml") and "<node" in xml:
                 break
             time.sleep(1.5)
@@ -176,15 +190,30 @@ class Device:
             )
         return nodes
 
-    def forget_screen(self) -> None:
-        """Remove the on-device view-hierarchy dump; it holds every field's text.
+    def private_screen(self) -> None:
+        """From now on, dump the view hierarchy into a fresh shell-private directory.
 
-        Checked, not assumed: a device that stopped answering leaves the file behind.
+        A dump holds every field's text, a sign-in link included, so while one can be
+        on screen it never goes to shared storage.
         """
-        self.shell("rm", "-f", UI_XML)
-        if self.shell("test", "-e", UI_XML, "&&", "echo", "PRESENT", "||", "echo", "GONE") != "GONE":
-            raise Fail(f"could not confirm {UI_XML} was removed from the device. It may still "
-                       f"hold the sign-in link: delete it by hand (adb shell rm -f {UI_XML})")
+        d = f"{PRIVATE_TMP}/mira-e2e-{secrets.token_hex(6)}"
+        self.shell("mkdir", "-m", "700", d)
+        if self.shell("test", "-d", d, "&&", "echo", "OK") != "OK":
+            raise Fail(f"could not create the private dump directory {d} on the device")
+        self._private_dir, self.ui_xml = d, f"{d}/window_dump.xml"
+
+    def forget_screen(self) -> None:
+        """Remove the private dump directory and go back to the shared dump path.
+
+        Checked, not assumed: a device that stopped answering leaves it behind.
+        """
+        d, self._private_dir, self.ui_xml = self._private_dir, None, UI_XML
+        if d is None:
+            return
+        self.shell("rm", "-rf", d)
+        if self.shell("test", "-e", d, "&&", "echo", "PRESENT", "||", "echo", "GONE") != "GONE":
+            raise Fail(f"could not confirm {d} was removed from the device. It may still hold "
+                       f"the sign-in link: delete it by hand (adb shell rm -rf {d})")
 
     def texts(self) -> list[str]:
         return [n.label for n in self.dump() if n.label.strip()]
@@ -478,9 +507,11 @@ def log(step: str, msg: str = "") -> None:
 # would accept "p.31" if it did.
 # A source chip reads "FILE <title> p. 3" (kind OEM / FILE / HIST); the sheet header
 # reads "[1] <title> \u2014 p.3". The title is everything between the prefix and
-# ".pdf", spaces included, so "PowerFlex 525.pdf" is never read as "525.pdf".
+# ".pdf", spaces included, so "PowerFlex 525.pdf" is never read as "525.pdf". The
+# title runs to the LAST ".pdf" that the locator follows, so a title that itself
+# contains ".pdf" or "p. 7" is kept whole.
 _CITED_PAGE = re.compile(
-    r"^(?:(?:OEM|FILE|HIST)\s+|\[\d+\]\s+)(?P<file>\S.*?\.pdf)(?=\s).*?\bp\.\s*(?P<page>\d+)\b",
+    r"^(?:(?:OEM|FILE|HIST)\s+|\[\d+\]\s+)(?P<file>\S.*\.pdf)\s+(?:[\u2014\u2013-]\s*)?p\.\s*(?P<page>\d+)\b",
     re.IGNORECASE,
 )
 
@@ -532,7 +563,7 @@ def default_adb() -> str:
 
 def pick_device(adb: str, allow_physical: bool) -> str:
     out = subprocess.run([adb, "devices"], capture_output=True, text=True,
-                         encoding="utf-8", errors="replace").stdout
+                         encoding="utf-8", errors="replace", env=child_env()).stdout
     devices = [
         line.split()[0]
         for line in out.splitlines()[1:]
@@ -582,7 +613,7 @@ def apk_package(apk: Path, adb: str) -> str:
         raise Fail(f"cannot verify which package {apk.name} installs: no aapt2 under the "
                    "SDK's build-tools (install build-tools, or set AAPT2)")
     r = subprocess.run([aapt2, "dump", "packagename", str(apk)], capture_output=True,
-                       text=True, encoding="utf-8", errors="replace")
+                       text=True, encoding="utf-8", errors="replace", env=child_env())
     lines = (r.stdout or "").strip().splitlines()
     if r.returncode != 0 or not lines:
         raise Fail(f"cannot verify which package {apk.name} installs: "
@@ -660,6 +691,7 @@ def sign_in(dev: Device, email: str, password: str | None = None, *,
         # interrupted exchange leaves it live and on screen. So no screenshot while it
         # can be showing, and the dump file that held it is removed however this ends.
         try:
+            dev.private_screen()
             dev.tap_button("Have an invitation link instead")
             dev.wait_for("Use an invitation link", timeout=30)
             dev.type_into("Invitation link", login_link, secret=True)
@@ -700,11 +732,16 @@ def _drawer_account(nodes: list[Node]) -> str | None:
 
     The drawer also lists projects and conversations, and any of them could be
     titled with an email address, so only the footer's line identifies the account.
+    Known limit: a conversation named with the expected email as the very last row,
+    directly above a footer that has no account line, would still be read as one.
     """
     labels = [n.label.strip() for n in nodes]
     if "About & updates" not in labels:
         return None
-    before = [t for t in labels[: labels.index("About & updates")] if t]
+    # The footer renders after every drawer row, so its button is the LAST match: a
+    # conversation can be named "About & updates" too.
+    footer = len(labels) - 1 - labels[::-1].index("About & updates")
+    before = [t for t in labels[:footer] if t]
     return before[-1] if before else None
 
 
@@ -881,8 +918,16 @@ def verify_citation(dev: Device, expect_page: int | None, *, source: str) -> str
     if page != chip_page:  # chips were already filtered to expect_page when one is given
         raise Fail(f"chip cites p.{chip_page} but the sheet shows p.{page}: {header!r}")
 
+    # The passage must come from the open sheet: between its header and its first
+    # action. Anywhere else on screen (a chat row, a status line) proves nothing.
+    labels = dev.texts()
+    sheet = labels[labels.index(header) + 1 :] if header in labels else []
+    for i, t in enumerate(sheet):
+        if t.startswith(("Open original at cited page", "Cited at page", "Close")):
+            sheet = sheet[:i]
+            break
     passage = ""
-    for t in dev.texts():
+    for t in sheet:
         if t.startswith("“") or t.startswith('"') or "…" in t:
             if len(t) > len(passage):
                 passage = t

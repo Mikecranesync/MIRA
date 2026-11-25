@@ -19,8 +19,11 @@ unset FLM_PASSWORD   # exactly one of FLM_PASSWORD / FLM_LOGIN_LINK
 
 The link is a credential. The harness reads it from the environment, not from its own
 command line. It is typed quoted so its `?` survives the device shell, and it is never printed
-or screenshotted while it can be on screen. The on-device view dump that held it is removed,
-and that removal is checked. It is single-use and expires in 15 minutes, so mint it right
+or screenshotted while it can be on screen. While it can be on screen, view dumps go to a
+fresh 0700 directory under `/data/local/tmp` (shell-owned, not readable by apps), never
+`/sdcard`; that directory is removed afterwards and the removal is checked. `run.sh` hands
+`FLM_LOGIN_LINK` / `FLM_PASSWORD` to `journey.py` only, and `journey.py` strips them from
+adb, screencap and aapt2, so neither the adb server nor a build tool holds them. It is single-use and expires in 15 minutes, so mint it right
 before the run.
 
 **Accepted residual (owner decision, 2026-11-25):** adb has no way to type text except
@@ -31,8 +34,9 @@ minutes, is for a staging fixture account, and is spent by the sign-in moments l
 harness on a machine and emulator you control.
 
 `run.sh` boots an emulator (cold, no snapshot), builds the staging-flavour debug APK
-(`com.factorylm.mira.staging`, which talks to app-staging) if it is missing, then runs
-`journey.py`. Exit code 0 = the grounded chain verified; non-zero = a named failure. It runs
+(`com.factorylm.mira.staging`, which talks to app-staging) from the current sources, then
+runs `journey.py`. It rebuilds every run, so an APK left by another branch is never what
+gets tested; `MIRA_REUSE_APK=1` reuses an existing one on purpose and prints its sha256. Exit code 0 = the grounded chain verified; non-zero = a named failure. It runs
 from Git Bash on Windows and from macOS/Linux (set `ANDROID_SDK_ROOT` or `ANDROID_HOME`;
 `journey.py` derives its default adb from the same variable, `ADB` overrides it).
 
@@ -151,10 +155,12 @@ APK was built, so it needs no rebuild for any Hub-only change.
 
 - Android SDK with `platform-tools` and `emulator`, plus at least one AVD
 - Python 3.12
-- **JDK 21** only if the APK needs building: Capacitor 8 compiles for Java 21, and JDK 17
-  fails deep in gradle at `:capacitor-camera:compileDebugJavaWithJavac`. `run.sh` checks
-  first: it uses `JAVA_HOME` or `java` if either is 21+, else asks `/usr/libexec/java_home`
-  and Homebrew's `openjdk@21` (macOS: `brew install openjdk@21`), else stops before building.
+- **JDK 21** for the build: Capacitor 8 compiles for Java 21, and JDK 17 fails deep in
+  gradle at `:capacitor-camera:compileDebugJavaWithJavac`. The pinned Gradle wrapper
+  (8.14.3) runs on 21 to 24, not 25. `run.sh` checks first: it uses `JAVA_HOME` or `java`
+  if either is 21 to 24, else asks `/usr/libexec/java_home` and Homebrew's `openjdk@21`
+  (macOS: `brew install openjdk@21`) each in turn, else stops before building. A failing
+  version probe (the macOS `java` shim with no JDK) just rejects that candidate.
   The build runs `bun install` (if `node_modules` is missing) and `vite build` before
   `cap sync`, since `cap sync` copies `dist/` into the APK.
 - `FLM_EMAIL` plus `FLM_PASSWORD` or `FLM_LOGIN_LINK` in the environment — never hardcoded,
