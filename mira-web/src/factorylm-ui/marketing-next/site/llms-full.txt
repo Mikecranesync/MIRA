@@ -30,6 +30,7 @@ See also: /llms.txt (summary), /sitemap-site.xml
 - [Free technician access](https://factorylm.com/free-technicians): the free offer and its terms
 - [Start free](https://factorylm.com/start): account setup in three steps
 - [Limitations & safety](https://factorylm.com/limitations): what MIRA does and doesn't do, and what has been tested
+- [PowerFlex 525 fault codes](https://factorylm.com/powerflex-525-fault-codes): all 48 codes with name, fault type and the Rockwell 520-UM001 manual page
 - [Request a demo](https://factorylm.com/demo): 30 minutes with the founder
 - [About](https://factorylm.com/about)
 - [Fault code library](https://factorylm.com/blog/fault-codes)
