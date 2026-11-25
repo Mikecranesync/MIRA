@@ -193,3 +193,18 @@ def test_two_consecutive_errors_skip_the_provider(tmp_path, monkeypatch):
     monkeypatch.setitem(ai_panel.ASKERS, "openai", boom)
     log = ai_panel.run(tmp_path, ["openai"], ai_panel.Budget(6.0), ai_panel.load_questions()[:5])
     assert len(calls) == 2 and "SKIPPED" in log[-1]
+
+
+def test_report_regrades_stored_answers_without_calls(tmp_path):
+    (tmp_path / "openai").mkdir()
+    rec = {
+        "n": 1,
+        "answer": "F004 is UnderVoltage.",
+        "urls": ["https://factorylm.com/x"],
+        "cost_usd": 0.02,
+        "searches": 1,
+    }
+    (tmp_path / "openai" / "q01.json").write_text(json.dumps(rec))
+    md = ai_panel.report(tmp_path, ai_panel.load_questions())
+    assert "| openai | 1/20 | 1/1 | 0/1 | 1/1 |" in md
+    assert "| 1 | ✓ **FLM-cited** |" in md

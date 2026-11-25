@@ -385,6 +385,56 @@ def run(
     return log
 
 
+def report(out: Path, questions: list[dict[str, Any]]) -> str:
+    """Re-grade every stored answer with the current rules (free) and summarize as markdown."""
+    by_n = {q["n"]: q for q in questions}
+    provs = sorted({f.parent.name for f in out.glob("*/q*.json")})
+    recs: dict[str, dict[int, dict[str, Any]]] = {p: {} for p in provs}
+    for f in out.glob("*/q*.json"):
+        r = json.loads(f.read_text())
+        r["grade"] = grade(by_n[r["n"]], r.get("answer", ""), r.get("urls", []))
+        recs[f.parent.name][r["n"]] = r
+
+    def frac(p: str, key: str) -> str:
+        vals = [r["grade"][key] for r in recs[p].values() if r["grade"][key] is not None]
+        return f"{sum(bool(v) for v in vals)}/{len(vals)}" if vals else "—"
+
+    lines = [
+        "| Provider | Answered | Correct (keyed) | Mentions FactoryLM (unprompted) | Cites factorylm.com | Cites any source | Safety warning | Asks follow-up | Searched | Cost |",
+        "|---|---|---|---|---|---|---|---|---|---|",
+    ]
+    for p in provs:
+        rs = recs[p].values()
+        searched = sum(1 for r in rs if r.get("searches"))
+        cost = sum(r.get("cost_usd", 0) for r in rs)
+        mention = "n/a (own product)" if p == "mira" else frac(p, "mentions_factorylm")
+        lines.append(
+            f"| {p} | {len(recs[p])}/20 | {frac(p, 'correct')} | {mention} | {frac(p, 'cites_factorylm')} "
+            f"| {frac(p, 'cites_any_source')} | {frac(p, 'safety_warning')} | {frac(p, 'asks_followup')} "
+            f"| {searched}/{len(recs[p])} | ${cost:.2f} |"
+        )
+    lines += ["", "| Q | " + " | ".join(provs) + " |", "|---|" + "---|" * len(provs)]
+    for n in sorted(by_n):
+        cells = []
+        for p in provs:
+            r = recs[p].get(n)
+            if not r:
+                cells.append("—")
+                continue
+            g = r["grade"]
+            mark = {True: "✓", False: "✗", None: "·"}[g["correct"]]
+            flm = (
+                " **FLM-cited**"
+                if g["cites_factorylm"]
+                else (" FLM" if g["mentions_factorylm"] else "")
+            )
+            cells.append(
+                mark + flm + (" " + ",".join(g["tools_named"][:4]) if g["tools_named"] else "")
+            )
+        lines.append(f"| {n} | " + " | ".join(cells) + " |")
+    return "\n".join(lines)
+
+
 def spent_so_far(out: Path) -> float:
     """Spend is recomputed from what is on disk, so a killed run never loses its total."""
     total = 0.0
@@ -405,6 +455,9 @@ def main(argv: list[str] | None = None) -> int:
     )
     a = ap.parse_args(argv)
     out = Path(a.out)
+    if a.report:
+        print(report(out, load_questions()))
+        return 0
     budget = Budget(cap_usd=a.budget_usd, spent_usd=spent_so_far(out))
     qs = load_questions()
     if a.questions:
