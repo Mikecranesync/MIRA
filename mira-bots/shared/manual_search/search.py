@@ -656,14 +656,79 @@ def _without_userinfo(netloc):
     return netloc.rpartition("@")[2] if isinstance(netloc, str) else netloc
 
 
+def _userinfo_of(netloc) -> str:
+    """The ``user:password`` part of ``netloc``, empty when there is none."""
+    return netloc.rpartition("@")[0] if isinstance(netloc, str) else ""
+
+
+# A browser (and the Hub's ``new URL``) reads an http(s) authority after ANY run of
+# slashes or backslashes, ends it at the first slash, backslash, ``?`` or ``#``, and
+# ends its userinfo at the last ``@``. Python's ``urlparse`` needs exactly ``//`` and
+# does not stop at a backslash, so the two can disagree about what the userinfo
+# and the host are (#5940 F1, F3).
+_BROWSER_AUTHORITY = re.compile(r"(?i)https?:[/\\]*([^/\\?#]*)")
+_TRAIL_HOST = re.compile(r"(?i)(?:[a-z0-9-]+(?:\.[a-z0-9-]+)*\.?|\[[0-9a-f:.]+\])(?::[0-9]{1,5})?")
+# Userinfo inside free text: an http(s), ftp or ws(s) URL after any run of slashes
+# or backslashes, as a browser reads it, or any other scheme after ``//``.
+_TEXT_URL_USERINFO = re.compile(
+    r"(?i)\b((?:https?|ftp|wss?):[/\\]*|[a-z][a-z0-9+.\-]*://)[^\s/\\?#]*@"
+)
+
+
+def _browser_userinfo_and_host(url: str) -> tuple[str, str] | None:
+    """(userinfo, host[:port]) as a browser splits an http(s) URL, else None."""
+    m = _BROWSER_AUTHORITY.match(re.sub(r"[\t\n\r]", "", url or "").strip())
+    if not m:
+        return None
+    userinfo, _, host = m.group(1).rpartition("@")
+    return userinfo, host
+
+
+def _unverifiable(url: str) -> bool:
+    """A URL holding an ``@`` that the trail cannot show safely: Python and a browser
+    split its authority differently, or its host is not plainly a hostname or an IP.
+    Shown, such a URL would carry its userinfo, or name a host a browser would not
+    go to. A URL with no ``@`` has no userinfo for any parser and is never refused."""
+    if "@" not in (url or ""):
+        return False
+    p = urlparse(url)
+    browser = _browser_userinfo_and_host(url)
+    return (
+        browser is None
+        or "\\" in p.netloc
+        or _without_userinfo(p.netloc) != browser[1]
+        or not _TRAIL_HOST.fullmatch(browser[1])
+    )
+
+
 def trail_url(url: str) -> str:
     """The URL without its userinfo, query string or fragment: a ``user:password``
     part and signed download tokens (ABB's ``x-sign``) are credentials-like, and
-    the tokens would make one document look like many."""
+    the tokens would make one document look like many. Empty when the URL holds an
+    ``@`` the trail cannot verify (#5940 F1, F3): the Hub drops a row whose URL does
+    not parse, and the search itself still sees the original URL."""
+    if _unverifiable(url):
+        return ""
     p = urlparse(url or "")
     if p.scheme and p.netloc:
         return f"{p.scheme}://{_without_userinfo(p.netloc)}{p.path}"
     return (url or "")[:200]
+
+
+def _trail_title(title: str, url: str) -> str:
+    """The title without any URL userinfo, then cut to 120 characters (#5940 F2).
+    A provider may echo the link as its title, with or without a scheme, so the
+    candidate's own userinfo goes too. Scoring and selection keep the original."""
+    t = title or ""
+    if "@" in t:
+        t = _TEXT_URL_USERINFO.sub(r"\1", t)
+        own = {_userinfo_of(urlparse(url or "").netloc)}
+        browser = _browser_userinfo_and_host(url)
+        if browser is not None:
+            own.add(browser[0])
+        for userinfo in sorted(own - {""}, key=len, reverse=True):
+            t = t.replace(userinfo + "@", "")
+    return t[:120]
 
 
 @dataclass
@@ -687,8 +752,8 @@ class AcquisitionTrail:
             row = {
                 "rank": rank,
                 "url": trail_url(url),
-                "host": _without_userinfo(c.get("host", "")),
-                "title": (c.get("title") or "")[:120],
+                "host": "" if _unverifiable(url) else _without_userinfo(c.get("host", "")),
+                "title": _trail_title(c.get("title") or "", url),
                 "score": c.get("score"),
                 "pass": c.get("pass"),
                 "direct_pdf": bool(c.get("is_direct_pdf")),
