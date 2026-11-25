@@ -133,6 +133,7 @@ import {
 } from "@/lib/safety-classifier";
 import { RESTART_BANNER, RESTART_DIRECTIVE, isFaultResetAsk } from "@/capabilities/restart-advisory";
 import { BYPASS_BANNER, BYPASS_STOP_TRIGGER, bypassStopText, safetyBypassAsk, safetyBypassWarning } from "@/capabilities/safety-bypass-advisory";
+import { UNSAFE_PRACTICE_NO_EVIDENCE_TEXT, unsafePracticeWarning } from "@/capabilities/unsafe-practice-advisory";
 import { pageFromRetrievedChunks, withPageCitation } from "@/lib/citation-page";
 import {
   ENERGIZED_WORK_TRIGGER,
@@ -293,6 +294,7 @@ import type {
   SafetyNoticeEntry,
   SafetyStopEntry,
   ProviderFailureEntry,
+  AdvisoryCardEntry,
   VisualObservationEntry,
   IdentityDisputeEntry,
   EvidenceBasis,
@@ -303,6 +305,7 @@ import {
   isSafetyNoticeEntry,
   isSafetyStopEntry,
   isProviderFailureEntry,
+  isAdvisoryCardEntry,
   isVisualObservationEntry,
   isWeakEvidenceEntry,
 } from "@/lib/notebook-chat-types";
@@ -1133,8 +1136,11 @@ function replayNotebookTurnResponse(turn: StoredNotebookTurn): Response {
         emit(sources);
         if (visualEvidence) emit(visualEvidenceMarker(visualEvidence));
       } else {
-        if (turn.answerText) {
-          for (const piece of chunkForRelease(turn.answerText)) emit({ kind: "content", content: piece });
+        // #5905 F4: a turn no provider answered replays its fixed card, as it streamed live.
+        const replayText =
+          turn.answerText ?? (turn.answerStatus === "error" ? (turn.evidence.find(isAdvisoryCardEntry)?.text ?? null) : null);
+        if (replayText) {
+          for (const piece of chunkForRelease(replayText)) emit({ kind: "content", content: piece });
         }
         emit(sources);
         if (basis) {
@@ -2318,10 +2324,15 @@ async function handleChatTurn(
   // beside visible smoke gets both warnings, each once: the hazard banner keeps its priority
   // (first, with its page citation); the advisory card follows it, never replaces it.
   const bypassWarnAsk = !bypassStopEarly ? safetyBypassWarning(message) : null;
-  const advisoryBanner = Boolean(bypassWarnAsk) || restartAdvisory;
+  // #5864 (owner decision 2026-11-24): a live touch screen while cleaning, or an electrical
+  // cabinet left open, gets its fixed card the same way: an ADVISORY beside the bypass card,
+  // never a safetyTrigger, so a zero-hit notebook keeps the card above its honest refusal.
+  const unsafePracticeCard = !bypassStopEarly ? unsafePracticeWarning(message) : null;
+  const advisoryCard = [bypassWarnAsk ? BYPASS_BANNER : null, unsafePracticeCard].filter(Boolean).join("\n\n") || null;
+  const advisoryBanner = Boolean(advisoryCard) || restartAdvisory;
   const hazardBannerBase = safetyTrigger && !electricalHazardDirective ? hazardBanner(safetyTrigger) : null;
-  const advisoryBannerBase = bypassWarnAsk
-    ? restartAdvisory ? `${BYPASS_BANNER}\n\n${RESTART_BANNER}` : BYPASS_BANNER
+  const advisoryBannerBase = advisoryCard
+    ? restartAdvisory ? `${advisoryCard}\n\n${RESTART_BANNER}` : advisoryCard
     : restartAdvisory
       ? RESTART_BANNER
       : null;
@@ -3968,7 +3979,16 @@ async function handleChatTurn(
   // A flagged hazard turn is never swallowed by this abstain (owner decision
   // 2026-09-27): with no documents it takes the general lane, so the tech gets
   // the hazard banner and an answer instead of "couldn't find that".
-  if (componentHold || (chunks.length === 0 && (!general || libraryNotForAsk || missingModelManual || noEvidenceForMachine || unidentifiedServiceText || photoPartLookup || photoPartCompatibilityText || unboundManualRequest) && !groundedMachineEntry && !safetyTrigger)) {
+  // #5905 Codex r1 F2: an unsafe-practice card (#5864) never sits above an answer with no
+  // evidence, so it joins this abstain in general mode too. A real hazard trigger still
+  // takes the general lane, as above.
+  // One invariant, photo or not: the card with no retrieved chunks gets the fixed reply. A photo
+  // reading cannot tell whether it supports the question asked (#5905 Codex r3 F11), so it
+  // unlocks nothing here; answering the photo-backed part under the card is a follow-up (#5936).
+  // The same holds for a recorded machine window (#5905 Codex r4 F15): telemetry cannot support a
+  // cleaning or cabinet procedure, so a grounded machine entry does not lift this abstain either.
+  const unsafePracticeAbstain = Boolean(unsafePracticeCard);
+  if (componentHold || (chunks.length === 0 && (((!general || libraryNotForAsk || missingModelManual || noEvidenceForMachine || unidentifiedServiceText || photoPartLookup || photoPartCompatibilityText || unboundManualRequest) && !groundedMachineEntry) || unsafePracticeAbstain) && !safetyTrigger)) {
     // Gate G — abstain honestly, persist the turn, never call the provider.
     // #4015: "couldn't find that in the documentation I have", not "I don't have
     // the manual" — a zero-hit scoped search does not prove the manual is absent
@@ -3980,7 +4000,7 @@ async function handleChatTurn(
     // does on an answered turn. Composed here, from the raw hold text, so no later step can
     // put the card above the banner.
     const abstainAnswerBase = componentHold
-      ? withSafetyFlag(bypassWarnAsk ? `${BYPASS_BANNER}\n\n${componentHold.text}` : componentHold.text, safetyTrigger)
+      ? withSafetyFlag(advisoryCard ? `${advisoryCard}\n\n${componentHold.text}` : componentHold.text, safetyTrigger)
       : componentScope && !notebookRetrieval
       ? noDocumentsForComponentText(componentScope.label)
       : oemRetrievalFailed && (missingModelManual || noEvidenceForMachine)
@@ -4049,10 +4069,13 @@ async function handleChatTurn(
         ? excludedTablesRefusalText(manualIdentity.catalogNumber.trim(), retrievalDiagnostics.excludedTables ?? [])
       : notebookRetrieval
         ? "I couldn't find support for that in this notebook's manuals. Add the manual for the equipment you're asking about, or the page that covers it, and ask again."
+      // #5905 F2: no search ran (an empty project in general mode), so say that, under the card.
+      : unsafePracticeCard
+        ? UNSAFE_PRACTICE_NO_EVIDENCE_TEXT
         : null;
     // A reported unsafe state keeps its card on the honest refusal too (#5670 native 2 F6).
     // (A held turn already carries the card, in its place under any hazard banner: F9 above.)
-    const abstainAnswerText = bypassWarnAsk && abstainAnswerBase && !componentHold ? `${BYPASS_BANNER}\n\n${abstainAnswerBase}` : abstainAnswerBase;
+    const abstainAnswerText = advisoryCard && abstainAnswerBase && !componentHold ? `${advisoryCard}\n\n${abstainAnswerBase}` : abstainAnswerBase;
     const gateAnswerGateSpan = tracer.startSpan("answer_gate.evaluate", undefined, rootCtx);
     lifecycleOutcome = "abstained";
     rec.stage("answer_gate", {
@@ -5623,7 +5646,7 @@ async function handleChatTurn(
       }
 
       // #5466: the ratings floor replaces the draft but the turn's hazard still stands, so its banner stays.
-      if (flagBanner && served && (!refused || ratingColumn !== null || Boolean(bypassWarnAsk)) && !outputRejected && answerText) answerText = `${flagBanner}\n\n${answerText}`;
+      if (flagBanner && served && (!refused || ratingColumn !== null || Boolean(advisoryCard)) && !outputRejected && answerText) answerText = `${flagBanner}\n\n${answerText}`;
 
       // #4068 — owner decision 2026-09-27 ("allow with a warning"): an answer
       // grounded on related-manual pages (the same-family fallback) may relay
@@ -5993,6 +6016,14 @@ async function handleChatTurn(
       const providerFailureEntries: ProviderFailureEntry[] = exhaustion
         ? [{ kind: "provider_failure", reason: exhaustion.reason }]
         : [];
+      // #5905 Codex r1 F4: the fixed card (#5864 / reported bypass) was decided before
+      // generation, so a turn no provider answered still carries it, live, stored and
+      // replayed, above the failure. Independent of the seam.
+      // r2 F4: always stored on such a turn, even when it already streamed ahead of a provider
+      // that dropped mid-answer; the flag only stops the card being sent live a second time.
+      const failureAdvisory = !served && advisoryCard ? advisoryCard : null;
+      const failureAdvisoryFrame = failureAdvisory && !restartBannerStreamed ? failureAdvisory : null;
+      const advisoryCardEntries: AdvisoryCardEntry[] = failureAdvisory ? [{ kind: "advisory_card", text: failureAdvisory }] : [];
       const finalPersistSpan = startStage("turn.persist");
       let finalTurnRowId: string | null = null;
       try {
@@ -6019,7 +6050,7 @@ async function handleChatTurn(
               : [...hazardEntries, ...(manualSafetyEntry ? [manualSafetyEntry] : []), ...emittedCitations, ...(machineEntry ? [machineEntry] : []), ...(visualEntry ? [visualEntry] : []), ...disputeEntries, ...componentEntries, ...proposalEntries, ...(observedPersistEntry ? [observedPersistEntry] : []), ...(weakEntry ? [weakEntry] : [])]
             // Not served: the technician's own photo still stays on their saved
             // question (#4289 F4); hydration shows no observation on a failed answer.
-            : [...hazardEntries, ...emittedCitations, ...disputeEntries, ...componentEntries, ...proposalEntries, ...(visualEntry ? [visualEntry] : []), ...providerFailureEntries],
+            : [...hazardEntries, ...emittedCitations, ...disputeEntries, ...componentEntries, ...proposalEntries, ...(visualEntry ? [visualEntry] : []), ...providerFailureEntries, ...advisoryCardEntries],
           model: servedModel,
           basis: served ? (outputRejected?.kind === "unsafe_answer" ? null : evidenceFrame.basis) : null,
           ...assetSnapshot,
@@ -6059,6 +6090,11 @@ async function handleChatTurn(
         controller.enqueue(
           enc.encode(sse({ kind: "safety", trigger: outputRejected.violation } as NotebookSafetyFrame)),
         );
+      }
+
+      // #5905 F4: the card above the provider failure; the error status below is unchanged.
+      if (failureAdvisoryFrame) {
+        controller.enqueue(enc.encode(sse({ kind: "content", content: failureAdvisoryFrame } as NotebookContentFrame)));
       }
 
       // B2: release the ACCEPTED answer. Content precedes sources/basis/status

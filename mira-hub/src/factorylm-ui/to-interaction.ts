@@ -42,6 +42,7 @@ import {
   isMachineEvidenceEntry,
   isManualSafetyStatementEntry,
   isProviderFailureEntry,
+  isAdvisoryCardEntry,
   isSafetyNoticeEntry,
   isVisualObservationEntry,
 } from "@/lib/notebook-chat-types";
@@ -496,7 +497,8 @@ export function turnsFromPersisted(row: PersistedTurn & { createdAt?: string }, 
   const text =
     row.answerText ??
     (row.answerStatus === "error"
-      ? ""
+      ? // #5905 F4: a turn no provider answered keeps its fixed server card above the failure.
+        ((row.evidence as readonly unknown[]).find(isAdvisoryCardEntry)?.text ?? "")
       : row.answerStatus === "insufficient_evidence" && visualEvidence.length > 0
         ? PHOTO_ABSTENTION_COPY
         : GENERIC_ABSTENTION_COPY);
