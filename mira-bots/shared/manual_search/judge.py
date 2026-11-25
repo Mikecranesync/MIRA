@@ -513,6 +513,20 @@ def is_rejected(c: dict) -> bool:
     return j.get("status") == "judged" and not j.get("is_manual")
 
 
+def document_key(url: str) -> str:
+    """The document a server is asked for: the URL without its fragment, which never
+    leaves the client, but with its query string, which can select another document
+    (#5850). Compared only; the URL shown to the technician keeps its fragment."""
+    return (url or "").split("#", 1)[0]
+
+
+def same_document_key(c: dict) -> tuple[str, str]:
+    """Two candidates equal here would give the judge the same text under the same
+    title, so one read decides both (#5850, #5900, #5902). A different title or query
+    string is new input and stays a separate read."""
+    return document_key(c.get("url") or ""), c.get("title") or ""
+
+
 def _make_tokens(make: str) -> list[str]:
     return [t for t in re.split(r"[^a-z0-9]+", (make or "").lower()) if len(t) >= 3]
 
