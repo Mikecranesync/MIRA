@@ -2346,7 +2346,7 @@ async function handleChatTurn(
         `[notebook-chat] question judge BLOCK (${judgeResult.verdict}, confidence ${judgeResult.confidence}) — blanket reply, no retrieval, no provider`,
       );
       const judgeStopSpan = tracer.startSpan("answer_gate.evaluate", undefined, rootCtx);
-      lifecycleOutcome = "abstain";
+      lifecycleOutcome = "abstained";
       rec.stage("answer_gate", {
         invoked: true,
         decision: "blocked",

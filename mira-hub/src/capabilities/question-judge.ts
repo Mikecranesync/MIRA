@@ -18,6 +18,7 @@
  */
 
 import { canonicalProviders, buildRequestBody, maxOutputTokens } from "@/lib/inference/canonical-cascade";
+import { reserveOpenAiAttempt, boundInputTokens } from "./openai-run-budget";
 
 export type QuestionVerdict = "clear" | "unclear" | "unsafe";
 
@@ -119,14 +120,28 @@ Respond with ONLY a JSON object in this exact format:
 
 No other text. Just the JSON.`;
 
-  const body = buildRequestBody(
-    provider,
-    [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: message },
-    ],
-    maxOutputTokens(),
-  );
+  const messages = [
+    { role: "system" as const, content: systemPrompt },
+    { role: "user" as const, content: message },
+  ];
+  const body = buildRequestBody(provider, messages, maxOutputTokens());
+
+  // Gate the provider attempt through the Hub's budget/attempt gate (#4355).
+  const inputBound = boundInputTokens(messages);
+  const outputBound = maxOutputTokens();
+  const gate = reserveOpenAiAttempt(provider.name, "question-judge", inputBound, outputBound, provider.model);
+
+  if (!gate.ok) {
+    // Fail-open: budget exhausted, let the question through.
+    return {
+      verdict: "clear",
+      confidence: 0,
+      latencyMs: Date.now() - start,
+      model: provider.model,
+      provider: provider.name,
+      error: "budget_exhausted",
+    };
+  }
 
   try {
     const controller = new AbortController();
@@ -145,6 +160,7 @@ No other text. Just the JSON.`;
     clearTimeout(timeout);
 
     if (!response.ok) {
+      gate.reservation?.release();
       return {
         verdict: "clear",
         confidence: 0,
@@ -157,6 +173,7 @@ No other text. Just the JSON.`;
 
     const reader = response.body?.getReader();
     if (!reader) {
+      gate.reservation?.release();
       return {
         verdict: "clear",
         confidence: 0,
@@ -194,6 +211,7 @@ No other text. Just the JSON.`;
     // Parse the JSON response
     const jsonMatch = fullText.match(/\{[^}]*"verdict"[^}]*\}/);
     if (!jsonMatch) {
+      gate.reservation?.release();
       return {
         verdict: "clear",
         confidence: 0,
@@ -209,6 +227,7 @@ No other text. Just the JSON.`;
     const confidence = typeof result.confidence === "number" ? result.confidence : 0;
 
     if (!["clear", "unclear", "unsafe"].includes(verdict)) {
+      gate.reservation?.release();
       return {
         verdict: "clear",
         confidence: 0,
@@ -219,6 +238,7 @@ No other text. Just the JSON.`;
       };
     }
 
+    gate.reservation?.release();
     return {
       verdict,
       confidence,
@@ -228,6 +248,7 @@ No other text. Just the JSON.`;
       error: null,
     };
   } catch (err) {
+    gate.reservation?.release();
     const error = err instanceof Error ? err.message : String(err);
     return {
       verdict: "clear",
