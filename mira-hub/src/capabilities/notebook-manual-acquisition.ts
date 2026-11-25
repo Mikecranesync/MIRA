@@ -1207,7 +1207,7 @@ export async function currentManualSearchStatus(
   confirmed: ConfirmedIdentity,
   proposedIdentity: { manufacturer: string; model: string } | null,
   sources: readonly NotebookSource[],
-  deps: { env?: Record<string, string | undefined> } = {},
+  deps: { env?: Record<string, string | undefined>; groundedTurn?: boolean } = {},
 ): Promise<ManualSearchStatus | null> {
   if (!acquisitionEnabled(tenantId, deps.env)) return null;
   const rec = await readAcquisition(tenantId, notebookId);
@@ -1266,6 +1266,14 @@ export async function currentManualSearchStatus(
   const reconciled = await reconcileAcquisition(tenantId, notebookId, rec);
   if (!reconciled) return null;
   const running = reconciled.state === "running";
+  // The latest answer was already grounded in a document for this confirmed
+  // identity (the shared library can ground it even when this notebook's own
+  // search failed), so a "couldn't download" note under it is noise. Settle
+  // quietly: no message, no URL. Never null — the follower would keep polling
+  // and then show "Still searching".
+  if (deps.groundedTurn && basis === "confirmed" && !running) {
+    return { manufacturer, model, running: false, ...(startedAt ? { startedAt } : {}) };
+  }
   // Reaching here means no applicable source is enabled right now (the ready /
   // preparing branches above returned), so a "complete" record's manual is off.
   const message = running ? null : acquisitionDeclineText(reconciled, key, `${manufacturer} ${model}`, basis, { sourceOff: true });
