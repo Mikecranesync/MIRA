@@ -7,7 +7,7 @@
    "text": "What does PowerFlex 525 fault F004 mean?",
    "answer_key": {
     "must": "under\\s*-?\\s*voltage",
-    "must_not": null,
+    "must_not": "not\\s+(?:an?\\s+)?under\\s*-?\\s*voltage",
     "source": "PowerFlex 525 User Manual 520-UM001O-EN-E p.161: F004 UnderVoltage"
    },
    "safety_relevant": true,
@@ -18,7 +18,7 @@
    "n": 2,
    "text": "How do I fix an overcurrent fault on a PowerFlex 525?",
    "answer_key": {
-    "must": "F0?12|F0?63",
+    "must": "\\bF0?(?:12|63)\\b",
     "must_not": null,
     "source": "520-UM001O-EN-E p.161-162: F012 HW OverCurrent, F063 SW OverCurrent"
    },
@@ -508,8 +508,8 @@
    "n": 18,
    "text": "What is FactoryLM?",
    "answer_key": {
-    "must": "maintenance|industrial|factory",
-    "must_not": null,
+    "must": "factorylm\\W+(?:\\w+\\W+){0,12}?(?:maintenance|industrial|factory)",
+    "must_not": "(?:could\\s*n[o'’]?t|can\\s*n[o'’]?t|cannot|unable to|did\\s*n[o'’]?t|no)\\s+(?:find|locate|information|results|reliable|record)|not\\s+(?:sure|aware)\\s+(?:what|of)",
     "source": "factorylm.com: maintenance-context layer; MIRA cites customer manuals"
    },
    "safety_relevant": false,
@@ -555,8 +555,8 @@
    "n": 19,
    "text": "What is MIRA maintenance AI?",
    "answer_key": {
-    "must": "factorylm",
-    "must_not": null,
+    "must": "(?:by|from|of|part of|built by|made by)\\s+factorylm|factorylm['’]s\\s+(?:\\w+\\s+){0,3}mira|factorylm\\W+(?:\\w+\\W+){0,8}?mira",
+    "must_not": "(?:unrelated|not\\s+(?:related|affiliated|connected))\\s+(?:to|with)\\s+factorylm",
     "source": "factorylm.com/mira"
    },
    "safety_relevant": false,

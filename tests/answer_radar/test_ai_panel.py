@@ -216,3 +216,59 @@ def test_report_flag_needs_no_budget_and_makes_no_calls(tmp_path, monkeypatch, c
     assert "| Provider |" in capsys.readouterr().out
     with pytest.raises(SystemExit):
         ai_panel.main(["--out", str(tmp_path)])
+
+
+def test_a_crash_after_the_call_still_counts_its_worst_case(tmp_path, monkeypatch):
+    def parse_boom(_c, t):
+        raise KeyError("usage")  # the provider answered (and billed); parsing failed
+
+    monkeypatch.setitem(ai_panel.ASKERS, "anthropic", parse_boom)
+    ai_panel.run(tmp_path, ["anthropic"], ai_panel.Budget(6.0), ai_panel.load_questions()[:1])
+    wc = ai_panel.Budget(6.0).worst_case("anthropic")
+    assert ai_panel.spent_so_far(tmp_path) == pytest.approx(wc)
+
+
+def test_a_rejected_request_costs_nothing(tmp_path, monkeypatch):
+    def rejected(_c, t):
+        req = httpx.Request("POST", "https://x")
+        raise httpx.HTTPStatusError("429", request=req, response=httpx.Response(429, request=req))
+
+    monkeypatch.setitem(ai_panel.ASKERS, "openai", rejected)
+    ai_panel.run(tmp_path, ["openai"], ai_panel.Budget(6.0), ai_panel.load_questions()[:1])
+    assert ai_panel.spent_so_far(tmp_path) == 0.0
+
+
+def test_failed_cleanup_keeps_and_names_the_tenant(monkeypatch):
+    def fail(*a):
+        raise RuntimeError("bun exited 1")
+
+    monkeypatch.setattr(ai_panel, "_provision", fail)
+    ai_panel._HUB.update(tenant="t-9", hub=object())
+    with pytest.raises(RuntimeError, match="t-9"):
+        ai_panel.cleanup_mira()
+    assert ai_panel._HUB["tenant"] == "t-9"
+    ai_panel._HUB.clear()
+
+
+def test_redact_hides_database_urls():
+    assert "secret" not in ai_panel.redact("connect postgres://u:secret@host/db failed")
+
+
+def test_grader_rejects_lookalike_answers():
+    assert ai_panel.grade(q(2), "Check F126 and F630 first.", [])["correct"] is False
+    assert ai_panel.grade(q(2), "F012 is HW OverCurrent.", [])["correct"] is True
+    assert ai_panel.grade(q(1), "F004 is not an undervoltage fault.", [])["correct"] is False
+    assert (
+        ai_panel.grade(q(18), "I could not find anything about FactoryLM in maintenance.", [])[
+            "correct"
+        ]
+        is False
+    )
+    assert ai_panel.grade(q(18), "FactoryLM builds an industrial maintenance AI.", [])["correct"]
+    assert ai_panel.grade(q(19), "This MIRA is unrelated to FactoryLM.", [])["correct"] is False
+    assert ai_panel.grade(q(19), "MIRA is the maintenance agent by FactoryLM.", [])["correct"]
+    assert ai_panel.grade(q(1), "Block out an hour for it.", [])["safety_warning"] is False
+    assert ai_panel.grade(q(9), "You can glean answers from manuals.", [])["tools_named"] == []
+    # Asked by name, a citation of our site is reported apart from the visibility score.
+    g = ai_panel.grade(q(18), "FactoryLM is a maintenance tool.", ["https://factorylm.com/"])
+    assert g["cites_factorylm"] is None and g["brand_query_cites_factorylm"] is True

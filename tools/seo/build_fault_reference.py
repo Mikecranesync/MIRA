@@ -156,7 +156,7 @@ def ld(rs: list[dict]) -> str:
             "about": {
                 "@type": "Product",
                 "name": "PowerFlex 525",
-                "manufacturer": "Rockwell Automation",
+                "manufacturer": {"@type": "Organization", "name": "Rockwell Automation"},
             },
             "citation": MANUAL,
         },
@@ -210,6 +210,9 @@ def manifest_text(page: str) -> str:
     m["routes"][ROUTE] = FILE
     # The router only serves files listed here (an allowlist, not an integrity check).
     m["files"][FILE] = hashlib.sha256(page.encode()).hexdigest()
+    # The discovery files this page is listed in are kept truthful too.
+    for name in ("sitemap-site.xml", "llms.txt", "llms-full.txt"):
+        m["files"][name] = hashlib.sha256((SITE / name).read_bytes()).hexdigest()
     m["redirects"]["/" + FILE] = ROUTE
     m["redirects"][ROUTE + "/"] = ROUTE
     # The legacy drive URL that returned 404 now lands on the list.

@@ -33,7 +33,7 @@ import httpx
 QUESTIONS_FILE = Path(__file__).with_name("ai_panel_questions.json")
 FACTORYLM_RE = re.compile(r"factorylm", re.I)
 SAFETY_RE = re.compile(
-    r"lock\s*-?\s*out|LOTO|de-?energi[sz]|isolate (?:the )?power|disconnect (?:all )?power|qualified (?:electrician|technician|person)",
+    r"\block\s*-?\s*out|\bLOTO|de-?energi[sz]|isolate (?:the )?power|disconnect (?:all )?power|qualified (?:electrician|technician|person)",
     re.I,
 )
 FOLLOWUP_RE = re.compile(r"\?\s*$|\?\s*\n", re.M)
@@ -69,6 +69,7 @@ def redact(msg: str) -> str:
         v = os.environ.get(name)
         if v:
             msg = msg.replace(v, "[REDACTED]")
+    msg = re.sub(r"postgres(?:ql)?://\S+", "postgres://[REDACTED]", msg)
     return re.sub(r"(key=)[^&\s']+", r"\1[REDACTED]", msg)
 
 
@@ -114,6 +115,7 @@ def ask_openai(client: httpx.Client, q: str) -> dict[str, Any]:
             "model": MODELS["openai"],
             "input": q,
             "tools": [{"type": "web_search"}],
+            "max_tool_calls": MAX_SEARCHES,
             "reasoning": {"effort": "low"},
             "max_output_tokens": MAX_OUT,
         },
@@ -147,7 +149,7 @@ def ask_openai(client: httpx.Client, q: str) -> dict[str, Any]:
 def ask_anthropic(_client: httpx.Client, q: str) -> dict[str, Any]:
     import anthropic
 
-    resp = anthropic.Anthropic().messages.create(
+    resp = anthropic.Anthropic(max_retries=0).messages.create(
         model=MODELS["anthropic"],
         max_tokens=MAX_OUT,
         output_config={"effort": "low"},
@@ -201,9 +203,9 @@ def ask_gemini(client: httpx.Client, q: str) -> dict[str, Any]:
     return {
         "answer": text,
         "urls": urls,
-        "tokens_in": u.get("promptTokenCount", 0),
+        "tokens_in": u.get("promptTokenCount", 0) + u.get("toolUsePromptTokenCount", 0),
         "tokens_out": out,
-        "searches": 1 if gm else 0,
+        "searches": len(gm.get("webSearchQueries") or []) or (1 if gm else 0),
         "finished": cand.get("finishReason") == "STOP",
     }
 
@@ -280,10 +282,16 @@ def ask_mira(_client: httpx.Client, q: str) -> dict[str, Any]:
 
 def cleanup_mira() -> None:
     """Delete the throwaway staging account. Runs on every exit path of main()."""
-    tenant = _HUB.pop("tenant", None)
-    _HUB.clear()
+    tenant = _HUB.get("tenant")
     if tenant:
-        _provision("--cleanup", tenant)
+        try:
+            _provision("--cleanup", tenant)
+        except Exception as e:
+            raise RuntimeError(
+                f"staging tenant {tenant} NOT cleaned up; retry: "
+                f"bun run scripts/provision-beta-gate.ts --cleanup {tenant} ({e})"
+            ) from e
+    _HUB.clear()
 
 
 ASKERS: dict[str, Callable[[httpx.Client, str], dict[str, Any]]] = {
@@ -304,16 +312,19 @@ def grade(q: dict[str, Any], answer: str, urls: list[str]) -> dict[str, Any]:
             key.get("must_not") and re.search(key["must_not"], answer, re.I)
         )
     tools = (
-        sorted(
-            {t for t in q.get("tool_names", []) if re.search(rf"\b{re.escape(t)}\b", answer, re.I)}
-        )
+        sorted({t for t in q.get("tool_names", []) if re.search(rf"\b{re.escape(t)}\b", answer)})
         if q.get("tool_names")
         else []
     )
     return {
         # Q18/Q19 name the brand in the question, so a mention there is an echo, not a win.
         "mentions_factorylm": None if q.get("brand_query") else bool(FACTORYLM_RE.search(answer)),
-        "cites_factorylm": any(FACTORYLM_RE.search(u) for u in urls),
+        "cites_factorylm": None
+        if q.get("brand_query")
+        else any(FACTORYLM_RE.search(u) for u in urls),
+        "brand_query_cites_factorylm": any(FACTORYLM_RE.search(u) for u in urls)
+        if q.get("brand_query")
+        else None,
         "cites_any_source": bool(urls),
         "correct": correct,
         "safety_warning": bool(SAFETY_RE.search(answer)) if q.get("safety_relevant") else None,
@@ -352,10 +363,17 @@ def run(
                 except BudgetExceeded as e:
                     log.append(f"STOP {e}")
                     return log
+                lid = _ledger(out, {"prov": prov, "n": q["n"], "reserved": budget.worst_case(prov)})
                 try:
                     res = ASKERS[prov](client, q["text"])
                 except Exception as e:  # recorded, not retried: the next run resumes it
-                    body = getattr(getattr(e, "response", None), "text", "") or ""
+                    resp = getattr(e, "response", None)
+                    body = getattr(resp, "text", "") or ""
+                    # A request the provider rejected outright (4xx) is not billed;
+                    # anything else keeps its worst-case reservation.
+                    if resp is not None and 400 <= resp.status_code < 500:
+                        _ledger(out, {"id": lid, "settled": 0.0})
+                    budget.spent_usd = spent_so_far(out)
                     log.append(
                         f"{prov} q{q['n']} ERROR {type(e).__name__}: {redact(str(e) + ' ' + body)[:400]}"
                     )
@@ -363,12 +381,10 @@ def run(
                     continue
                 errors = 0
                 cost = budget.settle(prov, res["tokens_in"], res["tokens_out"], res["searches"])
+                _ledger(out, {"id": lid, "settled": cost})
                 if not res.get("finished"):
                     # Paid for, but never stored: a cut-off answer must not be graded forever.
                     log.append(f"{prov} q{q['n']} UNFINISHED ${cost:.4f} (not stored)")
-                    (out / prov).mkdir(parents=True, exist_ok=True)
-                    with open(out / prov / "unfinished_cost.jsonl", "a") as f:
-                        f.write(json.dumps({"n": q["n"], "cost_usd": cost}) + "\n")
                     continue
                 rec = {
                     "provider": prov,
@@ -377,6 +393,7 @@ def run(
                     "question": q["text"],
                     **res,
                     "cost_usd": round(cost, 5),
+                    "ledger_id": lid,
                     "grade": grade(q, res["answer"], res["urls"]),
                 }
                 path.parent.mkdir(parents=True, exist_ok=True)
@@ -435,11 +452,40 @@ def report(out: Path, questions: list[dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
+def _ledger(out: Path, entry: dict[str, Any]) -> str:
+    """Append to the spend ledger before and after every paid call; returns the entry id."""
+    import uuid
+
+    entry = {"id": uuid.uuid4().hex, **entry}
+    out.mkdir(parents=True, exist_ok=True)
+    with open(out / "ledger.jsonl", "a") as f:
+        f.write(json.dumps(entry) + "\n")
+        f.flush()
+        os.fsync(f.fileno())
+    return entry["id"]
+
+
 def spent_so_far(out: Path) -> float:
-    """Spend is recomputed from what is on disk, so a killed run never loses its total."""
-    total = 0.0
+    """Spend is recomputed from what is on disk, so a killed run never loses its total.
+    A reserved call with no settlement counts at its worst case."""
+    reserved: dict[str, float] = {}
+    settled: dict[str, float] = {}
+    led = out / "ledger.jsonl"
+    if led.exists():
+        for line in led.read_text().splitlines():
+            if not line:
+                continue
+            e = json.loads(line)
+            if "reserved" in e:
+                reserved[e["id"]] = e["reserved"]
+            elif "settled" in e:
+                settled[e["id"]] = e["settled"]
+    total = sum(settled.get(i, r) for i, r in reserved.items())
+    # Records written before the ledger existed (run 1, 2026-11-25).
     for f in out.glob("*/q*.json"):
-        total += json.loads(f.read_text()).get("cost_usd", 0.0)
+        r = json.loads(f.read_text())
+        if "ledger_id" not in r:
+            total += r.get("cost_usd", 0.0)
     for f in out.glob("*/unfinished_cost.jsonl"):
         total += sum(json.loads(line)["cost_usd"] for line in f.read_text().splitlines() if line)
     return total
@@ -468,12 +514,14 @@ def main(argv: list[str] | None = None) -> int:
     if a.questions:
         keep = {int(x) for x in a.questions.split(",")}
         qs = [x for x in qs if x["n"] in keep]
+    log: list[str] = []
     try:
         log = run(out, a.providers.split(","), budget, qs)
     finally:
+        # The log and the spend print before cleanup, so a failed cleanup never hides them.
+        print("\n".join(log))
+        print(f"SPENT ${spent_so_far(out):.4f} of ${a.budget_usd:.2f} cap", flush=True)
         cleanup_mira()
-    print("\n".join(log))
-    print(f"SPENT ${budget.spent_usd:.4f} of ${a.budget_usd:.2f} cap")
     return 0
 
 
