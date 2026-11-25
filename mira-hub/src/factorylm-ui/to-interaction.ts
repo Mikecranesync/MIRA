@@ -581,6 +581,8 @@ export function withManualSearchStatus(
   status: ManualSearchStatus | null,
 ): InteractionTurn[] {
   if (!status) return [...turns];
+  // A settled status with nothing to say (the latest answer was grounded) adds no note.
+  if (!status.running && !status.message) return [...turns];
   let lastAssistantIndex = -1;
   for (let i = 0; i < turns.length; i++) {
     if (turns[i]!.role === "assistant") lastAssistantIndex = i;

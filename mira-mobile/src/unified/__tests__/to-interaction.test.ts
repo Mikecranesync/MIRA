@@ -306,6 +306,18 @@ describe("latestManualSearchStatus / withManualSearchOverride (#4189 F4)", () =>
     expect(withManualSearchOverride(thread, null)).toBe(thread);
   });
 
+  it("does not append a part for a settled override with no message (a grounded turn's quiet outcome)", () => {
+    const thread = toThread([searching[0], { ...searching[1], parts: [{ type: "unknown", raw: { kind: "identity_proposal", manufacturer: "SMC", model: "SS5Y3" } }] }], META);
+    const out = withManualSearchOverride(thread, { manufacturer: "SMC", model: "SS5Y3", running: false });
+    expect(out.turns.some((t) => t.parts.some((p) => p.type === "manual_search_status"))).toBe(false);
+  });
+
+  it("still appends a settled override that carries a message", () => {
+    const thread = toThread([searching[0], { ...searching[1], parts: [{ type: "unknown", raw: { kind: "identity_proposal", manufacturer: "SMC", model: "SS5Y3" } }] }], META);
+    const out = withManualSearchOverride(thread, { manufacturer: "SMC", model: "SS5Y3", running: false, message: "Download it first." });
+    expect(out.turns[1].parts.some((p) => p.type === "manual_search_status")).toBe(true);
+  });
+
   // Codex round 2 F4: the server NEVER persists manual_search_status (the
   // SSE frame is deliberately transient — see chat/route.ts's own comment),
   // so after a reload (or for an identity the live frame never covered —

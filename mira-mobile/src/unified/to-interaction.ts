@@ -405,6 +405,8 @@ export function withManualSearchOverride(
   });
   if (replaced) return { ...thread, turns: replacedTurns };
   if (!allowAppend) return thread;
+  // A settled status with nothing to say (the latest answer was grounded) adds no note.
+  if (!override.running && !override.message) return thread;
   let lastAssistantIndex = -1;
   for (let i = 0; i < replacedTurns.length; i++) if (replacedTurns[i]!.role === "assistant") lastAssistantIndex = i;
   if (lastAssistantIndex === -1) return thread;
