@@ -24,11 +24,12 @@ import {
   type UnlistedModelRefusal,
 } from "@/capabilities/manual-applicability";
 import { type PhotoDocumentKind, photoDocumentShape, productWrittenBody } from "@/capabilities/photo-document-text";
+import { withoutSharedTableHeader } from "@/capabilities/section-table-scope";
 import { exactModelKey } from "@/capabilities/table-rows";
 import { confirmedCatalogNumber } from "@/capabilities/notebook-manual-identity";
 import { embedQueryDetailed, hybridRetrievalEnabled, rrfMerge, vectorLiteral } from "@/capabilities/hybrid-retrieval";
 import { setSpanAttrs } from "@/capabilities/observability/tracing";
-import { extractManualSafetyStatement } from "@/capabilities/manual-safety-statement";
+import { extractCitedOperatingCaution, extractManualSafetyStatement, OPERATING_CAUTION_PATTERN } from "@/capabilities/manual-safety-statement";
 import {
   keepWhatPlainSearchKept,
   logRerankFallback,
@@ -2026,7 +2027,7 @@ export async function retrieveNodeChunks(
           ${PAGE_LABEL_SQL},
           section_path,
           metadata->>'filename' AS filename,
-          metadata->'table_models' AS table_models, metadata->'table_unqualified' AS table_unqualified,
+          metadata->'table_models' AS table_models, metadata->'table_unqualified' AS table_unqualified, metadata->>'table_scope' AS table_scope, metadata->>'table_header' AS table_header,
           ${documentHeadingSql},
           verified,
           tsvector_to_array(content_tsv) AS lexemes,
@@ -2084,7 +2085,7 @@ export async function retrieveNodeChunks(
           ${PAGE_LABEL_SQL},
           section_path,
           metadata->>'filename' AS filename,
-          metadata->'table_models' AS table_models, metadata->'table_unqualified' AS table_unqualified,
+          metadata->'table_models' AS table_models, metadata->'table_unqualified' AS table_unqualified, metadata->>'table_scope' AS table_scope, metadata->>'table_header' AS table_header,
           ${documentHeadingSql},
           verified,
           tsvector_to_array(content_tsv) AS lexemes,
@@ -2200,7 +2201,7 @@ export async function retrieveNodeChunks(
             ${PAGE_LABEL_SQL},
             section_path,
             metadata->>'filename' AS filename,
-            metadata->'table_models' AS table_models, metadata->'table_unqualified' AS table_unqualified,
+            metadata->'table_models' AS table_models, metadata->'table_unqualified' AS table_unqualified, metadata->>'table_scope' AS table_scope, metadata->>'table_header' AS table_header,
             ${documentHeadingSql},
             verified,
             tsvector_to_array(content_tsv) AS lexemes,
@@ -2373,7 +2374,7 @@ export async function retrieveNodeChunks(
         `SELECT
             content, doc_id::text AS doc_id, source_url, source_page, page_start,
             ${PAGE_LABEL_SQL},
-            section_path, metadata->>'filename' AS filename, metadata->'table_models' AS table_models, metadata->'table_unqualified' AS table_unqualified, verified,
+            section_path, metadata->>'filename' AS filename, metadata->'table_models' AS table_models, metadata->'table_unqualified' AS table_unqualified, metadata->>'table_scope' AS table_scope, metadata->>'table_header' AS table_header, verified,
             ${documentHeadingSql},
             tsvector_to_array(content_tsv) AS lexemes,
             0::float4 AS rank
@@ -2636,10 +2637,18 @@ export async function retrieveNodeChunks(
   // whose own cooling method the line does not say). Reported as unresolved, so the
   // refusal names the page and never calls the record's own table another model's.
   const isUnresolvedTableLine = (r: Record<string, unknown>): boolean =>
-    r.table_unqualified === true || String(r.table_unqualified) === "true";
+    r.table_scope === "unresolved" || r.table_unqualified === true || String(r.table_unqualified) === "true";
   const excludedTableOf = (r: Record<string, unknown>): string[] | null => {
     if (!recordKey) return null;
     const tagged = tableModelsOf(r);
+    if (r.table_scope === "unresolved" && isUnresolvedTableLine(r)) return tagged;
+    if (r.table_scope === "section" && tagged.length > 0) {
+      // A physical caption/header explicitly bound this section to these catalogs.
+      // It cannot become generic merely because an OCR-like substitution changes
+      // its identifier family. Ordinary parameter/accessory table tags below have
+      // no such section assertion and retain their existing family rule.
+      return isUnresolvedTableLine(r) || !tagged.includes(recordKey) ? tagged : null;
+    }
     if (tagged.length > 0) {
       // Codex r1 on #5451 (F1): a table keyed by numbers of ANOTHER family (parameter codes,
       // accessory parts) is nobody's look-alike — for this record it is ordinary text. Only a
@@ -2652,7 +2661,8 @@ export async function retrieveNodeChunks(
       return isUnresolvedTableLine(r) || !tagged.includes(recordKey) ? tagged : null;
     }
     if (recordFamilyNumbers.length === 0) return null;
-    const named = modelNumbersIn(String(r.content ?? ""));
+    const content = String(r.content ?? "");
+    const named = modelNumbersIn(r.table_scope === "shared" ? withoutSharedTableHeader(content, r.table_header) : content);
     if (named.some((n) => recordFamilyNumbers.some((own) => own.key === n.key))) return null;
     const siblings = new Set<string>();
     for (const n of named) {
@@ -2671,6 +2681,7 @@ export async function retrieveNodeChunks(
       page: Number.isFinite(page) ? page : null,
       models,
       ...(isUnresolvedTableLine(r) ? { unqualified: true as const } : {}),
+      ...(r.table_scope === "section" || r.table_scope === "unresolved" ? { section: true as const } : {}),
     });
   };
   // Which selected manuals admit() has judged. A manual the search returned no
@@ -2972,7 +2983,7 @@ export async function retrieveNodeChunks(
                 page_start,
                 section_path,
                 metadata->>'filename' AS filename,
-                metadata->'table_models' AS table_models, metadata->'table_unqualified' AS table_unqualified,
+                metadata->'table_models' AS table_models, metadata->'table_unqualified' AS table_unqualified, metadata->>'table_scope' AS table_scope, metadata->>'table_header' AS table_header,
                 ${documentHeadingSql},
                 verified,
                 tsvector_to_array(content_tsv) AS lexemes,
@@ -3511,12 +3522,12 @@ export function chunksToSources(chunks: ManualChunk[]): ManualSource[] {
 export type CitedPageRef = { docId: string; sourceUrl: string; page: number };
 
 /**
- * Case-insensitive superset of every trigger `extractManualSafetyStatement` can hit: the
+ * Case-insensitive superset of the cited-page warning and fallback triggers: the
  * WARNING/DANGER/CAUTION/ATTENTION/SHOCK HAZARD/BURN HAZARD markers and the prose fallbacks
- * (hazardous voltage, discharged capacitors, wait-N-minutes). A chunk without one of these words
- * can never yield a statement, so filtering on it never drops a warning (#4509 Codex r3 F1).
+ * (hazardous voltage, discharged capacitors, wait-N-minutes, operating notes that warn of damage).
+ * A chunk without one of these matches cannot yield a statement (#4509 Codex r3 F1).
  */
-export const CANDIDATE_PATTERN = "warning|danger|caution|attention|shock hazard|burn hazard|hazardous|discharged|wait";
+export const CANDIDATE_PATTERN = `warning|danger|caution|attention|shock hazard|burn hazard|hazardous|discharged|wait|${OPERATING_CAUTION_PATTERN}`;
 /** Rows per keyset batch of the candidate read (#4509 Codex r4 F1). */
 export const CITED_PAGE_BATCH = 200;
 /** Wall-clock bound on the whole cited-page read; past it the caller decides from what was found. */
@@ -3531,16 +3542,16 @@ export const CITED_PAGE_DEADLINE_MS = 4_000;
  *
  * Bounded without a total-row cap (Codex r4 F1: a cap let 500 chunks that merely say "wait" hide
  * the page's only WARNING): only chunks matching CANDIDATE_PATTERN are read, in keyset batches of
- * CITED_PAGE_BATCH ordered by id, each under a transaction-local statement timeout. With `keep`,
- * only the chunks it accepts are retained (memory stays batch-bounded) and the scan stops as soon
- * as every cited page has one; the whole read stops at CITED_PAGE_DEADLINE_MS. The caller fails
- * open on any error.
+ * CITED_PAGE_BATCH ordered by id, each under a transaction-local statement timeout. Keep one
+ * chunk per cited page and let existing warnings replace operating notes. The scan stops when
+ * all cited pages have an existing warning or at CITED_PAGE_DEADLINE_MS. The caller fails open
+ * on any error.
  */
 export async function retrieveCitedPageChunks(
   client: Pick<PoolClient, "query">,
   tenantId: string,
   pages: readonly CitedPageRef[],
-  opts: { approvedSourceDocIds?: string[]; keep?: (content: string) => boolean; now?: () => number } = {},
+  opts: { approvedSourceDocIds?: string[]; now?: () => number } = {},
 ): Promise<Array<{ content: string; sourceUrl: string; sourcePage: number }>> {
   if (pages.length === 0) return [];
   const base: unknown[] = [
@@ -3557,8 +3568,8 @@ export async function retrieveCitedPageChunks(
   const deadline = now() + CITED_PAGE_DEADLINE_MS;
   const keyOf = (url: string, page: number) => `${url}\u0000${page}`;
   const wanted = new Set(pages.map((p) => keyOf(p.sourceUrl, p.page)));
-  const found = new Set<string>();
-  const out: Array<{ content: string; sourceUrl: string; sourcePage: number }> = [];
+  const warned = new Set<string>();
+  const selected = new Map<string, { content: string; sourceUrl: string; sourcePage: number }>();
   await client.query("SET LOCAL statement_timeout = '3s'");
   let cursor: string | null = null;
   for (;;) {
@@ -3581,12 +3592,17 @@ export async function retrieveCitedPageChunks(
     const rows = res.rows as Array<Record<string, unknown>>;
     for (const r of rows) {
       const row = { content: String(r.content ?? ""), sourceUrl: String(r.source_url ?? ""), sourcePage: Number(r.page) };
-      if (opts.keep && !opts.keep(row.content)) continue;
-      out.push(row);
-      found.add(keyOf(row.sourceUrl, row.sourcePage));
+      const key = keyOf(row.sourceUrl, row.sourcePage);
+      if (warned.has(key)) continue;
+      if (extractManualSafetyStatement(row.content)) {
+        selected.set(key, row);
+        warned.add(key);
+      } else if (!selected.has(key) && extractCitedOperatingCaution(row.content)) {
+        selected.set(key, row);
+      }
     }
     if (rows.length < CITED_PAGE_BATCH) break;
-    if (opts.keep && [...wanted].every((k) => found.has(k))) break;
+    if ([...wanted].every((k) => warned.has(k))) break;
     if (now() >= deadline) {
       console.warn(`[manual-rag] cited-page read stopped at its ${CITED_PAGE_DEADLINE_MS}ms deadline (notice from what was found)`);
       break;
@@ -3595,5 +3611,5 @@ export async function retrieveCitedPageChunks(
     if (typeof last !== "string" || last === cursor) break;
     cursor = last;
   }
-  return out;
+  return [...selected.values()];
 }

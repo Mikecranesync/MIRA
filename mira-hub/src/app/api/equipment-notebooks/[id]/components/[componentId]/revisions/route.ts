@@ -14,11 +14,14 @@
  * - When this conversation (`threadId`) is asking about this component, a
  *   correction re-points the selection at the new identity and moves its boundary,
  *   so the next question is checked against the new identity's documents.
+ * - `sameSerial` is a warning only: when the saved identity is confirmed and its serial is usable, it
+ *   lists other components of this tenant carrying the same serial. It never blocks or changes the save.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { sessionOr401 } from "@/lib/session";
 import { advanceSelectionRevision, getSelection, reviseComponent } from "@/capabilities/bench-components/store";
 import { changedFields, readRevisionInput } from "@/capabilities/bench-components/validate";
+import { SAME_SERIAL_LOOKUP_FAILED, sameSerialAdvisory, type SameSerialAdvisory } from "@/capabilities/bench-components/same-serial";
 import { bad, requestIdOf, threadKeyOf } from "@/capabilities/bench-components/http";
 
 export const dynamic = "force-dynamic";
@@ -64,12 +67,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       selection = await advanceSelectionRevision(ctx.tenantId, id, ctx.userId, threadKey, current.version, result.component.current!.revision);
     }
   }
+  let sameSerial: SameSerialAdvisory;
+  try {
+    sameSerial = await sameSerialAdvisory(ctx.tenantId, result.component);
+  } catch {
+    sameSerial = SAME_SERIAL_LOOKUP_FAILED; // a committed save is never turned into a 500 by the lookup
+  }
   return NextResponse.json(
     {
       status: result.status,
       current: result.component.current,
       changed: result.previous && result.component.current ? changedFields(result.previous, result.component.current) : [],
       selection,
+      sameSerial,
     },
     { status: result.status === "created" ? 201 : 200 },
   );

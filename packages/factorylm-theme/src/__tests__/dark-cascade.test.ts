@@ -116,4 +116,20 @@ describe("workspace dark cascade", () => {
 
     expect(nonState).toEqual([]);
   });
+  it("lets a host that never goes dark keep the light state palette on a dark OS", () => {
+    // The system-dark block repaints only the state family, so on a host whose
+    // surfaces stay light (the Hub) a dark-OS device got dark state colours on a
+    // light surface: amber text at 2.03:1, blank sidebar labels (issue 5580). The
+    // host opts out with data-fl-surface="light"; that block must restore every
+    // state role, with exactly the :root expressions, and nothing else.
+    const light = declarationsAfter(css, ":root");
+    const lightSurface = declarationsAfter(css, '[data-fl-surface="light"]');
+    const stateRoles = [...light.keys()].filter((n) => STATE_ROLE.test(n)).sort();
+
+    expect(stateRoles.length).toBe(16);
+    expect([...lightSurface.keys()].sort()).toEqual(stateRoles);
+    for (const [name, value] of lightSurface) {
+      expect(value, `${name} differs from its :root value`).toBe(light.get(name) ?? "<missing from :root>");
+    }
+  });
 });

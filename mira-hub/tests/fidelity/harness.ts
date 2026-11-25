@@ -138,6 +138,11 @@ export async function installRoutes(page: Page, scenario: Scenario) {
     if (m === "GET" && p === `${nbPath}/components`) {
       return route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: "components_unavailable" }) });
     }
+    // Equipment-first navigation (#5625): the Find equipment panel probes the smallest children read
+    // once. Off in this harness, as the route is when MIRA_EQUIPMENT_NAV is unset; the panel hides.
+    if (m === "GET" && p === "/api/equipment-browser/children") {
+      return route.fulfill({ status: 404, contentType: "application/json", body: JSON.stringify({ error: "equipment_nav_disabled" }) });
+    }
     cap.unrecognized.push(`${m} ${p}`);
     return route.abort();
   });

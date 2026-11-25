@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { decode } from "next-auth/jwt";
 import { cookies } from "next/headers";
 import { findUserById } from "@/lib/users";
+import { credentialsAreCurrent } from "@/capabilities/verified-identity";
 
 export interface SessionContext {
   userId: string;
@@ -25,7 +26,7 @@ export interface SessionContext {
   /**
    * Platform (cross-tenant, FactoryLM-staff) admin: `hub_users.status = 'admin'`, derived fresh
    * from the DB on every request, exactly like `role` (#4591). This is the ONLY platform-admin
-   * authority: public registration creates `trial` rows, invites create `approved`, and only an
+   * authority: public registration creates trial or approved personal rows, invites create `approved`, and only an
    * existing platform admin (the admin users route) or an operator can set `admin`. Never the
    * JWT's copy of `status` (stale/forgeable for this purpose) and never an email match.
    * Absent/false = not a platform admin; a failed lookup resolves to false.
@@ -108,7 +109,7 @@ export class SessionUnavailableError extends Error {
 // This approach: read the cookie directly from next/headers, detect the correct
 // name (and salt) by checking which cookie is actually present, then call
 // decode() with that salt explicitly. Works in dev (HTTP) and prod (HTTPS).
-export async function requireSession(): Promise<SessionContext> {
+export async function requireSession(options?: { requireCurrentUser?: boolean }): Promise<SessionContext> {
   const cookieStore = await cookies();
 
   const SECURE_NAME = "__Secure-next-auth.session-token";
@@ -176,6 +177,9 @@ export async function requireSession(): Promise<SessionContext> {
     throw new SessionUnavailableError(err);
   }
 
+  if (options?.requireCurrentUser && (!user || user.tenantId !== tid)) throw new UnauthorizedError();
+  if (user && !credentialsAreCurrent(token, user)) throw new UnauthorizedError();
+
   role = (user?.role ?? "").toLowerCase().trim();
   platformAdmin = user?.status === "admin";
   if (user) {
@@ -215,9 +219,9 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
  *   if (ctx instanceof NextResponse) return ctx;
  *   // ctx.tenantId, ctx.userId, ctx.email
  */
-export async function sessionOr401(): Promise<SessionContext | NextResponse> {
+export async function sessionOr401(options?: { requireCurrentUser?: boolean }): Promise<SessionContext | NextResponse> {
   try {
-    return await requireSession();
+    return await requireSession(options);
   } catch (err) {
     // F8: the ~150 callers of this shared helper get the friendlier,
     // specific 403 for an ended pilot / lapsed trial without each one

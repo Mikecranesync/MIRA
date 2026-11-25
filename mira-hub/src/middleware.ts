@@ -152,6 +152,19 @@ function applySecurityHeaders(
 }
 
 // btoa is a global in the edge runtime; use it instead of Buffer for nonce encoding.
+/**
+ * Where sign-in returns to: this request's own path AND query, so a deep link
+ * such as the source viewer's file and page survives the login bounce (#5726
+ * F5; the query used to be dropped and the viewer opened empty). Built only
+ * from the request itself, so it is always a same-site path; a path starting
+ * with two slashes would read as another host, so it returns home instead.
+ */
+function loginCallback(req: NextRequest): string {
+  const { pathname, search } = req.nextUrl;
+  if (!pathname.startsWith("/") || pathname.startsWith("//")) return "/";
+  return `${pathname}${search}`;
+}
+
 function b64Nonce(raw: string): string {
   return btoa(raw).replace(/=+$/, "");
 }
@@ -159,6 +172,11 @@ function b64Nonce(raw: string): string {
 export default async function middleware(req: NextRequest, _ev: NextFetchEvent) {
   void _ev;
   const pathname = req.nextUrl.pathname;
+  const equipmentBrowserApi = /^\/api\/equipment-browser\/(children|search|resolve)\/?$/.test(pathname);
+  const unauthorized = () => NextResponse.json({ error: "Unauthorized" }, {
+    status: 401,
+    headers: equipmentBrowserApi ? { "Cache-Control": "private, no-store" } : undefined,
+  });
 
   // Per-request nonce for script-src CSP — removes unsafe-inline/unsafe-eval.
   // Forwarded as x-nonce request header so RootLayout can attach it to <Script>.
@@ -176,7 +194,7 @@ export default async function middleware(req: NextRequest, _ev: NextFetchEvent) 
   if (!cookieValue || !secret) {
     if (pathname.startsWith("/api/")) {
       return applySecurityHeaders(
-        NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
+        unauthorized(),
         pathname,
         csp,
       );
@@ -184,7 +202,7 @@ export default async function middleware(req: NextRequest, _ev: NextFetchEvent) 
     const url = req.nextUrl.clone();
     url.pathname = "/login";
     url.search = "";
-    url.searchParams.set("callbackUrl", pathname);
+    url.searchParams.set("callbackUrl", loginCallback(req));
     return applySecurityHeaders(NextResponse.redirect(url), pathname, csp);
   }
 
@@ -192,7 +210,7 @@ export default async function middleware(req: NextRequest, _ev: NextFetchEvent) 
   if (!token) {
     if (pathname.startsWith("/api/")) {
       return applySecurityHeaders(
-        NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
+        unauthorized(),
         pathname,
         csp,
       );
@@ -200,7 +218,7 @@ export default async function middleware(req: NextRequest, _ev: NextFetchEvent) 
     const url = req.nextUrl.clone();
     url.pathname = "/login";
     url.search = "";
-    url.searchParams.set("callbackUrl", pathname);
+    url.searchParams.set("callbackUrl", loginCallback(req));
     return applySecurityHeaders(NextResponse.redirect(url), pathname, csp);
   }
 
@@ -220,16 +238,13 @@ export default async function middleware(req: NextRequest, _ev: NextFetchEvent) 
     return applySecurityHeaders(NextResponse.redirect(url), pathname, csp);
   }
 
-  // Already on a gate page — let it render so the user can act.
-  if (!GATE_PATHS.some((p) => pathname.startsWith(p))) {
+  // Equipment routes use the current database entitlement. Page redirects
+  // continue to use their cookie claims, including the existing gate pages.
+  if (!equipmentBrowserApi && !GATE_PATHS.some((p) => pathname.startsWith(p))) {
     const status = String(token.status ?? "trial");
     const redirectUrl = gateRedirect(req, status, token.trialExpiresAt);
     if (redirectUrl) {
-      return applySecurityHeaders(
-        NextResponse.redirect(redirectUrl),
-        pathname,
-        csp,
-      );
+      return applySecurityHeaders(NextResponse.redirect(redirectUrl), pathname, csp);
     }
   }
 

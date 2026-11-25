@@ -447,6 +447,10 @@ services:
       # Same default-off ChatV2 rollout gate as production. Staging must prove
       # the capability before a production Doppler value is enabled.
       - MIRA_CHAT_V2_ENABLED=${MIRA_CHAT_V2_ENABLED:-0}
+      # Equipment-first navigation (#5625/#5642): the Hub's /api/equipment-browser/* routes and the
+      # Find equipment panel. Default off; staging only — the production compose does not list it,
+      # so a Doppler factorylm/prd value cannot reach production.
+      - MIRA_EQUIPMENT_NAV=${MIRA_EQUIPMENT_NAV:-0}
       # Per-turn output ceiling under the seam (cost guard).
       - MIRA_TURN_MAX_OUTPUT_TOKENS=${MIRA_TURN_MAX_OUTPUT_TOKENS:-4000}
       - HUB_CMMS_API_URL=http://stg-atlas-api:8080
@@ -517,6 +521,8 @@ services:
       - PLG_POSTHOG_HOST=${PLG_POSTHOG_HOST:-}
       - PILOT_OWNER_EMAIL=${PILOT_OWNER_EMAIL:-}
       - MIRA_PILOT_APPROVAL_REQUIRED=${MIRA_PILOT_APPROVAL_REQUIRED:-}
+      - MIRA_FREE_TECHNICIANS=${MIRA_FREE_TECHNICIANS:-false}
+      - MIRA_MARKETING_ORIGIN=${MIRA_MARKETING_ORIGIN:-https://staging.factorylm.com}
       - RESEND_API_KEY=${RESEND_API_KEY:-}  # owner notification (pilot-funnel.ts); same key mira-web uses
     networks:
       - staging-net
@@ -546,6 +552,9 @@ services:
     ports:
       - "127.0.0.1:4200:3000"
     environment:
+      - FACTORYLM_MARKETING_NEXT=${FACTORYLM_MARKETING_NEXT:-false}
+      - MIRA_FREE_TECHNICIANS=${MIRA_FREE_TECHNICIANS:-false}
+      - MIRA_PILOT_APPROVAL_REQUIRED=${MIRA_PILOT_APPROVAL_REQUIRED:-}
       - PORT=3000
       - PLG_JWT_SECRET=${PLG_JWT_SECRET}
       # Staging web must hand off to STAGING hub only (#3930); Doppler stg may override.

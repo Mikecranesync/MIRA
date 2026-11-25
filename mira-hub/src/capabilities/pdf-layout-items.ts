@@ -16,7 +16,10 @@
  * never fetched or cleaned up twice.
  */
 
-export type LayoutItem = { str: string; x: number; y: number; w: number; size: number };
+import { pinnedRules, rulePinsForSha, rulesCrossing } from "./table-rule-pins";
+
+/** `vr`: indices of the page's pinned vertical rules crossing this item's baseline (absent = no rule evidence); `vrx`: those rules' x positions, index-aligned. */
+export type LayoutItem = { str: string; x: number; y: number; w: number; size: number; vr?: readonly number[]; vrx?: readonly number[]; vertical?: boolean };
 
 interface PdfTextItem {
   str?: string;
@@ -43,19 +46,45 @@ export function layoutItemsFromTextContent(content: PdfTextContent): LayoutItem[
   for (const raw of content.items) {
     const it = raw as PdfTextItem;
     if (!it || typeof it.str !== "string" || !Array.isArray(it.transform)) continue;
-    const [, b, , d, x, y] = it.transform;
-    items.push({ str: it.str, x, y, w: it.width ?? 0, size: Math.round(Math.hypot(b, d) * 10) / 10 });
+    const [a, b, , d, x, y] = it.transform;
+    const size = Math.round(Math.hypot(b, d) * 10) / 10;
+    // Text set 90 degrees counter-clockwise (a = d = 0, b > 0): it reads upward from (x, y), so
+    // `w` is its length along y. Only this one rotation is flagged; other angles stay as before.
+    const vertical = size > 0 && Math.abs(a) <= size * 0.01 && Math.abs(d) <= size * 0.01 && b > 0;
+    items.push({ str: it.str, x, y, w: it.width ?? 0, size, ...(vertical ? { vertical: true as const } : {}) });
   }
   return items;
 }
 
-/** One page's positioned text items, fetched and released by this call alone. */
-export async function pageLayoutItems(pdf: PdfDocumentProxy, pageNumber: number): Promise<LayoutItem[]> {
+/**
+ * Annotates each item with the pinned vertical rules crossing its baseline (#5503 F14/F15). The
+ * page's drawing is never read: rules exist only for a pinned document's pinned page whose text
+ * geometry still matches. Anything else leaves the items unannotated, which downstream means
+ * "no rule evidence" and grants nothing.
+ */
+function annotateRules(documentSha256: string | undefined, pageNumber: number, items: LayoutItem[]): void {
+  if (!documentSha256) return;
+  const rules = pinnedRules(rulePinsForSha(documentSha256), pageNumber, items);
+  if (!rules || rules.length === 0) return;
+  for (const item of items) {
+    const crossing = rulesCrossing(rules, item.y);
+    if (crossing.length > 0) {
+      item.vr = crossing;
+      item.vrx = crossing.map((id) => rules[id].x);
+    }
+  }
+}
+
+/** One page's positioned text items, fetched and released by this call alone. `documentSha256`
+ * is the SHA-256 of the PDF bytes; without it the items carry no rule evidence. */
+export async function pageLayoutItems(pdf: PdfDocumentProxy, pageNumber: number, documentSha256?: string): Promise<LayoutItem[]> {
   if (!pdf.getPage) return [];
   const page = await pdf.getPage(pageNumber);
   try {
     const content = await page.getTextContent();
-    return layoutItemsFromTextContent(content);
+    const items = layoutItemsFromTextContent(content);
+    annotateRules(documentSha256, pageNumber, items);
+    return items;
   } finally {
     if (page.cleanup && !page.cleanup()) {
       throw new Error("PDF page resources could not be released");

@@ -28,6 +28,7 @@
 // importable from a plain vitest unit test (see this module's own header).
 import {
   advanceManualSearchFollow,
+  observeLiveManualSearchFrame,
   reseedManualSearchFollow,
   type ManualSearchFollowState,
   type ManualSearchStatus,
@@ -49,16 +50,25 @@ export interface ManualSearchDriver {
    *  confirmation's optimistic start). No-op if ALREADY tracking this exact
    *  notebook (the tick loop owns advancing it from here). */
   seed(notebookId: string, status: ManualSearchStatus): void;
+  /** A current chat stream may start following a lookup before the detail GET. */
+  observeLive(notebookId: string, status: ManualSearchStatus): void;
   /** Stop any pending timer and drop the followed state (notebook change / unmount). */
   reset(): void;
   /** The current state, or null if nothing is being followed. */
   current(): ManualSearchFollowState | null;
 }
 
+// Keep quick lookups responsive. Slower lookups may spend 60s in discovery
+// and 30s downloading before indexing even starts. Spread the remaining reads
+// out so an idle tab can follow that work without hammering notebook detail.
+const FAST_POLL_ATTEMPTS = 5;
+const FAST_POLL_DELAY_MS = 4_000;
+const SLOW_POLL_DELAY_MS = 10_000;
+const MAX_POLL_ATTEMPTS = 21; // 20s of fast polling and 160s of slower polling.
+
 export function createManualSearchDriver(deps: ManualSearchDriverDeps): ManualSearchDriver {
   const schedule = deps.setTimeoutFn ?? ((cb, ms) => setTimeout(cb, ms));
   const cancel = deps.clearTimeoutFn ?? ((id) => clearTimeout(id));
-  const delay = deps.delayMs ?? 4000;
 
   let state: ManualSearchFollowState | null = null;
   let timer: ReturnType<typeof setTimeout> | null = null;
@@ -87,6 +97,7 @@ export function createManualSearchDriver(deps: ManualSearchDriverDeps): ManualSe
     clearTimer();
     if (!state || state.phase !== "following") return;
     const tickEpoch = epoch;
+    const delay = deps.delayMs ?? (state.attempts < FAST_POLL_ATTEMPTS ? FAST_POLL_DELAY_MS : SLOW_POLL_DELAY_MS);
     timer = schedule(() => {
       timer = null;
       void deps
@@ -111,27 +122,33 @@ export function createManualSearchDriver(deps: ManualSearchDriverDeps): ManualSe
     }, delay);
   }
 
+  function applyStatus(
+    notebookId: string,
+    status: ManualSearchStatus,
+    observe: typeof reseedManualSearchFollow,
+  ): void {
+    const current = trackedNotebookId === notebookId ? state : null;
+    const result = observe(current, notebookId, status, MAX_POLL_ATTEMPTS);
+    trackedNotebookId = notebookId;
+    state = result.state;
+    if (current !== state) {
+      epoch += 1;
+      deps.onStateChange(state);
+      scheduleTick(notebookId);
+    }
+    if (result.refreshSources) deps.onRefreshSources();
+  }
+
   return {
     seed(notebookId, status) {
-      // Codex round 3 F6: a blanket "already tracking this notebook, do
-      // nothing" no-op permanently masked a LATER authoritative update —
-      // a promotion after confirm (same generation), or a second, different
-      // search in the same notebook (a new generation) once the first one
-      // resolved or exhausted its budget. `reseedManualSearchFollow` is the
-      // one state machine every seed call now goes through; it keeps the
-      // true no-op ONLY for a duplicate seed of an ACTIVELY following
-      // generation (the tick owns advancing that one).
-      const current = trackedNotebookId === notebookId ? state : null;
-      const result = reseedManualSearchFollow(current, notebookId, status);
-      const changed = current !== result.state;
-      trackedNotebookId = notebookId;
-      state = result.state;
-      if (changed) {
-        epoch += 1; // F21: this reseed just replaced tracked state — invalidate any in-flight tick from before it.
-        deps.onStateChange(state);
-        scheduleTick(notebookId);
-      }
-      if (result.refreshSources) deps.onRefreshSources();
+      applyStatus(notebookId, status, reseedManualSearchFollow);
+    },
+    observeLive(notebookId, status) {
+      // A detail response may already have observed a newer generation than
+      // this stream frame, even though both belong to the current notebook.
+      const trackedStartedAt = trackedNotebookId === notebookId ? state?.status.startedAt : undefined;
+      if (trackedStartedAt && status.startedAt && Date.parse(status.startedAt) < Date.parse(trackedStartedAt)) return;
+      applyStatus(notebookId, status, observeLiveManualSearchFrame);
     },
     reset() {
       clearTimer();

@@ -27,8 +27,11 @@ import { repairExtractedPage, type PageRepair } from "@/capabilities/garbled-tex
 import { ocrExtractPage } from "@/capabilities/garbled-text-ocr";
 import { readPageLabelsBounded } from "@/capabilities/pdf-page-label-reader";
 import { pageLayoutItems } from "@/capabilities/pdf-layout-items";
+import { reviewedRowsDigest, rulePinsForSha } from "@/capabilities/table-rule-pins";
+import { gatePageRows } from "@/capabilities/model-scope-gate";
 import { pageWithTables, type TableChunk } from "@/capabilities/table-rows";
-import { contactRatingColumns, withColumnLines } from "@/capabilities/contact-ratings-table";
+import { contactRatingTable, columnLines, withColumnLines } from "@/capabilities/contact-ratings-table";
+import { SectionTableScope, tableExtractionBoundaries, withTableInterruptions, hasModelSectionScope, modelSectionModels, scopeTableChunks, sectionTableLayout, readOutputTypes, mergeOutputTypes, type ScopedText, type SectionScope } from "@/capabilities/section-table-scope";
 import { hasUnmappedGlyphBetweenDigits } from "@/capabilities/manual-completeness";
 import { uploadIdentity } from "@/capabilities/page-label-backfill";
 
@@ -46,8 +49,20 @@ const CHUNK_OVERLAP = 120;
  *   v4 — a contact-ratings table's make / break / continuous columns written as lines under the
  *        table in the page text (#5474 item 5). A document stamped v3 has no such lines, so the
  *        answer check's WRONG-COLUMN rule cannot run on it until it is reprocessed.
+ *   v5 — layout-bounded model sections, including relay applicability from the manual's own
+ *        complete per-model output-type table (#5503). One reprocess also includes v4's lines.
+ *   v6 — model scope fails closed: only a reviewed page stores a row that affirms a model
+ *        (`model-scope-gate.ts`); the same text on any other page is stored withheld. Earlier
+ *        heads of this change wrote v5 rows that affirm from the layout reader alone, so v5 is
+ *        stale too.
+ *   v7 — rotated blanks and footnote marks beside a rotated group label are no longer group
+ *        stubs (#5615). On a real GS10 upload v6 lost every group and duty label on pages 26 and
+ *        27, so a v6 document is stale.
  */
-export const EXTRACTION_VERSION = 4;
+export const EXTRACTION_VERSION = 7;
+
+/** `reviewed`: the page's reviewed-rows digest (`reviewedRowsDigest`); absent/null = not a reviewed page. */
+type PageTable = { remainder: string; chunks: TableChunk[]; sections?: ScopedText[]; reviewed?: string | null };
 
 // Multi-row INSERT batch size. Bounds BOTH the chunk rows held in memory at once
 // (≤ BATCH_ROWS, instead of every chunk of a 1200-page manual accumulated in one
@@ -464,7 +479,7 @@ async function writeChunkRowsForNode(
    *  page's OWN text is chunked from `remainder` (the table's lines excluded) and one extra row
    *  is written per `TableChunk`, carrying `metadata.table_models` (+`table_unqualified` for the
    *  one flat-text chunk) instead of the page's ordinary chunk text. */
-  tables?: ReadonlyArray<{ remainder: string; chunks: TableChunk[] } | null> | null,
+  tables?: ReadonlyArray<PageTable | null> | null,
 ): Promise<number> {
   const { tenantId, uploadId, filename } = opts;
   const sourceUrl = nodeDocSourceUrl(uploadId, filename);
@@ -509,7 +524,7 @@ async function insertChunkRows(
   opts: NodeChunkOpts,
   repairs?: ReadonlyArray<TextRepair | null>,
   pageLabels?: ReadonlyArray<string | null> | null,
-  tables?: ReadonlyArray<{ remainder: string; chunks: TableChunk[] } | null> | null,
+  tables?: ReadonlyArray<PageTable | null> | null,
 ): Promise<number> {
   const { tenantId, uploadId, nodeId, unsPath, filename, derivedFrom } = opts;
   const sourceUrl = nodeDocSourceUrl(uploadId, filename);
@@ -522,6 +537,8 @@ async function insertChunkRows(
     label: string | null;
     tableModels?: string[];
     tableUnqualified?: boolean;
+    tableScope?: SectionScope;
+    tableHeader?: string;
   };
   let idx = 0;
   let batch: ChunkRow[] = [];
@@ -555,6 +572,8 @@ async function insertChunkRows(
           ...(r.label ? { page_label: r.label } : {}),
           ...(r.tableModels ? { table_models: r.tableModels } : {}),
           ...(r.tableUnqualified ? { table_unqualified: true } : {}),
+          ...(r.tableScope ? { table_scope: r.tableScope } : {}),
+          ...(r.tableHeader ? { table_header: r.tableHeader } : {}),
         }),
       );
     }
@@ -587,19 +606,35 @@ async function insertChunkRows(
     // per TableChunk — the ingest contract asserts exactly one row per model
     // tag (`table-rows.test.ts`), so TableChunk.text goes in verbatim.
     const textToChunk = table ? table.remainder : pageText;
-    for (const piece of chunkText(textToChunk)) {
-      batch.push({
-        content: piece,
-        page: p + 1,
-        idx: idx++,
-        repair: repairs?.[p] ?? null,
-        label: pageLabels?.[p] ?? null,
-      });
-      if (batch.length >= BATCH_ROWS) await flush();
+    // The page's rows are collected, passed through the ONE model-scope gate, and only then
+    // queued: a row affirms a model only on a reviewed page (model-scope-gate.ts).
+    const pageRows: ChunkRow[] = [];
+    for (const section of table?.sections ?? [{ text: textToChunk }]) {
+      let searchFrom = 0;
+      const headerAt = section.sharedHeader ? section.text.indexOf(section.sharedHeader) : -1;
+      for (const piece of chunkText(section.text)) {
+        const pieceAt = section.text.indexOf(piece, searchFrom);
+        searchFrom = pieceAt >= 0 ? pieceAt + 1 : searchFrom;
+        const tableHeader = section.sharedHeader && headerAt >= pieceAt && pieceAt >= 0 &&
+          headerAt + section.sharedHeader.length <= pieceAt + piece.length ? section.sharedHeader : undefined;
+        pageRows.push({
+          content: piece,
+          page: p + 1,
+          idx: idx++,
+          repair: repairs?.[p] ?? null,
+          label: pageLabels?.[p] ?? null,
+          tableModels: section.models,
+          // Independent column ownership retains the existing model-family domain
+          // (parameter/accessory tables are not document-wide equipment scope).
+          tableScope: section.columnOnly ? undefined : section.scope,
+          tableHeader,
+          tableUnqualified: section.scope === "unresolved",
+        });
+      }
     }
     if (table) {
       for (const tc of table.chunks) {
-        batch.push({
+        pageRows.push({
           content: tc.text,
           page: p + 1,
           idx: idx++,
@@ -607,9 +642,13 @@ async function insertChunkRows(
           label: pageLabels?.[p] ?? null,
           tableModels: tc.models,
           tableUnqualified: tc.unqualified,
+          tableScope: tc.scope,
         });
-        if (batch.length >= BATCH_ROWS) await flush();
       }
+    }
+    for (const row of gatePageRows(pageRows, table?.reviewed)) {
+      batch.push(row);
+      if (batch.length >= BATCH_ROWS) await flush();
     }
   }
   await flush();
@@ -732,7 +771,7 @@ interface ParsedPdfForNode {
   pages: string[];
   markers: Array<TextRepair | null>;
   labels: Array<string | null> | null;
-  pageTables: Array<{ remainder: string; chunks: TableChunk[] } | null>;
+  pageTables: Array<PageTable | null>;
 }
 
 /**
@@ -745,6 +784,8 @@ interface ParsedPdfForNode {
  */
 async function parsePdfForNode(buffer: Buffer | Uint8Array, rest: NodeChunkOpts): Promise<ParsedPdfForNode> {
   const pdf = await getDocumentProxy(new Uint8Array(buffer));
+  // Identity of exactly the bytes parsed here: pinned table rules apply to no other file.
+  const documentSha256 = createHash("sha256").update(buffer).digest("hex");
   const { text } = await extractText(pdf, { mergePages: false });
   // Copy rather than alias: writeChunkRowsForNode releases each page's text
   // in place (`pages[p] = ""`) to bound peak memory, and `text` may be the
@@ -764,34 +805,129 @@ async function parsePdfForNode(buffer: Buffer | Uint8Array, rest: NodeChunkOpts)
   // whose text was itself repaired (garbled extraction has no reliable x/y
   // geometry to key columns off of). A read/detect failure is warned and
   // treated as "no table on this page" — it must never fail the upload.
-  const pageTables: Array<{ remainder: string; chunks: TableChunk[] } | null> = [];
+  const pageTables: Array<PageTable | null> = [];
+  // Per page: the digest of its reviewed model-scope rows, null for a page that is not reviewed.
+  const reviewed: Array<string | null> = new Array(pages.length).fill(null);
+  // undefined means unreadable/repaired geometry; null means a successful unheaded page.
+  const sectionLayouts: Array<ReturnType<typeof sectionTableLayout> | undefined> = [];
+  // Pages holding a contact-ratings table the column reader positively recognised (#5510 F17, F22).
+  const ratingPages: boolean[] = new Array(pages.length).fill(false);
+  const outputs = new Map<string, boolean | null>();
+  // Even a failed layout read must not erase a visibly present type inventory. Its model
+  // applicability then stays unknown, with a warning and unresolved relay-section metadata.
+  let outputInventoryObserved = pages.some((page) => /(?:^|\n)\s*Output\s+circuit\s+type\b/i.test(page));
   for (let p = 0; p < pages.length; p++) {
     if (repairs[p] !== null) {
       pageTables.push(null);
+      sectionLayouts.push(undefined);
       continue;
     }
     try {
-      const items = await pageLayoutItems(pdf, p + 1);
-      const table = items.length > 0 ? pageWithTables(items) : null;
+      const items = await pageLayoutItems(pdf, p + 1, documentSha256);
+      reviewed[p] = reviewedRowsDigest(rulePinsForSha(documentSha256), p + 1, items);
+      let rating: ReturnType<typeof contactRatingTable> = null;
+      try { rating = contactRatingTable(items); }
+      catch (err) {
+        console.warn(`[node-ingest] contact-ratings column read failed on ${rest.filename} p.${p + 1} (page kept without column lines):`, err instanceof Error ? err.message : err);
+      }
+      const annotation = rating ? { after: rating.lastRow, lines: columnLines(rating.rows), sourceRows: rating.sourceRows } : undefined;
+      if (rating) ratingPages[p] = true;
+      // Recognize physical section cuts on the complete page, before extraction removes
+      // their source items. Closely adjacent sections must never share a model block.
+      const fullLayout = sectionTableLayout(items, true, undefined, annotation, true);
+      const boundaries = tableExtractionBoundaries(fullLayout);
+      let table = items.length > 0 ? pageWithTables(items, boundaries) : null;
+      const unsplitChunks = table?.chunks ?? [];
+      if (table) {
+        const bounded = tableExtractionBoundaries(fullLayout, table.chunks);
+        if (bounded.length > boundaries.length) table = pageWithTables(items, bounded);
+      }
+      if (table) {
+        outputInventoryObserved ||= table.chunks.some((c) => /\bOutput circuit type\b/i.test(c.text));
+      }
+      // Boundary detection must not depend on whether the type table is earlier or later.
+      let layout: ReturnType<typeof sectionTableLayout>;
       // #5474 item 5: a contact-ratings table's make / break / continuous columns, read from the
       // same positioned items, are written under the table in the page text (and in the table
       // remainder, which is what a page with a model table chunks). The flat rows stay as they
       // were. Its own guard: a failure here must not cost the page its table read.
       try {
-        const columns = contactRatingColumns(items);
-        if (columns) {
-          pages[p] = withColumnLines(pages[p], columns);
-          if (table) table.remainder = withColumnLines(table.remainder, columns);
+        layout = sectionTableLayout(items, true, table?.remainderItems, annotation, unsplitChunks.length > 0);
+        if (rating) {
+          // Preserve the legacy path for documents without an output inventory. The scoped
+          // path below uses the physically attached annotations in layout.text instead.
+          pages[p] = withColumnLines(pages[p], rating.rows);
+          if (table) table.remainder = withColumnLines(table.remainder, rating.rows);
         }
       } catch (err) {
+        layout = sectionTableLayout(items, true, table?.remainderItems, undefined, unsplitChunks.length > 0);
         console.warn(`[node-ingest] contact-ratings column read failed on ${rest.filename} p.${p + 1} (page kept without column lines):`, err instanceof Error ? err.message : err);
       }
-      pageTables.push(table);
+      layout = withTableInterruptions(layout, unsplitChunks);
+      if (table) {
+        table.chunks = scopeTableChunks(table.chunks, layout);
+        mergeOutputTypes(outputs, readOutputTypes(table.chunks));
+      }
+      // Geometry is page-local; retain only the text/chunks after deriving source boundaries.
+      pageTables.push(table ? { remainder: table.remainder, chunks: table.chunks } : null);
+      sectionLayouts.push(items.length > 0 ? layout : undefined);
     } catch (err) {
       console.warn(`[node-ingest] table read failed on ${rest.filename} p.${p + 1} (page kept as flat text):`, err instanceof Error ? err.message : err);
       pageTables.push(null);
+      sectionLayouts.push(undefined);
     }
   }
+  if (outputInventoryObserved && (outputs.size === 0 || [...outputs.values()].includes(null))) {
+    console.warn(`[node-ingest] output-type applicability unresolved in ${rest.filename}; relay sections with unreadable model applicability are marked unresolved`);
+  }
+  const sectionModels = [...new Set(sectionLayouts.flatMap(modelSectionModels))];
+  const declaredSectionScope = outputInventoryObserved || sectionModels.length > 0;
+  const sectionScopeObserved = declaredSectionScope || sectionLayouts.some(hasModelSectionScope);
+  const scope = new SectionTableScope(outputs, declaredSectionScope, sectionModels);
+  for (let p = 0; p < pages.length; p++) {
+    if (!sectionScopeObserved) break;
+    const table = pageTables[p];
+    const layout = sectionLayouts[p];
+    const remainder = layout && (table || layout.hasTables || hasModelSectionScope(layout) || layout.headings.some((heading) => heading.ordinaryTable)) ? layout.text : table?.remainder ?? pages[p];
+    const scoped = layout === undefined
+      ? { sections: scope.unreadable(remainder), chunks: [] }
+      : scope.splitPage(remainder, layout, table?.chunks ?? []);
+    pageTables[p] = { remainder, ...scoped };
+  }
+  // #5510 F17, F22: a contact-ratings table the column reader positively recognised states
+  // electrical values whose applicability only a caption can establish. On such a page every section
+  // no caption bound is stored unresolved: withheld from every record that holds a catalog number,
+  // text kept. Sections a caption bound are left as they were. Scope inherited from a parameter or
+  // accessory column (columnOnly) is not a caption: it is withheld too, never left to the column
+  // domain, which would admit the ratings for any other family (F23). The whole page is withheld, not just
+  // the table's lines, because which text items belong to a table cannot be read reliably from
+  // positions: F18, F19, F21 and F22 each released a rating cell that a positional count missed.
+  // Owner decision 2026-11-17 (Mission Control #5232): withhold the page; the cost on the captured
+  // manuals is Micro820 p19 "Analog Output Specifications", withheld until that page is reviewed.
+  // F24: a table's rows can run onto the next page without repeating its heads, so withholding
+  // continues past a contact-ratings page until a section a caption binds marks a new boundary
+  // (a page with no such section is withheld whole, and so on).
+  // F25: extracted column chunks on a page in that region are withheld too. Their column heads (an
+  // AC-15/DC-13 grid, a parameter list) are not a caption and cannot bind the ratings to a model, and
+  // their positions relative to the sections are not kept, so every chunk on such a page is withheld.
+  const knownModels = [...new Set([...outputs.keys(), ...sectionModels])];
+  // Only a section a caption affirmatively binds is a boundary. Inherited or unresolved scope is not (F26).
+  const bound = (section: ScopedText) => !section.columnOnly && section.scope === "section" && (section.models?.length ?? 0) > 0;
+  let continuing = false;
+  pages.forEach((_page, p) => {
+    if (!ratingPages[p] && !continuing) return;
+    const table = pageTables[p];
+    const sections = table?.sections ?? [{ text: table ? table.remainder : pages[p] }];
+    let open = !ratingPages[p];
+    const withheld = sections.map((section) => {
+      if (bound(section)) { open = false; return section; }
+      return ratingPages[p] || open ? { text: section.text, models: knownModels, scope: "unresolved" as const } : section;
+    });
+    // A contact page passes the withholding on unless its last section is caption-bound.
+    continuing = ratingPages[p] ? !bound(sections[sections.length - 1]) : open;
+    const chunks = (table?.chunks ?? []).map((chunk) => ({ ...chunk, models: knownModels, unqualified: true, scope: "unresolved" as const }));
+    pageTables[p] = { remainder: table?.remainder ?? pages[p], ...table, chunks, sections: withheld };
+  });
   // Garage pilot L2 (plan row 5-A): a page whose numbers carry a replacement
   // character between two digits ("5�1" for 5.1 A — the PDF's ToUnicode
   // map has no entry for the decimal-point glyph; the GS10 chapter file) is
@@ -801,6 +937,7 @@ async function parsePdfForNode(buffer: Buffer | Uint8Array, rest: NodeChunkOpts)
   // table rows are written (flagged) rather than dropped. A page the repair
   // touched keeps its repair marker. Independent of NOTEBOOK_GARBLE_DECODE —
   // this is detection, not a repair.
+  pageTables.forEach((table, p) => { if (table) table.reviewed = reviewed[p]; });
   const markers: Array<TextRepair | null> = repairs.map((r, p) => r ?? (hasUnmappedGlyphBetweenDigits(pages[p]) ? "unmapped_glyph" : null));
   return { pages, markers, labels, pageTables };
 }

@@ -41,6 +41,14 @@ const REVISION_COLS = `r.component_id::text AS component_id, r.revision, r.raw_l
   r.evidence_file_id::text AS evidence_file_id, r.evidence_note, r.confirmed_at, r.created_at AS revision_created_at,
   r.client_request_id::text AS revision_request_id`;
 
+function componentTimestamp(value: unknown): string | null {
+  if (value == null) return null;
+  // pg returns Date; the same timestamptz column inside to_jsonb is a string.
+  const text = String(value);
+  if (text === "infinity" || text === "-infinity") return text.replace("infinity", "Infinity");
+  const date = value instanceof Date ? value : new Date(text);
+  return Number.isFinite(date.getTime()) ? date.toISOString() : text;
+}
 const iso = (v: unknown) => (v == null ? null : v instanceof Date ? v.toISOString() : String(v));
 const str = (v: unknown) => (v == null ? null : String(v));
 
@@ -62,8 +70,8 @@ function toRevision(r: Record<string, unknown>): StoredRevision {
     unresolved: Array.isArray(r.unresolved) ? (r.unresolved as unknown[]).map(String) : [],
     evidenceFileId: str(r.evidence_file_id),
     evidenceNote: str(r.evidence_note),
-    confirmedAt: iso(r.confirmed_at),
-    createdAt: iso(r.revision_created_at) ?? "",
+    confirmedAt: componentTimestamp(r.confirmed_at),
+    createdAt: componentTimestamp(r.revision_created_at) ?? "",
   };
 }
 
@@ -74,8 +82,8 @@ function toComponent(r: Record<string, unknown>): ComponentRecord {
     position: Number(r.position),
     kind: str(r.kind),
     origin: String(r.origin) as ComponentOrigin,
-    createdAt: iso(r.created_at) ?? "",
-    retiredAt: iso(r.retired_at),
+    createdAt: componentTimestamp(r.created_at) ?? "",
+    retiredAt: componentTimestamp(r.retired_at),
     current: r.revision == null ? null : toRevision(r),
   };
 }
@@ -85,6 +93,9 @@ const LATEST_JOIN = `LEFT JOIN LATERAL (
      WHERE r0.tenant_id = c.tenant_id AND r0.component_id = c.id
      ORDER BY r0.revision DESC LIMIT 1
   ) r ON TRUE`;
+
+/** Existing pure read parts for bounded callers on their own tenant transaction. */
+export const componentReadProjection = { columns: `${COMPONENT_COLS}, ${REVISION_COLS}`, latestJoin: LATEST_JOIN, decode: toComponent };
 
 /** Every component of one notebook (retired ones included, flagged), checklist order. */
 export async function listComponents(tenantId: string, notebookId: string): Promise<ComponentRecord[]> {
@@ -100,11 +111,22 @@ export async function listComponents(tenantId: string, notebookId: string): Prom
   });
 }
 
-async function readComponent(c: PoolClient, tenantId: string, notebookId: string, componentId: string, lock = false) {
+export async function readComponent(c: PoolClient, tenantId: string, notebookId: string, componentId: string, lock = false) {
+  if (lock) {
+    // Lock first, read after (#5625 r2 F4). A read that waits for this lock keeps the snapshot it
+    // started with, so a revision committed while it waited would be invisible to the latest-revision
+    // join. Under READ COMMITTED the next statement takes a fresh snapshot that includes it.
+    const locked = await c.query(
+      `SELECT 1 FROM notebook_components c
+        WHERE c.tenant_id = $1::uuid AND c.notebook_id = $2::uuid AND c.id = $3::uuid FOR UPDATE`,
+      [tenantId, notebookId, componentId],
+    );
+    if (!locked.rows[0]) return null;
+  }
   const res = await c.query(
     `SELECT ${COMPONENT_COLS}, ${REVISION_COLS}
        FROM notebook_components c ${LATEST_JOIN}
-      WHERE c.tenant_id = $1::uuid AND c.notebook_id = $2::uuid AND c.id = $3::uuid${lock ? " FOR UPDATE OF c" : ""}`,
+      WHERE c.tenant_id = $1::uuid AND c.notebook_id = $2::uuid AND c.id = $3::uuid`,
     [tenantId, notebookId, componentId],
   );
   return res.rows[0] ? toComponent(res.rows[0]) : null;
@@ -326,7 +348,8 @@ export type SetSelectionResult =
   | { status: "cleared" }
   | { status: "component_not_found" }
   | { status: "component_retired" }
-  | { status: "version_conflict"; selection: ThreadSelection | null };
+  | { status: "version_conflict"; selection: ThreadSelection | null }
+  | { status: "stale_revision"; selection: ThreadSelection | null };
 
 /**
  * Point one technician's conversation at a component (or clear it: whole machine).
@@ -336,13 +359,17 @@ export type SetSelectionResult =
  * this conversation never had a selection) makes two taps on two devices a conflict
  * instead of a silent overwrite. Clearing keeps the row, so the version never repeats. A retried request with
  * the same request id is a no-op that returns the stored row.
+ * `expectedRevision` (optional) is the component record revision the technician saw when
+ * choosing it: if the record was corrected since, nothing is written ("stale_revision"). The
+ * component row is locked for that check, the same lock a revision write takes, so a correction
+ * cannot commit between the check and this write.
  */
 export async function setSelection(
   tenantId: string,
   notebookId: string,
   ownerUserId: string,
   threadKey: string,
-  input: { componentId: string | null; via: SelectedVia; expectedVersion: number | null; clientRequestId: string },
+  input: { componentId: string | null; via: SelectedVia; expectedVersion: number | null; expectedRevision?: number; clientRequestId: string },
 ): Promise<SetSelectionResult> {
   return withTenantContext(tenantId, async (c) => {
     const currentRes = await c.query(
@@ -370,10 +397,13 @@ export async function setSelection(
       }
       return { status: "cleared" };
     }
-    const component = await readComponent(c, tenantId, notebookId, input.componentId);
+    const component = await readComponent(c, tenantId, notebookId, input.componentId, input.expectedRevision !== undefined);
     if (!component) return { status: "component_not_found" };
     if (component.retiredAt) return { status: "component_retired" };
     if (!component.current) return { status: "component_not_found" };
+    if (input.expectedRevision !== undefined && component.current.revision !== input.expectedRevision) {
+      return { status: "stale_revision", selection: current };
+    }
     const res = await c.query(
       `INSERT INTO notebook_thread_selections AS s
          (tenant_id, notebook_id, owner_user_id, thread_key, component_id, component_revision, selected_via,

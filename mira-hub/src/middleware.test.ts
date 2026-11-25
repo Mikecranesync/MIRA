@@ -1,4 +1,5 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
+import { encode } from "next-auth/jwt";
 import { NextRequest, type NextFetchEvent } from "next/server";
 import middleware from "./middleware";
 
@@ -49,6 +50,38 @@ describe("middleware — unauthenticated callback preservation (#1952)", () => {
     const res = await unauth("/assets/");
     expect(callbackOf(res).callbackUrl).toBe("/assets/");
   });
+
+  // #5726 F5: the ready-manual link opens the source viewer at a file and page.
+  // Without a Hub session the query was dropped, so after sign-in the viewer
+  // opened with no document.
+  it("keeps the source viewer's file and page through the sign-in bounce", async () => {
+    const res = await unauth("/v3/source/?file=6da4f531-e67a-4fa3-96ed-c678649ab1dc&page=26");
+    expect(callbackOf(res).pathname).toBe("/login");
+    expect(callbackOf(res).callbackUrl).toBe("/v3/source/?file=6da4f531-e67a-4fa3-96ed-c678649ab1dc&page=26");
+  });
+
+  it("keeps the file and page when an expired session is bounced to sign-in", async () => {
+    const prior = process.env.AUTH_SECRET;
+    process.env.AUTH_SECRET = "test-secret-for-expired-session-branch-0123456789";
+    try {
+      const req = new NextRequest(new URL("http://localhost/v3/source/?file=f1&page=26"), {
+        headers: { cookie: "next-auth.session-token=not-a-valid-session" },
+      });
+      expect(req.cookies.get("next-auth.session-token")?.value).toBe("not-a-valid-session");
+      const res = await middleware(req, {} as NextFetchEvent);
+      expect(callbackOf(res).pathname).toBe("/login");
+      expect(callbackOf(res).callbackUrl).toBe("/v3/source/?file=f1&page=26");
+    } finally {
+      if (prior === undefined) delete process.env.AUTH_SECRET; else process.env.AUTH_SECRET = prior;
+    }
+  });
+
+  it("never returns a two-slash path, which would read as another host", async () => {
+    const req = new NextRequest(new URL("http://localhost/x"));
+    Object.defineProperty(req.nextUrl, "pathname", { value: "//evil.example/x" });
+    const res = await middleware(req, {} as NextFetchEvent);
+    expect(callbackOf(res).callbackUrl).toBe("/");
+  });
 });
 
 // The CSP header is applied to EVERY response (incl. the unauth redirect), so we
@@ -73,5 +106,45 @@ describe("middleware — CSP allows the cloud-picker SDKs (#1902)", () => {
   it("still allows the Google Picker SDK (apis.google.com) in script-src", async () => {
     const res = await unauth("/knowledge/manuals/");
     expect(directive(res, "script-src")).toContain("https://apis.google.com");
+  });
+});
+
+describe("equipment-browser session HTTP contract", () => {
+  it("returns private JSON for each equipment endpoint with or without the trailing slash", async () => {
+    for (const endpoint of ["children", "search", "resolve"]) {
+      for (const suffix of ["", "/"]) {
+        const response = await unauth(`/api/equipment-browser/${endpoint}${suffix}`);
+        expect(response.status).toBe(401);
+        expect(response.headers.get("cache-control")).toBe("private, no-store");
+        expect(response.headers.get("location")).toBeNull();
+        expect(await response.json()).toEqual({ error: "Unauthorized" });
+      }
+    }
+    expect((await unauth("/api/equipment-browser/children-extra")).headers.get("cache-control")).toBeNull();
+  });
+
+  it("defers equipment entitlement to the route while preserving adjacent redirects", async () => {
+    const secret = "equipment-browser-local-middleware-test";
+    vi.stubEnv("AUTH_SECRET", secret);
+    try {
+      for (const [status, trialExpiresAt, redirect] of [
+        ["expired", null, "/upgrade"],
+        ["pending", null, "/pending-approval"],
+        ["trial", "2000-01-01T00:00:00.000Z", "/upgrade"],
+      ] as const) {
+        const cookie = await encode({secret,token:{status,trialExpiresAt}});
+        const send = (path: string) => middleware(new NextRequest(`http://localhost${path}`, {
+          headers:{cookie:`next-auth.session-token=${cookie}`},
+        }), {} as NextFetchEvent);
+        const response = await send("/api/equipment-browser/resolve/");
+        expect(response.headers.get("x-middleware-next")).toBe("1");
+        expect(response.headers.get("location")).toBeNull();
+        expect(response.headers.get("content-security-policy")).toBeTruthy();
+        expect(callbackOf(await send("/assets/")).pathname).toBe(redirect);
+        expect(callbackOf(await send("/api/equipment-browser/resolve-extra")).pathname).toBe(redirect);
+      }
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 });

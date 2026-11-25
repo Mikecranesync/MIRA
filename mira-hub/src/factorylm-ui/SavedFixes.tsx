@@ -20,6 +20,7 @@ import {
   savedFixesPillLabel,
   type SavedFix,
 } from "./saved-fixes-logic";
+import { useMenuItem } from "./notebook-actions-menu";
 
 const PANEL_STYLE: CSSProperties = {
   position: "fixed", inset: "auto 0 0 0", maxHeight: "80vh", overflowY: "auto", zIndex: 60,
@@ -50,6 +51,8 @@ export interface SavedFixesViewProps {
   onToggle: () => void;
   onClose: () => void;
   onMore: () => void;
+  /** Opened from the More list instead (Mike, 2026-11-20): no pill of its own. */
+  hidePill?: boolean;
 }
 
 /** What is drawn for a loaded list. No fix, no button. */
@@ -59,9 +62,11 @@ export function SavedFixesView(props: SavedFixesViewProps) {
   const heading = savedFixesHeading(assetConfirmed);
   return (
     <>
-      <button type="button" style={OBS_PILL_STYLE} data-testid="saved-fixes-pill" aria-expanded={open} onClick={props.onToggle}>
-        {savedFixesPillLabel(fixes.length, hasMore)}
-      </button>
+      {props.hidePill ? null : (
+        <button type="button" style={OBS_PILL_STYLE} data-testid="saved-fixes-pill" aria-expanded={open} onClick={props.onToggle}>
+          {savedFixesPillLabel(fixes.length, hasMore)}
+        </button>
+      )}
       {open && (
         <section role="dialog" aria-label={heading} style={PANEL_STYLE} data-testid="saved-fixes-panel">
           <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
@@ -130,9 +135,17 @@ export function SavedFixes({ notebookId, refresh }: { notebookId: string; refres
     });
   }, [before, loadingMore, notebookId]);
 
+  const { inMenu } = useMenuItem(
+    state && state.fixes.length > 0
+      ? { id: "saved-fixes", label: savedFixesPillLabel(state.fixes.length, state.cursor !== null), description: savedFixesHeading(state.assetConfirmed) }
+      : null,
+    () => setOpen(true),
+  );
+
   if (!state) return null;
   return (
     <SavedFixesView
+      hidePill={inMenu}
       fixes={state.fixes} hasMore={state.cursor !== null} loadingMore={state.loadingMore} moreError={state.moreError}
       open={open} assetConfirmed={state.assetConfirmed}
       onToggle={() => setOpen((v) => !v)} onClose={() => setOpen(false)} onMore={onMore}

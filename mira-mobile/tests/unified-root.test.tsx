@@ -586,6 +586,97 @@ describe("UnifiedRoot", () => {
     expect(await waitFor(() => screen.getByTestId("unified-home"))).toBeTruthy();
   });
 
+  it("BACK on the global home is NOT consumed, so App.tsx minimizes the app instead of doing nothing", async () => {
+    const backRef = { current: null as (() => boolean) | null };
+    render(<UnifiedRoot me={ME} backRef={backRef} onSignOut={async () => {}} />);
+    await waitFor(() => screen.getByTestId("unified-home"));
+
+    let consumed = true;
+    await act(async () => {
+      consumed = backRef.current?.() ?? true;
+    });
+    expect(backRef.current).not.toBeNull();
+    expect(consumed).toBe(false);
+    expect(screen.getByTestId("unified-home")).toBeTruthy();
+  });
+
+  it("the global home names no project after BACK out of one — no stale breadcrumb of the project just left", async () => {
+    const backRef = { current: null as (() => boolean) | null };
+    render(<UnifiedRoot me={ME} backRef={backRef} onSignOut={async () => {}} />);
+    await waitFor(() => screen.getByTestId("unified-home"));
+    fireEvent.click(screen.getByRole("button", { name: "Open navigation" }));
+    fireEvent.click(recentRow("Startup checks"));
+    await waitFor(() => screen.getByTestId("nb"));
+    await act(async () => {
+      backRef.current?.();
+    });
+    await waitFor(() => screen.getByTestId("unified-project-root"));
+    await act(async () => {
+      backRef.current?.();
+    });
+
+    const home = await waitFor(() => screen.getByTestId("unified-home"));
+    expect(home.textContent).toContain("General question");
+    expect(home.querySelector('nav[aria-label="Context"]')).toBeNull();
+  });
+
+  it("the project root refetches the notebook list when it opens, so a chat created elsewhere since boot is listed", async () => {
+    const { listNotebooks } = await import("../src/api/resources");
+    const backRef = { current: null as (() => boolean) | null };
+    render(<UnifiedRoot me={ME} backRef={backRef} onSignOut={async () => {}} />);
+    await waitFor(() => screen.getByTestId("unified-home"));
+    fireEvent.click(screen.getByRole("button", { name: "Open navigation" }));
+    fireEvent.click(recentRow("Startup checks"));
+    await waitFor(() => screen.getByTestId("nb"));
+
+    // The server now has a chat in nb-a that the boot-time list never saw.
+    const boot = await vi.mocked(listNotebooks).getMockImplementation()!();
+    const fresh = boot.map((nb) =>
+      nb.id === "nb-a"
+        ? { ...nb, threads: [{ id: "thrd-a3", notebookId: "nb-a", title: "Made on the Hub", createdAt: "", updatedAt: "2026-09-10T13:00:00Z", turnCount: 1, sharedLegacy: false }, ...nb.threads] }
+        : nb,
+    );
+    vi.mocked(listNotebooks).mockResolvedValueOnce(fresh);
+    await act(async () => {
+      backRef.current?.();
+    });
+
+    const root = await waitFor(() => screen.getByTestId("unified-project-root"));
+    await waitFor(() => expect(root.querySelector('[data-item-id="notebook-nb-a:thread-thrd-a3"]')).not.toBeNull());
+    // The thread just left is still listed alongside it.
+    expect(root.querySelector('[data-item-id="notebook-nb-a:thread-thrd-a2"]')).not.toBeNull();
+  });
+
+  it("Codex F1: a refresh whose newest-threads window omits the thread just left keeps that thread first and reopenable", async () => {
+    const { listNotebooks } = await import("../src/api/resources");
+    const backRef = { current: null as (() => boolean) | null };
+    render(<UnifiedRoot me={ME} backRef={backRef} onSignOut={async () => {}} />);
+    await waitFor(() => screen.getByTestId("unified-home"));
+    fireEvent.click(screen.getByRole("button", { name: "Open navigation" }));
+    fireEvent.click(recentRow("Startup checks"));
+    await waitFor(() => screen.getByTestId("nb"));
+
+    // A newer chat pushed thrd-a2 out of the server's window.
+    const boot = await vi.mocked(listNotebooks).getMockImplementation()!();
+    const fresh = boot.map((nb) =>
+      nb.id === "nb-a"
+        ? { ...nb, threads: [{ id: "thrd-a3", notebookId: "nb-a", title: "Made on the Hub", createdAt: "", updatedAt: "2026-09-10T13:00:00Z", turnCount: 1, sharedLegacy: false }, nb.threads[0]] }
+        : nb,
+    );
+    expect(fresh.find((nb) => nb.id === "nb-a")!.threads.some((t) => t.id === "thrd-a2")).toBe(false);
+    vi.mocked(listNotebooks).mockResolvedValueOnce(fresh);
+    await act(async () => {
+      backRef.current?.();
+    });
+
+    const root = await waitFor(() => screen.getByTestId("unified-project-root"));
+    await waitFor(() => expect(root.querySelector('[data-item-id="notebook-nb-a:thread-thrd-a3"]')).not.toBeNull());
+    const rows = Array.from(root.querySelectorAll("[data-item-id]")).map((el) => el.getAttribute("data-item-id"));
+    expect(rows[0]).toBe("notebook-nb-a:thread-thrd-a2");
+    fireEvent.click(root.querySelector('[data-item-id="notebook-nb-a:thread-thrd-a2"]') as HTMLElement);
+    expect((await waitFor(() => screen.getByTestId("nb"))).getAttribute("data-thread-id")).toBe("thrd-a2");
+  });
+
   it("#4188: a QR deep link to a just-created machine notebook gets ITS project root on BACK — the opened notebook joins the list at once, it never waits for the drawer refresh", async () => {
     // openAssetNotebook can create the notebook, and the drawer refresh that
     // would list it may fail or lag (the listNotebooks mock never includes it).
@@ -1127,16 +1218,6 @@ describe("UnifiedRoot", () => {
     fireEvent.click(screen.getByRole("button", { name: "Scan QR code" }));
 
     expect(await waitFor(() => screen.getByTestId("unified-create-project"))).toBeTruthy();
-  });
-
-  it("hardware Back on the composer home stays inside the unified root", async () => {
-    const backRef = { current: null as (() => boolean) | null };
-    render(<UnifiedRoot me={ME} backRef={backRef} onSignOut={async () => {}} />);
-
-    await waitFor(() => screen.getByTestId("unified-home"));
-
-    expect(backRef.current?.()).toBe(true);
-    expect(screen.getByTestId("unified-home")).toBeTruthy();
   });
 
   it("reports an in-flight API mutation as busy to the update controller", async () => {

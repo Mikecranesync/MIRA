@@ -113,35 +113,35 @@ describe("GS10 230V 1-phase table (PDF p.26, printed 1-12) — the pilot's own d
   });
 
   it("reads the rated input current rows column by column, with the unit beside each value", () => {
-    const ct = row(block, /^CT Rated Input Current$/, "A");
+    const ct = row(block, /^Input Rating \/ CT \/ Rated Input Current$/, "A");
     expect(ct.cells.map((c) => [c.model, c.value])).toEqual([
       ["GS11N-20P2", "5.1"], ["GS11N-20P5", "7.3"], ["GS11N-21P0", "10.8"], ["GS11N-22P0", "16.5"], ["GS11N-23P0", "24.2"],
     ]);
     expect(ct.merged).toBe(false);
-    const vt = row(block, /^VT Rated Input Current$/, "A");
+    const vt = row(block, /^Input Rating \/ VT \/ Rated Input Current$/, "A");
     expect(vt.cells.map((c) => c.value)).toEqual(["5.8", "8.3", "11.3", "18.5", "27.5"]);
   });
 
   it("reads the output current, capacity, frame, motor output and weight rows", () => {
-    expect(row(block, /^CT Rated Output Current$/, "A").cells.map((c) => c.value)).toEqual(["1.6", "2.8", "4.8", "7.5", "11"]);
-    expect(row(block, /^VT Rated Output Current$/, "A").cells.map((c) => c.value)).toEqual(["1.8", "3.2", "5", "8.5", "12.5"]);
+    expect(row(block, /^Output Rating \/ CT \/ Rated Output Current$/, "A").cells.map((c) => c.value)).toEqual(["1.6", "2.8", "4.8", "7.5", "11"]);
+    expect(row(block, /^Output Rating \/ VT \/ Rated Output Current$/, "A").cells.map((c) => c.value)).toEqual(["1.8", "3.2", "5", "8.5", "12.5"]);
     expect(row(block, /^Frame Size$/, null).cells.map((c) => c.value)).toEqual(["A1", "A3", "B2", "C1", "C1"]);
     expect(row(block, /Max Motor Output/, "hp").cells.map((c) => c.value)).toEqual(["1/4", "1/2", "1", "2", "3"]);
     expect(row(block, /Max Motor Output/, "kW").cells.map((c) => c.value)).toEqual(["0.2", "0.4", "0.75", "1.5", "2.2"]);
     expect(row(block, /^Weight$/, "kg").cells.map((c) => c.value)).toEqual(["0.4", "0.5", "0.8", "1", "1"]);
     expect(row(block, /IE2 Efficiency/, null).cells.map((c) => c.value)).toEqual(["4.7%", "3.1%", "2.7%", "2.5%", "2.4%"]);
-    const kva = block.rows.filter((r) => /^Rated Output Capacity$/.test(r.label) && r.unit === "kVA");
+    const kva = block.rows.filter((r) => /^Output Rating \/ (CT|VT) \/ Rated Output Capacity$/.test(r.label) && r.unit === "kVA");
     expect(kva.map((r) => r.cells.map((c) => c.value))).toEqual([
       ["0.6", "1.1", "1.8", "2.9", "4.2"], ["0.7", "1.2", "1.9", "3.2", "4.8"],
     ]);
   });
 
   it("copies a value printed once across the table to every model, marked merged", () => {
-    const v = row(block, /^Rated Voltage\/Frequency$/);
+    const v = row(block, /^Input Rating \/ Rated Voltage\/Frequency$/);
     expect(v.merged).toBe(true);
     expect(v.cells.map((c) => c.model)).toEqual(M);
     expect(new Set(v.cells.map((c) => c.value))).toEqual(new Set(["One-phase 200-240 VAC (-15% to +10%), 50/60 Hz"]));
-    const range = row(block, /^Operating Voltage Range$/, "VAC");
+    const range = row(block, /^Input Rating \/ Operating Voltage Range$/, "VAC");
     expect(range.merged).toBe(true);
     expect(cell(range, "GS11N-20P2")).toBe("170–265");
     const ip = row(block, /^IP Rating$/);
@@ -150,9 +150,20 @@ describe("GS10 230V 1-phase table (PDF p.26, printed 1-12) — the pilot's own d
     expect(row(block, /Frequency Tolerance/, "Hz").cells.map((c) => c.value)).toEqual(["47–63", "47–63", "47–63", "47–63", "47–63"]);
   });
 
-  it("keeps a row it cannot qualify as flat text, never as a row", () => {
-    expect(block.rows.some((r) => /Cooling Method/.test(r.label))).toBe(false);
-    expect(block.unqualified.some((l) => /Cooling Method/.test(l) && /Convective/.test(l) && /Fan/.test(l))).toBe(true);
+  it("reads cells printed across several models only when they tile the model columns exactly", () => {
+    // "Convective" is centred on the first four model headers and "Fan" on the fifth.
+    expect(row(block, /^Cooling Method$/, null).cells.map((c) => [c.model, c.value])).toEqual([
+      ["GS11N-20P2", "Convective"], ["GS11N-20P5", "Convective"], ["GS11N-21P0", "Convective"], ["GS11N-22P0", "Convective"], ["GS11N-23P0", "Fan"],
+    ]);
+    expect(block.unqualified.some((l) => /Cooling Method/.test(l))).toBe(false);
+  });
+
+  it("keeps spanning cells that do not tile the columns as flat text, never as a row", () => {
+    // Control: move "Fan" a third of a column left, off the fifth header's centre.
+    const shifted = items(gs10p26).map((i) => (i.str === "Fan" && Math.abs(i.y - 485.82) < 0.5 ? { ...i, x: i.x - 18 } : i));
+    const b = detectModelTables(shifted)[0];
+    expect(b.rows.some((r) => /Cooling Method/.test(r.label))).toBe(false);
+    expect(b.unqualified.some((l) => /Cooling Method/.test(l) && /Convective/.test(l) && /Fan/.test(l))).toBe(true);
   });
 
   it("never emits a row with an empty label, and keeps footnote marks out of labels", () => {
@@ -172,25 +183,25 @@ describe("GS10 230V 1-phase table (PDF p.26, printed 1-12) — the pilot's own d
 
   it("serialises one chunk per model that names only that model and its own values", () => {
     const chunks = tableChunks(block);
-    const own = chunks.find((c) => c.models.length === 1 && c.models[0] === "GS11N20P2");
-    expect(own).toBeDefined();
-    expect(own!.unqualified).toBe(false);
+    const parts = chunks.filter((c) => c.models.length === 1 && c.models[0] === "GS11N20P2");
+    expect(parts.length).toBeGreaterThan(0);
+    expect(parts.every((c) => !c.unqualified)).toBe(true);
+    const own = { text: parts.map((c) => c.text).join("") };
     expect(own!.text).toMatch(/^.*230V Class – 1-Phase Model-Specific Specifications.*GS11N-20P2\n/);
-    expect(own!.text).toContain("\nGS11N-20P2: CT Rated Input Current 5.1 A\n");
-    expect(own!.text).toContain("\nGS11N-20P2: VT Rated Input Current 5.8 A\n");
-    expect(own!.text).toContain("\nGS11N-20P2: Rated Voltage/Frequency One-phase 200-240 VAC (-15% to +10%), 50/60 Hz\n");
-    expect(own!.text).toContain("GS11N-20P2: Max Motor Output 1/4 hp");
+    expect(own!.text).toContain("\nGS11N-20P2: Input Rating / CT / Rated Input Current 5.1 A\n");
+    expect(own!.text).toContain("\nGS11N-20P2: Input Rating / VT / Rated Input Current 5.8 A\n");
+    expect(own!.text).toContain("\nGS11N-20P2: Input Rating / Rated Voltage/Frequency One-phase 200-240 VAC (-15% to +10%), 50/60 Hz\n");
+    expect(own!.text).toContain("GS11N-20P2: Output Rating / Max Motor Output 1/4 hp");
     expect(own!.text).toContain("GS11N-20P2: Weight 0.4 kg");
     expect(own!.text).not.toContain("7.3");
     expect(own!.text).not.toContain("GS11N-20P5");
     expect(own!.text).not.toContain("GS11N-23P0");
-    expect(own!.text).not.toContain("Convective");
-    // The five model chunks plus one unqualified chunk tagged with every model of the block.
-    expect(chunks.filter((c) => !c.unqualified).map((c) => c.models[0])).toEqual(block.modelKeys);
-    const flat = chunks.filter((c) => c.unqualified);
-    expect(flat).toHaveLength(1);
-    expect(flat[0].models).toEqual(block.modelKeys);
-    expect(flat[0].text).toMatch(/Cooling Method/);
+    expect(own!.text).toContain("GS11N-20P2: Cooling Method Convective");
+    expect(own!.text).not.toContain("Fan");
+    expect(chunks.filter((c) => c.models.length === 1 && c.models[0] === "GS11N23P0").map((c) => c.text).join("")).toContain("GS11N-23P0: Cooling Method Fan");
+    // The five model chunks; anything left unqualified is tagged with every model of the block.
+    expect([...new Set(chunks.filter((c) => !c.unqualified).map((c) => c.models[0]))]).toEqual(block.modelKeys);
+    for (const flat of chunks.filter((c) => c.unqualified)) expect(flat.models).toEqual(block.modelKeys);
   });
 
   it("is deterministic", () => {
@@ -218,7 +229,7 @@ describe("GS10 230V 3-phase table (PDF p.27) — the look-alike sibling", () => 
     const vt = b.rows.filter((r) => /Rated Input Current/.test(r.label) && /VT/.test(r.label) && r.unit === "A");
     expect(vt).toHaveLength(1);
     expect(cell(vt[0], "GS13N-20P2")).toBe("2.2");
-    expect(cell(row(b, /^Rated Voltage\/Frequency$/), "GS13N-20P2")).toBe("3-phase 200-240 VAC (-15% to +10%), 50/60 Hz");
+    expect(cell(row(b, /^Input Rating \/ Rated Voltage\/Frequency$/), "GS13N-20P2")).toBe("3-phase 200-240 VAC (-15% to +10%), 50/60 Hz");
   });
 });
 
@@ -335,34 +346,36 @@ describe("tableChunks splits a long model's table at row boundaries (Codex #5429
   // were silently dropped from what the model sees. The fix splits at TABLE_CHUNK_MAX_CHARS=1000,
   // never mid-row, with each continuation chunk re-starting with the prefix line plus " (cont.)".
 
-  it("byte-identical for an existing short fixture (gs10p27 GS13N-20P2, 921 chars, under the 1000 limit)", () => {
+  it("pins the exact gs10p27 GS13N-20P2 output: two chunks split at a row boundary, every line kept", () => {
+    // Was a 921-char single chunk; the duty and group labels lengthen it past the 1000 limit.
     const blocks = detectModelTables(items(gs10p27));
-    const chunks = tableChunks(blocks[0]);
-    const own = chunks.find((c) => c.models.length === 1 && c.models[0] === "GS13N20P2")!;
-    expect(own.text).toBe(
+    const own = tableChunks(blocks[0]).filter((c) => c.models.length === 1 && c.models[0] === "GS13N20P2");
+    expect(own.map((c) => c.text)).toEqual([
       "230V Class – 3-Phase Model-Specific Specifications / GS10 230V Class Specifications; Frame Size A, B — Model Name: GS13N-2xPx — GS13N-20P2\n" +
-        "GS13N-20P2: Frame Size A1\n" +
-        "GS13N-20P2: hp 1/4\n" +
-        "GS13N-20P2: Max Motor Output hp [0.1]\n" +
-        "GS13N-20P2: (3-phase [1-phase]) kW 0.2\n" +
-        "GS13N-20P2: kW [0.1]\n" +
-        "GS13N-20P2: Rated Output Capacity 0.6 kVA\n" +
-        "GS13N-20P2: Rated Output Current 1.6\n" +
-        "GS13N-20P2: (3-phase [1-phase]) [0.8]\n" +
-        "GS13N-20P2: Carrier Frequency 2–15 kHz\n" +
-        "GS13N-20P2: Rated Output Capacity 0.7 kVA\n" +
-        "GS13N-20P2: VT Rated Output Current 1.8 A\n" +
-        "GS13N-20P2: Carrier Frequency 2–15 kHz\n" +
-        "GS13N-20P2: CT Rated Input Current 1.9 A\n" +
-        "GS13N-20P2: VT Rated Input Current 2.2 A\n" +
-        "GS13N-20P2: Rated Voltage/Frequency 3-phase 200-240 VAC (-15% to +10%), 50/60 Hz\n" +
-        "GS13N-20P2: Operating Voltage Range 170–265 VAC\n" +
-        "GS13N-20P2: Frequency Tolerance 47–63 Hz\n" +
-        "GS13N-20P2: IE2 Efficiency - Relative Power Loss 4.7%\n" +
-        "GS13N-20P2: Weight 0.4 kg\n" +
-        "GS13N-20P2: IP Rating IP20\n",
-    );
-    expect(chunks.filter((c) => c.models.length === 1 && c.models[0] === "GS13N20P2")).toHaveLength(1);
+      "GS13N-20P2: Frame Size A1\n" +
+      "GS13N-20P2: hp 1/4\n" +
+      "GS13N-20P2: Output Rating / Max Motor Output hp [0.1]\n" +
+      "GS13N-20P2: Output Rating / (3-phase [1-phase]) kW 0.2\n" +
+      "GS13N-20P2: Output Rating / kW [0.1]\n" +
+      "GS13N-20P2: Output Rating / CT / Rated Output Capacity 0.6 kVA\n" +
+      "GS13N-20P2: Output Rating / CT / Rated Output Current A 1.6\n" +
+      "GS13N-20P2: Output Rating / CT / (3-phase [1-phase]) A [0.8]\n" +
+      "GS13N-20P2: Output Rating / CT / Carrier Frequency 2–15 kHz\n" +
+      "GS13N-20P2: Output Rating / VT / Rated Output Capacity 0.7 kVA\n" +
+      "GS13N-20P2: Output Rating / VT / Rated Output Current 1.8 A\n" +
+      "GS13N-20P2: Output Rating / VT / Carrier Frequency 2–15 kHz\n" +
+      "GS13N-20P2: Input Rating / CT / Rated Input Current 1.9 A\n" +
+      "GS13N-20P2: Input Rating / VT / Rated Input Current 2.2 A\n" +
+      "GS13N-20P2: Input Rating / Rated Voltage/Frequency 3-phase 200-240 VAC (-15% to +10%), 50/60 Hz\n",
+      "230V Class – 3-Phase Model-Specific Specifications / GS10 230V Class Specifications; Frame Size A, B — Model Name: GS13N-2xPx — GS13N-20P2 (cont.)\n" +
+      "GS13N-20P2: Input Rating / Operating Voltage Range 170–265 VAC\n" +
+      "GS13N-20P2: Input Rating / Frequency Tolerance 47–63 Hz\n" +
+      "GS13N-20P2: IE2 Efficiency - Relative Power Loss 4.7%\n" +
+      "GS13N-20P2: Weight 0.4 kg\n" +
+      "GS13N-20P2: Cooling Method Convective\n" +
+      "GS13N-20P2: IP Rating IP20\n",
+    ]);
+    for (const c of own) expect(c.text.length).toBeLessThanOrEqual(1000);
   });
 
   function syntheticBlock(rowCount: number, cellValue: (i: number) => string): TableBlock {
@@ -621,5 +634,202 @@ describe("a model-keyed (one model per line) table is stored as one unqualified 
     // model-number reader (manual-applicability.ts) reads its cells as model numbers.
     const keyed = [...line(324, ["Parameter", "1st fault", "2nd fault", "3rd fault"]), ...page.filter((it) => it.y <= 225)];
     expect(pageWithTables(keyed)).toBeNull();
+  });
+});
+
+describe("duty stubs: placement is bounded, and stub text is never dropped (#5598 Codex F1, F2)", () => {
+  const item = (str: string, x: number, y: number) => ({ str, x, y, w: str.length * 4, size: 8 });
+  const header = (y: number) => [item("GS11N-20P2", 250, y), item("GS11N-20P5", 350, y)];
+  /** `segments` rated-value segments of three rows each, a CT/VT stub inline on each middle row. */
+  const stubbed = (segments: number) => {
+    const items = header(760);
+    for (let s = 0; s < segments; s++) for (let r = 0; r < 3; r++) {
+      const y = 740 - 12 * (3 * s + r);
+      if (r === 1) items.push(item(s % 2 === 0 ? "CT" : "VT", 50, y));
+      items.push(item("Rated Value", 100, y), item(String(3 * s + r), 250, y), item(String(3 * s + r + 1), 350, y));
+    }
+    return items;
+  };
+  const allText = (items: ReturnType<typeof stubbed>) => {
+    // No qualifying table: the writer stores the page text as read.
+    const page = pageWithTables(items);
+    return page ? [page.remainder, ...page.chunks.map((c) => c.text)].join("\n") : items.map((i) => i.str).join("\n");
+  };
+
+  it("60 rows under 20 stubs: the one centred split is found quickly and every row takes its own stub", () => {
+    const started = performance.now();
+    const blocks = detectModelTables(stubbed(20));
+    expect(performance.now() - started).toBeLessThan(2000);
+    const rows = blocks.flatMap((b) => b.rows);
+    expect(rows).toHaveLength(60);
+    rows.forEach((r, i) => expect(r.label, `row ${i}`).toBe(`${Math.floor(i / 3) % 2 === 0 ? "CT" : "VT"} / Rated Value`));
+  }, 10000);
+
+  it("a table too large to search within the work limit is withheld whole, its stub text kept", () => {
+    const items = stubbed(100);
+    const blocks = detectModelTables(items);
+    expect(blocks.flatMap((b) => b.rows).filter((r) => /Rated Value/.test(r.label))).toHaveLength(0);
+    const text = allText(items);
+    expect(text.match(/\bCT\b/g)?.length ?? 0).toBe(50);
+    expect(text.match(/\bVT\b/g)?.length ?? 0).toBe(50);
+  }, 10000);
+
+  it("two different splits both centre on the group cells: neither is chosen, the values stay unqualified and both labels survive", () => {
+    // Rows at 740/728/716/704 under two rotated group cells. Their centres (739.4 and 715.4) fit
+    // both [740][728 716 704] and [740 728][716 704] within tolerance, so placement is ambiguous.
+    const group = (str: string, centre: number) => ({ str, x: 40, y: centre - 20, w: 40, size: 8, vertical: true });
+    const items = [...header(776), item("Frame Size", 30, 764), item("A1", 250, 764), item("A1", 350, 764),
+      item("Cooling Method", 30, 752), item("Fan", 250, 752), item("Fan", 350, 752),
+      ...[740, 728, 716, 704].flatMap((y, i) => [item("Rated Value", 100, y), item(String(i + 3), 250, y), item(String(i + 4), 350, y)]),
+      group("Output Rating", 739.4), group("Input Rating", 715.4)];
+    const blocks = detectModelTables(items);
+    expect(blocks.flatMap((b) => b.rows).map((r) => r.label)).toEqual(["Frame Size", "Cooling Method"]);
+    expect(blocks.flatMap((b) => b.unqualified).filter((l) => /Rated Value/.test(l))).toHaveLength(4);
+    expect(pageWithTables(items), "precondition: the page is read as a table").not.toBeNull();
+    const text = allText(items);
+    expect(text).toContain("Output Rating");
+    expect(text).toContain("Input Rating");
+  });
+
+  // #5615 Codex round 1 F1: a one-letter rotated group label is still a group label. A real PDF
+  // also rotates blanks and footnote marks beside a label (GS10 pages 26 and 27); only those are
+  // read as ordinary text.
+  it.each([
+    ["H and L", "H", "L", 8],
+    ["1 and 2, printed full size (#5615 Codex F4)", "1", "2", 8],
+    // Alone on its line a digit annotates nothing, so even a small one is a group label.
+    ["1 and 2 at 6 pt over 8 pt text, each alone on its line", "1", "2", 6],
+    ["Output Rating and Input Rating (control)", "Output Rating", "Input Rating", 8],
+  ])("rotated group labels %s each keep their own rows", (_name, upper, lower, size) => {
+    const group = (str: string, centre: number) => ({ str, x: 40, y: centre - 20, w: 40, size, vertical: true });
+    const items = [...header(776), item("Frame Size", 30, 764), item("A1", 250, 764), item("A1", 350, 764),
+      item("Cooling Method", 30, 752), item("Fan", 250, 752), item("Fan", 350, 752),
+      ...[740, 728, 692, 680].flatMap((y, i) => [item("Rated Current", 100, y), item(String(i + 3), 250, y), item(String(i + 4), 350, y)]),
+      group(upper, 734), group(lower, 686)]; // one split only: [740 728] centred 734, [692 680] centred 686
+    expect(pageWithTables(items), "precondition: the page is read as a table").not.toBeNull();
+    const labels = detectModelTables(items).flatMap((b) => b.rows).map((r) => r.label);
+    expect(labels).toEqual(["Frame Size", "Cooling Method",
+      `${upper} / Rated Current`, `${upper} / Rated Current`, `${lower} / Rated Current`, `${lower} / Rated Current`]);
+  });
+  // #5615 Codex round 2 F4: a rotated digit that shares its line with row text is a mark only when
+  // it is printed small against the table's text, not against the largest item on that line. Here
+  // the digits are labels that this reader cannot centre, so their rows are withheld with the
+  // digits kept as text. Read as marks they would be dropped, leaving bare affirmable rows.
+  it.each([
+    ["8 pt, beside one 11 pt label", 8, 11],
+    ["7 pt, inside the ratio boundary", 7, 8],
+  ])("a rotated digit sharing a row line at %s is a group label: withheld, never dropped", (_name, size, labelSize) => {
+    const digit = (str: string, centre: number) => ({ str, x: 40, y: centre - 5, w: 10, size, vertical: true });
+    const rated = (y: number) => ({ str: "Rated Current", x: 100, y, w: 52, size: y === 728 ? labelSize : 8 });
+    const items = [...header(776), item("Frame Size", 30, 764), item("A1", 250, 764), item("A1", 350, 764),
+      item("Cooling Method", 30, 752), item("Fan", 250, 752), item("Fan", 350, 752),
+      ...[740, 728, 716, 704].flatMap((y, i) => [rated(y), item(String(i + 3), 250, y), item(String(i + 4), 350, y)]),
+      digit("1", 734), digit("2", 710)]; // each digit's y (729, 705) lands on the lower row of its pair
+    const onRowLine = (y: number) => items.filter((it) => Math.abs(it.y - y) <= 2.5).length;
+    expect([onRowLine(728), onRowLine(704)], "precondition: each digit shares a row line").toEqual([4, 4]);
+    expect(pageWithTables(items), "precondition: the page is read as a table").not.toBeNull();
+    const blocks = detectModelTables(items);
+    expect(blocks.flatMap((b) => b.rows).map((r) => r.label)).toEqual(["Frame Size", "Cooling Method"]);
+    expect(blocks.flatMap((b) => b.unqualified)).toEqual(expect.arrayContaining(["1", "2"]));
+    expect(blocks.flatMap((b) => b.unqualified).filter((l) => /Rated Current/.test(l))).toHaveLength(4);
+  });
+  it.each([["blank", ""], ["space", " "], ["footnote mark", "2"], ["two-digit footnote mark", "12"], ["space-padded footnote mark (#5615 Codex F3)", " 2 "]])(
+    "a rotated %s beside a rotated label is not a group label", (_name, str) => {
+      const group = (s: string, centre: number) => ({ str: s, x: 40, y: centre - 20, w: 40, size: 8, vertical: true });
+      const items = [...header(776), item("Frame Size", 30, 764), item("A1", 250, 764), item("A1", 350, 764),
+        item("Cooling Method", 30, 752), item("Fan", 250, 752), item("Fan", 350, 752),
+        ...[740, 728, 716, 704].flatMap((y, i) => [item("Rated Current", 100, y), item(String(i + 3), 250, y), item(String(i + 4), 350, y)]),
+        // As on GS10: raised 3 pt off the label's baseline, starting where its text ends (702 + 40).
+        group("Output Rating", 722), { str, x: 37, y: 742, w: 3, size: 5, vertical: true }];
+      expect(pageWithTables(items), "precondition: the page is read as a table").not.toBeNull();
+      expect(detectModelTables(items).flatMap((b) => b.rows).map((r) => r.label)).toEqual(["Frame Size", "Cooling Method",
+        ...Array(4).fill("Output Rating / Rated Current")]);
+    });
+
+  it("6 pt rotated group digits in their own column, each on its pair's lower row line, keep their rows (#5615 Codex F5)", () => {
+    const digit = (str: string, centre: number) => ({ str, x: 40, y: centre - 5, w: 10, size: 6, vertical: true });
+    const items = [...header(776), item("Frame Size", 30, 764), item("A1", 250, 764), item("A1", 350, 764),
+      item("Cooling Method", 30, 752), item("Fan", 250, 752), item("Fan", 350, 752),
+      ...[740, 728, 716, 704].flatMap((y, i) => [item("Rated Current", 100, y), item(String(i + 3), 250, y), item(String(i + 4), 350, y)]),
+      digit("1", 734), digit("2", 710)];
+    const onRowLine = (y: number) => items.filter((it) => Math.abs(it.y - y) <= 2.5).length;
+    expect([onRowLine(728), onRowLine(704)], "precondition: each digit shares a row line").toEqual([4, 4]);
+    expect(pageWithTables(items), "precondition: the page is read as a table").not.toBeNull();
+    expect(detectModelTables(items).flatMap((b) => b.rows).map((r) => r.label)).toEqual(["Frame Size", "Cooling Method",
+      "1 / Rated Current", "1 / Rated Current", "2 / Rated Current", "2 / Rated Current"]);
+  });
+
+  it("a 6 pt rotated 2 on a word label's baseline, before its text begins, keeps its own rows (#5615 Codex F7)", () => {
+    const items = [...header(776), item("Frame Size", 30, 764), item("A1", 250, 764), item("A1", 350, 764),
+      item("Cooling Method", 30, 752), item("Fan", 250, 752), item("Fan", 350, 752),
+      ...[740, 730, 720, 710].flatMap((y, i) => [item("Rated Current", 100, y), item(String(i + 3), 250, y), item(String(i + 4), 350, y)]),
+      { str: "Continuous", x: 40, y: 721.9, w: 31, size: 8, vertical: true },
+      { str: "2", x: 40, y: 715.3, w: 3.2, size: 6, vertical: true }];
+    expect(pageWithTables(items), "precondition: the page is read as a table").not.toBeNull();
+    expect(detectModelTables(items).flatMap((b) => b.rows).map((r) => r.label)).toEqual(["Frame Size", "Cooling Method",
+      "Continuous / Rated Current", "Continuous / Rated Current", "2 / Rated Current", "2 / Rated Current"]);
+  });
+
+  // #5615 Codex rounds 3 and 4, F5 and F7: a small rotated digit is a mark only when it is raised
+  // off a rotated word label's baseline and starts where that label's text ends. Each case breaks one
+  // condition; the digit is then a group label, placed or withheld, and never dropped. Read as a mark
+  // it would vanish. The label spans 702 to 742.
+  it.each([
+    ["5 pt, 30 pt across from the label's baseline", { x: 67, y: 742, size: 5 }],
+    ["5 pt, on the label's own baseline (not raised)", { x: 40, y: 742, size: 5 }],
+    ["5 pt, raised, at the start of the label's text", { x: 37, y: 699, size: 5 }],
+    ["8 pt, full size, raised at the label's end", { x: 37, y: 742, size: 8 }],
+    ["7 pt, at or above 0.8 of the 8 pt text, raised at the label's end", { x: 37, y: 742, size: 7 }],
+  ])("a rotated digit %s is a group label: never dropped", (_name, digit) => {
+    const labelCentre = 722, labelLength = 40;
+    const items = [...header(776), item("Frame Size", 30, 764), item("A1", 250, 764), item("A1", 350, 764),
+      item("Cooling Method", 30, 752), item("Fan", 250, 752), item("Fan", 350, 752),
+      ...[740, 728, 716, 704].flatMap((y, i) => [item("Rated Current", 100, y), item(String(i + 3), 250, y), item(String(i + 4), 350, y)]),
+      { str: "Output Rating", x: 40, y: labelCentre - labelLength / 2, w: labelLength, size: 8, vertical: true },
+      { str: "2", x: digit.x, y: digit.y, w: 3, size: digit.size, vertical: true }];
+    expect(pageWithTables(items), "precondition: the page is read as a table").not.toBeNull();
+    const blocks = detectModelTables(items);
+    const labels = blocks.flatMap((b) => b.rows).map((r) => r.label);
+    const kept = labels.some((l) => /^2 \/ /.test(l)) || blocks.flatMap((b) => b.unqualified).includes("2");
+    expect(kept, `labels ${JSON.stringify(labels)}`).toBe(true);
+    expect(labels.filter((l) => /Rated Current/.test(l) && !/\//.test(l))).toEqual([]);
+  });
+
+  // #5598 Codex round 2 F2: one stub kind places, the other fails; the rows are demoted and the
+  // label that DID place must survive as text too.
+  const vgroup = (str: string, y: number) => ({ str, x: 20, y, w: 48, size: 8, vertical: true });
+  it.each([
+    ["the group label places, the CT/VT labels cannot", [
+      item("CT", 50, 714), item("VT", 50, 666), vgroup("Output Rating", 668.4),
+      ...[714, 702, 690, 678, 666].flatMap((y, i) => [item("Rated Current", 100, y), item(String(i + 3), 250, y), item(String(i + 4), 350, y)])], 5],
+    ["the CT/VT labels place, the group label cannot", [
+      item("CT", 50, 714), item("VT", 50, 702), vgroup("Output Rating", 640),
+      ...[714, 702].flatMap((y, i) => [item("Rated Current", 100, y), item(String(i + 3), 250, y), item(String(i + 4), 350, y)])], 2],
+  ])("%s: the values stay unqualified and every label survives", (_name, rated, demoted) => {
+    const items = [...header(750), item("Frame Size", 10, 738), item("A1", 250, 738), item("A1", 350, 738),
+      item("Cooling Method", 10, 726), item("Fan", 250, 726), item("Fan", 350, 726), ...rated];
+    const blocks = detectModelTables(items);
+    expect(blocks.flatMap((b) => b.rows).map((r) => r.label)).toEqual(["Frame Size", "Cooling Method"]);
+    expect(blocks.flatMap((b) => b.unqualified).filter((l) => /Rated Current/.test(l))).toHaveLength(demoted);
+    expect(pageWithTables(items), "precondition: the page is read as a table").not.toBeNull();
+    const text = allText(items);
+    for (const label of ["Output Rating", "CT", "VT"]) expect(text, label).toMatch(new RegExp(`\\b${label}\\b`));
+  });
+
+  it("two ordinary rows, then three rated rows CT and VT cannot be centred on: the values stay unqualified and CT and VT survive", () => {
+    const items = [...header(750),
+      item("Frame Size", 30, 738), item("A1", 250, 738), item("A1", 350, 738),
+      item("Cooling Method", 30, 726), item("Fan", 250, 726), item("Fan", 350, 726),
+      item("CT", 50, 714), item("Rated Current", 100, 714), item("3", 250, 714), item("4", 350, 714),
+      item("Rated Current", 100, 702), item("4", 250, 702), item("5", 350, 702),
+      item("VT", 50, 690), item("Rated Current", 100, 690), item("5", 250, 690), item("6", 350, 690)];
+    const blocks = detectModelTables(items);
+    // Precondition: the ordinary rows keep the table qualified.
+    expect(blocks.flatMap((b) => b.rows).map((r) => r.label)).toEqual(["Frame Size", "Cooling Method"]);
+    expect(blocks.flatMap((b) => b.unqualified).filter((l) => /Rated Current/.test(l))).toHaveLength(3);
+    expect(pageWithTables(items), "precondition: the page is read as a table").not.toBeNull();
+    const text = allText(items);
+    expect(text).toMatch(/\bCT\b/);
+    expect(text).toMatch(/\bVT\b/);
   });
 });

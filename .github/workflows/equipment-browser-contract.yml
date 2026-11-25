@@ -1,0 +1,80 @@
+name: Equipment browser database contract
+on:
+  pull_request:
+    paths:
+      - 'mira-hub/src/capabilities/equipment-browser/**'
+      - 'mira-hub/src/app/api/equipment-browser/**'
+      - 'mira-hub/src/capabilities/bench-components/**'
+      - 'mira-hub/src/lib/tenant-context.ts'
+      - 'mira-hub/src/lib/equipment-notebooks.ts'
+      - 'mira-hub/scripts/verify-equipment-browser-proof.py'
+      - 'mira-hub/scripts/setup-integration-db.mjs'
+      - 'mira-hub/scripts/equipment-test-database.mjs'
+      - 'mira-hub/vitest*.config.ts'
+      - 'mira-hub/package*.json'
+      - '.github/workflows/equipment-browser-contract.yml'
+permissions:
+  contents: read
+jobs:
+  database:
+    name: Direct equipment HTTP + restricted PostgreSQL (20k)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: equipment_browser
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: testpw
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      TEST_DATABASE_URL: postgres://postgres:testpw@127.0.0.1:5432/equipment_browser
+      MIRA_TEST_DB_CONFIRM: DISPOSABLE
+      EQUIPMENT_BROWSER_MEASUREMENTS: /tmp/equipment-browser-proof/measurements.json
+      EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
+      EXPECTED_BASE: ${{ github.event.pull_request.base.sha }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22'
+      - name: Bind the actual runner composition
+        run: |
+          mkdir -p /tmp/equipment-browser-proof
+          python3 - <<'PY'
+          import json, os, pathlib, subprocess
+          def git(*args): return subprocess.check_output(['git', *args], text=True).strip()
+          parents = git('show','-s','--format=%P','HEAD').split()
+          head, base = os.environ['EXPECTED_HEAD'], os.environ['EXPECTED_BASE']
+          if len(parents) != 2 or set(parents) != {head, base}:
+              raise SystemExit('Actual checkout is not the expected current base + candidate')
+          binding = {'checkout': git('rev-parse','HEAD'), 'tree': git('rev-parse','HEAD^{tree}'), 'parents': parents,
+                     'candidate': head, 'base': base, 'run': os.environ['GITHUB_RUN_ID'], 'attempt': os.environ['GITHUB_RUN_ATTEMPT']}
+          pathlib.Path('/tmp/equipment-browser-proof/checkout.json').write_text(json.dumps(binding,indent=2)+'\n')
+          print(json.dumps(binding))
+          PY
+      - name: Install locked dependencies
+        working-directory: mira-hub
+        run: npm ci --no-audit --no-fund
+      - name: Execute the disposable equipment browser integration profile
+        working-directory: mira-hub
+        run: >-
+          npm run test:integration:equipment-browser --
+          --reporter=default --reporter=json --outputFile=/tmp/equipment-browser-proof/vitest.json
+      - name: Reject absent, zero, skipped or incomplete required evidence
+        if: always()
+        working-directory: mira-hub
+        run: python3 scripts/verify-equipment-browser-proof.py /tmp/equipment-browser-proof/vitest.json /tmp/equipment-browser-proof/cases.json /tmp/equipment-browser-proof/measurements.json
+      - name: Preserve runner binding, named cases and actual measurements
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: equipment-browser-${{ github.event.pull_request.head.sha }}-${{ github.run_attempt }}
+          path: /tmp/equipment-browser-proof/
+          if-no-files-found: error

@@ -904,6 +904,55 @@ function citationClaims(html: string): string[] {
   );
 }
 
+// Google Search Console (2026-11-05) flagged a critical Product-snippet issue:
+// a Product needs offers, review or aggregateRating. Fault-code pages describe
+// equipment we do not sell, so they must declare no Product. The guide must be
+// a recognized schema.org CreativeWork type so `mentions` is valid on it.
+describe("fault-code page structured data", () => {
+  function jsonLdBlocks(html: string): unknown[] {
+    const re = /<script type="application\/ld\+json">([\s\S]*?)<\/script>/g;
+    return [...html.matchAll(re)].map((m) => JSON.parse(m[1]));
+  }
+  function collectTypes(node: unknown, out: string[]): string[] {
+    if (Array.isArray(node)) node.forEach((n) => collectTypes(n, out));
+    else if (node && typeof node === "object") {
+      for (const [k, v] of Object.entries(node)) {
+        if (k === "@type") out.push(...(Array.isArray(v) ? v : [v]).map(String));
+        else collectTypes(v, out);
+      }
+    }
+    return out;
+  }
+  function guideOf(fc: FaultCode): Record<string, any> | undefined {
+    const blocks = jsonLdBlocks(renderFaultCodePage(fc, FAULT_CODES));
+    const graph = (blocks[0] as { "@graph": Array<Record<string, any>> })["@graph"];
+    return graph.find((n) => String(n["@id"]).endsWith("#guide"));
+  }
+
+  test("no fault-code page declares a Product", () => {
+    expect(FAULT_CODES.length).toBeGreaterThan(0);
+    for (const fc of FAULT_CODES) {
+      const blocks = jsonLdBlocks(renderFaultCodePage(fc, FAULT_CODES));
+      expect(blocks.length).toBeGreaterThan(0);
+      expect(collectTypes(blocks, [])).not.toContain("Product");
+    }
+  });
+
+  test("the guide is a schema.org HowTo about the equipment, mentioning the manufacturer", () => {
+    for (const fc of FAULT_CODES) {
+      const guide = guideOf(fc);
+      expect(guide?.["@type"]).toBe("HowTo");
+      expect(guide?.about).toEqual({
+        "@type": "Thing",
+        name: fc.equipment,
+        description: `Equipment by ${fc.manufacturer}`,
+      });
+      expect(guide?.mentions).toEqual({ "@type": "Organization", name: fc.manufacturer });
+      expect(Array.isArray(guide?.step) && guide.step.length > 0).toBe(true);
+    }
+  });
+});
+
 // RFI readiness (#5570): trust, security and offline pages.
 const rfiTrust = readFileSync(join(process.cwd(), "public", "trust.html"), "utf-8");
 const rfiSecurity = renderSecurity("https://factorylm.com/security");

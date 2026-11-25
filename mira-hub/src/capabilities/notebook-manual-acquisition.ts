@@ -34,6 +34,7 @@ import {
   type SourceStateWriter,
 } from "@/capabilities/manual-acquisition";
 import { MANUAL_SEARCH_LIMIT_COPY, MANUAL_SEARCH_UNAVAILABLE_COPY } from "@/capabilities/manual-search-copy";
+import { reviewedManualFor } from "@/capabilities/reviewed-manual-library";
 
 /** A running claim older than this is treated as abandoned (container restart). */
 export const STALE_RUNNING_MINUTES = 10;
@@ -76,6 +77,8 @@ export interface AcquisitionRecord {
   partial?: boolean;
   /** The claim generation that wrote this record (Codex #4118 r3 F6). */
   gen?: string;
+  /** Reviewed publication digest attempted by this generation, even on a miss. */
+  reviewed_digest?: string | null;
   /** The acquired document — reconciled against the notebook's current sources (Codex #4118 r8 F13). */
   doc_id?: string | null;
   /** The acquired file — reconciled for file-only (scanned) outcomes (Codex #4118 r9 F14). */
@@ -85,7 +88,7 @@ export interface AcquisitionRecord {
   /** What an EARLIER attempt attached, carried through every retry until resolved (r15 F20). */
   prior_doc_id?: string | null;
   prior_file_id?: string | null;
-  /** Automatic retries already spent on a retryable failure (capped by MAX_AUTOMATIC_RETRIES). */
+  /** Automatic retries already spent. Ordinary outage retries stop at MAX_AUTOMATIC_RETRIES. */
   retries?: number;
   /** Why a download failed, when it did (safe-download's rejection reason). */
   download_reason?: string | null;
@@ -137,6 +140,22 @@ export function acquisitionKey(id: ConfirmedIdentity): string | null {
   if (!mfr || !(model || catalog)) return null;
   const norm = (s: string) => s.toUpperCase().replace(/[^A-Z0-9]/g, "");
   return [norm(mfr), norm(model), norm(catalog)].join("|");
+}
+
+// Keep the route's precheck in step with claim()'s authoritative row predicate.
+const REVIEWED_RETRY_STATES: readonly AcquisitionState[] = [
+  "no_manual_found", "candidate_review", "download_rejected", "no_extractable_text",
+  "search_unavailable", "search_limit_reached",
+];
+
+export function canRetryReviewedAcquisition(record: AcquisitionRecord, identity: ConfirmedIdentity): boolean {
+  if (record.key !== acquisitionKey(identity) || !REVIEWED_RETRY_STATES.includes(record.state)) return false;
+  if (
+    record.linked || record.attached_indexed || record.source_removed || record.match_state === "rejected" ||
+    record.doc_id != null || record.file_id != null || record.prior_doc_id != null || record.prior_file_id != null
+  ) return false;
+  const digest = reviewedManualFor(identity)?.sha256;
+  return Boolean(digest && digest !== record.reviewed_digest);
 }
 
 function isUndefinedColumn(err: unknown): boolean {
@@ -213,6 +232,72 @@ export function applicableReadySource(
   return sources.find((s) => isApplicableEnabledManual(s, key) && s.readiness.canChat) ?? null;
 }
 
+/** The applicable, ready source whose evidence names the approved reviewed
+ *  publication: its pinned digest and its coverage page (#5726 F2). */
+function approvedReadySource(
+  sources: readonly NotebookSource[],
+  identity: ConfirmedIdentity,
+  publication: { sha256: string; page: number },
+): NotebookSource | null {
+  const key = acquisitionKey(identity);
+  if (!key) return null;
+  return sources.find((s) => {
+    if (!isApplicableEnabledManual(s, key) || !s.readiness.canChat) return false;
+    const e = s.matchEvidence as { reviewedLibraryPage?: unknown; reviewedLibrarySha256?: unknown } | null;
+    return e?.reviewedLibrarySha256 === publication.sha256 && e?.reviewedLibraryPage === publication.page;
+  }) ?? null;
+}
+
+/** #5726 F2: when several applicable manuals are ready, the approved reviewed
+ *  publication speaks for the notebook, so an older ready source cannot hide
+ *  it; otherwise the first ready one, as before. */
+function preferredReadySource(sources: readonly NotebookSource[], identity: ConfirmedIdentity): NotebookSource | null {
+  const publication = reviewedManualFor({
+    manufacturer: identity.manufacturer, model: identity.model, catalogNumber: identity.catalogNumber,
+  });
+  return (publication ? approvedReadySource(sources, identity, publication) : null) ??
+    applicableReadySource(sources, identity);
+}
+
+/** An absolute link to the same-origin cited-page viewer (/v3/source/?file=&page=,
+ *  the route the citation viewer uses) for a saved file. The status renderers
+ *  open only https links, so the Hub's public origin comes from NEXTAUTH_URL;
+ *  without an https origin there is no link. */
+function savedCopyPageUrl(fileId: string, page: number, env: Record<string, string | undefined>): string | null {
+  let origin: string;
+  try {
+    const u = new URL(env.NEXTAUTH_URL ?? "");
+    if (u.protocol !== "https:") return null;
+    origin = u.origin;
+  } catch {
+    return null;
+  }
+  const base = process.env.NEXT_PUBLIC_BASE_PATH ?? "/hub";
+  const query = new URLSearchParams({ file: fileId, page: String(page) });
+  return `${origin}${base}/v3/source/?${query.toString()}`;
+}
+
+/** Status from the currently enabled source, regardless of the last acquisition record. */
+export function currentManualSourceMessage(
+  sources: readonly NotebookSource[],
+  identity: ConfirmedIdentity,
+): string | null {
+  const { manufacturer, model, catalogNumber } = identity;
+  const ready = preferredReadySource(sources, identity);
+  if (ready) {
+    const evidence = ready.matchEvidence as { reviewedLibraryPage?: number; reviewedLibraryTitle?: string } | null;
+    const page = evidence?.reviewedLibraryPage;
+    const title = evidence?.reviewedLibraryTitle;
+    if (typeof page === "number" && Number.isSafeInteger(page) && page > 0 && typeof title === "string") {
+      return `${title} is ready in Sources. PDF page ${page} shows coverage for ${catalogNumber?.trim() || model}.`;
+    }
+    return `The ${manufacturer} ${model} manual is ready — I can answer from it.`;
+  }
+  return applicableEnabledSource(sources, identity)
+    ? `I found the ${manufacturer} ${model} manual and added it to this notebook's Sources — it's still being prepared to answer from.`
+    : null;
+}
+
 /** The recorded search for this notebook, or null (never attempted, or unreadable). */
 export async function readAcquisition(tenantId: string, notebookId: string): Promise<AcquisitionRecord | null> {
   try {
@@ -245,7 +330,13 @@ export async function readAcquisition(tenantId: string, notebookId: string): Pro
  * its real outcome is always persisted and a stale miss is never left behind.
  * A background start never passes it.
  */
-async function claim(tenantId: string, notebookId: string, key: string, explicit = false): Promise<string | null> {
+async function claim(
+  tenantId: string,
+  notebookId: string,
+  key: string,
+  explicit = false,
+  reviewedDigest: string | null = null,
+): Promise<string | null> {
   try {
     return await withTenantContext(tenantId, async (c) => {
       // Every claim mints a fresh generation; only the holder of the CURRENT
@@ -257,6 +348,7 @@ async function claim(tenantId: string, notebookId: string, key: string, explicit
                   'key', $3::text, 'state', 'running', 'gen', gen_random_uuid()::text,
                   'started_at', to_jsonb(now()), 'finished_at', NULL,
                   'candidate_host', NULL, 'match_state', NULL, 'oem_request_url', NULL,
+                  'reviewed_digest', $8::text,
                   -- Automatic retries of a retryable failure are counted and capped
                   -- (Codex #4118 r12 F16): a PDF that never reads stops, eventually.
                   -- search_limit_reached (#4160 S4) is retried on a DIFFERENT
@@ -321,9 +413,23 @@ async function claim(tenantId: string, notebookId: string, key: string, explicit
                          < date_trunc('day', now(), 'UTC'))
                  OR ($7::boolean
                      AND manual_acquisition->>'key' = $3::text
-                     AND manual_acquisition->>'state' <> 'running'))
+                     AND manual_acquisition->>'state' <> 'running')
+                 -- A newly reviewed publication gets one attempt after an
+                 -- unattached miss, outage, or provider quota denial. The
+                 -- same digest still follows the normal retry rules above.
+                 OR ($8::text IS NOT NULL
+                     AND manual_acquisition->>'state' = ANY($9::text[])
+                     AND manual_acquisition->>'reviewed_digest' IS DISTINCT FROM $8::text
+                     AND manual_acquisition->>'linked' IS DISTINCT FROM 'true'
+                     AND manual_acquisition->>'attached_indexed' IS DISTINCT FROM 'true'
+                     AND manual_acquisition->>'source_removed' IS DISTINCT FROM 'true'
+                     AND manual_acquisition->>'match_state' IS DISTINCT FROM 'rejected'
+                     AND manual_acquisition->>'doc_id' IS NULL
+                     AND manual_acquisition->>'file_id' IS NULL
+                     AND manual_acquisition->>'prior_doc_id' IS NULL
+                     AND manual_acquisition->>'prior_file_id' IS NULL))
           RETURNING manual_acquisition->>'gen' AS gen`,
-        [tenantId, notebookId, key, STALE_RUNNING_MINUTES, UNAVAILABLE_RETRY_MINUTES, MAX_AUTOMATIC_RETRIES, explicit],
+        [tenantId, notebookId, key, STALE_RUNNING_MINUTES, UNAVAILABLE_RETRY_MINUTES, MAX_AUTOMATIC_RETRIES, explicit, reviewedDigest, REVIEWED_RETRY_STATES],
       );
       return r.rows[0]?.gen ?? null;
     });
@@ -441,7 +547,7 @@ const NOTEBOOK_KEY_SQL = `upper(regexp_replace(coalesce(n.manufacturer, ''), '[^
  * match_state='candidate', enabled_by_default=false regardless of what
  * `patch` asked for — the fence of record, not a formality.
  */
-export function fencedWriter(key: string, gen: string, basis: "confirmed" | "candidate" = "confirmed"): SourceStateWriter {
+export function fencedWriter(key: string, gen: string, basis: "confirmed" | "candidate" = "confirmed", fromPhoto = true): SourceStateWriter {
   return async (tenantId, notebookId, docId, patch) => {
     try {
       return await withTenantContext(tenantId, async (c) => {
@@ -472,7 +578,7 @@ export function fencedWriter(key: string, gen: string, basis: "confirmed" | "can
         const evidence: Record<string, unknown> = {
           ...patch.matchEvidence,
           autoAcquisitionKey: key,
-          ...(basis === "candidate" ? { sourceLabel: "from_photo" } : {}),
+          ...(basis === "candidate" && fromPhoto ? { sourceLabel: "from_photo" } : {}),
         };
         const promoteNow = basis === "candidate" && evidence.candidateApplicability === "verified";
         const matchState = basis === "confirmed" ? patch.matchState : promoteNow ? "verified" : "candidate";
@@ -707,6 +813,7 @@ async function finish(tenantId: string, notebookId: string, rec: AcquisitionReco
                   '{retries}', COALESCE(manual_acquisition->'retries', '0'::jsonb)),
                   '{prior_doc_id}', COALESCE(manual_acquisition->'prior_doc_id', 'null'::jsonb)),
                   '{prior_file_id}', COALESCE(manual_acquisition->'prior_file_id', 'null'::jsonb))
+                || jsonb_build_object('reviewed_digest', manual_acquisition->'reviewed_digest')
           WHERE tenant_id = $1 AND id = $2 AND manual_acquisition->>'key' = $4
             AND manual_acquisition->>'gen' = $5`,
         [tenantId, notebookId, JSON.stringify(rec), rec.key, rec.gen ?? ""],
@@ -737,6 +844,8 @@ export interface StartInput {
    * Defaults to "confirmed" — identical to pre-S6 behaviour.
    */
   basis?: "confirmed" | "candidate";
+  /** Set false when the candidate came from a typed request. */
+  fromPhoto?: boolean;
 }
 
 /**
@@ -752,7 +861,8 @@ export async function startManualAcquisition(
   const basis = input.basis ?? "confirmed";
   const key = acquisitionKey(input.identity);
   if (!key) return false;
-  const gen = await claim(input.tenantId, input.notebookId, key);
+  const reviewedDigest = reviewedManualFor(input.identity)?.sha256 ?? null;
+  const gen = await claim(input.tenantId, input.notebookId, key, false, reviewedDigest);
   if (!gen) return false;
   const acquire = deps.acquire ?? acquireManualForIdentity;
   const startedAt = new Date().toISOString();
@@ -776,7 +886,7 @@ export async function startManualAcquisition(
         // (nameplate confirm + confirmed-identity notebook) caller.
         ...(basis === "candidate" ? { basis } : {}),
         ...(input.turnSpanContext ? { turnSpanContext: input.turnSpanContext } : {}),
-        writeSourceState: fencedWriter(key, gen, basis),
+        writeSourceState: fencedWriter(key, gen, basis, input.fromPhoto),
         attach: fencedAttach(key, gen, basis),
       });
     } catch (err) {
@@ -822,7 +932,8 @@ export async function runManualAcquisition(
     catalogNumber: input.identity.catalogNumber ?? null,
   });
   if (!key) return { started: false, outcome: null };
-  const gen = await claim(input.tenantId, input.notebookId, key, true);
+  const reviewedDigest = reviewedManualFor(input.identity)?.sha256 ?? null;
+  const gen = await claim(input.tenantId, input.notebookId, key, true, reviewedDigest);
   if (!gen) return { started: false, outcome: null };
   const acquire = deps.acquire ?? acquireManualForIdentity;
   const startedAt = new Date().toISOString();
@@ -967,15 +1078,15 @@ export function acquisitionDeclineText(
     // whose text verifies the model lands ON (fencedWriter above).
     switch (rec.state) {
       case "running":
-        return `I read the ${label} off your photo and I'm looking for the official ${label} manual now. When I find it, it'll be added to this notebook's Sources and turned on — ask again and I'll answer from it and show you the page.`;
+        return `I'm looking for the official documentation for the ${label}. I'll show the result here when the lookup finishes.`;
       case "complete":
         // #5268 Codex F2: "complete" is history, not the source's state now.
         // A caller that KNOWS the source is off says so; otherwise the copy
         // claims only what happened (found and added), never "switched on".
         if (opts.sourceOff) {
-          return `I found the official ${label} manual from your photo and added it to this notebook's Sources, but it's turned off there now, so I can't answer from it. Turn it back on in Sources and ask again — I'll answer from it and show you the page.`;
+          return `I found the official documentation for the ${label} and added it to this notebook's Sources, but it's turned off there now, so I can't answer from it. Turn it back on in Sources and ask again — I'll answer from it and show you the page.`;
         }
-        return `I found the official ${label} manual from your photo and added it to this notebook's Sources. Ask again and I'll answer from it and show you the page.`;
+        return `I found the official documentation for the ${label} and added it to this notebook's Sources. Ask again and I'll answer from it and show you the page.`;
       // candidate_review (Codex post-cap 4 F9 / 13 F13 / 14 F13): the manual's
       // text did NOT verify this model, so the shared copy below gives the one
       // real next step: check it in Sources, or the URL and the upload
@@ -1037,7 +1148,7 @@ export function acquisitionDeclineText(
         : `I couldn't safely download a manual for the ${label}. Upload the official manual to this notebook so I can answer with page citations.`;
     }
     case "manufacturer_model_required":
-      return null;
+      return "Check the manufacturer, model, and order number before looking up the applicable manual.";
   }
 }
 
@@ -1132,23 +1243,22 @@ export async function currentManualSearchStatus(
   const startedAt = rec.started_at ?? undefined;
 
   // F10: the acquired source's CURRENT state wins over the historical record.
-  const ready = applicableReadySource(sources, identity);
-  if (ready) {
+  const messageFromSource = currentManualSourceMessage(sources, identity);
+  if (messageFromSource) {
+    // The technician asked for the manual, so a ready reviewed publication is
+    // handed over as a link that opens MIRA's saved copy at its coverage page
+    // (#5726 F1: never the manufacturer's live URL, whose bytes may since have
+    // changed). The saved copy is the one this search linked for this document,
+    // and its download was checked against the same pinned digest.
+    const publication = reviewedManualFor({ manufacturer, model, catalogNumber: identity.catalogNumber });
+    const ready = publication ? approvedReadySource(sources, identity, publication) : null;
+    const manualUrl = publication && ready && ready === preferredReadySource(sources, identity) &&
+      rec.linked === true && rec.doc_id === ready.docId && rec.reviewed_digest === publication.sha256 && rec.file_id
+      ? savedCopyPageUrl(rec.file_id, publication.page, deps.env ?? process.env)
+      : null;
     return {
-      manufacturer,
-      model,
-      running: false,
-      message: `The ${manufacturer} ${model} manual is ready — I can answer from it.`,
-      ...(startedAt ? { startedAt } : {}),
-    };
-  }
-  const enabledButPreparing = applicableEnabledSource(sources, identity);
-  if (enabledButPreparing) {
-    return {
-      manufacturer,
-      model,
-      running: false,
-      message: `I found the ${manufacturer} ${model} manual and added it to this notebook's Sources — it's still being prepared to answer from.`,
+      manufacturer, model, running: false, message: messageFromSource,
+      ...(manualUrl ? { manualUrl } : {}),
       ...(startedAt ? { startedAt } : {}),
     };
   }

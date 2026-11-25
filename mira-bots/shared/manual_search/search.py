@@ -51,10 +51,10 @@ import re
 import socket
 import ssl
 import time
-from collections.abc import Generator, Iterable
+from collections.abc import Callable, Generator, Iterable
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from urllib.parse import urljoin, urlparse
+from urllib.parse import unquote, urljoin, urlparse, urlsplit
 
 import httpcore
 import httpx
@@ -288,6 +288,150 @@ def _is_oem_host(host: str, make: str) -> bool:
     """True if `host` (case-insensitive) is on the OEM list for `make`."""
     host = host.lower()
     return any(host == d or host.endswith("." + d) for d in _oem_domains_for(make))
+
+
+def _make_spellings(make: str) -> set[str]:
+    """The make, plus the spellings that share its OEM_DOMAINS entry
+    ("AutomationDirect" and "Automation Direct")."""
+    m = _norm(make)
+    domains = OEM_DOMAINS.get(m)
+    return {m} | ({k for k, v in OEM_DOMAINS.items() if v == domains} if domains else set())
+
+
+# What may join the words of a make name: "Automation-Direct", "Automation_Direct"
+# and a "+" slug are "Automation Direct" (#5826). A slash, a bar, a colon or a full
+# stop may not, so "Home Automation | Direct-Drive" and "/automation/direct-drive"
+# still do not name it.
+_MAKE_JOINER = r"[\s\-_+]{1,3}"
+
+
+def _make_name_pattern(name: str) -> str | None:
+    """A whole-name pattern for one spelling of a make: its words in order, any gap
+    of spaces, hyphens, underscores or "+" between them matching any such gap, and
+    any other gap ("Co., Ltd.") matching only itself. No letter or digit may touch
+    either end; an underscore there ends the name, as a hyphen does."""
+    spans = [m.span() for m in re.finditer(r"[^\W_]+", name)]
+    if len(name) < 2 or not spans:
+        return None
+    out = [re.escape(name[spans[0][0] : spans[0][1]])]
+    for (_, end), (start, stop) in zip(spans, spans[1:]):
+        gap = name[end:start]
+        out.append(_MAKE_JOINER if re.fullmatch(r"[\s\-_+]+", gap) else re.escape(gap))
+        out.append(re.escape(name[start:stop]))
+    return r"(?<![^\W_])" + "".join(out) + r"(?![^\W_])"
+
+
+def _names_make(c: dict, make: str) -> bool:
+    """Whether the title or the URL path names the make as a whole name.
+
+    A fragment does not count: "direct" in "Direct-Drive Amplifier" is not
+    "Automation Direct" (#5789 Codex F1), while "GE" in "GE 5KS184SAA205 Motor
+    Manual" is GE. The words of a make name may be joined by a space, hyphen,
+    underscore or "+" (#5826). The host is not read: ".ge" in a Georgian catalog's
+    domain is not GE (#5826), and the make's own site is `_is_oem_host`'s job. The
+    query and the fragment are not read either. Title and path are the texts the
+    part-number check reads (`_part_number_texts`), each read on its own; when the
+    URL cannot be parsed only the title is read. The spellings are folded the way
+    those texts are, so "Allen‑Bradley" typed with a non-breaking hyphen still
+    names itself (#5890 F4)."""
+    texts = _part_number_texts(c)
+    if texts is None:
+        texts = ((c.get("title") or "").translate(_CATALOG_HYPHENS).lower(),)
+    spellings = {s.translate(_CATALOG_HYPHENS) for s in _make_spellings(make)}
+    patterns = [p for p in map(_make_name_pattern, spellings) if p]
+    return any(re.search(p, text, re.I) for p in patterns for text in texts)
+
+
+# What may follow a part number without making it a longer one (#5827, #5837).
+# A letter or digit may not, as before ("GS10-20P5X"), and neither may an order
+# option ("+B063"): those two always name a different part. Nor may a further code
+# group after a hyphen, underscore or dash: a group with a digit ("-2", "_B063") or
+# of one or two letters ("-X"). A space, punctuation, a path or file-extension
+# separator, or a word ("-user-manual") still ends it.
+_DIFFERENT_PART = r"(?:[a-z0-9]|\+[a-z0-9])"
+_CODE_GROUP = r"(?:[\-_\u2013\u2014\ufe58](?:[a-z0-9]*\d|[a-z]{1,2}(?![a-z0-9])))"
+_PART_NUMBER_END = "(?!" + _DIFFERENT_PART + "|" + _CODE_GROUP + ")"
+
+# The Hub's catalog hyphens (mira-hub/src/capabilities/detection-fold.ts
+# HYPHEN_EQUIV_CHARS) read as "-" for the match only (#5843). An en or em dash is
+# not one, as in the Hub: it joins no groups, though it still starts a code group.
+_CATALOG_HYPHENS = str.maketrans(dict.fromkeys("\u2010\u2011\u2012\u2212\ufe63\uff0d", "-"))
+
+# No query value is read, in either direction (#5855 round 3). A referral or
+# related-file value may name another part, so it cannot admit a page (#5853), and
+# a product page can carry a related file's name there, so it cannot refuse one
+# either (#5855 Codex F7). A real PDF behind a download endpoint is still found by
+# the content probe, which runs before this screen. A path parameter, the fragment
+# and the host are not read either.
+
+
+def _part_number_texts(c: dict) -> tuple[str, str] | None:
+    """An unread page's title and its URL path (percent-decoded, cut at a decoded
+    "?" or "#", without ";" parameters), each folded for the match. None when the
+    URL cannot be parsed, so the page is refused."""
+    try:
+        url = urlsplit(c.get("url") or "")
+    except ValueError:
+        return None
+    path = re.split(r"[?#]", unquote(url.path), maxsplit=1)[0]
+    path = re.sub(r";[^/]*", "", path)
+
+    def fold(text: str) -> str:
+        return text.translate(_CATALOG_HYPHENS).lower()
+
+    return fold(c.get("title") or ""), fold(path)
+
+
+def _names_part_number(c: dict, part_number: str) -> bool:
+    """Whether the page names the whole part number, allowing the usual separator
+    differences ("GS10-20P5", "GS10 20P5", "GS1020P5") but not a prefix of it
+    ("GS10") or a longer number that starts with it ("GS10-20P5X", "GS10-20P5-X",
+    "ACS355-03U-06A7-2+B063").
+
+    Only the title or the URL path can name it, and each is read on its own (#5842):
+    - a title that names a longer number and not the exact one is about a different
+      part, whatever the URL says. A title that lists the exact part as well still
+      covers it ("GS10-20P5 and GS10-20P5X user manual");
+    - a URL path with an attached letter, digit or "+" option names a different part
+      that a shortened title cannot outvote. A code group after a hyphen there does
+      not refuse a clean title, because slugs join words that way
+      ("Gis-Gs10-150-260" for "Gis GS10/150/260").
+    Only the match reads the decoded forms, never the fetch or the display."""
+    chunks = re.findall(r"[a-z0-9]+", (part_number or "").lower())
+    texts = _part_number_texts(c) if chunks else None
+    if texts is None:
+        return False
+    title, path = texts
+    number = r"(?<![a-z0-9])" + r"[\s\-_./]*".join(map(re.escape, chunks))
+    exact = re.compile(number + _PART_NUMBER_END)
+    longer_title = re.search(number + "(?=" + _DIFFERENT_PART + "|" + _CODE_GROUP + ")", title)
+    if longer_title and not exact.search(title):
+        return False
+    different = re.compile(number + "(?=" + _DIFFERENT_PART + ")")
+    if different.search(path):
+        return False
+    return bool(exact.search(title) or exact.search(path))
+
+
+def _may_offer_unread(c: dict, make: str, part_number: str | None = None) -> bool:
+    """Whether a candidate that did not prove to be the manual may still be offered for review.
+
+    A web page is never read, so all it shares with the machine may be the model
+    string: "GS10" is an AutomationDirect drive and a Boss Audio amplifier (#5789).
+    Such a page is offered only if it names the confirmed make, sits on that make's
+    own site, or names the whole exact part number when the lookup is for one. A
+    direct PDF keeps the older rule, since the judge tried to read it, and so does
+    anything the content probe found to be a PDF; the caller only screens what did
+    not probe as one. A link that only looks like a PDF loses that rule once the
+    probe got a successful answer that is a page, and it is screened as one
+    (#5830). The caller skips this check when there is no make.
+    """
+    if c.get("is_direct_pdf") and not c.get("probed_not_pdf"):
+        return True
+    host = c.get("host") or urlparse(c.get("url") or "").netloc
+    if _names_make(c, make) or _is_oem_host(host, make):
+        return True
+    return bool(part_number) and _names_part_number(c, part_number)
 
 
 def _is_denied(host: str) -> bool:
@@ -896,6 +1040,14 @@ async def _guarded_probe(
     return None
 
 
+# #5830: the URLs whose probe got a successful answer that is a page (it starts with
+# markup), as opposed to a probe that failed, was refused or could not tell.
+# _probe_candidate sets it for one call; validate_pdf's own answer stays a bool.
+_probed_not_pdf: contextvars.ContextVar[set[str] | None] = contextvars.ContextVar(
+    "manual_search_probed_not_pdf", default=None
+)
+
+
 async def validate_pdf(url: str) -> bool:
     """Confirm the URL actually serves a PDF.
 
@@ -905,54 +1057,106 @@ async def validate_pdf(url: str) -> bool:
     passes the SSRF guard above; the GET is streamed and capped at
     _PROBE_READ_CAP bytes so a server that ignores Range cannot make us buffer
     an arbitrary body.
+
+    For a candidate probe (#5830), a PDF content type is trusted only until the
+    bytes say otherwise: the GET is still read, and a successful answer that
+    starts with markup is a page, whatever type it was served as. When the bytes
+    prove nothing either way, a PDF content type still validates, as before.
+    Reading those bytes must not make the probe slower than the caller's
+    deadline allows (each probe is budgeted HEAD_TIMEOUT): once a PDF content
+    type is seen, the rest of the probe ends HEAD_TIMEOUT after it began, and
+    an unfinished read leaves the content type standing.
     """
+    noted = _probed_not_pdf.get()  # set only by _probe_candidate
+    says_pdf = False  # a PDF content type seen during a candidate probe
+    started = asyncio.get_running_loop().time()
     try:
-        async with httpx.AsyncClient(
-            timeout=HEAD_TIMEOUT,
-            follow_redirects=False,
-            transport=_probe_transport(),
-            trust_env=False,  # never route an untrusted probe through an env proxy
-            headers={"User-Agent": "Mozilla/5.0 (compatible; mira-manual-search/0.1)"},
-        ) as client:
+        async with (
+            asyncio.timeout(None) as confirm_by,
+            httpx.AsyncClient(
+                timeout=HEAD_TIMEOUT,
+                follow_redirects=False,
+                transport=_probe_transport(),
+                trust_env=False,  # never route an untrusted probe through an env proxy
+                headers={"User-Agent": "Mozilla/5.0 (compatible; mira-manual-search/0.1)"},
+            ) as client,
+        ):
             try:
                 r = await _guarded_probe(client, "HEAD", url)
                 if r is not None:
                     ct = (r.headers.get("content-type") or "").lower()
                     if "pdf" in ct and r.status_code < 400:
-                        return True
+                        if noted is None:
+                            return True
+                        says_pdf = True
+                        confirm_by.reschedule(started + HEAD_TIMEOUT)
             except httpx.HTTPError:
                 pass
 
             # Some hosts 405 on HEAD or strip Content-Type — pull the first
             # bytes and look for the PDF magic number. Stream + cap: a server
-            # that ignores the Range header must not be able to flood us.
+            # that ignores the Range header must not be able to flood us. The
+            # range asks for the whole cap, so a page whose markup follows some
+            # leading whitespace is still seen as one (#5871 Codex F2).
+            rng = {"Range": f"bytes=0-{_PROBE_READ_CAP - 1}"}
             current = url
             for _ in range(_MAX_REDIRECT_HOPS + 1):
                 if not await asyncio.to_thread(_url_is_probeable, current):
                     logger.info("manual-search probe blocked by SSRF guard: %s", current[:120])
-                    return False
-                async with client.stream("GET", current, headers={"Range": "bytes=0-7"}) as r:
+                    return says_pdf
+                async with client.stream("GET", current, headers=rng) as r:
                     if r.status_code in (301, 302, 303, 307, 308):
                         loc = r.headers.get("location")
                         if not loc:
-                            return False
+                            return says_pdf
                         current = urljoin(current, loc)
                         continue
                     if r.status_code >= 400:
-                        return False
+                        return says_pdf
                     ct = (r.headers.get("content-type") or "").lower()
                     if "pdf" in ct:
-                        return True
+                        if noted is None:
+                            return True
+                        if not says_pdf:
+                            says_pdf = True
+                            confirm_by.reschedule(started + HEAD_TIMEOUT)
                     head = b""
                     async for chunk in r.aiter_bytes():
                         head += chunk
                         if len(head) >= _PROBE_READ_CAP:
                             break
-                    return head[:5] == b"%PDF-"
-            return False
+                    if head[:5] == b"%PDF-":
+                        return True
+                    # Not proof of a PDF. Only a successful answer that starts with
+                    # markup is proof of a page (#5830); bytes before a PDF header, an
+                    # empty body or an error status prove nothing either way.
+                    if noted is not None and 200 <= r.status_code < 300:
+                        if head.lstrip(b"\xef\xbb\xbf \t\r\n").startswith(b"<"):
+                            noted.add(url)
+                            return False
+                    return says_pdf
+            return says_pdf
+    except TimeoutError:
+        logger.info("PDF validation ran out of its probe budget for %s", url[:120])
+        return says_pdf
     except Exception:
         logger.info("PDF validation failed for %s — skipping", url[:120])
-        return False
+        return says_pdf
+
+
+async def _probe_candidate(c: dict) -> bool:
+    """validate_pdf for one candidate. When the probe got a successful answer that is
+    a page, the candidate is marked, so the make screen treats a link that only looks
+    like a PDF as the page it serves (#5830)."""
+    noted: set[str] = set()
+    token = _probed_not_pdf.set(noted)
+    try:
+        ok = await validate_pdf(c["url"])
+    finally:
+        _probed_not_pdf.reset(token)
+    if not ok and c["url"] in noted:
+        c["probed_not_pdf"] = True
+    return ok
 
 
 def _tagged(found: list[dict], label: str) -> list[dict]:
@@ -962,7 +1166,21 @@ def _tagged(found: list[dict], label: str) -> list[dict]:
     return found
 
 
-def _collect(organic: list[dict], make: str, model: str) -> list[dict]:
+def _collect(
+    organic: list[dict],
+    make: str,
+    model: str,
+    part_number: str | None = None,
+    set_aside: list[dict] | None = None,
+) -> list[dict]:
+    """Score and keep the hits worth a candidate, exactly as main does.
+
+    On a part-number lookup, `_score` looks for the hyphenated spelling only, so a
+    hit that names the whole number another way ("6ES7214_1AG40_0XB0", as
+    `_names_part_number` reads it) and has no other credit scores 0 and is dropped
+    (#5829). Such a hit is appended to ``set_aside`` instead. It is never a
+    candidate, so it changes nothing the search reads, sends or answers; the search
+    offers it only where it would otherwise end with no manual (#5890 F1, F5)."""
     out: list[dict] = []
     for hit in organic:
         url = hit.get("link") or ""
@@ -971,18 +1189,28 @@ def _collect(organic: list[dict], make: str, model: str) -> list[dict]:
             continue
         s = _score(url, title, make, model)
         if s <= 0:
+            if (
+                s == 0
+                and part_number
+                and set_aside is not None
+                and _norm(part_number) not in f"{title} {url}".lower()
+                and _names_part_number({"url": url, "title": title}, part_number)
+            ):
+                set_aside.append(_candidate(url, title, s))
             continue
-        out.append(
-            {
-                "url": url,
-                "title": _clean_title(title),
-                "host": urlparse(url).netloc,
-                "score": s,
-                "doc_type": _guess_doc_type(title, url),
-                "is_direct_pdf": _is_direct_pdf(url),
-            }
-        )
+        out.append(_candidate(url, title, s))
     return out
+
+
+def _candidate(url: str, title: str, score: int) -> dict:
+    return {
+        "url": url,
+        "title": _clean_title(title),
+        "host": urlparse(url).netloc,
+        "score": score,
+        "doc_type": _guess_doc_type(title, url),
+        "is_direct_pdf": _is_direct_pdf(url),
+    }
 
 
 class ManualSearchUnavailable(RuntimeError):
@@ -998,6 +1226,7 @@ async def search_manual(
     model: str,
     deadline_at: float | None = None,
     identification_link: str | None = None,
+    exact_part_number: bool = False,
 ) -> dict | None:
     """Multi-pass real-time search for a (make, model) manual.
 
@@ -1015,14 +1244,215 @@ async def search_manual(
     (#5070). It joins the pool as the top-ranked candidate ONLY when it is https
     on the OEM list for ``make``; it never changes the queries (the nameplate
     reading drives them) and, like any hit, must validate to be trusted.
+
+    ``exact_part_number`` says ``model`` is a full catalog number read off a label
+    (the photo part search). An unread page that names that whole number may be the
+    part, so it passes the make check on unread pages (#5789), which exists because
+    short model strings are reused by other makers. A page naming less than the
+    whole number is checked like any other.
     """
     started_at = time.monotonic()  # the judge's upgrade deadline counts from here
     make = (make or "").strip()
     model = (model or "").strip()
     if not (make or model):
         return None
+    screen_unread = bool(make)
+    part_number = model if exact_part_number else None
 
     candidates: list[dict] = []
+    # Pages the search leaves aside although they name the make, or on a part-number
+    # lookup the whole part number, in a spelling the judge's relevance check and
+    # `_score` miss (#5826, #5829). They get a turn only where the search would end
+    # without a manual (`_unless_extras`), so they never change what it reads, sends,
+    # retries or answers before then (#5890 round 2).
+    set_aside: list[dict] = []  # hits `_collect` drops
+    retry_extras: list[dict] = []  # extra PDFs the typed-pass retry did not read
+    retry_read: list[dict] = []  # PDFs the typed-pass retry sent to the judge
+
+    def _read_so_far() -> list[dict]:
+        """Every candidate this search has sent to the judge, in any round. Round one's
+        reads and the extra reads are in ``candidates``; the retry's are kept in
+        ``retry_read``, since its result is discarded on a miss."""
+        return [*candidates, *retry_read]
+
+    def _rejected_documents() -> set[tuple[str, str]]:
+        """Every PDF this search has read and the judge rejected, in any round, as
+        :func:`_judge.same_document_key`. A form of one of these is not read again: the
+        server never sees a fragment, so the judge would get the text it already
+        rejected, under the same title (#5850, #5900)."""
+        return {_judge.same_document_key(c) for c in _read_so_far() if _judge.is_rejected(c)}
+
+    def _judged_rejection_of(offer: dict, listed: list[dict]) -> dict | None:
+        """The judge's rejection to return in place of ``offer``, an unread candidate
+        the search is about to offer, when the judge read and rejected another form of
+        its document in any round so far; otherwise None (#5897).
+
+        Only the answer changes: the offer is made where main makes it, after main's
+        probes, reads and queries. ``listed`` is the caller's list of rejections, and
+        a rejection from a later round is added to it, so the answer carries the
+        rejection it is."""
+        key = _judge.same_document_key(offer)
+        read = _read_so_far()
+        form = next(
+            (c for c in read if _judge.is_rejected(c) and _judge.same_document_key(c) == key),
+            None,
+        )
+        if form is None:
+            return None
+        known = {r["url"] for r in listed}
+        return _as_judged_rejection(
+            form, listed + [r for r in _rejections(read) if r["url"] not in known]
+        )
+
+    def _found(hits: list[dict], label: str, aside: list[dict] | None) -> list[dict]:
+        """`_collect` for one query pass. Its candidates, and the hits it sets aside in
+        ``aside``, carry the pass that found them (acquisition trail only, #5896)."""
+        before = len(set_aside)
+        found = _tagged(_collect(hits, make, model, part_number, aside), label)
+        _tagged(set_aside[before:], label)
+        return found
+
+    def _extra(c: dict) -> bool:
+        """The judge's relevance check misses it, but it names the make as a whole
+        name in another joining ("Automation-Direct" for "AutomationDirect") or, on a
+        part-number lookup, the whole number in another spelling."""
+        return not _judge.relevant(c, make, model) and (
+            _names_make(c, make) or bool(part_number and _names_part_number(c, part_number))
+        )
+
+    async def _judged_extra(pdfs: list[dict], rejected: list[dict]) -> dict | None:
+        """Read ``pdfs`` in whatever time the deadline leaves and return a judged match
+        among them, with ``rejected`` and the new rejections; otherwise None."""
+        if not pdfs:
+            return None
+        trace: dict = {}
+        try:
+            read = await _judge.judge_candidates(
+                make,
+                model,
+                pdfs,
+                started_at=started_at,
+                deadline_at=deadline_at,
+                trace=trace,
+            )
+        finally:
+            if trail is not None:
+                # One trail for every round, as for the retry: these queue
+                # positions follow the others, a URL keeps the first position it
+                # was queued at, a PDF queued here is no longer listed as not
+                # queued, and one this round left out carries this round's reason
+                # unless an earlier round queued it (#5899 Codex F2). That includes
+                # a PDF this round queued and then cut at its batch limit (#5903).
+                queued = list(trace.get("queue") or [])
+                prior = list(trail.judge.get("queue") or [])
+                queue = prior + [u for u in queued if u not in prior]
+                trail.judge["queue"] = queue
+                not_queued = trail.judge.setdefault("not_queued", {})
+                for u in queued:
+                    not_queued.pop(u, None)
+                for u, why in (trace.get("not_queued") or {}).items():
+                    if u not in prior:
+                        not_queued[u] = why
+                if trace.get("stop"):
+                    trail.judge["stop"] = trace["stop"]
+        if read and _judge.is_match(read[0]):
+            # The typed-pass retry's rejections too, as the retry's own match lists
+            # them, though a miss discards what the retry returns (#5898). A PDF the
+            # retry left unread and this round read is this round's, so each is listed
+            # once, in the order the rounds read them.
+            here = {c["url"] for c in read}
+            retry = [r for r in _rejections(retry_read) if r["url"] not in here]
+            return _as_judged_match(read[0], rejected + retry + _rejections(read))
+        return None
+
+    async def _exact_part_match(pool: list[dict], rejected: list[dict]) -> dict | None:
+        """Main is about to offer a candidate it could not validate (#5895). On a
+        part-number lookup, the unread PDFs in ``pool`` that name the whole number in a
+        spelling the judge's relevance check misses are read first, and a judged match
+        among them is returned. Otherwise None, and main's offer stands. PDFs naming
+        only the make still wait for main's miss endings (``_unless_extras``)."""
+        if not part_number:
+            return None
+        # A form of a PDF the judge read and rejected is not read again (#5899 Codex F1).
+        rejected_documents = _rejected_documents()
+        pdfs = [
+            c
+            for c in pool
+            if c.get("is_direct_pdf")
+            and not c.get("judge")
+            and not _judge.relevant(c, make, model)
+            and _names_part_number(c, part_number)
+            and _judge.same_document_key(c) not in rejected_documents
+        ]
+        return await _judged_extra(pdfs, rejected)
+
+    async def _unless_extras(
+        answer: Callable[[], dict | None],
+        pool: list[dict],
+        judged: bool,
+        rejected: list[dict],
+    ) -> dict | None:
+        """The search is about to end with no manual. ``answer`` gives what it
+        returns there: a judged rejection, or nothing.
+
+        With the judge on, the extra PDFs in ``pool`` and from the retry that were
+        never read are read first, in whatever time the deadline leaves, and a judged
+        match among them is returned. Otherwise ``answer`` stands, untouched. Where
+        that is nothing, the first extra page in ``pool`` or ``set_aside`` the make
+        screen accepts is offered unread, as the search offers an unread page. The
+        retry's extras are read but never offered (#5844 Codex F5, F6).
+
+        A form of a document the judge rejected, in any round, is not read (#5900).
+        Where the offer below is one, the search returns that rejection (#5897)."""
+        extras = [c for c in pool if _extra(c)]
+        if judged:
+            rejected_documents = _rejected_documents()
+            pdfs = [
+                c
+                for c in (*extras, *retry_extras)
+                if c.get("is_direct_pdf")
+                and not c.get("judge")
+                and _judge.same_document_key(c) not in rejected_documents
+            ]
+            match = await _judged_extra(pdfs, rejected)
+            if match is not None:
+                return match
+        result = answer()
+        if result is not None:
+            return result
+        # A set-aside hit whose URL is also a candidate is that candidate's business.
+        offered = {c["url"] for c in candidates} - {c["url"] for c in extras}
+        for c in (*extras, *set_aside):
+            if c["url"] in offered or _judge.is_rejected(c):
+                continue
+            offered.add(c["url"])
+            # Every unread offer goes through the one make screen. It cannot refuse
+            # one of these today, since each names the make or the whole part number,
+            # but a stricter screen must apply to them too.
+            if screen_unread and not _may_offer_unread(c, make, part_number):
+                continue
+            # After the reads above, whose rejections count too (#5897).
+            rejection = _judged_rejection_of(c, rejected)
+            if rejection is not None:
+                return rejection
+            c["validated"] = False
+            if judged:
+                c.setdefault("reason", _judge.REASON_JUDGE_UNAVAILABLE)
+                c.setdefault(
+                    "reason_detail", "Could not read the candidate PDF — review before use."
+                )
+                c["judged_rejected"] = rejected
+            if trail is not None:
+                # A set-aside page is on no list the trail shows. It joins the trail's
+                # own copy as the offer, never main's candidate or judge pools (#5896).
+                shown = trail.ranked if trail.ranked is not None else trail.candidates
+                if all(x["url"] != c["url"] for x in shown):
+                    trail.candidates = list(trail.candidates) + [c]
+                    if trail.ranked is not None:
+                        trail.ranked = list(trail.ranked) + [c]
+            return c
+        return None
+
     # Availability is judged from requests actually SENT (#4171 Codex F2): a
     # pass refused by the per-call ceiling or the quota returns [] without a
     # request, and must not count as "searched and found nothing" — otherwise a
@@ -1031,6 +1461,68 @@ async def search_manual(
     failures = 0
 
     trail = _trail.get()
+
+    async def _website_handoff(
+        ranked: list[dict] | None = None, judge_trace: dict | None = None
+    ) -> bool:
+        # On a miss, look for the make's own website to hand the technician, unless
+        # one was already found or this same query was already sent in this call.
+        # ``ranked`` and ``judge_trace`` are passed where the typed-pass retry follows.
+        # Returns True only when the send was cut off where that retry follows.
+        query = f"{make} {model} manual support"
+        if (
+            trail is not None
+            and not trail.search_page_url
+            and not any(q.get("query") == query for q in trail.queries)
+            and (deadline_at is None or deadline_at - time.monotonic() > SEARCH_TIMEOUT)
+        ):
+            # The handoff only adds a support page, so it must answer while the return
+            # still fits, or it is abandoned and the search's answer stands (#5848).
+            # Where the typed-pass retry follows and can still start, the retry may find
+            # the manual, so it keeps its whole window plus a return reserve, and the
+            # handoff gets what is left. A window no longer than one more return reserve
+            # is not worth a query, so the handoff is then not sent (#5866 Codex F2).
+            # The retry condition is `_manual_from_retry`'s own. Only the cutoff's own
+            # expiry becomes TimeoutError, so a caller's cancellation still propagates.
+            retry_follows = (
+                ranked is not None
+                and use_judge
+                and not typed_pass_ran
+                and _every_queued_pdf_rejected(ranked, judge_trace or {})
+            )
+            cutoff = None
+            if deadline_at is not None:
+                left = deadline_at - time.monotonic()
+                retry_window = SEARCH_TIMEOUT + _judge.UPGRADE_MIN_BATCH_S
+                retry_window += _judge.RETURN_RESERVE_S
+                if retry_follows and left >= retry_window:
+                    cutoff = left - retry_window - _judge.RETURN_RESERVE_S
+                    if cutoff <= _judge.RETURN_RESERVE_S:
+                        logger.info("MANUAL_SEARCH_HANDOFF_SKIPPED_FOR_RETRY")
+                        return False
+                else:
+                    cutoff = left - _judge.RETURN_RESERVE_S
+            try:
+                async with asyncio.timeout(cutoff):
+                    await _send(query, "q3 (website handoff)")
+            except TimeoutError:
+                logger.info("MANUAL_SEARCH_HANDOFF_CUTOFF")
+                trail.queries.append({"pass": "q3", "query": query, "result": "timeout"})
+                return retry_follows
+        return False
+
+    def _unfinished_after_handoff_cutoff(stalled: bool, retried: dict | None) -> None:
+        """After a handoff cut off before the typed-pass retry, a retry that did not
+        finish ends as main ends a stalled search, unless it found the manual: in the
+        timeout the caller reports as a retryable outage. A judged rejection there
+        would be recorded as final (#5866 Codex F2, F4). Not finished means it could
+        not start, a spelling was skipped, cut off, failed or refused, a PDF it queued
+        went unread, or it raised. A retry that ran to its end, every spelling
+        answered and every queued PDF read, keeps its judged rejection, as it does
+        when the handoff answers; so does one stopped by the query ceiling."""
+        if stalled and retried is None and retry_unfinished:
+            logger.info("MANUAL_SEARCH_UNFINISHED_AFTER_HANDOFF_CUTOFF")
+            raise TimeoutError("the website handoff stalled before the typed-pass retry")
 
     async def _send(query: str, label: str) -> list[dict] | None:
         nonlocal sent, failures
@@ -1106,25 +1598,214 @@ async def search_manual(
         q1 = f'"{model}" manual filetype:pdf site:{oem_domains[0]}'
         hits = await _send(q1, "q1 (site-scoped)")
         if hits:
-            candidates.extend(_tagged(_collect(hits, make, model), "q1"))
+            candidates.extend(_found(hits, "q1", set_aside))
 
-    # Pass 2: typed PDF — broader, still PDFs only.
-    if not any(c["is_direct_pdf"] for c in candidates):
+    typed_in_flight: str | None = None  # the retry's unanswered query, for the trail
+    retry_unfinished = False  # the retry left a spelling unanswered or a PDF unread
+
+    async def _typed_pdf_pass(
+        second: bool = False, found_all: list[dict] | None = None
+    ) -> list[dict]:
+        """Pass 2: typed PDF — broader, still PDFs only.
+
+        ``second`` is the retry after every site-scoped PDF was read and judged not
+        the manual (#5822). Its caller has already sent the website handoff, so it
+        keeps no query back for one, and it sends a query only while the caller's
+        deadline still covers one plus a judge batch. That check only saves a query
+        that could not be used; what bounds the retry is the cutoff its caller sets
+        (:func:`_retry_typed_pass`). Hits are added to ``found_all`` as each query
+        answers, so a cutoff keeps what already came back."""
+        nonlocal typed_in_flight, retry_unfinished
+        found_all = [] if found_all is None else found_all
         for i, variant in enumerate(_model_variants(model) or [model]):
             budget = _provider_budget.get()
-            if i and budget is not None and budget.used >= budget.limit - 1:
+            if budget is not None and not second and i and budget.used >= budget.limit - 1:
+                break
+            if budget is not None and second and budget.used >= budget.limit:
+                break
+            if (
+                second
+                and deadline_at is not None
+                and (
+                    deadline_at - time.monotonic()
+                    < SEARCH_TIMEOUT + _judge.UPGRADE_MIN_BATCH_S + _judge.RETURN_RESERVE_S
+                )
+            ):
+                retry_unfinished = True
                 break
             q2 = f"{make} {variant} manual filetype:pdf"
+            if second:
+                typed_in_flight = q2
+            before = budget.used if budget is not None else None
             hits = await _send(q2, "q2 (filetype:pdf)")
+            typed_in_flight = None
+            if second and (hits is None or (budget is not None and budget.used == before)):
+                # The spelling failed, or a quota denial refused it: it was not answered.
+                retry_unfinished = True
             if hits is None:
                 continue
-            found = _tagged(_collect(hits, make, model), "q2")
+            found = _found(hits, "q2", None if second else set_aside)
             if i:
                 # A hit from a re-hyphenated form is a weaker signal than one
                 # from the nameplate's own spelling: it must not win a tie.
                 for c in found:
                     c["score"] -= 5
-            candidates.extend(found)
+            found_all.extend(found)
+        return found_all
+
+    async def _retry_typed_pass(ranked: list[dict], judge_trace: dict) -> list[dict]:
+        """#5822: every site-scoped PDF was read and judged not the manual, which is
+        what skipped the typed pass. Run it once and read only what it adds, at most
+        one judge batch; both rounds rank together. Returns ``ranked`` unchanged when
+        the retry adds nothing or runs out of time. Round one is already on the trail,
+        so a cancelled retry still shows it."""
+        nonlocal typed_in_flight, retry_unfinished
+        try:
+            found: list[dict] = []
+            try:
+                # The typed queries must answer while one judge batch still fits; past
+                # that they are abandoned and today's answer stands (#5844 Codex F1).
+                # The judge stays outside this block: it stops itself at the deadline.
+                cutoff = (
+                    None
+                    if deadline_at is None
+                    else deadline_at
+                    - _judge.UPGRADE_MIN_BATCH_S
+                    - _judge.RETURN_RESERVE_S
+                    - time.monotonic()
+                )
+                async with asyncio.timeout(cutoff):
+                    await _typed_pdf_pass(second=True, found_all=found)
+            except TimeoutError:
+                retry_unfinished = True
+                logger.info("MANUAL_SEARCH_RETRY_CUTOFF query=%s", (typed_in_flight or "")[:120])
+                if trail is not None and typed_in_flight:
+                    trail.queries.append(
+                        {"pass": "q2", "query": typed_in_flight, "result": "timeout"}
+                    )
+                typed_in_flight = None
+            # A fragment form of a PDF the judge read and rejected, under the same
+            # title, would give the judge what it already saw: the server never
+            # sees a fragment, so the text is the same (#5850). Anything else is
+            # compared by its exact URL, as before, so an unread first-round copy,
+            # a second form of a new document, or a form whose title tells the
+            # judge something new stays readable (#5870 Codex F1, F2, F4).
+            judged = _rejected_documents()
+            seen_urls = {c["url"] for c in ranked}
+            more: list[dict] = []
+            for c in sorted(found, key=lambda c: -c["score"]):
+                if c["url"] in seen_urls:
+                    continue
+                if _judge.same_document_key(c) in judged:
+                    continue
+                seen_urls.add(c["url"])
+                more.append(c)
+            if not more:
+                return ranked
+            if trail is not None:
+                # On the trail before any read, after round one, so a read the caller
+                # cancels is still listed (#5844 Codex F3).
+                trail.candidates = list(trail.candidates) + more
+                trail.ranked = ranked + more
+            second_trace: dict = {}
+            try:
+                more = await _judge.judge_candidates(
+                    make,
+                    model,
+                    more,
+                    started_at=started_at,
+                    deadline_at=deadline_at,
+                    trace=second_trace,
+                    max_total=_judge.MAX_CANDIDATES,
+                )
+            finally:
+                # One trail for both rounds, kept even when a read is cancelled: round
+                # one's queue positions first, then round two's.
+                judge_trace["queue"] = list(judge_trace.get("queue") or []) + list(
+                    second_trace.get("queue") or []
+                )
+                judge_trace.setdefault("not_queued", {}).update(
+                    second_trace.get("not_queued") or {}
+                )
+                if second_trace.get("stop"):
+                    judge_trace["stop"] = second_trace["stop"]
+            # Its rejections hold for the rest of the search, though a miss discards
+            # what this returns (#5900).
+            retry_read.extend(more)
+            # Read at the end, only where the search would end without a manual.
+            retry_extras.extend(
+                c for c in more if c.get("is_direct_pdf") and not c.get("judge") and _extra(c)
+            )
+            queued = set(second_trace.get("queue") or [])
+            if any(
+                (c.get("judge") or {}).get("status") != "judged" for c in more if c["url"] in queued
+            ):
+                # A PDF it queued went unread: not fetched, no text, the judge
+                # unavailable, or its read stopped at the deadline.
+                retry_unfinished = True
+            ranked = _judge.rank(ranked + more)
+            if trail is not None:
+                trail.ranked = ranked
+            return ranked
+        except asyncio.CancelledError:
+            # The caller's own timeout cancelled the search during the retry. This
+            # handler sits outside the cutoff, whose expiry arrives as TimeoutError.
+            judge_trace["stop"] = "cancelled"
+            raise
+        except Exception:
+            retry_unfinished = True  # the caller logs it and today's answer stands
+            raise
+
+    async def _manual_from_retry(ranked: list[dict], judge_trace: dict) -> dict | None:
+        """#5822: this search is about to end without a manual: with the judged
+        rejection, after the website handoff, or (#5904) by offering a candidate it
+        could not validate, at either of the two places it does each. If round one
+        read every site-scoped PDF and judged none the manual, which is what skipped
+        the typed pass, run it once and return a judged match from it. Otherwise
+        return None, and the caller returns what it returns without the retry, except
+        that a quota denial the retry's own queries met stays on the budget. Only
+        ``return`` follows this call, so nothing the retry adds is ever probed or
+        offered unread (#5844 Codex F5, F6).
+
+        Before an offer no website handoff is sent: the retry is bounded by its own
+        cutoff, and on a miss, a stall or an error the offer stands, so the retry
+        never costs it (#5844 Codex F5).
+
+        A quota denial is never cached as a miss (PRD R5, #4168): the endpoint reports
+        a cap as the limit and an infrastructure denial as an outage, which the Hub
+        retries, where it would record the judged rejection as a terminal
+        no_manual_found (#5849). An offer stands over a denial, as it does over one in
+        round one."""
+        if not use_judge or typed_pass_ran or not every_pdf_rejected:
+            return None
+        try:
+            both = await _retry_typed_pass(ranked, judge_trace)
+        except Exception:
+            logger.exception("MANUAL_SEARCH_RETRY_FAILED")  # today's answer stands
+            both = []
+        if both and _judge.is_match(both[0]):
+            logger.info("MANUAL_SEARCH_RETRY_MATCH url=%s", both[0]["url"][:200])
+            return _as_judged_match(both[0], _rejections(both))
+        return None
+
+    async def _retry_before_offer(ranked: list[dict], judge_trace: dict) -> dict | None:
+        """The retry before an unvalidated offer (#5904). On a miss the offer goes out
+        with round one's browser handoff: a support page the retry's queries found
+        must not replace it, since the Hub prefers that page to the OEM request link
+        (#5907 Codex F1). The retry's queries stay on the trail. A cancelled retry
+        restores it too, so the trail the endpoint exports is round one's."""
+        page = (trail.search_page_url, trail.search_page_score) if trail is not None else None
+        match = None
+        try:
+            match = await _manual_from_retry(ranked, judge_trace)
+        finally:
+            if match is None and trail is not None and page is not None:
+                trail.search_page_url, trail.search_page_score = page
+        return match
+
+    typed_pass_ran = not any(c["is_direct_pdf"] for c in candidates)
+    if typed_pass_ran:
+        candidates.extend(await _typed_pdf_pass())
 
     # Pass 3: widest fallback — websites as well as PDFs. A bounded call
     # reserves its final query for this instead of spending it on spelling variants.
@@ -1132,7 +1813,7 @@ async def search_manual(
         q3 = f"{make} {model} manual support"
         hits = await _send(q3, "q3 (wide)")
         if hits:
-            candidates.extend(_tagged(_collect(hits, make, model), "q3"))
+            candidates.extend(_found(hits, "q3", set_aside))
 
     if identification_link:
         from ..drive_packs.identification_link import classify_payload  # noqa: PLC0415
@@ -1156,7 +1837,7 @@ async def search_manual(
     if not candidates:
         if sent and failures == sent:
             raise ManualSearchUnavailable(f"all {sent} sent search requests failed")
-        return None
+        return await _unless_extras(lambda: None, [], bool(make) and _judge.judge_enabled(), [])
 
     # Dedupe on URL while preserving order, then sort by score desc.
     seen: set[str] = set()
@@ -1178,18 +1859,26 @@ async def search_manual(
     # Any judge failure leaves the legacy HEAD-validate path below untouched.
     judged_any = False
     rejected_out: list[dict] = []
+    worst_rejected: dict | None = None
+    ranked: list[dict] = []
+    judge_trace: dict = {}
+    # Round one's verdict, taken before any later read: an exact-part read before an
+    # offer joins the trail's judge record, so the live record would make the retry
+    # depend on whether the caller opened a trail (#5904).
+    every_pdf_rejected = False
     # A catalog-only query may be based on text read from a user photo. Keep
     # that narrowly scoped lookup from sending candidate PDF text to the LLM
     # judge; the result remains an unconfirmed search candidate.
     use_judge = bool(make) and _judge.judge_enabled()
     if use_judge:
+        judge_trace = trail.judge if trail is not None else {}
         ranked = await _judge.judge_candidates(  # records what it reads
             make,
             model,
             deduped,
             started_at=started_at,
             deadline_at=deadline_at,
-            trace=trail.judge if trail is not None else None,
+            trace=judge_trace,
         )
         if trail is not None:
             trail.ranked = ranked
@@ -1214,20 +1903,13 @@ async def search_manual(
                 }
             ),
         )
-        rejected = [
-            {"url": c["url"], "reason": (c.get("judge") or {}).get("reason", "")}
-            for c in ranked
-            if _judge.is_rejected(c)
-        ]
+        rejected = _rejections(ranked)
         judged_any = bool(rejected) or any(_judge.is_match(c) for c in ranked)
         rejected_out = rejected
+        every_pdf_rejected = _every_queued_pdf_rejected(ranked, judge_trace)
         top = ranked[0]
         if _judge.is_match(top):
-            code, line = _judge.judge_summary(top)
-            top["reason"], top["reason_detail"] = code, line
-            top["judged_rejected"] = [r for r in rejected if r["url"] != top["url"]]
-            top["validated"] = True
-            return top
+            return _as_judged_match(top, rejected)
         # No judged match. Rejections are NEVER returned as validated; the
         # legacy HEAD path below may still pick an UNJUDGED candidate — but
         # only one that at least names the make/model. If every relevant
@@ -1235,33 +1917,30 @@ async def search_manual(
         # rather than surfacing an unread stranger.
         unread = [c for c in ranked if not _judge.is_rejected(c)]
         deduped = [c for c in unread if _judge.relevant(c, make, model)]
+        worst_rejected = next((c for c in ranked if _judge.is_rejected(c)), None)
         if not deduped and not rejected:
             # #4400: nothing names the make or the model and nothing was judged. The
             # old fallback to EVERY unread candidate offered a reseller's company
             # profile as "a possible manual"; a stranger may win only by being read
             # and judged the manual (above). An honest miss instead.
-            if (
-                trail is not None
-                and not trail.search_page_url
-                and (deadline_at is None or deadline_at - time.monotonic() > SEARCH_TIMEOUT)
-            ):
-                await _send(f"{make} {model} manual support", "q3 (website handoff)")
-            return None
+            await _website_handoff()
+            return await _unless_extras(lambda: None, ranked, True, rejected)
         if not deduped:
-            if (
-                trail is not None
-                and not trail.search_page_url
-                and (deadline_at is None or deadline_at - time.monotonic() > SEARCH_TIMEOUT)
-            ):
-                await _send(f"{make} {model} manual support", "q3 (website handoff)")
-            worst = next((c for c in ranked if _judge.is_rejected(c)), ranked[0])
-            code, line = _judge.judge_summary(worst)
-            worst["reason"], worst["reason_detail"] = code, line
-            worst["judged_rejected"] = rejected
-            worst["validated"] = False
-            return worst
+            stalled = await _website_handoff(ranked, judge_trace)
+            retried = await _manual_from_retry(ranked, judge_trace)
+            _unfinished_after_handoff_cutoff(stalled, retried)
+            if retried is not None:
+                return retried
+            return await _unless_extras(
+                lambda: _as_judged_rejection(worst_rejected or ranked[0], rejected),
+                ranked,
+                True,
+                rejected,
+            )
 
-    # HEAD-validate the top few; first one that confirms PDF wins.
+    # HEAD-validate the top few; first one that confirms PDF wins. This probe runs
+    # before the #5789 screen below, so a real PDF served from a URL that does not
+    # look like one is still found (#5789 Codex F4).
     for c in deduped[:5]:
         if not c.get("validated"):
             # #4401: a probe that cannot finish before the caller's deadline is not
@@ -1273,7 +1952,19 @@ async def search_manual(
             ):
                 break
             _note_examined([c["url"]])
-        if c.get("validated") or await validate_pdf(c["url"]):
+        if c.get("validated") or await _probe_candidate(c):
+            if use_judge:
+                # It is offered unread below. An exact-part PDF is read first, then
+                # the typed-pass retry runs if round one rejected every PDF (#5904).
+                match = await _exact_part_match(ranked, rejected_out)
+                if match is None:
+                    match = await _retry_before_offer(ranked, judge_trace)
+                if match is not None:
+                    return match
+                # Those reads' rejections count too (#5897, #5913 Codex F1).
+                rejection = _judged_rejection_of(c, rejected_out)
+                if rejection is not None:
+                    return rejection
             c["validated"] = True
             if use_judge:
                 # The judge is on but this candidate was never READ (fetch
@@ -1296,7 +1987,34 @@ async def search_manual(
 
     # Nothing validated — return the top scorer as a candidate so the
     # caller can hold it for human review. Never promote an unvalidated
-    # candidate to a trusted manual link.
+    # candidate to a trusted manual link. A page that only shares the model
+    # string with the machine is not offered (#5789): what is left is the judged
+    # rejection, if there was one, or an honest miss.
+    if screen_unread:
+        deduped = [c for c in deduped if _may_offer_unread(c, make, part_number)]
+    if not deduped:
+        stalled = await _website_handoff(ranked, judge_trace)
+        retried = await _manual_from_retry(ranked, judge_trace)
+        _unfinished_after_handoff_cutoff(stalled, retried)
+        if retried is not None:
+            return retried
+        worst = worst_rejected
+        return await _unless_extras(
+            lambda: _as_judged_rejection(worst, rejected_out) if worst else None,
+            ranked,
+            use_judge,
+            rejected_out,
+        )
+    if use_judge:
+        # As before the probe's offer: the exact-part read, then the retry (#5904).
+        match = await _exact_part_match(ranked, rejected_out)
+        if match is None:
+            match = await _retry_before_offer(ranked, judge_trace)
+        if match is not None:
+            return match
+        rejection = _judged_rejection_of(deduped[0], rejected_out)
+        if rejection is not None:
+            return rejection
     deduped[0]["validated"] = False
     if use_judge:
         deduped[0].setdefault("reason", _judge.REASON_JUDGE_UNAVAILABLE)
@@ -1305,6 +2023,54 @@ async def search_manual(
         )
         deduped[0]["judged_rejected"] = rejected_out
     return deduped[0]
+
+
+def _every_queued_pdf_rejected(ranked: list[dict], trace: dict) -> bool:
+    """Whether the judge read every PDF it queued and rejected each one (#5822).
+
+    Not when a queued PDF went unread (unfetched, no text, cut off by the deadline),
+    when the queue was over its cap, or when nothing was queued: any of those can
+    still be the manual, and the existing review path handles them."""
+    queue = trace.get("queue") or []
+    by_url = {c["url"]: c for c in ranked}
+    return (
+        trace.get("stop") == "queue_exhausted"
+        and bool(queue)
+        and all(u in by_url and _judge.is_rejected(by_url[u]) for u in queue)
+        and "over_max_total" not in (trace.get("not_queued") or {}).values()
+    )
+
+
+def _rejections(ranked: list[dict]) -> list[dict]:
+    """Every judged rejection in ``ranked``, with the judge's reason. Two forms of one
+    document read side by side can get verdicts that disagree. The document is then
+    the manual, as main returns it, and its rejected form is not listed: one result
+    never calls a document both the manual and not the manual (#5902). The trail
+    keeps both verdicts as the judge gave them."""
+    matched = {_judge.same_document_key(c) for c in ranked if _judge.is_match(c)}
+    return [
+        {"url": c["url"], "reason": (c.get("judge") or {}).get("reason", "")}
+        for c in ranked
+        if _judge.is_rejected(c) and _judge.same_document_key(c) not in matched
+    ]
+
+
+def _as_judged_match(top: dict, rejected: list[dict]) -> dict:
+    """The judge's match, validated, with every other candidate's rejection reason."""
+    code, line = _judge.judge_summary(top)
+    top["reason"], top["reason_detail"] = code, line
+    top["judged_rejected"] = [r for r in rejected if r["url"] != top["url"]]
+    top["validated"] = True
+    return top
+
+
+def _as_judged_rejection(worst: dict, rejected: list[dict]) -> dict:
+    """The judge's top rejection, returned unvalidated with every rejection's reason."""
+    code, line = _judge.judge_summary(worst)
+    worst["reason"], worst["reason_detail"] = code, line
+    worst["judged_rejected"] = rejected
+    worst["validated"] = False
+    return worst
 
 
 from . import judge as _judge  # noqa: E402 — circular-safe: judge imports this module lazily

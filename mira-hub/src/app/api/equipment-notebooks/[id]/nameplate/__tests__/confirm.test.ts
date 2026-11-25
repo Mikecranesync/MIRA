@@ -191,6 +191,25 @@ function pdfDownload() {
   };
 }
 
+function stubManualChunks(chunks: Array<{ content: string; page: number }>) {
+  vi.mocked(withTenantContext).mockImplementation(async (_tenant, run) => run({
+    query: async (sql: string, params: unknown[]) => {
+      if (sql.includes("UPDATE equipment_notebook_sources")) {
+        const [tenant, notebook, doc, matchState, enabledByDefault, evidence] =
+          params as [string, string, string, "candidate" | "verified", boolean, string];
+        const updated = await setSourceState(tenant, notebook, doc, {
+          matchState, enabledByDefault, matchEvidence: JSON.parse(evidence),
+        });
+        return { rows: updated ? [{ match_state: matchState, enabled_by_default: enabledByDefault }] : [] };
+      }
+      if (sql.includes("SELECT content, source_page")) {
+        return { rows: chunks.map(({ content, page }) => ({ content, source_page: page })) };
+      }
+      return { rows: [] };
+    },
+  } as never));
+}
+
 beforeEach(() => {
   vi.resetAllMocks();
   vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -232,7 +251,7 @@ beforeEach(() => {
   vi.mocked(claimIngest).mockResolvedValue({ claimed: true, claimToken: "tok-1" });
   vi.mocked(releaseIngestClaim).mockResolvedValue(undefined);
   // Default chunk read: no identity evidence.
-  vi.mocked(withTenantContext).mockResolvedValue([{ content: "Some other drive", page: 1 }]);
+  stubManualChunks([{ content: "Some other drive", page: 1 }]);
   vi.mocked(promoteVisualObservations).mockResolvedValue({ promotedIds: [] });
   vi.mocked(correctVisualObservations).mockResolvedValue({ corrected: [], mismatched: [] });
 });
@@ -446,7 +465,7 @@ describe("manual import: candidate until the document proves itself", () => {
     vi.mocked(discoverManual).mockResolvedValue(importableDiscovery());
     vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());
     // Chunks mention a different product entirely.
-    vi.mocked(withTenantContext).mockResolvedValue([
+    stubManualChunks([
       { content: "SEW MOVITRAC B operating instructions", page: 1 },
     ]);
 
@@ -472,37 +491,37 @@ describe("manual import: candidate until the document proves itself", () => {
     );
   });
 
-  it("flips to verified + enabled and persists matchEvidence when the text proves it", async () => {
+  it("stores validated discovery for review even when the document names the exact model", async () => {
     vi.mocked(discoverManual).mockResolvedValue(importableDiscovery());
     vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());
-    vi.mocked(withTenantContext).mockResolvedValue([
+    stubManualChunks([
       { content: "Allen-Bradley PowerFlex 525, catalog 25B-D010N104", page: 12 },
     ]);
 
     const res = await POST(makeReq(baseBody), makeParams(NOTEBOOK_ID));
     const body = await res.json();
-    expect(body.status).toBe("complete");
+    expect(body.status).toBe("candidate_review");
     expect(body.manual).toMatchObject({
-      matchState: "verified",
-      enabledByDefault: true,
+      matchState: "candidate",
+      enabledByDefault: false,
       docId: MANUAL_DOC_ID,
       indexed: true,
     });
     expect(body.applicability).toMatchObject({
-      state: "verified",
-      method: "catalog_number_exact",
-      evidencePages: [12],
+      state: "candidate",
+      method: "source_review_required",
+      evidencePages: [],
     });
 
     const patch = vi.mocked(setSourceState).mock.calls.at(-1)![3] as Record<string, unknown>;
-    expect(patch.matchState).toBe("verified");
-    expect(patch.enabledByDefault).toBe(true);
+    expect(patch.matchState).toBe("candidate");
+    expect(patch.enabledByDefault).toBe(false);
     const ev = patch.matchEvidence as Record<string, unknown>;
     expect(ev.discoveryUrl).toBe(CANDIDATE.url);
     expect(ev.finalUrl).toBe(CANDIDATE.url);
-    expect(ev.decisionMethod).toBe("catalog_number_exact");
-    expect(ev.matchedTokens).toContain("25BD010N104");
-    expect(ev.evidencePages).toEqual([12]);
+    expect(ev.decisionMethod).toBe("source_review_required");
+    expect(ev.matchedTokens).toEqual([]);
+    expect(ev.evidencePages).toEqual([]);
     expect(ev.confirmedIdentity).toMatchObject({ model: "525" });
     expect(JSON.stringify(ev)).not.toMatch(/X-Mira-Key|ASK_API_KEY|api[_-]?key/i);
   });
@@ -518,22 +537,12 @@ describe("manual import: candidate until the document proves itself", () => {
     identity: { manufacturer: "Allen-Bradley", model: "525", catalogNumber: "25B-D010N104" },
   };
   const provingText = () =>
-    vi.mocked(withTenantContext).mockResolvedValue([
+    stubManualChunks([
       { content: "Allen-Bradley PowerFlex 525, catalog 25B-D010N104", page: 12 },
     ]);
 
-  // #4160 S6 — basis="candidate": acquireManualForIdentity itself no longer
-  // forces the write to candidate/disabled (owner decision 2026-11-07,
-  // `requiresUserConfirmation = probeUnvalidated` only — basis is no longer
-  // part of that gate). When the document's own text proves the identity on
-  // a VALIDATED discovery, the verdict's own verified/true passes through to
-  // the write, same as basis='confirmed'. The real verdict is ALSO stamped
-  // separately as candidateApplicability, for the fenced writer (and, after
-  // confirmation, migration 104) to key off of — the one thing that still
-  // forces candidate/disabled for an UNVALIDATED (probeUnvalidated) download,
-  // covered by the Codex r1 F3 describe below.
-  describe("#4160 S6 — basis='candidate' no longer forces the write on this function", () => {
-    it("the document text proves the identity (catalog_number_exact) on a validated discovery: the verdict's own verified/true passes through, and candidateApplicability still rides for the fenced writer", async () => {
+  describe("either identity basis requires discovered source review", () => {
+    it("a candidate identity and validated discovery still persist a disabled candidate", async () => {
       vi.mocked(discoverManual).mockResolvedValue(importableDiscoveryTyped());
       vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());
       provingText();
@@ -541,34 +550,29 @@ describe("manual import: candidate until the document proves itself", () => {
       const out = await acquireManualForIdentity({ ...acquireInput, basis: "candidate", writeSourceState });
       expect(writeSourceState).toHaveBeenCalledTimes(1);
       const patch = (writeSourceState.mock.calls[0] as unknown[])[3] as Record<string, unknown>;
-      // The verdict's own verified/true, same as basis='confirmed' would get:
-      expect(patch.matchState).toBe("verified");
-      expect(patch.enabledByDefault).toBe(true);
-      // The real verdict rides separately for the fenced writer / migration 104
-      // to act on once the technician confirms:
-      expect((patch.matchEvidence as Record<string, unknown>).candidateApplicability).toBe("verified");
-      expect((patch.matchEvidence as Record<string, unknown>).decisionMethod).toBe("catalog_number_exact");
-      // The outcome reflects what the (stubbed) writer actually persisted —
-      // this test's writer always returns a disabled candidate.
+      expect(patch).toMatchObject({
+        matchState: "candidate",
+        enabledByDefault: false,
+        matchEvidence: { candidateApplicability: "candidate", decisionMethod: "source_review_required" },
+      });
       expect(out.status).toBe("candidate_review");
     });
 
-    it("control: the SAME document/identity under basis='confirmed' (default) promotes normally — proves the forcing is basis-specific, not a general regression", async () => {
+    it("a confirmed identity and the same discovery still persist a disabled source", async () => {
       vi.mocked(discoverManual).mockResolvedValue(importableDiscoveryTyped());
       vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());
       provingText();
-      const writeSourceState = vi.fn(async () => ({ matchState: "verified", enabledByDefault: true }));
+      const writeSourceState = vi.fn(async () => ({ matchState: "candidate", enabledByDefault: false }));
       await acquireManualForIdentity({ ...acquireInput, writeSourceState });
       const patch = (writeSourceState.mock.calls[0] as unknown[])[3] as Record<string, unknown>;
-      expect(patch.matchState).toBe("verified");
-      expect(patch.enabledByDefault).toBe(true);
+      expect(patch).toMatchObject({ matchState: "candidate", enabledByDefault: false });
       expect((patch.matchEvidence as Record<string, unknown>).candidateApplicability).toBeUndefined();
     });
 
     it("an unproven document (candidate verdict) stays candidate either way, and still stamps candidateApplicability='candidate' for basis='candidate'", async () => {
       vi.mocked(discoverManual).mockResolvedValue(importableDiscoveryTyped());
       vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());
-      vi.mocked(withTenantContext).mockResolvedValue([{ content: "SEW MOVITRAC B operating instructions", page: 1 }]);
+      stubManualChunks([{ content: "SEW MOVITRAC B operating instructions", page: 1 }]);
       const writeSourceState = vi.fn(async () => ({ matchState: "candidate", enabledByDefault: false }));
       await acquireManualForIdentity({ ...acquireInput, basis: "candidate", writeSourceState });
       const patch = (writeSourceState.mock.calls[0] as unknown[])[3] as Record<string, unknown>;
@@ -589,27 +593,17 @@ describe("manual import: candidate until the document proves itself", () => {
     });
   });
 
-  // Codex r1 F3 (HIGH, #4172) — candidateApplicability must NEVER read 'verified'
-  // when the discovery result itself required a human review hold
-  // (probeUnvalidated: an unvalidated-by-the-service candidate, probed only
-  // because it is independently OEM-hosted). Both promotion paths —
-  // fencedWriter's promoteNow (the common race) and migration 104 (confirm
-  // arrives after the search finishes) — gate ONLY on candidateApplicability,
-  // so a document whose BYTES were never provenance-validated must stamp
-  // 'candidate' even when its TEXT matches exactly. Reuses the exact
-  // candidate/identity the #3400 suite already proved is probed-but-unvalidated
-  // (literature.rockwellautomation.com, independently Allen-Bradley-hosted).
-  describe("Codex r1 F3 (#4172) — candidateApplicability never 'verified' on an unvalidated download", () => {
-    it("probeUnvalidated + exact matching text (catalog_number_exact) → candidateApplicability stays 'candidate'", async () => {
+  describe("Codex r1 F3 (#4172) — identity confirmation cannot promote discovered manuals", () => {
+    it("keeps an independently OEM-hosted unvalidated result as a review candidate", async () => {
       vi.mocked(discoverManual).mockResolvedValue({ ...importableDiscoveryTyped(), validated: false });
       vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());
-      provingText(); // exact catalog number in the text — would be catalog_number_exact/verified
+      provingText();
       const writeSourceState = vi.fn(async () => ({ matchState: "candidate", enabledByDefault: false }));
       const out = await acquireManualForIdentity({ ...acquireInput, basis: "candidate", writeSourceState });
       const patch = (writeSourceState.mock.calls[0] as unknown[])[3] as Record<string, unknown>;
       const ev = patch.matchEvidence as Record<string, unknown>;
-      expect(ev.decisionMethod).toBe("catalog_number_exact"); // the verdict IS verified...
-      expect(ev.candidateApplicability).toBe("candidate"); // ...but never stamped as such
+      expect(ev.decisionMethod).toBe("source_review_required");
+      expect(ev.candidateApplicability).toBe("candidate");
       expect(out.status).toBe("candidate_review");
       // Codex post-cap 4 F9: the outcome carries the stamp, so the chat never
       // promises that confirming will turn this document on.
@@ -617,17 +611,17 @@ describe("manual import: candidate until the document proves itself", () => {
       expect(recordFromOutcome("K", null, out).promotes_on_confirm).toBe(false);
     });
 
-    it("control: the SAME text, with a VALIDATED discovery result, stamps candidateApplicability='verified'", async () => {
-      vi.mocked(discoverManual).mockResolvedValue(importableDiscoveryTyped()); // validated: true (importableDiscovery())
+    it("validated discovery also remains ineligible for promotion on identity confirmation", async () => {
+      vi.mocked(discoverManual).mockResolvedValue(importableDiscoveryTyped());
       vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());
       provingText();
       const writeSourceState = vi.fn(async () => ({ matchState: "candidate", enabledByDefault: false }));
       const out = await acquireManualForIdentity({ ...acquireInput, basis: "candidate", writeSourceState });
       const patch = (writeSourceState.mock.calls[0] as unknown[])[3] as Record<string, unknown>;
       const ev = patch.matchEvidence as Record<string, unknown>;
-      expect(ev.candidateApplicability).toBe("verified");
-      expect((out.payload as { manual?: { candidateApplicability?: string } }).manual?.candidateApplicability).toBe("verified");
-      expect(recordFromOutcome("K", null, out).promotes_on_confirm).toBe(true);
+      expect(ev.candidateApplicability).toBe("candidate");
+      expect((out.payload as { manual?: { candidateApplicability?: string } }).manual?.candidateApplicability).toBe("candidate");
+      expect(recordFromOutcome("K", null, out).promotes_on_confirm).toBe(false);
     });
   });
 
@@ -642,7 +636,7 @@ describe("manual import: candidate until the document proves itself", () => {
     const writeSourceState = vi.fn(async () => ({ matchState: "verified", enabledByDefault: false }));
     const out = await acquireManualForIdentity({ ...acquireInput, basis: "candidate", writeSourceState });
     const patch = (writeSourceState.mock.calls[0] as unknown[])[3] as Record<string, unknown>;
-    expect((patch.matchEvidence as Record<string, unknown>).candidateApplicability).toBe("verified"); // attempted
+    expect((patch.matchEvidence as Record<string, unknown>).candidateApplicability).toBe("candidate");
     expect((out.payload as { manual?: { candidateApplicability?: string } }).manual?.candidateApplicability).toBeUndefined();
     expect(recordFromOutcome("K", null, out).promotes_on_confirm).toBe(false);
   });
@@ -654,12 +648,12 @@ describe("manual import: candidate until the document proves itself", () => {
     vi.mocked(setSourceState).mockClear();
     const writeSourceState = vi.fn(async () => ({ matchState: "candidate", enabledByDefault: false }));
     const out = await acquireManualForIdentity({ ...acquireInput, writeSourceState });
-    // Exactly one attempt (the promotion) — no demotion afterwards.
+    // A single attempt leaves the state returned by the fenced writer intact.
     expect(writeSourceState).toHaveBeenCalledTimes(1);
     expect((writeSourceState.mock.calls[0] as unknown[])[3]).toMatchObject({
-      matchState: "verified",
-      enabledByDefault: true,
-      matchEvidence: expect.objectContaining({ decisionMethod: "catalog_number_exact" }),
+      matchState: "candidate",
+      enabledByDefault: false,
+      matchEvidence: expect.objectContaining({ decisionMethod: "source_review_required" }),
     });
     expect(setSourceState).not.toHaveBeenCalled();
     expect(out.status).toBe("candidate_review");
@@ -707,7 +701,7 @@ describe("manual import: candidate until the document proves itself", () => {
     expect(out.status).toBe("no_manual_found");
   });
 
-  it("#4160 S4: passes the caller's identity through to discoverManual as the second argument", async () => {
+  it("#4160 S4: passes the exact catalog part and the caller scope to discoverManual", async () => {
     // Fully-typed literal (not the shared importableDiscovery() helper, which
     // predates quotaExceeded/oemRequestUrl and is out of scope to fix here)
     // so this NEW test adds no tsc error beyond this file's pre-existing baseline.
@@ -719,10 +713,79 @@ describe("manual import: candidate until the document proves itself", () => {
     vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());
     provingText();
     await acquireManualForIdentity(acquireInput);
-    expect(discoverManual).toHaveBeenCalledWith(
-      expect.objectContaining({ manufacturer: "Allen-Bradley", model: "525" }),
-      { tenantId: TENANT_ID, userId: "u1" },
-    );
+    // #5828: the confirmed catalog number travels as catalogNumber (mira-ask's
+    // exact-part-number rule keys on catalog_number). The model is not sent with
+    // it, as in the photo lookup: mira-ask searches by catalog_number alone.
+    // Exact call shape: no extra keys.
+    const [calledIdentity, calledCtx] = vi.mocked(discoverManual).mock.calls.at(-1)!;
+    expect(calledIdentity).toStrictEqual({ manufacturer: "Allen-Bradley", catalogNumber: "25B-D010N104" });
+    expect(calledCtx).toStrictEqual({ tenantId: TENANT_ID, userId: "u1" });
+  });
+
+  it("#5835 r1 F1: a model longer than mira-ask's 200-character field limit does not block a catalog lookup", async () => {
+    vi.mocked(discoverManual).mockResolvedValue({ ...importableDiscovery(), oemRequestUrl: null, quotaExceeded: false });
+    vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());
+    provingText();
+    const longModel = "PowerFlex 525 ".repeat(15);
+    expect(longModel.length).toBeGreaterThan(200);
+    await acquireManualForIdentity({ ...acquireInput, identity: { manufacturer: "Allen-Bradley", model: longModel, catalogNumber: "25B-D010N104" } });
+    const [calledIdentity] = vi.mocked(discoverManual).mock.calls.at(-1)!;
+    expect(calledIdentity).toStrictEqual({ manufacturer: "Allen-Bradley", catalogNumber: "25B-D010N104" });
+  });
+
+  // Positive controls: each is a whole catalog number and must go as catalogNumber.
+  it.each([
+    { why: "is numeric-led", catalogNumber: "1756-L83E/B", sent: "1756-L83E/B" },
+    { why: "ends in a group that reads like a rating", catalogNumber: "GS11N-20A", sent: "GS11N-20A" },
+    { why: "has four groups", catalogNumber: "acs355-03u-06a7-2", sent: "ACS355-03U-06A7-2" },
+  ])("#5828: a catalog number that $why is sent as catalogNumber", async ({ catalogNumber, sent }) => {
+    vi.mocked(discoverManual).mockResolvedValue({ ...importableDiscovery(), oemRequestUrl: null, quotaExceeded: false });
+    vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());
+    provingText();
+    await acquireManualForIdentity({ ...acquireInput, identity: { manufacturer: "Allen-Bradley", model: "525", catalogNumber } });
+    const [calledIdentity] = vi.mocked(discoverManual).mock.calls.at(-1)!;
+    expect(calledIdentity).toStrictEqual({ manufacturer: "Allen-Bradley", catalogNumber: sent });
+  });
+
+  // #5828: as catalog_number, a short or loose value would let an unread page
+  // that names only "GS10" through for another maker: the #5789 leak. Each row
+  // misses one clause of the whole-catalog-number shape and must go as a model,
+  // exactly as before #5828.
+  it.each([
+    { why: "repeats the model", model: "GS10", catalogNumber: "gs10", sent: "GS10" },
+    { why: "has no model beside it", model: undefined, catalogNumber: "GS10", sent: "GS10" },
+    { why: "differs from a longer model", model: "GS10 drive", catalogNumber: "GS10", sent: "GS10" },
+    { why: "is digits only", model: "PowerFlex 525", catalogNumber: "525", sent: "525" },
+    { why: "is under 8 characters", model: undefined, catalogNumber: "AB-12", sent: "AB-12" },
+    { why: "has no separator", model: undefined, catalogNumber: "ABCD1234", sent: "ABCD1234" },
+    { why: "has no letter", model: undefined, catalogNumber: "1234-5678", sent: "1234-5678" },
+    { why: "has no digit", model: undefined, catalogNumber: "ABCD-EFGH", sent: "ABCD-EFGH" },
+    { why: "has a space", model: undefined, catalogNumber: "25B D010N104", sent: "25B D010N104" },
+    { why: "carries other text", model: undefined, catalogNumber: "see 25B-D010N104", sent: "SEE 25B-D010N104" },
+    // #5835 r1 F2: what the photo lookup also refuses as a part code.
+    { why: "is a DC voltage range", model: "PS-5R", catalogNumber: "24-48VDC", sent: "24-48VDC" },
+    { why: "is an AC voltage range", model: undefined, catalogNumber: "240-480VAC", sent: "240-480VAC" },
+    { why: "is a voltage range without a current type", model: undefined, catalogNumber: "100-240V", sent: "100-240V" },
+    { why: "is a compound rating", model: undefined, catalogNumber: "380-480V/50HZ", sent: "380-480V/50HZ" },
+    { why: "is vision prose", model: undefined, catalogNumber: "RJ45-style", sent: "RJ45-STYLE" },
+  ])("#5828: a catalog number that $why is sent as the model, so the exact-part rule stays off", async ({ model, catalogNumber, sent }) => {
+    vi.mocked(discoverManual).mockResolvedValue({ ...importableDiscovery(), oemRequestUrl: null, quotaExceeded: false });
+    vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());
+    provingText();
+    const loose = { ...acquireInput, identity: { manufacturer: "AutomationDirect", model, catalogNumber } };
+    await acquireManualForIdentity(loose);
+    const [calledIdentity] = vi.mocked(discoverManual).mock.calls.at(-1)!;
+    expect(calledIdentity).toStrictEqual({ manufacturer: "AutomationDirect", model: sent });
+  });
+
+  it("#5828: a catalog number with no model is sent as catalogNumber alone", async () => {
+    vi.mocked(discoverManual).mockResolvedValue({ ...importableDiscovery(), oemRequestUrl: null, quotaExceeded: false });
+    vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());
+    provingText();
+    const catalogOnly = { ...acquireInput, identity: { manufacturer: "Allen-Bradley", catalogNumber: "25B-D010N104" } };
+    await acquireManualForIdentity(catalogOnly);
+    const [calledIdentity] = vi.mocked(discoverManual).mock.calls.at(-1)!;
+    expect(calledIdentity).toStrictEqual({ manufacturer: "Allen-Bradley", catalogNumber: "25B-D010N104" });
   });
 
   it("Codex #4118 r3 F5: a refusing attach hook (lost ownership) skips every later write", async () => {
@@ -797,7 +860,7 @@ describe("manual import: candidate until the document proves itself", () => {
   });
 
 
-  it("control: an accepting writer yields complete + verified, and the default path still enables", async () => {
+  it("reuses an already verified source and keeps a newly discovered source disabled", async () => {
     vi.mocked(discoverManual).mockResolvedValue(importableDiscovery());
     vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());
     provingText();
@@ -809,8 +872,8 @@ describe("manual import: candidate until the document proves itself", () => {
     expect(accepted.payload.manual).toMatchObject({ matchState: "verified", enabledByDefault: true });
     vi.mocked(setSourceState).mockClear();
     const byDefault = await acquireManualForIdentity(acquireInput);
-    expect(byDefault.status).toBe("complete");
-    expect(vi.mocked(setSourceState).mock.calls.at(-1)![3]).toMatchObject({ matchState: "verified", enabledByDefault: true });
+    expect(byDefault.status).toBe("candidate_review");
+    expect(vi.mocked(setSourceState).mock.calls.at(-1)![3]).toMatchObject({ matchState: "candidate", enabledByDefault: false });
   });
 
   it("Codex #4118 F8: a technician's decision the writer declined is reported as it stands, never as enabled", async () => {
@@ -952,7 +1015,7 @@ describe("manual import: candidate until the document proves itself", () => {
       reused: true,
       uploadId: MANUAL_DOC_ID,
     });
-    vi.mocked(withTenantContext).mockResolvedValue([
+    stubManualChunks([
       { content: "Allen-Bradley PowerFlex 525 catalog 25B-D010N104", page: 3 },
     ]);
 
@@ -960,7 +1023,7 @@ describe("manual import: candidate until the document proves itself", () => {
     const body = await res.json();
     expect(ingestPdfToNode).not.toHaveBeenCalled();
     expect(linkFileToUpload).not.toHaveBeenCalled();
-    expect(body.manual).toMatchObject({ docId: MANUAL_DOC_ID, reused: true, matchState: "verified" });
+    expect(body.manual).toMatchObject({ docId: MANUAL_DOC_ID, reused: true, matchState: "candidate" });
   });
 });
 
@@ -1185,10 +1248,7 @@ describe("#3400 — unvalidated OEM candidate is probed, never trusted", () => {
   });
 
   it("still refuses to auto-enable even when the document text matches the identity", async () => {
-    // Chunks that WOULD verify a validated candidate. An unvalidated one must
-    // still land in front of a human — the download proved retrievability, not
-    // provenance.
-    vi.mocked(withTenantContext).mockResolvedValue([
+    stubManualChunks([
       { content: "SIMATIC HMI TP700 Comfort operating instructions SIEMENS", page: 1 },
       { content: "TP700 Comfort technical specifications", page: 2 },
     ] as never);

@@ -80,7 +80,8 @@ test("a failed first notebook-list GET still restores the URL's notebook (#3882)
   const restored = await page.evaluate(() => new URLSearchParams(location.search).get("notebook"));
   const scope = await page.getByText(/General question/).count();
   const nameShown = await page.getByText(name).count();
-  const pill = await page.getByTestId("living-sheet-pill").count();
+  // The Job sheet is now an item in the More list (Mike, 2026-11-20).
+  const pill = await page.getByTestId("notebook-more-item-job-sheet").count();
   const receipt = { label: LABEL, listCalls, warnings: warnings.filter((w) => w.includes("notebook list")), urlNotebookKept: restored === notebookId, generalQuestionShown: scope > 0, jobSheetPill: pill > 0, notebookNameShown: nameShown > 0, at: new Date().toISOString() };
   fs.writeFileSync(path.join(OUT, `${LABEL}.json`), JSON.stringify(receipt, null, 2));
   await page.screenshot({ path: path.join(OUT, `${LABEL}-mobile.png`) });

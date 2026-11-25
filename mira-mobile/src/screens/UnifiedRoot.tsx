@@ -454,6 +454,41 @@ export function UnifiedRoot({ me, backRef, onSignOut, deepLink, onDeepLinkConsum
     return left ? [left, ...threads.filter((item) => item !== left)] : threads;
   }, [currentProject, selected, selectedThreadId]);
 
+  // The notebook list is loaded once at boot, so a chat started or renamed
+  // since then is missing from the project root. Refresh it each time the
+  // project root opens; a notebook the server does not list yet (a create the
+  // refresh raced) is kept, and session chats still merge via localThreads.
+  useEffect(() => {
+    if (!projectRootVisible) return;
+    let live = true;
+    void (async () => {
+      try {
+        const list = await listNotebooks();
+        if (!live) return;
+        setNotebooks((current) => {
+          const listed = new Set(list.map((nb) => nb.id));
+          // The server returns only a notebook's newest threads, so an older
+          // thread the technician just left can fall out of the window; keep
+          // its known summary so its row stays reachable.
+          const left = current
+            ?.find((nb) => nb.id === selected)
+            ?.threads?.find((thread) => thread.id === selectedThreadId);
+          const refreshed = list.map((nb) =>
+            left && nb.id === selected && !nb.threads?.some((thread) => thread.id === left.id)
+              ? { ...nb, threads: [left, ...(nb.threads ?? [])] }
+              : nb,
+          );
+          return [...refreshed, ...(current ?? []).filter((nb) => !listed.has(nb.id))];
+        });
+      } catch {
+        // The list already on screen stays; a stale list is tolerable.
+      }
+    })();
+    return () => {
+      live = false;
+    };
+  }, [projectRootVisible, selected, selectedThreadId]);
+
   // NotebookScreen owns Android Back while a conversation is mounted. Every
   // root-owned state must replace that handler explicitly: otherwise the
   // unmounted notebook leaves its last callback behind and About can minimize
@@ -479,7 +514,8 @@ export function UnifiedRoot({ me, backRef, onSignOut, deepLink, onDeepLinkConsum
         setHomeVisible(true);
         return true;
       }
-      if (homeVisible) return true;
+      // HOME is the bottom rung: hand Back to App.tsx, which minimizes the
+      // app as Android expects, instead of swallowing it.
       return false;
     };
     backRef.current = handleBack;
@@ -595,7 +631,10 @@ export function UnifiedRoot({ me, backRef, onSignOut, deepLink, onDeepLinkConsum
           meta={{
             notebookId: "home",
             threadId: "home",
-            projectId: selected ? `project-${selected}` : "project-home",
+            // A HOME send opens a new unbound notebook (#3877), so HOME names
+            // no project: the last-opened one's breadcrumb would contradict
+            // the "General question" line below it.
+            projectId: "project-home",
             title: "FactoryLM",
             asset: null,
             identityConfirmed: false,

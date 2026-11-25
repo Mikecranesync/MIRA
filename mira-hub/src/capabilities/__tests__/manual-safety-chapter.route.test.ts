@@ -126,10 +126,9 @@ beforeEach(() => {
     _c: unknown,
     _t: string,
     wanted: Array<{ sourceUrl: string; page: number }>,
-    opts: { keep?: (t: string) => boolean } = {},
   ) =>
     CORPUS.filter(
-      (r) => wanted.some((w) => w.sourceUrl === r.sourceUrl && w.page === r.sourcePage) && (opts.keep ? opts.keep(r.content) : true),
+      (r) => wanted.some((w) => w.sourceUrl === r.sourceUrl && w.page === r.sourcePage),
     )) as never);
   process.env.GROQ_API_KEY = "test-key";
   process.env.NOTEBOOK_SEMANTIC_CHECK = "0";
@@ -173,8 +172,7 @@ describe("the cited manual's Safety chapter on a two-manual turn", () => {
       _c: unknown,
       _t: string,
       wanted: Array<{ sourceUrl: string; page: number }>,
-      opts: { keep?: (t: string) => boolean } = {},
-    ) => corpus.filter((r) => wanted.some((w) => w.sourceUrl === r.sourceUrl && w.page === r.sourcePage) && (opts.keep ? opts.keep(r.content) : true))) as never);
+    ) => corpus.filter((r) => wanted.some((w) => w.sourceUrl === r.sourceUrl && w.page === r.sourcePage))) as never);
     const ref = "WARNING! Read and follow the instructions in chapter Safety on page 1.";
     ragMock.retrieveNodeChunks.mockResolvedValue([
       chunk(DOC_A, URL_A, "Drive A manual", 40, ref),
@@ -203,8 +201,7 @@ describe("the cited manual's Safety chapter on a two-manual turn", () => {
       _c: unknown,
       _t: string,
       wanted: Array<{ sourceUrl: string; page: number }>,
-      opts: { keep?: (t: string) => boolean } = {},
-    ) => corpus.filter((r) => wanted.some((w) => w.sourceUrl === r.sourceUrl && w.page === r.sourcePage) && (opts.keep ? opts.keep(r.content) : true))) as never);
+    ) => corpus.filter((r) => wanted.some((w) => w.sourceUrl === r.sourceUrl && w.page === r.sourcePage))) as never);
     ragMock.retrieveNodeChunks.mockResolvedValue([chunk(DOC_B, URL_B, "ACS355 User's Manual", 372, P372)]);
     domainMock.validateChatSources.mockResolvedValue({ ok: true, docIds: [DOC_B], nodeId: "n1" });
     // Excerpts: [1] p372; p17's four chunks share one source [2]; p18 is [3].

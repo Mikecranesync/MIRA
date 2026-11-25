@@ -62,6 +62,7 @@ import {
   startManualAcquisition,
   type AcquisitionRecord,
 } from "../notebook-manual-acquisition";
+import { parseViewerRequest, viewerHref } from "@/factorylm-ui/document-page-viewer-logic";
 
 const confirmed = { identityStatus: "user_confirmed", manufacturer: "SMC", model: "VQ1000-FPG-C6C6-D", catalogNumber: null };
 const ON = { MIRA_NOTEBOOK_MANUAL_ACQUISITION: "1" };
@@ -141,7 +142,7 @@ describe("startManualAcquisition", () => {
     });
     const claimQ = db.queries.find((q) => /RETURNING manual_acquisition->>'gen'/.test(q.sql))!;
     // A background start is NOT an explicit technician confirmation ($7 false).
-    expect(claimQ.params).toEqual(["t", "nb", "SMC|VQ1000FPGC6C6D|", 10, 30, 3, false]);
+    expect(claimQ.params.slice(0, 8)).toEqual(["t", "nb", "SMC|VQ1000FPGC6C6D|", 10, 30, 3, false, null]);
     expect(claimQ.sql).toMatch(/state' = 'search_unavailable'/);
     // #4160 S4 — anchored to the specific WHERE-clause predicates (not just
     // "appears somewhere in the query"):
@@ -598,20 +599,10 @@ describe("#4160 S6 — acquisitionDeclineText basis='candidate' copy", () => {
     oem_request_url: null,
   });
 
-  // Codex post-cap 13/14 F13 (#4172): no shipping client renders the
-  // identity_proposal frame, offers "Use its manuals", or can confirm an
-  // EXISTING notebook's make/model (#4095 / #3626). The one action a
-  // technician has on the acquired manual is turning it on in Sources (Hub
-  // notebook page, classic mobile notebook screen), so the copy points there
-  // and promises nothing about confirmation.
-  it("'running' says the search is on and that the manual lands in Sources, turned on — no button, no confirmation promise", () => {
+  it("describes a running lookup without attributing a typed identity to a photo", () => {
     const t = acquisitionDeclineText(rec("running"), "K", "SMC SS5Y3-DUW01302", "candidate")!;
-    expect(t).toMatch(/I read the SMC SS5Y3-DUW01302 off your photo/);
-    expect(t).toMatch(/looking for the official SMC SS5Y3-DUW01302 manual now/);
-    expect(t).toMatch(/added to this notebook's Sources and turned on/);
-    expect(t).not.toMatch(/Use its manuals|Tap|tap |confirmed as that machine|once you do/);
-    expect(t).not.toMatch(/ask again in a minute/);
-    expect(t).not.toMatch(/turned off/);
+    expect(t).toMatch(/looking for the official documentation for the SMC SS5Y3-DUW01302/);
+    expect(t).not.toMatch(/photo|turned on/);
   });
 
   // Codex post-cap 4 F9 (#4172): only promise "confirm and I'll answer from it"
@@ -1128,6 +1119,128 @@ describe("currentManualSearchStatus — recomputed fresh, never a stale snapshot
       expect(r?.running).toBe(false);
       expect(r?.message).not.toMatch(/couldn't confirm|isn't turned on/i);
       expect(r?.message).toMatch(/ready/i);
+    });
+
+    it("names the coverage page only for the currently enabled reviewed source", async () => {
+      const url = "https://content2.smcetech.com/pdf/1900A.pdf";
+      db.readRow = { ...candidateReviewRec, candidate_url: url, doc_id: "d1" };
+      const source = {
+        docId: "d1", enabledByDefault: true, matchState: "verified", sourceRole: "manual",
+        readiness: { canChat: true },
+        matchEvidence: { autoAcquisitionKey: confirmedKey, reviewedLibraryPage: 26, reviewedLibraryTitle: "OEM User Manual" },
+      };
+      const getStatus = (sources: unknown[]) => currentManualSearchStatus("t", "nb", confirmedIdentity, null, sources as never, { env: ON });
+      const status = await getStatus([source]);
+      expect(status?.message).toContain("ready in Sources. PDF page 26");
+      expect(status?.manualUrl).toBeUndefined();
+      expect((await getStatus([{ ...source, docId: "d2" }]))?.message).toContain("PDF page 26");
+      expect((await getStatus([{ ...source, matchEvidence: { autoAcquisitionKey: confirmedKey } }]))?.message).not.toContain("PDF page 26");
+      expect((await getStatus([{ ...source, enabledByDefault: false }]))?.message).not.toContain("PDF page 26");
+    });
+
+    // 2026-11-21 tablet walk: the GS10 manual was verified and ready, yet the
+    // reply offered no link — the PDF was reachable only through a follow-up
+    // question's citation. A ready REVIEWED publication links to MIRA's saved
+    // copy at the coverage page, in the same viewer citations use (#5726 F1:
+    // never the manufacturer's live URL, whose bytes may have changed since).
+    describe("a ready reviewed publication links to its saved copy at the coverage page", () => {
+      const gs10 = { identityStatus: "user_confirmed", manufacturer: "AutomationDirect", model: "GS11N-20P2", catalogNumber: "" };
+      const gs10Key = acquisitionKey(gs10)!;
+      const OEM = "https://cdn.automationdirect.com/static/manuals/gs10m/gs10usermanual.pdf";
+      const SHA = "43a66d756b9c53f216316eeb78d13db26f9698859d08b5f70d2ed3715e9602af";
+      const FILE = "6da4f531-e67a-4fa3-96ed-c678649ab1dc";
+      const ORIGIN = "https://app-staging.factorylm.com";
+      const ENV = { ...ON, NEXTAUTH_URL: `${ORIGIN}/api/auth` };
+      const expected = `${ORIGIN}${viewerHref(FILE, 26)}`;
+      const record = (extra: Record<string, unknown> = {}) => ({
+        ...candidateReviewRec, key: gs10Key, state: "complete", doc_id: "d1", file_id: FILE, linked: true,
+        reviewed_digest: SHA, ...extra,
+      });
+      const gs10Source = (evidence: Record<string, unknown> = {}, extra: Record<string, unknown> = {}) => ({
+        docId: "d1", enabledByDefault: true, matchState: "verified", sourceRole: "manual", readiness: { canChat: true },
+        matchEvidence: {
+          autoAcquisitionKey: gs10Key, reviewedLibraryPage: 26, reviewedLibraryTitle: "DURApulse GS10 Drive User Manual, Rev C",
+          reviewedLibrarySha256: SHA, ...evidence,
+        },
+        ...extra,
+      });
+      const status = (
+        sources: unknown[],
+        { identity = gs10, rec = record(), env = ENV as Record<string, string | undefined> }:
+          { identity?: typeof gs10; rec?: Record<string, unknown>; env?: Record<string, string | undefined> } = {},
+      ) => {
+        db.readRow = { ...rec, key: acquisitionKey(identity) };
+        return currentManualSearchStatus("t", "nb", identity, null, sources as never, { env });
+      };
+
+      it("confirmed GS11N-20P2: the status opens the saved copy at page 26, not the manufacturer URL", async () => {
+        const r = await status([gs10Source()]);
+        expect(r?.message).toContain("PDF page 26 shows coverage for GS11N-20P2");
+        expect(r?.manualUrl).toBe(expected);
+        expect(parseViewerRequest(new URL(r!.manualUrl!).search)).toEqual({ fileId: FILE, page: 26 });
+        expect(r?.manualUrl).not.toContain(OEM);
+      });
+
+      it("typed (proposed, unconfirmed) GS11N-20P2 gets the same link", async () => {
+        db.readRow = record();
+        const r = await currentManualSearchStatus(
+          "t", "nb", { identityStatus: "unknown", manufacturer: "", model: "", catalogNumber: "" },
+          { manufacturer: "AUTOMATIONDIRECT", model: "GS11N-20P2" }, [gs10Source()] as never, { env: ENV },
+        );
+        expect(r?.manualUrl).toBe(expected);
+      });
+
+      it("no link when the source's digest is not the approved one", async () => {
+        expect((await status([gs10Source({ reviewedLibrarySha256: "0".repeat(64) })]))?.manualUrl).toBeUndefined();
+        expect((await status([gs10Source({ reviewedLibrarySha256: undefined })]))?.manualUrl).toBeUndefined();
+      });
+
+      it("no link when the recorded coverage page is not the approved page", async () => {
+        const r = await status([gs10Source({ reviewedLibraryPage: 27 })]);
+        expect(r?.message).toContain("PDF page 27");
+        expect(r?.manualUrl).toBeUndefined();
+      });
+
+      it("no link for a look-alike identity, even with the GS10 evidence attached", async () => {
+        const lookAlike = { ...gs10, model: "GS11N-20P25" };
+        const r = await status([gs10Source({ autoAcquisitionKey: acquisitionKey(lookAlike) })], { identity: lookAlike });
+        expect(r?.manualUrl).toBeUndefined();
+      });
+
+      it("no link once the source is turned off", async () => {
+        expect((await status([gs10Source({}, { enabledByDefault: false })]))?.manualUrl).toBeUndefined();
+      });
+
+      it("no link when this search did not link the file", async () => {
+        expect((await status([gs10Source()], { rec: record({ linked: false }) }))?.manualUrl).toBeUndefined();
+      });
+
+      it("no link when the saved file belongs to a different document", async () => {
+        expect((await status([gs10Source()], { rec: record({ doc_id: "d9" }) }))?.manualUrl).toBeUndefined();
+      });
+
+      it("no link when this search's download was not checked against the approved digest", async () => {
+        expect((await status([gs10Source()], { rec: record({ reviewed_digest: "0".repeat(64) }) }))?.manualUrl).toBeUndefined();
+      });
+
+      it("no link when the search recorded no saved file", async () => {
+        expect((await status([gs10Source()], { rec: record({ file_id: null }) }))?.manualUrl).toBeUndefined();
+      });
+
+      it("no link without an https public origin", async () => {
+        expect((await status([gs10Source()], { env: { ...ON, NEXTAUTH_URL: "http://100.68.120.99:4101/api/auth" } }))?.manualUrl).toBeUndefined();
+        expect((await status([gs10Source()], { env: ON }))?.manualUrl).toBeUndefined();
+      });
+
+      it("F2: an older ready source does not hide the approved one", async () => {
+        const older = gs10Source({ reviewedLibrarySha256: "1".repeat(64), reviewedLibraryPage: 9 }, { docId: "d0" });
+        const r = await status([older, gs10Source()]);
+        expect(r?.message).toContain("PDF page 26");
+        expect(r?.manualUrl).toBe(expected);
+        const off = await status([older, gs10Source({}, { enabledByDefault: false })]);
+        expect(off?.manualUrl).toBeUndefined();
+        expect(off?.message).toContain("PDF page 9");
+      });
     });
 
     it("reports 'added, still preparing' for an applicable+enabled manual that has not finished materializing yet — never 'turn it on'", async () => {

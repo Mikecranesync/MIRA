@@ -45,7 +45,7 @@ const ragMock = vi.hoisted(() => ({
   buildManualUserContent: vi.fn((q: string) => q),
   corpusManufacturers: vi.fn(async () => [] as string[]),
   manufacturerFromObservationText: vi.fn(() => null as string | null),
-  resolveModelFromObservationText: vi.fn(() => ({ model: null as string | null, ambiguous: false })),
+  resolveModelFromObservationText: vi.fn((_text: string) => ({ model: null as string | null, ambiguous: false })),
 }));
 vi.mock("@/lib/manual-rag", () => ragMock);
 
@@ -82,7 +82,7 @@ vi.mock("@/lib/inference/canonical-cascade", () => seamMock);
 // (notebook-manual-acquisition.test.ts, migration-104 integration test).
 const acqMock = vi.hoisted(() => ({
   acquisitionEnabled: vi.fn(() => true),
-  startManualAcquisition: vi.fn(async () => true),
+  startManualAcquisition: vi.fn(async (_input: Pick<Parameters<typeof import("@/capabilities/notebook-manual-acquisition").startManualAcquisition>[0], "identity">) => true),
   readAcquisition: vi.fn(async () => null as unknown),
   reconcileAcquisition: vi.fn(async (_t: string, _n: string, rec: unknown) => rec),
 }));
@@ -100,6 +100,8 @@ vi.mock("@/capabilities/notebook-manual-acquisition", async (importOriginal) => 
 });
 
 import { POST } from "../route";
+import { resolveModelFromObservationText } from "@/capabilities/model-token";
+import { reviewedManualFor } from "@/capabilities/reviewed-manual-library";
 
 function providerStream(text: string) {
   const enc = new TextEncoder();
@@ -157,6 +159,95 @@ beforeEach(() => {
 });
 
 const SMC_MESSAGE = "Find the manual for the SMC SS5Y3-DUW01302";
+
+describe("exact catalog number on an explicit manual request", () => {
+  it.each(["6AV2124-0GC01-0AX0", "6AV2124‑0GC01‑0AX0"])(
+    "offers the Siemens order number %s even when the corpus recognizes only the product name",
+    async (order) => {
+      ragMock.corpusManufacturers.mockResolvedValue(["Siemens"]);
+      ragMock.resolveModelFromObservationText.mockImplementationOnce(resolveModelFromObservationText);
+      const res = await POST(req({
+        message: `Find the manual for Siemens TP700 Comfort ${order}.`, mode: "general",
+      }), params);
+      const proposal = (await frames(res)).find(({ kind }) => kind === "identity_proposal");
+      expect(proposal).toMatchObject({ manufacturer: "SIEMENS", model: "6AV2124-0GC01-0AX0" });
+      expect(reviewedManualFor({ manufacturer: String(proposal?.manufacturer), model: String(proposal?.model) })).toMatchObject({
+        title: "SIMATIC HMI Comfort Panels Operating Instructions, 07/2022", page: 3,
+      });
+      expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    "Find the manual for Siemens TP900 Comfort 6AV2124-0GC01-0AX0.",
+    "Find the manual for Siemens TP700 Comfort S/N: 6AV2124-0GC01-0AX0.",
+    "Find the manual for Siemens TP700 Comfort 6AV2124-0GC01-0AX0. 24V?",
+  ])("does not select the reviewed Siemens order from %s", async (message) => {
+    ragMock.corpusManufacturers.mockResolvedValue(["Siemens"]);
+    ragMock.resolveModelFromObservationText.mockImplementationOnce(resolveModelFromObservationText);
+    const res = await POST(req({ message, mode: "general" }), params);
+    expect(await frames(res)).not.toContainEqual(expect.objectContaining({ kind: "identity_proposal", model: "6AV2124-0GC01-0AX0" }));
+    expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+  });
+
+  it("offers the named ABB model for confirmation in a blank notebook with an empty corpus", async () => {
+    const res = await POST(req({ message: "Show me the ABB ACS355 manual.", mode: "general" }), params);
+    expect(await frames(res)).toContainEqual(expect.objectContaining({ kind: "identity_proposal", manufacturer: "ABB", model: "ACS355" }));
+    expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+  });
+
+  it("asks for missing identification without spending a search or generating a guess", async () => {
+    const res = await POST(req({ message: "Find me the manual", mode: "general" }), params);
+    const result = await frames(res);
+    expect(result.find(({ kind }) => kind === "status")).toMatchObject({
+      status: "insufficient_evidence",
+      message: expect.stringContaining("What manufacturer and model or order number"),
+    });
+    expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it.each(["no_manual_found", "candidate_review"])("tries an exact reviewed lookup after an unattached %s", async (state) => {
+    const key = "AUTOMATIONDIRECT|GS11N20P2|";
+    acqMock.readAcquisition
+      .mockResolvedValueOnce({ key, state, linked: false, attached_indexed: false })
+      .mockResolvedValue({ key, state: "running", started_at: "2026-11-21T00:00:00Z" });
+    const res = await POST(req({ message: "Find the official manual for AutomationDirect GS11N-20P2.", mode: "general" }), params);
+    const result = await frames(res);
+    expect(acqMock.startManualAcquisition).toHaveBeenCalledTimes(1);
+    expect(acqMock.startManualAcquisition).toHaveBeenCalledWith(expect.objectContaining({
+      basis: "candidate", identity: expect.objectContaining({ model: "GS11N-20P2" }),
+    }));
+    expect(result).toContainEqual(expect.objectContaining({ kind: "manual_search_status", running: true }));
+  });
+
+  it("reports the winning reviewed search when another request claims the stale record first", async () => {
+    const key = "AUTOMATIONDIRECT|GS11N20P2|";
+    const startedAt = "2026-11-21T00:00:00Z";
+    acqMock.readAcquisition
+      .mockResolvedValueOnce({ key, state: "candidate_review" })
+      .mockResolvedValue({ key, state: "running", started_at: startedAt });
+    acqMock.startManualAcquisition.mockResolvedValue(false);
+    const res = await POST(req({ message: "Find the official manual for AutomationDirect GS11N-20P2.", mode: "general" }), params);
+    expect(await frames(res)).toContainEqual(expect.objectContaining({
+      kind: "manual_search_status", running: true, startedAt,
+    }));
+  });
+
+  it.each([
+    ["AutomationDirect", "GS11N-20P2"],
+    ["Allen-Bradley", "2080-LC20-20QBB"],
+    ["Siemens", "6AV2124-0GC01-0AX0"],
+    ["Schneider Electric", "CA3KN22BD"],
+    ["ABB", "ACS355"],
+  ])("keeps the catalog number typed for %s", async (maker, part) => {
+    ragMock.corpusManufacturers.mockResolvedValue([maker]);
+    ragMock.resolveModelFromObservationText.mockImplementationOnce(resolveModelFromObservationText);
+    const res = await POST(req({ message: `Find the official manual for ${maker} ${part}.`, mode: "general" }), params);
+    const result = await frames(res);
+    expect(result.find((frame) => frame.kind === "identity_proposal")).toMatchObject({ model: part });
+  });
+});
 
 describe("#4160 S6 RC1 — candidate identity proposal when the corpus misses", () => {
   it("proposes {manufacturer, model} from the label text even though corpusManufacturers() is empty", async () => {
@@ -261,25 +352,17 @@ describe("#4160 S6 R2 — candidate-basis background acquisition triggers from t
     expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
   });
 
-  it("relays the running search's honest status through the system prompt directive (unchanged — the model still gets the same instruction)", async () => {
-    await (await POST(req({ message: SMC_MESSAGE, mode: "general" }), params)).text();
-    const call = vi.mocked(global.fetch).mock.calls.at(-1)!;
-    const sentBody = JSON.parse((call[1] as RequestInit).body as string);
-    const systemMsg = (sentBody.messages as { role: string; content: string }[]).find((m) => m.role === "system");
-    expect(systemMsg?.content).toMatch(/UNCONFIRMED MACHINE/);
-    expect(systemMsg?.content).toMatch(/added to this notebook's Sources and turned on/);
-    expect(systemMsg?.content).not.toMatch(/Use its manuals|confirmed as that machine/);
-    expect(systemMsg?.content).toMatch(/looking for the official SMC SS5Y3-DUW01302 manual/);
+  it("relays a typed request's running status without calling the provider or preempting the result", async () => {
+    const f = await frames(await POST(req({ message: SMC_MESSAGE, mode: "general" }), params));
+    const status = f.find((x) => x.kind === "status");
+    expect(status?.message).toBe("I checked the official manual lookup for the SMC SS5Y3-DUW01302.");
+    expect(f.find((x) => x.kind === "manual_search_status")).toMatchObject({
+      manufacturer: "SMC", model: "SS5Y3-DUW01302", running: true,
+    });
+    expect(fetch).not.toHaveBeenCalled();
   });
 
-  // T2 (#4189, mira-84): R16-lite (e41b21a78) deliberately shipped the prose
-  // directive ABOVE with "no new SSE frame, no client change" — there was no
-  // client to render one yet. #4175/#4189 ship that client, so this is the
-  // other half landing, not a reversal: the prompt directive (proven above,
-  // unchanged byte-for-byte) and this frame now coexist on the SAME wire —
-  // one steers the model, the other gives a non-LLM surface a live status
-  // line to render instantly instead of waiting for the model to mention it
-  // in prose. See manualSearchStatusFrame's own header in route.ts.
+  // The status frame lets clients follow acquisition independently of the reply.
   it("ALSO emits a transient manual_search_status frame (running) for the proposed identity — #4189", async () => {
     const f = await frames(await POST(req({ message: SMC_MESSAGE, mode: "general" }), params));
     expect(f.find((x) => x.kind === "manual_search_status")).toMatchObject({
@@ -395,57 +478,48 @@ describe("#4160 gate — no 'fetch it yourself' advice while the search runs", (
   async function answerText(): Promise<string> {
     const f = await frames(await POST(req({ message: SMC_MESSAGE, mode: "general" }), params));
     return f
-      .filter((x) => x.kind === "content" || x.kind === "replace")
-      .map((x) => String(x.content ?? x.text ?? ""))
+      .filter((x) => x.kind === "content" || x.kind === "replace" || x.kind === "status")
+      .map((x) => String(x.content ?? x.text ?? x.message ?? ""))
       .join("");
   }
 
-  it("the candidate search is running → the fallback says MIRA is already searching", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => new Response(providerStream(UNSUPPORTED), { status: 200 })));
+  it("saves a self-contained lookup acknowledgement and reports progress separately", async () => {
     const text = await answerText();
     expect(acqMock.startManualAcquisition).toHaveBeenCalled();
-    expect(text).not.toContain("manufacturer's support");
-    expect(text).toContain("I'm already searching for the official manual");
-    // A manual found from the photo is verified before it lands, so it lands
-    // turned on; the fallback must not tell the technician to switch it on.
-    expect(text).toContain("turned on");
-    expect(text).not.toContain("turned off");
+    const acknowledgement = "I checked the official manual lookup for the SMC SS5Y3-DUW01302.";
+    expect(text).toBe(acknowledgement);
+    expect(nbMock.recordTurn).toHaveBeenCalledWith(TENANT, NB, expect.objectContaining({
+      answerText: acknowledgement,
+      evidence: expect.not.arrayContaining([expect.objectContaining({ kind: "manual_search_status" })]),
+    }));
+    expect(fetch).not.toHaveBeenCalled();
   });
 
-  it("#4718: the search is refused by the cap while the answer is generated → no 'already searching' claim", async () => {
-    // The claim succeeds, then the background search hits the manual-search
-    // cap and records search_limit_reached before the answer is chosen
-    // (staging, 2026-10-24: global monthly cap exhausted).
-    const { acquisitionKey } = await vi.importActual<typeof import("@/capabilities/notebook-manual-acquisition")>(
+  it("reports the limit if the accepted claim has already settled at read-back", async () => {
+    const { acquisitionKey, MANUAL_SEARCH_LIMIT_COPY } = await vi.importActual<typeof import("@/capabilities/notebook-manual-acquisition")>(
       "@/capabilities/notebook-manual-acquisition",
     );
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => {
-        const started = (acqMock.startManualAcquisition.mock.calls[0] as unknown[])[0] as {
-          identity: Parameters<typeof acquisitionKey>[0];
-        };
-        acqMock.readAcquisition.mockResolvedValue({
-          key: acquisitionKey(started.identity),
-          state: "search_limit_reached",
-          started_at: new Date().toISOString(),
-          finished_at: new Date().toISOString(),
-          candidate_host: null,
-          match_state: null,
-          oem_request_url: null,
-        });
-        return new Response(providerStream(UNSUPPORTED), { status: 200 });
-      }),
-    );
+    acqMock.startManualAcquisition.mockImplementationOnce(async ({ identity }: {
+      identity: Parameters<typeof acquisitionKey>[0];
+    }) => {
+      acqMock.readAcquisition.mockResolvedValue({
+        key: acquisitionKey(identity),
+        state: "search_limit_reached",
+        started_at: new Date().toISOString(),
+        finished_at: new Date().toISOString(),
+        candidate_host: null,
+        match_state: null,
+        oem_request_url: null,
+      });
+      return true;
+    });
     const f = await frames(await POST(req({ message: SMC_MESSAGE, mode: "general" }), params));
-    const text = f
-      .filter((x) => x.kind === "content" || x.kind === "replace")
-      .map((x) => String(x.content ?? x.text ?? ""))
-      .join("");
     expect(acqMock.startManualAcquisition).toHaveBeenCalled();
-    expect(text).not.toContain("I'm already searching");
-    expect(text).not.toContain("turned off until you check it");
-    expect(text).toContain("manufacturer's support");
+    expect(f.find((x) => x.kind === "status")?.message).toBe("I checked the official manual lookup for the SMC SS5Y3-DUW01302.");
+    expect(f.find((x) => x.kind === "manual_search_status")).toMatchObject({
+      running: false, message: MANUAL_SEARCH_LIMIT_COPY,
+    });
+    expect(fetch).not.toHaveBeenCalled();
     // Codex #4719 F1: the status frame must never say "not running" while still
     // promising a search is underway (the app does not re-check a settled frame).
     const status = f.filter((x) => x.kind === "manual_search_status");

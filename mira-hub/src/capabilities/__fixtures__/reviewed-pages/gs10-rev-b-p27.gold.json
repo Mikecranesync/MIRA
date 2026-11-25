@@ -1,0 +1,513 @@
+{
+ "source": "gs10usermanual.pdf",
+ "sha256": "090aa1b36250be11e1da33526a4b995492593c6fc35aa82ad18115e411dcc5e4",
+ "page": 27,
+ "printedPage": "1-13",
+ "why": "Gold for GS10 Rev B page 27 (230V 3-phase), copied unchanged from the frozen benchmark .planning/2026-11-16-model-assisted-tables/GOLD.jsonl (fixture gs10-p27). Used for the CT/VT regression only; not a reviewed page.",
+ "gold": [
+  {
+   "model": "GS13N-20P2",
+   "property": "Frame Size",
+   "condition": null,
+   "unit": null,
+   "value": "A1"
+  },
+  {
+   "model": "GS13N-20P5",
+   "property": "Frame Size",
+   "condition": null,
+   "unit": null,
+   "value": "A2"
+  },
+  {
+   "model": "GS13N-21P0",
+   "property": "Frame Size",
+   "condition": null,
+   "unit": null,
+   "value": "A5"
+  },
+  {
+   "model": "GS13N-22P0",
+   "property": "Frame Size",
+   "condition": null,
+   "unit": null,
+   "value": "B1"
+  },
+  {
+   "model": "GS13N-20P2",
+   "property": "Max Motor Output (3-phase [1-phase])",
+   "condition": "Output Rating",
+   "unit": "hp",
+   "value": "1/4 [0.1]"
+  },
+  {
+   "model": "GS13N-20P5",
+   "property": "Max Motor Output (3-phase [1-phase])",
+   "condition": "Output Rating",
+   "unit": "hp",
+   "value": "1/2 [1/4]"
+  },
+  {
+   "model": "GS13N-21P0",
+   "property": "Max Motor Output (3-phase [1-phase])",
+   "condition": "Output Rating",
+   "unit": "hp",
+   "value": "1 [1/2]"
+  },
+  {
+   "model": "GS13N-22P0",
+   "property": "Max Motor Output (3-phase [1-phase])",
+   "condition": "Output Rating",
+   "unit": "hp",
+   "value": "2 [1]"
+  },
+  {
+   "model": "GS13N-20P2",
+   "property": "Max Motor Output (3-phase [1-phase])",
+   "condition": "Output Rating",
+   "unit": "kW",
+   "value": "0.2 [0.1]"
+  },
+  {
+   "model": "GS13N-20P5",
+   "property": "Max Motor Output (3-phase [1-phase])",
+   "condition": "Output Rating",
+   "unit": "kW",
+   "value": "0.4 [0.2]"
+  },
+  {
+   "model": "GS13N-21P0",
+   "property": "Max Motor Output (3-phase [1-phase])",
+   "condition": "Output Rating",
+   "unit": "kW",
+   "value": "0.75 [0.375]"
+  },
+  {
+   "model": "GS13N-22P0",
+   "property": "Max Motor Output (3-phase [1-phase])",
+   "condition": "Output Rating",
+   "unit": "kW",
+   "value": "1.5 [0.75]"
+  },
+  {
+   "model": "GS13N-20P2",
+   "property": "Rated Output Capacity",
+   "condition": "Output Rating / CT",
+   "unit": "kVA",
+   "value": "0.6"
+  },
+  {
+   "model": "GS13N-20P5",
+   "property": "Rated Output Capacity",
+   "condition": "Output Rating / CT",
+   "unit": "kVA",
+   "value": "1.1"
+  },
+  {
+   "model": "GS13N-21P0",
+   "property": "Rated Output Capacity",
+   "condition": "Output Rating / CT",
+   "unit": "kVA",
+   "value": "1.8"
+  },
+  {
+   "model": "GS13N-22P0",
+   "property": "Rated Output Capacity",
+   "condition": "Output Rating / CT",
+   "unit": "kVA",
+   "value": "2.9"
+  },
+  {
+   "model": "GS13N-20P2",
+   "property": "Rated Output Current (3-phase [1-phase])",
+   "condition": "Output Rating / CT",
+   "unit": "A",
+   "value": "1.6 [0.8]"
+  },
+  {
+   "model": "GS13N-20P5",
+   "property": "Rated Output Current (3-phase [1-phase])",
+   "condition": "Output Rating / CT",
+   "unit": "A",
+   "value": "2.8 [1.4]"
+  },
+  {
+   "model": "GS13N-21P0",
+   "property": "Rated Output Current (3-phase [1-phase])",
+   "condition": "Output Rating / CT",
+   "unit": "A",
+   "value": "4.8 [2.4]"
+  },
+  {
+   "model": "GS13N-22P0",
+   "property": "Rated Output Current (3-phase [1-phase])",
+   "condition": "Output Rating / CT",
+   "unit": "A",
+   "value": "7.5 [3.75]"
+  },
+  {
+   "model": "GS13N-20P2",
+   "property": "Carrier Frequency",
+   "condition": "Output Rating / CT",
+   "unit": "kHz",
+   "value": "2–15"
+  },
+  {
+   "model": "GS13N-20P5",
+   "property": "Carrier Frequency",
+   "condition": "Output Rating / CT",
+   "unit": "kHz",
+   "value": "2–15"
+  },
+  {
+   "model": "GS13N-21P0",
+   "property": "Carrier Frequency",
+   "condition": "Output Rating / CT",
+   "unit": "kHz",
+   "value": "2–15"
+  },
+  {
+   "model": "GS13N-22P0",
+   "property": "Carrier Frequency",
+   "condition": "Output Rating / CT",
+   "unit": "kHz",
+   "value": "2–15"
+  },
+  {
+   "model": "GS13N-20P2",
+   "property": "Rated Output Capacity",
+   "condition": "Output Rating / VT",
+   "unit": "kVA",
+   "value": "0.7"
+  },
+  {
+   "model": "GS13N-20P5",
+   "property": "Rated Output Capacity",
+   "condition": "Output Rating / VT",
+   "unit": "kVA",
+   "value": "1.2"
+  },
+  {
+   "model": "GS13N-21P0",
+   "property": "Rated Output Capacity",
+   "condition": "Output Rating / VT",
+   "unit": "kVA",
+   "value": "1.9"
+  },
+  {
+   "model": "GS13N-22P0",
+   "property": "Rated Output Capacity",
+   "condition": "Output Rating / VT",
+   "unit": "kVA",
+   "value": "3.0"
+  },
+  {
+   "model": "GS13N-20P2",
+   "property": "Rated Output Current",
+   "condition": "Output Rating / VT",
+   "unit": "A",
+   "value": "1.8"
+  },
+  {
+   "model": "GS13N-20P5",
+   "property": "Rated Output Current",
+   "condition": "Output Rating / VT",
+   "unit": "A",
+   "value": "3.0"
+  },
+  {
+   "model": "GS13N-21P0",
+   "property": "Rated Output Current",
+   "condition": "Output Rating / VT",
+   "unit": "A",
+   "value": "5.0"
+  },
+  {
+   "model": "GS13N-22P0",
+   "property": "Rated Output Current",
+   "condition": "Output Rating / VT",
+   "unit": "A",
+   "value": "8.0"
+  },
+  {
+   "model": "GS13N-20P2",
+   "property": "Carrier Frequency",
+   "condition": "Output Rating / VT",
+   "unit": "kHz",
+   "value": "2–15"
+  },
+  {
+   "model": "GS13N-20P5",
+   "property": "Carrier Frequency",
+   "condition": "Output Rating / VT",
+   "unit": "kHz",
+   "value": "2–15"
+  },
+  {
+   "model": "GS13N-21P0",
+   "property": "Carrier Frequency",
+   "condition": "Output Rating / VT",
+   "unit": "kHz",
+   "value": "2–15"
+  },
+  {
+   "model": "GS13N-22P0",
+   "property": "Carrier Frequency",
+   "condition": "Output Rating / VT",
+   "unit": "kHz",
+   "value": "2–15"
+  },
+  {
+   "model": "GS13N-20P2",
+   "property": "Rated Input Current (3-phase and 1-phase)",
+   "condition": "Input Rating / CT",
+   "unit": "A",
+   "value": "1.9"
+  },
+  {
+   "model": "GS13N-20P5",
+   "property": "Rated Input Current (3-phase and 1-phase)",
+   "condition": "Input Rating / CT",
+   "unit": "A",
+   "value": "3.4"
+  },
+  {
+   "model": "GS13N-21P0",
+   "property": "Rated Input Current (3-phase and 1-phase)",
+   "condition": "Input Rating / CT",
+   "unit": "A",
+   "value": "5.8"
+  },
+  {
+   "model": "GS13N-22P0",
+   "property": "Rated Input Current (3-phase and 1-phase)",
+   "condition": "Input Rating / CT",
+   "unit": "A",
+   "value": "9.0"
+  },
+  {
+   "model": "GS13N-20P2",
+   "property": "Rated Input Current",
+   "condition": "Input Rating / VT",
+   "unit": "A",
+   "value": "2.2"
+  },
+  {
+   "model": "GS13N-20P5",
+   "property": "Rated Input Current",
+   "condition": "Input Rating / VT",
+   "unit": "A",
+   "value": "3.8"
+  },
+  {
+   "model": "GS13N-21P0",
+   "property": "Rated Input Current",
+   "condition": "Input Rating / VT",
+   "unit": "A",
+   "value": "6.0"
+  },
+  {
+   "model": "GS13N-22P0",
+   "property": "Rated Input Current",
+   "condition": "Input Rating / VT",
+   "unit": "A",
+   "value": "9.6"
+  },
+  {
+   "model": "GS13N-20P2",
+   "property": "Rated Voltage/Frequency",
+   "condition": "Input Rating",
+   "unit": "VAC",
+   "value": "3-phase 200-240 VAC (-15% to +10%), 50/60 Hz"
+  },
+  {
+   "model": "GS13N-20P5",
+   "property": "Rated Voltage/Frequency",
+   "condition": "Input Rating",
+   "unit": "VAC",
+   "value": "3-phase 200-240 VAC (-15% to +10%), 50/60 Hz"
+  },
+  {
+   "model": "GS13N-21P0",
+   "property": "Rated Voltage/Frequency",
+   "condition": "Input Rating",
+   "unit": "VAC",
+   "value": "3-phase 200-240 VAC (-15% to +10%), 50/60 Hz"
+  },
+  {
+   "model": "GS13N-22P0",
+   "property": "Rated Voltage/Frequency",
+   "condition": "Input Rating",
+   "unit": "VAC",
+   "value": "3-phase 200-240 VAC (-15% to +10%), 50/60 Hz"
+  },
+  {
+   "model": "GS13N-20P2",
+   "property": "Operating Voltage Range (VAC)",
+   "condition": "Input Rating",
+   "unit": "VAC",
+   "value": "170–265"
+  },
+  {
+   "model": "GS13N-20P5",
+   "property": "Operating Voltage Range (VAC)",
+   "condition": "Input Rating",
+   "unit": "VAC",
+   "value": "170–265"
+  },
+  {
+   "model": "GS13N-21P0",
+   "property": "Operating Voltage Range (VAC)",
+   "condition": "Input Rating",
+   "unit": "VAC",
+   "value": "170–265"
+  },
+  {
+   "model": "GS13N-22P0",
+   "property": "Operating Voltage Range (VAC)",
+   "condition": "Input Rating",
+   "unit": "VAC",
+   "value": "170–265"
+  },
+  {
+   "model": "GS13N-20P2",
+   "property": "Frequency Tolerance (Hz)",
+   "condition": "Input Rating",
+   "unit": "Hz",
+   "value": "47–63"
+  },
+  {
+   "model": "GS13N-20P5",
+   "property": "Frequency Tolerance (Hz)",
+   "condition": "Input Rating",
+   "unit": "Hz",
+   "value": "47–63"
+  },
+  {
+   "model": "GS13N-21P0",
+   "property": "Frequency Tolerance (Hz)",
+   "condition": "Input Rating",
+   "unit": "Hz",
+   "value": "47–63"
+  },
+  {
+   "model": "GS13N-22P0",
+   "property": "Frequency Tolerance (Hz)",
+   "condition": "Input Rating",
+   "unit": "Hz",
+   "value": "47–63"
+  },
+  {
+   "model": "GS13N-20P2",
+   "property": "IE2 Efficiency - Relative Power Loss",
+   "condition": null,
+   "unit": "%",
+   "value": "4.7%"
+  },
+  {
+   "model": "GS13N-20P5",
+   "property": "IE2 Efficiency - Relative Power Loss",
+   "condition": null,
+   "unit": "%",
+   "value": "3.1%"
+  },
+  {
+   "model": "GS13N-21P0",
+   "property": "IE2 Efficiency - Relative Power Loss",
+   "condition": null,
+   "unit": "%",
+   "value": "2.7%"
+  },
+  {
+   "model": "GS13N-22P0",
+   "property": "IE2 Efficiency - Relative Power Loss",
+   "condition": null,
+   "unit": "%",
+   "value": "2.4%"
+  },
+  {
+   "model": "GS13N-20P2",
+   "property": "Weight (kg)",
+   "condition": null,
+   "unit": "kg",
+   "value": "0.4"
+  },
+  {
+   "model": "GS13N-20P5",
+   "property": "Weight (kg)",
+   "condition": null,
+   "unit": "kg",
+   "value": "0.5"
+  },
+  {
+   "model": "GS13N-21P0",
+   "property": "Weight (kg)",
+   "condition": null,
+   "unit": "kg",
+   "value": "0.6"
+  },
+  {
+   "model": "GS13N-22P0",
+   "property": "Weight (kg)",
+   "condition": null,
+   "unit": "kg",
+   "value": "0.8"
+  },
+  {
+   "model": "GS13N-20P2",
+   "property": "Cooling Method",
+   "condition": null,
+   "unit": null,
+   "value": "Convective"
+  },
+  {
+   "model": "GS13N-20P5",
+   "property": "Cooling Method",
+   "condition": null,
+   "unit": null,
+   "value": "Convective"
+  },
+  {
+   "model": "GS13N-21P0",
+   "property": "Cooling Method",
+   "condition": null,
+   "unit": null,
+   "value": "Convective"
+  },
+  {
+   "model": "GS13N-22P0",
+   "property": "Cooling Method",
+   "condition": null,
+   "unit": null,
+   "value": "Fan"
+  },
+  {
+   "model": "GS13N-20P2",
+   "property": "IP Rating",
+   "condition": null,
+   "unit": null,
+   "value": "IP20"
+  },
+  {
+   "model": "GS13N-20P5",
+   "property": "IP Rating",
+   "condition": null,
+   "unit": null,
+   "value": "IP20"
+  },
+  {
+   "model": "GS13N-21P0",
+   "property": "IP Rating",
+   "condition": null,
+   "unit": null,
+   "value": "IP20"
+  },
+  {
+   "model": "GS13N-22P0",
+   "property": "IP Rating",
+   "condition": null,
+   "unit": null,
+   "value": "IP20"
+  }
+ ]
+}

@@ -106,10 +106,12 @@ try {
   const passwordHash = await bcrypt.hash(password, 12);
 
   const { rows } = await pool.query(
-    `INSERT INTO hub_users (email, password_hash, tenant_id, name, role, status, trial_expires_at)
-     VALUES ($1, $2, $3, $4, $5, 'approved', NOW() + INTERVAL '10 years')
+    `INSERT INTO hub_users (email, password_hash, tenant_id, name, role, status, trial_expires_at, password_provenance)
+     VALUES ($1, $2, $3, $4, $5, 'approved', NOW() + INTERVAL '10 years', 'operator')
      ON CONFLICT (email_lower) DO UPDATE SET
        password_hash = EXCLUDED.password_hash,
+       password_provenance = 'operator',
+       credential_epoch = hub_users.credential_epoch + 1,
        tenant_id     = EXCLUDED.tenant_id,
        name          = EXCLUDED.name,
        role          = EXCLUDED.role,
