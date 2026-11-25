@@ -29,7 +29,9 @@
  *
  * Mobile harness (#5942): set BETA_GATE_MOBILE_LINK_FILE=<new file> and the run also
  * writes a single-use sign-in link there (0600, never printed) and emits FLM_EMAIL
- * plus FLM_LOGIN_LINK_FILE. Then, within 15 minutes:
+ * plus FLM_LOGIN_LINK_FILE. It needs an https HUB_BASE (the app's own backend origin,
+ * so the staging flavour for staging) and verified onboarding; otherwise it refuses.
+ * The consumer is the mobile-e2e login-link sign-in (PR 4462). Then, within 15 minutes:
  *   FLM_LOGIN_LINK="$(cat <file>)" bash tools/mobile-e2e/run.sh <pdf> "<question>" <page>
  */
 import { randomBytes, randomUUID } from "node:crypto";
@@ -295,6 +297,16 @@ async function verifiedOnboarding(): Promise<string> {
 }
 
 export async function main() {
+  // #5942: the app accepts only an https sign-in link on its own backend origin
+  // (mira-mobile invite-link.ts), so a mobile link from an http Hub is refused
+  // before anything is registered or minted.
+  const mobileLinkFile = process.env.BETA_GATE_MOBILE_LINK_FILE;
+  if (mobileLinkFile && new URL(HUB).protocol !== "https:") {
+    throw new Error(
+      `BETA_GATE_MOBILE_LINK_FILE needs an https HUB_BASE (the app's backend origin, e.g. staging); got ${HUB}`,
+    );
+  }
+
   // 1. Register a fresh stranger tenant (auth side: hub_tenants).
   const reg = await fetch(`${HUB}/api/auth/register/`, {
     method: "POST",
@@ -319,6 +331,14 @@ export async function main() {
   // sweeps its own registration before re-throwing (ENV lines are emitted only
   // on full success, at the very end).
   try {
+    // Redeeming a login link claims the email and revokes a password account's
+    // credentials cookie, which this run also emits. Only a verified-onboarding
+    // (passwordless) stranger can carry both. Refused here, so the tenant is swept.
+    if (mobileLinkFile && !passwordless) {
+      throw new Error(
+        "BETA_GATE_MOBILE_LINK_FILE needs verified onboarding: in password-register mode the phone's sign-in would revoke this run's web cookie",
+      );
+    }
     await provisionAfterRegister(tenantId, passwordless);
   } catch (e) {
     console.error(`provisioning failed after registration — sweeping tenant ${tenantId}`);

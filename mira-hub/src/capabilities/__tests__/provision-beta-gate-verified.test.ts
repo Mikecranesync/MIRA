@@ -220,6 +220,13 @@ describe("provision-beta-gate when register requires verified setup", () => {
   describe("mobile sign-in link (#5942)", () => {
     const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
     const linkFile = () => join(mkdtempSync(join(tmpdir(), "betagate-link-")), "login-link");
+    // The app accepts only an https link on its own backend origin (invite-link.ts),
+    // so these runs use the staging Hub. HUB is read at import: re-import per test.
+    const STAGING_HUB = "https://app-staging.factorylm.com/hub";
+    beforeEach(() => {
+      vi.resetModules();
+      process.env.HUB_BASE = STAGING_HUB;
+    });
 
     it("writes a UUID login link to a private file and prints only where it is", async () => {
       const file = linkFile();
@@ -232,7 +239,7 @@ describe("provision-beta-gate when register requires verified setup", () => {
       expect(String(phone.values[0])).toMatch(UUID);
       expect(phone.values[3]).toBeNull();
       expect(phone.text).toMatch(/INTERVAL '15 minutes'/);
-      expect(readFileSync(file, "utf8")).toBe(`http://localhost:3100/magic/?token=${phone.values[0]}`);
+      expect(readFileSync(file, "utf8")).toBe(`${STAGING_HUB}/magic/?token=${phone.values[0]}`);
       expect(statSync(file).mode & 0o777).toBe(0o600);
       const out = log.mock.calls.map((c) => c.join(" ")).join("\n");
       expect(out).toMatch(/^ENV:FLM_EMAIL=betagate-\d{13}[0-9a-f]{12}@factorylm\.com$/m);
@@ -251,6 +258,38 @@ describe("provision-beta-gate when register requires verified setup", () => {
       expect(readFileSync(file, "utf8")).toBe("someone else's");
       expect(queries.some((q) => /^DELETE FROM hub_tenants/.test(q.text))).toBe(true);
       expect(log.mock.calls.map((c) => c.join(" ")).join("\n")).not.toMatch(/^ENV:/m);
+    });
+
+    it("refuses an http Hub before registering anything (Codex r1 F2)", async () => {
+      delete process.env.HUB_BASE; // the http://localhost:3100 default
+      const file = linkFile();
+      process.env.BETA_GATE_MOBILE_LINK_FILE = file;
+      const mod = await import("../../../scripts/provision-beta-gate");
+      await expect(mod.main()).rejects.toThrow(/needs an https HUB_BASE/);
+      expect(calls).toHaveLength(0);
+      expect(tokenInserts()).toHaveLength(0);
+      expect(existsSync(file)).toBe(false);
+    });
+
+    it("refuses in password-register mode, before minting, and sweeps (Codex r1 F3)", async () => {
+      // Redeeming a login link claims the email and revokes the credentials cookie
+      // this run emits, so the two outputs cannot both be valid.
+      state.verified = false;
+      const file = linkFile();
+      process.env.BETA_GATE_MOBILE_LINK_FILE = file;
+      const mod = await import("../../../scripts/provision-beta-gate");
+      await expect(mod.main()).rejects.toThrow(/needs verified onboarding/);
+      expect(tokenInserts().filter((q) => q.values[2] === "login")).toHaveLength(0);
+      expect(queries.some((q) => /^DELETE FROM hub_tenants/.test(q.text))).toBe(true);
+      expect(existsSync(file)).toBe(false);
+      expect(log.mock.calls.map((c) => c.join(" ")).join("\n")).not.toMatch(/^ENV:/m);
+    });
+
+    it("password-register mode without the option is unchanged (control)", async () => {
+      state.verified = false;
+      const mod = await import("../../../scripts/provision-beta-gate");
+      await mod.main();
+      expect(log.mock.calls.map((c) => c.join(" ")).join("\n")).toMatch(/^ENV:BETA_GATE_TENANT=/m);
     });
 
     it("without the option, seeds no phone token and emits no FLM lines (control)", async () => {
