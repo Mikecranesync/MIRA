@@ -84,9 +84,11 @@ FAQ = [
     ),
     (
         "What is the difference between Type 1 and Type 2 faults?",
-        "Fault types are listed in the manual's Fault Types table (page 159). Only certain faults"
-        " can be reset: Type 2 faults indicate a possible drive component malfunction and are not"
-        " resettable (manual page 160).",
+        "The manual's Fault Types table (page 159): Type 1 is Auto-Reset/Run. With A541 [Auto"
+        " Rstrt Tries] above 0, the drive attempts to reset the fault itself after A542 [Auto"
+        " Rstrt Delay]. Type 2 is Non-Resettable: it may require drive or motor repair, or is"
+        " caused by wiring or programming errors, and the cause must be corrected before the"
+        " fault can be cleared. Auto Restart never resets a Type 2 fault.",
     ),
     (
         "Where is the full PowerFlex 525 fault table?",
@@ -122,7 +124,7 @@ def body(rs: list[dict]) -> str:
 {trs}
 </tbody></table></div>
 <h2 id="types">Fault types</h2>
-<p>Fault types are listed in the manual's Fault Types table (page 159). Page 160 says only certain faults can be reset: Type 2 faults indicate a possible drive component malfunction and are not resettable.</p>
+<p>From the manual's Fault Types table (page 159): <strong>Type 1, Auto-Reset/Run.</strong> When A541 [Auto Rstrt Tries] is set above 0, a timer (A542 [Auto Rstrt Delay]) starts, then the drive attempts to reset the fault itself; if the condition is gone, the fault resets and the drive restarts. <strong>Type 2, Non-Resettable.</strong> "This type of fault may require drive or motor repair, or is caused by wiring or programming errors. The cause of the fault must be corrected before the fault can be cleared." Auto Restart never resets a Type 2 fault.</p>
 <p>Type 2 in this list: {type2}.</p>
 <div class="safety-card"><p>Auto Restart (A541 [Auto Rstrt Tries], A542 [Auto Rstrt Delay]) makes the drive restart itself. Rockwell: "Use caution when enabling this feature, since the drive attempts to issue its own start command based on user selected programming." Equipment damage and/or personal injury may result if these parameters are used in an inappropriate application. "Do not use this function without considering applicable local, national, and international codes, standards, regulations or industry guidelines."</p></div>
 <h2 id="clear">Clearing a fault (steps from manual page 160)</h2>

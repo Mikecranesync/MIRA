@@ -309,3 +309,29 @@ def test_the_cap_holds_across_a_restart(tmp_path, monkeypatch):
     again = ai_panel.Budget(cap, spent_usd=ai_panel.spent_so_far(tmp_path))
     log = ai_panel.run(tmp_path, ["anthropic"], again, ai_panel.load_questions()[1:2])
     assert log[0].startswith("STOP")
+
+
+def test_provision_records_tenant_before_a_later_failure(monkeypatch):
+    """Review of #5949: a tenant created but missing its cookie must still be cleaned up."""
+    calls: list[tuple[str, ...]] = []
+
+    def fake_provision(*extra: str) -> str:
+        calls.append(extra)
+        return "noise without equals\nENV:BETA_GATE_TENANT=t-123\n"
+
+    monkeypatch.setattr(ai_panel, "_provision", fake_provision)
+    ai_panel._HUB.clear()
+    with pytest.raises(RuntimeError, match="BETA_GATE_COOKIE"):
+        ai_panel.ask_mira(None, "q")  # type: ignore[arg-type]
+    assert ai_panel._HUB["tenant"] == "t-123"
+    ai_panel.cleanup_mira()
+    assert calls[-1] == ("--cleanup", "t-123")
+    assert ai_panel._HUB == {}
+
+
+def test_provision_without_tenant_says_so(monkeypatch):
+    monkeypatch.setattr(ai_panel, "_provision", lambda *e: "ENV:BETA_GATE_COOKIE=c\n")
+    ai_panel._HUB.clear()
+    with pytest.raises(RuntimeError, match="no BETA_GATE_TENANT"):
+        ai_panel.ask_mira(None, "q")  # type: ignore[arg-type]
+    assert "tenant" not in ai_panel._HUB

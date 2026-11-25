@@ -257,8 +257,21 @@ def ask_mira(_client: httpx.Client, q: str) -> dict[str, Any]:
     if "hub" not in _HUB:
         assert_staging(STAGING)
         out = _provision()
-        env = dict(line[4:].split("=", 1) for line in out.splitlines() if line.startswith("ENV:"))
-        _HUB["tenant"] = env["BETA_GATE_TENANT"]
+        env = dict(
+            line[4:].split("=", 1)
+            for line in out.splitlines()
+            if line.startswith("ENV:") and "=" in line
+        )
+        # Record the tenant BEFORE anything else can fail, so cleanup_mira() always finds it.
+        tenant = env.get("BETA_GATE_TENANT")
+        if not tenant:
+            raise RuntimeError(
+                "provision output had no BETA_GATE_TENANT; a staging account may exist with no"
+                " recorded id. Check staging for a beta-gate tenant created by this run."
+            )
+        _HUB["tenant"] = tenant
+        if not env.get("BETA_GATE_COOKIE"):
+            raise RuntimeError("provision output had no BETA_GATE_COOKIE")
         _HUB["hub"] = load_hub_client()(STAGING, env["BETA_GATE_COOKIE"])
         _HUB["sha"] = deployed_sha(_HUB["hub"])
     rec, summary = run_question_hub(
