@@ -171,11 +171,12 @@ async def test_a_successful_fetch_records_no_reason(monkeypatch):
 
 # ── PowerFlex 525 replay (real pool + real verdicts, 2026-10-05) ────────────
 #
-# The judge says the EtherNet/IP adapter manual (520com-um001, no F005) lists the
-# drive's fault codes, so it ties the On Drive Guide (520-du001, F005 on p4) on
-# every rank key and the SEARCH ENGINE's result order picks the winner — the
-# Golden Walk flip between after-4236 (du001, PASS) and after-4239 (520com, FAIL).
-# Strict xfails: they turn green with the deterministic-ranking fix, not before.
+# The stored verdicts predate the deterministic filename rules: the judge said the
+# EtherNet/IP adapter manual (520com-um001, no F005) lists the drive's fault codes, so it
+# tied the On Drive Guide (520-du001, F005 on p4) and the SEARCH ENGINE's result order
+# picked the winner. is_match() now applies the OEM filename facts to stored verdicts too,
+# so the winner is the drive's own fault volume in every order. 520-um001 (the real user
+# manual) stays over the judge's 25 MB MAX_BYTES and is never read.
 
 
 def _replay():
@@ -183,23 +184,21 @@ def _replay():
     return data["candidates"]
 
 
-def test_replay_fixture_reproduces_the_tie():
-    """Green today: the defect the xfails below pin is real, not a fixture artefact."""
+def test_replay_fixture_tie_is_broken_by_the_oem_filename_rules():
     by_name = {c["url"].rsplit("/", 1)[-1]: c for c in _replay()}
     du, com = by_name["520-du001_-en-e.pdf"], by_name["520com-um001_-en-e.pdf"]
     assert du["has_F005"] is True and com["has_F005"] is False
-    assert judge.is_ideal(du) and judge.is_ideal(com)
+    # The stored verdict still says "manual"; the deterministic rule overrides it.
+    assert com["judge"]["is_manual"] is True
+    assert judge.is_ideal(du) and not judge.is_ideal(com)
+    assert judge.is_rejected(com) and not judge.is_match(com)
     winners = {
         judge.rank([dict(c) for c in order])[0]["url"].rsplit("/", 1)[-1]
         for order in itertools.permutations([du, com])
     }
-    assert winners == {"520-du001_-en-e.pdf", "520com-um001_-en-e.pdf"}
+    assert winners == {"520-du001_-en-e.pdf"}
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="deterministic ranking (Golden Walk PR 2): adapter manual outranks the drive's fault volume",
-)
 def test_replay_winner_always_holds_the_fault_code():
     pool = _replay()
     judged = [c for c in pool if c.get("judge")]
@@ -210,17 +209,13 @@ def test_replay_winner_always_holds_the_fault_code():
         assert top.get("has_F005") is True, top["url"]
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="deterministic ranking (Golden Walk PR 2): the winner depends on search-engine order",
-)
 def test_replay_winner_is_the_same_in_any_input_order():
     pool = _replay()
     judged = [c for c in pool if c.get("judge")]
     winners = {
         judge.rank([dict(c) for c in order])[0]["url"] for order in itertools.permutations(judged)
     }
-    assert len(winners) == 1, winners
+    assert winners == {next(c["url"] for c in pool if c["url"].endswith("520-du001_-en-e.pdf"))}
 
 
 # ── the endpoint returns the trail with every result ─────────────────────────
@@ -497,7 +492,13 @@ def test_a_slow_read_stops_at_the_search_deadline_instead_of_an_outage(monkeypat
 @pytest.mark.asyncio
 async def test_unknown_manufacturer_website_survives_a_manual_miss(monkeypatch):
     async def hits(query):
-        return [{"link": "https://novel-controls.example/support/?language=en", "title": "Novel Controls support"}]
+        return [
+            {
+                "link": "https://novel-controls.example/support/?language=en",
+                "title": "Novel Controls support",
+            }
+        ]
+
     monkeypatch.setattr(search_mod, "_serper_search", hits)
     monkeypatch.setattr(judge, "judge_enabled", lambda: False)
     with search_mod.acquisition_trail() as trail:
@@ -510,6 +511,7 @@ async def test_unknown_manufacturer_website_survives_a_manual_miss(monkeypatch):
 async def test_no_website_is_invented_from_an_unknown_manufacturer(monkeypatch):
     async def hits(query):
         return []
+
     monkeypatch.setattr(search_mod, "_serper_search", hits)
     with search_mod.acquisition_trail() as trail:
         assert await search_mod.search_manual("Unlisted Maker", "Z7") is None
@@ -517,17 +519,22 @@ async def test_no_website_is_invented_from_an_unknown_manufacturer(monkeypatch):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("url,title", [
-    ("https://unrelated.example/support", "Different Manufacturer support"),
-    ("https://novel-controls.example/manual.pdf", "Novel Controls manual"),
-    ("https://novel-controls.example/support?token=secret", "Novel Controls support"),
-    ("javascript:alert(1)", "Novel Controls support"),
-])
+@pytest.mark.parametrize(
+    "url,title",
+    [
+        ("https://unrelated.example/support", "Different Manufacturer support"),
+        ("https://novel-controls.example/manual.pdf", "Novel Controls manual"),
+        ("https://novel-controls.example/support?token=secret", "Novel Controls support"),
+        ("javascript:alert(1)", "Novel Controls support"),
+    ],
+)
 async def test_handoff_does_not_promote_unrelated_documents_or_credentials(monkeypatch, url, title):
     async def hits(query):
         return [{"link": url, "title": title}]
+
     async def no_pdf(url):
         return False
+
     monkeypatch.setattr(search_mod, "_serper_search", hits)
     monkeypatch.setattr(search_mod, "validate_pdf", no_pdf)
     monkeypatch.setattr(judge, "judge_enabled", lambda: False)
@@ -539,19 +546,31 @@ async def test_handoff_does_not_promote_unrelated_documents_or_credentials(monke
 @pytest.mark.asyncio
 async def test_rejected_document_still_searches_for_a_website(monkeypatch):
     calls = []
+
     async def hits(query):
         calls.append(query)
         if "filetype:pdf" in query:
-            return [{"link": "https://novel-controls.example/Z7.pdf", "title": "Novel Controls Z7 brochure"}]
-        return [{"link": "https://novel-controls.example/support/", "title": "Novel Controls support"}]
+            return [
+                {
+                    "link": "https://novel-controls.example/Z7.pdf",
+                    "title": "Novel Controls Z7 brochure",
+                }
+            ]
+        return [
+            {"link": "https://novel-controls.example/support/", "title": "Novel Controls support"}
+        ]
+
     async def reject(make, model, candidates, **kwargs):
         return candidates
+
     monkeypatch.setattr(search_mod, "_serper_search", hits)
     monkeypatch.setattr(judge, "judge_enabled", lambda: True)
     monkeypatch.setattr(judge, "judge_candidates", reject)
     monkeypatch.setattr(judge, "is_match", lambda c: False)
     monkeypatch.setattr(judge, "is_rejected", lambda c: True)
-    monkeypatch.setattr(judge, "judge_summary", lambda c: ("judged_not_applicable", "Not the manual"))
+    monkeypatch.setattr(
+        judge, "judge_summary", lambda c: ("judged_not_applicable", "Not the manual")
+    )
     with search_mod.acquisition_trail() as trail:
         candidate = await search_mod.search_manual("Novel Controls", "Z7")
     assert candidate["reason"] == "judged_not_applicable"
