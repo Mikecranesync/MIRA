@@ -425,7 +425,10 @@ const SAFETY_CONTROL_ITEM =
   "|energi[sz]ed[-\\s]work\\s+permits?";
 const SAFETY_CONTROL_DEFERRAL = new RegExp(
   "^(?:[-*•]\\s+|\\d+[.)]\\s+)?" +
-    "(?:for\\s+[^,.;:]{1,40},\\s+)?" +
+    // Closed lead-in only: a free-text window here let a live-work phrase
+    // ride in front of the deferral ("For resetting the fault while energized,
+    // none of these should replace lockout/tagout.") and escape the floor.
+    "(?:for\\s+(?:plant|shop|production|field|industrial|maintenance|day[-\\s]to[-\\s]day|real[-\\s]world|everyday)\\s+(?:use|work),\\s+)?" +
     "(?:none\\s+of\\s+(?:these|them|those)(?:\\s+tools)?\\s+(?:(?:should|can|could|will)\\s+(?:replace|substitute\\s+for)|(?:is|are)\\s+(?:a\\s+)?substitutes?\\s+for)" +
     "|(?:these|this|it|they|ai\\s+tools?|the\\s+tool|the\\s+app)\\s+(?:(?:should|must|can|will|do|does)(?:n't|\\s+not)\\s+(?:ever\\s+)?replace|(?:is|are)(?:n't|\\s+not)\\s+(?:a\\s+)?substitutes?\\s+for)" +
     "|no\\s+(?:ai\\s+)?(?:tool|app|assistant)\\s+(?:can\\s+)?replaces?)" +

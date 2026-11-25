@@ -178,6 +178,11 @@ describe("Q17 — deferring to safety controls is not a live-work direction", ()
     "None of these should replace OEM manuals. Measure the DC bus with the drive powered.",
     "For plant use, none of these should replace OEM manuals when energized work is involved; probe the terminals while the cabinet is live.",
     "These tools should replace lockout/tagout when energized work is involved.",
+    // Review blocker on 32f353a9: a free-text lead-in let a live-work phrase ride in front.
+    "For working on the live terminals energized, none of these should replace PPE.",
+    "For resetting the fault while energized, none of these should replace lockout/tagout.",
+    "For defeating the E-stop, none of these should replace PPE when live work is involved.",
+    "For bypassing the interlock while energized, none of these should replace PPE.",
   ])("still flags: %s", (s) => {
     const r = check(s, Q);
     expect(r.ok, s).toBe(false);
