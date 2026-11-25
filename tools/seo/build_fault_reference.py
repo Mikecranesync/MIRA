@@ -56,10 +56,19 @@ def rows() -> list[dict]:
         if rest.startswith(name):
             m = re.match(r"\s*([12])\b", rest[len(name) :])
             ftype = m.group(1) if m else None
+        ftype = TYPE_OVERRIDES.get(n, ftype)
         out.append({"n": n, "code": f"F{n:03d}", "name": name, "type": ftype, "page": page})
     if len(out) != 48 or any(r["page"] is None for r in out):
         raise SystemExit("pack changed: expected 48 codes, each with a manual page")
     return out
+
+
+# The flattened manual text shows ONE Type cell shared by each grouped row, which the
+# per-code pack excerpts miss: "F038/F039/F040 ... 2 detected between the drive and
+# motor" and "F041/F042/F043 ... 2 detected between these two output terminals"
+# (520-UM001O-EN-E pp.161-162). F013 is "1(2)": footnote (2), it may be auto-cleared once.
+TYPE_OVERRIDES = {38: "2", 39: "2", 40: "2", 41: "2", 42: "2", 43: "2"}
+TYPE_NOTES = {13: "Type 1 (auto-restart attempts it once)"}
 
 
 FAQ = [
@@ -75,13 +84,14 @@ FAQ = [
     ),
     (
         "What is the difference between Type 1 and Type 2 faults?",
-        "Auto Restart (A541, A542) can reset only certain faults. Type 2 faults indicate a possible"
-        " drive component malfunction and are not resettable by Auto Restart (manual page 160).",
+        "Auto Restart (A541, A542) can reset only certain faults. Type 1 faults can be reset by"
+        " Auto Restart. Type 2 faults indicate a possible drive component malfunction and are not"
+        " resettable by Auto Restart (manual page 160).",
     ),
     (
         "Where is the full PowerFlex 525 fault table?",
-        "In Fault Descriptions, pages 161 to 163 of " + MANUAL + ". It includes the causes and"
-        " corrective actions for every code.",
+        "In Fault Descriptions, pages 161 to 163 of " + MANUAL + ". It lists the causes and"
+        " corrective actions for each fault.",
     ),
     (
         "Can an AI answer PowerFlex 525 fault questions from the manual?",
@@ -95,7 +105,7 @@ def body(rs: list[dict]) -> str:
     e = html.escape
     trs = "\n".join(
         f'<tr><td><a href="/drive-commander/powerflex-525/faults/{r["code"]}">{r["code"]}</a></td>'
-        f"<td>{e(r['name'])}</td><td>{('Type ' + r['type']) if r['type'] else 'see manual'}</td>"
+        f"<td>{e(r['name'])}</td><td>{TYPE_NOTES.get(r['n']) or (('Type ' + r['type']) if r['type'] else 'see manual')}</td>"
         f"<td>p.{r['page']}</td></tr>"
         for r in rs
     )
@@ -104,7 +114,7 @@ def body(rs: list[dict]) -> str:
     return f"""<main id="main">
 <section class="page-hero"><div class="wrap"><p class="eyebrow">Drive fault codes · Rockwell PowerFlex 525</p><h1>PowerFlex 525 fault codes</h1><p class="lede">All 48 fault codes with name, fault type and the page in Rockwell's manual. Updated {UPDATED}.</p></div></section>
 <section class="doc"><div class="wrap doc-grid"><nav class="toc" aria-label="On this page"><a href="#list">Fault code list</a><a href="#types">Fault types</a><a href="#clear">Clearing a fault</a><a href="#faq">Questions</a><a href="#safety">Safety</a></nav><div>
-<p>Source: {e(MANUAL)}, Fault Descriptions, pages 161 to 163. Every name and page below was checked against the printed manual. Causes and corrective actions are on those pages; open a code for its page, or attach the manual to MIRA and ask.</p>
+<p>Source: {e(MANUAL)}, Fault Descriptions, pages 161 to 163. Every name and page below was located in the manual's fault table. Causes and corrective actions are on those pages; open a code for its page, or attach the manual to MIRA and ask.</p>
 <h2 id="list">Fault code list</h2>
 <div class="table-wrap"><table>
 <thead><tr><th>Code</th><th>Fault</th><th>Type</th><th>Manual page</th></tr></thead>
@@ -112,15 +122,16 @@ def body(rs: list[dict]) -> str:
 {trs}
 </tbody></table></div>
 <h2 id="types">Fault types</h2>
-<p>The manual (page 160) says Auto Restart (A541 [Auto Rstrt Tries], A542 [Auto Rstrt Delay]) can reset only certain faults. Type 2 faults indicate a possible drive component malfunction and are not resettable.</p>
+<p>The manual (page 160) says Auto Restart (A541 [Auto Rstrt Tries], A542 [Auto Rstrt Delay]) can reset only certain faults. Type 1 faults can be reset by Auto Restart. Type 2 faults indicate a possible drive component malfunction and are not resettable by Auto Restart.</p>
 <p>Type 2 in this list: {type2}.</p>
 <h2 id="clear">Clearing a fault (manual page 160)</h2>
+<div class="safety-card"><p>Lock out per site procedure before working on a faulted drive. Confirm it is safe for the drive and the machine to run before clearing a fault.</p></div>
 <ol>
 <li>Press Esc to acknowledge the fault. Check b007 [Fault 1 Code] for the most recent fault.</li>
 <li>Address the condition that caused the fault. The cause must be corrected before the fault can be cleared.</li>
 <li>Clear the fault: press Stop if P045 [Stop Mode] is set between 0 and 3, cycle drive power, set A551 [Fault Clear] to 1 "Reset Fault" or 2 "Clear Buffer", or cycle a digital input set to 13 "Clear Fault".</li>
 </ol>
-<p>Rockwell warns that Auto Restart makes the drive issue its own start command: "Use caution when enabling this feature."</p>
+<p>Rockwell cautions that with Auto Restart the drive attempts to issue its own start command, without user or application intervention: "Use caution when enabling this feature." Rockwell also warns that equipment damage and/or personal injury may result if these parameters are used in an inappropriate application.</p>
 <h2 id="faq">Questions</h2>
 {faq}
 <h2 id="safety">Safety</h2>

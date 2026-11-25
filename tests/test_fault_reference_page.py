@@ -26,5 +26,6 @@ def test_rows_come_from_the_pack_and_never_guess_a_type():
     assert len(rows) == 48
     f004 = next(r for r in rows if r["code"] == "F004")
     assert (f004["name"], f004["type"], f004["page"]) == ("UnderVoltage", "1", "161")
-    # Phase-to-ground codes show no type in the pack excerpt: the page must not invent one.
-    assert next(r for r in rows if r["code"] == "F038")["type"] is None
+    # F038 comes from the grouped-row override; F000 has no type and must not get one.
+    assert next(r for r in rows if r["code"] == "F038")["type"] == "2"
+    assert next(r for r in rows if r["code"] == "F000")["type"] is None
