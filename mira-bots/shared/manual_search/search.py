@@ -1269,16 +1269,40 @@ async def search_manual(
     retry_extras: list[dict] = []  # extra PDFs the typed-pass retry did not read
     retry_read: list[dict] = []  # PDFs the typed-pass retry sent to the judge
 
+    def _read_so_far() -> list[dict]:
+        """Every candidate this search has sent to the judge, in any round. Round one's
+        reads and the extra reads are in ``candidates``; the retry's are kept in
+        ``retry_read``, since its result is discarded on a miss."""
+        return [*candidates, *retry_read]
+
     def _rejected_documents() -> set[tuple[str, str]]:
         """Every PDF this search has read and the judge rejected, in any round, as
-        :func:`_judge.same_document_key`. A form of one of these is never read again or
-        offered unread: the server never sees a fragment, so the judge would get the
-        text it already rejected, under the same title (#5850, #5900, #5897). Round
-        one's reads and the extra reads are in ``candidates``; the retry's are kept in
-        ``retry_read``, since its result is discarded on a miss."""
-        return {
-            _judge.same_document_key(c) for c in (*candidates, *retry_read) if _judge.is_rejected(c)
-        }
+        :func:`_judge.same_document_key`. A form of one of these is not read again: the
+        server never sees a fragment, so the judge would get the text it already
+        rejected, under the same title (#5850, #5900)."""
+        return {_judge.same_document_key(c) for c in _read_so_far() if _judge.is_rejected(c)}
+
+    def _judged_rejection_of(offer: dict, listed: list[dict]) -> dict | None:
+        """The judge's rejection to return in place of ``offer``, an unread candidate
+        the search is about to offer, when the judge read and rejected another form of
+        its document in any round so far; otherwise None (#5897).
+
+        Only the answer changes: the offer is made where main makes it, after main's
+        probes, reads and queries. ``listed`` is the caller's list of rejections, and
+        a rejection from a later round is added to it, so the answer carries the
+        rejection it is."""
+        key = _judge.same_document_key(offer)
+        read = _read_so_far()
+        form = next(
+            (c for c in read if _judge.is_rejected(c) and _judge.same_document_key(c) == key),
+            None,
+        )
+        if form is None:
+            return None
+        known = {r["url"] for r in listed}
+        return _as_judged_rejection(
+            form, listed + [r for r in _rejections(read) if r["url"] not in known]
+        )
 
     def _extra(c: dict) -> bool:
         """The judge's relevance check misses it, but it names the make as a whole
@@ -1363,8 +1387,8 @@ async def search_manual(
         screen accepts is offered unread, as the search offers an unread page. The
         retry's extras are read but never offered (#5844 Codex F5, F6).
 
-        A form of a document the judge rejected, in any round, is neither read nor
-        offered (#5900, #5897)."""
+        A form of a document the judge rejected, in any round, is not read (#5900).
+        Where the offer below is one, the search returns that rejection (#5897)."""
         extras = [c for c in pool if _extra(c)]
         if judged:
             rejected_documents = _rejected_documents()
@@ -1381,17 +1405,10 @@ async def search_manual(
         result = answer()
         if result is not None:
             return result
-        # After the reads above, whose rejections count too: a form of a rejected
-        # document that went unread (its read failed) is that rejection (#5897).
-        rejected_documents = _rejected_documents()
         # A set-aside hit whose URL is also a candidate is that candidate's business.
         offered = {c["url"] for c in candidates} - {c["url"] for c in extras}
         for c in (*extras, *set_aside):
-            if (
-                c["url"] in offered
-                or _judge.is_rejected(c)
-                or _judge.same_document_key(c) in rejected_documents
-            ):
+            if c["url"] in offered or _judge.is_rejected(c):
                 continue
             offered.add(c["url"])
             # Every unread offer goes through the one make screen. It cannot refuse
@@ -1399,6 +1416,10 @@ async def search_manual(
             # but a stricter screen must apply to them too.
             if screen_unread and not _may_offer_unread(c, make, part_number):
                 continue
+            # After the reads above, whose rejections count too (#5897).
+            rejection = _judged_rejection_of(c, rejected)
+            if rejection is not None:
+                return rejection
             c["validated"] = False
             if judged:
                 c.setdefault("reason", _judge.REASON_JUDGE_UNAVAILABLE)
@@ -1872,15 +1893,8 @@ async def search_manual(
         # legacy HEAD path below may still pick an UNJUDGED candidate — but
         # only one that at least names the make/model. If every relevant
         # candidate was read and rejected, say so (top rejection + reasons)
-        # rather than surfacing an unread stranger. A form that went unread (its read
-        # failed, or it was past the cap) of a document another form of which was
-        # read and rejected is that rejection, not an unread candidate (#5897).
-        rejected_documents = _rejected_documents()
-        unread = [
-            c
-            for c in ranked
-            if not _judge.is_rejected(c) and _judge.same_document_key(c) not in rejected_documents
-        ]
+        # rather than surfacing an unread stranger.
+        unread = [c for c in ranked if not _judge.is_rejected(c)]
         deduped = [c for c in unread if _judge.relevant(c, make, model)]
         worst_rejected = next((c for c in ranked if _judge.is_rejected(c)), None)
         if not deduped and not rejected:
@@ -1926,6 +1940,10 @@ async def search_manual(
                     match = await _retry_before_offer(ranked, judge_trace)
                 if match is not None:
                     return match
+                # Those reads' rejections count too (#5897, #5913 Codex F1).
+                rejection = _judged_rejection_of(c, rejected_out)
+                if rejection is not None:
+                    return rejection
             c["validated"] = True
             if use_judge:
                 # The judge is on but this candidate was never READ (fetch
@@ -1973,6 +1991,9 @@ async def search_manual(
             match = await _retry_before_offer(ranked, judge_trace)
         if match is not None:
             return match
+        rejection = _judged_rejection_of(deduped[0], rejected_out)
+        if rejection is not None:
+            return rejection
     deduped[0]["validated"] = False
     if use_judge:
         deduped[0].setdefault("reason", _judge.REASON_JUDGE_UNAVAILABLE)

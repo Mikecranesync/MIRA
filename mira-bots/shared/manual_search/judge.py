@@ -632,12 +632,7 @@ def rank(candidates: list[dict]) -> list[dict]:
     """matched > unjudged (score) > rejected (score). Among matches: lists the fault
     codes > technician's language > whole manual over a chapter > confidence > score.
     Coverage outranks scope: a fault-code chapter answers a fault question, a whole
-    communications manual does not.
-
-    A form left unread (its read failed, or it was past the cap) of a document the
-    judge read and rejected ranks after every rejection: it is that rejection, not an
-    unread candidate (#5897), so the top of the list is a PDF that was read."""
-    rejected = {same_document_key(c) for c in candidates if is_rejected(c) and c.get("url")}
+    communications manual does not."""
 
     def key(c: dict) -> tuple:
         j = c.get("judge") or {}
@@ -652,8 +647,6 @@ def rank(candidates: list[dict]) -> list[dict]:
             )
         if is_rejected(c):
             return (0, 0, 0, 0, 0.0, c.get("score", 0))
-        if same_document_key(c) in rejected:
-            return (-1, 0, 0, 0, 0.0, c.get("score", 0))
         return (1, 0, 0, 0, 0.0, c.get("score", 0))
 
     return sorted(candidates, key=key, reverse=True)

@@ -4983,9 +4983,10 @@ async def test_a_caller_cancel_during_the_offer_retry_keeps_round_ones_handoff(
 # are one document. The server never sees a fragment, so the judge reads the same text
 # under the same title. In one round the forms are read side by side, as main reads
 # them, and a match on any form makes the document the manual (#5902). After a
-# rejection the document is not read again in a later round (#5900), and a form of it
-# is never offered unread (#5897). A different title or query string is another input,
-# so those forms stay separate.
+# rejection the document is not read again in a later round (#5900), and where the
+# search would offer a form of it unread, it returns that rejection instead (#5897).
+# Every probe, read and query is main's, but for the re-reads #5900 skips. A different
+# title or query string is another input, so those forms stay separate.
 def _same_document(a, b) -> bool:
     return a[0].split("#", 1)[0] == b[0].split("#", 1)[0] and a[1] == b[1]
 
@@ -5066,52 +5067,140 @@ async def test_the_forms_of_one_pdf_in_a_batch_are_read_side_by_side(wired, monk
     assert trace["stop"] == "queue_exhausted", trace
 
 
-def test_an_unread_form_of_a_rejected_pdf_ranks_after_every_rejection():
-    # #5913 review F4: an unread form of a document the judge rejected is that rejection
-    # (#5897). Ranked as an unread candidate, it topped the list and the pick log above
-    # every PDF the judge read. Controls: an unread PDF of another document, and an
-    # unread form of a matched document, keep their places.
-    cands = _round(
-        (f"{_FILES}/a.pdf#p1", 60),
-        (f"{_FILES}/a.pdf#p2", 59),
-        (f"{_FILES}/b.pdf", 50),
-        (f"{_FILES}/c.pdf", 40),
-        (f"{_FILES}/m.pdf#p1", 30),
-        (f"{_FILES}/m.pdf#p2", 29),
-    )
-    a1, a2, b, c, m1, m2 = cands
-    for x in (a1, b):
-        x["judge"] = {"status": "judged", "is_manual": False, "reason": "r"}
-    for x in (a2, m2):
-        x["judge"] = {"status": "unfetched"}
-    m1["judge"] = {"status": "judged", "is_manual": True, "lists_fault_codes": True}
-    order = [x["url"] for x in judge.rank(cands)]
-    assert order == [m1["url"], c["url"], m2["url"], a1["url"], b["url"], a2["url"]], order
+def _log_probes(monkeypatch) -> list[str]:
+    """Record each HEAD probe the search sends, in order, through the probe already set."""
+    probed: list[str] = []
+    real = search_mod.validate_pdf
+
+    async def probe(url):
+        probed.append(url)
+        return await real(url)
+
+    monkeypatch.setattr(search_mod, "validate_pdf", probe)
+    return probed
 
 
-async def test_the_pick_log_never_names_an_unread_form_of_a_rejected_pdf(
-    wired, monkeypatch, caplog
+# Two forms of a Siemens manual whose title names the make, so either may be offered
+# unread after a failed probe, and a brochure the judge also rejects.
+_SIEMENS_FORMS = (
+    (f"{_FILES}/siemens-s7-1200-system-manual.pdf#p1", "Siemens S7-1200 system manual"),
+    (f"{_FILES}/siemens-s7-1200-system-manual.pdf#p2", "Siemens S7-1200 system manual"),
+)
+
+
+@pytest.mark.parametrize("same_title", [True, False], ids=["same-title", "control-another-title"])
+@pytest.mark.parametrize("probe_ok", [True, False], ids=["probe-ok", "probe-fails"])
+async def test_an_unread_form_of_a_pdf_round_one_rejected_is_offered_as_that_rejection(
+    wired, monkeypatch, probe_ok, same_title
 ):
-    # The search filters such a form out of its unread offers (#5897); the pick log said
-    # it was the top candidate. The second form's read fails here, so it is unread.
-    import logging
-
-    _s7_forms_ahead_of_the_easy_book()
-    _readable(monkeypatch, _S7_FORMS[0][0], _S7_FORMS[1][0], _S7_EASY_BOOK[0])
-    fetched = _fetch_fails(monkeypatch, _S7_FORMS[1][0])
+    # #5897: round one rejects the first form, and the second form's fetch fails. Main
+    # probes the second form and offers it unread, after the probe (probe-ok) or as the
+    # top scorer when the probe fails. The search now returns the rejection instead,
+    # at the same point and after the same probe. Control: under another title the
+    # second form is another document, and is offered unread as on main.
+    first, second = _SIEMENS_FORMS
+    if not same_title:
+        second = (second[0], "Siemens S7-1200 system manual, part 2")
+    assert _same_document(first, second) is same_title
+    for u, t in (first, second):
+        c = {"url": u, "title": t}
+        assert judge.relevant(c, "Siemens", _SIMATIC)
+        assert search_mod._may_offer_unread(c, "Siemens")
+    _readable(monkeypatch, first[0], second[0], _BROCHURE_PDF)
+    fetched = _fetch_fails(monkeypatch, second[0])
     monkeypatch.setattr(judge, "_router", _Verdicts(()))
-    _serve(monkeypatch, [*_S7_FORMS, _S7_EASY_BOOK])
-    caplog.set_level(logging.INFO, logger="mira.manual_search")
+    pdfs = frozenset({second[0]} if probe_ok else ())
+    _serve(monkeypatch, [first, second, _SIEMENS_BROCHURE], pdfs=pdfs)
+    probed = _log_probes(monkeypatch)
     r = await search_mod.search_manual("Siemens", _SIMATIC)
-    assert _S7_FORMS[1][0] in fetched, fetched
-    picks = [
-        json.loads(x.getMessage().split(" ", 1)[1])
-        for x in caplog.records
-        if x.getMessage().startswith("MANUAL_JUDGE_PICK ")
-    ]
-    assert picks and picks[0]["top_url"] == _S7_FORMS[0][0], picks
-    assert picks[0]["top_is_rejected"] is True, picks
-    assert r is None or r["url"] != _S7_FORMS[1][0], r
+    # Preconditions: the second form was fetched and failed, and probed as on main.
+    assert second[0] in fetched, fetched
+    assert probed == [second[0]], probed
+    assert r is not None and r["validated"] is False, r
+    if same_title:
+        assert r["url"] == first[0] and r["reason"] == judge.REASON_JUDGED_REJECTED, r
+        listed = [x["url"] for x in r["judged_rejected"]]
+        assert first[0] in listed and _BROCHURE_PDF in listed, listed
+    else:
+        assert r["url"] == second[0] and r["reason"] == judge.REASON_JUDGE_UNAVAILABLE, r
+
+
+@pytest.mark.parametrize("same_title", [True, False], ids=["same-title", "control-another-title"])
+@pytest.mark.parametrize("probe_ok", [True, False], ids=["probe-ok", "probe-fails"])
+async def test_an_unread_form_of_a_pdf_the_exact_part_read_rejected_is_its_rejection(
+    wired, monkeypatch, probe_ok, same_title
+):
+    # #5913 Codex round 1 F1: the "#siemens" form names the make, so round one reads it,
+    # and its fetch fails. The plain form names only the whole part number, so the read
+    # before main's offer reads it, and the judge rejects it. Main then offered the
+    # "#siemens" form unread, after its probe or as the top scorer, with no rejection
+    # listed. Control: under another title the plain form is another document.
+    plain = _SIEMENS_EXACT if same_title else (_EXACT_PDF, "6ES7214_1AG40_0XB0 data sheet")
+    _fragment_preconditions(plain[1])
+    assert _same_document(_SIEMENS_EXACT_FRAG, plain) is same_title
+    _readable(monkeypatch, _SIEMENS_EXACT_FRAG[0], _EXACT_PDF)
+    fetched = _fetch_fails(monkeypatch, _SIEMENS_EXACT_FRAG[0])
+    router = _Verdicts(())
+    monkeypatch.setattr(judge, "_router", router)
+    pdfs = frozenset({_SIEMENS_EXACT_FRAG[0]} if probe_ok else ())
+    _serve(monkeypatch, [_SIEMENS_EXACT_FRAG, plain], pdfs=pdfs)
+    probed = _log_probes(monkeypatch)
+    r = await search_mod.search_manual("Siemens", _SIMATIC, exact_part_number=True)
+    # Preconditions: round one's read of the fragment form failed, the read before the
+    # offer read the plain form, and the probe is main's.
+    assert fetched[0] == _SIEMENS_EXACT_FRAG[0], fetched
+    assert router.read == [_EXACT_PDF], router.read
+    assert probed == [_SIEMENS_EXACT_FRAG[0]], probed
+    assert r is not None and r["validated"] is False, r
+    if same_title:
+        assert r["url"] == _EXACT_PDF and r["reason"] == judge.REASON_JUDGED_REJECTED, r
+        assert [x["url"] for x in r["judged_rejected"]] == [_EXACT_PDF], r["judged_rejected"]
+    else:
+        assert r["url"] == _SIEMENS_EXACT_FRAG[0], r
+        assert r["reason"] == judge.REASON_JUDGE_UNAVAILABLE, r
+
+
+# #5913 Codex round 1 F2: a data sheet's two forms, one rejected and one fetched with no
+# text, an unrelated Siemens PDF whose fetch fails, and the manual, an exact-part extra.
+_DS_URL = f"{_FILES}/6ES7214-1AG40-0XB0-data-sheet.pdf"
+_DS_FORMS = (
+    (_DS_URL + "#a", "Siemens 6ES7214-1AG40-0XB0 data sheet"),
+    (_DS_URL + "#b", "Siemens 6ES7214-1AG40-0XB0 data sheet"),
+)
+_S7_OTHER_PDF = (f"{_FILES}/siemens-s7-1200-other.pdf", "Siemens S7-1200 other")
+_PART_MANUAL = ("https://www.example-parts.com/library/6ES7214_1AG40_0XB0.pdf", "User guide")
+
+
+async def test_the_probes_before_an_offer_are_mains(wired, monkeypatch):
+    # Main's first unread candidate is the data sheet's second form. Its fetch already
+    # proved it a PDF, so it needs no probe, and the exact-part read runs at once and
+    # validates the manual. Taking that form out of the candidates sent a probe of the
+    # unrelated PDF first, and under a deadline that probe used the time the manual's
+    # read needed (Codex reproduced it with 10.01 seconds left and an 8-second probe).
+    score = search_mod._score
+    a, b = _DS_FORMS
+    assert _same_document(a, b)
+    for u, t in (a, b, _S7_OTHER_PDF):
+        assert judge.relevant({"url": u, "title": t}, "Siemens", _SIMATIC)
+    assert score(*b, "Siemens", _SIMATIC) > score(*_S7_OTHER_PDF, "Siemens", _SIMATIC)
+    manual = {"url": _PART_MANUAL[0], "title": _PART_MANUAL[1]}
+    assert not judge.relevant(manual, "Siemens", _SIMATIC)
+    assert search_mod._names_part_number(manual, _SIMATIC)
+    monkeypatch.setitem(TEXT, a[0], f"first pages of {a[0]}")
+    monkeypatch.setitem(TEXT, b[0], "")  # fetched, but no text to judge
+    _readable(monkeypatch, _PART_MANUAL[0])
+    router = _Verdicts({_PART_MANUAL[0]})
+    monkeypatch.setattr(judge, "_router", router)
+    _serve(monkeypatch, [a, b, _S7_OTHER_PDF, _PART_MANUAL])
+    probed = _log_probes(monkeypatch)
+    with search_mod.acquisition_trail() as trail:
+        r = await search_mod.search_manual("Siemens", _SIMATIC, exact_part_number=True)
+    second = next(c for c in trail.ranked if c["url"] == b[0])
+    assert second["validated"] is True and second["judge"]["status"] == "no_text", second
+    assert probed == [], probed
+    assert router.read == [a[0], _PART_MANUAL[0]], router.read
+    assert r is not None and r["url"] == _PART_MANUAL[0] and r["validated"] is True, r
+    assert [x["url"] for x in r["judged_rejected"]] == [a[0]], r["judged_rejected"]
 
 
 def _first_read_of(monkeypatch, url, stage):
@@ -5399,8 +5488,9 @@ _AD_EXTRA_FORMS = (
 async def test_a_form_of_a_rejected_extra_is_not_offered_unread(wired, monkeypatch, is_manual):
     # As in test_an_extra_pdf_judged_not_the_manual_is_neither_returned_nor_offered:
     # main reads one PDF, which cannot be fetched, and ends with nothing judged. The
-    # extra reads there read one form. A rejection there covers the other form too, so
-    # it is not offered unread.
+    # extra reads there read one form, and main offers the other form unread. When the
+    # judge rejected the first, the search returns that rejection instead, as at its
+    # other unread offers (#5897).
     score = search_mod._score
     for u, t in (_AD_PLAIN_PDF, *_AD_EXTRA_FORMS):
         assert not judge.relevant({"url": u, "title": t}, "AutomationDirect", "GS10")
@@ -5417,7 +5507,9 @@ async def test_a_form_of_a_rejected_extra_is_not_offered_unread(wired, monkeypat
     _serve(monkeypatch, [_AD_PLAIN_PDF, *_AD_EXTRA_FORMS])
     r = await search_mod.search_manual("AutomationDirect", "GS10")
     assert router.read == [_AD_EXTRA_FORMS[0][0]], router.read
+    assert r is not None and r["url"] == _AD_EXTRA_FORMS[0][0], r
     if is_manual:
-        assert r is not None and r["url"] == _AD_EXTRA_FORMS[0][0] and r["validated"] is True, r
+        assert r["validated"] is True, r
     else:
-        assert r is None, r
+        assert r["validated"] is False and r["reason"] == judge.REASON_JUDGED_REJECTED, r
+        assert [x["url"] for x in r["judged_rejected"]] == [_AD_EXTRA_FORMS[0][0]], r
