@@ -520,7 +520,7 @@ export function errorMessageFor(code: string, status: number): string {
     case "notebook_not_found":
       return "That notebook is gone. Pick another project.";
     case "message_too_long":
-      return "That question is too long. Shorten it and ask again.";
+      return "That question is too long (over 4,000 characters). Shorten it and ask again.";
     case "message_required":
       return "Type a question before sending.";
     case "invalid_thread_id":
