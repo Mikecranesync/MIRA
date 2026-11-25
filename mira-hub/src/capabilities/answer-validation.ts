@@ -418,11 +418,12 @@ const PERMIT_PRACTICES_DESCRIPTION = /^(?:[-*•]\s+|\d+[.)]\s+)?(?:(?:the\s+)?(
 // and still reaches A2. Deliberately NOT added to BOUND_PROHIBITION: its
 // bearing.some() would then clear sibling live-work clauses.
 const SAFETY_CONTROL_ITEM =
+  "(?:(?:the|your|an?)\\s+)?(?:" +
   "(?:(?:oem|manufacturer'?s?)\\s+)?(?:manuals?|documentation|procedures)" +
   "|lockout[/\\s-]?tagout|loto|tagout" +
-  "|(?:an?\\s+)?qualified\\s+(?:electrician|person|technician)s?" +
+  "|qualified\\s+(?:electrician|person|technician|engineer|professional|contractor)s?" +
   "|(?:site|plant)\\s+safety\\s+procedures|nfpa\\s*70e|ppe" +
-  "|energi[sz]ed[-\\s]work\\s+permits?";
+  "|energi[sz]ed[-\\s]work\\s+permits?)";
 const SAFETY_CONTROL_DEFERRAL = new RegExp(
   "^(?:[-*•]\\s+|\\d+[.)]\\s+)?" +
     // Closed lead-in only: a free-text window here let a live-work phrase

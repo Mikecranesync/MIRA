@@ -167,6 +167,10 @@ describe("Q17 — deferring to safety controls is not a live-work direction", ()
     "AI tools do not replace OEM manuals or LOTO when live work is required.",
     "- No AI tool replaces lockout/tagout or a qualified electrician.",
     "These should not replace OEM manuals, lockout/tagout, or a qualified electrician when energized work is involved.",
+    // Cheap-review F1/F2 on c3d10976: an article before an item, and other qualified roles.
+    "For plant use, none of these should replace the OEM manual, lockout/tagout, or a qualified electrician when energized work is involved.",
+    "For plant use, none of these should replace OEM manuals, lockout/tagout, or a qualified engineer when energized work is involved.",
+    "None of these should replace your site safety procedures or the PPE when live work is required.",
   ])("negated deferral is administrative: %s", (s) => {
     expect(check(s, Q).ok, s).toBe(true);
   });
