@@ -1,26 +1,37 @@
 /**
- * #5864: two unsafe practices that no notebook safety detector recognised, so
- * they got no card at all, and on a notebook whose search found nothing only
- * the canned "add the manual" reply:
+ * #5864: two hazards that no notebook safety detector recognised, so they got
+ * no card at all, and on a notebook whose search found nothing only the canned
+ * "add the manual" reply:
  *
- *   - keeping an operator touch screen live while it is wiped or cleaned
- *     (a touch while wiping can start the machine), and
- *   - leaving an electrical cabinet or enclosure open or unlocked
- *     (dangerous voltage behind the door).
+ *   - cleaning an operator touch screen that is on (a touch while wiping can
+ *     start the machine), and
+ *   - an electrical cabinet or enclosure left open or unlocked (dangerous
+ *     voltage behind the door).
  *
- * Owner decision (Mike, 2026-11-24, on #5864): a FIXED WARNING CARD above the
- * turn, the same shape as the reported-bypass warning in
- * `safety-bypass-advisory.ts`. The turn is still answered from approved
- * evidence when the search finds it; when it does not, the canned reply
- * follows the card. It is an advisory, never a `safetyTrigger`: it unlocks no
- * evidence-free answer and adds no prompt directive, so a zero-hit notebook
- * can never produce a model-written "that's fine". An answer with evidence is
- * never blocked; a turn with no evidence at all, including an empty project in
- * general mode, gets the card and an honest no-manual reply instead of a
- * model answer (#5905 Codex r1 F2).
+ * Owner decision (Mike, 2026-11-24, on #5864): a FIXED card above the turn,
+ * the same shape as the reported-bypass warning in `safety-bypass-advisory.ts`.
+ * It is an advisory, never a `safetyTrigger`: it adds no prompt directive and
+ * unlocks no evidence-free answer. A turn with evidence is answered under it; a
+ * turn with no evidence at all gets the card over an honest no-manual reply.
  *
- * Detection is by class (a practice, an object and an unsafe state together),
- * not by the two reported sentences. Zero-token, deterministic, Hub-only.
+ * DETECTION IS BY TOPIC, NOT BY INTENT (#5905, after three Codex rounds). The
+ * first design tried to read the unsafe intent: a state ("on", "open") bound to
+ * the right object, pronouns resolved, negations honoured. Every round found new
+ * wordings it missed, which is the dangerous direction, and the only harm of
+ * its false matches was one more caution. So the cards are now standing
+ * cautions, the kind a manual prints next to every cleaning or cabinet section,
+ * and they fire on the topic:
+ *
+ *   - screen: a cleaning word within a few words of a screen, HMI or operator
+ *     panel. Whether the screen is on is not read at all; the card is true either way.
+ *   - enclosure: an electrical enclosure named near a word for it being open,
+ *     unlocked, unlatched or not closing. A switching device left open (the safe
+ *     state), an open circuit, and "open the drawing" do not count.
+ *
+ * Matching is on normalised whole tokens (case, hyphens, apostrophes and plural
+ * folded), so "touch-screen" is "touch screen" and "opening" is not "open".
+ * Precision contract and recall corpus: `__fixtures__/unsafe-practice-corpus.json`.
+ * Zero-token, deterministic, Hub-only.
  */
 
 export const LIVE_SCREEN_CLEANING_CARD =
@@ -33,186 +44,143 @@ export const UNSAFE_PRACTICE_NO_EVIDENCE_TEXT =
 export const OPEN_ENCLOSURE_CARD =
   "⚠️ **Keep the electrical cabinet closed and locked.** There is dangerous voltage inside; only trained staff with the key or tool may open it. Don't prop the door open. Get a replacement key or lock from your supervisor.";
 
-/** Cleaning: wipe, clean, wash, spray, scrub, dust. */
-const CLEANING = "(?:wip(?:e|es|ed|ing)|clean(?:s|ed|ing)?|wash(?:es|ed|ing)?|spray(?:s|ed|ing)?|scrub(?:s|bed|bing)?|dust(?:s|ed|ing)?)";
-
-/** The operator panel being cleaned. A bare "panel" is not enough: it is also an electrical panel. */
-const SCREEN = "(?:touch[-\\s]?(?:screens?|panels?|displays?)|hmis?|screens?|displays?|operator\\s+(?:panels?|terminals?|stations?)|keypads?)";
-
-/**
- * The SCREEN is what is cleaned: the two words within three of each other ("wipe the touch screen",
- * "the hmi needs cleaning"). "The display flickers while the drive runs, should I clean the contacts"
- * names a display and a cleaning, but not a cleaning of the display.
- */
-const SCREEN_CLEANING = new RegExp(`\\b(?:${CLEANING}(?:\\s+\\S+){0,3}?\\s+${SCREEN}|${SCREEN}(?:\\s+\\S+){0,3}?\\s+${CLEANING})\\b`);
-
-/** Words that, just before a state, make it the safe one ("don't leave it on", "never keep it running"). */
-const NEGATED = /\b(?:don'?t|do\s+not|never|not|shouldn'?t|should\s+not|can'?t|cannot|won'?t)\s+(?:\S+\s+){0,2}$/;
-
-/**
- * What a live state may be about: the screen, the machine or line it runs, or a pronoun for one of
- * them. Never any noun: "leave the exhaust fan on" says nothing about the screen.
- */
-const LIVE_OBJECT =
-  "(?:it|them|that|this|they|(?:the|that|this|our|their|your)\\s+(?:\\w+\\s+)?(?:touch\\s?screens?|screens?|hmis?|displays?|panels?|terminals?|keypads?|machines?|lines?|conveyors?|equipment|press(?:es)?|units?|systems?|drives?|motors?|power))";
-
-/** "on" as a state, not a place: "leave it on", never "the HMI is on the left". */
-const ON = "on(?!\\s+(?:the|a|an|top|my|our|its|their|this|that|to|of|it|break|hold|standby|lunch)\\b)";
-/**
- * #5905 r2 F3: "powered" is a live state only as a complete one: "powered on", "powered up", or a
- * bare "powered" that ends its clause ("it's powered, can I wipe it"). "Powered off" is the safe
- * state, and "powered by 24 V" or "powered from the panel" says where the power comes from.
- */
-const POWERED = `powered(?:\\s+(?:up|${ON})|(?=\\s*(?:[.,;:!?)]|$)|\\s+(?:and|but|so|while|when|still|now|right\\s+now)\\b))`;
-const LIVE_ON = `(?:${ON}|running|live|${POWERED}|energi[sz]ed|switched\\s+${ON}|turned\\s+${ON})`;
-/** The states that can stand with no subject ("while powered on", "while running"). Never a bare "on": "while on shift". */
-const LIVE_PARTICIPLE = `(?:running|live|${POWERED}|energi[sz]ed|switched\\s+${ON}|turned\\s+${ON})`;
-
-/** The screen or the machine stays live while it is cleaned. */
-const LIVE_STATE = new RegExp(
-  "\\b(?:" +
-    [
-      // "leave it on", "keep the hmi on", "leave the screen running"
-      `(?:leav(?:e|es|ing)|left|keep(?:s|ing)?|kept)\\s+${LIVE_OBJECT}\\s+${LIVE_ON}`,
-      // "while it's on", "while the line runs", "while the machine is running", "with it on"
-      `(?:while|with|when)\\s+${LIVE_OBJECT}(?:'s|\\s+is|\\s+are|\\s+stays|\\s+remains)?\\s+(?:still\\s+)?(?:${LIVE_ON}|runs)`,
-      // The subject left out: "wipe the hmi while powered on", "clean it while running" (#5905 r2 F1).
-      `(?:while|when)\\s+(?:it'?s\\s+|still\\s+)?${LIVE_PARTICIPLE}`,
-      // A direct report: "the line is running. can I wipe the hmi now?"
-      `${LIVE_OBJECT}(?:'s|\\s+is|\\s+are|\\s+stays|\\s+remains)\\s+(?:still\\s+)?${LIVE_ON}`,
-      // "without switching it off", "without turning off the panel"
-      "without\\s+(?:switching|turning|shutting|powering)\\s+(?:(?:it|them|the\\s+\\w+(?:\\s+\\w+)?)\\s+)?(?:off|down)\\b",
-    ].join("|") +
-    ")",
-);
-
-/** An electrical cabinet or enclosure. A bare "panel" counts only as a door or cabinet ("panel door", "panel cabinet"). */
-const ENCLOSURE =
-  /\b(?:(?:electrical|control|panel|drive|vfd|plc|mcc|breaker|starter|disconnect)\s+(?:cabinets?|enclosures?|boxes|box|rooms?)|cabinets?|enclosures?|panel\s+doors?|mccs?|motor\s+control\s+centers?|switchgear|(?:breaker|electrical|distribution)\s+panels?|junction\s+box(?:es)?|j-?box(?:es)?)\b/;
-
-/** Enclosures that are themselves what is left open: "leave the MCC open", "the electrical panel" (#5905 r2 F1). */
-const ENCLOSURE_HEAD =
-  "(?:mccs?|motor\\s+control\\s+centers?|switchgear|(?:breaker|electrical|distribution)\\s+panels?|junction\\s+box(?:es)?|j-?box(?:es)?)";
-
-/** The only words that may qualify a door here: "the panel door", never "the shop door". */
-const ENC_QUAL = "(?:electrical|control|panel|cabinet|enclosure|drive|vfd|plc|mccs?|breaker|starter|disconnect|junction|box|switchgear|j-?box)";
-const DETERMINER = "(?:the|that|this|its|their|our|your|his|her|my|a|an)";
-
-/** What a verb leaves open: the enclosure, its own door, lid or cover, or a pronoun. */
-const LEFT_OBJECT =
-  `(?:(?:${DETERMINER}\\s+)?(?:(?:${ENC_QUAL}(?:'s)?\\s+){0,2}(?:doors?|lids?|covers?|hatch(?:es)?|cabinets?|enclosures?|box(?:es)?)|${ENCLOSURE_HEAD})|it|them)`;
-
-/** LEFT_OBJECT without the pronouns. */
-const ENCLOSED_OBJECT =
-  `(?:(?:${DETERMINER}\\s+)?(?:(?:${ENC_QUAL}(?:'s)?\\s+){0,2}(?:doors?|lids?|covers?|hatch(?:es)?|cabinets?|enclosures?|box(?:es)?)|${ENCLOSURE_HEAD}))`;
-
-/** A verb followed straight by a pronoun object: "prop it open", "close them without locking". */
-const PRONOUN_OBJECT = /^\S+\s+(?:open\s+)?(?:it|them)\b/;
-
-/** A switching device: open is its safe state ("leave the MCC breaker open"), so it never stands for the enclosure. */
-const SWITCH_DEVICE = "(?:breakers?|disconnects?|switch(?:es)?|isolators?|fuses?|mains|contactors?)";
-/** The word between the object and "open" may not be a switching device: "leave the MCC breaker open" is the safe state. */
-const NOT_A_SWITCH = `(?!${SWITCH_DEVICE}\\b)`;
-
-/** What a pronoun can point back to: an enclosure, an openable part, or something else that opens. */
-const REFERENT = new RegExp(
-  `\\b(?:(${ENCLOSURE.source.slice(2, -2)})|(doors?|lids?|covers?|hatch(?:es)?)|(windows?|gates?|valves?|hoods?|guards?|trunks?|tailgates?|fridges?|freezers?|lockers?|${SWITCH_DEVICE}))\\b`,
-  "g",
-);
-
-/**
- * #5905 r2 F3: does the pronoun at `index` stand for the enclosure? It points to the nearest thing
- * named before it (or, with nothing before, the first after). An enclosure, or a door with no
- * qualifier or an enclosure one ("the door", "the cabinet door"), is the enclosure. A door qualified
- * by anything else ("the shop door"), or a window, gate or valve, is not.
- */
-function pronounIsEnclosure(msg: string, index: number, length: number): boolean {
-  const before = [...msg.slice(0, index).matchAll(REFERENT)];
-  let ref: RegExpMatchArray | undefined = before[before.length - 1];
-  let offset = 0;
-  if (!ref) {
-    offset = index + length;
-    ref = msg.slice(offset).matchAll(REFERENT).next().value;
-  }
-  if (!ref) return true;
-  if (ref[1]) return true;
-  if (ref[3]) return false;
-  return subjectStartsHere(msg, offset + (ref.index ?? 0));
+/** Fold a word to its matching form: plural and possessive "s" off ("hmis", "cabinet's", "boxes", "switches"). */
+function stem(w: string): string {
+  if (w.length > 4 && /(?:xes|ches|shes|sses)$/.test(w)) return w.slice(0, -2);
+  if (w.length > 3 && w.endsWith("s") && !w.endsWith("ss")) return w.slice(0, -1);
+  return w;
 }
 
-/** The subject of a report. Its own qualifier is checked by `subjectStartsHere`. */
-const REPORT_SUBJECT = `(?:(?:${ENC_QUAL}(?:'s)?\\s+){0,2}(?:doors?|lids?|covers?|hatch(?:es)?)|${ENCLOSURE.source.slice(2, -2)})`;
-/** Leading whitespace included: "the cabinet's been open" has none before the verb. */
-const COPULA =
-  "(?:'s(?:\\s+been)?|\\s+(?:is|are|was|were|has\\s+been|have\\s+been|had\\s+been|been|stays|stayed|remains|remained|got|gets|keeps\\s+getting|is\\s+sitting|sits|sat))";
-/** Not a state but the name of a signal: "the cabinet door is open alarm". */
-const NOT_A_LABEL = "(?!\\s+(?:alarm|fault|warning|message|signal|indicator|status|bit|input|switch|sensor|light|code|event|error|popup|contact|limit|tag)\\b)";
-
-/** The enclosure is left open or unsecured. "Leave the breaker open" (or the disconnect) is the safe state. */
-const OPEN_STATE = new RegExp(
-  "\\b(?:" +
-    [
-      // "leave the door propped open", "keep it open", "left the cabinet unlocked", "prop the door open"
-      "(?:leav(?:e|es|ing)|left|keep(?:s|ing)?|kept|prop(?:s|ped|ping)?|wedg(?:e|es|ed|ing)|block(?:s|ed|ing)?|hold(?:s|ing)?|held|tie(?:s|d)?|tying|tap(?:e|es|ed|ing))" +
-        `\\s+${LEFT_OBJECT}\\s+(?:${NOT_A_SWITCH}\\S+\\s+)?(?:open|unlocked|ajar|unlatched)${NOT_A_LABEL}`,
-      // "prop open the cabinet"
-      `(?:prop(?:s|ping)?|wedg(?:e|es|ing))\\s+open\\s+${LEFT_OBJECT}`,
-      // "close the door without locking it", "without locking the cabinet"
-      `(?:clos(?:e|es|ed|ing)|shut(?:s|ting)?|leav(?:e|es|ing)|left)\\s+${LEFT_OBJECT}\\s+without\\s+(?:locking|latching)`,
-      // A pronoun here could be any door ("close the shop door without locking it"), so name the enclosure.
-      `without\\s+(?:locking|closing|latching)\\s+${ENCLOSED_OBJECT}`,
-    ].join("|") +
-    ")",
-);
-
-/**
- * A report that the enclosure is unsecured: "the electrical cabinet is open and unlocked", "the MCC
- * door was left open", "the cabinet's been open all night". A bare "is open" is not enough: the
- * cabinet is open while a technician works in it.
- */
-const OPEN_REPORT = new RegExp(
-  `\\b${REPORT_SUBJECT}${COPULA}\\s+(?:still\\s+)?(?:` +
-    [
-      `(?:(?:wide\\s+)?open\\s+(?:and|&)\\s+)?(?:unlocked|ajar|unlatched)${NOT_A_LABEL}`,
-      `(?:left|propped|wedged|tied|taped|blocked|held|hanging)\\s+(?:wide\\s+)?open${NOT_A_LABEL}`,
-      `(?:wide\\s+)?open\\s+(?:all\\s+(?:night|day|shift|weekend)|overnight|unattended|for\\s+(?:the\\s+)?(?:night|weekend|shift|days?|hours))`,
-    ].join("|") +
-    ")",
-);
-
-/** Words that may stand just before a report subject. Anything else qualifies it ("the shop door"). */
-const SUBJECT_PREV = new RegExp(`^(?:${DETERMINER}|${ENC_QUAL}|and|but|so|or|because|since|if|now|then|also|plus|still|cause|cuz)$`);
-
-/** Is the subject at `index` unqualified, or qualified only by an enclosure word? */
-function subjectStartsHere(msg: string, index: number): boolean {
-  const prev = msg.slice(0, index).match(/([a-z'-]+)\s+$/);
-  return !prev || SUBJECT_PREV.test(prev[1]);
+/** Lowercase whole tokens; apostrophes dropped ("won't" is "wont"), every other non-alphanumeric a break. */
+function tokenize(message: string): string[] {
+  return (message || "")
+    .toLowerCase()
+    .replace(/['’‘`]/g, "")
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean)
+    .map(stem);
 }
 
-/** The first non-negated match of `re` in `msg` (that `ok` accepts), or null. */
-function liveMatch(re: RegExp, msg: string, ok: (index: number, text: string) => boolean = () => true): string | null {
-  const g = new RegExp(re.source, re.flags.includes("g") ? re.flags : `${re.flags}g`);
-  for (const m of msg.matchAll(g)) {
-    if (!NEGATED.test(msg.slice(0, m.index)) && ok(m.index, m[0])) return m[0];
+const words = (list: string) => new Set(list.split(/\s+/).filter(Boolean).map(stem));
+const phrases = (list: string[]) => list.map((p) => p.split(" ").map(stem));
+
+/** Every [start, end) where one of the phrases occurs; longest phrase wins at a position. */
+function find(toks: string[], list: string[][]): Array<[number, number]> {
+  const out: Array<[number, number]> = [];
+  const sorted = [...list].sort((a, b) => b.length - a.length);
+  for (let i = 0; i < toks.length; i++) {
+    const p = sorted.find((ph) => ph.every((w, k) => toks[i + k] === w));
+    if (p) {
+      out.push([i, i + p.length]);
+      i += p.length - 1;
+    }
   }
-  return null;
+  return out;
+}
+
+const near = (a: number, b: number, span: number) => Math.abs(a - b) <= span;
+
+// ── Screen cleaning ──────────────────────────────────────────────────────────
+const CLEANING = words(`
+  wipe wiped wiping clean cleaned cleaning cleaner wash washed washing washdown
+  spray sprayed spraying scrub scrubbed scrubbing dust dusted dusting polish polished polishing
+  disinfect disinfected disinfecting disinfectant sanitize sanitized sanitizing sanitise sanitised sanitising
+  degrease degreaser rag cloth towel windex lysol isopropyl squeegee`);
+const SCREEN = phrases([
+  "touch screen", "touchscreen", "touch panel", "touch display", "hmi", "screen", "display",
+  "operator panel", "operator terminal", "operator station", "operator interface", "operator screen",
+  "oit", "panelview", "keypad", "touch pad", "touchpad", "monitor",
+  "human machine interface", "operator console", "console",
+]);
+/** A bare "screen" that is a strainer or filter, not a display. */
+const NOT_A_DISPLAY_BEFORE = words("trash intake inlet suction strainer filter mesh wire vibrating bug fly insect window sieve trommel bar drum rotary basket");
+const NOT_A_DISPLAY_AFTER = words("filter mesh door basket pack changer");
+/** A cleaning word naming a cycle, a message or data, not a cloth on the glass: "CIP wash cycle", "clean filter", "clean up the alarm log". */
+const NOT_PHYSICAL_AFTER = words("filter cycle mode program recipe");
+const NOT_PHYSICAL_OBJECT = words("history log alarm data list code recipe program file");
+const SCREEN_SPAN = 12;
+
+function screenCleaning(toks: string[]): boolean {
+  const screens = find(toks, SCREEN).filter(([s, e]) => {
+    if (e - s !== 1 || toks[s] !== "screen") return true;
+    return !NOT_A_DISPLAY_BEFORE.has(toks[s - 1] ?? "") && !NOT_A_DISPLAY_AFTER.has(toks[e] ?? "");
+  });
+  if (!screens.length) return false;
+  const physical = (i: number) =>
+    !NOT_PHYSICAL_AFTER.has(toks[i + 1] ?? "") && toks[i - 1] !== "cip" && !toks.slice(i + 1, i + 5).some((w) => NOT_PHYSICAL_OBJECT.has(w));
+  return toks.some((t, i) => CLEANING.has(t) && physical(i) && screens.some(([s, e]) => near(i, s, SCREEN_SPAN) || near(i, e - 1, SCREEN_SPAN)));
+}
+
+// ── Electrical enclosure open or unsecured ───────────────────────────────────
+const ENCLOSURE = phrases([
+  "electrical cabinet", "control cabinet", "panel cabinet", "drive cabinet", "vfd cabinet", "plc cabinet", "starter cabinet",
+  "electrical enclosure", "enclosure", "cabinet",
+  "mcc", "motor control center", "motor control centre", "switchgear",
+  "electrical panel", "main panel", "service panel", "electrical box", "breaker panel", "distribution panel", "control panel", "plc panel", "drive panel", "power panel",
+  "panel door", "panel lid", "panel cover",
+  "breaker box", "fuse box", "junction box", "jbox", "j box",
+]);
+/** A bare "cabinet" that holds tools, files or flammables, not wiring. */
+const NOT_ELECTRICAL_BEFORE = words("tool storage file filing flammable supply part kitchen medicine aid chemical paint safety locker");
+const OPEN_STATE = words("open opened ajar unlock unlocked unlatch unlatched unsecure unsecured prop propped wedge wedged");
+/** "won't close", "isn't locked", "without locking", "can't get it to latch". */
+const NEGATION = words("not isnt wont cant cannot doesnt dont without never aint wouldnt couldnt");
+const SECURE = words("lock locked locking close closed closing shut latch latched latching");
+const BROKEN = words("broken broke busted missing lost damaged jammed bent failed failing gone");
+const FASTENER = words("lock latch key handle padlock");
+const COVER = words("door lid cover");
+const GONE = words("off missing removed gone");
+/** "Open" naming an electrical condition, not a door: open circuit, open wire fault. */
+const OPEN_CONDITION = words("neutral ground conductor leg circuit loop phase collector wire fault frame type source contact end ended transition");
+/** "Open the drawing", "open the valve": the verb's object is not the enclosure. */
+const OPENED_OBJECT = words("drawing manual file page screen menu setting app project tab print schematic diagram pdf document report ticket valve window gate tank");
+/** A device whose OPEN state is the safe one. */
+const SWITCH_DEVICE = words("breaker disconnect switch isolator fuse main contactor");
+const ENCLOSURE_SPAN = 20;
+
+function unsecuredSignals(toks: string[], enclosureTokens: Set<number>): number[] {
+  const at: number[] = [];
+  const window = (i: number, span: number, set: Set<string>) =>
+    toks.slice(i + 1, i + 1 + span).some((t) => set.has(t));
+  toks.forEach((t, i) => {
+    if (OPEN_STATE.has(t)) {
+      if (t.startsWith("open") && OPEN_CONDITION.has(toks[i + 1] ?? "")) return;
+      if (t.startsWith("open") && toks.slice(i + 1, i + 4).some((w) => OPENED_OBJECT.has(w))) return;
+      const switchNear = toks.some((w, j) => j !== i && j >= i - 3 && j <= i + 4 && SWITCH_DEVICE.has(w) && !enclosureTokens.has(j));
+      if (switchNear) return;
+      at.push(i);
+    } else if ((NEGATION.has(t) && window(i, 6, SECURE)) || (t === "no" && window(i, 2, SECURE))) {
+      at.push(i);
+    } else if (BROKEN.has(t) && toks.some((w, j) => near(i, j, 3) && FASTENER.has(w))) {
+      at.push(i);
+    } else if (COVER.has(t) && window(i, 2, GONE)) {
+      at.push(i);
+    }
+  });
+  return at;
+}
+
+function enclosureUnsecured(toks: string[]): boolean {
+  const enclosures = find(toks, ENCLOSURE).filter(([s, e]) => {
+    if (e - s !== 1 || toks[s] !== "cabinet") return true;
+    return !NOT_ELECTRICAL_BEFORE.has(toks[s - 1] ?? "");
+  });
+  if (!enclosures.length) return false;
+  const consumed = new Set<number>();
+  for (const [s, e] of enclosures) for (let k = s; k < e; k++) consumed.add(k);
+  const signals = unsecuredSignals(toks, consumed);
+  return signals.some((i) => enclosures.some(([s, e]) => near(i, s, ENCLOSURE_SPAN) || near(i, e - 1, ENCLOSURE_SPAN)));
 }
 
 export type UnsafePractice = "live-screen-cleaning" | "open-electrical-enclosure";
 
-/** The unsafe practices this message names, in a fixed order. Empty when none. */
+/** The hazard topics this message raises, in a fixed order. Empty when none. */
 export function unsafePractices(message: string): UnsafePractice[] {
-  const msg = (message || "").toLowerCase().replace(/[’‘]/g, "'").replace(/\s+/g, " ").trim();
-  if (!msg) return [];
+  const toks = tokenize(message);
+  if (!toks.length) return [];
   const out: UnsafePractice[] = [];
-  if (SCREEN_CLEANING.test(msg) && liveMatch(LIVE_STATE, msg)) out.push("live-screen-cleaning");
-  if (
-    ENCLOSURE.test(msg) &&
-    (liveMatch(OPEN_STATE, msg, (i, t) => !PRONOUN_OBJECT.test(t) || pronounIsEnclosure(msg, i, t.length)) ||
-      liveMatch(OPEN_REPORT, msg, (i) => subjectStartsHere(msg, i)))
-  ) {
-    out.push("open-electrical-enclosure");
-  }
+  if (screenCleaning(toks)) out.push("live-screen-cleaning");
+  if (enclosureUnsecured(toks)) out.push("open-electrical-enclosure");
   return out;
 }
 

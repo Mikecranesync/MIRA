@@ -393,9 +393,23 @@ describe("#5905 r2 F1: the short forms get their card on both no-evidence paths"
   }
 });
 
-describe("#5905 r2 F3: a false match no longer forces the general-mode refusal", () => {
-  for (const message of [R2_POWERED_OFF, R2_SHOP_DOOR]) {
-    it(`answered as an ordinary general question, with no card: ${message}`, async () => {
+describe("#5905 topic design: on an empty project a hazard topic gets the fixed reply, an ordinary question is still answered", () => {
+  // The topic detector gives a standing caution whenever cleaning a screen or an open or unsecured
+  // electrical cabinet comes up, so these Codex r2 F3 messages now get it, and with no evidence the
+  // fixed no-manual reply: a procedure MIRA will not guess without the manual.
+  for (const [message, card] of [
+    [R2_POWERED_OFF, LIVE_SCREEN_CLEANING_CARD],
+    [R2_SHOP_DOOR, OPEN_ENCLOSURE_CARD],
+  ] as const) {
+    it(`caution and fixed reply, no provider call: ${message}`, async () => {
+      const { status, fetchMock, turn } = await postGeneral(message);
+      expect(status).toBe(200);
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(turn.answerText).toBe(`${card}\n\n${UNSAFE_PRACTICE_NO_EVIDENCE_TEXT}`);
+    });
+  }
+  for (const message of ["The HMI is powered off. What does the brightness setting do?", "The electrical cabinet is closed and locked. What is the PM interval for the fans?"]) {
+    it(`control, no topic: answered as an ordinary general question, with no card: ${message}`, async () => {
       const { status, fetchMock, turn } = await postGeneral(message);
       expect(status).toBe(200);
       expect(fetchMock).toHaveBeenCalled();
@@ -499,48 +513,27 @@ async function postGeneralWithPhoto(reading: string | null, earlier = false) {
   return { status: res.status, text, fetchMock, turn: lastTurn()! };
 }
 
-describe("#5905 r2 F5: a reviewed photo reading is evidence, so the mixed question is answered under the card", () => {
+describe("#5905 r3 F11: a photo unlocks nothing under the card; with no chunks the fixed reply stands", () => {
   it("precondition: the mixed question raises only the live-screen card", () => {
     expect(unsafePracticeWarningFor(MIXED)).toBe(LIVE_SCREEN_CLEANING_CARD);
   });
 
-  it("with the label reading: the provider answers from the photo, the card above the answer once", async () => {
-    const { status, text, fetchMock, turn } = await postGeneralWithPhoto(READING);
-    expect(status).toBe(200);
-    expect(fetchMock).toHaveBeenCalled();
-    // The reading reached the prompt: the route hands it to the user-content builder (stubbed in
-    // this file to return the bare question, so the provider body cannot show it). The photo
-    // stays on the stored turn.
-    const visualArgs = (ragMock.buildManualUserContent.mock.calls as unknown as unknown[][]).map((c) => String(c[2] ?? ""));
-    expect(visualArgs.some((v) => v.includes("1.2 A") && v.includes("TECHNICIAN-REVIEWED"))).toBe(true);
-    expect(turn.evidence.some((e) => e.kind === "visual_observation")).toBe(true);
-    expect(turn.answerText!.startsWith(`${LIVE_SCREEN_CLEANING_CARD}\n\n`)).toBe(true);
-    expect(count(turn.answerText!, LIVE_SCREEN_CLEANING_CARD)).toBe(1);
-    expect(turn.answerText).toContain("24 V DC");
-    expect(turn.answerText).not.toContain(UNSAFE_PRACTICE_NO_EVIDENCE_TEXT);
-    expect(count(streamed(text), LIVE_SCREEN_CLEANING_CARD)).toBe(1);
-  });
-
-  it("control: the photo with no stored reading is only an attachment: the fixed refusal, no provider call", async () => {
-    const { status, fetchMock, turn } = await postGeneralWithPhoto(null);
-    expect(status).toBe(200);
-    expect(fetchMock).not.toHaveBeenCalled();
-    expect(semanticSafetyCheck).not.toHaveBeenCalled();
-    expect(turn.answerStatus).toBe("insufficient_evidence");
-    // The card, over the existing photo refusal (the photo is there, nothing answers from it).
-    expect(turn.answerText!.startsWith(`${LIVE_SCREEN_CLEANING_CARD}\n\n`)).toBe(true);
-    expect(count(turn.answerText!, LIVE_SCREEN_CLEANING_CARD)).toBe(1);
-    expect(turn.answerText).not.toContain("24 V DC");
-  });
-
-  it("control: a reading of an earlier photo in the thread unlocks nothing: the card and no-manual reply, no provider call", async () => {
-    const { status, fetchMock, turn } = await postGeneralWithPhoto(READING, true);
-    expect(status).toBe(200);
-    expect(loadRecentLookObservations).toHaveBeenCalled();
-    expect(fetchMock).not.toHaveBeenCalled();
-    expect(semanticSafetyCheck).not.toHaveBeenCalled();
-    expect(turn.answerText).toBe(`${LIVE_SCREEN_CLEANING_CARD}\n\n${UNSAFE_PRACTICE_NO_EVIDENCE_TEXT}`);
-  });
+  for (const [label, reading, earlier] of [
+    ["this turn's label reading", READING, false],
+    ["this turn's photo with no reading", null, false],
+    ["an earlier photo's reading", READING, true],
+  ] as const) {
+    it(`${label}: the card once, no provider call, nothing from the photo`, async () => {
+      const { status, fetchMock, turn } = await postGeneralWithPhoto(reading, earlier);
+      expect(status).toBe(200);
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(semanticSafetyCheck).not.toHaveBeenCalled();
+      expect(turn.answerStatus).toBe("insufficient_evidence");
+      expect(turn.answerText!.startsWith(`${LIVE_SCREEN_CLEANING_CARD}\n\n`)).toBe(true);
+      expect(count(turn.answerText!, LIVE_SCREEN_CLEANING_CARD)).toBe(1);
+      expect(turn.answerText).not.toContain("24 V DC");
+    });
+  }
 });
 
 import { unsafePracticeWarning as unsafePracticeWarningFor } from "@/capabilities/unsafe-practice-advisory";

@@ -3982,12 +3982,10 @@ async function handleChatTurn(
   // #5905 Codex r1 F2: an unsafe-practice card (#5864) never sits above an answer with no
   // evidence, so it joins this abstain in general mode too. A real hazard trigger still
   // takes the general lane, as above.
-  // #5905 r2 F5: this turn's photo reading is evidence the question can be answered from, so a
-  // turn that has one is answered from it under the card. Earlier photos ride along on every
-  // later turn and count only when the answer uses them (#4442), which is not known yet, so
-  // they unlock nothing here. A photo with no stored reading is only an attachment.
-  const lookEvidenceForAbstain = Boolean(renderLookObservationSection(lookRow));
-  const unsafePracticeAbstain = Boolean(unsafePracticeCard) && !lookEvidenceForAbstain;
+  // One invariant, photo or not: the card with no retrieved chunks gets the fixed reply. A photo
+  // reading cannot tell whether it supports the question asked (#5905 Codex r3 F11), so it
+  // unlocks nothing here; answering the photo-backed part under the card is a follow-up.
+  const unsafePracticeAbstain = Boolean(unsafePracticeCard);
   if (componentHold || (chunks.length === 0 && (!general || libraryNotForAsk || missingModelManual || noEvidenceForMachine || unidentifiedServiceText || photoPartLookup || photoPartCompatibilityText || unboundManualRequest || unsafePracticeAbstain) && !groundedMachineEntry && !safetyTrigger)) {
     // Gate G — abstain honestly, persist the turn, never call the provider.
     // #4015: "couldn't find that in the documentation I have", not "I don't have
