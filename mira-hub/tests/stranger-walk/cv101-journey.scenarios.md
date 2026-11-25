@@ -136,3 +136,10 @@ citation on the attached manual is still required. A change to the stop's wordin
 a person updates the pin on purpose. The pin is not a product contract: if the product finds a
 lockout page in this manual, or names it by model, S5b fails loudly and the pin is re-approved.
 
+Two further conditions (#5943, #5944):
+
+- The stream must end with an arrived `answered` status, and the rendered turn must be in the
+  `safety_stop` lifecycle.
+- Only visible text parts count, and at least one is required. Markdown markers are stripped from
+  the pin only, so a plain-text fallback that shows literal `**` fails.
+

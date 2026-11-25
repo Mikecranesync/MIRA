@@ -165,7 +165,7 @@ async function openProject(page: Page, name: string) {
   await page.getByRole("heading", { level: 1, name }).waitFor({ timeout: 30_000 });
 }
 
-type Ask = { text: string; status: string | null; stop: boolean; citations: { n: string; title: string; page: string | null }[]; served: ServedCitation[]; content: string; answerText: string; viewer: { fileId: string | null; page: string | null } | null; ledger: string; machineLabel: string; ms: number };
+type Ask = { text: string; status: string | null; stop: boolean; citations: { n: string; title: string; page: string | null }[]; served: ServedCitation[]; content: string; servedStatus: string; sawStatus: boolean; answerTexts: string[]; lifecycle: string | null; viewer: { fileId: string | null; page: string | null } | null; ledger: string; machineLabel: string; ms: number };
 
 /** Set once the run is priced: identity read + drift check before every paid dispatch (Codex r1 F1). */
 let paidRuntime: { base: string; start: RuntimeIdentity } | null = null;
@@ -227,9 +227,11 @@ async function ask(page: Page, q: string, meter: BudgetMeter, tenantId: string, 
   }
   void cardsOf;
   const servedTurn = await servedTurnOf(sse ?? "");
-  // Every rendered answer text part, in order (banner and chips are not text parts).
-  const answerText = (await settled.locator('[data-part-type="text"]').allInnerTexts().catch(() => [] as string[])).join("\n");
-  return { text: whole, status, stop: rec.safety.kind === "stop", citations: rec.citations, served: servedTurn.citations, content: servedTurn.content, answerText, viewer, ledger: lv ? (lv.verdict.ok ? lv.verdict.kind : `FAIL ${lv.verdict.reason}`) : "not read", machineLabel, ms: Date.now() - t0 };
+  // Every visible rendered answer text part, in order (banner and chips are not text parts; a part
+  // hidden by CSS is not what the technician reads, #5944).
+  const answerTexts = await settled.locator('[data-part-type="text"]').filter({ visible: true }).allInnerTexts().catch(() => [] as string[]);
+  const lifecycle = await settled.getAttribute("data-lifecycle").catch(() => null);
+  return { text: whole, status, stop: rec.safety.kind === "stop", citations: rec.citations, served: servedTurn.citations, content: servedTurn.content, servedStatus: servedTurn.status, sawStatus: servedTurn.sawStatus, answerTexts, lifecycle, viewer, ledger: lv ? (lv.verdict.ok ? lv.verdict.kind : `FAIL ${lv.verdict.reason}`) : "not read", machineLabel, ms: Date.now() - t0 };
 }
 
 async function newChat(page: Page) {
@@ -530,10 +532,10 @@ test("cv101 journey", async () => {
     await step("S5b-caution", "Revision 5 (pinned): a stop whose streamed and rendered answer are exactly the pinned paid2 stop text pointing to the p.5 warning, with a served page-5 warning citation on the attached manual", page, async (s) => {
       await newChat(page);
       const a = await ask(page, Q_CAUTION, meter, tenantId, true);
-      const j = judgeCautionPointer(a, ids.fileId);
+      const j = judgeCautionPointer({ ...a, status: a.servedStatus }, ids.fileId);
       // Still recorded, no longer judged: whether the text happens to carry the warning's words.
       const c = CAUTION_P5.map((re) => re.test(a.text));
-      s.actual = `status=${a.status} stop=${a.stop} ledger=${a.ledger}; servedP5=${j.p5}${j.reason ? ` (${j.reason})` : ""} streamedPinned=${j.streamed} renderedPinned=${j.rendered} (quoted caution parts, not judged: ${c.join("/")}); served=${JSON.stringify(a.served).slice(0, 200)}; viewer=${JSON.stringify(a.viewer)}; text: ${a.text.replace(/\s+/g, " ").slice(0, 400)}`;
+      s.actual = `status=${a.status} stop=${a.stop} ledger=${a.ledger}; servedP5=${j.p5}${j.reason ? ` (${j.reason})` : ""} streamedPinned=${j.streamed} answered=${j.answered} sawStatus=${a.sawStatus} lifecycle=${a.lifecycle} renderedPinned=${j.rendered} textParts=${a.answerTexts.length} (quoted caution parts, not judged: ${c.join("/")}); served=${JSON.stringify(a.served).slice(0, 200)}; viewer=${JSON.stringify(a.viewer)}; text: ${a.text.replace(/\s+/g, " ").slice(0, 400)}`;
       s.verdict = j.pass ? "PASS" : "FAIL";
     });
 

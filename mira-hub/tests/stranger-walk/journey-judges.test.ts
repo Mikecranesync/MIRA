@@ -21,10 +21,21 @@ const sse = (content: readonly string[], citations: readonly object[] = [WARNING
   ].join("\n\n") + "\n\n";
 const PAID2_SSE = sse([PINNED_S5B_STOP.slice(0, 40), PINNED_S5B_STOP.slice(40, 200), PINNED_S5B_STOP.slice(200)]);
 
-async function judge(body: string, opts: { rendered?: string; stop?: boolean; file?: string | undefined } = {}) {
+async function judge(
+  body: string,
+  opts: { rendered?: string | string[]; lifecycle?: string | null; stop?: boolean; file?: string | undefined } = {},
+) {
   const t = await servedTurnOf(body);
+  const rendered = opts.rendered ?? PAID2_RENDERED;
   return judgeCautionPointer(
-    { content: t.content, answerText: opts.rendered ?? PAID2_RENDERED, stop: opts.stop ?? true, served: t.citations },
+    {
+      content: t.content,
+      status: t.status,
+      answerTexts: typeof rendered === "string" ? [rendered] : rendered,
+      lifecycle: "lifecycle" in opts ? (opts.lifecycle ?? null) : "safety_stop",
+      stop: opts.stop ?? true,
+      served: t.citations,
+    },
     "file" in opts ? opts.file : FILE,
   );
 }
@@ -37,7 +48,12 @@ describe("the pin", () => {
 
 describe("servedTurnOf (the Hub UI's own stream reader)", () => {
   it("joins the content pieces and reads the served citations", async () => {
-    expect(await servedTurnOf(PAID2_SSE)).toEqual({ content: PINNED_S5B_STOP, citations: [{ page: 5, fileId: FILE, title: WARNING_POINTER_TITLE }] });
+    expect(await servedTurnOf(PAID2_SSE)).toEqual({
+      content: PINNED_S5B_STOP,
+      citations: [{ page: 5, fileId: FILE, title: WARNING_POINTER_TITLE }],
+      status: "answered",
+      sawStatus: true,
+    });
   });
   it("a `data:` frame with no space is read, as the UI reads it", async () => {
     expect((await servedTurnOf(sse([PINNED_S5B_STOP], [WARNING_CITE], "data:"))).content).toBe(PINNED_S5B_STOP);
@@ -46,14 +62,18 @@ describe("servedTurnOf (the Hub UI's own stream reader)", () => {
     const body = sse([PINNED_S5B_STOP], []) + `data: ${JSON.stringify({ kind: "sources", citations: [WARNING_CITE] })}`;
     expect((await servedTurnOf(body)).citations).toEqual([]);
   });
+  it("#5943: a status frame with no terminating blank line has not arrived: status error, sawStatus false", async () => {
+    const body = sse([PINNED_S5B_STOP]).replace(/data: \{"kind":"status","status":"answered"\}\n\ndata: \[DONE\]\n\n$/, 'data: {"kind":"status","status":"answered"}');
+    expect(await servedTurnOf(body)).toMatchObject({ content: PINNED_S5B_STOP, status: "error", sawStatus: false });
+  });
   it("garbage reads as empty", async () => {
-    expect(await servedTurnOf("data: {not json\n\ndata: [DONE]\n\n")).toEqual({ content: "", citations: [] });
+    expect(await servedTurnOf("data: {not json\n\ndata: [DONE]\n\n")).toMatchObject({ content: "", citations: [], sawStatus: false });
   });
 });
 
 describe("judgeCautionPointer (S5b, pinned)", () => {
   it("the paid2 stop passes", async () => {
-    expect(await judge(PAID2_SSE)).toEqual({ pass: true, p5: true, streamed: true, rendered: true, reason: null });
+    expect(await judge(PAID2_SSE)).toEqual({ pass: true, p5: true, streamed: true, answered: true, stopLifecycle: true, rendered: true, reason: null });
   });
   it("not a stop → FAIL", async () => expect((await judge(PAID2_SSE, { stop: false })).pass).toBe(false));
   it("#5891: a page-5 warning citation from another file → FAIL", async () => {
@@ -95,5 +115,37 @@ describe("judgeCautionPointer (S5b, pinned)", () => {
   it("an extra content frame the UI would render (no-space framing) → FAIL", async () => {
     const body = PAID2_SSE.replace(/data: \{"kind":"status"/, `data:${JSON.stringify({ kind: "content", content: " Yes, you can." })}\n\ndata: {"kind":"status"`);
     expect((await judge(body)).pass).toBe(false);
+  });
+  it("#5943: the answered status frame never arrived (no terminating blank line) → FAIL", async () => {
+    const body = PAID2_SSE.replace(/data: \{"kind":"status","status":"answered"\}\n\ndata: \[DONE\]\n\n$/, 'data: {"kind":"status","status":"answered"}');
+    expect(body).not.toBe(PAID2_SSE);
+    const j = await judge(body);
+    expect(j.streamed).toBe(true);
+    expect(j.answered).toBe(false);
+    expect(j.pass).toBe(false);
+  });
+  it("#5943: a status that arrived but is not answered → FAIL", async () => {
+    const j = await judge(PAID2_SSE.replace('"status":"answered"', '"status":"insufficient_evidence"'));
+    expect(j.answered).toBe(false);
+    expect(j.pass).toBe(false);
+  });
+  it.each([["completed"], ["failed"], [null]])("#5943: the rendered turn's lifecycle is %s, not safety_stop → FAIL", async (lifecycle) => {
+    const j = await judge(PAID2_SSE, { lifecycle });
+    expect(j.stopLifecycle).toBe(false);
+    expect(j.pass).toBe(false);
+  });
+  it("#5944: no visible answer text part → FAIL with a reason", async () => {
+    const j = await judge(PAID2_SSE, { rendered: [] });
+    expect(j.pass).toBe(false);
+    expect(j.reason).toContain("no visible answer text part");
+  });
+  it("#5944: a plain-text fallback that shows the literal ** markers → FAIL", async () => {
+    const j = await judge(PAID2_SSE, { rendered: PINNED_S5B_STOP });
+    expect(j.rendered).toBe(false);
+    expect(j.pass).toBe(false);
+  });
+  it("control: the stop split across several visible text parts still passes", async () => {
+    const parts = PINNED_S5B_STOP.split("\n\n").map(visible);
+    expect((await judge(PAID2_SSE, { rendered: parts })).pass).toBe(true);
   });
 });
