@@ -11,8 +11,10 @@ from __future__ import annotations
 
 import itertools
 import json
+import logging
 import pathlib
 import sys
+from urllib.parse import urlparse
 
 import httpx
 import pytest
@@ -122,6 +124,162 @@ def test_trail_url_strips_query_and_fragment():
         search_mod.trail_url("https://h.example/a/b.pdf?x-sign=abc#p2")
         == "https://h.example/a/b.pdf"
     )
+
+
+@pytest.mark.parametrize(
+    "url,bare",
+    [
+        ("https://u5933:p5933-secret@h.example/a/b.pdf", "https://h.example/a/b.pdf"),
+        ("https://u5933@h.example:8443/a/b.pdf?x=1", "https://h.example:8443/a/b.pdf"),
+        ("https://u5933:p5933@x@h.example/a.pdf", "https://h.example/a.pdf"),
+        (
+            "http://u5933:p5933-secret@[2001:db8::1]:8080/a.pdf",
+            "http://[2001:db8::1]:8080/a.pdf",
+        ),
+    ],
+    ids=["user_and_password", "user_only_with_port", "at_in_password", "ipv6_with_port"],
+)
+def test_trail_url_drops_userinfo_and_keeps_host_and_port(url, bare):
+    # #5933: a search result's user:password part never reaches the trail.
+    assert search_mod.trail_url(url) == bare
+
+
+@pytest.mark.parametrize(
+    "host,shown",
+    [
+        ("u5933:p5933-secret@h.example:8443", "h.example:8443"),
+        ("h.example:8443", "h.example:8443"),  # control: no userinfo, unchanged
+        ("H.Example", "H.Example"),  # control: case is not touched
+        ("", ""),
+        (None, None),  # control: a missing host stays missing
+    ],
+)
+def test_a_trail_row_host_drops_userinfo_only(host, shown):
+    trail = search_mod.AcquisitionTrail(
+        candidates=[{"url": "https://h.example/a.pdf", "host": host, "title": "t", "score": 1}]
+    )
+    assert trail.to_dict()["candidates"][0]["host"] == shown
+
+
+# #5940 F1, F3: a browser reads an http(s) authority after any run of slashes or
+# backslashes and ends it at a backslash; Python's urlparse does neither. Where the
+# two disagree, a shown URL would keep its userinfo or name a host no browser would
+# go to, so the trail shows nothing (the Hub drops a row whose URL does not parse).
+_REFUSED = {
+    "single_slash": "https:/u5933:p5933-secret@h.example/a.pdf",
+    "no_slash": "https:u5933:p5933-secret@h.example/a.pdf",
+    "three_slashes": "https:///u5933:p5933-secret@h.example/a.pdf",
+    "backslashes": "https:\\\\u5933:p5933-secret@h.example/a.pdf",
+    "no_host_left": "https://u5933:p5933-secret@/a.pdf",
+    "backslash_before_at": "https://a.example\\@b.example/a.pdf",  # a browser: a.example
+    "backslash_in_userinfo": "https://u5933\\x:p5933-secret@h.example/a.pdf",
+    "encoded_host": "https://u5933:p5933-secret@ex%61mple.com/a.pdf",
+    # the same host to both, but a browser's path is /@h.example/a.pdf, so the
+    # shown https://h.example/a.pdf would name a page the link never pointed to
+    "backslash_same_host": "https://h.example\\@h.example/a.pdf",
+}
+
+
+@pytest.mark.parametrize("shape", sorted(_REFUSED))
+def test_trail_url_refuses_an_authority_a_browser_reads_differently(shape):
+    assert search_mod.trail_url(_REFUSED[shape]) == ""
+
+
+@pytest.mark.parametrize(
+    "url,shown",
+    [
+        ("https://host.example/@team/x.pdf", "https://host.example/@team/x.pdf"),
+        ("https://host.example/x.pdf?by=a@b", "https://host.example/x.pdf"),
+        ("https://h.example/a/b.pdf#p@2", "https://h.example/a/b.pdf"),
+    ],
+    ids=["at_in_path", "at_in_query", "at_in_fragment"],
+)
+def test_trail_url_keeps_an_at_sign_outside_the_authority(url, shown):
+    # Control: an at-sign in the path, query or fragment is not userinfo to anyone.
+    assert search_mod.trail_url(url) == shown
+
+
+@pytest.mark.parametrize(
+    "url",
+    ["https:/h.example/a.pdf", "https:///a.pdf", "https://h.example\\a.pdf"],
+    ids=["single_slash", "three_slashes", "backslash"],
+)
+def test_trail_url_leaves_a_url_without_an_at_sign_as_main_does(url):
+    # Control: with no at-sign there is no userinfo for any parser, so main's output
+    # stands, odd shapes included (what to show for those is #5939's question).
+    assert search_mod.trail_url(url) == url
+
+
+@pytest.mark.parametrize("shape", ["backslash_before_at", "no_host_left", "single_slash"])
+def test_a_refused_rows_host_is_empty_too(shape):
+    url = _REFUSED[shape]
+    trail = search_mod.AcquisitionTrail(
+        candidates=[{"url": url, "host": urlparse(url).netloc, "title": "t", "score": 1}]
+    )
+    row = trail.to_dict()["candidates"][0]
+    assert (row["url"], row["host"]) == ("", ""), row
+
+
+_ECHOED = "https://u5933:p5933-secret@parts.example.net/gs10m.pdf"
+_TITLES = {
+    # a provider title that repeats the link, as a browser would still read it
+    "scheme": (_ECHOED, _ECHOED, "https://parts.example.net/gs10m.pdf"),
+    # a title naming some other link, which a browser would read with userinfo
+    "single_slash": (
+        "https://parts.example.net/gs10m.pdf",
+        "https:/u5933:p5933-secret@parts.example.net/gs10m.pdf",
+        "https:/parts.example.net/gs10m.pdf",
+    ),
+    "backslashes": (
+        "https://parts.example.net/gs10m.pdf",
+        "https:\\\\u5933:p5933-secret@parts.example.net/gs10m.pdf",
+        "https:\\\\parts.example.net/gs10m.pdf",
+    ),
+    # the link's own userinfo, echoed without a scheme
+    "no_scheme": (
+        _ECHOED,
+        "u5933:p5933-secret@parts.example.net/gs10m.pdf",
+        "parts.example.net/gs10m.pdf",
+    ),
+    # the password straddles character 120: redacting after the cut would keep "p5933"
+    "across_the_cut": (
+        "https://h.example/a.pdf",
+        "A" * 100 + " https://u5933:p5933-secret@h.example/a.pdf",
+        ("A" * 100 + " https://h.example/a.pdf")[:120],
+    ),
+}
+
+
+@pytest.mark.parametrize("case", sorted(_TITLES))
+def test_a_trail_row_title_drops_url_userinfo_before_the_cut(case):
+    # #5940 F2: the title is redacted, then cut to 120 characters.
+    url, title, shown = _TITLES[case]
+    trail = search_mod.AcquisitionTrail(
+        candidates=[{"url": url, "host": urlparse(url).netloc, "title": title, "score": 1}]
+    )
+    row = trail.to_dict()["candidates"][0]
+    assert row["title"] == shown
+    assert "u5933" not in row["title"] and "p5933" not in row["title"]
+
+
+@pytest.mark.parametrize(
+    "title",
+    [
+        "Contact sales@example.com for the GS10 manual",
+        "mailto:sales@example.com",
+        "GS10 manual https://parts.example.net/gs10m.pdf",
+        "B" * 130,
+    ],
+    ids=["email", "mailto", "clean_url", "long_plain"],
+)
+def test_a_trail_row_title_without_url_userinfo_is_only_cut(title):
+    # Control: an email address, a mailto link, a clean URL and a long plain title
+    # come out exactly as main cut them.
+    url = "https://h.example/a.pdf"
+    trail = search_mod.AcquisitionTrail(
+        candidates=[{"url": url, "host": "h.example", "title": title, "score": 1}]
+    )
+    assert trail.to_dict()["candidates"][0]["title"] == title[:120]
 
 
 # ── the real fetch records WHY it returned nothing ──────────────────────────
@@ -577,3 +735,184 @@ async def test_rejected_document_still_searches_for_a_website(monkeypatch):
     assert not candidate["validated"]
     assert trail.search_page_url == "https://novel-controls.example/support/"
     assert "filetype:pdf" not in calls[-1]
+
+
+# ── #5933 / #5935: what the endpoint's trail and candidate carry ─────────────
+
+_USER, _PASSWORD = "u5933", "p5933-secret"
+_SIMATIC = "6ES7214-1AG40-0XB0"
+_ASIDE = (
+    "https://www.example-distributor.com:8443/p/6es7214_1ag40_0xb0",
+    "6ES7214_1AG40_0XB0 CPU 1214C compact",
+)
+_SCORED = ("https://parts.example.net/gs10m.pdf", "GS10 Drive User Manual")
+
+
+def _with_userinfo(url: str) -> str:
+    scheme, rest = url.split("://", 1)
+    return f"{scheme}://{_USER}:{_PASSWORD}@{rest}"
+
+
+def _discover(monkeypatch, caplog, enabled, hits, manufacturer, **fields):
+    """The real discovery endpoint around the real search, with only the network
+    edges stubbed: every query returns ``hits``, and no URL probes as a PDF.
+    Returns the response body and the one MANUAL_ACQUISITION_TRAIL line it logged."""
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    import ask_api.manual_discovery as md
+
+    async def serper(query, num=10):
+        return [{"link": u, "title": t} for u, t in hits]
+
+    async def no_pdf(url):
+        return False
+
+    async def no_link(make):
+        return None
+
+    async def unreachable(url, *args, **kwargs):
+        judge._why("fetch_error")  # what the real fetch records for a network error
+        return None
+
+    monkeypatch.setenv("MANUAL_DISCOVERY_API_KEY", "k")
+    monkeypatch.setenv("MANUAL_JUDGE_ENABLED", enabled)
+    assert judge.judge_enabled() is (enabled == "1")
+    monkeypatch.setattr(search_mod, "_serper_search", serper)
+    monkeypatch.setattr(search_mod, "validate_pdf", no_pdf)
+    monkeypatch.setattr(md, "oem_request_link", no_link)
+    monkeypatch.setattr(judge, "fetch_pdf_bytes", unreachable)
+    app = FastAPI()
+    app.include_router(md.router)
+    client = TestClient(app, headers={"X-Mira-Key": "k", "X-Mira-Tenant": "t", "X-Mira-User": "u"})
+    caplog.clear()
+    with caplog.at_level(logging.INFO):
+        body = client.post(
+            "/manual-discovery/search", json={"manufacturer": manufacturer, **fields}
+        ).json()
+    logged = [
+        m
+        for m in (r.getMessage() for r in caplog.records)
+        if m.startswith("MANUAL_ACQUISITION_TRAIL ")
+    ]
+    assert len(logged) == 1, logged
+    return body, logged[0]
+
+
+_CASES = {
+    # main's own candidate: a scored PDF, offered unread with the judge off
+    "scored_candidate": (_SCORED, "AutomationDirect", {"model": "GS10"}),
+    # #5896's row: a score-zero exact-part page, offered at a miss ending
+    "set_aside_offer": (_ASIDE, "Siemens", {"catalog_number": _SIMATIC}),
+}
+
+
+@pytest.mark.parametrize("enabled", ["0", "1"])
+@pytest.mark.parametrize("case", sorted(_CASES))
+def test_the_trail_never_carries_a_results_userinfo(monkeypatch, caplog, case, enabled):
+    # #5933, with the judge off as in production and on. Each row keeps its host,
+    # port and path; neither the returned trail nor the logged line holds the user
+    # or password.
+    (url, title), make, fields = _CASES[case]
+    if case == "set_aside_offer":
+        assert search_mod._score(_with_userinfo(url), title, make, _SIMATIC) == 0
+    body, line = _discover(
+        monkeypatch, caplog, enabled, [(_with_userinfo(url), title)], make, **fields
+    )
+    assert body["candidate"]["url"] == _with_userinfo(url), body  # the offer is this page
+    rows = body["candidate_trail"]["candidates"]
+    selected = [r for r in rows if r["selected"]]
+    assert len(selected) == 1, rows
+    netloc = url.split("://", 1)[1].split("/", 1)[0]
+    assert (selected[0]["url"], selected[0]["host"]) == (url, netloc), selected
+    for text in (json.dumps(body["candidate_trail"]), line):
+        assert _USER not in text and _PASSWORD not in text, text
+
+    # Control: the same page without userinfo gives the same trail, byte for byte.
+    bare_body, bare_line = _discover(monkeypatch, caplog, enabled, [(url, title)], make, **fields)
+    assert bare_body["candidate_trail"] == body["candidate_trail"]
+    assert bare_line == line
+
+
+@pytest.mark.parametrize("enabled", ["0", "1"])
+def test_an_offered_set_aside_page_returns_with_mains_fields(monkeypatch, caplog, enabled):
+    # #5935: the trail tags the offered set-aside page with the pass that found it,
+    # but the endpoint's candidate keeps main's fields, with no `pass` key.
+    url, title = _ASIDE
+    assert search_mod._score(url, title, "Siemens", _SIMATIC) == 0  # set aside
+    body, _ = _discover(
+        monkeypatch, caplog, enabled, [(url, title)], "Siemens", catalog_number=_SIMATIC
+    )
+    candidate = body["candidate"]
+    assert candidate["url"] == url and candidate["validated"] is False, candidate
+    expected = {"url", "title", "host", "score", "doc_type", "is_direct_pdf", "validated"}
+    if enabled == "1":
+        expected |= {"reason", "reason_detail", "judged_rejected"}
+    assert set(candidate) == expected, sorted(candidate)
+    trail = body["candidate_trail"]
+    selected = [r for r in trail["candidates"] if r["selected"]]
+    first = trail["queries"][0]["pass"].split()[0]  # every query returns the page
+    assert [(r["url"], r["read"], r["pass"]) for r in selected] == [(url, "unread", first)]
+
+
+# ── #5940: links the trail cannot verify, and titles that echo a link ─────────
+
+_GS10 = ("AutomationDirect", {"model": "GS10"})
+_UNVERIFIABLE = {
+    # Codex round 1's F1: a browser reads this userinfo, Python sees no host at all
+    "single_slash": "https:/u5933:p5933-secret@parts.example.net/gs10m.pdf",
+    "backslashes": "https:\\\\u5933:p5933-secret@parts.example.net/gs10m.pdf",
+    # F3: the userinfo comes off and no host is left
+    "no_host_left": "https://u5933:p5933-secret@/gs10m.pdf",
+    # Python's host is evil.example, a browser's parts.example.net
+    "backslash_before_at": "https://parts.example.net\\@evil.example/gs10m.pdf",
+}
+
+
+@pytest.mark.parametrize("enabled", ["0", "1"])
+@pytest.mark.parametrize("shape", sorted(_UNVERIFIABLE))
+def test_a_link_the_trail_cannot_verify_is_shown_as_nothing(monkeypatch, caplog, shape, enabled):
+    url = _UNVERIFIABLE[shape]
+    make, fields = _GS10
+    assert search_mod._score(url, "GS10 Drive User Manual", make, "GS10") > 0  # a candidate
+    body, line = _discover(
+        monkeypatch, caplog, enabled, [(url, "GS10 Drive User Manual")], make, **fields
+    )
+    assert body["candidate"]["url"] == url, body  # the search still offers this page
+    rows = body["candidate_trail"]["candidates"]
+    assert [(r["url"], r["host"], r["selected"]) for r in rows] == [("", "", True)], rows
+    for text in (json.dumps(body["candidate_trail"]), line):
+        for secret in ("u5933", "p5933", "evil.example"):
+            assert secret not in text, (secret, text)
+
+
+_ECHO_URL = _with_userinfo(_SCORED[0])
+_ECHOES = {
+    "scheme": (_ECHO_URL, "https://parts.example.net/gs10m.pdf"),
+    "no_scheme": (
+        "u5933:p5933-secret@parts.example.net/gs10m.pdf GS10 manual",
+        "parts.example.net/gs10m.pdf GS10 manual",
+    ),
+    "across_the_cut": (
+        "GS10 manual " + "A" * 88 + " " + _ECHO_URL,
+        ("GS10 manual " + "A" * 88 + " https://parts.example.net/gs10m.pdf")[:120],
+    ),
+}
+
+
+@pytest.mark.parametrize("enabled", ["0", "1"])
+@pytest.mark.parametrize("case", sorted(_ECHOES))
+def test_a_title_that_echoes_its_link_reaches_the_trail_without_userinfo(
+    monkeypatch, caplog, case, enabled
+):
+    # #5940 F2: redacted before the 120-character cut, so no prefix survives either.
+    title, shown = _ECHOES[case]
+    make, fields = _GS10
+    body, line = _discover(monkeypatch, caplog, enabled, [(_ECHO_URL, title)], make, **fields)
+    assert (body["candidate"]["url"], body["candidate"]["title"]) == (_ECHO_URL, title)
+    selected = [r for r in body["candidate_trail"]["candidates"] if r["selected"]]
+    assert [(r["url"], r["host"], r["title"]) for r in selected] == [
+        ("https://parts.example.net/gs10m.pdf", "parts.example.net", shown)
+    ], selected
+    for text in (json.dumps(body["candidate_trail"]), line):
+        assert "u5933" not in text and "p5933" not in text, text

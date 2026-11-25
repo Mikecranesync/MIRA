@@ -649,12 +649,86 @@ _TRAIL_JUDGE_FIELDS = (
 )
 
 
+def _without_userinfo(netloc):
+    """``netloc`` without a ``user:password@`` part, split where ``urlparse`` splits
+    it (the last ``@``). A search result is a third-party URL; its credentials never
+    reach the trail (#5933). Anything else passes through unchanged."""
+    return netloc.rpartition("@")[2] if isinstance(netloc, str) else netloc
+
+
+def _userinfo_of(netloc) -> str:
+    """The ``user:password`` part of ``netloc``, empty when there is none."""
+    return netloc.rpartition("@")[0] if isinstance(netloc, str) else ""
+
+
+# A browser (and the Hub's ``new URL``) reads an http(s) authority after ANY run of
+# slashes or backslashes, ends it at the first slash, backslash, ``?`` or ``#``, and
+# ends its userinfo at the last ``@``. Python's ``urlparse`` needs exactly ``//`` and
+# does not stop at a backslash, so the two can disagree about what the userinfo
+# and the host are (#5940 F1, F3).
+_BROWSER_AUTHORITY = re.compile(r"(?i)https?:[/\\]*([^/\\?#]*)")
+_TRAIL_HOST = re.compile(r"(?i)(?:[a-z0-9-]+(?:\.[a-z0-9-]+)*\.?|\[[0-9a-f:.]+\])(?::[0-9]{1,5})?")
+# Userinfo inside free text: an http(s), ftp or ws(s) URL after any run of slashes
+# or backslashes, as a browser reads it, or any other scheme after ``//``.
+_TEXT_URL_USERINFO = re.compile(
+    r"(?i)\b((?:https?|ftp|wss?):[/\\]*|[a-z][a-z0-9+.\-]*://)[^\s/\\?#]*@"
+)
+
+
+def _browser_userinfo_and_host(url: str) -> tuple[str, str] | None:
+    """(userinfo, host[:port]) as a browser splits an http(s) URL, else None."""
+    m = _BROWSER_AUTHORITY.match(re.sub(r"[\t\n\r]", "", url or "").strip())
+    if not m:
+        return None
+    userinfo, _, host = m.group(1).rpartition("@")
+    return userinfo, host
+
+
+def _unverifiable(url: str) -> bool:
+    """A URL holding an ``@`` that the trail cannot show safely: Python and a browser
+    split its authority differently, or its host is not plainly a hostname or an IP.
+    Shown, such a URL would carry its userinfo, or name a host a browser would not
+    go to. A URL with no ``@`` has no userinfo for any parser and is never refused."""
+    if "@" not in (url or ""):
+        return False
+    p = urlparse(url)
+    browser = _browser_userinfo_and_host(url)
+    return (
+        browser is None
+        or "\\" in p.netloc
+        or _without_userinfo(p.netloc) != browser[1]
+        or not _TRAIL_HOST.fullmatch(browser[1])
+    )
+
+
 def trail_url(url: str) -> str:
-    """The URL without its query string or fragment: signed download tokens
-    (ABB's ``x-sign``) are credentials-like and would make one document look
-    like many."""
+    """The URL without its userinfo, query string or fragment: a ``user:password``
+    part and signed download tokens (ABB's ``x-sign``) are credentials-like, and
+    the tokens would make one document look like many. Empty when the URL holds an
+    ``@`` the trail cannot verify (#5940 F1, F3): the Hub drops a row whose URL does
+    not parse, and the search itself still sees the original URL."""
+    if _unverifiable(url):
+        return ""
     p = urlparse(url or "")
-    return f"{p.scheme}://{p.netloc}{p.path}" if p.scheme and p.netloc else (url or "")[:200]
+    if p.scheme and p.netloc:
+        return f"{p.scheme}://{_without_userinfo(p.netloc)}{p.path}"
+    return (url or "")[:200]
+
+
+def _trail_title(title: str, url: str) -> str:
+    """The title without any URL userinfo, then cut to 120 characters (#5940 F2).
+    A provider may echo the link as its title, with or without a scheme, so the
+    candidate's own userinfo goes too. Scoring and selection keep the original."""
+    t = title or ""
+    if "@" in t:
+        t = _TEXT_URL_USERINFO.sub(r"\1", t)
+        own = {_userinfo_of(urlparse(url or "").netloc)}
+        browser = _browser_userinfo_and_host(url)
+        if browser is not None:
+            own.add(browser[0])
+        for userinfo in sorted(own - {""}, key=len, reverse=True):
+            t = t.replace(userinfo + "@", "")
+    return t[:120]
 
 
 @dataclass
@@ -678,8 +752,8 @@ class AcquisitionTrail:
             row = {
                 "rank": rank,
                 "url": trail_url(url),
-                "host": c.get("host", ""),
-                "title": (c.get("title") or "")[:120],
+                "host": "" if _unverifiable(url) else _without_userinfo(c.get("host", "")),
+                "title": _trail_title(c.get("title") or "", url),
                 "score": c.get("score"),
                 "pass": c.get("pass"),
                 "direct_pdf": bool(c.get("is_direct_pdf")),
@@ -1266,6 +1340,7 @@ async def search_manual(
     # without a manual (`_unless_extras`), so they never change what it reads, sends,
     # retries or answers before then (#5890 round 2).
     set_aside: list[dict] = []  # hits `_collect` drops
+    aside_pass: dict[int, str] = {}  # id of a set-aside hit -> the pass that set it aside
     retry_extras: list[dict] = []  # extra PDFs the typed-pass retry did not read
     retry_read: list[dict] = []  # PDFs the typed-pass retry sent to the judge
 
@@ -1305,11 +1380,14 @@ async def search_manual(
         )
 
     def _found(hits: list[dict], label: str, aside: list[dict] | None) -> list[dict]:
-        """`_collect` for one query pass. Its candidates, and the hits it sets aside in
-        ``aside``, carry the pass that found them (acquisition trail only, #5896)."""
+        """`_collect` for one query pass. Its candidates carry the pass that found them
+        (acquisition trail only). The hits it sets aside in ``aside`` keep main's
+        fields; their pass is kept in ``aside_pass``, for the trail's copy of an offer
+        (#5896, #5935)."""
         before = len(set_aside)
         found = _tagged(_collect(hits, make, model, part_number, aside), label)
-        _tagged(set_aside[before:], label)
+        for c in set_aside[before:]:
+            aside_pass[id(c)] = label
         return found
 
     def _extra(c: dict) -> bool:
@@ -1445,11 +1523,14 @@ async def search_manual(
             if trail is not None:
                 # A set-aside page is on no list the trail shows. It joins the trail's
                 # own copy as the offer, never main's candidate or judge pools (#5896).
+                # The trail's row is a copy that carries the pass; the offer returned
+                # keeps main's fields (#5935).
                 shown = trail.ranked if trail.ranked is not None else trail.candidates
                 if all(x["url"] != c["url"] for x in shown):
-                    trail.candidates = list(trail.candidates) + [c]
+                    row = {**c, "pass": aside_pass.get(id(c), c.get("pass"))}
+                    trail.candidates = list(trail.candidates) + [row]
                     if trail.ranked is not None:
-                        trail.ranked = list(trail.ranked) + [c]
+                        trail.ranked = list(trail.ranked) + [row]
             return c
         return None
 
