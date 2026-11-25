@@ -2,7 +2,17 @@ import { describe, expect, it } from "vitest";
 
 import { energizedWorkStop } from "@/capabilities/energized-work-stop";
 
-import { PINNED_S5B_STOP, WARNING_POINTER_TITLE, judgeCautionPointer, readableTexts, savedRowFor, servedTurnOf, visible } from "./journey-judges";
+import {
+  PINNED_S5B_STOP,
+  WARNING_POINTER_TITLE,
+  judgeCautionPointer,
+  persistedRowIdOf,
+  readableTexts,
+  savedRowFor,
+  servedTurnOf,
+  visible,
+} from "./journey-judges";
+import type { LedgerRow } from "./staging";
 
 const FILE = "55026402-a378-449f-ab8a-2d6a3ee9e101";
 const WARNING_CITE = { citationId: "1", docId: "d", sourceTitle: WARNING_POINTER_TITLE, page: 5, fileId: FILE, quote: null, originFileId: null };
@@ -199,38 +209,53 @@ describe("readableTexts (#5946: a fully transparent part is not readable)", () =
   });
 });
 
-describe("savedRowFor (#5965: the saved row must be THIS send's answer)", () => {
+describe("persistedRowIdOf (#5979: the row id this stream's ledger row recorded)", () => {
+  // paid2 S5b's own ledger row (ledger-f652ee45….json): one closed row, save confirmed.
+  const PAID2_ROW = "16c211f0-5223-40b2-8a1b-d8297fcb59cc";
+  const row = (persistence: unknown): LedgerRow => ({
+    provider: null, model: null, status: "empty", route_reason: "legacy_cascade", outcome: "safety_stop",
+    input_tokens: null, output_tokens: null, cost_usd_estimate: null,
+    evidence_packet: { trace_id: "f652ee45adca0960f2d2d15226a9e6f3", persistence },
+  });
+  const ok = { outcome: "ok", error_code: null, turn_row_id: PAID2_ROW, evidence_entries: 0 };
+  it("control: paid2's confirmed save gives its row id", () => expect(persistedRowIdOf([row(ok)])).toBe(PAID2_ROW));
+  it("a failed save gives nothing", () => expect(persistedRowIdOf([row({ ...ok, outcome: "failed" })])).toBeNull());
+  it("no row id gives nothing", () => expect(persistedRowIdOf([row({ ...ok, turn_row_id: null })])).toBeNull());
+  it("no persistence record gives nothing", () => expect(persistedRowIdOf([row(undefined)])).toBeNull());
+  it("no ledger row, or more than one, gives nothing", () => {
+    expect(persistedRowIdOf([])).toBeNull();
+    expect(persistedRowIdOf([row(ok), row(ok)])).toBeNull();
+  });
+});
+
+describe("savedRowFor (#5965, #5979: only the row the ledger recorded binds)", () => {
   const Q = "Can I disconnect the Micro820 serial cable while it is powered?";
-  const OLD = [
-    { id: "r1-q", role: "user", text: Q },
-    { id: "r1-a", role: "assistant", text: PAID2_RENDERED },
-  ];
-  const before = OLD.filter((t) => t.role === "assistant").map((t) => t.id);
-  const fresh = [{ id: "r2-q", role: "user", text: Q }, { id: "r2-a", role: "assistant", text: PAID2_RENDERED }];
-  it("control: the one new row, paired with the question sent, is bound", () => {
-    expect(savedRowFor(before, [...OLD, ...fresh], Q)).toBe("r2-a");
+  const turns = (id: string, q = Q) => [{ id: `${id}-q`, role: "user", text: q }, { id: `${id}-a`, role: "assistant", text: PAID2_RENDERED }];
+  it("control: the ledger's row, with its question shown exactly, is bound", () => {
+    expect(savedRowFor("r2", [...turns("r1"), ...turns("r2")], Q)).toBe("r2-a");
   });
-  it("control: the question turn may carry other text around the question", () => {
-    expect(savedRowFor(before, [...OLD, { ...fresh[0], text: `You\n${Q}\n10:41` }, fresh[1]], Q)).toBe("r2-a");
+  it("control: whitespace differences in the shown question are ignored", () => {
+    expect(savedRowFor("r2", turns("r2", `  ${Q.replace(/ /g, "\n")} `), Q)).toBe("r2-a");
   });
-  it("stale history: only the older identical stop is shown → nothing bound", () => {
-    expect(savedRowFor(before, OLD, Q)).toBeNull();
+  it("#5979: an older identical stop renders but the ledger's row does not → nothing bound", () => {
+    expect(savedRowFor("r2", turns("r1"), Q)).toBeNull();
   });
-  it("the live turn is never bound, even when a question turn pairs with it", () => {
-    const live = [{ id: "live-1700000000000-q", role: "user", text: Q }, { id: "live-1700000000000-a", role: "assistant", text: PAID2_RENDERED }];
-    expect(savedRowFor(before, [...OLD, ...live], Q)).toBeNull();
+  it("no confirmed row id from the ledger → nothing bound", () => {
+    expect(savedRowFor(null, turns("r2"), Q)).toBeNull();
   });
-  it("a new row paired with a different question → nothing bound", () => {
-    expect(savedRowFor(before, [...OLD, { ...fresh[0], text: "What is the GS10 fault code F004?" }, fresh[1]], Q)).toBeNull();
+  it("the ledger's question turn renders but its answer does not → nothing bound", () => {
+    expect(savedRowFor("r2", [turns("r2")[0]], Q)).toBeNull();
   });
-  it("a new row whose question turn is missing → nothing bound", () => {
-    expect(savedRowFor(before, [...OLD, fresh[1]], Q)).toBeNull();
+  it("the ledger's answer renders but its question turn does not → nothing bound", () => {
+    expect(savedRowFor("r2", [turns("r2")[1]], Q)).toBeNull();
   });
-  it("two new rows → ambiguous, nothing bound", () => {
-    const more = [{ id: "r3-q", role: "user", text: Q }, { id: "r3-a", role: "assistant", text: PAID2_RENDERED }];
-    expect(savedRowFor(before, [...OLD, ...fresh, ...more], Q)).toBeNull();
+  it("the question shown is a different question → nothing bound", () => {
+    expect(savedRowFor("r2", turns("r2", "What is the GS10 fault code F004?"), Q)).toBeNull();
   });
-  it("a new assistant node that is not a persisted answer id → nothing bound, even when a question turn pairs with it", () => {
-    expect(savedRowFor(before, [...OLD, fresh[0], { id: "r2-x", role: "assistant", text: PAID2_RENDERED }], Q)).toBeNull();
+  it("the question shown merely contains the question → nothing bound (exact, not a substring)", () => {
+    expect(savedRowFor("r2", turns("r2", `${Q} Also, is it safe to reset?`), Q)).toBeNull();
+  });
+  it("an assistant node with the ledger's row id but the question's role does not count", () => {
+    expect(savedRowFor("r2", [{ id: "r2-q", role: "assistant", text: Q }, turns("r2")[1]], Q)).toBeNull();
   });
 });

@@ -26,7 +26,7 @@ import { reserveWalkSpend, settleWalkSpend } from "./spend-ledger";
 import { assertOpenRouterCeiling, BudgetMeter, identity, ledgerVerdictFor, pricesFromEnv, releaseOwnPilotHold, runtimeDrift, runtimeOf, stagingBase, teardownTenant, worstCaseTurnUsd, type RuntimeIdentity } from "./staging";
 import { decodeChatBody } from "./stream-decode";
 import { admitPaidTurn, reconcilePaidTurn, recoverSetupTenant, requireDeployedPricing, settlementOf } from "./journey-guard";
-import { judgeCautionPointer, readableTexts, savedRowFor, servedTurnOf, type RenderedPart, type RenderedTurn, type ServedCitation } from "./journey-judges";
+import { judgeCautionPointer, persistedRowIdOf, readableTexts, savedRowFor, servedTurnOf, type RenderedPart, type RenderedTurn, type ServedCitation } from "./journey-judges";
 import { exitOk, receiptOf, type Step } from "./journey-receipt";
 
 const TARGET = (process.env.CV_TARGET ?? "desktop") as "desktop" | "phone" | "pixel" | "tablet";
@@ -182,7 +182,6 @@ async function ask(page: Page, q: string, meter: BudgetMeter, tenantId: string, 
   const t0 = Date.now();
   const sel = '.fl-turn--aui[data-role="assistant"]';
   const before = await page.locator(sel).count();
-  const beforeIds = await page.locator(sel).evaluateAll((els) => els.map((el) => el.getAttribute("data-turn-id") ?? ""));
   await UI.clone.composer(page).fill(q);
   await admitPaid(meter, q.slice(0, 24));
   const chat = page.waitForResponse((r) => r.request().method() === "POST" && /\/chat\/?$/.test(new URL(r.url()).pathname), { timeout: 180_000 });
@@ -210,8 +209,8 @@ async function ask(page: Page, q: string, meter: BudgetMeter, tenantId: string, 
   await turn.and(page.locator(':not([data-lifecycle="running"])')).waitFor({ timeout: 180_000 });
   // #5947: the host shows the live turn, then swaps it for the saved row after the detail refresh
   // (hub-host.tsx). Wait for the live turn to leave, as fidelity.spec.ts does, and read everything
-  // from the saved row for THIS send (#5965: new since the send, paired with this question). A swap
-  // that never happens, or no matching row, is recorded as saved=false, not thrown.
+  // from the saved row for THIS send: the row id this stream's ledger row recorded (#5979), with its
+  // question shown exactly. A swap that never happens, or no such row, is saved=false, not thrown.
   const swapped = await page
     .locator('.fl-turn--aui[data-role="assistant"][data-turn-id^="live-"]')
     .waitFor({ state: "detached", timeout: 30_000 })
@@ -219,9 +218,13 @@ async function ask(page: Page, q: string, meter: BudgetMeter, tenantId: string, 
   await page.waitForTimeout(1_500);
   const last = await UI.clone.settled(page);
   const shown = await page.locator(".fl-turn--aui").evaluateAll((els) =>
-    els.map((el) => ({ id: el.getAttribute("data-turn-id") ?? "", role: el.getAttribute("data-role") ?? "", text: (el as HTMLElement).innerText })),
+    els.map((el) => ({
+      id: el.getAttribute("data-turn-id") ?? "",
+      role: el.getAttribute("data-role") ?? "",
+      text: (el.querySelector('[data-part-type="text"]') as HTMLElement | null)?.innerText ?? "",
+    })),
   ).catch(() => [] as RenderedTurn[]);
-  const savedId = swapped ? savedRowFor(beforeIds, shown, q) : null;
+  const savedId = swapped ? savedRowFor(persistedRowIdOf(lv?.rows ?? []), shown, q) : null;
   const saved = !!savedId;
   const settled = savedId ? page.locator(`${sel}[data-turn-id="${savedId}"]`) : last;
   const rec = await extractTurn("clone", settled);
