@@ -4047,8 +4047,11 @@ async function handleChatTurn(
       // nothing from a sibling's column.
       : notebookRetrieval && (retrievalDiagnostics.excludedTables?.length ?? 0) > 0 && manualIdentity.catalogNumber?.trim()
         ? excludedTablesRefusalText(manualIdentity.catalogNumber.trim(), retrievalDiagnostics.excludedTables ?? [])
+      // #5863: this turn had at least one confirmed manual selected and its search
+      // ran, so "add the manual" was the wrong first step. It stays the step
+      // for a question about different equipment.
       : notebookRetrieval
-        ? "I couldn't find support for that in this notebook's manuals. Add the manual for the equipment you're asking about, or the page that covers it, and ask again."
+        ? "I couldn't find support for that in this notebook's manuals. Try the words the manual uses, or name the section or page, and ask again. If the question is about different equipment, add that equipment's manual to this notebook."
         : null;
     // A reported unsafe state keeps its card on the honest refusal too (#5670 native 2 F6).
     // (A held turn already carries the card, in its place under any hazard banner: F9 above.)

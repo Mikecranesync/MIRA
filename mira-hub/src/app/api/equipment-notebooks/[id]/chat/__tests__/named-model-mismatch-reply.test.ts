@@ -148,7 +148,7 @@ describe("CV-101 S6 — a wrong-model ask names the mismatch and answers nothing
     const status = out.find((f) => f.kind === "status") as { status: string; message?: string };
     expect(status.status).toBe("insufficient_evidence");
     expect(status.message).toBe(
-      "I couldn't find support for that in this notebook's manuals. Add the manual for the equipment you're asking about, or the page that covers it, and ask again.",
+      "I couldn't find support for that in this notebook's manuals. Try the words the manual uses, or name the section or page, and ask again. If the question is about different equipment, add that equipment's manual to this notebook.",
     );
   });
 });

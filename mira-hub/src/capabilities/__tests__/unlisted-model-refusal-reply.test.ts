@@ -88,7 +88,7 @@ async function frames(res: Response): Promise<Record<string, unknown>[]> {
 // Invented model numbers ("Northfield RX4xx"); no real product.
 const ASK = "What supply voltage does the RX420 accept?";
 const GENERIC =
-  "I couldn't find support for that in this notebook's manuals. Add the manual for the equipment you're asking about, or the page that covers it, and ask again.";
+  "I couldn't find support for that in this notebook's manuals. Try the words the manual uses, or name the section or page, and ask again. If the question is about different equipment, add that equipment's manual to this notebook.";
 
 type Opts = { diagnostics?: Record<string, unknown> };
 const retrievalReports = (diagnostic: Record<string, unknown>) =>
