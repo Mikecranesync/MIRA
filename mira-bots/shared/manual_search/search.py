@@ -1381,8 +1381,8 @@ async def search_manual(
         result = answer()
         if result is not None:
             return result
-        # After the reads above, whose rejections count too: the judge reads one form
-        # of a document per round, and leaves the others unread (#5902).
+        # After the reads above, whose rejections count too: a form of a rejected
+        # document that went unread (its read failed) is that rejection (#5897).
         rejected_documents = _rejected_documents()
         # A set-aside hit whose URL is also a candidate is that candidate's business.
         offered = {c["url"] for c in candidates} - {c["url"] for c in extras}
@@ -1872,9 +1872,9 @@ async def search_manual(
         # legacy HEAD path below may still pick an UNJUDGED candidate — but
         # only one that at least names the make/model. If every relevant
         # candidate was read and rejected, say so (top rejection + reasons)
-        # rather than surfacing an unread stranger. A form the judge left unread
-        # because another form of the document was read and rejected is that
-        # rejection, not an unread candidate (#5902).
+        # rather than surfacing an unread stranger. A form that went unread (its read
+        # failed, or it was past the cap) of a document another form of which was
+        # read and rejected is that rejection, not an unread candidate (#5897).
         rejected_documents = _rejected_documents()
         unread = [
             c
@@ -2000,11 +2000,16 @@ def _every_queued_pdf_rejected(ranked: list[dict], trace: dict) -> bool:
 
 
 def _rejections(ranked: list[dict]) -> list[dict]:
-    """Every judged rejection in ``ranked``, with the judge's reason."""
+    """Every judged rejection in ``ranked``, with the judge's reason. Two forms of one
+    document read side by side can get verdicts that disagree. The document is then
+    the manual, as main returns it, and its rejected form is not listed: one result
+    never calls a document both the manual and not the manual (#5902). The trail
+    keeps both verdicts as the judge gave them."""
+    matched = {_judge.same_document_key(c) for c in ranked if _judge.is_match(c)}
     return [
         {"url": c["url"], "reason": (c.get("judge") or {}).get("reason", "")}
         for c in ranked
-        if _judge.is_rejected(c)
+        if _judge.is_rejected(c) and _judge.same_document_key(c) not in matched
     ]
 
 
