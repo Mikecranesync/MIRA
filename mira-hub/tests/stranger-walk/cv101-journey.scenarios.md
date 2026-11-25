@@ -127,3 +127,12 @@ both, for two reasons. It required the warning's words, and it matched the scree
 ("p. 5") against `^5$`. The judge now reads the served frame (`servedCitationsOf`). The words are
 still recorded in the step's `actual`, but they are not judged. No product code changes.
 
+### Revision 5 amendment — 2026-11-25, the S5b answer is pinned (Mike A)
+
+S5b now compares the answer against the exact stop text from paid2 (`PINNED_S5B_STOP` in
+`journey-judges.ts`), not against a formatter or a phrase list. It checks both the streamed body
+and every rendered answer text part, and nothing may be added or missing. The page-5 warning
+citation on the attached manual is still required. A change to the stop's wording fails S5b until
+a person updates the pin on purpose. The pin is not a product contract: if the product finds a
+lockout page in this manual, or names it by model, S5b fails loudly and the pin is re-approved.
+
