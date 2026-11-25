@@ -208,3 +208,11 @@ def test_report_regrades_stored_answers_without_calls(tmp_path):
     md = ai_panel.report(tmp_path, ai_panel.load_questions())
     assert "| openai | 1/20 | 1/1 | 0/1 | 1/1 |" in md
     assert "| 1 | ✓ **FLM-cited** |" in md
+
+
+def test_report_flag_needs_no_budget_and_makes_no_calls(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(ai_panel, "ASKERS", {})
+    assert ai_panel.main(["--out", str(tmp_path), "--report"]) == 0
+    assert "| Provider |" in capsys.readouterr().out
+    with pytest.raises(SystemExit):
+        ai_panel.main(["--out", str(tmp_path)])

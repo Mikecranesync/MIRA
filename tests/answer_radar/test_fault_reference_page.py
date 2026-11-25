@@ -1,11 +1,12 @@
-"""The PowerFlex 525 fault list page is generated from the verified drive pack; keep them in step."""
+"""The PowerFlex 525 fault list page (an AI-visibility page) is generated from the verified
+drive pack; keep them in step. Lives here because CI runs tests/answer_radar/ by name."""
 
 import importlib.util
 import subprocess
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "tools/seo/build_fault_reference.py"
 
 

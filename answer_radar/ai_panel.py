@@ -448,7 +448,10 @@ def spent_so_far(out: Path) -> float:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", required=True)
-    ap.add_argument("--budget-usd", type=float, required=True)
+    ap.add_argument("--budget-usd", type=float, default=None, help="required unless --report")
+    ap.add_argument(
+        "--report", action="store_true", help="re-grade stored answers, print markdown, no calls"
+    )
     ap.add_argument("--providers", default="openai,anthropic,gemini")
     ap.add_argument(
         "--questions", default="", help="comma list of question numbers (default: all 20)"
@@ -458,6 +461,8 @@ def main(argv: list[str] | None = None) -> int:
     if a.report:
         print(report(out, load_questions()))
         return 0
+    if a.budget_usd is None:
+        ap.error("--budget-usd is required for a paid run")
     budget = Budget(cap_usd=a.budget_usd, spent_usd=spent_so_far(out))
     qs = load_questions()
     if a.questions:
