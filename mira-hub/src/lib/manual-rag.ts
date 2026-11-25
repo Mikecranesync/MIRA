@@ -2504,9 +2504,12 @@ export async function retrieveNodeChunks(
   // number's own family. Any other number in the question (the machine's tag,
   // a fault code) names no model and must not switch the notebook's check off.
   // manual-applicability.ts decides.
+  // #5720/#5416: Carried numbers should only apply when the current question
+  // doesn't name any model. If the current question has its own numbers, use
+  // only those (don't mix in carried numbers from earlier refused questions).
   const questionNumbers = [
     ...ownNumbers,
-    ...carriedNumbers.filter((n, i) => carriedNumbers.findIndex((m) => m.key === n.key) === i),
+    ...(ownNumbers.length === 0 ? carriedNumbers.filter((n, i) => carriedNumbers.findIndex((m) => m.key === n.key) === i) : []),
   ];
   const namesNoKnownModel = !requestedModel.model && !requestedModel.ambiguous && closeNameIdentities.size === 0;
   const confirmedNumbers =
@@ -2522,11 +2525,20 @@ export async function retrieveNodeChunks(
     // selected manual was refused this way.
     if (allowedDocIds.length > 0 && allowedDocIds.every((d) => unlistedRefusals.has(d))) {
       const refused = [...unlistedRefusals.values()];
+      // #5720/#5416: A refusal from an earlier question should only carry forward
+      // if the current question doesn't name any model of its own. If the current
+      // question names a model (even a valid one), it's a new context and the
+      // carried refusal doesn't apply. This prevents "sticky refusals" where one
+      // wrong-model question causes every later question to get the same refusal.
+      const currentQuestionHasModel = ownNumbers.length > 0;
+      const allAskedAreCarried = refused.every((r) => r.asked.every((label) => carriedLabels.has(label)));
+      const shouldCarryRefusal = allAskedAreCarried && !currentQuestionHasModel;
+      
       opts.diagnostics.unlistedModelRefusal = summarizeUnlistedRefusals(
         refused,
         refused.every((r) => r.asked.every((label) => notebookLabels.has(label)))
           ? "notebook"
-          : refused.every((r) => r.asked.every((label) => carriedLabels.has(label)))
+          : shouldCarryRefusal
             ? "conversation"
             : "question",
       );

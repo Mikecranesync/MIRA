@@ -273,6 +273,28 @@ const sameFamily = (a: ModelNumber, b: ModelNumber) => a.key === b.key || lookAl
 /** The same number, or two numbers of one family. */
 export const sameModelFamily = sameFamily;
 
+// #5720/#5416: Fault codes (F/A/C/N + 5 digits), port names (PORT + digits),
+// and registers (R + 4+ digits) are not model numbers. Neither are display codes
+// like "L24" or fault-code variants like "F.30001." (first-of-several notation).
+const FAULT_CODE_RE = /^[FACN]\d{5}$/;
+const PORT_RE = /^PORT\d+$/;
+const REGISTER_RE = /^R\d{4,}$/;
+const DISPLAY_CODE_RE = /^[A-Z]\d{1,3}$/;
+// F.xxxxx. notation (first of several faults) — 1-6 digits, optionally with dots.
+const FAULT_DOT_RE = /^F\.?\d{1,6}\.?$/;
+
+/** #5720/#5416: A token is not a model number when it matches fault-code,
+ *  port, register, or display-code shapes. */
+function isNotModelNumber(n: ModelNumber): boolean {
+  return (
+    FAULT_CODE_RE.test(n.key) ||
+    PORT_RE.test(n.key) ||
+    REGISTER_RE.test(n.key) ||
+    DISPLAY_CODE_RE.test(n.key) ||
+    FAULT_DOT_RE.test(n.key)
+  );
+}
+
 /** The model numbers a text names that model-token.ts does NOT read. Whatever
  *  the detector reads is left to the existing check, whole: "GS11N-20P2" must
  *  not come back as a leftover "20P2". */
@@ -294,7 +316,8 @@ export function unlistedModelNumbers(text: string): ModelNumber[] {
   for (const m of view.matchAll(/\bGS\d{1,2}[a-z]?\s*-\s*[a-z0-9]+\b/gi)) blank(m.index, m.index + m[0].length);
   const seen = new Set<string>();
   const read = (runs: NumberRun[]) => runs.flatMap((run) => numberFrom(run.segments, run.raw) ?? []);
-  return withWrittenReading(chars.join(""), read).filter((n) => !seen.has(n.key) && seen.add(n.key));
+  // Filter out fault codes, port names, registers, and display codes.
+  return withWrittenReading(chars.join(""), read).filter((n) => !isNotModelNumber(n) && !seen.has(n.key) && seen.add(n.key));
 }
 
 // How a title is told from a sentence. Three things, all needed:
