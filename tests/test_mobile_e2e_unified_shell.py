@@ -68,7 +68,11 @@ class FakePhone:
         polls=2,
         earlier_page=None,
         pixel=False,
+        chip_file=None,
+        sheet_file=None,
     ):
+        # chip_file / sheet_file: the answer cites, or the sheet names, a DIFFERENT manual.
+        self.chip_file, self.sheet_file = chip_file, sheet_file
         self.pixel = pixel  # Pixel 9a font metrics on the create form (see the test)
         # earlier_page: the thread already holds a finished answer citing that page.
         self.history = [] if earlier_page is None else [("an earlier question", earlier_page)]
@@ -187,7 +191,7 @@ class FakePhone:
                 if self.cited:
                     n.append(
                         (
-                            f"FILE {self.sent} p. {self.chip_page}",
+                            f"FILE {self.chip_file or self.sent} p. {self.chip_page}",
                             "ToggleButton",
                             (42, 983, 703, 1122),
                             True,
@@ -225,7 +229,7 @@ class FakePhone:
             n += [
                 ("Citation", "Dialog", (0, 1101, 1080, 2339), False, None),
                 (
-                    f"[1] {self.sent} — p.{self.sheet_page}",
+                    f"[1] {self.sheet_file or self.sent} — p.{self.sheet_page}",
                     "TextView",
                     (42, 1143, 1042, 1206),
                     False,
@@ -405,7 +409,7 @@ def test_upload_attaches_the_pdf_through_the_file_picker(rig, tmp_path):
 
 def test_ask_reads_the_spaced_page_chip(rig):
     journey, phone, dev = rig(start="project")
-    answer = journey.ask(dev, "what is the default node address", 3)
+    answer = journey.ask(dev, "what is the default node address", 3, source=PDF)
     assert "defaults to 100" in answer
     assert phone.sent == PDF
 
@@ -414,25 +418,25 @@ def test_ask_waits_for_the_new_answer_not_the_previous_one(rig):
     # A finished earlier answer already shows a chip and Copy. Settling on those would
     # grade the OLD answer (p.3) and never read the new one (p.5).
     journey, _phone, dev = rig(start="project", earlier_page=3, chip_page=5, polls=3)
-    answer = journey.ask(dev, "what is the default node address", 5)
+    answer = journey.ask(dev, "what is the default node address", 5, source=PDF)
     assert "defaults to 100" in answer
 
 
 def test_ask_rejects_a_neighbouring_page(rig):
     journey, _phone, dev = rig(start="project", chip_page=31)
     with pytest.raises(journey.Fail, match=r"p\.3\b"):
-        journey.ask(dev, "what is the default node address", 3)
+        journey.ask(dev, "what is the default node address", 3, source=PDF)
 
 
 def test_ask_fails_an_uncited_answer(rig):
     journey, _phone, dev = rig(start="project", cited=False)
     with pytest.raises(journey.Fail, match="UNCITED"):
-        journey.ask(dev, "what is the default node address", 3)
+        journey.ask(dev, "what is the default node address", 3, source=PDF)
 
 
 def test_citation_resolves_the_page_and_opens_the_original(rig):
     journey, phone, dev = rig(start="answered")
-    passage = journey.verify_citation(dev, 3)
+    passage = journey.verify_citation(dev, 3, source=PDF)
     assert passage.startswith("“Communications Group")
     assert phone.opened and phone.sheet is None
 
@@ -440,14 +444,35 @@ def test_citation_resolves_the_page_and_opens_the_original(rig):
 def test_citation_rejects_a_sheet_for_another_page(rig):
     journey, _phone, dev = rig(start="answered", sheet_page=4)
     with pytest.raises(journey.Fail, match="p.4"):
-        journey.verify_citation(dev, 3)
+        journey.verify_citation(dev, 3, source=PDF)
+
+
+def test_ask_rejects_a_citation_to_another_manual_on_the_expected_page(rig):
+    # Codex r1 F2: page 3 of some OTHER manual is not the uploaded manual answering.
+    journey, _phone, dev = rig(start="project", chip_file="other_manual.pdf")
+    with pytest.raises(journey.Fail, match="other_manual.pdf"):
+        journey.ask(dev, "what is the default node address", 3, source=PDF)
+
+
+def test_citation_rejects_a_sheet_naming_another_manual(rig):
+    # The uploaded manual's chip must open ITS passage, not one from another manual.
+    journey, _phone, dev = rig(start="answered", sheet_file="other_manual.pdf")
+    with pytest.raises(journey.Fail, match="other_manual.pdf"):
+        journey.verify_citation(dev, 3, source=PDF)
+
+
+def test_citation_ignores_another_manuals_chip_on_the_same_page(rig):
+    # Only the uploaded manual's chip counts; another manual's p.3 chip is not a match.
+    journey, _phone, dev = rig(start="answered", chip_file="other_manual.pdf")
+    with pytest.raises(journey.Fail, match="no source chip"):
+        journey.verify_citation(dev, 3, source=PDF)
 
 
 def test_citation_opens_the_newest_chip_when_an_earlier_answer_cites_the_same_page(rig):
     # The thread already holds a finished answer citing p.3; its chip opens nothing new.
     # The chip under test is the newest turn's, which renders last.
     journey, phone, dev = rig(start="answered", earlier_page=3)
-    journey.verify_citation(dev, 3)
+    journey.verify_citation(dev, 3, source=PDF)
     assert phone.opened
 
 

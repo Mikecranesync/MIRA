@@ -82,6 +82,9 @@ class SignInPhone:
         self.state = "password"
         self.account, self.link_works = account, link_works
         self.garble = garble  # the field drops the first character it was sent
+        self.interrupt = False  # Ctrl-C lands while the link is being exchanged
+        self.dumpfile = ""  # what /sdcard/window_dump.xml holds on the device
+        self.adb_calls: list[list[str]] = []
         self.fields = {"email": "", "password": "", "link": ""}
         self.focus: str | None = None
         self.kbd = self.drawer = False
@@ -144,9 +147,17 @@ class SignInPhone:
         )
         return f"<?xml version='1.0' encoding='UTF-8'?><hierarchy>{rows}</hierarchy>"
 
+    def link_on_screen(self) -> bool:
+        return self.state == "invite" and bool(self.fields["link"])
+
     def run(self, args: list[str], **_kw) -> _Proc:
+        self.adb_calls.append(list(args))
         a = args[1:]
-        if a[:2] == ["cat", "/sdcard/window_dump.xml"]:
+        if a[:2] == ["uiautomator", "dump"]:
+            self.dumpfile = self.xml()
+        elif a[:3] == ["rm", "-f", "/sdcard/window_dump.xml"]:
+            self.dumpfile = ""
+        elif a[:2] == ["cat", "/sdcard/window_dump.xml"]:
             return _Proc(self.xml())
         if a[:2] == ["input", "tap"]:
             self.tap(int(a[2]), int(a[3]))
@@ -180,6 +191,8 @@ class SignInPhone:
         elif kind == "signin" and self.fields["email"] and self.fields["password"]:
             self.state, self.focus, self.kbd = "home", None, False
         elif kind == "exchange":
+            if self.interrupt:
+                raise KeyboardInterrupt
             self.exchanged.append(self.fields["link"])
             if self.link_works and self.fields["link"] == LINK:
                 self.state, self.focus, self.kbd = "home", None, False
@@ -196,7 +209,13 @@ def rig(monkeypatch, tmp_path):
         phone = SignInPhone(**kw)
         dev = journey.Device("adb", "emulator-5554", tmp_path / "shots")
         monkeypatch.setattr(dev, "_run", phone.run)
-        monkeypatch.setattr(dev, "screenshot", lambda name: tmp_path / f"{name}.png")
+        phone.shots = []  # (name, whether the link was on screen when it was taken)
+
+        def shot(name):
+            phone.shots.append((name, phone.link_on_screen()))
+            return tmp_path / f"{name}.png"
+
+        monkeypatch.setattr(dev, "screenshot", shot)
         return journey, dev, phone
 
     return make
@@ -239,12 +258,61 @@ def test_a_link_the_field_garbles_fails_without_printing_it(rig, capsys):
     assert "retry 3/3" in out.out, "precondition: the retry path actually ran"
 
 
+# Codex r1 F1: the link is a live credential until it is exchanged. No screenshot
+# may capture it, and no view-hierarchy dump holding it may stay on the device.
+
+
+def _no_credential_left(phone) -> None:
+    leaked = [name for name, on_screen in phone.shots if on_screen]
+    assert leaked == [], f"screenshots taken with the link on screen: {leaked}"
+    assert TOKEN not in phone.dumpfile, "a dump holding the link was left on the device"
+
+
+def test_a_successful_link_sign_in_leaves_no_credential_behind(rig):
+    journey, dev, phone = rig()
+    journey.sign_in(dev, EMAIL, login_link=LINK)
+    assert phone.shots, "precondition: the run still takes its evidence screenshots"
+    _no_credential_left(phone)
+
+
+def test_a_rejected_link_leaves_no_credential_behind(rig):
+    # Rejected: the invite screen still shows the link, and the token may still work.
+    journey, dev, phone = rig(link_works=False)
+    with pytest.raises(journey.Fail):
+        journey.sign_in(dev, EMAIL, login_link=LINK)
+    assert phone.state == "invite" and phone.fields["link"] == LINK, "precondition"
+    _no_credential_left(phone)
+
+
+def test_an_interrupted_link_sign_in_leaves_no_credential_behind(rig):
+    journey, dev, phone = rig()
+    phone.interrupt = True
+    with pytest.raises(KeyboardInterrupt):
+        journey.sign_in(dev, EMAIL, login_link=LINK)
+    assert phone.fields["link"] == LINK, "precondition: the link was typed"
+    _no_credential_left(phone)
+
+
 def test_password_sign_in_still_works(rig):
     # Control: the password path is unchanged and never opens the invitation mode.
     journey, dev, phone = rig()
     journey.sign_in(dev, EMAIL, "not-a-real-secret")
     assert phone.exchanged == []
     assert phone.fields["password"] == "not-a-real-secret"
+
+
+def test_sign_in_rejects_an_account_whose_email_merely_contains_the_expected_one(rig):
+    # Codex r1 F5: "other-e2e-link-test@..." contains "e2e-link-test@...".
+    journey, dev, _phone = rig(account=f"other-{EMAIL}")
+    with pytest.raises(journey.Fail, match="wrong account"):
+        journey.sign_in(dev, EMAIL, login_link=LINK)
+
+
+def test_sign_in_accepts_the_exact_account_in_another_case(rig):
+    # Control: the same address, cased differently, is the same account.
+    journey, dev, phone = rig(account=EMAIL.upper())
+    journey.sign_in(dev, EMAIL, login_link=LINK)
+    assert "Close navigation" in phone.taps
 
 
 def test_sign_in_needs_exactly_one_credential(rig):
@@ -317,6 +385,69 @@ def test_main_refuses_without_any_credential(monkeypatch, tmp_path, capsys):
     )
     assert journey.main() == 2
     assert "FLM_LOGIN_LINK" in capsys.readouterr().err
+
+
+# ------------------------------------------------------------------ apk package
+# Codex r1 F3: installing one flavour and then driving another package must fail
+# before anything on the device changes.
+
+
+def test_install_refuses_an_apk_for_another_package_before_touching_the_device(rig, monkeypatch):
+    journey, dev, phone = rig()
+    monkeypatch.setattr(journey, "apk_package", lambda apk, adb: "com.factorylm.mira")
+    with pytest.raises(journey.Fail, match="com.factorylm.mira.staging"):
+        journey.install(dev, Path("app-release.apk"))
+    assert phone.adb_calls == [], f"device touched: {phone.adb_calls}"
+
+
+def test_install_proceeds_when_the_apk_is_the_target_package(rig, monkeypatch):
+    # Control.
+    journey, dev, phone = rig()
+    monkeypatch.setattr(journey, "apk_package", lambda apk, adb: PKG)
+    with pytest.raises(journey.Fail, match="install failed"):  # the fake prints no Success
+        journey.install(dev, Path("app-staging-debug.apk"))
+    assert ["uninstall", PKG] in phone.adb_calls
+
+
+def test_find_aapt2_takes_the_newest_build_tools(monkeypatch, tmp_path):
+    journey = _load(monkeypatch)
+    monkeypatch.delenv("AAPT2", raising=False)
+    sdk = tmp_path / "sdk"
+    for v in ("9.0.0", "35.0.0", "36.0.0"):
+        _exe(sdk / "build-tools" / v / "aapt2", "exit 0\n")
+    _exe(sdk / "platform-tools" / "adb", "exit 0\n")
+    assert journey.find_aapt2(str(sdk / "platform-tools" / "adb")) == str(
+        sdk / "build-tools" / "36.0.0" / "aapt2"
+    )
+
+
+def test_apk_package_fails_closed_without_aapt2(monkeypatch, tmp_path):
+    journey = _load(monkeypatch)
+    monkeypatch.delenv("AAPT2", raising=False)
+    adb = tmp_path / "sdk" / "platform-tools" / "adb"
+    _exe(adb, "exit 0\n")
+    with pytest.raises(journey.Fail, match="cannot verify"):
+        journey.apk_package(tmp_path / "a.apk", str(adb))
+
+
+def test_apk_package_reads_aapt2(monkeypatch, tmp_path):
+    journey = _load(monkeypatch)
+    aapt2 = tmp_path / "aapt2"
+    _exe(aapt2, f'[ "$1 $2" = "dump packagename" ] && echo {PKG}\n')
+    monkeypatch.setenv("AAPT2", str(aapt2))
+    assert journey.apk_package(tmp_path / "a.apk", "adb") == PKG
+
+
+def test_run_sh_refuses_a_non_staging_package_before_touching_adb(tmp_path):
+    sdk, log = tmp_path / "sdk", tmp_path / "adb.log"
+    _exe(sdk / "platform-tools" / "adb", f'echo "$@" >> {log}\n')
+    env = {"PATH": "/usr/bin:/bin", "HOME": str(tmp_path), "ANDROID_SDK_ROOT": str(sdk),
+           "MIRA_PKG": "com.factorylm.mira"}
+    r = subprocess.run(["bash", str(RUN_SH), "m.pdf", "q", "1"], capture_output=True,
+                       text=True, env=env, timeout=60)
+    assert r.returncode == 2, r.stdout + r.stderr
+    assert "com.factorylm.mira.staging" in r.stderr
+    assert not log.exists(), "adb was called"
 
 
 # ------------------------------------------------------------------ adb default
@@ -397,6 +528,32 @@ def test_run_sh_accepts_jdk_21_and_reaches_the_build(tmp_path):
     r = _run_sh_with_java(tmp_path, "21.0.5")
     assert "JDK 21" not in r.stderr, r.stderr
     assert "building staging debug APK" in r.stdout
+
+
+def test_run_sh_hands_gradle_the_jdk_it_approved(tmp_path):
+    # Codex r1 F4: JAVA_HOME names a JDK 17, PATH has a 21. The wrapper prefers
+    # JAVA_HOME, so approving PATH's 21 must not leave gradle on JAVA_HOME's 17.
+    sdk, bin_dir, mobile = tmp_path / "sdk", tmp_path / "bin", tmp_path / "mobile"
+    _exe(sdk / "platform-tools" / "adb",
+         'if [ "$1" = devices ]; then printf "List\\nemulator-5554\\tdevice\\n"; fi\n')
+    _exe(sdk / "emulator" / "emulator", "exit 0\n")
+    _exe(bin_dir / "java", "echo 'openjdk version \"21.0.5\" 2024' >&2\n")
+    _exe(bin_dir / "node", "exit 0\n")
+    jdk17 = tmp_path / "jdk17"
+    _exe(jdk17 / "bin" / "java", "echo 'openjdk version \"17.0.10\" 2024' >&2\n")
+    _exe(mobile / "node_modules" / ".bin" / "vite", "exit 0\n")
+    # Resolves java the way the real gradlew does: JAVA_HOME first, else PATH.
+    _exe(mobile / "android" / "gradlew",
+         'J=java; [ -n "${JAVA_HOME:-}" ] && J="$JAVA_HOME/bin/java"\n'
+         'echo "GRADLE_JAVA=$("$J" -version 2>&1 | sed -nE \'s/.*version "([0-9]+).*/\\1/p\')"\n')
+    _exe(bin_dir / "java_home_stub", "exit 1\n")
+    env = {"PATH": f"{bin_dir}:/usr/bin:/bin", "HOME": str(tmp_path),
+           "ANDROID_SDK_ROOT": str(sdk), "MIRA_MOBILE_DIR": str(mobile),
+           "MIRA_JAVA_HOME_CMD": str(bin_dir / "java_home_stub"), "JAVA_HOME": str(jdk17)}
+    r = subprocess.run(["bash", str(RUN_SH), "m.pdf", "q", "1"], capture_output=True,
+                       text=True, env=env, timeout=60)
+    assert "GRADLE_JAVA=" in r.stdout, "precondition: gradle ran\n" + r.stdout + r.stderr
+    assert "GRADLE_JAVA=21" in r.stdout, r.stdout
 
 
 def test_run_sh_builds_the_web_bundle_before_cap_sync():

@@ -150,6 +150,13 @@ APK was built, so it needs no rebuild for any Hub-only change.
   `cap sync`, since `cap sync` copies `dist/` into the APK.
 - `FLM_EMAIL` plus `FLM_PASSWORD` or `FLM_LOGIN_LINK` in the environment — never hardcoded,
   never committed
+- Android build-tools (`aapt2`): before touching the device, `journey.py` reads the APK's
+  package with `aapt2 dump packagename` and refuses an APK that is not the package it drives
+  (`MIRA_PKG`). `run.sh` drives only `com.factorylm.mira.staging`. Set `AAPT2` to override.
+
+The gate passes only on a citation to **the uploaded manual**, by file name, at the expected
+page. Its source chip must open a sheet naming that same manual. A citation to page N of some
+other manual fails the run, because it proves nothing about the upload.
 
 A tenant whose trial has expired is paywalled off `/equipment/` and sign-in will fail; see
 `docs/runbooks/hub-embedding-production-rollout.md` §4d.

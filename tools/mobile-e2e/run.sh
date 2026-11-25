@@ -18,8 +18,15 @@ case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) EXE=".exe" ;; *) EXE="" ;; esac
 ADB="$SDK/platform-tools/adb$EXE"
 EMULATOR="$SDK/emulator/emulator$EXE"
 # The staging flavour (#3938) talks to app-staging and installs beside the
-# production app, so the journey never touches a real account (#4455).
-export MIRA_PKG="${MIRA_PKG:-com.factorylm.mira.staging}"
+# production app, so the journey never touches a real account (#4455). This
+# wrapper installs the staging APK, so it drives only the staging package: an
+# inherited MIRA_PKG naming another app would install one and drive the other.
+STAGING_PKG="com.factorylm.mira.staging"
+if [ -n "${MIRA_PKG:-}" ] && [ "$MIRA_PKG" != "$STAGING_PKG" ]; then
+  echo "run.sh installs the staging APK and drives only $STAGING_PKG; MIRA_PKG is $MIRA_PKG" >&2
+  exit 2
+fi
+export MIRA_PKG="$STAGING_PKG"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 MOBILE="${MIRA_MOBILE_DIR:-$REPO_ROOT/mira-mobile}"
 
@@ -30,11 +37,19 @@ java_major() {
 }
 ensure_jdk21() {
   local bin major home
-  for bin in "${JAVA_HOME:+$JAVA_HOME/bin/java}" "$(command -v java || true)"; do
-    [ -n "$bin" ] && [ -x "$bin" ] || continue
+  if [ -n "${JAVA_HOME:-}" ]; then
+    if [ -x "$JAVA_HOME/bin/java" ]; then
+      major="$(java_major "$JAVA_HOME/bin/java")"
+      if [ -n "$major" ] && [ "$major" -ge 21 ]; then return 0; fi
+    fi
+    # gradlew prefers JAVA_HOME over PATH, so a rejected one must not stay set.
+    unset JAVA_HOME
+  fi
+  bin="$(command -v java || true)"
+  if [ -n "$bin" ] && [ -x "$bin" ]; then
     major="$(java_major "$bin")"
     if [ -n "$major" ] && [ "$major" -ge 21 ]; then return 0; fi
-  done
+  fi
   # macOS: /usr/libexec/java_home, then Homebrew's openjdk@21 (not linked by default).
   home="$("${MIRA_JAVA_HOME_CMD:-/usr/libexec/java_home}" -v 21 2>/dev/null || true)"
   if [ -z "$home" ] && command -v brew >/dev/null 2>&1; then

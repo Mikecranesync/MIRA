@@ -44,6 +44,7 @@ from __future__ import annotations
 import argparse
 import os
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -173,6 +174,10 @@ class Device:
                 )
             )
         return nodes
+
+    def forget_screen(self) -> None:
+        """Remove the on-device view-hierarchy dump; it holds every field's text."""
+        self.shell("rm", "-f", UI_XML)
 
     def texts(self) -> list[str]:
         return [n.label for n in self.dump() if n.label.strip()]
@@ -535,8 +540,52 @@ def pick_device(adb: str, allow_physical: bool) -> str:
     )
 
 
+def find_aapt2(adb: str) -> str | None:
+    """`$AAPT2`, else the newest build-tools aapt2 in the SDK that holds `adb`.
+
+    Any SDK that built the APK has build-tools (gradle needs aapt2), so the platform
+    tool is used rather than a hand-rolled manifest parser.
+    """
+    if os.environ.get("AAPT2"):
+        return os.environ["AAPT2"]
+    exe = "aapt2.exe" if sys.platform == "win32" else "aapt2"
+    where = shutil.which(adb) or adb
+    roots = [Path(where).parent.parent, Path(where).resolve().parent.parent]
+    roots += [Path(v) for v in (os.environ.get("ANDROID_SDK_ROOT"), os.environ.get("ANDROID_HOME")) if v]
+    for root in roots:
+        tools = root / "build-tools"
+        found = [d / exe for d in tools.iterdir() if (d / exe).exists()] if tools.is_dir() else []
+        if found:
+            def version(p: Path) -> tuple[int, ...]:
+                return tuple(int(x) if x.isdigit() else -1 for x in re.split(r"[.-]", p.parent.name))
+            return str(max(found, key=version))
+    return None
+
+
+def apk_package(apk: Path, adb: str) -> str:
+    """The package `apk` installs. Fails closed: an unverifiable APK is not installed."""
+    aapt2 = find_aapt2(adb)
+    if not aapt2:
+        raise Fail(f"cannot verify which package {apk.name} installs: no aapt2 under the "
+                   "SDK's build-tools (install build-tools, or set AAPT2)")
+    r = subprocess.run([aapt2, "dump", "packagename", str(apk)], capture_output=True,
+                       text=True, encoding="utf-8", errors="replace")
+    lines = (r.stdout or "").strip().splitlines()
+    if r.returncode != 0 or not lines:
+        raise Fail(f"cannot verify which package {apk.name} installs: "
+                   f"aapt2 said {(r.stderr or '').strip()[:200]!r}")
+    return lines[-1].strip()
+
+
 def install(dev: Device, apk: Path, *, reinstall_physical: bool = False) -> None:
     log("install", f"{apk.name}")
+    # Before anything on the device changes: the APK must be the package the journey
+    # then uninstalls, launches and drives. A staging APK with MIRA_PKG left at the
+    # production id would otherwise install one app and drive another.
+    target = apk_package(apk, dev.adb)
+    if target != PKG:
+        raise Fail(f"{apk.name} installs {target}, but this run drives {PKG}; refusing "
+                   "before touching the device (set MIRA_PKG to match the APK)")
     # A signature mismatch (debug vs release) makes -r fail with
     # INSTALL_FAILED_UPDATE_INCOMPATIBLE. Uninstall first: a fresh install is also the
     # more honest starting state, since it re-exercises the permission grant.
@@ -594,12 +643,18 @@ def sign_in(dev: Device, email: str, password: str | None = None, *,
     # drops you on the launcher, hence keep_foreground.
     dev.wait_for("Sign in", timeout=240, keep_foreground=True)
     if login_link is not None:
-        dev.tap_button("Have an invitation link instead")
-        dev.wait_for("Use an invitation link", timeout=30)
-        dev.type_into("Invitation link", login_link, secret=True)
-        dev.hide_keyboard()
-        dev.screenshot("signin-link-filled")
-        dev.tap_button("Use invite link")
+        # Until it is exchanged the link is a live credential, and a rejected or
+        # interrupted exchange leaves it live and on screen. So no screenshot while it
+        # can be showing, and the dump file that held it is removed however this ends.
+        try:
+            dev.tap_button("Have an invitation link instead")
+            dev.wait_for("Use an invitation link", timeout=30)
+            dev.type_into("Invitation link", login_link, secret=True)
+            dev.hide_keyboard()
+            dev.tap_button("Use invite link")
+            _wait_for_shell(dev, evidence=False)
+        finally:
+            dev.forget_screen()
     else:
         assert password is not None
         dev.type_into("Email", email)
@@ -609,24 +664,34 @@ def sign_in(dev: Device, email: str, password: str | None = None, *,
         dev.type_text(password)
         dev.screenshot("signin-filled")
         dev.tap_button("Sign in")
+        _wait_for_shell(dev, evidence=True)
 
     # The unified shell lands on HOME, which shows no account name; only the drawer
-    # does. Wait for the shell, then read who is signed in from the drawer.
-    deadline = time.time() + 60
-    while dev.find("Open navigation", clickable=True) is None:
-        if time.time() > deadline:
-            dev.screenshot("signin-failed")
-            raise Fail("sign-in did not complete -- check credentials, or the trial may be expired")
-        time.sleep(3)
+    # does. The drawer's account line must BE the expected email: a substring match
+    # would accept "other-stranger@..." for "stranger@...".
     dev.tap_button("Open navigation")
-    try:
-        dev.wait_for(email, timeout=20)
-    except Fail:
-        dev.screenshot("signin-wrong-account")
-        raise Fail(f"signed in, but the drawer does not show {email} -- wrong account") from None
+    want = email.strip().lower()
+    deadline = time.time() + 20
+    while not any(n.label.strip().lower() == want for n in dev.dump()):
+        if time.time() > deadline:
+            dev.screenshot("signin-wrong-account")
+            raise Fail(f"signed in, but the drawer does not show {email} -- wrong account")
+        time.sleep(2)
     dev.screenshot("signed-in")
     dev.tap_button("Close navigation")
     log("signin", "OK")
+
+
+def _wait_for_shell(dev: Device, *, evidence: bool) -> None:
+    """Wait for the signed-in shell. `evidence=False` skips the failure screenshot,
+    for a screen that may still show a sign-in link."""
+    deadline = time.time() + 60
+    while dev.find("Open navigation", clickable=True) is None:
+        if time.time() > deadline:
+            if evidence:
+                dev.screenshot("signin-failed")
+            raise Fail("sign-in did not complete -- check credentials, or the trial may be expired")
+        time.sleep(3)
 
 
 def create_notebook(dev: Device, name: str, mfr: str, model: str) -> None:
@@ -693,7 +758,9 @@ def upload_pdf(dev: Device, pdf: Path) -> None:
     log("upload", "attached to the next message")
 
 
-def ask(dev: Device, question: str, expect_page: int | None) -> str:
+def ask(dev: Device, question: str, expect_page: int | None, *, source: str) -> str:
+    """`source` is the uploaded manual's file name: only a citation to IT proves the
+    upload reached retrieval. Page 3 of some other manual proves nothing about it."""
     log("ask", question)
     turns_before = dev.texts().count("MIRA")
     box = dev.bottom_edit_text()
@@ -731,24 +798,29 @@ def ask(dev: Device, question: str, expect_page: int | None) -> str:
         raise Fail(f"answer is UNCITED -- grounding failure. Answer was: {answer[:300]}")
     log("ask", f"cited: {cites}")
 
+    mine = {page for f, page in cites if f.lower() == source.lower()}
+    if not mine:
+        raise Fail(f"the answer cites {cites}, none of it the uploaded {source}")
     if expect_page is not None:
-        if expect_page not in {page for _, page in cites}:
-            raise Fail(f"expected a citation to p.{expect_page}, got {cites}")
-        log("ask", f"expected page p.{expect_page} cited")
+        if expect_page not in mine:
+            raise Fail(f"expected a citation to {source} p.{expect_page}, got {cites}")
+        log("ask", f"expected page {source} p.{expect_page} cited")
     return answer
 
 
-def verify_citation(dev: Device, expect_page: int | None) -> str:
+def verify_citation(dev: Device, expect_page: int | None, *, source: str) -> str:
     log("citation", "opening sheet")
     chips = [
         n
         for n in dev.dump()
         if n.clickable
         and cited_pages([n.label])
+        and cited_pages([n.label])[0][0].lower() == source.lower()
         and (expect_page is None or cited_pages([n.label])[0][1] == expect_page)
     ]
     if not chips:
-        raise Fail(f"no source chip citing {f'p.{expect_page}' if expect_page else 'a PDF'}")
+        where = f" p.{expect_page}" if expect_page else ""
+        raise Fail(f"no source chip citing {source}{where}")
     # The newest turn renders last; an earlier answer in the thread may cite the same page.
     dev.tap(*chips[-1].center)
 
@@ -762,7 +834,9 @@ def verify_citation(dev: Device, expect_page: int | None) -> str:
             dev.screenshot("citation-empty")
             raise Fail("citation sheet never opened")
         time.sleep(2)
-    page = cited_pages([header])[0][1]
+    sheet_file, page = cited_pages([header])[0]
+    if sheet_file.lower() != source.lower():
+        raise Fail(f"the {source} chip opened a sheet for another manual: {header!r}")
     if expect_page is not None and page != expect_page:
         raise Fail(f"chip cites p.{expect_page} but the sheet shows p.{page}: {header!r}")
 
@@ -899,9 +973,9 @@ def main() -> int:
         if wanted("upload"):
             upload_pdf(dev, args.pdf)
         if wanted("ask"):
-            ask(dev, args.question, args.expect_page)
+            ask(dev, args.question, args.expect_page, source=args.pdf.name)
         if wanted("citation"):
-            verify_citation(dev, args.expect_page)
+            verify_citation(dev, args.expect_page, source=args.pdf.name)
         if wanted("nameplate"):
             nameplate(dev, args.nameplate)
     except Fail as exc:

@@ -32,6 +32,9 @@ def _load(monkeypatch: pytest.MonkeyPatch, pkg: str | None = None):
     # @dataclass resolves its module through sys.modules.
     monkeypatch.setitem(sys.modules, name, module)
     spec.loader.exec_module(module)
+    # These tests are about the uninstall guard; the APK's package check (#4462)
+    # has its own tests, so here the APK is always the target package.
+    monkeypatch.setattr(module, "apk_package", lambda apk, adb: module.PKG)
     return module
 
 
@@ -49,6 +52,7 @@ class _FakeDevice:
     """
 
     def __init__(self, serial: str, installed: tuple[str, ...] = ()) -> None:
+        self.adb = "adb"  # a real Device carries its adb path
         self.serial = serial
         self.installed = installed
         self.calls: list[list[str]] = []
