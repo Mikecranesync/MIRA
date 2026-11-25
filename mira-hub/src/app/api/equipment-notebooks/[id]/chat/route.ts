@@ -2395,10 +2395,8 @@ async function handleChatTurn(
           ...assetSnapshot,
         }),
       );
-      judgeStopPersistSpan.end();
-      await notebookQueueEntry({ tenantId: ctx.tenantId, notebookId });
-      await releaseThreadClaim(claimRow.id);
-      await onReplyReady(judgeStopTurnRowId);
+      setSpanAttrs({ "mira.persist.outcome": "ok", "mira.turn.row_id": judgeStopTurnRowId }, judgeStopPersistSpan);
+      endTimed(judgeStopPersistSpan, "persist");
       endRoot();
       return corsResponse(
         new Response(
