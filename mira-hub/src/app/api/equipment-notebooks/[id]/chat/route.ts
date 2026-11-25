@@ -3982,7 +3982,13 @@ async function handleChatTurn(
   // #5905 Codex r1 F2: an unsafe-practice card (#5864) never sits above an answer with no
   // evidence, so it joins this abstain in general mode too. A real hazard trigger still
   // takes the general lane, as above.
-  if (componentHold || (chunks.length === 0 && (!general || libraryNotForAsk || missingModelManual || noEvidenceForMachine || unidentifiedServiceText || photoPartLookup || photoPartCompatibilityText || unboundManualRequest || unsafePracticeCard) && !groundedMachineEntry && !safetyTrigger)) {
+  // #5905 r2 F5: this turn's photo reading is evidence the question can be answered from, so a
+  // turn that has one is answered from it under the card. Earlier photos ride along on every
+  // later turn and count only when the answer uses them (#4442), which is not known yet, so
+  // they unlock nothing here. A photo with no stored reading is only an attachment.
+  const lookEvidenceForAbstain = Boolean(renderLookObservationSection(lookRow));
+  const unsafePracticeAbstain = Boolean(unsafePracticeCard) && !lookEvidenceForAbstain;
+  if (componentHold || (chunks.length === 0 && (!general || libraryNotForAsk || missingModelManual || noEvidenceForMachine || unidentifiedServiceText || photoPartLookup || photoPartCompatibilityText || unboundManualRequest || unsafePracticeAbstain) && !groundedMachineEntry && !safetyTrigger)) {
     // Gate G — abstain honestly, persist the turn, never call the provider.
     // #4015: "couldn't find that in the documentation I have", not "I don't have
     // the manual" — a zero-hit scoped search does not prove the manual is absent
@@ -6012,8 +6018,11 @@ async function handleChatTurn(
         : [];
       // #5905 Codex r1 F4: the fixed card (#5864 / reported bypass) was decided before
       // generation, so a turn no provider answered still carries it, live, stored and
-      // replayed, above the failure. Independent of the seam. Not when it already streamed.
-      const failureAdvisory = !served && advisoryCard && !restartBannerStreamed ? advisoryCard : null;
+      // replayed, above the failure. Independent of the seam.
+      // r2 F4: always stored on such a turn, even when it already streamed ahead of a provider
+      // that dropped mid-answer; the flag only stops the card being sent live a second time.
+      const failureAdvisory = !served && advisoryCard ? advisoryCard : null;
+      const failureAdvisoryFrame = failureAdvisory && !restartBannerStreamed ? failureAdvisory : null;
       const advisoryCardEntries: AdvisoryCardEntry[] = failureAdvisory ? [{ kind: "advisory_card", text: failureAdvisory }] : [];
       const finalPersistSpan = startStage("turn.persist");
       let finalTurnRowId: string | null = null;
@@ -6084,8 +6093,8 @@ async function handleChatTurn(
       }
 
       // #5905 F4: the card above the provider failure; the error status below is unchanged.
-      if (failureAdvisory) {
-        controller.enqueue(enc.encode(sse({ kind: "content", content: failureAdvisory } as NotebookContentFrame)));
+      if (failureAdvisoryFrame) {
+        controller.enqueue(enc.encode(sse({ kind: "content", content: failureAdvisoryFrame } as NotebookContentFrame)));
       }
 
       // B2: release the ACCEPTED answer. Content precedes sources/basis/status

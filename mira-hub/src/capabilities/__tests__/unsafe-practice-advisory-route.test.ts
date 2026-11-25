@@ -37,6 +37,7 @@ const domainMock = vi.hoisted(() => ({
   })),
   listSources: vi.fn(async () => [{ filename: "PF525.pdf", docId: "33333333-3333-4333-8333-333333333333" }]),
   originFileIdsByDoc: vi.fn(async () => new Map<string, string>()),
+  listTurns: vi.fn(async () => []),
 }));
 vi.mock("@/lib/equipment-notebooks", () => domainMock);
 
@@ -361,3 +362,185 @@ describe("#5905 F4: when every provider fails, the card stays above the failure,
     expect(frames(replayed.text).find((x) => x.kind === "status")?.status).toBe("error");
   });
 });
+
+// The #5905 r2 probes, as in unsafe-practice-advisory.test.ts (not imported: that would run its suite here too).
+const R2_SCREEN = "Can I wipe the HMI while powered on?";
+const R2_MCC = "Can I leave the MCC open overnight?";
+const R2_POWERED_OFF = "The HMI is powered off. Can I wipe the screen?";
+const R2_SHOP_DOOR = "The electrical cabinet is locked. The shop door sticks. Can I prop it open?";
+
+describe("#5905 r2 F1: the short forms get their card on both no-evidence paths", () => {
+  for (const [message, card] of [
+    [R2_SCREEN, LIVE_SCREEN_CLEANING_CARD],
+    [R2_MCC, OPEN_ENCLOSURE_CARD],
+  ] as const) {
+    it(`zero-hit notebook: ${message}`, async () => {
+      const { out, turn } = await zeroHit(message);
+      expect(turn.answerText!.startsWith(`${card}\n\n${CANNED}`)).toBe(true);
+      expect(count(turn.answerText!, card)).toBe(1);
+      expect(liveStatus(out.text)).toBe(turn.answerText);
+    });
+
+    it(`empty project, general mode: ${message}`, async () => {
+      const { status, text, fetchMock, turn } = await postGeneral(message);
+      expect(status).toBe(200);
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(semanticSafetyCheck).not.toHaveBeenCalled();
+      expect(turn.answerStatus).toBe("insufficient_evidence");
+      expect(turn.answerText).toBe(`${card}\n\n${UNSAFE_PRACTICE_NO_EVIDENCE_TEXT}`);
+      expect(liveStatus(text)).toBe(turn.answerText);
+    });
+  }
+});
+
+describe("#5905 r2 F3: a false match no longer forces the general-mode refusal", () => {
+  for (const message of [R2_POWERED_OFF, R2_SHOP_DOOR]) {
+    it(`answered as an ordinary general question, with no card: ${message}`, async () => {
+      const { status, fetchMock, turn } = await postGeneral(message);
+      expect(status).toBe(200);
+      expect(fetchMock).toHaveBeenCalled();
+      expect(turn.answerText).not.toContain(LIVE_SCREEN_CLEANING_CARD);
+      expect(turn.answerText).not.toContain(OPEN_ENCLOSURE_CARD);
+      expect(turn.answerText).not.toBe(UNSAFE_PRACTICE_NO_EVIDENCE_TEXT);
+    });
+  }
+});
+
+import { turnsFromPersisted } from "@/factorylm-ui/to-interaction";
+
+/** A provider that sends one piece of content, then its connection drops. */
+function droppingProvider(first: string): Response {
+  return new Response(
+    // Pull-driven, so the content is read before the error (an error in start() discards the queue).
+    (() => {
+      let sent = false;
+      return new ReadableStream<Uint8Array>({
+        pull(c) {
+          if (!sent) {
+            sent = true;
+            c.enqueue(enc.encode(delta(first)));
+          } else {
+            c.error(new TypeError("network read error"));
+          }
+        },
+      });
+    })(),
+    { status: 200 },
+  );
+}
+
+describe("#5905 r2 F4: a provider that drops after its first delta keeps the card on reload and replay", () => {
+  it("one live card, no answer text, one stored marker, the card on replay and on canonical reload", async () => {
+    process.env.NOTEBOOK_ANSWER_GATE = "0";
+    domainMock.getNotebook.mockResolvedValue({ id: NB, displayName: "PF525 — Line 1", manufacturer: "Allen-Bradley", model: "PowerFlex 525" } as never);
+    domainMock.listSources.mockResolvedValue([{ filename: "PF525.pdf", docId: DOC_A }] as never);
+    ragMock.retrieveNodeChunks.mockResolvedValue(groundedChunks as never);
+    let calls = 0;
+    const fetchMock = vi.fn(async () => (++calls === 1 ? droppingProvider("Sure ") : new Response("upstream unavailable", { status: 503 })));
+    vi.stubGlobal("fetch", fetchMock);
+    const out = await post(ROSA_CABINET);
+    await vi.waitFor(() => expect(domainMock.recordTurn).toHaveBeenCalled(), { timeout: 2000 });
+    const turn = lastTurn()!;
+    // Precondition: the card streamed live, then the first provider's content, before it failed.
+    // (The route ends the turn on a mid-stream read error; the 503 fallbacks are not reached.)
+    expect(fetchMock).toHaveBeenCalled();
+    expect(streamed(out.text)).toBe(`${OPEN_ENCLOSURE_CARD}\n\nSure `);
+    expect(count(streamed(out.text), OPEN_ENCLOSURE_CARD)).toBe(1);
+    expect(turn.answerStatus).toBe("error");
+    expect(turn.answerText).toBeNull();
+    expect(turn.evidence.filter((e) => e.kind === "advisory_card")).toEqual([{ kind: "advisory_card", text: OPEN_ENCLOSURE_CARD }]);
+
+    domainMock.claimNotebookTurnRequest.mockResolvedValueOnce({
+      status: "replay",
+      turn: { id: "t-1", question: ROSA_CABINET, answerStatus: "error", answerText: null, enabledSourceDocIds: [DOC_A], evidence: turn.evidence, model: null, basis: null },
+    } as never);
+    const replayed = await post(ROSA_CABINET);
+    expect(streamed(replayed.text)).toBe(OPEN_ENCLOSURE_CARD);
+
+    const reloaded = turnsFromPersisted(
+      { id: "t-1", question: ROSA_CABINET, answerStatus: "error", answerText: null, evidence: turn.evidence as never, basis: null, createdAt: "2026-11-25T00:00:00.000Z" },
+      { notebookId: NB, threadId: `notebook-${NB}:thread-t-1`, title: "PF525", tenantId: TENANT_A, identityConfirmed: true, capturedAt: "2026-11-25T00:00:00.000Z" },
+    ).at(-1)!;
+    expect(reloaded.parts[0]).toEqual({ type: "text", text: OPEN_ENCLOSURE_CARD });
+    expect(reloaded.lifecycle).toBe("failed");
+  });
+});
+
+import { loadRecentLookObservations, loadVisualEvidenceForPhoto } from "@/lib/visual-evidence-context";
+
+const PHOTO = "44444444-4444-4444-8444-444444444444";
+const MIXED = "What voltage does the HMI label show, and can I wipe the HMI while it is on?";
+
+const READING = "HMI supply label reads 24 V DC, 1.2 A";
+
+/**
+ * General mode, no manual chunks. `reading` is the stored observation of the photo, or none;
+ * `earlier` puts that photo on an earlier turn of the thread instead of attaching it to this one.
+ */
+async function postGeneralWithPhoto(reading: string | null, earlier = false) {
+  filesMock.photoLinkedToTarget.mockResolvedValue({ fileId: PHOTO, capturedAt: "2026-11-25T00:00:00Z" });
+  const row = { observationId: "obs-1", sessionId: "s-1", text: reading, obsKind: "look", trust: "verified", fileId: PHOTO, hazards: [], observedAt: "2026-11-25T00:00:00Z" };
+  vi.mocked(loadRecentLookObservations).mockResolvedValue((earlier && reading ? [row] : []) as never);
+  vi.mocked(loadVisualEvidenceForPhoto).mockResolvedValue((reading && !earlier ? row : null) as never);
+  domainMock.validateChatSources.mockResolvedValue({ ok: false, error: "no_sources_selected" } as never);
+  domainMock.getNotebook.mockResolvedValue({ id: NB, displayName: "Unknown machine" } as never);
+  domainMock.listSources.mockResolvedValue([] as never);
+  ragMock.retrieveNodeChunks.mockResolvedValue([] as never);
+  const fetchMock = vi.fn(async () => completingProvider("The photo's label reads 24 V DC. Switch the HMI off before you wipe it."));
+  vi.stubGlobal("fetch", fetchMock);
+  const req = new NextRequest("http://test/api/equipment-notebooks/nb/chat", {
+    method: "POST",
+    body: JSON.stringify({ message: MIXED, mode: "general", ...(earlier ? {} : { visualEvidence: { fileId: PHOTO } }), clientRequestId: REQ_ID }),
+    headers: { "Content-Type": "application/json" },
+  });
+  const res = await POST(req, params);
+  const text = await res.text();
+  await vi.waitFor(() => expect(domainMock.recordTurn).toHaveBeenCalled(), { timeout: 2000 });
+  return { status: res.status, text, fetchMock, turn: lastTurn()! };
+}
+
+describe("#5905 r2 F5: a reviewed photo reading is evidence, so the mixed question is answered under the card", () => {
+  it("precondition: the mixed question raises only the live-screen card", () => {
+    expect(unsafePracticeWarningFor(MIXED)).toBe(LIVE_SCREEN_CLEANING_CARD);
+  });
+
+  it("with the label reading: the provider answers from the photo, the card above the answer once", async () => {
+    const { status, text, fetchMock, turn } = await postGeneralWithPhoto(READING);
+    expect(status).toBe(200);
+    expect(fetchMock).toHaveBeenCalled();
+    // The reading reached the prompt: the route hands it to the user-content builder (stubbed in
+    // this file to return the bare question, so the provider body cannot show it). The photo
+    // stays on the stored turn.
+    const visualArgs = (ragMock.buildManualUserContent.mock.calls as unknown as unknown[][]).map((c) => String(c[2] ?? ""));
+    expect(visualArgs.some((v) => v.includes("1.2 A") && v.includes("TECHNICIAN-REVIEWED"))).toBe(true);
+    expect(turn.evidence.some((e) => e.kind === "visual_observation")).toBe(true);
+    expect(turn.answerText!.startsWith(`${LIVE_SCREEN_CLEANING_CARD}\n\n`)).toBe(true);
+    expect(count(turn.answerText!, LIVE_SCREEN_CLEANING_CARD)).toBe(1);
+    expect(turn.answerText).toContain("24 V DC");
+    expect(turn.answerText).not.toContain(UNSAFE_PRACTICE_NO_EVIDENCE_TEXT);
+    expect(count(streamed(text), LIVE_SCREEN_CLEANING_CARD)).toBe(1);
+  });
+
+  it("control: the photo with no stored reading is only an attachment: the fixed refusal, no provider call", async () => {
+    const { status, fetchMock, turn } = await postGeneralWithPhoto(null);
+    expect(status).toBe(200);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(semanticSafetyCheck).not.toHaveBeenCalled();
+    expect(turn.answerStatus).toBe("insufficient_evidence");
+    // The card, over the existing photo refusal (the photo is there, nothing answers from it).
+    expect(turn.answerText!.startsWith(`${LIVE_SCREEN_CLEANING_CARD}\n\n`)).toBe(true);
+    expect(count(turn.answerText!, LIVE_SCREEN_CLEANING_CARD)).toBe(1);
+    expect(turn.answerText).not.toContain("24 V DC");
+  });
+
+  it("control: a reading of an earlier photo in the thread unlocks nothing: the card and no-manual reply, no provider call", async () => {
+    const { status, fetchMock, turn } = await postGeneralWithPhoto(READING, true);
+    expect(status).toBe(200);
+    expect(loadRecentLookObservations).toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(semanticSafetyCheck).not.toHaveBeenCalled();
+    expect(turn.answerText).toBe(`${LIVE_SCREEN_CLEANING_CARD}\n\n${UNSAFE_PRACTICE_NO_EVIDENCE_TEXT}`);
+  });
+});
+
+import { unsafePracticeWarning as unsafePracticeWarningFor } from "@/capabilities/unsafe-practice-advisory";

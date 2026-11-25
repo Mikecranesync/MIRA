@@ -58,7 +58,15 @@ const LIVE_OBJECT =
 
 /** "on" as a state, not a place: "leave it on", never "the HMI is on the left". */
 const ON = "on(?!\\s+(?:the|a|an|top|my|our|its|their|this|that|to|of|it|break|hold|standby|lunch)\\b)";
-const LIVE_ON = `(?:${ON}|running|live|powered(?:\\s+(?:up|${ON}))?|energi[sz]ed|switched\\s+${ON}|turned\\s+${ON})`;
+/**
+ * #5905 r2 F3: "powered" is a live state only as a complete one: "powered on", "powered up", or a
+ * bare "powered" that ends its clause ("it's powered, can I wipe it"). "Powered off" is the safe
+ * state, and "powered by 24 V" or "powered from the panel" says where the power comes from.
+ */
+const POWERED = `powered(?:\\s+(?:up|${ON})|(?=\\s*(?:[.,;:!?)]|$)|\\s+(?:and|but|so|while|when|still|now|right\\s+now)\\b))`;
+const LIVE_ON = `(?:${ON}|running|live|${POWERED}|energi[sz]ed|switched\\s+${ON}|turned\\s+${ON})`;
+/** The states that can stand with no subject ("while powered on", "while running"). Never a bare "on": "while on shift". */
+const LIVE_PARTICIPLE = `(?:running|live|${POWERED}|energi[sz]ed|switched\\s+${ON}|turned\\s+${ON})`;
 
 /** The screen or the machine stays live while it is cleaned. */
 const LIVE_STATE = new RegExp(
@@ -68,6 +76,8 @@ const LIVE_STATE = new RegExp(
       `(?:leav(?:e|es|ing)|left|keep(?:s|ing)?|kept)\\s+${LIVE_OBJECT}\\s+${LIVE_ON}`,
       // "while it's on", "while the line runs", "while the machine is running", "with it on"
       `(?:while|with|when)\\s+${LIVE_OBJECT}(?:'s|\\s+is|\\s+are|\\s+stays|\\s+remains)?\\s+(?:still\\s+)?(?:${LIVE_ON}|runs)`,
+      // The subject left out: "wipe the hmi while powered on", "clean it while running" (#5905 r2 F1).
+      `(?:while|when)\\s+(?:it'?s\\s+|still\\s+)?${LIVE_PARTICIPLE}`,
       // A direct report: "the line is running. can I wipe the hmi now?"
       `${LIVE_OBJECT}(?:'s|\\s+is|\\s+are|\\s+stays|\\s+remains)\\s+(?:still\\s+)?${LIVE_ON}`,
       // "without switching it off", "without turning off the panel"
@@ -78,7 +88,11 @@ const LIVE_STATE = new RegExp(
 
 /** An electrical cabinet or enclosure. A bare "panel" counts only as a door or cabinet ("panel door", "panel cabinet"). */
 const ENCLOSURE =
-  /\b(?:(?:electrical|control|panel|drive|vfd|plc|mcc|breaker|starter|disconnect)\s+(?:cabinets?|enclosures?|boxes|box|rooms?)|cabinets?|enclosures?|panel\s+doors?|mccs?|motor\s+control\s+centers?|switchgear|breaker\s+panels?|junction\s+box(?:es)?|j-?box(?:es)?)\b/;
+  /\b(?:(?:electrical|control|panel|drive|vfd|plc|mcc|breaker|starter|disconnect)\s+(?:cabinets?|enclosures?|boxes|box|rooms?)|cabinets?|enclosures?|panel\s+doors?|mccs?|motor\s+control\s+centers?|switchgear|(?:breaker|electrical|distribution)\s+panels?|junction\s+box(?:es)?|j-?box(?:es)?)\b/;
+
+/** Enclosures that are themselves what is left open: "leave the MCC open", "the electrical panel" (#5905 r2 F1). */
+const ENCLOSURE_HEAD =
+  "(?:mccs?|motor\\s+control\\s+centers?|switchgear|(?:breaker|electrical|distribution)\\s+panels?|junction\\s+box(?:es)?|j-?box(?:es)?)";
 
 /** The only words that may qualify a door here: "the panel door", never "the shop door". */
 const ENC_QUAL = "(?:electrical|control|panel|cabinet|enclosure|drive|vfd|plc|mccs?|breaker|starter|disconnect|junction|box|switchgear|j-?box)";
@@ -86,11 +100,45 @@ const DETERMINER = "(?:the|that|this|its|their|our|your|his|her|my|a|an)";
 
 /** What a verb leaves open: the enclosure, its own door, lid or cover, or a pronoun. */
 const LEFT_OBJECT =
-  `(?:(?:${DETERMINER}\\s+)?(?:${ENC_QUAL}(?:'s)?\\s+){0,2}(?:doors?|lids?|covers?|hatch(?:es)?|cabinets?|enclosures?|box(?:es)?)|it|them)`;
+  `(?:(?:${DETERMINER}\\s+)?(?:(?:${ENC_QUAL}(?:'s)?\\s+){0,2}(?:doors?|lids?|covers?|hatch(?:es)?|cabinets?|enclosures?|box(?:es)?)|${ENCLOSURE_HEAD})|it|them)`;
 
 /** LEFT_OBJECT without the pronouns. */
 const ENCLOSED_OBJECT =
-  `(?:(?:${DETERMINER}\\s+)?(?:${ENC_QUAL}(?:'s)?\\s+){0,2}(?:doors?|lids?|covers?|hatch(?:es)?|cabinets?|enclosures?|box(?:es)?))`;
+  `(?:(?:${DETERMINER}\\s+)?(?:(?:${ENC_QUAL}(?:'s)?\\s+){0,2}(?:doors?|lids?|covers?|hatch(?:es)?|cabinets?|enclosures?|box(?:es)?)|${ENCLOSURE_HEAD}))`;
+
+/** A verb followed straight by a pronoun object: "prop it open", "close them without locking". */
+const PRONOUN_OBJECT = /^\S+\s+(?:open\s+)?(?:it|them)\b/;
+
+/** A switching device: open is its safe state ("leave the MCC breaker open"), so it never stands for the enclosure. */
+const SWITCH_DEVICE = "(?:breakers?|disconnects?|switch(?:es)?|isolators?|fuses?|mains|contactors?)";
+/** The word between the object and "open" may not be a switching device: "leave the MCC breaker open" is the safe state. */
+const NOT_A_SWITCH = `(?!${SWITCH_DEVICE}\\b)`;
+
+/** What a pronoun can point back to: an enclosure, an openable part, or something else that opens. */
+const REFERENT = new RegExp(
+  `\\b(?:(${ENCLOSURE.source.slice(2, -2)})|(doors?|lids?|covers?|hatch(?:es)?)|(windows?|gates?|valves?|hoods?|guards?|trunks?|tailgates?|fridges?|freezers?|lockers?|${SWITCH_DEVICE}))\\b`,
+  "g",
+);
+
+/**
+ * #5905 r2 F3: does the pronoun at `index` stand for the enclosure? It points to the nearest thing
+ * named before it (or, with nothing before, the first after). An enclosure, or a door with no
+ * qualifier or an enclosure one ("the door", "the cabinet door"), is the enclosure. A door qualified
+ * by anything else ("the shop door"), or a window, gate or valve, is not.
+ */
+function pronounIsEnclosure(msg: string, index: number, length: number): boolean {
+  const before = [...msg.slice(0, index).matchAll(REFERENT)];
+  let ref: RegExpMatchArray | undefined = before[before.length - 1];
+  let offset = 0;
+  if (!ref) {
+    offset = index + length;
+    ref = msg.slice(offset).matchAll(REFERENT).next().value;
+  }
+  if (!ref) return true;
+  if (ref[1]) return true;
+  if (ref[3]) return false;
+  return subjectStartsHere(msg, offset + (ref.index ?? 0));
+}
 
 /** The subject of a report. Its own qualifier is checked by `subjectStartsHere`. */
 const REPORT_SUBJECT = `(?:(?:${ENC_QUAL}(?:'s)?\\s+){0,2}(?:doors?|lids?|covers?|hatch(?:es)?)|${ENCLOSURE.source.slice(2, -2)})`;
@@ -106,7 +154,7 @@ const OPEN_STATE = new RegExp(
     [
       // "leave the door propped open", "keep it open", "left the cabinet unlocked", "prop the door open"
       "(?:leav(?:e|es|ing)|left|keep(?:s|ing)?|kept|prop(?:s|ped|ping)?|wedg(?:e|es|ed|ing)|block(?:s|ed|ing)?|hold(?:s|ing)?|held|tie(?:s|d)?|tying|tap(?:e|es|ed|ing))" +
-        `\\s+${LEFT_OBJECT}\\s+(?:\\S+\\s+)?(?:open|unlocked|ajar|unlatched)${NOT_A_LABEL}`,
+        `\\s+${LEFT_OBJECT}\\s+(?:${NOT_A_SWITCH}\\S+\\s+)?(?:open|unlocked|ajar|unlatched)${NOT_A_LABEL}`,
       // "prop open the cabinet"
       `(?:prop(?:s|ping)?|wedg(?:e|es|ing))\\s+open\\s+${LEFT_OBJECT}`,
       // "close the door without locking it", "without locking the cabinet"
@@ -142,10 +190,10 @@ function subjectStartsHere(msg: string, index: number): boolean {
 }
 
 /** The first non-negated match of `re` in `msg` (that `ok` accepts), or null. */
-function liveMatch(re: RegExp, msg: string, ok: (index: number) => boolean = () => true): string | null {
+function liveMatch(re: RegExp, msg: string, ok: (index: number, text: string) => boolean = () => true): string | null {
   const g = new RegExp(re.source, re.flags.includes("g") ? re.flags : `${re.flags}g`);
   for (const m of msg.matchAll(g)) {
-    if (!NEGATED.test(msg.slice(0, m.index)) && ok(m.index)) return m[0];
+    if (!NEGATED.test(msg.slice(0, m.index)) && ok(m.index, m[0])) return m[0];
   }
   return null;
 }
@@ -160,7 +208,8 @@ export function unsafePractices(message: string): UnsafePractice[] {
   if (SCREEN_CLEANING.test(msg) && liveMatch(LIVE_STATE, msg)) out.push("live-screen-cleaning");
   if (
     ENCLOSURE.test(msg) &&
-    (liveMatch(OPEN_STATE, msg) || liveMatch(OPEN_REPORT, msg, (i) => subjectStartsHere(msg, i)))
+    (liveMatch(OPEN_STATE, msg, (i, t) => !PRONOUN_OBJECT.test(t) || pronounIsEnclosure(msg, i, t.length)) ||
+      liveMatch(OPEN_REPORT, msg, (i) => subjectStartsHere(msg, i)))
   ) {
     out.push("open-electrical-enclosure");
   }

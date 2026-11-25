@@ -144,3 +144,91 @@ describe("composition", () => {
     }
   });
 });
+
+/** #5905 Codex r2 F1: the short forms Codex found that no detector caught. */
+const R2_SCREEN = "Can I wipe the HMI while powered on?";
+const R2_MCC = "Can I leave the MCC open overnight?";
+/** #5905 Codex r2 F3: a safe state, and an unrelated door, that were warned on. */
+const R2_POWERED_OFF = "The HMI is powered off. Can I wipe the screen?";
+const R2_SHOP_DOOR = "The electrical cabinet is locked. The shop door sticks. Can I prop it open?";
+
+describe("#5905 r2 F1: the subject left out, and an enclosure as the thing left open", () => {
+  it("precondition: neither message reaches any other notebook safety detector", () => {
+    for (const msg of [R2_SCREEN, R2_MCC]) {
+      expect(notebookSafetyTrigger(msg)).toBeNull();
+      expect(isEnergizedWorkAsk(msg)).toBe(false);
+      expect(safetyBypassAsk(msg)).toBeNull();
+      expect(safetyBypassWarning(msg)).toBeNull();
+    }
+  });
+
+  for (const msg of [R2_SCREEN, "Can I clean the touch screen while running?", "ok to wipe the screen while still energized"]) {
+    it(`warns: ${msg}`, () => expect(unsafePractices(msg)).toEqual(["live-screen-cleaning"]));
+  }
+  for (const msg of [
+    R2_MCC,
+    "Can I leave the electrical panel open?",
+    "Can I leave the switchgear unlocked tonight?",
+    "leave the motor control center open over the weekend?",
+    "can I prop open the MCC",
+  ]) {
+    it(`warns: ${msg}`, () => expect(unsafePractices(msg)).toEqual(["open-electrical-enclosure"]));
+  }
+  for (const msg of ["Can I wipe the HMI while powered off?", "wipe the hmi while on shift?"]) {
+    it(`quiet: ${msg}`, () => expect(unsafePractices(msg)).toEqual([]));
+  }
+});
+
+describe("#5905 r2 F3: a full power state, and a pronoun read against the door it follows", () => {
+  for (const msg of [
+    R2_POWERED_OFF,
+    "The HMI is powered down, can I clean the display?",
+    R2_SHOP_DOOR,
+    "The electrical cabinet is locked. The drain valve is stuck, can I leave it open?",
+  ]) {
+    it(`quiet: ${msg}`, () => expect(unsafePractices(msg)).toEqual([]));
+  }
+  // Controls: the same shapes, about the live screen and the cabinet, still warn.
+  for (const msg of ["The HMI is powered on. Can I wipe the screen?", "The HMI is on. Can I wipe the screen?"]) {
+    it(`warns: ${msg}`, () => expect(unsafePractices(msg)).toEqual(["live-screen-cleaning"]));
+  }
+  for (const msg of [
+    "The electrical cabinet door won't latch. Can I prop it open?",
+    "The electrical cabinet won't close, can I just tape it open?",
+    // An unqualified door, with a cabinet named, may be the cabinet's own: warn.
+    "The electrical cabinet is locked. The door sticks. Can I prop it open?",
+    // Nothing named before the pronoun: it points ahead, to the cabinet.
+    "can I prop it open? the electrical cabinet key is lost",
+  ]) {
+    it(`warns: ${msg}`, () => expect(unsafePractices(msg)).toEqual(["open-electrical-enclosure"]));
+  }
+});
+
+describe("#5905 r2: a switching device left open is the safe state, and a power source is not a power state", () => {
+  for (const msg of [
+    "Can I leave the MCC breaker open and lock it out?",
+    "leave the MCC disconnect open",
+    "Can I leave the switchgear disconnect open?",
+    "leave the electrical panel breaker open",
+    "The MCC is locked out. The breaker tripped, can I leave it open?",
+  ]) {
+    it(`quiet: ${msg}`, () => expect(unsafePractices(msg)).not.toContain("open-electrical-enclosure"));
+  }
+  for (const msg of [
+    "The HMI is powered by 24 V. Can I wipe the screen?",
+    "The HMI is powered from the panel. can I wipe the screen",
+    "Can I wipe the HMI while powered by the UPS?",
+  ]) {
+    it(`quiet: ${msg}`, () => expect(unsafePractices(msg)).not.toContain("live-screen-cleaning"));
+  }
+  // Controls: an enclosure named by its switching device, and a bare powered state, still warn.
+  for (const msg of [
+    "Can I leave the breaker box open?",
+    "The breaker tripped. The MCC door won't close, can I prop it open?",
+  ]) {
+    it(`warns: ${msg}`, () => expect(unsafePractices(msg)).toEqual(["open-electrical-enclosure"]));
+  }
+  for (const msg of ["Can I wipe the HMI while powered?", "the hmi is powered and running, can I wipe the screen"]) {
+    it(`warns: ${msg}`, () => expect(unsafePractices(msg)).toEqual(["live-screen-cleaning"]));
+  }
+});
