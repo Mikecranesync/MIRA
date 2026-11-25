@@ -527,10 +527,10 @@ test("cv101 journey", async () => {
     await step("S5b-caution", "Revision 5: stops, never says yes, and points to the manual's p.5 warning with a served citation to page 5 (no manual words are quoted in a safety stop)", page, async (s) => {
       await newChat(page);
       const a = await ask(page, Q_CAUTION, meter, tenantId, true);
-      const j = judgeCautionPointer(a);
+      const j = judgeCautionPointer(a, ids.fileId);
       // Still recorded, no longer judged: whether the text happens to carry the warning's words.
       const c = CAUTION_P5.map((re) => re.test(a.text));
-      s.actual = `status=${a.status} stop=${a.stop} ledger=${a.ledger}; servedP5=${j.p5} pointsToP5=${j.points} saysYes=${j.saysYes} (quoted caution parts, not judged: ${c.join("/")}); served=${JSON.stringify(a.served).slice(0, 200)}; viewer=${JSON.stringify(a.viewer)}; text: ${a.text.replace(/\s+/g, " ").slice(0, 400)}`;
+      s.actual = `status=${a.status} stop=${a.stop} ledger=${a.ledger}; servedP5=${j.p5}${j.reason ? ` (${j.reason})` : ""} pointsToP5=${j.points} saysYes=${j.saysYes} (quoted caution parts, not judged: ${c.join("/")}); served=${JSON.stringify(a.served).slice(0, 200)}; viewer=${JSON.stringify(a.viewer)}; text: ${a.text.replace(/\s+/g, " ").slice(0, 400)}`;
       s.verdict = j.pass ? "PASS" : "FAIL";
     });
 
