@@ -1,5 +1,5 @@
 {
- "_doc": "#5864 / #5905 frozen corpus, written BEFORE the topic detector so it is not fitted to it. must = classes that must get their caution; never = classes that must stay silent; a class in neither list may get its caution (a standing caution is acceptable there). src: rosa = the two reported staging asks; codex-rN-Fk = a Codex finding; test = an earlier unit-test case; gen = a generated variant. Cases with src=held were a held-out adversarial batch written after the first topic detector, scored once before any change (topic 20/30 recall and 5/12 silent; old grammar detector 6/30 and 11/12), then folded in with the words they exposed.",
+ "_doc": "#5864 / #5905 frozen corpus, written BEFORE the topic detector so it is not fitted to it. must = classes that must get their caution; never = classes that must stay silent; a class in neither list may get its caution (a standing caution is acceptable there). src: rosa = the two reported staging asks; codex-rN-Fk = a Codex finding; test = an earlier unit-test case; gen = a generated variant. Cases with src=held were a held-out adversarial batch written after the first topic detector, scored once before any change (topic 20/30 recall and 5/12 silent; old grammar detector 6/30 and 11/12), then folded in with the words they exposed. Cases with src=paired put a real hazard beside each exclusion word (written by tracing the exclusions, so a worst case); scored once before any change: topic 0/18 recall and 1/3 silent, old 2/18 and 3/3. Fixed by clause breaks and narrower exclusions, then folded in. Cases with src=pin were added after the mutation proof showed two narrowing rules unpinned (the state after a copula; the verb object stopping at 'and').",
  "cases": [
   {
    "src": "rosa",
@@ -1387,6 +1387,167 @@
   {
    "src": "held",
    "text": "Is it ok to open the enclosure to read the drive display after LOTO?"
+  },
+  {
+   "src": "paired",
+   "must": [
+    "enclosure"
+   ],
+   "text": "The cabinet door is open and the screen is dark."
+  },
+  {
+   "src": "paired",
+   "must": [
+    "enclosure"
+   ],
+   "text": "The MCC door is open, fault F004 is showing."
+  },
+  {
+   "src": "paired",
+   "must": [
+    "enclosure"
+   ],
+   "text": "The breaker cabinet is open"
+  },
+  {
+   "src": "paired",
+   "must": [
+    "enclosure"
+   ],
+   "text": "Can I leave the main switchgear unlocked?"
+  },
+  {
+   "src": "paired",
+   "must": [
+    "enclosure"
+   ],
+   "text": "The electrical cabinet is open, should I switch the power off?"
+  },
+  {
+   "src": "paired",
+   "must": [
+    "enclosure"
+   ],
+   "text": "The power supply cabinet door is open."
+  },
+  {
+   "src": "paired",
+   "must": [
+    "enclosure"
+   ],
+   "text": "the junction box is open, wire hanging out"
+  },
+  {
+   "src": "paired",
+   "must": [
+    "enclosure"
+   ],
+   "text": "the panel door is open, contact the electrician"
+  },
+  {
+   "src": "paired",
+   "must": [
+    "enclosure"
+   ],
+   "text": "the cabinet door is propped open, the breaker inside is off"
+  },
+  {
+   "src": "paired",
+   "must": [
+    "enclosure"
+   ],
+   "text": "Can I leave the disconnect cabinet unlocked?"
+  },
+  {
+   "src": "paired",
+   "must": [
+    "enclosure"
+   ],
+   "text": "the fuse cabinet is ajar"
+  },
+  {
+   "src": "paired",
+   "must": [
+    "enclosure"
+   ],
+   "text": "the electrical cabinet is open, the tank is overflowing"
+  },
+  {
+   "src": "paired",
+   "must": [
+    "enclosure"
+   ],
+   "text": "the control panel is open, file a work order?"
+  },
+  {
+   "src": "paired",
+   "must": [
+    "enclosure"
+   ],
+   "text": "the MCC is open, the switch on the front is broken"
+  },
+  {
+   "src": "paired",
+   "must": [
+    "screen"
+   ],
+   "text": "Can I wipe the screen, alarm keeps going off?"
+  },
+  {
+   "src": "paired",
+   "must": [
+    "screen"
+   ],
+   "text": "Can I clean the HMI, data entry is slow with it this dirty"
+  },
+  {
+   "src": "paired",
+   "must": [
+    "screen"
+   ],
+   "text": "Can I wipe the HMI, program is running"
+  },
+  {
+   "src": "paired",
+   "must": [
+    "screen"
+   ],
+   "text": "Can I wash the screen, filter alarm is up and it's covered in spray"
+  },
+  {
+   "src": "paired",
+   "never": [
+    "screen"
+   ],
+   "text": "After cleaning the strainer, monitor the pressure."
+  },
+  {
+   "src": "paired",
+   "never": [
+    "screen"
+   ],
+   "text": "monitor the pressure while washing the tank"
+  },
+  {
+   "src": "paired",
+   "never": [
+    "screen"
+   ],
+   "text": "Clean the floor around the conveyor. Later, the operators will need new training on the HMI recipes and the shift handover process overall."
+  },
+  {
+   "src": "pin",
+   "must": [
+    "enclosure"
+   ],
+   "text": "the cabinet door is open the manual says keep it shut"
+  },
+  {
+   "src": "pin",
+   "must": [
+    "enclosure"
+   ],
+   "text": "leave the MCC open and the manual says otherwise"
   }
  ]
 }

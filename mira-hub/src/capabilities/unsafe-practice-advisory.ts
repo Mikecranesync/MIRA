@@ -51,14 +51,35 @@ function stem(w: string): string {
   return w;
 }
 
-/** Lowercase whole tokens; apostrophes dropped ("won't" is "wont"), every other non-alphanumeric a break. */
+/** A clause boundary. No phrase contains it, and no exclusion window reaches past it. */
+const BREAK = "|";
+
+/**
+ * Lowercase whole tokens; apostrophes dropped ("won't" is "wont"); clause punctuation kept
+ * as BREAK; any other non-alphanumeric ("touch-screen", "j-box") only separates words.
+ */
 function tokenize(message: string): string[] {
   return (message || "")
     .toLowerCase()
     .replace(/['’‘`]/g, "")
-    .split(/[^a-z0-9]+/)
+    .replace(/[.,;:!?()\n…—–]+|\s-\s/g, ` ${BREAK} `)
+    .split(/[^a-z0-9|]+/)
     .filter(Boolean)
-    .map(stem);
+    .map((w) => (w === BREAK ? w : stem(w)));
+}
+
+/** The tokens after position i, up to n of them, stopping at a clause break. */
+function clauseAfter(toks: string[], i: number, n: number): string[] {
+  const out: string[] = [];
+  for (let k = i + 1; k < toks.length && out.length < n && toks[k] !== BREAK; k++) out.push(toks[k]);
+  return out;
+}
+
+/** The tokens before position i, up to n of them, nearest first, stopping at a clause break. */
+function clauseBefore(toks: string[], i: number, n: number): string[] {
+  const out: string[] = [];
+  for (let k = i - 1; k >= 0 && out.length < n && toks[k] !== BREAK; k--) out.push(toks[k]);
+  return out;
 }
 
 const words = (list: string) => new Set(list.split(/\s+/).filter(Boolean).map(stem));
@@ -95,6 +116,7 @@ const SCREEN = phrases([
 /** A bare "screen" that is a strainer or filter, not a display. */
 const NOT_A_DISPLAY_BEFORE = words("trash intake inlet suction strainer filter mesh wire vibrating bug fly insect window sieve trommel bar drum rotary basket");
 const NOT_A_DISPLAY_AFTER = words("filter mesh door basket pack changer");
+const MONITOR_NOUN_BEFORE = words("the a an that this hmi touch operator screen machine line their our");
 /** A cleaning word naming a cycle, a message or data, not a cloth on the glass: "CIP wash cycle", "clean filter", "clean up the alarm log". */
 const NOT_PHYSICAL_AFTER = words("filter cycle mode program recipe");
 const NOT_PHYSICAL_OBJECT = words("history log alarm data list code recipe program file");
@@ -102,12 +124,14 @@ const SCREEN_SPAN = 12;
 
 function screenCleaning(toks: string[]): boolean {
   const screens = find(toks, SCREEN).filter(([s, e]) => {
+    // "monitor" is a screen only as a noun ("the monitor"), never the verb ("monitor the pressure").
+    if (e - s === 1 && toks[s] === "monitor") return MONITOR_NOUN_BEFORE.has(toks[s - 1] ?? "");
     if (e - s !== 1 || toks[s] !== "screen") return true;
     return !NOT_A_DISPLAY_BEFORE.has(toks[s - 1] ?? "") && !NOT_A_DISPLAY_AFTER.has(toks[e] ?? "");
   });
   if (!screens.length) return false;
   const physical = (i: number) =>
-    !NOT_PHYSICAL_AFTER.has(toks[i + 1] ?? "") && toks[i - 1] !== "cip" && !toks.slice(i + 1, i + 5).some((w) => NOT_PHYSICAL_OBJECT.has(w));
+    !NOT_PHYSICAL_AFTER.has(toks[i + 1] ?? "") && toks[i - 1] !== "cip" && !clauseAfter(toks, i, 4).some((w) => NOT_PHYSICAL_OBJECT.has(w));
   return toks.some((t, i) => CLEANING.has(t) && physical(i) && screens.some(([s, e]) => near(i, s, SCREEN_SPAN) || near(i, e - 1, SCREEN_SPAN)));
 }
 
@@ -136,18 +160,36 @@ const OPEN_CONDITION = words("neutral ground conductor leg circuit loop phase co
 const OPENED_OBJECT = words("drawing manual file page screen menu setting app project tab print schematic diagram pdf document report ticket valve window gate tank");
 /** A device whose OPEN state is the safe one. */
 const SWITCH_DEVICE = words("breaker disconnect switch isolator fuse main contactor");
+/** A word that makes a following device name part of an enclosure name: "breaker cabinet". */
+const ENCLOSURE_HEAD = words("cabinet enclosure panel box switchgear door");
+/** "Open" after one of these is a state, not the verb: "the door is open", "left open". */
+const ADJECTIVE_CUE = words("is are was were been be stay stays stayed left hang hangs hanging wide still remain remains propped wedged swung blew stuck cracked");
+const DETERMINER = words("the a an this that my our your their up");
+
+/** The verb "open" takes an object that is not the enclosure: "open the MCC drawing", "open the valve". */
+function openedObject(toks: string[], i: number): boolean {
+  const next = clauseAfter(toks, i, 4).filter((w) => !DETERMINER.has(w));
+  const stopAt = next.findIndex((w) => w === "and" || w === "or" || w === "but" || w === "is");
+  return (stopAt < 0 ? next : next.slice(0, stopAt)).slice(0, 3).some((w) => OPENED_OBJECT.has(w));
+}
 const ENCLOSURE_SPAN = 20;
 
 function unsecuredSignals(toks: string[], enclosureTokens: Set<number>): number[] {
   const at: number[] = [];
-  const window = (i: number, span: number, set: Set<string>) =>
-    toks.slice(i + 1, i + 1 + span).some((t) => set.has(t));
+  const window = (i: number, span: number, set: Set<string>) => clauseAfter(toks, i, span).some((t) => set.has(t));
   toks.forEach((t, i) => {
     if (OPEN_STATE.has(t)) {
-      if (t.startsWith("open") && OPEN_CONDITION.has(toks[i + 1] ?? "")) return;
-      if (t.startsWith("open") && toks.slice(i + 1, i + 4).some((w) => OPENED_OBJECT.has(w))) return;
-      const switchNear = toks.some((w, j) => j !== i && j >= i - 3 && j <= i + 4 && SWITCH_DEVICE.has(w) && !enclosureTokens.has(j));
-      if (switchNear) return;
+      if (t === "open" || t === "opened") {
+        if (OPEN_CONDITION.has(toks[i + 1] ?? "")) return;
+        // "open the drawing": the verb's object, only when "open" is a verb (no copula before it).
+        if (!ADJECTIVE_CUE.has(clauseBefore(toks, i, 1)[0] ?? "") && openedObject(toks, i)) return;
+        // "leave the breaker open", "open the disconnect": a switching device in the same clause,
+        // unless it names the enclosure ("breaker cabinet", "main switchgear").
+        const device = (w: string, j: number) => SWITCH_DEVICE.has(w) && !enclosureTokens.has(j) && !ENCLOSURE_HEAD.has(toks[j + 1] ?? "");
+        const before = clauseBefore(toks, i, 3);
+        const after = clauseAfter(toks, i, 4);
+        if (before.some((w, k) => device(w, i - 1 - k)) || after.some((w, k) => device(w, i + 1 + k))) return;
+      }
       at.push(i);
     } else if ((NEGATION.has(t) && window(i, 6, SECURE)) || (t === "no" && window(i, 2, SECURE))) {
       at.push(i);
@@ -163,6 +205,7 @@ function unsecuredSignals(toks: string[], enclosureTokens: Set<number>): number[
 function enclosureUnsecured(toks: string[]): boolean {
   const enclosures = find(toks, ENCLOSURE).filter(([s, e]) => {
     if (e - s !== 1 || toks[s] !== "cabinet") return true;
+    if (toks[s - 1] === "supply" && toks[s - 2] === "power") return true;
     return !NOT_ELECTRICAL_BEFORE.has(toks[s - 1] ?? "");
   });
   if (!enclosures.length) return false;
