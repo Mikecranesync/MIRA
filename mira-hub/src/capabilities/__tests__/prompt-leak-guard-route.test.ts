@@ -106,7 +106,7 @@ const seamMock = vi.hoisted(() => ({
 }));
 vi.mock("@/lib/inference/canonical-cascade", () => seamMock);
 
-import { POST } from "@/app/api/equipment-notebooks/[id]/chat/route";
+import { GENERAL_IDENTITY_STATEMENT, POST } from "@/app/api/equipment-notebooks/[id]/chat/route";
 
 function providerStream(text: string) {
   const enc = new TextEncoder();
@@ -870,4 +870,29 @@ describe("#4891 F15 — round 9: scaffolding-independent large-scale signals clo
     expect(streamed25).not.toBe(PROMPT_LEAK_REFUSAL);
     expect(streamed25).toBe(run25);
   });
+});
+
+describe("AI-panel F2 (#5954, Codex F1) — a blank chat's identity answer through the real route", () => {
+  beforeEach(() => nbMock.validateChatSources.mockResolvedValue({ ok: false, error: "no_sources_selected" }));
+
+  it.each(["What is FactoryLM?", "What is MIRA maintenance AI?"])(
+    "%s — the provider receives the FactoryLM statement and the identity answer is streamed and persisted as answered",
+    async (question) => {
+      const answer =
+        "I'm MIRA, built by FactoryLM (factorylm.com). FactoryLM turns a plant's equipment manuals and maintenance records into context AI can trust.";
+      vi.stubGlobal("fetch", vi.fn(async () => new Response(providerStream(answer), { status: 200 })));
+      const res = await POST(req({ message: question, mode: "general" }), params);
+      expect(res.status).toBe(200);
+      const fr = await frames(res);
+
+      // The assembled provider prompt carries the identity statement (fails on the base commit).
+      expect(sentSystemPrompt()).toContain(GENERAL_IDENTITY_STATEMENT);
+      // The route's own leak check, with its own exclusions, lets the answer through.
+      expect(contentOf(fr)).toBe(answer);
+      expect(fr.find((f) => f.kind === "safety")).toBeUndefined();
+      const persisted = persistedTurn();
+      expect(persisted.answerStatus).toBe("answered");
+      expect(String(persisted.answerText)).toContain("built by FactoryLM");
+    },
+  );
 });
