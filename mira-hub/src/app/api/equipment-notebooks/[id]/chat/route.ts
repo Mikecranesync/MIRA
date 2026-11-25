@@ -2385,7 +2385,6 @@ async function handleChatTurn(
           threadId,
           clientRequestId,
           claimToken: requestClaimToken,
-          threadRowId,
           ...assetSnapshot,
           userMessage: message,
           attachmentKeys: [],
