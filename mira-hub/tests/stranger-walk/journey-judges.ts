@@ -47,6 +47,17 @@ export async function servedTurnOf(sse: string): Promise<ServedTurn> {
   }
 }
 
+/** One rendered answer text part: its text, and the computed opacity of it and of every ancestor. */
+export type RenderedPart = { text: string; opacities: readonly number[] };
+
+/**
+ * The text parts a technician can read. Playwright's visibility counts `opacity: 0` as visible, so a
+ * part that is fully transparent, itself or through any ancestor, is dropped here (#5946). An
+ * unreadable opacity (NaN) is dropped too: fail closed.
+ */
+export const readableTexts = (parts: readonly RenderedPart[]): string[] =>
+  parts.filter((p) => p.opacities.every((o) => o > 0)).map((p) => p.text);
+
 /** The served title of the stop's manual-warning pointer (route.ts pointerCitations, #5349). */
 export const WARNING_POINTER_TITLE = "Manual warning";
 
@@ -78,9 +89,10 @@ export const visible = (t: string) => collapse(t.replace(/\*\*/g, ""));
 /**
  * S5b, revision 5 (Mike A, 2026-11-23; pinned text Mike A, 2026-11-25): the energized-work stop never
  * repeats a manual's words (#5349 posture). PASS = a terminal stop whose streamed body is exactly the
- * pinned text and whose stream ended with an arrived `answered` status (#5943); whose rendered turn is
- * in the `safety_stop` lifecycle (#5943) and whose visible answer (every visible text part, banner and
- * chips excluded; at least one, #5944) is exactly that text as displayed — nothing added, nothing
+ * pinned text and whose stream ended with an arrived `answered` status (#5943); whose saved turn
+ * (read after it replaced the live one, #5947) is in the `safety_stop` lifecycle (#5943) and whose
+ * readable answer (every visible, non-transparent text part, banner and chips excluded; at least one,
+ * #5944, #5946) is exactly that text as displayed — nothing added, nothing
  * missing (#5937 r2 F1) — with a served page-5 warning citation on the attached manual (#5891).
  */
 export function judgeCautionPointer(
@@ -89,22 +101,41 @@ export function judgeCautionPointer(
     status: string;
     answerTexts: readonly string[];
     lifecycle: string | null;
+    saved: boolean;
     stop: boolean;
     served: readonly ServedCitation[];
   },
   attachedFileId: string | null | undefined,
-): { pass: boolean; p5: boolean; streamed: boolean; answered: boolean; stopLifecycle: boolean; rendered: boolean; reason: string | null } {
-  const none = { pass: false, p5: false, streamed: false, answered: false, stopLifecycle: false, rendered: false };
-  if (!attachedFileId) return { ...none, reason: "attached manual's file id was not captured (S3)" };
-  if (a.answerTexts.length === 0) return { ...none, reason: "no visible answer text part was rendered" };
-  const p5 = a.served.some(
-    (c) => c.title === WARNING_POINTER_TITLE && String(c.page ?? "").trim() === "5" && c.fileId === attachedFileId,
-  );
+): {
+  pass: boolean;
+  p5: boolean;
+  streamed: boolean;
+  answered: boolean;
+  stopLifecycle: boolean;
+  saved: boolean;
+  rendered: boolean;
+  reason: string | null;
+} {
+  // Every check is measured on its own, so the receipt reports what was observed even when one
+  // precondition is missing (#5946 F3).
+  const p5 =
+    !!attachedFileId &&
+    a.served.some((c) => c.title === WARNING_POINTER_TITLE && String(c.page ?? "").trim() === "5" && c.fileId === attachedFileId);
   const streamed = a.content.trim() === PINNED_S5B_STOP;
   // The reader reports "answered" only once that terminal frame actually arrived (its default is a
   // fail-closed "error"), so the status alone carries the arrival check (#5943).
   const answered = a.status === "answered";
   const stopLifecycle = a.lifecycle === "safety_stop";
-  const rendered = collapse(a.answerTexts.join("\n")) === visible(PINNED_S5B_STOP);
-  return { pass: a.stop && p5 && streamed && answered && stopLifecycle && rendered, p5, streamed, answered, stopLifecycle, rendered, reason: null };
+  const saved = a.saved;
+  const hasText = a.answerTexts.length > 0;
+  const rendered = hasText && collapse(a.answerTexts.join("\n")) === visible(PINNED_S5B_STOP);
+  const reason = !attachedFileId
+    ? "attached manual's file id was not captured (S3)"
+    : !saved
+      ? "the live turn was never replaced by the saved turn"
+      : !hasText
+        ? "no readable answer text part was rendered"
+        : null;
+  const pass = a.stop && p5 && streamed && answered && stopLifecycle && saved && rendered;
+  return { pass, p5, streamed, answered, stopLifecycle, saved, rendered, reason };
 }

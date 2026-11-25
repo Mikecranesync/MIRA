@@ -26,7 +26,7 @@ import { reserveWalkSpend, settleWalkSpend } from "./spend-ledger";
 import { assertOpenRouterCeiling, BudgetMeter, identity, ledgerVerdictFor, pricesFromEnv, releaseOwnPilotHold, runtimeDrift, runtimeOf, stagingBase, teardownTenant, worstCaseTurnUsd, type RuntimeIdentity } from "./staging";
 import { decodeChatBody } from "./stream-decode";
 import { admitPaidTurn, reconcilePaidTurn, recoverSetupTenant, requireDeployedPricing, settlementOf } from "./journey-guard";
-import { judgeCautionPointer, servedTurnOf, type ServedCitation } from "./journey-judges";
+import { judgeCautionPointer, readableTexts, servedTurnOf, type RenderedPart, type ServedCitation } from "./journey-judges";
 import { exitOk, receiptOf, type Step } from "./journey-receipt";
 
 const TARGET = (process.env.CV_TARGET ?? "desktop") as "desktop" | "phone" | "pixel" | "tablet";
@@ -165,7 +165,7 @@ async function openProject(page: Page, name: string) {
   await page.getByRole("heading", { level: 1, name }).waitFor({ timeout: 30_000 });
 }
 
-type Ask = { text: string; status: string | null; stop: boolean; citations: { n: string; title: string; page: string | null }[]; served: ServedCitation[]; content: string; servedStatus: string; sawStatus: boolean; answerTexts: string[]; lifecycle: string | null; viewer: { fileId: string | null; page: string | null } | null; ledger: string; machineLabel: string; ms: number };
+type Ask = { text: string; status: string | null; stop: boolean; citations: { n: string; title: string; page: string | null }[]; served: ServedCitation[]; content: string; servedStatus: string; sawStatus: boolean; answerTexts: string[]; lifecycle: string | null; saved: boolean; viewer: { fileId: string | null; page: string | null } | null; ledger: string; machineLabel: string; ms: number };
 
 /** Set once the run is priced: identity read + drift check before every paid dispatch (Codex r1 F1). */
 let paidRuntime: { base: string; start: RuntimeIdentity } | null = null;
@@ -207,8 +207,18 @@ async function ask(page: Page, q: string, meter: BudgetMeter, tenantId: string, 
   if (res.status() !== 200) throw new Error(`chat POST ${res.status()}`);
   const turn = page.locator(sel).nth(before);
   await turn.and(page.locator(':not([data-lifecycle="running"])')).waitFor({ timeout: 180_000 });
+  // #5947: the host shows the live turn, then swaps it for the saved row after the detail refresh
+  // (hub-host.tsx). Wait for the live turn to leave, as fidelity.spec.ts does, and read everything
+  // from that one saved turn by its id. A swap that never happens is recorded, not thrown.
+  const swapped = await page
+    .locator('.fl-turn--aui[data-role="assistant"][data-turn-id^="live-"]')
+    .waitFor({ state: "detached", timeout: 30_000 })
+    .then(() => true, () => false);
   await page.waitForTimeout(1_500);
-  const settled = await UI.clone.settled(page);
+  const last = await UI.clone.settled(page);
+  const lastId = await last.getAttribute("data-turn-id");
+  const saved = swapped && !!lastId && !lastId.startsWith("live-");
+  const settled = saved ? page.locator(`.fl-turn--aui[data-role="assistant"][data-turn-id="${lastId}"]`) : last;
   const rec = await extractTurn("clone", settled);
   const whole = (await settled.innerText().catch(() => "")).replace(/\s+\n/g, "\n");
   writeFileSync(path.join(OUT, `turn-${shotN + 1}.txt`), `${q}\n----\n${whole}\n----SSE----\n${(sse ?? "").slice(0, 200_000)}`);
@@ -227,11 +237,23 @@ async function ask(page: Page, q: string, meter: BudgetMeter, tenantId: string, 
   }
   void cardsOf;
   const servedTurn = await servedTurnOf(sse ?? "");
-  // Every visible rendered answer text part, in order (banner and chips are not text parts; a part
-  // hidden by CSS is not what the technician reads, #5944).
-  const answerTexts = await settled.locator('[data-part-type="text"]').filter({ visible: true }).allInnerTexts().catch(() => [] as string[]);
+  // Every readable rendered answer text part, in order (banner and chips are not text parts). A part
+  // hidden by CSS (#5944) or fully transparent through any ancestor (#5946) is not what the
+  // technician reads.
+  const parts = await settled
+    .locator('[data-part-type="text"]')
+    .filter({ visible: true })
+    .evaluateAll((els) =>
+      els.map((el) => {
+        const opacities: number[] = [];
+        for (let n: Element | null = el; n; n = n.parentElement) opacities.push(parseFloat(getComputedStyle(n).opacity));
+        return { text: (el as HTMLElement).innerText, opacities };
+      }),
+    )
+    .catch(() => [] as RenderedPart[]);
+  const answerTexts = readableTexts(parts);
   const lifecycle = await settled.getAttribute("data-lifecycle").catch(() => null);
-  return { text: whole, status, stop: rec.safety.kind === "stop", citations: rec.citations, served: servedTurn.citations, content: servedTurn.content, servedStatus: servedTurn.status, sawStatus: servedTurn.sawStatus, answerTexts, lifecycle, viewer, ledger: lv ? (lv.verdict.ok ? lv.verdict.kind : `FAIL ${lv.verdict.reason}`) : "not read", machineLabel, ms: Date.now() - t0 };
+  return { text: whole, status, stop: rec.safety.kind === "stop", citations: rec.citations, served: servedTurn.citations, content: servedTurn.content, servedStatus: servedTurn.status, sawStatus: servedTurn.sawStatus, answerTexts, lifecycle, saved, viewer, ledger: lv ? (lv.verdict.ok ? lv.verdict.kind : `FAIL ${lv.verdict.reason}`) : "not read", machineLabel, ms: Date.now() - t0 };
 }
 
 async function newChat(page: Page) {
@@ -535,7 +557,7 @@ test("cv101 journey", async () => {
       const j = judgeCautionPointer({ ...a, status: a.servedStatus }, ids.fileId);
       // Still recorded, no longer judged: whether the text happens to carry the warning's words.
       const c = CAUTION_P5.map((re) => re.test(a.text));
-      s.actual = `status=${a.status} stop=${a.stop} ledger=${a.ledger}; servedP5=${j.p5}${j.reason ? ` (${j.reason})` : ""} streamedPinned=${j.streamed} answered=${j.answered} sawStatus=${a.sawStatus} lifecycle=${a.lifecycle} renderedPinned=${j.rendered} textParts=${a.answerTexts.length} (quoted caution parts, not judged: ${c.join("/")}); served=${JSON.stringify(a.served).slice(0, 200)}; viewer=${JSON.stringify(a.viewer)}; text: ${a.text.replace(/\s+/g, " ").slice(0, 400)}`;
+      s.actual = `status=${a.status} stop=${a.stop} ledger=${a.ledger}; servedP5=${j.p5}${j.reason ? ` (${j.reason})` : ""} streamedPinned=${j.streamed} answered=${j.answered} sawStatus=${a.sawStatus} lifecycle=${a.lifecycle} saved=${a.saved} renderedPinned=${j.rendered} textParts=${a.answerTexts.length} (quoted caution parts, not judged: ${c.join("/")}); served=${JSON.stringify(a.served).slice(0, 200)}; viewer=${JSON.stringify(a.viewer)}; text: ${a.text.replace(/\s+/g, " ").slice(0, 400)}`;
       s.verdict = j.pass ? "PASS" : "FAIL";
     });
 
