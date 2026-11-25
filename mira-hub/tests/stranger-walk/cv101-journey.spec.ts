@@ -26,7 +26,7 @@ import { reserveWalkSpend, settleWalkSpend } from "./spend-ledger";
 import { assertOpenRouterCeiling, BudgetMeter, identity, ledgerVerdictFor, pricesFromEnv, releaseOwnPilotHold, runtimeDrift, runtimeOf, stagingBase, teardownTenant, worstCaseTurnUsd, type RuntimeIdentity } from "./staging";
 import { decodeChatBody } from "./stream-decode";
 import { admitPaidTurn, reconcilePaidTurn, recoverSetupTenant, requireDeployedPricing, settlementOf } from "./journey-guard";
-import { judgeCautionPointer, servedCitationsOf, type ServedCitation } from "./journey-judges";
+import { judgeCautionPointer, servedTurnOf, type ServedCitation } from "./journey-judges";
 import { exitOk, receiptOf, type Step } from "./journey-receipt";
 
 const TARGET = (process.env.CV_TARGET ?? "desktop") as "desktop" | "phone" | "pixel" | "tablet";
@@ -165,7 +165,7 @@ async function openProject(page: Page, name: string) {
   await page.getByRole("heading", { level: 1, name }).waitFor({ timeout: 30_000 });
 }
 
-type Ask = { text: string; status: string | null; stop: boolean; citations: { n: string; title: string; page: string | null }[]; served: ServedCitation[]; viewer: { fileId: string | null; page: string | null } | null; ledger: string; machineLabel: string; ms: number };
+type Ask = { text: string; status: string | null; stop: boolean; citations: { n: string; title: string; page: string | null }[]; served: ServedCitation[]; content: string; answerText: string; viewer: { fileId: string | null; page: string | null } | null; ledger: string; machineLabel: string; ms: number };
 
 /** Set once the run is priced: identity read + drift check before every paid dispatch (Codex r1 F1). */
 let paidRuntime: { base: string; start: RuntimeIdentity } | null = null;
@@ -226,7 +226,10 @@ async function ask(page: Page, q: string, meter: BudgetMeter, tenantId: string, 
     }
   }
   void cardsOf;
-  return { text: whole, status, stop: rec.safety.kind === "stop", citations: rec.citations, served: servedCitationsOf(sse ?? ""), viewer, ledger: lv ? (lv.verdict.ok ? lv.verdict.kind : `FAIL ${lv.verdict.reason}`) : "not read", machineLabel, ms: Date.now() - t0 };
+  const servedTurn = await servedTurnOf(sse ?? "");
+  // Every rendered answer text part, in order (banner and chips are not text parts).
+  const answerText = (await settled.locator('[data-part-type="text"]').allInnerTexts().catch(() => [] as string[])).join("\n");
+  return { text: whole, status, stop: rec.safety.kind === "stop", citations: rec.citations, served: servedTurn.citations, content: servedTurn.content, answerText, viewer, ledger: lv ? (lv.verdict.ok ? lv.verdict.kind : `FAIL ${lv.verdict.reason}`) : "not read", machineLabel, ms: Date.now() - t0 };
 }
 
 async function newChat(page: Page) {
@@ -524,13 +527,13 @@ test("cv101 journey", async () => {
       const viewerOk = a.viewer?.fileId === ids.fileId && a.viewer?.page === "19";
       s.verdict = vals.every(Boolean) && p19 && viewerOk ? "PASS" : "FAIL";
     });
-    await step("S5b-caution", "Revision 5: stops, never says yes, and points to the manual's p.5 warning with a served citation to page 5 (no manual words are quoted in a safety stop)", page, async (s) => {
+    await step("S5b-caution", "Revision 5 (pinned): a stop whose streamed and rendered answer are exactly the pinned paid2 stop text pointing to the p.5 warning, with a served page-5 warning citation on the attached manual", page, async (s) => {
       await newChat(page);
       const a = await ask(page, Q_CAUTION, meter, tenantId, true);
       const j = judgeCautionPointer(a, ids.fileId);
       // Still recorded, no longer judged: whether the text happens to carry the warning's words.
       const c = CAUTION_P5.map((re) => re.test(a.text));
-      s.actual = `status=${a.status} stop=${a.stop} ledger=${a.ledger}; servedP5=${j.p5}${j.reason ? ` (${j.reason})` : ""} pointsToP5=${j.points} saysYes=${j.saysYes} (quoted caution parts, not judged: ${c.join("/")}); served=${JSON.stringify(a.served).slice(0, 200)}; viewer=${JSON.stringify(a.viewer)}; text: ${a.text.replace(/\s+/g, " ").slice(0, 400)}`;
+      s.actual = `status=${a.status} stop=${a.stop} ledger=${a.ledger}; servedP5=${j.p5}${j.reason ? ` (${j.reason})` : ""} streamedPinned=${j.streamed} renderedPinned=${j.rendered} (quoted caution parts, not judged: ${c.join("/")}); served=${JSON.stringify(a.served).slice(0, 200)}; viewer=${JSON.stringify(a.viewer)}; text: ${a.text.replace(/\s+/g, " ").slice(0, 400)}`;
       s.verdict = j.pass ? "PASS" : "FAIL";
     });
 
