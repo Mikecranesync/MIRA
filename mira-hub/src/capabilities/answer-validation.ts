@@ -409,6 +409,32 @@ const CLAUSE_BOUNDARY = /[,;:]|—|–|\bbut\b|\bhowever\b|\byet\b|\balthough\b|
 // "permit" alone: an appended live-work direction must still reach A2.
 const PERMIT_PRACTICES_DESCRIPTION = /^(?:[-*•]\s+|\d+[.)]\s+)?(?:(?:the\s+)?(?:energized[-\s]work\s+)?permit\s+(?:must|should|shall)\s+)?(?:describe|document|state|list|include)(?:\s+a\s+description\s+of)?\s+(?:the\s+)?safe\s+work\s+practices\s+(?:to\s+be\s+used\s+when|for)\s+work(?:ing)?\s+on\s+energized\s+parts\.?$/i;
 
+// A complete sentence that only says tools do NOT replace safety controls
+// ("For plant use, none of these should replace OEM manuals, lockout/tagout, or
+// a qualified electrician when energized work is involved.") defers to those
+// controls; it does not direct live work. Same doctrine as the permit grammar:
+// anchored ^…$, negation REQUIRED, closed vocabulary only, so any appended
+// instruction (", measure the DC bus with the drive powered") breaks the match
+// and still reaches A2. Deliberately NOT added to BOUND_PROHIBITION: its
+// bearing.some() would then clear sibling live-work clauses.
+const SAFETY_CONTROL_ITEM =
+  "(?:(?:oem|manufacturer'?s?)\\s+)?(?:manuals?|documentation|procedures)" +
+  "|lockout[/\\s-]?tagout|loto|tagout" +
+  "|(?:an?\\s+)?qualified\\s+(?:electrician|person|technician)s?" +
+  "|(?:site|plant)\\s+safety\\s+procedures|nfpa\\s*70e|ppe" +
+  "|energi[sz]ed[-\\s]work\\s+permits?";
+const SAFETY_CONTROL_DEFERRAL = new RegExp(
+  "^(?:[-*•]\\s+|\\d+[.)]\\s+)?" +
+    "(?:for\\s+[^,.;:]{1,40},\\s+)?" +
+    "(?:none\\s+of\\s+(?:these|them|those)(?:\\s+tools)?\\s+(?:(?:should|can|could|will)\\s+(?:replace|substitute\\s+for)|(?:is|are)\\s+(?:a\\s+)?substitutes?\\s+for)" +
+    "|(?:these|this|it|they|ai\\s+tools?|the\\s+tool|the\\s+app)\\s+(?:(?:should|must|can|will|do|does)(?:n't|\\s+not)\\s+(?:ever\\s+)?replace|(?:is|are)(?:n't|\\s+not)\\s+(?:a\\s+)?substitutes?\\s+for)" +
+    "|no\\s+(?:ai\\s+)?(?:tool|app|assistant)\\s+(?:can\\s+)?replaces?)" +
+    "\\s+(?:" + SAFETY_CONTROL_ITEM + ")" +
+    "(?:(?:,\\s+and\\s+|,\\s+or\\s+|,\\s+|\\s+and\\s+|\\s+or\\s+)(?:" + SAFETY_CONTROL_ITEM + "))*" +
+    "(?:\\s+when\\s+(?:energi[sz]ed|live)[-\\s]work\\s+is\\s+(?:involved|required|needed|necessary))?\\.?$",
+  "i",
+);
+
 /** Returns the offending sentence, or null. DETECTION is sentence-scoped —
  *  splitting an instruction across punctuation ("While the machine is
  *  energized, reset the fault") must not hide it. The prohibitive/cautionary
@@ -420,6 +446,7 @@ const PERMIT_PRACTICES_DESCRIPTION = /^(?:[-*•]\s+|\d+[.)]\s+)?(?:(?:the\s+)?(
 function clauseHazardViolation(text: string): { relId: string; sentence: string } | null {
   for (const sentence of text.split(/(?<=[.!?])\s+|\n+/)) {
     if (PERMIT_PRACTICES_DESCRIPTION.test(sentence.trim())) continue;
+    if (SAFETY_CONTROL_DEFERRAL.test(sentence.trim())) continue;
     if (!HAZARD_ACTION_ANY.test(sentence)) continue;
     const rel = HAZARD_RELATIONS.find((r) => r.re.test(sentence));
     const relId = rel?.id ?? (NO_ISOLATION_RELATION.test(sentence) ? "energized" : null);
