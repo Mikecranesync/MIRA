@@ -545,6 +545,8 @@ export type SetupState = {
   machineMalformed: number;
   selected: Selection | null;
   name: string;
+  /** Track whether the name was auto-filled (not user-typed) so we can update it when selection changes (#5611). */
+  nameWasAutoFilled: boolean;
   duplicate: { notebookId: string; name: string } | null;
   linked: LinkedDoc[] | null;
   workspace: WorkspaceDoc[] | null;
@@ -565,7 +567,7 @@ export type SetupState = {
 
 export function initialSetupState(): SetupState {
   return {
-    step: 1, machines: null, machineError: null, machineMalformed: 0, selected: null, name: "",
+    step: 1, machines: null, machineError: null, machineMalformed: 0, selected: null, name: "", nameWasAutoFilled: false,
     duplicate: null, linked: null, workspace: null, referencesError: null, chosenDocIds: [],
     pdfs: [], pdfError: null, committing: false, done: false, error: null, refusal: null,
     notebookId: null, confirmed: null, notes: [], rows: [], stillProcessing: false,
@@ -692,14 +694,20 @@ export function createNewProjectSetup(deps: ControllerDeps): SetupController {
       // #5296: a refusal belongs to the selection it was for; openProjectId()
       // checks it first, so a stale one would open the wrong machine's project.
       if (selection.kind === "general") {
-        set({ selected: selection, duplicate: null, linked: [], chosenDocIds: [], refusal: null, error: null });
+        // #5611: Clear the name if it was auto-filled; keep user-typed names.
+        const name = state.nameWasAutoFilled ? "" : state.name;
+        set({ selected: selection, name, nameWasAutoFilled: false, duplicate: null, linked: [], chosenDocIds: [], refusal: null, error: null });
         return;
       }
       const machine = selection.machine;
       const dup = findExistingProject(machine.id, deps.getNotebooks());
+      // #5611: Auto-fill the name if it was auto-filled before or empty; keep user-typed names.
+      const name = state.nameWasAutoFilled || state.name.trim() === "" ? machine.name : state.name;
+      const nameWasAutoFilled = state.nameWasAutoFilled || state.name.trim() === "";
       set({
         selected: selection,
-        name: machine.name,
+        name,
+        nameWasAutoFilled,
         duplicate: dup ? { notebookId: dup.id, name: dup.displayName } : null,
         linked: null,
         chosenDocIds: [],
@@ -721,7 +729,8 @@ export function createNewProjectSetup(deps: ControllerDeps): SetupController {
     },
 
     setName(name) {
-      if (!state.committing && !state.done) set({ name });
+      // #5611: Once the user types, the name is no longer auto-filled.
+      if (!state.committing && !state.done) set({ name, nameWasAutoFilled: false });
     },
 
     toggleDoc(docId) {
