@@ -3076,7 +3076,10 @@ async function handleChatTurn(
         identityProposal = proposeIdentityFromText(message, libraryMakers);
         // #4095 gap 1: a library model typed with no maker ("PowerFlex 525").
         // The maker comes from the library label, and only when it is one group.
-        if (!identityProposal) {
+        // Never on a photo turn (the label reader owns those) and never on a
+        // manual request: a maker the technician did not type must not key an
+        // automatic web search, so those turns keep their pre-existing paths.
+        if (!identityProposal && !photoTextForOem && !wantsManualDocumentation(message)) {
           identityProposal = proposeFromLibraryModel(message, await corpusModelLabels(client), libraryMakers);
         }
       } catch (err) {

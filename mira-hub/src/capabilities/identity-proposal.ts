@@ -732,7 +732,17 @@ function isStandaloneLabel(label: string): boolean {
   // A fault-code-shaped label ("G120", "F004") is never matched on its own:
   // a typed fault code must never propose a machine.
   if (tokens.some((t) => FAULT_CODE_RE.test(t))) return false;
-  return tokens.length > 1 || isModelToken(label);
+  if (tokens.length === 1) return isModelToken(label);
+  // A multi-word label must itself read as a machine name, because it is
+  // matched in any case: a real model token ("SMC-3 Soft Starter") or a family
+  // word with its number ("PowerFlex 525", "CENTERLINE 2100"). Never a rating,
+  // size or series the library happens to store as a model ("5 Ton",
+  // "3/4 TON", "Series 602", "drives g vg 4 manual" — staging, 2026-11-25).
+  if (tokens.some((t) => UNIT_WORD_RE.test(t) || /^tons?$/i.test(t))) return false;
+  if (tokens.some((t) => isModelToken(t))) return true;
+  const [first, second] = tokens;
+  const familyWord = CAMEL_FAMILY_RE.test(first) || (ALLCAPS_CODE_RE.test(first) && !GENERIC_TECH_WORDS.has(first));
+  return familyWord && isFamilyNumber(second);
 }
 
 /**
@@ -776,6 +786,15 @@ export function proposeFromLibraryModel(
     if (!filed.every((l) => sameGroup(l.manufacturer, filed[0].manufacturer))) return null;
     const model = hits.reduce((a, b) => (b.end - b.index > a.end - a.index ? b : a)).label;
     if (!namesOnlyThisMachine(text, model)) return null;
+    // The same second-machine rules as proposeIdentityFromText: a product line
+    // or a joining word ("PowerFlex 525 vs Yaskawa V1000", "… and a GuardLogix").
+    // Read on the text WITHOUT the matched label, so the label's own family
+    // word ("PowerFlex") is not counted as another product line.
+    let rest = text;
+    for (const h of [...hits].sort((a, b) => b.index - a.index)) {
+      rest = rest.slice(0, h.index) + " ".repeat(h.end - h.index) + rest.slice(h.end);
+    }
+    if (namesAnotherProductLine(rest, model) || joinsTwoThings(rest)) return null;
     const manufacturer = filed.reduce((a, b) => (b.rows > a.rows ? b : a)).manufacturer;
     return { manufacturer, model };
   } catch (err) {

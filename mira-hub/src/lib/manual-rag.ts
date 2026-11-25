@@ -955,6 +955,7 @@ export interface CorpusModelLabel {
  *  label the library actually holds, under the maker the library files it
  *  under. */
 let corpusModelLabelsCache: { at: number; labels: CorpusModelLabel[] } | null = null;
+const CORPUS_MODEL_LABELS_LIMIT = 5000;
 
 export async function corpusModelLabels(client: PoolClient): Promise<CorpusModelLabel[]> {
   const now = Date.now();
@@ -969,8 +970,13 @@ export async function corpusModelLabels(client: PoolClient): Promise<CorpusModel
         AND model_number IS NOT NULL AND model_number <> ''
       GROUP BY manufacturer, model_number
       ORDER BY COUNT(*) DESC
-      LIMIT 2000`,
+      LIMIT ${CORPUS_MODEL_LABELS_LIMIT}`,
   );
+  // A cut-off list could drop a second maker's rows for a label and make the
+  // one-vendor-group check pass falsely. Staging held 272 pairs (2026-11-25).
+  if (rows.length >= CORPUS_MODEL_LABELS_LIMIT) {
+    console.warn(`[manual-rag] corpusModelLabels hit its ${CORPUS_MODEL_LABELS_LIMIT}-pair limit; maker-less proposals may be unsafe`);
+  }
   const labels: CorpusModelLabel[] = [];
   for (const r of rows) {
     const manufacturer = normalizeManufacturer(String(r.manufacturer)).canonical.trim();

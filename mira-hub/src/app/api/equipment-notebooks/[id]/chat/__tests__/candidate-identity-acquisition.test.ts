@@ -302,6 +302,17 @@ describe("#4095 gap 1 — a library model typed with no maker (AI-panel battery 
     expect(f.find((x) => x.kind === "identity_proposal")).toMatchObject({ manufacturer: "Allen-Bradley", model: "SLC 5/03" });
   });
 
+  it("a manual request keeps its pre-existing path: no library-inferred maker keys a search (PR #5957 review F3)", async () => {
+    ragMock.corpusManufacturers.mockResolvedValue(["AutomationDirect"]);
+    ragMock.corpusModelLabels.mockResolvedValue([{ manufacturer: "AutomationDirect", model: "GS10", rows: 2449 }]);
+    const f = await frames(await POST(req({ message: "Find the manual for my GS10", mode: "general" }), params));
+    expect(f).not.toContainEqual(expect.objectContaining({ kind: "identity_proposal", manufacturer: "AutomationDirect" }));
+    expect(acqMock.startManualAcquisition).not.toHaveBeenCalledWith(
+      expect.anything(), expect.anything(), expect.objectContaining({ manufacturer: "AutomationDirect" }), expect.anything(),
+    );
+    expect(ragMock.corpusModelLabels).not.toHaveBeenCalled();
+  });
+
   it("control: a model the library does not hold proposes nothing", async () => {
     ragMock.corpusManufacturers.mockResolvedValue(["Rockwell Automation"]);
     ragMock.corpusModelLabels.mockResolvedValue([]);
