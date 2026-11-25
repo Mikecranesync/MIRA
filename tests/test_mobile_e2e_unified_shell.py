@@ -443,6 +443,14 @@ def test_citation_rejects_a_sheet_for_another_page(rig):
         journey.verify_citation(dev, 3)
 
 
+def test_citation_opens_the_newest_chip_when_an_earlier_answer_cites_the_same_page(rig):
+    # The thread already holds a finished answer citing p.3; its chip opens nothing new.
+    # The chip under test is the newest turn's, which renders last.
+    journey, phone, dev = rig(start="answered", earlier_page=3)
+    journey.verify_citation(dev, 3)
+    assert phone.opened
+
+
 def test_launch_starts_the_resolved_activity_not_monkey(monkeypatch, tmp_path):
     # `monkey -p PKG -c LAUNCHER 1` silently starts nothing on the API 35 emulator,
     # so the journey sat on the launcher until its 240 s sign-in wait expired.

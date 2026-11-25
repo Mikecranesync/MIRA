@@ -31,7 +31,7 @@ broke between the Pixel (1080x2424) and the emulator.
 Usage
 -----
     export FLM_EMAIL='...'            # required
-    export FLM_PASSWORD='...'         # required -- never hardcode, never commit
+    export FLM_PASSWORD='...'         # or FLM_LOGIN_LINK -- never hardcode, never commit
     python tools/mobile-e2e/journey.py --apk path/to/app-debug.apk --pdf path/to/manual.pdf \
         --question "When do I need to derate this drive" --expect-page 117
 
@@ -312,19 +312,25 @@ class Device:
         assert node is not None
         self.tap(*node.center)
 
-    def type_text(self, s: str, *, chunk: int = 8) -> None:
+    def type_text(self, s: str, *, chunk: int = 8, quoted: bool = False) -> None:
         """Type text, in chunks.
 
         `%s` is the space escape. `?` is a glob on the device shell and the
         percent-encoded form is NOT decoded -- a literal `%3F` reaches the field.
+        `quoted=True` wraps each chunk in single quotes for the device shell, which
+        then types a `?` literally (a sign-in link has one); it cannot carry a `'`.
 
         Chunking matters on emulators: a full-string `input text` outruns the WebView
         and characters get dropped or duplicated ('mike@...' arriving as 'mimikk').
         """
-        if "?" in s:
+        if quoted:
+            if "'" in s:
+                raise Fail("a quoted `input text` cannot contain a single quote")
+        elif "?" in s:
             raise Fail("'?' cannot be typed via `input text`; omit it")
         for i in range(0, len(s), chunk):
-            self.shell("input", "text", s[i : i + chunk].replace(" ", "%s"))
+            part = s[i : i + chunk].replace(" ", "%s")
+            self.shell("input", "text", f"'{part}'" if quoted else part)
             time.sleep(0.4)
         time.sleep(0.6)
 
@@ -414,13 +420,16 @@ class Device:
         return max(edits, key=lambda n: n.bounds[1])
 
     def type_into(self, field_label: str, value: str, *, verify: bool = True,
-                  attempts: int = 3) -> None:
+                  attempts: int = 3, secret: bool = False) -> None:
         """Tap a field's input, type, READ IT BACK, and retry on mismatch.
 
         Two distinct corruptions are real here: the first `input text` after a tap can
         duplicate its leading character ('pprod.smoke...'), and a slow emulator drops
         or interleaves characters outright ('mike@...' -> 'mimikk'). Neither is
         deterministic, so verify-and-retry beats any single clever typing strategy.
+
+        `secret=True` types quoted (so a `?` survives) and never echoes the value or
+        what was read back: a sign-in link is a credential.
         """
         last = ""
         for attempt in range(1, attempts + 1):
@@ -429,17 +438,19 @@ class Device:
                 self.clear_field(field)
                 field = self.input_for(field_label)
             self.tap(*field.center)
-            self.type_text(value)
+            self.type_text(value, quoted=secret)
             if not verify:
                 return
             time.sleep(1)
             last = self.input_for(field_label).text
             if last == value:
                 return
-            log("type", f"field {field_label!r} read back {last!r}; retry {attempt}/{attempts}")
+            seen = f"{len(last)} chars" if secret else repr(last)
+            log("type", f"field {field_label!r} read back {seen}; retry {attempt}/{attempts}")
+        shown, seen = ("<redacted>", f"{len(last)} chars") if secret else (repr(value), repr(last))
         raise Fail(
-            f"field {field_label!r} would not accept {value!r} after {attempts} "
-            f"attempts (last read: {last!r})"
+            f"field {field_label!r} would not accept {shown} after {attempts} "
+            f"attempts (last read: {seen})"
         )
 
 
@@ -481,6 +492,24 @@ def native_path(s: str) -> Path:
         if alt.exists():
             return alt.resolve()
     return p
+
+
+def default_adb() -> str:
+    """`$ADB`, else adb under ANDROID_SDK_ROOT / ANDROID_HOME, named for this platform.
+
+    The old default was a Windows AppData path, so on macOS or Linux every run
+    without --adb died on a file that cannot exist there (#4455).
+    """
+    if os.environ.get("ADB"):
+        return os.environ["ADB"]
+    sdk = os.environ.get("ANDROID_SDK_ROOT") or os.environ.get("ANDROID_HOME")
+    exe = ".exe" if sys.platform == "win32" else ""
+    root = Path(sdk) if sdk else (
+        Path.home() / "AppData/Local/Android/Sdk" if sys.platform == "win32"
+        else Path.home() / "Library/Android/sdk" if sys.platform == "darwin"
+        else Path.home() / "Android/Sdk"
+    )
+    return str(root / "platform-tools" / f"adb{exe}")
 
 
 def pick_device(adb: str, allow_physical: bool) -> str:
@@ -548,19 +577,38 @@ def launch(dev: Device) -> None:
     dev.dismiss_anr()
 
 
-def sign_in(dev: Device, email: str, password: str) -> None:
-    log("signin", email)
+def sign_in(dev: Device, email: str, password: str | None = None, *,
+            login_link: str | None = None) -> None:
+    """Sign in with a password, or with a one-time sign-in link.
+
+    A stranger who signed up through verified onboarding has no password (#5942), so
+    the link is how the harness signs one in: the app's invitation mode accepts a
+    `/magic/?token=<uuid>` link for its own backend. `email` is still required -- the
+    drawer check below is what proves the RIGHT account signed in.
+    """
+    if (password is None) == (login_link is None):
+        raise Fail("sign_in needs exactly one of a password or a login link")
+    log("signin", f"{email} via {'login link' if login_link else 'password'}")
     # Generous: a cold emulator on swiftshader takes far longer to paint the WebView
     # than a real device, and will throw ANR dialogs while doing it -- dismissing one
     # drops you on the launcher, hence keep_foreground.
     dev.wait_for("Sign in", timeout=240, keep_foreground=True)
-    dev.type_into("Email", email)
-    # Password is masked, so read-back cannot verify the value. Assert on the outcome.
-    pw = dev.input_for("Password")
-    dev.tap(*pw.center)
-    dev.type_text(password)
-    dev.screenshot("signin-filled")
-    dev.tap_button("Sign in")
+    if login_link is not None:
+        dev.tap_button("Have an invitation link instead")
+        dev.wait_for("Use an invitation link", timeout=30)
+        dev.type_into("Invitation link", login_link, secret=True)
+        dev.hide_keyboard()
+        dev.screenshot("signin-link-filled")
+        dev.tap_button("Use invite link")
+    else:
+        assert password is not None
+        dev.type_into("Email", email)
+        # Password is masked, so read-back cannot verify the value. Assert on the outcome.
+        pw = dev.input_for("Password")
+        dev.tap(*pw.center)
+        dev.type_text(password)
+        dev.screenshot("signin-filled")
+        dev.tap_button("Sign in")
 
     # The unified shell lands on HOME, which shows no account name; only the drawer
     # does. Wait for the shell, then read who is signed in from the drawer.
@@ -701,7 +749,8 @@ def verify_citation(dev: Device, expect_page: int | None) -> str:
     ]
     if not chips:
         raise Fail(f"no source chip citing {f'p.{expect_page}' if expect_page else 'a PDF'}")
-    dev.tap(*chips[0].center)
+    # The newest turn renders last; an earlier answer in the thread may cite the same page.
+    dev.tap(*chips[-1].center)
 
     # The sheet names its source as "[1] manual.pdf -- p.3". Check that page too: the
     # chip and the passage it opens must agree.
@@ -734,7 +783,8 @@ def verify_citation(dev: Device, expect_page: int | None) -> str:
     dev.tap_button(f"Open original at cited page {page}", timeout=20)
     dev.wait_for("opened successfully", timeout=60)
     dev.screenshot("citation-original")
-    log("citation", f"original opened at p.{page}")
+    # The app reports the fetch; it cannot render the PDF page itself, so that is the claim.
+    log("citation", f"original fetched for the cited p.{page}")
     dev.tap_button("Close", timeout=20)
     return passage
 
@@ -798,8 +848,7 @@ def main() -> int:
     ap.add_argument("--model", default="FC 202", help="'' leaves it blank")
     ap.add_argument("--outdir", type=Path,
                     default=Path("docs/promo-screenshots/mobile-e2e"))
-    ap.add_argument("--adb", default=os.environ.get(
-        "ADB", str(Path.home() / "AppData/Local/Android/Sdk/platform-tools/adb.exe")))
+    ap.add_argument("--adb", default=default_adb())
     ap.add_argument("--allow-physical", action="store_true")
     ap.add_argument(
         "--reinstall-physical",
@@ -821,10 +870,14 @@ def main() -> int:
     def wanted(stage: str) -> bool:
         return stages.index(stage) <= last
 
+    # FLM_LOGIN_LINK: a one-time sign-in link for a passwordless stranger (#5942).
+    # Environment only -- an argv value would show in `ps`, and the link is a credential.
     email = os.environ.get("FLM_EMAIL")
-    password = os.environ.get("FLM_PASSWORD")
-    if not email or not password:
-        print("FLM_EMAIL and FLM_PASSWORD must be set in the environment.", file=sys.stderr)
+    password = os.environ.get("FLM_PASSWORD") or None
+    login_link = os.environ.get("FLM_LOGIN_LINK") or None
+    if not email or (password is None) == (login_link is None):
+        print("Set FLM_EMAIL plus exactly one of FLM_PASSWORD or FLM_LOGIN_LINK.",
+              file=sys.stderr)
         print("Never hardcode them; never commit them.", file=sys.stderr)
         return 2
 
@@ -840,7 +893,7 @@ def main() -> int:
 
         install(dev, args.apk, reinstall_physical=args.reinstall_physical)
         launch(dev)
-        sign_in(dev, email, password)
+        sign_in(dev, email, password, login_link=login_link)
         if wanted("notebook"):
             create_notebook(dev, name, args.manufacturer, args.model)
         if wanted("upload"):

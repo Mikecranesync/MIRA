@@ -21,7 +21,37 @@ EMULATOR="$SDK/emulator/emulator$EXE"
 # production app, so the journey never touches a real account (#4455).
 export MIRA_PKG="${MIRA_PKG:-com.factorylm.mira.staging}"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-MOBILE="$REPO_ROOT/mira-mobile"
+MOBILE="${MIRA_MOBILE_DIR:-$REPO_ROOT/mira-mobile}"
+
+# Capacitor 8 compiles for Java 21; JDK 17 fails deep inside gradle with
+# ":capacitor-camera:compileDebugJavaWithJavac". Find a 21+ up front, or stop.
+java_major() {
+  "$1" -version 2>&1 | sed -nE 's/.*version "([0-9]+).*/\1/p' | head -1
+}
+ensure_jdk21() {
+  local bin major home
+  for bin in "${JAVA_HOME:+$JAVA_HOME/bin/java}" "$(command -v java || true)"; do
+    [ -n "$bin" ] && [ -x "$bin" ] || continue
+    major="$(java_major "$bin")"
+    if [ -n "$major" ] && [ "$major" -ge 21 ]; then return 0; fi
+  done
+  # macOS: /usr/libexec/java_home, then Homebrew's openjdk@21 (not linked by default).
+  home="$("${MIRA_JAVA_HOME_CMD:-/usr/libexec/java_home}" -v 21 2>/dev/null || true)"
+  if [ -z "$home" ] && command -v brew >/dev/null 2>&1; then
+    home="$(brew --prefix openjdk@21 2>/dev/null || true)/libexec/openjdk.jdk/Contents/Home"
+  fi
+  if [ -n "$home" ] && [ -x "$home/bin/java" ]; then
+    major="$(java_major "$home/bin/java")"
+    if [ -n "$major" ] && [ "$major" -ge 21 ]; then
+      export JAVA_HOME="$home"
+      export PATH="$JAVA_HOME/bin:$PATH"
+      return 0
+    fi
+  fi
+  echo "The APK build needs JDK 21 (Capacitor 8). Install it (macOS: brew install openjdk@21)" >&2
+  echo "and set JAVA_HOME to it, or build the APK separately first." >&2
+  exit 2
+}
 
 export MSYS_NO_PATHCONV=1
 
@@ -49,8 +79,12 @@ fi
 # --------------------------------------------------------------- 2. apk
 APK="$MOBILE/android/app/build/outputs/apk/staging/debug/app-staging-debug.apk"
 if [ ! -f "$APK" ]; then
+  ensure_jdk21
   echo "==> building staging debug APK"
   ( cd "$MOBILE"
+    [ -d node_modules ] || bun install --frozen-lockfile
+    # cap sync copies dist/ into the APK, so the web bundle has to exist and be current.
+    ./node_modules/.bin/vite build
     # bun-installed deps break `npx cap`; call the CLI directly.
     node node_modules/@capacitor/cli/bin/capacitor sync android
     cd android

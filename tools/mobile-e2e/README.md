@@ -8,10 +8,24 @@ export FLM_EMAIL='...' FLM_PASSWORD='...'
 bash tools/mobile-e2e/run.sh ~/Downloads/some-manual.pdf "When do I need to derate this drive" 117
 ```
 
+A stranger who signed up through verified onboarding has **no password**. Give the harness a
+one-time sign-in link instead and it signs in through the app's "Have an invitation link
+instead?" mode, then checks the drawer shows `FLM_EMAIL`:
+
+```bash
+export FLM_EMAIL='stranger@example.com' FLM_LOGIN_LINK='https://app-staging.factorylm.com/magic/?token=<uuid>'
+unset FLM_PASSWORD   # exactly one of FLM_PASSWORD / FLM_LOGIN_LINK
+```
+
+The link is a credential: it is read from the environment only (never argv, which `ps` shows),
+typed quoted so its `?` survives the device shell, and never printed. It is single-use and
+expires in 15 minutes, so mint it right before the run.
+
 `run.sh` boots an emulator (cold, no snapshot), builds the staging-flavour debug APK
 (`com.factorylm.mira.staging`, which talks to app-staging) if it is missing, then runs
 `journey.py`. Exit code 0 = the grounded chain verified; non-zero = a named failure. It runs
-from Git Bash on Windows and from macOS/Linux (set `ANDROID_HOME`).
+from Git Bash on Windows and from macOS/Linux (set `ANDROID_SDK_ROOT` or `ANDROID_HOME`;
+`journey.py` derives its default adb from the same variable, `ADB` overrides it).
 
 The steps drive the **unified shell** the app renders (#4455): drawer → New project, "+" →
 File to attach the manual to the question, the `FILE manual.pdf p. N` source chip, and the
@@ -128,8 +142,14 @@ APK was built, so it needs no rebuild for any Hub-only change.
 
 - Android SDK with `platform-tools` and `emulator`, plus at least one AVD
 - Python 3.12
-- JDK (Android Studio's bundled `jbr` is fine) only if the APK needs building
-- `FLM_EMAIL` / `FLM_PASSWORD` in the environment — never hardcoded, never committed
+- **JDK 21** only if the APK needs building: Capacitor 8 compiles for Java 21, and JDK 17
+  fails deep in gradle at `:capacitor-camera:compileDebugJavaWithJavac`. `run.sh` checks
+  first: it uses `JAVA_HOME` or `java` if either is 21+, else asks `/usr/libexec/java_home`
+  and Homebrew's `openjdk@21` (macOS: `brew install openjdk@21`), else stops before building.
+  The build runs `bun install` (if `node_modules` is missing) and `vite build` before
+  `cap sync`, since `cap sync` copies `dist/` into the APK.
+- `FLM_EMAIL` plus `FLM_PASSWORD` or `FLM_LOGIN_LINK` in the environment — never hardcoded,
+  never committed
 
 A tenant whose trial has expired is paywalled off `/equipment/` and sign-in will fail; see
 `docs/runbooks/hub-embedding-production-rollout.md` §4d.
