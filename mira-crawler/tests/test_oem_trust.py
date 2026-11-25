@@ -301,6 +301,13 @@ def test_the_curated_atv320_entry_declares_enough_pages() -> None:
     assert entry["max_pages"] >= 460  # NVE41295.06 is 460 pages; OBF troubleshooting is on p412
 
 
+def test_the_curated_g120c_list_manual_declares_enough_pages_and_model() -> None:
+    sources = yaml.safe_load((Path(__file__).resolve().parents[1] / "sources.yaml").read_text())
+    entry = sources["tiers"]["3_manufacturer"]["siemens_sinamics_g120c_list"]
+    assert entry["max_pages"] >= 758  # the List Manual runs past the 300-page parser default
+    assert "SINAMICS G120C" in entry["model_number"]
+
+
 def test_discovery_carries_max_pages(tmp_path) -> None:
     config = _make_config(tmp_path)
     config.sources_file.write_text(
