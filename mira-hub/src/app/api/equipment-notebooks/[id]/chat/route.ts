@@ -2396,11 +2396,10 @@ async function handleChatTurn(
         }),
       );
       judgeStopPersistSpan.end();
-      rec.stage("done");
-      rec.end(tracer);
       await notebookQueueEntry({ tenantId: ctx.tenantId, notebookId });
       await releaseThreadClaim(claimRow.id);
       await onReplyReady(judgeStopTurnRowId);
+      endRoot();
       return corsResponse(
         new Response(
           `data: ${JSON.stringify({ kind: "clear_session", sessionId: message })}\n\ndata: ${JSON.stringify({ kind: "text", text: QUESTION_JUDGE_BLANKET_REPLY })}\n\ndata: ${JSON.stringify({ kind: "done" })}\n\n`,
