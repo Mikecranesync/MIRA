@@ -87,7 +87,7 @@ export default function SettingsRolesPage() {
         </div>
 
         <p className="text-xs" style={{ color: "var(--foreground-subtle)" }}>
-          Fine-grained per-user roles are coming soon. Today, everyone in your workspace is a member;
+          Today, everyone in your workspace is a member with read access to workspace settings.
           FactoryLM administrators have the additional platform capabilities shown above.
         </p>
       </div>

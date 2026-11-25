@@ -63,7 +63,7 @@ export default function OrganizationSettingsPage() {
             <Row label="Primary contact" value={me?.email ?? "—"} />
             <div className="pt-3">
               <p className="text-xs" style={{ color: "var(--foreground-subtle)" }}>
-                Editing workspace details isn&apos;t available yet. Contact support to change your plan or workspace name.
+                To change your plan or workspace name, contact support.
               </p>
             </div>
           </div>

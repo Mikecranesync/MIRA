@@ -63,5 +63,11 @@ test("hard reload /usage — no crash, API 200, chart rendered or no-data messag
   const hasSvg = await chartSvg.isVisible();
   expect(hasNoActivity || hasSvg).toBe(true);
 
-  console.log(`✅ /usage loaded cleanly. Chart: ${hasSvg ? "SVG rendered" : "No activity message shown"}`);
+  // Billing period must show current month (not hardcoded "April 2026")
+  const currentMonth = new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" });
+  const billingPeriodText = await page.locator("text=/Billing period/i").textContent();
+  expect(billingPeriodText).toContain(currentMonth);
+  expect(billingPeriodText).not.toContain("April 2026");
+
+  console.log(`✅ /usage loaded cleanly. Chart: ${hasSvg ? "SVG rendered" : "No activity message shown"}. Billing period: ${currentMonth}`);
 });
