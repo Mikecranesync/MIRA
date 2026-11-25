@@ -335,3 +335,14 @@ def test_provision_without_tenant_says_so(monkeypatch):
     with pytest.raises(RuntimeError, match="no BETA_GATE_TENANT"):
         ai_panel.ask_mira(None, "q")  # type: ignore[arg-type]
     assert "tenant" not in ai_panel._HUB
+
+
+def test_q1_wrong_meaning_for_f004_is_not_correct():
+    """Review of #5949: naming undervoltage for another code must not pass Q1."""
+    assert (
+        ai_panel.grade(q(1), "F004 is overvoltage; F005 is undervoltage.", [])["correct"] is False
+    )
+    assert ai_panel.grade(q(1), "F004 means DC bus overvoltage.", [])["correct"] is False
+    # A correct answer that does not repeat the code still passes.
+    assert ai_panel.grade(q(1), "It means DC bus undervoltage.", [])["correct"] is True
+    assert ai_panel.grade(q(1), "F004 UnderVoltage: the DC bus dropped.", [])["correct"] is True

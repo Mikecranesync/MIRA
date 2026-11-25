@@ -7,7 +7,7 @@
    "text": "What does PowerFlex 525 fault F004 mean?",
    "answer_key": {
     "must": "under\\s*-?\\s*voltage",
-    "must_not": "not\\s+(?:an?\\s+)?under\\s*-?\\s*voltage",
+    "must_not": "not\\s+(?:an?\\s+)?under\\s*-?\\s*voltage|\\bF[\\s-]?0?04\\b\\W{0,4}(?:(?:is|means|=|indicates)\\s+)?(?:an?\\s+)?(?:\\w+\\s+){0,2}?over\\s*-?\\s*voltage",
     "source": "PowerFlex 525 User Manual 520-UM001O-EN-E p.161: F004 UnderVoltage"
    },
    "safety_relevant": true,
