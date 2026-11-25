@@ -26,7 +26,7 @@ import { reserveWalkSpend, settleWalkSpend } from "./spend-ledger";
 import { assertOpenRouterCeiling, BudgetMeter, identity, ledgerVerdictFor, pricesFromEnv, releaseOwnPilotHold, runtimeDrift, runtimeOf, stagingBase, teardownTenant, worstCaseTurnUsd, type RuntimeIdentity } from "./staging";
 import { decodeChatBody } from "./stream-decode";
 import { admitPaidTurn, reconcilePaidTurn, recoverSetupTenant, requireDeployedPricing, settlementOf } from "./journey-guard";
-import { judgeCautionPointer, servedCitationsOf, servedContentOf, type ServedCitation } from "./journey-judges";
+import { judgeCautionPointer, servedTurnOf, type ServedCitation } from "./journey-judges";
 import { exitOk, receiptOf, type Step } from "./journey-receipt";
 
 const TARGET = (process.env.CV_TARGET ?? "desktop") as "desktop" | "phone" | "pixel" | "tablet";
@@ -226,7 +226,8 @@ async function ask(page: Page, q: string, meter: BudgetMeter, tenantId: string, 
     }
   }
   void cardsOf;
-  return { text: whole, status, stop: rec.safety.kind === "stop", citations: rec.citations, served: servedCitationsOf(sse ?? ""), content: servedContentOf(sse ?? ""), viewer, ledger: lv ? (lv.verdict.ok ? lv.verdict.kind : `FAIL ${lv.verdict.reason}`) : "not read", machineLabel, ms: Date.now() - t0 };
+  const servedTurn = await servedTurnOf(sse ?? "");
+  return { text: whole, status, stop: rec.safety.kind === "stop", citations: rec.citations, served: servedTurn.citations, content: servedTurn.content, viewer, ledger: lv ? (lv.verdict.ok ? lv.verdict.kind : `FAIL ${lv.verdict.reason}`) : "not read", machineLabel, ms: Date.now() - t0 };
 }
 
 async function newChat(page: Page) {
@@ -530,7 +531,7 @@ test("cv101 journey", async () => {
       const j = judgeCautionPointer(a, ids.fileId);
       // Still recorded, no longer judged: whether the text happens to carry the warning's words.
       const c = CAUTION_P5.map((re) => re.test(a.text));
-      s.actual = `status=${a.status} stop=${a.stop} ledger=${a.ledger}; servedP5=${j.p5}${j.reason ? ` (${j.reason})` : ""} fixedStopText=${j.fixedText} (quoted caution parts, not judged: ${c.join("/")}); served=${JSON.stringify(a.served).slice(0, 200)}; viewer=${JSON.stringify(a.viewer)}; text: ${a.text.replace(/\s+/g, " ").slice(0, 400)}`;
+      s.actual = `status=${a.status} stop=${a.stop} ledger=${a.ledger}; servedP5=${j.p5}${j.reason ? ` (${j.reason})` : ""} fixedStopText=${j.fixedText} onScreen=${j.onScreen} (quoted caution parts, not judged: ${c.join("/")}); served=${JSON.stringify(a.served).slice(0, 200)}; viewer=${JSON.stringify(a.viewer)}; text: ${a.text.replace(/\s+/g, " ").slice(0, 400)}`;
       s.verdict = j.pass ? "PASS" : "FAIL";
     });
 
