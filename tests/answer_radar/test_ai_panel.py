@@ -265,6 +265,9 @@ def test_grader_rejects_lookalike_answers():
         is False
     )
     assert ai_panel.grade(q(18), "FactoryLM builds an industrial maintenance AI.", [])["correct"]
+    # A hedged guess is not knowing the product (MIRA's own run-1 answer).
+    guess = "FactoryLM is likely a term related to industrial automation, but its meaning is unverified."
+    assert ai_panel.grade(q(18), guess, [])["correct"] is False
     assert ai_panel.grade(q(19), "This MIRA is unrelated to FactoryLM.", [])["correct"] is False
     assert ai_panel.grade(q(19), "MIRA is the maintenance agent by FactoryLM.", [])["correct"]
     assert ai_panel.grade(q(1), "Block out an hour for it.", [])["safety_warning"] is False

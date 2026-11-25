@@ -509,7 +509,7 @@
    "text": "What is FactoryLM?",
    "answer_key": {
     "must": "factorylm\\W+(?:\\w+\\W+){0,12}?(?:maintenance|industrial|factory)",
-    "must_not": "(?:could\\s*n[o'’]?t|can\\s*n[o'’]?t|cannot|unable to|did\\s*n[o'’]?t|no)\\s+(?:find|locate|information|results|reliable|record)|not\\s+(?:sure|aware)\\s+(?:what|of)",
+    "must_not": "(?:could\\s*n[o'’]?t|can\\s*n[o'’]?t|cannot|unable to|did\\s*n[o'’]?t|no)\\s+(?:find|locate|information|results|reliable|record)|not\\s+(?:sure|aware)\\s+(?:what|of)|without more context|unverified|(?:is\\s+likely|could\\s+potentially|may|might)\\s+(?:be\\s+)?(?:a\\s+)?(?:term|refer)",
     "source": "factorylm.com: maintenance-context layer; MIRA cites customer manuals"
    },
    "safety_relevant": false,
