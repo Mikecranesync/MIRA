@@ -984,8 +984,8 @@ describe("AI-panel F2 (2026-11-25) — blank-chat MIRA names its maker", () => {
   });
 
   it.each([
-    "I'm MIRA, FactoryLM's maintenance assistant. I was built by FactoryLM (factorylm.com), which makes maintenance software for industrial plants.",
-    "MIRA is FactoryLM's maintenance assistant. You were built by FactoryLM (factorylm.com), which makes maintenance software for industrial plants; MIRA is FactoryLM's maintenance assistant.",
+    "I'm MIRA, built by FactoryLM (factorylm.com). FactoryLM turns a plant's equipment manuals and maintenance records into context AI can trust.",
+    "MIRA is FactoryLM's maintenance assistant. You were built by FactoryLM (factorylm.com). FactoryLM turns a plant's equipment manuals and maintenance records into context AI can trust; MIRA is its maintenance assistant.",
   ])("a correct identity answer is not a prompt leak: %s", (answer) => {
     expect(detectPromptLeak(GENERAL_SYSTEM_PROMPT, answer, GENERAL_EXCLUDE).leaked).toBe(false);
   });
