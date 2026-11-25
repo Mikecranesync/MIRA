@@ -1,0 +1,6 @@
+{
+ "fn-gs4-2": "URL is the GS4 manual PDF; the 'question' was written by the collector, not asked by a person",
+ "fn-smc50-1": "URL is a Rockwell support attachment; the question is collector-written",
+ "fn-ml1100-9": "thread is about a MicroLogix 1400 + 1763-NC01; the collector rewrote it as a MicroLogix 1100 question",
+ "fn-acs355-1": "accepted page 1 backed only by the quote 'ACS355' (title page); no page answering F0018 was labelled"
+}

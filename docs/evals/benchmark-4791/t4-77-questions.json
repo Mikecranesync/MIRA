@@ -1,0 +1,796 @@
+[
+ {
+  "id": "gs10-ch6-q1",
+  "set": "public-50",
+  "manual": "gs10-ch6",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/df9cfc7bf1b9fc1e0f1093122c0d5c358cea921f848d942da8e6fb3f18d43669.pdf",
+  "question": "What does fault code ocA mean on a GS10 drive, and what are the corrective actions?",
+  "accepted": [
+   17
+  ]
+ },
+ {
+  "id": "gs10-ch6-q2",
+  "set": "public-50",
+  "manual": "gs10-ch6",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/df9cfc7bf1b9fc1e0f1093122c0d5c358cea921f848d942da8e6fb3f18d43669.pdf",
+  "question": "Before I inspect a GS10 drive, how long do I wait after power off, and what DC bus voltage tells me the capacitors are discharged?",
+  "accepted": [
+   3,
+   4
+  ]
+ },
+ {
+  "id": "gs10-ch6-q3",
+  "set": "public-50",
+  "manual": "gs10-ch6",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/df9cfc7bf1b9fc1e0f1093122c0d5c358cea921f848d942da8e6fb3f18d43669.pdf",
+  "question": "What does a GFF fault mean on the GS10?",
+  "accepted": [
+   19
+  ]
+ },
+ {
+  "id": "gs10-ch6-q4",
+  "set": "public-50",
+  "manual": "gs10-ch6",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/df9cfc7bf1b9fc1e0f1093122c0d5c358cea921f848d942da8e6fb3f18d43669.pdf",
+  "question": "What causes an oH1 IGBT overheating fault on the GS10?",
+  "accepted": [
+   24
+  ]
+ },
+ {
+  "id": "gs10-ch6-q5",
+  "set": "public-50",
+  "manual": "gs10-ch6",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/df9cfc7bf1b9fc1e0f1093122c0d5c358cea921f848d942da8e6fb3f18d43669.pdf",
+  "question": "How do I recharge the DC link on a GS10 drive that has not been operated for over a year?",
+  "accepted": [
+   3
+  ]
+ },
+ {
+  "id": "pf40-q1",
+  "set": "public-50",
+  "manual": "pf40",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/15c10c6420379e8d286ee4c8a210b11683e97e727b39b592e6a9e0dfd023cae9.pdf",
+  "question": "What does fault F5 OverVoltage mean on a PowerFlex 40, and what should I do?",
+  "accepted": [
+   93
+  ]
+ },
+ {
+  "id": "pf40-q2",
+  "set": "public-50",
+  "manual": "pf40",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/15c10c6420379e8d286ee4c8a210b11683e97e727b39b592e6a9e0dfd023cae9.pdf",
+  "question": "How long must I wait after removing power from a PowerFlex 40 before working on it?",
+  "accepted": [
+   9,
+   12
+  ]
+ },
+ {
+  "id": "pf40-q3",
+  "set": "public-50",
+  "manual": "pf40",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/15c10c6420379e8d286ee4c8a210b11683e97e727b39b592e6a9e0dfd023cae9.pdf",
+  "question": "How do I set up a PowerFlex 40 to automatically clear a fault and restart?",
+  "accepted": [
+   73,
+   91,
+   92
+  ]
+ },
+ {
+  "id": "pf40-q4",
+  "set": "public-50",
+  "manual": "pf40",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/15c10c6420379e8d286ee4c8a210b11683e97e727b39b592e6a9e0dfd023cae9.pdf",
+  "question": "My PowerFlex 40 will not accelerate to the commanded speed. What should I check?",
+  "accepted": [
+   97
+  ]
+ },
+ {
+  "id": "pf40-q5",
+  "set": "public-50",
+  "manual": "pf40",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/15c10c6420379e8d286ee4c8a210b11683e97e727b39b592e6a9e0dfd023cae9.pdf",
+  "question": "What does fault F33 Auto Rstrt Tries mean on a PowerFlex 40?",
+  "accepted": [
+   94
+  ]
+ },
+ {
+  "id": "pf4m-q1",
+  "set": "public-50",
+  "manual": "pf4m",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5.pdf",
+  "question": "What does fault F13 Ground Fault mean on a PowerFlex 4M?",
+  "accepted": [
+   73
+  ]
+ },
+ {
+  "id": "pf4m-q2",
+  "set": "public-50",
+  "manual": "pf4m",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5.pdf",
+  "question": "How do I verify the bus capacitors are discharged before working on a PowerFlex 4M?",
+  "accepted": [
+   9
+  ]
+ },
+ {
+  "id": "pf4m-q3",
+  "set": "public-50",
+  "manual": "pf4m",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5.pdf",
+  "question": "My PowerFlex 4M will not start from the Run input wired to the terminal block. What should I check?",
+  "accepted": [
+   76
+  ]
+ },
+ {
+  "id": "pf4m-q4",
+  "set": "public-50",
+  "manual": "pf4m",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5.pdf",
+  "question": "What does fault F38 Phase U to Gnd mean on a PowerFlex 4M?",
+  "accepted": [
+   74
+  ]
+ },
+ {
+  "id": "pf4m-q5",
+  "set": "public-50",
+  "manual": "pf4m",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5.pdf",
+  "question": "What are the minimum mounting clearances and ambient operating temperatures for a PowerFlex 4M?",
+  "accepted": [
+   12
+  ]
+ },
+ {
+  "id": "acs355-q1",
+  "set": "public-50",
+  "manual": "acs355",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/49aab44098854107ee26a9b702bd23afc004fbb98d7a76d137ba12455699eeac.pdf",
+  "question": "What does fault 0001 OVERCURRENT mean on an ACS355, and how do I fix it?",
+  "accepted": [
+   359
+  ]
+ },
+ {
+  "id": "acs355-q2",
+  "set": "public-50",
+  "manual": "acs355",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/49aab44098854107ee26a9b702bd23afc004fbb98d7a76d137ba12455699eeac.pdf",
+  "question": "How long do I wait after disconnecting input power before working on an ACS355?",
+  "accepted": [
+   18,
+   49
+  ]
+ },
+ {
+  "id": "acs355-q3",
+  "set": "public-50",
+  "manual": "acs355",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/49aab44098854107ee26a9b702bd23afc004fbb98d7a76d137ba12455699eeac.pdf",
+  "question": "How do I replace the cooling fan on an ACS355 frame size R1 to R4?",
+  "accepted": [
+   372
+  ]
+ },
+ {
+  "id": "acs355-q4",
+  "set": "public-50",
+  "manual": "acs355",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/49aab44098854107ee26a9b702bd23afc004fbb98d7a76d137ba12455699eeac.pdf",
+  "question": "What does alarm 2035 SAFE TORQUE mean on an ACS355?",
+  "accepted": [
+   355
+  ]
+ },
+ {
+  "id": "acs355-q5",
+  "set": "public-50",
+  "manual": "acs355",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/49aab44098854107ee26a9b702bd23afc004fbb98d7a76d137ba12455699eeac.pdf",
+  "question": "What does fault 0016 EARTH FAULT mean on an ACS355?",
+  "accepted": [
+   363
+  ]
+ },
+ {
+  "id": "micro820-um-q1",
+  "set": "public-50",
+  "manual": "micro820-um",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675.pdf",
+  "question": "What does error code 0xD011 mean on a Micro820 controller, and how do I fix it?",
+  "accepted": [
+   155
+  ]
+ },
+ {
+  "id": "micro820-um-q3",
+  "set": "public-50",
+  "manual": "micro820-um",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675.pdf",
+  "question": "How do I restore a Micro820 project from the microSD card at power-up?",
+  "accepted": [
+   117,
+   118
+  ]
+ },
+ {
+  "id": "micro820-um-q4",
+  "set": "public-50",
+  "manual": "micro820-um",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675.pdf",
+  "question": "Is it safe to connect the USB cable to a Micro820 with power applied in a hazardous location?",
+  "accepted": [
+   35
+  ]
+ },
+ {
+  "id": "micro820-um-q5",
+  "set": "public-50",
+  "manual": "micro820-um",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675.pdf",
+  "question": "What does data log error DLG_ERR_RTC mean on a Micro820?",
+  "accepted": [
+   126
+  ]
+ },
+ {
+  "id": "micro820-in-q1",
+  "set": "public-50",
+  "manual": "micro820-in",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/6dfc2d211eb1aaa1a03505f061d911da729c2251a65051fdfb968b22f77a7bd4.pdf",
+  "question": "What is the input voltage range of analog inputs I-00 to I-03 on the Micro820 20-point controller?",
+  "accepted": [
+   17
+  ]
+ },
+ {
+  "id": "micro820-in-q2",
+  "set": "public-50",
+  "manual": "micro820-in",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/6dfc2d211eb1aaa1a03505f061d911da729c2251a65051fdfb968b22f77a7bd4.pdf",
+  "question": "What are the relay contact ratings at 120 V AC on a Micro820 2080-LC20-20QWB?",
+  "accepted": [
+   19
+  ]
+ },
+ {
+  "id": "micro820-in-q3",
+  "set": "public-50",
+  "manual": "micro820-in",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/6dfc2d211eb1aaa1a03505f061d911da729c2251a65051fdfb968b22f77a7bd4.pdf",
+  "question": "What cable should I use for analog wiring on a Micro820, and how do I ground it?",
+  "accepted": [
+   13
+  ]
+ },
+ {
+  "id": "micro820-in-q4",
+  "set": "public-50",
+  "manual": "micro820-in",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/6dfc2d211eb1aaa1a03505f061d911da729c2251a65051fdfb968b22f77a7bd4.pdf",
+  "question": "What module spacing do I need when mounting a Micro820 20-point controller?",
+  "accepted": [
+   9
+  ]
+ },
+ {
+  "id": "micro820-in-q5",
+  "set": "public-50",
+  "manual": "micro820-in",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/6dfc2d211eb1aaa1a03505f061d911da729c2251a65051fdfb968b22f77a7bd4.pdf",
+  "question": "Can I disconnect the serial cable from a Micro820 with power applied in a hazardous location?",
+  "accepted": [
+   5
+  ]
+ },
+ {
+  "id": "ml1100-q2",
+  "set": "public-50",
+  "manual": "ml1100",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/7df1c906a14dc2b9603ea9c3f56936172ec432fd09a3f19508d20001d982d5c9.pdf",
+  "question": "What happens to the MicroLogix 1100 real-time clock data if the battery is low and power is removed?",
+  "accepted": [
+   102
+  ]
+ },
+ {
+  "id": "ml1100-q3",
+  "set": "public-50",
+  "manual": "ml1100",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/7df1c906a14dc2b9603ea9c3f56936172ec432fd09a3f19508d20001d982d5c9.pdf",
+  "question": "How do I upgrade the operating system on a MicroLogix 1100?",
+  "accepted": [
+   141
+  ]
+ },
+ {
+  "id": "ml1100-q4",
+  "set": "public-50",
+  "manual": "ml1100",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/7df1c906a14dc2b9603ea9c3f56936172ec432fd09a3f19508d20001d982d5c9.pdf",
+  "question": "How should I dispose of the lithium battery from a MicroLogix 1100?",
+  "accepted": [
+   131
+  ]
+ },
+ {
+  "id": "ml1100-q5",
+  "set": "public-50",
+  "manual": "ml1100",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/7df1c906a14dc2b9603ea9c3f56936172ec432fd09a3f19508d20001d982d5c9.pdf",
+  "question": "Does the MicroLogix 1100 detect a duplicate IP address on the network?",
+  "accepted": [
+   159
+  ]
+ },
+ {
+  "id": "smcflex-q1",
+  "set": "public-50",
+  "manual": "smcflex",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/a81650d0bd31773979ffb93b3cb601c5bca0422fd69a2206df52eea451912cbd.pdf",
+  "question": "My SMC Flex shows a Shorted SCR fault. What are the causes and fixes?",
+  "accepted": [
+   104
+  ]
+ },
+ {
+  "id": "smcflex-q2",
+  "set": "public-50",
+  "manual": "smcflex",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/a81650d0bd31773979ffb93b3cb601c5bca0422fd69a2206df52eea451912cbd.pdf",
+  "question": "My motor accelerates too fast with an SMC Flex soft starter. What settings should I change?",
+  "accepted": [
+   106
+  ]
+ },
+ {
+  "id": "smcflex-q3",
+  "set": "public-50",
+  "manual": "smcflex",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/a81650d0bd31773979ffb93b3cb601c5bca0422fd69a2206df52eea451912cbd.pdf",
+  "question": "Is hazardous voltage present in the motor circuit when the SMC Flex controller is off?",
+  "accepted": [
+   103
+  ]
+ },
+ {
+  "id": "smcflex-q4",
+  "set": "public-50",
+  "manual": "smcflex",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/a81650d0bd31773979ffb93b3cb601c5bca0422fd69a2206df52eea451912cbd.pdf",
+  "question": "What overload class settings are available on the SMC Flex?",
+  "accepted": [
+   17
+  ]
+ },
+ {
+  "id": "smcflex-q5",
+  "set": "public-50",
+  "manual": "smcflex",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/a81650d0bd31773979ffb93b3cb601c5bca0422fd69a2206df52eea451912cbd.pdf",
+  "question": "What does NVS Error fault 39 mean on an SMC Flex?",
+  "accepted": [
+   105
+  ]
+ },
+ {
+  "id": "e3plus-q1",
+  "set": "public-50",
+  "manual": "e3plus",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/aca6a4e5e28544658c2b385318927be3f95acf291cf3b811bd8baff080c7fd80.pdf",
+  "question": "The Trip/Warn LED on my E3 Plus overload relay flashes a red code 4. What trip is that?",
+  "accepted": [
+   54,
+   214
+  ]
+ },
+ {
+  "id": "e3plus-q2",
+  "set": "public-50",
+  "manual": "e3plus",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/aca6a4e5e28544658c2b385318927be3f95acf291cf3b811bd8baff080c7fd80.pdf",
+  "question": "What does the Trip Class parameter set on an E3 overload relay, and what is its range?",
+  "accepted": [
+   89,
+   113
+  ]
+ },
+ {
+  "id": "e3plus-q3",
+  "set": "public-50",
+  "manual": "e3plus",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/aca6a4e5e28544658c2b385318927be3f95acf291cf3b811bd8baff080c7fd80.pdf",
+  "question": "How long does an E3 Plus wait before tripping on phase loss by default?",
+  "accepted": [
+   89,
+   115
+  ]
+ },
+ {
+  "id": "e3plus-q4",
+  "set": "public-50",
+  "manual": "e3plus",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/aca6a4e5e28544658c2b385318927be3f95acf291cf3b811bd8baff080c7fd80.pdf",
+  "question": "How do I reset a trip on an E3 overload relay?",
+  "accepted": [
+   217
+  ]
+ },
+ {
+  "id": "e3plus-q5",
+  "set": "public-50",
+  "manual": "e3plus",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/aca6a4e5e28544658c2b385318927be3f95acf291cf3b811bd8baff080c7fd80.pdf",
+  "question": "What happens if I press the Test/Reset button on an E3 relay while the motor is running?",
+  "accepted": [
+   16
+  ]
+ },
+ {
+  "id": "smc50-q1",
+  "set": "public-50",
+  "manual": "smc50",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/7b8a6689a550060688a44d625cd522a41a0c983941e16dfbea9dadf7b174e069.pdf",
+  "question": "My SMC-50 shows a Starts per Hour fault 29. What should I do?",
+  "accepted": [
+   211
+  ]
+ },
+ {
+  "id": "smc50-q2",
+  "set": "public-50",
+  "manual": "smc50",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/7b8a6689a550060688a44d625cd522a41a0c983941e16dfbea9dadf7b174e069.pdf",
+  "question": "What does fault code 10 or 60, SCR Overtemp, mean on an SMC-50?",
+  "accepted": [
+   210
+  ]
+ },
+ {
+  "id": "smc50-q3",
+  "set": "public-50",
+  "manual": "smc50",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/7b8a6689a550060688a44d625cd522a41a0c983941e16dfbea9dadf7b174e069.pdf",
+  "question": "With an SMC-50 and no isolation contactor, are the load terminals live when the controller is off?",
+  "accepted": [
+   104
+  ]
+ },
+ {
+  "id": "smc50-q4",
+  "set": "public-50",
+  "manual": "smc50",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/7b8a6689a550060688a44d625cd522a41a0c983941e16dfbea9dadf7b174e069.pdf",
+  "question": "What does fault 46 Ov Pwr Reac+ mean on an SMC-50?",
+  "accepted": [
+   212
+  ]
+ },
+ {
+  "id": "smc50-q5",
+  "set": "public-50",
+  "manual": "smc50",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/7b8a6689a550060688a44d625cd522a41a0c983941e16dfbea9dadf7b174e069.pdf",
+  "question": "How do I check an SMC-50 power module, and what must I disconnect first?",
+  "accepted": [
+   215
+  ]
+ },
+ {
+  "id": "tq-01",
+  "set": "real-36",
+  "manual": "micro810",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/oem-manual-micro810.pdf",
+  "question": "?And the max current?",
+  "accepted": [
+   64
+  ]
+ },
+ {
+  "id": "tq-02",
+  "set": "real-36",
+  "manual": "micro810",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/oem-manual-micro810.pdf",
+  "question": "What supply voltage range does the Micro810 2080-LC10-12QWB accept?",
+  "accepted": [
+   57
+  ]
+ },
+ {
+  "id": "tq-04",
+  "set": "real-36",
+  "manual": "micro810",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/oem-manual-micro810.pdf",
+  "question": "What supply voltage does the Micro810 use?",
+  "accepted": [
+   57
+  ]
+ },
+ {
+  "id": "tq-06",
+  "set": "real-36",
+  "manual": "micro810",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/oem-manual-micro810.pdf",
+  "question": "What supply voltage does the Micro810 use",
+  "accepted": [
+   57
+  ]
+ },
+ {
+  "id": "tq-07",
+  "set": "real-36",
+  "manual": "micro810",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/oem-manual-micro810.pdf",
+  "question": "What is the operating temperature range of the Micro810",
+  "accepted": [
+   62
+  ]
+ },
+ {
+  "id": "tq-12",
+  "set": "real-36",
+  "manual": "gs4-ch2",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/ch2.pdf",
+  "question": "GS4 on a high-leg delta. Do I pull the RFI jumper?",
+  "accepted": [
+   16
+  ]
+ },
+ {
+  "id": "tq-13",
+  "set": "real-36",
+  "manual": "gs4-ch2",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/ch2.pdf",
+  "question": "Where's the RFI jumper on a GS4 frame D0?",
+  "accepted": [
+   14
+  ]
+ },
+ {
+  "id": "tq-14",
+  "set": "real-36",
+  "manual": "gs4-ch2",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/ch2.pdf",
+  "question": "GS4 is running on a high-leg delta and I can't shut the line down. How do I pull the RFI jumper with it powered?",
+  "accepted": [
+   14,
+   15,
+   16,
+   17
+  ]
+ },
+ {
+  "id": "tq-15",
+  "set": "real-36",
+  "manual": "gs4-ch2",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/ch2.pdf",
+  "question": "what is an rfi jumper",
+  "accepted": [
+   14
+  ]
+ },
+ {
+  "id": "tq-16",
+  "set": "real-36",
+  "manual": "gs4-ch6",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/ch6.pdf",
+  "question": "GS4 oC",
+  "accepted": [
+   16,
+   17
+  ]
+ },
+ {
+  "id": "tq-17",
+  "set": "real-36",
+  "manual": "gs4-ch6",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/ch6.pdf",
+  "question": "GS4 oL",
+  "accepted": [
+   19
+  ]
+ },
+ {
+  "id": "tq-18",
+  "set": "real-36",
+  "manual": "gs4-ch6",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/ch6.pdf",
+  "question": "GFF on a DURApulse GS4",
+  "accepted": [
+   16
+  ]
+ },
+ {
+  "id": "tq-19",
+  "set": "real-36",
+  "manual": "gs4-ch6",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/ch6.pdf",
+  "question": "GS4 ovd",
+  "accepted": [
+   17
+  ]
+ },
+ {
+  "id": "tq-20",
+  "set": "real-36",
+  "manual": "gs4-ch6",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/ch6.pdf",
+  "question": "OrP fault on GS4",
+  "accepted": [
+   18
+  ]
+ },
+ {
+  "id": "tq-21",
+  "set": "real-36",
+  "manual": "gs4-ch6",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/ch6.pdf",
+  "question": "GS4 faulted oH1, IGBT Over Heat. What do I check?",
+  "accepted": [
+   9,
+   18
+  ]
+ },
+ {
+  "id": "tq-22",
+  "set": "real-36",
+  "manual": "gs4-ch6",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/ch6.pdf",
+  "question": "LvA GS4",
+  "accepted": [
+   17
+  ]
+ },
+ {
+  "id": "tq-23",
+  "set": "real-36",
+  "manual": "gs4-ch6",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/ch6.pdf",
+  "question": "My GS4 keeps throwing CE10 when the PLC stops polling it. What sets that timeout and how do I fix it?",
+  "accepted": [
+   8,
+   22
+  ]
+ },
+ {
+  "id": "tq-29",
+  "set": "real-36",
+  "manual": "se-canopen-hw",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/se-canopen-hw-setup.pdf",
+  "question": "Schneider 5-pin M12 CANopen connector pinout",
+  "accepted": [
+   47
+  ]
+ },
+ {
+  "id": "tq-30",
+  "set": "real-36",
+  "manual": "se-canopen-hw",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/se-canopen-hw-setup.pdf",
+  "question": "With the CANopen network powered down I measure 120 ohms between CAN_H and CAN_L. Is that OK, and what would 40 ohms mean?",
+  "accepted": [
+   34
+  ]
+ },
+ {
+  "id": "tq-31",
+  "set": "real-36",
+  "manual": "se-lxm32a-canopen",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/se-lxm32a-canopen-0198441113779.pdf",
+  "question": "CANopen: what COB-ID does a node's boot-up message use?",
+  "accepted": [
+   33,
+   59
+  ]
+ },
+ {
+  "id": "tq-32",
+  "set": "real-36",
+  "manual": "se-lxm32a-canopen",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/se-lxm32a-canopen-0198441113779.pdf",
+  "question": "CANopen SDO COB-IDs",
+  "accepted": [
+   17,
+   20,
+   21
+  ]
+ },
+ {
+  "id": "tq-34",
+  "set": "real-36",
+  "manual": "se-m171",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/se-m171-performance-hardware-guide-EIO0000002030.pdf",
+  "question": "TM172 won't see my TM171EP14R expansion. How is the expansion's CAN address set?",
+  "accepted": [
+   102
+  ]
+ },
+ {
+  "id": "tq-35",
+  "set": "real-36",
+  "manual": "se-m172",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/se-m172-hardware-guide-EIO0000002015.pdf",
+  "question": "Max cable length on the TM172 embedded CAN expansion bus at 500 kBd?",
+  "accepted": [
+   94
+  ]
+ },
+ {
+  "id": "tq-36",
+  "set": "real-36",
+  "manual": "se-m172",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/se-m172-hardware-guide-EIO0000002015.pdf",
+  "question": "How do I terminate the CAN expansion bus between a TM172 controller and its expansions?",
+  "accepted": [
+   93,
+   94
+  ]
+ },
+ {
+  "id": "tq-37",
+  "set": "real-36",
+  "manual": "se-m172",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/se-m172-hardware-guide-EIO0000002015.pdf",
+  "question": "TM172 Addr_CAN_OB default and range?",
+  "accepted": [
+   94,
+   145,
+   158
+  ]
+ },
+ {
+  "id": "tq-39",
+  "set": "real-36",
+  "manual": "se-premium-serial",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/se-premium-async-serial-35006178.pdf",
+  "question": "Can I run Modbus RTU on a Premium's built-in terminal port?",
+  "accepted": [
+   184,
+   197
+  ]
+ },
+ {
+  "id": "tq-40",
+  "set": "real-36",
+  "manual": "se-x80-analog",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/se-x80-analog-io-35011978.pdf",
+  "question": "BMXAMI0810, nothing wired, I/O error on the channels. Why?",
+  "accepted": [
+   112
+  ]
+ },
+ {
+  "id": "tq-41",
+  "set": "real-36",
+  "manual": "se-x80-analog",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/se-x80-analog-io-35011978.pdf",
+  "question": "What happens to a BMX AMI channel I mark as not in use?",
+  "accepted": [
+   250
+  ]
+ },
+ {
+  "id": "tq-42",
+  "set": "real-36",
+  "manual": "se-x80-analog",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/se-x80-analog-io-35011978.pdf",
+  "question": "Walk me through locking out the M340 rack so I can swap the BMXAMI0810. What do I lock and in what order?",
+  "accepted": [
+   18,
+   19,
+   119
+  ]
+ }
+]
