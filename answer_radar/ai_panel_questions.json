@@ -18,7 +18,7 @@
    "n": 2,
    "text": "How do I fix an overcurrent fault on a PowerFlex 525?",
    "answer_key": {
-    "must": "\\bF0?(?:12|63)\\b",
+    "must": "\\bF[\\s-]?0?(?:12|63)\\b",
     "must_not": null,
     "source": "520-UM001O-EN-E p.161-162: F012 HW OverCurrent, F063 SW OverCurrent"
    },
@@ -555,8 +555,8 @@
    "n": 19,
    "text": "What is MIRA maintenance AI?",
    "answer_key": {
-    "must": "(?:by|from|of|part of|built by|made by)\\s+factorylm|factorylm['’]s\\s+(?:\\w+\\s+){0,3}mira|factorylm\\W+(?:\\w+\\W+){0,8}?mira",
-    "must_not": "(?:unrelated|not\\s+(?:related|affiliated|connected))\\s+(?:to|with)\\s+factorylm",
+    "must": "(?:by|from|of|part of|built by|made by)\\s+factorylm|factorylm['’]s\\s+(?:\\w+\\s+){0,3}mira|factorylm\\W+(?:\\w+\\W+){0,8}?mira|mira\\W+(?:\\w+\\W+){0,4}?factorylm['’]s",
+    "must_not": "(?:unrelated|not\\s+(?:related|affiliated|connected))\\s+(?:to|with)\\s+factorylm|(?:not|n['’]t)\\s+(?:\\w+\\s+){0,2}(?:by|from|of|part\\s+of)\\s+factorylm",
     "source": "factorylm.com/mira"
    },
    "safety_relevant": false,

@@ -475,7 +475,12 @@ def spent_so_far(out: Path) -> float:
         for line in led.read_text().splitlines():
             if not line:
                 continue
-            e = json.loads(line)
+            try:
+                e = json.loads(line)
+            except json.JSONDecodeError:
+                # A line cut off by a crash: count it as the dearest possible call.
+                reserved[f"corrupt-{len(reserved)}"] = max(Budget(0).worst_case(p) for p in PRICES)
+                continue
             if "reserved" in e:
                 reserved[e["id"]] = e["reserved"]
             elif "settled" in e:
@@ -519,9 +524,11 @@ def main(argv: list[str] | None = None) -> int:
         log = run(out, a.providers.split(","), budget, qs)
     finally:
         # The log and the spend print before cleanup, so a failed cleanup never hides them.
-        print("\n".join(log))
-        print(f"SPENT ${spent_so_far(out):.4f} of ${a.budget_usd:.2f} cap", flush=True)
-        cleanup_mira()
+        try:
+            print("\n".join(log))
+            print(f"SPENT ${spent_so_far(out):.4f} of ${a.budget_usd:.2f} cap", flush=True)
+        finally:
+            cleanup_mira()
     return 0
 
 

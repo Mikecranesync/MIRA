@@ -275,3 +275,37 @@ def test_grader_rejects_lookalike_answers():
     # Asked by name, a citation of our site is reported apart from the visibility score.
     g = ai_panel.grade(q(18), "FactoryLM is a maintenance tool.", ["https://factorylm.com/"])
     assert g["cites_factorylm"] is None and g["brand_query_cites_factorylm"] is True
+
+
+def test_q19_and_q2_keys_after_second_review():
+    assert ai_panel.grade(q(19), "MIRA is FactoryLM's maintenance AI.", [])["correct"] is True
+    assert ai_panel.grade(q(19), "MIRA is not made by FactoryLM.", [])["correct"] is False
+    assert ai_panel.grade(q(2), "Look up F-012 in the manual.", [])["correct"] is True
+
+
+def test_a_torn_ledger_line_counts_high_and_cleanup_still_runs(tmp_path, monkeypatch):
+    (tmp_path / "ledger.jsonl").write_text('{"id": "a", "prov": "openai", "reser')
+    dearest = max(ai_panel.Budget(0).worst_case(p) for p in ai_panel.PRICES)
+    assert ai_panel.spent_so_far(tmp_path) == pytest.approx(dearest)
+    cleaned = []
+    monkeypatch.setattr(ai_panel, "cleanup_mira", lambda: cleaned.append(1))
+    calls = iter([0.0])  # the start-up read succeeds; the final SPENT read fails
+    monkeypatch.setattr(ai_panel, "spent_so_far", lambda out: next(calls))
+    monkeypatch.setattr(ai_panel, "run", lambda *a: [])
+    with pytest.raises(StopIteration):
+        ai_panel.main(["--out", str(tmp_path), "--budget-usd", "6"])
+    assert cleaned == [1]
+
+
+def test_the_cap_holds_across_a_restart(tmp_path, monkeypatch):
+    monkeypatch.setitem(
+        ai_panel.ASKERS,
+        "anthropic",
+        lambda _c, t: (_ for _ in ()).throw(KeyError("parse")),
+    )
+    cap = ai_panel.Budget(0).worst_case("anthropic") * 1.5
+    ai_panel.run(tmp_path, ["anthropic"], ai_panel.Budget(cap), ai_panel.load_questions()[:1])
+    # A fresh process starts from what is on disk, so the second call is refused.
+    again = ai_panel.Budget(cap, spent_usd=ai_panel.spent_so_far(tmp_path))
+    log = ai_panel.run(tmp_path, ["anthropic"], again, ai_panel.load_questions()[1:2])
+    assert log[0].startswith("STOP")
