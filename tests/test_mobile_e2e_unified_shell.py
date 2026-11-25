@@ -97,6 +97,7 @@ class FakePhone:
         self.creating = 0  # dumps the form stays up after "Create project", as on a device
         self.taps: list[str] = []
         self.sha = ""
+        self.pushed = PDF  # the file name the picker lists: what the harness pushed
 
     # ------------------------------------------------------------- screens
     def nodes(self) -> list[tuple]:
@@ -146,15 +147,15 @@ class FakePhone:
         if self.state == "picker":
             return [
                 ("Downloads", "TextView", (189, 155, 453, 226), False, None),
-                ("", "CardView", (64, 675, 529, 1276), True, ("pick", PDF)),
+                ("", "CardView", (64, 675, 529, 1276), True, ("pick", self.pushed)),
                 (
-                    f"Preview the file {PDF}",
+                    f"Preview the file {self.pushed}",
                     "FrameLayout",
                     (403, 675, 529, 801),
                     True,
                     ("preview",),
                 ),
-                (PDF, "TextView", (196, 1161, 497, 1212), False, None),
+                (self.pushed, "TextView", (196, 1161, 497, 1212), False, None),
             ]
         n = [
             ("Open navigation", "Button", (28, 149, 147, 267), True, ("drawer", True)),
@@ -218,6 +219,7 @@ class FakePhone:
                 ("Close navigation", "Button", (595, 170, 714, 288), True, ("drawer", False)),
                 ("New project", "Button", (42, 464, 714, 582), True, ("create",)),
                 (self.account, "TextView", (42, 1955, 714, 1994), False, None),
+                ("About & updates", "Button", (42, 2010, 714, 2100), True, None),
             ]
         if self.menu:
             n += [
@@ -273,6 +275,7 @@ class FakePhone:
     def run(self, args: list[str], **_kw) -> _Proc:
         if args[0] == "push":
             self.sha = hashlib.sha256(Path(args[1]).read_bytes()).hexdigest()
+            self.pushed = args[2].rsplit("/", 1)[-1]
             return _Proc()
         a = args[1:]
         if a[:2] == ["cat", "/sdcard/window_dump.xml"]:
@@ -394,17 +397,97 @@ def test_upload_confirms_the_attachment_on_a_pixel(rig, tmp_path):
     journey, phone, dev = rig(start="home", pixel=True)
     pdf = tmp_path / PDF
     pdf.write_bytes(b"%PDF-1.4 fixture")
-    journey.upload_pdf(dev, pdf)
-    assert phone.pending == PDF
+    name = journey.upload_pdf(dev, pdf)
+    assert phone.pending == name
 
 
 def test_upload_attaches_the_pdf_through_the_file_picker(rig, tmp_path):
     journey, phone, dev = rig(start="home")
     pdf = tmp_path / PDF
     pdf.write_bytes(b"%PDF-1.4 fixture")
-    journey.upload_pdf(dev, pdf)
-    assert phone.pending == PDF
+    name = journey.upload_pdf(dev, pdf)
+    assert phone.pending == name
     assert not any(t.startswith("Preview the file") for t in phone.taps)
+
+
+# Codex r2 F2: an earlier upload of the same file name (another revision) could be
+# what the answer cites. Each run therefore uploads its manual under its own name.
+
+
+def test_upload_gives_each_run_its_own_manual_name(rig, tmp_path):
+    journey, phone, dev = rig(start="home")
+    pdf = tmp_path / PDF
+    pdf.write_bytes(b"%PDF-1.4 fixture")
+    first = journey.upload_pdf(dev, pdf)
+    phone.state, phone.pending = "home", None
+    second = journey.upload_pdf(dev, pdf)
+    assert first != second
+    for name in (first, second):
+        assert name != PDF and name.startswith("e2e_manual-") and name.endswith(".pdf")
+
+
+def test_upload_name_has_no_spaces_for_a_spaced_fixture(rig, tmp_path):
+    # The device shell splits on spaces, so the pushed name must not contain any.
+    journey, phone, dev = rig(start="home")
+    pdf = tmp_path / "PowerFlex 525.pdf"
+    pdf.write_bytes(b"%PDF-1.4 fixture")
+    name = journey.upload_pdf(dev, pdf)
+    assert " " not in name and name.startswith("PowerFlex_525-")
+    assert phone.pending == name
+
+
+def test_ask_rejects_an_earlier_upload_of_the_same_file_name(rig, tmp_path):
+    # This run uploaded e2e_manual-<tag>.pdf; the answer cites p.3 of an older
+    # e2e_manual.pdf already in the workspace.
+    journey, phone, dev = rig(start="home", chip_file=PDF)
+    pdf = tmp_path / PDF
+    pdf.write_bytes(b"%PDF-1.4 fixture")
+    name = journey.upload_pdf(dev, pdf)
+    with pytest.raises(journey.Fail, match="none of it the uploaded"):
+        journey.ask(dev, "what is the default node address", 3, source=name)
+
+
+def test_ask_passes_a_citation_to_this_runs_upload(rig, tmp_path):
+    # Control: the same flow, the answer citing this run's own upload.
+    journey, phone, dev = rig(start="home")
+    pdf = tmp_path / PDF
+    pdf.write_bytes(b"%PDF-1.4 fixture")
+    name = journey.upload_pdf(dev, pdf)
+    journey.ask(dev, "what is the default node address", 3, source=name)
+
+
+# Codex r2 F7: titles with spaces are cited whole.
+
+
+def test_cited_pages_reads_chip_and_sheet_titles_whole(rig):
+    journey, _phone, _dev = rig()
+    assert journey.cited_pages(["FILE PowerFlex 525.pdf p. 3"]) == [("PowerFlex 525.pdf", 3)]
+    assert journey.cited_pages(["[1] PowerFlex 525.pdf \u2014 p.3"]) == [("PowerFlex 525.pdf", 3)]
+    assert journey.cited_pages([f"FILE {PDF} p. 12"]) == [(PDF, 12)]
+    assert journey.cited_pages(["C124 [RS485 Node Addr] defaults to 100 "]) == []
+
+
+def test_ask_distinguishes_a_longer_title_ending_in_the_uploaded_name(rig):
+    # Attached 525.pdf; the answer cites PowerFlex 525.pdf. Not the same manual.
+    journey, _phone, dev = rig(start="project", chip_file="PowerFlex 525.pdf")
+    with pytest.raises(journey.Fail, match=r"cites \[\('PowerFlex 525\.pdf', 3\)\], none of it"):
+        journey.ask(dev, "what is the default node address", 3, source="525.pdf")
+
+
+# Codex r2 F8: with no expected page, the tapped chip and the opened sheet must agree.
+
+
+def test_citation_without_an_expected_page_rejects_a_sheet_for_another_page(rig):
+    journey, phone, dev = rig(start="answered", chip_page=3, sheet_page=4)
+    with pytest.raises(journey.Fail, match="p.3"):
+        journey.verify_citation(dev, None, source=PDF)
+    assert phone.opened is False, "must fail before fetching the original"
+
+
+def test_citation_without_an_expected_page_passes_when_they_agree(rig):
+    journey, phone, dev = rig(start="answered", chip_page=4, sheet_page=4)
+    journey.verify_citation(dev, None, source=PDF)
+    assert phone.opened is True
 
 
 def test_ask_reads_the_spaced_page_chip(rig):

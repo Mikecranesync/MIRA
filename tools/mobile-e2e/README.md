@@ -17,9 +17,18 @@ export FLM_EMAIL='stranger@example.com' FLM_LOGIN_LINK='https://app-staging.fact
 unset FLM_PASSWORD   # exactly one of FLM_PASSWORD / FLM_LOGIN_LINK
 ```
 
-The link is a credential: it is read from the environment only (never argv, which `ps` shows),
-typed quoted so its `?` survives the device shell, and never printed. It is single-use and
-expires in 15 minutes, so mint it right before the run.
+The link is a credential. The harness reads it from the environment, not from its own
+command line. It is typed quoted so its `?` survives the device shell, and it is never printed
+or screenshotted while it can be on screen. The on-device view dump that held it is removed,
+and that removal is checked. It is single-use and expires in 15 minutes, so mint it right
+before the run.
+
+**Accepted residual (owner decision, 2026-11-25):** adb has no way to type text except
+`input text <chunk>`. So for the second or two of typing, each 8-character chunk of the link
+is in the argument list of a short-lived `adb` process on the host and an `input` process
+on the device, where a local `ps` could see it. The token is single-use, expires in 15
+minutes, is for a staging fixture account, and is spent by the sign-in moments later. Run the
+harness on a machine and emulator you control.
 
 `run.sh` boots an emulator (cold, no snapshot), builds the staging-flavour debug APK
 (`com.factorylm.mira.staging`, which talks to app-staging) if it is missing, then runs

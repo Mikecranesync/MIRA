@@ -44,6 +44,7 @@ from __future__ import annotations
 import argparse
 import os
 import re
+import secrets
 import shutil
 import subprocess
 import sys
@@ -176,8 +177,14 @@ class Device:
         return nodes
 
     def forget_screen(self) -> None:
-        """Remove the on-device view-hierarchy dump; it holds every field's text."""
+        """Remove the on-device view-hierarchy dump; it holds every field's text.
+
+        Checked, not assumed: a device that stopped answering leaves the file behind.
+        """
         self.shell("rm", "-f", UI_XML)
+        if self.shell("test", "-e", UI_XML, "&&", "echo", "PRESENT", "||", "echo", "GONE") != "GONE":
+            raise Fail(f"could not confirm {UI_XML} was removed from the device. It may still "
+                       f"hold the sign-in link: delete it by hand (adb shell rm -f {UI_XML})")
 
     def texts(self) -> list[str]:
         return [n.label for n in self.dump() if n.label.strip()]
@@ -469,14 +476,20 @@ def log(step: str, msg: str = "") -> None:
 # A source chip reads "FILE manual.pdf p. 3" and the citation sheet "[1] manual.pdf -- p.3".
 # Parse the page NUMBER: a substring test for "p.3" never matches the spaced chip, and
 # would accept "p.31" if it did.
-_CITED_PAGE = re.compile(r"(?P<file>[^\s\u2014]+\.pdf)\b.*?\bp\.\s*(?P<page>\d+)\b", re.IGNORECASE)
+# A source chip reads "FILE <title> p. 3" (kind OEM / FILE / HIST); the sheet header
+# reads "[1] <title> \u2014 p.3". The title is everything between the prefix and
+# ".pdf", spaces included, so "PowerFlex 525.pdf" is never read as "525.pdf".
+_CITED_PAGE = re.compile(
+    r"^(?:(?:OEM|FILE|HIST)\s+|\[\d+\]\s+)(?P<file>\S.*?\.pdf)(?=\s).*?\bp\.\s*(?P<page>\d+)\b",
+    re.IGNORECASE,
+)
 
 
 def cited_pages(labels: list[str]) -> list[tuple[str, int]]:
     """(file, page) for every label that cites a PDF page."""
     found = []
     for t in labels:
-        m = _CITED_PAGE.search(t)
+        m = _CITED_PAGE.search(t.strip())
         if m:
             found.append((m.group("file"), int(m.group("page"))))
     return found
@@ -672,7 +685,7 @@ def sign_in(dev: Device, email: str, password: str | None = None, *,
     dev.tap_button("Open navigation")
     want = email.strip().lower()
     deadline = time.time() + 20
-    while not any(n.label.strip().lower() == want for n in dev.dump()):
+    while (_drawer_account(dev.dump()) or "").lower() != want:
         if time.time() > deadline:
             dev.screenshot("signin-wrong-account")
             raise Fail(f"signed in, but the drawer does not show {email} -- wrong account")
@@ -680,6 +693,19 @@ def sign_in(dev: Device, email: str, password: str | None = None, *,
     dev.screenshot("signed-in")
     dev.tap_button("Close navigation")
     log("signin", "OK")
+
+
+def _drawer_account(nodes: list[Node]) -> str | None:
+    """The account line of the drawer footer: the label just above "About & updates".
+
+    The drawer also lists projects and conversations, and any of them could be
+    titled with an email address, so only the footer's line identifies the account.
+    """
+    labels = [n.label.strip() for n in nodes]
+    if "About & updates" not in labels:
+        return None
+    before = [t for t in labels[: labels.index("About & updates")] if t]
+    return before[-1] if before else None
 
 
 def _wait_for_shell(dev: Device, *, evidence: bool) -> None:
@@ -713,9 +739,22 @@ def create_notebook(dev: Device, name: str, mfr: str, model: str) -> None:
     log("notebook", "created")
 
 
-def upload_pdf(dev: Device, pdf: Path) -> None:
-    log("upload", pdf.name)
-    remote = f"{DEVICE_TMP}/{pdf.name}"
+def run_upload_name(pdf: Path) -> str:
+    """This run's name for the manual: the stem, made shell-safe, plus a random tag.
+
+    Fresh per run, so an earlier upload of the same file (another revision, still in
+    the workspace) can never be the citation that passes the gate. No spaces, since
+    the device shell would split the path.
+    """
+    stem = re.sub(r"[^A-Za-z0-9._-]+", "_", pdf.stem).strip("_") or "manual"
+    return f"{stem}-{secrets.token_hex(4)}.pdf"
+
+
+def upload_pdf(dev: Device, pdf: Path) -> str:
+    """Attach `pdf` to the next message, under this run's own name, and return it."""
+    name = run_upload_name(pdf)
+    log("upload", f"{pdf.name} as {name}")
+    remote = f"{DEVICE_TMP}/{name}"
     dev.push(pdf, remote)
 
     local_sha = _sha256(pdf)
@@ -740,22 +779,23 @@ def upload_pdf(dev: Device, pdf: Path) -> None:
     # Exact match: the picker card also carries a "Preview the file <name>" button,
     # which opens a preview instead of choosing the file.
     deadline = time.time() + 60
-    while (row := dev.find(pdf.name, exact=True)) is None:
+    while (row := dev.find(name, exact=True)) is None:
         if time.time() > deadline:
             dev.screenshot("picker-missing-file")
-            raise Fail(f"{pdf.name} is not listed in the file picker")
+            raise Fail(f"{name} is not listed in the file picker")
         time.sleep(2)
     dev.tap(*row.center)
     # The attachment chip: its name plus a "Remove <name>" button. (The list's own
     # "Pending attachments" label is in the emulator's accessibility tree but not the
     # Pixel 9a's, so it cannot be the signal.)
     try:
-        dev.wait_for(f"Remove {pdf.name}", timeout=60)
+        dev.wait_for(f"Remove {name}", timeout=60)
     except Fail:
         dev.screenshot("attach-missing")
-        raise Fail(f"picked {pdf.name}, but it is not attached to the message") from None
+        raise Fail(f"picked {name}, but it is not attached to the message") from None
     dev.screenshot("source-attached")
     log("upload", "attached to the next message")
+    return name
 
 
 def ask(dev: Device, question: str, expect_page: int | None, *, source: str) -> str:
@@ -822,6 +862,7 @@ def verify_citation(dev: Device, expect_page: int | None, *, source: str) -> str
         where = f" p.{expect_page}" if expect_page else ""
         raise Fail(f"no source chip citing {source}{where}")
     # The newest turn renders last; an earlier answer in the thread may cite the same page.
+    chip_page = cited_pages([chips[-1].label])[0][1]
     dev.tap(*chips[-1].center)
 
     # The sheet names its source as "[1] manual.pdf -- p.3". Check that page too: the
@@ -837,8 +878,8 @@ def verify_citation(dev: Device, expect_page: int | None, *, source: str) -> str
     sheet_file, page = cited_pages([header])[0]
     if sheet_file.lower() != source.lower():
         raise Fail(f"the {source} chip opened a sheet for another manual: {header!r}")
-    if expect_page is not None and page != expect_page:
-        raise Fail(f"chip cites p.{expect_page} but the sheet shows p.{page}: {header!r}")
+    if page != chip_page:  # chips were already filtered to expect_page when one is given
+        raise Fail(f"chip cites p.{chip_page} but the sheet shows p.{page}: {header!r}")
 
     passage = ""
     for t in dev.texts():
@@ -970,12 +1011,15 @@ def main() -> int:
         sign_in(dev, email, password, login_link=login_link)
         if wanted("notebook"):
             create_notebook(dev, name, args.manufacturer, args.model)
+        # Without the upload step (resuming a run) the manual is matched by its file
+        # name only, which an older upload of the same name could also satisfy.
+        source = args.pdf.name
         if wanted("upload"):
-            upload_pdf(dev, args.pdf)
+            source = upload_pdf(dev, args.pdf)
         if wanted("ask"):
-            ask(dev, args.question, args.expect_page, source=args.pdf.name)
+            ask(dev, args.question, args.expect_page, source=source)
         if wanted("citation"):
-            verify_citation(dev, args.expect_page, source=args.pdf.name)
+            verify_citation(dev, args.expect_page, source=source)
         if wanted("nameplate"):
             nameplate(dev, args.nameplate)
     except Fail as exc:

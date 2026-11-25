@@ -55,8 +55,8 @@ class _Clock:
 
 
 class _Proc:
-    def __init__(self, out: str = "") -> None:
-        self.stdout, self.stderr, self.returncode = out, "", 0
+    def __init__(self, out: str = "", rc: int = 0) -> None:
+        self.stdout, self.stderr, self.returncode = out, "", rc
 
 
 def _device_shell_arg(arg: str) -> str:
@@ -83,6 +83,8 @@ class SignInPhone:
         self.account, self.link_works = account, link_works
         self.garble = garble  # the field drops the first character it was sent
         self.interrupt = False  # Ctrl-C lands while the link is being exchanged
+        self.projects: list[str] = []  # drawer rows above the account footer
+        self.rm_fails = False  # the device stops answering: cleanup cannot run
         self.dumpfile = ""  # what /sdcard/window_dump.xml holds on the device
         self.adb_calls: list[list[str]] = []
         self.fields = {"email": "", "password": "", "link": ""}
@@ -135,7 +137,15 @@ class SignInPhone:
         if self.drawer:
             n += [
                 ("Close navigation", "Button", (595, 170, 714, 288), True, ("drawer", False)),
+            ]
+            n += [(t, "TextView", (42, 600 + 80 * i, 714, 660 + 80 * i), True, None)
+                  for i, t in enumerate(self.projects)]
+            # The real footer (UnifiedRoot navigationFooter): the account line, then
+            # "About & updates", then "Sign out".
+            n += [
                 (self.account, "TextView", (42, 1955, 714, 1994), False, None),
+                ("About & updates", "Button", (42, 2010, 714, 2100), True, None),
+                ("Sign out", "Button", (42, 2110, 714, 2200), True, None),
             ]
         return n
 
@@ -156,7 +166,13 @@ class SignInPhone:
         if a[:2] == ["uiautomator", "dump"]:
             self.dumpfile = self.xml()
         elif a[:3] == ["rm", "-f", "/sdcard/window_dump.xml"]:
+            if self.rm_fails:
+                return _Proc("", 1)
             self.dumpfile = ""
+        elif a[:3] == ["test", "-e", "/sdcard/window_dump.xml"]:
+            if self.rm_fails:
+                return _Proc("", 1)
+            return _Proc("PRESENT" if self.dumpfile else "GONE")
         elif a[:2] == ["cat", "/sdcard/window_dump.xml"]:
             return _Proc(self.xml())
         if a[:2] == ["input", "tap"]:
@@ -293,6 +309,17 @@ def test_an_interrupted_link_sign_in_leaves_no_credential_behind(rig):
     _no_credential_left(phone)
 
 
+def test_a_link_sign_in_fails_loudly_when_the_dump_cannot_be_removed(rig):
+    # Codex r2 F1: the link is rejected (so it stays on screen, and in the dump),
+    # then the device stops answering. The cleanup must not be assumed to have worked.
+    journey, dev, phone = rig(link_works=False)
+    phone.rm_fails = True
+    with pytest.raises(journey.Fail, match="window_dump.xml"):
+        journey.sign_in(dev, EMAIL, login_link=LINK)
+    assert TOKEN in phone.dumpfile, "precondition: the dump really was left behind"
+    assert TOKEN not in str(phone.adb_calls[-1]), "the failure path must not echo the link"
+
+
 def test_password_sign_in_still_works(rig):
     # Control: the password path is unchanged and never opens the invitation mode.
     journey, dev, phone = rig()
@@ -311,6 +338,23 @@ def test_sign_in_rejects_an_account_whose_email_merely_contains_the_expected_one
 def test_sign_in_accepts_the_exact_account_in_another_case(rig):
     # Control: the same address, cased differently, is the same account.
     journey, dev, phone = rig(account=EMAIL.upper())
+    journey.sign_in(dev, EMAIL, login_link=LINK)
+    assert "Close navigation" in phone.taps
+
+
+def test_sign_in_reads_the_account_from_the_footer_not_a_project_title(rig):
+    # Codex r2 F5: another account is signed in, and one of its projects is titled
+    # with the expected email. Only the footer's account line counts.
+    journey, dev, phone = rig(account="someone-else@factorylm.com")
+    phone.projects = [EMAIL]
+    with pytest.raises(journey.Fail, match="wrong account"):
+        journey.sign_in(dev, EMAIL, login_link=LINK)
+
+
+def test_sign_in_finds_the_footer_account_below_project_rows(rig):
+    # Control: the right account, with projects listed above the footer.
+    journey, dev, phone = rig()
+    phone.projects = ["Line 3 press", "someone-else@factorylm.com"]
     journey.sign_in(dev, EMAIL, login_link=LINK)
     assert "Close navigation" in phone.taps
 
@@ -554,6 +598,68 @@ def test_run_sh_hands_gradle_the_jdk_it_approved(tmp_path):
                        text=True, env=env, timeout=60)
     assert "GRADLE_JAVA=" in r.stdout, "precondition: gradle ran\n" + r.stdout + r.stderr
     assert "GRADLE_JAVA=21" in r.stdout, r.stdout
+
+
+def _run_sh_gradle(tmp_path: Path, *, path_java: str | None, java_home: str | None,
+                   brew_java: str | None) -> subprocess.CompletedProcess:
+    """run.sh up to gradle. Each JDK candidate is a version string, or None for none.
+
+    `path_java="fail"` is the macOS /usr/bin/java shim with no JDK registered: it is
+    executable, prints nothing on stdout, and exits 1.
+    """
+    sdk, bin_dir, mobile = tmp_path / "sdk", tmp_path / "bin", tmp_path / "mobile"
+    _exe(sdk / "platform-tools" / "adb",
+         'if [ "$1" = devices ]; then printf "List\\nemulator-5554\\tdevice\\n"; fi\n')
+    _exe(sdk / "emulator" / "emulator", "exit 0\n")
+    _exe(bin_dir / "node", "exit 0\n")
+    _exe(mobile / "node_modules" / ".bin" / "vite", "exit 0\n")
+    _exe(mobile / "android" / "gradlew",
+         'J=java; [ -n "${JAVA_HOME:-}" ] && J="$JAVA_HOME/bin/java"\n'
+         'echo "GRADLE_JAVA=$("$J" -version 2>&1 | sed -nE \'s/.*version "([0-9]+).*/\\1/p\')"\n')
+
+    def jdk(name: str, version: str) -> Path:
+        home = tmp_path / name
+        _exe(home / "bin" / "java", f"echo 'openjdk version \"{version}\" 2024' >&2\n")
+        return home
+
+    if path_java == "fail":
+        _exe(bin_dir / "java", "echo 'Unable to locate a Java Runtime.' >&2; exit 1\n")
+    elif path_java:
+        _exe(bin_dir / "java", f"echo 'openjdk version \"{path_java}\" 2024' >&2\n")
+    if java_home:
+        home = jdk("jh", java_home)
+        _exe(bin_dir / "java_home_stub", f"echo {home}\n")
+    else:
+        _exe(bin_dir / "java_home_stub", "exit 1\n")
+    if brew_java:
+        prefix = tmp_path / "brew-openjdk"
+        home = prefix / "libexec" / "openjdk.jdk" / "Contents" / "Home"
+        _exe(home / "bin" / "java", f"echo 'openjdk version \"{brew_java}\" 2024' >&2\n")
+        _exe(bin_dir / "brew", f'[ "$1 $2" = "--prefix openjdk@21" ] && echo {prefix}\n')
+    env = {"PATH": f"{bin_dir}:/usr/bin:/bin", "HOME": str(tmp_path),
+           "ANDROID_SDK_ROOT": str(sdk), "MIRA_MOBILE_DIR": str(mobile),
+           "MIRA_JAVA_HOME_CMD": str(bin_dir / "java_home_stub")}
+    return subprocess.run(["bash", str(RUN_SH), "m.pdf", "q", "1"], capture_output=True,
+                          text=True, env=env, timeout=60)
+
+
+def test_run_sh_falls_through_a_failing_java_shim_to_homebrew(tmp_path):
+    # Codex r2 F4: the shim's failed version probe must reject it, not abort run.sh.
+    r = _run_sh_gradle(tmp_path, path_java="fail", java_home=None, brew_java="21.0.5")
+    assert "GRADLE_JAVA=21" in r.stdout, r.stdout + r.stderr
+
+
+def test_run_sh_probes_homebrew_even_when_java_home_offers_an_old_jdk(tmp_path):
+    r = _run_sh_gradle(tmp_path, path_java="fail", java_home="17.0.10", brew_java="21.0.5")
+    assert "GRADLE_JAVA=21" in r.stdout, r.stdout + r.stderr
+
+
+def test_run_sh_with_only_a_failing_shim_gives_the_jdk_instruction(tmp_path):
+    # Control: nothing usable anywhere -> the documented error, not a silent abort.
+    r = _run_sh_gradle(tmp_path, path_java="fail", java_home=None, brew_java=None)
+    assert r.returncode == 2, r.stdout + r.stderr
+    assert "needs JDK 21" in r.stderr
+    assert "GRADLE_JAVA" not in r.stdout
 
 
 def test_run_sh_builds_the_web_bundle_before_cap_sync():

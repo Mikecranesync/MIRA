@@ -33,7 +33,9 @@ MOBILE="${MIRA_MOBILE_DIR:-$REPO_ROOT/mira-mobile}"
 # Capacitor 8 compiles for Java 21; JDK 17 fails deep inside gradle with
 # ":capacitor-camera:compileDebugJavaWithJavac". Find a 21+ up front, or stop.
 java_major() {
-  "$1" -version 2>&1 | sed -nE 's/.*version "([0-9]+).*/\1/p' | head -1
+  # A failing probe (the macOS java shim with no JDK registered exits 1) yields no
+  # version, which rejects the candidate rather than aborting run.sh under errexit.
+  { "$1" -version 2>&1 || true; } | sed -nE 's/.*version "([0-9]+).*/\1/p' | head -1
 }
 ensure_jdk21() {
   local bin major home
@@ -51,18 +53,22 @@ ensure_jdk21() {
     if [ -n "$major" ] && [ "$major" -ge 21 ]; then return 0; fi
   fi
   # macOS: /usr/libexec/java_home, then Homebrew's openjdk@21 (not linked by default).
-  home="$("${MIRA_JAVA_HOME_CMD:-/usr/libexec/java_home}" -v 21 2>/dev/null || true)"
-  if [ -z "$home" ] && command -v brew >/dev/null 2>&1; then
-    home="$(brew --prefix openjdk@21 2>/dev/null || true)/libexec/openjdk.jdk/Contents/Home"
+  # Each is probed on its own: java_home may offer an older JDK while brew has 21.
+  local jh="" bh=""
+  jh="$("${MIRA_JAVA_HOME_CMD:-/usr/libexec/java_home}" -v 21 2>/dev/null || true)"
+  if command -v brew >/dev/null 2>&1; then
+    bh="$(brew --prefix openjdk@21 2>/dev/null || true)"
+    [ -z "$bh" ] || bh="$bh/libexec/openjdk.jdk/Contents/Home"
   fi
-  if [ -n "$home" ] && [ -x "$home/bin/java" ]; then
+  for home in "$jh" "$bh"; do
+    [ -n "$home" ] && [ -x "$home/bin/java" ] || continue
     major="$(java_major "$home/bin/java")"
     if [ -n "$major" ] && [ "$major" -ge 21 ]; then
       export JAVA_HOME="$home"
       export PATH="$JAVA_HOME/bin:$PATH"
       return 0
     fi
-  fi
+  done
   echo "The APK build needs JDK 21 (Capacitor 8). Install it (macOS: brew install openjdk@21)" >&2
   echo "and set JAVA_HOME to it, or build the APK separately first." >&2
   exit 2
