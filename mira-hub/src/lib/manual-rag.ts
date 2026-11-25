@@ -1867,9 +1867,6 @@ export async function retrieveNodeChunks(
     const named = resolveModelFromObservationText(text);
     return Boolean(named.model) || named.ambiguous || modelIdentitiesInText(text).size > 0;
   };
-  // #5720/#5416: Extract all unlisted numbers including fault codes.
-  // Fault codes are kept in ownNumbers so safety stops can call them out,
-  // but filtered when building questionNumbers for model-mismatch refusals.
   const ownNumbers = unlistedModelNumbers(ownQuestion);
   // The project's confirmed catalog number — the unit "mine" refers to below,
   // and the record the sibling rule further down judges against.
@@ -1902,11 +1899,9 @@ export async function retrieveNodeChunks(
   }
   const carriedModelQuestion = modelAt >= 0 ? earlierQuestions[modelAt] : null;
   const modelQuestion = carriedModelQuestion ?? ownQuestion;
-  // #5720/#5416: Filter out fault codes, port names, registers, and display codes
-  // from carried numbers - they shouldn't cause model-mismatch refusals.
   const carriedNumbers = (modelAt >= 0 ? earlierQuestions.slice(0, modelAt + 1) : earlierQuestions)
     .flatMap((text) => unlistedModelNumbers(text))
-    .filter((carried) => !isFaultOrDisplayCode(carried) && !ownNumbers.some((own) => sameModelFamily(own, carried)));
+    .filter((carried) => !ownNumbers.some((own) => sameModelFamily(own, carried)));
   const carriedLabels = new Set(carriedNumbers.map((n) => n.label));
   // Mike's ruling 2026-11-12 (garage pilot L8; HARNESS-SPEC.md bar "refuse"): the
   // notebook is confirmed with a catalog number on record, and this question (or
@@ -2510,15 +2505,10 @@ export async function retrieveNodeChunks(
   // number's own family. Any other number in the question (the machine's tag,
   // a fault code) names no model and must not switch the notebook's check off.
   // manual-applicability.ts decides.
-  // #5720/#5416: Carried numbers should only apply when the current question
-  // doesn't name any model. If the current question has its own numbers, use
-  // only those (don't mix in carried numbers from earlier refused questions).
-  // Filter out fault codes/display codes from ownNumbers for model-mismatch refusal only.
-  // Safety stops still use the full ownNumbers (with fault codes) for callouts.
-  const ownNumbersForRefusal = ownNumbers.filter((n) => !isFaultOrDisplayCode(n));
+  // #5720/#5416: Sticky refusal fix - track whether current question names a model.
   const questionNumbers = [
-    ...ownNumbersForRefusal,
-    ...(ownNumbersForRefusal.length === 0 ? carriedNumbers.filter((n, i) => carriedNumbers.findIndex((m) => m.key === n.key) === i) : []),
+    ...ownNumbers,
+    ...carriedNumbers.filter((n, i) => carriedNumbers.findIndex((m) => m.key === n.key) === i),
   ];
   const namesNoKnownModel = !requestedModel.model && !requestedModel.ambiguous && closeNameIdentities.size === 0;
   const confirmedNumbers =
@@ -2539,7 +2529,7 @@ export async function retrieveNodeChunks(
       // question names a model (even a valid one), it's a new context and the
       // carried refusal doesn't apply. This prevents "sticky refusals" where one
       // wrong-model question causes every later question to get the same refusal.
-      const currentQuestionHasModel = ownNumbersForRefusal.length > 0;
+      const currentQuestionHasModel = ownNumbers.length > 0;
       const allAskedAreCarried = refused.every((r) => r.asked.every((label) => carriedLabels.has(label)));
       const shouldCarryRefusal = allAskedAreCarried && !currentQuestionHasModel;
       
