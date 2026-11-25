@@ -939,6 +939,53 @@ export function __resetCorpusManufacturersCache(): void {
   corpusManufacturersCache = null;
 }
 
+/** One model label the shared OEM corpus files under one manufacturer, with
+ *  how many chunks carry that pair. */
+export interface CorpusModelLabel {
+  manufacturer: string;
+  model: string;
+  rows: number;
+}
+
+/** Every (manufacturer, model_number) label pair in the SHARED OEM corpus
+ *  (`is_private = false`), manufacturer canonicalized, most chunks first.
+ *  Process-cached for 10 minutes like `corpusManufacturers`, on the raw pool
+ *  for the same reason. Feeds the #4095 no-maker proposal: a blank chat that
+ *  types "PowerFlex 525" but no maker can only be offered a machine whose
+ *  label the library actually holds, under the maker the library files it
+ *  under. */
+let corpusModelLabelsCache: { at: number; labels: CorpusModelLabel[] } | null = null;
+
+export async function corpusModelLabels(client: PoolClient): Promise<CorpusModelLabel[]> {
+  const now = Date.now();
+  if (corpusModelLabelsCache && now - corpusModelLabelsCache.at < CORPUS_MANUFACTURERS_TTL_MS) {
+    return corpusModelLabelsCache.labels;
+  }
+  const { rows } = await client.query<{ manufacturer: string; model: string; n: number }>(
+    `SELECT manufacturer, model_number AS model, COUNT(*)::int AS n
+       FROM knowledge_entries
+      WHERE is_private = false
+        AND manufacturer IS NOT NULL AND manufacturer <> ''
+        AND model_number IS NOT NULL AND model_number <> ''
+      GROUP BY manufacturer, model_number
+      ORDER BY COUNT(*) DESC
+      LIMIT 2000`,
+  );
+  const labels: CorpusModelLabel[] = [];
+  for (const r of rows) {
+    const manufacturer = normalizeManufacturer(String(r.manufacturer)).canonical.trim();
+    const model = String(r.model).trim();
+    if (manufacturer.length >= 3 && model) labels.push({ manufacturer, model, rows: Number(r.n) || 0 });
+  }
+  corpusModelLabelsCache = { at: now, labels };
+  return labels;
+}
+
+/** Test seam. */
+export function __resetCorpusModelLabelsCache(): void {
+  corpusModelLabelsCache = null;
+}
+
 /** The first corpus manufacturer whose name appears as a whole word in the
  *  observation text (a LOOK/nameplate reading), or null. Pure once the list
  *  is known; exported so the route can test it without a database. */

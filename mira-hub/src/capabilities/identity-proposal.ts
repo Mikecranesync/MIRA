@@ -36,7 +36,7 @@ import {
 } from "@/capabilities/model-token";
 import { resolveModelFromObservationText } from "@/lib/manual-rag";
 import { inferEquipmentType } from "@/lib/equipment-type";
-import { manufacturerSearchNames } from "@/lib/manufacturerNormalize";
+import { manufacturerInGroup, manufacturerSearchNames } from "@/lib/manufacturerNormalize";
 
 export interface IdentityProposal {
   manufacturer: string;
@@ -720,6 +720,67 @@ export function namesOnlyThisMachine(message: string, part: string): boolean {
     return modelMentions(text, part).every((m) => norm(m) === norm(part) || sameMachine(m, part, chosen));
   } catch {
     return false;
+  }
+}
+
+/** A library model label that may stand alone as a typed machine name. */
+function isStandaloneLabel(label: string): boolean {
+  if (label.length < 3 || label.length > MAX_MODEL_CHARS) return false;
+  if (!HAS_DIGIT.test(label) || !HAS_LETTER.test(label) || LONG_DIGIT_RUN.test(label)) return false;
+  if (/:\/\/|^www\./i.test(label)) return false; // a URL stored as a model
+  const tokens = label.split(/\s+/);
+  // A fault-code-shaped label ("G120", "F004") is never matched on its own:
+  // a typed fault code must never propose a machine.
+  if (tokens.some((t) => FAULT_CODE_RE.test(t))) return false;
+  return tokens.length > 1 || isModelToken(label);
+}
+
+/**
+ * #4095 gap 1 (AI-panel battery, 2026-11-25): a blank chat that names a model
+ * the shared library holds, but no maker — "What does PowerFlex 525 fault F004
+ * mean?" — gets the same proposal card as one that names both. The maker comes
+ * from the LIBRARY, never from the text, and only when the typed label is filed
+ * under exactly one vendor group. Still propose-only: nothing binds, retrieval
+ * on this turn is unchanged.
+ *
+ * Returns null (the corpus reader's rules stay in charge) whenever the message
+ * names any library maker, names two different library models, names another
+ * machine beside this one, or is ambiguous to the model parser. Pure; never throws.
+ */
+export function proposeFromLibraryModel(
+  message: string,
+  labels: readonly { manufacturer: string; model: string; rows: number }[],
+  knownManufacturers: readonly string[],
+): IdentityProposal | null {
+  try {
+    const text = withoutLabelValues(message);
+    if (manufacturerMentions(text, knownManufacturers).length > 0) return null;
+    if (resolveModelFromObservationText(text).ambiguous) return null;
+    const hits: { label: string; index: number; end: number }[] = [];
+    for (const label of new Set(labels.map((l) => l.model))) {
+      if (!isStandaloneLabel(label)) continue;
+      const pattern = label.split(/\s+/).map(escapeRegExp).join("\\s*");
+      for (const m of text.matchAll(new RegExp(`(?<![A-Za-z0-9])${pattern}(?![A-Za-z0-9])`, "ig"))) {
+        const index = m.index ?? 0;
+        const end = index + m[0].length;
+        const clash = hits.findIndex((h) => index < h.end && h.index < end);
+        if (clash === -1) hits.push({ label, index, end });
+        else if (end - index > hits[clash].end - hits[clash].index) hits[clash] = { label, index, end };
+      }
+    }
+    if (hits.length === 0) return null;
+    const key = canonicalModel(hits[0].label);
+    if (hits.some((h) => canonicalModel(h.label) !== key)) return null;
+    const filed = labels.filter((l) => canonicalModel(l.model) === key);
+    const sameGroup = (a: string, b: string) => manufacturerInGroup(a, b) || manufacturerInGroup(b, a);
+    if (!filed.every((l) => sameGroup(l.manufacturer, filed[0].manufacturer))) return null;
+    const model = hits.reduce((a, b) => (b.end - b.index > a.end - a.index ? b : a)).label;
+    if (!namesOnlyThisMachine(text, model)) return null;
+    const manufacturer = filed.reduce((a, b) => (b.rows > a.rows ? b : a)).manufacturer;
+    return { manufacturer, model };
+  } catch (err) {
+    console.error("[identity-proposal] library-model proposal failed (no proposal):", err instanceof Error ? err.message : err);
+    return null;
   }
 }
 

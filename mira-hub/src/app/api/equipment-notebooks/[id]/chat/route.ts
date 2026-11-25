@@ -63,6 +63,7 @@ import { shadowVerifyCitedTurnResult } from "@/capabilities/claim-verifier-shado
 import { judgeEvidenceSufficiencyShadow, type JevShadowResult } from "@/capabilities/observability/jev-shadow";
 import { isWeakEvidence, WEAK_EVIDENCE_LABEL, WEAK_EVIDENCE_RULE } from "@/capabilities/observability/jev-weak-evidence";
 import {
+  proposeFromLibraryModel,
   proposeIdentityFromText,
   unconfirmedMachineDirective,
   type IdentityProposal,
@@ -224,6 +225,7 @@ import {
   appendManualContext,
   buildManualUserContent,
   corpusManufacturers,
+  corpusModelLabels,
   manufacturerFromObservationText,
   resolveModelFromObservationText,
   retrieveManualChunks,
@@ -3070,7 +3072,13 @@ async function handleChatTurn(
       let client: PoolClient | null = null;
       try {
         client = await pool.connect();
-        identityProposal = proposeIdentityFromText(message, await corpusManufacturers(client));
+        const libraryMakers = await corpusManufacturers(client);
+        identityProposal = proposeIdentityFromText(message, libraryMakers);
+        // #4095 gap 1: a library model typed with no maker ("PowerFlex 525").
+        // The maker comes from the library label, and only when it is one group.
+        if (!identityProposal) {
+          identityProposal = proposeFromLibraryModel(message, await corpusModelLabels(client), libraryMakers);
+        }
       } catch (err) {
         console.error("[notebook-chat] identity proposal skipped:", err instanceof Error ? err.message : err);
       } finally {
