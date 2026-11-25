@@ -16,13 +16,6 @@ const PAID2_SSE = [
   ...PAID2_CONTENT_PIECES.map((c) => `data: ${JSON.stringify({ kind: "content", content: c })}`),
   "data: [DONE]",
 ].join("\n\n");
-const PAID2_TEXT = [
-  "MIRA", "⚠", "Stop",
-  "Stop. This request involves a hazard. Follow the site lockout/tagout and safety procedure before proceeding; MIRA will not guide the unsafe step.",
-  "⛔ SAFETY STOP — energized work.",
-  "The cited manual has a related warning on p.5 — read it before you go any further.",
-  "FILE", "Manual warning", "p. 5",
-].join("\n");
 
 describe("servedCitationsOf", () => {
   it("reads the served sources frame", () => {
