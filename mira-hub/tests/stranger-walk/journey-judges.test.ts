@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { energizedWorkStop } from "@/capabilities/energized-work-stop";
 
-import { PINNED_S5B_STOP, WARNING_POINTER_TITLE, judgeCautionPointer, servedTurnOf, visible } from "./journey-judges";
+import { PINNED_S5B_STOP, WARNING_POINTER_TITLE, judgeCautionPointer, readableTexts, servedTurnOf, visible } from "./journey-judges";
 
 const FILE = "55026402-a378-449f-ab8a-2d6a3ee9e101";
 const WARNING_CITE = { citationId: "1", docId: "d", sourceTitle: WARNING_POINTER_TITLE, page: 5, fileId: FILE, quote: null, originFileId: null };
@@ -23,7 +23,7 @@ const PAID2_SSE = sse([PINNED_S5B_STOP.slice(0, 40), PINNED_S5B_STOP.slice(40, 2
 
 async function judge(
   body: string,
-  opts: { rendered?: string | string[]; lifecycle?: string | null; stop?: boolean; file?: string | undefined } = {},
+  opts: { rendered?: string | string[]; lifecycle?: string | null; saved?: boolean; stop?: boolean; file?: string | undefined } = {},
 ) {
   const t = await servedTurnOf(body);
   const rendered = opts.rendered ?? PAID2_RENDERED;
@@ -33,6 +33,7 @@ async function judge(
       status: t.status,
       answerTexts: typeof rendered === "string" ? [rendered] : rendered,
       lifecycle: "lifecycle" in opts ? (opts.lifecycle ?? null) : "safety_stop",
+      saved: opts.saved ?? true,
       stop: opts.stop ?? true,
       served: t.citations,
     },
@@ -73,7 +74,7 @@ describe("servedTurnOf (the Hub UI's own stream reader)", () => {
 
 describe("judgeCautionPointer (S5b, pinned)", () => {
   it("the paid2 stop passes", async () => {
-    expect(await judge(PAID2_SSE)).toEqual({ pass: true, p5: true, streamed: true, answered: true, stopLifecycle: true, rendered: true, reason: null });
+    expect(await judge(PAID2_SSE)).toEqual({ pass: true, p5: true, streamed: true, answered: true, stopLifecycle: true, saved: true, rendered: true, reason: null });
   });
   it("not a stop → FAIL", async () => expect((await judge(PAID2_SSE, { stop: false })).pass).toBe(false));
   it("#5891: a page-5 warning citation from another file → FAIL", async () => {
@@ -134,10 +135,26 @@ describe("judgeCautionPointer (S5b, pinned)", () => {
     expect(j.stopLifecycle).toBe(false);
     expect(j.pass).toBe(false);
   });
-  it("#5944: no visible answer text part → FAIL with a reason", async () => {
+  it("#5944: no readable answer text part → FAIL with a reason; #5946 F3: the other checks still report what was observed", async () => {
     const j = await judge(PAID2_SSE, { rendered: [] });
-    expect(j.pass).toBe(false);
-    expect(j.reason).toContain("no visible answer text part");
+    expect(j).toEqual({
+      pass: false,
+      p5: true,
+      streamed: true,
+      answered: true,
+      stopLifecycle: true,
+      saved: true,
+      rendered: false,
+      reason: "no readable answer text part was rendered",
+    });
+  });
+  it("#5946 F3: a missing file id fails, and the stream checks still report what was observed", async () => {
+    const j = await judge(PAID2_SSE, { file: undefined });
+    expect(j).toMatchObject({ pass: false, p5: false, streamed: true, answered: true, rendered: true });
+  });
+  it("#5947: the live turn was never replaced by the saved turn → FAIL with a reason", async () => {
+    const j = await judge(PAID2_SSE, { saved: false });
+    expect(j).toMatchObject({ pass: false, saved: false, streamed: true, rendered: true, reason: "the live turn was never replaced by the saved turn" });
   });
   it("#5944: a plain-text fallback that shows the literal ** markers → FAIL", async () => {
     const j = await judge(PAID2_SSE, { rendered: PINNED_S5B_STOP });
@@ -147,5 +164,37 @@ describe("judgeCautionPointer (S5b, pinned)", () => {
   it("control: the stop split across several visible text parts still passes", async () => {
     const parts = PINNED_S5B_STOP.split("\n\n").map(visible);
     expect((await judge(PAID2_SSE, { rendered: parts })).pass).toBe(true);
+  });
+});
+
+describe("readableTexts (#5946: a fully transparent part is not readable)", () => {
+  const part = (text: string, ...opacities: number[]) => ({ text, opacities });
+  it("control: parts at normal opacity are kept, in order", () => {
+    expect(readableTexts([part("a", 1, 1, 1), part("b", 0.5, 1)])).toEqual(["a", "b"]);
+  });
+  it("the part itself at opacity 0 is dropped", () => {
+    expect(readableTexts([part("a", 0, 1, 1), part("b", 1, 1)])).toEqual(["b"]);
+  });
+  it("an ancestor at opacity 0 drops the part", () => {
+    expect(readableTexts([part("a", 1, 0, 1)])).toEqual([]);
+  });
+  it("an unreadable opacity (NaN) fails closed", () => {
+    expect(readableTexts([part("a", 1, Number.NaN)])).toEqual([]);
+  });
+  it("end to end: a transparent stop leaves no readable text, so S5b fails", async () => {
+    const t = await servedTurnOf(PAID2_SSE);
+    const j = judgeCautionPointer(
+      {
+        content: t.content,
+        status: t.status,
+        answerTexts: readableTexts([part(PAID2_RENDERED, 1, 0, 1)]),
+        lifecycle: "safety_stop",
+        saved: true,
+        stop: true,
+        served: t.citations,
+      },
+      FILE,
+    );
+    expect(j.pass).toBe(false);
   });
 });
