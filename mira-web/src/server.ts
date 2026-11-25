@@ -46,6 +46,7 @@ import { renderHome } from "./views/home.js";
 import { renderCmms, renderSamplePlaceholder } from "./views/cmms.js";
 import { renderLimitations } from "./views/limitations.js";
 import { renderSecurity } from "./views/security.js";
+import { renderOffline } from "./views/offline.js";
 import {
   createMagicLink,
   validateAndConsumeToken,
@@ -447,6 +448,11 @@ app.get("/limitations", (c) => {
 // Security page (#893) — infrastructure, data protection, AI safety, compliance roadmap
 app.get("/security", (c) => {
   return c.html(renderSecurity(c.req.url));
+});
+
+// Offline page — where the disconnected tablet build stands (#5265). Status page, not a launch.
+app.get("/offline", (c) => {
+  return c.html(renderOffline(c.req.url));
 });
 
 // Sample workspace placeholder (#SO-070 AC4) — Phase-0 destination after sign-in.
