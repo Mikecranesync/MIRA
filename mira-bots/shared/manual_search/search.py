@@ -649,12 +649,21 @@ _TRAIL_JUDGE_FIELDS = (
 )
 
 
+def _without_userinfo(netloc):
+    """``netloc`` without a ``user:password@`` part, split where ``urlparse`` splits
+    it (the last ``@``). A search result is a third-party URL; its credentials never
+    reach the trail (#5933). Anything else passes through unchanged."""
+    return netloc.rpartition("@")[2] if isinstance(netloc, str) else netloc
+
+
 def trail_url(url: str) -> str:
-    """The URL without its query string or fragment: signed download tokens
-    (ABB's ``x-sign``) are credentials-like and would make one document look
-    like many."""
+    """The URL without its userinfo, query string or fragment: a ``user:password``
+    part and signed download tokens (ABB's ``x-sign``) are credentials-like, and
+    the tokens would make one document look like many."""
     p = urlparse(url or "")
-    return f"{p.scheme}://{p.netloc}{p.path}" if p.scheme and p.netloc else (url or "")[:200]
+    if p.scheme and p.netloc:
+        return f"{p.scheme}://{_without_userinfo(p.netloc)}{p.path}"
+    return (url or "")[:200]
 
 
 @dataclass
@@ -678,7 +687,7 @@ class AcquisitionTrail:
             row = {
                 "rank": rank,
                 "url": trail_url(url),
-                "host": c.get("host", ""),
+                "host": _without_userinfo(c.get("host", "")),
                 "title": (c.get("title") or "")[:120],
                 "score": c.get("score"),
                 "pass": c.get("pass"),
@@ -1266,6 +1275,7 @@ async def search_manual(
     # without a manual (`_unless_extras`), so they never change what it reads, sends,
     # retries or answers before then (#5890 round 2).
     set_aside: list[dict] = []  # hits `_collect` drops
+    aside_pass: dict[int, str] = {}  # id of a set-aside hit -> the pass that set it aside
     retry_extras: list[dict] = []  # extra PDFs the typed-pass retry did not read
     retry_read: list[dict] = []  # PDFs the typed-pass retry sent to the judge
 
@@ -1305,11 +1315,14 @@ async def search_manual(
         )
 
     def _found(hits: list[dict], label: str, aside: list[dict] | None) -> list[dict]:
-        """`_collect` for one query pass. Its candidates, and the hits it sets aside in
-        ``aside``, carry the pass that found them (acquisition trail only, #5896)."""
+        """`_collect` for one query pass. Its candidates carry the pass that found them
+        (acquisition trail only). The hits it sets aside in ``aside`` keep main's
+        fields; their pass is kept in ``aside_pass``, for the trail's copy of an offer
+        (#5896, #5935)."""
         before = len(set_aside)
         found = _tagged(_collect(hits, make, model, part_number, aside), label)
-        _tagged(set_aside[before:], label)
+        for c in set_aside[before:]:
+            aside_pass[id(c)] = label
         return found
 
     def _extra(c: dict) -> bool:
@@ -1445,11 +1458,14 @@ async def search_manual(
             if trail is not None:
                 # A set-aside page is on no list the trail shows. It joins the trail's
                 # own copy as the offer, never main's candidate or judge pools (#5896).
+                # The trail's row is a copy that carries the pass; the offer returned
+                # keeps main's fields (#5935).
                 shown = trail.ranked if trail.ranked is not None else trail.candidates
                 if all(x["url"] != c["url"] for x in shown):
-                    trail.candidates = list(trail.candidates) + [c]
+                    row = {**c, "pass": aside_pass.get(id(c), c.get("pass"))}
+                    trail.candidates = list(trail.candidates) + [row]
                     if trail.ranked is not None:
-                        trail.ranked = list(trail.ranked) + [c]
+                        trail.ranked = list(trail.ranked) + [row]
             return c
         return None
 

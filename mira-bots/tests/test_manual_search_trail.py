@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import itertools
 import json
+import logging
 import pathlib
 import sys
 
@@ -122,6 +123,38 @@ def test_trail_url_strips_query_and_fragment():
         search_mod.trail_url("https://h.example/a/b.pdf?x-sign=abc#p2")
         == "https://h.example/a/b.pdf"
     )
+
+
+@pytest.mark.parametrize(
+    "url,bare",
+    [
+        ("https://u5933:p5933-secret@h.example/a/b.pdf", "https://h.example/a/b.pdf"),
+        ("https://u5933@h.example:8443/a/b.pdf?x=1", "https://h.example:8443/a/b.pdf"),
+        ("https://u5933:p5933@x@h.example/a.pdf", "https://h.example/a.pdf"),
+        ("https://u5933:p5933-secret@/a.pdf", "https:///a.pdf"),
+    ],
+    ids=["user_and_password", "user_only_with_port", "at_in_password", "no_host_left"],
+)
+def test_trail_url_drops_userinfo_and_keeps_host_and_port(url, bare):
+    # #5933: a search result's user:password part never reaches the trail.
+    assert search_mod.trail_url(url) == bare
+
+
+@pytest.mark.parametrize(
+    "host,shown",
+    [
+        ("u5933:p5933-secret@h.example:8443", "h.example:8443"),
+        ("h.example:8443", "h.example:8443"),  # control: no userinfo, unchanged
+        ("H.Example", "H.Example"),  # control: case is not touched
+        ("", ""),
+        (None, None),  # control: a missing host stays missing
+    ],
+)
+def test_a_trail_row_host_drops_userinfo_only(host, shown):
+    trail = search_mod.AcquisitionTrail(
+        candidates=[{"url": "https://h.example/a.pdf", "host": host, "title": "t", "score": 1}]
+    )
+    assert trail.to_dict()["candidates"][0]["host"] == shown
 
 
 # ── the real fetch records WHY it returned nothing ──────────────────────────
@@ -558,3 +591,112 @@ async def test_rejected_document_still_searches_for_a_website(monkeypatch):
     assert not candidate["validated"]
     assert trail.search_page_url == "https://novel-controls.example/support/"
     assert "filetype:pdf" not in calls[-1]
+
+
+# ── #5933 / #5935: what the endpoint's trail and candidate carry ─────────────
+
+_USER, _PASSWORD = "u5933", "p5933-secret"
+_SIMATIC = "6ES7214-1AG40-0XB0"
+_ASIDE = (
+    "https://www.example-distributor.com:8443/p/6es7214_1ag40_0xb0",
+    "6ES7214_1AG40_0XB0 CPU 1214C compact",
+)
+_SCORED = ("https://parts.example.net/gs10m.pdf", "GS10 Drive User Manual")
+
+
+def _with_userinfo(url: str) -> str:
+    scheme, rest = url.split("://", 1)
+    return f"{scheme}://{_USER}:{_PASSWORD}@{rest}"
+
+
+def _discover(monkeypatch, caplog, enabled, hits, manufacturer, **fields):
+    """The real discovery endpoint around the real search, with only the network
+    edges stubbed: every query returns ``hits``, and no URL probes as a PDF.
+    Returns the response body and the one MANUAL_ACQUISITION_TRAIL line it logged."""
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    import ask_api.manual_discovery as md
+
+    async def serper(query, num=10):
+        return [{"link": u, "title": t} for u, t in hits]
+
+    async def no_pdf(url):
+        return False
+
+    async def no_link(make):
+        return None
+
+    monkeypatch.setenv("MANUAL_DISCOVERY_API_KEY", "k")
+    monkeypatch.setenv("MANUAL_JUDGE_ENABLED", enabled)
+    assert judge.judge_enabled() is (enabled == "1")
+    monkeypatch.setattr(search_mod, "_serper_search", serper)
+    monkeypatch.setattr(search_mod, "validate_pdf", no_pdf)
+    monkeypatch.setattr(md, "oem_request_link", no_link)
+    app = FastAPI()
+    app.include_router(md.router)
+    client = TestClient(app, headers={"X-Mira-Key": "k", "X-Mira-Tenant": "t", "X-Mira-User": "u"})
+    caplog.clear()
+    with caplog.at_level(logging.INFO):
+        body = client.post(
+            "/manual-discovery/search", json={"manufacturer": manufacturer, **fields}
+        ).json()
+    logged = [
+        m
+        for m in (r.getMessage() for r in caplog.records)
+        if m.startswith("MANUAL_ACQUISITION_TRAIL ")
+    ]
+    assert len(logged) == 1, logged
+    return body, logged[0]
+
+
+_CASES = {
+    # main's own candidate: a scored PDF, offered unread with the judge off
+    "scored_candidate": (_SCORED, "AutomationDirect", {"model": "GS10"}),
+    # #5896's row: a score-zero exact-part page, offered at a miss ending
+    "set_aside_offer": (_ASIDE, "Siemens", {"catalog_number": _SIMATIC}),
+}
+
+
+@pytest.mark.parametrize("case", sorted(_CASES))
+def test_the_trail_never_carries_a_results_userinfo(monkeypatch, caplog, case):
+    # #5933, judge off as in production. Each row keeps its host, port and path;
+    # neither the returned trail nor the logged line holds the user or password.
+    (url, title), make, fields = _CASES[case]
+    if case == "set_aside_offer":
+        assert search_mod._score(_with_userinfo(url), title, make, _SIMATIC) == 0
+    body, line = _discover(monkeypatch, caplog, "0", [(_with_userinfo(url), title)], make, **fields)
+    assert body["candidate"]["url"] == _with_userinfo(url), body  # the offer is this page
+    rows = body["candidate_trail"]["candidates"]
+    selected = [r for r in rows if r["selected"]]
+    assert len(selected) == 1, rows
+    netloc = url.split("://", 1)[1].split("/", 1)[0]
+    assert (selected[0]["url"], selected[0]["host"]) == (url, netloc), selected
+    for text in (json.dumps(body["candidate_trail"]), line):
+        assert _USER not in text and _PASSWORD not in text, text
+
+    # Control: the same page without userinfo gives the same trail, byte for byte.
+    bare_body, bare_line = _discover(monkeypatch, caplog, "0", [(url, title)], make, **fields)
+    assert bare_body["candidate_trail"] == body["candidate_trail"]
+    assert bare_line == line
+
+
+@pytest.mark.parametrize("enabled", ["0", "1"])
+def test_an_offered_set_aside_page_returns_with_mains_fields(monkeypatch, caplog, enabled):
+    # #5935: the trail tags the offered set-aside page with the pass that found it,
+    # but the endpoint's candidate keeps main's fields, with no `pass` key.
+    url, title = _ASIDE
+    assert search_mod._score(url, title, "Siemens", _SIMATIC) == 0  # set aside
+    body, _ = _discover(
+        monkeypatch, caplog, enabled, [(url, title)], "Siemens", catalog_number=_SIMATIC
+    )
+    candidate = body["candidate"]
+    assert candidate["url"] == url and candidate["validated"] is False, candidate
+    expected = {"url", "title", "host", "score", "doc_type", "is_direct_pdf", "validated"}
+    if enabled == "1":
+        expected |= {"reason", "reason_detail", "judged_rejected"}
+    assert set(candidate) == expected, sorted(candidate)
+    trail = body["candidate_trail"]
+    selected = [r for r in trail["candidates"] if r["selected"]]
+    first = trail["queries"][0]["pass"].split()[0]  # every query returns the page
+    assert [(r["url"], r["read"], r["pass"]) for r in selected] == [(url, "unread", first)]
