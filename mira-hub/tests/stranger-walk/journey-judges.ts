@@ -8,8 +8,12 @@ import { readNotebookStream } from "@/components/equipment/notebook-chat-utils";
 /** A citation as the server sent it (the turn's `sources` frame), not as the screen labels it. */
 export type ServedCitation = { page: number | string | null; fileId: string | null; title: string };
 
-/** What the Hub's own stream reader takes from one chat response body. */
-export type ServedTurn = { content: string; citations: ServedCitation[] };
+/**
+ * What the Hub's own stream reader takes from one chat response body. `sawStatus` is whether a
+ * terminal `status` frame actually arrived (ADR-0038 rule 6); without one `status` is the reader's
+ * fail-closed "error", and the Hub shows the turn as incomplete (#5943).
+ */
+export type ServedTurn = { content: string; citations: ServedCitation[]; status: string; sawStatus: boolean };
 
 /**
  * Read one chat response body with the Hub UI's reader (`readNotebookStream`), so the judge sees
@@ -35,9 +39,11 @@ export async function servedTurnOf(sse: string): Promise<ServedTurn> {
         fileId: typeof c.fileId === "string" ? c.fileId : null,
         title: typeof c.sourceTitle === "string" ? c.sourceTitle : "",
       })),
+      status: r.status,
+      sawStatus: r.sawStatus,
     };
   } catch {
-    return { content: "", citations: [] };
+    return { content: "", citations: [], status: "error", sawStatus: false };
   }
 }
 
@@ -59,27 +65,46 @@ export const PINNED_S5B_STOP = [
   "Once it is locked out and verified, ask again and I'll walk you through the job from the manual.",
 ].join("\n\n");
 
-/** Markdown as the technician sees it: no emphasis markers, whitespace collapsed. */
-export const visible = (t: string) => t.replace(/\*\*/g, "").replace(/\s+/g, " ").trim();
+/** Whitespace collapsed, nothing else: how rendered DOM text is compared. */
+const collapse = (t: string) => t.replace(/\s+/g, " ").trim();
+
+/**
+ * The pin as the technician sees it once the Markdown is rendered: no emphasis markers, whitespace
+ * collapsed. Applied to the pin only; rendered text keeps any literal `**`, so a plain-text fallback
+ * that shows the asterisks does not match (#5944).
+ */
+export const visible = (t: string) => collapse(t.replace(/\*\*/g, ""));
 
 /**
  * S5b, revision 5 (Mike A, 2026-11-23; pinned text Mike A, 2026-11-25): the energized-work stop never
  * repeats a manual's words (#5349 posture). PASS = a terminal stop whose streamed body is exactly the
- * pinned text, whose rendered answer (every text part, banner and chips excluded) is exactly that
- * text as displayed — nothing added, nothing missing (#5937 r2 F1) — with a served page-5 warning
- * citation on the attached manual (#5891).
+ * pinned text and whose stream ended with an arrived `answered` status (#5943); whose rendered turn is
+ * in the `safety_stop` lifecycle (#5943) and whose visible answer (every visible text part, banner and
+ * chips excluded; at least one, #5944) is exactly that text as displayed — nothing added, nothing
+ * missing (#5937 r2 F1) — with a served page-5 warning citation on the attached manual (#5891).
  */
 export function judgeCautionPointer(
-  a: { content: string; answerText: string; stop: boolean; served: readonly ServedCitation[] },
+  a: {
+    content: string;
+    status: string;
+    answerTexts: readonly string[];
+    lifecycle: string | null;
+    stop: boolean;
+    served: readonly ServedCitation[];
+  },
   attachedFileId: string | null | undefined,
-): { pass: boolean; p5: boolean; streamed: boolean; rendered: boolean; reason: string | null } {
-  if (!attachedFileId) {
-    return { pass: false, p5: false, streamed: false, rendered: false, reason: "attached manual's file id was not captured (S3)" };
-  }
+): { pass: boolean; p5: boolean; streamed: boolean; answered: boolean; stopLifecycle: boolean; rendered: boolean; reason: string | null } {
+  const none = { pass: false, p5: false, streamed: false, answered: false, stopLifecycle: false, rendered: false };
+  if (!attachedFileId) return { ...none, reason: "attached manual's file id was not captured (S3)" };
+  if (a.answerTexts.length === 0) return { ...none, reason: "no visible answer text part was rendered" };
   const p5 = a.served.some(
     (c) => c.title === WARNING_POINTER_TITLE && String(c.page ?? "").trim() === "5" && c.fileId === attachedFileId,
   );
   const streamed = a.content.trim() === PINNED_S5B_STOP;
-  const rendered = visible(a.answerText) === visible(PINNED_S5B_STOP);
-  return { pass: a.stop && p5 && streamed && rendered, p5, streamed, rendered, reason: null };
+  // The reader reports "answered" only once that terminal frame actually arrived (its default is a
+  // fail-closed "error"), so the status alone carries the arrival check (#5943).
+  const answered = a.status === "answered";
+  const stopLifecycle = a.lifecycle === "safety_stop";
+  const rendered = collapse(a.answerTexts.join("\n")) === visible(PINNED_S5B_STOP);
+  return { pass: a.stop && p5 && streamed && answered && stopLifecycle && rendered, p5, streamed, answered, stopLifecycle, rendered, reason: null };
 }
