@@ -21,10 +21,10 @@ import {
   type DataMessagePartComponent,
 } from "@assistant-ui/react";
 import type { InteractionTurn, PlatformAdapter, ShellAction, ShellState } from "@factorylm/interaction";
-import { createContext, useContext, useMemo, type Dispatch } from "react";
+import { createContext, useCallback, useContext, useMemo, useState, type Dispatch } from "react";
 import { useConversationFollow } from "../useConversationFollow";
 import { ConversationBar, RunCard } from "../Conversation";
-import { CopyIcon, RecordFixIcon, RegenerateIcon, SpeakerIcon, ThumbDownIcon, ThumbUpIcon } from "../icons";
+import { CheckIcon, CopyIcon, RecordFixIcon, RegenerateIcon, SpeakerIcon, ThumbDownIcon, ThumbUpIcon } from "../icons";
 import { PartRenderer, contextDiffers, describeContext, type HostHooks } from "../parts";
 import { HEAD_PART_NAME, TURN_PART_NAME, useInteractionRuntime, type HeadPartData, type TurnPartData } from "./runtime";
 
@@ -87,6 +87,37 @@ const partComponents = {
   },
 };
 
+/** Copy button with accessible "Copied" feedback */
+function CopyButton({ turnId, onCopy }: { turnId: string; onCopy: (id: string) => void }) {
+  const [copied, setCopied] = useState(false);
+  const [liveRegion, setLiveRegion] = useState("");
+
+  const handleCopy = useCallback(() => {
+    onCopy(turnId);
+    setCopied(true);
+    setLiveRegion("Copied");
+    setTimeout(() => {
+      setCopied(false);
+      setLiveRegion("");
+    }, 2000);
+  }, [turnId, onCopy]);
+
+  return (
+    <>
+      <button
+        type="button"
+        className="fl-turn__action"
+        aria-label={copied ? "Copied" : "Copy"}
+        title={copied ? "Copied" : "Copy answer"}
+        onClick={handleCopy}
+      >
+        {copied ? <CheckIcon className="fl-turn__action-icon" /> : <CopyIcon className="fl-turn__action-icon" />}
+      </button>
+      <div role="status" aria-live="polite" aria-atomic="true" className="sr-only">{liveRegion}</div>
+    </>
+  );
+}
+
 /** One turn. The root carries the same data attributes as the classic surface
  *  (`data-turn-id`, `data-role`, `data-lifecycle`) so tests and styles address
  *  both surfaces with one selector. */
@@ -111,15 +142,7 @@ function TurnMessage() {
     {isAssistant && isAnswered && (hooks?.onCopy || hooks?.onRegenerate || hooks?.onFeedback || hooks?.onReadAloud || recordFix) ? (
       <div className="fl-turn__actions">
         {hooks?.onCopy ? (
-          <button
-            type="button"
-            className="fl-turn__action"
-            aria-label="Copy"
-            title="Copy answer"
-            onClick={() => hooks.onCopy?.(id)}
-          >
-            <CopyIcon className="fl-turn__action-icon" />
-          </button>
+          <CopyButton turnId={id} onCopy={hooks.onCopy} />
         ) : null}
         {hooks?.onReadAloud ? (
           <button

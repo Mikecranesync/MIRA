@@ -76,6 +76,10 @@ export function CopyIcon(props: IconProps) {
   return <svg aria-hidden="true" viewBox="0 0 16 16" focusable="false" {...props}><rect x="5.5" y="5.5" width="8" height="8" rx="1.5" {...STROKE} /><path d="M10.5 5.5v-2a1.5 1.5 0 0 0-1.5-1.5H4a1.5 1.5 0 0 0-1.5 1.5V9A1.5 1.5 0 0 0 4 10.5h1.5" {...STROKE} /></svg>;
 }
 
+export function CheckIcon(props: IconProps) {
+  return <svg aria-hidden="true" viewBox="0 0 16 16" focusable="false" {...props}><path d="m3 8 3 3 7-7" {...STROKE} /></svg>;
+}
+
 export function SpeakerIcon(props: IconProps) {
   return <svg aria-hidden="true" viewBox="0 0 16 16" focusable="false" {...props}><path d="M2.5 6h2.5l3.5-3v10l-3.5-3H2.5z" {...STROKE} /><path d="M11 5.5a3.5 3.5 0 0 1 0 5M12.8 3.5a6 6 0 0 1 0 9" {...STROKE} /></svg>;
 }
