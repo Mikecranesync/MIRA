@@ -2398,11 +2398,9 @@ async function handleChatTurn(
       setSpanAttrs({ "mira.persist.outcome": "ok", "mira.turn.row_id": judgeStopTurnRowId }, judgeStopPersistSpan);
       endTimed(judgeStopPersistSpan, "persist");
       endRoot();
-      return corsResponse(
-        new Response(
-          `data: ${JSON.stringify({ kind: "clear_session", sessionId: message })}\n\ndata: ${JSON.stringify({ kind: "text", text: QUESTION_JUDGE_BLANKET_REPLY })}\n\ndata: ${JSON.stringify({ kind: "done" })}\n\n`,
-          { status: 200, headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", "X-MIRA-Notebook-Chat": "v1" } },
-        ),
+      return new Response(
+        `data: ${JSON.stringify({ kind: "clear_session", sessionId: message })}\n\ndata: ${JSON.stringify({ kind: "text", text: QUESTION_JUDGE_BLANKET_REPLY })}\n\ndata: ${JSON.stringify({ kind: "done" })}\n\n`,
+        { status: 200, headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", "X-MIRA-Notebook-Chat": "v1" } },
       );
     }
   }
