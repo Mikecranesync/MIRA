@@ -1194,13 +1194,13 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
               {jobsError && <p role="alert">{jobsError}</p>}
               <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
                 <button
-                  type="button" style={GHOST_BUTTON_STYLE} onClick={() => setLibraryOpen(true)}
+                  type="button" style={GHOST_BUTTON_STYLE} onClick={() => { setLibraryOpen(true); setShiftReportOpen(false); }}
                   data-testid="living-sheet-open-job-sheets"
                 >
                   Job sheets
                 </button>
                 <button
-                  type="button" style={GHOST_BUTTON_STYLE} onClick={() => setShiftReportOpen(true)}
+                  type="button" style={GHOST_BUTTON_STYLE} onClick={() => { setShiftReportOpen(true); setLibraryOpen(false); }}
                   data-testid="living-sheet-open-shift-report"
                 >
                   Shift report
