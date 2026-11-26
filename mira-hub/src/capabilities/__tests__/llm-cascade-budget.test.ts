@@ -320,3 +320,25 @@ describe("#6022 F5 — every contacted attempt reaches the caller", () => {
     expect(await cascadeComplete(MESSAGES, { providers: [OPENAI, GROQ], maxTokens: 300 })).toBeNull();
   });
 });
+
+/** Round 2 (review r1, mutation CM1): the non-object-JSON 200 report. */
+describe("R1-C3 CM1 — a 200 whose JSON is not an object is reported as billed with unknown usage", () => {
+  beforeEach(() => {
+    delete process.env.OPENAI_RUN_BUDGET_USD;
+    resetOpenAiRunBudgetForTests();
+  });
+  const GROQ = { name: "Groq", url: "https://api.groq.com/openai/v1/chat/completions", key: "k", model: "m-Groq" };
+
+  it("a 200 with the JSON literal null: one attempt, billed true, usage null, and the cascade returns null", async () => {
+    const fetchMock = vi.fn(async () => new Response("null", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const seen: Array<{ provider: string; billed: boolean; usage: unknown }> = [];
+    const r = await cascadeComplete(MESSAGES, {
+      providers: [GROQ],
+      onAttempt: (a) => seen.push({ provider: a.provider, billed: a.billed, usage: a.usage }),
+    } as Parameters<typeof cascadeComplete>[1]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(r).toBeNull();
+    expect(seen).toEqual([{ provider: "Groq", billed: true, usage: null }]);
+  });
+});

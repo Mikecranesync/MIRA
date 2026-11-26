@@ -70,6 +70,7 @@ vi.mock("@/lib/visual-evidence-context", async (importOriginal) => ({
 import { BASE_SYSTEM_PROMPT, POST } from "@/app/api/equipment-notebooks/[id]/chat/route";
 import { detectPromptLeak } from "@/capabilities/prompt-leak-guard";
 import { resetOpenAiRunBudgetForTests } from "@/capabilities/openai-run-budget";
+import { resetProviderHealthForTests } from "@/capabilities/provider-health";
 
 const NB = "22222222-2222-4222-8222-222222222222";
 import { SAFETY_STOP, notebookSafetyTrigger } from "@/lib/safety-classifier";
@@ -138,6 +139,21 @@ function answerStream(text: string, out = 7): Response {
   );
 }
 
+/** Round 2: draft 1's stream with its completion_tokens written as raw JSON text. */
+function answerStreamRawCount(text: string, rawOut: string): Response {
+  const usage = `data: {"choices":[],"usage":{"prompt_tokens":12,"completion_tokens":${rawOut}}}\n\n`;
+  const parts = [...text.split(" ").map((w, i, all) => delta(i < all.length - 1 ? w + " " : w)), STOP, usage, "data: [DONE]\n\n"];
+  return new Response(
+    new ReadableStream<Uint8Array>({
+      start(c) {
+        for (const ch of parts) c.enqueue(enc.encode(ch));
+        c.close();
+      },
+    }),
+    { status: 200 },
+  );
+}
+
 const verdict = (v: string, cls = "pressure") => JSON.stringify({ verdict: v, hazard_class: cls, reason: "r" });
 type Redraft = string | "http500";
 
@@ -150,6 +166,11 @@ type StubOpts = {
   finish?: string | null;
   /** Draft 1's reported completion tokens (default 7). */
   draft1Output?: number;
+  /**
+   * Round 2: draft 1's completion_tokens as raw JSON text (e.g. `"7"` or `1e400`), for
+   * malformed counts JSON.stringify cannot write (NaN/Infinity become null). Overrides draft1Output.
+   */
+  draft1OutputRaw?: string;
   /** Redraft requests to a URL containing this fail with 500 (the next provider serves). */
   failRedraftAt?: string;
   /** Runs when the second judge call arrives, before it answers. */
@@ -180,7 +201,8 @@ function stubFetch(redraft: Redraft, judgeVerdicts: string[], o: StubOpts = {}) 
   const redraftUrls: string[] = [];
   const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
     const body = typeof init?.body === "string" ? init.body : "";
-    if (body.includes('"stream":true')) return answerStream(DRAFT1, o.draft1Output);
+    if (body.includes('"stream":true'))
+      return o.draft1OutputRaw === undefined ? answerStream(DRAFT1, o.draft1Output) : answerStreamRawCount(DRAFT1, o.draft1OutputRaw);
     if (body.includes("candidate_answer")) {
       const content = judgeVerdicts[judgeBodies.length] ?? "not a verdict";
       judgeBodies.push(body);
@@ -939,5 +961,431 @@ describe("#6023 F6-b — a redraft that generated but was not served is recorded
     const r = await run(Q_PLAIN);
     expect(r.outcome.semantic_redraft).toBe("stopped_check");
     expect(redraftAttempts(r.gen)).toEqual([["OpenAI", NOT_SERVED]]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Round 2 (review r1 of b9b14e739): R1-C1 .. R1-C6 and the round-1 open risks.
+// ---------------------------------------------------------------------------
+
+/**
+ * Round-2 proposed packet outcome names (the implementer adopts them or changes them
+ * here, in one place):
+ *  - DRAFT1_REPLACED: draft 1's attempt on a turn where a redraft replaced it and was
+ *    served. Draft 1 generated text the turn did not serve, so the existing
+ *    "generated_not_served" value; exactly one attempt is then "served" (R1-C6).
+ *  - BILLED_EMPTY: a redraft attempt that answered 200 with KNOWN usage and produced
+ *    no text: billed, so never the unbilled rejection's "http_error" (R1-C6).
+ *  - USAGE_UNKNOWN: a billed attempt whose usage is unknown (timeout, unreadable body,
+ *    a 200 with no usage block, or a malformed count): "exception", as round 1 records a
+ *    timeout today. tools/qa/retrieval_acceptance.py keys on this value to accept NULL
+ *    packet token totals (R1-C5), so the two halves must agree.
+ */
+const DRAFT1_REPLACED = "generated_not_served";
+const BILLED_EMPTY = "empty_completion";
+const USAGE_UNKNOWN = "exception";
+const UNBILLED_REJECTION = "http_error";
+/** Every attempt, in order: [provider, outcome, is a redraft attempt]. */
+const allAttempts = (g: PacketGeneration) => g.attempts.map((a) => [a.provider, a.outcome, a[REDRAFT_MARKER] === true]);
+const servedRedraftRouteReason = (g: PacketGeneration) =>
+  g.attempts.filter((a) => a[REDRAFT_MARKER] === true && a.outcome === "served").map((a) => a.route_reason);
+
+/** Wraps the stubbed fetch: draft-1 (streaming) requests to a host containing `hostSub` get `status` instead of a stream. */
+function failDraft1At(hostSub: string, status: number) {
+  const inner = globalThis.fetch as unknown as (u: string | URL | Request, i?: RequestInit) => Promise<Response>;
+  const draft1Hosts: string[] = [];
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      const body = typeof init?.body === "string" ? init.body : "";
+      if (body.includes('"stream":true')) {
+        draft1Hosts.push(hostOf(String(url)));
+        if (String(url).includes(hostSub)) return new Response("no", { status });
+      }
+      return inner(url, init);
+    }),
+  );
+  return { draft1Hosts };
+}
+
+describe("R1-C1 — a fallback-served redraft records the providers the redraft passed over, however they were passed over", () => {
+  beforeEach(() => {
+    process.env.MIRA_TURN_MAX_OUTPUT_TOKENS = "4000";
+    process.env.MIRA_PROVIDER_UNHEALTHY_S = "300";
+    process.env.GROQ_API_KEY = "g0";
+    resetProviderHealthForTests();
+  });
+  afterEach(() => resetProviderHealthForTests());
+  const ledger = (r: Awaited<ReturnType<typeof run>>) => [r.usage.provider, r.usage.routeReason, r.usage.attempted];
+
+  it("OpenAI quarantined by draft 1's 401: the Groq redraft is stored as fallback:OpenAI, attempted [OpenAI]", async () => {
+    const { redraftUrls } = stubFetch(REDRAFT, [verdict("unsafe"), verdict("safe", "none")]);
+    const { draft1Hosts } = failDraft1At("api.openai.com", 401);
+    const r = await run(Q_PLAIN);
+    // Preconditions: draft 1 fell over to Groq on the 401; the redraft never asked OpenAI.
+    expect(draft1Hosts).toEqual(["api.openai.com", "api.groq.com"]);
+    expect(redraftUrls.map(hostOf)).toEqual(["api.groq.com"]);
+    expect(r.outcome.semantic_redraft).toBe("served");
+    expect(ledger(r)).toEqual(["Groq", "fallback:OpenAI", ["OpenAI"]]);
+  });
+
+  it("OpenAI quarantined by draft 1's 401: the packet's served redraft attempt carries route_reason fallback:OpenAI", async () => {
+    stubFetch(REDRAFT, [verdict("unsafe"), verdict("safe", "none")]);
+    failDraft1At("api.openai.com", 401);
+    const r = await run(Q_PLAIN);
+    expect(r.outcome.semantic_redraft).toBe("served");
+    expect(servedRedraftRouteReason(r.gen)).toEqual(["fallback:OpenAI"]);
+  });
+
+  it("OpenAI refused by the run budget: the Groq redraft is stored as fallback:OpenAI, attempted [OpenAI]", async () => {
+    process.env.OPENAI_RUN_BUDGET_USD = "0.0000001";
+    resetOpenAiRunBudgetForTests();
+    const fetched: string[] = [];
+    const { redraftUrls } = stubFetch(REDRAFT, [verdict("unsafe"), verdict("safe", "none")]);
+    const inner = globalThis.fetch as unknown as (u: string | URL | Request, i?: RequestInit) => Promise<Response>;
+    vi.stubGlobal("fetch", vi.fn(async (url: string | URL | Request, init?: RequestInit) => (fetched.push(hostOf(String(url))), inner(url, init))));
+    const r = await run(Q_PLAIN);
+    // Precondition: the budget refused OpenAI before every fetch, so nothing reached it.
+    expect(fetched).not.toContain("api.openai.com");
+    expect(redraftUrls.map(hostOf)).toEqual(["api.groq.com"]);
+    expect(r.outcome.semantic_redraft).toBe("served");
+    expect(ledger(r)).toEqual(["Groq", "fallback:OpenAI", ["OpenAI"]]);
+  });
+
+  it("ordered: OpenAI quarantined, Groq rejects the redraft with 500, Cerebras serves: fallback:OpenAI,Groq, attempted [OpenAI, Groq]", async () => {
+    process.env.CEREBRAS_API_KEY = "c0";
+    const { redraftUrls } = stubFetch(REDRAFT, [verdict("unsafe"), verdict("safe", "none")], {
+      byHost: { groq: { status: 500 }, cerebras: { content: REDRAFT, usage: { prompt_tokens: 50, completion_tokens: 20 } } },
+    });
+    failDraft1At("api.openai.com", 401);
+    const r = await run(Q_PLAIN);
+    expect(redraftUrls.map(hostOf)).toEqual(["api.groq.com", "api.cerebras.ai"]);
+    expect(r.outcome.semantic_redraft).toBe("served");
+    expect(ledger(r)).toEqual(["Cerebras", "fallback:OpenAI,Groq", ["OpenAI", "Groq"]]);
+  });
+
+  it("control: OpenAI times out on the redraft, Groq serves: fallback:OpenAI, attempted [OpenAI]", async () => {
+    const { redraftUrls } = stubFetch(REDRAFT, [verdict("unsafe"), verdict("safe", "none")], {
+      byHost: { "api.openai.com": { throws: true }, groq: { content: REDRAFT, usage: { prompt_tokens: 50, completion_tokens: 20 } } },
+    });
+    const r = await run(Q_PLAIN);
+    expect(redraftUrls.map(hostOf)).toEqual(["api.openai.com", "api.groq.com"]);
+    expect(r.outcome.semantic_redraft).toBe("served");
+    expect(ledger(r)).toEqual(["Groq", "fallback:OpenAI", ["OpenAI"]]);
+  });
+
+  it("control: OpenAI answers a billed empty 200 on the redraft, Groq serves: fallback:OpenAI, attempted [OpenAI]", async () => {
+    const { redraftUrls } = stubFetch(REDRAFT, [verdict("unsafe"), verdict("safe", "none")], {
+      byHost: {
+        "api.openai.com": { content: "", usage: { prompt_tokens: 50, completion_tokens: 30 } },
+        groq: { content: REDRAFT, usage: { prompt_tokens: 50, completion_tokens: 20 } },
+      },
+    });
+    const r = await run(Q_PLAIN);
+    expect(redraftUrls.map(hostOf)).toEqual(["api.openai.com", "api.groq.com"]);
+    expect(r.outcome.semantic_redraft).toBe("served");
+    expect(ledger(r)).toEqual(["Groq", "fallback:OpenAI", ["OpenAI"]]);
+  });
+
+  it("control: draft 1 fell back to Groq on a 500 (no quarantine) and OpenAI serves the redraft: primary, attempted []", async () => {
+    const { redraftUrls } = stubFetch(REDRAFT, [verdict("unsafe"), verdict("safe", "none")]);
+    const { draft1Hosts } = failDraft1At("api.openai.com", 500);
+    const r = await run(Q_PLAIN);
+    // Precondition: draft 1's own list was [OpenAI]; the redraft must not inherit it.
+    expect(draft1Hosts).toEqual(["api.openai.com", "api.groq.com"]);
+    expect(redraftUrls.map(hostOf)).toEqual(["api.openai.com"]);
+    expect(r.outcome.semantic_redraft).toBe("served");
+    expect(ledger(r)).toEqual(["OpenAI", "primary", []]);
+  });
+});
+
+describe("R1-C2 — a malformed draft-1 count makes the whole-turn total unknown (NULL), never a number", () => {
+  beforeEach(() => {
+    // Loose ceiling: a malformed draft-1 count books the whole request cap and the redraft still runs.
+    process.env.MIRA_TURN_MAX_OUTPUT_TOKENS = "4000";
+  });
+  const totals = (r: Awaited<ReturnType<typeof run>>) => ({
+    ledger: [r.usage.inputTokens, r.usage.outputTokens],
+    packet: [r.gen.input_tokens, r.gen.output_tokens],
+  });
+
+  it("draft 1 reports -5, the redraft is judged unsafe (stop): output total NULL in the ledger and the packet", async () => {
+    const { redraftBodies } = stubFetch(REDRAFT, [verdict("unsafe"), verdict("unsafe")], { draft1Output: -5 });
+    const r = await run(Q_PLAIN);
+    expect(redraftBodies).toHaveLength(1);
+    expect(r.outcome.semantic_redraft).toBe("stopped_judge_unsafe");
+    expect(totals(r)).toEqual({ ledger: [12 + 50, null], packet: [12 + 50, null] });
+  });
+
+  it("draft 1 reports -50, the redraft is served: output total NULL in the ledger and the packet", async () => {
+    stubFetch(REDRAFT, [verdict("unsafe"), verdict("safe", "none")], { draft1Output: -50 });
+    const r = await run(Q_PLAIN);
+    expect(r.outcome.semantic_redraft).toBe("served");
+    expect(totals(r)).toEqual({ ledger: [12 + 50, null], packet: [12 + 50, null] });
+  });
+
+  it("draft 1 reports a non-number count (\"7\"), the redraft is judged unsafe: output total NULL", async () => {
+    stubFetch(REDRAFT, [verdict("unsafe"), verdict("unsafe")], { draft1OutputRaw: '"7"' });
+    const r = await run(Q_PLAIN);
+    expect(r.outcome.semantic_redraft).toBe("stopped_judge_unsafe");
+    expect(totals(r)).toEqual({ ledger: [12 + 50, null], packet: [12 + 50, null] });
+  });
+
+  it("draft 1 reports a non-finite count (1e400), the redraft is judged unsafe: output total NULL", async () => {
+    stubFetch(REDRAFT, [verdict("unsafe"), verdict("unsafe")], { draft1OutputRaw: "1e400" });
+    const r = await run(Q_PLAIN);
+    expect(r.outcome.semantic_redraft).toBe("stopped_judge_unsafe");
+    expect(totals(r)).toEqual({ ledger: [12 + 50, null], packet: [12 + 50, null] });
+  });
+
+  it("control: draft 1 reports 7, the redraft is judged unsafe: both totals are the known sums", async () => {
+    stubFetch(REDRAFT, [verdict("unsafe"), verdict("unsafe")], { draft1Output: 7 });
+    const r = await run(Q_PLAIN);
+    expect(r.outcome.semantic_redraft).toBe("stopped_judge_unsafe");
+    expect(totals(r)).toEqual({ ledger: [12 + 50, 7 + 20], packet: [12 + 50, 7 + 20] });
+  });
+});
+
+describe("R1-C4 — a malformed cached_tokens count on a redraft attempt is unknown, never stored", () => {
+  beforeEach(() => {
+    process.env.MIRA_TURN_MAX_OUTPUT_TOKENS = "4000";
+  });
+  const withCached = (cached: unknown) =>
+    stubFetch(REDRAFT, [verdict("unsafe"), verdict("safe", "none")], {
+      byHost: {
+        "api.openai.com": { content: REDRAFT, usage: { prompt_tokens: 50, completion_tokens: 20, prompt_tokens_details: { cached_tokens: cached } } },
+      },
+    });
+
+  it("cached_tokens -5 on the served redraft: cachedInputTokens NULL", async () => {
+    withCached(-5);
+    const r = await run(Q_PLAIN);
+    expect(r.outcome.semantic_redraft).toBe("served");
+    expect(r.usage.cachedInputTokens).toBeNull();
+  });
+
+  it("cached_tokens \"7\" (a string) on the served redraft: cachedInputTokens NULL, never the string \"07\"", async () => {
+    withCached("7");
+    const r = await run(Q_PLAIN);
+    expect(r.outcome.semantic_redraft).toBe("served");
+    expect(r.usage.cachedInputTokens).toBeNull();
+  });
+
+  it("control: cached_tokens 5 on the served redraft is stored as 5", async () => {
+    withCached(5);
+    const r = await run(Q_PLAIN);
+    expect(r.outcome.semantic_redraft).toBe("served");
+    expect(r.usage.cachedInputTokens).toBe(5);
+  });
+});
+
+describe("R1-C6 — exactly one attempt is served, and a billed empty completion is not an unbilled rejection", () => {
+  beforeEach(() => {
+    process.env.MIRA_TURN_MAX_OUTPUT_TOKENS = "4000";
+  });
+
+  it("a redraft served by the same provider: draft 1's attempt is DRAFT1_REPLACED and only the redraft's is served", async () => {
+    stubFetch(REDRAFT, [verdict("unsafe"), verdict("safe", "none")]);
+    const r = await run(Q_PLAIN);
+    expect(r.outcome.semantic_redraft).toBe("served");
+    expect(allAttempts(r.gen)).toEqual([
+      ["OpenAI", DRAFT1_REPLACED, false],
+      ["OpenAI", "served", true],
+    ]);
+  });
+
+  it("a redraft served by Groq after an unbilled 500: one served attempt, the redraft's, and served_provider Groq", async () => {
+    process.env.GROQ_API_KEY = "g0";
+    stubFetch(REDRAFT, [verdict("unsafe"), verdict("safe", "none")], {
+      byHost: { "api.openai.com": { status: 500 }, groq: { content: REDRAFT, usage: { prompt_tokens: 50, completion_tokens: 20 } } },
+    });
+    const r = await run(Q_PLAIN);
+    expect(allAttempts(r.gen)).toEqual([
+      ["OpenAI", DRAFT1_REPLACED, false],
+      ["OpenAI", UNBILLED_REJECTION, true],
+      ["Groq", "served", true],
+    ]);
+    expect(r.gen.served_provider).toBe("Groq");
+  });
+
+  it("control: a redraft judged unsafe leaves draft 1's attempt the only served one", async () => {
+    stubFetch(REDRAFT, [verdict("unsafe"), verdict("unsafe")]);
+    const r = await run(Q_PLAIN);
+    expect(r.outcome.semantic_redraft).toBe("stopped_judge_unsafe");
+    expect(allAttempts(r.gen)).toEqual([
+      ["OpenAI", "served", false],
+      ["OpenAI", NOT_SERVED, true],
+    ]);
+  });
+
+  it("a billed empty 200 with known usage, then Groq serves: the empty attempt is BILLED_EMPTY, not http_error", async () => {
+    process.env.GROQ_API_KEY = "g0";
+    stubFetch(REDRAFT, [verdict("unsafe"), verdict("safe", "none")], {
+      byHost: {
+        "api.openai.com": { content: "", usage: { prompt_tokens: 50, completion_tokens: 30 } },
+        groq: { content: REDRAFT, usage: { prompt_tokens: 50, completion_tokens: 20 } },
+      },
+    });
+    const r = await run(Q_PLAIN);
+    expect(r.outcome.semantic_redraft).toBe("served");
+    expect(redraftAttempts(r.gen)).toEqual([
+      ["OpenAI", BILLED_EMPTY],
+      ["Groq", "served"],
+    ]);
+  });
+
+  it("control: an unbilled HTTP 500, then Groq serves: the rejection is http_error", async () => {
+    process.env.GROQ_API_KEY = "g0";
+    stubFetch(REDRAFT, [verdict("unsafe"), verdict("safe", "none")], {
+      byHost: { "api.openai.com": { status: 500 }, groq: { content: REDRAFT, usage: { prompt_tokens: 50, completion_tokens: 20 } } },
+    });
+    const r = await run(Q_PLAIN);
+    expect(redraftAttempts(r.gen)).toEqual([
+      ["OpenAI", UNBILLED_REJECTION],
+      ["Groq", "served"],
+    ]);
+  });
+
+  it("a billed attempt with a malformed count (-1000), then Groq serves: the attempt's usage is unknown (USAGE_UNKNOWN), matching the NULL total", async () => {
+    process.env.GROQ_API_KEY = "g0";
+    stubFetch(REDRAFT, [verdict("unsafe"), verdict("safe", "none")], {
+      byHost: {
+        "api.openai.com": { content: "", usage: { prompt_tokens: 50, completion_tokens: -1000 } },
+        groq: { content: REDRAFT, usage: { prompt_tokens: 50, completion_tokens: 20 } },
+      },
+    });
+    const r = await run(Q_PLAIN);
+    expect(r.usage.outputTokens).toBeNull();
+    expect(redraftAttempts(r.gen)).toEqual([
+      ["OpenAI", USAGE_UNKNOWN],
+      ["Groq", "served"],
+    ]);
+  });
+});
+
+describe("R1-C3 — one test per mutation the r1 review found surviving", () => {
+  beforeEach(() => {
+    process.env.GROQ_API_KEY = "g0";
+  });
+
+  it("M1 (spent = instead of +=): 600 ceiling, 200-token draft 1, billed empty 150-token first redraft: no backup request", async () => {
+    process.env.MIRA_TURN_MAX_OUTPUT_TOKENS = "600";
+    const { redraftUrls, redraftBodies } = stubFetch(REDRAFT, [verdict("unsafe"), verdict("safe", "none")], {
+      draft1Output: 200,
+      byHost: {
+        "api.openai.com": { content: "", usage: { prompt_tokens: 50, completion_tokens: 150 } },
+        groq: { content: REDRAFT, usage: { prompt_tokens: 50, completion_tokens: 20 } },
+      },
+    });
+    const r = await run(Q_PLAIN);
+    // 600 - 200 - 150 = 250 < 256: the held allowance leaves nothing for a backup.
+    expect(redraftUrls.map((u, i) => [hostOf(u), capOf(redraftBodies[i])])).toEqual([["api.openai.com", 400]]);
+    expect(r.streamed).toBe(SAFETY_STOP);
+  });
+
+  it("M2 (redraft counts summed unsanitised): a -1000 output count on a billed first redraft makes the output total NULL", async () => {
+    process.env.MIRA_TURN_MAX_OUTPUT_TOKENS = "4000";
+    stubFetch(REDRAFT, [verdict("unsafe"), verdict("safe", "none")], {
+      byHost: {
+        "api.openai.com": { content: "", usage: { prompt_tokens: 50, completion_tokens: -1000 } },
+        groq: { content: REDRAFT, usage: { prompt_tokens: 50, completion_tokens: 20 } },
+      },
+    });
+    const r = await run(Q_PLAIN);
+    expect(r.outcome.semantic_redraft).toBe("served");
+    expect([r.usage.inputTokens, r.usage.outputTokens]).toEqual([12 + 50 + 50, null]);
+  });
+
+  it("M3 (exception folded into http_error): a timed-out redraft attempt is recorded USAGE_UNKNOWN", async () => {
+    process.env.MIRA_TURN_MAX_OUTPUT_TOKENS = "4000";
+    stubFetch(REDRAFT, [verdict("unsafe"), verdict("safe", "none")], {
+      byHost: { "api.openai.com": { throws: true }, groq: { content: REDRAFT, usage: { prompt_tokens: 50, completion_tokens: 20 } } },
+    });
+    const r = await run(Q_PLAIN);
+    expect(r.outcome.semantic_redraft).toBe("served");
+    expect(redraftAttempts(r.gen)).toEqual([
+      ["OpenAI", USAGE_UNKNOWN],
+      ["Groq", "served"],
+    ]);
+  });
+
+  it("M6 (redraft route_reason dropped): each redraft attempt in the packet carries its own route reason", async () => {
+    process.env.MIRA_TURN_MAX_OUTPUT_TOKENS = "4000";
+    stubFetch(REDRAFT, [verdict("unsafe"), verdict("safe", "none")], {
+      byHost: { "api.openai.com": { status: 500 }, groq: { content: REDRAFT, usage: { prompt_tokens: 50, completion_tokens: 20 } } },
+    });
+    const r = await run(Q_PLAIN);
+    expect(r.gen.attempts.filter((a) => a[REDRAFT_MARKER] === true).map((a) => [a.provider, a.route_reason])).toEqual([
+      ["OpenAI", "primary"],
+      ["Groq", "fallback:OpenAI"],
+    ]);
+  });
+
+  describe("M4 (billed non-generating attempts dropped from the late-Stop usage)", () => {
+    beforeEach(() => {
+      process.env.MIRA_TURN_MAX_OUTPUT_TOKENS = "4000";
+    });
+    function holdCitedPageRead() {
+      let release!: () => void;
+      let entered!: () => void;
+      const reached = new Promise<void>((res) => (entered = res));
+      const gate = new Promise<void>((res) => (release = res));
+      ragMock.retrieveNodeChunks.mockResolvedValue([{ ...chunks[0], sourceUrl: "nb://HP200.pdf", sourcePage: 41 }] as never);
+      ragMock.retrieveCitedPageChunks.mockImplementation(async () => {
+        entered();
+        await gate;
+        return [] as never;
+      });
+      return { reached, release };
+    }
+
+    it("billed empty OpenAI redraft, Groq redraft served, late Stop: the ledger keeps all three generations under draft 1", async () => {
+      const ac = new AbortController();
+      const { judgeBodies } = stubFetch(REDRAFT, [verdict("unsafe"), verdict("safe", "none")], {
+        byHost: {
+          "api.openai.com": { content: "", usage: { prompt_tokens: 50, completion_tokens: 30 } },
+          groq: { content: REDRAFT, usage: { prompt_tokens: 50, completion_tokens: 20 } },
+        },
+      });
+      const hold = holdCitedPageRead();
+      const pending = run(Q_PLAIN, ac.signal);
+      await hold.reached;
+      // Precondition: the redraft passed its judge before the Stop (the late-Stop window).
+      expect(judgeBodies).toHaveLength(2);
+      ac.abort();
+      hold.release();
+      const r = await pending;
+      expect(r.outcome.semantic_redraft).toBe("stopped_aborted");
+      expect([r.usage.provider, r.usage.inputTokens, r.usage.outputTokens]).toEqual(["OpenAI", 12 + 50 + 50, 7 + 30 + 20]);
+    });
+  });
+});
+
+describe("round-1 open risks, pinned", () => {
+  beforeEach(() => {
+    process.env.MIRA_TURN_MAX_OUTPUT_TOKENS = "4000";
+  });
+
+  it("an empty 200 with no usage block on the only redraft attempt: totals NULL and the attempt USAGE_UNKNOWN", async () => {
+    stubFetch(REDRAFT, [verdict("unsafe"), verdict("safe", "none")], { byHost: { "api.openai.com": { content: "" } } });
+    const r = await run(Q_PLAIN);
+    expect(r.outcome.semantic_redraft).toBe("stopped_generation");
+    expect([r.usage.inputTokens, r.usage.outputTokens]).toEqual([null, null]);
+    expect(redraftAttempts(r.gen)).toEqual([["OpenAI", USAGE_UNKNOWN]]);
+  });
+
+  it("the allowance runs out after a billed attempt: the redraft outcome is stopped_generation, not stopped_turn_cap", async () => {
+    process.env.MIRA_TURN_MAX_OUTPUT_TOKENS = "500";
+    process.env.GROQ_API_KEY = "g0";
+    const { redraftUrls } = stubFetch(REDRAFT, [verdict("unsafe"), verdict("safe", "none")], {
+      draft1Output: 200,
+      byHost: {
+        "api.openai.com": { content: "", usage: { prompt_tokens: 50, completion_tokens: 300 } },
+        groq: { content: REDRAFT, usage: { prompt_tokens: 50, completion_tokens: 20 } },
+      },
+    });
+    const r = await run(Q_PLAIN);
+    expect(redraftUrls.map(hostOf)).toEqual(["api.openai.com"]);
+    expect(r.outcome.semantic_redraft).toBe("stopped_generation");
   });
 });

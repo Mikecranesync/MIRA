@@ -116,3 +116,101 @@ def test_an_unsampled_turn_that_still_sends_a_trace_frame_fails():
     d, w = _healthy(None)
     w["kinds"] = ["trace"] + w["kinds"]
     assert not _run(None, d, w).passed
+
+
+# --- R1-C5 (review r1 of PR C, #6022/#6023): unknown token totals ---------------
+#
+# The route writes NULL packet token totals when a billed generation attempt's usage
+# is unknown. The packet marks such an attempt with outcome "exception" (the
+# USAGE_UNKNOWN constant pinned in
+# mira-hub/src/capabilities/__tests__/semantic-redraft.route.test.ts; the two must
+# agree). The reader accepts NULL totals ONLY when the packet shows such an attempt;
+# otherwise an answered turn still needs integer counts.
+
+USAGE_UNKNOWN = "exception"
+
+
+def _answered_redraft_turn(attempts, input_tokens, output_tokens):
+    d, w = _healthy(TRACE)
+    g = d["packet"]["generation"]
+    g["attempts"] = attempts
+    g["input_tokens"] = input_tokens
+    g["output_tokens"] = output_tokens
+    return d, w
+
+
+def _failed(row):
+    return [c[0] for c in row.checks if not c[1]]
+
+
+def test_null_totals_pass_when_the_packet_shows_a_billed_attempt_with_unknown_usage():
+    d, w = _answered_redraft_turn(
+        [
+            {"provider": "OpenAI", "outcome": "served"},
+            {"provider": "OpenAI", "outcome": USAGE_UNKNOWN, "redraft": True},
+            {"provider": "Groq", "outcome": "served", "redraft": True},
+        ],
+        None,
+        None,
+    )
+    assert w["status"] == "answered"
+    row = _run(TRACE, d, w)
+    assert _failed(row) == []
+
+
+def test_control_null_totals_fail_when_no_attempt_has_unknown_usage():
+    d, w = _answered_redraft_turn(
+        [
+            {"provider": "OpenAI", "outcome": "served"},
+            {"provider": "Groq", "outcome": "served", "redraft": True},
+        ],
+        None,
+        None,
+    )
+    assert _failed(_run(TRACE, d, w)) == ["token usage recorded"]
+
+
+def test_control_null_totals_fail_when_the_only_failed_attempt_was_an_unbilled_rejection():
+    d, w = _answered_redraft_turn(
+        [
+            {"provider": "OpenAI", "outcome": "served"},
+            {"provider": "OpenAI", "outcome": "http_error", "redraft": True},
+            {"provider": "Groq", "outcome": "served", "redraft": True},
+        ],
+        None,
+        None,
+    )
+    assert _failed(_run(TRACE, d, w)) == ["token usage recorded"]
+
+
+def test_control_null_totals_fail_when_the_packet_has_no_attempts_list():
+    d, w = _healthy(TRACE)
+    d["packet"]["generation"]["input_tokens"] = None
+    d["packet"]["generation"]["output_tokens"] = None
+    assert "attempts" not in d["packet"]["generation"]
+    assert _failed(_run(TRACE, d, w)) == ["token usage recorded"]
+
+
+def test_control_integer_totals_with_an_unknown_usage_attempt_still_pass():
+    d, w = _answered_redraft_turn(
+        [
+            {"provider": "OpenAI", "outcome": "served"},
+            {"provider": "OpenAI", "outcome": USAGE_UNKNOWN, "redraft": True},
+        ],
+        62,
+        27,
+    )
+    assert _failed(_run(TRACE, d, w)) == []
+
+
+def test_control_a_non_integer_total_fails_even_with_an_unknown_usage_attempt():
+    # Unknown means NULL; a float or string count is malformed, not unknown.
+    d, w = _answered_redraft_turn(
+        [
+            {"provider": "OpenAI", "outcome": "served"},
+            {"provider": "OpenAI", "outcome": USAGE_UNKNOWN, "redraft": True},
+        ],
+        62,
+        "27",
+    )
+    assert _failed(_run(TRACE, d, w)) == ["token usage recorded"]
