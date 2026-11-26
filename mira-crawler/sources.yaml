@@ -218,6 +218,12 @@ tiers:
       format: pdf
       manufacturer: Siemens
       equipment_id: SINAMICS-G120-CU240
+      # model-bound retrieval filters on model_number with a whole-word match
+      # (manual-rag.ts buildScopeClauses): a notebook bound to "G120" matches this
+      # entry, and one bound to "G120C" matches only the G120C list above.
+      model_number: "SINAMICS G120"
+      # List Manual runs ~942 pages (F30011 is on p.906); past the 300-page parser default.
+      max_pages: 960
       crawl_pattern: direct
       description: "SINAMICS G120 CU240B-2/CU240E-2 List Manual (02/2023) — parameters, fault/alarm codes"
 
