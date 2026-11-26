@@ -354,6 +354,19 @@ function isStoredEnergyWork(text: string): boolean {
   return /\bbus[\s-]+overvoltage\b/.test(msg);
 }
 
+/** True when the answer states a plain isolation instruction or a verify-dead
+ *  statement anywhere, whether or not it directs hands-on work — the same
+ *  recognisers the banner logic uses (forbidden, skipped and conditional
+ *  isolations do not count). Used to keep the isolation banner on a
+ *  replacement answer (#5996 Codex r1 F2). */
+export function statesIsolation(answer: string): boolean {
+  for (const raw of stepTexts(answer || "")) {
+    const step = withoutRestores(withoutProhibitions(raw));
+    if (isolationInstructions(step).length > 0 || verifyDeadStatements(step).length > 0) return true;
+  }
+  return false;
+}
+
 /** True when the answer directs hands-on work (not a parameter edit). */
 export function directsHandsOnWork(answer: string): boolean {
   for (const raw of stepTexts(answer || "")) {

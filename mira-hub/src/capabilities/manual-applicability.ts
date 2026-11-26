@@ -157,9 +157,10 @@ export type UnlistedModelRefusal = {
   /** What the refused covers declare. Never a filename's number. */
   declared: string[];
   /** Whether the number came from the question, from the notebook's confirmed
-   *  machine, or from an earlier question of this conversation that was not
-   *  answered from a document (conversation-subject.ts). */
-  source: "question" | "notebook" | "conversation";
+   *  machine, from an earlier question of this conversation that was not
+   *  answered from a document (conversation-subject.ts), or from the photo sent
+   *  with this question (#5706). */
+  source: "question" | "notebook" | "conversation" | "photo";
   /** Set when every refused document is a photo reading the product wrote, not a manual. */
   reading?: true;
 };
@@ -246,6 +247,15 @@ function withWrittenReading(text: string, read: (runs: NumberRun[]) => ModelNumb
   return [...folded, ...read(numberRuns(text, text)).filter((n) => !keys.has(n.key))];
 }
 
+/** A label's comparison form: its letters and digits, whatever hyphens it was written with. */
+const keyOfLabel = (label: string) => label.replace(/[^A-Za-z0-9]/g, "").toUpperCase();
+/** One label per identity: "2080-LC20-20QWB" and "2080\u201120LC..." spellings of one number count once. */
+const distinctLabels = (labels: string[]) => {
+  const seen = new Set<string>();
+  return labels.filter((l) => !seen.has(keyOfLabel(l)) && seen.add(keyOfLabel(l)));
+};
+const UNICODE_HYPHEN_RE = /[\u2010-\u2015\u2212\uFE58\uFE63\uFF0D]/;
+
 const layoutOf = (key: string) => key.replace(/[A-Z]+/g, "A").replace(/\d+/g, "D");
 const leadOf = (key: string) => /^(?:[A-Z]+|\d+)/.exec(key)![0];
 
@@ -317,7 +327,7 @@ export function isFaultOrDisplayCode(n: ModelNumber): boolean {
 /** The model numbers a text names that model-token.ts does NOT read. Whatever
  *  the detector reads is left to the existing check, whole: "GS11N-20P2" must
  *  not come back as a leftover "20P2". */
-export function unlistedModelNumbers(text: string): ModelNumber[] {
+function readUnlistedNumbers(text: string): ModelNumber[] {
   // UTF-16 units, not code points: the detector's positions and `text[i]` below
   // count units, and an emoji is two. Only letters, digits and hyphens are ever
   // blanked, so a surrogate pair is never split.
@@ -335,9 +345,60 @@ export function unlistedModelNumbers(text: string): ModelNumber[] {
   for (const m of view.matchAll(/\bGS\d{1,2}[a-z]?\s*-\s*[a-z0-9]+\b/gi)) blank(m.index, m.index + m[0].length);
   const seen = new Set<string>();
   const read = (runs: NumberRun[]) => runs.flatMap((run) => numberFrom(run.segments, run.raw) ?? []);
-  // Filter out fault codes, port names, registers, and display codes.
-  return withWrittenReading(chars.join(""), read).filter((n) => !isNotModelNumber(n) && !seen.has(n.key) && seen.add(n.key));
+  return withWrittenReading(chars.join(""), read).filter((n) => !seen.has(n.key) && seen.add(n.key));
 }
+
+/** The numbers a QUESTION names that are not a port, a register or a display
+ *  code. Fault codes are still returned (safety stops call them out); use
+ *  questionModelNumbers to decide which model a question is about. */
+export function unlistedModelNumbers(text: string): ModelNumber[] {
+  return readUnlistedNumbers(text).filter((n) => !isNotModelNumber(n));
+}
+
+/** A number read off the project's own RECORD (confirmed model, catalog number).
+ *  Nothing is filtered: a recorded model whose shape happens to look like a
+ *  display code or a port is still the machine's model. */
+export function recordModelNumbers(text: string): ModelNumber[] {
+  return readUnlistedNumbers(text);
+}
+
+// A word that names the token after it as something other than a model: a fault
+// is what the drive shows, a parameter or register is what is read or written,
+// a port is where a cable goes. "shows" / "reads" are NOT cues: "the plate
+// reads RX420" names a model.
+const NON_MODEL_CUE = String.raw`(?:fault|alarm|error|err|warning|trip(?:ped)?|param(?:eter)?s?|registers?|reg|address|ports?|(?:fault|error|alarm|status)\s+code)`;
+// Bare shapes that are a fault in every vendor's manuals: F + 4-5 digits (F0004,
+// F30001), Siemens-style alarm/safety codes (A09300, C01700, N12345: a letter and FIVE digits, or a
+// leading zero) and the two-letter drive trips (CE10, OC1, OL2). A1000 / C2000 are real drive models
+// (a letter and four digits, no leading zero) and are NOT here: only a cue turns those into a fault.
+const BARE_FAULT_RE = /^(?:F\d{4,5}|[ACN]\d{5}|[ACN]0\d{3,4}|(?:CE|OC|OL|OV|UV|OH|EF|GF|PF|LV|HF)\d{1,3})$/i;
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/** A bare trip-shaped token that the text itself calls a product ("the HF100 drive", "model HF100") is a model,
+ *  not a fault: the shape alone (letters + digits) cannot tell the two apart, the words around it can. */
+const PRODUCT_NOUN = "(?:drive|drives|vfd|inverter|controller|plc|unit|module|servo|relay|panel|hmi|series|model|converter)";
+function namedAsProduct(text: string, label: string): boolean {
+  const loose = escapeRe(label);
+  return new RegExp(`(?<![A-Za-z0-9])${loose}\\s+${PRODUCT_NOUN}\\b|\\b(?:model|type|part\\s*(?:no\\.?|number)|catalog(?:\\s*(?:no\\.?|number))?)\\s*[:#]?\\s*${loose}(?![A-Za-z0-9])`, "i").test(text);
+}
+
+/** A cue word sits right before this label in the text (one optional "no."/"#"/":" between). */
+function cuedAsNonModel(text: string, label: string): boolean {
+  const loose = label.split("-").map(escapeRe).join("[-\\u2010-\\u2015\\u2212]?\\s*");
+  return new RegExp(`\\b${NON_MODEL_CUE}\\s*[:#=]?\\s*(?:no\\.?\\s*|number\\s*)?${loose}(?![A-Za-z0-9])`, "i").test(text);
+}
+
+/**
+ * The model numbers this QUESTION asks about: unlistedModelNumbers minus what
+ * the question says is a fault, alarm, parameter, port or register ("fault
+ * F0004", "param P0210", "alarm A1000", "port2", "R4158"). Those tokens are
+ * what the technician sees or reads, not which product it is; they must never
+ * select (or refuse) a manual by model. A1000 with no cue stays a model.
+ */
+export function questionModelNumbers(text: string): ModelNumber[] {
+  return unlistedModelNumbers(text).filter((n) => !(BARE_FAULT_RE.test(n.key) && !namedAsProduct(text, n.label)) && !cuedAsNonModel(text, n.label));
+}
+
 
 // How a title is told from a sentence. Three things, all needed:
 //   1. no sentence word (a verb, a negation, a pronoun, a pointer) and no
@@ -796,10 +857,17 @@ export function manualAnswersFor(asked: ModelNumber[], heading: string, filename
   }
   if (failed.length === 0) return { admit: true };
   const first = failed[0].verdict;
-  const declared = failed.flatMap((f) => (f.verdict.kind === "other-model" ? f.verdict.declared : []));
+  // A Unicode-hyphen spelling is read twice (whole, and as separate fragments; see
+  // withWrittenReading). The fragments still refuse, but they are the same number the
+  // technician typed once: they are neither listed as asked nor declared again (#5671 F3/F4).
+  const isFragment = (n: ModelNumber) => asked.some((o) => o !== n && o.key !== n.key && o.key.includes(n.key) && UNICODE_HYPHEN_RE.test(o.label));
+  const shown = failed.filter((f) => !isFragment(f.number));
+  const reported = shown.length > 0 ? shown : failed;
+  const declared = distinctLabels(reported.flatMap((f) => (f.verdict.kind === "other-model" ? f.verdict.declared : [])));
   // Two look-alikes in one question ("the RX420 replaced an RX410 …"): the
   // manual is refused unless it is shown to cover both, and the reply says so.
-  const pair = asked.some((a) => asked.some((b) => lookAlike(a, b)));
+  const keptAsked = asked.filter((n) => !isFragment(n));
+  const pair = keptAsked.some((a) => keptAsked.some((b) => lookAlike(a, b)));
   const kind: UnlistedRefusalKind = pair
     ? "several-look-alikes"
     : first.kind === "other-model"
@@ -808,8 +876,8 @@ export function manualAnswersFor(asked: ModelNumber[], heading: string, filename
   return {
     admit: false,
     kind,
-    asked: (pair ? asked : failed.map((f) => f.number)).map((n) => n.label),
-    declared: [...new Set(declared)],
+    asked: distinctLabels((pair ? keptAsked : reported.map((f) => f.number)).map((n) => n.label)),
+    declared,
     ...(productWrittenBody(heading, writtenAs) !== null ? { reading: true as const } : {}),
   };
 }
@@ -848,8 +916,14 @@ const FILE_PUBLICATION_RE = new RegExp(
  *  lists models (coverageOf): with a cover that names none, the file name is
  *  the only evidence, and taking a product-shaped name ("1234-PM800_EN_P.pdf")
  *  for a document there would answer for every sibling. */
+// Review of #5671 (F1): "_is_a_copy" is not a language and a format. The underscore
+// form is read only with a language a publisher files under (never an English word
+// such as "is" or "no"), a format letter a publisher uses (print, electronic, media),
+// and nothing after it but the end of the name, a space, a bracket or a version tag.
+// Stated limit: "1234-BR100_it_p.pdf" reads as a publication number, and the cover decides.
+const PUBLISHER_LANGUAGES = "en|de|fr|es|it|pt|nl|sv|da|fi|pl|cs|hu|ru|tr|zh|ja|ko|ar";
 const FILE_PUBLICATION_ANY_SEPARATOR_RE = new RegExp(
-  `((?:[A-Za-z0-9]+-)+)${PUBLICATION_PART_RE.source.replace(/^\^|\$$/g, "")}[-_][A-Za-z]{2}[-_][A-Za-z](?![A-Za-z0-9])`,
+  `((?:[A-Za-z0-9]+-)+)${PUBLICATION_PART_RE.source.replace(/^\^|\$$/g, "")}[-_](?:${PUBLISHER_LANGUAGES})[-_][PEMpem](?=$|[\\s.(]|_v\\d|[-_]\\d)`,
   "gi",
 );
 const withoutPublicationNumbers = (stem: string, signature: RegExp = FILE_PUBLICATION_RE) =>
@@ -997,10 +1071,15 @@ export function summarizeUnlistedRefusals(
   const kinds = new Set(refusals.map((r) => r.kind));
   // Manuals refused for different reasons share only the weakest claim.
   const kind: UnlistedRefusalKind = kinds.size === 1 ? refusals[0].kind : kinds.has("several-look-alikes") ? "several-look-alikes" : "coverage-not-shown";
+  // Provenance (#5671 F2): a photo reading is not a cover. When any refused source is a
+  // manual, only the manuals' covers are declared models (and may be suggested or
+  // attributed to "the manual"); the photo's label is dropped from the pool, never merged.
+  const covers = refusals.filter((r) => !r.reading);
+  const declaring = covers.length > 0 ? covers : refusals;
   return {
     kind,
-    asked: [...new Set(refusals.flatMap((r) => r.asked))],
-    declared: kind === "other-model" ? [...new Set(refusals.flatMap((r) => r.declared))] : [],
+    asked: distinctLabels(refusals.flatMap((r) => r.asked)),
+    declared: kind === "other-model" ? distinctLabels(declaring.flatMap((r) => r.declared)) : [],
     source,
     ...(refusals.every((r) => r.reading) ? { reading: true as const } : {}),
   };
@@ -1012,8 +1091,6 @@ export const EARLIER_SUBJECT_WAY_OUT =
 
 const listed = (labels: string[]) => (labels.length > 6 ? `${labels.slice(0, 6).join(" / ")} and others` : labels.join(" / "));
 
-/** A label's comparison form: its letters and digits, whatever hyphens it was written with. */
-const keyOfLabel = (label: string) => label.replace(/[^A-Za-z0-9]/g, "").toUpperCase();
 
 /** One character changed, added or removed. */
 function oneEditApart(a: string, b: string): boolean {
@@ -1050,7 +1127,7 @@ const shortOf = (asked: string, declared: string) =>
 export function nearMissOf(r: UnlistedModelRefusal): string | null {
   if (r.kind !== "other-model" || r.reading || r.source === "notebook" || r.asked.length !== 1) return null;
   const asked = keyOfLabel(r.asked[0]);
-  const near = r.declared.filter((label) => {
+  const near = distinctLabels(r.declared).filter((label) => {
     const declared = keyOfLabel(label);
     return oneEditApart(asked, declared) || shortOf(asked, declared);
   });
@@ -1064,6 +1141,7 @@ export function unlistedModelRefusalText(r: UnlistedModelRefusal): string {
   const whose =
     r.source === "notebook" ? "this notebook is set up for"
     : r.source === "conversation" ? "you asked about earlier in this conversation"
+    : r.source === "photo" ? "in your photo"
     : "you asked about";
   const add =
     r.source === "conversation"

@@ -101,15 +101,40 @@ export function notebookMachines(notebooks: readonly HubNotebook[]): readonly Ma
   return Array.from(seen.values());
 }
 
-export function notebookProjects(notebooks: readonly HubNotebook[]): readonly Project[] {
-  return notebooks.map((nb) => ({
-    id: projectIdForNotebook(nb.id),
-    name: notebookLabel(nb),
-    children: [
-      ...(nb.asset
-        ? [{ kind: "machine-link" as const, id: `link-${nb.id}`, label: machineNameFor(nb), machineId: nb.asset.entityId }]
-        : []),
-      ...threadRows(nb),
-    ],
-  }));
+export function notebookProjects(
+  notebooks: readonly HubNotebook[],
+  draftsByThread?: ReadonlyMap<string, { readonly text: string }>,
+  extraDraftThreads: Iterable<string> = [],
+  confirmedThreadTitles?: ReadonlyMap<string, string>,
+): readonly Project[] {
+  // Keep chats reachable while the notebook list lacks their thread row.
+  const localRows = new Map<string, ProjectNode[]>();
+  const ids = new Set([...(draftsByThread?.keys() ?? []), ...extraDraftThreads, ...(confirmedThreadTitles?.keys() ?? [])]);
+  for (const id of ids) {
+    const thread = threadRefFromItem(id);
+    if (!thread) continue;
+    const excerpt = (draftsByThread?.get(id)?.text ?? "").trim().replace(/\s+/g, " ").slice(0, 48);
+    const savedTitle = confirmedThreadTitles?.get(id);
+    const label = savedTitle !== undefined ? savedTitle || "Saved conversation"
+      : excerpt ? `Unsent draft · ${excerpt}` : "Unsent draft";
+    const rows = localRows.get(thread.notebookId) ?? [];
+    rows.push({ kind: "thread", id, label });
+    localRows.set(thread.notebookId, rows);
+  }
+  return notebooks.map((nb) => {
+    const threads = threadRows(nb);
+    const knownThreads = new Set(threads.map((thread) => thread.id));
+    const missingFromList = localRows.get(nb.id)?.filter((row) => !knownThreads.has(row.id)) ?? [];
+    return {
+      id: projectIdForNotebook(nb.id),
+      name: notebookLabel(nb),
+      children: [
+        ...(nb.asset
+          ? [{ kind: "machine-link" as const, id: `link-${nb.id}`, label: machineNameFor(nb), machineId: nb.asset.entityId }]
+          : []),
+        ...threads,
+        ...missingFromList,
+      ],
+    };
+  });
 }

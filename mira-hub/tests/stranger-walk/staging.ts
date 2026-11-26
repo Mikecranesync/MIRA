@@ -217,8 +217,9 @@ export type LedgerVerdict =
 const obj = (v: unknown): Record<string, unknown> | null => (v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : null);
 const fail = (reason: string): LedgerVerdict => ({ ok: false, reason });
 
-/** The one closed row for this trace, or why there is not exactly one. */
-function oneRow(rows: LedgerRow[], traceId: string): { row: LedgerRow; packet: Record<string, unknown> } | { reason: string } {
+/** The one closed row for this trace, or why there is not exactly one. Shared with the S5b saved-row
+ *  binding (journey-judges.ts `persistedRowIdOf`), so accounting and binding accept the same packet. */
+export function oneRow(rows: LedgerRow[], traceId: string): { row: LedgerRow; packet: Record<string, unknown> } | { reason: string } {
   if (rows.length === 0) return { reason: `no ledger row for trace ${traceId}` };
   if (rows.length > 1) return { reason: `${rows.length} ledger rows for trace ${traceId}` };
   const packet = obj(rows[0].evidence_packet);

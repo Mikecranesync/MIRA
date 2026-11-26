@@ -115,7 +115,8 @@ export type Reason =
   | "coverage-not-shown"      // the number is on the cover or file, but not as what the manual is for
   | "cover-and-file-disagree" // cover and filename name different look-alikes
   | "several-look-alikes"     // the question names two look-alike numbers; no one manual is shown to cover both
-  | "another-product";        // the cover declares a product that is not the project's confirmed machine
+  | "another-product"         // the cover declares a product that is not the project's confirmed machine
+  | "photo-asks-which-machine"; // the photo does not say which machine; one question back, nothing searched
 
 export type Job = {
   id: string;
@@ -131,7 +132,7 @@ export type Job = {
   /** The reason the product must state when it refuses. Checked only where set. */
   says?: Reason;
   /** Whose model number the refusal is about. Checked only where set. */
-  about?: "question" | "notebook" | "conversation";
+  about?: "question" | "notebook" | "conversation" | "photo";
   /** Earlier questions of this conversation that were refused, newest first.
    *  A model named in them is still the subject of a question that names none. */
   earlier?: string[];
@@ -139,6 +140,13 @@ export type Job = {
   noPassages?: true;
   /** The project's equipment was typed in but never confirmed. */
   unconfirmed?: true;
+  /** Per earlier question (newest first): it was asked with a photo / that photo did not say which machine. */
+  earlierPhoto?: boolean[];
+  earlierUnclear?: boolean[];
+  /** This conversation's reading of the photo sent with the question (what the route hands retrieval). */
+  photo?: string;
+  /** A photo was sent but this conversation holds no active reading of it. */
+  photoUnread?: true;
   /** Set when main is known to get this row wrong. The row then counts as FAIL. */
   knownFail?: { tracked: string; why: string };
 };

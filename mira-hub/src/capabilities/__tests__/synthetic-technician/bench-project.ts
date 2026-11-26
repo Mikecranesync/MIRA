@@ -70,6 +70,34 @@ export const TAG_AS_MODEL: Identity = { manufacturer: "Allen-Bradley", model: "C
 export const CATALOG_ONLY_COVER = synthetic(
   "catalog-only-cover", "2080-LC20-20QBB\nTechnical Specifications\nInputs\nOutputs\nSupply", "2080-LC20-20QBB.pdf");
 
+/** SYNTHETIC reconstruction (see the #5720 note below): a comms chapter that names RS-232/RS-485 and ports. */
+const FATEK_COMMS: Manual = {
+  key: "fatek-comms-chapter", heading: "FBs-PLC User Manual II\nChapter 12 Communication Ports and Protocols\nPORT0 RS-232, PORT1 RS-485, PORT2 RS-485",
+  filename: "fbs-comms.pdf", page: 14, pageLabel: "12-3", origin: "synthetic",
+};
+/** SYNTHETIC: a cover that names the family and no panel. */
+const COMFORT_FAMILY: Manual = {
+  key: "comfort-family-cover", heading: "SIMATIC HMI\nHMI devices\nComfort Panels\nOperating Instructions", filename: "comfort-panels-oi.pdf",
+  page: 220, pageLabel: "220", origin: "synthetic",
+};
+/** SYNTHETIC: a cover that lists the panels it covers. */
+const COMFORT_LISTED: Manual = {
+  key: "comfort-listed-cover", heading: "SIMATIC HMI KTP700 Comfort, KTP900 Comfort, KTP1200 Comfort, TP700 Comfort\nOperating Instructions", filename: "comfort-listed-oi.pdf",
+  page: 221, pageLabel: "221", origin: "synthetic",
+};
+
+/** SYNTHETIC: a Micro820 sheet whose cover lists ONE catalog number (the AWB), to contrast with the QWB. */
+const MICRO820_AWB_ONLY: Manual = {
+  key: "micro820-awb-only", heading: "Installation Instructions\nMicro820 20-Point Programmable Controllers\nCatalog Number 2080-LC20-20AWB",
+  filename: "2080-awb.pdf", page: 12, pageLabel: "12", origin: "synthetic",
+};
+
+/** SYNTHETIC: the S200 PN / S-1FL2 excerpt's opening, as #5720 names it. */
+const S200_EXCERPT: Manual = {
+  key: "s200-pn-excerpt", heading: "SINAMICS S200 PN servo drive system with SIMOTICS S-1FL2 servo motors\nOperating Instructions\nFirmware version V6.4",
+  filename: "s200-pn-oi-excerpt.pdf", page: 61, pageLabel: "61", origin: "synthetic",
+};
+
 const SUPPLY = "What is the supply voltage?";
 const PLATE = "The plate reads AutomationDirect GS11N-20P2. It will not start.";
 
@@ -314,4 +342,98 @@ export const PROJECT_JOBS: Job[] = [
   { id: "P-81", who: "journeyman", doing: "stated limit: a code of the carried model's own family, after the sibling model was refused",
     attached: [RX410_TITLED], earlier: ["RX420 will not start"],
     ask: "What does RX421 mean?", want: REFUSE, says: "other-model", about: "question" },
+
+  // ── #5720 staging walks of 2026-11-24/25/26 (Fatek port name, Comfort Panels family) ──────────
+  // Covers are SYNTHETIC reconstructions from what #5720 states (the real excerpt's first stored
+  // block is not in the packet): known gap, recorded in IMPLEMENTER-REPORT.md.
+  { id: "P-88", who: "apprentice", doing: "a port name and a bus name in the first question of a Fatek comms chapter",
+    attached: [FATEK_COMMS], ask: "fatek fbs port2 rs485 not talkin to the hmi. wat baud is it by default", want: answer(FATEK_COMMS) },
+  { id: "P-89", who: "apprentice", doing: "a register and a code in a later question of that thread, after the port question",
+    attached: [FATEK_COMMS], earlier: ["fatek fbs port2 rs485 not talkin to the hmi. wat baud is it by default"],
+    ask: "what does R4158 hold and whats the 5621H", want: answer(FATEK_COMMS) },
+  { id: "P-90", who: "apprentice", doing: "the family name beside a spaced panel model, on a cover that names the family",
+    attached: [COMFORT_FAMILY], ask: "KTP 400   Comfort  - what volts min max", want: answer(COMFORT_FAMILY) },
+  { id: "P-91", who: "apprentice", doing: "the clean spelling of the same panel",
+    attached: [COMFORT_FAMILY], ask: "KTP400 Comfort what volts min max", want: answer(COMFORT_FAMILY) },
+  { id: "P-92", who: "journeyman", doing: "an unrelated question of its own after the panel question (not a pointer)",
+    attached: [COMFORT_FAMILY], earlier: ["KTP400 Comfort what volts min max"],
+    ask: "una mas — cuanto espacio necesito detras del panel pa la ventilacion?", want: answer(COMFORT_FAMILY) },
+  { id: "P-93", who: "journeyman", doing: "a cover that LISTS panels, asked about one of them",
+    attached: [COMFORT_LISTED], ask: "KTP 700 Comfort what volts min max", want: answer(COMFORT_LISTED) },
+  { id: "P-94", who: "journeyman", doing: "contrast: a cover that LISTS panels, asked about a panel it does not list",
+    attached: [COMFORT_LISTED], ask: "KTP400 Comfort what volts min max", want: REFUSE, says: "mismatch-named", about: "question" },
+  { id: "P-95", who: "journeyman", doing: "contrast: the same listed cover, asked about a TP sibling it does not list",
+    attached: [COMFORT_LISTED], ask: "TP1500 Comfort what volts min max", want: REFUSE, says: "mismatch-named", about: "question" },
+  { id: "P-96", who: "journeyman", doing: "the pointer form after a REAL panel mismatch still carries the refused panel",
+    attached: [COMFORT_LISTED], earlier: ["KTP400 Comfort what volts min max"],
+    ask: "and its current draw?", want: REFUSE, says: "mismatch-named", about: "conversation" },
+
+  // ── #5706 / #5764: a nameplate PHOTO is judged exactly as its public text typed (rows written for the
+  // combined release; every refusal has an accepting control). Readings are what the route hands retrieval.
+  { id: "P-100", who: "journeyman", doing: "the project's OWN drive plate, sent with 'find me the manual': its own GS10 manual answers (control)",
+    attached: [GS10], identity: DRIVE, photo: 'Plate reads "AutomationDirect GS11N-20P2", "S/N: 12345678".',
+    ask: "Find me the manual", want: answer(GS10) },
+  { id: "P-101", who: "journeyman", doing: "ANOTHER drive's plate sent in a project confirmed as the GS11N: never answered from the project's manual",
+    attached: [GS10], identity: DRIVE, photo: 'Plate reads "GS20-23P0", "S/N: GS20-US-0031482".',
+    ask: "Find me the manual", want: REFUSE, says: "mismatch-named", about: "photo" },
+  { id: "P-102", who: "journeyman", doing: "the same plate with no project machine confirmed: the cover alone refuses it",
+    attached: [GS10], photo: 'Plate reads "GS20-23P0", "S/N: GS20-US-0031482".',
+    ask: "what is its rated current", want: REFUSE, says: "mismatch-named", about: "photo" },
+  { id: "P-103", who: "journeyman", doing: "a labelled FAMILY ('MODEL: Micro820') beside a catalog number the sheet does not list",
+    attached: [MICRO820_AWB_ONLY], identity: PLC, photo: "MODEL: Micro820\nCatalog No. 2080-LC20-20QWB\nS/N: 1234567",
+    ask: "Find me the manual", want: REFUSE, says: "other-model", about: "photo" },
+  { id: "P-104", who: "journeyman", doing: "control: the same photo against a sheet that lists that catalog number",
+    attached: [MICRO820_SHEET], identity: PLC, photo: "MODEL: Micro820\nCatalog No. 2080-LC20-20QWB\nS/N: 1234567",
+    ask: "Find me the manual", want: answer(MICRO820_SHEET) },
+  { id: "P-105", who: "journeyman", doing: "two full GS20 numbers on one photo, first turn: asks which machine",
+    attached: [GS10], photo: 'Plates read "GS20-23P0" and "GS20-21P0".',
+    ask: "Find me the manual", want: REFUSE, says: "photo-asks-which-machine" },
+  { id: "P-106", who: "apprentice", doing: "a sent photo with no active reading in this conversation, question names no model: asks, never falls through to the project manual",
+    attached: [MICRO820_SHEET_AS_STORED], identity: PLC, photoUnread: true,
+    ask: "Find me the manual", want: REFUSE, says: "photo-asks-which-machine" },
+  { id: "P-107", who: "apprentice", doing: "control: the same unread photo, but the question names the project's own model",
+    attached: [MICRO820_SHEET_AS_STORED], identity: PLC, photoUnread: true,
+    ask: "Find me the Micro820 manual", want: answer(MICRO820_SHEET_AS_STORED) },
+  { id: "P-108", who: "journeyman", doing: "a typed number the family reader does not know beside a photo of another drive: never answered",
+    attached: [RX410_TITLED], photo: 'Plate reads "GS20-23P0".',
+    ask: "RX410 supply voltage?", want: REFUSE },
+  { id: "P-109", who: "journeyman", doing: "control: the same typed number with no photo",
+    attached: [RX410_TITLED], ask: "RX410 supply voltage?", want: answer(RX410_TITLED) },
+  { id: "P-110", who: "apprentice", doing: "a model printed only as a serial value ('GS20-23P0 (S/N)'): the machine is unknown, asks",
+    attached: [GS10], identity: DRIVE, photo: "GS20-23P0 (S/N)",
+    ask: "Find me the manual", want: REFUSE, says: "photo-asks-which-machine" },
+  { id: "P-111", who: "journeyman", doing: "a Siemens plate with its model AND its order number, in a controller project",
+    attached: [MICRO820_SHEET], identity: PLC, photo: "SIMATIC HMI TP700 Comfort 6AV2124-0GC01-0AX0 S/N: VPK1234567",
+    ask: "Find me the manual", want: REFUSE, says: "mismatch-named", about: "photo" },
+  { id: "P-112", who: "journeyman", doing: "a follow-up that points back at a refused plate photo's turn: still that machine",
+    attached: [MICRO820_SHEET_AS_STORED], identity: PLC, earlier: ['Find me the manual\nGS20-23P0'],
+    ask: "and its rated current?", want: REFUSE, says: "mismatch-named", about: "conversation" },
+  { id: "P-113", who: "journeyman", doing: "'back to mine' with a catalog number on record keeps the photo of another drive out",
+    attached: [MICRO820_SHEET], identity: PLC_WITH_CATALOG_FIELD, photo: 'Plate reads "GS20-23P0".',
+    ask: "ok back to mine, what is the supply voltage", want: answer(MICRO820_SHEET) },
+  { id: "P-114", who: "journeyman", doing: "an unrelated question of its own after a sibling model was refused (owner ruling #5720: a refusal belongs to the question that named the product)",
+    attached: [RX410_TITLED], earlier: ["RX420 will not start"],
+    ask: "how much ventilation clearance do I leave around the case", want: answer(RX410_TITLED) },
+  // Review of the combined candidate: a follow-up with NO pointer after a turn that was asked with a photo.
+  { id: "P-115", who: "journeyman", doing: "a plain question (no pointer) after a refused plate-photo turn: still that photo's machine",
+    attached: [MICRO820_SHEET_AS_STORED], identity: PLC, earlier: ["Find me the manual\nGS20-23P0"], earlierPhoto: [true],
+    ask: "What is the rated current?", want: REFUSE, says: "mismatch-named", about: "conversation" },
+  { id: "P-116", who: "journeyman", doing: "the same after a photo that did not say which machine: asks, never answers from the project's manual",
+    attached: [MICRO820_SHEET_AS_STORED], identity: PLC, earlier: ["Find me the manual\nGS20-23P0 GS20-21P0"], earlierPhoto: [true], earlierUnclear: [true],
+    ask: "What is the rated current?", want: REFUSE, says: "photo-asks-which-machine" },
+  { id: "P-117", who: "journeyman", doing: "control: the same plain question when the earlier turn carried no photo and named no model",
+    attached: [MICRO820_SHEET_AS_STORED], identity: PLC, earlier: ["Find me the manual"],
+    ask: "What is the rated current?", want: answer(MICRO820_SHEET_AS_STORED) },
+  // #5720 body (Gus, S200 PN excerpt, overnight 2026-11-21): after ONE refused question (E7, "that 1BE11 drive"), every later
+  // question got the same refusal. Covers are SYNTHETIC (the excerpt's first block is not in the packet); the E7 turn itself,
+  // a fragment of an order number listed in the BODY, is not repaired here (known gap). Each later turn has a subject of its own.
+  { id: "P-118", who: "senior", doing: "E8: an unrelated safety question after the refused E7 question",
+    attached: [S200_EXCERPT], earlier: ["wat ohm braking resistor do i need for that 1BE11 drive"],
+    ask: "befor i pull the motor cable how long do i wait after killin power. page # or i dont buy it", want: answer(S200_EXCERPT) },
+  { id: "P-119", who: "senior", doing: "G1: five fault and safety codes in one question, after E7 and E8",
+    attached: [S200_EXCERPT], earlier: ["befor i pull the motor cable how long do i wait after killin power. page # or i dont buy it", "wat ohm braking resistor do i need for that 1BE11 drive"],
+    ask: "Picking up Earl's thread. For F30001, F30002, F30003, F07900 and C01700 — stop response and acknowledgment for each, and what that response does to the motor. Page refs.", want: answer(S200_EXCERPT) },
+  { id: "P-120", who: "senior", doing: "the retentive-buffer question after the same refusal",
+    attached: [S200_EXCERPT], earlier: ["wat ohm braking resistor do i need for that 1BE11 drive"],
+    ask: "how long does the retentive data buffer hold if the supply drops", want: answer(S200_EXCERPT) },
 ];

@@ -34,7 +34,7 @@ type Outcome = {
   /** The product's own stated reason, when it gave one. */
   reason: Reason | null;
   /** Whose model number the refusal is about, when it says. */
-  about: "question" | "notebook" | "conversation" | null;
+  about: "question" | "notebook" | "conversation" | "photo" | null;
   /** Statements the stand-in database does not know. It answers them with nothing and lists them here. */
   unrecognised: string[];
 };
@@ -69,6 +69,8 @@ async function run(job: Job): Promise<Outcome> {
   // answered with this bench's passages by accident, and cannot empty the
   // bench without a failure either.
   const query = vi.fn(async (sql: string) => {
+    // The private-field code check (a model-shaped code printed after a serial) reads document covers; this bench has none to add.
+    if (sql.includes("/* hidden-code-eligibility */")) return { rows: [] };
     if (sql.includes("WITH ORDINALITY") || sql.includes("names_document") || sql.includes("quote_literal(lex)")
       || /^\s*(SAVEPOINT|RELEASE SAVEPOINT|ROLLBACK TO SAVEPOINT)\b/.test(sql)) {
       return { rows: [] };
@@ -100,7 +102,8 @@ async function run(job: Job): Promise<Outcome> {
   const diagnostics: {
     namedModelMismatch?: { source?: "conversation" };
     ambiguousModelAsk?: unknown;
-    unlistedModelRefusal?: { kind: Reason; source: "question" | "notebook" | "conversation" };
+    photoSubjectUnclear?: unknown;
+    unlistedModelRefusal?: { kind: Reason; source: "question" | "notebook" | "conversation" | "photo" };
     otherProductRefusal?: unknown;
   } = {};
   const hits = await retrieveNodeChunks({ query } as unknown as PoolClient, TENANT, job.ask, {
@@ -112,6 +115,10 @@ async function run(job: Job): Promise<Outcome> {
     rawQuery: job.ask,
     topK: 6,
     ...(job.earlier ? { subjectQueries: job.earlier } : {}),
+    ...(job.earlierPhoto ? { subjectPhoto: job.earlierPhoto } : {}),
+    ...(job.earlierUnclear ? { subjectUnclear: job.earlierUnclear } : {}),
+    ...(job.photo ? { photoText: job.photo } : {}),
+    ...(job.photoUnread ? { photoUnread: true } : {}),
     ...(job.identity
       ? {
           identity: { manufacturer: job.identity.manufacturer, model: job.identity.model },
@@ -138,7 +145,8 @@ async function run(job: Job): Promise<Outcome> {
     unrecognised,
     citedFrom: [...new Set(citedFrom)].sort(),
     brokenCitations,
-    reason: diagnostics.ambiguousModelAsk ? "asks-which-model"
+    reason: diagnostics.photoSubjectUnclear ? "photo-asks-which-machine"
+      : diagnostics.ambiguousModelAsk ? "asks-which-model"
       : diagnostics.namedModelMismatch ? "mismatch-named"
       : diagnostics.unlistedModelRefusal?.kind
       ?? (diagnostics.otherProductRefusal ? "another-product" : null),
@@ -156,7 +164,7 @@ function expectRight(job: Job, got: Outcome) {
   // The one refusal that comes before any search is the product asking which
   // of two named models is meant. It has to say so; silence does not count.
   if (got.offered === 0) {
-    expect(got.reason, "nothing was searched, so the product must have asked which model").toBe("asks-which-model");
+    expect(["asks-which-model", "photo-asks-which-machine"], "nothing was searched, so the product must have asked which model").toContain(got.reason);
     expect("refuse" in job.want, "a job that expects an answer must have been searched").toBe(true);
   }
   expect(got.brokenCitations, "every citation points at its own manual and page").toEqual([]);
@@ -233,7 +241,8 @@ describe("synthetic technician — rows added with the #5369 fix (not part of th
 describe("synthetic technician — an attached manual is not automatically an applicable one (not part of the 37)", () => {
   it.each(PROJECT_JOBS.map((j) => [title(j), j] as const))("%s", async (_t, job) => {
     const got = await run(job);
-    expect(got.offered, "the stand-in database was asked for candidates").toBeGreaterThan(0);
+    // A photo that does not say which machine is asked about BEFORE any search: nothing is offered.
+    if (job.says !== "photo-asks-which-machine") expect(got.offered, "the stand-in database was asked for candidates").toBeGreaterThan(0);
     expectRight(job, got);
   });
 });
@@ -250,7 +259,7 @@ describe("synthetic technician — scorecard", () => {
   // into the known-fail list, changes a number a reviewer has to look at.
   it("counts: all 37 jobs go right, none is a known wrong-manual fail; the added rows are counted beside them", () => {
     expect({ right: passing.length, knownWrong: failing.length, added: EXTRA_JOBS.length, project: PROJECT_JOBS.length })
-      .toEqual({ right: 37, knownWrong: 0, added: 78, project: 70 });
+      .toEqual({ right: 37, knownWrong: 0, added: 78, project: 100 });
   });
 
   // 37 right answers are also reachable by refusing more. These are the jobs
@@ -258,7 +267,7 @@ describe("synthetic technician — scorecard", () => {
   it("counts: the jobs that must answer, in the 37 and in the added rows", () => {
     const answers = (jobs: Job[]) => jobs.filter((j) => "answerFrom" in j.want).length;
     expect({ contract: answers(JOBS), added: answers(EXTRA_JOBS), project: answers(PROJECT_JOBS) })
-      .toEqual({ contract: 19, added: 39, project: 36 });
+      .toEqual({ contract: 19, added: 39, project: 52 });
   });
 });
 

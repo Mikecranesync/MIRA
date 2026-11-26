@@ -80,6 +80,41 @@ describe("notebookProjects", () => {
     expect(project.children[0]).toEqual({ kind: "machine-link", id: "link-nb-1", label: "Automation Direct GS10", machineId: "asset-uuid-1" });
   });
 
+  it("projects attachment and recovery conversations once and leaves saved rows intact", () => {
+    const notebookId = "nb-1";
+    const saved = "notebook-nb-1:thread-saved";
+    const fresh = "notebook-nb-1:thread-fresh";
+    const photo = "notebook-nb-1:thread-photo";
+    const recovery = "notebook-nb-1:thread-recovery";
+    const nb = notebook({ threads: [{
+      id: "saved", notebookId, title: "Saved", createdAt: "", updatedAt: "", turnCount: 1, sharedLegacy: false,
+    }] });
+    const [project] = notebookProjects([nb], new Map([[fresh, { text: "Keep the draft" }]]), [fresh, saved, photo, recovery, photo]);
+    expect(project.children.map((item) => [item.id, item.label])).toEqual([
+      [saved, "Saved"], [fresh, "Unsent draft · Keep the draft"], [photo, "Unsent draft"], [recovery, "Unsent draft"],
+    ]);
+    expect(notebookProjects([nb])[0].children.map((item) => item.id)).toEqual([saved]);
+  });
+
+  it("F26 prefers the saved list row over the matching confirmed detail row", () => {
+    const nb = notebook();
+    const threadId = threadItemId(nb.id, "new-thread");
+    const confirmed = new Map([[threadId, ""], [threadItemId("other-notebook", "new-thread"), "Other Notebook"]]);
+    expect(notebookProjects([], undefined, [threadId], confirmed)).toEqual([]);
+    const [stale] = notebookProjects([nb], undefined, [threadId], confirmed);
+    expect(stale.children.filter((row) => row.id === threadId)).toEqual([{
+      kind: "thread", id: threadId, label: "Saved conversation",
+    }]);
+    expect(stale.children.some((row) => row.label === "Other Notebook")).toBe(false);
+    const current = { ...nb, threads: [{
+      id: "new-thread", notebookId: nb.id, title: "Saved title",
+      createdAt: "", updatedAt: "", turnCount: 1, sharedLegacy: false,
+    }] };
+    expect(notebookProjects([current], undefined, [threadId], confirmed)[0].children).toEqual([{
+      kind: "thread", id: threadId, label: "Saved title",
+    }]);
+  });
+
   it("an untitled notebook is labelled honestly", () => {
     const [project] = notebookProjects([notebook({ displayName: "  ", manufacturer: null, model: null })]);
     expect(project.name).toBe("Untitled notebook");

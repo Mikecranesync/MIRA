@@ -115,15 +115,20 @@ export function instantMicros(iso: string): number {
   return ms * 1000 + Number((frac + "000000").slice(3, 6));
 }
 
-export function readSubjectUnderSelection(turns: readonly SelectionTurn[], limit: number, selection: SelectedComponent): SubjectRead {
+export function readSubjectUnderSelection(
+  turns: readonly SelectionTurn[],
+  limit: number,
+  selection: SelectedComponent,
+  recordOnFile = false,
+): SubjectRead {
   const since = instantMicros(selection.selectedAt);
   const under = (t: SelectionTurn) =>
     t.componentId === selection.componentId && t.componentRevision === selection.revision && instantMicros(t.createdAt) > since;
   let start = turns.length;
   while (start > 0 && under(turns[start - 1])) start--;
   const run = turns.slice(start);
-  if (start > 0) return readSubject(run, Number.POSITIVE_INFINITY);
-  return readSubject(run, limit);
+  if (start > 0) return readSubject(run, Number.POSITIVE_INFINITY, recordOnFile);
+  return readSubject(run, limit, recordOnFile);
 }
 
 /**
@@ -164,6 +169,18 @@ export function historyForWholeMachine(
   turns: readonly (SelectionTurn & SavedTurnText & { id: string; clientRequestId?: string | null })[],
   currentRequestId: string | null,
 ): { history: ChatHistoryTurn[]; turnIds: Set<string> } {
-  const run = turns.filter((t) => t.componentId === null && (currentRequestId === null || t.clientRequestId !== currentRequestId));
+  const run = wholeMachineTurns(turns, currentRequestId);
   return { history: sanitizeHistory(historyFromSavedTurns(run)), turnIds: new Set(run.map((t) => t.id)) };
+}
+
+/**
+ * The saved turns an explicit whole-machine question may read for ANYTHING (history, the open subject, the
+ * open photos): only turns asked about the whole machine, and never the turn being retried. One definition,
+ * used by the history above and by the route's subject read (#5764 r3 F6).
+ */
+export function wholeMachineTurns<T extends { componentId: string | null; clientRequestId?: string | null }>(
+  turns: readonly T[],
+  currentRequestId: string | null,
+): T[] {
+  return turns.filter((t) => t.componentId === null && (currentRequestId === null || t.clientRequestId !== currentRequestId));
 }
