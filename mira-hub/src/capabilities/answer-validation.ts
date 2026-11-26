@@ -30,7 +30,7 @@
 
 import { stepEnergyContradiction } from "./step-energy";
 import { firstUngovernedMatch } from "./hazard-modifiers";
-import { isolationBannerFor } from "./isolation-advisory";
+import { DISCHARGE_WAIT_LINE, ISOLATION_BANNER, isolationBannerFor } from "./isolation-advisory";
 
 export type AnswerValidation =
   | { ok: true }
@@ -1263,6 +1263,26 @@ function isolationWarning(banner: string, answerText: string): AnswerValidation 
   };
 }
 
+/** Safety review of #5996 (Finding 1): replacing an answer for an unsupported
+ *  code meaning must not also discard the safety guidance that answer carried
+ *  ("lock out and de-energize first", "the DC bus capacitors stay charged") —
+ *  the energized/isolation notices attach only on the final return, which the
+ *  code-meaning branch never reaches. So the replacement leads with the same
+ *  fixed notices this module already uses: the energized warning when the
+ *  answer restored energy to measure, otherwise the isolation banner (plus the
+ *  discharge-wait line for DC-bus / capacitor talk) whenever the answer spoke
+ *  about isolation or a hazard at all. Warns; never withholds. */
+const SAFETY_GUIDANCE_RE =
+  /\b(?:lock(?:ed|ing)?[-\s]?out|tag(?:ged|ging)?[-\s]?out|loto|de[-\s]?energi[sz]\w*|isolat\w*|zero\s+(?:volts?|voltage|energy)|absence\s+of\s+voltage|discharg\w*|capacitors?|danger|arc[-\s]?flash|hazard\w*|shock|electrocut\w*)\b/i;
+const DISCHARGE_TALK_RE = /\b(?:discharg\w*|capacitors?|dc[-\s]?bus)\b/i;
+
+function safetyLeadFor(restore: string | null, scan: string): string {
+  if (restore) return `${ENERGIZED_WARNING}\n\n`;
+  if (!SAFETY_GUIDANCE_RE.test(scan)) return "";
+  const discharge = DISCHARGE_TALK_RE.test(scan) ? ` ${DISCHARGE_WAIT_LINE}` : "";
+  return `${ISOLATION_BANNER}${discharge}\n\n`;
+}
+
 function energizedWarningOr(restore: string | null, answerText: string): AnswerValidation {
   if (!restore) {
     // Codex #4146 r3 F2: scan the same folded text every other rule here scans —
@@ -1467,7 +1487,9 @@ export function validateAnswer(opts: {
       // The ONLY visible string in this module built from a matched token, so
       // it is the one place the fold could leak into what a technician reads.
       // Quote the code as the model actually spelled it.
-      replacement: specificityFallback(originalSpelling(cm.code, answerText), fallbackOpts),
+      replacement:
+        safetyLeadFor(restore, scanText) +
+        specificityFallback(originalSpelling(cm.code, answerText), fallbackOpts),
     };
   }
 

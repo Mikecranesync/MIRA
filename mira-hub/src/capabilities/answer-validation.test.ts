@@ -7,6 +7,7 @@
 import { describe, expect, it } from "vitest";
 
 import { SAFETY_STOP } from "@/lib/safety-classifier";
+import { DISCHARGE_WAIT_LINE, ISOLATION_BANNER } from "./isolation-advisory";
 import { chunkForRelease, exactRatingMatch, specificityFallback, unsupportedExactRating, validateAnswer } from "./answer-validation";
 
 const grounded = (answerText: string, question = "Can I reset the E-12 fault?") =>
@@ -1258,5 +1259,39 @@ describe("code meaning asserted with a trailing hedge or a machine qualifier (#5
       general("I can’t verify ABB ACS880 fault 3220 from the manual here, so I shouldn’t guess the meaning.", "What does ABB ACS880 fault 3220 mean?").ok,
     ).toBe(true);
     expect(general("Most overcurrent faults on a drive like this are caused by a mechanical overload or a jam.", "PowerFlex 525 overcurrent fault causes").ok).toBe(true);
+  });
+});
+
+describe("the code-meaning fallback keeps the safety guidance it replaces (#5996 safety review)", () => {
+  const Q = "What does PowerFlex 525 fault F004 mean?";
+  const replaced = (answer: string) => {
+    const r = general(answer, Q);
+    expect(r.ok).toBe(false);
+    if (r.ok) throw new Error("unreachable");
+    expect(r.violation).toBe("unsupported-specificity:code-meaning-asserted");
+    return r.replacement ?? "";
+  };
+
+  it("a capacitor-discharge warning becomes the isolation banner plus the discharge wait", () => {
+    const out = replaced(
+      "Danger: DC bus capacitors stay charged. On a PowerFlex 525, F004 is commonly an undervoltage fault; wait 5 minutes and verify bus voltage is zero before servicing.",
+    );
+    expect(out.startsWith(ISOLATION_BANNER)).toBe(true);
+    expect(out).toContain(DISCHARGE_WAIT_LINE);
+    expect(out).toContain("I can't verify what F004 means");
+    // The guessed meaning and the invented wait time are still withheld.
+    expect(out).not.toMatch(/undervoltage|5 minutes/i);
+  });
+
+  it("a lock-out instruction keeps the isolation banner", () => {
+    const out = replaced(
+      "Lock out and de-energize the drive first. F004 is typically a DC bus undervoltage, and you must verify zero voltage before opening the cover.",
+    );
+    expect(out.startsWith(ISOLATION_BANNER)).toBe(true);
+  });
+
+  it("an answer with no safety talk gets the plain fallback, unchanged", () => {
+    const out = replaced("F004 is commonly an overcurrent fault on the PowerFlex 525.");
+    expect(out).toBe(specificityFallback("F004"));
   });
 });
