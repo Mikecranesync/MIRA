@@ -1304,6 +1304,8 @@ describe("Codex #5996 r1: code references are not meanings; disconnection wordin
     "F004 is the code to write down before you call support.",
     "F004 is the fault code shown on the display.",
     "F004 is the number on your keypad to report.",
+    "F004 is the fault code shown on the display, so photograph it before you call support.",
+    "F004 is the code shown on the display, but I can't verify what it indicates on this drive.",
   ])("a reference to the code itself passes: %s", (answer) => {
     expect(general(answer, Q).ok).toBe(true);
   });
@@ -1322,6 +1324,11 @@ describe("Codex #5996 r1: code references are not meanings; disconnection wordin
     "F004 is the code displayed with an undervoltage condition.",
     "F004 is the code shown upon loss of input phase.",
     "F004 is the code you get from a low line voltage.",
+    // Codex r3 F4: the meaning handed to a later clause of the same sentence.
+    "F004 is the code shown on the display, indicating a motor overcurrent fault.",
+    "F004 is the code shown on the display; it means the DC bus dropped.",
+    "F004 is the fault code shown on the display, which appears when the bus is low.",
+    "F004 is the code shown on the display — triggered after a power dip.",
   ])("an assigned meaning is still caught: %s", (answer) => {
     const r = general(answer, Q);
     expect(r.ok).toBe(false);

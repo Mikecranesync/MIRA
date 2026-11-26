@@ -1008,7 +1008,7 @@ function codeMeaningViolation(
     // "I can't verify what Q-447-Delta means" keeps its exemption because the
     // non-verification and the definition frame share one clause.
     const clauses = s.split(/[,;:]|—|–|\bbut\b|\bhowever\b|\byet\b/i);
-    for (const clause of clauses) {
+    for (const [ci, clause] of clauses.entries()) {
       if (NON_VERIFICATION.test(clause)) continue;
       for (const tok of clause.match(FAULT_CODE_TOKEN) ?? []) {
         // FAULT_CODE_TOKEN's trailing suffix is unbounded, so a model stuck in
@@ -1029,10 +1029,12 @@ function codeMeaningViolation(
         // overcurrent fault"), and a short "on a <machine>" may sit between the
         // code and its verb ("F30011 on a Siemens G120 is generally a motor
         // overtemperature"). All three shipped as general answers before this.
-        const defFrame = new RegExp(
-          `["'\`*]*${esc}["'\`*]*(?:\\s*\\([^)]{0,40}\\))?(?:\\s+(?:on|in|for)\\s+(?:(?:a|an|the)\\s+)?[\\w-]+(?:\\s+[\\w-]+){0,3})?\\s+(?:fault\\s+|alarm\\s+|error\\s+|code\\s+)?(?:${DEF_HEDGE}\\s+)?(?:means|indicates|signals|refers\\s+to|stands\\s+for|denotes|corresponds\\s+to|is\\s+(?:${DEF_HEDGE}\\s+)?(?:a|an|the)\\b${NOT_A_CODE_REFERENCE}|is\\s+caused\\s+by|occurs\\s+when)\\b`,
-          "i",
-        );
+        const frame = (exempt: string) =>
+          new RegExp(
+            `["'\`*]*${esc}["'\`*]*(?:\\s*\\([^)]{0,40}\\))?(?:\\s+(?:on|in|for)\\s+(?:(?:a|an|the)\\s+)?[\\w-]+(?:\\s+[\\w-]+){0,3})?\\s+(?:fault\\s+|alarm\\s+|error\\s+|code\\s+)?(?:${DEF_HEDGE}\\s+)?(?:means|indicates|signals|refers\\s+to|stands\\s+for|denotes|corresponds\\s+to|is\\s+(?:${DEF_HEDGE}\\s+)?(?:a|an|the)\\b${exempt}|is\\s+caused\\s+by|occurs\\s+when)\\b`,
+            "i",
+          );
+        const defFrame = frame(NOT_A_CODE_REFERENCE);
         // "the most likely reason you're seeing 'Q-447-Delta' is …"
         const causeFrame = new RegExp(
           `\\b(?:reason|cause)\\b[^.!?\\n]{0,60}\\b(?:seeing|getting|displaying|showing)\\s*["'\`]?${esc}["'\`]?[^.!?\\n]{0,25}\\bis\\b`,
@@ -1040,6 +1042,20 @@ function codeMeaningViolation(
         );
         if (defFrame.test(clause) || causeFrame.test(clause)) {
           return { code: tok, excerpt: s.slice(0, 160) };
+        }
+        // Codex #5996 r3 F4: a code reference exempted above ("F004 is the
+        // code shown on the display") can hand its meaning to the next clause
+        // (", indicating a motor overcurrent fault"), which the clause split
+        // separates from the code. When the exemption was what saved this
+        // clause, a trigger word in a LATER clause of the same sentence is the
+        // meaning. A later clause that is itself an honest non-verification
+        // stays exempt — the uncertainty scope remains clause-local.
+        if (frame("").test(clause)) {
+          const trigger = new RegExp(`\\b${CODE_TRIGGER}`, "i");
+          for (const later of clauses.slice(ci + 1)) {
+            if (NON_VERIFICATION.test(later)) continue;
+            if (trigger.test(later)) return { code: tok, excerpt: s.slice(0, 160) };
+          }
         }
       }
     }
