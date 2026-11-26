@@ -21,24 +21,40 @@
  *     doppler run -p factorylm -c dev -- env NEXTAUTH_URL=http://localhost:3100 \
  *     AUTH_TRUST_HOST=true ./node_modules/.bin/next start -p 3100 &
  *   doppler run -p factorylm -c dev -- bun run scripts/provision-beta-gate.ts > /tmp/env.out
- *   cd .. && set -a; . <(grep '^ENV:' /tmp/env.out | sed 's/^ENV://'); set +a
+ *   cd .. && set -a; eval "$(sed -n 's/^ENV://p' /tmp/env.out)"; set +a
  *   .venv/bin/python -m pytest tests/beta/beta_ready_upload_retrieval_citation.py -v -rX
  *   # XPASS(strict) == the gate is MET.
+ *
+ * The import uses eval, not `. <(…)`: macOS /bin/bash 3.2 sources a process
+ * substitution as empty, silently.
  *
  * HUB defaults to http://localhost:3100 (override with HUB_BASE).
  *
  * Mobile harness (#5942): set BETA_GATE_MOBILE_LINK_FILE=<new file> and the run also
  * writes a single-use sign-in link there (0600, never printed) and emits FLM_EMAIL
- * plus FLM_LOGIN_LINK_FILE. It needs an https HUB_BASE (the app's own backend origin,
- * so the staging flavour for staging) and verified onboarding; otherwise it refuses.
- * The consumer is the mobile-e2e login-link sign-in (PR 4462). Then, within 15 minutes:
- *   FLM_LOGIN_LINK="$(cat <file>)" bash tools/mobile-e2e/run.sh <pdf> "<question>" <page>
+ * plus FLM_LOGIN_LINK_FILE (shell-quoted). It needs HUB_BASE on the staging app's
+ * origin (https://app-staging.factorylm.com, the only backend the staging APK that
+ * tools/mobile-e2e/run.sh drives accepts) and verified onboarding; otherwise it
+ * refuses before registering. The consumer is the mobile-e2e login-link sign-in
+ * (PR 4462), which takes exactly one of FLM_PASSWORD / FLM_LOGIN_LINK. Provision
+ * into /tmp/env.out as above, set PDF, QUESTION and PAGE, then within 15 minutes:
+ *
+ * Mobile handoff (copy as is):
+ *   cd .. && set -a; eval "$(sed -n 's/^ENV://p' /tmp/env.out)"; set +a
+ *   unset FLM_PASSWORD
+ *   FLM_LOGIN_LINK="$(cat "$FLM_LOGIN_LINK_FILE")" bash tools/mobile-e2e/run.sh "$PDF" "$QUESTION" "$PAGE"
+ * End of mobile handoff.
  */
 import { randomBytes, randomUUID } from "node:crypto";
 import { writeFileSync } from "node:fs";
 import { Client } from "pg";
 
 const HUB = process.env.HUB_BASE ?? "http://localhost:3100";
+// The staging flavour's backend (mira-mobile android/app/build.gradle, staging API_BASE).
+// The app accepts a sign-in link only on this exact origin (invite-link.ts).
+const STAGING_APP_ORIGIN = "https://app-staging.factorylm.com";
+/** One shell word, so the documented import keeps a path with spaces whole. */
+const shellQuote = (v: string) => `'${v.replaceAll("'", `'\\''`)}'`;
 // Codex F32: a clock reading alone collides across runs that start in the same
 // millisecond; the random part makes each run's fixture identity its own.
 const SUFFIX = `${Date.now()}${randomBytes(6).toString("hex")}`;
@@ -297,13 +313,13 @@ async function verifiedOnboarding(): Promise<string> {
 }
 
 export async function main() {
-  // #5942: the app accepts only an https sign-in link on its own backend origin
-  // (mira-mobile invite-link.ts), so a mobile link from an http Hub is refused
-  // before anything is registered or minted.
+  // #5942: the staging app accepts a sign-in link only on its own backend origin
+  // (mira-mobile invite-link.ts), so a mobile link from any other Hub (http, or
+  // another https origin) is refused before anything is registered or minted.
   const mobileLinkFile = process.env.BETA_GATE_MOBILE_LINK_FILE;
-  if (mobileLinkFile && new URL(HUB).protocol !== "https:") {
+  if (mobileLinkFile && new URL(HUB).origin !== STAGING_APP_ORIGIN) {
     throw new Error(
-      `BETA_GATE_MOBILE_LINK_FILE needs an https HUB_BASE (the app's backend origin, e.g. staging); got ${HUB}`,
+      `BETA_GATE_MOBILE_LINK_FILE needs HUB_BASE on the staging app's origin (${STAGING_APP_ORIGIN}), the only backend the staging APK accepts; got ${HUB}`,
     );
   }
 
@@ -441,7 +457,7 @@ async function provisionAfterRegister(tenantId: string, passwordless = false) {
   console.log(`ENV:BETA_PROBE_COOKIE=${cookieHeader}`);
   if (linkFile) {
     console.log(`ENV:FLM_EMAIL=${CREDS.email}`);
-    console.log(`ENV:FLM_LOGIN_LINK_FILE=${linkFile}`);
+    console.log(`ENV:FLM_LOGIN_LINK_FILE=${shellQuote(linkFile)}`);
   }
 }
 

@@ -1,7 +1,8 @@
 // Provisioner contract when /api/auth/register refuses unverified accounts
 // (403 verified_onboarding_required: pilot review or free signup on). The
 // password-register contract lives in src/lib/__tests__/provision-beta-gate.test.ts.
-import { existsSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -243,7 +244,7 @@ describe("provision-beta-gate when register requires verified setup", () => {
       expect(statSync(file).mode & 0o777).toBe(0o600);
       const out = log.mock.calls.map((c) => c.join(" ")).join("\n");
       expect(out).toMatch(/^ENV:FLM_EMAIL=betagate-\d{13}[0-9a-f]{12}@factorylm\.com$/m);
-      expect(out).toContain(`ENV:FLM_LOGIN_LINK_FILE=${file}`);
+      expect(out).toContain(`ENV:FLM_LOGIN_LINK_FILE='${file}'`);
       expect(printedAll()).not.toContain(String(phone.values[0]));
       // Minted before the ENV lines: a failure there still sweeps the tenant.
       expect(queries.indexOf(phone)).toBeGreaterThan(-1);
@@ -265,10 +266,73 @@ describe("provision-beta-gate when register requires verified setup", () => {
       const file = linkFile();
       process.env.BETA_GATE_MOBILE_LINK_FILE = file;
       const mod = await import("../../../scripts/provision-beta-gate");
-      await expect(mod.main()).rejects.toThrow(/needs an https HUB_BASE/);
+      await expect(mod.main()).rejects.toThrow(/needs HUB_BASE on the staging app's origin/);
       expect(calls).toHaveLength(0);
       expect(tokenInserts()).toHaveLength(0);
       expect(existsSync(file)).toBe(false);
+    });
+
+    it("refuses an https Hub on another origin before registering anything (Codex r2 F2)", async () => {
+      // The staging APK accepts only its own backend's origin (build.gradle staging
+      // API_BASE): a production-origin link would be minted and then rejected.
+      process.env.HUB_BASE = "https://app.factorylm.com/hub";
+      const file = linkFile();
+      process.env.BETA_GATE_MOBILE_LINK_FILE = file;
+      const mod = await import("../../../scripts/provision-beta-gate");
+      await expect(mod.main()).rejects.toThrow(/needs HUB_BASE on the staging app's origin/);
+      expect(calls).toHaveLength(0);
+      expect(tokenInserts()).toHaveLength(0);
+      expect(existsSync(file)).toBe(false);
+    });
+
+    // Codex r2 F1 + F5: the handoff written in the script header, run verbatim in
+    // bash against a stub harness. It must hand the harness FLM_EMAIL and the link,
+    // and never an inherited FLM_PASSWORD, for a link-file path with a space in it.
+    const handoff = (): string[] => {
+      const src = readFileSync(join(__dirname, "../../../scripts/provision-beta-gate.ts"), "utf8");
+      const block = src.split("Mobile handoff (copy as is):")[1]?.split("End of mobile handoff.")[0];
+      if (!block) throw new Error("the script header has no mobile handoff block");
+      return block
+        .split("\n")
+        .map((l) => l.replace(/^ \*\s?/, ""))
+        .filter((l) => l.trim() !== "");
+    };
+    const runHandoff = async (inheritedPassword: string | null) => {
+      const dir = mkdtempSync(join(tmpdir(), "betagate handoff-"));
+      mkdirSync(join(dir, "run dir"));
+      const file = join(dir, "run dir", "login-link");
+      process.env.BETA_GATE_MOBILE_LINK_FILE = file;
+      const mod = await import("../../../scripts/provision-beta-gate");
+      await mod.main();
+      writeFileSync(join(dir, "env.out"), log.mock.calls.map((c) => c.join(" ")).join("\n") + "\n");
+      const stub = join(dir, "harness.sh");
+      writeFileSync(
+        stub,
+        'printf "email=%s\\nlink=%s\\npassword=%s\\n" "${FLM_EMAIL-unset}" "${FLM_LOGIN_LINK-unset}" "${FLM_PASSWORD-unset}"\n',
+      );
+      chmodSync(stub, 0o755);
+      const script = handoff()
+        .join("\n")
+        .replaceAll("/tmp/env.out", `"${join(dir, "env.out")}"`)
+        .replaceAll("tools/mobile-e2e/run.sh", `"${stub}"`)
+        .replace(/^cd \.\. && /m, "");
+      const env: Record<string, string> = { PATH: "/usr/bin:/bin", HOME: dir };
+      if (inheritedPassword !== null) env.FLM_PASSWORD = inheritedPassword;
+      const out = execFileSync("bash", ["-c", script], { env, cwd: dir, encoding: "utf8" });
+      return { out, link: readFileSync(file, "utf8") };
+    };
+
+    it("the documented handoff gives the harness the email and link from a clean shell", async () => {
+      const { out, link } = await runHandoff(null);
+      expect(out).toMatch(/^email=betagate-\d{13}[0-9a-f]{12}@factorylm\.com$/m);
+      expect(out).toContain(`link=${link}`);
+      expect(out).toMatch(/^password=unset$/m);
+    });
+
+    it("the documented handoff drops an inherited FLM_PASSWORD", async () => {
+      const { out } = await runHandoff("an-inherited-password");
+      expect(out).toMatch(/^password=unset$/m);
+      expect(out).not.toContain("an-inherited-password");
     });
 
     it("refuses in password-register mode, before minting, and sweeps (Codex r1 F3)", async () => {
