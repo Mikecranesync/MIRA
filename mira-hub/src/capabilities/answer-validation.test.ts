@@ -1296,17 +1296,27 @@ describe("the code-meaning fallback keeps the safety guidance it replaces (#5996
   });
 });
 
-describe("Codex #5996 r1: code references are not meanings; disconnection wording keeps the banner", () => {
+describe("Codex #5996 r1–r3: code-reference wording and disconnection warnings", () => {
   const Q = "What does PowerFlex 525 fault F004 mean?";
 
+  // Mike, 2026-11-26 (Codex r1–r3 on #5996): no "code reference" exemption.
+  // Two rounds of holes (a trigger after "code displayed", a meaning handed to
+  // the next clause) came from it. These lines assign no meaning, but they get
+  // the safe fallback — the same thing main already does for the unqualified
+  // "F004 is the code you should photograph". Conservative by decision.
   it.each([
     "F004 on your drive is the code you should photograph before contacting support.",
-    "F004 is the code to write down before you call support.",
     "F004 is the fault code shown on the display.",
-    "F004 is the number on your keypad to report.",
-    "F004 is the fault code shown on the display, so photograph it before you call support.",
-    "F004 is the code shown on the display, but I can't verify what it indicates on this drive.",
-  ])("a reference to the code itself passes: %s", (answer) => {
+  ])("a 'this is the code' line gets the safe fallback, by decision: %s", (answer) => {
+    const r = general(answer, Q);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.violation).toBe("unsupported-specificity:code-meaning-asserted");
+  });
+
+  it.each([
+    "Take a photo of the display so the code shown on the panel can be checked against the manual.",
+    "I can't verify what F004 means on this machine.",
+  ])("advice that never says what the code is still passes: %s", (answer) => {
     expect(general(answer, Q).ok).toBe(true);
   });
 

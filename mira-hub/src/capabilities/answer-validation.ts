@@ -838,23 +838,6 @@ const FAULT_CONTEXT = /\b(?:fault|alarm|error|code|trip(?:ped|s)?)\b/i;
 
 /** Hedges that do not rescue an invented code meaning ("F004 is commonly an
  *  overcurrent fault"). Regex source, used inside codeMeaningViolation. */
-/** Codex #5996 r1 F1: "F004 on your drive is the code you should photograph"
- *  names the code, it does not assign it a meaning. After "is a/an/the", a
- *  noun phrase about the code itself followed by what to DO with it, or where
- *  it is shown, is not a definition. "F004 is the code for undervoltage" still
- *  is one, so "code for …" is not exempted.
- *  Codex r2 F3: the exemption holds only while the rest of the clause says
- *  nothing about WHY the code appears — "the code displayed when the drive
- *  trips on overcurrent" assigns a trigger, so a trigger word anywhere after
- *  the reference (when/if/after/because/for/due to/meaning/…, or "on <cause>"
- *  other than a place like "on the display") voids it. Ambiguous wording
- *  falls to the conservative fallback. */
-const CODE_TRIGGER =
-  "(?:when|whenever|while|if|once|after|during|under|with|upon|at|because|due\\s+to|caused|cause[sd]?|meaning|means|indicat\\w*|signal\\w*|for|from|on\\s+(?!(?:the|your|a|an|its)\\s+(?:display|screen|keypad|hmi|panel|drive|nameplate|label)\\b))";
-const NOT_A_CODE_REFERENCE =
-  "(?!\\s+(?:fault\\s+|error\\s+|alarm\\s+)?(?:code|number)\\s+(?:you\\b|to\\b|shown\\b|displayed\\b|on\\s+(?:the|your)\\s+(?:display|screen|keypad|hmi)\\b)(?![^.!?]*\\b" +
-  CODE_TRIGGER +
-  "))";
 const DEF_HEDGE =
   "(?:usually|typically|often|generally|commonly|normally|frequently|probably|likely|most\\s+likely|most\\s+often|most\\s+commonly)";
 
@@ -1008,7 +991,7 @@ function codeMeaningViolation(
     // "I can't verify what Q-447-Delta means" keeps its exemption because the
     // non-verification and the definition frame share one clause.
     const clauses = s.split(/[,;:]|—|–|\bbut\b|\bhowever\b|\byet\b/i);
-    for (const [ci, clause] of clauses.entries()) {
+    for (const clause of clauses) {
       if (NON_VERIFICATION.test(clause)) continue;
       for (const tok of clause.match(FAULT_CODE_TOKEN) ?? []) {
         // FAULT_CODE_TOKEN's trailing suffix is unbounded, so a model stuck in
@@ -1029,12 +1012,10 @@ function codeMeaningViolation(
         // overcurrent fault"), and a short "on a <machine>" may sit between the
         // code and its verb ("F30011 on a Siemens G120 is generally a motor
         // overtemperature"). All three shipped as general answers before this.
-        const frame = (exempt: string) =>
-          new RegExp(
-            `["'\`*]*${esc}["'\`*]*(?:\\s*\\([^)]{0,40}\\))?(?:\\s+(?:on|in|for)\\s+(?:(?:a|an|the)\\s+)?[\\w-]+(?:\\s+[\\w-]+){0,3})?\\s+(?:fault\\s+|alarm\\s+|error\\s+|code\\s+)?(?:${DEF_HEDGE}\\s+)?(?:means|indicates|signals|refers\\s+to|stands\\s+for|denotes|corresponds\\s+to|is\\s+(?:${DEF_HEDGE}\\s+)?(?:a|an|the)\\b${exempt}|is\\s+caused\\s+by|occurs\\s+when)\\b`,
-            "i",
-          );
-        const defFrame = frame(NOT_A_CODE_REFERENCE);
+        const defFrame = new RegExp(
+          `["'\`*]*${esc}["'\`*]*(?:\\s*\\([^)]{0,40}\\))?(?:\\s+(?:on|in|for)\\s+(?:(?:a|an|the)\\s+)?[\\w-]+(?:\\s+[\\w-]+){0,3})?\\s+(?:fault\\s+|alarm\\s+|error\\s+|code\\s+)?(?:${DEF_HEDGE}\\s+)?(?:means|indicates|signals|refers\\s+to|stands\\s+for|denotes|corresponds\\s+to|is\\s+(?:${DEF_HEDGE}\\s+)?(?:a|an|the)\\b|is\\s+caused\\s+by|occurs\\s+when)\\b`,
+          "i",
+        );
         // "the most likely reason you're seeing 'Q-447-Delta' is …"
         const causeFrame = new RegExp(
           `\\b(?:reason|cause)\\b[^.!?\\n]{0,60}\\b(?:seeing|getting|displaying|showing)\\s*["'\`]?${esc}["'\`]?[^.!?\\n]{0,25}\\bis\\b`,
@@ -1042,20 +1023,6 @@ function codeMeaningViolation(
         );
         if (defFrame.test(clause) || causeFrame.test(clause)) {
           return { code: tok, excerpt: s.slice(0, 160) };
-        }
-        // Codex #5996 r3 F4: a code reference exempted above ("F004 is the
-        // code shown on the display") can hand its meaning to the next clause
-        // (", indicating a motor overcurrent fault"), which the clause split
-        // separates from the code. When the exemption was what saved this
-        // clause, a trigger word in a LATER clause of the same sentence is the
-        // meaning. A later clause that is itself an honest non-verification
-        // stays exempt — the uncertainty scope remains clause-local.
-        if (frame("").test(clause)) {
-          const trigger = new RegExp(`\\b${CODE_TRIGGER}`, "i");
-          for (const later of clauses.slice(ci + 1)) {
-            if (NON_VERIFICATION.test(later)) continue;
-            if (trigger.test(later)) return { code: tok, excerpt: s.slice(0, 160) };
-          }
         }
       }
     }
