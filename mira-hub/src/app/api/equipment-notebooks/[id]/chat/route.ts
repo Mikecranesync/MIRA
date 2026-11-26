@@ -1618,11 +1618,13 @@ async function handleChatTurn(
     // stream is pinned by behaviour in `semantic-redraft.route.test.ts` (#6048).
     //
     // The cost of the invariant is real and is stated rather than hidden:
-    // safety_stop and abstained turns, and turns the client stopped BEFORE the
-    // commit point, carry NO jev_decision. Shadow coverage is committed turns:
-    // delivered ones, and since #6048 also a committed turn whose delivery then
-    // failed or was cancelled (its settle makes the same one metered call a
-    // delivered turn makes). Extending it to the safety path
+    // turns that end before `decisionState` is assigned (safety_stop, abstained,
+    // a client stop during generation) carry NO jev_decision. Shadow coverage is
+    // the turns that reached the final answer gate and wrote a packet: delivered
+    // ones, the history-write-failure exit, and since #6048 a committed turn
+    // whose delivery then failed or was cancelled (its settle makes the same one
+    // metered call a delivered turn makes). A turn cancelled after a FAILED
+    // history write writes no packet, so it carries none. Extending it to the safety path
     // would mean awaiting a vendor call before a hazard stop reaches the
     // technician, which is not a trade worth making for a shadow signal.
     //

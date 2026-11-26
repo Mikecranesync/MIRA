@@ -34,10 +34,10 @@ describe("the Jev shadow cannot reach the delivery path", () => {
 
   // The other half of the invariant (every call site DOWNSTREAM of that assignment runs
   // only once the stream is terminal) is no longer pinned here. The source check that did
-  // it went dead with #6048: the final call became `settling ??= finishAndPersist(`, which
-  // its `await finishAndPersist(` pattern does not match, and "a close somewhere above"
-  // was met by any `controller.close()` earlier in the file. It is pinned by behaviour
-  // instead, one test per downstream call site, in
+  // it could not see it: "a close somewhere above the call" was met by any
+  // `controller.close()` earlier in the file, and since #6048 the final call sits in a
+  // closure written above the close it runs after, so its line says nothing about when
+  // it runs. It is pinned by behaviour instead, one test per downstream call site, in
   // src/capabilities/__tests__/semantic-redraft.route.test.ts:
   //  - delivered turn: "control (behavioural form of the jev-route-invariant pin) ..."
   //  - delivery failed after the commit: "R1-D1: delivery throws after the commit ..."

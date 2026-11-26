@@ -1163,14 +1163,25 @@ describe("#6048 — a body cancel after the commit still persists the packet and
     const res = await POST(req({ message: Q_PLAIN, sourceDocIds: [DOC_A], clientRequestId: REQ_ID }, false), params);
     expect(res.status).toBe(200);
     reader = res.body!.getReader();
-    if (!cancel) expect(await drain(reader)).toBe("closed");
+    // Delivered: how many providers.exhausted lines existed when the status frame reached the reader.
+    let exhaustedLinesAtStatus = -1;
+    if (!cancel) {
+      const dec = new TextDecoder();
+      let text = "";
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        text += dec.decode(value);
+        if (exhaustedLinesAtStatus < 0 && text.includes('"kind":"status"')) exhaustedLinesAtStatus = exhaustedLines().length;
+      }
+    }
     const r = await settled();
     // Preconditions: committed as an unserved (error) turn; a cancelled one never got its closing frames.
     expect(r.turn.answerStatus).toBe("error");
     expect(r.turn.answerText).toBeNull();
     expect(r.packet.persistence.turn_row_id).toBe(ROW_ID);
     expect(closeTurnMock).not.toHaveBeenCalled();
-    return r;
+    return { ...r, exhaustedLinesAtStatus };
   }
 
   for (const cancel of [true, false]) {
@@ -1321,6 +1332,8 @@ describe("#6048 — a body cancel after the commit still persists the packet and
       expect(exhaustedLines()).toHaveLength(1);
       expect(usageLines()).toHaveLength(1);
       expect(JSON.parse(usageLines()[0])).toMatchObject({ status: r.usage.status, attempted: ["OpenAI"] });
+      // Delivered: the exhausted line is written where it always was (before the status frame), not by the settle.
+      if (!cancel) expect(r.exhaustedLinesAtStatus).toBe(1);
     });
 
     it(`R1-D5 control: the legacy cascade (seam off), no provider served, ${how}: neither line (they are canonical-seam lines)`, async () => {
