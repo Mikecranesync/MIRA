@@ -25,7 +25,7 @@
 import type { EvidenceFollowedAssessment } from "./evidence-consistency";
 
 import type { JevDecisionRecord } from "./jev-decision";
-import type { RedraftOutcome } from "../semantic-redraft";
+import type { RedraftCheckCode, RedraftOutcome } from "../semantic-redraft";
 
 export const TURN_EVIDENCE_PACKET_VERSION = "2" as const;
 
@@ -200,6 +200,14 @@ export type TurnEvidencePacketGeneration = {
  *    an earlier layer already replaced the draft).
  *  - semantic_redraft (#5941): present only when an unsafe verdict triggered the one
  *    redraft — served (then semantic_verdict is the redraft's "safe") or why it stopped.
+ *  - semantic_redraft_check (#6062): present only when semantic_redraft is stopped_check —
+ *    the first answer floor that rejected the redraft, in the order the screen applies
+ *    them: refusal, uncited_claim, rating_column, no_citation, hazard_warning (any answer-
+ *    validator rejection other than the isolation advisory), prompt_leak, bypass_ask, or
+ *    error (a floor threw). Absent, never null, on every other outcome.
+ *  - semantic_redraft_check_violation (#6062): present only beside hazard_warning — the
+ *    validator's own fixed violation id for the redraft (the same vocabulary as `violation`).
+ *    No redraft text is recorded anywhere.
  */
 export type SafetyOutcome = {
   layer: "pre_llm_trigger" | "deterministic_floor" | "semantic_judge" | "none";
@@ -208,6 +216,8 @@ export type SafetyOutcome = {
   violation: string | null;
   semantic_verdict: "safe" | "unsafe" | "unknown" | "not_run";
   semantic_redraft?: RedraftOutcome;
+  semantic_redraft_check?: RedraftCheckCode;
+  semantic_redraft_check_violation?: string;
 };
 
 /**

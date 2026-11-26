@@ -333,6 +333,7 @@ import {
   runSemanticRedraft,
   withRedraftInstruction,
   withRedraftUsage,
+  type RedraftCheckCode,
   type RedraftOutcome,
 } from "@/capabilities/semantic-redraft";
 import { cascadeComplete, type CascadeMessage, type CascadeResult } from "@/lib/llm/cascade";
@@ -5492,6 +5493,8 @@ async function handleChatTurn(
       let semanticVerdictCode: SafetyOutcome["semantic_verdict"] = "not_run";
       let semanticRedraftCode: RedraftOutcome | null = null; // #5941, set only when a redraft ran
       let redraftFloorWarning: string | null = null; // #5941, the advisory a served redraft carries
+      // #6062: the first floor that stopped the redraft, written by its screen. Codes only.
+      const redraftCheck: { code: RedraftCheckCode | null; violation: string | null } = { code: null, violation: null };
       let semanticDecided = false;
       // The one semantic SAFETY_STOP: zero citations, basis null, the draft never persisted.
       // Shared by the judge-time stop and the #6019 commit-point stop so the two cannot drift.
@@ -5720,26 +5723,46 @@ async function handleChatTurn(
                 // "with the press locked out" wording the instruction asks for. It is
                 // served above the redraft, as it would be on draft 1; every other
                 // warning or replacement stops the turn.
+                // #6062: the screen also records WHICH floor stopped the redraft: the first
+                // one, in the order below, as a code (and, for the validator, its own fixed
+                // violation id). The checks, their order and their results are unchanged.
                 screen: (text) => {
-                  if (refusalVerdict(text, { docGrounded, citations }) || uncitedClaimFor(text) || ratingColumnFor(text) !== null) return null;
-                  // It replaces a stop only with a source the technician can check: at least one
-                  // marker that resolves to a retrieved excerpt (Codex r1 F3).
-                  if (citationsUsedInAnswer(text, citations).length === 0) return null;
-                  const v = validateAnswer({
-                    answerText: text,
-                    question: message,
-                    general: false,
-                    served: true,
-                    refused: false,
-                    evidenceSufficient,
-                    manualSearchRunning: fallbackSearchRunning,
-                  });
-                  const shown = v.ok ? text : v.violation === "hazard-warning:isolation-advisory" ? v.replacement : null;
-                  // A guard/interlock defeat reworded under lockout wording draws only the
-                  // advisory above; the bypass classifier catches it (safety review on #6001).
-                  if (!shown || promptLeakIn(shown).leaked || safetyBypassAsk(text) !== null) return null;
-                  redraftAdvisory = !v.ok;
-                  return shown;
+                  const stopAt = (code: RedraftCheckCode, violation: string | null = null) => {
+                    redraftCheck.code = code;
+                    redraftCheck.violation = violation;
+                    return null;
+                  };
+                  try {
+                    if (refusalVerdict(text, { docGrounded, citations })) return stopAt("refusal");
+                    if (uncitedClaimFor(text)) return stopAt("uncited_claim");
+                    if (ratingColumnFor(text) !== null) return stopAt("rating_column");
+                    // It replaces a stop only with a source the technician can check: at least one
+                    // marker that resolves to a retrieved excerpt (Codex r1 F3).
+                    if (citationsUsedInAnswer(text, citations).length === 0) return stopAt("no_citation");
+                    const v = validateAnswer({
+                      answerText: text,
+                      question: message,
+                      general: false,
+                      served: true,
+                      refused: false,
+                      evidenceSufficient,
+                      manualSearchRunning: fallbackSearchRunning,
+                    });
+                    const shown = v.ok ? text : v.violation === "hazard-warning:isolation-advisory" ? v.replacement : null;
+                    // Every validator rejection but the advisory, whatever its kind.
+                    if (!shown) return stopAt("hazard_warning", v.ok ? null : v.violation);
+                    if (promptLeakIn(shown).leaked) return stopAt("prompt_leak");
+                    // A guard/interlock defeat reworded under lockout wording draws only the
+                    // advisory above; the bypass classifier catches it (safety review on #6001).
+                    if (safetyBypassAsk(text) !== null) return stopAt("bypass_ask");
+                    redraftAdvisory = !v.ok;
+                    return shown;
+                  } catch (err) {
+                    // A floor that throws stops the turn, as before. Only the error's name is
+                    // logged: its message could carry the draft.
+                    console.error(`[notebook-chat] semantic redraft screen threw (${err instanceof Error ? err.name : "unknown"}): stopping`);
+                    return stopAt("error");
+                  }
                 },
                 // Kept apart from the judge, which checks physical safety, not source support:
                 // every cited step must be supported by the page it cites (#6020).
@@ -5758,7 +5781,7 @@ async function handleChatTurn(
               });
         if (redraft) {
           semanticRedraftCode = redraft.outcome;
-          console.warn(`[notebook-chat] semantic redraft ${redraft.outcome}`);
+          console.warn(`[notebook-chat] semantic redraft ${redraft.outcome}${redraft.outcome === "stopped_check" && redraftCheck.code ? ` (${redraftCheck.code})` : ""}`);
         }
         // The redraft was billed whether or not it is served; the served one names the model (Codex r1 F5).
         const gen = redraftGen as CascadeResult | null;
@@ -5969,6 +5992,11 @@ async function handleChatTurn(
           : redraftFloorWarning
             ? { layer: "deterministic_floor", outcome: "warn", flagged: true, violation: redraftFloorWarning, semantic_verdict: semanticVerdictCode, semantic_redraft: semanticRedraftCode }
             : { ...safetyOutcomeBase, semantic_redraft: semanticRedraftCode };
+        // #6062: which floor stopped the redraft. Only beside stopped_check, absent otherwise.
+        if (safetyOutcome && semanticRedraftCode === "stopped_check" && redraftCheck.code) {
+          safetyOutcome.semantic_redraft_check = redraftCheck.code;
+          if (redraftCheck.violation) safetyOutcome.semantic_redraft_check_violation = redraftCheck.violation;
+        }
         rec.stage("answer_gate", {
           invoked: true,
           decision: gateDecision,
