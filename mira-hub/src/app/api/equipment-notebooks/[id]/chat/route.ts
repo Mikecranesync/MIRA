@@ -1604,7 +1604,7 @@ async function handleChatTurn(
     // is narrower than "the helper is always late": `decisionState` is assigned
     // at exactly ONE place — inside the final answer-gate block — and the only
     // two call sites downstream of that assignment (the recordTurn-failure path
-    // and the final path's `settleCommitted`) run once the stream is terminal:
+    // and the final path's `settleTurn`) run once the stream is terminal:
     // after a `controller.close()` on a delivered turn, or after
     // `controller.error()` when delivery threw after the commit (#6048; the
     // usual cause is a response body the client already cancelled). The three
@@ -1613,11 +1613,16 @@ async function handleChatTurn(
     //
     // That invariant is load-bearing and easy to break by populating
     // `decisionState` earlier, which would silently put a ~280 ms vendor call
-    // in front of a HAZARD STOP response. `jev-route-invariant.test.ts` pins it.
+    // in front of a HAZARD STOP response. `jev-route-invariant.test.ts` pins the
+    // single assignment; that the downstream call sites run only on a terminal
+    // stream is pinned by behaviour in `semantic-redraft.route.test.ts` (#6048).
     //
     // The cost of the invariant is real and is stated rather than hidden:
-    // safety_stop, abstained and client-cancelled turns carry NO jev_decision.
-    // Shadow coverage is answered turns only. Extending it to the safety path
+    // safety_stop and abstained turns, and turns the client stopped BEFORE the
+    // commit point, carry NO jev_decision. Shadow coverage is committed turns:
+    // delivered ones, and since #6048 also a committed turn whose delivery then
+    // failed or was cancelled (its settle makes the same one metered call a
+    // delivered turn makes). Extending it to the safety path
     // would mean awaiting a vendor call before a hazard stop reaches the
     // technician, which is not a trade worth making for a shadow signal.
     //
@@ -4797,9 +4802,10 @@ async function handleChatTurn(
       // OpenAI call, held together with the OpenAI answer's. Released in the
       // `finally` below on every exit; a no-op once the judge has settled it.
       let judgeHold: JudgeOpenAiHold | null = null;
-      // #6048: armed once the turn's decision is in history. Persists that
-      // decision's packet and usage row once, whether delivery finishes or the
-      // catch below runs. Declared here because the catch cannot see the try's locals.
+      // #6048: armed once the turn's decision is in history (never when the history
+      // write failed). Lets the catch below persist that decision's packet and usage
+      // row through the turn's one settle. Declared here because the catch cannot
+      // see the try's locals.
       let settleCommitted: (() => Promise<void>) | null = null;
       try {
       // Turn Flight Recorder correlation frame — FIRST, additive, only when a
@@ -6220,6 +6226,9 @@ async function handleChatTurn(
         : [];
       const finalPersistSpan = startStage("turn.persist");
       let finalTurnRowId: string | null = null;
+      // True only once the history write has returned (#6048: the catch below settles
+      // nothing for a decision that never reached history).
+      let historyRecorded = false;
       try {
         finalTurnRowId = await recordTurn(ctx.tenantId, notebookId, {
           ownerUserId: ctx.userId,
@@ -6249,6 +6258,7 @@ async function handleChatTurn(
           basis: served ? (outputRejected?.kind === "unsafe_answer" ? null : evidenceFrame.basis) : null,
           ...assetSnapshot,
         });
+        historyRecorded = true;
       } catch (err) {
         console.error("[notebook-chat] recordTurn failed:", err instanceof Error ? err.message : err);
         setSpanAttrs({ "mira.persist.outcome": "failed", "mira.persist.error_code": "record_turn_failed" }, finalPersistSpan);
@@ -6277,27 +6287,53 @@ async function handleChatTurn(
         }
       }
 
-      // #6048: the decision above is in history now, so its packet and usage row are
-      // owed whatever happens to delivery. Every enqueue below throws once the client
-      // has cancelled the response body; the catch then settles through this same
-      // closure. The promise is kept on the first call, before anything is awaited, so
-      // a second call (a throw after the normal-path settle) writes nothing again.
-      {
-        let settling: Promise<void> | null = null;
-        settleCommitted = () =>
-          (settling ??= finishAndPersist(
-            finalTurnRowId,
-            // The usage frame's own object when that frame went out; otherwise what it
-            // would have carried. The generations were billed either way.
+      // The two incident log lines (`providers.exhausted`, `turn.usage`), each written at
+      // most once per turn: beside their frames on a delivered turn, exactly where they
+      // always were, or by the settle below when delivery stopped before reaching them
+      // (#6048). Each flag is set before its line is written.
+      let exhaustedLogged = false;
+      const logProvidersExhaustedOnce = (): void => {
+        if (exhaustedLogged) return;
+        exhaustedLogged = true;
+        logProvidersExhausted({ tenantId: ctx.tenantId, notebookId }, providerFailures);
+      };
+      let usageLogged = false;
+      const logTurnUsageOnce = (usage: TurnUsage): void => {
+        if (usageLogged) return;
+        usageLogged = true;
+        logTurnUsage({ tenantId: ctx.tenantId, notebookId }, usage);
+      };
+
+      // #6048: the ONE settle for this turn: its packet and its usage row. The promise
+      // is kept on the first call, before anything is awaited, so a second call (a throw
+      // after the normal-path settle) writes nothing again.
+      let settling: Promise<void> | null = null;
+      const settleTurn = (): Promise<void> =>
+        (settling ??= (async () => {
+          // The usage frame's own object when that frame went out; otherwise what it
+          // would have carried. The generations were billed either way.
+          const owedUsage: TurnUsage =
             pendingUsage ??
-              (seam ? (turnUsage ?? exhaustedUsage(attempted)) : legacyCascadeUsage(activeProvider, served ? "ok" : "error")),
-            {
-              answerText: served ? answerText : null,
-              citationsPresent: emittedCitations.length > 0,
-              latencyMs: Date.now() - turnStartedAt,
-            },
-          ));
-      }
+            (seam ? (turnUsage ?? exhaustedUsage(attempted)) : legacyCascadeUsage(activeProvider, served ? "ok" : "error"));
+          // Canonical seam only, like the frames; `exhaustion` is the status frame's own condition.
+          if (seam) {
+            if (exhaustion) logProvidersExhaustedOnce();
+            logTurnUsageOnce(owedUsage);
+          }
+          await finishAndPersist(finalTurnRowId, owedUsage, {
+            answerText: served ? answerText : null,
+            citationsPresent: emittedCitations.length > 0,
+            latencyMs: Date.now() - turnStartedAt,
+          });
+        })());
+      // The catch may settle only a decision that IS in history. When the history write
+      // succeeded, the packet and usage row are owed whatever happens to delivery: every
+      // enqueue below throws once the client has cancelled the response body, and the
+      // catch then settles through this same closure. When that write failed and the
+      // route carried on (no request id), nothing is committed: a delivery failure keeps
+      // the behaviour from before #6048 (no packet, the bare close), and only the
+      // delivered path below writes the packet, with its failed persistence outcome.
+      if (historyRecorded) settleCommitted = settleTurn;
 
       // An unsafe replacement is already a terminal Safety STOP. Emit its
       // warning before the first stoppable content byte so an interruption can
@@ -6363,7 +6399,7 @@ async function handleChatTurn(
                   { kind: "status", status: "error", ...(exhaustion ?? providerExhaustionStatus(providerFailures)) }
                 : { kind: "status", status: "error", message: "No answer provider available." };
       if (seam && statusFrame.status === "error" && !internalError) {
-        logProvidersExhausted({ tenantId: ctx.tenantId, notebookId }, providerFailures);
+        logProvidersExhaustedOnce();
       }
       // Canonical per-turn spend, emitted BEFORE status so a client that stops
       // reading at `status` has still received it. Seam-flagged only; the
@@ -6373,7 +6409,7 @@ async function handleChatTurn(
         controller.enqueue(enc.encode(sse(usageFrame(finalUsage))));
         // Structured log: still emitted, because a log line survives a database
         // outage and is the thing you grep DURING an incident.
-        logTurnUsage({ tenantId: ctx.tenantId, notebookId }, finalUsage);
+        logTurnUsageOnce(finalUsage);
         pendingUsage = finalUsage;
       }
 
@@ -6434,8 +6470,9 @@ async function handleChatTurn(
         // before telemetry starts. A ledger exception is non-fatal and must
         // never turn an already-closed, valid answer into a transport error.
         await new Promise<void>((resolve) => setTimeout(resolve, 0));
-        // #6048: the one settle for this committed turn (armed at the commit above).
-        await settleCommitted();
+        // #6048: the one settle for this turn (built at the commit point above). It runs
+        // here whether or not the history write succeeded, as it always did.
+        await settleTurn();
       }
       setSpanAttrs({ "mira.turn.row_id": finalTurnRowId, "mira.persist.outcome": "ok" }, finalPersistSpan);
       endTimed(finalPersistSpan, "persist");
@@ -6462,8 +6499,9 @@ async function handleChatTurn(
         // Settle it here, BEFORE endRoot(): endRoot starts a fire-and-forget close
         // that writes the closed row with no packet, and the usage write that
         // follows such a close is dropped (ON CONFLICT DO NOTHING). Null before the
-        // commit point, where nothing is owed. A settle that fails is logged and
-        // never replaces `err`; the claim was already released above.
+        // commit point and when the history write failed: nothing is owed there. A
+        // settle that fails is logged and never replaces `err`; the claim was already
+        // released above.
         if (settleCommitted) {
           try {
             await settleCommitted();
