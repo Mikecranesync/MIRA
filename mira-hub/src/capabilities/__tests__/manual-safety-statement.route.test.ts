@@ -48,8 +48,8 @@ import { POST } from "@/app/api/equipment-notebooks/[id]/chat/route";
 import { ENERGIZED_ELECTRICAL_HAZARD } from "@/lib/safety-classifier";
 import { extractManualSafetyStatement, manualSafetyStatementForCitations } from "@/capabilities/manual-safety-statement";
 import { isManualSafetyStatementEntry } from "@/lib/notebook-chat-types";
-import { splitEvidence } from "@/components/equipment/notebook-chat-utils";
-import { turnsFromPersisted } from "@/factorylm-ui/to-interaction";
+import { readNotebookStream, splitEvidence } from "@/components/equipment/notebook-chat-utils";
+import { partsFromStream, turnsFromPersisted } from "@/factorylm-ui/to-interaction";
 
 const NB = "22222222-2222-4222-8222-222222222222";
 const DOC_A = "33333333-3333-4333-8333-333333333333";
@@ -110,6 +110,12 @@ function sourcesFrame(text: string): { citations: Array<{ citationId: string }> 
   return JSON.parse(line!.replace(/^data:\s*/, ""));
 }
 
+function evidenceFrame(text: string): { manualSafetyStatement?: unknown } {
+  const line = text.split("\n\n").find((l) => l.includes('"kind":"evidence"'));
+  expect(line).toBeDefined();
+  return JSON.parse(line!.replace(/^data:\s*/, ""));
+}
+
 const QUESTION = "How many times will the drive try to auto restart after a fault?";
 
 beforeEach(() => {
@@ -152,6 +158,8 @@ describe("manual safety statement on a CITED page (#4508)", () => {
     expect(turn.evidence.some((e) => (e as { kind?: string }).kind === "safety_notice")).toBe(false);
     // The live frames carry no new frame kind and no terminal safety frame.
     expect(text).not.toContain('"kind":"safety"');
+    // #6013: the live evidence frame carries the same entry, so the finished answer shows it before the reload.
+    expect(evidenceFrame(text).manualSafetyStatement).toEqual(entries[0]);
 
     // Reload: /v3 renders the persisted row with the notice FIRST, as a warning, and the turn completes.
     const [, a] = turnsFromPersisted(
@@ -174,6 +182,8 @@ describe("manual safety statement on a CITED page (#4508)", () => {
     const text = await (await POST(chatReq({ message: QUESTION, sourceDocIds: [DOC_A] }), params)).text();
     expect(sourcesFrame(text).citations.map((c) => c.citationId)).toEqual(["1"]);
     expect(recorded().evidence.filter(isManualSafetyStatementEntry)).toEqual([]);
+    // #6013 control: no warning persisted, none on the live frame either.
+    expect(evidenceFrame(text)).not.toHaveProperty("manualSafetyStatement");
   });
 
   it("control for the uncited case: citing [2] (the statement page) does trigger the notice", async () => {
@@ -284,6 +294,20 @@ describe("a persisted manual_safety_statement entry is NOT a citation (#4508 doc
     expect(res.headers.get("X-Idempotent-Replay")).toBe("true");
     expect(sourcesFrame(text).citations).toEqual([CITATION]);
     expect(fetch).not.toHaveBeenCalled();
+    // #6013 Codex r1 F1: the replay carries the exact saved warning, so a retried answer shows it
+    // before its text without waiting for (or depending on) the history reload.
+    expect(evidenceFrame(text).manualSafetyStatement).toEqual(ENTRY);
+    const reader = new ReadableStream<Uint8Array>({
+      start(c) {
+        c.enqueue(new TextEncoder().encode(text));
+        c.close();
+      },
+    }).getReader();
+    const parts = partsFromStream(await readNotebookStream(reader, () => undefined), { turnId: "turn-replay-a" });
+    const notice = parts.findIndex((p) => p.type === "safety_notice" && p.notice.trigger === "manual_safety_statement");
+    const answer = parts.findIndex((p) => p.type === "text" && p.text.includes("Set A092"));
+    expect(notice).toBeGreaterThanOrEqual(0);
+    expect(notice).toBeLessThan(answer);
   });
 });
 
