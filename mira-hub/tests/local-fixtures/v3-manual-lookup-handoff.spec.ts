@@ -310,16 +310,24 @@ for (const mode of ["preparing", "ready", "opening", "lookup-failed", "safety", 
         await expect(composer).toHaveValue(QUESTION);
         expect(chatBodies).toHaveLength(0);
         expect(refused).toEqual([expect.objectContaining({ message: QUESTION, wait: "1", reason: "unavailable" })]);
-        // Send without the manual is offered only while the draft is that question.
+        // Send without the manual is offered only while the draft is that question, unedited (#5686:
+        // an edited draft is a new draft, even if its text comes back).
         const withoutManual = banner.getByRole("button", { name: "Send without the manual", exact: true });
-        await composer.fill(`${QUESTION} Thanks.`);
+        await expect(withoutManual).toBeVisible();
+        const edited = `${QUESTION} Thanks.`;
+        await composer.fill(edited);
         await expect(withoutManual).toHaveCount(0);
-        await composer.fill(QUESTION);
+        // The edited question goes through the route again and is paused again, its draft kept.
+        await page.getByRole("button", { name: "Send", exact: true }).click();
+        await expect.poll(() => refused.length).toBe(2);
+        expect(refused[1]).toMatchObject({ message: edited, wait: "1", reason: "unavailable" });
+        await expect(composer).toHaveValue(edited);
+        expect(chatBodies).toHaveLength(0);
         // One send without the wait, answered as main answers it; never asked with the wait again.
         await withoutManual.click();
         await expect.poll(() => chatBodies.length).toBe(1);
-        expect(chatBodies[0]).toMatchObject({ message: QUESTION, wait: null });
-        expect(refused).toHaveLength(1);
+        expect(chatBodies[0]).toMatchObject({ message: edited, wait: null });
+        expect(refused).toHaveLength(2);
         await expect(composer).toHaveValue("");
         return;
       }
@@ -343,14 +351,17 @@ for (const mode of ["preparing", "ready", "opening", "lookup-failed", "safety", 
     const citation = page.getByRole("button", { name: /^Open citation 1: Exact GS10 fixture, page 1$/ });
     if (attachedSafety) {
       await expect(citation).toBeVisible();
-      await attachPhoto();
-      await composer.fill(SAFETY_QUESTION);
-      await page.getByRole("button", { name: "Send", exact: true }).click();
-      await secondLookRequested.promise;
+      // The manual is lost before the next question. The answer's saved read returns it (#5686 keeps
+      // the composer busy until that read returns, so it is released before the next send).
       ready = false;
       lostManual = true;
       answerHistory.release();
       await expect(page.getByText("The fixture manual is unavailable.", { exact: true })).toBeVisible();
+      await attachPhoto();
+      await composer.fill(SAFETY_QUESTION);
+      await page.getByRole("button", { name: "Send", exact: true }).click();
+      await secondLookRequested.promise;
+      expect(refused).toEqual([]);
       secondLook.release();
       await expect(page.getByText("Make the equipment safe before working on it.", { exact: true })).toBeVisible();
       expect(chatBodies.at(-1)).toMatchObject({ message: SAFETY_QUESTION, sourceDocIds: [], wait: null });
