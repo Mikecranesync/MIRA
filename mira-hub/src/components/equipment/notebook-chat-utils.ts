@@ -4,6 +4,7 @@
 
 import {
   isMachineEvidenceEntry,
+  isManualSafetyStatementEntry,
   isSafetyNoticeEntry,
   isSafetyStopEntry,
   NOTEBOOK_ATTEMPT_HEADER,
@@ -12,6 +13,7 @@ import {
   type EvidenceBasis,
   type EvidenceCitation,
   type MachineEvidenceEntry,
+  type ManualSafetyStatementEntry,
   type NotebookChatFrame,
   type NotebookManualSearchStatusFrame,
   type NotebookProgressFrame,
@@ -156,6 +158,10 @@ export type StreamResult = {
    *  hides citations, while a directive turn is a COMPLETED, cited answer with
    *  a warning. Live and hydrated (`persistedTurns`) carry the same value. */
   hazardNotice: SafetyNoticeEntry | null;
+  /** #6013: the cited manual's own safety statement, carried on the evidence
+   *  frame so the finished live answer shows it before the history reload.
+   *  Optional so older stream fixtures and readers stay valid. */
+  manualSafetyStatement?: ManualSafetyStatementEntry | null;
   /** ADR-0038 rule 6: did a terminal `status` frame ACTUALLY arrive? `status`
    *  is the only terminal marker on the wire a client may trust — `[DONE]` is
    *  a transport sentinel carrying no state, and stream closure is
@@ -255,6 +261,7 @@ export async function readNotebookStream(
     visualEvidence: null,
     safetyNotice: initialSafetyNotice,
     hazardNotice: null,
+    manualSafetyStatement: null,
     sawStatus: false,
   };
   try {
@@ -314,6 +321,9 @@ export async function readNotebookStream(
           if ("hazardEntries" in frame && Array.isArray(frame.hazardEntries)) {
             const directive = frame.hazardEntries.find(isSafetyNoticeEntry);
             if (directive) out.hazardNotice = directive;
+          }
+          if ("manualSafetyStatement" in frame && isManualSafetyStatementEntry(frame.manualSafetyStatement)) {
+            out.manualSafetyStatement = frame.manualSafetyStatement;
           }
         }
         else if (frame.kind === "safety") {

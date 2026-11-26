@@ -417,6 +417,8 @@ export function partsFromStream(
     // `hazardNotice`; it classifies as a warning through the same rule the
     // hydrated row uses, so live and reloaded turns render identically.
     if (result.hazardNotice) parts.push(safetyNoticePart(result.hazardNotice));
+    // #6013: the manual's own warning, in the slot `turnsFromPersisted` gives it.
+    if (result.manualSafetyStatement) parts.push(manualSafetyStatementPart(result.manualSafetyStatement));
     if (result.followups.length) parts.push({ type: "followups", suggestions: result.followups });
     return safetyFirst(withComponentAttribution(parts, opts.componentLabel));
   }
