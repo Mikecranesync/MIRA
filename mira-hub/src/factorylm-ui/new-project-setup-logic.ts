@@ -285,7 +285,18 @@ export async function attachSource(notebookId: string, docId: string, filename: 
   return { key, filename, docId, attachFailed: !res.ok, notIndexed: false, message: res.ok ? null : messageOf(res, "Couldn't be added as a source. Try again from the project.") };
 }
 
-export async function runCommit(input: CommitInput, deps: SetupDeps): Promise<CommitOutcome> {
+export async function runCommit(
+  input: CommitInput,
+  deps: SetupDeps,
+  abortSignal?: AbortSignal,
+  onProgress?: (message: string) => void,
+): Promise<CommitOutcome> {
+  const checkAborted = () => {
+    if (abortSignal?.aborted) {
+      throw new Error("ABORTED");
+    }
+  };
+  
   const notes: string[] = [];
   let notebookId: string;
   let nodeId: string | null = null;
@@ -293,15 +304,20 @@ export async function runCommit(input: CommitInput, deps: SetupDeps): Promise<Co
   const name = input.name.trim();
 
   if (input.selected.kind === "general") {
+    checkAborted();
+    onProgress?.("Creating project...");
     let id: string | null;
     try {
       id = await deps.createNotebook({ displayName: name, identitySourceType: "user" });
     } catch (err) {
+      if (err instanceof Error && err.message === "ABORTED") throw err;
       return { kind: "failed", message: err instanceof Error ? err.message : "Could not create the project." };
     }
     if (!id) return { kind: "failed", message: "Sign in again to continue." };
     notebookId = id;
   } else {
+    checkAborted();
+    onProgress?.("Creating project for this machine...");
     const machine = input.selected.machine;
     const post = () => call(deps, "POST", `/api/assets/${encodeURIComponent(machine.id)}/notebook/`, {
       json: { selectedVia: "asset_picker", displayName: name || machine.name },
@@ -346,9 +362,15 @@ export async function runCommit(input: CommitInput, deps: SetupDeps): Promise<Co
     if (read.ok && typeof id === "string") nodeId = id;
   }
 
+  checkAborted();
+  if (input.docs.length > 0) {
+    onProgress?.(`Attaching ${input.docs.length} document${input.docs.length === 1 ? "" : "s"}...`);
+  }
+  
   const docs: DocOutcome[] = [];
   const attached = new Set<string>();
   const attach = async (docId: string, filename: string, key: string, message: string | null) => {
+    checkAborted();
     if (attached.has(docId)) return;
     attached.add(docId);
     const row = await attachSource(notebookId, docId, filename, key, deps);
@@ -356,7 +378,15 @@ export async function runCommit(input: CommitInput, deps: SetupDeps): Promise<Co
   };
   for (const doc of input.docs) await attach(doc.docId, doc.filename, doc.docId, null);
 
+  if (input.pdfs.length > 0) {
+    onProgress?.(`Uploading ${input.pdfs.length} PDF${input.pdfs.length === 1 ? "" : "s"}...`);
+  }
+  
   for (const [n, pdf] of input.pdfs.entries()) {
+    checkAborted();
+    if (input.pdfs.length > 1) {
+      onProgress?.(`Uploading ${n + 1} of ${input.pdfs.length}: ${pdf.name}`);
+    }
     // The position keeps two selected files with the same name on separate rows.
     const doc = await uploadPdf(nodeId, pdf, deps, (docId, key) => attach(docId, pdf.name, key, null), `upload:${n}:${pdf.name}`);
     if (doc) docs.push(doc);
@@ -561,6 +591,12 @@ export type SetupState = {
   notes: string[];
   rows: ResultRow[];
   stillProcessing: boolean;
+  /** #5393: live progress text shown during commit ("Uploading documents...",
+   *  "Creating project...", etc.) Never shown at the same time as `error`. */
+  progress: string | null;
+  /** #5393: true during commit to show the Cancel button. After timeout (60s),
+   *  the commit continues but the button text changes to show it's taking longer. */
+  commitTimeout: boolean;
 };
 
 export function initialSetupState(): SetupState {
@@ -569,6 +605,7 @@ export function initialSetupState(): SetupState {
     duplicate: null, linked: null, workspace: null, referencesError: null, chosenDocIds: [],
     pdfs: [], pdfError: null, committing: false, done: false, error: null, refusal: null,
     notebookId: null, confirmed: null, notes: [], rows: [], stillProcessing: false,
+    progress: null, commitTimeout: false,
   };
 }
 
@@ -584,6 +621,9 @@ export type SetupController = {
   next(): Promise<void>;
   back(): void;
   commit(): Promise<void>;
+  /** #5393: cancel an in-flight commit. The notebook may be half-created but
+   *  usable; the sheet stays on step 3 with an error message. */
+  cancelCommit(): void;
   /** S16: send a PDF whose save failed again (a row with retry), then re-read readiness. No-op otherwise. */
   retryUpload(key: string): Promise<void>;
   /** The notebook the technician should open, if any (created, or the existing one on a refusal). */
@@ -614,6 +654,9 @@ export function createNewProjectSetup(deps: ControllerDeps): SetupController {
   const listeners = new Set<(s: SetupState) => void>();
   let disposed = false;
   const maxPdfBytes = deps.maxPdfBytes ?? MAX_UPLOAD_MB * 1024 * 1024;
+  // #5393: abort controller for canceling an in-flight commit
+  let commitAbortController: AbortController | null = null;
+  let commitTimeoutTimer: ReturnType<typeof setTimeout> | null = null;
 
   const set = (patch: Partial<SetupState>) => {
     state = { ...state, ...patch };
@@ -784,8 +827,43 @@ export function createNewProjectSetup(deps: ControllerDeps): SetupController {
         seen.add(id);
         docs.push({ docId: id, filename: match.filename });
       }
-      set({ committing: true, error: null, refusal: null });
-      const outcome = await runCommit({ selected, name: state.name, docs, pdfs: state.pdfs }, deps);
+      // #5393: set up abort controller and timeout for cancellation
+      commitAbortController = new AbortController();
+      const abortSignal = commitAbortController.signal;
+      // After 60 seconds, mark as timed out but keep going
+      commitTimeoutTimer = setTimeout(() => {
+        if (!disposed && state.committing) {
+          set({ commitTimeout: true, progress: "This is taking longer than usual. You can cancel or keep waiting." });
+        }
+      }, 60000);
+      
+      set({ committing: true, error: null, refusal: null, progress: "Starting...", commitTimeout: false });
+      
+      const progressCallback = (msg: string) => {
+        if (!disposed && !abortSignal.aborted) {
+          set({ progress: msg });
+        }
+      };
+      
+      const outcome = await runCommit(
+        { selected, name: state.name, docs, pdfs: state.pdfs },
+        deps,
+        abortSignal,
+        progressCallback,
+      );
+      
+      // Clear timeout
+      if (commitTimeoutTimer) {
+        clearTimeout(commitTimeoutTimer);
+        commitTimeoutTimer = null;
+      }
+      commitAbortController = null;
+      
+      if (abortSignal.aborted) {
+        set({ committing: false, error: "Creation was canceled. The project may be partially created.", progress: null, commitTimeout: false });
+        return;
+      }
+      
       // Codex #5295 r1 F2: a saved project reaches the host's list even when the
       // sheet was closed mid-commit (the shell's Back closes open dialogs).
       if (outcome.kind === "created" || (outcome.kind === "failed" && outcome.wrote)) deps.onWritten?.();
@@ -795,17 +873,27 @@ export function createNewProjectSetup(deps: ControllerDeps): SetupController {
       }
       if (disposed) return;
       if (outcome.kind === "refused") {
-        set({ committing: false, refusal: { notebookId: outcome.notebookId, message: outcome.message } });
+        set({ committing: false, refusal: { notebookId: outcome.notebookId, message: outcome.message }, progress: null, commitTimeout: false });
         return;
       }
       if (outcome.kind === "failed") {
-        set({ committing: false, error: outcome.message });
+        set({ committing: false, error: outcome.message, progress: null, commitTimeout: false });
         return;
       }
-      set({ notebookId: outcome.notebookId, confirmed: outcome.confirmed, notes: outcome.notes });
+      set({ notebookId: outcome.notebookId, confirmed: outcome.confirmed, notes: outcome.notes, progress: "Finishing..." });
       const results = [...outcome.docs];
       created = { notebookId: outcome.notebookId, nodeId: outcome.nodeId, results };
       await showReadiness(outcome.notebookId, results);
+    },
+
+    cancelCommit() {
+      if (commitAbortController && !commitAbortController.signal.aborted) {
+        commitAbortController.abort();
+      }
+      if (commitTimeoutTimer) {
+        clearTimeout(commitTimeoutTimer);
+        commitTimeoutTimer = null;
+      }
     },
 
     async retryUpload(key) {
@@ -858,6 +946,15 @@ export function createNewProjectSetup(deps: ControllerDeps): SetupController {
     dispose() {
       disposed = true;
       listeners.clear();
+      // #5393: clean up abort controller and timeout on disposal
+      if (commitAbortController) {
+        commitAbortController.abort();
+        commitAbortController = null;
+      }
+      if (commitTimeoutTimer) {
+        clearTimeout(commitTimeoutTimer);
+        commitTimeoutTimer = null;
+      }
     },
   };
   return controller;
