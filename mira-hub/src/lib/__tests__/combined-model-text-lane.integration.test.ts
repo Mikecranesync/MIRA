@@ -7,7 +7,7 @@
  *
  * Run: TEST_DATABASE_URL=… MIRA_TEST_DB_CONFIRM=DISPOSABLE npx vitest run --config vitest.integration.config.ts src/lib/__tests__/combined-model-text-lane
  */
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { Pool, type PoolClient } from "pg";
 import { retrieveNodeChunks } from "../manual-rag";
 
@@ -296,5 +296,61 @@ describe("the record is the machine's model even when it is shaped like a trip c
     expect(await asked("what is the supply voltage of the HF110 drive")).toBe(0);
     // Control: the same shape as a BARE fault code is not a model, so the HF100 guide answers.
     expect(await asked("what is the supply voltage, it shows HF110")).toBeGreaterThan(0);
+  });
+});
+
+// Architecture check (knowledge_entries reads): the hidden-code cover read (a model-shaped code among a
+// photo's private fields) is a tenant-scoped read of the selected documents' covers. It is held to the same
+// approved-source predicate as every other cover/passage read of this function and runs only inside a
+// validated document selection, so an unapproved document's cover can never decide a turn. Its output is a
+// refuse/ask decision, never content.
+describe("hidden-code cover read: authorization boundary (real SQL)", () => {
+  const AWB_APPROVED = "39700000-0000-4000-8000-0000000006d1";
+  const AWB_UNAPPROVED = "39700000-0000-4000-8000-0000000006d2";
+  const READING = "Allen-Bradley Micro820. Unit: 2080-LC20-20QWB";
+  afterEach(() => vi.unstubAllEnvs());
+  beforeAll(async () => {
+    for (const [doc, verified] of [[AWB_APPROVED, true], [AWB_UNAPPROVED, false]] as const) {
+      for (const [page, content] of [[1, "Micro820 Programmable Controllers\nCatalog Number 2080-LC20-20AWB\nUser Manual"], [4, "Micro820 2080-LC20-20AWB input voltage 120/240 V AC."]] as const) {
+        await client.query(
+          `INSERT INTO knowledge_entries (tenant_id, content, manufacturer, model_number, source_url, page_start, doc_id, ingest_route, metadata, verified, is_private)
+           VALUES ($1, $2, '', '', 'https://test.invalid/awb.pdf', $3, $4, 'v2', jsonb_build_object('node_id', 'node-hidden', 'filename', 'awb.pdf', 'chunk_index', $3::int), $5, true)`,
+          [TENANT, content, page, doc, verified],
+        );
+      }
+    }
+  });
+  async function hiddenAsk(doc: string, extra: Record<string, unknown> = {}, validated = true) {
+    const diagnostics: Diag & { photoSubjectUnclear?: unknown } = {};
+    const hits = await retrieveNodeChunks(client, TENANT, "Find me the manual", {
+      nodeId: "node-hidden", unsPath: null, docIds: [doc], validatedDocScope: validated, rawQuery: "Find me the manual",
+      identity: { manufacturer: "Allen-Bradley", model: "Micro820" }, identityStatus: "user_confirmed" as const,
+      photoText: READING, diagnostics, ...extra,
+    } as Parameters<typeof retrieveNodeChunks>[3]);
+    return { hits, diagnostics };
+  }
+  it("control (gate off, as today): the QWB code against an AWB-only cover asks which machine", async () => {
+    const r = await hiddenAsk(AWB_APPROVED);
+    expect(r.hits).toHaveLength(0);
+    expect(r.diagnostics.photoSubjectUnclear).toEqual({ shown: [], earlier: [], unknown: true });
+  });
+  it("gate on: an APPROVED (verified) cover still drives the ask", async () => {
+    vi.stubEnv("MIRA_ENFORCE_APPROVED_RETRIEVAL", "true");
+    const r = await hiddenAsk(AWB_APPROVED);
+    expect(r.diagnostics.photoSubjectUnclear).toEqual({ shown: [], earlier: [], unknown: true });
+  });
+  it("gate on: an UNAPPROVED document's cover is never read, so it cannot decide the turn", async () => {
+    vi.stubEnv("MIRA_ENFORCE_APPROVED_RETRIEVAL", "true");
+    const r = await hiddenAsk(AWB_UNAPPROVED);
+    expect(r.diagnostics.photoSubjectUnclear).toBeUndefined();
+  });
+  it("gate on: a private document the server approved for this selection is read", async () => {
+    vi.stubEnv("MIRA_ENFORCE_APPROVED_RETRIEVAL", "true");
+    const r = await hiddenAsk(AWB_UNAPPROVED, { approvedSourceDocIds: [AWB_UNAPPROVED] });
+    expect(r.diagnostics.photoSubjectUnclear).toEqual({ shown: [], earlier: [], unknown: true });
+  });
+  it("outside a validated document selection the cover read does not run at all", async () => {
+    const r = await hiddenAsk(AWB_APPROVED, {}, false);
+    expect(r.diagnostics.photoSubjectUnclear).toBeUndefined();
   });
 });

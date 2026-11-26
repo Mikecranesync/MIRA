@@ -2060,7 +2060,10 @@ export async function retrieveNodeChunks(
   const hiddenNumbers = unlistedModelNumbers(hiddenLabels.join("\n"));
   if (hiddenNumbers.length > 0) {
     let refuses = hiddenNumbers.some(isSiblingOfRecord);
-    if (!refuses && allowedDocIds.length > 0) {
+    // The cover read below is held to the same boundary as the document-eligibility cover read and every
+    // passage read here: inside a validated document selection only, and under the approved-source
+    // predicate. An unapproved document's cover never decides a turn. Its output is a refuse/ask decision.
+    if (!refuses && docScopeOnly) {
       try {
         const covers = await client.query(
           `/* hidden-code-eligibility */ SELECT DISTINCT ON (doc_id)
@@ -2071,9 +2074,10 @@ export async function retrieveNodeChunks(
             WHERE tenant_id = $1
               AND doc_id::text = ANY($2::text[])
               AND ingest_route = 'v2'
+              ${approvedSourceFilterSql(admitApproved ? 3 : null)}
             ORDER BY doc_id, page_start NULLS LAST, source_page NULLS LAST,
               (metadata->>'chunk_index')::int NULLS LAST, id`,
-          [tenantId, allowedDocIds],
+          [tenantId, allowedDocIds, ...approvedParams],
         );
         refuses = covers.rows.some(
           (r: Record<string, unknown>) =>
