@@ -81,8 +81,8 @@ describe("Try again is never a dead button", () => {
     expect(sent).toEqual([["Does this help?", [], { retry: true }]]);
   });
 
-  // #5746 r6 F7: on a host that checks a send before it goes (the Hub holds a manual question
-  // while its manual is prepared), Try again on a draft goes through that same check, with the
+  // #5746 r6 F7: on a host that checks a send before it goes (the Hub waits for the conversation's
+  // detail and question target), Try again on a draft goes through that same check, with the
   // composer's attachments. The draft and the chips stay until the check accepts the send, so a
   // second Stop keeps them too. Mobile, which has no such check, keeps the plain retry above.
   describe("on a host that checks a send before it goes", () => {
@@ -273,45 +273,6 @@ describe("a target review is not a failure (#5557)", () => {
     const banner = view.container.querySelector('[aria-label="Send error"]')?.textContent ?? "";
     expect(banner).toContain("Couldn't reach MIRA");
     expect(view.buttonNamed("Try again")).not.toBeNull();
-  });
-});
-
-// #5746 (option A): a send the host's backend held for a manual pauses; it is not a failure to
-// reach MIRA, and it offers one send without the manual next to Try again.
-describe("a send paused for a manual", () => {
-  const PAUSED = "This project's manual isn't available, so MIRA didn't answer from it.";
-  function paused(hooks: Record<string, unknown>): HarnessView {
-    const view = renderHarness({ surface: "web", fixture: "grounded-answer", conversationSurface: "assistant", hooks });
-    views.push(view);
-    view.dispatch({ type: "set-draft", draft: "What page of the manual shows the acceleration time?" });
-    view.dispatch({ type: "set-send-error", error: PAUSED });
-    return view;
-  }
-  const banner = (view: HarnessView) => view.container.querySelector('[aria-label="Send error"]');
-
-  it("says the send is paused and offers Send without the manual once", () => {
-    const calls: string[] = [];
-    const view = paused({ onSend: () => calls.push("send"), onSendWithoutManual: () => calls.push("without") });
-    expect(banner(view)?.textContent ?? "").toContain("Send paused");
-    expect(banner(view)?.textContent ?? "").not.toContain("Couldn't reach MIRA");
-    expect(banner(view)?.getAttribute("data-kind")).toBe("paused");
-    expect(view.buttonNamed("Try again")).not.toBeNull();
-    view.click(view.buttonNamed("Send without the manual")!);
-    expect(calls).toEqual(["without"]);
-    expect(banner(view)).toBeNull();
-  });
-
-  it("control: without the host's hook there is no such button, and the failure reads as before", () => {
-    const view = paused({ onSend: () => {} });
-    expect(view.buttonNamed("Send without the manual")).toBeNull();
-    expect(banner(view)?.textContent ?? "").toContain("Couldn't reach MIRA");
-  });
-
-  it("a target review never offers it", () => {
-    const REVIEW = "Check the target, then press Send.";
-    const view = paused({ onSend: () => {}, onSendWithoutManual: () => {}, targetReview: REVIEW });
-    view.dispatch({ type: "set-send-error", error: REVIEW });
-    expect(view.buttonNamed("Send without the manual")).toBeNull();
   });
 });
 

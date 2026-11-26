@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { expect, test, type Request } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import type { BenchState } from "../../src/capabilities/bench-components/http";
 import { DOC, FILE, NB, oracle } from "../fidelity/harness";
 import { installSessionCookie } from "./harness/fixture-harness.cjs";
@@ -21,6 +21,7 @@ const COMPONENT_VERSION = 3;
 // What the chat route saves on an answer asked under a selected component (componentAttributionEntry).
 const COMPONENT_ATTRIBUTION = { kind: "component_attribution", componentId: COMPONENT_ID, revision: 1, selectionVersion: COMPONENT_VERSION, label: COMPONENT_LABEL };
 const IDENTITY = { manufacturer: "AutomationDirect", model: "GS11N-20P2" };
+const LABEL = `${IDENTITY.manufacturer} ${IDENTITY.model}`;
 const STARTED_AT = "2026-11-21T12:00:00.000Z";
 const SOURCE = {
   ...oracle.detailEmpty.sources[0], docId: DOC, filename: TITLE, fileId: FILE,
@@ -59,47 +60,29 @@ function latch() {
   return { promise, release };
 }
 
-// #5746 (option A): the chat route decides whether a manual question can be answered now
-// (`manualWaitDecision` in capabilities/send-wait-subject.ts, pinned in its own tests). This fake
-// makes the same decision for the questions this spec asks: only when the Hub asks for it
-// (`x-mira-manual-wait: 1`) and the question asks for the manual. A safety ask, a photo, a guided
-// hand-off or a component turn keeps its own path, and a question about another exact model (the
-// look-alike) is answered. A refused post is kept apart from the answered ones.
-type Sent = { message: string; threadId: string; sourceDocIds: string[]; clientRequestId: string; wait: string | null; reason?: string };
+// #5746 (Mike, 2026-11-26): nothing holds a manual question for the project's manual. The chat
+// route answers it the way main does: while the lookup runs it says it is looking and to ask again
+// (`acquisitionDeclineText`, pinned in manual-question-during-lookup.route.test.ts); once the
+// manual is in this notebook's Sources the next question is sent with it. This fake gives main's
+// replies for the states this spec uses, as the route decides them; each one is saved, as the route
+// saves it, so the Hub's history reload finds it.
+const RUNNING_REPLY = `I don't have the ${LABEL} manual yet — I'm looking for the official one now. It will show up in this notebook's Sources when I find it; ask again in a minute and I'll answer from it and show you the page.`;
+const FOUND_REPLY = `I found the official ${LABEL} manual and added it to this notebook's Sources. Reopen the notebook (or turn it on in Sources) and ask again — I'll answer from it and show you the page.`;
+const NOT_FOUND_REPLY = `I looked for the official ${LABEL} manual and couldn't find one. Upload the manual (or the page that covers it) to this notebook, and I'll answer from it and show you the page.`;
+type Sent = { message: string; threadId: string; sourceDocIds: string[]; clientRequestId: string; manualWait: string | null };
+type Saved = { id: string; clientRequestId: string; question: string; answerStatus: string; answerText: string; evidence: object[]; createdAt: string };
 type Status = {
   manufacturer: string; model: string; startedAt?: string; running: boolean;
   sourceState?: string; readySourceDocId?: string; message?: string; manualUrl?: string;
 };
-type Refusal = { error: "manual_not_ready" | "manual_unavailable"; reason: string; lookup: Omit<Status, "message" | "manualUrl"> | null };
-const waitHeader = (request: Request) => request.headers()["x-mira-manual-wait"] ?? null;
-// The fake mirrors the route for this spec's questions only: any mention of the manual waits, and
-// SAFETY_QUESTION is the one question here a route stop exempts.
-const asksForManual = (message: string) => /\bmanuals?\b/i.test(message) && message !== SAFETY_QUESTION;
-function manualWait(request: Request, sent: Record<string, unknown>, status: Status | null | "read_failed"): Refusal | null {
-  const body = sent as { message?: string; visualEvidence?: unknown; guidedEscalation?: unknown; componentSelection?: { componentId?: string | null }; sourceDocIds?: string[] };
-  const message = String(body.message ?? "");
-  if (waitHeader(request) !== "1" || !asksForManual(message)) return null;
-  if (body.visualEvidence || body.guidedEscalation || body.componentSelection?.componentId) return null;
-  if (status === "read_failed") return { error: "manual_unavailable", reason: "unknown", lookup: null };
-  if (!status || /GS11N-20P25/.test(message)) return null;
-  const { message: _shown, manualUrl: _link, ...lookup } = status;
-  void _shown; void _link;
-  if (status.running) return { error: "manual_not_ready", reason: "running", lookup };
-  if (status.sourceState === "ready") {
-    return (body.sourceDocIds ?? []).includes(String(status.readySourceDocId)) ? null : { error: "manual_not_ready", reason: "ready_not_sent", lookup };
-  }
-  if (status.sourceState === "unavailable") return { error: "manual_unavailable", reason: "unavailable", lookup };
-  return null;
-}
-// As the route answers it: inside the progress stream (the Hub always asks for it), or plain.
-const refusal = (held: Refusal, transport: "stream" | "json" = "stream") =>
-  transport === "json" ? json(held, 409) : stream({ kind: "http_error", status: 409, body: held });
-const UNAVAILABLE = "This project's manual isn't available, so MIRA didn't answer from it.";
+const decline = (text: string) => stream({ kind: "content", content: text }, { kind: "status", status: "insufficient_evidence" });
+const savedDecline = (body: Sent, text: string): Saved => ({
+  id: `saved-${body.clientRequestId}`, clientRequestId: body.clientRequestId, question: body.message,
+  answerStatus: "insufficient_evidence", answerText: text, evidence: [], createdAt: STARTED_AT,
+});
 
 for (const mode of ["preparing", "ready", "opening", "lookup-failed", "safety", "attached-safety", "component", "bench-unavailable", "lookup-failed-bench-unavailable"] as const) {
   test(`exact manual handoff in the ${mode} case`, async ({ page, context, baseURL }) => {
-    // r8 F14: a refused question now keeps its target; with the checklist unavailable it is still
-    // the whole machine, so Send without the manual is still offered.
     const lookupFails = mode === "lookup-failed" || mode === "lookup-failed-bench-unavailable";
     const component = mode === "component";
     const benchUnavailable = mode === "bench-unavailable" || mode === "lookup-failed-bench-unavailable";
@@ -125,10 +108,10 @@ for (const mode of ["preparing", "ready", "opening", "lookup-failed", "safety", 
     let savedAnswerReads = 0;
     let lookup: { clientRequestId: string } | undefined;
     let asked: { clientRequestId: string } | undefined;
+    const declined: Saved[] = [];
     const source = component ? { ...SOURCE, docId: COMPONENT_DOC, filename: COMPONENT_MANUAL } : SOURCE;
     const citationEntry = component ? { ...CITATION, docId: COMPONENT_DOC, sourceTitle: COMPONENT_MANUAL } : CITATION;
     const chatBodies: Sent[] = [];
-    const refused: Sent[] = [];
     const projectStatus = (): Status | null => confirmed ? {
       ...IDENTITY, startedAt: STARTED_AT, running: !ready && !lostManual,
       ...(ready ? { sourceState: "ready", readySourceDocId: DOC, message: "Exact fixture manual is ready in Sources." } :
@@ -169,12 +152,7 @@ for (const mode of ["preparing", "ready", "opening", "lookup-failed", "safety", 
       }
       if (p === `${nbPath}/chat` && method === "POST") {
         const body = request.postDataJSON();
-        const held = manualWait(request, body, projectStatus());
-        if (held) {
-          refused.push({ ...body, wait: waitHeader(request), reason: held.reason });
-          return route.fulfill(refusal(held));
-        }
-        chatBodies.push({ ...body, wait: waitHeader(request) });
+        chatBodies.push({ ...body, manualWait: request.headers()["x-mira-manual-wait"] ?? null });
         if (body.message === LOOKUP) {
           expect(body.visualEvidence.fileId).toBe(FILE);
           lookup = body;
@@ -187,10 +165,16 @@ for (const mode of ["preparing", "ready", "opening", "lookup-failed", "safety", 
         if (body.message === SAFETY_QUESTION) {
           if (attachedSafety) expect(body.visualEvidence.fileId).toBe(FILE);
           return route.fulfill(stream(
-          { kind: "content", content: "Make the equipment safe before working on it." },
-          { kind: "safety", trigger: "energized-electrical-hazard" },
-          { kind: "status", status: "answered" },
+            { kind: "content", content: "Make the equipment safe before working on it." },
+            { kind: "safety", trigger: "energized-electrical-hazard" },
+            { kind: "status", status: "answered" },
           ));
+        }
+        // Main's replies when the question goes without the project's manual.
+        if (!component && !body.sourceDocIds.includes(DOC)) {
+          const text = lostManual ? NOT_FOUND_REPLY : RUNNING_REPLY;
+          declined.push(savedDecline(body, text));
+          return route.fulfill(decline(text));
         }
         asked = body;
         return route.fulfill(stream(
@@ -219,7 +203,7 @@ for (const mode of ["preparing", "ready", "opening", "lookup-failed", "safety", 
           id: "saved-answer", clientRequestId: asked.clientRequestId, question: QUESTION, answerStatus: "answered",
           answerText: ANSWER, evidence: component ? [citationEntry, COMPONENT_ATTRIBUTION] : [citationEntry], createdAt: new Date().toISOString(),
         };
-        const savedTurns = [savedLookup, savedAnswer].filter(Boolean) as { id: string; clientRequestId: string; evidence: { kind?: string }[] }[];
+        const savedTurns = [savedLookup, ...declined, savedAnswer].filter(Boolean) as { id: string; clientRequestId: string; evidence: { kind?: string }[] }[];
         const newest = savedTurns.at(-1);
         // #5750: as the detail route does, an answer asked under a selected component is about that
         // component, so the project's status is withheld there (manualSearchScope "other_model").
@@ -246,6 +230,8 @@ for (const mode of ["preparing", "ready", "opening", "lookup-failed", "safety", 
     await page.goto(`/v3/?notebook=${NB}&thread=${THREAD}`);
     await scopeRequested.promise;
     const composer = page.getByRole("textbox", { name: "Ask MIRA", exact: true });
+    const sendButton = page.getByRole("button", { name: "Send", exact: true });
+    const chat = page.getByRole("region", { name: "Conversation" });
     if (component) {
       initialDetail.release();
       scope.release();
@@ -253,14 +239,13 @@ for (const mode of ["preparing", "ready", "opening", "lookup-failed", "safety", 
       const searching = page.getByText(/Searching AutomationDirect/).last();
       await expect(searching).toBeVisible();
       await composer.fill(QUESTION);
-      await page.getByRole("button", { name: "Send", exact: true }).click();
+      await sendButton.click();
       const citation = page.getByRole("button", { name: `Open citation 1: ${COMPONENT_MANUAL}, page 1`, exact: true });
       await expect(citation).toBeVisible({ timeout: 8_000 });
       expect(chatBodies).toEqual([expect.objectContaining({
-        message: QUESTION, threadId: THREAD, sourceDocIds: [COMPONENT_DOC],
+        message: QUESTION, threadId: THREAD, sourceDocIds: [COMPONENT_DOC], manualWait: null,
         componentSelection: { threadId: THREAD, componentId: COMPONENT_ID, selectionVersion: COMPONENT_VERSION },
       })]);
-      expect(refused).toEqual([]);
       lostManual = true;
       answerHistory.release();
       await expect.poll(() => savedAnswerReads).toBeGreaterThan(0);
@@ -282,7 +267,7 @@ for (const mode of ["preparing", "ready", "opening", "lookup-failed", "safety", 
       const pending = page.getByRole("list", { name: "Pending attachments" });
       await expect(pending.getByText("nameplate.jpg")).toBeVisible();
       await composer.fill(LOOKUP);
-      await page.getByRole("button", { name: "Send", exact: true }).click();
+      await sendButton.click();
       await expect(pending.getByText("nameplate.jpg")).toBeVisible();
       await expect(page.getByRole("button", { name: "Stop", exact: true })).toBeVisible();
       expect(looks).toBe(0);
@@ -297,8 +282,11 @@ for (const mode of ["preparing", "ready", "opening", "lookup-failed", "safety", 
       await expect(sourceReady).toBeVisible();
     }
     await composer.fill(safety ? SAFETY_QUESTION : QUESTION);
-    await page.getByRole("button", { name: "Send", exact: true }).click();
+    await sendButton.click();
+    const asksBefore = opening ? 0 : 1;
     if (opening) {
+      // Sent while the project is still opening: the composer keeps it until the project's detail
+      // and question target are read, then sends it once.
       await expect(composer).toHaveValue(QUESTION);
       expect(chatBodies).toHaveLength(0);
       initialDetail.release();
@@ -307,50 +295,37 @@ for (const mode of ["preparing", "ready", "opening", "lookup-failed", "safety", 
       if (lookupFails) {
         lostManual = true;
         await expect(page.getByText("The fixture manual is unavailable.", { exact: true })).toBeVisible();
+        expect(chatBodies).toHaveLength(0);
         scope.release();
-        // The route holds it: the manual is unavailable. Paused at once, the question kept.
-        const banner = page.getByRole("alert", { name: "Send error" });
-        await expect(banner.getByText("Send paused", { exact: true })).toBeVisible();
-        await expect(banner.getByText(UNAVAILABLE, { exact: false })).toBeVisible();
-        await expect(composer).toHaveValue(QUESTION);
-        expect(chatBodies).toHaveLength(0);
-        expect(refused).toEqual([expect.objectContaining({ message: QUESTION, wait: "1", reason: "unavailable" })]);
-        // Send without the manual is offered only while the draft is that question, unedited (#5686:
-        // an edited draft is a new draft, even if its text comes back).
-        const withoutManual = banner.getByRole("button", { name: "Send without the manual", exact: true });
-        await expect(withoutManual).toBeVisible();
-        const edited = `${QUESTION} Thanks.`;
-        await composer.fill(edited);
-        await expect(withoutManual).toHaveCount(0);
-        // The edited question goes through the route again and is paused again, its draft kept.
-        await page.getByRole("button", { name: "Send", exact: true }).click();
-        await expect.poll(() => refused.length).toBe(2);
-        expect(refused[1]).toMatchObject({ message: edited, wait: "1", reason: "unavailable" });
-        await expect(composer).toHaveValue(edited);
-        expect(chatBodies).toHaveLength(0);
-        // One send without the wait, answered as main answers it; never asked with the wait again.
-        await withoutManual.click();
-        await expect.poll(() => chatBodies.length).toBe(1);
-        expect(chatBodies[0]).toMatchObject({ message: edited, wait: null });
-        expect(refused).toHaveLength(2);
+        // Sent once, without the manual, and answered as main answers it: nothing is held.
+        await expect(chat.getByText(NOT_FOUND_REPLY, { exact: true }).last()).toBeVisible();
+        expect(chatBodies).toEqual([expect.objectContaining({ message: QUESTION, sourceDocIds: [], manualWait: null })]);
         await expect(composer).toHaveValue("");
+        await expect(page.getByRole("alert", { name: "Send error" })).toHaveCount(0);
         return;
       }
     }
     if (safety) {
       await expect(page.getByText("Make the equipment safe before working on it.", { exact: true })).toBeVisible();
-      expect(chatBodies.at(-1)).toMatchObject({ message: SAFETY_QUESTION, sourceDocIds: [] });
-      expect(refused).toEqual([]);
+      expect(chatBodies.at(-1)).toMatchObject({ message: SAFETY_QUESTION, sourceDocIds: [], manualWait: null });
       expect(ready).toBe(false);
       return;
     }
     if (mode !== "ready" && !attachedSafety) {
-      // Held by the route while the manual is prepared: nothing answered, the question kept.
-      await expect.poll(() => refused.length).toBe(1);
-      expect(refused[0]).toMatchObject({ message: QUESTION, wait: "1", reason: "running" });
-      await expect(composer).toHaveValue(QUESTION);
-      expect(chatBodies).toHaveLength(opening ? 0 : 1);
+      // Asked while the manual is prepared: sent at once, without it, and answered with main's
+      // reply. The question is not kept or asked again on its own.
+      await expect(chat.getByText(RUNNING_REPLY, { exact: true }).last()).toBeVisible();
+      expect(chatBodies).toHaveLength(asksBefore + 1);
+      expect(chatBodies.at(-1)).toMatchObject({ message: QUESTION, sourceDocIds: [], manualWait: null });
+      await expect(composer).toHaveValue("");
+      await expect(page.getByRole("alert", { name: "Send error" })).toHaveCount(0);
+      // The lookup finishes: the Hub's follow reads it, with the manual in Sources.
       ready = true;
+      await expect(sourceReady).toBeVisible({ timeout: 20_000 });
+      expect(chatBodies).toHaveLength(asksBefore + 1);
+      // Asked again by the technician, now with the manual.
+      await composer.fill(QUESTION);
+      await sendButton.click();
     }
 
     const citation = page.getByRole("button", { name: /^Open citation 1: Exact GS10 fixture, page 1$/ });
@@ -364,23 +339,20 @@ for (const mode of ["preparing", "ready", "opening", "lookup-failed", "safety", 
       await expect(page.getByText("The fixture manual is unavailable.", { exact: true })).toBeVisible();
       await attachPhoto();
       await composer.fill(SAFETY_QUESTION);
-      await page.getByRole("button", { name: "Send", exact: true }).click();
+      await sendButton.click();
       await secondLookRequested.promise;
-      expect(refused).toEqual([]);
       secondLook.release();
       await expect(page.getByText("Make the equipment safe before working on it.", { exact: true })).toBeVisible();
-      expect(chatBodies.at(-1)).toMatchObject({ message: SAFETY_QUESTION, sourceDocIds: [], wait: null });
-      expect(refused).toEqual([]);
+      expect(chatBodies.at(-1)).toMatchObject({ message: SAFETY_QUESTION, sourceDocIds: [], manualWait: null });
       expect(looks).toBe(2);
       return;
     }
     await citation.click();
     expect(chatBodies).toEqual([
       ...(opening ? [] : [expect.objectContaining({ message: LOOKUP, sourceDocIds: [], threadId: THREAD })]),
-      // Asked once more, with the manual, by the same send path (the wait header on).
-      expect.objectContaining({ message: QUESTION, sourceDocIds: [DOC], threadId: THREAD, wait: "1" }),
+      ...(mode === "ready" ? [] : [expect.objectContaining({ message: QUESTION, sourceDocIds: [], threadId: THREAD })]),
+      expect.objectContaining({ message: QUESTION, sourceDocIds: [DOC], threadId: THREAD, manualWait: null }),
     ]);
-    expect(refused).toHaveLength(mode === "ready" ? 0 : 1);
     expect(looks).toBe(opening ? 0 : 1);
     expect(context.pages()).toHaveLength(1);
     const dialog = page.getByRole("dialog", { name: "Source viewer", exact: true });
@@ -396,282 +368,25 @@ for (const mode of ["preparing", "ready", "opening", "lookup-failed", "safety", 
     await expect(dialog).toBeVisible();
     await expect(canvas).toBeVisible();
     await dialog.getByRole("button", { name: "Close source viewer", exact: true }).click();
-    const chat = page.getByRole("region", { name: "Conversation" });
-    await expect(chat.getByText(QUESTION, { exact: true })).toHaveCount(1);
+    await expect(chat.getByText(QUESTION, { exact: true })).toHaveCount(mode === "ready" ? 1 : 2);
     await expect(citation).toBeVisible();
     expect(new URL(page.url()).searchParams.get("thread")).toBe(THREAD);
   });
 }
 
-// #5746 round 4 F1: after an answer about a selected component, the detail read withholds the
-// project's status from display (#5750). A whole-machine question that needs the manual is still
-// held for it by the chat route, and the Hub follows the lookup the detail read names for that
-// wait only (`wholeMachineManualSearch`, no message or link); nothing new is shown.
-const WHOLE_QUESTION = "According to the manual, what is the nominal supply voltage?";
-const GENERAL_QUESTION = "What is the rated current?";
-// #5746 round 5 F6: another session starts a newer lookup just before the Hub's poll budget for
-// the first one runs out.
-const NEWER_STARTED_AT = "2026-11-21T12:05:00.000Z";
-// #5746 round 8 F14: a component picked while the question waits. The one resend is bound to the
-// whole machine it was asked about, so nothing is posted; the saved question goes through the
-// target review, and the technician's Send then asks about the picked component.
-const PICKED_STATE: BenchState = {
-  ...COMPONENT_STATE,
-  selection: { ...COMPONENT_STATE.selection!, version: COMPONENT_VERSION + 2 },
-  selectionVersion: COMPONENT_VERSION + 2,
-};
-const PICK_REVIEW = `This question was asked about the whole machine. The question target is now ${COMPONENT_LABEL}. Check the target, then press Send to ask about ${COMPONENT_LABEL}.`;
-for (const mode of ["return", "return-lost", "cold", "controls", "newer-lookup", "pick-during-wait"] as const) {
-  const title = mode === "controls"
-    ? "after a component answer, a component question and a question that needs no manual are sent at once"
-    : mode === "newer-lookup"
-      ? "after a component answer, a whole-machine manual question waits for a newer lookup started as the first one times out"
-      : mode === "pick-during-wait"
-        ? "a component picked while a whole-machine manual question waits: nothing is asked until the target is reviewed"
-        : `after a component answer, a whole-machine manual question waits in the ${mode} case`;
-  test(title, async ({ page, context, baseURL }) => {
-    const newer = mode === "newer-lookup";
-    const pick = mode === "pick-during-wait";
-    let picked = false;
-    const cold = mode === "cold" || newer;
-    await installSessionCookie(context, baseURL, PORT, {
-      uid: "e2e-manual-handoff", tid: TENANT, status: "trial", trialExpiresAt: new Date(Date.now() + 86_400_000).toISOString(),
-    });
-    let componentSelected = !cold;
-    let ready = false;
-    let lost = false;
-    let startedAt = STARTED_AT;
-    let asked: { clientRequestId: string } | undefined = cold ? { clientRequestId: "saved-component-question" } : undefined;
-    let withheldReads = 0;
-    const chatBodies: Sent[] = [];
-    const refused: Sent[] = [];
-    const lookupStatus = (): Status => ({
-      ...IDENTITY, startedAt, running: !ready && !lost,
-      ...(ready ? { sourceState: "ready", readySourceDocId: DOC } : lost ? { sourceState: "unavailable" } : { sourceState: "preparing" }),
-    });
-    const selectionWrites: { componentId: string | null }[] = [];
-    const componentSource = { ...SOURCE, docId: COMPONENT_DOC, filename: COMPONENT_MANUAL };
-    const notebook = { ...oracle.detailEmpty.notebook, displayName: "Manual handoff fixture", sourceCount: 0, ...IDENTITY, identityStatus: "user_confirmed" };
-    const nbPath = `/api/equipment-notebooks/${NB}`;
-    await page.route("**/api/**", async route => {
-      const request = route.request();
-      const url = new URL(request.url());
-      const p = url.pathname.replace(/(.)\/$/, "$1");
-      const method = request.method();
-      if (p === "/api/auth/session") return route.fulfill(json({ user: { name: "Technician" }, expires: "2099-01-01T00:00:00Z" }));
-      if (p === "/api/auth/_log") return route.fulfill(json({}));
-      if (p === "/api/equipment-notebooks") return route.fulfill(json({ notebooks: [notebook] }));
-      if (p === `${nbPath}/components/selection` && method === "PUT") {
-        const body = request.postDataJSON();
-        selectionWrites.push(body);
-        if (pick && selectionWrites.length === 2) {
-          // The pick made during the wait.
-          expect(body).toMatchObject({ threadId: THREAD, componentId: COMPONENT_ID });
-          picked = true;
-          return route.fulfill(json({ status: "selected", selection: PICKED_STATE.selection }));
-        }
-        expect(body).toMatchObject({ threadId: THREAD, componentId: null });
-        componentSelected = false;
-        return route.fulfill(json({ status: "cleared", selection: null }));
-      }
-      if (p === `${nbPath}/components`) {
-        return route.fulfill(json(picked ? PICKED_STATE : componentSelected ? COMPONENT_STATE : {
-          ...COMPONENT_STATE, selection: null, selectionVersion: COMPONENT_VERSION + 1,
-        }));
-      }
-      if (p === `${nbPath}/chat` && method === "POST") {
-        const body = request.postDataJSON();
-        const held = manualWait(request, body, lookupStatus());
-        if (held) {
-          refused.push({ ...body, wait: waitHeader(request), reason: held.reason });
-          return route.fulfill(refusal(held));
-        }
-        chatBodies.push({ ...body, wait: waitHeader(request) });
-        if (body.message === QUESTION || body.componentSelection?.componentId) {
-          if (body.message === QUESTION) asked = body;
-          return route.fulfill(stream(
-            { kind: "content", content: ANSWER },
-            { kind: "sources", citations: [{ ...CITATION, docId: COMPONENT_DOC, sourceTitle: COMPONENT_MANUAL }] },
-            { kind: "component", componentId: COMPONENT_ID, revision: 1, selectionVersion: COMPONENT_VERSION, label: COMPONENT_LABEL, actions: [] },
-            { kind: "status", status: "answered" },
-          ));
-        }
-        return route.fulfill(stream(
-          { kind: "content", content: ANSWER },
-          { kind: "sources", citations: [CITATION] },
-          { kind: "status", status: "answered" },
-        ));
-      }
-      if (p === nbPath && method === "GET") {
-        expect(url.searchParams.get("threadId")).toBe(THREAD);
-        const savedLookup = {
-          id: "saved-lookup", clientRequestId: "reopened-lookup", question: LOOKUP, answerStatus: "insufficient_evidence",
-          answerText: "Confirm the equipment.", evidence: [{ kind: "identity_proposal", ...IDENTITY }], createdAt: STARTED_AT,
-        };
-        const savedAnswer = asked && {
-          id: "saved-answer", clientRequestId: asked.clientRequestId, question: QUESTION, answerStatus: "answered", answerText: ANSWER,
-          evidence: [{ ...CITATION, docId: COMPONENT_DOC, sourceTitle: COMPONENT_MANUAL }, COMPONENT_ATTRIBUTION], createdAt: STARTED_AT,
-        };
-        const sources = [componentSource, ...(ready ? [SOURCE] : [])];
-        if (!savedAnswer) {
-          // The newest answer is the lookup: the status is shown under it, as before.
-          return route.fulfill(json({
-            ...oracle.detailEmpty, notebook, turns: [savedLookup], sources,
-            manualSearch: { ...lookupStatus(), message: "Preparing the fixture manual." },
-            manualSearchAnswer: { turnId: savedLookup.id, clientRequestId: savedLookup.clientRequestId },
-          }));
-        }
-        // As the detail route does: the newest answer was asked under the component, so the
-        // project's status is withheld from display, and only the Hub's manual wait gets the lookup.
-        withheldReads += 1;
-        return route.fulfill(json({
-          ...oracle.detailEmpty, notebook, turns: [savedLookup, savedAnswer], sources,
-          manualSearch: null, manualSearchScope: "other_model", wholeMachineManualSearch: lookupStatus(),
-        }));
-      }
-      return route.fulfill(json({}, 404));
-    });
-    // The poll waits 4s, then 10s, between reads: the newer-lookup case jumps the page's clock
-    // forward instead of waiting three minutes. Time otherwise runs as normal.
-    if (newer) await page.clock.install();
-    const advanceUntil = (reached: () => boolean) => expect.poll(async () => {
-      if (!reached()) await page.clock.fastForward(5_000);
-      return reached();
-    }, { timeout: 60_000, intervals: [100] }).toBe(true);
-    await page.goto(`/v3/?notebook=${NB}&thread=${THREAD}`);
-    const composer = page.getByRole("textbox", { name: "Ask MIRA", exact: true });
-    const statusParts = page.locator('[data-part-type="manual_search_status"]');
-    if (!cold) {
-      await expect(page.getByText(`Asking about ${COMPONENT_LABEL}`, { exact: true })).toBeVisible();
-      await expect(page.getByText(/Searching AutomationDirect/).last()).toBeVisible();
-      await composer.fill(QUESTION);
-      await page.getByRole("button", { name: "Send", exact: true }).click();
-      await expect(page.getByRole("button", { name: `Open citation 1: ${COMPONENT_MANUAL}, page 1`, exact: true })).toBeVisible({ timeout: 8_000 });
-      // The component question is not held for the project's manual.
-      expect(chatBodies).toEqual([expect.objectContaining({ message: QUESTION, sourceDocIds: [COMPONENT_DOC] })]);
-      // At least one poll reads the withheld status before the technician goes back.
-      await expect.poll(() => withheldReads, { timeout: 15_000 }).toBeGreaterThan(1);
-      await expect(statusParts).toHaveCount(0);
-      if (mode === "controls") {
-        // With the component still selected, a manual question is about the component: sent at once.
-        await composer.fill(WHOLE_QUESTION);
-        await page.getByRole("button", { name: "Send", exact: true }).click();
-        await expect.poll(() => chatBodies.length, { timeout: 5_000 }).toBe(2);
-        expect(chatBodies[1]).toMatchObject({ message: WHOLE_QUESTION, componentSelection: { componentId: COMPONENT_ID } });
-        await expect(page.getByRole("button", { name: `Open citation 1: ${COMPONENT_MANUAL}, page 1`, exact: true })).toHaveCount(2, { timeout: 8_000 });
-      }
-      await page.getByRole("button", { name: "Back to whole machine", exact: true }).click();
-      await expect.poll(() => selectionWrites.length).toBe(1);
-      await expect(page.getByText(`Asking about ${COMPONENT_LABEL}`, { exact: true })).toHaveCount(0);
-      if (mode === "controls") {
-        // About the whole machine, a question that needs no manual is sent at once too.
-        const sent = chatBodies.length;
-        await composer.fill(GENERAL_QUESTION);
-        await page.getByRole("button", { name: "Send", exact: true }).click();
-        await expect.poll(() => chatBodies.length, { timeout: 5_000 }).toBe(sent + 1);
-        expect(chatBodies.at(-1)).toMatchObject({ message: GENERAL_QUESTION, componentSelection: { componentId: null } });
-        await expect(statusParts).toHaveCount(0);
-        expect(refused).toEqual([]);
-        return;
-      }
-    } else {
-      await expect.poll(() => withheldReads).toBeGreaterThan(0);
-      await expect(page.locator('[data-turn-id="saved-answer-a"]')).toHaveCount(1);
-    }
-    if (newer) {
-      // The first read and 17 polls follow the first lookup, whose budget is 21 polls. Then
-      // another session starts a newer one, and the polls go on past the first budget.
-      await advanceUntil(() => withheldReads >= 18);
-      startedAt = NEWER_STARTED_AT;
-      await advanceUntil(() => withheldReads >= 22);
-    }
-    const before = chatBodies.length;
-    await composer.fill(WHOLE_QUESTION);
-    await page.getByRole("button", { name: "Send", exact: true }).click();
-    // Held by the route: the newest answer was about the component, and this question is about the
-    // whole machine, whose lookup is still preparing.
-    if (newer) await page.waitForTimeout(1_000);
-    await expect.poll(() => refused.length).toBe(1);
-    expect(refused[0]).toMatchObject({ message: WHOLE_QUESTION, wait: "1", reason: "running" });
-    expect(chatBodies).toHaveLength(before);
-    // Held: a further read happens and still nothing is answered; nothing new is shown.
-    const readsAtSend = withheldReads;
-    if (newer) await advanceUntil(() => withheldReads > readsAtSend);
-    else await expect.poll(() => withheldReads, { timeout: 15_000 }).toBeGreaterThan(readsAtSend);
-    expect(chatBodies).toHaveLength(before);
-    await expect(composer).toHaveValue(WHOLE_QUESTION);
-    await expect(statusParts).toHaveCount(0);
-    if (mode === "return-lost") {
-      lost = true;
-      // The lookup settles as unavailable: asked once more, held again, and paused. No loop.
-      await expect(page.getByText(UNAVAILABLE, { exact: false })).toBeVisible({ timeout: 15_000 });
-      await expect(composer).toHaveValue(WHOLE_QUESTION);
-      expect(chatBodies).toHaveLength(before);
-      expect(refused.map(held => held.reason)).toEqual(["running", "unavailable"]);
-      await expect(page.getByRole("button", { name: "Send without the manual", exact: true })).toBeVisible();
-      await page.waitForTimeout(3_000);
-      expect(refused).toHaveLength(2);
-      return;
-    }
-    if (pick) {
-      // The checklist is behind the More menu once the whole machine is chosen again.
-      await page.getByTestId("notebook-more").click();
-      await page.getByTestId("notebook-more-item-part").click();
-      await page.getByTestId("bench-components-panel").getByTestId(`bench-component-${COMPONENT_ID}`)
-        .getByRole("button", { name: "Ask about this", exact: true }).click();
-      await expect.poll(() => selectionWrites.length).toBe(2);
-      // Shown in the open checklist and beside the composer.
-      await expect(page.getByText(`Asking about ${COMPONENT_LABEL}`, { exact: true }).first()).toBeVisible();
-      ready = true;
-      // The wait's next read finds the manual ready. Its one resend was asked about the whole
-      // machine, and the target is now the component: nothing is posted, the review is shown.
-      await expect(page.getByText(PICK_REVIEW, { exact: true })).toBeVisible({ timeout: 20_000 });
-      await page.waitForTimeout(3_000);
-      expect(chatBodies.filter(body => body.message === WHOLE_QUESTION)).toEqual([]);
-      expect(refused).toHaveLength(1);
-      await expect(composer).toHaveValue(WHOLE_QUESTION);
-      // Not offered under the review: it would do nothing.
-      await expect(page.getByRole("button", { name: "Send without the manual", exact: true })).toHaveCount(0);
-      // The technician closes the checklist, and Send asks about the component the review names.
-      await page.getByTestId("bench-components-panel").getByRole("button", { name: "Close", exact: true }).click();
-      await page.getByRole("button", { name: "Send", exact: true }).click();
-      await expect.poll(() => chatBodies.filter(body => body.message === WHOLE_QUESTION).length, { timeout: 8_000 }).toBe(1);
-      expect(chatBodies.at(-1)).toMatchObject({ message: WHOLE_QUESTION, wait: "1", componentSelection: { componentId: COMPONENT_ID } });
-      expect(refused).toHaveLength(1);
-      return;
-    }
-    ready = true;
-    if (newer) await advanceUntil(() => chatBodies.some(body => body.message === WHOLE_QUESTION));
-    await expect.poll(() => chatBodies.filter(body => body.message === WHOLE_QUESTION).length, { timeout: 20_000 }).toBe(1);
-    expect(chatBodies).toHaveLength(before + 1);
-    expect(chatBodies.at(-1)).toMatchObject({ message: WHOLE_QUESTION, threadId: THREAD, wait: "1" });
-    expect(chatBodies.at(-1)!.sourceDocIds).toContain(DOC);
-    expect(refused).toHaveLength(1);
-  });
-}
-
-// #5746 round 6 F1 / option A: in a thread that asked about a look-alike model, the project's
-// status is withheld (#5750). A question that names the project's own model still needs its manual:
-// the chat route holds it while the manual is prepared (faked above, as the route decides), the Hub
-// follows the project's readiness (`projectManualReadiness`) and asks once more when it settles.
-// Round 6 F7 / round 7 F7: Try again goes through the same route, and keeps an attached photo.
+// The composer's own queue (kept): a send before this conversation's detail and question target are
+// read waits for them, and Stop pauses it with the draft kept. And #5750's status scoping: in a
+// thread that asked about a look-alike model, the project's status is withheld, so nothing follows
+// the lookup there; a manual that lands unseen comes in with the next answer's history read.
 const OWN_MODEL_QUESTION = "According to the manual, what is the acceleration parameter for the GS11N-20P2?";
-const LOOK_ALIKE_QUESTION = "According to the manual, what is the acceleration parameter for the GS11N-20P25?";
+const OTHER_QUESTION = "What is the rated current?";
 const PHOTO_QUESTION = "What does this nameplate say?";
-// The composer's own pause (a send waiting for its question target), and a held question's Stop.
 const PAUSED = "Send paused. Your message and attachments are still here.";
-const STOPPED = "You stopped the wait for the manual.";
 const TITLES = {
-  own: "after a look-alike question, a question naming the project's model is held until its manual is ready",
-  "own-plain-409": "the same hold works when the route's refusal comes as a plain 409",
-  "look-alike": "after a look-alike question, a question naming the look-alike is answered at once",
-  "read-fails": "when the route cannot read the manual's state, the send pauses and Send without the manual asks once",
-  "stop-retry": "Stop pauses a held question, nothing polls, and Try again once the manual is ready sends it with the manual",
-  "photo-retry": "Stop then Try again keeps the attached photo, and a photo send is never held",
-  "retry-after-failure": "a new send retires an earlier failure's Try again, so Try again asks the held question",
-  "detail-late": "a question sent while the project is still opening is held once it loads",
-  "ready-unseen": "a question sent with a stale read of a ready manual is held, re-read, and sent with it",
-  "reread-hangs": "Stop during a re-read that never answers pauses, and Try again sends it with the manual",
+  "detail-late": "a question sent while the project is still opening waits for it, then goes once",
+  "photo-retry": "Stop while a photo send waits for its target pauses it; Try again sends it once with the photo",
+  retire: "a send after a paused one ends the pause, so its own failure offers Try again",
+  "withheld-lands-unseen": "in a look-alike thread a manual that lands unseen comes in with the next answer, and the next question cites it",
 } as const;
 for (const mode of Object.keys(TITLES) as (keyof typeof TITLES)[]) {
   test(TITLES[mode], async ({ page, context, baseURL }) => {
@@ -680,27 +395,25 @@ for (const mode of Object.keys(TITLES) as (keyof typeof TITLES)[]) {
     });
     const scope = latch();
     const detailHeld = latch();
-    const rereadHeld = latch();
-    let holdNextRead = false;
-    if (mode !== "photo-retry") scope.release();
+    if (mode !== "photo-retry" && mode !== "retire") scope.release();
     if (mode !== "detail-late") detailHeld.release();
     let ready = false;
     let reads = 0;
     let looks = 0;
+    let failNext = false;
     const chatBodies: Sent[] = [];
-    const refused: Sent[] = [];
     const notebook = { ...oracle.detailEmpty.notebook, displayName: "Manual handoff fixture", sourceCount: 0, ...IDENTITY, identityStatus: "user_confirmed" };
     const nbPath = `/api/equipment-notebooks/${NB}`;
     const savedLookAlike = {
       id: "saved-look-alike", clientRequestId: "look-alike", question: "Find me the manual for AutomationDirect GS11N-20P25",
       answerStatus: "insufficient_evidence", answerText: "No manual is attached for that model.", evidence: [], createdAt: STARTED_AT,
     };
-    // Each answered question is saved, as the chat route does, so the Hub's history reload finds it
-    // and stops; the only reads left on a timer are the manual wait's.
-    const answered: (typeof savedLookAlike)[] = [];
+    // Each answered question is saved, as the chat route does, so the Hub's history reload finds it.
+    const answered: Saved[] = [];
+    const withheld = mode === "withheld-lands-unseen";
     const lookupStatus = (): Status => ({
       ...IDENTITY, startedAt: STARTED_AT, running: !ready,
-      ...(ready ? { sourceState: "ready", readySourceDocId: DOC } : { sourceState: "preparing" }),
+      ...(ready ? { sourceState: "ready", readySourceDocId: DOC, message: "Exact fixture manual is ready in Sources." } : { sourceState: "preparing", message: "Preparing the fixture manual." }),
     });
     await page.route("**/api/**", async route => {
       const request = route.request();
@@ -723,16 +436,20 @@ for (const mode of Object.keys(TITLES) as (keyof typeof TITLES)[]) {
       }
       if (p === `${nbPath}/chat` && method === "POST") {
         const sent = request.postDataJSON();
-        const held = manualWait(request, sent, mode === "read-fails" ? "read_failed" : lookupStatus());
-        if (held) {
-          refused.push({ ...sent, wait: waitHeader(request), reason: held.reason });
-          return route.fulfill(refusal(held, mode === "own-plain-409" ? "json" : "stream"));
+        chatBodies.push({ ...sent, manualWait: request.headers()["x-mira-manual-wait"] ?? null });
+        if (failNext) {
+          failNext = false;
+          return route.fulfill(json({ error: "upstream" }, 500));
         }
-        chatBodies.push({ ...sent, wait: waitHeader(request) });
-        if (mode === "retry-after-failure" && chatBodies.length === 1) return route.fulfill(json({ error: "upstream" }, 500));
+        if (withheld && !sent.sourceDocIds.includes(DOC)) {
+          // Main's reply once the lookup has finished but the question went without its manual.
+          const text = ready ? FOUND_REPLY : RUNNING_REPLY;
+          answered.push(savedDecline(sent, text));
+          return route.fulfill(decline(text));
+        }
         answered.push({
           id: `saved-${sent.clientRequestId}`, clientRequestId: sent.clientRequestId, question: sent.message,
-          answerStatus: "answered", answerText: ANSWER, evidence: [], createdAt: STARTED_AT,
+          answerStatus: "answered", answerText: ANSWER, evidence: [CITATION], createdAt: STARTED_AT,
         });
         return route.fulfill(stream(
           { kind: "content", content: ANSWER },
@@ -744,74 +461,43 @@ for (const mode of Object.keys(TITLES) as (keyof typeof TITLES)[]) {
         expect(url.searchParams.get("threadId")).toBe(THREAD);
         reads += 1;
         if (reads === 1) await detailHeld.promise;
-        if (holdNextRead) {
-          holdNextRead = false;
-          await rereadHeld.promise;
-        }
-        // As the detail route does in a look-alike thread: the status is withheld from display,
-        // and only the project's readiness is named, without a message or a link.
-        // A held read the page has since given up on may no longer be answerable.
         return route.fulfill(json({
-          ...oracle.detailEmpty, notebook, turns: [savedLookAlike, ...answered], sources: ready ? [SOURCE] : [],
-          manualSearch: null, manualSearchScope: "other_model", projectManualReadiness: lookupStatus(),
-        })).catch(() => undefined);
+          ...oracle.detailEmpty, notebook, sources: ready || !withheld ? [SOURCE] : [],
+          ...(withheld
+            // As the detail route does in a look-alike thread: the project's status is withheld.
+            ? { turns: [savedLookAlike, ...answered], manualSearch: null, manualSearchScope: "other_model" }
+            : { turns: answered, manualSearch: null }),
+        }));
       }
       return route.fulfill(json({}, 404));
     });
     await page.goto(`/v3/?notebook=${NB}&thread=${THREAD}`);
     const composer = page.getByRole("textbox", { name: "Ask MIRA", exact: true });
-    const statusParts = page.locator('[data-part-type="manual_search_status"]');
+    const chat = page.getByRole("region", { name: "Conversation" });
     const sendButton = page.getByRole("button", { name: "Send", exact: true });
     const stopButton = page.getByRole("button", { name: "Stop", exact: true });
     const tryAgain = page.getByRole("button", { name: "Try again", exact: true });
-    const withoutManual = page.getByRole("button", { name: "Send without the manual", exact: true });
+
     if (mode === "detail-late") {
-      // Sent before the project's detail has loaded: the composer waits for it, and nothing goes.
+      // Sent before the project's detail has loaded: the composer keeps it, and nothing goes.
       await composer.fill(OWN_MODEL_QUESTION);
       await sendButton.click();
       await page.waitForTimeout(1_000);
       expect(reads).toBe(1);
-      expect(refused).toEqual([]);
       expect(chatBodies).toHaveLength(0);
+      await expect(composer).toHaveValue(OWN_MODEL_QUESTION);
       detailHeld.release();
-    }
-    await expect(page.getByText(savedLookAlike.question, { exact: true })).toBeVisible();
-    await expect(statusParts).toHaveCount(0);
-
-    if (mode === "ready-unseen" || mode === "reread-hangs") {
-      // The manual becomes ready while nothing waits, so nothing polls this thread: the page
-      // still holds the read that said preparing, with no source to send.
-      const readsAtLoad = reads;
-      ready = true;
-      await page.waitForTimeout(1_500);
-      expect(reads).toBe(readsAtLoad);
-      holdNextRead = mode === "reread-hangs";
-      await composer.fill(OWN_MODEL_QUESTION);
-      await sendButton.click();
-      // Sent with that read: the route holds it, the manual ready but not in the request (r7 F9).
-      await expect.poll(() => refused.length).toBe(1);
-      expect(refused[0]).toMatchObject({ message: OWN_MODEL_QUESTION, sourceDocIds: [], wait: "1", reason: "ready_not_sent" });
-      if (mode === "reread-hangs") {
-        // The re-read the wait asks for never answers. Stop pauses the question, its draft kept.
-        await expect.poll(() => reads).toBe(readsAtLoad + 1);
-        await stopButton.click();
-        await expect(page.getByText(STOPPED, { exact: false })).toBeVisible();
-        await expect(composer).toHaveValue(OWN_MODEL_QUESTION);
-        expect(chatBodies).toHaveLength(0);
-        // Try again asks the route again, one post, which holds it again; this re-read answers.
-        await tryAgain.click();
-        await expect.poll(() => refused.length).toBe(2);
-      }
       await expect.poll(() => chatBodies.length, { timeout: 15_000 }).toBe(1);
-      expect(chatBodies[0]).toMatchObject({ message: OWN_MODEL_QUESTION, threadId: THREAD, wait: "1" });
-      expect(chatBodies[0].sourceDocIds).toContain(DOC);
-      expect(refused).toHaveLength(mode === "reread-hangs" ? 2 : 1);
-      rereadHeld.release();
+      expect(chatBodies[0]).toMatchObject({ message: OWN_MODEL_QUESTION, threadId: THREAD, sourceDocIds: [DOC], manualWait: null });
+      await expect(page.getByText(ANSWER.replace(" [1]", ""), { exact: false })).toBeVisible();
+      await expect(composer).toHaveValue("");
+      await page.waitForTimeout(1_000);
+      expect(chatBodies).toHaveLength(1);
       return;
     }
 
     if (mode === "photo-retry") {
-      // A photo send waits only for the question target, which this spec holds.
+      // A photo send waits for the question target, which this spec holds.
       await page.getByRole("button", { name: "Add attachment", exact: true }).click();
       const chooser = page.waitForEvent("filechooser");
       await page.getByRole("button", { name: "Photo", exact: true }).click();
@@ -820,9 +506,9 @@ for (const mode of Object.keys(TITLES) as (keyof typeof TITLES)[]) {
       await expect(pending.getByText("nameplate.jpg")).toBeVisible();
       await composer.fill(PHOTO_QUESTION);
       await sendButton.click();
-      await page.getByRole("button", { name: "Stop", exact: true }).click();
+      await stopButton.click();
       await expect(page.getByText(PAUSED)).toBeVisible();
-      // Stopped, not held again: the Stop click did not submit the draft.
+      // Stopped, not sent: the Stop click did not submit the draft.
       await expect(stopButton).toHaveCount(0);
       await expect(pending.getByText("nameplate.jpg")).toBeVisible();
       await tryAgain.click();
@@ -833,111 +519,57 @@ for (const mode of Object.keys(TITLES) as (keyof typeof TITLES)[]) {
       await expect.poll(() => looks, { timeout: 15_000 }).toBe(1);
       await expect.poll(() => chatBodies.length, { timeout: 15_000 }).toBe(1);
       await expect(pending.getByText("nameplate.jpg")).toHaveCount(0);
-      // A send with attachments keeps main's path: it never asks the route to hold it.
-      expect(chatBodies[0]).toMatchObject({ message: PHOTO_QUESTION, wait: null });
-      expect(refused).toEqual([]);
+      expect(chatBodies[0]).toMatchObject({ message: PHOTO_QUESTION, manualWait: null });
       return;
     }
 
-    if (mode === "look-alike") {
-      await composer.fill(LOOK_ALIKE_QUESTION);
+    if (mode === "retire") {
+      // A question waits for its target and is stopped: paused, its Try again the draft's own.
+      await composer.fill(OTHER_QUESTION);
       await sendButton.click();
-      await expect.poll(() => chatBodies.length, { timeout: 5_000 }).toBe(1);
-      expect(chatBodies[0]).toMatchObject({ message: LOOK_ALIKE_QUESTION, threadId: THREAD, wait: "1" });
-      expect(refused).toEqual([]);
-      return;
-    }
-
-    if (mode === "read-fails") {
-      // The route cannot read the manual's state: it holds the question rather than answer it.
-      await composer.fill(OWN_MODEL_QUESTION);
-      await sendButton.click();
-      await expect(page.getByText("Send paused", { exact: true })).toBeVisible();
-      await expect(page.getByText(UNAVAILABLE, { exact: false })).toBeVisible();
-      expect(refused).toEqual([expect.objectContaining({ message: OWN_MODEL_QUESTION, wait: "1", reason: "unknown" })]);
-      expect(chatBodies).toHaveLength(0);
-      await expect(composer).toHaveValue(OWN_MODEL_QUESTION);
-      // No wait for a lookup that cannot be read: nothing more is asked on a timer.
-      await page.waitForTimeout(3_000);
-      expect(refused).toHaveLength(1);
-      // One send without the wait: asked once, and the composer is clear.
-      await withoutManual.click();
-      await expect.poll(() => chatBodies.length).toBe(1);
-      expect(chatBodies[0]).toMatchObject({ message: OWN_MODEL_QUESTION, wait: null });
-      await expect(composer).toHaveValue("");
-      await expect(withoutManual).toHaveCount(0);
-      expect(refused).toHaveLength(1);
-      return;
-    }
-
-    if (mode === "stop-retry" || mode === "retry-after-failure") {
-      if (mode === "retry-after-failure") {
-        // An earlier question fails on the way to chat; its own retry is offered.
-        await composer.fill(GENERAL_QUESTION);
-        await sendButton.click();
-        await expect.poll(() => chatBodies.length, { timeout: 5_000 }).toBe(1);
-        await expect(tryAgain).toBeVisible();
-      }
-      const answeredBefore = chatBodies.length;
-      // A new send retires that Try again (r7 F7); the route holds this one.
-      await composer.fill(OWN_MODEL_QUESTION);
-      await sendButton.click();
-      await expect.poll(() => refused.length).toBe(1);
-      expect(refused[0]).toMatchObject({ message: OWN_MODEL_QUESTION, wait: "1", reason: "running" });
-      const readsAtHold = reads;
-      await expect.poll(() => reads, { timeout: 15_000 }).toBeGreaterThan(readsAtHold);
       await stopButton.click();
-      await expect(page.getByText(STOPPED, { exact: false })).toBeVisible();
-      await expect(stopButton).toHaveCount(0);
-      await expect(withoutManual).toBeVisible();
-      await expect(composer).toHaveValue(OWN_MODEL_QUESTION);
-      // Paused: nothing reads the project on a timer, and nothing is asked.
-      ready = true;
-      const readsAtStop = reads;
-      await page.waitForTimeout(5_000);
-      expect(reads).toBe(readsAtStop);
-      expect(refused).toHaveLength(1);
-      expect(chatBodies).toHaveLength(answeredBefore);
-      // Try again is one post, through the composer, with the read the page holds (preparing, no
-      // source): the route holds it as ready but not sent, the Hub reads again, and asks once more.
+      await expect(page.getByText(PAUSED)).toBeVisible();
+      // The target is read, and the technician sends a different question instead. It starts, so
+      // the pause ends; it fails on the way to chat, and its own Try again is offered.
+      scope.release();
+      failNext = true;
+      await composer.fill(OWN_MODEL_QUESTION);
+      await sendButton.click();
+      await expect.poll(() => chatBodies.length, { timeout: 15_000 }).toBe(1);
+      expect(chatBodies[0]).toMatchObject({ message: OWN_MODEL_QUESTION, manualWait: null });
+      await expect(page.getByText(PAUSED)).toHaveCount(0);
+      await expect(tryAgain).toBeVisible();
       await tryAgain.click();
-      await expect.poll(() => refused.length).toBe(2);
-      expect(refused[1]).toMatchObject({ message: OWN_MODEL_QUESTION, wait: "1", reason: "ready_not_sent" });
-      await expect.poll(() => chatBodies.length, { timeout: 15_000 }).toBe(answeredBefore + 1);
-      expect(chatBodies.at(-1)).toMatchObject({ message: OWN_MODEL_QUESTION, wait: "1" });
-      expect(chatBodies.at(-1)!.sourceDocIds).toContain(DOC);
-      // The earlier failed question was never asked again.
-      expect(chatBodies.filter(body => body.message === GENERAL_QUESTION)).toHaveLength(answeredBefore);
+      await expect.poll(() => chatBodies.length, { timeout: 15_000 }).toBe(2);
+      expect(chatBodies[1]).toMatchObject({ message: OWN_MODEL_QUESTION });
+      // The stopped question was never sent.
+      expect(chatBodies.filter(body => body.message === OTHER_QUESTION)).toHaveLength(0);
       return;
     }
 
-    // own, own-plain-409, detail-late: held while the manual is prepared, then asked once more with it.
-    if (mode !== "detail-late") {
-      await composer.fill(OWN_MODEL_QUESTION);
-      await sendButton.click();
-    }
-    await expect.poll(() => refused.length).toBe(1);
-    expect(refused[0]).toMatchObject({ message: OWN_MODEL_QUESTION, threadId: THREAD, wait: "1", reason: "running" });
-    // Held: the Hub reads the project's lookup again, and nothing is answered or shown.
-    const readsAtHold = reads;
-    await expect.poll(() => reads, { timeout: 15_000 }).toBeGreaterThan(readsAtHold);
-    expect(chatBodies).toHaveLength(0);
-    await expect(composer).toHaveValue(OWN_MODEL_QUESTION);
+    // withheld-lands-unseen: opened while the lookup runs, in a look-alike thread.
+    await expect(page.getByText(savedLookAlike.question, { exact: true })).toBeVisible();
+    const statusParts = page.locator('[data-part-type="manual_search_status"]');
     await expect(statusParts).toHaveCount(0);
+    // The manual lands. The status is withheld here, so nothing follows the lookup, and nothing
+    // reads the project on a timer.
+    const readsAtLoad = reads;
     ready = true;
-    await expect.poll(() => chatBodies.length, { timeout: 20_000 }).toBe(1);
-    expect(chatBodies[0]).toMatchObject({ message: OWN_MODEL_QUESTION, threadId: THREAD, wait: "1" });
-    expect(chatBodies[0].sourceDocIds).toContain(DOC);
-    expect(refused).toHaveLength(1);
-    await expect(page.getByText(ANSWER.replace(" [1]", ""), { exact: false })).toBeVisible();
-    await expect(composer).toHaveValue("");
-    if (mode === "own") {
-      // The wait ends with the question it held: once answered, nothing reads the project again on
-      // a timer.
-      await page.waitForTimeout(1_000);
-      const readsAfterAnswer = reads;
-      await page.waitForTimeout(6_000);
-      expect(reads).toBe(readsAfterAnswer);
-    }
+    await page.waitForTimeout(6_000);
+    expect(reads).toBe(readsAtLoad);
+    // The question goes with the sources the page holds (none), and gets main's reply.
+    await composer.fill(OWN_MODEL_QUESTION);
+    await sendButton.click();
+    await expect(chat.getByText(FOUND_REPLY, { exact: true }).last()).toBeVisible();
+    expect(chatBodies).toEqual([expect.objectContaining({ message: OWN_MODEL_QUESTION, sourceDocIds: [], manualWait: null })]);
+    // That answer's history read brings the manual in; asked again without reopening, it cites it.
+    await expect.poll(() => reads, { timeout: 15_000 }).toBeGreaterThan(readsAtLoad);
+    await composer.fill(OWN_MODEL_QUESTION);
+    await sendButton.click();
+    await expect.poll(() => chatBodies.length, { timeout: 15_000 }).toBe(2);
+    expect(chatBodies[1]).toMatchObject({ message: OWN_MODEL_QUESTION, sourceDocIds: [DOC], manualWait: null });
+    await expect(page.getByRole("button", { name: /^Open citation 1: Exact GS10 fixture, page 1$/ })).toBeVisible();
+    await expect(statusParts).toHaveCount(0);
+    expect(new URL(page.url()).searchParams.get("thread")).toBe(THREAD);
   });
 }

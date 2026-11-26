@@ -21,7 +21,7 @@ const WIDEST_SUBJECT_READ = SUBJECT_READ_STEPS[SUBJECT_READ_STEPS.length - 1];
 
 type Turn = Awaited<ReturnType<typeof listTurns>>[number];
 type Machine = Parameters<typeof threadStatusScope>[1];
-export type SubjectScope = ReturnType<typeof threadStatusScope> | "out_of_reach";
+type SubjectScope = ReturnType<typeof threadStatusScope> | "out_of_reach";
 
 /**
  * The most recently PROPOSED (not yet confirmed) identity on this notebook's

@@ -1369,7 +1369,7 @@ describe("currentManualSearchStatus — recomputed fresh, never a stale snapshot
     });
 
     // #5746 r4 F1: the newest answer can be grounded in a component's own manual. The project's
-    // lookup must still name its ready source, which a held whole-machine question sends with.
+    // lookup still names its ready source, so the next whole-machine question is sent with it.
     it("#5958 composition: after a grounded answer the linked manual still reports its ready source", async () => {
       db.readRow = { ...candidateReviewRec, state: "complete", match_state: "verified", doc_id: "d1" };
       const source = {
