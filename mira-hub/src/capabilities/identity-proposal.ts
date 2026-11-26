@@ -186,6 +186,19 @@ const RANGE_WORDS: ReadonlyMap<string, RegExp> = new Map([["TESYS", /schneider/i
  */
 const FAULT_SHAPED_MODELS: ReadonlyMap<string, RegExp> = new Map([["G120", /siemens/i]]);
 
+/**
+ * Fault and alarm numbers a maker writes in a fixed format that FAULT_CODE_RE
+ * (2–4 digits) does not cover, each with its own maker: SINAMICS faults and
+ * alarms are F or A + exactly 5 digits (F30011, A07910 — the G120 List Manuals,
+ * #6036). Closed list, maker-scoped, like FAULT_SHAPED_MODELS.
+ */
+const MAKER_FAULT_CODES: ReadonlyArray<{ maker: RegExp; code: RegExp }> = [{ maker: /siemens/i, code: /^[FA]\d{5}$/i }];
+
+/** True when `token` is one of `manufacturer`'s own fault/alarm numbers. */
+function isMakerFaultCode(token: string, manufacturer: string): boolean {
+  return MAKER_FAULT_CODES.some((f) => f.maker.test(manufacturer) && f.code.test(token));
+}
+
 /** The listed fault-shaped model that is `tokens[0]`, when it belongs to `manufacturer`, or null. */
 function faultShapedModelAt(tokens: string[], manufacturer: string): string | null {
   const t = tokens[0];
@@ -691,12 +704,17 @@ function readProposal(message: string, knownManufacturers: readonly string[], ne
   for (const mention of manufacturerMentions(message, knownManufacturers)) {
     const model = modelAfterManufacturer(message.slice(mention.index), mention.text, newRules);
     if (!model) continue;
+    // A maker's own fault code is never that maker's machine ("Siemens F30011
+    // fault" proposed F30011 — #4095 gap 3). Tightening only: on both readings.
+    if (isMakerFaultCode(model, mention.text)) continue;
     candidates.set(`${norm(mention.text)}|${canonicalModel(model)}`, { manufacturer: mention.text, model });
   }
   if (candidates.size !== 1) return null;
   const only = [...candidates.values()][0];
   const chosen = canonicalModel(only.model);
-  const mentions = modelMentions(message, only.model);
+  // ...nor a second machine next to the chosen one ("Siemens G120 fault
+  // F30011"). Dropped only on the reading that runs the second-machine checks.
+  const mentions = modelMentions(message, only.model).filter((m) => !(newRules && isMakerFaultCode(m, only.manufacturer)));
   if (mentions.every((m) => sameMachine(m, only.model, chosen))) return only;
   const family = newRules ? familyNamedWithItsCatalogNumber(only.manufacturer, mentions) : null;
   return family ? { manufacturer: only.manufacturer, model: family } : null;
