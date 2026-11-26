@@ -836,6 +836,11 @@ const NON_VERIFICATION =
 
 const FAULT_CONTEXT = /\b(?:fault|alarm|error|code|trip(?:ped|s)?)\b/i;
 
+/** Hedges that do not rescue an invented code meaning ("F004 is commonly an
+ *  overcurrent fault"). Regex source, used inside codeMeaningViolation. */
+const DEF_HEDGE =
+  "(?:usually|typically|often|generally|commonly|normally|frequently|probably|likely|most\\s+likely|most\\s+often|most\\s+commonly)";
+
 
 /* ------------------------------------------------------------------------ *
  * Detection-only canonicalization                                           *
@@ -1002,8 +1007,13 @@ function codeMeaningViolation(
         const esc = escapeRe(tok);
         // "Q-447-Delta (usually) means/indicates/is a …" — a definition,
         // hedged or not. Hedges do not rescue an invented meaning.
+        // #5995 (staging panel 2026-11-26): the hedge may sit after "is"
+        // ("F004 is generally a DC bus undervoltage", "F004 is commonly an
+        // overcurrent fault"), and a short "on a <machine>" may sit between the
+        // code and its verb ("F30011 on a Siemens G120 is generally a motor
+        // overtemperature"). All three shipped as general answers before this.
         const defFrame = new RegExp(
-          `["'\`]?${esc}["'\`]?(?:\\s*\\([^)]{0,40}\\))?\\s+(?:fault\\s+|alarm\\s+|error\\s+|code\\s+)?(?:usually\\s+|typically\\s+|often\\s+|generally\\s+|most\\s+likely\\s+)?(?:means|indicates|signals|refers\\s+to|stands\\s+for|denotes|corresponds\\s+to|is\\s+(?:a|an|the)|is\\s+caused\\s+by|occurs\\s+when)\\b`,
+          `["'\`*]*${esc}["'\`*]*(?:\\s*\\([^)]{0,40}\\))?(?:\\s+(?:on|in|for)\\s+(?:a|an|the)\\s+[\\w-]+(?:\\s+[\\w-]+){0,3})?\\s+(?:fault\\s+|alarm\\s+|error\\s+|code\\s+)?(?:${DEF_HEDGE}\\s+)?(?:means|indicates|signals|refers\\s+to|stands\\s+for|denotes|corresponds\\s+to|is\\s+(?:${DEF_HEDGE}\\s+)?(?:a|an|the)|is\\s+caused\\s+by|occurs\\s+when)\\b`,
           "i",
         );
         // "the most likely reason you're seeing 'Q-447-Delta' is …"

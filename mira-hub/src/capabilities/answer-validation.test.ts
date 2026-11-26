@@ -1217,3 +1217,43 @@ describe("#4111 review round 3: steps in order, per-step exemptions, instruments
     expect(run(a).ok).toBe(true);
   });
 });
+
+describe("code meaning asserted with a trailing hedge or a machine qualifier (#5995, staging panel 2026-11-26)", () => {
+  const pf = "What does PowerFlex 525 fault F004 mean?";
+  const g120 = "What does Siemens G120 fault F30011 mean?";
+
+  it("catches the shipped wrong meaning: 'F004 is commonly an overcurrent fault'", () => {
+    const v = general(
+      "I’m answering from general knowledge, not this machine’s manual: on a PowerFlex 525, F004 is commonly an overcurrent fault.\n\nIn practice, that means the drive saw current above its trip limit.",
+      pf,
+    );
+    expect(v.ok).toBe(false);
+    if (!v.ok) expect(v.violation).toBe("unsupported-specificity:code-meaning-asserted");
+  });
+
+  it("catches a hedge placed after 'is': 'fault F004 is generally a DC bus undervoltage'", () => {
+    const v = general(
+      "On a PowerFlex 525, fault F004 is generally a DC bus undervoltage or input power loss condition, but I’m answering from general knowledge.",
+      pf,
+    );
+    expect(v.ok).toBe(false);
+  });
+
+  it("catches 'F30011 on a Siemens G120 is generally a motor overtemperature'", () => {
+    const v = general("F30011 on a Siemens G120 is generally a **motor overtemperature / motor thermal protection fault**.", g120);
+    expect(v.ok).toBe(false);
+  });
+
+  it("still serves the honest answers MIRA gave on the same questions", () => {
+    expect(
+      general(
+        "I’m answering from general knowledge, not this machine’s manual: I can’t verify what **F004** means on the unconfirmed **PowerFlex 525**.\n\nFault codes are drive-specific.",
+        pf,
+      ).ok,
+    ).toBe(true);
+    expect(
+      general("I can’t verify ABB ACS880 fault 3220 from the manual here, so I shouldn’t guess the meaning.", "What does ABB ACS880 fault 3220 mean?").ok,
+    ).toBe(true);
+    expect(general("Most overcurrent faults on a drive like this are caused by a mechanical overload or a jam.", "PowerFlex 525 overcurrent fault causes").ok).toBe(true);
+  });
+});
