@@ -99,13 +99,15 @@ CREATE INDEX IF NOT EXISTS decision_traces_notebook_ts_idx ON decision_traces (n
   "identity": { "ran": true, "state": "unknown", "candidate_count": 0, "selected_entity_id": null, "manufacturer_present": false, "model_present": false, "order_number_present": false, "unresolved_reason": "…" },
   "retrieval": { "strategy": "skipped_general_mode", "executed": false, "candidate_count": 0, "returned_doc_ids": [], "oem_corpus_searched": false, "zero_result_reason": "…" },
   "context": { "evidence_doc_ids": [], "chunk_count": 0, "visual_evidence_count": 0, "identity_included": false, "history_turns": 0, "prompt_chars": 0 },
-  "generation": { "attempts": [{ "provider", "model", "outcome", "latency_ms", "route_reason", "response_id" }], "served_provider", "served_model", "input_tokens", "output_tokens", "has_image_input": false, "has_observation_text": false },
+  "generation": { "attempts": [{ "provider", "model", "outcome", "latency_ms", "route_reason", "response_id", "redraft"? }], "served_provider", "served_model", "input_tokens", "output_tokens", "has_image_input": false, "has_observation_text": false },
   "answer_gate": { "invoked": true, "decision": "answered", "reason": "served", "answer_chars": 0, "refusal_phrase_matched": false, "evidence_phrase_matched": false, "safety_classification": "none", "evidence_sufficient": false },
   "persistence": { "turn_row_id", "evidence_entries": 0, "outcome": "ok", "error_code": null },
   "timings_ms": { "total", "vision", "identity", "retrieval", "context", "generation_ttfb", "generation", "persist" },
   "errors": [ { "stage", "code" } ]
 }
 ```
+
+`generation.input_tokens` / `output_tokens` describe the whole turn: every generation attempt with known usage, equal to the usage ledger row, and null when any billed attempt's usage is unknown. On a #5941 redraft turn the redraft's attempts are appended with `"redraft": true`; a redraft that produced text the turn did not serve (late Stop, failed check, unsafe verdict) has outcome `generated_not_served`, and `served_provider`/`served_model` name a redraft only when the redraft is what the turn commits (#6023).
 
 Never in the packet: message text, answer text, chunk text, prompts, image bytes, cookies, headers, keys. (The ledger's existing `user_question`/`recommendation` columns keep their current PII-sanitised behaviour from `persistTurnUsage`; this design does not add content.)
 

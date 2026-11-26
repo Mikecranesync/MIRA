@@ -136,14 +136,21 @@ export async function runSemanticRedraft(deps: {
 /** The smallest output allowance a redraft is attempted with; below it the stop stands. */
 export const REDRAFT_MIN_OUTPUT_TOKENS = 256;
 
+/** A provider-reported token count (a non-negative safe integer), or null for anything else (#6021). */
+export function tokenCount(n: unknown): number | null {
+  return typeof n === "number" && Number.isSafeInteger(n) && n >= 0 ? n : null;
+}
+
 /**
  * The redraft's output allowance: what is left of the per-turn ceiling after
- * draft 1, capped at draft 1's own request cap. Draft 1's output count unknown
- * is booked as its whole request cap (unknown is not small). Null when too
- * little remains to attempt one.
+ * the output already spent, capped at draft 1's own request cap. An unknown or
+ * malformed count (negative, non-finite, not a number) is booked as the whole
+ * request cap (unknown is not small, #6021). Null when too little remains to
+ * attempt one. The route calls it again before each redraft provider with the
+ * output spent so far, so a billed attempt shrinks what the next one may use.
  */
 export function redraftOutputAllowance(turnCeiling: number, requestCap: number, firstOutputTokens: number | null): number | null {
-  const remaining = turnCeiling - (firstOutputTokens ?? requestCap);
+  const remaining = turnCeiling - (tokenCount(firstOutputTokens) ?? requestCap);
   const allowance = Math.min(requestCap, remaining);
   return allowance >= REDRAFT_MIN_OUTPUT_TOKENS ? allowance : null;
 }
@@ -162,9 +169,9 @@ type Usage = {
 
 /**
  * Draft 1's usage with the redraft's added: both generations were billed whether
- * or not the redraft was served. The served generation names the provider and
- * model. An unknown count on either side makes the total unknown; a missing
- * cache count is zero cached.
+ * or not the redraft was served. The served generation names the provider,
+ * model, route reason and attempted list. An unknown count on either side makes
+ * the total unknown; a missing cache count is zero cached.
  */
 export function withRedraftUsage<U extends Usage>(first: U, redraft: Usage, servedByRedraft: boolean): U {
   const sum = (a: number | null, b: number | null) => (a === null || b === null ? null : a + b);
@@ -175,6 +182,7 @@ export function withRedraftUsage<U extends Usage>(first: U, redraft: Usage, serv
     model: who.model,
     routeReason: who.routeReason,
     status: who.status,
+    attempted: who.attempted,
     inputTokens: sum(first.inputTokens, redraft.inputTokens),
     cachedInputTokens:
       first.cachedInputTokens === null && redraft.cachedInputTokens === null

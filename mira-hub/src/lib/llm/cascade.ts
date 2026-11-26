@@ -116,6 +116,16 @@ export interface CascadeResult {
 
 type CallOutcome = Pick<CascadeResult, "content" | "finishReason" | "usage">;
 
+/** One provider request the cascade actually sent (#6022), reported to `CascadeOpts.onAttempt`. */
+export interface CascadeAttempt {
+  provider: string;
+  model: string;
+  /** False only when the provider rejected the request before generating (a non-2xx): nothing billed. */
+  billed: boolean;
+  /** The provider's counts; null when billed but unseen (timeout, unreadable body, no usage block). */
+  usage: { prompt_tokens?: number; completion_tokens?: number } | null;
+}
+
 export interface CascadeOpts {
   maxTokens?: number;
   temperature?: number;
@@ -130,6 +140,12 @@ export interface CascadeOpts {
    * still booked at its worst case, exactly like a timeout.
    */
   signal?: AbortSignal;
+  /**
+   * Called once per provider request actually sent, whether or not it produced
+   * text (#6022): a billed attempt that returned nothing still cost tokens. A
+   * keyless or budget-refused provider sends nothing and is not reported.
+   */
+  onAttempt?: (attempt: CascadeAttempt) => void;
 }
 
 async function callOne(
@@ -174,6 +190,8 @@ async function callOne(
     reservation = verdict.reservation;
   }
 
+  const report = (billed: boolean, usage: CascadeAttempt["usage"]) =>
+    opts.onAttempt?.({ provider: provider.name, model: provider.model, billed, usage });
   let res: Response;
   try {
     res = await fetch(provider.url, {
@@ -192,11 +210,13 @@ async function callOne(
     // accepted may still have been billed. Book the worst case; never free
     // budget on an outcome we cannot see.
     reservation?.settle(inputBound, outputCap);
+    report(true, null);
     return null;
   }
   if (!res.ok) {
     // The provider answered with a rejection: nothing billable ran.
     reservation?.release();
+    report(false, null);
     return null;
   }
   let parsed: {
@@ -208,6 +228,7 @@ async function callOne(
   } catch {
     // A 200 whose body could not be read was still served and billed: book the worst case.
     reservation?.settle(inputBound, outputCap);
+    report(true, null);
     return null;
   }
   if (!parsed || typeof parsed !== "object") {
@@ -216,10 +237,12 @@ async function callOne(
     // same class as the vision paths; reading `.usage` off null used to throw
     // before the hold was decided, leaking it for the life of the process).
     reservation?.settle(inputBound, outputCap);
+    report(true, null);
     return null;
   }
   // Served: book the ACTUAL usage; a missing or malformed count books the bound / cap.
   reservation?.settle(...billableTokens(parsed.usage, inputBound, outputCap));
+  report(true, parsed.usage ?? null);
   const content = parsed.choices?.[0]?.message?.content ?? null;
   return content ? { content, finishReason: parsed.choices?.[0]?.finish_reason ?? null, usage: parsed.usage ?? null } : null;
 }

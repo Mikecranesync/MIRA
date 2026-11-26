@@ -40,10 +40,13 @@ export type AnswerGateDecision = "answered" | "insufficient_evidence" | "blocked
 export type GenerationAttempt = {
   provider: string | null;
   model: string | null;
-  outcome: "served" | "http_error" | "exception" | "client_stop";
+  /** "generated_not_served": a #5941 redraft that produced text the turn did not serve (#6023). */
+  outcome: "served" | "http_error" | "exception" | "client_stop" | "generated_not_served";
   latency_ms: number | null;
   route_reason: string | null;
   response_id: string | null;
+  /** True on an attempt of the #5941 redraft pass; absent on draft 1's attempts (#6023). */
+  redraft?: true;
 };
 
 export type TurnEvidencePacketIds = {
@@ -180,6 +183,12 @@ export type TurnEvidencePacketGeneration = {
   attempts: GenerationAttempt[];
   served_provider: string | null;
   served_model: string | null;
+  /**
+   * input_tokens / output_tokens describe the WHOLE TURN: every generation attempt
+   * with known usage, draft 1 plus any #5941 redraft attempts, equal to the usage
+   * ledger row. Null when any billed attempt's usage is unknown (#6023). A turn
+   * without a redraft carries draft 1's counts, as before.
+   */
   input_tokens: number | null;
   output_tokens: number | null;
   has_image_input: boolean;
