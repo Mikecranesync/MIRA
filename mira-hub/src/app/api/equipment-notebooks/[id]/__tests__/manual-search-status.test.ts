@@ -9,7 +9,7 @@
 //
 // Run: cd mira-hub && npx vitest run "src/app/api/equipment-notebooks/[id]/__tests__/manual-search-status"
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import type { NextRequest } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 
 vi.mock("@/lib/session", () => ({ sessionOr401: vi.fn() }));
 vi.mock("@/lib/equipment-notebooks", () => ({
@@ -34,8 +34,9 @@ const turnsAskedUnderComponent = vi.hoisted(() => vi.fn());
 vi.mock("@/capabilities/bench-components/store", () => ({ turnsAskedUnderComponent }));
 
 import { GET } from "../route";
+import { POST } from "../send-wait/route";
 import { sessionOr401 } from "@/lib/session";
-import { getNotebook, listSources, listTurns } from "@/lib/equipment-notebooks";
+import { getNotebook, listSources, listTurns, normalizeNotebookThreadId } from "@/lib/equipment-notebooks";
 import { sendWaitLookup, withheldSendWait } from "@/factorylm-ui/hub-host-logic";
 
 const NB = "11111111-2222-3333-4444-555555555555";
@@ -494,6 +495,144 @@ describe("GET /api/equipment-notebooks/[id] — manualSearch (T2 #4189)", () => 
           expect(vi.mocked(listTurns)).toHaveBeenCalledTimes(1);
           expect(turnsAskedUnderComponent).not.toHaveBeenCalled();
         });
+      });
+    });
+
+    // #5746 r6 F1: a thread that asked about a look-alike withholds the project's status. A
+    // question that names the project's own model still waits for its manual. That question is
+    // not saved yet, so the detail read only says the project's lookup exists, and the pre-send
+    // check decides with the question added as the newest whole-machine question.
+    describe("the project's readiness and the pre-send check", () => {
+      const STARTED_AT = "2026-11-21T12:00:00.000Z";
+      const PREPARING = {
+        manufacturer: "AutomationDirect", model: "GS11N-20P2", running: true, sourceState: "preparing",
+        message: "The manual is being added to Sources.", manualUrl: "https://app.example.test/manual.pdf", startedAt: STARTED_AT,
+      };
+      const GATE = { manufacturer: "AutomationDirect", model: "GS11N-20P2", running: true, sourceState: "preparing", startedAt: STARTED_AT };
+      const LOOK_ALIKE = ask("Find me the manual for AutomationDirect GS11N-20P25");
+      const COMPONENT = { kind: "component_attribution", componentId: "c-acs580", revision: 1, selectionVersion: 1, label: "ABB ACS580" };
+      const OWN = "According to the manual, what is the acceleration parameter for the GS11N-20P2?";
+      const SIBLING = "According to the manual, what is the acceleration parameter for the GS11N-20P25?";
+      const NEUTRAL = "According to the manual, what is the nominal bus voltage?";
+      const keypad = (n: number) => Array.from({ length: n }, (_, i) => ask(`follow-up ${i + 1}: what does the keypad show?`));
+      const read = (all: unknown[]) => {
+        vi.mocked(listTurns).mockImplementation((async (_t: string, _n: string, limit: number) => all.slice(-limit)) as never);
+      };
+      const check = async (body: unknown) => {
+        const res = await POST({ json: async () => body } as unknown as NextRequest, params);
+        return { status: res.status, body: await res.json() };
+      };
+
+      beforeEach(() => { currentManualSearchStatus.mockResolvedValue(PREPARING); });
+
+      it("a look-alike thread's read names the project's lookup, without the message or the link", async () => {
+        read([LOOK_ALIKE]);
+        const body = await (await GET(threadReq, params)).json();
+        expect(body.manualSearch).toBeNull();
+        expect(body.manualSearchScope).toBe("other_model");
+        expect(body).not.toHaveProperty("wholeMachineManualSearch");
+        expect(body.projectManualReadiness).toEqual(GATE);
+      });
+
+      it("composed: the Hub's send wait ignores it until a send waits on it", async () => {
+        read([LOOK_ALIKE]);
+        const body = await (await GET(threadReq, params)).json();
+        expect(sendWaitLookup(body)).toBeNull();
+        expect(sendWaitLookup(body, true)).toEqual(GATE);
+      });
+
+      it.each([
+        ["a shown status", () => read([ask("Find me the manual for AutomationDirect GS11N-20P2")])],
+        ["a component answer's send lookup", () => read([{ id: "t-c", question: "What is the rated current?", evidence: [COMPONENT] }])],
+        ["a read that failed before any scope was known", () => {
+          const all = keypad(60);
+          vi.mocked(listTurns).mockImplementation((async (_t: string, _n: string, limit: number) => {
+            if (limit > 50) throw new Error("statement timeout");
+            return all.slice(-limit);
+          }) as never);
+        }],
+      ])("control: %s carries no readiness", async (_label, arrange) => {
+        arrange();
+        const body = await (await GET(threadReq, params)).json();
+        expect(body).not.toHaveProperty("projectManualReadiness");
+      });
+
+      it("control: a whole-notebook read carries no readiness", async () => {
+        read([LOOK_ALIKE]);
+        const body = await (await GET(req, params)).json();
+        expect(body).not.toHaveProperty("projectManualReadiness");
+      });
+
+      it("a question that names the project's model waits, after a look-alike question", async () => {
+        read([LOOK_ALIKE]);
+        expect(await check({ threadId: THREAD, question: OWN })).toEqual({ status: 200, body: { lookup: GATE } });
+      });
+
+      it("control: a question that names the look-alike does not wait", async () => {
+        read([LOOK_ALIKE]);
+        expect(await check({ threadId: THREAD, question: SIBLING })).toEqual({ status: 200, body: { lookup: null } });
+      });
+
+      it("control: a question that names no model, in a look-alike thread, does not wait", async () => {
+        read([LOOK_ALIKE]);
+        expect(await check({ threadId: THREAD, question: NEUTRAL })).toEqual({ status: 200, body: { lookup: null } });
+      });
+
+      it("decides as the detail read does: after a component answer a neutral question waits", async () => {
+        read([{ id: "t-c", question: "What is the rated current?", evidence: [COMPONENT] }]);
+        expect(await check({ threadId: THREAD, question: NEUTRAL })).toEqual({ status: 200, body: { lookup: GATE } });
+      });
+
+      it("reads further back for a neutral question, as the detail read does", async () => {
+        read([LOOK_ALIKE, ...keypad(50)]);
+        expect(await check({ threadId: THREAD, question: NEUTRAL })).toEqual({ status: 200, body: { lookup: null } });
+        expect(vi.mocked(listTurns)).toHaveBeenCalledTimes(2);
+      });
+
+      it("reads this viewer's history of this thread, as the detail read does", async () => {
+        read([LOOK_ALIKE]);
+        await check({ threadId: THREAD, question: OWN });
+        expect(vi.mocked(listTurns)).toHaveBeenCalledWith(TENANT, NB, 50, { viewerUserId: "u_1", threadId: THREAD });
+        expect(vi.mocked(getNotebook)).toHaveBeenCalledWith(TENANT, NB);
+      });
+
+      it("has nothing to wait for without a current status", async () => {
+        currentManualSearchStatus.mockResolvedValue(null);
+        read([LOOK_ALIKE]);
+        expect(await check({ threadId: THREAD, question: OWN })).toEqual({ status: 200, body: { lookup: null } });
+      });
+
+      it.each([
+        ["no question", { threadId: THREAD }, "invalid_question"],
+        ["a blank question", { threadId: THREAD, question: "   " }, "invalid_question"],
+        ["no thread", { question: OWN }, "invalid_thread_id"],
+      ])("answers 400 for %s", async (_label, body, error) => {
+        expect(await check(body)).toEqual({ status: 400, body: { error } });
+        expect(vi.mocked(listTurns)).not.toHaveBeenCalled();
+      });
+
+      it("answers 400 for a thread id the store does not accept", async () => {
+        vi.mocked(normalizeNotebookThreadId).mockReturnValueOnce(null);
+        expect(await check({ threadId: "../x", question: OWN })).toEqual({ status: 400, body: { error: "invalid_thread_id" } });
+        expect(vi.mocked(normalizeNotebookThreadId)).toHaveBeenCalledWith("../x");
+        expect(vi.mocked(listTurns)).not.toHaveBeenCalled();
+      });
+
+      it("answers 404 for a notebook this tenant cannot read", async () => {
+        vi.mocked(getNotebook).mockResolvedValue(null as never);
+        expect(await check({ threadId: THREAD, question: OWN })).toEqual({ status: 404, body: { error: "not_found" } });
+        expect(vi.mocked(listTurns)).not.toHaveBeenCalled();
+      });
+
+      it("answers 401 without a session, reading nothing", async () => {
+        vi.mocked(sessionOr401).mockResolvedValue(NextResponse.json({ error: "unauthorized" }, { status: 401 }) as never);
+        expect((await check({ threadId: THREAD, question: OWN })).status).toBe(401);
+        expect(vi.mocked(getNotebook)).not.toHaveBeenCalled();
+      });
+
+      it("answers 503, never a lookup, when a read fails", async () => {
+        vi.mocked(listTurns).mockRejectedValue(new Error("statement timeout"));
+        expect(await check({ threadId: THREAD, question: OWN })).toEqual({ status: 503, body: { error: "send_wait_unavailable" } });
       });
     });
 

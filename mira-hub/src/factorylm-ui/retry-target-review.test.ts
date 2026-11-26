@@ -125,7 +125,8 @@ describe("the held photo is shown while the question waits for review (#5562)", 
 describe("the host is wired to the hold (source shape, like hub-host-restore-retry)", () => {
   const host = readFileSync(new URL("./hub-host.tsx", import.meta.url), "utf8");
   it("Retry is offered only when the target did not move", () => {
-    expect(host).toMatch(/\.\.\.\(failedBody && retryCheck\?\.kind === "retry" \? \{ onRetry \} : \{\}\)/);
+    // #5746 r6 F7: and not while a held send is paused; Try again then belongs to that draft.
+    expect(host).toMatch(/\.\.\.\(failedBody && retryCheck\?\.kind === "retry" && !sendPaused \? \{ onRetry \} : \{\}\)/);
     expect(host).not.toMatch(/\.\.\.\(failedBody \? \{ onRetry \} : \{\}\)/);
   });
   it("a target refusal keeps the refused scope and the review message is shown", () => {

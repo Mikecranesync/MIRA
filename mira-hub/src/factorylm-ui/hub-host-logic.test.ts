@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ENERGIZED_ELECTRICAL_HAZARD } from "@/lib/safety-classifier";
 import type { HubNotebook } from "./notebook-tree";
@@ -35,6 +36,8 @@ import {
   stoppedStreamResult,
   sendWaitLookup,
   withheldSendWait,
+  checksSendSubject,
+  sendSubjectLookup,
   type HubSelection,
 } from "./hub-host-logic";
 import { advanceManualSearchFollow, startManualSearchFollow, type ManualSearchFollowState, type ManualSearchStatus } from "../../../packages/factorylm-interaction/src";
@@ -793,5 +796,95 @@ describe("withheldSendWait", () => {
     expect(sendWaitLookup({ manualSearch: A, wholeMachineManualSearch: B })).toBe(A);
     expect(sendWaitLookup({ manualSearch: null, wholeMachineManualSearch: B })).toBe(B);
     expect(sendWaitLookup(null)).toBeNull();
+  });
+
+  // #5746 r6 F1: the project's readiness is read only while a send waits on it.
+  it("reads the project's readiness only while a send waits on it, and last", () => {
+    expect(sendWaitLookup({ manualSearch: null, projectManualReadiness: B })).toBeNull();
+    expect(sendWaitLookup({ manualSearch: null, projectManualReadiness: B }, true)).toBe(B);
+    expect(sendWaitLookup({ manualSearch: A, projectManualReadiness: B }, true)).toBe(A);
+    expect(sendWaitLookup({ manualSearch: null, wholeMachineManualSearch: A, projectManualReadiness: B }, true)).toBe(A);
+  });
+});
+
+// #5746 r6 F1: a manual question the saved history would send at once, while the project's
+// lookup runs, is checked against the server's subject rule first. The check only adds a wait.
+describe("checksSendSubject", () => {
+  const RUNNING: ManualSearchStatus = { manufacturer: "AutomationDirect", model: "GS11N-20P2", running: true, sourceState: "preparing" };
+  type Input = Parameters<typeof checksSendSubject>[0];
+  const base: Input = { waitForManual: true, observedManual: null, readiness: RUNNING, scope: undefined };
+  const rider = (componentId: string | null) => ({ notebookId: "nb", threadId: "t", componentId, selectionVersion: 1 });
+
+  it("checks a whole-machine manual question while the project's lookup runs", () => {
+    expect(checksSendSubject(base)).toBe(true);
+    expect(checksSendSubject({ ...base, scope: "unavailable" })).toBe(true);
+    expect(checksSendSubject({ ...base, scope: rider(null) })).toBe(true);
+  });
+
+  it.each([
+    ["a question that needs no manual", { waitForManual: false }],
+    ["a lookup the send already waits for", { observedManual: RUNNING }],
+    ["no readiness", { readiness: undefined }],
+    ["a lookup that is not running", { readiness: { ...RUNNING, running: false, sourceState: "ready" } }],
+    ["a selected component", { scope: rider("c-1") }],
+  ] as [string, Partial<Input>][])("control: never checks with %s", (_label, change) => {
+    expect(checksSendSubject({ ...base, ...change })).toBe(false);
+  });
+});
+
+// #5746 r6 audit: every way the Hub sends a chat question. Each goes through the checked send
+// (onComposerSend), needs no manual, or cannot be reached in the Hub. The composer and Try again on
+// a draft use the checked send; a follow-up suggestion only fills the draft; the host's own retry
+// re-sends a request that already went to chat; the shell's runtime send and first-run chips are
+// unreachable (pinned in packages/factorylm-ui v4-review-fixes.test.tsx and below).
+describe("every way the Hub sends a chat question", () => {
+  const HOST = readFileSync(new URL("./hub-host.tsx", import.meta.url), "utf8");
+  const start = HOST.indexOf("const hooks: HostHooks = {");
+  const hooksObject = HOST.slice(start, HOST.indexOf("\n  };", start));
+
+  it("gives the shell its checked send", () => {
+    expect(start).toBeGreaterThan(0);
+    expect(hooksObject).toMatch(/\n    onComposerSend,\n/);
+  });
+
+  it("offers no first-run chips, which the shell sends without the check", () => {
+    expect(hooksObject).toContain("groundingLine:");
+    expect(HOST).not.toMatch(/suggestChips/);
+  });
+
+  it("asks guided Ask MIRA in general mode with no manual, so it has nothing to wait for", () => {
+    const body = guidedDeadEndBody("Which fuse does it take?", "session-1", [], { notebookId: "nb", threadId: "t" });
+    expect(body.sourceDocIds).toEqual([]);
+  });
+});
+
+describe("sendSubjectLookup", () => {
+  const SEL: HubSelection = { notebookId: "nb/1", threadId: "thread-1" };
+  const LOOKUP: ManualSearchStatus = { manufacturer: "AutomationDirect", model: "GS11N-20P2", running: true, sourceState: "preparing" };
+  const reply = (status: number, body: unknown) => vi.fn(async () => new Response(JSON.stringify(body), { status }));
+
+  it("posts the question and the thread in the body, and returns the lookup", async () => {
+    const fetcher = reply(200, { lookup: LOOKUP });
+    const signal = new AbortController().signal;
+    expect(await sendSubjectLookup("/hub", SEL, "According to the manual, GS11N-20P2?", signal, fetcher)).toEqual(LOOKUP);
+    const [url, init] = fetcher.mock.calls[0]! as unknown as [string, RequestInit];
+    expect(url).toBe("/hub/api/equipment-notebooks/nb%2F1/send-wait/");
+    expect(init.method).toBe("POST");
+    expect(init.signal).toBe(signal);
+    expect(JSON.parse(init.body as string)).toEqual({ threadId: "thread-1", question: "According to the manual, GS11N-20P2?" });
+    expect(url).not.toContain("GS11N");
+  });
+
+  it("returns null when the server says to send now", async () => {
+    expect(await sendSubjectLookup("", SEL, "q", new AbortController().signal, reply(200, { lookup: null }))).toBeNull();
+  });
+
+  it.each([
+    ["a failed check", reply(503, { error: "send_wait_unavailable" })],
+    ["an unreadable lookup", reply(200, { lookup: { model: 7 } })],
+    ["a network error", vi.fn(async () => { throw new TypeError("network"); })],
+    ["an aborted check", vi.fn(async () => { throw new DOMException("aborted", "AbortError"); })],
+  ])("returns null, the decision the saved history made, for %s", async (_label, fetcher) => {
+    expect(await sendSubjectLookup("", SEL, "q", new AbortController().signal, fetcher as unknown as typeof fetch)).toBeNull();
   });
 });

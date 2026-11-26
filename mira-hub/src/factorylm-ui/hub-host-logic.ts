@@ -424,11 +424,63 @@ export function currentReadyManualId(
   return source?.readiness?.canChat && enabledDocIds([source]).length > 0 ? source.docId : null;
 }
 
-/** The project's lookup the send wait follows: the shown status, else the send-wait-only one (#5746 r4 F1). */
+/** The project's lookup the send wait follows: the shown status, else the send-wait-only one (#5746 r4 F1),
+ *  else, only while a send waits on it after the pre-send check (r6 F1), the project's readiness. */
 export function sendWaitLookup(
-  data: { manualSearch?: ManualSearchStatus | null; wholeMachineManualSearch?: ManualSearchStatus } | null | undefined,
+  data: {
+    manualSearch?: ManualSearchStatus | null;
+    wholeMachineManualSearch?: ManualSearchStatus;
+    projectManualReadiness?: ManualSearchStatus;
+  } | null | undefined,
+  followsReadiness = false,
 ): ManualSearchStatus | null {
-  return data?.manualSearch ?? data?.wholeMachineManualSearch ?? null;
+  return data?.manualSearch ?? data?.wholeMachineManualSearch ?? (followsReadiness ? data?.projectManualReadiness : undefined) ?? null;
+}
+
+/**
+ * #5746 r6 F1: whether a send asks the server's subject rule before it goes. Only a manual question
+ * about the whole machine, with no lookup to wait for, while the project's lookup runs: the one
+ * case where the saved history alone sends a question that may name the project's own model. An
+ * unknown scope is checked too; the wait then applies only if the scope turns out whole-machine.
+ */
+export function checksSendSubject(input: {
+  waitForManual: boolean;
+  observedManual: ManualSearchStatus | null;
+  readiness: ManualSearchStatus | null | undefined;
+  scope: "unavailable" | { componentId: string | null } | undefined;
+}): boolean {
+  const component = typeof input.scope === "object" && input.scope.componentId !== null;
+  return input.waitForManual && !input.observedManual && Boolean(input.readiness?.running) && !component;
+}
+
+/**
+ * #5746 r6 F1: asks `POST …/send-wait` whether this question waits for the project's lookup. The
+ * question travels in the body. Any failure, abort or unreadable answer is null: send now, the
+ * decision the saved history already made. The check can only add a wait, never remove one.
+ */
+export async function sendSubjectLookup(
+  base: string,
+  sel: HubSelection,
+  question: string,
+  signal: AbortSignal,
+  fetcher: typeof fetch = fetch,
+): Promise<ManualSearchStatus | null> {
+  try {
+    const res = await fetcher(`${base}/api/equipment-notebooks/${encodeURIComponent(sel.notebookId)}/send-wait/`, {
+      method: "POST",
+      cache: "no-store",
+      headers: { "content-type": "application/json", accept: "application/json" },
+      body: JSON.stringify({ threadId: sel.threadId, question }),
+      signal,
+    });
+    if (!res.ok) return null;
+    const lookup = ((await res.json()) as { lookup?: unknown } | null)?.lookup as Partial<ManualSearchStatus> | null | undefined;
+    return lookup && typeof lookup.manufacturer === "string" && typeof lookup.model === "string" && typeof lookup.running === "boolean"
+      ? (lookup as ManualSearchStatus)
+      : null;
+  } catch {
+    return null;
+  }
 }
 
 /**

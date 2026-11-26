@@ -17,86 +17,25 @@ import {
   updateNotebook,
 } from "@/lib/equipment-notebooks";
 import { listFilesForTarget } from "@/lib/workspace-files";
-import {
-  currentManualSearchStatus,
-  threadStatusScope,
-  type ManualSearchStatus,
-} from "@/capabilities/notebook-manual-acquisition";
-import { confirmedCatalogNumber } from "@/capabilities/notebook-manual-identity";
-import { DOCUMENT_BASES, SUBJECT_READ_STEPS } from "@/capabilities/conversation-subject";
+import type { ManualSearchStatus } from "@/capabilities/notebook-manual-acquisition";
 import { isComponentAttributionEntry } from "@/capabilities/bench-components/attribution";
-import { turnsAskedUnderComponent } from "@/capabilities/bench-components/store";
+import {
+  TURN_WINDOW,
+  notebookManualStatus,
+  sendWaitAllows,
+  sendWaitStatus,
+  subjectMachine,
+  subjectReader,
+} from "@/capabilities/send-wait-subject";
 
 export const dynamic = "force-dynamic";
 
-/** The conversation history the GET returns. */
-const TURN_WINDOW = 50;
-/** How far back the manual-status subject is read when the window settles nothing. */
-const WIDEST_SUBJECT_READ = SUBJECT_READ_STEPS[SUBJECT_READ_STEPS.length - 1];
-
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-/** What the Hub's send wait reads of a lookup: never a message or link, so it is never shown. */
-function sendWaitStatus(status: ManualSearchStatus): ManualSearchStatus {
-  return {
-    manufacturer: status.manufacturer,
-    model: status.model,
-    running: status.running,
-    ...(status.sourceState ? { sourceState: status.sourceState } : {}),
-    ...(status.readySourceDocId ? { readySourceDocId: status.readySourceDocId } : {}),
-    ...(status.startedAt ? { startedAt: status.startedAt } : {}),
-  };
-}
-
-/**
- * #5746 r5 F1: the questions that decide, for the send wait, whether the thread moved to another
- * model. One asked under a selected bench component is about that component (#5750 r3 F13), even
- * when it names the component's own model, so it never decides that. The saved attribution entry
- * marks only the paths that stream a component frame; a safety stop or an off-topic reply carries
- * the turn's component stamp alone (`stamped`).
- */
-function wholeMachineQuestions(
-  rows: readonly { id: string; question: string; evidence?: readonly unknown[] | null }[],
-  stamped: ReadonlySet<string>,
-): string[] {
-  return rows.filter((t) => !stamped.has(t.id) && !(t.evidence ?? []).some(isComponentAttributionEntry)).map((t) => t.question);
-}
 
 function requestSearchParams(req: NextRequest): URLSearchParams {
   const maybe = req as { nextUrl?: { searchParams?: URLSearchParams }; url?: string };
   if (maybe.nextUrl?.searchParams) return maybe.nextUrl.searchParams;
   return new URL(maybe.url ?? "http://localhost/").searchParams;
-}
-
-/**
- * The most recently PROPOSED (not yet confirmed) identity on this notebook's
- * turns, read straight off the raw `evidence[]` the same way
- * `mira-hub/src/factorylm-ui/to-interaction.ts`'s `identityProposalOf` does
- * (duplicated here, not imported: that file is a client component and this
- * is a server-only route). `turns` is chronological, so the LAST match wins.
- */
-function latestIdentityProposal(
-  turns: readonly { evidence: unknown[] }[],
-): { manufacturer: string; model: string } | null {
-  for (let i = turns.length - 1; i >= 0; i--) {
-    for (const e of turns[i]!.evidence) {
-      if (typeof e !== "object" || e === null) continue;
-      const r = e as Record<string, unknown>;
-      if (r.kind !== "identity_proposal") continue;
-      if (typeof r.manufacturer === "string" && typeof r.model === "string") {
-        return { manufacturer: r.manufacturer, model: r.model };
-      }
-    }
-  }
-  return null;
-}
-
-/** True when the newest turn is an answer that came from a document. */
-function latestTurnIsGrounded(
-  turns: readonly { answerStatus?: string | null; basis?: string | null }[],
-): boolean {
-  const last = turns[turns.length - 1];
-  return !!last && last.answerStatus === "answered" && !!last.basis && DOCUMENT_BASES.has(last.basis);
 }
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -152,19 +91,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   // never a second acquisition-status path.
   let manualSearch: ManualSearchStatus | null = null;
   try {
-    manualSearch = await currentManualSearchStatus(
-      ctx.tenantId,
-      id,
-      {
-        identityStatus: notebook.identityStatus,
-        manufacturer: notebook.manufacturer,
-        model: notebook.model,
-        catalogNumber: notebook.catalogNumber,
-      },
-      latestIdentityProposal(turns),
-      sources,
-      ...(latestTurnIsGrounded(turns) ? [{ groundedTurn: true }] : []),
-    );
+    manualSearch = await notebookManualStatus(ctx.tenantId, id, notebook, sources, turns);
   } catch (err) {
     console.error("[equipment-notebooks] manual search status read failed (continuing without it):", err);
   }
@@ -178,30 +105,15 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   // client may still be showing one from an earlier read.
   let manualSearchScope: "other_model" | "out_of_reach" | undefined;
   let wholeMachineManualSearch: ManualSearchStatus | undefined;
-  const machineModel = manualSearch?.model ?? notebook.model;
-  if (threadId && (machineModel || notebook.catalogNumber)) {
-    const machine = {
-      manufacturer: manualSearch?.manufacturer ?? notebook.manufacturer,
-      model: machineModel,
-      catalogNumber: machineModel === notebook.model ? notebook.catalogNumber : null,
-      recordCatalog: confirmedCatalogNumber(notebook),
-    };
-    // The newest 50 turns settle nothing, and older ones exist: read further
-    // back (the same widest step the chat path's subject read uses) before
-    // trusting that the thread never named another model. Still nothing past
-    // that bound: the subject is out of reach. The wider read runs at most once.
-    let wider: Promise<typeof turns> | undefined;
-    const scopeOf = async (questionsOf: (rows: typeof turns) => string[] | Promise<string[]>) => {
-      const scope = threadStatusScope(await questionsOf(turns), machine);
-      if (scope !== "undecided" || turns.length < TURN_WINDOW) return scope;
-      const rows = await (wider ??= listTurns(ctx.tenantId, id, WIDEST_SUBJECT_READ, { viewerUserId: ctx.userId, threadId }));
-      const widest = threadStatusScope(await questionsOf(rows), machine);
-      return widest === "undecided" && rows.length >= WIDEST_SUBJECT_READ ? "out_of_reach" : widest;
-    };
+  // The status itself, before this read decides whether it is shown (#5746 r6 F1).
+  const projectStatus = manualSearch;
+  const machine = threadId ? subjectMachine(manualSearch, notebook) : null;
+  if (threadId && machine) {
+    const subject = subjectReader({ tenantId: ctx.tenantId, notebookId: id, viewerUserId: ctx.userId, threadId, turns, machine });
     // A failed wider read is inconclusive (r2 F9): the status is withheld
     // without a scope, and the rest of the response still returns.
     try {
-      const scope = await scopeOf((rows) => rows.map((t) => t.question));
+      const scope = await subject.shown();
       if (scope === "out_of_reach") manualSearchScope = "out_of_reach";
       if (scope === "other") manualSearchScope = "other_model";
     } catch (err) {
@@ -220,14 +132,22 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     // read sends nothing.
     if (manualSearch && manualSearchScope === "other_model") {
       try {
-        const scope = await scopeOf(async (rows) => wholeMachineQuestions(rows, await turnsAskedUnderComponent(ctx.tenantId, id, rows.map((t) => t.id))));
-        if (scope !== "other" && scope !== "out_of_reach") wholeMachineManualSearch = sendWaitStatus(manualSearch);
+        if (sendWaitAllows(await subject.wholeMachine())) wholeMachineManualSearch = sendWaitStatus(manualSearch);
       } catch (err) {
         console.error("[equipment-notebooks] send-wait subject read failed (the send wait gets no lookup):", err);
       }
     }
     if (manualSearchScope) manualSearch = null;
   }
+  // #5746 r6 F1: where the status is withheld for this thread and the rules above leave a question
+  // about the whole machine nothing to wait for, a question that names the project's own model
+  // still waits. That question is not saved yet, so the Hub asks the pre-send check
+  // (`send-wait/route.ts`) and, only while a send waits on it, follows this lookup. It carries no
+  // message or link. A read that failed before any scope was known carries none: the Hub then
+  // sends as it does today.
+  const projectManualReadiness = manualSearchScope && projectStatus && !wholeMachineManualSearch
+    ? sendWaitStatus(projectStatus)
+    : undefined;
   // #5750 r3 F10/F11/F12: on a thread-scoped read, the saved answer this
   // status was checked against — the newest turn the read saw. Clients show
   // the status under that answer only, and nowhere when it is null (no answer
@@ -240,6 +160,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     ...(manualSearchScope ? { manualSearchScope } : {}),
     ...(manualSearchAnswer !== undefined ? { manualSearchAnswer } : {}),
     ...(wholeMachineManualSearch ? { wholeMachineManualSearch } : {}),
+    ...(projectManualReadiness ? { projectManualReadiness } : {}),
   });
 }
 

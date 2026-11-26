@@ -25,6 +25,9 @@ export interface SendErrorProps {
    *  nothing to name and only the draft fallback applies. */
   readonly turnId?: string;
   readonly hooks?: HostHooks;
+  /** The composer's own send, on a host that checks a send before it goes (`onComposerSend`).
+   *  True when it started. Try again on a draft then goes through the same check (#5746 r6 F7). */
+  readonly submitDraft?: () => boolean;
 }
 
 /**
@@ -37,14 +40,14 @@ export interface SendErrorProps {
  * draft-only Retry is a dead button. Try again renders only when one of the two
  * paths exists; the same rule Stop follows.
  */
-export function SendError({ error, dispatch, draft, turnId, hooks }: SendErrorProps) {
+export function SendError({ error, dispatch, draft, turnId, hooks, submitDraft }: SendErrorProps) {
   if (!error) return null;
 
   // A target review (#5557) is answered by checking the target and pressing
   // Send; a retry control here would re-ask about the new target in one tap.
   const review = Boolean(hooks?.targetReview) && error === hooks?.targetReview;
   const hostRetry = !review && turnId && hooks?.onRetry ? hooks.onRetry : undefined;
-  const draftRetry = !review && Boolean(draft.trim() && hooks?.onSend);
+  const draftRetry = !review && Boolean(draft.trim() && (submitDraft || hooks?.onSend));
   const canRetry = Boolean(hostRetry) || draftRetry;
 
   const retry = () => {
@@ -54,6 +57,15 @@ export function SendError({ error, dispatch, draft, turnId, hooks }: SendErrorPr
       return;
     }
     const text = draft.trim();
+    // #5746 r6 F7: a host that checks a send before it goes (the Hub holds a manual question
+    // while its manual is prepared) gets the retry through that check, with the composer's
+    // attachments. The composer keeps the draft and chips until the check accepts the send, and
+    // shows the error again if it does not. A plain send here would skip the check.
+    if (text && submitDraft) {
+      dispatch({ type: "set-send-error", error: null });
+      if (!submitDraft()) dispatch({ type: "set-send-error", error });
+      return;
+    }
     if (text && hooks?.onSend) {
       try {
         // The composer released its chips; the host may still retain bytes.

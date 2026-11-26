@@ -94,6 +94,8 @@ import {
   enabledDocIds,
   currentReadyManualId,
   sendWaitLookup,
+  sendSubjectLookup,
+  checksSendSubject,
   withheldSendWait,
   waitsForManual,
   NOTEBOOK_LIST_RETRY_DELAYS_MS,
@@ -147,6 +149,9 @@ type Detail = {
   // #5746 r4 F1: when an answer about a component withheld the status from display, the
   // project's lookup for the send wait only (no message or link). Never shown.
   wholeMachineManualSearch?: ManualSearchStatus;
+  // #5746 r6 F1: when the status is withheld for this thread, the project's lookup, read only
+  // while a send waits on it after the pre-send check. No message or link. Never shown.
+  projectManualReadiness?: ManualSearchStatus;
 };
 
 /** One in-flight or just-finished exchange the server has not yet returned as a row. */
@@ -231,7 +236,22 @@ export function HubShellHost() {
     signal: AbortController;
     resolve: () => void;
     reject: (error: Error) => void;
+    // #5746 r6 F1: the pre-send check, while it has not answered.
+    subject?: "checking" | "settled";
   } | null>(null);
+  // #5746 r6 F1: true while a send waits on the project's readiness after the pre-send check.
+  // The poll keeps following that lookup until the conversation changes (`pollsReadinessRef`),
+  // so a Stop does not leave it reading nothing.
+  const [followsReadiness, setFollowsReadinessState] = useState(false);
+  const pollsReadinessRef = useRef(false);
+  const setFollowsReadiness = useCallback((on: boolean) => {
+    if (on) pollsReadinessRef.current = true;
+    setFollowsReadinessState(on);
+  }, []);
+  const [subjectChecks, setSubjectChecks] = useState(0);
+  // #5746 r6 F7: a send held before it went, then paused or refused. Try again then belongs to
+  // that draft, through the checked send, not to an older failed request's retry.
+  const [sendPaused, setSendPaused] = useState(false);
   // The technician's message from the moment Send is tapped (outgoing-turn.ts).
   const [outgoing, setOutgoing] = useState<Outgoing | null>(null);
   const [busy, setBusy] = useState(false);
@@ -374,6 +394,7 @@ export function HubShellHost() {
       if (waiting?.selection === sel && waiting.waitForManual && !waiting.observedManual && lookup?.running) {
         waiting.observedManual = lookup;
       }
+      const followed = sendWaitLookup(res.data, pollsReadinessRef.current);
       setDetail(res.data);
       setDetailUnavailable(false);
       const savedTurns = res.data.turns;
@@ -383,7 +404,7 @@ export function HubShellHost() {
       if (res.data.manualSearch && res.data.manualSearchAnswer !== undefined) {
         recordStatusOrigin(res.data.manualSearch, res.data.manualSearchAnswer ? { turnId: res.data.manualSearchAnswer.turnId } : null);
       }
-      if (!fromPoll && lookup) seedManualSearch(sel.notebookId, lookup);
+      if (!fromPoll && followed) seedManualSearch(sel.notebookId, followed);
       return true;
     });
   }, [detailGate, detailLoads, seedManualSearch, recordStatusOrigin]);
@@ -420,8 +441,10 @@ export function HubShellHost() {
     setLive(null);
     setUnconfirmedTurns([]);
     setFailedBody(null);
+    setSendPaused(false);
     manualSearchDriverRef.current?.reset();
     setFollow(null);
+    pollsReadinessRef.current = false;
     setStatusOrigins(new Map());
     syncThread(sel);
     const draft = waitingDrafts.current.get(conversationKey(sel));
@@ -441,7 +464,7 @@ export function HubShellHost() {
         if (!sel || sel.notebookId !== notebookId || !await loadDetail(sel, true)) return null;
         // #5746 r5 F6: the poll follows the lookup the send wait reads, so a newer lookup under a
         // status withheld for a component answer gets its own budget (nothing more is shown).
-        return sel === selectionRef.current ? sendWaitLookup(detailRef.current) : null;
+        return sel === selectionRef.current ? sendWaitLookup(detailRef.current, pollsReadinessRef.current) : null;
       },
       onStateChange: setFollow,
     });
@@ -519,7 +542,10 @@ export function HubShellHost() {
     : visibleManualStatus;
   // #5746 r4 F1: the send wait reads the same chain over the send-wait-only lookup when the
   // shown status was withheld for an answer about a component; nothing here is displayed.
-  const wholeMachineLookup = manualStatus ? undefined : detail?.wholeMachineManualSearch;
+  // #5746 r6 F1: and over the project's readiness, while a send waits on it.
+  const wholeMachineLookup = manualStatus
+    ? undefined
+    : detail?.wholeMachineManualSearch ?? (followsReadiness ? detail?.projectManualReadiness : undefined);
   const sendWait = wholeMachineLookup ? withheldSendWait(wholeMachineLookup, follow, detail?.sources ?? []) : null;
   const sendReadyManualId = sendWait ? sendWait.readyManualId : readyManualId;
   const sendManualStatus = sendWait ? sendWait.status : displayedManualStatus;
@@ -620,6 +646,7 @@ export function HubShellHost() {
     const isActive = () => selectionRef.current === sel && abortRef.current === ctrl;
     let componentLabel: string | undefined;
     setFailedBody(null);
+    setSendPaused(false);
     setSettledFollowups(null);
     dispatch({ type: "set-send-error", error: null });
     setLive(exchange);
@@ -1051,7 +1078,10 @@ export function HubShellHost() {
     const scope = benchGate.known ? benchScopesRef.current.get(conversationKey(selection)) : undefined;
     const waitsForNotebookLookup = observedManual && (scope === "unavailable" || scope?.componentId === null);
     const readingScope = !benchGate.known && !benchGate.changing && !benchGate.pending;
-    if (detail && !readingScope && !waitsForNotebookLookup) return onSend(question, attachments);
+    // #5746 r6 F1: the saved history alone would send this at once. The question itself may name
+    // the project's model, so the server's subject rule decides first; it can only add a wait.
+    const checksSubject = checksSendSubject({ waitForManual, observedManual, readiness: detail?.projectManualReadiness, scope });
+    if (detail && !readingScope && !waitsForNotebookLookup && !checksSubject) return onSend(question, attachments);
     return new Promise<void>((resolve, reject) => {
       const signal = new AbortController();
       const timer = setTimeout(() => signal.abort(), waitForManual ? 185_000 : 15_000);
@@ -1060,15 +1090,37 @@ export function HubShellHost() {
         if (waitingSend.current?.signal !== signal) return;
         waitingSend.current = null;
         setWaitingToSend(false);
+        setFollowsReadiness(false);
       };
-      const fail = (error: Error) => { clear(); reject(error); };
+      const fail = (error: Error) => { clear(); setSendPaused(true); reject(error); };
       signal.signal.addEventListener("abort", () => fail(new Error("Send paused. Your message and attachments are still here.")), { once: true });
       waitingSend.current = {
         selection, question, attachments, observedManual, waitForManual, scope, signal,
         resolve: () => { clear(); resolve(); },
         reject: fail,
+        ...(checksSubject ? { subject: "checking" as const } : {}),
       };
       setWaitingToSend(true);
+      if (checksSubject) {
+        // Stop or a conversation change cancels the check; one that takes too long, fails or
+        // answers nothing readable sends as the saved history decided.
+        const check = new AbortController();
+        const stopCheck = () => check.abort();
+        signal.signal.addEventListener("abort", stopCheck, { once: true });
+        const bound = setTimeout(stopCheck, 10_000);
+        void sendSubjectLookup(API_BASE, selection, question, check.signal).then((lookup) => {
+          clearTimeout(bound);
+          const waiting = waitingSend.current;
+          if (!waiting || waiting.signal !== signal) return;
+          waiting.subject = "settled";
+          if (lookup?.running) {
+            waiting.observedManual = lookup;
+            setFollowsReadiness(true);
+            seedManualSearch(selection.notebookId, lookup);
+          }
+          setSubjectChecks((count) => count + 1);
+        });
+      }
       if (readingScope) {
         setBenchRefresh(count => count + 1);
       }
@@ -1076,7 +1128,7 @@ export function HubShellHost() {
         void loadDetail(selection);
       }
     });
-  }, [selection, detail, detailUnavailable, benchGate, sendManualStatus, onSend, loadDetail]);
+  }, [selection, detail, detailUnavailable, benchGate, sendManualStatus, onSend, loadDetail, setFollowsReadiness, seedManualSearch]);
 
   useEffect(() => {
     const waiting = waitingSend.current;
@@ -1098,6 +1150,8 @@ export function HubShellHost() {
     }
     waiting.scope ??= scope;
     if (!detail) return;
+    // #5746 r6 F1: a whole-machine question waits for the pre-send check to answer.
+    if (waiting.subject === "checking" && (scope === "unavailable" || scope?.componentId === null)) return;
     // Notebook lookup readiness applies to the whole machine. The component's
     // scope rider lets chat evaluate its own sources.
     const manual = waiting.observedManual;
@@ -1116,7 +1170,7 @@ export function HubShellHost() {
     } catch (error) {
       waiting.reject(error instanceof Error ? error : new Error("Couldn't send the message."));
     }
-  }, [waitingToSend, selection, detail, detailUnavailable, benchGate, benchView, busy, sendManualStatus, follow, sendReadyManualId, onSend]);
+  }, [waitingToSend, subjectChecks, selection, detail, detailUnavailable, benchGate, benchView, busy, sendManualStatus, follow, sendReadyManualId, onSend]);
 
   useEffect(() => () => waitingSend.current?.signal.abort(), []);
 
@@ -1391,7 +1445,7 @@ export function HubShellHost() {
     onNewChat,
     onCreateProject,
     ...(busy || waitingToSend ? { onStop } : {}),
-    ...(failedBody && retryCheck?.kind === "retry" ? { onRetry } : {}),
+    ...(failedBody && retryCheck?.kind === "retry" && !sendPaused ? { onRetry } : {}),
     ...(reviewMessage ? { targetReview: reviewMessage } : {}),
     groundingLine: () => selection && !detail
       ? detailUnavailable ? "Couldn't load this project's details." : "Opening project…"

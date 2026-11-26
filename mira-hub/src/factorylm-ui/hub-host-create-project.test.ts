@@ -85,7 +85,7 @@ describe("project creation does not wait for sidebar refresh", () => {
       waitingSend:{current:null}, waitingDrafts:{current:new Map()}, draftRef:{current:""}, conversationKey, dispatch:noop,
       detailGate:latestRequestGate(), detailAbortRef:{current:null}, detailRef:{current:null},
       setDetail:noop, setDetailUnavailable:noop, setBusy:noop, setLive:noop, setUnconfirmedTurns:noop,
-      setFailedBody:noop, manualSearchDriverRef:{current:null}, setFollow:noop, setStatusOrigins:noop, syncThread:noop,
+      setFailedBody:noop, setSendPaused:noop, manualSearchDriverRef:{current:null}, setFollow:noop, pollsReadinessRef:{current:false}, setStatusOrigins:noop, syncThread:noop,
       setSelection, writeSearch:noop, searchForSelection:()=>""});
     const chosen={notebookId:"created-project",threadId:"new-thread"};
     select(chosen);

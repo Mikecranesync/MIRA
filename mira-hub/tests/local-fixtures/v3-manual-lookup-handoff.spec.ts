@@ -508,3 +508,206 @@ for (const mode of ["return", "return-lost", "cold", "controls", "newer-lookup"]
     expect(chatBodies.at(-1)!.sourceDocIds).toContain(DOC);
   });
 }
+
+// #5746 round 6 F1: in a thread that asked about a look-alike model, the project's status is
+// withheld (#5750). A question that names the project's own model still waits for its manual: the
+// detail read names the project's lookup (`projectManualReadiness`) and the Hub asks the pre-send
+// check, which this spec answers as the route would. Round 6 F7: Try again goes through the same
+// check, and keeps a photo the technician attached.
+const OWN_MODEL_QUESTION = "According to the manual, what is the acceleration parameter for the GS11N-20P2?";
+const LOOK_ALIKE_QUESTION = "According to the manual, what is the acceleration parameter for the GS11N-20P25?";
+const PHOTO_QUESTION = "What does this nameplate say?";
+const PAUSED = "Send paused. Your message and attachments are still here.";
+const TITLES = {
+  own: "after a look-alike question, a question naming the project's model waits for its manual",
+  "look-alike": "after a look-alike question, a question naming the look-alike is sent at once",
+  "check-fails": "after a look-alike question, a failed pre-send check sends at once, as before",
+  "check-hangs": "after a look-alike question, a pre-send check that never answers sends after its bound",
+  "stop-during-check": "Stop while the pre-send check runs keeps the draft, and its late answer sends nothing",
+  "stop-retry": "Stop then Try again still waits for the project's manual",
+  "photo-retry": "Stop then Try again keeps the attached photo",
+  "retry-after-failure": "after an earlier failed answer, Try again on a paused question sends that question through the check",
+} as const;
+for (const mode of Object.keys(TITLES) as (keyof typeof TITLES)[]) {
+  test(TITLES[mode], async ({ page, context, baseURL }) => {
+    await installSessionCookie(context, baseURL, PORT, {
+      uid: "e2e-manual-handoff", tid: TENANT, status: "trial", trialExpiresAt: new Date(Date.now() + 86_400_000).toISOString(),
+    });
+    const scope = latch();
+    const checkHeld = latch();
+    if (mode !== "photo-retry") scope.release();
+    let ready = false;
+    let reads = 0;
+    let looks = 0;
+    const checks: { threadId: string; question: string }[] = [];
+    const chatBodies: { message: string; threadId: string; sourceDocIds: string[] }[] = [];
+    const notebook = { ...oracle.detailEmpty.notebook, displayName: "Manual handoff fixture", sourceCount: 0, ...IDENTITY, identityStatus: "user_confirmed" };
+    const nbPath = `/api/equipment-notebooks/${NB}`;
+    const savedLookAlike = {
+      id: "saved-look-alike", clientRequestId: "look-alike", question: "Find me the manual for AutomationDirect GS11N-20P25",
+      answerStatus: "insufficient_evidence", answerText: "No manual is attached for that model.", evidence: [], createdAt: STARTED_AT,
+    };
+    const lookupStatus = () => ({
+      ...IDENTITY, startedAt: STARTED_AT, running: !ready,
+      ...(ready ? { sourceState: "ready", readySourceDocId: DOC } : { sourceState: "preparing" }),
+    });
+    await page.route("**/api/**", async route => {
+      const request = route.request();
+      const url = new URL(request.url());
+      const p = url.pathname.replace(/(.)\/$/, "$1");
+      const method = request.method();
+      if (p === "/api/auth/session") return route.fulfill(json({ user: { name: "Technician" }, expires: "2099-01-01T00:00:00Z" }));
+      if (p === "/api/auth/_log") return route.fulfill(json({}));
+      if (p === "/api/equipment-notebooks") return route.fulfill(json({ notebooks: [notebook] }));
+      if (p === `${nbPath}/components`) {
+        await scope.promise;
+        return route.fulfill(json({ components: [], selection: null, selectionVersion: null, headings: [] }));
+      }
+      if (p === `${nbPath}/send-wait` && method === "POST") {
+        const body = request.postDataJSON();
+        checks.push(body);
+        if (mode === "check-fails") return route.fulfill(json({ error: "send_wait_unavailable" }, 503));
+        if (mode === "check-hangs" || mode === "stop-during-check") await checkHeld.promise;
+        // As the route decides: the newest question names the project's model, or it does not.
+        const own = /GS11N-20P2(?!\d)/.test(body.question);
+        return route.fulfill(json({ lookup: own ? lookupStatus() : null }));
+      }
+      if (p === `${nbPath}/look`) {
+        looks += 1;
+        return route.fulfill(json({
+          fileId: FILE, attachment: { linkId: "attachment" }, observationPersisted: true,
+          observation: { text: "AutomationDirect, MODEL: GS11N-20P2", capturedAt: STARTED_AT },
+        }));
+      }
+      if (p === `${nbPath}/chat` && method === "POST") {
+        chatBodies.push(request.postDataJSON());
+        if (mode === "retry-after-failure" && chatBodies.length === 1) return route.fulfill(json({ error: "upstream" }, 500));
+        return route.fulfill(stream(
+          { kind: "content", content: ANSWER },
+          { kind: "sources", citations: [CITATION] },
+          { kind: "status", status: "answered" },
+        ));
+      }
+      if (p === nbPath && method === "GET") {
+        expect(url.searchParams.get("threadId")).toBe(THREAD);
+        reads += 1;
+        // As the detail route does in a look-alike thread: the status is withheld from display,
+        // and only the project's readiness is named, without a message or a link.
+        return route.fulfill(json({
+          ...oracle.detailEmpty, notebook, turns: [savedLookAlike], sources: ready ? [SOURCE] : [],
+          manualSearch: null, manualSearchScope: "other_model", projectManualReadiness: lookupStatus(),
+        }));
+      }
+      return route.fulfill(json({}, 404));
+    });
+    await page.goto(`/v3/?notebook=${NB}&thread=${THREAD}`);
+    const composer = page.getByRole("textbox", { name: "Ask MIRA", exact: true });
+    const statusParts = page.locator('[data-part-type="manual_search_status"]');
+    const sendButton = page.getByRole("button", { name: "Send", exact: true });
+    const stopButton = page.getByRole("button", { name: "Stop", exact: true });
+    await expect(page.getByText(savedLookAlike.question, { exact: true })).toBeVisible();
+    await expect(statusParts).toHaveCount(0);
+
+    if (mode === "photo-retry") {
+      // A photo send waits only for the question target, which this spec holds.
+      await page.getByRole("button", { name: "Add attachment", exact: true }).click();
+      const chooser = page.waitForEvent("filechooser");
+      await page.getByRole("button", { name: "Photo", exact: true }).click();
+      await (await chooser).setFiles({ name: "nameplate.jpg", mimeType: "image/jpeg", buffer: Buffer.from("synthetic nameplate bytes") });
+      const pending = page.getByRole("list", { name: "Pending attachments" });
+      await expect(pending.getByText("nameplate.jpg")).toBeVisible();
+      await composer.fill(PHOTO_QUESTION);
+      await sendButton.click();
+      await page.getByRole("button", { name: "Stop", exact: true }).click();
+      await expect(page.getByText(PAUSED)).toBeVisible();
+      // Stopped, not held again: the Stop click did not submit the draft.
+      await expect(stopButton).toHaveCount(0);
+      await expect(pending.getByText("nameplate.jpg")).toBeVisible();
+      await page.getByRole("button", { name: "Try again", exact: true }).click();
+      await expect(stopButton).toBeVisible();
+      await expect(page.getByText(PAUSED)).toHaveCount(0);
+      expect(looks).toBe(0);
+      scope.release();
+      await expect.poll(() => looks, { timeout: 15_000 }).toBe(1);
+      await expect.poll(() => chatBodies.length, { timeout: 15_000 }).toBe(1);
+      await expect(pending.getByText("nameplate.jpg")).toHaveCount(0);
+      expect(checks).toEqual([]);
+      return;
+    }
+
+    if (mode === "look-alike" || mode === "check-fails") {
+      const question = mode === "look-alike" ? LOOK_ALIKE_QUESTION : OWN_MODEL_QUESTION;
+      await composer.fill(question);
+      await sendButton.click();
+      await expect.poll(() => chatBodies.length, { timeout: 5_000 }).toBe(1);
+      expect(checks).toEqual([{ threadId: THREAD, question }]);
+      expect(chatBodies[0]).toMatchObject({ message: question, threadId: THREAD });
+      return;
+    }
+
+    if (mode === "check-hangs") {
+      await composer.fill(OWN_MODEL_QUESTION);
+      await sendButton.click();
+      await expect.poll(() => checks.length).toBe(1);
+      await page.waitForTimeout(3_000);
+      expect(chatBodies).toHaveLength(0);
+      // The check is bounded at 10 seconds; then the send goes as the saved history decided.
+      await expect.poll(() => chatBodies.length, { timeout: 15_000 }).toBe(1);
+      checkHeld.release();
+      return;
+    }
+
+    if (mode === "stop-during-check") {
+      await composer.fill(OWN_MODEL_QUESTION);
+      await sendButton.click();
+      await expect.poll(() => checks.length).toBe(1);
+      await page.getByRole("button", { name: "Stop", exact: true }).click();
+      await expect(page.getByText(PAUSED)).toBeVisible();
+      await expect(stopButton).toHaveCount(0);
+      checkHeld.release();
+      // The check's late answer, a lookup to wait for, finds no send waiting.
+      await page.waitForTimeout(2_000);
+      expect(chatBodies).toHaveLength(0);
+      await expect(composer).toHaveValue(OWN_MODEL_QUESTION);
+      await expect(page.getByText(PAUSED)).toBeVisible();
+      expect(checks).toHaveLength(1);
+      return;
+    }
+
+    if (mode === "retry-after-failure") {
+      // An earlier question fails on the way to chat; its own retry is offered.
+      await composer.fill(GENERAL_QUESTION);
+      await sendButton.click();
+      await expect.poll(() => chatBodies.length, { timeout: 5_000 }).toBe(1);
+      await expect(page.getByRole("button", { name: "Try again", exact: true })).toBeVisible();
+    }
+    // own, stop-retry, retry-after-failure: held until the project's manual is ready, then sent
+    // once with it.
+    const sentBefore = chatBodies.length;
+    await composer.fill(OWN_MODEL_QUESTION);
+    await sendButton.click();
+    await expect.poll(() => checks.length).toBe(1);
+    expect(checks[0]).toEqual({ threadId: THREAD, question: OWN_MODEL_QUESTION });
+    if (mode === "stop-retry" || mode === "retry-after-failure") {
+      await page.getByRole("button", { name: "Stop", exact: true }).click();
+      await expect(page.getByText(PAUSED)).toBeVisible();
+      await expect(stopButton).toHaveCount(0);
+      expect(checks).toHaveLength(1);
+      await expect(composer).toHaveValue(OWN_MODEL_QUESTION);
+      await page.getByRole("button", { name: "Try again", exact: true }).click();
+      // Try again asks the same check; it is not sent past it.
+      await expect.poll(() => checks.length).toBe(2);
+      expect(checks[1]).toEqual({ threadId: THREAD, question: OWN_MODEL_QUESTION });
+    }
+    // Held: the poll reads the project's lookup again and still nothing is sent or shown.
+    const readsAtWait = reads;
+    await expect.poll(() => reads, { timeout: 15_000 }).toBeGreaterThan(readsAtWait);
+    expect(chatBodies).toHaveLength(sentBefore);
+    await expect(composer).toHaveValue(OWN_MODEL_QUESTION);
+    await expect(statusParts).toHaveCount(0);
+    ready = true;
+    await expect.poll(() => chatBodies.length, { timeout: 20_000 }).toBe(sentBefore + 1);
+    expect(chatBodies.at(-1)).toMatchObject({ message: OWN_MODEL_QUESTION, threadId: THREAD });
+    expect(chatBodies.at(-1)!.sourceDocIds).toContain(DOC);
+  });
+}
