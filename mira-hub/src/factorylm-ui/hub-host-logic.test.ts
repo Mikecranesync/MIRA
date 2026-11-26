@@ -36,7 +36,14 @@ import {
   sendWaitLookup,
   isManualWaitCode,
   manualHoldAfterRefusal,
-  rebuiltHeldBody,
+  manualResendBody,
+  resendBodyFor,
+  sendsManualWait,
+  heldManualRecovery,
+  hubHostReducer,
+  initialHubShellState,
+  sendRecoveryId,
+  type HubSendRecovery,
   type HubSelection,
 } from "./hub-host-logic";
 import type { ManualSearchStatus } from "../../../packages/factorylm-interaction/src";
@@ -787,33 +794,111 @@ describe("a refused manual question", () => {
   });
 });
 
-// #5746 r7 F9: after a target review, Send asks the held question with the project as it is now.
-describe("rebuiltHeldBody", () => {
+// #5746 r7 F9: every resend of a question the route refused for the manual goes with the project
+// as it is now, under a new request id, never with the refused body.
+describe("manualResendBody / resendBodyFor", () => {
   const SEL: HubSelection = { notebookId: "nb", threadId: "t" };
   const OLD_TURN = { id: "t1", question: "old q", answer: "old a", evidence: [], clientRequestId: "r1" } as unknown as Parameters<typeof historyRows>[0][number];
   const NEW_TURN = { id: "t2", question: "new q", answer: "new a", evidence: [], clientRequestId: "r2" } as unknown as Parameters<typeof historyRows>[0][number];
   const photo = { fileId: "f-1", capturedAt: "2026-11-26T10:00:00.000Z" };
+  const refused = (body: HubSendRecovery["body"]): HubSendRecovery => ({
+    body, composition: body, question: body.message, recoveryId: "rec-1", manualRefused: "manual_not_ready", error: null,
+  });
+  const NOW = { sources: [], turns: [OLD_TURN, NEW_TURN] };
 
-  it("takes the current sources and history, keeping the held id and photo", () => {
-    const held = { ...chatBodyFor("What page of the manual?", ["doc-old"], historyRows([OLD_TURN]), SEL, { visualEvidence: photo }), clientRequestId: "held-1" };
-    const body = rebuiltHeldBody(held, ["doc-old", "doc-ready"], [OLD_TURN, NEW_TURN], SEL);
+  it("takes the current sources and history and a new request id, keeping the photo", () => {
+    const held = refused({ ...chatBodyFor("What page of the manual?", ["doc-old"], historyRows([OLD_TURN]), SEL, { visualEvidence: photo }), clientRequestId: "held-1" });
+    const body = manualResendBody(held, ["doc-old", "doc-ready"], [OLD_TURN, NEW_TURN], SEL);
     expect(body.sourceDocIds).toEqual(["doc-old", "doc-ready"]);
     expect(body.history).toEqual(historyRows([OLD_TURN, NEW_TURN]));
-    expect(body.clientRequestId).toBe("held-1");
+    expect(body.clientRequestId).not.toBe("held-1");
     expect(body.visualEvidence).toEqual(photo);
     expect(body.message).toBe("What page of the manual?");
     expect(body.mode).toBeUndefined();
   });
 
-  it("control: the held body itself still names only the sources it was first sent with", () => {
-    const held = chatBodyFor("q", ["doc-old"], [], SEL);
-    expect(held.sourceDocIds).toEqual(["doc-old"]);
-    expect(rebuiltHeldBody(held, [], [], SEL).mode).toBe("general");
+  it("control: the refused body itself still names only the sources it was first sent with", () => {
+    const held = refused(chatBodyFor("q", ["doc-old"], [], SEL));
+    expect(held.body.sourceDocIds).toEqual(["doc-old"]);
+    expect(manualResendBody(held, [], [], SEL).mode).toBe("general");
   });
 
   it("keeps a guided hand-off's session", () => {
-    const held = guidedDeadEndBody("Which fuse?", "session-1", [], SEL);
-    expect(rebuiltHeldBody(held, [], [], SEL).guidedEscalation).toEqual({ sessionId: "session-1" });
+    const held = refused(guidedDeadEndBody("Which fuse?", "session-1", [], SEL));
+    expect(manualResendBody(held, [], [], SEL).guidedEscalation).toEqual({ sessionId: "session-1" });
+  });
+
+  it("a refused question is rebuilt; without the project read it is not sent at all", () => {
+    const held = refused({ ...chatBodyFor("What page of the manual?", ["doc-old"], [], SEL), clientRequestId: "held-1" });
+    const body = resendBodyFor(held, SEL, NOW);
+    expect(body?.clientRequestId).not.toBe("held-1");
+    expect(body?.history).toEqual(historyRows([OLD_TURN, NEW_TURN]));
+    expect(resendBodyFor(held, SEL, null)).toBeNull();
+  });
+
+  it("control: any other saved question replays the request it recorded, as on main", () => {
+    const failed: HubSendRecovery = { body: { ...chatBodyFor("q", ["doc-old"], [], SEL), clientRequestId: "same" }, question: "q", error: "x" };
+    expect(resendBodyFor(failed, SEL, NOW)).toBe(failed.body);
+    expect(resendBodyFor(failed, SEL, null)).toBe(failed.body);
+  });
+});
+
+describe("sendsManualWait", () => {
+  it("asks the route to hold a manual question by default", () => {
+    expect(sendsManualWait(undefined)).toBe(true);
+    expect(sendsManualWait({})).toBe(true);
+  });
+  it("a replay keeps its attempt's choice, and the caller's choice wins", () => {
+    expect(sendsManualWait({ manualWait: false })).toBe(false);
+    expect(sendsManualWait({ manualWait: false }, true)).toBe(true);
+    expect(sendsManualWait(undefined, false)).toBe(false);
+  });
+});
+
+// #5746: the refused question is a saved question in main's recovery store, with its draft.
+describe("a refused manual question in the recovery store", () => {
+  const threadId = "notebook-nb:thread-t";
+  const SEL: HubSelection = { notebookId: "nb", threadId: "t" };
+  const opened = () => hubHostReducer(initialHubShellState(), {
+    type: "hydrate",
+    data: { thread: { ...initialHubShellState().thread, id: threadId }, projects: [], machines: [] },
+  });
+  const record: HubSendRecovery = {
+    body: chatBodyFor("What page of the manual?", [], [], SEL), question: "What page of the manual?",
+    recoveryId: "rec-1", manualRefused: "manual_not_ready", error: null,
+  };
+  const refuse = (state: ReturnType<typeof opened>) =>
+    hubHostReducer(state, { type: "recover-send", threadId, restoreDraft: true, recovery: record });
+
+  it("an empty composer gets the question back, and the reducer's copy owns that draft", () => {
+    const state = refuse(opened());
+    expect(state.draft).toBe("What page of the manual?");
+    const held = heldManualRecovery(state, threadId, "rec-1");
+    expect(typeof held).toBe("object");
+    expect((held as HubSendRecovery).draftRevision).toBe(state.draftRevision);
+  });
+
+  it("text typed before the refusal stays, and the question does not claim it", () => {
+    const typed = hubHostReducer(opened(), { type: "set-draft", draft: "something newer" });
+    const state = refuse(typed);
+    expect(state.draft).toBe("something newer");
+    expect(heldManualRecovery(state, threadId, "rec-1")).toBe("not_owner");
+  });
+
+  it("editing the draft, leaving the conversation, or the record going away ends the claim", () => {
+    const state = refuse(opened());
+    expect(heldManualRecovery(hubHostReducer(state, { type: "set-draft", draft: "What page of the manual? 2" }), threadId, "rec-1")).toBe("not_owner");
+    const left = hubHostReducer(state, {
+      type: "hydrate",
+      data: { thread: { ...initialHubShellState().thread, id: "notebook-nb:thread-other" }, projects: [], machines: [] },
+    });
+    expect(heldManualRecovery(left, threadId, "rec-1")).toBe("not_owner");
+    expect(heldManualRecovery(hubHostReducer(state, { type: "clear-recovery", threadId, recoveryId: "rec-1" }), threadId, "rec-1")).toBe("gone");
+  });
+
+  it("control: a saved question that was not refused for the manual is not a held one", () => {
+    const state = hubHostReducer(opened(), { type: "recover-send", threadId, restoreDraft: true, recovery: { ...record, manualRefused: undefined, error: "x" } });
+    expect(heldManualRecovery(state, threadId, sendRecoveryId(record))).toBe("gone");
   });
 });
 
@@ -823,11 +908,12 @@ describe("every way the Hub sends a chat question", () => {
   const HOST = readFileSync(new URL("./hub-host.tsx", import.meta.url), "utf8");
   const start = HOST.indexOf("const hooks: HostHooks = {");
   const hooksObject = HOST.slice(start, HOST.indexOf("\n  };", start));
-  /** The body of `const <name> = useCallback(` up to its dependency list. */
+  /** The body of `const <name> = useCallback(` (or a plain arrow) up to its end. */
   const callback = (name: string) => {
-    const at = HOST.indexOf(`const ${name} = useCallback(`);
+    const hook = HOST.indexOf(`const ${name} = useCallback(`);
+    const at = hook > 0 ? hook : HOST.indexOf(`const ${name} = (`);
     expect(at, name).toBeGreaterThan(0);
-    return HOST.slice(at, HOST.indexOf("\n  }, [", at));
+    return HOST.slice(at, HOST.indexOf(hook > 0 ? "\n  }, [" : "\n  };", at));
   };
 
   it("posts to the chat route from exactly one place, send()", () => {
@@ -835,35 +921,46 @@ describe("every way the Hub sends a chat question", () => {
     expect(callback("send")).toContain("/chat/`");
   });
 
-  it("send() asks the route to hold a manual question unless told not to", () => {
-    expect(callback("send")).toContain('...(opts.manualWait === false ? {} : { "x-mira-manual-wait": "1" })');
+  it("send() asks the route to hold a manual question unless told not to; a replay keeps its choice", () => {
+    const send = callback("send");
+    expect(send).toContain("const manualWait = sendsManualWait(retry, opts.manualWait);");
+    expect(send).toContain('...(manualWait ? { "x-mira-manual-wait": "1" } : {})');
   });
 
   it("only attachments, a home send and Send without the manual opt out", () => {
-    expect(HOST.match(/manualWait: false \}/g)).toHaveLength(3);
+    expect(HOST.match(/\{ manualWait: false \}/g)).toHaveLength(3);
     expect(callback("composeAndSend")).toContain("{ manualWait: false }");
-    expect(callback("sendFromHome")).toMatch(/send\(chatBodyFor\(q, \[\], \[\], sel\), q, sel, \{ manualWait: false \}\)/);
+    expect(callback("sendFromHome")).toContain("send(chatBodyFor(q, [], [], sel), q, sel, undefined, undefined, { manualWait: false })");
     expect(callback("onSendWithoutManual")).toContain("{ manualWait: false }");
-    for (const name of ["onSend", "onRetry", "onGuidedDeadEnd", "waitThenAskAgain"]) expect(callback(name)).not.toContain("manualWait: false");
+    for (const name of ["onSend", "onGuidedDeadEnd", "waitThenAskAgain", "retryRecovery"]) expect(callback(name)).not.toContain("manualWait: false }");
   });
 
-  it("a refusal from either transport keeps the draft and offers no retry of the refused body", () => {
-    const body = callback("send");
-    expect(body).toContain("if (isManualWaitCode(code)) throw new NotebookHttpError(res.status, code);");
-    const branch = body.slice(body.indexOf("isManualWaitCode(caught.code)"), body.indexOf("return;", body.indexOf("isManualWaitCode(caught.code)")));
-    expect(branch).toContain('dispatch({ type: "set-draft", draft: question })');
-    expect(branch).not.toContain("setFailedBody");
+  it("a refusal from either transport saves the question, keeps nothing from the stream and goes before Stop's handling", () => {
+    const send = callback("send");
+    const caught = send.indexOf("} catch (caught) {");
+    const at = send.indexOf("if (isManualWaitCode(rejectionCode)) {");
+    expect(caught).toBeGreaterThan(0);
+    expect(at).toBeGreaterThan(send.indexOf("rejectionCode = caught.code;", caught));
+    expect(at).toBeLessThan(send.indexOf("explicitStops.current.has(ctrl)", caught));
+    expect(at).toBeLessThan(send.indexOf("retainedStreamInterruption(", caught));
+    const branch = send.slice(at, send.indexOf("return;", at));
+    expect(branch).toContain("manualRefused: rejectionCode");
+    expect(branch).toContain('type: "recover-send", threadId, restoreDraft: true');
+    expect(branch).not.toContain("set-draft");
+    expect(branch).not.toContain("retainExchange");
   });
 
-  it("the one automatic send is the only one marked automatic, and it is rebuilt from the project now", () => {
+  it("every resend of a saved question is built by resendBodyFor, never the recorded body directly", () => {
+    expect(HOST).not.toContain("recoverySendBody(");
+    for (const name of ["retryRecovery", "waitThenAskAgain"]) expect(callback(name)).toContain("resendBodyFor(");
+    expect(callback("onSend")).toContain("resendBodyFor(draftRecovery, selection, detail)");
+  });
+
+  it("the one automatic send is the only one marked automatic, after the project is read again", () => {
     expect(HOST.match(/automatic: true \}/g)).toHaveLength(1);
     const wait = callback("waitThenAskAgain");
-    expect(wait).toContain("send(chatBodyFor(hold.question, enabledDocIds(now.sources), historyRows(now.turns), sel), hold.question, sel, { automatic: true })");
+    expect(wait).toContain("send(body, held.question, sel, held, undefined, { automatic: true })");
     expect(wait.indexOf("loadDetail(sel)")).toBeLessThan(wait.indexOf("{ automatic: true }"));
-  });
-
-  it("the target-review Send rebuilds the held question (r7 F9)", () => {
-    expect(callback("onSend")).toContain("send(rebuiltHeldBody(held, docIds, detail.turns, selection), q)");
   });
 
   it("gives the shell its checked composer send and offers no first-run chips", () => {
@@ -873,8 +970,13 @@ describe("every way the Hub sends a chat question", () => {
     expect(HOST).not.toMatch(/suggestChips/);
   });
 
-  it("offers Send without the manual only while a paused hold's question is still the draft", () => {
+  it("offers Send without the manual only while the paused question is the banner and still the draft", () => {
     expect(hooksObject).toContain("...(pausedForManual && !busy ? { onSendWithoutManual } : {})");
-    expect(HOST).toContain('const pausedForManual = manualHold?.phase === "paused" && state.draft.trim() === manualHold.question.trim();');
+    expect(HOST).toContain("const pausedForManual = failedBody?.manualRefused !== undefined && recoveryIsVisible && !waitingForManual &&\n    draftRecovery === failedBody;");
+  });
+
+  it("while a question waits for the manual, no other saved question can be sent and it is not offered again", () => {
+    expect(HOST).toContain("const recoveryBlocked = busy || waitingForManual ?");
+    expect(HOST).toContain("!(waitingForManual && sendRecoveryId(recovery) === manualHold?.recoveryId)");
   });
 });

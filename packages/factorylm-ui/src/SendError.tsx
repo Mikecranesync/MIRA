@@ -48,14 +48,18 @@ export function SendError({ error, dispatch, draft, turnId, hooks, submitDraft }
   const review = Boolean(hooks?.targetReview) && error === hooks?.targetReview;
   // #5746: a send paused for a manual is not a failure to reach MIRA; it offers one send without it.
   const withoutManual = !review && hooks?.onSendWithoutManual ? hooks.onSendWithoutManual : undefined;
-  const hostRetry = !review && turnId && hooks?.onRetry ? hooks.onRetry : undefined;
-  const draftRetry = !review && Boolean(draft.trim() && (submitDraft || hooks?.onSend));
+  const ownedRetry = hooks?.onRetrySendError;
+  const turnRetry = hooks?.onRetry;
+  const hostRetry = !review && (ownedRetry !== undefined
+    ? ownedRetry
+    : turnId && turnRetry ? () => turnRetry(turnId) : undefined);
+  const draftRetry = !review && ownedRetry === undefined && Boolean(draft.trim() && (submitDraft || hooks?.onSend));
   const canRetry = Boolean(hostRetry) || draftRetry;
 
   const retry = () => {
     if (hostRetry) {
-      dispatch({ type: "set-send-error", error: null });
-      hostRetry(turnId as string);
+      if (ownedRetry === undefined) dispatch({ type: "set-send-error", error: null });
+      hostRetry();
       return;
     }
     const text = draft.trim();
@@ -84,7 +88,8 @@ export function SendError({ error, dispatch, draft, turnId, hooks, submitDraft }
   };
 
   const dismiss = () => {
-    dispatch({ type: "set-send-error", error: null });
+    if (hooks?.onDismissSendError) hooks.onDismissSendError();
+    else dispatch({ type: "set-send-error", error: null });
   };
 
   return (
@@ -93,9 +98,10 @@ export function SendError({ error, dispatch, draft, turnId, hooks, submitDraft }
       <div className="fl-send-error__content">
         <p className="fl-send-error__message">{review ? "Check the question target" : withoutManual ? "Send paused" : "Couldn't reach MIRA"}</p>
         <p className="fl-send-error__detail">{error}{draft.trim() ? " Your message is saved below." : ""}</p>
+        {canRetry && hooks?.retrySendErrorDisabledReason && <p>{hooks.retrySendErrorDisabledReason}</p>}
         <div className="fl-send-error__actions">
           {canRetry ? (
-            <button className="fl-send-error__button" onClick={retry}>
+            <button className="fl-send-error__button" onClick={retry} disabled={Boolean(hooks?.retrySendErrorDisabledReason)}>
               Try again
             </button>
           ) : null}

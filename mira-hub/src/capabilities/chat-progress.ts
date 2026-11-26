@@ -15,6 +15,8 @@
  *   { kind: "headers", headers }          — the inner SSE response's headers (sent after it resolves)
  *   { kind: "http_error", status, body }  — the inner handler returned a non-SSE response
  */
+import { NOTEBOOK_ATTEMPT_HEADER } from "@/lib/notebook-chat-types";
+
 export type ChatProgressStage =
   | "finding_equipment"
   | "searching_documentation"
@@ -54,7 +56,7 @@ function lastFrameEnd(bytes: Uint8Array): number {
   return 0;
 }
 
-const FORWARDED_HEADERS = ["x-safety-stop", "x-idempotent-replay", "x-mira-trace-id"];
+const FORWARDED_HEADERS = ["x-safety-stop", "x-idempotent-replay", "x-mira-trace-id", NOTEBOOK_ATTEMPT_HEADER];
 
 /**
  * Open the SSE response now and run `handler` behind it. Each stage is emitted once, in the

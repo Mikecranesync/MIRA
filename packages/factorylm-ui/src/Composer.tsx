@@ -102,7 +102,13 @@ export function Composer({ state, dispatch, adapter, hooks, attachmentTrapsTab =
     if (typed && typed !== draftAtMount.current) dispatch({ type: "set-draft", draft: typed });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- deliberately once, at mount (#4695)
   }, []);
-  pendingRef.current = pending;
+  const onPendingAttachmentThreads = hooks?.onPendingAttachmentThreads;
+  useEffect(() => () => onPendingAttachmentThreads?.(new Set()), [onPendingAttachmentThreads]);
+  const updatePending = (next: typeof pending, editedThreadId?: string) => {
+    pendingRef.current = next;
+    setPending(next);
+    onPendingAttachmentThreads?.(new Set(next.map((item) => item.threadId)), editedThreadId);
+  };
   useEffect(() => () => {
     for (const item of pendingRef.current) adapter.release?.(item.attachment.id);
   }, [adapter]);
@@ -138,7 +144,7 @@ export function Composer({ state, dispatch, adapter, hooks, attachmentTrapsTab =
       machineLabel: machine ?? "no machine",
     };
     run(operation, pick, (attachment) => {
-      if (attachment) setPending((current) => [...current, { attachment, ...captured }]);
+      if (attachment) updatePending([...pendingRef.current, { attachment, ...captured }], captured.threadId);
     });
   };
 
@@ -148,7 +154,9 @@ export function Composer({ state, dispatch, adapter, hooks, attachmentTrapsTab =
     if (!adapter.adoptFiles || files.length === 0 || state.profile.publicDemo) return false;
     const accepted = adapter.adoptFiles(files);
     const captured = { threadId: state.thread.id, machineId: state.activeContext.machineId, machineLabel: machine ?? "no machine" };
-    if (accepted.length > 0) setPending((current) => [...current, ...accepted.map((attachment) => ({ attachment, ...captured }))]);
+    if (accepted.length > 0) {
+      updatePending([...pendingRef.current, ...accepted.map((attachment) => ({ attachment, ...captured }))], captured.threadId);
+    }
     setFailure(accepted.length < files.length ? "That file type can't be attached. Attach a photo, PDF, or text file." : null);
     return true;
   };
@@ -189,9 +197,9 @@ export function Composer({ state, dispatch, adapter, hooks, attachmentTrapsTab =
     const accepted = () => {
       if (sent.length) {
         const handed = new Set(sent.map(item => item.attachment.id));
-        const keep = (items: readonly PendingAttachment[]) => items.filter(item => !handed.has(item.attachment.id));
-        pendingRef.current = keep(pendingRef.current);
-        setPending(keep);
+        // The ref also keeps an unmount in this tick from releasing bytes
+        // that now belong to the host's outgoing message.
+        updatePending(pendingRef.current.filter(item => !handed.has(item.attachment.id)));
       }
       if (composerThread.current !== submittedThread) return;
       if (composerDraft.current === submittedDraft) dispatch({ type: "set-draft", draft: "" });
@@ -301,7 +309,7 @@ export function Composer({ state, dispatch, adapter, hooks, attachmentTrapsTab =
           disabled={hooks?.busy && submitting.current}
           onClick={() => {
             adapter.release?.(item.attachment.id);
-            setPending((current) => current.filter((p) => p.attachment.id !== item.attachment.id));
+            updatePending(pendingRef.current.filter((p) => p.attachment.id !== item.attachment.id), item.threadId);
           }}
         >×</button>
       </li>)}
@@ -371,7 +379,12 @@ export function Composer({ state, dispatch, adapter, hooks, attachmentTrapsTab =
       {/* #5746 r7: separate elements (keys). One reused button became the submit button inside
           Stop's own click, and the browser's default click action then sent the draft again. */}
       {hooks?.busy && hooks.onStop
-        ? <button key="stop" type="button" className="fl-composer__send" aria-label="Stop" onClick={hooks.onStop}><span aria-hidden="true">■</span><span className="fl-composer__label">Stop</span></button>
+        ? <button key="stop" type="button" className="fl-composer__send" aria-label="Stop" onClick={(event) => {
+            // A synchronous abort can render the Send control before the
+            // browser finishes processing this click.
+            event.preventDefault();
+            hooks.onStop?.();
+          }}><span aria-hidden="true">■</span><span className="fl-composer__label">Stop</span></button>
         : <button key="send" type="submit" className="fl-composer__send" aria-label="Send" disabled={!canSend || Boolean(hooks?.busy)}><span aria-hidden="true">↑</span><span className="fl-composer__label">Send</span></button>}
     </div>
   </form>;

@@ -324,6 +324,11 @@ export type SafetyNoticeEntry = {
   trigger: string;
 };
 
+export const NOTEBOOK_ATTEMPT_HEADER = "x-mira-turn-attempt";
+
+/** Server-owned metadata that identifies the execution which saved a stopped reply. */
+export type StoppedAttemptEntry = { kind: "stopped_attempt"; attemptId: string };
+
 /** Durable discriminator for a terminal Safety STOP. `safety_notice` is also
  * used by non-terminal safety directives, so idempotent replay must not infer
  * a hard stop from that display marker alone. Persist both entries for a stop:
@@ -468,6 +473,7 @@ export type NotebookIdentityProposalEvent = {
 };
 
 export type NotebookChatFrame =
+  | { kind: "headers"; headers?: Record<string, unknown> }
   | NotebookProgressFrame
   | NotebookManualSearchStatusFrame
   | NotebookIdentityProposalEvent
@@ -529,6 +535,7 @@ const FRAME_KINDS = new Set([
   "sheet_receipt",
   "manual_search_status",
   "identity_proposal",
+  "headers",
 ]);
 
 export function parseFrame(data: string): NotebookChatFrame | null {

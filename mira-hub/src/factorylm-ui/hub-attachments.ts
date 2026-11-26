@@ -78,6 +78,20 @@ export function pairAttachments(
   return files;
 }
 
+/** Return the kinds still missing from a recovered upload, including repeats. */
+export function missingAttachmentKinds(
+  required: readonly Attachment["kind"][],
+  attachments: readonly Attachment[],
+): Attachment["kind"][] {
+  const available = attachments.map((attachment) => attachment.kind);
+  return required.filter((kind) => {
+    const index = available.indexOf(kind);
+    if (index < 0) return true;
+    available.splice(index, 1);
+    return false;
+  });
+}
+
 /**
  * Resolve the namespace node a HOME send uploads into (every notebook owns one).
  * Never throws: the Composer has already cleared the draft, so a rejected read
@@ -106,8 +120,8 @@ export async function resolveUploadNode(
 export async function runAttachedSend(opts: {
   signal: AbortSignal;
   compose: () => Promise<ComposedHubSend>;
-  send: (composed: ComposedHubSend) => Promise<void>;
-}): Promise<"sent" | "cancelled" | ComposedHubSend> {
+  send: (composed: ComposedHubSend) => Promise<void | "deferred">;
+}): Promise<"sent" | "cancelled" | "deferred" | ComposedHubSend> {
   let composed: ComposedHubSend;
   try {
     composed = await opts.compose();
@@ -117,8 +131,7 @@ export async function runAttachedSend(opts: {
   }
   if (opts.signal.aborted) return "cancelled";
   if (composed.failure) return composed;
-  await opts.send(composed);
-  return "sent";
+  return (await opts.send(composed)) ?? "sent";
 }
 
 async function body(res: Response): Promise<Record<string, unknown>> {

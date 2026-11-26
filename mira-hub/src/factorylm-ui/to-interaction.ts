@@ -46,6 +46,7 @@ import {
   isVisualObservationEntry,
 } from "@/lib/notebook-chat-types";
 import { API_BASE } from "@/lib/config";
+import { hazardBanner } from "@/lib/safety-classifier";
 import { viewerHref } from "./document-page-viewer-logic";
 import { PROVIDER_EXHAUSTION_COPY } from "@/capabilities/provider-health";
 import type { PersistedTurn, StreamResult } from "@/components/equipment/notebook-chat-utils";
@@ -266,8 +267,29 @@ export { hasTerminalSafetyStop, isTerminalSafetyNotice, safetyNoticesOf } from "
  *  `Bubble`), and the shell renders parts in array order — so notices lead, live
  *  and hydrated alike. Caught by the fidelity harness (#4439). */
 function safetyFirst(parts: InteractionPart[]): InteractionPart[] {
-  return [...parts.filter((p) => p.type === "safety_notice"), ...parts.filter((p) => p.type !== "safety_notice")];
+  const notices = parts.filter((p) => p.type === "safety_notice");
+  const rest = parts.filter((p) => p.type !== "safety_notice");
+  // #5989: an answer that opens with the active-incident directive ("get clear, isolate power,
+  // call for help") shows that directive first. Only the directive paragraph moves: a Safety STOP
+  // stays above it, and the manual's warning, the turn's component label and the steps follow in
+  // their usual order (Codex #6011 F1/F3).
+  const at = rest.findIndex((p) => p.type === "text" && p.text.trimStart().startsWith(ACTIVE_INCIDENT_BANNER));
+  if (at < 0) return [...notices, ...rest];
+  const { directive, body } = splitIncidentDirective((rest[at] as Extract<InteractionPart, { type: "text" }>).text);
+  const after = body.trim() ? rest.map((p, i) => (i === at ? { type: "text" as const, text: body } : p)) : rest.filter((_, i) => i !== at);
+  const isStop = (p: InteractionPart) => p.type === "safety_notice" && p.notice.severity === "stop";
+  return [...notices.filter(isStop), { type: "text", text: directive }, ...notices.filter((p) => !isStop(p)), ...after];
 }
+
+/** The incident banner's paragraph (with any page mark the route appended) and the answer after it. */
+function splitIncidentDirective(text: string): { directive: string; body: string } {
+  const t = text.trimStart();
+  const gap = /\n[ \t]*\n/.exec(t);
+  return gap ? { directive: t.slice(0, gap.index).trimEnd(), body: t.slice(gap.index + gap[0].length) } : { directive: t.trimEnd(), body: "" };
+}
+
+/** The classifier's active-incident banner, which the chat route prefixes to the answer text. */
+const ACTIVE_INCIDENT_BANNER = hazardBanner("smoke");
 
 /**
  * #5504 Codex r2 F1: an answer asked under a bench component names that component
@@ -365,7 +387,7 @@ export function livePartsWhileRunning(
   // A turn asked under a component holds its text until the stream has named the
   // component, so no answer is ever on screen without the component it is about.
   const held = component?.expected === true && !component.label;
-  if (content && !held) return withComponentAttribution([{ type: "text", text: content }], component?.label);
+  if (content && !held) return safetyFirst(withComponentAttribution([{ type: "text", text: content }], component?.label));
   return progress ? [{ type: "progress", stage: progress }] : [];
 }
 
@@ -626,6 +648,16 @@ export function manualStatusKey(s: ManualSearchStatus): string {
   return `${s.startedAt ?? ""}|${norm(s.manufacturer)}|${norm(s.model)}`;
 }
 
+/** The follow-up suggestions of the answer that just finished streaming, and
+ *  the question they answered (#4454). */
+export interface SettledFollowups {
+  readonly question: string;
+  readonly suggestions: readonly string[];
+  readonly answerId?: string;
+  /** Answer turn ids already in the thread when the send started. */
+  readonly answeredBefore: readonly string[];
+}
+
 /** The assistant-turn id the host gives a send still being shown live. */
 export function liveAnswerTurnId(requestId: string): string {
   return `live-${requestId}-a`;
@@ -666,22 +698,42 @@ export function manualStatusForThread<S>(visible: S | null, scope: string | null
   return scope ? null : visible;
 }
 
-/** Follow-up suggestions belong to one identified, saved answer. */
-export interface SettledFollowups {
-  readonly answerId: string;
-  readonly suggestions: readonly string[];
+function askedText(turn: InteractionTurn | undefined): string | null {
+  if (turn?.role !== "user") return null;
+  const text = turn.parts.find((p) => p.type === "text");
+  return text?.type === "text" ? text.text.trim() : null;
 }
 
+/**
+ * #4454 — saved rows never carry follow-up suggestions, so once `hub-host.tsx`
+ * re-loads the thread after a stream and drops the live turn, the chips the
+ * technician just saw vanished. The host keeps the finished answer's
+ * suggestions; this puts them back on the answer that send produced. For
+ * older payloads without request IDs, require a unique new answer to the
+ * same question. The answer must still be last and have completed. Same overlay shape as
+ * `withManualSearchStatus`, applied before it so the order matches the live turn.
+ */
 export function withSettledFollowups(
   turns: readonly InteractionTurn[],
   settled: SettledFollowups | null,
 ): InteractionTurn[] {
-  if (!settled || !settled.suggestions.length) return [...turns];
-  const lastAssistant = [...turns].reverse().find(turn => turn.role === "assistant");
-  if (lastAssistant?.id !== settled.answerId || lastAssistant.lifecycle !== "completed" ||
-      lastAssistant.parts.some(part => part.type === "followups")) return [...turns];
+  if (!settled || settled.suggestions.length === 0) return [...turns];
+  const before = new Set(settled.answeredBefore);
+  const asked = settled.question.trim();
+  let lastAssistantIndex = -1;
+  const produced: number[] = [];
+  for (let i = 0; i < turns.length; i++) {
+    const t = turns[i]!;
+    if (t.role !== "assistant") continue;
+    lastAssistantIndex = i;
+    const matches = settled.answerId ? t.id === settled.answerId : !before.has(t.id) && askedText(turns[i - 1]) === asked;
+    if (matches) produced.push(i);
+  }
+  if (produced.length !== 1 || produced[0] !== lastAssistantIndex) return [...turns];
+  const answer = turns[lastAssistantIndex]!;
+  if (answer.lifecycle !== "completed" || answer.parts.some((p) => p.type === "followups")) return [...turns];
   const part: InteractionPart = { type: "followups", suggestions: settled.suggestions };
-  return turns.map(turn => turn === lastAssistant ? { ...turn, parts: [...turn.parts, part] } : turn);
+  return turns.map((t, i) => (i === lastAssistantIndex ? { ...t, parts: [...t.parts, part] } : t));
 }
 
 export function threadFromPersisted(

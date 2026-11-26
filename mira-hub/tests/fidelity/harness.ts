@@ -86,12 +86,13 @@ export async function installRoutes(page: Page, scenario: Scenario) {
     if (m === "GET" && p === nbPath) {
       if (!answered) return route.fulfill(json(oracle.detailEmpty));
       await released;
-      const detail = oracle[scenario].detailAfter;
-      const clientRequestId = cap.chatBodies[0]?.clientRequestId;
-      return route.fulfill(json({
-        ...detail,
-        turns: detail.turns.map((turn: Record<string, unknown>) => ({ ...turn, clientRequestId })),
-      })).catch(() => undefined);
+      const fixture = oracle[scenario];
+      // The real detail route returns the ID persisted from this browser's POST.
+      const turns = fixture.detailAfter.turns.map((turn: { clientRequestId: string | null }) =>
+        turn.clientRequestId === fixture.clientRequestId
+          ? { ...turn, clientRequestId: cap.chatBodies[0]?.clientRequestId }
+          : turn);
+      return route.fulfill(json({ ...fixture.detailAfter, turns })).catch(() => undefined);
     }
     if (m === "POST" && p === `${nbPath}/chat`) {
       cap.chatBodies.push(req.postDataJSON());

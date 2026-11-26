@@ -231,6 +231,26 @@ describe("the route refuses a manual question it cannot answer yet", () => {
     expect(domainMock.listTurns).toHaveBeenCalledWith(TENANT, NB, 50, { viewerUserId: "u1", threadId: THREAD });
   });
 
+  // A replay of a request that was already answered returns that saved answer, never a refusal: the
+  // idempotency key is owned before the manual is consulted.
+  it("a replay of an already-saved request returns its saved answer while the lookup runs", async () => {
+    acqMock.currentManualSearchStatus.mockResolvedValue(status({ running: true }));
+    domainMock.claimNotebookTurnRequest.mockResolvedValueOnce({
+      status: "replay",
+      turn: {
+        id: "turn-saved", question: MANUAL_ASK, answerStatus: "answered", answerText: "Page 42 [1].",
+        enabledSourceDocIds: [DOC_A],
+        evidence: [{ citationId: "1", docId: DOC_A, sourceTitle: "GS10.pdf", page: 42, fileId: null, quote: "P01.01" }],
+        model: "Groq:test", basis: "oem_documentation",
+      },
+    } as never);
+    const res = await chat({});
+    expect(res.status).toBe(200);
+    expect(await res.text()).toContain("Page 42");
+    expect(acqMock.currentManualSearchStatus).not.toHaveBeenCalled();
+    expect(domainMock.abandonNotebookTurnRequest).not.toHaveBeenCalled();
+  });
+
   it("the progress transport carries the same refusal in its http_error frame", async () => {
     process.env.MIRA_CHAT_PROGRESS = "1";
     acqMock.currentManualSearchStatus.mockResolvedValue(status({ running: true }));

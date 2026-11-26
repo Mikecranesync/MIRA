@@ -23,6 +23,7 @@ const NB = "22222222-2222-4222-8222-222222222222";
 const DOC = "33333333-3333-4333-8333-333333333333";
 const FILE = "55555555-5555-4555-8555-555555555555";
 const NODE = "66666666-6666-4666-8666-666666666666";
+const CLIENT_REQUEST_ID = "77777777-7777-4777-8777-777777777777";
 
 const sessionMock = vi.hoisted(() => ({ sessionOr401: vi.fn() }));
 vi.mock("@/lib/session", () => sessionMock);
@@ -186,7 +187,7 @@ describe("fidelity oracle", () => {
       const res = await chatPOST(req("http://t/api/equipment-notebooks/x/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: sc.message, sourceDocIds: [DOC] }),
+        body: JSON.stringify({ message: sc.message, sourceDocIds: [DOC], clientRequestId: CLIENT_REQUEST_ID }),
       }), params);
       expect(res.status).toBe(200);
       const sse = await res.text();
@@ -199,9 +200,11 @@ describe("fidelity oracle", () => {
         answerStatus: persisted.answerStatus, answerText: persisted.answerText ?? null,
         evidence: persisted.evidence ?? [], basis: persisted.basis ?? null,
         createdAt: "2026-10-14T12:00:00.000Z", ownerUserId: USER, sharedLegacy: false,
+        clientRequestId: persisted.clientRequestId,
       }]);
       const detail = await (await detailGET(req(`http://t/api/equipment-notebooks/${NB}`), params)).json();
-      oracle[key] = { message: sc.message, sse, detailAfter: detail };
+      expect(detail.turns[0]?.clientRequestId).toBe(CLIENT_REQUEST_ID);
+      oracle[key] = { message: sc.message, sse, clientRequestId: CLIENT_REQUEST_ID, detailAfter: detail };
       expect(sse).toContain('"kind":"evidence"');
       if (key === "G") expect(sse).toMatch(/"citations":\[\{/);
       if (key === "S") expect(sse).toContain('"safety_notice"');
