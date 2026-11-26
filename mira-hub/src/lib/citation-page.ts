@@ -15,6 +15,8 @@
  */
 
 /** Same shape as cite_integrity._PAGE_LABEL_RE (hyphen or en-dash). */
+import { displayPage, numericLocatorUnproven } from "@/capabilities/citation-page-display";
+
 const PAGE_LABEL_RE = /^\s*[0-9A-Za-z]+[-–][0-9]+[A-Za-z]?\s*$/;
 
 const HAZARD_CHUNK_RE = /\b(WARNING|CAUTION|DANGER)\b/i;
@@ -51,17 +53,20 @@ export type RetrievedPageChunk = {
   content?: string;
   pageLabel?: string | null;
   sourcePage?: number | null;
+  chunkIndex?: number | null;
+  pageAnchored?: boolean;
+  pageTrust?: "trusted" | "unknown";
 };
 
 function labelOf(chunk: RetrievedPageChunk): string | null {
   const fromMeta = citationPageLabel(chunk.pageLabel);
-  if (fromMeta) return fromMeta;
-  if (
-    typeof chunk.sourcePage === "number" &&
-    Number.isFinite(chunk.sourcePage) &&
-    chunk.sourcePage > 0
-  ) {
-    return String(chunk.sourcePage);
+  // #5955: a bare-integer metadata locator ("page_num": "1") restates the stamped page; it is
+  // withheld with it. A printed chapter-section label ("2-15") is independent and stays.
+  if (fromMeta && !numericLocatorUnproven({ sourcePage: chunk.sourcePage ?? null, chunkIndex: chunk.chunkIndex, pageAnchored: chunk.pageAnchored, pageTrust: chunk.pageTrust }, fromMeta)) return fromMeta;
+  // #5955: the DISPLAY page — a stamp that is not a proven real page never reaches a banner.
+  const page = displayPage({ sourcePage: chunk.sourcePage ?? null, chunkIndex: chunk.chunkIndex, pageAnchored: chunk.pageAnchored, pageTrust: chunk.pageTrust });
+  if (typeof page === "number" && Number.isFinite(page) && page > 0) {
+    return String(page);
   }
   return null;
 }

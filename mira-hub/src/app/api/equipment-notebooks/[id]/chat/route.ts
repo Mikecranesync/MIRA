@@ -186,6 +186,8 @@ import { reviewedManualFor } from "@/capabilities/reviewed-manual-library";
 import { asksToFindManual, exactManualIdentity, extractCandidateIdentity, isSafeCandidateSearchIdentity, wantsManualDocumentation } from "@/capabilities/candidate-identity";
 import { manufacturerInGroup } from "@/lib/manufacturerNormalize";
 import { citationTitle } from "@/capabilities/citation-title";
+import { citationIndex, displayPage, displaySourceUrl, groupPassages, passageKey } from "@/capabilities/citation-passages";
+import { pageSelector } from "@/capabilities/citation-page-display";
 import { ratingColumnFinding, ratingColumnText } from "@/capabilities/rating-column";
 import { claimPartSearchProposal } from "@/capabilities/part-search-claim";
 import { translateForSearch } from "@/capabilities/translate-for-search";
@@ -522,24 +524,25 @@ async function buildCitations(
   chunks: ManualChunk[],
   question: string,
 ): Promise<EvidenceCitation[]> {
-  const seen = new Map<string, EvidenceCitation>();
-  for (const c of chunks) {
-    const key = `${c.sourceUrl}::${c.sourcePage ?? ""}`;
-    if (seen.has(key)) continue;
-    seen.set(key, {
-      citationId: String(seen.size + 1),
+  // #5955 — one passage identity (capabilities/citation-passages.ts) for the model's [n] blocks,
+  // these citations and every re-derivation; `page` is the DISPLAY page (null when unproven).
+  const citations: EvidenceCitation[] = groupPassages(chunks).map((group, i) => {
+    const c = group[0];
+    return {
+      citationId: String(i + 1),
       docId: c.docId ?? "",
       sourceTitle: citationTitle(c),
-      page: c.sourcePage,
+      page: displayPage(c),
+      // The server attests a page it proved, so display can tell it from a pre-#5955 saved one.
+      ...(displayPage(c) != null ? { selector: pageSelector(displayPage(c)!) } : {}),
       fileId: null,
       // A manufacturer manual's own address, so the reader can open it; only a
       // place a browser can actually go (http/https) is carried.
-      ...(/^https?:\/\//i.test(c.sourceUrl ?? "") ? { sourceUrl: c.sourceUrl } : {}),
+      ...(/^https?:\/\//i.test(c.sourceUrl ?? "") ? { sourceUrl: displaySourceUrl(c) ?? c.sourceUrl } : {}),
       // Claim-centered window (CIT-07 phase 2) — not the chunk head.
       quote: relevantQuoteWindow(c.content, question),
-    });
-  }
-  const citations = [...seen.values()];
+    };
+  });
   const docIds = [...new Set(citations.map((c) => c.docId).filter(Boolean))];
   if (docIds.length > 0) {
     // Parked-original ids for the byte-serving viewer (raw pool: hub family).
@@ -2903,6 +2906,7 @@ async function handleChatTurn(
     : await releaseClaimOnFailure(() =>
         withTenantContext(ctx.tenantId, (client) =>
           retrieveNodeChunks(client, ctx.tenantId, retrievalQuery, {
+            pageFactTransaction: "owned", // withTenantContext transaction (#5955)
             nodeId,
             unsPath: null, // notebook nodes are standalone; scope is the doc set
             // 8 with the rerank lane on (top 2 pinned, the rest reranked), 6 with it off.
@@ -3767,6 +3771,7 @@ async function handleChatTurn(
       const stopPass = (query: string, rawQuery: string, label: string, diagnostics: StopDiagnostics) =>
         withTenantContext(ctx.tenantId, (client) =>
           retrieveNodeChunks(client, ctx.tenantId, query, {
+            pageFactTransaction: "owned", // withTenantContext transaction (#5955)
             nodeId,
             unsPath: null,
             topK: 8,
@@ -5385,12 +5390,13 @@ async function handleChatTurn(
         // excerpts do not say …" still approves, and a refusal's text is shown to the technician.
         if (!gate || !served || !docGrounded || uncitedDocumentClaim) return null;
         const used = citationsUsedInAnswer(answerText, citations);
+        const passageNumber = citationIndex(chunks);
         return ratingColumnFinding(
           message,
           answerText,
           chunks.map((c) => {
             const title = citationTitle(c);
-            return { content: c.content, title, page: c.sourcePage, cited: used.some((u) => u.sourceTitle === title && u.page === c.sourcePage) };
+            return { content: c.content, title, page: displayPage(c), cited: used.some((u) => u.citationId === String(passageNumber.get(passageKey(c)))) };
           }),
         );
       })();

@@ -16,6 +16,7 @@
  * (visual-evidence-context, PR #3832/#3833) is a separate read the mount wires
  * when it is on main; this mapper must never claim it.
  */
+import { effectiveCitationPage, replaceNumericPage, withoutUnverifiedPage } from "@/capabilities/citation-page-display";
 import type {
   ContextSnapshot,
   EvidenceBasisKind,
@@ -190,11 +191,15 @@ export function fileUrl(fileId: string): string {
  *  `#page=N`); otherwise a manufacturer manual's own http(s) address.
  *  Undefined when there is nothing to open. */
 export function citationHref(citation: EvidenceCitation): string | undefined {
-  const page = citation.page ? `#page=${citation.page}` : "";
+  // #5955: only a page the citation may display is linked to; an unverified numeric fragment
+  // already on a saved address (#page=715) is dropped with it. The viewer's own default first
+  // page is just where a document opens, not a claim about the citation.
+  const shown = effectiveCitationPage(citation);
+  const page = shown ? `#page=${shown}` : "";
   if (citation.originFileId) return fileUrl(citation.originFileId);
-  if (citation.fileId) return viewerHref(citation.fileId, citation.page);
+  if (citation.fileId) return viewerHref(citation.fileId, shown);
   const url = citation.sourceUrl ?? "";
-  if (/^https?:\/\//i.test(url)) return url.includes("#") ? url : `${url}${page}`;
+  if (/^https?:\/\//i.test(url)) return shown ? (url.includes("#") ? replaceNumericPage(url, shown) : `${url}${page}`) : withoutUnverifiedPage(url);
   return undefined;
 }
 
@@ -207,7 +212,7 @@ export function questionPhotoPart(entry: { fileId: string }): InteractionPart {
 }
 
 export function sourceFor(citation: EvidenceCitation, turnId: string): SourceReference {
-  const page = citation.page ?? null;
+  const page = effectiveCitationPage(citation);
   const locator = page !== null ? `p. ${page}` : citation.quote ? citation.quote.slice(0, 80) : "cited passage";
   const href = citationHref(citation);
   return {

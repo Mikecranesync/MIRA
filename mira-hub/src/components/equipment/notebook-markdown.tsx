@@ -14,6 +14,7 @@
 // matching citation are converted; an unmatched `[7]` stays plain text so we
 // never render a dead citation button (existing contract).
 
+import { effectiveCitationPage } from "@/capabilities/citation-page-display";
 import { useCallback, useState, type ReactNode } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -127,7 +128,7 @@ export function CitationChip({ c, onCite }: { c: EvidenceCitation; onCite?: (c: 
       onClick={() => onCite?.(c)}
       className="mx-0.5 inline-flex min-h-[24px] min-w-[24px] items-center justify-center rounded-full px-1.5 text-xs font-semibold align-baseline"
       style={{ background: "var(--brand-blue)", color: "white" }}
-      aria-label={`Open citation ${c.citationId}: ${c.sourceTitle}${c.page != null ? `, page ${c.page}` : ""}`}
+      aria-label={`Open citation ${c.citationId}: ${c.sourceTitle}${effectiveCitationPage(c) != null ? `, page ${effectiveCitationPage(c)}` : ""}`}
     >
       {c.citationId}
     </button>

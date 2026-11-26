@@ -1,5 +1,6 @@
 import type { PoolClient } from "pg";
 import { citationPageLabel } from "@/lib/citation-page";
+import { annotatePageTrust, citationIndex, displayPage, displaySourceUrl, passageKey } from "@/capabilities/citation-passages";
 import type { IdentityStatus } from "@/lib/equipment-notebooks";
 import { familySqlTerms, inferEquipmentType } from "@/lib/equipment-type";
 import { manufacturerInGroup, manufacturerSearchNames, normalizeManufacturer } from "@/lib/manufacturerNormalize";
@@ -107,6 +108,14 @@ export interface ManualChunk {
    * a real page (e.g. node `page_start`) leave it null and always render the page.
    */
   chunkIndex?: number | null;
+  /** `page_start` (the PDF page the v2 ingest read) supplied `sourcePage` — explicit page provenance (#5955). */
+  pageAnchored?: boolean;
+  /**
+   * #5955 — whether this chunk's document shows trustworthy page stamps, assessed over every
+   * authorized approved row of the document (`annotatePageTrust`). `unknown` withholds the page
+   * label and deep-link; absent = not assessed (only the chunk-level ordinal rule applies).
+   */
+  pageTrust?: "trusted" | "unknown";
   /**
    * Garage pilot PR-1/PR-4: the exact keys (`exactModelKey`) of the models a stored table chunk is
    * about (`metadata.table_models`), empty for prose. Node path only; the answer path's shadow claim
@@ -1032,7 +1041,12 @@ export async function retrieveManualChunks(
     askedMachine?: { message: string; report: { libraryNotForAsk?: LibraryNotForAsk } };
   } = {},
 ): Promise<ManualChunk[]> {
-  const found = await searchManualLibrary(client, tenantId, query, opts);
+  const found = await annotatePageTrust(client, tenantId, await searchManualLibrary(client, tenantId, query, opts), {
+    forDocs: () => "",
+    docParams: [],
+    forUrls: approvalFilterSql(),
+    // The OEM search runs on a raw pool client (autocommit): SAVEPOINT is illegal there.
+  }, { transaction: "none" });
   const asked = opts.askedMachine;
   const boundModel = opts.model?.trim();
   if (!asked || !boundModel || found.length === 0 || libraryIsForTurnsMachine(asked.message, boundModel, opts.manufacturer ?? null)) return found;
@@ -1606,7 +1620,32 @@ async function runBm25Query(
  * Caller MUST run this inside `withTenantContext` so RLS scopes kg_entities and
  * knowledge_entries to the current tenant.
  */
+/**
+ * Node (v2) retrieval, with each chunk's document page-trust verdict attached (#5955). The
+ * facts are read on the SAME client and under the SAME approval predicate the search used, so
+ * a notebook's private rows count only when the search could have admitted them.
+ */
 export async function retrieveNodeChunks(
+  client: PoolClient,
+  tenantId: string,
+  query: string,
+  opts: Parameters<typeof retrieveNodeChunksUnassessed>[3] & {
+    /** Transaction ownership of `client` for the page-fact read (#5955): "owned" = inside
+     *  withTenantContext (savepoint recovery), "none" = raw/autocommit pool client. */
+    pageFactTransaction?: "owned" | "none";
+  },
+): Promise<ManualChunk[]> {
+  const { pageFactTransaction, ...searchOpts } = opts;
+  const chunks = await retrieveNodeChunksUnassessed(client, tenantId, query, searchOpts);
+  const approved = opts.approvedSourceDocIds;
+  return annotatePageTrust(client, tenantId, chunks, {
+    forDocs: (p) => approvedSourceFilterSql(approved && approvalGateEnabled() ? p : null),
+    docParams: approved && approvalGateEnabled() ? [approved] : [],
+    forUrls: approvalFilterSql(),
+  }, { transaction: pageFactTransaction });
+}
+
+async function retrieveNodeChunksUnassessed(
   client: PoolClient,
   tenantId: string,
   query: string,
@@ -2077,6 +2116,7 @@ export async function retrieveNodeChunks(
           source_url,
           source_page,
           page_start,
+          metadata->>'chunk_index' AS chunk_index,
           ${PAGE_LABEL_SQL},
           section_path,
           metadata->>'filename' AS filename,
@@ -2135,6 +2175,7 @@ export async function retrieveNodeChunks(
           source_url,
           source_page,
           page_start,
+          metadata->>'chunk_index' AS chunk_index,
           ${PAGE_LABEL_SQL},
           section_path,
           metadata->>'filename' AS filename,
@@ -2251,6 +2292,7 @@ export async function retrieveNodeChunks(
             source_url,
             source_page,
             page_start,
+            metadata->>'chunk_index' AS chunk_index,
             ${PAGE_LABEL_SQL},
             section_path,
             metadata->>'filename' AS filename,
@@ -2425,7 +2467,7 @@ export async function retrieveNodeChunks(
       if (window.length) windowParams[4] = window;
       const res = await client.query(
         `SELECT
-            content, doc_id::text AS doc_id, source_url, source_page, page_start,
+            content, doc_id::text AS doc_id, source_url, source_page, page_start, metadata->>'chunk_index' AS chunk_index,
             ${PAGE_LABEL_SQL},
             section_path, metadata->>'filename' AS filename, metadata->'table_models' AS table_models, metadata->'table_unqualified' AS table_unqualified, metadata->>'table_scope' AS table_scope, metadata->>'table_header' AS table_header, verified,
             ${documentHeadingSql},
@@ -3034,6 +3076,7 @@ export async function retrieveNodeChunks(
                 source_url,
                 source_page,
                 page_start,
+                metadata->>'chunk_index' AS chunk_index,
                 section_path,
                 metadata->>'filename' AS filename,
                 metadata->'table_models' AS table_models, metadata->'table_unqualified' AS table_unqualified, metadata->>'table_scope' AS table_scope, metadata->>'table_header' AS table_header,
@@ -3383,9 +3426,12 @@ export async function retrieveNodeChunks(
           ? null
           : Number(r.source_page),
     pageLabel: pageLabelFromRow(r),
-    // Node/v2 path sources a real page from page_start — never a chunk ordinal —
-    // so leave chunkIndex null and always render the page (the #2910 guard is a no-op here).
-    chunkIndex: null,
+    // #5955 (native review F3): every lane projects the row's own chunk ordinal so a minority
+    // UNANCHORED source_page === chunk_index stamp is withheld inside a page-diverse document.
+    // A row with a real page_start is `pageAnchored`, and displayPage never applies the ordinal
+    // rule to an anchored row — an anchor that coincides with its ordinal still renders.
+    chunkIndex: r.chunk_index != null && Number.isFinite(Number(r.chunk_index)) ? Number(r.chunk_index) : null,
+    pageAnchored: r.page_start != null,
     title: String(r.filename ?? r.section_path ?? "Attached document"),
     rank: Number(r.rank ?? 0),
     verified: r.verified === true,
@@ -3425,48 +3471,12 @@ The user selected this document. Every answer must be grounded in it.
   repeat the document's safety prerequisites before the steps and tell the user to follow them.`;
 }
 
-/**
- * Stable citation key for a chunk's source. Two chunks from the same document
- * page share one key (and therefore one citation number + one UI chip).
- */
-function sourceKey(c: Pick<ManualChunk, "sourceUrl" | "sourcePage">): string {
-  return `${c.sourceUrl}::${c.sourcePage ?? ""}`;
-}
-
-/**
- * Assign every unique source (url, page) a stable 1-based citation number in
- * first-appearance order. #1912: buildGroundedContext (the blocks the model
- * cites) and chunksToSources (the chips the UI renders) MUST share this numbering
- * — otherwise the model cites a per-chunk block number (e.g. two excerpts of the
- * same page → blocks [1] and [2]) while the deduped chip list only shows [1], and
- * the answer's `[2]` has no matching chip. Numbering by source key makes both
- * spaces identical: every inline `[n]` has a rendered `[n]` chip.
- */
-function citationIndex(chunks: ManualChunk[]): Map<string, number> {
-  const idx = new Map<string, number>();
-  for (const c of chunks) {
-    const key = sourceKey(c);
-    if (!idx.has(key)) idx.set(key, idx.size + 1);
-  }
-  return idx;
-}
-
-/**
- * The page number safe to SHOW the user. Legacy ingest paths (gdrive /
- * ingest_manuals.py) stamped `source_page` with the chunk ORDINAL, so a
- * ~140-page manual "cites" p.1254 and the "we cite the real OEM page" promise
- * breaks (#2910). A row is a mis-stamp exactly when `sourcePage === chunkIndex`
- * (verified against staging: legacy copies are 100% sp==cidx; the crawler copy,
- * which stores a real page, is sp!=cidx for 1067/1069). Suppress the label for
- * mis-stamps; rows with a real page (crawler ingest, or node `page_start` where
- * chunkIndex is null) still render it. Display-only — never mutates stored data,
- * and `sourceKey` still keys on the raw page so citation numbering is unchanged.
- */
-export function displayPage(c: Pick<ManualChunk, "sourcePage" | "chunkIndex">): number | null {
-  if (c.sourcePage == null) return null;
-  if (c.chunkIndex != null && c.sourcePage === c.chunkIndex) return null;
-  return c.sourcePage;
-}
+// #5955 — passage identity, citation numbering and the page a chip may show live in
+// capabilities/citation-passages.ts so every consumer of `[n]` (context blocks, chips, the
+// notebook route's citations, quote/safety/shadow re-derivations) groups identically.
+// #1912: buildGroundedContext (the blocks the model cites) and chunksToSources (the chips the UI
+// renders) share the numbering — every inline `[n]` has a rendered `[n]` chip.
+export { displayPage };
 
 /**
  * Build the grounded context block for the system prompt. Each chunk is labelled
@@ -3477,7 +3487,7 @@ export function buildGroundedContext(chunks: ManualChunk[]): string {
   if (chunks.length === 0) return "";
   const idx = citationIndex(chunks);
   const blocks = chunks.map((c) => {
-    const n = idx.get(sourceKey(c))!;
+    const n = idx.get(passageKey(c))!;
     const headBits = [c.manufacturer, c.modelNumber].filter(Boolean);
     const head = headBits.join(" ") || c.title || "OEM document";
     const shownPage = displayPage(c);
@@ -3551,7 +3561,7 @@ export function chunksToSources(chunks: ManualChunk[]): ManualSource[] {
   const seen = new Set<string>();
   const out: ManualSource[] = [];
   for (const c of chunks) {
-    const key = sourceKey(c);
+    const key = passageKey(c);
     if (seen.has(key)) {
       const existing = out.find((s) => s.index === idx.get(key));
       if (existing) existing.verified ||= c.verified === true;
@@ -3563,7 +3573,7 @@ export function chunksToSources(chunks: ManualChunk[]): ManualSource[] {
     out.push({
       index: idx.get(key)!,
       title,
-      url: c.sourceUrl || null,
+      url: displaySourceUrl(c),
       page: displayPage(c),
       verified: c.verified === true,
     });

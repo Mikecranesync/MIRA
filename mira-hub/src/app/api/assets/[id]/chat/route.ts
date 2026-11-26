@@ -14,6 +14,7 @@ import {
   type ManualChunk,
   type ManualSource,
 } from "@/lib/manual-rag";
+import { displayPage, displaySourceUrl } from "@/capabilities/citation-passages";
 import { linkedDocIdsForTarget } from "@/lib/workspace-files";
 import {
   approvedAskEnforcementEnabled,
@@ -459,6 +460,8 @@ export async function POST(
             docIds: attachedDocIds,
             validatedDocScope: true,
             approvedSourceDocIds: attachedDocIds,
+            // Raw pool client (autocommit): SAVEPOINT is illegal here (#5955).
+            pageFactTransaction: "none",
           });
           // Attached documents are preferred over generic manufacturer results
           // (a filed manual beats a string match), de-duped so one document
@@ -910,8 +913,9 @@ export async function POST(
             mc.title ||
             mc.sourceUrl ||
             "OEM document",
-          page: mc.sourcePage,
-          url: mc.sourceUrl || null,
+          page: displayPage(mc),
+          // Same address the streamed source chip opens (a stale #page=715 never reaches the panel).
+          url: displaySourceUrl(mc),
           rank: mc.rank,
           verified: mc.verified === true,
         }));

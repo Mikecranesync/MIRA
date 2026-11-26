@@ -7,6 +7,7 @@
  *
  * Reference: Task #4508, Stranger Walk safety-notice integration.
  */
+import { displayPage, groupPassages, type PassageChunk } from "@/capabilities/citation-passages";
 import type { ManualSafetyStatementEntry } from '@/lib/notebook-chat-types';
 
 export interface ManualSafetyStatement {
@@ -248,16 +249,13 @@ export function extractCitedOperatingCaution(text: string): ManualSafetyStatemen
 /** The cited-source fields the helper reads (a subset of `EvidenceCitation`). */
 type CitedSource = { citationId: string; docId: string; sourceTitle: string; page: number | null };
 /** The retrieved-chunk fields the helper reads (a subset of `ManualChunk`). */
-type PageChunk = { content: string; sourceUrl: string; sourcePage: number | null; docId?: string | null };
+type PageChunk = PassageChunk;
 
+/** Address + page of a re-read page (those rows carry no document id, so passage identity is not available). */
 const pageKey = (c: { sourceUrl: string; sourcePage: number | null }) => `${c.sourceUrl}::${c.sourcePage ?? ''}`;
 
-/** Retrieved chunks grouped by page, in `buildCitations` order: citationId n is group n. */
-function pageGroups(chunks: readonly PageChunk[]): PageChunk[][] {
-  const byKey = new Map<string, PageChunk[]>();
-  for (const c of chunks) byKey.set(pageKey(c), [...(byKey.get(pageKey(c)) ?? []), c]);
-  return [...byKey.values()];
-}
+/** Retrieved chunks grouped by passage, in `buildCitations` order: citationId n is group n. */
+const pageGroups = (chunks: readonly PageChunk[]): PageChunk[][] => groupPassages(chunks);
 
 /**
  * The notebook (v2) pages behind `citations`, for `retrieveCitedPageChunks` (#4509 Codex F1):
@@ -272,7 +270,8 @@ export function citedPagesFor(
   const out: Array<{ docId: string; sourceUrl: string; page: number }> = [];
   for (const c of citations) {
     const first = groups[Number(c.citationId) - 1]?.[0];
-    if (first?.docId && first.sourcePage != null) out.push({ docId: first.docId, sourceUrl: first.sourceUrl, page: first.sourcePage });
+    // An UNKNOWN page is never re-read as "page N": the stamp is not a real page (#5955).
+    if (first?.docId && first.sourcePage != null && displayPage(first) != null) out.push({ docId: first.docId, sourceUrl: first.sourceUrl, page: first.sourcePage });
   }
   return out;
 }
@@ -282,7 +281,7 @@ export function citedPagesFor(
  *
  * Chunks are grouped exactly as the chat route's `buildCitations` numbers them
  * (and as `withSupportingQuotes` re-reads them): key
- * `${sourceUrl}::${sourcePage ?? ""}`, citationId n = the n-th distinct key.
+ * passage identity (citation-passages.ts), citationId n = the n-th distinct passage.
  * Only the pages behind `citations` are read — the caller passes the EMITTED
  * citations, so a retrieved page the answer did not cite never counts. The
  * citations are walked in ascending citation number. An operating note is
@@ -296,7 +295,7 @@ export function manualSafetyStatementForCitations(
   const groups = pageGroups(chunks);
   // The rest of each cited page (#4509 Codex F1) joins ONLY a page retrieval already returned, so
   // it can add text to a cited page but never a new page or a shifted citation number.
-  const index = new Map(groups.map((g, i) => [pageKey(g[0]), i] as const));
+  const index = new Map(groups.filter((g) => displayPage(g[0]) != null).map((g) => [pageKey(g[0]), groups.indexOf(g)] as const));
   const pages = groups.map((g) => g.map((c) => c.content)); // citationId n ⇔ pages[n - 1]
   for (const c of pageChunks) {
     const i = index.get(pageKey(c));

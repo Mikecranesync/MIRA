@@ -4,6 +4,7 @@
 // The leaf renderer (Bubble) is exported for renderToStaticMarkup unit tests
 // (hub has no jsdom/RTL — audit §11).
 
+import { effectiveCitationPage } from "@/capabilities/citation-page-display";
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { Send, Loader2, FileText, ChevronDown, Square, RotateCcw, Activity, Camera, AlertTriangle } from "lucide-react";
 import { API_BASE } from "@/lib/config";
@@ -27,13 +28,14 @@ import {
   type ChatBody,
 } from "./notebook-chat-utils";
 
-/** Collapse citations to distinct (doc, page) passages — repeated cites from the
- *  same page count once, so "6 filename pills" becomes "3 supporting passages". */
+/** Collapse repeated citations to distinct passages. The server already numbers one
+ *  `citationId` per distinct passage (capabilities/citation-passages.ts), so the id IS the
+ *  identity; keying on doc|page merged distinct passages whose page is unknown (#5955). */
 export function distinctPassages(cites: EvidenceCitation[]): EvidenceCitation[] {
   const seen = new Set<string>();
   const out: EvidenceCitation[] = [];
   for (const c of cites) {
-    const k = `${c.docId}|${c.page ?? ""}`;
+    const k = c.citationId;
     if (seen.has(k)) continue;
     seen.add(k);
     out.push(c);
@@ -288,7 +290,7 @@ export function Bubble({
                   <FileText size={12} aria-hidden />
                   <span className="min-w-0 truncate">
                     [{c.citationId}] {c.sourceTitle}
-                    {c.page != null ? ` · p.${c.page}` : ""}
+                    {effectiveCitationPage(c) != null ? ` · p.${effectiveCitationPage(c)}` : ""}
                   </span>
                   {c.quote ? <span className="truncate opacity-70">— {c.quote.slice(0, 60)}</span> : null}
                 </button>

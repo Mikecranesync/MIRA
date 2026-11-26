@@ -13,6 +13,7 @@
  * number AND unit. Nothing matches ⇒ the citation keeps today's quote untouched.
  * Deterministic and zero-token: no model call.
  */
+import { groupPassages, type PassageChunk } from "@/capabilities/citation-passages";
 import { claimIdentifiers } from "@/lib/quote-window";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -645,11 +646,11 @@ export function supportingQuote(
 }
 
 type QuotableCitation = { citationId: string; quote: string | null };
-type PageChunk = { content: string; sourceUrl: string; sourcePage: number | null };
+type PageChunk = PassageChunk;
 
 /**
  * Re-derive each EMITTED citation's quote from the answer. Chunks are grouped exactly as
- * buildCitations numbers them — key `${sourceUrl}::${sourcePage ?? ""}`, citationId =
+ * buildCitations numbers them — passage identity (citation-passages.ts `passageKey`), citationId =
  * first-appearance order — so [n] here is the same page the model saw as [n]. A citation
  * with no matched claimed value keeps its existing quote byte-for-byte.
  */
@@ -659,12 +660,7 @@ export function withSupportingQuotes<C extends QuotableCitation>(
   answer: string,
   question: string,
 ): { citations: C[]; unsupportedValueCount: number; quoteFallbackCount: number } {
-  const byKey = new Map<string, string[]>();
-  for (const c of chunks) {
-    const key = `${c.sourceUrl}::${c.sourcePage ?? ""}`;
-    byKey.set(key, [...(byKey.get(key) ?? []), c.content]);
-  }
-  const pages = [...byKey.values()]; // citationId n ⇔ pages[n - 1]
+  const pages = groupPassages(chunks).map((g) => g.map((c) => c.content)); // citationId n ⇔ pages[n - 1]
   let unsupportedValueCount = 0;
   let quoteFallbackCount = 0;
   const out = citations.map((c) => {

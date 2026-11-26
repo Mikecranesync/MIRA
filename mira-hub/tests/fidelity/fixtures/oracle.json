@@ -77,7 +77,7 @@
   },
   "G": {
     "message": "What does fault F004 mean on the GS10?",
-    "sse": "data: {\"kind\":\"content\",\"content\":\"F004 is a DC bus undervoltage fault: the DC bus voltage fell below the undervoltage level [1]. Check the input power \"}\n\ndata: {\"kind\":\"content\",\"content\":\"supply to the drive for a sag or a lost phase [1].\"}\n\ndata: {\"kind\":\"sources\",\"citations\":[{\"citationId\":\"1\",\"docId\":\"33333333-3333-4333-8333-333333333333\",\"sourceTitle\":\"AutomationDirect GS10 manual\",\"page\":87,\"fileId\":\"55555555-5555-4555-8555-555555555555\",\"quote\":\"F004 — DC bus undervoltage. The DC bus voltage fell below the undervoltage level. Check the input power supply.\",\"originFileId\":null}],\"sourceSnapshot\":[\"33333333-3333-4333-8333-333333333333\"]}\n\ndata: {\"kind\":\"evidence\",\"basis\":\"oem_documentation\",\"label\":\"Grounded in this notebook's sources.\"}\n\ndata: {\"kind\":\"status\",\"status\":\"answered\"}\n\ndata: {\"kind\":\"followups\",\"suggestions\":[\"How do I clear fault F004?\"]}\n\ndata: [DONE]\n\n",
+    "sse": "data: {\"kind\":\"content\",\"content\":\"F004 is a DC bus undervoltage fault: the DC bus voltage fell below the undervoltage level [1]. Check the input power \"}\n\ndata: {\"kind\":\"content\",\"content\":\"supply to the drive for a sag or a lost phase [1].\"}\n\ndata: {\"kind\":\"sources\",\"citations\":[{\"citationId\":\"1\",\"docId\":\"33333333-3333-4333-8333-333333333333\",\"sourceTitle\":\"AutomationDirect GS10 manual\",\"page\":87,\"selector\":{\"type\":\"page\",\"value\":87},\"fileId\":\"55555555-5555-4555-8555-555555555555\",\"quote\":\"F004 — DC bus undervoltage. The DC bus voltage fell below the undervoltage level. Check the input power supply.\",\"originFileId\":null}],\"sourceSnapshot\":[\"33333333-3333-4333-8333-333333333333\"]}\n\ndata: {\"kind\":\"evidence\",\"basis\":\"oem_documentation\",\"label\":\"Grounded in this notebook's sources.\"}\n\ndata: {\"kind\":\"status\",\"status\":\"answered\"}\n\ndata: {\"kind\":\"followups\",\"suggestions\":[\"How do I clear fault F004?\"]}\n\ndata: [DONE]\n\n",
     "clientRequestId": "77777777-7777-4777-8777-777777777777",
     "detailAfter": {
       "notebook": {
@@ -132,6 +132,10 @@
               "docId": "33333333-3333-4333-8333-333333333333",
               "sourceTitle": "AutomationDirect GS10 manual",
               "page": 87,
+              "selector": {
+                "type": "page",
+                "value": 87
+              },
               "fileId": "55555555-5555-4555-8555-555555555555",
               "quote": "F004 — DC bus undervoltage. The DC bus voltage fell below the undervoltage level. Check the input power supply.",
               "originFileId": null
