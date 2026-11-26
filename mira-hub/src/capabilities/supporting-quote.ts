@@ -659,89 +659,369 @@ export function pagesByCitation(chunks: readonly PageChunk[]): string[][] {
   return [...byKey.values()];
 }
 
-// Words too generic to show that a page supports a step: function words, plus the
-// isolation/restart vocabulary the #5941 redraft instruction itself asks for (a step the
-// instruction made the model add is never evidence the page says it).
-const SUPPORT_NEUTRAL = new Set(
-  (
-    "about above across after again against along also among another any area around before behind being below " +
+// ── Source-support rule for a redraft that replaces a SAFETY_STOP (#6047, #6049; contract CIT-005) ──
+// Deterministic text comparison on excerpt text grouped by citation number: no model call, and a
+// page number or a source address is never read. Every list below is closed.
+
+const wordList = (s: string) => s.trim().split(/\s+/);
+// A Map, not an object literal: a lookup must never reach an inherited property ("constructor").
+const IRREGULAR = new Map(Object.entries({ worn: "wear", broken: "break", torn: "tear", bent: "bend" }));
+
+/** Word match: plural, -ed, -ing and -ion endings removed ("damaged" matches "damage"). */
+function stemOf(word: string): string {
+  let s = IRREGULAR.get(word) ?? word;
+  if (s.length > 5 && /(?:ies|ied)$/.test(s)) s = s.slice(0, -3) + "y";
+  else if (s.length > 5 && /(?:ch|sh|x|ss)es$/.test(s)) s = s.slice(0, -2);
+  else if (s.length > 4 && s.endsWith("s") && !/(?:ss|us|is)$/.test(s)) s = s.slice(0, -1);
+  if (s.length > 6 && /(?:ing|ion)$/.test(s)) s = s.slice(0, -3);
+  else if (s.length > 5 && s.endsWith("ed")) s = s.slice(0, -2);
+  if (/([b-df-hj-np-tv-z])\1$/.test(s)) s = s.slice(0, -1);
+  if (s.length > 4 && s.endsWith("e")) s = s.slice(0, -1);
+  return s;
+}
+const stems = (s: string) => new Set(wordList(s).map(stemOf));
+
+// Neutral words: never evidence that an excerpt supports a step, in three lists.
+/** Function words. */
+const FUNCTION_WORDS = stems(
+  "about above across after again against along also among another any area around before behind being below " +
     "beside between beyond both check checked checking clear complete could does done during each ensure every " +
     "first from have inside into just keep last later make more most must next once only other outside over same " +
     "should some still such sure than that their them then there these they this those through toward towards " +
-    "under until upon used using very what when where which while will with within without would your " +
-    "absence adjusted afterwards back bring brought circuit component components energize energized energizing " +
+    "under until upon used using very what when where which while will with within without would your",
+);
+/** Safety vocabulary: every content word of the fixed #5941 redraft instruction (a step the
+ *  instruction made the model add is never evidence the page says it), plus general lockout,
+ *  tagout and protective-equipment wording. */
+const SAFETY_WORDS = stems(
+  "absence adjusted afterwards back bring brought circuit component components energize energized energizing " +
     "energy equipment guard guards isolate isolated isolating isolation known lock locked locking lockout lockouts " +
     "loosened machine manual meter open opens person power powered pressure procedure proven qualified reach reaching reads " +
     "refit release releases relieve relieved remove removed reset restart restarted safeguard service servicing site " +
-    "start started step steps stop stopped stored tagout technician test verify verified voltage work zero"
-  ).split(" "),
+    "start started step steps stop stopped stored tagout technician test verify verified voltage work zero " +
+    "fitting bolt conductor terminal touch touching leave number source motion electrical interlock trip device " +
+    "safety stays stay bypass jumper mute defeat hold holds held loosen adjust locked-out re-energizing re-energize " +
+    "tag tagged de-energize de-energized dissipate bleed vent depressurize restore restored apply applied notify inform " +
+    "operator personnel affected authorized supervisor hazard hazardous residual gloves glasses goggles " +
+    "protection protective boots shield hearing clothing gauge multimeter voltmeter tester padlock hasp instrument reading personal",
 );
+/** Framing words: they talk about the answer or the document, never about the machine. */
+const FRAMING_WORDS = stems(
+  "here following follows below answer summary revised version corrective action actions order sequence listed " +
+    "described according section excerpt excerpts document documentation information details note important please " +
+    "required necessary recommended included written given gives give says state states mention mentions " +
+    "specific additional further instruction instructions",
+);
+/** Isolation and restart words: a sentence of safety vocabulary that names hands-on work is exempt only with one of these. */
+const ISOLATION_WORDS = stems(
+  "isolate isolation lock lockout locked-out tagout tag relieve release verify absence de-energize stop refit qualified " +
+    "safeguard zero clear bleed vent depressurize dissipate notify inform restore",
+);
+/** Hands-on words inside the safety vocabulary: alone they are work, not safety. */
+const WORK_WORDS = stems(
+  "loosen loosened adjust adjusted touch touching reach reaching open opens remove removed fitting bolt component conductor terminal guard",
+);
+/** Hands-on verbs. A sentence with one is checked; a shared one counts as the same action. */
+const ACTION_VERBS = stems(
+  "replace swap renew exchange change remove disconnect detach disassemble dismantle unbolt unscrew extract install " +
+    "mount attach connect reconnect reassemble insert tighten torque retorque slacken calibrate recalibrate tune align " +
+    "program configure inspect examine measure clean wipe lubricate grease drain fill refill flush purge cycle toggle " +
+    "actuate rotate repair rebuild overhaul re-home jog unplug realign reprogram weld grind drill solder crimp splice",
+);
+/** Verbs that change a part, by class: any verb of a class is the same action as another of it. */
+const PART_VERBS: [string, Set<string>][] = [
+  ["replace", stems("replace swap renew exchange substitute")],
+  ["remove", stems("remove detach disassemble dismantle")],
+  ["install", stems("install reinstall")],
+];
+/** Every listed hands-on verb: the two lists above plus the hands-on verbs of the safety vocabulary. */
+const LISTED_VERBS = new Set([...ACTION_VERBS, ...PART_VERBS.flatMap(([, verbs]) => [...verbs]), ...stems("remove loosen adjust open")]);
+/** Plain instruction verbs: with a distinctive word they make a sentence an instruction. */
+const PLAIN_VERBS = stems("check checked checking confirm press push pull close turn");
 
 // A page reference ("see page 41", "p. 12-13") points at the source; it claims nothing about it.
 const PAGE_REF_RE = /\b(?:p\.|pp\.|pages?)\s*\d+(?:\s*[-–]\s*\d+)?/gi;
+const CONDITION_RE = /\b(?:only\s+(?:when|if|after|once|where)|unless|until|if|when|whenever|except\s+(?:when|if)|provided(?:\s+that)?)\b/giu;
+const PROHIBITION_RE = /\b(?:do not|don't|never|must not|shall not)\b/i;
+const NEGATION_RE = /\b(?:do not|don't|never|must not|shall not|cannot|can't|not|no|avoid|without)\b/i;
+const INTERVAL = "shift|day|week|month|quarter|year|hour|minute|cycle|use|start|startup|start-up|run|batch|service|inspection";
+const FREQUENCY_RE = new RegExp(
+  `\\b(?:every|each|per)\\s+(?:\\d+(?:\\.\\d+)?\\s+)?(${INTERVAL})s?\\b|\\b(?:once|twice|\\d+\\s+times)\\s+(?:a|an|per|each|every)\\s+(${INTERVAL})\\b|\\b(daily|weekly|monthly|quarterly|yearly|annually|hourly)\\b`,
+  "giu",
+);
+const ADVERB_INTERVAL = new Map(
+  Object.entries({ daily: "day", weekly: "week", monthly: "month", quarterly: "quarter", yearly: "year", annually: "year", hourly: "hour" }),
+);
+const ORDER_RE = /\b(before|prior to|after|then|once)\b/giu;
+// #6049: the only units in which a zero may be a residual-energy reading.
+const ENERGY_UNITS = new Set(["psi", "bar", "Pa", "kPa", "MPa", "V", "mV", "kV", "VAC", "VDC"]);
+const READING_RE = /\b(?:reads?|reading|shows?|indicates?|displays?|gauge|meter|verify|verified|confirm|confirmed)\b/i;
+const SETTING_RE = /\b(?:set|setting|setpoint|adjust\w*|program\w*|configur\w*|enter\w*|parameter|delay|timer|timing|limit|threshold)\b/i;
 
-function supportTerms(text: string): string[] {
+type Word = { raw: string; stem: string };
+
+/** The words of a text, markers and page references removed. Under four letters a word is ignored unless it holds a digit. */
+function supportWords(text: string): Word[] {
   const toks = normalize(text.replace(MARKER_RE, " ").replace(PAGE_REF_RE, " ")).match(/[\p{L}\p{N}][\p{L}\p{N}-]*[\p{L}\p{N}]/gu) ?? [];
-  return toks.filter((t) => (/\d/.test(t) ? t.length >= 2 : t.length >= 4) && !SUPPORT_NEUTRAL.has(t));
+  return toks.filter((t) => (/\d/.test(t) ? t.length >= 2 : t.length >= 4)).map((raw) => ({ raw, stem: stemOf(raw) }));
+}
+const isAdverb = (w: Word) => w.raw.length >= 6 && w.raw.endsWith("ly");
+const isNeutral = (w: Word) => FUNCTION_WORDS.has(w.stem) || SAFETY_WORDS.has(w.stem) || FRAMING_WORDS.has(w.stem) || isAdverb(w);
+/** A part tag: a token with both a letter and a digit (PT-7, V-12). */
+const isPartTag = (w: Word) => /\p{L}/u.test(w.raw) && /\d/.test(w.raw);
+const partClass = (w: Word) => PART_VERBS.find(([, verbs]) => verbs.has(w.stem))?.[0] ?? null;
+/** The same word: an equal stem, or one a plain inflection away ("hose"/"hoses", "inspect"/"inspection"). */
+const sameWord = (a: Word, b: Word) =>
+  a.stem === b.stem || (Math.min(a.raw.length, b.raw.length) >= 4 && (a.raw.startsWith(b.raw) || b.raw.startsWith(a.raw)));
+const hasWord = (list: readonly Word[], w: Word) => list.some((x) => sameWord(x, w));
+
+/** Source statements: wrapped lines are joined; a list item, a table row, a blank line or a sentence end starts a new one. */
+function sourceStatements(excerpt: string): string[] {
+  const blocks: string[] = [];
+  let cur = "";
+  for (const line of excerpt.split(/\r\n|\r|\n/)) {
+    const startsItem = /^\s*(?:\d+[.)]|[-*•])\s+/.test(line) || /^\s*\|.*\|\s*$/.test(line);
+    if (!line.trim() || startsItem) {
+      if (cur.trim()) blocks.push(cur.trim());
+      cur = line.trim() ? line : "";
+    } else cur = cur ? `${cur} ${line.trim()}` : line;
+  }
+  if (cur.trim()) blocks.push(cur.trim());
+  return blocks.flatMap((b) => b.split(/(?<=[.!?])\s+(?=[\p{Lu}\d(])/u)).map((s) => s.trim()).filter((s) => /\p{L}{2}/u.test(s));
 }
 
-function termOnPage(term: string, pageTokens: readonly string[]): boolean {
-  // An exact token, or one a plain inflection away ("hose"/"hoses", "inspect"/"inspection").
-  return pageTokens.some((p) => p === term || (Math.min(p.length, term.length) >= 4 && (p.startsWith(term) || term.startsWith(p))));
+/** #6049: a zero is exempt only as a reading of residual pressure or voltage: an energy unit, and a
+ *  reading word with no setting word in its own clause (the text between the nearest , ; :). */
+function isZeroReading(v: Value, sentence: string, offset: number): boolean {
+  if (!v.nums.every((n) => n === 0) || !v.unit || !ENERGY_UNITS.has(v.unit)) return false;
+  const at = v.start - offset;
+  const from = Math.max(sentence.lastIndexOf(",", at - 1), sentence.lastIndexOf(";", at - 1), sentence.lastIndexOf(":", at - 1)) + 1;
+  const ends = [",", ";", ":"].map((c) => sentence.indexOf(c, at)).filter((i) => i >= 0);
+  const clause = sentence.slice(from, ends.length ? Math.min(...ends) : sentence.length);
+  return READING_RE.test(clause) && !SETTING_RE.test(clause);
 }
 
-export type CitationSupportGap = { citationId: string; reason: "no_page" | "value" | "terms" };
+/** The text of each condition in a source statement: what follows the condition word, up to the next punctuation mark. */
+function conditionSpans(statement: string): string[] {
+  return [...statement.matchAll(CONDITION_RE)].map((m) => {
+    const from = (m.index ?? 0) + m[0].length;
+    const stop = statement.slice(from).search(/[,;:.]|\bthen\b/);
+    return statement.slice(from, stop < 0 ? statement.length : from + stop);
+  });
+}
+
+/** The kinds of interval a text states ("every 500 hours" and "hourly" are both "hour"). */
+function intervalKinds(text: string): string[] {
+  return [...normalize(text).matchAll(FREQUENCY_RE)]
+    .map((m) => (m[1] ?? m[2] ?? ADVERB_INTERVAL.get(m[3] ?? "") ?? "").replace("start-up", "startup"))
+    .filter(Boolean);
+}
+
+/** What comes first and what comes later around each explicit order word of one sentence or statement. On the
+ *  source side only a procedural order counts: before, prior to, then, or a leading "After X, Y". */
+function orderPairs(text: string, source: boolean): { earlier: Word[]; later: Word[] }[] {
+  const out: { earlier: Word[]; later: Word[] }[] = [];
+  const low = normalize(text);
+  // A value is a key too, so "holds 210 bar" is recognised on both sides whatever words surround it.
+  const keys = (s: string) => [
+    ...supportWords(s).filter((w) => !isNeutral(w)),
+    ...findValues(s, "source").filter((v) => v.usable).map((v) => ({ raw: `${v.nums.join("-")}|${v.unit}`, stem: `${v.nums.join("-")}|${v.unit}` })),
+  ];
+  for (const m of low.matchAll(ORDER_RE)) {
+    const word = m[1];
+    const at = m.index ?? 0;
+    const left = low.slice(0, at);
+    const right = low.slice(at + m[0].length);
+    const fronted = !/\p{L}{4}/u.test(left.replace(/^\s*(?:\d+[.)]\s*)?/, ""));
+    const comma = right.indexOf(",");
+    if (source && (word === "after" || word === "once") && !(fronted && comma >= 0)) continue;
+    let first: string;
+    let second: string;
+    if (word === "then") [first, second] = [left, right];
+    else if (word === "before" || word === "prior to") [first, second] = fronted && comma >= 0 ? [right.slice(comma + 1), right.slice(0, comma)] : [left, right];
+    else [first, second] = fronted && comma >= 0 ? [right.slice(0, comma), right.slice(comma + 1)] : [right, left]; // after / once
+    out.push({ earlier: keys(first), later: keys(second) });
+  }
+  return out;
+}
+
+export type SupportReason = "no_page" | "terms" | "value" | "identifier" | "restriction" | "frequency" | "order";
+/** `citationId` is a citation that does not support a sentence: each marker the sentence carries, or, for a
+ *  sentence with no marker, each citation of the redraft (it was read against all of them). Null only when
+ *  the redraft cites nothing. */
+export type CitationSupportGap = { citationId: string | null; reason: SupportReason };
+/** Clause 11 of the rule: computed on every redraft and never a stop. Counts only, never text. */
+export type SupportCounts = {
+  /** (a) A sentence that is not checked and has a distinctive word found on no excerpt the redraft cites. */
+  unchecked_off_page: number;
+  /** (b) A replace, remove or install of a part whose matched statement states none of them. */
+  part_change_unstated: number;
+  /** (c) A value found on a cited excerpt but not in the sentence's matched statement. */
+  value_other_statement: number;
+};
 
 /**
- * #6020: where an answer's cited steps are not supported by the pages they cite. Deterministic
- * and deliberately a low floor, read on the model-visible text of each page:
- *   - a marker that resolves to no retrieved page is a gap;
- *   - every value (number + unit) the answer assigns to a citation must be found on that page,
- *     except a zero reading (the redraft instruction asks the model to say a gauge reads zero);
- *   - a sentence carrying markers whose content words appear on NONE of the pages it cites is a
- *     gap. A sentence with no content words left (only isolation/restart vocabulary) is neutral.
- *     Words of the question and of `identity` (the machine's own name) are not support while the
- *     sentence has any other word: "the press" matches every page of a press manual, so a step
- *     invented about a press would otherwise pass on the title alone.
- * It does not prove entailment: a sentence that shares a word with its page but says something
- * else about it passes.
+ * The source-support rule for a redraft that replaces a SAFETY_STOP (#6020, widened by #6047 and
+ * #6049; contract CIT-005): where what the redraft tells the technician to do cannot be traced to
+ * an excerpt it cites. Deterministic, read on the model-visible text of each excerpt as grouped by
+ * citation number. It says nothing about physical safety; the judge decides that afterwards.
+ *   1. Every marker must resolve to an excerpt, and the redraft must cite at least one.
+ *   2. A sentence of neutral words only (function words, the safety vocabulary of the fixed redraft
+ *      instruction, framing words), with no value and no part tag, is exempt, with or without a
+ *      marker. If it names hands-on work it must also carry an isolation or restart word.
+ *   3. Every other sentence with its own marker, a value, a part tag of its own, a hands-on verb, or
+ *      a plain instruction verb with a distinctive word, is checked, against the excerpts it cites,
+ *      or against every excerpt the redraft cites when it carries no marker.
+ *   4. One source statement there must share a distinctive word with it: a word that is not neutral
+ *      and not from the question or `identity` (the machine's own name), unless the sentence has no
+ *      other. A listed verb alone is not a match while the sentence has another distinctive word.
+ *   5. Every value (number + table unit) must be on one of those excerpts, except a zero written as
+ *      a pressure or voltage reading (#6049). Any other zero is checked like any other value.
+ *   6. Every part tag of its own must be printed on one of those excerpts.
+ *   7. A condition (only when, unless, until, if, when) on a matched statement that shares the
+ *      sentence's action must have one of its words or values in the sentence or the one before or
+ *      after it; a prohibition there must meet a negation in the sentence.
+ *   8. A stated interval of a kind the matched statements do not state is a gap.
+ *   9. Two actions joined by an order word in the reverse of the order a source statement joins them.
+ * Any gap stops the redraft; an error thrown here is a stop too (runSemanticRedraft). A sentence
+ * that is neither exempt nor checked is only counted, in `counted`.
+ * It does not prove entailment: a checked sentence that borrows one word of a statement and says
+ * something else about it passes.
  */
 export function citationSupportGaps(
   answer: string,
   chunks: readonly PageChunk[],
   question: string,
   identity = "",
+  counted: SupportCounts = { unchecked_off_page: 0, part_change_unstated: 0, value_other_statement: 0 },
 ): CitationSupportGap[] {
   const pages = pagesByCitation(chunks).map((p) => p.map((t) => t.slice(0, MODEL_VISIBLE_CHARS)));
+  const resolves = (id: string) => pages[Number(id) - 1] !== undefined;
   const gaps: CitationSupportGap[] = [];
+  const gap = (ids: readonly string[], reason: SupportReason) => {
+    for (const citationId of ids) {
+      if (!gaps.some((g) => g.citationId === citationId && g.reason === reason)) gaps.push({ citationId, reason });
+    }
+  };
   const used = [...new Set([...answer.matchAll(MARKER_RE)].map((m) => m[1]))];
-  const assigned = assignValues(answer, question);
-  for (const id of used) {
-    const page = pages[Number(id) - 1];
-    if (!page) {
-      gaps.push({ citationId: id, reason: "no_page" });
-      continue;
+  for (const id of used) if (!resolves(id)) gaps.push({ citationId: id, reason: "no_page" });
+  const cited = used.filter(resolves);
+  if (used.length === 0) gaps.push({ citationId: null, reason: "no_page" }); // nothing to trace the redraft to
+
+  const known = supportWords(`${question} ${identity}`);
+  const statementsOf = pages.map((p) => p.flatMap(sourceStatements).map((text) => ({ text, words: supportWords(text) })));
+  const valuesOf = pages.map((p) => p.flatMap((t) => findValues(t, "source")));
+  const wordsOf = pages.map((p) => supportWords(p.join(" ")));
+  const masked = answer.replace(MARKER_RE, (m) => " ".repeat(m.length)); // keep offsets
+  const answerValues = findValues(masked, "answer"); // parsed once: "start of a line" is the real line
+  const sentences = regions(answer).filter(([s, e]) => answer.slice(s, e).trim());
+
+  sentences.forEach(([rs, re], i) => {
+    const text = answer.slice(rs, re);
+    const marked = [...new Set([...text.matchAll(MARKER_RE)].map((m) => m[1]))];
+    const own = marked.filter(resolves);
+    if (marked.length > 0 && own.length === 0) return; // clause 1 has stopped it already
+    // Read against the excerpts it cites; with no marker, against every excerpt the redraft cites.
+    const against = own.length > 0 ? own : cited;
+    const bound = against.map((id) => Number(id) - 1);
+    const words = supportWords(text);
+    const content = words.filter((w) => !isNeutral(w));
+    const values = answerValues.filter((v) => v.usable && v.start >= rs && v.end <= re && !isZeroReading(v, masked.slice(rs, re), rs));
+    const tags = words.filter(isPartTag);
+    const ownTags = tags.filter((w) => !hasWord(known, w));
+
+    // Clause 2: the exempt sentence.
+    const vocabularyOnly = content.length === 0 && values.length === 0 && tags.length === 0;
+    const namesWork = words.some((w) => WORK_WORDS.has(w.stem));
+    if (vocabularyOnly && (!namesWork || words.some((w) => ISOLATION_WORDS.has(w.stem)))) return;
+
+    // Clause 3: is it a sentence the rule checks?
+    const ownContent = content.filter((w) => !hasWord(known, w));
+    const ownNonVerbs = ownContent.filter((w) => !LISTED_VERBS.has(w.stem));
+    const checked =
+      own.length > 0 ||
+      values.length > 0 ||
+      ownTags.length > 0 ||
+      vocabularyOnly ||
+      words.some((w) => LISTED_VERBS.has(w.stem)) ||
+      (words.some((w) => PLAIN_VERBS.has(w.stem)) && ownNonVerbs.length > 0);
+    const boundWords = bound.flatMap((p) => wordsOf[p]);
+    if (!checked) {
+      if (ownContent.some((w) => !hasWord(boundWords, w))) counted.unchecked_off_page += 1;
+      return;
     }
-    const srcVals = page.flatMap((t) => findValues(t, "source"));
-    // Usable values only (number + table unit); a bare "step 3" is left to the word check.
-    const claims = (assigned.get(id) ?? []).filter((c) => c.usable && !c.nums.every((n) => n === 0));
-    if (claims.some((c) => !srcVals.some((s) => satisfies(s, c)))) gaps.push({ citationId: id, reason: "value" });
-  }
-  const pageTokens = pages.map((p) => supportTerms(p.join(" ")));
-  const known = new Set(supportTerms(`${question} ${identity}`));
-  for (const [rs, re] of regions(answer)) {
-    const region = answer.slice(rs, re);
-    const ids = [...new Set([...region.matchAll(MARKER_RE)].map((m) => m[1]))].filter((id) => pages[Number(id) - 1]);
-    if (ids.length === 0) continue;
-    const all = supportTerms(region);
-    if (all.length === 0) continue;
-    const own = all.filter((t) => !known.has(t));
-    const terms = own.length > 0 ? own : all;
-    const cited = ids.flatMap((id) => pageTokens[Number(id) - 1]);
-    if (!terms.some((t) => termOnPage(t, cited))) {
-      for (const id of ids) if (!gaps.some((g) => g.citationId === id)) gaps.push({ citationId: id, reason: "terms" });
+
+    // Clause 4: a matching statement.
+    const distinctive =
+      ownNonVerbs.length > 0 ? ownNonVerbs : ownContent.length > 0 ? ownContent : content.length > 0 ? content : words.filter((w) => !FUNCTION_WORDS.has(w.stem));
+    const candidates = bound
+      .flatMap((p) => statementsOf[p])
+      .map((st) => ({ ...st, shared: new Set(distinctive.filter((w) => hasWord(st.words, w)).map((w) => w.stem)).size }));
+    const most = Math.max(0, ...candidates.map((c) => c.shared));
+    const matched = candidates.filter((c) => most > 0 && c.shared === most);
+    if (distinctive.length > 0 && matched.length === 0) {
+      gap(against, "terms");
+      return;
     }
-  }
+
+    // Clauses 5 and 6: values and part tags, on an excerpt the sentence is bound to.
+    const sourceValues = bound.flatMap((p) => valuesOf[p]);
+    if (values.some((c) => !sourceValues.some((s) => satisfies(s, c)))) gap(against, "value");
+    else if (values.some((c) => !matched.some((m) => findValues(m.text, "source").some((s) => satisfies(s, c))))) counted.value_other_statement += 1;
+    if (ownTags.some((w) => !boundWords.some((p) => p.raw === w.raw))) gap(against, "identifier");
+
+    // Clause 7: a condition or a prohibition on a matched statement that shares the sentence's action.
+    const actionOf = (w: Word) => partClass(w) ?? (ACTION_VERBS.has(w.stem) || !isNeutral(w) ? w.stem : null);
+    const actions = new Set(words.map(actionOf));
+    const sameAction = matched.filter(
+      (m) => m.shared >= 2 || m.words.some((w) => (ACTION_VERBS.has(w.stem) || partClass(w) !== null) && actions.has(actionOf(w))),
+    );
+    const near = [sentences[i - 1], sentences[i], sentences[i + 1]].filter((r): r is [number, number] => r !== undefined);
+    const nearWords = supportWords(near.map(([s, e]) => answer.slice(s, e)).join(" "));
+    const nearValues = answerValues.filter((v) => near.some(([s, e]) => v.start >= s && v.end <= e));
+    for (const m of sameAction) {
+      const dropped = conditionSpans(m.text).some((span) => {
+        const needWords = supportWords(span).filter((w) => !isNeutral(w));
+        const needValues = findValues(span, "source").filter((v) => v.usable);
+        if (needWords.length === 0 && needValues.length === 0) return false;
+        return !needWords.some((w) => hasWord(nearWords, w)) && !needValues.some((v) => nearValues.some((c) => satisfies(v, c)));
+      });
+      const flipped = PROHIBITION_RE.test(m.text) && !/\b(?:unless|until|except)\b/i.test(m.text) && !NEGATION_RE.test(text);
+      if (dropped || flipped) gap(against, "restriction");
+    }
+
+    // Clause 8: an interval of a kind the matched statements do not state.
+    const theirIntervals = matched.flatMap((m) => intervalKinds(m.text));
+    if (theirIntervals.length > 0 && intervalKinds(text).some((k) => !theirIntervals.includes(k))) gap(against, "frequency");
+
+    // Clause 9: an explicit order reversed inside one sentence.
+    const theirOrders = bound.flatMap((p) => statementsOf[p]).flatMap((st) => orderPairs(st.text, true));
+    const meets = (a: Word[], b: Word[]) => a.some((w) => hasWord(b, w));
+    const reversed = orderPairs(text, false).some((mine) =>
+      theirOrders.some((theirs) => {
+        const earlyOnly = theirs.earlier.filter((w) => !hasWord(theirs.later, w));
+        const lateOnly = theirs.later.filter((w) => !hasWord(theirs.earlier, w));
+        return meets(mine.earlier, lateOnly) && meets(mine.later, earlyOnly) && !(meets(mine.earlier, earlyOnly) && meets(mine.later, lateOnly));
+      }),
+    );
+    if (reversed) gap(against, "order");
+
+    // Clause 11b, counted only: a part is replaced, removed or installed and no statement about it says so.
+    for (let k = 0; k < words.length; k++) {
+      const cls = partClass(words[k]);
+      if (!cls) continue;
+      const isObject = (w: Word) => !FUNCTION_WORDS.has(w.stem) && !isAdverb(w) && partClass(w) === null;
+      // "-ed" form: the object comes before the verb ("must be replaced"); otherwise after it.
+      const object = words[k].raw.endsWith("ed") ? words.slice(0, k).reverse().find(isObject) : words.slice(k + 1).find(isObject);
+      if (!object || SAFETY_WORDS.has(object.stem) || FRAMING_WORDS.has(object.stem)) continue; // the lockout, the guards: not a part
+      const aboutIt = candidates.filter((c) => hasWord(c.words, object));
+      const stated = cls === "replace" ? ["replace"] : [cls, "replace"];
+      if (!(aboutIt.length > 0 ? aboutIt : matched).some((c) => c.words.some((w) => stated.includes(partClass(w) ?? "")))) {
+        counted.part_change_unstated += 1;
+        break;
+      }
+    }
+  });
   return gaps;
 }
 
