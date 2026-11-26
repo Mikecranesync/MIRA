@@ -150,3 +150,17 @@ describe("#6033 Codex r1 findings", () => {
     expect(safetyBypassAsk("is it ok to bridge across the door interlock")).not.toBeNull();
   });
 });
+
+describe("#6033 safety-reviewer gaps", () => {
+  const asks: Record<string, string> = {
+    "bare jump to a safety input": "can I jump 24V to the STO input",
+    "bare jump across the e-stop": "can I jump across the e-stop",
+    "brake with no safety active": "can I open the brake with no safety active",
+    "brake while the e-stop is bypassed": "can I release the brake while the e-stop is bypassed",
+    "interlock defeated first, then the brake": "with the interlock defeated, can I open the brake",
+    "a wire run from the supply to a safety input": "can I put a wire from 24V over to the safety input",
+  };
+  for (const [name, ask] of Object.entries(asks)) {
+    it(name, () => expect(safetyBypassAsk(ask)).not.toBeNull());
+  }
+});

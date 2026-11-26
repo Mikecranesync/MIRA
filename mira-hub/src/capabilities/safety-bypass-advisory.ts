@@ -213,7 +213,7 @@ const RUN_WITH_PRONOUN = new RegExp(`\\b${RUNV}(?:\\s+\\S+){0,5}?\\s+(?:with|whi
  * "jumper across the e-stop"). Bare "jump" is left out ("jump to the STO section"), and so is "on"
  * ("replace the jumper on the STO input"). The verb used as a noun ("is there a short to ...") is not a request.
  */
-const JUMP_VERB = "(?:jumper(?:ed|ing|s)?|short(?:ed|ing|s)?|bridg(?:e|ed|es|ing))";
+const JUMP_VERB = "(?:jumper(?:ed|ing|s)?|jump(?:ed|ing|s)?(?!\\s+to\\b)|short(?:ed|ing|s)?|bridg(?:e|ed|es|ing))";
 const NOT_A_NOUN = "(?<!\\b(?:the|a|an|this|that|any|no|new|old|existing|factory|replac\\w*|remov\\w*)\\s+)";
 /** #6033 r1 F6: "bridge communications to the safety PLC" is a network question, not an electrical bridge. */
 const NOT_COMMS = "(?!(?:comms?|communications?|networks?|ethernet|data|connections?|traffic|messages?|signals?|serial|modbus|profinet|ethercat|devicenet)\\b)";
@@ -230,8 +230,8 @@ const SAFETY_INPUT =
   "(?:sto|safe\\s+torque\\s+off|e\\s?[-.]?\\s?stops?|emergency[-\\s]stops?|emgs?|safety|guard|door|gate|interlocks?)\\s+(?:inputs?|terminals?|pins?)";
 const SUPPLY = "(?:\\+?24\\s?v(?:dc)?|\\+v|(?:the\\s+)?(?:24\\s?v\\s+)?(?:supply|power|voltage))";
 const SUPPLY_TO_INPUT = new RegExp(
-  `\\b(?:tie|tying|wire|wiring|connect|connecting|feed|feeding|put|putting|apply|applying|land|landing)\\s+${SUPPLY}` +
-    `\\s+(?:(?:straight|direct(?:ly)?|right)\\s+)?(?:to|into|onto|on|across)\\s+${ART}${SAFETY_INPUT}\\b` +
+  `\\b(?:tie|tying|wire|wiring|connect|connecting|feed|feeding|put|putting|apply|applying|land|landing)(?:\\s+(?:a|an|the|wire|jumper|lead|link|from))*\\s+${SUPPLY}` +
+    `(?:\\s+(?:straight|direct(?:ly)?|right|over|across|back))*\\s+(?:to|into|onto|on|across)\\s+${ART}${SAFETY_INPUT}\\b` +
     // #6033 r1 F1: only a path through a named safeguard is exempt; "through the end of the shift" is not.
     "(?![^.?!]{0,40}\\b(?:through|thru|via)\\s+(?:the\\s+|a\\s+|its\\s+)?(?:\\S+\\s+){0,2}?(?:relays?|controllers?|plcs?|contacts?|switch(?:es)?|modules?|e-?stops?|interlocks?|guards?)\\b)",
   "i",
@@ -263,10 +263,12 @@ const BRAKE_RELEASE = new RegExp(
 const NOT_A_REQUEST_BEFORE =
   /\b(?:fail(?:s|ed)?|unable|couldn't|could\s+not|can't|cannot|won't|wouldn't|didn't|did\s+not|doesn't|does\s+not|tried|trying)\s+(?:\S+\s+){0,2}$/;
 const SAFETY_OFF = new RegExp(
-  "\\b(?:safety|sto|safe\\s+torque\\s+off|brake\\s+(?:monitoring|control|test))((?:\\s+\\S+){0,3}?)\\s+" +
-    "(?:disabled|off|bypassed|defeated|overridden|deactivated|inactive|jumpered|turned\\s+off|switched\\s+off|not\\s+active)\\b",
+  `\\b(?:${DEVICE}|brake\\s+(?:monitoring|control|test))((?:\\s+\\S+){0,3}?)\\s+` +
+    "(?:disabled|off|bypassed|defeated|overridden|deactivated|inactive|jumpered|jumped|shorted|turned\\s+off|switched\\s+off|not\\s+active)\\b",
   "gi",
 );
+/** "with no safety active", "without STO": the safety function is absent. */
+const SAFETY_ABSENT = new RegExp(`\\b(?:no|without)\\s+${ART}(?:${DEVICE}|brake\\s+monitoring)\\b`, "gi");
 function asksBrakeRelease(clause: string): boolean {
   if (DEFINITION.test(clause) || SYMPTOM_FRAME.test(clause)) return false;
   return allMatches(BRAKE_RELEASE, clause).some((m) => {
@@ -278,7 +280,7 @@ function safetyOffNow(clause: string): boolean {
   return allMatches(SAFETY_OFF, clause).some((m) => {
     const before = clause.slice(0, m.index ?? 0);
     return !/\b(?:was|were|had|not|never)\b/.test(m[1] ?? "") && !NEGATED_BEFORE.test(before) && !READOUT_BEFORE.test(before);
-  });
+  }) || allMatches(SAFETY_ABSENT, clause).some((m) => !NEGATED_BEFORE.test(clause.slice(0, m.index ?? 0)));
 }
 
 /**
