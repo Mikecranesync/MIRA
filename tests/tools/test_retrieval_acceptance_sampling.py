@@ -297,3 +297,28 @@ def test_e11_a_non_dict_entry_in_attempts_is_skipped_not_raised():
         None,
     )
     assert _failed(_run(TRACE, d, w)) == []
+
+
+# --- R3-C2 (review r3 of PR C): a lost draft-1 usage block on a zero-request redraft turn ---
+#
+# On a turn that took the redraft path but sent no redraft request (stopped_turn_cap,
+# stopped_aborted or stopped_generation), a draft 1 that lost its usage block is the only
+# attempt and carries usage_unknown (semantic-redraft.route.test.ts, R3-C1 K3), so the reader
+# accepts its null totals. The token check does not read the wire status, so the shared
+# answered fixture stands in for those safety_stop turns.
+
+
+def test_r3c2_lost_draft1_usage_on_a_zero_request_redraft_turn_is_accepted():
+    d, w = _answered_redraft_turn(
+        [{"provider": "OpenAI", "outcome": "served", "usage_unknown": True}],
+        None,
+        None,
+    )
+    assert not any(a.get("redraft") for a in d["packet"]["generation"]["attempts"])
+    assert _failed(_run(TRACE, d, w)) == []
+
+
+def test_r3c2_control_the_same_loss_on_a_turn_with_no_redraft_path_still_fails():
+    # No redraft path: the route never marks draft 1, so the same lost usage block is unexcused.
+    d, w = _answered_redraft_turn([{"provider": "OpenAI", "outcome": "served"}], None, None)
+    assert _failed(_run(TRACE, d, w)) == ["token usage recorded"]

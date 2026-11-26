@@ -5954,8 +5954,8 @@ async function handleChatTurn(
             provider: a.provider,
             model: a.model,
             // Unbilled rejection: http_error. A billed attempt without text: empty_completion when
-            // its usage is known, exception when it is not (timeout, unreadable body, no usage
-            // block, a malformed count), which is what nulls the turn's totals (R1-C5/R1-C6).
+            // its usage is known, exception when at least one count is not (timeout, unreadable
+            // body, no usage block, a malformed count); the totals null only for those counts.
             outcome: !a.billed
               ? "http_error"
               : generated
