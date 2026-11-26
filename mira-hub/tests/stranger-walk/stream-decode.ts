@@ -5,7 +5,23 @@
  */
 
 export function decodeChatBody(bytes: Uint8Array): string {
-  return Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength).toString("utf8");
+  return repairIfMisdecoded(Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength).toString("utf8"));
+}
+
+/**
+ * #5988: over CDP to Android Chrome (CV_TARGET=tablet) Playwright's `res.body()` itself hands back
+ * the stream already read as Windows-1252, so ⛔ arrives as "â›”". Repair it only when the text is a
+ * byte-wise mis-decode whose bytes are valid UTF-8; a correctly decoded stream (any character above
+ * U+00FF, or a repair that would produce U+FFFD) is returned unchanged.
+ */
+export function repairIfMisdecoded(text: string): string {
+  let repaired: string;
+  try {
+    repaired = repairMisdecodedStream(text);
+  } catch {
+    return text;
+  }
+  return repaired.includes("\uFFFD") && !text.includes("\uFFFD") ? text : repaired;
 }
 
 // Windows-1252 code points for bytes 0x80-0x9F; any other char < 0x100 is its own byte.

@@ -439,37 +439,176 @@ const SAFETY_CONTROL_DEFERRAL = new RegExp(
   "i",
 );
 
+// #5962: clause-local scope. The closed deferral phrase ("none of these should
+// replace lockout/tagout") is blanked out of a sentence BEFORE clause analysis,
+// so its own `replace` is not read as a hazard action and — the point — it can
+// no longer vouch for a sibling clause that directs live work. Same closed
+// vocabulary as SAFETY_CONTROL_DEFERRAL, minus the anchors.
+const SAFETY_CONTROL_DEFERRAL_PHRASE = new RegExp(
+  "(?:for\\s+(?:plant|shop|production|field|industrial|maintenance|day[-\\s]to[-\\s]day|real[-\\s]world|everyday)\\s+(?:use|work),\\s+)?" +
+    "(?:none\\s+of\\s+(?:these|them|those)(?:\\s+tools)?\\s+(?:(?:should|can|could|will)\\s+(?:replace|substitute\\s+for)|(?:is|are)\\s+(?:a\\s+)?substitutes?\\s+for)" +
+    "|(?:these|this|it|they|ai\\s+tools?|the\\s+tool|the\\s+app)\\s+(?:(?:should|must|can|will|do|does)(?:n't|\\s+not)\\s+(?:ever\\s+)?replace|(?:is|are)(?:n't|\\s+not)\\s+(?:a\\s+)?substitutes?\\s+for)" +
+    "|no\\s+(?:ai\\s+)?(?:tool|app|assistant)\\s+(?:can\\s+)?replaces?)" +
+    "\\s+(?:" + SAFETY_CONTROL_ITEM + ")" +
+    "(?:(?:,\\s+and\\s+|,\\s+or\\s+|,\\s+|\\s+and\\s+|\\s+or\\s+)(?:" + SAFETY_CONTROL_ITEM + "))*" +
+    "(?:\\s+when\\s+(?:energi[sz]ed|live)[-\\s]work\\s+is\\s+(?:involved|required|needed|necessary))?",
+  "gi",
+);
+
+// #5962: a bare affirmative live-work imperative names the state with no
+// connector word — "work on it energized", "reset live", "reset it energized".
+// Only a state word that ENDS its phrase counts (so "live conductors",
+// "live data" never match), and a copula/conditional/negation directly before
+// it ("is live", "if live", "not energized") is a description, not an order.
+// Decided by what PRECEDES the state word, never by an allowlist of words that
+// may follow it ("live now", "energized today", "live as a test" all escape any
+// following-word list). The state is predicative/post-nominal — an order — when
+// it sits right after (a) a pronoun object ("work on it energized"), (b) a
+// determiner phrase that already has its head noun ("reset the fault live",
+// "service the drive powered": a determiner, then at least one word, then the
+// state) or (c) the hazard verb itself ("reset live", for live/energized only).
+// It is ATTRIBUTIVE — a descriptive modifier, not an order — right after a
+// determiner or in front of a descriptive noun ("the live circuit", "test the
+// live data feed"), and a copula/conditional/negation before it makes it a
+// description ("is live", "if energized", "not powered"). Tested both ways.
+const BARE_STATE_ANY_SRC = "(?:energi[sz]ed|live)";
+const BARE_STATE_OBJ_SRC = "(?:energi[sz]ed|live|powered(?:\\s+on)?|under\\s+power)";
+const BARE_NOT_DESCRIPTIVE =
+  "(?![-\\w])(?!\\s+(?:off|down|data|feeds?|views?|streams?|trends?|values?|readings?|status|video|chat|support|demo|preview|display|tags?|monitoring|diagnostics|help)\\b)";
+const BARE_COPULA_BEFORE =
+  "(?<!\\b(?:is|are|was|were|be|been|being|if|whether|not|remains?|stays?|still|while|when|once)\\s)(?<!n't\\s)";
+const BARE_ENERGIZED_RELATION = new RegExp(
+  "(?:" +
+    // (a) pronoun object directly before the state
+    "\\b(?:it|them|this|that|these|those|itself|themselves|one|ones)\\s+(?<![\\w-])" + BARE_COPULA_BEFORE + BARE_STATE_OBJ_SRC + BARE_NOT_DESCRIPTIVE +
+    // (b) determiner phrase with a head word before the state
+    "|\\b(?:the|a|an|your|its|that|this|each|every|any|all|those|these)\\s+(?:[\\w-]+\\s+){1,3}?(?<![\\w-])" + BARE_COPULA_BEFORE + BARE_STATE_OBJ_SRC + BARE_NOT_DESCRIPTIVE +
+    // (c) the hazard verb directly before the state
+    "|\\b" + HAZARD_ACTION_ANY_SRC + "\\s+(?:it\\s+)?(?<![\\w-])" + BARE_STATE_ANY_SRC + BARE_NOT_DESCRIPTIVE +
+    ")",
+  "i",
+);
+// "with the power on" — the supply named as the thing that is on.
+const POWER_ON_RELATION =
+  /\b(?:with|while|whilst|when|during)\b[^.!?\n]{0,30}?\bpower\s+(?:is\s+)?(?:still\s+)?(?:on|applied|connected)\b/i;
+
+// #5962: defeating a guard / interlock / E-stop is hazardous on its own — it
+// needs no energized-state word. The verb must take a safety-device object, so
+// the noun "interlock bypass" and unrelated "disable the alarm" never match.
+const GUARD_DEFEAT_VERB_SRC =
+  "(?:bypass(?:ing)?|jumper(?:ing|ed)?|defeat(?:ing)?|disabl(?:e|ing)|overrid(?:e|ing)|cheat(?:ing)?|short(?:ing)?\\s+out)";
+const GUARD_DEFEAT_OBJECT_SRC =
+  "(?:the\\s+|your\\s+|a\\s+|an\\s+|that\\s+|this\\s+|all\\s+)?(?:\\w+\\s+){0,2}?(?:interlocks?|e-?stops?|emergency[-\\s]stops?|light\\s+curtains?|safety\\s+(?:circuits?|relays?|devices?|switch(?:es)?|gates?|guards?|interlocks?|systems?)|machine\\s+guards?|guards?)\\b";
+const GUARD_DEFEAT = new RegExp("\\b" + GUARD_DEFEAT_VERB_SRC + "\\s+" + GUARD_DEFEAT_OBJECT_SRC, "i");
+// #5962 F2: negation also governs the verb through verbs that merely REPORT
+// the act ("do not recommend bypassing an interlock"). Verbs that REVERSE the
+// negation ("do not hesitate/forget/fail/neglect to bypass") are deliberately
+// absent, so they still do not exempt.
+const NEG_REPORTING_GAP_SRC =
+  "(?:\\s+(?:be|being|been|get|ever|even|again|simply|just|safe|safely|to|attempt\\s+to|try\\s+to|(?:recommend|suggest|advis|advocate|endorse|encourag|propos|instruct|permit|allow|let|tell|ask|urg|consider|condon)\\w*(?:\\s+(?:anyone|anybody|people|users?|techs?|technicians?|them|you|someone)(?:\\s+to)?)?|(?:the\\s+)?(?:use|act|practice)\\s+of)){0,4}";
+const GUARD_PROHIBITION = new RegExp(
+  "\\b" + NEG_HEAD_SRC + NEG_REPORTING_GAP_SRC + "\\s+" + GUARD_DEFEAT_VERB_SRC + "\\b" +
+    "|\\b(?:prevent\\w*|prohibit\\w*|forbid\\w*|disallow\\w*|block\\w*)\\b[^.!?\\n]{0,40}?\\b" + GUARD_DEFEAT_VERB_SRC + "\\b" +
+    "|\\b" + GUARD_DEFEAT_VERB_SRC + "\\b[^.!?\\n]{0,60}?\\b(?:is|are|would\\s+be|remains)\\s+(?:strictly\\s+|extremely\\s+|very\\s+)?(?:dangerous|hazardous|unsafe|prohibited|forbidden|illegal|not\\s+(?:allowed|permitted|safe|acceptable|recommended))",
+  "i",
+);
+
+// Same, for the energized/hazard verbs: "do not recommend resetting it live".
+// Also the maintain-state verbs ("do not keep the machine energized during the
+// reset", "never leave the panel powered on"): the state is that verb's
+// complement, so the negation must reach it. Reversing verbs stay out.
+const MAINTAIN_STATE_SRC = "(?:keep(?:ing)?|leav(?:e|ing)|stay(?:ing)?|remain(?:ing)?|maintain(?:ing)?)";
+const REPORTING_PROHIBITION = new RegExp(
+  "\\b" + NEG_HEAD_SRC + NEG_REPORTING_GAP_SRC + "\\s+(?:" + HAZARD_ACTION_ANY_SRC + "|" + MAINTAIN_STATE_SRC + ")\\b",
+  "i",
+);
+
+/** One clause's reading, for the clause-local exemption below. */
+function clauseRelation(c: string, question: boolean): string | null {
+  const rel = HAZARD_RELATIONS.find((r) => r.re.test(c));
+  if (rel) return rel.id;
+  if (NO_ISOLATION_RELATION.test(c) || POWER_ON_RELATION.test(c)) return "energized";
+  if (!question && BARE_ENERGIZED_RELATION.test(c)) return "energized";
+  return null;
+}
+
 /** Returns the offending sentence, or null. DETECTION is sentence-scoped —
  *  splitting an instruction across punctuation ("While the machine is
  *  energized, reset the fault") must not hide it. The prohibitive/cautionary
- *  EXEMPTION is clause-scoped (iteration-5 F1): it applies only when the
- *  marker appears in a clause that carries part of the instruction (the
- *  hazard action or the energized/no-isolation relation). A warning or
- *  negation in an unrelated clause ("There is risk, but …", "Do not
- *  hesitate: …") never exempts. Detection only, never rewriting. */
+ *  EXEMPTION is clause-scoped (iteration-5 F1, tightened #5962): every clause
+ *  that itself directs a hazard (a hazard action coupled to an energized-
+ *  state relation in the same clause or in an adjacent relation-only
+ *  "fronted/trailing" clause, or a guard-defeat verb) must be prohibitive on
+ *  its own. A prohibitive SIBLING never vouches for it ("Do not replace the
+ *  fuse, measure the DC bus with the drive powered."). "or"/"nor" continue the
+ *  previous clause's negation; "and"/"so"/"then" start a new instruction.
+ *  When no clause is individually identifiable (the relation spans a comma)
+ *  the older bearing.some() reading applies, unchanged. Detection only,
+ *  never rewriting. */
 function clauseHazardViolation(text: string): { relId: string; sentence: string } | null {
   for (const sentence of text.split(/(?<=[.!?])\s+|\n+/)) {
     if (PERMIT_PRACTICES_DESCRIPTION.test(sentence.trim())) continue;
     if (SAFETY_CONTROL_DEFERRAL.test(sentence.trim())) continue;
-    if (!HAZARD_ACTION_ANY.test(sentence)) continue;
-    const rel = HAZARD_RELATIONS.find((r) => r.re.test(sentence));
-    const relId = rel?.id ?? (NO_ISOLATION_RELATION.test(sentence) ? "energized" : null);
+    const question = sentence.trim().endsWith("?");
+    // The deferral phrase is blanked (not removed) so positions stay stable.
+    const scan = sentence.replace(SAFETY_CONTROL_DEFERRAL_PHRASE, (m) => " ".repeat(m.length));
+    const guard = GUARD_DEFEAT.test(scan);
+    if (!guard && !HAZARD_ACTION_ANY.test(scan)) continue;
+    const rel = HAZARD_RELATIONS.find((r) => r.re.test(scan));
+    const relId =
+      rel?.id ??
+      (NO_ISOLATION_RELATION.test(scan) || POWER_ON_RELATION.test(scan) || (!question && BARE_ENERGIZED_RELATION.test(scan))
+        ? "energized"
+        : guard
+          ? "guard-defeat"
+          : null);
     if (!relId) continue;
-    const bearing = sentence
-      .split(CLAUSE_BOUNDARY)
-      .filter(
-        (c) =>
-          HAZARD_ACTION_ANY.test(c) ||
-          HAZARD_RELATIONS.some((r) => r.re.test(c)) ||
-          NO_ISOLATION_RELATION.test(c),
-      );
-    // Fail-closed: no identifiable instruction-bearing clause (pathological
-    // splitting) means no exemption is possible — the sentence-level match
-    // above already established the hazardous coupling. The exemption must
-    // GRAMMATICALLY bind the hazard (iteration-6 F1) — bare negation of some
-    // other predicate in the same clause never exempts.
+    const clauses = scan.split(CLAUSE_BOUNDARY);
+    const info = clauses.map((c) => ({
+      action: HAZARD_ACTION_ANY.test(c),
+      guard: GUARD_DEFEAT.test(c),
+      rel: clauseRelation(c, question),
+    }));
+    const prohibitedAt = (i: number, extra: string): boolean => {
+      const c = clauses[i] + " " + extra;
+      if (BOUND_PROHIBITION.test(c) || GUARD_PROHIBITION.test(c) || REPORTING_PROHIBITION.test(c)) return true;
+      // Negative coordination: "do not X, or Y" — Y shares X's negation.
+      return i > 0 && /^\s*(?:or|nor)\b/i.test(clauses[i]) && prohibitedAt(i - 1, "");
+    };
+    let identified = false;
+    let unsafe = false;
+    clauses.forEach((c, i) => {
+      const inf = info[i];
+      let extra = "";
+      let hazardous = inf.guard;
+      if (!hazardous && inf.action) {
+        if (inf.rel) hazardous = true;
+        else {
+          // Fronted / trailing condition: an adjacent clause that carries only the state.
+          const nb = [i - 1, i + 1].find((j) => j >= 0 && j < clauses.length && !info[j].action && info[j].rel);
+          if (nb !== undefined) {
+            hazardous = true;
+            extra = clauses[nb];
+          }
+        }
+      }
+      if (!hazardous) return;
+      identified = true;
+      if (REASSURANCE_AFFIRMATION.test(c + " " + extra) || !prohibitedAt(i, extra)) unsafe = true;
+    });
+    if (identified) {
+      if (unsafe) return { relId: rel?.id ?? relId, sentence };
+      continue;
+    }
+    // No clause individually identifiable: legacy bearing.some() reading.
+    const bearing = clauses.filter(
+      (c) =>
+        HAZARD_ACTION_ANY.test(c) ||
+        HAZARD_RELATIONS.some((r) => r.re.test(c)) ||
+        NO_ISOLATION_RELATION.test(c),
+    );
     const reassured = bearing.some((c) => REASSURANCE_AFFIRMATION.test(c));
-    const prohibited = bearing.some((c) => BOUND_PROHIBITION.test(c));
+    const prohibited = bearing.some((c) => BOUND_PROHIBITION.test(c) || GUARD_PROHIBITION.test(c) || REPORTING_PROHIBITION.test(c));
     if (!reassured && prohibited) continue;
     return { relId, sentence };
   }
