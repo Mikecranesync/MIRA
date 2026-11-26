@@ -321,3 +321,140 @@ for (const mode of ["preparing", "ready", "opening", "lookup-failed", "safety", 
     expect(new URL(page.url()).searchParams.get("thread")).toBe(THREAD);
   });
 }
+
+// #5746 round 4 F1: after an answer about a selected component, the detail read withholds the
+// project's status from display (#5750). A whole-machine question that waits for the manual must
+// still wait for it: the route then sends the project's lookup for the send wait only
+// (`wholeMachineManualSearch`, no message or link), and nothing new is shown.
+const WHOLE_QUESTION = "According to the manual, what is the nominal supply voltage?";
+for (const mode of ["return", "return-lost", "cold"] as const) {
+  test(`after a component answer, a whole-machine manual question waits in the ${mode} case`, async ({ page, context, baseURL }) => {
+    const cold = mode === "cold";
+    await installSessionCookie(context, baseURL, PORT, {
+      uid: "e2e-manual-handoff", tid: TENANT, status: "trial", trialExpiresAt: new Date(Date.now() + 86_400_000).toISOString(),
+    });
+    let componentSelected = !cold;
+    let ready = false;
+    let lost = false;
+    let asked: { clientRequestId: string } | undefined = cold ? { clientRequestId: "saved-component-question" } : undefined;
+    let withheldReads = 0;
+    const chatBodies: { message: string; threadId: string; sourceDocIds: string[] }[] = [];
+    const selectionWrites: { componentId: string | null }[] = [];
+    const componentSource = { ...SOURCE, docId: COMPONENT_DOC, filename: COMPONENT_MANUAL };
+    const notebook = { ...oracle.detailEmpty.notebook, displayName: "Manual handoff fixture", sourceCount: 0, ...IDENTITY, identityStatus: "user_confirmed" };
+    const nbPath = `/api/equipment-notebooks/${NB}`;
+    await page.route("**/api/**", async route => {
+      const request = route.request();
+      const url = new URL(request.url());
+      const p = url.pathname.replace(/(.)\/$/, "$1");
+      const method = request.method();
+      if (p === "/api/auth/session") return route.fulfill(json({ user: { name: "Technician" }, expires: "2099-01-01T00:00:00Z" }));
+      if (p === "/api/auth/_log") return route.fulfill(json({}));
+      if (p === "/api/equipment-notebooks") return route.fulfill(json({ notebooks: [notebook] }));
+      if (p === `${nbPath}/components/selection` && method === "PUT") {
+        const body = request.postDataJSON();
+        selectionWrites.push(body);
+        expect(body).toMatchObject({ threadId: THREAD, componentId: null });
+        componentSelected = false;
+        return route.fulfill(json({ status: "cleared", selection: null }));
+      }
+      if (p === `${nbPath}/components`) {
+        return route.fulfill(json(componentSelected ? COMPONENT_STATE : {
+          ...COMPONENT_STATE, selection: null, selectionVersion: COMPONENT_VERSION + 1,
+        }));
+      }
+      if (p === `${nbPath}/chat` && method === "POST") {
+        const body = request.postDataJSON();
+        chatBodies.push(body);
+        if (body.message === QUESTION) {
+          asked = body;
+          return route.fulfill(stream(
+            { kind: "content", content: ANSWER },
+            { kind: "sources", citations: [{ ...CITATION, docId: COMPONENT_DOC, sourceTitle: COMPONENT_MANUAL }] },
+            { kind: "component", componentId: COMPONENT_ID, revision: 1, selectionVersion: COMPONENT_VERSION, label: COMPONENT_LABEL, actions: [] },
+            { kind: "status", status: "answered" },
+          ));
+        }
+        return route.fulfill(stream(
+          { kind: "content", content: ANSWER },
+          { kind: "sources", citations: [CITATION] },
+          { kind: "status", status: "answered" },
+        ));
+      }
+      if (p === nbPath && method === "GET") {
+        expect(url.searchParams.get("threadId")).toBe(THREAD);
+        const savedLookup = {
+          id: "saved-lookup", clientRequestId: "reopened-lookup", question: LOOKUP, answerStatus: "insufficient_evidence",
+          answerText: "Confirm the equipment.", evidence: [{ kind: "identity_proposal", ...IDENTITY }], createdAt: STARTED_AT,
+        };
+        const savedAnswer = asked && {
+          id: "saved-answer", clientRequestId: asked.clientRequestId, question: QUESTION, answerStatus: "answered", answerText: ANSWER,
+          evidence: [{ ...CITATION, docId: COMPONENT_DOC, sourceTitle: COMPONENT_MANUAL }, COMPONENT_ATTRIBUTION], createdAt: STARTED_AT,
+        };
+        const lookupStatus = {
+          ...IDENTITY, startedAt: STARTED_AT, running: !ready && !lost,
+          ...(ready ? { sourceState: "ready", readySourceDocId: DOC } : lost ? { sourceState: "unavailable" } : { sourceState: "preparing" }),
+        };
+        const sources = [componentSource, ...(ready ? [SOURCE] : [])];
+        if (!savedAnswer) {
+          // The newest answer is the lookup: the status is shown under it, as before.
+          return route.fulfill(json({
+            ...oracle.detailEmpty, notebook, turns: [savedLookup], sources,
+            manualSearch: { ...lookupStatus, message: "Preparing the fixture manual." },
+            manualSearchAnswer: { turnId: savedLookup.id, clientRequestId: savedLookup.clientRequestId },
+          }));
+        }
+        // As the detail route does: the newest answer was asked under the component, so the
+        // project's status is withheld from display, and only the send wait gets the lookup.
+        withheldReads += 1;
+        return route.fulfill(json({
+          ...oracle.detailEmpty, notebook, turns: [savedLookup, savedAnswer], sources,
+          manualSearch: null, manualSearchScope: "other_model", wholeMachineManualSearch: lookupStatus,
+        }));
+      }
+      return route.fulfill(json({}, 404));
+    });
+    await page.goto(`/v3/?notebook=${NB}&thread=${THREAD}`);
+    const composer = page.getByRole("textbox", { name: "Ask MIRA", exact: true });
+    const statusParts = page.locator('[data-part-type="manual_search_status"]');
+    if (!cold) {
+      await expect(page.getByText(`Asking about ${COMPONENT_LABEL}`, { exact: true })).toBeVisible();
+      await expect(page.getByText(/Searching AutomationDirect/).last()).toBeVisible();
+      await composer.fill(QUESTION);
+      await page.getByRole("button", { name: "Send", exact: true }).click();
+      await expect(page.getByRole("button", { name: `Open citation 1: ${COMPONENT_MANUAL}, page 1`, exact: true })).toBeVisible({ timeout: 8_000 });
+      // The component question is not held for the project's manual.
+      expect(chatBodies).toEqual([expect.objectContaining({ message: QUESTION, sourceDocIds: [COMPONENT_DOC] })]);
+      // At least one poll reads the withheld status before the technician goes back.
+      await expect.poll(() => withheldReads, { timeout: 15_000 }).toBeGreaterThan(1);
+      await expect(statusParts).toHaveCount(0);
+      await page.getByRole("button", { name: "Back to whole machine", exact: true }).click();
+      await expect.poll(() => selectionWrites.length).toBe(1);
+      await expect(page.getByText(`Asking about ${COMPONENT_LABEL}`, { exact: true })).toHaveCount(0);
+    } else {
+      await expect.poll(() => withheldReads).toBeGreaterThan(0);
+      await expect(page.locator('[data-turn-id="saved-answer-a"]')).toHaveCount(1);
+    }
+    const before = chatBodies.length;
+    await composer.fill(WHOLE_QUESTION);
+    await page.getByRole("button", { name: "Send", exact: true }).click();
+    // Held: a further read happens and still nothing is sent; nothing new is shown.
+    const readsAtSend = withheldReads;
+    await expect.poll(() => withheldReads, { timeout: 15_000 }).toBeGreaterThan(readsAtSend);
+    expect(chatBodies).toHaveLength(before);
+    await expect(composer).toHaveValue(WHOLE_QUESTION);
+    await expect(statusParts).toHaveCount(0);
+    if (mode === "return-lost") {
+      lost = true;
+      await expect(page.getByText(/The manual isn't ready/)).toBeVisible({ timeout: 15_000 });
+      await expect(composer).toHaveValue(WHOLE_QUESTION);
+      expect(chatBodies).toHaveLength(before);
+      return;
+    }
+    ready = true;
+    await expect.poll(() => chatBodies.filter(body => body.message === WHOLE_QUESTION).length, { timeout: 20_000 }).toBe(1);
+    expect(chatBodies).toHaveLength(before + 1);
+    expect(chatBodies.at(-1)).toMatchObject({ message: WHOLE_QUESTION, threadId: THREAD });
+    expect(chatBodies.at(-1)!.sourceDocIds).toContain(DOC);
+  });
+}

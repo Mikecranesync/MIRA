@@ -142,7 +142,15 @@ type Detail = {
   // #5750 r3: on a thread-scoped read with a status, the saved answer it was
   // checked against (null: the thread has no answer yet).
   manualSearchAnswer?: { turnId: string; clientRequestId: string | null } | null;
+  // #5746 r4 F1: when an answer about a component withheld the status from display, the
+  // project's lookup for the send wait only (no message or link). Never shown.
+  wholeMachineManualSearch?: ManualSearchStatus;
 };
+
+/** The project's lookup the send wait follows: the shown status, else the send-wait-only one. */
+function sendWaitLookup(data: Pick<Detail, "manualSearch" | "wholeMachineManualSearch"> | null | undefined): ManualSearchStatus | null {
+  return data?.manualSearch ?? data?.wholeMachineManualSearch ?? null;
+}
 
 /** One in-flight or just-finished exchange the server has not yet returned as a row. */
 type Live = {
@@ -365,8 +373,9 @@ export function HubShellHost() {
       if (!res.data) return false;
       detailRef.current = res.data;
       const waiting = waitingSend.current;
-      if (waiting?.selection === sel && waiting.waitForManual && !waiting.observedManual && res.data.manualSearch?.running) {
-        waiting.observedManual = res.data.manualSearch;
+      const lookup = sendWaitLookup(res.data);
+      if (waiting?.selection === sel && waiting.waitForManual && !waiting.observedManual && lookup?.running) {
+        waiting.observedManual = lookup;
       }
       setDetail(res.data);
       setDetailUnavailable(false);
@@ -377,7 +386,7 @@ export function HubShellHost() {
       if (res.data.manualSearch && res.data.manualSearchAnswer !== undefined) {
         recordStatusOrigin(res.data.manualSearch, res.data.manualSearchAnswer ? { turnId: res.data.manualSearchAnswer.turnId } : null);
       }
-      if (!fromPoll && res.data.manualSearch) seedManualSearch(sel.notebookId, res.data.manualSearch);
+      if (!fromPoll && lookup) seedManualSearch(sel.notebookId, lookup);
       return true;
     });
   }, [detailGate, detailLoads, seedManualSearch, recordStatusOrigin]);
@@ -433,7 +442,7 @@ export function HubShellHost() {
       fetchStatus: async (notebookId) => {
         const sel = selectionRef.current;
         if (!sel || sel.notebookId !== notebookId || !await loadDetail(sel, true)) return null;
-        return sel === selectionRef.current ? detailRef.current?.manualSearch ?? null : null;
+        return sel === selectionRef.current ? sendWaitLookup(detailRef.current) : null;
       },
       onStateChange: setFollow,
     });
@@ -509,6 +518,21 @@ export function HubShellHost() {
   const displayedManualStatus = visibleManualStatus?.sourceState === "ready" && !readyManualId
     ? null
     : visibleManualStatus;
+  // #5746 r4 F1: the send wait reads the same chain over the send-wait-only lookup when the
+  // shown status was withheld for an answer about a component; nothing here is displayed.
+  const wholeMachineLookup = manualStatus ? undefined : detail?.wholeMachineManualSearch;
+  const sendFollowIsNewer = Boolean(wholeMachineLookup && follow?.status.startedAt && wholeMachineLookup.startedAt &&
+    compareManualSearchGeneration(follow.status.startedAt, wholeMachineLookup.startedAt) > 0);
+  const sendReadyManualId = wholeMachineLookup
+    ? (sendFollowIsNewer ? null : currentReadyManualId(wholeMachineLookup, detail?.sources ?? []))
+    : readyManualId;
+  const sendSeenStatus = !wholeMachineLookup ? null
+    : sendFollowIsNewer || (wholeMachineLookup.running && follow?.phase === "unresolved")
+      ? (follow?.status.running || follow?.phase === "unresolved" ? follow.status : null)
+      : wholeMachineLookup;
+  const sendManualStatus = !wholeMachineLookup
+    ? displayedManualStatus
+    : sendSeenStatus?.sourceState === "ready" && !sendReadyManualId ? null : sendSeenStatus;
 
   // Live data is a pure projection over the UI state: the reducer's `hydrate`
   // replaces thread/projects/machines/context and keeps drawer, draft, mode and
@@ -1033,7 +1057,7 @@ export function HubShellHost() {
   const onComposerSend = useCallback((question: string, attachments: readonly Attachment[]) => {
     if (!selection) return onSend(question, attachments);
     const waitForManual = waitsForManual(question, attachments.length);
-    const observedManual = waitForManual && displayedManualStatus?.running ? displayedManualStatus : null;
+    const observedManual = waitForManual && sendManualStatus?.running ? sendManualStatus : null;
     const scope = benchGate.known ? benchScopesRef.current.get(conversationKey(selection)) : undefined;
     const waitsForNotebookLookup = observedManual && (scope === "unavailable" || scope?.componentId === null);
     const readingScope = !benchGate.known && !benchGate.changing && !benchGate.pending;
@@ -1062,7 +1086,7 @@ export function HubShellHost() {
         void loadDetail(selection);
       }
     });
-  }, [selection, detail, detailUnavailable, benchGate, displayedManualStatus, onSend, loadDetail]);
+  }, [selection, detail, detailUnavailable, benchGate, sendManualStatus, onSend, loadDetail]);
 
   useEffect(() => {
     const waiting = waitingSend.current;
@@ -1072,7 +1096,7 @@ export function HubShellHost() {
       return;
     }
     if (busy) return;
-    const current = displayedManualStatus;
+    const current = sendManualStatus;
     // Remember a lookup seen while the component check is still loading, so
     // a fast failure cannot erase it from a queued whole-machine submission.
     if (detail && waiting.waitForManual && !waiting.observedManual && current?.running) waiting.observedManual = current;
@@ -1090,7 +1114,7 @@ export function HubShellHost() {
     if (manual && (scope === "unavailable" || scope?.componentId === null)) {
       const sameLookup = current?.manufacturer === manual.manufacturer && current.model === manual.model &&
         (!manual.startedAt || !current.startedAt || compareManualSearchGeneration(manual.startedAt, current.startedAt) === 0);
-      if (!readyManualId || !sameLookup) {
+      if (!sendReadyManualId || !sameLookup) {
         if (sameLookup && current.running && follow?.phase !== "unresolved") return;
         waiting.reject(new Error("The manual isn't ready. Your message and attachments are still here."));
         return;
@@ -1102,7 +1126,7 @@ export function HubShellHost() {
     } catch (error) {
       waiting.reject(error instanceof Error ? error : new Error("Couldn't send the message."));
     }
-  }, [waitingToSend, selection, detail, detailUnavailable, benchGate, benchView, busy, displayedManualStatus, follow, readyManualId, onSend]);
+  }, [waitingToSend, selection, detail, detailUnavailable, benchGate, benchView, busy, sendManualStatus, follow, sendReadyManualId, onSend]);
 
   useEffect(() => () => waitingSend.current?.signal.abort(), []);
 

@@ -35,6 +35,18 @@ const WIDEST_SUBJECT_READ = SUBJECT_READ_STEPS[SUBJECT_READ_STEPS.length - 1];
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/** What the Hub's send wait reads of a lookup: never a message or link, so it is never shown. */
+function sendWaitStatus(status: ManualSearchStatus): ManualSearchStatus {
+  return {
+    manufacturer: status.manufacturer,
+    model: status.model,
+    running: status.running,
+    ...(status.sourceState ? { sourceState: status.sourceState } : {}),
+    ...(status.readySourceDocId ? { readySourceDocId: status.readySourceDocId } : {}),
+    ...(status.startedAt ? { startedAt: status.startedAt } : {}),
+  };
+}
+
 function requestSearchParams(req: NextRequest): URLSearchParams {
   const maybe = req as { nextUrl?: { searchParams?: URLSearchParams }; url?: string };
   if (maybe.nextUrl?.searchParams) return maybe.nextUrl.searchParams;
@@ -150,6 +162,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   // That holds even when there is no current status to withhold (r2 F1): a
   // client may still be showing one from an earlier read.
   let manualSearchScope: "other_model" | "out_of_reach" | undefined;
+  let wholeMachineManualSearch: ManualSearchStatus | undefined;
   const machineModel = manualSearch?.model ?? notebook.model;
   if (threadId && (machineModel || notebook.catalogNumber)) {
     const machine = {
@@ -180,7 +193,14 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     // asked under a selected bench component is about that component, not
     // the project's machine, so the project's status is withheld there.
     const newest = turns.at(-1);
-    if (newest && (newest.evidence ?? []).some(isComponentAttributionEntry)) manualSearchScope = "other_model";
+    if (newest && (newest.evidence ?? []).some(isComponentAttributionEntry)) {
+      // #5746 r4 F1: that withholds it from display only. A question about the whole machine
+      // still waits for this lookup, so the send wait gets it, without the message or link it
+      // would show. Any other reason to withhold (another model, out of reach, a failed read)
+      // sends nothing.
+      if (!manualSearchScope && manualSearch) wholeMachineManualSearch = sendWaitStatus(manualSearch);
+      manualSearchScope = "other_model";
+    }
     if (manualSearchScope) manualSearch = null;
   }
   // #5750 r3 F10/F11/F12: on a thread-scoped read, the saved answer this
@@ -194,6 +214,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     notebook, sources, turns, threads, photos, manualSearch,
     ...(manualSearchScope ? { manualSearchScope } : {}),
     ...(manualSearchAnswer !== undefined ? { manualSearchAnswer } : {}),
+    ...(wholeMachineManualSearch ? { wholeMachineManualSearch } : {}),
   });
 }
 
