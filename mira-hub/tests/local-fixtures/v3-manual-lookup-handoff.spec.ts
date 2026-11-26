@@ -385,7 +385,7 @@ const PAUSED = "Send paused. Your message and attachments are still here.";
 const TITLES = {
   "detail-late": "a question sent while the project is still opening waits for it, then goes once",
   "photo-retry": "Stop while a photo send waits for its target pauses it; Try again sends it once with the photo",
-  retire: "a send after a paused one ends the pause, so its own failure offers Try again",
+  retire: "a send after a paused one ends the pause, so its own failed answer offers Retry",
   "withheld-lands-unseen": "in a look-alike thread a manual that lands unseen comes in with the next answer, and the next question cites it",
 } as const;
 for (const mode of Object.keys(TITLES) as (keyof typeof TITLES)[]) {
@@ -438,8 +438,9 @@ for (const mode of Object.keys(TITLES) as (keyof typeof TITLES)[]) {
         const sent = request.postDataJSON();
         chatBodies.push({ ...sent, manualWait: request.headers()["x-mira-manual-wait"] ?? null });
         if (failNext) {
+          // The answer starts and the stream ends without its status: a failed answer.
           failNext = false;
-          return route.fulfill(json({ error: "upstream" }, 500));
+          return route.fulfill(stream({ kind: "content", content: "The acceleration time is set" }));
         }
         if (withheld && !sent.sourceDocIds.includes(DOC)) {
           // Main's reply once the lookup has finished but the question went without its manual.
@@ -530,7 +531,7 @@ for (const mode of Object.keys(TITLES) as (keyof typeof TITLES)[]) {
       await stopButton.click();
       await expect(page.getByText(PAUSED)).toBeVisible();
       // The target is read, and the technician sends a different question instead. It starts, so
-      // the pause ends; it fails on the way to chat, and its own Try again is offered.
+      // the pause ends; its answer fails part way, and that answer offers its own Retry.
       scope.release();
       failNext = true;
       await composer.fill(OWN_MODEL_QUESTION);
@@ -538,10 +539,14 @@ for (const mode of Object.keys(TITLES) as (keyof typeof TITLES)[]) {
       await expect.poll(() => chatBodies.length, { timeout: 15_000 }).toBe(1);
       expect(chatBodies[0]).toMatchObject({ message: OWN_MODEL_QUESTION, manualWait: null });
       await expect(page.getByText(PAUSED)).toHaveCount(0);
-      await expect(tryAgain).toBeVisible();
-      await tryAgain.click();
+      // A pause left in place would hide this Retry; the banner's draft retry would remain.
+      const retry = chat.locator('[data-part-type="error"]').getByRole("button", { name: "Retry", exact: true });
+      await expect(retry).toBeVisible();
+      await retry.click();
       await expect.poll(() => chatBodies.length, { timeout: 15_000 }).toBe(2);
       expect(chatBodies[1]).toMatchObject({ message: OWN_MODEL_QUESTION });
+      // The failed answer's saved request goes again under its own id.
+      expect(chatBodies[1].clientRequestId).toBe(chatBodies[0].clientRequestId);
       // The stopped question was never sent.
       expect(chatBodies.filter(body => body.message === OTHER_QUESTION)).toHaveLength(0);
       return;
