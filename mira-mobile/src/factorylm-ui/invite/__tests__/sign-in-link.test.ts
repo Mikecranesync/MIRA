@@ -74,3 +74,31 @@ describe("requestSignInLink", () => {
     expect(state.httpRequest).not.toHaveBeenCalled();
   });
 });
+
+describe("sendSignInLink (the controller)", () => {
+  it("a second call while one is pending sends nothing, and the outcome names its address", async () => {
+    const { sendSignInLink, getSignInLinkState, __resetSignInLinkForTests } = await import(
+      "../sign-in-link-controller"
+    );
+    __resetSignInLinkForTests();
+    let release: () => void = () => {};
+    state.httpRequest.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = () => resolve({ status: 200, data: JSON.stringify({ ok: true }), headers: {} });
+        }),
+    );
+    const first = sendSignInLink(" tech@plant.example ");
+    await Promise.resolve();
+    expect(getSignInLinkState().pending).toBe("tech@plant.example");
+    await sendSignInLink("tech@plant.example");
+    for (let i = 0; i < 6; i += 1) await Promise.resolve();
+    release();
+    await first;
+    expect(state.httpRequest).toHaveBeenCalledTimes(1);
+    expect(getSignInLinkState()).toEqual({
+      pending: null,
+      outcome: { address: "tech@plant.example", ok: true },
+    });
+  });
+});

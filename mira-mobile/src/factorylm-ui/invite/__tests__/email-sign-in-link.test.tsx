@@ -35,6 +35,7 @@ import { clearAllLocalState } from "../../../api/client";
 import { loadSignedInAccount } from "../../session/load-signed-in-account";
 import { Login } from "../../../screens/Login";
 import { EmailSignInLink } from "../EmailSignInLink";
+import { __resetSignInLinkForTests } from "../sign-in-link-controller";
 
 const TOKEN = "11111111-2222-4333-8444-555555555555";
 // The shape the Hub emails (magic-link-return.ts magicLinkUrl): ?next= then #token=.
@@ -52,6 +53,7 @@ beforeEach(async () => {
   state.data.clear();
   state.httpRequest.mockReset();
   await clearAllLocalState();
+  __resetSignInLinkForTests();
   calls = [];
   linkStatus = 200;
   callbacks = 0;
@@ -120,7 +122,7 @@ describe("Email me a sign-in link (#5942)", () => {
     expect(linkPosts()).toHaveLength(1);
     expect(linkPosts()[0].method).toBe("POST");
     expect(JSON.parse(linkPosts()[0].data ?? "{}")).toEqual({ email: EMAIL });
-    expect(screen.getByText(new RegExp(`If ${EMAIL} has a FactoryLM account`))).toBeTruthy();
+    expect(screen.getByText(new RegExp(`^Request received for ${EMAIL}`))).toBeTruthy();
   });
 
   it("a double tap sends one request", async () => {
@@ -148,45 +150,103 @@ describe("Email me a sign-in link (#5942)", () => {
     expect(linkPosts()).toHaveLength(1);
   });
 
-  it("the notice acknowledges the request and promises no delivery (Codex r1 F2)", async () => {
+  it("the notice acknowledges the request and promises no email (Codex r1 F2, r2 F2)", async () => {
     render(<Login onSignedIn={async () => {}} />);
     typeEmail(EMAIL);
     await requestLink();
-    const notice = screen.getByText(/has a FactoryLM account/).textContent ?? "";
-    expect(notice).toMatch(/^Request received\./);
-    expect(notice).not.toMatch(/on its way|sent|delivered/i);
-    expect(notice).toMatch(/No email after a few minutes\?/);
+    const notice = screen.getByText(/^Request received for /).textContent ?? "";
+    expect(notice).toBe(
+      `Request received for ${EMAIL}. If a sign-in link arrives, it works once, for 15 minutes: open the email, copy the link, then paste it here. No email after a few minutes? Check spam, request another link, or contact support@factorylm.com.`,
+    );
+    expect(notice).not.toMatch(/we'll|on its way|will (be )?(sent|emailed)/i);
+    expect(screen.getByText(/^No password\?/).textContent).not.toMatch(/we'll|we will/i);
   });
 
-  it("modes cannot switch while a request is pending, so it is never sent twice (Codex r1 F1)", async () => {
+  it("a stalled request leaves the paste route open, so an earlier link still works (Codex r2 F5)", async () => {
     let release: () => void = () => {};
-    state.httpRequest.mockImplementation(
-      (c: Call) =>
-        new Promise((resolve) => {
-          calls.push(c);
-          release = () => resolve({ status: 200, data: JSON.stringify({ ok: true }), headers: {} });
-        }),
-    );
-    render(<Login onSignedIn={async () => {}} />);
+    const base = state.httpRequest.getMockImplementation()!;
+    state.httpRequest.mockImplementation((c: Call) => {
+      if (!c.url.endsWith("/api/auth/magic-link/")) return base(c);
+      calls.push(c);
+      return new Promise((resolve) => {
+        release = () => resolve({ status: 200, data: JSON.stringify({ ok: true }), headers: {} });
+      });
+    });
+    const loaded: unknown[] = [];
+    render(<Login onSignedIn={async () => void loaded.push(await loadSignedInAccount())} />);
     typeEmail(EMAIL);
     await act(async () => {
       fireEvent.click(screen.getByText("Email me a sign-in link"));
       await flush();
     });
     const toggle = screen.getByText(/Have an invitation link instead/) as HTMLButtonElement;
-    expect(toggle.disabled).toBe(true);
+    expect(toggle.disabled).toBe(false);
     fireEvent.click(toggle);
-    expect(screen.queryByText("Use an invitation link")).toBeNull();
+    fireEvent.change(screen.getByLabelText("Invitation link"), { target: { value: EMAILED } });
+    await act(async () => {
+      fireEvent.click(screen.getByText("Use invite link"));
+      await flush();
+    });
+    expect(loaded).toHaveLength(1);
+    expect(linkPosts()).toHaveLength(1);
+  });
+
+  it("a request pending across a mode switch cannot be sent again, and its result survives (Codex r1 F1, r2 F5)", async () => {
+    let release: () => void = () => {};
+    const base = state.httpRequest.getMockImplementation()!;
+    state.httpRequest.mockImplementation((c: Call) => {
+      if (!c.url.endsWith("/api/auth/magic-link/")) return base(c);
+      calls.push(c);
+      return new Promise((resolve) => {
+        release = () => resolve({ status: 200, data: JSON.stringify({ ok: true }), headers: {} });
+      });
+    });
+    render(<Login onSignedIn={async () => {}} />);
+    typeEmail(EMAIL);
+    await act(async () => {
+      fireEvent.click(screen.getByText("Email me a sign-in link"));
+      await flush();
+    });
+    fireEvent.click(screen.getByText(/Have an invitation link instead/));
+    fireEvent.click(screen.getByText(/Have a password instead/));
+    typeEmail(EMAIL);
+    const sending = screen.getByText("Sending…") as HTMLButtonElement;
+    expect(sending.disabled).toBe(true);
+    fireEvent.click(sending);
     await act(async () => {
       release();
       await flush();
     });
-    expect((screen.getByText(/Have an invitation link instead/) as HTMLButtonElement).disabled).toBe(false);
-    expect(screen.getByText(/has a FactoryLM account/)).toBeTruthy();
     expect(linkPosts()).toHaveLength(1);
+    expect(screen.getByText(/^Request received for /)).toBeTruthy();
   });
 
-  it("mounted on its own, with no parent busy flag, a double tap still sends one request", async () => {
+  it("a late refusal for an address since corrected is not shown against the new one (Codex r2 F6)", async () => {
+    let release: () => void = () => {};
+    state.httpRequest.mockImplementation((c: Call) => {
+      calls.push(c);
+      return new Promise((resolve) => {
+        release = () => resolve({ status: 400, data: JSON.stringify({ error: "Valid email required" }), headers: {} });
+      });
+    });
+    render(<Login onSignedIn={async () => {}} />);
+    typeEmail("not-an-address");
+    await act(async () => {
+      fireEvent.click(screen.getByText("Email me a sign-in link"));
+      await flush();
+    });
+    typeEmail(EMAIL);
+    await act(async () => {
+      release();
+      await flush();
+    });
+    expect(screen.queryByText("Enter a valid email address.")).toBeNull();
+    expect((screen.getByText("Email me a sign-in link") as HTMLButtonElement).disabled).toBe(false);
+    typeEmail("not-an-address");
+    expect(screen.getByText("Enter a valid email address.")).toBeTruthy();
+  });
+
+  it("mounted on its own, a double tap still sends one request", async () => {
     let release: () => void = () => {};
     state.httpRequest.mockImplementation(
       (c: Call) =>
@@ -214,7 +274,7 @@ describe("Email me a sign-in link (#5942)", () => {
     typeEmail(EMAIL);
     await requestLink();
     expect(screen.getByText(/Too many sign-in links requested/)).toBeTruthy();
-    expect(screen.queryByText(/has a FactoryLM account/)).toBeNull();
+    expect(screen.queryByText(/^Request received for /)).toBeNull();
     expect(screen.queryByText("Paste the link from the email")).toBeNull();
   });
 
@@ -222,9 +282,9 @@ describe("Email me a sign-in link (#5942)", () => {
     render(<Login onSignedIn={async () => {}} />);
     typeEmail(EMAIL);
     await requestLink();
-    expect(screen.getByText(/has a FactoryLM account/)).toBeTruthy();
+    expect(screen.getByText(/^Request received for /)).toBeTruthy();
     typeEmail("other@plant.example");
-    expect(screen.queryByText(/has a FactoryLM account/)).toBeNull();
+    expect(screen.queryByText(/^Request received for /)).toBeNull();
   });
 
   it("the whole stranger path: request, paste the emailed fragment link, signed in", async () => {

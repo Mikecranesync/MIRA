@@ -40,9 +40,7 @@ export function Login({
   // window of either flow, removing the only UI path to abandon one attempt
   // mid-flight and start another.
   const [inviteBusy, setInviteBusy] = useState(false);
-  // #5942: the sign-in-link request's pending window, lifted for the same reason.
-  const [linkBusy, setLinkBusy] = useState(false);
-  const anyBusy = busy || inviteBusy || linkBusy;
+  const anyBusy = busy || inviteBusy;
   // #4470 round 2 F1: InviteSignIn remounts on every mode switch; its
   // recovery state (pasted link + the token whose exchange already set a
   // session) lives here so switching modes cannot drop it and force a retry
@@ -122,12 +120,7 @@ export function Login({
           </div>
           {error && <div className="error">{error}</div>}
         </div>
-        <EmailSignInLink
-          email={email}
-          disabled={anyBusy}
-          onHaveLink={() => setMode("invite")}
-          onBusyChange={setLinkBusy}
-        />
+        <EmailSignInLink email={email} disabled={anyBusy} onHaveLink={() => setMode("invite")} />
         <button
           type="button"
           className="btn-link"

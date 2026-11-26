@@ -33,10 +33,10 @@ export const INVITE_HYDRATION_FAILED_COPY =
   "You're signed in, but your account didn't finish loading — tap Sign in again.";
 
 /** #5942: the Hub answers the same whether or not the account exists, and
- *  whether or not the mail provider accepted the message, so the notice
- *  acknowledges the request and promises no delivery. */
+ *  whether or not its mail provider accepted the message, so the notice
+ *  acknowledges the request and promises no email (Codex rounds 1 and 2). */
 export function signInLinkSentCopy(email: string): string {
-  return `Request received. If ${email} has a FactoryLM account, we'll email it a sign-in link that works once, for 15 minutes. Open the email, copy the link, then paste it here. No email after a few minutes? Check spam, request another link, or contact support@factorylm.com.`;
+  return `Request received for ${email}. If a sign-in link arrives, it works once, for 15 minutes: open the email, copy the link, then paste it here. No email after a few minutes? Check spam, request another link, or contact support@factorylm.com.`;
 }
 
 export function signInLinkFailureCopy(reason: SignInLinkFailureReason): string {

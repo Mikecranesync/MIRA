@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { requestSignInLink } from "./sign-in-link";
+import { useSyncExternalStore } from "react";
+import { getSignInLinkState, sendSignInLink, subscribeSignInLink } from "./sign-in-link-controller";
 import { signInLinkFailureCopy, signInLinkSentCopy } from "./invite-copy";
 
 /**
@@ -12,60 +12,40 @@ import { signInLinkFailureCopy, signInLinkSentCopy } from "./invite-copy";
  * contains "email" would be indistinguishable to anything that finds the field
  * by its label. The emailed link is pasted into invite mode (`onHaveLink`),
  * which already redeems it.
+ *
+ * The request's state lives in sign-in-link-controller.ts, not here, so it
+ * survives the remount every mode switch causes.
  */
 export function EmailSignInLink({
   email,
   disabled,
   onHaveLink,
-  onBusyChange,
 }: {
   email: string;
   disabled: boolean;
   onHaveLink: () => void;
-  /** Reports the request's pending window to Login, which disables its mode
-   *  toggle meanwhile (the #4470 F2 pattern). Switching modes unmounts this
-   *  component; mid-request that would drop the pending state and let a second
-   *  request send a second email (Codex r1 F1). */
-  onBusyChange?: (busy: boolean) => void;
 }) {
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const [sentTo, setSentTo] = useState<string | null>(null);
+  const { pending, outcome } = useSyncExternalStore(subscribeSignInLink, getSignInLinkState);
+  const busy = pending !== null;
   const address = email.trim();
-
-  async function send() {
-    setBusy(true);
-    onBusyChange?.(true);
-    setError("");
-    setSentTo(null);
-    try {
-      const r = await requestSignInLink(address);
-      if (r.ok) setSentTo(address);
-      else setError(signInLinkFailureCopy(r.reason));
-    } finally {
-      setBusy(false);
-      onBusyChange?.(false);
-    }
-  }
-
-  // The notice names the address it was sent to; once the field changes it no
-  // longer describes what is typed, so it is hidden.
-  const sent = sentTo !== null && sentTo === address;
+  // An outcome names the address it was for; once the field holds a different
+  // address it no longer describes what is typed, so it is hidden.
+  const current = outcome !== null && outcome.address === address ? outcome : null;
 
   return (
     <div className="card">
       <p className="meta">
-        No password? Enter your email above and we&apos;ll send you a single-use sign-in link.
+        No password? Enter your email above to request a single-use sign-in link.
       </p>
       <button
         type="button"
         className="btn-primary"
         disabled={disabled || busy || !address}
-        onClick={() => void send()}
+        onClick={() => void sendSignInLink(address)}
       >
         {busy ? "Sending…" : "Email me a sign-in link"}
       </button>
-      {sent && (
+      {current?.ok && (
         <>
           <p className="meta">{signInLinkSentCopy(address)}</p>
           <button type="button" className="btn-link" disabled={disabled} onClick={onHaveLink}>
@@ -73,7 +53,7 @@ export function EmailSignInLink({
           </button>
         </>
       )}
-      {error && <div className="error">{error}</div>}
+      {current && !current.ok && <div className="error">{signInLinkFailureCopy(current.reason)}</div>}
     </div>
   );
 }
