@@ -214,6 +214,12 @@ function friendlyIngestError(msg: string): string {
   if (/no extractable text/i.test(msg)) {
     return "This PDF has no extractable text — it appears to be scanned or image-only. OCR isn't supported yet, so it can't be indexed for chat; the original file is kept.";
   }
+  // #5771: password-protected / encrypted PDFs — explicit, actionable message.
+  // Checked before the generic "Invalid PDF" pattern so encryption errors don't
+  // land in the "may be encrypted" catch-all.
+  if (/password|encrypted|PasswordException|encryption/i.test(msg)) {
+    return "This PDF is password-protected. Remove the password and upload it again.";
+  }
   if (/unpdf\/pdfjs|Serverless PDF\.js bundle|Cannot find module/i.test(msg)) {
     return "PDF processing is temporarily unavailable on the server. Please try again shortly.";
   }
