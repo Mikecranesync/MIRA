@@ -1770,3 +1770,55 @@ describe("R3-C1 — one test per round-3 mutation that survived", () => {
     ]);
   });
 });
+
+describe("R3-C3 — a redraft count beyond the safe-integer range exhausts the allowance", () => {
+  beforeEach(() => {
+    process.env.MIRA_TURN_MAX_OUTPUT_TOKENS = "1500";
+    process.env.GROQ_API_KEY = "g0";
+    process.env.CEREBRAS_API_KEY = "c0";
+  });
+  const billedEmptyThenServed = (completion: number) =>
+    stubFetch(REDRAFT, [verdict("unsafe"), verdict("safe", "none")], {
+      draft1Output: 200,
+      byHost: {
+        "api.openai.com": { content: "", usage: { prompt_tokens: 50, completion_tokens: completion } },
+        groq: { content: REDRAFT, usage: { prompt_tokens: 50, completion_tokens: 20 } },
+        cerebras: { content: REDRAFT, usage: { prompt_tokens: 50, completion_tokens: 20 } },
+      },
+    });
+
+  it("1500 ceiling, draft 1 200, a billed empty first redraft reports completion_tokens 2^53-1: no further request, a stop, output NULL", async () => {
+    const { redraftUrls, redraftBodies } = billedEmptyThenServed(Number.MAX_SAFE_INTEGER);
+    const r = await run(Q_PLAIN);
+    expect(redraftUrls.map(hostOf)).toEqual(["api.openai.com"]);
+    expect(redraftBodies.map(capOf)).toEqual([800]);
+    expect(r.outcome.semantic_redraft).toBe("stopped_generation");
+    expectStopped(r);
+    expect([r.usage.inputTokens, r.usage.outputTokens]).toEqual([12 + 50, null]);
+    expect([r.gen.input_tokens, r.gen.output_tokens]).toEqual([12 + 50, null]);
+    // The attempt's own counts are well formed, so nothing is marked usage_unknown: the null
+    // output total comes from the sum leaving the safe range, not from an unknown count.
+    expect(flagsOf(r.gen)).toEqual([
+      ["OpenAI", "served", false, false],
+      ["OpenAI", BILLED_EMPTY, true, false],
+    ]);
+  });
+
+  it("a billed empty first redraft reporting completion_tokens 1e300 (above the safe range): no further request, a stop, output NULL", async () => {
+    const { redraftUrls } = billedEmptyThenServed(1e300);
+    const r = await run(Q_PLAIN);
+    expect(redraftUrls.map(hostOf)).toEqual(["api.openai.com"]);
+    expect(r.outcome.semantic_redraft).toBe("stopped_generation");
+    expectStopped(r);
+    expect([r.usage.inputTokens, r.usage.outputTokens]).toEqual([12 + 50, null]);
+  });
+
+  it("control: the same billed empty first redraft at an ordinary count (300): Groq is asked with 800 and serves", async () => {
+    const { redraftUrls, redraftBodies } = billedEmptyThenServed(300);
+    const r = await run(Q_PLAIN);
+    expect(redraftUrls.map(hostOf)).toEqual(["api.openai.com", "api.groq.com"]);
+    expect(redraftBodies.map(capOf)).toEqual([800, 800]);
+    expect(r.outcome.semantic_redraft).toBe("served");
+    expect([r.usage.inputTokens, r.usage.outputTokens]).toEqual([12 + 50 + 50, 200 + 300 + 20]);
+  });
+});

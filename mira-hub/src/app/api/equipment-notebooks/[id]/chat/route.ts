@@ -5718,6 +5718,9 @@ async function handleChatTurn(
                       passed.push(p.name);
                       continue;
                     }
+                    // R3-C3: a running total beyond the safe-integer range is spent, not unknown:
+                    // it ends the redraft rather than granting a fresh request cap.
+                    if (!Number.isSafeInteger(spent)) break;
                     const cap = redraftOutputAllowance(outputCap, requestCap, spent);
                     if (cap === null) break;
                     const sentBefore = redraftAttempts.length;
@@ -5730,7 +5733,12 @@ async function handleChatTurn(
                       onAttempt: (a) => redraftAttempts.push({ ...a, before: [...passed] }),
                     });
                     const sent = redraftAttempts[sentBefore];
-                    if (sent?.billed) spent += tokenCount(sent.usage?.completion_tokens) ?? cap;
+                    if (sent?.billed) {
+                      // A reported count above the safe-integer range is spent (R3-C3); any other
+                      // unknown or malformed count debits the cap it was sent with.
+                      const c = sent.usage?.completion_tokens;
+                      spent += typeof c === "number" && c > Number.MAX_SAFE_INTEGER ? Infinity : (tokenCount(c) ?? cap);
+                    }
                     // Not sent (a keyed provider the cascade refused before the fetch: the budget),
                     // or sent without text: either way the next provider falls back from it.
                     if (!r) {

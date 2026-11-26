@@ -175,6 +175,8 @@ type Usage = {
  */
 export function withRedraftUsage<U extends Usage>(first: U, redraft: Usage, servedByRedraft: boolean): U {
   const sum = (a: number | null, b: number | null) => (a === null || b === null ? null : a + b);
+  // A token sum beyond the safe-integer range is unknown, never an imprecise number (R3-C3).
+  const tokens = (n: number | null) => (n === null || Number.isSafeInteger(n) ? n : null);
   const who = servedByRedraft ? redraft : first;
   return {
     ...first,
@@ -183,12 +185,12 @@ export function withRedraftUsage<U extends Usage>(first: U, redraft: Usage, serv
     routeReason: who.routeReason,
     status: who.status,
     attempted: who.attempted,
-    inputTokens: sum(first.inputTokens, redraft.inputTokens),
+    inputTokens: tokens(sum(first.inputTokens, redraft.inputTokens)),
     cachedInputTokens:
       first.cachedInputTokens === null && redraft.cachedInputTokens === null
         ? null
-        : (first.cachedInputTokens ?? 0) + (redraft.cachedInputTokens ?? 0),
-    outputTokens: sum(first.outputTokens, redraft.outputTokens),
+        : tokens((first.cachedInputTokens ?? 0) + (redraft.cachedInputTokens ?? 0)),
+    outputTokens: tokens(sum(first.outputTokens, redraft.outputTokens)),
     costUsdEstimate: sum(first.costUsdEstimate, redraft.costUsdEstimate),
   };
 }

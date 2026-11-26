@@ -167,6 +167,22 @@ describe("redraft usage", () => {
     expect(withRedraftUsage(u("A", 10, 5, 1, 4), u("B", 20, 7, 1), true).cachedInputTokens).toBe(4);
     expect(withRedraftUsage(u("A", 10, 5, 1), u("B", 20, 7, 1), true).cachedInputTokens).toBeNull();
   });
+  it("R3-C3: a token sum beyond the safe-integer range is unknown (null), never an imprecise number; cost keeps its fraction", () => {
+    const max = Number.MAX_SAFE_INTEGER;
+    expect(withRedraftUsage(u("A", max, 200, 0.5, 3), u("B", 50, max, 0.25, max), false)).toMatchObject({
+      inputTokens: null,
+      outputTokens: null,
+      cachedInputTokens: null,
+      costUsdEstimate: 0.75,
+    });
+    // Control: at ordinary counts every sum is kept.
+    expect(withRedraftUsage(u("A", 12, 200, 0.5, 3), u("B", 50, 300, 0.25, 4), false)).toMatchObject({
+      inputTokens: 62,
+      outputTokens: 500,
+      cachedInputTokens: 7,
+      costUsdEstimate: 0.75,
+    });
+  });
 });
 
 describe("citationSupportGaps (#6020)", () => {
