@@ -875,6 +875,7 @@ describe("#6048 — a body cancel after the commit still persists the packet and
     expect(r.outcome.semantic_redraft).toBeUndefined();
     expect(r.usage).toMatchObject({ provider: "OpenAI", inputTokens: 12, outputTokens: 7 });
     expectDispositionMatchesHistory(r);
+    return r;
   }
 
   it("ordinary answered turn: body cancelled during the held cited-page read (before the first post-commit frame)", async () => {
@@ -1202,6 +1203,135 @@ describe("#6048 — a body cancel after the commit still persists the packet and
     expect(r.usage.status).toBe("ok");
     expect(r.meta.answerText).toBe(DRAFT1);
   });
+
+  // ── Review round 1 (R1-D4): the catch settles only a decision that IS in history ──
+  const logged = (spy: unknown, marker: string) =>
+    (spy as ReturnType<typeof vi.fn>).mock.calls.map((c) => String(c[0])).filter((l) => l.includes(marker));
+  /** The `turn.usage` and `providers.exhausted` structured log lines of this turn. */
+  const usageLines = () => logged(console.log, '"event":"turn.usage"');
+  const exhaustedLines = () => logged(console.error, '"event":"providers.exhausted"');
+
+  /**
+   * The history write FAILS on a request with no id: there is no claim to abandon, so the
+   * route logs the failure and carries on to delivery (with an id it stops there instead).
+   */
+  async function historyWriteFailed(cancel: boolean) {
+    stubFetch(REDRAFT, [verdict("safe", "none")]);
+    // eslint-disable-next-line prefer-const -- assigned after POST; read by the hook below
+    let reader!: ReadableStreamDefaultReader<Uint8Array>;
+    domainMock.recordTurn.mockImplementation(async () => {
+      await new Promise((res) => setTimeout(res, 0));
+      if (cancel) void reader.cancel();
+      throw new Error("history write failed (test)");
+    });
+    const res = await POST(req({ message: Q_PLAIN, sourceDocIds: [DOC_A] }, false), params);
+    expect(res.status).toBe(200);
+    reader = res.body!.getReader();
+    let text = "";
+    if (!cancel) {
+      const dec = new TextDecoder();
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        text += dec.decode(value);
+      }
+    }
+    await vi.waitFor(() => expect(domainMock.recordTurn).toHaveBeenCalledTimes(1));
+    await settleAll();
+    // Preconditions: the write failed, once, and the route continued past it.
+    expect(domainMock.recordTurn).toHaveBeenCalledTimes(1);
+    expect(console.error).toHaveBeenCalledWith("[notebook-chat] recordTurn failed:", "history write failed (test)");
+    expect(domainMock.abandonNotebookTurnRequest).not.toHaveBeenCalled();
+    return text
+      .split("\n\n")
+      .filter((l) => l.startsWith("data: ") && l.trim() !== "data: [DONE]")
+      .map((l) => JSON.parse(l.slice(6)) as Frame & { status?: string });
+  }
+
+  it("R1-D4: body cancelled after a FAILED history write: the catch persists nothing (no packet, no usage row, no decision call), the bare close as before #6048", async () => {
+    await historyWriteFailed(true);
+    expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(0);
+    expect(evaluateMock).not.toHaveBeenCalled();
+    expect(usageLines()).toHaveLength(0);
+    // The delivery failure reached the catch, whose endRoot closed the row bare.
+    expect(closeTurnMock).toHaveBeenCalledTimes(1);
+    expect(closeTurnMock.mock.calls[0][0]).toMatchObject({ outcome: "answered" });
+  });
+
+  it("R1-D4 control: DELIVERED after a failed history write is unchanged: the same frames, ONE packet with the failed persistence outcome and no row id", async () => {
+    const frames = await historyWriteFailed(false);
+    expect(frames.map((f) => f.kind)).toEqual(["content", "sources", "evidence", "usage", "status"]);
+    expect(frames.filter((f) => f.kind === "content").map((f) => f.content).join("")).toBe(DRAFT1);
+    expect(frames.at(-1)).toMatchObject({ kind: "status", status: "answered" });
+    expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1);
+    const [meta, usage, telemetry] = persistMock.persistTurnUsage.mock.calls[0] as unknown as PersistCall;
+    expect(meta).toMatchObject({ outcome: "answered", answerText: DRAFT1, citationsPresent: true });
+    expect(usage).toMatchObject({ provider: "OpenAI", inputTokens: 12, outputTokens: 7 });
+    expect(telemetry.turnRowId).toBeNull();
+    expect(telemetry.packet.persistence).toMatchObject({ turn_row_id: null, outcome: "failed" });
+    expect(evaluateMock).toHaveBeenCalledTimes(1);
+    expect(usageLines()).toHaveLength(1);
+    expect(closeTurnMock).not.toHaveBeenCalled();
+  });
+
+  // ── Review round 1 (R1-D5): the incident log lines are owed once per committed turn too ──
+  it("R1-D5: an answered turn cancelled BEFORE the usage frame still logs turn.usage, once, with the ledger row's numbers", async () => {
+    const r = await answeredCancelledAt("during_commit");
+    expect(usageLines()).toHaveLength(1);
+    expect(JSON.parse(usageLines()[0])).toMatchObject({
+      provider: r.usage.provider,
+      model: r.usage.model,
+      inputTokens: r.usage.inputTokens,
+      outputTokens: r.usage.outputTokens,
+      status: r.usage.status,
+    });
+    expect(exhaustedLines()).toHaveLength(0);
+  });
+
+  it("R1-D5 control: an answered turn cancelled AFTER the usage frame logs turn.usage once, not twice", async () => {
+    await answeredCancelledAt("after_usage");
+    expect(usageLines()).toHaveLength(1);
+  });
+
+  it("R1-D5 control: a delivered answered turn logs turn.usage once, before its status frame goes out, and no exhausted line", async () => {
+    stubFetch(REDRAFT, [verdict("safe", "none")]);
+    const res = await POST(req({ message: Q_PLAIN, sourceDocIds: [DOC_A], clientRequestId: REQ_ID }, false), params);
+    const reader = res.body!.getReader();
+    const dec = new TextDecoder();
+    let text = "";
+    let linesWhenStatusArrived = -1;
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      text += dec.decode(value);
+      if (linesWhenStatusArrived < 0 && text.includes('"kind":"status"')) linesWhenStatusArrived = usageLines().length;
+    }
+    await settled();
+    // Emitted where it always was (with the usage frame), not deferred to the settle.
+    expect(linesWhenStatusArrived).toBe(1);
+    expect(usageLines()).toHaveLength(1);
+    expect(exhaustedLines()).toHaveLength(0);
+  });
+
+  for (const cancel of [true, false]) {
+    const how = cancel ? "cancelled during the history write" : "delivered";
+    it(`R1-D5${cancel ? "" : " control"}: a committed turn no provider served, ${how}: one providers.exhausted line and one turn.usage line`, async () => {
+      const r = await unservedTurn(cancel);
+      expect(r.usage.routeReason).not.toBe("legacy_cascade");
+      expect(exhaustedLines()).toHaveLength(1);
+      expect(usageLines()).toHaveLength(1);
+      expect(JSON.parse(usageLines()[0])).toMatchObject({ status: r.usage.status, attempted: ["OpenAI"] });
+    });
+
+    it(`R1-D5 control: the legacy cascade (seam off), no provider served, ${how}: neither line (they are canonical-seam lines)`, async () => {
+      process.env.MIRA_CANONICAL_SEAM = "0";
+      process.env.GROQ_API_KEY = "g0";
+      const r = await unservedTurn(cancel);
+      expect(r.usage.routeReason).toBe("legacy_cascade");
+      expect(usageLines()).toHaveLength(0);
+      expect(exhaustedLines()).toHaveLength(0);
+    });
+  }
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
