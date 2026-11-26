@@ -1013,7 +1013,7 @@ function codeMeaningViolation(
         // code and its verb ("F30011 on a Siemens G120 is generally a motor
         // overtemperature"). All three shipped as general answers before this.
         const defFrame = new RegExp(
-          `["'\`*]*${esc}["'\`*]*(?:\\s*\\([^)]{0,40}\\))?(?:\\s+(?:on|in|for)\\s+(?:a|an|the)\\s+[\\w-]+(?:\\s+[\\w-]+){0,3})?\\s+(?:fault\\s+|alarm\\s+|error\\s+|code\\s+)?(?:${DEF_HEDGE}\\s+)?(?:means|indicates|signals|refers\\s+to|stands\\s+for|denotes|corresponds\\s+to|is\\s+(?:${DEF_HEDGE}\\s+)?(?:a|an|the)|is\\s+caused\\s+by|occurs\\s+when)\\b`,
+          `["'\`*]*${esc}["'\`*]*(?:\\s*\\([^)]{0,40}\\))?(?:\\s+(?:on|in|for)\\s+(?:(?:a|an|the)\\s+)?[\\w-]+(?:\\s+[\\w-]+){0,3})?\\s+(?:fault\\s+|alarm\\s+|error\\s+|code\\s+)?(?:${DEF_HEDGE}\\s+)?(?:means|indicates|signals|refers\\s+to|stands\\s+for|denotes|corresponds\\s+to|is\\s+(?:${DEF_HEDGE}\\s+)?(?:a|an|the)|is\\s+caused\\s+by|occurs\\s+when)\\b`,
           "i",
         );
         // "the most likely reason you're seeing 'Q-447-Delta' is …"

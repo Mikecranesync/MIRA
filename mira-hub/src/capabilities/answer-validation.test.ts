@@ -1242,6 +1242,9 @@ describe("code meaning asserted with a trailing hedge or a machine qualifier (#5
   it("catches 'F30011 on a Siemens G120 is generally a motor overtemperature'", () => {
     const v = general("F30011 on a Siemens G120 is generally a **motor overtemperature / motor thermal protection fault**.", g120);
     expect(v.ok).toBe(false);
+    // Cheap review on #5996: the qualifier without an article is the same claim.
+    expect(general("F30011 on Siemens G120 is generally a motor overtemperature fault.", g120).ok).toBe(false);
+    expect(general("F30011 for SINAMICS G120 drives usually means a motor overtemperature.", g120).ok).toBe(false);
   });
 
   it("still serves the honest answers MIRA gave on the same questions", () => {
