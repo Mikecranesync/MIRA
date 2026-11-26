@@ -322,6 +322,178 @@ describe("#6020 — a redraft that replaces a stop needs source support, not jus
   });
 });
 
+/**
+ * #6047 (with #6049): the source-support rule reads EVERY sentence that tells the technician
+ * to do something, cited or not, and keeps the page's condition (design-6047 §5, RT-a / RT-b /
+ * RT-pre; contract CIT-005). A safe verdict is always queued after the unsafe one, so a stop
+ * here can only come from the support gate, and the floors are pinned by RT-pre below.
+ */
+/** RT-a: a supported cited inspection, then an uncited repair the page never mentions. */
+const RTA_STOP = "With the press stopped and locked out, check the hydraulic hose for wear [1]. Then replace the encoder coupling.";
+/** RT-a control: the uncited second step is one the page states. */
+const RTA_SERVED = "With the press stopped and locked out, check the hydraulic hose for wear [1]. Then inspect the ribbon cable connector for looseness.";
+/** SOURCE_TEXT with the ribbon-cable step cut out: RTA_SERVED's second step loses its support. */
+const SOURCE_NO_RIBBON =
+  "SECTION 7.2 Relieve accumulator pre-charge through valve V-12 before servicing the starter. Inspect the hydraulic hose for wear.";
+/** RT-b: the page limits the replacement to a damaged cartridge. */
+const FILTER_TEXT = "SECTION 7.4 Filter service. Replace the filter cartridge only when damaged.";
+/** RT-b: the condition replaced by an invented interval. */
+const RTB_STOP = "With the press stopped and locked out, replace the filter cartridge before every shift [1].";
+/** RT-b control: the condition kept in other words. */
+const RTB_SERVED = "With the press stopped and locked out, replace the filter cartridge only if it is damaged [1].";
+/** RT-b served text with its condition cut out. */
+const RTB_DROPPED = "With the press stopped and locked out, replace the filter cartridge [1].";
+const BANNER_HEAD = "⚠️ **Before hands-on work.**";
+
+describe("preconditions for the #6047 source-support route tests (RT-pre)", () => {
+  const base = { question: Q_PLAIN, general: false, served: true, refused: false, evidenceSufficient: true, manualSearchRunning: null };
+  const ADVISORY = { ok: false, violation: "hazard-warning:isolation-advisory" };
+
+  it("the floors pass RTA_SERVED outright and give every other text only the isolation advisory", () => {
+    expect(validateAnswer({ ...base, answerText: RTA_SERVED })).toEqual({ ok: true });
+    for (const t of [RTA_STOP, RTB_STOP, RTB_SERVED, RTB_DROPPED]) expect(validateAnswer({ ...base, answerText: t })).toMatchObject(ADVISORY);
+  });
+
+  it("the bypass screen refuses none of them", () => {
+    for (const t of [RTA_STOP, RTA_SERVED, RTB_STOP, RTB_SERVED, RTB_DROPPED]) expect(safetyBypassAsk(t)).toBeNull();
+  });
+
+  it("each carries exactly one marker, [1], and the route fixture is one chunk, so [1] resolves", () => {
+    for (const t of [RTA_STOP, RTA_SERVED, RTB_STOP, RTB_SERVED, RTB_DROPPED]) expect([...t.matchAll(/\[(\d+)\]/g)].map((m) => m[1])).toEqual(["1"]);
+    expect(chunks).toHaveLength(1);
+  });
+
+  it("the differing words are absent where the tests need them absent, and present where they need them present", () => {
+    expect(SOURCE_TEXT.toLowerCase()).not.toContain("encoder");
+    expect(SOURCE_TEXT.toLowerCase()).toContain("ribbon cable connector for looseness");
+    expect(SOURCE_NO_RIBBON.toLowerCase()).not.toContain("ribbon");
+    expect(SOURCE_NO_RIBBON.toLowerCase()).toContain("hydraulic hose for wear");
+    expect(FILTER_TEXT.toLowerCase()).not.toContain("shift");
+    expect(FILTER_TEXT.toLowerCase()).toContain("only when damaged");
+    expect(RTB_DROPPED.toLowerCase()).not.toMatch(/only|damag|unless|when|if /);
+  });
+});
+
+describe("#6047 — every action sentence of a redraft needs support, and the page's condition is kept", () => {
+  beforeEach(() => {
+    // Pin the knobs the redraft path reads; never inherit them from the shell.
+    delete process.env.MIRA_TURN_MAX_OUTPUT_TOKENS;
+    delete process.env.NOTEBOOK_SEMANTIC_CHECK;
+    process.env.MIRA_CANONICAL_SEAM = "1";
+    process.env.NOTEBOOK_ANSWER_GATE = "1";
+  });
+
+  /** The support gate stopped it: its own code first, then one judge call, the card, zero citations, nothing stored. */
+  function expectUnsupportedStop(r: Awaited<ReturnType<typeof run>>, judgeBodies: string[], redraftBodies: string[], leaked: string[]) {
+    expect(r.outcome.semantic_redraft).toBe("stopped_unsupported");
+    expect(redraftBodies).toHaveLength(1);
+    expect(judgeBodies).toHaveLength(1);
+    expect(r.streamed).toBe(SAFETY_STOP);
+    expect(r.frames.find((f) => f.kind === "sources")?.citations ?? []).toHaveLength(0);
+    expectStopped(r);
+    const persisted = JSON.stringify(domainMock.recordTurn.mock.calls);
+    for (const w of leaked) {
+      expect(r.streamed).not.toContain(w);
+      expect(persisted).not.toContain(w);
+    }
+  }
+
+  /** Served: the second judge passed exactly the shown text, one citation, the turn answered. */
+  function expectServed(r: Awaited<ReturnType<typeof run>>, judgeBodies: string[], text: string, banner: boolean) {
+    expect(r.outcome.semantic_redraft).toBe("served");
+    expect(judgeBodies).toHaveLength(2);
+    if (banner) {
+      expect(r.streamed.startsWith(BANNER_HEAD)).toBe(true);
+      expect(r.streamed.endsWith(text)).toBe(true);
+    } else {
+      expect(r.streamed).toBe(text);
+    }
+    expect(r.frames.find((f) => f.kind === "sources")?.citations ?? []).toHaveLength(1);
+    expect(r.turn.answerText).toBe(r.streamed);
+    expect(r.meta.outcome).toBe("answered");
+  }
+
+  it("RT-a stop: an uncited repair after a supported inspection keeps SAFETY_STOP, zero citations, the judge asked once", async () => {
+    const { judgeBodies, redraftBodies } = stubFetch(RTA_STOP, [verdict("unsafe"), verdict("safe", "none")]);
+    const r = await run(Q_PLAIN);
+    expectUnsupportedStop(r, judgeBodies, redraftBodies, ["encoder coupling"]);
+  });
+
+  it("RT-a served: the uncited step the page states is served with its citation", async () => {
+    const { judgeBodies } = stubFetch(RTA_SERVED, [verdict("unsafe"), verdict("safe", "none")]);
+    const r = await run(Q_PLAIN);
+    expectServed(r, judgeBodies, RTA_SERVED, false);
+  });
+
+  it("RT-a stop: the same served text once its uncited step is cut from the excerpt", async () => {
+    ragMock.retrieveNodeChunks.mockResolvedValue([{ ...chunks[0], content: SOURCE_NO_RIBBON }] as never);
+    const { judgeBodies, redraftBodies } = stubFetch(RTA_SERVED, [verdict("unsafe"), verdict("safe", "none")]);
+    const r = await run(Q_PLAIN);
+    expectUnsupportedStop(r, judgeBodies, redraftBodies, ["ribbon cable"]);
+  });
+
+  it("RT-b stop: a cited step with the page's condition replaced keeps SAFETY_STOP, zero citations, the judge asked once", async () => {
+    ragMock.retrieveNodeChunks.mockResolvedValue([{ ...chunks[0], content: FILTER_TEXT }] as never);
+    const { judgeBodies, redraftBodies } = stubFetch(RTB_STOP, [verdict("unsafe"), verdict("safe", "none")]);
+    const r = await run(Q_PLAIN);
+    expectUnsupportedStop(r, judgeBodies, redraftBodies, ["filter cartridge", "every shift"]);
+  });
+
+  it("RT-b served: the condition kept in other words is served with the isolation banner and its citation", async () => {
+    ragMock.retrieveNodeChunks.mockResolvedValue([{ ...chunks[0], content: FILTER_TEXT }] as never);
+    const { judgeBodies } = stubFetch(RTB_SERVED, [verdict("unsafe"), verdict("safe", "none")]);
+    const r = await run(Q_PLAIN);
+    expectServed(r, judgeBodies, RTB_SERVED, true);
+  });
+
+  it("RT-b stop: the served text with its condition cut out", async () => {
+    ragMock.retrieveNodeChunks.mockResolvedValue([{ ...chunks[0], content: FILTER_TEXT }] as never);
+    const { judgeBodies, redraftBodies } = stubFetch(RTB_DROPPED, [verdict("unsafe"), verdict("safe", "none")]);
+    const r = await run(Q_PLAIN);
+    expectUnsupportedStop(r, judgeBodies, redraftBodies, ["filter cartridge"]);
+  });
+
+  describe("#6049 — a zero is exempt only as a pressure or voltage reading", () => {
+    const ZERO_DELAY = "With the press stopped and locked out, set the pre-charge delay to 0 ms [1].";
+    const DELAY_800 = "SECTION 4.3 Parameter P14 sets the pre-charge delay. Set the pre-charge delay to 800 ms.";
+    const DELAY_0 = "SECTION 4.3 Parameter P14 sets the pre-charge delay. Set the pre-charge delay to 0 ms.";
+    const RESIDUAL = "Relieve the pressure until the hose gauge reads 0 psi [1].";
+    const HOSE_PAGE = "SECTION 7.2 Inspect the hydraulic hoses for wear and abrasion every 500 hours. Torque the fittings to 25 N·m.";
+
+    it("precondition: both texts pass the floors outright, trip no bypass, and carry one resolvable [1]", () => {
+      const base = { question: Q_PLAIN, general: false, served: true, refused: false, evidenceSufficient: true, manualSearchRunning: null };
+      for (const t of [ZERO_DELAY, RESIDUAL]) {
+        expect(validateAnswer({ ...base, answerText: t })).toEqual({ ok: true });
+        expect(safetyBypassAsk(t)).toBeNull();
+        expect([...t.matchAll(/\[(\d+)\]/g)].map((m) => m[1])).toEqual(["1"]);
+      }
+      expect(DELAY_800).not.toMatch(/(?<!\d)0 ms/);
+      expect(HOSE_PAGE).not.toContain("0 psi");
+    });
+
+    it("stop: a cited zero-delay setting when the page says 800 ms", async () => {
+      ragMock.retrieveNodeChunks.mockResolvedValue([{ ...chunks[0], content: DELAY_800 }] as never);
+      const { judgeBodies, redraftBodies } = stubFetch(ZERO_DELAY, [verdict("unsafe"), verdict("safe", "none")]);
+      const r = await run(Q_PLAIN);
+      expectUnsupportedStop(r, judgeBodies, redraftBodies, ["pre-charge delay"]);
+    });
+
+    it("control: the same zero-delay setting when the page says 0 ms is served", async () => {
+      ragMock.retrieveNodeChunks.mockResolvedValue([{ ...chunks[0], content: DELAY_0 }] as never);
+      const { judgeBodies } = stubFetch(ZERO_DELAY, [verdict("unsafe"), verdict("safe", "none")]);
+      const r = await run(Q_PLAIN);
+      expectServed(r, judgeBodies, ZERO_DELAY, false);
+    });
+
+    it("control: the zero residual-pressure reading is still served", async () => {
+      ragMock.retrieveNodeChunks.mockResolvedValue([{ ...chunks[0], content: HOSE_PAGE }] as never);
+      const { judgeBodies } = stubFetch(RESIDUAL, [verdict("unsafe"), verdict("safe", "none")]);
+      const r = await run(Q_PLAIN);
+      expectServed(r, judgeBodies, RESIDUAL, false);
+    });
+  });
+});
+
 describe("#6019 — a Stop after the redraft's judge and before the commit point keeps the stop", () => {
   /** Holds the cited-page read open until released; `entered` resolves when the route reaches it. */
   function holdCitedPageRead() {
