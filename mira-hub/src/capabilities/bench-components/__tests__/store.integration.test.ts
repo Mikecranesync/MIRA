@@ -31,13 +31,13 @@ import {
   reviseComponent,
   setSelection,
   stampTurnComponent,
+  turnsAskedUnderComponent,
 } from "../store";
 import { readRevisionInput, type ComponentRevisionInput } from "../validate";
 import { readSubjectUnderSelection } from "../selection";
 import { SEED_USER, runSeed, seedInputs, type InventoryRow } from "../seed";
 import { SAME_SERIAL_SQL, sameSerialAdvisory } from "../same-serial";
 import { withTenantContext } from "@/lib/tenant-context";
-import { listTurns } from "@/lib/equipment-notebooks";
 
 const MIGRATION = path.resolve(__dirname, "../../../../db/migrations/115_bench_components.sql");
 const USER = "user-tech-1";
@@ -345,12 +345,19 @@ run("bench component store (real Postgres, RLS)", () => {
     expect(readSubjectUnderSelection(turns, 6, selection!).questions).toEqual([]);
     // Control: under the first pick (before the Return) the same stamped turn does carry.
     expect(readSubjectUnderSelection(turns, 6, sel.selection).questions).toEqual(["what about the GS13N-20P2, same thing?"]);
-    // The notebook's history read carries the same stamp, so the detail route can tell this turn
-    // from a whole-machine one even without an attribution entry (#5746 r5 F1); an unstamped
-    // turn reads null.
+    // The send wait reads the same stamp by turn id, so the detail route can tell this turn from a
+    // whole-machine one even without an attribution entry (#5746 r5 F1). An unstamped turn is not
+    // returned, and another tenant reads nothing.
     const whole = await turn(tenantA, notebookA, "what is the rated current of the GS11N-20P2?", thread);
-    const history = await listTurns(tenantA, notebookA, 50, { viewerUserId: USER });
-    expect([t1, whole].map((r) => history.find((h) => h.clientRequestId === r)?.componentId)).toEqual([cid, null]);
+    const rowIds = (await testPool.query(
+      `SELECT id::text AS id FROM equipment_notebook_turns WHERE client_request_id = ANY($1::uuid[]) ORDER BY created_at, id`,
+      [[t1, whole]],
+    )).rows.map((r: { id: string }) => r.id);
+    const stampedRow = withAnswers[0]!.id;
+    expect(rowIds).toHaveLength(2);
+    expect(rowIds).toContain(stampedRow);
+    expect(await turnsAskedUnderComponent(tenantA, notebookA, rowIds)).toEqual(new Set([stampedRow]));
+    expect(await turnsAskedUnderComponent(tenantB, notebookA, rowIds)).toEqual(new Set());
   });
 
   it("an identity correction re-points the selection at the new revision and moves the boundary", async () => {

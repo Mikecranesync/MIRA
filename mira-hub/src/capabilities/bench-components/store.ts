@@ -497,6 +497,29 @@ export async function stampTurnComponent(
 }
 
 /**
+ * #5746 r5 F1: which of these turns were asked under a bench component (the
+ * turn's component stamp). A safety stop or an off-topic reply asked under a
+ * component saves the stamp and no attribution entry. The ids come from a read
+ * that already applied the viewer's visibility; this returns a subset of them,
+ * within this tenant and notebook.
+ */
+export async function turnsAskedUnderComponent(
+  tenantId: string,
+  notebookId: string,
+  turnIds: readonly string[],
+): Promise<Set<string>> {
+  if (turnIds.length === 0) return new Set();
+  return withTenantContext(tenantId, async (c) => {
+    const res = await c.query(
+      `SELECT id::text AS id FROM equipment_notebook_turns
+        WHERE tenant_id = $1::uuid AND notebook_id = $2::uuid AND id = ANY($3::uuid[]) AND component_id IS NOT NULL`,
+      [tenantId, notebookId, [...new Set(turnIds)]],
+    );
+    return new Set(res.rows.map((r: { id: unknown }) => String(r.id)));
+  });
+}
+
+/**
  * The newest `limit` completed turns of one technician's conversation, OLDEST
  * FIRST, with the component each was asked under — the read the selection
  * carry and the selection history need (selection.ts readSubjectUnderSelection,

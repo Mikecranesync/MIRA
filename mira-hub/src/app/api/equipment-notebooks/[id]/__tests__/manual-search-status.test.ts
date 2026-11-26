@@ -29,6 +29,10 @@ vi.mock("@/capabilities/notebook-manual-acquisition", async (importOriginal) => 
   threadStatusScope: (await importOriginal<typeof import("@/capabilities/notebook-manual-acquisition")>()).threadStatusScope,
 }));
 
+// #5746 r5 F1: the component stamp is read only for the send wait. Default: no turn is stamped.
+const turnsAskedUnderComponent = vi.hoisted(() => vi.fn());
+vi.mock("@/capabilities/bench-components/store", () => ({ turnsAskedUnderComponent }));
+
 import { GET } from "../route";
 import { sessionOr401 } from "@/lib/session";
 import { getNotebook, listSources, listTurns } from "@/lib/equipment-notebooks";
@@ -55,6 +59,7 @@ beforeEach(() => {
   vi.mocked(listSources).mockResolvedValue([] as never);
   vi.mocked(listTurns).mockResolvedValue([] as never);
   currentManualSearchStatus.mockResolvedValue(null);
+  turnsAskedUnderComponent.mockImplementation(async () => new Set<string>());
 });
 
 describe("GET /api/equipment-notebooks/[id] — manualSearch (T2 #4189)", () => {
@@ -397,13 +402,42 @@ describe("GET /api/equipment-notebooks/[id] — manualSearch (T2 #4189)", () => 
 
         // A safety stop or an off-topic reply asked under the component saves no attribution
         // entry; the turn's component stamp (migration 115) still says where it was asked.
+        const STOP = { id: "t-stop", question: "Can I work on the energized AutomationDirect GS11N-20P25?", evidence: [] };
+        const stampStop = () => turnsAskedUnderComponent.mockImplementation(async (_t: string, _n: string, ids: string[]) =>
+          new Set(ids.filter((i) => i === STOP.id)));
+
         it("sends the lookup when a stop asked under the component names its model, with only the stamp", async () => {
           currentManualSearchStatus.mockResolvedValue(PREPARING);
-          read([{ id: "t-stop", question: "Can I work on the energized AutomationDirect GS11N-20P25?", evidence: [], componentId: "c-p25" }]);
+          stampStop();
+          read([ask("What is the rated current?"), STOP]);
           const body = await (await GET(threadReq, params)).json();
           expect(body.manualSearch).toBeNull();
           expect(body.manualSearchScope).toBe("other_model");
           expect(body.wholeMachineManualSearch).toEqual(GATE);
+          expect(turnsAskedUnderComponent).toHaveBeenCalledWith(TENANT, NB, ["t", "t-stop"]);
+        });
+
+        it("sends the lookup when a stop with only the stamp lies past the newest 50", async () => {
+          currentManualSearchStatus.mockResolvedValue(PREPARING);
+          stampStop();
+          read([ask("Find me the manual for AutomationDirect GS11N-20P2"), STOP, ...keypad(51)]);
+          const body = await (await GET(threadReq, params)).json();
+          expect(body.manualSearchScope).toBe("other_model");
+          expect(body.wholeMachineManualSearch).toEqual(GATE);
+          // Precondition: the stop is not among the newest 50, so only the further read finds it.
+          expect(turnsAskedUnderComponent.mock.calls.map((c) => (c[2] as string[]).includes(STOP.id))).toEqual([false, true]);
+        });
+
+        it("sends nothing, and still returns the page, when the stamp read fails", async () => {
+          currentManualSearchStatus.mockResolvedValue(PREPARING);
+          turnsAskedUnderComponent.mockRejectedValue(new Error("statement timeout"));
+          read([underSibling(SIBLING_QUESTION)]);
+          const res = await GET(threadReq, params);
+          expect(res.status).toBe(200);
+          const body = await res.json();
+          expect(body.manualSearch).toBeNull();
+          expect(body.manualSearchScope).toBe("other_model");
+          expect(body).not.toHaveProperty("wholeMachineManualSearch");
         });
 
         // The detail response is what the Hub's send wait reads: composed with its real reader,
@@ -458,6 +492,7 @@ describe("GET /api/equipment-notebooks/[id] — manualSearch (T2 #4189)", () => 
           expect(body.manualSearch).toEqual(PREPARING);
           expect(body).not.toHaveProperty("wholeMachineManualSearch");
           expect(vi.mocked(listTurns)).toHaveBeenCalledTimes(1);
+          expect(turnsAskedUnderComponent).not.toHaveBeenCalled();
         });
       });
     });

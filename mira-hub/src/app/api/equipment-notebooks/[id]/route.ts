@@ -25,6 +25,7 @@ import {
 import { confirmedCatalogNumber } from "@/capabilities/notebook-manual-identity";
 import { DOCUMENT_BASES, SUBJECT_READ_STEPS } from "@/capabilities/conversation-subject";
 import { isComponentAttributionEntry } from "@/capabilities/bench-components/attribution";
+import { turnsAskedUnderComponent } from "@/capabilities/bench-components/store";
 
 export const dynamic = "force-dynamic";
 
@@ -50,14 +51,15 @@ function sendWaitStatus(status: ManualSearchStatus): ManualSearchStatus {
 /**
  * #5746 r5 F1: the questions that decide, for the send wait, whether the thread moved to another
  * model. One asked under a selected bench component is about that component (#5750 r3 F13), even
- * when it names the component's own model, so it never decides that. The turn's component stamp
- * covers every turn asked under a selection; the saved attribution entry only the paths that
- * stream a component frame, so a safety stop or an off-topic reply carries the stamp alone.
+ * when it names the component's own model, so it never decides that. The saved attribution entry
+ * marks only the paths that stream a component frame; a safety stop or an off-topic reply carries
+ * the turn's component stamp alone (`stamped`).
  */
 function wholeMachineQuestions(
-  rows: readonly { question: string; evidence?: readonly unknown[] | null; componentId?: string | null }[],
+  rows: readonly { id: string; question: string; evidence?: readonly unknown[] | null }[],
+  stamped: ReadonlySet<string>,
 ): string[] {
-  return rows.filter((t) => !t.componentId && !(t.evidence ?? []).some(isComponentAttributionEntry)).map((t) => t.question);
+  return rows.filter((t) => !stamped.has(t.id) && !(t.evidence ?? []).some(isComponentAttributionEntry)).map((t) => t.question);
 }
 
 function requestSearchParams(req: NextRequest): URLSearchParams {
@@ -189,11 +191,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     // trusting that the thread never named another model. Still nothing past
     // that bound: the subject is out of reach. The wider read runs at most once.
     let wider: Promise<typeof turns> | undefined;
-    const scopeOf = async (questionsOf: (rows: typeof turns) => string[]) => {
-      const scope = threadStatusScope(questionsOf(turns), machine);
+    const scopeOf = async (questionsOf: (rows: typeof turns) => string[] | Promise<string[]>) => {
+      const scope = threadStatusScope(await questionsOf(turns), machine);
       if (scope !== "undecided" || turns.length < TURN_WINDOW) return scope;
       const rows = await (wider ??= listTurns(ctx.tenantId, id, WIDEST_SUBJECT_READ, { viewerUserId: ctx.userId, threadId }));
-      const widest = threadStatusScope(questionsOf(rows), machine);
+      const widest = threadStatusScope(await questionsOf(rows), machine);
       return widest === "undecided" && rows.length >= WIDEST_SUBJECT_READ ? "out_of_reach" : widest;
     };
     // A failed wider read is inconclusive (r2 F9): the status is withheld
@@ -218,10 +220,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     // read sends nothing.
     if (manualSearch && manualSearchScope === "other_model") {
       try {
-        const scope = await scopeOf(wholeMachineQuestions);
+        const scope = await scopeOf(async (rows) => wholeMachineQuestions(rows, await turnsAskedUnderComponent(ctx.tenantId, id, rows.map((t) => t.id))));
         if (scope !== "other" && scope !== "out_of_reach") wholeMachineManualSearch = sendWaitStatus(manualSearch);
       } catch (err) {
-        console.error("[equipment-notebooks] wider thread read failed (the send wait gets no lookup):", err);
+        console.error("[equipment-notebooks] send-wait subject read failed (the send wait gets no lookup):", err);
       }
     }
     if (manualSearchScope) manualSearch = null;

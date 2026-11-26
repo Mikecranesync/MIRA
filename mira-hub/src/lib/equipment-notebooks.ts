@@ -1896,9 +1896,6 @@ export async function listTurns(
      *  the persisted row by this id — question text cannot tell two clients
      *  asking the same thing apart. */
     clientRequestId: string | null;
-    /** #5746 r5 F1: the bench component this turn was asked under (115), stamped on every
-     *  turn asked under a selection, refusals and safety stops included; null otherwise. */
-    componentId: string | null;
   }[]
 > {
   const viewer = (opts.viewerUserId ?? "").trim() || null;
@@ -1930,10 +1927,10 @@ export async function listTurns(
           AND n.equipment_entity_id IS NOT DISTINCT FROM $${equipmentParam}::text
           AND (n.equipment_entity_id IS NULL OR n.asset_confirmed_at IS NOT NULL))`;
     const res = await c.query(
-      `SELECT id, thread_id, question, answer_status, answer_text, evidence, basis, created_at, owner_user_id, client_request_id, equipment_entity_id, component_id
+      `SELECT id, thread_id, question, answer_status, answer_text, evidence, basis, created_at, owner_user_id, client_request_id, equipment_entity_id
          FROM (
            SELECT id::text AS id, thread_id, question, answer_status, answer_text, evidence, basis, created_at, owner_user_id,
-                  client_request_id::text AS client_request_id, equipment_entity_id, component_id::text AS component_id
+                  client_request_id::text AS client_request_id, equipment_entity_id
             FROM equipment_notebook_turns
             WHERE tenant_id = $1::uuid AND notebook_id = $2::uuid
               AND client_request_state = 'complete'
@@ -1959,7 +1956,6 @@ export async function listTurns(
       ownerUserId: r.owner_user_id == null ? null : String(r.owner_user_id),
       sharedLegacy: r.owner_user_id == null,
       clientRequestId: r.client_request_id == null ? null : String(r.client_request_id),
-      componentId: r.component_id == null ? null : String(r.component_id),
     }));
   });
 
