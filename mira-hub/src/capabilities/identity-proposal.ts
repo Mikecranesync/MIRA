@@ -172,6 +172,26 @@ function isVariantCode(t: string | undefined): t is string {
  * number is not given to that maker (cheap review r7 on #5387).
  */
 const RANGE_WORDS: ReadonlyMap<string, RegExp> = new Map([["TESYS", /schneider/i]]);
+
+/**
+ * Machine names that are shaped like a fault code (one letter + 2–4 digits,
+ * FAULT_CODE_RE), each with its own maker: "Siemens G120" is a SINAMICS drive,
+ * while "F004" is a fault (#4095 gap 2, staging probe 2026-11-25). Closed list,
+ * like SERIES_WORDS: FAULT_CODE_RE stays the rule everywhere else, so a typed
+ * fault code never proposes a machine. A listed name is read as a model ONLY
+ * directly after its own maker's name, exactly as written in capitals, and only
+ * on the reading that runs the second-machine checks. "Siemens SINAMICS G120"
+ * still gets no proposal: namesAnotherProductLine rejects every series name on
+ * that reading, and loosening it is a separate change.
+ */
+const FAULT_SHAPED_MODELS: ReadonlyMap<string, RegExp> = new Map([["G120", /siemens/i]]);
+
+/** The listed fault-shaped model that is `tokens[0]`, when it belongs to `manufacturer`, or null. */
+function faultShapedModelAt(tokens: string[], manufacturer: string): string | null {
+  const t = tokens[0];
+  if (!t || !FAULT_SHAPED_MODELS.has(t)) return null;
+  return FAULT_SHAPED_MODELS.get(t)!.test(manufacturer) ? t : null;
+}
 const RANGE_MEMBER_RE = /^[A-Z]$/;
 
 /**
@@ -260,7 +280,11 @@ export function modelAfterManufacturer(message: string, manufacturer: string, ra
     // always bound to the manufacturer named before it (Codex #4120 F1).
     const parsed = resolveModelFromObservationText(tokens.join(" "));
     if (parsed.ambiguous) continue;
-    const span = withSeriesPrefix(parsed.model, tokens) ?? parsed.model ?? modelSpanAt(wide, rangeNames ? manufacturer : null);
+    const span =
+      withSeriesPrefix(parsed.model, tokens) ??
+      parsed.model ??
+      modelSpanAt(wide, rangeNames ? manufacturer : null) ??
+      (rangeNames ? faultShapedModelAt(wide, manufacturer) : null);
     if (span) return span;
   }
   return null;
@@ -395,6 +419,13 @@ function modelMentions(message: string, chosenModel: string): string[] {
     // still counts against the proposal (Codex #4120 r8 F12). This scan can
     // only REMOVE a proposal, never create one, so the looser reading is safe.
     if (isModelToken(t) || (t.length >= 3 && isModelToken(t.toUpperCase()))) {
+      out.push(t);
+      continue;
+    }
+    // A listed fault-shaped machine name ("G120") is a machine mention too, in
+    // any case: "Siemens G120C or g120" names two drives. This scan can only
+    // REMOVE a proposal.
+    if (FAULT_SHAPED_MODELS.has(t.toUpperCase())) {
       out.push(t);
       continue;
     }
