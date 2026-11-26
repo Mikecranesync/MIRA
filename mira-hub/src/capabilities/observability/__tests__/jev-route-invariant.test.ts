@@ -25,7 +25,6 @@ const linesOf = (re: RegExp) =>
 
 describe("the Jev shadow cannot reach the delivery path", () => {
   const assigns = linesOf(/decisionState = buildTurnDecisionState/);
-  const closes = linesOf(/controller\.close\(\)/);
   const persists = linesOf(/await finishAndPersist\(/);
 
   it("assigns decisionState in exactly one place", () => {
@@ -33,15 +32,16 @@ describe("the Jev shadow cannot reach the delivery path", () => {
     expect(assigns).toHaveLength(1);
   });
 
-  it("every call site downstream of that assignment is preceded by a stream close", () => {
-    const assign = assigns[0];
-    const downstream = persists.filter((p) => p > assign);
-    expect(downstream.length).toBeGreaterThan(0);
-    for (const p of downstream) {
-      const closedBefore = closes.some((c) => c < p);
-      expect(closedBefore, `finishAndPersist at line ${p} has no controller.close() before it`).toBe(true);
-    }
-  });
+  // The other half of the invariant (every call site DOWNSTREAM of that assignment runs
+  // only once the stream is terminal) is no longer pinned here. The source check that did
+  // it went dead with #6048: the final call became `settling ??= finishAndPersist(`, which
+  // its `await finishAndPersist(` pattern does not match, and "a close somewhere above"
+  // was met by any `controller.close()` earlier in the file. It is pinned by behaviour
+  // instead, one test per downstream call site, in
+  // src/capabilities/__tests__/semantic-redraft.route.test.ts:
+  //  - delivered turn: "control (behavioural form of the jev-route-invariant pin) ..."
+  //  - delivery failed after the commit: "R1-D1: delivery throws after the commit ..."
+  //  - the history write failed: "R1-D1: the history write fails on a request with an id ..."
 
   it("the early call sites are upstream of the assignment, so they pass null", () => {
     const assign = assigns[0];
