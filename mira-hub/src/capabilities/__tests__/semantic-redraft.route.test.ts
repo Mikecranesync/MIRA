@@ -1489,6 +1489,8 @@ describe("R2-C4 — a cached count is known only when its own prompt count is kn
     const r = await run(Q_PLAIN);
     expect(r.outcome.semantic_redraft).toBe("served");
     expect([r.usage.inputTokens, r.usage.cachedInputTokens]).toEqual([12 + 50, 50]);
+    // knownUsage applies the same boundary: the served attempt's usage is known.
+    expect(r.gen.attempts.some((a) => "usage_unknown" in a)).toBe(false);
   });
 
   it("(a) a billed empty attempt whose cached count exceeds its prompt is USAGE_UNKNOWN, matching the NULL cached total", async () => {
