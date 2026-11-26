@@ -943,3 +943,96 @@ describe("grounded pass-through (regression)", () => {
     expect(lastTurn().answerText).toContain("below 200 C");
   });
 });
+
+// #6016 / #5962 — permanent cross-context coverage of the clause-scoped hazard
+// floor through the REAL POST handler and the REAL validator (no mocked
+// detector): the same unsafe/safe answers behave identically in a grounded
+// context (bound TS-440 + OEM chunks) and the general context (mode=general,
+// no bound equipment, no selected sources), across question shapes, and the
+// released/persisted text, status and basis contracts hold for each.
+describe("#6016 cross-context hazard-warning contract (real POST + real validator)", () => {
+  beforeEach(() => {
+    process.env.NOTEBOOK_SEMANTIC_CHECK = "0";
+  });
+  const questions = [
+    "What does the service guide recommend?",
+    "Explain the E-12 fault.",
+    "Which inspection step comes next?",
+    "How should routine maintenance be planned?",
+  ];
+  const LONG_LEAD =
+    "For plant use, none of these should replace OEM manuals, lockout/tagout, a qualified electrician, site safety procedures, NFPA 70E, the PPE, manufacturer procedures";
+  const cases: ReadonlyArray<readonly [string, boolean]> = [
+    // original #5962 shapes + the issue's sibling cases
+    ["Do not replace the fuse, measure the DC bus with the drive powered.", true],
+    ["Reset the fault live now.", true],
+    ["No tool replaces lockout/tagout, bypass the E-stop.", true],
+    ["For plant use, none of these should replace lockout/tagout, jumper the safety interlock.", true],
+    ["Never bypass the E-stop.", false],
+    ["Do not recommend bypassing an interlock, forcing an output, changing safety configuration, or treating an earlier green indication as a release authorization.", false],
+    // native review round 1 (F1–F4)
+    ["Do not touch the heatsink and you should reset the fault live.", true],
+    ["Do not touch the heatsink, or you should reset the fault live.", true],
+    ["Reset F005 live now.", true],
+    ["If an operator attempts to bypass the interlock, stop the line, then bypass the E-stop.", true],
+    ["If an operator attempts to bypass the interlock, stop the line.", false],
+    ["Stop the line if an operator attempts to bypass the interlock.", false],
+    ["Do not bypass, disable, or override the interlock.", false],
+    ["Do not bypass the guard or disable the interlock.", false],
+    ["Open the HMI live telemetry view.", false],
+    ["Test the sensor live waveform on the HMI.", false],
+  ];
+  const contexts = [
+    { name: "grounded", general: false },
+    { name: "general", general: true },
+  ] as const;
+
+  async function run(general: boolean, question: string, text: string) {
+    domainMock.getNotebook.mockResolvedValue(
+      (general
+        ? { id: NB, displayName: "General", manufacturer: null, model: null }
+        : { id: NB, displayName: "TS440", manufacturer: "Norvell", model: "ThermoSeal TS-440" }) as never,
+    );
+    ragMock.retrieveNodeChunks.mockResolvedValue((general ? [] : groundedChunks) as never);
+    domainMock.validateChatSources.mockResolvedValue({ ok: true, docIds: general ? [] : [DOC_A], nodeId: "n1" } as never);
+    vi.stubGlobal("fetch", vi.fn(async () => completingProvider(text + (general ? "" : " [1]"))));
+    const res = await POST(
+      chatReq({ message: question, sourceDocIds: general ? [] : [DOC_A], mode: general ? "general" : undefined }),
+      params,
+    );
+    expect(res.status).toBe(200);
+    const frames = parseFrames(await res.text());
+    await vi.waitFor(() => expect(domainMock.recordTurn).toHaveBeenCalled());
+    return { frames, released: contentOf(frames), turn: lastTurn() };
+  }
+
+  for (const { name, general } of contexts) {
+    for (const question of questions) {
+      for (const [text, warn] of cases) {
+        it(`${name} / ${question} / ${warn ? "WARNS" : "clean"}: ${text}`, async () => {
+          const { frames, released, turn } = await run(general, question, text);
+          expect(released).toContain(text); // the answer is never withheld
+          expect(released.includes("Safety flag on a step below")).toBe(warn);
+          expect(frames.find((f) => f.kind === "status")).toMatchObject({ status: "answered" });
+          expect(frames.find((f) => f.kind === "safety")).toBeUndefined(); // flag, not stop
+          expect(frames.find((f) => f.kind === "evidence" && "basis" in f)).toMatchObject({
+            basis: general ? "general_reasoning" : "oem_documentation",
+          });
+          expect(turn.answerText).toContain(text);
+          expect(turn.answerText?.includes("Safety flag on a step below")).toBe(warn);
+          expect(turn.basis).toBe(general ? "general_reasoning" : "oem_documentation");
+        });
+      }
+      it(`${name} / ${question} / the warning line quotes the UNSAFE sibling, not the long disclaimer`, async () => {
+        const text = `${LONG_LEAD}, bypass the guard interlock.`;
+        const { released, turn } = await run(general, question, text);
+        const flagLine = released.split("\n\n")[0];
+        expect(flagLine).toContain("Safety flag on a step below");
+        expect(flagLine).toContain("bypass the guard interlock");
+        expect(flagLine).not.toContain("qualified electrician");
+        expect(released).toContain(text); // answer intact underneath
+        expect(turn.answerText).toContain(text);
+      });
+    }
+  }
+});
