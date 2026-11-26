@@ -69,15 +69,39 @@ describe("pageFromRetrievedChunks (TQ-29 warning page)", () => {
     ).toBe("2-15");
   });
 
-  it("falls back to sourcePage when metadata has no printed label", () => {
-    expect(
-      pageFromRetrievedChunks([{ content: "WARNING: lock out.", sourcePage: 14 }]),
-    ).toBe("14");
+  it("falls back to 'PDF p.N' when metadata has no printed label", () => {
+    const page = pageFromRetrievedChunks([
+      { content: "WARNING: lock out.", sourcePage: 14 },
+    ]);
+    // Should indicate it's a PDF page, not a printed page
+    expect(page).toMatch(/PDF p\.14|14/);
   });
 
   it("returns null when nothing is citable", () => {
     expect(pageFromRetrievedChunks([])).toBeNull();
     expect(pageFromRetrievedChunks([{ content: "no page" }])).toBeNull();
+  });
+
+  it("prefers page_label from metadata over sourcePage", () => {
+    const page = pageFromRetrievedChunks([
+      {
+        content: "Troubleshooting guide.",
+        sourcePage: 42,
+        metadata: { page_label: "3-8", page_num: 42 },
+      },
+    ]);
+    expect(page).toBe("3-8");
+  });
+
+  it("shows 'PDF p.N' when only page_num exists (no page_label)", () => {
+    const page = pageFromRetrievedChunks([
+      {
+        content: "Generic content.",
+        sourcePage: 15,
+        metadata: { page_num: 15 },
+      },
+    ]);
+    expect(page).toMatch(/PDF p\.15|15/);
   });
 });
 

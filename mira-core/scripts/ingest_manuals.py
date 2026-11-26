@@ -88,6 +88,7 @@ from db.neon import (  # noqa: E402
     mark_source_fingerprint_done,
 )
 from ingest.chunker import chunk_blocks  # noqa: E402
+from pdf_page_labels import extract_page_labels  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Text extraction
@@ -324,6 +325,16 @@ def process_url(record: dict) -> int:
         log.warning("[SKIP] %s — download failed: %s", url, exc)
         return 0
 
+    # Extract PDF page labels for citation accuracy
+    page_labels: dict[int, str] = {}
+    if source_type == "pdf" or resp.headers.get("content-type", "").startswith("application/pdf"):
+        try:
+            page_labels = extract_page_labels(data)
+            if page_labels:
+                log.info("Extracted page labels for %d pages from %s", len(page_labels), url)
+        except Exception as exc:
+            log.warning("Failed to extract page labels from %s: %s", url, exc)
+
     # Extract — Docling primary, pdfplumber fallback for PDFs
     used_docling = False
     if source_type == "pdf" or resp.headers.get("content-type", "").startswith("application/pdf"):
@@ -376,10 +387,17 @@ def process_url(record: dict) -> int:
         if embedding is None:
             continue
 
+        page_num = chunk.get("page_num")
+        # Get printed page label if available (0-indexed page → label)
+        page_label = None
+        if page_num is not None and page_num > 0:
+            page_label = page_labels.get(page_num - 1)  # Convert 1-indexed to 0-indexed
+
         meta = {
             "source_url": url,
             "chunk_index": chunk_idx,
-            "page_num": chunk.get("page_num"),
+            "page_num": page_num,
+            "page_label": page_label,
             "section": chunk.get("section", ""),
             "chunk_type": chunk.get("chunk_type", "text"),
         }
@@ -395,7 +413,7 @@ def process_url(record: dict) -> int:
                 "source_url": url,
                 # Real PDF page or NULL — never the chunk ordinal (#2968). The
                 # ordinal stays in metadata.chunk_index for dedup only.
-                "source_page": chunk.get("page_num"),
+                "source_page": page_num,
                 "metadata": json.dumps(meta),
                 "chunk_type": chunk.get("chunk_type", "text"),
             }
@@ -460,6 +478,15 @@ def process_local_pdf(pdf_path: str) -> int:
 
     data = path.read_bytes()
 
+    # Extract PDF page labels for citation accuracy
+    page_labels: dict[int, str] = {}
+    try:
+        page_labels = extract_page_labels(data)
+        if page_labels:
+            log.info("Extracted page labels for %d pages from %s", len(page_labels), filename)
+    except Exception as exc:
+        log.warning("Failed to extract page labels from %s: %s", filename, exc)
+
     used_docling = False
     if _docling is not None:
         blocks = _docling.extract_from_pdf(data)
@@ -506,10 +533,17 @@ def process_local_pdf(pdf_path: str) -> int:
         if embedding is None:
             continue
 
+        page_num = chunk.get("page_num")
+        # Get printed page label if available (0-indexed page → label)
+        page_label = None
+        if page_num is not None and page_num > 0:
+            page_label = page_labels.get(page_num - 1)  # Convert 1-indexed to 0-indexed
+
         meta = {
             "source_url": filename,
             "chunk_index": chunk_idx,
-            "page_num": chunk.get("page_num"),
+            "page_num": page_num,
+            "page_label": page_label,
             "section": chunk.get("section", ""),
             "chunk_type": chunk.get("chunk_type", "text"),
         }
@@ -525,7 +559,7 @@ def process_local_pdf(pdf_path: str) -> int:
                 "source_url": filename,
                 # Real PDF page or NULL — never the chunk ordinal (#2968). The
                 # ordinal stays in metadata.chunk_index for dedup only.
-                "source_page": chunk.get("page_num"),
+                "source_page": page_num,
                 "metadata": json.dumps(meta),
                 "chunk_type": chunk.get("chunk_type", "text"),
             }

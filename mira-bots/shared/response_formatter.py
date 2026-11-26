@@ -297,13 +297,19 @@ def _format_citation_label(c: dict) -> str:
     mdl = (c.get("model_number") or "").strip()
     section = (c.get("section") or "").strip()
     src_url = (c.get("source_url") or "").strip()
-    # Pull page_num from the top-level field (set by rag_worker._build_kb_status)
-    # and fall back to metadata for callers that haven't flattened it yet.
+    
+    # Prefer page_label (printed page) over page_num (PDF index)
+    # Pull from top-level field or metadata
+    page_label = c.get("page_label")
     page_num = c.get("page_num")
-    if page_num is None:
+    
+    if page_label is None or page_num is None:
         meta = c.get("metadata")
         if isinstance(meta, dict):
-            page_num = meta.get("page_num")
+            if page_label is None:
+                page_label = meta.get("page_label")
+            if page_num is None:
+                page_num = meta.get("page_num")
 
     label = ""
     if mdl:
@@ -332,8 +338,12 @@ def _format_citation_label(c: dict) -> str:
 
     if section:
         label = f"{label} — {section}"
-    if isinstance(page_num, int) and page_num > 0:
-        label = f"{label}, p. {page_num}"
+    # Format page citation: prefer printed label, fall back to PDF page
+    if page_label and isinstance(page_label, str):
+        label = f"{label}, p. {page_label}"
+    elif isinstance(page_num, int) and page_num > 0:
+        # Fallback: show PDF page (1-indexed)
+        label = f"{label}, PDF p. {page_num}"
     return label
 
 

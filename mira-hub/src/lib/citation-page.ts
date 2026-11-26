@@ -51,18 +51,31 @@ export type RetrievedPageChunk = {
   content?: string;
   pageLabel?: string | null;
   sourcePage?: number | null;
+  metadata?: { page_label?: string; page_num?: number } | null;
 };
 
 function labelOf(chunk: RetrievedPageChunk): string | null {
+  // 1. Try chunk.pageLabel (flattened field)
   const fromMeta = citationPageLabel(chunk.pageLabel);
   if (fromMeta) return fromMeta;
-  if (
-    typeof chunk.sourcePage === "number" &&
-    Number.isFinite(chunk.sourcePage) &&
-    chunk.sourcePage > 0
-  ) {
-    return String(chunk.sourcePage);
+  
+  // 2. Try metadata.page_label (printed page from PDF labels)
+  if (chunk.metadata?.page_label) {
+    const printedLabel = citationPageLabel(chunk.metadata.page_label);
+    if (printedLabel) return printedLabel;
   }
+  
+  // 3. Fall back to sourcePage or metadata.page_num (PDF page index)
+  const pageNum = chunk.sourcePage ?? chunk.metadata?.page_num;
+  if (
+    typeof pageNum === "number" &&
+    Number.isFinite(pageNum) &&
+    pageNum > 0
+  ) {
+    // Indicate this is a PDF page, not a printed page
+    return `PDF p.${pageNum}`;
+  }
+  
   return null;
 }
 
