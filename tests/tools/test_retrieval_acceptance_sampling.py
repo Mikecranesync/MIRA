@@ -128,6 +128,8 @@ def test_an_unsampled_turn_that_still_sends_a_trace_frame_fails():
 # otherwise an answered turn still needs integer counts.
 
 USAGE_UNKNOWN = "exception"
+# Draft 1's attempt on a turn whose redraft replaced it and was served (R1-C6): one served attempt.
+DRAFT1_REPLACED = "generated_not_served"
 
 
 def _answered_redraft_turn(attempts, input_tokens, output_tokens):
@@ -146,7 +148,7 @@ def _failed(row):
 def test_null_totals_pass_when_the_packet_shows_a_billed_attempt_with_unknown_usage():
     d, w = _answered_redraft_turn(
         [
-            {"provider": "OpenAI", "outcome": "served"},
+            {"provider": "OpenAI", "outcome": DRAFT1_REPLACED},
             {"provider": "OpenAI", "outcome": USAGE_UNKNOWN, "redraft": True},
             {"provider": "Groq", "outcome": "served", "redraft": True},
         ],
@@ -161,7 +163,7 @@ def test_null_totals_pass_when_the_packet_shows_a_billed_attempt_with_unknown_us
 def test_control_null_totals_fail_when_no_attempt_has_unknown_usage():
     d, w = _answered_redraft_turn(
         [
-            {"provider": "OpenAI", "outcome": "served"},
+            {"provider": "OpenAI", "outcome": DRAFT1_REPLACED},
             {"provider": "Groq", "outcome": "served", "redraft": True},
         ],
         None,
@@ -173,7 +175,7 @@ def test_control_null_totals_fail_when_no_attempt_has_unknown_usage():
 def test_control_null_totals_fail_when_the_only_failed_attempt_was_an_unbilled_rejection():
     d, w = _answered_redraft_turn(
         [
-            {"provider": "OpenAI", "outcome": "served"},
+            {"provider": "OpenAI", "outcome": DRAFT1_REPLACED},
             {"provider": "OpenAI", "outcome": "http_error", "redraft": True},
             {"provider": "Groq", "outcome": "served", "redraft": True},
         ],
@@ -214,3 +216,18 @@ def test_control_a_non_integer_total_fails_even_with_an_unknown_usage_attempt():
         "27",
     )
     assert _failed(_run(TRACE, d, w)) == ["token usage recorded"]
+
+
+def test_one_null_total_passes_when_the_packet_shows_a_billed_attempt_with_unknown_usage():
+    # The route's shape for a malformed output count on a billed redraft attempt
+    # (semantic-redraft.route.test.ts, M2): input known, output unknown.
+    d, w = _answered_redraft_turn(
+        [
+            {"provider": "OpenAI", "outcome": DRAFT1_REPLACED},
+            {"provider": "OpenAI", "outcome": USAGE_UNKNOWN, "redraft": True},
+            {"provider": "Groq", "outcome": "served", "redraft": True},
+        ],
+        112,
+        None,
+    )
+    assert _failed(_run(TRACE, d, w)) == []
