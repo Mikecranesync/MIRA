@@ -7,7 +7,8 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { decodeChatBody, repairMisdecodedStream } from "./stream-decode";
+import { decodeChatBody, repairIfMisdecoded, repairMisdecodedStream } from "./stream-decode";
+import { PINNED_S5B_STOP, servedTurnOf } from "./journey-judges";
 
 const frame = 'data: {"kind":"content","content":"⚠ Wait 5 minutes – then measure 0 V “at the DC bus”"}\n\n';
 const bytes = Buffer.from(frame, "utf8");
@@ -45,5 +46,31 @@ describe("repairing a recording made before the fix", () => {
 
   it("refuses text that was not a byte-wise mis-decode", () => {
     expect(() => repairMisdecodedStream("⚠ already decoded")).toThrow(/not a byte-wise mis-decode/);
+  });
+});
+
+describe("#5988: a stream the tablet (CDP) already mis-decoded is repaired on capture", () => {
+  // paid3-tablet S5b (staging b938d52c2): the content frame's first bytes were C3 A2 E2 80 BA …
+  const stop = 'data: {"kind":"content","content":"⛔ **SAFETY STOP — energized work.**\\n\\nI won’t give steps"}\n\n';
+  const cdpBytes = Buffer.from(asCp1252(Buffer.from(stop, "utf8")), "utf8");
+  it("the captured bytes are the mis-decode (precondition)", () => {
+    expect(cdpBytes.subarray(cdpBytes.indexOf("content\":\"") + 10, cdpBytes.indexOf("content\":\"") + 15)).toEqual(Buffer.from([0xc3, 0xa2, 0xe2, 0x80, 0xba]));
+  });
+  it("decodeChatBody returns the original stop text", () => {
+    expect(decodeChatBody(cdpBytes)).toBe(stop);
+  });
+  it("end to end: the pinned S5b stop survives the tablet's mis-decode, as the judge reads it", async () => {
+    const body = `data: ${JSON.stringify({ kind: "content", content: PINNED_S5B_STOP })}\n\ndata: ${JSON.stringify({ kind: "status", status: "answered" })}\n\n`;
+    const onTablet = Buffer.from(asCp1252(Buffer.from(body, "utf8")), "utf8");
+    expect((await servedTurnOf(decodeChatBody(onTablet))).content).toBe(PINNED_S5B_STOP);
+  });
+  it("control: a correctly decoded stream with characters above U+00FF is unchanged", () => {
+    expect(repairIfMisdecoded(stop)).toBe(stop);
+  });
+  it("control: plain ASCII is unchanged", () => {
+    expect(repairIfMisdecoded('data: {"kind":"done"}\n')).toBe('data: {"kind":"done"}\n');
+  });
+  it("control: correct text whose only non-ASCII is Latin-1 is not mangled into U+FFFD", () => {
+    expect(repairIfMisdecoded("data: café")).toBe("data: café");
   });
 });
