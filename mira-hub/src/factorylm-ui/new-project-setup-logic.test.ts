@@ -1319,9 +1319,11 @@ describe("#5393: canceling creation cleans up partial notebooks", () => {
     await flush();
     // Cancel before the POST completes
     await c.cancelCommit();
+    // runCommit will throw ABORTED when it checks the signal, so catch it
     create.release({ status: 201, body: { ok: true, created: true, notebook: { id: "nb-m", nodeId: "n", displayName: "CV" } } });
-    await committing;
-    // Verify no DELETE was called
+    await committing.catch(() => {});
+    await flush(); // Let cancelCommit's cleanup run
+    // Verify no DELETE was called (notebook was never stored in `created`)
     const deleteCalls = h.calls.filter((c) => c.method === "DELETE");
     expect(deleteCalls).toHaveLength(0);
   });

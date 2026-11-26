@@ -395,6 +395,52 @@ export async function runCommit(
   return { kind: "created", notebookId, nodeId, confirmed, notes, docs };
 }
 
+/** Wrapper that catches ABORTED and returns a partial outcome if a notebook was created. */
+async function runCommitWithAbortHandling(
+  input: { selected: Selection; name: string; docs: readonly CommitDoc[]; pdfs: readonly File[] },
+  deps: SetupDeps,
+  abortSignal?: AbortSignal,
+  onProgress?: (msg: string) => void,
+): Promise<CommitOutcome> {
+  let partialNotebookId: string | null = null;
+  let partialNodeId: string | null = null;
+  
+  // Wrap deps.createNotebook and deps.fetch to capture the notebook ID even if aborted later
+  const originalFetch = deps.fetch;
+  const wrappedDeps: SetupDeps = {
+    ...deps,
+    createNotebook: async (body: { displayName: string; identitySourceType?: string }) => {
+      const id = await deps.createNotebook(body);
+      if (id) partialNotebookId = id;
+      return id;
+    },
+    fetch: async (input, init) => {
+      const response = await originalFetch(input, init);
+      // Capture notebook ID from machine POST response
+      if (init?.method === "POST" && String(input).includes("/notebook/")) {
+        const json = await response.json();
+        const nb = json.notebook as { id?: unknown; nodeId?: unknown } | undefined;
+        if (typeof nb?.id === "string") partialNotebookId = nb.id;
+        if (typeof nb?.nodeId === "string") partialNodeId = nb.nodeId;
+        // Return a new Response with the already-read body
+        return { ...response, json: async () => json } as Response;
+      }
+      return response;
+    },
+  };
+  
+  try {
+    return await runCommit(input, wrappedDeps, abortSignal, onProgress);
+  } catch (err) {
+    if (String(err).includes("ABORTED") && partialNotebookId) {
+      // A notebook was created before the abort; return a partial outcome so
+      // commit() can notify the host (Codex #5295 r1 F2).
+      return { kind: "created", notebookId: partialNotebookId, nodeId: partialNodeId, confirmed: false, notes: [], docs: [] };
+    }
+    throw err;
+  }
+}
+
 // ---------- readiness watch and result rows ----------
 
 export type SourceView = { docId: string; filename: string | null; readiness: unknown; matchState: unknown; enabledByDefault?: unknown; unreadablePages?: unknown };
@@ -845,7 +891,7 @@ export function createNewProjectSetup(deps: ControllerDeps): SetupController {
         }
       };
       
-      const outcome = await runCommit(
+      const outcome = await runCommitWithAbortHandling(
         { selected, name: state.name, docs, pdfs: state.pdfs },
         deps,
         abortSignal,
@@ -859,13 +905,10 @@ export function createNewProjectSetup(deps: ControllerDeps): SetupController {
       }
       commitAbortController = null;
       
-      if (abortSignal.aborted) {
-        set({ committing: false, error: "Creation was canceled. The project may be partially created.", progress: null, commitTimeout: false });
-        return;
-      }
-      
       // Codex #5295 r1 F2: a saved project reaches the host's list even when the
-      // sheet was closed mid-commit (the shell's Back closes open dialogs).
+      // sheet was closed mid-commit (the shell's Back closes open dialogs). This
+      // must happen before the `disposed` check so that dispose() during commit
+      // still notifies the host about any writes that completed.
       if (outcome.kind === "created" || (outcome.kind === "failed" && outcome.wrote)) deps.onWritten?.();
       if (outcome.kind === "created") {
         const reading = outcome.docs.flatMap((d) => (d.indexing && d.fileId ? [d.fileId] : []));
@@ -896,9 +939,12 @@ export function createNewProjectSetup(deps: ControllerDeps): SetupController {
         commitTimeoutTimer = null;
       }
       
-      // #5393: Clean up any partially created notebook. If the notebook was
-      // created but not fully committed (e.g., asset binding or doc uploads
-      // incomplete), delete it so no half-created project remains in the list.
+      set({ committing: false, error: null, progress: null, commitTimeout: false });
+      
+      // #5393: Clean up any partially created notebook. Wait a tick for runCommit
+      // to settle (it may throw ABORTED and clear `created`), then delete if a
+      // notebook was saved. This runs after unlock so the UI remains responsive.
+      await Promise.resolve();
       const partialId = created?.notebookId;
       if (partialId) {
         try {
@@ -909,8 +955,6 @@ export function createNewProjectSetup(deps: ControllerDeps): SetupController {
           // manually from the project list. Don't block the cancel flow on this.
         }
       }
-      
-      set({ committing: false, error: null, progress: null, commitTimeout: false });
     },
 
     async retryUpload(key) {
