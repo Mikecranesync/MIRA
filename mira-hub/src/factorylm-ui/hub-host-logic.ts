@@ -1121,17 +1121,24 @@ export function placeholderRequestIds(
 }
 
 /**
- * A retryable observed request whose ONLY visible representation is a live/retained exchange takes its Retry on that
- * exchange's answer (so suppressing the duplicate placeholder never hides the only Retry).
+ * An observed (possibly stale) saved-request status must never override what THIS page actually saw. A retryable
+ * observed request whose representation is a live/retained exchange:
+ *  - keeps/gets its Retry on that exchange's answer ONLY when the exchange genuinely ended in an explicit Stop
+ *    (`stopped`), so suppressing the duplicate placeholder never hides the only Retry of a stopped request;
+ *  - is DROPPED when the exchange completed (a confirmed answer/refusal) or failed/was interrupted some other way:
+ *    a stale "error, can retry" row must not turn a confirmed answer into "Stopped…", nor expose a replay (an
+ *    actually failed stream already carries its own inline Retry from the send recovery).
+ * Requests no exchange represents are untouched. The pointer is not retired here either way.
  */
 export function retriesOnRepresentingExchange<T extends { answerId: string; requestId: string }>(
   retries: readonly T[],
-  live: { id: string; clientRequestId: string } | null,
-  retained: readonly { id: string; clientRequestId: string }[] | undefined,
+  live: { id: string; clientRequestId: string; stopped: boolean } | null,
+  retained: readonly { id: string; clientRequestId: string; stopped: boolean }[] | undefined,
 ): T[] {
-  return retries.map(retry => {
+  return retries.flatMap(retry => {
     const exchange = live?.clientRequestId === retry.requestId ? live : retained?.find(item => item.clientRequestId === retry.requestId);
-    return exchange ? { ...retry, answerId: `${exchange.id}-a` } : retry;
+    if (!exchange) return [retry];
+    return exchange.stopped ? [{ ...retry, answerId: `${exchange.id}-a` }] : [];
   });
 }
 

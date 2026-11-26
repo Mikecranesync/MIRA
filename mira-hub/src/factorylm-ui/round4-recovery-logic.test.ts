@@ -125,11 +125,13 @@ describe("one logical request = ONE visible question/answer (placeholder precede
     expect(ids.has("unrelated-pointer")).toBe(false);
     expect([...placeholderRequestIds([], null, undefined)]).toEqual([]);
   });
-  it("Retry for a request whose ONLY representation is a retained/live exchange moves onto that exchange's answer; others keep theirs", async () => {
+  it("Retry moves onto the representing exchange ONLY when it was explicitly stopped; a confirmed/failed exchange drops a stale retry; unrelated requests keep theirs", async () => {
     const { retriesOnRepresentingExchange } = await import("./hub-host-logic");
-    const retries = [{ answerId: "turn-A-a", requestId: "A", question: "qa" }, { answerId: "turn-B-a", requestId: "B", question: "qb" }, { answerId: "turn-C-a", requestId: "C", question: "qc" }];
-    const out = retriesOnRepresentingExchange(retries, { id: "live-1", clientRequestId: "A" }, [{ id: "live-9", clientRequestId: "B" }]);
-    expect(out.map(r => [r.requestId, r.answerId])).toEqual([["A", "live-1-a"], ["B", "live-9-a"], ["C", "turn-C-a"]]);
+    const retries = [{ answerId: "turn-A-a", requestId: "A", question: "qa" }, { answerId: "turn-B-a", requestId: "B", question: "qb" }, { answerId: "turn-C-a", requestId: "C", question: "qc" }, { answerId: "turn-D-a", requestId: "D", question: "qd" }];
+    const out = retriesOnRepresentingExchange(retries, { id: "live-1", clientRequestId: "A", stopped: true },
+      [{ id: "live-9", clientRequestId: "B", stopped: false }, { id: "live-7", clientRequestId: "D", stopped: true }]);
+    expect(out.map(r => [r.requestId, r.answerId])).toEqual([["A", "live-1-a"], ["C", "turn-C-a"], ["D", "live-7-a"]]);   // B (confirmed/failed, not stopped) dropped
     expect(retriesOnRepresentingExchange(retries, null, undefined)).toEqual(retries);
+    expect(retriesOnRepresentingExchange([retries[0]!], { id: "live-2", clientRequestId: "A", stopped: false }, [])).toEqual([]);
   });
 });

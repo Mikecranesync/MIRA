@@ -339,6 +339,11 @@ async function sendNew(page: Page, text = NEW_Q) {
   await expect(page.getByRole("button", { name: "Send" })).toBeVisible();
   return id;
 }
+/** No "Stopped…" label and no Retry control anywhere in the conversation (a confirmed answer is not a stopped request). */
+const noFalseStop = async (page: Page) => {
+  await expect(conv(page).getByText("Stopped before it finished")).toHaveCount(0);
+  await expect(conv(page).getByRole("button", { name: "Retry" })).toHaveCount(0);
+};
 const exactlyOnce = async (page: Page) => {
   await expect(conv(page).getByText(NEW_Q)).toHaveCount(1);
   await expect(conv(page).getByText(NEW_A)).toHaveCount(1);
@@ -378,11 +383,56 @@ test.describe("one logical request is ONE visible question/answer (whole class, 
     await expect(conv(page).getByText(NEW_A)).toHaveCount(1);
     await expect(conv(page).getByText("Checking the saved request")).toHaveCount(0);
     expect(await pointerPresent(page, id)).toBe(true);
+    // A stale "error, can retry" observation must NOT turn this CONFIRMED answer into a stopped one or expose a replay.
+    await noFalseStop(page);
     const completed = row("t-new", id, { question: NEW_Q, answerStatus: "answered", answerText: NEW_A });
     fx.turns = [completed]; fx.pinned[id] = completed;
     fx.statuses[id] = status(id, { state: "complete", answerStatus: "answered", canRetry: false, question: NEW_Q });
     await expect.poll(() => pointerPresent(page, id), { timeout: 20_000 }).toBe(false);
     await exactlyOnce(page);
+    await noFalseStop(page);
+    expect((await chat(page).calls()).length).toBe(1);
+  });
+
+  test("a confirmed answer stays confirmed while a NEWER question is live and the older request keeps reading stale error/interrupted+retryable", async ({ page, context, baseURL }) => {
+    const fx = fresh({ turns: [] });
+    await mount(context, page, baseURL!, fx);
+    await open(page);
+    const first = await sendNew(page);
+    for (const kind of [{ state: "complete", answerStatus: "error" }, { state: "interrupted", answerStatus: null }] as const) {
+      fx.statuses[first] = status(first, { ...kind, canRetry: true, question: NEW_Q });
+      await page.waitForTimeout(3500);
+      await exactlyOnce(page);
+      await noFalseStop(page);
+    }
+    // A second question goes live (its own POST); the first stays a confirmed single answer with no Stop/Retry.
+    await page.getByRole("textbox", { name: "Ask MIRA" }).fill("And the second question?");
+    await page.getByRole("button", { name: "Send" }).click();
+    await expect.poll(async () => (await chat(page).calls()).length).toBe(2);
+    await chat(page).push(frame({ kind: "content", content: "Partial second answer" }));
+    await page.waitForTimeout(1500);
+    await expect(conv(page).getByText("Partial second answer")).toHaveCount(1);
+    await exactlyOnce(page);
+    await noFalseStop(page);
+    expect(await pointerPresent(page, first)).toBe(true);
+    expect((await chat(page).calls()).length).toBe(2);   // nothing retried by itself
+  });
+
+  test("control: a genuinely STOPPED request still offers exactly one Retry on its own answer (stale-observation filter does not hide it)", async ({ page, context, baseURL }) => {
+    const fx = fresh({ turns: [] });
+    await mount(context, page, baseURL!, fx);
+    await open(page);
+    await page.getByRole("textbox", { name: "Ask MIRA" }).fill(NEW_Q);
+    await page.getByRole("button", { name: "Send" }).click();
+    await expect.poll(async () => (await chat(page).calls()).length).toBe(1);
+    const id = (await chat(page).calls())[0]!.clientRequestId as string;
+    await chat(page).push(frame({ kind: "content", content: "Partial answer so far" }));
+    await page.waitForTimeout(700);
+    await page.getByRole("button", { name: "Stop" }).click();
+    fx.statuses[id] = status(id, { question: NEW_Q });   // interrupted + retryable + same machine
+    await expect(conv(page).getByRole("button", { name: "Retry" })).toHaveCount(1, { timeout: 15_000 });
+    await expect(conv(page).getByText(NEW_Q)).toHaveCount(1);
+    await expect(conv(page).getByText("Checking the saved request")).toHaveCount(0);
     expect((await chat(page).calls()).length).toBe(1);
   });
 

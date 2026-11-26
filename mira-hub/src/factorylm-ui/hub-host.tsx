@@ -783,7 +783,8 @@ export function HubShellHost() {
           lifecycle: recovery.value?.state === "complete" ? "running" as const : recovery.value?.state !== "pending" && recovery.value !== null || recovery.unavailable ? "failed" as const : "running" as const,
           parts: recoveryRetries.some(retry => retry.requestId === recovery.pointer.requestId) ? turn.parts : [{ type: "text" as const, text: recovery.value?.state === "complete" ? "Loading the saved answer…" : recovery.unavailable ? "Could not confirm the saved request. Your question is kept here; check the connection before sending again." : recovery.value?.state === "interrupted" ? "The saved request was interrupted. Review its original target and attachments before sending again." : "Checking the saved request…" }],
         } : turn) : []) : [];
-    const exchangeAnswerIds = new Set([...(live ? [`${live.id}-a`] : []), ...(retainedExchanges ?? []).map(exchange => `${exchange.id}-a`)]);
+    // Only an exchange that genuinely ended in an explicit Stop may be re-labelled "Stopped…" (never a confirmed answer).
+    const exchangeAnswerIds = new Set([...(live?.stopped ? [`${live.id}-a`] : []), ...(retainedExchanges ?? []).filter(exchange => exchange.stopped).map(exchange => `${exchange.id}-a`)]);
     const withStoppedRetry = recoveryRetries.filter(retry => exchangeAnswerIds.has(retry.answerId))
       .reduce((items, retry) => withStoppedExchangeRetry(items, retry.answerId), withPersistedRetry(turns, persistedRetry?.answerId ?? null));
     const projected = recoveryRetries.reduce((items, retry) => withPersistedRetry(items, retry.answerId), [...withStoppedRetry, ...recoveredTurns]);
