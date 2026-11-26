@@ -1316,6 +1316,8 @@ describe("Codex #5996 r1–r3: code-reference wording and disconnection warnings
   it.each([
     "Take a photo of the display so the code shown on the panel can be checked against the manual.",
     "I can't verify what F004 means on this machine.",
+    "F004 is cleared after the reset.",
+    "F004 is still showing on the keypad.",
   ])("advice that never says what the code is still passes: %s", (answer) => {
     expect(general(answer, Q).ok).toBe(true);
   });
@@ -1334,6 +1336,12 @@ describe("Codex #5996 r1–r3: code-reference wording and disconnection warnings
     "F004 is the code displayed with an undervoltage condition.",
     "F004 is the code shown upon loss of input phase.",
     "F004 is the code you get from a low line voltage.",
+    // Codex post-cap F5: no article after "is".
+    "F004 is commonly motor overcurrent.",
+    "F004 is usually DC bus undervoltage.",
+    "F004 is DC bus undervoltage.",
+    "F004 is input phase loss.",
+    "F004 on a PowerFlex 525 is probably overtemperature.",
     // Codex r3 F4: the meaning handed to a later clause of the same sentence.
     "F004 is the code shown on the display, indicating a motor overcurrent fault.",
     "F004 is the code shown on the display; it means the DC bus dropped.",

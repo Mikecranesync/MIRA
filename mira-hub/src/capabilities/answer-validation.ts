@@ -838,6 +838,13 @@ const FAULT_CONTEXT = /\b(?:fault|alarm|error|code|trip(?:ped|s)?)\b/i;
 
 /** Hedges that do not rescue an invented code meaning ("F004 is commonly an
  *  overcurrent fault"). Regex source, used inside codeMeaningViolation. */
+/** Codex #5996 post-cap F5: an article-free complement asserts a meaning just
+ *  as well ("F004 is commonly motor overcurrent", "F004 is DC bus
+ *  undervoltage"). After "is", a hedge on its own, or a fault-type word within
+ *  three words, is a definition. Status talk ("F004 is cleared", "is still
+ *  showing") names no fault type and still passes. */
+const FAULT_NOUN =
+  "(?:fault|failure|fail|error|trip|overload|short|loss|over[\\w-]*|under[\\w-]*|overheat\\w*|overtemp\\w*|imbalance|unbalance)";
 const DEF_HEDGE =
   "(?:usually|typically|often|generally|commonly|normally|frequently|probably|likely|most\\s+likely|most\\s+often|most\\s+commonly)";
 
@@ -1013,7 +1020,7 @@ function codeMeaningViolation(
         // code and its verb ("F30011 on a Siemens G120 is generally a motor
         // overtemperature"). All three shipped as general answers before this.
         const defFrame = new RegExp(
-          `["'\`*]*${esc}["'\`*]*(?:\\s*\\([^)]{0,40}\\))?(?:\\s+(?:on|in|for)\\s+(?:(?:a|an|the)\\s+)?[\\w-]+(?:\\s+[\\w-]+){0,3})?\\s+(?:fault\\s+|alarm\\s+|error\\s+|code\\s+)?(?:${DEF_HEDGE}\\s+)?(?:means|indicates|signals|refers\\s+to|stands\\s+for|denotes|corresponds\\s+to|is\\s+(?:${DEF_HEDGE}\\s+)?(?:a|an|the)\\b|is\\s+caused\\s+by|occurs\\s+when)\\b`,
+          `["'\`*]*${esc}["'\`*]*(?:\\s*\\([^)]{0,40}\\))?(?:\\s+(?:on|in|for)\\s+(?:(?:a|an|the)\\s+)?[\\w-]+(?:\\s+[\\w-]+){0,3})?\\s+(?:fault\\s+|alarm\\s+|error\\s+|code\\s+)?(?:${DEF_HEDGE}\\s+)?(?:means|indicates|signals|refers\\s+to|stands\\s+for|denotes|corresponds\\s+to|is\\s+(?:${DEF_HEDGE}\\s+)?(?:a|an|the)\\b|is\\s+${DEF_HEDGE}\\b|is\\s+(?:[\\w-]+\\s+){0,3}?${FAULT_NOUN}\\b|is\\s+caused\\s+by|occurs\\s+when)\\b`,
           "i",
         );
         // "the most likely reason you're seeing 'Q-447-Delta' is …"
