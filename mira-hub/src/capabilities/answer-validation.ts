@@ -30,7 +30,7 @@
 
 import { stepEnergyContradiction } from "./step-energy";
 import { firstUngovernedMatch } from "./hazard-modifiers";
-import { isolationBannerFor } from "./isolation-advisory";
+import { DISCHARGE_WAIT_LINE, ISOLATION_BANNER, isolationBannerFor, statesIsolation } from "./isolation-advisory";
 
 export type AnswerValidation =
   | { ok: true }
@@ -836,6 +836,18 @@ const NON_VERIFICATION =
 
 const FAULT_CONTEXT = /\b(?:fault|alarm|error|code|trip(?:ped|s)?)\b/i;
 
+/** Hedges that do not rescue an invented code meaning ("F004 is commonly an
+ *  overcurrent fault"). Regex source, used inside codeMeaningViolation. */
+/** Codex #5996 post-cap F5: an article-free complement asserts a meaning just
+ *  as well ("F004 is commonly motor overcurrent", "F004 is DC bus
+ *  undervoltage"). After "is", a hedge on its own, or a fault-type word within
+ *  three words, is a definition. Status talk ("F004 is cleared", "is still
+ *  showing") names no fault type and still passes. */
+const FAULT_NOUN =
+  "(?:fault|failure|fail|error|trip|overload|short|loss|over[\\w-]*|under[\\w-]*|overheat\\w*|overtemp\\w*|imbalance|unbalance)";
+const DEF_HEDGE =
+  "(?:usually|typically|often|generally|commonly|normally|frequently|probably|likely|most\\s+likely|most\\s+often|most\\s+commonly)";
+
 
 /* ------------------------------------------------------------------------ *
  * Detection-only canonicalization                                           *
@@ -1002,8 +1014,13 @@ function codeMeaningViolation(
         const esc = escapeRe(tok);
         // "Q-447-Delta (usually) means/indicates/is a …" — a definition,
         // hedged or not. Hedges do not rescue an invented meaning.
+        // #5995 (staging panel 2026-11-26): the hedge may sit after "is"
+        // ("F004 is generally a DC bus undervoltage", "F004 is commonly an
+        // overcurrent fault"), and a short "on a <machine>" may sit between the
+        // code and its verb ("F30011 on a Siemens G120 is generally a motor
+        // overtemperature"). All three shipped as general answers before this.
         const defFrame = new RegExp(
-          `["'\`]?${esc}["'\`]?(?:\\s*\\([^)]{0,40}\\))?\\s+(?:fault\\s+|alarm\\s+|error\\s+|code\\s+)?(?:usually\\s+|typically\\s+|often\\s+|generally\\s+|most\\s+likely\\s+)?(?:means|indicates|signals|refers\\s+to|stands\\s+for|denotes|corresponds\\s+to|is\\s+(?:a|an|the)|is\\s+caused\\s+by|occurs\\s+when)\\b`,
+          `["'\`*]*${esc}["'\`*]*(?:\\s*\\([^)]{0,40}\\))?(?:\\s+(?:on|in|for)\\s+(?:(?:a|an|the)\\s+)?[\\w-]+(?:\\s+[\\w-]+){0,3})?\\s+(?:fault\\s+|alarm\\s+|error\\s+|code\\s+)?(?:${DEF_HEDGE}\\s+)?(?:means|indicates|signals|refers\\s+to|stands\\s+for|denotes|corresponds\\s+to|is\\s+(?:${DEF_HEDGE}\\s+)?(?:a|an|the)\\b|is\\s+${DEF_HEDGE}\\b|is\\s+(?:[\\w-]+\\s+){0,3}?${FAULT_NOUN}\\b|is\\s+caused\\s+by|occurs\\s+when)\\b`,
           "i",
         );
         // "the most likely reason you're seeing 'Q-447-Delta' is …"
@@ -1253,6 +1270,29 @@ function isolationWarning(banner: string, answerText: string): AnswerValidation 
   };
 }
 
+/** Safety review of #5996 (Finding 1): replacing an answer for an unsupported
+ *  code meaning must not also discard the safety guidance that answer carried
+ *  ("lock out and de-energize first", "the DC bus capacitors stay charged") —
+ *  the energized/isolation notices attach only on the final return, which the
+ *  code-meaning branch never reaches. So the replacement leads with the same
+ *  fixed notices this module already uses: the energized warning when the
+ *  answer restored energy to measure, otherwise the isolation banner (plus the
+ *  discharge-wait line for DC-bus / capacitor talk) whenever the answer spoke
+ *  about isolation or a hazard at all. Warns; never withholds. */
+const SAFETY_GUIDANCE_RE =
+  /\b(?:lock(?:ed|ing)?[-\s]?out|tag(?:ged|ging)?[-\s]?out|loto|de[-\s]?energi[sz]\w*|isolat\w*|zero\s+(?:volts?|voltage|energy)|absence\s+of\s+voltage|discharg\w*|capacitors?|danger|arc[-\s]?flash|hazard\w*|shock|electrocut\w*)\b/i;
+const DISCHARGE_TALK_RE = /\b(?:discharg\w*|capacitors?|dc[-\s]?bus)\b/i;
+
+function safetyLeadFor(restore: string | null, scan: string): string {
+  if (restore) return `${ENERGIZED_WARNING}\n\n`;
+  // Codex r1 F2: the word list misses ordinary supply-disconnection wording
+  // ("Disconnect mains power before servicing") — the isolation recogniser
+  // the banner already uses does not.
+  if (!SAFETY_GUIDANCE_RE.test(scan) && !statesIsolation(scan)) return "";
+  const discharge = DISCHARGE_TALK_RE.test(scan) ? ` ${DISCHARGE_WAIT_LINE}` : "";
+  return `${ISOLATION_BANNER}${discharge}\n\n`;
+}
+
 function energizedWarningOr(restore: string | null, answerText: string): AnswerValidation {
   if (!restore) {
     // Codex #4146 r3 F2: scan the same folded text every other rule here scans —
@@ -1457,7 +1497,9 @@ export function validateAnswer(opts: {
       // The ONLY visible string in this module built from a matched token, so
       // it is the one place the fold could leak into what a technician reads.
       // Quote the code as the model actually spelled it.
-      replacement: specificityFallback(originalSpelling(cm.code, answerText), fallbackOpts),
+      replacement:
+        safetyLeadFor(restore, scanText) +
+        specificityFallback(originalSpelling(cm.code, answerText), fallbackOpts),
     };
   }
 

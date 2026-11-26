@@ -1,5 +1,7 @@
 import { readNotebookStream } from "@/components/equipment/notebook-chat-utils";
 
+import { oneRow, type LedgerRow } from "./staging";
+
 /**
  * Step judges for the CV-101 / Level-3 journey (cv101-journey.spec.ts) that read what the server
  * sent rather than how the screen labels it. Pure, so each rule is unit-tested on its own.
@@ -57,6 +59,39 @@ export type RenderedPart = { text: string; opacities: readonly number[] };
  */
 export const readableTexts = (parts: readonly RenderedPart[]): string[] =>
   parts.filter((p) => p.opacities.every((o) => o > 0)).map((p) => p.text);
+
+/** One rendered conversation turn as the browser shows it (`.fl-turn--aui`): its first text part. */
+export type RenderedTurn = { id: string; role: string; text: string };
+
+/**
+ * The persisted turn row id this stream's own ledger row recorded (#5979), or null. The chat route
+ * writes `persistence.turn_row_id` with `outcome: "ok"` only when the save was confirmed
+ * (route.ts `finishAndPersist`). The row must pass the accounting check's own `oneRow` (exactly one
+ * closed row whose packet's trace_id is this stream's trace, #5984); anything else is null.
+ */
+export function persistedRowIdOf(rows: readonly LedgerRow[], traceId: string | null): string | null {
+  if (!traceId) return null;
+  const one = oneRow([...rows], traceId);
+  if ("reason" in one) return null;
+  const p = one.packet.persistence;
+  if (!p || typeof p !== "object" || Array.isArray(p)) return null;
+  const { outcome, turn_row_id: id } = p as Record<string, unknown>;
+  return outcome === "ok" && typeof id === "string" && id.trim() ? id : null;
+}
+
+/**
+ * The saved answer for THIS send, or null (#5965, #5979). A persisted row renders as `<rowId>-q` (the
+ * question) and `<rowId>-a` (the answer) (to-interaction.ts `turnsFromPersisted`). Only the row the
+ * stream's ledger recorded can bind: its answer must be on screen, and its question's text part must
+ * be exactly the question that was sent. Any other row on screen, however alike, binds nothing.
+ */
+export function savedRowFor(rowId: string | null, after: readonly RenderedTurn[], question: string): string | null {
+  if (!rowId) return null;
+  const answerId = `${rowId}-a`;
+  const answer = after.some((t) => t.role === "assistant" && t.id === answerId);
+  const asked = after.find((t) => t.role === "user" && t.id === `${rowId}-q`);
+  return answer && asked && collapse(asked.text) === collapse(question) ? answerId : null;
+}
 
 /** The served title of the stop's manual-warning pointer (route.ts pointerCitations, #5349). */
 export const WARNING_POINTER_TITLE = "Manual warning";

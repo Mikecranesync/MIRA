@@ -4612,6 +4612,7 @@ async function handleChatTurn(
     docGrounded
       ? appendManualContext(withObserved, chunks) + machineContext + coverageDirective + vendorFallbackDirective + (safetyChapterChunks.length > 0 ? SAFETY_CHAPTER_DIRECTIVE : "")
       : withObserved + machineContext + identityProposalDirective,
+    message,
  )), lookContext), lookContext), lookContext);
   // appendManualContext only appends the grounding RULES — the excerpts
   // themselves ride in the user message (injection-hardened data channel),

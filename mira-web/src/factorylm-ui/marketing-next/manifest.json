@@ -8,7 +8,8 @@
     "/demo": "demo.html",
     "/limitations": "limitations.html",
     "/free-technicians": "free-technicians.html",
-    "/404": "404.html"
+    "/404": "404.html",
+    "/powerflex-525-fault-codes": "powerflex-525-fault-codes.html"
   },
   "redirects": {
     "/index.html": "/",
@@ -31,7 +32,10 @@
     "/pricing": "/demo",
     "/pilot": "/demo",
     "/assess": "/demo",
-    "/buy": "/demo"
+    "/buy": "/demo",
+    "/powerflex-525-fault-codes.html": "/powerflex-525-fault-codes",
+    "/powerflex-525-fault-codes/": "/powerflex-525-fault-codes",
+    "/drive-commander/powerflex-525/faults": "/powerflex-525-fault-codes"
   },
   "preserve_existing": [
     "/api/",
@@ -66,11 +70,12 @@
     "free-technicians.html": "4b953fd562f569fdcb712353d9d9250474910e56a69f6bd90dc6fa6b1e1e3280",
     "index.html": "8f5d34ae706e682ec0492f0883523a70ff5a6bb53fd161c6f5590300d0f6ddeb",
     "limitations.html": "512a203bfe65ad2457ceb43f1adcfd25be00ff0dd60cc10e2c9ce4ffedadb10b",
-    "llms-full.txt": "4295dcb8ffb53f54ee1642d88617a22de4d6f0181416d74072b365c770e099ec",
-    "llms.txt": "49bba0be80f2faa77370a6d09c4a3278baea6e66c0578687ff1d9dab94362dbc",
+    "llms-full.txt": "b821ccf1f95e66af5efd48760858fa917f2aa6c1f821150c89a0a8c05ae9e65f",
+    "llms.txt": "923ec1d9d4720821f8eb7d6f77d9b4921eeebe87229c1a25b8c167d9d7351251",
     "mira.html": "43a398fceee24aac1119f54f6ef23ac582fbda4486c0cceeb7f577f90ecf5f61",
     "robots.txt": "ae9dbebb1aedd62a30b2d567585285f6a5badd8dbe98021d2666b8141f9faa5b",
-    "sitemap-site.xml": "a20756219695f772f9cf6bd254634415596fcc496e7f4fd325757334072a880e",
-    "start.html": "c3d3adba90177b7acfe98eb3ada83c97ec35eee7e15b704b7b44b9b7310d4808"
+    "sitemap-site.xml": "6a97ea99102bd13ca4cb79f1ef66edbf170a175249d9de89f4c61397b1f6acec",
+    "start.html": "c3d3adba90177b7acfe98eb3ada83c97ec35eee7e15b704b7b44b9b7310d4808",
+    "powerflex-525-fault-codes.html": "b97c4a044a21b9d9bdc170a9c84d50b101a791ea4467963cc462f75509cfa46b"
   }
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { ANSWER_LANGUAGE_RULE, withAnswerLanguage } from "@/capabilities/answer-language";
+import { ANSWER_LANGUAGE_RULE, ENGLISH_ANSWER_RULE, withAnswerLanguage } from "@/capabilities/answer-language";
 
 describe("withAnswerLanguage", () => {
   it("appends the one language rule and keeps citations/identifiers verbatim", () => {
@@ -7,6 +7,18 @@ describe("withAnswerLanguage", () => {
     expect(out.startsWith("SYS\n\n")).toBe(true);
     expect(out).toContain(ANSWER_LANGUAGE_RULE);
     expect(ANSWER_LANGUAGE_RULE).toMatch(/\[n\] citations exactly as written/);
+  });
+
+  it("states English outright for an English question (panel #5956: G120 answered in Spanish 3/3)", () => {
+    const out = withAnswerLanguage("SYS", "What does Siemens G120 fault F30011 mean?");
+    expect(out).toBe(`SYS\n\n${ANSWER_LANGUAGE_RULE} ${ENGLISH_ANSWER_RULE}`);
+  });
+
+  it("leaves the rule unchanged for a non-English, empty or absent question", () => {
+    const plain = `SYS\n\n${ANSWER_LANGUAGE_RULE}`;
+    expect(withAnswerLanguage("SYS", "¿Qué significa el fallo F30011 del variador?")).toBe(plain);
+    expect(withAnswerLanguage("SYS", "   ")).toBe(plain);
+    expect(withAnswerLanguage("SYS")).toBe(plain);
   });
 });
 

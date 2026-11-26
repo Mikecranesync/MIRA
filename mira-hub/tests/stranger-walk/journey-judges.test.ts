@@ -2,7 +2,17 @@ import { describe, expect, it } from "vitest";
 
 import { energizedWorkStop } from "@/capabilities/energized-work-stop";
 
-import { PINNED_S5B_STOP, WARNING_POINTER_TITLE, judgeCautionPointer, readableTexts, servedTurnOf, visible } from "./journey-judges";
+import {
+  PINNED_S5B_STOP,
+  WARNING_POINTER_TITLE,
+  judgeCautionPointer,
+  persistedRowIdOf,
+  readableTexts,
+  savedRowFor,
+  servedTurnOf,
+  visible,
+} from "./journey-judges";
+import type { LedgerRow } from "./staging";
 
 const FILE = "55026402-a378-449f-ab8a-2d6a3ee9e101";
 const WARNING_CITE = { citationId: "1", docId: "d", sourceTitle: WARNING_POINTER_TITLE, page: 5, fileId: FILE, quote: null, originFileId: null };
@@ -196,5 +206,64 @@ describe("readableTexts (#5946: a fully transparent part is not readable)", () =
       FILE,
     );
     expect(j.pass).toBe(false);
+  });
+});
+
+describe("persistedRowIdOf (#5979, #5984: the row id this stream's own, trace-verified ledger row recorded)", () => {
+  // paid2 S5b's own ledger row (ledger-f652ee45….json): one closed row, save confirmed.
+  const PAID2_ROW = "16c211f0-5223-40b2-8a1b-d8297fcb59cc";
+  const TRACE = "f652ee45adca0960f2d2d15226a9e6f3";
+  const row = (persistence: unknown, traceId: string = TRACE): LedgerRow => ({
+    provider: null, model: null, status: "empty", route_reason: "legacy_cascade", outcome: "safety_stop",
+    input_tokens: null, output_tokens: null, cost_usd_estimate: null,
+    evidence_packet: { trace_id: traceId, persistence },
+  });
+  const ok = { outcome: "ok", error_code: null, turn_row_id: PAID2_ROW, evidence_entries: 0 };
+  it("control: paid2's confirmed save on its own trace gives its row id", () => expect(persistedRowIdOf([row(ok)], TRACE)).toBe(PAID2_ROW));
+  it("#5984: a packet from another trace gives nothing", () => {
+    expect(persistedRowIdOf([row(ok, "0".repeat(32))], TRACE)).toBeNull();
+  });
+  it("#5984: no stream trace gives nothing, even for a packet with an empty trace", () => {
+    expect(persistedRowIdOf([row(ok)], null)).toBeNull();
+    expect(persistedRowIdOf([row(ok, "")], null)).toBeNull();
+  });
+  it("a failed save gives nothing", () => expect(persistedRowIdOf([row({ ...ok, outcome: "failed" })], TRACE)).toBeNull());
+  it("no row id gives nothing", () => expect(persistedRowIdOf([row({ ...ok, turn_row_id: null })], TRACE)).toBeNull());
+  it("no persistence record gives nothing", () => expect(persistedRowIdOf([row(undefined)], TRACE)).toBeNull());
+  it("no ledger row, or more than one, gives nothing", () => {
+    expect(persistedRowIdOf([], TRACE)).toBeNull();
+    expect(persistedRowIdOf([row(ok), row(ok)], TRACE)).toBeNull();
+  });
+});
+
+describe("savedRowFor (#5965, #5979: only the row the ledger recorded binds)", () => {
+  const Q = "Can I disconnect the Micro820 serial cable while it is powered?";
+  const turns = (id: string, q = Q) => [{ id: `${id}-q`, role: "user", text: q }, { id: `${id}-a`, role: "assistant", text: PAID2_RENDERED }];
+  it("control: the ledger's row, with its question shown exactly, is bound", () => {
+    expect(savedRowFor("r2", [...turns("r1"), ...turns("r2")], Q)).toBe("r2-a");
+  });
+  it("control: whitespace differences in the shown question are ignored", () => {
+    expect(savedRowFor("r2", turns("r2", `  ${Q.replace(/ /g, "\n")} `), Q)).toBe("r2-a");
+  });
+  it("#5979: an older identical stop renders but the ledger's row does not → nothing bound", () => {
+    expect(savedRowFor("r2", turns("r1"), Q)).toBeNull();
+  });
+  it("no confirmed row id from the ledger → nothing bound", () => {
+    expect(savedRowFor(null, turns("r2"), Q)).toBeNull();
+  });
+  it("the ledger's question turn renders but its answer does not → nothing bound", () => {
+    expect(savedRowFor("r2", [turns("r2")[0]], Q)).toBeNull();
+  });
+  it("the ledger's answer renders but its question turn does not → nothing bound", () => {
+    expect(savedRowFor("r2", [turns("r2")[1]], Q)).toBeNull();
+  });
+  it("the question shown is a different question → nothing bound", () => {
+    expect(savedRowFor("r2", turns("r2", "What is the GS10 fault code F004?"), Q)).toBeNull();
+  });
+  it("the question shown merely contains the question → nothing bound (exact, not a substring)", () => {
+    expect(savedRowFor("r2", turns("r2", `${Q} Also, is it safe to reset?`), Q)).toBeNull();
+  });
+  it("an assistant node with the ledger's row id but the question's role does not count", () => {
+    expect(savedRowFor("r2", [{ id: "r2-q", role: "assistant", text: Q }, turns("r2")[1]], Q)).toBeNull();
   });
 });
