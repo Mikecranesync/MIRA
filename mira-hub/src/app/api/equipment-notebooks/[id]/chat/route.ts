@@ -4809,6 +4809,9 @@ async function handleChatTurn(
       // row through the turn's one settle. Declared here because the catch cannot
       // see the try's locals.
       let settleCommitted: (() => Promise<void>) | null = null;
+      // True once the body has been closed with every frame delivered: a throw after
+      // that is not a delivery failure, and the catch's log line says so.
+      let delivered = false;
       try {
       // Turn Flight Recorder correlation frame — FIRST, additive, only when a
       // real trace id exists (see file header + notebook-chat-types.ts).
@@ -6455,6 +6458,7 @@ async function handleChatTurn(
 
       controller.enqueue(enc.encode("data: [DONE]\n\n"));
       controller.close();
+      delivered = true;
 
       // Durable spend ledger (migration 080) + Turn Flight Recorder packet.
       // Deliberately LAST and non-fatal: the answer is already streamed and
@@ -6509,7 +6513,9 @@ async function handleChatTurn(
             await settleCommitted();
           } catch (settleErr) {
             console.error(
-              `[notebook-chat] settle after a post-commit failure did not complete (turn ${turnId}):`,
+              delivered
+                ? `[notebook-chat] settle after a delivered turn did not complete (turn ${turnId}):`
+                : `[notebook-chat] settle after a post-commit failure did not complete (turn ${turnId}):`,
               settleErr instanceof Error ? settleErr.message : settleErr,
             );
           }

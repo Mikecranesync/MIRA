@@ -1462,6 +1462,37 @@ describe("#6048 — a body cancel after the commit still persists the packet and
     expectDispositionMatchesHistory(r);
     expect(usageLines()).toHaveLength(1);
   });
+
+  it("R2-D6: a DELIVERED turn whose normal-path settle rejects logs that the settle after a delivered turn failed, never a post-commit delivery failure", async () => {
+    stubFetch(REDRAFT, [verdict("safe", "none")]);
+    spanTap.throwInSettle = true;
+    spanTap.rootExceptions.length = 0;
+    spanTap.rootEnds = 0;
+    const unhandled: unknown[] = [];
+    const onUnhandled = (e: unknown) => void unhandled.push(e);
+    process.on("unhandledRejection", onUnhandled);
+    try {
+      const res = await POST(req({ message: Q_PLAIN, sourceDocIds: [DOC_A], clientRequestId: REQ_ID }, false), params);
+      // Precondition: the body was delivered in full, a clean close.
+      expect(await drain(res.body!.getReader())).toBe("closed");
+      await vi.waitFor(() => expect(domainMock.recordTurn).toHaveBeenCalledTimes(1));
+      await settleAll();
+      // Precondition: the settle rejected, so no ledger row was written.
+      expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(0);
+      expect(console.error).toHaveBeenCalledWith(
+        expect.stringContaining("settle after a delivered turn did not complete"),
+        "settle span write failed (test)",
+      );
+      expect(logged(console.error, "settle after a post-commit failure did not complete")).toHaveLength(0);
+      // Everything else as before: claim released once, the settle's error recorded, root span ended once.
+      expect(domainMock.abandonNotebookTurnRequest).toHaveBeenCalledTimes(1);
+      expect(spanTap.rootExceptions.map((e) => (e as Error).message)).toEqual(["settle span write failed (test)"]);
+      expect(spanTap.rootEnds).toBe(1);
+      expect(unhandled).toEqual([]);
+    } finally {
+      process.off("unhandledRejection", onUnhandled);
+    }
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
