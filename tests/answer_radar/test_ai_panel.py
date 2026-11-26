@@ -346,3 +346,95 @@ def test_q1_wrong_meaning_for_f004_is_not_correct():
     # A correct answer that does not repeat the code still passes.
     assert ai_panel.grade(q(1), "It means DC bus undervoltage.", [])["correct"] is True
     assert ai_panel.grade(q(1), "F004 UnderVoltage: the DC bus dropped.", [])["correct"] is True
+
+
+class _Rec:
+    def __init__(self, text: str, cites: list[str] | None = None):
+        self.answer_text = text
+        self.citations = cites or []
+
+
+class _FakeHub:
+    def __init__(self, status: int = 200):
+        self.status = status
+        self.posts: list[tuple[str, dict]] = []
+
+    def _req(self, method, path, body=None, headers=None):
+        self.posts.append((path, json.loads(body)))
+        return self.status, {}, b'{"ok":true}'
+
+
+def _tap_setup(monkeypatch, first_summary: dict, status: int = 200):
+    hub = _FakeHub(status)
+    turns: list[dict | None] = []
+
+    def fake_turn(q, notebook=None):
+        turns.append(notebook)
+        if notebook is None:
+            return _Rec("general answer"), first_summary
+        return _Rec("F004 = UnderVoltage [1]", ["manual.pdf#p159"]), {
+            "http": 200,
+            "turn_status": "answered",
+        }
+
+    monkeypatch.setattr(ai_panel, "_mira_turn", fake_turn)
+    monkeypatch.setattr(ai_panel, "_mira_hub", lambda: hub)
+    ai_panel._HUB.clear()
+    ai_panel._HUB["sha"] = "abc"
+    return hub, turns
+
+
+def test_mira_tap_confirms_the_proposed_machine_and_reasks_in_the_same_chat(monkeypatch):
+    hub, turns = _tap_setup(
+        monkeypatch,
+        {
+            "http": 200,
+            "turn_status": "answered",
+            "notebook_id": "nb-1",
+            "identity_proposal": {"manufacturer": "Allen-Bradley", "model": "525"},
+        },
+    )
+    r = ai_panel.ask_mira_tap(None, "What does PowerFlex 525 fault F004 mean?")  # type: ignore[arg-type]
+    assert hub.posts == [
+        (
+            "/api/equipment-notebooks/nb-1/identity/confirm/",
+            {"manufacturer": "Allen-Bradley", "model": "525"},
+        )
+    ]
+    assert turns == [None, {"id": "nb-1"}]
+    assert (
+        r["tapped"] is True
+        and r["answer"] == "F004 = UnderVoltage [1]"
+        and r["urls"] == ["manual.pdf#p159"]
+    )
+    ai_panel._HUB.clear()
+
+
+def test_mira_tap_without_a_card_keeps_the_first_answer_and_taps_nothing(monkeypatch):
+    hub, turns = _tap_setup(
+        monkeypatch,
+        {"http": 200, "turn_status": "answered", "notebook_id": "nb-2", "identity_proposal": None},
+    )
+    r = ai_panel.ask_mira_tap(None, "What is FactoryLM?")  # type: ignore[arg-type]
+    assert hub.posts == [] and turns == [None]
+    assert r["tapped"] is False and r["answer"] == "general answer"
+    ai_panel._HUB.clear()
+
+
+def test_mira_tap_failed_confirm_is_an_error_not_a_graded_answer(monkeypatch):
+    _tap_setup(
+        monkeypatch,
+        {
+            "http": 200,
+            "notebook_id": "nb-3",
+            "identity_proposal": {"manufacturer": "ABB", "model": "ACS880"},
+        },
+        status=409,
+    )
+    with pytest.raises(RuntimeError, match="identity confirm returned 409"):
+        ai_panel.ask_mira_tap(None, "q")  # type: ignore[arg-type]
+    ai_panel._HUB.clear()
+
+
+def test_mira_tap_is_a_zero_cost_provider_in_the_report():
+    assert ai_panel.PRICES["mira_tap"]["in"] == 0.0 and "mira_tap" in ai_panel.ASKERS

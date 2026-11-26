@@ -51,12 +51,14 @@ PRICES: dict[str, dict[str, float]] = {
     # MIRA on staging: no metered call from this script (the Hub's own provider spend is
     # outside this budget and is reported separately).
     "mira": {"in": 0.0, "out": 0.0, "search": 0.0, "search_tokens": 0},
+    "mira_tap": {"in": 0.0, "out": 0.0, "search": 0.0, "search_tokens": 0},
 }
 MODELS = {
     "openai": "gpt-5.4-mini",
     "anthropic": "claude-opus-5-5",
     "gemini": "gemini-3.5-flash",
     "mira": "staging-hub-new-chat",
+    "mira_tap": "staging-hub-new-chat-one-tap",
 }
 MAX_OUT = 8000
 MAX_IN_GUESS = 2000  # question + framing, before search tokens
@@ -244,15 +246,9 @@ def _provision(*extra: str) -> str:
     return r.stdout
 
 
-def ask_mira(_client: httpx.Client, q: str) -> dict[str, Any]:
-    """MIRA as a stranger meets it: a fresh staging account, a new chat, no machine picked."""
-    from answer_radar.hub_runner import (
-        assert_staging,
-        deployed_sha,
-        load_hub_client,
-        run_question_hub,
-    )
-    from answer_radar.schema import QuestionRecord
+def _mira_hub():
+    """One throwaway staging account per run, shared by the `mira` and `mira_tap` askers."""
+    from answer_radar.hub_runner import assert_staging, deployed_sha, load_hub_client
 
     if "hub" not in _HUB:
         assert_staging(STAGING)
@@ -274,13 +270,24 @@ def ask_mira(_client: httpx.Client, q: str) -> dict[str, Any]:
             raise RuntimeError("provision output had no BETA_GATE_COOKIE")
         _HUB["hub"] = load_hub_client()(STAGING, env["BETA_GATE_COOKIE"])
         _HUB["sha"] = deployed_sha(_HUB["hub"])
-    rec, summary = run_question_hub(
+    return _HUB["hub"]
+
+
+def _mira_turn(q: str, notebook: dict[str, Any] | None = None) -> tuple[Any, dict[str, Any]]:
+    from answer_radar.hub_runner import run_question_hub
+    from answer_radar.schema import QuestionRecord
+
+    return run_question_hub(
         QuestionRecord(question_id="AI-PANEL", normalized_question=q, source_platform="ai_panel"),
-        _HUB["hub"],
+        _mira_hub(),
         condition="new_chat",
         mira_version=_HUB["sha"],
         stamp="ai-panel",
+        notebook=notebook,
     )
+
+
+def _mira_result(rec: Any, summary: dict[str, Any]) -> dict[str, Any]:
     return {
         "answer": rec.answer_text,
         "urls": list(rec.citations),
@@ -291,6 +298,34 @@ def ask_mira(_client: httpx.Client, q: str) -> dict[str, Any]:
         "turn": summary.get("turn_status"),
         "finished": summary.get("http") == 200,
     }
+
+
+def ask_mira(_client: httpx.Client, q: str) -> dict[str, Any]:
+    """MIRA as a stranger meets it: a fresh staging account, a new chat, no machine picked."""
+    return _mira_result(*_mira_turn(q))
+
+
+def ask_mira_tap(_client: httpx.Client, q: str) -> dict[str, Any]:
+    """MIRA after ONE tap: when the blank chat offers "Is this a <machine>?", press
+    **Use its manuals** (the same POST the app sends) and ask the same question again
+    in the same chat. Mike's 2026-09-28 decision (#4095) is propose-then-confirm, so
+    this is the real product path; `mira` stays the zero-tap answer. With no card
+    offered there is nothing to tap and the first answer stands (`tapped: False`)."""
+    rec, summary = _mira_turn(q)
+    proposal = summary.get("identity_proposal")
+    if not proposal or not summary.get("notebook_id") or summary.get("http") != 200:
+        return {**_mira_result(rec, summary), "tapped": False, "proposal": proposal}
+    nid = summary["notebook_id"]
+    st, _hd, raw = _mira_hub()._req(
+        "POST",
+        f"/api/equipment-notebooks/{nid}/identity/confirm/",
+        json.dumps({"manufacturer": proposal["manufacturer"], "model": proposal["model"]}).encode(),
+        {"Content-Type": "application/json"},
+    )
+    if st != 200:
+        raise RuntimeError(f"identity confirm returned {st}: {raw[:200]!r}")
+    rec2, summary2 = _mira_turn(q, notebook={"id": nid})
+    return {**_mira_result(rec2, summary2), "tapped": True, "proposal": proposal}
 
 
 def cleanup_mira() -> None:
@@ -312,6 +347,7 @@ ASKERS: dict[str, Callable[[httpx.Client, str], dict[str, Any]]] = {
     "anthropic": ask_anthropic,
     "gemini": ask_gemini,
     "mira": ask_mira,
+    "mira_tap": ask_mira_tap,
 }
 
 
@@ -437,7 +473,7 @@ def report(out: Path, questions: list[dict[str, Any]]) -> str:
         rs = recs[p].values()
         searched = sum(1 for r in rs if r.get("searches"))
         cost = sum(r.get("cost_usd", 0) for r in rs)
-        mention = "n/a (own product)" if p == "mira" else frac(p, "mentions_factorylm")
+        mention = "n/a (own product)" if p.startswith("mira") else frac(p, "mentions_factorylm")
         lines.append(
             f"| {p} | {len(recs[p])}/20 | {frac(p, 'correct')} | {mention} | {frac(p, 'cites_factorylm')} "
             f"| {frac(p, 'cites_any_source')} | {frac(p, 'safety_warning')} | {frac(p, 'asks_followup')} "
