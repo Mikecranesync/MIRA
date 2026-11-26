@@ -100,14 +100,28 @@ export function hydrateTurns(prev: ChatTurn[], initial: ChatTurn[]): ChatTurn[] 
 
 /** #5578: Deduplicate turns by requestId before rendering. If multiple turns
  *  with the same requestId exist (a double-send, a race, or a render glitch),
- *  keep only the most recent one (last in the array). Hydrated turns have no
- *  requestId, so they're never deduplicated away. */
+ *  keep only the most recent pair (last in the array). A turn pair (user +
+ *  assistant) shares the same requestId. Hydrated turns have no requestId, so
+ *  they're never deduplicated away. */
 export function deduplicateTurns(turns: ChatTurn[]): ChatTurn[] {
-  const seen = new Map<string, number>(); // requestId -> last index
+  const seen = new Map<string, number[]>(); // requestId -> all indices
   turns.forEach((t, i) => {
-    if (t.requestId) seen.set(t.requestId, i);
+    if (t.requestId) {
+      const indices = seen.get(t.requestId) ?? [];
+      indices.push(i);
+      seen.set(t.requestId, indices);
+    }
   });
-  return turns.filter((t, i) => !t.requestId || seen.get(t.requestId) === i);
+  return turns.filter((t, i) => {
+    if (!t.requestId) return true; // Keep hydrated turns
+    const indices = seen.get(t.requestId)!;
+    // If this requestId appears 2 or fewer times, keep all (normal case: one
+    // user+assistant pair). If more than 2 (duplicate send), keep only the
+    // second half (the most recent pair).
+    if (indices.length <= 2) return true;
+    const keepFromIndex = Math.floor(indices.length / 2);
+    return indices.indexOf(i) >= keepFromIndex;
+  });
 }
 
 /** Pure leaf — unit-tested via renderToStaticMarkup. Renders answer text as
