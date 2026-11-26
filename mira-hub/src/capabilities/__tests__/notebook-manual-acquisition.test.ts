@@ -1368,6 +1368,18 @@ describe("currentManualSearchStatus — recomputed fresh, never a stale snapshot
       expect(status).toMatchObject({ sourceState: "preparing", running: true, message: "The manual is being added to Sources." });
     });
 
+    // #5746 r4 F1: the newest answer can be grounded in a component's own manual. The project's
+    // lookup must still name its ready source, which a held whole-machine question sends with.
+    it("#5958 composition: after a grounded answer the linked manual still reports its ready source", async () => {
+      db.readRow = { ...candidateReviewRec, state: "complete", match_state: "verified", doc_id: "d1" };
+      const source = {
+        docId: "d1", enabledByDefault: true, matchState: "verified", sourceRole: "manual",
+        readiness: { canChat: true }, matchEvidence: { autoAcquisitionKey: confirmedKey },
+      };
+      const status = await currentManualSearchStatus("t", "nb", confirmedIdentity, null, [source] as never, { env: ON, groundedTurn: true });
+      expect(status).toMatchObject({ sourceState: "ready", readySourceDocId: "d1", running: false });
+    });
+
     it("reports a removed source separately from a disabled or unavailable source", async () => {
       db.readRow = { ...candidateReviewRec, state: "complete", match_state: "verified", doc_id: "d1" };
       const status = await currentManualSearchStatus("t", "nb", confirmedIdentity, null, [], { env: ON });

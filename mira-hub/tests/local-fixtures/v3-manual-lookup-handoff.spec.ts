@@ -327,8 +327,12 @@ for (const mode of ["preparing", "ready", "opening", "lookup-failed", "safety", 
 // still wait for it: the route then sends the project's lookup for the send wait only
 // (`wholeMachineManualSearch`, no message or link), and nothing new is shown.
 const WHOLE_QUESTION = "According to the manual, what is the nominal supply voltage?";
-for (const mode of ["return", "return-lost", "cold"] as const) {
-  test(`after a component answer, a whole-machine manual question waits in the ${mode} case`, async ({ page, context, baseURL }) => {
+const GENERAL_QUESTION = "What is the rated current?";
+for (const mode of ["return", "return-lost", "cold", "controls"] as const) {
+  const title = mode === "controls"
+    ? "after a component answer, a component question and a question that needs no manual are sent at once"
+    : `after a component answer, a whole-machine manual question waits in the ${mode} case`;
+  test(title, async ({ page, context, baseURL }) => {
     const cold = mode === "cold";
     await installSessionCookie(context, baseURL, PORT, {
       uid: "e2e-manual-handoff", tid: TENANT, status: "trial", trialExpiresAt: new Date(Date.now() + 86_400_000).toISOString(),
@@ -366,8 +370,8 @@ for (const mode of ["return", "return-lost", "cold"] as const) {
       if (p === `${nbPath}/chat` && method === "POST") {
         const body = request.postDataJSON();
         chatBodies.push(body);
-        if (body.message === QUESTION) {
-          asked = body;
+        if (body.message === QUESTION || body.componentSelection?.componentId) {
+          if (body.message === QUESTION) asked = body;
           return route.fulfill(stream(
             { kind: "content", content: ANSWER },
             { kind: "sources", citations: [{ ...CITATION, docId: COMPONENT_DOC, sourceTitle: COMPONENT_MANUAL }] },
@@ -428,9 +432,27 @@ for (const mode of ["return", "return-lost", "cold"] as const) {
       // At least one poll reads the withheld status before the technician goes back.
       await expect.poll(() => withheldReads, { timeout: 15_000 }).toBeGreaterThan(1);
       await expect(statusParts).toHaveCount(0);
+      if (mode === "controls") {
+        // With the component still selected, a manual question is about the component: sent at once.
+        await composer.fill(WHOLE_QUESTION);
+        await page.getByRole("button", { name: "Send", exact: true }).click();
+        await expect.poll(() => chatBodies.length, { timeout: 5_000 }).toBe(2);
+        expect(chatBodies[1]).toMatchObject({ message: WHOLE_QUESTION, componentSelection: { componentId: COMPONENT_ID } });
+        await expect(page.getByRole("button", { name: `Open citation 1: ${COMPONENT_MANUAL}, page 1`, exact: true })).toHaveCount(2, { timeout: 8_000 });
+      }
       await page.getByRole("button", { name: "Back to whole machine", exact: true }).click();
       await expect.poll(() => selectionWrites.length).toBe(1);
       await expect(page.getByText(`Asking about ${COMPONENT_LABEL}`, { exact: true })).toHaveCount(0);
+      if (mode === "controls") {
+        // About the whole machine, a question that needs no manual is sent at once too.
+        const sent = chatBodies.length;
+        await composer.fill(GENERAL_QUESTION);
+        await page.getByRole("button", { name: "Send", exact: true }).click();
+        await expect.poll(() => chatBodies.length, { timeout: 5_000 }).toBe(sent + 1);
+        expect(chatBodies.at(-1)).toMatchObject({ message: GENERAL_QUESTION, componentSelection: { componentId: null } });
+        await expect(statusParts).toHaveCount(0);
+        return;
+      }
     } else {
       await expect.poll(() => withheldReads).toBeGreaterThan(0);
       await expect(page.locator('[data-turn-id="saved-answer-a"]')).toHaveCount(1);

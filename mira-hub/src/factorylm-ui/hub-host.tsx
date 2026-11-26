@@ -442,7 +442,7 @@ export function HubShellHost() {
       fetchStatus: async (notebookId) => {
         const sel = selectionRef.current;
         if (!sel || sel.notebookId !== notebookId || !await loadDetail(sel, true)) return null;
-        return sel === selectionRef.current ? sendWaitLookup(detailRef.current) : null;
+        return sel === selectionRef.current ? detailRef.current?.manualSearch ?? null : null;
       },
       onStateChange: setFollow,
     });
