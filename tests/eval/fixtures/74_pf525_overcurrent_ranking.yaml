@@ -1,0 +1,16 @@
+id: pf525_overcurrent_ranking_5998
+description: "PowerFlex 525 overcurrent causes — ranking test for #5998"
+expected_final_state: DIAGNOSIS
+max_turns: 4
+expected_keywords: [overcurrent, PowerFlex, F063, F012, fault]
+expected_vendor: Allen-Bradley
+wo_expected: false
+safety_expected: false
+tags: [vfd, pf525, overcurrent, ranking, fault-table]
+# Repro for #5998 — retrieval ranked pp.1/665-672 over fault table pp.161-162
+# This test asserts that the fault-table pages (161-162) are retrieved AND
+# reach the answer context (not just retrieval hits).
+# Acceptance: cited pages include p.161 or p.162, answer names F063 and/or F012
+turns:
+  - role: user
+    content: "What causes overcurrent faults on a PowerFlex 525?"
