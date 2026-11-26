@@ -4790,9 +4790,6 @@ async function handleChatTurn(
       // OpenAI call, held together with the OpenAI answer's. Released in the
       // `finally` below on every exit; a no-op once the judge has settled it.
       let judgeHold: JudgeOpenAiHold | null = null;
-      // F1: the ledger write of a committed turn, run by the outer catch when a closed response
-      // stream throws before the normal post-close write is reached.
-      let pendingLedger: (() => Promise<void>) | null = null;
       try {
       // Turn Flight Recorder correlation frame — FIRST, additive, only when a
       // real trace id exists (see file header + notebook-chat-types.ts).
@@ -6383,13 +6380,6 @@ async function handleChatTurn(
         }
       }
 
-      pendingLedger = () =>
-        finishAndPersist(
-          finalTurnRowId,
-          pendingUsage ?? (seam ? (turnUsage ?? exhaustedUsage(attempted)) : legacyCascadeUsage(activeProvider, served ? "ok" : "error")),
-          { answerText: served ? answerText : null, citationsPresent: emittedCitations.length > 0, latencyMs: Date.now() - turnStartedAt },
-        );
-
       // An unsafe replacement is already a terminal Safety STOP. Emit its
       // warning before the first stoppable content byte so an interruption can
       // never erase the server's authoritative safety determination.
@@ -6527,7 +6517,6 @@ async function handleChatTurn(
         // before telemetry starts. A ledger exception is non-fatal and must
         // never turn an already-closed, valid answer into a transport error.
         await new Promise<void>((resolve) => setTimeout(resolve, 0));
-        pendingLedger = null; // written here; the outer catch must not write it twice
         await finishAndPersist(finalTurnRowId, ledgerUsage, {
           answerText: served ? answerText : null,
           citationsPresent: emittedCitations.length > 0,
@@ -6555,9 +6544,6 @@ async function handleChatTurn(
         } catch {
           // best-effort
         }
-        const lateLedger = pendingLedger;
-        pendingLedger = null;
-        if (lateLedger) await lateLedger().catch(() => undefined);
         endRoot();
         try {
           controller.error(err);
