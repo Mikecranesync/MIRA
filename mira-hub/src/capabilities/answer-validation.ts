@@ -492,7 +492,7 @@ const BARE_STATE_OBJ_SRC = "(?:energi[sz]ed|live|powered(?:\\s+on)?|under\\s+pow
 // modified: "live telemetry view"), so a rare manner adverb with no -ly/-wards
 // morphology ("live pronto") is the one bounded residual (see report).
 const BARE_PREPOSITIONS =
-  "about|above|across|after|against|along|alongside|amid|among|amongst|around|as|at|atop|before|behind|below|beneath|beside|besides|between|beyond|by|despite|during|except|for|from|in|inside|into|like|near|nearby|of|on|onto|opposite|out of|outside|over|past|per|since|than|through|throughout|till|to|toward|towards|under|underneath|unlike|until|up to|upon|via|with|within|without";
+  "about|above|across|after|against|along|alongside|amid|among|amongst|around|as|at|atop|before|behind|below|beneath|beside|besides|between|beyond|by|despite|during|except|for|from|in|inside|into|like|near|nearby|of|on|onto|opposite|out of|outside|over|past|per|since|than|through|throughout|till|to|toward|towards|under|underneath|unlike|until|up to|upon|via|with|within|without|using|including|excluding|regarding|concerning|according|pending|barring|considering";
 const BARE_CONJUNCTIONS_AUX =
   "and|or|nor|but|so|then|because|while|if|when|whenever|though|although|unless|yet|whereas|that|which|who|where|is|are|should|can|could|may|might|must|will|would|please";
 const BARE_PLACE_TIME_ADVERBS =
@@ -575,13 +575,24 @@ const DISPLAY_VERB_SRC =
   "(?:view(?:s|ing)?|watch(?:es|ing)?|see(?:s|ing)?|observ(?:e|es|ing)|monitor(?:s|ing)?|read(?:s|ing)?|review(?:s|ing)?|display(?:s|ing)?|show(?:s|ing)?|plot(?:s|ting)?|chart(?:s|ing)?|graph(?:s|ing)?|trend(?:s|ing)?|track(?:s|ing)?|scroll(?:s|ing)?|zoom(?:s|ing)?|brows(?:e|es|ing)|filter(?:s|ing)?|sort(?:s|ing)?|export(?:s|ing)?|download(?:s|ing)?|stream(?:s|ing)?|follow(?:s|ing)?)";
 const VERB_SCAN_SRC = "\\b(?:(" + HAZARD_ACTION_ANY_SRC + ")|(" + DISPLAY_VERB_SRC + "))\\b";
 const BARE_GLOBAL = new RegExp(BARE_ENERGIZED_RELATION.source, "gi");
+// Final-class Q2: "read" / "monitor" are display verbs ONLY when the reading is
+// taken from a display. A reading taken with a meter at electrical contact points
+// ("read the voltage live at the terminals", "clamp each phase", "probe the lugs")
+// is a physical electrical measurement of an energized circuit. This reuses the
+// canonical A4 measurement vocabulary (measure action + contact context, and not a
+// reading from an installed external display); it adds no verb allowance.
+function physicalContactReading(c: string): boolean {
+  // Built per call: the measurement constants are declared further down the module.
+  return new RegExp("\\b" + MEASURE_ACTION_SRC, "i").test(c) && CONTACT_MEASUREMENT.test(c) && !EXTERNAL_READING.test(c);
+}
 /** End offset of the first bare state that binds to a PHYSICAL action, or -1. */
 function bareBoundEnd(c: string): number {
   for (const m of c.matchAll(BARE_GLOBAL)) {
     const upto = c.slice(0, (m.index ?? 0) + m[0].length);
     let last: RegExpMatchArray | null = null;
     for (const v of upto.matchAll(new RegExp(VERB_SCAN_SRC, "gi"))) last = v;
-    if (last && last[2] !== undefined && last[1] === undefined) continue; // bound to a display verb
+    // bound to a display verb, unless the reading is a physical contact measurement
+    if (last && last[2] !== undefined && last[1] === undefined && !physicalContactReading(c)) continue;
     return (m.index ?? 0) + m[0].length;
   }
   return -1;
@@ -652,6 +663,7 @@ const BARE_LIST_ITEM = /^\s*(?:(?:and|or|nor)\s+)?[a-z]+\s*$/i;
 // an unsafe instruction elsewhere.
 const THIRD_PARTY_SRC =
   "(?:operators?|someone|anyone|anybody|people|users?|technicians?|workers?|personnel|staff|crew|they|he|she|others?|employees?|contractors?|visitors?)";
+const PERCEPTION_SRC = "(?:discover|find|found|see|saw|seen|notice|catch|caught|spot|observe|detect|witness|hear|learn|realiz|suspect|identify|confirm)";
 const ATTEMPT_SRC = "(?:attempt\\w*|tr(?:y|ies|ied|ying)|tempt\\w*|want\\w*|intend\\w*|decid\\w*|choos\\w*|seek\\w*)";
 const DIRECTIVE_MODAL = /\b(?:can|may|could|might|must|will|would|shall|should|need|ought|have\s+to|has\s+to)\b/i;
 // `gerund` = the reported act is an -ing complement ("prevent X from
@@ -670,6 +682,11 @@ const REPORTED_CONSTRUCTIONS: ReadonlyArray<{ re: RegExp; gerund: boolean }> = [
   // "while operators keep jumpering the guard". Only a guard-defeat or hazard-action
   // gerund counts (never a state word: "while the drive is running" stays a hazard condition).
   { re: new RegExp("\\b(?:if|when|whenever|while|once|unless|as\\s+soon\\s+as)\\b\\s+((?:[a-z'-]+\\s+){0,3}?)(?:is|are|was|were|has\\s+been|have\\s+been|keeps?|continues?|starts?|begins?)\\s+(?:to\\s+)?(?:(?:caught|seen|found|spotted|noticed|observed|detected)\\s+)?(?=[a-z]+ing\\b)(?:" + GUARD_DEFEAT_VERB_SRC + "|" + HAZARD_ACTION_ANY_SRC + ")\\b", "i"), gerund: true },
+  // Final-class Q1: a DISCOVERY/PERCEPTION condition — "if you discover someone
+  // bypassing the interlock", "when you see anyone bypass the guard", "once you catch
+  // an operator jumpering the E-stop". The perceived act is reported, not directed.
+  // Gerund complement, or a bare/3sg verb after a third-party object.
+  { re: new RegExp("\\b(?:if|when|whenever|once|unless|after|because|since|as\\s+soon\\s+as)\\b\\s+((?:[a-z'-]+\\s+){0,3}?)" + PERCEPTION_SRC + "\\w*\\s+(?:that\\s+)?(?:(?:[a-z'-]+\\s+){0,4}?(?=[a-z]+ing\\b)|(?:(?:an?|the|any|some|one\\s+of\\s+the)\\s+)?" + THIRD_PARTY_SRC + "\\s+(?:[a-z'-]+\\s+){0,1}?)(?:" + GUARD_DEFEAT_VERB_SRC + "|" + HAZARD_ACTION_ANY_SRC + ")\\w*\\b", "i"), gerund: true },
   // "the risk of X-ing"
   { re: new RegExp("\\b(?:risks?|dangers?|temptation|possibility|chance|consequences?|hazards?)\\s+of\\s+(?:[a-z'-]+\\s+){0,2}?" + GERUND, "i"), gerund: true },
 ];
@@ -766,7 +783,7 @@ function clauseHazardViolation(text: string): { relId: string; sentence: string;
     });
     const scan = chars.join("");
     const guard = GUARD_DEFEAT.test(scan);
-    if (!guard && !HAZARD_ACTION_ANY.test(scan)) continue;
+    if (!guard && !HAZARD_ACTION_ANY.test(scan) && !(physicalContactReading(scan) && bareBoundEnd(scan) >= 0)) continue;
     const rel = HAZARD_RELATIONS.find((r) => r.re.test(scan));
     const relId =
       rel?.id ??
@@ -777,13 +794,16 @@ function clauseHazardViolation(text: string): { relId: string; sentence: string;
           : null);
     if (!relId) continue;
     const info = clauses.map((c) => ({
-      action: HAZARD_ACTION_ANY.test(c),
+      action: HAZARD_ACTION_ANY.test(c) || (physicalContactReading(c) && bareBoundEnd(c) >= 0),
       guard: GUARD_DEFEAT.test(c),
       rel: clauseRelation(c, question),
     }));
     const prohibitedAt = (i: number, extra: string): boolean => {
       const c = clauses[i] + " " + extra;
       if (BOUND_PROHIBITION.test(c) || GUARD_PROHIBITION.test(c) || REPORTING_PROHIBITION.test(c)) return true;
+      // A negated PHYSICAL reading ("do not read the voltage live at the terminals") uses
+      // the canonical measurement prohibition, which the hazard-verb grammar above lacks.
+      if (physicalContactReading(c) && MEASURE_PROHIBITION.test(c)) return true;
       if (i === 0) return false;
       // Negative coordination: "do not X, or Y" — Y shares X's negation. "and"
       // also continues it when the item before is a bare list verb

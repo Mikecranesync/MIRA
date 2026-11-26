@@ -981,6 +981,15 @@ describe("#6016 cross-context hazard-warning contract (real POST + real validato
     ["Do not bypass the guard or disable the interlock.", false],
     ["Open the HMI live telemetry view.", false],
     ["Test the sensor live waveform on the HMI.", false],
+    // final class boundaries (pre-native-3): a reported discovery condition is not a directive,
+    // and a physical contact reading is energized work while a display reading is not
+    ["If you discover someone bypassing the interlock, stop the line.", false],
+    ["Stop the line if you discover someone bypassing the interlock.", false],
+    ["If you discover someone bypassing the interlock, bypass the E-stop.", true],
+    ["Read the voltage live at the terminals.", true],
+    ["Test the sensor and read the voltage live at the terminals.", true],
+    ["Do not read the voltage live at the terminals.", false],
+    ["Open the alarm log and see the readings live on the HMI.", false],
   ];
   const contexts = [
     { name: "grounded", general: false },
