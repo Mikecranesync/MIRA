@@ -2628,9 +2628,10 @@ for (const interruption of [
         const body = new ReadableStream<Uint8Array>({
           start(controller) {
             const frames = [
+              // The progress wrapper writes the response headers before any answer bytes.
+              ...(progressHeader ? [{ kind: "headers", headers: { "x-safety-stop": "Synthetic safety fixture" } }] : []),
               { kind: "content", content: partial },
-              ...(progressHeader ? [{ kind: "headers", headers: { "x-safety-stop": "Synthetic safety fixture" } }]
-                : directHeader ? [] : [{ kind: "safety", trigger: "Synthetic safety fixture" }]),
+              ...(!progressHeader && !directHeader ? [{ kind: "safety", trigger: "Synthetic safety fixture" }] : []),
               { kind: "sources", citations: [{ citationId: 1, sourceTitle: "Unconfirmed source", page: 1 }] },
               { kind: "followups", suggestions: ["Unconfirmed suggestion"] },
             ];
