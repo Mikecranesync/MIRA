@@ -148,9 +148,11 @@ contracts:
     enforcement: [mira-hub/src/capabilities/__tests__/semantic-redraft.test.ts, mira-hub/src/capabilities/__tests__/semantic-redraft.route.test.ts, citationSupportGaps]
     notes: >-
       Hub notebook chat (issues 6047 and 6049). Deterministic word and value
-      comparison, not entailment. A sentence with no marker, value, part tag or
-      listed verb is counted, not stopped. The packet keeps reason codes and
-      counts only (semantic_redraft_support), never redraft text.
+      comparison, not entailment. A sentence with no marker, value, part tag,
+      listed verb or plain instruction verb with a distinctive word is not
+      checked and never a stop; it is counted when it names a word on no cited
+      excerpt. The packet keeps reason codes and counts only
+      (semantic_redraft_support), never redraft text.
 
   # ── Memory ───────────────────────────────────────────────────────────────
   - id: MEM-001
