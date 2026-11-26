@@ -130,6 +130,27 @@ describe("redraft output allowance", () => {
     expect(redraftOutputAllowance(800 + REDRAFT_MIN_OUTPUT_TOKENS, 800, 800)).toBe(REDRAFT_MIN_OUTPUT_TOKENS);
     expect(redraftOutputAllowance(800 + REDRAFT_MIN_OUTPUT_TOKENS - 1, 800, 800)).toBeNull();
   });
+
+  // #6021 F4-b: a malformed draft-1 count is never small. Ceiling == request cap, so
+  // booking the count as unknown (the whole cap) leaves nothing: null under any reading.
+  it("F4-b: a negative draft-1 count cannot grant the whole cap", () => {
+    expect(redraftOutputAllowance(500, 500, -50)).toBeNull();
+  });
+  it("F4-b: a huge negative draft-1 count cannot grant the whole cap", () => {
+    expect(redraftOutputAllowance(500, 500, -1e9)).toBeNull();
+  });
+  it("F4-b: -Infinity cannot grant the whole cap", () => {
+    expect(redraftOutputAllowance(500, 500, -Infinity)).toBeNull();
+  });
+  it("F4-b: a non-number count (a string from a provider) cannot grant an allowance", () => {
+    const bad = "7" as unknown as number;
+    expect(redraftOutputAllowance(500, 500, bad)).toBeNull();
+  });
+  it("F4-b control: NaN and Infinity already stop; a sane 200 still leaves 300", () => {
+    expect(redraftOutputAllowance(500, 500, NaN)).toBeNull();
+    expect(redraftOutputAllowance(500, 500, Infinity)).toBeNull();
+    expect(redraftOutputAllowance(500, 500, 200)).toBe(300);
+  });
 });
 
 describe("redraft usage", () => {
