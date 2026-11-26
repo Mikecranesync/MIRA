@@ -476,20 +476,36 @@ const SAFETY_CONTROL_DEFERRAL_PHRASE = new RegExp(
 // F005 live now", "work on it energized today", "reset it live as a test" do.
 const BARE_STATE_ANY_SRC = "(?:energi[sz]ed|live)";
 const BARE_STATE_OBJ_SRC = "(?:energi[sz]ed|live|powered(?:\\s+on)?|under\\s+power)";
+// Closed grammatical classes that can follow a PREDICATIVE state word. Each is a
+// word CLASS, not a list of observed sentences:
+//   * conjunctions / subordinators / auxiliaries / modals;
+//   * the PREPOSITIONS, as a class ("live under load", "live near the motor",
+//     "live over the weekend", "live on the bench") — a preposition always opens a
+//     phrase that modifies the verb, never the noun a state adjective modifies;
+//   * place and time ADVERBS ("outdoors", "overhead", "overnight", "again",
+//     "sideways"), plus the productive adverb morphology -ly / -wards / -ways /
+//     -wise and the every/some/any/no + where/place/time compounds;
+//   * words that can NEVER head a noun phrase — determiners, numerals,
+//     quantifiers, intensifiers ("live right now", "live this time", "live one
+//     more time", "live all day", "live a few times", "live real quick").
+// The default for any OTHER open-class word is attributive (a noun is being
+// modified: "live telemetry view"), so a rare manner adverb with no -ly/-wards
+// morphology ("live pronto") is the one bounded residual (see report).
+const BARE_PREPOSITIONS =
+  "about|above|across|after|against|along|alongside|amid|among|amongst|around|as|at|atop|before|behind|below|beneath|beside|besides|between|beyond|by|despite|during|except|for|from|in|inside|into|like|near|nearby|of|on|onto|opposite|out of|outside|over|past|per|since|than|through|throughout|till|to|toward|towards|under|underneath|unlike|until|up to|upon|via|with|within|without";
+const BARE_CONJUNCTIONS_AUX =
+  "and|or|nor|but|so|then|because|while|if|when|whenever|though|although|unless|yet|whereas|that|which|who|where|is|are|should|can|could|may|might|must|will|would|please";
+const BARE_PLACE_TIME_ADVERBS =
+  "again|anyway|instead|now|today|tonight|tomorrow|yesterday|twice|once|thrice|first|next|still|too|also|here|there|later|earlier|sooner|soon|always|never|ever|often|seldom|sometimes|sometime|nowadays|meanwhile|afterward|afterwards|beforehand|overnight|midday|just|only|even|already|anytime|immediately|temporarily|briefly|otherwise|anymore|altogether|together|apart|aside|away|abroad|ahead|aloft|overhead|underground|indoors|outdoors|upstairs|downstairs|upside|sideways|elsewhere";
+const BARE_NEVER_A_NOUN_HEAD =
+  "a|an|the|this|these|those|my|your|its|our|their|his|her|one|two|three|four|five|six|seven|eight|nine|ten|several|few|many|much|more|most|some|any|every|each|another|all|both|half|right|real|really|very|quite|pretty|rather|fairly";
 const BARE_FOLLOW_CLOSED =
-  "(?:and|or|nor|but|so|then|because|since|while|if|when|whenever|until|before|after|as|at|for|in|on|with|without|by|during|from|into|inside|through|via|per|to|" +
-  "again|anyway|instead|now|today|tonight|tomorrow|yesterday|twice|once|thrice|first|next|still|too|also|here|there|later|soon|always|never|often|meanwhile|" +
-  "just|only|even|already|anytime|immediately|temporarily|briefly|please|yet|though|although|unless|that|which|who|where|is|are|should|can|could|may|might|must|will|would|" +
-  // Words that can NEVER head the noun an attributive "live" would modify —
-  // determiners, numerals, quantifiers, intensifiers ("live right now", "live
-  // this time", "live one more time", "live all day", "live a few times",
-  // "live real quick"). A decision, not an enumeration of adverbs: the default
-  // for any OTHER open-class word is attributive (a noun is modified), so an
-  // unknown bare adverb after the state is the one residual (see report).
-  "a|an|the|this|these|those|my|your|its|our|their|his|her|one|two|three|four|five|six|seven|eight|nine|ten|several|few|many|much|more|most|some|any|every|each|another|all|both|half|right|real|really|very|quite|pretty|rather|fairly)";
+  "(?:(?:" + BARE_PREPOSITIONS + "|" + BARE_CONJUNCTIONS_AUX + "|" + BARE_PLACE_TIME_ADVERBS + "|" + BARE_NEVER_A_NOUN_HEAD + ")(?![-\\w])" +
+  "|[a-z]{3,}ly(?![-\\w])|[a-z]{2,}(?:wards?|ways|wise)(?![-\\w])|(?:every|some|any|no)(?:where|place|time|how)(?![-\\w]))";
+// Hyphenated compounds ("under-voltage", "on-site") are one noun-modifier word.
 const BARE_NOT_ATTRIBUTIVE =
   "(?![-\\w])(?!\\s+(?:off|down)\\b)(?!\\s+(?:supply|assembly|family|anomaly|reply)\\b)" +
-  "(?=\\s*(?:$|[,;:.!?)]|" + BARE_FOLLOW_CLOSED + "\\b|[a-z]{3,}ly\\b))";
+  "(?=\\s*(?:$|[,;:.!?)]|" + BARE_FOLLOW_CLOSED + "))";
 // Physical electrical/plant equipment a hazard verb can act on. An attributive
 // "live <noun>" is an ORDER (energized work on that equipment) only when the noun
 // ENDS its phrase ("replace live parts", "service live equipment today"); a
