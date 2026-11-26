@@ -39,7 +39,7 @@ import { reviewedManualFor } from "@/capabilities/reviewed-manual-library";
 import { exactManualIdentity, makerFromText } from "@/capabilities/candidate-identity";
 import { returnsToRecord } from "@/capabilities/conversation-subject";
 import { familyCovers, modelIdentitiesInText } from "@/capabilities/model-token";
-import { modelNumbersIn } from "@/capabilities/manual-applicability";
+import { isRatingToken, modelNumbersIn } from "@/capabilities/manual-applicability";
 import { foldForDetection } from "@/capabilities/detection-fold";
 import { normalizeManufacturer } from "@/lib/manufacturerNormalize";
 
@@ -333,37 +333,8 @@ export function applicableDisabledSource(sources: readonly NotebookSource[], ide
   return sources.find((source) => !source.enabledByDefault && isApplicableTrustedManual(source, key)) ?? null;
 }
 
-/**
- * #5746 (option A): what the chat route's manual wait reads of the project's own Sources when
- * `currentManualSearchStatus` returns null for a confirmed identity. That read is null for a linked
- * manual that no lookup added (or whose lookup was for another identity) once it is turned off,
- * and, with automatic search switched off, while it is still being prepared or cannot be read.
- * The wait must not answer a manual question without that manual. The notebook detail read and
- * mobile keep the null (the display half is the #5746 r7 F3 follow-up).
- */
-export function manualWaitSourceStatus(
-  sources: readonly NotebookSource[],
-  identity: ConfirmedIdentity,
-): ManualSearchStatus | null {
-  // As the status read: a manufacturer and a model (an unconfirmed identity has no key, so none of
-  // its Sources apply).
-  const { manufacturer, model } = identity;
-  if (!manufacturer || !model) return null;
-  const linked = currentManualSourceStatus(sources, identity);
-  if (linked) return { manufacturer, model, ...linked };
-  return applicableDisabledSource(sources, identity) ? { manufacturer, model, running: false, sourceState: "disabled" } : null;
-}
-
-/**
- * The recorded search for this notebook, or null (never attempted, or unreadable). `strict` (the
- * chat route's manual wait, #5746 r8 F12): a failed read throws instead, so it is never read as
- * "no lookup". The column missing before migration 100 is still no record either way.
- */
-export async function readAcquisition(
-  tenantId: string,
-  notebookId: string,
-  opts: { strict?: boolean } = {},
-): Promise<AcquisitionRecord | null> {
+/** The recorded search for this notebook, or null (never attempted, or unreadable). */
+export async function readAcquisition(tenantId: string, notebookId: string): Promise<AcquisitionRecord | null> {
   try {
     return await withTenantContext(tenantId, async (c) => {
       const r = await c.query<{ manual_acquisition: AcquisitionRecord | null }>(
@@ -374,9 +345,9 @@ export async function readAcquisition(
       return rec && typeof rec === "object" && typeof rec.state === "string" ? rec : null;
     });
   } catch (err) {
-    if (isUndefinedColumn(err)) return null;
-    if (opts.strict) throw err;
-    console.error("[manual-acquisition] read failed:", err instanceof Error ? err.message : err);
+    if (!isUndefinedColumn(err)) {
+      console.error("[manual-acquisition] read failed:", err instanceof Error ? err.message : err);
+    }
     return null;
   }
 }
@@ -1045,14 +1016,12 @@ export async function runManualAcquisition(
  * Check a finished record against the notebook's CURRENT sources before it is
  * shown: a document the technician removed (or rejected) since the search is
  * reported as removed — never "it's in Sources" — and is never re-attached
- * automatically (Codex #4118 r8 F13). A read failure leaves the record as-is, except under
- * `strict` (the chat route's manual wait, #5746 r8 F12), where it throws.
+ * automatically (Codex #4118 r8 F13). A read failure leaves the record as-is.
  */
 export async function reconcileAcquisition(
   tenantId: string,
   notebookId: string,
   rec: AcquisitionRecord | null,
-  opts: { strict?: boolean } = {},
 ): Promise<AcquisitionRecord | null> {
   if (!rec) return rec;
   // An indexed document is checked against the notebook's sources (r8 F13); a
@@ -1108,7 +1077,6 @@ export async function reconcileAcquisition(
       return { ...rec, attached_indexed: false, source_removed: true };
     });
   } catch (err) {
-    if (opts.strict) throw err;
     console.error("[manual-acquisition] reconcile failed:", err instanceof Error ? err.message : err);
     return rec;
   }
@@ -1170,7 +1138,7 @@ export function acquisitionDeclineText(
         if (opts.sourceOff) {
           return `I found the official documentation for the ${label} and added it to this notebook's Sources, but it's turned off there now, so I can't answer from it. Turn it back on in Sources and ask again — I'll answer from it and show you the page.`;
         }
-        return `I found the official documentation for the ${label} and added it to this notebook's Sources. Its status will appear here.`;
+        return `I found the official documentation for the ${label} and added it to this notebook's Sources. Ask again and I'll answer from it and show you the page.`;
       // candidate_review (Codex post-cap 4 F9 / 13 F13 / 14 F13): the manual's
       // text did NOT verify this model, so the shared copy below gives the one
       // real next step: check it in Sources, or the URL and the upload
@@ -1183,11 +1151,11 @@ export function acquisitionDeclineText(
   const websiteHelp = website ? ` Open this website to look for the ${label} manual: ${website}. Check the model and revision, then download and upload the manual to this notebook for page citations.` : "";
   switch (rec.state) {
     case "running":
-      return `I don't have the ${label} manual yet — I'm looking for the official one now. I'll show the result here when the lookup finishes.`;
+      return `I don't have the ${label} manual yet — I'm looking for the official one now. It will show up in this notebook's Sources when I find it; ask again in a minute and I'll answer from it and show you the page.`;
     case "complete":
       // The client chose this turn's sources before the manual arrived, so this
       // answer did not consult it — say so rather than imply it was searched.
-      return `I found the official ${label} manual and added it to this notebook's Sources. Its status will appear here.`;
+      return `I found the official ${label} manual and added it to this notebook's Sources. Reopen the notebook (or turn it on in Sources) and ask again — I'll answer from it and show you the page.`;
     case "candidate_review":
       // Only name Sources when an indexed document is actually there to review.
       // Garage pilot L2: the document is PART of a manual (one chapter, or pages
@@ -1301,10 +1269,15 @@ const norm = (s: string | null | undefined) => (s ?? "").toUpperCase().replace(/
 
 /** A code-shaped catalog number the model patterns do not know: hyphenated,
  *  six or more letters and digits, a digit on both sides of a hyphen, and at
- *  least one letter ("25B-D024N104"; not "3-phase", "RS-485" or a date). */
+ *  least one letter ("25B-D024N104"; not "3-phase", "RS-485" or a date). A
+ *  range of ratings is not one either ("208-230VAC", "480VAC-60HZ"): every
+ *  group a plain number or a rating, as `modelNumbersIn` reads a rating
+ *  (#5746 r9 F18). */
 const CATALOG_CODE = /(?<![A-Za-z0-9-])[A-Za-z0-9]*\d[A-Za-z0-9]*(?:-[A-Za-z0-9]*\d[A-Za-z0-9]*)+(?![A-Za-z0-9-])/g;
+const isRatingRange = (code: string) => code.split("-").every((group) => /^\d+$/.test(group) || isRatingToken(group));
 function catalogCodesIn(text: string): string[] {
   return [...text.matchAll(CATALOG_CODE)]
+    .filter((m) => !isRatingRange(m[0]))
     .map((m) => norm(m[0]))
     .filter((code) => code.length >= 6 && /[A-Z]/.test(code));
 }
@@ -1424,12 +1397,10 @@ export async function currentManualSearchStatus(
   confirmed: ConfirmedIdentity,
   proposedIdentity: { manufacturer: string; model: string } | null,
   sources: readonly NotebookSource[],
-  deps: { env?: Record<string, string | undefined>; groundedTurn?: boolean; strict?: boolean } = {},
+  deps: { env?: Record<string, string | undefined>; groundedTurn?: boolean } = {},
 ): Promise<ManualSearchStatus | null> {
   const automaticAcquisition = acquisitionEnabled(tenantId, deps.env);
-  // `strict` (#5746 r8 F12): a failed read throws rather than reading as "no lookup".
-  const reads = { strict: deps.strict === true };
-  const rec = automaticAcquisition ? await readAcquisition(tenantId, notebookId, reads) : null;
+  const rec = automaticAcquisition ? await readAcquisition(tenantId, notebookId) : null;
   const confirmedKey = acquisitionKey(confirmed);
   if (!rec || (confirmedKey && rec.key !== confirmedKey)) {
     const linked = currentManualSourceStatus(sources, confirmed);
@@ -1485,7 +1456,7 @@ export async function currentManualSearchStatus(
       message: `I found the official documentation for the ${manufacturer} ${model} and added it to this notebook's Sources, but it's turned off there now. Turn it back on in Sources to ask from it.`,
     };
   }
-  const reconciled = await reconcileAcquisition(tenantId, notebookId, rec, reads);
+  const reconciled = await reconcileAcquisition(tenantId, notebookId, rec);
   if (!reconciled) return null;
   if (reconciled.state === "running") return { ...status, running: true };
   if (reconciled.state === "complete" && reconciled.doc_id && !reconciled.source_removed &&

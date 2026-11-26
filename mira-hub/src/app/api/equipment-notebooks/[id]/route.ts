@@ -19,14 +19,7 @@ import {
 import { listFilesForTarget } from "@/lib/workspace-files";
 import type { ManualSearchStatus } from "@/capabilities/notebook-manual-acquisition";
 import { isComponentAttributionEntry } from "@/capabilities/bench-components/attribution";
-import {
-  TURN_WINDOW,
-  notebookManualStatus,
-  sendWaitAllows,
-  sendWaitStatus,
-  subjectMachine,
-  subjectReader,
-} from "@/capabilities/send-wait-subject";
+import { TURN_WINDOW, notebookManualStatus, subjectMachine, subjectReader } from "@/capabilities/manual-status-subject";
 
 export const dynamic = "force-dynamic";
 
@@ -104,9 +97,6 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   // That holds even when there is no current status to withhold (r2 F1): a
   // client may still be showing one from an earlier read.
   let manualSearchScope: "other_model" | "out_of_reach" | undefined;
-  let wholeMachineManualSearch: ManualSearchStatus | undefined;
-  // The status itself, before this read decides whether it is shown (#5746 r6 F1).
-  const projectStatus = manualSearch;
   const machine = threadId ? subjectMachine(manualSearch, notebook) : null;
   if (threadId && machine) {
     const subject = subjectReader({ tenantId: ctx.tenantId, notebookId: id, viewerUserId: ctx.userId, threadId, turns, machine });
@@ -125,29 +115,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     // the project's machine, so the project's status is withheld there.
     const newest = turns.at(-1);
     if (newest && (newest.evidence ?? []).some(isComponentAttributionEntry)) manualSearchScope = "other_model";
-    // #5746 r4 F1 + r5 F1: a status withheld only for questions asked under a component is
-    // withheld from display only. A question about the whole machine still needs this lookup,
-    // so the Hub's wait after the chat route held one (#5746, option A) follows it, without the
-    // message or link it would show. A whole-machine question that named another model, a
-    // subject out of reach, or a failed read sends nothing.
-    if (manualSearch && manualSearchScope === "other_model") {
-      try {
-        if (sendWaitAllows(await subject.wholeMachine())) wholeMachineManualSearch = sendWaitStatus(manualSearch);
-      } catch (err) {
-        console.error("[equipment-notebooks] whole-machine subject read failed (the manual wait gets no lookup):", err);
-      }
-    }
     if (manualSearchScope) manualSearch = null;
   }
-  // #5746 r6 F1: where the status is withheld for this thread and the rules above leave a question
-  // about the whole machine nothing to wait for, a question that names the project's own model
-  // still needs its manual. That question is not saved yet, so the chat route decides when it is
-  // sent (`readManualWait`), and the Hub, only while a question it held waits, follows this
-  // lookup. It carries no message or link. A read that failed before any scope was known carries
-  // none: the Hub then asks again at once, and the route decides again.
-  const projectManualReadiness = manualSearchScope && projectStatus && !wholeMachineManualSearch
-    ? sendWaitStatus(projectStatus)
-    : undefined;
   // #5750 r3 F10/F11/F12: on a thread-scoped read, the saved answer this
   // status was checked against — the newest turn the read saw. Clients show
   // the status under that answer only, and nowhere when it is null (no answer
@@ -159,8 +128,6 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     notebook, sources, turns, threads, photos, manualSearch,
     ...(manualSearchScope ? { manualSearchScope } : {}),
     ...(manualSearchAnswer !== undefined ? { manualSearchAnswer } : {}),
-    ...(wholeMachineManualSearch ? { wholeMachineManualSearch } : {}),
-    ...(projectManualReadiness ? { projectManualReadiness } : {}),
   });
 }
 

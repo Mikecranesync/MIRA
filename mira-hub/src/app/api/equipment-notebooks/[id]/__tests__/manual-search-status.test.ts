@@ -26,19 +26,12 @@ vi.mock("@/lib/workspace-files", () => ({ listFilesForTarget: vi.fn(async () => 
 const currentManualSearchStatus = vi.hoisted(() => vi.fn());
 vi.mock("@/capabilities/notebook-manual-acquisition", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/capabilities/notebook-manual-acquisition")>();
-  // The manual wait's read of the project's Sources runs for real (#5746).
-  return { currentManualSearchStatus, threadStatusScope: actual.threadStatusScope, manualWaitSourceStatus: actual.manualWaitSourceStatus };
+  return { currentManualSearchStatus, threadStatusScope: actual.threadStatusScope };
 });
-
-// #5746 r5 F1: the component stamp is read only for the manual wait. Default: no turn is stamped.
-const turnsAskedUnderComponent = vi.hoisted(() => vi.fn());
-vi.mock("@/capabilities/bench-components/store", () => ({ turnsAskedUnderComponent }));
 
 import { GET } from "../route";
 import { sessionOr401 } from "@/lib/session";
 import { getNotebook, listSources, listTurns } from "@/lib/equipment-notebooks";
-import { sendWaitLookup } from "@/factorylm-ui/hub-host-logic";
-import { manualWaitDecision, readManualWait } from "@/capabilities/send-wait-subject";
 
 const NB = "11111111-2222-3333-4444-555555555555";
 const TENANT = "00000000-0000-0000-0000-0000000000d1";
@@ -61,7 +54,6 @@ beforeEach(() => {
   vi.mocked(listSources).mockResolvedValue([] as never);
   vi.mocked(listTurns).mockResolvedValue([] as never);
   currentManualSearchStatus.mockResolvedValue(null);
-  turnsAskedUnderComponent.mockImplementation(async () => new Set<string>());
 });
 
 describe("GET /api/equipment-notebooks/[id] — manualSearch (T2 #4189)", () => {
@@ -299,320 +291,52 @@ describe("GET /api/equipment-notebooks/[id] — manualSearch (T2 #4189)", () => 
       expect(control.manualSearch).toEqual(READY);
     });
 
-    // #5746 r4 F1: under a component answer the status is withheld from display only. A
-    // whole-machine question still waits for the project's manual, so the send wait gets the
-    // lookup, without its message or link. Every other reason to withhold sends nothing.
-    describe("the whole-machine lookup for the send wait", () => {
-      const COMPONENT = { kind: "component_attribution", componentId: "c-acs580", revision: 1, selectionVersion: 1, label: "ABB ACS580" };
-      const STARTED_AT = "2026-11-21T12:00:00.000Z";
-      const PREPARING = {
-        manufacturer: "AutomationDirect", model: "GS11N-20P2", running: true, sourceState: "preparing",
-        message: "The manual is being added to Sources.", manualUrl: "https://app.example.test/manual.pdf", startedAt: STARTED_AT,
+    // #5746 (Mike, 2026-11-26): a withheld status is withheld, nothing more. The response carries
+    // no other lookup for a send to wait on.
+    it("a withheld status leaves no other lookup in the response", async () => {
+      const attributed = {
+        id: "t-c", question: "What does the manual say about the rated current?",
+        evidence: [{ kind: "component_attribution", componentId: "c-acs580", revision: 1, selectionVersion: 1, label: "ABB ACS580" }],
       };
-      const attributed = (question: string) => ({ id: "t-c", question, evidence: [COMPONENT] });
-      const keypad = (n: number) => Array.from({ length: n - 1 }, (_, i) => ask(`follow-up ${i + 1}: what does the keypad show?`));
-
-      it("sends the lookup for a component answer, without the message or the link", async () => {
-        currentManualSearchStatus.mockResolvedValue(PREPARING);
-        vi.mocked(listTurns).mockResolvedValue([attributed("What is the rated current?")] as never);
-        const body = await (await GET(threadReq, params)).json();
-        expect(body.manualSearch).toBeNull();
-        expect(body.manualSearchScope).toBe("other_model");
-        expect(body.wholeMachineManualSearch).toEqual({
-          manufacturer: "AutomationDirect", model: "GS11N-20P2", running: true, sourceState: "preparing", startedAt: STARTED_AT,
-        });
-      });
-
-      it("keeps the ready source it names", async () => {
-        currentManualSearchStatus.mockResolvedValue({ ...READY, sourceState: "ready", readySourceDocId: "doc-1", startedAt: STARTED_AT });
-        vi.mocked(listTurns).mockResolvedValue([attributed("What is the rated current?")] as never);
-        const body = await (await GET(threadReq, params)).json();
-        expect(body.wholeMachineManualSearch).toEqual({
-          manufacturer: "AutomationDirect", model: "GS11N-20P2", running: false, sourceState: "ready", readySourceDocId: "doc-1", startedAt: STARTED_AT,
-        });
-      });
-
-      it.each([
-        ["the thread asked for another model", () => [ask("Find me the manual for AutomationDirect GS11N-20P25"), attributed("What is the rated current?")], "other_model"],
-        // The component rule runs last and names the scope, so this reads other_model too.
-        ["even the widest read settles nothing", () => [...keypad(400), attributed("What is the rated current?")], "other_model"],
-      ])("sends nothing when %s", async (_label, turns, scope) => {
-        currentManualSearchStatus.mockResolvedValue(PREPARING);
-        const all = turns();
-        vi.mocked(listTurns).mockImplementation((async (_t: string, _n: string, limit: number) => all.slice(-limit)) as never);
-        const body = await (await GET(threadReq, params)).json();
-        expect(body.manualSearch).toBeNull();
-        expect(body.manualSearchScope).toBe(scope);
-        expect(body).not.toHaveProperty("wholeMachineManualSearch");
-      });
-
-      it("sends nothing when the wider read fails", async () => {
-        currentManualSearchStatus.mockResolvedValue(PREPARING);
-        const all = [...keypad(60), attributed("What is the rated current?")];
-        vi.mocked(listTurns).mockImplementation((async (_t: string, _n: string, limit: number) => {
-          if (limit > 50) throw new Error("statement timeout");
-          return all.slice(-limit);
-        }) as never);
-        const body = await (await GET(threadReq, params)).json();
-        expect(body.manualSearch).toBeNull();
-        expect(body).not.toHaveProperty("wholeMachineManualSearch");
-      });
-
-      it("sends nothing when there is no current status", async () => {
-        currentManualSearchStatus.mockResolvedValue(null);
-        vi.mocked(listTurns).mockResolvedValue([attributed("What is the rated current?")] as never);
-        const body = await (await GET(threadReq, params)).json();
-        expect(body.manualSearchScope).toBe("other_model");
-        expect(body).not.toHaveProperty("wholeMachineManualSearch");
-      });
-
-      it("control: an answer about the whole machine shows the status and sends no separate lookup", async () => {
-        currentManualSearchStatus.mockResolvedValue(PREPARING);
-        vi.mocked(listTurns).mockResolvedValue([ask("What is the rated current?")] as never);
-        const body = await (await GET(threadReq, params)).json();
-        expect(body.manualSearch).toEqual(PREPARING);
-        expect(body).not.toHaveProperty("wholeMachineManualSearch");
-      });
-
-      // #5746 r5 F1: a question asked under a selected component is about that component, even
-      // when it names the component's model, a sibling of the project's. It never decides that
-      // the thread moved to another model for the send wait. The shown status is unchanged: it
-      // still reads every question.
-      describe("a component question that names the component's model", () => {
-        const SIBLING = { ...COMPONENT, componentId: "c-p25", label: "Drive B · AutomationDirect GS11N-20P25" };
-        const SIBLING_QUESTION = "What is the rated current of the AutomationDirect GS11N-20P25?";
-        const underSibling = (question: string) => ({ id: "t-s", question, evidence: [SIBLING] });
-        const GATE = { manufacturer: "AutomationDirect", model: "GS11N-20P2", running: true, sourceState: "preparing", startedAt: STARTED_AT };
-        const read = (all: unknown[]) => {
-          vi.mocked(listTurns).mockImplementation((async (_t: string, _n: string, limit: number) => all.slice(-limit)) as never);
-        };
-
-        it.each([
-          ["it is the newest answer", () => [underSibling(SIBLING_QUESTION)]],
-          ["a whole-machine answer followed it", () => [underSibling(SIBLING_QUESTION), ask("What is the rated current?")]],
-          ["the project's own model was asked past the newest 50", () => [
-            ask("Find me the manual for AutomationDirect GS11N-20P2"), underSibling(SIBLING_QUESTION), ...keypad(50),
-          ]],
-        ])("sends the lookup when %s", async (_label, turns) => {
-          currentManualSearchStatus.mockResolvedValue(PREPARING);
-          read(turns());
-          const body = await (await GET(threadReq, params)).json();
-          expect(body.manualSearch).toBeNull();
-          expect(body.manualSearchScope).toBe("other_model");
-          expect(body.wholeMachineManualSearch).toEqual(GATE);
-        });
-
-        // A safety stop or an off-topic reply asked under the component saves no attribution
-        // entry; the turn's component stamp (migration 115) still says where it was asked.
-        const STOP = { id: "t-stop", question: "Can I work on the energized AutomationDirect GS11N-20P25?", evidence: [] };
-        const stampStop = () => turnsAskedUnderComponent.mockImplementation(async (_t: string, _n: string, ids: string[]) =>
-          new Set(ids.filter((i) => i === STOP.id)));
-
-        it("sends the lookup when a stop asked under the component names its model, with only the stamp", async () => {
-          currentManualSearchStatus.mockResolvedValue(PREPARING);
-          stampStop();
-          read([ask("What is the rated current?"), STOP]);
-          const body = await (await GET(threadReq, params)).json();
-          expect(body.manualSearch).toBeNull();
-          expect(body.manualSearchScope).toBe("other_model");
-          expect(body.wholeMachineManualSearch).toEqual(GATE);
-          expect(turnsAskedUnderComponent).toHaveBeenCalledWith(TENANT, NB, ["t", "t-stop"]);
-        });
-
-        it("sends the lookup when a stop with only the stamp lies past the newest 50", async () => {
-          currentManualSearchStatus.mockResolvedValue(PREPARING);
-          stampStop();
-          read([ask("Find me the manual for AutomationDirect GS11N-20P2"), STOP, ...keypad(51)]);
-          const body = await (await GET(threadReq, params)).json();
-          expect(body.manualSearchScope).toBe("other_model");
-          expect(body.wholeMachineManualSearch).toEqual(GATE);
-          // Precondition: the stop is not among the newest 50, so only the further read finds it.
-          expect(turnsAskedUnderComponent.mock.calls.map((c) => (c[2] as string[]).includes(STOP.id))).toEqual([false, true]);
-        });
-
-        it("sends nothing, and still returns the page, when the stamp read fails", async () => {
-          currentManualSearchStatus.mockResolvedValue(PREPARING);
-          turnsAskedUnderComponent.mockRejectedValue(new Error("statement timeout"));
-          read([underSibling(SIBLING_QUESTION)]);
-          const res = await GET(threadReq, params);
-          expect(res.status).toBe(200);
-          const body = await res.json();
-          expect(body.manualSearch).toBeNull();
-          expect(body.manualSearchScope).toBe("other_model");
-          expect(body).not.toHaveProperty("wholeMachineManualSearch");
-        });
-
-        // The detail response is what the Hub follows after the chat route held a question:
-        // composed with its real reader, the sibling-naming component answer leaves a running
-        // lookup to wait for.
-        it("composed: the Hub's wait after a refusal reads a running lookup from this response", async () => {
-          currentManualSearchStatus.mockResolvedValue(PREPARING);
-          read([underSibling(SIBLING_QUESTION)]);
-          const body = await (await GET(threadReq, params)).json();
-          expect(sendWaitLookup(body)).toEqual(GATE);
-        });
-
-        it("control: a whole-machine question past the newest 50 that names another model sends nothing", async () => {
-          currentManualSearchStatus.mockResolvedValue(PREPARING);
-          read([ask("Find me the manual for AutomationDirect GS11N-20P25"), underSibling(SIBLING_QUESTION), ...keypad(50)]);
-          const body = await (await GET(threadReq, params)).json();
-          expect(body.manualSearch).toBeNull();
-          expect(body.manualSearchScope).toBe("other_model");
-          expect(body).not.toHaveProperty("wholeMachineManualSearch");
-          expect(vi.mocked(listTurns)).toHaveBeenCalledTimes(2);
-        });
-
-        it("control: a whole-machine question that names another model sends nothing", async () => {
-          currentManualSearchStatus.mockResolvedValue(PREPARING);
-          read([ask("Find me the manual for AutomationDirect GS11N-20P25"), underSibling(SIBLING_QUESTION)]);
-          const body = await (await GET(threadReq, params)).json();
-          expect(body.manualSearchScope).toBe("other_model");
-          expect(body).not.toHaveProperty("wholeMachineManualSearch");
-        });
-
-        it("sends nothing, and still returns the page, when the wider read it needs fails", async () => {
-          currentManualSearchStatus.mockResolvedValue(PREPARING);
-          const all = [ask("Find me the manual for AutomationDirect GS11N-20P2"), underSibling(SIBLING_QUESTION), ...keypad(50)];
-          vi.mocked(listTurns).mockImplementation((async (_t: string, _n: string, limit: number) => {
-            if (limit > 50) throw new Error("statement timeout");
-            return all.slice(-limit);
-          }) as never);
-          const res = await GET(threadReq, params);
-          expect(res.status).toBe(200);
-          const body = await res.json();
-          expect(body.turns).toHaveLength(50);
-          expect(body.manualSearch).toBeNull();
-          expect(body.manualSearchScope).toBe("other_model");
-          expect(body).not.toHaveProperty("wholeMachineManualSearch");
-        });
-
-        it("control: a shown status makes no extra read", async () => {
-          currentManualSearchStatus.mockResolvedValue(PREPARING);
-          read([underSibling(SIBLING_QUESTION), ...keypad(50), ask("Find me the manual for AutomationDirect GS11N-20P2")]);
-          const body = await (await GET(threadReq, params)).json();
-          expect(body.manualSearch).toEqual(PREPARING);
-          expect(body).not.toHaveProperty("wholeMachineManualSearch");
-          expect(vi.mocked(listTurns)).toHaveBeenCalledTimes(1);
-          expect(turnsAskedUnderComponent).not.toHaveBeenCalled();
-        });
-      });
+      vi.mocked(listTurns).mockResolvedValue([attributed] as never);
+      const body = await (await GET(threadReq, params)).json();
+      expect(body.manualSearch).toBeNull();
+      expect(Object.keys(body).sort()).toEqual(["manualSearch", "manualSearchScope", "notebook", "photos", "sources", "threads", "turns"]);
     });
 
-    // #5746 r6 F1 / option A: a thread that asked about a look-alike withholds the project's
-    // status. A question that names the project's own model still needs its manual. That question
-    // is not saved yet, so the detail read only says the project's lookup exists, and the chat
-    // route decides with the question added as the newest whole-machine question
-    // (`readManualWait` + `manualWaitDecision`, the halves the route composes).
-    describe("the project's readiness and the chat route's manual wait", () => {
-      const STARTED_AT = "2026-11-21T12:00:00.000Z";
-      const PREPARING = {
-        manufacturer: "AutomationDirect", model: "GS11N-20P2", running: true, sourceState: "preparing",
-        message: "The manual is being added to Sources.", manualUrl: "https://app.example.test/manual.pdf", startedAt: STARTED_AT,
-      };
-      const GATE = { manufacturer: "AutomationDirect", model: "GS11N-20P2", running: true, sourceState: "preparing", startedAt: STARTED_AT };
-      const HELD = { error: "manual_not_ready", reason: "running", lookup: GATE };
-      const LOOK_ALIKE = ask("Find me the manual for AutomationDirect GS11N-20P25");
-      const COMPONENT = { kind: "component_attribution", componentId: "c-acs580", revision: 1, selectionVersion: 1, label: "ABB ACS580" };
-      const OWN = "According to the manual, what is the acceleration parameter for the GS11N-20P2?";
-      const SIBLING = "According to the manual, what is the acceleration parameter for the GS11N-20P25?";
-      const NEUTRAL = "According to the manual, what is the nominal bus voltage?";
-      const keypad = (n: number) => Array.from({ length: n }, (_, i) => ask(`follow-up ${i + 1}: what does the keypad show?`));
-      const read = (all: unknown[]) => {
-        vi.mocked(listTurns).mockImplementation((async (_t: string, _n: string, limit: number) => all.slice(-limit)) as never);
-      };
-      const wait = (question: string) => readManualWait({ tenantId: TENANT, notebookId: NB, viewerUserId: "u_1", threadId: THREAD, question });
-      const decide = async (question: string) => manualWaitDecision(await wait(question), []);
-
-      beforeEach(() => { currentManualSearchStatus.mockResolvedValue(PREPARING); });
-
-      it("a look-alike thread's read names the project's lookup, without the message or the link", async () => {
-        read([LOOK_ALIKE]);
+    // #5746 r9 F18: a range of ratings is not a catalog number, so asking about the input range
+    // keeps the project's status (and the poll that brings its manual into Sources).
+    it("keeps it for a question about a voltage or frequency range", async () => {
+      for (const question of [
+        "What does the manual say about the 208-230VAC input range?",
+        "Is 380-480VAC OK on this drive?",
+        "Does it run at 50-60HZ?",
+        "Does the GS11N-20P2 take 208-230VAC?",
+      ]) {
+        vi.mocked(listTurns).mockResolvedValue([ask(question)] as never);
         const body = await (await GET(threadReq, params)).json();
-        expect(body.manualSearch).toBeNull();
-        expect(body.manualSearchScope).toBe("other_model");
-        expect(body).not.toHaveProperty("wholeMachineManualSearch");
-        expect(body.projectManualReadiness).toEqual(GATE);
-      });
+        expect(body, question).not.toHaveProperty("manualSearchScope");
+        expect(body.manualSearch, question).toEqual(READY);
+      }
+    });
 
-      it("composed: the Hub reads it only while a refused question waits on it", async () => {
-        read([LOOK_ALIKE]);
-        const body = await (await GET(threadReq, params)).json();
-        expect(sendWaitLookup(body)).toBeNull();
-        expect(sendWaitLookup(body, true)).toEqual(GATE);
-      });
+    const powerFlex = () => {
+      vi.mocked(getNotebook).mockResolvedValue({
+        ...NOTEBOOK, identityStatus: "user_confirmed", manufacturer: "Allen-Bradley", model: "PowerFlex 525", catalogNumber: "25B-D017N104",
+      } as never);
+      currentManualSearchStatus.mockResolvedValue({ ...READY, manufacturer: "Allen-Bradley", model: "PowerFlex 525" });
+    };
 
-      it.each([
-        ["a shown status", () => read([ask("Find me the manual for AutomationDirect GS11N-20P2")])],
-        ["a component answer's send lookup", () => read([{ id: "t-c", question: "What is the rated current?", evidence: [COMPONENT] }])],
-        ["a read that failed before any scope was known", () => {
-          const all = keypad(60);
-          vi.mocked(listTurns).mockImplementation((async (_t: string, _n: string, limit: number) => {
-            if (limit > 50) throw new Error("statement timeout");
-            return all.slice(-limit);
-          }) as never);
-        }],
-      ])("control: %s carries no readiness", async (_label, arrange) => {
-        arrange();
-        const body = await (await GET(threadReq, params)).json();
-        expect(body).not.toHaveProperty("projectManualReadiness");
-      });
+    it("keeps it for the project's own catalog number beside a range", async () => {
+      powerFlex();
+      vi.mocked(listTurns).mockResolvedValue([ask("Does the 25B-D017N104 take 380-480VAC?")] as never);
+      expect(await (await GET(threadReq, params)).json()).not.toHaveProperty("manualSearchScope");
+    });
 
-      it("control: a whole-notebook read carries no readiness", async () => {
-        read([LOOK_ALIKE]);
-        const body = await (await GET(req, params)).json();
-        expect(body).not.toHaveProperty("projectManualReadiness");
-      });
-
-      it("a question that names the project's model is held, after a look-alike question", async () => {
-        read([LOOK_ALIKE]);
-        expect(await decide(OWN)).toEqual(HELD);
-      });
-
-      it("control: a question that names the look-alike is answered (r7 F10)", async () => {
-        read([LOOK_ALIKE]);
-        expect(await decide(SIBLING)).toBeNull();
-      });
-
-      it("control: a question that names no model, in a look-alike thread, is answered", async () => {
-        read([LOOK_ALIKE]);
-        expect(await decide(NEUTRAL)).toBeNull();
-      });
-
-      it("decides as the detail read does: after a component answer a neutral question is held", async () => {
-        read([{ id: "t-c", question: "What is the rated current?", evidence: [COMPONENT] }]);
-        expect(await decide(NEUTRAL)).toEqual(HELD);
-      });
-
-      it("reads further back for a neutral question, as the detail read does", async () => {
-        read([LOOK_ALIKE, ...keypad(50)]);
-        expect(await decide(NEUTRAL)).toBeNull();
-        expect(vi.mocked(listTurns)).toHaveBeenCalledTimes(2);
-      });
-
-      it("reads this viewer's history of this thread, as the detail read does", async () => {
-        read([LOOK_ALIKE]);
-        await wait(OWN);
-        expect(vi.mocked(listTurns)).toHaveBeenCalledWith(TENANT, NB, 50, { viewerUserId: "u_1", threadId: THREAD });
-        expect(vi.mocked(getNotebook)).toHaveBeenCalledWith(TENANT, NB);
-      });
-
-      it("has nothing to hold for without a current status", async () => {
-        currentManualSearchStatus.mockResolvedValue(null);
-        read([LOOK_ALIKE]);
-        expect(await decide(OWN)).toBeNull();
-      });
-
-      it("reads nothing more for a notebook this tenant cannot read", async () => {
-        vi.mocked(getNotebook).mockResolvedValue(null as never);
-        expect(await wait(OWN)).toEqual({ status: null, scope: null });
-        expect(vi.mocked(listTurns)).not.toHaveBeenCalled();
-      });
-
-      it("a failed read throws, so the route holds the question as unreadable, never answers it", async () => {
-        vi.mocked(listTurns).mockRejectedValue(new Error("statement timeout"));
-        await expect(wait(OWN)).rejects.toThrow("statement timeout");
-        expect(manualWaitDecision("read_failed", [])).toEqual({ error: "manual_unavailable", reason: "unknown", lookup: null });
-      });
+    it("control: a sibling catalog number beside a range still drops it", async () => {
+      powerFlex();
+      vi.mocked(listTurns).mockResolvedValue([ask("Does the 25B-D024N104 take 380-480VAC?")] as never);
+      expect((await (await GET(threadReq, params)).json()).manualSearchScope).toBe("other_model");
     });
 
     // #5750 r3 F2: a Unicode hyphen reads as the catalog hyphen, and a

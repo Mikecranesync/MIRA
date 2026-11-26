@@ -151,7 +151,6 @@ import { notebookManualIdentity } from "@/capabilities/notebook-manual-identity"
 import { componentAttributionEntry, isComponentAttributionEntry, type ComponentAttributionEntry } from "@/capabilities/bench-components/attribution";
 import { checkWholeMachineScope, componentTurnFrame, noDocumentsForComponentText, readComponentSelection, resolveComponentTurn, selectionMovedText, type ComponentTurn, type ComponentTurnFrame } from "@/capabilities/bench-components/chat-turn";
 import { historyForWholeMachine, historyUnderSelection, readSubjectUnderSelection } from "@/capabilities/bench-components/selection";
-import { manualWaitDecision, readManualWait, waitsForManual, type ManualWaitRead, type ManualWaitRefusal } from "@/capabilities/send-wait-subject";
 import { listSelectionTurns, stampTurnComponent } from "@/capabilities/bench-components/store";
 import {
   excludedTablesRefusalText,
@@ -1968,40 +1967,6 @@ async function handleChatTurn(
   const docIds: string[] = validated.ok ? validated.docIds : [];
   const nodeId = validated.ok ? validated.nodeId : null;
 
-  // #5746 (option A): a question that explicitly asks for the project's manual is never answered
-  // while that manual is being prepared, or without it once it is ready. The Hub shell opts in
-  // with `x-mira-manual-wait: 1`; other clients are unchanged. The decision reads the project's
-  // current status and this question as the newest whole-machine question, so a question about
-  // another exact model is answered at once. Like `selection_changed` above it answers nothing
-  // and writes nothing: the claim is released, so the Hub can ask again. Safety, energized-work,
-  // bypass, off-topic, photo, guided and component turns keep their own paths.
-  const manualWaitApplies =
-    req.headers.get("x-mira-manual-wait") === "1" &&
-    !questionSafetyTrigger && !energizedAskEarly && !bypassStopEarly && !offTopicTrigger &&
-    !visualClaimFileId && !body.guidedEscalation && !componentTurn && !selectionMoved &&
-    waitsForManual(message);
-  if (manualWaitApplies) {
-    let read: ManualWaitRead | "read_failed";
-    try {
-      read = await readManualWait({
-        tenantId: ctx.tenantId,
-        notebookId,
-        viewerUserId: ctx.userId,
-        threadId: threadId ?? LEGACY_THREAD_ID,
-        question: message,
-      });
-    } catch (err) {
-      console.error("[notebook-chat] manual wait read failed (pausing the send):", err instanceof Error ? err.message : err);
-      read = "read_failed";
-    }
-    const refusal = manualWaitDecision(read, docIds);
-    if (refusal) {
-      await abandonRequestClaim();
-      endRoot({ "mira.manual_wait.reason": refusal.reason });
-      return NextResponse.json(refusal, { status: 409 });
-    }
-  }
-
   // Verify the claimed photo before any terminal refusal (including the
   // #3786 off-topic scope reply right below — Codex R1 F1, #4894: the
   // exemption for a photo-bearing turn must be checked against the VERIFIED
@@ -3532,8 +3497,6 @@ async function handleChatTurn(
   // follower can tell a genuinely NEW search apart from a replay of an old
   // one. Scoped to the candidate basis only, matching `manualSearchStatusFrame`.
   let candidateSearchStartedAt: string | undefined;
-  // #5746: the confirmed-basis search's own generation, for the manual wait's refusal below.
-  let confirmedSearchStartedAt: string | undefined;
   let candidateManualUrl: string | null = null;
   if (
     (missingModelManual || noEvidenceForMachine) &&
@@ -3606,30 +3569,9 @@ async function handleChatTurn(
         if (acq.state === "running" && manualSearchRunning === null) {
           manualSearchRunning = "confirmed";
           manualSearchKey = key;
-          confirmedSearchStartedAt = acq.started_at ?? undefined;
         }
       }
     }
-  }
-  // #5746 (option A): the same wait when this send found nothing for the project's own machine
-  // and the project's lookup is running now, most often because this send started it. The
-  // decline this turn would save is the reply the wait exists to replace. Nothing about this
-  // turn has been written yet (a part-search turn, which can write, is excluded), so the claim is
-  // released and the Hub asks again once the lookup settles; the lookup itself keeps running.
-  if (manualWaitApplies && manualSearchRunning === "confirmed" && photoPartLookup === null && nb) {
-    await abandonRequestClaim();
-    endRoot({ "mira.manual_wait.reason": "running", "mira.manual_wait.started_this_turn": manualAcquisition?.started_this_turn === true });
-    const refusal: ManualWaitRefusal = {
-      error: "manual_not_ready",
-      reason: "running",
-      lookup: {
-        manufacturer: nb.manufacturer ?? "",
-        model: nb.model ?? "",
-        running: true,
-        ...(confirmedSearchStartedAt ? { startedAt: confirmedSearchStartedAt } : {}),
-      },
-    };
-    return NextResponse.json(refusal, { status: 409 });
   }
   // #4160 S6 — candidate-basis background acquisition (PRD R2). When a
   // candidate identity was proposed THIS turn (the RC1-fixed label read, or

@@ -86,7 +86,7 @@ describe("project creation does not wait for sidebar refresh", () => {
     const noop = vi.fn();
     const setSelection = vi.fn();
     const select = callback("select", {selectionRef, abortRef:{current:null}, uploadAbortRef:{current:null},
-      waitingSend:{current:null}, manualHoldRef:{current:null}, pauseManualHold:noop, MANUAL_WAIT_LEFT:"", conversationKey,
+      waitingSend:{current:null}, conversationKey,
       detailGate:latestRequestGate(), detailAbortRef:{current:null}, detailRef:{current:null},
       setDetail:noop, setDetailUnavailable:noop, setLive:noop,
       setSendPaused:noop, manualSearchDriverRef:{current:null}, setFollow:noop, setStatusOrigins:noop, syncThread:noop,

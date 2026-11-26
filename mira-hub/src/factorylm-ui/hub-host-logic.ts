@@ -10,7 +10,7 @@ import { buildChatBody, isAbortError, type ChatBody, type PersistedTurn, type St
 import { isSafetyNoticeEntry } from "@/lib/notebook-chat-types";
 import { LEGACY_THREAD_ID, machineNameFor, notebookLabel, threadItemId, threadRefFromItem, type HubNotebook } from "./notebook-tree";
 import { historyFromSavedTurns, type HistoryRow } from "@/capabilities/conversation-history";
-import type { ComponentRider, ScopeField } from "./bench-components-logic";
+import type { ScopeField } from "./bench-components-logic";
 import { contextFor, threadFromPersisted, type HubNotebookMeta } from "./to-interaction";
 
 /** The shell's fixture before any notebook loads: an empty, untitled thread. */
@@ -325,13 +325,6 @@ export type HubSendRecovery = {
   readonly recoveryId?: string;
   readonly error: string | null;
   readonly draftRevision?: number;
-  /** #5746: the chat route refused this question because it asks for the project's manual and the
-   *  manual can't be used yet. Nothing was answered or saved, and the refused body is never sent
-   *  again: every resend is rebuilt from the project as it is then (`manualResendBody`). */
-  readonly manualRefused?: ManualWaitCode;
-  /** #5746: this attempt was sent without the manual wait (a send with attachments, a home send,
-   *  Send without the manual). A replay of it keeps that. */
-  readonly manualWait?: false;
 };
 
 export type HubHostAction =
@@ -699,7 +692,7 @@ export function enabledDocIds(sources: readonly Pick<NotebookSource, "docId" | "
   return sources.filter((s) => s.enabledByDefault && (s.matchState === "user_confirmed" || s.matchState === "verified")).map((s) => s.docId);
 }
 
-
+/** The ready manual a status names, only when this project's Sources would send it now. */
 export function currentReadyManualId(
   status: { sourceState?: string; readySourceDocId?: string } | null | undefined,
   sources: readonly (Pick<NotebookSource, "docId" | "enabledByDefault" | "matchState"> & { readiness?: { canChat: boolean } })[],
@@ -707,117 +700,6 @@ export function currentReadyManualId(
   if (status?.sourceState !== "ready" || !status.readySourceDocId) return null;
   const source = sources.find(source => source.docId === status.readySourceDocId);
   return source?.readiness?.canChat && enabledDocIds([source]).length > 0 ? source.docId : null;
-}
-
-/** The project's lookup a refused manual question follows: the shown status, else the one withheld
- *  for an answer about a component (#5746 r4 F1), else, only while a refused question waits on it
- *  (`followsReadiness`), the project's readiness. */
-export function sendWaitLookup(
-  data: {
-    manualSearch?: ManualSearchStatus | null;
-    wholeMachineManualSearch?: ManualSearchStatus;
-    projectManualReadiness?: ManualSearchStatus;
-  } | null | undefined,
-  followsReadiness = false,
-): ManualSearchStatus | null {
-  return data?.manualSearch ?? data?.wholeMachineManualSearch ?? (followsReadiness ? data?.projectManualReadiness : undefined) ?? null;
-}
-
-/** #5746 (option A): the chat route's refusal of a manual question it cannot answer yet. */
-export type ManualWaitCode = "manual_not_ready" | "manual_unavailable";
-export function isManualWaitCode(code: string): code is ManualWaitCode {
-  return code === "manual_not_ready" || code === "manual_unavailable";
-}
-
-/** How long a refused question waits for the project's manual before it pauses. */
-export const MANUAL_WAIT_BOUND_MS = 185_000;
-
-/**
- * What a refused manual question does next. A send the technician made waits once for a manual
- * that is being prepared, then is asked again automatically. That automatic send, if refused
- * again, and a manual that is off or unavailable, pause with the draft kept: each tap makes one
- * request, and a wait adds at most one more.
- */
-export function manualHoldAfterRefusal(code: ManualWaitCode, automatic: boolean): "waiting" | "paused" {
-  return code === "manual_not_ready" && !automatic ? "waiting" : "paused";
-}
-
-/**
- * #5746: the body a question the chat route refused for the manual is asked again with: the
- * project's sources and history as they are now and a new request id, never the refused body
- * (r7 F9). Its photo or guided rider is kept.
- */
-export function manualResendBody(
-  recovery: Pick<HubSendRecovery, "question" | "body" | "composition">,
-  docIds: readonly string[],
-  turns: readonly PersistedTurn[],
-  sel: HubSelection,
-): ReturnType<typeof chatBodyFor> {
-  const held = recovery.composition ?? recovery.body;
-  return chatBodyFor(recovery.question, docIds, historyRows(turns), sel, {
-    ...(held.visualEvidence ? { visualEvidence: held.visualEvidence } : {}),
-    ...(held.guidedEscalation ? { guidedEscalation: held.guidedEscalation } : {}),
-  });
-}
-
-/** #5746: the body every resend of a saved question goes with: rebuilt from the project as it is
- *  now for a question the route refused for the manual (null while the project isn't read: such a
- *  question is never sent with its refused body), otherwise main's recovery body. */
-export function resendBodyFor(
-  recovery: HubSendRecovery,
-  sel: HubSelection,
-  detail: { readonly sources: Parameters<typeof enabledDocIds>[0]; readonly turns: readonly PersistedTurn[] } | null,
-): HubSendRecovery["body"] | null {
-  if (recovery.manualRefused === undefined) return recoverySendBody(recovery);
-  return detail ? manualResendBody(recovery, enabledDocIds(detail.sources), detail.turns, sel) : null;
-}
-
-/**
- * #5746 r8 F14: why the held question's one automatic resend did not start. It is bound to the
- * target it was asked about, so a component picked (or the whole machine chosen again) during the
- * wait asks nothing; the saved question then goes through the target review. Otherwise the
- * checklist was not read yet.
- */
-export function manualResendPause(
-  refused: ScopeField | undefined,
-  current: ComponentRider | "unavailable" | undefined,
-): string {
-  const now = current === undefined ? undefined : current === "unavailable" ? null : current.componentId;
-  return refused && now !== undefined && now !== refused.componentId
-    ? "The question target changed while the manual was being prepared, so it wasn't asked again."
-    : "The question is saved. Retry when the checklist is ready.";
-}
-
-/** #5746: whether a send asks the route to hold a manual question (`x-mira-manual-wait: 1`). The
- *  caller decides; otherwise a replay keeps its attempt's choice, and every other send asks. */
-export function sendsManualWait(retry: Pick<HubSendRecovery, "manualWait"> | undefined, manualWait?: boolean): boolean {
-  return manualWait ?? retry?.manualWait !== false;
-}
-
-/**
- * #5746: a refused question waiting for the manual, read from the reducer (which stamps the draft
- * revision). "gone": it was retried, discarded or replaced, so nothing is sent. "not_owner": the
- * composer no longer holds it (the technician typed something else), so it pauses and nothing is
- * sent. Otherwise the reducer's own copy, to send with.
- */
-export function heldManualRecovery(
-  state: Pick<HubShellState, "thread" | "draft" | "draftRevision" | "sendRecoveryByThread" | "attachmentDraftThreads">,
-  threadId: string,
-  recoveryId: string,
-): HubSendRecovery | "gone" | "not_owner" {
-  const recovery = state.sendRecoveryByThread?.get(threadId)?.find((item) => sendRecoveryId(item) === recoveryId);
-  if (!recovery?.manualRefused) return "gone";
-  if (state.thread.id !== threadId) return "not_owner";
-  return recoveryOwnsDraft(recovery, state.draftRevision, state.draft, state.attachmentDraftThreads?.has(threadId) ?? false)
-    ? recovery
-    : "not_owner";
-}
-
-export function persistedRequest<T extends Pick<PersistedTurn, "clientRequestId">>(
-  turns: readonly T[],
-  requestId: string,
-): T | undefined {
-  return turns.find(turn => turn.clientRequestId === requestId);
 }
 
 /**
@@ -949,11 +831,6 @@ export function errorMessageFor(code: string, status: number): string {
     // Bench components: the header's component no longer matches the server's.
     case "selection_changed":
       return "The component for this chat was changed on another screen. Check the header and ask again.";
-    // #5746: the chat route held a question that asks for the project's manual.
-    case "manual_not_ready":
-      return "This project's manual isn't ready yet, so MIRA didn't answer from it.";
-    case "manual_unavailable":
-      return "This project's manual isn't available, so MIRA didn't answer from it.";
     default:
       return status === 412
         ? "MIRA needs approved context for this machine before it will answer."

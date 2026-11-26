@@ -31,7 +31,6 @@ import {
   reviseComponent,
   setSelection,
   stampTurnComponent,
-  turnsAskedUnderComponent,
 } from "../store";
 import { readRevisionInput, type ComponentRevisionInput } from "../validate";
 import { readSubjectUnderSelection } from "../selection";
@@ -345,19 +344,6 @@ run("bench component store (real Postgres, RLS)", () => {
     expect(readSubjectUnderSelection(turns, 6, selection!).questions).toEqual([]);
     // Control: under the first pick (before the Return) the same stamped turn does carry.
     expect(readSubjectUnderSelection(turns, 6, sel.selection).questions).toEqual(["what about the GS13N-20P2, same thing?"]);
-    // The send wait reads the same stamp by turn id, so the detail route can tell this turn from a
-    // whole-machine one even without an attribution entry (#5746 r5 F1). An unstamped turn is not
-    // returned, and another tenant reads nothing.
-    const whole = await turn(tenantA, notebookA, "what is the rated current of the GS11N-20P2?", thread);
-    const rowIds = (await testPool.query(
-      `SELECT id::text AS id FROM equipment_notebook_turns WHERE client_request_id = ANY($1::uuid[]) ORDER BY created_at, id`,
-      [[t1, whole]],
-    )).rows.map((r: { id: string }) => r.id);
-    const stampedRow = withAnswers[0]!.id;
-    expect(rowIds).toHaveLength(2);
-    expect(rowIds).toContain(stampedRow);
-    expect(await turnsAskedUnderComponent(tenantA, notebookA, rowIds)).toEqual(new Set([stampedRow]));
-    expect(await turnsAskedUnderComponent(tenantB, notebookA, rowIds)).toEqual(new Set());
   });
 
   it("an identity correction re-points the selection at the new revision and moves the boundary", async () => {

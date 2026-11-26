@@ -104,6 +104,18 @@ describe("threadStatusScope", () => {
     expect(threadStatusScope(["does the 1756-L71 need a battery"], GS10)).toBe("other");
   });
 
+  // #5746 r9 F18: a range of ratings ("208-230VAC") is hyphenated and carries a digit on both
+  // sides, but it is not a catalog number.
+  it("a range of ratings names no model", () => {
+    expect(threadStatusScope(["What does the manual say about the 208-230VAC input range?"], GS10)).toBe("undecided");
+    expect(threadStatusScope(["is 380-480VAC at 50-60HZ ok, and the 4-20MA signal"], GS10)).toBe("undecided");
+    expect(threadStatusScope(["does the GS11N-20P2 take 208-230VAC"], GS10)).toBe("own");
+  });
+
+  it("control: a sibling catalog code beside a range is still other", () => {
+    expect(threadStatusScope(["does the 1756-L71 take 18-32VDC"], GS10)).toBe("other");
+  });
+
   it("is other for a one-letter model family the document is asked for", () => {
     expect(threadStatusScope(["Find me the G120 manual"], GS10)).toBe("other");
     expect(threadStatusScope(["Find the manual for E300"], GS10)).toBe("other");
