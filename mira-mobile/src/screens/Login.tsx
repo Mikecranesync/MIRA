@@ -13,6 +13,8 @@ import {
   type InviteRecovery,
 } from "../factorylm-ui/invite/InviteSignIn";
 import { INVITE_HYDRATION_FAILED_COPY } from "../factorylm-ui/invite/invite-copy";
+// #5942: a passwordless technician asks for an emailed sign-in link (mount only).
+import { EmailSignInLink } from "../factorylm-ui/invite/EmailSignInLink";
 
 export function Login({
   onSignedIn,
@@ -118,6 +120,7 @@ export function Login({
           </div>
           {error && <div className="error">{error}</div>}
         </div>
+        <EmailSignInLink email={email} disabled={anyBusy} onHaveLink={() => setMode("invite")} />
         <button
           type="button"
           className="btn-link"
