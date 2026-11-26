@@ -19,12 +19,17 @@ unset FLM_PASSWORD   # exactly one of FLM_PASSWORD / FLM_LOGIN_LINK
 
 The link is a credential. The harness reads it from the environment, not from its own
 command line. It is typed quoted so its `?` survives the device shell, and it is never printed
-or screenshotted while it can be on screen. While it can be on screen, view dumps go to a
-fresh 0700 directory under `/data/local/tmp` (shell-owned, not readable by apps), never
-`/sdcard`; that directory is removed afterwards and the removal is checked. `run.sh` hands
+or screenshotted while it can be on screen. Every view dump goes to a fresh 0700 directory
+under `/data/local/tmp` (shell-owned, not readable by apps), never `/sdcard`; the sign-in
+gets its own one, removed afterwards with the removal checked. `run.sh` hands
 `FLM_LOGIN_LINK` / `FLM_PASSWORD` to `journey.py` only, and `journey.py` strips them from
-adb, screencap and aapt2, so neither the adb server nor a build tool holds them. It is single-use and expires in 15 minutes, so mint it right
-before the run.
+adb, screencap and aapt2, so neither the adb server nor a build tool holds them. It is
+single-use and expires in 15 minutes, so mint it right before the run.
+
+One run per device: the journey takes an on-device lock (`/data/local/tmp/mira-e2e.lock`)
+before it installs anything and releases it however the run ends, removing its dumps and
+the manual it pushed to `Download`. A second run on the same device stops at once. If a
+killed run left the lock behind, the error names the `adb` command that removes it.
 
 **Accepted residual (owner decision, 2026-11-25):** adb has no way to type text except
 `input text <chunk>`. So for the second or two of typing, each 8-character chunk of the link

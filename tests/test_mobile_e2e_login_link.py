@@ -177,7 +177,12 @@ class SignInPhone:
             self.files[a[2]] = self.xml()
             self.wrote.append((a[2], self.files[a[2]]))
         elif a[:3] == ["mkdir", "-m", "700"]:
+            fresh = a[3] not in self.dirs
             self.dirs.add(a[3])
+            if "&&" in a:
+                return _Proc("OK" if fresh else "", 0 if fresh else 1)
+        elif a[:1] == ["rmdir"]:
+            self.dirs.discard(a[1])
         elif a[:2] == ["test", "-d"]:
             return _Proc("OK" if a[2] in self.dirs else "")
         elif a[:2] in (["rm", "-f"], ["rm", "-rf"]):
@@ -301,6 +306,9 @@ def _no_credential_left(phone) -> None:
     assert TOKEN not in phone.dumpfile, "a dump holding the link was left on the device"
     # Codex r3 F1: shared storage must never receive it, not even briefly.
     assert not phone.shared_ever_held(TOKEN), "the link was dumped to shared storage"
+    # Codex r4 F1: no dump goes to shared storage at all, so a second run on the
+    # same device cannot put this one's screen there either.
+    assert phone.wrote and all(p.startswith("/data/local/tmp/") for p, _ in phone.wrote), phone.wrote
     private = [c for c in phone.adb_calls if c[1:4] == ["mkdir", "-m", "700"]]
     assert private and private[0][4].startswith("/data/local/tmp/"), private
 
@@ -391,6 +399,77 @@ def test_sign_in_is_not_fooled_by_a_conversation_named_like_the_footer(rig):
         journey.sign_in(dev, EMAIL, login_link=LINK)
 
 
+def test_sign_in_rejects_a_chat_title_when_the_footer_shows_no_email(rig):
+    # Codex r4 F5: the footer's email line is missing; the last conversation row is
+    # titled with the expected address. Rows are buttons; the footer line is not.
+    journey, dev, phone = rig(account="")
+    phone.projects = ["Line 3 press", EMAIL]
+    with pytest.raises(journey.Fail, match="wrong account"):
+        journey.sign_in(dev, EMAIL, login_link=LINK)
+
+
+# ------------------------------------------------------------------ device lock
+# Codex r4 F1: two runs on one emulator would read and dump each other's screens.
+
+
+def test_a_second_run_on_the_same_device_is_refused_before_it_dumps(rig):
+    journey, dev, phone = rig()
+    dev.claim()
+    other = journey.Device("adb", "emulator-5554", dev.outdir)
+    other._run = phone.run  # the same device
+    dumps_before = len(phone.wrote)
+    with pytest.raises(journey.Fail, match="another mobile-e2e run holds"):
+        other.claim()
+    assert len(phone.wrote) == dumps_before
+    assert "/data/local/tmp/mira-e2e.lock" in phone.dirs, "precondition: the first run holds it"
+
+
+def test_release_frees_the_device_and_removes_what_the_run_left(rig, tmp_path):
+    journey, dev, phone = rig()
+    dev.claim()
+    pdf = tmp_path / "m.pdf"
+    pdf.write_bytes(b"%PDF-1.4 x")
+    dev.push(pdf, "/sdcard/Download/m-1a2b3c4d.pdf")
+    dev.dump()
+    dev.release()
+    assert ["rm", "-f", "/sdcard/Download/m-1a2b3c4d.pdf"] in [c[1:4] for c in phone.adb_calls]
+    assert not phone.files, f"dumps left on the device: {list(phone.files)}"
+    # Control: the device can be claimed again.
+    again = journey.Device("adb", "emulator-5554", dev.outdir)
+    again._run = phone.run
+    again.claim()
+    assert "/data/local/tmp/mira-e2e.lock" in phone.dirs
+
+
+def test_main_releases_the_device_when_a_stage_fails(monkeypatch, tmp_path):
+    journey = _load(monkeypatch)
+    monkeypatch.setenv("FLM_EMAIL", EMAIL)
+    monkeypatch.setenv("FLM_LOGIN_LINK", LINK)
+    order: list[str] = []
+
+    class _Dev:
+        def __init__(self, *a):
+            pass
+
+        def claim(self):
+            order.append("claim")
+
+        def release(self):
+            order.append("release")
+
+    def boom(*a, **k):
+        order.append("install")
+        raise journey.Fail("install broke")
+
+    monkeypatch.setattr(journey, "pick_device", lambda *a: "emulator-5554")
+    monkeypatch.setattr(journey, "Device", _Dev)
+    monkeypatch.setattr(journey, "install", boom)
+    monkeypatch.setattr(sys, "argv", ["journey.py", "--apk", str(tmp_path / "a.apk"),
+                                      "--pdf", str(tmp_path / "m.pdf"), "--question", "q"])
+    assert journey.main() == 1
+    assert order == ["claim", "install", "release"]
+
+
 def test_sign_in_needs_exactly_one_credential(rig):
     journey, dev, _phone = rig()
     with pytest.raises(journey.Fail, match="exactly one"):
@@ -413,6 +492,9 @@ def test_main_accepts_a_login_link_without_a_password(monkeypatch, tmp_path):
     monkeypatch.setattr(journey, "install", lambda *a, **k: None)
     monkeypatch.setattr(journey, "launch", lambda dev: None)
     monkeypatch.setattr(journey, "sign_in", fake_sign_in)
+    # The device lock has its own tests; no device is attached here.
+    monkeypatch.setattr(journey.Device, "claim", lambda self: None)
+    monkeypatch.setattr(journey.Device, "release", lambda self: None)
     apk, pdf = tmp_path / "a.apk", tmp_path / "m.pdf"
     apk.write_bytes(b"x")
     pdf.write_bytes(b"x")

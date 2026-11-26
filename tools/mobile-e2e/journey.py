@@ -58,9 +58,11 @@ from pathlib import Path
 PKG = os.environ.get("MIRA_PKG", "com.factorylm.mira")
 DEVICE_TMP = "/sdcard/Download"
 UI_XML = "/sdcard/window_dump.xml"
-# Shell-owned and not readable by apps: where dumps go while a sign-in link can be on
-# screen, in a fresh 0700 directory per sign-in, so shared storage never holds it.
+# Shell-owned and not readable by apps. Every view dump goes here, in a fresh 0700
+# directory per run (and another per sign-in), so shared storage never holds one.
 PRIVATE_TMP = "/data/local/tmp"
+# One run per device: created atomically by claim(), removed by release().
+LOCK_DIR = f"{PRIVATE_TMP}/mira-e2e.lock"
 # Credentials go to this process only. Not to adb (whose server outlives the run),
 # screencap or aapt2.
 CREDENTIAL_ENV = ("FLM_LOGIN_LINK", "FLM_PASSWORD")
@@ -105,8 +107,44 @@ class Device:
         self.outdir = outdir
         self.outdir.mkdir(parents=True, exist_ok=True)
         self._shot = 0
-        self.ui_xml = UI_XML
+        self.ui_xml = ""  # set on the first dump, in this run's private directory
+        self._session_dir: str | None = None
         self._private_dir: str | None = None
+        self._pushed: list[str] = []
+        self._claimed = False
+
+    def claim(self) -> None:
+        """Hold the device for this run, before anything on it changes.
+
+        Two runs on one device would launch, tap and dump over each other, and one
+        run's sign-in link would be on screen while the other inspected it.
+        """
+        if self.shell("mkdir", "-m", "700", LOCK_DIR, "&&", "echo", "OK") != "OK":
+            raise Fail(f"another mobile-e2e run holds {self.serial} ({LOCK_DIR} exists). If "
+                       f"none is running, remove it: adb -s {self.serial} shell rm -rf {LOCK_DIR}")
+        self._claimed = True
+
+    def release(self) -> None:
+        """Remove what this run left on the device, then free it. Every exit path."""
+        for remote in self._pushed:
+            self.shell("rm", "-f", remote)
+        self._pushed.clear()
+        try:
+            self.forget_screen()
+        finally:
+            if self._session_dir is not None:
+                self.shell("rm", "-rf", self._session_dir)
+                self._session_dir, self.ui_xml = None, ""
+            if self._claimed:
+                self.shell("rm", "-rf", LOCK_DIR)
+                self._claimed = False
+
+    def _new_private_dir(self) -> str:
+        d = f"{PRIVATE_TMP}/mira-e2e-{secrets.token_hex(6)}"
+        self.shell("mkdir", "-m", "700", d)
+        if self.shell("test", "-d", d, "&&", "echo", "OK") != "OK":
+            raise Fail(f"could not create the private dump directory {d} on the device")
+        return d
 
     def _run(self, args: list[str], **kw) -> subprocess.CompletedProcess:
         # encoding= is mandatory on Windows: text=True alone fails OPEN -- the decode
@@ -141,6 +179,7 @@ class Device:
         return str(Path(s).resolve()) if Path(s).exists() else s
 
     def push(self, local: Path, remote: str) -> None:
+        self._pushed.append(remote)  # removed by release(), however the run ends
         r = self._run(["push", self._native(local), remote])
         if r.returncode != 0:
             raise Fail(f"adb push failed: {r.stderr}")
@@ -160,6 +199,9 @@ class Device:
 
     def dump(self) -> list[Node]:
         """Snapshot the view hierarchy. Retries: dump races app transitions."""
+        if not self.ui_xml:
+            self._session_dir = self._new_private_dir()
+            self.ui_xml = f"{self._session_dir}/window_dump.xml"
         for _ in range(6):
             self.shell("uiautomator", "dump", self.ui_xml)
             xml = self.shell("cat", self.ui_xml)
@@ -196,20 +238,19 @@ class Device:
         A dump holds every field's text, a sign-in link included, so while one can be
         on screen it never goes to shared storage.
         """
-        d = f"{PRIVATE_TMP}/mira-e2e-{secrets.token_hex(6)}"
-        self.shell("mkdir", "-m", "700", d)
-        if self.shell("test", "-d", d, "&&", "echo", "OK") != "OK":
-            raise Fail(f"could not create the private dump directory {d} on the device")
+        d = self._new_private_dir()
         self._private_dir, self.ui_xml = d, f"{d}/window_dump.xml"
 
     def forget_screen(self) -> None:
-        """Remove the private dump directory and go back to the shared dump path.
+        """Remove the sign-in's dump directory and go back to the run's own.
 
         Checked, not assumed: a device that stopped answering leaves it behind.
         """
-        d, self._private_dir, self.ui_xml = self._private_dir, None, UI_XML
+        d = self._private_dir
         if d is None:
             return
+        self._private_dir = None
+        self.ui_xml = f"{self._session_dir}/window_dump.xml" if self._session_dir else ""
         self.shell("rm", "-rf", d)
         if self.shell("test", "-e", d, "&&", "echo", "PRESENT", "||", "echo", "GONE") != "GONE":
             raise Fail(f"could not confirm {d} was removed from the device. It may still hold "
@@ -732,17 +773,26 @@ def _drawer_account(nodes: list[Node]) -> str | None:
 
     The drawer also lists projects and conversations, and any of them could be
     titled with an email address, so only the footer's line identifies the account.
-    Known limit: a conversation named with the expected email as the very last row,
-    directly above a footer that has no account line, would still be read as one.
+    That line is plain text directly above the About and Sign out buttons.
     """
-    labels = [n.label.strip() for n in nodes]
+    shown = [n for n in nodes if n.label.strip()]
+    labels = [n.label.strip() for n in shown]
     if "About & updates" not in labels:
         return None
     # The footer renders after every drawer row, so its button is the LAST match: a
     # conversation can be named "About & updates" too.
     footer = len(labels) - 1 - labels[::-1].index("About & updates")
-    before = [t for t in labels[:footer] if t]
-    return before[-1] if before else None
+    # The footer is exactly: the email line (plain text), the About button, the Sign
+    # out button. Drawer rows are buttons, so a row titled with an address is never
+    # read as the account when the footer's own line is missing.
+    if footer < 1 or footer + 1 >= len(shown):
+        return None
+    line, about, sign_out = shown[footer - 1], shown[footer], shown[footer + 1]
+    if line.clickable or not about.clickable or not sign_out.clickable:
+        return None
+    if sign_out.label.strip() not in ("Sign out", "Signing out…") or "@" not in line.label:
+        return None
+    return line.label.strip()
 
 
 def _wait_for_shell(dev: Device, *, evidence: bool) -> None:
@@ -885,7 +935,8 @@ def ask(dev: Device, question: str, expect_page: int | None, *, source: str) -> 
     return answer
 
 
-def verify_citation(dev: Device, expect_page: int | None, *, source: str) -> str:
+def verify_citation(dev: Device, expect_page: int | None, *, source: str,
+                    fetch_timeout: int = 60) -> str:
     log("citation", "opening sheet")
     chips = [
         n
@@ -928,9 +979,10 @@ def verify_citation(dev: Device, expect_page: int | None, *, source: str) -> str
             break
     passage = ""
     for t in sheet:
-        if t.startswith("“") or t.startswith('"') or "…" in t:
-            if len(t) > len(passage):
-                passage = t
+        quoted = t.startswith("“") or t.startswith('"') or "…" in t
+        # A quote of only punctuation (an empty passage, displayed) is no passage.
+        if quoted and any(ch.isalnum() for ch in t) and len(t) > len(passage):
+            passage = t
     if not passage:
         dev.screenshot("citation-empty")
         raise Fail("citation sheet opened but rendered no passage")
@@ -941,7 +993,19 @@ def verify_citation(dev: Device, expect_page: int | None, *, source: str) -> str
     # Resolve the citation to the original document at that page. Android's WebView
     # cannot render PDF pages in-app, so the sheet confirms the fetch instead.
     dev.tap_button(f"Open original at cited page {page}", timeout=20)
-    dev.wait_for("opened successfully", timeout=60)
+    # The viewer's own success line, for this page, below the sheet header. A chat row
+    # elsewhere that says "opened successfully" proves nothing about this fetch.
+    done = f"Cited at page {page}. The original opened successfully"
+    deadline = time.time() + fetch_timeout
+    while True:
+        labels = dev.texts()
+        viewer = labels[labels.index(header) + 1 :] if header in labels else []
+        if any(t.startswith(done) for t in viewer):
+            break
+        if time.time() > deadline:
+            dev.screenshot("citation-original-failed")
+            raise Fail(f"the original for the cited p.{page} did not open: {viewer[:4]}")
+        time.sleep(2)
     dev.screenshot("citation-original")
     # The app reports the fetch; it cannot render the PDF page itself, so that is the claim.
     log("citation", f"original fetched for the cited p.{page}")
@@ -1050,7 +1114,11 @@ def main() -> int:
         serial = pick_device(args.adb, args.allow_physical)
         log("device", serial)
         dev = Device(args.adb, serial, args.outdir)
-
+        dev.claim()
+    except Fail as exc:
+        print(f"\nFAIL: {exc}", file=sys.stderr)
+        return 1
+    try:
         install(dev, args.apk, reinstall_physical=args.reinstall_physical)
         launch(dev)
         sign_in(dev, email, password, login_link=login_link)
@@ -1072,6 +1140,11 @@ def main() -> int:
         return 1
     except KeyboardInterrupt:
         return 130
+    finally:
+        try:
+            dev.release()
+        except Fail as exc:
+            print(f"\nFAIL (cleanup): {exc}", file=sys.stderr)
 
     if args.stop_after != "nameplate":
         print(f"\nPARTIAL PASS -- stopped after '{args.stop_after}' as requested. "

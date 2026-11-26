@@ -72,7 +72,9 @@ class FakePhone:
         sheet_file=None,
         passage=PASSAGE,
         stray=None,
+        fetch_fails=False,
     ):
+        self.fetch_fails = fetch_fails  # the original's fetch errors in the viewer
         self.passage = passage  # None: the sheet opens without a stored quote
         self.stray = stray  # an unrelated chat row rendered on the same screen
         # chip_file / sheet_file: the answer cites, or the sheet names, a DIFFERENT manual.
@@ -226,6 +228,7 @@ class FakePhone:
                 ("New project", "Button", (42, 464, 714, 582), True, ("create",)),
                 (self.account, "TextView", (42, 1955, 714, 1994), False, None),
                 ("About & updates", "Button", (42, 2010, 714, 2100), True, None),
+                ("Sign out", "Button", (42, 2110, 714, 2200), True, None),
             ]
         if self.menu:
             n += [
@@ -256,6 +259,8 @@ class FakePhone:
                         ("sheet", "opened"),
                     )
                 )
+            elif self.sheet == "opened" and self.fetch_fails:
+                n.append(("Something went wrong.", "TextView", (78, 1703, 1002, 1826), False, None))
             else:
                 n.append(
                     (
@@ -285,7 +290,9 @@ class FakePhone:
             self.pushed = args[2].rsplit("/", 1)[-1]
             return _Proc()
         a = args[1:]
-        if a[:2] == ["cat", "/sdcard/window_dump.xml"]:
+        if a[:2] in (["mkdir", "-m"], ["test", "-d"]):
+            return _Proc("OK")
+        if a[:1] == ["cat"] and a[1].endswith("/window_dump.xml"):
             if self.asked is not None:
                 self.polls += 1
             if self.creating:
@@ -514,6 +521,25 @@ def test_citation_takes_the_passage_from_the_sheet_not_a_longer_chat_row(rig):
     assert passage == PASSAGE.replace("\n", " ") or PASSAGE.split("\n")[0] in passage
 
 
+# Codex r4 F9 / F12.
+
+
+def test_citation_rejects_a_quote_of_only_punctuation(rig):
+    journey, phone, dev = rig(start="answered", passage="“ …”")
+    with pytest.raises(journey.Fail, match="no passage"):
+        journey.verify_citation(dev, 3, source=PDF)
+    assert phone.opened is False
+
+
+def test_citation_fails_when_the_viewer_errors_despite_a_chat_row_saying_success(rig):
+    # The chat row repeats the viewer's exact success line for this page; only its
+    # place on screen (above the sheet) tells it apart.
+    journey, _phone, dev = rig(start="answered", fetch_fails=True,
+                               stray="Cited at page 3. The original opened successfully, earlier")
+    with pytest.raises(journey.Fail, match="original"):
+        journey.verify_citation(dev, 3, source=PDF, fetch_timeout=3)
+
+
 # Codex r3 F7: the locator is the last one in the label.
 
 
@@ -606,6 +632,8 @@ def test_launch_starts_the_resolved_activity_not_monkey(monkeypatch, tmp_path):
         calls.append(args)
         if args[1:3] == ["cmd", "package"]:
             return _Proc(f"priority=0 preferredOrder=0\n{component}")
+        if args[1:3] in (["mkdir", "-m"], ["test", "-d"]):
+            return _Proc("OK")
         return _Proc()
 
     dev = journey.Device("adb", "emulator-5554", tmp_path)
