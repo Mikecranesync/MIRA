@@ -1106,4 +1106,68 @@ describe("#6016 cross-context hazard-warning contract (real POST + real validato
       });
     }
   });
+
+  // PR #6015 native review 3 — the same real POST + real validator for the six classes:
+  // distinct causal/sequenced imperatives (F1), coordinated reports (F3), a terminal reading
+  // compared with an HMI value (F4), reader-directed temporal predicates (F7), the excerpt
+  // under repeated whitespace (F5) and a citation at the start of a paragraph (F9).
+  describe("native3 shapes through the real route", () => {
+    const WARN = "Safety flag on a step below";
+    const flagLine = (released: string) => released.split("\n\n")[0];
+    const LEAD = "Use the test record from the last inspection and the attached maintenance checklist in this document";
+    const TAIL =
+      " and record the result in the maintenance log with the measured values for the next shift to inspect and record the inspection date and current counter in the shift handover worksheet and notify the supervisor after the documentation is complete";
+    const cases: ReadonlyArray<readonly [string, boolean, string | null, string | null]> = [
+      // [answer, warns, text the warning line must quote, text it must NOT quote]
+      ["Do not bypass the guard so instead reset the drive while energized.", true, "reset the drive while energized", "Do not bypass the guard"],
+      ["Never bypass the guard and in the next step reset the drive while energized.", true, "reset the drive while energized", "Never bypass the guard"],
+      ["Never bypass the guard or reset the drive while energized.", false, null, null],
+      ["Do not bypass the guard so instead do not reset the drive while energized.", false, null, null],
+      ["Stop the line if anyone is bypassing the interlock or if someone is disabling the guard.", false, null, null],
+      ["If anyone is bypassing the interlock or if someone is disabling the guard, bypass the E-stop.", true, "bypass the E-stop", "disabling the guard"],
+      ["Test the sensor and read the voltage live at the terminals to compare it to the value on the HMI.", true, "read the voltage live at the terminals", null],
+      ["Read the voltage live from the HMI to compare it with the previous terminal measurement.", false, null, null],
+      ["Warn against bypassing the interlock while you reset the drive while energized.", true, "reset the drive while energized", null],
+      ["Prevent operators from bypassing the interlock when you reset the drive while energized.", true, "reset the drive while energized", null],
+      ["Warn against bypassing the interlock as you reset the drive while energized.", true, "reset the drive while energized", null],
+      ["Warn against bypassing the interlock while you do not reset the drive while energized.", false, null, null],
+      ["Warn against bypassing the interlock while the machine is energized.", false, null, null],
+      [`${LEAD.split(" ").join("    ")} reset the drive while energized${TAIL}.`, true, "reset the drive while energized", null],
+      [`${LEAD.split(" ").join("      ")} reset the drive while energized${TAIL}.`, true, "reset the drive while energized", null],
+      [`${LEAD.split(" ").join("\t")} reset the drive while energized${TAIL}.`, true, "reset the drive while energized", null],
+    ];
+    for (const { name, general } of contexts) {
+      for (const [text, warn, quotes, notQuotes] of cases) {
+        it(`${name} / ${warn ? "WARNS" : "clean"}: ${JSON.stringify(text).slice(0, 96)}`, async () => {
+          const { frames, released, turn } = await run(general, questions[0], text);
+          expect(released).toContain(text); // the exact original text (spacing, tabs) is released
+          expect(released.includes(WARN)).toBe(warn);
+          if (quotes) expect(flagLine(released)).toContain(quotes);
+          if (notQuotes) expect(flagLine(released)).not.toContain(notQuotes);
+          expect(frames.find((f) => f.kind === "status")).toMatchObject({ status: "answered" });
+          expect(frames.find((f) => f.kind === "safety")).toBeUndefined();
+          expect(turn.answerText).toContain(text); // …and persisted unchanged
+          expect(turn.answerText?.includes(WARN)).toBe(warn);
+          expect(turn.basis).toBe(general ? "general_reasoning" : "oem_documentation");
+        });
+      }
+    }
+    // F9: grounded answers carry inline citations; a marker at the start of a paragraph must not
+    // join the paragraph to a prohibition in the previous one.
+    for (const [text, warn] of [
+      ["Never reset the drive\n\n[1] Reset the drive while energized [2].", true],
+      ["Never reset the drive\n[1] Reset the drive while energized [2].", true],
+      ["Never reset the drive\n\n[1] Do not reset the drive while energized [2].", false],
+    ] as const) {
+      it(`grounded / F9 ${warn ? "WARNS" : "clean"}: ${JSON.stringify(text)}`, async () => {
+        const { frames, released, turn } = await run(false, questions[0], text, true);
+        expect(released).toContain(text); // both markers and the paragraph break are retained
+        expect(released.includes(WARN)).toBe(warn);
+        if (warn) expect(flagLine(released)).toContain("Reset the drive while energized");
+        expect(frames.find((f) => f.kind === "sources")).toMatchObject({ citations: [expect.objectContaining({ citationId: "1" })] });
+        expect(turn.answerText).toContain(text);
+        expect(turn.basis).toBe("oem_documentation");
+      });
+    }
+  });
 });

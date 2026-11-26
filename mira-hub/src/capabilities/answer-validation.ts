@@ -581,9 +581,38 @@ const BARE_GLOBAL = new RegExp(BARE_ENERGIZED_RELATION.source, "gi");
 // is a physical electrical measurement of an energized circuit. This reuses the
 // canonical A4 measurement vocabulary (measure action + contact context, and not a
 // reading from an installed external display); it adds no verb allowance.
-function physicalContactReading(c: string): boolean {
+// Native-review 3 F4: the contact context and the display source are properties of the
+// measurement PREDICATE and its object, not of the whole clause. The phrase runs from the
+// measurement verb to the next purpose/comparison boundary ("to compare it to …", "and
+// check it against …", "versus …") or clause punctuation, so a terminal reading that is
+// then COMPARED with a value on an HMI stays physical, while a reading taken FROM the HMI
+// (its own phrase carries the display source) stays display.
+const MEASUREMENT_PHRASE_END =
+  /\b(?:(?:in\s+order\s+)?to\s+(?:compare|check|confirm|verify|match|cross-?check|see|ensure|validate)|(?:and|then|so)\s+(?:compare|check|confirm|verify|match|cross-?check|validate)|compar(?:e|ed|ing)\s+(?:it|them|this|that)?\s*(?:to|with|against)|versus|vs\.?|against)\b|[,;:]/i;
+function physicalContactReading(c: string, statePos?: number): boolean {
   // Built per call: the measurement constants are declared further down the module.
-  return new RegExp("\\b" + MEASURE_ACTION_SRC, "i").test(c) && CONTACT_MEASUREMENT.test(c) && !EXTERNAL_READING.test(c);
+  const measure = new RegExp("\\b" + MEASURE_ACTION_SRC, "gi");
+  let phrases = [...c.matchAll(measure)];
+  // With a state position, only the measurement that GOVERNS it counts (the nearest one
+  // before it): "read the voltage live from the HMI and compare it to the last reading at
+  // the terminals" has a terminal contact, but it belongs to a different measurement.
+  if (statePos !== undefined) phrases = phrases.filter((m) => (m.index ?? 0) <= statePos).slice(-1);
+  for (const m of phrases) {
+    const from = m.index ?? 0;
+    const rest = c.slice(from);
+    const end = MEASUREMENT_PHRASE_END.exec(rest);
+    const phrase = end ? rest.slice(0, end.index) : rest;
+    if (CONTACT_MEASUREMENT.test(phrase) && !EXTERNAL_READING.test(phrase)) return true;
+  }
+  return false;
+}
+/** End offset of the first bare state whose GOVERNING measurement is a physical contact reading, or -1. */
+function physicalReadingBoundEnd(c: string): number {
+  for (const m of c.matchAll(BARE_GLOBAL)) {
+    const pos = (m.index ?? 0) + m[0].length;
+    if (physicalContactReading(c, pos)) return pos;
+  }
+  return -1;
 }
 /** End offset of the first bare state that binds to a PHYSICAL action, or -1. */
 function bareBoundEnd(c: string): number {
@@ -592,7 +621,7 @@ function bareBoundEnd(c: string): number {
     let last: RegExpMatchArray | null = null;
     for (const v of upto.matchAll(new RegExp(VERB_SCAN_SRC, "gi"))) last = v;
     // bound to a display verb, unless the reading is a physical contact measurement
-    if (last && last[2] !== undefined && last[1] === undefined && !physicalContactReading(c)) continue;
+    if (last && last[2] !== undefined && last[1] === undefined && !physicalContactReading(c, (m.index ?? 0) + m[0].length)) continue;
     return (m.index ?? 0) + m[0].length;
   }
   return -1;
@@ -643,6 +672,9 @@ const INDEPENDENT_SUBJECT_SRC =
 // live"), so the clause is a new instruction; after "or"/"nor" they stay inside
 // the shared negation ("never reset it live or just work on it energized").
 const INDEPENDENT_WEAK_SRC = "(?:just|simply|instead|also)\\b";
+const SEQUENCE_ADJUNCT_SRC =
+  "(?:(?:" + BARE_PREPOSITIONS + ")\\s+(?:(?:the|a|an|this|that|your|each|every|any)\\s+)?(?:(?!(?:not|never|no|do|does|did|don't|doesn't|cannot|can't|won't|shouldn't|mustn't|must|should|will|would|could)\\b)[a-z'-]+\\s+){0,2}?" +
+  "|(?:then|else|otherwise|instead|afterwards?|next|later|finally|also|first|subsequently|meanwhile|additionally|alternatively)\\s+)";
 const CLAUSE_SEPARATOR = new RegExp(
   CLAUSE_BOUNDARY.source +
     "|\\s(?:and|or|nor)\\b(?=\\s+" + INDEPENDENT_SUBJECT_SRC + ")" +
@@ -650,7 +682,13 @@ const CLAUSE_SEPARATOR = new RegExp(
     // Native-review 2 F1: sequence ("and then", "afterwards") and alternative
     // ("or else", "otherwise") connectives introduce a separate predicate, so a
     // prohibition governs only the action it is attached to.
-    "|\\s(?:(?:and|or)\\s+(?:then|else|otherwise|afterwards?|next|after\\s+that)|then|otherwise|afterwards?|after\\s+that)\\b",
+    "|\\s(?:(?:and|or)\\s+(?:then|else|otherwise|afterwards?|next|after\\s+that)|then|otherwise|afterwards?|after\\s+that)\\b" +
+    // Native-review 3 F1: a coordinator followed by a sequencing/causal ADJUNCT and then a hazard
+    // verb is a distinct imperative predicate ("so instead reset …", "and in the next step
+    // reset …", "or later on work on …"). A BARE coordinated verb ("or reset …") has no adjunct and
+    // keeps sharing the prohibition. Structural: adjunct = a preposition phrase or a sequencing adverb.
+    "|\\s(?:and|or|nor)\\s+(?:" + SEQUENCE_ADJUNCT_SRC + "){1,3}(?=" + HAZARD_ACTION_ANY_SRC + "\\b)" +
+    "|\\s(?:so|yet)\\s+(?:" + SEQUENCE_ADJUNCT_SRC + "){0,3}(?=" + HAZARD_ACTION_ANY_SRC + "\\b)",
   "gi",
 );
 // A bare single-verb list item ("bypass, disable, or override the interlock")
@@ -681,7 +719,7 @@ const REPORTED_CONSTRUCTIONS: ReadonlyArray<{ re: RegExp; gerund: boolean }> = [
   // F3: an ONGOING act named in a condition — "if anyone is bypassing the interlock",
   // "while operators keep jumpering the guard". Only a guard-defeat or hazard-action
   // gerund counts (never a state word: "while the drive is running" stays a hazard condition).
-  { re: new RegExp("\\b(?:if|when|whenever|while|once|unless|as\\s+soon\\s+as)\\b\\s+((?:[a-z'-]+\\s+){0,3}?)(?:is|are|was|were|has\\s+been|have\\s+been|keeps?|continues?|starts?|begins?)\\s+(?:to\\s+)?(?:(?:caught|seen|found|spotted|noticed|observed|detected)\\s+)?(?=[a-z]+ing\\b)(?:" + GUARD_DEFEAT_VERB_SRC + "|" + HAZARD_ACTION_ANY_SRC + ")\\b", "i"), gerund: true },
+  { re: new RegExp("\\b(?:if|when|whenever|while|once|unless|as\\s+soon\\s+as|and|or)\\b\\s+((?:[a-z'-]+\\s+){0,3}?)(?:is|are|was|were|has\\s+been|have\\s+been|keeps?|continues?|starts?|begins?)\\s+(?:to\\s+)?(?:(?:caught|seen|found|spotted|noticed|observed|detected)\\s+)?(?=[a-z]+ing\\b)(?:" + GUARD_DEFEAT_VERB_SRC + "|" + HAZARD_ACTION_ANY_SRC + ")\\b", "i"), gerund: true },
   // Final-class Q1: a DISCOVERY/PERCEPTION condition — "if you discover someone
   // bypassing the interlock", "when you see anyone bypass the guard", "once you catch
   // an operator jumpering the E-stop". The perceived act is reported, not directed.
@@ -692,25 +730,45 @@ const REPORTED_CONSTRUCTIONS: ReadonlyArray<{ re: RegExp; gerund: boolean }> = [
 ];
 // A new sentence-level move ends the reported span: a consequence/sequence
 // connective, or a directive aimed at the reader.
+// "while/when/as + (a subject) + a hazard action" is a separate temporal predicate, not a modifier of
+// the reported act: "…against bypassing the interlock while you reset the drive while energized".
+// "while the machine is energized" (no subject + hazard action) stays inside the report.
+const REPORT_BREAK_TEMPORAL = new RegExp(
+  "\\b(?:while|whilst|when|whenever|as)\\s+(?:(?:you|we|they|one|someone|anyone|operators?|technicians?|techs?)\\s+(?:[a-z']+\\s+){0,2}?)?(?=" + HAZARD_ACTION_ANY_SRC + "\\b)",
+  "i",
+);
 const REPORT_BREAK = /\b(?:then|so|but|yet|before|after|until|once|whenever|afterwards?|next|otherwise|else)\b|\b(?:you|we)\s+(?:[a-z']+\s+){0,1}?(?:should|can|could|may|must|will|need)\b|\b(?:go\s+ahead|just|simply|please)\b/i;
 const GERUND_CONJUNCT_BREAK = /\b(?:and|or)\s+(?![a-z]+ing\b)/i;
 /** Blank (keeping offsets) the part of a clause that merely REPORTS an act. */
 function maskReported(clause: string): string {
   let out = clause;
   for (const { re, gerund } of REPORTED_CONSTRUCTIONS) {
-    const m = re.exec(out);
-    if (!m) continue;
-    // A directive modal between the condition and the attempt ("if X you can
-    // attempt to …") is an instruction to the reader, not a report.
-    if (m[1] !== undefined && DIRECTIVE_MODAL.test(m[1])) continue;
-    const start = m.index;
-    const bodyStart = start + m[0].length;
-    const after = out.slice(bodyStart);
-    const cuts = [REPORT_BREAK.exec(after)?.index, gerund ? GERUND_CONJUNCT_BREAK.exec(after)?.index : undefined].filter(
-      (x): x is number => x !== undefined,
-    );
-    const end = cuts.length ? bodyStart + Math.min(...cuts) : out.length;
-    out = out.slice(0, start) + " ".repeat(end - start) + out.slice(end);
+    // Native-review 3 F3: EVERY occurrence is a report ("if anyone is bypassing X or if
+    // someone is disabling Y"), not only the first; scanning continues after each mask.
+    const g = new RegExp(re.source, "gi");
+    let from = 0;
+    for (;;) {
+      g.lastIndex = from;
+      const m = g.exec(out);
+      if (!m) break;
+      // A directive modal between the condition and the attempt ("if X you can
+      // attempt to …") is an instruction to the reader, not a report.
+      if (m[1] !== undefined && DIRECTIVE_MODAL.test(m[1])) {
+        from = m.index + m[0].length;
+        continue;
+      }
+      const start = m.index;
+      const bodyStart = start + m[0].length;
+      const after = out.slice(bodyStart);
+      const cuts = [
+        REPORT_BREAK.exec(after)?.index,
+        REPORT_BREAK_TEMPORAL.exec(after)?.index,
+        gerund ? GERUND_CONJUNCT_BREAK.exec(after)?.index : undefined,
+      ].filter((x): x is number => x !== undefined);
+      const end = cuts.length ? bodyStart + Math.min(...cuts) : out.length;
+      out = out.slice(0, start) + " ".repeat(end - start) + out.slice(end);
+      from = Math.max(end, start + 1);
+    }
   }
   return out;
 }
@@ -723,10 +781,30 @@ function hazardExcerpt(sentence: string, ranges: ReadonlyArray<readonly [number,
   const end = Math.max(...ranges.map((r) => r[1]));
   const raw = sentence.slice(start, end);
   const lead = raw.length - raw.replace(/^[\s,;:—–-]+/, "").length;
-  const text = raw.slice(lead).replace(/\s+/g, " ").trim();
+  // Collapse whitespace while recording where every raw offset lands, so the anchor (measured
+  // in the RAW clause) is translated into the SAME coordinate system as the window. (Native-
+  // review 3 F5: repeated spaces/tabs used to shift the raw offset past the hazardous action.)
+  let text = "";
+  const map: number[] = [];
+  let pendingSpace = false;
+  for (let i = lead; i < raw.length; i++) {
+    const ch = raw[i];
+    if (/\s/.test(ch)) {
+      pendingSpace = text.length > 0;
+      map[i - lead] = text.length;
+    } else {
+      if (pendingSpace) text += " ";
+      pendingSpace = false;
+      map[i - lead] = text.length;
+      text += ch;
+    }
+  }
+  text = text.trim();
   if (text.length <= 160) return text;
   // anchorAt is relative to the offending clause, which is ranges[0].
-  const at = Math.max(0, ranges[0][0] - start - lead + anchorAt - 30);
+  const rawAnchor = Math.max(0, ranges[0][0] - start - lead + anchorAt);
+  const mapped = map[Math.min(rawAnchor, map.length - 1)] ?? 0;
+  const at = Math.max(0, mapped - 30);
   const from = Math.max(0, Math.min(text.length - 160, at));
   return text.slice(from, from + 160).trim();
 }
@@ -736,7 +814,9 @@ function hazardExcerpt(sentence: string, ranges: ReadonlyArray<readonly [number,
 // DETECTION copy reads through them. Only recognised numeric markers ([1],
 // [1][2], [1, 2], [1-3]); other bracketed text is untouched, and the answer
 // shown, persisted and cited is always the original.
-const CITATION_MARKER = /\s*\[\d{1,3}(?:\s*(?:,|[-\u2013])\s*\d{1,3})*\]/g;
+// Horizontal whitespace only (Native-review 3 F9): a marker at the start of a paragraph must not
+// swallow the newline(s) in front of it and join an independent instruction to a prohibition.
+const CITATION_MARKER = /[ \t]*\[\d{1,3}(?:[ \t]*(?:,|[-\u2013])[ \t]*\d{1,3})*\]/g;
 function withoutCitationMarkers(text: string): string {
   return text.replace(CITATION_MARKER, " ");
 }
@@ -783,7 +863,7 @@ function clauseHazardViolation(text: string): { relId: string; sentence: string;
     });
     const scan = chars.join("");
     const guard = GUARD_DEFEAT.test(scan);
-    if (!guard && !HAZARD_ACTION_ANY.test(scan) && !(physicalContactReading(scan) && bareBoundEnd(scan) >= 0)) continue;
+    if (!guard && !HAZARD_ACTION_ANY.test(scan) && !(physicalReadingBoundEnd(scan) >= 0 && bareBoundEnd(scan) >= 0)) continue;
     const rel = HAZARD_RELATIONS.find((r) => r.re.test(scan));
     const relId =
       rel?.id ??
@@ -794,7 +874,7 @@ function clauseHazardViolation(text: string): { relId: string; sentence: string;
           : null);
     if (!relId) continue;
     const info = clauses.map((c) => ({
-      action: HAZARD_ACTION_ANY.test(c) || (physicalContactReading(c) && bareBoundEnd(c) >= 0),
+      action: HAZARD_ACTION_ANY.test(c) || (physicalReadingBoundEnd(c) >= 0 && bareBoundEnd(c) >= 0),
       guard: GUARD_DEFEAT.test(c),
       rel: clauseRelation(c, question),
     }));
