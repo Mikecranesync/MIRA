@@ -48,6 +48,7 @@ export type GenerationAttempt = {
    * billed with unknown usage (timeout, unreadable body, no usage block, a malformed count).
    */
   outcome: "served" | "http_error" | "exception" | "client_stop" | "generated_not_served" | "empty_completion";
+  /** Null on every redraft attempt: cascadeComplete reports no per-attempt time or response id (R2-C5). */
   latency_ms: number | null;
   route_reason: string | null;
   response_id: string | null;
@@ -55,7 +56,8 @@ export type GenerationAttempt = {
   redraft?: true;
   /**
    * True on a generating attempt (served or generated_not_served) whose usage is unknown or
-   * malformed, so it is why the whole-turn token totals are null. Set on redraft turns only.
+   * malformed, so it is why the whole-turn token totals are null. Set only on turns that took the
+   * redraft path (including a stopped_turn_cap turn that sent no redraft request).
    */
   usage_unknown?: true;
 };

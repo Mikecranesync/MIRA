@@ -5499,6 +5499,9 @@ async function handleChatTurn(
       // they were passed over (quarantined, budget-refused, rejected, timed out, empty), R1-C1.
       const redraftAttempts: (CascadeAttempt & { before: string[] })[] = [];
       let redraftGenerated = false;
+      // R2-C2: the turn took the redraft path (eligible), whether or not a request was sent
+      // (stopped_turn_cap sends none). Every such turn's totals are cleaned the same way.
+      let redraftTried = false;
       // R1-C2/R1-C5: whether draft 1's own counts were well formed, read before the redraft's
       // are added, so the packet can mark the attempt whose unknown usage nulls the totals.
       let draft1UsageKnown = true;
@@ -5783,6 +5786,7 @@ async function handleChatTurn(
                     })
                   ).verdict,
               });
+        redraftTried = redraft !== null;
         if (redraft) {
           semanticRedraftCode = redraft.outcome;
           console.warn(`[notebook-chat] semantic redraft ${redraft.outcome}`);
@@ -5793,18 +5797,22 @@ async function handleChatTurn(
         const stopViolation = `unsafe-answer:semantic-${firstClass}`;
         // #6022: every billed redraft attempt is added, whether or not it produced text; an
         // unseen or malformed count makes the turn's totals unknown (null, never 0).
-        if (redraftAttempts.length > 0 && turnUsage) {
+        if (redraft && turnUsage) {
           // R1-C2/R1-C4: every side of the sum, draft 1 included, is cleaned the same way. A
           // malformed count is unknown (null), so the total it feeds is unknown. A missing cache
-          // count is zero cached (withRedraftUsage), but a present malformed one makes the
-          // cached total unknown rather than silently zero.
+          // count is zero cached (withRedraftUsage) when the prompt count is known; a cached
+          // count is otherwise known only when well formed and no larger than its own prompt
+          // count, and an unknown prompt count means an unknown cached share (R2-C4). Either
+          // makes the cached total unknown rather than a number.
           let cachedUnknown = false;
           const counted = (u: TurnUsage): TurnUsage => {
-            const cachedBad = u.cachedInputTokens !== null && tokenCount(u.cachedInputTokens) === null;
+            const input = tokenCount(u.inputTokens);
+            const cached = u.cachedInputTokens === null ? null : tokenCount(u.cachedInputTokens);
+            const cachedBad = input === null || (u.cachedInputTokens !== null && (cached === null || cached > input));
             if (cachedBad) cachedUnknown = true;
             return {
               ...u,
-              inputTokens: tokenCount(u.inputTokens),
+              inputTokens: input,
               outputTokens: tokenCount(u.outputTokens),
               cachedInputTokens: cachedBad ? null : u.cachedInputTokens,
             };
@@ -5913,7 +5921,7 @@ async function handleChatTurn(
       // generation that produced the text is "served" only when it is what the turn commits;
       // otherwise (late Stop, failed check, unsafe verdict) it was generated and not served.
       // The packet's token totals then describe the whole turn, equal to the ledger row.
-      if (redraftAttempts.length > 0) {
+      if (redraftTried) {
         // R1-C6: exactly one attempt is served. A served redraft replaced draft 1's generation,
         // which was billed and generated but not served. (`served_provider` follows the
         // redraft's served attempt, pushed below.)
@@ -5922,11 +5930,14 @@ async function handleChatTurn(
           if (semanticRedraftCode === "served") draft1.outcome = "generated_not_served";
           if (!draft1UsageKnown) draft1.usage_unknown = true;
         }
-        // Usage is known only when both counts, and any cache count, are well formed (R1-C2/R1-C4).
+        // Usage is known only when both counts are well formed and any cache count is well formed
+        // and no larger than the prompt count: the same rule as `counted` above (R1-C2/R1-C4/R2-C4).
         const knownUsage = (u: CascadeAttempt["usage"]) => {
           const raw = u as { prompt_tokens?: unknown; completion_tokens?: unknown; prompt_tokens_details?: { cached_tokens?: unknown } } | null;
+          const prompt = tokenCount(raw?.prompt_tokens);
           const cached = raw?.prompt_tokens_details?.cached_tokens;
-          return tokenCount(raw?.prompt_tokens) !== null && tokenCount(raw?.completion_tokens) !== null && (cached == null || tokenCount(cached) !== null);
+          const cachedCount = cached == null ? null : tokenCount(cached);
+          return prompt !== null && tokenCount(raw?.completion_tokens) !== null && (cached == null || (cachedCount !== null && cachedCount <= prompt));
         };
         redraftAttempts.forEach((a, i) => {
           const generated = redraftGenerated && i === redraftAttempts.length - 1;
@@ -5946,6 +5957,8 @@ async function handleChatTurn(
                 : known
                   ? "empty_completion"
                   : "exception",
+            // Not recorded for redraft attempts (R2-C5): cascadeComplete reports neither a
+            // per-attempt time nor a response id to onAttempt, so they are null, not guessed.
             latency_ms: null,
             route_reason: routeReasonFor(a.before),
             response_id: null,
