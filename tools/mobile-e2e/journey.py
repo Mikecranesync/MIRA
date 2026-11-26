@@ -9,8 +9,8 @@ physical. This harness replays the same journey on an emulator so nobody's phone
 held hostage again.
 
 What it covers (same chain as the physical run)
-    install -> sign in -> create notebook -> upload PDF -> ingest+embed
-    -> ask -> grounded cited answer -> citation resolves to a real passage
+    install -> sign in -> create project -> attach PDF -> ask (upload + ingest on send)
+    -> grounded cited answer -> citation resolves to the passage and the original page
     -> (optional) nameplate image -> structured extraction
 
 What it deliberately CANNOT cover -- and reports as SKIP, never as PASS:
@@ -31,7 +31,7 @@ broke between the Pixel (1080x2424) and the emulator.
 Usage
 -----
     export FLM_EMAIL='...'            # required
-    export FLM_PASSWORD='...'         # required -- never hardcode, never commit
+    export FLM_PASSWORD='...'         # or FLM_LOGIN_LINK -- never hardcode, never commit
     python tools/mobile-e2e/journey.py --apk path/to/app-debug.apk --pdf path/to/manual.pdf \
         --question "When do I need to derate this drive" --expect-page 117
 
@@ -44,6 +44,8 @@ from __future__ import annotations
 import argparse
 import os
 import re
+import secrets
+import shutil
 import subprocess
 import sys
 import time
@@ -51,9 +53,23 @@ import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from pathlib import Path
 
-PKG = "com.factorylm.mira"
+# Same switch as device.py: MIRA_PKG=com.factorylm.mira.staging targets the staging
+# flavour (#3938) instead of the production app (#4455).
+PKG = os.environ.get("MIRA_PKG", "com.factorylm.mira")
 DEVICE_TMP = "/sdcard/Download"
 UI_XML = "/sdcard/window_dump.xml"
+# Shell-owned and not readable by apps. Every view dump goes here, in a fresh 0700
+# directory per run (and another per sign-in), so shared storage never holds one.
+PRIVATE_TMP = "/data/local/tmp"
+# One run per device: created atomically by claim(), removed by release().
+LOCK_DIR = f"{PRIVATE_TMP}/mira-e2e.lock"
+# Credentials go to this process only. Not to adb (whose server outlives the run),
+# screencap or aapt2.
+CREDENTIAL_ENV = ("FLM_LOGIN_LINK", "FLM_PASSWORD")
+
+
+def child_env() -> dict[str, str]:
+    return {k: v for k, v in os.environ.items() if k not in CREDENTIAL_ENV}
 
 # adb rewrites /sdcard/... into a Windows path under Git Bash without this.
 os.environ.setdefault("MSYS_NO_PATHCONV", "1")
@@ -91,6 +107,44 @@ class Device:
         self.outdir = outdir
         self.outdir.mkdir(parents=True, exist_ok=True)
         self._shot = 0
+        self.ui_xml = ""  # set on the first dump, in this run's private directory
+        self._session_dir: str | None = None
+        self._private_dir: str | None = None
+        self._pushed: list[str] = []
+        self._claimed = False
+
+    def claim(self) -> None:
+        """Hold the device for this run, before anything on it changes.
+
+        Two runs on one device would launch, tap and dump over each other, and one
+        run's sign-in link would be on screen while the other inspected it.
+        """
+        if self.shell("mkdir", "-m", "700", LOCK_DIR, "&&", "echo", "OK") != "OK":
+            raise Fail(f"another mobile-e2e run holds {self.serial} ({LOCK_DIR} exists). If "
+                       f"none is running, remove it: adb -s {self.serial} shell rm -rf {LOCK_DIR}")
+        self._claimed = True
+
+    def release(self) -> None:
+        """Remove what this run left on the device, then free it. Every exit path."""
+        for remote in self._pushed:
+            self.shell("rm", "-f", remote)
+        self._pushed.clear()
+        try:
+            self.forget_screen()
+        finally:
+            if self._session_dir is not None:
+                self.shell("rm", "-rf", self._session_dir)
+                self._session_dir, self.ui_xml = None, ""
+            if self._claimed:
+                self.shell("rm", "-rf", LOCK_DIR)
+                self._claimed = False
+
+    def _new_private_dir(self) -> str:
+        d = f"{PRIVATE_TMP}/mira-e2e-{secrets.token_hex(6)}"
+        self.shell("mkdir", "-m", "700", d)
+        if self.shell("test", "-d", d, "&&", "echo", "OK") != "OK":
+            raise Fail(f"could not create the private dump directory {d} on the device")
+        return d
 
     def _run(self, args: list[str], **kw) -> subprocess.CompletedProcess:
         # encoding= is mandatory on Windows: text=True alone fails OPEN -- the decode
@@ -102,6 +156,7 @@ class Device:
             text=True,
             encoding="utf-8",
             errors="replace",
+            env=child_env(),
             **kw,
         )
 
@@ -124,6 +179,7 @@ class Device:
         return str(Path(s).resolve()) if Path(s).exists() else s
 
     def push(self, local: Path, remote: str) -> None:
+        self._pushed.append(remote)  # removed by release(), however the run ends
         r = self._run(["push", self._native(local), remote])
         if r.returncode != 0:
             raise Fail(f"adb push failed: {r.stderr}")
@@ -134,6 +190,7 @@ class Device:
         raw = subprocess.run(
             [self.adb, "-s", self.serial, "exec-out", "screencap", "-p"],
             capture_output=True,
+            env=child_env(),
         ).stdout
         path.write_bytes(raw)
         return path
@@ -142,9 +199,12 @@ class Device:
 
     def dump(self) -> list[Node]:
         """Snapshot the view hierarchy. Retries: dump races app transitions."""
+        if not self.ui_xml:
+            self._session_dir = self._new_private_dir()
+            self.ui_xml = f"{self._session_dir}/window_dump.xml"
         for _ in range(6):
-            self.shell("uiautomator", "dump", UI_XML)
-            xml = self.shell("cat", UI_XML)
+            self.shell("uiautomator", "dump", self.ui_xml)
+            xml = self.shell("cat", self.ui_xml)
             if xml.startswith("<?xml") and "<node" in xml:
                 break
             time.sleep(1.5)
@@ -171,6 +231,30 @@ class Device:
                 )
             )
         return nodes
+
+    def private_screen(self) -> None:
+        """From now on, dump the view hierarchy into a fresh shell-private directory.
+
+        A dump holds every field's text, a sign-in link included, so while one can be
+        on screen it never goes to shared storage.
+        """
+        d = self._new_private_dir()
+        self._private_dir, self.ui_xml = d, f"{d}/window_dump.xml"
+
+    def forget_screen(self) -> None:
+        """Remove the sign-in's dump directory and go back to the run's own.
+
+        Checked, not assumed: a device that stopped answering leaves it behind.
+        """
+        d = self._private_dir
+        if d is None:
+            return
+        self._private_dir = None
+        self.ui_xml = f"{self._session_dir}/window_dump.xml" if self._session_dir else ""
+        self.shell("rm", "-rf", d)
+        if self.shell("test", "-e", d, "&&", "echo", "PRESENT", "||", "echo", "GONE") != "GONE":
+            raise Fail(f"could not confirm {d} was removed from the device. It may still hold "
+                       f"the sign-in link: delete it by hand (adb shell rm -rf {d})")
 
     def texts(self) -> list[str]:
         return [n.label for n in self.dump() if n.label.strip()]
@@ -240,6 +324,20 @@ class Device:
                     return True
         return False
 
+    def launch_app(self) -> None:
+        """Start the app's launcher activity.
+
+        `monkey -p PKG -c LAUNCHER 1` silently starts nothing on the API 35 emulator, so
+        resolve the launcher activity and `am start` it; monkey stays as the fallback.
+        """
+        out = self.shell("cmd", "package", "resolve-activity", "--brief", "-c",
+                         "android.intent.category.LAUNCHER", PKG)
+        component = out.splitlines()[-1].strip() if out else ""
+        if component.startswith(f"{PKG}/"):
+            self.shell("am", "start", "-n", component)
+        else:
+            self.shell("monkey", "-p", PKG, "-c", "android.intent.category.LAUNCHER", "1")
+
     def top_package(self) -> str:
         out = self.shell("dumpsys", "activity", "activities")
         m = re.search(r"topResumedActivity.*?\{[^}]*?\s(\S+?)/", out)
@@ -254,7 +352,7 @@ class Device:
         """
         top = self.top_package()
         if top and top != PKG and "packageinstaller" not in top and "permission" not in top:
-            self.shell("monkey", "-p", PKG, "-c", "android.intent.category.LAUNCHER", "1")
+            self.launch_app()
             time.sleep(5)
             return True
         return False
@@ -296,19 +394,25 @@ class Device:
         assert node is not None
         self.tap(*node.center)
 
-    def type_text(self, s: str, *, chunk: int = 8) -> None:
+    def type_text(self, s: str, *, chunk: int = 8, quoted: bool = False) -> None:
         """Type text, in chunks.
 
         `%s` is the space escape. `?` is a glob on the device shell and the
         percent-encoded form is NOT decoded -- a literal `%3F` reaches the field.
+        `quoted=True` wraps each chunk in single quotes for the device shell, which
+        then types a `?` literally (a sign-in link has one); it cannot carry a `'`.
 
         Chunking matters on emulators: a full-string `input text` outruns the WebView
         and characters get dropped or duplicated ('mike@...' arriving as 'mimikk').
         """
-        if "?" in s:
+        if quoted:
+            if "'" in s:
+                raise Fail("a quoted `input text` cannot contain a single quote")
+        elif "?" in s:
             raise Fail("'?' cannot be typed via `input text`; omit it")
         for i in range(0, len(s), chunk):
-            self.shell("input", "text", s[i : i + chunk].replace(" ", "%s"))
+            part = s[i : i + chunk].replace(" ", "%s")
+            self.shell("input", "text", f"'{part}'" if quoted else part)
             time.sleep(0.4)
         time.sleep(0.6)
 
@@ -371,7 +475,12 @@ class Device:
             if "EditText" in n.cls:
                 return n
 
-        label = min(labels, key=lambda n: n.bounds[3] - n.bounds[1])
+        # An exact label beats a sentence that merely contains the word: the unified
+        # create form's hint "To create: give the machine a name." contains "name", and on
+        # the Pixel 9a it renders 1 px shorter than the "Name" label (47 vs 48 px), so the
+        # shortest match alone took the hint and found no input beneath it.
+        exact = [n for n in labels if n.label.strip() == field_label]
+        label = min(exact or labels, key=lambda n: n.bounds[3] - n.bounds[1])
         edits = [
             n for n in nodes
             if "EditText" in n.cls and n.bounds[1] >= label.bounds[3] - 5
@@ -393,13 +502,16 @@ class Device:
         return max(edits, key=lambda n: n.bounds[1])
 
     def type_into(self, field_label: str, value: str, *, verify: bool = True,
-                  attempts: int = 3) -> None:
+                  attempts: int = 3, secret: bool = False) -> None:
         """Tap a field's input, type, READ IT BACK, and retry on mismatch.
 
         Two distinct corruptions are real here: the first `input text` after a tap can
         duplicate its leading character ('pprod.smoke...'), and a slow emulator drops
         or interleaves characters outright ('mike@...' -> 'mimikk'). Neither is
         deterministic, so verify-and-retry beats any single clever typing strategy.
+
+        `secret=True` types quoted (so a `?` survives) and never echoes the value or
+        what was read back: a sign-in link is a credential.
         """
         last = ""
         for attempt in range(1, attempts + 1):
@@ -408,17 +520,19 @@ class Device:
                 self.clear_field(field)
                 field = self.input_for(field_label)
             self.tap(*field.center)
-            self.type_text(value)
+            self.type_text(value, quoted=secret)
             if not verify:
                 return
             time.sleep(1)
             last = self.input_for(field_label).text
             if last == value:
                 return
-            log("type", f"field {field_label!r} read back {last!r}; retry {attempt}/{attempts}")
+            seen = f"{len(last)} chars" if secret else repr(last)
+            log("type", f"field {field_label!r} read back {seen}; retry {attempt}/{attempts}")
+        shown, seen = ("<redacted>", f"{len(last)} chars") if secret else (repr(value), repr(last))
         raise Fail(
-            f"field {field_label!r} would not accept {value!r} after {attempts} "
-            f"attempts (last read: {last!r})"
+            f"field {field_label!r} would not accept {shown} after {attempts} "
+            f"attempts (last read: {seen})"
         )
 
 
@@ -427,6 +541,30 @@ class Device:
 
 def log(step: str, msg: str = "") -> None:
     print(f"[{step}] {msg}".rstrip(), flush=True)
+
+
+# A source chip reads "FILE manual.pdf p. 3" and the citation sheet "[1] manual.pdf -- p.3".
+# Parse the page NUMBER: a substring test for "p.3" never matches the spaced chip, and
+# would accept "p.31" if it did.
+# A source chip reads "FILE <title> p. 3" (kind OEM / FILE / HIST); the sheet header
+# reads "[1] <title> \u2014 p.3". The title is everything between the prefix and
+# ".pdf", spaces included, so "PowerFlex 525.pdf" is never read as "525.pdf". The
+# title runs to the LAST ".pdf" that the locator follows, so a title that itself
+# contains ".pdf" or "p. 7" is kept whole.
+_CITED_PAGE = re.compile(
+    r"^(?:(?:OEM|FILE|HIST)\s+|\[\d+\]\s+)(?P<file>\S.*\.pdf)\s+(?:[\u2014\u2013-]\s*)?p\.\s*(?P<page>\d+)\b",
+    re.IGNORECASE,
+)
+
+
+def cited_pages(labels: list[str]) -> list[tuple[str, int]]:
+    """(file, page) for every label that cites a PDF page."""
+    found = []
+    for t in labels:
+        m = _CITED_PAGE.search(t.strip())
+        if m:
+            found.append((m.group("file"), int(m.group("page"))))
+    return found
 
 
 def native_path(s: str) -> Path:
@@ -446,9 +584,27 @@ def native_path(s: str) -> Path:
     return p
 
 
+def default_adb() -> str:
+    """`$ADB`, else adb under ANDROID_SDK_ROOT / ANDROID_HOME, named for this platform.
+
+    The old default was a Windows AppData path, so on macOS or Linux every run
+    without --adb died on a file that cannot exist there (#4455).
+    """
+    if os.environ.get("ADB"):
+        return os.environ["ADB"]
+    sdk = os.environ.get("ANDROID_SDK_ROOT") or os.environ.get("ANDROID_HOME")
+    exe = ".exe" if sys.platform == "win32" else ""
+    root = Path(sdk) if sdk else (
+        Path.home() / "AppData/Local/Android/Sdk" if sys.platform == "win32"
+        else Path.home() / "Library/Android/sdk" if sys.platform == "darwin"
+        else Path.home() / "Android/Sdk"
+    )
+    return str(root / "platform-tools" / f"adb{exe}")
+
+
 def pick_device(adb: str, allow_physical: bool) -> str:
     out = subprocess.run([adb, "devices"], capture_output=True, text=True,
-                         encoding="utf-8", errors="replace").stdout
+                         encoding="utf-8", errors="replace", env=child_env()).stdout
     devices = [
         line.split()[0]
         for line in out.splitlines()[1:]
@@ -469,12 +625,68 @@ def pick_device(adb: str, allow_physical: bool) -> str:
     )
 
 
-def install(dev: Device, apk: Path) -> None:
+def find_aapt2(adb: str) -> str | None:
+    """`$AAPT2`, else the newest build-tools aapt2 in the SDK that holds `adb`.
+
+    Any SDK that built the APK has build-tools (gradle needs aapt2), so the platform
+    tool is used rather than a hand-rolled manifest parser.
+    """
+    if os.environ.get("AAPT2"):
+        return os.environ["AAPT2"]
+    exe = "aapt2.exe" if sys.platform == "win32" else "aapt2"
+    where = shutil.which(adb) or adb
+    roots = [Path(where).parent.parent, Path(where).resolve().parent.parent]
+    roots += [Path(v) for v in (os.environ.get("ANDROID_SDK_ROOT"), os.environ.get("ANDROID_HOME")) if v]
+    for root in roots:
+        tools = root / "build-tools"
+        found = [d / exe for d in tools.iterdir() if (d / exe).exists()] if tools.is_dir() else []
+        if found:
+            def version(p: Path) -> tuple[int, ...]:
+                return tuple(int(x) if x.isdigit() else -1 for x in re.split(r"[.-]", p.parent.name))
+            return str(max(found, key=version))
+    return None
+
+
+def apk_package(apk: Path, adb: str) -> str:
+    """The package `apk` installs. Fails closed: an unverifiable APK is not installed."""
+    aapt2 = find_aapt2(adb)
+    if not aapt2:
+        raise Fail(f"cannot verify which package {apk.name} installs: no aapt2 under the "
+                   "SDK's build-tools (install build-tools, or set AAPT2)")
+    r = subprocess.run([aapt2, "dump", "packagename", str(apk)], capture_output=True,
+                       text=True, encoding="utf-8", errors="replace", env=child_env())
+    lines = (r.stdout or "").strip().splitlines()
+    if r.returncode != 0 or not lines:
+        raise Fail(f"cannot verify which package {apk.name} installs: "
+                   f"aapt2 said {(r.stderr or '').strip()[:200]!r}")
+    return lines[-1].strip()
+
+
+def install(dev: Device, apk: Path, *, reinstall_physical: bool = False) -> None:
     log("install", f"{apk.name}")
+    # Before anything on the device changes: the APK must be the package the journey
+    # then uninstalls, launches and drives. A staging APK with MIRA_PKG left at the
+    # production id would otherwise install one app and drive another.
+    target = apk_package(apk, dev.adb)
+    if target != PKG:
+        raise Fail(f"{apk.name} installs {target}, but this run drives {PKG}; refusing "
+                   "before touching the device (set MIRA_PKG to match the APK)")
     # A signature mismatch (debug vs release) makes -r fail with
     # INSTALL_FAILED_UPDATE_INCOMPATIBLE. Uninstall first: a fresh install is also the
     # more honest starting state, since it re-exercises the permission grant.
-    dev._run(["uninstall", PKG])
+    # On a REAL phone that uninstall signs the owner out of a real account (#4455), so
+    # it needs its own explicit opt-in on top of --allow-physical. A phone without the
+    # app has nothing to lose: install it, still without an uninstall. If `pm path`
+    # were wrong, a plain install replaces in place (same cert keeps the login) or
+    # fails on a cert mismatch -- neither path signs anyone out.
+    if not dev.serial.startswith("emulator-") and not reinstall_physical:
+        if "package:" in dev.shell("pm", "path", PKG):
+            raise Fail(
+                f"refusing to uninstall {PKG} on physical device {dev.serial}: it signs the "
+                "owner out of a real account. Pass --reinstall-physical if that is intended."
+            )
+    else:
+        dev._run(["uninstall", PKG])
     r = dev._run(["install", str(apk)])
     if "Success" not in (r.stdout or "") + (r.stderr or ""):
         raise Fail(f"install failed: {r.stdout} {r.stderr}")
@@ -494,56 +706,142 @@ def install(dev: Device, apk: Path) -> None:
 
 def launch(dev: Device) -> None:
     dev.shell("am", "force-stop", PKG)
-    dev.shell("monkey", "-p", PKG, "-c", "android.intent.category.LAUNCHER", "1")
+    dev.launch_app()
     time.sleep(6)
     dev.dismiss_anr()
 
 
-def sign_in(dev: Device, email: str, password: str) -> None:
-    log("signin", email)
+def sign_in(dev: Device, email: str, password: str | None = None, *,
+            login_link: str | None = None) -> None:
+    """Sign in with a password, or with a one-time sign-in link.
+
+    A stranger who signed up through verified onboarding has no password (#5942), so
+    the link is how the harness signs one in: the app's invitation mode accepts a
+    `/magic/?token=<uuid>` link for its own backend. `email` is still required -- the
+    drawer check below is what proves the RIGHT account signed in.
+    """
+    if (password is None) == (login_link is None):
+        raise Fail("sign_in needs exactly one of a password or a login link")
+    log("signin", f"{email} via {'login link' if login_link else 'password'}")
     # Generous: a cold emulator on swiftshader takes far longer to paint the WebView
     # than a real device, and will throw ANR dialogs while doing it -- dismissing one
     # drops you on the launcher, hence keep_foreground.
     dev.wait_for("Sign in", timeout=240, keep_foreground=True)
-    dev.type_into("Email", email)
-    # Password is masked, so read-back cannot verify the value. Assert on the outcome.
-    pw = dev.input_for("Password")
-    dev.tap(*pw.center)
-    dev.type_text(password)
-    dev.screenshot("signin-filled")
-    dev.tap_button("Sign in")
+    if login_link is not None:
+        # Until it is exchanged the link is a live credential, and a rejected or
+        # interrupted exchange leaves it live and on screen. So no screenshot while it
+        # can be showing, and the dump file that held it is removed however this ends.
+        try:
+            dev.private_screen()
+            dev.tap_button("Have an invitation link instead")
+            dev.wait_for("Use an invitation link", timeout=30)
+            dev.type_into("Invitation link", login_link, secret=True)
+            dev.hide_keyboard()
+            dev.tap_button("Use invite link")
+            _wait_for_shell(dev, evidence=False)
+        finally:
+            dev.forget_screen()
+    else:
+        assert password is not None
+        dev.type_into("Email", email)
+        # Password is masked, so read-back cannot verify the value. Assert on the outcome.
+        pw = dev.input_for("Password")
+        dev.tap(*pw.center)
+        dev.type_text(password)
+        dev.screenshot("signin-filled")
+        dev.tap_button("Sign in")
+        _wait_for_shell(dev, evidence=True)
 
+    # The unified shell lands on HOME, which shows no account name; only the drawer
+    # does. The drawer's account line must BE the expected email: a substring match
+    # would accept "other-stranger@..." for "stranger@...".
+    dev.tap_button("Open navigation")
+    want = email.strip().lower()
+    deadline = time.time() + 20
+    while (_drawer_account(dev.dump()) or "").lower() != want:
+        if time.time() > deadline:
+            dev.screenshot("signin-wrong-account")
+            raise Fail(f"signed in, but the drawer does not show {email} -- wrong account")
+        time.sleep(2)
+    dev.screenshot("signed-in")
+    dev.tap_button("Close navigation")
+    log("signin", "OK")
+
+
+def _drawer_account(nodes: list[Node]) -> str | None:
+    """The account line of the drawer footer: the label just above "About & updates".
+
+    The drawer also lists projects and conversations, and any of them could be
+    titled with an email address, so only the footer's line identifies the account.
+    That line is plain text directly above the About and Sign out buttons.
+    """
+    shown = [n for n in nodes if n.label.strip()]
+    labels = [n.label.strip() for n in shown]
+    if "About & updates" not in labels:
+        return None
+    # The footer renders after every drawer row, so its button is the LAST match: a
+    # conversation can be named "About & updates" too.
+    footer = len(labels) - 1 - labels[::-1].index("About & updates")
+    # The footer is exactly: the email line (plain text), the About button, the Sign
+    # out button. Drawer rows are buttons, so a row titled with an address is never
+    # read as the account when the footer's own line is missing.
+    if footer < 1 or footer + 1 >= len(shown):
+        return None
+    line, about, sign_out = shown[footer - 1], shown[footer], shown[footer + 1]
+    if line.clickable or not about.clickable or not sign_out.clickable:
+        return None
+    if sign_out.label.strip() not in ("Sign out", "Signing out…") or "@" not in line.label:
+        return None
+    return line.label.strip()
+
+
+def _wait_for_shell(dev: Device, *, evidence: bool) -> None:
+    """Wait for the signed-in shell. `evidence=False` skips the failure screenshot,
+    for a screen that may still show a sign-in link."""
     deadline = time.time() + 60
-    while time.time() < deadline:
-        if any(email in t for t in dev.texts()):
-            dev.screenshot("signed-in")
-            log("signin", "OK")
-            return
+    while dev.find("Open navigation", clickable=True) is None:
+        if time.time() > deadline:
+            if evidence:
+                dev.screenshot("signin-failed")
+            raise Fail("sign-in did not complete -- check credentials, or the trial may be expired")
         time.sleep(3)
-    dev.screenshot("signin-failed")
-    raise Fail("sign-in did not complete -- check credentials, or the trial may be expired")
 
 
 def create_notebook(dev: Device, name: str, mfr: str, model: str) -> None:
     log("notebook", name)
-    dev.tap_text("Notebook")
-    dev.tap_text("Create new")
-    dev.wait_for("New machine notebook")
-    dev.type_into("Name", name)
-    dev.hide_keyboard()  # conditional: a bare BACK would leave the form
-    dev.type_into("Manufacturer", mfr)
-    dev.hide_keyboard()
-    dev.type_into("Model", model)
-    dev.hide_keyboard()
+    # Unified shell: drawer -> "New project" -> one form. An empty manufacturer/model
+    # is left blank, as a technician who only names the machine would.
+    dev.tap_button("Open navigation")
+    dev.tap_button("New project")
+    dev.wait_for("Name the machine")
+    for label, value in (("Name", name), ("Manufacturer", mfr), ("Model", model)):
+        if value:
+            dev.type_into(label, value)
+            dev.hide_keyboard()  # conditional: a bare BACK would leave the form
     dev.screenshot("notebook-form")
-    dev.tap_text("Create notebook")
-    dev.wait_for("Add sources", timeout=60)
+    dev.tap_button("Create project")
+    # The form's Name box holds the same string, so wait for the form to go first.
+    dev.wait_for("Name the machine", timeout=60, absent=True)
+    dev.wait_for(name, timeout=30)
     log("notebook", "created")
 
 
-def upload_pdf(dev: Device, pdf: Path) -> None:
-    log("upload", pdf.name)
-    remote = f"{DEVICE_TMP}/{pdf.name}"
+def run_upload_name(pdf: Path) -> str:
+    """This run's name for the manual: the stem, made shell-safe, plus a random tag.
+
+    Fresh per run, so an earlier upload of the same file (another revision, still in
+    the workspace) can never be the citation that passes the gate. No spaces, since
+    the device shell would split the path.
+    """
+    stem = re.sub(r"[^A-Za-z0-9._-]+", "_", pdf.stem).strip("_") or "manual"
+    return f"{stem}-{secrets.token_hex(4)}.pdf"
+
+
+def upload_pdf(dev: Device, pdf: Path) -> str:
+    """Attach `pdf` to the next message, under this run's own name, and return it."""
+    name = run_upload_name(pdf)
+    log("upload", f"{pdf.name} as {name}")
+    remote = f"{DEVICE_TMP}/{name}"
     dev.push(pdf, remote)
 
     local_sha = _sha256(pdf)
@@ -552,118 +850,196 @@ def upload_pdf(dev: Device, pdf: Path) -> None:
         raise Fail(f"sha256 mismatch after push: {device_sha} != {local_sha}")
     log("upload", f"sha256 verified {local_sha[:16]}...")
     dev.shell(
-        "am", "broadcast", "-a", "android.intent.action.MEDIA_SCANNER_SCAN_FILE",
-        "-d", f"file://{remote}",
+        "am",
+        "broadcast",
+        "-a",
+        "android.intent.action.MEDIA_SCANNER_SCAN_FILE",
+        "-d",
+        f"file://{remote}",
     )
 
-    if dev.find("Add sources") is None:
-        dev.tap_text("Add sources")
-    dev.tap_text("Upload a PDF manual")
-    dev.tap_text(pdf.stem[:24], timeout=60)  # SAF picker row
+    # Unified shell: "+" -> File -> system picker. The file rides on the NEXT message
+    # and is read when that message is sent, so ask() is what proves ingest; there is
+    # no separate "Searchable source" state to wait for here.
+    dev.tap_button("Add attachment")
+    dev.tap_button("File")
+    # Exact match: the picker card also carries a "Preview the file <name>" button,
+    # which opens a preview instead of choosing the file.
+    deadline = time.time() + 60
+    while (row := dev.find(name, exact=True)) is None:
+        if time.time() > deadline:
+            dev.screenshot("picker-missing-file")
+            raise Fail(f"{name} is not listed in the file picker")
+        time.sleep(2)
+    dev.tap(*row.center)
+    # The attachment chip: its name plus a "Remove <name>" button. (The list's own
+    # "Pending attachments" label is in the emulator's accessibility tree but not the
+    # Pixel 9a's, so it cannot be the signal.)
+    try:
+        dev.wait_for(f"Remove {name}", timeout=60)
+    except Fail:
+        dev.screenshot("attach-missing")
+        raise Fail(f"picked {name}, but it is not attached to the message") from None
+    dev.screenshot("source-attached")
+    log("upload", "attached to the next message")
+    return name
 
-    # Do NOT assert that "Uploading" appears: a small PDF completes before the poll
-    # can observe the transient state, and requiring a spinner you raced past fails a
-    # run that actually succeeded. Wait for the terminal state instead, and only wait
-    # OUT an "Uploading" that happens to be visible.
-    if dev.find("Uploading") is not None:
-        dev.wait_for("Uploading", timeout=900, absent=True)
-    dev.wait_for("Searchable source", timeout=600)
-    dev.screenshot("source-added")
-    log("upload", "source added and marked searchable")
 
-
-def ask(dev: Device, question: str, expect_page: int | None) -> str:
+def ask(dev: Device, question: str, expect_page: int | None, *, source: str) -> str:
+    """`source` is the uploaded manual's file name: only a citation to IT proves the
+    upload reached retrieval. Page 3 of some other manual proves nothing about it."""
     log("ask", question)
-    if dev.find("Done") is not None:
-        dev.tap_button("Done", timeout=20)
-    # tap_button, not tap_text: the Sources pane carries the sentence "...include this
-    # source in notebook chat", which matches "Chat" case-insensitively. Only the tab
-    # is clickable.
-    dev.tap_button("Chat")
-    dev.wait_for("Send", timeout=90, keep_foreground=True)
+    turns_before = dev.texts().count("MIRA")
     box = dev.bottom_edit_text()
     dev.tap(*box.center)
     dev.type_text(question)
     dev.screenshot("question-typed")
     dev.tap_button("Send", timeout=30)
 
+    # Wait for a NEW MIRA turn that has settled -- it shows its source chip, or its
+    # Copy action once it has finished without one. Count turns first: a thread can
+    # already hold a finished answer whose chip and Copy would end the wait on it.
     deadline = time.time() + 180
-    answer = ""
+    turn: list[str] = []
     while time.time() < deadline:
-        long_texts = [t for t in dev.texts() if len(t) > 60 and t != question]
-        if long_texts:
-            answer = max(long_texts, key=len)
-            break
+        labels = dev.texts()
+        if labels.count("MIRA") > turns_before:
+            turn = labels[len(labels) - labels[::-1].index("MIRA") :]
+            if cited_pages(turn) or "Copy" in turn:
+                break
         time.sleep(5)
-    if not answer:
+    else:
         raise Fail("no answer rendered within 180s")
 
     dev.screenshot("answer")
+    prose: list[str] = []
+    for t in turn:
+        if cited_pages([t]):
+            break
+        if not re.fullmatch(r"Citation \d+", t):
+            prose.append(t.strip())
+    answer = " ".join(p for p in prose if p)
 
-    cites = [t for t in dev.texts() if ".pdf" in t and "p." in t]
+    cites = cited_pages(turn)
     if not cites:
         raise Fail(f"answer is UNCITED -- grounding failure. Answer was: {answer[:300]}")
     log("ask", f"cited: {cites}")
 
+    mine = {page for f, page in cites if f.lower() == source.lower()}
+    if not mine:
+        raise Fail(f"the answer cites {cites}, none of it the uploaded {source}")
     if expect_page is not None:
-        if not any(f"p.{expect_page}" in c for c in cites):
-            raise Fail(f"expected a citation to p.{expect_page}, got {cites}")
-        log("ask", f"expected page p.{expect_page} cited")
+        if expect_page not in mine:
+            raise Fail(f"expected a citation to {source} p.{expect_page}, got {cites}")
+        log("ask", f"expected page {source} p.{expect_page} cited")
     return answer
 
 
-def verify_citation(dev: Device, expect_page: int | None) -> str:
+def verify_citation(dev: Device, expect_page: int | None, *, source: str,
+                    fetch_timeout: int = 60) -> str:
     log("citation", "opening sheet")
-    target = f"p.{expect_page}" if expect_page else ".pdf"
-    node = dev.find(target)
-    if node is None:
-        raise Fail(f"no citation chip matching {target!r}")
-    dev.tap(*node.center)
-    time.sleep(4)
+    chips = [
+        n
+        for n in dev.dump()
+        if n.clickable
+        and cited_pages([n.label])
+        and cited_pages([n.label])[0][0].lower() == source.lower()
+        and (expect_page is None or cited_pages([n.label])[0][1] == expect_page)
+    ]
+    if not chips:
+        where = f" p.{expect_page}" if expect_page else ""
+        raise Fail(f"no source chip citing {source}{where}")
+    # The newest turn renders last; an earlier answer in the thread may cite the same page.
+    chip_page = cited_pages([chips[-1].label])[0][1]
+    dev.tap(*chips[-1].center)
 
+    # The sheet names its source as "[1] manual.pdf -- p.3". Check that page too: the
+    # chip and the passage it opens must agree.
+    deadline = time.time() + 20
+    while (
+        header := next((t for t in dev.texts() if t.startswith("[") and cited_pages([t])), None)
+    ) is None:
+        if time.time() > deadline:
+            dev.screenshot("citation-empty")
+            raise Fail("citation sheet never opened")
+        time.sleep(2)
+    sheet_file, page = cited_pages([header])[0]
+    if sheet_file.lower() != source.lower():
+        raise Fail(f"the {source} chip opened a sheet for another manual: {header!r}")
+    if page != chip_page:  # chips were already filtered to expect_page when one is given
+        raise Fail(f"chip cites p.{chip_page} but the sheet shows p.{page}: {header!r}")
+
+    # The passage must come from the open sheet: between its header and its first
+    # action. Anywhere else on screen (a chat row, a status line) proves nothing.
+    labels = dev.texts()
+    sheet = labels[labels.index(header) + 1 :] if header in labels else []
+    for i, t in enumerate(sheet):
+        if t.startswith(("Open original at cited page", "Cited at page", "Close")):
+            sheet = sheet[:i]
+            break
     passage = ""
-    for t in dev.texts():
-        if t.startswith("“") or t.startswith('"') or "…" in t:
-            if len(t) > len(passage):
-                passage = t
+    for t in sheet:
+        quoted = t.startswith("“") or t.startswith('"') or "…" in t
+        # A quote of only punctuation (an empty passage, displayed) is no passage.
+        if quoted and any(ch.isalnum() for ch in t) and len(t) > len(passage):
+            passage = t
     if not passage:
         dev.screenshot("citation-empty")
         raise Fail("citation sheet opened but rendered no passage")
 
     dev.screenshot("citation-sheet")
-    log("citation", f"passage: {passage[:110]}...")
-    if dev.find("Close") is not None:
-        dev.tap_text("Close")
+    log("citation", f"{header} -- passage: {passage[:110]}...")
+
+    # Resolve the citation to the original document at that page. Android's WebView
+    # cannot render PDF pages in-app, so the sheet confirms the fetch instead.
+    dev.tap_button(f"Open original at cited page {page}", timeout=20)
+    # The viewer's own success line, for this page, below the sheet header. A chat row
+    # elsewhere that says "opened successfully" proves nothing about this fetch.
+    done = f"Cited at page {page}. The original opened successfully"
+    deadline = time.time() + fetch_timeout
+    while True:
+        labels = dev.texts()
+        viewer = labels[labels.index(header) + 1 :] if header in labels else []
+        if any(t.startswith(done) for t in viewer):
+            break
+        if time.time() > deadline:
+            dev.screenshot("citation-original-failed")
+            raise Fail(f"the original for the cited p.{page} did not open: {viewer[:4]}")
+        time.sleep(2)
+    dev.screenshot("citation-original")
+    # The app reports the fetch; it cannot render the PDF page itself, so that is the claim.
+    log("citation", f"original fetched for the cited p.{page}")
+    dev.tap_button("Close", timeout=20)
     return passage
 
 
 def nameplate(dev: Device, image: Path | None) -> None:
     if image is None:
-        log("nameplate", "SKIP -- no --nameplate given. A synthetic image would not "
-                         "exercise real-photo OCR, so this is skipped, not faked.")
+        log(
+            "nameplate",
+            "SKIP -- no --nameplate given. A synthetic image would not "
+            "exercise real-photo OCR, so this is skipped, not faked.",
+        )
         return
     log("nameplate", image.name)
     remote = f"{DEVICE_TMP}/{image.name}"
     dev.push(image, remote)
-    dev.shell("am", "broadcast", "-a", "android.intent.action.MEDIA_SCANNER_SCAN_FILE",
-              "-d", f"file://{remote}")
+    dev.shell(
+        "am",
+        "broadcast",
+        "-a",
+        "android.intent.action.MEDIA_SCANNER_SCAN_FILE",
+        "-d",
+        f"file://{remote}",
+    )
 
-    dev.tap_button("Sources")
-    dev.tap_button("Add sources")
-    dev.tap_button("Photograph a component nameplate")
+    # Unified shell: "+" -> Photo opens the system photo picker ("Camera" is its own
+    # entry beside it, so the old picker-instead-of-camera defect no longer applies).
+    dev.tap_button("Add attachment")
+    dev.tap_button("Photo")
     time.sleep(4)
-
-    if dev.find("While using the app") is not None:
-        dev.tap_text("While using the app")
-        time.sleep(4)
-
-    # KNOWN DEFECT (P1): this opens the system photo picker, not a camera. There is no
-    # capture affordance. Recorded so the harness documents the bug instead of hiding it.
-    if dev.find("camera") is None and dev.find("Search") is not None:
-        log("nameplate", "NOTE: opened the photo picker, not a camera (known P1 defect)")
-
     dev.screenshot("nameplate-picker")
-    log("nameplate", "picker reached; select an image manually or extend this step")
+    log("nameplate", "photo picker reached; select an image manually or extend this step")
 
 
 def _sha256(p: Path) -> str:
@@ -692,13 +1068,17 @@ def main() -> int:
                          "you are checking the answer, not trusting it.")
     ap.add_argument("--nameplate", type=native_path, default=None)
     ap.add_argument("--notebook-name", default=None)
-    ap.add_argument("--manufacturer", default="Danfoss")
-    ap.add_argument("--model", default="FC 202")
+    ap.add_argument("--manufacturer", default="Danfoss", help="'' leaves it blank")
+    ap.add_argument("--model", default="FC 202", help="'' leaves it blank")
     ap.add_argument("--outdir", type=Path,
                     default=Path("docs/promo-screenshots/mobile-e2e"))
-    ap.add_argument("--adb", default=os.environ.get(
-        "ADB", str(Path.home() / "AppData/Local/Android/Sdk/platform-tools/adb.exe")))
+    ap.add_argument("--adb", default=default_adb())
     ap.add_argument("--allow-physical", action="store_true")
+    ap.add_argument(
+        "--reinstall-physical",
+        action="store_true",
+        help="On a physical device, also allow the uninstall-then-install (signs the owner out).",
+    )
     ap.add_argument(
         "--stop-after",
         choices=["signin", "notebook", "upload", "ask", "citation", "nameplate"],
@@ -714,32 +1094,45 @@ def main() -> int:
     def wanted(stage: str) -> bool:
         return stages.index(stage) <= last
 
+    # FLM_LOGIN_LINK: a one-time sign-in link for a passwordless stranger (#5942).
+    # Environment only -- an argv value would show in `ps`, and the link is a credential.
     email = os.environ.get("FLM_EMAIL")
-    password = os.environ.get("FLM_PASSWORD")
-    if not email or not password:
-        print("FLM_EMAIL and FLM_PASSWORD must be set in the environment.", file=sys.stderr)
+    password = os.environ.get("FLM_PASSWORD") or None
+    login_link = os.environ.get("FLM_LOGIN_LINK") or None
+    if not email or (password is None) == (login_link is None):
+        print("Set FLM_EMAIL plus exactly one of FLM_PASSWORD or FLM_LOGIN_LINK.",
+              file=sys.stderr)
         print("Never hardcode them; never commit them.", file=sys.stderr)
         return 2
 
     stamp = time.strftime("%Y-%m-%d")
-    name = args.notebook_name or f"E2E {stamp} {args.manufacturer} {args.model}"
+    name = args.notebook_name or " ".join(
+        p for p in ("E2E", stamp, args.manufacturer, args.model) if p
+    )
 
     try:
         serial = pick_device(args.adb, args.allow_physical)
         log("device", serial)
         dev = Device(args.adb, serial, args.outdir)
-
-        install(dev, args.apk)
+        dev.claim()
+    except Fail as exc:
+        print(f"\nFAIL: {exc}", file=sys.stderr)
+        return 1
+    try:
+        install(dev, args.apk, reinstall_physical=args.reinstall_physical)
         launch(dev)
-        sign_in(dev, email, password)
+        sign_in(dev, email, password, login_link=login_link)
         if wanted("notebook"):
             create_notebook(dev, name, args.manufacturer, args.model)
+        # Without the upload step (resuming a run) the manual is matched by its file
+        # name only, which an older upload of the same name could also satisfy.
+        source = args.pdf.name
         if wanted("upload"):
-            upload_pdf(dev, args.pdf)
+            source = upload_pdf(dev, args.pdf)
         if wanted("ask"):
-            ask(dev, args.question, args.expect_page)
+            ask(dev, args.question, args.expect_page, source=source)
         if wanted("citation"):
-            verify_citation(dev, args.expect_page)
+            verify_citation(dev, args.expect_page, source=source)
         if wanted("nameplate"):
             nameplate(dev, args.nameplate)
     except Fail as exc:
@@ -747,6 +1140,11 @@ def main() -> int:
         return 1
     except KeyboardInterrupt:
         return 130
+    finally:
+        try:
+            dev.release()
+        except Fail as exc:
+            print(f"\nFAIL (cleanup): {exc}", file=sys.stderr)
 
     if args.stop_after != "nameplate":
         print(f"\nPARTIAL PASS -- stopped after '{args.stop_after}' as requested. "

@@ -8,8 +8,46 @@ export FLM_EMAIL='...' FLM_PASSWORD='...'
 bash tools/mobile-e2e/run.sh ~/Downloads/some-manual.pdf "When do I need to derate this drive" 117
 ```
 
-`run.sh` boots an emulator (cold, no snapshot), builds the debug APK if it is missing, then
-runs `journey.py`. Exit code 0 = the grounded chain verified; non-zero = a named failure.
+A stranger who signed up through verified onboarding has **no password**. Give the harness a
+one-time sign-in link instead and it signs in through the app's "Have an invitation link
+instead?" mode, then checks the drawer shows `FLM_EMAIL`:
+
+```bash
+export FLM_EMAIL='stranger@example.com' FLM_LOGIN_LINK='https://app-staging.factorylm.com/magic/?token=<uuid>'
+unset FLM_PASSWORD   # exactly one of FLM_PASSWORD / FLM_LOGIN_LINK
+```
+
+The link is a credential. The harness reads it from the environment, not from its own
+command line. It is typed quoted so its `?` survives the device shell, and it is never printed
+or screenshotted while it can be on screen. Every view dump goes to a fresh 0700 directory
+under `/data/local/tmp` (shell-owned, not readable by apps), never `/sdcard`; the sign-in
+gets its own one, removed afterwards with the removal checked. `run.sh` hands
+`FLM_LOGIN_LINK` / `FLM_PASSWORD` to `journey.py` only, and `journey.py` strips them from
+adb, screencap and aapt2, so neither the adb server nor a build tool holds them. It is
+single-use and expires in 15 minutes, so mint it right before the run.
+
+One run per device: the journey takes an on-device lock (`/data/local/tmp/mira-e2e.lock`)
+before it installs anything and releases it however the run ends, removing its dumps and
+the manual it pushed to `Download`. A second run on the same device stops at once. If a
+killed run left the lock behind, the error names the `adb` command that removes it.
+
+**Accepted residual (owner decision, 2026-11-25):** adb has no way to type text except
+`input text <chunk>`. So for the second or two of typing, each 8-character chunk of the link
+is in the argument list of a short-lived `adb` process on the host and an `input` process
+on the device, where a local `ps` could see it. The token is single-use, expires in 15
+minutes, is for a staging fixture account, and is spent by the sign-in moments later. Run the
+harness on a machine and emulator you control.
+
+`run.sh` boots an emulator (cold, no snapshot), builds the staging-flavour debug APK
+(`com.factorylm.mira.staging`, which talks to app-staging) from the current sources, then
+runs `journey.py`. It rebuilds every run, so an APK left by another branch is never what
+gets tested; `MIRA_REUSE_APK=1` reuses an existing one on purpose and prints its sha256. Exit code 0 = the grounded chain verified; non-zero = a named failure. It runs
+from Git Bash on Windows and from macOS/Linux (set `ANDROID_SDK_ROOT` or `ANDROID_HOME`;
+`journey.py` derives its default adb from the same variable, `ADB` overrides it).
+
+The steps drive the **unified shell** the app renders (#4455): drawer → New project, "+" →
+File to attach the manual to the question, the `FILE manual.pdf p. N` source chip, and the
+citation sheet's "Open original at cited page N".
 
 ## Why it exists
 
@@ -86,14 +124,12 @@ Two traps, both hit for real on 2026-08-21:
    `timeout-minutes: 5`; against prod the later steps get cancelled while the grants and
    coverage steps have already printed.
 
-## Known defect this harness documents
+## Known defect this harness documented (classic screen)
 
-**P1 — "Photograph a component nameplate" opens the photo picker, not a camera.** It requests
-camera permission and then launches
-`com.google.android.photopicker/.PhotopickerGetContentActivity`, which has no capture
-affordance at all. A technician at a machine cannot photograph the nameplate in front of them.
-The `nameplate()` step logs this rather than hiding it. When the defect is fixed, that branch
-should start failing — which is the point.
+**P1 — "Photograph a component nameplate" opened the photo picker, not a camera.** That was
+the classic notebook screen. The unified shell's "+" menu lists **Photo** and **Camera** as
+separate entries; `nameplate()` now goes "+" → Photo (it feeds a pushed image), so it no longer
+observes this defect. Camera capture itself still needs real hardware and is not covered.
 
 ## Proving which backend the installed app talks to (`env-proof.mjs`)
 
@@ -124,8 +160,23 @@ APK was built, so it needs no rebuild for any Hub-only change.
 
 - Android SDK with `platform-tools` and `emulator`, plus at least one AVD
 - Python 3.12
-- JDK (Android Studio's bundled `jbr` is fine) only if the APK needs building
-- `FLM_EMAIL` / `FLM_PASSWORD` in the environment — never hardcoded, never committed
+- **JDK 21** for the build: Capacitor 8 compiles for Java 21, and JDK 17 fails deep in
+  gradle at `:capacitor-camera:compileDebugJavaWithJavac`. The pinned Gradle wrapper
+  (8.14.3) runs on 21 to 24, not 25. `run.sh` checks first: it uses `JAVA_HOME` or `java`
+  if either is 21 to 24, else asks `/usr/libexec/java_home` and Homebrew's `openjdk@21`
+  (macOS: `brew install openjdk@21`) each in turn, else stops before building. A failing
+  version probe (the macOS `java` shim with no JDK) just rejects that candidate.
+  The build runs `bun install` (if `node_modules` is missing) and `vite build` before
+  `cap sync`, since `cap sync` copies `dist/` into the APK.
+- `FLM_EMAIL` plus `FLM_PASSWORD` or `FLM_LOGIN_LINK` in the environment — never hardcoded,
+  never committed
+- Android build-tools (`aapt2`): before touching the device, `journey.py` reads the APK's
+  package with `aapt2 dump packagename` and refuses an APK that is not the package it drives
+  (`MIRA_PKG`). `run.sh` drives only `com.factorylm.mira.staging`. Set `AAPT2` to override.
+
+The gate passes only on a citation to **the uploaded manual**, by file name, at the expected
+page. Its source chip must open a sheet naming that same manual. A citation to page N of some
+other manual fails the run, because it proves nothing about the upload.
 
 A tenant whose trial has expired is paywalled off `/equipment/` and sign-in will fail; see
 `docs/runbooks/hub-embedding-production-rollout.md` §4d.
@@ -160,10 +211,20 @@ future adb driver will hit:
 | `never appeared: 'Manufacturer'` | one-directional scroll overshoots; scroll to top first, then walk down |
 | `never appeared: 'Uploading'` | a small PDF finishes before the spinner is observable; never assert a transient state |
 | `cannot stat` a local path | `MSYS_NO_PATHCONV=1` (needed for device paths) also stops local-path conversion; normalize at the argument boundary |
+| `never appeared within 240s: 'Sign in'` | `monkey -c LAUNCHER` starts nothing on the API 35 emulator; `am start` the resolved launcher activity |
+| `sign-in did not complete` on a good login | the unified home shows no account name; wait for `Open navigation`, then read the account in the drawer |
+| `no citation chip matching 'p.3'` | the unified chip reads `p. 3` (with a space); parse the page number, which also stops `p.31` passing for `p.3` |
 
 ## Validated
 
 Full green run 2026-08-21 on `Medium_Phone_API_36.1` (4 GB) against production, no physical
 device: sign in -> notebook -> upload (sha256 verified) -> searchable -> cited answer citing
 the expected page -> citation sheet returning the verbatim passage -> nameplate honestly
-SKIPped. Exit 0.
+SKIPped. Exit 0. (Classic screens; superseded by the run below.)
+
+Unified-shell runs 2026-10-15 on AVD `mira35` (API 35) on CHARLIE (macOS) against **staging**
+(Hub `78bab6e98`), staging APK sha256 `6c08922c…`, a fresh stranger account, a fresh-sha copy
+of `tools/drive-pack-extract/fixtures/pf_sample.pdf` (C124 appears only on p.3): sign in ->
+drawer New project -> "+" File (sha256 verified) -> cited answer `FILE … p. 3` -> sheet
+`[1] … — p.3` with the verbatim passage -> original opened at p.3. Exit 0 via `journey.py`
+(207 s) and via `run.sh` (250 s).
