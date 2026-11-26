@@ -10,6 +10,7 @@
  * garage pilot PR-4f: the same verdict also rides the persisted turn packet as `answer_gate.claim_verifier`).
  */
 
+import { groupPassages, type PassageChunk } from "@/capabilities/citation-passages";
 import { verifyAnswer } from "./claim-verifier";
 import type { TurnEvidencePacketClaimVerifier } from "./observability/turn-evidence-packet";
 import { MODEL_VISIBLE_CHARS } from "./supporting-quote";
@@ -93,11 +94,11 @@ export function shadowVerifyTurn(input: Parameters<typeof shadowVerifyTurnResult
   return shadowVerifyTurnResult(input)?.attrs ?? null;
 }
 
-type PageChunk = { content: string; sourceUrl: string; sourcePage: number | null; tableModels?: readonly string[] | null };
+type PageChunk = PassageChunk & { tableModels?: readonly string[] | null };
 
 /**
  * Route entry point. Groups chunks exactly as `withSupportingQuotes` / buildCitations number them —
- * key `${sourceUrl}::${sourcePage ?? ""}`, citationId n ⇔ the n-th distinct key in chunk order — so each
+ * passage identity (citation-passages.ts), citationId n ⇔ the n-th distinct passage in chunk order — so each
  * emitted `[n]` is judged against the page the model saw as `[n]`.
  */
 export function shadowVerifyCitedTurnResult(input: {
@@ -108,14 +109,10 @@ export function shadowVerifyCitedTurnResult(input: {
   recordCatalogNumber?: string | null;
 }): ShadowResult | null {
   if (claimVerifierMode() !== "shadow") return null;
-  const byKey = new Map<string, ShadowCitation>();
-  for (const c of input.chunks) {
-    const key = `${c.sourceUrl}::${c.sourcePage ?? ""}`;
-    const g = byKey.get(key) ?? { page: c.sourcePage, chunks: [] };
-    g.chunks.push({ text: c.content, tableModels: c.tableModels });
-    byKey.set(key, g);
-  }
-  const pages = [...byKey.values()];
+  const pages: ShadowCitation[] = groupPassages(input.chunks).map((g) => ({
+    page: g[0].sourcePage,
+    chunks: g.map((c) => ({ text: c.content, tableModels: c.tableModels })),
+  }));
   const citations = input.citationIds.map((id) => pages[Number(id) - 1]).filter((g): g is ShadowCitation => Boolean(g));
   return shadowVerifyTurnResult({ question: input.question, answer: input.answer, citations, recordCatalogNumber: input.recordCatalogNumber });
 }

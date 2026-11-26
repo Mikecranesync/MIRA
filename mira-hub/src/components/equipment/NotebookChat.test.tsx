@@ -87,9 +87,16 @@ describe("distinctPassages", () => {
   const c = (id: string, docId: string, page: number) => ({
     citationId: id, docId, sourceTitle: "m.pdf", page, fileId: null, quote: "",
   });
-  it("collapses repeated (doc,page) citations to distinct passages", () => {
-    const cites = [c("1", "d1", 5), c("2", "d1", 5), c("3", "d1", 9), c("4", "d2", 5)];
-    expect(distinctPassages(cites).map((x) => x.citationId)).toEqual(["1", "3", "4"]);
+  it("keeps every server-numbered passage: the citationId is the identity (#5955)", () => {
+    const cites = [c("1", "d1", 5), c("2", "d1", 9), c("3", "d2", 5)];
+    expect(distinctPassages(cites).map((x) => x.citationId)).toEqual(["1", "2", "3"]);
+  });
+  it("does not merge unknown-page passages of one document or of blank-docId documents", () => {
+    const u = (id: string, docId: string) => ({ citationId: id, docId, sourceTitle: "m.pdf", page: null, fileId: null, quote: "" });
+    expect(distinctPassages([u("1", ""), u("2", ""), u("3", "d1"), u("4", "d1")]).map((x) => x.citationId)).toEqual(["1", "2", "3", "4"]);
+  });
+  it("still drops a repeat of the SAME citation id", () => {
+    expect(distinctPassages([c("1", "d1", 5), c("1", "d1", 5)]).map((x) => x.citationId)).toEqual(["1"]);
   });
 });
 

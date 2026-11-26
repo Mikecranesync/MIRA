@@ -10,6 +10,7 @@ import {
   SAFETY_CHAPTER_REF_SQL,
 } from "./manual-safety-chapter";
 import { extractManualSafetyStatement } from "./manual-safety-statement";
+import { displayPage } from "./citation-passages";
 import type { PoolClient } from "pg";
 import { buildManualUserContent, type ManualChunk } from "@/lib/manual-rag";
 import { chunkText } from "@/lib/node-knowledge-ingest";
@@ -163,6 +164,14 @@ describe("retrieveSafetyChapterChunks", () => {
     // Pages 17..20 of that one document were read.
     const read = client.calls.find((c) => c.sql.includes("rn <= $8"))!;
     expect(read.params[3]).toEqual([17, 18, 19, 20]);
+  });
+
+  it("#5955: an added Safety-chapter page inherits its document's page verdict (unknown stamp ⇒ no page, same key space)", async () => {
+    const unknownDoc = await retrieveSafetyChapterChunks(fakeClient(CORPUS), "tenant", [{ ...chunk(P372, 372), pageTrust: "unknown" }], { approvedSourceDocIds: [DOC] });
+    expect(unknownDoc[0]).toMatchObject({ sourcePage: 18, pageTrust: "unknown" });
+    expect(displayPage(unknownDoc[0])).toBeNull();
+    const trustedDoc = await retrieveSafetyChapterChunks(fakeClient(CORPUS), "tenant", [{ ...chunk(P372, 372), pageTrust: "trusted" }], { approvedSourceDocIds: [DOC] });
+    expect(displayPage(trustedDoc[0])).toBe(18);
   });
 
   it("acs355-q4: a cited page without a reference still reaches the chapter through the document", async () => {

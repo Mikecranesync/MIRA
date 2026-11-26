@@ -29,6 +29,9 @@ function makeClient(scriptedRows: Array<Record<string, unknown>[]>): {
 } {
   const calls: Array<{ sql: string; params: unknown[] }> = [];
   const query = vi.fn(async (sql: string, params: unknown[]) => {
+    // #5955: the per-document page-fact read (citation-passages.ts) is bookkeeping, not a
+    // retrieval lane — it is exercised against real SQL in citation-integrity.integration.test.ts.
+    if (sql.includes("AS anchored")) return { rows: [] };
     calls.push({ sql, params });
     // The T-1 bookkeeping queries (code selectivity count, question-IDF table,
     // rare-term recall) return no rows here and do not consume a scripted lane:

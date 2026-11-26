@@ -11,6 +11,7 @@ import {
   appendManualContext,
   buildManualUserContent,
   chunksToSources,
+  displayPage,
   type ManualChunk,
   type ManualSource,
 } from "@/lib/manual-rag";
@@ -910,7 +911,7 @@ export async function POST(
             mc.title ||
             mc.sourceUrl ||
             "OEM document",
-          page: mc.sourcePage,
+          page: displayPage(mc),
           url: mc.sourceUrl || null,
           rank: mc.rank,
           verified: mc.verified === true,

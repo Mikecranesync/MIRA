@@ -6,7 +6,7 @@ import { cascadeComplete, type CascadeMessage } from "@/lib/llm/cascade";
 import {
   retrieveManualChunks,
   buildGroundedContext,
-  displayPage,
+  chunksToSources,
   isRefusalAnswer,
   withUngroundedNotice,
   type ManualChunk,
@@ -272,15 +272,9 @@ export async function POST(req: Request) {
   const cited = new Set([...answerText.matchAll(/\[(\d{1,2})\]/g)].map((m) => Number(m[1])));
   const citations: ManualSource[] = isRefusalAnswer(answerText)
     ? []
-    : chunks.map((c, i) => ({
-        index: i + 1,
-        title: [c.manufacturer, c.modelNumber].filter(Boolean).join(" ") || c.title,
-        url: c.sourceUrl || null,
-        // #2910: suppress a page label when it's actually the chunk ordinal
-        // (legacy ingest mis-stamp) so we never show an impossible page like p.1254.
-        page: displayPage(c),
-        verified: c.verified === true,
-      })).filter((s) => cited.has(s.index));
+    // #5955: numbered by the SAME passage identity as buildGroundedContext (chunksToSources), so the
+    // model's [n] and the card [n] are one passage; the page is the display page (#2910/#5955).
+    : chunksToSources(chunks).filter((s) => cited.has(s.index));
 
   // Grounding-honesty floor (#4224 Defect B): an answer that cited nothing must
   // SAY it isn't grounded — like the authenticated notebook does — instead of

@@ -18,6 +18,7 @@
  * flag-and-answer behaviour (owner decision 2026-09-27) without a redeploy.
  */
 
+import { displayPage } from "@/capabilities/citation-passages";
 import { citationPageLabel, isChapterSectionLabel } from "@/lib/citation-page";
 import type { ManualChunk } from "@/lib/manual-rag";
 import { displayModelIdentity } from "./named-model-mismatch";
@@ -136,7 +137,8 @@ export function pickLockoutChunk(chunks: readonly ManualChunk[]): ManualChunk | 
 export function lockoutPageOf(chunk: ManualChunk): string | null {
   const label = citationPageLabel(chunk.pageLabel);
   if (label) return label;
-  return citationPageLabel(chunk.sourcePage);
+  // #5955: the DISPLAY page — an unproven stamp (all-page-1 / chunk-ordinal) is never printed in a stop.
+  return citationPageLabel(displayPage(chunk));
 }
 
 export type LockoutCitation = { title: string; page: string | null };
