@@ -19,15 +19,21 @@ export interface InviteLinkResult {
 /**
  * The link's token, read the same way for every caller. An invitation carries
  * it as `?token=`; the emailed sign-in link (#5942, the Hub's magicLinkUrl)
- * carries it in the fragment, `#token=`, after an optional `?next=`. When both
- * are present they must agree: two different tokens in one link is rejected
- * rather than resolved by picking one.
+ * carries it in the fragment, `#token=`, after an optional `?next=`. Every token
+ * parameter in the link must agree: two different tokens anywhere in one link is
+ * rejected rather than resolved by picking one.
  */
 function linkToken(url: URL): { token: string } | { conflict: true } {
-  const query = url.searchParams.get("token")?.trim() ?? "";
-  const fragment = new URLSearchParams(url.hash.replace(/^#/, "")).get("token")?.trim() ?? "";
-  if (query && fragment && query.toLowerCase() !== fragment.toLowerCase()) return { conflict: true };
-  return { token: query || fragment };
+  // Every token parameter, from both places: get() would see only the first one
+  // of each, and a repeated parameter could hide a second, different token.
+  const all = [
+    ...url.searchParams.getAll("token"),
+    ...new URLSearchParams(url.hash.replace(/^#/, "")).getAll("token"),
+  ]
+    .map((t) => t.trim())
+    .filter(Boolean);
+  if (new Set(all.map((t) => t.toLowerCase())).size > 1) return { conflict: true };
+  return { token: all[0] ?? "" };
 }
 
 /**

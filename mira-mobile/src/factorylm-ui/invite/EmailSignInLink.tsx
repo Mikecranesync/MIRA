@@ -17,10 +17,16 @@ export function EmailSignInLink({
   email,
   disabled,
   onHaveLink,
+  onBusyChange,
 }: {
   email: string;
   disabled: boolean;
   onHaveLink: () => void;
+  /** Reports the request's pending window to Login, which disables its mode
+   *  toggle meanwhile (the #4470 F2 pattern). Switching modes unmounts this
+   *  component; mid-request that would drop the pending state and let a second
+   *  request send a second email (Codex r1 F1). */
+  onBusyChange?: (busy: boolean) => void;
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -29,6 +35,7 @@ export function EmailSignInLink({
 
   async function send() {
     setBusy(true);
+    onBusyChange?.(true);
     setError("");
     setSentTo(null);
     try {
@@ -37,6 +44,7 @@ export function EmailSignInLink({
       else setError(signInLinkFailureCopy(r.reason));
     } finally {
       setBusy(false);
+      onBusyChange?.(false);
     }
   }
 

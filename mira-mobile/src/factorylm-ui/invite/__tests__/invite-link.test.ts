@@ -114,6 +114,24 @@ describe("the emailed sign-in link form (#5942)", () => {
     expect(inviteTokenIdentity(`${TRUSTED}/hub/magic/?token=${UUID}#token=${OTHER}`)).toBeNull();
   });
 
+  it("rejects two different tokens inside one fragment (Codex r1 F3)", () => {
+    const link = `${TRUSTED}/hub/magic/#token=${UUID}&token=${OTHER}`;
+    expect(parseInviteLink(link, TRUSTED)).toEqual({ error: "invalid_format" });
+    expect(inviteTokenIdentity(link)).toBeNull();
+  });
+
+  it("rejects two different tokens inside one query", () => {
+    const link = `${TRUSTED}/hub/magic/?token=${UUID}&token=${OTHER}`;
+    expect(parseInviteLink(link, TRUSTED)).toEqual({ error: "invalid_format" });
+    expect(inviteTokenIdentity(link)).toBeNull();
+  });
+
+  it("control: the same token repeated inside one fragment is accepted", () => {
+    expect(parseInviteLink(`${TRUSTED}/hub/magic/#token=${UUID}&token=${UUID}`, TRUSTED)).toEqual({
+      token: UUID,
+    });
+  });
+
   it("rejects a fragment token that isn't UUID-shaped", () => {
     expect(parseInviteLink(`${TRUSTED}/hub/magic/#token=not-a-uuid`, TRUSTED)).toEqual({
       error: "missing_token",

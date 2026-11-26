@@ -34,6 +34,7 @@ vi.mock("@capacitor/preferences", () => ({
 import { clearAllLocalState } from "../../../api/client";
 import { loadSignedInAccount } from "../../session/load-signed-in-account";
 import { Login } from "../../../screens/Login";
+import { EmailSignInLink } from "../EmailSignInLink";
 
 const TOKEN = "11111111-2222-4333-8444-555555555555";
 // The shape the Hub emails (magic-link-return.ts magicLinkUrl): ?next= then #token=.
@@ -140,6 +141,66 @@ describe("Email me a sign-in link (#5942)", () => {
     const sending = screen.getByText("Sending…") as HTMLButtonElement;
     expect(sending.disabled).toBe(true);
     fireEvent.click(sending);
+    await act(async () => {
+      release();
+      await flush();
+    });
+    expect(linkPosts()).toHaveLength(1);
+  });
+
+  it("the notice acknowledges the request and promises no delivery (Codex r1 F2)", async () => {
+    render(<Login onSignedIn={async () => {}} />);
+    typeEmail(EMAIL);
+    await requestLink();
+    const notice = screen.getByText(/has a FactoryLM account/).textContent ?? "";
+    expect(notice).toMatch(/^Request received\./);
+    expect(notice).not.toMatch(/on its way|sent|delivered/i);
+    expect(notice).toMatch(/No email after a few minutes\?/);
+  });
+
+  it("modes cannot switch while a request is pending, so it is never sent twice (Codex r1 F1)", async () => {
+    let release: () => void = () => {};
+    state.httpRequest.mockImplementation(
+      (c: Call) =>
+        new Promise((resolve) => {
+          calls.push(c);
+          release = () => resolve({ status: 200, data: JSON.stringify({ ok: true }), headers: {} });
+        }),
+    );
+    render(<Login onSignedIn={async () => {}} />);
+    typeEmail(EMAIL);
+    await act(async () => {
+      fireEvent.click(screen.getByText("Email me a sign-in link"));
+      await flush();
+    });
+    const toggle = screen.getByText(/Have an invitation link instead/) as HTMLButtonElement;
+    expect(toggle.disabled).toBe(true);
+    fireEvent.click(toggle);
+    expect(screen.queryByText("Use an invitation link")).toBeNull();
+    await act(async () => {
+      release();
+      await flush();
+    });
+    expect((screen.getByText(/Have an invitation link instead/) as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.getByText(/has a FactoryLM account/)).toBeTruthy();
+    expect(linkPosts()).toHaveLength(1);
+  });
+
+  it("mounted on its own, with no parent busy flag, a double tap still sends one request", async () => {
+    let release: () => void = () => {};
+    state.httpRequest.mockImplementation(
+      (c: Call) =>
+        new Promise((resolve) => {
+          calls.push(c);
+          release = () => resolve({ status: 200, data: JSON.stringify({ ok: true }), headers: {} });
+        }),
+    );
+    render(<EmailSignInLink email={EMAIL} disabled={false} onHaveLink={() => {}} />);
+    await act(async () => {
+      fireEvent.click(screen.getByText("Email me a sign-in link"));
+      await flush();
+    });
+    fireEvent.click(screen.getByText("Sending…"));
     await act(async () => {
       release();
       await flush();
