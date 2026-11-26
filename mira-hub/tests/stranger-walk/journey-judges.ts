@@ -1,6 +1,6 @@
 import { readNotebookStream } from "@/components/equipment/notebook-chat-utils";
 
-import type { LedgerRow } from "./staging";
+import { oneRow, type LedgerRow } from "./staging";
 
 /**
  * Step judges for the CV-101 / Level-3 journey (cv101-journey.spec.ts) that read what the server
@@ -66,11 +66,14 @@ export type RenderedTurn = { id: string; role: string; text: string };
 /**
  * The persisted turn row id this stream's own ledger row recorded (#5979), or null. The chat route
  * writes `persistence.turn_row_id` with `outcome: "ok"` only when the save was confirmed
- * (route.ts `finishAndPersist`). Anything but exactly one closed row with a confirmed id is null.
+ * (route.ts `finishAndPersist`). The row must pass the accounting check's own `oneRow` (exactly one
+ * closed row whose packet's trace_id is this stream's trace, #5984); anything else is null.
  */
-export function persistedRowIdOf(rows: readonly LedgerRow[]): string | null {
-  if (rows.length !== 1) return null;
-  const p = rows[0].evidence_packet?.persistence;
+export function persistedRowIdOf(rows: readonly LedgerRow[], traceId: string | null): string | null {
+  if (!traceId) return null;
+  const one = oneRow([...rows], traceId);
+  if ("reason" in one) return null;
+  const p = one.packet.persistence;
   if (!p || typeof p !== "object" || Array.isArray(p)) return null;
   const { outcome, turn_row_id: id } = p as Record<string, unknown>;
   return outcome === "ok" && typeof id === "string" && id.trim() ? id : null;

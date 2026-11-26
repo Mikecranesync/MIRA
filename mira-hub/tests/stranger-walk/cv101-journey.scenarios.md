@@ -144,7 +144,8 @@ Two further conditions (#5943, #5944):
   the pin only, so a plain-text fallback that shows literal `**` fails.
 - S5b reads the saved turn after it has replaced the live one, not the live turn (#5947). That saved
   turn must be the row this stream's own ledger record names (`persistence.turn_row_id`, save
-  confirmed), with its question shown exactly as sent (#5965, #5979).
+  confirmed), with its question shown exactly as sent (#5965, #5979). That ledger row must pass the
+  accounting check's own trace match (#5984).
 - A text part that is fully transparent, itself or through an ancestor, does not count as readable
   (#5946).
 

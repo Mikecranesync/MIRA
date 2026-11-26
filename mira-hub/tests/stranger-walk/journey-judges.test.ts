@@ -209,22 +209,30 @@ describe("readableTexts (#5946: a fully transparent part is not readable)", () =
   });
 });
 
-describe("persistedRowIdOf (#5979: the row id this stream's ledger row recorded)", () => {
+describe("persistedRowIdOf (#5979, #5984: the row id this stream's own, trace-verified ledger row recorded)", () => {
   // paid2 S5b's own ledger row (ledger-f652ee45….json): one closed row, save confirmed.
   const PAID2_ROW = "16c211f0-5223-40b2-8a1b-d8297fcb59cc";
-  const row = (persistence: unknown): LedgerRow => ({
+  const TRACE = "f652ee45adca0960f2d2d15226a9e6f3";
+  const row = (persistence: unknown, traceId: string = TRACE): LedgerRow => ({
     provider: null, model: null, status: "empty", route_reason: "legacy_cascade", outcome: "safety_stop",
     input_tokens: null, output_tokens: null, cost_usd_estimate: null,
-    evidence_packet: { trace_id: "f652ee45adca0960f2d2d15226a9e6f3", persistence },
+    evidence_packet: { trace_id: traceId, persistence },
   });
   const ok = { outcome: "ok", error_code: null, turn_row_id: PAID2_ROW, evidence_entries: 0 };
-  it("control: paid2's confirmed save gives its row id", () => expect(persistedRowIdOf([row(ok)])).toBe(PAID2_ROW));
-  it("a failed save gives nothing", () => expect(persistedRowIdOf([row({ ...ok, outcome: "failed" })])).toBeNull());
-  it("no row id gives nothing", () => expect(persistedRowIdOf([row({ ...ok, turn_row_id: null })])).toBeNull());
-  it("no persistence record gives nothing", () => expect(persistedRowIdOf([row(undefined)])).toBeNull());
+  it("control: paid2's confirmed save on its own trace gives its row id", () => expect(persistedRowIdOf([row(ok)], TRACE)).toBe(PAID2_ROW));
+  it("#5984: a packet from another trace gives nothing", () => {
+    expect(persistedRowIdOf([row(ok, "0".repeat(32))], TRACE)).toBeNull();
+  });
+  it("#5984: no stream trace gives nothing, even for a packet with an empty trace", () => {
+    expect(persistedRowIdOf([row(ok)], null)).toBeNull();
+    expect(persistedRowIdOf([row(ok, "")], null)).toBeNull();
+  });
+  it("a failed save gives nothing", () => expect(persistedRowIdOf([row({ ...ok, outcome: "failed" })], TRACE)).toBeNull());
+  it("no row id gives nothing", () => expect(persistedRowIdOf([row({ ...ok, turn_row_id: null })], TRACE)).toBeNull());
+  it("no persistence record gives nothing", () => expect(persistedRowIdOf([row(undefined)], TRACE)).toBeNull());
   it("no ledger row, or more than one, gives nothing", () => {
-    expect(persistedRowIdOf([])).toBeNull();
-    expect(persistedRowIdOf([row(ok), row(ok)])).toBeNull();
+    expect(persistedRowIdOf([], TRACE)).toBeNull();
+    expect(persistedRowIdOf([row(ok), row(ok)], TRACE)).toBeNull();
   });
 });
 
