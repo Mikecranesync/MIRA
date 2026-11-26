@@ -602,6 +602,7 @@ export function withManualSearchStatus(
 export interface SettledFollowups {
   readonly question: string;
   readonly suggestions: readonly string[];
+  readonly answerId?: string;
   /** Answer turn ids already in the thread when the send started. */
   readonly answeredBefore: readonly string[];
 }
@@ -617,11 +618,9 @@ function askedText(turn: InteractionTurn | undefined): string | null {
  * #4454 — saved rows never carry follow-up suggestions, so once `hub-host.tsx`
  * re-loads the thread after a stream and drops the live turn, the chips the
  * technician just saw vanished. The host keeps the finished answer's
- * suggestions; this puts them back on the answer that send produced: the one
- * answer to that question that was not in the thread when the send started.
- * It must also be the LAST answer and have completed. If another device
- * answered the same question meanwhile, two answers qualify and neither can be
- * told apart from here, so neither gets them. Same overlay shape as
+ * suggestions; this puts them back on the answer that send produced. For
+ * older payloads without request IDs, require a unique new answer to the
+ * same question. The answer must still be last and have completed. Same overlay shape as
  * `withManualSearchStatus`, applied before it so the order matches the live turn.
  */
 export function withSettledFollowups(
@@ -637,7 +636,8 @@ export function withSettledFollowups(
     const t = turns[i]!;
     if (t.role !== "assistant") continue;
     lastAssistantIndex = i;
-    if (!before.has(t.id) && askedText(turns[i - 1]) === asked) produced.push(i);
+    const matches = settled.answerId ? t.id === settled.answerId : !before.has(t.id) && askedText(turns[i - 1]) === asked;
+    if (matches) produced.push(i);
   }
   if (produced.length !== 1 || produced[0] !== lastAssistantIndex) return [...turns];
   const answer = turns[lastAssistantIndex]!;
