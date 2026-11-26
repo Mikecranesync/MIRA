@@ -472,7 +472,10 @@ class _FakeHub:
         raw = "".join(f"data: {_json.dumps(f)}\n\n" for f in frames).encode()
         return 200, {"x-mira-trace-id": "t-1"}, raw
 
-    def diagnostics(self, notebook_id, trace_id):
+    def diagnostics(self, notebook_id, client_request_id):
+        # Like the real route: the packet is found only by the turn's clientRequestId.
+        if client_request_id != self.bodies[-1]["clientRequestId"]:
+            raise RuntimeError("no diagnostics row for that key")
         return {
             "packet": {
                 "retrieval": {

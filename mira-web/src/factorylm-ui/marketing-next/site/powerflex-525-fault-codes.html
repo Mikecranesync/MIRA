@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="index, follow">
+<title>PowerFlex 525 Fault Codes: List with Manual Pages</title>
+<meta name="description" content="48 PowerFlex 525 fault codes from Rockwell&#x27;s fault table, with name, type and the 520-UM001 manual page, plus the steps to clear a fault. Free, no sign-in.">
+<link rel="icon" href="/factorylm-next-assets/favicon.svg" type="image/svg+xml">
+<meta name="theme-color" content="#0B1220">
+<link rel="stylesheet" href="/factorylm-next-assets/assets/mira-workspace-tokens.css">
+<link rel="stylesheet" href="/factorylm-next-assets/styles.css">
+<link rel="stylesheet" href="/factorylm-next-assets/next.css?v=8d920f251c4a">
+<link rel="canonical" href="https://factorylm.com/powerflex-525-fault-codes">
+<meta property="og:type" content="website">
+<meta property="og:title" content="PowerFlex 525 Fault Codes: List with Manual Pages">
+<meta property="og:description" content="48 PowerFlex 525 fault codes from Rockwell&#x27;s fault table, with name, type and the 520-UM001 manual page, plus the steps to clear a fault. Free, no sign-in.">
+<meta property="og:url" content="https://factorylm.com/powerflex-525-fault-codes">
+<meta property="og:image" content="https://factorylm.com/factorylm-next-assets/assets/og-image.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="A maintenance technician with a tablet beside a conveyor drive on a factory floor (AI-generated illustration)">
+<meta property="og:site_name" content="FactoryLM">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="PowerFlex 525 Fault Codes: List with Manual Pages">
+<meta name="twitter:description" content="48 PowerFlex 525 fault codes from Rockwell&#x27;s fault table, with name, type and the 520-UM001 manual page, plus the steps to clear a fault. Free, no sign-in.">
+<meta name="twitter:image" content="https://factorylm.com/factorylm-next-assets/assets/og-image.jpg">
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"TechArticle","@id":"https://factorylm.com/powerflex-525-fault-codes#article","headline":"PowerFlex 525 Fault Codes: List with Manual Pages","description":"48 PowerFlex 525 fault codes from Rockwell's fault table, with name, type and the 520-UM001 manual page, plus the steps to clear a fault. Free, no sign-in.","url":"https://factorylm.com/powerflex-525-fault-codes","dateModified":"2026-11-25","datePublished":"2026-11-25","publisher":{"@id":"https://factorylm.com/#organization"},"about":{"@type":"Product","name":"PowerFlex 525","manufacturer":{"@type":"Organization","name":"Rockwell Automation"}},"citation":"PowerFlex 525 User Manual, Rockwell publication 520-UM001O-EN-E (September 2025)"},{"@type":"FAQPage","@id":"https://factorylm.com/powerflex-525-fault-codes#faq","mainEntity":[{"@type":"Question","name":"What does PowerFlex 525 fault F004 mean?","acceptedAnswer":{"@type":"Answer","text":"F004 is UnderVoltage, a Type 1 fault, listed in the fault table on page 161 of 520-UM001."}},{"@type":"Question","name":"How do I clear a PowerFlex 525 fault?","acceptedAnswer":{"@type":"Answer","text":"Correct the cause first. Rockwell's manual (page 160) then lists four ways to clear it: press Stop if P045 [Stop Mode] is set between 0 and 3, cycle drive power, set A551 [Fault Clear] to 1 or 2, or cycle a digital input set to 13 Clear Fault."}},{"@type":"Question","name":"What is the difference between Type 1 and Type 2 faults?","acceptedAnswer":{"@type":"Answer","text":"The manual's Fault Types table (page 159): Type 1 is Auto-Reset/Run. With A541 [Auto Rstrt Tries] above 0, the drive attempts to reset the fault itself after A542 [Auto Rstrt Delay]. Type 2 is Non-Resettable: it may require drive or motor repair, or is caused by wiring or programming errors, and the cause must be corrected before the fault can be cleared. FactoryLM note (our reading of the table, not Rockwell's wording): the manual describes automatic reset only for Type 1 and calls Type 2 Non-Resettable, so do not expect Auto Restart to clear a Type 2 fault. Auto Restart makes the drive start itself; see the Auto Restart caution on this page."}},{"@type":"Question","name":"Where is the full PowerFlex 525 fault table?","acceptedAnswer":{"@type":"Answer","text":"In Fault Descriptions, pages 161 to 163 of PowerFlex 525 User Manual, Rockwell publication 520-UM001O-EN-E (September 2025). It lists the causes and corrective actions for each fault."}},{"@type":"Question","name":"Can an AI answer PowerFlex 525 fault questions from the manual?","acceptedAnswer":{"@type":"Answer","text":"FactoryLM's MIRA answers from the manual you attach to an equipment notebook and cites the page, so you can check the answer against Rockwell's text."}}]},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"FactoryLM","item":"https://factorylm.com/"},{"@type":"ListItem","position":2,"name":"PowerFlex 525 fault codes","item":"https://factorylm.com/powerflex-525-fault-codes"}]},{"@type":"Organization","@id":"https://factorylm.com/#organization","name":"FactoryLM","legalName":"Michael J. Harper, doing business as FactoryLM","url":"https://factorylm.com/","logo":"https://factorylm.com/factorylm-next-assets/favicon.svg","email":"mike@factorylm.com","founder":{"@type":"Person","name":"Mike Harper","jobTitle":"Founder & CEO"},"sameAs":["https://www.linkedin.com/company/factorylm"]},{"@type":"WebSite","@id":"https://factorylm.com/#website","name":"FactoryLM","url":"https://factorylm.com/","publisher":{"@id":"https://factorylm.com/#organization"}}]}</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <a class="logo" href="/" aria-label="FactoryLM home"><svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true"><rect width="28" height="28" rx="7" fill="#FF6B1A"/><path d="M7 20V8h3.2l3.8 6 3.8-6H21v12h-3v-7.2l-4 6.2-4-6.2V20z" fill="#0B1220"/></svg><span>FactoryLM</span></a>
+    <nav class="nav-links" aria-label="Primary">
+      <a href="/mira">MIRA</a>
+      <a href="/#how-it-works">How it works</a>
+      <a href="/#for-teams">For teams</a>
+      <a href="/about">About</a>
+    </nav>
+    <div class="nav-cta">
+      <a class="link-quiet" href="https://app.factorylm.com/login/">Sign in</a>
+      <a class="btn btn-primary btn-sm" href="https://app.factorylm.com/signup/">Start free</a>
+      <button class="burger" type="button" data-burger aria-controls="drawer" aria-expanded="false" aria-label="Open menu"><span></span><span></span><span></span></button>
+    </div>
+  </div>
+  <div class="drawer" id="drawer" hidden>
+    <a href="/mira">MIRA</a>
+    <a href="/#how-it-works">How it works</a>
+    <a href="/#for-teams">For teams</a>
+    <a href="/about">About</a>
+    <a href="/blog">Blog</a>
+    <a href="https://factorylm.com/security">Security</a>
+    <div class="drawer-ctas">
+      <a class="btn btn-primary" href="https://app.factorylm.com/signup/">Start free</a>
+      <a class="btn btn-ghost" href="/demo">Request a demo</a>
+      <a class="btn btn-ghost" href="https://app.factorylm.com/login/">Sign in</a>
+    </div>
+  </div>
+</header>
+<main id="main">
+<section class="page-hero"><div class="wrap"><p class="eyebrow">Drive fault codes · Rockwell PowerFlex 525</p><h1>PowerFlex 525 fault codes</h1><p class="lede">48 fault codes from Rockwell's fault table, with name, fault type and manual page. Updated 2026-11-25.</p></div></section>
+<section class="doc"><div class="wrap doc-grid"><nav class="toc" aria-label="On this page"><a href="#list">Fault code list</a><a href="#types">Fault types</a><a href="#clear">Clearing a fault</a><a href="#faq">Questions</a><a href="#safety">Safety</a></nav><div>
+<p>Source: PowerFlex 525 User Manual, Rockwell publication 520-UM001O-EN-E (September 2025), Fault Descriptions, pages 161 to 163. Every name and page below was located in the manual's fault table. Causes and corrective actions are on those pages; open a code for its page, or attach the manual to MIRA and ask.</p>
+<h2 id="list">Fault code list</h2>
+<div class="table-wrap"><table>
+<thead><tr><th>Code</th><th>Fault</th><th>Type</th><th>Manual page</th></tr></thead>
+<tbody>
+<tr><td><a href="/drive-commander/powerflex-525/faults/F000">F000</a></td><td>No Fault</td><td>see manual</td><td>p.161</td></tr>
+<tr><td><a href="/drive-commander/powerflex-525/faults/F002">F002</a></td><td>Auxiliary Input</td><td>Type 1</td><td>p.161</td></tr>
+<tr><td><a href="/drive-commander/powerflex-525/faults/F003">F003</a></td><td>Power Loss</td><td>Type 2</td><td>p.161</td></tr>
+<tr><td><a href="/drive-commander/powerflex-525/faults/F004">F004</a></td><td>UnderVoltage</td><td>Type 1</td><td>p.161</td></tr>
+<tr><td><a href="/drive-commander/powerflex-525/faults/F005">F005</a></td><td>OverVoltage</td><td>Type 1</td><td>p.161</td></tr>
+<tr><td><a href="/drive-commander/powerflex-525/faults/F006">F006</a></td><td>Motor Stalled</td><td>Type 1</td><td>p.161</td></tr>
+<tr><td><a href="/drive-commander/powerflex-525/faults/F007">F007</a></td><td>Motor Overload</td><td>Type 1</td><td>p.161</td></tr>
+<tr><td><a href="/drive-commander/powerflex-525/faults/F008">F008</a></td><td>Heatsink OvrTmp</td><td>Type 1</td><td>p.161</td></tr>
+<tr><td><a href="/drive-commander/powerflex-525/faults/F009">F009</a></td><td>CC OvrTmp</td><td>Type 1</td><td>p.161</td></tr>
+<tr><td><a href="/drive-commander/powerflex-525/faults/F012">F012</a></td><td>HW OverCurrent</td><td>Type 2</td><td>p.161</td></tr>
+<tr><td><a href="/drive-commander/powerflex-525/faults/F013">F013</a></td><td>Ground Fault</td><td>Type 1(2), see footnote (2) on page 161</td><td>p.161</td></tr>
+<tr><td><a href="/drive-commander/powerflex-525/faults/F015">F015</a></td><td>Load Loss</td><td>Type 2</td><td>p.161</td></tr>
+<tr><td><a href="/drive-commander/powerflex-525/faults/F021">F021</a></td><td>Output Ph Loss</td><td>Type 1</td><td>p.161</td></tr>
+<tr><td><a href="/drive-commander/powerflex-525/faults/F029">F029</a></td><td>Analog In Loss</td><td>Type 1</td><td>p.161</td></tr>
+<tr><td><a href="/drive-commander/powerflex-525/faults/F033">F033</a></td><td>Auto Rstrt Tries</td><td>Type 2</td><td>p.161</td></tr>
+<tr><td><a href="/drive-commander/powerflex-525/faults/F038">F038</a></td><td>Phase U to Gnd</td><td>Type 2</td><td>p.161</td></tr>
+<tr><td><a href="/drive-commander/powerflex-525/faults/F039">F039</a></td><td>Phase V to Gnd</td><td>Type 2</td><td>p.161</td></tr>
+<tr><td><a href="/drive-commander/powerflex-525/faults/F040">F040</a></td><td>Phase W to Gnd</td><td>Type 2</td><td>p.161</td></tr>
+<tr><td><a href="/drive-commander/powerflex-525/faults/F041">F041</a></td><td>Phase UV Short</td><td>Type 2</td><td>p.162</td></tr>
+<tr><td><a href="/drive-commander/powerflex-525/faults/F042">F042</a></td><td>Phase UW Short</td><td>Type 2</td><td>p.162</td></tr>
+<tr><td><a href="/drive-commander/powerflex-525/faults/F043">F043</a></td><td>Phase VW Short</td><td>Type 2</td><td>p.162</td></tr>
+<tr><td><a href="/drive-commander/powerflex-525/faults/F048">F048</a></td><td>Params Defaulted</td><td>Type 1</td><td>p.162</td></tr>
+<tr><td><a href="/drive-commander/powerflex-525/faults/F059">F059</a></td><td>Safety Open</td><td>Type 1</td><td>p.162</td></tr>
+<tr><td><a href="/drive-commander/powerflex-525/faults/F063">F063</a></td><td>SW OverCurrent</td><td>Type 1</td><td>p.162</td></tr>
+<tr><td><a href="/drive-commander/powerflex-525/faults/F064">F064</a></td><td>Drive Overload</td><td>Type 2</td><td>p.162</td></tr>
+<tr><td><a href="/drive-commander/powerflex-525/faults/F070">F070</a></td><td>Power Unit</td><td>Type 2</td><td>p.162</td></tr>
+<tr><td><a href="/drive-commander/powerflex-525/faults/F071">F071</a></td><td>DSI Net Loss</td><td>Type 2</td><td>p.162</td></tr>
+<tr><td><a href="/drive-commander/powerflex-525/faults/F072">F072</a></td><td>Opt Net Loss</td><td>Type 2</td><td>p.162</td></tr>
+<tr><td><a href="/drive-commander/powerflex-525/faults/F073">F073</a></td><td>EN Net Loss</td><td>Type 2</td><td>p.162</td></tr>
+<tr><td><a href="/drive-commander/powerflex-525/faults/F080">F080</a></td><td>Autotune Failure</td><td>Type 2</td><td>p.162</td></tr>
+<tr><td><a href="/drive-commander/powerflex-525/faults/F081">F081</a></td><td>DSI Comm Loss</td><td>Type 2</td><td>p.162</td></tr>
+<tr><td><a href="/drive-commander/powerflex-525/faults/F082">F082</a></td><td>Opt Comm Loss</td><td>Type 2</td><td>p.162</td></tr>
+<tr><td><a href="/drive-commander/powerflex-525/faults/F083">F083</a></td><td>EN Comm Loss</td><td>Type 2</td><td>p.162</td></tr>
+<tr><td><a href="/drive-commander/powerflex-525/faults/F091">F091</a></td><td>Encoder Loss</td><td>Type 2</td><td>p.163</td></tr>
+<tr><td><a href="/drive-commander/powerflex-525/faults/F094">F094</a></td><td>Function Loss</td><td>Type 2</td><td>p.163</td></tr>
+<tr><td><a href="/drive-commander/powerflex-525/faults/F100">F100</a></td><td>Parameter Chksum</td><td>Type 2</td><td>p.163</td></tr>
+<tr><td><a href="/drive-commander/powerflex-525/faults/F101">F101</a></td><td>External Storage</td><td>Type 2</td><td>p.163</td></tr>
+<tr><td><a href="/drive-commander/powerflex-525/faults/F105">F105</a></td><td>C Connect Err</td><td>Type 2</td><td>p.163</td></tr>
+<tr><td><a href="/drive-commander/powerflex-525/faults/F106">F106</a></td><td>Incompat C-P</td><td>Type 2</td><td>p.163</td></tr>
+<tr><td><a href="/drive-commander/powerflex-525/faults/F107">F107</a></td><td>Replaced C-P</td><td>Type 2</td><td>p.163</td></tr>
+<tr><td><a href="/drive-commander/powerflex-525/faults/F109">F109</a></td><td>Mismatch C-P</td><td>Type 2</td><td>p.163</td></tr>
+<tr><td><a href="/drive-commander/powerflex-525/faults/F110">F110</a></td><td>Keypad Membrane</td><td>Type 2</td><td>p.163</td></tr>
+<tr><td><a href="/drive-commander/powerflex-525/faults/F111">F111</a></td><td>Safety Hardware</td><td>Type 2</td><td>p.163</td></tr>
+<tr><td><a href="/drive-commander/powerflex-525/faults/F114">F114</a></td><td>uC Failure</td><td>Type 2</td><td>p.163</td></tr>
+<tr><td><a href="/drive-commander/powerflex-525/faults/F122">F122</a></td><td>I/O Board Fail</td><td>Type 2</td><td>p.163</td></tr>
+<tr><td><a href="/drive-commander/powerflex-525/faults/F125">F125</a></td><td>Flash Update Req</td><td>Type 2</td><td>p.163</td></tr>
+<tr><td><a href="/drive-commander/powerflex-525/faults/F126">F126</a></td><td>NonRecoverablErr</td><td>Type 2</td><td>p.163</td></tr>
+<tr><td><a href="/drive-commander/powerflex-525/faults/F127">F127</a></td><td>DSIFlashUpdatReq</td><td>Type 2</td><td>p.163</td></tr>
+</tbody></table></div>
+<h2 id="types">Fault types</h2>
+<p>From the manual's Fault Types table (page 159): <strong>Type 1, Auto-Reset/Run.</strong> When A541 [Auto Rstrt Tries] is set above 0, a timer (A542 [Auto Rstrt Delay]) starts, then the drive attempts to reset the fault itself; if the condition is gone, the fault resets and the drive restarts. <strong>Type 2, Non-Resettable.</strong> "This type of fault may require drive or motor repair, or is caused by wiring or programming errors. The cause of the fault must be corrected before the fault can be cleared." FactoryLM note (our reading of the table, not Rockwell's wording): the manual describes automatic reset only for Type 1 and calls Type 2 Non-Resettable, so do not expect Auto Restart to clear a Type 2 fault.</p>
+<p>Type 2 in this list: F003 Power Loss, F012 HW OverCurrent, F015 Load Loss, F033 Auto Rstrt Tries, F038 Phase U to Gnd, F039 Phase V to Gnd, F040 Phase W to Gnd, F041 Phase UV Short, F042 Phase UW Short, F043 Phase VW Short, F064 Drive Overload, F070 Power Unit, F071 DSI Net Loss, F072 Opt Net Loss, F073 EN Net Loss, F080 Autotune Failure, F081 DSI Comm Loss, F082 Opt Comm Loss, F083 EN Comm Loss, F091 Encoder Loss, F094 Function Loss, F100 Parameter Chksum, F101 External Storage, F105 C Connect Err, F106 Incompat C-P, F107 Replaced C-P, F109 Mismatch C-P, F110 Keypad Membrane, F111 Safety Hardware, F114 uC Failure, F122 I/O Board Fail, F125 Flash Update Req, F126 NonRecoverablErr, F127 DSIFlashUpdatReq.</p>
+<div class="safety-card"><p>Auto Restart (A541 [Auto Rstrt Tries], A542 [Auto Rstrt Delay]) makes the drive restart itself. Rockwell: "Use caution when enabling this feature, since the drive attempts to issue its own start command based on user selected programming." Equipment damage and/or personal injury may result if these parameters are used in an inappropriate application. "Do not use this function without considering applicable local, national, and international codes, standards, regulations or industry guidelines."</p></div>
+<h2 id="clear">Clearing a fault (steps from manual page 160)</h2>
+<div class="safety-card"><p>FactoryLM note: lock out per site procedure before working on a faulted drive. Confirm it is safe for the drive and the machine to run before clearing a fault, and confirm no run command is present: clearing can let the drive start.</p></div>
+<ol>
+<li>Press Esc to acknowledge the fault. Check b007 [Fault 1 Code] for the most recent fault.</li>
+<li>Address the condition that caused the fault. The cause must be corrected before the fault can be cleared. For a Type 2 fault, do the corrective action listed for that code (pages 161 to 163) before clearing.</li>
+<li>Once the cause is corrected, clear the fault: press Stop if P045 [Stop Mode] is set between 0 and 3, cycle drive power, set A551 [Fault Clear] to 1 "Reset Fault" or 2 "Clear Buffer", or cycle a digital input set to 13 "Clear Fault".</li>
+</ol>
+<h2 id="faq">Questions</h2>
+<h3>What does PowerFlex 525 fault F004 mean?</h3>
+<p>F004 is UnderVoltage, a Type 1 fault, listed in the fault table on page 161 of 520-UM001.</p>
+<h3>How do I clear a PowerFlex 525 fault?</h3>
+<p>Correct the cause first. Rockwell&#x27;s manual (page 160) then lists four ways to clear it: press Stop if P045 [Stop Mode] is set between 0 and 3, cycle drive power, set A551 [Fault Clear] to 1 or 2, or cycle a digital input set to 13 Clear Fault.</p>
+<h3>What is the difference between Type 1 and Type 2 faults?</h3>
+<p>The manual&#x27;s Fault Types table (page 159): Type 1 is Auto-Reset/Run. With A541 [Auto Rstrt Tries] above 0, the drive attempts to reset the fault itself after A542 [Auto Rstrt Delay]. Type 2 is Non-Resettable: it may require drive or motor repair, or is caused by wiring or programming errors, and the cause must be corrected before the fault can be cleared. FactoryLM note (our reading of the table, not Rockwell&#x27;s wording): the manual describes automatic reset only for Type 1 and calls Type 2 Non-Resettable, so do not expect Auto Restart to clear a Type 2 fault. Auto Restart makes the drive start itself; see the Auto Restart caution on this page.</p>
+<h3>Where is the full PowerFlex 525 fault table?</h3>
+<p>In Fault Descriptions, pages 161 to 163 of PowerFlex 525 User Manual, Rockwell publication 520-UM001O-EN-E (September 2025). It lists the causes and corrective actions for each fault.</p>
+<h3>Can an AI answer PowerFlex 525 fault questions from the manual?</h3>
+<p>FactoryLM&#x27;s MIRA answers from the manual you attach to an equipment notebook and cites the page, so you can check the answer against Rockwell&#x27;s text.</p>
+<h2 id="safety">Safety</h2>
+<div class="safety-card"><p>Disconnect power per the equipment manual and lock out per site procedure.</p></div>
+<p style="margin-top:16px">This page lists what each code is called and where Rockwell describes it. It is not a repair procedure. Follow the manual's corrective actions, your site's lockout/tagout and arc flash procedures, and qualified personnel.</p>
+<div class="related"><a href="/start"><b>Ask MIRA with your manual</b><span>Free for technicians</span></a><a href="/drive-commander/powerflex-525"><b>PowerFlex 525 drive page</b><span>Parameters and faults</span></a><a href="/limitations"><b>Limitations &amp; safety</b><span>What MIRA does and doesn't do</span></a></div>
+</div></div></section>
+</main>
+<footer class="footer">
+  <div class="wrap foot-grid">
+    <div class="foot-brand">
+      <a class="logo" href="/"><svg width="24" height="24" viewBox="0 0 28 28" aria-hidden="true"><rect width="28" height="28" rx="7" fill="#FF6B1A"/><path d="M7 20V8h3.2l3.8 6 3.8-6H21v12h-3v-7.2l-4 6.2-4-6.2V20z" fill="#0B1220"/></svg><span>FactoryLM</span></a>
+      <p>Maintenance intelligence for your digital transformation. Start with your equipment manuals and electrical prints.</p>
+      <p class="safety">Check answers against the cited document. Disconnect power per the equipment manual and lock out per site procedure.</p>
+    </div>
+    <div><h4>Product</h4><a href="/mira">MIRA</a><a href="/#how-it-works">How it works</a><a href="/#for-teams">For teams</a><a href="https://app.factorylm.com/signup/">Start free</a><a href="/blog">Blog</a><a href="/blog/fault-codes">Fault code library</a></div>
+    <div><h4>Company</h4><a href="/about">About</a><a href="/demo">Request a demo</a><a href="https://factorylm.com/status">Status</a></div>
+    <div><h4>Trust</h4><a href="https://factorylm.com/security">Security</a><a href="https://factorylm.com/trust">Trust center</a><a href="/limitations">Limitations &amp; safety</a></div>
+    <div><h4>Legal</h4><a href="https://factorylm.com/privacy">Privacy</a><a href="/free-technicians">Terms</a></div>
+  </div>
+  <div class="wrap foot-bottom"><span>© 2026 FactoryLM · Florida, USA</span><span>Free for technicians.</span></div>
+</footer>
+<script src="/factorylm-next-assets/site.js?v=2abeac5339a8" defer></script>
+</body>
+</html>

@@ -234,6 +234,7 @@ export async function readNotebookStream(
   } = {},
 ): Promise<StreamResult> {
   let httpError: NotebookHttpError | null = null;
+  let awaitingTransportHeaders = true;
   const dec = new TextDecoder();
   let buf = "";
   const out: StreamResult = {
@@ -267,6 +268,9 @@ export async function readNotebookStream(
         const frame: NotebookChatFrame | null = parseFrame(data);
         if (!frame) continue;
         if (frame.kind === "headers") {
+          // The progress wrapper forwards headers once, before the inner body.
+          if (!awaitingTransportHeaders) continue;
+          awaitingTransportHeaders = false;
           const headers = Object.entries(frame.headers ?? {});
           const header = (key: string) => headers.find(([name]) => name.toLowerCase() === key)?.[1];
           const attemptId = header(NOTEBOOK_ATTEMPT_HEADER);
@@ -276,9 +280,14 @@ export async function readNotebookStream(
             out.safetyNotice = notice;
             onUpdate(out.content, out.citations, notice);
           }
-        } else if (frame.kind === "progress") {
+          continue;
+        }
+        if (frame.kind === "progress") {
           if (PROGRESS_STAGES.has(frame.stage)) opts.onProgress?.(frame.stage);
-        } else if (frame.kind === "manual_search_status") {
+          continue;
+        }
+        awaitingTransportHeaders = false;
+        if (frame.kind === "manual_search_status") {
           const { manufacturer, model, running, message, startedAt, manualUrl } = frame;
           opts.onManualSearchStatus?.({ manufacturer, model, running, message, startedAt, manualUrl });
         } else if (frame.kind === "http_error") {

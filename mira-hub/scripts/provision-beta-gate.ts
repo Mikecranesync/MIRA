@@ -31,7 +31,9 @@ import { randomBytes } from "node:crypto";
 import { Client } from "pg";
 
 const HUB = process.env.HUB_BASE ?? "http://localhost:3100";
-const SUFFIX = Date.now().toString();
+// Codex F32: a clock reading alone collides across runs that start in the same
+// millisecond; the random part makes each run's fixture identity its own.
+const SUFFIX = `${Date.now()}${randomBytes(6).toString("hex")}`;
 // Cryptographically fresh per run. Never logged, never emitted on stdout/stderr:
 // the gate authenticates with the minted session cookie, not the password, and
 // the run's auth rows are swept afterwards (--cleanup).
@@ -88,6 +90,17 @@ async function cleanup(tenantId: string) {
     // Auth side (users.ts): hub_users.tenant_id REFERENCES hub_tenants(id), and
     // hub_tenants.owner_user_id is a plain TEXT column — so users first, then
     // the tenant. Both keyed on THIS run's tenant id only.
+    // This run's single-use sign-in tokens (verified-setup path), keyed through
+    // its own users before they are deleted. Pre-116 schema may lack columns.
+    try {
+      await c.query(
+        `DELETE FROM hub_magic_tokens WHERE LOWER(email) IN (SELECT LOWER(email) FROM hub_users WHERE tenant_id = $1)`,
+        [tenantId],
+      );
+    } catch (err) {
+      const code = (err as { code?: string }).code;
+      if (code !== "42P01" && code !== "42703") throw err;
+    }
     await c.query(`DELETE FROM hub_users WHERE tenant_id = $1`, [tenantId]);
     await c.query(`DELETE FROM hub_tenants WHERE id = $1`, [tenantId]);
   } finally {
@@ -123,6 +136,155 @@ function failAfter(stage: "mirror" | "signin" | "node") {
   }
 }
 
+/** Seed one single-use sign-in token straight into the DB — the provisioner's
+ *  stand-in for the stranger clicking the emailed link. The magic-link REQUEST
+ *  endpoint is deliberately not used: staging has a live mail key, so it would
+ *  send real email every run. The token is never printed. */
+async function seedMagicToken(purpose: "onboarding" | "login", onboarding: object | null): Promise<string> {
+  const token = randomBytes(32).toString("base64url");
+  const c = new Client({ connectionString: process.env.NEON_DATABASE_URL, ssl: { rejectUnauthorized: false } });
+  await c.connect();
+  try {
+    await c.query(
+      `INSERT INTO hub_magic_tokens (token, email, expires_at, purpose, onboarding)
+       VALUES ($1, $2, NOW() + INTERVAL '15 minutes', $3, $4::jsonb)`,
+      [token, CREDS.email, purpose, onboarding ? JSON.stringify(onboarding) : null],
+    );
+  } finally {
+    await c.end();
+  }
+  return token;
+}
+
+/** csrf → credentials callback for a next-auth provider; returns the session cookie header. */
+async function mintSession(provider: "credentials" | "magic-token", fields: Record<string, string>): Promise<string> {
+  const csrfRes = await fetch(`${HUB}/api/auth/csrf/`);
+  const { csrfToken } = (await csrfRes.json()) as { csrfToken: string };
+  const cookie1 = csrfRes.headers.get("set-cookie") ?? "";
+  const form = new URLSearchParams(fields);
+  form.set("csrfToken", csrfToken);
+  form.set("redirect", "false");
+  form.set("json", "true");
+  form.set("callbackUrl", HUB);
+  const signIn = await fetch(`${HUB}/api/auth/callback/${provider}/`, {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded", cookie: cookie1 },
+    body: form.toString(),
+    redirect: "manual",
+  });
+  const sessionToken = extractSession([cookie1, signIn.headers.get("set-cookie") ?? ""].join(", "));
+  if (!sessionToken) throw new Error(`no session cookie (${provider} signin ${signIn.status})`);
+  console.error(`minted session cookie (${provider} signin ${signIn.status})`);
+  return `next-auth.session-token=${sessionToken}`;
+}
+
+/** The workspace THIS run's exact setup token created, read from the receipt
+ * the redemption transaction writes onto the spent token (Codex F32). No
+ * receipt means no proof of ownership, so nothing is ever adopted or deleted. */
+const RECEIPT_READ_ATTEMPTS = 3;
+
+async function tenantCreatedByToken(token: string): Promise<string | null> {
+  const c = new Client({ connectionString: process.env.NEON_DATABASE_URL, ssl: { rejectUnauthorized: false } });
+  await c.connect();
+  try {
+    const r = await c.query(
+      `SELECT onboarding->>'createdTenantId' AS tenant_id FROM hub_magic_tokens WHERE token = $1 AND used_at IS NOT NULL`,
+      [token],
+    );
+    return r.rows[0]?.tenant_id ? String(r.rows[0].tenant_id) : null;
+  } finally {
+    await c.end();
+  }
+}
+
+/** Recovery classification of this run's seeded token, under its row lock
+ * (#5776). FOR UPDATE waits for an in-flight redemption to commit or roll back,
+ * so a receipt that commits during cleanup is SEEN, never deleted. A token
+ * without a receipt is deleted under that same lock; a token WITH a receipt is
+ * kept for the tenant sweep. Throws on any database error (nothing deleted). */
+export async function classifySeededToken(token: string): Promise<string | null> {
+  const c = new Client({ connectionString: process.env.NEON_DATABASE_URL, ssl: { rejectUnauthorized: false } });
+  await c.connect();
+  try {
+    await c.query("BEGIN");
+    const r = await c.query(
+      `SELECT used_at, onboarding->>'createdTenantId' AS tenant_id FROM hub_magic_tokens WHERE token = $1 FOR UPDATE`,
+      [token],
+    );
+    const tenantId = r.rows[0]?.used_at && r.rows[0]?.tenant_id ? String(r.rows[0].tenant_id) : null;
+    if (r.rows[0] && !tenantId) await c.query(`DELETE FROM hub_magic_tokens WHERE token = $1`, [token]);
+    await c.query("COMMIT");
+    return tenantId;
+  } catch (err) {
+    await c.query("ROLLBACK").catch(() => {});
+    throw err;
+  } finally {
+    await c.end();
+  }
+}
+
+/** With pilot review (or free signup) on, register refuses unverified accounts
+ *  and points at verified setup. Walk that real path: pick the intent the
+ *  server says is open, then redeem a seeded setup token through the real
+ *  `magic-token` sign-in, which creates the account. */
+async function verifiedOnboarding(): Promise<string> {
+  const open: Array<{ intent: "technician" | "pilot"; kind: string }> = [
+    { intent: "technician", kind: "free_technician" },
+    { intent: "pilot", kind: "pilot_application" },
+  ];
+  let chosen: { intent: "technician" | "pilot"; agreementVersion: string } | null = null;
+  for (const o of open) {
+    const res = await fetch(`${HUB}/api/public/signup-policy/${o.intent === "pilot" ? "?intent=pilot" : ""}`);
+    const p = (await res.json().catch(() => ({}))) as { kind?: string; agreementVersion?: string };
+    if (p.kind === o.kind && p.agreementVersion) {
+      chosen = { intent: o.intent, agreementVersion: p.agreementVersion };
+      break;
+    }
+  }
+  if (!chosen) throw new Error("register requires verified setup, but no verified signup is open");
+  console.error(`register requires verified setup — onboarding as '${chosen.intent}'`);
+  let token: string | null = null;
+  try {
+    token = await seedMagicToken("onboarding", chosen);
+    // This session is minted while the account may still be 'pending'; the
+    // status rides in the JWT, so it is discarded and re-minted after un-pend.
+    await mintSession("magic-token", { token, agreementVersion: chosen.agreementVersion });
+    const tenantId = await tenantCreatedByToken(token);
+    if (!tenantId) throw new Error("verified setup created no account for this run");
+    return tenantId;
+  } catch (e) {
+    // Delete a tenant only with this token's own creation receipt (Codex F32).
+    // Any other account under the address is reported, never touched. A FAILED
+    // receipt read is not a missing receipt (Codex F39): the token, which holds
+    // the only receipt, is kept and the uncertainty is reported.
+    let orphan: string | null = null;
+    if (token) {
+      let lastReadErr: unknown = null;
+      for (let attempt = 1; attempt <= RECEIPT_READ_ATTEMPTS; attempt++) {
+        try {
+          orphan = await classifySeededToken(token);
+          lastReadErr = null;
+          break;
+        } catch (readErr) {
+          lastReadErr = readErr;
+        }
+      }
+      if (lastReadErr)
+        throw new AggregateError([e, lastReadErr], "verified setup failed AND its creation receipt could not be read; the seeded token was kept so cleanup can be retried");
+    }
+    if (!orphan) {
+      console.error("verified setup created no account attributable to this run; only its seeded token was removed");
+    } else {
+      try {
+        await cleanup(orphan);
+      } catch (sweepErr) {
+        throw new AggregateError([e, sweepErr], `verified setup failed AND self-clean FAILED for ${orphan}`);
+      }
+    }
+    throw e;
+  }
+}
+
 export async function main() {
   // 1. Register a fresh stranger tenant (auth side: hub_tenants).
   const reg = await fetch(`${HUB}/api/auth/register/`, {
@@ -130,11 +292,17 @@ export async function main() {
     headers: { "content-type": "application/json" },
     body: JSON.stringify(CREDS),
   });
-  const regJson = (await reg.json().catch(() => ({}))) as { tenantId?: string };
-  if (reg.status !== 201 || !regJson.tenantId) {
+  const regJson = (await reg.json().catch(() => ({}))) as { tenantId?: string; code?: string };
+  let tenantId: string;
+  let passwordless = false;
+  if (reg.status === 201 && regJson.tenantId) {
+    tenantId = regJson.tenantId;
+  } else if (reg.status === 403 && regJson.code === "verified_onboarding_required") {
+    tenantId = await verifiedOnboarding();
+    passwordless = true;
+  } else {
     throw new Error(`register failed: ${reg.status} ${JSON.stringify(regJson)}`);
   }
-  const tenantId = regJson.tenantId;
   console.error(`registered tenant ${tenantId}`);
 
   // From here a tenant EXISTS. If anything below fails, the workflow never
@@ -142,7 +310,7 @@ export async function main() {
   // sweeps its own registration before re-throwing (ENV lines are emitted only
   // on full success, at the very end).
   try {
-    await provisionAfterRegister(tenantId);
+    await provisionAfterRegister(tenantId, passwordless);
   } catch (e) {
     console.error(`provisioning failed after registration — sweeping tenant ${tenantId}`);
     try {
@@ -159,7 +327,7 @@ export async function main() {
   }
 }
 
-async function provisionAfterRegister(tenantId: string) {
+async function provisionAfterRegister(tenantId: string, passwordless = false) {
   // 2. Mirror the tenant id into the DATA-side `tenants` (UUID FK). register only
   //    made the auth-side row; without this the upload's chunk INSERT 500s on FK.
   const owner = new Client({ connectionString: process.env.NEON_DATABASE_URL, ssl: { rejectUnauthorized: false } });
@@ -194,27 +362,12 @@ async function provisionAfterRegister(tenantId: string) {
   console.error("mirrored tenant into data-side `tenants`");
   failAfter("mirror");
 
-  // 3. Mint the next-auth session cookie (csrf → credentials callback).
-  const csrfRes = await fetch(`${HUB}/api/auth/csrf/`);
-  const { csrfToken } = (await csrfRes.json()) as { csrfToken: string };
-  const cookie1 = csrfRes.headers.get("set-cookie") ?? "";
-  const form = new URLSearchParams();
-  form.set("email", CREDS.email);
-  form.set("password", CREDS.password);
-  form.set("csrfToken", csrfToken);
-  form.set("redirect", "false");
-  form.set("json", "true");
-  form.set("callbackUrl", HUB);
-  const signIn = await fetch(`${HUB}/api/auth/callback/credentials/`, {
-    method: "POST",
-    headers: { "content-type": "application/x-www-form-urlencoded", cookie: cookie1 },
-    body: form.toString(),
-    redirect: "manual",
-  });
-  const sessionToken = extractSession([cookie1, signIn.headers.get("set-cookie") ?? ""].join(", "));
-  if (!sessionToken) throw new Error(`no session cookie (signin ${signIn.status})`);
-  const cookieHeader = `next-auth.session-token=${sessionToken}`;
-  console.error(`minted session cookie (signin ${signIn.status})`);
+  // 3. Mint the next-auth session cookie AFTER the un-pend above (the account
+  //    status rides in the JWT). A verified-setup account has no password, so
+  //    it signs in with an ordinary single-use login token instead.
+  const cookieHeader = passwordless
+    ? await mintSession("magic-token", { token: await seedMagicToken("login", null) })
+    : await mintSession("credentials", { email: CREDS.email, password: CREDS.password });
   failAfter("signin");
 
   // 4. Create a namespace node as the stranger (real route).

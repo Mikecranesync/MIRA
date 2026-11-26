@@ -164,19 +164,29 @@ def create_notebook(hub, question: QuestionRecord, condition: str, stamp: str) -
 
 
 def run_question_hub(
-    question: QuestionRecord, hub, *, condition: str, mira_version: str, stamp: str
+    question: QuestionRecord,
+    hub,
+    *,
+    condition: str,
+    mira_version: str,
+    stamp: str,
+    notebook: dict[str, Any] | None = None,
 ) -> tuple[EvaluationRecord, dict[str, Any]]:
-    """Ask the deployed Hub one question, blind. Returns the record and a packet summary."""
+    """Ask the deployed Hub one question, blind. Returns the record and a packet summary.
+
+    `notebook` re-asks in an existing chat (the one-tap re-ask after confirming a
+    proposed machine); by default each question gets a fresh notebook."""
     if condition not in CONDITIONS:
         raise ValueError(condition)
-    nb = create_notebook(hub, question, condition, stamp)
+    nb = notebook if notebook is not None else create_notebook(hub, question, condition, stamp)
 
     # The body both clients send for a turn with no attached sources.
+    client_request_id = str(uuid.uuid4())
     body = {
         "message": question.normalized_question,
         "sourceDocIds": [],
         "mode": "general",
-        "clientRequestId": str(uuid.uuid4()),
+        "clientRequestId": client_request_id,
     }
     t0 = time.monotonic()
     st, hd, raw = hub._req(
@@ -211,7 +221,10 @@ def run_question_hub(
     retrieval: dict[str, Any] = {}
     trace_id = hd.get("x-mira-trace-id")
     try:
-        d = hub.diagnostics(nb["id"], trace_id)
+        # The packet is keyed on the turn's clientRequestId, not its trace id
+        # (retrieval_acceptance.HubClient.diagnostics). Passing the trace id found
+        # no packet, so every hub run recorded retrieval as unknown.
+        d = hub.diagnostics(nb["id"], client_request_id)
         retrieval = (d.get("packet") or {}).get("retrieval") or {}
     except RuntimeError as exc:  # diagnostics are evidence about the run, never a gate on it
         retrieval = {"error": str(exc)[:200]}
@@ -251,9 +264,16 @@ def run_question_hub(
         time_to_first_answer_ms=total_ms,
         notes=f"condition={condition} turn_status={status} basis={evidence.get('basis')} trace={trace_id}",
     )
+    proposal = next((f for f in frames if f.get("kind") == "identity_proposal"), None)
     summary = {
         "condition": condition,
         "notebook_id": nb["id"],
+        # The "Is this a <machine>?" card the Hub offered, if any.
+        "identity_proposal": (
+            {"manufacturer": proposal.get("manufacturer"), "model": proposal.get("model")}
+            if proposal
+            else None
+        ),
         "trace_id": trace_id,
         "http": st,
         "turn_status": status,

@@ -7,6 +7,7 @@
 import { describe, expect, it } from "vitest";
 
 import { SAFETY_STOP } from "@/lib/safety-classifier";
+import { DISCHARGE_WAIT_LINE, ISOLATION_BANNER } from "./isolation-advisory";
 import { chunkForRelease, exactRatingMatch, specificityFallback, unsupportedExactRating, validateAnswer } from "./answer-validation";
 
 const grounded = (answerText: string, question = "Can I reset the E-12 fault?") =>
@@ -1215,5 +1216,149 @@ describe("#4111 review round 3: steps in order, per-step exemptions, instruments
     `${LOCK} Read the actual line voltage from the remote display.`,
   ])("no banner: %s", (a) => {
     expect(run(a).ok).toBe(true);
+  });
+});
+
+describe("code meaning asserted with a trailing hedge or a machine qualifier (#5995, staging panel 2026-11-26)", () => {
+  const pf = "What does PowerFlex 525 fault F004 mean?";
+  const g120 = "What does Siemens G120 fault F30011 mean?";
+
+  it("catches the shipped wrong meaning: 'F004 is commonly an overcurrent fault'", () => {
+    const v = general(
+      "I’m answering from general knowledge, not this machine’s manual: on a PowerFlex 525, F004 is commonly an overcurrent fault.\n\nIn practice, that means the drive saw current above its trip limit.",
+      pf,
+    );
+    expect(v.ok).toBe(false);
+    if (!v.ok) expect(v.violation).toBe("unsupported-specificity:code-meaning-asserted");
+  });
+
+  it("catches a hedge placed after 'is': 'fault F004 is generally a DC bus undervoltage'", () => {
+    const v = general(
+      "On a PowerFlex 525, fault F004 is generally a DC bus undervoltage or input power loss condition, but I’m answering from general knowledge.",
+      pf,
+    );
+    expect(v.ok).toBe(false);
+  });
+
+  it("catches 'F30011 on a Siemens G120 is generally a motor overtemperature'", () => {
+    const v = general("F30011 on a Siemens G120 is generally a **motor overtemperature / motor thermal protection fault**.", g120);
+    expect(v.ok).toBe(false);
+    // Cheap review on #5996: the qualifier without an article is the same claim.
+    expect(general("F30011 on Siemens G120 is generally a motor overtemperature fault.", g120).ok).toBe(false);
+    expect(general("F30011 for SINAMICS G120 drives usually means a motor overtemperature.", g120).ok).toBe(false);
+  });
+
+  it("still serves the honest answers MIRA gave on the same questions", () => {
+    expect(
+      general(
+        "I’m answering from general knowledge, not this machine’s manual: I can’t verify what **F004** means on the unconfirmed **PowerFlex 525**.\n\nFault codes are drive-specific.",
+        pf,
+      ).ok,
+    ).toBe(true);
+    expect(
+      general("I can’t verify ABB ACS880 fault 3220 from the manual here, so I shouldn’t guess the meaning.", "What does ABB ACS880 fault 3220 mean?").ok,
+    ).toBe(true);
+    expect(general("Most overcurrent faults on a drive like this are caused by a mechanical overload or a jam.", "PowerFlex 525 overcurrent fault causes").ok).toBe(true);
+  });
+});
+
+describe("the code-meaning fallback keeps the safety guidance it replaces (#5996 safety review)", () => {
+  const Q = "What does PowerFlex 525 fault F004 mean?";
+  const replaced = (answer: string) => {
+    const r = general(answer, Q);
+    expect(r.ok).toBe(false);
+    if (r.ok) throw new Error("unreachable");
+    expect(r.violation).toBe("unsupported-specificity:code-meaning-asserted");
+    return r.replacement ?? "";
+  };
+
+  it("a capacitor-discharge warning becomes the isolation banner plus the discharge wait", () => {
+    const out = replaced(
+      "Danger: DC bus capacitors stay charged. On a PowerFlex 525, F004 is commonly an undervoltage fault; wait 5 minutes and verify bus voltage is zero before servicing.",
+    );
+    expect(out.startsWith(ISOLATION_BANNER)).toBe(true);
+    expect(out).toContain(DISCHARGE_WAIT_LINE);
+    expect(out).toContain("I can't verify what F004 means");
+    // The guessed meaning and the invented wait time are still withheld.
+    expect(out).not.toMatch(/undervoltage|5 minutes/i);
+  });
+
+  it("a lock-out instruction keeps the isolation banner", () => {
+    const out = replaced(
+      "Lock out and de-energize the drive first. F004 is typically a DC bus undervoltage, and you must verify zero voltage before opening the cover.",
+    );
+    expect(out.startsWith(ISOLATION_BANNER)).toBe(true);
+  });
+
+  it("an answer with no safety talk gets the plain fallback, unchanged", () => {
+    const out = replaced("F004 is commonly an overcurrent fault on the PowerFlex 525.");
+    expect(out).toBe(specificityFallback("F004"));
+  });
+});
+
+describe("Codex #5996 r1–r3: code-reference wording and disconnection warnings", () => {
+  const Q = "What does PowerFlex 525 fault F004 mean?";
+
+  // Mike, 2026-11-26 (Codex r1–r3 on #5996): no "code reference" exemption.
+  // Two rounds of holes (a trigger after "code displayed", a meaning handed to
+  // the next clause) came from it. These lines assign no meaning, but they get
+  // the safe fallback — the same thing main already does for the unqualified
+  // "F004 is the code you should photograph". Conservative by decision.
+  it.each([
+    "F004 on your drive is the code you should photograph before contacting support.",
+    "F004 is the fault code shown on the display.",
+  ])("a 'this is the code' line gets the safe fallback, by decision: %s", (answer) => {
+    const r = general(answer, Q);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.violation).toBe("unsupported-specificity:code-meaning-asserted");
+  });
+
+  it.each([
+    "Take a photo of the display so the code shown on the panel can be checked against the manual.",
+    "I can't verify what F004 means on this machine.",
+    "F004 is cleared after the reset.",
+    "F004 is still showing on the keypad.",
+  ])("advice that never says what the code is still passes: %s", (answer) => {
+    expect(general(answer, Q).ok).toBe(true);
+  });
+
+  it.each([
+    "F004 is the code for undervoltage.",
+    "F004 on your drive is the undervoltage fault.",
+    "F004 is a DC bus undervoltage.",
+    // Codex r2 F3: a code reference that then names the trigger is a meaning.
+    "F004 is the code displayed when the drive trips on motor overcurrent.",
+    "F004 is the code shown if the DC bus drops too low.",
+    "F004 is the code you see after a power dip.",
+    "F004 is the code displayed on undervoltage.",
+    "F004 is the code to note for an undervoltage trip.",
+    "F004 is the code shown under low DC bus voltage.",
+    "F004 is the code displayed with an undervoltage condition.",
+    "F004 is the code shown upon loss of input phase.",
+    "F004 is the code you get from a low line voltage.",
+    // Codex post-cap F5: no article after "is".
+    "F004 is commonly motor overcurrent.",
+    "F004 is usually DC bus undervoltage.",
+    "F004 is DC bus undervoltage.",
+    "F004 is input phase loss.",
+    "F004 on a PowerFlex 525 is probably overtemperature.",
+    // Codex r3 F4: the meaning handed to a later clause of the same sentence.
+    "F004 is the code shown on the display, indicating a motor overcurrent fault.",
+    "F004 is the code shown on the display; it means the DC bus dropped.",
+    "F004 is the fault code shown on the display, which appears when the bus is low.",
+    "F004 is the code shown on the display — triggered after a power dip.",
+  ])("an assigned meaning is still caught: %s", (answer) => {
+    const r = general(answer, Q);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.violation).toBe("unsupported-specificity:code-meaning-asserted");
+  });
+
+  it("a plain supply-disconnection warning keeps the isolation banner on the replacement", () => {
+    const r = general("Disconnect mains power before servicing. F004 is commonly an overcurrent fault.", Q);
+    expect(r.ok).toBe(false);
+    if (r.ok) throw new Error("unreachable");
+    const out = r.replacement ?? "";
+    expect(out.startsWith(ISOLATION_BANNER)).toBe(true);
+    expect(out).not.toMatch(/overcurrent/i);
   });
 });

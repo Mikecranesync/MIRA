@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { assertAuthMigrationReady } from "@/capabilities/auth-schema";
 
 import {
   environmentName,
@@ -18,7 +19,7 @@ export const dynamic = "force-dynamic";
  * fails loud in `docker ps` instead of silently serving 503s from every
  * other API route.
  */
-export function GET() {
+export async function GET() {
   // Docker's healthcheck polls this every 30 s from boot, so it is the one call
   // guaranteed to reach a fresh container: it starts the embed retry sweep
   // (idempotent, never blocks or throws — see capabilities/embed-retry-sweep.ts).
@@ -56,6 +57,9 @@ export function GET() {
       { status: 503 },
     );
   }
+
+  try { await assertAuthMigrationReady(); }
+  catch { return NextResponse.json({status:"unhealthy",service:"mira-hub",reason:"auth_schema_prerequisite",...identity,ts:Date.now()},{status:503}); }
 
   // Turn Flight Recorder (docs/architecture/observability/2026-09-22-turn-flight-recorder.md §6).
   // Never the endpoint or headers — those may carry a Doppler-managed auth value.

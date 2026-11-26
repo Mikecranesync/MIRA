@@ -55,7 +55,6 @@ import {
   isAbortError,
   NotebookHttpError,
   readNotebookStream,
-  safetyNoticeFromHeader,
   type PersistedTurn,
 } from "@/components/equipment/notebook-chat-utils";
 import { AnswerMarkdown } from "@/components/equipment/notebook-markdown";
@@ -125,6 +124,7 @@ import {
   recoveryOwnsDraft,
   recoverySendBody,
 } from "./hub-host-logic";
+import { trackSafetyStop, type SafetyStopTracker } from "./safety-stop-marker";
 import { resumeProjectSelection } from "./project-resume";
 
 const NO_ATTACHMENT_DRAFTS: ReadonlySet<string> = new Set();
@@ -770,6 +770,8 @@ export function HubShellHost() {
     let scopeRefused = false;
     let rejectionStatus: number | undefined;
     let rejectionCode = "";
+    // Keep a named safety stop if the stream breaks before the safety frame (#5670).
+    let stop: SafetyStopTracker | null = null;
     try {
       setComponentFrame(null);
       const res = await fetch(`${API_BASE}/api/equipment-notebooks/${encodeURIComponent(sel.notebookId)}/chat/`, {
@@ -777,9 +779,9 @@ export function HubShellHost() {
         method: "POST", headers: { "Content-Type": "application/json", "x-mira-progress": "1" }, body: JSON.stringify(outBody), signal: ctrl.signal,
       });
       if (res.status === 401) { setSignedOut(true); return; }
-      const headerSafety = safetyNoticeFromHeader(res.headers.get("X-Safety-Stop"));
+      stop = trackSafetyStop(res.headers);
       attemptId = res.headers.get(NOTEBOOK_ATTEMPT_HEADER);
-      if (res.ok && !res.body && headerSafety) throw Object.assign(new Error("no_stream"), { safetyNotice: headerSafety });
+      if (res.ok && !res.body && stop.current()) throw stop.carry(new Error("no_stream"));
       if (!res.ok || !res.body) {
         if (!res.ok) rejectionStatus = res.status;
         // The route's own error codes, in plain language; never a bare status code.
@@ -817,10 +819,10 @@ export function HubShellHost() {
           setLive((cur) => (cur && cur.id === id ? { ...cur, componentLabel: frame.label } : cur));
         }).catch(() => undefined);
       }
-      const reader = stream.getReader();
-      const result = await readNotebookStream(reader, (content, cits) => {
+      const reader = stop.watch(stream.getReader());
+      const result = stop.settle(await readNotebookStream(reader, (content, cits) => {
         setLive((cur) => (cur && cur.id === id ? { ...cur, content, citations: cits } : cur));
-      }, headerSafety, {
+      }, stop.current(), {
         onAttempt: (id) => { attemptId = id; },
         onProgress: (stage) => setLive((cur) => (cur && cur.id === id ? { ...cur, progress: stage } : cur)),
         onManualSearchStatus: (status) => {
@@ -829,7 +831,7 @@ export function HubShellHost() {
             active?.notebookId !== sel.notebookId || active.threadId !== sel.threadId) return;
           manualSearchDriverRef.current?.observeLive(sel.notebookId, status);
         },
-      });
+      }));
       // Both readers end with the stream; the finished answer carries its label.
       if (componentRead) await componentRead;
       const stopped = !result.sawStatus && ctrl.signal.aborted;
@@ -886,13 +888,14 @@ export function HubShellHost() {
       const refusedScope = scopeRefused ? outBody.componentSelection ?? {
         threadId: outBody.threadId, componentId: null, selectionVersion: null,
       } : undefined;
+      const interruption = rejectionStatus === undefined && stop ? stop.carry(caught) : caught;
       if (rejectionStatus !== 401 && explicitStops.current.has(ctrl)) {
-        const stopped = stoppedStreamResult(caught);
+        const stopped = stoppedStreamResult(interruption);
         if (stopped.safetyNotice || stopped.content) retainExchange(stopped, true);
         settleExplicitStop(stopped);
         return;
       }
-      const retained = rejectionStatus === undefined ? retainedStreamInterruption(caught) : null;
+      const retained = rejectionStatus === undefined ? retainedStreamInterruption(interruption) : null;
       if (retained && (retained.result.safetyNotice || retained.result.content)) {
         retainExchange(retained.result, retained.stopped);
       }
