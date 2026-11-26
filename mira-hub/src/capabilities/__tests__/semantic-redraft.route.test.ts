@@ -260,9 +260,18 @@ describe("preconditions", () => {
 });
 
 describe("preconditions for the bypass screen", () => {
-  it("JUMPER_REDRAFT draws only the isolation advisory, and the bypass classifier refuses it", () => {
+  it("JUMPER_REDRAFT draws the guard-defeat hazard warning, and the bypass classifier independently refuses it", () => {
     const base = { question: Q_PLAIN, general: false, served: true, refused: false, evidenceSufficient: true, manualSearchRunning: null };
-    expect(validateAnswer({ ...base, answerText: JUMPER_REDRAFT })).toMatchObject({ ok: false, violation: "hazard-warning:isolation-advisory" });
+    // The deterministic floor classifies "install a jumper across the light curtain" as a directed
+    // guard-defeat action (#5962 clause-scoped hazard floor). Before that floor existed this sentence
+    // drew only the isolation advisory ("hazard-warning:isolation-advisory"); the stronger, correct
+    // classification is asserted EXACTLY (not "either violation"), and it is still a hazard_warning.
+    expect(validateAnswer({ ...base, answerText: JUMPER_REDRAFT })).toMatchObject({
+      ok: false,
+      kind: "hazard_warning",
+      violation: "unsafe-answer:clause-hazard-guard-defeat",
+    });
+    // Independent precondition (unchanged): the BYPASS classifier, not the floor, is what refuses it.
     expect(safetyBypassAsk(JUMPER_REDRAFT)).not.toBeNull();
     expect(safetyBypassAsk(REDRAFT)).toBeNull();
     expect(safetyBypassAsk(ADVISORY_REDRAFT)).toBeNull();
