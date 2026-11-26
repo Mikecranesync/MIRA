@@ -990,6 +990,14 @@ describe("#6016 cross-context hazard-warning contract (real POST + real validato
     ["Test the sensor and read the voltage live at the terminals.", true],
     ["Do not read the voltage live at the terminals.", false],
     ["Open the alarm log and see the readings live on the HMI.", false],
+    // #6058: a sentence that ends in "?" is a question only when its form is interrogative (or a directive
+    // is refused in the very next sentence); a directive wearing a question mark is still an order
+    ["Reset F005 live now?", true],
+    ["Please reset the fault live now?", true],
+    ["You should reset the fault live now?", true],
+    ["Is it safe to work on it energized? No, lock out first.", false],
+    ["Should I reset the fault live? No, lock out first.", false],
+    ["Work on it energized? No. Lock out first.", false],
   ];
   const contexts = [
     { name: "grounded", general: false },

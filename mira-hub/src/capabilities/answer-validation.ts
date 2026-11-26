@@ -821,6 +821,37 @@ function withoutCitationMarkers(text: string): string {
   return text.replace(CITATION_MARKER, " ");
 }
 
+// Final-class residual (#6058): a sentence that ENDS in "?" is not thereby a question. The mark used to
+// switch the bare-state checks off for the whole sentence, so a directive written with a question mark
+// ("Reset F005 live now?", "Please reset the fault live now?", "You should reset the fault live now?")
+// was never read as an order. A sentence is a genuine QUESTION only when
+//   (a) its form is interrogative — an inverted auxiliary/modal or a wh-word opens it ("Is it safe …?",
+//       "Should I reset the fault live?", "Can you …?", "What if …?") — and it is not a suggestion frame
+//       ("why not …?", "how about …?", "let's …?", "shall we …?"), OR
+//   (b) it is a directive-form sentence that is IMMEDIATELY ANSWERED in the negative ("Work on it
+//       energized? No. Lock out first."), i.e. the rhetorical question and its refusal.
+// Everything else that ends in "?" — an imperative, "please …", "go ahead …", "you should …", a bare
+// declarative — keeps the same bare-state/hazard reading as the same sentence ending in a period.
+const QUESTION_LEAD = /^(?:[-*•]\s+|\d+[.)]\s+)?(?:[A-Za-z][A-Za-z ]{0,24}:\s+)?[\s"'“”‘’*_(\[]*(?:(?:and|but|so|then|well|ok(?:ay)?|now|also|actually)[,\s]+)?/i;
+const INTERROGATIVE_FORM = new RegExp(
+  "^(?:" +
+    "(?:is|are|was|were|am|can|could|may|might|must|shall|should|will|would)\\s+(?!not\\b)" +
+    "|(?:do|does|did)\\s+(?:i|you|we|they|he|she|it|one|someone|anyone|everyone|the|a|an|this|that|these|those|my|your|our|their|all|any|most|operators?|technicians?)\\b" +
+    "|(?:what|why|how|when|where|who|whom|whose|which|whether)\\b" +
+    ")",
+  "i",
+);
+const SUGGESTION_FRAME = /^(?:why\s+(?:not|don'?t\s+you)|how\s+about|what\s+about|let'?s|shall\s+we)\b/i;
+const NEGATIVE_ANSWER =
+  /^[\s"'“”‘’*_(\[]*(?:no|nope|nah|never|absolutely\s+not|definitely\s+not|certainly\s+not|not\s+(?:safe|recommended|allowed|permitted|advisable)|don'?t|do\s+not|you\s+(?:should\s+not|shouldn'?t|must\s+not|mustn'?t|cannot|can'?t)|it\s+is\s+not\s+safe|it'?s\s+not\s+safe)\b/i;
+function isGenuineQuestion(sentence: string, next: string | undefined): boolean {
+  const t = sentence.trim();
+  if (!t.endsWith("?")) return false;
+  const body = t.replace(QUESTION_LEAD, "");
+  if (!SUGGESTION_FRAME.test(body) && INTERROGATIVE_FORM.test(body)) return true;
+  return next !== undefined && NEGATIVE_ANSWER.test(next);
+}
+
 /** Returns the offending sentence + the offending span, or null. DETECTION is
  *  sentence-scoped — splitting an instruction across punctuation ("While the
  *  machine is energized, reset the fault") must not hide it. The prohibitive/
@@ -838,10 +869,13 @@ function withoutCitationMarkers(text: string): string {
  *  bearing.some() reading applies, unchanged. Detection only, never
  *  rewriting. */
 function clauseHazardViolation(text: string): { relId: string; sentence: string; span: string } | null {
-  for (const sentence of text.split(/(?<=[.!?])\s+|\n+/)) {
+  const sentences = text.split(/(?<=[.!?])\s+|\n+/);
+  for (let si = 0; si < sentences.length; si++) {
+    const sentence = sentences[si];
     if (PERMIT_PRACTICES_DESCRIPTION.test(sentence.trim())) continue;
     if (SAFETY_CONTROL_DEFERRAL.test(sentence.trim())) continue;
-    const question = sentence.trim().endsWith("?");
+    const following = sentences.slice(si + 1).find((x) => x.trim() !== "");
+    const question = isGenuineQuestion(sentence, following);
     // The deferral phrase is blanked (not removed) so positions stay stable.
     const deferred = sentence.replace(SAFETY_CONTROL_DEFERRAL_PHRASE, (m) => " ".repeat(m.length));
     // Clause ranges over the original positions; blank pieces are dropped.
