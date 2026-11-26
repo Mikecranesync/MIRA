@@ -531,6 +531,7 @@ const TITLES = {
   "detail-late": "a question sent while the project is still opening asks the pre-send check once it loads",
   "ready-unseen": "a pre-send check that finds the manual ready sends the question with it",
   "reread-hangs": "when the re-read of the project never answers, the question pauses rather than go without its manual",
+  "paused-ready": "a paused question's poll ends once the manual is ready, and Try again sends it with the manual",
 } as const;
 for (const mode of Object.keys(TITLES) as (keyof typeof TITLES)[]) {
   test(TITLES[mode], async ({ page, context, baseURL }) => {
@@ -668,6 +669,39 @@ for (const mode of Object.keys(TITLES) as (keyof typeof TITLES)[]) {
       }
       await expect.poll(() => chatBodies.length, { timeout: 15_000 }).toBe(1);
       expect(checks).toEqual([{ threadId: THREAD, question: OWN_MODEL_QUESTION }]);
+      expect(chatBodies[0]).toMatchObject({ message: OWN_MODEL_QUESTION, threadId: THREAD });
+      expect(chatBodies[0].sourceDocIds).toContain(DOC);
+      return;
+    }
+
+    if (mode === "paused-ready") {
+      // Paused while the manual is preparing: the poll still follows the project's lookup.
+      await composer.fill(OWN_MODEL_QUESTION);
+      await sendButton.click();
+      await expect.poll(() => checks.length).toBe(1);
+      const readsAtCheck = reads;
+      await expect.poll(() => reads, { timeout: 15_000 }).toBeGreaterThan(readsAtCheck);
+      await stopButton.click();
+      await expect(page.getByText(PAUSED)).toBeVisible();
+      const readsAtStop = reads;
+      await expect.poll(() => reads, { timeout: 15_000 }).toBeGreaterThan(readsAtStop);
+      // The poll's next read finds the manual ready and ends it. Nothing was sent, so nothing else
+      // ends it: the poll reads every 4 seconds, then every 10, while it follows.
+      ready = true;
+      const readsAtReady = reads;
+      await expect.poll(() => reads, { timeout: 15_000 }).toBeGreaterThan(readsAtReady);
+      await page.waitForTimeout(1_000);
+      const readsAfterReady = reads;
+      await page.waitForTimeout(11_000);
+      expect(reads).toBe(readsAfterReady);
+      expect(chatBodies).toHaveLength(0);
+      await expect(composer).toHaveValue(OWN_MODEL_QUESTION);
+      await expect(statusParts).toHaveCount(0);
+      // The page already holds the read that found the manual ready, so Try again needs no second
+      // check: the question goes with the ready manual.
+      await page.getByRole("button", { name: "Try again", exact: true }).click();
+      await expect.poll(() => chatBodies.length, { timeout: 15_000 }).toBe(1);
+      expect(checks).toHaveLength(1);
       expect(chatBodies[0]).toMatchObject({ message: OWN_MODEL_QUESTION, threadId: THREAD });
       expect(chatBodies[0].sourceDocIds).toContain(DOC);
       return;
