@@ -570,8 +570,6 @@ describe("a listed machine name shaped like a fault code, after its own maker", 
     ["Siemens G120 and G120C differences"],
     ["Siemens G120 G120C"],
     ["Siemens G120C or g120 manual"],
-    // Out of scope here (#4095 gap 3): the 5-digit fault code is still read as a second model.
-    ["Siemens G120 fault F30011 meaning"],
     // Out of scope here: a series name on this reading is still rejected (namesAnotherProductLine).
     ["Siemens SINAMICS G120 overcurrent"],
   ])("%s → no proposal", (text) => {
@@ -580,5 +578,37 @@ describe("a listed machine name shaped like a fault code, after its own maker", 
 
   it("a fault code on a bound family is still read as a fault, not a second machine", () => {
     expect(proposeIdentityFromText("Allen-Bradley PowerFlex 525 fault F004", ["Rockwell Automation"])).toEqual({ manufacturer: "Allen-Bradley", model: "525" });
+  });
+});
+
+// #4095 gap 3: a SINAMICS fault/alarm number (F or A + 5 digits) is longer than
+// FAULT_CODE_RE, so it was read as a machine — a second model next to the G120,
+// or the machine itself ("Siemens F30011 fault" proposed F30011).
+describe("a maker's own 5-digit fault code is never a machine", () => {
+  const MAKERS = ["Siemens", "Rockwell Automation", "ABB"];
+
+  it.each([
+    ["Siemens G120 fault F30011 meaning", { manufacturer: "Siemens", model: "G120" }],
+    ["Siemens G120C fault F30011", { manufacturer: "Siemens", model: "G120C" }],
+    ["Siemens G120C alarm A07910", { manufacturer: "Siemens", model: "G120C" }],
+    ["Siemens G120 f30011", { manufacturer: "Siemens", model: "G120" }],
+  ])("%s → proposes the drive", (text, want) => {
+    expect(proposeIdentityFromText(text, MAKERS)).toEqual(want);
+  });
+
+  it.each([
+    // The code alone is never the machine (this proposed F30011 on main).
+    ["Siemens F30011 fault"],
+    ["Siemens fault F30011"],
+    // Only the maker's own format: another maker's question with that shape still backs off.
+    ["Allen-Bradley PowerFlex 525 fault F30011"],
+    ["ABB ACS880 F30011"],
+    // A real second machine still backs off.
+    ["Siemens G120C and S7-1200 F30011"],
+    // Exactly F/A + 5 digits.
+    ["Siemens G120 F300111"],
+    ["Siemens G120 FX30011"],
+  ])("%s → no proposal", (text) => {
+    expect(proposeIdentityFromText(text, MAKERS)).toBeNull();
   });
 });
