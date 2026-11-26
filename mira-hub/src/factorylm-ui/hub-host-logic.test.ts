@@ -935,6 +935,20 @@ describe("every way the Hub sends a chat question", () => {
     for (const name of ["onSend", "onGuidedDeadEnd", "waitThenAskAgain", "retryRecovery"]) expect(callback(name)).not.toContain("manualWait: false }");
   });
 
+  // The guided dead-end card checks only the host's own send, so it can send while a refused
+  // question waits. Any send but the held question's own resend ends that wait, before it posts,
+  // with a reason, so the older question is never asked automatically after a newer one.
+  it("a send other than the held question's own resend ends the wait first, with a reason", () => {
+    const send = callback("send");
+    const retire = send.indexOf("pauseManualHold(hold, MANUAL_WAIT_REPLACED)");
+    expect(send).toContain("if (hold && !(retry && sendRecoveryId(retry) === hold.recoveryId)) pauseManualHold(hold, MANUAL_WAIT_REPLACED);");
+    expect(retire).toBeGreaterThan(0);
+    expect(retire).toBeLessThan(send.indexOf("/chat/`"));
+    const guided = callback("onGuidedDeadEnd");
+    expect(guided).not.toContain("waitingForManual");
+    expect(guided).toContain("void send(");
+  });
+
   it("a refusal from either transport saves the question, keeps nothing from the stream and goes before Stop's handling", () => {
     const send = callback("send");
     const caught = send.indexOf("} catch (caught) {");

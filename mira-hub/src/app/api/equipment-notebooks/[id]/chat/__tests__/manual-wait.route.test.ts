@@ -24,7 +24,14 @@ vi.mock("@/lib/session", () => sessionMock);
 const benchStore = vi.hoisted(() => ({
   getSelectionState: vi.fn(async () => ({ selection: null, version: null })),
   turnsAskedUnderComponent: vi.fn(async () => new Set<string>()),
+  stampTurnComponent: vi.fn(async () => true),
 }));
+const chatTurn = vi.hoisted(() => ({ resolveComponentTurn: vi.fn() }));
+vi.mock("@/capabilities/bench-components/chat-turn", async (orig) => {
+  const real = await orig<typeof import("@/capabilities/bench-components/chat-turn")>();
+  chatTurn.resolveComponentTurn.mockImplementation(real.resolveComponentTurn);
+  return { ...real, resolveComponentTurn: chatTurn.resolveComponentTurn };
+});
 vi.mock("@/capabilities/bench-components/store", async (orig) => ({
   ...(await orig<Record<string, unknown>>()),
   ...benchStore,
@@ -289,6 +296,24 @@ describe("questions and turns that keep their own path never read the manual's s
     expect(res.status).not.toBe(409);
     await res.text();
     expect(acqMock.currentManualSearchStatus).not.toHaveBeenCalled();
+  });
+
+  // A question asked under a selected component is about that component (#5750), so the project's
+  // manual never holds it. The component is held here (not confirmed), which reads no manual.
+  it("a manual question asked under a selected component", async () => {
+    const COMPONENT = "99999999-9999-4999-8999-999999999999";
+    acqMock.currentManualSearchStatus.mockResolvedValue(status({ running: true }));
+    chatTurn.resolveComponentTurn.mockResolvedValueOnce({
+      kind: "hold", reason: "not_confirmed", revision: 1, text: "Confirm the component first.", actions: [],
+      component: { id: COMPONENT, position: 0, kind: "drive", current: null },
+      selection: { componentId: COMPONENT, version: 3 },
+    } as never);
+    const res = await chat({ componentSelection: { threadId: THREAD, componentId: COMPONENT, selectionVersion: 3 } });
+    expect(res.status).toBe(200);
+    await res.text();
+    expect(chatTurn.resolveComponentTurn).toHaveBeenCalledTimes(1);
+    expect(acqMock.currentManualSearchStatus).not.toHaveBeenCalled();
+    expect(domainMock.abandonNotebookTurnRequest).not.toHaveBeenCalled();
   });
 });
 
