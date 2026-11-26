@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { StreamResult, PersistedTurn } from "@/components/equipment/notebook-chat-utils";
 import type { EvidenceCitation } from "@/lib/notebook-chat-types";
-import { ENERGIZED_ELECTRICAL_HAZARD } from "@/lib/safety-classifier";
+import { ENERGIZED_ELECTRICAL_HAZARD, hazardBanner } from "@/lib/safety-classifier";
 import {
   answerTurnId,
   basisKind,
@@ -706,5 +706,55 @@ describe("evidence basis chip — a caption, never the server key (#4025)", () =
     for (const part of both([citation], ["doc-1"], "verified_by_oem")) {
       expect(part?.basis).toEqual({ kind: "general_reasoning", label: CAPTIONS.general_reasoning, authorized: false });
     }
+  });
+});
+
+describe("#5989: the active-incident directive leads the answer", () => {
+  const INCIDENT = hazardBanner("smoke");
+  const smokeAnswer = `${INCIDENT}\n\nStop the conveyor from the upstream disconnect.`;
+  // paid3-tablet S8: the cited p.5 serial-cable warning, as the route persists it (#4508).
+  const manualWarning = {
+    kind: "manual_safety_statement",
+    marker: "WARNING",
+    statement: "If you connect or disconnect the serial cable with power applied, an electrical arc can occur.",
+    sourceDocId: "doc-1",
+    sourceCitationId: "2",
+    sourceTitle: "2080-IN009B-EN-P.pdf",
+    page: 5,
+  };
+  // `PersistedTurn.evidence` (guarded legacy type) predates this entry; the adapter reads it as unknown.
+  const withWarning = [citation, manualWarning] as unknown as PersistedTurn["evidence"];
+
+  it("precondition: the incident banner is the classifier's smoke banner", () => {
+    expect(INCIDENT).toMatch(/^⚠️ \*\*Possible active incident\.\*\*/);
+  });
+
+  it("saved turn: the directive comes before the cited manual's warning banner", () => {
+    const [, a] = turnsFromPersisted(row({ answerText: smokeAnswer, evidence: withWarning }), meta);
+    expect(a.parts.map((p) => p.type)).toEqual(["text", "safety_notice", "source", "evidence_basis"]);
+    expect(a.parts[0]).toMatchObject({ type: "text", text: smokeAnswer });
+    expect(a.parts[1]).toMatchObject({ type: "safety_notice", notice: { severity: "warning" } });
+  });
+
+  it("control: any other answer keeps the manual's warning banner first", () => {
+    const [, a] = turnsFromPersisted(row({ answerText: "Remove power to the PLC circuit.", evidence: withWarning }), meta);
+    expect(a.parts.map((p) => p.type)).toEqual(["safety_notice", "text", "source", "evidence_basis"]);
+  });
+
+  it("control: the directive quoted mid-answer does not lead", () => {
+    const [, a] = turnsFromPersisted(row({ answerText: `Earlier you were told: ${INCIDENT}`, evidence: withWarning }), meta);
+    expect(a.parts[0].type).toBe("safety_notice");
+  });
+
+  it("live turn: the directive comes before a warning-level hazard banner", () => {
+    const parts = partsFromStream(stream({ content: smokeAnswer, hazardNotice: { kind: "safety_notice", trigger: ENERGIZED_ELECTRICAL_HAZARD } }), LIVE);
+    expect(parts.map((p) => p.type).slice(0, 2)).toEqual(["text", "safety_notice"]);
+    expect(parts[1]).toMatchObject({ notice: { severity: "warning" } });
+  });
+
+  it("control: a Safety STOP still comes before the directive", () => {
+    const parts = partsFromStream(stream({ content: smokeAnswer, safetyNotice: { kind: "safety_notice", trigger: "smoke coming" } }), { stopped: true, ...LIVE });
+    expect(parts.map((p) => p.type)).toEqual(["safety_notice", "text", "error"]);
+    expect(parts[0]).toMatchObject({ notice: { severity: "stop" } });
   });
 });

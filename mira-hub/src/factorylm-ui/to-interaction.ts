@@ -46,6 +46,7 @@ import {
   isVisualObservationEntry,
 } from "@/lib/notebook-chat-types";
 import { API_BASE } from "@/lib/config";
+import { hazardBanner } from "@/lib/safety-classifier";
 import { viewerHref } from "./document-page-viewer-logic";
 import { PROVIDER_EXHAUSTION_COPY } from "@/capabilities/provider-health";
 import type { PersistedTurn, StreamResult } from "@/components/equipment/notebook-chat-utils";
@@ -257,8 +258,19 @@ export { hasTerminalSafetyStop, isTerminalSafetyNotice, safetyNoticesOf } from "
  *  `Bubble`), and the shell renders parts in array order — so notices lead, live
  *  and hydrated alike. Caught by the fidelity harness (#4439). */
 function safetyFirst(parts: InteractionPart[]): InteractionPart[] {
-  return [...parts.filter((p) => p.type === "safety_notice"), ...parts.filter((p) => p.type !== "safety_notice")];
+  const notices = parts.filter((p) => p.type === "safety_notice");
+  const rest = parts.filter((p) => p.type !== "safety_notice");
+  // #5989: an answer that opens with the active-incident directive ("get clear, isolate power,
+  // call for help") leads, so a cited manual's warning banner never sits above it. A Safety
+  // STOP still comes first.
+  const incident = rest.find((p) => p.type === "text" && p.text.trimStart().startsWith(ACTIVE_INCIDENT_BANNER));
+  if (!incident) return [...notices, ...rest];
+  const isStop = (p: InteractionPart) => p.type === "safety_notice" && p.notice.severity === "stop";
+  return [...notices.filter(isStop), incident, ...notices.filter((p) => !isStop(p)), ...rest.filter((p) => p !== incident)];
 }
+
+/** The classifier's active-incident banner, which the chat route prefixes to the answer text. */
+const ACTIVE_INCIDENT_BANNER = hazardBanner("smoke");
 
 /**
  * #5504 Codex r2 F1: an answer asked under a bench component names that component
