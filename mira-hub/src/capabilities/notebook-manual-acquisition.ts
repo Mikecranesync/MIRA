@@ -354,8 +354,16 @@ export function manualWaitSourceStatus(
   return applicableDisabledSource(sources, identity) ? { manufacturer, model, running: false, sourceState: "disabled" } : null;
 }
 
-/** The recorded search for this notebook, or null (never attempted, or unreadable). */
-export async function readAcquisition(tenantId: string, notebookId: string): Promise<AcquisitionRecord | null> {
+/**
+ * The recorded search for this notebook, or null (never attempted, or unreadable). `strict` (the
+ * chat route's manual wait, #5746 r8 F12): a failed read throws instead, so it is never read as
+ * "no lookup". The column missing before migration 100 is still no record either way.
+ */
+export async function readAcquisition(
+  tenantId: string,
+  notebookId: string,
+  opts: { strict?: boolean } = {},
+): Promise<AcquisitionRecord | null> {
   try {
     return await withTenantContext(tenantId, async (c) => {
       const r = await c.query<{ manual_acquisition: AcquisitionRecord | null }>(
@@ -366,9 +374,9 @@ export async function readAcquisition(tenantId: string, notebookId: string): Pro
       return rec && typeof rec === "object" && typeof rec.state === "string" ? rec : null;
     });
   } catch (err) {
-    if (!isUndefinedColumn(err)) {
-      console.error("[manual-acquisition] read failed:", err instanceof Error ? err.message : err);
-    }
+    if (isUndefinedColumn(err)) return null;
+    if (opts.strict) throw err;
+    console.error("[manual-acquisition] read failed:", err instanceof Error ? err.message : err);
     return null;
   }
 }
@@ -1037,12 +1045,14 @@ export async function runManualAcquisition(
  * Check a finished record against the notebook's CURRENT sources before it is
  * shown: a document the technician removed (or rejected) since the search is
  * reported as removed — never "it's in Sources" — and is never re-attached
- * automatically (Codex #4118 r8 F13). A read failure leaves the record as-is.
+ * automatically (Codex #4118 r8 F13). A read failure leaves the record as-is, except under
+ * `strict` (the chat route's manual wait, #5746 r8 F12), where it throws.
  */
 export async function reconcileAcquisition(
   tenantId: string,
   notebookId: string,
   rec: AcquisitionRecord | null,
+  opts: { strict?: boolean } = {},
 ): Promise<AcquisitionRecord | null> {
   if (!rec) return rec;
   // An indexed document is checked against the notebook's sources (r8 F13); a
@@ -1098,6 +1108,7 @@ export async function reconcileAcquisition(
       return { ...rec, attached_indexed: false, source_removed: true };
     });
   } catch (err) {
+    if (opts.strict) throw err;
     console.error("[manual-acquisition] reconcile failed:", err instanceof Error ? err.message : err);
     return rec;
   }
@@ -1413,10 +1424,12 @@ export async function currentManualSearchStatus(
   confirmed: ConfirmedIdentity,
   proposedIdentity: { manufacturer: string; model: string } | null,
   sources: readonly NotebookSource[],
-  deps: { env?: Record<string, string | undefined>; groundedTurn?: boolean } = {},
+  deps: { env?: Record<string, string | undefined>; groundedTurn?: boolean; strict?: boolean } = {},
 ): Promise<ManualSearchStatus | null> {
   const automaticAcquisition = acquisitionEnabled(tenantId, deps.env);
-  const rec = automaticAcquisition ? await readAcquisition(tenantId, notebookId) : null;
+  // `strict` (#5746 r8 F12): a failed read throws rather than reading as "no lookup".
+  const reads = { strict: deps.strict === true };
+  const rec = automaticAcquisition ? await readAcquisition(tenantId, notebookId, reads) : null;
   const confirmedKey = acquisitionKey(confirmed);
   if (!rec || (confirmedKey && rec.key !== confirmedKey)) {
     const linked = currentManualSourceStatus(sources, confirmed);
@@ -1472,7 +1485,7 @@ export async function currentManualSearchStatus(
       message: `I found the official documentation for the ${manufacturer} ${model} and added it to this notebook's Sources, but it's turned off there now. Turn it back on in Sources to ask from it.`,
     };
   }
-  const reconciled = await reconcileAcquisition(tenantId, notebookId, rec);
+  const reconciled = await reconcileAcquisition(tenantId, notebookId, rec, reads);
   if (!reconciled) return null;
   if (reconciled.state === "running") return { ...status, running: true };
   if (reconciled.state === "complete" && reconciled.doc_id && !reconciled.source_removed &&

@@ -10,7 +10,7 @@ import { buildChatBody, isAbortError, type ChatBody, type PersistedTurn, type St
 import { isSafetyNoticeEntry } from "@/lib/notebook-chat-types";
 import { LEGACY_THREAD_ID, machineNameFor, notebookLabel, threadItemId, threadRefFromItem, type HubNotebook } from "./notebook-tree";
 import { historyFromSavedTurns, type HistoryRow } from "@/capabilities/conversation-history";
-import type { ScopeField } from "./bench-components-logic";
+import type { ComponentRider, ScopeField } from "./bench-components-logic";
 import { contextFor, threadFromPersisted, type HubNotebookMeta } from "./to-interaction";
 
 /** The shell's fixture before any notebook loads: an empty, untitled thread. */
@@ -770,6 +770,22 @@ export function resendBodyFor(
 ): HubSendRecovery["body"] | null {
   if (recovery.manualRefused === undefined) return recoverySendBody(recovery);
   return detail ? manualResendBody(recovery, enabledDocIds(detail.sources), detail.turns, sel) : null;
+}
+
+/**
+ * #5746 r8 F14: why the held question's one automatic resend did not start. It is bound to the
+ * target it was asked about, so a component picked (or the whole machine chosen again) during the
+ * wait asks nothing; the saved question then goes through the target review. Otherwise the
+ * checklist was not read yet.
+ */
+export function manualResendPause(
+  refused: ScopeField | undefined,
+  current: ComponentRider | "unavailable" | undefined,
+): string {
+  const now = current === undefined ? undefined : current === "unavailable" ? null : current.componentId;
+  return refused && now !== undefined && now !== refused.componentId
+    ? "The question target changed while the manual was being prepared, so it wasn't asked again."
+    : "The question is saved. Retry when the checklist is ready.";
 }
 
 /** #5746: whether a send asks the route to hold a manual question (`x-mira-manual-wait: 1`). The

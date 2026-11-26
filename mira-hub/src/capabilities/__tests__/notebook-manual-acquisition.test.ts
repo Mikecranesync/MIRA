@@ -10,6 +10,7 @@ const db = vi.hoisted(() => ({
   claimRows: 1,
   readRow: null as unknown,
   failWith: null as null | { code: string },
+  failOn: null as null | RegExp,
   existingSource: false,
   updatedSource: { match_state: "verified", enabled_by_default: true } as unknown,
   currentSource: null as unknown,
@@ -25,7 +26,7 @@ vi.mock("@/lib/tenant-context", () => ({
     fn({
       query: vi.fn(async (sql: string, params: unknown[]) => {
         db.queries.push({ sql, params });
-        if (db.failWith) throw Object.assign(new Error("db"), db.failWith);
+        if (db.failWith && (!db.failOn || db.failOn.test(sql))) throw Object.assign(new Error("db"), db.failWith);
         if (/^\s*SELECT manual_acquisition/.test(sql)) return { rows: db.readRow ? [{ manual_acquisition: db.readRow }] : [] };
         if (/RETURNING manual_acquisition->>'gen'/.test(sql)) return { rowCount: db.claimRows, rows: db.claimRows ? [{ gen: "g1", started_at: "2026-11-21T00:00:00.123456+00:00" }] : [] };
         if (/FOR UPDATE/.test(sql))
@@ -73,6 +74,7 @@ beforeEach(() => {
   db.claimRows = 1;
   db.readRow = null;
   db.failWith = null;
+  db.failOn = null;
   db.existingSource = false;
   db.updatedSource = { match_state: "verified", enabled_by_default: true };
   db.currentSource = null;
@@ -1043,6 +1045,47 @@ describe("applicableEnabledSource / applicableReadySource (#4195 F3/F10)", () =>
   it("returns null when the identity itself has no acquisition key", () => {
     const unconfirmed = { identityStatus: "unconfirmed", manufacturer: null, model: null, catalogNumber: null };
     expect(applicableEnabledSource([source()], unconfirmed)).toBeNull();
+  });
+});
+
+// #5746 r8 F12: the chat route's manual wait reads the status strictly. A failed read of the
+// lookup's record, or of the check of a finished lookup against the Sources, throws (the route then
+// pauses the question) instead of reading as "no lookup". The notebook detail read is unchanged.
+describe("strict status reads for the chat route's manual wait (r8 F12)", () => {
+  const gs = { identityStatus: "user_confirmed", manufacturer: "SMC", model: "SS5Y3-DUW01302", catalogNumber: null };
+  const key = acquisitionKey(gs)!;
+
+  it("readAcquisition: strict rethrows a failed read; the column missing before migration 100 is still no record", async () => {
+    db.failWith = { code: "57P01" };
+    await expect(readAcquisition("t", "nb", { strict: true })).rejects.toThrow("db");
+    expect(await readAcquisition("t", "nb")).toBeNull();
+    db.failWith = { code: "42703" };
+    expect(await readAcquisition("t", "nb", { strict: true })).toBeNull();
+  });
+
+  it("reconcileAcquisition: strict rethrows a failed check; the default keeps the record as it was", async () => {
+    const rec = { key, state: "complete", started_at: null, finished_at: null, doc_id: "d1", candidate_host: null, match_state: null, oem_request_url: null } as AcquisitionRecord;
+    db.failWith = { code: "57P01" };
+    db.failOn = /FROM equipment_notebook_sources/;
+    await expect(reconcileAcquisition("t", "nb", rec, { strict: true })).rejects.toThrow("db");
+    expect(await reconcileAcquisition("t", "nb", rec)).toBe(rec);
+  });
+
+  it("currentManualSearchStatus: strict throws on either failed read; the default reads null or the record", async () => {
+    db.failWith = { code: "57P01" };
+    db.failOn = /SELECT manual_acquisition/;
+    await expect(currentManualSearchStatus("t", "nb", gs, null, [], { env: ON, strict: true })).rejects.toThrow("db");
+    expect(await currentManualSearchStatus("t", "nb", gs, null, [], { env: ON })).toBeNull();
+    db.readRow = { key, state: "complete", started_at: null, finished_at: null, doc_id: "d1", candidate_host: null, match_state: null, oem_request_url: null };
+    db.failOn = /FROM equipment_notebook_sources/;
+    await expect(currentManualSearchStatus("t", "nb", gs, null, [], { env: ON, strict: true })).rejects.toThrow("db");
+    expect(await currentManualSearchStatus("t", "nb", gs, null, [], { env: ON })).toMatchObject({ running: true, sourceState: "preparing" });
+  });
+
+  it("control: strict reads the same status as the default when the reads succeed", async () => {
+    db.readRow = { key, state: "running", started_at: "2026-01-01T00:00:00Z", finished_at: null, candidate_host: null, match_state: null, oem_request_url: null };
+    expect(await currentManualSearchStatus("t", "nb", gs, null, [], { env: ON, strict: true }))
+      .toEqual(await currentManualSearchStatus("t", "nb", gs, null, [], { env: ON }));
   });
 });
 

@@ -11,7 +11,6 @@
  * newest whole-machine question. Server only: the model matcher reads the reviewed manual library.
  */
 import { getNotebook, listSources, listTurns, type EquipmentNotebook, type NotebookSource } from "@/lib/equipment-notebooks";
-import { detectEnergizedElectricalHazardIntent, isEnergizedWorkAsk, notebookSafetyTrigger } from "@/lib/safety-classifier";
 import {
   currentManualSearchStatus,
   manualWaitSourceStatus,
@@ -97,6 +96,11 @@ function latestTurnIsGrounded(
 /**
  * The notebook's CURRENT manual-search status, computed fresh (T2 #4189 F4/F6): a persisted
  * snapshot would read as permanently stale once the search finishes.
+ *
+ * `forManualWait` (the chat route's manual wait, #5746 r8 F12/F13): every read is strict, so a
+ * failed read throws instead of reading as "no lookup", and a failed lookup is never settled
+ * quietly under an earlier answer from a document. That settling (#5958) is for what the page
+ * shows; it says nothing about whether the manual can be used now.
  */
 export function notebookManualStatus(
   tenantId: string,
@@ -104,6 +108,7 @@ export function notebookManualStatus(
   notebook: EquipmentNotebook,
   sources: NotebookSource[],
   turns: Turn[],
+  opts: { forManualWait?: boolean } = {},
 ): Promise<ManualSearchStatus | null> {
   return currentManualSearchStatus(
     tenantId,
@@ -116,7 +121,7 @@ export function notebookManualStatus(
     },
     latestIdentityProposal(turns),
     sources,
-    ...(latestTurnIsGrounded(turns) ? [{ groundedTurn: true }] : []),
+    ...(opts.forManualWait ? [{ strict: true }] : latestTurnIsGrounded(turns) ? [{ groundedTurn: true }] : []),
   );
 }
 
@@ -166,36 +171,67 @@ export function subjectReader(input: {
 }
 
 /**
- * Words that make "manual" an adjective for a machine part or mode (a manual reset, the manual
- * valve), not the document. A missed manual ask answers without the manual, so this lists what
- * "manual" describes rather than what a manual ask may say next.
+ * #5746 r8 F11: the words that make "manual" the machine's part or mode ("a manual reset", "the
+ * manual valve"), not the document. A missed manual ask answers without the manual, while a
+ * question held by mistake costs one pause with "Send without the manual", so this list names only
+ * the machine's own parts and modes. Words that also read as part of a manual ("entry",
+ * "setting", "process", "test") are left out: "the manual entry for P09.03" waits.
  */
-const MANUAL_ADJECTIVE = String.raw`(?:mode|modes|override|overrides|reset|resets|control|controls|operation|operations|switch|switches|start|stop|setting|settings|position|valve|valves|lever|crank|jog|feed|run|lubrication|backup|entry|process|handle|brake|release|button|buttons|input|inputs|adjustment|transfer|trip|test|cycle|pump|drain|lock|labou?r|winch|hoist|gate|door|damper|tensioner|clamp|wheel|handwheel|selector|station|pendant|speed|bypass|shutoff|shut-off|disconnect|load|loading|clutch)`;
+export const MANUAL_MACHINE_WORDS: readonly string[] = [
+  "mode", "modes", "override", "overrides", "reset", "resets", "control", "controls", "operation",
+  "operations", "switch", "switches", "start", "stop", "position", "valve", "valves", "lever",
+  "crank", "jog", "feed", "run", "lubrication", "backup", "handle", "brake", "release", "button",
+  "buttons", "input", "inputs", "adjustment", "transfer", "trip", "cycle", "pump", "drain", "lock",
+  "labor", "labour", "winch", "hoist", "gate", "door", "damper", "tensioner", "clamp", "wheel",
+  "handwheel", "selector", "station", "pendant", "speed", "bypass", "shutoff", "shut-off",
+  "disconnect", "load", "loading", "clutch",
+];
+const MANUAL_WORD = /\bmanuals?\b/gi;
+/** "manual" followed by one of the machine's parts or modes. */
+const MACHINE_PART_AFTER = new RegExp(String.raw`^\s+(?:${MANUAL_MACHINE_WORDS.map((w) => w.replace(/-/g, "\\-")).join("|")})\b`, "i");
+/** "manual/auto", "manual-auto", "manual or automatic": one side of a mode selector. */
+const MODE_AFTER = /^(?:\s*\/|-(?:auto|automatic|hand|off|on|local|remote)\b|\s+(?:or|and|vs\.?|versus|to)\s+auto(?:matic)?\b)/i;
 /**
- * The manual as a document: "the manual", "the GS10 manual", "its manual", "a manual", unless
- * the next word makes it a part or mode. "The manual reset" and "run it in manual" are not.
+ * The mode named before "manual": "in manual", "on manual", "from manual", "hand/manual",
+ * "auto-manual", "auto or manual", and "to manual" after a verb that changes a mode ("switch the
+ * conveyor to manual"). "According to manual" and "refer to manual" are the document.
  */
-const MANUAL_DOCUMENT = new RegExp(
-  String.raw`\b(?:the|this|that|its|their|your|my|our|a|an|any)\s+(?:[\w./-]+\s+){0,3}?manuals?\b(?!\s+${MANUAL_ADJECTIVE}\b)`,
-  "i",
-);
+const MODE_BEFORE = /(?:\b(?:in|into|on|from)\s+|\/\s*|\b(?:auto|automatic|hand|off|on|local|remote)-|\bauto(?:matic)?\s+(?:or|and|vs\.?|versus|to)\s+|\b(?:switch\w*|set|sets|setting|put|puts|putting|change\w*|go|goes|going|went|turn\w*|flip\w*|move\w*|back|revert\w*|return\w*|toggle\w*|select\w*)\b(?:\s+[\w'-]+){0,3}?\s+to\s+)$/i;
 /** "manual page 12", "manual section 4": a part of the manual named without an article. */
 const MANUAL_PART = /\bmanual\s+(?:page|pages|section|chapter|table|figure|fig\.?|pg\.?|p\.)\s*\d/i;
-const SAFETY_LANGUAGE = /\b(?:energized|energised|live|arc flash|shock|sparks?|fire|smoke|emergency|unsafe|injur(?:y|ed)|hazard|lockout|tagout|interlock|bypass|guard)\b/i;
+/**
+ * A report of a hazard happening now: smoke, fire (not a drive's "fire mode"), sparks, arcing,
+ * burning, a shock or an injury. Such a question is answered at once, never held for a manual.
+ * Safety topics a manual covers (a guard, an interlock, lockout, a bypass) are not on this list:
+ * the chat route's own safety, energized-work and bypass stops decide those.
+ */
+const HAZARD_NOW = /\b(?:smok(?:e|es|ed|ing|y)|fire(?!\s+mode)|flames?|burning|sparks?|sparking|arcing|shocked|electrocut\w*|injur(?:y|ies|ed))\b/i;
 
 /**
- * #5746 r7 F11: a question that explicitly asks for the manual waits for it. That is the manual
- * itself ("what does the manual say", "according to the official manual") or a page, section,
- * chapter, table or figure of it ("what page of the manual shows the acceleration settings").
- * "Figure out" or a bare "table" are not manual asks, and an ordinary question does not wait.
- * Safety, hazard and energized-work language never waits: those questions keep their own path.
+ * #5746 r7 F11, r8 F11: a question that mentions the manual waits for it. Each mention is read on
+ * its own, and any one that is the document makes the question wait: "which manual covers…", "do
+ * you have manuals for…", "according to the manual", "what page of the manual…", "manual page 4",
+ * "the manual's wiring table". A mention is not the document only when it is the machine's part or
+ * mode (MANUAL_MACHINE_WORDS, "in manual", "switch it to manual", "manual or auto"). "Manually",
+ * "figure out" and a bare "table" are not the manual, and an ordinary question does not wait. Only
+ * the word "manual" counts: "user guide", "handbook" or "documentation" do not.
+ *
+ * A report of a hazard happening now (HAZARD_NOW) never waits. Otherwise the chat route's own
+ * safety, energized-work and bypass stops decide which questions keep their own path.
  */
 export function waitsForManual(question: string): boolean {
-  return (MANUAL_DOCUMENT.test(question) || MANUAL_PART.test(question)) &&
-    !SAFETY_LANGUAGE.test(question) &&
-    !notebookSafetyTrigger(question) &&
-    !isEnergizedWorkAsk(question) &&
-    !detectEnergizedElectricalHazardIntent(question);
+  if (HAZARD_NOW.test(question)) return false;
+  if (MANUAL_PART.test(question)) return true;
+  for (const mention of question.matchAll(MANUAL_WORD)) {
+    if (mention[0].length > "manual".length) return true; // "manuals" is always the document
+    const at = mention.index ?? 0;
+    const before = question.slice(0, at);
+    const after = question.slice(at + mention[0].length);
+    if (/^['’]s\b/.test(after)) return true; // "the manual's wiring table"
+    if (MACHINE_PART_AFTER.test(after) || MODE_AFTER.test(after) || MODE_BEFORE.test(before)) continue;
+    return true;
+  }
+  return false;
 }
 
 /** What the manual wait read: the project's status and the outgoing question's subject. */
@@ -218,7 +254,10 @@ export type ManualWaitRefusal = {
 export function manualWaitDecision(read: ManualWaitRead | "read_failed", docIds: readonly string[]): ManualWaitRefusal | null {
   if (read === "read_failed") return { error: "manual_unavailable", reason: "unknown", lookup: null };
   const { status, scope } = read;
-  if (!status || !scope || !sendWaitAllows(scope)) return null;
+  // Only a question about another exact model is answered without the project's manual. A subject
+  // out of reach is not shown to be another model, so it waits like an undecided one (r8). (The
+  // detail read's `sendWaitAllows` is unchanged.)
+  if (!status || !scope || scope === "other") return null;
   const lookup = sendWaitStatus(status);
   if (status.running) return { error: "manual_not_ready", reason: "running", lookup };
   switch (status.sourceState) {
@@ -233,15 +272,18 @@ export function manualWaitDecision(read: ManualWaitRead | "read_failed", docIds:
     case "unavailable":
       return { error: "manual_unavailable", reason: "unavailable", lookup };
     default:
-      // Settled with no state: the newest answer was already grounded in a document (#5958).
-      return null;
+      // r8 F13: a settled status with no state says nothing about the manual. The wait's read
+      // never settles a failed lookup under an earlier grounded answer, so this is a state the
+      // decision does not know: it pauses rather than answer without a manual that may be there.
+      return { error: "manual_unavailable", reason: "unknown", lookup };
   }
 }
 
 /**
  * Reads what the manual wait decides from: the project's current status, from this viewer's
  * history of this thread, and the subject with the outgoing question as the newest whole-machine
- * question. Throws on a failed read; the route treats that as `read_failed`. Where the lookup
+ * question. Throws on a failed read (every status read is strict, r8 F12); the route treats that
+ * as `read_failed`. Where the lookup
  * status is null, the project's own Sources decide (`manualWaitSourceStatus`): a linked manual
  * that is turned off, still being prepared or unreadable is not answered without.
  */
@@ -259,15 +301,18 @@ export async function readManualWait(input: {
     listSources(tenantId, notebookId),
     listTurns(tenantId, notebookId, TURN_WINDOW, { viewerUserId, threadId }),
   ]);
-  const status = (await notebookManualStatus(tenantId, notebookId, notebook, sources, turns)) ??
+  const status = (await notebookManualStatus(tenantId, notebookId, notebook, sources, turns, { forManualWait: true })) ??
     manualWaitSourceStatus(sources, {
       identityStatus: notebook.identityStatus,
       manufacturer: notebook.manufacturer,
       model: notebook.model,
       catalogNumber: notebook.catalogNumber,
     });
-  const machine = status ? subjectMachine(status, notebook) : null;
-  if (!status || !machine) return { status, scope: null };
+  if (!status) return { status, scope: null };
+  // A status whose machine can't be named can't be shown to be about another model: it is the
+  // project's machine, so the question waits (r8).
+  const machine = subjectMachine(status, notebook);
+  if (!machine) return { status, scope: "undecided" };
   const scope = await subjectReader({ tenantId, notebookId, viewerUserId, threadId, turns, machine }).wholeMachine(question);
   return { status, scope };
 }

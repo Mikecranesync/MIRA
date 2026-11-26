@@ -74,8 +74,15 @@ const ragMock = vi.hoisted(() => ({
   buildManualUserContent: vi.fn((q: string) => q),
 }));
 vi.mock("@/lib/manual-rag", () => ragMock);
+// Each test may answer (or fail) one statement the real status read runs; every other query has no rows.
+const tenantDb = vi.hoisted(() => ({ answers: [] as { sql: RegExp; answer: () => unknown }[] }));
 vi.mock("@/lib/tenant-context", () => ({
-  withTenantContext: vi.fn(async (_t: string, fn: (c: unknown) => unknown) => fn({ query: vi.fn(async () => ({ rows: [] })) })),
+  withTenantContext: vi.fn(async (_t: string, fn: (c: unknown) => unknown) => fn({
+    query: vi.fn(async (sql: string) => {
+      const hit = tenantDb.answers.find((a) => a.sql.test(sql));
+      return hit ? hit.answer() : { rows: [] };
+    }),
+  })),
 }));
 vi.mock("@/lib/db", () => ({
   default: {
@@ -159,6 +166,7 @@ beforeEach(() => {
   acqMock.startManualAcquisition.mockResolvedValue(false);
   acqMock.readAcquisition.mockResolvedValue(null);
   acqMock.currentManualSearchStatus.mockResolvedValue(null);
+  tenantDb.answers = [];
   benchStore.turnsAskedUnderComponent.mockImplementation(async () => new Set<string>());
   vi.stubGlobal("fetch", vi.fn(async () => providerStream("Acceleration time is P01.01.")));
 });
@@ -302,12 +310,108 @@ describe("the route refuses a manual question it cannot answer yet", () => {
   });
 });
 
+describe("questions that mention the manual without an article wait (r8 F11)", () => {
+  it.each([
+    "Which manual covers the acceleration time for the GS10?",
+    "Do you have manuals for the GS10?",
+    // A safety word that is not a safety, energized-work or bypass stop does not exempt it.
+    "What does the manual say about the bypass contactor on the GS10?",
+  ])("%s: 409 while the lookup runs", async (message) => {
+    acqMock.currentManualSearchStatus.mockResolvedValue(status({ running: true }));
+    const res = await chat({ message });
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({ error: "manual_not_ready", reason: "running" });
+    expectRefusedCleanly();
+  });
+
+  it("control: the machine's manual mode is not a manual ask, and is answered", async () => {
+    acqMock.currentManualSearchStatus.mockResolvedValue(status({ running: true }));
+    const res = await chat({ message: "How do I switch the GS10 to manual mode?" });
+    expect(res.status).toBe(200);
+    await res.text();
+    expect(acqMock.currentManualSearchStatus).not.toHaveBeenCalled();
+  });
+});
+
+// r8 F12/F13: the wait reads the project's status in its own mode, through the real status read.
+// A failed read of the lookup's record pauses the question, and an earlier answer from a document
+// does not settle a failed lookup into "nothing to wait for". The notebook detail read keeps both.
+describe("the wait's status read fails closed (r8 F12, F13)", () => {
+  const GS10_KEY = "AUTOMATIONDIRECT|GS10|";
+  const FAILED = {
+    key: GS10_KEY, state: "download_rejected", started_at: "2026-11-26T10:00:00.000Z", finished_at: null,
+    candidate_host: "www.automationdirect.com", match_state: null, oem_request_url: null,
+    candidate_url: "https://www.automationdirect.com/gs10.pdf", download_reason: "wrong_content_type",
+  };
+  const COMPLETE = { key: GS10_KEY, state: "complete", started_at: "2026-11-26T10:00:00.000Z", finished_at: null, doc_id: DOC_READY, candidate_host: null, match_state: null, oem_request_url: null };
+  const RECORD_READ = /SELECT manual_acquisition FROM equipment_notebooks/;
+  const GROUNDED = { id: "t0", question: "What is P09.03 on the GS10?", evidence: [], answerStatus: "answered", basis: "oem_documentation" };
+  const record = (rec: unknown) => ({ sql: RECORD_READ, answer: () => ({ rows: [{ manual_acquisition: rec }] }) });
+  const fails = (sql: RegExp, code?: string) => ({ sql, answer: () => { throw Object.assign(new Error("connection reset"), code ? { code } : {}); } });
+
+  beforeEach(async () => {
+    const real = await vi.importActual<typeof import("@/capabilities/notebook-manual-acquisition")>("@/capabilities/notebook-manual-acquisition");
+    acqMock.currentManualSearchStatus.mockImplementation(real.currentManualSearchStatus as never);
+  });
+
+  it("a failed read of the lookup's record pauses: 409 manual_unavailable unknown", async () => {
+    tenantDb.answers = [fails(RECORD_READ)];
+    const res = await chat({});
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: "manual_unavailable", reason: "unknown", lookup: null });
+    expectRefusedCleanly();
+  });
+
+  it("a failed check of a finished lookup against the Sources pauses too: 409 unknown", async () => {
+    tenantDb.answers = [record(COMPLETE), fails(/FROM equipment_notebook_sources/)];
+    const res = await chat({});
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: "manual_unavailable", reason: "unknown", lookup: null });
+    expectRefusedCleanly();
+  });
+
+  it.each([
+    ["no lookup recorded", () => ({ sql: RECORD_READ, answer: () => ({ rows: [] }) })],
+    ["the column before migration 100", () => fails(RECORD_READ, "42703")],
+  ])("control: %s is answered (nothing to wait for)", async (_name, answer) => {
+    tenantDb.answers = [answer()];
+    const res = await chat({});
+    expect(res.status).toBe(200);
+    await res.text();
+    expect(domainMock.abandonNotebookTurnRequest).not.toHaveBeenCalled();
+  });
+
+  it("an earlier answer from a document does not hide a failed lookup: 409 manual_unavailable", async () => {
+    tenantDb.answers = [record(FAILED)];
+    domainMock.listTurns.mockResolvedValue([GROUNDED]);
+    const res = await chat({});
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({ error: "manual_unavailable", reason: "unavailable", lookup: { model: "GS10", running: false, sourceState: "unavailable" } });
+    expectRefusedCleanly();
+  });
+
+  it("control: the same failed lookup with no earlier answer pauses the same way", async () => {
+    tenantDb.answers = [record(FAILED)];
+    const res = await chat({});
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({ error: "manual_unavailable", reason: "unavailable" });
+  });
+});
+
 describe("the outgoing question's subject decides (r7 F10)", () => {
   it("a question that names another exact model is answered while the project's lookup runs", async () => {
     acqMock.currentManualSearchStatus.mockResolvedValue(status({ running: true }));
     const res = await chat({ message: "What page of the manual shows the acceleration time for the PowerFlex 525?" });
     expect(res.status).toBe(200);
     await res.text();
+  });
+
+  it("a status whose machine can't be named is the project's machine: 409 (never answered without it)", async () => {
+    acqMock.currentManualSearchStatus.mockResolvedValue(status({ running: true, model: "" }));
+    domainMock.getNotebook.mockResolvedValue({ ...GS10, model: null });
+    const res = await chat({ message: "What page of the manual shows the acceleration time?" });
+    expect(res.status).toBe(409);
+    expectRefusedCleanly();
   });
 
   it("control: after a look-alike question, a question that names the project's model waits", async () => {
@@ -322,6 +426,13 @@ describe("questions and turns that keep their own path never read the manual's s
   it.each([
     ["an ordinary question", { message: ORDINARY }],
     ["a safety report", { message: "Smoke is coming out of the drive, what does the manual say?" }],
+    // The route's own stops decide these (r8 F11): the energized-work stop, the safety stop (a
+    // lockout ask, and the energized-hazard directive), and the bypass stop.
+    ["an energized-work ask", { message: "How do I swap the fan on the GS10 while it's powered? What does the manual say?" }],
+    ["a lockout ask", { message: "How do I lock out the GS10 before opening it, per the manual?" }],
+    ["an energized-hazard ask", { message: "Can I measure the DC bus on the GS10 while it's live, per the manual?" }],
+    ["a bypass ask", { message: "The manual says to bypass the guard on the GS10, is that safe?" }],
+    ["an interlock bypass ask", { message: "Can I jumper out the safety interlock on the GS10? What does the manual say?" }],
     ["a photo", { visualEvidence: { fileId: PHOTO, capturedAt: "2026-11-26T10:00:00.000Z" } }],
     ["the guided dead end", { mode: "general", sourceDocIds: [], guidedEscalation: { sessionId: "88888888-8888-4888-8888-888888888888" } }],
   ])("%s", async (_name, body) => {

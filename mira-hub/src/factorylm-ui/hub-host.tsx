@@ -96,6 +96,7 @@ import {
   isManualWaitCode,
   manualHoldAfterRefusal,
   resendBodyFor,
+  manualResendPause,
   sendsManualWait,
   heldManualRecovery,
   MANUAL_WAIT_BOUND_MS,
@@ -1061,6 +1062,10 @@ export function HubShellHost() {
       // Nothing was answered or saved, so nothing from the stream is kept, and the refused body is
       // never sent again: the question is saved (its draft too, into an empty composer) and every
       // resend is rebuilt from the project as it is then.
+      // The target the question was asked about: a refusal keeps it, so no resend moves it (r8 F14).
+      const askedScope: ScopeField = outBody.componentSelection ?? {
+        threadId: outBody.threadId, componentId: null, selectionVersion: null,
+      };
       if (isManualWaitCode(rejectionCode)) {
         setLive((cur) => (cur && cur.id === id ? null : cur));
         dropOutgoing(outgoingId);
@@ -1073,16 +1078,14 @@ export function HubShellHost() {
         dispatch({
           type: "recover-send", threadId, restoreDraft: true,
           recovery: {
-            body: outBody, composition, question, recoveryId, manualRefused: rejectionCode,
+            body: outBody, composition, question, recoveryId, manualRefused: rejectionCode, refusedScope: askedScope,
             error: waits ? null : errorMessageFor(rejectionCode, 409), draftRevision: retry?.draftRevision,
           },
         });
         if (waits) onManualRefusalRef.current(sel, threadId, recoveryId);
         return;
       }
-      const refusedScope = scopeRefused ? outBody.componentSelection ?? {
-        threadId: outBody.threadId, componentId: null, selectionVersion: null,
-      } : undefined;
+      const refusedScope = scopeRefused ? askedScope : undefined;
       const interruption = rejectionStatus === undefined && stop ? stop.carry(caught) : caught;
       if (rejectionStatus !== 401 && explicitStops.current.has(ctrl)) {
         settleExplicitStop(stoppedStreamResult(interruption));
@@ -1187,9 +1190,11 @@ export function HubShellHost() {
     if (!held) return;
     const body = resendBodyFor(held, sel, now);
     if (!body) { pauseManualHold(hold, errorMessageFor(held.manualRefused ?? "manual_not_ready", 409)); return; }
-    const outcome = await send(body, held.question, sel, held, undefined, { automatic: true });
-    // A send that could not start (the checklist is not read yet) leaves the question saved.
-    if (outcome === "deferred") pauseManualHold(hold, "The question is saved. Retry when the checklist is ready.");
+    // Bound to the target it was asked about (r8 F14): a component picked during the wait means
+    // nothing is posted, and the saved question goes through the target review instead.
+    const outcome = await send(body, held.question, sel, held, held.refusedScope, { automatic: true });
+    // A send that could not start leaves the question saved, and the banner says why.
+    if (outcome === "deferred") pauseManualHold(hold, manualResendPause(held.refusedScope, benchScopesRef.current.get(hold.key)));
   }, [loadDetail, send, pauseManualHold, setManualHold]);
 
   const onManualRefusal = useCallback((sel: HubSelection, threadId: string, recoveryId: string) => {
@@ -1892,7 +1897,7 @@ export function HubShellHost() {
   // #5746: a refused question waiting for the manual reads as busy (Stop pauses it); a paused one
   // offers Send without the manual while its saved question is the banner and still the draft.
   const pausedForManual = failedBody?.manualRefused !== undefined && recoveryIsVisible && !waitingForManual &&
-    draftRecovery === failedBody;
+    draftRecovery === failedBody && retryCheck?.kind === "retry";
   const hooks: HostHooks = {
     onSend,
     onComposerSend,

@@ -407,14 +407,27 @@ const GENERAL_QUESTION = "What is the rated current?";
 // #5746 round 5 F6: another session starts a newer lookup just before the Hub's poll budget for
 // the first one runs out.
 const NEWER_STARTED_AT = "2026-11-21T12:05:00.000Z";
-for (const mode of ["return", "return-lost", "cold", "controls", "newer-lookup"] as const) {
+// #5746 round 8 F14: a component picked while the question waits. The one resend is bound to the
+// whole machine it was asked about, so nothing is posted; the saved question goes through the
+// target review, and the technician's Send then asks about the picked component.
+const PICKED_STATE: BenchState = {
+  ...COMPONENT_STATE,
+  selection: { ...COMPONENT_STATE.selection!, version: COMPONENT_VERSION + 2 },
+  selectionVersion: COMPONENT_VERSION + 2,
+};
+const PICK_REVIEW = `This question was asked about the whole machine. The question target is now ${COMPONENT_LABEL}. Check the target, then press Send to ask about ${COMPONENT_LABEL}.`;
+for (const mode of ["return", "return-lost", "cold", "controls", "newer-lookup", "pick-during-wait"] as const) {
   const title = mode === "controls"
     ? "after a component answer, a component question and a question that needs no manual are sent at once"
     : mode === "newer-lookup"
       ? "after a component answer, a whole-machine manual question waits for a newer lookup started as the first one times out"
-      : `after a component answer, a whole-machine manual question waits in the ${mode} case`;
+      : mode === "pick-during-wait"
+        ? "a component picked while a whole-machine manual question waits: nothing is asked until the target is reviewed"
+        : `after a component answer, a whole-machine manual question waits in the ${mode} case`;
   test(title, async ({ page, context, baseURL }) => {
     const newer = mode === "newer-lookup";
+    const pick = mode === "pick-during-wait";
+    let picked = false;
     const cold = mode === "cold" || newer;
     await installSessionCookie(context, baseURL, PORT, {
       uid: "e2e-manual-handoff", tid: TENANT, status: "trial", trialExpiresAt: new Date(Date.now() + 86_400_000).toISOString(),
@@ -446,12 +459,18 @@ for (const mode of ["return", "return-lost", "cold", "controls", "newer-lookup"]
       if (p === `${nbPath}/components/selection` && method === "PUT") {
         const body = request.postDataJSON();
         selectionWrites.push(body);
+        if (pick && selectionWrites.length === 2) {
+          // The pick made during the wait.
+          expect(body).toMatchObject({ threadId: THREAD, componentId: COMPONENT_ID });
+          picked = true;
+          return route.fulfill(json({ status: "selected", selection: PICKED_STATE.selection }));
+        }
         expect(body).toMatchObject({ threadId: THREAD, componentId: null });
         componentSelected = false;
         return route.fulfill(json({ status: "cleared", selection: null }));
       }
       if (p === `${nbPath}/components`) {
-        return route.fulfill(json(componentSelected ? COMPONENT_STATE : {
+        return route.fulfill(json(picked ? PICKED_STATE : componentSelected ? COMPONENT_STATE : {
           ...COMPONENT_STATE, selection: null, selectionVersion: COMPONENT_VERSION + 1,
         }));
       }
@@ -587,6 +606,33 @@ for (const mode of ["return", "return-lost", "cold", "controls", "newer-lookup"]
       await expect(page.getByRole("button", { name: "Send without the manual", exact: true })).toBeVisible();
       await page.waitForTimeout(3_000);
       expect(refused).toHaveLength(2);
+      return;
+    }
+    if (pick) {
+      // The checklist is behind the More menu once the whole machine is chosen again.
+      await page.getByTestId("notebook-more").click();
+      await page.getByTestId("notebook-more-item-part").click();
+      await page.getByTestId("bench-components-panel").getByTestId(`bench-component-${COMPONENT_ID}`)
+        .getByRole("button", { name: "Ask about this", exact: true }).click();
+      await expect.poll(() => selectionWrites.length).toBe(2);
+      // Shown in the open checklist and beside the composer.
+      await expect(page.getByText(`Asking about ${COMPONENT_LABEL}`, { exact: true }).first()).toBeVisible();
+      ready = true;
+      // The wait's next read finds the manual ready. Its one resend was asked about the whole
+      // machine, and the target is now the component: nothing is posted, the review is shown.
+      await expect(page.getByText(PICK_REVIEW, { exact: true })).toBeVisible({ timeout: 20_000 });
+      await page.waitForTimeout(3_000);
+      expect(chatBodies.filter(body => body.message === WHOLE_QUESTION)).toEqual([]);
+      expect(refused).toHaveLength(1);
+      await expect(composer).toHaveValue(WHOLE_QUESTION);
+      // Not offered under the review: it would do nothing.
+      await expect(page.getByRole("button", { name: "Send without the manual", exact: true })).toHaveCount(0);
+      // The technician closes the checklist, and Send asks about the component the review names.
+      await page.getByTestId("bench-components-panel").getByRole("button", { name: "Close", exact: true }).click();
+      await page.getByRole("button", { name: "Send", exact: true }).click();
+      await expect.poll(() => chatBodies.filter(body => body.message === WHOLE_QUESTION).length, { timeout: 8_000 }).toBe(1);
+      expect(chatBodies.at(-1)).toMatchObject({ message: WHOLE_QUESTION, wait: "1", componentSelection: { componentId: COMPONENT_ID } });
+      expect(refused).toHaveLength(1);
       return;
     }
     ready = true;

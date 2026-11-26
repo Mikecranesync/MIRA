@@ -1,13 +1,13 @@
 // #5746 (option A): the chat route decides whether a manual question can be answered now.
-// These cases pin the two pure halves: which questions ask for the manual (r7 F11), and what the
-// route does for each state of the project's manual.
+// These cases pin the two pure halves: which questions ask for the manual (r7 F11, r8 F11), and
+// what the route does for each state of the project's manual (r8 F13).
 //
 // Run: cd mira-hub && npx vitest run src/capabilities/__tests__/manual-wait.test.ts
 import { describe, expect, it } from "vitest";
-import { manualWaitDecision, waitsForManual, type ManualWaitRead } from "@/capabilities/send-wait-subject";
+import { MANUAL_MACHINE_WORDS, manualWaitDecision, waitsForManual, type ManualWaitRead } from "@/capabilities/send-wait-subject";
 import { manualWaitSourceStatus } from "@/capabilities/notebook-manual-acquisition";
 
-describe("waitsForManual: explicit manual asks only", () => {
+describe("waitsForManual: any mention of the manual, except the machine's manual parts and modes", () => {
   it.each([
     // r7 F11, the exact question the review used.
     "What page of the manual shows the acceleration settings for the GS11N-20P2?",
@@ -23,6 +23,24 @@ describe("waitsForManual: explicit manual asks only", () => {
     "Do you have the GS11N-20P2 manual?",
     "What's on manual page 42?",
     "The manual's wiring table, please",
+    // A possessive is the document even after "in": not the mode.
+    "Is the jog speed listed in manual's parameter table?",
+    // r8 F11: no article before "manual".
+    "Which manual covers the GS11N-20P2 acceleration settings?",
+    "Do you have manuals for the GS11N-20P2?",
+    "According to manual, what is P01.01?",
+    "Check manual for the P09.03 default",
+    "Refer to manual section 4",
+    "Is there a manual?",
+    "manual says what for the carrier frequency",
+    // A manual part or mode named beside the document still waits on the document.
+    "Which section of the manual covers manual mode?",
+    "What does the manual say about the manual reset?",
+    // Safety words do not make a question about the manual stop asking for it: the chat route's
+    // own safety, energized-work and bypass stops decide which questions keep their own path.
+    "What does the manual say about the bypass contactor?",
+    "Is the live terminal voltage in the manual?",
+    "Where does the manual show the guard interlock wiring?",
   ])("waits: %s", (question) => {
     expect(waitsForManual(question)).toBe(true);
   });
@@ -31,26 +49,57 @@ describe("waitsForManual: explicit manual asks only", () => {
     // Ordinary questions do not wait.
     "What is the nominal voltage?",
     "What are the acceleration settings for the GS11N-20P2?",
-    // "Figure out" and a bare "table" are not manual asks.
+    // "Figure out", "manually" and a bare "table" are not the manual.
     "Help me figure out why the drive trips on start",
     "Can you figure out the right acceleration time?",
     "Show me the parameter table for the GS10",
     "What page shows the acceleration settings?",
-    // "manual" as an adjective, or the manual mode.
+    "Can I reset it manually?",
+    // "manual" as the machine's part or mode.
     "Is there a manual reset on this drive?",
     "How do I switch the conveyor to manual mode?",
     "Can I run it in manual?",
     "Where is the manual override on the GS10?",
+    "Switch the conveyor to manual",
+    "Set the drive back to manual before you jog it",
+    "Is the selector on manual?",
+    "Go from auto to manual on the HMI",
+    "It runs fine from manual but not from auto",
+    "Is the valve manual or automatic?",
+    "Does it support auto and manual?",
+    "Put the HOA in hand/manual",
+    "The switch reads manual/auto",
+    "Turn the selector to auto-manual",
   ])("does not wait: %s", (question) => {
     expect(waitsForManual(question)).toBe(false);
   });
 
+  // Every word that makes "manual" the machine's part or mode is tested both ways: on its own it
+  // does not wait, and beside the document it does. A miss answers without the manual.
+  it.each(MANUAL_MACHINE_WORDS.map((word) => [word]))("the manual %s: a part or mode, the document beside it still waits", (word) => {
+    expect(waitsForManual(`Where is the manual ${word} on the GS10?`)).toBe(false);
+    expect(waitsForManual(`What does the manual say about the manual ${word}?`)).toBe(true);
+    expect(waitsForManual(`Is the manual ${word} covered in the GS10 manual?`)).toBe(true);
+  });
+
   it.each([
-    "According to the manual, can I work on the energized 480V panel?",
-    "The manual says to bypass the guard, is that safe?",
     "Smoke is coming out of the drive, what does the manual say?",
-  ])("safety language keeps its own path: %s", (question) => {
+    "The GS10 is sparking, what does the manual say to do?",
+    "There's a burning smell from the manual starter cabinet, check the manual",
+    "I got shocked touching the drive, what does the manual say?",
+    "Someone was injured at the press, what does the manual say?",
+    "Fire in the panel, what does the manual say?",
+  ])("a hazard happening now is answered at once: %s", (question) => {
     expect(waitsForManual(question)).toBe(false);
+  });
+
+  it("control: a drive's fire mode is not a fire, so asking the manual about it waits", () => {
+    expect(waitsForManual("What does the manual say about fire mode?")).toBe(true);
+  });
+
+  it("an entry or a setting in the manual is the document (r8 F11)", () => {
+    expect(waitsForManual("What is the manual entry for P09.03?")).toBe(true);
+    expect(waitsForManual("What's the manual setting for P01.01?")).toBe(true);
   });
 });
 
@@ -95,17 +144,22 @@ describe("manualWaitDecision: one answer per state", () => {
     expect(manualWaitDecision("read_failed", ["doc-1"])).toEqual({ error: "manual_unavailable", reason: "unknown", lookup: null });
   });
 
-  it("settled quietly under a grounded answer (#5958): answers", () => {
-    expect(manualWaitDecision(read({ ...base, running: false }), [])).toBeNull();
+  // r8 F13: a settled status with no state says nothing about the manual (the detail read settles
+  // a failed lookup quietly under a grounded answer, #5958). It is not a usable manual: it pauses.
+  it("settled with no state: unavailable, unknown, never an answer without the manual", () => {
+    expect(manualWaitDecision(read({ ...base, running: false }), [])).toEqual({
+      error: "manual_unavailable", reason: "unknown", lookup: { ...base, running: false },
+    });
   });
 
-  it.each(["other", "out_of_reach"] as const)("the question is about another model (%s): answers, whatever the state", (scope) => {
-    expect(manualWaitDecision(read({ ...base, running: true }, scope), [])).toBeNull();
-    expect(manualWaitDecision(read({ ...base, running: false, sourceState: "unavailable" }, scope), [])).toBeNull();
+  it("the question is about another model: answers, whatever the state", () => {
+    expect(manualWaitDecision(read({ ...base, running: true }, "other"), [])).toBeNull();
+    expect(manualWaitDecision(read({ ...base, running: false, sourceState: "unavailable" }, "other"), [])).toBeNull();
   });
 
-  it("control: an undecided subject is the project's machine and waits", () => {
-    expect(manualWaitDecision(read({ ...base, running: true }, "undecided"), [])?.error).toBe("manual_not_ready");
+  it.each(["undecided", "out_of_reach"] as const)("a subject that is not another model (%s) is the project's machine and waits", (scope) => {
+    expect(manualWaitDecision(read({ ...base, running: true }, scope), [])?.error).toBe("manual_not_ready");
+    expect(manualWaitDecision(read({ ...base, running: false, sourceState: "unavailable" }, scope), [])?.error).toBe("manual_unavailable");
   });
 });
 

@@ -36,6 +36,7 @@ import {
   sendWaitLookup,
   isManualWaitCode,
   manualHoldAfterRefusal,
+  manualResendPause,
   manualResendBody,
   resendBodyFor,
   sendsManualWait,
@@ -792,6 +793,23 @@ describe("a refused manual question", () => {
     expect(errorMessageFor("manual_not_ready", 409)).toBe("This project's manual isn't ready yet, so MIRA didn't answer from it.");
     expect(errorMessageFor("manual_unavailable", 409)).toBe("This project's manual isn't available, so MIRA didn't answer from it.");
   });
+
+  // r8 F14: the automatic resend is bound to the target the question was asked about. When it
+  // cannot start, the banner says whether the target moved or the checklist is not read yet.
+  describe("manualResendPause", () => {
+    const whole = { threadId: "t", componentId: null, selectionVersion: null };
+    const rider = (componentId: string | null) => ({ notebookId: "nb", threadId: "t", componentId, selectionVersion: 2 });
+    it("a component picked during the wait: the target changed, nothing was asked", () => {
+      expect(manualResendPause(whole, rider("c1"))).toBe("The question target changed while the manual was being prepared, so it wasn't asked again.");
+      expect(manualResendPause({ ...whole, componentId: "c1" }, rider(null))).toBe("The question target changed while the manual was being prepared, so it wasn't asked again.");
+    });
+    it("control: the same target, or a checklist not read yet, is the checklist message", () => {
+      expect(manualResendPause(whole, rider(null))).toBe("The question is saved. Retry when the checklist is ready.");
+      expect(manualResendPause(whole, undefined)).toBe("The question is saved. Retry when the checklist is ready.");
+      expect(manualResendPause(whole, "unavailable")).toBe("The question is saved. Retry when the checklist is ready.");
+      expect(manualResendPause(undefined, rider("c1"))).toBe("The question is saved. Retry when the checklist is ready.");
+    });
+  });
 });
 
 // #5746 r7 F9: every resend of a question the route refused for the manual goes with the project
@@ -959,6 +977,10 @@ describe("every way the Hub sends a chat question", () => {
     expect(at).toBeLessThan(send.indexOf("retainedStreamInterruption(", caught));
     const branch = send.slice(at, send.indexOf("return;", at));
     expect(branch).toContain("manualRefused: rejectionCode");
+    // r8 F14: it keeps the target it was asked about, like a target refusal.
+    expect(branch).toContain("refusedScope: askedScope");
+    expect(send).toContain("const askedScope: ScopeField = outBody.componentSelection ?? {");
+    expect(send).toContain("const refusedScope = scopeRefused ? askedScope : undefined;");
     expect(branch).toContain('type: "recover-send", threadId, restoreDraft: true');
     expect(branch).not.toContain("set-draft");
     expect(branch).not.toContain("retainExchange");
@@ -973,7 +995,9 @@ describe("every way the Hub sends a chat question", () => {
   it("the one automatic send is the only one marked automatic, after the project is read again", () => {
     expect(HOST.match(/automatic: true \}/g)).toHaveLength(1);
     const wait = callback("waitThenAskAgain");
-    expect(wait).toContain("send(body, held.question, sel, held, undefined, { automatic: true })");
+    // r8 F14: bound to the refused target, so a component picked during the wait posts nothing.
+    expect(wait).toContain("send(body, held.question, sel, held, held.refusedScope, { automatic: true })");
+    expect(wait).toContain("pauseManualHold(hold, manualResendPause(held.refusedScope, benchScopesRef.current.get(hold.key)))");
     expect(wait.indexOf("loadDetail(sel)")).toBeLessThan(wait.indexOf("{ automatic: true }"));
   });
 
@@ -986,7 +1010,8 @@ describe("every way the Hub sends a chat question", () => {
 
   it("offers Send without the manual only while the paused question is the banner and still the draft", () => {
     expect(hooksObject).toContain("...(pausedForManual && !busy ? { onSendWithoutManual } : {})");
-    expect(HOST).toContain("const pausedForManual = failedBody?.manualRefused !== undefined && recoveryIsVisible && !waitingForManual &&\n    draftRecovery === failedBody;");
+    // r8 F14: not while the target is under review (that tap would do nothing).
+    expect(HOST).toContain("const pausedForManual = failedBody?.manualRefused !== undefined && recoveryIsVisible && !waitingForManual &&\n    draftRecovery === failedBody && retryCheck?.kind === \"retry\";");
   });
 
   it("while a question waits for the manual, no other saved question can be sent and it is not offered again", () => {
