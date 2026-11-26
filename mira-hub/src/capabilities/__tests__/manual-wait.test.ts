@@ -41,6 +41,18 @@ describe("waitsForManual: any mention of the manual, except the machine's manual
     "What does the manual say about the bypass contactor?",
     "Is the live terminal voltage in the manual?",
     "Where does the manual show the guard interlock wiring?",
+    // A preposition or "to" before a bare "manual" is the document unless a mode is named (r8).
+    "Based on manual, what is the accel time?",
+    "Which page in manual shows P09.03?",
+    "Look in manual for the default",
+    "From manual, what is P01.01?",
+    "Set the drive according to manual",
+    "Refer back to manual for the wiring",
+    "Is this covered in manual?",
+    "Is P09.03 in manual?",
+    "What's in manual for auto mode?",
+    "Go to manual for the wiring diagram",
+    "Check the manual/datasheet for P01.01",
   ])("waits: %s", (question) => {
     expect(waitsForManual(question)).toBe(true);
   });
@@ -70,6 +82,9 @@ describe("waitsForManual: any mention of the manual, except the machine's manual
     "Put the HOA in hand/manual",
     "The switch reads manual/auto",
     "Turn the selector to auto-manual",
+    "Put the HOA in manual",
+    "Switch it to manual and jog it",
+    "Is the selector in manual, or auto?",
   ])("does not wait: %s", (question) => {
     expect(waitsForManual(question)).toBe(false);
   });
@@ -82,19 +97,21 @@ describe("waitsForManual: any mention of the manual, except the machine's manual
     expect(waitsForManual(`Is the manual ${word} covered in the GS10 manual?`)).toBe(true);
   });
 
+  // No list of safety words here (r8): a hazard report or a safety topic that mentions the manual
+  // waits like any other manual question. The chat route's own safety, energized-work and bypass
+  // stops decide which questions keep their own path (pinned in the route's tests).
   it.each([
     "Smoke is coming out of the drive, what does the manual say?",
     "The GS10 is sparking, what does the manual say to do?",
-    "There's a burning smell from the manual starter cabinet, check the manual",
-    "I got shocked touching the drive, what does the manual say?",
-    "Someone was injured at the press, what does the manual say?",
-    "Fire in the panel, what does the manual say?",
-  ])("a hazard happening now is answered at once: %s", (question) => {
-    expect(waitsForManual(question)).toBe(false);
-  });
-
-  it("control: a drive's fire mode is not a fire, so asking the manual about it waits", () => {
-    expect(waitsForManual("What does the manual say about fire mode?")).toBe(true);
+    "According to the manual, can I work on the energized 480V panel?",
+    "What does the manual say about fire override?",
+    "What does the manual say about the smoke purge?",
+    "What does the manual say about the flame sensor?",
+    "What does the manual say about the spark arrestor?",
+    "What does the manual say about contact arcing?",
+    "What does the manual say about injury warnings?",
+  ])("a safety word does not stop the wait here: %s", (question) => {
+    expect(waitsForManual(question)).toBe(true);
   });
 
   it("an entry or a setting in the manual is the document (r8 F11)", () => {

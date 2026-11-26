@@ -10,7 +10,8 @@ const TENANT = "11111111-1111-4111-8111-111111111111";
 const THREAD = "manual-handoff";
 const LOOKUP = "Find me the manual for this drive.";
 const QUESTION = "According to the manual, what is the nominal bus voltage?";
-const SAFETY_QUESTION = "According to the manual, can I work on the energized 480V panel?";
+// One the route's own stops catch (the energized-hazard directive); the route test pins that.
+const SAFETY_QUESTION = "According to the manual, can I measure the DC bus while it's live?";
 const TITLE = "Exact GS10 fixture";
 const COMPONENT_ID = "33333333-3333-4333-8333-333333333333";
 const COMPONENT_DOC = "44444444-4444-4444-8444-444444444444";
@@ -71,7 +72,9 @@ type Status = {
 };
 type Refusal = { error: "manual_not_ready" | "manual_unavailable"; reason: string; lookup: Omit<Status, "message" | "manualUrl"> | null };
 const waitHeader = (request: Request) => request.headers()["x-mira-manual-wait"] ?? null;
-const asksForManual = (message: string) => /\bthe manual\b/i.test(message) && !/\benergized\b/i.test(message);
+// The fake mirrors the route for this spec's questions only: any mention of the manual waits, and
+// SAFETY_QUESTION is the one question here a route stop exempts.
+const asksForManual = (message: string) => /\bmanuals?\b/i.test(message) && message !== SAFETY_QUESTION;
 function manualWait(request: Request, sent: Record<string, unknown>, status: Status | null | "read_failed"): Refusal | null {
   const body = sent as { message?: string; visualEvidence?: unknown; guidedEscalation?: unknown; componentSelection?: { componentId?: string | null }; sourceDocIds?: string[] };
   const message = String(body.message ?? "");
@@ -93,11 +96,13 @@ const refusal = (held: Refusal, transport: "stream" | "json" = "stream") =>
   transport === "json" ? json(held, 409) : stream({ kind: "http_error", status: 409, body: held });
 const UNAVAILABLE = "This project's manual isn't available, so MIRA didn't answer from it.";
 
-for (const mode of ["preparing", "ready", "opening", "lookup-failed", "safety", "attached-safety", "component", "bench-unavailable"] as const) {
+for (const mode of ["preparing", "ready", "opening", "lookup-failed", "safety", "attached-safety", "component", "bench-unavailable", "lookup-failed-bench-unavailable"] as const) {
   test(`exact manual handoff in the ${mode} case`, async ({ page, context, baseURL }) => {
-    const lookupFails = mode === "lookup-failed";
+    // r8 F14: a refused question now keeps its target; with the checklist unavailable it is still
+    // the whole machine, so Send without the manual is still offered.
+    const lookupFails = mode === "lookup-failed" || mode === "lookup-failed-bench-unavailable";
     const component = mode === "component";
-    const benchUnavailable = mode === "bench-unavailable";
+    const benchUnavailable = mode === "bench-unavailable" || mode === "lookup-failed-bench-unavailable";
     const opening = mode === "opening" || lookupFails || component || benchUnavailable;
     const safety = mode === "safety";
     const attachedSafety = mode === "attached-safety";

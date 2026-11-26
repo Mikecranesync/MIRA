@@ -316,6 +316,12 @@ describe("questions that mention the manual without an article wait (r8 F11)", (
     "Do you have manuals for the GS10?",
     // A safety word that is not a safety, energized-work or bypass stop does not exempt it.
     "What does the manual say about the bypass contactor on the GS10?",
+    // Nor does a hazard report or an energized phrasing that none of the route's stops catch: the
+    // route's stops are the only exemption (r8, no second list of safety words).
+    "According to the manual, can I work on the energized 480V panel?",
+    "Smoke is coming out of the GS10, what does the manual say?",
+    // A preposition before "manual" is the document unless a mode is named.
+    "Based on manual, what is the acceleration time for the GS10?",
   ])("%s: 409 while the lookup runs", async (message) => {
     acqMock.currentManualSearchStatus.mockResolvedValue(status({ running: true }));
     const res = await chat({ message });
@@ -425,7 +431,6 @@ describe("the outgoing question's subject decides (r7 F10)", () => {
 describe("questions and turns that keep their own path never read the manual's status", () => {
   it.each([
     ["an ordinary question", { message: ORDINARY }],
-    ["a safety report", { message: "Smoke is coming out of the drive, what does the manual say?" }],
     // The route's own stops decide these (r8 F11): the energized-work stop, the safety stop (a
     // lockout ask, and the energized-hazard directive), and the bypass stop.
     ["an energized-work ask", { message: "How do I swap the fan on the GS10 while it's powered? What does the manual say?" }],
@@ -433,6 +438,8 @@ describe("questions and turns that keep their own path never read the manual's s
     ["an energized-hazard ask", { message: "Can I measure the DC bus on the GS10 while it's live, per the manual?" }],
     ["a bypass ask", { message: "The manual says to bypass the guard on the GS10, is that safe?" }],
     ["an interlock bypass ask", { message: "Can I jumper out the safety interlock on the GS10? What does the manual say?" }],
+    // The browser handoff spec's safety question (its fake exempts it as this route does).
+    ["the handoff spec's safety question", { message: "According to the manual, can I measure the DC bus while it's live?" }],
     ["a photo", { visualEvidence: { fileId: PHOTO, capturedAt: "2026-11-26T10:00:00.000Z" } }],
     ["the guided dead end", { mode: "general", sourceDocIds: [], guidedEscalation: { sessionId: "88888888-8888-4888-8888-888888888888" } }],
   ])("%s", async (_name, body) => {

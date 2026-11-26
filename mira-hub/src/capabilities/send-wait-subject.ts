@@ -189,38 +189,42 @@ export const MANUAL_MACHINE_WORDS: readonly string[] = [
 const MANUAL_WORD = /\bmanuals?\b/gi;
 /** "manual" followed by one of the machine's parts or modes. */
 const MACHINE_PART_AFTER = new RegExp(String.raw`^\s+(?:${MANUAL_MACHINE_WORDS.map((w) => w.replace(/-/g, "\\-")).join("|")})\b`, "i");
-/** "manual/auto", "manual-auto", "manual or automatic": one side of a mode selector. */
-const MODE_AFTER = /^(?:\s*\/|-(?:auto|automatic|hand|off|on|local|remote)\b|\s+(?:or|and|vs\.?|versus|to)\s+auto(?:matic)?\b)/i;
+/** The other side of a mode selector: "auto", "automatic", "hand", "off", "local", "remote". */
+const MODE_SIDE = String.raw`(?:auto|automatic|hand|off|on|local|remote)`;
+/** "manual/auto", "manual-off", "manual or automatic": one side of a mode selector. */
+const SELECTOR_AFTER = new RegExp(String.raw`^(?:\s*\/\s*${MODE_SIDE}\b|-${MODE_SIDE}\b|\s+(?:or|and|vs\.?|versus|to)\s+auto(?:matic)?\b)`, "i");
+/** "hand/manual", "auto-manual", "auto or manual", "from auto to manual". */
+const SELECTOR_BEFORE = new RegExp(String.raw`(?:\b${MODE_SIDE}\s*\/\s*|\b${MODE_SIDE}-|\bauto(?:matic)?\s+(?:or|and|vs\.?|versus|to)\s+)$`, "i");
 /**
- * The mode named before "manual": "in manual", "on manual", "from manual", "hand/manual",
- * "auto-manual", "auto or manual", and "to manual" after a verb that changes a mode ("switch the
- * conveyor to manual"). "According to manual" and "refer to manual" are the document.
+ * Words before "manual" that make it the document: "according to manual", "refer back to
+ * manual", "based on manual", "look in manual", "check manual", "covered in manual".
  */
-const MODE_BEFORE = /(?:\b(?:in|into|on|from)\s+|\/\s*|\b(?:auto|automatic|hand|off|on|local|remote)-|\bauto(?:matic)?\s+(?:or|and|vs\.?|versus|to)\s+|\b(?:switch\w*|set|sets|setting|put|puts|putting|change\w*|go|goes|going|went|turn\w*|flip\w*|move\w*|back|revert\w*|return\w*|toggle\w*|select\w*)\b(?:\s+[\w'-]+){0,3}?\s+to\s+)$/i;
+const DOCUMENT_BEFORE = /\b(?:according\s+to|refer\w*(?:\s+back)?\s+to|go\s+(?:back\s+)?to|as\s+per|per|based\s+on|see|check|consult|read|look(?:ed|ing|s)?\s+(?:in|into|at|through)|search(?:ed|ing)?(?:\s+(?:in|through))?|(?:covered|listed|shown|written|found|mentioned|described|documented|explained|printed|given|stated)\s+(?:in|on)|(?:page|section|chapter|table|figure)\s+(?:\d+\s+)?(?:in|of|on))\s+$/i;
+/** A verb that changes a mode, then "to manual" or "into manual": "switch the conveyor to manual". */
+const MODE_VERB_BEFORE = /\b(?:switch\w*|set|sets|setting|put|puts|putting|change\w*|go|goes|going|went|turn\w*|flip\w*|move\w*|revert\w*|return\w*|toggle\w*|select\w*|run|runs|running|ran|operate\w*|jog\w*|leave|left|keep|kept)\b(?:\s+[\w'-]+){0,3}?\s+(?:back\s+)?(?:to|into|in)\s+$/i;
+/** "in manual", "on manual", "from manual": a mode only with a selector named in the question. */
+const PREPOSITION_BEFORE = /\b(?:in|into|on|from)\s+$/i;
+const SELECTOR_CUE = /\b(?:auto|automatic|hand|hoa|h-o-a|selector|mode)\b/i;
+/** A mode ends its clause: "…to manual.", "…on manual?", "…to manual before you jog it". */
+const MODE_ENDS = /^\s*(?:$|[?.!;:)]|,?\s*(?:but|and|or|not|instead|yet|still|then|before|after|when|while|until|so|because|if|on\s+the\s+(?:hmi|panel|screen|selector|switch|pendant))\b)/i;
 /** "manual page 12", "manual section 4": a part of the manual named without an article. */
 const MANUAL_PART = /\bmanual\s+(?:page|pages|section|chapter|table|figure|fig\.?|pg\.?|p\.)\s*\d/i;
-/**
- * A report of a hazard happening now: smoke, fire (not a drive's "fire mode"), sparks, arcing,
- * burning, a shock or an injury. Such a question is answered at once, never held for a manual.
- * Safety topics a manual covers (a guard, an interlock, lockout, a bypass) are not on this list:
- * the chat route's own safety, energized-work and bypass stops decide those.
- */
-const HAZARD_NOW = /\b(?:smok(?:e|es|ed|ing|y)|fire(?!\s+mode)|flames?|burning|sparks?|sparking|arcing|shocked|electrocut\w*|injur(?:y|ies|ed))\b/i;
 
 /**
  * #5746 r7 F11, r8 F11: a question that mentions the manual waits for it. Each mention is read on
  * its own, and any one that is the document makes the question wait: "which manual covers…", "do
- * you have manuals for…", "according to the manual", "what page of the manual…", "manual page 4",
+ * you have manuals for…", "according to manual", "what page of the manual…", "manual page 4",
  * "the manual's wiring table". A mention is not the document only when it is the machine's part or
- * mode (MANUAL_MACHINE_WORDS, "in manual", "switch it to manual", "manual or auto"). "Manually",
- * "figure out" and a bare "table" are not the manual, and an ordinary question does not wait. Only
- * the word "manual" counts: "user guide", "handbook" or "documentation" do not.
+ * mode, and that needs a positive cue: a machine word after it (MANUAL_MACHINE_WORDS), a selector
+ * ("manual/auto", "auto or manual"), a verb that changes a mode ("switch the conveyor to manual"),
+ * or "in/on/from manual" in a question that names the selector or a mode. "Manually", "figure out"
+ * and a bare "table" are not the manual, and an ordinary question does not wait. Only the word
+ * "manual" counts: "user guide", "handbook" or "documentation" do not.
  *
- * A report of a hazard happening now (HAZARD_NOW) never waits. Otherwise the chat route's own
+ * This reads the question's words only, with no list of safety words of its own: the chat route's
  * safety, energized-work and bypass stops decide which questions keep their own path.
  */
 export function waitsForManual(question: string): boolean {
-  if (HAZARD_NOW.test(question)) return false;
   if (MANUAL_PART.test(question)) return true;
   for (const mention of question.matchAll(MANUAL_WORD)) {
     if (mention[0].length > "manual".length) return true; // "manuals" is always the document
@@ -228,7 +232,10 @@ export function waitsForManual(question: string): boolean {
     const before = question.slice(0, at);
     const after = question.slice(at + mention[0].length);
     if (/^['’]s\b/.test(after)) return true; // "the manual's wiring table"
-    if (MACHINE_PART_AFTER.test(after) || MODE_AFTER.test(after) || MODE_BEFORE.test(before)) continue;
+    if (DOCUMENT_BEFORE.test(before)) return true;
+    if (MACHINE_PART_AFTER.test(after) || SELECTOR_AFTER.test(after) || SELECTOR_BEFORE.test(before)) continue;
+    if (MODE_ENDS.test(after) && (MODE_VERB_BEFORE.test(before) ||
+      (PREPOSITION_BEFORE.test(before) && SELECTOR_CUE.test(question)))) continue;
     return true;
   }
   return false;
