@@ -3,22 +3,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { buildGroundedContext } from "../manual-rag";
-import type { ManualChunk } from "../manual-rag";
-
-function makeChunk(content: string, page: number, url = "test.pdf"): ManualChunk {
-  return {
-    chunkId: `c${page}`,
-    content,
-    manufacturer: "Test",
-    modelNumber: "T100",
-    title: "Test Manual",
-    sourceUrl: url,
-    sourcePage: page,
-    chunkIndex: null,
-    verified: false,
-    retrievalScope: "tenant" as const,
-  };
-}
+import { makeChunk } from "./test-fixtures";
 
 describe("followCrossReferences — see page N", () => {
   it("follows 'see page N' reference to include that page", () => {

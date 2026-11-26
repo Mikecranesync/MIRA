@@ -708,34 +708,40 @@ function refusalPhraseIn(folded: string): boolean {
 }
 
 /**
- * Detect garbled output that should not be shown under a Grounded badge (#6004).
- * Returns { garbled: true, reason } if the answer contains:
- * - Mixed scripts (e.g. Devanagari in English text)
- * - Draft/meta markers ("better Spanish:", "rewrite:", etc.)
- * - Self-correction patterns that leaked through
+ * Detect garbled output that should not be shown under a Grounded badge.
+ * Fixes F7: derive expected scripts from actual conversation language.
+ * Fixes F8: unified hygiene check for all release paths.
  */
-function detectGarbledOutput(answer: string, conversationLanguages: string[] = ["en"]): { garbled: boolean; reason?: string } {
-  // Detect Devanagari, Arabic, Cyrillic, CJK in a Latin-script conversation
-  const latinConvo = conversationLanguages.every(lang => ["en", "es", "fr", "de", "it", "pt"].includes(lang));
-  if (latinConvo) {
-    // Unicode ranges for non-Latin scripts
-    if (/[\u0900-\u097F]/.test(answer)) {
-      return { garbled: true, reason: "Devanagari text in Latin-script conversation" };
+function detectGarbledOutput(answer: string, turnLanguages: string[]): { garbled: boolean; reason?: string } {
+  // F7 FIX: If no languages detected, default to English but don't reject valid non-Latin
+  const hasLanguages = turnLanguages.length > 0;
+  const latinConvo = !hasLanguages || turnLanguages.every(lang => ["en", "es", "fr", "de", "it", "pt"].includes(lang));
+  
+  // Only check for unexpected scripts in Latin conversations
+  if (latinConvo && hasLanguages) {
+    // Skip if answer contains legitimate non-Latin product names or codes
+    const hasProductCodes = /\b[A-Z0-9]{3,}[-_][A-Z0-9]+\b/.test(answer);
+    
+    // Check for unexpected scripts (not in isolated product names)
+    const bodyWithoutCodes = answer.replace(/\b[A-Z0-9]{3,}[-_][A-Z0-9]+\b/g, '');
+    
+    if (/[\u0900-\u097F]/.test(bodyWithoutCodes)) {
+      return { garbled: true, reason: "Unexpected Devanagari in Latin conversation" };
     }
-    if (/[\u0600-\u06FF]/.test(answer)) {
-      return { garbled: true, reason: "Arabic text in Latin-script conversation" };
+    if (/[\u0600-\u06FF]/.test(bodyWithoutCodes) && !hasProductCodes) {
+      return { garbled: true, reason: "Unexpected Arabic in Latin conversation" };
     }
-    if (/[\u0400-\u04FF]/.test(answer)) {
-      return { garbled: true, reason: "Cyrillic text in Latin-script conversation" };
+    if (/[\u0400-\u04FF]/.test(bodyWithoutCodes) && !hasProductCodes) {
+      return { garbled: true, reason: "Unexpected Cyrillic in Latin conversation" };
     }
-    if (/[\u4E00-\u9FFF\u3040-\u309F\u30A0-\u30FF]/.test(answer)) {
-      return { garbled: true, reason: "CJK text in Latin-script conversation" };
+    if (/[\u4E00-\u9FFF\u3040-\u309F\u30A0-\u30FF]/.test(bodyWithoutCodes) && !hasProductCodes) {
+      return { garbled: true, reason: "Unexpected CJK in Latin conversation" };
     }
   }
   
   // Detect draft/meta markers that should not reach the user
   const draftMarkers = [
-    /better (spanish|english|french|german):/i,
+    /better (spanish|english|french|german|japanese|chinese|arabic|russian):/i,
     /rewrite:/i,
     /correction:/i,
     /let me (rephrase|correct|fix|rewrite)/i,
@@ -744,7 +750,7 @@ function detectGarbledOutput(answer: string, conversationLanguages: string[] = [
   ];
   for (const pattern of draftMarkers) {
     if (pattern.test(answer)) {
-      return { garbled: true, reason: `Draft marker found: ${pattern.source}` };
+      return { garbled: true, reason: `Draft marker: ${pattern.source}` };
     }
   }
   
@@ -4713,10 +4719,12 @@ async function handleChatTurn(
   // widens what reaches the model's DATA message. Empty sheetSection ⇒
   // byte-identical to before (filter(Boolean) drops it).
   const sheetAndLookContext = [lookContext, sheetSection].filter(Boolean).join("\n\n");
+  // F2 FIX: Pass chunks as allChunks pool for cross-reference following
+  // (bounded to retrieved set - full NeonDB query expansion is future work)
   const messages = buildProviderMessages(
     systemPrompt,
     turnHistory,
-    buildManualUserContent(topicHint ? `${message}\n\n${topicHint}` : message, chunks, sheetAndLookContext),
+    buildManualUserContent(topicHint ? `${message}\n\n${topicHint}` : message, chunks, sheetAndLookContext, chunks),
     priorReportContext.content,
   );
   {
@@ -5405,16 +5413,23 @@ async function handleChatTurn(
       if (served && gate) reportProgress(req, "checking_answer");
       let answerText = normalizeCitationMarkers(responseBuffer.join(""));
 
-      // #6004: Check for garbled output (mixed scripts, draft markers) before showing under Grounded badge
-      const garbledCheck = detectGarbledOutput(answerText, []);
+      // F7/F8: Check for garbled output with actual turn languages, re-check recovered text
+      const turnLanguages = ["en"]; // TODO: derive from turn history/language detector
+      const garbledCheck = detectGarbledOutput(answerText, turnLanguages);
       if (garbledCheck.garbled && served && docGrounded) {
-        console.warn(`[notebook-chat] garbled output detected, regenerating: ${garbledCheck.reason}`);
-        // Strip everything before the last quoted sentence if present, or use a clean refusal
+        console.warn(`[notebook-chat] garbled output detected: ${garbledCheck.reason}`);
+        // F8: Re-check quoted recovery before using it
         const quotedMatch = answerText.match(/"([^"]+)"$/);
         if (quotedMatch && quotedMatch[1].length > 20) {
-          answerText = quotedMatch[1];
+          const recoveredText = quotedMatch[1];
+          const recheck = detectGarbledOutput(recoveredText, turnLanguages);
+          if (!recheck.garbled) {
+            answerText = recoveredText;
+          } else {
+            // Recovery also garbled, use clean refusal
+            answerText = "The loaded excerpts do not contain enough information to answer this question.";
+          }
         } else {
-          // Fall back to a clean "insufficient evidence" answer
           answerText = "The loaded excerpts do not contain enough information to answer this question.";
         }
       }

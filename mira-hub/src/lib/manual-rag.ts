@@ -168,38 +168,112 @@ export function neutralizeReferenceText(text: string): string {
 }
 
 /**
- * Extract identifiers from question that might appear in table rows:
- * fault codes (F004, E001), parameters (P06.53, A123), and other codes.
+ * Extract identifiers and symptom terms from question that might appear in table rows.
+ * Fixes F4 (exact dotted parameters), F5 (symptom terms).
  */
-function extractQuestionTerms(question: string): Set<string> {
-  const terms = new Set<string>();
+function extractQuestionTerms(question: string): { exact: Set<string>; symptoms: Set<string> } {
+  const exact = new Set<string>();
+  const symptoms = new Set<string>();
   
   // Fault codes: F004, E001, A123, etc. (letter + 2-4 digits)
   for (const m of question.matchAll(/\b[A-Za-z]\d{2,4}\b/g)) {
-    terms.add(m[0].toUpperCase());
+    exact.add(m[0].toUpperCase());
   }
   
-  // Parameters: P06.53, A123, b001, etc. (letter + digits, optional dot + digits)
-  for (const m of question.matchAll(/\b[A-Za-z]\d{1,3}(?:\.\d{1,3})?\b/g)) {
-    terms.add(m[0].toUpperCase());
+  // Parameters with dots: P06.53, A12.34 (complete identifiers)
+  for (const m of question.matchAll(/\b[A-Za-z]\d{1,3}\.\d{1,3}\b/g)) {
+    exact.add(m[0].toUpperCase());
+  }
+  
+  // Parameters without dots: P042, b001
+  for (const m of question.matchAll(/\b[A-Za-z]\d{1,3}\b/g)) {
+    const upper = m[0].toUpperCase();
+    // Don't double-add if already captured as dotted param
+    if (!Array.from(exact).some(e => e.startsWith(upper))) {
+      exact.add(upper);
+    }
   }
   
   // Terminal numbers: terminal 07, T12, etc.
   for (const m of question.matchAll(/\b(?:terminal|T)\s*(\d{1,3})\b/gi)) {
-    terms.add(m[1].padStart(2, '0'));
+    exact.add(m[1].padStart(2, '0'));
   }
   
-  return terms;
+  // Symptom terms (F5): common fault/status terms that appear in tables
+  const symptomPatterns = [
+    /\b(overcurrent|overvoltage|undervoltage|overload|overtemp|overheat)\b/gi,
+    /\b(ground\s*fault|phase\s*loss|short\s*circuit)\b/gi,
+    /\b(yellow|red|green|amber|orange|blue|flashing|solid|blinking)\b/gi,
+    /\b(error|fault|alarm|warning|trip)\b/gi,
+  ];
+  
+  for (const pattern of symptomPatterns) {
+    for (const m of question.matchAll(pattern)) {
+      symptoms.add(m[0].toLowerCase());
+    }
+  }
+  
+  return { exact, symptoms };
+}
+
+/**
+ * Detect table boundaries (separators or semantic headings).
+ * Returns array of [start_line, end_line, header_start] for each table.
+ */
+function detectTableBoundaries(lines: string[]): Array<[number, number, number]> {
+  const tables: Array<[number, number, number]> = [];
+  let i = 0;
+  
+  while (i < lines.length) {
+    // Look for table header or separator
+    if (PIPE_TABLE_ROW_RE.test(lines[i])) {
+      const headerStart = i;
+      let start = i;
+      
+      // Find separator if present
+      if (i + 1 < lines.length && /^\s*\|[\s\-:]+(\|[\s\-:]+)+\|?\s*$/.test(lines[i + 1])) {
+        start = i + 1;
+        i += 2;
+      } else {
+        i += 1;
+      }
+      
+      // Scan for end of table (first non-table line or semantic heading)
+      let end = i;
+      while (i < lines.length) {
+        const line = lines[i];
+        if (PIPE_TABLE_ROW_RE.test(line)) {
+          end = i + 1;
+          i++;
+        } else if (line.trim() === '') {
+          // Blank line might separate tables
+          if (i + 1 < lines.length && /^#{1,3}\s+\w+/i.test(lines[i + 1])) {
+            // Next line is heading - table ends here
+            break;
+          }
+          i++;
+        } else {
+          // Non-table content
+          break;
+        }
+      }
+      
+      if (end > start) {
+        tables.push([start, end, headerStart]);
+      }
+    } else {
+      i++;
+    }
+  }
+  
+  return tables;
 }
 
 /**
  * Smart truncation that preserves table rows matching question terms.
- * For table-heavy chunks, keeps rows that contain fault codes, parameters,
- * or other identifiers from the question, even if they're beyond the limit.
- * This ensures lookups like "F081" or "P06.53" survive in long tables.
- * (#5677, #5710, #5998)
+ * Fixes F4 (exact parameters), F5 (symptoms), F6 (preserve headers and boundaries).
  */
-function smartTruncate(text: string, questionTerms?: Set<string>): string {
+function smartTruncate(text: string, terms?: { exact: Set<string>; symptoms: Set<string> }): string {
   const tableHeavy = isTableHeavy(text);
   const limit = tableHeavy ? MAX_CONTENT_CHARS_TABLE : MAX_CONTENT_CHARS;
   
@@ -210,54 +284,62 @@ function smartTruncate(text: string, questionTerms?: Set<string>): string {
     return `${text.slice(0, limit)}…`;
   }
   
-  // For table-heavy content with question terms: keep matching rows
-  if (questionTerms && questionTerms.size > 0) {
+  // For table-heavy content with question terms: keep matching rows with their headers
+  if (terms && (terms.exact.size > 0 || terms.symptoms.size > 0)) {
     const lines = text.split('\n');
-    const keptLines: string[] = [];
-    let headerEnd = -1;
-    let lastKeptIdx = -1;
+    const tables = detectTableBoundaries(lines);
+    const keptRanges: Array<[number, number]> = [];
     
-    // Find header rows (before first data row or separator line)
-    for (let i = 0; i < lines.length && i < 10; i++) {
-      if (/^\s*\|[\s\-:]+(\|[\s\-:]+)+\|?\s*$/.test(lines[i])) {
-        headerEnd = i;
-        break;
-      }
-    }
-    
-    // Keep header if found
-    if (headerEnd >= 0) {
-      keptLines.push(...lines.slice(0, headerEnd + 1));
-      lastKeptIdx = headerEnd;
-    }
-    
-    // Scan for rows matching question terms
-    for (let i = Math.max(headerEnd + 1, 0); i < lines.length; i++) {
-      const line = lines[i];
-      if (!PIPE_TABLE_ROW_RE.test(line)) continue;
+    // For each table, check if it contains matches
+    for (const [start, end, headerStart] of tables) {
+      let hasMatch = false;
+      let matchIndices: number[] = [];
       
-      const lineUpper = line.toUpperCase();
-      const matches = Array.from(questionTerms).some(term => lineUpper.includes(term));
-      
-      if (matches) {
-        // Keep context: previous 2 rows (if not already kept) + this row + next 2 rows
-        const contextStart = Math.max(lastKeptIdx + 1, i - 2);
-        const contextEnd = Math.min(lines.length, i + 3);
+      for (let i = start; i < end; i++) {
+        const line = lines[i];
+        if (!PIPE_TABLE_ROW_RE.test(line)) continue;
         
-        for (let j = contextStart; j < contextEnd; j++) {
-          if (j > lastKeptIdx) {
-            keptLines.push(lines[j]);
-            lastKeptIdx = j;
-          }
+        const lineUpper = line.toUpperCase();
+        const lineLower = line.toLowerCase();
+        
+        // Exact match (highest priority)
+        const exactMatch = Array.from(terms.exact).some(term => lineUpper.includes(term));
+        // Symptom match (secondary)
+        const symptomMatch = !exactMatch && Array.from(terms.symptoms).some(term => lineLower.includes(term));
+        
+        if (exactMatch || symptomMatch) {
+          hasMatch = true;
+          matchIndices.push(i);
         }
       }
+      
+      if (hasMatch) {
+        // Keep header through first match, plus context after
+        const firstMatch = matchIndices[0];
+        const lastMatch = matchIndices[matchIndices.length - 1];
+        const rangeStart = headerStart;
+        const rangeEnd = Math.min(end, lastMatch + 3); // +2 context rows
+        keptRanges.push([rangeStart, rangeEnd]);
+      }
     }
     
-    // If we kept matching rows, return them
-    if (keptLines.length > (headerEnd + 1)) {
+    // Assemble kept ranges
+    if (keptRanges.length > 0) {
+      const keptLines: string[] = [];
+      let lastEnd = -1;
+      
+      for (const [start, end] of keptRanges) {
+        // Add ellipsis if gap
+        if (lastEnd >= 0 && start > lastEnd) {
+          keptLines.push('…');
+        }
+        keptLines.push(...lines.slice(start, end));
+        lastEnd = end;
+      }
+      
       const result = keptLines.join('\n');
       if (result.length <= MAX_CONTENT_CHARS_TABLE * 2) {
-        return result + '\n…';
+        return result;
       }
     }
   }
@@ -268,7 +350,7 @@ function smartTruncate(text: string, questionTerms?: Set<string>): string {
   let lastCompleteRow = 0;
   
   for (let i = 0; i < lines.length; i++) {
-    const lineLen = lines[i].length + 1; // +1 for newline
+    const lineLen = lines[i].length + 1;
     if (accum + lineLen > limit) {
       if (lastCompleteRow > 0 && i > lastCompleteRow) {
         return lines.slice(0, lastCompleteRow + 1).join('\n') + '\n…';
@@ -3604,6 +3686,7 @@ export function displayPage(c: Pick<ManualChunk, "sourcePage" | "chunkIndex">): 
 /**
  * Build grounded context with optional question terms for smart truncation
  * and optional cross-reference following.
+ * Fixes F1: preserve distinct passages from same page.
  */
 export function buildGroundedContext(
   chunks: ManualChunk[],
@@ -3613,21 +3696,23 @@ export function buildGroundedContext(
   if (chunks.length === 0) return "";
   
   // Extract terms from question for smart table truncation
-  const questionTerms = question ? extractQuestionTerms(question) : undefined;
+  const terms = question ? extractQuestionTerms(question) : undefined;
   
-  // Follow cross-references: "see page N" → fetch page N chunks (one hop)
+  // Follow cross-references: "see page N" → fetch page N chunks (one hop, same manual)
   const crossRefChunks = followCrossReferences(chunks, allChunks || chunks);
   const allRelevantChunks = [...chunks, ...crossRefChunks];
   
-  // Dedupe by source key
+  // F1 FIX: Dedupe by content hash, not by sourceKey (which loses distinct passages from same page)
   const seen = new Set<string>();
   const deduped = allRelevantChunks.filter(c => {
-    const key = sourceKey(c);
-    if (seen.has(key)) return false;
-    seen.add(key);
+    // Use first 200 chars of content as identity (distinct passages have different content)
+    const contentKey = `${c.sourceUrl}:${c.sourcePage}:${c.content.slice(0, 200)}`;
+    if (seen.has(contentKey)) return false;
+    seen.add(contentKey);
     return true;
   });
   
+  // Assign citation numbers by page (multiple passages from same page share citation number)
   const idx = citationIndex(deduped);
   const blocks = deduped.map((c) => {
     const n = idx.get(sourceKey(c))!;
@@ -3636,7 +3721,7 @@ export function buildGroundedContext(
     const shownPage = displayPage(c);
     const page = shownPage != null ? `, p.${shownPage}` : "";
     // Use smart truncation that preserves table rows matching question terms
-    const rawContent = smartTruncate(c.content, questionTerms);
+    const rawContent = smartTruncate(c.content, terms);
     const content = neutralizeReferenceText(rawContent);
     return `[${n}] ${head}${page}\n${content}`;
   });
@@ -3644,41 +3729,79 @@ export function buildGroundedContext(
 }
 
 /**
- * Follow cross-references in chunks: when a chunk says "see page N" or
- * "refer to page N", pull that page's chunks (one hop, deduped).
+ * Follow cross-references in chunks: when a chunk says "see page N",
+ * fetch that page from the SAME manual only (F3).
+ * Returns chunks with their originating manual preserved.
  */
 function followCrossReferences(
   retrievedChunks: ManualChunk[],
   allAvailableChunks: ManualChunk[]
 ): ManualChunk[] {
-  const crossRefPages = new Set<number>();
-  const crossRefPattern = /\b(?:see|refer to|refer|consult|check)\s+(?:page|p\.?|section)\s+(\d{1,4})\b/gi;
+  // Map: sourceUrl -> Set of referenced page numbers
+  const refsByManual = new Map<string, Set<number>>();
   
-  // Extract page references from retrieved chunks
+  // Patterns for cross-references (F3: improved to handle lists)
+  const singlePagePattern = /\b(?:see|refer to|consult|check)\s+(?:page|p\.?)\s*(\d{1,4})\b/gi;
+  const pageListPattern = /\b(?:pages|pp\.?)\s*([\d\s,and-]+)/gi;
+  
+  // Extract references per manual
   for (const chunk of retrievedChunks) {
-    for (const match of chunk.content.matchAll(crossRefPattern)) {
+    if (!refsByManual.has(chunk.sourceUrl)) {
+      refsByManual.set(chunk.sourceUrl, new Set());
+    }
+    const pages = refsByManual.get(chunk.sourceUrl)!;
+    
+    // Single page refs
+    for (const match of chunk.content.matchAll(singlePagePattern)) {
       const pageNum = parseInt(match[1], 10);
       if (pageNum > 0 && pageNum < 10000) {
-        crossRefPages.add(pageNum);
+        pages.add(pageNum);
+      }
+    }
+    
+    // Page lists: "pages 10, 15, and 20" or "pp. 10-12"
+    for (const match of chunk.content.matchAll(pageListPattern)) {
+      const rangeText = match[1];
+      // Extract individual numbers and ranges
+      for (const part of rangeText.split(/,|and/)) {
+        const trimmed = part.trim();
+        if (/^\d+$/.test(trimmed)) {
+          pages.add(parseInt(trimmed, 10));
+        } else if (/^(\d+)-(\d+)$/.test(trimmed)) {
+          const [, start, end] = trimmed.match(/^(\d+)-(\d+)$/)!;
+          const s = parseInt(start, 10);
+          const e = parseInt(end, 10);
+          // Limit range expansion
+          if (e - s <= 5) {
+            for (let p = s; p <= e; p++) {
+              pages.add(p);
+            }
+          }
+        }
       }
     }
   }
   
-  if (crossRefPages.size === 0) return [];
-  
-  // Find chunks from those pages (from same document if possible)
-  const sourceUrls = new Set(retrievedChunks.map(c => c.sourceUrl).filter(Boolean));
+  // Fetch chunks from referenced pages, scoped to their originating manual (F3)
   const crossRefChunks: ManualChunk[] = [];
+  const addedKeys = new Set<string>();
   
-  for (const chunk of allAvailableChunks) {
-    if (chunk.sourcePage != null && crossRefPages.has(chunk.sourcePage)) {
-      // Prefer chunks from same documents as retrieved chunks
-      if (sourceUrls.size === 0 || sourceUrls.has(chunk.sourceUrl)) {
-        crossRefChunks.push(chunk);
-        // Limit cross-ref additions to avoid context explosion
-        if (crossRefChunks.length >= 5) break;
+  for (const [sourceUrl, pages] of refsByManual) {
+    for (const chunk of allAvailableChunks) {
+      if (chunk.sourceUrl === sourceUrl && 
+          chunk.sourcePage != null && 
+          pages.has(chunk.sourcePage)) {
+        // Avoid duplicates
+        const key = `${chunk.sourceUrl}:${chunk.sourcePage}:${chunk.content.slice(0, 100)}`;
+        if (!addedKeys.has(key)) {
+          crossRefChunks.push(chunk);
+          addedKeys.add(key);
+          // Limit to 5 cross-ref chunks to avoid context explosion
+          if (crossRefChunks.length >= 5) break;
+        }
       }
     }
+    if (crossRefChunks.length >= 5) break;
   }
   
   return crossRefChunks;

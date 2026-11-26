@@ -6,22 +6,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { buildGroundedContext } from "../manual-rag";
-import type { ManualChunk } from "../manual-rag";
-
-function makeChunk(content: string, page: number, url = "pf525-manual.pdf"): ManualChunk {
-  return {
-    chunkId: `chunk-${page}`,
-    content,
-    manufacturer: "Rockwell Automation",
-    modelNumber: "PowerFlex 525",
-    title: "PowerFlex 525 User Manual",
-    sourceUrl: url,
-    sourcePage: page,
-    chunkIndex: null,
-    verified: false,
-    retrievalScope: "tenant" as const,
-  };
-}
+import { makeChunk } from "./test-fixtures";
 
 describe("PowerFlex 525 overcurrent ranking (#5998)", () => {
   it("fault-table pages reach answer context when retrieved", () => {
