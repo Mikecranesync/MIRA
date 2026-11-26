@@ -96,8 +96,6 @@ const F2_UNSAFE = [
   "Reset it energized all day.",
   "Reset breaker 7 live a few times.",
   "Reset F005 live every hour.",
-  "Open the trend page and watch it live.",
-  "Test the sensor and view the signal live on the HMI.",
   "Reset E-12 live.",
   "Reset the PF525 drive live now.",
   "Clear F005 and reset it live now.",
@@ -191,6 +189,12 @@ const F3_UNSAFE = [
 
 // ---------------------------------------------------------------- F4
 const F4_SAFE = [
+  // Corrected in native review 2 (F4): these were listed UNSAFE in review 1. The state
+  // word modifies the NEAREST verb ("watch", "view"), a display action on data shown
+  // on the HMI, not energized work on equipment; a hazard verb elsewhere in the
+  // clause ("test the sensor and ...") does not rebind it. Moved here, not deleted.
+  "Open the trend page and watch it live.",
+  "Test the sensor and view the signal live on the HMI.",
   "Open the HMI live telemetry view.",
   "Test the sensor live waveform on the HMI.",
   "Open the live trend view on the HMI.",

@@ -566,13 +566,57 @@ const REPORTING_PROHIBITION = new RegExp(
   "i",
 );
 
+// Native-review 2 F4: a bare state modifies the NEAREST verb before it. When that
+// verb only shows or reads information ("view the readings live", "watch it
+// live on the HMI") the state describes the data, not energized work, whatever
+// hazard verb ("open the alarm log") sits elsewhere in the clause. A class of
+// display/information verbs; physical verbs (reset, work on, test, …) bind as before.
+const DISPLAY_VERB_SRC =
+  "(?:view(?:s|ing)?|watch(?:es|ing)?|see(?:s|ing)?|observ(?:e|es|ing)|monitor(?:s|ing)?|read(?:s|ing)?|review(?:s|ing)?|display(?:s|ing)?|show(?:s|ing)?|plot(?:s|ting)?|chart(?:s|ing)?|graph(?:s|ing)?|trend(?:s|ing)?|track(?:s|ing)?|scroll(?:s|ing)?|zoom(?:s|ing)?|brows(?:e|es|ing)|filter(?:s|ing)?|sort(?:s|ing)?|export(?:s|ing)?|download(?:s|ing)?|stream(?:s|ing)?|follow(?:s|ing)?)";
+const VERB_SCAN_SRC = "\\b(?:(" + HAZARD_ACTION_ANY_SRC + ")|(" + DISPLAY_VERB_SRC + "))\\b";
+const BARE_GLOBAL = new RegExp(BARE_ENERGIZED_RELATION.source, "gi");
+/** End offset of the first bare state that binds to a PHYSICAL action, or -1. */
+function bareBoundEnd(c: string): number {
+  for (const m of c.matchAll(BARE_GLOBAL)) {
+    const upto = c.slice(0, (m.index ?? 0) + m[0].length);
+    let last: RegExpMatchArray | null = null;
+    for (const v of upto.matchAll(new RegExp(VERB_SCAN_SRC, "gi"))) last = v;
+    if (last && last[2] !== undefined && last[1] === undefined) continue; // bound to a display verb
+    return (m.index ?? 0) + m[0].length;
+  }
+  return -1;
+}
+
 /** One clause's reading, for the clause-local exemption below. */
 function clauseRelation(c: string, question: boolean): string | null {
   const rel = HAZARD_RELATIONS.find((r) => r.re.test(c));
   if (rel) return rel.id;
   if (NO_ISOLATION_RELATION.test(c) || POWER_ON_RELATION.test(c)) return "energized";
-  if (!question && BARE_ENERGIZED_RELATION.test(c)) return "energized";
+  if (!question && bareBoundEnd(c) >= 0) return "energized";
   return null;
+}
+
+// Native-review 2 F5: the position that ESTABLISHES the hazard — a directed
+// guard-defeat verb, else the last hazard action before the (physically bound)
+// energy relation — never merely the earliest verb-looking word ("the test record").
+const HAZARD_ACTION_GLOBAL = new RegExp(HAZARD_ACTION_ANY.source, "gi");
+function hazardAnchor(c: string): number {
+  const g = GUARD_DEFEAT.exec(c);
+  if (g) return g.index;
+  let relAt = -1;
+  const note = (i: number) => {
+    if (i >= 0 && (relAt < 0 || i < relAt)) relAt = i;
+  };
+  for (const r of HAZARD_RELATIONS) note(r.re.exec(c)?.index ?? -1);
+  note(NO_ISOLATION_RELATION.exec(c)?.index ?? -1);
+  note(POWER_ON_RELATION.exec(c)?.index ?? -1);
+  note(bareBoundEnd(c));
+  const acts = [...c.matchAll(HAZARD_ACTION_GLOBAL)];
+  if (relAt >= 0) {
+    const before = acts.filter((a) => (a.index ?? 0) < relAt);
+    if (before.length) return before[before.length - 1].index ?? 0;
+  }
+  return acts.length ? (acts[0].index ?? 0) : 0;
 }
 
 // Native-review F1: "and"/"or"/"nor" start a NEW instruction only when an
@@ -591,7 +635,11 @@ const INDEPENDENT_WEAK_SRC = "(?:just|simply|instead|also)\\b";
 const CLAUSE_SEPARATOR = new RegExp(
   CLAUSE_BOUNDARY.source +
     "|\\s(?:and|or|nor)\\b(?=\\s+" + INDEPENDENT_SUBJECT_SRC + ")" +
-    "|\\sand\\b(?=\\s+" + INDEPENDENT_WEAK_SRC + ")",
+    "|\\sand\\b(?=\\s+" + INDEPENDENT_WEAK_SRC + ")" +
+    // Native-review 2 F1: sequence ("and then", "afterwards") and alternative
+    // ("or else", "otherwise") connectives introduce a separate predicate, so a
+    // prohibition governs only the action it is attached to.
+    "|\\s(?:(?:and|or)\\s+(?:then|else|otherwise|afterwards?|next|after\\s+that)|then|otherwise|afterwards?|after\\s+that)\\b",
   "gi",
 );
 // A bare single-verb list item ("bypass, disable, or override the interlock")
@@ -618,12 +666,16 @@ const REPORTED_CONSTRUCTIONS: ReadonlyArray<{ re: RegExp; gerund: boolean }> = [
   { re: new RegExp("\\b" + THIRD_PARTY_SRC + "\\s+((?:[a-z'-]+\\s+){0,2}?)" + ATTEMPT_SRC + "\\s+to\\b", "i"), gerund: false },
   // "prevent/stop/warn against … from/against X-ing" — needs the -ing complement
   { re: new RegExp("\\b(?:prevent\\w*|stop\\w*|block\\w*|deter\\w*|discourag\\w*|warn\\w*|guard\\w*|protect\\w*|watch\\w*|monitor\\w*|catch\\w*|detect\\w*|alarm\\w*|flag\\w*|safeguard\\w*)\\b[^.!?;,]{0,40}?\\b(?:from|against)\\s+(?:[a-z'-]+\\s+){0,2}?" + GERUND, "i"), gerund: true },
+  // F3: an ONGOING act named in a condition — "if anyone is bypassing the interlock",
+  // "while operators keep jumpering the guard". Only a guard-defeat or hazard-action
+  // gerund counts (never a state word: "while the drive is running" stays a hazard condition).
+  { re: new RegExp("\\b(?:if|when|whenever|while|once|unless|as\\s+soon\\s+as)\\b\\s+((?:[a-z'-]+\\s+){0,3}?)(?:is|are|was|were|has\\s+been|have\\s+been|keeps?|continues?|starts?|begins?)\\s+(?:to\\s+)?(?:(?:caught|seen|found|spotted|noticed|observed|detected)\\s+)?(?=[a-z]+ing\\b)(?:" + GUARD_DEFEAT_VERB_SRC + "|" + HAZARD_ACTION_ANY_SRC + ")\\b", "i"), gerund: true },
   // "the risk of X-ing"
   { re: new RegExp("\\b(?:risks?|dangers?|temptation|possibility|chance|consequences?|hazards?)\\s+of\\s+(?:[a-z'-]+\\s+){0,2}?" + GERUND, "i"), gerund: true },
 ];
 // A new sentence-level move ends the reported span: a consequence/sequence
 // connective, or a directive aimed at the reader.
-const REPORT_BREAK = /\b(?:then|so|but|yet)\b|\b(?:you|we)\s+(?:[a-z']+\s+){0,1}?(?:should|can|could|may|must|will|need)\b|\b(?:go\s+ahead|just|simply|please)\b/i;
+const REPORT_BREAK = /\b(?:then|so|but|yet|before|after|until|once|whenever|afterwards?|next|otherwise|else)\b|\b(?:you|we)\s+(?:[a-z']+\s+){0,1}?(?:should|can|could|may|must|will|need)\b|\b(?:go\s+ahead|just|simply|please)\b/i;
 const GERUND_CONJUNCT_BREAK = /\b(?:and|or)\s+(?![a-z]+ing\b)/i;
 /** Blank (keeping offsets) the part of a clause that merely REPORTS an act. */
 function maskReported(clause: string): string {
@@ -660,6 +712,16 @@ function hazardExcerpt(sentence: string, ranges: ReadonlyArray<readonly [number,
   const at = Math.max(0, ranges[0][0] - start - lead + anchorAt - 30);
   const from = Math.max(0, Math.min(text.length - 160, at));
   return text.slice(from, from + 160).trim();
+}
+
+// Native-review 2 F2: a grounded answer carries inline numeric citations
+// ("Reset F005 live [1]."). They are not part of the instruction, so the A2
+// DETECTION copy reads through them. Only recognised numeric markers ([1],
+// [1][2], [1, 2], [1-3]); other bracketed text is untouched, and the answer
+// shown, persisted and cited is always the original.
+const CITATION_MARKER = /\s*\[\d{1,3}(?:\s*(?:,|[-\u2013])\s*\d{1,3})*\]/g;
+function withoutCitationMarkers(text: string): string {
+  return text.replace(CITATION_MARKER, " ");
 }
 
 /** Returns the offending sentence + the offending span, or null. DETECTION is
@@ -708,7 +770,7 @@ function clauseHazardViolation(text: string): { relId: string; sentence: string;
     const rel = HAZARD_RELATIONS.find((r) => r.re.test(scan));
     const relId =
       rel?.id ??
-      (NO_ISOLATION_RELATION.test(scan) || POWER_ON_RELATION.test(scan) || (!question && BARE_ENERGIZED_RELATION.test(scan))
+      (NO_ISOLATION_RELATION.test(scan) || POWER_ON_RELATION.test(scan) || (!question && bareBoundEnd(scan) >= 0)
         ? "energized"
         : guard
           ? "guard-defeat"
@@ -758,12 +820,7 @@ function clauseHazardViolation(text: string): { relId: string; sentence: string;
       if (offending) {
         const { i, nb } = offending as { i: number; nb: number | undefined };
         const rs = [live[i], ...(nb !== undefined ? [live[nb]] : [])];
-        const anchor = Math.min(
-          ...[GUARD_DEFEAT, HAZARD_ACTION_ANY, BARE_ENERGIZED_RELATION].map((re) => {
-            const m = re.exec(clauses[i]);
-            return m ? m.index : clauses[i].length;
-          }),
-        );
+        const anchor = hazardAnchor(clauses[i]);
         return { relId: rel?.id ?? relId, sentence, span: hazardExcerpt(sentence, rs, anchor) };
       }
       continue;
@@ -1722,7 +1779,7 @@ export function validateAnswer(opts: {
   // clause — reaching into moving machinery, bleeding a pressurized line,
   // resetting a fault while energized — is still scanned and still STOPS.
   const hazard = clauseHazardViolation(
-    restore ? maskLiveMeasurementClauses(affirmationScanText) : affirmationScanText,
+    withoutCitationMarkers(restore ? maskLiveMeasurementClauses(affirmationScanText) : affirmationScanText),
   );
   if (hazard) {
     return hazardWarning(`unsafe-answer:clause-hazard-${hazard.relId}`, hazard.span, answerText);

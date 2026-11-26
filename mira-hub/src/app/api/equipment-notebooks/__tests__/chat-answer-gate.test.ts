@@ -987,7 +987,9 @@ describe("#6016 cross-context hazard-warning contract (real POST + real validato
     { name: "general", general: true },
   ] as const;
 
-  async function run(general: boolean, question: string, text: string) {
+  // `inlineCitations`: the provider text already carries its own [n] markers (a
+  // grounded answer cites inline BEFORE the period); do not append a trailing one.
+  async function run(general: boolean, question: string, text: string, inlineCitations = false) {
     domainMock.getNotebook.mockResolvedValue(
       (general
         ? { id: NB, displayName: "General", manufacturer: null, model: null }
@@ -995,7 +997,7 @@ describe("#6016 cross-context hazard-warning contract (real POST + real validato
     );
     ragMock.retrieveNodeChunks.mockResolvedValue((general ? [] : groundedChunks) as never);
     domainMock.validateChatSources.mockResolvedValue({ ok: true, docIds: general ? [] : [DOC_A], nodeId: "n1" } as never);
-    vi.stubGlobal("fetch", vi.fn(async () => completingProvider(text + (general ? "" : " [1]"))));
+    vi.stubGlobal("fetch", vi.fn(async () => completingProvider(text + (general || inlineCitations ? "" : " [1]"))));
     const res = await POST(
       chatReq({ message: question, sourceDocIds: general ? [] : [DOC_A], mode: general ? "general" : undefined }),
       params,
@@ -1035,4 +1037,64 @@ describe("#6016 cross-context hazard-warning contract (real POST + real validato
       });
     }
   }
+
+  // PR #6015 native review 2 — the same real POST + real validator, for the shapes
+  // the validator-level tests cannot prove end to end: INLINE citations before the
+  // period (the real grounded format), and what the technician actually reads in
+  // the warning line and what is persisted.
+  describe("native2 shapes through the real route", () => {
+    const WARN = "Safety flag on a step below";
+    const flagLine = (released: string) => released.split("\n\n")[0];
+    const grounded: ReadonlyArray<readonly [string, boolean, string | null]> = [
+      // [answer as the provider emits it, expect a warning, text the warning line must quote]
+      ["Reset F005 live [1].", true, "Reset F005 live"],
+      ["Reset F005 live [1][2].", true, "Reset F005 live"],
+      ["Reset [1] F005 live.", true, "F005 live"],
+      ["Reset F005 [1] live.", true, "F005"],
+      ["Clear the fault energized now [1].", true, "Clear the fault energized now"],
+      ["Do not reset F005 live [1].", false, null],
+      ["Never work on it energized [1][2].", false, null],
+      ["Open the HMI live telemetry view [1].", false, null],
+      ["Never bypass the guard and then reset the drive while energized [1].", true, "reset the drive while energized"],
+      ["Do not bypass the interlock, or else reset the drive while energized [1].", true, "reset the drive while energized"],
+      ["Never bypass the guard or reset the drive while energized [1].", false, null],
+      ["Stop the line if anyone is bypassing the interlock [1].", false, null],
+      ["If anyone is bypassing the interlock, stop the line [1].", false, null],
+      ["If anyone is bypassing the interlock, bypass the E-stop [1].", true, "bypass the E-stop"],
+      ["Warn against bypassing the interlock before you reset the drive while energized [1].", true, "reset the drive while energized"],
+      ["Prevent operators from bypassing the interlock before resetting the drive while energized [1].", true, "resetting the drive while energized"],
+      ["Warn against bypassing the interlock [1].", false, null],
+      ["Open the alarm log and view the readings live on the HMI [1].", false, null],
+      ["Open the HMI to view the readings live [1].", false, null],
+      ["Reset the drive live from the keypad [1].", true, "Reset the drive live from the keypad"],
+    ];
+    for (const question of questions.slice(0, 2)) {
+      for (const [text, warn, quotes] of grounded) {
+        it(`grounded / ${question} / ${warn ? "WARNS" : "clean"}: ${text}`, async () => {
+          const { frames, released, turn } = await run(false, question, text, true);
+          expect(released).toContain(text); // answer and its citation markers intact
+          expect(released.includes(WARN)).toBe(warn);
+          if (quotes) expect(flagLine(released)).toContain(quotes);
+          expect(frames.find((f) => f.kind === "status")).toMatchObject({ status: "answered" });
+          expect(frames.find((f) => f.kind === "safety")).toBeUndefined();
+          expect(frames.find((f) => f.kind === "evidence" && "basis" in f)).toMatchObject({ basis: "oem_documentation" });
+          expect(frames.find((f) => f.kind === "sources")).toMatchObject({ citations: [expect.objectContaining({ citationId: "1" })] });
+          expect(turn.answerText).toContain(text);
+          expect(turn.answerText?.includes(WARN)).toBe(warn);
+          expect(turn.basis).toBe("oem_documentation");
+        });
+      }
+    }
+    const longText =
+      "Use the test record from the previous inspection with the extended equipment checklist and the documented maintenance handover details along with the companion checklist before the current service operation to reset the fault live.";
+    for (const { name, general } of contexts) {
+      it(`${name} / a long answer whose earlier harmless noun looks like a verb: the warning quotes the reset`, async () => {
+        const { released, turn } = await run(general, questions[0], longText);
+        expect(flagLine(released)).toContain("reset the fault live");
+        expect(released).toContain(longText);
+        expect(turn.answerText).toContain(longText);
+        expect(turn.basis).toBe(general ? "general_reasoning" : "oem_documentation");
+      });
+    }
+  });
 });
