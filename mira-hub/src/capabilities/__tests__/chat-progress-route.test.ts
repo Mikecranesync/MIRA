@@ -69,7 +69,14 @@ vi.mock("@/lib/tenant-context", () => ({
   ),
 }));
 vi.mock("@/lib/db", () => ({ default: { query: vi.fn(async () => ({ rows: [] })) } }));
-vi.mock("@/lib/inference/persist-usage", () => ({ persistTurnUsage: vi.fn(async () => undefined) }));
+// #6048: a committed turn is closed by the usage write even when delivery fails (no longer by
+// endRoot's bare closeTurn), so the F5 cases below read the closing outcome from either write.
+vi.mock("@/lib/inference/persist-usage", () => ({
+  persistTurnUsage: vi.fn(async (meta: { outcome?: string }) => {
+    lifecycleSpy.outcomes.push(String(meta.outcome));
+    return undefined;
+  }),
+}));
 
 const seamMock = vi.hoisted(() => ({
   canonicalSeamEnabled: vi.fn(() => true),
