@@ -4,7 +4,7 @@
  * the shell's context snapshot says about the machine, which sources a turn is
  * allowed to cite, and what history the canonical route receives.
  */
-import { PROFILES, createShellState, shellReducer, type InteractionTurn, type ManualSearchStatus, type ShellAction, type QuestionTarget, type ShellFixture, type ShellState } from "../../../packages/factorylm-interaction/src";
+import { PROFILES, compareManualSearchGeneration, createShellState, shellReducer, type InteractionTurn, type ManualSearchFollowState, type ManualSearchStatus, type ShellAction, type QuestionTarget, type ShellFixture, type ShellState } from "../../../packages/factorylm-interaction/src";
 import type { EquipmentNotebook, NotebookSource } from "@/lib/equipment-notebooks";
 import { buildChatBody, isAbortError, type ChatBody, type PersistedTurn, type StreamResult } from "@/components/equipment/notebook-chat-utils";
 import { isSafetyNoticeEntry } from "@/lib/notebook-chat-types";
@@ -422,6 +422,37 @@ export function currentReadyManualId(
   if (status?.sourceState !== "ready" || !status.readySourceDocId) return null;
   const source = sources.find(source => source.docId === status.readySourceDocId);
   return source?.readiness?.canChat && enabledDocIds([source]).length > 0 ? source.docId : null;
+}
+
+/** The project's lookup the send wait follows: the shown status, else the send-wait-only one (#5746 r4 F1). */
+export function sendWaitLookup(
+  data: { manualSearch?: ManualSearchStatus | null; wholeMachineManualSearch?: ManualSearchStatus } | null | undefined,
+): ManualSearchStatus | null {
+  return data?.manualSearch ?? data?.wholeMachineManualSearch ?? null;
+}
+
+/**
+ * #5746 r4 F1: what the send wait reads when the shown status was withheld for an answer about a
+ * component: the shown status's own chain, over the send-wait-only lookup. Nothing here is
+ * displayed. `status` is null while a ready lookup's source is not usable yet.
+ */
+export function withheldSendWait(
+  lookup: ManualSearchStatus,
+  follow: ManualSearchFollowState | null,
+  sources: Parameters<typeof currentReadyManualId>[1],
+): { status: ManualSearchStatus | null; readyManualId: string | null } {
+  const followIsNewer = Boolean(follow?.status.startedAt && lookup.startedAt &&
+    compareManualSearchGeneration(follow.status.startedAt, lookup.startedAt) > 0);
+  const readyManualId = followIsNewer ? null : currentReadyManualId(lookup, sources);
+  // #5746 r5 F6: a follow that timed out stands in only for its own lookup. A newer lookup that
+  // is still preparing is waited for, whatever happened to an older one. An unknown generation
+  // on either side is read as the same lookup, as before.
+  const sameLookup = !follow?.status.startedAt || !lookup.startedAt ||
+    compareManualSearchGeneration(follow.status.startedAt, lookup.startedAt) === 0;
+  const seen = followIsNewer || (lookup.running && follow?.phase === "unresolved" && sameLookup)
+    ? (follow?.status.running || follow?.phase === "unresolved" ? follow.status : null)
+    : lookup;
+  return { status: seen?.sourceState === "ready" && !readyManualId ? null : seen, readyManualId };
 }
 
 export function persistedRequest<T extends Pick<PersistedTurn, "clientRequestId">>(

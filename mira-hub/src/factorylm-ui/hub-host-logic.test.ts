@@ -33,8 +33,11 @@ import {
   selectionFromSearch,
   shellThreadId,
   stoppedStreamResult,
+  sendWaitLookup,
+  withheldSendWait,
   type HubSelection,
 } from "./hub-host-logic";
+import { advanceManualSearchFollow, startManualSearchFollow, type ManualSearchFollowState, type ManualSearchStatus } from "../../../packages/factorylm-interaction/src";
 
 describe("sendFailureMessage — #4311 the browser's network wording never reaches the banner", () => {
   it.each(["Failed to fetch", "Load failed", "NetworkError when attempting to fetch resource."])(
@@ -745,5 +748,50 @@ describe("the manual wait applies only to requests that depend on it", () => {
     expect(waitsForManual("What is the nominal voltage?", 0)).toBe(false);
     expect(waitsForManual("Check this from the manual.", 1)).toBe(false);
     expect(waitsForManual("According to the manual, can I work on the energized 480V panel?", 0)).toBe(false);
+  });
+});
+
+// #5746 r4 F1 / r5 F6: what the send wait reads while the shown status is withheld for an
+// answer about a component.
+describe("withheldSendWait", () => {
+  const NOTEBOOK = "nb-1";
+  const A: ManualSearchStatus = { manufacturer: "AutomationDirect", model: "GS11N-20P2", running: true, sourceState: "preparing", startedAt: "2026-11-21T12:00:00.000Z" };
+  const B: ManualSearchStatus = { ...A, startedAt: "2026-11-21T12:05:00.000Z" };
+  const SOURCE = { docId: "doc-b", enabledByDefault: true, matchState: "verified", readiness: { canChat: true } } as const;
+  /** A follow of `status` that ran its whole budget without a conclusive read. */
+  function exhausted(status: ManualSearchStatus): ManualSearchFollowState {
+    let state = startManualSearchFollow(NOTEBOOK, status, 3);
+    while (state.phase === "following") state = advanceManualSearchFollow(state, NOTEBOOK, null).state;
+    return state;
+  }
+
+  it("a timed-out follow of an older lookup does not stand in for a newer one still preparing", () => {
+    const follow = exhausted(A);
+    expect(follow.phase).toBe("unresolved");
+    expect(withheldSendWait(B, follow, [])).toEqual({ status: B, readyManualId: null });
+  });
+
+  it("control: a timed-out follow of the same lookup still stands in for it", () => {
+    const follow = exhausted(B);
+    const { status } = withheldSendWait(B, follow, []);
+    expect(status).toBe(follow.status);
+    expect(status?.running).toBe(false);
+  });
+
+  it("control: a newer lookup the follow already reads replaces an older one", () => {
+    const follow = startManualSearchFollow(NOTEBOOK, B);
+    expect(withheldSendWait(A, follow, [])).toEqual({ status: B, readyManualId: null });
+  });
+
+  it("names the ready source only when it is usable", () => {
+    const ready: ManualSearchStatus = { ...B, running: false, sourceState: "ready", readySourceDocId: "doc-b" };
+    expect(withheldSendWait(ready, null, [SOURCE])).toEqual({ status: ready, readyManualId: "doc-b" });
+    expect(withheldSendWait(ready, null, [])).toEqual({ status: null, readyManualId: null });
+  });
+
+  it("reads the shown status first, else the send-wait-only lookup", () => {
+    expect(sendWaitLookup({ manualSearch: A, wholeMachineManualSearch: B })).toBe(A);
+    expect(sendWaitLookup({ manualSearch: null, wholeMachineManualSearch: B })).toBe(B);
+    expect(sendWaitLookup(null)).toBeNull();
   });
 });

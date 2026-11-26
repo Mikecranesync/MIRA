@@ -47,6 +47,19 @@ function sendWaitStatus(status: ManualSearchStatus): ManualSearchStatus {
   };
 }
 
+/**
+ * #5746 r5 F1: the questions that decide, for the send wait, whether the thread moved to another
+ * model. One asked under a selected bench component is about that component (#5750 r3 F13), even
+ * when it names the component's own model, so it never decides that. The turn's component stamp
+ * covers every turn asked under a selection; the saved attribution entry only the paths that
+ * stream a component frame, so a safety stop or an off-topic reply carries the stamp alone.
+ */
+function wholeMachineQuestions(
+  rows: readonly { question: string; evidence?: readonly unknown[] | null; componentId?: string | null }[],
+): string[] {
+  return rows.filter((t) => !t.componentId && !(t.evidence ?? []).some(isComponentAttributionEntry)).map((t) => t.question);
+}
+
 function requestSearchParams(req: NextRequest): URLSearchParams {
   const maybe = req as { nextUrl?: { searchParams?: URLSearchParams }; url?: string };
   if (maybe.nextUrl?.searchParams) return maybe.nextUrl.searchParams;
@@ -171,35 +184,45 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       catalogNumber: machineModel === notebook.model ? notebook.catalogNumber : null,
       recordCatalog: confirmedCatalogNumber(notebook),
     };
-    let scope = threadStatusScope(turns.map((t) => t.question), machine);
     // The newest 50 turns settle nothing, and older ones exist: read further
     // back (the same widest step the chat path's subject read uses) before
     // trusting that the thread never named another model. Still nothing past
-    // that bound: the subject is out of reach, so the status is withheld.
+    // that bound: the subject is out of reach. The wider read runs at most once.
+    let wider: Promise<typeof turns> | undefined;
+    const scopeOf = async (questionsOf: (rows: typeof turns) => string[]) => {
+      const scope = threadStatusScope(questionsOf(turns), machine);
+      if (scope !== "undecided" || turns.length < TURN_WINDOW) return scope;
+      const rows = await (wider ??= listTurns(ctx.tenantId, id, WIDEST_SUBJECT_READ, { viewerUserId: ctx.userId, threadId }));
+      const widest = threadStatusScope(questionsOf(rows), machine);
+      return widest === "undecided" && rows.length >= WIDEST_SUBJECT_READ ? "out_of_reach" : widest;
+    };
     // A failed wider read is inconclusive (r2 F9): the status is withheld
     // without a scope, and the rest of the response still returns.
-    if (scope === "undecided" && turns.length >= TURN_WINDOW) {
-      try {
-        const wider = await listTurns(ctx.tenantId, id, WIDEST_SUBJECT_READ, { viewerUserId: ctx.userId, threadId });
-        scope = threadStatusScope(wider.map((t) => t.question), machine);
-        if (scope === "undecided" && wider.length >= WIDEST_SUBJECT_READ) manualSearchScope = "out_of_reach";
-      } catch (err) {
-        console.error("[equipment-notebooks] wider thread read failed (withholding the manual status):", err);
-        manualSearch = null;
-      }
+    try {
+      const scope = await scopeOf((rows) => rows.map((t) => t.question));
+      if (scope === "out_of_reach") manualSearchScope = "out_of_reach";
+      if (scope === "other") manualSearchScope = "other_model";
+    } catch (err) {
+      console.error("[equipment-notebooks] wider thread read failed (withholding the manual status):", err);
+      manualSearch = null;
     }
-    if (scope === "other") manualSearchScope = "other_model";
     // #5750 r3 F13: the status is placed under the newest answer. An answer
     // asked under a selected bench component is about that component, not
     // the project's machine, so the project's status is withheld there.
     const newest = turns.at(-1);
-    if (newest && (newest.evidence ?? []).some(isComponentAttributionEntry)) {
-      // #5746 r4 F1: that withholds it from display only. A question about the whole machine
-      // still waits for this lookup, so the send wait gets it, without the message or link it
-      // would show. Any other reason to withhold (another model, out of reach, a failed read)
-      // sends nothing.
-      if (!manualSearchScope && manualSearch) wholeMachineManualSearch = sendWaitStatus(manualSearch);
-      manualSearchScope = "other_model";
+    if (newest && (newest.evidence ?? []).some(isComponentAttributionEntry)) manualSearchScope = "other_model";
+    // #5746 r4 F1 + r5 F1: a status withheld only for questions asked under a component is
+    // withheld from display only. A question about the whole machine still waits for this
+    // lookup, so the send wait gets it, without the message or link it would show. A
+    // whole-machine question that named another model, a subject out of reach, or a failed
+    // read sends nothing.
+    if (manualSearch && manualSearchScope === "other_model") {
+      try {
+        const scope = await scopeOf(wholeMachineQuestions);
+        if (scope !== "other" && scope !== "out_of_reach") wholeMachineManualSearch = sendWaitStatus(manualSearch);
+      } catch (err) {
+        console.error("[equipment-notebooks] wider thread read failed (the send wait gets no lookup):", err);
+      }
     }
     if (manualSearchScope) manualSearch = null;
   }

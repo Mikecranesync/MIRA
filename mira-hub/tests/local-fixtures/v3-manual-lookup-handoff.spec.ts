@@ -328,18 +328,25 @@ for (const mode of ["preparing", "ready", "opening", "lookup-failed", "safety", 
 // (`wholeMachineManualSearch`, no message or link), and nothing new is shown.
 const WHOLE_QUESTION = "According to the manual, what is the nominal supply voltage?";
 const GENERAL_QUESTION = "What is the rated current?";
-for (const mode of ["return", "return-lost", "cold", "controls"] as const) {
+// #5746 round 5 F6: another session starts a newer lookup just before the Hub's poll budget for
+// the first one runs out.
+const NEWER_STARTED_AT = "2026-11-21T12:05:00.000Z";
+for (const mode of ["return", "return-lost", "cold", "controls", "newer-lookup"] as const) {
   const title = mode === "controls"
     ? "after a component answer, a component question and a question that needs no manual are sent at once"
-    : `after a component answer, a whole-machine manual question waits in the ${mode} case`;
+    : mode === "newer-lookup"
+      ? "after a component answer, a whole-machine manual question waits for a newer lookup started as the first one times out"
+      : `after a component answer, a whole-machine manual question waits in the ${mode} case`;
   test(title, async ({ page, context, baseURL }) => {
-    const cold = mode === "cold";
+    const newer = mode === "newer-lookup";
+    const cold = mode === "cold" || newer;
     await installSessionCookie(context, baseURL, PORT, {
       uid: "e2e-manual-handoff", tid: TENANT, status: "trial", trialExpiresAt: new Date(Date.now() + 86_400_000).toISOString(),
     });
     let componentSelected = !cold;
     let ready = false;
     let lost = false;
+    let startedAt = STARTED_AT;
     let asked: { clientRequestId: string } | undefined = cold ? { clientRequestId: "saved-component-question" } : undefined;
     let withheldReads = 0;
     const chatBodies: { message: string; threadId: string; sourceDocIds: string[] }[] = [];
@@ -396,7 +403,7 @@ for (const mode of ["return", "return-lost", "cold", "controls"] as const) {
           evidence: [{ ...CITATION, docId: COMPONENT_DOC, sourceTitle: COMPONENT_MANUAL }, COMPONENT_ATTRIBUTION], createdAt: STARTED_AT,
         };
         const lookupStatus = {
-          ...IDENTITY, startedAt: STARTED_AT, running: !ready && !lost,
+          ...IDENTITY, startedAt, running: !ready && !lost,
           ...(ready ? { sourceState: "ready", readySourceDocId: DOC } : lost ? { sourceState: "unavailable" } : { sourceState: "preparing" }),
         };
         const sources = [componentSource, ...(ready ? [SOURCE] : [])];
@@ -418,6 +425,13 @@ for (const mode of ["return", "return-lost", "cold", "controls"] as const) {
       }
       return route.fulfill(json({}, 404));
     });
+    // The poll waits 4s, then 10s, between reads: the newer-lookup case jumps the page's clock
+    // forward instead of waiting three minutes. Time otherwise runs as normal.
+    if (newer) await page.clock.install();
+    const advanceUntil = (reached: () => boolean) => expect.poll(async () => {
+      if (!reached()) await page.clock.fastForward(5_000);
+      return reached();
+    }, { timeout: 60_000, intervals: [100] }).toBe(true);
     await page.goto(`/v3/?notebook=${NB}&thread=${THREAD}`);
     const composer = page.getByRole("textbox", { name: "Ask MIRA", exact: true });
     const statusParts = page.locator('[data-part-type="manual_search_status"]');
@@ -457,12 +471,25 @@ for (const mode of ["return", "return-lost", "cold", "controls"] as const) {
       await expect.poll(() => withheldReads).toBeGreaterThan(0);
       await expect(page.locator('[data-turn-id="saved-answer-a"]')).toHaveCount(1);
     }
+    if (newer) {
+      // The first read and 17 polls follow the first lookup, whose budget is 21 polls. Then
+      // another session starts a newer one, and the polls go on past the first budget.
+      await advanceUntil(() => withheldReads >= 18);
+      startedAt = NEWER_STARTED_AT;
+      await advanceUntil(() => withheldReads >= 22);
+    }
     const before = chatBodies.length;
     await composer.fill(WHOLE_QUESTION);
     await page.getByRole("button", { name: "Send", exact: true }).click();
+    if (newer) {
+      // Not sent at once: the newer lookup is still preparing.
+      await page.waitForTimeout(1_000);
+      expect(chatBodies).toHaveLength(before);
+    }
     // Held: a further read happens and still nothing is sent; nothing new is shown.
     const readsAtSend = withheldReads;
-    await expect.poll(() => withheldReads, { timeout: 15_000 }).toBeGreaterThan(readsAtSend);
+    if (newer) await advanceUntil(() => withheldReads > readsAtSend);
+    else await expect.poll(() => withheldReads, { timeout: 15_000 }).toBeGreaterThan(readsAtSend);
     expect(chatBodies).toHaveLength(before);
     await expect(composer).toHaveValue(WHOLE_QUESTION);
     await expect(statusParts).toHaveCount(0);
@@ -474,6 +501,7 @@ for (const mode of ["return", "return-lost", "cold", "controls"] as const) {
       return;
     }
     ready = true;
+    if (newer) await advanceUntil(() => chatBodies.some(body => body.message === WHOLE_QUESTION));
     await expect.poll(() => chatBodies.filter(body => body.message === WHOLE_QUESTION).length, { timeout: 20_000 }).toBe(1);
     expect(chatBodies).toHaveLength(before + 1);
     expect(chatBodies.at(-1)).toMatchObject({ message: WHOLE_QUESTION, threadId: THREAD });

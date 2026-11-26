@@ -93,6 +93,8 @@ import {
   draftAfterSendSucceeded,
   enabledDocIds,
   currentReadyManualId,
+  sendWaitLookup,
+  withheldSendWait,
   waitsForManual,
   NOTEBOOK_LIST_RETRY_DELAYS_MS,
   persistedRequest,
@@ -146,11 +148,6 @@ type Detail = {
   // project's lookup for the send wait only (no message or link). Never shown.
   wholeMachineManualSearch?: ManualSearchStatus;
 };
-
-/** The project's lookup the send wait follows: the shown status, else the send-wait-only one. */
-function sendWaitLookup(data: Pick<Detail, "manualSearch" | "wholeMachineManualSearch"> | null | undefined): ManualSearchStatus | null {
-  return data?.manualSearch ?? data?.wholeMachineManualSearch ?? null;
-}
 
 /** One in-flight or just-finished exchange the server has not yet returned as a row. */
 type Live = {
@@ -442,7 +439,9 @@ export function HubShellHost() {
       fetchStatus: async (notebookId) => {
         const sel = selectionRef.current;
         if (!sel || sel.notebookId !== notebookId || !await loadDetail(sel, true)) return null;
-        return sel === selectionRef.current ? detailRef.current?.manualSearch ?? null : null;
+        // #5746 r5 F6: the poll follows the lookup the send wait reads, so a newer lookup under a
+        // status withheld for a component answer gets its own budget (nothing more is shown).
+        return sel === selectionRef.current ? sendWaitLookup(detailRef.current) : null;
       },
       onStateChange: setFollow,
     });
@@ -521,18 +520,9 @@ export function HubShellHost() {
   // #5746 r4 F1: the send wait reads the same chain over the send-wait-only lookup when the
   // shown status was withheld for an answer about a component; nothing here is displayed.
   const wholeMachineLookup = manualStatus ? undefined : detail?.wholeMachineManualSearch;
-  const sendFollowIsNewer = Boolean(wholeMachineLookup && follow?.status.startedAt && wholeMachineLookup.startedAt &&
-    compareManualSearchGeneration(follow.status.startedAt, wholeMachineLookup.startedAt) > 0);
-  const sendReadyManualId = wholeMachineLookup
-    ? (sendFollowIsNewer ? null : currentReadyManualId(wholeMachineLookup, detail?.sources ?? []))
-    : readyManualId;
-  const sendSeenStatus = !wholeMachineLookup ? null
-    : sendFollowIsNewer || (wholeMachineLookup.running && follow?.phase === "unresolved")
-      ? (follow?.status.running || follow?.phase === "unresolved" ? follow.status : null)
-      : wholeMachineLookup;
-  const sendManualStatus = !wholeMachineLookup
-    ? displayedManualStatus
-    : sendSeenStatus?.sourceState === "ready" && !sendReadyManualId ? null : sendSeenStatus;
+  const sendWait = wholeMachineLookup ? withheldSendWait(wholeMachineLookup, follow, detail?.sources ?? []) : null;
+  const sendReadyManualId = sendWait ? sendWait.readyManualId : readyManualId;
+  const sendManualStatus = sendWait ? sendWait.status : displayedManualStatus;
 
   // Live data is a pure projection over the UI state: the reducer's `hydrate`
   // replaces thread/projects/machines/context and keeps drawer, draft, mode and

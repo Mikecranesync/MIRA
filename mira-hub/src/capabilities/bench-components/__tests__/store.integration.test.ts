@@ -37,6 +37,7 @@ import { readSubjectUnderSelection } from "../selection";
 import { SEED_USER, runSeed, seedInputs, type InventoryRow } from "../seed";
 import { SAME_SERIAL_SQL, sameSerialAdvisory } from "../same-serial";
 import { withTenantContext } from "@/lib/tenant-context";
+import { listTurns } from "@/lib/equipment-notebooks";
 
 const MIGRATION = path.resolve(__dirname, "../../../../db/migrations/115_bench_components.sql");
 const USER = "user-tech-1";
@@ -344,6 +345,12 @@ run("bench component store (real Postgres, RLS)", () => {
     expect(readSubjectUnderSelection(turns, 6, selection!).questions).toEqual([]);
     // Control: under the first pick (before the Return) the same stamped turn does carry.
     expect(readSubjectUnderSelection(turns, 6, sel.selection).questions).toEqual(["what about the GS13N-20P2, same thing?"]);
+    // The notebook's history read carries the same stamp, so the detail route can tell this turn
+    // from a whole-machine one even without an attribution entry (#5746 r5 F1); an unstamped
+    // turn reads null.
+    const whole = await turn(tenantA, notebookA, "what is the rated current of the GS11N-20P2?", thread);
+    const history = await listTurns(tenantA, notebookA, 50, { viewerUserId: USER });
+    expect([t1, whole].map((r) => history.find((h) => h.clientRequestId === r)?.componentId)).toEqual([cid, null]);
   });
 
   it("an identity correction re-points the selection at the new revision and moves the boundary", async () => {

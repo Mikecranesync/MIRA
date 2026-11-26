@@ -32,6 +32,7 @@ vi.mock("@/capabilities/notebook-manual-acquisition", async (importOriginal) => 
 import { GET } from "../route";
 import { sessionOr401 } from "@/lib/session";
 import { getNotebook, listSources, listTurns } from "@/lib/equipment-notebooks";
+import { sendWaitLookup, withheldSendWait } from "@/factorylm-ui/hub-host-logic";
 
 const NB = "11111111-2222-3333-4444-555555555555";
 const TENANT = "00000000-0000-0000-0000-0000000000d1";
@@ -364,6 +365,100 @@ describe("GET /api/equipment-notebooks/[id] — manualSearch (T2 #4189)", () => 
         const body = await (await GET(threadReq, params)).json();
         expect(body.manualSearch).toEqual(PREPARING);
         expect(body).not.toHaveProperty("wholeMachineManualSearch");
+      });
+
+      // #5746 r5 F1: a question asked under a selected component is about that component, even
+      // when it names the component's model, a sibling of the project's. It never decides that
+      // the thread moved to another model for the send wait. The shown status is unchanged: it
+      // still reads every question.
+      describe("a component question that names the component's model", () => {
+        const SIBLING = { ...COMPONENT, componentId: "c-p25", label: "Drive B · AutomationDirect GS11N-20P25" };
+        const SIBLING_QUESTION = "What is the rated current of the AutomationDirect GS11N-20P25?";
+        const underSibling = (question: string) => ({ id: "t-s", question, evidence: [SIBLING] });
+        const GATE = { manufacturer: "AutomationDirect", model: "GS11N-20P2", running: true, sourceState: "preparing", startedAt: STARTED_AT };
+        const read = (all: unknown[]) => {
+          vi.mocked(listTurns).mockImplementation((async (_t: string, _n: string, limit: number) => all.slice(-limit)) as never);
+        };
+
+        it.each([
+          ["it is the newest answer", () => [underSibling(SIBLING_QUESTION)]],
+          ["a whole-machine answer followed it", () => [underSibling(SIBLING_QUESTION), ask("What is the rated current?")]],
+          ["the project's own model was asked past the newest 50", () => [
+            ask("Find me the manual for AutomationDirect GS11N-20P2"), underSibling(SIBLING_QUESTION), ...keypad(50),
+          ]],
+        ])("sends the lookup when %s", async (_label, turns) => {
+          currentManualSearchStatus.mockResolvedValue(PREPARING);
+          read(turns());
+          const body = await (await GET(threadReq, params)).json();
+          expect(body.manualSearch).toBeNull();
+          expect(body.manualSearchScope).toBe("other_model");
+          expect(body.wholeMachineManualSearch).toEqual(GATE);
+        });
+
+        // A safety stop or an off-topic reply asked under the component saves no attribution
+        // entry; the turn's component stamp (migration 115) still says where it was asked.
+        it("sends the lookup when a stop asked under the component names its model, with only the stamp", async () => {
+          currentManualSearchStatus.mockResolvedValue(PREPARING);
+          read([{ id: "t-stop", question: "Can I work on the energized AutomationDirect GS11N-20P25?", evidence: [], componentId: "c-p25" }]);
+          const body = await (await GET(threadReq, params)).json();
+          expect(body.manualSearch).toBeNull();
+          expect(body.manualSearchScope).toBe("other_model");
+          expect(body.wholeMachineManualSearch).toEqual(GATE);
+        });
+
+        // The detail response is what the Hub's send wait reads: composed with its real reader,
+        // the sibling-naming component answer leaves a running lookup to wait for.
+        it("composed: the Hub's send wait reads a running lookup from this response", async () => {
+          currentManualSearchStatus.mockResolvedValue(PREPARING);
+          read([underSibling(SIBLING_QUESTION)]);
+          const body = await (await GET(threadReq, params)).json();
+          const lookup = sendWaitLookup(body);
+          expect(lookup).not.toBeNull();
+          expect(withheldSendWait(lookup!, null, body.sources).status).toEqual(GATE);
+        });
+
+        it("control: a whole-machine question past the newest 50 that names another model sends nothing", async () => {
+          currentManualSearchStatus.mockResolvedValue(PREPARING);
+          read([ask("Find me the manual for AutomationDirect GS11N-20P25"), underSibling(SIBLING_QUESTION), ...keypad(50)]);
+          const body = await (await GET(threadReq, params)).json();
+          expect(body.manualSearch).toBeNull();
+          expect(body.manualSearchScope).toBe("other_model");
+          expect(body).not.toHaveProperty("wholeMachineManualSearch");
+          expect(vi.mocked(listTurns)).toHaveBeenCalledTimes(2);
+        });
+
+        it("control: a whole-machine question that names another model sends nothing", async () => {
+          currentManualSearchStatus.mockResolvedValue(PREPARING);
+          read([ask("Find me the manual for AutomationDirect GS11N-20P25"), underSibling(SIBLING_QUESTION)]);
+          const body = await (await GET(threadReq, params)).json();
+          expect(body.manualSearchScope).toBe("other_model");
+          expect(body).not.toHaveProperty("wholeMachineManualSearch");
+        });
+
+        it("sends nothing, and still returns the page, when the wider read it needs fails", async () => {
+          currentManualSearchStatus.mockResolvedValue(PREPARING);
+          const all = [ask("Find me the manual for AutomationDirect GS11N-20P2"), underSibling(SIBLING_QUESTION), ...keypad(50)];
+          vi.mocked(listTurns).mockImplementation((async (_t: string, _n: string, limit: number) => {
+            if (limit > 50) throw new Error("statement timeout");
+            return all.slice(-limit);
+          }) as never);
+          const res = await GET(threadReq, params);
+          expect(res.status).toBe(200);
+          const body = await res.json();
+          expect(body.turns).toHaveLength(50);
+          expect(body.manualSearch).toBeNull();
+          expect(body.manualSearchScope).toBe("other_model");
+          expect(body).not.toHaveProperty("wholeMachineManualSearch");
+        });
+
+        it("control: a shown status makes no extra read", async () => {
+          currentManualSearchStatus.mockResolvedValue(PREPARING);
+          read([underSibling(SIBLING_QUESTION), ...keypad(50), ask("Find me the manual for AutomationDirect GS11N-20P2")]);
+          const body = await (await GET(threadReq, params)).json();
+          expect(body.manualSearch).toEqual(PREPARING);
+          expect(body).not.toHaveProperty("wholeMachineManualSearch");
+          expect(vi.mocked(listTurns)).toHaveBeenCalledTimes(1);
+        });
       });
     });
 
