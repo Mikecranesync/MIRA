@@ -257,3 +257,43 @@ def test_control_null_totals_fail_when_usage_unknown_is_false():
         None,
     )
     assert _failed(_run(TRACE, d, w)) == ["token usage recorded"]
+
+
+def test_r2c1_null_totals_fail_on_a_turn_without_a_redraft_even_if_draft_1_had_a_thrown_provider():
+    # R2-C1: draft 1's own loop also writes "exception" for a thrown provider. On a turn with
+    # no redraft, the null comes from the served stream losing its usage block, which is the
+    # telemetry loss this check exists to catch. Only a redraft attempt's exception excuses it.
+    d, w = _answered_redraft_turn(
+        [
+            {"provider": "OpenAI", "outcome": USAGE_UNKNOWN},
+            {"provider": "Groq", "outcome": "served"},
+        ],
+        None,
+        None,
+    )
+    assert w["status"] == "answered"
+    assert not any(a.get("redraft") for a in d["packet"]["generation"]["attempts"])
+    assert _failed(_run(TRACE, d, w)) == ["token usage recorded"]
+
+
+def test_r2c1_control_the_same_exception_on_a_redraft_attempt_excuses_null_totals():
+    d, w = _answered_redraft_turn(
+        [
+            {"provider": "OpenAI", "outcome": DRAFT1_REPLACED},
+            {"provider": "OpenAI", "outcome": USAGE_UNKNOWN, "redraft": True},
+            {"provider": "Groq", "outcome": "served"},
+        ],
+        None,
+        None,
+    )
+    assert _failed(_run(TRACE, d, w)) == []
+
+
+def test_e11_a_non_dict_entry_in_attempts_is_skipped_not_raised():
+    # E11: the isinstance guard. A null or string entry must neither raise nor count.
+    d, w = _answered_redraft_turn(
+        [None, "x", {"provider": "OpenAI", "outcome": USAGE_UNKNOWN, "redraft": True}],
+        None,
+        None,
+    )
+    assert _failed(_run(TRACE, d, w)) == []

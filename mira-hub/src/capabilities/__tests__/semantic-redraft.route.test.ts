@@ -141,7 +141,12 @@ function answerStream(text: string, out = 7): Response {
 
 /** Round 2: draft 1's stream with its completion_tokens written as raw JSON text. */
 function answerStreamRawCount(text: string, rawOut: string): Response {
-  const usage = `data: {"choices":[],"usage":{"prompt_tokens":12,"completion_tokens":${rawOut}}}\n\n`;
+  return answerStreamRawUsage(text, `{"prompt_tokens":12,"completion_tokens":${rawOut}}`);
+}
+
+/** Round 3: draft 1's stream with its whole usage block written as raw JSON text. */
+function answerStreamRawUsage(text: string, rawUsage: string): Response {
+  const usage = `data: {"choices":[],"usage":${rawUsage}}\n\n`;
   const parts = [...text.split(" ").map((w, i, all) => delta(i < all.length - 1 ? w + " " : w)), STOP, usage, "data: [DONE]\n\n"];
   return new Response(
     new ReadableStream<Uint8Array>({
@@ -171,6 +176,8 @@ type StubOpts = {
    * malformed counts JSON.stringify cannot write (NaN/Infinity become null). Overrides draft1Output.
    */
   draft1OutputRaw?: string;
+  /** Round 3: draft 1's whole usage block as raw JSON text (cached / prompt counts). Overrides both. */
+  draft1UsageRaw?: string;
   /** Redraft requests to a URL containing this fail with 500 (the next provider serves). */
   failRedraftAt?: string;
   /** Runs when the second judge call arrives, before it answers. */
@@ -201,8 +208,10 @@ function stubFetch(redraft: Redraft, judgeVerdicts: string[], o: StubOpts = {}) 
   const redraftUrls: string[] = [];
   const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
     const body = typeof init?.body === "string" ? init.body : "";
-    if (body.includes('"stream":true'))
+    if (body.includes('"stream":true')) {
+      if (o.draft1UsageRaw !== undefined) return answerStreamRawUsage(DRAFT1, o.draft1UsageRaw);
       return o.draft1OutputRaw === undefined ? answerStream(DRAFT1, o.draft1Output) : answerStreamRawCount(DRAFT1, o.draft1OutputRaw);
+    }
     if (body.includes("candidate_answer")) {
       const content = judgeVerdicts[judgeBodies.length] ?? "not a verdict";
       judgeBodies.push(body);
@@ -1424,5 +1433,193 @@ describe("R1-C5 route side — usage_unknown marks the generating attempt whose 
     expect(r.outcome.semantic_redraft).toBe("served");
     expect([r.gen.input_tokens, r.gen.output_tokens]).toEqual([12 + 50, 7 + 20]);
     expect(r.gen.attempts.some((a) => "usage_unknown" in a)).toBe(false);
+  });
+});
+
+/** Round 3: [provider, outcome, redraft?, usage_unknown?] for every packet attempt. */
+const flagsOf = (g: PacketGeneration) => g.attempts.map((a) => [a.provider, a.outcome, a[REDRAFT_MARKER] === true, a.usage_unknown === true]);
+
+describe("R2-C2 — a malformed draft-1 count is unknown on a redraft turn that sends no redraft request", () => {
+  beforeEach(() => {
+    process.env.MIRA_TURN_MAX_OUTPUT_TOKENS = "500";
+  });
+
+  it("500 ceiling, draft 1 reports -5, stopped_turn_cap: output NULL in the ledger and the packet, draft 1 marked usage_unknown", async () => {
+    const { redraftBodies } = stubFetch(REDRAFT, [verdict("unsafe"), verdict("safe", "none")], { draft1Output: -5 });
+    const r = await run(Q_PLAIN);
+    expect(redraftBodies).toHaveLength(0);
+    expect(r.outcome.semantic_redraft).toBe("stopped_turn_cap");
+    expect([r.usage.inputTokens, r.usage.outputTokens]).toEqual([12, null]);
+    expect([r.gen.input_tokens, r.gen.output_tokens]).toEqual([12, null]);
+    expect(flagsOf(r.gen)).toEqual([["OpenAI", "served", false, true]]);
+  });
+
+  it("control: 500 ceiling, draft 1 reports 300, stopped_turn_cap: the known count is stored, no usage_unknown", async () => {
+    const { redraftBodies } = stubFetch(REDRAFT, [verdict("unsafe"), verdict("safe", "none")], { draft1Output: 300 });
+    const r = await run(Q_PLAIN);
+    expect(redraftBodies).toHaveLength(0);
+    expect(r.outcome.semantic_redraft).toBe("stopped_turn_cap");
+    expect([r.usage.inputTokens, r.usage.outputTokens]).toEqual([12, 300]);
+    expect([r.gen.input_tokens, r.gen.output_tokens]).toEqual([12, 300]);
+    expect(r.gen.attempts.some((a) => "usage_unknown" in a)).toBe(false);
+  });
+});
+
+describe("R2-C4 — a cached count is known only when its own prompt count is known and the cached count is no larger", () => {
+  beforeEach(() => {
+    process.env.MIRA_TURN_MAX_OUTPUT_TOKENS = "4000";
+    process.env.GROQ_API_KEY = "g0";
+  });
+  const servedWithCached = (cached: number) =>
+    stubFetch(REDRAFT, [verdict("unsafe"), verdict("safe", "none")], {
+      byHost: {
+        "api.openai.com": { content: REDRAFT, usage: { prompt_tokens: 50, completion_tokens: 20, prompt_tokens_details: { cached_tokens: cached } } },
+      },
+    });
+
+  it("(a) cached_tokens 1e9 against a 50-token prompt on the served redraft: cachedInputTokens NULL", async () => {
+    servedWithCached(1e9);
+    const r = await run(Q_PLAIN);
+    expect(r.outcome.semantic_redraft).toBe("served");
+    expect([r.usage.inputTokens, r.usage.cachedInputTokens]).toEqual([12 + 50, null]);
+  });
+
+  it("(a) control: cached_tokens equal to the 50-token prompt is stored as 50", async () => {
+    servedWithCached(50);
+    const r = await run(Q_PLAIN);
+    expect(r.outcome.semantic_redraft).toBe("served");
+    expect([r.usage.inputTokens, r.usage.cachedInputTokens]).toEqual([12 + 50, 50]);
+  });
+
+  it("(a) a billed empty attempt whose cached count exceeds its prompt is USAGE_UNKNOWN, matching the NULL cached total", async () => {
+    stubFetch(REDRAFT, [verdict("unsafe"), verdict("safe", "none")], {
+      byHost: {
+        "api.openai.com": { content: "", usage: { prompt_tokens: 50, completion_tokens: 30, prompt_tokens_details: { cached_tokens: 60 } } },
+        groq: { content: REDRAFT, usage: { prompt_tokens: 50, completion_tokens: 20 } },
+      },
+    });
+    const r = await run(Q_PLAIN);
+    expect(r.outcome.semantic_redraft).toBe("served");
+    expect(r.usage.cachedInputTokens).toBeNull();
+    expect(redraftAttempts(r.gen)).toEqual([
+      ["OpenAI", USAGE_UNKNOWN],
+      ["Groq", "served"],
+    ]);
+  });
+
+  it("(b) draft 1 cached 3, the first redraft times out, Groq serves: the cached total is NULL with the others", async () => {
+    stubFetch(REDRAFT, [verdict("unsafe"), verdict("safe", "none")], {
+      draft1UsageRaw: '{"prompt_tokens":12,"completion_tokens":7,"prompt_tokens_details":{"cached_tokens":3}}',
+      byHost: { "api.openai.com": { throws: true }, groq: { content: REDRAFT, usage: { prompt_tokens: 50, completion_tokens: 20 } } },
+    });
+    const r = await run(Q_PLAIN);
+    expect(r.outcome.semantic_redraft).toBe("served");
+    expect([r.usage.inputTokens, r.usage.cachedInputTokens, r.usage.outputTokens]).toEqual([null, null, null]);
+  });
+
+  it("(b) control: draft 1 cached 3, the first redraft rejected unbilled (500), Groq serves: cached 3 is kept", async () => {
+    stubFetch(REDRAFT, [verdict("unsafe"), verdict("safe", "none")], {
+      draft1UsageRaw: '{"prompt_tokens":12,"completion_tokens":7,"prompt_tokens_details":{"cached_tokens":3}}',
+      byHost: { "api.openai.com": { status: 500 }, groq: { content: REDRAFT, usage: { prompt_tokens: 50, completion_tokens: 20 } } },
+    });
+    const r = await run(Q_PLAIN);
+    expect(r.outcome.semantic_redraft).toBe("served");
+    expect([r.usage.inputTokens, r.usage.cachedInputTokens, r.usage.outputTokens]).toEqual([12 + 50, 3, 7 + 20]);
+  });
+});
+
+describe("R2-C3 — one test per round-2 mutation that survived", () => {
+  beforeEach(() => {
+    process.env.MIRA_TURN_MAX_OUTPUT_TOKENS = "4000";
+    process.env.GROQ_API_KEY = "g0";
+  });
+
+  it("E8 (input side not cleaned): draft 1 reports prompt_tokens -5, the redraft is judged unsafe: input NULL in the ledger and the packet", async () => {
+    stubFetch(REDRAFT, [verdict("unsafe"), verdict("unsafe")], { draft1UsageRaw: '{"prompt_tokens":-5,"completion_tokens":7}' });
+    const r = await run(Q_PLAIN);
+    expect(r.outcome.semantic_redraft).toBe("stopped_judge_unsafe");
+    expect([r.usage.inputTokens, r.usage.outputTokens]).toEqual([null, 7 + 20]);
+    expect([r.gen.input_tokens, r.gen.output_tokens]).toEqual([null, 7 + 20]);
+  });
+
+  it("E21 (draft 1 marked only when served): draft 1 reports -5, the redraft is judged unsafe: draft 1's attempt carries usage_unknown", async () => {
+    stubFetch(REDRAFT, [verdict("unsafe"), verdict("unsafe")], { draft1Output: -5 });
+    const r = await run(Q_PLAIN);
+    expect(r.outcome.semantic_redraft).toBe("stopped_judge_unsafe");
+    expect(r.gen.output_tokens).toBeNull();
+    expect(flagsOf(r.gen)).toEqual([
+      ["OpenAI", "served", false, true],
+      ["OpenAI", NOT_SERVED, true, false],
+    ]);
+  });
+
+  it("E2 (cached reset removed): draft 1 cached 3, the served redraft reports cached_tokens -5: cachedInputTokens NULL, never 3", async () => {
+    stubFetch(REDRAFT, [verdict("unsafe"), verdict("safe", "none")], {
+      draft1UsageRaw: '{"prompt_tokens":12,"completion_tokens":7,"prompt_tokens_details":{"cached_tokens":3}}',
+      byHost: {
+        "api.openai.com": { content: REDRAFT, usage: { prompt_tokens: 50, completion_tokens: 20, prompt_tokens_details: { cached_tokens: -5 } } },
+      },
+    });
+    const r = await run(Q_PLAIN);
+    expect(r.outcome.semantic_redraft).toBe("served");
+    expect([r.usage.inputTokens, r.usage.cachedInputTokens]).toEqual([12 + 50, null]);
+  });
+
+  it("E3 (cached clause dropped from knownUsage): a billed empty attempt with only cached_tokens malformed is USAGE_UNKNOWN", async () => {
+    stubFetch(REDRAFT, [verdict("unsafe"), verdict("safe", "none")], {
+      byHost: {
+        "api.openai.com": { content: "", usage: { prompt_tokens: 50, completion_tokens: 30, prompt_tokens_details: { cached_tokens: -5 } } },
+        groq: { content: REDRAFT, usage: { prompt_tokens: 50, completion_tokens: 20 } },
+      },
+    });
+    const r = await run(Q_PLAIN);
+    expect(r.outcome.semantic_redraft).toBe("served");
+    expect(redraftAttempts(r.gen)).toEqual([
+      ["OpenAI", USAGE_UNKNOWN],
+      ["Groq", "served"],
+    ]);
+  });
+
+  it("E7 (prompt clause dropped from knownUsage): a billed empty attempt with only prompt_tokens malformed is USAGE_UNKNOWN and input is NULL", async () => {
+    stubFetch(REDRAFT, [verdict("unsafe"), verdict("safe", "none")], {
+      byHost: {
+        "api.openai.com": { content: "", usage: { prompt_tokens: -5, completion_tokens: 30 } },
+        groq: { content: REDRAFT, usage: { prompt_tokens: 50, completion_tokens: 20 } },
+      },
+    });
+    const r = await run(Q_PLAIN);
+    expect(r.outcome.semantic_redraft).toBe("served");
+    expect([r.usage.inputTokens, r.usage.outputTokens]).toEqual([null, 7 + 30 + 20]);
+    expect(redraftAttempts(r.gen)).toEqual([
+      ["OpenAI", USAGE_UNKNOWN],
+      ["Groq", "served"],
+    ]);
+  });
+
+  it("E9 (draft 1's malformed cached count not marked): draft 1 cached -5, the redraft is served: draft 1 carries usage_unknown", async () => {
+    stubFetch(REDRAFT, [verdict("unsafe"), verdict("safe", "none")], {
+      draft1UsageRaw: '{"prompt_tokens":12,"completion_tokens":7,"prompt_tokens_details":{"cached_tokens":-5}}',
+    });
+    const r = await run(Q_PLAIN);
+    expect(r.outcome.semantic_redraft).toBe("served");
+    expect(r.usage.cachedInputTokens).toBeNull();
+    expect(flagsOf(r.gen)).toEqual([
+      ["OpenAI", DRAFT1_REPLACED, false, true],
+      ["OpenAI", "served", true, false],
+    ]);
+  });
+
+  it("E5 (spent starts at 0 for an unknown draft-1 count): 1500 ceiling, draft 1 reports -5: the first redraft is sent with 700", async () => {
+    process.env.MIRA_TURN_MAX_OUTPUT_TOKENS = "1500";
+    const { redraftBodies } = stubFetch(REDRAFT, [verdict("unsafe"), verdict("safe", "none")], { draft1Output: -5 });
+    await run(Q_PLAIN);
+    expect(redraftBodies.map(capOf)).toEqual([700]);
+  });
+
+  it("E5 control: 1500 ceiling, draft 1 reports 7: the first redraft is sent with the full 800 request cap", async () => {
+    process.env.MIRA_TURN_MAX_OUTPUT_TOKENS = "1500";
+    const { redraftBodies } = stubFetch(REDRAFT, [verdict("unsafe"), verdict("safe", "none")], { draft1Output: 7 });
+    await run(Q_PLAIN);
+    expect(redraftBodies.map(capOf)).toEqual([800]);
   });
 });
