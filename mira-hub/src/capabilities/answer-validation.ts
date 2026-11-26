@@ -842,9 +842,19 @@ const FAULT_CONTEXT = /\b(?:fault|alarm|error|code|trip(?:ped|s)?)\b/i;
  *  names the code, it does not assign it a meaning. After "is a/an/the", a
  *  noun phrase about the code itself followed by what to DO with it, or where
  *  it is shown, is not a definition. "F004 is the code for undervoltage" still
- *  is one, so "code for …" is not exempted. */
+ *  is one, so "code for …" is not exempted.
+ *  Codex r2 F3: the exemption holds only while the rest of the clause says
+ *  nothing about WHY the code appears — "the code displayed when the drive
+ *  trips on overcurrent" assigns a trigger, so a trigger word anywhere after
+ *  the reference (when/if/after/because/for/due to/meaning/…, or "on <cause>"
+ *  other than a place like "on the display") voids it. Ambiguous wording
+ *  falls to the conservative fallback. */
+const CODE_TRIGGER =
+  "(?:when|whenever|while|if|once|after|during|under|with|upon|at|because|due\\s+to|caused|cause[sd]?|meaning|means|indicat\\w*|signal\\w*|for|from|on\\s+(?!(?:the|your|a|an|its)\\s+(?:display|screen|keypad|hmi|panel|drive|nameplate|label)\\b))";
 const NOT_A_CODE_REFERENCE =
-  "(?!\\s+(?:fault\\s+|error\\s+|alarm\\s+)?(?:code|number)\\s+(?:you\\b|to\\b|shown\\b|displayed\\b|on\\s+(?:the|your)\\s+(?:display|screen|keypad|hmi)\\b))";
+  "(?!\\s+(?:fault\\s+|error\\s+|alarm\\s+)?(?:code|number)\\s+(?:you\\b|to\\b|shown\\b|displayed\\b|on\\s+(?:the|your)\\s+(?:display|screen|keypad|hmi)\\b)(?![^.!?]*\\b" +
+  CODE_TRIGGER +
+  "))";
 const DEF_HEDGE =
   "(?:usually|typically|often|generally|commonly|normally|frequently|probably|likely|most\\s+likely|most\\s+often|most\\s+commonly)";
 

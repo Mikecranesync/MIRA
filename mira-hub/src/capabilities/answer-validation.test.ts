@@ -1301,7 +1301,7 @@ describe("Codex #5996 r1: code references are not meanings; disconnection wordin
 
   it.each([
     "F004 on your drive is the code you should photograph before contacting support.",
-    "F004 is the code to write down for support.",
+    "F004 is the code to write down before you call support.",
     "F004 is the fault code shown on the display.",
     "F004 is the number on your keypad to report.",
   ])("a reference to the code itself passes: %s", (answer) => {
@@ -1312,6 +1312,16 @@ describe("Codex #5996 r1: code references are not meanings; disconnection wordin
     "F004 is the code for undervoltage.",
     "F004 on your drive is the undervoltage fault.",
     "F004 is a DC bus undervoltage.",
+    // Codex r2 F3: a code reference that then names the trigger is a meaning.
+    "F004 is the code displayed when the drive trips on motor overcurrent.",
+    "F004 is the code shown if the DC bus drops too low.",
+    "F004 is the code you see after a power dip.",
+    "F004 is the code displayed on undervoltage.",
+    "F004 is the code to note for an undervoltage trip.",
+    "F004 is the code shown under low DC bus voltage.",
+    "F004 is the code displayed with an undervoltage condition.",
+    "F004 is the code shown upon loss of input phase.",
+    "F004 is the code you get from a low line voltage.",
   ])("an assigned meaning is still caught: %s", (answer) => {
     const r = general(answer, Q);
     expect(r.ok).toBe(false);
