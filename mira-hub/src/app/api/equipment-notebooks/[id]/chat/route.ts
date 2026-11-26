@@ -1493,7 +1493,8 @@ async function handleChatTurn(
   // SHADOW (MIRA_JEV_DECISION=1, off by default). Filled at the commit point,
   // where the DELIVERED answer, the evidence behind it and the deterministic
   // gate outcomes all exist at once; consumed in `finishAndPersist`, which runs
-  // after `controller.close()`. Held in a variable rather than passed as an
+  // after `controller.close()` (or, when delivery failed after the commit, after
+  // the stream is errored or cancelled: #6048). Held in a variable rather than passed as an
   // argument because the persist helper is defined before these values exist.
   let decisionState: TurnDecisionState | null = null;
   let lifecycleClosed = false;
@@ -1602,7 +1603,10 @@ async function handleChatTurn(
     // is narrower than "the helper is always late": `decisionState` is assigned
     // at exactly ONE place — inside the final answer-gate block — and the only
     // two call sites downstream of that assignment (the recordTurn-failure path
-    // and the final path) both sit after a `controller.close()`. The three
+    // and the final path's `settleCommitted`) run once the stream is terminal:
+    // after a `controller.close()` on a delivered turn, or after
+    // `controller.error()` when delivery threw after the commit (#6048; the
+    // usual cause is a response body the client already cancelled). The three
     // earlier call sites reach this line with `decisionState` still null and
     // make no call at all.
     //
@@ -4792,6 +4796,10 @@ async function handleChatTurn(
       // OpenAI call, held together with the OpenAI answer's. Released in the
       // `finally` below on every exit; a no-op once the judge has settled it.
       let judgeHold: JudgeOpenAiHold | null = null;
+      // #6048: armed once the turn's decision is in history. Persists that
+      // decision's packet and usage row once, whether delivery finishes or the
+      // catch below runs. Declared here because the catch cannot see the try's locals.
+      let settleCommitted: (() => Promise<void>) | null = null;
       try {
       // Turn Flight Recorder correlation frame — FIRST, additive, only when a
       // real trace id exists (see file header + notebook-chat-types.ts).
@@ -6241,6 +6249,28 @@ async function handleChatTurn(
         }
       }
 
+      // #6048: the decision above is in history now, so its packet and usage row are
+      // owed whatever happens to delivery. Every enqueue below throws once the client
+      // has cancelled the response body; the catch then settles through this same
+      // closure. The promise is kept on the first call, before anything is awaited, so
+      // a second call (a throw after the normal-path settle) writes nothing again.
+      {
+        let settling: Promise<void> | null = null;
+        settleCommitted = () =>
+          (settling ??= finishAndPersist(
+            finalTurnRowId,
+            // The usage frame's own object when that frame went out; otherwise what it
+            // would have carried. The generations were billed either way.
+            pendingUsage ??
+              (seam ? (turnUsage ?? exhaustedUsage(attempted)) : legacyCascadeUsage(activeProvider, served ? "ok" : "error")),
+            {
+              answerText: served ? answerText : null,
+              citationsPresent: emittedCitations.length > 0,
+              latencyMs: Date.now() - turnStartedAt,
+            },
+          ));
+      }
+
       // An unsafe replacement is already a terminal Safety STOP. Emit its
       // warning before the first stoppable content byte so an interruption can
       // never erase the server's authoritative safety determination.
@@ -6372,17 +6402,12 @@ async function handleChatTurn(
       // row carries the canonical spend; on the legacy cascade it carries the
       // served provider/model with UNKNOWN (null) tokens and cost.
       {
-        const ledgerUsage: TurnUsage =
-          pendingUsage ?? legacyCascadeUsage(activeProvider, served ? "ok" : "error");
         // Yield once after close so the consumer observes its terminal body
         // before telemetry starts. A ledger exception is non-fatal and must
         // never turn an already-closed, valid answer into a transport error.
         await new Promise<void>((resolve) => setTimeout(resolve, 0));
-        await finishAndPersist(finalTurnRowId, ledgerUsage, {
-          answerText: served ? answerText : null,
-          citationsPresent: emittedCitations.length > 0,
-          latencyMs: Date.now() - turnStartedAt,
-        });
+        // #6048: the one settle for this committed turn (armed at the commit above).
+        await settleCommitted();
       }
       setSpanAttrs({ "mira.turn.row_id": finalTurnRowId, "mira.persist.outcome": "ok" }, finalPersistSpan);
       endTimed(finalPersistSpan, "persist");
@@ -6396,6 +6421,31 @@ async function handleChatTurn(
             releaseErr instanceof Error ? releaseErr.message : releaseErr,
           );
         });
+        // The transport error goes out before the settle below, so a ledger write
+        // (and the shadow decision call) never sits in front of a reader that is
+        // still attached (#6048).
+        try {
+          controller.error(err);
+        } catch {
+          // A cancelled response controller is already terminal.
+        }
+        // #6048: the decision was already committed to history when this threw (the
+        // usual cause: the client cancelled the response body, so an enqueue threw).
+        // Settle it here, BEFORE endRoot(): endRoot starts a fire-and-forget close
+        // that writes the closed row with no packet, and the usage write that
+        // follows such a close is dropped (ON CONFLICT DO NOTHING). Null before the
+        // commit point, where nothing is owed. A settle that fails is logged and
+        // never replaces `err`; the claim was already released above.
+        if (settleCommitted) {
+          try {
+            await settleCommitted();
+          } catch (settleErr) {
+            console.error(
+              `[notebook-chat] settle after a post-commit failure did not complete (turn ${turnId}):`,
+              settleErr instanceof Error ? settleErr.message : settleErr,
+            );
+          }
+        }
         // Last-resort net: an exception here means no `endRoot()` on any
         // earlier path fired (every designed exit path already calls it) —
         // never leave the root span dangling unexported.
@@ -6406,11 +6456,6 @@ async function handleChatTurn(
           // best-effort
         }
         endRoot();
-        try {
-          controller.error(err);
-        } catch {
-          // A cancelled response controller is already terminal.
-        }
       } finally {
         // #4355 option 1: a judge hold the judge never used (answer not served,
         // gate path skipped, an exception) must not pin cap room forever.
