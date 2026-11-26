@@ -110,6 +110,12 @@ function sourcesFrame(text: string): { citations: Array<{ citationId: string }> 
   return JSON.parse(line!.replace(/^data:\s*/, ""));
 }
 
+function evidenceFrame(text: string): { manualSafetyStatement?: unknown } {
+  const line = text.split("\n\n").find((l) => l.includes('"kind":"evidence"'));
+  expect(line).toBeDefined();
+  return JSON.parse(line!.replace(/^data:\s*/, ""));
+}
+
 const QUESTION = "How many times will the drive try to auto restart after a fault?";
 
 beforeEach(() => {
@@ -152,6 +158,8 @@ describe("manual safety statement on a CITED page (#4508)", () => {
     expect(turn.evidence.some((e) => (e as { kind?: string }).kind === "safety_notice")).toBe(false);
     // The live frames carry no new frame kind and no terminal safety frame.
     expect(text).not.toContain('"kind":"safety"');
+    // #6013: the live evidence frame carries the same entry, so the finished answer shows it before the reload.
+    expect(evidenceFrame(text).manualSafetyStatement).toEqual(entries[0]);
 
     // Reload: /v3 renders the persisted row with the notice FIRST, as a warning, and the turn completes.
     const [, a] = turnsFromPersisted(
@@ -174,6 +182,8 @@ describe("manual safety statement on a CITED page (#4508)", () => {
     const text = await (await POST(chatReq({ message: QUESTION, sourceDocIds: [DOC_A] }), params)).text();
     expect(sourcesFrame(text).citations.map((c) => c.citationId)).toEqual(["1"]);
     expect(recorded().evidence.filter(isManualSafetyStatementEntry)).toEqual([]);
+    // #6013 control: no warning persisted, none on the live frame either.
+    expect(evidenceFrame(text)).not.toHaveProperty("manualSafetyStatement");
   });
 
   it("control for the uncited case: citing [2] (the statement page) does trigger the notice", async () => {

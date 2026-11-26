@@ -6114,6 +6114,10 @@ async function handleChatTurn(
       // Mission 001: the observed-state key rides the same frame (the frame
       // type lives in a guarded lib file, so it is attached without widening it).
       if (observedFrame) Object.assign(evidenceFrame, { observedState: observedFrame });
+      // #6013: the cited manual's own warning rides the live frame too, so the
+      // finished answer shows it before the history reload. Only when the turn
+      // was served, the same condition under which it is persisted below.
+      if (served && manualSafetyEntry) Object.assign(evidenceFrame, { manualSafetyStatement: manualSafetyEntry });
       const observedPersistEntry = observedStateEntry(observedFrame);
 
       // Weak-evidence badge (jev-weak-evidence.ts; `MIRA_JEV_WEAK_EVIDENCE_BADGE`).
