@@ -585,5 +585,39 @@ Confirm DECK pressure holds 210 bar for 60 seconds before returning to AUTO.`,
         expect(all("Check for wear [1].", PAINT_T)).toEqual([{ citationId: "1", reason: "terms" }]);
       });
     });
+
+    describe("clause 11 is counted and never a stop; a redraft that cites nothing is a stop (clause 10)", () => {
+      const NONE = { unchecked_off_page: 0, part_change_unstated: 0, value_other_statement: 0 };
+      const count = (answer: string, content: string, q = Q, ident = "") => {
+        const counted = { ...NONE };
+        return { gaps: citationSupportGaps(answer, [page(content)], q, ident, counted), ...counted };
+      };
+      it("11a: an uncited sentence the rule does not check, naming a part on no cited excerpt, is counted", () => {
+        expect(HOSE_T.toLowerCase()).not.toContain("encoder");
+        expect(count(`${ISO}inspect the hydraulic hoses for wear [1]. Then test the encoder coupling.`, HOSE_T)).toEqual({ gaps: [], ...NONE, unchecked_off_page: 1 });
+      });
+      it("control: the same sentence about a part the excerpt names is not counted", () => {
+        expect(count(`${ISO}inspect the hydraulic hoses for wear [1]. Then test the hydraulic hoses.`, HOSE_T)).toEqual({ gaps: [], ...NONE });
+      });
+      it("11b: replacing a part the excerpt only mentions is counted", () => {
+        expect(ZEPHYR).toContain("Linear encoder LE-3 lost reference");
+        expect(count(`${ISO}replace the linear encoder LE-3 [1].`, ZEPHYR, ZQ, ZID)).toEqual({ gaps: [], ...NONE, part_change_unstated: 1 });
+      });
+      it("control: replacing a part the excerpt says to replace is not counted", () => {
+        expect(count(`${ISO}replace the shaft seal [1].`, SEALHOSE)).toEqual({ gaps: [], ...NONE });
+      });
+      it("11c: a value printed on the excerpt, but in another statement than the matched one, is counted", () => {
+        const merged = "With pressure relieved and verified at zero, torque the four manifold bolts to 38 Nm in a cross pattern and recalibrate the PT-7 transducer so its zero point reads exactly 4.2 mA [1].";
+        expect(count(merged, ZEPHYR, ZQ, ZID)).toEqual({ gaps: [], ...NONE, value_other_statement: 1 });
+      });
+      it("control: a value in the matched statement is not counted", () => {
+        expect(count("Torque the four manifold bolts to 38 Nm in a cross pattern [1].", ZEPHYR, ZQ, ZID)).toEqual({ gaps: [], ...NONE });
+      });
+      it("stop: a redraft with no marker at all has nothing to be traced to, even when every sentence is exempt", () => {
+        const EXEMPT = "Stop and lock out the machine, then verify the pressure reads zero before you start";
+        expect(all(`${EXEMPT}.`, HOSE_T)).toEqual([{ citationId: null, reason: "no_page" }]);
+        expect(all(`${EXEMPT} [1].`, HOSE_T)).toEqual([]);
+      });
+    });
   });
 });

@@ -142,6 +142,15 @@ contracts:
     rule: Cited vendors must match the resolved or established manufacturer (alias-aware); conflicts and unsupported attributions are stripped with an honesty note.
     status: implemented
     enforcement: [tests/test_citation_attribution.py, citation_compliance relevance checks]
+  - id: CIT-005
+    rule: A redraft that replaces a safety stop is served only if every action sentence in it, cited or not, is supported by an excerpt the redraft cites (matching statement, values, part tags, kept condition, frequency and explicit order); a pressure or voltage reading of zero is the only numeric exemption.
+    status: implemented
+    enforcement: [mira-hub/src/capabilities/__tests__/semantic-redraft.test.ts, mira-hub/src/capabilities/__tests__/semantic-redraft.route.test.ts, citationSupportGaps]
+    notes: >-
+      Hub notebook chat (issues 6047 and 6049). Deterministic word and value
+      comparison, not entailment. A sentence with no marker, value, part tag or
+      listed verb is counted, not stopped. The packet keeps reason codes and
+      counts only (semantic_redraft_support), never redraft text.
 
   # ── Memory ───────────────────────────────────────────────────────────────
   - id: MEM-001

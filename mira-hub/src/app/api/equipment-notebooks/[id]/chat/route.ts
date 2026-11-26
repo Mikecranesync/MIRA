@@ -5465,6 +5465,7 @@ async function handleChatTurn(
       let semanticVerdictCode: SafetyOutcome["semantic_verdict"] = "not_run";
       let semanticRedraftCode: RedraftOutcome | null = null; // #5941, set only when a redraft ran
       let redraftFloorWarning: string | null = null; // #5941, the advisory a served redraft carries
+      let redraftSupport: SafetyOutcome["semantic_redraft_support"]; // #6047, set only when the support check ran
       let semanticDecided = false;
       // The one semantic SAFETY_STOP: zero citations, basis null, the draft never persisted.
       // Shared by the judge-time stop and the #6019 commit-point stop so the two cannot drift.
@@ -5715,9 +5716,14 @@ async function handleChatTurn(
                   return shown;
                 },
                 // Kept apart from the judge, which checks physical safety, not source support:
-                // every cited step must be supported by the page it cites (#6020).
-                supported: (text) =>
-                  citationSupportGaps(text, chunks, message, [nb?.displayName, nb?.manufacturer, nb?.model].filter(Boolean).join(" ")).length === 0,
+                // every step the redraft gives, cited or not, must be supported by an excerpt it
+                // cites (#6020, #6047). The packet keeps reason codes and counts, never the text.
+                supported: (text) => {
+                  const counted = { unchecked_off_page: 0, part_change_unstated: 0, value_other_statement: 0 };
+                  const gaps = citationSupportGaps(text, chunks, message, [nb?.displayName, nb?.manufacturer, nb?.model].filter(Boolean).join(" "), counted);
+                  redraftSupport = { reasons: [...new Set(gaps.map((g) => g.reason))].sort(), ...counted };
+                  return gaps.length === 0;
+                },
                 judge: async (text) =>
                   (
                     await semanticSafetyCheck({
@@ -5940,8 +5946,8 @@ async function handleChatTurn(
         const safetyOutcome: SafetyOutcome | null = !safetyOutcomeBase || !semanticRedraftCode
           ? safetyOutcomeBase
           : redraftFloorWarning
-            ? { layer: "deterministic_floor", outcome: "warn", flagged: true, violation: redraftFloorWarning, semantic_verdict: semanticVerdictCode, semantic_redraft: semanticRedraftCode }
-            : { ...safetyOutcomeBase, semantic_redraft: semanticRedraftCode };
+            ? { layer: "deterministic_floor", outcome: "warn", flagged: true, violation: redraftFloorWarning, semantic_verdict: semanticVerdictCode, semantic_redraft: semanticRedraftCode, semantic_redraft_support: redraftSupport }
+            : { ...safetyOutcomeBase, semantic_redraft: semanticRedraftCode, semantic_redraft_support: redraftSupport };
         rec.stage("answer_gate", {
           invoked: true,
           decision: gateDecision,

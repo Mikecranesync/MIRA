@@ -453,6 +453,49 @@ describe("#6047 — every action sentence of a redraft needs support, and the pa
     expectUnsupportedStop(r, judgeBodies, redraftBodies, ["filter cartridge"]);
   });
 
+  describe("the packet records the support check as codes and counts, never the redraft's text", () => {
+    const NONE = { unchecked_off_page: 0, part_change_unstated: 0, value_other_statement: 0 };
+    /** RTB_SERVED without its marker: the floors' citation check stops it before the support check. */
+    const RTB_UNCITED = "With the press stopped and locked out, replace the filter cartridge only if it is damaged.";
+
+    it("a stop records its reason; the redraft's own words are nowhere in what is persisted", async () => {
+      ragMock.retrieveNodeChunks.mockResolvedValue([{ ...chunks[0], content: FILTER_TEXT }] as never);
+      stubFetch(RTB_STOP, [verdict("unsafe"), verdict("safe", "none")]);
+      const r = await run(Q_PLAIN);
+      expect(r.outcome.semantic_redraft).toBe("stopped_unsupported");
+      expect(r.outcome.semantic_redraft_support).toEqual({ reasons: ["restriction"], ...NONE });
+      const persisted = JSON.stringify([persistMock.persistTurnUsage.mock.calls, domainMock.recordTurn.mock.calls]);
+      expect(persisted).toContain("semantic_redraft_support");
+      expect(FILTER_TEXT).not.toContain("every shift");
+      expect(persisted).not.toContain("every shift");
+    });
+
+    it("a served redraft records an empty reason list", async () => {
+      ragMock.retrieveNodeChunks.mockResolvedValue([{ ...chunks[0], content: FILTER_TEXT }] as never);
+      stubFetch(RTB_SERVED, [verdict("unsafe"), verdict("safe", "none")]);
+      const r = await run(Q_PLAIN);
+      expect(r.outcome.semantic_redraft).toBe("served");
+      expect(r.outcome.semantic_redraft_support).toEqual({ reasons: [], ...NONE });
+    });
+
+    it("a counted finding is recorded on a served redraft", async () => {
+      // "test" is safety vocabulary, so the second sentence is not checked; its part is on no excerpt: counted (11a).
+      const text = "With the press stopped and locked out, check the hydraulic hose for wear [1]. Then test the encoder coupling.";
+      stubFetch(text, [verdict("unsafe"), verdict("safe", "none")]);
+      const r = await run(Q_PLAIN);
+      expect(r.outcome.semantic_redraft).toBe("served");
+      expect(r.outcome.semantic_redraft_support).toEqual({ reasons: [], ...NONE, unchecked_off_page: 1 });
+    });
+
+    it("control: a redraft stopped before the support check records none", async () => {
+      ragMock.retrieveNodeChunks.mockResolvedValue([{ ...chunks[0], content: FILTER_TEXT }] as never);
+      stubFetch(RTB_UNCITED, [verdict("unsafe"), verdict("safe", "none")]);
+      const r = await run(Q_PLAIN);
+      expect(r.outcome.semantic_redraft).toBe("stopped_check");
+      expect(r.outcome.semantic_redraft_support).toBeUndefined();
+    });
+  });
+
   describe("#6049 — a zero is exempt only as a pressure or voltage reading", () => {
     const ZERO_DELAY = "With the press stopped and locked out, set the pre-charge delay to 0 ms [1].";
     const DELAY_800 = "SECTION 4.3 Parameter P14 sets the pre-charge delay. Set the pre-charge delay to 800 ms.";

@@ -26,6 +26,7 @@ import type { EvidenceFollowedAssessment } from "./evidence-consistency";
 
 import type { JevDecisionRecord } from "./jev-decision";
 import type { RedraftOutcome } from "../semantic-redraft";
+import type { SupportCounts, SupportReason } from "../supporting-quote";
 
 export const TURN_EVIDENCE_PACKET_VERSION = "2" as const;
 
@@ -200,6 +201,10 @@ export type TurnEvidencePacketGeneration = {
  *    an earlier layer already replaced the draft).
  *  - semantic_redraft (#5941): present only when an unsafe verdict triggered the one
  *    redraft — served (then semantic_verdict is the redraft's "safe") or why it stopped.
+ *  - semantic_redraft_support (#6047): present only when that redraft reached the source-support
+ *    check — the closed reasons it stopped for (empty when it passed) and the counted-only
+ *    findings of the rule. Never the redraft's text. Absent on a stopped_unsupported whose
+ *    check threw.
  */
 export type SafetyOutcome = {
   layer: "pre_llm_trigger" | "deterministic_floor" | "semantic_judge" | "none";
@@ -208,6 +213,7 @@ export type SafetyOutcome = {
   violation: string | null;
   semantic_verdict: "safe" | "unsafe" | "unknown" | "not_run";
   semantic_redraft?: RedraftOutcome;
+  semantic_redraft_support?: { reasons: SupportReason[] } & SupportCounts;
 };
 
 /**
