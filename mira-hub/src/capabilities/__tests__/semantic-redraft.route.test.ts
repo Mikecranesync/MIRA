@@ -1389,3 +1389,40 @@ describe("round-1 open risks, pinned", () => {
     expect(r.outcome.semantic_redraft).toBe("stopped_generation");
   });
 });
+
+describe("R1-C5 route side — usage_unknown marks the generating attempt whose unknown usage nulls the totals", () => {
+  beforeEach(() => {
+    process.env.MIRA_TURN_MAX_OUTPUT_TOKENS = "4000";
+  });
+  const flags = (g: PacketGeneration) => g.attempts.map((a) => [a.provider, a.outcome, a[REDRAFT_MARKER] === true, a.usage_unknown === true]);
+
+  it("draft 1 reports -50, the redraft is served: draft 1's replaced attempt carries usage_unknown", async () => {
+    stubFetch(REDRAFT, [verdict("unsafe"), verdict("safe", "none")], { draft1Output: -50 });
+    const r = await run(Q_PLAIN);
+    expect(r.outcome.semantic_redraft).toBe("served");
+    expect(r.gen.output_tokens).toBeNull();
+    expect(flags(r.gen)).toEqual([
+      ["OpenAI", DRAFT1_REPLACED, false, true],
+      ["OpenAI", "served", true, false],
+    ]);
+  });
+
+  it("a served redraft with no usage block: the served attempt carries usage_unknown and the totals are NULL", async () => {
+    stubFetch(REDRAFT, [verdict("unsafe"), verdict("safe", "none")], { byHost: { "api.openai.com": { content: REDRAFT } } });
+    const r = await run(Q_PLAIN);
+    expect(r.outcome.semantic_redraft).toBe("served");
+    expect([r.gen.input_tokens, r.gen.output_tokens]).toEqual([null, null]);
+    expect(flags(r.gen)).toEqual([
+      ["OpenAI", DRAFT1_REPLACED, false, false],
+      ["OpenAI", "served", true, true],
+    ]);
+  });
+
+  it("control: a clean served redraft puts no usage_unknown key on any attempt", async () => {
+    stubFetch(REDRAFT, [verdict("unsafe"), verdict("safe", "none")]);
+    const r = await run(Q_PLAIN);
+    expect(r.outcome.semantic_redraft).toBe("served");
+    expect([r.gen.input_tokens, r.gen.output_tokens]).toEqual([12 + 50, 7 + 20]);
+    expect(r.gen.attempts.some((a) => "usage_unknown" in a)).toBe(false);
+  });
+});

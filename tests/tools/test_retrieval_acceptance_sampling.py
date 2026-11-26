@@ -231,3 +231,29 @@ def test_one_null_total_passes_when_the_packet_shows_a_billed_attempt_with_unkno
         None,
     )
     assert _failed(_run(TRACE, d, w)) == []
+
+
+def test_null_totals_pass_when_a_generating_attempt_is_marked_usage_unknown():
+    # The route's shape for a malformed draft-1 count under a served redraft: no attempt
+    # is "exception"; draft 1's replaced attempt carries usage_unknown instead.
+    d, w = _answered_redraft_turn(
+        [
+            {"provider": "OpenAI", "outcome": DRAFT1_REPLACED, "usage_unknown": True},
+            {"provider": "OpenAI", "outcome": "served", "redraft": True},
+        ],
+        62,
+        None,
+    )
+    assert _failed(_run(TRACE, d, w)) == []
+
+
+def test_control_null_totals_fail_when_usage_unknown_is_false():
+    d, w = _answered_redraft_turn(
+        [
+            {"provider": "OpenAI", "outcome": DRAFT1_REPLACED, "usage_unknown": False},
+            {"provider": "OpenAI", "outcome": "served", "redraft": True},
+        ],
+        62,
+        None,
+    )
+    assert _failed(_run(TRACE, d, w)) == ["token usage recorded"]
