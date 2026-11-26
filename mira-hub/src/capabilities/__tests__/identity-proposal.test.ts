@@ -534,3 +534,51 @@ describe("a digitless variant code after a known series name", () => {
     expect(proposeIdentityFromText("Siemens SINAMICS G120C trips on overvoltage", SEW)).toEqual({ manufacturer: "Siemens", model: "G120C" });
   });
 });
+
+// #4095 gap 2 (staging probe 2026-11-25): "G120" matches FAULT_CODE_RE, so
+// "Siemens G120 …" got no proposal although "Siemens G120C …" did.
+describe("a listed machine name shaped like a fault code, after its own maker", () => {
+  const MAKERS = ["Siemens", "Rockwell Automation", "ABB"];
+
+  it.each([
+    ["Siemens G120 won't start", { manufacturer: "Siemens", model: "G120" }],
+    ["Siemens G120 overcurrent", { manufacturer: "Siemens", model: "G120" }],
+    ["What does a Siemens G120 do on power loss", { manufacturer: "Siemens", model: "G120" }],
+  ])("%s → proposes it", (text, want) => {
+    expect(proposeIdentityFromText(text, MAKERS)).toEqual(want);
+  });
+
+  it("the G120C reading is unchanged", () => {
+    expect(proposeIdentityFromText("Siemens G120C won't start", MAKERS)).toEqual({ manufacturer: "Siemens", model: "G120C" });
+  });
+
+  it.each([
+    // A real fault code is still never a machine.
+    ["Siemens fault F004"],
+    ["Siemens F0004 fault"],
+    // Only the listed name: another fault-shaped token stays a code.
+    ["Siemens G110 fault"],
+    // Only after its OWN maker.
+    ["Allen-Bradley G120 fault"],
+    ["ABB G120"],
+    // Only directly after the maker, never further along the sentence.
+    ["Siemens fault G120 on the drive"],
+    ["G120 fault on the Siemens"],
+    // Exactly as written in capitals, like every other model token.
+    ["siemens g120 fault"],
+    // Two drives named → no card.
+    ["Siemens G120 and G120C differences"],
+    ["Siemens G120 G120C"],
+    ["Siemens G120C or g120 manual"],
+    // Out of scope here (#4095 gap 3): the 5-digit fault code is still read as a second model.
+    ["Siemens G120 fault F30011 meaning"],
+    // Out of scope here: a series name on this reading is still rejected (namesAnotherProductLine).
+    ["Siemens SINAMICS G120 overcurrent"],
+  ])("%s → no proposal", (text) => {
+    expect(proposeIdentityFromText(text, MAKERS)).toBeNull();
+  });
+
+  it("a fault code on a bound family is still read as a fault, not a second machine", () => {
+    expect(proposeIdentityFromText("Allen-Bradley PowerFlex 525 fault F004", ["Rockwell Automation"])).toEqual({ manufacturer: "Allen-Bradley", model: "525" });
+  });
+});
