@@ -328,6 +328,8 @@ import {
   type HazardTriageResult,
   type JudgeOpenAiHold,
 } from "@/capabilities/answer-safety-check";
+import { runSemanticRedraft, withRedraftInstruction, type RedraftOutcome } from "@/capabilities/semantic-redraft";
+import { cascadeComplete, type CascadeMessage } from "@/lib/llm/cascade";
 
 export const dynamic = "force-dynamic";
 
@@ -5347,11 +5349,9 @@ async function handleChatTurn(
       // of the retrieved passages is not left to the model's wording. Under the
       // gate nothing has been released yet, so the uncited draft is replaced
       // before a byte of it reaches the technician; gate off stays legacy.
-      const uncitedDocumentClaim =
-        gate &&
-        served &&
-        !refusedByText &&
-        isUncitedDocumentClaim(answerText, {
+      // A function of the draft text so the #5941 redraft is held to the same floor.
+      const uncitedClaimFor = (text: string) =>
+        isUncitedDocumentClaim(text, {
           oemGrounded: oemRetrieval && docGrounded,
           citations,
           // `visualSection` is every stored nameplate reading for the bound machine
@@ -5363,10 +5363,11 @@ async function handleChatTurn(
           exempt:
             Boolean(groundedMachineEntry) ||
             Boolean(thisTurnLookSection) ||
-            (Boolean(priorLookSection) && answerUsesEarlierPhoto(answerText, priorLookRows.map((r) => r.text))) ||
-            (Boolean(visualSection) && answerUsesStoredNameplateReading(answerText, visualReadings)) ||
+            (Boolean(priorLookSection) && answerUsesEarlierPhoto(text, priorLookRows.map((r) => r.text))) ||
+            (Boolean(visualSection) && answerUsesStoredNameplateReading(text, visualReadings)) ||
             Boolean(safetyTrigger),
         });
+      const uncitedDocumentClaim = gate && served && !refusedByText && uncitedClaimFor(answerText);
       if (uncitedDocumentClaim) {
         console.warn(`[notebook-chat] uncited manufacturer-library claim withheld (#4426): ${answerText.length} chars, ${citations.length} citations available`);
         answerText = UNCITED_OEM_CLAIM_TEXT;
@@ -5380,20 +5381,20 @@ async function handleChatTurn(
       // ships no citations. Unlike that floor it has no safety-trigger
       // exemption — a flagged turn must not approve an overload either — and
       // the turn's hazard banner is kept over the replacement (below).
-      const ratingColumn = (() => {
-        // Not skipped for a draft that only READS as a refusal (refusedByText): "Yes, rated 15 A. The
-        // excerpts do not say …" still approves, and a refusal's text is shown to the technician.
-        if (!gate || !served || !docGrounded || uncitedDocumentClaim) return null;
-        const used = citationsUsedInAnswer(answerText, citations);
+      const ratingColumnFor = (text: string) => {
+        const used = citationsUsedInAnswer(text, citations);
         return ratingColumnFinding(
           message,
-          answerText,
+          text,
           chunks.map((c) => {
             const title = citationTitle(c);
             return { content: c.content, title, page: c.sourcePage, cited: used.some((u) => u.sourceTitle === title && u.page === c.sourcePage) };
           }),
         );
-      })();
+      };
+      // Not skipped for a draft that only READS as a refusal (refusedByText): "Yes, rated 15 A. The
+      // excerpts do not say …" still approves, and a refusal's text is shown to the technician.
+      const ratingColumn = !gate || !served || !docGrounded || uncitedDocumentClaim ? null : ratingColumnFor(answerText);
       if (ratingColumn) {
         console.warn(`[notebook-chat] ratings-table answer withheld (#5466, ${ratingColumn.rule} rule): ${answerText.length} chars, table p. ${ratingColumn.page ?? "?"}`);
         answerText = ratingColumnText(ratingColumn);
@@ -5455,6 +5456,7 @@ async function handleChatTurn(
           : null;
       const flaggedTurn = preLlmTriggered || floorWarning !== null;
       let semanticVerdictCode: SafetyOutcome["semantic_verdict"] = "not_run";
+      let semanticRedraftCode: RedraftOutcome | null = null; // #5941, set only when a redraft ran
       let semanticDecided = false;
       // #4098: which quantity word + unit the exact-rating rule matched —
       // closed-vocabulary tokens, never text — so false refusals are
@@ -5552,11 +5554,10 @@ async function handleChatTurn(
       // sent prompt is byte-identical to before), and named here by mode so
       // `exclude` never carries a caution that isn't actually present in
       // `protectedCore` for this turn.
-      if (!outputRejected && served && answerText.trim()) {
-        const protectedCore = docGrounded ? BASE_SYSTEM_PROMPT : GENERAL_SYSTEM_PROMPT;
-        const leak = detectPromptLeak(
-          protectedCore,
-          answerText,
+      const promptLeakIn = (text: string) =>
+        detectPromptLeak(
+          docGrounded ? BASE_SYSTEM_PROMPT : GENERAL_SYSTEM_PROMPT,
+          text,
           docGrounded
             ? [BASE_NFPA_CAUTION, BASE_SITE_RECORDS_CAUTION, BASE_ENERGY_ISOLATION_HAZARD_POINTS]
             : [
@@ -5568,6 +5569,8 @@ async function handleChatTurn(
                 GENERAL_IDENTITY_STATEMENT,
               ],
         );
+      if (!outputRejected && served && answerText.trim()) {
+        const leak = promptLeakIn(answerText);
         if (leak.leaked) {
           console.error(
             `[notebook-chat] pre-display ${gate ? "REJECTED" : "flagged (gate off)"} ${leak.violation}: ${leak.detail}`,
@@ -5629,12 +5632,70 @@ async function handleChatTurn(
         semanticVerdictCode = sv.verdict;
         // Safety Phase 0 (#4372, owner authorization 2026-10-29 — supersedes the
         // 2026-09-27 flag-only decision of #4022): the judge may only ADD a block.
-        // "unsafe" -> SAFETY_STOP on every turn; an undecided judge (timeout,
+        // "unsafe" -> SAFETY_STOP (after the #5941 redraft below, where it applies); an undecided judge (timeout,
         // provider failure, malformed verdict, budget) -> the controlled
         // unverified fallback on a FLAGGED turn, served on an unflagged one.
         // Both reuse the `unsafe_answer` branch below: zero citations, basis
         // null, safety_notice + safety_stop evidence, the draft never persisted.
-        if (sv.verdict === "unsafe") {
+        // #5941 (owner decision 2026-11-25): an unsafe verdict on a doc-grounded,
+        // unflagged answer gets ONE redraft with a fixed isolation-and-restart
+        // instruction; the redraft must pass every deterministic floor above and a
+        // fresh "safe" verdict, or the turn stops exactly as before. Canonical seam
+        // only (the legacy cascade keeps the stop). The rejected draft is never resent.
+        const redraft =
+          sv.verdict === "unsafe" && seam && docGrounded && !flaggedTurn
+            ? await runSemanticRedraft({
+                aborted: () => clientAbort.signal.aborted,
+                generate: async () => {
+                  const r = await cascadeComplete(withRedraftInstruction(messages as CascadeMessage[], closedSemanticClass(sv.hazardClass, selectedClass)), {
+                    providers: cascadeProviders.flatMap((p) => (p.key && !health.isUnhealthy(p.name) ? [{ ...p, key: p.key }] : [])),
+                    maxTokens: requestCap,
+                    temperature: 0.3,
+                    timeoutMs: 30_000,
+                    signal: clientAbort.signal,
+                  });
+                  if (r) console.log(`[notebook-chat] semantic redraft generated by ${r.provider} in ${r.durationMs}ms`);
+                  return r ? normalizeCitationMarkers(r.content) : null;
+                },
+                // The same floors draft 1 passed. One warning is allowed through: the
+                // isolation advisory, a fixed server banner that fires on the very
+                // "with the press locked out" wording the instruction asks for. It is
+                // served above the redraft, as it would be on draft 1; every other
+                // warning or replacement stops the turn.
+                screen: (text) => {
+                  if (refusalVerdict(text, { docGrounded, citations }) || uncitedClaimFor(text) || ratingColumnFor(text) !== null) return null;
+                  const v = validateAnswer({
+                    answerText: text,
+                    question: message,
+                    general: false,
+                    served: true,
+                    refused: false,
+                    evidenceSufficient,
+                    manualSearchRunning: fallbackSearchRunning,
+                  });
+                  const shown = v.ok ? text : v.violation === "hazard-warning:isolation-advisory" ? v.replacement : null;
+                  return shown && !promptLeakIn(shown).leaked ? shown : null;
+                },
+                judge: async (text) =>
+                  (
+                    await semanticSafetyCheck({
+                      question: message,
+                      answerText: text,
+                      general: false,
+                      selectedClass: selectForSemanticCheck(text, message) ?? "unclassified",
+                      sources: chunks.map((c) => c.content),
+                    })
+                  ).verdict,
+              })
+            : null;
+        if (redraft) {
+          semanticRedraftCode = redraft.outcome;
+          console.warn(`[notebook-chat] semantic redraft ${redraft.outcome}`);
+        }
+        if (redraft?.outcome === "served" && redraft.text) {
+          answerText = redraft.text;
+          semanticVerdictCode = "safe";
+        } else if (sv.verdict === "unsafe") {
           const cls = closedSemanticClass(sv.hazardClass, selectedClass);
           console.warn(`[notebook-chat] semantic BLOCKED ${cls}: ${sv.reason ?? ""}`);
           outputRejected = { kind: "unsafe_answer", violation: `unsafe-answer:semantic-${cls}` };
@@ -5781,7 +5842,7 @@ async function handleChatTurn(
               : refused
                 ? "refused"
                 : "answered";
-        const safetyOutcome: SafetyOutcome | null = !served
+        const safetyOutcomeBase: SafetyOutcome | null = !served
           ? null
           : semanticDecided && outputRejected
             ? {
@@ -5804,6 +5865,8 @@ async function handleChatTurn(
                 : preLlmTriggered
                   ? { layer: "pre_llm_trigger", outcome: "warn", flagged: true, violation: null, semantic_verdict: semanticVerdictCode }
                   : { layer: "none", outcome: "allow", flagged: false, violation: null, semantic_verdict: semanticVerdictCode };
+        const safetyOutcome: SafetyOutcome | null =
+          safetyOutcomeBase && semanticRedraftCode ? { ...safetyOutcomeBase, semantic_redraft: semanticRedraftCode } : safetyOutcomeBase;
         rec.stage("answer_gate", {
           invoked: true,
           decision: gateDecision,

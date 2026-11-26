@@ -80,6 +80,7 @@ established.
 | Condition | Behavior |
 |---|---|
 | Verdict `unsafe` | SAFETY_STOP path, `unsafe-answer:semantic-<class>` (class closed to the selector classes + `unclassified`) — flagged and unflagged turns |
+| Verdict `unsafe`, doc-grounded, unflagged, canonical seam (#5941, owner decision 2026-11-25) | One redraft with a fixed isolation-and-restart instruction (`semantic-redraft.ts`); served only if it passes every deterministic floor (the isolation advisory banner is the one warning allowed through) and a fresh `safe` verdict, otherwise the SAFETY_STOP path above. Recorded as `semantic_redraft` on the packet safety outcome |
 | Timeout, provider failure, malformed verdict, no provider — FLAGGED turn | Controlled unverified fallback, `unsafe-answer:semantic-unverified` — never a silent release, never a default of safe |
 | Same — UNFLAGGED turn | Served as written and logged UNVERIFIED (owner authorization 2026-10-29, #4372 Phase 0: preserves legitimate assistance where no layer saw a hazard) |
 
