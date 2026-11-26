@@ -25,6 +25,7 @@
 import type { EvidenceFollowedAssessment } from "./evidence-consistency";
 
 import type { JevDecisionRecord } from "./jev-decision";
+import type { RedraftOutcome } from "../semantic-redraft";
 
 export const TURN_EVIDENCE_PACKET_VERSION = "2" as const;
 
@@ -197,6 +198,8 @@ export type TurnEvidencePacketGeneration = {
  *  - flagged: a pre-LLM trigger fired or the floor returned a hazard/energized warning.
  *  - semantic_verdict: the judge's verdict, or not_run (gate/judge off, refused, or
  *    an earlier layer already replaced the draft).
+ *  - semantic_redraft (#5941): present only when an unsafe verdict triggered the one
+ *    redraft — served (then semantic_verdict is the redraft's "safe") or why it stopped.
  */
 export type SafetyOutcome = {
   layer: "pre_llm_trigger" | "deterministic_floor" | "semantic_judge" | "none";
@@ -204,6 +207,7 @@ export type SafetyOutcome = {
   flagged: boolean;
   violation: string | null;
   semantic_verdict: "safe" | "unsafe" | "unknown" | "not_run";
+  semantic_redraft?: RedraftOutcome;
 };
 
 /**

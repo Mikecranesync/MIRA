@@ -647,11 +647,108 @@ export function supportingQuote(
 type QuotableCitation = { citationId: string; quote: string | null };
 type PageChunk = { content: string; sourceUrl: string; sourcePage: number | null };
 
+/** Chunk texts grouped by page exactly as buildCitations numbers them — key
+ *  `${sourceUrl}::${sourcePage ?? ""}`, citationId = first-appearance order — so
+ *  pages[n - 1] is the page the model saw as [n]. */
+export function pagesByCitation(chunks: readonly PageChunk[]): string[][] {
+  const byKey = new Map<string, string[]>();
+  for (const c of chunks) {
+    const key = `${c.sourceUrl}::${c.sourcePage ?? ""}`;
+    byKey.set(key, [...(byKey.get(key) ?? []), c.content]);
+  }
+  return [...byKey.values()];
+}
+
+// Words too generic to show that a page supports a step: function words, plus the
+// isolation/restart vocabulary the #5941 redraft instruction itself asks for (a step the
+// instruction made the model add is never evidence the page says it).
+const SUPPORT_NEUTRAL = new Set(
+  (
+    "about above across after again against along also among another any area around before behind being below " +
+    "beside between beyond both check checked checking clear complete could does done during each ensure every " +
+    "first from have inside into just keep last later make more most must next once only other outside over same " +
+    "should some still such sure than that their them then there these they this those through toward towards " +
+    "under until upon used using very what when where which while will with within without would your " +
+    "absence adjusted afterwards back bring brought circuit component components energize energized energizing " +
+    "energy equipment guard guards isolate isolated isolating isolation known lock locked locking lockout lockouts " +
+    "loosened machine manual meter open opens person power powered pressure procedure proven qualified reach reaching reads " +
+    "refit release releases relieve relieved remove removed reset restart restarted safeguard service servicing site " +
+    "start started step steps stop stopped stored tagout technician test verify verified voltage work zero"
+  ).split(" "),
+);
+
+// A page reference ("see page 41", "p. 12-13") points at the source; it claims nothing about it.
+const PAGE_REF_RE = /\b(?:p\.|pp\.|pages?)\s*\d+(?:\s*[-–]\s*\d+)?/gi;
+
+function supportTerms(text: string): string[] {
+  const toks = normalize(text.replace(MARKER_RE, " ").replace(PAGE_REF_RE, " ")).match(/[\p{L}\p{N}][\p{L}\p{N}-]*[\p{L}\p{N}]/gu) ?? [];
+  return toks.filter((t) => (/\d/.test(t) ? t.length >= 2 : t.length >= 4) && !SUPPORT_NEUTRAL.has(t));
+}
+
+function termOnPage(term: string, pageTokens: readonly string[]): boolean {
+  // An exact token, or one a plain inflection away ("hose"/"hoses", "inspect"/"inspection").
+  return pageTokens.some((p) => p === term || (Math.min(p.length, term.length) >= 4 && (p.startsWith(term) || term.startsWith(p))));
+}
+
+export type CitationSupportGap = { citationId: string; reason: "no_page" | "value" | "terms" };
+
+/**
+ * #6020: where an answer's cited steps are not supported by the pages they cite. Deterministic
+ * and deliberately a low floor, read on the model-visible text of each page:
+ *   - a marker that resolves to no retrieved page is a gap;
+ *   - every value (number + unit) the answer assigns to a citation must be found on that page,
+ *     except a zero reading (the redraft instruction asks the model to say a gauge reads zero);
+ *   - a sentence carrying markers whose content words appear on NONE of the pages it cites is a
+ *     gap. A sentence with no content words left (only isolation/restart vocabulary) is neutral.
+ *     Words of the question and of `identity` (the machine's own name) are not support while the
+ *     sentence has any other word: "the press" matches every page of a press manual, so a step
+ *     invented about a press would otherwise pass on the title alone.
+ * It does not prove entailment: a sentence that shares a word with its page but says something
+ * else about it passes.
+ */
+export function citationSupportGaps(
+  answer: string,
+  chunks: readonly PageChunk[],
+  question: string,
+  identity = "",
+): CitationSupportGap[] {
+  const pages = pagesByCitation(chunks).map((p) => p.map((t) => t.slice(0, MODEL_VISIBLE_CHARS)));
+  const gaps: CitationSupportGap[] = [];
+  const used = [...new Set([...answer.matchAll(MARKER_RE)].map((m) => m[1]))];
+  const assigned = assignValues(answer, question);
+  for (const id of used) {
+    const page = pages[Number(id) - 1];
+    if (!page) {
+      gaps.push({ citationId: id, reason: "no_page" });
+      continue;
+    }
+    const srcVals = page.flatMap((t) => findValues(t, "source"));
+    // Usable values only (number + table unit); a bare "step 3" is left to the word check.
+    const claims = (assigned.get(id) ?? []).filter((c) => c.usable && !c.nums.every((n) => n === 0));
+    if (claims.some((c) => !srcVals.some((s) => satisfies(s, c)))) gaps.push({ citationId: id, reason: "value" });
+  }
+  const pageTokens = pages.map((p) => supportTerms(p.join(" ")));
+  const known = new Set(supportTerms(`${question} ${identity}`));
+  for (const [rs, re] of regions(answer)) {
+    const region = answer.slice(rs, re);
+    const ids = [...new Set([...region.matchAll(MARKER_RE)].map((m) => m[1]))].filter((id) => pages[Number(id) - 1]);
+    if (ids.length === 0) continue;
+    const all = supportTerms(region);
+    if (all.length === 0) continue;
+    const own = all.filter((t) => !known.has(t));
+    const terms = own.length > 0 ? own : all;
+    const cited = ids.flatMap((id) => pageTokens[Number(id) - 1]);
+    if (!terms.some((t) => termOnPage(t, cited))) {
+      for (const id of ids) if (!gaps.some((g) => g.citationId === id)) gaps.push({ citationId: id, reason: "terms" });
+    }
+  }
+  return gaps;
+}
+
 /**
  * Re-derive each EMITTED citation's quote from the answer. Chunks are grouped exactly as
- * buildCitations numbers them — key `${sourceUrl}::${sourcePage ?? ""}`, citationId =
- * first-appearance order — so [n] here is the same page the model saw as [n]. A citation
- * with no matched claimed value keeps its existing quote byte-for-byte.
+ * buildCitations numbers them (pagesByCitation), so [n] here is the same page the model saw
+ * as [n]. A citation with no matched claimed value keeps its existing quote byte-for-byte.
  */
 export function withSupportingQuotes<C extends QuotableCitation>(
   citations: readonly C[],
@@ -659,12 +756,7 @@ export function withSupportingQuotes<C extends QuotableCitation>(
   answer: string,
   question: string,
 ): { citations: C[]; unsupportedValueCount: number; quoteFallbackCount: number } {
-  const byKey = new Map<string, string[]>();
-  for (const c of chunks) {
-    const key = `${c.sourceUrl}::${c.sourcePage ?? ""}`;
-    byKey.set(key, [...(byKey.get(key) ?? []), c.content]);
-  }
-  const pages = [...byKey.values()]; // citationId n ⇔ pages[n - 1]
+  const pages = pagesByCitation(chunks); // citationId n ⇔ pages[n - 1]
   let unsupportedValueCount = 0;
   let quoteFallbackCount = 0;
   const out = citations.map((c) => {

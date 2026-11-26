@@ -106,7 +106,15 @@ export interface CascadeResult {
   provider: string;
   content: string;
   durationMs: number;
+  /** The serving provider's model id. */
+  model?: string;
+  /** The choice's `finish_reason` as the provider sent it ("stop" = complete; "length" = cut at the cap). */
+  finishReason?: string | null;
+  /** The provider's raw usage counts, when it sent them. */
+  usage?: { prompt_tokens?: number; completion_tokens?: number } | null;
 }
+
+type CallOutcome = Pick<CascadeResult, "content" | "finishReason" | "usage">;
 
 export interface CascadeOpts {
   maxTokens?: number;
@@ -128,7 +136,7 @@ async function callOne(
   provider: CascadeProvider,
   messages: CascadeMessage[],
   opts: CascadeOpts,
-): Promise<string | null> {
+): Promise<CallOutcome | null> {
   if (!provider.key) return null;
   // The cap/temperature fields are shaped in ONE place for every cascade
   // consumer: gpt-5 wants `max_completion_tokens` and rejects any
@@ -192,7 +200,7 @@ async function callOne(
     return null;
   }
   let parsed: {
-    choices?: { message?: { content?: string } }[];
+    choices?: { message?: { content?: string }; finish_reason?: string | null }[];
     usage?: { prompt_tokens?: number; completion_tokens?: number };
   };
   try {
@@ -212,7 +220,8 @@ async function callOne(
   }
   // Served: book the ACTUAL usage; a missing or malformed count books the bound / cap.
   reservation?.settle(...billableTokens(parsed.usage, inputBound, outputCap));
-  return parsed.choices?.[0]?.message?.content ?? null;
+  const content = parsed.choices?.[0]?.message?.content ?? null;
+  return content ? { content, finishReason: parsed.choices?.[0]?.finish_reason ?? null, usage: parsed.usage ?? null } : null;
 }
 
 export async function cascadeComplete(
@@ -224,9 +233,9 @@ export async function cascadeComplete(
   for (const p of providers) {
     // The caller gave up (overall deadline): do not start the next provider.
     if (opts.signal?.aborted) return null;
-    const content = await callOne(p, messages, opts);
-    if (content) {
-      return { provider: p.name, content, durationMs: Date.now() - start };
+    const out = await callOne(p, messages, opts);
+    if (out) {
+      return { provider: p.name, content: out.content, durationMs: Date.now() - start, model: p.model, finishReason: out.finishReason, usage: out.usage };
     }
   }
   return null;

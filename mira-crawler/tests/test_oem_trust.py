@@ -308,6 +308,15 @@ def test_the_curated_g120c_list_manual_declares_enough_pages_and_model() -> None
     assert "SINAMICS G120C" in entry["model_number"]
 
 
+def test_the_curated_g120_cu240_list_manual_declares_enough_pages_and_model() -> None:
+    sources = yaml.safe_load((Path(__file__).resolve().parents[1] / "sources.yaml").read_text())
+    entry = sources["tiers"]["3_manufacturer"]["siemens_sinamics_g120_cu240"]
+    assert entry["max_pages"] >= 942  # the CU240 List Manual is 942 pages; F30011 is on p.906
+    # Whole-word model scoping: a notebook bound to "G120" matches this; "G120C" must not.
+    assert "g120" in entry["model_number"].lower()
+    assert "g120c" not in entry["model_number"].lower()
+
+
 def test_discovery_carries_max_pages(tmp_path) -> None:
     config = _make_config(tmp_path)
     config.sources_file.write_text(
