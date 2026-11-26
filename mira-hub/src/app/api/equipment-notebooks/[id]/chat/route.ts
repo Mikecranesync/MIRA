@@ -2779,7 +2779,8 @@ async function handleChatTurn(
   // sends its own photo (that photo owns the turn). A LOOK of a photo that a
   // turn in the window was sent with is that turn's photo, already judged by
   // its join rule (or closed by its answer) — never a second, unjoined turn.
-  // A failed ledger read cannot show a photo exists, so it adds none.
+  // A failed ledger read cannot show a photo exists, so it adds none. A failed LINK check on a LOOK the ledger
+  // did show carries it as an unread photo turn (subject unknown: asks), see below.
   const withRecentLook = async <T extends PriorTurn & { createdAt: string; evidence: unknown[] }>(
     turns: T[],
   ): Promise<{ turns: PriorTurn[]; added: number }> => {
@@ -2795,8 +2796,23 @@ async function handleChatTurn(
       const look = standaloneLook(looks, sentFileIds);
       if (!look?.text || !look.fileId) return { turns, added: 0 };
       const at = Date.parse(look.observedAt ?? "");
-      if (!(await photoLinkedToTarget(ctx.tenantId, look.fileId, "equipment_notebook", notebookId))) return { turns, added: 0 };
-      const lookTurn: PriorTurn = { question: "", answerStatus: "look", basis: null, photoText: look.text };
+      // A CLEAN "not linked" answer means the photo is no longer this notebook's: nothing carries. A link check
+      // that THROWS is different: the ledger showed a LOOK exists in this conversation, and whether it may be
+      // used is unknown. Its subject is then unknown, never dropped (the project's manual would answer a
+      // referential question about an unseen machine): carried as an UNREAD photo turn at its place in time,
+      // with none of its text, identity or hazards (the unverified descriptor is not forwarded anywhere).
+      let linked = false;
+      let linkUnknown = false;
+      try {
+        linked = Boolean(await photoLinkedToTarget(ctx.tenantId, look.fileId, "equipment_notebook", notebookId));
+      } catch (err) {
+        linkUnknown = true;
+        console.error("[notebook-chat] standalone LOOK link check failed (its subject is unknown; asking which machine):", err instanceof Error ? err.message : err);
+      }
+      if (!linked && !linkUnknown) return { turns, added: 0 };
+      const lookTurn: PriorTurn = linkUnknown
+        ? { question: "", answerStatus: "look", basis: null, photoText: null, photoUnread: true }
+        : { question: "", answerStatus: "look", basis: null, photoText: look.text };
       // Placed at its time: a LOOK older than the run's closing document answer
       // sits behind it, so readSubject stops before it. An unreadable time (the
       // LOOK's or a turn's) is placed newest — fail closed: it is judged.

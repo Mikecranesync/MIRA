@@ -100,6 +100,7 @@ const seamMock = vi.hoisted(() => ({
 vi.mock("@/lib/inference/canonical-cascade", () => seamMock);
 
 import { POST } from "../route";
+import { LINK_FAILURE_ROUTE_INPUTS } from "@/capabilities/__fixtures__/link-failure-subject";
 
 function req(body: unknown) {
   return new NextRequest("http://test/api/equipment-notebooks/x/chat", {
@@ -668,5 +669,113 @@ describe("#5706 — a nameplate photo of another drive is not answered from the 
     expect(passOpts().every((o) => o.photoText === undefined)).toBe(true);
     // Never this turn's photo — but an open subject of the conversation (finding 2).
     expect(passOpts()[0].subjectQueries?.[0]).toContain("GS20-23P0");
+  });
+});
+
+// Cheap-lane defect (#5671 combined, full cheap 465aa5b5): a standalone LOOK the ledger SHOWS in this
+// conversation whose link check THROWS must not be silently dropped (the project's manual would answer a
+// referential question about a machine nobody could verify). Its subject is unknown: unread photo turn, no
+// text/identity/hazards forwarded. A controlled transport/storage throw is injected at photoLinkedToTarget
+// (honest label: not a live storage failure). The real-SQL half is combined-model-text-lane.integration.
+describe("a known standalone LOOK whose link check fails", () => {
+  const ASK = { message: "What is its rated current?", sourceDocIds: [DOC_A], threadId: THREAD };
+  const standalone = (observedAt = "2026-11-21T20:57:09Z") => ({ ...lookRow(PRIOR_PHOTO, GS20_READING), observedAt });
+  const post = async (over: Record<string, unknown> = {}) => (await POST(req({ ...ASK, ...over }), params)).text();
+  const boom = () => filesMock.photoLinkedToTarget.mockRejectedValue(new Error("injected link read failure (test)"));
+  // Earlier tests in this file install retrieval implementations that write diagnostics; start from a plain one.
+  beforeEach(() => ragMock.retrieveNodeChunks.mockReset().mockResolvedValue([]));
+
+  it("RED→GREEN: the subject is unknown (asks), with exactly the inputs the SQL proof uses, and no descriptor text", async () => {
+    veMock.loadRecentLookObservations.mockResolvedValue([standalone()]);
+    boom();
+    await post();
+    const o = passOpts()[0] as Opts & { subjectPhoto?: boolean[]; subjectOutOfReach?: boolean };
+    expect(o.subjectQueries).toEqual([...LINK_FAILURE_ROUTE_INPUTS.subjectQueries]);
+    expect(o.subjectUnclear).toEqual([...LINK_FAILURE_ROUTE_INPUTS.subjectUnclear]);
+    expect(o.subjectPhoto).toEqual([...LINK_FAILURE_ROUTE_INPUTS.subjectPhoto]);
+    expect(o.photoText).toBeUndefined();
+    expect(JSON.stringify(passOpts())).not.toContain("GS20-23P0");
+    expect(JSON.stringify(passOpts())).not.toContain("GS20-US");
+  });
+  it("the unverified descriptor reaches no prompt and no stop search", async () => {
+    veMock.loadRecentLookObservations.mockResolvedValue([standalone()]);
+    boom();
+    await post();
+    for (const call of seamMock.buildRequestBody.mock.calls) expect(JSON.stringify(call)).not.toContain("GS20-23P0");
+    expect(JSON.stringify(ragMock.retrieveNodeChunks.mock.calls.map((c) => c[3]))).not.toContain("GS20-23P0");
+  });
+  it("control: a linked LOOK is still carried with its machine", async () => {
+    veMock.loadRecentLookObservations.mockResolvedValue([standalone()]);
+    filesMock.photoLinkedToTarget.mockResolvedValue({ fileId: PRIOR_PHOTO, capturedAt: "2026-11-21T20:57:06.047Z" });
+    await post();
+    expect(passOpts()[0].subjectQueries?.[0]).toContain("GS20-23P0");
+  });
+  it("control: a cleanly detached LOOK (check answered 'not linked') is not carried and not flagged", async () => {
+    veMock.loadRecentLookObservations.mockResolvedValue([standalone()]);
+    filesMock.photoLinkedToTarget.mockResolvedValue(null);
+    await post();
+    expect(passOpts()[0].subjectQueries ?? []).toEqual([]);
+    expect(passOpts()[0].subjectUnclear?.some(Boolean) ?? false).toBe(false);
+  });
+  it("control: no known LOOK means no link check and nothing carried", async () => {
+    boom();
+    await post();
+    expect(filesMock.photoLinkedToTarget).not.toHaveBeenCalled();
+    expect(passOpts()[0].subjectQueries ?? []).toEqual([]);
+  });
+  it("control: a failed LEDGER read cannot show a LOOK exists, so it adds none (as before)", async () => {
+    veMock.loadRecentLookObservations.mockRejectedValue(new Error("injected ledger failure (test)"));
+    boom();
+    await post();
+    expect(passOpts()[0].subjectQueries ?? []).toEqual([]);
+    expect(passOpts()[0].subjectUnclear?.some(Boolean) ?? false).toBe(false);
+  });
+  it("chronology: a LOOK older than the run's closing document answer stays closed even when its link check throws", async () => {
+    nbMock.listTurns.mockResolvedValue([
+      { id: "t1", threadId: THREAD, question: "What does fault F0004 mean?", answerStatus: "answered", basis: "workspace_evidence", evidence: [], createdAt: "2026-11-21T21:10:00Z" },
+    ]);
+    veMock.loadRecentLookObservations.mockResolvedValue([standalone("2026-11-21T20:40:00Z")]);
+    boom();
+    await post();
+    expect(passOpts()[0].subjectQueries ?? []).toEqual([]);
+    expect(passOpts()[0].subjectUnclear?.some(Boolean) ?? false).toBe(false);
+  });
+  it("chronology control: a LOOK NEWER than the closing answer, link check throwing, is unknown", async () => {
+    nbMock.listTurns.mockResolvedValue([
+      { id: "t1", threadId: THREAD, question: "What does fault F0004 mean?", answerStatus: "answered", basis: "workspace_evidence", evidence: [], createdAt: "2026-11-21T20:30:00Z" },
+    ]);
+    veMock.loadRecentLookObservations.mockResolvedValue([standalone("2026-11-21T20:50:00Z")]);
+    boom();
+    await post();
+    expect(passOpts()[0].subjectUnclear).toEqual([true]);
+  });
+  it("F5 holds: a newer reading of a SENT photo is skipped and the older standalone LOOK's failed link check is what makes the subject unknown", async () => {
+    nbMock.listTurns.mockResolvedValue([
+      { id: "t0", threadId: THREAD, question: "What about the GS11N-20P5?", answerStatus: "insufficient_evidence", basis: null, evidence: [{ kind: "visual_observation", fileId: PHOTO, capturedAt: "2026-11-21T20:50:00Z", provenance: "phone_photo" }], createdAt: "2026-11-21T20:50:00Z" },
+    ]);
+    veMock.loadRecentLookObservations.mockResolvedValue([
+      { ...lookRow(PHOTO, "corrected reading of the sent photo"), observedAt: "2026-11-21T20:58:00Z" },
+      standalone("2026-11-21T20:55:00Z"),
+    ]);
+    filesMock.photoLinkedToTarget.mockImplementation(async (...args: unknown[]) => {
+      const fileId = args[1];
+      if (fileId === PRIOR_PHOTO) throw new Error("injected link read failure (test)");
+      return { fileId: PHOTO, capturedAt: "2026-11-21T20:50:00Z" };
+    });
+    await post();
+    expect(passOpts()[0].subjectUnclear?.some(Boolean)).toBe(true);
+    expect(JSON.stringify(passOpts())).not.toContain("corrected reading of the sent photo");
+  });
+  it("a current explicit photo owns the turn: no standalone LOOK link check at all", async () => {
+    veMock.loadRecentLookObservations.mockResolvedValue([standalone()]);
+    filesMock.photoLinkedToTarget.mockImplementation(async (...args: unknown[]) => {
+      const fileId = args[1];
+      if (fileId === PRIOR_PHOTO) throw new Error("must not be consulted");
+      return { fileId: PHOTO, capturedAt: "2026-11-21T20:57:06.047Z" };
+    });
+    veMock.loadVisualEvidenceForPhoto.mockResolvedValue(lookRow(PHOTO, GS20_READING));
+    await post({ message: "Find me the manual", visualEvidence: { fileId: PHOTO } });
+    expect(passOpts()[0].photoText).toBe(GS20_READING);
+    expect(passOpts()[0].subjectUnclear?.some(Boolean) ?? false).toBe(false);
   });
 });

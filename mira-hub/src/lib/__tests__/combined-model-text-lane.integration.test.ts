@@ -10,6 +10,7 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { Pool, type PoolClient } from "pg";
 import { retrieveNodeChunks } from "../manual-rag";
+import { LINK_FAILURE_ROUTE_INPUTS } from "../../capabilities/__fixtures__/link-failure-subject";
 
 vi.hoisted(() => {
   process.env.NODE_EMBED_ON_WRITE = "0";
@@ -352,5 +353,35 @@ describe("hidden-code cover read: authorization boundary (real SQL)", () => {
   it("outside a validated document selection the cover read does not run at all", async () => {
     const r = await hiddenAsk(AWB_APPROVED, {}, false);
     expect(r.diagnostics.photoSubjectUnclear).toBeUndefined();
+  });
+});
+
+// Cheap-lane defect (full cheap 465aa5b5): a known standalone LOOK whose link check throws. The route hands
+// retrieval LINK_FAILURE_ROUTE_INPUTS (asserted by photo-model-mismatch.route.test.ts), with NO photo text.
+// This proves the consequence on the real retrieval SQL: the project's RX410 manual must not answer.
+// The throw itself is a controlled injection at the route boundary (not a live storage failure).
+describe("a known standalone LOOK with an unverifiable link: the project's manual does not answer (real SQL)", () => {
+  async function linkAsk(raw: string, inputs: Partial<typeof LINK_FAILURE_ROUTE_INPUTS> | Record<string, never>) {
+    const m = MANUALS.rx410;
+    const diagnostics: Diag & { photoSubjectUnclear?: unknown } = {};
+    const hits = await retrieveNodeChunks(client, TENANT, "supply voltage", {
+      nodeId: `node-${m.key}`, unsPath: null, docIds: [m.doc], validatedDocScope: true, rawQuery: raw,
+      identity: { manufacturer: "Northfield", model: "RX410" }, identityStatus: "user_confirmed" as const,
+      ...inputs, diagnostics,
+    } as Parameters<typeof retrieveNodeChunks>[3]);
+    return { hits, diagnostics };
+  }
+  const QUESTIONS = ["What is its rated current?", "What is the supply voltage?", "¿Cuál es el voltaje de alimentación?"];
+  it.each(QUESTIONS)("with the route's inputs it asks which machine and cites nothing: %s", async (q) => {
+    const r = await linkAsk(q, LINK_FAILURE_ROUTE_INPUTS);
+    expect(r.hits).toHaveLength(0);
+    expect(r.diagnostics.photoSubjectUnclear).toEqual({ shown: [], earlier: [], carried: true });
+    expect(JSON.stringify(r.diagnostics)).not.toMatch(/GS20|23P0/);
+  });
+  it.each(QUESTIONS)("control (what the route sent BEFORE the repair: nothing): the same question is answered from the project's manual: %s", async (q) => {
+    expect((await linkAsk(q, {})).hits.length).toBeGreaterThan(0);
+  });
+  it("control: a closed run (no subject inputs at all) is not blocked", async () => {
+    expect((await linkAsk("What is the supply voltage?", { subjectQueries: [] as unknown as never })).hits.length).toBeGreaterThan(0);
   });
 });
