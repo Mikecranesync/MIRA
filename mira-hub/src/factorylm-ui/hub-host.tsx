@@ -131,6 +131,8 @@ import {
   mergeTurnRows,
   rowConfirmsStreamOutcome,
   pinsAfterDetailLoad,
+  placeholderRequestIds,
+  retriesOnRepresentingExchange,
   withStoppedExchangeRetry,
   recoveryRetryList,
 } from "./hub-host-logic";
@@ -699,8 +701,10 @@ export function HubShellHost() {
   // reads interrupted + retryable, Retry attaches to that exchange (partial text kept, same
   // request id). Another request's observation never reaches it; nothing is sent until a click.
   const recoveryRetries = useMemo(
-    () => !busy && detail ? recoveryRetryList(recoveries, live ? { ...live, requestId: live.clientRequestId } : null, { equipmentEntityId: detail.notebook.asset?.entityId ?? null, componentId: headerComponentId, notebook: detail.notebook }) : [],
-    [recoveries, busy, live, detail, headerComponentId],
+    () => !busy && detail ? retriesOnRepresentingExchange(
+      recoveryRetryList(recoveries, live ? { ...live, requestId: live.clientRequestId } : null, { equipmentEntityId: detail.notebook.asset?.entityId ?? null, componentId: headerComponentId, notebook: detail.notebook }),
+      live, retainedExchanges) : [],
+    [recoveries, busy, live, detail, headerComponentId, retainedExchanges],
   );
 
   const visibleRetained = useMemo(
@@ -769,20 +773,23 @@ export function HubShellHost() {
       // read, so an idle Hub still updates once a backgrounded search settles.
       follow?.status ?? detail.manualSearch ?? null,
     );
+    // One logical request, one visible question/answer: the placeholder only stands in for an unrendered request.
+    const represented = placeholderRequestIds(visibleTurns, live, retainedExchanges);
     const recoveredTurns = !busy && !live ? recoveries.flatMap(recovery =>
       recovery.pointer.notebookId === selection.notebookId && recovery.pointer.threadId === selection.threadId
-        && !visibleTurns.some(row => row.clientRequestId === recovery.pointer.requestId)
+        && !represented.has(recovery.pointer.requestId)
       ? threadFromPersisted([{ id: recovery.value?.turnId ?? recovery.pointer.requestId, question: recovery.pointer.question, answerStatus: "error", answerText: null, evidence: [] }], meta).turns.map(turn => turn.role === "assistant" ? {
           ...turn,
           lifecycle: recovery.value?.state === "complete" ? "running" as const : recovery.value?.state !== "pending" && recovery.value !== null || recovery.unavailable ? "failed" as const : "running" as const,
           parts: recoveryRetries.some(retry => retry.requestId === recovery.pointer.requestId) ? turn.parts : [{ type: "text" as const, text: recovery.value?.state === "complete" ? "Loading the saved answer…" : recovery.unavailable ? "Could not confirm the saved request. Your question is kept here; check the connection before sending again." : recovery.value?.state === "interrupted" ? "The saved request was interrupted. Review its original target and attachments before sending again." : "Checking the saved request…" }],
         } : turn) : []) : [];
-    const stoppedRetryId = live && recoveryRetries.some(retry => retry.requestId === live.clientRequestId) ? `${live.id}-a` : null;
-    const withStoppedRetry = withStoppedExchangeRetry(withPersistedRetry(turns, persistedRetry?.answerId ?? null), stoppedRetryId);
+    const exchangeAnswerIds = new Set([...(live ? [`${live.id}-a`] : []), ...(retainedExchanges ?? []).map(exchange => `${exchange.id}-a`)]);
+    const withStoppedRetry = recoveryRetries.filter(retry => exchangeAnswerIds.has(retry.answerId))
+      .reduce((items, retry) => withStoppedExchangeRetry(items, retry.answerId), withPersistedRetry(turns, persistedRetry?.answerId ?? null));
     const projected = recoveryRetries.reduce((items, retry) => withPersistedRetry(items, retry.answerId), [...withStoppedRetry, ...recoveredTurns]);
     const thread = { ...base.thread, turns: projected };
     return shellReducer(state, { type: "hydrate", data: { thread, projects, machines, activeContext: base.activeContext } });
-  }, [state, detail, meta, selection, projects, machines, liveTurns, visibleRetained, exchangeTurns, live, livePersisted, liveReplacesError, persistedByRequest, notebooks, follow, outgoing, settledFollowups, persistedRetry, recoveries, recoveryRetries, busy, visibleTurns]);
+  }, [state, detail, meta, selection, projects, machines, liveTurns, visibleRetained, exchangeTurns, live, livePersisted, liveReplacesError, persistedByRequest, notebooks, follow, outgoing, settledFollowups, persistedRetry, recoveries, recoveryRetries, busy, visibleTurns, retainedExchanges]);
 
 
   // --- the send path: the canonical notebook-chat route, streamed ---

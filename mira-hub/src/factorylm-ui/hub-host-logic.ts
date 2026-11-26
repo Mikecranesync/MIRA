@@ -1103,6 +1103,39 @@ export function withStoppedExchangeRetry(turns: readonly InteractionTurn[], answ
 }
 
 /**
+ * One logical request has ONE visible question/answer. A saved-request pointer (the recovery placeholder) is only a
+ * stand-in for a request nothing else renders: a saved/pinned row, the live exchange and a retained (already streamed)
+ * exchange all already show it, so the placeholder must not be appended beside them while the saved row is still
+ * unread, stale, pending or 404. The pointer itself is NOT retired by this: only a fresh matching row does that.
+ */
+export function placeholderRequestIds(
+  rows: readonly { clientRequestId?: string | null }[],
+  live: { clientRequestId: string } | null,
+  retained: readonly { clientRequestId: string }[] | undefined,
+): Set<string> {
+  const ids = new Set<string>();
+  for (const row of rows) if (row.clientRequestId) ids.add(row.clientRequestId);
+  if (live) ids.add(live.clientRequestId);
+  for (const exchange of retained ?? []) ids.add(exchange.clientRequestId);
+  return ids;
+}
+
+/**
+ * A retryable observed request whose ONLY visible representation is a live/retained exchange takes its Retry on that
+ * exchange's answer (so suppressing the duplicate placeholder never hides the only Retry).
+ */
+export function retriesOnRepresentingExchange<T extends { answerId: string; requestId: string }>(
+  retries: readonly T[],
+  live: { id: string; clientRequestId: string } | null,
+  retained: readonly { id: string; clientRequestId: string }[] | undefined,
+): T[] {
+  return retries.map(retry => {
+    const exchange = live?.clientRequestId === retry.requestId ? live : retained?.find(item => item.clientRequestId === retry.requestId);
+    return exchange ? { ...retry, answerId: `${exchange.id}-a` } : retry;
+  });
+}
+
+/**
  * Which observed recoveries may offer Retry. With no live exchange it is each retryable request that still matches
  * the target the technician is looking at. While a live exchange exists, ONLY that exchange's own request, once
  * stopped and read interrupted, is offered (on the live exchange); any other request's observation is ignored.

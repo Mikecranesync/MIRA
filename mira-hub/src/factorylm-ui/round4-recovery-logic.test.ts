@@ -116,3 +116,20 @@ describe("F10 which observed recoveries may offer Retry", () => {
     expect(recoveryRetryList([observed("A"), observed("B", { target: { kind: "known", equipmentEntityId: "B" } })], null, here).map(r => r.requestId)).toEqual(["A"]);
   });
 });
+
+describe("one logical request = ONE visible question/answer (placeholder precedence)", () => {
+  it("a saved row, the live exchange and a retained exchange each stand in for the request; an unrelated pointer does not", async () => {
+    const { placeholderRequestIds } = await import("./hub-host-logic");
+    const ids = placeholderRequestIds([{ clientRequestId: "saved" }, { clientRequestId: null }, {}], { clientRequestId: "live" }, [{ clientRequestId: "retained" }]);
+    expect([...ids].sort()).toEqual(["live", "retained", "saved"]);
+    expect(ids.has("unrelated-pointer")).toBe(false);
+    expect([...placeholderRequestIds([], null, undefined)]).toEqual([]);
+  });
+  it("Retry for a request whose ONLY representation is a retained/live exchange moves onto that exchange's answer; others keep theirs", async () => {
+    const { retriesOnRepresentingExchange } = await import("./hub-host-logic");
+    const retries = [{ answerId: "turn-A-a", requestId: "A", question: "qa" }, { answerId: "turn-B-a", requestId: "B", question: "qb" }, { answerId: "turn-C-a", requestId: "C", question: "qc" }];
+    const out = retriesOnRepresentingExchange(retries, { id: "live-1", clientRequestId: "A" }, [{ id: "live-9", clientRequestId: "B" }]);
+    expect(out.map(r => [r.requestId, r.answerId])).toEqual([["A", "live-1-a"], ["B", "live-9-a"], ["C", "turn-C-a"]]);
+    expect(retriesOnRepresentingExchange(retries, null, undefined)).toEqual(retries);
+  });
+});

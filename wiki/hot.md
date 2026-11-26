@@ -2305,3 +2305,6 @@ and P0/P1/P2 failures become redacted, fingerprint-deduped GitHub issues. P3 noi
 ## Update — #5669 Recovery human-photo proof done locally (2026-11-26, Bravo)
 - Added real-route+restricted-PG `photo-change.integration.test.ts` (10 cases; profile now 39/39, 0 skip), 2 visible browser cases (browser 14/14, 0 egress), 25-row finding crosswalk, plain "photo changed, ask a new question" note.
 - Final: unit 20406 pass/76 skip/0 fail; tsc 0 new vs c835; lint no worse. Still uncommitted merge of c835 onto d768; parent owns Git/review. Open: Model prerequisite, Recovery review/release; no staging/prod claim. Reports in `.planning/5669-20261126/`.
+
+## Update — #5669 Recovery duplicate-placeholder repair (2026-11-26, Bravo)
+- Independent check found a NEW question shown twice (retained exchange + "Checking the saved request…"). Fixed in `hub-host.tsx`/`hub-host-logic.ts` (placeholder only for unrendered requests; pointer still retired only by a fresh row; Retry stays on the representing exchange). Browser 20/20 (was RED 8 failed before), unit 20484 pass/76 skip, profile 39/39 0 skip, tsc 75=75 vs 3c8444cf9, lint no worse. Uncommitted on deef1348; parent owns Git/review. Open: combined Model prerequisite, Recovery review/release. Report: `.planning/5669-20261126/DUPLICATE-PLACEHOLDER-REPORT.md`.

@@ -313,7 +313,96 @@ test.describe("human photo requirement: a changed photo Retry says so; one expli
       await chat(page).end();
       await expect(conv(page).getByText("Possible active incident").first()).toBeVisible();
       await expect(conv(page).getByText(QUESTION)).toHaveCount(1);   // the old failed exchange was not rewritten or retired
+      // ONE logical request = ONE visible question/answer: the retained confirmed exchange must not sprout a second
+      // "Checking the saved request…" copy while the saved row has not been read yet (stale detail, 404 status).
+      await expect(page.getByRole("button", { name: "Send" })).toBeVisible();
+      await page.waitForTimeout(500);
+      await expect(conv(page).getByText("Is it safe to open the cabinet?")).toHaveCount(1);
+      await expect(conv(page).getByText("Check the nameplate.")).toHaveCount(1);
+      await expect(conv(page).getByText("Checking the saved request")).toHaveCount(0);
+      expect(await pointerPresent(page, asked.clientRequestId as string)).toBe(true);
       await shot(page, `2026-11-26_new-question-after-changed-photo-shows-current-hazard${withWarning ? "-with-original-warning" : ""}`, info);
     });
   }
+});
+
+const NEW_Q = "Is the cabinet fan supposed to run all the time?";
+const NEW_A = "Yes, the cabinet fan runs continuously while the drive is powered.";
+async function sendNew(page: Page, text = NEW_Q) {
+  await page.getByRole("textbox", { name: "Ask MIRA" }).fill(text);
+  await page.getByRole("button", { name: "Send" }).click();
+  await expect.poll(async () => (await chat(page).calls()).length).toBe(1);
+  const id = (await chat(page).calls())[0]!.clientRequestId as string;
+  await chat(page).push(frame({ kind: "content", content: NEW_A }));
+  await chat(page).push(frame({ kind: "status", status: "answered" }));
+  await chat(page).end();
+  await expect(page.getByRole("button", { name: "Send" })).toBeVisible();
+  return id;
+}
+const exactlyOnce = async (page: Page) => {
+  await expect(conv(page).getByText(NEW_Q)).toHaveCount(1);
+  await expect(conv(page).getByText(NEW_A)).toHaveCount(1);
+  await expect(conv(page).getByText("Checking the saved request")).toHaveCount(0);
+};
+
+test.describe("one logical request is ONE visible question/answer (whole class, ordinary Send)", () => {
+  test("stale detail + 404 status after a completed Send: no second placeholder (also after 12 s); pointer kept; a FRESH matching row takes over once and retires it", async ({ page, context, baseURL }, info) => {
+    const fx = fresh({ turns: [] });
+    await mount(context, page, baseURL!, fx);
+    await open(page);
+    const id = await sendNew(page);
+    await page.waitForTimeout(500);
+    await exactlyOnce(page);
+    await page.waitForTimeout(12_000);   // beyond the follower's polls: still stale/404 everywhere
+    await exactlyOnce(page);
+    expect(await pointerPresent(page, id)).toBe(true);
+    await shot(page, "2026-11-26_one-question-one-answer-while-saved-row-pending", info);
+    const completed = row("t-new", id, { question: NEW_Q, answerStatus: "answered", answerText: NEW_A });
+    fx.turns = [completed]; fx.pinned[id] = completed;
+    fx.statuses[id] = status(id, { state: "complete", answerStatus: "answered", canRetry: false, question: NEW_Q });
+    await expect.poll(() => pointerPresent(page, id), { timeout: 20_000 }).toBe(false);
+    await exactlyOnce(page);
+    expect((await chat(page).calls()).length).toBe(1);
+  });
+
+  test("a STALE failed row/status for the new request id never replaces or duplicates the confirmed answer; the pointer waits for the matching FRESH row", async ({ page, context, baseURL }) => {
+    const fx = fresh({ turns: [] });
+    await mount(context, page, baseURL!, fx);
+    await open(page);
+    const id = await sendNew(page);
+    fx.turns = [row("t-new", id, { question: NEW_Q, answerStatus: "error", answerText: null })];
+    fx.statuses[id] = status(id, { state: "complete", answerStatus: "error", canRetry: true, question: NEW_Q });
+    fx.pinned[id] = fx.turns[0]!;
+    await page.waitForTimeout(6000);
+    await expect(conv(page).getByText(NEW_Q)).toHaveCount(1);
+    await expect(conv(page).getByText(NEW_A)).toHaveCount(1);
+    await expect(conv(page).getByText("Checking the saved request")).toHaveCount(0);
+    expect(await pointerPresent(page, id)).toBe(true);
+    const completed = row("t-new", id, { question: NEW_Q, answerStatus: "answered", answerText: NEW_A });
+    fx.turns = [completed]; fx.pinned[id] = completed;
+    fx.statuses[id] = status(id, { state: "complete", answerStatus: "answered", canRetry: false, question: NEW_Q });
+    await expect.poll(() => pointerPresent(page, id), { timeout: 20_000 }).toBe(false);
+    await exactlyOnce(page);
+    expect((await chat(page).calls()).length).toBe(1);
+  });
+
+  test("unrelated requests are untouched: another unresolved request keeps its own single placeholder/Retry, the old failed exchange stays once, the newer draft survives", async ({ page, context, baseURL }) => {
+    const OTHER = "55555555-5555-4555-8555-555555555555";
+    const OTHER_Q = "Why does the keypad show F004?";
+    const failed = row("t-fail", OLD_REQ, { question: QUESTION, answerStatus: "error", answerText: null });
+    const fx = fresh({ turns: [failed], statuses: { [OTHER]: status(OTHER, { question: OTHER_Q, state: "interrupted", canRetry: true }) } });
+    await mount(context, page, baseURL!, fx, [{ req: OTHER, question: OTHER_Q }]);
+    await open(page);
+    await expect(conv(page).getByText(OTHER_Q)).toHaveCount(1);
+    const id = await sendNew(page);
+    await page.waitForTimeout(500);
+    await exactlyOnce(page);
+    await expect(conv(page).getByText(OTHER_Q)).toHaveCount(1);
+    await expect(conv(page).getByText(QUESTION)).toHaveCount(1);
+    expect(await pointerPresent(page, OTHER)).toBe(true); expect(await pointerPresent(page, id)).toBe(true);
+    await page.getByRole("textbox", { name: "Ask MIRA" }).fill("draft typed afterwards");
+    await page.waitForTimeout(1500);
+    await expect(page.getByRole("textbox", { name: "Ask MIRA" })).toHaveValue("draft typed afterwards");
+    expect((await chat(page).calls()).length).toBe(1);
+  });
 });
