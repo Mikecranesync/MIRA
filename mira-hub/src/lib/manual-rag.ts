@@ -144,8 +144,19 @@ export interface ManualSource {
 }
 
 export const MAX_CONTENT_CHARS = 1200;
+// Higher limit for table-heavy chunks to preserve complete rows
+const MAX_CONTENT_CHARS_TABLE = 2400;
 const FORGED_HEADER_RE = /---\s*\[\s*\d+\s*\][^\n]*?---/gi;
 const SOURCE_TAG_RE = /\[Source:[^\]]+\]/gi;
+// Detect pipe-delimited table rows (markdown tables and manual tables)
+const PIPE_TABLE_ROW_RE = /^\s*\|.+\|.+\|/m;
+// Detect if text is table-heavy (>30% of lines are table rows)
+function isTableHeavy(text: string): boolean {
+  const lines = text.split('\n');
+  if (lines.length < 5) return false;
+  const tableLines = lines.filter(line => PIPE_TABLE_ROW_RE.test(line));
+  return tableLines.length / lines.length > 0.3;
+}
 
 // Exported (not just module-local) so other prompt-interpolation call sites —
 // e.g. the chat route's machine-memory section (review Q1, PR #2414) — can
@@ -154,6 +165,48 @@ export function neutralizeReferenceText(text: string): string {
   return text
     .replace(FORGED_HEADER_RE, "[REF_DELIMITER]")
     .replace(SOURCE_TAG_RE, "[ref]");
+}
+
+/**
+ * Smart truncation that preserves complete table rows when possible.
+ * For table-heavy chunks, uses a higher character limit and tries to
+ * cut at row boundaries rather than mid-row (#5677, #5710, #5998).
+ */
+function smartTruncate(text: string): string {
+  const tableHeavy = isTableHeavy(text);
+  const limit = tableHeavy ? MAX_CONTENT_CHARS_TABLE : MAX_CONTENT_CHARS;
+  
+  if (text.length <= limit) return text;
+  
+  // If not table-heavy, simple truncation
+  if (!tableHeavy) {
+    return `${text.slice(0, limit)}…`;
+  }
+  
+  // For table-heavy content, try to cut at a row boundary
+  const lines = text.split('\n');
+  let accum = 0;
+  let lastCompleteRow = 0;
+  
+  for (let i = 0; i < lines.length; i++) {
+    const lineLen = lines[i].length + 1; // +1 for newline
+    if (accum + lineLen > limit) {
+      // We've exceeded the limit
+      if (lastCompleteRow > 0 && i > lastCompleteRow) {
+        // Cut at the last complete row
+        return lines.slice(0, lastCompleteRow + 1).join('\n') + '\n…';
+      }
+      break;
+    }
+    accum += lineLen;
+    // Mark this as a complete row boundary if it's a table row or blank line
+    if (PIPE_TABLE_ROW_RE.test(lines[i]) || lines[i].trim() === '') {
+      lastCompleteRow = i;
+    }
+  }
+  
+  // Fallback: simple truncation
+  return `${text.slice(0, limit)}…`;
 }
 
 export function approvalGateEnabled(): boolean {
@@ -3482,9 +3535,8 @@ export function buildGroundedContext(chunks: ManualChunk[]): string {
     const head = headBits.join(" ") || c.title || "OEM document";
     const shownPage = displayPage(c);
     const page = shownPage != null ? `, p.${shownPage}` : "";
-    const rawContent = c.content.length > MAX_CONTENT_CHARS
-      ? `${c.content.slice(0, MAX_CONTENT_CHARS)}…`
-      : c.content;
+    // Use smart truncation that preserves table rows (#5677, #5710, #5998)
+    const rawContent = smartTruncate(c.content);
     const content = neutralizeReferenceText(rawContent);
     return `[${n}] ${head}${page}\n${content}`;
   });

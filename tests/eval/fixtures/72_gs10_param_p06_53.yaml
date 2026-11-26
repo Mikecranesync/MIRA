@@ -1,0 +1,13 @@
+id: gs10_param_p06_53
+description: "GS10 parameter P06.53 lookup — parameter table row"
+expected_final_state: DIAGNOSIS
+max_turns: 4
+expected_keywords: [P06.53, parameter, GS10]
+expected_vendor: AutomationDirect
+wo_expected: false
+safety_expected: false
+tags: [vfd, gs10, parameter, table-row]
+# Repro for the user's mention of "GS10 parameter P06.53, answer on p.223"
+turns:
+  - role: user
+    content: "What is parameter P06.53 on the GS10?"

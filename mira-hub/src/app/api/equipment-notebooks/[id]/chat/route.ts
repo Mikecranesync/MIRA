@@ -412,8 +412,9 @@ GROUNDING & CITATIONS:
 - Cite every factual claim inline like [1] or [2], matching the numbered excerpts.
 - Preserve parameter IDs, fault codes, terminal identifiers, and units EXACTLY (P042, F004, terminal 07, 60 Hz).
 - A ratings table often gives several figures for one condition (a relay contact: make, break, continuous). Say which column each figure you quote is from. A load that stays on is compared with the continuous figure. A closing surge (inrush) is compared with the make figure. Do not approve a load whose steady current exceeds the continuous figure, or whose switched-off current exceeds the break figure. For an inductive load (a coil), a volt-ampere rating in the same table also applies.
+- **TABLE ROWS contain answers.** When an excerpt shows a fault table, parameter table, or LED status table, and a row in that table answers the question (e.g. F081 in a fault table, P06.53 in a parameter list, or "solid yellow" in an LED table), that IS the answer — cite it. Do not refuse with "not in the excerpts" when a table row contains the requested fault code, parameter, or status indicator.
 - Cite ONLY an excerpt that actually supports the sentence it is attached to. Never cite an excerpt just because it was retrieved.
-- If the excerpts do not contain the answer, say so plainly in one sentence and cite NOTHING. Never present unrelated pages as if they were evidence.
+- If the excerpts genuinely do not contain the answer, say so plainly in one sentence and cite NOTHING. Never present unrelated pages as if they were evidence. But if a table row, fault code entry, or parameter definition IS present in an excerpt, answer from it — do not refuse.
 
 PREMISE CHECK — a technician sometimes asks for something in a form the machine doesn't have:
 - If the excerpts SHOW the asked-for thing exists only in a different form — e.g. a protocol the excerpts prove is available ONLY via an optional communication adapter/module (not a built-in parameter), or a feature that lives under a different name — do NOT just say "not found". Correct the premise in one sentence and cite it, e.g. "This drive has no built-in PROFINET parameter; PROFINET is available only through an optional communication adapter [n]." Then point to the real path (the adapter, or the correct parameter).
@@ -704,6 +705,50 @@ function refusalPhraseIn(folded: string): boolean {
       FIRST_PERSON_REFUSAL_RE.test(sentence)
     );
   });
+}
+
+/**
+ * Detect garbled output that should not be shown under a Grounded badge (#6004).
+ * Returns { garbled: true, reason } if the answer contains:
+ * - Mixed scripts (e.g. Devanagari in English text)
+ * - Draft/meta markers ("better Spanish:", "rewrite:", etc.)
+ * - Self-correction patterns that leaked through
+ */
+function detectGarbledOutput(answer: string, conversationLanguages: string[] = ["en"]): { garbled: boolean; reason?: string } {
+  // Detect Devanagari, Arabic, Cyrillic, CJK in a Latin-script conversation
+  const latinConvo = conversationLanguages.every(lang => ["en", "es", "fr", "de", "it", "pt"].includes(lang));
+  if (latinConvo) {
+    // Unicode ranges for non-Latin scripts
+    if (/[\u0900-\u097F]/.test(answer)) {
+      return { garbled: true, reason: "Devanagari text in Latin-script conversation" };
+    }
+    if (/[\u0600-\u06FF]/.test(answer)) {
+      return { garbled: true, reason: "Arabic text in Latin-script conversation" };
+    }
+    if (/[\u0400-\u04FF]/.test(answer)) {
+      return { garbled: true, reason: "Cyrillic text in Latin-script conversation" };
+    }
+    if (/[\u4E00-\u9FFF\u3040-\u309F\u30A0-\u30FF]/.test(answer)) {
+      return { garbled: true, reason: "CJK text in Latin-script conversation" };
+    }
+  }
+  
+  // Detect draft/meta markers that should not reach the user
+  const draftMarkers = [
+    /better (spanish|english|french|german):/i,
+    /rewrite:/i,
+    /correction:/i,
+    /let me (rephrase|correct|fix|rewrite)/i,
+    /wait,? (let me|i should)/i,
+    /actually,? (let me|i should)/i
+  ];
+  for (const pattern of draftMarkers) {
+    if (pattern.test(answer)) {
+      return { garbled: true, reason: `Draft marker found: ${pattern.source}` };
+    }
+  }
+  
+  return { garbled: false };
 }
 
 export function isRefusal(answer: string): boolean {
@@ -5359,6 +5404,20 @@ async function handleChatTurn(
       // #4687: only a served answer held under the gate is checked before release.
       if (served && gate) reportProgress(req, "checking_answer");
       let answerText = normalizeCitationMarkers(responseBuffer.join(""));
+
+      // #6004: Check for garbled output (mixed scripts, draft markers) before showing under Grounded badge
+      const garbledCheck = detectGarbledOutput(answerText, []);
+      if (garbledCheck.garbled && served && docGrounded) {
+        console.warn(`[notebook-chat] garbled output detected, regenerating: ${garbledCheck.reason}`);
+        // Strip everything before the last quoted sentence if present, or use a clean refusal
+        const quotedMatch = answerText.match(/"([^"]+)"$/);
+        if (quotedMatch && quotedMatch[1].length > 20) {
+          answerText = quotedMatch[1];
+        } else {
+          // Fall back to a clean "insufficient evidence" answer
+          answerText = "The loaded excerpts do not contain enough information to answer this question.";
+        }
+      }
 
       // Determine the honest status + which citations to ship. A refusal ships
       // ZERO citations (no irrelevant pages as proof) and is recorded as

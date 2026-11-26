@@ -1,0 +1,13 @@
+id: pf525_f081_table_row
+description: "PowerFlex 525 F081 DSI Comm Loss — fault code from table, Type 2 (manual reset)"
+expected_final_state: DIAGNOSIS
+max_turns: 4
+expected_keywords: [F081, DSI, communication, Type 2, manual, PowerFlex]
+expected_vendor: Allen-Bradley
+wo_expected: false
+safety_expected: false
+tags: [vfd, pf525, f081, fault-table, table-row]
+# Repro for #5677 and #5998 — answer says "F081 is not shown here" when it's in the fault table on p.162
+turns:
+  - role: user
+    content: "PowerFlex 525 showing F081, what does it mean and does it auto-reset?"
