@@ -14,6 +14,7 @@ import { getNotebook, listSources, listTurns, type EquipmentNotebook, type Noteb
 import { detectEnergizedElectricalHazardIntent, isEnergizedWorkAsk, notebookSafetyTrigger } from "@/lib/safety-classifier";
 import {
   currentManualSearchStatus,
+  manualWaitSourceStatus,
   threadStatusScope,
   type ManualSearchStatus,
 } from "@/capabilities/notebook-manual-acquisition";
@@ -240,7 +241,9 @@ export function manualWaitDecision(read: ManualWaitRead | "read_failed", docIds:
 /**
  * Reads what the manual wait decides from: the project's current status, from this viewer's
  * history of this thread, and the subject with the outgoing question as the newest whole-machine
- * question. Throws on a failed read; the route treats that as `read_failed`.
+ * question. Throws on a failed read; the route treats that as `read_failed`. Where the lookup
+ * status is null, the project's own Sources decide (`manualWaitSourceStatus`): a linked manual
+ * that is turned off, still being prepared or unreadable is not answered without.
  */
 export async function readManualWait(input: {
   tenantId: string;
@@ -256,7 +259,13 @@ export async function readManualWait(input: {
     listSources(tenantId, notebookId),
     listTurns(tenantId, notebookId, TURN_WINDOW, { viewerUserId, threadId }),
   ]);
-  const status = await notebookManualStatus(tenantId, notebookId, notebook, sources, turns);
+  const status = (await notebookManualStatus(tenantId, notebookId, notebook, sources, turns)) ??
+    manualWaitSourceStatus(sources, {
+      identityStatus: notebook.identityStatus,
+      manufacturer: notebook.manufacturer,
+      model: notebook.model,
+      catalogNumber: notebook.catalogNumber,
+    });
   const machine = status ? subjectMachine(status, notebook) : null;
   if (!status || !machine) return { status, scope: null };
   const scope = await subjectReader({ tenantId, notebookId, viewerUserId, threadId, turns, machine }).wholeMachine(question);

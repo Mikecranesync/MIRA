@@ -333,6 +333,27 @@ export function applicableDisabledSource(sources: readonly NotebookSource[], ide
   return sources.find((source) => !source.enabledByDefault && isApplicableTrustedManual(source, key)) ?? null;
 }
 
+/**
+ * #5746 (option A): what the chat route's manual wait reads of the project's own Sources when
+ * `currentManualSearchStatus` returns null for a confirmed identity. That read is null for a linked
+ * manual that no lookup added (or whose lookup was for another identity) once it is turned off,
+ * and, with automatic search switched off, while it is still being prepared or cannot be read.
+ * The wait must not answer a manual question without that manual. The notebook detail read and
+ * mobile keep the null (the display half is the #5746 r7 F3 follow-up).
+ */
+export function manualWaitSourceStatus(
+  sources: readonly NotebookSource[],
+  identity: ConfirmedIdentity,
+): ManualSearchStatus | null {
+  // As the status read: a manufacturer and a model (an unconfirmed identity has no key, so none of
+  // its Sources apply).
+  const { manufacturer, model } = identity;
+  if (!manufacturer || !model) return null;
+  const linked = currentManualSourceStatus(sources, identity);
+  if (linked) return { manufacturer, model, ...linked };
+  return applicableDisabledSource(sources, identity) ? { manufacturer, model, running: false, sourceState: "disabled" } : null;
+}
+
 /** The recorded search for this notebook, or null (never attempted, or unreadable). */
 export async function readAcquisition(tenantId: string, notebookId: string): Promise<AcquisitionRecord | null> {
   try {

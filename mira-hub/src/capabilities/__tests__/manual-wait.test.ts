@@ -5,6 +5,7 @@
 // Run: cd mira-hub && npx vitest run src/capabilities/__tests__/manual-wait.test.ts
 import { describe, expect, it } from "vitest";
 import { manualWaitDecision, waitsForManual, type ManualWaitRead } from "@/capabilities/send-wait-subject";
+import { manualWaitSourceStatus } from "@/capabilities/notebook-manual-acquisition";
 
 describe("waitsForManual: explicit manual asks only", () => {
   it.each([
@@ -105,5 +106,37 @@ describe("manualWaitDecision: one answer per state", () => {
 
   it("control: an undecided subject is the project's machine and waits", () => {
     expect(manualWaitDecision(read({ ...base, running: true }, "undecided"), [])?.error).toBe("manual_not_ready");
+  });
+});
+
+// What the wait reads of the project's own Sources when the lookup status is null.
+describe("manualWaitSourceStatus", () => {
+  const GS10 = { identityStatus: "user_confirmed", manufacturer: "AutomationDirect", model: "GS10", catalogNumber: "" };
+  const linked = (extra: Record<string, unknown>) => ({
+    docId: "d1", sourceRole: "manual", matchState: "verified", matchEvidence: { autoAcquisitionKey: "AUTOMATIONDIRECT|GS10|" },
+    enabledByDefault: true, readiness: { state: "chat_ready_basic", canChat: true }, ...extra,
+  });
+  const of = (sources: unknown[], identity: Record<string, unknown> = GS10) => manualWaitSourceStatus(sources as never, identity as never);
+
+  it("a turned-off linked manual reads as off", () => {
+    expect(of([linked({ enabledByDefault: false })])).toEqual({ manufacturer: "AutomationDirect", model: "GS10", running: false, sourceState: "disabled" });
+  });
+
+  it("a linked manual still being prepared, or unreadable, is not answered without", () => {
+    expect(of([linked({ readiness: { state: "stored", canChat: false } })])).toMatchObject({ running: true, sourceState: "preparing" });
+    expect(of([linked({ readiness: { state: "failed", canChat: false } })])).toMatchObject({ running: false, sourceState: "unavailable" });
+  });
+
+  it("a ready linked manual names its source", () => {
+    expect(of([linked({})])).toMatchObject({ running: false, sourceState: "ready", readySourceDocId: "d1" });
+  });
+
+  it("control: no confirmed identity, another model's manual, or no manual, reads nothing", () => {
+    const off = linked({ enabledByDefault: false });
+    expect(of([off], { ...GS10, identityStatus: "proposed" })).toBeNull();
+    const catalogOnly = linked({ enabledByDefault: false, matchEvidence: { autoAcquisitionKey: "AUTOMATIONDIRECT||GS1021P0" } });
+    expect(of([catalogOnly], { ...GS10, model: "", catalogNumber: "GS10-21P0" })).toBeNull();
+    expect(of([linked({ enabledByDefault: false, matchEvidence: { autoAcquisitionKey: "AUTOMATIONDIRECT|GS20|" } })])).toBeNull();
+    expect(of([{ docId: "d2", filename: "notes.pdf" }])).toBeNull();
   });
 });

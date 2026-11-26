@@ -154,6 +154,7 @@ beforeEach(() => {
   domainMock.validateChatSources.mockImplementation(async (_t: string, _n: string, ids: string[]) =>
     ids.length ? { ok: true, docIds: ids, nodeId: "n1" } : { ok: false, error: "no_sources_selected" });
   domainMock.listTurns.mockResolvedValue([]);
+  domainMock.listSources.mockResolvedValue([{ filename: "GS10.pdf", docId: DOC_A }]);
   acqMock.acquisitionEnabled.mockReturnValue(false);
   acqMock.startManualAcquisition.mockResolvedValue(false);
   acqMock.readAcquisition.mockResolvedValue(null);
@@ -212,6 +213,39 @@ describe("the route refuses a manual question it cannot answer yet", () => {
     expect(res.status).toBe(409);
     expect(await res.json()).toMatchObject({ error: "manual_unavailable", reason });
     expectRefusedCleanly();
+  });
+
+  // The status read returns nothing for a linked manual that no lookup added (or whose lookup was
+  // for another identity) once it is turned off, and, with automatic search switched off, while it
+  // is still being prepared or cannot be read. The route reads the project's sources for those.
+  const LINKED = { docId: DOC_READY, filename: "GS10.pdf", sourceRole: "manual", matchState: "user_confirmed", matchEvidence: { autoAcquisitionKey: "AUTOMATIONDIRECT|GS10|" } };
+  const linked = {
+    off: { ...LINKED, enabledByDefault: false, readiness: { state: "chat_ready_basic", canChat: true } },
+    preparing: { ...LINKED, enabledByDefault: true, readiness: { state: "stored", canChat: false } },
+    unreadable: { ...LINKED, enabledByDefault: true, readiness: { state: "failed", canChat: false } },
+  };
+  it.each([
+    ["turned off", "manual_unavailable", "off", linked.off],
+    ["still being prepared", "manual_not_ready", "running", linked.preparing],
+    ["unreadable", "manual_unavailable", "unavailable", linked.unreadable],
+  ] as const)("a linked manual the status read misses, %s: 409 %s (%s)", async (_name, error, reason, source) => {
+    domainMock.listSources.mockResolvedValue([source]);
+    const res = await chat({});
+    expect(acqMock.currentManualSearchStatus).toHaveBeenCalledTimes(1);
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({ error, reason, lookup: { manufacturer: "AutomationDirect", model: "GS10" } });
+    expectRefusedCleanly();
+  });
+
+  it.each([
+    ["without the header", {}, linked.off],
+    ["for another model", undefined, { ...linked.off, matchEvidence: { autoAcquisitionKey: "AUTOMATIONDIRECT|GS20|" } }],
+  ] as const)("control: a turned-off linked manual %s is answered", async (_name, headers, source) => {
+    domainMock.listSources.mockResolvedValue([source]);
+    const res = await chat({}, headers);
+    expect(res.status).toBe(200);
+    await res.text();
+    expect(domainMock.abandonNotebookTurnRequest).not.toHaveBeenCalled();
   });
 
   it.each([
