@@ -23,8 +23,9 @@ describe("waitsForManual: any mention of the manual, except the machine's manual
     "Do you have the GS11N-20P2 manual?",
     "What's on manual page 42?",
     "The manual's wiring table, please",
-    // A possessive is the document even after "in": not the mode.
+    // A possessive is the document: nothing after "manual's" reads as a part or a mode, even after "in".
     "Is the jog speed listed in manual's parameter table?",
+    "Is the auto mode speed in manual's table?",
     // r8 F11: no article before "manual".
     "Which manual covers the GS11N-20P2 acceleration settings?",
     "Do you have manuals for the GS11N-20P2?",

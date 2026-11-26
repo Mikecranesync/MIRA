@@ -231,7 +231,6 @@ export function waitsForManual(question: string): boolean {
     const at = mention.index ?? 0;
     const before = question.slice(0, at);
     const after = question.slice(at + mention[0].length);
-    if (/^['’]s\b/.test(after)) return true; // "the manual's wiring table"
     if (DOCUMENT_BEFORE.test(before)) return true;
     if (MACHINE_PART_AFTER.test(after) || SELECTOR_AFTER.test(after) || SELECTOR_BEFORE.test(before)) continue;
     if (MODE_ENDS.test(after) && (MODE_VERB_BEFORE.test(before) ||
