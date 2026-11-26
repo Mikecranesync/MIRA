@@ -123,7 +123,9 @@ describe("the canonical host reads every chat response through the tracker (hub-
     expect(send).toContain("stop = trackSafetyStop(res.headers);");
     expect(send).toContain("const reader = stop.watch(stream.getReader());");
     expect(send).toMatch(/const result = stop\.settle\(await readNotebookStream\(reader, [\s\S]*?\}, stop\.current\(\), \{/);
-    expect(send).toContain("const retained = retainedStreamInterruption(stop ? stop.carry(err) : err);");
+    expect(send).toContain("stop.carry(caught)");
+    expect(send).toContain("stoppedStreamResult(interruption)");
+    expect(send).toContain("retainedStreamInterruption(interruption)");
     // The parser is never handed a hard-coded null notice again.
     expect(send).not.toMatch(/readNotebookStream\([^)]*\}, null, \{/);
   });
