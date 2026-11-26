@@ -44,6 +44,9 @@ const defaultMigrationFiles = [
   "087_notebook_thread_identity.sql",
   "088_notebook_turn_idempotency.sql",
   "089_notebook_turn_request_claim.sql",
+  // The standard integration runner includes component-scoped recovery tests.
+  // Provision their schema on this confirmed disposable database as well.
+  "115_bench_components.sql",
   // Visual-evidence spine (ADR-0027 Phase 1) + the TEXT-tenant fix: visual_session,
   // evidence_item, observation, region_of_interest, visual_question, answer_claim.
   "063_visual_sessions.sql",

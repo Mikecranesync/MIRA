@@ -27,6 +27,7 @@ vi.mock("@/lib/session", () => sessionMock);
 
 const domainMock = vi.hoisted(() => ({
   validateChatSources: vi.fn(),
+  acceptNotebookTurnContext: vi.fn(async () => true),
   claimNotebookTurnRequest: vi.fn(
     async (): Promise<import("@/lib/equipment-notebooks").NotebookTurnRequestClaim> => ({
       status: "claimed",

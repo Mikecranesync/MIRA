@@ -40,6 +40,7 @@ vi.mock("@/lib/session", () => sessionMock);
 
 const domainMock = vi.hoisted(() => ({
   validateChatSources: vi.fn(),
+  acceptNotebookTurnContext: vi.fn(async () => true),
   claimNotebookTurnRequest: vi.fn(async () => ({
     status: "claimed" as const,
     claimToken: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",

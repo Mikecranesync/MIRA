@@ -5,6 +5,10 @@ on:
       - 'mira-hub/src/capabilities/equipment-browser/**'
       - 'mira-hub/src/app/api/equipment-browser/**'
       - 'mira-hub/src/capabilities/bench-components/**'
+      - 'mira-hub/src/capabilities/turn-recovery/**'
+      - 'mira-hub/src/app/api/equipment-notebooks/**'
+      - 'mira-hub/scripts/recovery-test-database.mjs'
+      - 'mira-hub/scripts/verify-turn-recovery-proof.py'
       - 'mira-hub/src/lib/tenant-context.ts'
       - 'mira-hub/src/lib/equipment-notebooks.ts'
       - 'mira-hub/scripts/verify-equipment-browser-proof.py'
@@ -67,6 +71,17 @@ jobs:
         run: >-
           npm run test:integration:equipment-browser --
           --reporter=default --reporter=json --outputFile=/tmp/equipment-browser-proof/vitest.json
+      # Same fresh disposable database (already provisioned above). The recovery suites are
+      # loopback-only and run ONLY in their own explicit profile, never in shared-dev discovery.
+      - name: Execute the disposable turn-recovery integration profile
+        working-directory: mira-hub
+        run: >-
+          npx vitest run --config vitest.turn-recovery.config.ts
+          --reporter=default --reporter=json --outputFile=/tmp/equipment-browser-proof/turn-recovery.json
+      - name: Reject absent, zero, skipped or short recovery evidence
+        if: always()
+        working-directory: mira-hub
+        run: python3 scripts/verify-turn-recovery-proof.py /tmp/equipment-browser-proof/turn-recovery.json
       - name: Reject absent, zero, skipped or incomplete required evidence
         if: always()
         working-directory: mira-hub

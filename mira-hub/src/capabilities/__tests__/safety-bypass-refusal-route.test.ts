@@ -29,6 +29,8 @@ const domainMock = vi.hoisted(() => ({
     claimToken: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
   })),
   abandonNotebookTurnRequest: vi.fn(async () => undefined),
+  // The recovery capability stores what a turn was accepted with; an ordinary turn reaches it.
+  acceptNotebookTurnContext: vi.fn(async () => true),
   recordTurn: vi.fn(async () => undefined),
   resolveBoundAsset: vi.fn(async () => ({ state: "unbound" })),
   getNotebook: vi.fn(async () => ({
@@ -212,6 +214,34 @@ async function expectRefusal(message: string, extra: Record<string, unknown> = {
   expect(text).not.toMatch(/\bstep 1\b|jumper terminals|that\W?s fine|is fine\b|\byes\b|you can\b/i);
   return { out, turn: turn! };
 }
+
+// Composition with the turn-recovery guards (#5669): an equipment-expectation rider and a machine read
+// belong to the ORDINARY turn. The fixed refusal reads no machine, so neither may replace it.
+describe("a bypass ask is not replaced by a recovery precondition", () => {
+  it("a malformed equipment-expectation rider does not turn the refusal into a 400", async () => {
+    await expectRefusal(AUDIT_ASK, { expectedEquipmentEntityId: 7 });
+  });
+  it("control: the same malformed rider on an ordinary question is still a 400", async () => {
+    const out = await post("What does F004 mean on a PowerFlex 525?", { expectedEquipmentEntityId: 7 });
+    expect(out.status).toBe(400);
+    expect(out.text).toContain("invalid_equipment_expectation");
+  });
+  it("an unreadable machine binding does not erase the refusal when a precondition was sent", async () => {
+    const notebook = domainMock.getNotebook.getMockImplementation();
+    const binding = domainMock.resolveBoundAsset.getMockImplementation();
+    domainMock.getNotebook.mockRejectedValue(new Error("notebook read down"));
+    domainMock.resolveBoundAsset.mockRejectedValue(new Error("binding read down"));
+    try {
+      await expectRefusal(AUDIT_ASK, { expectedEquipmentEntityId: "ee715d08-4ea6-4b7a-b99b-958a33c39ea8" });
+    } finally {
+      domainMock.getNotebook.mockImplementation(notebook!);
+      domainMock.resolveBoundAsset.mockImplementation(binding!);
+    }
+  });
+  it("a machine that no longer matches the precondition does not erase the refusal", async () => {
+    await expectRefusal(AUDIT_ASK, { expectedEquipmentEntityId: "ee715d08-4ea6-4b7a-b99b-958a33c39ea8" });
+  });
+});
 
 describe("a bypass ask ends as a fixed refusal", () => {
   it("preconditions: the audit ask is no existing safety trigger, so only the bypass path can stop it", () => {

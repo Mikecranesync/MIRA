@@ -11,7 +11,9 @@ import { isSafetyNoticeEntry } from "@/lib/notebook-chat-types";
 import { LEGACY_THREAD_ID, machineNameFor, notebookLabel, threadItemId, threadRefFromItem, type HubNotebook } from "./notebook-tree";
 import { historyFromSavedTurns, type HistoryRow } from "@/capabilities/conversation-history";
 import type { ScopeField } from "./bench-components-logic";
-import { contextFor, threadFromPersisted, type HubNotebookMeta } from "./to-interaction";
+import { answerTurnId, contextFor, threadFromPersisted, type HubNotebookMeta } from "./to-interaction";
+import { recoveryMatchesTarget, type RecoveryObservation } from "./turn-recovery-client";
+import { PHOTO_CHANGED_RETRY_NOTE } from "@/capabilities/turn-recovery/contract";
 
 /** The shell's fixture before any notebook loads: an empty, untitled thread. */
 export const EMPTY_FIXTURE = {
@@ -802,6 +804,23 @@ export function guidedDeadEndBody(
  */
 export function errorMessageFor(code: string, status: number): string {
   switch (code) {
+    case "equipment_binding_changed":
+    case "notebook_identity_changed":
+    case "retry_target_unknown":
+    case "component_revision_changed":
+      return "The original question target changed or is unknown. Review the machine and component before sending again.";
+    case "retry_photo_changed":
+      return PHOTO_CHANGED_RETRY_NOTE;
+    case "retry_photo_unavailable":
+      return "The original photo is unavailable. Attach it again before sending.";
+    case "retry_request_not_found":
+    case "retry_context_unknown":
+    case "retry_request_unavailable":
+    case "retry_request_invalid":
+      return "The original request cannot be recovered. Review the target and send a new question.";
+    case "request_in_progress":
+    case "request_superseded":
+      return "This request is still being completed. Checking its saved result…";
     case "no_sources_selected":
       return "This notebook has no selected sources yet. Add a manual to it, then ask.";
     case "approved_context":
@@ -844,6 +863,19 @@ export function sendFailureMessage(err: unknown): string {
   const raw = (err instanceof Error ? err.message : String(err ?? "")).trim();
   if (NETWORK_FAILURE_RE.test(raw)) return NETWORK_FAILURE_MESSAGE;
   return raw || "MIRA couldn't answer that just now.";
+}
+
+/**
+ * #4924 — Send turns into Stop in the same spot, so the second tap of a
+ * double-tap lands on Stop and kills the question it just sent ("Stopped
+ * before the answer completed."). Stop is not armed for this long after a
+ * send starts; after that a deliberate Stop works as before.
+ */
+export const STOP_ARM_DELAY_MS = 400;
+
+/** `busySince` is when the running send started (ms), or null when none is running. */
+export function stopArmed(busySince: number | null, now: number): boolean {
+  return busySince !== null && now - busySince >= STOP_ARM_DELAY_MS;
 }
 
 /** The initial shell fixture for a hydrated notebook. */
@@ -1003,4 +1035,129 @@ export function withLivingSheetRider<B extends object>(
   openJob: { notebookId: string; jobId: string } | null,
 ): B | (B & { livingSheetJobId: string }) {
   return openJob && openJob.notebookId === notebookId ? { ...body, livingSheetJobId: openJob.jobId } : body;
+}
+
+type RequestRow = PersistedTurn & { clientRequestId?: string | null; createdAt?: string };
+
+/**
+ * One transcript row per id. A row pinned by an exact recovery read is a FRESH read of that
+ * request and outranks the (possibly stale) loaded detail; the host drops a pin as soon as a
+ * successful detail load returns the same row, after which the detail is the newer copy.
+ */
+export function mergeTurnRows<Row extends RequestRow>(pinned: readonly Row[], loaded: readonly Row[]): Row[] {
+  const rows = new Map<string, Row>(pinned.map(row => [row.id, row]));
+  for (const row of loaded) if (!rows.has(row.id)) rows.set(row.id, row);
+  return [...rows.values()].sort((a, b) => Date.parse(a.createdAt ?? "") - Date.parse(b.createdAt ?? "") || a.id.localeCompare(b.id));
+}
+
+/** What a row said when a send began; a row whose signature later differs was committed AFTER that send. */
+export const rowSignature = (row: { id: string; answerStatus: string; answerText?: string | null }): string =>
+  JSON.stringify([row.id, row.answerStatus, row.answerText ?? null]);
+
+/**
+ * A retry reuses its original request id, so the request's earlier persisted row (often a failure) is the OLD
+ * record while the live exchange runs: it is not drawn beside, or instead of, the live answer. The moment a row
+ * for that request differs from what the send began with, it is a fresh commit (a late worker commit included)
+ * and wins again, exactly as before the live exchange existed.
+ */
+export function reconcileLiveRows<Row extends RequestRow>(
+  rows: readonly Row[],
+  live: { requestId: string; baseline: string | null } | null | undefined,
+): { rows: Row[]; hideLive: boolean } {
+  if (!live) return { rows: [...rows], hideLive: false };
+  const mine = rows.filter(row => row.clientRequestId === live.requestId);
+  if (mine.some(row => rowSignature(row) !== live.baseline)) return { rows: [...rows], hideLive: true };
+  return { rows: rows.filter(row => row.clientRequestId !== live.requestId), hideLive: false };
+}
+
+/**
+ * Does a freshly read row confirm the result the live stream just ended with? A row of the
+ * opposite outcome (an old failure under a successful retry) is the previous record, not proof.
+ */
+export function rowConfirmsStreamOutcome(row: { answerStatus: string }, outcome: { error: boolean } | undefined): boolean {
+  return !outcome || (row.answerStatus === "error") === outcome.error;
+}
+
+/** Pins that a successful detail load now supersedes. */
+export function pinsAfterDetailLoad<Row extends { id: string }>(pinned: readonly Row[], loaded: readonly { id: string }[]): Row[] {
+  const ids = new Set(loaded.map(row => row.id));
+  const kept = pinned.filter(row => !ids.has(row.id));
+  return kept.length === pinned.length ? (pinned as Row[]) : kept;
+}
+
+/**
+ * A stopped live exchange keeps its text. When its OWN request later reads interrupted and
+ * retryable, the exchange becomes a failed turn carrying one retryable notice (the Stop notice is
+ * replaced, never doubled), so the shell offers its ordinary Retry on that exchange.
+ */
+export function withStoppedExchangeRetry(turns: readonly InteractionTurn[], answerId: string | null): InteractionTurn[] {
+  if (!answerId) return [...turns];
+  return turns.map(turn => {
+    if (turn.id !== answerId || turn.role !== "assistant") return turn;
+    return {
+      ...turn, lifecycle: "failed" as const,
+      parts: [...turn.parts.filter(part => part.type !== "error"),
+        { type: "error" as const, error: { code: "provider_failure" as const, message: "Stopped before it finished. Retry to ask it again.", retryable: true } }],
+    };
+  });
+}
+
+/**
+ * One logical request has ONE visible question/answer. A saved-request pointer (the recovery placeholder) is only a
+ * stand-in for a request nothing else renders: a saved/pinned row, the live exchange and a retained (already streamed)
+ * exchange all already show it, so the placeholder must not be appended beside them while the saved row is still
+ * unread, stale, pending or 404. The pointer itself is NOT retired by this: only a fresh matching row does that.
+ */
+export function placeholderRequestIds(
+  rows: readonly { clientRequestId?: string | null }[],
+  live: { clientRequestId: string } | null,
+  retained: readonly { clientRequestId: string }[] | undefined,
+): Set<string> {
+  const ids = new Set<string>();
+  for (const row of rows) if (row.clientRequestId) ids.add(row.clientRequestId);
+  if (live) ids.add(live.clientRequestId);
+  for (const exchange of retained ?? []) ids.add(exchange.clientRequestId);
+  return ids;
+}
+
+/**
+ * An observed (possibly stale) saved-request status must never override what THIS page actually saw. A retryable
+ * observed request whose representation is a live/retained exchange:
+ *  - keeps/gets its Retry on that exchange's answer ONLY when the exchange genuinely ended in an explicit Stop
+ *    (`stopped`), so suppressing the duplicate placeholder never hides the only Retry of a stopped request;
+ *  - is DROPPED when the exchange completed (a confirmed answer/refusal) or failed/was interrupted some other way:
+ *    a stale "error, can retry" row must not turn a confirmed answer into "Stopped…", nor expose a replay (an
+ *    actually failed stream already carries its own inline Retry from the send recovery).
+ * Requests no exchange represents are untouched. The pointer is not retired here either way.
+ */
+export function retriesOnRepresentingExchange<T extends { answerId: string; requestId: string }>(
+  retries: readonly T[],
+  live: { id: string; clientRequestId: string; stopped: boolean } | null,
+  retained: readonly { id: string; clientRequestId: string; stopped: boolean }[] | undefined,
+): T[] {
+  return retries.flatMap(retry => {
+    const exchange = live?.clientRequestId === retry.requestId ? live : retained?.find(item => item.clientRequestId === retry.requestId);
+    if (!exchange) return [retry];
+    return exchange.stopped ? [{ ...retry, answerId: `${exchange.id}-a` }] : [];
+  });
+}
+
+/**
+ * Which observed recoveries may offer Retry. With no live exchange it is each retryable request that still matches
+ * the target the technician is looking at. While a live exchange exists, ONLY that exchange's own request, once
+ * stopped and read interrupted, is offered (on the live exchange); any other request's observation is ignored.
+ * Every candidate must still match the current machine, component and notebook identity.
+ */
+export function recoveryRetryList(
+  recoveries: readonly RecoveryObservation[],
+  live: { id: string; requestId: string; question: string; stopped: boolean } | null,
+  current: { equipmentEntityId: string | null; componentId: string | null | undefined; notebook: Parameters<typeof recoveryMatchesTarget>[3] },
+): { answerId: string; question: string; requestId: string }[] {
+  return recoveries.flatMap(recovery => {
+    const value = recovery.value;
+    if (!value || !recoveryMatchesTarget(value, current.equipmentEntityId, current.componentId, current.notebook)) return [];
+    if (!live) return [{ answerId: answerTurnId(value.turnId), question: value.question, requestId: value.requestId }];
+    return live.stopped && value.state === "interrupted" && value.requestId === live.requestId && recovery.pointer.requestId === live.requestId
+      ? [{ answerId: `${live.id}-a`, question: live.question, requestId: live.requestId }] : [];
+  });
 }

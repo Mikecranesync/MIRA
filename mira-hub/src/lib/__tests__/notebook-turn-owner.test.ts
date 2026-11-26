@@ -88,17 +88,19 @@ describe("claimNotebookTurnRequest — atomic execution ownership and replay", (
         question: "q",
         threadId: "thrd_a",
       }),
-    ).resolves.toEqual({ status: "claimed", claimToken: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb" });
+    ).resolves.toEqual({ status: "claimed", claimToken: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", acceptedContext: null });
 
-    expect(calls[0].sql).toMatch(/INSERT INTO equipment_notebook_turns/i);
-    expect(calls[0].sql).toMatch(/client_request_state/i);
-    expect(calls[0].sql).toMatch(/'pending'/i);
-    expect(calls[0].sql).toMatch(/ON CONFLICT[\s\S]+client_request_id[\s\S]+DO UPDATE/i);
-    expect(calls[0].sql).toMatch(/candidate\.token/i);
-    expect(calls[0].sql).toMatch(/client_request_payload IS NULL[\s\S]+THEN 'mismatch'/i);
-    expect(calls[0].sql).not.toMatch(/client_request_payload IS NULL OR/i);
-    expect(calls[0].sql).toMatch(/FROM\s+equipment_notebooks/i);
-    expect(calls[0].values).toEqual(expect.arrayContaining([NB, TENANT, USER_A, clientRequestId, "q", "thrd_a"]));
+    const claimCall = calls.find(c => /WITH candidate AS/.test(c.sql))!;
+    expect(calls[0].sql).toContain("pg_advisory_xact_lock");
+    expect(claimCall.sql).toMatch(/INSERT INTO equipment_notebook_turns/i);
+    expect(claimCall.sql).toMatch(/client_request_state/i);
+    expect(claimCall.sql).toMatch(/'pending'/i);
+    expect(claimCall.sql).toMatch(/ON CONFLICT[\s\S]+client_request_id[\s\S]+DO UPDATE/i);
+    expect(claimCall.sql).toMatch(/candidate\.token/i);
+    expect(claimCall.sql).toMatch(/client_request_payload IS NULL[\s\S]+THEN 'mismatch'/i);
+    expect(claimCall.sql).not.toMatch(/client_request_payload IS NULL OR/i);
+    expect(claimCall.sql).toMatch(/FROM\s+equipment_notebooks/i);
+    expect(claimCall.values).toEqual(expect.arrayContaining([NB, TENANT, USER_A, clientRequestId, "q", "thrd_a"]));
   });
 
   it("returns the first completed terminal turn for replay", async () => {

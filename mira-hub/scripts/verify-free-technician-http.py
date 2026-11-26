@@ -3,8 +3,8 @@ import argparse
 import http.cookiejar
 import json
 import os
-import subprocess
 import re
+import subprocess
 from pathlib import Path
 from urllib.error import HTTPError
 from urllib.parse import urlencode, urlsplit
@@ -73,7 +73,8 @@ if args.fragment_stage:
     tokens = subprocess.check_output(['/opt/homebrew/opt/postgresql@16/bin/psql',admin_database,'-X','-A','-t','-c','SELECT token FROM hub_magic_tokens'],text=True).splitlines()
     assert token not in access and all(value not in access and value not in app_logs for value in tokens if value)
     report = {'scope':'Compiled Hub behind a local standard-library forwarding proxy; production nginx and email delivery are not exercised','opening_link_created_account':False,'opening_link_consumed_token':False,'explicit_post_completed':True,'replay_rejected':True,'request_uri_or_referrer_contains_credential':False,'app_log_contains_credential':False,'inspected_request_count':len(access.splitlines()),'browser_proof':'fragment-browser.json','real_email_or_plant_action':False}
-    if args.output: args.output.write_text(json.dumps(report,indent=2)+'\n')
+    if args.output:
+        args.output.write_text(json.dumps(report,indent=2)+'\n')
     print(json.dumps(report,indent=2))
     raise SystemExit(0)
 

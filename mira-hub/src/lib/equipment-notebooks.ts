@@ -12,6 +12,7 @@
  */
 
 import type { PoolClient } from "pg";
+import { acceptedTurnContext, requestPayloadSql, turnRequestEnvelope, wrapTurnRequest, type AcceptedTurnContext } from "@/capabilities/turn-recovery/accepted-context";
 import pool from "@/lib/db";
 import { withTenantContext } from "@/lib/tenant-context";
 import { deriveReadiness, deriveSearchable, type Readiness, type SearchableFix } from "@/lib/document-readiness";
@@ -1430,7 +1431,7 @@ export type StoredNotebookTurn = {
 };
 
 export type NotebookTurnRequestClaim =
-  | { status: "claimed"; claimToken: string }
+  | { status: "claimed"; claimToken: string; preserveFailedTurn?: boolean; acceptedContext?: AcceptedTurnContext | null }
   | { status: "in_progress" }
   | { status: "mismatch" }
   | { status: "replay"; turn: StoredNotebookTurn };
@@ -1474,7 +1475,23 @@ export async function claimNotebookTurnRequest(
   const owner = request.ownerUserId.trim();
   if (!owner) throw new Error("claimNotebookTurnRequest requires ownerUserId (server-derived)");
   const payload = JSON.stringify(request.requestPayload ?? null);
+  const envelope = JSON.stringify(wrapTurnRequest(request.requestPayload ?? null));
+  const originalPayload = requestPayloadSql("t.client_request_payload");
   return withTenantContext(tenantId, async (c) => {
+    // Serialize claim decisions for this exact owner/request. The prior row
+    // is locked before takeover so a later refusal can restore an existing
+    // failed exchange instead of deleting its photo and original attribution.
+    await c.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [
+      JSON.stringify([tenantId, notebookId, owner, request.clientRequestId]),
+    ]);
+    const previous = await c.query(
+      `SELECT client_request_state, answer_status FROM equipment_notebook_turns
+        WHERE tenant_id=$1::uuid AND notebook_id=$2::uuid AND owner_user_id=$3
+          AND client_request_id=$4::uuid FOR UPDATE`,
+      [tenantId, notebookId, owner, request.clientRequestId],
+    );
+    const preserveFailedTurn = previous.rows[0]?.client_request_state === "pending"
+      || (previous.rows[0]?.client_request_state === "complete" && previous.rows[0]?.answer_status === "error");
     const res = await c.query(
       `WITH candidate AS (
          SELECT gen_random_uuid() AS token
@@ -1490,67 +1507,56 @@ export async function claimNotebookTurnRequest(
             client_request_claim_token, client_request_payload)
          SELECT nb.id, nb.tenant_id, $5, 'error', NULL,
                 '[]'::jsonb, '[]'::jsonb, NULL, $3, $6,
-                $4::uuid, 'pending', now(), candidate.token, $7::jsonb
+                $4::uuid, 'pending', now(), candidate.token, $8::jsonb
            FROM owned_notebook nb CROSS JOIN candidate
          ON CONFLICT (tenant_id, notebook_id, owner_user_id, client_request_id)
            WHERE client_request_id IS NOT NULL
          DO UPDATE SET
            client_request_state = CASE WHEN
              t.question = $5
-             AND t.client_request_payload = $7::jsonb
+             AND ${originalPayload} = $7::jsonb
              AND (
                (t.client_request_state = 'pending'
                  AND t.client_request_started_at < now() - interval '10 minutes')
                OR
                (t.client_request_state = 'complete'
                  AND t.answer_status = 'error'
+                 AND coalesce(t.answer_text, '') = ''
                  AND NOT EXISTS (
                    SELECT 1 FROM jsonb_array_elements(COALESCE(t.evidence, '[]'::jsonb)) e
-                    WHERE e->>'kind' = 'safety_stop'
+                    WHERE e->>'kind' IN ('safety_stop', 'provider_failure')
                  ))
              ) THEN 'pending' ELSE t.client_request_state END,
            client_request_started_at = CASE WHEN
              t.question = $5
-             AND t.client_request_payload = $7::jsonb
+             AND ${originalPayload} = $7::jsonb
              AND (
                (t.client_request_state = 'pending'
                  AND t.client_request_started_at < now() - interval '10 minutes')
                OR
                (t.client_request_state = 'complete'
                  AND t.answer_status = 'error'
+                 AND coalesce(t.answer_text, '') = ''
                  AND NOT EXISTS (
                    SELECT 1 FROM jsonb_array_elements(COALESCE(t.evidence, '[]'::jsonb)) e
-                    WHERE e->>'kind' = 'safety_stop'
+                    WHERE e->>'kind' IN ('safety_stop', 'provider_failure')
                  ))
              ) THEN now() ELSE t.client_request_started_at END,
            client_request_claim_token = CASE WHEN
              t.question = $5
-             AND t.client_request_payload = $7::jsonb
+             AND ${originalPayload} = $7::jsonb
              AND (
                (t.client_request_state = 'pending'
                  AND t.client_request_started_at < now() - interval '10 minutes')
                OR
                (t.client_request_state = 'complete'
                  AND t.answer_status = 'error'
+                 AND coalesce(t.answer_text, '') = ''
                  AND NOT EXISTS (
                    SELECT 1 FROM jsonb_array_elements(COALESCE(t.evidence, '[]'::jsonb)) e
-                    WHERE e->>'kind' = 'safety_stop'
+                    WHERE e->>'kind' IN ('safety_stop', 'provider_failure')
                  ))
-             ) THEN (SELECT token FROM candidate) ELSE t.client_request_claim_token END,
-           client_request_payload = CASE WHEN
-             t.question = $5
-             AND t.client_request_payload = $7::jsonb
-             AND (
-               (t.client_request_state = 'pending'
-                 AND t.client_request_started_at < now() - interval '10 minutes')
-               OR
-               (t.client_request_state = 'complete'
-                 AND t.answer_status = 'error'
-                 AND NOT EXISTS (
-                   SELECT 1 FROM jsonb_array_elements(COALESCE(t.evidence, '[]'::jsonb)) e
-                    WHERE e->>'kind' = 'safety_stop'
-                 ))
-             ) THEN $7::jsonb ELSE t.client_request_payload END
+             ) THEN (SELECT token FROM candidate) ELSE t.client_request_claim_token END
          RETURNING t.client_request_claim_token::text AS claim_token,
                    t.client_request_state, t.client_request_payload,
                    t.id::text, t.question, t.answer_status, t.answer_text,
@@ -1559,7 +1565,7 @@ export async function claimNotebookTurnRequest(
        SELECT CASE
                 WHEN claimed.question <> $5
                   OR claimed.client_request_payload IS NULL
-                  OR claimed.client_request_payload <> $7::jsonb
+                  OR ${requestPayloadSql("claimed.client_request_payload")} <> $7::jsonb
                   THEN 'mismatch'
                 WHEN claimed.claim_token = candidate.token::text THEN 'claimed'
                 WHEN claimed.client_request_state = 'complete' THEN 'replay'
@@ -1568,7 +1574,7 @@ export async function claimNotebookTurnRequest(
               claimed.claim_token, claimed.id, claimed.question,
               claimed.answer_status, claimed.answer_text,
               claimed.enabled_source_doc_ids, claimed.evidence,
-              claimed.model, claimed.basis
+              claimed.model, claimed.basis, claimed.client_request_payload
          FROM claimed CROSS JOIN candidate`,
       [
         notebookId,
@@ -1578,15 +1584,53 @@ export async function claimNotebookTurnRequest(
         request.question,
         storedThreadId(request.threadId),
         payload,
+        envelope,
       ],
     );
     const row = res.rows[0] as Record<string, unknown> | undefined;
     if (!row) throw new NotebookNotFoundError(notebookId);
     const status = String(row.claim_status);
     if (status === "replay") return { status, turn: storedNotebookTurn(row) };
-    if (status === "claimed") return { status, claimToken: String(row.claim_token) };
+    if (status === "claimed") return { status, claimToken: String(row.claim_token), acceptedContext: turnRequestEnvelope(row.client_request_payload).acceptedContext, ...(preserveFailedTurn ? { preserveFailedTurn: true } : {}) };
     if (status === "in_progress" || status === "mismatch") return { status };
     throw new Error(`unexpected notebook request claim status: ${status}`);
+  });
+}
+
+/** Freeze server-derived retry context once, fenced by the execution lease.
+ * Existing JSON storage only: no schema change or second request store. */
+export async function acceptNotebookTurnContext(
+  tenantId: string, notebookId: string, ownerUserId: string, requestId: string,
+  claimToken: string, context: AcceptedTurnContext,
+): Promise<boolean> {
+  if (!acceptedTurnContext(context)) throw new Error("invalid accepted turn context");
+  return withTenantContext(tenantId, async c => {
+    const result = await c.query(
+      `UPDATE equipment_notebook_turns SET client_request_payload = jsonb_set(client_request_payload, '{acceptedContext}', $6::jsonb)
+       WHERE tenant_id=$1::uuid AND notebook_id=$2::uuid AND owner_user_id=$3 AND client_request_id=$4::uuid
+         AND client_request_claim_token=$5::uuid AND client_request_state='pending'
+         AND NOT (client_request_payload ? 'message') AND client_request_payload->>'format'='notebook-turn/v1'
+         AND client_request_payload->'acceptedContext'='null'::jsonb`,
+      [tenantId, notebookId, ownerUserId, requestId, claimToken, JSON.stringify(context)],
+    );
+    return result.rowCount === 1;
+  });
+}
+
+/** Attribution belongs to the active attempt; an expired attempt cannot
+ * rewrite a later attempt or the historical evidence of a refused retry. */
+export async function stampClaimedTurnComponent(
+  tenantId: string, notebookId: string, ownerUserId: string, requestId: string,
+  claimToken: string, componentId: string, revision: number,
+): Promise<boolean> {
+  return withTenantContext(tenantId, async c => {
+    const result = await c.query(
+      `UPDATE equipment_notebook_turns SET component_id=$6::uuid, component_revision=$7
+       WHERE tenant_id=$1::uuid AND notebook_id=$2::uuid AND owner_user_id=$3 AND client_request_id=$4::uuid
+         AND client_request_claim_token=$5::uuid AND client_request_state='pending'`,
+      [tenantId, notebookId, ownerUserId, requestId, claimToken, componentId, revision],
+    );
+    return result.rowCount === 1;
   });
 }
 
@@ -1597,11 +1641,12 @@ export async function abandonNotebookTurnRequest(
   ownerUserId: string,
   clientRequestId: string | null,
   claimToken: string | null,
+  preserveFailedTurn = false,
 ): Promise<void> {
   if (!clientRequestId || !claimToken) return;
   await withTenantContext(tenantId, async (c) => {
     await c.query(
-      `DELETE FROM equipment_notebook_turns
+      `${preserveFailedTurn ? "UPDATE equipment_notebook_turns SET client_request_state = 'complete'" : "DELETE FROM equipment_notebook_turns"}
         WHERE tenant_id = $1::uuid AND notebook_id = $2::uuid
           AND owner_user_id = $3 AND client_request_id = $4::uuid
           AND client_request_state = 'pending'
@@ -1859,6 +1904,11 @@ export async function listTurns(
      * the current confirmed notebook binding atomically. Undefined keeps the
      * ordinary history read unchanged; null recalls only unbound reports. */
     expectedEquipmentEntityId?: string | null;
+    /** Retry proposal reads stop before the immutable original request, before LIMIT. */
+    beforeRequestId?: string;
+    /** Exact terminal recovery only: owner + conversation required, one row. */
+    requestId?: string;
+    signal?: AbortSignal;
   } = {},
 ): Promise<
   {
@@ -1884,8 +1934,10 @@ export async function listTurns(
   }[]
 > {
   const viewer = (opts.viewerUserId ?? "").trim() || null;
+  if (opts.requestId && (!viewer || opts.threadId === undefined)) return [];
   const threadId = opts.threadId === undefined ? undefined : storedThreadId(opts.threadId);
   const turns = await withTenantContext(tenantId, async (c) => {
+    if (opts.requestId) await c.query("SET LOCAL statement_timeout = '1500ms'");
     // Take the MOST RECENT `limit` turns (inner DESC), then present them
     // chronologically (outer ASC). A plain `ORDER BY created_at ASC LIMIT n`
     // returns the OLDEST n — so past n turns the recent conversation vanishes
@@ -1894,10 +1946,10 @@ export async function listTurns(
     // Report recall never treats ownerless legacy rows as this technician's
     // disclosures. Filter before LIMIT so they cannot crowd out owned reports.
     const reportRecall = opts.expectedEquipmentEntityId !== undefined;
-    const ownerPredicate = reportRecall
+    const ownerPredicate = reportRecall || opts.requestId
       ? (viewer ? `owner_user_id = $4` : "FALSE")
       : (viewer ? `(owner_user_id = $4 OR owner_user_id IS NULL)` : `owner_user_id IS NULL`);
-    const values: unknown[] = [tenantId, notebookId, limit];
+    const values: unknown[] = [tenantId, notebookId, opts.requestId ? 1 : limit];
     if (viewer) values.push(viewer);
     const threadPredicate = opts.threadId === undefined
       ? ""
@@ -1911,6 +1963,13 @@ export async function listTurns(
         WHERE n.id = $2::uuid AND n.tenant_id = $1::uuid
           AND n.equipment_entity_id IS NOT DISTINCT FROM $${equipmentParam}::text
           AND (n.equipment_entity_id IS NULL OR n.asset_confirmed_at IS NOT NULL))`;
+    const beforeParam = opts.beforeRequestId ? values.push(opts.beforeRequestId) : null;
+    const beforePredicate = beforeParam === null ? "" : viewer ? `
+      AND created_at < (SELECT cutoff.created_at FROM equipment_notebook_turns cutoff
+        WHERE cutoff.tenant_id=$1::uuid AND cutoff.notebook_id=$2::uuid
+          AND cutoff.owner_user_id=$4 AND cutoff.client_request_id=$${beforeParam}::uuid
+          AND cutoff.thread_id IS NOT DISTINCT FROM equipment_notebook_turns.thread_id)` : " AND FALSE";
+    const requestPredicate = opts.requestId ? ` AND client_request_id = $${values.push(opts.requestId)}::uuid` : "";
     const res = await c.query(
       `SELECT id, thread_id, question, answer_status, answer_text, evidence, basis, created_at, owner_user_id, client_request_id, equipment_entity_id
          FROM (
@@ -1922,6 +1981,8 @@ export async function listTurns(
               AND ${ownerPredicate}
               ${threadPredicate}
               ${equipmentPredicate}
+              ${beforePredicate}
+              ${requestPredicate}
             ORDER BY created_at DESC
             LIMIT $3
          ) recent
@@ -1942,7 +2003,7 @@ export async function listTurns(
       sharedLegacy: r.owner_user_id == null,
       clientRequestId: r.client_request_id == null ? null : String(r.client_request_id),
     }));
-  });
+  }, { readOnly: true, signal: opts.signal });
 
   // Invariant 3 (085): persisted citations resolve their canonical origin
   // server-side at read time — pre-085 turns carry no originFileId in their

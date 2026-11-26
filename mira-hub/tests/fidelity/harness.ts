@@ -25,7 +25,7 @@ export async function addSessionCookie(context: BrowserContext, baseURL: string)
   const value = await encode({
     secret,
     token: {
-      sub: USER, tenantId: TENANT, status: "active",
+      sub: USER, uid: USER, tid: TENANT, status: "active",
       name: "Fidelity Harness", email: "fidelity@example.invalid",
     },
   });
@@ -75,7 +75,9 @@ export async function installRoutes(page: Page, scenario: Scenario) {
     }
     // next-auth client (SessionProvider): session read + its client logger.
     if (m === "GET" && p === "/api/auth/session") {
-      return route.fulfill(json({ user: { name: "Fidelity Harness", email: "fidelity@example.invalid" }, expires: "2099-01-01T00:00:00.000Z" }));
+      // Match src/auth.ts: recovery pointers are scoped to this authenticated
+      // actor, so a name/email-only session correctly cannot start a send.
+      return route.fulfill(json({ user: { id: USER, tenantId: TENANT, status: "active", name: "Fidelity Harness", email: "fidelity@example.invalid" }, expires: "2099-01-01T00:00:00.000Z" }));
     }
     if (m === "POST" && p === "/api/auth/_log") {
       return route.fulfill(json({}));
@@ -87,11 +89,15 @@ export async function installRoutes(page: Page, scenario: Scenario) {
       if (!answered) return route.fulfill(json(oracle.detailEmpty));
       await released;
       const fixture = oracle[scenario];
-      // The real detail route returns the ID persisted from this browser's POST.
-      const turns = fixture.detailAfter.turns.map((turn: { clientRequestId: string | null }) =>
+      // The real detail route returns the ID persisted from this browser's POST (the accepted
+      // request ID the history read echoes). This oracle is a reusable template, while each
+      // browser send mints a fresh ID: bind the fixture row to the captured POST, by the fixture's
+      // own recorded ID first, else by the matching question, so recovery can observe its own row.
+      const request = cap.chatBodies.at(-1);
+      const turns = structuredClone(fixture.detailAfter.turns).map((turn: { clientRequestId: string | null; question?: string }) =>
         turn.clientRequestId === fixture.clientRequestId
           ? { ...turn, clientRequestId: cap.chatBodies[0]?.clientRequestId }
-          : turn);
+          : request && turn.question === request.message ? { ...turn, clientRequestId: request.clientRequestId } : turn);
       return route.fulfill(json({ ...fixture.detailAfter, turns })).catch(() => undefined);
     }
     if (m === "POST" && p === `${nbPath}/chat`) {

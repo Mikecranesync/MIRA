@@ -128,7 +128,11 @@ describe("the host is wired to the hold (source shape, like hub-host-restore-ret
     expect(host).toContain('onRetrySendError: recoveryIsVisible && !failedBody?.unposted && retryCheck?.kind === "retry" ? onRetrySendError : null');
     expect(host).toContain('retryTargetCheck(recovery.refusedScope, reviewedBench).kind === "retry"');
     expect(host).toContain("inlineRecoveries.get(turnId)");
-    expect(host).toContain("inlineRecoveries.size ? { onRetry }");
+    // Recovered (stored / stopped) failures add their own Retry; the machine-held review never does.
+    expect(host).toContain("inlineRecoveries.size || persistedRetry || recoveryRetries.length > 0 ? { onRetry }");
+    // #4846: the stored-failure Retry exists only while no live failure is held, so a held
+    // review (failedBody set, target moved) can never be retried through it.
+    expect(host).toMatch(/!failedBody && !state\.sendError\s*\? persistedRetryTarget\(visibleTurns, headerComponentId, detail\.notebook\.asset\?\.entityId\)/);
   });
   it("a target refusal keeps the refused scope and the review message is shown", () => {
     expect(host).toMatch(/refusedScope \? \{ refusedScope \} : \{\}/);
