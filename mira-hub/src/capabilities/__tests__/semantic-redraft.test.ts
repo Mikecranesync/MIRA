@@ -1,6 +1,6 @@
 /** #5941 — the one-redraft runner and its fixed instruction (no route, no network). */
 import { describe, expect, it, vi } from "vitest";
-import { redraftInstruction, runSemanticRedraft, withRedraftInstruction } from "@/capabilities/semantic-redraft";
+import { REDRAFT_CLASSES, redraftInstruction, runSemanticRedraft, withRedraftInstruction } from "@/capabilities/semantic-redraft";
 
 const deps = (over: Partial<Parameters<typeof runSemanticRedraft>[0]> = {}) => ({
   aborted: vi.fn(() => false),
@@ -52,20 +52,25 @@ describe("runSemanticRedraft", () => {
 });
 
 describe("redraft instruction", () => {
-  it("is fixed text: isolation inline, powered steps separate, nothing invented, citations kept", () => {
+  it("is fixed text: isolation inline as instructions, powered steps separate, safeguards kept, nothing invented, citations kept", () => {
     const t = redraftInstruction("unclassified");
     expect(t).toMatch(/^SAFETY REVISION:/);
-    expect(t).toContain("state inline in that step the isolation");
+    expect(t).toContain("say in that step what to isolate and verify before starting it");
+    expect(t).toContain("never as a state already reached");
+    expect(t).toContain("do not invent one");
+    expect(t).toContain("leave that step out and say the safeguard stays in service");
     expect(t).toContain("never put a powered check inside a locked-out step");
     expect(t).toContain("Add no step, value or claim the excerpts do not support");
     expect(t).toContain("[n] citation markers");
   });
 
-  it("adds the class clause for pressure, machine motion and electrical only", () => {
-    expect(redraftInstruction("pressure")).toContain("depressurised and confirmed at zero");
-    expect(redraftInstruction("machine-motion")).toContain("guards are refitted");
-    expect(redraftInstruction("electrical")).toContain("confirmed de-energized with a tested meter");
+  it("adds the class clause for pressure, machine motion and electrical only, and redrafts only those", () => {
+    expect(redraftInstruction("pressure")).toContain("relieve the pressure and verify it reads zero");
+    expect(redraftInstruction("machine-motion")).toContain("refit the guards and clear the area");
+    expect(redraftInstruction("electrical")).toContain("a meter proven on a known source");
+    expect(redraftInstruction("electrical")).toContain("without writing a voltage number");
     expect(redraftInstruction("thermal")).toBe(redraftInstruction("unclassified"));
+    expect([...REDRAFT_CLASSES].sort()).toEqual(["electrical", "machine-motion", "pressure"]);
   });
 
   it("is appended to the system message without touching the others or the input", () => {

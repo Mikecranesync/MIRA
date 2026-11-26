@@ -24,15 +24,19 @@ export type RedraftOutcome =
 
 const CLASS_CLAUSE: Record<string, string> = {
   pressure:
-    "For pressure: state that the circuit is depressurised and confirmed at zero before any fitting, bolt or " +
-    "component is loosened or adjusted, and that pressure is brought back only after the work is complete.",
+    "For pressure: tell the technician to relieve the pressure and verify it reads zero before any fitting, bolt " +
+    "or component is loosened or adjusted, and to bring pressure back only once the work is complete.",
   "machine-motion":
-    "For machine motion: state that the machine is stopped and locked out before anyone reaches into it, and " +
-    "that guards are refitted and the area is clear before it is reset or restarted.",
+    "For machine motion: tell the technician to stop and lock out the machine before reaching into it, and to " +
+    "refit the guards and clear the area before it is reset or restarted.",
   electrical:
-    "For electrical work: state that the equipment is locked out and confirmed de-energized with a tested meter " +
-    "before conductors or terminals are touched, and that power is restored only by a qualified person afterwards.",
+    "For electrical work: tell the technician to lock out and verify absence of voltage with a meter proven on a " +
+    "known source before touching conductors or terminals, without writing a voltage number, and to leave " +
+    "re-energizing to a qualified person afterwards.",
 };
+
+/** The hazard classes a redraft is attempted for: the ones with a clause above. */
+export const REDRAFT_CLASSES: readonly string[] = Object.keys(CLASS_CLAUSE);
 
 /** The fixed revision instruction appended to the system prompt for the one redraft. */
 export function redraftInstruction(hazardClass: string): string {
@@ -40,10 +44,14 @@ export function redraftInstruction(hazardClass: string): string {
   return [
     "SAFETY REVISION: write the answer to the technician's question again, from the same manual excerpts.",
     "In every step that reaches into the machine, opens a circuit, releases stored energy, or clears, resets or " +
-      "restarts anything, state inline in that step the isolation it is done under and the condition that must " +
-      "hold before restart.",
+      "restarts anything, say in that step what to isolate and verify before starting it and what must hold " +
+      "before restart. Write these as instructions to the technician, never as a state already reached.",
+    "Where the excerpts give an isolation or restart procedure, use it; where they give none, say to isolate " +
+      "under the site's lockout procedure and do not invent one.",
     "A step that needs power or pressure (a reset, a test run, a pressure hold) is its own later step, done " +
       "after the lockout is removed and the area is clear; never put a powered check inside a locked-out step.",
+    "If a step would defeat, bypass, jumper or mute a guard, interlock, trip or safety device, leave that step " +
+      "out and say the safeguard stays in service.",
     clause,
     "Add no step, value or claim the excerpts do not support, and keep the [n] citation markers.",
   ]

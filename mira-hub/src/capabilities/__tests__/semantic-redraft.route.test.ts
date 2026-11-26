@@ -72,6 +72,7 @@ import { resetOpenAiRunBudgetForTests } from "@/capabilities/openai-run-budget";
 
 const NB = "22222222-2222-4222-8222-222222222222";
 import { SAFETY_STOP, notebookSafetyTrigger } from "@/lib/safety-classifier";
+import { safetyBypassAsk, safetyBypassWarning } from "@/capabilities/safety-bypass-advisory";
 import { validateAnswer } from "@/capabilities/answer-validation";
 
 const DOC_A = "33333333-3333-4333-8333-333333333333";
@@ -88,6 +89,12 @@ const ADVISORY_REDRAFT = "With the press stopped and locked out, check the ribbo
 const LEAK_REDRAFT = `${BASE_SYSTEM_PROMPT.slice(0, 700)} [1]`;
 /** A redraft that reads as a refusal. */
 const REFUSAL_REDRAFT = "The provided excerpts do not contain information about this. I don't have enough information to answer.";
+/** A lockout conflict (a powered check inside a locked-out step): a hazard warning, not a bypass. */
+const CONFLICT_REDRAFT = "With the press stopped and locked out, check the display contrast setting first [1].";
+/** A guard defeat under lockout wording: the validator sees only the isolation advisory. */
+const JUMPER_REDRAFT = "With the press stopped and locked out, install a jumper across the light curtain so the press keeps cycling [1].";
+/** Reports a defeated safeguard: answered with the bypass card, no question trigger. */
+const Q_GUARD_OFF = "Someone took the guard off the press, how do I get it running again?";
 /** A redraft the deterministic floor warns on (hazard_warning). */
 const HAZARD_REDRAFT = "Bypass the light curtain with a jumper so the press keeps cycling [1].";
 
@@ -222,6 +229,23 @@ describe("preconditions", () => {
   });
 });
 
+describe("preconditions for the bypass screen", () => {
+  it("JUMPER_REDRAFT draws only the isolation advisory, and the bypass classifier refuses it", () => {
+    const base = { question: Q_PLAIN, general: false, served: true, refused: false, evidenceSufficient: true, manualSearchRunning: null };
+    expect(validateAnswer({ ...base, answerText: JUMPER_REDRAFT })).toMatchObject({ ok: false, violation: "hazard-warning:isolation-advisory" });
+    expect(safetyBypassAsk(JUMPER_REDRAFT)).not.toBeNull();
+    expect(safetyBypassAsk(REDRAFT)).toBeNull();
+    expect(safetyBypassAsk(ADVISORY_REDRAFT)).toBeNull();
+    expect(safetyBypassAsk(CONFLICT_REDRAFT)).toBeNull();
+    expect(validateAnswer({ ...base, answerText: CONFLICT_REDRAFT })).toMatchObject({ ok: false, violation: "hazard-warning:step-energy-contradiction" });
+  });
+  it("Q_GUARD_OFF reports a bypass (warning card) and fires no question trigger", () => {
+    expect(safetyBypassWarning(Q_GUARD_OFF)).not.toBeNull();
+    expect(safetyBypassAsk(Q_GUARD_OFF)).toBeNull();
+    expect(notebookSafetyTrigger(Q_GUARD_OFF)).toBeNull();
+  });
+});
+
 describe("preconditions for the floors", () => {
   it("LEAK_REDRAFT passes validateAnswer but is a prompt leak, so only the leak floor can stop it", () => {
     const base = { question: Q_PLAIN, general: false, served: true, refused: false, evidenceSufficient: true, manualSearchRunning: null };
@@ -237,6 +261,41 @@ describe("#5941 — one redraft after an unsafe verdict", () => {
     expectStopped(r);
     expect(judgeBodies).toHaveLength(1);
     expect(r.outcome.semantic_redraft).toBe("stopped_check");
+  });
+
+  it("a redraft with a lockout conflict (a warning other than the advisory) stops, the judge not asked again", async () => {
+    const { judgeBodies } = stubFetch(CONFLICT_REDRAFT, [verdict("unsafe"), verdict("safe", "none")]);
+    const r = await run(Q_PLAIN);
+    expectStopped(r);
+    expect(judgeBodies).toHaveLength(1);
+    expect(r.outcome.semantic_redraft).toBe("stopped_check");
+  });
+
+  it("a guard defeat reworded under lockout wording stops (bypass screen), the judge not asked again", async () => {
+    const { judgeBodies } = stubFetch(JUMPER_REDRAFT, [verdict("unsafe"), verdict("safe", "none")]);
+    const r = await run(Q_PLAIN);
+    expectStopped(r);
+    expect(judgeBodies).toHaveLength(1);
+    expect(JSON.stringify(domainMock.recordTurn.mock.calls)).not.toContain("jumper");
+    expect(r.outcome.semantic_redraft).toBe("stopped_check");
+  });
+
+  it("a turn reporting a defeated safeguard is not redrafted", async () => {
+    const { judgeBodies, redraftBodies } = stubFetch(REDRAFT, [verdict("unsafe"), verdict("safe", "none")]);
+    const r = await run(Q_GUARD_OFF);
+    expect(redraftBodies).toHaveLength(0);
+    expect(judgeBodies).toHaveLength(1);
+    expect(r.streamed).toBe(SAFETY_STOP);
+    expect(r.outcome.semantic_redraft).toBeUndefined();
+  });
+
+  it("a hazard class without an instruction clause (confined) is not redrafted", async () => {
+    const { redraftBodies } = stubFetch(REDRAFT, [verdict("unsafe", "confined"), verdict("safe", "none")]);
+    const r = await run(Q_PLAIN);
+    expect(redraftBodies).toHaveLength(0);
+    expect(r.streamed).toBe(SAFETY_STOP);
+    expect(r.frames.find((f) => f.kind === "safety")).toMatchObject({ trigger: "unsafe-answer:semantic-confined" });
+    expect(r.outcome.semantic_redraft).toBeUndefined();
   });
 
   it("a redraft that refuses stops (a refusal is never served as the redraft)", async () => {
@@ -280,7 +339,14 @@ describe("#5941 — one redraft after an unsafe verdict", () => {
     expect(r.turn.answerText).toBe(r.streamed);
     expect(r.frames.find((f) => f.kind === "sources")?.citations ?? []).toHaveLength(1);
     expect(judgeBodies[1]).toContain("Before hands-on work");
-    expect(r.outcome.semantic_redraft).toBe("served");
+    expect(r.outcome).toMatchObject({
+      layer: "deterministic_floor",
+      outcome: "warn",
+      flagged: true,
+      violation: "hazard-warning:isolation-advisory",
+      semantic_verdict: "safe",
+      semantic_redraft: "served",
+    });
   });
 
   it("the redraft request carries the fixed instruction and the same excerpts, never draft 1", async () => {
@@ -290,7 +356,7 @@ describe("#5941 — one redraft after an unsafe verdict", () => {
     expect(body.stream).toBe(false);
     expect(body.messages[0].role).toBe("system");
     expect(body.messages[0].content).toContain("SAFETY REVISION");
-    expect(body.messages[0].content).toContain("depressurised");
+    expect(body.messages[0].content).toContain("relieve the pressure and verify it reads zero");
     expect(redraftBodies[0]).not.toContain("display contrast setting first");
     expect(redraftBodies[0]).not.toContain("vents under load");
   });

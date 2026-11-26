@@ -328,7 +328,7 @@ import {
   type HazardTriageResult,
   type JudgeOpenAiHold,
 } from "@/capabilities/answer-safety-check";
-import { runSemanticRedraft, withRedraftInstruction, type RedraftOutcome } from "@/capabilities/semantic-redraft";
+import { REDRAFT_CLASSES, runSemanticRedraft, withRedraftInstruction, type RedraftOutcome } from "@/capabilities/semantic-redraft";
 import { cascadeComplete, type CascadeMessage } from "@/lib/llm/cascade";
 
 export const dynamic = "force-dynamic";
@@ -5457,6 +5457,7 @@ async function handleChatTurn(
       const flaggedTurn = preLlmTriggered || floorWarning !== null;
       let semanticVerdictCode: SafetyOutcome["semantic_verdict"] = "not_run";
       let semanticRedraftCode: RedraftOutcome | null = null; // #5941, set only when a redraft ran
+      let redraftFloorWarning: string | null = null; // #5941, the advisory a served redraft carries
       let semanticDecided = false;
       // #4098: which quantity word + unit the exact-rating rule matched —
       // closed-vocabulary tokens, never text — so false refusals are
@@ -5642,12 +5643,16 @@ async function handleChatTurn(
         // instruction; the redraft must pass every deterministic floor above and a
         // fresh "safe" verdict, or the turn stops exactly as before. Canonical seam
         // only (the legacy cascade keeps the stop). The rejected draft is never resent.
+        // Not for a turn that reports a defeated safeguard (bypassWarnAsk), nor for a
+        // hazard class the instruction has no clause for (safety review on #6001).
+        const firstClass = closedSemanticClass(sv.hazardClass, selectedClass);
+        let redraftAdvisory = false;
         const redraft =
-          sv.verdict === "unsafe" && seam && docGrounded && !flaggedTurn
+          sv.verdict === "unsafe" && seam && docGrounded && !flaggedTurn && !bypassWarnAsk && REDRAFT_CLASSES.includes(firstClass)
             ? await runSemanticRedraft({
                 aborted: () => clientAbort.signal.aborted,
                 generate: async () => {
-                  const r = await cascadeComplete(withRedraftInstruction(messages as CascadeMessage[], closedSemanticClass(sv.hazardClass, selectedClass)), {
+                  const r = await cascadeComplete(withRedraftInstruction(messages as CascadeMessage[], firstClass), {
                     providers: cascadeProviders.flatMap((p) => (p.key && !health.isUnhealthy(p.name) ? [{ ...p, key: p.key }] : [])),
                     maxTokens: requestCap,
                     temperature: 0.3,
@@ -5674,7 +5679,11 @@ async function handleChatTurn(
                     manualSearchRunning: fallbackSearchRunning,
                   });
                   const shown = v.ok ? text : v.violation === "hazard-warning:isolation-advisory" ? v.replacement : null;
-                  return shown && !promptLeakIn(shown).leaked ? shown : null;
+                  // A guard/interlock defeat reworded under lockout wording draws only the
+                  // advisory above; the bypass classifier catches it (safety review on #6001).
+                  if (!shown || promptLeakIn(shown).leaked || safetyBypassAsk(text) !== null) return null;
+                  redraftAdvisory = !v.ok;
+                  return shown;
                 },
                 judge: async (text) =>
                   (
@@ -5695,6 +5704,7 @@ async function handleChatTurn(
         if (redraft?.outcome === "served" && redraft.text) {
           answerText = redraft.text;
           semanticVerdictCode = "safe";
+          if (redraftAdvisory) redraftFloorWarning = "hazard-warning:isolation-advisory";
         } else if (sv.verdict === "unsafe") {
           const cls = closedSemanticClass(sv.hazardClass, selectedClass);
           console.warn(`[notebook-chat] semantic BLOCKED ${cls}: ${sv.reason ?? ""}`);
@@ -5865,8 +5875,13 @@ async function handleChatTurn(
                 : preLlmTriggered
                   ? { layer: "pre_llm_trigger", outcome: "warn", flagged: true, violation: null, semantic_verdict: semanticVerdictCode }
                   : { layer: "none", outcome: "allow", flagged: false, violation: null, semantic_verdict: semanticVerdictCode };
-        const safetyOutcome: SafetyOutcome | null =
-          safetyOutcomeBase && semanticRedraftCode ? { ...safetyOutcomeBase, semantic_redraft: semanticRedraftCode } : safetyOutcomeBase;
+        // A served redraft carrying the isolation advisory is recorded as draft 1 with the
+        // same warning would be: a deterministic-floor warn on a flagged turn.
+        const safetyOutcome: SafetyOutcome | null = !safetyOutcomeBase || !semanticRedraftCode
+          ? safetyOutcomeBase
+          : redraftFloorWarning
+            ? { layer: "deterministic_floor", outcome: "warn", flagged: true, violation: redraftFloorWarning, semantic_verdict: semanticVerdictCode, semantic_redraft: semanticRedraftCode }
+            : { ...safetyOutcomeBase, semantic_redraft: semanticRedraftCode };
         rec.stage("answer_gate", {
           invoked: true,
           decision: gateDecision,
