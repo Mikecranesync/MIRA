@@ -215,10 +215,13 @@ const RUN_WITH_PRONOUN = new RegExp(`\\b${RUNV}(?:\\s+\\S+){0,5}?\\s+(?:with|whi
  */
 const JUMP_VERB = "(?:jumper(?:ed|ing|s)?|jump(?:ed|ing|s)?(?!\\s+to\\b)|short(?:ed|ing|s)?|bridg(?:e|ed|es|ing))";
 const NOT_A_NOUN = "(?<!\\b(?:the|a|an|this|that|any|no|new|old|existing|factory|replac\\w*|remov\\w*)\\s+)";
-/** #6033 r1 F6: "bridge communications to the safety PLC" is a network question, not an electrical bridge. */
-const NOT_COMMS = "(?!(?:comms?|communications?|networks?|ethernet|data|connections?|traffic|messages?|signals?|serial|modbus|profinet|ethercat|devicenet)\\b)";
+/**
+ * #6033 r1 F6 / r2 F6: "bridge communications to the safety PLC" is a network question, not an electrical
+ * bridge. Only "bridge" carries that reading: "short the signal to the e-stop input" is still electrical.
+ */
+const COMMS_BRIDGE = /^bridg\w*\s+(?:\S+\s+){0,2}?(?:comms?|communications?|networks?|ethernet|data|connections?|traffic|messages?|serial|modbus|profinet|ethercat|devicenet)\b/i;
 const JUMPER_TO = new RegExp(
-  `${NOT_A_NOUN}\\b${JUMP_VERB}(?:\\s+(?:out|it|them))?(?:\\s+${NOT_COMMS}\\S+){0,3}?\\s+(?:to|into|across|between)\\s+${ART}(?:${ADJ}\\s+){0,2}${DEVICE}\\b`,
+  `${NOT_A_NOUN}\\b${JUMP_VERB}(?:\\s+(?:out|it|them))?(?:\\s+\\S+){0,3}?\\s+(?:to|into|across|between)\\s+${ART}(?:${ADJ}\\s+){0,2}${DEVICE}\\b`,
   "i",
 );
 /**
@@ -232,8 +235,9 @@ const SUPPLY = "(?:\\+?24\\s?v(?:dc)?|\\+v|(?:the\\s+)?(?:24\\s?v\\s+)?(?:supply
 const SUPPLY_TO_INPUT = new RegExp(
   `\\b(?:tie|tying|wire|wiring|connect|connecting|feed|feeding|put|putting|apply|applying|land|landing)(?:\\s+(?:a|an|the|wire|jumper|lead|link|from))*\\s+${SUPPLY}` +
     `(?:\\s+(?:straight|direct(?:ly)?|right|over|across|back))*\\s+(?:to|into|onto|on|across)\\s+${ART}${SAFETY_INPUT}\\b` +
-    // #6033 r1 F1: only a path through a named safeguard is exempt; "through the end of the shift" is not.
-    "(?![^.?!]{0,40}\\b(?:through|thru|via)\\s+(?:the\\s+|a\\s+|its\\s+)?(?:\\S+\\s+){0,2}?(?:relays?|controllers?|plcs?|contacts?|switch(?:es)?|modules?|e-?stops?|interlocks?|guards?)\\b)",
+    // #6033 r1/r2 F1: only a path through a safeguard is exempt ("through the safety relay"); "through the end of
+    // the shift" and "through a standard PLC output" are not.
+    "(?![^.?!]{0,40}\\b(?:through|thru|via)\\s+(?:the\\s+|a\\s+|an\\s+|its\\s+)?(?:\\S+\\s+)?(?:safety(?:[-\\s]rated)?|sto|e-?stop|emergency[-\\s]stop|guard|door|interlock)s?\\b)",
   "i",
 );
 /**
@@ -247,8 +251,14 @@ const TERMINAL_JUMPER = new RegExp(
     `(?:\\s+(?:${GAP}|terminals?|pins?|across|between|from)){0,3}\\s+${TERMINAL}`,
   "i",
 );
-/** A terminal name, as the terminal rule matches it, for linking it to a safeguard named nearby. */
-const TERMINAL_MENTION = new RegExp(`\\b${TERMINAL}`, "i");
+/** Terminal names, as the terminal rule matches them, for linking them to a safeguard named nearby. */
+const TERMINAL_MENTION = new RegExp(`\\b${TERMINAL}`, "gi");
+const terminalsIn = (text: string): string[] => allMatches(TERMINAL_MENTION, text).map((m) => m[0].toLowerCase());
+/** A safeguard named as faulty in the same sentence ("the guard switch is bad, can I jumper s1-s2"). */
+const FAULTY =
+  /\b(?:bad|faulty|failed|failing|broken|dead|damaged|stuck|missing|tripp\w*|trips|fault\w*|not\s+working|keeps?\s+\w+ing|went\s+out|is\s+out)\b/;
+/** Is a terminal-jumper match tied to a safeguard? Given the terminals it names. */
+type TerminalLink = (terminals: string[]) => boolean;
 
 /**
  * #5680: releasing a brake with the safety function off, in either order and in either clause
@@ -267,6 +277,13 @@ const SAFETY_OFF = new RegExp(
     "(?:disabled|off|bypassed|defeated|overridden|deactivated|inactive|jumpered|jumped|shorted|turned\\s+off|switched\\s+off|not\\s+active)\\b",
   "gi",
 );
+/** #6033 r2 F2: the state first ("with disabled STO", "a bypassed e-stop"). */
+const SAFETY_OFF_FIRST = new RegExp(
+  `\\b(?:disabled|bypassed|defeated|deactivated|inactive|jumpered|overridden|switched[-\\s]off|turned[-\\s]off)\\s+(?:${ADJ}\\s+)?(?:${DEVICE}|brake\\s+monitoring)\\b`,
+  "gi",
+);
+/** "if STO were disabled": a proposed condition, not a past one. */
+const CONDITION_BEFORE = /\b(?:if|suppose|supposing|assuming|say|when|what\s+if)\s+(?:\S+\s+){0,2}$/;
 /** "with no safety active", "without STO": the safety function is absent. */
 const SAFETY_ABSENT = new RegExp(`\\b(?:no|without)\\s+${ART}(?:${DEVICE}|brake\\s+monitoring)\\b`, "gi");
 function asksBrakeRelease(clause: string): boolean {
@@ -276,11 +293,28 @@ function asksBrakeRelease(clause: string): boolean {
     return !NEGATED_BEFORE.test(before) && !PREVENT_BEFORE.test(before) && !NOT_A_REQUEST_BEFORE.test(before);
   });
 }
+/**
+ * #6033 r2 F4: a release asked AFTER the safety function is restored, or with it on, is the safe order.
+ * The release clause decides: an off state in it refuses; a restore-first or safety-on cue in it does not.
+ */
+const RELEASE_SAFE_ORDER = new RegExp(
+  "\\b(?:after|once|when|until)\\b[^.?!]{0,40}\\b(?:restor\\w*|re-?enabl\\w*|reset|back\\s+on|enabled|active|energi[sz]ed|in\\s+place)\\b" +
+    `|\\b(?:with|while|w/)\\s+${ART}(?:\\S+\\s+){0,2}?(?:${DEVICE}|brake\\s+monitoring)(?:\\s+\\S+){0,2}?\\s+(?:enabled|active|on|energi[sz]ed|in\\s+place|working)\\b`,
+  "i",
+);
 function safetyOffNow(clause: string): boolean {
   return allMatches(SAFETY_OFF, clause).some((m) => {
     const before = clause.slice(0, m.index ?? 0);
-    return !/\b(?:was|were|had|not|never)\b/.test(m[1] ?? "") && !NEGATED_BEFORE.test(before) && !READOUT_BEFORE.test(before);
-  }) || allMatches(SAFETY_ABSENT, clause).some((m) => !NEGATED_BEFORE.test(clause.slice(0, m.index ?? 0)));
+    const gap = m[1] ?? "";
+    if (/\b(?:not|never)\b/.test(gap)) return false;
+    if (/\b(?:was|were|had)\b/.test(gap) && !CONDITION_BEFORE.test(before)) return false;
+    return !NEGATED_BEFORE.test(before) && !READOUT_BEFORE.test(before);
+  }) ||
+    allMatches(SAFETY_OFF_FIRST, clause).some((m) => {
+      const before = clause.slice(0, m.index ?? 0);
+      return !NEGATED_BEFORE.test(before) && !NOT_CURRENT_BEFORE.test(before);
+    }) ||
+    allMatches(SAFETY_ABSENT, clause).some((m) => !NEGATED_BEFORE.test(clause.slice(0, m.index ?? 0)));
 }
 
 /**
@@ -381,7 +415,7 @@ const isReport = (matched: string): boolean => /^\w*(?:ed|den)\b/i.test(matched)
 
 type Kind = "refuse" | "warn" | null;
 
-function judgeClause(clause: string, messageNamesDevice: boolean, terminalsLinked = false): { kind: Kind; match: string | null } {
+function judgeClause(clause: string, messageNamesDevice: boolean, terminalLinked: TerminalLink = () => false): { kind: Kind; match: string | null } {
   if (DEFINITION.test(clause)) return { kind: null, match: null };
   let warn: string | null = null;
   const operative = (match: string, index: number, canBeReport: boolean): string | null => {
@@ -417,11 +451,12 @@ function judgeClause(clause: string, messageNamesDevice: boolean, terminalsLinke
   // on one occurrence never hides a distinct operative one (#5670 native 3 F8).
   for (const c of candidates) {
     if (c.needs && !messageNamesDevice) continue;
-    if (c.terminal && !terminalsLinked) continue;
     // "Why does it fault when I run with the guard open?" reports a symptom; it asks for nothing.
     if (c.run && SYMPTOM_FRAME.test(clause)) continue;
     for (const m of allMatches(c.re, clause)) {
       const index = m.index ?? 0;
+      if (c.terminal && !terminalLinked(terminalsIn(m[0]))) continue;
+      if (c.re === JUMPER_TO && COMMS_BRIDGE.test(m[0])) continue;
       // A circuit removal that has already happened ("was taken out of the STO circuit",
       // "someone has taken the door switch from the chain") is a report; a proposal is not.
       if (c.removal && isCompletedRemoval(m[0], clause.slice(0, index))) {
@@ -506,7 +541,24 @@ const NOT_CURRENT_BEFORE = /\b(?:restor\w*|reinstat\w*|repair\w*|fix\w*|replac\w
 const RESTORED_CUE = /\b(?:restored|reinstated|repaired|put\s+back|back\s+in|re-?connected|reconnected|replaced)\b/;
 
 /** Does this clause report a safeguard that is unsafe NOW (not restored, not historical, not a read-out)? */
-function reportsCurrentUnsafeState(clause: string): boolean {
+/** #6033 r2 F8: "is not shorted", "is no longer jumpered": the report is negated or cleared. */
+const NOT_NOW_BEFORE = /\b(?:not|no\s+longer|never|isn't|aren't|wasn't|weren't|nothing)\s+(?:\w+\s+)?$/;
+/** #6033 r2 F3: "the STO input is jumpered", "the guard terminals are shorted". */
+const INPUT_STATE = new RegExp(
+  `\\b${SAFETY_INPUT}\\s+((?:(?:is|are|still|now|currently|been|has|have|got)\\s+){0,3})(?:jumpered|jumped|shorted|bridged|tied)(?:\\s+out)?\\b`,
+  "gi",
+);
+function reportsCurrentUnsafeState(clause: string, terminalLinked: TerminalLink = () => false): boolean {
+  for (const m of allMatches(INPUT_STATE, clause)) {
+    if (/\b(?:not|never)\b/.test(m[1] ?? "") || NOT_CURRENT_BEFORE.test(clause.slice(0, m.index ?? 0))) continue;
+    return true;
+  }
+  for (const m of allMatches(TERMINAL_JUMPER, clause)) {
+    const before = clause.slice(0, m.index ?? 0);
+    if (!isReport(m[0]) || !terminalLinked(terminalsIn(m[0]))) continue;
+    if (/\b(?:was|were|had)\s+(?:\w+\s+)?$/.test(before) || NOT_NOW_BEFORE.test(before) || NOT_CURRENT_BEFORE.test(before)) continue;
+    return true;
+  }
   for (const m of allMatches(STATE_AFTER_MENTION, clause)) {
     const index = m.index ?? 0;
     if (/\b(?:was|were|had)\b/.test(m[1] ?? "")) continue;
@@ -522,8 +574,8 @@ function reportsCurrentUnsafeState(clause: string): boolean {
   // #6033 r1 F3: "the 24V is shorted to the STO input" is a current unsafe state too.
   for (const m of allMatches(JUMPER_TO, clause)) {
     const before = clause.slice(0, m.index ?? 0);
-    if (!isReport(m[0]) || /\b(?:was|were|had)\s+(?:\w+\s+)?$/.test(before)) continue;
-    if (NOT_CURRENT_BEFORE.test(before) || NEGATED_BEFORE.test(before) || PREVENT_BEFORE.test(before)) continue;
+    if (!isReport(m[0]) || COMMS_BRIDGE.test(m[0]) || /\b(?:was|were|had)\s+(?:\w+\s+)?$/.test(before)) continue;
+    if (NOT_NOW_BEFORE.test(before) || NOT_CURRENT_BEFORE.test(before) || NEGATED_BEFORE.test(before) || PREVENT_BEFORE.test(before)) continue;
     return true;
   }
   // A device taken out of its circuit and not put back is a current unsafe state too.
@@ -543,26 +595,33 @@ function classify(message: string): { refuse: string | null; warn: string | null
   if (!msg) return { refuse: null, warn: null };
   const namesDevice = ANY_DEVICE.test(msg);
   const clauses = clausesOf(msg);
-  // #6033 r1 F5: a terminal name is tied to a safeguard only when its own sentence names one, or when
-  // some sentence says which terminals a safeguard is wired to ("guard sw is wired to S1 S2").
+  // #6033 r1/r2 F5: a terminal is tied to a safeguard when a sentence says the safeguard is wired to THAT
+  // terminal ("guard sw is wired to S1 S2"), when its own clause names a safeguard, or when its own sentence
+  // names a safeguard as faulty ("the guard switch is bad, can I jumper s1-s2"). A safeguard merely mentioned
+  // nearby ("the e-stop passed its test") ties nothing.
   const sentences = msg.split(/(?<=[.?!])\s+/).filter(Boolean);
-  const wiredSentence = sentences.some((s) => ANY_DEVICE.test(s) && TERMINAL_MENTION.test(s));
+  const wired = new Set(sentences.filter((s) => ANY_DEVICE.test(s)).flatMap((s) => clausesOf(s).filter((c) => ANY_DEVICE.test(c)).flatMap(terminalsIn)));
+  const judged: { clause: string; link: TerminalLink }[] = [];
   let warn: string | null = null;
   for (const sentence of sentences) {
-    const linked = wiredSentence || ANY_DEVICE.test(sentence);
+    const faulty = ANY_DEVICE.test(sentence) && FAULTY.test(sentence);
     for (const clause of clausesOf(sentence)) {
-      const j = judgeClause(clause, namesDevice, linked);
+      const link: TerminalLink = (terms) => faulty || ANY_DEVICE.test(clause) || terms.some((t) => wired.has(t));
+      judged.push({ clause, link });
+      const j = judgeClause(clause, namesDevice, link);
       if (j.kind === "refuse") return { refuse: j.match, warn: null };
       if (j.kind === "warn") warn ??= j.match;
     }
   }
   // #5680: a brake release asked while the safety function is reported off, in either order.
   const brake = clauses.find(asksBrakeRelease);
-  if (brake && clauses.some(safetyOffNow)) return { refuse: brake, warn: null };
+  if (brake && (safetyOffNow(brake) || (!RELEASE_SAFE_ORDER.test(brake) && clauses.some(safetyOffNow)))) {
+    return { refuse: brake, warn: null };
+  }
   // A safeguard reported unsafe NOW, followed by a clause that asks to carry on. Another device being
   // restored in a different clause does not reset this one (each mention is judged in its own clause).
   const carry = clauses.find((c) => ASKS_TO_CARRY_ON.test(c) && !DEFINITION.test(c) && !SYMPTOM_FRAME.test(c));
-  if (carry && clauses.some(reportsCurrentUnsafeState)) return { refuse: carry, warn: null };
+  if (carry && judged.some((j) => reportsCurrentUnsafeState(j.clause, j.link))) return { refuse: carry, warn: null };
   return { refuse: null, warn };
 }
 
