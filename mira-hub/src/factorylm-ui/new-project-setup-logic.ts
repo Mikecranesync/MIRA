@@ -409,7 +409,7 @@ async function runCommitWithAbortHandling(
   const originalFetch = deps.fetch;
   const wrappedDeps: SetupDeps = {
     ...deps,
-    createNotebook: async (body: { displayName: string; identitySourceType?: string }) => {
+    createNotebook: async (body: { displayName: string; identitySourceType: "user" }) => {
       const id = await deps.createNotebook(body);
       if (id) partialNotebookId = id;
       return id;
