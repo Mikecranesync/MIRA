@@ -66,6 +66,40 @@ jobs:
           echo "::add-mask::$DATABASE_URL"
           echo "DATABASE_URL=$DATABASE_URL" >> "$GITHUB_ENV"
 
+      # #6060: what the July-28 prod crawl wrote for the two Siemens G120 List
+      # Manuals, before any reload is planned. Placed first among the query steps
+      # because the job's 5-minute cap cancels the late steps (see the 086 note).
+      # READ-ONLY session, counts and tags only, no content. Tenant ids are
+      # shown as their first 8 characters.
+      - name: G120 List Manual rows (issue 6060) — READ-ONLY
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          # Neon's pooler rejects startup options, so the read-only lock is a
+          # READ ONLY transaction instead of PGOPTIONS.
+          psql "$DATABASE_URL" --no-psqlrc -v ON_ERROR_STOP=0 <<'SQL'
+          \echo === G120 List Manual rows (issue 6060) ===
+          BEGIN TRANSACTION READ ONLY;
+          SET LOCAL statement_timeout = '60s';
+          SELECT CASE WHEN lower(source_url) LIKE '%g120_cu240be-2_list_man%' THEN 'CU240'
+                      ELSE 'G120C' END                         AS manual,
+                 left(tenant_id::text, 8)                      AS tenant,
+                 model_number, verified, is_private,
+                 count(*)                                      AS chunks,
+                 count(embedding)                              AS embedded,
+                 min(source_page) AS min_page, max(source_page) AS max_page,
+                 max((metadata->>'chunk_index')::int)          AS max_chunk_index,
+                 count(*) FILTER (WHERE content ILIKE '%F30011%') AS f30011_chunks,
+                 min(created_at)::date AS first_written, max(created_at)::date AS last_written
+            FROM knowledge_entries
+           WHERE lower(source_url) LIKE '%g120_cu240be-2_list_man_0223%'
+              OR lower(source_url) LIKE '%g120c_list_man_0223%'
+           GROUP BY 1, 2, 3, 4, 5
+           ORDER BY 1, 2, 3;
+          ROLLBACK;
+          SQL
+
       - name: 085 canonical-provenance probe (nameplate origin + duplicates) — READ-ONLY
         env:
           DATABASE_URL: ${{ env.DATABASE_URL }}
