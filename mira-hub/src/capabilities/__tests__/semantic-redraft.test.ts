@@ -173,6 +173,9 @@ describe("citationSupportGaps (#6020)", () => {
 
   it("a sentence of only isolation and restart wording is neutral; supported words elsewhere do not cover an unsupported sentence", () => {
     expect(gaps("Stop and lock out the machine, then verify the pressure reads zero before you start [1].", [PAINT])).toEqual([]);
+    // A page reference points at the source and claims nothing: it needs no words on the page.
+    expect(gaps("See the manual, page 41 [1].", [PAINT])).toEqual([]);
+    expect(gaps("Check the hydraulic hose for wear, see p. 41 [1].", [PAINT])).toEqual([{ citationId: "1", reason: "terms" }]);
     // A function word shared with the page ("under") is not support.
     expect(gaps("Replace the encoder under the coupling [1].", [page("Store the spare decals under cover.")])).toEqual([{ citationId: "1", reason: "terms" }]);
     expect(gaps("Check the hydraulic hose for wear [1]. Replace the encoder coupling [2].", [HOSE, page("Hydraulic schematic legend.", 2)])).toEqual([

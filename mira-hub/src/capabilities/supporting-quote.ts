@@ -671,14 +671,17 @@ const SUPPORT_NEUTRAL = new Set(
     "under until upon used using very what when where which while will with within without would your " +
     "absence adjusted afterwards back bring brought circuit component components energize energized energizing " +
     "energy equipment guard guards isolate isolated isolating isolation known lock locked locking lockout lockouts " +
-    "loosened machine meter open opens person power powered pressure procedure proven qualified reach reaching reads " +
+    "loosened machine manual meter open opens person power powered pressure procedure proven qualified reach reaching reads " +
     "refit release releases relieve relieved remove removed reset restart restarted safeguard service servicing site " +
     "start started step steps stop stopped stored tagout technician test verify verified voltage work zero"
   ).split(" "),
 );
 
+// A page reference ("see page 41", "p. 12-13") points at the source; it claims nothing about it.
+const PAGE_REF_RE = /\b(?:p\.|pp\.|pages?)\s*\d+(?:\s*[-–]\s*\d+)?/gi;
+
 function supportTerms(text: string): string[] {
-  const toks = normalize(text.replace(MARKER_RE, " ")).match(/[\p{L}\p{N}][\p{L}\p{N}-]*[\p{L}\p{N}]/gu) ?? [];
+  const toks = normalize(text.replace(MARKER_RE, " ").replace(PAGE_REF_RE, " ")).match(/[\p{L}\p{N}][\p{L}\p{N}-]*[\p{L}\p{N}]/gu) ?? [];
   return toks.filter((t) => (/\d/.test(t) ? t.length >= 2 : t.length >= 4) && !SUPPORT_NEUTRAL.has(t));
 }
 
