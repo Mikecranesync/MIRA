@@ -126,25 +126,25 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     const newest = turns.at(-1);
     if (newest && (newest.evidence ?? []).some(isComponentAttributionEntry)) manualSearchScope = "other_model";
     // #5746 r4 F1 + r5 F1: a status withheld only for questions asked under a component is
-    // withheld from display only. A question about the whole machine still waits for this
-    // lookup, so the send wait gets it, without the message or link it would show. A
-    // whole-machine question that named another model, a subject out of reach, or a failed
-    // read sends nothing.
+    // withheld from display only. A question about the whole machine still needs this lookup,
+    // so the Hub's wait after the chat route held one (#5746, option A) follows it, without the
+    // message or link it would show. A whole-machine question that named another model, a
+    // subject out of reach, or a failed read sends nothing.
     if (manualSearch && manualSearchScope === "other_model") {
       try {
         if (sendWaitAllows(await subject.wholeMachine())) wholeMachineManualSearch = sendWaitStatus(manualSearch);
       } catch (err) {
-        console.error("[equipment-notebooks] send-wait subject read failed (the send wait gets no lookup):", err);
+        console.error("[equipment-notebooks] whole-machine subject read failed (the manual wait gets no lookup):", err);
       }
     }
     if (manualSearchScope) manualSearch = null;
   }
   // #5746 r6 F1: where the status is withheld for this thread and the rules above leave a question
   // about the whole machine nothing to wait for, a question that names the project's own model
-  // still waits. That question is not saved yet, so the Hub asks the pre-send check
-  // (`send-wait/route.ts`) and, only while a send waits on it, follows this lookup. It carries no
-  // message or link. A read that failed before any scope was known carries none: the Hub then
-  // sends as it does today.
+  // still needs its manual. That question is not saved yet, so the chat route decides when it is
+  // sent (`readManualWait`), and the Hub, only while a question it held waits, follows this
+  // lookup. It carries no message or link. A read that failed before any scope was known carries
+  // none: the Hub then asks again at once, and the route decides again.
   const projectManualReadiness = manualSearchScope && projectStatus && !wholeMachineManualSearch
     ? sendWaitStatus(projectStatus)
     : undefined;

@@ -4,11 +4,10 @@
  * the shell's context snapshot says about the machine, which sources a turn is
  * allowed to cite, and what history the canonical route receives.
  */
-import { PROFILES, compareManualSearchGeneration, createShellState, shellReducer, type InteractionTurn, type ManualSearchFollowState, type ManualSearchStatus, type ShellAction, type QuestionTarget, type ShellFixture, type ShellState } from "../../../packages/factorylm-interaction/src";
+import { PROFILES, createShellState, shellReducer, type InteractionTurn, type ManualSearchStatus, type ShellAction, type QuestionTarget, type ShellFixture, type ShellState } from "../../../packages/factorylm-interaction/src";
 import type { EquipmentNotebook, NotebookSource } from "@/lib/equipment-notebooks";
 import { buildChatBody, isAbortError, type ChatBody, type PersistedTurn, type StreamResult } from "@/components/equipment/notebook-chat-utils";
 import { isSafetyNoticeEntry } from "@/lib/notebook-chat-types";
-import { detectEnergizedElectricalHazardIntent, isEnergizedWorkAsk, notebookSafetyTrigger } from "@/lib/safety-classifier";
 import { LEGACY_THREAD_ID, machineNameFor, notebookLabel, threadItemId, type HubNotebook } from "./notebook-tree";
 import { historyFromSavedTurns, type HistoryRow } from "@/capabilities/conversation-history";
 import { contextFor, threadFromPersisted, type HubNotebookMeta } from "./to-interaction";
@@ -405,16 +404,6 @@ export function enabledDocIds(sources: readonly Pick<NotebookSource, "docId" | "
 }
 
 
-/** A lookup in progress only defers an explicitly document-bound question.
- * Safety prompts and new evidence always reach the normal server intake. */
-export function waitsForManual(question: string, attachmentCount: number): boolean {
-  const manualReference = /\b(?:(?:according\s+to|using|from|in)\s+(?:the|this|that|its)\s+(?:official\s+)?manual|(?:when|once)\s+(?:the|this|its)\s+manual\s+is\s+ready)\b/i;
-  const safetyLanguage = /\b(?:energized|energised|live|arc flash|shock|sparks?|fire|smoke|emergency|unsafe|injur(?:y|ed)|hazard|lockout|tagout|interlock|bypass|guard)\b/i;
-  return attachmentCount === 0 && manualReference.test(question) && !safetyLanguage.test(question) &&
-    !notebookSafetyTrigger(question) && !isEnergizedWorkAsk(question) &&
-    !detectEnergizedElectricalHazardIntent(question);
-}
-
 export function currentReadyManualId(
   status: { sourceState?: string; readySourceDocId?: string } | null | undefined,
   sources: readonly (Pick<NotebookSource, "docId" | "enabledByDefault" | "matchState"> & { readiness?: { canChat: boolean } })[],
@@ -424,8 +413,9 @@ export function currentReadyManualId(
   return source?.readiness?.canChat && enabledDocIds([source]).length > 0 ? source.docId : null;
 }
 
-/** The project's lookup the send wait follows: the shown status, else the send-wait-only one (#5746 r4 F1),
- *  else, only while a send waits on it after the pre-send check (r6 F1), the project's readiness. */
+/** The project's lookup a refused manual question follows: the shown status, else the one withheld
+ *  for an answer about a component (#5746 r4 F1), else, only while a refused question waits on it
+ *  (`followsReadiness`), the project's readiness. */
 export function sendWaitLookup(
   data: {
     manualSearch?: ManualSearchStatus | null;
@@ -437,74 +427,42 @@ export function sendWaitLookup(
   return data?.manualSearch ?? data?.wholeMachineManualSearch ?? (followsReadiness ? data?.projectManualReadiness : undefined) ?? null;
 }
 
+/** #5746 (option A): the chat route's refusal of a manual question it cannot answer yet. */
+export type ManualWaitCode = "manual_not_ready" | "manual_unavailable";
+export function isManualWaitCode(code: string): code is ManualWaitCode {
+  return code === "manual_not_ready" || code === "manual_unavailable";
+}
+
+/** How long a refused question waits for the project's manual before it pauses. */
+export const MANUAL_WAIT_BOUND_MS = 185_000;
+
 /**
- * #5746 r6 F1: whether a send asks the server's subject rule before it goes. Only a manual question
- * about the whole machine, with no lookup to wait for, while the project's lookup runs: the one
- * case where the saved history alone sends a question that may name the project's own model. An
- * unknown scope is checked too; the wait then applies only if the scope turns out whole-machine.
+ * What a refused manual question does next. A send the technician made waits once for a manual
+ * that is being prepared, then is asked again automatically. That automatic send, if refused
+ * again, and a manual that is off or unavailable, pause with the draft kept: each tap makes one
+ * request, and a wait adds at most one more.
  */
-export function checksSendSubject(input: {
-  waitForManual: boolean;
-  observedManual: ManualSearchStatus | null;
-  readiness: ManualSearchStatus | null | undefined;
-  scope: "unavailable" | { componentId: string | null } | undefined;
-}): boolean {
-  const component = typeof input.scope === "object" && input.scope.componentId !== null;
-  return input.waitForManual && !input.observedManual && Boolean(input.readiness?.running) && !component;
+export function manualHoldAfterRefusal(code: ManualWaitCode, automatic: boolean): "waiting" | "paused" {
+  return code === "manual_not_ready" && !automatic ? "waiting" : "paused";
 }
 
 /**
- * #5746 r6 F1: asks `POST …/send-wait` whether this question waits for the project's lookup. The
- * question travels in the body. Any failure, abort or unreadable answer is null: send now, the
- * decision the saved history already made. The check can only add a wait, never remove one.
+ * #5746 r7 F9: a held question goes out with the project's sources and history as they are now,
+ * never with the ones it was first sent with. Its own id and its photo or guided rider are kept.
  */
-export async function sendSubjectLookup(
-  base: string,
+export function rebuiltHeldBody(
+  held: ReturnType<typeof chatBodyFor>,
+  docIds: readonly string[],
+  turns: readonly PersistedTurn[],
   sel: HubSelection,
-  question: string,
-  signal: AbortSignal,
-  fetcher: typeof fetch = fetch,
-): Promise<ManualSearchStatus | null> {
-  try {
-    const res = await fetcher(`${base}/api/equipment-notebooks/${encodeURIComponent(sel.notebookId)}/send-wait/`, {
-      method: "POST",
-      cache: "no-store",
-      headers: { "content-type": "application/json", accept: "application/json" },
-      body: JSON.stringify({ threadId: sel.threadId, question }),
-      signal,
-    });
-    if (!res.ok) return null;
-    const lookup = ((await res.json()) as { lookup?: unknown } | null)?.lookup as Partial<ManualSearchStatus> | null | undefined;
-    return lookup && typeof lookup.manufacturer === "string" && typeof lookup.model === "string" && typeof lookup.running === "boolean"
-      ? (lookup as ManualSearchStatus)
-      : null;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * #5746 r4 F1: what the send wait reads when the shown status was withheld for an answer about a
- * component: the shown status's own chain, over the send-wait-only lookup. Nothing here is
- * displayed. `status` is null while a ready lookup's source is not usable yet.
- */
-export function withheldSendWait(
-  lookup: ManualSearchStatus,
-  follow: ManualSearchFollowState | null,
-  sources: Parameters<typeof currentReadyManualId>[1],
-): { status: ManualSearchStatus | null; readyManualId: string | null } {
-  const followIsNewer = Boolean(follow?.status.startedAt && lookup.startedAt &&
-    compareManualSearchGeneration(follow.status.startedAt, lookup.startedAt) > 0);
-  const readyManualId = followIsNewer ? null : currentReadyManualId(lookup, sources);
-  // #5746 r5 F6: a follow that timed out stands in only for its own lookup. A newer lookup that
-  // is still preparing is waited for, whatever happened to an older one. An unknown generation
-  // on either side is read as the same lookup, as before.
-  const sameLookup = !follow?.status.startedAt || !lookup.startedAt ||
-    compareManualSearchGeneration(follow.status.startedAt, lookup.startedAt) === 0;
-  const seen = followIsNewer || (lookup.running && follow?.phase === "unresolved" && sameLookup)
-    ? (follow?.status.running || follow?.phase === "unresolved" ? follow.status : null)
-    : lookup;
-  return { status: seen?.sourceState === "ready" && !readyManualId ? null : seen, readyManualId };
+): ReturnType<typeof chatBodyFor> {
+  return {
+    ...chatBodyFor(held.message, docIds, historyRows(turns), sel, {
+      ...(held.visualEvidence ? { visualEvidence: held.visualEvidence } : {}),
+      ...(held.guidedEscalation ? { guidedEscalation: held.guidedEscalation } : {}),
+    }),
+    clientRequestId: held.clientRequestId,
+  };
 }
 
 export function persistedRequest<T extends Pick<PersistedTurn, "clientRequestId">>(
@@ -643,6 +601,11 @@ export function errorMessageFor(code: string, status: number): string {
     // Bench components: the header's component no longer matches the server's.
     case "selection_changed":
       return "The component for this chat was changed on another screen. Check the header and ask again.";
+    // #5746: the chat route held a question that asks for the project's manual.
+    case "manual_not_ready":
+      return "This project's manual isn't ready yet, so MIRA didn't answer from it.";
+    case "manual_unavailable":
+      return "This project's manual isn't available, so MIRA didn't answer from it.";
     default:
       return status === 412
         ? "MIRA needs approved context for this machine before it will answer."

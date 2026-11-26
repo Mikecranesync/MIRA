@@ -94,10 +94,11 @@ import {
   enabledDocIds,
   currentReadyManualId,
   sendWaitLookup,
-  sendSubjectLookup,
-  checksSendSubject,
-  withheldSendWait,
-  waitsForManual,
+  isManualWaitCode,
+  manualHoldAfterRefusal,
+  rebuiltHeldBody,
+  MANUAL_WAIT_BOUND_MS,
+  type ManualWaitCode,
   NOTEBOOK_LIST_RETRY_DELAYS_MS,
   persistedRequest,
   reloadIfStillSelected,
@@ -147,10 +148,10 @@ type Detail = {
   // checked against (null: the thread has no answer yet).
   manualSearchAnswer?: { turnId: string; clientRequestId: string | null } | null;
   // #5746 r4 F1: when an answer about a component withheld the status from display, the
-  // project's lookup for the send wait only (no message or link). Never shown.
+  // project's lookup a refused manual question follows (no message or link). Never shown.
   wholeMachineManualSearch?: ManualSearchStatus;
-  // #5746 r6 F1: when the status is withheld for this thread, the project's lookup, read only
-  // while a send waits on it after the pre-send check. No message or link. Never shown.
+  // #5746 r6 F1: when the status is withheld for this thread, the project's lookup, followed only
+  // while a manual question the chat route refused waits on it. No message or link. Never shown.
   projectManualReadiness?: ManualSearchStatus;
 };
 
@@ -226,33 +227,31 @@ export function HubShellHost() {
   const [settledFollowups, setSettledFollowups] = useState<(Omit<SettledFollowups, "answerId"> & HubSelection & { requestId: string }) | null>(null);
   const [waitingToSend, setWaitingToSend] = useState(false);
   const waitingDrafts = useRef(new Map<string, string>());
+  // A composer submission held until this conversation's detail and component scope are read.
   const waitingSend = useRef<{
     selection: HubSelection;
     question: string;
     attachments: readonly Attachment[];
-    observedManual: ManualSearchStatus | null;
-    waitForManual: boolean;
     scope: ReturnType<BenchScopes["get"]>;
     signal: AbortController;
     resolve: () => void;
     reject: (error: Error) => void;
-    // #5746 r6 F1: the pre-send check, while it has not answered. r7: "pending" for a send queued
-    // before the project's detail loaded; the wait decides once the detail names the lookup.
-    subject?: "pending" | "checking" | "settled";
   } | null>(null);
   type WaitingSend = NonNullable<typeof waitingSend.current>;
-  // #5746 r6 F1: true while a send waits on the project's readiness after the pre-send check.
-  // The poll keeps following that lookup until the conversation changes (`pollsReadinessRef`),
-  // so a Stop does not leave it reading nothing.
-  const [followsReadiness, setFollowsReadinessState] = useState(false);
-  const pollsReadinessRef = useRef(false);
-  const setFollowsReadiness = useCallback((on: boolean) => {
-    if (on) pollsReadinessRef.current = true;
-    setFollowsReadinessState(on);
+  // #5746 (option A): a manual question the chat route refused. Its draft is back in the composer.
+  // `waiting` follows the project's lookup and asks once more when it settles; `paused` waits for
+  // the technician (Try again, or Send without the manual). One per conversation, cleared by a
+  // conversation change, a send that is answered, or Send without the manual.
+  type ManualHold = { key: string; question: string; phase: "waiting" | "paused"; stop: AbortController };
+  const manualHoldRef = useRef<ManualHold | null>(null);
+  const [manualHold, setManualHoldState] = useState<ManualHold | null>(null);
+  const setManualHold = useCallback((hold: ManualHold | null) => {
+    if (manualHoldRef.current && manualHoldRef.current !== hold) manualHoldRef.current.stop.abort();
+    manualHoldRef.current = hold;
+    setManualHoldState(hold);
   }, []);
-  const [subjectChecks, setSubjectChecks] = useState(0);
   // #5746 r6 F7: a send held before it went, then paused or refused. Try again then belongs to
-  // that draft, through the checked send, not to an older failed request's retry.
+  // that draft, through the composer, not to an older failed request's retry.
   const [sendPaused, setSendPaused] = useState(false);
   // The technician's message from the moment Send is tapped (outgoing-turn.ts).
   const [outgoing, setOutgoing] = useState<Outgoing | null>(null);
@@ -391,12 +390,7 @@ export function HubShellHost() {
       if (res.status === 401) { setSignedOut(true); return false; }
       if (!res.data) return false;
       detailRef.current = res.data;
-      const waiting = waitingSend.current;
-      const lookup = sendWaitLookup(res.data);
-      if (waiting?.selection === sel && waiting.waitForManual && !waiting.observedManual && lookup?.running) {
-        waiting.observedManual = lookup;
-      }
-      const followed = sendWaitLookup(res.data, pollsReadinessRef.current);
+      const followed = sendWaitLookup(res.data);
       setDetail(res.data);
       setDetailUnavailable(false);
       const savedTurns = res.data.turns;
@@ -431,6 +425,12 @@ export function HubShellHost() {
       waitingDrafts.current.set(conversationKey(waiting.selection), draftRef.current || waiting.question);
       waiting.signal.abort();
     }
+    // A refused manual question keeps its draft for its own conversation; its wait ends here.
+    const hold = manualHoldRef.current;
+    if (hold && hold.key !== conversationKey(sel)) {
+      waitingDrafts.current.set(hold.key, draftRef.current || hold.question);
+      setManualHold(null);
+    }
     selectionRef.current = sel; // async list hydration must see this selection before React effects run
     abortRef.current?.abort();
     uploadAbortRef.current?.abort();
@@ -446,7 +446,6 @@ export function HubShellHost() {
     setSendPaused(false);
     manualSearchDriverRef.current?.reset();
     setFollow(null);
-    pollsReadinessRef.current = false;
     setStatusOrigins(new Map());
     syncThread(sel);
     const draft = waitingDrafts.current.get(conversationKey(sel));
@@ -456,7 +455,7 @@ export function HubShellHost() {
     }
     setSelection(sel);
     writeSearch(searchForSelection(sel));
-  }, [syncThread, detailGate]);
+  }, [syncThread, detailGate, setManualHold]);
 
   // Apply a complete detail snapshot before handing its status to the poll timer.
   useEffect(() => {
@@ -464,9 +463,10 @@ export function HubShellHost() {
       fetchStatus: async (notebookId) => {
         const sel = selectionRef.current;
         if (!sel || sel.notebookId !== notebookId || !await loadDetail(sel, true)) return null;
-        // #5746 r5 F6: the poll follows the lookup the send wait reads, so a newer lookup under a
-        // status withheld for a component answer gets its own budget (nothing more is shown).
-        return sel === selectionRef.current ? sendWaitLookup(detailRef.current, pollsReadinessRef.current) : null;
+        // #5746 r5 F6: the poll follows the lookup a refused manual question waits on, so a newer
+        // lookup under a status withheld for a component answer gets its own budget (nothing more
+        // is shown).
+        return sel === selectionRef.current ? sendWaitLookup(detailRef.current) : null;
       },
       onStateChange: setFollow,
     });
@@ -542,15 +542,6 @@ export function HubShellHost() {
   const displayedManualStatus = visibleManualStatus?.sourceState === "ready" && !readyManualId
     ? null
     : visibleManualStatus;
-  // #5746 r4 F1: the send wait reads the same chain over the send-wait-only lookup when the
-  // shown status was withheld for an answer about a component; nothing here is displayed.
-  // #5746 r6 F1: and over the project's readiness, while a send waits on it.
-  const wholeMachineLookup = manualStatus
-    ? undefined
-    : detail?.wholeMachineManualSearch ?? (followsReadiness ? detail?.projectManualReadiness : undefined);
-  const sendWait = wholeMachineLookup ? withheldSendWait(wholeMachineLookup, follow, detail?.sources ?? []) : null;
-  const sendReadyManualId = sendWait ? sendWait.readyManualId : readyManualId;
-  const sendManualStatus = sendWait ? sendWait.status : displayedManualStatus;
 
   // Live data is a pure projection over the UI state: the reducer's `hydrate`
   // replaces thread/projects/machines/context and keeps drawer, draft, mode and
@@ -609,8 +600,20 @@ export function HubShellHost() {
     return createBenchSendGate();
   }, [gateConversation]);
 
+  // #5746 (option A): what a manual question the chat route refused does next (set below `send`).
+  const onManualRefusalRef = useRef<(sel: HubSelection, question: string, code: ManualWaitCode, automatic: boolean) => void>(() => {});
+
   // --- the send path: the canonical notebook-chat route, streamed ---
-  const send = useCallback(async (body: ReturnType<typeof chatBodyFor> & { componentSelection?: ScopeField }, question: string, sel: HubSelection | null = selection) => {
+  // The ONE poster of the chat route in this shell. Every send asks the route to hold a question
+  // that needs the project's manual while that manual is not ready (`x-mira-manual-wait: 1`),
+  // except the three sends that keep main's path: a send with attachments, a home send, and Send
+  // without the manual (`manualWait: false`). `automatic` marks the one resend after a wait.
+  const send = useCallback(async (
+    body: ReturnType<typeof chatBodyFor> & { componentSelection?: ScopeField },
+    question: string,
+    sel: HubSelection | null = selection,
+    opts: { manualWait?: boolean; automatic?: boolean } = {},
+  ) => {
     if (!sel || selectionRef.current !== sel) return;
     // Never while a component change is saving (this send would carry the version the
     // header read before it), and never before this conversation's component selection
@@ -649,6 +652,9 @@ export function HubShellHost() {
     let componentLabel: string | undefined;
     setFailedBody(null);
     setSendPaused(false);
+    // A new send retires an earlier refused question's hold (its wait, Try again and Send without
+    // the manual). A refusal of this send makes a new one.
+    setManualHold(null);
     setSettledFollowups(null);
     dispatch({ type: "set-send-error", error: null });
     setLive(exchange);
@@ -669,13 +675,21 @@ export function HubShellHost() {
       setComponentFrame(null);
       const res = await fetch(`${API_BASE}/api/equipment-notebooks/${encodeURIComponent(sel.notebookId)}/chat/`, {
         // #4687: ask for stage progress; a server without MIRA_CHAT_PROGRESS ignores the header.
-        method: "POST", headers: { "Content-Type": "application/json", "x-mira-progress": "1" }, body: JSON.stringify(outBody), signal: ctrl.signal,
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-mira-progress": "1",
+          ...(opts.manualWait === false ? {} : { "x-mira-manual-wait": "1" }),
+        },
+        body: JSON.stringify(outBody), signal: ctrl.signal,
       });
       if (res.status === 401) { setSignedOut(true); return; }
       if (!res.ok || !res.body) {
         // The route's own error codes, in plain language; never a bare status code.
         let code = "";
         try { code = String(((await res.json()) as { error?: unknown }).error ?? ""); } catch { /* no JSON body */ }
+        // A held manual question is handled below exactly like the progress stream's refusal.
+        if (isManualWaitCode(code)) throw new NotebookHttpError(res.status, code);
         scopeRefused = isScopeRefusalCode(code);
         throw new Error(errorMessageFor(code, res.status));
       }
@@ -758,6 +772,15 @@ export function HubShellHost() {
       // #4687: a refusal delivered inside the progress stream is handled exactly
       // like the non-OK response above (signed out, or the route's own message).
       if (caught instanceof NotebookHttpError && caught.status === 401) { setSignedOut(true); return; }
+      // #5746: the route held a manual question. Nothing was answered or saved: the question goes
+      // back to the composer, and no retry of this body is offered (it is never sent again).
+      if (caught instanceof NotebookHttpError && isManualWaitCode(caught.code)) {
+        setLive((cur) => (cur && cur.id === id ? null : cur));
+        dropOutgoing(outgoingId);
+        dispatch({ type: "set-draft", draft: question });
+        onManualRefusalRef.current(sel, question, caught.code, opts.automatic === true);
+        return;
+      }
       // The same refusal inside the progress stream re-scopes the retry too (#5504 F12, #5534).
       if (caught instanceof NotebookHttpError && isScopeRefusalCode(caught.code)) scopeRefused = true;
       const err = caught instanceof NotebookHttpError ? new Error(errorMessageFor(caught.code, caught.status)) : caught;
@@ -791,7 +814,69 @@ export function HubShellHost() {
       // A turn can change the checklist (its tallies) or find the selection moved (409).
       if (selectionRef.current === sel) setBenchRefresh((n) => n + 1);
     }
-  }, [selection, loadDetail, loadNotebooks, dropOutgoing, outgoingOwner, livingSheetJob, benchGate, gateConversation, recordStatusOrigin]);
+  }, [selection, loadDetail, loadNotebooks, dropOutgoing, outgoingOwner, livingSheetJob, benchGate, gateConversation, recordStatusOrigin, setManualHold]);
+
+  /** A paused hold: the draft waits for the technician (Try again, or Send without the manual). */
+  const pauseManualHold = useCallback((hold: ManualHold, message: string) => {
+    if (manualHoldRef.current !== hold) return;
+    setManualHold({ ...hold, phase: "paused", stop: new AbortController() });
+    setSendPaused(true);
+    dispatch({ type: "set-send-error", error: message });
+  }, [setManualHold]);
+
+  /**
+   * A refused question waits for the project's lookup to settle, then is asked once more. Each
+   * read takes the project's detail again first, so that send goes with the project's sources and
+   * history as they are then, never the refused body. Stop, a conversation change, an edited
+   * draft or the bound ends the wait; only an edited draft drops the hold (the draft is the
+   * technician's own then).
+   */
+  const waitThenAskAgain = useCallback(async (hold: ManualHold, sel: HubSelection) => {
+    const current = () => manualHoldRef.current === hold && selectionRef.current === sel && hostMountedRef.current;
+    const deadline = Date.now() + MANUAL_WAIT_BOUND_MS;
+    const stillPreparing = "The manual is still being prepared.";
+    // The work's value, or null once the hold ends or the bound passes: a read that never answers
+    // cannot hold the question past the bound.
+    const bounded = <T,>(work: Promise<T>) => new Promise<T | null>((resolve) => {
+      const end = () => { clearTimeout(timer); resolve(null); };
+      const timer = setTimeout(end, Math.max(0, deadline - Date.now()));
+      hold.stop.signal.addEventListener("abort", end, { once: true });
+      work.then((value) => {
+        clearTimeout(timer);
+        hold.stop.signal.removeEventListener("abort", end);
+        resolve(value);
+      }, end);
+    });
+    for (let delay = 0; ; delay = Math.min(delay ? delay * 2 : 2_000, 10_000)) {
+      if (delay) await bounded(new Promise<void>((resolve) => { setTimeout(resolve, delay); }));
+      if (!current()) return;
+      if (Date.now() >= deadline) { pauseManualHold(hold, stillPreparing); return; }
+      const read = await bounded(loadDetail(sel));
+      if (!current()) return;
+      if (read && !sendWaitLookup(detailRef.current, true)?.running) break;
+      if (Date.now() >= deadline) { pauseManualHold(hold, stillPreparing); return; }
+    }
+    if (draftRef.current.trim() !== hold.question.trim()) { setManualHold(null); return; }
+    const now = detailRef.current;
+    if (!now) { pauseManualHold(hold, errorMessageFor("manual_not_ready", 409)); return; }
+    dispatch({ type: "set-draft", draft: "" });
+    putOutgoing({ id: `out-${Date.now()}`, threadId: shellThreadId(sel), question: hold.question, attachments: [], startedAt: new Date().toISOString() });
+    void send(chatBodyFor(hold.question, enabledDocIds(now.sources), historyRows(now.turns), sel), hold.question, sel, { automatic: true });
+  }, [loadDetail, send, putOutgoing, pauseManualHold, setManualHold]);
+
+  const onManualRefusal = useCallback((sel: HubSelection, question: string, code: ManualWaitCode, automatic: boolean) => {
+    if (selectionRef.current !== sel) return;
+    const phase = manualHoldAfterRefusal(code, automatic);
+    const hold: ManualHold = { key: conversationKey(sel), question, phase, stop: new AbortController() };
+    setManualHold(hold);
+    if (phase === "paused") {
+      setSendPaused(true);
+      dispatch({ type: "set-send-error", error: errorMessageFor(code, 409) });
+      return;
+    }
+    void waitThenAskAgain(hold, sel);
+  }, [setManualHold, waitThenAskAgain]);
+  useEffect(() => { onManualRefusalRef.current = onManualRefusal; }, [onManualRefusal]);
 
   // Stable per conversation, so the panel's read does not re-run on every render.
   const benchNotebookId = selection?.notebookId ?? null;
@@ -920,7 +1005,8 @@ export function HubShellHost() {
           const presentScope = current ? enabledDocIds(current.sources) : [...fallbackScope];
           const addedDuringUpload = (composed.scope ?? []).filter(id => !fallbackScope.includes(id));
           const scope = [...new Set([...presentScope, ...addedDuringUpload])];
-          await send(chatBodyFor(composed.question, scope, current ? historyRows(current.turns) : history, sel, rider), composed.question, sel);
+          // #5746: a send with attachments keeps main's path; its files are already uploaded.
+          await send(chatBodyFor(composed.question, scope, current ? historyRows(current.turns) : history, sel, rider), composed.question, sel, { manualWait: false });
         },
       });
     } catch {
@@ -988,7 +1074,8 @@ export function HubShellHost() {
     const home = outgoingOwner.current;
     if (home && home.threadId === HOME_THREAD) putOutgoing({ ...home, threadId: shellThreadId(sel) });
     if (files.length === 0) {
-      await send(chatBodyFor(q, [], [], sel), q, sel);
+      // #5746: a home send keeps main's general-mode contract (L0); it is never held.
+      await send(chatBodyFor(q, [], [], sel), q, sel, { manualWait: false });
       return;
     }
     // Round 3 F2: own the operation from here, so Stop or opening another
@@ -1062,7 +1149,8 @@ export function HubShellHost() {
     const held = heldQuestionForSend(failedBody, retryCheck, q, files.length);
     if (held) {
       beginOutgoing(shellThreadId(selection));
-      void send(held, q);
+      // #5746 r7 F9: with the project's sources and history as they are now, never the refused body's.
+      void send(rebuiltHeldBody(held, docIds, detail.turns, selection), q);
       return;
     }
     beginOutgoing(shellThreadId(selection));
@@ -1073,74 +1161,33 @@ export function HubShellHost() {
     void send(chatBodyFor(q, docIds, historyRows(detail.turns), selection), q);
   }, [adapter, busy, selection, notebooks, detail, docIds, send, sendFromHome, composeAndSend, putOutgoing, benchGate, failedBody, retryCheck]);
 
-  // #5746 r6 F1: asks the pre-send check for a waiting send. Stop or a conversation change cancels
-  // it. A check that fails, answers nothing readable or outlasts its 10-second bound sends as the
-  // saved history decided: the check can only add a wait, so its failure is the behaviour from
-  // before it existed. r7: a check that names a lookup that has finished, which the page (polling
-  // nothing for this thread) still shows preparing, reads the project again within the same bound,
-  // so the question goes with the manual the project has now. A re-read that fails or outlasts the
-  // bound pauses the send with the draft kept: it never goes without the manual the check named.
-  const startSubjectCheck = useCallback((waiting: WaitingSend) => {
-    waiting.subject = "checking";
-    const sel = waiting.selection;
-    const check = new AbortController();
-    const stopCheck = () => check.abort();
-    waiting.signal.signal.addEventListener("abort", stopCheck, { once: true });
-    const bound = setTimeout(stopCheck, 10_000);
-    const stopped = new Promise<false>((resolve) => check.signal.addEventListener("abort", () => resolve(false), { once: true }));
-    void sendSubjectLookup(API_BASE, sel, waiting.question, check.signal).then(async (lookup) => {
-      let reread = true;
-      if (lookup && !lookup.running && !check.signal.aborted && waitingSend.current === waiting) {
-        reread = await Promise.race([loadDetail(sel).catch(() => false), stopped]);
-      }
-      clearTimeout(bound);
-      if (waitingSend.current !== waiting) return;
-      if (!reread) {
-        waiting.signal.abort();
-        return;
-      }
-      waiting.subject = "settled";
-      if (lookup?.running) {
-        waiting.observedManual = lookup;
-        setFollowsReadiness(true);
-        seedManualSearch(sel.notebookId, lookup);
-      }
-      setSubjectChecks((count) => count + 1);
-    });
-  }, [loadDetail, setFollowsReadiness, seedManualSearch]);
-
+  // A send before this conversation's detail or component scope is read waits for them (15
+  // seconds at most), so the question goes with the sources and scope the header shows. The
+  // composer keeps the draft and attachments until the send starts. Whether a manual question
+  // can be answered yet is the chat route's decision (#5746, option A), not this queue's.
   const onComposerSend = useCallback((question: string, attachments: readonly Attachment[]) => {
     if (!selection) return onSend(question, attachments);
-    const waitForManual = waitsForManual(question, attachments.length);
-    const observedManual = waitForManual && sendManualStatus?.running ? sendManualStatus : null;
     const scope = benchGate.known ? benchScopesRef.current.get(conversationKey(selection)) : undefined;
-    const waitsForNotebookLookup = observedManual && (scope === "unavailable" || scope?.componentId === null);
     const readingScope = !benchGate.known && !benchGate.changing && !benchGate.pending;
-    // #5746 r6 F1: the saved history alone would send this at once. The question itself may name
-    // the project's model, so the server's subject rule decides first; it can only add a wait.
-    const checksSubject = checksSendSubject({ waitForManual, observedManual, readiness: detail?.projectManualReadiness, scope });
-    if (detail && !readingScope && !waitsForNotebookLookup && !checksSubject) return onSend(question, attachments);
+    if (detail && !readingScope) return onSend(question, attachments);
     return new Promise<void>((resolve, reject) => {
       const signal = new AbortController();
-      const timer = setTimeout(() => signal.abort(), waitForManual ? 185_000 : 15_000);
+      const timer = setTimeout(() => signal.abort(), 15_000);
       const clear = () => {
         clearTimeout(timer);
         if (waitingSend.current?.signal !== signal) return;
         waitingSend.current = null;
         setWaitingToSend(false);
-        setFollowsReadiness(false);
       };
       const fail = (error: Error) => { clear(); setSendPaused(true); reject(error); };
       signal.signal.addEventListener("abort", () => fail(new Error("Send paused. Your message and attachments are still here.")), { once: true });
       const waiting: WaitingSend = {
-        selection, question, attachments, observedManual, waitForManual, scope, signal,
+        selection, question, attachments, scope, signal,
         resolve: () => { clear(); resolve(); },
         reject: fail,
-        ...(!detail && waitForManual ? { subject: "pending" as const } : {}),
       };
       waitingSend.current = waiting;
       setWaitingToSend(true);
-      if (checksSubject) startSubjectCheck(waiting);
       if (readingScope) {
         setBenchRefresh(count => count + 1);
       }
@@ -1148,7 +1195,7 @@ export function HubShellHost() {
         void loadDetail(selection);
       }
     });
-  }, [selection, detail, detailUnavailable, benchGate, sendManualStatus, onSend, loadDetail, setFollowsReadiness, startSubjectCheck]);
+  }, [selection, detail, detailUnavailable, benchGate, onSend, loadDetail]);
 
   useEffect(() => {
     const waiting = waitingSend.current;
@@ -1158,10 +1205,6 @@ export function HubShellHost() {
       return;
     }
     if (busy) return;
-    const current = sendManualStatus;
-    // Remember a lookup seen while the component check is still loading, so
-    // a fast failure cannot erase it from a queued whole-machine submission.
-    if (detail && waiting.waitForManual && !waiting.observedManual && current?.running) waiting.observedManual = current;
     if (!benchGate.known) return;
     const scope = benchScopesRef.current.get(conversationKey(waiting.selection));
     if (waiting.scope && JSON.stringify(waiting.scope) !== JSON.stringify(scope)) {
@@ -1170,39 +1213,15 @@ export function HubShellHost() {
     }
     waiting.scope ??= scope;
     if (!detail) return;
-    // #5746 r7: a send queued before the detail loaded asks the pre-send check now, under the
-    // rule a send after the load uses.
-    if (waiting.subject === "pending") {
-      const readiness = detail.projectManualReadiness;
-      if (checksSendSubject({ waitForManual: waiting.waitForManual, observedManual: waiting.observedManual, readiness, scope })) {
-        startSubjectCheck(waiting);
-        return;
-      }
-      waiting.subject = undefined;
-    }
-    // #5746 r6 F1: a whole-machine question waits for the pre-send check to answer.
-    if (waiting.subject === "checking" && (scope === "unavailable" || scope?.componentId === null)) return;
-    // Notebook lookup readiness applies to the whole machine. The component's
-    // scope rider lets chat evaluate its own sources.
-    const manual = waiting.observedManual;
-    if (manual && (scope === "unavailable" || scope?.componentId === null)) {
-      const sameLookup = current?.manufacturer === manual.manufacturer && current.model === manual.model &&
-        (!manual.startedAt || !current.startedAt || compareManualSearchGeneration(manual.startedAt, current.startedAt) === 0);
-      if (!sendReadyManualId || !sameLookup) {
-        if (sameLookup && current.running && follow?.phase !== "unresolved") return;
-        waiting.reject(new Error("The manual isn't ready. Your message and attachments are still here."));
-        return;
-      }
-    }
     try {
       onSend(waiting.question, waiting.attachments);
       waiting.resolve();
     } catch (error) {
       waiting.reject(error instanceof Error ? error : new Error("Couldn't send the message."));
     }
-  }, [waitingToSend, subjectChecks, selection, detail, detailUnavailable, benchGate, benchView, busy, sendManualStatus, follow, sendReadyManualId, onSend, startSubjectCheck]);
+  }, [waitingToSend, selection, detail, detailUnavailable, benchGate, benchView, busy, onSend]);
 
-  useEffect(() => () => waitingSend.current?.signal.abort(), []);
+  useEffect(() => () => { waitingSend.current?.signal.abort(); manualHoldRef.current?.stop.abort(); }, []);
 
   // WP-1 guided dead end: sent in general mode with the session id; the route confirms it.
   const onGuidedDeadEnd = useCallback((question: string, sessionId: string) => {
@@ -1214,9 +1233,28 @@ export function HubShellHost() {
 
   const onStop = useCallback(() => {
     waitingSend.current?.signal.abort();
+    // Stop while a refused question waits for the manual pauses it; the draft stays.
+    const hold = manualHoldRef.current;
+    if (hold?.phase === "waiting") pauseManualHold(hold, "You stopped the wait for the manual.");
     abortRef.current?.abort();
     uploadAbortRef.current?.abort();
-  }, []);
+  }, [pauseManualHold]);
+
+  // #5746: one send of a paused question without the manual wait. Only while the draft still holds
+  // that question; it goes with the project's sources as they are now. The route answers it the
+  // way main does.
+  const onSendWithoutManual = useCallback(() => {
+    const hold = manualHoldRef.current;
+    const sel = selectionRef.current;
+    const now = detailRef.current;
+    if (!hold || hold.phase !== "paused" || !sel || conversationKey(sel) !== hold.key || !now) return;
+    if (draftRef.current.trim() !== hold.question.trim()) return;
+    setManualHold(null);
+    dispatch({ type: "set-send-error", error: null });
+    dispatch({ type: "set-draft", draft: "" });
+    putOutgoing({ id: `out-${Date.now()}`, threadId: shellThreadId(sel), question: hold.question, attachments: [], startedAt: new Date().toISOString() });
+    void send(chatBodyFor(hold.question, enabledDocIds(now.sources), historyRows(now.turns), sel), hold.question, sel, { manualWait: false });
+  }, [send, putOutgoing, setManualHold]);
   const onRetry = useCallback(() => { if (failedBody && retryCheck?.kind === "retry") void send(failedBody.body, failedBody.question); }, [failedBody, retryCheck, send]);
 
   /** New chat: a fresh thread in the open notebook; from HOME, HOME is already the blank chat. */
@@ -1460,6 +1498,10 @@ export function HubShellHost() {
     [detail],
   );
 
+  // #5746: a refused question waiting for the manual reads as busy (Stop pauses it); a paused one
+  // offers Send without the manual while the draft still holds it.
+  const waitingForManual = manualHold?.phase === "waiting";
+  const pausedForManual = manualHold?.phase === "paused" && state.draft.trim() === manualHold.question.trim();
   const hooks: HostHooks = {
     onSend,
     onComposerSend,
@@ -1474,13 +1516,14 @@ export function HubShellHost() {
     onSource: (source) => openSource(source.id),
     onNewChat,
     onCreateProject,
-    ...(busy || waitingToSend ? { onStop } : {}),
+    ...(busy || waitingToSend || waitingForManual ? { onStop } : {}),
     ...(failedBody && retryCheck?.kind === "retry" && !sendPaused ? { onRetry } : {}),
+    ...(pausedForManual && !busy ? { onSendWithoutManual } : {}),
     ...(reviewMessage ? { targetReview: reviewMessage } : {}),
     groundingLine: () => selection && !detail
       ? detailUnavailable ? "Couldn't load this project's details." : "Opening project…"
       : groundingLineFor(detail?.notebook ?? null, docIds.length),
-    busy: busy || waitingToSend,
+    busy: busy || waitingToSend || waitingForManual,
   };
 
   const layers = useBackClosesLayers(view); // #5069: phone web Back closes the open layer first

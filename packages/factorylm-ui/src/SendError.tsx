@@ -46,6 +46,8 @@ export function SendError({ error, dispatch, draft, turnId, hooks, submitDraft }
   // A target review (#5557) is answered by checking the target and pressing
   // Send; a retry control here would re-ask about the new target in one tap.
   const review = Boolean(hooks?.targetReview) && error === hooks?.targetReview;
+  // #5746: a send paused for a manual is not a failure to reach MIRA; it offers one send without it.
+  const withoutManual = !review && hooks?.onSendWithoutManual ? hooks.onSendWithoutManual : undefined;
   const hostRetry = !review && turnId && hooks?.onRetry ? hooks.onRetry : undefined;
   const draftRetry = !review && Boolean(draft.trim() && (submitDraft || hooks?.onSend));
   const canRetry = Boolean(hostRetry) || draftRetry;
@@ -86,15 +88,26 @@ export function SendError({ error, dispatch, draft, turnId, hooks, submitDraft }
   };
 
   return (
-    <div className="fl-send-error" role="alert" aria-label="Send error" data-kind={review ? "review" : "failure"}>
-      <div className="fl-send-error__icon" aria-hidden="true">{review ? "!" : "✕"}</div>
+    <div className="fl-send-error" role="alert" aria-label="Send error" data-kind={review ? "review" : withoutManual ? "paused" : "failure"}>
+      <div className="fl-send-error__icon" aria-hidden="true">{review || withoutManual ? "!" : "✕"}</div>
       <div className="fl-send-error__content">
-        <p className="fl-send-error__message">{review ? "Check the question target" : "Couldn't reach MIRA"}</p>
+        <p className="fl-send-error__message">{review ? "Check the question target" : withoutManual ? "Send paused" : "Couldn't reach MIRA"}</p>
         <p className="fl-send-error__detail">{error}{draft.trim() ? " Your message is saved below." : ""}</p>
         <div className="fl-send-error__actions">
           {canRetry ? (
             <button className="fl-send-error__button" onClick={retry}>
               Try again
+            </button>
+          ) : null}
+          {withoutManual ? (
+            <button
+              className="fl-send-error__button"
+              onClick={() => {
+                dispatch({ type: "set-send-error", error: null });
+                withoutManual();
+              }}
+            >
+              Send without the manual
             </button>
           ) : null}
           <button className="fl-send-error__button" onClick={dismiss}>

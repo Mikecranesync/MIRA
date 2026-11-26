@@ -35,6 +35,9 @@ export interface HostHooks {
   /** Accept a composer submission asynchronously while its scope loads.
    * Rejection leaves the text and attachments in the composer. */
   readonly onComposerSend?: (text: string, attachments: readonly Attachment[]) => void | Promise<void>;
+  /** Present only while a send is paused waiting for a manual the host's backend held it for.
+   *  Sends the paused question once without that wait (#5746). */
+  readonly onSendWithoutManual?: () => void;
   /** Stop the in-flight answer; shown only while `busy`. */
   readonly onStop?: () => void;
   /**

@@ -9,7 +9,7 @@
 //
 // Run: cd mira-hub && npx vitest run "src/app/api/equipment-notebooks/[id]/__tests__/manual-search-status"
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { NextResponse, type NextRequest } from "next/server";
+import type { NextRequest } from "next/server";
 
 vi.mock("@/lib/session", () => ({ sessionOr401: vi.fn() }));
 vi.mock("@/lib/equipment-notebooks", () => ({
@@ -29,15 +29,15 @@ vi.mock("@/capabilities/notebook-manual-acquisition", async (importOriginal) => 
   threadStatusScope: (await importOriginal<typeof import("@/capabilities/notebook-manual-acquisition")>()).threadStatusScope,
 }));
 
-// #5746 r5 F1: the component stamp is read only for the send wait. Default: no turn is stamped.
+// #5746 r5 F1: the component stamp is read only for the manual wait. Default: no turn is stamped.
 const turnsAskedUnderComponent = vi.hoisted(() => vi.fn());
 vi.mock("@/capabilities/bench-components/store", () => ({ turnsAskedUnderComponent }));
 
 import { GET } from "../route";
-import { POST } from "../send-wait/route";
 import { sessionOr401 } from "@/lib/session";
-import { getNotebook, listSources, listTurns, normalizeNotebookThreadId } from "@/lib/equipment-notebooks";
-import { sendSubjectLookup, sendWaitLookup, withheldSendWait } from "@/factorylm-ui/hub-host-logic";
+import { getNotebook, listSources, listTurns } from "@/lib/equipment-notebooks";
+import { sendWaitLookup } from "@/factorylm-ui/hub-host-logic";
+import { manualWaitDecision, readManualWait } from "@/capabilities/send-wait-subject";
 
 const NB = "11111111-2222-3333-4444-555555555555";
 const TENANT = "00000000-0000-0000-0000-0000000000d1";
@@ -441,15 +441,14 @@ describe("GET /api/equipment-notebooks/[id] — manualSearch (T2 #4189)", () => 
           expect(body).not.toHaveProperty("wholeMachineManualSearch");
         });
 
-        // The detail response is what the Hub's send wait reads: composed with its real reader,
-        // the sibling-naming component answer leaves a running lookup to wait for.
-        it("composed: the Hub's send wait reads a running lookup from this response", async () => {
+        // The detail response is what the Hub follows after the chat route held a question:
+        // composed with its real reader, the sibling-naming component answer leaves a running
+        // lookup to wait for.
+        it("composed: the Hub's wait after a refusal reads a running lookup from this response", async () => {
           currentManualSearchStatus.mockResolvedValue(PREPARING);
           read([underSibling(SIBLING_QUESTION)]);
           const body = await (await GET(threadReq, params)).json();
-          const lookup = sendWaitLookup(body);
-          expect(lookup).not.toBeNull();
-          expect(withheldSendWait(lookup!, null, body.sources).status).toEqual(GATE);
+          expect(sendWaitLookup(body)).toEqual(GATE);
         });
 
         it("control: a whole-machine question past the newest 50 that names another model sends nothing", async () => {
@@ -498,17 +497,19 @@ describe("GET /api/equipment-notebooks/[id] — manualSearch (T2 #4189)", () => 
       });
     });
 
-    // #5746 r6 F1: a thread that asked about a look-alike withholds the project's status. A
-    // question that names the project's own model still waits for its manual. That question is
-    // not saved yet, so the detail read only says the project's lookup exists, and the pre-send
-    // check decides with the question added as the newest whole-machine question.
-    describe("the project's readiness and the pre-send check", () => {
+    // #5746 r6 F1 / option A: a thread that asked about a look-alike withholds the project's
+    // status. A question that names the project's own model still needs its manual. That question
+    // is not saved yet, so the detail read only says the project's lookup exists, and the chat
+    // route decides with the question added as the newest whole-machine question
+    // (`readManualWait` + `manualWaitDecision`, the halves the route composes).
+    describe("the project's readiness and the chat route's manual wait", () => {
       const STARTED_AT = "2026-11-21T12:00:00.000Z";
       const PREPARING = {
         manufacturer: "AutomationDirect", model: "GS11N-20P2", running: true, sourceState: "preparing",
         message: "The manual is being added to Sources.", manualUrl: "https://app.example.test/manual.pdf", startedAt: STARTED_AT,
       };
       const GATE = { manufacturer: "AutomationDirect", model: "GS11N-20P2", running: true, sourceState: "preparing", startedAt: STARTED_AT };
+      const HELD = { error: "manual_not_ready", reason: "running", lookup: GATE };
       const LOOK_ALIKE = ask("Find me the manual for AutomationDirect GS11N-20P25");
       const COMPONENT = { kind: "component_attribution", componentId: "c-acs580", revision: 1, selectionVersion: 1, label: "ABB ACS580" };
       const OWN = "According to the manual, what is the acceleration parameter for the GS11N-20P2?";
@@ -518,10 +519,8 @@ describe("GET /api/equipment-notebooks/[id] — manualSearch (T2 #4189)", () => 
       const read = (all: unknown[]) => {
         vi.mocked(listTurns).mockImplementation((async (_t: string, _n: string, limit: number) => all.slice(-limit)) as never);
       };
-      const check = async (body: unknown) => {
-        const res = await POST({ json: async () => body } as unknown as NextRequest, params);
-        return { status: res.status, body: await res.json() };
-      };
+      const wait = (question: string) => readManualWait({ tenantId: TENANT, notebookId: NB, viewerUserId: "u_1", threadId: THREAD, question });
+      const decide = async (question: string) => manualWaitDecision(await wait(question), []);
 
       beforeEach(() => { currentManualSearchStatus.mockResolvedValue(PREPARING); });
 
@@ -534,28 +533,11 @@ describe("GET /api/equipment-notebooks/[id] — manualSearch (T2 #4189)", () => 
         expect(body.projectManualReadiness).toEqual(GATE);
       });
 
-      it("composed: the Hub's send wait ignores it until a send waits on it", async () => {
+      it("composed: the Hub reads it only while a refused question waits on it", async () => {
         read([LOOK_ALIKE]);
         const body = await (await GET(threadReq, params)).json();
         expect(sendWaitLookup(body)).toBeNull();
         expect(sendWaitLookup(body, true)).toEqual(GATE);
-      });
-
-      it("composed: the Hub's pre-send check posts the question here and reads this answer", async () => {
-        read([LOOK_ALIKE]);
-        const calls: { url: string; method?: string }[] = [];
-        const fetcher = (async (url: string, init?: RequestInit) => {
-          calls.push({ url, method: init?.method });
-          return POST({ json: async () => JSON.parse(String(init?.body)) } as unknown as NextRequest, params);
-        }) as unknown as typeof fetch;
-        const sel = { notebookId: NB, threadId: THREAD } as Parameters<typeof sendSubjectLookup>[1];
-        const checkQuestion = (question: string) => sendSubjectLookup("", sel, question, new AbortController().signal, fetcher);
-        expect(await checkQuestion(OWN)).toEqual(GATE);
-        expect(await checkQuestion(SIBLING)).toBeNull();
-        // A finished lookup comes back as finished, which is what makes the Hub read the project again.
-        currentManualSearchStatus.mockResolvedValue({ ...PREPARING, running: false, sourceState: "ready", readySourceDocId: "doc-ready" });
-        expect(await checkQuestion(OWN)).toEqual({ ...GATE, running: false, sourceState: "ready", readySourceDocId: "doc-ready" });
-        expect(calls).toEqual(Array(3).fill({ url: `/api/equipment-notebooks/${NB}/send-wait/`, method: "POST" }));
       });
 
       it.each([
@@ -580,76 +562,55 @@ describe("GET /api/equipment-notebooks/[id] — manualSearch (T2 #4189)", () => 
         expect(body).not.toHaveProperty("projectManualReadiness");
       });
 
-      it("a question that names the project's model waits, after a look-alike question", async () => {
+      it("a question that names the project's model is held, after a look-alike question", async () => {
         read([LOOK_ALIKE]);
-        expect(await check({ threadId: THREAD, question: OWN })).toEqual({ status: 200, body: { lookup: GATE } });
+        expect(await decide(OWN)).toEqual(HELD);
       });
 
-      it("control: a question that names the look-alike does not wait", async () => {
+      it("control: a question that names the look-alike is answered (r7 F10)", async () => {
         read([LOOK_ALIKE]);
-        expect(await check({ threadId: THREAD, question: SIBLING })).toEqual({ status: 200, body: { lookup: null } });
+        expect(await decide(SIBLING)).toBeNull();
       });
 
-      it("control: a question that names no model, in a look-alike thread, does not wait", async () => {
+      it("control: a question that names no model, in a look-alike thread, is answered", async () => {
         read([LOOK_ALIKE]);
-        expect(await check({ threadId: THREAD, question: NEUTRAL })).toEqual({ status: 200, body: { lookup: null } });
+        expect(await decide(NEUTRAL)).toBeNull();
       });
 
-      it("decides as the detail read does: after a component answer a neutral question waits", async () => {
+      it("decides as the detail read does: after a component answer a neutral question is held", async () => {
         read([{ id: "t-c", question: "What is the rated current?", evidence: [COMPONENT] }]);
-        expect(await check({ threadId: THREAD, question: NEUTRAL })).toEqual({ status: 200, body: { lookup: GATE } });
+        expect(await decide(NEUTRAL)).toEqual(HELD);
       });
 
       it("reads further back for a neutral question, as the detail read does", async () => {
         read([LOOK_ALIKE, ...keypad(50)]);
-        expect(await check({ threadId: THREAD, question: NEUTRAL })).toEqual({ status: 200, body: { lookup: null } });
+        expect(await decide(NEUTRAL)).toBeNull();
         expect(vi.mocked(listTurns)).toHaveBeenCalledTimes(2);
       });
 
       it("reads this viewer's history of this thread, as the detail read does", async () => {
         read([LOOK_ALIKE]);
-        await check({ threadId: THREAD, question: OWN });
+        await wait(OWN);
         expect(vi.mocked(listTurns)).toHaveBeenCalledWith(TENANT, NB, 50, { viewerUserId: "u_1", threadId: THREAD });
         expect(vi.mocked(getNotebook)).toHaveBeenCalledWith(TENANT, NB);
       });
 
-      it("has nothing to wait for without a current status", async () => {
+      it("has nothing to hold for without a current status", async () => {
         currentManualSearchStatus.mockResolvedValue(null);
         read([LOOK_ALIKE]);
-        expect(await check({ threadId: THREAD, question: OWN })).toEqual({ status: 200, body: { lookup: null } });
+        expect(await decide(OWN)).toBeNull();
       });
 
-      it.each([
-        ["no question", { threadId: THREAD }, "invalid_question"],
-        ["a blank question", { threadId: THREAD, question: "   " }, "invalid_question"],
-        ["no thread", { question: OWN }, "invalid_thread_id"],
-      ])("answers 400 for %s", async (_label, body, error) => {
-        expect(await check(body)).toEqual({ status: 400, body: { error } });
-        expect(vi.mocked(listTurns)).not.toHaveBeenCalled();
-      });
-
-      it("answers 400 for a thread id the store does not accept", async () => {
-        vi.mocked(normalizeNotebookThreadId).mockReturnValueOnce(null);
-        expect(await check({ threadId: "../x", question: OWN })).toEqual({ status: 400, body: { error: "invalid_thread_id" } });
-        expect(vi.mocked(normalizeNotebookThreadId)).toHaveBeenCalledWith("../x");
-        expect(vi.mocked(listTurns)).not.toHaveBeenCalled();
-      });
-
-      it("answers 404 for a notebook this tenant cannot read", async () => {
+      it("reads nothing more for a notebook this tenant cannot read", async () => {
         vi.mocked(getNotebook).mockResolvedValue(null as never);
-        expect(await check({ threadId: THREAD, question: OWN })).toEqual({ status: 404, body: { error: "not_found" } });
+        expect(await wait(OWN)).toEqual({ status: null, scope: null });
         expect(vi.mocked(listTurns)).not.toHaveBeenCalled();
       });
 
-      it("answers 401 without a session, reading nothing", async () => {
-        vi.mocked(sessionOr401).mockResolvedValue(NextResponse.json({ error: "unauthorized" }, { status: 401 }) as never);
-        expect((await check({ threadId: THREAD, question: OWN })).status).toBe(401);
-        expect(vi.mocked(getNotebook)).not.toHaveBeenCalled();
-      });
-
-      it("answers 503, never a lookup, when a read fails", async () => {
+      it("a failed read throws, so the route holds the question as unreadable, never answers it", async () => {
         vi.mocked(listTurns).mockRejectedValue(new Error("statement timeout"));
-        expect(await check({ threadId: THREAD, question: OWN })).toEqual({ status: 503, body: { error: "send_wait_unavailable" } });
+        await expect(wait(OWN)).rejects.toThrow("statement timeout");
+        expect(manualWaitDecision("read_failed", [])).toEqual({ error: "manual_unavailable", reason: "unknown", lookup: null });
       });
     });
 

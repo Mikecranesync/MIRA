@@ -17,7 +17,6 @@ import {
   enabledDocIds,
   currentReadyManualId,
   persistedRequest,
-  waitsForManual,
   errorMessageFor,
   fixtureFor,
   NETWORK_FAILURE_MESSAGE,
@@ -35,12 +34,12 @@ import {
   shellThreadId,
   stoppedStreamResult,
   sendWaitLookup,
-  withheldSendWait,
-  checksSendSubject,
-  sendSubjectLookup,
+  isManualWaitCode,
+  manualHoldAfterRefusal,
+  rebuiltHeldBody,
   type HubSelection,
 } from "./hub-host-logic";
-import { advanceManualSearchFollow, startManualSearchFollow, type ManualSearchFollowState, type ManualSearchStatus } from "../../../packages/factorylm-interaction/src";
+import type { ManualSearchStatus } from "../../../packages/factorylm-interaction/src";
 
 describe("sendFailureMessage — #4311 the browser's network wording never reaches the banner", () => {
   it.each(["Failed to fetch", "Load failed", "NetworkError when attempting to fetch resource."])(
@@ -741,56 +740,10 @@ it("reconciles by request ID, including when identical questions are saved twice
   expect(persistedRequest([older, current], "current")).toEqual(current);
 });
 
-describe("the manual wait applies only to requests that depend on it", () => {
-  it("waits for an explicit document-bound question", () => {
-    expect(waitsForManual("According to the manual, what is the nominal supply voltage?", 0)).toBe(true);
-    expect(waitsForManual("What is the voltage when its manual is ready?", 0)).toBe(true);
-  });
-
-  it("keeps ordinary questions, replacement evidence, and safety intake available", () => {
-    expect(waitsForManual("What is the nominal voltage?", 0)).toBe(false);
-    expect(waitsForManual("Check this from the manual.", 1)).toBe(false);
-    expect(waitsForManual("According to the manual, can I work on the energized 480V panel?", 0)).toBe(false);
-  });
-});
-
-// #5746 r4 F1 / r5 F6: what the send wait reads while the shown status is withheld for an
-// answer about a component.
-describe("withheldSendWait", () => {
-  const NOTEBOOK = "nb-1";
+// #5746 r4 F1 / r6 F1: the lookup a refused manual question waits on.
+describe("sendWaitLookup", () => {
   const A: ManualSearchStatus = { manufacturer: "AutomationDirect", model: "GS11N-20P2", running: true, sourceState: "preparing", startedAt: "2026-11-21T12:00:00.000Z" };
   const B: ManualSearchStatus = { ...A, startedAt: "2026-11-21T12:05:00.000Z" };
-  const SOURCE = { docId: "doc-b", enabledByDefault: true, matchState: "verified", readiness: { canChat: true } } as const;
-  /** A follow of `status` that ran its whole budget without a conclusive read. */
-  function exhausted(status: ManualSearchStatus): ManualSearchFollowState {
-    let state = startManualSearchFollow(NOTEBOOK, status, 3);
-    while (state.phase === "following") state = advanceManualSearchFollow(state, NOTEBOOK, null).state;
-    return state;
-  }
-
-  it("a timed-out follow of an older lookup does not stand in for a newer one still preparing", () => {
-    const follow = exhausted(A);
-    expect(follow.phase).toBe("unresolved");
-    expect(withheldSendWait(B, follow, [])).toEqual({ status: B, readyManualId: null });
-  });
-
-  it("control: a timed-out follow of the same lookup still stands in for it", () => {
-    const follow = exhausted(B);
-    const { status } = withheldSendWait(B, follow, []);
-    expect(status).toBe(follow.status);
-    expect(status?.running).toBe(false);
-  });
-
-  it("control: a newer lookup the follow already reads replaces an older one", () => {
-    const follow = startManualSearchFollow(NOTEBOOK, B);
-    expect(withheldSendWait(A, follow, [])).toEqual({ status: B, readyManualId: null });
-  });
-
-  it("names the ready source only when it is usable", () => {
-    const ready: ManualSearchStatus = { ...B, running: false, sourceState: "ready", readySourceDocId: "doc-b" };
-    expect(withheldSendWait(ready, null, [SOURCE])).toEqual({ status: ready, readyManualId: "doc-b" });
-    expect(withheldSendWait(ready, null, [])).toEqual({ status: null, readyManualId: null });
-  });
 
   it("reads the shown status first, else the send-wait-only lookup", () => {
     expect(sendWaitLookup({ manualSearch: A, wholeMachineManualSearch: B })).toBe(A);
@@ -807,84 +760,121 @@ describe("withheldSendWait", () => {
   });
 });
 
-// #5746 r6 F1: a manual question the saved history would send at once, while the project's
-// lookup runs, is checked against the server's subject rule first. The check only adds a wait.
-describe("checksSendSubject", () => {
-  const RUNNING: ManualSearchStatus = { manufacturer: "AutomationDirect", model: "GS11N-20P2", running: true, sourceState: "preparing" };
-  type Input = Parameters<typeof checksSendSubject>[0];
-  const base: Input = { waitForManual: true, observedManual: null, readiness: RUNNING, scope: undefined };
-  const rider = (componentId: string | null) => ({ notebookId: "nb", threadId: "t", componentId, selectionVersion: 1 });
-
-  it("checks a whole-machine manual question while the project's lookup runs", () => {
-    expect(checksSendSubject(base)).toBe(true);
-    expect(checksSendSubject({ ...base, scope: "unavailable" })).toBe(true);
-    expect(checksSendSubject({ ...base, scope: rider(null) })).toBe(true);
+// #5746 (option A): what the Hub does with the chat route's refusal of a manual question.
+describe("a refused manual question", () => {
+  it("knows the route's two refusal codes and nothing else", () => {
+    expect(isManualWaitCode("manual_not_ready")).toBe(true);
+    expect(isManualWaitCode("manual_unavailable")).toBe(true);
+    for (const code of ["selection_changed", "source_not_in_notebook", "no_sources_selected", ""]) expect(isManualWaitCode(code)).toBe(false);
   });
 
-  it.each([
-    ["a question that needs no manual", { waitForManual: false }],
-    ["a lookup the send already waits for", { observedManual: RUNNING }],
-    ["no readiness", { readiness: undefined }],
-    ["a lookup that is not running", { readiness: { ...RUNNING, running: false, sourceState: "ready" } }],
-    ["a selected component", { scope: rider("c-1") }],
-  ] as [string, Partial<Input>][])("control: never checks with %s", (_label, change) => {
-    expect(checksSendSubject({ ...base, ...change })).toBe(false);
+  it("a tapped send waits once for a manual being prepared", () => {
+    expect(manualHoldAfterRefusal("manual_not_ready", false)).toBe("waiting");
+  });
+
+  it("the one automatic send after the wait pauses if refused again: no loop", () => {
+    expect(manualHoldAfterRefusal("manual_not_ready", true)).toBe("paused");
+    expect(manualHoldAfterRefusal("manual_unavailable", true)).toBe("paused");
+  });
+
+  it("a manual that is off, removed, unavailable or unreadable pauses at once", () => {
+    expect(manualHoldAfterRefusal("manual_unavailable", false)).toBe("paused");
+  });
+
+  it("each code reads in plain language, never as a failure to reach MIRA", () => {
+    expect(errorMessageFor("manual_not_ready", 409)).toBe("This project's manual isn't ready yet, so MIRA didn't answer from it.");
+    expect(errorMessageFor("manual_unavailable", 409)).toBe("This project's manual isn't available, so MIRA didn't answer from it.");
   });
 });
 
-// #5746 r6 audit: every way the Hub sends a chat question. Each goes through the checked send
-// (onComposerSend), needs no manual, or cannot be reached in the Hub. The composer and Try again on
-// a draft use the checked send; a follow-up suggestion only fills the draft; the host's own retry
-// re-sends a request that already went to chat; the shell's runtime send and first-run chips are
-// unreachable (pinned in packages/factorylm-ui v4-review-fixes.test.tsx and below).
+// #5746 r7 F9: after a target review, Send asks the held question with the project as it is now.
+describe("rebuiltHeldBody", () => {
+  const SEL: HubSelection = { notebookId: "nb", threadId: "t" };
+  const OLD_TURN = { id: "t1", question: "old q", answer: "old a", evidence: [], clientRequestId: "r1" } as unknown as Parameters<typeof historyRows>[0][number];
+  const NEW_TURN = { id: "t2", question: "new q", answer: "new a", evidence: [], clientRequestId: "r2" } as unknown as Parameters<typeof historyRows>[0][number];
+  const photo = { fileId: "f-1", capturedAt: "2026-11-26T10:00:00.000Z" };
+
+  it("takes the current sources and history, keeping the held id and photo", () => {
+    const held = { ...chatBodyFor("What page of the manual?", ["doc-old"], historyRows([OLD_TURN]), SEL, { visualEvidence: photo }), clientRequestId: "held-1" };
+    const body = rebuiltHeldBody(held, ["doc-old", "doc-ready"], [OLD_TURN, NEW_TURN], SEL);
+    expect(body.sourceDocIds).toEqual(["doc-old", "doc-ready"]);
+    expect(body.history).toEqual(historyRows([OLD_TURN, NEW_TURN]));
+    expect(body.clientRequestId).toBe("held-1");
+    expect(body.visualEvidence).toEqual(photo);
+    expect(body.message).toBe("What page of the manual?");
+    expect(body.mode).toBeUndefined();
+  });
+
+  it("control: the held body itself still names only the sources it was first sent with", () => {
+    const held = chatBodyFor("q", ["doc-old"], [], SEL);
+    expect(held.sourceDocIds).toEqual(["doc-old"]);
+    expect(rebuiltHeldBody(held, [], [], SEL).mode).toBe("general");
+  });
+
+  it("keeps a guided hand-off's session", () => {
+    const held = guidedDeadEndBody("Which fuse?", "session-1", [], SEL);
+    expect(rebuiltHeldBody(held, [], [], SEL).guidedEscalation).toEqual({ sessionId: "session-1" });
+  });
+});
+
+// #5746 (option A): every way the Hub sends a chat question goes through send(), and send() asks
+// the route to hold a manual question unless it is one of the three sends that keep main's path.
 describe("every way the Hub sends a chat question", () => {
   const HOST = readFileSync(new URL("./hub-host.tsx", import.meta.url), "utf8");
   const start = HOST.indexOf("const hooks: HostHooks = {");
   const hooksObject = HOST.slice(start, HOST.indexOf("\n  };", start));
+  /** The body of `const <name> = useCallback(` up to its dependency list. */
+  const callback = (name: string) => {
+    const at = HOST.indexOf(`const ${name} = useCallback(`);
+    expect(at, name).toBeGreaterThan(0);
+    return HOST.slice(at, HOST.indexOf("\n  }, [", at));
+  };
 
-  it("gives the shell its checked send", () => {
-    expect(start).toBeGreaterThan(0);
-    expect(hooksObject).toMatch(/\n    onComposerSend,\n/);
+  it("posts to the chat route from exactly one place, send()", () => {
+    expect(HOST.match(/\/chat\/`/g)).toHaveLength(1);
+    expect(callback("send")).toContain("/chat/`");
   });
 
-  it("offers no first-run chips, which the shell sends without the check", () => {
+  it("send() asks the route to hold a manual question unless told not to", () => {
+    expect(callback("send")).toContain('...(opts.manualWait === false ? {} : { "x-mira-manual-wait": "1" })');
+  });
+
+  it("only attachments, a home send and Send without the manual opt out", () => {
+    expect(HOST.match(/manualWait: false \}/g)).toHaveLength(3);
+    expect(callback("composeAndSend")).toContain("{ manualWait: false }");
+    expect(callback("sendFromHome")).toMatch(/send\(chatBodyFor\(q, \[\], \[\], sel\), q, sel, \{ manualWait: false \}\)/);
+    expect(callback("onSendWithoutManual")).toContain("{ manualWait: false }");
+    for (const name of ["onSend", "onRetry", "onGuidedDeadEnd", "waitThenAskAgain"]) expect(callback(name)).not.toContain("manualWait: false");
+  });
+
+  it("a refusal from either transport keeps the draft and offers no retry of the refused body", () => {
+    const body = callback("send");
+    expect(body).toContain("if (isManualWaitCode(code)) throw new NotebookHttpError(res.status, code);");
+    const branch = body.slice(body.indexOf("isManualWaitCode(caught.code)"), body.indexOf("return;", body.indexOf("isManualWaitCode(caught.code)")));
+    expect(branch).toContain('dispatch({ type: "set-draft", draft: question })');
+    expect(branch).not.toContain("setFailedBody");
+  });
+
+  it("the one automatic send is the only one marked automatic, and it is rebuilt from the project now", () => {
+    expect(HOST.match(/automatic: true \}/g)).toHaveLength(1);
+    const wait = callback("waitThenAskAgain");
+    expect(wait).toContain("send(chatBodyFor(hold.question, enabledDocIds(now.sources), historyRows(now.turns), sel), hold.question, sel, { automatic: true })");
+    expect(wait.indexOf("loadDetail(sel)")).toBeLessThan(wait.indexOf("{ automatic: true }"));
+  });
+
+  it("the target-review Send rebuilds the held question (r7 F9)", () => {
+    expect(callback("onSend")).toContain("send(rebuiltHeldBody(held, docIds, detail.turns, selection), q)");
+  });
+
+  it("gives the shell its checked composer send and offers no first-run chips", () => {
+    expect(start).toBeGreaterThan(0);
+    expect(hooksObject).toMatch(/\n    onComposerSend,\n/);
     expect(hooksObject).toContain("groundingLine:");
     expect(HOST).not.toMatch(/suggestChips/);
   });
 
-  it("asks guided Ask MIRA in general mode with no manual, so it has nothing to wait for", () => {
-    const body = guidedDeadEndBody("Which fuse does it take?", "session-1", [], { notebookId: "nb", threadId: "t" });
-    expect(body.sourceDocIds).toEqual([]);
-  });
-});
-
-describe("sendSubjectLookup", () => {
-  const SEL: HubSelection = { notebookId: "nb/1", threadId: "thread-1" };
-  const LOOKUP: ManualSearchStatus = { manufacturer: "AutomationDirect", model: "GS11N-20P2", running: true, sourceState: "preparing" };
-  const reply = (status: number, body: unknown) => vi.fn(async () => new Response(JSON.stringify(body), { status }));
-
-  it("posts the question and the thread in the body, and returns the lookup", async () => {
-    const fetcher = reply(200, { lookup: LOOKUP });
-    const signal = new AbortController().signal;
-    expect(await sendSubjectLookup("/hub", SEL, "According to the manual, GS11N-20P2?", signal, fetcher)).toEqual(LOOKUP);
-    const [url, init] = fetcher.mock.calls[0]! as unknown as [string, RequestInit];
-    expect(url).toBe("/hub/api/equipment-notebooks/nb%2F1/send-wait/");
-    expect(init.method).toBe("POST");
-    expect(init.signal).toBe(signal);
-    expect(JSON.parse(init.body as string)).toEqual({ threadId: "thread-1", question: "According to the manual, GS11N-20P2?" });
-    expect(url).not.toContain("GS11N");
-  });
-
-  it("returns null when the server says to send now", async () => {
-    expect(await sendSubjectLookup("", SEL, "q", new AbortController().signal, reply(200, { lookup: null }))).toBeNull();
-  });
-
-  it.each([
-    ["a failed check", reply(503, { error: "send_wait_unavailable" })],
-    ["an unreadable lookup", reply(200, { lookup: { model: 7 } })],
-    ["a network error", vi.fn(async () => { throw new TypeError("network"); })],
-    ["an aborted check", vi.fn(async () => { throw new DOMException("aborted", "AbortError"); })],
-  ])("returns null, the decision the saved history made, for %s", async (_label, fetcher) => {
-    expect(await sendSubjectLookup("", SEL, "q", new AbortController().signal, fetcher as unknown as typeof fetch)).toBeNull();
+  it("offers Send without the manual only while a paused hold's question is still the draft", () => {
+    expect(hooksObject).toContain("...(pausedForManual && !busy ? { onSendWithoutManual } : {})");
+    expect(HOST).toContain('const pausedForManual = manualHold?.phase === "paused" && state.draft.trim() === manualHold.question.trim();');
   });
 });
