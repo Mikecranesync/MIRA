@@ -170,6 +170,66 @@ describe("conversation parts", () => {
     expect(render({ fixture: "safety-stop", surface: "web", hooks }).buttonNamed("Retry")).toBeNull();
   });
 
+  it("offers Retry for a retryable stopped turn when the host can re-send", () => {
+    const calls: string[] = [];
+    const view = render({
+      fixture: "error-retry",
+      surface: "hub",
+      hooks: { onRetry: (turnId: string) => calls.push(turnId) },
+      transformFixture: (fixture) => ({
+        ...fixture,
+        thread: {
+          ...fixture.thread,
+          turns: fixture.thread.turns.map((turn) => ({
+            ...turn,
+            lifecycle: "stopped" as const,
+            parts: turn.parts.map((part) =>
+              part.type === "error"
+                ? { ...part, error: { code: "stopped" as const, message: "Stopped before the answer completed.", retryable: true } }
+                : part
+            ),
+          })),
+        },
+      }),
+    });
+    const retry = view.buttonNamed("Retry");
+    if (!retry) throw new Error("retryable stopped error must offer Retry");
+    view.click(retry);
+    expect(calls).toEqual(["turn-error-retry"]);
+  });
+
+  it("offers Retry only on the latest interrupted turn", () => {
+    const calls: string[] = [];
+    const view = render({
+      fixture: "error-retry",
+      surface: "hub",
+      hooks: { onRetry: (turnId: string) => calls.push(turnId) },
+      transformFixture: (fixture) => {
+        const [failed] = fixture.thread.turns;
+        const prior = {
+          ...failed,
+          id: "turn-older-stopped",
+          lifecycle: "stopped" as const,
+          parts: failed.parts.map((part) =>
+            part.type === "error"
+              ? { ...part, error: { code: "stopped" as const, message: "Stopped before the answer completed.", retryable: true } }
+              : part
+          ),
+        };
+        return {
+          ...fixture,
+          thread: { ...fixture.thread, turns: [prior, ...fixture.thread.turns] },
+        };
+      },
+    });
+    const retries = Array.from(view.container.querySelectorAll("button")).filter(
+      (button) => (button.textContent ?? "").trim() === "Retry",
+    );
+    expect(retries).toHaveLength(1);
+    view.click(retries[0]);
+    expect(calls).toEqual(["turn-error-retry"]);
+  });
+
   it("shows the offline state honestly", () => {
     const view = render({ fixture: "offline-sync", surface: "mobile" });
     const status = view.container.querySelector('[aria-label="Sync status"]');
