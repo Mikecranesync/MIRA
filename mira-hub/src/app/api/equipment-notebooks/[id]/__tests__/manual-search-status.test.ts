@@ -24,10 +24,11 @@ vi.mock("@/lib/equipment-notebooks", () => ({
 vi.mock("@/lib/workspace-files", () => ({ listFilesForTarget: vi.fn(async () => []) }));
 
 const currentManualSearchStatus = vi.hoisted(() => vi.fn());
-vi.mock("@/capabilities/notebook-manual-acquisition", async (importOriginal) => ({
-  currentManualSearchStatus,
-  threadStatusScope: (await importOriginal<typeof import("@/capabilities/notebook-manual-acquisition")>()).threadStatusScope,
-}));
+vi.mock("@/capabilities/notebook-manual-acquisition", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/capabilities/notebook-manual-acquisition")>();
+  // The manual wait's read of the project's Sources runs for real (#5746).
+  return { currentManualSearchStatus, threadStatusScope: actual.threadStatusScope, manualWaitSourceStatus: actual.manualWaitSourceStatus };
+});
 
 // #5746 r5 F1: the component stamp is read only for the manual wait. Default: no turn is stamped.
 const turnsAskedUnderComponent = vi.hoisted(() => vi.fn());
