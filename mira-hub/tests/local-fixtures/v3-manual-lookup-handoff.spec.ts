@@ -527,6 +527,10 @@ const TITLES = {
   "stop-retry": "Stop then Try again still waits for the project's manual",
   "photo-retry": "Stop then Try again keeps the attached photo",
   "retry-after-failure": "after an earlier failed answer, Try again on a paused question sends that question through the check",
+  // #5746 r7: the two ways a held question could still go without its manual.
+  "detail-late": "a question sent while the project is still opening asks the pre-send check once it loads",
+  "ready-unseen": "a pre-send check that finds the manual ready sends the question with it",
+  "reread-hangs": "when the re-read of the project never answers, the question pauses rather than go without its manual",
 } as const;
 for (const mode of Object.keys(TITLES) as (keyof typeof TITLES)[]) {
   test(TITLES[mode], async ({ page, context, baseURL }) => {
@@ -535,18 +539,25 @@ for (const mode of Object.keys(TITLES) as (keyof typeof TITLES)[]) {
     });
     const scope = latch();
     const checkHeld = latch();
+    const detailHeld = latch();
+    const rereadHeld = latch();
+    let holdNextRead = false;
     if (mode !== "photo-retry") scope.release();
+    if (mode !== "detail-late") detailHeld.release();
     let ready = false;
     let reads = 0;
     let looks = 0;
     const checks: { threadId: string; question: string }[] = [];
-    const chatBodies: { message: string; threadId: string; sourceDocIds: string[] }[] = [];
+    const chatBodies: { message: string; threadId: string; sourceDocIds: string[]; clientRequestId: string }[] = [];
     const notebook = { ...oracle.detailEmpty.notebook, displayName: "Manual handoff fixture", sourceCount: 0, ...IDENTITY, identityStatus: "user_confirmed" };
     const nbPath = `/api/equipment-notebooks/${NB}`;
     const savedLookAlike = {
       id: "saved-look-alike", clientRequestId: "look-alike", question: "Find me the manual for AutomationDirect GS11N-20P25",
       answerStatus: "insufficient_evidence", answerText: "No manual is attached for that model.", evidence: [], createdAt: STARTED_AT,
     };
+    // Each answered question is saved, as the chat route does, so the Hub's history reload finds it
+    // and stops; the only reads left on a timer are the manual poll's.
+    const answered: (typeof savedLookAlike)[] = [];
     const lookupStatus = () => ({
       ...IDENTITY, startedAt: STARTED_AT, running: !ready,
       ...(ready ? { sourceState: "ready", readySourceDocId: DOC } : { sourceState: "preparing" }),
@@ -580,8 +591,13 @@ for (const mode of Object.keys(TITLES) as (keyof typeof TITLES)[]) {
         }));
       }
       if (p === `${nbPath}/chat` && method === "POST") {
-        chatBodies.push(request.postDataJSON());
+        const sent = request.postDataJSON();
+        chatBodies.push(sent);
         if (mode === "retry-after-failure" && chatBodies.length === 1) return route.fulfill(json({ error: "upstream" }, 500));
+        answered.push({
+          id: `saved-${sent.clientRequestId}`, clientRequestId: sent.clientRequestId, question: sent.message,
+          answerStatus: "answered", answerText: ANSWER, evidence: [], createdAt: STARTED_AT,
+        });
         return route.fulfill(stream(
           { kind: "content", content: ANSWER },
           { kind: "sources", citations: [CITATION] },
@@ -591,12 +607,18 @@ for (const mode of Object.keys(TITLES) as (keyof typeof TITLES)[]) {
       if (p === nbPath && method === "GET") {
         expect(url.searchParams.get("threadId")).toBe(THREAD);
         reads += 1;
+        if (reads === 1) await detailHeld.promise;
+        if (holdNextRead) {
+          holdNextRead = false;
+          await rereadHeld.promise;
+        }
         // As the detail route does in a look-alike thread: the status is withheld from display,
         // and only the project's readiness is named, without a message or a link.
+        // A held read the page has since given up on may no longer be answerable.
         return route.fulfill(json({
-          ...oracle.detailEmpty, notebook, turns: [savedLookAlike], sources: ready ? [SOURCE] : [],
+          ...oracle.detailEmpty, notebook, turns: [savedLookAlike, ...answered], sources: ready ? [SOURCE] : [],
           manualSearch: null, manualSearchScope: "other_model", projectManualReadiness: lookupStatus(),
-        }));
+        })).catch(() => undefined);
       }
       return route.fulfill(json({}, 404));
     });
@@ -605,8 +627,51 @@ for (const mode of Object.keys(TITLES) as (keyof typeof TITLES)[]) {
     const statusParts = page.locator('[data-part-type="manual_search_status"]');
     const sendButton = page.getByRole("button", { name: "Send", exact: true });
     const stopButton = page.getByRole("button", { name: "Stop", exact: true });
+    if (mode === "detail-late") {
+      // Sent before the project's detail has loaded: nothing names the project's lookup yet.
+      await composer.fill(OWN_MODEL_QUESTION);
+      await sendButton.click();
+      await page.waitForTimeout(1_000);
+      expect(reads).toBe(1);
+      expect(checks).toEqual([]);
+      expect(chatBodies).toHaveLength(0);
+      detailHeld.release();
+    }
     await expect(page.getByText(savedLookAlike.question, { exact: true })).toBeVisible();
     await expect(statusParts).toHaveCount(0);
+
+    if (mode === "ready-unseen" || mode === "reread-hangs") {
+      // The manual becomes ready while nothing waits, so nothing polls this thread: the page
+      // still holds the read that said preparing, with no source to send.
+      const readsAtLoad = reads;
+      ready = true;
+      await page.waitForTimeout(1_500);
+      expect(reads).toBe(readsAtLoad);
+      holdNextRead = mode === "reread-hangs";
+      await composer.fill(OWN_MODEL_QUESTION);
+      await sendButton.click();
+      if (mode === "reread-hangs") {
+        // The check names the ready manual, and the re-read it asks for never answers. After the
+        // check's bound the send pauses with the draft kept; nothing goes without the manual.
+        await expect.poll(() => reads).toBe(readsAtLoad + 1);
+        await expect(page.getByText(PAUSED)).toBeVisible({ timeout: 15_000 });
+        expect(chatBodies).toHaveLength(0);
+        await expect(composer).toHaveValue(OWN_MODEL_QUESTION);
+        // Try again checks again; this re-read answers, and the question goes with the manual.
+        await page.getByRole("button", { name: "Try again", exact: true }).click();
+        await expect.poll(() => chatBodies.length, { timeout: 15_000 }).toBe(1);
+        expect(checks).toHaveLength(2);
+        expect(chatBodies[0]).toMatchObject({ message: OWN_MODEL_QUESTION, threadId: THREAD });
+        expect(chatBodies[0].sourceDocIds).toContain(DOC);
+        rereadHeld.release();
+        return;
+      }
+      await expect.poll(() => chatBodies.length, { timeout: 15_000 }).toBe(1);
+      expect(checks).toEqual([{ threadId: THREAD, question: OWN_MODEL_QUESTION }]);
+      expect(chatBodies[0]).toMatchObject({ message: OWN_MODEL_QUESTION, threadId: THREAD });
+      expect(chatBodies[0].sourceDocIds).toContain(DOC);
+      return;
+    }
 
     if (mode === "photo-retry") {
       // A photo send waits only for the question target, which this spec holds.
@@ -681,11 +746,13 @@ for (const mode of Object.keys(TITLES) as (keyof typeof TITLES)[]) {
       await expect.poll(() => chatBodies.length, { timeout: 5_000 }).toBe(1);
       await expect(page.getByRole("button", { name: "Try again", exact: true })).toBeVisible();
     }
-    // own, stop-retry, retry-after-failure: held until the project's manual is ready, then sent
-    // once with it.
+    // own, stop-retry, retry-after-failure, detail-late: held until the project's manual is ready,
+    // then sent once with it.
     const sentBefore = chatBodies.length;
-    await composer.fill(OWN_MODEL_QUESTION);
-    await sendButton.click();
+    if (mode !== "detail-late") {
+      await composer.fill(OWN_MODEL_QUESTION);
+      await sendButton.click();
+    }
     await expect.poll(() => checks.length).toBe(1);
     expect(checks[0]).toEqual({ threadId: THREAD, question: OWN_MODEL_QUESTION });
     if (mode === "stop-retry" || mode === "retry-after-failure") {
@@ -709,5 +776,14 @@ for (const mode of Object.keys(TITLES) as (keyof typeof TITLES)[]) {
     await expect.poll(() => chatBodies.length, { timeout: 20_000 }).toBe(sentBefore + 1);
     expect(chatBodies.at(-1)).toMatchObject({ message: OWN_MODEL_QUESTION, threadId: THREAD });
     expect(chatBodies.at(-1)!.sourceDocIds).toContain(DOC);
+    if (mode === "own") {
+      // The poll ends with the lookup it followed: once the manual is ready, nothing reads the
+      // project again on a timer (the poll runs every 4 seconds while it follows).
+      await expect(page.getByText(ANSWER.replace(" [1]", ""), { exact: false })).toBeVisible();
+      await page.waitForTimeout(1_000);
+      const readsAfterAnswer = reads;
+      await page.waitForTimeout(6_000);
+      expect(reads).toBe(readsAfterAnswer);
+    }
   });
 }

@@ -37,7 +37,7 @@ import { GET } from "../route";
 import { POST } from "../send-wait/route";
 import { sessionOr401 } from "@/lib/session";
 import { getNotebook, listSources, listTurns, normalizeNotebookThreadId } from "@/lib/equipment-notebooks";
-import { sendWaitLookup, withheldSendWait } from "@/factorylm-ui/hub-host-logic";
+import { sendSubjectLookup, sendWaitLookup, withheldSendWait } from "@/factorylm-ui/hub-host-logic";
 
 const NB = "11111111-2222-3333-4444-555555555555";
 const TENANT = "00000000-0000-0000-0000-0000000000d1";
@@ -539,6 +539,23 @@ describe("GET /api/equipment-notebooks/[id] — manualSearch (T2 #4189)", () => 
         const body = await (await GET(threadReq, params)).json();
         expect(sendWaitLookup(body)).toBeNull();
         expect(sendWaitLookup(body, true)).toEqual(GATE);
+      });
+
+      it("composed: the Hub's pre-send check posts the question here and reads this answer", async () => {
+        read([LOOK_ALIKE]);
+        const calls: { url: string; method?: string }[] = [];
+        const fetcher = (async (url: string, init?: RequestInit) => {
+          calls.push({ url, method: init?.method });
+          return POST({ json: async () => JSON.parse(String(init?.body)) } as unknown as NextRequest, params);
+        }) as unknown as typeof fetch;
+        const sel = { notebookId: NB, threadId: THREAD } as Parameters<typeof sendSubjectLookup>[1];
+        const checkQuestion = (question: string) => sendSubjectLookup("", sel, question, new AbortController().signal, fetcher);
+        expect(await checkQuestion(OWN)).toEqual(GATE);
+        expect(await checkQuestion(SIBLING)).toBeNull();
+        // A finished lookup comes back as finished, which is what makes the Hub read the project again.
+        currentManualSearchStatus.mockResolvedValue({ ...PREPARING, running: false, sourceState: "ready", readySourceDocId: "doc-ready" });
+        expect(await checkQuestion(OWN)).toEqual({ ...GATE, running: false, sourceState: "ready", readySourceDocId: "doc-ready" });
+        expect(calls).toEqual(Array(3).fill({ url: `/api/equipment-notebooks/${NB}/send-wait/`, method: "POST" }));
       });
 
       it.each([
