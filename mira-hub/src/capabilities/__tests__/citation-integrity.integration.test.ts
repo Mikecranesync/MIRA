@@ -198,7 +198,11 @@ describe("#5955 the verdict reads EVERY authorized approved row of the document,
       const legacy = f004(await oem(), LEGACY);
       expect(legacy[0].pageTrust).toBe("trusted");
     } finally {
-      await client.query("DELETE FROM knowledge_entries WHERE source_url = $1 AND content LIKE 'Approved shared extra%'", [LEGACY]);
+      // The rows seeded above are shared (public) rows of the system tenant; delete exactly that scope.
+      await client.query(
+        "DELETE FROM knowledge_entries WHERE tenant_id = $2 AND is_private = false AND source_url = $1 AND content LIKE 'Approved shared extra%'",
+        [LEGACY, SYSTEM],
+      );
     }
   });
 
