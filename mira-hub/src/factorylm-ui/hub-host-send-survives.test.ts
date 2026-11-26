@@ -6,11 +6,13 @@ import { describe, expect, it } from "vitest";
 describe("the host keeps a send alive (source shape)", () => {
   const host = readFileSync(new URL("./hub-host.tsx", import.meta.url), "utf8");
 
-  it("#4924: Stop does nothing until the guard after Send has passed", () => {
-    const onStop = host.slice(host.indexOf("const onStop = useCallback("), host.indexOf("const onRetry = useCallback("));
-    const guard = onStop.indexOf("if (!stopArmed(busySinceRef.current, Date.now())) return;");
+  it("#4924 stays, narrowed: a Stop is ignored only inside the double-tap window AND before any response; after a response it settles immediately", () => {
+    const onStop = host.slice(host.indexOf("const onStop = useCallback("), host.indexOf("const retryRecovery = "));
+    const guard = onStop.indexOf("if (!sawResponse && !stopArmed(busySinceRef.current, Date.now())) return;");
     expect(guard).toBeGreaterThan(-1);
-    expect(guard).toBeLessThan(onStop.indexOf("abortRef.current?.abort()"));
+    expect(onStop).toContain("answering.content || answering.progress || answering.result");
+    expect(guard).toBeLessThan(onStop.indexOf("explicitStops.current.add(ctrl)"));
+    expect(guard).toBeLessThan(onStop.indexOf("ctrl.abort()"));
     expect(host).toMatch(/useEffect\(\(\) => \{ busySinceRef\.current = busy \? Date\.now\(\) : null; \}, \[busy\]\);/);
   });
 

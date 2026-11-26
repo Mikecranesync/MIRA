@@ -94,6 +94,7 @@ import {
   createLatestLoadTracker,
   detailQueryFor,
   enabledDocIds,
+  stopArmed,
   reloadIfStillSelected,
   errorMessageFor,
   fixtureFor,
@@ -127,7 +128,6 @@ import {
   sendRecoveryId,
   recoveryOwnsDraft,
   recoverySendBody,
-  stopArmed,
   mergeTurnRows,
   rowConfirmsStreamOutcome,
   pinsAfterDetailLoad,
@@ -284,7 +284,7 @@ export function HubShellHost() {
   // The technician's message from the moment Send is tapped (outgoing-turn.ts).
   const [outgoing, setOutgoing] = useState<Outgoing | null>(null);
   const [busy, setBusy] = useState(false);
-  // #4924: when the running send started, so a second tap on Send (now Stop) is ignored.
+  // #4924: when the running send started, so a second tap on Send (now Stop) before ANY response is ignored.
   const busySinceRef = useRef<number | null>(null);
   useEffect(() => { busySinceRef.current = busy ? Date.now() : null; }, [busy]);
   // The panel's newest read, by conversation: names the targets when a refused question's target moved.
@@ -1048,7 +1048,10 @@ export function HubShellHost() {
       }
       // A refusal of a RECOVERED request leaves its stored row and pointer exactly as they were and
       // keeps no second copy of the question to resend; the technician reads why and asks again.
-      const recoveryRefused = knownRecovery && rejectionStatus !== undefined && rejectionStatus < 500 && rejectionStatus !== 401 && rejectionCode !== "request_in_progress";
+      // A server-side recovered Retry (`retryRequestId`) keeps no second copy to resend. An in-memory replay of the same
+      // request id that hit a TARGET (scope) refusal is different: it must stay reviewable as a NEW question under the new
+      // scope (accepted contract), so it still records its recovery object (with the refused scope).
+      const recoveryRefused = (!!retryRequestId || (knownRecovery && !isScopeRefusalCode(rejectionCode))) && rejectionStatus !== undefined && rejectionStatus < 500 && rejectionStatus !== 401 && rejectionCode !== "request_in_progress";
       if (rejectionStatus !== undefined && rejectionStatus < 500 && rejectionStatus !== 401 && rejectionCode !== "request_in_progress") {
         if (!knownRecovery) clearPointer();
       }
@@ -1438,8 +1441,12 @@ export function HubShellHost() {
   }, [busy, selection, detail, send, putOutgoing]);
 
   const onStop = useCallback(() => {
-    // #4924: the second tap of a double-tap on Send lands here; it is not a Stop.
-    if (!stopArmed(busySinceRef.current, Date.now())) return;
+    // #4924: the second tap of a double-tap on Send lands here; it is not a Stop. Narrowed to the double-tap window:
+    // only while the send is brand new AND nothing has come back yet. Once any text/progress/result is on screen a
+    // deliberate Stop settles immediately (accepted #5686 contract: explicit Stop, partial text kept, no spurious Try again).
+    const answering = liveRef.current;
+    const sawResponse = Boolean(answering && (answering.content || answering.progress || answering.result));
+    if (!sawResponse && !stopArmed(busySinceRef.current, Date.now())) return;
     const ctrl = abortRef.current;
     if (ctrl && !ctrl.signal.aborted) {
       explicitStops.current.add(ctrl);

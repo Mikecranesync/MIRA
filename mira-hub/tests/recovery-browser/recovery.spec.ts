@@ -456,3 +456,38 @@ test.describe("one logical request is ONE visible question/answer (whole class, 
     expect((await chat(page).calls()).length).toBe(1);
   });
 });
+
+test.describe("#4924 double-tap on Send stays protected; a deliberate Stop after any response is immediate", () => {
+  test("a second tap on the Send/Stop button before ANY response is not a Stop: one POST, the answer still completes", async ({ page, context, baseURL }) => {
+    const fx = fresh({ turns: [] });
+    await mount(context, page, baseURL!, fx);
+    await open(page);
+    await page.getByRole("textbox", { name: "Ask MIRA" }).fill(NEW_Q);
+    await page.getByRole("button", { name: "Send" }).click();
+    await page.getByRole("button", { name: "Stop" }).click();   // the immediate second tap: lands where Send was
+    await expect.poll(async () => (await chat(page).calls()).length).toBe(1);
+    await chat(page).push(frame({ kind: "content", content: NEW_A }));
+    await chat(page).push(frame({ kind: "status", status: "answered" }));
+    await chat(page).end();
+    await expect(page.getByRole("button", { name: "Send" })).toBeVisible();
+    await expect(conv(page).getByText(NEW_A)).toHaveCount(1);
+    await expect(conv(page).getByText(NEW_Q)).toHaveCount(1);
+    await expect(conv(page).getByText("Stopped before it finished")).toHaveCount(0);
+    expect((await chat(page).calls()).length).toBe(1);
+  });
+  test("control: once a response frame is on screen, an immediate Stop settles at once (partial text kept, no spurious Try again)", async ({ page, context, baseURL }) => {
+    const fx = fresh({ turns: [] });
+    await mount(context, page, baseURL!, fx);
+    await open(page);
+    await page.getByRole("textbox", { name: "Ask MIRA" }).fill(NEW_Q);
+    await page.getByRole("button", { name: "Send" }).click();
+    await expect.poll(async () => (await chat(page).calls()).length).toBe(1);
+    await chat(page).push(frame({ kind: "content", content: "Partial answer so far" }));
+    await expect(conv(page).getByText("Partial answer so far")).toHaveCount(1);
+    await page.getByRole("button", { name: "Stop" }).click();   // well inside 400 ms of Send, but a response has arrived
+    await expect(page.getByRole("button", { name: "Send" })).toBeVisible({ timeout: 5000 });
+    await expect(conv(page).getByText("Partial answer so far")).toHaveCount(1);
+    await expect(page.getByRole("button", { name: "Try again", exact: true })).toHaveCount(0);
+    expect((await chat(page).calls()).length).toBe(1);
+  });
+});
