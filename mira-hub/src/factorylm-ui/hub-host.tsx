@@ -182,12 +182,12 @@ function terminalRowsByRequest(turns: Detail["turns"]): Map<string, Detail["turn
 
 function savedExchangeMatches(exchange: RetainedExchange, row: Detail["turns"][number] | undefined): boolean {
   if (!row) return false;
-  // An exact replay can reclaim a saved error without changing its request ID.
-  // The saved text can be longer than what reached the browser before Stop.
-  // Match the server's execution receipt when present. Older servers can only
-  // confirm the local partial by returning the same text for that request.
-  if (exchange.replayedRequest && exchange.stopped && row.answerStatus === "error") {
-    if (!exchange.attemptId) return exchange.result.content === (row.answerText ?? "");
+  // An exact replay can reclaim an error without changing the request ID.
+  // A stale error must never replace a newer unconfirmed partial. Keep the
+  // existing text comparison for an explicit Stop on servers without receipts.
+  if (exchange.replayedRequest && !exchange.result.sawStatus && row.answerStatus === "error" &&
+      (exchange.stopped || !row.evidence.some((entry) => "kind" in entry && entry.kind === "safety_stop"))) {
+    if (!exchange.attemptId) return exchange.stopped && exchange.result.content === (row.answerText ?? "");
     return row.evidence.some((entry) => "kind" in entry && entry.kind === "stopped_attempt" &&
       entry.attemptId === exchange.attemptId);
   }
@@ -735,6 +735,7 @@ export function HubShellHost() {
 
     let componentLabel: string | null = null;
     let attemptId: string | null = null;
+    let responseStarted = false;
     const retainExchange = (result: CompatibleStreamResult, stopped: boolean) => {
       const retained: RetainedExchange = {
         ...exchange, result, content: result.content, citations: result.citations, stopped, componentLabel,
@@ -757,6 +758,9 @@ export function HubShellHost() {
       }
     };
     const settleExplicitStop = (result: CompatibleStreamResult) => {
+      // A posted conversation can be saved even if Stop precedes any answer
+      // text. Keep it reachable while the notebook list catches up.
+      if (ownsAttempt() && (responseStarted || result.content || result.safetyNotice)) retainExchange(result, true);
       settleRetry();
       if (ownsVisibleSend()) {
         setLive((cur) => (cur?.id === id ? { ...cur, content: result.content, result, stopped: true } : cur));
@@ -798,6 +802,7 @@ export function HubShellHost() {
       // Only tee while a sheet is open for this notebook — zero behavior
       // change (no tee, no extra branch) on every other turn. A stream can
       // be tee'd exactly once; call it once and keep both branches.
+      responseStarted = true;
       let stream: ReadableStream<Uint8Array> = res.body;
       if ("livingSheetJobId" in outBody) {
         const [forChat, forReceipt] = stream.tee();
@@ -838,18 +843,17 @@ export function HubShellHost() {
       const observed = stopped
         ? stoppedStreamResult({ partial: result.content, safetyNotice: result.safetyNotice })
         : result;
+      if (stopped && explicitStops.current.has(ctrl)) {
+        settleExplicitStop(observed);
+        return;
+      }
       if (ownsAttempt() && (observed.sawStatus || observed.content || observed.safetyNotice)) retainExchange(observed, stopped);
       if (!result.sawStatus) {
-        if (stopped && explicitStops.current.has(ctrl)) {
-          settleExplicitStop(observed);
-          return;
-        }
         if (ownsAttempt()) {
           dispatch({
             type: "recover-send", threadId, restoreDraft: true,
             recovery: {
               body: outBody, composition, question, recoveryId, draftRevision: retry?.draftRevision,
-              interruptedByNavigation: stopped || undefined,
               error: "MIRA didn't confirm the send. Try again to check the original request.",
             },
           });
@@ -890,9 +894,7 @@ export function HubShellHost() {
       } : undefined;
       const interruption = rejectionStatus === undefined && stop ? stop.carry(caught) : caught;
       if (rejectionStatus !== 401 && explicitStops.current.has(ctrl)) {
-        const stopped = stoppedStreamResult(interruption);
-        if (stopped.safetyNotice || stopped.content) retainExchange(stopped, true);
-        settleExplicitStop(stopped);
+        settleExplicitStop(stoppedStreamResult(interruption));
         return;
       }
       const retained = rejectionStatus === undefined ? retainedStreamInterruption(interruption) : null;
@@ -909,7 +911,6 @@ export function HubShellHost() {
           recovery: {
             body: outBody, composition, question, recoveryId, ...(refusedScope ? { refusedScope } : {}),
             error: rejectionStatus === undefined ? sendFailureMessage(caught) : errorMessageFor(rejectionCode, rejectionStatus),
-            interruptedByNavigation: retained?.stopped || undefined,
             draftRevision: retry?.draftRevision,
           },
         });

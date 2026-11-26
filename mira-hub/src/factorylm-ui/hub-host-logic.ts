@@ -319,7 +319,6 @@ export type HubSendRecovery = {
   readonly body: ReturnType<typeof chatBodyFor> & { componentSelection?: ScopeField };
   readonly composition?: ReturnType<typeof chatBodyFor>;
   readonly unposted?: boolean;
-  readonly interruptedByNavigation?: boolean;
   readonly bannerDismissed?: boolean;
   readonly question: string;
   readonly refusedScope?: ScopeField;
@@ -465,8 +464,9 @@ export function hubHostReducer(state: HubShellState, action: HubHostAction): Hub
     let next = state;
     for (const recovery of state.sendRecoveryByThread?.get(action.threadId) ?? []) {
       const requestId = recovery.body.clientRequestId;
-      if (recovery.unposted || !action.requestIds.has(requestId) ||
-          (recovery.interruptedByNavigation && action.replayableErrorIds?.has(requestId))) continue;
+      // A replayable saved error allows another exact POST. Detail may also
+      // still show this error while a newer attempt with the same ID settles.
+      if (recovery.unposted || !action.requestIds.has(requestId) || action.replayableErrorIds?.has(requestId)) continue;
       next = hubHostReducer(next, { type: "clear-recovery", threadId: action.threadId, recoveryId: sendRecoveryId(recovery) });
       if (recovery.draftRevision !== undefined) {
         next = hubHostReducer(next, {
@@ -552,11 +552,8 @@ export function hubHostReducer(state: HubShellState, action: HubHostAction): Hub
       const sendRecoveryByThread = new Map(state.sendRecoveryByThread);
       const existing = sendRecoveryByThread.get(action.threadId) ?? [];
       const recoveryId = sendRecoveryId(action.recovery);
-      const matching = existing.find((item) => sendRecoveryId(item) === recoveryId &&
-        item.body.clientRequestId === action.recovery.body.clientRequestId);
       const recovery = {
         ...action.recovery,
-        interruptedByNavigation: action.recovery.interruptedByNavigation ?? matching?.interruptedByNavigation,
         draftRevision: restore ? revision : action.recovery.draftRevision,
       };
       const peers = existing.filter((item) => sendRecoveryId(item) !== recoveryId);

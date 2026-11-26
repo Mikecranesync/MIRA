@@ -824,13 +824,16 @@ for (const interruption of [
   "navigation", "Stop", "navigation with clean close", "Stop with clean close",
   "retry Stop on abort", "retry Stop with clean close", "retry Discard",
   "retry Stop with stale detail", "retry Stop in a fresh chat",
+  "retry clean cutoff with stale detail", "Stop before answer", "Stop before answer with clean close",
 ]) {
-  test("F31/F34/F37/F38 the correct recovery survives " + interruption, async ({ page, context, baseURL }) => {
+  test("F31/F34/F37/F38/F44/F45 the correct recovery survives " + interruption, async ({ page, context, baseURL }) => {
     const explicitStop = interruption.startsWith("Stop");
     const cleanClose = interruption.endsWith("clean close");
     const holdRetry = interruption.startsWith("retry");
     const staleDetail = interruption.endsWith("stale detail");
-    const fresh = interruption.endsWith("fresh chat");
+    const cleanRetry = interruption === "retry clean cutoff with stale detail";
+    const emptyStop = interruption.startsWith("Stop before answer");
+    const fresh = emptyStop || interruption.endsWith("fresh chat");
     await auth(context, baseURL!);
     await routes(page, { enabled: true, resolve: "resolved", initial: { [THREAD]: { componentId: VFD, version: 2 } } });
     await otherMachine(page);
@@ -843,7 +846,8 @@ for (const interruption of [
       }));
     });
     const question = "Resume the interrupted photo question.";
-    let saved: "stopped" | "answered" | "unavailable" | "current stop" | undefined;
+    let saved: "stopped" | "answered" | "unavailable" | "current stop" | "empty stop" | undefined;
+    let staleReads = 0;
     let original = "";
     let retry = "";
     await page.route(/\/api\/equipment-notebooks\/?(\?.*)?$/, (route) => {
@@ -854,15 +858,17 @@ for (const interruption of [
     await page.route(new RegExp("/api/equipment-notebooks/" + NB + "/?(\\?.*)?$"), (route) => {
       if (!saved || new URL(route.request().url()).searchParams.get("threadId") !== THREAD) return route.fallback();
       if (saved === "unavailable") return route.fulfill(json({ error: "fixture_detail_failure" }, 503));
+      if (saved === "stopped") staleReads++;
       return route.fulfill(json({ ...oracle.detailEmpty,
         turns: [{ id: "saved-stopped-turn", clientRequestId: JSON.parse(original).clientRequestId, question,
           answerStatus: saved === "answered" ? "answered" : "error",
-          answerText: saved === "current stop" ? "Retry partial answer. Extra saved text."
+          answerText: saved === "empty stop" ? null
+            : saved === "current stop" ? "Retry partial answer. Extra saved text."
             : saved === "stopped" ? "Saved partial answer." : "Completed replay.",
           evidence: [{ kind: "stopped_attempt", attemptId: saved === "current stop" ? "retry-fixture-attempt" : "old-fixture-attempt" }] }],
       }));
     });
-    await page.addInitScript(({ deferStop, cleanClose, holdRetry }) => {
+    await page.addInitScript(({ deferStop, cleanClose, holdRetry, cleanRetry, emptyStop }) => {
       const fetchNormally = window.fetch.bind(window);
       let intercepted = 0;
       window.fetch = (input, init) => {
@@ -878,9 +884,15 @@ for (const interruption of [
             const headers = JSON.stringify({ kind: "headers", headers: {
               "x-mira-turn-attempt": retrying ? "retry-fixture-attempt" : "old-fixture-attempt",
             } });
+            const frame = emptyStop ? { kind: "progress", stage: "checking_answer" } : { kind: "content", content: partial };
             controller.enqueue(new TextEncoder().encode(
-              'data: ' + headers + '\n\ndata: ' + component + '\n\ndata: ' + JSON.stringify({ kind: "content", content: partial }) + '\n\n',
+              'data: ' + headers + '\n\ndata: ' + component + '\n\ndata: ' + JSON.stringify(frame) + '\n\n',
             ));
+            if (cleanRetry) {
+              if (!retrying) controller.close();
+              else window.addEventListener("fixture-cut-retry", () => controller.close(), { once: true });
+              return;
+            }
             init.signal?.addEventListener("abort", () => {
               const finish = () => {
                 document.documentElement.dataset.requestStopped = "yes";
@@ -894,7 +906,7 @@ for (const interruption of [
         });
         return Promise.resolve(new Response(stream, { headers: { "Content-Type": "text/event-stream" } }));
       };
-    }, { deferStop: explicitStop, cleanClose, holdRetry });
+    }, { deferStop: explicitStop, cleanClose, holdRetry, cleanRetry, emptyStop });
     await page.route(/\/api\/equipment-notebooks\/[^/]+\/chat\/?$/, (route) => {
       retry = route.request().postData() ?? "";
       const body = 'data: {"kind":"content","content":"Completed replay."}\n\ndata: {"kind":"status","status":"answered"}\n\n';
@@ -905,12 +917,34 @@ for (const interruption of [
     await expect(page.getByTestId("bench-asking-about")).toBeVisible();
     await composer(page).fill(question);
     await attachDraftPhoto(page, "stopped-request.png");
+    if (cleanRetry) saved = "unavailable";
     await page.getByRole("button", { name: "Send", exact: true }).click();
     const html = page.locator("html");
     await expect(html).toHaveAttribute("data-stopped-request", /stopped-request-photo/);
     original = (await html.getAttribute("data-stopped-request"))!;
-    await expect(page.getByText("Live partial answer.", { exact: true })).toBeVisible();
     const projects = page.getByRole("region", { name: "Projects" });
+    const origin = projects.locator('[data-item-id="notebook-' + NB + ':thread-' + THREAD + '"]');
+    const elsewhere = projects.locator('[data-item-id="notebook-' + OTHER_NB + ':thread-legacy"]');
+    const tryAgain = page.getByRole("button", { name: "Try again", exact: true });
+    if (cleanRetry) {
+      await tryAgain.click();
+      await expect(html).toHaveAttribute("data-fixture-retry-request", original);
+      await expect(page.getByText("Retry partial answer.", { exact: true })).toBeVisible();
+      saved = "stopped";
+      await page.evaluate(() => window.dispatchEvent(new Event("fixture-cut-retry")));
+      await expect.poll(() => staleReads).toBeGreaterThan(0);
+      await expect(page.getByRole("button", { name: "Stop", exact: true })).toHaveCount(0);
+      await elsewhere.click();
+      await origin.click();
+      await expect(page.getByText("Retry partial answer.", { exact: true })).toBeVisible();
+      await expect(page.getByText("Saved partial answer.", { exact: true })).toHaveCount(0);
+      await tryAgain.click();
+      await expect.poll(() => retry).toBe(original);
+      expect(uploads).toBe(1);
+      return;
+    }
+    if (emptyStop) await expect(page.getByText("Checking the answer…", { exact: true })).toBeVisible();
+    else await expect(page.getByText("Live partial answer.", { exact: true })).toBeVisible();
     if (explicitStop) await page.getByRole("button", { name: "Stop", exact: true }).click();
     await projects.locator('[data-item-id="notebook-' + OTHER_NB + ':thread-legacy"]').click();
     if (explicitStop) {
@@ -918,14 +952,21 @@ for (const interruption of [
       await page.evaluate(() => window.dispatchEvent(new Event("fixture-release-stop")));
     }
     await expect(html).toHaveAttribute("data-request-stopped", "yes");
-    saved = fresh ? undefined : explicitStop && cleanClose ? "unavailable" : "stopped";
-    const origin = projects.locator('[data-item-id="notebook-' + NB + ':thread-' + THREAD + '"]');
+    saved = emptyStop ? "empty stop" : fresh ? undefined : explicitStop && cleanClose ? "unavailable" : "stopped";
     await expect(origin).toBeVisible({ timeout: 4000 });
+    if (emptyStop) await expect(origin).toHaveAccessibleName("Stopped conversation");
     await origin.click();
+    if (emptyStop) {
+      await expect(page.getByText(question, { exact: true })).toBeVisible();
+      await expect(tryAgain).toHaveCount(0);
+      await expect(composer(page)).toHaveValue("");
+      expect(retry).toBe("");
+      expect(uploads).toBe(1);
+      return;
+    }
     const answers = page.locator('.fl-turn--aui[data-role="assistant"]');
     await expect(answers).toHaveCount(1);
     await expect(answers.first()).toContainText(fresh || saved === "unavailable" ? "Live partial answer." : "Saved partial answer.");
-    const tryAgain = page.getByRole("button", { name: "Try again", exact: true });
     if (explicitStop) {
       await expect(tryAgain).toHaveCount(0);
       await expect(composer(page)).toHaveValue("");
