@@ -111,7 +111,7 @@ beforeEach(() => {
     const urls = params[2] as string[];
     const pageNos = params[3] as number[];
     const rows = chapterCorpus
-      .map((r, i) => ({ id: `00000000-0000-0000-0000-${String(i).padStart(12, "0")}`, content: r.content, source_url: r.sourceUrl, page: r.sourcePage }))
+      .map((r, i) => ({ id: `00000000-0000-0000-0000-${String(i).padStart(12, "0")}`, content: r.content, source_url: r.sourceUrl, page: r.sourcePage, anchored: true /* real v2 ingest writes page_start on every row */ }))
       .filter((r) => urls.some((u, i) => u === r.source_url && pageNos[i] === r.page));
     return { rows };
   }) as never);

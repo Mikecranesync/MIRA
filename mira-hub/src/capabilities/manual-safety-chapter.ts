@@ -29,6 +29,7 @@
  */
 import type { PoolClient } from "pg";
 import { extractManualSafetyStatement } from "@/capabilities/manual-safety-statement";
+import { annotatePageTrust } from "@/capabilities/citation-passages";
 import {
   approvalGateEnabled,
   approvedSourceFilterSql,
@@ -202,7 +203,7 @@ async function resolveStarts(
   return starts;
 }
 
-type ChapterRow = { id: string; content: string; sourceUrl: string; sourcePage: number; chunkIndex: number | null };
+type ChapterRow = { id: string; content: string; sourceUrl: string; sourcePage: number; chunkIndex: number | null; anchored: boolean };
 
 /** The chunk's position within its upload (ingest writes it on every v2 row); NULL when absent or not an integer. */
 const CHUNK_INDEX_SQL = "CASE WHEN metadata->>'chunk_index' ~ '^[0-9]+$' THEN (metadata->>'chunk_index')::int END";
@@ -236,9 +237,10 @@ async function readChapterRows(
   if (admitApproved) params.push(approved);
   await client.query("SET LOCAL statement_timeout = '3s'");
   const res = await client.query(
-    `SELECT id::text AS id, content, source_url, page, chunk_index
+    `SELECT id::text AS id, content, source_url, page, chunk_index, anchored
        FROM (
          SELECT id, content, source_url, COALESCE(page_start, source_page) AS page,
+                (page_start IS NOT NULL) AS anchored,
                 ${CHUNK_INDEX_SQL} AS chunk_index,
                 ROW_NUMBER() OVER (
                   PARTITION BY source_url, COALESCE(page_start, source_page)
@@ -264,6 +266,7 @@ async function readChapterRows(
     sourceUrl: String(r.source_url ?? ""),
     sourcePage: Number(r.page),
     chunkIndex: r.chunk_index === null || r.chunk_index === undefined ? null : Number(r.chunk_index),
+    anchored: r.anchored === true,
   }));
 }
 
@@ -369,16 +372,35 @@ export async function retrieveSafetyChapterChunks(
   }
   // Retrieval order across documents, page order within each. sourcePage stays the PDF page (rereads
   // and citation keys use it); pageLabel is the manual's printed page (Codex #5056 r4 F8).
-  return docs.flatMap((d) => {
+  // #5955 (native review F4): page provenance is the WARNING ROW's own, never the first retrieved
+  // chunk's. Each row reports whether its page came from page_start and its own chunk ordinal; the
+  // actual document verdict (all authorized approved rows, as retrieval reads it) applies to
+  // unanchored rows only, so an anchored template cannot lend an unanchored warning a PDF page and
+  // an unanchored template cannot strip a genuinely anchored one.
+  const added = docs.flatMap((d) => {
     const offset = starts.get(d.docId)?.offset ?? 0;
-    return withinBudget(perDoc.get(d.sourceUrl)!).map((r) => ({
-        ...d.template,
+    return withinBudget(perDoc.get(d.sourceUrl)!).map((r): ManualChunk => {
+      const { pageTrust: _t, pageAnchored: _a, ...template } = d.template;
+      return {
+        ...template,
         content: r.content,
         sourcePage: r.sourcePage,
         pageLabel: String(r.sourcePage - offset > 0 ? r.sourcePage - offset : r.sourcePage),
-      chunkIndex: null,
-      rank: 0,
-    }));
+        chunkIndex: r.chunkIndex,
+        pageAnchored: r.anchored,
+        rank: 0,
+      };
+    });
+  });
+  if (added.length === 0 || added.every((c) => c.pageAnchored)) {
+    return added.map((c) => ({ ...c, pageTrust: "trusted" as const }));
+  }
+  const admit = (opts.approvedSourceDocIds ?? []).filter(Boolean);
+  const gate = admit.length > 0 && approvalGateEnabled();
+  return annotatePageTrust(client, tenantId, added, {
+    forDocs: (p) => approvedSourceFilterSql(gate ? p : null),
+    docParams: gate ? [admit] : [],
+    forUrls: "",
   });
 }
 

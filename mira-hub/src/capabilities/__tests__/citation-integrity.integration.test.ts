@@ -278,7 +278,7 @@ describe("#5955 a failed page-fact read inside a transaction does not poison the
   const legacyRow: PassageChunk[] = [{ content: "x", sourceUrl: LEGACY, sourcePage: 1, docId: NODE_DOC_MULTI, chunkIndex: 1 }];
   it("with a savepoint: pages are withheld and the next statement on the same client still works", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
-    const out = await annotatePageTrust(client, CALLER, legacyRow, broken, { savepoint: true });
+    const out = await annotatePageTrust(client, CALLER, legacyRow, broken, { transaction: "owned" });
     expect(out[0].pageTrust).toBe("unknown");
     const next = await client.query("SELECT 1 AS ok");
     expect(next.rows[0].ok).toBe(1);

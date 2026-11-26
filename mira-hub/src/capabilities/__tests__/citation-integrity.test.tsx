@@ -162,7 +162,7 @@ describe("annotatePageTrust — failure direction and query budget", () => {
       ...Array.from({ length: 20 }, (_, i) => chunk({ content: `u${i}`, sourceUrl: `gdrive://${i % 4}.pdf`, sourcePage: 2, chunkIndex: i })),
       ...Array.from({ length: 20 }, (_, i) => chunk({ content: `d${i}`, sourceUrl: `hub://${i % 3}`, docId: `00000000-0000-4000-8000-00000000000${i % 3}`, sourcePage: 2, chunkIndex: i })),
     ];
-    await annotatePageTrust({ query: q }, "t", cs, approval);
+    await annotatePageTrust({ query: q }, "t", cs, approval, { transaction: "none" });
     expect(q).toHaveBeenCalledTimes(2);
   });
 });

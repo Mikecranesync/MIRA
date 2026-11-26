@@ -186,8 +186,8 @@ import { reviewedManualFor } from "@/capabilities/reviewed-manual-library";
 import { asksToFindManual, exactManualIdentity, extractCandidateIdentity, isSafeCandidateSearchIdentity, wantsManualDocumentation } from "@/capabilities/candidate-identity";
 import { manufacturerInGroup } from "@/lib/manufacturerNormalize";
 import { citationTitle } from "@/capabilities/citation-title";
-import { citationIndex, displayPage, groupPassages, passageKey } from "@/capabilities/citation-passages";
-import { pageSelector, replaceNumericPage, withoutUnverifiedPage } from "@/capabilities/citation-page-display";
+import { citationIndex, displayPage, displaySourceUrl, groupPassages, passageKey } from "@/capabilities/citation-passages";
+import { pageSelector } from "@/capabilities/citation-page-display";
 import { ratingColumnFinding, ratingColumnText } from "@/capabilities/rating-column";
 import { claimPartSearchProposal } from "@/capabilities/part-search-claim";
 import { translateForSearch } from "@/capabilities/translate-for-search";
@@ -538,7 +538,7 @@ async function buildCitations(
       fileId: null,
       // A manufacturer manual's own address, so the reader can open it; only a
       // place a browser can actually go (http/https) is carried.
-      ...(/^https?:\/\//i.test(c.sourceUrl ?? "") ? { sourceUrl: displayPage(c) != null ? replaceNumericPage(c.sourceUrl, displayPage(c)!) : withoutUnverifiedPage(c.sourceUrl) } : {}),
+      ...(/^https?:\/\//i.test(c.sourceUrl ?? "") ? { sourceUrl: displaySourceUrl(c) ?? c.sourceUrl } : {}),
       // Claim-centered window (CIT-07 phase 2) — not the chunk head.
       quote: relevantQuoteWindow(c.content, question),
     };
@@ -2906,6 +2906,7 @@ async function handleChatTurn(
     : await releaseClaimOnFailure(() =>
         withTenantContext(ctx.tenantId, (client) =>
           retrieveNodeChunks(client, ctx.tenantId, retrievalQuery, {
+            pageFactTransaction: "owned", // withTenantContext transaction (#5955)
             nodeId,
             unsPath: null, // notebook nodes are standalone; scope is the doc set
             // 8 with the rerank lane on (top 2 pinned, the rest reranked), 6 with it off.
@@ -3770,6 +3771,7 @@ async function handleChatTurn(
       const stopPass = (query: string, rawQuery: string, label: string, diagnostics: StopDiagnostics) =>
         withTenantContext(ctx.tenantId, (client) =>
           retrieveNodeChunks(client, ctx.tenantId, query, {
+            pageFactTransaction: "owned", // withTenantContext transaction (#5955)
             nodeId,
             unsPath: null,
             topK: 8,

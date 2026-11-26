@@ -346,6 +346,7 @@ export async function POST(
       const chunks = await retrieveNodeChunks(c, ctx.tenantId, lastUser.content, {
         nodeId: id,
         unsPath: row.uns_path,
+        pageFactTransaction: "owned", // inside withTenantContext (#5955)
         ...(docId ? { docId, approvedSourceDocIds: [docId] } : {}),
       });
       let allChunks = chunks;
@@ -353,6 +354,7 @@ export async function POST(
         const linkedChunks = await retrieveNodeChunks(c, ctx.tenantId, lastUser.content, {
           nodeId: id,
           unsPath: row.uns_path,
+          pageFactTransaction: "owned",
           docIds: linkedDocIds,
           validatedDocScope: true,
           // #3437 — a file a person linked to this node is admitted under the

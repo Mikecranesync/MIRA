@@ -239,6 +239,8 @@ export async function POST(req: Request) {
             docIds,
             validatedDocScope: true,
             approvedSourceDocIds: docIds,
+            // Raw pool client (autocommit): SAVEPOINT is illegal here (#5955).
+            pageFactTransaction: "none",
           });
         }
       } catch (err) {

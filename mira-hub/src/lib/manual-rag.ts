@@ -1,7 +1,6 @@
 import type { PoolClient } from "pg";
 import { citationPageLabel } from "@/lib/citation-page";
-import { annotatePageTrust, citationIndex, displayPage, passageKey } from "@/capabilities/citation-passages";
-import { replaceNumericPage, withoutUnverifiedPage } from "@/capabilities/citation-page-display";
+import { annotatePageTrust, citationIndex, displayPage, displaySourceUrl, passageKey } from "@/capabilities/citation-passages";
 import type { IdentityStatus } from "@/lib/equipment-notebooks";
 import { familySqlTerms, inferEquipmentType } from "@/lib/equipment-type";
 import { manufacturerInGroup, manufacturerSearchNames, normalizeManufacturer } from "@/lib/manufacturerNormalize";
@@ -1046,7 +1045,8 @@ export async function retrieveManualChunks(
     forDocs: () => "",
     docParams: [],
     forUrls: approvalFilterSql(),
-  });
+    // The OEM search runs on a raw pool client (autocommit): SAVEPOINT is illegal there.
+  }, { transaction: "none" });
   const asked = opts.askedMachine;
   const boundModel = opts.model?.trim();
   if (!asked || !boundModel || found.length === 0 || libraryIsForTurnsMachine(asked.message, boundModel, opts.manufacturer ?? null)) return found;
@@ -1629,15 +1629,20 @@ export async function retrieveNodeChunks(
   client: PoolClient,
   tenantId: string,
   query: string,
-  opts: Parameters<typeof retrieveNodeChunksUnassessed>[3],
+  opts: Parameters<typeof retrieveNodeChunksUnassessed>[3] & {
+    /** Transaction ownership of `client` for the page-fact read (#5955): "owned" = inside
+     *  withTenantContext (savepoint recovery), "none" = raw/autocommit pool client. */
+    pageFactTransaction?: "owned" | "none";
+  },
 ): Promise<ManualChunk[]> {
-  const chunks = await retrieveNodeChunksUnassessed(client, tenantId, query, opts);
+  const { pageFactTransaction, ...searchOpts } = opts;
+  const chunks = await retrieveNodeChunksUnassessed(client, tenantId, query, searchOpts);
   const approved = opts.approvedSourceDocIds;
   return annotatePageTrust(client, tenantId, chunks, {
     forDocs: (p) => approvedSourceFilterSql(approved && approvalGateEnabled() ? p : null),
     docParams: approved && approvalGateEnabled() ? [approved] : [],
     forUrls: approvalFilterSql(),
-  }, { savepoint: true });
+  }, { transaction: pageFactTransaction });
 }
 
 async function retrieveNodeChunksUnassessed(
@@ -2111,6 +2116,7 @@ async function retrieveNodeChunksUnassessed(
           source_url,
           source_page,
           page_start,
+          metadata->>'chunk_index' AS chunk_index,
           ${PAGE_LABEL_SQL},
           section_path,
           metadata->>'filename' AS filename,
@@ -2169,6 +2175,7 @@ async function retrieveNodeChunksUnassessed(
           source_url,
           source_page,
           page_start,
+          metadata->>'chunk_index' AS chunk_index,
           ${PAGE_LABEL_SQL},
           section_path,
           metadata->>'filename' AS filename,
@@ -2285,6 +2292,7 @@ async function retrieveNodeChunksUnassessed(
             source_url,
             source_page,
             page_start,
+            metadata->>'chunk_index' AS chunk_index,
             ${PAGE_LABEL_SQL},
             section_path,
             metadata->>'filename' AS filename,
@@ -2459,7 +2467,7 @@ async function retrieveNodeChunksUnassessed(
       if (window.length) windowParams[4] = window;
       const res = await client.query(
         `SELECT
-            content, doc_id::text AS doc_id, source_url, source_page, page_start,
+            content, doc_id::text AS doc_id, source_url, source_page, page_start, metadata->>'chunk_index' AS chunk_index,
             ${PAGE_LABEL_SQL},
             section_path, metadata->>'filename' AS filename, metadata->'table_models' AS table_models, metadata->'table_unqualified' AS table_unqualified, metadata->>'table_scope' AS table_scope, metadata->>'table_header' AS table_header, verified,
             ${documentHeadingSql},
@@ -3068,6 +3076,7 @@ async function retrieveNodeChunksUnassessed(
                 source_url,
                 source_page,
                 page_start,
+                metadata->>'chunk_index' AS chunk_index,
                 section_path,
                 metadata->>'filename' AS filename,
                 metadata->'table_models' AS table_models, metadata->'table_unqualified' AS table_unqualified, metadata->>'table_scope' AS table_scope, metadata->>'table_header' AS table_header,
@@ -3417,9 +3426,11 @@ async function retrieveNodeChunksUnassessed(
           ? null
           : Number(r.source_page),
     pageLabel: pageLabelFromRow(r),
-    // Node/v2 path sources a real page from page_start — never a chunk ordinal —
-    // so leave chunkIndex null and always render the page (the #2910 guard is a no-op here).
-    chunkIndex: null,
+    // #5955 (native review F3): every lane projects the row's own chunk ordinal so a minority
+    // UNANCHORED source_page === chunk_index stamp is withheld inside a page-diverse document.
+    // A row with a real page_start is `pageAnchored`, and displayPage never applies the ordinal
+    // rule to an anchored row — an anchor that coincides with its ordinal still renders.
+    chunkIndex: r.chunk_index != null && Number.isFinite(Number(r.chunk_index)) ? Number(r.chunk_index) : null,
     pageAnchored: r.page_start != null,
     title: String(r.filename ?? r.section_path ?? "Attached document"),
     rank: Number(r.rank ?? 0),
@@ -3562,7 +3573,7 @@ export function chunksToSources(chunks: ManualChunk[]): ManualSource[] {
     out.push({
       index: idx.get(key)!,
       title,
-      url: c.sourceUrl ? (displayPage(c) != null ? replaceNumericPage(c.sourceUrl, displayPage(c)!) : withoutUnverifiedPage(c.sourceUrl)) : null,
+      url: displaySourceUrl(c),
       page: displayPage(c),
       verified: c.verified === true,
     });

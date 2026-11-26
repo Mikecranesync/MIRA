@@ -32,7 +32,7 @@
  * document with no page all survive, and the same passage twice still collapses.
  */
 import { createHash } from "node:crypto";
-import { displayPage } from "@/capabilities/citation-page-display";
+import { displayPage, replaceNumericPage, withoutUnverifiedPage } from "@/capabilities/citation-page-display";
 
 export type PageTrust = "trusted" | "unknown";
 
@@ -50,6 +50,17 @@ export type PassageChunk = {
 };
 
 export { displayPage };
+
+/**
+ * The address a chunk's citation may open: a KNOWN page replaces a stale numeric locator in the
+ * stored fragment, an unknown page loses it (#5955). One function for the streamed source list,
+ * the notebook citation and the persisted asset "Why MIRA thinks this" trace, so they agree.
+ */
+export function displaySourceUrl(c: PassageChunk): string | null {
+  if (!c.sourceUrl) return null;
+  const page = displayPage(c);
+  return page != null ? replaceNumericPage(c.sourceUrl, page) : withoutUnverifiedPage(c.sourceUrl);
+}
 
 const digest = (text: string) => createHash("sha1").update(text.replace(/\s+/g, " ").trim()).digest("hex");
 
@@ -193,16 +204,31 @@ export async function annotatePageTrust<T extends PassageChunk>(
   tenantId: string,
   chunks: T[],
   approval: PageFactApproval,
-  /** Inside a transaction (the notebook path runs under withTenantContext) a failed read would
-   *  abort the whole transaction; a savepoint confines the failure to this read. */
-  opts: { savepoint?: boolean } = {},
+  /**
+   * Who owns a transaction around this read (#5955 native review F2).
+   *  - "owned": the caller is inside a transaction (the notebook path runs under withTenantContext):
+   *    a failed read would abort it, so the read runs under a SAVEPOINT that confines the failure.
+   *  - "none": a raw/autocommit client (asset chat, Hub Ask): SAVEPOINT is illegal there, so the
+   *    read runs directly.
+   *  - "probe" (default when a caller does not say): try the savepoint; if the server refuses it (no
+   *    transaction block) fall back to the direct read instead of withholding valid page facts.
+   */
+  opts: { transaction?: "owned" | "none" | "probe" } = {},
 ): Promise<T[]> {
   if (chunks.length === 0) return chunks;
   let facts: Map<string, DocumentPageFact> | null = null;
   if (chunks.some((c) => !c.pageAnchored)) {
-    const sp = opts.savepoint ? "cit_page_facts" : null;
+    const mode = opts.transaction ?? "probe";
+    let sp: string | null = mode === "none" ? null : "cit_page_facts";
     try {
-      if (sp) await client.query(`SAVEPOINT ${sp}`);
+      if (sp) {
+        try {
+          await client.query(`SAVEPOINT ${sp}`);
+        } catch (spErr) {
+          if (mode === "owned") throw spErr;
+          sp = null; // probe: no transaction block here — read directly
+        }
+      }
       facts = await loadDocumentPageFacts(client, tenantId, chunks, approval);
       if (sp) await client.query(`RELEASE SAVEPOINT ${sp}`);
     } catch (err) {
