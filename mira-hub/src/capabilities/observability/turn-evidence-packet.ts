@@ -40,13 +40,24 @@ export type AnswerGateDecision = "answered" | "insufficient_evidence" | "blocked
 export type GenerationAttempt = {
   provider: string | null;
   model: string | null;
-  /** "generated_not_served": a #5941 redraft that produced text the turn did not serve (#6023). */
-  outcome: "served" | "http_error" | "exception" | "client_stop" | "generated_not_served";
+  /**
+   * "generated_not_served": a generation the turn did not serve — a #5941 redraft (late Stop,
+   * failed check, unsafe verdict), or draft 1 when a served redraft replaced it, so exactly one
+   * attempt is "served" (#6023). "empty_completion": a redraft attempt that answered 200 with
+   * known usage and no text (billed, unlike "http_error", an unbilled rejection). "exception":
+   * billed with unknown usage (timeout, unreadable body, no usage block, a malformed count).
+   */
+  outcome: "served" | "http_error" | "exception" | "client_stop" | "generated_not_served" | "empty_completion";
   latency_ms: number | null;
   route_reason: string | null;
   response_id: string | null;
   /** True on an attempt of the #5941 redraft pass; absent on draft 1's attempts (#6023). */
   redraft?: true;
+  /**
+   * True on a generating attempt (served or generated_not_served) whose usage is unknown or
+   * malformed, so it is why the whole-turn token totals are null. Set on redraft turns only.
+   */
+  usage_unknown?: true;
 };
 
 export type TurnEvidencePacketIds = {
