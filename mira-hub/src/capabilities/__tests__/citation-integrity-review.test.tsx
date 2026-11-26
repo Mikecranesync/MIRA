@@ -33,6 +33,7 @@ import {
   effectiveCitationPage,
   numericLocatorUnproven,
   pageSelector,
+  replaceNumericPage,
   withoutUnverifiedPage,
 } from "@/capabilities/citation-page-display";
 
@@ -64,7 +65,7 @@ describe("C1 — numeric metadata locators obey page trust", () => {
   it("control: a trusted document's numeric printed page is kept; so is a label on a chunk with no stamp at all", () => {
     const trusted = { ...ordinal, sourcePage: 161, chunkIndex: 3, pageLabel: "17", pageTrust: "trusted" as const };
     expect(lockoutPageOf(trusted)).toBe("17");
-    const unstamped = { ...ordinal, sourcePage: null, chunkIndex: null, pageLabel: "5" };
+    const unstamped = { ...ordinal, sourcePage: null, chunkIndex: null, pageLabel: "5", pageTrust: undefined };
     expect(lockoutPageOf(unstamped)).toBe("5");
   });
   it("numericLocatorUnproven: only a bare integer on a withheld stamp", () => {
@@ -169,6 +170,47 @@ describe("C3 — an unknown page leaves no numeric fragment on an openable addre
     expect(chunksToSources([base])[0]).toMatchObject({ url: "https://oem.invalid/m.pdf", page: null });
     const real = { ...base, sourcePage: 161, chunkIndex: 3, pageTrust: "trusted" as const, sourceUrl: "https://oem.invalid/m.pdf" };
     expect(chunksToSources([real])[0]).toMatchObject({ url: "https://oem.invalid/m.pdf", page: 161 });
+  });
+});
+
+
+// ── continuation (D1/D2): the same two classes, one step further ─────────────────────────────
+describe("D1 — a withheld stamp's numeric alias is withheld when the physical page is ABSENT too", () => {
+  const nullPage: ManualChunk = { ...ordinal, sourcePage: null };
+  it("banner and stop: bare \"1\" on an unknown document with no stamp is not published", () => {
+    expect(pageFromRetrievedChunks([nullPage])).toBeNull();
+    expect(lockoutPageOf(nullPage)).toBeNull();
+  });
+  it("controls: printed 2-15 stays; anchored page 1 stays; never-assessed unstamped label stays; trusted unstamped label stays", () => {
+    expect(lockoutPageOf({ ...nullPage, pageLabel: "2-15" })).toBe("2-15");
+    expect(pageFromRetrievedChunks([{ ...nullPage, pageLabel: "2-15" }])).toBe("2-15");
+    expect(lockoutPageOf({ ...nullPage, sourcePage: 1, chunkIndex: 1, pageAnchored: true })).toBe("1");
+    expect(lockoutPageOf({ ...nullPage, pageTrust: undefined, pageLabel: "5" })).toBe("5");
+    expect(lockoutPageOf({ ...nullPage, pageTrust: "trusted", pageLabel: "5" })).toBe("5");
+    expect(numericLocatorUnproven({ ...nullPage, pageAnchored: true }, "1")).toBe(false);
+  });
+});
+
+describe("D2 — a KNOWN page replaces a stale numeric locator in the address it opens", () => {
+  const known = (fragment: string): EvidenceCitation => ({ ...historic, page: 161, sourceUrl: `https://oem.invalid/manual.pdf${fragment}` });
+  it.each([
+    ["#page=715", "https://oem.invalid/manual.pdf#page=161"],
+    ["#p715", "https://oem.invalid/manual.pdf#page=161"],
+    ["#view=Fit&page=715", "https://oem.invalid/manual.pdf#view=Fit&page=161"],
+  ])("%s", (fragment, want) => expect(citationHref(known(fragment))).toBe(want));
+  it("controls: an unrelated anchor, a matching page and no fragment are unchanged / completed as before", () => {
+    expect(citationHref(known("#section-3"))).toBe("https://oem.invalid/manual.pdf#section-3");
+    expect(citationHref(known("#page=161"))).toBe("https://oem.invalid/manual.pdf#page=161");
+    expect(citationHref(known(""))).toBe("https://oem.invalid/manual.pdf#page=161");
+  });
+  it("the shared builder ships the same repaired address (known page) and still strips for an unknown one", () => {
+    const c: ManualChunk = { content: "a", manufacturer: "A", modelNumber: "B", sourceUrl: "https://oem.invalid/m.pdf#view=Fit&page=715", sourcePage: 161, chunkIndex: 3, pageTrust: "trusted", title: "t", rank: 1 };
+    expect(chunksToSources([c])[0].url).toBe("https://oem.invalid/m.pdf#view=Fit&page=161");
+    expect(chunksToSources([{ ...c, sourcePage: 715, chunkIndex: 715 }])[0].url).toBe("https://oem.invalid/m.pdf#view=Fit");
+  });
+  it("replaceNumericPage never adds a locator and collapses duplicates", () => {
+    expect(replaceNumericPage("https://x/y.pdf", 7)).toBe("https://x/y.pdf");
+    expect(replaceNumericPage("https://x/y.pdf#page=1&p2&zoom=80", 7)).toBe("https://x/y.pdf#page=7&zoom=80");
   });
 });
 

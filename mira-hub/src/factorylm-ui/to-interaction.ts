@@ -16,7 +16,7 @@
  * (visual-evidence-context, PR #3832/#3833) is a separate read the mount wires
  * when it is on main; this mapper must never claim it.
  */
-import { effectiveCitationPage, withoutUnverifiedPage } from "@/capabilities/citation-page-display";
+import { effectiveCitationPage, replaceNumericPage, withoutUnverifiedPage } from "@/capabilities/citation-page-display";
 import type {
   ContextSnapshot,
   EvidenceBasisKind,
@@ -199,7 +199,7 @@ export function citationHref(citation: EvidenceCitation): string | undefined {
   if (citation.originFileId) return fileUrl(citation.originFileId);
   if (citation.fileId) return viewerHref(citation.fileId, shown);
   const url = citation.sourceUrl ?? "";
-  if (/^https?:\/\//i.test(url)) return shown ? (url.includes("#") ? url : `${url}${page}`) : withoutUnverifiedPage(url);
+  if (/^https?:\/\//i.test(url)) return shown ? (url.includes("#") ? replaceNumericPage(url, shown) : `${url}${page}`) : withoutUnverifiedPage(url);
   return undefined;
 }
 

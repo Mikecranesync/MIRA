@@ -124,8 +124,9 @@ const SCHEMA = "cit5955_route";
 const SYSTEM = "59550000-0000-4000-8000-0000000000aa";
 const LEGACY = "gdrive://520-um001_-en-e (1).pdf";
 const ORDINAL = "gdrive://520-um001_-en-e.pdf";
-const REAL = "https://crawler.invalid/520-um001_-en-e.pdf";
-const TWIN_A = "https://oem-a.invalid/same-name.pdf";
+// Stale numeric locators on the stored addresses (the D2/C3 classes): a known page must replace one, an unknown page must lose it.
+const REAL = "https://crawler.invalid/520-um001_-en-e.pdf#view=Fit&page=715";
+const TWIN_A = "https://oem-a.invalid/same-name.pdf#p715";
 const TWIN_B = "https://oem-b.invalid/same-name.pdf";
 const F004 = "Fault F004 UnderVoltage: the DC bus voltage fell below the minimum value.";
 const F004_B = "Fault F004 UnderVoltage second note: check the incoming line voltage at the drive terminals.";
@@ -245,6 +246,10 @@ describe("#5955 notebook chat route — page integrity through retrieval, prompt
     expect(r.prompt).toContain("RETRIEVED REFERENCE DOCUMENTS");
     const real = r.sources.find((c) => c.quote?.includes("Crawler."));
     expect(real?.page).toBe(161);
+    // D2: the address the chip opens carries the PROVEN page, not the stale 715; D3-class: an unknown page loses its locator.
+    expect(real?.sourceUrl).toBe("https://crawler.invalid/520-um001_-en-e.pdf#view=Fit&page=161");
+    const twinA = r.sources.find((c) => c.quote?.includes("Twin A wording"));
+    expect(twinA?.sourceUrl).toBe("https://oem-a.invalid/same-name.pdf");
     // The model is never shown a page it must not repeat.
     expect(r.prompt).toContain("p.161");
     expect(r.prompt).not.toMatch(/p\.715/);

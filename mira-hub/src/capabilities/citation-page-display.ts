@@ -34,7 +34,11 @@ export function displayPage(c: PageTrustFields): number | null {
 /** True when `label` is a bare integer that merely restates a stamped page this chunk may not show. */
 export function numericLocatorUnproven(c: PageTrustFields, label: string | null | undefined): boolean {
   if (!label || !/^\s*\d+\s*$/.test(label)) return false;
-  return c.sourcePage != null && displayPage(c) == null;
+  if (displayPage(c) != null) return false;
+  // A stamp that is present but withheld, OR a document verdict of "unknown" with no physical
+  // page at all: the integer is an unproven alias either way. A chunk never assessed and with no
+  // stamp (nothing says its label is wrong) keeps a printed number.
+  return c.sourcePage != null || (c.pageTrust === "unknown" && !c.pageAnchored);
 }
 
 export type CitationPageFields = {
@@ -61,6 +65,26 @@ export function effectiveCitationPage(c: CitationPageFields): number | null {
   if (c.docId || c.fileId || c.originFileId) return page;
   if (/^https?:\/\//i.test(c.sourceUrl ?? "")) return page;
   return null;
+}
+
+/**
+ * `url` with any numeric page locator in its fragment replaced by the KNOWN page, keeping every
+ * other fragment argument/anchor and the address itself. A URL with no numeric locator is
+ * returned unchanged (nothing is added).
+ */
+export function replaceNumericPage(url: string, page: number): string {
+  const at = url.indexOf("#");
+  if (at < 0) return url;
+  const parts = url.slice(at + 1).split("&");
+  let replaced = false;
+  const out: string[] = [];
+  for (const part of parts) {
+    if (/^(?:page=\d+|p\d+)$/i.test(part)) {
+      if (!replaced) out.push(`page=${page}`);
+      replaced = true;
+    } else out.push(part);
+  }
+  return replaced ? `${url.slice(0, at)}#${out.join("&")}` : url;
 }
 
 /** The click-through query for a citation's source page: only a page it may display. */
