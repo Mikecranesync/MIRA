@@ -60,6 +60,22 @@ vi.mock("@/capabilities/observability/jev-decision", async (importOriginal) => {
   const o = await importOriginal<typeof import("@/capabilities/observability/jev-decision")>();
   return { ...o, evaluateTurnDecision: vi.fn(o.evaluateTurnDecision) };
 });
+// #6048: span attributes are recorded (the "traced" half of #6062's no-text check), and the
+// normal path's post-settle span write can be made to throw (the once-guard case).
+const spanTap = vi.hoisted(() => ({ calls: [] as unknown[], throwOnPersistOk: false }));
+vi.mock("@/capabilities/observability/tracing", async (importOriginal) => {
+  const o = await importOriginal<typeof import("@/capabilities/observability/tracing")>();
+  return {
+    ...o,
+    setSpanAttrs: (...a: Parameters<typeof o.setSpanAttrs>) => {
+      spanTap.calls.push(a[0]);
+      if (spanTap.throwOnPersistOk && (a[0] as Record<string, unknown>)["mira.persist.outcome"] === "ok") {
+        throw new Error("post-settle span write failed (test)");
+      }
+      return o.setSpanAttrs(...a);
+    },
+  };
+});
 // #6062: a pre-commit failure inside the answer-gate block (before recordTurn), on demand.
 const decisionStateFail = vi.hoisted(() => ({ on: false }));
 vi.mock("@/capabilities/observability/turn-decision-state", async (importOriginal) => {
@@ -689,6 +705,7 @@ describe("#6048 — a body cancel after the commit still persists the packet and
   afterEach(() => {
     domainMock.recordTurn.mockImplementation(async () => undefined);
     decisionStateFail.on = false;
+    spanTap.throwOnPersistOk = false;
   });
 
   /** Holds the cited-page read (after the second judge, before the commit point) until released. */
@@ -903,6 +920,18 @@ describe("#6048 — a body cancel after the commit still persists the packet and
     evaluateMock.mockImplementation(real);
   });
 
+  it("control (once-guard): a throw AFTER the normal-path settle does not write the packet a second time", async () => {
+    stubFetch(REDRAFT, [verdict("unsafe"), verdict("safe", "none")]);
+    spanTap.throwOnPersistOk = true;
+    const res = await POST(req({ message: Q_PLAIN, sourceDocIds: [DOC_A], clientRequestId: REQ_ID }, false), params);
+    await res.text().catch(() => "");
+    const r = await settled();
+    // Precondition: the injected throw really fired, after the settle.
+    expect(spanTap.calls.some((c) => (c as Record<string, unknown>)["mira.persist.outcome"] === "ok")).toBe(true);
+    expect(r.outcome.semantic_redraft).toBe("served");
+    expect(evaluateMock).toHaveBeenCalledTimes(1);
+  });
+
   it("control: a failure BEFORE the commit point persists no packet, writes no history, and abandons the request claim", async () => {
     stubFetch(REDRAFT, [verdict("safe", "none")]);
     decisionStateFail.on = true;
@@ -1041,6 +1070,7 @@ describe("#6062 — a redraft stopped by a floor records which floor, and never 
   /** Everything the route wrote or logged on this turn, as one string. */
   const everything = () =>
     JSON.stringify([
+      spanTap.calls,
       persistMock.persistTurnUsage.mock.calls,
       domainMock.recordTurn.mock.calls,
       (console.log as unknown as ReturnType<typeof vi.fn>).mock.calls,
@@ -1049,6 +1079,7 @@ describe("#6062 — a redraft stopped by a floor records which floor, and never 
     ]);
 
   async function floorStop(text: string, setup?: () => void) {
+    spanTap.calls.length = 0;
     setup?.();
     const { judgeBodies } = stubFetch(text, [verdict("unsafe"), verdict("safe", "none")]);
     const r = await run(Q_PLAIN);
