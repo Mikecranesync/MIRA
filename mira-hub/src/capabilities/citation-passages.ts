@@ -32,6 +32,7 @@
  * document with no page all survive, and the same passage twice still collapses.
  */
 import { createHash } from "node:crypto";
+import { displayPage } from "@/capabilities/citation-page-display";
 
 export type PageTrust = "trusted" | "unknown";
 
@@ -48,16 +49,7 @@ export type PassageChunk = {
   pageTrust?: PageTrust;
 };
 
-/**
- * The page number safe to SHOW (and to deep-link). Null = unknown.
- * Absent `pageTrust` (a chunk no retrieval assessed) keeps the older chunk-level rule only.
- */
-export function displayPage(c: Pick<PassageChunk, "sourcePage" | "chunkIndex" | "pageAnchored" | "pageTrust">): number | null {
-  if (c.sourcePage == null) return null;
-  if (c.chunkIndex != null && c.sourcePage === c.chunkIndex && !c.pageAnchored) return null;
-  if (c.pageTrust === "unknown" && !c.pageAnchored) return null;
-  return c.sourcePage;
-}
+export { displayPage };
 
 const digest = (text: string) => createHash("sha1").update(text.replace(/\s+/g, " ").trim()).digest("hex");
 

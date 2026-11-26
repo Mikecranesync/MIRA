@@ -261,6 +261,18 @@ describe("#5955 notebook chat route — page integrity through retrieval, prompt
     }
   });
 
+  it("C2: the server attests only a page it proved (selector) — live and persisted — so a saved pre-fix citation can be told apart", async () => {
+    const r = await ask((m) => `F004 means UnderVoltage ${m}.`);
+    const real = r.sources.find((c) => c.quote?.includes("Crawler."));
+    expect(real).toMatchObject({ page: 161, selector: { type: "page", value: 161 } });
+    for (const c of r.sources.filter((x) => x !== real)) {
+      expect(c.page).toBeNull();
+      expect(c.selector).toBeUndefined();
+    }
+    const persisted = (((r.recorded?.[2] as { evidence?: Array<Record<string, unknown>> } | undefined)?.evidence ?? []) as Array<Record<string, unknown>>).filter((e) => typeof e.citationId === "string");
+    expect(persisted.find((e) => String(e.quote).includes("Crawler."))).toMatchObject({ selector: { type: "page", value: 161 } });
+  });
+
   it("several distinct null-page passages of ONE document all survive with contiguous ids; blank-docId twins do not collide", async () => {
     const r = await ask((m) => `F004 means UnderVoltage ${m}.`);
     // The two distinct legacy F004 passages (same document, same stamped page 1) are two citations.

@@ -186,6 +186,7 @@ import { asksToFindManual, exactManualIdentity, extractCandidateIdentity, isSafe
 import { manufacturerInGroup } from "@/lib/manufacturerNormalize";
 import { citationTitle } from "@/capabilities/citation-title";
 import { citationIndex, displayPage, groupPassages, passageKey } from "@/capabilities/citation-passages";
+import { pageSelector, withoutUnverifiedPage } from "@/capabilities/citation-page-display";
 import { ratingColumnFinding, ratingColumnText } from "@/capabilities/rating-column";
 import { claimPartSearchProposal } from "@/capabilities/part-search-claim";
 import { translateForSearch } from "@/capabilities/translate-for-search";
@@ -530,10 +531,12 @@ async function buildCitations(
       docId: c.docId ?? "",
       sourceTitle: citationTitle(c),
       page: displayPage(c),
+      // The server attests a page it proved, so display can tell it from a pre-#5955 saved one.
+      ...(displayPage(c) != null ? { selector: pageSelector(displayPage(c)!) } : {}),
       fileId: null,
       // A manufacturer manual's own address, so the reader can open it; only a
       // place a browser can actually go (http/https) is carried.
-      ...(/^https?:\/\//i.test(c.sourceUrl ?? "") ? { sourceUrl: c.sourceUrl } : {}),
+      ...(/^https?:\/\//i.test(c.sourceUrl ?? "") ? { sourceUrl: displayPage(c) != null ? c.sourceUrl : withoutUnverifiedPage(c.sourceUrl) } : {}),
       // Claim-centered window (CIT-07 phase 2) — not the chunk head.
       quote: relevantQuoteWindow(c.content, question),
     };

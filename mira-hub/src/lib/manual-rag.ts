@@ -1,6 +1,7 @@
 import type { PoolClient } from "pg";
 import { citationPageLabel } from "@/lib/citation-page";
 import { annotatePageTrust, citationIndex, displayPage, passageKey } from "@/capabilities/citation-passages";
+import { withoutUnverifiedPage } from "@/capabilities/citation-page-display";
 import type { IdentityStatus } from "@/lib/equipment-notebooks";
 import { familySqlTerms, inferEquipmentType } from "@/lib/equipment-type";
 import { manufacturerInGroup, manufacturerSearchNames, normalizeManufacturer } from "@/lib/manufacturerNormalize";
@@ -3561,7 +3562,7 @@ export function chunksToSources(chunks: ManualChunk[]): ManualSource[] {
     out.push({
       index: idx.get(key)!,
       title,
-      url: c.sourceUrl || null,
+      url: c.sourceUrl ? (displayPage(c) != null ? c.sourceUrl : withoutUnverifiedPage(c.sourceUrl)) : null,
       page: displayPage(c),
       verified: c.verified === true,
     });

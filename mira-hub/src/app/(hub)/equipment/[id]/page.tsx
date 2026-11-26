@@ -3,6 +3,7 @@
 // Equipment notebook — mobile-first, chat-centered. Compact identity header,
 // a "Sources · N of M" sheet, chat, and citation → source viewer.
 
+import { citationPageQuery } from "@/capabilities/citation-page-display";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
@@ -153,7 +154,7 @@ export default function NotebookPage() {
 
   const openCitation = useCallback(
     (c: EvidenceCitation) => {
-      const q = c.page != null ? `?page=${c.page}` : "";
+      const q = citationPageQuery(c);
       router.push(`/equipment/${id}/source/${c.docId}${q}`);
     },
     [id, router],

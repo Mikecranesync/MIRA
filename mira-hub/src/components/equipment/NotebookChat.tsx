@@ -4,6 +4,7 @@
 // The leaf renderer (Bubble) is exported for renderToStaticMarkup unit tests
 // (hub has no jsdom/RTL — audit §11).
 
+import { effectiveCitationPage } from "@/capabilities/citation-page-display";
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { Send, Loader2, FileText, ChevronDown, Square, RotateCcw, Activity, Camera, AlertTriangle } from "lucide-react";
 import { API_BASE } from "@/lib/config";
@@ -289,7 +290,7 @@ export function Bubble({
                   <FileText size={12} aria-hidden />
                   <span className="min-w-0 truncate">
                     [{c.citationId}] {c.sourceTitle}
-                    {c.page != null ? ` · p.${c.page}` : ""}
+                    {effectiveCitationPage(c) != null ? ` · p.${effectiveCitationPage(c)}` : ""}
                   </span>
                   {c.quote ? <span className="truncate opacity-70">— {c.quote.slice(0, 60)}</span> : null}
                 </button>

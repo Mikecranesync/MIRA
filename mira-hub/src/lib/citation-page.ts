@@ -15,7 +15,7 @@
  */
 
 /** Same shape as cite_integrity._PAGE_LABEL_RE (hyphen or en-dash). */
-import { displayPage } from "@/capabilities/citation-passages";
+import { displayPage, numericLocatorUnproven } from "@/capabilities/citation-page-display";
 
 const PAGE_LABEL_RE = /^\s*[0-9A-Za-z]+[-–][0-9]+[A-Za-z]?\s*$/;
 
@@ -60,7 +60,9 @@ export type RetrievedPageChunk = {
 
 function labelOf(chunk: RetrievedPageChunk): string | null {
   const fromMeta = citationPageLabel(chunk.pageLabel);
-  if (fromMeta) return fromMeta;
+  // #5955: a bare-integer metadata locator ("page_num": "1") restates the stamped page; it is
+  // withheld with it. A printed chapter-section label ("2-15") is independent and stays.
+  if (fromMeta && !numericLocatorUnproven({ sourcePage: chunk.sourcePage ?? null, chunkIndex: chunk.chunkIndex, pageAnchored: chunk.pageAnchored, pageTrust: chunk.pageTrust }, fromMeta)) return fromMeta;
   // #5955: the DISPLAY page — a stamp that is not a proven real page never reaches a banner.
   const page = displayPage({ sourcePage: chunk.sourcePage ?? null, chunkIndex: chunk.chunkIndex, pageAnchored: chunk.pageAnchored, pageTrust: chunk.pageTrust });
   if (typeof page === "number" && Number.isFinite(page) && page > 0) {

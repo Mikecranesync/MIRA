@@ -15,6 +15,8 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { Client, type PoolClient } from "pg";
 import { annotatePageTrust, type PassageChunk } from "@/capabilities/citation-passages";
+import { lockoutPageOf } from "@/capabilities/energized-work-stop";
+import { pageFromRetrievedChunks } from "@/lib/citation-page";
 import { buildGroundedContext, chunksToSources, retrieveManualChunks, retrieveNodeChunks } from "@/lib/manual-rag";
 
 const CALLER = "59550000-0000-4000-8000-000000000001";
@@ -37,7 +39,7 @@ let client: Client;
 
 async function seed(o: {
   url: string; page: number | null; chunk: number | null; content?: string; tenant?: string; priv?: boolean;
-  verified?: boolean; doc?: string | null; pageStart?: number | null; model?: string; title?: string;
+  verified?: boolean; doc?: string | null; pageStart?: number | null; model?: string; title?: string; pageNum?: string;
 }) {
   await client.query(
     `INSERT INTO knowledge_entries
@@ -50,6 +52,7 @@ async function seed(o: {
         title: o.title ?? "PowerFlex 525 manual",
         ...(o.doc ? { node_id: "n-5955", filename: o.title } : {}),
         ...(o.chunk == null ? {} : { chunk_index: o.chunk }),
+        ...(o.pageNum ? { page_num: o.pageNum } : {}),
       }),
       o.verified ?? true, o.priv ?? false, o.doc ? "v2" : null,
     ],
@@ -76,11 +79,11 @@ beforeAll(async () => {
   ) ON COMMIT DROP`);
 
   // 1. Legacy copy: EVERY row source_page = 1 (the staging 989-row PowerFlex 525 shape).
-  for (let i = 0; i < 30; i++) await seed({ url: LEGACY, page: 1, chunk: i, content: i === 7 ? F004 : `Legacy copy filler ${i} fault.` });
+  for (let i = 0; i < 30; i++) await seed({ url: LEGACY, page: 1, chunk: i, pageNum: "1", content: i === 7 ? F004 : `Legacy copy filler ${i} fault.` });
   // 2. Ordinal copy: source_page == chunk_index (p.715 on a 274-page manual).
-  for (let i = 700; i < 730; i++) await seed({ url: ORDINAL, page: i, chunk: i, content: i === 715 ? F004 : `Ordinal copy filler ${i} fault.` });
+  for (let i = 700; i < 730; i++) await seed({ url: ORDINAL, page: i, chunk: i, pageNum: "1", content: i === 715 ? F004 : `Ordinal copy filler ${i} fault.` });
   // 3. Page-aware crawler copy: real pages (161 holds F004); chunk ordinal differs from the page.
-  for (let i = 0; i < 26; i++) await seed({ url: REAL, page: 150 + i, chunk: i * 3, content: 150 + i === 161 ? F004 : `Crawler copy filler ${i} fault.` });
+  for (let i = 0; i < 26; i++) await seed({ url: REAL, page: 150 + i, chunk: i * 3, pageNum: String(150 + i), content: 150 + i === 161 ? F004 : `Crawler copy filler ${i} fault.` });
   // 4. One-row legacy document: a count cannot tell it from a real one-page document.
   await seed({ url: ONE_ROW, page: 3, chunk: 0, content: F004 });
   // 5. Sample-only single page: the retrieved sample shows ONE page but the document has two.
@@ -150,6 +153,25 @@ describe("#5955 the original defect, through the real retrieval query and the pu
     const one = f004(await oem(), ONE_ROW);
     expect(one).toHaveLength(1);
     expect(chunksToSources(one)[0].page).toBeNull();
+  });
+});
+
+describe("#5955 C1 — the real compound corruption: metadata.page_num = \"1\" on every row of the ordinal copies", () => {
+  it("precondition: the real PAGE_LABEL_SQL hands the stop/banner a bare \"1\" label beside the p.715 stamp", async () => {
+    const ordinal = f004(await oem(), ORDINAL)[0];
+    expect(ordinal).toMatchObject({ sourcePage: 715, chunkIndex: 715, pageLabel: "1" });
+  });
+  it.each([["ordinal copy", ORDINAL], ["all-page-1 copy", LEGACY]])("%s: the safety-stop page and the hazard-banner page are withheld, not the cover \"1\"", async (_n, url) => {
+    const c = f004(await oem(), url)[0];
+    expect(c.pageLabel).toBe("1");
+    expect(lockoutPageOf(c)).toBeNull();
+    expect(pageFromRetrievedChunks([c])).toBeNull();
+  });
+  it("control: the page-aware copy keeps its printed page 161 on both", async () => {
+    const c = f004(await oem(), REAL)[0];
+    expect(c.pageLabel).toBe("161");
+    expect(lockoutPageOf(c)).toBe("161");
+    expect(pageFromRetrievedChunks([c])).toBe("161");
   });
 });
 
