@@ -30,7 +30,7 @@
 
 import { stepEnergyContradiction } from "./step-energy";
 import { firstUngovernedMatch } from "./hazard-modifiers";
-import { DISCHARGE_WAIT_LINE, ISOLATION_BANNER, isolationBannerFor } from "./isolation-advisory";
+import { DISCHARGE_WAIT_LINE, ISOLATION_BANNER, isolationBannerFor, statesIsolation } from "./isolation-advisory";
 
 export type AnswerValidation =
   | { ok: true }
@@ -838,6 +838,13 @@ const FAULT_CONTEXT = /\b(?:fault|alarm|error|code|trip(?:ped|s)?)\b/i;
 
 /** Hedges that do not rescue an invented code meaning ("F004 is commonly an
  *  overcurrent fault"). Regex source, used inside codeMeaningViolation. */
+/** Codex #5996 r1 F1: "F004 on your drive is the code you should photograph"
+ *  names the code, it does not assign it a meaning. After "is a/an/the", a
+ *  noun phrase about the code itself followed by what to DO with it, or where
+ *  it is shown, is not a definition. "F004 is the code for undervoltage" still
+ *  is one, so "code for …" is not exempted. */
+const NOT_A_CODE_REFERENCE =
+  "(?!\\s+(?:fault\\s+|error\\s+|alarm\\s+)?(?:code|number)\\s+(?:you\\b|to\\b|shown\\b|displayed\\b|on\\s+(?:the|your)\\s+(?:display|screen|keypad|hmi)\\b))";
 const DEF_HEDGE =
   "(?:usually|typically|often|generally|commonly|normally|frequently|probably|likely|most\\s+likely|most\\s+often|most\\s+commonly)";
 
@@ -1013,7 +1020,7 @@ function codeMeaningViolation(
         // code and its verb ("F30011 on a Siemens G120 is generally a motor
         // overtemperature"). All three shipped as general answers before this.
         const defFrame = new RegExp(
-          `["'\`*]*${esc}["'\`*]*(?:\\s*\\([^)]{0,40}\\))?(?:\\s+(?:on|in|for)\\s+(?:(?:a|an|the)\\s+)?[\\w-]+(?:\\s+[\\w-]+){0,3})?\\s+(?:fault\\s+|alarm\\s+|error\\s+|code\\s+)?(?:${DEF_HEDGE}\\s+)?(?:means|indicates|signals|refers\\s+to|stands\\s+for|denotes|corresponds\\s+to|is\\s+(?:${DEF_HEDGE}\\s+)?(?:a|an|the)|is\\s+caused\\s+by|occurs\\s+when)\\b`,
+          `["'\`*]*${esc}["'\`*]*(?:\\s*\\([^)]{0,40}\\))?(?:\\s+(?:on|in|for)\\s+(?:(?:a|an|the)\\s+)?[\\w-]+(?:\\s+[\\w-]+){0,3})?\\s+(?:fault\\s+|alarm\\s+|error\\s+|code\\s+)?(?:${DEF_HEDGE}\\s+)?(?:means|indicates|signals|refers\\s+to|stands\\s+for|denotes|corresponds\\s+to|is\\s+(?:${DEF_HEDGE}\\s+)?(?:a|an|the)\\b${NOT_A_CODE_REFERENCE}|is\\s+caused\\s+by|occurs\\s+when)\\b`,
           "i",
         );
         // "the most likely reason you're seeing 'Q-447-Delta' is …"
@@ -1278,7 +1285,10 @@ const DISCHARGE_TALK_RE = /\b(?:discharg\w*|capacitors?|dc[-\s]?bus)\b/i;
 
 function safetyLeadFor(restore: string | null, scan: string): string {
   if (restore) return `${ENERGIZED_WARNING}\n\n`;
-  if (!SAFETY_GUIDANCE_RE.test(scan)) return "";
+  // Codex r1 F2: the word list misses ordinary supply-disconnection wording
+  // ("Disconnect mains power before servicing") — the isolation recogniser
+  // the banner already uses does not.
+  if (!SAFETY_GUIDANCE_RE.test(scan) && !statesIsolation(scan)) return "";
   const discharge = DISCHARGE_TALK_RE.test(scan) ? ` ${DISCHARGE_WAIT_LINE}` : "";
   return `${ISOLATION_BANNER}${discharge}\n\n`;
 }

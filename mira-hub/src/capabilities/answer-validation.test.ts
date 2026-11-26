@@ -1295,3 +1295,35 @@ describe("the code-meaning fallback keeps the safety guidance it replaces (#5996
     expect(out).toBe(specificityFallback("F004"));
   });
 });
+
+describe("Codex #5996 r1: code references are not meanings; disconnection wording keeps the banner", () => {
+  const Q = "What does PowerFlex 525 fault F004 mean?";
+
+  it.each([
+    "F004 on your drive is the code you should photograph before contacting support.",
+    "F004 is the code to write down for support.",
+    "F004 is the fault code shown on the display.",
+    "F004 is the number on your keypad to report.",
+  ])("a reference to the code itself passes: %s", (answer) => {
+    expect(general(answer, Q).ok).toBe(true);
+  });
+
+  it.each([
+    "F004 is the code for undervoltage.",
+    "F004 on your drive is the undervoltage fault.",
+    "F004 is a DC bus undervoltage.",
+  ])("an assigned meaning is still caught: %s", (answer) => {
+    const r = general(answer, Q);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.violation).toBe("unsupported-specificity:code-meaning-asserted");
+  });
+
+  it("a plain supply-disconnection warning keeps the isolation banner on the replacement", () => {
+    const r = general("Disconnect mains power before servicing. F004 is commonly an overcurrent fault.", Q);
+    expect(r.ok).toBe(false);
+    if (r.ok) throw new Error("unreachable");
+    const out = r.replacement ?? "";
+    expect(out.startsWith(ISOLATION_BANNER)).toBe(true);
+    expect(out).not.toMatch(/overcurrent/i);
+  });
+});
