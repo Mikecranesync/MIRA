@@ -6,6 +6,7 @@
 
 import type { FaultCode } from "../data/fault-codes.js";
 import type { BlogPost, BlogSection } from "../data/blog-posts.js";
+import { renderMarkdown } from "./markdown.js";
 import {
   loadCapabilities,
   provenText,
@@ -353,6 +354,28 @@ ${related.map((r) => `      <li><a href="/blog/${r.slug}">${escHtml(r.title)}</a
     ],
   }, null, 2)}
   </script>`;
+
+  if (fc.body) {
+    return `${htmlHead({ title: `${fc.title} | FactoryLM`, description: fc.metaDescription, canonical, jsonLd })}
+<body>
+${nav({ currentPath: "/blog" })}
+
+<main>
+<article class="article-wrap">
+  <div class="breadcrumb">
+    <a href="/">Home</a> &rsaquo; <a href="/blog">Blog</a> &rsaquo; <a href="/blog/fault-codes">Fault Codes</a> &rsaquo; ${escHtml(fc.faultCode)}
+  </div>
+
+${renderMarkdown(fc.body)}
+</article>
+
+</main>
+
+${siteFooter()}
+${scripts()}
+</body>
+</html>`;
+  }
 
   return `${htmlHead({ title: `${fc.title} | FactoryLM`, description: fc.metaDescription, canonical, jsonLd })}
 <body>
