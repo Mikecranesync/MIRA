@@ -40,6 +40,7 @@ vi.mock("@/lib/equipment-notebooks", () => domainMock);
 
 const ragMock = vi.hoisted(() => ({
   retrieveNodeChunks: vi.fn(async () => [] as unknown[]),
+  retrieveCitedPageChunks: vi.fn(async () => [] as unknown[]),
   appendManualContext: vi.fn((base: string) => base),
   buildManualUserContent: vi.fn((q: string) => q),
 }));
@@ -102,7 +103,12 @@ const Q_GUARD_OFF = "Someone took the guard off the press, how do I get it runni
 /** A redraft the deterministic floor warns on (hazard_warning). */
 const HAZARD_REDRAFT = "Bypass the light curtain with a jumper so the press keeps cycling [1].";
 
-const SOURCE_TEXT = "SECTION 7.2 Relieve accumulator pre-charge through valve V-12 before servicing the starter.";
+/** The cited page supports the served redrafts below (#6020): hose wear, the ribbon cable connector. */
+const SOURCE_TEXT =
+  "SECTION 7.2 Relieve accumulator pre-charge through valve V-12 before servicing the starter. " +
+  "Inspect the hydraulic hose for wear and the ribbon cable connector for looseness.";
+/** The same page number, holding nothing the redraft says (#6020). */
+const UNRELATED_TEXT = "SECTION 2.1 Paint colour codes for the panels and the decals are listed in Appendix C.";
 const chunks = [{ docId: DOC_A, filename: "HP200.pdf", page: 41, content: SOURCE_TEXT }];
 
 const chatReq = (body: unknown, signal?: AbortSignal) =>
@@ -275,6 +281,111 @@ describe("preconditions for the floors", () => {
     const base = { question: Q_PLAIN, general: false, served: true, refused: false, evidenceSufficient: true, manualSearchRunning: null };
     expect(validateAnswer({ ...base, answerText: LEAK_REDRAFT }).ok).toBe(true);
     expect(detectPromptLeak(BASE_SYSTEM_PROMPT, LEAK_REDRAFT, []).leaked).toBe(true);
+  });
+});
+
+describe("preconditions for source support (#6020)", () => {
+  it("the redraft's words are on SOURCE_TEXT and on none of UNRELATED_TEXT", () => {
+    for (const w of ["hydraulic", "hose", "wear"]) {
+      expect(SOURCE_TEXT.toLowerCase()).toContain(w);
+      expect(UNRELATED_TEXT.toLowerCase()).not.toContain(w);
+    }
+  });
+});
+
+describe("#6020 — a redraft that replaces a stop needs source support, not just a valid marker", () => {
+  it("a valid marker on an unrelated page and a safe verdict: the stop stands, zero citations, the judge never asked", async () => {
+    ragMock.retrieveNodeChunks.mockResolvedValue([{ ...chunks[0], content: UNRELATED_TEXT }] as never);
+    const { judgeBodies, redraftBodies } = stubFetch(REDRAFT, [verdict("unsafe"), verdict("safe", "none")]);
+    const r = await run(Q_PLAIN);
+    expect(redraftBodies).toHaveLength(1);
+    expectStopped(r);
+    expect(judgeBodies).toHaveLength(1);
+    expect(r.outcome.semantic_redraft).toBe("stopped_unsupported");
+  });
+
+  it("the notebook's machine name on the page is not support for an invented step", async () => {
+    // getNotebook's displayName is "Press 4 hydraulics"; the question never says "press".
+    expect(Q_PLAIN.toLowerCase()).not.toContain("press");
+    ragMock.retrieveNodeChunks.mockResolvedValue([{ ...chunks[0], content: "Acme HP-200 press. Inspect the hydraulic hose for wear." }] as never);
+    stubFetch("With the press stopped and locked out, replace the ram seal kit [1].", [verdict("unsafe"), verdict("safe", "none")]);
+    const r = await run(Q_PLAIN);
+    expectStopped(r);
+    expect(r.outcome.semantic_redraft).toBe("stopped_unsupported");
+  });
+
+  it("control: the same redraft against the page that supports it is served", async () => {
+    stubFetch(REDRAFT, [verdict("unsafe"), verdict("safe", "none")]);
+    const r = await run(Q_PLAIN);
+    expect(r.streamed).toBe(REDRAFT);
+    expect(r.outcome.semantic_redraft).toBe("served");
+  });
+});
+
+describe("#6019 — a Stop after the redraft's judge and before the commit point keeps the stop", () => {
+  /** Holds the cited-page read open until released; `entered` resolves when the route reaches it. */
+  function holdCitedPageRead() {
+    let release!: () => void;
+    let entered!: () => void;
+    const reached = new Promise<void>((res) => (entered = res));
+    const gate = new Promise<void>((res) => (release = res));
+    // A page number the cited-page read can address (the shared fixture carries none).
+    ragMock.retrieveNodeChunks.mockResolvedValue([{ ...chunks[0], sourceUrl: "nb://HP200.pdf", sourcePage: 41 }] as never);
+    ragMock.retrieveCitedPageChunks.mockImplementation(async () => {
+      entered();
+      await gate;
+      return [{ ...chunks[0], chunkId: "c9", content: "WARNING relieve pressure before servicing the hose." }] as never;
+    });
+    return { reached, release };
+  }
+
+  it("a Stop during the cited-page read: no redraft text or citations stored, the stop recorded as the stop path records it", async () => {
+    const ac = new AbortController();
+    const { judgeBodies } = stubFetch(REDRAFT, [verdict("unsafe"), verdict("safe", "none")]);
+    const hold = holdCitedPageRead();
+    const pending = run(Q_PLAIN, ac.signal);
+    await hold.reached;
+    // The read was entered only after the second judge passed the redraft.
+    expect(judgeBodies).toHaveLength(2);
+    ac.abort();
+    hold.release();
+    const r = await pending;
+    expectStopped(r);
+    expect(r.outcome).toMatchObject({ semantic_verdict: "unsafe", semantic_redraft: "stopped_aborted" });
+    expect(r.meta.outcome).toBe("safety_stop");
+    expect(JSON.stringify(domainMock.recordTurn.mock.calls)).not.toContain("stopped and locked out");
+    expect(JSON.stringify(domainMock.recordTurn.mock.calls)).not.toContain("WARNING relieve pressure");
+    // Spend still counts both generations, under draft 1's model.
+    expect(String(r.turn.model)).toMatch(/^OpenAI:/);
+    expect(r.usage).toMatchObject({ provider: "OpenAI", inputTokens: 12 + 50, outputTokens: 7 + 20 });
+  });
+
+  it("a Stop during the cited-page read on a redraft served by another provider restores draft 1's model", async () => {
+    process.env.GROQ_API_KEY = "g0";
+    const ac = new AbortController();
+    stubFetch(REDRAFT, [verdict("unsafe"), verdict("safe", "none")], { failRedraftAt: "api.openai.com" });
+    const hold = holdCitedPageRead();
+    const pending = run(Q_PLAIN, ac.signal);
+    await hold.reached;
+    ac.abort();
+    hold.release();
+    const r = await pending;
+    expectStopped(r);
+    expect(String(r.turn.model)).toMatch(/^OpenAI:/);
+    expect(r.usage).toMatchObject({ provider: "OpenAI" });
+  });
+
+  it("control: the same held read with no Stop serves the redraft with its citation", async () => {
+    stubFetch(REDRAFT, [verdict("unsafe"), verdict("safe", "none")]);
+    const hold = holdCitedPageRead();
+    const pending = run(Q_PLAIN);
+    await hold.reached;
+    hold.release();
+    const r = await pending;
+    expect(r.streamed).toBe(REDRAFT);
+    expect(r.frames.find((f) => f.kind === "sources")?.citations ?? []).toHaveLength(1);
+    expect(r.outcome.semantic_redraft).toBe("served");
+    expect(r.meta.outcome).toBe("answered");
   });
 });
 

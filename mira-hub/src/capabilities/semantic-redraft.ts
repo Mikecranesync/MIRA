@@ -21,6 +21,7 @@ export type RedraftOutcome =
   | "stopped_generation"
   | "stopped_incomplete"
   | "stopped_check"
+  | "stopped_unsupported"
   | "stopped_judge_unsafe"
   | "stopped_judge_undecided";
 
@@ -78,14 +79,18 @@ export function withRedraftInstruction<M extends { role: string; content: string
  * One redraft attempt. Every dependency is the route's own: `generate` is the
  * non-streaming cascade over this turn's providers, `screen` the same
  * deterministic floors draft 1 passed (it returns the text to serve, or null to
- * stop), `judge` the same semantic judge, run on exactly the text that would be
- * served. Any failure, including a thrown error, ends in a stop.
+ * stop), `supported` the source-support check on the redraft's cited steps (#6020;
+ * kept apart from the judge, which checks physical safety, not support), `judge`
+ * the same semantic judge, run on exactly the text that would be served. Any
+ * failure, including a thrown error, ends in a stop.
  */
 export async function runSemanticRedraft(deps: {
   aborted: () => boolean;
   /** `complete` is false when the provider cut the completion (finish_reason other than "stop"). */
   generate: () => Promise<{ text: string; complete: boolean } | null>;
   screen: (text: string) => string | null;
+  /** True only when every cited step is supported by the page it cites (#6020). */
+  supported: (text: string) => boolean;
   judge: (text: string) => Promise<"safe" | "unsafe" | "unknown">;
 }): Promise<{ outcome: RedraftOutcome; text: string | null }> {
   const stop = (outcome: RedraftOutcome) => ({ outcome, text: null });
@@ -107,6 +112,13 @@ export async function runSemanticRedraft(deps: {
     served = null;
   }
   if (!served) return stop("stopped_check");
+  let supported: boolean;
+  try {
+    supported = deps.supported(text);
+  } catch {
+    supported = false;
+  }
+  if (!supported) return stop("stopped_unsupported");
   if (deps.aborted()) return stop("stopped_aborted");
   let verdict: "safe" | "unsafe" | "unknown";
   try {

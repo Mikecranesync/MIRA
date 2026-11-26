@@ -57,7 +57,7 @@ import {
   openAiRunBudget,
   type BudgetReservation,
 } from "@/capabilities/openai-run-budget";
-import { withSupportingQuotes } from "@/capabilities/supporting-quote";
+import { citationSupportGaps, withSupportingQuotes } from "@/capabilities/supporting-quote";
 import { citedPagesFor, manualSafetyStatementForCitations } from "@/capabilities/manual-safety-statement";
 import { retrieveSafetyChapterChunks, SAFETY_CHAPTER_DIRECTIVE } from "@/capabilities/manual-safety-chapter";
 import { shadowVerifyCitedTurnResult } from "@/capabilities/claim-verifier-shadow";
@@ -5466,6 +5466,16 @@ async function handleChatTurn(
       let semanticRedraftCode: RedraftOutcome | null = null; // #5941, set only when a redraft ran
       let redraftFloorWarning: string | null = null; // #5941, the advisory a served redraft carries
       let semanticDecided = false;
+      // The one semantic SAFETY_STOP: zero citations, basis null, the draft never persisted.
+      // Shared by the judge-time stop and the #6019 commit-point stop so the two cannot drift.
+      const semanticStop = (violation: string) => {
+        outputRejected = { kind: "unsafe_answer", violation };
+        answerText = SAFETY_STOP;
+        semanticDecided = true;
+      };
+      // #6019: set when a redraft is adopted, holding what the stop path would have left in
+      // place, so a Stop that lands after adoption and before the commit point restores it.
+      let adoptedRedraft: { violation: string; usage: TurnUsage | null; model: string | null } | null = null;
       // #4098: which quantity word + unit the exact-rating rule matched —
       // closed-vocabulary tokens, never text — so false refusals are
       // diagnosable from the Turn Evidence Packet. Recorded gate on or off.
@@ -5704,6 +5714,10 @@ async function handleChatTurn(
                   redraftAdvisory = !v.ok;
                   return shown;
                 },
+                // Kept apart from the judge, which checks physical safety, not source support:
+                // every cited step must be supported by the page it cites (#6020).
+                supported: (text) =>
+                  citationSupportGaps(text, chunks, message, [nb?.displayName, nb?.manufacturer, nb?.model].filter(Boolean).join(" ")).length === 0,
                 judge: async (text) =>
                   (
                     await semanticSafetyCheck({
@@ -5722,12 +5736,14 @@ async function handleChatTurn(
         // The redraft was billed whether or not it is served; the served one names the model (Codex r1 F5).
         const gen = redraftGen as CascadeResult | null;
         const redraftServed = redraft?.outcome === "served" && Boolean(redraft.text);
+        const stopViolation = `unsafe-answer:semantic-${firstClass}`;
         if (gen && turnUsage) {
-          turnUsage = withRedraftUsage(
-            turnUsage,
-            usageFromRaw(gen.provider, gen.model ?? "", gen.usage as never, routeReasonFor(attempted), attempted, gen.finishReason === "length" ? "capped" : "ok"),
-            redraftServed,
-          );
+          const first = turnUsage;
+          const second = usageFromRaw(gen.provider, gen.model ?? "", gen.usage as never, routeReasonFor(attempted), attempted, gen.finishReason === "length" ? "capped" : "ok");
+          turnUsage = withRedraftUsage(first, second, redraftServed);
+          if (redraftServed) adoptedRedraft = { violation: stopViolation, usage: withRedraftUsage(first, second, false), model: servedModel };
+        } else if (redraftServed) {
+          adoptedRedraft = { violation: stopViolation, usage: turnUsage, model: servedModel };
         }
         if (redraftServed && redraft?.text) {
           if (gen) servedModel = `${gen.provider}:${gen.model ?? ""}`;
@@ -5735,11 +5751,8 @@ async function handleChatTurn(
           semanticVerdictCode = "safe";
           if (redraftAdvisory) redraftFloorWarning = "hazard-warning:isolation-advisory";
         } else if (sv.verdict === "unsafe") {
-          const cls = closedSemanticClass(sv.hazardClass, selectedClass);
-          console.warn(`[notebook-chat] semantic BLOCKED ${cls}: ${sv.reason ?? ""}`);
-          outputRejected = { kind: "unsafe_answer", violation: `unsafe-answer:semantic-${cls}` };
-          answerText = SAFETY_STOP;
-          semanticDecided = true;
+          console.warn(`[notebook-chat] semantic BLOCKED ${firstClass}: ${sv.reason ?? ""}`);
+          semanticStop(stopViolation);
         } else if (sv.verdict !== "safe" && flaggedTurn) {
           console.warn(`[notebook-chat] semantic UNVERIFIED (${sv.reason ?? "unknown"}) on a flagged turn: controlled fallback`);
           outputRejected = { kind: "unsafe_answer", violation: "unsafe-answer:semantic-unverified" };
@@ -5796,12 +5809,30 @@ async function handleChatTurn(
         }
       }
 
+      // #6019: one exception to the rule below. An adopted #5941 redraft replaced a
+      // SAFETY STOP and has never been released; a Stop that arrived after its judge,
+      // during the awaits above (Jev, triage, the cited-page read), keeps the stop: the
+      // redraft text and its citations are not stored (the cited pages are read only through
+      // emitted citations, and a stop emits none), and the turn is recorded exactly as the
+      // stop path records it. This is the last read of the
+      // signal; nothing below awaits before the write.
+      if (adoptedRedraft && clientAbort.signal.aborted) {
+        console.warn("[notebook-chat] semantic redraft stopped before commit: keeping the safety stop");
+        semanticStop(adoptedRedraft.violation);
+        semanticVerdictCode = "unsafe";
+        semanticRedraftCode = "stopped_aborted";
+        redraftFloorWarning = null;
+        servedModel = adoptedRedraft.model;
+        turnUsage = adoptedRedraft.usage;
+      }
+
       // ADR-0038 rule 7 commit point: the stopped-vs-answered decision was
-      // made once, above; validation (deterministic AND semantic) is complete;
-      // from here to the write the tail is synchronous and never re-reads the
-      // abort signal. The semantic await lives BEFORE this detach on purpose —
-      // a disconnect during the judge falls into the same designed bucket as a
-      // disconnect after commit (the turn stays answered).
+      // made once, above (with the #6019 exception just before this); validation
+      // (deterministic AND semantic) is complete; from here to the write the tail
+      // is synchronous and never re-reads the abort signal. The semantic await
+      // lives BEFORE this detach on purpose — a disconnect during the judge on
+      // draft 1 falls into the same designed bucket as a disconnect after commit
+      // (the turn stays answered).
       req.signal?.removeEventListener("abort", onClientGone);
       progressCancel?.removeEventListener("abort", onClientGone); // Codex #4765 F5
 
