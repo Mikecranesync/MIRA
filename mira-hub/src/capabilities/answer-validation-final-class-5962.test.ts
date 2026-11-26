@@ -32,12 +32,22 @@ function prefixOf(text: string, general: boolean): string {
   expect(r.replacement.endsWith(text)).toBe(true);
   return r.replacement.slice(0, r.replacement.length - text.length);
 }
+// An exhaustive grid is registered as BOUNDED test cases, not one test per lane: the Q1 grids make
+// ~44k real validator calls per lane (~1.7 s locally, ~39 µs per call), which a contended CI runner
+// can stretch past the ordinary 5 s default. Chunking keeps every input, lane, expected verdict and
+// assertion (the unsafe list first, then the safe list, order preserved) and changes no timeout.
+const SWEEP_CHUNK = 2500; // validator calls per test case: ~0.1 s locally, a wide margin under 5 s
 function sweep(name: string, general: boolean, unsafe: readonly string[], safe: readonly string[]) {
-  it(`[general=${general}] ${name}`, () => {
-    const missed = unsafe.filter((t) => !warns(t, general));
-    const falseWarn = safe.filter((t) => warns(t, general));
-    expect({ missed, falseWarn }).toEqual({ missed: [], falseWarn: [] });
-  });
+  const items = [...unsafe.map((t) => ({ t, expectWarn: true })), ...safe.map((t) => ({ t, expectWarn: false }))];
+  const parts = Math.max(1, Math.ceil(items.length / SWEEP_CHUNK));
+  for (let c = 0; c < parts; c++) {
+    const part = items.slice(c * SWEEP_CHUNK, (c + 1) * SWEEP_CHUNK);
+    it(`[general=${general}] ${name}${parts > 1 ? ` [part ${c + 1}/${parts}]` : ""}`, () => {
+      const missed = part.filter((i) => i.expectWarn && !warns(i.t, general)).map((i) => i.t);
+      const falseWarn = part.filter((i) => !i.expectWarn && warns(i.t, general)).map((i) => i.t);
+      expect({ missed, falseWarn }).toEqual({ missed: [], falseWarn: [] });
+    });
+  }
 }
 
 // ------------------------------------------------------------------ Q1
