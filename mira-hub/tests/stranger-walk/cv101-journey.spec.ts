@@ -224,7 +224,7 @@ async function ask(page: Page, q: string, meter: BudgetMeter, tenantId: string, 
       text: (el.querySelector('[data-part-type="text"]') as HTMLElement | null)?.innerText ?? "",
     })),
   ).catch(() => [] as RenderedTurn[]);
-  const savedId = swapped ? savedRowFor(persistedRowIdOf(lv?.rows ?? []), shown, q) : null;
+  const savedId = swapped ? savedRowFor(persistedRowIdOf(lv?.rows ?? [], lv?.traceId ?? null), shown, q) : null;
   const saved = !!savedId;
   const settled = savedId ? page.locator(`${sel}[data-turn-id="${savedId}"]`) : last;
   const rec = await extractTurn("clone", settled);
