@@ -65,6 +65,8 @@ function makeRequest(body: unknown, ip: string, headers: Record<string, string> 
 describe("POST /api/auth/register — pilot-funnel hook", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.stubEnv("MIRA_FREE_TECHNICIANS", "false");
+    vi.stubEnv("MIRA_PILOT_APPROVAL_REQUIRED", "0");
     process.env.NEON_DATABASE_URL = "postgresql://test";
     mockFindUserByEmail.mockResolvedValue(null);
     mockEnsureUserAndTenant.mockResolvedValue({ id: "user-1", tenantId: "tenant-1", email: "new@example.com" });
@@ -76,6 +78,7 @@ describe("POST /api/auth/register — pilot-funnel hook", () => {
 
   afterEach(() => {
     delete process.env.NEON_DATABASE_URL;
+    vi.unstubAllEnvs();
   });
 
   it("fires the pilot-funnel hook exactly once for a NEW signup, with the new ids", async () => {
@@ -93,6 +96,35 @@ describe("POST /api/auth/register — pilot-funnel hook", () => {
     expect(call.email).toBe("new@example.com");
     expect(call.name).toBe("Jordan");
     expect(mockAttributionFromRequest).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects unverified password signup for the free offer without creating an account", async () => {
+    vi.stubEnv("MIRA_FREE_TECHNICIANS", "true");
+    const response = await POST(makeRequest({ email: "tech@example.com", password: "password123" }, freshIp()));
+    expect(response.status).toBe(403);
+    expect(mockEnsureUserAndTenant).not.toHaveBeenCalled();
+    expect(mockHandlePilotApplicationSubmitted).not.toHaveBeenCalled();
+    expect(mockAttributionFromRequest).not.toHaveBeenCalled();
+  });
+
+  it("requires verified onboarding for an explicit pilot rather than reserving an inbox", async () => {
+    vi.stubEnv("MIRA_FREE_TECHNICIANS", "true");
+    vi.stubEnv("MIRA_PILOT_APPROVAL_REQUIRED", "1");
+    const response = await POST(makeRequest({ email: "pilot@example.com", password: "password123", signupIntent: "pilot" }, freshIp()));
+    expect(response.status).toBe(403);
+    expect(mockEnsureUserAndTenant).not.toHaveBeenCalled();
+    expect(mockHandlePilotApplicationSubmitted).not.toHaveBeenCalled();
+  });
+
+  it("rejects an unknown signup intent without creating an account", async () => {
+    const response = await POST(makeRequest({ email: "tech@example.com", password: "password123", signupIntent: "admin" }, freshIp()));
+    expect(response.status).toBe(400);
+    expect(mockEnsureUserAndTenant).not.toHaveBeenCalled();
+  });
+
+  it("rejects JSON null without throwing or creating an account", async () => {
+    expect((await POST(makeRequest(null, freshIp()))).status).toBe(400);
+    expect(mockEnsureUserAndTenant).not.toHaveBeenCalled();
   });
 
   it("does NOT fire the hook for an existing-user return (409)", async () => {

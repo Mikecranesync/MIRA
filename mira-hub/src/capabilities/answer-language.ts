@@ -10,9 +10,20 @@ export const ANSWER_LANGUAGE_RULE =
   "LANGUAGE: Answer in the language the technician wrote in. Keep manual titles, " +
   "parameter names, register addresses, fault codes and [n] citations exactly as written in the source.";
 
-/** Append the language rule to a system prompt. */
-export function withAnswerLanguage(systemPrompt: string): string {
-  return `${systemPrompt}\n\n${ANSWER_LANGUAGE_RULE}`;
+/** Said outright when the question is English: a Siemens G120 question answered
+ *  in Spanish three times out of three on staging (2026-11-26, panel #5956),
+ *  because "the language the technician wrote in" left the model to infer it
+ *  from a prompt that also carried non-English text. */
+export const ENGLISH_ANSWER_RULE =
+  "The technician wrote in English: answer in English, even when a manual title, " +
+  "source excerpt or status line is in another language.";
+
+/** Append the language rule to a system prompt. Pass the technician's question
+ *  to state its language outright when it is English; without it (or for a
+ *  non-English question) the rule is unchanged. */
+export function withAnswerLanguage(systemPrompt: string, question?: string): string {
+  const english = question !== undefined && question.trim() !== "" && !looksNonEnglish(question);
+  return `${systemPrompt}\n\n${ANSWER_LANGUAGE_RULE}${english ? ` ${ENGLISH_ANSWER_RULE}` : ""}`;
 }
 
 // The manuals (and the BM25 index over them) are English. A Spanish question

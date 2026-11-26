@@ -57,7 +57,8 @@ describe("project creation does not wait for sidebar refresh", () => {
     const stale = deferred<{status:number;data:{notebooks:NotebookStub[]}}>();
     const fresh = deferred<{status:number;data:{notebooks:NotebookStub[]}}>();
     const env = setup(() => fresh.promise);
-    const load = callback("loadNotebooks", { ...env.deps, getJson: () => stale.promise,
+    const dispatch = vi.fn();
+    const load = callback("loadNotebooks", { ...env.deps, dispatch, getJson: () => stale.promise,
       selectionRef: { current: { notebookId: "existing", threadId: "thread-1" } },
       syncThread: vi.fn(), setSelection: vi.fn(), readSearch: () => "", selectionFromSearch: vi.fn(), landingSelection: vi.fn(), writeSearch: vi.fn(), searchForSelection: vi.fn() , loadNotebookListWithRetry });
     const old = load();
@@ -65,8 +66,11 @@ describe("project creation does not wait for sidebar refresh", () => {
     for (let i = 0; i < 10; i++) await Promise.resolve();
     stale.resolve({ status: 200, data: { notebooks: [{ id: "existing" }] } });
     await old;
-    try { expect(env.read()).toContainEqual(env.created); }
-    finally { fresh.resolve([]); await creating; }
+    try {
+      expect(env.read()).toContainEqual(env.created);
+      expect(dispatch).not.toHaveBeenCalled();
+    }
+    finally { fresh.resolve({ status: 200, data: { notebooks: [] } }); await creating; }
   });
   it("New project opens the setup sheet and makes no network call (#4632)", () => {
     const open = vi.fn();
@@ -87,13 +91,15 @@ describe("project creation does not wait for sidebar refresh", () => {
       setSelection, writeSearch:noop, searchForSelection:()=>""});
     const chosen={notebookId:"created-project",threadId:"new-thread"};
     select(chosen);
-    const load = callback("loadNotebooks", {notebookGate:latestRequestGate(),
+    const dispatch = vi.fn();
+    const load = callback("loadNotebooks", {notebookGate:latestRequestGate(), dispatch,
       getJson:async()=>({status:200,data:{notebooks:[]}}),setSignedOut:noop,setNotebooks:noop,
       selectionRef,syncThread:noop,setSelection,readSearch:()=>"?notebook=old",
       selectionFromSearch:()=>({notebookId:"old",threadId:"old-thread"}),landingSelection:noop,
       writeSearch:noop,searchForSelection:()=>"",loadNotebookListWithRetry});
     await load();
     expect(setSelection).toHaveBeenLastCalledWith(chosen);
+    expect(dispatch).toHaveBeenCalledWith({ type: "reconcile-notebook-list", notebooks: [] });
   });
 
 });

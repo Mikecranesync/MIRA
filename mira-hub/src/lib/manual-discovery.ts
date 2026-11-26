@@ -40,6 +40,12 @@ export interface DiscoveryCandidate {
   docType: string | null;
   isDirectPdf: boolean;
   validated: boolean;
+  /**
+   * #5873: mira-ask's own probe of this `.pdf` link got a web page, not a PDF
+   * (`probed_not_pdf`, PR 5871). Set only when the service says so; absent
+   * means the probe could not tell, which is not the same thing.
+   */
+  probedNotPdf?: true;
 }
 
 /**
@@ -415,6 +421,7 @@ export async function discoverManual(
     docType: c ? str(c.doc_type) : null,
     isDirectPdf: c?.is_direct_pdf === true,
     validated: c?.validated === true,
+    ...(c?.probed_not_pdf === true ? { probedNotPdf: true as const } : {}),
   };
 
   return {

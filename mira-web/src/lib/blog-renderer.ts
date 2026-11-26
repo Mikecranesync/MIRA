@@ -6,6 +6,7 @@
 
 import type { FaultCode } from "../data/fault-codes.js";
 import type { BlogPost, BlogSection } from "../data/blog-posts.js";
+import { renderMarkdown } from "./markdown.js";
 import {
   loadCapabilities,
   provenText,
@@ -293,7 +294,7 @@ ${related.map((r) => `      <li><a href="/blog/${r.slug}">${escHtml(r.title)}</a
     "@context": "https://schema.org",
     "@graph": [
       {
-        "@type": "TroubleshootingGuide",
+        "@type": "HowTo",
         "@id": `${canonical}#guide`,
         name: fc.title,
         description: fc.metaDescription,
@@ -308,11 +309,17 @@ ${related.map((r) => `      <li><a href="/blog/${r.slug}">${escHtml(r.title)}</a
           name: "FactoryLM",
           logo: { "@type": "ImageObject", url: `${BASE_URL}/public/icons/mira-512.png` },
         },
+        // A plain Thing, not a Product: Google treats any Product without
+        // offers/review/aggregateRating as a critical Product-snippet error,
+        // and we don't sell the equipment these pages describe.
         about: {
-          "@type": "Product",
+          "@type": "Thing",
           name: fc.equipment,
-          manufacturer: { "@type": "Organization", name: fc.manufacturer },
+          description: `Equipment by ${fc.manufacturer}`,
         },
+        // Keeps the manufacturer as a machine-readable entity (Thing has no
+        // manufacturer property; CreativeWork.mentions is valid here).
+        mentions: { "@type": "Organization", name: fc.manufacturer },
         step: fixStepsLd,
         mainEntity: {
           "@type": "FAQPage",
@@ -347,6 +354,28 @@ ${related.map((r) => `      <li><a href="/blog/${r.slug}">${escHtml(r.title)}</a
     ],
   }, null, 2)}
   </script>`;
+
+  if (fc.body) {
+    return `${htmlHead({ title: `${fc.title} | FactoryLM`, description: fc.metaDescription, canonical, jsonLd })}
+<body>
+${nav({ currentPath: "/blog" })}
+
+<main>
+<article class="article-wrap">
+  <div class="breadcrumb">
+    <a href="/">Home</a> &rsaquo; <a href="/blog">Blog</a> &rsaquo; <a href="/blog/fault-codes">Fault Codes</a> &rsaquo; ${escHtml(fc.faultCode)}
+  </div>
+
+${renderMarkdown(fc.body)}
+</article>
+
+</main>
+
+${siteFooter()}
+${scripts()}
+</body>
+</html>`;
+  }
 
   return `${htmlHead({ title: `${fc.title} | FactoryLM`, description: fc.metaDescription, canonical, jsonLd })}
 <body>

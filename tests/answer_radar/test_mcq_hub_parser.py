@@ -9,7 +9,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from answer_radar.mcq_hub import format_question, parse_letter  # noqa: E402
+from answer_radar.mcq_hub import ask, format_question, parse_letter  # noqa: E402
 
 OPTS = {
     "A": "Low DC bus voltage",
@@ -60,3 +60,40 @@ def test_question_carries_every_option():
     q = {"stem": "Why?", "options": OPTS}
     s = format_question(q)
     assert all(f"{k}) {v}" in s for k, v in OPTS.items())
+
+
+class _KeyedHub:
+    """Answers diagnostics only for the turn's own clientRequestId, like the Hub route."""
+
+    def __init__(self):
+        self.crid = None
+
+    def create_notebook(self, name):
+        return {"id": "nb-1"}
+
+    def _req(self, method, path, body=None, headers=None):
+        import json
+
+        self.crid = json.loads(body)["clientRequestId"]
+        frames = [{"kind": "content", "content": "B"}, {"kind": "status", "status": "answered"}]
+        raw = "".join(f"data: {json.dumps(f)}\n\n" for f in frames).encode()
+        return 200, {"x-mira-trace-id": "trace-1"}, raw
+
+    def diagnostics(self, notebook_id, client_request_id):
+        if client_request_id != self.crid:
+            raise RuntimeError("no diagnostics row for that key")
+        return {"packet": {"ok": True}}
+
+
+def test_ask_fetches_diagnostics_by_client_request_id():
+    q = {
+        "id": 1,
+        "domain": "d",
+        "stem": "Q?",
+        "options": {"A": "w", "B": "x", "C": "y", "D": "z"},
+        "key": "B",
+        "type": "t",
+        "difficulty": "easy",
+    }
+    row = ask(_KeyedHub(), q, "s", diagnostics=True)
+    assert row["diagnostics"] == {"packet": {"ok": True}}

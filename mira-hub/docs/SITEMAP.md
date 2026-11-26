@@ -11,7 +11,7 @@
 | Surface | Count |
 |---|---|
 | Pages | **71** (12 dynamic) |
-| API routes | **212** (89 dynamic) |
+| API routes | **214** (89 dynamic) |
 
 ## Pages (71)
 
@@ -89,7 +89,7 @@
 | `/workorders/[id]` | dynamic | `(hub)/workorders/[id]/page.tsx` |
 | `/workorders/new` | static | `(hub)/workorders/new/page.tsx` |
 
-## API routes (212)
+## API routes (214)
 
 | Route | Kind | Source |
 |---|---|---|
@@ -272,7 +272,9 @@
 | `/api/pm/export.ics` | static | `api/pm/export.ics/route.ts` |
 | `/api/proposals` | static | `api/proposals/route.ts` |
 | `/api/proposals/[id]/decide` | dynamic | `api/proposals/[id]/decide/route.ts` |
+| `/api/public/onboarding` | static | `api/public/onboarding/route.ts` |
 | `/api/public/report` | static | `api/public/report/route.ts` |
+| `/api/public/signup-policy` | static | `api/public/signup-policy/route.ts` |
 | `/api/quickstart/ask` | static | `api/quickstart/ask/route.ts` |
 | `/api/quickstart/manufacturers` | static | `api/quickstart/manufacturers/route.ts` |
 | `/api/readiness` | static | `api/readiness/route.ts` |

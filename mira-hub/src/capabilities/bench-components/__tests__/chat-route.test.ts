@@ -108,7 +108,8 @@ vi.mock("@/lib/inference/canonical-cascade", () => seamMock);
 
 import { POST } from "@/app/api/equipment-notebooks/[id]/chat/route";
 import { noDocumentsForComponentText, selectionMovedText } from "@/capabilities/bench-components/chat-turn";
-import { ENERGIZED_ELECTRICAL_HAZARD, notebookSafetyTrigger, withSafetyFlag } from "@/lib/safety-classifier";
+import { ENERGIZED_ELECTRICAL_HAZARD, hazardBanner, notebookSafetyTrigger, withSafetyFlag } from "@/lib/safety-classifier";
+import { BYPASS_BANNER, safetyBypassAsk, safetyBypassWarning } from "@/capabilities/safety-bypass-advisory";
 import { photoLinkedToTarget } from "@/lib/workspace-files";
 
 function req(body: unknown) {
@@ -447,6 +448,78 @@ describe("a held turn reads no manual and calls no provider", () => {
     expect(componentFrame(out)?.actions).toEqual([{ action: "confirm", componentId: B1, label: "B1 · IDEC YW1B" }]);
   });
 
+  // #5670 review 5 F9 (#5785): a reported bypass beside an immediate hazard, under a component
+  // that is not confirmed. The hazard banner keeps first place, the bypass card follows it, and
+  // the hold text comes last — live, saved and on replay, each once, reading nothing.
+  describe("#5670 review 5 F9: a held turn with a bypass report and a hazard", () => {
+    const HOLD = "B1 · IDEC YW1B isn't confirmed yet, so I won't answer from the manuals for it. Check what its label says and tap Confirm, then ask again.";
+    const SMOKE = "The safety relay is bypassed and I can see smoke coming off the panel. How do I restore the relay?";
+    const PLAIN = "The safety relay is bypassed. How do I restore it?";
+    const once = (text: string, part: string) => text.split(part).length - 1;
+
+    it("preconditions: a hazard flag and the bypass warning both apply, it is no refusal, and the control has no hazard", () => {
+      expect(notebookSafetyTrigger(SMOKE)).not.toBeNull();
+      expect(safetyBypassWarning(SMOKE)).not.toBeNull();
+      expect(safetyBypassAsk(SMOKE)).toBeNull();
+      expect(notebookSafetyTrigger(PLAIN)).toBeNull();
+      expect(safetyBypassWarning(PLAIN)).not.toBeNull();
+      expect(safetyBypassAsk(PLAIN)).toBeNull();
+    });
+
+    it("live status and saved row: hazard banner, then the card, then the hold, each once, with no manual and no provider", async () => {
+      storeMock.getSelection.mockResolvedValue(selection(B1, 1, 1));
+      const trigger = notebookSafetyTrigger(SMOKE)!;
+      const out = await frames(await ask(SMOKE, under(B1, 1)));
+      expect(ragMock.retrieveNodeChunks).not.toHaveBeenCalled();
+      expect(vi.mocked(fetch)).not.toHaveBeenCalled();
+      const expected = withSafetyFlag(`${BYPASS_BANNER}\n\n${HOLD}`, trigger);
+      const live = statusOf(out);
+      expect(live.status).toBe("insufficient_evidence");
+      expect(live.message).toBe(expected);
+      const hazard = hazardBanner(trigger);
+      expect(once(live.message!, hazard)).toBe(1);
+      expect(once(live.message!, BYPASS_BANNER)).toBe(1);
+      expect(once(live.message!, HOLD)).toBe(1);
+      expect(live.message!.indexOf(hazard)).toBe(0);
+      expect(live.message!.indexOf(hazard)).toBeLessThan(live.message!.indexOf(BYPASS_BANNER));
+      expect(live.message!.indexOf(BYPASS_BANNER)).toBeLessThan(live.message!.indexOf(HOLD));
+      expect(out.some((f) => f.kind === "content")).toBe(false);
+      expect(nbMock.recordTurn).toHaveBeenCalledWith(TENANT, NB, expect.objectContaining({ answerStatus: "insufficient_evidence", answerText: expected }));
+    });
+
+    it("replay: the stored held turn replays the same order", async () => {
+      storeMock.getSelection.mockResolvedValue(selection(B1, 1, 1));
+      await frames(await ask(SMOKE, under(B1, 1)));
+      const stored = (nbMock.recordTurn.mock.calls.at(-1) as unknown as [string, string, { answerStatus: string; answerText: string; evidence: unknown[] }])[2];
+      vi.clearAllMocks();
+      nbMock.validateChatSources.mockResolvedValue({ ok: true, docIds: [DOC_A], nodeId: "node-1" });
+      nbMock.claimNotebookTurnRequest.mockResolvedValueOnce({
+        status: "replay",
+        turn: { id: "t1", question: SMOKE, answerStatus: stored.answerStatus, answerText: stored.answerText, citations: [], evidence: stored.evidence, enabledSourceDocIds: [DOC_A], basis: null, createdAt: "2026-11-22T00:00:00Z" },
+      });
+      const replay = await frames(await ask(SMOKE, under(B1, 1)));
+      expect(nbMock.recordTurn).not.toHaveBeenCalled();
+      expect(vi.mocked(fetch)).not.toHaveBeenCalled();
+      expect(statusOf(replay).message).toBe(stored.answerText);
+    });
+
+    it("control: a held bypass report with no hazard is the card above the hold, no banner", async () => {
+      storeMock.getSelection.mockResolvedValue(selection(B1, 1, 1));
+      const out = await frames(await ask(PLAIN, under(B1, 1)));
+      expect(vi.mocked(fetch)).not.toHaveBeenCalled();
+      expect(statusOf(out).message).toBe(`${BYPASS_BANNER}\n\n${HOLD}`);
+    });
+
+    it("control: a held hazard with no bypass report keeps the banner above the hold and no card", async () => {
+      storeMock.getSelection.mockResolvedValue(selection(B1, 1, 1));
+      const msg = "I can see smoke coming off the panel. What voltage is this button rated for?";
+      expect(safetyBypassWarning(msg)).toBeNull();
+      const out = await frames(await ask(msg, under(B1, 1)));
+      expect(statusOf(out).message).toBe(withSafetyFlag(HOLD, notebookSafetyTrigger(msg)));
+      expect(statusOf(out).message).not.toContain(BYPASS_BANNER);
+    });
+  });
+
   it("the energized-electrical notice on a held turn is saved with it, so a reload shows the same flag", async () => {
     const question = "how do I measure the 480V input with a meter while it is live";
     expect(notebookSafetyTrigger(question)).toBe(ENERGIZED_ELECTRICAL_HAZARD);
@@ -492,6 +565,53 @@ describe("the selection the client showed is checked, not trusted", () => {
     const out = await frames(res);
     expect(out.find((f) => f.kind === "safety")).toBeDefined();
     expect(vi.mocked(fetch)).not.toHaveBeenCalled();
+  });
+
+  it("#5721: a request to defeat a safety device under a stale selection gets the fixed refusal, not the 409, and calls nothing", async () => {
+    const res = await ask("Ops wants the guard door taken out of the STO circuit and let the PLC stop the axis. Confirm that is fine?", under(VFD, 2));
+    expect(res.status).toBe(200);
+    const out = await frames(res);
+    expect(out.find((f) => f.kind === "safety")).toMatchObject({ trigger: "safety-device-bypass" });
+    expect(vi.mocked(fetch)).not.toHaveBeenCalled();
+    expect(ragMock.retrieveNodeChunks).not.toHaveBeenCalled();
+    expect(storeMock.stampTurnComponent).not.toHaveBeenCalled();
+    expect(nbMock.abandonNotebookTurnRequest).not.toHaveBeenCalled();
+    expect(nbMock.recordTurn).toHaveBeenCalledWith(
+      TENANT,
+      NB,
+      expect.objectContaining({ answerStatus: "answered", clientRequestId: REQ, evidence: expect.arrayContaining([{ kind: "safety_stop", trigger: "safety-device-bypass" }]) }),
+    );
+  });
+
+  it("#5670 native-2 F7: a bypass refusal under a selection whose identity was corrected moves nothing, and the next ordinary send is not stale", async () => {
+    // The REAL revision-correction state: the stored selection points at identity revision 1, the component is at 2.
+    storeMock.getSelection.mockResolvedValue(selection(VFD, 1, 3));
+    storeMock.advanceSelectionRevision.mockResolvedValue({ ...selection(VFD, 2, 4), selectedVia: "correction", selectedAt: "2026-11-14T04:30:00.000Z" });
+    const refusal = await ask("Ops wants the guard door taken out of the STO circuit and let the PLC stop the axis. Confirm that is fine?", under(VFD, 3));
+    expect(refusal.status).toBe(200);
+    const live = await frames(refusal);
+    expect(live.find((f) => f.kind === "safety")).toMatchObject({ trigger: "safety-device-bypass" });
+    // Free of selection mutation: nothing advanced, nothing stamped, and so no frame or attribution is owed.
+    expect(storeMock.advanceSelectionRevision).not.toHaveBeenCalled();
+    expect(storeMock.stampTurnComponent).not.toHaveBeenCalled();
+    expect(componentFrame(live)).toBeUndefined();
+    const recorded = (nbMock.recordTurn.mock.calls.at(-1) as unknown as unknown[])[2] as { evidence: { kind: string; componentId?: string }[]; answerText: string };
+    expect(recorded.evidence.some((e) => e.componentId !== undefined || e.kind === "component_attribution")).toBe(false);
+    // Replay agrees: same safety frame, still no component frame.
+    nbMock.claimNotebookTurnRequest.mockResolvedValueOnce({
+      status: "replay",
+      turn: { id: "turn-row-9", question: "q", answerStatus: "answered", answerText: recorded.answerText, citations: [], evidence: recorded.evidence, enabledSourceDocIds: [DOC_A], basis: null, createdAt: SELECTED_AT },
+    });
+    const replay = await frames(await ask("Ops wants the guard door taken out of the STO circuit and let the PLC stop the axis. Confirm that is fine?", under(VFD, 3)));
+    expect(componentFrame(replay)).toBeUndefined();
+    expect(replay.find((f) => f.kind === "safety")).toMatchObject({ trigger: "safety-device-bypass" });
+    // The screen still holds version 3: the next ordinary question is accepted and does the advance itself.
+    ragMock.retrieveNodeChunks.mockImplementation(async () => []);
+    const next = await ask("what does fault oC mean", under(VFD, 3));
+    expect(next.status).toBe(200);
+    const nextFrames = await frames(next);
+    expect(storeMock.advanceSelectionRevision).toHaveBeenCalledWith(TENANT, NB, "u1", "legacy", 3, 2, REQ);
+    expect(componentFrame(nextFrames)?.selectionVersion).toBe(4);
   });
 
   it("an exact retry replays its stored answer before the selection is consulted", async () => {

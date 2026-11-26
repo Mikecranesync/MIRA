@@ -1,11 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { createHash } from "node:crypto";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { renderHome } from "../home.js";
 import { renderCmms, renderSamplePlaceholder } from "../cmms.js";
 import { renderLimitations } from "../limitations.js";
 import { renderSecurity } from "../security.js";
+import { renderOffline } from "../offline.js";
 import { navbar, footer } from "../_topbar.js";
 import {
   FEATURES,
@@ -135,6 +135,7 @@ const RENDERER_SOURCES = [
   "views/cmms.ts",
   "views/limitations.ts",
   "views/security.ts",
+  "views/offline.ts",
 ] as const;
 
 const rendererSources = RENDERER_SOURCES.map((rel) => ({
@@ -147,6 +148,7 @@ const pages: Array<{ name: string; html: string }> = [
   { name: "/cmms", html: renderCmms("https://factorylm.com/cmms") },
   { name: "/limitations", html: renderLimitations("https://factorylm.com/limitations") },
   { name: "/security", html: renderSecurity("https://factorylm.com/security") },
+  { name: "/offline", html: renderOffline("https://factorylm.com/offline") },
   { name: "/sample", html: renderSamplePlaceholder() },
   { name: "/printsense (route)", html: renderPrintsenseLanding() },
   { name: "/blog (renderer)", html: renderBlogIndex(BLOG_POSTS, FAULT_CODES.length) },
@@ -254,21 +256,6 @@ const OFFER_RULE: ClaimRule = {
 
 const ALL_BANS: ClaimRule[] = [...CLAIM_CATEGORIES, ...DONT_SAY, OFFER_RULE];
 
-/**
- * /terms is byte-identical to main (Codex iteration 3 F3: Terms changes need a dated
- * amendment, not an edit in this PR). Its pre-amendment claims are pinned exactly, so any
- * NEW claim or price on /terms still fails.
- */
-const TERMS_MAIN_SHA256 = "265519dc9e77574bcfa7b46e5c4f03f96687d08f4b8431437808f8c859002bfd";
-const TERMS_KNOWN_HITS = [
-  "price: any dollar amount",
-  "overclaim: CMMS write-back",
-  "adapter: Telegram as answer surface",
-  "adapter: Slack as answer surface",
-  "overclaim: Digital Transformation title",
-  "overclaim: Operating Layer",
-];
-const TERMS_KNOWN_DOLLARS = ["$500", "$2,000", "$5,000", "$499"];
 
 function dollarAmounts(html: string): string[] {
   return html.match(/\$[\d,]+/g) ?? [];
@@ -283,9 +270,23 @@ function schemaPriceValues(html: string): string[] {
   return [...html.matchAll(/"price"\s*:\s*"?([^",}\s]+)"?/g)].map((m) => m[1]);
 }
 
+const APPROVED_F30011_SIGNUP = [
+  "https://app.factorylm.com/signup?utm_source=blog&utm_medium=organic&utm_campaign=from-the-manual&utm_content=siemens-g120c-f30011-line-phase-failure",
+  "https://app.factorylm.com/signup?utm_source=blog&amp;utm_medium=organic&amp;utm_campaign=from-the-manual&amp;utm_content=siemens-g120c-f30011-line-phase-failure",
+];
+
 function marketingSurface(name: string, html: string): string {
-  if (name !== "/llms-full.txt") return html;
-  return html.replace(
+  let surface = html;
+  if (name === "/blog/siemens-g120c-f30011-line-phase-failure") {
+    // Mike approved this exact correction (26 Nov 2026), including the
+    // from-the-manual signup CTA. It is not the free-pilot / lifetime-credit offer.
+    // The rendered href escapes query-string ampersands.
+    for (const href of APPROVED_F30011_SIGNUP) {
+      surface = surface.replaceAll(href, "https://factorylm.com/approved-manual-cta");
+    }
+  }
+  if (name !== "/llms-full.txt") return surface;
+  return surface.replace(
     /## Not yet claimed[\s\S]*?(?=\n## Full limitations\b)/,
     ""
   );
@@ -300,18 +301,16 @@ function claimHits(name: string, html: string): string[] {
 }
 
 describe("public marketing copy — don't-say list and no published prices", () => {
-  test("/terms is byte-identical to main and carries only its known pre-amendment claims", () => {
+  test("/terms (Nov 25, 2026 amendment) publishes no prices and names the real operator", () => {
     const terms = pages.find((p) => p.name === "/terms")!.html;
-    expect(createHash("sha256").update(readPublic("terms.html")).digest("hex")).toBe(
-      TERMS_MAIN_SHA256,
-    );
-    expect(claimHits("/terms", terms)).toEqual(TERMS_KNOWN_HITS);
-    expect(dollarAmounts(terms)).toEqual(TERMS_KNOWN_DOLLARS);
+    expect(dollarAmounts(terms)).toEqual([]);
     expect(schemaPriceValues(terms)).toEqual([]);
+    expect(terms).toContain("Michael J. Harper, an individual doing business as FactoryLM");
+    expect(terms).toContain("laws of the State of Florida");
+    expect(terms).not.toContain("Delaware");
   });
 
   for (const page of pages) {
-    if (page.name === "/terms") continue;
     test(`${page.name}: drops the don't-say list and removed claims`, () => {
       const hits = claimHits(page.name, page.html);
       expect(hits, `${page.name} still contains: ${hits.join("; ")}`).toEqual([]);
@@ -882,6 +881,7 @@ describe("unproven registry claims are suppressed, not replaced with fallback co
     for (const control of [
       '<div class="ps-cites"><span class="ps-cite">duplicate-identifier check</span></div>',
       "<p>Ask Mira a question.</p>",
+      "<p>An earlier article did not cite a manual page.</p>",
     ]) {
       expect(citationClaims(control), control).toEqual([]);
     }
@@ -896,7 +896,116 @@ function citationClaims(html: string): string[] {
     .replace(/<[^>]+>/g, " ")
     .replace(/&[a-z]+;|&#\d+;/gi, " ")
     .replace(/\s+/g, " ");
-  return (
-    text.match(/\bcit(?:e|es|ed|ing)\b[^.!?]{0,40}\b(?:pages?|manuals?)\b/gi) ?? []
-  );
+  const out: string[] = [];
+  const re = /\bcit(?:e|es|ed|ing)\b[^.!?]{0,40}\b(?:pages?|manuals?)\b/gi;
+  for (const match of text.matchAll(re)) {
+    const start = match.index ?? 0;
+    const prefix = text.slice(Math.max(0, start - 20), start);
+    // A negated historical sentence ("did not cite a manual page") is not a
+    // product citation claim.
+    if (/\b(?:did not|does not|do not|didn't|doesn't|don't)\s+$/i.test(prefix)) continue;
+    out.push(match[0]);
+  }
+  return out;
 }
+
+// Google Search Console (2026-11-05) flagged a critical Product-snippet issue:
+// a Product needs offers, review or aggregateRating. Fault-code pages describe
+// equipment we do not sell, so they must declare no Product. The guide must be
+// a recognized schema.org CreativeWork type so `mentions` is valid on it.
+describe("fault-code page structured data", () => {
+  function jsonLdBlocks(html: string): unknown[] {
+    const re = /<script type="application\/ld\+json">([\s\S]*?)<\/script>/g;
+    return [...html.matchAll(re)].map((m) => JSON.parse(m[1]));
+  }
+  function collectTypes(node: unknown, out: string[]): string[] {
+    if (Array.isArray(node)) node.forEach((n) => collectTypes(n, out));
+    else if (node && typeof node === "object") {
+      for (const [k, v] of Object.entries(node)) {
+        if (k === "@type") out.push(...(Array.isArray(v) ? v : [v]).map(String));
+        else collectTypes(v, out);
+      }
+    }
+    return out;
+  }
+  function guideOf(fc: FaultCode): Record<string, any> | undefined {
+    const blocks = jsonLdBlocks(renderFaultCodePage(fc, FAULT_CODES));
+    const graph = (blocks[0] as { "@graph": Array<Record<string, any>> })["@graph"];
+    return graph.find((n) => String(n["@id"]).endsWith("#guide"));
+  }
+
+  test("no fault-code page declares a Product", () => {
+    expect(FAULT_CODES.length).toBeGreaterThan(0);
+    for (const fc of FAULT_CODES) {
+      const blocks = jsonLdBlocks(renderFaultCodePage(fc, FAULT_CODES));
+      expect(blocks.length).toBeGreaterThan(0);
+      expect(collectTypes(blocks, [])).not.toContain("Product");
+    }
+  });
+
+  test("the guide is a schema.org HowTo about the equipment, mentioning the manufacturer", () => {
+    for (const fc of FAULT_CODES) {
+      const guide = guideOf(fc);
+      expect(guide?.["@type"]).toBe("HowTo");
+      expect(guide?.about).toEqual({
+        "@type": "Thing",
+        name: fc.equipment,
+        description: `Equipment by ${fc.manufacturer}`,
+      });
+      expect(guide?.mentions).toEqual({ "@type": "Organization", name: fc.manufacturer });
+      expect(Array.isArray(guide?.step) && guide.step.length > 0).toBe(true);
+    }
+  });
+});
+
+// RFI readiness (#5570): trust, security and offline pages.
+const rfiTrust = readFileSync(join(process.cwd(), "public", "trust.html"), "utf-8");
+const rfiSecurity = renderSecurity("https://factorylm.com/security");
+const rfiOffline = renderOffline("https://factorylm.com/offline");
+const rfiDpa = readFileSync(join(process.cwd(), "public", "legal", "dpa.html"), "utf-8");
+
+describe("RFI readiness: trust, security and offline pages", () => {
+  test("/trust no longer names an internal PR number or the secrets vendor in prose", () => {
+    expect(rfiTrust).not.toMatch(/PR #\d+/);
+    expect(rfiTrust).not.toContain("credentials live in Doppler");
+    expect(rfiTrust).not.toContain("compliance roadmap");
+    expect(rfiTrust).toContain('id="compliance"');
+  });
+
+  test("/trust lists the current host, not the retired DigitalOcean droplet", () => {
+    expect(rfiTrust).not.toContain("DigitalOcean");
+    expect(rfiTrust).toContain("OVHcloud");
+  });
+
+  test("legal pages don't claim a corporation that doesn't exist", () => {
+    for (const f of ["terms.html", "trust.html", "privacy.html", "legal/dpa.html"]) {
+      const html = readFileSync(join(process.cwd(), "public", f), "utf-8");
+      expect(html, f).not.toContain("FactoryLM, Inc.");
+      expect(html, f).not.toContain("Delaware");
+    }
+    expect(rfiDpa).not.toContain("SOC 2 Type II attestation in progress");
+  });
+
+  test("/security names the live providers like /trust does", () => {
+    expect(rfiSecurity).toContain("OpenAI, then OpenRouter");
+    expect(rfiSecurity).not.toContain("We don't name providers");
+    expect(rfiSecurity).toContain('href="/trust"');
+  });
+
+  test("/offline says MIRA works offline and keeps unconfirmed specifics under What's next", () => {
+    expect(rfiOffline).toContain("MIRA works offline");
+    expect(rfiOffline).toContain("What's next");
+    expect(rfiOffline).toContain("Independent network verification.");
+    expect(rfiOffline).toContain("Long disconnected deployments.");
+    expect(rfiOffline).not.toMatch(/180[- ]day|air[- ]gapped|FedRAMP authorized|deterministic/i);
+  });
+
+  // Owner gate: these pages carry [MIKE TO CONFIRM] markers for facts only the owner
+  // can supply (the operator's legal name in the DPA). This test stays red until
+  // every marker is replaced, so the branch cannot merge with a placeholder on a live page.
+  test("no owner placeholder is left on a public page", () => {
+    for (const [name, html] of [["/trust", rfiTrust], ["/security", rfiSecurity], ["/offline", rfiOffline], ["/legal/dpa", rfiDpa]] as const) {
+      expect(html, `${name} still has an owner placeholder`).not.toContain("MIKE TO CONFIRM");
+    }
+  });
+});

@@ -15,6 +15,9 @@
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
+import { PHOTO_CHANGED_RETRY_NOTE } from "@/capabilities/turn-recovery/contract";
+import { bypassStopText } from "@/capabilities/safety-bypass-advisory";
+import { errorMessageFor } from "@/factorylm-ui/hub-host-logic";
 
 const TENANT = "11111111-1111-4111-8111-111111111111";
 const NB = "22222222-2222-4222-8222-222222222222";
@@ -350,6 +353,60 @@ describe("native round4 F1: accepted photo warning survives a held source", () =
     const response = await POST(req({ retryRequestId: REQUEST, threadId: null }), params);
     const text = await response.text();
     expect(response.status).toBe(409); expect(text).not.toContain("⚠️"); expect(text).toContain("retry_photo_changed");
+    quiet();
+  });
+  const SMOKE = [{ code: "smoke", confidence: 0.99 }];
+  const REPLACEMENT_TEXT = "REPLACEMENT-PHOTO-TEXT";
+  it("changed photo, original UNSAFE -> current safe: the ORIGINAL warning is shown with a plain 'photo changed, ask a new question' note and nothing of the replacement", async () => {
+    acceptedPhotoRetry(look(SMOKE));
+    lookMock.loadVisualEvidenceForPhoto.mockResolvedValue({ ...look([]), text: REPLACEMENT_TEXT } as unknown as Row);
+    const response = await POST(req({ retryRequestId: REQUEST, threadId: null }), params);
+    const text = await response.text();
+    expect(response.status).toBe(409);
+    expect(text).toContain("⚠️"); expect(text).toContain(PHOTO_CHANGED_RETRY_NOTE); expect(text).not.toContain(REPLACEMENT_TEXT);
+    // The words shown (safetyWarning/error) carry no internal id; `code` is the machine field.
+    const shown = JSON.parse(text) as { safetyWarning: string; error: string };
+    expect(`${shown.safetyWarning} ${shown.error}`).not.toMatch(/retry_photo_changed|original_photo_changed/);
+    quiet();
+  });
+  it("changed photo, original safe -> current UNSAFE: the replacement's hazard and text never reach the retry; the code maps to the same plain note", async () => {
+    acceptedPhotoRetry(look([]));
+    lookMock.loadVisualEvidenceForPhoto.mockResolvedValue({ ...look(SMOKE), text: REPLACEMENT_TEXT } as unknown as Row);
+    const response = await POST(req({ retryRequestId: REQUEST, threadId: null }), params);
+    const text = await response.text();
+    expect(response.status).toBe(409);
+    expect(text).not.toContain("⚠️"); expect(text).not.toContain(REPLACEMENT_TEXT);
+    expect(errorMessageFor("retry_photo_changed", 409)).toBe(PHOTO_CHANGED_RETRY_NOTE);
+    quiet();
+  });
+  it("control: an UNCHANGED unsafe original with the source held still warns, with the ordinary review note (not the photo-changed one)", async () => {
+    acceptedPhotoRetry(look(SMOKE));
+    const text = await (await POST(req({ retryRequestId: REQUEST, threadId: null }), params)).text();
+    expect(text).toContain("⚠️"); expect(text).not.toContain(PHOTO_CHANGED_RETRY_NOTE);
+    quiet();
+  });
+  it("bypass ask recovered with a changed UNSAFE original photo: the generic refusal only, no photo payload, no provider", async () => {
+    const body = { ...originalBody(), message: "Take the guard door out of the STO circuit so the PLC stops the axis instead", mode: "grounded", sourceDocIds: [DOC_A], visualEvidence: { fileId: DOC_A } };
+    recoveryMock.readTurnRetry.mockResolvedValue({ body, target: { kind: "known", equipmentEntityId: null }, component: null, acceptedContext: { ...acceptedContext, currentLookRow: look(SMOKE) } });
+    nbMock.claimNotebookTurnRequest.mockResolvedValue({ status: "claimed", claimToken: TOKEN, preserveFailedTurn: true });
+    nbMock.validateChatSources.mockResolvedValue({ ok: false, error: "source_not_in_notebook" });
+    filesMock.photoLinkedToTarget.mockResolvedValue({ fileId: DOC_A, capturedAt: FAULT_AT });
+    lookMock.loadVisualEvidenceForPhoto.mockResolvedValue({ ...look([]), text: REPLACEMENT_TEXT } as unknown as Row);
+    const response = await POST(req({ retryRequestId: REQUEST, threadId: null }), params);
+    const out = await response.json();
+    expect(out.safetyWarning).toBe(bypassStopText(null, null));
+    expect(JSON.stringify(out)).not.toContain(REPLACEMENT_TEXT); expect(JSON.stringify(out)).not.toMatch(/smoke/i);
+    expect(out.safetyWarning).not.toContain(PHOTO_CHANGED_RETRY_NOTE);
+    quiet();
+  });
+  it("bypass ask recovered while its original photo is unavailable: still the generic refusal, not a photo error", async () => {
+    const body = { ...originalBody(), message: "Jumper the door interlock so it runs with the guard open", mode: "grounded", sourceDocIds: [DOC_A], visualEvidence: { fileId: DOC_A } };
+    recoveryMock.readTurnRetry.mockResolvedValue({ body, target: { kind: "known", equipmentEntityId: null }, component: null, acceptedContext: { ...acceptedContext, currentLookRow: look(SMOKE) } });
+    nbMock.claimNotebookTurnRequest.mockResolvedValue({ status: "claimed", claimToken: TOKEN, preserveFailedTurn: true });
+    filesMock.photoLinkedToTarget.mockResolvedValue(null);
+    const out = await (await POST(req({ retryRequestId: REQUEST, threadId: null }), params)).json();
+    expect(out.safetyWarning).toBe(bypassStopText(null, null));
+    expect(out.error).not.toBe("retry_photo_unavailable");
     quiet();
   });
   it("still warns about a question hazard when the source is held", async () => {

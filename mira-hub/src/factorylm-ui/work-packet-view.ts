@@ -6,6 +6,7 @@
  * fetch, component state, and rendering; it never duplicates the logic that lives here.
  */
 import type { Field, Label, PacketDocument, PacketFigure, SourceRef, WorkOrderInput, WorkPacket, WorkPacketAvailability } from "@/capabilities/work-packet/types";
+import { manufacturerRefusalMessage } from "@/capabilities/work-packet/manufacturer";
 
 // ───────────────────────────────────────────── label → badge text
 
@@ -257,4 +258,20 @@ export function technicianEntryNote(field: Pick<Field, "review">): string | null
 /** A direct link such as `/v3/?notebook=<id>&workpacket=open` opens the packet straight away. */
 export function wantsPacketOpen(search: string): boolean {
   return new URLSearchParams(search).get("workpacket") === "open";
+}
+
+// ───────────────────────────────────────────── unsupported manufacturer (#5551)
+
+/**
+ * The plain "not available for this maker" message when the availability check already says the
+ * confirmed manufacturer is outside what job packets cover; null otherwise. The server's own
+ * `manufacturer_not_supported` refusal (isSupportedManufacturer) is the only authority — this adds
+ * no second policy. The wording is rebuilt from the confirmed manufacturer so it is the same plain
+ * sentence whichever build produced the availability.
+ */
+export function unsupportedManufacturerMessage(
+  avail: { identity?: { manufacturer?: string | null } | null; blocking?: { reason: string } | null } | null,
+): string | null {
+  if (!avail || avail.blocking?.reason !== "manufacturer_not_supported") return null;
+  return manufacturerRefusalMessage(avail.identity?.manufacturer ?? null);
 }

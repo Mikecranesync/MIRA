@@ -36,6 +36,7 @@ import { cors } from "hono/cors";
 import { deployIdentity } from "./capabilities/deploy-identity.js";
 import { hubUrl } from "./capabilities/hub-origin.js";
 import { isCheckoutEnabled } from "./capabilities/checkout-gate.js";
+import { createFactorylmMarketingRouter, marketingAliasRedirect } from "./factorylm-ui/marketing-next.js";
 import {
   submitPilotRequest,
   ensurePilotRequestSchema,
@@ -45,6 +46,7 @@ import { renderHome } from "./views/home.js";
 import { renderCmms, renderSamplePlaceholder } from "./views/cmms.js";
 import { renderLimitations } from "./views/limitations.js";
 import { renderSecurity } from "./views/security.js";
+import { renderOffline } from "./views/offline.js";
 import {
   createMagicLink,
   validateAndConsumeToken,
@@ -118,6 +120,7 @@ import {
 } from "./lib/hub-provisioning-queue.js";
 import { FAULT_CODES } from "./data/fault-codes.js";
 import { BLOG_POSTS } from "./data/blog-posts.js";
+import { blogRedirectPath } from "./data/blog-redirects.js";
 import { buildSitemapXml } from "./lib/sitemap.js";
 import {
   renderBlogPost,
@@ -199,6 +202,10 @@ export const app = new Hono();
 // Middleware
 // Trim trailing slashes — /pricing/ → /pricing (simplifies routing, fixes #2179)
 app.use("*", async (c, next) => {
+  // Codex F33: the bounded marketing adapter answers its own aliases first
+  // (same-origin 302/no-store); generic normalization would 301 to production.
+  const alias = await marketingAliasRedirect(c.req.method, c.req.url, c.req.raw.headers);
+  if (alias) return alias;
   const target = trailingSlashRedirectTarget(c.req.url, c.req.raw.headers);
   if (target) return c.redirect(target, 301);
   await next();
@@ -357,6 +364,8 @@ app.use("/public/*", serveStatic({ root: "./" }));
 // /images/app-screenshot-desktop.png and that the v0.3.0 hero swap
 // also tripped on. Fixed here for v0.3.1.
 app.use("/images/*", serveStatic({ root: "./public" }));
+// Exact marketing routes only; default off. Existing API/policy/article handlers continue below.
+app.route("/", createFactorylmMarketingRouter());
 app.use("/manifest.json", serveStatic({ path: "./public/manifest.json" }));
 app.use("/sw.js", serveStatic({ path: "./public/sw.js" }));
 app.use("/robots.txt", serveStatic({ path: "./public/robots.txt" }));
@@ -440,6 +449,11 @@ app.get("/limitations", (c) => {
 // Security page (#893) — infrastructure, data protection, AI safety, compliance roadmap
 app.get("/security", (c) => {
   return c.html(renderSecurity(c.req.url));
+});
+
+// Offline page — where the disconnected tablet build stands (#5265). Status page, not a launch.
+app.get("/offline", (c) => {
+  return c.html(renderOffline(c.req.url));
 });
 
 // Sample workspace placeholder (#SO-070 AC4) — Phase-0 destination after sign-in.
@@ -558,6 +572,8 @@ app.get("/blog/fault-codes", (c) =>
 // Individual post or fault code article
 app.get("/blog/:slug", (c) => {
   const slug = c.req.param("slug");
+  const redirectTo = blogRedirectPath(slug);
+  if (redirectTo) return c.redirect(redirectTo, 301);
 
   // Check blog posts first
   const post = allBlogPosts.find((p) => p.slug === slug);
@@ -1260,7 +1276,7 @@ app.post("/api/checkout/start", async (c) => {
     return c.json(
       {
         error:
-          `Online checkout is not available. FactoryLM pilots are free for 30 days — apply at ${hubUrl("/signup")}`,
+          `Online checkout is not available. Apply for a reviewed plant pilot at ${hubUrl("/signup?intent=pilot")}`,
       },
       410
     );

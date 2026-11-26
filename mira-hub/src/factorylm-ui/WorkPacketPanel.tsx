@@ -57,6 +57,7 @@ import {
   syntheticDemoWorkOrder,
   toolFieldPath,
   unknownFieldPath,
+  unsupportedManufacturerMessage,
 } from "./work-packet-view";
 
 // ───────────────────────────────────────────── styles ("--fl-*" tokens only, no hex — ui-style.md)
@@ -325,15 +326,60 @@ function documentLine(doc: PacketDocument): string {
   return `${name} (${role}) — ${pages} — ${rev}`;
 }
 
+/** Internal/test-only demo work-order controls (#5551): rendered only when explicitly enabled. */
+export function SyntheticDemoControls({ show, synthetic, onSynthetic, onLoad }: {
+  show: boolean; synthetic: boolean; onSynthetic: (v: boolean) => void; onLoad: () => void;
+}) {
+  if (!show) return null;
+  return (
+    <>
+      <label style={S.label}>
+        <input type="checkbox" checked={synthetic} onChange={(e) => onSynthetic(e.target.checked)} /> Synthetic / demo work order (not a real job)
+      </label>
+      <button type="button" style={S.btn} data-testid="wp-load-synthetic" onClick={onLoad}>Load synthetic demo work order</button>
+    </>
+  );
+}
+
+/** What the server said about the identity the technician just confirmed, including the manual search
+ *  (ready, looking, not started, still indexing). Rendered outside the job-packet gates so it stays on
+ *  screen whether or not job packets turn out to be available for this maker (#5731 F3). */
+export function ConfirmationFeedback({ nameplate, typed }: { nameplate: string | null; typed: string | null }) {
+  if (!nameplate && !typed) return null;
+  return (
+    <section style={S.section} data-testid="wp-confirmation-feedback" data-no-print>
+      <h3 style={S.sectionTitle}>Identity and manual search</h3>
+      {nameplate && <div style={S.ok} data-testid="wp-nameplate-outcome">{nameplate}</div>}
+      {typed && <div style={{ ...S.ok, marginTop: nameplate ? 8 : 0 }} data-testid="wp-typed-outcome">{typed}</div>}
+    </section>
+  );
+}
+
+/** The plain reason shown instead of the work-order form for a manufacturer job packets don't cover. */
+export function UnsupportedNotice({ identity, message }: {
+  identity?: { manufacturer?: string | null; model?: string | null } | null; message: string;
+}) {
+  return (
+    <section style={S.section} data-testid="wp-unsupported">
+      <div>{identity?.manufacturer ?? "Unknown manufacturer"} {identity?.model ?? "unknown model"}</div>
+      <div role="status" style={{ ...S.warn, marginTop: 8 }} data-testid="wp-unsupported-message">{message}</div>
+    </section>
+  );
+}
+
 export function WorkPacketPanel({
   notebookId,
   technicianName,
   onOpenSource,
   openOnArrival = false,
+  allowSyntheticDemo = false,
 }: {
   notebookId: string;
   /** Open the packet on mount — set by the host for a `?workpacket=open` direct link. */
   openOnArrival?: boolean;
+  /** Internal/test opt-in (#5551): shows the synthetic demo work-order controls. Off for every
+   *  real user; saved synthetic packets still render their SYNTHETIC marker either way. */
+  allowSyntheticDemo?: boolean;
   /** Recorded as the `by` on every ReviewEntry (task §E step 5). Falls back to a generic label
    *  when the shell has no signed-in name to offer — the edit is still attributed, just not to a
    *  specific person. */
@@ -600,11 +646,19 @@ export function WorkPacketPanel({
     <FieldRow path={path} field={field} onEdit={onEditField} onOpenSource={onOpenSource} busy={editBusy} />
   );
 
+  // #5551: a confirmed maker the job-packet tools do not cover gets no "Prepare job" entry and no
+  // work-order form; a direct link or an in-panel confirmation shows the plain reason instead.
+  // A packet already saved on this device keeps its Resume entry and its record, but the refusal still
+  // gates building and rebuilding: the saved packet is shown as out of date, never as current.
+  const unsupportedMessage = unsupportedManufacturerMessage(avail);
+
   // ── Export PDF ────────────────────────────────────────────────────────────────────────────────
   const stale = packet && avail
-    ? avail.documentsState === "deferred"
-      ? "the current document revisions have not yet been checked against this saved packet"
-      : packetStaleReason(packet, avail)
+    ? unsupportedMessage
+      ? "job packets are not available for this machine's confirmed manufacturer"
+      : avail.documentsState === "deferred"
+        ? "the current document revisions have not yet been checked against this saved packet"
+        : packetStaleReason(packet, avail)
     : null;
 
   const onExport = useCallback(() => {
@@ -622,7 +676,7 @@ export function WorkPacketPanel({
   const pillLabel = packet ? "Resume job packet" : "Prepare job";
 
   const { inMenu, focusMore } = useMenuItem(
-    avail === null ? null : { id: "work-packet", label: pillLabel, description: "Parts, tools and steps from the manuals", ...(packet ? { status: "In progress" } : {}) },
+    avail === null || (unsupportedMessage && !packet && !open) ? null : { id: "work-packet", label: pillLabel, description: "Parts, tools and steps from the manuals", ...(packet ? { status: "In progress" } : {}) },
     () => setOpen(true),
   );
 
@@ -631,7 +685,7 @@ export function WorkPacketPanel({
   return (
     <>
       <style data-testid="work-packet-print-css">{PRINT_CSS}</style>
-      {inMenu ? null : <button type="button" ref={openerRef} data-testid="wp-open" style={S.pill} onClick={() => setOpen(true)}>{pillLabel}</button>}
+      {inMenu || (unsupportedMessage && !packet && !open) ? null : <button type="button" ref={openerRef} data-testid="wp-open" style={S.pill} onClick={() => setOpen(true)}>{pillLabel}</button>}
       <dialog
         ref={dialogRef}
         style={S.dialog}
@@ -647,7 +701,11 @@ export function WorkPacketPanel({
               <button type="button" data-testid="wp-close" style={{ ...S.btn, width: "auto" }} onClick={() => setOpen(false)}>Close</button>
             </div>
 
+            <ConfirmationFeedback nameplate={napOutcome} typed={typedOutcome} />
+            {unsupportedMessage && <UnsupportedNotice identity={identity} message={unsupportedMessage} />}
+
             {/* ── (1) Equipment ──────────────────────────────────────────────────────────── */}
+            {!unsupportedMessage && (<>
             <section style={S.section} data-testid="wp-equipment">
               <h3 style={S.sectionTitle}>Equipment</h3>
               <div>
@@ -692,7 +750,6 @@ export function WorkPacketPanel({
                       <button type="button" style={{ ...S.btn, ...S.primary }} disabled={napBusy} onClick={() => void onConfirmNameplate()}>Confirm nameplate</button>
                     </div>
                   )}
-                  {napOutcome && <div style={{ ...S.ok, marginTop: 8 }} data-testid="wp-nameplate-outcome">{napOutcome}</div>}
 
                   <div style={{ ...S.muted, marginTop: 12 }}>— or —</div>
                   <label style={S.label}>
@@ -714,7 +771,6 @@ export function WorkPacketPanel({
                   >
                     Confirm identity
                   </button>
-                  {typedOutcome && <div style={{ ...S.ok, marginTop: 8 }} data-testid="wp-typed-outcome">{typedOutcome}</div>}
                 </div>
               )}
             </section>
@@ -752,10 +808,7 @@ export function WorkPacketPanel({
               <label style={S.label}>Description<textarea rows={3} style={S.input} value={wo.description} onChange={(e) => setWo((c) => ({ ...c, description: e.target.value }))} /></label>
               <label style={S.label}>Asset tag<input style={S.input} value={wo.assetTag} onChange={(e) => setWo((c) => ({ ...c, assetTag: e.target.value }))} /></label>
               <label style={S.label}>Site<input style={S.input} value={wo.site} onChange={(e) => setWo((c) => ({ ...c, site: e.target.value }))} /></label>
-              <label style={S.label}>
-                <input type="checkbox" checked={synthetic} onChange={(e) => setSynthetic(e.target.checked)} /> Synthetic / demo work order (not a real job)
-              </label>
-              <button type="button" style={S.btn} data-testid="wp-load-synthetic" onClick={loadSyntheticDemo}>Load synthetic demo work order</button>
+              <SyntheticDemoControls show={allowSyntheticDemo} synthetic={synthetic} onSynthetic={setSynthetic} onLoad={loadSyntheticDemo} />
 
               <button
                 type="button" data-testid="wp-build"
@@ -783,6 +836,8 @@ export function WorkPacketPanel({
               {error && <div role="alert" style={{ ...S.fault, marginTop: 8 }} data-testid="wp-error">{error}</div>}
             </section>
 
+            </>)}
+
             {/* ── (5) Packet view ───────────────────────────────────────────────────────── */}
             {packet && (
               // Keyed by packet: a rebuilt packet remounts every row, so no row keeps an edit box or
@@ -793,7 +848,8 @@ export function WorkPacketPanel({
                 {stale && (
                   // Printed too: a stale packet that reaches paper by the browser's own print still says so.
                   <div role="alert" style={{ ...S.fault, marginBottom: 8 }} data-testid="wp-stale">
-                    <strong>Out of date — do not use.</strong> This packet was saved on this device, and {stale}. Build the packet again before exporting it.
+                    <strong>Out of date — do not use.</strong> This packet was saved on this device, and {stale}.{" "}
+                    {unsupportedMessage ? "It cannot be rebuilt for this equipment, so it cannot be exported." : "Build the packet again before exporting it."}
                   </div>
                 )}
                 {packet.workOrder.synthetic && <div style={S.stamp} data-testid="wp-synthetic-stamp">SYNTHETIC — not a real job</div>}

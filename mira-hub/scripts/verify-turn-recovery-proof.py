@@ -10,6 +10,7 @@ REQUIRED = {
     "turn-recovery/status.integration.test.ts": 10,
     "turn-recovery/chat.integration.test.ts": 7,
     "turn-recovery/round2.integration.test.ts": 12,
+    "turn-recovery/photo-change.integration.test.ts": 10,
 }
 MINIMUM_TOTAL = 29
 

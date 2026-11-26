@@ -74,7 +74,7 @@ export const BLOG_POSTS: BlogPost[] = [
         items: [
           "Overcurrent (F012, oC, 2310, F01001, E.OC) — The output current exceeded the drive's limit. Usually caused by a motor short, ground fault, or mechanical overload.",
           "Overvoltage (F070, oV, E.OU) — The DC bus voltage spiked, typically during deceleration when the motor pumps energy back into the drive.",
-          "Overtemperature (F041, oH, F30011, E.OH) — The drive's heatsink or motor exceeded its thermal limit. Check cooling fans and ventilation.",
+          "Overtemperature (F041, oH, E.OH) — The drive's heatsink or motor exceeded its thermal limit. Check cooling fans and ventilation.",
           "Ground Fault (F013, GF, 3220, E.OC) — Current is leaking to ground through damaged cable or motor insulation.",
           "Communication Loss (F033, E.CF, 7121) — The drive lost contact with the PLC or the analog signal dropped out.",
         ],
@@ -494,7 +494,7 @@ export const BLOG_POSTS: BlogPost[] = [
     relatedFaultCodes: [
       "powerflex-f041-heatsink-overtemp",
       "gs20-eoh-overheating",
-      "siemens-f30011-heatsink-overtemp",
+      "siemens-g120c-f30011-line-phase-failure",
     ],
   },
 

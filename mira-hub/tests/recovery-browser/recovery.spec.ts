@@ -46,7 +46,7 @@ type Fixture = {
 };
 async function mount(context: BrowserContext, page: Page, baseURL: string, fx: Fixture, seedPointers: { req: string; question: string }[] = []) {
   const origin = new URL(baseURL).origin;
-  const token = await encode({ token: { uid: "e2e-r4", tid: TENANT, status: "trial", trialExpiresAt: new Date(Date.now() + 30 * 86_400_000).toISOString(), email: "e2e-r4@factorylm-test.com" }, secret: SECRET });
+  const token = await encode({ token: { uid: USER, tid: TENANT, status: "trial", trialExpiresAt: new Date(Date.now() + 30 * 86_400_000).toISOString(), email: "e2e-r4@factorylm-test.com" }, secret: SECRET });
   await context.addCookies([{ name: "next-auth.session-token", value: token, url: baseURL }]);
   // One exact origin: everything else is refused before it leaves the browser.
   await context.route((url) => url.origin !== origin, (route) => route.abort("blockedbyclient"));
@@ -57,12 +57,16 @@ async function mount(context: BrowserContext, page: Page, baseURL: string, fx: F
     // Controllable chat stream: the page's POST /chat/ gets a stream the test pushes frames into and can Stop (abort).
     const realFetch = window.fetch.bind(window);
     const enc = new TextEncoder();
-    const chat = { calls: [] as unknown[], push: (() => {}) as (frame: string) => void, end: () => {}, fail: () => {} };
+    const chat = { calls: [] as unknown[], push: (() => {}) as (frame: string) => void, end: () => {}, fail: () => {}, refuseNext: null as null | { status: number; body: unknown } };
     (window as unknown as { __chat: typeof chat }).__chat = chat;
     window.fetch = (input, init) => {
       const url = typeof input === "string" ? input : input instanceof Request ? input.url : String(input);
       if (init?.method === "POST" && /\/chat\/?$/.test(new URL(url, location.href).pathname)) {
         chat.calls.push(JSON.parse(String(init.body ?? "{}")));
+        if (chat.refuseNext) { // fixture HTTP refusal (UI proof only; the same server behaviour is proven against real storage)
+          const refusal = chat.refuseNext; chat.refuseNext = null;
+          return Promise.resolve(new Response(JSON.stringify(refusal.body), { status: refusal.status, headers: { "content-type": "application/json" } }));
+        }
         let controller!: ReadableStreamDefaultController<Uint8Array>;
         const body = new ReadableStream<Uint8Array>({ start(c) { controller = c; } });
         chat.push = (frame: string) => controller.enqueue(enc.encode(frame));
@@ -106,6 +110,7 @@ const conv = (page: Page) => page.locator('[aria-label="Conversation"]');
 const chat = (page: Page) => ({
   push: (frame: string) => page.evaluate((f) => (window as unknown as { __chat: { push: (x: string) => void } }).__chat.push(f), frame),
   end: () => page.evaluate(() => (window as unknown as { __chat: { end: () => void } }).__chat.end()),
+  refuseNext: (status: number, body: unknown) => page.evaluate(([st, b]) => { (window as unknown as { __chat: { refuseNext: unknown } }).__chat.refuseNext = { status: st, body: b }; }, [status, body] as const),
   calls: () => page.evaluate(() => (window as unknown as { __chat: { calls: Record<string, unknown>[] } }).__chat.calls),
 });
 const frame = (o: unknown) => `data: ${JSON.stringify(o)}\n\n`;
@@ -263,4 +268,52 @@ test.describe("round4 F11: an exact-recovered older answer keeps its inline cita
     expect(clip.length).toBeGreaterThan(0);
     for (const text of clip) expect(text, text).toMatch(/Sources:\n\[1\] AutomationDirect GS10 manual/);
   });
+});
+
+const PHOTO_NOTE = "The photo changed since you asked this question, so this retry does not use it. Ask a new question to use the current photo.";
+test.describe("human photo requirement: a changed photo Retry says so; one explicit POST; nothing automatic; a NEW question shows the current hazard", () => {
+  for (const original of ["original photo had a hazard (warning kept)", "original photo had no hazard"] as const) {
+    test(original, async ({ page, context, baseURL }, info) => {
+      const withWarning = original.includes("had a hazard");
+      const failed = row("t-fail", OLD_REQ, { question: QUESTION, answerStatus: "error", answerText: null });
+      const fx = fresh({ turns: [failed] });
+      await mount(context, page, baseURL!, fx);
+      await open(page);
+      await expect(conv(page).getByText(QUESTION)).toHaveCount(1);
+      // The technician has typed something else meanwhile: it must survive the refused Retry.
+      const composer = page.getByRole("textbox", { name: "Ask MIRA" });
+      await composer.fill("a newer question I am still typing");
+      await chat(page).refuseNext(409, withWarning
+        ? { error: `⚠️ **Possible active incident.** Get clear first.\n\n${PHOTO_NOTE}`, code: "retry_photo_changed", safetyWarning: `⚠️ **Possible active incident.** Get clear first.\n\n${PHOTO_NOTE}` }
+        : { error: "retry_photo_changed" });
+      await conv(page).getByRole("button", { name: "Retry" }).click();
+      await expect.poll(async () => (await chat(page).calls()).length).toBe(1);
+      expect((await chat(page).calls())[0]).toEqual({ retryRequestId: OLD_REQ, threadId: THREAD });
+      // The message is plain words; no internal id, nothing of a replacement reading.
+      await expect(page.getByText(PHOTO_NOTE).first()).toBeVisible();
+      if (withWarning) await expect(page.getByText("Possible active incident").first()).toBeVisible();
+      await expect(page.locator("body")).not.toContainText(/retry_photo_changed|original_photo_changed/);
+      await shot(page, `2026-11-26_changed-photo-retry-says-ask-new-question${withWarning ? "-with-original-warning" : ""}`, info);
+      // No automatic retry: still exactly one POST after the page has had time to retry on its own.
+      await page.waitForTimeout(3000);
+      expect((await chat(page).calls()).length).toBe(1);
+      // The old pointer, the old failed row and the typed draft are all preserved.
+      expect(await pointerPresent(page, OLD_REQ)).toBe(true);
+      await expect(conv(page).getByText(QUESTION)).toHaveCount(1);
+      await expect(composer).toHaveValue("a newer question I am still typing");
+      // An explicit NEW question: a new request id (not a retry), and the CURRENT hazard is shown.
+      await composer.fill("Is it safe to open the cabinet?");
+      await page.getByRole("button", { name: "Send" }).click();
+      await expect.poll(async () => (await chat(page).calls()).length).toBe(2);
+      const asked = (await chat(page).calls())[1]!;
+      expect(asked.retryRequestId).toBeUndefined();
+      expect(asked.clientRequestId).toBeTruthy(); expect(asked.clientRequestId).not.toBe(OLD_REQ);
+      await chat(page).push(frame({ kind: "content", content: "⚠️ **Possible active incident.** If anything is smoking, get clear first.\n\nCheck the nameplate." }));
+      await chat(page).push(frame({ kind: "status", status: "answered" }));
+      await chat(page).end();
+      await expect(conv(page).getByText("Possible active incident").first()).toBeVisible();
+      await expect(conv(page).getByText(QUESTION)).toHaveCount(1);   // the old failed exchange was not rewritten or retired
+      await shot(page, `2026-11-26_new-question-after-changed-photo-shows-current-hazard${withWarning ? "-with-original-warning" : ""}`, info);
+    });
+  }
 });

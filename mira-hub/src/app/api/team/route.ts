@@ -8,6 +8,7 @@ import {
   reservePilotSeat,
 } from "@/capabilities/pilot-access";
 import { createMagicToken, ensureSchema } from "@/lib/users";
+import { assertTeamInvitesAllowed, PersonalWorkspaceError } from "@/capabilities/free-workspace";
 
 export const dynamic = "force-dynamic";
 
@@ -139,6 +140,7 @@ export async function POST(req: Request) {
     if (!canInvite) {
       return NextResponse.json({ error: "Only workspace admins can invite members" }, { status: 403 });
     }
+    await assertTeamInvitesAllowed(pool, ctx.tenantId);
 
     const existing = await pool.query(
       `SELECT id, tenant_id
@@ -195,6 +197,7 @@ export async function POST(req: Request) {
           }),
     });
   } catch (err) {
+    if (err instanceof PersonalWorkspaceError) return NextResponse.json({ error: err.message }, { status: 403 });
     if (err instanceof PilotSeatCapError) {
       return NextResponse.json({ error: err.message }, { status: 409 });
     }

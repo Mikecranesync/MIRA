@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { StreamResult, PersistedTurn } from "@/components/equipment/notebook-chat-utils";
 import type { EvidenceCitation } from "@/lib/notebook-chat-types";
-import { ENERGIZED_ELECTRICAL_HAZARD } from "@/lib/safety-classifier";
+import { ENERGIZED_ELECTRICAL_HAZARD, hazardBanner } from "@/lib/safety-classifier";
 import {
   answerTurnId,
   basisKind,
@@ -13,6 +13,7 @@ import {
   identityProposalOf,
   isTerminalSafetyNotice,
   lifecycleFromStream,
+  livePartsWhileRunning,
   partsFromStream,
   sourceFor,
   sourceIdFor,
@@ -706,5 +707,85 @@ describe("evidence basis chip — a caption, never the server key (#4025)", () =
     for (const part of both([citation], ["doc-1"], "verified_by_oem")) {
       expect(part?.basis).toEqual({ kind: "general_reasoning", label: CAPTIONS.general_reasoning, authorized: false });
     }
+  });
+});
+
+describe("#5989: the active-incident directive leads the answer", () => {
+  const INCIDENT = hazardBanner("smoke");
+  // As the route formats it: the banner, the page mark it appends (withPageCitation), then the answer.
+  const DIRECTIVE = `${INCIDENT} (p.5)`;
+  const STEPS = "1. Stop the conveyor from the upstream disconnect.\n2. Keep the enclosure closed.";
+  const smokeAnswer = `${DIRECTIVE}\n\n${STEPS}`;
+  // paid3-tablet S8: the cited p.5 serial-cable warning, as the route persists it (#4508).
+  const manualWarning = {
+    kind: "manual_safety_statement",
+    marker: "DANGER",
+    statement: "If you connect or disconnect the serial cable with power applied, an electrical arc can occur.",
+    sourceDocId: "doc-1",
+    sourceCitationId: "2",
+    sourceTitle: "2080-IN009B-EN-P.pdf",
+    page: 5,
+  };
+  const attributionA = { kind: "component_attribution", componentId: "comp-a", revision: 1, selectionVersion: 1, label: "Relay output A" };
+  // `PersistedTurn.evidence` (guarded legacy type) predates these entries; the adapter reads it as unknown.
+  const ev = (...e: unknown[]) => [citation, ...e] as unknown as PersistedTurn["evidence"];
+  type Part = ReturnType<typeof partsFromStream>[number];
+  const texts = (parts: readonly Part[]) => parts.flatMap((p) => (p.type === "text" ? [p.text] : []));
+  const name = (t: string) => (t === DIRECTIVE ? "directive" : t === STEPS ? "steps" : t.startsWith("About: ") ? "label" : `text:${t}`);
+  const order = (parts: readonly Part[]) => parts.map((p) => (p.type === "text" ? name(p.text) : p.type));
+
+  it("precondition: the incident banner is the classifier's smoke banner", () => {
+    expect(INCIDENT).toMatch(/^⚠️ \*\*Possible active incident\.\*\*/);
+  });
+
+  it("saved turn: directive, then the cited manual warning, then the steps", () => {
+    const [, a] = turnsFromPersisted(row({ answerText: smokeAnswer, evidence: ev(manualWarning) }), meta);
+    expect(a.parts.map((p) => p.type)).toEqual(["text", "safety_notice", "text", "source", "evidence_basis"]);
+    expect(texts(a.parts)).toEqual([DIRECTIVE, STEPS]);
+    expect(a.parts[1]).toMatchObject({ type: "safety_notice", notice: { severity: "warning" } });
+  });
+
+  it("nothing is lost: copy and read-aloud text keep the whole answer", () => {
+    const [, a] = turnsFromPersisted(row({ answerText: smokeAnswer, evidence: ev(manualWarning) }), meta);
+    expect(texts(a.parts).join("\n\n")).toBe(smokeAnswer);
+  });
+
+  it("a directive-only answer moves whole, with no empty text part", () => {
+    const [, a] = turnsFromPersisted(row({ answerText: DIRECTIVE, evidence: ev(manualWarning) }), meta);
+    expect(texts(a.parts)).toEqual([DIRECTIVE]);
+  });
+
+  it("control: any other answer keeps the manual's warning first and its text whole", () => {
+    const [, a] = turnsFromPersisted(row({ answerText: STEPS, evidence: ev(manualWarning) }), meta);
+    expect(a.parts.map((p) => p.type)).toEqual(["safety_notice", "text", "source", "evidence_basis"]);
+    expect(texts(a.parts)).toEqual([STEPS]);
+  });
+
+  it("control: the directive quoted mid-answer does not lead", () => {
+    const [, a] = turnsFromPersisted(row({ answerText: `Earlier you were told: ${INCIDENT}`, evidence: ev(manualWarning) }), meta);
+    expect(a.parts[0].type).toBe("safety_notice");
+  });
+
+  it("the turn's own component label stays above the steps, saved and live, with or without a warning", () => {
+    const [, saved] = turnsFromPersisted(row({ answerText: smokeAnswer, evidence: ev(manualWarning, attributionA) }), meta);
+    expect(order(saved.parts).slice(0, 4)).toEqual(["directive", "safety_notice", "label", "steps"]);
+    const [, bare] = turnsFromPersisted(row({ answerText: smokeAnswer, evidence: ev(attributionA) }), meta);
+    expect(texts(bare.parts)).toEqual([DIRECTIVE, "About: Relay output A", STEPS]);
+    const done = partsFromStream(stream({ content: smokeAnswer }), { ...LIVE, componentLabel: "Relay output A" });
+    expect(texts(done)).toEqual([DIRECTIVE, "About: Relay output A", STEPS]);
+    const running = livePartsWhileRunning(smokeAnswer, undefined, { expected: true, label: "Relay output A" });
+    expect(texts(running)).toEqual([DIRECTIVE, "About: Relay output A", STEPS]);
+  });
+
+  it("live turn: the directive comes before a warning-level hazard banner, the steps after it", () => {
+    const parts = partsFromStream(stream({ content: smokeAnswer, hazardNotice: { kind: "safety_notice", trigger: ENERGIZED_ELECTRICAL_HAZARD } }), LIVE);
+    expect(order(parts).slice(0, 3)).toEqual(["directive", "safety_notice", "steps"]);
+    expect(parts[1]).toMatchObject({ notice: { severity: "warning" } });
+  });
+
+  it("control: a Safety STOP still comes before the directive", () => {
+    const parts = partsFromStream(stream({ content: smokeAnswer, safetyNotice: { kind: "safety_notice", trigger: "smoke coming" } }), { stopped: true, ...LIVE });
+    expect(parts[0]).toMatchObject({ type: "safety_notice", notice: { severity: "stop" } });
+    expect(texts(parts)[0]).toBe(DIRECTIVE);
   });
 });

@@ -197,7 +197,10 @@ describe("STRM-2 — client stops generation mid-stream", () => {
     const fetchMock = vi.fn(async () => provider.res);
     vi.stubGlobal("fetch", fetchMock);
 
-    const res = await POST(chatReq({ message: "what is F004", sourceDocIds: [DOC_A] }), params);
+    const res = await POST(chatReq({
+      message: "what is F004", sourceDocIds: [DOC_A], clientRequestId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    }), params);
+    expect(res.headers.get("x-mira-turn-attempt")).toBeTruthy();
     const reader = res.body!.getReader();
     const dec = new TextDecoder();
     let received = "";
@@ -215,7 +218,7 @@ describe("STRM-2 — client stops generation mid-stream", () => {
       question: "what is F004",
       answerStatus: "error",
       answerText: "DC bus undervoltage [1] means ",
-      evidence: [],
+      evidence: [{ kind: "stopped_attempt", attemptId: res.headers.get("x-mira-turn-attempt") }],
       basis: null,
       enabledSourceDocIds: [DOC_A],
     });

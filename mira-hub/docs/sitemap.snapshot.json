@@ -2,7 +2,7 @@
   "basePath": "/hub",
   "counts": {
     "pages": 71,
-    "apiRoutes": 212
+    "apiRoutes": 214
   },
   "pages": [
     "/admin",
@@ -257,7 +257,9 @@
     "/api/pm/export.ics",
     "/api/proposals",
     "/api/proposals/[id]/decide",
+    "/api/public/onboarding",
     "/api/public/report",
+    "/api/public/signup-policy",
     "/api/quickstart/ask",
     "/api/quickstart/manufacturers",
     "/api/readiness",

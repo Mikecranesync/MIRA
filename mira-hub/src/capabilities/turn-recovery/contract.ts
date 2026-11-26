@@ -79,3 +79,8 @@ export function recoveryView(row: RecoveryRow) {
 }
 
 export type TurnRecovery = ReturnType<typeof recoveryView> & { turn?: Awaited<ReturnType<typeof listTurns>>[number] | null };
+
+/** Plain words for the technician when Retry cannot reuse the ORIGINAL photo reading. Shown by the
+ *  route (beside any original photo warning) and by the client's code mapping; no internal ids. */
+export const PHOTO_CHANGED_RETRY_NOTE =
+  "The photo changed since you asked this question, so this retry does not use it. Ask a new question to use the current photo.";

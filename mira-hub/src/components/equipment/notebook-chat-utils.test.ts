@@ -46,6 +46,17 @@ function streamOf(chunks: string[], opts: { abortAfter?: number } = {}) {
 }
 
 describe("readNotebookStream", () => {
+  it("ignores transport headers after the answer body starts", async () => {
+    const onAttempt = vi.fn();
+    const out = await readNotebookStream(streamOf([
+      frame({ kind: "content", content: "Partial answer" }),
+      frame({ kind: "headers", headers: { "X-Safety-Stop": "arc flash", "X-Mira-Turn-Attempt": "late" } }),
+    ]), () => {}, null, { onAttempt });
+    expect(out.content).toBe("Partial answer");
+    expect(out.safetyNotice).toBeNull();
+    expect(onAttempt).not.toHaveBeenCalled();
+  });
+
   it("accumulates content frame by frame and returns the final turn", async () => {
     const chunks = [
       frame({ kind: "content", content: "F004 " }),
