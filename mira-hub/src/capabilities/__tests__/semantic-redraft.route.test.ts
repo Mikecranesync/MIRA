@@ -41,15 +41,57 @@ vi.mock("@/lib/equipment-notebooks", () => domainMock);
 const ragMock = vi.hoisted(() => ({
   retrieveNodeChunks: vi.fn(async () => [] as unknown[]),
   retrieveCitedPageChunks: vi.fn(async () => [] as unknown[]),
+  // #6062: the manufacturer-library lane, for the uncited_claim floor (empty unless a test sets it).
+  retrieveManualChunks: vi.fn(async () => [] as unknown[]),
   appendManualContext: vi.fn((base: string) => base),
   buildManualUserContent: vi.fn((q: string) => q),
 }));
 vi.mock("@/lib/manual-rag", () => ragMock);
 
+// #6048: call-through spies. `closeTurn` is the fire-and-forget lifecycle close that
+// endRoot() starts when no settle has happened (it writes the closed row with a NULL
+// packet, and the later usage write is then dropped by ON CONFLICT DO NOTHING).
+// `evaluateTurnDecision` runs once per settle on the final path (decisionState is set).
+vi.mock("@/capabilities/observability/turn-lifecycle", async (importOriginal) => {
+  const o = await importOriginal<typeof import("@/capabilities/observability/turn-lifecycle")>();
+  return { ...o, closeTurn: vi.fn(o.closeTurn) };
+});
+vi.mock("@/capabilities/observability/jev-decision", async (importOriginal) => {
+  const o = await importOriginal<typeof import("@/capabilities/observability/jev-decision")>();
+  return { ...o, evaluateTurnDecision: vi.fn(o.evaluateTurnDecision) };
+});
+// #6062: a pre-commit failure inside the answer-gate block (before recordTurn), on demand.
+const decisionStateFail = vi.hoisted(() => ({ on: false }));
+vi.mock("@/capabilities/observability/turn-decision-state", async (importOriginal) => {
+  const o = await importOriginal<typeof import("@/capabilities/observability/turn-decision-state")>();
+  return {
+    ...o,
+    buildTurnDecisionState: (...a: Parameters<typeof o.buildTurnDecisionState>) => {
+      if (decisionStateFail.on) throw new Error("pre-commit failure (test)");
+      return o.buildTurnDecisionState(...a);
+    },
+  };
+});
+// #6062: the screen's last dependency throws on this token (the `error` floor code).
+vi.mock("@/capabilities/safety-bypass-advisory", async (importOriginal) => {
+  const o = await importOriginal<typeof import("@/capabilities/safety-bypass-advisory")>();
+  return {
+    ...o,
+    safetyBypassAsk: (t: string) => {
+      if (t.includes("QZSCREENTHROW")) throw new Error("screen dependency failed (test)");
+      return o.safetyBypassAsk(t);
+    },
+  };
+});
+
 vi.mock("@/lib/tenant-context", () => ({
   withTenantContext: vi.fn(async (_t: string, fn: (c: unknown) => unknown) => fn({ query: vi.fn() })),
 }));
-const poolMock = vi.hoisted(() => ({ query: vi.fn(async () => ({ rows: [] })) }));
+const poolMock = vi.hoisted(() => ({
+  query: vi.fn(async () => ({ rows: [] })),
+  // Raw-pool client for the OEM corpus path (hybrid corpus law), used by the #6062 uncited_claim case.
+  connect: vi.fn(async () => ({ query: vi.fn(async () => ({ rows: [] })), release: vi.fn() })),
+}));
 vi.mock("@/lib/db", () => ({ default: poolMock }));
 
 const persistMock = vi.hoisted(() => ({
@@ -613,5 +655,545 @@ describe("#5941 — one redraft after an unsafe verdict", () => {
     expect(judgeBodies).toHaveLength(1);
     expect(r.streamed).toBe(DRAFT1);
     expect(r.outcome.semantic_redraft).toBeUndefined();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// #6048 — once the turn's decision is committed to history (recordTurn), the Turn
+// Evidence Packet and the usage row are persisted EXACTLY once, whatever happens to
+// SSE delivery. The cancel below is a real ReadableStream reader cancel on the POST
+// response body (not an abort of the request signal, which leaves the route's
+// controller writable and cannot see this defect). After it, the route's next
+// controller.enqueue throws on the closed stream.
+// ─────────────────────────────────────────────────────────────────────────────
+import { closeTurn as closeTurnSpy } from "@/capabilities/observability/turn-lifecycle";
+import { evaluateTurnDecision as evaluateTurnDecisionSpy } from "@/capabilities/observability/jev-decision";
+
+const ROW_ID = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
+const REQ_ID = "44444444-4444-4444-8444-444444444444";
+
+type PersistCall = [
+  { outcome: string; citationsPresent: boolean; answerText: string | null },
+  { provider: string | null; model: string | null; inputTokens: number | null; outputTokens: number | null },
+  { packet: { answer_gate: Record<string, unknown>; persistence: { turn_row_id: string | null; outcome: string } } },
+];
+
+describe("#6048 — a body cancel after the commit still persists the packet and the usage exactly once", () => {
+  const closeTurnMock = closeTurnSpy as unknown as ReturnType<typeof vi.fn>;
+  const evaluateMock = evaluateTurnDecisionSpy as unknown as ReturnType<typeof vi.fn>;
+  const settleAll = () => new Promise((r) => setTimeout(r, 150));
+
+  beforeEach(() => {
+    domainMock.recordTurn.mockImplementation(async () => ROW_ID as never);
+  });
+  afterEach(() => {
+    domainMock.recordTurn.mockImplementation(async () => undefined);
+    decisionStateFail.on = false;
+  });
+
+  /** Holds the cited-page read (after the second judge, before the commit point) until released. */
+  function holdRead() {
+    let release!: () => void;
+    let entered!: () => void;
+    const reached = new Promise<void>((res) => (entered = res));
+    const gate = new Promise<void>((res) => (release = res));
+    ragMock.retrieveNodeChunks.mockResolvedValue([{ ...chunks[0], sourceUrl: "nb://HP200.pdf", sourcePage: 41 }] as never);
+    ragMock.retrieveCitedPageChunks.mockImplementation(async () => {
+      entered();
+      await gate;
+      return [{ ...chunks[0], chunkId: "c9", content: "WARNING relieve pressure before servicing the hose." }] as never;
+    });
+    return { reached, release };
+  }
+  const req = (body: Record<string, unknown>, progress: boolean) =>
+    new NextRequest("http://test/api/equipment-notebooks/nb/chat", {
+      method: "POST",
+      body: JSON.stringify(body),
+      headers: { "Content-Type": "application/json", ...(progress ? { "x-mira-progress": "1" } : {}) },
+    });
+
+  /** History row, the ONE persisted packet/usage row, after everything has had time to settle. */
+  async function settled() {
+    await vi.waitFor(() => expect(domainMock.recordTurn).toHaveBeenCalledTimes(1));
+    await settleAll();
+    expect(domainMock.recordTurn).toHaveBeenCalledTimes(1);
+    expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1);
+    const [, , turn] = domainMock.recordTurn.mock.calls[0] as unknown as [string, string, Record<string, unknown>];
+    const [meta, usage, telemetry] = persistMock.persistTurnUsage.mock.calls[0] as unknown as PersistCall;
+    const gate = telemetry.packet.answer_gate;
+    const evidence = (turn.evidence as { kind?: string; citationId?: string }[]) ?? [];
+    return { turn, meta, usage, packet: telemetry.packet, gate, outcome: gate.safety_outcome as Record<string, unknown>, evidence };
+  }
+
+  /** The persisted disposition equals what history holds. */
+  function expectDispositionMatchesHistory(r: Awaited<ReturnType<typeof settled>>) {
+    // A stored citation entry is the EvidenceCitation itself (it carries citationId, no kind).
+    const historyCitations = r.evidence.filter((e) => typeof e.citationId === "string").length;
+    expect(r.gate.citations_shipped).toBe(historyCitations);
+    expect(r.meta.citationsPresent).toBe(historyCitations > 0);
+    expect(r.packet.persistence.turn_row_id).toBe(ROW_ID);
+    expect(r.packet.persistence.outcome).toBe("ok");
+    expect(String(r.turn.model).startsWith(`${r.usage.provider}:`)).toBe(true);
+    // The lifecycle row was closed by the usage write, never by endRoot's bare close.
+    expect(closeTurnMock).not.toHaveBeenCalled();
+    // One settle: the decision lane ran once (decisionState is set at the commit point).
+    expect(evaluateMock).toHaveBeenCalledTimes(1);
+  }
+
+  /** The acceptance case: unsafe draft 1, safe redraft, the body cancelled during the held read. */
+  async function redraftCancelledDuringRead(progress: boolean) {
+    if (progress) process.env.MIRA_CHAT_PROGRESS = "1";
+    const { judgeBodies } = stubFetch(REDRAFT, [verdict("unsafe"), verdict("safe", "none")]);
+    const hold = holdRead();
+    const res = await POST(req({ message: Q_PLAIN, sourceDocIds: [DOC_A], clientRequestId: REQ_ID }, progress), params);
+    expect(res.status).toBe(200);
+    const reader = res.body!.getReader();
+    await hold.reached;
+    // Precondition: the second judge already passed the redraft.
+    expect(judgeBodies).toHaveLength(2);
+    await reader.cancel();
+    hold.release();
+    const r = await settled();
+    // History: one safety stop.
+    expect(r.turn.answerText).toBe(SAFETY_STOP);
+    expect(r.evidence.map((e) => e.kind)).toContain("safety_stop");
+    expect(JSON.stringify(domainMock.recordTurn.mock.calls)).not.toContain("stopped and locked out");
+    // The ONE packet: the committed stop, with both generations' usage under draft 1's model.
+    expect(r.meta.outcome).toBe("safety_stop");
+    expect(r.meta.answerText).toBe(SAFETY_STOP);
+    expect(r.outcome).toMatchObject({ layer: "semantic_judge", outcome: "block", semantic_verdict: "unsafe", semantic_redraft: "stopped_aborted" });
+    expect(r.gate.citations_shipped).toBe(0);
+    expect(String(r.turn.model)).toMatch(/^OpenAI:/);
+    expect(r.usage).toMatchObject({ provider: "OpenAI", inputTokens: 12 + 50, outputTokens: 7 + 20 });
+    expectDispositionMatchesHistory(r);
+  }
+
+  it("redraft: body cancelled during the held cited-page read -> one stop in history, ONE packet stopped_aborted with both generations' usage", async () => {
+    await redraftCancelledDuringRead(false);
+  });
+
+  it("redraft, progress stream on: the same cancel -> one stop, ONE packet stopped_aborted, both generations' usage", async () => {
+    await redraftCancelledDuringRead(true);
+  });
+
+  /** An ordinary answered turn (safe first verdict, no redraft), the body cancelled at `when`. */
+  async function answeredCancelledAt(when: "during_read" | "during_commit" | "after_content" | "after_usage", progress = false) {
+    if (progress) process.env.MIRA_CHAT_PROGRESS = "1";
+    const { redraftBodies } = stubFetch(REDRAFT, [verdict("safe", "none")]);
+    // eslint-disable-next-line prefer-const -- assigned after POST; read by hooks that run later
+    let reader!: ReadableStreamDefaultReader<Uint8Array>;
+    const hold = when === "during_read" ? holdRead() : null;
+    if (when === "during_commit") {
+      domainMock.recordTurn.mockImplementation(async () => {
+        void reader.cancel();
+        return ROW_ID as never;
+      });
+    }
+    if (when === "after_content" || when === "after_usage") {
+      const marker = when === "after_content" ? "gate released" : '"event":"turn.usage"';
+      vi.spyOn(console, "log").mockImplementation((...a: unknown[]) => {
+        if (String(a[0]).includes(marker)) void reader.cancel();
+      });
+    }
+    const res = await POST(req({ message: Q_PLAIN, sourceDocIds: [DOC_A], clientRequestId: REQ_ID }, progress), params);
+    expect(res.status).toBe(200);
+    reader = res.body!.getReader();
+    if (hold) {
+      await hold.reached;
+      await reader.cancel();
+      hold.release();
+    }
+    const r = await settled();
+    expect(redraftBodies).toHaveLength(0);
+    // History: answered, with draft 1 and its one citation.
+    expect(r.turn.answerStatus).toBe("answered");
+    expect(r.turn.answerText).toBe(DRAFT1);
+    expect(r.evidence.filter((e) => typeof e.citationId === "string")).toHaveLength(1);
+    // The ONE packet: answered, draft 1's spend only.
+    expect(r.meta.outcome).toBe("answered");
+    expect(r.meta.answerText).toBe(DRAFT1);
+    expect(r.outcome).toMatchObject({ layer: "none", outcome: "allow", semantic_verdict: "safe" });
+    expect(r.outcome.semantic_redraft).toBeUndefined();
+    expect(r.usage).toMatchObject({ provider: "OpenAI", inputTokens: 12, outputTokens: 7 });
+    expectDispositionMatchesHistory(r);
+  }
+
+  it("ordinary answered turn: body cancelled during the held cited-page read (before the first post-commit frame)", async () => {
+    await answeredCancelledAt("during_read");
+  });
+
+  it("ordinary answered turn: body cancelled while the history write is in flight", async () => {
+    await answeredCancelledAt("during_commit");
+  });
+
+  it("ordinary answered turn: body cancelled between frames (after the content, before sources)", async () => {
+    await answeredCancelledAt("after_content");
+  });
+
+  it("ordinary answered turn: body cancelled between frames (after the usage frame, before status)", async () => {
+    await answeredCancelledAt("after_usage");
+  });
+
+  it("ordinary answered turn, progress stream on: body cancelled between frames (after the content)", async () => {
+    await answeredCancelledAt("after_content", true);
+  });
+
+  it("control: body read to the end, then the reader cancelled (after the last frame) -> persists exactly once", async () => {
+    stubFetch(REDRAFT, [verdict("unsafe"), verdict("safe", "none")]);
+    const res = await POST(req({ message: Q_PLAIN, sourceDocIds: [DOC_A], clientRequestId: REQ_ID }, false), params);
+    const reader = res.body!.getReader();
+    let text = "";
+    const dec = new TextDecoder();
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      text += dec.decode(value);
+      if (text.includes("data: [DONE]")) {
+        await reader.cancel();
+        break;
+      }
+    }
+    const r = await settled();
+    expect(r.turn.answerText).toBe(REDRAFT);
+    expect(r.meta.outcome).toBe("answered");
+    expect(r.outcome.semantic_redraft).toBe("served");
+    expect(r.usage).toMatchObject({ provider: "OpenAI", inputTokens: 12 + 50, outputTokens: 7 + 20 });
+    expectDispositionMatchesHistory(r);
+  });
+
+  it("control: an uncancelled redraft turn persists exactly once, not twice, with the same frames in the same order", async () => {
+    stubFetch(REDRAFT, [verdict("unsafe"), verdict("safe", "none")]);
+    const r0 = await run(Q_PLAIN);
+    // Today's frames, exactly (captured on the base commit 54afe7371).
+    expect(r0.frames.map((f) => f.kind)).toEqual(["content", "sources", "evidence", "usage", "status"]);
+    expect(r0.streamed).toBe(REDRAFT);
+    await settleAll();
+    expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1);
+    expect(closeTurnMock).not.toHaveBeenCalled();
+    expect(evaluateMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("control: an uncancelled stop turn keeps its frame order (safety before content) and persists once", async () => {
+    stubFetch(REDRAFT, [verdict("unsafe"), verdict("unsafe")]);
+    const r0 = await run(Q_PLAIN);
+    expectStopped(r0);
+    // Today's frames, exactly: the safety frame before the first content byte.
+    expect(r0.frames.map((f) => f.kind)).toEqual(["safety", "content", "content", "content", "content", "sources", "usage", "status"]);
+    await settleAll();
+    expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1);
+    expect(closeTurnMock).not.toHaveBeenCalled();
+  });
+
+  it("control (behavioural form of the jev-route-invariant pin): on a delivered turn the decision lane runs only after the body is complete", async () => {
+    stubFetch(REDRAFT, [verdict("unsafe"), verdict("safe", "none")]);
+    let bodyDone = false;
+    const seenAtCall: boolean[] = [];
+    const real = (await vi.importActual<typeof import("@/capabilities/observability/jev-decision")>("@/capabilities/observability/jev-decision"))
+      .evaluateTurnDecision;
+    evaluateMock.mockImplementation((...a: Parameters<typeof real>) => {
+      seenAtCall.push(bodyDone);
+      return real(...a);
+    });
+    const res = await POST(req({ message: Q_PLAIN, sourceDocIds: [DOC_A] }, false), params);
+    await res.text();
+    bodyDone = true;
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    await settleAll();
+    expect(seenAtCall).toEqual([true]);
+    evaluateMock.mockImplementation(real);
+  });
+
+  it("control: a failure BEFORE the commit point persists no packet, writes no history, and abandons the request claim", async () => {
+    stubFetch(REDRAFT, [verdict("safe", "none")]);
+    decisionStateFail.on = true;
+    const res = await POST(req({ message: Q_PLAIN, sourceDocIds: [DOC_A], clientRequestId: REQ_ID }, false), params);
+    await res.text().catch(() => "");
+    await settleAll();
+    // Precondition: the failure really was before the commit point.
+    expect(domainMock.recordTurn).not.toHaveBeenCalled();
+    expect(persistMock.persistTurnUsage).not.toHaveBeenCalled();
+    expect(domainMock.abandonNotebookTurnRequest).toHaveBeenCalledTimes(1);
+  });
+
+  it("control: a body cancel before the commit point (during draft 1's stream) records the stopped turn once, as today", async () => {
+    let releaseDraft!: () => void;
+    const draftGate = new Promise<void>((r) => (releaseDraft = r));
+    let draftEntered!: () => void;
+    const draftReached = new Promise<void>((r) => (draftEntered = r));
+    vi.stubGlobal("fetch", vi.fn(async (_u: unknown, init?: RequestInit) => {
+      const body = typeof init?.body === "string" ? init.body : "";
+      if (body.includes('"stream":true')) {
+        return new Response(new ReadableStream<Uint8Array>({
+          async start(c) {
+            c.enqueue(enc.encode(delta("Check ")));
+            draftEntered();
+            await draftGate;
+            c.enqueue(enc.encode(delta("the display [1].")));
+            c.enqueue(enc.encode(STOP));
+            c.enqueue(enc.encode(usageChunk(7)));
+            c.enqueue(enc.encode("data: [DONE]\n\n"));
+            c.close();
+          },
+        }), { status: 200 });
+      }
+      return Response.json({ choices: [{ message: { content: verdict("safe", "none") } }], usage: { prompt_tokens: 1, completion_tokens: 1 } });
+    }));
+    const res = await POST(req({ message: Q_PLAIN, sourceDocIds: [DOC_A] }, false), params);
+    const reader = res.body!.getReader();
+    await draftReached;
+    await reader.cancel();
+    releaseDraft();
+    await vi.waitFor(() => expect(domainMock.recordTurn).toHaveBeenCalledTimes(1));
+    await settleAll();
+    const [, , turn] = domainMock.recordTurn.mock.calls[0] as unknown as [string, string, Record<string, unknown>];
+    expect(turn.answerStatus).toBe("error");
+    expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// #6062 — a redraft rejected by the answer floors records WHICH floor, as one code
+// from a closed set, on the packet's safety_outcome:
+//   semantic_redraft_check: the FIRST floor that rejected it, in the screen's order:
+//     refusal, uncited_claim, rating_column, no_citation, hazard_warning, prompt_leak,
+//     bypass_ask, error (a screen dependency threw).
+//   semantic_redraft_check_violation: only beside hazard_warning, the validator's own
+//     fixed violation code (never answer text).
+// Present only when semantic_redraft is stopped_check; never any redraft text.
+// ─────────────────────────────────────────────────────────────────────────────
+import { refusalVerdict, isUncitedDocumentClaim } from "@/app/api/equipment-notebooks/[id]/chat/route";
+import { ratingColumnFinding } from "@/capabilities/rating-column";
+
+/** Distinctive token placed in every redraft below: it must appear in no packet, history row or log line. */
+const TOKEN = "QZX4471";
+const RATINGS_TEXT =
+  "Relay Contact Ratings\nMaximum\nVolts Amperes Amperes\nContinuous Volt-Amperes\nMake Break Make Break\n" +
+  "120 V AC 15 A 1.5 A 2 A 1800 180\n240 V AC 7.5 A 0.75 A\n" +
+  "Inspect the hydraulic hose for wear and the ribbon cable connector for looseness.";
+
+const FLOOR_REDRAFT = {
+  refusal: `The provided excerpts do not contain information about the ${TOKEN} [1]. I don't have enough information to answer.`,
+  rating_column: `With the press stopped and locked out, the ${TOKEN} relay contact is rated 15 A [1].`,
+  no_citation: `With the press stopped and locked out, check the ${TOKEN} hydraulic hose for wear.`,
+  no_citation_badmarker: `With the press stopped and locked out, check the ${TOKEN} hydraulic hose for wear [9].`,
+  hazard_conflict: `With the press stopped and locked out, check the ${TOKEN} display contrast setting first [1].`,
+  hazard_bypass: `${TOKEN}: Bypass the light curtain with a jumper so the press keeps cycling [1].`,
+  prompt_leak: `${BASE_SYSTEM_PROMPT.slice(0, 700)} ${TOKEN} [1]`,
+  bypass_ask: `With the press stopped and locked out at panel ${TOKEN}, install a jumper across the light curtain so the press keeps cycling [1].`,
+  error: `With the press stopped and locked out, check the QZSCREENTHROW ${TOKEN} hydraulic hose for wear [1].`,
+} as const;
+
+const vbase = { question: Q_PLAIN, general: false, served: true, refused: false, evidenceSufficient: true, manualSearchRunning: null };
+const notRefusal = (t: string) => expect(refusalVerdict(t, { docGrounded: true, citations: [] })).toBe(false);
+const ratingPassage = (content: string) => [{ content, title: "HP200.pdf", page: 41, cited: true }];
+
+describe("#6062 preconditions: each redraft trips its floor first (the earlier floors pass)", () => {
+  it("refusal is the first floor", () => {
+    expect(refusalVerdict(FLOOR_REDRAFT.refusal, { docGrounded: true, citations: [] })).toBe(true);
+  });
+  it("rating_column: not a refusal, the notebook lane has no uncited-claim floor, the ratings floor fires; draft 1 passes it", () => {
+    notRefusal(FLOOR_REDRAFT.rating_column);
+    expect(isUncitedDocumentClaim(FLOOR_REDRAFT.rating_column, { oemGrounded: false, citations: [], exempt: false })).toBe(false);
+    expect(ratingColumnFinding(Q_PLAIN, FLOOR_REDRAFT.rating_column, ratingPassage(RATINGS_TEXT))).not.toBeNull();
+    expect(ratingColumnFinding(Q_PLAIN, DRAFT1, ratingPassage(RATINGS_TEXT))).toBeNull();
+  });
+  it("no_citation: not a refusal, no ratings figure; it carries no marker, or one that resolves to nothing", () => {
+    for (const t of [FLOOR_REDRAFT.no_citation, FLOOR_REDRAFT.no_citation_badmarker]) {
+      notRefusal(t);
+      expect(ratingColumnFinding(Q_PLAIN, t, ratingPassage(SOURCE_TEXT))).toBeNull();
+      expect(t).not.toContain("[1]");
+    }
+  });
+  it("hazard_warning: cited, not a refusal, no ratings figure; the validator rejects it (not the isolation advisory)", () => {
+    for (const t of [FLOOR_REDRAFT.hazard_conflict, FLOOR_REDRAFT.hazard_bypass]) {
+      notRefusal(t);
+      expect(ratingColumnFinding(Q_PLAIN, t, ratingPassage(SOURCE_TEXT))).toBeNull();
+      expect(t).toContain("[1]");
+      const v = validateAnswer({ ...vbase, answerText: t });
+      expect(v).toMatchObject({ ok: false, kind: "hazard_warning" });
+      expect(v).not.toMatchObject({ violation: "hazard-warning:isolation-advisory" });
+    }
+    expect(validateAnswer({ ...vbase, answerText: FLOOR_REDRAFT.hazard_conflict })).toMatchObject({ violation: "hazard-warning:step-energy-contradiction" });
+    // The bypass wording would ALSO trip the later bypass_ask floor: the first floor wins.
+    expect(safetyBypassAsk(FLOOR_REDRAFT.hazard_bypass)).not.toBeNull();
+  });
+  it("prompt_leak: passes every floor before it, and is a leak", () => {
+    notRefusal(FLOOR_REDRAFT.prompt_leak);
+    expect(validateAnswer({ ...vbase, answerText: FLOOR_REDRAFT.prompt_leak }).ok).toBe(true);
+    expect(detectPromptLeak(BASE_SYSTEM_PROMPT, FLOOR_REDRAFT.prompt_leak, []).leaked).toBe(true);
+  });
+  it("bypass_ask: passes every floor before it (the validator sees only the advisory), not a leak, a bypass ask", () => {
+    notRefusal(FLOOR_REDRAFT.bypass_ask);
+    const v = validateAnswer({ ...vbase, answerText: FLOOR_REDRAFT.bypass_ask });
+    expect(v).toMatchObject({ ok: false, violation: "hazard-warning:isolation-advisory" });
+    expect(detectPromptLeak(BASE_SYSTEM_PROMPT, FLOOR_REDRAFT.bypass_ask, []).leaked).toBe(false);
+    expect(safetyBypassAsk(FLOOR_REDRAFT.bypass_ask)).not.toBeNull();
+  });
+  it("error: passes every floor before the bypass screen, which throws on it", () => {
+    notRefusal(FLOOR_REDRAFT.error);
+    expect(validateAnswer({ ...vbase, answerText: FLOOR_REDRAFT.error }).ok).toBe(true);
+    expect(detectPromptLeak(BASE_SYSTEM_PROMPT, FLOOR_REDRAFT.error, []).leaked).toBe(false);
+    expect(() => safetyBypassAsk(FLOOR_REDRAFT.error)).toThrow();
+  });
+});
+
+describe("#6062 — a redraft stopped by a floor records which floor, and never its text", () => {
+  /** Everything the route wrote or logged on this turn, as one string. */
+  const everything = () =>
+    JSON.stringify([
+      persistMock.persistTurnUsage.mock.calls,
+      domainMock.recordTurn.mock.calls,
+      (console.log as unknown as ReturnType<typeof vi.fn>).mock.calls,
+      (console.warn as unknown as ReturnType<typeof vi.fn>).mock.calls,
+      (console.error as unknown as ReturnType<typeof vi.fn>).mock.calls,
+    ]);
+
+  async function floorStop(text: string, setup?: () => void) {
+    setup?.();
+    const { judgeBodies } = stubFetch(text, [verdict("unsafe"), verdict("safe", "none")]);
+    const r = await run(Q_PLAIN);
+    expectStopped(r);
+    // The screen stopped it: the judge was not asked again, the existing code is unchanged.
+    expect(judgeBodies).toHaveLength(1);
+    expect(r.outcome.semantic_redraft).toBe("stopped_check");
+    expect(everything()).not.toContain(TOKEN);
+    return r;
+  }
+
+  it("refusal", async () => {
+    const r = await floorStop(FLOOR_REDRAFT.refusal);
+    expect(r.outcome.semantic_redraft_check).toBe("refusal");
+    expect(r.outcome).not.toHaveProperty("semantic_redraft_check_violation");
+  });
+
+  it("rating_column", async () => {
+    const r = await floorStop(FLOOR_REDRAFT.rating_column, () =>
+      ragMock.retrieveNodeChunks.mockResolvedValue([{ ...chunks[0], content: RATINGS_TEXT, sourceUrl: "nb://HP200.pdf", sourcePage: 41 }] as never),
+    );
+    expect(r.outcome.semantic_redraft_check).toBe("rating_column");
+    expect(r.outcome).not.toHaveProperty("semantic_redraft_check_violation");
+  });
+
+  it("no_citation (no marker, and a marker that resolves to no excerpt)", async () => {
+    for (const t of [FLOOR_REDRAFT.no_citation, FLOOR_REDRAFT.no_citation_badmarker]) {
+      vi.clearAllMocks();
+      const r = await floorStop(t);
+      expect(r.outcome.semantic_redraft_check).toBe("no_citation");
+      expect(r.outcome).not.toHaveProperty("semantic_redraft_check_violation");
+    }
+  });
+
+  it("hazard_warning, with the validator's own violation code beside it", async () => {
+    for (const t of [FLOOR_REDRAFT.hazard_conflict, FLOOR_REDRAFT.hazard_bypass]) {
+      vi.clearAllMocks();
+      const want = (validateAnswer({ ...vbase, answerText: t }) as { violation: string }).violation;
+      const r = await floorStop(t);
+      expect(r.outcome.semantic_redraft_check).toBe("hazard_warning");
+      expect(r.outcome.semantic_redraft_check_violation).toBe(want);
+      expect(want).toMatch(/^[a-z-]+:[a-z-]+$/);
+    }
+  });
+
+  it("prompt_leak", async () => {
+    const r = await floorStop(FLOOR_REDRAFT.prompt_leak);
+    expect(r.outcome.semantic_redraft_check).toBe("prompt_leak");
+    expect(r.outcome).not.toHaveProperty("semantic_redraft_check_violation");
+  });
+
+  it("bypass_ask", async () => {
+    const r = await floorStop(FLOOR_REDRAFT.bypass_ask);
+    expect(r.outcome.semantic_redraft_check).toBe("bypass_ask");
+    expect(r.outcome).not.toHaveProperty("semantic_redraft_check_violation");
+  });
+
+  it("error (a screen dependency threw)", async () => {
+    const r = await floorStop(FLOOR_REDRAFT.error);
+    expect(r.outcome.semantic_redraft_check).toBe("error");
+    expect(r.outcome).not.toHaveProperty("semantic_redraft_check_violation");
+  });
+
+  it("uncited_claim, on a manufacturer-library turn (before no_citation, which the same text would also trip)", async () => {
+    const OEM_CHUNK = {
+      content: "The TP700 Comfort accepts a 24 V DC supply on terminal X80. Relieve pressure on the cooling loop before opening it.",
+      manufacturer: "Siemens",
+      modelNumber: "TP700 Comfort",
+      sourceUrl: "https://support.example.com/tp700-comfort.pdf",
+      sourcePage: 12,
+      title: "TP700 Comfort operating instructions",
+      rank: 1,
+      verified: true,
+    };
+    const text = `With the panel isolated, check the ${TOKEN} supply terminal X80.`;
+    notRefusal(text);
+    expect(isUncitedDocumentClaim(text, { oemGrounded: true, citations: [], exempt: false })).toBe(true);
+    domainMock.getNotebook.mockResolvedValue({ id: NB, displayName: "Line 3 HMI", manufacturer: "Siemens", model: "TP700 Comfort" } as never);
+    ragMock.retrieveManualChunks.mockResolvedValue([OEM_CHUNK] as never);
+    const { judgeBodies } = stubFetch(text, [verdict("unsafe"), verdict("safe", "none")]);
+    const res = await POST(chatReq({ message: "The panel shows no supply, what should I check", mode: "general" }), params);
+    expect(res.status).toBe(200);
+    await res.text();
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    // Precondition: this really was the identity-bound manufacturer-library search, and it redrafted.
+    expect(ragMock.retrieveManualChunks).toHaveBeenCalled();
+    expect(ragMock.retrieveNodeChunks).not.toHaveBeenCalled();
+    expect(judgeBodies).toHaveLength(1);
+    const packet = (persistMock.persistTurnUsage.mock.calls[0] as unknown as PersistCall)[2].packet;
+    const outcome = packet.answer_gate.safety_outcome as Record<string, unknown>;
+    expect(outcome.semantic_redraft).toBe("stopped_check");
+    expect(outcome.semantic_redraft_check).toBe("uncited_claim");
+    expect(everything()).not.toContain(TOKEN);
+  });
+});
+
+describe("#6062 controls — no floor code unless the outcome is stopped_check", () => {
+  const cases: { name: string; redraft: Redraft; verdicts: string[]; o?: StubOpts; want: string | undefined; setup?: () => void }[] = [
+    { name: "served", redraft: REDRAFT, verdicts: [verdict("unsafe"), verdict("safe", "none")], want: "served" },
+    { name: "served with the isolation advisory", redraft: ADVISORY_REDRAFT, verdicts: [verdict("unsafe"), verdict("safe", "none")], want: "served" },
+    { name: "stopped_judge_unsafe", redraft: REDRAFT, verdicts: [verdict("unsafe"), verdict("unsafe")], want: "stopped_judge_unsafe" },
+    { name: "stopped_judge_undecided", redraft: REDRAFT, verdicts: [verdict("unsafe"), "not a verdict"], want: "stopped_judge_undecided" },
+    { name: "stopped_generation", redraft: "http500", verdicts: [verdict("unsafe")], want: "stopped_generation" },
+    { name: "stopped_incomplete", redraft: REDRAFT, verdicts: [verdict("unsafe")], o: { finish: "length" }, want: "stopped_incomplete" },
+    {
+      name: "stopped_unsupported",
+      redraft: REDRAFT,
+      verdicts: [verdict("unsafe"), verdict("safe", "none")],
+      want: "stopped_unsupported",
+      setup: () => ragMock.retrieveNodeChunks.mockResolvedValue([{ ...chunks[0], content: UNRELATED_TEXT }] as never),
+    },
+    {
+      name: "stopped_turn_cap",
+      redraft: REDRAFT,
+      verdicts: [verdict("unsafe")],
+      o: { draft1Output: 450 },
+      want: "stopped_turn_cap",
+      setup: () => {
+        process.env.MIRA_TURN_MAX_OUTPUT_TOKENS = "500";
+      },
+    },
+    { name: "no redraft (a safe first verdict)", redraft: REDRAFT, verdicts: [verdict("safe", "none")], want: undefined },
+  ];
+  for (const c of cases) {
+    it(`${c.name}: no semantic_redraft_check`, async () => {
+      c.setup?.();
+      stubFetch(c.redraft, c.verdicts, c.o);
+      const r = await run(Q_PLAIN);
+      expect(r.outcome.semantic_redraft).toBe(c.want);
+      expect(r.outcome).not.toHaveProperty("semantic_redraft_check");
+      expect(r.outcome).not.toHaveProperty("semantic_redraft_check_violation");
+    });
+  }
+
+  it("stopped_aborted (a Stop during the second judge): no semantic_redraft_check", async () => {
+    const ac = new AbortController();
+    stubFetch(REDRAFT, [verdict("unsafe"), verdict("safe", "none")], { onSecondJudge: () => ac.abort() });
+    const r = await run(Q_PLAIN, ac.signal);
+    expect(r.outcome.semantic_redraft).toBe("stopped_aborted");
+    expect(r.outcome).not.toHaveProperty("semantic_redraft_check");
+  });
+
+  it("positive control for the text search: a served redraft's own words ARE found in what the route stored", async () => {
+    stubFetch(REDRAFT, [verdict("unsafe"), verdict("safe", "none")]);
+    await run(Q_PLAIN);
+    expect(JSON.stringify(domainMock.recordTurn.mock.calls)).toContain("hydraulic hose for wear");
   });
 });
