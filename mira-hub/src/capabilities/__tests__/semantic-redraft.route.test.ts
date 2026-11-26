@@ -836,7 +836,7 @@ describe("#6048 — a body cancel after the commit still persists the packet and
   });
 
   /** An ordinary answered turn (safe first verdict, no redraft), the body cancelled at `when`. */
-  async function answeredCancelledAt(when: "during_read" | "during_commit" | "after_content" | "after_usage", progress = false) {
+  async function answeredCancelledAt(when: "during_read" | "during_commit" | "after_content" | "after_usage", progress = false, withId = true) {
     if (progress) process.env.MIRA_CHAT_PROGRESS = "1";
     const { redraftBodies } = stubFetch(REDRAFT, [verdict("safe", "none")]);
     // eslint-disable-next-line prefer-const -- assigned after POST; read by hooks that run later
@@ -854,7 +854,7 @@ describe("#6048 — a body cancel after the commit still persists the packet and
         if (String(a[0]).includes(marker)) void reader.cancel();
       });
     }
-    const res = await POST(req({ message: Q_PLAIN, sourceDocIds: [DOC_A], clientRequestId: REQ_ID }, progress), params);
+    const res = await POST(req({ message: Q_PLAIN, sourceDocIds: [DOC_A], ...(withId ? { clientRequestId: REQ_ID } : {}) }, progress), params);
     expect(res.status).toBe(200);
     reader = res.body!.getReader();
     if (hold) {
@@ -1149,8 +1149,15 @@ describe("#6048 — a body cancel after the commit still persists the packet and
   });
 
   /** A committed turn no provider served (every provider call answers 500), cancelled during the history write or delivered. */
-  async function unservedTurn(cancel: boolean) {
-    vi.stubGlobal("fetch", vi.fn(async () => new Response("down", { status: 500 })));
+  async function unservedTurn(cancel: boolean, internal = false) {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        // A route bug (not a provider outage): the stream call throws a RangeError.
+        if (internal) throw new RangeError("route bug (test)");
+        return new Response("down", { status: 500 });
+      }),
+    );
     // eslint-disable-next-line prefer-const -- assigned after POST; read by the hook below
     let reader!: ReadableStreamDefaultReader<Uint8Array>;
     if (cancel) {
@@ -1345,6 +1352,116 @@ describe("#6048 — a body cancel after the commit still persists the packet and
       expect(exhaustedLines()).toHaveLength(0);
     });
   }
+
+  // ── Review round 2 (R2-D1 to R2-D4) ──────────────────────────────────────────
+  it("R2-D1: a committed turn with NO client request id, body cancelled while the history write is in flight -> ONE packet, ONE usage row, disposition equal to history", async () => {
+    await answeredCancelledAt("during_commit", false, false);
+    // Precondition: the request carried no id, so no claim was taken or released.
+    const [, , turn] = domainMock.recordTurn.mock.calls[0] as unknown as [string, string, Record<string, unknown>];
+    expect(turn.clientRequestId ?? null).toBeNull();
+    expect(domainMock.claimNotebookTurnRequest).not.toHaveBeenCalled();
+    expect(usageLines()).toHaveLength(1);
+  });
+
+  it("R2-D2: a committed canonical-seam turn that ended in an INTERNAL error, cancelled during the history write -> the settle writes no providers.exhausted line", async () => {
+    const r = await unservedTurn(true, true);
+    // Preconditions: a route bug (not exhaustion) on the canonical seam, settled once by the catch.
+    expect(console.error).toHaveBeenCalledWith("[notebook-chat] internal error (NOT provider exhaustion):", expect.any(RangeError));
+    expect(r.usage.routeReason).not.toBe("legacy_cascade");
+    expect(usageLines()).toHaveLength(1);
+    expect(exhaustedLines()).toHaveLength(0);
+  });
+
+  /** A committed turn cancelled during the history write whose settle then rejects (the span write inside finishAndPersist throws). */
+  async function cancelledThenSettleRejects(kind: "answered" | "exhausted") {
+    if (kind === "answered") stubFetch(REDRAFT, [verdict("safe", "none")]);
+    else vi.stubGlobal("fetch", vi.fn(async () => new Response("down", { status: 500 })));
+    spanTap.throwInSettle = true;
+    // eslint-disable-next-line prefer-const -- assigned after POST; read by the hook below
+    let reader!: ReadableStreamDefaultReader<Uint8Array>;
+    domainMock.recordTurn.mockImplementation(async () => {
+      await new Promise((res) => setTimeout(res, 0));
+      void reader.cancel();
+      return ROW_ID as never;
+    });
+    const res = await POST(req({ message: Q_PLAIN, sourceDocIds: [DOC_A], clientRequestId: REQ_ID }, false), params);
+    expect(res.status).toBe(200);
+    reader = res.body!.getReader();
+    await vi.waitFor(() => expect(domainMock.recordTurn).toHaveBeenCalledTimes(1));
+    await settleAll();
+    // Preconditions: the settle ran on the catch path and rejected, so no ledger row was written.
+    expect(console.error).toHaveBeenCalledWith(
+      expect.stringContaining("settle after a post-commit failure did not complete"),
+      "settle span write failed (test)",
+    );
+    expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(0);
+    // R2-D6 control: this IS a delivery failure, so the delivered-turn line is not written.
+    expect(logged(console.error, "settle after a delivered turn did not complete")).toHaveLength(0);
+  }
+
+  it("R2-D3: an answered turn cancelled during the history write whose settle rejects has still logged turn.usage, once", async () => {
+    await cancelledThenSettleRejects("answered");
+    expect(usageLines()).toHaveLength(1);
+    expect(exhaustedLines()).toHaveLength(0);
+  });
+
+  it("R2-D3: a provider-exhausted turn cancelled during the history write whose settle rejects has still logged providers.exhausted and turn.usage, once each", async () => {
+    await cancelledThenSettleRejects("exhausted");
+    expect(exhaustedLines()).toHaveLength(1);
+    expect(usageLines()).toHaveLength(1);
+  });
+
+  /** Draft 1 streams `text`; any judge call answers safe; nothing else is expected. */
+  function stubDraft(text: string) {
+    const judgeBodies: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_u: unknown, init?: RequestInit) => {
+        const body = typeof init?.body === "string" ? init.body : "";
+        if (body.includes('"stream":true')) return answerStream(text);
+        if (body.includes("candidate_answer")) judgeBodies.push(body);
+        return Response.json({ choices: [{ message: { content: verdict("safe", "none") } }], usage: { prompt_tokens: 40, completion_tokens: 9 } });
+      }),
+    );
+    return { judgeBodies };
+  }
+  /** Cancels the body while the (successful) history write is in flight, then returns the settled turn. */
+  async function cancelDuringCommit() {
+    // eslint-disable-next-line prefer-const -- assigned after POST; read by the hook below
+    let reader!: ReadableStreamDefaultReader<Uint8Array>;
+    domainMock.recordTurn.mockImplementation(async () => {
+      await new Promise((res) => setTimeout(res, 0));
+      void reader.cancel();
+      return ROW_ID as never;
+    });
+    const res = await POST(req({ message: Q_PLAIN, sourceDocIds: [DOC_A], clientRequestId: REQ_ID }, false), params);
+    expect(res.status).toBe(200);
+    reader = res.body!.getReader();
+    return settled();
+  }
+
+  it("R2-D4: a refusal (insufficient evidence) turn cancelled during the history write -> ONE packet and ONE usage row, disposition equal to history", async () => {
+    stubDraft("The provided excerpts do not contain information about this. I don't have enough information to answer.");
+    const r = await cancelDuringCommit();
+    // Precondition: the committed turn is a refusal.
+    expect(r.turn.answerStatus).toBe("insufficient_evidence");
+    expect(r.meta.outcome).toBe("abstained");
+    expectDispositionMatchesHistory(r);
+    expect(usageLines()).toHaveLength(1);
+  });
+
+  it("R2-D4: a turn with NOTEBOOK_ANSWER_GATE=0 cancelled during the history write -> ONE packet and ONE usage row, disposition equal to history", async () => {
+    process.env.NOTEBOOK_ANSWER_GATE = "0";
+    const { judgeBodies } = stubDraft(DRAFT1);
+    const r = await cancelDuringCommit();
+    // Preconditions: the gate really was off (no gated release, no judge call), and the turn was answered.
+    expect(logged(console.log, "gate released")).toHaveLength(0);
+    expect(judgeBodies).toHaveLength(0);
+    expect(r.turn.answerStatus).toBe("answered");
+    expect(r.turn.answerText).toBe(DRAFT1);
+    expectDispositionMatchesHistory(r);
+    expect(usageLines()).toHaveLength(1);
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
