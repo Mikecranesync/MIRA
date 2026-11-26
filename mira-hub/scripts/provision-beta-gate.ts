@@ -21,16 +21,40 @@
  *     doppler run -p factorylm -c dev -- env NEXTAUTH_URL=http://localhost:3100 \
  *     AUTH_TRUST_HOST=true ./node_modules/.bin/next start -p 3100 &
  *   doppler run -p factorylm -c dev -- bun run scripts/provision-beta-gate.ts > /tmp/env.out
- *   cd .. && set -a; . <(grep '^ENV:' /tmp/env.out | sed 's/^ENV://'); set +a
+ *   cd .. && set -a; eval "$(sed -n 's/^ENV://p' /tmp/env.out)"; set +a
  *   .venv/bin/python -m pytest tests/beta/beta_ready_upload_retrieval_citation.py -v -rX
  *   # XPASS(strict) == the gate is MET.
  *
+ * The import uses eval, not `. <(…)`: macOS /bin/bash 3.2 sources a process
+ * substitution as empty, silently.
+ *
  * HUB defaults to http://localhost:3100 (override with HUB_BASE).
+ *
+ * Mobile harness (#5942): set BETA_GATE_MOBILE_LINK_FILE=<new file> and the run also
+ * writes a single-use sign-in link there (0600, never printed) and emits FLM_EMAIL
+ * plus FLM_LOGIN_LINK_FILE (shell-quoted). It needs HUB_BASE on the staging app's
+ * origin (https://app-staging.factorylm.com, the only backend the staging APK that
+ * tools/mobile-e2e/run.sh drives accepts) and verified onboarding; otherwise it
+ * refuses before registering. The consumer is the mobile-e2e login-link sign-in
+ * (PR 4462), which takes exactly one of FLM_PASSWORD / FLM_LOGIN_LINK. Provision
+ * into /tmp/env.out as above, set PDF, QUESTION and PAGE, then within 15 minutes:
+ *
+ * Mobile handoff (copy as is):
+ *   cd .. && set -a; eval "$(sed -n 's/^ENV://p' /tmp/env.out)"; set +a
+ *   unset FLM_PASSWORD
+ *   FLM_LOGIN_LINK="$(cat "$FLM_LOGIN_LINK_FILE")" bash tools/mobile-e2e/run.sh "$PDF" "$QUESTION" "$PAGE"
+ * End of mobile handoff.
  */
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
+import { writeFileSync } from "node:fs";
 import { Client } from "pg";
 
 const HUB = process.env.HUB_BASE ?? "http://localhost:3100";
+// The staging flavour's backend (mira-mobile android/app/build.gradle, staging API_BASE).
+// The app accepts a sign-in link only on this exact origin (invite-link.ts).
+const STAGING_APP_ORIGIN = "https://app-staging.factorylm.com";
+/** One shell word, so the documented import keeps a path with spaces whole. */
+const shellQuote = (v: string) => `'${v.replaceAll("'", `'\\''`)}'`;
 // Codex F32: a clock reading alone collides across runs that start in the same
 // millisecond; the random part makes each run's fixture identity its own.
 const SUFFIX = `${Date.now()}${randomBytes(6).toString("hex")}`;
@@ -140,8 +164,11 @@ function failAfter(stage: "mirror" | "signin" | "node") {
  *  stand-in for the stranger clicking the emailed link. The magic-link REQUEST
  *  endpoint is deliberately not used: staging has a live mail key, so it would
  *  send real email every run. The token is never printed. */
-async function seedMagicToken(purpose: "onboarding" | "login", onboarding: object | null): Promise<string> {
-  const token = randomBytes(32).toString("base64url");
+async function seedMagicToken(
+  purpose: "onboarding" | "login",
+  onboarding: object | null,
+  token: string = randomBytes(32).toString("base64url"),
+): Promise<string> {
   const c = new Client({ connectionString: process.env.NEON_DATABASE_URL, ssl: { rejectUnauthorized: false } });
   await c.connect();
   try {
@@ -286,6 +313,16 @@ async function verifiedOnboarding(): Promise<string> {
 }
 
 export async function main() {
+  // #5942: the staging app accepts a sign-in link only on its own backend origin
+  // (mira-mobile invite-link.ts), so a mobile link from any other Hub (http, or
+  // another https origin) is refused before anything is registered or minted.
+  const mobileLinkFile = process.env.BETA_GATE_MOBILE_LINK_FILE;
+  if (mobileLinkFile && new URL(HUB).origin !== STAGING_APP_ORIGIN) {
+    throw new Error(
+      `BETA_GATE_MOBILE_LINK_FILE needs HUB_BASE on the staging app's origin (${STAGING_APP_ORIGIN}), the only backend the staging APK accepts; got ${HUB}`,
+    );
+  }
+
   // 1. Register a fresh stranger tenant (auth side: hub_tenants).
   const reg = await fetch(`${HUB}/api/auth/register/`, {
     method: "POST",
@@ -310,6 +347,14 @@ export async function main() {
   // sweeps its own registration before re-throwing (ENV lines are emitted only
   // on full success, at the very end).
   try {
+    // Redeeming a login link claims the email and revokes a password account's
+    // credentials cookie, which this run also emits. Only a verified-onboarding
+    // (passwordless) stranger can carry both. Refused here, so the tenant is swept.
+    if (mobileLinkFile && !passwordless) {
+      throw new Error(
+        "BETA_GATE_MOBILE_LINK_FILE needs verified onboarding: in password-register mode the phone's sign-in would revoke this run's web cookie",
+      );
+    }
     await provisionAfterRegister(tenantId, passwordless);
   } catch (e) {
     console.error(`provisioning failed after registration — sweeping tenant ${tenantId}`);
@@ -387,6 +432,18 @@ async function provisionAfterRegister(tenantId: string, passwordless = false) {
   console.error(`created node ${nodeId}`);
   failAfter("node");
 
+  // #5942: a sign-in link for the mobile harness (tools/mobile-e2e, FLM_LOGIN_LINK).
+  // The app's link box accepts only a UUID token in `/magic/?token=`, so this one is
+  // a UUID, like the ones createMagicToken mints. It goes to a file the caller names,
+  // created 0600 and never over an existing file; only the file's path is printed.
+  // Single-use, 15 minutes, swept with the tenant by --cleanup.
+  const linkFile = process.env.BETA_GATE_MOBILE_LINK_FILE;
+  if (linkFile) {
+    const token = await seedMagicToken("login", null, randomUUID());
+    writeFileSync(linkFile, `${HUB}/magic/?token=${token}`, { mode: 0o600, flag: "wx" });
+    console.error("wrote the mobile sign-in link (single-use, 15 minutes)");
+  }
+
   // Emit env for the gate (trailing-slash canonical doors; cookie auth).
   console.log(`ENV:BETA_GATE_UPLOAD_URL=${HUB}/api/namespace/node/${nodeId}/files/`);
   console.log(`ENV:BETA_GATE_CHAT_URL=${HUB}/api/namespace/node/${nodeId}/chat/`);
@@ -398,6 +455,10 @@ async function provisionAfterRegister(tenantId: string, passwordless = false) {
   // contract, so only the Hub base and the session are needed.
   console.log(`ENV:BETA_PROBE_HUB_BASE=${HUB}`);
   console.log(`ENV:BETA_PROBE_COOKIE=${cookieHeader}`);
+  if (linkFile) {
+    console.log(`ENV:FLM_EMAIL=${CREDS.email}`);
+    console.log(`ENV:FLM_LOGIN_LINK_FILE=${shellQuote(linkFile)}`);
+  }
 }
 
 export { cleanup };
