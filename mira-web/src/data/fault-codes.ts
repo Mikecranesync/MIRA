@@ -3,6 +3,14 @@
  * Each entry generates a /blog/:slug page targeting maintenance technician searches.
  */
 
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
+const SIEMENS_G120C_F30011_BODY = readFileSync(
+  join(import.meta.dir, "fault-code-bodies/siemens-g120c-f30011-line-phase-failure.md"),
+  "utf8",
+);
+
 export interface FaultCode {
   slug: string;
   title: string;
@@ -20,6 +28,9 @@ export interface FaultCode {
   /** ISO date of last substantive content edit. Used for sitemap <lastmod>
    *  and the TroubleshootingGuide `dateModified` — never the render date. */
   updated?: string;
+  /** Optional full markdown body. When set, the article renders this
+   *  instead of the structured What / Causes / Fix template. */
+  body?: string;
 }
 
 export const FAULT_CODES: FaultCode[] = [
@@ -337,30 +348,32 @@ export const FAULT_CODES: FaultCode[] = [
     ],
     recommendedFix:
       "1. Check the motor temperature using an IR thermometer — compare to motor nameplate max temp.\n2. Verify the external cooling fan is running (common failure on 1LA7 motors).\n3. Check drive parameters P0335 (motor cooling type) and P0340 (motor thermal time constant) match the motor.\n4. If using a PTC/KTY sensor, measure the sensor resistance — PTC should read <1.5kΩ when cool.\n5. Reduce the load or duty cycle if the motor is genuinely overheating.",
-    relatedCodes: ["siemens-f30011-heatsink-overtemp"],
+    relatedCodes: ["siemens-g120c-f30011-line-phase-failure"],
     metaDescription:
       "Siemens SINAMICS F07011 motor overtemp: check cooling fans, thermal model parameters, and PTC sensor wiring. Troubleshooting guide.",
   },
   {
-    slug: "siemens-f30011-heatsink-overtemp",
-    title: "Siemens SINAMICS Fault F30011 — Power Module Overtemperature",
-    equipment: "Siemens SINAMICS G120 / S120",
+    slug: "siemens-g120c-f30011-line-phase-failure",
+    title: "SINAMICS G120C F30011: line phase failure in the main circuit",
+    equipment: "Siemens SINAMICS G120C",
     manufacturer: "Siemens",
     faultCode: "F30011",
     description:
-      "F30011 means the power module's heatsink temperature exceeded the maximum allowed value. The drive trips to protect the IGBT power semiconductors from thermal destruction.",
+      "On SINAMICS G120C, F30011 is Power unit: Line phase failure in main circuit, caused by excessive DC link voltage ripple. Heatsink overtemperature is F30004.",
     commonCauses: [
-      "Blocked or failed cooling fan on the power module",
-      "Ambient temperature inside the cabinet exceeds 40°C",
-      "Switching frequency set too high (P1800) for the load",
-      "Continuous operation above rated output current",
-      "Dust accumulation on heatsink fins",
+      "A line phase has failed.",
+      "The 3 line phases are inadmissibly unsymmetrical.",
+      "The capacitance of the DC link capacitor forms a resonance frequency with the line inductance and the reactor integrated in the power unit.",
+      "The fuse of a phase of a main circuit has ruptured.",
+      "A motor phase has failed.",
     ],
     recommendedFix:
-      "1. Check the power module fan — it should spin freely and produce airflow. Replace if stalled.\n2. Measure cabinet internal temperature and add ventilation if above 40°C.\n3. Reduce the switching frequency (P1800) — lower values reduce IGBT losses.\n4. Clean dust from heatsink fins with compressed air (de-energized).\n5. Verify the drive is not continuously overloaded — check r0027 (motor current) vs rated current.",
+      "1. Check the main circuit fuses.\n2. Check whether a single-phase load is distorting the line voltages.\n3. Detune the resonant frequency with the line inductance by using an upstream line reactor.\n4. The list manual (p.525) says to \"Dampen the resonant frequency with the line inductance by switching over the DC link voltage compensation in the software (see p1810)\" or to \"increase the smoothing (see p1806).\" It adds: \"However, this can have a negative impact on the torque ripple at the motor output.\"\n5. Check the motor feeder cables.",
     relatedCodes: ["siemens-f07011-motor-overtemp"],
     metaDescription:
-      "Siemens SINAMICS F30011 power module overtemp: fan check, cabinet cooling, and switching frequency tuning.",
+      "On SINAMICS G120C, F30011 is Power unit: Line phase failure in main circuit, caused by excessive DC link voltage ripple. Heatsink overtemperature is F30004.",
+    updated: "2026-11-25",
+    body: SIEMENS_G120C_F30011_BODY,
   },
 
   // ── Hydraulic Systems ──
@@ -771,7 +784,7 @@ export const FAULT_CODES: FaultCode[] = [
     recommendedFix:
       "1. Disconnect the motor cables from U, V, W terminals and megger-test.\n2. If motor and cables pass, re-run motor identification (P1910 = 1, commission).\n3. Increase the ramp-up time (P1120).\n4. Check for ground faults in the cable run.\n5. If F01001 persists with no motor connected, the power module needs replacement.",
     relatedCodes: [
-      "siemens-f30011-heatsink-overtemp",
+      "siemens-g120c-f30011-line-phase-failure",
       "siemens-f07011-motor-overtemp",
     ],
     metaDescription:

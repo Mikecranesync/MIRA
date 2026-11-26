@@ -120,6 +120,7 @@ import {
 } from "./lib/hub-provisioning-queue.js";
 import { FAULT_CODES } from "./data/fault-codes.js";
 import { BLOG_POSTS } from "./data/blog-posts.js";
+import { blogRedirectPath } from "./data/blog-redirects.js";
 import { buildSitemapXml } from "./lib/sitemap.js";
 import {
   renderBlogPost,
@@ -571,6 +572,8 @@ app.get("/blog/fault-codes", (c) =>
 // Individual post or fault code article
 app.get("/blog/:slug", (c) => {
   const slug = c.req.param("slug");
+  const redirectTo = blogRedirectPath(slug);
+  if (redirectTo) return c.redirect(redirectTo, 301);
 
   // Check blog posts first
   const post = allBlogPosts.find((p) => p.slug === slug);

@@ -270,9 +270,23 @@ function schemaPriceValues(html: string): string[] {
   return [...html.matchAll(/"price"\s*:\s*"?([^",}\s]+)"?/g)].map((m) => m[1]);
 }
 
+const APPROVED_F30011_SIGNUP = [
+  "https://app.factorylm.com/signup?utm_source=blog&utm_medium=organic&utm_campaign=from-the-manual&utm_content=siemens-g120c-f30011-line-phase-failure",
+  "https://app.factorylm.com/signup?utm_source=blog&amp;utm_medium=organic&amp;utm_campaign=from-the-manual&amp;utm_content=siemens-g120c-f30011-line-phase-failure",
+];
+
 function marketingSurface(name: string, html: string): string {
-  if (name !== "/llms-full.txt") return html;
-  return html.replace(
+  let surface = html;
+  if (name === "/blog/siemens-g120c-f30011-line-phase-failure") {
+    // Mike approved this exact correction (26 Nov 2026), including the
+    // from-the-manual signup CTA. It is not the free-pilot / lifetime-credit offer.
+    // The rendered href escapes query-string ampersands.
+    for (const href of APPROVED_F30011_SIGNUP) {
+      surface = surface.replaceAll(href, "https://factorylm.com/approved-manual-cta");
+    }
+  }
+  if (name !== "/llms-full.txt") return surface;
+  return surface.replace(
     /## Not yet claimed[\s\S]*?(?=\n## Full limitations\b)/,
     ""
   );
@@ -867,6 +881,7 @@ describe("unproven registry claims are suppressed, not replaced with fallback co
     for (const control of [
       '<div class="ps-cites"><span class="ps-cite">duplicate-identifier check</span></div>',
       "<p>Ask Mira a question.</p>",
+      "<p>An earlier article did not cite a manual page.</p>",
     ]) {
       expect(citationClaims(control), control).toEqual([]);
     }
@@ -881,9 +896,17 @@ function citationClaims(html: string): string[] {
     .replace(/<[^>]+>/g, " ")
     .replace(/&[a-z]+;|&#\d+;/gi, " ")
     .replace(/\s+/g, " ");
-  return (
-    text.match(/\bcit(?:e|es|ed|ing)\b[^.!?]{0,40}\b(?:pages?|manuals?)\b/gi) ?? []
-  );
+  const out: string[] = [];
+  const re = /\bcit(?:e|es|ed|ing)\b[^.!?]{0,40}\b(?:pages?|manuals?)\b/gi;
+  for (const match of text.matchAll(re)) {
+    const start = match.index ?? 0;
+    const prefix = text.slice(Math.max(0, start - 20), start);
+    // A negated historical sentence ("did not cite a manual page") is not a
+    // product citation claim.
+    if (/\b(?:did not|does not|do not|didn't|doesn't|don't)\s+$/i.test(prefix)) continue;
+    out.push(match[0]);
+  }
+  return out;
 }
 
 // Google Search Console (2026-11-05) flagged a critical Product-snippet issue:

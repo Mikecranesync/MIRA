@@ -382,6 +382,36 @@ footer {
   color: var(--text-faint);
 }
 
+.article-wrap .table-wrap {
+  overflow-x: auto;
+  margin: 24px 0;
+}
+.article-wrap table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14.5px;
+}
+.article-wrap th,
+.article-wrap td {
+  border: 1px solid var(--border);
+  padding: 8px 12px;
+  text-align: left;
+  vertical-align: top;
+  color: var(--text-dim);
+  font-weight: 300;
+}
+.article-wrap th {
+  font-weight: 500;
+  color: var(--text);
+}
+.article-wrap ul.task-list {
+  list-style: none;
+  margin-left: 0;
+}
+.article-wrap ul.task-list li input[type="checkbox"] {
+  margin-right: 8px;
+}
+
 /* ── CTA card ── */
 .cta-card {
   background: var(--surface);
