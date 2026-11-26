@@ -88,13 +88,14 @@ const seamMock = vi.hoisted(() => ({
 vi.mock("@/lib/inference/canonical-cascade", () => seamMock);
 
 import { POST } from "../route";
+import { readNotebookStream } from "@/components/equipment/notebook-chat-utils";
 import { answerTurnId, citationIndex, sourceIdFor } from "@/factorylm-ui/to-interaction";
 
-function req(body: unknown) {
+function req(body: unknown, headers: Record<string, string> = {}) {
   return new NextRequest("http://test/api/equipment-notebooks/x/chat", {
     method: "POST",
     body: JSON.stringify(body),
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...headers },
   });
 }
 const params = { params: Promise.resolve({ id: NB }) };
@@ -210,6 +211,33 @@ describe("TQ-29 — energized-work ask hard-stops and cites the manual's lockout
     expect(content).not.toMatch(/p\.\d/);
     const sources = out.find((f) => f.kind === "sources") as { citations: unknown[] };
     expect(sources.citations).toEqual([]);
+  });
+
+  it("F42 keeps the first-send hard stop when progress closes after its headers", async () => {
+    vi.stubEnv("MIRA_CHAT_PROGRESS", "1");
+    try {
+      const res = await POST(req({ message: ASK, sourceDocIds: [DOC_A] }, { "x-mira-progress": "1" }), params);
+      const out = await frames(res);
+      const headers = out.find((frame) => frame.kind === "headers")?.headers as Record<string, string> | undefined;
+      expect(headers?.["x-safety-stop"]).toBeTruthy();
+      expect(headers?.["x-safety-stop"]).toBe(headers?.["x-safety-flag"]);
+      expect(nbMock.recordTurn).toHaveBeenCalledTimes(1);
+      const readCutoff = (values: Record<string, string>) => readNotebookStream(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode("data: " + JSON.stringify({ kind: "headers", headers: values }) + "\n\n"));
+            controller.close();
+          },
+        }).getReader(),
+        () => {},
+      );
+      const notice = { kind: "safety_notice", trigger: headers!["x-safety-stop"] };
+      expect(await readCutoff(headers!)).toMatchObject({ sawStatus: false, safetyNotice: notice });
+      expect(await readCutoff({ "X-Safety-Stop": notice.trigger })).toMatchObject({ sawStatus: false, safetyNotice: notice });
+      expect(await readCutoff({ "x-safety-flag": notice.trigger })).toMatchObject({ sawStatus: false, safetyNotice: null });
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it("kill switch NOTEBOOK_ENERGIZED_HARD_STOP=0 restores flag-and-answer (control)", async () => {

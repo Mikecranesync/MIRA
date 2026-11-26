@@ -47,6 +47,7 @@ import {
   isVisualObservationEntry,
 } from "@/lib/notebook-chat-types";
 import { API_BASE } from "@/lib/config";
+import { hazardBanner } from "@/lib/safety-classifier";
 import { viewerHref } from "./document-page-viewer-logic";
 import { PROVIDER_EXHAUSTION_COPY } from "@/capabilities/provider-health";
 import type { PersistedTurn, StreamResult } from "@/components/equipment/notebook-chat-utils";
@@ -262,8 +263,29 @@ export { hasTerminalSafetyStop, isTerminalSafetyNotice, safetyNoticesOf } from "
  *  `Bubble`), and the shell renders parts in array order — so notices lead, live
  *  and hydrated alike. Caught by the fidelity harness (#4439). */
 function safetyFirst(parts: InteractionPart[]): InteractionPart[] {
-  return [...parts.filter((p) => p.type === "safety_notice"), ...parts.filter((p) => p.type !== "safety_notice")];
+  const notices = parts.filter((p) => p.type === "safety_notice");
+  const rest = parts.filter((p) => p.type !== "safety_notice");
+  // #5989: an answer that opens with the active-incident directive ("get clear, isolate power,
+  // call for help") shows that directive first. Only the directive paragraph moves: a Safety STOP
+  // stays above it, and the manual's warning, the turn's component label and the steps follow in
+  // their usual order (Codex #6011 F1/F3).
+  const at = rest.findIndex((p) => p.type === "text" && p.text.trimStart().startsWith(ACTIVE_INCIDENT_BANNER));
+  if (at < 0) return [...notices, ...rest];
+  const { directive, body } = splitIncidentDirective((rest[at] as Extract<InteractionPart, { type: "text" }>).text);
+  const after = body.trim() ? rest.map((p, i) => (i === at ? { type: "text" as const, text: body } : p)) : rest.filter((_, i) => i !== at);
+  const isStop = (p: InteractionPart) => p.type === "safety_notice" && p.notice.severity === "stop";
+  return [...notices.filter(isStop), { type: "text", text: directive }, ...notices.filter((p) => !isStop(p)), ...after];
 }
+
+/** The incident banner's paragraph (with any page mark the route appended) and the answer after it. */
+function splitIncidentDirective(text: string): { directive: string; body: string } {
+  const t = text.trimStart();
+  const gap = /\n[ \t]*\n/.exec(t);
+  return gap ? { directive: t.slice(0, gap.index).trimEnd(), body: t.slice(gap.index + gap[0].length) } : { directive: t.trimEnd(), body: "" };
+}
+
+/** The classifier's active-incident banner, which the chat route prefixes to the answer text. */
+const ACTIVE_INCIDENT_BANNER = hazardBanner("smoke");
 
 /**
  * #5504 Codex r2 F1: an answer asked under a bench component names that component
@@ -366,7 +388,7 @@ export function livePartsWhileRunning(
   // A turn asked under a component holds its text until the stream has named the
   // component, so no answer is ever on screen without the component it is about.
   const held = component?.expected === true && !component.label;
-  if (content && !held) return withComponentAttribution([{ type: "text", text: content }], component?.label);
+  if (content && !held) return safetyFirst(withComponentAttribution([{ type: "text", text: content }], component?.label));
   return progress ? [{ type: "progress", stage: progress }] : [];
 }
 
@@ -607,6 +629,7 @@ export function withManualSearchStatus(
 export interface SettledFollowups {
   readonly question: string;
   readonly suggestions: readonly string[];
+  readonly answerId?: string;
   /** Answer turn ids already in the thread when the send started. */
   readonly answeredBefore: readonly string[];
 }
@@ -622,11 +645,9 @@ function askedText(turn: InteractionTurn | undefined): string | null {
  * #4454 — saved rows never carry follow-up suggestions, so once `hub-host.tsx`
  * re-loads the thread after a stream and drops the live turn, the chips the
  * technician just saw vanished. The host keeps the finished answer's
- * suggestions; this puts them back on the answer that send produced: the one
- * answer to that question that was not in the thread when the send started.
- * It must also be the LAST answer and have completed. If another device
- * answered the same question meanwhile, two answers qualify and neither can be
- * told apart from here, so neither gets them. Same overlay shape as
+ * suggestions; this puts them back on the answer that send produced. For
+ * older payloads without request IDs, require a unique new answer to the
+ * same question. The answer must still be last and have completed. Same overlay shape as
  * `withManualSearchStatus`, applied before it so the order matches the live turn.
  */
 export function withSettledFollowups(
@@ -642,7 +663,8 @@ export function withSettledFollowups(
     const t = turns[i]!;
     if (t.role !== "assistant") continue;
     lastAssistantIndex = i;
-    if (!before.has(t.id) && askedText(turns[i - 1]) === asked) produced.push(i);
+    const matches = settled.answerId ? t.id === settled.answerId : !before.has(t.id) && askedText(turns[i - 1]) === asked;
+    if (matches) produced.push(i);
   }
   if (produced.length !== 1 || produced[0] !== lastAssistantIndex) return [...turns];
   const answer = turns[lastAssistantIndex]!;
