@@ -6,21 +6,42 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { sessionOr401 } from "@/lib/session";
-import { createNotebook, listNotebooks, listThreads } from "@/lib/equipment-notebooks";
+import { createNotebook, listNotebooksWithThreads } from "@/lib/equipment-notebooks";
 import { startManualAcquisition } from "@/capabilities/notebook-manual-acquisition";
 
 export const dynamic = "force-dynamic";
 
+const LIST_CACHE_HEADERS = { "Cache-Control": "private, no-store" };
+const TRANSIENT_DB_CODES = new Set([
+  "53300", "57014", "57P01", "57P02", "57P03",
+  "EAI_AGAIN", "ECONNREFUSED", "ECONNRESET", "ENETUNREACH", "EPIPE", "ETIMEDOUT",
+]);
+
 export async function GET() {
   const ctx = await sessionOr401();
   if (ctx instanceof NextResponse) return ctx;
-  const notebooks = await Promise.all(
-    (await listNotebooks(ctx.tenantId)).map(async (notebook) => ({
-      ...notebook,
-      threads: await listThreads(ctx.tenantId, notebook.id, 20, { viewerUserId: ctx.userId }),
-    })),
-  );
-  return NextResponse.json({ notebooks });
+  try {
+    const notebooks = await listNotebooksWithThreads(ctx.tenantId, ctx.userId);
+    return NextResponse.json({ notebooks }, { headers: LIST_CACHE_HEADERS });
+  } catch (error) {
+    const code = error && typeof error === "object" && "code" in error && typeof error.code === "string"
+      ? error.code
+      : "";
+    const poolTimeout = error instanceof Error &&
+      /^(?:timeout exceeded when trying to connect|Connection terminated due to connection timeout)$/.test(error.message);
+    const retryable = poolTimeout || /^08[A-Z0-9]{3}$/.test(code) || TRANSIENT_DB_CODES.has(code);
+    console.error("[equipment-notebooks:list] read failed", {
+      reason: poolTimeout ? "pool_timeout" : retryable ? "storage_unavailable" : "read_failed",
+      code: /^[A-Z0-9]{5}$/.test(code) || TRANSIENT_DB_CODES.has(code) ? code : undefined,
+    });
+    return NextResponse.json(
+      { error: retryable ? "project_list_temporarily_unavailable" : "project_list_failed", retryable },
+      {
+        status: retryable ? 503 : 500,
+        headers: retryable ? { ...LIST_CACHE_HEADERS, "Retry-After": "1" } : LIST_CACHE_HEADERS,
+      },
+    );
+  }
 }
 
 export async function POST(req: NextRequest) {

@@ -17,8 +17,9 @@ import {
   updateNotebook,
 } from "@/lib/equipment-notebooks";
 import { listFilesForTarget } from "@/lib/workspace-files";
-import { DOCUMENT_BASES } from "@/capabilities/conversation-subject";
-import { currentManualSearchStatus,type ManualSearchStatus } from "@/capabilities/notebook-manual-acquisition";
+import type { ManualSearchStatus } from "@/capabilities/notebook-manual-acquisition";
+import { isComponentAttributionEntry } from "@/capabilities/bench-components/attribution";
+import { TURN_WINDOW, notebookManualStatus, subjectMachine, subjectReader } from "@/capabilities/manual-status-subject";
 
 export const dynamic = "force-dynamic";
 
@@ -28,37 +29,6 @@ function requestSearchParams(req: NextRequest): URLSearchParams {
   const maybe = req as { nextUrl?: { searchParams?: URLSearchParams }; url?: string };
   if (maybe.nextUrl?.searchParams) return maybe.nextUrl.searchParams;
   return new URL(maybe.url ?? "http://localhost/").searchParams;
-}
-
-/**
- * The most recently PROPOSED (not yet confirmed) identity on this notebook's
- * turns, read straight off the raw `evidence[]` the same way
- * `mira-hub/src/factorylm-ui/to-interaction.ts`'s `identityProposalOf` does
- * (duplicated here, not imported: that file is a client component and this
- * is a server-only route). `turns` is chronological, so the LAST match wins.
- */
-function latestIdentityProposal(
-  turns: readonly { evidence: unknown[] }[],
-): { manufacturer: string; model: string } | null {
-  for (let i = turns.length - 1; i >= 0; i--) {
-    for (const e of turns[i]!.evidence) {
-      if (typeof e !== "object" || e === null) continue;
-      const r = e as Record<string, unknown>;
-      if (r.kind !== "identity_proposal") continue;
-      if (typeof r.manufacturer === "string" && typeof r.model === "string") {
-        return { manufacturer: r.manufacturer, model: r.model };
-      }
-    }
-  }
-  return null;
-}
-
-/** True when the newest turn is an answer that came from a document. */
-function latestTurnIsGrounded(
-  turns: readonly { answerStatus?: string | null; basis?: string | null }[],
-): boolean {
-  const last = turns[turns.length - 1];
-  return !!last && last.answerStatus === "answered" && !!last.basis && DOCUMENT_BASES.has(last.basis);
 }
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -77,7 +47,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     // 086: history is read AS the authenticated technician — own turns plus
     // labeled legacy rows, never another user's. Same endpoint for Mobile and
     // Web, so this is where "your conversation on any device" is decided.
-    listTurns(ctx.tenantId, id, 50, { viewerUserId: ctx.userId, ...(threadId ? { threadId } : {}) }),
+    listTurns(ctx.tenantId, id, TURN_WINDOW, { viewerUserId: ctx.userId, ...(threadId ? { threadId } : {}) }),
     // 087 / THRD-0: the notebook is the Project; these are its conversations.
     // Derived from rows the same viewer may read, so isolation matches history.
     listThreads(ctx.tenantId, id, 50, { viewerUserId: ctx.userId }),
@@ -114,23 +84,51 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   // never a second acquisition-status path.
   let manualSearch: ManualSearchStatus | null = null;
   try {
-    manualSearch = await currentManualSearchStatus(
-      ctx.tenantId,
-      id,
-      {
-        identityStatus: notebook.identityStatus,
-        manufacturer: notebook.manufacturer,
-        model: notebook.model,
-        catalogNumber: notebook.catalogNumber,
-      },
-      latestIdentityProposal(turns),
-      sources,
-      ...(latestTurnIsGrounded(turns) ? [{ groundedTurn: true }] : []),
-    );
+    manualSearch = await notebookManualStatus(ctx.tenantId, id, notebook, sources, turns);
   } catch (err) {
     console.error("[equipment-notebooks] manual search status read failed (continuing without it):", err);
   }
-  return NextResponse.json({ notebook, sources, turns, threads, photos, manualSearch });
+  // #5750: the status names the project's machine. A thread that asked about
+  // another exact model must not show that machine's ready line and manual
+  // link under its own answer. Only a thread-scoped read knows which questions
+  // belong to the open conversation; a whole-notebook read keeps the status.
+  // The response says why it was withheld (`manualSearchScope`), so a client
+  // can tell it apart from a failed read and clear a status it already shows.
+  // That holds even when there is no current status to withhold (r2 F1): a
+  // client may still be showing one from an earlier read.
+  let manualSearchScope: "other_model" | "out_of_reach" | undefined;
+  const machine = threadId ? subjectMachine(manualSearch, notebook) : null;
+  if (threadId && machine) {
+    const subject = subjectReader({ tenantId: ctx.tenantId, notebookId: id, viewerUserId: ctx.userId, threadId, turns, machine });
+    // A failed wider read is inconclusive (r2 F9): the status is withheld
+    // without a scope, and the rest of the response still returns.
+    try {
+      const scope = await subject.shown();
+      if (scope === "out_of_reach") manualSearchScope = "out_of_reach";
+      if (scope === "other") manualSearchScope = "other_model";
+    } catch (err) {
+      console.error("[equipment-notebooks] wider thread read failed (withholding the manual status):", err);
+      manualSearch = null;
+    }
+    // #5750 r3 F13: the status is placed under the newest answer. An answer
+    // asked under a selected bench component is about that component, not
+    // the project's machine, so the project's status is withheld there.
+    const newest = turns.at(-1);
+    if (newest && (newest.evidence ?? []).some(isComponentAttributionEntry)) manualSearchScope = "other_model";
+    if (manualSearchScope) manualSearch = null;
+  }
+  // #5750 r3 F10/F11/F12: on a thread-scoped read, the saved answer this
+  // status was checked against — the newest turn the read saw. Clients show
+  // the status under that answer only, and nowhere when it is null (no answer
+  // yet) or not in their history yet.
+  const manualSearchAnswer = threadId && manualSearch
+    ? (turns.length ? { turnId: turns[turns.length - 1]!.id, clientRequestId: turns[turns.length - 1]!.clientRequestId ?? null } : null)
+    : undefined;
+  return NextResponse.json({
+    notebook, sources, turns, threads, photos, manualSearch,
+    ...(manualSearchScope ? { manualSearchScope } : {}),
+    ...(manualSearchAnswer !== undefined ? { manualSearchAnswer } : {}),
+  });
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

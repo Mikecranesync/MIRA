@@ -40,7 +40,8 @@ const poolMock = vi.hoisted(() => ({
 }));
 vi.mock("@/lib/db", () => ({ default: poolMock }));
 
-import { attachSource, createNotebook, getNotebook, listNotebooks, updateNotebook, validateChatSources } from "../equipment-notebooks";
+import { withTenantContext } from "@/lib/tenant-context";
+import { attachSource, createNotebook, getNotebook, listNotebooks, listNotebooksWithThreads, updateNotebook, validateChatSources } from "../equipment-notebooks";
 
 const TENANT = "11111111-1111-4111-8111-111111111111";
 const NB = "22222222-2222-4222-8222-222222222222";
@@ -351,5 +352,55 @@ describe("updateNotebook — changing the machine drops identity_status to candi
   it("control: a patch that does not touch the machine leaves identity_status alone", async () => {
     await updateNotebook(TENANT, NB, { displayName: "Line 3 drive" });
     expect(setOf(updateCall())).not.toContain("identity_status");
+  });
+});
+
+describe("batched project and conversation list", () => {
+  const other = "66666666-6666-4666-8666-666666666666";
+
+  it("reads just two tenant queries and attaches each viewer-scoped, capped set of conversations in notebook order", async () => {
+    rowsByMatch.push(
+      { re: /FROM equipment_notebooks n/, rows: [
+        { id: NB, display_name: "First" },
+        { id: other, display_name: "Second" },
+      ] },
+      { re: /FROM equipment_notebook_turns/, rows: [
+        { notebook_id: NB, thread_id: "latest", first_question: "Is the manual ready?", created_at: "2026-11-21", updated_at: "2026-11-22", turn_count: 2, shared_legacy: false },
+        { notebook_id: NB, thread_id: null, first_question: "Unowned conversation", created_at: "2026-11-19", updated_at: "2026-11-20", turn_count: 1, shared_legacy: true },
+      ] },
+    );
+
+    const notebooks = await listNotebooksWithThreads(TENANT, "viewer-1");
+    expect(withTenantContext).toHaveBeenCalledTimes(1);
+    expect(calls).toHaveLength(2);
+    expect(calls[0].sql).toMatch(/WHERE n\.tenant_id = \$1::uuid[\s\S]*LIMIT 100/);
+    const { sql, params } = calls[1];
+    expect(params).toEqual([TENANT, [NB, other], 20, "viewer-1"]);
+    expect(sql).toMatch(/CROSS JOIN LATERAL[\s\S]*LIMIT \$3/i);
+    expect(sql).toMatch(/tenant_id = \$1::uuid/);
+    expect(sql).toMatch(/notebook_id = \w+\.notebook_id/);
+    expect(sql).toContain("client_request_state = 'complete'");
+    expect(sql).toContain("(owner_user_id = $4 OR owner_user_id IS NULL)");
+    expect(notebooks.map(({ id, threads }) => [id, threads.map((thread) => [
+      thread.id, thread.notebookId, thread.sharedLegacy, thread.turnCount, thread.title,
+    ])])).toEqual([
+      [NB, [
+        ["latest", NB, false, 2, "Is the manual ready?"],
+        ["legacy", NB, true, 1, "Unowned conversation"],
+      ]],
+      [other, []],
+    ]);
+  });
+
+  it("reads no conversation rows for an empty project list", async () => {
+    expect(await listNotebooksWithThreads(TENANT, "viewer-1")).toEqual([]);
+    expect(calls).toHaveLength(1);
+  });
+
+  it("reads only ownerless history when no viewer is known", async () => {
+    rowsByMatch.push({ re: /FROM equipment_notebooks n/, rows: [{ id: NB, display_name: "First" }] });
+    await listNotebooksWithThreads(TENANT, null);
+    expect(calls[1].sql).toContain("AND owner_user_id IS NULL");
+    expect(calls[1].params).toEqual([TENANT, [NB], 20]);
   });
 });

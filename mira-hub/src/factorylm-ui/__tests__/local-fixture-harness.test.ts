@@ -120,7 +120,7 @@ describe("F1 — ephemeral secret", () => {
     expect(ws.url).toBe(`${fixtureOrigin(3951)}/login`);
   });
   it("no config or spec commits a known signing key or an alternate-origin override", () => {
-    for (const f of ["playwright.prepare-job-5551.config.ts", "playwright.v3-project-resume.config.ts", "tests/local-fixtures/prepare-job-5551.spec.ts", "tests/local-fixtures/v3-project-resume.spec.ts"]) {
+    for (const f of ["playwright.prepare-job-5551.config.ts", "playwright.v3-project-resume.config.ts", "tests/local-fixtures/prepare-job-5551.spec.ts", "tests/local-fixtures/v3-project-resume.spec.ts", "tests/local-fixtures/v3-manual-lookup-handoff.spec.ts"]) {
       const src = read(f);
       expect(src, f).not.toMatch(/fixed-secret/);
       expect(src, f).not.toMatch(/AUTH_SECRET\s*=\s*["']/);
@@ -129,7 +129,7 @@ describe("F1 — ephemeral secret", () => {
     }
   });
   it("each config and its spec agree on the one port", () => {
-    for (const [config, spec] of [["playwright.prepare-job-5551.config.ts", "tests/local-fixtures/prepare-job-5551.spec.ts"], ["playwright.v3-project-resume.config.ts", "tests/local-fixtures/v3-project-resume.spec.ts"]]) {
+    for (const [config, spec] of [["playwright.prepare-job-5551.config.ts", "tests/local-fixtures/prepare-job-5551.spec.ts"], ["playwright.v3-project-resume.config.ts", "tests/local-fixtures/v3-project-resume.spec.ts"], ["playwright.v3-project-resume.config.ts", "tests/local-fixtures/v3-manual-lookup-handoff.spec.ts"]]) {
       const portOf = (f: string) => /const PORT = (\d+);/.exec(read(f))?.[1];
       expect(portOf(config), config).toBeDefined();
       expect(portOf(config)).toBe(portOf(spec));
@@ -270,7 +270,7 @@ describe("F1 — egress guard: only the fixture port answers", () => {
 
 describe("fixtures live outside the production-targeting default tests/e2e", () => {
   it("neither moved spec remains there, and both configs collect from tests/local-fixtures", () => {
-    for (const spec of ["prepare-job-5551.spec.ts", "v3-project-resume.spec.ts", "fixture-attestation.spec.ts"]) {
+    for (const spec of ["prepare-job-5551.spec.ts", "v3-project-resume.spec.ts", "v3-manual-lookup-handoff.spec.ts", "fixture-attestation.spec.ts"]) {
       expect(existsSync(path.join(HUB, "tests", "e2e", spec)), spec).toBe(false);
     }
     for (const config of ["playwright.prepare-job-5551.config.ts", "playwright.v3-project-resume.config.ts"]) {

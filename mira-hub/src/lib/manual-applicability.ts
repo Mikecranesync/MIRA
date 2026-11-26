@@ -13,6 +13,10 @@
  * a model/search result never self-promotes to verified.
  */
 
+import { HYPHEN_EQUIV_CHARS } from "@/capabilities/detection-fold";
+import { sameModelFamily } from "@/capabilities/manual-applicability";
+import { modelMentionsInText } from "@/capabilities/model-token";
+
 export interface ApplicabilityChunk {
   content: string;
   page: number | null;
@@ -49,6 +53,63 @@ function tokensOf(content: string): string[] {
     .toUpperCase()
     .split(/[^A-Z0-9]+/)
     .filter(Boolean);
+}
+
+const OPTION_PUNCTUATION = `[-/+${HYPHEN_EQUIV_CHARS}]`;
+const IDENTIFIER_PUNCTUATION = String.raw`(?:\.|${OPTION_PUNCTUATION})`;
+const OPTION_SPACING = String.raw`(?:[ \t]*\r?\n)?[ \t]*`;
+const OPTION_GROUP = String.raw`(?:[A-Z](?![A-Z0-9])|[A-Z]*\d)`;
+// A period joins adjacent code groups. A period before whitespace ends the
+// code. Hyphens and slashes can carry a group onto the next PDF text line.
+const DOCUMENT_JOIN = String.raw`(?:\.|(?:[ \t]*/|${OPTION_PUNCTUATION})${OPTION_SPACING})`;
+const SPACED_OPTION = String.raw`[ \t]+${OPTION_PUNCTUATION}${OPTION_SPACING}${OPTION_GROUP}`;
+// A line can also wrap before the punctuation. A separated prose word can
+// start a bullet, so require a code-shaped group when there is a gap after it.
+const WRAPPED_BEFORE_OPTION = String.raw`[ \t]*\r?\n[ \t]*${OPTION_PUNCTUATION}`;
+const WRAPPED_OPTION_JOIN = String.raw`${WRAPPED_BEFORE_OPTION}(?=[A-Z0-9]|${OPTION_SPACING}${OPTION_GROUP})${OPTION_SPACING}`;
+const IDENTIFIER_LEFT = String.raw`(?<![A-Z0-9])(?<![A-Z0-9]${DOCUMENT_JOIN}|[A-Z0-9]${WRAPPED_BEFORE_OPTION}|\d[A-Z0-9]*${WRAPPED_OPTION_JOIN})`;
+const IDENTIFIER_RIGHT = String.raw`(?![A-Z0-9]|${DOCUMENT_JOIN}[A-Z0-9]|${SPACED_OPTION}|${WRAPPED_OPTION_JOIN})`;
+
+/** A printed identifier can lose punctuation in a PDF text layer. Compare
+ * across those separators without matching a prefix, suffix, or interior
+ * segment of a longer option code. */
+function identifierPattern(value: string | null | undefined): RegExp | null {
+  const original = value?.toUpperCase() ?? "";
+  const runs = original.match(/[A-Z0-9]+/g) ?? [];
+  if (!runs.length) return null;
+  const inferredSeparator = String.raw`(?:[ \t]+|${IDENTIFIER_PUNCTUATION})?`;
+  // Only an explicit boundary in the expected code can match a printed
+  // separator with surrounding spaces or a line break.
+  const writtenSeparator = String.raw`(?:[ \t]+|[ \t]*${DOCUMENT_JOIN}|${WRAPPED_OPTION_JOIN})?`;
+  const compact = runs.join("");
+  const pattern = compact.length < 4 ? compact : runs.map((run) =>
+    run.replace(/(?<=[A-Z])(?=\d)|(?<=\d)(?=[A-Z])/g, () => inferredSeparator),
+  ).join(writtenSeparator);
+  return new RegExp(`${IDENTIFIER_LEFT}${pattern}${IDENTIFIER_RIGHT}`, "i");
+}
+
+const LIST_MEMBER = `[A-Z0-9]+(?:[-.+${HYPHEN_EQUIV_CHARS}][A-Z0-9]+)*`;
+const SLASH_CHAIN = new RegExp(String.raw`${IDENTIFIER_LEFT}${LIST_MEMBER}(?:[ \t]*/[ \t]*${LIST_MEMBER})+${IDENTIFIER_RIGHT}`, "gi");
+
+/** A slash is part of a code unless the complete chain lists independent
+ * siblings such as ACS355/ACS310. The model reader must cover each item in
+ * full; a rating, partial match, or extra option segment keeps the chain intact. */
+function separateListedModels(content: string): string {
+  return content.replace(SLASH_CHAIN, (chain) => {
+    const members = chain.split("/").map((member) => member.trim());
+    const models = members.map((member) => {
+      const mentions = modelMentionsInText(member);
+      const match = mentions[0];
+      return mentions.length === 1 && match.start === 0 && match.end === member.length
+        ? { key: match.id, label: member }
+        : null;
+    });
+    const first = models[0];
+    return first && new Set(models.map((model) => model?.key)).size === members.length &&
+      models.every((model) => model && sameModelFamily(model, first))
+      ? members.join(", ")
+      : chain;
+  });
 }
 
 function sharedPrefixLength(a: string, b: string): number {
@@ -99,6 +160,8 @@ export function assessApplicability(input: {
   const chunks = Array.isArray(input.chunks) ? input.chunks : [];
   const model = normalizeIdentifier(input.identity.model ?? "");
   const catalog = normalizeIdentifier(input.identity.catalogNumber ?? "");
+  const modelPattern = identifierPattern(input.identity.model);
+  const catalogPattern = catalog.length >= 4 ? identifierPattern(input.identity.catalogNumber) : null;
   const mfrFull = normalizeIdentifier(input.identity.manufacturer ?? "");
   // Longest word of a multi-word manufacturer ("Allen-Bradley" → ALLENBRADLEY,
   // but also match a document that only says "BRADLEY" or "ROCKWELL").
@@ -134,15 +197,14 @@ export function assessApplicability(input: {
       typeof ch.page === "number" && Number.isFinite(ch.page) && ch.page > 0 ? ch.page : null;
     const dense = normalizeIdentifier(ch.content ?? "");
     const tokSet = new Set(tokensOf(ch.content ?? "").map(normalizeIdentifier));
+    const written = (ch.content ?? "").replace(/[®™]/g, "");
 
-    // Catalog numbers are long and punctuation-heavy — a dense (punctuation
-    // stripped) containment test is the right shape for them.
-    if (catalog && catalog.length >= 4 && dense.includes(catalog)) {
+    if (catalogPattern?.test(written)) {
       hits.catalog++;
       if (page !== null) catalogPages.push(page);
     }
     if (model) {
-      if (tokSet.has(model) || (model.length >= 4 && dense.includes(model))) {
+      if (modelPattern?.test(written) || (written.includes("/") && modelPattern?.test(separateListedModels(written)))) {
         hits.model++;
         if (page !== null) modelPages.push(page);
       } else {

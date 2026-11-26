@@ -1,5 +1,5 @@
 import type { PlatformAdapter, ProjectItem, ShellAction, ShellState } from "@factorylm/interaction";
-import { useEffect, useRef, useState, type Dispatch, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type Dispatch, type ReactNode } from "react";
 import { AssistantThread } from "./assistant/AssistantThread";
 import { Composer } from "./Composer";
 import { Conversation } from "./Conversation";
@@ -133,12 +133,22 @@ export function FactoryLMShell({ state, dispatch, adapter, hooks, onOpenItem, on
   // Only an accepted composer send re-arms scrolling. Message IDs can change
   // when a live answer is persisted or older history is refreshed.
   const [sendRevision, setSendRevision] = useState(0);
+  // #5746 r6 F7: the composer's own send, so Try again on a draft goes through the host's check.
+  const composerSubmit = useRef<(() => boolean) | null>(null);
+  const submitDraft = useCallback(() => composerSubmit.current?.() ?? false, []);
   const composerHooks = hooks?.onSend ? {
     ...hooks,
     onSend: (...args: Parameters<NonNullable<HostHooks["onSend"]>>) => {
       hooks.onSend!(...args);
       setSendRevision((revision) => revision + 1);
     },
+    ...(hooks.onComposerSend ? {
+      onComposerSend: (...args: Parameters<NonNullable<HostHooks["onComposerSend"]>>) => {
+        const accepted = hooks.onComposerSend!(...args);
+        if (accepted) return accepted.then(() => setSendRevision(revision => revision + 1));
+        setSendRevision(revision => revision + 1);
+      },
+    } : {}),
   } : hooks;
   const composerDispatch: Dispatch<ShellAction> = (action) => {
     dispatch(action);
@@ -223,8 +233,8 @@ export function FactoryLMShell({ state, dispatch, adapter, hooks, onOpenItem, on
           composer is pinned to the bottom, so a banner left in the flow above it
           stays under the composer until the very end of the thread. */}
       <div className="fl-shell__dock" data-menu-open={top === "attachment-menu" ? "true" : undefined}>
-        {state.sendError ? <SendError error={state.sendError} dispatch={dispatch} draft={state.draft} turnId={state.thread.turns.at(-1)?.id} hooks={hooks} /> : null}
-        <Composer state={state} dispatch={composerDispatch} adapter={adapter} hooks={composerHooks} attachmentTrapsTab={top === "attachment-menu"} accessory={composerAccessory} />
+        {state.sendError ? <SendError error={state.sendError} dispatch={dispatch} draft={state.draft} turnId={state.thread.turns.at(-1)?.id} hooks={hooks} submitDraft={hooks?.onComposerSend ? submitDraft : undefined} /> : null}
+        <Composer state={state} dispatch={composerDispatch} adapter={adapter} hooks={composerHooks} attachmentTrapsTab={top === "attachment-menu"} accessory={composerAccessory} submitRef={composerSubmit} />
       </div>
     </main>
     <Overlay layer="inspector" active={inspectorOpen(state)} modal={layered} trapsTab={top === "inspector"}>

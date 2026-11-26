@@ -221,6 +221,20 @@ describe("exact catalog number on an explicit manual request", () => {
     expect(result).toContainEqual(expect.objectContaining({ kind: "manual_search_status", running: true }));
   });
 
+  it("reports the committed generation when the read-back after a successful claim is unavailable", async () => {
+    const startedAt = "2026-11-21T00:00:00.123456+00:00";
+    acqMock.readAcquisition.mockResolvedValue(null);
+    acqMock.startManualAcquisition.mockImplementationOnce(async (input) => {
+      (input as typeof input & { onClaimed?: (value: string) => void }).onClaimed?.(startedAt);
+      return true;
+    });
+
+    const res = await POST(req({ message: "AutomationDirect GS11N-20P2, need the manual", mode: "general" }), params);
+    expect(await frames(res)).toContainEqual(expect.objectContaining({
+      kind: "manual_search_status", running: true, startedAt,
+    }));
+  });
+
   it("reports the winning reviewed search when another request claims the stale record first", async () => {
     const key = "AUTOMATIONDIRECT|GS11N20P2|";
     const startedAt = "2026-11-21T00:00:00Z";

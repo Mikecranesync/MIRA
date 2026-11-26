@@ -15,6 +15,7 @@ import {
   type MachineEvidenceEntry,
   type ManualSafetyStatementEntry,
   type NotebookChatFrame,
+  type NotebookIdentityProposalEvent,
   type NotebookManualSearchStatusFrame,
   type NotebookProgressFrame,
   type SafetyNoticeEntry,
@@ -143,6 +144,7 @@ export type StreamResult = {
   status: "answered" | "insufficient_evidence" | "error";
   /** Optional technician-facing sentence supplied by the terminal frame. */
   statusMessage: string | null;
+  identityProposal?: Omit<NotebookIdentityProposalEvent, "kind">;
   basis: string | null;
   followups: string[];
   /** Sensor REPLAY (D5): the machine window the turn was grounded on, if any. */
@@ -297,6 +299,9 @@ export async function readNotebookStream(
         if (frame.kind === "manual_search_status") {
           const { manufacturer, model, running, message, startedAt, manualUrl } = frame;
           opts.onManualSearchStatus?.({ manufacturer, model, running, message, startedAt, manualUrl });
+        } else if (frame.kind === "identity_proposal") {
+          const { manufacturer, model, catalogNumber } = frame;
+          out.identityProposal = { manufacturer, model, ...(catalogNumber ? { catalogNumber } : {}) };
         } else if (frame.kind === "http_error") {
           const body = frame.body as { error?: unknown } | null;
           httpError = new NotebookHttpError(frame.status, typeof body?.error === "string" ? body.error : "");
@@ -455,6 +460,7 @@ export async function postNotebookChat(
 /** One persisted turn row as the GET route returns it. */
 export type PersistedTurn = {
   id: string;
+  clientRequestId?: string | null;
   /** Turn-scoped machine snapshot (081). Optional for older history servers. */
   equipmentEntityId?: string | null;
   question: string;

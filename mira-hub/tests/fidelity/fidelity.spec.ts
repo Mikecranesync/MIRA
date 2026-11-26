@@ -70,8 +70,7 @@ async function drive(browser: Browser, baseURL: string, surface: Surface, scenar
     // Settle (#4454): the clone swaps its streamed turn for the persisted row in
     // place, and that row never carries follow-ups. What shows after the swap is
     // what the technician keeps until the next send, so read it before reloading.
-    // Wait for the live turn to LEAVE, not for the row to appear: the row renders
-    // beside the live turn while the host still awaits the notebook list.
+    // Wait for the streamed turn to hand off to the row for the same request.
     let followups: Run["followups"] = null;
     if (surface === "clone") {
       const turnSel = '.fl-turn--aui[data-role="assistant"]';
@@ -133,8 +132,8 @@ test.beforeAll(async ({ browser }, info) => {
   // Determinism evidence (AC7): one digest of every normalized record.
   const normalized = SURFACES.map((s) => SCENARIOS.map((sc) => ({
     s, sc, ...runs[s][sc], request: normalizeRequest(runs[s][sc].request),
-    // The live id embeds a timestamp; keep only its shape.
-    turnIds: { ...runs[s][sc].turnIds, live: runs[s][sc].turnIds.live?.replace(/\d+/g, "N") ?? null },
+    // The live turn id includes a random request id. Keep the assistant suffix.
+    turnIds: { ...runs[s][sc].turnIds, live: runs[s][sc].turnIds.live?.replace(/^live-.+-a$/, "live-REQUEST-a") ?? null },
   })));
   const out = path.join(__dirname, ".out");
   mkdirSync(out, { recursive: true });

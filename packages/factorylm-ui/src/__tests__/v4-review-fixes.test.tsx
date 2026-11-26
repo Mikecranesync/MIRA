@@ -1,7 +1,12 @@
 import { afterEach, describe, expect, it } from "bun:test";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync, statSync } from "node:fs";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { act, useState } from "react";
+import { createRoot } from "react-dom/client";
+import type { Attachment } from "@factorylm/interaction";
 import { withoutStatusCode } from "../SendError";
-import { renderHarness, type HarnessView } from "./harness";
+import { Harness, fakeAdapter, renderHarness, type HarnessView } from "./harness";
 
 const views: HarnessView[] = [];
 afterEach(() => { views.splice(0).forEach((v) => v.cleanup()); });
@@ -76,10 +81,160 @@ describe("Try again is never a dead button", () => {
     expect(sent).toEqual([["Does this help?", [], { retry: true }]]);
   });
 
+  // #5746 r6 F7: on a host that checks a send before it goes (the Hub waits for the conversation's
+  // detail and question target), Try again on a draft goes through that same check, with the
+  // composer's attachments. The draft and the chips stay until the check accepts the send, so a
+  // second Stop keeps them too. Mobile, which has no such check, keeps the plain retry above.
+  describe("on a host that checks a send before it goes", () => {
+    const PHOTO: Attachment = { id: "a-photo", name: "nameplate.jpg", mediaType: "image/jpeg", kind: "photo", status: "ready" };
+    const PAUSED = "Send paused. Your message and attachments are still here.";
+    const QUESTION_TEXT = "According to the manual, what is the acceleration parameter?";
+
+    async function checkedHost() {
+      const checks: { text: string; attachments: string[] }[] = [];
+      const plain: unknown[][] = [];
+      const waits: { resolve: () => void; reject: (error: Error) => void }[] = [];
+      const hooks = {
+        onSend: (...args: unknown[]) => { plain.push(args); },
+        onComposerSend: (text: string, attachments: readonly Attachment[]) => {
+          checks.push({ text, attachments: attachments.map((a) => a.id) });
+          return new Promise<void>((resolve, reject) => { waits.push({ resolve, reject }); });
+        },
+      };
+      const view = renderHarness({ surface: "web", fixture: "grounded-answer", conversationSurface: "assistant", adapter: fakeAdapter({ photo: PHOTO }), hooks });
+      views.push(view);
+      view.click(view.buttonNamed("Add attachment")!);
+      view.click(view.buttonNamed("Photo")!);
+      await view.flush();
+      view.type(view.container.querySelector("textarea")!, QUESTION_TEXT);
+      view.click(view.buttonNamed("Send")!);
+      await view.flush();
+      return { view, checks, plain, waits };
+    }
+    const chipCount = (view: HarnessView) => view.container.querySelectorAll('[aria-label="Pending attachments"] li').length;
+    const banner = (view: HarnessView) => view.container.querySelector('[aria-label="Send error"]');
+
+    it("sends the draft and its attachment through the check again, never the plain send", async () => {
+      const { view, checks, plain, waits } = await checkedHost();
+      expect(checks).toEqual([{ text: QUESTION_TEXT, attachments: ["a-photo"] }]);
+      waits[0]!.reject(new Error(PAUSED));
+      await view.flush();
+      // Precondition: Stop kept the draft and the chip, and offers Try again.
+      expect(view.outputs().draft).toBe(QUESTION_TEXT);
+      expect(chipCount(view)).toBe(1);
+      view.click(view.buttonNamed("Try again")!);
+      await view.flush();
+      expect(checks).toEqual([
+        { text: QUESTION_TEXT, attachments: ["a-photo"] },
+        { text: QUESTION_TEXT, attachments: ["a-photo"] },
+      ]);
+      expect(plain).toEqual([]);
+      // Waiting again: the error is cleared, and the draft and chip are still held.
+      expect(banner(view)).toBeNull();
+      expect(view.outputs().draft).toBe(QUESTION_TEXT);
+      expect(chipCount(view)).toBe(1);
+      waits[1]!.resolve();
+      await view.flush();
+      expect(view.outputs().draft).toBe("");
+      expect(chipCount(view)).toBe(0);
+      expect(banner(view)).toBeNull();
+    });
+
+    // #5746 r7: Stop and Send shared one DOM button. Stop's click handler re-rendered it, in the
+    // same event, into the submit button, and the browser's default click action then submitted
+    // the form: a Stop restarted the held send at once, so Try again found the composer busy.
+    // Seen in the Hub's production build (a form submit, submitter "Send", right after Stop).
+    it("Stop is its own element, so its click can never submit the draft", () => {
+      const sends: string[] = [];
+      function StopHost() {
+        const [busy, setBusy] = useState(true);
+        return <Harness surface="web" fixture="grounded-answer" conversationSurface="assistant"
+          hooks={{ onSend: (text: string) => { sends.push(text); }, onStop: () => setBusy(false), busy }} />;
+      }
+      const container = document.createElement("div");
+      document.body.append(container);
+      const root = createRoot(container);
+      try {
+        act(() => { root.render(<StopHost />); });
+        const named = (name: string) => Array.from(container.querySelectorAll("button"))
+          .find((button) => (button.getAttribute("aria-label") ?? button.textContent ?? "").trim() === name) ?? null;
+        const textarea = container.querySelector("textarea")!;
+        act(() => {
+          Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(textarea, QUESTION_TEXT);
+          textarea.dispatchEvent(new Event("input", { bubbles: true }));
+        });
+        const stop = named("Stop");
+        // Precondition: busy shows Stop, not Send, over a draft that Send could submit.
+        expect(stop).not.toBeNull();
+        expect(named("Send")).toBeNull();
+        act(() => { stop!.dispatchEvent(new MouseEvent("click", { bubbles: true })); });
+        const send = named("Send");
+        expect(send).not.toBeNull();
+        expect(send!.disabled).toBe(false);
+        expect(send).not.toBe(stop);
+        expect(stop!.isConnected).toBe(false);
+        expect(sends).toEqual([]);
+      } finally {
+        act(() => root.unmount());
+        container.remove();
+      }
+    });
+
+    it("keeps the draft and the attachment through a second Stop", async () => {
+      const { view, checks, plain, waits } = await checkedHost();
+      waits[0]!.reject(new Error(PAUSED));
+      await view.flush();
+      view.click(view.buttonNamed("Try again")!);
+      await view.flush();
+      waits[1]!.reject(new Error(PAUSED));
+      await view.flush();
+      expect(checks).toHaveLength(2);
+      expect(plain).toEqual([]);
+      expect(banner(view)?.textContent ?? "").toContain(PAUSED);
+      expect(view.outputs().draft).toBe(QUESTION_TEXT);
+      expect(chipCount(view)).toBe(1);
+      expect(view.buttonNamed("Try again")).not.toBeNull();
+    });
+  });
+
   it("only promises the message is saved when a draft actually holds it", () => {
     const view = show({});
     const detail = view.container.querySelector('[aria-label="Send error"]')?.textContent ?? "";
     expect(detail).not.toContain("saved below");
+  });
+});
+
+// #5746 r6 audit: the shell hands a technician's question to the host from the composer (through
+// the host's check, when it has one) and from Try again on the same draft. Two library paths call
+// the host's plain send directly: the runtime's own send, and first-run chips. Neither can be
+// reached on a host that checks its sends: the shell renders no control that makes the runtime
+// send, and the Hub offers no first-run chips (pinned in mira-hub hub-host-logic.test.ts).
+describe("where the shell sends a question", () => {
+  const SRC = fileURLToPath(new URL("..", import.meta.url));
+  const files = (dir: string): string[] => readdirSync(dir).flatMap((name) => {
+    const path = join(dir, name);
+    if (statSync(path).isDirectory()) return name === "__tests__" ? [] : files(path);
+    return /\.tsx?$/.test(name) ? [path] : [];
+  });
+
+  it("renders no assistant-ui control that makes the runtime send a message", () => {
+    const found = files(SRC).filter((path) =>
+      /ComposerPrimitive|ThreadPrimitive\.Suggestion|ActionBarPrimitive|BranchPickerPrimitive|useThreadRuntime|useComposerRuntime|\.append\(/.test(readFileSync(path, "utf8")));
+    // Precondition: the scan reads the shell, including the runtime's own send.
+    expect(files(SRC).some((path) => path.endsWith(join("assistant", "runtime.tsx")))).toBe(true);
+    expect(found).toEqual([]);
+  });
+
+  it("follow-up suggestions fill the draft and send nothing", () => {
+    const sent: unknown[][] = [];
+    const view = renderHarness({
+      surface: "web", fixture: "general-ask", conversationSurface: "assistant",
+      hooks: { onSend: (...args: unknown[]) => { sent.push(args); }, onComposerSend: (...args: unknown[]) => { sent.push(args); } },
+    });
+    views.push(view);
+    view.click(view.buttonNamed("How is preload measured?")!);
+    expect(view.outputs().draft).toBe("How is preload measured?");
+    expect(sent).toEqual([]);
   });
 });
 

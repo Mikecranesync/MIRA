@@ -173,6 +173,10 @@ const UNIT_RE =
   /^\d+(?:V|VAC|VDC|KV|MV|A|MA|KA|AH|MAH|W|KW|MW|VA|KVA|HP|HZ|KHZ|MHZ|RPM|MM|CM|M|IN|FT|NM|PSI|BAR|KPA|C|F|K|S|MS|MIN|H|HR|KG|G|LB|OZ|AWG|P|PH|NO|NC|X|D|ST|ND|RD|TH)$/;
 // Neither is a standard or an interface: IP20, RS485, NEMA4X, CAT5E, IEC61131.
 const STANDARD_RE = /^(?:IP|RS|UL|IEC|ISO|EN|NEMA|CAT|DIN|AWG|USB|SIL|ANSI|NFPA|CSA)\d+[A-Z]?$/;
+/** A rating or a count, as `modelNumbersIn` excludes one: "230VAC", "60HZ", "5HP". */
+export function isRatingToken(token: string): boolean {
+  return UNIT_RE.test(token.toUpperCase());
+}
 const CHAIN_RE = /[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*/g;
 const hasDigit = (s: string) => /\d/.test(s);
 const numberFrom = (run: string[], raw?: string): ModelNumber | null => {

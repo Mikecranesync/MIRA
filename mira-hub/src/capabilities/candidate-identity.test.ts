@@ -161,9 +161,31 @@ describe("asksToFindManual", () => {
 });
 
 describe("exactManualIdentity — typed reviewed product name and order number", () => {
+  it.each(["Festo VUVG-LK10-M52-AT-G14-F", "Festo order number: VUVG-LK10-M52-AT-G14-F"])(
+    "keeps all option segments in an explicit typed request for %s",
+    (subject) => {
+      const request = `Find the manual for ${subject}.`;
+      expect(asksToFindManual(request)).toBe(true);
+      expect(exactManualIdentity("", request)).toEqual({ manufacturer: "FESTO", model: "VUVG-LK10-M52-AT-G14-F" });
+    },
+  );
+
   it("preserves the canonical order number from a compatible product name", () => {
     expect(exactManualIdentity("", "Find the manual for Siemens TP700 Comfort 6av2124-0gc01-0ax0."))
       .toEqual({ manufacturer: "SIEMENS", model: "6AV2124-0GC01-0AX0" });
+  });
+
+  it("accepts one explicitly typed manufacturer's compact model without a reviewed document", () => {
+    expect(exactManualIdentity("", "Find the manual for Festo VTUG10."))
+      .toEqual({ manufacturer: "FESTO", model: "VTUG10" });
+  });
+
+  it("distinguishes an abbreviated order field from a following question", () => {
+    const request = "Find the manual for Siemens order no. 6AV2124-0GC01-0AX0";
+
+    expect(asksToFindManual(`${request}.`)).toBe(true);
+    expect(asksToFindManual(`${request}. Is it 24V?`)).toBe(false);
+    expect(exactManualIdentity("", `${request}.`)).toEqual({ manufacturer: "SIEMENS", model: "6AV2124-0GC01-0AX0" });
   });
 
   it.each([

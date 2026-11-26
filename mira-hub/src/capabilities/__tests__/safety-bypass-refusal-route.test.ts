@@ -499,6 +499,26 @@ describe("#5670 native-2 F3: bypass + energized work keeps the existing energize
     expect(turn.answerText).not.toContain(ENERGY_LINE);
   });
 
+  it("#5746 composition: a source this notebook no longer has keeps the one fixed refusal and stores no source; a notebook that is not the caller's stays a 404", async () => {
+    const stale = { sourceDocIds: ["99999999-9999-4999-8999-999999999999"] };
+    domainMock.validateChatSources.mockResolvedValue({ ok: false, error: "source_not_in_notebook" } as never);
+    const { turn } = await expectRefusal(COMBINED, stale);
+    expect(turn.answerText!.split(BYPASS_BANNER).length - 1).toBe(1);
+    expect(turn.answerText).toContain(ENERGY_LINE);
+    expect(turn.evidence.filter((e) => e.kind === "safety_stop")).toHaveLength(1);
+    expect(domainMock.recordTurn).toHaveBeenCalledTimes(1);
+    const calls = domainMock.recordTurn.mock.calls as unknown as unknown[][];
+    expect((calls[0][2] as { enabledSourceDocIds: string[] }).enabledSourceDocIds).toEqual([]);
+    vi.clearAllMocks();
+    domainMock.validateChatSources.mockResolvedValue({ ok: false, error: "source_not_in_notebook" } as never);
+    domainMock.getNotebook.mockResolvedValueOnce(null as never);
+    const fetchMock = spendingProvider();
+    const out = await post(COMBINED, stale);
+    expect(out.status).toBe(404);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(domainMock.recordTurn).not.toHaveBeenCalled();
+  });
+
   it("control: a bypass ask with no energized-work wording has no energized guidance", async () => {
     const { turn } = await expectRefusal(AUDIT_ASK);
     expect(turn.answerText).not.toContain(ENERGY_LINE);

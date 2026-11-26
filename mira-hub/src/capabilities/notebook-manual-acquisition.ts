@@ -23,6 +23,7 @@
 import { isPublicHttpsUrl, isBlockedHost } from "@/lib/safe-download";
 import { withTenantContext } from "@/lib/tenant-context";
 import type { NotebookSource } from "@/lib/equipment-notebooks";
+import type { ManualSearchStatus } from "../../../packages/factorylm-interaction/src";
 import type { CandidateTrail } from "@/lib/manual-discovery";
 import { attachFileToTargetsTx } from "@/lib/workspace-files";
 import type { SpanContext } from "@opentelemetry/api";
@@ -35,6 +36,12 @@ import {
 } from "@/capabilities/manual-acquisition";
 import { MANUAL_SEARCH_LIMIT_COPY, MANUAL_SEARCH_UNAVAILABLE_COPY } from "@/capabilities/manual-search-copy";
 import { reviewedManualFor } from "@/capabilities/reviewed-manual-library";
+import { exactManualIdentity, makerFromText } from "@/capabilities/candidate-identity";
+import { returnsToRecord } from "@/capabilities/conversation-subject";
+import { familyCovers, modelIdentitiesInText } from "@/capabilities/model-token";
+import { isRatingToken, modelNumbersIn } from "@/capabilities/manual-applicability";
+import { foldForDetection } from "@/capabilities/detection-fold";
+import { normalizeManufacturer } from "@/lib/manufacturerNormalize";
 
 /** A running claim older than this is treated as abandoned (container restart). */
 export const STALE_RUNNING_MINUTES = 10;
@@ -75,6 +82,15 @@ export interface AcquisitionRecord {
    *  or pages whose numbers did not read). Confirming it never turns it on;
    *  the chat says "add the full manual". Absent when complete. */
   partial?: boolean;
+  /** Set with `partial`: the document's own text verified this exact model.
+   *  Only then may the chat call it "part of the <model> manual"; a partial
+   *  document never checked against the model is a possible manual. */
+  model_verified?: boolean;
+  /** Set with `partial`: why the document was judged partial (#5750 F5) —
+   *  "chapter_start" (it reads like one chapter, an excerpt) and/or
+   *  "unmapped_glyphs" (numbers on some pages did not read). Absent on
+   *  records written before it was kept. */
+  partial_reasons?: Array<"chapter_start" | "unmapped_glyphs">;
   /** The claim generation that wrote this record (Codex #4118 r3 F6). */
   gen?: string;
   /** Reviewed publication digest attempted by this generation, even on a miss. */
@@ -192,13 +208,14 @@ function matchEvidenceKey(matchEvidence: unknown): string | null {
 /** The shared applicability test both `applicableEnabledSource` and
  *  `applicableReadySource` filter on — see `applicableEnabledSource`'s own
  *  doc comment for the fail-closed rationale on a keyless source. */
-function isApplicableEnabledManual(s: NotebookSource, key: string): boolean {
-  return (
-    s.sourceRole === "manual" &&
-    s.enabledByDefault &&
+function isApplicableTrustedManual(s: NotebookSource, key: string): boolean {
+  return s.sourceRole === "manual" &&
     (s.matchState === "verified" || s.matchState === "user_confirmed") &&
-    matchEvidenceKey(s.matchEvidence) === key
-  );
+    matchEvidenceKey(s.matchEvidence) === key;
+}
+
+function isApplicableEnabledManual(s: NotebookSource, key: string): boolean {
+  return s.enabledByDefault && isApplicableTrustedManual(s, key);
 }
 
 export function applicableEnabledSource(
@@ -278,24 +295,42 @@ function savedCopyPageUrl(fileId: string, page: number, env: Record<string, stri
 }
 
 /** Status from the currently enabled source, regardless of the last acquisition record. */
-export function currentManualSourceMessage(
+function currentManualSourceStatus(
   sources: readonly NotebookSource[],
   identity: ConfirmedIdentity,
-): string | null {
+): Pick<ManualSearchStatus, "running" | "message" | "sourceState" | "readySourceDocId"> | null {
   const { manufacturer, model, catalogNumber } = identity;
   const ready = preferredReadySource(sources, identity);
   if (ready) {
     const evidence = ready.matchEvidence as { reviewedLibraryPage?: number; reviewedLibraryTitle?: string } | null;
     const page = evidence?.reviewedLibraryPage;
     const title = evidence?.reviewedLibraryTitle;
-    if (typeof page === "number" && Number.isSafeInteger(page) && page > 0 && typeof title === "string") {
-      return `${title} is ready in Sources. PDF page ${page} shows coverage for ${catalogNumber?.trim() || model}.`;
-    }
-    return `The ${manufacturer} ${model} manual is ready — I can answer from it.`;
+    const message = typeof page === "number" && Number.isSafeInteger(page) && page > 0 && typeof title === "string"
+      ? `${title} is ready in Sources. PDF page ${page} shows coverage for ${catalogNumber?.trim() || model}.`
+      : `The ${manufacturer} ${model} manual is ready — I can answer from it.`;
+    return { running: false, sourceState: "ready", readySourceDocId: ready.docId, message };
   }
-  return applicableEnabledSource(sources, identity)
-    ? `I found the ${manufacturer} ${model} manual and added it to this notebook's Sources — it's still being prepared to answer from.`
-    : null;
+  const key = acquisitionKey(identity);
+  if (!key) return null;
+  const enabled = sources.filter((source) => isApplicableEnabledManual(source, key));
+  if (!enabled.length) return null;
+  if (enabled.some(({ readiness }) => readiness.state !== "failed" && readiness.state !== "needs_ocr")) {
+    return {
+      running: true, sourceState: "preparing",
+      message: `I found the ${manufacturer} ${model} manual and added it to this notebook's Sources — it's still being prepared to answer from.`,
+    };
+  }
+  return {
+    running: false, sourceState: "unavailable",
+    message: `I found the ${manufacturer} ${model} manual in Sources, but its pages aren't readable for answers.`,
+  };
+}
+
+/** A verified source explicitly turned off by the technician. */
+export function applicableDisabledSource(sources: readonly NotebookSource[], identity: ConfirmedIdentity): NotebookSource | null {
+  const key = acquisitionKey(identity);
+  if (!key || applicableEnabledSource(sources, identity)) return null;
+  return sources.find((source) => !source.enabledByDefault && isApplicableTrustedManual(source, key)) ?? null;
 }
 
 /** The recorded search for this notebook, or null (never attempted, or unreadable). */
@@ -330,19 +365,21 @@ export async function readAcquisition(tenantId: string, notebookId: string): Pro
  * its real outcome is always persisted and a stale miss is never left behind.
  * A background start never passes it.
  */
+type AcquisitionClaim = { gen: string; started_at: string };
+
 async function claim(
   tenantId: string,
   notebookId: string,
   key: string,
   explicit = false,
   reviewedDigest: string | null = null,
-): Promise<string | null> {
+): Promise<AcquisitionClaim | null> {
   try {
     return await withTenantContext(tenantId, async (c) => {
       // Every claim mints a fresh generation; only the holder of the CURRENT
       // generation may write sources or the outcome, so a slow worker whose
       // stale claim was taken over is fenced out (Codex #4118 r3 F6).
-      const r = await c.query<{ gen: string }>(
+      const r = await c.query<AcquisitionClaim>(
         `UPDATE equipment_notebooks
             SET manual_acquisition = jsonb_build_object(
                   'key', $3::text, 'state', 'running', 'gen', gen_random_uuid()::text,
@@ -428,10 +465,11 @@ async function claim(
                      AND manual_acquisition->>'file_id' IS NULL
                      AND manual_acquisition->>'prior_doc_id' IS NULL
                      AND manual_acquisition->>'prior_file_id' IS NULL))
-          RETURNING manual_acquisition->>'gen' AS gen`,
+          RETURNING manual_acquisition->>'gen' AS gen, manual_acquisition->>'started_at' AS started_at`,
         [tenantId, notebookId, key, STALE_RUNNING_MINUTES, UNAVAILABLE_RETRY_MINUTES, MAX_AUTOMATIC_RETRIES, explicit, reviewedDigest, REVIEWED_RETRY_STATES],
       );
-      return r.rows[0]?.gen ?? null;
+      const claimed = r.rows[0];
+      return claimed?.gen ? claimed : null;
     });
   } catch (err) {
     if (!isUndefinedColumn(err)) {
@@ -463,6 +501,7 @@ export function recordFromOutcome(key: string, startedAt: string | null, out: Ma
     retryable?: unknown;
     linked?: unknown;
     removedByTechnician?: unknown;
+    applicability?: { state?: unknown } | null;
   };
   const str = (v: unknown) => (typeof v === "string" && v.trim() ? v : null);
   // A source that was removed (or rejected) meanwhile is not "attached" — the
@@ -472,7 +511,11 @@ export function recordFromOutcome(key: string, startedAt: string | null, out: Ma
   // Garage pilot L2: the acquisition judged the document partial (one chapter,
   // or numbers that did not read). It stamped candidateApplicability='candidate'
   // so confirmation cannot promote it; the record says so explicitly.
-  const partial = (p.manual?.completeness as { complete?: unknown } | null | undefined)?.complete === false;
+  const completeness = p.manual?.completeness as { complete?: unknown; reasons?: unknown } | null | undefined;
+  const partial = completeness?.complete === false;
+  const partialReasons = Array.isArray(completeness?.reasons)
+    ? (["chapter_start", "unmapped_glyphs"] as const).filter((r) => (completeness.reasons as unknown[]).includes(r))
+    : [];
   // Another request is indexing these exact bytes: nothing is attached here YET.
   // Leave the claim "running" so the stale-claim recovery retries it and the
   // retry reuses the finished document instead of reporting a phantom source.
@@ -502,7 +545,13 @@ export function recordFromOutcome(key: string, startedAt: string | null, out: Ma
     candidate_url: str(p.candidate?.url),
     attached_indexed: attachedIndexed,
     promotes_on_confirm: attachedIndexed && p.manual?.candidateApplicability === "verified" && !partial,
-    ...(partial ? { partial: true } : {}),
+    ...(partial
+      ? {
+          partial: true,
+          ...(p.applicability?.state === "verified" ? { model_verified: true } : {}),
+          ...(partialReasons.length ? { partial_reasons: [...partialReasons] } : {}),
+        }
+      : {}),
     doc_id: str(p.manual?.docId),
     file_id: str(p.manual?.fileId),
     download_reason: downloadReason,
@@ -846,6 +895,8 @@ export interface StartInput {
   basis?: "confirmed" | "candidate";
   /** Set false when the candidate came from a typed request. */
   fromPhoto?: boolean;
+  /** Reports the committed search timestamp directly from the winning claim. */
+  onClaimed?: (startedAt: string) => void;
 }
 
 /**
@@ -862,10 +913,10 @@ export async function startManualAcquisition(
   const key = acquisitionKey(input.identity);
   if (!key) return false;
   const reviewedDigest = reviewedManualFor(input.identity)?.sha256 ?? null;
-  const gen = await claim(input.tenantId, input.notebookId, key, false, reviewedDigest);
-  if (!gen) return false;
+  const claimed = await claim(input.tenantId, input.notebookId, key, false, reviewedDigest);
+  if (!claimed) return false;
+  const { gen, started_at: startedAt } = claimed;
   const acquire = deps.acquire ?? acquireManualForIdentity;
-  const startedAt = new Date().toISOString();
   void (async () => {
     let out: ManualAcquisitionOutcome;
     try {
@@ -899,6 +950,7 @@ export async function startManualAcquisition(
         ` host=${(out.payload as { candidate?: { host?: string } }).candidate?.host ?? "-"}`,
     );
   })();
+  if (startedAt) input.onClaimed?.(startedAt);
   return true;
 }
 
@@ -933,10 +985,10 @@ export async function runManualAcquisition(
   });
   if (!key) return { started: false, outcome: null };
   const reviewedDigest = reviewedManualFor(input.identity)?.sha256 ?? null;
-  const gen = await claim(input.tenantId, input.notebookId, key, true, reviewedDigest);
-  if (!gen) return { started: false, outcome: null };
+  const claimed = await claim(input.tenantId, input.notebookId, key, true, reviewedDigest);
+  if (!claimed) return { started: false, outcome: null };
+  const { gen, started_at: startedAt } = claimed;
   const acquire = deps.acquire ?? acquireManualForIdentity;
-  const startedAt = new Date().toISOString();
   let out: ManualAcquisitionOutcome;
   try {
     // Codex #4177 r5 F7: the attachment is checkpointed IN THE ATTACH
@@ -1110,7 +1162,34 @@ export function acquisitionDeclineText(
       // whose numbers did not read). It is never turned on by confirming it —
       // the one real next step is the full manual.
       if (rec.attached_indexed && rec.partial) {
-        return `I found part of the ${label} manual${rec.candidate_host ? ` (from ${rec.candidate_host})` : ""}, but not the whole manual — one chapter, or pages whose numbers did not read — so it isn't turned on. Add the full manual for the ${label} to this notebook and ask again — I'll answer from it and show you the page.`;
+        const from = rec.candidate_host ? ` (from ${rec.candidate_host})` : "";
+        // #5750 F5: say what was actually wrong with the copy. "One chapter"
+        // is an excerpt: the next step is the full manual. Unreadable numbers
+        // alone are a whole manual that did not read: the next step is a
+        // readable copy, not "the rest of it". A record written before the
+        // reasons were kept says only that it could not be fully read.
+        const reasons = rec.partial_reasons ?? [];
+        const excerpt = reasons.includes("chapter_start");
+        const unreadable = reasons.includes("unmapped_glyphs");
+        const problem = excerpt && unreadable
+          ? "it reads like one chapter of a manual, not the whole manual, and numbers on some of its pages did not read"
+          : excerpt
+            ? "it reads like one chapter of a manual, not the whole manual"
+            : unreadable
+              ? "numbers on some of its pages did not read"
+              : "I couldn't fully read or check it";
+        const next = excerpt
+          ? `Add the full manual for the ${label} to this notebook`
+          : unreadable
+            ? `Add a readable copy of the ${label} manual to this notebook`
+            : `Add the full, readable manual for the ${label} to this notebook`;
+        // Garage pilot L2 + staging walk 2026-11-21 (gs1m.pdf for
+        // "GS11N-20P25"): only a document whose own text verified this exact
+        // model is called the <model> manual; any other is a possible manual.
+        const found = rec.model_verified
+          ? excerpt ? `I found part of the ${label} manual${from}` : `I found a copy of the ${label} manual${from}`
+          : `I found a possible manual for the ${label}${from}, but I couldn't confirm it covers this exact model`;
+        return `${found}${rec.model_verified ? ", but" : ", and"} ${problem}, so it isn't turned on. ${next} and ask again — I'll answer from it and show you the page.`;
       }
       if (rec.attached_indexed) {
         return `I found a possible manual for the ${label}${rec.candidate_host ? ` (from ${rec.candidate_host})` : ""}, but I couldn't confirm it covers this exact model, so it isn't turned on. Check it in this notebook's Sources — turn it on if it's right and ask again.`;
@@ -1154,20 +1233,130 @@ export function acquisitionDeclineText(
 
 /** T2 (#4189 F4/F6) — the shape the notebook GET route returns alongside
  *  `notebook`/`sources`/`turns`, for both the Hub and mobile post-refresh
- *  render path. Mirrors `ManualSearchStatus` in `packages/factorylm-interaction`
- *  field-for-field (not imported: that package has no DB-adjacent deps and
- *  this one does, by design — see that package's own header).
+ *  render path. Uses the shared `ManualSearchStatus` contract.
  *  `startedAt` (Codex round 2 F4/F8) identifies the SEARCH GENERATION — the
  *  shared mobile/Hub follower keys its retry budget on `notebookId|startedAt`
  *  so a NEW search (a different `started_at`) always gets a fresh budget,
  *  never one already spent by an earlier search for the same identity. */
-export interface ManualSearchStatus {
-  manufacturer: string;
-  model: string;
-  running: boolean;
-  message?: string;
-  manualUrl?: string;
-  startedAt?: string;
+export type { ManualSearchStatus };
+
+/**
+ * Which machine a thread is about, for the project's manual status (#5750).
+ * The status is project-wide, so without this a thread that asked about a
+ * look-alike model shows the project machine's ready line and manual link
+ * under its answer (staging tablet walk 2026-11-21).
+ *
+ * `questions` is chronological. The newest question that settles it wins.
+ * A question settles it when it names a model, or returns to the confirmed
+ * unit:
+ * - the models it names are read with the chat path's detectors
+ *   (`modelIdentitiesInText`, `exactManualIdentity`) plus any code-shaped
+ *   catalog number (25B-D024N104, GS11N-20P25). It is "own" when every model
+ *   named is the project's model, its catalog number, a series that catalog
+ *   number is written in (GS11N for GS11N-20P2), or a family whose manual
+ *   covers it (GS10), and no other maker is named (aliases count as the same
+ *   maker). Any other model makes it "other";
+ * - a named model is read before a return phrase, so "back to my drive, does
+ *   the GS11N-20P25 need a brake resistor" is "other" (#5750 r2 F3);
+ * - a return to the confirmed unit with no model named ("ok, back to my
+ *   drive", the same reader retrieval uses, and only when a catalog number is
+ *   on record) is "own".
+ * "undecided" means nothing read settles it.
+ */
+export type ThreadStatusScope = "own" | "other" | "undecided";
+
+const norm = (s: string | null | undefined) => (s ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+
+/** A code-shaped catalog number the model patterns do not know: hyphenated,
+ *  six or more letters and digits, a digit on both sides of a hyphen, and at
+ *  least one letter ("25B-D024N104"; not "3-phase", "RS-485" or a date). A
+ *  range of ratings is not one either ("208-230VAC", "480VAC-60HZ"): every
+ *  group a plain number or a rating, as `modelNumbersIn` reads a rating
+ *  (#5746 r9 F18). */
+const CATALOG_CODE = /(?<![A-Za-z0-9-])[A-Za-z0-9]*\d[A-Za-z0-9]*(?:-[A-Za-z0-9]*\d[A-Za-z0-9]*)+(?![A-Za-z0-9-])/g;
+const isRatingRange = (code: string) => code.split("-").every((group) => /^\d+$/.test(group) || isRatingToken(group));
+function catalogCodesIn(text: string): string[] {
+  return [...text.matchAll(CATALOG_CODE)]
+    .filter((m) => !isRatingRange(m[0]))
+    .map((m) => norm(m[0]))
+    .filter((code) => code.length >= 6 && /[A-Z]/.test(code));
+}
+
+/** A request for a document about the thing named ("find the manual for X"). */
+const DOCUMENT_WORD = String.raw`(?:manuals?|datasheets?|data\s+sheets?|catalog(?:ue)?s?|spec(?:ification)?s?|wiring\s+diagrams?)`;
+const DOCUMENT_REQUEST = new RegExp(String.raw`\b${DOCUMENT_WORD}\b`, "i");
+// The code a document is asked for: "the manual for (the) G120", "the G120
+// manual". A one-letter model family (G120, E300, I550) is written like a
+// fault code, so only this position tells them apart.
+const DOCUMENT_SUBJECT = [
+  new RegExp(String.raw`\b${DOCUMENT_WORD}\s+(?:for|of)\s+(?:the\s+|an?\s+|my\s+|this\s+)?([A-Za-z]\d{2,})\b`, "gi"),
+  new RegExp(String.raw`\b([A-Za-z]\d{2,})\s+${DOCUMENT_WORD}\b`, "gi"),
+];
+
+/** The models a text names. `own` (the project's identifiers) lets a compact
+ *  code the model patterns do not know count too (#5750 r3 F2): CA3KN31BD in
+ *  a CA3KN22BD project, by its shared leading characters, or any model number
+ *  in a request for a document. Fault codes and parameters (F0004, P09-03)
+ *  never count by request context, unless one is the code the document is
+ *  asked for ("the G120 manual"). Unicode hyphens
+ *  read as the catalog hyphen (the shared detection fold). */
+function modelsNamedIn(raw: string, own?: ReadonlySet<string>): Set<string> {
+  const text = foldForDetection(raw);
+  const named = new Set<string>([...modelIdentitiesInText(text)].map(norm));
+  for (const code of catalogCodesIn(text)) named.add(code);
+  if (own) {
+    const request = DOCUMENT_REQUEST.test(text);
+    const subjects = new Set(DOCUMENT_SUBJECT.flatMap((re) => [...text.matchAll(re)].map((m) => norm(m[1]!))));
+    for (const { key } of modelNumbersIn(text)) {
+      const code = norm(key);
+      if (code.length < 4) continue;
+      // One letter then digits is how fault codes and parameters are written
+      // (F0004, E001, P0903): never a model by request context alone, only
+      // as the code the document is asked for.
+      const faultShaped = /^[A-Z]\d+$/.test(code);
+      if ((request && (!faultShaped || subjects.has(code))) || [...own].some((o) => o.length >= 4 && o.slice(0, 3) === code.slice(0, 3))) named.add(code);
+    }
+  }
+  const exact = exactManualIdentity("", text);
+  if (exact?.model) {
+    const ids = [...modelIdentitiesInText(exact.model)].map(norm);
+    for (const id of ids.length ? ids : [norm(exact.model)]) named.add(id);
+  }
+  named.delete("");
+  return named;
+}
+
+export function threadStatusScope(
+  questions: readonly string[],
+  machine: {
+    manufacturer: string | null | undefined;
+    model: string | null | undefined;
+    catalogNumber: string | null | undefined;
+    /** The confirmed catalog number, or null — what "my drive" refers to. */
+    recordCatalog: string | null;
+  },
+): ThreadStatusScope {
+  const maker = (s: string | null | undefined) => normalizeManufacturer(s).canonical.toUpperCase().replace(/[^A-Z0-9]/g, "");
+  const own = new Set<string>();
+  for (const value of [machine.model, machine.catalogNumber]) {
+    if (!value) continue;
+    own.add(norm(value));
+    for (const id of modelsNamedIn(value)) own.add(id);
+  }
+  own.delete("");
+  const isOwn = (id: string) => own.has(id) || [...own].some((o) => familyCovers(id, o));
+  const ownMaker = maker(machine.manufacturer);
+  const otherMaker = (named: string | null | undefined) => Boolean(named && ownMaker && maker(named) !== ownMaker);
+  for (let i = questions.length - 1; i >= 0; i--) {
+    const q = questions[i] ?? "";
+    const named = modelsNamedIn(q, own);
+    if (named.size) {
+      const exact = exactManualIdentity("", foldForDetection(q));
+      return otherMaker(exact?.manufacturer ?? makerFromText(q)) || [...named].some((id) => !isOwn(id)) ? "other" : "own";
+    }
+    if (machine.recordCatalog && returnsToRecord(q)) return "own";
+  }
+  return "undecided";
 }
 
 /**
@@ -1198,8 +1387,9 @@ export interface ManualSearchStatus {
  * "added, still preparing" (never "turn it on" for a source that already is
  * on); otherwise falls through to the historical decline text, unchanged.
  *
- * Returns null when acquisition is disabled, there is no record, or the
- * record belongs to neither identity (nothing current to report).
+ * An already usable manual for the confirmed identity stays ready with
+ * automatic acquisition disabled. Other flag-off states have no lookup
+ * progress, and a record for a different identity is ignored.
  */
 export async function currentManualSearchStatus(
   tenantId: string,
@@ -1209,12 +1399,17 @@ export async function currentManualSearchStatus(
   sources: readonly NotebookSource[],
   deps: { env?: Record<string, string | undefined>; groundedTurn?: boolean } = {},
 ): Promise<ManualSearchStatus | null> {
-  if (!acquisitionEnabled(tenantId, deps.env)) return null;
-  const rec = await readAcquisition(tenantId, notebookId);
-  if (!rec) return null;
-
+  const automaticAcquisition = acquisitionEnabled(tenantId, deps.env);
+  const rec = automaticAcquisition ? await readAcquisition(tenantId, notebookId) : null;
   const confirmedKey = acquisitionKey(confirmed);
-  const candidateIdentity: ConfirmedIdentity | null = proposedIdentity
+  if (!rec || (confirmedKey && rec.key !== confirmedKey)) {
+    const linked = currentManualSourceStatus(sources, confirmed);
+    if (!linked || !confirmed.manufacturer || !confirmed.model ||
+        (!automaticAcquisition && linked.sourceState !== "ready")) return null;
+    return { manufacturer: confirmed.manufacturer, model: confirmed.model, ...linked };
+  }
+
+  const candidateIdentity: ConfirmedIdentity | null = !confirmedKey && proposedIdentity
     ? { identityStatus: "user_confirmed", manufacturer: proposedIdentity.manufacturer, model: proposedIdentity.model, catalogNumber: "" }
     : null;
   const candidateKey = candidateIdentity ? acquisitionKey(candidateIdentity) : null;
@@ -1240,44 +1435,47 @@ export async function currentManualSearchStatus(
     return null;
   }
 
-  const startedAt = rec.started_at ?? undefined;
-
-  // F10: the acquired source's CURRENT state wins over the historical record.
-  const messageFromSource = currentManualSourceMessage(sources, identity);
-  if (messageFromSource) {
-    // The technician asked for the manual, so a ready reviewed publication is
-    // handed over as a link that opens MIRA's saved copy at its coverage page
-    // (#5726 F1: never the manufacturer's live URL, whose bytes may since have
-    // changed). The saved copy is the one this search linked for this document,
-    // and its download was checked against the same pinned digest.
+  const status = { manufacturer, model, ...(rec.started_at ? { startedAt: rec.started_at } : {}) };
+  // Only advertise Ready if the applicable manual is in the same response's Sources.
+  const linked = currentManualSourceStatus(sources, identity);
+  if (linked) {
+    // Offer the saved coverage page for the same verified PDF that confers
+    // readiness. The download record and document must prove the pinned bytes.
     const publication = reviewedManualFor({ manufacturer, model, catalogNumber: identity.catalogNumber });
-    const ready = publication ? approvedReadySource(sources, identity, publication) : null;
-    const manualUrl = publication && ready && ready === preferredReadySource(sources, identity) &&
-      rec.linked === true && rec.doc_id === ready.docId && rec.reviewed_digest === publication.sha256 && rec.file_id
+    const ready = publication && linked.sourceState === "ready" ? approvedReadySource(sources, identity, publication) : null;
+    const manualUrl = publication && ready && ready.docId === linked.readySourceDocId &&
+      rec.linked === true && rec.doc_id === ready.docId && rec.reviewed_digest === publication.sha256 &&
+      rec.file_id && rec.file_id === ready.fileId
       ? savedCopyPageUrl(rec.file_id, publication.page, deps.env ?? process.env)
       : null;
+    return { ...status, ...linked, ...(manualUrl ? { manualUrl } : {}) };
+  }
+  if (applicableDisabledSource(sources, identity)) {
     return {
-      manufacturer, model, running: false, message: messageFromSource,
-      ...(manualUrl ? { manualUrl } : {}),
-      ...(startedAt ? { startedAt } : {}),
+      ...status, running: false, sourceState: "disabled",
+      message: `I found the official documentation for the ${manufacturer} ${model} and added it to this notebook's Sources, but it's turned off there now. Turn it back on in Sources to ask from it.`,
     };
   }
-
   const reconciled = await reconcileAcquisition(tenantId, notebookId, rec);
   if (!reconciled) return null;
-  const running = reconciled.state === "running";
+  if (reconciled.state === "running") return { ...status, running: true };
+  if (reconciled.state === "complete" && reconciled.doc_id && !reconciled.source_removed &&
+      !sources.some((source) => source.docId === reconciled.doc_id)) {
+    // The claim can settle after this GET's Sources read. Wait for a snapshot
+    // that includes the attachment before treating this generation as settled.
+    return { ...status, running: true, sourceState: "preparing", message: "The manual is being added to Sources." };
+  }
   // The latest answer was already grounded in a document for this confirmed
   // identity (the shared library can ground it even when this notebook's own
   // search failed), so a "couldn't download" note under it is noise. Settle
   // quietly: no message, no URL. Never null — the follower would keep polling
-  // and then show "Still searching".
-  if (deps.groundedTurn && basis === "confirmed" && !running) {
-    return { manufacturer, model, running: false, ...(startedAt ? { startedAt } : {}) };
-  }
-  // Reaching here means no applicable source is enabled right now (the ready /
-  // preparing branches above returned), so a "complete" record's manual is off.
-  const message = running ? null : acquisitionDeclineText(reconciled, key, `${manufacturer} ${model}`, basis, { sourceOff: true });
-  const manualUrl = !running && !reconciled.attached_indexed && !reconciled.source_removed
+  // and then show "Still searching". (#5958)
+  if (deps.groundedTurn && basis === "confirmed") return { ...status, running: false };
+  const message = acquisitionDeclineText(reconciled, key, `${manufacturer} ${model}`, basis);
+  const manualUrl = !reconciled.attached_indexed && !reconciled.source_removed
     ? acquisitionManualUrl(reconciled) : null;
-  return { manufacturer, model, running, ...(message ? { message } : {}), ...(manualUrl ? { manualUrl } : {}), ...(startedAt ? { startedAt } : {}) };
+  return {
+    ...status, running: false, sourceState: reconciled.source_removed ? "removed" : "unavailable",
+    ...(message ? { message } : {}), ...(manualUrl ? { manualUrl } : {}),
+  };
 }

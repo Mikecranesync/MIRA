@@ -381,3 +381,30 @@ describe("observeLiveManualSearchFrame — the LIVE-SSE-frame counterpart of res
     expect(r.state.key).toContain("gen-1");
   });
 });
+
+describe("committed lookup generation", () => {
+  const older = { ...SETTLED, startedAt: "2026-11-21T00:00:00.123455+00:00" };
+  const newer = { ...RUNNING_GEN2, startedAt: "2026-11-21T00:00:00.123456+00:00" };
+
+  it("follows a newer committed claim through a missing read and preparing source", () => {
+    const settled = startManualSearchFollow(NB, older);
+    let current = observeLiveManualSearchFrame(settled, NB, newer).state;
+    current = advanceManualSearchFollow(current, NB, null).state;
+    const preparing: ManualSearchStatus = { ...newer, sourceState: "preparing" };
+    current = advanceManualSearchFollow(current, NB, preparing).state;
+    expect(current).toMatchObject({ phase: "following", attempts: 2, status: preparing });
+    const ready: ManualSearchStatus = { ...newer, running: false, sourceState: "ready", readySourceDocId: "manual-2" };
+    expect(advanceManualSearchFollow(current, NB, ready).state).toMatchObject({ phase: "resolved", status: ready });
+  });
+
+  it("ignores older frames and snapshots within the same millisecond", () => {
+    const current = startManualSearchFollow(NB, newer);
+    expect(observeLiveManualSearchFrame(current, NB, older).state).toBe(current);
+    expect(reseedManualSearchFollow(current, NB, older).state).toBe(current);
+    expect(advanceManualSearchFollow(current, NB, older).state).toMatchObject({
+      status: newer,
+      phase: "following",
+      attempts: 1,
+    });
+  });
+});

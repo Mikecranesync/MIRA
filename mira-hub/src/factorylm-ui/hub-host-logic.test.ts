@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ENERGIZED_ELECTRICAL_HAZARD } from "@/lib/safety-classifier";
 import type { HubNotebook } from "./notebook-tree";
@@ -14,6 +15,7 @@ import {
   detailQueryFor,
   draftAfterSendSucceeded,
   enabledDocIds,
+  currentReadyManualId,
   errorMessageFor,
   fixtureFor,
   NETWORK_FAILURE_MESSAGE,
@@ -517,7 +519,7 @@ describe("applyConfirmIdentityResult — the post-await confirm race (Codex roun
   it("the technician having moved to B before the POST resolves: A's confirm seeds NOTHING and refreshes NOTHING", async () => {
     const loadDetail = vi.fn(async () => undefined);
     const fetchStatus = vi.fn(async () => null); // the driver's own GET seam — never reached
-    const driver = createManualSearchDriver({ fetchStatus, onStateChange: () => {}, onRefreshSources: () => {} });
+    const driver = createManualSearchDriver({ fetchStatus, onStateChange: () => {} });
 
     await applyConfirmIdentityResult(
       A.notebookId,
@@ -542,7 +544,7 @@ describe("applyConfirmIdentityResult — the post-await confirm race (Codex roun
   it("control: the technician is STILL on A when the POST resolves — loadDetail refreshes A and the driver follows A's generation", async () => {
     const loadDetail = vi.fn(async () => undefined);
     const fetchStatus = vi.fn(async () => ({ manufacturer: "SMC", model: "SS5Y3-DUW01302", running: false, message: "Found it.", startedAt: "gen-a" }));
-    const driver = createManualSearchDriver({ fetchStatus, onStateChange: () => {}, onRefreshSources: () => {} });
+    const driver = createManualSearchDriver({ fetchStatus, onStateChange: () => {} });
 
     await applyConfirmIdentityResult(
       A.notebookId,
@@ -567,7 +569,7 @@ describe("applyConfirmIdentityResult — the post-await confirm race (Codex roun
   it("returning to A later hydrates normally from A's OWN authoritative GET — never from the discarded confirm", async () => {
     const loadDetail = vi.fn(async () => undefined);
     const fetchStatus = vi.fn(async () => null);
-    const driver = createManualSearchDriver({ fetchStatus, onStateChange: () => {}, onRefreshSources: () => {} });
+    const driver = createManualSearchDriver({ fetchStatus, onStateChange: () => {} });
 
     // A's confirm is discarded (navigated to B mid-flight — proven above).
     await applyConfirmIdentityResult(
@@ -710,5 +712,57 @@ describe("guidedDeadEndBody — the guided dead-end hand-off (WP-1, owner decisi
   });
   it("an ordinary send never carries the dead-end claim", () => {
     expect("guidedEscalation" in chatBodyFor("q", [], history, sel)).toBe(false);
+  });
+});
+
+describe("manual readiness is scoped to the committed sources", () => {
+  const status = { manufacturer: "ABB", model: "ACS355", running: false, sourceState: "ready" as const, readySourceDocId: "exact" };
+  const exact = { docId: "exact", enabledByDefault: true, matchState: "verified" as const, readiness: { canChat: true } };
+
+  it("binds ready to the very document supplied to the next send", () => {
+    expect(currentReadyManualId(status, [exact])).toBe("exact");
+    expect(currentReadyManualId(status, [{ ...exact, docId: "different" }])).toBeNull();
+    expect(currentReadyManualId(status, [{ ...exact, enabledByDefault: false }])).toBeNull();
+    expect(currentReadyManualId(status, [{ ...exact, readiness: { canChat: false } }])).toBeNull();
+  });
+});
+
+describe("every way the Hub sends a chat question", () => {
+  const HOST = readFileSync(new URL("./hub-host.tsx", import.meta.url), "utf8");
+  const start = HOST.indexOf("const hooks: HostHooks = {");
+  const hooksObject = HOST.slice(start, HOST.indexOf("\n  };", start));
+  /** The body of `const <name> = useCallback(` up to its end. */
+  const callback = (name: string) => {
+    const at = HOST.indexOf(`const ${name} = useCallback(`);
+    expect(at, name).toBeGreaterThan(0);
+    return HOST.slice(at, HOST.indexOf("\n  }, [", at));
+  };
+
+  it("posts to the chat route from exactly one place, send()", () => {
+    expect(HOST.match(/\/chat\/`/g)).toHaveLength(1);
+    expect(callback("send")).toContain("/chat/`");
+  });
+
+  // #5746 (Mike, 2026-11-26): the Hub asks the chat route nothing about the manual. A question
+  // asked while the project's manual is prepared gets the route's reply, as on main.
+  it("sends no manual-wait request and handles no manual refusal", () => {
+    expect(callback("send")).toContain('headers: { "Content-Type": "application/json", "x-mira-progress": "1" }');
+    for (const word of ["x-mira-manual-wait", "manual_not_ready", "manual_unavailable", "manualWait"]) expect(HOST).not.toContain(word);
+  });
+
+  // r6 F7: Try again on a send the detail/scope queue paused goes through the composer, and a new
+  // send retires it before it posts.
+  it("a send that starts retires the queue's paused Try again first", () => {
+    const send = callback("send");
+    const retire = send.indexOf("setSendPaused(false);");
+    expect(retire).toBeGreaterThan(0);
+    expect(retire).toBeLessThan(send.indexOf("/chat/`"));
+  });
+
+  it("gives the shell its checked composer send and offers no first-run chips", () => {
+    expect(start).toBeGreaterThan(0);
+    expect(hooksObject).toMatch(/\n    onComposerSend,\n/);
+    expect(hooksObject).toContain("groundingLine:");
+    expect(HOST).not.toMatch(/suggestChips/);
   });
 });

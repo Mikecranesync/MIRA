@@ -107,6 +107,39 @@ describe("operating cautions written as manual notes", () => {
     ])).toBeNull();
   });
 
+  it.each([
+    "Disabling earth fault (ground fault) may damage drive if the a.c. supply exceeds 230 V.",
+    "Disabling earth fault (ground fault) may damage drive if the d.c. limit is exceeded.",
+    "Disabling earth fault (ground fault) may damage drive if the a. c. supply exceeds 230 V.",
+    "Disabling earth fault (ground fault) may damage drive unless wired as shown in Fig. 4.",
+  ])("keeps the complete cited condition %s", (condition) => {
+    const chunks = [page(363, `Note: ${condition} See the next chapter for dimensions.`)];
+    expect(manualSafetyStatementForCitations([cite("1", 363)], chunks)).toMatchObject({ statement: condition });
+  });
+
+  it.each(["if the a.", "if the a.c.", "if the a.c. See the next chapter.", "unless wired as shown in Fig."])(
+    "omits an ambiguous or truncated cited condition ending %s",
+    (condition) => {
+      const content = `Note: Disabling earth fault (ground fault) may damage drive ${condition}`;
+      expect(manualSafetyStatementForCitations([cite("1", 363)], [page(363, content)])).toBeNull();
+    },
+  );
+
+  it.each(["if a listed condition still needs verification", "rather than " + "waiting for the project review ".repeat(8)])(
+    "keeps the later complete caution after an unpunctuated note (%s)",
+    incomplete => {
+      const truncated = `Note: Disabling earth fault (ground fault) may damage drive ${incomplete}`.trim();
+      expect(manualSafetyStatementForCitations([cite("1", 139)], [page(139, truncated)])).toBeNull();
+      const content = `${truncated}\n${ACCELERATION_CAUTION}`;
+      expect(manualSafetyStatementForCitations([cite("1", 139)], [page(139, content)])).toMatchObject({
+        marker: "CAUTION (manual text)",
+        statement: "setting the acceleration time too short may cause motor damage or trigger drive protection due to over-current during the drive's acceleration.",
+        sourceCitationId: "1",
+        page: 139,
+      });
+    },
+  );
+
   it("disregards a benign setting note and a caution on an uncited page", () => {
     expect(manualSafetyStatementForCitations([cite("1", 140)], [
       page(140, "Note that setting the acceleration time too short may trigger a message."),

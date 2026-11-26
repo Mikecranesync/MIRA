@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import ts from "typescript";
 import { describe, expect, it, vi } from "vitest";
 import { latestRequestGate, loadNotebookListWithRetry } from "./hub-host-logic";
+import { conversationKey } from "./bench-components-logic";
 const source = readFileSync(new URL("./hub-host.tsx", import.meta.url), "utf8");
 const parsed = ts.createSourceFile("hub-host.tsx", source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
 function callback(name: string, deps: Record<string, unknown>) {
@@ -85,8 +86,10 @@ describe("project creation does not wait for sidebar refresh", () => {
     const noop = vi.fn();
     const setSelection = vi.fn();
     const select = callback("select", {selectionRef, abortRef:{current:null}, uploadAbortRef:{current:null},
-      detailGate:latestRequestGate(), detailAbortRef:{current:null}, setDetail:noop, setLive:noop,
-      setFailedBody:noop, manualSearchDriverRef:{current:null}, setFollow:noop, syncThread:noop,
+      waitingSend:{current:null}, conversationKey,
+      detailGate:latestRequestGate(), detailAbortRef:{current:null}, detailRef:{current:null},
+      setDetail:noop, setDetailUnavailable:noop, setLive:noop,
+      setSendPaused:noop, manualSearchDriverRef:{current:null}, setFollow:noop, setStatusOrigins:noop, syncThread:noop,
       setSelection, writeSearch:noop, searchForSelection:()=>""});
     const chosen={notebookId:"created-project",threadId:"new-thread"};
     select(chosen);

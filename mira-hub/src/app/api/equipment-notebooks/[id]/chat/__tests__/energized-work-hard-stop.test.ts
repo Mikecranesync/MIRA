@@ -351,6 +351,38 @@ describe("Review A HIGH — the leak and the photo skip, through the real route"
     expect(out.some((f) => f.kind === "safety")).toBe(true);
     expect(contentOf(out)).toMatch(/SAFETY STOP/);
   });
+
+  it("serves the stop with its verified photo when the submitted manual was disabled after upload began", async () => {
+    const fileId = "44444444-4444-4444-8444-444444444444";
+    filesMock.photoLinkedToTarget.mockResolvedValue({ fileId, capturedAt: "2026-10-18T00:00:00.000Z" });
+    nbMock.validateChatSources.mockResolvedValue({ ok: false, error: "source_not_in_notebook" });
+
+    const response = await POST(req({ message: ASK, sourceDocIds: [DOC_A], visualEvidence: { fileId } }), params);
+    expect(response.status).toBe(200);
+    const out = await frames(response);
+    expect(contentOf(out)).toContain("SAFETY STOP");
+    expect(out.find((frame) => frame.kind === "sources")).toMatchObject({ citations: [], sourceSnapshot: [] });
+    expect(nbMock.getNotebook).toHaveBeenCalledWith(TENANT, NB);
+    expect(nbMock.recordTurn).toHaveBeenCalledWith(TENANT, NB, expect.objectContaining({
+      enabledSourceDocIds: [],
+      evidence: expect.arrayContaining([expect.objectContaining({ fileId }), expect.objectContaining({ kind: "safety_stop" })]),
+    }));
+    expect(ragMock.retrieveNodeChunks).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { message: "What fault does the manual list?", notebookOwned: true, status: 403, error: "source_not_in_notebook" },
+    { message: ASK, notebookOwned: false, status: 404, error: "notebook_not_found" },
+  ])("keeps the source or ownership refusal for $message ($status)", async ({ message, notebookOwned, status, error }) => {
+    nbMock.validateChatSources.mockResolvedValue({ ok: false, error: "source_not_in_notebook" });
+    if (!notebookOwned) nbMock.getNotebook.mockResolvedValue(null);
+    const response = await POST(req({ message, sourceDocIds: [DOC_A] }), params);
+    expect(response.status).toBe(status);
+    expect(await response.json()).toEqual({ error });
+    expect(nbMock.recordTurn).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
+  });
 });
 
 // CV-101 journey S5b (2026-11-08, staging b304d5dcf, receipt in #5232): the

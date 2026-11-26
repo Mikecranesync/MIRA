@@ -32,6 +32,9 @@ export interface HostHooks {
   // Explicit retry intent lets attachment-owning hosts re-arm retained bytes
   // even when the failed send never created a turn id. Ordinary sends omit it.
   readonly onSend?: (text: string, attachments: readonly Attachment[], opts?: { retry?: boolean }) => void;
+  /** Accept a composer submission asynchronously while its scope loads.
+   * Rejection leaves the text and attachments in the composer. */
+  readonly onComposerSend?: (text: string, attachments: readonly Attachment[]) => void | Promise<void>;
   /** Stop the in-flight answer; shown only while `busy`. */
   readonly onStop?: () => void;
   /**

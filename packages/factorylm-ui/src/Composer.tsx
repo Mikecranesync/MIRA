@@ -1,5 +1,5 @@
 import type { Attachment, PlatformAdapter, ShellAction, ShellState } from "@factorylm/interaction";
-import { useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type Dispatch, type DragEvent, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type Dispatch, type DragEvent, type FormEvent, type KeyboardEvent, type MutableRefObject, type ReactNode } from "react";
 import { AttachmentMenu } from "./AttachmentMenu";
 import { PlusIcon } from "./icons";
 import { Overlay } from "./Overlay";
@@ -17,6 +17,8 @@ export interface ComposerProps {
   readonly attachmentTrapsTab?: boolean;
   /** Host content at the top of the composer (e.g. the question target), inside its sticky area. */
   readonly accessory?: ReactNode;
+  /** Receives this composer's send (true when it started), so Try again can go through it (#5746 r6 F7). */
+  readonly submitRef?: MutableRefObject<(() => boolean) | null>;
 }
 
 export interface ComposerKeyEvent {
@@ -51,7 +53,7 @@ function describeFailure(operation: AdapterOperation, error: unknown): string {
   return `${verb} failed${detail}. Try again.`;
 }
 
-export function Composer({ state, dispatch, adapter, hooks, attachmentTrapsTab = true, accessory }: ComposerProps) {
+export function Composer({ state, dispatch, adapter, hooks, attachmentTrapsTab = true, accessory, submitRef }: ComposerProps) {
   const [pending, setPending] = useState<readonly PendingAttachment[]>([]);
   const [busy, setBusy] = useState<AdapterOperation | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
@@ -61,6 +63,13 @@ export function Composer({ state, dispatch, adapter, hooks, attachmentTrapsTab =
   // previews. A sent attachment has already left `pending`, so its preview —
   // which the host's outgoing message may still show — is not touched.
   const pendingRef = useRef(pending);
+  const submitting = useRef(false);
+  const composerThread = useRef(state.thread.id);
+  const composerDraft = useRef(state.draft);
+  useLayoutEffect(() => {
+    composerThread.current = state.thread.id;
+    composerDraft.current = state.draft;
+  }, [state.thread.id, state.draft]);
   // Publish the composer's real height on the shell (#4620): it grows with the
   // sync banner, send errors, pending attachments and the safe-area inset, and a
   // followed sent turn must stop above it, not under it.
@@ -120,7 +129,7 @@ export function Composer({ state, dispatch, adapter, hooks, attachmentTrapsTab =
   const closeMenu = () => dispatch({ type: "set-attachment-menu-visible", visible: false });
 
   const run = <T,>(operation: AdapterOperation, call: () => Promise<T>, onResult: (value: T) => void) => {
-    if (busy) return;
+    if (busy || submitting.current) return;
     closeMenu();
     setBusy(operation);
     setFailure(null);
@@ -172,41 +181,57 @@ export function Composer({ state, dispatch, adapter, hooks, attachmentTrapsTab =
     if (machineId) dispatch({ type: "select-machine", machineId });
   });
 
-  const send = () => {
-    const text = state.draft.trim();
-    // While an answer is in flight the Send button is replaced by Stop, but
-    // Enter in the field still lands here. A host ignores a send while busy and
-    // returns normally, which below reads as "sent" and clears the draft and
-    // chips -- the technician's next question vanished unsent (#4443). Keep
-    // both until the answer finishes, the same as the disabled button.
-    if (!canSend || hooks?.busy) return;
-    if (hooks?.onSend) {
-      try {
-        const sent = visiblePending;
-        hooks.onSend(text, sent.map((item) => item.attachment));
-        // Clear only what we just handed over. Filtering by identity (not by
-        // thread, and not `setPending([])`) keeps an attachment captured in
-        // another thread, and one captured while this send was in flight.
-        if (sent.length > 0) {
-          const handed = new Set(sent.map((item) => item.attachment.id));
-          // The ref also keeps an unmount in this tick from releasing bytes
-          // that now belong to the host's outgoing message.
-          updatePending(pendingRef.current.filter((item) => !handed.has(item.attachment.id)));
-        }
-        dispatch({ type: "set-draft", draft: "" });
-        dispatch({ type: "set-send-error", error: null });
-      } catch (error) {
-        // Preserve the question in the composer and show a plain-language error
-        // (no status codes or technical details).
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        const plainMessage = withoutStatusCode(errorMessage);
-        dispatch({ type: "set-send-error", error: plainMessage.trim() || "Couldn't reach MIRA. Your message is saved." });
-      }
-    } else {
+  const send = (): boolean => {
+    if (!canSend || hooks?.busy || submitting.current) return false;
+    const submittedDraft = state.draft;
+    const text = submittedDraft.trim();
+    const submittedThread = state.thread.id;
+    const sendToHost = hooks?.onComposerSend ?? hooks?.onSend;
+    if (!sendToHost) {
       dispatch({ type: "mock-send" });
       dispatch({ type: "set-send-error", error: null });
+      return true;
     }
+
+    const sent = visiblePending;
+    const accepted = () => {
+      if (sent.length) {
+        const handed = new Set(sent.map(item => item.attachment.id));
+        // The ref also keeps an unmount in this tick from releasing bytes
+        // that now belong to the host's outgoing message.
+        updatePending(pendingRef.current.filter(item => !handed.has(item.attachment.id)));
+      }
+      if (composerThread.current !== submittedThread) return;
+      if (composerDraft.current === submittedDraft) dispatch({ type: "set-draft", draft: "" });
+      dispatch({ type: "set-send-error", error: null });
+    };
+    const rejected = (error: unknown) => {
+      if (composerThread.current !== submittedThread) return;
+      const message = error instanceof Error ? withoutStatusCode(error.message).trim() : "";
+      dispatch({ type: "set-send-error", error: message || "Couldn't reach MIRA. Your message is saved." });
+    };
+    try {
+      const attachments = sent.map(item => item.attachment);
+      const ready = hooks?.onComposerSend
+        ? hooks.onComposerSend(text, attachments)
+        : void sendToHost(text, attachments);
+      if (ready) {
+        submitting.current = true;
+        void ready.then(accepted, rejected).finally(() => { submitting.current = false; });
+      } else {
+        accepted();
+      }
+    } catch (error) {
+      rejected(error);
+    }
+    return true;
   };
+  // #5746 r6 F7: the shell's Try again sends through this, the same path as Send.
+  useEffect(() => {
+    if (!submitRef) return;
+    submitRef.current = send;
+    return () => { if (submitRef.current === send) submitRef.current = null; };
+  });
 
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -281,6 +306,7 @@ export function Composer({ state, dispatch, adapter, hooks, attachmentTrapsTab =
           type="button"
           className="fl-composer__pending-remove"
           aria-label={`Remove ${item.attachment.name}`}
+          disabled={hooks?.busy && submitting.current}
           onClick={() => {
             adapter.release?.(item.attachment.id);
             updatePending(pendingRef.current.filter((p) => p.attachment.id !== item.attachment.id), item.threadId);
@@ -350,14 +376,16 @@ export function Composer({ state, dispatch, adapter, hooks, attachmentTrapsTab =
         onKeyDown={onKeyDown}
         onPaste={onPaste}
       />
+      {/* #5746 r7: separate elements (keys). One reused button became the submit button inside
+          Stop's own click, and the browser's default click action then sent the draft again. */}
       {hooks?.busy && hooks.onStop
-        ? <button type="button" className="fl-composer__send" aria-label="Stop" onClick={(event) => {
+        ? <button key="stop" type="button" className="fl-composer__send" aria-label="Stop" onClick={(event) => {
             // A synchronous abort can render the Send control before the
             // browser finishes processing this click.
             event.preventDefault();
             hooks.onStop?.();
           }}><span aria-hidden="true">■</span><span className="fl-composer__label">Stop</span></button>
-        : <button type="submit" className="fl-composer__send" aria-label="Send" disabled={!canSend || Boolean(hooks?.busy)}><span aria-hidden="true">↑</span><span className="fl-composer__label">Send</span></button>}
+        : <button key="send" type="submit" className="fl-composer__send" aria-label="Send" disabled={!canSend || Boolean(hooks?.busy)}><span aria-hidden="true">↑</span><span className="fl-composer__label">Send</span></button>}
     </div>
   </form>;
 }

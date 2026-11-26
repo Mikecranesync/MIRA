@@ -429,6 +429,18 @@ describe("POST identity/confirm", () => {
     // own generation, so the client follower (`manual-search-follow.ts`)
     // keys its retry budget on a REAL generation instead of an optimistic,
     // generation-less one.
+    it("returns the committed search generation even when its record cannot be read again", async () => {
+      const startedAt = "2026-11-21T00:00:00.123456+00:00";
+      acqMock.startManualAcquisition.mockImplementationOnce(async (input?: { onClaimed?: (value: string) => void }) => {
+        input?.onClaimed?.(startedAt);
+        return true;
+      });
+      acqMock.readAcquisition.mockResolvedValue(null);
+
+      const res = await POST(req({ manufacturer: "SMC", model: "SS5Y3-DUW01302" }), params);
+      expect(await res.json()).toMatchObject({ searching: true, startedAt });
+    });
+
     it("includes the freshly-claimed search's startedAt, read back from the record claim() just wrote", async () => {
       const claimedAt = "2026-10-01T00:00:00.000Z";
       acqMock.readAcquisition.mockResolvedValue({

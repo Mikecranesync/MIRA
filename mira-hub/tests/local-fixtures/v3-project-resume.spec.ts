@@ -27,6 +27,8 @@ const USER = "44444444-4444-4444-8444-444444444444";
 const NB_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const NB_B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const NB_C = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+const NB_CREATED = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+const NEW_NAME = "Fresh project with a delayed Back";
 
 const json = (body: unknown, status = 200) => ({ status, contentType: "application/json", body: JSON.stringify(body) });
 
@@ -42,13 +44,18 @@ const THREADS: Record<string, Thread[]> = {
   [NB_B]: [{ id: "legacy", turns: 1, updatedAt: "2026-11-05T10:00:00.000Z", question: "B-LEGACY question about the pump" }],
   [NB_C]: [{ id: "c-blank", turns: 0, updatedAt: "2026-11-19T10:00:00.000Z" }],
 };
-const NAMES: Record<string, string> = { [NB_A]: "Project Alpha", [NB_B]: "Project Bravo", [NB_C]: "Project Charlie" };
+const NAMES: Record<string, string> = {
+  [NB_A]: "Project Alpha",
+  [NB_B]: "Project Bravo",
+  [NB_C]: "Project Charlie",
+  [NB_CREATED]: NEW_NAME,
+};
 
 function notebook(id: string) {
   const base = oracle.list.notebooks[0];
   return {
     ...base, id, displayName: NAMES[id], nodeId: null, sourceCount: 0, locationLabel: null,
-    threads: THREADS[id].map((t) => ({
+    threads: (THREADS[id] ?? []).map((t) => ({
       id: t.id, notebookId: id, title: t.question ?? NAMES[id], createdAt: "2026-11-01T00:00:00.000Z",
       updatedAt: t.updatedAt, turnCount: t.turns, sharedLegacy: t.id === "legacy",
     })),
@@ -56,7 +63,7 @@ function notebook(id: string) {
 }
 
 function detail(id: string, threadId: string | null) {
-  const t = THREADS[id].find((x) => x.id === threadId);
+  const t = THREADS[id]?.find((x) => x.id === threadId);
   const turns = t && t.turns > 0
     ? [{
         ...oracle.G.detailAfter.turns[0], id: `turn-${id}-${t.id}`, threadId: t.id === "legacy" ? null : t.id,
@@ -70,7 +77,9 @@ function detail(id: string, threadId: string | null) {
 /** Every detail GET the page made, as `<notebook>?<thread>`. */
 const detailGets: string[] = [];
 
-async function mount(context: BrowserContext, page: Page, baseURL: string) {
+type CreateFixture = { created: boolean; listFailures: number };
+
+async function mount(context: BrowserContext, page: Page, baseURL: string, create?: CreateFixture) {
   // Origin check first, then the per-run secret: nothing is minted for any other origin.
   await installSessionCookie(context, baseURL, PORT, {
     uid: "e2e-project-resume", tid: TENANT, status: "trial",
@@ -86,7 +95,20 @@ async function mount(context: BrowserContext, page: Page, baseURL: string) {
     if (m === "GET" && p === "/api/me") return route.fulfill(json({ id: USER, tenantId: TENANT, status: "active", name: "E2E", email: "e2e@example.invalid" }));
     if (m === "GET" && p === "/api/auth/session") return route.fulfill(json({ user: { name: "E2E", email: "e2e@example.invalid" }, expires: "2099-01-01T00:00:00.000Z" }));
     if (p === "/api/auth/_log") return route.fulfill(json({}));
-    if (m === "GET" && p === "/api/equipment-notebooks") return route.fulfill(json({ notebooks: [NB_A, NB_B, NB_C].map(notebook) }));
+    if (m === "GET" && p === "/api/equipment-notebooks") {
+      if (create?.created) {
+        create.listFailures += 1;
+        return route.fulfill(json({ error: "injected_read_failure" }, 500));
+      }
+      return route.fulfill(json({ notebooks: [NB_A, NB_B, NB_C].map(notebook) }));
+    }
+    if (create && m === "POST" && p === "/api/equipment-notebooks") {
+      expect(req.postDataJSON().displayName).toBe(NEW_NAME);
+      create.created = true;
+      return route.fulfill(json({ notebook: notebook(NB_CREATED) }, 201));
+    }
+    if (create && m === "GET" && p === "/api/namespace/tree") return route.fulfill(json({ nodes: [] }));
+    if (create && m === "GET" && p === "/api/files") return route.fulfill(json({ files: [] }));
     const d = /^\/api\/equipment-notebooks\/([^/]+)$/.exec(p);
     if (m === "GET" && d && NAMES[d[1]]) {
       const thread = new URL(req.url()).searchParams.get("threadId");
@@ -185,4 +207,45 @@ test.describe("sidebar project click resumes the newest saved conversation (#468
 
     expect(writes, "no chat POST or any other write").toEqual([]);
   });
+});
+
+
+test("Create and Open uses its returned project even when the catalog refresh fails", async ({ page, context, baseURL }) => {
+  const create = { created: false, listFailures: 0 };
+  const writes = await mount(context, page, baseURL!, create);
+  await page.goto("/v3/", { waitUntil: "domcontentloaded" });
+  await ensureDrawerOpen(page);
+  await page.getByRole("button", { name: "New project" }).click();
+  const setup = page.getByRole("dialog", { name: "New project" });
+  await setup.getByRole("button", { name: "General (no machine)" }).click();
+  await setup.getByRole("textbox", { name: "Project name (required)" }).fill(NEW_NAME);
+  await setup.getByRole("button", { name: "Next", exact: true }).click();
+  await setup.getByRole("button", { name: "Review", exact: true }).click();
+  await setup.getByRole("button", { name: "Create project", exact: true }).click();
+  await setup.getByRole("button", { name: "Continue", exact: true }).click();
+  await expect.poll(() => page.evaluate(() => history.state?.flLayerBack === true)).toBe(true);
+
+  // Hold the native Back task until after the click. Opting into the new thread
+  // before this task restores the old route lets Next handle that stale URL.
+  await page.evaluate(() => {
+    const back = history.back.bind(history);
+    history.back = () => {
+      document.documentElement.dataset.projectBackRequested = "true";
+      document.addEventListener("release-project-back", () => back(), { once: true });
+    };
+  });
+  await setup.getByRole("button", { name: "Open project", exact: true }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-project-back-requested", "true");
+  expect(notebookParam(page)).toBeNull();
+  await page.evaluate(() => document.dispatchEvent(new Event("release-project-back")));
+
+  await expect(setup).toBeHidden();
+  await expect.poll(() => notebookParam(page)).toBe(NB_CREATED);
+  const thread = threadParam(page);
+  expect(thread).toBeTruthy();
+  await expect(page.getByRole("heading", { name: NEW_NAME, exact: true })).toBeVisible();
+  expect(detailGets).toContain(`${NB_CREATED}?${thread}`);
+  expect(create.listFailures).toBeGreaterThan(0);
+  await expect(conversation(page).getByText(/General question/)).toHaveCount(0);
+  expect(writes).toEqual(["POST /api/equipment-notebooks"]);
 });

@@ -206,12 +206,21 @@ export function questionPhotoPart(entry: { fileId: string }): InteractionPart {
   };
 }
 
-export function sourceFor(citation: EvidenceCitation, turnId: string): SourceReference {
+export function citationSourceId(
+  citation: EvidenceCitation,
+  turnId: string,
+  requestId?: string | null,
+): string {
+  if (!requestId) return sourceIdFor(turnId, citation.citationId);
+  return JSON.stringify([requestId, citation.citationId, citation.docId, citation.page, citation.fileId, citation.originFileId]);
+}
+
+export function sourceFor(citation: EvidenceCitation, turnId: string, requestId?: string | null): SourceReference {
   const page = citation.page ?? null;
   const locator = page !== null ? `p. ${page}` : citation.quote ? citation.quote.slice(0, 80) : "cited passage";
   const href = citationHref(citation);
   return {
-    id: sourceIdFor(turnId, citation.citationId),
+    id: citationSourceId(citation, turnId, requestId),
     title: citation.sourceTitle,
     kind: citation.fileId ? "workspace_file" : "oem_documentation",
     locator,
@@ -339,12 +348,7 @@ export function hasIdentityDispute(evidence: readonly unknown[]): boolean {
  * `identity_dispute` — no `docId`, not a typed entry it knows — so it is read
  * straight off the raw evidence array here, same pattern as
  * `hasIdentityDispute` above. chat/route.ts persists this entry on EVERY
- * reply path (answered and abstained) so a reload renders the SAME confirm
- * card the live turn offered (T2 acceptance). The live-stream half (while a
- * turn is still in flight) is a narrower, accepted gap: `readNotebookStream`
- * / `StreamResult` (`mira-hub/src/components/equipment/notebook-chat-utils.ts`)
- * are guarded legacy presentation under the Unified UI Cutover and do not
- * carry this field — see the PR body for the BLOCKED note.
+ * reply path (answered and abstained), so reloading preserves the card.
  */
 export function identityProposalOf(evidence: readonly unknown[]): IdentityProposal | null {
   for (const e of evidence) {
@@ -389,7 +393,7 @@ export function livePartsWhileRunning(
 
 export function partsFromStream(
   result: StatusAwareStreamResult,
-  opts: { stopped?: boolean; turnId: string; notebookDocIds?: readonly string[]; componentLabel?: string | null },
+  opts: { stopped?: boolean; turnId: string; requestId?: string; notebookDocIds?: readonly string[]; componentLabel?: string | null; confirmedIdentity?: HubNotebookMeta["confirmedIdentity"] },
 ): InteractionPart[] {
   const parts: InteractionPart[] = [];
   const truncated = !result.sawStatus;
@@ -408,7 +412,13 @@ export function partsFromStream(
   if ((truncated || stopped) && result.safetyNotice) parts.push(safetyNoticePart(result.safetyNotice));
 
   if (!nonAnswer) {
-    for (const c of result.citations) parts.push({ type: "source", source: sourceFor(c, opts.turnId) });
+    if (result.identityProposal) {
+      const priorOutcome = opts.confirmedIdentity
+        ? (sameManufacturerModel(result.identityProposal, opts.confirmedIdentity) ? "confirmed" : "superseded")
+        : undefined;
+      parts.push({ type: "identity_proposal", ...result.identityProposal, ...(priorOutcome ? { priorOutcome } : {}) });
+    }
+    for (const c of result.citations) parts.push({ type: "source", source: sourceFor(c, opts.turnId, opts.requestId) });
     if (result.basis) parts.push(basisPart(result.basis, result.citations, opts.notebookDocIds));
     if (result.machineEvidence) parts.push(machineEvidencePart(result.machineEvidence));
     if (result.visualEvidence) parts.push(visualObservationPart(result.visualEvidence));
@@ -541,7 +551,7 @@ export function turnsFromPersisted(row: PersistedTurn & { createdAt?: string }, 
     parts.push({ type: "identity_proposal", ...proposal, ...(priorOutcome ? { priorOutcome } : {}) });
   }
   if (!stopped && row.answerStatus !== "error") {
-    for (const c of citations) parts.push({ type: "source", source: sourceFor(c, answerId) });
+    for (const c of citations) parts.push({ type: "source", source: sourceFor(c, answerId, row.clientRequestId) });
     if (row.basis) parts.push(basisPart(row.basis, citations, meta.notebookDocIds));
     for (const m of machineEvidence) parts.push(machineEvidencePart(m));
     for (const v of visualEvidence) parts.push(visualObservationPart(v));
@@ -603,11 +613,18 @@ export function turnsFromPersisted(row: PersistedTurn & { createdAt?: string }, 
 export function withManualSearchStatus(
   turns: readonly InteractionTurn[],
   status: ManualSearchStatus | null,
+  /** #5750 r2: the answer this status was read with. A status is only shown
+   *  under the answer it was checked against, so a later answer (a streaming
+   *  look-alike request) never inherits the project's ready line before a
+   *  read that includes it. `null`: the read had no answer, so nothing to
+   *  attach to. Omitted: the last assistant turn, as before. */
+  anchorTurnId?: string | null,
 ): InteractionTurn[] {
-  if (!status) return [...turns];
+  if (!status || anchorTurnId === null) return [...turns];
   let lastAssistantIndex = -1;
   for (let i = 0; i < turns.length; i++) {
-    if (turns[i]!.role === "assistant") lastAssistantIndex = i;
+    if (turns[i]!.role !== "assistant") continue;
+    if (anchorTurnId === undefined || turns[i]!.id === anchorTurnId) lastAssistantIndex = i;
   }
   if (lastAssistantIndex === -1) return [...turns];
   const part: InteractionPart = {
@@ -621,6 +638,18 @@ export function withManualSearchStatus(
   return turns.map((t, i) => (i === lastAssistantIndex ? { ...t, parts: [...t.parts, part] } : t));
 }
 
+/** #5750 r3: the answer a status shown by the host belongs to — a saved answer
+ *  a detail read named (`manualSearchAnswer`), or the send whose live frame
+ *  carried it. */
+export type StatusOrigin = { readonly turnId: string } | { readonly requestId: string };
+
+/** One key per status the host can show: its search generation and the
+ *  machine it names. An origin recorded for one status never places another. */
+export function manualStatusKey(s: ManualSearchStatus): string {
+  const norm = (v: string) => v.toUpperCase().replace(/[^A-Z0-9]/g, "");
+  return `${s.startedAt ?? ""}|${norm(s.manufacturer)}|${norm(s.model)}`;
+}
+
 /** The follow-up suggestions of the answer that just finished streaming, and
  *  the question they answered (#4454). */
 export interface SettledFollowups {
@@ -631,7 +660,46 @@ export interface SettledFollowups {
   readonly answeredBefore: readonly string[];
 }
 
-/** The question text a user turn carried, trimmed; null for any other turn. */
+/** The assistant-turn id the host gives a send still being shown live. */
+export function liveAnswerTurnId(requestId: string): string {
+  return `live-${requestId}-a`;
+}
+
+/**
+ * #5750 r2 F7 / r3 F11: the status the host shows, placed under the answer it
+ * belongs to and nowhere else. A detail read's status goes under the saved
+ * answer that read named; a live lookup's under the send that streamed it
+ * (the saved row of that send once it is saved). A status with no recorded
+ * origin, or whose answer is not in the thread, is not shown — never under
+ * the newest or a streaming answer by default.
+ */
+export function withHostManualStatus(
+  turns: readonly InteractionTurn[],
+  shown: ManualSearchStatus | null,
+  origin: StatusOrigin | null | undefined,
+  savedRows: readonly { readonly id: string; readonly clientRequestId?: string | null }[],
+): InteractionTurn[] {
+  if (!shown || !origin) return [...turns];
+  let anchor: string;
+  if ("turnId" in origin) anchor = answerTurnId(origin.turnId);
+  else {
+    const saved = savedRows.find((r) => r.clientRequestId === origin.requestId);
+    anchor = saved ? answerTurnId(saved.id) : liveAnswerTurnId(origin.requestId);
+  }
+  return withManualSearchStatus(turns, shown, anchor);
+}
+
+/**
+ * #5750 r3: the newest detail read withheld the project's status for this
+ * thread (it is about another model, or its subject is out of reach). No
+ * status shows then — not the detail's, and not one the host was still
+ * following from an earlier read, such as the project's search still running.
+ * A lookup this turn starts renders in place in its own answer, not here.
+ */
+export function manualStatusForThread<S>(visible: S | null, scope: string | null | undefined): S | null {
+  return scope ? null : visible;
+}
+
 function askedText(turn: InteractionTurn | undefined): string | null {
   if (turn?.role !== "user") return null;
   const text = turn.parts.find((p) => p.type === "text");
@@ -700,13 +768,14 @@ export function citationIndex(
   rows: readonly PersistedTurn[],
   live: readonly EvidenceCitation[] = [],
   liveTurnId: string | null = null,
+  liveRequestId?: string,
 ): ReadonlyMap<string, EvidenceCitation> {
   const index = new Map<string, EvidenceCitation>();
   for (const row of rows) {
     const turnId = answerTurnId(row.id);
-    for (const c of splitEvidence(row.evidence).citations) index.set(sourceIdFor(turnId, c.citationId), c);
+    for (const c of splitEvidence(row.evidence).citations) index.set(citationSourceId(c, turnId, row.clientRequestId), c);
   }
-  if (liveTurnId) for (const c of live) index.set(sourceIdFor(liveTurnId, c.citationId), c);
+  if (liveTurnId) for (const c of live) index.set(citationSourceId(c, liveTurnId, liveRequestId), c);
   return index;
 }
 

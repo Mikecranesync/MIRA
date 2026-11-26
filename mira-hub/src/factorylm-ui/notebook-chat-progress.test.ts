@@ -8,7 +8,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { NotebookHttpError, readNotebookStream } from "@/components/equipment/notebook-chat-utils";
-import { livePartsWhileRunning } from "@/factorylm-ui/to-interaction";
+import { livePartsWhileRunning, partsFromStream } from "@/factorylm-ui/to-interaction";
 
 const enc = new TextEncoder();
 const frame = (o: unknown) => `data: ${JSON.stringify(o)}\n\n`;
@@ -42,6 +42,22 @@ describe("readNotebookStream — progress frames", () => {
     expect(stages).toEqual(["finding_equipment", "searching_documentation", "generating_answer"]);
     expect(out.content).toBe("Check the overload.");
     expect(out.status).toBe("answered");
+  });
+
+  it("shows the exact identity proposal from the completed stream before history loads", async () => {
+    const proposal = { manufacturer: "AutomationDirect", model: "GS11N-20P2" };
+    const result = await readNotebookStream(streamOf([
+      frame({ kind: "status", status: "insufficient_evidence", message: "Confirm the equipment." }),
+      frame({ kind: "identity_proposal", ...proposal }),
+    ]), () => {});
+    expect(partsFromStream(result, { turnId: "live" })).toContainEqual({ type: "identity_proposal", ...proposal });
+  });
+
+  it("does not present an identity confirmation from an interrupted stream", async () => {
+    const result = await readNotebookStream(streamOf([
+      frame({ kind: "identity_proposal", manufacturer: "ABB", model: "ACS355" }),
+    ]), () => {});
+    expect(partsFromStream(result, { turnId: "live" }).some(p => p.type === "identity_proposal")).toBe(false);
   });
 
   it("ignores a progress frame with an unknown stage instead of showing it", async () => {

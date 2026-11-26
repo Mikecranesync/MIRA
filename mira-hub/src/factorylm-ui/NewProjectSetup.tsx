@@ -232,6 +232,7 @@ export type NewProjectSetupProps = {
 /** Container: owns the controller, the native dialog and the phone Back layer. */
 export function NewProjectSetup({ open, onClose, notebooks, createNotebook, onOpenProject, onWritten, onPendingManuals }: NewProjectSetupProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const openingProject = useRef(false);
   const notebooksRef = useRef(notebooks);
   const [ctl, setCtl] = useState<SetupController | null>(null);
   const [state, setState] = useState<SetupState>(initialSetupState);
@@ -245,6 +246,7 @@ export function NewProjectSetup({ open, onClose, notebooks, createNotebook, onOp
       if (dialog.open) dialog.close();
       return;
     }
+    openingProject.current = false;
     const controller = createNewProjectSetup({
       fetch: (input, init) => fetch(input, init),
       apiBase: API_BASE,
@@ -266,9 +268,8 @@ export function NewProjectSetup({ open, onClose, notebooks, createNotebook, onOp
 
   // Phone Back closes this sheet (the host's own layer hook only arms for shell
   // layers). Same lifetime as back-closes-layers.ts: one controller per mount,
-  // synced on open/close. Disposing on close would drop the listener before the
-  // placeholder's own pop lands, and that pop would then restore the URL from
-  // before "Open project" selected the new notebook.
+  // synced on open/close. Keep the listener mounted until the sheet's own
+  // history entry has been consumed.
   const ctlRef = useRef<SetupController | null>(null);
   useEffect(() => { ctlRef.current = ctl; }, [ctl]);
   const layerRef = useRef<LayerBack | null>(null);
@@ -309,7 +310,12 @@ export function NewProjectSetup({ open, onClose, notebooks, createNotebook, onOp
     retryUpload: (key) => { void ctl?.retryUpload(key); },
     openProject: () => {
       const id = ctl?.openProjectId();
-      if (id) onOpenProject(id);
+      if (!id || openingProject.current) return;
+      openingProject.current = true;
+      const openProject = () => onOpenProject(id);
+      // Let the router handle the sheet's Back before writing the new chat URL.
+      if (layerRef.current) layerRef.current.closeThen(openProject);
+      else openProject();
     },
     cancel: () => { dialogRef.current?.close(); },
   };

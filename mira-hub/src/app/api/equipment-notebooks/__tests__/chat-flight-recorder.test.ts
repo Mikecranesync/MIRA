@@ -908,9 +908,9 @@ describe("#4148 — part-number claims and unconfirmed manual lookup", () => {
       expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
     });
 
-    // The single egress gate also covers #4120's corpus proposal: a typed
-    // machine that disagrees with the machine on the photo never searches.
-    it("Codex post-cap: a corpus proposal from typed text + a photo naming another machine starts no search", async () => {
+    // A dedicated manual request must resolve the photo and typed identity
+    // together. A conflicting typed model cannot become the confirmation.
+    it("withholds both confirmation and search when the typed equipment and photo disagree", async () => {
       veMock.loadVisualEvidenceForPhoto.mockResolvedValue({
         observationId: "o11", sessionId: "s1", text: "Controller label: S7-1200",
         obsKind: "look", trust: "candidate", confidence: null, fileId: PHOTO, photoHash: null, observedAt: null,
@@ -918,8 +918,7 @@ describe("#4148 — part-number claims and unconfirmed manual lookup", () => {
       acqMock.acquisitionEnabled.mockReturnValue(true);
       acqMock.startManualAcquisition.mockResolvedValue(true);
       const f = await ask("Find the manual for my Allen-Bradley SLC 5/03");
-      // #4120's proposal itself is unchanged; only the search is withheld.
-      expect(f.find((x) => x.kind === "identity_proposal")).toMatchObject({ manufacturer: "Allen-Bradley" });
+      expect(f.find((x) => x.kind === "identity_proposal")).toBeUndefined();
       expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
     });
 

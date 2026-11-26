@@ -383,9 +383,8 @@ export interface ConfirmIdentityResult {
 }
 
 /**
- * Background manual-search progress for a proposed (not yet confirmed)
- * identity (#4160 S6 candidate-basis acquisition). Purely informational —
- * never implies the manual is usable; that is `ConfirmIdentityResult.manualReady`.
+ * Background manual-search progress. Only a scoped notebook detail response
+ * can identify the usable manual in the same response's sources.
  * `startedAt` (Codex round 2 F4/F8) identifies the search GENERATION — the
  * shared follower keys its retry budget on it so a later, different search
  * never inherits an already-spent budget.
@@ -394,8 +393,12 @@ export interface ManualSearchStatus {
   readonly manufacturer: string;
   readonly model: string;
   readonly running: boolean;
-  /** Human-readable outcome once the search is no longer running. Server copy — never invented client-side. */
+  /** Human-readable status from the server. */
   readonly message?: string;
+  /** Source state from the notebook detail response. Preparing is still running. */
+  readonly sourceState?: "ready" | "preparing" | "disabled" | "removed" | "unavailable";
+  /** The ready source in that same response. Present only with sourceState ready. */
+  readonly readySourceDocId?: string;
   /** Acquisition link only; never a citation or proof the manual was read. */
   readonly manualUrl?: string;
   readonly startedAt?: string;

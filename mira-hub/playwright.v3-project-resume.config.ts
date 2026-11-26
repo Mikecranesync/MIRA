@@ -16,7 +16,7 @@ process.env.FIXTURE_PORT = String(PORT);
 
 export default defineConfig({
   testDir: "./tests/local-fixtures",
-  testMatch: ["v3-project-resume.spec.ts", "fixture-attestation.spec.ts"],
+  testMatch: ["v3-project-resume.spec.ts", "v3-manual-lookup-handoff.spec.ts", "fixture-attestation.spec.ts"],
   timeout: 120_000,
   expect: { timeout: 15_000 },
   fullyParallel: false,

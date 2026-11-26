@@ -67,7 +67,8 @@ describe("fetchManualSearchStatus", () => {
 
   it("preserves the server's manual download link", async () => {
     request.mockResolvedValue({ status: 200, data: { manualSearch: { manufacturer: "KEYENCE", model: "GL-R", running: false, manualUrl: "https://www.keyence.com/manual" } }, text: "" });
-    expect((await fetchManualSearchStatus("nb-1"))?.manualUrl).toBe("https://www.keyence.com/manual");
+    const read = await fetchManualSearchStatus("nb-1");
+    expect(read !== "hidden" && read?.manualUrl).toBe("https://www.keyence.com/manual");
   });
 
   it("returns null when the server has no manualSearch (older Hub, or nothing running)", async () => {
@@ -75,6 +76,44 @@ describe("fetchManualSearchStatus", () => {
     expect(await fetchManualSearchStatus("nb-1")).toBeNull();
     request.mockResolvedValue({ status: 200, data: {}, text: "" });
     expect(await fetchManualSearchStatus("nb-1")).toBeNull();
+  });
+
+  // #5750 F1: the route withheld the project status for this thread. That is
+  // an answer ("hidden"), not a failed read (null), so the chat clears it.
+  it("returns hidden when a thread-scoped read says the status was withheld", async () => {
+    for (const manualSearchScope of ["other_model", "out_of_reach"]) {
+      request.mockResolvedValue({ status: 200, data: { manualSearch: null, manualSearchScope }, text: "" });
+      expect(await fetchManualSearchStatus("nb-1", { threadId: "thrd-1" })).toBe("hidden");
+    }
+  });
+
+  it("control: without the scope field, or on a whole-notebook read, it is not hidden", async () => {
+    request.mockResolvedValue({ status: 200, data: { manualSearch: null }, text: "" });
+    expect(await fetchManualSearchStatus("nb-1", { threadId: "thrd-1" })).toBeNull();
+    request.mockResolvedValue({ status: 200, data: { manualSearch: null, manualSearchScope: "other_model" }, text: "" });
+    expect(await fetchManualSearchStatus("nb-1")).toBeNull();
+    request.mockResolvedValue({ status: 200, data: { manualSearch: null, manualSearchScope: "something_new" }, text: "" });
+    expect(await fetchManualSearchStatus("nb-1", { threadId: "thrd-1" })).toBeNull();
+  });
+
+  // #5750 r3 F10/F12: the saved answer the server checked the status against,
+  // keyed the way the chat keys its answers.
+  it("carries the answer the server named, by request id, else by row id", async () => {
+    const status = { manufacturer: "AutomationDirect", model: "GS11N-20P2", running: false };
+    request.mockResolvedValue({ status: 200, data: { manualSearch: status, manualSearchAnswer: { turnId: "t-9", clientRequestId: "req-9" } }, text: "" });
+    expect(await fetchManualSearchStatus("nb-1", { threadId: "thrd-1" })).toEqual({ ...status, answer: "req-9" });
+    request.mockResolvedValue({ status: 200, data: { manualSearch: status, manualSearchAnswer: { turnId: "t-9", clientRequestId: null } }, text: "" });
+    expect(await fetchManualSearchStatus("nb-1", { threadId: "thrd-1" })).toEqual({ ...status, answer: "row:t-9" });
+    request.mockResolvedValue({ status: 200, data: { manualSearch: status, manualSearchAnswer: null }, text: "" });
+    expect(await fetchManualSearchStatus("nb-1", { threadId: "thrd-1" })).toEqual({ ...status, answer: null });
+  });
+
+  it("control: no named answer leaves the field off", async () => {
+    const status = { manufacturer: "AutomationDirect", model: "GS11N-20P2", running: false };
+    request.mockResolvedValue({ status: 200, data: { manualSearch: status }, text: "" });
+    expect(await fetchManualSearchStatus("nb-1", { threadId: "thrd-1" })).toEqual(status);
+    request.mockResolvedValue({ status: 200, data: { manualSearch: status, manualSearchAnswer: { turnId: 7 } }, text: "" });
+    expect(await fetchManualSearchStatus("nb-1", { threadId: "thrd-1" })).toEqual(status);
   });
 
   it("returns null (never throws) on a non-200 or malformed response", async () => {

@@ -73,12 +73,13 @@ vi.mock("@/lib/inference/canonical-cascade", () => seamMock);
 const visualMock = vi.hoisted(() => ({
   photoLinkedToTarget: vi.fn(async () => ({ fileId: PHOTO, capturedAt: "2026-11-07T00:00:00Z" })),
   loadVisualEvidenceForPhoto: vi.fn(),
+  loadRecentLookObservations: vi.fn(),
 }));
 vi.mock("@/lib/workspace-files", () => ({ photoLinkedToTarget: visualMock.photoLinkedToTarget }));
 vi.mock("@/lib/visual-evidence-context", async (original) => ({
   ...(await original<typeof import("@/lib/visual-evidence-context")>()),
   loadVisualEvidenceForPhoto: visualMock.loadVisualEvidenceForPhoto,
-  loadRecentLookObservations: vi.fn(async () => []),
+  loadRecentLookObservations: visualMock.loadRecentLookObservations,
 }));
 
 // #5268 option A: the public-manual proof is a DB read; default "not proven".
@@ -178,6 +179,7 @@ beforeEach(() => {
   acqMock.startManualAcquisition.mockResolvedValue(true);
   acqMock.readAcquisition.mockResolvedValue(null);
   visualMock.photoLinkedToTarget.mockResolvedValue({ fileId: PHOTO, capturedAt: "2026-11-07T00:00:00Z" });
+  visualMock.loadRecentLookObservations.mockResolvedValue([]);
   visualMock.loadVisualEvidenceForPhoto.mockResolvedValue({
     observationId: "obs", sessionId: "session", text: PLATE, obsKind: "look", trust: "candidate", fileId: PHOTO, hazards: [],
   });
@@ -185,6 +187,65 @@ beforeEach(() => {
 });
 
 const EXPECTED_IDENTITY = { identityStatus: "user_confirmed", manufacturer: "AUTOMATIONDIRECT", model: MODEL, catalogNumber: "" };
+
+it.each(["A loose cable is sitting on a workbench.", SERIAL_PLATE])(
+  "offers the explicitly typed ABB model after an earlier, unrelated LOOK",
+  async (text) => {
+    visualMock.loadRecentLookObservations.mockResolvedValue([
+      { observationId: "obs", sessionId: "session", obsKind: "look", trust: "candidate", fileId: PHOTO, hazards: [], text },
+    ]);
+    const res = await POST(req({ message: "Find the manual for ABB ACS355.", mode: "general" }), params);
+    expect(await frames(res)).toContainEqual({ kind: "identity_proposal", manufacturer: "ABB", model: "ACS355" });
+    expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
+  },
+);
+
+it("still withholds a proposal when the typed request conflicts with the current photo", async () => {
+  const res = await POST(req({
+    message: "Find the manual for ABB ACS355.", mode: "general", visualEvidence: { fileId: PHOTO },
+  }), params);
+  expect((await frames(res)).filter(({ kind }) => kind === "identity_proposal")).toEqual([]);
+  expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+});
+
+it("proposes the exact model from a formatted LOOK reading without issuing a search before confirmation", async () => {
+  ragMock.manufacturerFromObservationText.mockReturnValue("AutomationDirect");
+  visualMock.loadVisualEvidenceForPhoto.mockResolvedValue({
+    observationId: "obs", sessionId: "session", obsKind: "look", trust: "candidate", fileId: PHOTO, hazards: [],
+    text: `**Brand:** AutomationDirect\n**Model:** **${MODEL}**\n**Input:** 110-120 VAC\n**Serial number:** SYNTH-00081`,
+  });
+  const res = await POST(req({ message: "Find me the manual for this drive.", mode: "general", visualEvidence: { fileId: PHOTO } }), params);
+  const result = await frames(res);
+
+  expect(result).toContainEqual({ kind: "identity_proposal", manufacturer: "AutomationDirect", model: MODEL });
+  expect(result.find((frame) => frame.kind === "status")).toMatchObject({
+    status: "insufficient_evidence", message: expect.stringContaining("Confirm the equipment"),
+  });
+  expect(result.filter(({ kind }) => kind === "manual_search_status" || kind === "followups")).toEqual([]);
+  expect(JSON.stringify(result)).not.toContain("SYNTH-00081");
+  expect(ragMock.retrieveManualChunks).not.toHaveBeenCalled();
+  expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+  expect(fetch).not.toHaveBeenCalled();
+});
+
+it.each([
+  "Find the manual for AutomationDirect GS11N-20P5.",
+  "Find the manual for ABB ACS355.",
+])("withholds lookup when the typed request and the verified photo disagree (%s)", async (message) => {
+  // The corpus may know the typed machine even when it cannot recognize the photo's maker.
+  ragMock.corpusManufacturers.mockResolvedValue(["AutomationDirect", "ABB"]);
+  visualMock.loadVisualEvidenceForPhoto.mockResolvedValue({
+    observationId: "obs", sessionId: "session", obsKind: "look", trust: "candidate", fileId: PHOTO, hazards: [],
+    text: `**Brand:** AutomationDirect\n**Model:** **${MODEL}**\n**Serial number:** SYNTH-00081`,
+  });
+  const res = await POST(req({ message, mode: "general", visualEvidence: { fileId: PHOTO } }), params);
+  const result = await frames(res);
+
+  expect(result.filter(({ kind }) => kind === "identity_proposal" || kind === "manual_search_status")).toEqual([]);
+  expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+  expect(fetch).not.toHaveBeenCalled();
+});
 
 it("preserves the exact model when a known maker's label also includes ratings and standards", async () => {
   ragMock.manufacturerFromObservationText.mockReturnValue("AutomationDirect");
@@ -614,7 +675,7 @@ describe("a nameplate photo starts the manual search on the same turn", () => {
       message: "Find the manual for this drive.", mode: "general", visualEvidence: { fileId: PHOTO },
     }), params);
 
-    it("re-reads Sources when a new photo lookup has already completed", async () => {
+    it("leaves Ready to the Sources snapshot when a photo lookup has already completed", async () => {
       const c = await completeRec();
       nbMock.listSources.mockResolvedValueOnce([]).mockResolvedValue([c.source(true)] as never);
       acqMock.readAcquisition.mockResolvedValueOnce(null).mockResolvedValue(c.rec);
@@ -623,8 +684,8 @@ describe("a nameplate photo starts the manual search on the same turn", () => {
 
       expect(acqMock.startManualAcquisition).toHaveBeenCalledTimes(1);
       expect(nbMock.listSources).toHaveBeenCalledTimes(2);
-      expect(msg).toMatch(/manual is ready/i);
-      expect(msg).not.toMatch(/turned off|turn it back on/i);
+      expect(msg).toMatch(/added it to this notebook's Sources/i);
+      expect(msg).not.toMatch(/ready|turned off|turn it back on/i);
     });
 
     it("does not claim the new manual is off or ready when the fresh Sources read fails", async () => {

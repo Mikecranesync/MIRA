@@ -128,7 +128,9 @@ describe("the host is wired to the hold (source shape, like hub-host-restore-ret
     expect(host).toContain('onRetrySendError: recoveryIsVisible && !failedBody?.unposted && retryCheck?.kind === "retry" ? onRetrySendError : null');
     expect(host).toContain('retryTargetCheck(recovery.refusedScope, reviewedBench).kind === "retry"');
     expect(host).toContain("inlineRecoveries.get(turnId)");
-    expect(host).toContain("inlineRecoveries.size ? { onRetry }");
+    // #5746 r6 F7: and not while a composer send is paused; Try again then belongs to that draft.
+    expect(host).toContain("inlineRecoveries.size && !sendPaused ? { onRetry }");
+    expect(host).toContain("...(!sendPaused && (failedBody || attachmentRecoveries?.length) ? { onRetrySendError:");
   });
   it("a target refusal keeps the refused scope and the review message is shown", () => {
     expect(host).toMatch(/refusedScope \? \{ refusedScope \} : \{\}/);
