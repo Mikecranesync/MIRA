@@ -129,7 +129,7 @@ const DEVICE =
   "|(?:safety|guard|gate|door)\\s+(?:switch(?:es)?|relays?|circuits?|contacts?|inputs?|sensors?|loops?|chains?)" +
   "|safety\\s+(?:mats?|edges?|scanners?|gates?|doors?|plcs?|controllers?|devices?|systems?|functions?)" +
   "|guards?|light[-\\s]curtains?|(?:area|laser)\\s+scanners?|pull[-\\s]cords?|rope[-\\s]pulls?" +
-  "|two[-\\s]hand(?:\\s+(?:controls?|buttons?))?|sto|safe\\s+torque\\s+off|safety)";
+  "|two[-\\s]hand(?:\\s+(?:controls?|buttons?))?|emgs?|sto|safe\\s+torque\\s+off|safety)";
 
 /** Words that stand between a verb and the device (articles, quantifiers, places, fillers). */
 const GAP =
@@ -207,6 +207,50 @@ const RUN_WITH_STATE_FIRST = new RegExp(
 const RUN_WITHOUT = new RegExp(`\\b${RUNV}(?:\\s+\\S+){0,5}?\\s+without\\s+${ART}(?:${ADJ}\\s+){0,2}${DEVICE_PHRASE}\\b`, "i");
 /** "can I keep running with it bypassed": the device is named in another clause. */
 const RUN_WITH_PRONOUN = new RegExp(`\\b${RUNV}(?:\\s+\\S+){0,5}?\\s+(?:with|while)\\s+(?:it|them|that|this)\\s+${STATE}\\b`, "i");
+
+/**
+ * #5680: jumpering, shorting or bridging TO or ACROSS a safety device ("jumper +24V to the STO input",
+ * "jumper across the e-stop"). Bare "jump" is left out ("jump to the STO section"), and so is "on"
+ * ("replace the jumper on the STO input"). The verb used as a noun ("is there a short to ...") is not a request.
+ */
+const JUMP_VERB = "(?:jumper(?:ed|ing|s)?|short(?:ed|ing|s)?|bridg(?:e|ed|es|ing))";
+const NOT_A_NOUN = "(?<!\\b(?:the|a|an|this|that|any|no|new|old|existing|factory|replac\\w*|remov\\w*)\\s+)";
+const JUMPER_TO = new RegExp(
+  `${NOT_A_NOUN}\\b${JUMP_VERB}(?:\\s+(?:out|it|them))?(?:\\s+\\S+){0,3}?\\s+(?:to|into|across|between)\\s+${ART}(?:${ADJ}\\s+){0,2}${DEVICE}\\b`,
+  "i",
+);
+/**
+ * #5680: the supply fed straight to a safety input ("tie 24V to the STO input"). Only an input, terminal
+ * or pin is a target ("wire 24V to the safety relay A1 terminal" powers the relay), and wiring it through
+ * the safety relay or controller is the correct installation, not a bypass.
+ */
+const SAFETY_INPUT =
+  "(?:sto|safe\\s+torque\\s+off|e\\s?[-.]?\\s?stops?|emergency[-\\s]stops?|emgs?|safety|guard|door|gate|interlocks?)\\s+(?:inputs?|terminals?|pins?)";
+const SUPPLY = "(?:\\+?24\\s?v(?:dc)?|\\+v|(?:the\\s+)?(?:24\\s?v\\s+)?(?:supply|power|voltage))";
+const SUPPLY_TO_INPUT = new RegExp(
+  `\\b(?:tie|tying|wire|wiring|connect|connecting|feed|feeding|put|putting|apply|applying|land|landing)\\s+${SUPPLY}` +
+    `\\s+(?:(?:straight|direct(?:ly)?|right)\\s+)?(?:to|into|onto|on|across)\\s+${ART}${SAFETY_INPUT}\\b` +
+    "(?![^.?!]{0,40}\\b(?:through|thru|via)\\b)",
+  "i",
+);
+/**
+ * #5680: jumpering guard-switch or safety-relay terminals by name ("jumper S1 S2 S+", "short s21 s22").
+ * A terminal name alone says nothing about safety ("jumper S1 to SC" is a run input), so this only counts
+ * when the message names a safety device. Terminals are not in DEVICE: "s+" ends on a non-word character.
+ */
+const TERMINAL = "s(?:\\d{1,2}|\\+)(?=[\\s.,;:!?/-]|$)";
+const TERMINAL_JUMPER = new RegExp(
+  `${NOT_A_NOUN}\\b(?:jump(?:er)?(?:ed|ing|s)?|short(?:ed|ing|s)?|bridg(?:e|ed|es|ing)|link(?:ed|ing|s)?)(?:\\s+out)?` +
+    `(?:\\s+(?:${GAP}|terminals?|pins?|across|between|from)){0,3}\\s+${TERMINAL}`,
+  "i",
+);
+/** #5680: releasing a brake with the safety function off ("release the brake with the safety signature disabled"). */
+const BRAKE_WITH_SAFETY_OFF = new RegExp(
+  `\\b(?:release|releasing|open|opening|lift|lifting|free|freeing|disengag(?:e|ing))\\s+${ART}(?:\\S+\\s+){0,2}?brakes?\\b` +
+    `[^.?!]{0,60}?\\b(?:with|while|w/)\\s+${ART}(?:\\S+\\s+){0,3}?(?:safety|sto|safe\\s+torque\\s+off|brake\\s+(?:monitoring|control|test))` +
+    "(?:\\s+\\S+){0,3}?\\s+(?:disabled|off|bypassed|defeated|overridden|deactivated|jumpered|turned\\s+off|switched\\s+off|not\\s+active)\\b",
+  "i",
+);
 
 /**
  * The detector's own word lists, as regular-expression source. Exported only so the coverage matrix
@@ -332,6 +376,10 @@ function judgeClause(clause: string, messageNamesDevice: boolean): { kind: Kind;
     { re: VERB_THEN_PRONOUN, needs: true, reportable: true },
     { re: OUT_OF_CIRCUIT_VERB_FIRST, removal: true },
     { re: OUT_OF_CIRCUIT_DEVICE_FIRST, removal: true },
+    { re: JUMPER_TO, reportable: true },
+    { re: SUPPLY_TO_INPUT },
+    { re: TERMINAL_JUMPER, needs: true, reportable: true },
+    { re: BRAKE_WITH_SAFETY_OFF },
     { re: USE_DEFEAT_PART },
     { re: OTHERS_LOCK },
   ];
