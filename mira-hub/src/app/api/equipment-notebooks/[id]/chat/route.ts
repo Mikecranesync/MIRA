@@ -304,6 +304,7 @@ import type {
 } from "@/lib/notebook-chat-types";
 import {
   isMachineEvidenceEntry,
+  isManualSafetyStatementEntry,
   isSafetyNoticeEntry,
   isSafetyStopEntry,
   isProviderFailureEntry,
@@ -1118,6 +1119,8 @@ function replayNotebookTurnResponse(turn: StoredNotebookTurn): Response {
   const visualEvidence = turn.evidence.find(isVisualObservationEntry) ?? null;
   // Mission 001 (#5097): the persisted observed-state provenance, replayed as delivered.
   const observedEntry = turn.evidence.find(isObservedStateEntry) ?? null;
+  // #6013 Codex r1 F1: the saved manual warning replays exactly as it was delivered live.
+  const manualSafetyStatement = turn.evidence.find(isManualSafetyStatementEntry) ?? null;
   const identityDisputed = turn.evidence.some(
     (entry) => typeof entry === "object" && entry !== null && (entry as { kind?: unknown }).kind === "identity_dispute",
   );
@@ -1168,6 +1171,7 @@ function replayNotebookTurnResponse(turn: StoredNotebookTurn): Response {
             ...(visualEvidence ? { visualEvidence } : {}),
             ...(identityDisputed ? { identityDisputed: true } : {}),
             ...(observedEntry ? { observedState: observedStateFrameOf(observedEntry) } : {}),
+            ...(manualSafetyStatement ? { manualSafetyStatement } : {}),
           });
         } else if (visualEvidence) {
           emit(visualEvidenceMarker(visualEvidence));

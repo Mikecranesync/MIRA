@@ -48,8 +48,8 @@ import { POST } from "@/app/api/equipment-notebooks/[id]/chat/route";
 import { ENERGIZED_ELECTRICAL_HAZARD } from "@/lib/safety-classifier";
 import { extractManualSafetyStatement, manualSafetyStatementForCitations } from "@/capabilities/manual-safety-statement";
 import { isManualSafetyStatementEntry } from "@/lib/notebook-chat-types";
-import { splitEvidence } from "@/components/equipment/notebook-chat-utils";
-import { turnsFromPersisted } from "@/factorylm-ui/to-interaction";
+import { readNotebookStream, splitEvidence } from "@/components/equipment/notebook-chat-utils";
+import { partsFromStream, turnsFromPersisted } from "@/factorylm-ui/to-interaction";
 
 const NB = "22222222-2222-4222-8222-222222222222";
 const DOC_A = "33333333-3333-4333-8333-333333333333";
@@ -294,6 +294,20 @@ describe("a persisted manual_safety_statement entry is NOT a citation (#4508 doc
     expect(res.headers.get("X-Idempotent-Replay")).toBe("true");
     expect(sourcesFrame(text).citations).toEqual([CITATION]);
     expect(fetch).not.toHaveBeenCalled();
+    // #6013 Codex r1 F1: the replay carries the exact saved warning, so a retried answer shows it
+    // before its text without waiting for (or depending on) the history reload.
+    expect(evidenceFrame(text).manualSafetyStatement).toEqual(ENTRY);
+    const reader = new ReadableStream<Uint8Array>({
+      start(c) {
+        c.enqueue(new TextEncoder().encode(text));
+        c.close();
+      },
+    }).getReader();
+    const parts = partsFromStream(await readNotebookStream(reader, () => undefined), { turnId: "turn-replay-a" });
+    const notice = parts.findIndex((p) => p.type === "safety_notice" && p.notice.trigger === "manual_safety_statement");
+    const answer = parts.findIndex((p) => p.type === "text" && p.text.includes("Set A092"));
+    expect(notice).toBeGreaterThanOrEqual(0);
+    expect(notice).toBeLessThan(answer);
   });
 });
 
