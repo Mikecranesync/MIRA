@@ -261,12 +261,22 @@ function safetyFirst(parts: InteractionPart[]): InteractionPart[] {
   const notices = parts.filter((p) => p.type === "safety_notice");
   const rest = parts.filter((p) => p.type !== "safety_notice");
   // #5989: an answer that opens with the active-incident directive ("get clear, isolate power,
-  // call for help") leads, so a cited manual's warning banner never sits above it. A Safety
-  // STOP still comes first.
-  const incident = rest.find((p) => p.type === "text" && p.text.trimStart().startsWith(ACTIVE_INCIDENT_BANNER));
-  if (!incident) return [...notices, ...rest];
+  // call for help") shows that directive first. Only the directive paragraph moves: a Safety STOP
+  // stays above it, and the manual's warning, the turn's component label and the steps follow in
+  // their usual order (Codex #6011 F1/F3).
+  const at = rest.findIndex((p) => p.type === "text" && p.text.trimStart().startsWith(ACTIVE_INCIDENT_BANNER));
+  if (at < 0) return [...notices, ...rest];
+  const { directive, body } = splitIncidentDirective((rest[at] as Extract<InteractionPart, { type: "text" }>).text);
+  const after = body.trim() ? rest.map((p, i) => (i === at ? { type: "text" as const, text: body } : p)) : rest.filter((_, i) => i !== at);
   const isStop = (p: InteractionPart) => p.type === "safety_notice" && p.notice.severity === "stop";
-  return [...notices.filter(isStop), incident, ...notices.filter((p) => !isStop(p)), ...rest.filter((p) => p !== incident)];
+  return [...notices.filter(isStop), { type: "text", text: directive }, ...notices.filter((p) => !isStop(p)), ...after];
+}
+
+/** The incident banner's paragraph (with any page mark the route appended) and the answer after it. */
+function splitIncidentDirective(text: string): { directive: string; body: string } {
+  const t = text.trimStart();
+  const gap = /\n[ \t]*\n/.exec(t);
+  return gap ? { directive: t.slice(0, gap.index).trimEnd(), body: t.slice(gap.index + gap[0].length) } : { directive: t.trimEnd(), body: "" };
 }
 
 /** The classifier's active-incident banner, which the chat route prefixes to the answer text. */
@@ -373,7 +383,7 @@ export function livePartsWhileRunning(
   // A turn asked under a component holds its text until the stream has named the
   // component, so no answer is ever on screen without the component it is about.
   const held = component?.expected === true && !component.label;
-  if (content && !held) return withComponentAttribution([{ type: "text", text: content }], component?.label);
+  if (content && !held) return safetyFirst(withComponentAttribution([{ type: "text", text: content }], component?.label));
   return progress ? [{ type: "progress", stage: progress }] : [];
 }
 
