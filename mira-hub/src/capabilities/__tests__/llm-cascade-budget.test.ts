@@ -222,6 +222,11 @@ const ON_ATTEMPT = "onAttempt";
 type AttemptRecord = { provider: string; model: string; billed: boolean; usage: { prompt_tokens?: number; completion_tokens?: number } | null };
 
 describe("#6022 F5 — every contacted attempt reaches the caller", () => {
+  beforeEach(() => {
+    // Pinned: an inherited budget would refuse OpenAI before the fetch and change why these fail.
+    delete process.env.OPENAI_RUN_BUDGET_USD;
+    resetOpenAiRunBudgetForTests();
+  });
   const P = (name: string, url: string) => ({
     name,
     url,

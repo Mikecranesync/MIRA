@@ -826,6 +826,10 @@ describe("#6022 F5 — every billed redraft attempt reaches the turn's usage", (
 });
 
 describe("#6023 F6-a — the packet's generation section describes the served redraft", () => {
+  beforeEach(() => {
+    // Pinned: an inherited low ceiling would end these in stopped_turn_cap.
+    process.env.MIRA_TURN_MAX_OUTPUT_TOKENS = "4000";
+  });
   const groqServes = () =>
     stubFetch(REDRAFT, [verdict("unsafe"), verdict("safe", "none")], {
       byHost: { "api.openai.com": { status: 500 }, "groq": { content: REDRAFT, usage: { prompt_tokens: 50, completion_tokens: 20 } } },
@@ -867,6 +871,10 @@ describe("#6023 F6-a — the packet's generation section describes the served re
 });
 
 describe("#6023 F6-b — a redraft that generated but was not served is recorded as attempted, never as served", () => {
+  beforeEach(() => {
+    // Pinned: an inherited low ceiling would end these in stopped_turn_cap.
+    process.env.MIRA_TURN_MAX_OUTPUT_TOKENS = "4000";
+  });
   function holdCitedPageRead() {
     let release!: () => void;
     let entered!: () => void;
