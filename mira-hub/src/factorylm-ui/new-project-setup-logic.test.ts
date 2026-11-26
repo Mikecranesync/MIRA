@@ -1263,3 +1263,93 @@ describe("garage pilot M8 — a document says it is still indexing until its emb
     expect(row.note).toBeNull();
   });
 });
+
+describe("#5393: canceling creation cleans up partial notebooks", () => {
+  const treeReply = { status: 200, body: { nodes: [{ id: "node-cv101", name: "Discharge Conveyor", kind: "asset", unsPath: "enterprise.a.cv101", children: [] }] } };
+  const wsReply = { status: 200, body: { files: [] } };
+  const linkedReply = { status: 200, body: { files: [] } };
+  const flush = async () => { for (let i = 0; i < 20; i++) await Promise.resolve(); };
+  const later = () => {
+    let release: (r: Reply) => void = () => {};
+    const promise = new Promise<Reply>((r) => { release = r; });
+    return { route: () => promise, release: (r: Reply) => release(r) };
+  };
+
+  it("cancelCommit after notebook creation deletes the partial notebook", async () => {
+    const create = later();
+    const h = harness({
+      "GET /api/namespace/tree/": treeReply,
+      "GET /api/files/": wsReply,
+      "GET /api/namespace/node/": linkedReply,
+      "POST /api/assets/": create.route,
+      "PUT /api/equipment-notebooks/nb-m/asset/": { status: 200, body: { ok: true } },
+      "GET /api/equipment-notebooks/nb-m/": { status: 200, body: { notebook: { asset: { entityId: "e", confirmedAt: "2026-11-08T10:00:00Z" } }, sources: [] } },
+      "DELETE /api/equipment-notebooks/nb-m/": { status: 204, body: {} },
+    });
+    const c = createNewProjectSetup({ ...deps(h.fetch), getNotebooks: () => [] });
+    await c.start();
+    await c.choose({ kind: "machine", machine });
+    await c.next();
+    const committing = c.commit();
+    await flush();
+    // Release the POST to create the notebook
+    create.release({ status: 201, body: { ok: true, created: true, notebook: { id: "nb-m", nodeId: "n", displayName: "CV" } } });
+    await flush();
+    // Cancel while in-flight
+    await c.cancelCommit();
+    await committing;
+    // Verify DELETE was called
+    const deleteCalls = h.calls.filter((c) => c.method === "DELETE" && c.path.includes("/nb-m"));
+    expect(deleteCalls).toHaveLength(1);
+  });
+
+  it("cancelCommit before any notebook is created makes no DELETE call", async () => {
+    const create = later();
+    const h = harness({
+      "GET /api/namespace/tree/": treeReply,
+      "GET /api/files/": wsReply,
+      "GET /api/namespace/node/": linkedReply,
+      "POST /api/assets/": create.route,
+    });
+    const c = createNewProjectSetup({ ...deps(h.fetch), getNotebooks: () => [] });
+    await c.start();
+    await c.choose({ kind: "machine", machine });
+    await c.next();
+    const committing = c.commit();
+    await flush();
+    // Cancel before the POST completes
+    await c.cancelCommit();
+    create.release({ status: 201, body: { ok: true, created: true, notebook: { id: "nb-m", nodeId: "n", displayName: "CV" } } });
+    await committing;
+    // Verify no DELETE was called
+    const deleteCalls = h.calls.filter((c) => c.method === "DELETE");
+    expect(deleteCalls).toHaveLength(0);
+  });
+
+  it("cancelCommit tolerates DELETE failures and still unlocks the sheet", async () => {
+    const create = later();
+    const h = harness({
+      "GET /api/namespace/tree/": treeReply,
+      "GET /api/files/": wsReply,
+      "GET /api/namespace/node/": linkedReply,
+      "POST /api/assets/": create.route,
+      "PUT /api/equipment-notebooks/nb-m/asset/": { status: 200, body: { ok: true } },
+      "GET /api/equipment-notebooks/nb-m/": { status: 200, body: { notebook: { asset: { entityId: "e", confirmedAt: "2026-11-08T10:00:00Z" } }, sources: [] } },
+      "DELETE /api/equipment-notebooks/nb-m/": { status: 500, body: { error: "Internal error" } },
+    });
+    const c = createNewProjectSetup({ ...deps(h.fetch), getNotebooks: () => [] });
+    await c.start();
+    await c.choose({ kind: "machine", machine });
+    await c.next();
+    const committing = c.commit();
+    await flush();
+    create.release({ status: 201, body: { ok: true, created: true, notebook: { id: "nb-m", nodeId: "n", displayName: "CV" } } });
+    await flush();
+    await c.cancelCommit();
+    await committing;
+    // Sheet should unlock even if DELETE failed
+    expect(c.getState().committing).toBe(false);
+    const deleteCalls = h.calls.filter((c) => c.method === "DELETE");
+    expect(deleteCalls).toHaveLength(1);
+  });
+});

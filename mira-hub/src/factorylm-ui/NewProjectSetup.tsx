@@ -36,7 +36,7 @@ export type SetupActions = {
   back: () => void;
   commit: () => void;
   /** #5393: cancel an in-flight commit. */
-  cancelCommit: () => void;
+  cancelCommit: () => Promise<void>;
   /** S16: send a PDF whose save failed again. */
   retryUpload: (key: string) => void;
   openProject: () => void;
@@ -317,7 +317,7 @@ export function NewProjectSetup({ open, onClose, notebooks, createNotebook, onOp
     next: () => { void ctl?.next(); },
     back: () => ctl?.back(),
     commit: () => { void ctl?.commit(); },
-    cancelCommit: () => ctl?.cancelCommit(),
+    cancelCommit: async () => { await ctl?.cancelCommit(); },
     retryUpload: (key) => { void ctl?.retryUpload(key); },
     openProject: () => {
       const id = ctl?.openProjectId();

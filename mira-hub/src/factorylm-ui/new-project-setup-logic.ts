@@ -623,7 +623,7 @@ export type SetupController = {
   commit(): Promise<void>;
   /** #5393: cancel an in-flight commit. The notebook may be half-created but
    *  usable; the sheet stays on step 3 with an error message. */
-  cancelCommit(): void;
+  cancelCommit(): Promise<void>;
   /** S16: send a PDF whose save failed again (a row with retry), then re-read readiness. No-op otherwise. */
   retryUpload(key: string): Promise<void>;
   /** The notebook the technician should open, if any (created, or the existing one on a refusal). */
@@ -886,7 +886,8 @@ export function createNewProjectSetup(deps: ControllerDeps): SetupController {
       await showReadiness(outcome.notebookId, results);
     },
 
-    cancelCommit() {
+    async cancelCommit() {
+      // Abort in-flight requests
       if (commitAbortController && !commitAbortController.signal.aborted) {
         commitAbortController.abort();
       }
@@ -894,6 +895,22 @@ export function createNewProjectSetup(deps: ControllerDeps): SetupController {
         clearTimeout(commitTimeoutTimer);
         commitTimeoutTimer = null;
       }
+      
+      // #5393: Clean up any partially created notebook. If the notebook was
+      // created but not fully committed (e.g., asset binding or doc uploads
+      // incomplete), delete it so no half-created project remains in the list.
+      const partialId = created?.notebookId;
+      if (partialId) {
+        try {
+          await call(deps, "DELETE", `/api/equipment-notebooks/${encodeURIComponent(partialId)}/`);
+          created = null; // Clear so we don't try to delete again
+        } catch {
+          // Deletion failure leaves the partial notebook. The user can delete it
+          // manually from the project list. Don't block the cancel flow on this.
+        }
+      }
+      
+      set({ committing: false, error: null, progress: null, commitTimeout: false });
     },
 
     async retryUpload(key) {
