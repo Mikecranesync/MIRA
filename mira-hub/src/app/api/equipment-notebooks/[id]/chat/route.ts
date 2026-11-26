@@ -4790,6 +4790,9 @@ async function handleChatTurn(
       // OpenAI call, held together with the OpenAI answer's. Released in the
       // `finally` below on every exit; a no-op once the judge has settled it.
       let judgeHold: JudgeOpenAiHold | null = null;
+      // F1: the ledger write of a committed turn, run by the outer catch when a closed response
+      // stream throws before the normal post-close write is reached.
+      let pendingLedger: (() => Promise<void>) | null = null;
       try {
       // Turn Flight Recorder correlation frame — FIRST, additive, only when a
       // real trace id exists (see file header + notebook-chat-types.ts).
@@ -4844,6 +4847,11 @@ async function handleChatTurn(
       // Wall time for the whole turn (decision_traces.latency_ms).
       const turnStartedAt = Date.now();
       let rawUsage: unknown = null;
+      // Draft 1's output spent: Infinity for a reported count above the safe range (F2), else the ledger count.
+      const firstOutputSpent = (): number | null => {
+        const c = (rawUsage as { completion_tokens?: unknown } | null | undefined)?.completion_tokens;
+        return typeof c === "number" && c > Number.MAX_SAFE_INTEGER ? Infinity : tokenCount(turnUsage?.outputTokens ?? null);
+      };
       let capped = false;
       // The provider whose stream was open when the client stopped — the
       // partial turn is recorded against it, and its upstream read is
@@ -5697,7 +5705,7 @@ async function handleChatTurn(
         const redraftEligible =
           sv.verdict === "unsafe" && seam && docGrounded && !flaggedTurn && !bypassWarnAsk && REDRAFT_CLASSES.includes(firstClass);
         // Both generations count against the one per-turn output ceiling (Codex r1 F4).
-        const redraftTokens = redraftEligible ? redraftOutputAllowance(outputCap, requestCap, turnUsage?.outputTokens ?? null) : null;
+        const redraftTokens = redraftEligible ? redraftOutputAllowance(outputCap, requestCap, firstOutputSpent()) : null;
         const redraft = !redraftEligible
           ? null
           : redraftTokens === null
@@ -5709,7 +5717,7 @@ async function handleChatTurn(
                   // #6021: one provider at a time, so the allowance is held across attempts: a
                   // billed attempt debits its output, or the cap it was sent when that count is
                   // unknown or malformed; a rejection before generation debits nothing.
-                  let spent = tokenCount(turnUsage?.outputTokens ?? null) ?? requestCap;
+                  let spent = firstOutputSpent() ?? requestCap;
                   // R1-C1: the redraft's own fallback list, as draft 1 keeps one: a provider skipped
                   // as unhealthy or refused by the budget is passed over like one that failed.
                   const passed: string[] = [];
@@ -6360,8 +6368,9 @@ async function handleChatTurn(
           // Design §4's sixth exit path: "recordTurn failure" still gets a
           // packet with `persistence.outcome='failed'`, seam on or off.
           {
+            // F5: the measured aggregate, not an empty one, when billed generations were seen.
             const failedUsage: TurnUsage = seam
-              ? { ...exhaustedUsage(attempted), status: "error" }
+              ? { ...(turnUsage ?? exhaustedUsage(attempted)), status: "error" }
               : legacyCascadeUsage(activeProvider, "error");
             await finishAndPersist(null, failedUsage, {
               answerText: null,
@@ -6373,6 +6382,13 @@ async function handleChatTurn(
           return;
         }
       }
+
+      pendingLedger = () =>
+        finishAndPersist(
+          finalTurnRowId,
+          pendingUsage ?? (seam ? (turnUsage ?? exhaustedUsage(attempted)) : legacyCascadeUsage(activeProvider, served ? "ok" : "error")),
+          { answerText: served ? answerText : null, citationsPresent: emittedCitations.length > 0, latencyMs: Date.now() - turnStartedAt },
+        );
 
       // An unsafe replacement is already a terminal Safety STOP. Emit its
       // warning before the first stoppable content byte so an interruption can
@@ -6511,6 +6527,7 @@ async function handleChatTurn(
         // before telemetry starts. A ledger exception is non-fatal and must
         // never turn an already-closed, valid answer into a transport error.
         await new Promise<void>((resolve) => setTimeout(resolve, 0));
+        pendingLedger = null; // written here; the outer catch must not write it twice
         await finishAndPersist(finalTurnRowId, ledgerUsage, {
           answerText: served ? answerText : null,
           citationsPresent: emittedCitations.length > 0,
@@ -6538,6 +6555,9 @@ async function handleChatTurn(
         } catch {
           // best-effort
         }
+        const lateLedger = pendingLedger;
+        pendingLedger = null;
+        if (lateLedger) await lateLedger().catch(() => undefined);
         endRoot();
         try {
           controller.error(err);

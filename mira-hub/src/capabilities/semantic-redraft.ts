@@ -150,7 +150,9 @@ export function tokenCount(n: unknown): number | null {
  * output spent so far, so a billed attempt shrinks what the next one may use.
  */
 export function redraftOutputAllowance(turnCeiling: number, requestCap: number, firstOutputTokens: number | null): number | null {
-  const remaining = turnCeiling - (tokenCount(firstOutputTokens) ?? requestCap);
+  // Infinity is the caller's mark for a reported count above the safe range: spent, not unknown (F2).
+  const spent = firstOutputTokens === Infinity ? Infinity : (tokenCount(firstOutputTokens) ?? requestCap);
+  const remaining = turnCeiling - spent;
   const allowance = Math.min(requestCap, remaining);
   return allowance >= REDRAFT_MIN_OUTPUT_TOKENS ? allowance : null;
 }
@@ -176,7 +178,8 @@ type Usage = {
 export function withRedraftUsage<U extends Usage>(first: U, redraft: Usage, servedByRedraft: boolean): U {
   const sum = (a: number | null, b: number | null) => (a === null || b === null ? null : a + b);
   // A token sum beyond the safe-integer range is unknown, never an imprecise number (R3-C3).
-  const tokens = (n: number | null) => (n === null || Number.isSafeInteger(n) ? n : null);
+  // The ledger columns are PostgreSQL INTEGER, so a total above that range is unknown too (F4).
+  const tokens = (n: number | null) => (n === null || (Number.isSafeInteger(n) && n <= 2147483647) ? n : null);
   const who = servedByRedraft ? redraft : first;
   return {
     ...first,

@@ -295,6 +295,13 @@ describe("#6022 F5 — every contacted attempt reaches the caller", () => {
     expect(seen.map(brief)).toEqual([{ provider: "Groq", billed: true, usage: null }]);
   });
 
+  it("F3 (Codex r1 on #6081): a gateway 504 is ambiguous, so it is reported as billed with unknown usage", async () => {
+    stubHosts({ "api.groq.com": { status: 504 } });
+    const { seen, opts } = withCollector({ providers: [GROQ] });
+    expect(await cascadeComplete(MESSAGES, opts)).toBeNull();
+    expect(seen.map(brief)).toEqual([{ provider: "Groq", billed: true, usage: null }]);
+  });
+
   it("F5: an HTTP 500 before generation is reported as not billed", async () => {
     stubHosts({ "api.groq.com": { status: 500 } });
     const { seen, opts } = withCollector({ providers: [GROQ] });

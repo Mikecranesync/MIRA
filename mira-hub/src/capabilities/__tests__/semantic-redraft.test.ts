@@ -123,6 +123,8 @@ describe("redraft instruction", () => {
 describe("redraft output allowance", () => {
   it("is what the ceiling leaves after draft 1, capped at the request cap; unknown draft-1 output books the whole cap", () => {
     expect(redraftOutputAllowance(4000, 800, 300)).toBe(800);
+    // F2: Infinity marks a reported count above the safe range: spent, so no allowance remains.
+    expect(redraftOutputAllowance(4000, 800, Infinity)).toBeNull();
     expect(redraftOutputAllowance(500, 500, 7)).toBe(493);
     expect(redraftOutputAllowance(500, 500, 450)).toBeNull();
     expect(redraftOutputAllowance(1000, 800, null)).toBeNull();

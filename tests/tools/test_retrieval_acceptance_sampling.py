@@ -322,3 +322,18 @@ def test_r3c2_control_the_same_loss_on_a_turn_with_no_redraft_path_still_fails()
     # No redraft path: the route never marks draft 1, so the same lost usage block is unexcused.
     d, w = _answered_redraft_turn([{"provider": "OpenAI", "outcome": "served"}], None, None)
     assert _failed(_run(TRACE, d, w)) == ["token usage recorded"]
+
+
+def test_f6_control_a_packet_that_omits_the_token_keys_fails_even_with_an_unknown_usage_attempt():
+    d, w = _answered_redraft_turn(
+        [
+            {"provider": "OpenAI", "outcome": DRAFT1_REPLACED},
+            {"provider": "OpenAI", "outcome": USAGE_UNKNOWN, "redraft": True},
+        ],
+        None,
+        None,
+    )
+    del d["packet"]["generation"]["input_tokens"]
+    del d["packet"]["generation"]["output_tokens"]
+    row = _run(TRACE, d, w)
+    assert "token usage recorded" in _failed(row)

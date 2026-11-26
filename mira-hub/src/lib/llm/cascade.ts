@@ -213,6 +213,13 @@ async function callOne(
     report(true, null);
     return null;
   }
+  if (res.status === 408 || res.status === 502 || res.status === 504) {
+    // A gateway timeout may have forwarded the request upstream, which may have generated:
+    // ambiguous, so book the worst case and never free budget on an outcome we cannot see (F3).
+    reservation?.settle(inputBound, outputCap);
+    report(true, null);
+    return null;
+  }
   if (!res.ok) {
     // The provider answered with a rejection: nothing billable ran.
     reservation?.release();

@@ -303,7 +303,9 @@ def common_checks(row: Row, d: dict[str, Any], w: dict[str, Any]) -> None:
         tokens = (g.get("input_tokens"), g.get("output_tokens"))
         row.check(
             "token usage recorded",
-            all(isinstance(t, int) or (t is None and usage_unknown) for t in tokens),
+            "input_tokens" in g
+            and "output_tokens" in g
+            and all(isinstance(t, int) or (t is None and usage_unknown) for t in tokens),
             f"{g.get('input_tokens')}/{g.get('output_tokens')}",
         )
     serialized = json.dumps(d).lower()
