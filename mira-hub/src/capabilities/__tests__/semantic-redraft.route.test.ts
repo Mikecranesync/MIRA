@@ -88,9 +88,13 @@ const ADVISORY_REDRAFT = "With the press stopped and locked out, check the ribbo
 /** A redraft that echoes the grounded system prompt (the prompt-leak floor). */
 const LEAK_REDRAFT = `${BASE_SYSTEM_PROMPT.slice(0, 700)} [1]`;
 /** A redraft that reads as a refusal. */
-const REFUSAL_REDRAFT = "The provided excerpts do not contain information about this. I don't have enough information to answer.";
+/** A refusal whose only valid marker sits inside its limitation sentence: cited, still a refusal. */
+const REFUSAL_REDRAFT = "The provided excerpts do not contain information about this [1]. I don't have enough information to answer.";
 /** A lockout conflict (a powered check inside a locked-out step): a hazard warning, not a bypass. */
 const CONFLICT_REDRAFT = "With the press stopped and locked out, check the display contrast setting first [1].";
+/** The served redraft's text with no marker, and with a marker that resolves to no excerpt. */
+const NOCITE_REDRAFT = "With the press stopped and locked out, check the hydraulic hose for wear.";
+const BADCITE_REDRAFT = "With the press stopped and locked out, check the hydraulic hose for wear [9].";
 /** A guard defeat under lockout wording: the validator sees only the isolation advisory. */
 const JUMPER_REDRAFT = "With the press stopped and locked out, install a jumper across the light curtain so the press keeps cycling [1].";
 /** Reports a defeated safeguard: answered with the bypass card, no question trigger. */
@@ -101,21 +105,22 @@ const HAZARD_REDRAFT = "Bypass the light curtain with a jumper so the press keep
 const SOURCE_TEXT = "SECTION 7.2 Relieve accumulator pre-charge through valve V-12 before servicing the starter.";
 const chunks = [{ docId: DOC_A, filename: "HP200.pdf", page: 41, content: SOURCE_TEXT }];
 
-const chatReq = (body: unknown) =>
+const chatReq = (body: unknown, signal?: AbortSignal) =>
   new NextRequest("http://test/api/equipment-notebooks/nb/chat", {
     method: "POST",
     body: JSON.stringify(body),
     headers: { "Content-Type": "application/json" },
+    ...(signal ? { signal } : {}),
   });
 const params = { params: Promise.resolve({ id: NB }) };
 
 const enc = new TextEncoder();
 const delta = (w: string) => `data: ${JSON.stringify({ choices: [{ delta: { content: w } }] })}\n\n`;
 const STOP = `data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: "stop" }] })}\n\n`;
-const USAGE = `data: ${JSON.stringify({ choices: [], usage: { prompt_tokens: 12, completion_tokens: 7 } })}\n\n`;
+const usageChunk = (out: number) => `data: ${JSON.stringify({ choices: [], usage: { prompt_tokens: 12, completion_tokens: out } })}\n\n`;
 
-function answerStream(text: string): Response {
-  const parts = [...text.split(" ").map((w, i, all) => delta(i < all.length - 1 ? w + " " : w)), STOP, USAGE, "data: [DONE]\n\n"];
+function answerStream(text: string, out = 7): Response {
+  const parts = [...text.split(" ").map((w, i, all) => delta(i < all.length - 1 ? w + " " : w)), STOP, usageChunk(out), "data: [DONE]\n\n"];
   return new Response(
     new ReadableStream<Uint8Array>({
       start(c) {
@@ -134,23 +139,41 @@ type Redraft = string | "http500";
  * Streaming body = draft 1; a body carrying `candidate_answer` = the judge (answers
  * `judgeVerdicts` in order); any other body = the non-streaming redraft.
  */
-function stubFetch(redraft: Redraft, judgeVerdicts: string[]) {
+type StubOpts = {
+  /** The redraft choice's finish_reason (default "stop"; null = none sent). */
+  finish?: string | null;
+  /** Draft 1's reported completion tokens (default 7). */
+  draft1Output?: number;
+  /** Redraft requests to a URL containing this fail with 500 (the next provider serves). */
+  failRedraftAt?: string;
+  /** Runs when the second judge call arrives, before it answers. */
+  onSecondJudge?: () => void;
+};
+
+function stubFetch(redraft: Redraft, judgeVerdicts: string[], o: StubOpts = {}) {
   const judgeBodies: string[] = [];
   const redraftBodies: string[] = [];
-  const fetchMock = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+  const redraftUrls: string[] = [];
+  const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
     const body = typeof init?.body === "string" ? init.body : "";
-    if (body.includes('"stream":true')) return answerStream(DRAFT1);
+    if (body.includes('"stream":true')) return answerStream(DRAFT1, o.draft1Output);
     if (body.includes("candidate_answer")) {
       const content = judgeVerdicts[judgeBodies.length] ?? "not a verdict";
       judgeBodies.push(body);
+      if (judgeBodies.length === 2) o.onSecondJudge?.();
       return Response.json({ choices: [{ message: { content } }], usage: { prompt_tokens: 40, completion_tokens: 9 } });
     }
     redraftBodies.push(body);
-    if (redraft === "http500") return new Response("down", { status: 500 });
-    return Response.json({ choices: [{ message: { content: redraft } }], usage: { prompt_tokens: 50, completion_tokens: 20 } });
+    redraftUrls.push(String(url));
+    if (redraft === "http500" || (o.failRedraftAt && String(url).includes(o.failRedraftAt))) return new Response("down", { status: 500 });
+    const finish = o.finish === undefined ? "stop" : o.finish;
+    return Response.json({
+      choices: [{ message: { content: redraft }, finish_reason: finish }],
+      usage: { prompt_tokens: 50, completion_tokens: 20 },
+    });
   });
   vi.stubGlobal("fetch", fetchMock);
-  return { judgeBodies, redraftBodies };
+  return { judgeBodies, redraftBodies, redraftUrls };
 }
 
 const ENV = { ...process.env };
@@ -184,8 +207,8 @@ afterEach(async () => {
 });
 
 type Frame = { kind: string; content?: string; trigger?: string; citations?: unknown[] };
-async function run(message: string) {
-  const res = await POST(chatReq({ message, sourceDocIds: [DOC_A] }), params);
+async function run(message: string, signal?: AbortSignal) {
+  const res = await POST(chatReq({ message, sourceDocIds: [DOC_A] }, signal), params);
   expect(res.status).toBe(200);
   const text = await res.text();
   const frames: Frame[] = text
@@ -199,7 +222,8 @@ async function run(message: string) {
   const packet = (persistMock.persistTurnUsage.mock.calls[0] as unknown as [unknown, unknown, { packet: Record<string, unknown> }])[2]
     .packet as { answer_gate: Record<string, unknown> };
   const outcome = packet.answer_gate.safety_outcome as Record<string, unknown>;
-  return { frames, streamed, turn, outcome };
+  const [meta, usage] = persistMock.persistTurnUsage.mock.calls[0] as unknown as [Record<string, unknown>, Record<string, unknown>];
+  return { frames, streamed, turn, outcome, meta, usage };
 }
 
 /** The stop path, unchanged from before #5941. */
@@ -269,6 +293,77 @@ describe("#5941 — one redraft after an unsafe verdict", () => {
     expectStopped(r);
     expect(judgeBodies).toHaveLength(1);
     expect(r.outcome.semantic_redraft).toBe("stopped_check");
+  });
+
+  it("a redraft cut at the output cap (finish_reason length, or none sent) stops before the judge; a finished one is the control", async () => {
+    for (const finish of ["length", null]) {
+      vi.clearAllMocks();
+      const { judgeBodies } = stubFetch(REDRAFT, [verdict("unsafe"), verdict("safe", "none")], { finish });
+      const r = await run(Q_PLAIN);
+      expectStopped(r);
+      expect(judgeBodies).toHaveLength(1);
+      expect(JSON.stringify(domainMock.recordTurn.mock.calls)).not.toContain("stopped and locked out");
+      expect(r.outcome.semantic_redraft).toBe("stopped_incomplete");
+    }
+    vi.clearAllMocks();
+    stubFetch(REDRAFT, [verdict("unsafe"), verdict("safe", "none")], { finish: "stop" });
+    expect((await run(Q_PLAIN)).outcome.semantic_redraft).toBe("served");
+  });
+
+  it("a Stop during the second judge: the redraft is never adopted, streamed or stored, and the turn is not answered", async () => {
+    const ac = new AbortController();
+    stubFetch(REDRAFT, [verdict("unsafe"), verdict("safe", "none")], { onSecondJudge: () => ac.abort() });
+    const r = await run(Q_PLAIN, ac.signal);
+    expect(r.streamed).not.toContain("stopped and locked out");
+    expect(r.frames.find((f) => f.kind === "sources")?.citations ?? []).toHaveLength(0);
+    expect(JSON.stringify(domainMock.recordTurn.mock.calls)).not.toContain("stopped and locked out");
+    expect(r.meta.outcome).not.toBe("answered");
+    expect(r.outcome.semantic_redraft).toBe("stopped_aborted");
+  });
+
+  it("a redraft with no citation, or only a marker that resolves to no excerpt, stops before the judge", async () => {
+    for (const text of [NOCITE_REDRAFT, BADCITE_REDRAFT]) {
+      vi.clearAllMocks();
+      const { judgeBodies } = stubFetch(text, [verdict("unsafe"), verdict("safe", "none")]);
+      const r = await run(Q_PLAIN);
+      expectStopped(r);
+      expect(judgeBodies).toHaveLength(1);
+      expect(JSON.stringify(domainMock.recordTurn.mock.calls)).not.toContain("hydraulic hose");
+      expect(r.outcome.semantic_redraft).toBe("stopped_check");
+    }
+  });
+
+  it("the redraft gets only what is left of the per-turn output ceiling, and none when too little is left", async () => {
+    process.env.MIRA_TURN_MAX_OUTPUT_TOKENS = "500";
+    const first = stubFetch(REDRAFT, [verdict("unsafe"), verdict("safe", "none")], { draft1Output: 7 });
+    const r1 = await run(Q_PLAIN);
+    expect(r1.outcome.semantic_redraft).toBe("served");
+    const body = JSON.parse(first.redraftBodies[0]) as { max_tokens?: number; max_completion_tokens?: number };
+    expect(body.max_tokens ?? body.max_completion_tokens).toBe(493);
+    vi.clearAllMocks();
+    const second = stubFetch(REDRAFT, [verdict("unsafe"), verdict("safe", "none")], { draft1Output: 450 });
+    const r2 = await run(Q_PLAIN);
+    expect(second.redraftBodies).toHaveLength(0);
+    expectStopped(r2);
+    expect(r2.outcome.semantic_redraft).toBe("stopped_turn_cap");
+  });
+
+  it("a redraft served by another provider is attributed to it, and spend counts both generations", async () => {
+    process.env.GROQ_API_KEY = "g0";
+    const { redraftUrls } = stubFetch(REDRAFT, [verdict("unsafe"), verdict("safe", "none")], { failRedraftAt: "api.openai.com" });
+    const r = await run(Q_PLAIN);
+    expect(r.outcome.semantic_redraft).toBe("served");
+    expect(redraftUrls.at(-1)).toContain("groq");
+    expect(String(r.turn.model)).toMatch(/^Groq:/);
+    expect(r.usage).toMatchObject({ provider: "Groq", inputTokens: 12 + 50, outputTokens: 7 + 20 });
+  });
+
+  it("a billed redraft that is withheld still counts in spend, under draft 1's model", async () => {
+    stubFetch(HAZARD_REDRAFT, [verdict("unsafe"), verdict("safe", "none")]);
+    const r = await run(Q_PLAIN);
+    expectStopped(r);
+    expect(String(r.turn.model)).toMatch(/^OpenAI:/);
+    expect(r.usage).toMatchObject({ provider: "OpenAI", inputTokens: 12 + 50, outputTokens: 7 + 20 });
   });
 
   it("a guard defeat reworded under lockout wording stops (bypass screen), the judge not asked again", async () => {

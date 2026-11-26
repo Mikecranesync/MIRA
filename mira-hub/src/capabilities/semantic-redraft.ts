@@ -17,7 +17,9 @@
 export type RedraftOutcome =
   | "served"
   | "stopped_aborted"
+  | "stopped_turn_cap"
   | "stopped_generation"
+  | "stopped_incomplete"
   | "stopped_check"
   | "stopped_judge_unsafe"
   | "stopped_judge_undecided";
@@ -81,19 +83,23 @@ export function withRedraftInstruction<M extends { role: string; content: string
  */
 export async function runSemanticRedraft(deps: {
   aborted: () => boolean;
-  generate: () => Promise<string | null>;
+  /** `complete` is false when the provider cut the completion (finish_reason other than "stop"). */
+  generate: () => Promise<{ text: string; complete: boolean } | null>;
   screen: (text: string) => string | null;
   judge: (text: string) => Promise<"safe" | "unsafe" | "unknown">;
 }): Promise<{ outcome: RedraftOutcome; text: string | null }> {
   const stop = (outcome: RedraftOutcome) => ({ outcome, text: null });
   if (deps.aborted()) return stop("stopped_aborted");
-  let text: string | null;
+  let gen: { text: string; complete: boolean } | null;
   try {
-    text = await deps.generate();
+    gen = await deps.generate();
   } catch {
     return stop("stopped_generation");
   }
-  if (!text || !text.trim()) return stop("stopped_generation");
+  if (!gen || !gen.text.trim()) return stop("stopped_generation");
+  // A procedure cut at the output cap may have lost its restart condition or a caution.
+  if (!gen.complete) return stop("stopped_incomplete");
+  const text = gen.text;
   let served: string | null;
   try {
     served = deps.screen(text);
@@ -110,5 +116,59 @@ export async function runSemanticRedraft(deps: {
   }
   if (verdict === "unsafe") return stop("stopped_judge_unsafe");
   if (verdict !== "safe") return stop("stopped_judge_undecided");
+  // A Stop that arrived while the judge ran: the redraft was never released, so it is not adopted.
+  if (deps.aborted()) return stop("stopped_aborted");
   return { outcome: "served", text: served };
+}
+
+/** The smallest output allowance a redraft is attempted with; below it the stop stands. */
+export const REDRAFT_MIN_OUTPUT_TOKENS = 256;
+
+/**
+ * The redraft's output allowance: what is left of the per-turn ceiling after
+ * draft 1, capped at draft 1's own request cap. Draft 1's output count unknown
+ * is booked as its whole request cap (unknown is not small). Null when too
+ * little remains to attempt one.
+ */
+export function redraftOutputAllowance(turnCeiling: number, requestCap: number, firstOutputTokens: number | null): number | null {
+  const remaining = turnCeiling - (firstOutputTokens ?? requestCap);
+  const allowance = Math.min(requestCap, remaining);
+  return allowance >= REDRAFT_MIN_OUTPUT_TOKENS ? allowance : null;
+}
+
+type Usage = {
+  provider: string | null;
+  model: string | null;
+  routeReason: string;
+  inputTokens: number | null;
+  cachedInputTokens: number | null;
+  outputTokens: number | null;
+  costUsdEstimate: number | null;
+  status: "ok" | "empty" | "error" | "capped";
+  attempted: string[];
+};
+
+/**
+ * Draft 1's usage with the redraft's added: both generations were billed whether
+ * or not the redraft was served. The served generation names the provider and
+ * model. An unknown count on either side makes the total unknown; a missing
+ * cache count is zero cached.
+ */
+export function withRedraftUsage<U extends Usage>(first: U, redraft: Usage, servedByRedraft: boolean): U {
+  const sum = (a: number | null, b: number | null) => (a === null || b === null ? null : a + b);
+  const who = servedByRedraft ? redraft : first;
+  return {
+    ...first,
+    provider: who.provider,
+    model: who.model,
+    routeReason: who.routeReason,
+    status: who.status,
+    inputTokens: sum(first.inputTokens, redraft.inputTokens),
+    cachedInputTokens:
+      first.cachedInputTokens === null && redraft.cachedInputTokens === null
+        ? null
+        : (first.cachedInputTokens ?? 0) + (redraft.cachedInputTokens ?? 0),
+    outputTokens: sum(first.outputTokens, redraft.outputTokens),
+    costUsdEstimate: sum(first.costUsdEstimate, redraft.costUsdEstimate),
+  };
 }

@@ -1,10 +1,18 @@
 /** #5941 — the one-redraft runner and its fixed instruction (no route, no network). */
 import { describe, expect, it, vi } from "vitest";
-import { REDRAFT_CLASSES, redraftInstruction, runSemanticRedraft, withRedraftInstruction } from "@/capabilities/semantic-redraft";
+import {
+  REDRAFT_CLASSES,
+  REDRAFT_MIN_OUTPUT_TOKENS,
+  redraftInstruction,
+  redraftOutputAllowance,
+  runSemanticRedraft,
+  withRedraftInstruction,
+  withRedraftUsage,
+} from "@/capabilities/semantic-redraft";
 
 const deps = (over: Partial<Parameters<typeof runSemanticRedraft>[0]> = {}) => ({
   aborted: vi.fn(() => false),
-  generate: vi.fn(async () => "redraft [1]"),
+  generate: vi.fn(async () => ({ text: "redraft [1]", complete: true }) as { text: string; complete: boolean } | null),
   screen: vi.fn((t: string) => t),
   judge: vi.fn(async () => "safe" as const),
   ...over,
@@ -31,7 +39,7 @@ describe("runSemanticRedraft", () => {
   });
 
   it("an empty or thrown generation stops", async () => {
-    expect((await runSemanticRedraft(deps({ generate: vi.fn(async () => "  ") }))).outcome).toBe("stopped_generation");
+    expect((await runSemanticRedraft(deps({ generate: vi.fn(async () => ({ text: "  ", complete: true })) }))).outcome).toBe("stopped_generation");
     expect((await runSemanticRedraft(deps({ generate: vi.fn(async () => null) }))).outcome).toBe("stopped_generation");
     expect((await runSemanticRedraft(deps({ generate: vi.fn(async () => Promise.reject(new Error("x"))) }))).outcome).toBe("stopped_generation");
   });
@@ -42,6 +50,20 @@ describe("runSemanticRedraft", () => {
       expect((await runSemanticRedraft(d)).outcome).toBe("stopped_check");
       expect(d.judge).not.toHaveBeenCalled();
     }
+  });
+
+  it("a cut generation stops before the screen and the judge", async () => {
+    const d = deps({ generate: vi.fn(async () => ({ text: "redraft [1]", complete: false })) });
+    expect((await runSemanticRedraft(d)).outcome).toBe("stopped_incomplete");
+    expect(d.screen).not.toHaveBeenCalled();
+    expect(d.judge).not.toHaveBeenCalled();
+  });
+
+  it("a Stop that arrives while the judge runs is not adopted, even on a safe verdict", async () => {
+    const aborted = vi.fn().mockReturnValueOnce(false).mockReturnValueOnce(false).mockReturnValue(true);
+    const d = deps({ aborted });
+    expect(await runSemanticRedraft(d)).toEqual({ outcome: "stopped_aborted", text: null });
+    expect(d.judge).toHaveBeenCalledTimes(1);
   });
 
   it("unsafe, unknown or a thrown judge stops", async () => {
@@ -83,5 +105,33 @@ describe("redraft instruction", () => {
     expect(out[1]).toEqual({ role: "user", content: "Q" });
     expect(msgs[0].content).toBe("SYS");
     expect(withRedraftInstruction([{ role: "user", content: "Q" }], "x")[0]).toEqual({ role: "system", content: redraftInstruction("x") });
+  });
+});
+
+describe("redraft output allowance", () => {
+  it("is what the ceiling leaves after draft 1, capped at the request cap; unknown draft-1 output books the whole cap", () => {
+    expect(redraftOutputAllowance(4000, 800, 300)).toBe(800);
+    expect(redraftOutputAllowance(500, 500, 7)).toBe(493);
+    expect(redraftOutputAllowance(500, 500, 450)).toBeNull();
+    expect(redraftOutputAllowance(1000, 800, null)).toBeNull();
+    expect(redraftOutputAllowance(2000, 800, null)).toBe(800);
+    expect(redraftOutputAllowance(800 + REDRAFT_MIN_OUTPUT_TOKENS, 800, 800)).toBe(REDRAFT_MIN_OUTPUT_TOKENS);
+    expect(redraftOutputAllowance(800 + REDRAFT_MIN_OUTPUT_TOKENS - 1, 800, 800)).toBeNull();
+  });
+});
+
+describe("redraft usage", () => {
+  const u = (provider: string, i: number | null, o: number | null, cost: number | null, cached: number | null = null) => ({
+    provider, model: `${provider}-m`, routeReason: "primary", inputTokens: i, cachedInputTokens: cached, outputTokens: o,
+    costUsdEstimate: cost, status: "ok" as const, attempted: [],
+  });
+  it("adds both generations; the served one names the provider and model", () => {
+    expect(withRedraftUsage(u("A", 10, 5, 0.5), u("B", 20, 7, 0.25), true)).toMatchObject({ provider: "B", model: "B-m", inputTokens: 30, outputTokens: 12, costUsdEstimate: 0.75 });
+    expect(withRedraftUsage(u("A", 10, 5, 0.5), u("B", 20, 7, 0.25), false)).toMatchObject({ provider: "A", model: "A-m", inputTokens: 30, outputTokens: 12 });
+  });
+  it("an unknown count on either side is an unknown total; a missing cache count is zero cached", () => {
+    expect(withRedraftUsage(u("A", 10, null, null), u("B", 20, 7, 0.25), true)).toMatchObject({ outputTokens: null, costUsdEstimate: null, inputTokens: 30 });
+    expect(withRedraftUsage(u("A", 10, 5, 1, 4), u("B", 20, 7, 1), true).cachedInputTokens).toBe(4);
+    expect(withRedraftUsage(u("A", 10, 5, 1), u("B", 20, 7, 1), true).cachedInputTokens).toBeNull();
   });
 });
