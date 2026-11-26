@@ -75,6 +75,9 @@ export type ChatTurn = {
    *  answer. A warning, not a stop: the answer, its citations, basis and
    *  follow-ups all stay. Same value live (evidence frame) and hydrated. */
   hazardNotice?: SafetyNoticeEntry;
+  /** #5578: client request ID for idempotency — prevents duplicate sends from
+   *  creating multiple turn pairs. Only present on live turns, not hydrated. */
+  requestId?: string;
 };
 
 /** PRD §7.3 first-use suggested questions — a minor surface, not a feature. */
@@ -93,6 +96,18 @@ const COMPOSER_MAX_PX = 160;
  *  never clobbered by a late (or repeated) load of the same history. */
 export function hydrateTurns(prev: ChatTurn[], initial: ChatTurn[]): ChatTurn[] {
   return prev.length === 0 && initial.length > 0 ? initial : prev;
+}
+
+/** #5578: Deduplicate turns by requestId before rendering. If multiple turns
+ *  with the same requestId exist (a double-send, a race, or a render glitch),
+ *  keep only the most recent one (last in the array). Hydrated turns have no
+ *  requestId, so they're never deduplicated away. */
+export function deduplicateTurns(turns: ChatTurn[]): ChatTurn[] {
+  const seen = new Map<string, number>(); // requestId -> last index
+  turns.forEach((t, i) => {
+    if (t.requestId) seen.set(t.requestId, i);
+  });
+  return turns.filter((t, i) => !t.requestId || seen.get(t.requestId) === i);
 }
 
 /** Pure leaf — unit-tested via renderToStaticMarkup. Renders answer text as
@@ -347,6 +362,9 @@ export function NotebookChat({
   // dep array, so a closure capture would be stale. This ref lets us send the
   // recent history (multi-turn memory) without re-creating the callback per turn.
   const turnsRef = useRef(turns);
+  // #5578: track in-flight request IDs to prevent duplicate sends from creating
+  // multiple turn pairs (idempotency guard).
+  const activeRequestsRef = useRef(new Set<string>());
 
   // Persisted history loads async in the parent — hydrate once it arrives.
   // Without this, the server-side turns never render (Gate I client gap). The
@@ -374,13 +392,24 @@ export function NotebookChat({
   // Post one body and stream the answer. Shared by a fresh send and Retry so
   // the retried request is byte-identical to the one that failed.
   const post = useCallback(async (body: SendBody) => {
+    // #5578: idempotency guard — if this request is already in flight (double
+    // submit, slow network, rapid retry), skip it. The clientRequestId is stable
+    // across retries, so a retry waits for the first attempt to settle first.
+    if (activeRequestsRef.current.has(body.clientRequestId)) return;
+    activeRequestsRef.current.add(body.clientRequestId);
+
     setFailed(null);
     setBusy(true);
     const controller = new AbortController();
     abortRef.current = controller;
-    const userTurn: ChatTurn = { id: `u${Date.now()}`, role: "user", content: body.message };
+    const userTurn: ChatTurn = {
+      id: `u${Date.now()}`,
+      role: "user",
+      content: body.message,
+      requestId: body.clientRequestId,
+    };
     const aId = `a${Date.now()}`;
-    setTurns((t) => [...t, userTurn, { id: aId, role: "assistant", content: "" }]);
+    setTurns((t) => [...t, userTurn, { id: aId, role: "assistant", content: "", requestId: body.clientRequestId }]);
 
     try {
       const { content, citations, status, statusMessage, basis, followups, machineEvidence, visualEvidence, safetyNotice, hazardNotice, sawStatus } = await postNotebookChat(
@@ -476,6 +505,10 @@ export function NotebookChat({
         setFailed({ body });
       }
     } finally {
+      // #5578: Clear the active request and busy state to ensure Stop button
+      // resets immediately when the answer completes or errors. The request ID
+      // removal allows retry, and the busy state controls the Stop/Send button.
+      activeRequestsRef.current.delete(body.clientRequestId);
       if (abortRef.current === controller) abortRef.current = null;
       setBusy(false);
     }
@@ -505,6 +538,12 @@ export function NotebookChat({
   const send = useCallback(() => sendText(input), [sendText, input]);
   const stop = useCallback(() => abortRef.current?.abort(), []);
 
+  // #5578: deduplicate turns by requestId before rendering to prevent the same
+  // question-answer pair from appearing twice (a double-send, slow network, or
+  // a React render race). Hydrated turns have no requestId so they're never
+  // deduplicated away.
+  const visibleTurns = deduplicateTurns(turns);
+
   return (
     <div className="flex h-full flex-col">
       {/* The chat log owns the scroll; the composer below is a normal flex item
@@ -512,7 +551,7 @@ export function NotebookChat({
           fixed/sticky positioning → the composer can't slide under the desktop
           sidebar and never hides under the mobile tab bar. */}
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-3 py-3" aria-busy={busy} data-testid="notebook-chat-log">
-        {turns.length === 0 && (
+        {visibleTurns.length === 0 && (
           <div className="py-8 text-center">
             <p className="text-sm" style={{ color: "var(--foreground-subtle)" }}>
               Ask this machine anything about its selected sources.
@@ -538,20 +577,20 @@ export function NotebookChat({
             </div>
           </div>
         )}
-        {turns.map((t, i) => (
+        {visibleTurns.map((t, i) => (
           <Bubble
             key={t.id}
             turn={t}
             onCite={onOpenCitation}
             onFollowup={
-              !busy && i === turns.length - 1 && t.role === "assistant"
+              !busy && i === visibleTurns.length - 1 && t.role === "assistant"
                 ? (q) => void sendText(q)
                 : undefined
             }
           />
         ))}
         {busy && (
-          <div className="flex items-center gap-2 text-xs" style={{ color: "var(--foreground-subtle)" }}>
+          <div className="flex items-center gap-2 text-xs" style={{ color: "var(--foreground-subtle)" }} data-testid="thinking-indicator">
             <Loader2 size={14} className="animate-spin" aria-hidden /> Thinking…
           </div>
         )}

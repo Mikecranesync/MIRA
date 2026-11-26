@@ -6,7 +6,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { ENERGIZED_ELECTRICAL_HAZARD } from "@/lib/safety-classifier";
 import { describe, expect, it } from "vitest";
-import { Bubble, chatBodyFor, distinctPassages, hydrateTurns, SUGGESTED_QUESTIONS, type ChatTurn } from "./NotebookChat";
+import { Bubble, chatBodyFor, deduplicateTurns, distinctPassages, hydrateTurns, SUGGESTED_QUESTIONS, type ChatTurn } from "./NotebookChat";
 import { buildChatBody, persistedTurns, stoppedTurn } from "./notebook-chat-utils";
 
 const citation = {
@@ -107,6 +107,63 @@ describe("hydrateTurns", () => {
 
   it("no-ops when there is nothing to hydrate", () => {
     expect(hydrateTurns([], [])).toEqual([]);
+  });
+});
+
+describe("deduplicateTurns (#5578)", () => {
+  const t = (id: string, reqId?: string): ChatTurn => ({
+    id,
+    role: "user",
+    content: `message ${id}`,
+    ...(reqId ? { requestId: reqId } : {}),
+  });
+
+  it("keeps all turns when no duplicates exist", () => {
+    const turns = [t("u1", "r1"), t("a1", "r1"), t("u2", "r2"), t("a2", "r2")];
+    expect(deduplicateTurns(turns)).toEqual(turns);
+  });
+
+  it("removes earlier turns with the same requestId, keeping only the last one", () => {
+    // Simulates a double-send or render race where the same request creates
+    // multiple turn pairs. Only the most recent pair should remain visible.
+    const turns = [
+      t("u1", "req-123"),
+      t("a1", "req-123"),
+      t("u2", "req-123"), // duplicate request ID
+      t("a2", "req-123"), // duplicate request ID
+    ];
+    const result = deduplicateTurns(turns);
+    expect(result).toEqual([t("u2", "req-123"), t("a2", "req-123")]);
+  });
+
+  it("never removes hydrated turns (they have no requestId)", () => {
+    const hydrated = [t("h1"), t("h2"), t("h3")];
+    expect(deduplicateTurns(hydrated)).toEqual(hydrated);
+  });
+
+  it("preserves hydrated turns alongside live turns with requestIds", () => {
+    const turns = [
+      t("h1"), // hydrated, no requestId
+      t("u1", "r1"), // live
+      t("a1", "r1"), // live
+      t("h2"), // hydrated, no requestId
+    ];
+    expect(deduplicateTurns(turns)).toEqual(turns);
+  });
+
+  it("handles mixed duplicate and unique requestIds correctly", () => {
+    const turns = [
+      t("u1", "req-a"),
+      t("a1", "req-a"),
+      t("u2", "req-b"),
+      t("a2", "req-b"),
+      t("u3", "req-a"), // duplicate req-a
+      t("a3", "req-a"), // duplicate req-a
+    ];
+    const result = deduplicateTurns(turns);
+    // req-a: keep u3,a3 (last occurrence)
+    // req-b: keep u2,a2 (only occurrence)
+    expect(result).toEqual([t("u2", "req-b"), t("a2", "req-b"), t("u3", "req-a"), t("a3", "req-a")]);
   });
 });
 
