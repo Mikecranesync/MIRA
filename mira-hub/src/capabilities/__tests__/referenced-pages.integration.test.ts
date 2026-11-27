@@ -6,22 +6,42 @@
 //   (cd mira-hub && npx vitest run --config vitest.integration.config.ts \
 //      src/capabilities/__tests__/referenced-pages.integration.test.ts)
 //
+// SAFETY (F13): nothing touches a database until disposable-db.ts has validated the target (exact
+// MIRA_TEST_DB_CONFIRM=DISPOSABLE, loopback host, test-named database). The fixture then lives in an OWNED
+// random schema holding its own copy of knowledge_entries (RLS enabled on THAT copy); the shared
+// public.knowledge_entries is never altered, deleted from or RLS-toggled, even when setup fails. Production SQL
+// runs unchanged because the test pool's search_path is `<owned schema>, public`. Zero-DB regressions for the
+// preflight/teardown live in disposable-db.test.ts (default CI).
+//
 // WHY INTEGRATION: the boundary is a SQL predicate — tenant, validated document scope, approval
 // gate, and (document, file, printed page) tuple binding via unnest. A mock that returns whatever
 // the test wants cannot show that a deleted `tenant_id = $1` or a dropped `doc_id` in the tuple
-// leaks. Each case runs through withTenantContext (SET LOCAL ROLE factorylm_app with row-level
-// security switched ON for the table inside this test) AND on the raw owner pool, where RLS does
-// not mask a missing predicate. Synthetic text only.
+// leaks. Each case runs through withTenantContext (SET LOCAL ROLE factorylm_app, RLS ON for the owned
+// copy) AND on the raw owner pool, where RLS does not mask a missing predicate. Synthetic text only.
 
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { Pool } from "pg";
+import { createIsolatedFixture, type PoolLike } from "./disposable-db";
 
-const { testPool } = vi.hoisted(() => {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { Pool: PgPool } = require("pg");
-  return { testPool: new PgPool({ connectionString: process.env.TEST_DATABASE_URL }) as Pool };
-});
-vi.mock("@/lib/db", () => ({ default: testPool }));
+// The pool does not exist until the preflight passes. `@/lib/db` gets a handle that throws, never connects,
+// while no validated pool is installed.
+const holder = vi.hoisted(() => ({ pool: null as unknown as Pool | null }));
+vi.mock("@/lib/db", () => ({
+  default: new Proxy(
+    {},
+    {
+      get(_t, prop) {
+        if (!holder.pool) throw new Error("integration pool not initialised (preflight rejected or setup not run)");
+        const v = (holder.pool as unknown as Record<string | symbol, unknown>)[prop];
+        return typeof v === "function" ? (v as (...a: unknown[]) => unknown).bind(holder.pool) : v;
+      },
+    },
+  ),
+}));
+const pool = (): Pool => {
+  if (!holder.pool) throw new Error("integration pool not initialised");
+  return holder.pool;
+};
 
 import { withTenantContext } from "@/lib/tenant-context";
 import { REFERENCE_ROWS_PER_PAGE, retrieveReferencedPageChunks } from "@/capabilities/referenced-pages";
@@ -83,43 +103,45 @@ const chunk = (docId: string, sourceUrl: string, content: string, page = 1): Man
   rank: 1, verified: false, chunkIndex: null,
 });
 
-let rlsWasOn = false;
+const fixture = createIsolatedFixture({
+  env: process.env,
+  poolFactory: (config) => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { Pool: PgPool } = require("pg");
+    return new PgPool(config) as PoolLike;
+  },
+  seed: async (p) => {
+    for (const r2 of ROWS) {
+      await p.query(
+        `INSERT INTO knowledge_entries (tenant_id, doc_id, content, source_type, source_url, source_page, page_start, ingest_route, metadata, is_private, verified)
+         VALUES ($1::uuid, $2::uuid, $3, 'node_attachment', $4, $5, $5, 'v2',
+                 jsonb_build_object('chunk_index', $6::int, 'page_label', $7::text, 'node_id', $11::text) || $8::jsonb, $9, $10)`,
+        [r2.tenant ?? T, r2.doc, r2.content, r2.url, r2.page, r2.idx ?? 0, r2.label, JSON.stringify(r2.extra ?? {}), r2.priv ?? true, r2.verified ?? false, NODE_G],
+      );
+    }
+    // a NULL page_label must be stored as absent, not the JSON string "null"
+    await p.query("UPDATE knowledge_entries SET metadata = metadata - 'page_label' WHERE metadata->>'page_label' IS NULL");
+  },
+});
+
 beforeAll(async () => {
-  if (!process.env.TEST_DATABASE_URL) throw new Error("TEST_DATABASE_URL is required — see the header recipe.");
-  if (process.env.MIRA_TEST_DB_CONFIRM !== "DISPOSABLE") throw new Error("Refusing to run against a non-disposable database.");
+  // Throws before any pool, connection or SQL when the target is not a confirmed disposable one.
+  const { pool: p } = await fixture.setup();
+  holder.pool = p as unknown as Pool;
   process.env.MIRA_ENFORCE_APPROVED_RETRIEVAL = "true";
-  const r = await testPool.query("SELECT relrowsecurity FROM pg_class WHERE relname = 'knowledge_entries'");
-  rlsWasOn = r.rows[0].relrowsecurity === true;
-  // Same additive stub the sibling integration suites use: the GENERATED tsvector retrieveNodeChunks matches on.
-  await testPool.query(
-    `ALTER TABLE knowledge_entries ADD COLUMN IF NOT EXISTS content_tsv tsvector GENERATED ALWAYS AS (to_tsvector('english', content)) STORED`,
-  );
-  await testPool.query("ALTER TABLE knowledge_entries ENABLE ROW LEVEL SECURITY");
-  await testPool.query("DELETE FROM knowledge_entries WHERE tenant_id = ANY($1::uuid[])", [[T, OTHER]]);
-  for (const r2 of ROWS) {
-    await testPool.query(
-      `INSERT INTO knowledge_entries (tenant_id, doc_id, content, source_type, source_url, source_page, page_start, ingest_route, metadata, is_private, verified)
-       VALUES ($1::uuid, $2::uuid, $3, 'node_attachment', $4, $5, $5, 'v2',
-               jsonb_build_object('chunk_index', $6::int, 'page_label', $7::text, 'node_id', $11::text) || $8::jsonb, $9, $10)`,
-      [r2.tenant ?? T, r2.doc, r2.content, r2.url, r2.page, r2.idx ?? 0, r2.label, JSON.stringify(r2.extra ?? {}), r2.priv ?? true, r2.verified ?? false, NODE_G],
-    );
-  }
-  // a NULL page_label must be stored as absent, not the JSON string "null"
-  await testPool.query("UPDATE knowledge_entries SET metadata = metadata - 'page_label' WHERE tenant_id = ANY($1::uuid[]) AND metadata->>'page_label' IS NULL", [[T, OTHER]]);
 });
 
 afterAll(async () => {
   delete process.env.MIRA_ENFORCE_APPROVED_RETRIEVAL;
-  await testPool.query("DELETE FROM knowledge_entries WHERE tenant_id = ANY($1::uuid[])", [[T, OTHER]]);
-  if (!rlsWasOn) await testPool.query("ALTER TABLE knowledge_entries DISABLE ROW LEVEL SECURITY");
-  await testPool.end();
+  holder.pool = null;
+  await fixture.teardown(); // no-op after a rejected setup; otherwise drops ONLY the owned schema
 });
 
 type Lane = "rls" | "raw";
 async function run(lane: Lane, tenant: string, retrieved: ManualChunk[], docIds: string[]) {
   const opts = { docIds, approvedSourceDocIds: docIds };
   if (lane === "rls") return withTenantContext(tenant, (c) => retrieveReferencedPageChunks(c, tenant, retrieved, opts));
-  const c = await testPool.connect();
+  const c = await pool().connect();
   try {
     return await retrieveReferencedPageChunks(c, tenant, retrieved, opts);
   } finally {
@@ -179,7 +201,7 @@ describe.each<Lane>(["rls", "raw"])("referenced-page read on the %s lane (gate O
 describe.each<Lane>(["rls", "raw"])("model admission on the referenced page, driven by REAL retrieval (%s lane)", (lane) => {
   async function confirmedRecordFlow(catalogNumber: string | null) {
     const diagnostics: RetrievalDiagnostics = {};
-    const c = await testPool.connect();
+    const c = await pool().connect();
     let retrieved: ManualChunk[];
     try {
       retrieved = await retrieveNodeChunks(c as never, T, "user manual overview", {
@@ -196,7 +218,7 @@ describe.each<Lane>(["rls", "raw"])("model admission on the referenced page, dri
   const ask = async (retrieved: ManualChunk[], recordNumber: string | null | undefined) => {
     const opts = { docIds: [DOC_G], approvedSourceDocIds: [DOC_G], recordNumber };
     if (lane === "rls") return withTenantContext(T, (cl) => retrieveReferencedPageChunks(cl, T, retrieved, opts));
-    const cl = await testPool.connect();
+    const cl = await pool().connect();
     try {
       return await retrieveReferencedPageChunks(cl, T, retrieved, opts);
     } finally {
@@ -237,7 +259,7 @@ describe.each<Lane>(["rls", "raw"])("model admission on the referenced page, dri
 describe("deadline and SET LOCAL on a real connection", () => {
   const ref = chunk(DOC_A, URL_A, "see page 45.", 44);
   it("SET LOCAL timeouts end with the transaction: nothing leaks to the next use of the connection", async () => {
-    const c = await testPool.connect();
+    const c = await pool().connect();
     try {
       const before = (await c.query("SHOW statement_timeout")).rows[0].statement_timeout;
       await c.query("BEGIN");
@@ -252,7 +274,7 @@ describe("deadline and SET LOCAL on a real connection", () => {
 
   it("each query's timeout is what is LEFT of the deadline, and Postgres enforces it", async () => {
     let clock = 0;
-    const c = await testPool.connect();
+    const c = await pool().connect();
     const issued: string[] = [];
     try {
       await c.query("BEGIN");
@@ -281,7 +303,7 @@ describe.each<Lane>(["rls", "raw"])("cited-page read keeps two documents on one 
   const read = async (wanted: Array<{ docId: string; sourceUrl: string; page: number }>) => {
     const opts = { approvedSourceDocIds: [DOC_A, DOC_U] };
     if (lane === "rls") return withTenantContext(T, (c) => retrieveCitedPageChunks(c, T, wanted, opts));
-    const c = await testPool.connect();
+    const c = await pool().connect();
     try {
       return await retrieveCitedPageChunks(c, T, wanted, opts);
     } finally {

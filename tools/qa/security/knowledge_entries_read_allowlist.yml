@@ -1631,24 +1631,3 @@ approved:
             LIMIT $7`,
           p2,
         );
-  "mira-hub/src/capabilities/__tests__/referenced-pages.integration.test.ts:98":
-    approved_classification: TENANT-ONLY
-    query_sha256: "16411e9172f1f9c8947adbc91150b8d28a4e46b31c2b566fd7ac93fe9b8274c6"
-    reason: "NEW (#6030 F2/F3 test fixture): disposable-database cleanup, not a product read. A test-only DELETE that removes the synthetic rows this file itself seeded for its two fabricated tenant UUIDs (a6000000-0000-4000-8000-000000000001 and a6000000-0000-4000-8000-0000000000ff). The file refuses to run unless MIRA_TEST_DB_CONFIRM=DISPOSABLE and TEST_DATABASE_URL are set (beforeAll), so it cannot touch a production or shared corpus; the tenant predicate is the explicit scope of the cleanup."
-    query_snippet: |
-      await testPool.query("DELETE FROM knowledge_entries WHERE tenant_id = ANY($1::uuid[])", [[T, OTHER]]);
-        for (const r2 of ROWS) {
-          await testPool.query(
-            `INSERT INTO knowledge_entries (tenant_id, doc_id, content, source_type, source_url, source_page, page_start, ingest_route, metadata, is_private, verified)
-             VALUES ($1::uuid, $2::uuid, $3, 'node_attachment', $4, $5, $5, 'v2',
-                     jsonb_build_object('chunk_index', $6::int, 'page_label', $7::text, 'node_id', $11::text) || $8::jsonb, $9, $10)`,
-            [r2.tenant ?? T, r2.doc, r2.content, r2.url, r2.page, r2.idx ?? 0, r2.label, JSON.stringify(r2.extra ?? {}), r2.priv ?? true, r2.verified ?? false, NODE_G],
-          );
-  "mira-hub/src/capabilities/__tests__/referenced-pages.integration.test.ts:113":
-    approved_classification: TENANT-ONLY
-    query_sha256: "4824497a7a1cf5b8adfde4fbea0e708b4aa60a565fff1ea45c89858e7dfcc6d6"
-    reason: "NEW (#6030 F2/F3 test fixture): disposable-database cleanup, not a product read. A test-only DELETE that removes the synthetic rows this file itself seeded for its two fabricated tenant UUIDs (a6000000-0000-4000-8000-000000000001 and a6000000-0000-4000-8000-0000000000ff). The file refuses to run unless MIRA_TEST_DB_CONFIRM=DISPOSABLE and TEST_DATABASE_URL are set (beforeAll), so it cannot touch a production or shared corpus; the tenant predicate is the explicit scope of the cleanup."
-    query_snippet: |
-      delete process.env.MIRA_ENFORCE_APPROVED_RETRIEVAL;
-        await testPool.query("DELETE FROM knowledge_entries WHERE tenant_id = ANY($1::uuid[])", [[T, OTHER]]);
-        if (!rlsWasOn) await testPool.query("ALTER TABLE knowledge_entries DISABLE ROW LEVEL SECURITY");
