@@ -286,9 +286,26 @@ def common_checks(row: Row, d: dict[str, Any], w: dict[str, Any]) -> None:
             bool(g.get("served_provider")) and bool(g.get("served_model")),
             f"{g.get('served_provider')}/{g.get('served_model')}",
         )
+        # A total is null, never 0, when a billed attempt's usage is unknown (#6022/#6023). Accept
+        # null ONLY when the packet itself shows such an attempt: a REDRAFT attempt with outcome
+        # "exception" (billed, usage unseen or malformed) or a generating attempt marked
+        # usage_unknown. Draft 1's own loop also writes "exception" for a thrown provider, which
+        # never enters a no-redraft turn's totals, so it excuses nothing (R2-C1). Any other
+        # value must still be an integer.
+        usage_unknown = any(
+            isinstance(a, dict)
+            and (
+                (a.get("outcome") == "exception" and a.get("redraft") is True)
+                or a.get("usage_unknown") is True
+            )
+            for a in (g.get("attempts") or [])
+        )
+        tokens = (g.get("input_tokens"), g.get("output_tokens"))
         row.check(
             "token usage recorded",
-            isinstance(g.get("input_tokens"), int) and isinstance(g.get("output_tokens"), int),
+            "input_tokens" in g
+            and "output_tokens" in g
+            and all(isinstance(t, int) or (t is None and usage_unknown) for t in tokens),
             f"{g.get('input_tokens')}/{g.get('output_tokens')}",
         )
     serialized = json.dumps(d).lower()

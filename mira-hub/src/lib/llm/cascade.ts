@@ -116,6 +116,26 @@ export interface CascadeResult {
 
 type CallOutcome = Pick<CascadeResult, "content" | "finishReason" | "usage">;
 
+/**
+ * Statuses a gateway sends when its relay to the provider timed out or broke: request timeout,
+ * bad gateway, gateway timeout, and the Cloudflare origin timeout. None establishes that the
+ * provider did not run the request.
+ */
+const GATEWAY_AMBIGUOUS: ReadonlySet<number> = new Set([408, 502, 504, 524]);
+
+/** One provider request the cascade actually sent (#6022), reported to `CascadeOpts.onAttempt`. */
+export interface CascadeAttempt {
+  provider: string;
+  model: string;
+  /**
+   * False only when the provider rejected the request before generating (a non-2xx other than
+   * a gateway timeout): nothing billed. True means billed or possibly billed.
+   */
+  billed: boolean;
+  /** The provider's counts; null when unseen (timeout, gateway timeout, unreadable body, no usage block). */
+  usage: { prompt_tokens?: number; completion_tokens?: number } | null;
+}
+
 export interface CascadeOpts {
   maxTokens?: number;
   temperature?: number;
@@ -130,6 +150,12 @@ export interface CascadeOpts {
    * still booked at its worst case, exactly like a timeout.
    */
   signal?: AbortSignal;
+  /**
+   * Called once per provider request actually sent, whether or not it produced
+   * text (#6022): a billed attempt that returned nothing still cost tokens. A
+   * keyless or budget-refused provider sends nothing and is not reported.
+   */
+  onAttempt?: (attempt: CascadeAttempt) => void;
 }
 
 async function callOne(
@@ -174,6 +200,8 @@ async function callOne(
     reservation = verdict.reservation;
   }
 
+  const report = (billed: boolean, usage: CascadeAttempt["usage"]) =>
+    opts.onAttempt?.({ provider: provider.name, model: provider.model, billed, usage });
   let res: Response;
   try {
     res = await fetch(provider.url, {
@@ -192,11 +220,16 @@ async function callOne(
     // accepted may still have been billed. Book the worst case; never free
     // budget on an outcome we cannot see.
     reservation?.settle(inputBound, outputCap);
+    report(true, null);
     return null;
   }
   if (!res.ok) {
-    // The provider answered with a rejection: nothing billable ran.
+    // The provider answered with a rejection: nothing billable ran. The exception is a gateway
+    // reporting that its relay to the provider timed out or broke (GATEWAY_AMBIGUOUS): the
+    // request may have been forwarded and run, so the caller is told it may have been billed
+    // (#6081 F3). The shared run budget frees its hold on every non-2xx, as it always has.
     reservation?.release();
+    report(GATEWAY_AMBIGUOUS.has(res.status), null);
     return null;
   }
   let parsed: {
@@ -208,6 +241,7 @@ async function callOne(
   } catch {
     // A 200 whose body could not be read was still served and billed: book the worst case.
     reservation?.settle(inputBound, outputCap);
+    report(true, null);
     return null;
   }
   if (!parsed || typeof parsed !== "object") {
@@ -216,10 +250,12 @@ async function callOne(
     // same class as the vision paths; reading `.usage` off null used to throw
     // before the hold was decided, leaking it for the life of the process).
     reservation?.settle(inputBound, outputCap);
+    report(true, null);
     return null;
   }
   // Served: book the ACTUAL usage; a missing or malformed count books the bound / cap.
   reservation?.settle(...billableTokens(parsed.usage, inputBound, outputCap));
+  report(true, parsed.usage ?? null);
   const content = parsed.choices?.[0]?.message?.content ?? null;
   return content ? { content, finishReason: parsed.choices?.[0]?.finish_reason ?? null, usage: parsed.usage ?? null } : null;
 }
