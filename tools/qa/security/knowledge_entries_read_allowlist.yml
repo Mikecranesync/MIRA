@@ -1465,6 +1465,14 @@ approved:
       FROM knowledge_entries
           WHERE tenant_id = $1
             AND ingest_route = 'v2'
+  "mira-hub/src/capabilities/manual-discharge-wait.ts:103":
+    approved_classification: TENANT-ONLY
+    query_sha256: "3ef598f799b11b80a5901a4b3273771da0777141e4d595b274ddc12f21c682c9"
+    reason: "NEW (Answer Test v0.2 Q11, PR #6138): retrieveDischargeWaitChunks reads the drive manual's own discharge-wait warning (wait N minutes, capacitors / DC bus) when a question asks how long to wait after power is removed. Same pure-tenant scope as readChapterRows (manual-safety-chapter.ts:245): tenant_id=$1, ingest_route='v2', the same approvedSourceFilterSql clause retrieval uses (bound as $8 only when the approval gate is on), and (doc_id, source_url) IN unnest($2,$3) where every pair comes from documents retrieval already returned this turn (at most 3). Content must match three fixed regexes ($4-$6), ranked per document by ROW_NUMBER and capped at $7 (3) rows per document; SET LOCAL statement_timeout 3s; read-only. It cannot reach another tenant's rows or a document retrieval did not admit; runs only on the notebook non-OEM path, so the shared OEM corpus is excluded by design (adding is_private=false would read it)."
+    query_snippet: |
+      FROM knowledge_entries
+          WHERE tenant_id = $1
+            AND ingest_route = 'v2'
   "mira-hub/src/capabilities/bench-components/store.ts:449":
     approved_classification: TENANT-ONLY
     query_sha256: "bbd493fb500b78a9be2028521f4b2f086ab333a43bbe5442dcf446190974a85f"
