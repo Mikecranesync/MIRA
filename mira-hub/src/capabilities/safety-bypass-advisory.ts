@@ -257,12 +257,6 @@ const terminalsIn = (text: string): string[] => allMatches(TERMINAL_MENTION, tex
 /** A safeguard named as faulty in the same sentence ("the guard switch is bad, can I jumper s1-s2"). */
 const FAULTY =
   /\b(?:bad|faulty|failed|failing|broken|dead|damaged|stuck|missing|tripp\w*|trips|fault\w*|not\s+working|keeps?\s+\w+ing|went\s+out|is\s+out)\b/;
-/** #6042: "S5 is not part of the guard circuit" denies the link; it does not wire S5 to the guard. */
-const DENIED_LINK =
-  /\b(?:not|isn't|aren't|no\s+longer|never)\s+(?:\w+\s+)?(?:part\s+of|in|on|to|into|wired\s+(?:to|into|in)|connected\s+to|tied\s+to|for|used\s+(?:by|for|in))\b|\b(?:is|are)\s+not\s*$|\b(?:isn't|aren't)\s*$/;
-/** #6088 r1 F3: a denial drops only the terminals in its own part ("wired to S2 and not to S5" keeps S2). */
-const linkedTerminals = (clause: string): string[] =>
-  clause.split(/\s+(?:and|but)\s+|\s*;\s*/).filter((part) => !DENIED_LINK.test(part)).flatMap(terminalsIn);
 /** #6088 r1 F5: the terminals a jumper joins: the one the rule matched, then "to/and/-/ S2 ..." straight after it. */
 const ENDPOINT_TAIL = new RegExp(
   `^(?:\\s*(?:[-/,&+]|\\bto\\b|\\band\\b|\\bwith\\b|\\bacross\\b)?\\s*(?:(?:terminals?|pins?)\\s+)?\\b${TERMINAL})*`,
@@ -319,7 +313,7 @@ const RESTORED_PASSIVE = new RegExp(
   "gi",
 );
 const RESTORED_ACTIVE = new RegExp(
-  `\\b(?:after|once|when)\\s+(?:\\S+\\s+){1,3}?(?:restor(?:e|es|ed)|re-?enabl(?:e|es|ed)|reinstat(?:e|es|ed)|resets?|reconnect(?:s|ed)?)\\s+${ART}(?<dev>${DEVICE}|brake\\s+monitoring)\\b`,
+  `\\b(?:after|once|when)\\s+(?:\\S+\\s+){0,3}?(?:restor(?:e|es|ed|ing)|re-?enabl(?:e|es|ed|ing)|reinstat(?:e|es|ed|ing)|reset(?:s|ting)?|reconnect(?:s|ed|ing)?)\\s+${ART}(?<dev>${DEVICE}|brake\\s+monitoring)\\b`,
   "gi",
 );
 const SAFETY_ON_WITH = new RegExp(
@@ -335,27 +329,23 @@ function deviceKey(name: string): string {
   if (/^(?:estop|emergencystop|emg)s?$/.test(k)) return "estop";
   return k.replace(/s$/, "");
 }
-/** Does this text affirmatively restore one of the safeguards that are off (keys from `offKeys`)? */
-function restoresOffSafeguard(text: string, offKeys: Set<string>): boolean {
-  return [RESTORED_PASSIVE, RESTORED_ACTIVE, SAFETY_ON_WITH].some((re) =>
-    allMatches(re, text).some((m) => {
-      if (NEGATED_RESTORE.test(m[0])) return false;
-      const dev = (m.groups?.dev ?? "").toLowerCase();
-      if (dev === "it" || dev === "they") return true;
-      const key = deviceKey(dev);
-      return key === "safety" || offKeys.has(key) || offKeys.has("safety");
-    }),
-  );
-}
-/** #6041: the restore-first condition sits in the release clause or the clause just before it ("Once STO is restored, can I ..."). */
-function releaseInSafeOrder(brake: string, sentences: string[], offKeys: Set<string>): boolean {
-  if (restoresOffSafeguard(brake, offKeys)) return true;
-  for (const sentence of sentences) {
-    const cs = clausesOf(sentence);
-    const i = cs.indexOf(brake);
-    if (i > 0 && restoresOffSafeguard(cs[i - 1], offKeys)) return true;
+/**
+ * #6088 r2: does the release clause itself affirmatively restore EVERY safeguard that is off? "It", "they" or
+ * "the safety" stand for the off safeguard only when exactly one is off. A condition in another clause never
+ * counts: carrying it across clauses let a separate, unconditional release inherit it (#6088 r2 F2).
+ */
+function releaseInSafeOrder(brake: string, offKeys: Set<string>): boolean {
+  const restored = new Set<string>();
+  for (const re of [RESTORED_PASSIVE, RESTORED_ACTIVE, SAFETY_ON_WITH]) {
+    for (const m of allMatches(re, brake)) {
+      if (NEGATED_RESTORE.test(m[0])) continue;
+      const key = deviceKey(m.groups?.dev ?? "");
+      if (key === "it" || key === "they" || key === "safety") {
+        if (offKeys.size === 1) offKeys.forEach((k) => restored.add(k));
+      } else restored.add(key);
+    }
   }
-  return false;
+  return offKeys.size > 0 && [...offKeys].every((k) => restored.has(k));
 }
 function safetyOffNow(clause: string): boolean {
   return allMatches(SAFETY_OFF, clause).some((m) => {
@@ -604,15 +594,11 @@ const INPUT_STATE = new RegExp(
   `\\b${SAFETY_INPUT}\\s+((?:(?:is|are|still|now|currently|been|has|have|got)\\s+){0,3})(?:jumpered|jumped|shorted|bridged|tied)(?:\\s+out)?\\b`,
   "gi",
 );
-/** #6045: "Is the STO input jumpered?" asks; it reports nothing. So does "can you tell me whether ..." (#6088 r1 F6). */
-const ASKS_BEFORE = /^\s*(?:is|are|was|were|has|have|does|did)\s+(?:\w+\s+){0,2}$/;
-const INDIRECT_ASK_BEFORE = /\b(?:whether|wondering\s+if|(?:know|tell\s+me|check|see|asking|confirm)\s+if)\s+(?:\S+\s+){0,2}$/i;
 /** #6045: the one reader of "the STO input is jumpered" reports, shared by the advisory and the escalation. */
 function inputStateReport(clause: string): string | null {
   for (const m of allMatches(INPUT_STATE, clause)) {
     const before = clause.slice(0, m.index ?? 0);
-    if (/\b(?:not|never)\b/.test(m[1] ?? "") || NOT_CURRENT_BEFORE.test(before) || NOT_NOW_BEFORE.test(before) || ASKS_BEFORE.test(before)) continue;
-    if (INDIRECT_ASK_BEFORE.test(before) || READOUT_BEFORE.test(before)) continue;
+    if (/\b(?:not|never)\b/.test(m[1] ?? "") || NOT_CURRENT_BEFORE.test(before)) continue;
     return m[0];
   }
   return null;
@@ -666,7 +652,7 @@ function classify(message: string): { refuse: string | null; warn: string | null
   // names a safeguard as faulty ("the guard switch is bad, can I jumper s1-s2"). A safeguard merely mentioned
   // nearby ("the e-stop passed its test") ties nothing.
   const sentences = msg.split(/(?<=[.?!])\s+/).filter(Boolean);
-  const wired = new Set(sentences.filter((s) => ANY_DEVICE.test(s)).flatMap((s) => clausesOf(s).filter((c) => ANY_DEVICE.test(c)).flatMap(linkedTerminals)));
+  const wired = new Set(sentences.filter((s) => ANY_DEVICE.test(s)).flatMap((s) => clausesOf(s).filter((c) => ANY_DEVICE.test(c)).flatMap(terminalsIn)));
   const judged: { clause: string; link: TerminalLink }[] = [];
   let warn: string | null = null;
   for (const sentence of sentences) {
@@ -684,7 +670,7 @@ function classify(message: string): { refuse: string | null; warn: string | null
   const offClauses = clauses.filter(safetyOffNow);
   const offKeys = new Set(offClauses.flatMap((c) => allMatches(DEVICE_MENTION, c).map((m) => deviceKey(m[0]))));
   for (const brake of clauses.filter(asksBrakeRelease)) {
-    if (safetyOffNow(brake) || (offClauses.length > 0 && !releaseInSafeOrder(brake, sentences, offKeys))) return { refuse: brake, warn: null };
+    if (safetyOffNow(brake) || (offClauses.length > 0 && !releaseInSafeOrder(brake, offKeys))) return { refuse: brake, warn: null };
   }
   // A safeguard reported unsafe NOW, followed by a clause that asks to carry on. Another device being
   // restored in a different clause does not reset this one (each mention is judged in its own clause).
