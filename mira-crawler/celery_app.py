@@ -24,10 +24,12 @@ logger = logging.getLogger("mira_crawler.celery_app")
 broker_url = os.getenv("CELERY_BROKER_URL", "redis://localhost:6379/0")
 result_backend = os.getenv("CELERY_RESULT_BACKEND", "redis://localhost:6379/1")
 
+
 def _detect_package_prefix() -> str:
     """Detect whether we're running as mira_crawler.* (Docker) or local dev."""
     try:
         import mira_crawler.celeryconfig  # noqa: F401
+
         return "mira_crawler"
     except ImportError:
         return ""
@@ -75,6 +77,7 @@ _TASK_MODULES = (
     "sitemaps",
     "social",
     "tag_diff_historizer",
+    "flaky_input_detector",
     "synthetic_dogfood",
     "youtube",
     "youtube_intent",
