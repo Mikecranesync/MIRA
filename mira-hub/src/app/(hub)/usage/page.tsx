@@ -71,6 +71,8 @@ export default function UsagePage() {
   const byTechData = data?.byTech ?? [];
   const maxTechActions = byTechData[0]?.count ?? 1;
 
+  const currentBillingMonth = new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" });
+
   return (
     <div className="min-h-full" style={{ backgroundColor: "var(--background)" }}>
       {/* Header */}
@@ -78,7 +80,7 @@ export default function UsagePage() {
         <div className="px-4 md:px-6 py-3">
           <h1 className="text-base font-semibold" style={{ color: "var(--foreground)" }}>{t("title")}</h1>
           <p className="text-xs mt-0.5" style={{ color: "var(--foreground-muted)" }}>
-            {t("billingPeriod")} · April 2026
+            {t("billingPeriod")} · {currentBillingMonth}
           </p>
         </div>
       </div>
