@@ -2308,8 +2308,9 @@ describe("#6048 — a body cancel after the commit still persists the packet and
     const request = reqWith(PLAIN_TURN, { signal: ac.signal });
     const res = await POST(request, params);
     expect(await drain(res.body!.getReader())).toBe("closed");
-    // Precondition: the settle has not reached the ledger yet, so the request is already
-    // aborted when the settle runs.
+    // Preconditions: the settle has reached neither the decision line nor the ledger yet,
+    // so the request is already aborted when the settle runs.
+    expect(evaluateMock).not.toHaveBeenCalled();
     expect(persistMock.persistTurnUsage).not.toHaveBeenCalled();
     ac.abort();
     const r = await settled();

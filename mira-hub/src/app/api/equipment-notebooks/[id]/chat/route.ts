@@ -1668,9 +1668,9 @@ async function handleChatTurn(
     // Two things withdraw that yes even after both were read (Codex round 4, F9 and F11):
     // a request abort seen by the time the tracker answers (and read again at the call
     // below, #6123), and a sheet receipt that wrapped the body between the two responses
-    // (it re-encodes it and can corrupt the answer frame). No
-    // tracker, a cancel, an abort, an error, or no answer within HANDOFF_WAIT_MS all mean
-    // NO CALL: unknown is never a yes. A confirmed handoff is the SERVER'S view only: the
+    // (it re-encodes it and can corrupt the answer frame). No tracker, a cancel, an abort,
+    // an error, or no answer within HANDOFF_WAIT_MS all mean NO CALL: unknown is never a
+    // yes. A confirmed handoff is the SERVER'S view only: the
     // runtime took every byte and its end, and reported no cancellation. A phone that
     // dropped off the network without closing the connection looks the same from here,
     // and no server-side check can tell the two apart. `delivered` stays a condition of its own, checked
