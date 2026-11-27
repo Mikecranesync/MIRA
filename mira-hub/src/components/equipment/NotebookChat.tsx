@@ -580,60 +580,72 @@ export function NotebookChat({
           visible above the tab bar, and above the mobile keyboard because dvh
           shrinks when the keyboard opens. Safe-area padding for the home bar. */}
       <div
-        className="flex shrink-0 items-end gap-2 border-t p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]"
+        className="flex shrink-0 flex-col border-t"
         style={{
           borderColor: "var(--border)",
           background: "var(--surface-0)",
         }}
       >
-        <textarea
-          ref={inputRef}
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (isEnterToSend(e)) {
-              e.preventDefault();
-              void send();
-            }
-          }}
-          placeholder="Ask this machine anything…"
-          rows={1}
-          enterKeyHint="send"
-          className="flex-1 resize-none rounded-lg px-3 py-2 text-sm leading-relaxed outline-none"
-          style={{
-            border: "1px solid var(--border)",
-            background: "var(--surface-0)",
-            color: "var(--foreground)",
-            maxHeight: COMPOSER_MAX_PX,
-            // Auto-grow natively where supported (Chromium 123+); the effect
-            // above is the fallback for the rest.
-            fieldSizing: "content",
-          } as CSSProperties}
-          aria-label="Ask this machine anything"
-        />
-        {busy ? (
-          <button
-            type="button"
-            onClick={stop}
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg"
-            style={{ border: "1px solid var(--border)", background: "var(--surface-1)", color: "var(--foreground)" }}
-            aria-label="Stop generating"
-            data-testid="stop-button"
+        {input.length > 3500 && (
+          <div
+            className="px-3 pt-2 text-xs"
+            style={{
+              color: input.length > 4000 ? "var(--red)" : "var(--foreground-muted)",
+            }}
           >
-            <Square size={14} aria-hidden />
-          </button>
-        ) : (
-          <button
-            type="button"
-            onClick={() => void send()}
-            disabled={!input.trim()}
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg"
-            style={{ background: "var(--brand-blue)", color: "white", opacity: !input.trim() ? 0.5 : 1 }}
-            aria-label="Send"
-          >
-            <Send size={16} aria-hidden />
-          </button>
+            {input.length} / 4,000 characters
+          </div>
         )}
+        <div className="flex items-end gap-2 p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+          <textarea
+            ref={inputRef}
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (isEnterToSend(e)) {
+                e.preventDefault();
+                void send();
+              }
+            }}
+            placeholder="Ask this machine anything…"
+            rows={1}
+            enterKeyHint="send"
+            className="flex-1 resize-none rounded-lg px-3 py-2 text-sm leading-relaxed outline-none"
+            style={{
+              border: "1px solid var(--border)",
+              background: "var(--surface-0)",
+              color: "var(--foreground)",
+              maxHeight: COMPOSER_MAX_PX,
+              // Auto-grow natively where supported (Chromium 123+); the effect
+              // above is the fallback for the rest.
+              fieldSizing: "content",
+            } as CSSProperties}
+            aria-label="Ask this machine anything"
+          />
+          {busy ? (
+            <button
+              type="button"
+              onClick={stop}
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg"
+              style={{ border: "1px solid var(--border)", background: "var(--surface-1)", color: "var(--foreground)" }}
+              aria-label="Stop generating"
+              data-testid="stop-button"
+            >
+              <Square size={14} aria-hidden />
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => void send()}
+              disabled={!input.trim()}
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg"
+              style={{ background: "var(--brand-blue)", color: "white", opacity: !input.trim() ? 0.5 : 1 }}
+              aria-label="Send"
+            >
+              <Send size={16} aria-hidden />
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
