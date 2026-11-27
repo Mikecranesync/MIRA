@@ -83,7 +83,7 @@ jobs:
           distribution: temurin
           java-version: "21.0.12+101.0.LTS"
       - name: Set up pinned Android tools
-        uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3.2.2
+        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
         with:
           cmdline-tools-version: "12266719"
           packages: "platforms;android-36 build-tools;35.0.0"
@@ -195,7 +195,7 @@ jobs:
           distribution: temurin
           java-version: "21.0.12+101.0.LTS"
       - name: Set up pinned Android signing tools
-        uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3.2.2
+        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
         with:
           cmdline-tools-version: "12266719"
           packages: "build-tools;35.0.0"
