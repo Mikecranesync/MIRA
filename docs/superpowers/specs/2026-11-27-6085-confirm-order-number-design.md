@@ -1,6 +1,6 @@
 # #6085: the technician confirms the order number on the identity card
 
-Status: design approved by Mike 2026-11-27 (asked in session). This spec awaits his review before the implementation plan.
+Status: design approved by Mike 2026-11-27 (asked in session). Written spec approved 2026-11-27 with **Option A** (§4.3, the one-line parser edit).
 Branch: `bravo/6085-confirm-number`. Base: `8571e1215`. Claim: #6085, comment 7206432024.
 
 ## 1. Problem
@@ -42,14 +42,18 @@ Non-goals:
 
 ### 4.1 The offered number (server)
 
-A new exported helper in `mira-hub/src/capabilities/notebook-manual-acquisition.ts`, `offeredOwnNumber(question, identity)`, sits beside `threadStatusScope` and shares its internals (`modelsNamedIn`, `familyCovers`, `norm`, the maker check). It returns the one number to offer, or null:
+A new exported helper in `mira-hub/src/capabilities/notebook-manual-acquisition.ts`, `offeredOwnNumber(question, identity)`, sits beside `threadStatusScope`. It asks the scope itself which number would settle the question, so the card and the scope cannot disagree. It returns the one number to offer, or null:
 
-1. **Build the identifiers.** Build `own` from the proposed model exactly as `threadStatusScope` does.
-2. **Check the maker.** If the question names another maker, return null. The scope would class the thread as other whatever number is confirmed.
-3. **Find the other numbers.** These are the ones `modelsNamedIn(question, own)` names that are not covered by `own` or a family rule.
-4. **Require exactly one.** With zero or several, return null.
-5. **Verify.** `threadStatusScope([question], machine with that number confirmed)` must return `own`. Otherwise return null; that guards the shared-prefix rule, which can name more codes once the identifier set grows.
-6. **Find the display form.** It is the one whitespace-delimited token of the question, trailing punctuation stripped, whose `norm` equals that number. If there is no such token, or there are two different ones, return null. The card shows the technician's own spelling, never a normalised string.
+1. **The question must be withheld today.** With the proposed maker and model and no number, `threadStatusScope([question], …)` must return `other`. Otherwise there is nothing to fix, so return null.
+2. **Candidates are the technician's own tokens.** These are the question's whitespace-delimited tokens, with surrounding brackets and trailing punctuation stripped, that contain a digit and are at most 64 characters. More than 20 such tokens: return null (bounded cost).
+3. **A candidate fixes the question** when `threadStatusScope([question], …)` with that one token as a confirmed number returns `own`.
+4. **Exactly one candidate must fix it.** With zero or several, return null.
+   - Another maker in the question: no candidate fixes it, because the maker check classes the thread as other whatever number is confirmed.
+   - Two numbers: confirming one leaves the other, so neither fixes it.
+   - The same number spelled two ways: both fix it, so nothing is offered.
+5. **Display form.** The offered value is the fixing token as typed, never a normalised string.
+
+Implementation note (2026-11-27, plan stage): an earlier draft read the candidates from the scope's internal identifier set (`modelsNamedIn`). One typed number can produce several identifiers there, so a draft that required exactly one identifier could offer nothing for the walk question. Asking the scope with the technician's own tokens has the same contract with one reader instead of two.
 
 The chat route calls it once, from the typed `message`, wherever it builds the `identity_proposal` frame, and adds the result to the frame as `offeredNumber` when it is not null. The frame is persisted with the turn, as today, so a history reload shows the same card.
 
@@ -127,6 +131,8 @@ COMMIT;
   2. the model the status names equals the notebook's model (the same rule `catalogNumber` already follows);
   3. the entry's normalised manufacturer and model equal the notebook's.
 - **Reading the numbers.** `readConfirmedNumbers(tenantId, notebookId)` is a separate, tenant-scoped query. Any error returns no numbers and logs one line, which is today's behaviour. The column is deliberately not added to the main notebook `SELECT`, so a Hub deployed before the prod migration cannot break notebook reads.
+- **The numbers are read only when they could matter.** The detail read asks for them only when the scope without them says `other`. Most thread reads, including every follow poll in an own thread, add no query.
+- **Module boundary.** The read, the write and the entry filter live in a new module, `mira-hub/src/capabilities/confirmed-numbers.ts`. It imports nothing from `notebook-manual-acquisition.ts`, because existing route tests replace that module with a partial mock.
 - **No card re-reading.** The card-question logic from #6094 is not carried over. The scope never reads cards.
 
 ### 4.7 Failure behaviour
@@ -203,12 +209,9 @@ All tests are written first. Each one is seen red against a named mutation, with
    - The Hub version gets a minor bump, because this is a feature.
    - The PR body carries the lifecycle guard rationale. These planned paths are guarded (checked with the guard's `path_is_guarded` from origin/main):
      - `mira-hub/package.json`;
-     - `mira-hub/src/components/equipment/notebook-chat-utils.ts`, under Option A only;
-     - `mira-hub/src/app/api/equipment-notebooks/[id]/chat/__tests__/identity-proposal.test.ts`;
-     - `mira-hub/src/app/api/equipment-notebooks/[id]/identity/confirm/__tests__/route.test.ts`;
-     - `mira-hub/src/app/api/equipment-notebooks/[id]/__tests__/manual-search-status.test.ts`.
+     - `mira-hub/src/components/equipment/notebook-chat-utils.ts` (Option A, chosen).
 
-     Every other planned path is open, including `mira-hub/src/lib/notebook-chat-types.ts`, both adapters and `mira-mobile/src/api/identity-confirm.ts`. Mobile `api/resources.ts` is guarded and is not touched.
+     The new route-level tests live in `mira-hub/src/capabilities/__tests__/`, which is open. The guarded route test folders are left unchanged and still run (re-checked at plan stage, 2026-11-27). Every other planned path is open, including `mira-hub/src/lib/notebook-chat-types.ts`, both adapters and `mira-mobile/src/api/identity-confirm.ts`. Mobile `api/resources.ts` is guarded and is not touched.
    - The guard preflight runs from origin/main three ways before any Codex round.
 3. **Codex.**
    - Rounds use `--review-only`.
