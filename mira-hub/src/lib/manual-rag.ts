@@ -238,13 +238,10 @@ function symptomTermRe(term: string): RegExp {
 
 /** Hard cap on one compacted table-heavy chunk, markers and headings included. */
 export const TABLE_COMPACT_BUDGET = MAX_CONTENT_CHARS_TABLE;
-const ROW_CLIP = 500;
-const HEADER_CLIP = 300;
-const CONTEXT_LINE_CLIP = 160;
+/** Reserved for the trailing "requested rows not shown" marker so the total stays <= TABLE_COMPACT_BUDGET. */
+const HELD_MARKER_RESERVE = 120;
 const NOTE_MARKER_RE = /^\s*(\*|†|‡|note\b|\(\d+\)|\d+\))/i;
 const SEPARATOR_ROW_RE = /^\s*\|[\s\-:]+(\|[\s\-:]+)+\|?\s*$/;
-
-const clip = (s: string, n: number): string => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 
 interface TableBlock {
   /** Index of the first data row and one past the last. */
@@ -312,21 +309,23 @@ function parseTables(lines: string[]): TableBlock[] {
 
 const OMITTED = "[… omitted …]";
 
-function renderTable(t: TableBlock, lines: string[], rows: number[], compact: boolean): string {
-  const out: string[] = [];
-  const pre = compact ? t.preamble.slice(-1) : t.preamble;
-  for (const l of pre) out.push(clip(l, CONTEXT_LINE_CLIP));
-  for (const l of t.header) out.push(clip(l, HEADER_CLIP));
+/**
+ * Heading/qualifier, column header, kept rows and footnotes are always emitted
+ * COMPLETE and verbatim; nothing is clipped. When a table does not fit, whole
+ * rows are left out (marked), never part of a row or of its qualifiers.
+ */
+function renderTable(t: TableBlock, lines: string[], rows: number[]): string {
+  const out: string[] = [...t.preamble, ...t.header];
   let prev = t.rowStart - 1;
   for (const r of rows) {
     const gap = r - prev - 1;
     if (gap > 0) out.push(`[… ${gap} row${gap === 1 ? "" : "s"} omitted …]`);
-    out.push(clip(lines[r], ROW_CLIP));
+    out.push(lines[r]);
     prev = r;
   }
   const tail = t.rowEnd - 1 - prev;
   if (tail > 0) out.push(`[… ${tail} row${tail === 1 ? "" : "s"} omitted …]`);
-  if (!compact) for (const l of t.notes) out.push(clip(l, CONTEXT_LINE_CLIP));
+  out.push(...t.notes);
   return out.join("\n");
 }
 
@@ -338,10 +337,10 @@ const hasText = (lines: string[], a: number, b: number): boolean =>
  * TABLE_COMPACT_BUDGET characters in total. Selection is per table: a kept row
  * is always rendered under its OWN heading/qualifier and column header, gaps are
  * marked explicitly, and rows from different tables are never made adjacent.
- * Complete requested rows (exact identifiers) are reserved first, then specific
+ * Complete requested rows (exact identifiers) are reserved first, each emitted whole under its full heading/header/notes (no clipping, no compact mode), then specific
  * symptom rows (most symptom words first), then one neighbouring row of each
  * exact hit as context while budget remains. Returns null when nothing matched
- * or nothing fit, so the caller falls back to the row-boundary prefix.
+ * (a held-rows note is returned when matches exist but none fit), so the caller falls back to the row-boundary prefix.
  */
 function selectTableRows(text: string, terms: QuestionTerms): string | null {
   const lines = text.split("\n");
@@ -376,39 +375,37 @@ function selectTableRows(text: string, terms: QuestionTerms): string | null {
   const queue = [...exactHits, ...symHits.slice(0, 200), ...neighbours];
 
   const selected = tables.map(() => new Set<number>());
-  const compact = new Set<number>();
   const assemble = (): string => {
     const parts: string[] = [];
     let lastEnd = 0;
     tables.forEach((tb, t) => {
       if (selected[t].size === 0) return;
       if (hasText(lines, lastEnd, tb.spanStart)) parts.push(OMITTED);
-      parts.push(renderTable(tb, lines, Array.from(selected[t]).sort((a, b) => a - b), compact.has(t)));
+      parts.push(renderTable(tb, lines, Array.from(selected[t]).sort((a, b) => a - b)));
       lastEnd = tb.spanEnd;
     });
     if (hasText(lines, lastEnd, lines.length)) parts.push(OMITTED);
     return parts.join("\n\n");
   };
 
+  // A table's heading/header/footnotes are charged the first time one of its
+  // rows is added, and are never traded away for further rows.
+  let heldExact = 0;
   let placed = 0;
   for (const c of queue) {
     if (selected[c.t].has(c.r)) continue;
     selected[c.t].add(c.r);
-    if (assemble().length <= TABLE_COMPACT_BUDGET) {
+    if (assemble().length <= TABLE_COMPACT_BUDGET - HELD_MARKER_RESERVE) {
       placed++;
       continue;
     }
-    if (c.pri === 0 && !compact.has(c.t)) {
-      compact.add(c.t);
-      if (assemble().length <= TABLE_COMPACT_BUDGET) {
-        placed++;
-        continue;
-      }
-      compact.delete(c.t);
-    }
     selected[c.t].delete(c.r);
+    if (c.pri === 0) heldExact++;
   }
-  return placed > 0 ? assemble() : null;
+  const heldNote =
+    "[… matching rows not shown: they do not fit the context budget alongside their heading, header and notes …]";
+  if (placed === 0) return heldExact > 0 ? heldNote : null;
+  return heldExact > 0 ? `${assemble()}\n\n${heldNote}` : assemble();
 }
 
 /**
@@ -3788,14 +3785,14 @@ export function buildGroundedContext(
   // F1: keep every DISTINCT passage (two passages of one page both reach the
   // model under that page's single citation number); drop only exact
   // duplicates — same document, same page (null stays distinct from a number),
-  // same whitespace/case-normalised full text.
+  // same whitespace-normalised full text (case is meaningful: 4 mV vs 4 MV).
   const seen = new Set<string>();
   const deduped = allRelevantChunks.filter((c) => {
     const contentKey = [
       c.docId ?? "",
       c.sourceUrl,
       c.sourcePage == null ? "?" : String(c.sourcePage),
-      c.content.replace(/\s+/g, " ").trim().toLowerCase(),
+      c.content.replace(/\s+/g, " ").trim(),
     ].join("\u0000");
     if (seen.has(contentKey)) return false;
     seen.add(contentKey);

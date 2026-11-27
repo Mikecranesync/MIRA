@@ -37,10 +37,16 @@ describe("F1 — distinct passages on one page are kept", () => {
     expect(chunksToSources([intro, answer])).toHaveLength(1);
   });
 
-  it("control: an exact (whitespace/case-normalised) duplicate is dropped once", () => {
-    const dup = { ...intro, content: intro.content.toUpperCase().replace(/ /g, "  ") };
+  it("control: a whitespace-only duplicate is dropped once", () => {
+    const dup = { ...intro, content: intro.content.replace(/ /g, "  ") + "\n" };
     const context = buildGroundedContext([intro, dup], "preface");
     expect(context.match(/^\[1\] /gm)).toHaveLength(1);
+  });
+
+  it("case-different passages stay distinct (4 mV vs 4 MV)", () => {
+    const context = buildGroundedContext([makeChunk("Output range: 4 mV.", 10), makeChunk("Output range: 4 MV.", 10)]);
+    expect(context).toContain("4 mV");
+    expect(context).toContain("4 MV");
   });
 
   it("same text on a different page is not a duplicate", () => {
@@ -213,14 +219,67 @@ describe("F6 — selection stays inside table boundaries", () => {
     expect(context).toContain("p.88");
   });
 
-  it("PF525-style F081 / p.162 / Type 2 row in a 100+ row table survives", () => {
-    const rows = Array.from({ length: 120 }, (_, i) => `| F${String(i + 1).padStart(3, "0")} | Fault ${i + 1} | Type ${(i % 2) + 1} |`);
-    const text = ["# Fault codes", "| Code | Name | Type |\n|---|---|---|", ...rows].join("\n");
-    expect(text).toContain("| F081 | Fault 81 | Type 1 |");
+  it("PF525-style F081 / p.162 / Type 2 row (synthetic) in a 100+ row table survives complete", () => {
+    const f081 = "| F081 | DSI Comm Loss | Type 2 | Manual reset required |";
+    const rows = Array.from({ length: 120 }, (_, i) =>
+      i === 80 ? f081 : `| F${String(i + 1).padStart(3, "0")} | Fault ${i + 1} | Type 1 | Auto reset |`,
+    );
+    const text = ["# Fault codes", "| Code | Name | Type | Reset |\n|---|---|---|---|", ...rows].join("\n");
+    expect(rows.filter((r) => r.includes("F081"))).toEqual([f081]);
     const context = buildGroundedContext([makeChunk(text, 162)], "What does F081 mean?");
-    expect(context).toContain("| F081 | Fault 81 | Type 1 |");
-    expect(context).toContain("| Code | Name | Type |");
+    expect(context).toContain(f081);
+    expect(context).toContain("| Code | Name | Type | Reset |");
     expect(context).toContain("p.162");
+    expect(body(context).length).toBeLessThanOrEqual(TABLE_COMPACT_BUDGET);
+  });
+
+  // --- data-preservation classes (no clipping, no compact mode) ---
+  const filler = Array.from({ length: 100 }, (_, i) => `| A${String(i).padStart(3, "0")} | Synthetic filler ${i} |`);
+  const header2 = "| Code | Meaning |\n|---|---|";
+
+  it("a requested row longer than 500 chars is emitted complete when it fits", () => {
+    const row = `| F205 | ${"synthetic explanation ".repeat(35)}TAIL CONDITION APPLIES |`;
+    expect(row.length).toBeGreaterThan(500);
+    const text = ["# Model B only", header2, ...filler, row].join("\n");
+    const context = buildGroundedContext([makeChunk(text, 20)], "What is F205?");
+    expect(context).toContain(row);
+    expect(body(context).length).toBeLessThanOrEqual(TABLE_COMPACT_BUDGET);
+  });
+
+  it("a heading longer than 160 chars keeps its trailing applicability text", () => {
+    const qualifier = `# ${"Synthetic applicability context ".repeat(7)}Model B only`;
+    expect(qualifier.length).toBeGreaterThan(160);
+    const text = [qualifier, header2, ...filler, "| F205 | Synthetic answer |"].join("\n");
+    expect(buildGroundedContext([makeChunk(text, 20)], "What is F205?")).toContain(qualifier);
+  });
+
+  it("with three long exact rows, qualifiers/notes stay and whole rows are held with a marker", () => {
+    const preamble = [
+      `# Model B only ${"qualifier ".repeat(13)}`,
+      `Applicable firmware 2 only ${"context ".repeat(17)}`,
+      `Digital inputs option only ${"detail ".repeat(17)}`,
+    ];
+    const notes = Array.from({ length: 3 }, (_, i) => `* note ${i} ${"important qualification ".repeat(6)}`);
+    const h = `| Code | ${"Meaning ".repeat(25)}| State |\n|---|---|---|`;
+    const rows = [205, 206, 207].map((n) => `| F${n} | ${"described ".repeat(45)}| value |`);
+    const text = [...preamble, h, ...filler, ...rows, ...notes].join("\n");
+    const context = buildGroundedContext([makeChunk(text, 20)], "F205 F206 F207");
+    for (const l of [...preamble, ...notes]) expect(context).toContain(l);
+    expect(body(context).length).toBeLessThanOrEqual(TABLE_COMPACT_BUDGET);
+    const shown = rows.filter((r) => context.includes(r));
+    expect(shown.length).toBeGreaterThanOrEqual(1);
+    expect(shown.length).toBeLessThan(3);
+    // every row line that is emitted is whole; the shortfall is announced
+    expect(context).toContain("matching rows not shown");
+    for (const r of rows) if (!context.includes(r)) expect(context).not.toContain(r.slice(0, 60));
+  });
+
+  it("an impossible giant row is held explicitly, never rendered partially", () => {
+    const giant = `| F205 | ${"x".repeat(3000)} |`;
+    const text = ["# Model B only", header2, ...filler, giant].join("\n");
+    const context = buildGroundedContext([makeChunk(text, 20)], "What is F205?");
+    expect(context).toContain("matching rows not shown");
+    expect(context).not.toContain("xxxxx");
     expect(body(context).length).toBeLessThanOrEqual(TABLE_COMPACT_BUDGET);
   });
 });
