@@ -34,6 +34,24 @@
   ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
   a { color: var(--accent); } a:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
+  .workflow { margin-top: 20px; max-width: 900px; overflow-wrap: anywhere; }
+  .workflow h2 { font-size: clamp(21px, 4vw, 32px); display: block; }
+  .workflow p { margin-block: 6px; }
+  .work-action, .workflow-check { border: 1px solid var(--line); background: var(--surface); border-radius: var(--fl-radius); padding: 12px 16px; }
+  .work-action { margin-block: 14px; }
+  .work-action h3 { margin: 0; font-size: 18px; }
+  .work-action dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 14px; }
+  .work-action dt { color: var(--muted); }
+  .work-action dd { margin: 0; }
+  .workflow-links { display: flex; flex-wrap: wrap; gap: 8px 16px; }
+  details > summary { cursor: pointer; padding-block: 10px; font-weight: 650; }
+  details > summary:focus-visible { outline: 2px solid var(--accent); }
+  .workflow-checks { margin-block: 4px 12px; }
+  .engineering { margin-top: 16px; border-top: 1px solid var(--line); }
+  .engineering summary { color: var(--muted); }
+  .asof, .kv .v, .feed li, .ready, .title { overflow-wrap: anywhere; }
+  @media (max-width: 360px) { .work-action dl { grid-template-columns: minmax(0, 1fr); } }
+
   /* Readiness row: badge + tiles */
   .ready { display: grid; grid-template-columns: minmax(220px, 1fr) 3fr; gap: 16px; margin-top: 16px; }
   .go-panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--fl-radius-card); padding: 16px; display: grid; gap: 6px; align-content: center; }
@@ -100,8 +118,15 @@
     $plan_link
     <span class="asof">Board $snapshot_time &middot; poll $poll_time &middot; webhook $webhook_time &middot; evidence $evidence_time &middot; read-only, refreshes every 60 s</span>
   </header>
+  $workflow
+  <section class="workflow" aria-labelledby="project-work-title"><h2 id="project-work-title">Project work</h2>$project_work</section>
+  <details class="engineering"><summary>Who’s doing what</summary>
+    <section id="lanes" class="workflow"><h2>Plan owners and session reports</h2><ul>$plan_owners</ul><ul class="lanes">$lanes</ul></section>
+  </details>
+  <details class="engineering"><summary>Engineering details</summary>
   $error
   $evidence_error
+  <section id="decisions" class="workflow"><h2>Decisions for Mike</h2><ul>$decisions</ul></section>
 
   <div class="ready">
     <div class="go-panel" id="readiness">
@@ -114,13 +139,7 @@
 
   <div class="grid2">
     <section id="envs"><h2>Environments</h2><p class="hint">Live /api/version per environment; ancestry checked against main.</p><ul class="envs">$envs</ul></section>
-    <section id="decisions"><h2>Decisions for Mike</h2><p class="hint">From current trusted lane reports (Decision / Blocked by lines).</p><ul>$decisions</ul></section>
   </div>
-
-  <section id="lanes" style="margin-top:20px"><h2>Agent lanes</h2>
-    <p class="hint">Newest trusted [DELIVERY-UPDATE] per lane (DELIVERY.md). Missing or stale reports never imply success.</p>
-    <ul class="lanes">$lanes</ul>
-  </section>
 
   <section id="lifecycle" style="margin-top:20px"><h2>Evidence lifecycle</h2>
     <p class="hint">Each cell lights only on independent evidence with a source. A report only ever claims (last column).</p>
@@ -137,6 +156,7 @@
     $mismatched
     <section id="feed"><h2>Activity</h2><p class="hint">Last 50 GitHub events (webhook or poll), newest first.</p><ul class="feed">$feed</ul></section>
   </main>
+  </details>
 </div>
 </body>
 </html>

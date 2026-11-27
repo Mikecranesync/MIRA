@@ -118,7 +118,7 @@ def _reviewed(item: dict, ledgers: list[dict], fus: list[dict]) -> dict:
                 return _cell(
                     True, "CONVERGED (0 BLOCKER / 0 HIGH, follow-ups filed)", newest.get("url")
                 )
-    return _cell(False, f"ISSUES_FOUND: {newest['blocker']} BLOCKER / {newest['high']} HIGH")
+    return _cell(False, f"ISSUES_FOUND: {newest['blocker']} BLOCKER / {newest['high']} HIGH", newest.get("url"))
 
 
 def _deployed(env: str, item: dict, envs: dict) -> dict:

@@ -59,9 +59,17 @@ def http_get(token: str) -> Callable[..., tuple[int, dict, object]]:
 
 
 BOARD_MAX_SECONDS = int(os.getenv("MC_BOARD_MAX_SECONDS", "600"))
+_INVALID_CAPABILITY_REPORT = "trusted report has an invalid capability-results block"
 
 
-def candidates(handler, store, now: Optional[dt.datetime] = None, max_age: int = 0) -> list[int]:
+def _invalid_capability_report(reports: list[dict]) -> bool:
+    return any(r["trusted"] and r["parsed"].get("malformed_capability") for r in reports)
+
+
+def candidates(
+    handler, store, now: Optional[dt.datetime] = None, max_age: int = 0, *,
+    reports: Optional[list[dict]] = None,
+) -> list[int]:
     """PRs to track: open In-Progress PR cards on the board + items named by trusted reports.
 
     The board is a candidate *source*: if it never loaded, its last refresh failed, or its
@@ -87,7 +95,10 @@ def candidates(handler, store, now: Optional[dt.datetime] = None, max_age: int =
             and it["status"].lower() == "in progress"
         ):
             nums.append(int(it["number"]))
-    for r in store.reports():
+    reports = store.reports() if reports is None else reports
+    if _invalid_capability_report(reports):
+        raise RuntimeError(_INVALID_CAPABILITY_REPORT)
+    for r in reports:
         if r["trusted"]:
             nums.extend(int(n) for n in r["parsed"].get("items", []))
     return list(dict.fromkeys(nums))  # never capped: evidence.fetch_prs batches the query
@@ -116,6 +127,18 @@ def refresh_evidence(handler, evidence, post, get, cands, envs, trusted, by_item
         handler.evidence = dict(old, error=f"{type(exc).__name__}: {exc}")
 
 
+def refresh_workflow_evidence(handler, evidence, post, get, pr, envs, trusted, by_item, main_sha):
+    try:
+        handler.workflow_evidence = evidence.gather(
+            post, get, REPO, [pr] if pr else [], envs, trusted, by_item, main_sha,
+        )
+    except Exception as exc:
+        log.warning("workflow evidence refresh failed: %s", type(exc).__name__)
+        handler.workflow_evidence = {
+            **handler.workflow_evidence, "error": "Workflow evidence refresh failed",
+        }
+
+
 def poll_once(handler, get, post, state: dict) -> None:
     """One poll iteration. Any failure that aborts it (HTTP status, transport, board) stamps
     the kept evidence with the error instead of refreshing it, so the model reads NO-GO until
@@ -126,6 +149,8 @@ def poll_once(handler, get, post, state: dict) -> None:
         log.warning("poll iteration failed: %s", exc)
         reason = str(exc) if isinstance(exc, RuntimeError) else f"{type(exc).__name__}: {exc}"
         handler.evidence = dict(handler.evidence or {}, error=f"poll failed: {reason}")
+        if hasattr(handler, "workflow_evidence"):
+            handler.workflow_evidence = dict(handler.workflow_evidence, error="Workflow poll failed")
 
 
 def _poll_once(handler, get, post, state: dict) -> None:
@@ -133,16 +158,44 @@ def _poll_once(handler, get, post, state: dict) -> None:
     trusted = handler.trusted_authors()
     poll.poll_events(get, REPO, store, state)
     poll.poll_reports(get, REPO, COORD_ISSUE, store, trusted)
-    cands = candidates(handler, store)
-    handler.last_poll = _now_iso()
+    reports = store.reports()
+    if _invalid_capability_report(reports):
+        # Withdraw the prior verdict before the independent workflow requests.
+        handler.evidence = dict(handler.evidence or {}, error=f"poll failed: {_INVALID_CAPABILITY_REPORT}")
+    handler.reports_at = _now_iso()
+    workflow_pr = None
+    if hasattr(handler, "workflow_mod"):
+        plan = handler.workflow_mod.refresh(
+            handler.plan_state, get, REPO, pin=os.getenv("MC_ROADMAP_REF") or None,
+        )
+        handler.plan_state = {**plan, "decision": handler.workflow_mod.verify_decision(
+            get, REPO, COORD_ISSUE, reports,
+            int(os.getenv("MC_PLAN_REPORT_ID", "6870960483")),
+            os.getenv("MC_PLAN_ACCEPTOR", "Mikecranesync"),
+        )}
+        workflow_pr = handler.workflow_mod.coordinator_pr(
+            plan, reports, int(os.getenv("MC_PLAN_REPORT_ID", "6870960483")),
+            f"https://github.com/{REPO}/issues/{COORD_ISSUE}",
+        )
+        if hasattr(handler, "project_links_mod"):
+            handler.link_state = handler.project_links_mod.refresh(handler.link_state, get, REPO)
     by_item: dict[int, list[dict]] = {}
-    for r in reversed(store.reports()):  # oldest first so the newest ends up last
+    for r in reversed(reports):  # oldest first so the newest ends up last
         if r["trusted"]:
             for n in r["parsed"].get("items", []):
                 by_item.setdefault(int(n), []).append(r["parsed"])
     status, _h, main = get(f"https://api.github.com/repos/{REPO}/commits/main", headers={})
     main_sha = main.get("sha") if status == 200 and isinstance(main, dict) else None
-    refresh_evidence(handler, evidence, post, get, cands, env_urls(), trusted, by_item, main_sha)
+    envs = env_urls()
+    if hasattr(handler, "workflow_evidence"):
+        refresh_workflow_evidence(handler, evidence, post, get, workflow_pr, envs, trusted, by_item, main_sha)
+    try:
+        cands = candidates(handler, store, reports=reports)
+    except RuntimeError as exc:
+        handler.evidence = dict(handler.evidence or {}, error=f"poll failed: {exc}")
+        return
+    handler.last_poll = _now_iso()
+    refresh_evidence(handler, evidence, post, get, cands, envs, trusted, by_item, main_sha)
 
 
 def poll_loop(handler, get, post) -> None:

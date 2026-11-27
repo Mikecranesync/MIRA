@@ -28,6 +28,139 @@ the dispatch contract: PR #4736, `docs/proposals/project4-mission-control.md`.
 - **Safe rendering.** Every value is HTML-escaped; links are limited to `https://github.com/` (plus the optional `MC_PLAN_URL` header link); no inline JavaScript (CSP `default-src 'self'`); not frameable.
 - **Loopback only** unless `MC_ALLOW_NONLOOPBACK=1`.
 
+## Run the current capability
+
+The homepage shows the current step from the repository roadmap, its ordered work,
+the coordinator's next action, and each check's expected and observed results.
+Use **Open acceptance record** to work in the existing #5232 coordinator comment.
+The Project work sections show current issues, their linked PRs, and the next
+capability's issues. The relationship file `tools/mission-control/project-links.json`
+records which PR addresses each issue and which proof remains. GitHub supplies names
+and states at refresh. When no closing PR is linked the row says so. These links do
+not affect capability acceptance or production readiness. The GitHub board and
+release evidence remain available under Engineering details.
+
+1. The coordinator names one action, its owner, and the expected result. Link the
+   PR or test run where the work is performed.
+2. The owner records the observed result with its build, environment and receipt
+   in their existing report. Use PASS, FAIL, BLOCKED or NOT TESTED; name the next
+   owner/action when a result does not pass.
+3. The coordinator reconciles the checks below in their existing owner comment.
+   At handoff, read back the dashboard and preserve superseded runs in the comment
+   history. Keep the accepted plan revision and runtime in the human receipt.
+4. After all required checks and Mike's recorded decision, update the roadmap
+   through its normal review. The dashboard follows the current row in the plan.
+
+Mission Control reads one `capability-results` JSON fence above the first
+`<details>` history block in the configured, trusted coordinator comment. Start
+with these fields and replace the placeholder values. The human report above the
+fence can remain in the existing DELIVERY.md format.
+
+```capability-results
+{
+  "plan_revision": "<full plan revision shown by Mission Control>",
+  "step": 1,
+  "pr": 5625,
+  "head": "<full reviewed PR head>",
+  "build": "<full staged runtime SHA>",
+  "environment": "staging",
+  "generation": "<verified runtime generation>",
+  "configuration_sha256": "<verified effective configuration digest>",
+  "action": {
+    "title": "Walk the connected tablet",
+    "owner": "CHARLIE Codex",
+    "expected": "Find and select the drive, then Q1/MLC, with the draft retained.",
+    "observed": "Awaiting the qualified runtime and device window.",
+    "status": "BLOCKED",
+    "next": "Verify the staging version and arrange the tablet window."
+  },
+  "results": [],
+  "decision": null
+}
+```
+
+Add one entry per acceptance ID using `id`, `status`, `observed`, `build`,
+`environment`, `generation`, `configuration_sha256` and `receipt`. Use the
+current capability candidate on its own line above the fence using
+`Capability candidate: #5625 @ <full reviewed PR head>`. The existing
+Branch / SHA line remains available for the lane's production work. A missing,
+ambiguous or conflicting capability candidate retains earlier results as history. A passing row
+requires a nonblank observation and a specific GitHub comment, commit, or
+Actions run, job or artifact.
+For `decision`, link Mike's separate acceptance comment on #5232, beginning with
+these ten lines and the exact values from the coordinator's record:
+
+```text
+[CAPABILITY-ACCEPTED]
+Plan revision: <full plan revision>
+Step: 1
+PR: 5625
+PR head: <full reviewed PR head>
+Build: <full staged runtime SHA>
+Environment: staging
+Runtime generation: <verified runtime generation>
+Configuration SHA-256: <verified effective configuration digest>
+Results SHA-256: <digest from the dashboard>
+```
+
+Mission Control retrieves the comment and verifies the configured decision author
+and matching fields. The normalized results digest changes when an observation
+or receipt changes. The configured environment version endpoint must supply
+`runtimeGeneration` and `configurationSha256` for the effective configuration.
+The digest covers the effective equipment navigation switch without exposing
+secret environment values. Older endpoints can report the build version while
+leaving acceptance unverified. A Projects board outage leaves the separately
+polled workflow usable. Link previous runs in the comment history. Blank
+results display as NO RECEIPT.
+Rows whose plan/build differs stay historical. Candidate review and CI, deployed
+ancestry, running build, and all required check receipts must agree before the
+page displays Accepted. That label concerns the named capability and environment.
+
+#### FIND-09 staging runtime prerequisites
+
+The [equipment navigation repair PR](https://github.com/Mikecranesync/MIRA/pull/5625#not-done-here-decisions-and-follow-ups)
+records that the staging Compose service does not pass `MIRA_EQUIPMENT_NAV`
+into its Hub container. The Hub defaults to off, so a staging Doppler change
+alone cannot enable the navigator. Close the runtime portion of the
+[Hub integration gap](https://github.com/Mikecranesync/MIRA/issues/5617) in this
+order:
+
+1. Have the staging owner get approval for the guarded Compose change and map
+   `MIRA_EQUIPMENT_NAV` into the staging Hub service with an off default. Compose
+   the reviewed navigation repair and the Hub version probe in the approved
+   staging build. The version probe and navigation repair use the same
+   `equipmentNavEnabled()` reader so that the digest describes the setting
+   the repaired routes apply.
+2. Use the [normal staging deploy](staging-vps.md#routine-deploy) to verify the
+   composed build with the staging flag off and then with approved
+   `MIRA_EQUIPMENT_NAV=1`. On each deployment record the approved build SHA and
+   the staging `/api/version` response's `gitSha`, `runtimeGeneration`, and
+   `configurationSha256`. With a supported staging login, confirm the real
+   `/api/equipment-browser/children` route returns `404 equipment_nav_disabled`
+   while off and that browse and resolve work against the staging database and
+   proxy while on. Confirm the configuration digest changes and the earlier
+   runtime receipt becomes historical after the redeploy.
+3. Verify that turning the flag off restores the prior flow and preserves saved
+   work. Attach the deployment, endpoint and rollback receipts to the
+   coordinator record. Keep FIND-09 blocked while any prerequisite is
+   outstanding. With a qualified enabled runtime, return to the connected
+   Galaxy Tab S9 FE walkthrough for FIND-08 and FIND-10. Mocked API checks and a
+   reachable Mission Control login are separate evidence.
+
+For the initial rollout, `MC_ROADMAP_REF=b07057c6255b4608faa243ca59becdc3b706456a`
+selects the published proposal for Find the Right Equipment. Remove that pin after
+the roadmap is adopted on main. The roadmap's Capability sequence table names a
+single current row and links its sibling Markdown plan in the proof cell. The
+linked plan provides the acceptance table and work sequence. Unchanged document
+contents retain their revision across unrelated main commits within a running
+service. If a service restart sees the same documents at a different main commit,
+the coordinator may rebind the record after comparing both source documents.
+
+Install the scoped open source renderer using
+`python -m pip install -r tools/mission-control/requirements-workflow.txt` in the
+dashboard environment. It reads Markdown tokens with HTML disabled; projected
+values are escaped by the existing server renderer.
+
 ## The five-state lifecycle (owner standard, 2026-11-11)
 
 States are never collapsed and "done" is not a state. Each cell lights only on the evidence in its row.
@@ -85,6 +218,9 @@ Health: `GET /healthz` → `{"items", "ok", "last_poll", "last_webhook", "eviden
 | `MC_TRUSTED_AUTHORS` | `Mikecranesync` | comma-separated logins whose comments count |
 | `MC_WEBHOOK_SECRET` | unset | enables `POST /webhook/github`; unset → 503 |
 | `MC_ENV_PRODUCTION_URL` / `MC_ENV_STAGING_URL` | unset | `/api/version/` URLs (note the trailing slash: the hub 308s without it) |
+| `MC_PLAN_REPORT_ID` | `6870960483` | designated coordinator comment for capability results |
+| `MC_PLAN_ACCEPTOR` | `Mikecranesync` | GitHub author of the separate acceptance decision |
+| `MC_ROADMAP_REF` | unset | optional full SHA for the proposed roadmap; otherwise follow main |
 | `MC_PLAN_URL` | unset | optional `https://claude.ai/artifact/...` header link (#4982) |
 
 ## Where it runs
@@ -128,18 +264,39 @@ Staging reads "unreachable from this host" from BRAVO (the hub's `/api/version` 
 
 Run the CHARLIE install recipe above with the merged sha, the existing label and `charlie/run.sh`; add `MC_ENV_PRODUCTION_URL` to `run.sh`. Same limits as BRAVO: poll-only, staging grey.
 
-### Stage B — OVH VPS (needs owner GO; delivers webhooks, staging, off-tailnet phone access)
+### Stage B — private HTTPS on the OVH VPS (needs owner GO)
 
-Files: `tools/mission-control/vps/mission-control.service` (systemd, `ubuntu` user, Doppler `prd`, binds `127.0.0.1:8787`) and `tools/mission-control/vps/nginx-mission-control.conf.example` (`mc.factorylm.com`, `auth_basic` on `/`, `/webhook/github` HMAC-only). The `deployment/` nginx tree and the compose files are guarded, so these are copied by hand, never by a workflow.
+Use the systemd unit and nginx example in `tools/mission-control/vps`.
+Start with authenticated HTTPS and GitHub polling on the existing OVH VPS.
 
-**Owner checklist (nothing here is done by this PR):**
-1. DNS A record `mc.factorylm.com` → `40.160.141.61`.
-2. `sudo certbot --nginx -d mc.factorylm.com`.
-3. `sudo htpasswd -c /etc/nginx/.htpasswd-mc <user>` — private, authenticated access only.
-4. Generate `MC_WEBHOOK_SECRET` (`openssl rand -hex 32`) into Doppler `factorylm/prd`.
-5. Register the repo webhook: payload URL `https://mc.factorylm.com/webhook/github`, content type `application/json`, the same secret, events `pull_request`, `issue_comment`, `check_suite`, `workflow_run`, `push`, `deployment_status`.
-6. `GITHUB_PAT` scopes: `read:project` + repo read.
-7. `git archive <sha> tools/mission-control | sudo tar -x -C /opt/mission-control/current --strip-components=2`, copy the two files above, `systemctl enable --now mission-control`, then confirm `https://mc.factorylm.com/healthz` behind basic auth and a `202` in the webhook's "Recent Deliveries".
+1. Inventory the current nginx server block, service, address bound to port 8787,
+   DNS, certificate and data directory. Save the previous release target and service
+   configuration. Take a consistent SQLite backup with the SQLite backup API.
+2. Put the reviewed Git archive under `/opt/mission-control/releases/<full SHA>`.
+   In that release, create a Python 3.12 `.venv` and install the existing dashboard
+   HTTP client (`httpx==0.28.1`) and `requirements-workflow.txt` into it. The
+   base OVH system interpreter may lack httpx. Keep the shared data directory outside
+   the release. Provision the dedicated `MC_GITHUB_READ_TOKEN` from Doppler
+   as the systemd credential `/etc/mission-control/github-token` (root-owned,
+   mode 0400, root-only directory). The token needs only GitHub `read:project`
+   for the public repository and project data.
+   For the proposed roadmap add `MC_ROADMAP_REF` in the
+   `/etc/mission-control.env` systemd environment file. Test the release on a
+   separate loopback port before switching
+   `current`; record the archive revision in `DEPLOYED_SHA`.
+3. Install the reviewed unit and authenticated nginx site. Use the site's TLS
+   certificate for `mc.factorylm.com` and an individual bcrypt htpasswd entry for
+   each authorized reader. Apply `nginx -t` before reloading. Keep the application
+   on loopback and the webhook location closed for the poll-only rollout.
+4. Verify public HTTPS redirects, then confirm unauthenticated requests to the
+   page, snapshot, and health route are refused. With a test login, check plan and
+   evidence freshness and the correct staging and production version probes.
+   Walk the actual phone on cellular and tablet on Wi-Fi with Tailscale off.
+   Record the dashboard build, URLs, observed results and access limitations in #4737.
+5. If verification fails, restore the prior `current` target, unit and nginx
+   site, then restart only Mission Control and reload nginx after its config check.
+   Verify the prior private route and data. Use the existing BRAVO tailnet route
+   while the external hostname is repaired.
 
 ## Not built (by design)
 

@@ -135,9 +135,13 @@ def build(
     # recently. Event traffic (webhooks, polls) never refreshes it.
     ev_age = _age_seconds(evidence.get("at"), now)
     board_age = _age_seconds(evidence.get("board_at"), now)
+    evidence_error = evidence.get("error")
+    # A webhook or a poll may commit reports before publishing new evidence.
+    if any(r["trusted"] and r["parsed"].get("malformed_capability") for r in reports):
+        evidence_error = "trusted report has an invalid capability-results block"
     stale_reason = None
-    if evidence.get("error"):
-        stale_reason = f"evidence refresh failed: {evidence['error']}"
+    if evidence_error:
+        stale_reason = f"evidence refresh failed: {evidence_error}"
     elif ev_age is None or ev_age > 2 * poll_seconds:
         stale_reason = "lifecycle evidence is " + (
             f"{int(ev_age // 60)} min old" if ev_age is not None else "missing"
@@ -171,7 +175,7 @@ def build(
             "last_poll": last_poll,
             "last_webhook": last_webhook,
             "evidence_at": evidence.get("at"),
-            "evidence_error": evidence.get("error"),
+            "evidence_error": evidence_error,
         },
         "readiness": readiness,
         "tiles": {

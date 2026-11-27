@@ -207,6 +207,105 @@ def render_cockpit(m: dict) -> dict:
     }
 
 
+def _source(url: object, label: str) -> str:
+    return f'<a href="{_e(_gh(url))}">{_e(label)}</a>' if _gh(url) != "#" else ""
+
+
+def _check(row: dict) -> str:
+    history = row.get("history")
+    prior = (
+        f'<p class="meta">Earlier evidence: {_e(history["status"])} · {_e(history.get("environment") or "unknown")} · '
+        f'{_e(str(history.get("build") or "")[:9])}. {_e(history["observed"])} '
+        f'{_source(history.get("receipt"), "Earlier receipt")}</p>' if history else ""
+    )
+    observed = f'<p>{_e(row["observed"])}</p>' if row.get("observed") else ""
+    return (
+        f'<li class="workflow-check"><div class="row"><b>{_e(row["id"])}</b> '
+        f'<span class="chip">{_e(row["status"])}</span></div><p>{_e(row["expected"])}</p>'
+        f'<p class="meta">Proof required: {_e(row["proof"])}</p>{observed}'
+        f'{_source(row.get("receipt"), "View receipt")}{prior}</li>'
+    )
+
+
+def render_workflow(plan: dict) -> str:
+    if not plan.get("current"):
+        return (
+            '<section class="workflow" aria-labelledby="workflow-title"><h2 id="workflow-title">'
+            f'Capability plan</h2><p>{_e(plan.get("error") or "Waiting for the first plan refresh.")}</p>'
+            f'{_source(plan.get("ledger_url"), "Open acceptance ledger")}</section>'
+        )
+    current, action = plan["current"], plan["action"]
+    action_status = action["status"]
+    if action_status == "PASS" and plan["status"] != "Accepted":
+        action_status = "Reported pass"
+    adoption = "Proposed plan" if plan["proposed"] else "Repository plan"
+    source = _source(plan["plan_url"], "Full step plan")
+    ledger = _source(plan.get("ledger_url"), "Open acceptance record")
+    repair = _source(plan.get("ui_url"), "Open UI owner’s report") if action["status"] == "BLOCKED" else ""
+    checks = "".join(_check(row) for row in plan["checks"])
+    steps = "".join(
+        f'<li><b>{_e(step["name"])}</b><p>{_e(step["outcome"])}</p>'
+        f'<p class="meta">Proof required: {_e(step["proof"])}</p></li>' for step in plan["steps"]
+    )
+    actions = "".join(f'<li>{_e(step)}</li>' for step in plan["actions"])
+    review = plan["review"]
+    review_label = "Current review" if plan["review_fresh"] else "Last seen review"
+    warnings = "".join(f'<p class="error">{_e(plan[key])}</p>' for key in ("error", "result_error") if plan.get(key))
+    next_step = plan.get("next_step")
+    up_next = f'<p><b>Up next</b> · {_e(next_step["name"])}</p>' if next_step else ""
+    decision = _source(plan.get("decision"), "Acceptance decision")
+    digest = plan.get("results_digest")
+    digest_line = f'<p class="meta">Results SHA-256 <code>{_e(digest)}</code></p>' if digest else ""
+    evidence = (
+        f'<p class="meta">{_e(review_label)} · {_e(review["label"])} '
+        f'{_source(review.get("source"), "Review record")}</p>'
+    )
+    return (
+        '<section class="workflow" aria-labelledby="workflow-title">'
+        '<p class="hint">FactoryLM builds trusted maintenance context one piece of equipment at a time. '
+        + _source("https://github.com/Mikecranesync/MIRA/blob/main/NORTH_STAR.md", "FactoryLM vision") + '</p>'
+        f'<h2 id="workflow-title">Step {_e(current["number"])} · {_e(current["name"])}</h2>'
+        f'<p>{_e(current["outcome"])}</p><p class="meta">{_e(adoption)} · '
+        f'{_e(plan["revision"][:9])} · checked {_when(plan["updated_at"])} · {_e(plan["status"])}</p>{warnings}'
+        f'<section class="work-action"><h3>{_e(action["title"])}</h3>'
+        f'<p class="meta">{_e(action["owner"])} · {_e(action_status)}</p>'
+        f'<dl><dt>Expected</dt><dd>{_e(action["expected"])}</dd>'
+        f'<dt>Observed</dt><dd>{_e(action["observed"])}</dd><dt>Next</dt><dd>{_e(action["next"])}</dd></dl>'
+        f'{evidence}<p class="meta">Candidate {_e(str(plan["candidate_head"] or "unavailable")[:12])} · '
+        f'{_e(plan["environment"] or "No acceptance environment")} · '
+        f'{_e(str(plan["build"] or "No accepted build")[:20])}</p>'
+        f'<div class="workflow-links">{ledger}{repair}{decision}</div></section>'
+        f'{up_next}<div class="workflow-links">{source}{_source(plan["roadmap_url"], "Roadmap source")}</div>'
+        f'<details><summary>What proves this step</summary>{digest_line}<ul class="workflow-checks">{checks}</ul></details>'
+        f'<details><summary>Work sequence</summary><ol>{actions}</ol></details>'
+        f'<details><summary>Capability roadmap</summary><ol>{steps}</ol></details></section>'
+    )
+
+
+def _project_work(links):
+    def ref(record):
+        label = f"#{record['number']} {record['title']}"
+        return f'{_source(record["url"], label)} <span class="chip">{_e(record["state"])}</span>'
+
+    def issue_row(item):
+        checks = " · ".join(item["checks"])
+        prs = "".join(f'<li>{ref(pr)}</li>' for pr in item["prs"])
+        return (f'<li class="workflow-check">{ref(item["issue"])}<p>{_e(item["remaining"])}</p>'
+                f'<p class="meta">{_e(checks)}</p>'
+                + (f'<ul>{prs}</ul>' if prs else '<p class="meta">No closing PR linked.</p>') + '</li>')
+
+    if not links.get("current") and not links.get("next"):
+        return '<p class="meta">' + _e(links.get("error") or "Waiting for linked GitHub work.") + '</p>'
+    current = "".join(issue_row(item) for item in links["current"])
+    future = "".join(issue_row(item) for item in links["next"])
+    prs = {record["number"]: record for item in links["current"] for record in item["prs"]}
+    linked = "".join(f'<li>{ref(pr)}</li>' for pr in prs.values())
+    warning = '<p class="meta">Last seen project records. Live status is unavailable.</p>' if not links["fresh"] else ""
+    return (f'{warning}<details open><summary>Current gaps</summary><ul>{current}</ul></details>'
+            f'<details><summary>PRs that address these gaps</summary><ul>{linked}</ul></details>'
+            f'<details><summary>Issues for the next capability</summary><ul>{future}</ul></details>')
+
+
 def render(snap, board, model: dict) -> str:
     v = board.build_views(list(snap.items))
     when = snap.at.strftime("%Y-%m-%d %H:%M UTC") if snap.at else "never"
@@ -227,6 +326,7 @@ def render(snap, board, model: dict) -> str:
         error=error,
         send_reason=_e(SEND_DISABLED_REASON),
         plan_link=plan_link,
+        workflow=render_workflow(model.get("plan") or {}),
         focus=_section(
             "In progress",
             "Open cards with Status = In Progress (matches saved View 2).",
@@ -244,5 +344,11 @@ def render(snap, board, model: dict) -> str:
             True,
         ),
     )
+    plan = model.get("plan") or {}
+    fields["plan_owners"] = "".join(
+        f'<li><b>{_e(owner["name"])}</b><p>{_e(owner["deliverable"])}</p></li>'
+        for owner in plan.get("owners", [])
+    )
+    fields["project_work"] = _project_work(plan.get("project_links") or {})
     fields.update(render_cockpit(model))
     return string.Template((HERE / "page.html").read_text()).substitute(fields)

@@ -80,8 +80,11 @@ class Store:
         return out
 
     def put_report(self, row: dict) -> bool:
-        """Upsert by comment id; False when an equal-or-newer version exists, or a tombstone
-        at or after this version's updated_at (a deleted comment is tombstoned forever)."""
+        """Upsert by comment id. For the same source version, refresh only its parser cache.
+
+        An older version, an equal timestamp with different source data, or a tombstone
+        at or after this version's updated_at cannot replace a report.
+        """
         with self._lock:
             stone = self._db.execute(
                 "SELECT deleted_at FROM report_tombstones WHERE id = ?", (row["id"],)
@@ -94,7 +97,11 @@ class Store:
                 "INSERT INTO reports VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET "
                 "lane=excluded.lane, author=excluded.author, trusted=excluded.trusted, "
                 "updated_at=excluded.updated_at, url=excluded.url, raw=excluded.raw, "
-                "parsed_json=excluded.parsed_json WHERE excluded.updated_at > reports.updated_at",
+                "parsed_json=excluded.parsed_json WHERE excluded.updated_at > reports.updated_at "
+                "OR (excluded.updated_at = reports.updated_at AND excluded.raw = reports.raw "
+                "AND excluded.author = reports.author AND excluded.url = reports.url "
+                "AND excluded.trusted = reports.trusted AND excluded.lane = reports.lane "
+                "AND excluded.parsed_json <> reports.parsed_json)",
                 (
                     row["id"],
                     row["lane"],

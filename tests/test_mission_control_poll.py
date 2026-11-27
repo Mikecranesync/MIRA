@@ -5,9 +5,11 @@ The HTTP getter is injected, so these run offline against synthetic responses.
 
 from __future__ import annotations
 
+import datetime as dt
 import importlib.util
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 MC = Path(__file__).resolve().parents[1] / "tools" / "mission-control"
 
@@ -104,6 +106,75 @@ def test_poll_reports_marks_other_authors_untrusted(tmp_path):
     get = FakeGet({url: (200, {}, [dict(COMMENT, user={"login": "stranger"})])})
     poll.poll_reports(get, "o/r", 5232, st, trusted=("owner",))
     assert st.reports()[0]["trusted"] == 0
+
+
+def test_deep_capability_results_only_fail_production_closed_for_a_trusted_author(tmp_path):
+    runtime = _load("mission_control_runtime_f10", MC / "runtime.py")
+    url = "https://api.github.com/repos/o/r/issues/5232/comments?per_page=100&page=1"
+    depth = 12_000
+    deeply_nested_json = '{"results":' + "[" * depth + "null" + "]" * depth + "}"
+    invalid = {
+        **COMMENT,
+        "id": 78,
+        "html_url": "https://github.com/o/r/issues/5232#issuecomment-78",
+        "user": {"login": "stranger"},
+        "body": COMMENT["body"] + "```capability-results\n" + deeply_nested_json + "\n```\nNext: #99\n",
+    }
+    valid = {
+        **COMMENT,
+        "body": COMMENT["body"] + "```capability-results\n{}\n```\nNext: #13\n",
+    }
+    get = FakeGet({
+        "https://api.github.com/repos/o/r/events?per_page=100": (200, {}, []),
+        "https://api.github.com/repos/o/r/commits/main": (200, {}, {"sha": "a" * 40}),
+        url: (200, {}, [invalid, valid]),
+    })
+    gathered = []
+
+    def gather(_post, _get, _repo, candidates, *_args):
+        gathered.append(candidates)
+        return {"rows": [], "error": None}
+
+    board = SimpleNamespace(items=[], at=dt.datetime.now(dt.timezone.utc), error=None)
+    handler = SimpleNamespace(
+        snapshot=SimpleNamespace(get=lambda: board),
+        store=store_mod.Store(tmp_path / "mc.sqlite"),
+        poll_mod=poll,
+        evidence_mod=SimpleNamespace(gather=gather),
+        trusted_authors=lambda: ("owner",),
+        plan_state={},
+        workflow_mod=SimpleNamespace(
+            refresh=lambda *_args, **_kw: {},
+            verify_decision=lambda *_args: None,
+            coordinator_pr=lambda *_args: 5625,
+        ),
+        workflow_evidence={},
+        evidence={},
+    )
+    runtime.REPO, runtime.COORD_ISSUE = "o/r", 5232
+    runtime.poll_once(handler, get, post=None, state={})
+    rows = {row["id"]: row for row in handler.store.reports()}
+    assert gathered == [[5625], [13]]
+    assert handler.evidence["error"] is None and handler.workflow_evidence["error"] is None
+    assert rows[78]["trusted"] == 0 and rows[78]["parsed"]["state"] == "ACTIVE"
+    assert not rows[78]["parsed"].get("malformed_capability")
+    assert rows[77]["trusted"] == 1 and rows[77]["parsed"]["items"] == [13]
+
+    trusted_malformed = {
+        **invalid,
+        "id": 79,
+        "html_url": "https://github.com/o/r/issues/5232#issuecomment-79",
+        "user": {"login": "owner"},
+    }
+    get.answers[url] = (200, {}, [invalid, trusted_malformed, valid])
+    gathered.clear()
+    runtime.poll_once(handler, get, post=None, state={})
+    rows = {row["id"]: row for row in handler.store.reports()}
+    assert gathered == [[5625]]
+    assert handler.workflow_evidence["error"] is None
+    assert "invalid capability-results block" in handler.evidence["error"]
+    assert rows[79]["trusted"] == 1 and rows[79]["parsed"]["malformed_capability"]
+    assert rows[77]["parsed"]["items"] == [13]
 
 
 def test_poll_survives_a_github_error(tmp_path):
