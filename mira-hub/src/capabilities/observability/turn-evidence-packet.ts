@@ -361,6 +361,22 @@ export type TurnEvidencePacket = {
    * output never self-promotes).
    */
   jev_decision?: JevDecisionRecord | null;
+  /**
+   * What the notebook chat route WROTE to its response stream on its final path
+   * (Codex round 2 on #6082, F6). Kept apart from `answer_gate.citations_shipped`, which
+   * is the citations the committed answer carries and is what the evidence-following
+   * checks read: a response cancelled before its sources frame still committed a cited
+   * answer to history, and must not look like an uncited one.
+   *
+   * This is the route's own write, not proof that a client read it. Optional: absent on
+   * every exit that is not the final path, and on packets written before it existed.
+   */
+  delivery?: {
+    /** Every frame was written to the response stream and the stream was closed. */
+    frames_written: boolean;
+    /** Citations in the sources frame when that frame was written; 0 when it was not. */
+    citations_written: number;
+  };
 };
 
 /** What is known at request.receive, before any stage has run. */
