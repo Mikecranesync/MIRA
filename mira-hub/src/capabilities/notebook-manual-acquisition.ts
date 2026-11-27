@@ -36,7 +36,7 @@ import {
 } from "@/capabilities/manual-acquisition";
 import { MANUAL_SEARCH_LIMIT_COPY, MANUAL_SEARCH_UNAVAILABLE_COPY } from "@/capabilities/manual-search-copy";
 import { reviewedManualFor } from "@/capabilities/reviewed-manual-library";
-import { exactManualIdentity, makerFromText } from "@/capabilities/candidate-identity";
+import { exactManualIdentity, makerFromText, namesSeveralMakers } from "@/capabilities/candidate-identity";
 import { returnsToRecord } from "@/capabilities/conversation-subject";
 import { familyCovers, modelIdentitiesInText } from "@/capabilities/model-token";
 import { isRatingToken, modelNumbersIn } from "@/capabilities/manual-applicability";
@@ -1380,12 +1380,14 @@ export function threadStatusScope(
   // that machine own. A confirmed catalog number is the machine's number, so ticked numbers count
   // only without one (fail closed, the rule set for #6094 r1 F1).
   const catalogOnRecord = Boolean(machine.catalogNumber?.trim() || machine.recordCatalog?.trim());
+  own.delete("");
+  const recorded = new Set(own);
   for (const value of catalogOnRecord ? [] : machine.confirmedNumbers ?? []) {
     const code = machineOrderNumber(value, machine.model);
     if (code) own.add(code);
   }
-  own.delete("");
-  const isOwn = (id: string) => own.has(id) || [...own].some((o) => familyCovers(id, o));
+  const covered = (set: ReadonlySet<string>, id: string) => set.has(id) || [...set].some((o) => familyCovers(id, o));
+  const isOwn = (id: string) => covered(own, id);
   const ownMaker = maker(machine.manufacturer);
   const otherMaker = (named: string | null | undefined) => Boolean(named && ownMaker && maker(named) !== ownMaker);
   for (let i = questions.length - 1; i >= 0; i--) {
@@ -1393,7 +1395,11 @@ export function threadStatusScope(
     const named = modelsNamedIn(q, own);
     if (named.size) {
       const exact = exactManualIdentity("", foldForDetection(q));
-      return otherMaker(exact?.manufacturer ?? makerFromText(q)) || [...named].some((id) => !isOwn(id)) ? "other" : "own";
+      if (otherMaker(exact?.manufacturer ?? makerFromText(q)) || [...named].some((id) => !isOwn(id))) return "other";
+      // #6127 (#6104 r4 F9): a ticked number settles a question only when it names no maker or
+      // this machine's alone. With two makers named, `makerFromText` reads none, not a match.
+      const byTick = [...named].some((id) => !covered(recorded, id));
+      return byTick && namesSeveralMakers(q) ? "other" : "own";
     }
     if (machine.recordCatalog && returnsToRecord(q)) return "own";
   }

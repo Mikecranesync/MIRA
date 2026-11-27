@@ -177,4 +177,24 @@ describe("threadStatusScope: a number the technician confirmed (#6085)", () => {
   it("control: another maker named with the confirmed number is other", () => {
     expect(threadStatusScope(["Find the manual for Schneider Electric 6AV2124-0GC01-0AX0"], ticked)).toBe("other");
   });
+
+  // #6127: two makers named make a confirmed number count for nothing; this machine's own model
+  // keeps counting, as before, when another maker is mentioned beside it.
+  it("two makers named with the confirmed number is other", () => {
+    expect(threadStatusScope(["How do I wire the ABB 6AV2124-0GC01-0AX0 in our Siemens cabinet?"], ticked)).toBe("other");
+  });
+
+  it("control: the card's own model is own with another maker mentioned beside it", () => {
+    const q = "Our Siemens TP700 is wired to an ABB drive. Why is the TP700 screen blank?";
+    expect(threadStatusScope([q], TP700)).toBe("own");
+    expect(threadStatusScope([q], ticked)).toBe("own");
+  });
+
+  // Accepted cost: the ticked number still counts for nothing when a second maker is named, even
+  // beside the card's own model. That matches the scope before #6104.
+  it("cost: the walk question with a second maker named stays other, ticked or not", () => {
+    const q = "Our Siemens TP700 Comfort panel 6AV2124-0GC01-0AX0 is wired to an ABB drive and will not power up.";
+    expect(threadStatusScope([q], TP700)).toBe("other");
+    expect(threadStatusScope([q], ticked)).toBe("other");
+  });
 });

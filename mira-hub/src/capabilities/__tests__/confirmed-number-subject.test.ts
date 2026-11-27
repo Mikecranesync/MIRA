@@ -177,6 +177,55 @@ describe("GET notebook detail: a saved number tied to another machine (#6104 r3 
   });
 });
 
+// #6127 (#6104 r4 F9): a saved number settles a thread only when the question names no maker, or
+// this machine's maker alone. The questions below differ only in the maker words.
+describe("GET notebook detail: a saved number in a question naming two makers (#6127)", () => {
+  const MIXED = "How do I wire the ABB 6AV2124-0GC01-0AX0 in our Siemens cabinet?";
+  const SIEMENS_ONLY = "How do I wire the Siemens 6AV2124-0GC01-0AX0 in our Siemens cabinet?";
+  const ABB_ONLY = "How do I wire the ABB 6AV2124-0GC01-0AX0 in our ABB cabinet?";
+  const NO_MAKER = "How do I wire the 6AV2124-0GC01-0AX0 in our cabinet?";
+  const read = async (question: string) => {
+    vi.mocked(listTurns).mockResolvedValue([ask(question)] as never);
+    return (await GET(threadReq, params)).json();
+  };
+
+  it("precondition: without the saved number the mixed thread is withheld", async () => {
+    readConfirmedNumbers.mockResolvedValue([]);
+    expect((await read(MIXED)).manualSearchScope).toBe("other_model");
+  });
+
+  it("the mixed thread stays withheld with the number saved", async () => {
+    const body = await read(MIXED);
+    expect(readConfirmedNumbers).toHaveBeenCalledWith(TENANT, NB); // precondition: the number was read
+    expect(body.manualSearch).toBeNull();
+    expect(body.manualSearchScope).toBe("other_model");
+  });
+
+  it("control: the Siemens-only thread shows the status with the number saved", async () => {
+    const body = await read(SIEMENS_ONLY);
+    expect(body.manualSearch).toEqual(READY);
+    expect(body).not.toHaveProperty("manualSearchScope");
+  });
+
+  it("control: a thread naming no maker shows the status with the number saved", async () => {
+    const body = await read(NO_MAKER);
+    expect(body.manualSearch).toEqual(READY);
+    expect(body).not.toHaveProperty("manualSearchScope");
+  });
+
+  it("control: the ABB-only thread stays withheld with the number saved", async () => {
+    expect((await read(ABB_ONLY)).manualSearchScope).toBe("other_model");
+  });
+
+  it("the card offers nothing for the mixed question", () => {
+    expect(offeredOwnNumber(MIXED, { manufacturer: "Siemens", model: "TP700" })).toBeNull();
+  });
+
+  it("control: the card offers the number for the Siemens-only question", () => {
+    expect(offeredOwnNumber(SIEMENS_ONLY, { manufacturer: "Siemens", model: "TP700" })).toBe("6AV2124-0GC01-0AX0");
+  });
+});
+
 describe("numbersForMachine", () => {
   const nb = (over: Partial<EquipmentNotebook> = {}) => ({ ...NOTEBOOK, ...over }) as unknown as EquipmentNotebook;
   const entries = [saved("6AV2124-0GC01-0AX0")];

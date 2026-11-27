@@ -121,6 +121,12 @@ export function makerFromText(text: string, typedPart?: string): string | null {
   return [...hits.values()][0].toUpperCase();
 }
 
+/** #6127: does `text` name more than one maker, by the reading `makerFromText` uses? There,
+ *  null means either no maker or several; this tells the two apart. */
+export function namesSeveralMakers(text: string): boolean {
+  return makerGroups(text).size > 1;
+}
+
 export function extractCandidateIdentity(observation: string, typed = ""): CandidateIdentity | null {
   const fromPhoto = unambiguousPartNumber(observation);
   const part = fromPhoto ?? (typed ? unambiguousPartNumber(typed) : null);
