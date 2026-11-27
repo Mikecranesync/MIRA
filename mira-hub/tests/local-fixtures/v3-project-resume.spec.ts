@@ -77,7 +77,12 @@ function detail(id: string, threadId: string | null) {
 /** Every detail GET the page made, as `<notebook>?<thread>`. */
 const detailGets: string[] = [];
 
-type CreateFixture = { created: boolean; listFailures: number };
+type CreateFixture = {
+  created: boolean;
+  listFailures: number;
+  pauseResponse?: Promise<void>;
+  showSavedProject?: boolean;
+};
 
 async function mount(context: BrowserContext, page: Page, baseURL: string, create?: CreateFixture) {
   // Origin check first, then the per-run secret: nothing is minted for any other origin.
@@ -96,15 +101,20 @@ async function mount(context: BrowserContext, page: Page, baseURL: string, creat
     if (m === "GET" && p === "/api/auth/session") return route.fulfill(json({ user: { name: "E2E", email: "e2e@example.invalid" }, expires: "2099-01-01T00:00:00.000Z" }));
     if (p === "/api/auth/_log") return route.fulfill(json({}));
     if (m === "GET" && p === "/api/equipment-notebooks") {
+      const ids = [NB_A, NB_B, NB_C];
       if (create?.created) {
-        create.listFailures += 1;
-        return route.fulfill(json({ error: "injected_read_failure" }, 500));
+        if (!create.showSavedProject) {
+          create.listFailures += 1;
+          return route.fulfill(json({ error: "injected_read_failure" }, 500));
+        }
+        ids.push(NB_CREATED);
       }
-      return route.fulfill(json({ notebooks: [NB_A, NB_B, NB_C].map(notebook) }));
+      return route.fulfill(json({ notebooks: ids.map(notebook) }));
     }
     if (create && m === "POST" && p === "/api/equipment-notebooks") {
       expect(req.postDataJSON().displayName).toBe(NEW_NAME);
       create.created = true;
+      await create.pauseResponse;
       return route.fulfill(json({ notebook: notebook(NB_CREATED) }, 201));
     }
     if (create && m === "GET" && p === "/api/namespace/tree") return route.fulfill(json({ nodes: [] }));
@@ -248,4 +258,44 @@ test("Create and Open uses its returned project even when the catalog refresh fa
   expect(create.listFailures).toBeGreaterThan(0);
   await expect(conversation(page).getByText(/General question/)).toHaveCount(0);
   expect(writes).toEqual(["POST /api/equipment-notebooks"]);
+});
+
+test("Cancel setup closes the wizard while the saved project response is pending (#5393)", async ({ page, context, baseURL }, testInfo) => {
+  const response = Promise.withResolvers<void>();
+  const create = { created: false, listFailures: 0, pauseResponse: response.promise, showSavedProject: true };
+  const writes = await mount(context, page, baseURL!, create);
+  try {
+    await page.goto("/v3/", { waitUntil: "domcontentloaded" });
+    await ensureDrawerOpen(page);
+    await page.getByRole("button", { name: "New project" }).click();
+    const setup = page.getByRole("dialog", { name: "New project" });
+    await setup.getByRole("button", { name: "General (no machine)" }).click();
+    await setup.getByRole("textbox", { name: "Project name (required)" }).fill(NEW_NAME);
+    await setup.getByRole("button", { name: "Next", exact: true }).click();
+    await setup.getByRole("button", { name: "Review", exact: true }).click();
+    await setup.getByRole("button", { name: "Create project", exact: true }).click();
+    await expect.poll(() => create.created).toBe(true);
+    await expect(setup.getByRole("button", { name: "Back", exact: true })).toBeDisabled();
+    await expect(setup.getByRole("status")).toHaveText("Creating project...");
+    const cancel = setup.getByRole("button", { name: "Cancel setup" });
+    await expect(cancel).toBeInViewport();
+    await page.screenshot({ path: testInfo.outputPath("creating.png") });
+    if (testInfo.project.name === "phone") {
+      await page.setViewportSize({ width: 390, height: 844 });
+      await expect(cancel).toBeInViewport();
+      await page.setViewportSize({ width: 844, height: 390 });
+      await expect(cancel).toBeInViewport();
+    }
+    await cancel.click();
+    await expect(setup).toBeHidden();
+
+    response.resolve();
+    await ensureDrawerOpen(page);
+    await expect(page.locator(`[data-project-id="project-${NB_CREATED}"]`)).toBeVisible();
+    await expect(setup).toBeHidden();
+    expect(notebookParam(page)).toBeNull();
+    expect(writes).toEqual(["POST /api/equipment-notebooks"]);
+  } finally {
+    response.resolve();
+  }
 });

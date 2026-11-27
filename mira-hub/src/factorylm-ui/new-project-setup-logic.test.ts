@@ -39,6 +39,10 @@ function harness(routes: Record<string, Reply | ((call: Call) => Reply | Promise
     if (!key) throw new Error(`unexpected request ${method} ${path}`);
     const route = routes[key]!;
     const reply = typeof route === "function" ? await route(call) : route;
+    // The machine create path must handle Fetch's prototype-backed status and ok.
+    if (method === "POST" && path.startsWith("/api/assets/")) {
+      return Response.json(reply.body, { status: reply.status });
+    }
     return { status: reply.status, ok: reply.status >= 200 && reply.status < 300, json: async () => reply.body } as Response;
   });
   return { calls, fetch: fetchFn as unknown as typeof fetch };
@@ -1261,5 +1265,137 @@ describe("garage pilot M8 — a document says it is still indexing until its emb
     const row = resultRows([doc], r.sources, r.capped)[0]!;
     expect(row.readiness).toEqual({ tone: "ready", label: "Ready to search · still indexing" });
     expect(row.note).toBeNull();
+  });
+});
+
+describe("#5393: canceling project setup", () => {
+  async function readyGeneral(controller: ReturnType<typeof createNewProjectSetup>) {
+    await controller.choose({ kind: "general" });
+    controller.setName("Fixture");
+    await controller.next();
+    await controller.next();
+  }
+
+  it("shows progress and can leave while a General create is pending", async () => {
+    vi.useFakeTimers();
+    const creating = Promise.withResolvers<string>();
+    const createNotebook = vi.fn(() => creating.promise);
+    const onWritten = vi.fn();
+    const h = harness({ "GET /api/files/": { status: 200, body: { files: [] } } });
+    const controller = createNewProjectSetup({ ...deps(h.fetch, { createNotebook }), onWritten, getNotebooks: () => [] });
+    try {
+      await readyGeneral(controller);
+      controller.addPdfs([new File(["fixture"], "fixture.pdf", { type: "application/pdf" })]);
+      const pending = controller.commit();
+      expect(controller.getState()).toMatchObject({ committing: true, progress: "Creating project..." });
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(controller.getState()).toMatchObject({ committing: true, commitTimeout: true });
+
+      await controller.cancelCommit();
+      expect(controller.getState()).toMatchObject({ committing: false, done: false, progress: null });
+      creating.resolve("nb-late");
+      await pending;
+
+      expect(controller.openProjectId()).toBeNull();
+      expect(controller.getState().done).toBe(false);
+      expect(h.calls).toEqual([{ method: "GET", path: "/api/files/?capability=indexable&limit=50", body: undefined, form: undefined }]);
+      expect(onWritten).toHaveBeenCalledOnce();
+      await controller.commit();
+      expect(createNotebook).toHaveBeenCalledOnce();
+    } finally {
+      controller.dispose();
+      vi.useRealTimers();
+    }
+  });
+
+  it("preserves a late machine create response and skips machine confirmation", async () => {
+    const creation = Promise.withResolvers<Reply>();
+    const onWritten = vi.fn();
+    const h = harness({
+      "GET /api/namespace/node/": { status: 200, body: { files: [] } },
+      "GET /api/files/": { status: 200, body: { files: [] } },
+      "POST /api/assets/": () => creation.promise,
+    });
+    const controller = createNewProjectSetup({ ...deps(h.fetch), onWritten, getNotebooks: () => [] });
+    try {
+      await controller.choose({ kind: "machine", machine });
+      await controller.next();
+      await controller.next();
+      const pending = controller.commit();
+      await controller.cancelCommit();
+      creation.resolve({ status: 201, body: { created: true, notebook: { id: "nb-late", nodeId: "n" } } });
+      await pending;
+
+      expect(nonGet(h.calls).map(({ method }) => method)).toEqual(["POST"]);
+      expect(onWritten).toHaveBeenCalledOnce();
+      expect(controller.openProjectId()).toBeNull();
+    } finally {
+      controller.dispose();
+    }
+  });
+
+  it("keeps the saved project when leaving during its readiness read", async () => {
+    const readinessStarted = Promise.withResolvers<void>();
+    const readiness = Promise.withResolvers<Reply>();
+    const onWritten = vi.fn();
+    const h = harness({
+      "GET /api/files/": { status: 200, body: { files: [] } },
+      "GET /api/equipment-notebooks/nb-general/": () => {
+        readinessStarted.resolve();
+        return readiness.promise;
+      },
+      "DELETE /api/equipment-notebooks/nb-general/": { status: 204, body: {} },
+    });
+    const controller = createNewProjectSetup({ ...deps(h.fetch), onWritten, getNotebooks: () => [] });
+    try {
+      await readyGeneral(controller);
+      const pending = controller.commit();
+      await readinessStarted.promise;
+      await controller.cancelCommit();
+      readiness.resolve({ status: 200, body: { sources: [] } });
+      await pending;
+
+      expect(nonGet(h.calls)).toEqual([]);
+      expect(onWritten).toHaveBeenCalledOnce();
+      expect(controller.getState()).toMatchObject({ committing: false, done: false, notebookId: null });
+    } finally {
+      controller.dispose();
+    }
+  });
+
+  it("hands off an already saved indexing file and skips the next upload", async () => {
+    const uploadStarted = Promise.withResolvers<void>();
+    const upload = Promise.withResolvers<Reply>();
+    const onPendingManuals = vi.fn();
+    const onWritten = vi.fn();
+    const h = harness({
+      "GET /api/files/": { status: 200, body: { files: [] } },
+      "GET /api/equipment-notebooks/nb-general/": { status: 200, body: { notebook: { nodeId: "node-general" } } },
+      "POST /api/namespace/node/node-general/files/": () => {
+        uploadStarted.resolve();
+        return upload.promise;
+      },
+    });
+    const controller = createNewProjectSetup({ ...deps(h.fetch), onPendingManuals, onWritten, getNotebooks: () => [] });
+    try {
+      await readyGeneral(controller);
+      controller.addPdfs([
+        new File(["one"], "one.pdf", { type: "application/pdf" }),
+        new File(["two"], "two.pdf", { type: "application/pdf" }),
+      ]);
+      const pending = controller.commit();
+      await uploadStarted.promise;
+      await controller.cancelCommit();
+      upload.resolve({ status: 202, body: { indexing: true, fileId: "file-one" } });
+      await pending;
+
+      expect(nonGet(h.calls).map(({ method, path }) => [method, path]))
+        .toEqual([["POST", "/api/namespace/node/node-general/files/"]]);
+      expect(onPendingManuals).toHaveBeenCalledWith("nb-general", ["file-one"]);
+      expect(onWritten).toHaveBeenCalledOnce();
+      expect(controller.getState().done).toBe(false);
+    } finally {
+      controller.dispose();
+    }
   });
 });

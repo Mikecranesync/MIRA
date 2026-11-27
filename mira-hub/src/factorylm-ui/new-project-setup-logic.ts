@@ -285,14 +285,27 @@ export async function attachSource(notebookId: string, docId: string, filename: 
   return { key, filename, docId, attachFailed: !res.ok, notIndexed: false, message: res.ok ? null : messageOf(res, "Couldn't be added as a source. Try again from the project.") };
 }
 
-export async function runCommit(input: CommitInput, deps: SetupDeps): Promise<CommitOutcome> {
+export async function runCommit(
+  input: CommitInput,
+  deps: SetupDeps,
+  abortSignal?: AbortSignal,
+  onProgress?: (message: string) => void,
+): Promise<CommitOutcome> {
+  if (abortSignal?.aborted) return { kind: "failed", message: "Project setup cancelled." };
+
   const notes: string[] = [];
+  const docs: DocOutcome[] = [];
   let notebookId: string;
   let nodeId: string | null = null;
   let confirmed: boolean | null = null;
   const name = input.name.trim();
 
+  // A completed create can already be visible in the sidebar. Let dispatched
+  // writes report their outcomes and skip further setup when cancelled.
+  const createdOutcome = (): CommitOutcome => ({ kind: "created", notebookId, nodeId, confirmed, notes, docs });
+
   if (input.selected.kind === "general") {
+    onProgress?.("Creating project...");
     let id: string | null;
     try {
       id = await deps.createNotebook({ displayName: name, identitySourceType: "user" });
@@ -302,12 +315,13 @@ export async function runCommit(input: CommitInput, deps: SetupDeps): Promise<Co
     if (!id) return { kind: "failed", message: "Sign in again to continue." };
     notebookId = id;
   } else {
+    onProgress?.("Creating project for this machine...");
     const machine = input.selected.machine;
     const post = () => call(deps, "POST", `/api/assets/${encodeURIComponent(machine.id)}/notebook/`, {
       json: { selectedVia: "asset_picker", displayName: name || machine.name },
     });
     let res = await post();
-    if (!res.ok && res.body.code === "notebook_race") res = await post();
+    if (!abortSignal?.aborted && !res.ok && res.body.code === "notebook_race") res = await post();
     if (!res.ok) return { kind: "failed", message: messageOf(res, "Could not open a project for that machine.") };
     const nb = res.body.notebook as { id?: unknown; nodeId?: unknown; displayName?: unknown } | undefined;
     if (typeof nb?.id !== "string" || typeof nb.nodeId !== "string") {
@@ -319,10 +333,12 @@ export async function runCommit(input: CommitInput, deps: SetupDeps): Promise<Co
     }
     notebookId = nb.id;
     nodeId = nb.nodeId;
+    if (abortSignal?.aborted) return createdOutcome();
 
     const put = await call(deps, "PUT", `/api/equipment-notebooks/${encodeURIComponent(notebookId)}/asset/`, {
       json: { assetRef: machine.id, selectedVia: "asset_picker" },
     });
+    if (abortSignal?.aborted) return createdOutcome();
     if (!put.ok) {
       if (put.body.code === "asset_already_bound" && typeof put.body.boundNotebookId === "string") {
         return { kind: "refused", notebookId: put.body.boundNotebookId, name: machine.name, message: "This machine already has a project." };
@@ -340,29 +356,40 @@ export async function runCommit(input: CommitInput, deps: SetupDeps): Promise<Co
     }
   }
 
+  if (abortSignal?.aborted) return createdOutcome();
   if (input.selected.kind === "general" && input.pdfs.length > 0 && nodeId === null) {
     const read = await call(deps, "GET", `/api/equipment-notebooks/${encodeURIComponent(notebookId)}/`);
     const id = (read.body.notebook as { nodeId?: unknown } | undefined)?.nodeId;
     if (read.ok && typeof id === "string") nodeId = id;
   }
 
-  const docs: DocOutcome[] = [];
+  if (input.docs.length > 0) {
+    onProgress?.(`Attaching ${input.docs.length} document${input.docs.length === 1 ? "" : "s"}...`);
+  }
   const attached = new Set<string>();
   const attach = async (docId: string, filename: string, key: string, message: string | null) => {
-    if (attached.has(docId)) return;
+    if (abortSignal?.aborted || attached.has(docId)) return;
     attached.add(docId);
     const row = await attachSource(notebookId, docId, filename, key, deps);
     docs.push(row.attachFailed ? row : { ...row, message });
   };
   for (const doc of input.docs) await attach(doc.docId, doc.filename, doc.docId, null);
 
+  if (input.pdfs.length > 0) {
+    onProgress?.(`Uploading ${input.pdfs.length} PDF${input.pdfs.length === 1 ? "" : "s"}...`);
+  }
+
   for (const [n, pdf] of input.pdfs.entries()) {
+    if (abortSignal?.aborted) break;
+    if (input.pdfs.length > 1) {
+      onProgress?.(`Uploading ${n + 1} of ${input.pdfs.length}: ${pdf.name}`);
+    }
     // The position keeps two selected files with the same name on separate rows.
     const doc = await uploadPdf(nodeId, pdf, deps, (docId, key) => attach(docId, pdf.name, key, null), `upload:${n}:${pdf.name}`);
     if (doc) docs.push(doc);
   }
 
-  return { kind: "created", notebookId, nodeId, confirmed, notes, docs };
+  return createdOutcome();
 }
 
 // ---------- readiness watch and result rows ----------
@@ -561,6 +588,11 @@ export type SetupState = {
   notes: string[];
   rows: ResultRow[];
   stillProcessing: boolean;
+  /** #5393: live progress text shown during commit ("Uploading documents...",
+   *  "Creating project...", etc.) Never shown at the same time as `error`. */
+  progress: string | null;
+  /** Set when the creation progress has taken longer than expected. */
+  commitTimeout: boolean;
 };
 
 export function initialSetupState(): SetupState {
@@ -569,6 +601,7 @@ export function initialSetupState(): SetupState {
     duplicate: null, linked: null, workspace: null, referencesError: null, chosenDocIds: [],
     pdfs: [], pdfError: null, committing: false, done: false, error: null, refusal: null,
     notebookId: null, confirmed: null, notes: [], rows: [], stillProcessing: false,
+    progress: null, commitTimeout: false,
   };
 }
 
@@ -584,6 +617,8 @@ export type SetupController = {
   next(): Promise<void>;
   back(): void;
   commit(): Promise<void>;
+  /** Stop this setup. Writes already sent can still complete. */
+  cancelCommit(): void;
   /** S16: send a PDF whose save failed again (a row with retry), then re-read readiness. No-op otherwise. */
   retryUpload(key: string): Promise<void>;
   /** The notebook the technician should open, if any (created, or the existing one on a refusal). */
@@ -614,6 +649,9 @@ export function createNewProjectSetup(deps: ControllerDeps): SetupController {
   const listeners = new Set<(s: SetupState) => void>();
   let disposed = false;
   const maxPdfBytes = deps.maxPdfBytes ?? MAX_UPLOAD_MB * 1024 * 1024;
+  // #5393: abort controller for canceling an in-flight commit
+  let commitAbortController: AbortController | null = null;
+  let commitTimeoutTimer: ReturnType<typeof setTimeout> | null = null;
 
   const set = (patch: Partial<SetupState>) => {
     state = { ...state, ...patch };
@@ -773,7 +811,7 @@ export function createNewProjectSetup(deps: ControllerDeps): SetupController {
     },
 
     async commit() {
-      if (state.committing || state.done || !state.selected || state.duplicate) return;
+      if (disposed || state.committing || state.done || !state.selected || state.duplicate) return;
       if (state.selected.kind === "machine" && state.linked === null) return;
       const selected = state.selected;
       const docs: CommitDoc[] = [];
@@ -784,10 +822,31 @@ export function createNewProjectSetup(deps: ControllerDeps): SetupController {
         seen.add(id);
         docs.push({ docId: id, filename: match.filename });
       }
-      set({ committing: true, error: null, refusal: null });
-      const outcome = await runCommit({ selected, name: state.name, docs, pdfs: state.pdfs }, deps);
+      commitAbortController = new AbortController();
+      const abortSignal = commitAbortController.signal;
+      commitTimeoutTimer = setTimeout(() => {
+        if (!disposed && state.committing) {
+          set({ commitTimeout: true, progress: "This is taking longer than usual. You can cancel or keep waiting." });
+        }
+      }, 60_000);
+
+      set({ committing: true, error: null, refusal: null, progress: "Starting...", commitTimeout: false });
+
+      const outcome = await runCommit(
+        { selected, name: state.name, docs, pdfs: state.pdfs },
+        deps,
+        abortSignal,
+        (progress) => { if (!disposed) set({ progress }); },
+      ).finally(() => {
+        if (commitTimeoutTimer !== null) clearTimeout(commitTimeoutTimer);
+        commitTimeoutTimer = null;
+        commitAbortController = null;
+      });
+
       // Codex #5295 r1 F2: a saved project reaches the host's list even when the
-      // sheet was closed mid-commit (the shell's Back closes open dialogs).
+      // sheet was closed mid-commit (the shell's Back closes open dialogs). This
+      // must happen before the `disposed` check so that dispose() during commit
+      // still notifies the host about any writes that completed.
       if (outcome.kind === "created" || (outcome.kind === "failed" && outcome.wrote)) deps.onWritten?.();
       if (outcome.kind === "created") {
         const reading = outcome.docs.flatMap((d) => (d.indexing && d.fileId ? [d.fileId] : []));
@@ -795,17 +854,24 @@ export function createNewProjectSetup(deps: ControllerDeps): SetupController {
       }
       if (disposed) return;
       if (outcome.kind === "refused") {
-        set({ committing: false, refusal: { notebookId: outcome.notebookId, message: outcome.message } });
+        set({ committing: false, refusal: { notebookId: outcome.notebookId, message: outcome.message }, progress: null, commitTimeout: false });
         return;
       }
       if (outcome.kind === "failed") {
-        set({ committing: false, error: outcome.message });
+        set({ committing: false, error: outcome.message, progress: null, commitTimeout: false });
         return;
       }
-      set({ notebookId: outcome.notebookId, confirmed: outcome.confirmed, notes: outcome.notes });
+      set({ notebookId: outcome.notebookId, confirmed: outcome.confirmed, notes: outcome.notes, progress: "Finishing..." });
       const results = [...outcome.docs];
       created = { notebookId: outcome.notebookId, nodeId: outcome.nodeId, results };
       await showReadiness(outcome.notebookId, results);
+    },
+
+    cancelCommit() {
+      if (disposed || !state.committing || state.done) return;
+      commitAbortController?.abort();
+      set({ committing: false, notebookId: null, progress: null, commitTimeout: false });
+      controller.dispose();
     },
 
     async retryUpload(key) {
@@ -858,6 +924,10 @@ export function createNewProjectSetup(deps: ControllerDeps): SetupController {
     dispose() {
       disposed = true;
       listeners.clear();
+      if (commitTimeoutTimer !== null) {
+        clearTimeout(commitTimeoutTimer);
+        commitTimeoutTimer = null;
+      }
     },
   };
   return controller;
