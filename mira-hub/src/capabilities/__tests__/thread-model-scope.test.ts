@@ -202,13 +202,13 @@ describe("threadStatusScope: the question an identity card was saved on (#6085)"
     expect(threadStatusScope([J2], { ...TP700, cards: [card(J2, "SIEMENS", "tp 700")] })).toBe("own");
   });
 
-  it("is own for a Micro820 typed with its catalog number", () => {
-    const q = "Our Allen-Bradley Micro820 2080-LC20-20QBB will not power up. What is the rated supply voltage?";
-    const m820 = { manufacturer: "Allen-Bradley", model: "820", catalogNumber: "", recordCatalog: null };
-    expect(threadStatusScope([q], m820)).toBe("other");
-    const carded = { ...m820, cards: [card(q, "Allen-Bradley", "820")] };
-    expect(threadStatusScope([q], carded)).toBe("own");
-    expect(threadStatusScope([q, "does the 2080-LC20-20QWB take 24V?"], carded)).toBe("other");
+  it("control: a card's question naming two identifiers is not read as one machine's markings", () => {
+    const q = "Our ABB ACS355 ACS355-03E-07A3-4 sits next to an ACS355-03E-09A8-4. Which fuse?";
+    const acs = { manufacturer: "ABB", model: "ACS355", catalogNumber: "", recordCatalog: null };
+    const carded = { ...acs, cards: [card(q, "ABB", "ACS355")] };
+    expect(threadStatusScope([q], carded)).toBe("other");
+    expect(threadStatusScope([q, "Does the ACS355-03E-07A3-4 need a fuse?"], carded)).toBe("other");
+    expect(threadStatusScope([q, "Does the ACS355-03E-09A8-4 need a fuse?"], carded)).toBe("other");
   });
 
   it("is own for an ABB ACS355 typed with its type code", () => {

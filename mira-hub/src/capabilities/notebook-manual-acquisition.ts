@@ -1348,15 +1348,18 @@ export function threadStatusScope(
   }
   own.delete("");
   const ownMaker = maker(machine.manufacturer);
-  // #6085: a card names one machine. When it names the machine on record, every model its
-  // question names is that machine's ("TP700 Comfort panel 6AV2124-0GC01-0AX0" proposed and
-  // confirmed as the TP700). This reads the card MIRA saved on the turn, not the wording.
+  const isOwn = (id: string) => own.has(id) || [...own].some((o) => familyCovers(id, o));
+  // #6085: a card names one machine. When a card saved on a turn names the machine on record,
+  // the one other identifier its question names is that machine's marking ("TP700 Comfort
+  // panel 6AV2124-0GC01-0AX0", carded and confirmed as the TP700). A question naming two is
+  // not read as one machine's markings ("ACS355-03E-07A3-4 sits next to an ACS355-03E-09A8-4"
+  // is carded as the ACS355), so it changes nothing. Reads the saved card, not the wording.
   const ownModel = norm(machine.model);
   for (const card of machine.cards ?? []) {
     if (!ownMaker || !ownModel || maker(card.manufacturer) !== ownMaker || norm(card.model) !== ownModel) continue;
-    for (const id of modelsNamedIn(card.question, own)) own.add(id);
+    const markings = [...modelsNamedIn(card.question, own)].filter((id) => !isOwn(id));
+    if (markings.length === 1) own.add(markings[0]!);
   }
-  const isOwn = (id: string) => own.has(id) || [...own].some((o) => familyCovers(id, o));
   const otherMaker = (named: string | null | undefined) => Boolean(named && ownMaker && maker(named) !== ownMaker);
   for (let i = questions.length - 1; i >= 0; i--) {
     const q = questions[i] ?? "";
