@@ -1595,6 +1595,41 @@ describe("#6048 — a body cancel after the commit still persists the packet and
     expect(telemetry.packet.jev_decision ?? null).toBeNull();
   });
 
+  // With the call ON the handoff tracker also says no for this exit (the response is errored),
+  // so the test above cannot tell whether the exit itself marks the turn undelivered. With the
+  // call OFF only that mark keeps the helper from being asked at all.
+  it("F1: decision call OFF, the history write fails on a request with an id: the decision helper is not asked and the failed-turn packet carries no decision record, not even a disabled one", async () => {
+    stubFetch(REDRAFT, [verdict("safe", "none")]);
+    const boom = new Error("history write failed (test)");
+    domainMock.recordTurn.mockImplementation(async () => {
+      throw boom;
+    });
+    const res = await POST(req({ message: Q_PLAIN, sourceDocIds: [DOC_A], clientRequestId: REQ_ID }, false), params);
+    expect(await drain(res.body!.getReader())).toBe(boom);
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    await settleAll();
+    const [, , telemetry] = persistMock.persistTurnUsage.mock.calls[0] as unknown as PersistCall;
+    expect(telemetry.packet.persistence.outcome).toBe("failed");
+    expect(evaluateMock).not.toHaveBeenCalled();
+    expect("jev_decision" in telemetry.packet).toBe(false);
+  });
+
+  it("F1 control: decision call OFF, the history write fails on a request with NO id: the answer is delivered and the packet carries the disabled record", async () => {
+    stubFetch(REDRAFT, [verdict("safe", "none")]);
+    domainMock.recordTurn.mockImplementation(async () => {
+      throw new Error("history write failed (test)");
+    });
+    const res = await POST(req({ message: Q_PLAIN, sourceDocIds: [DOC_A] }, false), params);
+    expect(await drain(res.body!.getReader())).toBe("closed");
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    await settleAll();
+    const [, , telemetry] = persistMock.persistTurnUsage.mock.calls[0] as unknown as PersistCall;
+    expect(telemetry.packet.persistence.outcome).toBe("failed");
+    expect(evaluateMock).toHaveBeenCalledTimes(1);
+    expect(telemetry.packet.jev_decision).toMatchObject({ skipped_reason: "disabled" });
+    expect(vendorRequests()).toHaveLength(0);
+  });
+
   it("F1 control: decision call on, the history write fails on a request with NO id: the route carries on, the answer is delivered, ONE request is sent", async () => {
     decisionCallOn();
     stubFetch(REDRAFT, [verdict("safe", "none")]);
