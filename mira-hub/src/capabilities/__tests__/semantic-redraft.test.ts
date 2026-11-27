@@ -264,6 +264,8 @@ describe("#6049: a zero value is exempt only as a residual pressure or voltage r
     "Recalibrate the PT-7 transducer so its output reads 0 V [1].",
     "Trim the PT-7 transducer until the meter shows 0 V [1].",
     "Verify the output meter reads 0 V at the PT-7 transducer [1].",
+    // The signal is named only AFTER the value.
+    "Verify the meter reads 0 V at the PT-7 transducer output [1].",
   ])("a zero voltage that is a calibration target or a named signal is checked: %s", (answer) => {
     expect(gaps(answer, PT)).toEqual(VALUE);
   });
