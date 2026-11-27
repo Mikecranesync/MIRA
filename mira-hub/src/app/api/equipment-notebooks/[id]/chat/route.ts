@@ -235,6 +235,7 @@ import {
   type AdmittedCover,
   type ManualChunk,
 } from "@/lib/manual-rag";
+import { retrieveReferencedPageChunks } from "@/capabilities/referenced-pages";
 import { inferEquipmentType } from "@/lib/equipment-type";
 import {
   sanitizeHistory,
@@ -3025,7 +3026,28 @@ async function handleChatTurn(
       console.warn("[notebook-chat] safety-chapter read failed (retrieved chunks only):", err instanceof Error ? err.message : err);
     }
   }
-  const chunks: ManualChunk[] = safetyChapterChunks.length > 0 ? [...retrievedChunks, ...safetyChapterChunks] : retrievedChunks;
+  // #6030 F2/F3: the pages a retrieved passage points to ("see page 45"), read here so the SAME
+  // evidence set feeds the prompt, the source chips, the cited-page read and the validators. One
+  // hop, same document and file only, appended last so no citation number moves. Notebook lane
+  // only; fail-open: a failed read keeps exactly the chunks already in hand.
+  let referencedPageChunks: ManualChunk[] = [];
+  if (notebookRetrieval && !oemRetrieval && retrievedChunks.length > 0) {
+    try {
+      referencedPageChunks = await withTenantContext(ctx.tenantId, (client) =>
+        retrieveReferencedPageChunks(client, ctx.tenantId, retrievedChunks, {
+          docIds,
+          approvedSourceDocIds: docIds,
+          existing: [...retrievedChunks, ...safetyChapterChunks],
+        }),
+      );
+    } catch (err) {
+      console.warn("[notebook-chat] referenced-page read failed (retrieved chunks only):", err instanceof Error ? err.message : err);
+    }
+  }
+  const chunks: ManualChunk[] =
+    safetyChapterChunks.length > 0 || referencedPageChunks.length > 0
+      ? [...retrievedChunks, ...safetyChapterChunks, ...referencedPageChunks]
+      : retrievedChunks;
   // No document selected and the library's pages were for the bound model, not
   // the model this message names: the turn has no passages (so nothing below
   // can answer, cite or print a page from them) and this says why. It is NOT
@@ -4719,12 +4741,11 @@ async function handleChatTurn(
   // widens what reaches the model's DATA message. Empty sheetSection ⇒
   // byte-identical to before (filter(Boolean) drops it).
   const sheetAndLookContext = [lookContext, sheetSection].filter(Boolean).join("\n\n");
-  // F2 FIX: Pass chunks as allChunks pool for cross-reference following
-  // (bounded to retrieved set - full NeonDB query expansion is future work)
+  // `chunks` is the one evidence set: referenced pages were already read into it above.
   const messages = buildProviderMessages(
     systemPrompt,
     turnHistory,
-    buildManualUserContent(topicHint ? `${message}\n\n${topicHint}` : message, chunks, sheetAndLookContext, chunks),
+    buildManualUserContent(topicHint ? `${message}\n\n${topicHint}` : message, chunks, sheetAndLookContext),
     priorReportContext.content,
   );
   {
