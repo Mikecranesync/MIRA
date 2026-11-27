@@ -439,39 +439,537 @@ const SAFETY_CONTROL_DEFERRAL = new RegExp(
   "i",
 );
 
-/** Returns the offending sentence, or null. DETECTION is sentence-scoped —
- *  splitting an instruction across punctuation ("While the machine is
- *  energized, reset the fault") must not hide it. The prohibitive/cautionary
- *  EXEMPTION is clause-scoped (iteration-5 F1): it applies only when the
- *  marker appears in a clause that carries part of the instruction (the
- *  hazard action or the energized/no-isolation relation). A warning or
- *  negation in an unrelated clause ("There is risk, but …", "Do not
- *  hesitate: …") never exempts. Detection only, never rewriting. */
-function clauseHazardViolation(text: string): { relId: string; sentence: string } | null {
-  for (const sentence of text.split(/(?<=[.!?])\s+|\n+/)) {
+// #5962: clause-local scope. The closed deferral phrase ("none of these should
+// replace lockout/tagout") is blanked out of a sentence BEFORE clause analysis,
+// so its own `replace` is not read as a hazard action and — the point — it can
+// no longer vouch for a sibling clause that directs live work. Same closed
+// vocabulary as SAFETY_CONTROL_DEFERRAL, minus the anchors.
+const SAFETY_CONTROL_DEFERRAL_PHRASE = new RegExp(
+  "(?:for\\s+(?:plant|shop|production|field|industrial|maintenance|day[-\\s]to[-\\s]day|real[-\\s]world|everyday)\\s+(?:use|work),\\s+)?" +
+    "(?:none\\s+of\\s+(?:these|them|those)(?:\\s+tools)?\\s+(?:(?:should|can|could|will)\\s+(?:replace|substitute\\s+for)|(?:is|are)\\s+(?:a\\s+)?substitutes?\\s+for)" +
+    "|(?:these|this|it|they|ai\\s+tools?|the\\s+tool|the\\s+app)\\s+(?:(?:should|must|can|will|do|does)(?:n't|\\s+not)\\s+(?:ever\\s+)?replace|(?:is|are)(?:n't|\\s+not)\\s+(?:a\\s+)?substitutes?\\s+for)" +
+    "|no\\s+(?:ai\\s+)?(?:tool|app|assistant)\\s+(?:can\\s+)?replaces?)" +
+    "\\s+(?:" + SAFETY_CONTROL_ITEM + ")" +
+    "(?:(?:,\\s+and\\s+|,\\s+or\\s+|,\\s+|\\s+and\\s+|\\s+or\\s+)(?:" + SAFETY_CONTROL_ITEM + "))*" +
+    "(?:\\s+when\\s+(?:energi[sz]ed|live)[-\\s]work\\s+is\\s+(?:involved|required|needed|necessary))?",
+  "gi",
+);
+
+// #5962: a bare affirmative live-work imperative names the state with no
+// connector word — "work on it energized", "reset live", "reset it energized".
+// Only a state word that ENDS its phrase counts (so "live conductors",
+// "live data" never match), and a copula/conditional/negation directly before
+// it ("is live", "if live", "not energized") is a description, not an order.
+// Native-review F2/F4 (#5962): ONE grammar for a bare affirmative live-work
+// order — a hazard verb, its object (a pronoun, a noun phrase, or a bare
+// equipment/fault identifier: "reset F005 live now"), and an energized state
+// word that MODIFIES THE ACTION. Two structural facts decide it; there is no
+// list of descriptive nouns:
+//   * what PRECEDES the state: a copula/conditional/negation ("is live", "if
+//     energized", "not powered") makes it a description, not an order;
+//   * what FOLLOWS the state: a predicative state ends its phrase or is
+//     followed by a closed-class continuation (preposition, conjunction,
+//     auxiliary, a time/frequency adverb, an -ly adverb). Any other word after
+//     it is the head noun the state is modifying ("live telemetry view",
+//     "live waveform", "live data"): attributive, a data/display noun phrase.
+// "Open the HMI live telemetry view" therefore never matches, while "reset
+// F005 live now", "work on it energized today", "reset it live as a test" do.
+const BARE_STATE_ANY_SRC = "(?:energi[sz]ed|live)";
+const BARE_STATE_OBJ_SRC = "(?:energi[sz]ed|live|powered(?:\\s+on)?|under\\s+power)";
+// Closed grammatical classes that can follow a PREDICATIVE state word. Each is a
+// word CLASS, not a list of observed sentences:
+//   * conjunctions / subordinators / auxiliaries / modals;
+//   * the PREPOSITIONS, as a class ("live under load", "live near the motor",
+//     "live over the weekend", "live on the bench") — a preposition always opens a
+//     phrase that modifies the verb, never the noun a state adjective modifies;
+//   * place and time ADVERBS ("outdoors", "overhead", "overnight", "again",
+//     "sideways"), plus the productive adverb morphology -ly / -wards / -ways /
+//     -wise and the every/some/any/no + where/place/time compounds;
+//   * words that can NEVER head a noun phrase — determiners, numerals,
+//     quantifiers, intensifiers ("live right now", "live this time", "live one
+//     more time", "live all day", "live a few times", "live real quick").
+// The default for any OTHER open-class word is attributive (a noun is being
+// modified: "live telemetry view"), so a rare manner adverb with no -ly/-wards
+// morphology ("live pronto") is the one bounded residual (see report).
+const BARE_PREPOSITIONS =
+  "about|above|across|after|against|along|alongside|amid|among|amongst|around|as|at|atop|before|behind|below|beneath|beside|besides|between|beyond|by|despite|during|except|for|from|in|inside|into|like|near|nearby|of|on|onto|opposite|out of|outside|over|past|per|since|than|through|throughout|till|to|toward|towards|under|underneath|unlike|until|up to|upon|via|with|within|without|using|including|excluding|regarding|concerning|according|pending|barring|considering";
+const BARE_CONJUNCTIONS_AUX =
+  "and|or|nor|but|so|then|because|while|if|when|whenever|though|although|unless|yet|whereas|that|which|who|where|is|are|should|can|could|may|might|must|will|would|please";
+const BARE_PLACE_TIME_ADVERBS =
+  "again|anyway|instead|now|today|tonight|tomorrow|yesterday|twice|once|thrice|first|next|still|too|also|here|there|later|earlier|sooner|soon|always|never|ever|often|seldom|sometimes|sometime|nowadays|meanwhile|afterward|afterwards|beforehand|overnight|midday|just|only|even|already|anytime|immediately|temporarily|briefly|otherwise|anymore|altogether|together|apart|aside|away|abroad|ahead|aloft|overhead|underground|indoors|outdoors|upstairs|downstairs|upside|sideways|elsewhere";
+const BARE_NEVER_A_NOUN_HEAD =
+  "a|an|the|this|these|those|my|your|its|our|their|his|her|one|two|three|four|five|six|seven|eight|nine|ten|several|few|many|much|more|most|some|any|every|each|another|all|both|half|right|real|really|very|quite|pretty|rather|fairly";
+const BARE_FOLLOW_CLOSED =
+  "(?:(?:" + BARE_PREPOSITIONS + "|" + BARE_CONJUNCTIONS_AUX + "|" + BARE_PLACE_TIME_ADVERBS + "|" + BARE_NEVER_A_NOUN_HEAD + ")(?![-\\w])" +
+  "|[a-z]{3,}ly(?![-\\w])|[a-z]{2,}(?:wards?|ways|wise)(?![-\\w])|(?:every|some|any|no)(?:where|place|time|how)(?![-\\w]))";
+// Hyphenated compounds ("under-voltage", "on-site") are one noun-modifier word.
+const BARE_NOT_ATTRIBUTIVE =
+  "(?![-\\w])(?!\\s+(?:off|down)\\b)(?!\\s+(?:supply|assembly|family|anomaly|reply)\\b)" +
+  "(?=\\s*(?:$|[,;:.!?)]|" + BARE_FOLLOW_CLOSED + "))";
+// Physical electrical/plant equipment a hazard verb can act on. An attributive
+// "live <noun>" is an ORDER (energized work on that equipment) only when the noun
+// ENDS its phrase ("replace live parts", "service live equipment today"); a
+// compound that goes on ("live drive overview", "live line status") is a
+// display/data phrase and stays clean. Head-final, never a noun denylist.
+const BARE_PHYSICAL_NOUN_SRC =
+  "(?:conductor|bus(?:bar)?|terminal|part|circuit|wire|wiring|phase|cable|lead|connection|equipment|contact|fuse|breaker|contactor|feeder|relay|coil|switchgear|supply|rail|drive|motor|component|load|panel|sensor|output|line|cabinet|enclosure|device|module|board|machine|machinery|system|gear)(?:e?s)?";
+const BARE_COPULA_BEFORE =
+  "(?<!\\b(?:is|are|was|were|be|been|being|if|whether|not|remains?|stays?|still|while|when|once)\\s)(?<!n't\\s)";
+const BARE_ENERGIZED_RELATION = new RegExp(
+  "(?:" +
+    // (a) pronoun object directly before the state
+    "\\b(?:it|them|this|that|these|those|itself|themselves|one|ones)\\s+(?<![\\w-])" + BARE_COPULA_BEFORE + BARE_STATE_OBJ_SRC + BARE_NOT_ATTRIBUTIVE +
+    // (b) determiner phrase with a head word before the state
+    "|\\b(?:the|a|an|your|its|that|this|each|every|any|all|those|these)\\s+(?:[\\w-]+\\s+){1,3}?(?<![\\w-])" + BARE_COPULA_BEFORE + BARE_STATE_OBJ_SRC + BARE_NOT_ATTRIBUTIVE +
+    // (c) the hazard verb, then 0-3 object words (a bare identifier is an
+    //     object like any other), then live/energized
+    "|\\b" + HAZARD_ACTION_ANY_SRC + "\\s+(?:[\\w.-]+\\s+){0,3}?(?<![\\w-])" + BARE_COPULA_BEFORE + BARE_STATE_ANY_SRC + BARE_NOT_ATTRIBUTIVE +
+    // (e) the hazard verb, then live/energized + a PHYSICAL noun that ends the phrase
+    "|\\b" + HAZARD_ACTION_ANY_SRC + "\\s+(?:[\\w.-]+\\s+){0,2}?(?<![\\w-])" + BARE_COPULA_BEFORE + BARE_STATE_ANY_SRC + "\\s+" + BARE_PHYSICAL_NOUN_SRC + BARE_NOT_ATTRIBUTIVE +
+    // (d) the hazard verb, at least one object word, then powered/under power
+    "|\\b" + HAZARD_ACTION_ANY_SRC + "\\s+(?:[\\w.-]+\\s+){1,3}?(?<![\\w-])" + BARE_COPULA_BEFORE + BARE_STATE_OBJ_SRC + BARE_NOT_ATTRIBUTIVE +
+    ")",
+  "i",
+);
+// "with the power on" — the supply named as the thing that is on.
+const POWER_ON_RELATION =
+  /\b(?:with|while|whilst|when|during)\b[^.!?\n]{0,30}?\bpower\s+(?:is\s+)?(?:still\s+)?(?:on|applied|connected)\b/i;
+
+// #5962: defeating a guard / interlock / E-stop is hazardous on its own — it
+// needs no energized-state word. The verb must take a safety-device object, so
+// the noun "interlock bypass" and unrelated "disable the alarm" never match.
+const GUARD_DEFEAT_VERB_SRC =
+  "(?:bypass(?:ing)?|jumper(?:ing|ed)?|defeat(?:ing)?|disabl(?:e|ing)|overrid(?:e|ing)|cheat(?:ing)?|short(?:ing)?\\s+out)";
+const GUARD_DEFEAT_OBJECT_SRC =
+  "(?:the\\s+|your\\s+|a\\s+|an\\s+|that\\s+|this\\s+|all\\s+)?(?:\\w+\\s+){0,2}?(?:interlocks?|e-?stops?|emergency[-\\s]stops?|light\\s+curtains?|safety\\s+(?:circuits?|relays?|devices?|switch(?:es)?|gates?|guards?|interlocks?|systems?)|machine\\s+guards?|guards?)\\b";
+const GUARD_DEFEAT = new RegExp("\\b" + GUARD_DEFEAT_VERB_SRC + "\\s+" + GUARD_DEFEAT_OBJECT_SRC, "i");
+// #5962 F2: negation also governs the verb through verbs that merely REPORT
+// the act ("do not recommend bypassing an interlock"). Verbs that REVERSE the
+// negation ("do not hesitate/forget/fail/neglect to bypass") are deliberately
+// absent, so they still do not exempt.
+const NEG_REPORTING_GAP_SRC =
+  "(?:\\s+(?:be|being|been|get|ever|even|again|simply|just|safe|safely|to|attempt\\s+to|try\\s+to|(?:recommend|suggest|advis|advocate|endorse|encourag|propos|instruct|permit|allow|let|tell|ask|urg|consider|condon)\\w*(?:\\s+(?:[a-z'-]+\\s+){0,2}?to)?|(?:the\\s+)?(?:use|act|practice)\\s+of)){0,4}";
+const GUARD_PROHIBITION = new RegExp(
+  "\\b" + NEG_HEAD_SRC + NEG_REPORTING_GAP_SRC + "\\s+" + GUARD_DEFEAT_VERB_SRC + "\\b" +
+    "|\\b(?:prevent\\w*|prohibit\\w*|forbid\\w*|disallow\\w*|block\\w*)\\b[^.!?\\n]{0,40}?\\b" + GUARD_DEFEAT_VERB_SRC + "\\b" +
+    "|\\b" + GUARD_DEFEAT_VERB_SRC + "\\b[^.!?\\n]{0,60}?\\b(?:is|are|would\\s+be|remains)\\s+(?:strictly\\s+|extremely\\s+|very\\s+)?(?:dangerous|hazardous|unsafe|prohibited|forbidden|illegal|not\\s+(?:allowed|permitted|safe|acceptable|recommended))",
+  "i",
+);
+
+// Same, for the energized/hazard verbs: "do not recommend resetting it live".
+// Also the maintain-state verbs ("do not keep the machine energized during the
+// reset", "never leave the panel powered on"): the state is that verb's
+// complement, so the negation must reach it. Reversing verbs stay out.
+const MAINTAIN_STATE_SRC = "(?:keep(?:ing)?|leav(?:e|ing)|stay(?:ing)?|remain(?:ing)?|maintain(?:ing)?)";
+const REPORTING_PROHIBITION = new RegExp(
+  "\\b" + NEG_HEAD_SRC + NEG_REPORTING_GAP_SRC + "\\s+(?:" + HAZARD_ACTION_ANY_SRC + "|" + MAINTAIN_STATE_SRC + ")\\b",
+  "i",
+);
+
+// Native-review 2 F4: a bare state modifies the NEAREST verb before it. When that
+// verb only shows or reads information ("view the readings live", "watch it
+// live on the HMI") the state describes the data, not energized work, whatever
+// hazard verb ("open the alarm log") sits elsewhere in the clause. A class of
+// display/information verbs; physical verbs (reset, work on, test, …) bind as before.
+const DISPLAY_VERB_SRC =
+  "(?:view(?:s|ing)?|watch(?:es|ing)?|see(?:s|ing)?|observ(?:e|es|ing)|monitor(?:s|ing)?|read(?:s|ing)?|review(?:s|ing)?|display(?:s|ing)?|show(?:s|ing)?|plot(?:s|ting)?|chart(?:s|ing)?|graph(?:s|ing)?|trend(?:s|ing)?|track(?:s|ing)?|scroll(?:s|ing)?|zoom(?:s|ing)?|brows(?:e|es|ing)|filter(?:s|ing)?|sort(?:s|ing)?|export(?:s|ing)?|download(?:s|ing)?|stream(?:s|ing)?|follow(?:s|ing)?)";
+const VERB_SCAN_SRC = "\\b(?:(" + HAZARD_ACTION_ANY_SRC + ")|(" + DISPLAY_VERB_SRC + "))\\b";
+const BARE_GLOBAL = new RegExp(BARE_ENERGIZED_RELATION.source, "gi");
+// Final-class Q2: "read" / "monitor" are display verbs ONLY when the reading is
+// taken from a display. A reading taken with a meter at electrical contact points
+// ("read the voltage live at the terminals", "clamp each phase", "probe the lugs")
+// is a physical electrical measurement of an energized circuit. This reuses the
+// canonical A4 measurement vocabulary (measure action + contact context, and not a
+// reading from an installed external display); it adds no verb allowance.
+// Native-review 3 F4: the contact context and the display source are properties of the
+// measurement PREDICATE and its object, not of the whole clause. The phrase runs from the
+// measurement verb to the next purpose/comparison boundary ("to compare it to …", "and
+// check it against …", "versus …") or clause punctuation, so a terminal reading that is
+// then COMPARED with a value on an HMI stays physical, while a reading taken FROM the HMI
+// (its own phrase carries the display source) stays display.
+const MEASUREMENT_PHRASE_END =
+  /\b(?:(?:in\s+order\s+)?to\s+(?:compare|check|confirm|verify|match|cross-?check|see|ensure|validate)|(?:and|then|so)\s+(?:compare|check|confirm|verify|match|cross-?check|validate)|compar(?:e|ed|ing)\s+(?:it|them|this|that)?\s*(?:to|with|against)|versus|vs\.?|against)\b|[,;:]/i;
+function physicalContactReading(c: string, statePos?: number): boolean {
+  // Built per call: the measurement constants are declared further down the module.
+  const measure = new RegExp("\\b" + MEASURE_ACTION_SRC, "gi");
+  let phrases = [...c.matchAll(measure)];
+  // With a state position, only the measurement that GOVERNS it counts (the nearest one
+  // before it): "read the voltage live from the HMI and compare it to the last reading at
+  // the terminals" has a terminal contact, but it belongs to a different measurement.
+  if (statePos !== undefined) phrases = phrases.filter((m) => (m.index ?? 0) <= statePos).slice(-1);
+  for (const m of phrases) {
+    const from = m.index ?? 0;
+    const rest = c.slice(from);
+    const end = MEASUREMENT_PHRASE_END.exec(rest);
+    const phrase = end ? rest.slice(0, end.index) : rest;
+    if (CONTACT_MEASUREMENT.test(phrase) && !EXTERNAL_READING.test(phrase)) return true;
+  }
+  return false;
+}
+/** End offset of the first bare state whose GOVERNING measurement is a physical contact reading, or -1. */
+function physicalReadingBoundEnd(c: string): number {
+  for (const m of c.matchAll(BARE_GLOBAL)) {
+    const pos = (m.index ?? 0) + m[0].length;
+    if (physicalContactReading(c, pos)) return pos;
+  }
+  return -1;
+}
+/** End offset of the first bare state that binds to a PHYSICAL action, or -1. */
+function bareBoundEnd(c: string): number {
+  for (const m of c.matchAll(BARE_GLOBAL)) {
+    const upto = c.slice(0, (m.index ?? 0) + m[0].length);
+    let last: RegExpMatchArray | null = null;
+    for (const v of upto.matchAll(new RegExp(VERB_SCAN_SRC, "gi"))) last = v;
+    // bound to a display verb, unless the reading is a physical contact measurement
+    if (last && last[2] !== undefined && last[1] === undefined && !physicalContactReading(c, (m.index ?? 0) + m[0].length)) continue;
+    return (m.index ?? 0) + m[0].length;
+  }
+  return -1;
+}
+
+/** One clause's reading, for the clause-local exemption below. */
+function clauseRelation(c: string, question: boolean): string | null {
+  const rel = HAZARD_RELATIONS.find((r) => r.re.test(c));
+  if (rel) return rel.id;
+  if (NO_ISOLATION_RELATION.test(c) || POWER_ON_RELATION.test(c)) return "energized";
+  if (!question && bareBoundEnd(c) >= 0) return "energized";
+  return null;
+}
+
+// Native-review 2 F5: the position that ESTABLISHES the hazard — a directed
+// guard-defeat verb, else the last hazard action before the (physically bound)
+// energy relation — never merely the earliest verb-looking word ("the test record").
+const HAZARD_ACTION_GLOBAL = new RegExp(HAZARD_ACTION_ANY.source, "gi");
+function hazardAnchor(c: string): number {
+  const g = GUARD_DEFEAT.exec(c);
+  if (g) return g.index;
+  let relAt = -1;
+  const note = (i: number) => {
+    if (i >= 0 && (relAt < 0 || i < relAt)) relAt = i;
+  };
+  for (const r of HAZARD_RELATIONS) note(r.re.exec(c)?.index ?? -1);
+  note(NO_ISOLATION_RELATION.exec(c)?.index ?? -1);
+  note(POWER_ON_RELATION.exec(c)?.index ?? -1);
+  note(bareBoundEnd(c));
+  const acts = [...c.matchAll(HAZARD_ACTION_GLOBAL)];
+  if (relAt >= 0) {
+    const before = acts.filter((a) => (a.index ?? 0) < relAt);
+    if (before.length) return before[before.length - 1].index ?? 0;
+  }
+  return acts.length ? (acts[0].index ?? 0) : 0;
+}
+
+// Native-review F1: "and"/"or"/"nor" start a NEW instruction only when an
+// independent predicate follows — an explicit subject + modal ("you should
+// reset…"), or a force marker ("just", "simply", "go ahead", "please", "feel
+// free", "instead", "also"). A bare coordinated verb ("do not bypass the guard
+// or disable the interlock") keeps sharing the prohibition.
+const INDEPENDENT_SUBJECT_SRC =
+  "(?:(?:then\\s+|also\\s+|only\\s+|even\\s+)?(?:(?:an?\\s+|the\\s+|any\\s+|each\\s+)?(?:you|we|they|i|he|she|one|everyone|anyone|someone|everybody|operators?|technicians?|techs?|users?|electricians?|mechanics?|supervisors?|engineers?|workers?|staff|personnel|maintenance|crew|team)|let's|let\\s+us)\\s+(?:[a-z']+\\s+){0,2}?" +
+  "(?:should|can|could|may|might|must|will|would|shall|need(?:s)?\\s+to|ought|have\\s+to|has\\s+to|are\\s+to|are\\s+free|are\\s+allowed|get\\s+to|reset|clear|open|work|service|repair|replace|remove|adjust|touch|test|measure|bypass|disable|override|jumper)\\b" +
+  "|(?:go\\s+ahead|please|feel\\s+free)\\b)";
+// Focus adverbs. After "and" they CONTRAST ("do not touch it and just reset it
+// live"), so the clause is a new instruction; after "or"/"nor" they stay inside
+// the shared negation ("never reset it live or just work on it energized").
+const INDEPENDENT_WEAK_SRC = "(?:just|simply|instead|also)\\b";
+const SEQUENCE_ADJUNCT_SRC =
+  "(?:(?:" + BARE_PREPOSITIONS + ")\\s+(?:(?:the|a|an|this|that|your|each|every|any)\\s+)?(?:(?!(?:not|never|no|do|does|did|don't|doesn't|cannot|can't|won't|shouldn't|mustn't|must|should|will|would|could)\\b)[a-z'-]+\\s+){0,2}?" +
+  "|(?:then|else|otherwise|instead|afterwards?|next|later|finally|also|first|subsequently|meanwhile|additionally|alternatively)\\s+)";
+const CLAUSE_SEPARATOR = new RegExp(
+  CLAUSE_BOUNDARY.source +
+    "|\\s(?:and|or|nor)\\b(?=\\s+" + INDEPENDENT_SUBJECT_SRC + ")" +
+    "|\\sand\\b(?=\\s+" + INDEPENDENT_WEAK_SRC + ")" +
+    // Native-review 2 F1: sequence ("and then", "afterwards") and alternative
+    // ("or else", "otherwise") connectives introduce a separate predicate, so a
+    // prohibition governs only the action it is attached to.
+    "|\\s(?:(?:and|or)\\s+(?:then|else|otherwise|afterwards?|next|after\\s+that)|then|otherwise|afterwards?|after\\s+that)\\b" +
+    // Native-review 3 F1: a coordinator followed by a sequencing/causal ADJUNCT and then a hazard
+    // verb is a distinct imperative predicate ("so instead reset …", "and in the next step
+    // reset …", "or later on work on …"). A BARE coordinated verb ("or reset …") has no adjunct and
+    // keeps sharing the prohibition. Structural: adjunct = a preposition phrase or a sequencing adverb.
+    "|\\s(?:and|or|nor)\\s+(?:" + SEQUENCE_ADJUNCT_SRC + "){1,3}(?=" + HAZARD_ACTION_ANY_SRC + "\\b)" +
+    "|\\s(?:so|yet)\\s+(?:" + SEQUENCE_ADJUNCT_SRC + "){0,3}(?=" + HAZARD_ACTION_ANY_SRC + "\\b)",
+  "gi",
+);
+// A bare single-verb list item ("bypass, disable, or override the interlock")
+// carries no object of its own: it continues the negation of the item before it.
+const BARE_LIST_ITEM = /^\s*(?:(?:and|or|nor)\s+)?[a-z]+\s*$/i;
+
+// Native-review F3: an action that is REPORTED rather than directed. The
+// reported span is masked in place (never the whole sentence), so a sibling
+// clause is still judged on its own and a protective clause can never pardon
+// an unsafe instruction elsewhere.
+const THIRD_PARTY_SRC =
+  "(?:operators?|someone|anyone|anybody|people|users?|technicians?|workers?|personnel|staff|crew|they|he|she|others?|employees?|contractors?|visitors?)";
+const PERCEPTION_SRC = "(?:discover|find|found|see|saw|seen|notice|catch|caught|spot|observe|detect|witness|hear|learn|realiz|suspect|identify|confirm)";
+const ATTEMPT_SRC = "(?:attempt\\w*|tr(?:y|ies|ied|ying)|tempt\\w*|want\\w*|intend\\w*|decid\\w*|choos\\w*|seek\\w*)";
+const DIRECTIVE_MODAL = /\b(?:can|may|could|might|must|will|would|shall|should|need|ought|have\s+to|has\s+to)\b/i;
+// `gerund` = the reported act is an -ing complement ("prevent X from
+// bypassing the interlock"): a following "and <bare verb>" is then a NEW
+// imperative, so the mask stops there; for "attempts to <verb>" a bare
+// coordinated verb is parallel and stays inside the report.
+const GERUND = "[a-z]+ing\\b";
+const REPORTED_CONSTRUCTIONS: ReadonlyArray<{ re: RegExp; gerund: boolean }> = [
+  // "if/when an operator attempts to X" — a condition naming someone's attempt
+  { re: new RegExp("(?:\\b(?:if|when|whenever|unless|once)\\b|^\\s*should\\b)\\s+((?:[a-z'-]+\\s+){0,3}?)" + ATTEMPT_SRC + "\\s+to\\b", "i"), gerund: false },
+  // "an operator who attempts to X" — a third party's attempt
+  { re: new RegExp("\\b" + THIRD_PARTY_SRC + "\\s+((?:[a-z'-]+\\s+){0,2}?)" + ATTEMPT_SRC + "\\s+to\\b", "i"), gerund: false },
+  // "prevent/stop/warn against … from/against X-ing" — needs the -ing complement
+  { re: new RegExp("\\b(?:prevent\\w*|stop\\w*|block\\w*|deter\\w*|discourag\\w*|warn\\w*|guard\\w*|protect\\w*|watch\\w*|monitor\\w*|catch\\w*|detect\\w*|alarm\\w*|flag\\w*|safeguard\\w*)\\b[^.!?;,]{0,40}?\\b(?:from|against)\\s+(?:[a-z'-]+\\s+){0,2}?" + GERUND, "i"), gerund: true },
+  // F3: an ONGOING act named in a condition — "if anyone is bypassing the interlock",
+  // "while operators keep jumpering the guard". Only a guard-defeat or hazard-action
+  // gerund counts (never a state word: "while the drive is running" stays a hazard condition).
+  { re: new RegExp("\\b(?:if|when|whenever|while|once|unless|as\\s+soon\\s+as|and|or)\\b\\s+((?:[a-z'-]+\\s+){0,3}?)(?:is|are|was|were|has\\s+been|have\\s+been|keeps?|continues?|starts?|begins?)\\s+(?:to\\s+)?(?:(?:caught|seen|found|spotted|noticed|observed|detected)\\s+)?(?=[a-z]+ing\\b)(?:" + GUARD_DEFEAT_VERB_SRC + "|" + HAZARD_ACTION_ANY_SRC + ")\\b", "i"), gerund: true },
+  // Final-class Q1: a DISCOVERY/PERCEPTION condition — "if you discover someone
+  // bypassing the interlock", "when you see anyone bypass the guard", "once you catch
+  // an operator jumpering the E-stop". The perceived act is reported, not directed.
+  // Gerund complement, or a bare/3sg verb after a third-party object.
+  { re: new RegExp("\\b(?:if|when|whenever|once|unless|after|because|since|as\\s+soon\\s+as)\\b\\s+((?:[a-z'-]+\\s+){0,3}?)" + PERCEPTION_SRC + "\\w*\\s+(?:that\\s+)?(?:(?:[a-z'-]+\\s+){0,4}?(?=[a-z]+ing\\b)|(?:(?:an?|the|any|some|one\\s+of\\s+the)\\s+)?" + THIRD_PARTY_SRC + "\\s+(?:[a-z'-]+\\s+){0,1}?)(?:" + GUARD_DEFEAT_VERB_SRC + "|" + HAZARD_ACTION_ANY_SRC + ")\\w*\\b", "i"), gerund: true },
+  // "the risk of X-ing"
+  { re: new RegExp("\\b(?:risks?|dangers?|temptation|possibility|chance|consequences?|hazards?)\\s+of\\s+(?:[a-z'-]+\\s+){0,2}?" + GERUND, "i"), gerund: true },
+];
+// A new sentence-level move ends the reported span: a consequence/sequence
+// connective, or a directive aimed at the reader.
+// "while/when/as + (a subject) + a hazard action" is a separate temporal predicate, not a modifier of
+// the reported act: "…against bypassing the interlock while you reset the drive while energized".
+// "while the machine is energized" (no subject + hazard action) stays inside the report.
+const REPORT_BREAK_TEMPORAL = new RegExp(
+  "\\b(?:while|whilst|when|whenever|as)\\s+(?:(?:you|we|they|one|someone|anyone|operators?|technicians?|techs?)\\s+(?:[a-z']+\\s+){0,2}?)?(?=" + HAZARD_ACTION_ANY_SRC + "\\b)",
+  "i",
+);
+const REPORT_BREAK = /\b(?:then|so|but|yet|before|after|until|once|whenever|afterwards?|next|otherwise|else)\b|\b(?:you|we)\s+(?:[a-z']+\s+){0,1}?(?:should|can|could|may|must|will|need)\b|\b(?:go\s+ahead|just|simply|please)\b/i;
+const GERUND_CONJUNCT_BREAK = /\b(?:and|or)\s+(?![a-z]+ing\b)/i;
+/** Blank (keeping offsets) the part of a clause that merely REPORTS an act. */
+function maskReported(clause: string): string {
+  let out = clause;
+  for (const { re, gerund } of REPORTED_CONSTRUCTIONS) {
+    // Native-review 3 F3: EVERY occurrence is a report ("if anyone is bypassing X or if
+    // someone is disabling Y"), not only the first; scanning continues after each mask.
+    const g = new RegExp(re.source, "gi");
+    let from = 0;
+    for (;;) {
+      g.lastIndex = from;
+      const m = g.exec(out);
+      if (!m) break;
+      // A directive modal between the condition and the attempt ("if X you can
+      // attempt to …") is an instruction to the reader, not a report.
+      if (m[1] !== undefined && DIRECTIVE_MODAL.test(m[1])) {
+        from = m.index + m[0].length;
+        continue;
+      }
+      const start = m.index;
+      const bodyStart = start + m[0].length;
+      const after = out.slice(bodyStart);
+      const cuts = [
+        REPORT_BREAK.exec(after)?.index,
+        REPORT_BREAK_TEMPORAL.exec(after)?.index,
+        gerund ? GERUND_CONJUNCT_BREAK.exec(after)?.index : undefined,
+      ].filter((x): x is number => x !== undefined);
+      const end = cuts.length ? bodyStart + Math.min(...cuts) : out.length;
+      out = out.slice(0, start) + " ".repeat(end - start) + out.slice(end);
+      from = Math.max(end, start + 1);
+    }
+  }
+  return out;
+}
+
+// Native-review F5: the warning quotes the OFFENDING clause (plus an adjacent
+// hazard condition), windowed around the hazard — never the first 160
+// characters of a long sentence whose hazardous part is at the far end.
+function hazardExcerpt(sentence: string, ranges: ReadonlyArray<readonly [number, number]>, anchorAt: number): string {
+  const start = Math.min(...ranges.map((r) => r[0]));
+  const end = Math.max(...ranges.map((r) => r[1]));
+  const raw = sentence.slice(start, end);
+  const lead = raw.length - raw.replace(/^[\s,;:—–-]+/, "").length;
+  // Collapse whitespace while recording where every raw offset lands, so the anchor (measured
+  // in the RAW clause) is translated into the SAME coordinate system as the window. (Native-
+  // review 3 F5: repeated spaces/tabs used to shift the raw offset past the hazardous action.)
+  let text = "";
+  const map: number[] = [];
+  let pendingSpace = false;
+  for (let i = lead; i < raw.length; i++) {
+    const ch = raw[i];
+    if (/\s/.test(ch)) {
+      pendingSpace = text.length > 0;
+      map[i - lead] = text.length;
+    } else {
+      if (pendingSpace) text += " ";
+      pendingSpace = false;
+      map[i - lead] = text.length;
+      text += ch;
+    }
+  }
+  text = text.trim();
+  if (text.length <= 160) return text;
+  // anchorAt is relative to the offending clause, which is ranges[0].
+  const rawAnchor = Math.max(0, ranges[0][0] - start - lead + anchorAt);
+  const mapped = map[Math.min(rawAnchor, map.length - 1)] ?? 0;
+  const at = Math.max(0, mapped - 30);
+  const from = Math.max(0, Math.min(text.length - 160, at));
+  return text.slice(from, from + 160).trim();
+}
+
+// Native-review 2 F2: a grounded answer carries inline numeric citations
+// ("Reset F005 live [1]."). They are not part of the instruction, so the A2
+// DETECTION copy reads through them. Only recognised numeric markers ([1],
+// [1][2], [1, 2], [1-3]); other bracketed text is untouched, and the answer
+// shown, persisted and cited is always the original.
+// Horizontal whitespace only (Native-review 3 F9): a marker at the start of a paragraph must not
+// swallow the newline(s) in front of it and join an independent instruction to a prohibition.
+const CITATION_MARKER = /[ \t]*\[\d{1,3}(?:[ \t]*(?:,|[-\u2013])[ \t]*\d{1,3})*\]/g;
+function withoutCitationMarkers(text: string): string {
+  return text.replace(CITATION_MARKER, " ");
+}
+
+// Final-class residual (#6058): a sentence that ENDS in "?" is not thereby a question. The mark used to
+// switch the bare-state checks off for the whole sentence, so a directive written with a question mark
+// ("Reset F005 live now?", "Please reset the fault live now?", "You should reset the fault live now?")
+// was never read as an order. A sentence is a genuine QUESTION only when
+//   (a) its form is interrogative — an inverted auxiliary/modal or a wh-word opens it ("Is it safe …?",
+//       "Should I reset the fault live?", "Can you …?", "What if …?") — and it is not a suggestion frame
+//       ("why not …?", "how about …?", "let's …?", "shall we …?"), OR
+//   (b) it is a directive-form sentence that is IMMEDIATELY ANSWERED in the negative ("Work on it
+//       energized? No. Lock out first."), i.e. the rhetorical question and its refusal.
+// Everything else that ends in "?" — an imperative, "please …", "go ahead …", "you should …", a bare
+// declarative — keeps the same bare-state/hazard reading as the same sentence ending in a period.
+const QUESTION_LEAD = /^(?:[-*•]\s+|\d+[.)]\s+)?(?:[A-Za-z][A-Za-z ]{0,24}:\s+)?[\s"'“”‘’*_(\[]*(?:(?:and|but|so|then|well|ok(?:ay)?|now|also|actually)[,\s]+)?/i;
+const INTERROGATIVE_FORM = new RegExp(
+  "^(?:" +
+    "(?:is|are|was|were|am|can|could|may|might|must|shall|should|will|would)\\s+(?!not\\b)" +
+    "|(?:do|does|did)\\s+(?:i|you|we|they|he|she|it|one|someone|anyone|everyone|the|a|an|this|that|these|those|my|your|our|their|all|any|most|operators?|technicians?)\\b" +
+    "|(?:what|why|how|when|where|who|whom|whose|which|whether)\\b" +
+    ")",
+  "i",
+);
+const SUGGESTION_FRAME = /^(?:why\s+(?:not|don'?t\s+you)|how\s+about|what\s+about|let'?s|shall\s+we)\b/i;
+const NEGATIVE_ANSWER =
+  /^[\s"'“”‘’*_(\[]*(?:no|nope|nah|never|absolutely\s+not|definitely\s+not|certainly\s+not|not\s+(?:safe|recommended|allowed|permitted|advisable)|don'?t|do\s+not|you\s+(?:should\s+not|shouldn'?t|must\s+not|mustn'?t|cannot|can'?t)|it\s+is\s+not\s+safe|it'?s\s+not\s+safe)\b/i;
+function isGenuineQuestion(sentence: string, next: string | undefined): boolean {
+  const t = sentence.trim();
+  if (!t.endsWith("?")) return false;
+  const body = t.replace(QUESTION_LEAD, "");
+  if (!SUGGESTION_FRAME.test(body) && INTERROGATIVE_FORM.test(body)) return true;
+  return next !== undefined && NEGATIVE_ANSWER.test(next);
+}
+
+/** Returns the offending sentence + the offending span, or null. DETECTION is
+ *  sentence-scoped — splitting an instruction across punctuation ("While the
+ *  machine is energized, reset the fault") must not hide it. The prohibitive/
+ *  cautionary EXEMPTION is clause-scoped (iteration-5 F1, tightened #5962):
+ *  every clause that itself directs a hazard (a hazard action coupled to an
+ *  energized-state relation in the same clause or in an adjacent relation-only
+ *  "fronted/trailing" clause, or a directed guard-defeat verb) must be
+ *  prohibitive on its own. A prohibitive SIBLING never vouches for it ("Do not
+ *  replace the fuse, measure the DC bus with the drive powered."). "or"/"nor"
+ *  continue the previous clause's negation — unless an independent predicate
+ *  follows ("or you should reset it live"); "and"/"so"/"then" start a new
+ *  instruction. A REPORTED act ("if an operator attempts to bypass the
+ *  interlock") is masked, not exempted wholesale. When no clause is
+ *  individually identifiable (the relation spans a comma) the older
+ *  bearing.some() reading applies, unchanged. Detection only, never
+ *  rewriting. */
+function clauseHazardViolation(text: string): { relId: string; sentence: string; span: string } | null {
+  const sentences = text.split(/(?<=[.!?])\s+|\n+/);
+  for (let si = 0; si < sentences.length; si++) {
+    const sentence = sentences[si];
     if (PERMIT_PRACTICES_DESCRIPTION.test(sentence.trim())) continue;
     if (SAFETY_CONTROL_DEFERRAL.test(sentence.trim())) continue;
-    if (!HAZARD_ACTION_ANY.test(sentence)) continue;
-    const rel = HAZARD_RELATIONS.find((r) => r.re.test(sentence));
-    const relId = rel?.id ?? (NO_ISOLATION_RELATION.test(sentence) ? "energized" : null);
+    const following = sentences.slice(si + 1).find((x) => x.trim() !== "");
+    const question = isGenuineQuestion(sentence, following);
+    // The deferral phrase is blanked (not removed) so positions stay stable.
+    const deferred = sentence.replace(SAFETY_CONTROL_DEFERRAL_PHRASE, (m) => " ".repeat(m.length));
+    // Clause ranges over the original positions; blank pieces are dropped.
+    const ranges: Array<[number, number]> = [];
+    let from = 0;
+    for (const m of deferred.matchAll(CLAUSE_SEPARATOR)) {
+      ranges.push([from, m.index ?? 0]);
+      from = (m.index ?? 0) + m[0].length;
+    }
+    ranges.push([from, deferred.length]);
+    const live = ranges.filter(([a, b]) => deferred.slice(a, b).trim() !== "");
+    // Mask reported acts clause by clause, in place.
+    const chars = deferred.split("");
+    const unmasked = live.map(([a, b]) => deferred.slice(a, b));
+    const clauses = live.map(([a, b]) => {
+      const masked = maskReported(deferred.slice(a, b));
+      for (let k = 0; k < masked.length; k++) chars[a + k] = masked[k];
+      return masked;
+    });
+    const scan = chars.join("");
+    const guard = GUARD_DEFEAT.test(scan);
+    if (!guard && !HAZARD_ACTION_ANY.test(scan) && !(physicalReadingBoundEnd(scan) >= 0 && bareBoundEnd(scan) >= 0)) continue;
+    const rel = HAZARD_RELATIONS.find((r) => r.re.test(scan));
+    const relId =
+      rel?.id ??
+      (NO_ISOLATION_RELATION.test(scan) || POWER_ON_RELATION.test(scan) || (!question && bareBoundEnd(scan) >= 0)
+        ? "energized"
+        : guard
+          ? "guard-defeat"
+          : null);
     if (!relId) continue;
-    const bearing = sentence
-      .split(CLAUSE_BOUNDARY)
-      .filter(
-        (c) =>
-          HAZARD_ACTION_ANY.test(c) ||
-          HAZARD_RELATIONS.some((r) => r.re.test(c)) ||
-          NO_ISOLATION_RELATION.test(c),
-      );
-    // Fail-closed: no identifiable instruction-bearing clause (pathological
-    // splitting) means no exemption is possible — the sentence-level match
-    // above already established the hazardous coupling. The exemption must
-    // GRAMMATICALLY bind the hazard (iteration-6 F1) — bare negation of some
-    // other predicate in the same clause never exempts.
+    const info = clauses.map((c) => ({
+      action: HAZARD_ACTION_ANY.test(c) || (physicalReadingBoundEnd(c) >= 0 && bareBoundEnd(c) >= 0),
+      guard: GUARD_DEFEAT.test(c),
+      rel: clauseRelation(c, question),
+    }));
+    const prohibitedAt = (i: number, extra: string): boolean => {
+      const c = clauses[i] + " " + extra;
+      if (BOUND_PROHIBITION.test(c) || GUARD_PROHIBITION.test(c) || REPORTING_PROHIBITION.test(c)) return true;
+      // A negated PHYSICAL reading ("do not read the voltage live at the terminals") uses
+      // the canonical measurement prohibition, which the hazard-verb grammar above lacks.
+      if (physicalContactReading(c) && MEASURE_PROHIBITION.test(c)) return true;
+      if (i === 0) return false;
+      // Negative coordination: "do not X, or Y" — Y shares X's negation. "and"
+      // also continues it when the item before is a bare list verb
+      // ("do not bypass, disable, and override the interlock").
+      if (/^\s*(?:or|nor)\b/i.test(clauses[i])) return prohibitedAt(i - 1, "");
+      if (/^\s*and\b/i.test(clauses[i]) && BARE_LIST_ITEM.test(clauses[i - 1])) return prohibitedAt(i - 1, "");
+      // A bare list verb carries no object of its own: it continues the item before it.
+      if (BARE_LIST_ITEM.test(clauses[i])) return prohibitedAt(i - 1, "");
+      return false;
+    };
+    let identified = false;
+    let offending: { i: number; nb: number | undefined } | null = null;
+    clauses.forEach((c, i) => {
+      const inf = info[i];
+      let extra = "";
+      let nb: number | undefined;
+      let hazardous = inf.guard;
+      if (!hazardous && inf.action) {
+        if (inf.rel) hazardous = true;
+        else {
+          // Fronted / trailing condition: an adjacent clause that carries only the state.
+          nb = [i - 1, i + 1].find((j) => j >= 0 && j < clauses.length && !info[j].action && info[j].rel);
+          if (nb !== undefined) {
+            hazardous = true;
+            extra = clauses[nb];
+          }
+        }
+      }
+      if (!hazardous) return;
+      identified = true;
+      if (!offending && (REASSURANCE_AFFIRMATION.test(unmasked[i] + " " + (nb !== undefined ? unmasked[nb] : "")) || !prohibitedAt(i, extra))) offending = { i, nb };
+    });
+    if (identified) {
+      if (offending) {
+        const { i, nb } = offending as { i: number; nb: number | undefined };
+        const rs = [live[i], ...(nb !== undefined ? [live[nb]] : [])];
+        const anchor = hazardAnchor(clauses[i]);
+        return { relId: rel?.id ?? relId, sentence, span: hazardExcerpt(sentence, rs, anchor) };
+      }
+      continue;
+    }
+    // No clause individually identifiable: legacy bearing.some() reading.
+    const bearing = clauses.filter(
+      (c) =>
+        HAZARD_ACTION_ANY.test(c) ||
+        HAZARD_RELATIONS.some((r) => r.re.test(c)) ||
+        NO_ISOLATION_RELATION.test(c),
+    );
     const reassured = bearing.some((c) => REASSURANCE_AFFIRMATION.test(c));
-    const prohibited = bearing.some((c) => BOUND_PROHIBITION.test(c));
+    const prohibited = bearing.some((c) => BOUND_PROHIBITION.test(c) || GUARD_PROHIBITION.test(c) || REPORTING_PROHIBITION.test(c));
     if (!reassured && prohibited) continue;
-    return { relId, sentence };
+    return { relId, sentence, span: sentence.replace(/\s+/g, " ").trim().slice(0, 160) };
   }
   return null;
 }
@@ -1415,10 +1913,10 @@ export function validateAnswer(opts: {
   // clause — reaching into moving machinery, bleeding a pressurized line,
   // resetting a fault while energized — is still scanned and still STOPS.
   const hazard = clauseHazardViolation(
-    restore ? maskLiveMeasurementClauses(affirmationScanText) : affirmationScanText,
+    withoutCitationMarkers(restore ? maskLiveMeasurementClauses(affirmationScanText) : affirmationScanText),
   );
   if (hazard) {
-    return hazardWarning(`unsafe-answer:clause-hazard-${hazard.relId}`, hazard.sentence.slice(0, 160), answerText);
+    return hazardWarning(`unsafe-answer:clause-hazard-${hazard.relId}`, hazard.span, answerText);
   }
 
   // A3 — rigging overload (same-unit rated-capacity comparison, both lanes).
