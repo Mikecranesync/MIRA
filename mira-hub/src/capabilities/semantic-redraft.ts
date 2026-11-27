@@ -136,23 +136,39 @@ export async function runSemanticRedraft(deps: {
 /** The smallest output allowance a redraft is attempted with; below it the stop stands. */
 export const REDRAFT_MIN_OUTPUT_TOKENS = 256;
 
-/** A provider-reported token count (a non-negative safe integer), or null for anything else (#6021). */
+/** The largest count the usage ledger's INTEGER columns hold (migration 080). */
+export const MAX_TOKEN_COUNT = 2147483647;
+/** The ledger's cost column is NUMERIC(12, 6): a summed estimate must stay below this. */
+const MAX_COST_USD = 1_000_000;
+
+/**
+ * A provider-reported token count the ledger can hold (a non-negative integer up to
+ * MAX_TOKEN_COUNT), or null for anything else (#6021). Null is "unknown", never zero.
+ */
 export function tokenCount(n: unknown): number | null {
-  return typeof n === "number" && Number.isSafeInteger(n) && n >= 0 ? n : null;
+  return typeof n === "number" && Number.isInteger(n) && n >= 0 && n <= MAX_TOKEN_COUNT ? n : null;
+}
+
+/**
+ * Output already spent, for the allowance. A well-formed count is itself. A reported number
+ * above the ledger range is spent, not unknown: Infinity, which leaves no allowance. Null for
+ * anything else; the caller debits the cap the request was sent with.
+ */
+export function outputSpent(n: unknown): number | null {
+  return typeof n === "number" && n > MAX_TOKEN_COUNT ? Infinity : tokenCount(n);
 }
 
 /**
  * The redraft's output allowance: what is left of the per-turn ceiling after
  * the output already spent, capped at draft 1's own request cap. An unknown or
- * malformed count (negative, non-finite, not a number) is booked as the whole
- * request cap (unknown is not small, #6021). Null when too little remains to
- * attempt one. The route calls it again before each redraft provider with the
- * output spent so far, so a billed attempt shrinks what the next one may use.
+ * malformed count (negative, fractional, not a number) is booked as the whole
+ * request cap (unknown is not small, #6021); a number above the ledger range
+ * leaves nothing (`outputSpent`). Null when too little remains to attempt one.
+ * The route calls it again before each redraft provider with the output spent
+ * so far, so a billed attempt shrinks what the next one may use.
  */
-export function redraftOutputAllowance(turnCeiling: number, requestCap: number, firstOutputTokens: number | null): number | null {
-  // Infinity is the caller's mark for a reported count above the safe range: spent, not unknown (F2).
-  const spent = firstOutputTokens === Infinity ? Infinity : (tokenCount(firstOutputTokens) ?? requestCap);
-  const remaining = turnCeiling - spent;
+export function redraftOutputAllowance(turnCeiling: number, requestCap: number, spent: number | null): number | null {
+  const remaining = turnCeiling - (outputSpent(spent) ?? requestCap);
   const allowance = Math.min(requestCap, remaining);
   return allowance >= REDRAFT_MIN_OUTPUT_TOKENS ? allowance : null;
 }
@@ -177,9 +193,9 @@ type Usage = {
  */
 export function withRedraftUsage<U extends Usage>(first: U, redraft: Usage, servedByRedraft: boolean): U {
   const sum = (a: number | null, b: number | null) => (a === null || b === null ? null : a + b);
-  // A token sum beyond the safe-integer range is unknown, never an imprecise number (R3-C3).
-  // The ledger columns are PostgreSQL INTEGER, so a total above that range is unknown too (F4).
-  const tokens = (n: number | null) => (n === null || (Number.isSafeInteger(n) && n <= 2147483647) ? n : null);
+  // A total the ledger's columns cannot hold is unknown, never a failed insert (R3-C3, #6081 F4).
+  const tokens = (n: number | null) => (n === null ? null : tokenCount(n));
+  const cost = (n: number | null) => (n !== null && n >= 0 && n < MAX_COST_USD ? n : null);
   const who = servedByRedraft ? redraft : first;
   return {
     ...first,
@@ -194,6 +210,6 @@ export function withRedraftUsage<U extends Usage>(first: U, redraft: Usage, serv
         ? null
         : tokens((first.cachedInputTokens ?? 0) + (redraft.cachedInputTokens ?? 0)),
     outputTokens: tokens(sum(first.outputTokens, redraft.outputTokens)),
-    costUsdEstimate: sum(first.costUsdEstimate, redraft.costUsdEstimate),
+    costUsdEstimate: cost(sum(first.costUsdEstimate, redraft.costUsdEstimate)),
   };
 }

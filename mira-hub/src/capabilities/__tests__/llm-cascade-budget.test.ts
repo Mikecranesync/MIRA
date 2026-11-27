@@ -295,11 +295,28 @@ describe("#6022 F5 — every contacted attempt reaches the caller", () => {
     expect(seen.map(brief)).toEqual([{ provider: "Groq", billed: true, usage: null }]);
   });
 
-  it("F3 (Codex r1 on #6081): a gateway 504 is ambiguous, so it is reported as billed with unknown usage", async () => {
-    stubHosts({ "api.groq.com": { status: 504 } });
+  // #6081 F3 (Codex round 1): a gateway reporting that its relay to the provider timed out or
+  // broke does not establish that nothing ran, so the caller is told it may have been billed.
+  it.each([408, 502, 504, 524])("a gateway timeout (HTTP %i) is reported as possibly billed, usage unknown", async (status) => {
+    stubHosts({ "api.groq.com": { status } });
     const { seen, opts } = withCollector({ providers: [GROQ] });
     expect(await cascadeComplete(MESSAGES, opts)).toBeNull();
     expect(seen.map(brief)).toEqual([{ provider: "Groq", billed: true, usage: null }]);
+  });
+
+  it.each([400, 401, 429, 503])("control: the provider's own rejection (HTTP %i) is reported as not billed", async (status) => {
+    stubHosts({ "api.groq.com": { status } });
+    const { seen, opts } = withCollector({ providers: [GROQ] });
+    expect(await cascadeComplete(MESSAGES, opts)).toBeNull();
+    expect(seen.map(brief)).toEqual([{ provider: "Groq", billed: false, usage: null }]);
+  });
+
+  it("control (every caller): a gateway timeout from OpenAI frees the shared run budget's hold, as any non-2xx always has", async () => {
+    stubHosts({ "api.openai.com": { status: 504 }, "api.groq.com": { content: "ok", usage: { prompt_tokens: 50, completion_tokens: 20 } } });
+    expect((await cascadeComplete(MESSAGES, { providers: [OPENAI, GROQ], maxTokens: 300 }))?.provider).toBe("Groq");
+    expect(openAiRunBudget().heldUsd).toBe(0);
+    expect(openAiRunBudget().spentUsd).toBe(0);
+    expect(openAiRunBudget().calls).toBe(0);
   });
 
   it("F5: an HTTP 500 before generation is reported as not billed", async () => {

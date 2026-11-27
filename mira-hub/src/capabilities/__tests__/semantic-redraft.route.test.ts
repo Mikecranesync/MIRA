@@ -773,6 +773,44 @@ describe("#6021 F4-a — the redraft allowance is held across redraft attempts",
     expect(r.streamed).toBe(SAFETY_STOP);
   });
 
+  // #6081 F3 (Codex round 1): a gateway reporting that its relay timed out or broke does not
+  // establish that the provider never ran the request.
+  it.each([408, 502, 504, 524])(
+    "a gateway timeout (HTTP %i) on the first redraft may have run: the whole cap is debited, no backup request, totals unknown",
+    async (status) => {
+      const { redraftUrls, redraftBodies } = stubFetch(REDRAFT, [verdict("unsafe"), verdict("safe", "none")], {
+        draft1Output: 200,
+        byHost: { "api.openai.com": { status }, "groq": { content: REDRAFT, usage: { prompt_tokens: 50, completion_tokens: 20 } } },
+      });
+      const r = await run(Q_PLAIN);
+      expect(sent(redraftUrls, redraftBodies)).toEqual([["api.openai.com", 300]]);
+      expect(r.streamed).toBe(SAFETY_STOP);
+      expect([r.usage.inputTokens, r.usage.outputTokens]).toEqual([null, null]);
+      expect([r.gen.input_tokens, r.gen.output_tokens]).toEqual([null, null]);
+      expect(r.gen.attempts.map((a) => [a.provider, a.outcome])).toEqual([
+        ["OpenAI", "served"],
+        ["OpenAI", USAGE_UNKNOWN],
+      ]);
+    },
+  );
+
+  it.each([400, 429, 503])(
+    "control: the provider's own rejection (HTTP %i) leaves the allowance, and the backup is asked with 300",
+    async (status) => {
+      const { redraftUrls, redraftBodies } = stubFetch(REDRAFT, [verdict("unsafe"), verdict("safe", "none")], {
+        draft1Output: 200,
+        byHost: { "api.openai.com": { status }, "groq": { content: REDRAFT, usage: { prompt_tokens: 50, completion_tokens: 20 } } },
+      });
+      const r = await run(Q_PLAIN);
+      expect(sent(redraftUrls, redraftBodies)).toEqual([
+        ["api.openai.com", 300],
+        ["api.groq.com", 300],
+      ]);
+      expect(r.outcome.semantic_redraft).toBe("served");
+      expect([r.usage.inputTokens, r.usage.outputTokens]).toEqual([12 + 50, 200 + 20]);
+    },
+  );
+
   it("control: a pre-generation rejection (HTTP 500, nothing billed) leaves the allowance, and the backup is asked with 300", async () => {
     const { redraftUrls, redraftBodies } = stubFetch(REDRAFT, [verdict("unsafe"), verdict("safe", "none")], {
       draft1Output: 200,
@@ -1162,11 +1200,28 @@ describe("R1-C2 — a malformed draft-1 count makes the whole-turn total unknown
     expect(totals(r)).toEqual({ ledger: [12 + 50, null], packet: [12 + 50, null] });
   });
 
-  it("draft 1 reports a non-finite count (1e400), the redraft is judged unsafe: output total NULL", async () => {
-    stubFetch(REDRAFT, [verdict("unsafe"), verdict("unsafe")], { draft1OutputRaw: "1e400" });
+  // #6081 F2 (Codex round 1): a reported number above the ledger range is spent, not unknown.
+  // An unknown count books one request cap (800 of 4000) and the redraft runs, as above; this
+  // one leaves nothing. 2147483648 is one past the ledger's INTEGER column, 1e400 parses to Infinity.
+  it.each(["2147483648", "1e300", "1e400"])(
+    "draft 1 reports %s, a number above the ledger range: no redraft request, stopped_turn_cap, output total NULL",
+    async (raw) => {
+      const { redraftBodies } = stubFetch(REDRAFT, [verdict("unsafe"), verdict("safe", "none")], { draft1OutputRaw: raw });
+      const r = await run(Q_PLAIN);
+      expect(redraftBodies).toHaveLength(0);
+      expect(r.outcome.semantic_redraft).toBe("stopped_turn_cap");
+      expect(totals(r)).toEqual({ ledger: [12, null], packet: [12, null] });
+      // An unknown count is an unknown cost, never a price worked out from the reported number.
+      expect(r.usage.costUsdEstimate).toBeNull();
+    },
+  );
+
+  it("control: draft 1 reports 2147483647, the largest count the ledger holds: no redraft request, and the count is stored", async () => {
+    const { redraftBodies } = stubFetch(REDRAFT, [verdict("unsafe"), verdict("safe", "none")], { draft1OutputRaw: "2147483647" });
     const r = await run(Q_PLAIN);
-    expect(r.outcome.semantic_redraft).toBe("stopped_judge_unsafe");
-    expect(totals(r)).toEqual({ ledger: [12 + 50, null], packet: [12 + 50, null] });
+    expect(redraftBodies).toHaveLength(0);
+    expect(r.outcome.semantic_redraft).toBe("stopped_turn_cap");
+    expect(totals(r)).toEqual({ ledger: [12, 2147483647], packet: [12, 2147483647] });
   });
 
   it("control: draft 1 reports 7, the redraft is judged unsafe: both totals are the known sums", async () => {
@@ -1787,7 +1842,7 @@ describe("R3-C3 — a redraft count beyond the safe-integer range exhausts the a
       },
     });
 
-  it("1500 ceiling, draft 1 200, a billed empty first redraft reports completion_tokens 2^53-1: no further request, a stop, output NULL", async () => {
+  it("1500 ceiling, draft 1 200, a billed empty first redraft reports completion_tokens 2^53-1 (above the ledger range): no further request, a stop, output NULL", async () => {
     const { redraftUrls, redraftBodies } = billedEmptyThenServed(Number.MAX_SAFE_INTEGER);
     const r = await run(Q_PLAIN);
     expect(redraftUrls.map(hostOf)).toEqual(["api.openai.com"]);
@@ -1796,12 +1851,37 @@ describe("R3-C3 — a redraft count beyond the safe-integer range exhausts the a
     expectStopped(r);
     expect([r.usage.inputTokens, r.usage.outputTokens]).toEqual([12 + 50, null]);
     expect([r.gen.input_tokens, r.gen.output_tokens]).toEqual([12 + 50, null]);
-    // The attempt's own counts are well formed, so nothing is marked usage_unknown: the null
-    // output total comes from the sum leaving the safe range, not from an unknown count.
+    // A count the ledger cannot hold is unknown usage: the attempt is labelled as such.
+    expect(flagsOf(r.gen)).toEqual([
+      ["OpenAI", "served", false, false],
+      ["OpenAI", USAGE_UNKNOWN, true, false],
+    ]);
+  });
+
+  it("#6081 F4: well-formed counts whose SUM leaves the ledger range: the row and the packet are still written, that total NULL", async () => {
+    const { redraftUrls } = billedEmptyThenServed(2147483647);
+    const r = await run(Q_PLAIN);
+    expect(redraftUrls.map(hostOf)).toEqual(["api.openai.com"]);
+    expect(r.outcome.semantic_redraft).toBe("stopped_generation");
+    expectStopped(r);
+    expect([r.usage.inputTokens, r.usage.outputTokens]).toEqual([12 + 50, null]);
+    expect([r.gen.input_tokens, r.gen.output_tokens]).toEqual([12 + 50, null]);
+    // Each count is well formed, so nothing is labelled unknown: the null is the sum's.
     expect(flagsOf(r.gen)).toEqual([
       ["OpenAI", "served", false, false],
       ["OpenAI", BILLED_EMPTY, true, false],
     ]);
+  });
+
+  it("#6081 F4: draft 1 prompt 12 and a served redraft prompt of 2147483647: the input total is NULL, the output total is kept", async () => {
+    stubFetch(REDRAFT, [verdict("unsafe"), verdict("safe", "none")], {
+      draft1Output: 200,
+      byHost: { "api.openai.com": { content: REDRAFT, usage: { prompt_tokens: 2147483647, completion_tokens: 20 } } },
+    });
+    const r = await run(Q_PLAIN);
+    expect(r.outcome.semantic_redraft).toBe("served");
+    expect([r.usage.inputTokens, r.usage.outputTokens]).toEqual([null, 200 + 20]);
+    expect([r.gen.input_tokens, r.gen.output_tokens]).toEqual([null, 200 + 20]);
   });
 
   it("a billed empty first redraft reporting completion_tokens 1e300 (above the safe range): no further request, a stop, output NULL", async () => {
@@ -1820,5 +1900,33 @@ describe("R3-C3 — a redraft count beyond the safe-integer range exhausts the a
     expect(redraftBodies.map(capOf)).toEqual([800, 800]);
     expect(r.outcome.semantic_redraft).toBe("served");
     expect([r.usage.inputTokens, r.usage.outputTokens]).toEqual([12 + 50 + 50, 200 + 300 + 20]);
+  });
+});
+
+describe("#6081 F5 — a failed history write still records what the turn measurably spent", () => {
+  const F5_REQ_ID = "55555555-5555-4555-8555-555555555555";
+  type Persisted = [unknown, Record<string, unknown>, { packet: { persistence: { outcome: string }; generation: PacketGeneration } }];
+  async function failedHistoryWrite(judgeVerdicts: string[]) {
+    domainMock.recordTurn.mockRejectedValueOnce(new Error("history down"));
+    stubFetch(REDRAFT, judgeVerdicts);
+    const res = await POST(chatReq({ message: Q_PLAIN, sourceDocIds: [DOC_A], clientRequestId: F5_REQ_ID }), params);
+    await res.text().catch(() => undefined);
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    expect(domainMock.recordTurn).toHaveBeenCalledTimes(1);
+    const [, usage, extra] = persistMock.persistTurnUsage.mock.calls[0] as unknown as Persisted;
+    return { usage, packet: extra.packet };
+  }
+
+  it("a redraft that passed its judge, then the history write fails: the ledger names the provider and holds both generations' counts, status error", async () => {
+    const { usage, packet } = await failedHistoryWrite([verdict("unsafe"), verdict("safe", "none")]);
+    expect(packet.persistence.outcome).toBe("failed");
+    expect(usage).toMatchObject({ provider: "OpenAI", inputTokens: 12 + 50, outputTokens: 7 + 20, status: "error" });
+    expect([packet.generation.input_tokens, packet.generation.output_tokens]).toEqual([12 + 50, 7 + 20]);
+  });
+
+  it("control: an answered turn with no redraft, then the history write fails: the ledger holds draft 1's counts, status error", async () => {
+    const { usage, packet } = await failedHistoryWrite([verdict("safe", "none")]);
+    expect(packet.persistence.outcome).toBe("failed");
+    expect(usage).toMatchObject({ provider: "OpenAI", inputTokens: 12, outputTokens: 7, status: "error" });
   });
 });

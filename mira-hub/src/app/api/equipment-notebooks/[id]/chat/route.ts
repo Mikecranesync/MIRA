@@ -329,6 +329,7 @@ import {
 } from "@/capabilities/answer-safety-check";
 import {
   REDRAFT_CLASSES,
+  outputSpent,
   redraftOutputAllowance,
   runSemanticRedraft,
   tokenCount,
@@ -4844,11 +4845,6 @@ async function handleChatTurn(
       // Wall time for the whole turn (decision_traces.latency_ms).
       const turnStartedAt = Date.now();
       let rawUsage: unknown = null;
-      // Draft 1's output spent: Infinity for a reported count above the safe range (F2), else the ledger count.
-      const firstOutputSpent = (): number | null => {
-        const c = (rawUsage as { completion_tokens?: unknown } | null | undefined)?.completion_tokens;
-        return typeof c === "number" && c > Number.MAX_SAFE_INTEGER ? Infinity : tokenCount(turnUsage?.outputTokens ?? null);
-      };
       let capped = false;
       // The provider whose stream was open when the client stopped — the
       // partial turn is recorded against it, and its upstream read is
@@ -5702,7 +5698,7 @@ async function handleChatTurn(
         const redraftEligible =
           sv.verdict === "unsafe" && seam && docGrounded && !flaggedTurn && !bypassWarnAsk && REDRAFT_CLASSES.includes(firstClass);
         // Both generations count against the one per-turn output ceiling (Codex r1 F4).
-        const redraftTokens = redraftEligible ? redraftOutputAllowance(outputCap, requestCap, firstOutputSpent()) : null;
+        const redraftTokens = redraftEligible ? redraftOutputAllowance(outputCap, requestCap, turnUsage?.outputTokens ?? null) : null;
         const redraft = !redraftEligible
           ? null
           : redraftTokens === null
@@ -5713,8 +5709,10 @@ async function handleChatTurn(
                   const redraftMessages = withRedraftInstruction(messages as CascadeMessage[], firstClass);
                   // #6021: one provider at a time, so the allowance is held across attempts: a
                   // billed attempt debits its output, or the cap it was sent when that count is
-                  // unknown or malformed; a rejection before generation debits nothing.
-                  let spent = firstOutputSpent() ?? requestCap;
+                  // unknown or malformed; a rejection before generation debits nothing. A reported
+                  // number above the ledger range is spent rather than unknown and ends the redraft
+                  // (R3-C3, #6081 F2); from draft 1 it never reaches here, the allowance above is null.
+                  let spent = tokenCount(turnUsage?.outputTokens ?? null) ?? requestCap;
                   // R1-C1: the redraft's own fallback list, as draft 1 keeps one: a provider skipped
                   // as unhealthy or refused by the budget is passed over like one that failed.
                   const passed: string[] = [];
@@ -5723,9 +5721,6 @@ async function handleChatTurn(
                       passed.push(p.name);
                       continue;
                     }
-                    // R3-C3: a running total beyond the safe-integer range is spent, not unknown:
-                    // it ends the redraft rather than granting a fresh request cap.
-                    if (!Number.isSafeInteger(spent)) break;
                     const cap = redraftOutputAllowance(outputCap, requestCap, spent);
                     if (cap === null) break;
                     const sentBefore = redraftAttempts.length;
@@ -5738,12 +5733,7 @@ async function handleChatTurn(
                       onAttempt: (a) => redraftAttempts.push({ ...a, before: [...passed] }),
                     });
                     const sent = redraftAttempts[sentBefore];
-                    if (sent?.billed) {
-                      // A reported count above the safe-integer range is spent (R3-C3); any other
-                      // unknown or malformed count debits the cap it was sent with.
-                      const c = sent.usage?.completion_tokens;
-                      spent += typeof c === "number" && c > Number.MAX_SAFE_INTEGER ? Infinity : (tokenCount(c) ?? cap);
-                    }
+                    if (sent?.billed) spent += outputSpent(sent.usage?.completion_tokens) ?? cap;
                     // Not sent (a keyed provider the cascade refused before the fetch: the budget),
                     // or sent without text: either way the next provider falls back from it.
                     if (!r) {
@@ -5820,14 +5810,18 @@ async function handleChatTurn(
           let cachedUnknown = false;
           const counted = (u: TurnUsage): TurnUsage => {
             const input = tokenCount(u.inputTokens);
+            const output = tokenCount(u.outputTokens);
             const cached = u.cachedInputTokens === null ? null : tokenCount(u.cachedInputTokens);
             const cachedBad = input === null || (u.cachedInputTokens !== null && (cached === null || cached > input));
             if (cachedBad) cachedUnknown = true;
             return {
               ...u,
               inputTokens: input,
-              outputTokens: tokenCount(u.outputTokens),
+              outputTokens: output,
               cachedInputTokens: cachedBad ? null : u.cachedInputTokens,
+              // An unknown count is an unknown cost: never a price worked out from a count
+              // the ledger cannot hold (#6081 F4).
+              costUsdEstimate: input === null || output === null ? null : u.costUsdEstimate,
             };
           };
           const first = counted(turnUsage);
@@ -6365,7 +6359,7 @@ async function handleChatTurn(
           // Design §4's sixth exit path: "recordTurn failure" still gets a
           // packet with `persistence.outcome='failed'`, seam on or off.
           {
-            // F5: the measured aggregate, not an empty one, when billed generations were seen.
+            // #6081 F5: what the turn measurably spent, not an empty row, when a generation ran.
             const failedUsage: TurnUsage = seam
               ? { ...(turnUsage ?? exhaustedUsage(attempted)), status: "error" }
               : legacyCascadeUsage(activeProvider, "error");

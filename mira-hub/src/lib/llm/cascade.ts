@@ -116,13 +116,23 @@ export interface CascadeResult {
 
 type CallOutcome = Pick<CascadeResult, "content" | "finishReason" | "usage">;
 
+/**
+ * Statuses a gateway sends when its relay to the provider timed out or broke: request timeout,
+ * bad gateway, gateway timeout, and the Cloudflare origin timeout. None establishes that the
+ * provider did not run the request.
+ */
+const GATEWAY_AMBIGUOUS: ReadonlySet<number> = new Set([408, 502, 504, 524]);
+
 /** One provider request the cascade actually sent (#6022), reported to `CascadeOpts.onAttempt`. */
 export interface CascadeAttempt {
   provider: string;
   model: string;
-  /** False only when the provider rejected the request before generating (a non-2xx): nothing billed. */
+  /**
+   * False only when the provider rejected the request before generating (a non-2xx other than
+   * a gateway timeout): nothing billed. True means billed or possibly billed.
+   */
   billed: boolean;
-  /** The provider's counts; null when billed but unseen (timeout, unreadable body, no usage block). */
+  /** The provider's counts; null when unseen (timeout, gateway timeout, unreadable body, no usage block). */
   usage: { prompt_tokens?: number; completion_tokens?: number } | null;
 }
 
@@ -213,17 +223,13 @@ async function callOne(
     report(true, null);
     return null;
   }
-  if (res.status === 408 || res.status === 502 || res.status === 504) {
-    // A gateway timeout may have forwarded the request upstream, which may have generated:
-    // ambiguous, so book the worst case and never free budget on an outcome we cannot see (F3).
-    reservation?.settle(inputBound, outputCap);
-    report(true, null);
-    return null;
-  }
   if (!res.ok) {
-    // The provider answered with a rejection: nothing billable ran.
+    // The provider answered with a rejection: nothing billable ran. The exception is a gateway
+    // reporting that its relay to the provider timed out or broke (GATEWAY_AMBIGUOUS): the
+    // request may have been forwarded and run, so the caller is told it may have been billed
+    // (#6081 F3). The shared run budget frees its hold on every non-2xx, as it always has.
     reservation?.release();
-    report(false, null);
+    report(GATEWAY_AMBIGUOUS.has(res.status), null);
     return null;
   }
   let parsed: {

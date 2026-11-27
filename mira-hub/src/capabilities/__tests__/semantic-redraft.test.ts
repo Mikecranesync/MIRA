@@ -1,11 +1,14 @@
 /** #5941 — the one-redraft runner and its fixed instruction (no route, no network). */
 import { describe, expect, it, vi } from "vitest";
 import {
+  MAX_TOKEN_COUNT,
+  outputSpent,
   REDRAFT_CLASSES,
   REDRAFT_MIN_OUTPUT_TOKENS,
   redraftInstruction,
   redraftOutputAllowance,
   runSemanticRedraft,
+  tokenCount,
   withRedraftInstruction,
   withRedraftUsage,
 } from "@/capabilities/semantic-redraft";
@@ -123,8 +126,6 @@ describe("redraft instruction", () => {
 describe("redraft output allowance", () => {
   it("is what the ceiling leaves after draft 1, capped at the request cap; unknown draft-1 output books the whole cap", () => {
     expect(redraftOutputAllowance(4000, 800, 300)).toBe(800);
-    // F2: Infinity marks a reported count above the safe range: spent, so no allowance remains.
-    expect(redraftOutputAllowance(4000, 800, Infinity)).toBeNull();
     expect(redraftOutputAllowance(500, 500, 7)).toBe(493);
     expect(redraftOutputAllowance(500, 500, 450)).toBeNull();
     expect(redraftOutputAllowance(1000, 800, null)).toBeNull();
@@ -155,6 +156,27 @@ describe("redraft output allowance", () => {
   });
 });
 
+describe("token counts (#6081 F2, F4)", () => {
+  it("a count is known only when the ledger's INTEGER column can hold it", () => {
+    expect([0, 7, MAX_TOKEN_COUNT].map(tokenCount)).toEqual([0, 7, MAX_TOKEN_COUNT]);
+    expect([MAX_TOKEN_COUNT + 1, Number.MAX_SAFE_INTEGER, 1e300, Infinity, -1, 1.5, NaN, "7", null, undefined].map(tokenCount)).toEqual(
+      Array(10).fill(null),
+    );
+  });
+  it("for the allowance, a number above the ledger range is spent (Infinity); anything else malformed is unknown (null)", () => {
+    expect([MAX_TOKEN_COUNT + 1, Number.MAX_SAFE_INTEGER, 1e300, Infinity].map(outputSpent)).toEqual(Array(4).fill(Infinity));
+    expect([0, 300, MAX_TOKEN_COUNT].map(outputSpent)).toEqual([0, 300, MAX_TOKEN_COUNT]);
+    expect([-1, -Infinity, 1.5, NaN, "7", null, undefined].map(outputSpent)).toEqual(Array(7).fill(null));
+  });
+  it("an unknown count books one request cap and may leave an allowance; a count above the ledger range leaves none", () => {
+    expect(redraftOutputAllowance(4000, 800, null)).toBe(800);
+    expect(redraftOutputAllowance(4000, 800, -5)).toBe(800);
+    for (const spent of [MAX_TOKEN_COUNT + 1, Number.MAX_SAFE_INTEGER, 1e300, Infinity]) {
+      expect(redraftOutputAllowance(4000, 800, spent)).toBeNull();
+    }
+  });
+});
+
 describe("redraft usage", () => {
   const u = (provider: string, i: number | null, o: number | null, cost: number | null, cached: number | null = null) => ({
     provider, model: `${provider}-m`, routeReason: "primary", inputTokens: i, cachedInputTokens: cached, outputTokens: o,
@@ -168,6 +190,23 @@ describe("redraft usage", () => {
     expect(withRedraftUsage(u("A", 10, null, null), u("B", 20, 7, 0.25), true)).toMatchObject({ outputTokens: null, costUsdEstimate: null, inputTokens: 30 });
     expect(withRedraftUsage(u("A", 10, 5, 1, 4), u("B", 20, 7, 1), true).cachedInputTokens).toBe(4);
     expect(withRedraftUsage(u("A", 10, 5, 1), u("B", 20, 7, 1), true).cachedInputTokens).toBeNull();
+  });
+  it("#6081 F4: a token sum the ledger's INTEGER column cannot hold is unknown (null); one that just fits is kept", () => {
+    expect(withRedraftUsage(u("A", 12, MAX_TOKEN_COUNT, 0.5, 3), u("B", MAX_TOKEN_COUNT, 1, 0.25, MAX_TOKEN_COUNT), false)).toMatchObject({
+      inputTokens: null,
+      outputTokens: null,
+      cachedInputTokens: null,
+      costUsdEstimate: 0.75,
+    });
+    expect(withRedraftUsage(u("A", 12, MAX_TOKEN_COUNT - 1, 0.5, 3), u("B", MAX_TOKEN_COUNT - 12, 1, 0.25, MAX_TOKEN_COUNT - 3), false)).toMatchObject({
+      inputTokens: MAX_TOKEN_COUNT,
+      outputTokens: MAX_TOKEN_COUNT,
+      cachedInputTokens: MAX_TOKEN_COUNT,
+    });
+  });
+  it("#6081 F4: a summed cost the ledger's NUMERIC(12, 6) column cannot hold is unknown (null); one below it is kept", () => {
+    expect(withRedraftUsage(u("A", 10, 5, 600_000), u("B", 20, 7, 400_000), true).costUsdEstimate).toBeNull();
+    expect(withRedraftUsage(u("A", 10, 5, 600_000), u("B", 20, 7, 399_999.5), true).costUsdEstimate).toBe(999_999.5);
   });
   it("R3-C3: a token sum beyond the safe-integer range is unknown (null), never an imprecise number; cost keeps its fraction", () => {
     const max = Number.MAX_SAFE_INTEGER;
