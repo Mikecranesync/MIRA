@@ -8,7 +8,7 @@
 import { describe, expect, it } from "vitest";
 import { readNotebookStream, type PersistedTurn, type StreamResult } from "@/components/equipment/notebook-chat-utils";
 import type { EvidenceCitation } from "@/lib/notebook-chat-types";
-import { hazardBanner } from "@/lib/safety-classifier";
+import { ENERGIZED_ELECTRICAL_HAZARD, hazardBanner } from "@/lib/safety-classifier";
 import { partsFromStream, turnsFromPersisted, type HubNotebookMeta } from "./to-interaction";
 
 const meta: HubNotebookMeta = {
@@ -130,5 +130,30 @@ describe("#6013 the finished live answer shows the warning where the saved turn 
     ]) {
       expect(shape(r).some((s) => s.startsWith("notice:DANGER"))).toBe(false);
     }
+  });
+});
+
+describe("#6057 a live directive answer orders the directive, then the manual warning, then the steps", () => {
+  const directive = { kind: "safety_notice" as const, trigger: ENERGIZED_ELECTRICAL_HAZARD };
+  const frames = [
+    { kind: "content", content: ANSWER },
+    { kind: "sources", citations: [citation] },
+    { kind: "evidence", basis: "oem_documentation", hazardEntries: [directive], manualSafetyStatement: manualWarning },
+    { kind: "status", status: "answered" },
+  ];
+  const order = (parts: readonly Part[]) =>
+    parts.flatMap((p) => (p.type === "safety_notice" ? [p.notice.trigger ?? "?"] : p.type === "text" && p.text.includes(STEPS) ? ["steps"] : []));
+
+  it("precondition: the stream reader keeps both the directive and the manual warning", async () => {
+    const out = await readNotebookStream(readerOf(frames), () => undefined);
+    expect(out.hazardNotice).toEqual(directive);
+    expect(out.manualSafetyStatement).toEqual(manualWarning);
+  });
+
+  it("live order is directive → manual warning → steps, the same as the saved turn", async () => {
+    const live = partsFromStream(await readNotebookStream(readerOf(frames), () => undefined), { turnId: "turn-1-a" });
+    expect(order(live)).toEqual([ENERGIZED_ELECTRICAL_HAZARD, "manual_safety_statement", "steps"]);
+    const [, saved] = turnsFromPersisted({ ...savedRow(), evidence: [directive, manualWarning, citation] as unknown as PersistedTurn["evidence"] }, meta);
+    expect(order(live)).toEqual(order(saved.parts));
   });
 });
