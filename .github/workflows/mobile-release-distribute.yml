@@ -201,7 +201,7 @@ jobs:
           packages: "build-tools;35.0.0"
           log-accepted-android-sdk-licenses: false
       - name: Download unsigned native artifacts
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: native-unsigned-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/native-unsigned
@@ -413,7 +413,7 @@ jobs:
     environment: production
     steps:
       - name: Download signed APK
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: app-release-apk-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/firebase-release
@@ -542,7 +542,7 @@ jobs:
             mira-mobile/android/app/build.gradle
           sparse-checkout-cone-mode: false
       - name: Download signed APK
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: app-release-apk-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/direct-release
