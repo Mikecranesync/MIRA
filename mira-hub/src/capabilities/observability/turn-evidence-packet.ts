@@ -46,8 +46,8 @@ export type GenerationAttempt = {
    * attempt is "served" (#6023). "empty_completion": a redraft attempt that answered 200 with
    * known usage and no text (billed, unlike "http_error", an unbilled rejection). "exception":
    * billed without text, with at least one of its counts (prompt, completion or cached) unknown
-   * or malformed (timeout, unreadable body, no usage block, a malformed count, a cached count
-   * larger than its prompt count).
+   * or malformed (timeout, gateway timeout, unreadable body, no usage block, a malformed count,
+   * a count the ledger's INTEGER column cannot hold, a cached count larger than its prompt count).
    */
   outcome: "served" | "http_error" | "exception" | "client_stop" | "generated_not_served" | "empty_completion";
   /** Null on every redraft attempt: cascadeComplete reports no per-attempt time or response id (R2-C5). */
@@ -60,8 +60,8 @@ export type GenerationAttempt = {
    * True on a generating attempt (served or generated_not_served) at least one of whose counts
    * (prompt, completion or cached) is unknown or malformed. The whole-turn totals are null only
    * for the counts that are actually unknown: an unknown cached count alone leaves both packet
-   * totals integers (the ledger's cached total is the null one), and a token sum beyond the
-   * safe-integer range is null with no attempt marked. Set only on turns that took the redraft
+   * totals integers (the ledger's cached total is the null one), and a sum of well-formed counts
+   * that the ledger's INTEGER column cannot hold is null with no attempt marked. Set only on turns that took the redraft
    * path, including the three that send no redraft request (stopped_turn_cap, stopped_aborted
    * from a Stop during the first judge, stopped_generation with every provider refused).
    */
