@@ -249,9 +249,9 @@ interface TableBlock {
   rowEnd: number;
   /** This table's OWN column header lines (header + separator), if it has one. */
   header: string[];
-  /** Non-table lines directly above (heading / applicability qualifier). */
+  /** Whole section block above (heading + qualifiers), uncapped. */
   preamble: string[];
-  /** Footnote / explanatory lines directly below. */
+  /** Whole footnote / explanatory block directly below, uncapped. */
   notes: string[];
   /** Line range this table owns, including preamble and notes. */
   spanStart: number;
@@ -279,21 +279,33 @@ function parseTables(lines: string[]): TableBlock[] {
     while (j < lines.length && PIPE_TABLE_ROW_RE.test(lines[j])) j++;
     const rowEnd = j;
 
-    // Heading / qualifier: up to 3 non-blank lines within 6 lines above.
-    const preamble: string[] = [];
+    // Applicability block = the table's whole current section: from the nearest
+    // markdown heading above it (and below the previous table) down to the
+    // table; with no heading, the contiguous non-blank block directly above.
+    // No line-count cap: if it is needed to qualify the table it is kept, and
+    // if it cannot fit with a row the table is held (never shown unqualified).
     let spanStart = tableStart;
-    for (let k = tableStart - 1; k >= Math.max(boundary, tableStart - 6) && preamble.length < 3; k--) {
-      if (lines[k].trim() === "") continue;
-      preamble.unshift(lines[k]);
-      spanStart = k;
+    let headingAt = -1;
+    for (let k = tableStart - 1; k >= boundary; k--) {
+      if (/^\s{0,3}#{1,6}\s/.test(lines[k])) {
+        headingAt = k;
+        break;
+      }
     }
+    if (headingAt >= 0) {
+      spanStart = headingAt;
+    } else {
+      while (spanStart - 1 >= boundary && lines[spanStart - 1].trim() !== "") spanStart--;
+    }
+    const preamble = lines.slice(spanStart, tableStart).filter((l) => l.trim() !== "");
 
-    // Notes: non-table lines directly below (or after one blank when they
-    // start like a footnote), at most 3.
+    // Notes = the whole footnote block: every non-table line directly below
+    // (or after one blank when the block starts like a footnote) up to the next
+    // blank line, heading or table.
     const notes: string[] = [];
     let n = rowEnd;
     if (n < lines.length && lines[n].trim() === "" && n + 1 < lines.length && NOTE_MARKER_RE.test(lines[n + 1])) n++;
-    while (n < lines.length && notes.length < 3) {
+    while (n < lines.length) {
       const l = lines[n];
       if (l.trim() === "" || PIPE_TABLE_ROW_RE.test(l) || /^#{1,6}\s/.test(l)) break;
       notes.push(l);

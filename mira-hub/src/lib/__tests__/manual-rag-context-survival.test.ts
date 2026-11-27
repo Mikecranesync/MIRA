@@ -282,4 +282,31 @@ describe("F6 — selection stays inside table boundaries", () => {
     expect(context).not.toContain("xxxxx");
     expect(body(context).length).toBeLessThanOrEqual(TABLE_COMPACT_BUDGET);
   });
+
+  // --- qualifier blocks are structural, not line-count capped ---
+  it("keeps the model heading and every qualifying line above the table (no 3-line cap)", () => {
+    const qualifiers = ["# Model B only", "Firmware 2 required", "Digital input option required", "Read all conditions below", "Applicable to this table"];
+    const text = [...qualifiers, header2, ...filler, "| F205 | Synthetic answer |"].join("\n");
+    const context = buildGroundedContext([makeChunk(text, 20)], "What is F205?");
+    for (const q of qualifiers) expect(context).toContain(q);
+    expect(body(context).length).toBeLessThanOrEqual(TABLE_COMPACT_BUDGET);
+  });
+
+  it("keeps a long footnote block (7 notes) including the one defining the row's type", () => {
+    const notes = Array.from({ length: 6 }, (_, i) => `* General note ${i + 1}`).concat(["* Type 2 requires manual reset (synthetic regression input)"]);
+    const row = "| F081 | DSI Comm Loss | Type 2 |";
+    const text = ["# Model B only", header2, ...filler, row, ...notes].join("\n");
+    const context = buildGroundedContext([makeChunk(text, 162)], "What does F081 Type 2 mean?");
+    expect(context).toContain(row);
+    for (const n of notes) expect(context).toContain(n);
+  });
+
+  it("qualifier block that cannot fit with the row holds the table instead of showing an unqualified row", () => {
+    const qualifiers = ["# Model B only", ...Array.from({ length: 30 }, (_, i) => `Qualifier ${i} ${"must apply ".repeat(8)}`)];
+    const text = [...qualifiers, header2, ...filler, "| F205 | Synthetic answer |"].join("\n");
+    const context = buildGroundedContext([makeChunk(text, 20)], "What is F205?");
+    expect(context).toContain("matching rows not shown");
+    expect(context).not.toContain("| F205 |");
+    expect(body(context).length).toBeLessThanOrEqual(TABLE_COMPACT_BUDGET);
+  });
 });
