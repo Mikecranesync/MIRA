@@ -743,13 +743,16 @@ export function threadFromPersisted(
   meta: HubNotebookMeta,
 ): InteractionThread {
   const turns = rows.flatMap((row) => turnsFromPersisted(row, meta));
+  const threadTitle = rows.length > 0 && rows[0]?.question
+    ? rows[0].question.trim().replace(/\s+/g, " ").split(" ").filter(Boolean).slice(0, 8).join(" ") || "New chat"
+    : "New chat";
   return {
     id: threadIdFor(meta),
     tenantId: meta.tenantId ?? "tenant",
     projectId: projectIdFor(meta),
     notebookId: meta.notebookId,
     ...(meta.asset ? { primaryAssetId: meta.asset.id } : {}),
-    title: meta.title,
+    title: threadTitle,
     mode: "ask",
     visibility: "workspace",
     turns,
