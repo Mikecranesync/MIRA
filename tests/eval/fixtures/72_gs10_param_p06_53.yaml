@@ -1,4 +1,5 @@
 id: gs10_param_p06_53
+runner: hub_notebook   # executed by mira-hub (hub-eval-fixtures.route.test.ts); EXCLUDED from the /v1/chat/completions pipeline runner
 description: "GS10 parameter P06.53 lookup — parameter table row"
 expected_final_state: DIAGNOSIS
 max_turns: 4
@@ -11,3 +12,30 @@ tags: [vfd, gs10, parameter, table-row]
 turns:
   - role: user
     content: "What is parameter P06.53 on the GS10?"
+# --- Hub notebook profile (#6030 F10) --------------------------------------------------------
+# These cases are run through the ACTUAL authenticated-context Hub notebook POST by
+# mira-hub/src/capabilities/__tests__/hub-eval-fixtures.route.test.ts (default Hub CI). Synthetic
+# inputs only: NOT OEM facts and NOT a staging/production verification. Auth, notebook domain functions,
+# ordinary retrieval and the provider (a stubbed stream) are controlled; the context selection, page
+# expansion, citation numbering and validators are the production code. Real-SQL scope is proven in
+# referenced-pages.integration.test.ts. `parts` entries are literal lines or {repeat, template} generators.
+hub_notebook:
+  question: "What is parameter P06.53 on the GS10?"
+  retrieval:
+    - doc: A
+      page: 223
+      parts:
+        - "# GS10 parameter table"
+        - "| Model | Parameter | Function |"
+        - "|---|---|---|"
+        - {repeat: 100, template: "| GS10 | P07.{i} | Synthetic generic parameter |"}
+        - "| GS10 | P06.53 | Synthetic requested overload row |"
+  provider_answer: "P06.53 on the GS10 is the synthetic requested overload row [1]."
+  expect:
+    provider_sees:
+      - "| GS10 | P06.53 | Synthetic requested overload row |"
+      - "# GS10 parameter table"
+      - "| Model | Parameter | Function |"
+    status: answered
+    citation: {doc: A, page: 223, id: "1"}
+    reply_contains: ["P06.53"]

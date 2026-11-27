@@ -1,4 +1,5 @@
 id: pf525_f081_table_row
+runner: hub_notebook   # executed by mira-hub (hub-eval-fixtures.route.test.ts); EXCLUDED from the /v1/chat/completions pipeline runner
 description: "PowerFlex 525 F081 DSI Comm Loss — fault code from table, Type 2 (manual reset)"
 expected_final_state: DIAGNOSIS
 max_turns: 4
@@ -11,3 +12,31 @@ tags: [vfd, pf525, f081, fault-table, table-row]
 turns:
   - role: user
     content: "PowerFlex 525 showing F081, what does it mean and does it auto-reset?"
+# --- Hub notebook profile (#6030 F10) --------------------------------------------------------
+# These cases are run through the ACTUAL authenticated-context Hub notebook POST by
+# mira-hub/src/capabilities/__tests__/hub-eval-fixtures.route.test.ts (default Hub CI). Synthetic
+# inputs only: NOT OEM facts and NOT a staging/production verification. Auth, notebook domain functions,
+# ordinary retrieval and the provider (a stubbed stream) are controlled; the context selection, page
+# expansion, citation numbering and validators are the production code. Real-SQL scope is proven in
+# referenced-pages.integration.test.ts. `parts` entries are literal lines or {repeat, template} generators.
+hub_notebook:
+  question: "PowerFlex 525 showing F081, what does it mean and does it auto-reset?"
+  retrieval:
+    - doc: A
+      page: 162
+      parts:
+        - "# Fault descriptions"
+        - "| Code | Name | Type | Reset |"
+        - "|---|---|---|---|"
+        - {repeat: 90, template: "| F{i} | Synthetic fault {i} | Type 1 | Auto reset |"}
+        - "| F081 | DSI Comm Loss | Type 2 | Manual reset required |"
+        - ""
+        - "* Type 2: the drive must be reset manually (synthetic definition for this regression case)."
+  provider_answer: "F081 is DSI Comm Loss, a Type 2 fault, and it does not auto-reset: manual reset is required [1]."
+  expect:
+    provider_sees:
+      - "| F081 | DSI Comm Loss | Type 2 | Manual reset required |"
+      - "* Type 2: the drive must be reset manually (synthetic definition for this regression case)."
+    status: answered
+    citation: {doc: A, page: 162, id: "1"}
+    reply_contains: ["Type 2"]
