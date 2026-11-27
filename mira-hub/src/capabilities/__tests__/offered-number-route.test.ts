@@ -67,10 +67,16 @@ const acqMock = vi.hoisted(() => ({
   readAcquisition: vi.fn(async () => null as unknown),
   reconcileAcquisition: vi.fn(async (_t: string, _n: string, rec: unknown) => rec),
 }));
-vi.mock("@/capabilities/notebook-manual-acquisition", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/capabilities/notebook-manual-acquisition")>()),
-  ...acqMock,
-}));
+// The offer is the real reader unless a test stands one in (`offer.fn`).
+const offer = vi.hoisted(() => ({ fn: null as null | ((q: string, id: unknown) => string | null) }));
+vi.mock("@/capabilities/notebook-manual-acquisition", async (importOriginal) => {
+  const real = await importOriginal<typeof import("@/capabilities/notebook-manual-acquisition")>();
+  return {
+    ...real,
+    ...acqMock,
+    offeredOwnNumber: (q: string, id: Parameters<typeof real.offeredOwnNumber>[1]) => (offer.fn ? offer.fn(q, id) : real.offeredOwnNumber(q, id)),
+  };
+});
 
 import { POST } from "@/app/api/equipment-notebooks/[id]/chat/route";
 
@@ -115,6 +121,7 @@ beforeEach(() => {
   process.env.NEON_DATABASE_URL = "postgres://test";
   delete process.env.NOTEBOOK_WORK_PACKET;
   vi.clearAllMocks();
+  offer.fn = null;
   nbMock.getNotebook.mockResolvedValue({ id: NB, displayName: "New machine", nodeId: NODE, manufacturer: null, model: null });
   nbMock.resolveBoundAsset.mockResolvedValue({ state: "unbound" });
   nbMock.validateChatSources.mockResolvedValue({ ok: false, error: "no_sources_selected" });
@@ -142,12 +149,35 @@ describe("the identity card offers the typed order number (#6085)", () => {
   // The route emits the card from two places: next to a generated answer, and on a turn that
   // abstains without calling the model. A manual request with nothing retrieved abstains. Its
   // card comes from the exact-request reader, which proposes the order number as the model, so
-  // the one other token the scope needs is the family name.
-  it("the abstained turn's card offers a number too", async () => {
-    const frames = await ask("Find the manual for Siemens TP700 Comfort 6AV2124-0GC01-0AX0");
+  // the only other token is the family name, and a model name is never offered.
+  const ABSTAIN = "Find the manual for Siemens TP700 Comfort 6AV2124-0GC01-0AX0";
+  it("the abstained manual-request card offers nothing: its other token is a model name", async () => {
+    const frames = await ask(ABSTAIN);
     expect(vi.mocked(fetch)).not.toHaveBeenCalled(); // precondition: the turn abstained
     expect(frames).toContainEqual(expect.objectContaining({ kind: "status", status: "insufficient_evidence" }));
-    expect(proposalIn(frames)).toMatchObject({ model: "6AV2124-0GC01-0AX0", offeredNumber: "TP700" });
+    expect(proposalIn(frames)).toMatchObject({ model: "6AV2124-0GC01-0AX0" });
+    expect(proposalIn(frames)).not.toHaveProperty("offeredNumber");
+  });
+
+  // No typed question both abstains and offers today, so the abstained emit site is pinned with
+  // a stood-in offer: whatever the reader returns rides the abstained card, live and saved.
+  it("the abstained turn's card carries whatever the offer returns", async () => {
+    offer.fn = () => "6AV2124-0GC01-0AX0";
+    const frames = await ask(ABSTAIN);
+    expect(vi.mocked(fetch)).not.toHaveBeenCalled();
+    expect(proposalIn(frames)).toMatchObject({ offeredNumber: "6AV2124-0GC01-0AX0" });
+    expect(savedProposal()).toMatchObject({ offeredNumber: "6AV2124-0GC01-0AX0" });
+  });
+
+  // The offer is an optional extra on the card: a reader that throws must not cost the answer.
+  it("a reader that throws leaves the card without an offer, and the turn answers", async () => {
+    offer.fn = () => { throw new Error("offer failed"); };
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const frames = await ask(WALK);
+    expect(proposalIn(frames)).toMatchObject({ manufacturer: "Siemens", model: "TP700" });
+    expect(proposalIn(frames)).not.toHaveProperty("offeredNumber");
+    expect(vi.mocked(fetch)).toHaveBeenCalled();
+    expect(nbMock.recordTurn).toHaveBeenCalledTimes(1);
   });
 
   it("control: a card whose question names no number offers none", async () => {

@@ -72,12 +72,21 @@ describe("GET notebook detail: a confirmed number (#6085)", () => {
     expect(body.manualSearchScope).toBe("other_model");
   });
 
-  // Review Focus 4.
+  // Review Focus 4. The question names only the number, so the saved entry alone decides it:
+  // counted, the thread would be own; filtered out for the old identity, it is withheld.
+  const ONLY_NUMBER = "Siemens panel 6AV2124-0GC01-0AX0 will not power up";
   it("a number saved for the notebook's earlier identity does not count", async () => {
     vi.mocked(getNotebook).mockResolvedValue({ ...NOTEBOOK, model: "TP900" } as never);
     currentManualSearchStatus.mockResolvedValue({ ...READY, model: "TP900" });
+    vi.mocked(listTurns).mockResolvedValue([ask(ONLY_NUMBER)] as never);
     const body = await (await GET(threadReq, params)).json();
+    expect(readConfirmedNumbers).toHaveBeenCalledTimes(1); // precondition: the entry was read
     expect(body.manualSearchScope).toBe("other_model");
+  });
+
+  it("control: the same thread shows the status on the identity the number was saved for", async () => {
+    vi.mocked(listTurns).mockResolvedValue([ask(ONLY_NUMBER)] as never);
+    expect((await (await GET(threadReq, params)).json()).manualSearch).toEqual(READY);
   });
 
   // Review Focus 5: follow polling in an own thread adds no query.
@@ -151,5 +160,10 @@ describe("numbersForMachine", () => {
   });
   it("counts none when the status names a proposed model, not the notebook's", () => {
     expect(numbersForMachine(entries, { ...READY, model: "TP900" } as never, nb())).toEqual([]);
+  });
+  // Review Focus 4: entries saved under another identity never count, even when status and
+  // notebook agree with each other.
+  it("counts none for entries saved under another identity", () => {
+    expect(numbersForMachine(entries, { ...READY, model: "TP900" } as never, nb({ model: "TP900" }))).toEqual([]);
   });
 });

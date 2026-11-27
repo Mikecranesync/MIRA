@@ -3151,7 +3151,13 @@ async function handleChatTurn(
   // here (after the F2 reassignment above) so it reflects the FINAL proposal.
   // #6085: the card offers the one typed number the status scope would accept for this
   // machine (`offeredOwnNumber`), so a technician who ticks it sees this thread's lookup status.
-  const offeredNumber = identityProposal ? offeredOwnNumber(message, identityProposal) : null;
+  // An optional extra on the card: a reader that throws leaves the card without it, never costs the turn.
+  let offeredNumber: string | null = null;
+  try {
+    offeredNumber = identityProposal ? offeredOwnNumber(message, identityProposal) : null;
+  } catch (err) {
+    console.error("[notebook-chat] order-number offer skipped:", err instanceof Error ? err.message : err);
+  }
   const identityProposalFrame: NotebookIdentityProposalFrame | null = identityProposal
     ? { kind: "identity_proposal", ...identityProposal, ...(offeredNumber ? { offeredNumber } : {}) }
     : null;

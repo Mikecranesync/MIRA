@@ -1342,10 +1342,15 @@ export function threadStatusScope(
 ): ThreadStatusScope {
   const maker = (s: string | null | undefined) => normalizeManufacturer(s).canonical.toUpperCase().replace(/[^A-Z0-9]/g, "");
   const own = new Set<string>();
-  for (const value of [machine.model, machine.catalogNumber, ...(machine.confirmedNumbers ?? [])]) {
+  for (const value of [machine.model, machine.catalogNumber]) {
     if (!value) continue;
     own.add(norm(value));
     for (const id of modelsNamedIn(value)) own.add(id);
+  }
+  // A confirmed number counts only as the order numbers written in it: a model name ticked by
+  // mistake ("TP900", or "…-0AX0/TP900") must never make every thread about that model own.
+  for (const value of machine.confirmedNumbers ?? []) {
+    for (const code of catalogCodesIn(foldForDetection(value))) own.add(code);
   }
   own.delete("");
   const isOwn = (id: string) => own.has(id) || [...own].some((o) => familyCovers(id, o));
@@ -1368,20 +1373,24 @@ const typedToken = (token: string) =>
   token.replace(/^[([{"'“‘]+/, "").replace(/[)\]}"'”’.,;:!?]+$/, "");
 /** Past this many digit-bearing tokens nothing is offered: a bound on the work, never a guess. */
 const MAX_OFFERED_CANDIDATES = 20;
+/** Past this length nothing is offered: the scope's cost grows faster than the text. */
+const MAX_OFFERED_QUESTION_CHARS = 500;
 
 /**
  * #6085: the one number the technician typed that would make this question the proposed
  * machine's own, for the identity card to offer beside an unticked box. The scope decides
  * (`threadStatusScope` with that number confirmed), so the card and the status scope read the
- * question the same way. Null when the question is not withheld today, when no single typed
- * token settles it (two numbers, another maker, the same number spelled two ways), or past
- * 20 digit-bearing tokens. The value is the token as typed, never a normalised string.
+ * question the same way. A confirmed value counts only as the hyphenated order numbers in it,
+ * so a model name ("TP900"), a network ("DH-485") or a sibling's series is never offered. Null
+ * when the question is not withheld today, when no single typed token settles it (two numbers,
+ * another maker), past 20 digit-bearing tokens, or past 500 characters. The value is the token
+ * as typed, never a normalised string.
  */
 export function offeredOwnNumber(
   question: string,
   identity: { manufacturer: string | null | undefined; model: string | null | undefined },
 ): string | null {
-  if (!identity.model?.trim()) return null;
+  if (!identity.model?.trim() || question.length > MAX_OFFERED_QUESTION_CHARS) return null;
   const machine = { manufacturer: identity.manufacturer, model: identity.model, catalogNumber: null, recordCatalog: null };
   if (threadStatusScope([question], machine) !== "other") return null;
   const candidates = [

@@ -45,13 +45,17 @@ Non-goals:
 A new exported helper in `mira-hub/src/capabilities/notebook-manual-acquisition.ts`, `offeredOwnNumber(question, identity)`, sits beside `threadStatusScope`. It asks the scope itself which number would settle the question, so the card and the scope cannot disagree. It returns the one number to offer, or null:
 
 1. **The question must be withheld today.** With the proposed maker and model and no number, `threadStatusScope([question], …)` must return `other`. Otherwise there is nothing to fix, so return null.
-2. **Candidates are the technician's own tokens.** These are the question's whitespace-delimited tokens, with surrounding brackets and trailing punctuation stripped, that contain a digit and are at most 64 characters. More than 20 such tokens: return null (bounded cost).
+2. **Candidates are the technician's own tokens.** These are the question's whitespace-delimited tokens, with surrounding brackets and trailing punctuation stripped, that contain a digit and are at most 64 characters. More than 20 such tokens, or a question over 500 characters: return null (bounded cost; the scope's cost grows faster than the text, and a 4,000-character paste took over a second for 20 scope calls).
 3. **A candidate fixes the question** when `threadStatusScope([question], …)` with that one token as a confirmed number returns `own`.
 4. **Exactly one candidate must fix it.** With zero or several, return null.
    - Another maker in the question: no candidate fixes it, because the maker check classes the thread as other whatever number is confirmed.
    - Two numbers: confirming one leaves the other, so neither fixes it.
-   - The same number spelled two ways: both fix it, so nothing is offered.
+   - The same number spelled with and without hyphens: only the hyphenated one is an order number (see 4.6), so it alone fixes the question and is offered.
 5. **Display form.** The offered value is the fixing token as typed, never a normalised string.
+
+Revision (2026-11-27, final review): a confirmed value counts only as the hyphenated order numbers written in it (4.6). Before this, a model name or a network could be offered and saved ("TP900" typed beside a TP700, "DH-485", the family name on an abstained manual request), and a ticked "TP900" would have made every TP900 thread in the TP700 notebook own, with no undo. Because one reader decides both, the offer stopped offering those values without any change to the offer itself. The cost: a number typed with no hyphens is never offered.
+
+The route calls the helper inside a try/catch. A throw leaves the card without `offeredNumber` and logs one line; the turn answers as before.
 
 Implementation note (2026-11-27, plan stage): an earlier draft read the candidates from the scope's internal identifier set (`modelsNamedIn`). One typed number can produce several identifiers there, so a draft that required exactly one identifier could offer nothing for the walk question. Asking the scope with the technician's own tokens has the same contract with one reader instead of two.
 
@@ -125,7 +129,7 @@ COMMIT;
 
 ### 4.6 The status scope
 
-- **`threadStatusScope`.** The `machine` argument gains `confirmedNumbers?: readonly string[]`. Each one joins `own` exactly as the model and catalog number do.
+- **`threadStatusScope`.** The `machine` argument gains `confirmedNumbers?: readonly string[]`. Each one adds only the hyphenated order numbers written in it (the scope's existing catalog-code reader). It never adds a model name, so a mistaken tick can make no model's threads own. The model and catalog number join `own` as before.
 - **`manual-status-subject.ts`, `subjectMachine`.** It adds the confirmed numbers only when all three hold:
   1. the notebook's identity is settled (`user_confirmed` or `verified`);
   2. the model the status names equals the notebook's model (the same rule `catalogNumber` already follows);

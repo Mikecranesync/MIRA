@@ -2179,9 +2179,7 @@ describe("#4095 — a blank chat PROPOSES the named machine, never binds it", ()
       await POST(chatReq({ message: "Find the manual for this Allen-Bradley SLC 5/03 on DH-485", mode: "general" }), params),
     );
     const proposal = fr.find((f) => f.kind === "identity_proposal");
-    // #6085: the status scope reads "DH-485" as a second model, so the card offers it beside an
-    // unticked box. It is the network, not an order number: the technician leaves it unticked.
-    expect(proposal).toEqual({ kind: "identity_proposal", manufacturer: "Allen-Bradley", model: "SLC 5/03", offeredNumber: "DH-485" });
+    expect(proposal).toEqual({ kind: "identity_proposal", manufacturer: "Allen-Bradley", model: "SLC 5/03" });
     expect(systemPromptOf(fetchMock)).toContain("UNCONFIRMED MACHINE");
     expect(systemPromptOf(fetchMock)).toContain("Allen-Bradley SLC 5/03");
     await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
