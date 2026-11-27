@@ -1626,16 +1626,17 @@ async function handleChatTurn(
     // The cost of the invariant is real and is stated rather than hidden:
     // turns that end before `decisionState` is assigned (safety_stop, abstained,
     // a client stop during generation) carry NO jev_decision. Shadow coverage is
-    // the turns that reached the final answer gate and wrote a packet: delivered
-    // ones and the history-write-failure exit. A committed turn whose delivery
-    // then failed or was cancelled (#6048) writes its packet and usage row but
-    // carries NO jev_decision and sends nothing to the vendor: its settle passes
-    // `delivered: false`. The call's contract is an answer already committed to
-    // the client, and the proof (docs/proofs/2026-09-23-jev-decision-fabric.md)
-    // excludes client-cancelled turns; an answer the technician never received,
-    // with its question, excerpts and photo observations, is not sent (Codex
-    // round 1 on #6082, F1). A turn cancelled after a FAILED history write
-    // writes no packet, so it carries none either. Extending it to the safety path
+    // the turns that reached the final answer gate AND were delivered. Two exits
+    // write a packet and usage row but carry NO jev_decision and send nothing to
+    // the vendor, because each passes `delivered: false`: a committed turn whose
+    // delivery then failed or was cancelled (#6048), and the history-write-failure
+    // exit on a request with an id, which errors the response before any answer
+    // frame. The call's contract is an answer already committed to the client,
+    // and the proof (docs/proofs/2026-09-23-jev-decision-fabric.md) excludes
+    // client-cancelled turns; an answer the technician never received, with its
+    // question, excerpts and photo observations, is not sent (Codex round 1 on
+    // #6082, F1). A turn cancelled after a FAILED history write on a request with
+    // no id writes no packet, so it carries none either. Extending it to the safety path
     // would mean awaiting a vendor call before a hazard stop reaches the
     // technician, which is not a trade worth making for a shadow signal.
     //
@@ -1654,6 +1655,10 @@ async function handleChatTurn(
     }
     // Why the usage write did not close the attempt's row, when it did not.
     let notPersisted: string | null = null;
+    // The outcome this write records. A failed write hands the SAME value to the fallback
+    // close, so the two can never disagree (the close's own default is "error", and a
+    // request abort during the write would relabel a committed turn "cancelled").
+    const attemptedOutcome: TurnOutcome = lifecycleOutcome ?? "answered";
     try {
       const opened = await openedTurn;
       const written = await persistTurnUsage(
@@ -1667,7 +1672,7 @@ async function handleChatTurn(
           // ONE ROW PER ACCEPTED TURN: this UPDATEs the start record rather
           // than inserting beside it.
           attemptId: opened.attemptId,
-          outcome: lifecycleOutcome ?? "answered",
+          outcome: attemptedOutcome,
         },
         usage,
         {
@@ -1701,6 +1706,7 @@ async function handleChatTurn(
       lifecycleSettled = true;
       console.error(`[notebook-chat] turn usage write found the attempt already closed; packet and usage not stored (turn ${turnId})`);
     } else {
+      lifecycleOutcome = attemptedOutcome;
       console.error(`[notebook-chat] turn usage write did not persist; closing the attempt without its packet (turn ${turnId}):`, notPersisted);
     }
   };
@@ -6313,6 +6319,8 @@ async function handleChatTurn(
               answerText: null,
               citationsPresent: false,
               latencyMs: Date.now() - turnStartedAt,
+              // The response was errored just above: this answer reached no client.
+              delivered: false,
             });
           }
           endRoot();

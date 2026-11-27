@@ -1047,21 +1047,6 @@ describe("#6048 — a body cancel after the commit still persists the packet and
     });
     return boom;
   }
-  /** Holds the settle's first await (the decision lane, which runs before the ledger write) until released. */
-  async function holdDecisionLane() {
-    const real = (await vi.importActual<typeof import("@/capabilities/observability/jev-decision")>("@/capabilities/observability/jev-decision"))
-      .evaluateTurnDecision;
-    let release!: () => void;
-    let entered!: () => void;
-    const reached = new Promise<void>((res) => (entered = res));
-    const gate = new Promise<void>((res) => (release = res));
-    evaluateMock.mockImplementation(async (...a: Parameters<typeof real>) => {
-      entered();
-      await gate;
-      return real(...a);
-    });
-    return { reached, release, restore: () => evaluateMock.mockImplementation(real) };
-  }
   /** Holds the settle's ledger write (one call) until released; it then reports a written row. */
   function holdLedgerWrite() {
     let release!: () => void;
@@ -1099,25 +1084,24 @@ describe("#6048 — a body cancel after the commit still persists the packet and
     expectDispositionMatchesHistory(r);
   });
 
-  it("R1-D1: the history write fails on a request with an id -> the reader gets that error before the failed-turn packet's decision lane finishes", async () => {
+  it("R1-D1: the history write fails on a request with an id -> the reader gets that error while the failed-turn packet's ledger write is still pending", async () => {
     stubFetch(REDRAFT, [verdict("safe", "none")]);
     const boom = new Error("history write failed (test)");
     domainMock.recordTurn.mockImplementation(async () => {
       throw boom;
     });
-    const hold = await holdDecisionLane();
+    // The failed-turn packet's ledger write is parked. (This test parked the decision call
+    // until the advisor pass after Codex round 1 on #6082: that exit no longer makes one.)
+    const hold = holdLedgerWrite();
     try {
       const res = await POST(req({ message: Q_PLAIN, sourceDocIds: [DOC_A], clientRequestId: REQ_ID }, false), params);
       const seen = drain(res.body!.getReader());
       await hold.reached;
       expect(await Promise.race([seen, stillPending(400)])).toBe(boom);
-      expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(0);
     } finally {
       hold.release();
     }
-    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
     await settleAll();
-    hold.restore();
     expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1);
     const [, , telemetry] = persistMock.persistTurnUsage.mock.calls[0] as unknown as PersistCall;
     expect(telemetry.packet.persistence.outcome).toBe("failed");
@@ -1563,6 +1547,41 @@ describe("#6048 — a body cancel after the commit still persists the packet and
     expectDispositionMatchesHistory(r, 1);
   });
 
+  it("F1: decision call on, the history write fails on a request with an id: the response is errored, nothing is sent to the vendor, the failed-turn packet carries no decision record", async () => {
+    decisionCallOn();
+    stubFetch(REDRAFT, [verdict("safe", "none")]);
+    const boom = new Error("history write failed (test)");
+    domainMock.recordTurn.mockImplementation(async () => {
+      throw boom;
+    });
+    const res = await POST(req({ message: Q_PLAIN, sourceDocIds: [DOC_A], clientRequestId: REQ_ID }, false), params);
+    expect(await drain(res.body!.getReader())).toBe(boom);
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    await settleAll();
+    expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1);
+    const [, , telemetry] = persistMock.persistTurnUsage.mock.calls[0] as unknown as PersistCall;
+    expect(telemetry.packet.persistence.outcome).toBe("failed");
+    expect(vendorRequests()).toHaveLength(0);
+    expect(evaluateMock).not.toHaveBeenCalled();
+    expect(telemetry.packet.jev_decision ?? null).toBeNull();
+  });
+
+  it("F1 control: decision call on, the history write fails on a request with NO id: the route carries on, the answer is delivered, ONE request is sent", async () => {
+    decisionCallOn();
+    stubFetch(REDRAFT, [verdict("safe", "none")]);
+    domainMock.recordTurn.mockImplementation(async () => {
+      throw new Error("history write failed (test)");
+    });
+    const res = await POST(req({ message: Q_PLAIN, sourceDocIds: [DOC_A] }, false), params);
+    expect(await drain(res.body!.getReader())).toBe("closed");
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    await settleAll();
+    const [, , telemetry] = persistMock.persistTurnUsage.mock.calls[0] as unknown as PersistCall;
+    expect(telemetry.packet.persistence.outcome).toBe("failed");
+    expect(vendorRequests()).toHaveLength(1);
+    expect(telemetry.packet.jev_decision ?? null).not.toBeNull();
+  });
+
   it("F2: after the commit a delivery failure does not wait on releasing the request claim: the reader gets the error and ONE packet is written while a release would never return", async () => {
     stubFetch(REDRAFT, [verdict("safe", "none")]);
     const boom = failDeliveryAfterContent();
@@ -1628,6 +1647,40 @@ describe("#6048 — a body cancel after the commit still persists the packet and
     expect(closeTurnMock).not.toHaveBeenCalled();
     expect(logged(console.error, NOT_PERSISTED)).toHaveLength(0);
     expect(logged(console.error, "found the attempt already closed")).toHaveLength(0);
+  });
+
+  it("F3: the response body cancelled DURING generation, ledger write FAILS: the fallback close records the outcome that write attempted, not the close's own default", async () => {
+    // Draft 1 never finishes: one word, then the provider stream stays open until it is cancelled.
+    let cancelBody!: () => void;
+    const fetchMock = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+      const body = typeof init?.body === "string" ? init.body : "";
+      if (!body.includes('"stream":true')) throw new Error("no judge or redraft call is expected on a stopped turn (test)");
+      setTimeout(() => cancelBody(), 30);
+      return new Response(
+        new ReadableStream<Uint8Array>({
+          start(c) {
+            c.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({ choices: [{ delta: { content: "Check " } }] })}\n\n`));
+          },
+        }),
+        { status: 200 },
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    persistMock.persistTurnUsage.mockImplementationOnce(async () => ({ persisted: false, reason: "57014" }) as never);
+    const res = await POST(req({ message: Q_PLAIN, sourceDocIds: [DOC_A], clientRequestId: REQ_ID }, false), params);
+    const reader = res.body!.getReader();
+    cancelBody = () => void reader.cancel();
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    await settleAll();
+    // Precondition: this is the client-stop exit (history holds an errored turn), with one failed write.
+    expect(domainMock.recordTurn).toHaveBeenCalledTimes(1);
+    const [, , turn] = domainMock.recordTurn.mock.calls[0] as unknown as [string, string, Record<string, unknown>];
+    expect(turn.answerStatus).toBe("error");
+    expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1);
+    const [meta] = persistMock.persistTurnUsage.mock.calls[0] as unknown as PersistCall;
+    expect(closeTurnMock).toHaveBeenCalledTimes(1);
+    expect(closeTurnMock.mock.calls[0][0]).toMatchObject({ outcome: meta.outcome });
+    expect(console.error).toHaveBeenCalledWith(expect.stringContaining(NOT_PERSISTED), "57014");
   });
 
   it("F3: a ledger write that THROWS on a committed turn cancelled during the history write leaves the fallback close to record the outcome", async () => {
