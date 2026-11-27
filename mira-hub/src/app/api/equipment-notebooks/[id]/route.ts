@@ -19,7 +19,8 @@ import {
 import { listFilesForTarget } from "@/lib/workspace-files";
 import type { ManualSearchStatus } from "@/capabilities/notebook-manual-acquisition";
 import { isComponentAttributionEntry } from "@/capabilities/bench-components/attribution";
-import { TURN_WINDOW, notebookManualStatus, subjectMachine, subjectReader } from "@/capabilities/manual-status-subject";
+import { TURN_WINDOW, notebookManualStatus, numbersApply, numbersForMachine, subjectMachine, subjectReader } from "@/capabilities/manual-status-subject";
+import { readConfirmedNumbers } from "@/capabilities/confirmed-numbers";
 
 export const dynamic = "force-dynamic";
 
@@ -99,7 +100,15 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   let manualSearchScope: "other_model" | "out_of_reach" | undefined;
   const machine = threadId ? subjectMachine(manualSearch, notebook) : null;
   if (threadId && machine) {
-    const subject = subjectReader({ tenantId: ctx.tenantId, notebookId: id, viewerUserId: ctx.userId, threadId, turns, machine });
+    const statusForSubject = manualSearch;
+    const subject = subjectReader({
+      tenantId: ctx.tenantId, notebookId: id, viewerUserId: ctx.userId, threadId, turns, machine,
+      // #6085: no reader unless confirmed numbers can count; the reader itself runs only
+      // when this thread would otherwise be withheld.
+      confirmedNumbers: numbersApply(statusForSubject, notebook)
+        ? async () => numbersForMachine(await readConfirmedNumbers(ctx.tenantId, id), statusForSubject, notebook)
+        : undefined,
+    });
     // A failed wider read is inconclusive (r2 F9): the status is withheld
     // without a scope, and the rest of the response still returns.
     try {

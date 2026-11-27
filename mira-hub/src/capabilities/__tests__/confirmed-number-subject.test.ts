@@ -1,0 +1,155 @@
+// #6085: a thread-scoped detail read counts the numbers the technician confirmed, for a settled
+// identity and the notebook's own model only, and reads them only when the thread would
+// otherwise be withheld.
+//
+// Run: cd mira-hub && npx vitest run src/capabilities/__tests__/confirmed-number-subject
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import type { NextRequest } from "next/server";
+
+vi.mock("@/lib/session", () => ({ sessionOr401: vi.fn() }));
+vi.mock("@/lib/equipment-notebooks", () => ({
+  deleteNotebook: vi.fn(), getNotebook: vi.fn(), listSources: vi.fn(), listTurns: vi.fn(),
+  listThreads: vi.fn(async () => []), updateNotebook: vi.fn(), normalizeNotebookThreadId: vi.fn((v: string) => v),
+}));
+vi.mock("@/lib/workspace-files", () => ({ listFilesForTarget: vi.fn(async () => []) }));
+const currentManualSearchStatus = vi.hoisted(() => vi.fn());
+vi.mock("@/capabilities/notebook-manual-acquisition", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/capabilities/notebook-manual-acquisition")>();
+  return { currentManualSearchStatus, threadStatusScope: actual.threadStatusScope, offeredOwnNumber: actual.offeredOwnNumber };
+});
+const readConfirmedNumbers = vi.hoisted(() => vi.fn());
+vi.mock("@/capabilities/confirmed-numbers", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/capabilities/confirmed-numbers")>()),
+  readConfirmedNumbers,
+}));
+
+import { GET } from "@/app/api/equipment-notebooks/[id]/route";
+import { numbersForMachine } from "@/capabilities/manual-status-subject";
+import { offeredOwnNumber } from "@/capabilities/notebook-manual-acquisition";
+import { sessionOr401 } from "@/lib/session";
+import { getNotebook, listSources, listTurns } from "@/lib/equipment-notebooks";
+import type { EquipmentNotebook } from "@/lib/equipment-notebooks";
+
+const NB = "11111111-2222-3333-4444-555555555555";
+const TENANT = "00000000-0000-0000-0000-0000000000d1";
+const THREAD = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+const threadReq = { nextUrl: { searchParams: new URLSearchParams({ threadId: THREAD }) } } as unknown as NextRequest;
+const params = { params: Promise.resolve({ id: NB }) };
+const J2 = "Our Siemens TP700 Comfort panel 6AV2124-0GC01-0AX0 will not power up. What is the rated supply voltage?";
+const NOTEBOOK = { id: NB, displayName: "Panel", identityStatus: "user_confirmed", manufacturer: "Siemens", model: "TP700", catalogNumber: "" };
+const READY = { manufacturer: "Siemens", model: "TP700", running: false, message: "SIMATIC HMI Comfort Panels manual is ready in Sources." };
+const saved = (number: string, manufacturer = "Siemens", model = "TP700") => ({ number, manufacturer, model, confirmedAt: "2026-11-27T00:00:00.000Z" });
+const ask = (question: string) => ({ id: "t", question, evidence: [] });
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  vi.mocked(sessionOr401).mockResolvedValue({ userId: "u_1", tenantId: TENANT, email: "x@y", status: "trial", trialExpiresAt: null, role: "owner" } as never);
+  vi.mocked(getNotebook).mockResolvedValue(NOTEBOOK as never);
+  vi.mocked(listSources).mockResolvedValue([] as never);
+  vi.mocked(listTurns).mockResolvedValue([ask(J2)] as never);
+  currentManualSearchStatus.mockResolvedValue(READY);
+  readConfirmedNumbers.mockResolvedValue([saved("6AV2124-0GC01-0AX0")]);
+});
+
+describe("GET notebook detail: a confirmed number (#6085)", () => {
+  it("shows the status in the walk thread once the number is confirmed", async () => {
+    const body = await (await GET(threadReq, params)).json();
+    expect(body.manualSearch).toEqual(READY);
+    expect(body).not.toHaveProperty("manualSearchScope");
+    expect(readConfirmedNumbers).toHaveBeenCalledWith(TENANT, NB);
+  });
+
+  it("control: with no saved number the walk thread is withheld as today", async () => {
+    readConfirmedNumbers.mockResolvedValue([]);
+    const body = await (await GET(threadReq, params)).json();
+    expect(body.manualSearch).toBeNull();
+    expect(body.manualSearchScope).toBe("other_model");
+  });
+
+  it("control: a TP900 thread stays withheld whatever is saved", async () => {
+    vi.mocked(listTurns).mockResolvedValue([ask(J2), ask("Find the manual for Siemens TP900 Comfort 6AV2124-0JC01-0AX0")] as never);
+    const body = await (await GET(threadReq, params)).json();
+    expect(body.manualSearchScope).toBe("other_model");
+  });
+
+  // Review Focus 4.
+  it("a number saved for the notebook's earlier identity does not count", async () => {
+    vi.mocked(getNotebook).mockResolvedValue({ ...NOTEBOOK, model: "TP900" } as never);
+    currentManualSearchStatus.mockResolvedValue({ ...READY, model: "TP900" });
+    const body = await (await GET(threadReq, params)).json();
+    expect(body.manualSearchScope).toBe("other_model");
+  });
+
+  // Review Focus 5: follow polling in an own thread adds no query.
+  it("an own thread never reads the saved numbers", async () => {
+    vi.mocked(listTurns).mockResolvedValue([ask("Find the manual for Siemens TP700")] as never);
+    const body = await (await GET(threadReq, params)).json();
+    expect(body.manualSearch).toEqual(READY);
+    expect(readConfirmedNumbers).not.toHaveBeenCalled();
+  });
+
+  it("a whole-notebook read never reads the saved numbers", async () => {
+    await GET({ nextUrl: { searchParams: new URLSearchParams() } } as unknown as NextRequest, params);
+    expect(readConfirmedNumbers).not.toHaveBeenCalled();
+  });
+
+  it("an unsettled identity never reads the saved numbers", async () => {
+    vi.mocked(getNotebook).mockResolvedValue({ ...NOTEBOOK, identityStatus: "unconfirmed" } as never);
+    const body = await (await GET(threadReq, params)).json();
+    expect(body.manualSearchScope).toBe("other_model");
+    expect(readConfirmedNumbers).not.toHaveBeenCalled();
+  });
+
+  it("a reader that fails keeps today's withheld status, with its scope", async () => {
+    readConfirmedNumbers.mockRejectedValue(new Error("db down"));
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const body = await (await GET(threadReq, params)).json();
+    expect(body.manualSearch).toBeNull();
+    expect(body.manualSearchScope).toBe("other_model");
+  });
+});
+
+// The card's offer scopes the card's message alone, with the proposal's maker and model and no
+// catalog number. The read scopes the whole thread with the notebook as the confirm left it.
+// They agree because (a) the scope is decided by the NEWEST question that names a model, and the
+// card's message names one whenever a number is offered, and (b) this route's proposals carry no
+// catalog number, so the confirm writes an empty one. Pinned here end to end with the real code.
+describe("offer, confirm and read agree (#6085)", () => {
+  const AFTER_CONFIRM = { ...NOTEBOOK, catalogNumber: "" };
+
+  it("the offered number, once confirmed, makes the read show the status", async () => {
+    const offered = offeredOwnNumber(J2, { manufacturer: "Siemens", model: "TP700" })!;
+    expect(offered).toBe("6AV2124-0GC01-0AX0");
+    vi.mocked(getNotebook).mockResolvedValue(AFTER_CONFIRM as never);
+    readConfirmedNumbers.mockResolvedValue([saved(offered)]);
+    expect((await (await GET(threadReq, params)).json()).manualSearch).toEqual(READY);
+  });
+
+  it("a card on a later turn agrees too: older questions about another model do not decide", async () => {
+    vi.mocked(getNotebook).mockResolvedValue(AFTER_CONFIRM as never);
+    vi.mocked(listTurns).mockResolvedValue([ask("Find the manual for Siemens TP900 Comfort"), ask(J2), ask("What fuse does it take?")] as never);
+    expect((await (await GET(threadReq, params)).json()).manualSearch).toEqual(READY);
+  });
+
+  it("control: a newer question about another model still withholds", async () => {
+    vi.mocked(getNotebook).mockResolvedValue(AFTER_CONFIRM as never);
+    vi.mocked(listTurns).mockResolvedValue([ask(J2), ask("Find the manual for Siemens TP900 Comfort")] as never);
+    expect((await (await GET(threadReq, params)).json()).manualSearchScope).toBe("other_model");
+  });
+});
+
+describe("numbersForMachine", () => {
+  const nb = (over: Partial<EquipmentNotebook> = {}) => ({ ...NOTEBOOK, ...over }) as unknown as EquipmentNotebook;
+  const entries = [saved("6AV2124-0GC01-0AX0")];
+
+  it("counts numbers for a settled identity naming the notebook's own model", () => {
+    expect(numbersForMachine(entries, READY as never, nb())).toEqual(["6AV2124-0GC01-0AX0"]);
+    expect(numbersForMachine(entries, READY as never, nb({ identityStatus: "verified" } as never))).toEqual(["6AV2124-0GC01-0AX0"]);
+  });
+  it("counts none for an unsettled identity", () => {
+    expect(numbersForMachine(entries, READY as never, nb({ identityStatus: "unconfirmed" } as never))).toEqual([]);
+  });
+  it("counts none when the status names a proposed model, not the notebook's", () => {
+    expect(numbersForMachine(entries, { ...READY, model: "TP900" } as never, nb())).toEqual([]);
+  });
+});
