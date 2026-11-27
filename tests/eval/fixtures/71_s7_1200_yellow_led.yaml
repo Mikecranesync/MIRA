@@ -1,0 +1,40 @@
+id: s7_1200_yellow_led
+runner: hub_notebook   # executed by mira-hub (hub-eval-fixtures.route.test.ts); EXCLUDED from the /v1/chat/completions pipeline runner
+description: "Siemens S7-1200 solid yellow STOP/RUN LED — table row with color indicator"
+expected_final_state: DIAGNOSIS
+max_turns: 4
+expected_keywords: [yellow, STOP, RUN, LED, solid, S7-1200]
+expected_vendor: Siemens
+wo_expected: false
+safety_expected: false
+tags: [plc, s7-1200, led, status, table-row]
+# Repro for #5710 — answer says manual only defines green/red LEDs when STOP/RUN solid yellow is on p.4 (table row)
+turns:
+  - role: user
+    content: "the plc has a yellow light on and nothing is running is it broke"
+# --- Hub notebook profile (#6030 F10) --------------------------------------------------------
+# These cases are run through the ACTUAL authenticated-context Hub notebook POST by
+# mira-hub/src/capabilities/__tests__/hub-eval-fixtures.route.test.ts (default Hub CI). Synthetic
+# inputs only: NOT OEM facts and NOT a staging/production verification. Auth, notebook domain functions,
+# ordinary retrieval and the provider (a stubbed stream) are controlled; the context selection, page
+# expansion, citation numbering and validators are the production code. Real-SQL scope is proven in
+# referenced-pages.integration.test.ts. `parts` entries are literal lines or {repeat, template} generators.
+hub_notebook:
+  question: "the plc has a yellow light on and nothing is running is it broke"
+  retrieval:
+    - doc: A
+      page: 4
+      parts:
+        - "# Status LEDs"
+        - "| LED | State | Meaning |"
+        - "|---|---|---|"
+        - {repeat: 90, template: "| LINK {i} | Off | Synthetic unrelated status {i} |"}
+        - "| STOP/RUN | Yellow flashing | Synthetic startup state |"
+        - "| STOP/RUN | Yellow solid | Synthetic STOP mode: the CPU is stopped, not broken |"
+  provider_answer: "A solid yellow STOP/RUN LED means the CPU is in STOP mode (it is stopped, not broken) [1]."
+  expect:
+    provider_sees:
+      - "| STOP/RUN | Yellow solid | Synthetic STOP mode: the CPU is stopped, not broken |"
+    status: answered
+    citation: {doc: A, page: 4, id: "1"}
+    reply_contains: ["STOP mode"]

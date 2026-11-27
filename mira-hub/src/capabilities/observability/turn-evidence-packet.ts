@@ -202,7 +202,7 @@ export type TurnEvidencePacketGeneration = {
  *    redraft — served (then semantic_verdict is the redraft's "safe") or why it stopped.
  *  - semantic_redraft_check (#6062): present only when semantic_redraft is stopped_check —
  *    the first answer floor that rejected the redraft, in the order the screen applies
- *    them: refusal, uncited_claim, rating_column, no_citation, hazard_warning (any answer-
+ *    them: hygiene (#6030, malformed output), refusal, uncited_claim, rating_column, no_citation, hazard_warning (any answer-
  *    validator rejection other than the isolation advisory), prompt_leak, bypass_ask, or
  *    error (a floor threw). Absent, never null, on every other outcome.
  *  - semantic_redraft_check_violation (#6062): present only beside hazard_warning — the

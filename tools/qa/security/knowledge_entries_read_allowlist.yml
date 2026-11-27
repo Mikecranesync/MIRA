@@ -1596,3 +1596,38 @@ approved:
     approved_classification: TENANT-ONLY
     query_sha256: "fc45869274388bf33284d85cb692e5f19a8589def76754f9122f9379131c0dbf"
     reason: "#5503 / PR #5510 fail-closed gate: INSERT ... SELECT copies one real stored row of this upload as the probe passage, replacing only its text and model-scope fields. Target is the connection-local TEMP knowledge_entries table created in beforeAll for a fixed synthetic TENANT, under BEGIN and final ROLLBACK (ON COMMIT DROP); requires a confirmed disposable PostgreSQL. Deliberately a private-upload test, not a shared OEM surface; no production pool or corpus data."
+  "mira-hub/src/capabilities/referenced-pages.ts:161":
+    approved_classification: TENANT-ONLY
+    query_sha256: "6db05950b446df0214cef14b172fffb07b70e550af57cda735adc46024a26ba3"
+    reason: "NEW (#6030 F2/F3): retrieveReferencedPageChunks step 1 — resolves the PRINTED page a retrieved passage points to (\"see page 45\") to its single PHYSICAL page by the document's own stored metadata.page_label (the PDF /PageLabels saved at ingest). Returns only doc_id/source_url/label and min/max page per group (GROUP BY), never content. Pure-tenant surface, same rule as retrieveNodeChunks and manual-safety-chapter.ts resolveStarts: tenant_id=$1, ingest_route='v2', doc_id::text = ANY($2) where $2 is the route's validated notebook document set (validateChatSources), the same approvedSourceFilterSql clause retrieval uses (bound as $6 only when MIRA_ENFORCE_APPROVED_RETRIEVAL is on), and (doc_id, source_url, label) IN unnest($3,$4,$5) with every tuple built from a chunk retrieval already admitted this turn (never caller-supplied, never a cross product). Runs only on the notebook non-OEM path, so the shared OEM corpus is excluded by design (adding is_private=false would read exactly the corpus this must never read). Read-only, SET LOCAL statement_timeout capped by the remaining 4 s deadline. Proven on a real Postgres on both the withTenantContext/RLS lane and the raw owner pool in referenced-pages.integration.test.ts (other tenant with the same doc id/file/label, same file different document, unselected document, ambiguous or missing label)."
+    query_snippet: |
+      FROM knowledge_entries
+            WHERE tenant_id = $1
+              AND ingest_route = 'v2'
+              ${approvedSourceFilterSql(admitApproved ? 6 : null)}
+              AND doc_id::text = ANY($2::text[])
+              AND (doc_id::text, source_url, NULLIF(BTRIM(metadata->>'page_label'), '')) IN (
+                SELECT * FROM unnest($3::text[], $4::text[], $5::text[])
+              )
+            GROUP BY doc_id, source_url, NULLIF(BTRIM(metadata->>'page_label'), '')`,
+          p1,
+        );
+  "mira-hub/src/capabilities/referenced-pages.ts:198":
+    approved_classification: TENANT-ONLY
+    query_sha256: "024227ca6e393d5190c1b9f59146f908d95c05fe117bdee5be8dc5d18c072344"
+    reason: "NEW (#6030 F2/F3): retrieveReferencedPageChunks step 2 — reads the chunks of the pages step 1 resolved. Pure-tenant surface, same rule as retrieveNodeChunks (manual-rag.ts) and manual-safety-chapter.ts readChapterRows: tenant_id=$1, ingest_route='v2', doc_id::text = ANY($2) (the validated notebook document set), the same approvedSourceFilterSql clause retrieval uses (bound as $8 only when the approval gate is on), and (doc_id, source_url, page) IN unnest($3,$4,$5) where each tuple is the physical page step 1 resolved for a document retrieval already admitted. Bounded: a rank() window caps rows per page ($6), LIMIT $7 caps rows in total, SET LOCAL statement_timeout is capped by the remaining 4 s deadline and rows that arrive after the deadline are discarded. Notebook non-OEM path only, so the shared OEM corpus is excluded by design (is_private=false would read exactly the corpus this must never read). Returned rows are additionally held to the retrieval table-admission rule (tableExclusionFor) in code. Proven on a real Postgres on the RLS and raw-pool lanes in referenced-pages.integration.test.ts."
+    query_snippet: |
+      FROM knowledge_entries
+                WHERE tenant_id = $1
+                  AND ingest_route = 'v2'
+                  ${approvedSourceFilterSql(admitApproved ? 8 : null)}
+                  AND doc_id::text = ANY($2::text[])
+                  AND (doc_id::text, source_url, COALESCE(page_start, source_page)) IN (
+                    SELECT * FROM unnest($3::text[], $4::text[], $5::int[])
+                  )
+             ) t
+            WHERE rk <= $6
+            ORDER BY doc_id, source_url, pg, cidx NULLS LAST, id
+            LIMIT $7`,
+          p2,
+        );

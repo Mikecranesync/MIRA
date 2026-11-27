@@ -1,0 +1,27 @@
+id: panelview_expansion_44_45
+runner: hub_notebook   # executed by mira-hub (hub-eval-fixtures.route.test.ts); EXCLUDED from the /v1/chat/completions pipeline runner
+description: "PanelView: ordinary retrieval returns ONLY p.44 ('see page 45'); production expansion reads p.45"
+tags: [hmi, panelview, cross-reference, expansion]
+# --- Hub notebook profile (#6030 F10): synthetic inputs; the p.45 page is read by the PRODUCTION
+# referenced-page expansion (printed label 45 -> its physical page), never handed to retrieval. ---
+hub_notebook:
+  question: "How do I set the language on the PanelView?"
+  retrieval:
+    - doc: A
+      page: 44
+      label: "44"
+      parts:
+        - "PanelView terminal overview. For configuration steps see page 45."
+  corpus:
+    - doc: A
+      page: 45
+      label: "45"
+      parts:
+        - "Setup steps: 1. Press SETUP. 2. Hold ENTER for 3 seconds. 3. Select the language."
+  provider_answer: "Press SETUP, hold ENTER for 3 seconds, then select the language [2]."
+  expect:
+    provider_sees:
+      - "Setup steps: 1. Press SETUP. 2. Hold ENTER for 3 seconds. 3. Select the language."
+    status: answered
+    citation: {doc: A, page: 45, id: "2"}
+    reply_contains: ["ENTER"]

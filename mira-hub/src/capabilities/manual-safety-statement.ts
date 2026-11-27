@@ -7,6 +7,7 @@
  *
  * Reference: Task #4508, Stranger Walk safety-notice integration.
  */
+import { citationSourceKey } from './citation-source-key';
 import type { ManualSafetyStatementEntry } from '@/lib/notebook-chat-types';
 
 export interface ManualSafetyStatement {
@@ -265,7 +266,9 @@ type CitedSource = { citationId: string; docId: string; sourceTitle: string; pag
 /** The retrieved-chunk fields the helper reads (a subset of `ManualChunk`). */
 type PageChunk = { content: string; sourceUrl: string; sourcePage: number | null; docId?: string | null };
 
-const pageKey = (c: { sourceUrl: string; sourcePage: number | null }) => `${c.sourceUrl}::${c.sourcePage ?? ''}`;
+const pageKey = (c: { docId?: string | null; sourceUrl: string; sourcePage: number | null }) => citationSourceKey(c);
+/** The legacy (file, page) key: how a page chunk that carries no document id is matched. */
+const plainKey = (c: { sourceUrl: string; sourcePage: number | null }) => `${c.sourceUrl}::${c.sourcePage ?? ''}`;
 
 /** Retrieved chunks grouped by page, in `buildCitations` order: citationId n is group n. */
 function pageGroups(chunks: readonly PageChunk[]): PageChunk[][] {
@@ -297,7 +300,7 @@ export function citedPagesFor(
  *
  * Chunks are grouped exactly as the chat route's `buildCitations` numbers them
  * (and as `withSupportingQuotes` re-reads them): key
- * `${sourceUrl}::${sourcePage ?? ""}`, citationId n = the n-th distinct key.
+ * `${docId}::${sourceUrl}::${sourcePage ?? ""}` (docId omitted for a chunk with none), citationId n = the n-th distinct key.
  * Only the pages behind `citations` are read — the caller passes the EMITTED
  * citations, so a retrieved page the answer did not cite never counts. The
  * citations are walked in ascending citation number. An operating note is
@@ -312,9 +315,13 @@ export function manualSafetyStatementForCitations(
   // The rest of each cited page (#4509 Codex F1) joins ONLY a page retrieval already returned, so
   // it can add text to a cited page but never a new page or a shifted citation number.
   const index = new Map(groups.map((g, i) => [pageKey(g[0]), i] as const));
+  // A page chunk with no document id (a caller that predates doc-bound reads) matches by file+page, but
+  // only when exactly ONE retrieved document owns that page: it is never guessed between two.
+  const plain = new Map<string, number[]>();
+  groups.forEach((g, i) => plain.set(plainKey(g[0]), [...(plain.get(plainKey(g[0])) ?? []), i]));
   const pages = groups.map((g) => g.map((c) => c.content)); // citationId n ⇔ pages[n - 1]
   for (const c of pageChunks) {
-    const i = index.get(pageKey(c));
+    const i = c.docId ? index.get(pageKey(c)) : plain.get(plainKey(c))?.length === 1 ? plain.get(plainKey(c))![0] : undefined;
     if (i !== undefined) pages[i].push(c.content);
   }
   const ordered = [...citations].sort((a, b) => Number(a.citationId) - Number(b.citationId));

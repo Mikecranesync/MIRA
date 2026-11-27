@@ -73,6 +73,8 @@ EVAL_CHAT_PREFIX = os.getenv("EVAL_CHAT_PREFIX", "eval")
 MIRA_DB_PATH = os.getenv("MIRA_DB_PATH", "/opt/mira/data/mira.db")
 DOCKER_CONTAINER = os.getenv("DOCKER_CONTAINER", "mira-pipeline-saas")
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
+# Fixtures with `runner: hub_notebook` belong to the Hub notebook harness, not this pipeline runner (#6030 F10).
+HUB_NOTEBOOK_RUNNER = "hub_notebook"
 RUNS_DIR = Path(__file__).parent / "runs"
 
 
@@ -198,6 +200,12 @@ def _load_fixtures(fixtures_dir: Path) -> list[dict]:
             fixture = yaml.safe_load(f)
         if "id" not in fixture:
             logger.warning("Skipping %s — missing required 'id' field", path.name)
+            continue
+        if fixture.get("runner") == HUB_NOTEBOOK_RUNNER:
+            # Executed by the Hub notebook harness (mira-hub/src/capabilities/__tests__/hub-eval-fixtures.route.test.ts)
+            # against the real notebook route. This pipeline calls /v1/chat/completions and grades by any
+            # expected keyword, so it cannot verify them: excluded and disclosed, never silently counted.
+            logger.info("Excluding %s from the pipeline runner — runner=%s (Hub notebook harness)", path.name, HUB_NOTEBOOK_RUNNER)
             continue
         fixture["_path"] = str(path)
         fixtures.append(fixture)

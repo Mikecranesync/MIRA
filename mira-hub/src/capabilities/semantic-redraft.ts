@@ -33,6 +33,7 @@ export type RedraftOutcome =
  * id recorded beside it. `error` is a floor that threw. Codes only, never text.
  */
 export type RedraftCheckCode =
+  | "hygiene"
   | "refusal"
   | "uncited_claim"
   | "rating_column"

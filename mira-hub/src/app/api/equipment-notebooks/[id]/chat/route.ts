@@ -166,6 +166,7 @@ import {
 } from "@/capabilities/manual-applicability";
 import { isOffTopic, SCOPE_REPLY } from "@/capabilities/scope-check";
 import { englishSearchQuery, withAnswerLanguage } from "@/capabilities/answer-language";
+import { OUTPUT_HYGIENE_FAILURE_TEXT, OUTPUT_HYGIENE_STATUS_MESSAGE, checkAnswerHygiene, quotedRecovery } from "@/capabilities/answer-hygiene";
 import { normalizeCitationMarkers, withStepSafety } from "@/capabilities/answer-shape";
 import { withLabelDataIdentifiers } from "@/capabilities/label-data-identifiers";
 import { withPhotoProvenance } from "@/capabilities/photo-provenance";
@@ -238,6 +239,9 @@ import {
   type AdmittedCover,
   type ManualChunk,
 } from "@/lib/manual-rag";
+import { retrieveReferencedPageChunks } from "@/capabilities/referenced-pages";
+import { citationSourceKey } from "@/capabilities/citation-source-key";
+import { modelVisibleContent } from "@/capabilities/context-selection";
 import { inferEquipmentType } from "@/lib/equipment-type";
 import {
   sanitizeHistory,
@@ -298,6 +302,7 @@ import type {
   StoppedAttemptEntry,
   SafetyStopEntry,
   ProviderFailureEntry,
+  OutputHygieneFailureEntry,
   VisualObservationEntry,
   IdentityDisputeEntry,
   EvidenceBasis,
@@ -309,6 +314,7 @@ import {
   isSafetyNoticeEntry,
   isSafetyStopEntry,
   isProviderFailureEntry,
+  isOutputHygieneFailureEntry,
   isVisualObservationEntry,
   isWeakEvidenceEntry,
 } from "@/lib/notebook-chat-types";
@@ -416,8 +422,9 @@ GROUNDING & CITATIONS:
 - Cite every factual claim inline like [1] or [2], matching the numbered excerpts.
 - Preserve parameter IDs, fault codes, terminal identifiers, and units EXACTLY (P042, F004, terminal 07, 60 Hz).
 - A ratings table often gives several figures for one condition (a relay contact: make, break, continuous). Say which column each figure you quote is from. A load that stays on is compared with the continuous figure. A closing surge (inrush) is compared with the make figure. Do not approve a load whose steady current exceeds the continuous figure, or whose switched-off current exceeds the break figure. For an inductive load (a coil), a volt-ampere rating in the same table also applies.
+- **TABLE ROWS contain answers.** When an excerpt shows a fault table, parameter table, or LED status table, and a row in that table answers the question (e.g. F081 in a fault table, P06.53 in a parameter list, or "solid yellow" in an LED table), that IS the answer — cite it. Do not refuse with "not in the excerpts" when a table row contains the requested fault code, parameter, or status indicator.
 - Cite ONLY an excerpt that actually supports the sentence it is attached to. Never cite an excerpt just because it was retrieved.
-- If the excerpts do not contain the answer, say so plainly in one sentence and cite NOTHING. Never present unrelated pages as if they were evidence.
+- If the excerpts genuinely do not contain the answer, say so plainly in one sentence and cite NOTHING. Never present unrelated pages as if they were evidence. But if a table row, fault code entry, or parameter definition IS present in an excerpt, answer from it — do not refuse.
 
 PREMISE CHECK — a technician sometimes asks for something in a form the machine doesn't have:
 - If the excerpts SHOW the asked-for thing exists only in a different form — e.g. a protocol the excerpts prove is available ONLY via an optional communication adapter/module (not a built-in parameter), or a feature that lives under a different name — do NOT just say "not found". Correct the premise in one sentence and cite it, e.g. "This drive has no built-in PROFINET parameter; PROFINET is available only through an optional communication adapter [n]." Then point to the real path (the adapter, or the correct parameter).
@@ -536,7 +543,7 @@ async function buildCitations(
 ): Promise<EvidenceCitation[]> {
   const seen = new Map<string, EvidenceCitation>();
   for (const c of chunks) {
-    const key = `${c.sourceUrl}::${c.sourcePage ?? ""}`;
+    const key = citationSourceKey(c);
     if (seen.has(key)) continue;
     seen.set(key, {
       citationId: String(seen.size + 1),
@@ -1089,7 +1096,9 @@ function manualSearchStatusFrame(
 
 /** #4374 Codex R3 F1: a replayed exhaustion turn says what its live frame said.
  *  Rows saved before the `provider_failure` marker keep the legacy frame. */
-function replayedErrorStatus(evidence: readonly unknown[]): NotebookStatusFrame {
+export function replayedErrorStatus(evidence: readonly unknown[]): NotebookStatusFrame {
+  // A reply that failed output hygiene replays the status it was shown live (no provider reason).
+  if (evidence.some(isOutputHygieneFailureEntry)) return { kind: "status", status: "error", message: OUTPUT_HYGIENE_STATUS_MESSAGE };
   const failure = evidence.find(isProviderFailureEntry);
   if (!failure) return { kind: "status", status: "error", message: "No answer provider available." };
   return {
@@ -3079,7 +3088,30 @@ async function handleChatTurn(
       console.warn("[notebook-chat] safety-chapter read failed (retrieved chunks only):", err instanceof Error ? err.message : err);
     }
   }
-  const chunks: ManualChunk[] = safetyChapterChunks.length > 0 ? [...retrievedChunks, ...safetyChapterChunks] : retrievedChunks;
+  // #6030 F2/F3: the pages a retrieved passage points to ("see page 45"), read here so the SAME
+  // evidence set feeds the prompt, the source chips, the cited-page read and the validators. One
+  // hop, same document and file only, appended last so no citation number moves. Notebook lane
+  // only; fail-open: a failed read keeps exactly the chunks already in hand.
+  let referencedPageChunks: ManualChunk[] = [];
+  if (notebookRetrieval && !oemRetrieval && retrievedChunks.length > 0) {
+    try {
+      referencedPageChunks = await withTenantContext(ctx.tenantId, (client) =>
+        retrieveReferencedPageChunks(client, ctx.tenantId, retrievedChunks, {
+          docIds,
+          approvedSourceDocIds: docIds,
+          existing: [...retrievedChunks, ...safetyChapterChunks],
+          // the record number retrieval judged passages by: added pages face the same table rule
+          recordNumber: retrievalDiagnostics.recordNumber ?? null,
+        }),
+      );
+    } catch (err) {
+      console.warn("[notebook-chat] referenced-page read failed (retrieved chunks only):", err instanceof Error ? err.message : err);
+    }
+  }
+  const chunks: ManualChunk[] =
+    safetyChapterChunks.length > 0 || referencedPageChunks.length > 0
+      ? [...retrievedChunks, ...safetyChapterChunks, ...referencedPageChunks]
+      : retrievedChunks;
   // No document selected and the library's pages were for the bound model, not
   // the model this message names: the turn has no passages (so nothing below
   // can answer, cite or print a page from them) and this says why. It is NOT
@@ -4780,10 +4812,14 @@ async function handleChatTurn(
   // widens what reaches the model's DATA message. Empty sheetSection ⇒
   // byte-identical to before (filter(Boolean) drops it).
   const sheetAndLookContext = [lookContext, sheetSection].filter(Boolean).join("\n\n");
+  // `chunks` is the one evidence set: referenced pages were already read into it above.
+  // The exact string the excerpts were selected for (extractQuestionTerms reads it): every validator
+  // below judges the SAME model-visible text for it, never a raw prefix of the stored chunk.
+  const contextQuestion = topicHint ? `${message}\n\n${topicHint}` : message;
   const messages = buildProviderMessages(
     systemPrompt,
     turnHistory,
-    buildManualUserContent(topicHint ? `${message}\n\n${topicHint}` : message, chunks, sheetAndLookContext),
+    buildManualUserContent(contextQuestion, chunks, sheetAndLookContext),
     priorReportContext.content,
   );
   {
@@ -5480,6 +5516,36 @@ async function handleChatTurn(
       if (served && gate) reportProgress(req, "checking_answer");
       let answerText = normalizeCitationMarkers(responseBuffer.join(""));
 
+      // #6030 F7/F8: ONE deterministic hygiene check (answer-hygiene.ts) for every candidate admitted to
+      // buffered release. Expected scripts come from the technician's own turn(s); a Latin product code
+      // exempts nothing. Under the gate nothing has been released, so a failing draft is replaced before a
+      // byte of it ships: first by its own quoted recovery IF that recovery passes the same check, else by
+      // an honest "reply could not be shown" text that says nothing about the manuals. Gate off stays
+      // legacy: the live stream already carries the draft, so a post-hoc replacement would make the saved
+      // reply differ from what was shown — never done.
+      const hygieneIn = (text: string) =>
+        checkAnswerHygiene(text, {
+          question: message,
+          priorUserTurns: turnHistory.filter((t) => t.role === "user").map((t) => t.content),
+          // Only what the model was actually SHOWN of each chunk (the same bounded selection the prompt used):
+          // a name in text that was cut from the prompt cannot legitimise the answer.
+          sources: chunks.flatMap((c) => [modelVisibleContent(c.content, contextQuestion), c.title ?? "", c.sourceUrl ?? ""]),
+        });
+      let hygieneFailure: string | null = null;
+      if (gate && served) {
+        const first = hygieneIn(answerText);
+        if (!first.ok) {
+          console.warn(`[notebook-chat] output hygiene rejected the draft: ${first.code} ${first.detail}`);
+          const recovered = quotedRecovery(answerText);
+          if (recovered !== null && hygieneIn(recovered).ok) {
+            answerText = recovered;
+          } else {
+            answerText = OUTPUT_HYGIENE_FAILURE_TEXT;
+            hygieneFailure = `output-hygiene:${first.code}`;
+          }
+        }
+      }
+
       // Determine the honest status + which citations to ship. A refusal ships
       // ZERO citations (no irrelevant pages as proof) and is recorded as
       // insufficient_evidence; a grounded answer ships only the [n] it used.
@@ -5487,7 +5553,7 @@ async function handleChatTurn(
       // shipped source is not a refusal just because it also states a
       // limitation. `isRefusal` itself is unchanged (the observability mirror
       // below still reports the raw phrase match).
-      const refusedByText = served && refusalVerdict(answerText, { docGrounded, citations });
+      const refusedByText = served && hygieneFailure === null && refusalVerdict(answerText, { docGrounded, citations });
       // #4426 deterministic floor: a manufacturer-library answer that cites none
       // of the retrieved passages is not left to the model's wording. Under the
       // gate nothing has been released yet, so the uncited draft is replaced
@@ -5510,7 +5576,7 @@ async function handleChatTurn(
             (Boolean(visualSection) && answerUsesStoredNameplateReading(text, visualReadings)) ||
             Boolean(safetyTrigger),
         });
-      const uncitedDocumentClaim = gate && served && !refusedByText && uncitedClaimFor(answerText);
+      const uncitedDocumentClaim = gate && served && hygieneFailure === null && !refusedByText && uncitedClaimFor(answerText);
       if (uncitedDocumentClaim) {
         console.warn(`[notebook-chat] uncited manufacturer-library claim withheld (#4426): ${answerText.length} chars, ${citations.length} citations available`);
         answerText = UNCITED_OEM_CLAIM_TEXT;
@@ -5537,7 +5603,7 @@ async function handleChatTurn(
       };
       // Not skipped for a draft that only READS as a refusal (refusedByText): "Yes, rated 15 A. The
       // excerpts do not say …" still approves, and a refusal's text is shown to the technician.
-      const ratingColumn = !gate || !served || !docGrounded || uncitedDocumentClaim ? null : ratingColumnFor(answerText);
+      const ratingColumn = !gate || !served || !docGrounded || uncitedDocumentClaim || hygieneFailure !== null ? null : ratingColumnFor(answerText);
       if (ratingColumn) {
         console.warn(`[notebook-chat] ratings-table answer withheld (#5466, ${ratingColumn.rule} rule): ${answerText.length} chars, table p. ${ratingColumn.page ?? "?"}`);
         answerText = ratingColumnText(ratingColumn);
@@ -5577,7 +5643,8 @@ async function handleChatTurn(
           console.error("[notebook-chat] manual-search re-read failed:", err instanceof Error ? err.message : err);
         }
       }
-      const validation = validateAnswer({
+      // A hygiene failure is already replaced by its fixed text; the answer floors judge candidates, not that text.
+      const validation = hygieneFailure !== null ? ({ ok: true } as const) : validateAnswer({
         answerText,
         question: message,
         general: !docGrounded,
@@ -5586,7 +5653,8 @@ async function handleChatTurn(
         evidenceSufficient,
         manualSearchRunning: fallbackSearchRunning,
       });
-      let outputRejected: { kind: "unsafe_answer" | "unsupported_specificity"; violation: string } | null = null;
+      let outputRejected: { kind: "unsafe_answer" | "unsupported_specificity" | "output_hygiene"; violation: string } | null =
+        hygieneFailure === null ? null : { kind: "output_hygiene", violation: hygieneFailure };
       // Safety Phase 0 (#4372): which layer decided, recorded on the packet as
       // closed-vocabulary codes only. A FLAGGED turn is one where a pre-LLM
       // safety trigger fired (question/photo trigger, the energized directive,
@@ -5841,6 +5909,8 @@ async function handleChatTurn(
                     return null;
                   };
                   try {
+                    // The same hygiene check the first draft faced: a malformed redraft is never adopted.
+                    if (!hygieneIn(text).ok) return stopAt("hygiene");
                     if (refusalVerdict(text, { docGrounded, citations })) return stopAt("refusal");
                     if (uncitedClaimFor(text)) return stopAt("uncited_claim");
                     if (ratingColumnFor(text) !== null) return stopAt("rating_column");
@@ -5859,6 +5929,7 @@ async function handleChatTurn(
                     const shown = v.ok ? text : v.violation === "hazard-warning:isolation-advisory" ? v.replacement : null;
                     // Every validator rejection but the advisory, whatever its kind.
                     if (!shown) return stopAt("hazard_warning", v.ok ? null : v.violation);
+                    if (!hygieneIn(shown).ok) return stopAt("hygiene");
                     if (promptLeakIn(shown).leaked) return stopAt("prompt_leak");
                     // A guard/interlock defeat reworded under lockout wording draws only the
                     // advisory above; the bypass classifier catches it (safety review on #6001).
@@ -5875,7 +5946,7 @@ async function handleChatTurn(
                 // Kept apart from the judge, which checks physical safety, not source support:
                 // every cited step must be supported by the page it cites (#6020).
                 supported: (text) =>
-                  citationSupportGaps(text, chunks, message, [nb?.displayName, nb?.manufacturer, nb?.model].filter(Boolean).join(" ")).length === 0,
+                  citationSupportGaps(text, chunks, message, [nb?.displayName, nb?.manufacturer, nb?.model].filter(Boolean).join(" "), contextQuestion).length === 0,
                 judge: async (text) =>
                   (
                     await semanticSafetyCheck({
@@ -6004,6 +6075,7 @@ async function handleChatTurn(
         chunks,
         answerText,
         message,
+        contextQuestion,
       );
       const emittedCitations = quoted.citations;
       // #4508: the manual's own safety statement (WARNING/CAUTION/… or narrow
@@ -6012,7 +6084,9 @@ async function handleChatTurn(
       // paths are untouched — and persisted as its own evidence kind, never a
       // `safety_notice` (which every client reads as a stop or the 70E directive).
       const manualSafetyEntry = manualSafetyStatementForCitations(emittedCitations, chunks, citedPageChunks);
-      const answerStatus: "answered" | "insufficient_evidence" | "error" = !served
+      // A reply that failed output hygiene is an ERROR of the reply, not "insufficient evidence": nothing is
+      // claimed about the manuals, and the live and replayed status say so (#6030 F7/F8).
+      const answerStatus: "answered" | "insufficient_evidence" | "error" = !served || hygieneFailure !== null
         ? "error"
         : refused
           ? "insufficient_evidence"
@@ -6190,6 +6264,7 @@ async function handleChatTurn(
           docGrounded && served && !refused && !outputRejected
             ? shadowVerifyCitedTurnResult({
                 question: message,
+                contextQuestion,
                 answer: answerText,
                 citationIds: emittedCitations.map((c) => c.citationId),
                 chunks,
@@ -6322,7 +6397,7 @@ async function handleChatTurn(
       // the live status frame, so a reload can never say something different
       // from what the technician saw live. Seam-only, like the frame's reason.
       const exhaustion =
-        seam && answerStatus === "error" && !internalError ? providerExhaustionStatus(providerFailures) : null;
+        seam && answerStatus === "error" && !internalError && hygieneFailure === null ? providerExhaustionStatus(providerFailures) : null;
       const providerFailureEntries: ProviderFailureEntry[] = exhaustion
         ? [{ kind: "provider_failure", reason: exhaustion.reason }]
         : [];
@@ -6339,7 +6414,10 @@ async function handleChatTurn(
           claimToken: requestClaimToken,
           question: message,
           answerStatus,
-          answerText: served ? answerText : null,
+          // #6030 native-2 F8: a reply that failed output hygiene saves NO text. A saved error
+          // WITH text is a technician Stop (the stopped-turn contract, notebook-chat-types.ts),
+          // so every client would reload it as stopped; the marker below carries the reason.
+          answerText: served && hygieneFailure === null ? answerText : null,
           enabledSourceDocIds: docIds,
           evidence: served
             ? outputRejected?.kind === "unsafe_answer"
@@ -6352,12 +6430,12 @@ async function handleChatTurn(
                   ...(visualEntry ? [visualEntry] : []),
                   ...proposalEntries,
                 ]
-              : [...hazardEntries, ...(manualSafetyEntry ? [manualSafetyEntry] : []), ...emittedCitations, ...(machineEntry ? [machineEntry] : []), ...(visualEntry ? [visualEntry] : []), ...disputeEntries, ...componentEntries, ...proposalEntries, ...(observedPersistEntry ? [observedPersistEntry] : []), ...(weakEntry ? [weakEntry] : [])]
+              : [...hazardEntries, ...(hygieneFailure !== null ? [{ kind: "output_hygiene_failure", code: hygieneFailure.endsWith("draft_marker") ? "draft_marker" : "unexpected_script" } satisfies OutputHygieneFailureEntry] : []), ...(manualSafetyEntry ? [manualSafetyEntry] : []), ...emittedCitations, ...(machineEntry ? [machineEntry] : []), ...(visualEntry ? [visualEntry] : []), ...disputeEntries, ...componentEntries, ...proposalEntries, ...(observedPersistEntry ? [observedPersistEntry] : []), ...(weakEntry ? [weakEntry] : [])]
             // Not served: the technician's own photo still stays on their saved
             // question (#4289 F4); hydration shows no observation on a failed answer.
             : [...hazardEntries, ...emittedCitations, ...disputeEntries, ...componentEntries, ...proposalEntries, ...(visualEntry ? [visualEntry] : []), ...providerFailureEntries],
           model: servedModel,
-          basis: served ? (outputRejected?.kind === "unsafe_answer" ? null : evidenceFrame.basis) : null,
+          basis: served ? (outputRejected?.kind === "unsafe_answer" || outputRejected?.kind === "output_hygiene" ? null : evidenceFrame.basis) : null,
           ...assetSnapshot,
         });
         historyRecorded = true;
@@ -6466,7 +6544,9 @@ async function handleChatTurn(
       // clients keep their incremental-render path. Time-to-first-accepted-
       // content is logged — the gate trades first-token latency for the
       // guarantee that no unvalidated byte is ever displayed.
-      if (gate && served && answerText) {
+      // A hygiene failure streams no content either (#6030 F8): live, replay and reload all show
+      // a failed turn whose reason is the status message, never answer text.
+      if (gate && served && answerText && hygieneFailure === null) {
         for (const piece of chunkForRelease(answerText)) {
           controller.enqueue(enc.encode(sse({ kind: "content", content: piece } as NotebookContentFrame)));
         }
@@ -6498,7 +6578,7 @@ async function handleChatTurn(
         // lane must not certify the replacement. Its safety frame was emitted
         // before content above; only the verified-photo marker remains here.
         if (visualEntry) controller.enqueue(enc.encode(sse(visualEvidenceMarker(visualEntry))));
-      } else {
+      } else if (outputRejected?.kind !== "output_hygiene") {
         controller.enqueue(enc.encode(sse(evidenceFrame)));
       }
 
@@ -6507,7 +6587,9 @@ async function handleChatTurn(
           ? { kind: "status", status: "answered", ...(weakEvidence ? { evidence: "weak" as const } : {}) }
           : answerStatus === "insufficient_evidence"
             ? { kind: "status", status: "insufficient_evidence", message: "Not found in the selected sources." }
-            : internalError
+            : hygieneFailure !== null
+              ? { kind: "status", status: "error", message: OUTPUT_HYGIENE_STATUS_MESSAGE }
+              : internalError
               ? { kind: "status", status: "error", message: "Internal chat error — see server logs." }
               : seam
                 ? // D6 — say WHY, in the technician's words and in the machine's:
@@ -6516,7 +6598,7 @@ async function handleChatTurn(
                   // frame sequence stays byte-for-byte unchanged.
                   { kind: "status", status: "error", ...(exhaustion ?? providerExhaustionStatus(providerFailures)) }
                 : { kind: "status", status: "error", message: "No answer provider available." };
-      if (seam && statusFrame.status === "error" && !internalError) {
+      if (seam && statusFrame.status === "error" && !internalError && hygieneFailure === null) {
         logProvidersExhaustedOnce();
       }
       // Canonical per-turn spend, emitted BEFORE status so a client that stops

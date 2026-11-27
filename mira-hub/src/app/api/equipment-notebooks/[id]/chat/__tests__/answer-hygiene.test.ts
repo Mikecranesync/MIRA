@@ -1,8 +1,9 @@
 /**
  * Answer-stage hygiene: citation-marker normalization (gpt-oss 【n】 → [n]),
- * honest-refusal detection (→ no citations), and citation-entailment (ship only
- * the [n] the answer used). These are the guards that turn a correct-but-
- * unlinked answer into a cited one and kill "retrieved page shown as proof".
+ * honest-refusal detection (→ no citations), citation-entailment (ship only
+ * the [n] the answer used), and garbled output detection (#6004 — mixed scripts,
+ * draft markers). These are the guards that turn a correct-but-unlinked answer
+ * into a cited one and kill "retrieved page shown as proof".
  */
 import { describe, expect, it } from "vitest";
 import {

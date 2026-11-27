@@ -11,8 +11,9 @@
  */
 
 import { verifyAnswer } from "./claim-verifier";
+import { citationSourceKey } from "./citation-source-key";
 import type { TurnEvidencePacketClaimVerifier } from "./observability/turn-evidence-packet";
-import { MODEL_VISIBLE_CHARS } from "./supporting-quote";
+import { modelVisibleContent } from "./context-selection";
 
 /**
  * A chunk the model was shown. A stored table chunk (table-rows.ts) carries the exact keys of the
@@ -36,6 +37,8 @@ const MAX_CLAIMS_JSON = 480;
 
 export function shadowVerifyTurnResult(input: {
   question: string;
+  /** The exact string the excerpts were selected for, when it differs from `question`. */
+  contextQuestion?: string;
   answer: string;
   citations: ShadowCitation[];
   /** The record's confirmed catalog number (notebook-manual-identity.ts `confirmedCatalogNumber`), if any. */
@@ -50,7 +53,7 @@ export function shadowVerifyTurnResult(input: {
     // as rows (it binds a quantity by the record's own lines); without one every chunk is page
     // text in its original order, exactly as before.
     const record = input.recordCatalogNumber?.trim() || null;
-    const visible = (c: ShadowChunk) => (typeof c === "string" ? c : c.text).slice(0, MODEL_VISIBLE_CHARS);
+    const visible = (c: ShadowChunk) => modelVisibleContent(typeof c === "string" ? c : c.text, input.contextQuestion ?? input.question);
     const isRow = (c: ShadowChunk): c is { text: string; tableModels: readonly string[] } =>
       record !== null && typeof c !== "string" && (c.tableModels?.length ?? 0) > 0;
     const evidence = input.citations
@@ -93,7 +96,7 @@ export function shadowVerifyTurn(input: Parameters<typeof shadowVerifyTurnResult
   return shadowVerifyTurnResult(input)?.attrs ?? null;
 }
 
-type PageChunk = { content: string; sourceUrl: string; sourcePage: number | null; tableModels?: readonly string[] | null };
+type PageChunk = { content: string; sourceUrl: string; sourcePage: number | null; docId?: string | null; tableModels?: readonly string[] | null };
 
 /**
  * Route entry point. Groups chunks exactly as `withSupportingQuotes` / buildCitations number them —
@@ -102,6 +105,7 @@ type PageChunk = { content: string; sourceUrl: string; sourcePage: number | null
  */
 export function shadowVerifyCitedTurnResult(input: {
   question: string;
+  contextQuestion?: string;
   answer: string;
   citationIds: readonly string[];
   chunks: readonly PageChunk[];
@@ -110,14 +114,14 @@ export function shadowVerifyCitedTurnResult(input: {
   if (claimVerifierMode() !== "shadow") return null;
   const byKey = new Map<string, ShadowCitation>();
   for (const c of input.chunks) {
-    const key = `${c.sourceUrl}::${c.sourcePage ?? ""}`;
+    const key = citationSourceKey(c);
     const g = byKey.get(key) ?? { page: c.sourcePage, chunks: [] };
     g.chunks.push({ text: c.content, tableModels: c.tableModels });
     byKey.set(key, g);
   }
   const pages = [...byKey.values()];
   const citations = input.citationIds.map((id) => pages[Number(id) - 1]).filter((g): g is ShadowCitation => Boolean(g));
-  return shadowVerifyTurnResult({ question: input.question, answer: input.answer, citations, recordCatalogNumber: input.recordCatalogNumber });
+  return shadowVerifyTurnResult({ question: input.question, contextQuestion: input.contextQuestion, answer: input.answer, citations, recordCatalogNumber: input.recordCatalogNumber });
 }
 
 /** Trace attributes only — the shape the first shadow callers took. */

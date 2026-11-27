@@ -1,0 +1,55 @@
+id: pf525_overcurrent_ranking_5998
+runner: hub_notebook   # executed by mira-hub (hub-eval-fixtures.route.test.ts); EXCLUDED from the /v1/chat/completions pipeline runner
+description: "PowerFlex 525 overcurrent causes — exact original question from #5998"
+expected_final_state: DIAGNOSIS
+max_turns: 4
+expected_keywords: [overcurrent, PowerFlex, F063, F012, fault]
+expected_vendor: Allen-Bradley
+wo_expected: false
+safety_expected: false
+tags: [vfd, pf525, overcurrent, ranking, fault-table]
+# Exact original question from #5998. Executed by the Hub notebook harness (see the hub_notebook block below);
+# excluded from the /v1/chat/completions pipeline runner, whose any-keyword grading cannot tell an answer
+# from a refusal that repeats a keyword.
+turns:
+  - role: user
+    content: "What causes overcurrent faults on a PowerFlex 525?"
+# --- Hub notebook profile (#6030 F10) --------------------------------------------------------
+# These cases are run through the ACTUAL authenticated-context Hub notebook POST by
+# mira-hub/src/capabilities/__tests__/hub-eval-fixtures.route.test.ts (default Hub CI). Synthetic
+# inputs only: NOT OEM facts and NOT a staging/production verification. Auth, notebook domain functions,
+# ordinary retrieval and the provider (a stubbed stream) are controlled; the context selection, page
+# expansion, citation numbering and validators are the production code. Real-SQL scope is proven in
+# referenced-pages.integration.test.ts. `parts` entries are literal lines or {repeat, template} generators.
+# SCOPE (stated, not hidden): this case proves only that fault-table excerpts SURVIVE context assembly
+# when retrieval returns them. Retrieval of pp.161-162 (the real #5998 root cause: ranking never
+# returned them) is NOT exercised or fixed here and stays a separate future change.
+hub_notebook:
+  question: "What causes overcurrent faults on a PowerFlex 525?"
+  retrieval:
+    - doc: A
+      page: 161
+      parts:
+        - "# Fault descriptions"
+        - "| Code | Description | Causes |"
+        - "|---|---|---|"
+        - {repeat: 100, template: "| X{i} | Synthetic unrelated condition {i} | none |"}
+        - "| F012 | HW OverCurrent | Synthetic hardware cause: check wiring |"
+    - doc: A
+      page: 162
+      parts:
+        - "# Fault descriptions (continued)"
+        - "| Code | Description | Causes |"
+        - "|---|---|---|"
+        - {repeat: 100, template: "| Y{i} | Synthetic unrelated condition {i} | none |"}
+        - "| F063 | SW OverCurrent | Synthetic excessive motor load |"
+  provider_answer: "Overcurrent faults include F012 (hardware, check wiring) [1] and F063 (software, excessive motor load) [2]."
+  expect:
+    provider_sees:
+      - "| F012 | HW OverCurrent | Synthetic hardware cause: check wiring |"
+      - "| F063 | SW OverCurrent | Synthetic excessive motor load |"
+    status: answered
+    citations:
+      - {doc: A, page: 161, id: "1"}
+      - {doc: A, page: 162, id: "2"}
+    reply_contains: ["F012", "F063"]

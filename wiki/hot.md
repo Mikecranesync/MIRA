@@ -1,3 +1,9 @@
+# PR #6030 notebook false refusals - takeover state 2026-11-27
+
+Draft PR #6030 (`fix/6030-takeover-20261126`, hub 2.66.13). Row selection is per table with whole heading/header/footnote blocks and coverage ranking; "see page N" references are read upstream into one evidence set by printed label; one document-aware source key and one model-visible text feed the prompt, citations and validators; one output-hygiene check guards every buffered release candidate. Fixtures 70-76 run through the real notebook POST (`hub-eval-fixtures.route.test.ts`); the pipeline runner excludes them. Synthetic evidence only: retrieval ranking of pp.161-162 (#5998 root cause), unlabelled documents, staging/prod/device verification and the pre-existing Next.js SecurityFatalError build gate remain open. Details: `docs/investigations/2026-11-26-notebook-false-refusals.md`.
+
+---
+
 # Honest landing Codex round 2 — 2026-10-29
 
 Draft PR #4570 (`cursor/honest-landing-capabilities-ded8`). Codex round 2 on `c08384e0` (ISSUES_FOUND, 4 P2) fixed on the same draft: Drive Commander `/drive-commander/powerflex-525` drops `$197/yr` and checkout, CTA is Talk to Mike / free 30-day pilot; blog articles no longer claim auto work-order creation, a free CMMS tier, or "in seconds"; `provenText()` no longer falls back when a claim is unproven; honest-claims is recursive over public HTML, renders every real blog post plus Drive Commander and marketing renderers, uses semantic bans (auto+CMMS/work order, any `$`, timing promises), and has mutation + notebook-cited-answer flip tests. No merge, deploy, labels, ready, or Codex. mira-web full suite at new tip: 598 pass / 18 fail (21 fail on `origin/main`; the 18 remaining are pre-existing Neon/cookie/admin/DC-Pro).
