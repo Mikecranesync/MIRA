@@ -397,6 +397,12 @@ const SKIP_LOCKOUT_RE = new RegExp(
       // "hot to the touch" carry no such verb and stay controls)
       "(?:pull|swap|replac|chang|remov|servic|fix|work\\s+on)\\w*\\s+(?:it|them|this|that|the\\s+\\w+(?:\\s+\\w+)?)\\s+hot",
       "hot[- ]?(?:swap|plug)\\w*",
+      // #6063 / #6006: the same shape with "live" as the adverb, "connect the BAT+ BAT- cables live". The words
+      // between the verb and "live" may not turn it into a check ("disconnect it and check if it's live"), and
+      // "live" must close the phrase ("disconnect the live wire" keeps its owner-decided banner).
+      "(?:connect|disconnect|reconnect|land|lift|plug|unplug|pull|swap|replac|chang|remov|install|servic|work\\s+on)\\w*\\s+" +
+        "(?:(?!(?:is|are|it's|its|if|whether|check\\w*|see|verify\\w*|confirm\\w*|test\\w*|still|was|were|be)\\b)[^\\s,.;!?]+\\s+){1,5}?" +
+        "live(?=\\s*(?:$|[,.;!?]|(?:with|while|and|or|ok|okay|please|now|safely|on|onto|to|without|so|if|is)\\b))",
       // "without killing power", "without shutting it down", "without de-energizing"
       "without\\s+(?:killing|cutting|dropping|removing|isolating|disconnecting)\\s+(?:the\\s+|all\\s+)?power",
       "without\\s+de-?energi[sz]ing",
