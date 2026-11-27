@@ -3,7 +3,7 @@
  * The route-level release behaviour is covered by output-hygiene-release.route.test.ts.
  */
 import { describe, expect, it } from "vitest";
-import { OUTPUT_HYGIENE_FAILURE_TEXT, checkAnswerHygiene, expectedScripts, quotedRecovery } from "@/capabilities/answer-hygiene";
+import { OUTPUT_HYGIENE_FAILURE_TEXT, OUTPUT_HYGIENE_STATUS_MESSAGE, checkAnswerHygiene, expectedScripts, quotedRecovery } from "@/capabilities/answer-hygiene";
 import { ANSWER_LANGUAGE_RULE, ENGLISH_ANSWER_RULE, looksNonEnglish, withAnswerLanguage } from "@/capabilities/answer-language";
 
 const EN = { question: "What does fault F004 mean?" };
@@ -42,10 +42,20 @@ describe("expected scripts come from what the technician wrote", () => {
   it("a different unexpected script inside a non-Latin answer is still flagged", () => {
     expect(verdict("F081 は通信障害です。ошибка [1]。", { question: "F081 の意味は何ですか？" })).toMatchObject({ ok: false, code: "unexpected_script" });
   });
-  it("a Japanese thread keeps expecting Japanese on a Latin follow-up", () => {
+  it("a Japanese thread keeps expecting Japanese on an identifier-only follow-up", () => {
     const ctx = { question: "F081?", priorUserTurns: ["F081 の意味は何ですか？"] };
     expect(verdict("F081 は通信障害です [1]。", ctx)).toEqual({ ok: true });
     expect(verdict("F081 は通信障害です [1]。", { question: "F081?" })).toMatchObject({ ok: false });
+  });
+  it("a clear English turn overrides an earlier Japanese turn: the current turn is the language contract", () => {
+    const ctx = { question: "What does F081 mean?", priorUserTurns: ["F081 の意味を教えてください。"] };
+    expect(verdict("F081 は通信障害です [1]。", ctx)).toMatchObject({ ok: false, code: "unexpected_script" });
+    expect(verdict("F081 is DSI Comm Loss [1].", ctx)).toEqual({ ok: true });
+    expect(expectedScripts(ctx).size).toBe(0);
+  });
+  it("a Japanese turn expects only its own script even after a Russian turn", () => {
+    const ctx = { question: "F081 の意味を教えてください。", priorUserTurns: ["Что означает F081?"] };
+    expect(Array.from(expectedScripts(ctx))).toEqual(["cjk"]);
   });
 });
 
@@ -56,6 +66,11 @@ describe("legitimate source names do not exempt foreign prose", () => {
   });
   it("without that evidence the same name is unexpected", () => {
     expect(verdict("See the manual インバータ取扱説明書 for wiring [1].", EN)).toMatchObject({ ok: false });
+  });
+  it("a legitimate Japanese source name does not exempt different Japanese prose", () => {
+    const ctx = { question: "What does F081 mean?", sources: ["Source name: 三菱"] };
+    expect(verdict("The name is 三菱. 通信障害 is the issue [1].", ctx)).toMatchObject({ ok: false, code: "unexpected_script" });
+    expect(verdict("The manufacturer is 三菱 [1].", ctx)).toEqual({ ok: true });
   });
   it("a legitimate quoted name and a product code elsewhere do not exempt unexpected Cyrillic prose", () => {
     const text = 'PF525-TEST reports ошибка. See "インバータ取扱説明書" [1].';
@@ -84,6 +99,10 @@ describe("quoted recovery and the failure text", () => {
     expect(quotedRecovery(`rewrite: "${clean}"`)).toBe(clean);
     expect(quotedRecovery('rewrite: "short"')).toBeNull();
     expect(verdict(quotedRecovery(`rewrite: "F081 needs reset. rewrite: DSI [1]."`) ?? "")).toMatchObject({ ok: false });
+  });
+  it("the status message is about the reply, not the manuals", () => {
+    expect(OUTPUT_HYGIENE_STATUS_MESSAGE).toMatch(/clean reply/);
+    expect(OUTPUT_HYGIENE_STATUS_MESSAGE.toLowerCase()).not.toMatch(/not (found|contain)|insufficient|source|manual/);
   });
   it("the failure text blames the reply, not the manuals", () => {
     expect(OUTPUT_HYGIENE_FAILURE_TEXT).toMatch(/could not produce a clean reply/);

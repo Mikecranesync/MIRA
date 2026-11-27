@@ -163,7 +163,7 @@ import {
 } from "@/capabilities/manual-applicability";
 import { isOffTopic, SCOPE_REPLY } from "@/capabilities/scope-check";
 import { englishSearchQuery, withAnswerLanguage } from "@/capabilities/answer-language";
-import { OUTPUT_HYGIENE_FAILURE_TEXT, checkAnswerHygiene, quotedRecovery } from "@/capabilities/answer-hygiene";
+import { OUTPUT_HYGIENE_FAILURE_TEXT, OUTPUT_HYGIENE_STATUS_MESSAGE, checkAnswerHygiene, quotedRecovery } from "@/capabilities/answer-hygiene";
 import { normalizeCitationMarkers, withStepSafety } from "@/capabilities/answer-shape";
 import { withLabelDataIdentifiers } from "@/capabilities/label-data-identifiers";
 import { withPhotoProvenance } from "@/capabilities/photo-provenance";
@@ -238,6 +238,7 @@ import {
 } from "@/lib/manual-rag";
 import { retrieveReferencedPageChunks } from "@/capabilities/referenced-pages";
 import { citationSourceKey } from "@/capabilities/citation-source-key";
+import { modelVisibleContent } from "@/capabilities/context-selection";
 import { inferEquipmentType } from "@/lib/equipment-type";
 import {
   sanitizeHistory,
@@ -298,6 +299,7 @@ import type {
   StoppedAttemptEntry,
   SafetyStopEntry,
   ProviderFailureEntry,
+  OutputHygieneFailureEntry,
   VisualObservationEntry,
   IdentityDisputeEntry,
   EvidenceBasis,
@@ -309,6 +311,7 @@ import {
   isSafetyNoticeEntry,
   isSafetyStopEntry,
   isProviderFailureEntry,
+  isOutputHygieneFailureEntry,
   isVisualObservationEntry,
   isWeakEvidenceEntry,
 } from "@/lib/notebook-chat-types";
@@ -1089,7 +1092,9 @@ function manualSearchStatusFrame(
 
 /** #4374 Codex R3 F1: a replayed exhaustion turn says what its live frame said.
  *  Rows saved before the `provider_failure` marker keep the legacy frame. */
-function replayedErrorStatus(evidence: readonly unknown[]): NotebookStatusFrame {
+export function replayedErrorStatus(evidence: readonly unknown[]): NotebookStatusFrame {
+  // A reply that failed output hygiene replays the status it was shown live (no provider reason).
+  if (evidence.some(isOutputHygieneFailureEntry)) return { kind: "status", status: "error", message: OUTPUT_HYGIENE_STATUS_MESSAGE };
   const failure = evidence.find(isProviderFailureEntry);
   if (!failure) return { kind: "status", status: "error", message: "No answer provider available." };
   return {
@@ -5402,7 +5407,9 @@ async function handleChatTurn(
         checkAnswerHygiene(text, {
           question: message,
           priorUserTurns: turnHistory.filter((t) => t.role === "user").map((t) => t.content),
-          sources: chunks.flatMap((c) => [c.content, c.title ?? "", c.sourceUrl ?? ""]),
+          // Only what the model was actually SHOWN of each chunk (the same bounded selection the prompt used):
+          // a name in text that was cut from the prompt cannot legitimise the answer.
+          sources: chunks.flatMap((c) => [modelVisibleContent(c.content, contextQuestion), c.title ?? "", c.sourceUrl ?? ""]),
         });
       let hygieneFailure: string | null = null;
       if (gate && served) {
@@ -5934,7 +5941,9 @@ async function handleChatTurn(
       // paths are untouched — and persisted as its own evidence kind, never a
       // `safety_notice` (which every client reads as a stop or the 70E directive).
       const manualSafetyEntry = manualSafetyStatementForCitations(emittedCitations, chunks, citedPageChunks);
-      const answerStatus: "answered" | "insufficient_evidence" | "error" = !served
+      // A reply that failed output hygiene is an ERROR of the reply, not "insufficient evidence": nothing is
+      // claimed about the manuals, and the live and replayed status say so (#6030 F7/F8).
+      const answerStatus: "answered" | "insufficient_evidence" | "error" = !served || hygieneFailure !== null
         ? "error"
         : refused
           ? "insufficient_evidence"
@@ -6240,7 +6249,7 @@ async function handleChatTurn(
       // the live status frame, so a reload can never say something different
       // from what the technician saw live. Seam-only, like the frame's reason.
       const exhaustion =
-        seam && answerStatus === "error" && !internalError ? providerExhaustionStatus(providerFailures) : null;
+        seam && answerStatus === "error" && !internalError && hygieneFailure === null ? providerExhaustionStatus(providerFailures) : null;
       const providerFailureEntries: ProviderFailureEntry[] = exhaustion
         ? [{ kind: "provider_failure", reason: exhaustion.reason }]
         : [];
@@ -6267,7 +6276,7 @@ async function handleChatTurn(
                   ...(visualEntry ? [visualEntry] : []),
                   ...proposalEntries,
                 ]
-              : [...hazardEntries, ...(manualSafetyEntry ? [manualSafetyEntry] : []), ...emittedCitations, ...(machineEntry ? [machineEntry] : []), ...(visualEntry ? [visualEntry] : []), ...disputeEntries, ...componentEntries, ...proposalEntries, ...(observedPersistEntry ? [observedPersistEntry] : []), ...(weakEntry ? [weakEntry] : [])]
+              : [...hazardEntries, ...(hygieneFailure !== null ? [{ kind: "output_hygiene_failure", code: hygieneFailure.endsWith("draft_marker") ? "draft_marker" : "unexpected_script" } satisfies OutputHygieneFailureEntry] : []), ...(manualSafetyEntry ? [manualSafetyEntry] : []), ...emittedCitations, ...(machineEntry ? [machineEntry] : []), ...(visualEntry ? [visualEntry] : []), ...disputeEntries, ...componentEntries, ...proposalEntries, ...(observedPersistEntry ? [observedPersistEntry] : []), ...(weakEntry ? [weakEntry] : [])]
             // Not served: the technician's own photo still stays on their saved
             // question (#4289 F4); hydration shows no observation on a failed answer.
             : [...hazardEntries, ...emittedCitations, ...disputeEntries, ...componentEntries, ...proposalEntries, ...(visualEntry ? [visualEntry] : []), ...providerFailureEntries],
@@ -6357,7 +6366,9 @@ async function handleChatTurn(
           ? { kind: "status", status: "answered", ...(weakEvidence ? { evidence: "weak" as const } : {}) }
           : answerStatus === "insufficient_evidence"
             ? { kind: "status", status: "insufficient_evidence", message: "Not found in the selected sources." }
-            : internalError
+            : hygieneFailure !== null
+              ? { kind: "status", status: "error", message: OUTPUT_HYGIENE_STATUS_MESSAGE }
+              : internalError
               ? { kind: "status", status: "error", message: "Internal chat error — see server logs." }
               : seam
                 ? // D6 — say WHY, in the technician's words and in the machine's:
@@ -6366,7 +6377,7 @@ async function handleChatTurn(
                   // frame sequence stays byte-for-byte unchanged.
                   { kind: "status", status: "error", ...(exhaustion ?? providerExhaustionStatus(providerFailures)) }
                 : { kind: "status", status: "error", message: "No answer provider available." };
-      if (seam && statusFrame.status === "error" && !internalError) {
+      if (seam && statusFrame.status === "error" && !internalError && hygieneFailure === null) {
         logProvidersExhausted({ tenantId: ctx.tenantId, notebookId }, providerFailures);
       }
       // Canonical per-turn spend, emitted BEFORE status so a client that stops

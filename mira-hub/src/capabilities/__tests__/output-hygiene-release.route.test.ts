@@ -50,7 +50,7 @@ vi.mock("@/lib/visual-evidence-context", async (importOriginal) => ({
   loadRecentLookObservations: vi.fn(async () => []),
 }));
 
-import { POST } from "@/app/api/equipment-notebooks/[id]/chat/route";
+import { POST, replayedErrorStatus } from "@/app/api/equipment-notebooks/[id]/chat/route";
 
 const chunk = (docId: string, page: number, content: string, extra: Record<string, unknown> = {}) => ({
   content, docId, sourceUrl: URL, sourcePage: page, pageLabel: String(page), title: `Doc ${docId.slice(0, 2)}`,
@@ -159,9 +159,31 @@ describe("a failing draft is never released, and the failure is reported honestl
     expect(r.turn.answerText).not.toContain("ошибка");
     expect(r.live).toBe(r.turn.answerText);
     expect(r.turn.answerText).toMatch(/could not produce a clean reply/);
-    expect(r.turn.answerStatus).toBe("answered"); // not "insufficient_evidence": the manuals were not the problem
+    // An ERROR of the reply, never "insufficient_evidence": nothing is claimed about the manuals.
+    expect(r.turn.answerStatus).toBe("error");
     expect(r.turn.basis).toBeNull();
     expect(r.turn.evidence.some((e) => "citationId" in e)).toBe(false);
+    expect(r.turn.evidence).toContainEqual({ kind: "output_hygiene_failure", code: "unexpected_script" });
+    const status = r.raw.split("\n").filter((l) => l.startsWith("data: ")).map((l) => { try { return JSON.parse(l.slice(6)); } catch { return {}; } }).find((f) => f.kind === "status");
+    expect(status).toEqual({ kind: "status", status: "error", message: "I could not produce a clean reply this time. Please ask again." }); // no provider `reason`
+  });
+  it("the stored failure replays with the same status (no provider-exhaustion copy)", async () => {
+    ragMock.retrieveNodeChunks.mockResolvedValue([one] as never);
+    stubProvider(BAD);
+    const r = await run("What does F081 mean?");
+    const t = turn() as unknown as { evidence: unknown[] };
+    expect(replayedErrorStatus(t.evidence)).toEqual({ kind: "status", status: "error", message: "I could not produce a clean reply this time. Please ask again." });
+    expect(replayedErrorStatus([])).toMatchObject({ message: "No answer provider available." }); // control: other errors unchanged
+    void r;
+  });
+  it("text cut from the prompt cannot legitimise a foreign word in the answer", async () => {
+    const text = "F081 is DSI Comm Loss. Type 2 requires manual reset (synthetic).\n" + "Ordinary synthetic maintenance background. ".repeat(100) + "\nошибка";
+    ragMock.retrieveNodeChunks.mockResolvedValue([chunk(DOC_A, 162, text)] as never);
+    const p = stubProvider("F081 ошибка means DSI Comm Loss [1].");
+    const r = await run("What does F081 mean?");
+    expect(lastUser(p.streamBodies[0])).not.toContain("ошибка");
+    expect(r.live).not.toContain("ошибка");
+    expect(r.turn.answerText).not.toContain("ошибка");
   });
   it("a clean quoted recovery is released with its real citation; a still-rejected one is not", async () => {
     ragMock.retrieveNodeChunks.mockResolvedValue([one] as never);

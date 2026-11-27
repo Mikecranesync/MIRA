@@ -357,6 +357,19 @@ export type ProviderFailureEntry = {
   reason: "all_providers_failed" | "no_provider_configured" | "budget_exhausted";
 };
 
+/** Durable marker that a turn ended because the REPLY failed output hygiene (#6030 F7/F8), not because
+ * the sources lacked the answer or a provider failed. Persisted so a reload shows the same status. */
+export type OutputHygieneFailureEntry = {
+  kind: "output_hygiene_failure";
+  code: "unexpected_script" | "draft_marker";
+};
+
+export function isOutputHygieneFailureEntry(e: unknown): e is OutputHygieneFailureEntry {
+  if (typeof e !== "object" || e === null) return false;
+  const { kind, code } = e as { kind?: unknown; code?: unknown };
+  return kind === "output_hygiene_failure" && (code === "unexpected_script" || code === "draft_marker");
+}
+
 export function isProviderFailureEntry(e: unknown): e is ProviderFailureEntry {
   if (typeof e !== "object" || e === null) return false;
   const { kind, reason } = e as { kind?: unknown; reason?: unknown };

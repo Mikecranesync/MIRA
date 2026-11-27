@@ -35,8 +35,22 @@ const DRAFT_MARKERS: readonly RegExp[] = [
   /actually,? (let me|i should)/i,
 ];
 
+/** A Latin-script message that carries real language of its own (at least two plain words), as opposed to an
+ *  identifier-only follow-up such as "F081?". */
+function isClearLatinTurn(text: string): boolean {
+  return (text.match(/\p{L}{3,}/gu) ?? []).length >= 2;
+}
+
+/**
+ * The scripts the technician's CURRENT turn calls for. A turn written in a non-Latin script expects exactly
+ * that script. A clear Latin-script turn expects none, even in a thread that began in Japanese: the current
+ * turn is the language contract. Only a turn with no language of its own (an identifier-only follow-up)
+ * keeps the scripts the thread has been using.
+ */
 export function expectedScripts(ctx: Pick<HygieneContext, "question" | "priorUserTurns">): Set<ScriptGroup> {
-  const out = nonLatinScriptsIn(ctx.question);
+  const own = nonLatinScriptsIn(ctx.question);
+  if (own.size > 0 || isClearLatinTurn(ctx.question)) return own;
+  const out = new Set<ScriptGroup>();
   for (const t of ctx.priorUserTurns ?? []) for (const g of nonLatinScriptsIn(t)) out.add(g);
   return out;
 }
@@ -63,6 +77,9 @@ export function checkAnswerHygiene(text: string, ctx: HygieneContext): HygieneVe
  */
 export const OUTPUT_HYGIENE_FAILURE_TEXT =
   "I could not produce a clean reply this time, so I am not showing it. This says nothing about your manuals — please ask again.";
+
+/** The live and replayed `status` message of a turn whose reply failed hygiene. */
+export const OUTPUT_HYGIENE_STATUS_MESSAGE = "I could not produce a clean reply this time. Please ask again.";
 
 /** A quoted recovery, if the candidate ends in a quoted passage worth releasing; the caller re-checks it. */
 export function quotedRecovery(text: string): string | null {
