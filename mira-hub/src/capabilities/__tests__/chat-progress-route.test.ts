@@ -69,7 +69,16 @@ vi.mock("@/lib/tenant-context", () => ({
   ),
 }));
 vi.mock("@/lib/db", () => ({ default: { query: vi.fn(async () => ({ rows: [] })) } }));
-vi.mock("@/lib/inference/persist-usage", () => ({ persistTurnUsage: vi.fn(async () => undefined) }));
+// #6048: a committed turn is closed by the usage write even when delivery fails (no longer by
+// endRoot's bare closeTurn). The two writers are recorded apart (Codex round 2 on #6082, F7):
+// this mock used to return nothing, which the route reads as a failed write, so the turn was
+// then closed a second time by the fallback close and a test could not tell which one ran.
+vi.mock("@/lib/inference/persist-usage", () => ({
+  persistTurnUsage: vi.fn(async (meta: { outcome?: string }) => {
+    lifecycleSpy.usageWrites.push(String(meta.outcome));
+    return { persisted: true as const, traceId: "trace-1" };
+  }),
+}));
 
 const seamMock = vi.hoisted(() => ({
   canonicalSeamEnabled: vi.fn(() => true),
@@ -89,13 +98,13 @@ const ingressMock = vi.hoisted(() => ({
   recordArrival: vi.fn(async () => undefined),
   recordResponse: vi.fn<(r: { httpStatus: number; tenantId: string | null }) => Promise<undefined>>(async () => undefined),
 }));
-const lifecycleSpy = vi.hoisted(() => ({ outcomes: [] as string[] }));
+const lifecycleSpy = vi.hoisted(() => ({ usageWrites: [] as string[], fallbackCloses: [] as string[] }));
 vi.mock("@/capabilities/observability/turn-lifecycle", async (orig) => {
   const real = await orig<typeof import("@/capabilities/observability/turn-lifecycle")>();
   return {
     ...real,
     closeTurn: vi.fn((o: Parameters<typeof real.closeTurn>[0]) => {
-      lifecycleSpy.outcomes.push(String(o.outcome));
+      lifecycleSpy.fallbackCloses.push(String(o.outcome));
       return real.closeTurn(o);
     }),
   };
@@ -320,7 +329,8 @@ describe("#4687 chat progress frames", () => {
   });
 
   it("F5: cancelling the progress stream during persistence cannot reclassify a committed answer", async () => {
-    lifecycleSpy.outcomes.length = 0;
+    lifecycleSpy.usageWrites.length = 0;
+    lifecycleSpy.fallbackCloses.length = 0;
     let release!: () => void;
     const held = new Promise<void>((r) => (release = r));
     nbMock.recordTurn.mockImplementationOnce(async () => { await held; return undefined; });
@@ -330,15 +340,18 @@ describe("#4687 chat progress frames", () => {
     const cancelled = reader.cancel(); // client gone while the committed write is in flight
     release();
     await cancelled;
-    await new Promise((r) => setTimeout(r, 50));
+    await vi.waitFor(() => expect(lifecycleSpy.usageWrites.length).toBeGreaterThan(0), { timeout: 5000, interval: 20 });
     const turn = (vi.mocked(nbMock.recordTurn).mock.calls[0] as unknown as unknown[])[2] as { answerStatus: string };
     expect(turn.answerStatus).toBe("answered");
-    expect(lifecycleSpy.outcomes.length).toBeGreaterThan(0);
-    expect(lifecycleSpy.outcomes).not.toContain("cancelled");
+    // Closed once, by the usage write, with the committed outcome; the fallback close never ran.
+    await new Promise((r) => setTimeout(r, 50));
+    expect(lifecycleSpy.usageWrites).toEqual(["answered"]);
+    expect(lifecycleSpy.fallbackCloses).toEqual([]);
   });
 
   it("F5: cancelling right after the terminal status frame keeps the committed outcome", async () => {
-    lifecycleSpy.outcomes.length = 0;
+    lifecycleSpy.usageWrites.length = 0;
+    lifecycleSpy.fallbackCloses.length = 0;
     const res = await POST(req({ message: ORDINARY, sourceDocIds: [DOC_A] }, { progress: true }), params);
     const reader = res.body!.getReader();
     const dec = new TextDecoder();
@@ -350,7 +363,10 @@ describe("#4687 chat progress frames", () => {
     }
     expect(seen).toContain('"status":"answered"');
     await reader.cancel();
+    // Closed once, by the usage write, with the committed outcome; the fallback close never ran.
+    await vi.waitFor(() => expect(lifecycleSpy.usageWrites).toEqual(["answered"]), { timeout: 5000, interval: 20 });
     await new Promise((r) => setTimeout(r, 50));
-    expect(lifecycleSpy.outcomes).not.toContain("cancelled");
+    expect(lifecycleSpy.usageWrites).toEqual(["answered"]);
+    expect(lifecycleSpy.fallbackCloses).toEqual([]);
   });
 });

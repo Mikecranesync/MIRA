@@ -91,8 +91,10 @@ import {
   serviceVersion,
   productionRouteDetected,
   anomalyChecksEnabled,
+  jevDecisionEnabled,
   jevWeakEvidenceBadgeEnabled,
 } from "@/capabilities/observability/config";
+import { createResponseHandoff, type ResponseHandoff } from "@/capabilities/response-handoff";
 import pool from "@/lib/db";
 import type { PoolClient } from "pg";
 import { composeTimeout } from "@/lib/abort-helpers";
@@ -334,6 +336,7 @@ import {
   runSemanticRedraft,
   withRedraftInstruction,
   withRedraftUsage,
+  type RedraftCheckCode,
   type RedraftOutcome,
 } from "@/capabilities/semantic-redraft";
 import { cascadeComplete, type CascadeMessage, type CascadeResult } from "@/lib/llm/cascade";
@@ -1266,10 +1269,20 @@ function renderLivingSheetJobSection(view: SheetView): string {
   return lines.join("\n");
 }
 
+/**
+ * How long the settle waits for the response handoff before it gives up on the decision
+ * call (Codex round 2 on #6082, F5). Only a turn that could make that call waits at all.
+ * Kept at the call's own timeout: the packet and usage row sit behind this wait, so it
+ * must stay short and bounded.
+ */
+const HANDOFF_WAIT_MS = 4000;
+
 async function handleChatTurn(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
   ingress: IngressRecord,
+  /** Tracks this turn's response on its way out of the route; null when the decision call is switched off. */
+  handoff: ResponseHandoff | null,
 ) {
   const ctx = await sessionOr401();
   if (ctx instanceof NextResponse) return ctx;
@@ -1494,7 +1507,8 @@ async function handleChatTurn(
   // SHADOW (MIRA_JEV_DECISION=1, off by default). Filled at the commit point,
   // where the DELIVERED answer, the evidence behind it and the deterministic
   // gate outcomes all exist at once; consumed in `finishAndPersist`, which runs
-  // after `controller.close()`. Held in a variable rather than passed as an
+  // after `controller.close()` (or, when delivery failed after the commit, after
+  // the stream is errored or cancelled: #6048). Held in a variable rather than passed as an
   // argument because the persist helper is defined before these values exist.
   let decisionState: TurnDecisionState | null = null;
   let lifecycleClosed = false;
@@ -1579,7 +1593,15 @@ async function handleChatTurn(
   const finishAndPersist = async (
     turnRowId: string | null,
     usage: TurnUsage,
-    opts: { answerText: string | null; citationsPresent: boolean; latencyMs: number | null },
+    opts: {
+      answerText: string | null;
+      citationsPresent: boolean;
+      latencyMs: number | null;
+      /** False when the route could not write the whole answer to its response stream: no decision call is made (see below). */
+      delivered?: boolean;
+      /** What the final path wrote to its response stream (see the packet's `response_write`). */
+      responseWrite?: TurnEvidencePacket["response_write"];
+    },
   ): Promise<void> => {
     const { packet, anomalies } = rec.finish({
       productionRouteVars: productionRouteDetected(),
@@ -1593,6 +1615,7 @@ async function handleChatTurn(
     // confirm it) succeed — the recordTurn-failure exit path passes it
     // explicitly as null; every other call site passes the real row id.
     packet.persistence.outcome = turnRowId ? "ok" : "failed";
+    if (opts.responseWrite) packet.response_write = opts.responseWrite;
     // SHADOW (MIRA_JEV_DECISION=1, off by default). The one metered judgment
     // call for this turn.
     //
@@ -1603,17 +1626,56 @@ async function handleChatTurn(
     // is narrower than "the helper is always late": `decisionState` is assigned
     // at exactly ONE place — inside the final answer-gate block — and the only
     // two call sites downstream of that assignment (the recordTurn-failure path
-    // and the final path) both sit after a `controller.close()`. The three
+    // and the final path's `settleTurn`) run once the stream is terminal:
+    // after a `controller.close()` on a delivered turn, or after
+    // `controller.error()` when delivery threw after the commit (#6048; the
+    // usual cause is a response body the client already cancelled). The three
     // earlier call sites reach this line with `decisionState` still null and
     // make no call at all.
     //
     // That invariant is load-bearing and easy to break by populating
     // `decisionState` earlier, which would silently put a ~280 ms vendor call
-    // in front of a HAZARD STOP response. `jev-route-invariant.test.ts` pins it.
+    // in front of a HAZARD STOP response. `jev-route-invariant.test.ts` pins the
+    // single assignment; that the downstream call sites run only on a terminal
+    // stream is pinned by behaviour in `semantic-redraft.route.test.ts` (#6048).
     //
     // The cost of the invariant is real and is stated rather than hidden:
-    // safety_stop, abstained and client-cancelled turns carry NO jev_decision.
-    // Shadow coverage is answered turns only. Extending it to the safety path
+    // turns that end before `decisionState` is assigned (safety_stop, abstained,
+    // a client stop during generation) carry NO jev_decision. Shadow coverage is
+    // the turns that reached the final answer gate AND were delivered. Two exits
+    // write a packet and usage row but carry NO jev_decision and send nothing to
+    // the vendor, because each passes `delivered: false`: a committed turn whose
+    // delivery then failed or was cancelled (#6048), and the history-write-failure
+    // exit on a request with an id, which errors the response before any answer
+    // frame. The call's contract is an answer already committed to the client,
+    // and the proof (docs/proofs/2026-09-23-jev-decision-fabric.md) excludes
+    // client-cancelled turns; an answer this route knows did not go out in full,
+    // with its question, excerpts and photo observations, is not sent (Codex round
+    // 1 on #6082, F1). A turn cancelled after a FAILED history write on a request with
+    // no id writes no packet, so it carries none either.
+    //
+    // WRITTEN IS NOT HANDED OFF (Codex round 2 on #6082, F5). `delivered` only says this
+    // route wrote every frame to its own stream and closed it. The response that leaves
+    // the route can be a wrapper around that stream (the progress stream, the sheet
+    // receipt) that is cancelled before it reads a single frame, and the frames then sit
+    // in a queue nobody drains. So the call needs a second, independent yes: `handoff`
+    // tracks this turn's own response and the response that leaves the route, and confirms
+    // only when BOTH were read to their end, with no cancel, no error and no request
+    // abort. (The outer one alone is not enough either: when a wrapper fails, the progress
+    // stream ends cleanly with an error frame and the answer never passed through it.)
+    // Two things withdraw that yes even after both were read (Codex round 4, F9 and F11):
+    // a request abort seen by the time the tracker answers (the call below starts on that
+    // answer with nothing awaited in between), and a sheet receipt that wrapped the body
+    // between the two responses (it re-encodes it and can corrupt the answer frame). No
+    // tracker, a cancel, an abort, an error, or no answer within HANDOFF_WAIT_MS all mean
+    // NO CALL: unknown is never a yes. A confirmed handoff is the SERVER'S view only: the
+    // runtime took every byte and its end, and reported no cancellation. A phone that
+    // dropped off the network without closing the connection looks the same from here,
+    // and no server-side check can tell the two apart. `delivered` stays a condition of its own, checked
+    // first: an answer whose frames were not all written is never asked about. The
+    // wait is bounded and applies only while the call is switched on, so the packet and
+    // usage row are never held open by a reader that stalls; with the call off nothing
+    // waits and the record says "disabled" exactly as before. Extending it to the safety path
     // would mean awaiting a vendor call before a hazard stop reaches the
     // technician, which is not a trade worth making for a shadow signal.
     //
@@ -1622,7 +1684,24 @@ async function handleChatTurn(
     // is fail-open and returns a record carrying `skipped_reason` instead of
     // throwing, so an outage shows up as a value in the data rather than a gap.
     if (decisionState) {
-      packet.jev_decision = await evaluateTurnDecision(decisionState).catch(() => null);
+      if (opts.delivered !== false) {
+        // NO ANSWER, NO CALL (Codex round 3 on #6082, F8). A turn no provider served is
+        // recorded as an error with no answer text and ends with an error status. Its
+        // stream still closes cleanly and can be read to its end, so `delivered` and the
+        // handoff are both true of it, and neither says an answer was given. `answerText`
+        // is the answer this turn recorded as served (null when none was). Without one
+        // there is nothing to judge, and THIS call sends nothing. That includes a provider
+        // that failed part-way with the answer gate off: the fragments already streamed
+        // are not an answer, the turn is an error, and they are not sent as one. A
+        // completion that is only whitespace is recorded as an answered turn (not changed
+        // here) and is no answer to judge either; when a fixed banner was prefixed to it
+        // the text is not blank, and the call is made as for any served text. Checked
+        // before the handoff, so a turn with no answer does not wait for it. (The separate
+        // sufficiency shadow starts before generation and is not gated here.)
+        const answered = typeof opts.answerText === "string" && opts.answerText.trim() !== "";
+        const maySend = !jevDecisionEnabled() || (answered && handoff !== null && (await handoff.confirmed(HANDOFF_WAIT_MS)));
+        if (maySend) packet.jev_decision = await evaluateTurnDecision(decisionState).catch(() => null);
+      }
     }
     setSpanAttrs({ "mira.turn.row_id": turnRowId, "mira.anomalies": anomalies.map((a) => a.code) }, rootSpan);
     if (anomalies.length > 0) {
@@ -1630,9 +1709,15 @@ async function handleChatTurn(
         JSON.stringify({ event: "turn.anomaly", traceId: rootTraceId, turnId, codes: anomalies.map((a) => a.code) }),
       );
     }
+    // Why the usage write did not close the attempt's row, when it did not.
+    let notPersisted: string | null = null;
+    // The outcome this write records. A failed write hands the SAME value to the fallback
+    // close, so the two can never disagree (the close's own default is "error", and a
+    // request abort during the write would relabel a committed turn "cancelled").
+    const attemptedOutcome: TurnOutcome = lifecycleOutcome ?? "answered";
     try {
       const opened = await openedTurn;
-      await persistTurnUsage(
+      const written = await persistTurnUsage(
         {
           tenantId: ctx.tenantId,
           notebookId,
@@ -1643,7 +1728,7 @@ async function handleChatTurn(
           // ONE ROW PER ACCEPTED TURN: this UPDATEs the start record rather
           // than inserting beside it.
           attemptId: opened.attemptId,
-          outcome: lifecycleOutcome ?? "answered",
+          outcome: attemptedOutcome,
         },
         usage,
         {
@@ -1657,13 +1742,29 @@ async function handleChatTurn(
           gitSha: gitSha(),
         },
       );
+      if (!written.persisted) notPersisted = written.reason;
     } catch (err) {
       // persistTurnUsage itself never throws (it returns a result); this is a
       // last-resort guard so the Turn Flight Recorder can never fail a turn.
       console.error("[notebook-chat] flight-recorder persistTurnUsage failed:", err instanceof Error ? err.message : err);
+      notPersisted = "exception";
     }
-    // The usage write owns the close from here; endRoot must not re-close.
-    lifecycleSettled = true;
+    // Codex round 1 on #6082, F3. The usage write owns the close only when the row
+    // is closed: it wrote it, or it returned no row because a closed row for this
+    // attempt already exists (the insert is ON CONFLICT DO NOTHING). On a definite
+    // failure the row is still open, so `lifecycleSettled` stays false and endRoot's
+    // own close records the outcome; without it the accepted attempt stayed open,
+    // or was later relabelled abandoned. Either way the packet and usage row are
+    // not stored, and that is said here, once, by turn id. It never fails the turn.
+    if (notPersisted === null) {
+      lifecycleSettled = true;
+    } else if (notPersisted === "no_row_returned") {
+      lifecycleSettled = true;
+      console.error(`[notebook-chat] turn usage write found the attempt already closed; packet and usage not stored (turn ${turnId})`);
+    } else {
+      lifecycleOutcome = attemptedOutcome;
+      console.error(`[notebook-chat] turn usage write did not persist; closing the attempt without its packet (turn ${turnId}):`, notPersisted);
+    }
   };
   // ─────────────────────────────────────────────────────────────────────────
 
@@ -4800,6 +4901,14 @@ async function handleChatTurn(
       // OpenAI call, held together with the OpenAI answer's. Released in the
       // `finally` below on every exit; a no-op once the judge has settled it.
       let judgeHold: JudgeOpenAiHold | null = null;
+      // #6048: armed once the turn's decision is in history (never when the history
+      // write failed). Lets the catch below persist that decision's packet and usage
+      // row through the turn's one settle. Declared here because the catch cannot
+      // see the try's locals.
+      let settleCommitted: (() => Promise<void>) | null = null;
+      // True once the body has been closed with every frame delivered: a throw after
+      // that is not a delivery failure, and the catch's log line says so.
+      let delivered = false;
       try {
       // Turn Flight Recorder correlation frame — FIRST, additive, only when a
       // real trace id exists (see file header + notebook-chat-types.ts).
@@ -5492,6 +5601,8 @@ async function handleChatTurn(
       let semanticVerdictCode: SafetyOutcome["semantic_verdict"] = "not_run";
       let semanticRedraftCode: RedraftOutcome | null = null; // #5941, set only when a redraft ran
       let redraftFloorWarning: string | null = null; // #5941, the advisory a served redraft carries
+      // #6062: the first floor that stopped the redraft, written by its screen. Codes only.
+      const redraftCheck: { code: RedraftCheckCode | null; violation: string | null } = { code: null, violation: null };
       let semanticDecided = false;
       // The one semantic SAFETY_STOP: zero citations, basis null, the draft never persisted.
       // Shared by the judge-time stop and the #6019 commit-point stop so the two cannot drift.
@@ -5720,26 +5831,46 @@ async function handleChatTurn(
                 // "with the press locked out" wording the instruction asks for. It is
                 // served above the redraft, as it would be on draft 1; every other
                 // warning or replacement stops the turn.
+                // #6062: the screen also records WHICH floor stopped the redraft: the first
+                // one, in the order below, as a code (and, for the validator, its own fixed
+                // violation id). The checks, their order and their results are unchanged.
                 screen: (text) => {
-                  if (refusalVerdict(text, { docGrounded, citations }) || uncitedClaimFor(text) || ratingColumnFor(text) !== null) return null;
-                  // It replaces a stop only with a source the technician can check: at least one
-                  // marker that resolves to a retrieved excerpt (Codex r1 F3).
-                  if (citationsUsedInAnswer(text, citations).length === 0) return null;
-                  const v = validateAnswer({
-                    answerText: text,
-                    question: message,
-                    general: false,
-                    served: true,
-                    refused: false,
-                    evidenceSufficient,
-                    manualSearchRunning: fallbackSearchRunning,
-                  });
-                  const shown = v.ok ? text : v.violation === "hazard-warning:isolation-advisory" ? v.replacement : null;
-                  // A guard/interlock defeat reworded under lockout wording draws only the
-                  // advisory above; the bypass classifier catches it (safety review on #6001).
-                  if (!shown || promptLeakIn(shown).leaked || safetyBypassAsk(text) !== null) return null;
-                  redraftAdvisory = !v.ok;
-                  return shown;
+                  const stopAt = (code: RedraftCheckCode, violation: string | null = null) => {
+                    redraftCheck.code = code;
+                    redraftCheck.violation = violation;
+                    return null;
+                  };
+                  try {
+                    if (refusalVerdict(text, { docGrounded, citations })) return stopAt("refusal");
+                    if (uncitedClaimFor(text)) return stopAt("uncited_claim");
+                    if (ratingColumnFor(text) !== null) return stopAt("rating_column");
+                    // It replaces a stop only with a source the technician can check: at least one
+                    // marker that resolves to a retrieved excerpt (Codex r1 F3).
+                    if (citationsUsedInAnswer(text, citations).length === 0) return stopAt("no_citation");
+                    const v = validateAnswer({
+                      answerText: text,
+                      question: message,
+                      general: false,
+                      served: true,
+                      refused: false,
+                      evidenceSufficient,
+                      manualSearchRunning: fallbackSearchRunning,
+                    });
+                    const shown = v.ok ? text : v.violation === "hazard-warning:isolation-advisory" ? v.replacement : null;
+                    // Every validator rejection but the advisory, whatever its kind.
+                    if (!shown) return stopAt("hazard_warning", v.ok ? null : v.violation);
+                    if (promptLeakIn(shown).leaked) return stopAt("prompt_leak");
+                    // A guard/interlock defeat reworded under lockout wording draws only the
+                    // advisory above; the bypass classifier catches it (safety review on #6001).
+                    if (safetyBypassAsk(text) !== null) return stopAt("bypass_ask");
+                    redraftAdvisory = !v.ok;
+                    return shown;
+                  } catch (err) {
+                    // A floor that throws stops the turn, as before. Only the error's name is
+                    // logged: its message could carry the draft.
+                    console.error(`[notebook-chat] semantic redraft screen threw (${err instanceof Error ? err.name : "unknown"}): stopping`);
+                    return stopAt("error");
+                  }
                 },
                 // Kept apart from the judge, which checks physical safety, not source support:
                 // every cited step must be supported by the page it cites (#6020).
@@ -5758,7 +5889,7 @@ async function handleChatTurn(
               });
         if (redraft) {
           semanticRedraftCode = redraft.outcome;
-          console.warn(`[notebook-chat] semantic redraft ${redraft.outcome}`);
+          console.warn(`[notebook-chat] semantic redraft ${redraft.outcome}${redraft.outcome === "stopped_check" && redraftCheck.code ? ` (${redraftCheck.code})` : ""}`);
         }
         // The redraft was billed whether or not it is served; the served one names the model (Codex r1 F5).
         const gen = redraftGen as CascadeResult | null;
@@ -5969,6 +6100,11 @@ async function handleChatTurn(
           : redraftFloorWarning
             ? { layer: "deterministic_floor", outcome: "warn", flagged: true, violation: redraftFloorWarning, semantic_verdict: semanticVerdictCode, semantic_redraft: semanticRedraftCode }
             : { ...safetyOutcomeBase, semantic_redraft: semanticRedraftCode };
+        // #6062: which floor stopped the redraft. Only beside stopped_check, absent otherwise.
+        if (safetyOutcome && semanticRedraftCode === "stopped_check" && redraftCheck.code) {
+          safetyOutcome.semantic_redraft_check = redraftCheck.code;
+          if (redraftCheck.violation) safetyOutcome.semantic_redraft_check_violation = redraftCheck.violation;
+        }
         rec.stage("answer_gate", {
           invoked: true,
           decision: gateDecision,
@@ -6192,6 +6328,9 @@ async function handleChatTurn(
         : [];
       const finalPersistSpan = startStage("turn.persist");
       let finalTurnRowId: string | null = null;
+      // True only once the history write has returned (#6048: the catch below settles
+      // nothing for a decision that never reached history).
+      let historyRecorded = false;
       try {
         finalTurnRowId = await recordTurn(ctx.tenantId, notebookId, {
           ownerUserId: ctx.userId,
@@ -6221,6 +6360,7 @@ async function handleChatTurn(
           basis: served ? (outputRejected?.kind === "unsafe_answer" ? null : evidenceFrame.basis) : null,
           ...assetSnapshot,
         });
+        historyRecorded = true;
       } catch (err) {
         console.error("[notebook-chat] recordTurn failed:", err instanceof Error ? err.message : err);
         setSpanAttrs({ "mira.persist.outcome": "failed", "mira.persist.error_code": "record_turn_failed" }, finalPersistSpan);
@@ -6242,12 +6382,75 @@ async function handleChatTurn(
               answerText: null,
               citationsPresent: false,
               latencyMs: Date.now() - turnStartedAt,
+              // The response was errored just above: this answer reached no client.
+              delivered: false,
             });
           }
           endRoot();
           return;
         }
       }
+
+      // The two incident log lines (`providers.exhausted`, `turn.usage`), each written at
+      // most once per turn: beside their frames on a delivered turn, exactly where they
+      // always were, or by the settle below when delivery stopped before reaching them
+      // (#6048). Each flag is set before its line is written.
+      let exhaustedLogged = false;
+      const logProvidersExhaustedOnce = (): void => {
+        if (exhaustedLogged) return;
+        exhaustedLogged = true;
+        logProvidersExhausted({ tenantId: ctx.tenantId, notebookId }, providerFailures);
+      };
+      let usageLogged = false;
+      const logTurnUsageOnce = (usage: TurnUsage): void => {
+        if (usageLogged) return;
+        usageLogged = true;
+        logTurnUsage({ tenantId: ctx.tenantId, notebookId }, usage);
+      };
+
+      // #6048: the ONE settle for this turn: its packet and its usage row. The promise
+      // is kept on the first call, before anything is awaited, so a second call (a throw
+      // after the normal-path settle) writes nothing again.
+      let settling: Promise<void> | null = null;
+      // Set once the sources frame is written to the response stream (F6, see the settle).
+      let sourcesFrameWritten = false;
+      const settleTurn = (): Promise<void> =>
+        (settling ??= (async () => {
+          // The usage frame's own object when that frame went out; otherwise what it
+          // would have carried. The generations were billed either way.
+          const owedUsage: TurnUsage =
+            pendingUsage ??
+            (seam ? (turnUsage ?? exhaustedUsage(attempted)) : legacyCascadeUsage(activeProvider, served ? "ok" : "error"));
+          // Canonical seam only, like the frames; `exhaustion` is the status frame's own condition.
+          if (seam) {
+            if (exhaustion) logProvidersExhaustedOnce();
+            logTurnUsageOnce(owedUsage);
+          }
+          await finishAndPersist(finalTurnRowId, owedUsage, {
+            answerText: served ? answerText : null,
+            citationsPresent: emittedCitations.length > 0,
+            latencyMs: Date.now() - turnStartedAt,
+            // Read when the settle starts: true on the normal path (the body is
+            // closed), false when the catch runs it after a failed delivery.
+            delivered,
+            // Codex round 2 on #6082, F6: what this route WROTE, kept apart from what the
+            // answer committed. `citations_shipped` and the ledger's citation flag stay
+            // the committed answer's, so a transport failure never reads as a grounding
+            // failure; this says whether the sources frame was written at all.
+            responseWrite: {
+              frames_written: delivered,
+              citations_written: sourcesFrameWritten ? emittedCitations.length : 0,
+            },
+          });
+        })());
+      // The catch may settle only a decision that IS in history. When the history write
+      // succeeded, the packet and usage row are owed whatever happens to delivery: every
+      // enqueue below throws once the client has cancelled the response body, and the
+      // catch then settles through this same closure. When that write failed and the
+      // route carried on (no request id), nothing is committed: a delivery failure keeps
+      // the behaviour from before #6048 (no packet, the bare close), and only the
+      // delivered path below writes the packet, with its failed persistence outcome.
+      if (historyRecorded) settleCommitted = settleTurn;
 
       // An unsafe replacement is already a terminal Safety STOP. Emit its
       // warning before the first stoppable content byte so an interruption can
@@ -6274,6 +6477,7 @@ async function handleChatTurn(
       }
 
       controller.enqueue(enc.encode(sse(sourcesFrame)));
+      sourcesFrameWritten = true;
 
       // Evidence basis (spec §1.3) — emitted before `status` so a client that
       // stops at `status` has still received it, same discipline as `usage`.
@@ -6313,7 +6517,7 @@ async function handleChatTurn(
                   { kind: "status", status: "error", ...(exhaustion ?? providerExhaustionStatus(providerFailures)) }
                 : { kind: "status", status: "error", message: "No answer provider available." };
       if (seam && statusFrame.status === "error" && !internalError) {
-        logProvidersExhausted({ tenantId: ctx.tenantId, notebookId }, providerFailures);
+        logProvidersExhaustedOnce();
       }
       // Canonical per-turn spend, emitted BEFORE status so a client that stops
       // reading at `status` has still received it. Seam-flagged only; the
@@ -6323,7 +6527,7 @@ async function handleChatTurn(
         controller.enqueue(enc.encode(sse(usageFrame(finalUsage))));
         // Structured log: still emitted, because a log line survives a database
         // outage and is the thing you grep DURING an incident.
-        logTurnUsage({ tenantId: ctx.tenantId, notebookId }, finalUsage);
+        logTurnUsageOnce(finalUsage);
         pendingUsage = finalUsage;
       }
 
@@ -6364,6 +6568,7 @@ async function handleChatTurn(
 
       controller.enqueue(enc.encode("data: [DONE]\n\n"));
       controller.close();
+      delivered = true;
 
       // Durable spend ledger (migration 080) + Turn Flight Recorder packet.
       // Deliberately LAST and non-fatal: the answer is already streamed and
@@ -6377,17 +6582,13 @@ async function handleChatTurn(
       // row carries the canonical spend; on the legacy cascade it carries the
       // served provider/model with UNKNOWN (null) tokens and cost.
       {
-        const ledgerUsage: TurnUsage =
-          pendingUsage ?? legacyCascadeUsage(activeProvider, served ? "ok" : "error");
         // Yield once after close so the consumer observes its terminal body
         // before telemetry starts. A ledger exception is non-fatal and must
         // never turn an already-closed, valid answer into a transport error.
         await new Promise<void>((resolve) => setTimeout(resolve, 0));
-        await finishAndPersist(finalTurnRowId, ledgerUsage, {
-          answerText: served ? answerText : null,
-          citationsPresent: emittedCitations.length > 0,
-          latencyMs: Date.now() - turnStartedAt,
-        });
+        // #6048: the one settle for this turn (built at the commit point above). It runs
+        // here whether or not the history write succeeded, as it always did.
+        await settleTurn();
       }
       setSpanAttrs({ "mira.turn.row_id": finalTurnRowId, "mira.persist.outcome": "ok" }, finalPersistSpan);
       endTimed(finalPersistSpan, "persist");
@@ -6395,12 +6596,45 @@ async function handleChatTurn(
       } catch (err) {
         req.signal?.removeEventListener("abort", onClientGone);
         progressCancel?.removeEventListener("abort", onClientGone); // Codex #4765 F5
-        await abandonRequestClaim().catch((releaseErr) => {
-          console.error(
-            "[notebook-chat] request claim release failed:",
-            releaseErr instanceof Error ? releaseErr.message : releaseErr,
-          );
-        });
+        // The claim is released only while the turn is uncommitted. Once the history
+        // write has returned, that write completed the claim and cleared its token, and
+        // the release (a DELETE of a still-pending claim) can match nothing; awaiting it
+        // only put a database round trip, which can wait on a lock, in front of the
+        // reader's error and of the settle (Codex round 1 on #6082, F2).
+        if (!settleCommitted) {
+          await abandonRequestClaim().catch((releaseErr) => {
+            console.error(
+              "[notebook-chat] request claim release failed:",
+              releaseErr instanceof Error ? releaseErr.message : releaseErr,
+            );
+          });
+        }
+        // The transport error goes out before the settle below, so a ledger write
+        // never sits in front of a reader that is still attached (#6048).
+        try {
+          controller.error(err);
+        } catch {
+          // A cancelled response controller is already terminal.
+        }
+        // #6048: the decision was already committed to history when this threw (the
+        // usual cause: the client cancelled the response body, so an enqueue threw).
+        // Settle it here, BEFORE endRoot(): endRoot starts a fire-and-forget close
+        // that writes the closed row with no packet, and the usage write that
+        // follows such a close is dropped (ON CONFLICT DO NOTHING). Null before the
+        // commit point and when the history write failed: nothing is owed there. A
+        // settle that fails is logged and never replaces `err`.
+        if (settleCommitted) {
+          try {
+            await settleCommitted();
+          } catch (settleErr) {
+            console.error(
+              delivered
+                ? `[notebook-chat] settle after a delivered turn did not complete (turn ${turnId}):`
+                : `[notebook-chat] settle after a post-commit failure did not complete (turn ${turnId}):`,
+              settleErr instanceof Error ? settleErr.message : settleErr,
+            );
+          }
+        }
         // Last-resort net: an exception here means no `endRoot()` on any
         // earlier path fired (every designed exit path already calls it) —
         // never leave the root span dangling unexported.
@@ -6411,11 +6645,6 @@ async function handleChatTurn(
           // best-effort
         }
         endRoot();
-        try {
-          controller.error(err);
-        } catch {
-          // A cancelled response controller is already terminal.
-        }
       } finally {
         // #4355 option 1: a judge hold the judge never used (answer not served,
         // gate path skipped, an exception) must not pin cap room forever.
@@ -6497,6 +6726,15 @@ export async function POST(req: NextRequest, routeCtx: { params: Promise<{ id: s
   // (handleChatTurn below still does the real `req.json()`); any failure here
   // just means no receipt frame, never a broken turn. Session is re-derived
   // independently (never a body-supplied tenant).
+  // Codex round 2 on #6082, F5: the decision call needs to know that the turn's own
+  // response (`own`, before any wrapper reads it) AND the response that leaves this
+  // function (`leaving`, after the last wrapper) were both read to their end. Installed
+  // only while that call is switched on, and on every return below. It listens to the
+  // request's abort itself, from here, because the wrappers below can still be waiting
+  // when that fires.
+  const handoff = jevDecisionEnabled() ? createResponseHandoff(req.signal) : null;
+  const own = (res: Response): Response => (handoff ? handoff.own(res) : res);
+  const leaving = (res: Response): Response => (handoff ? handoff.final(res) : res);
   let sheetReceiptCtx: SheetReceiptContext | null = null;
   if (livingSheetEnabled() && notebookId) {
     try {
@@ -6516,16 +6754,30 @@ export async function POST(req: NextRequest, routeCtx: { params: Promise<{ id: s
       sheetReceiptCtx = null;
     }
   }
+  // Codex round 4 on #6082, F9: the sheet receipt decodes the turn's bytes, looks for the end
+  // marker anywhere in the text and re-encodes them, and it can corrupt the answer frame on
+  // the way (#6105). Both responses are still read to their end, so reading alone would
+  // confirm an answer the client could not parse. When the receipt hands back a response of
+  // its own (it wrapped the body), the tracker is told and nothing is confirmed for this
+  // turn, damaged or not: the route cannot tell which. When it hands back the response it
+  // was given (no body, no job, or the job read failing, all before it reads a byte), the
+  // bytes are the turn's own and the tracker decides as before.
+  const receipted = async (inner: Response): Promise<Response> => {
+    if (!sheetReceiptCtx) return inner;
+    const out = await withSheetReceipt(inner, sheetReceiptCtx);
+    if (out !== inner) handoff?.rewritten();
+    return out;
+  };
   if (wantsProgress(req)) {
     // #4687: headers go out now; the turn runs behind the open stream. The
     // accounting below runs when the turn actually finishes, with its real
     // status and tenant — never at stream open (Codex #4765 F1).
-    return withProgressStream(req, async () => {
+    const progressed = withProgressStream(req, async () => {
       let innerStatus = 500;
       try {
-        const inner = await handleChatTurn(req, routeCtx, ingress);
+        const inner = own(await handleChatTurn(req, routeCtx, ingress, handoff));
         innerStatus = inner.status;
-        return sheetReceiptCtx ? await withSheetReceipt(inner, sheetReceiptCtx) : inner;
+        return await receipted(inner);
       } catch (err) {
         ingress.closeOnUnhandled?.("error");
         throw err;
@@ -6537,12 +6789,13 @@ export async function POST(req: NextRequest, routeCtx: { params: Promise<{ id: s
           });
       }
     });
+    return leaving(progressed);
   }
   let status = 500;
   try {
-    const res = await handleChatTurn(req, routeCtx, ingress);
+    const res = own(await handleChatTurn(req, routeCtx, ingress, handoff));
     status = res.status;
-    return sheetReceiptCtx ? await withSheetReceipt(res, sheetReceiptCtx) : res;
+    return leaving(await receipted(res));
   } catch (err) {
     // A throw that escaped every `endRoot` would leave the start record open
     // until the reconciler swept it — reported as `abandoned` when it was in
