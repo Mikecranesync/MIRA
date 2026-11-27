@@ -66,17 +66,31 @@ Type changes:
   - Settled cards (confirmed, rejected, superseded) render as today, with no box. The result line stays the server's copy.
 - The checkbox uses the existing card tokens. No new colour is introduced.
 
-### 4.3 Adapters (not guarded)
+### 4.3 Adapters and the live stream
 
-- **Hub.**
-  - `mira-hub/src/factorylm-ui/to-interaction.ts` carries `offeredNumber` from both the persisted entry (`identityProposalOf`) and the live frame.
-  - `hub-host.tsx`'s `onConfirmIdentity` adds `confirmedNumber` to the request body when present.
-- **Mobile.**
-  - `mira-mobile/src/unified/to-interaction.ts` carries `offeredNumber`.
-  - `mira-mobile/src/api/identity-confirm.ts` adds `confirmedNumber` to the body.
-  - These ship only through the separate, dispatch-only OTA release.
-- **Legacy surfaces stay untouched.**
-  - The legacy Hub chat (`components/equipment/notebook-chat-utils.ts`) and legacy mobile screens copy named fields only. They drop `offeredNumber` and confirm without a number, as today.
+**Hub, saved card (not guarded).**
+- `mira-hub/src/factorylm-ui/to-interaction.ts` carries `offeredNumber` from the persisted entry (`identityProposalOf`).
+- Once a send finishes, the saved row replaces the live turn: `hub-host.tsx` sets `livePersisted`, `liveTurns` becomes empty, and `turnsFromPersisted` renders the card.
+- `hub-host.tsx`'s `onConfirmIdentity` adds `confirmedNumber` to the request body when present.
+
+**Hub, live card: the stream parser is guarded.**
+
+The new Hub shell reads the live stream through `readNotebookStream` in `mira-hub/src/components/equipment/notebook-chat-utils.ts`. That file is guarded legacy (checked with `path_is_guarded` from origin/main). Its `identity_proposal` branch copies `manufacturer`, `model` and `catalogNumber` only, so the live card can't receive `offeredNumber` without an edit there. Two options; Mike picks one at spec review:
+
+- **Option A (recommended): a one-line edit to the parser.** It also copies `offeredNumber`, with the lifecycle guard rationale. The live card shows the box at once.
+  - This is a decoder field for the canonical shell, not new legacy presentation; the legacy chat page never renders it.
+  - Precedent: #6056 added `manualSafetyStatement` to the same frame loop, and its Codex review covered that file with 0 BLOCKER.
+  - The risk is a reviewer who reads it as legacy expansion, which would be a BLOCKER.
+- **Option B: no parser edit.** The box comes only from the saved card.
+  - In the short gap between the end of the answer and the detail reload, the live card has no box.
+  - A tap in that gap confirms without a number: this fails closed, the same as leaving the box unticked.
+
+**Mobile (not guarded).**
+- The raw frame JSON reaches the canonical adapter whole (`unknownInteractionPart`), so `mira-mobile/src/unified/to-interaction.ts` carries `offeredNumber` with no guarded edit.
+- `mira-mobile/src/api/identity-confirm.ts` adds `confirmedNumber` to the body.
+- Both ship only through the separate, dispatch-only OTA release.
+
+**Legacy surfaces.** The legacy Hub chat page and legacy mobile screens don't render `offeredNumber`. They confirm without a number, as today.
 
 ### 4.4 Storage: migration 118
 
@@ -90,7 +104,7 @@ COMMIT;
 - **What the migration changes.**
   - It is additive. It adds no table, policy or index.
   - The table's existing grants cover the new column (the plan verifies this on staging).
-  - The revoke trigger (`equipment_notebooks_revoke_auto_manuals`, migration 101) fires only on `UPDATE OF manufacturer, model, catalog_number, identity_status`, so a write to this column never touches search state.
+  - The revoke trigger (`equipment_notebooks_revoke_auto_manuals`, migration 101) fires only on `UPDATE OF manufacturer, model, catalog_number, identity_status`, so a write to this column never touches search state. It is the only trigger on `equipment_notebooks` in any migration (checked across `mira-hub/db/migrations/` on origin/main).
 - **Entry shape.** Each entry is `{ "number": "<display form>", "manufacturer": "<confirmed>", "model": "<confirmed>", "confirmedAt": "<iso>" }`. Storing the identity with the number lets the reader ignore numbers saved for an identity the notebook no longer has, for example after a Settings edit. No other identity writer has to clear the list.
 - **The write.** `saveConfirmedNumber(tenantId, notebookId, entry)` is one `UPDATE` under `withTenantContext`. It appends the entry unless one with the same normalised number, manufacturer and model is already there, so a repeated confirm is idempotent.
 - **The migration file is fixed once pushed.** Draft it against a throwaway Postgres first. `migration-verify.yml` applies the first pushed version to the persistent staging branch, and after that the file is immutable (`.claude/rules/mira-hub-migrations.md` §8).
@@ -176,7 +190,9 @@ All tests are written first. Each one is seen red against a named mutation, with
   - A ticked confirm passes the number; an unticked one does not.
   - A settled card has no box.
   - A card without `offeredNumber` renders exactly as today.
-- **Adapters:** Hub and mobile both carry the field and send it.
+- **Adapters:**
+  - Hub and mobile both carry the field and send it.
+  - Under Option A, `readNotebookStream` keeps `offeredNumber` on the live result. Under Option B, a live card without the field confirms with no number.
 - **Real Postgres:** migration 118 applies and re-applies on a throwaway database; the write runs under `SET ROLE factorylm_app` with a UUID tenant.
 - **Full suites before review:** Hub Vitest, typecheck against main's baseline count, mobile, shared UI with the UI lab verify, and the real-Postgres suites.
 
@@ -185,7 +201,14 @@ All tests are written first. Each one is seen red against a named mutation, with
 1. **The shared UI slot.** The server, migration and adapter work goes ahead now. The shared UI files wait for the #3626 slot, then get a real `[WORK-CLAIM]` and a reread of the claim namespace.
 2. **The PR.** One new PR with a fresh Codex budget, since this is a different approach from #6094.
    - The Hub version gets a minor bump, because this is a feature.
-   - The PR body carries the lifecycle guard rationale: `mira-hub/package.json` and the route `__tests__` files are guarded.
+   - The PR body carries the lifecycle guard rationale. These planned paths are guarded (checked with the guard's `path_is_guarded` from origin/main):
+     - `mira-hub/package.json`;
+     - `mira-hub/src/components/equipment/notebook-chat-utils.ts`, under Option A only;
+     - `mira-hub/src/app/api/equipment-notebooks/[id]/chat/__tests__/identity-proposal.test.ts`;
+     - `mira-hub/src/app/api/equipment-notebooks/[id]/identity/confirm/__tests__/route.test.ts`;
+     - `mira-hub/src/app/api/equipment-notebooks/[id]/__tests__/manual-search-status.test.ts`.
+
+     Every other planned path is open, including `mira-hub/src/lib/notebook-chat-types.ts`, both adapters and `mira-mobile/src/api/identity-confirm.ts`. Mobile `api/resources.ts` is guarded and is not touched.
    - The guard preflight runs from origin/main three ways before any Codex round.
 3. **Codex.**
    - Rounds use `--review-only`.
@@ -198,7 +221,7 @@ All tests are written first. Each one is seen red against a named mutation, with
      - the TP700 question with the box ticked shows the status in that thread;
      - the same question with the box unticked stays withheld;
      - a TP900 control stays withheld;
-     - recheck the old J2 thread.
+     - recheck the old J2 thread. It is expected to stay withheld: that notebook was confirmed with no number, and cards no longer appear on it. This is the known cost in §5, not a walk failure.
 6. **Prod.**
    - Deploy only after a passed walk on the exact candidate, through `deploy-vps.yml`.
    - The rollback is the previous prod Hub image. The column stays; it is additive and harmless.
