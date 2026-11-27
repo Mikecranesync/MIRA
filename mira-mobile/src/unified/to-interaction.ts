@@ -323,6 +323,38 @@ export function toTurn(msg: AdapterMessage, meta: UnifiedNotebookMeta): Interact
   };
 }
 
+/**
+ * #6104 r1 F2: the send's request id for each answer turn, by the answer's turn id
+ * (`<rowId>-a` saved, `live-<i>-a` streamed: the `threadMessages` id scheme). A saved answer's
+ * clientRequestId is its streamed turn's requestId, so its identity card keeps the tick the
+ * technician gave the streamed one, and a card from another send does not inherit it.
+ */
+export function answerTickKeys(
+  rows: readonly { readonly id: string }[],
+  live: readonly { readonly requestId?: string }[],
+): ReadonlyMap<string, string> {
+  const keys = new Map<string, string>();
+  for (const row of rows) {
+    const requestId = (row as { clientRequestId?: unknown }).clientRequestId;
+    if (typeof requestId === "string" && requestId) keys.set(`${row.id}-a`, requestId);
+  }
+  live.forEach((turn, i) => { if (turn.requestId) keys.set(`live-${i}-a`, turn.requestId); });
+  return keys;
+}
+
+/** #6104 r1 F2: stamps each identity card with its answer's tick key (see `answerTickKeys`). */
+export function withTickKeys(thread: InteractionThread, keys: ReadonlyMap<string, string>): InteractionThread {
+  if (!keys.size) return thread;
+  let changed = false;
+  const turns = thread.turns.map((turn) => {
+    const tickKey = keys.get(turn.id);
+    if (!tickKey || !turn.parts.some((p) => p.type === "identity_proposal")) return turn;
+    changed = true;
+    return { ...turn, parts: turn.parts.map((p) => (p.type === "identity_proposal" ? { ...p, tickKey } : p)) };
+  });
+  return changed ? { ...thread, turns } : thread;
+}
+
 export function toThread(messages: readonly AdapterMessage[], meta: UnifiedNotebookMeta): InteractionThread {
   return {
     id: threadIdFor(meta),

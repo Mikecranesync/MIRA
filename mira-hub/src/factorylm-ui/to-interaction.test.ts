@@ -865,3 +865,23 @@ describe("#5989: the active-incident directive leads the answer", () => {
     expect(texts(parts)[0]).toBe(DIRECTIVE);
   });
 });
+
+// #6104 r1 F2: the saved card replaces the streamed one under a new turn id, so the card keeps a
+// tick by the send's request id, which both copies carry.
+describe("the streamed card and its saved copy share a tick key (#6104 r1 F2)", () => {
+  const proposal = { manufacturer: "Siemens", model: "TP700", offeredNumber: "6AV2124-0GC01-0AX0" };
+  const cardIn = (parts: readonly { type: string }[]) => parts.find((p) => p.type === "identity_proposal");
+
+  it("both carry the send's request id", () => {
+    const live = cardIn(partsFromStream(stream({ identityProposal: proposal }), { ...LIVE, requestId: "req-6104" }));
+    const [, saved] = turnsFromPersisted(row({ clientRequestId: "req-6104", evidence: [{ kind: "identity_proposal", ...proposal }] as unknown as PersistedTurn["evidence"] }), meta);
+    expect(live).toMatchObject({ ...proposal, tickKey: "req-6104" });
+    expect(cardIn(saved!.parts)).toMatchObject({ ...proposal, tickKey: "req-6104" });
+  });
+
+  it("control: a card with no request id carries no tick key", () => {
+    expect(cardIn(partsFromStream(stream({ identityProposal: proposal }), LIVE))).not.toHaveProperty("tickKey");
+    const [, saved] = turnsFromPersisted(row({ clientRequestId: null, evidence: [{ kind: "identity_proposal", ...proposal }] as unknown as PersistedTurn["evidence"] }), meta);
+    expect(cardIn(saved!.parts)).not.toHaveProperty("tickKey");
+  });
+});

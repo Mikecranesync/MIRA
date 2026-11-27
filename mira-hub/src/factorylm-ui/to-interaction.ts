@@ -417,7 +417,8 @@ export function partsFromStream(
       const priorOutcome = opts.confirmedIdentity
         ? (sameManufacturerModel(result.identityProposal, opts.confirmedIdentity) ? "confirmed" : "superseded")
         : undefined;
-      parts.push({ type: "identity_proposal", ...result.identityProposal, ...(priorOutcome ? { priorOutcome } : {}) });
+      // #6104 r1 F2: the send's request id, which the saved copy carries too, keeps a tick.
+      parts.push({ type: "identity_proposal", ...result.identityProposal, ...(priorOutcome ? { priorOutcome } : {}), ...(opts.requestId ? { tickKey: opts.requestId } : {}) });
     }
     for (const c of result.citations) parts.push({ type: "source", source: sourceFor(c, opts.turnId, opts.requestId) });
     if (result.basis) parts.push(basisPart(result.basis, result.citations, opts.notebookDocIds));
@@ -549,7 +550,7 @@ export function turnsFromPersisted(row: PersistedTurn & { createdAt?: string }, 
     // with.
     const current = meta.confirmedIdentity ?? null;
     const priorOutcome = current ? (sameManufacturerModel(proposal, current) ? "confirmed" : "superseded") : undefined;
-    parts.push({ type: "identity_proposal", ...proposal, ...(priorOutcome ? { priorOutcome } : {}) });
+    parts.push({ type: "identity_proposal", ...proposal, ...(priorOutcome ? { priorOutcome } : {}), ...(row.clientRequestId ? { tickKey: row.clientRequestId } : {}) });
   }
   if (!stopped && row.answerStatus !== "error") {
     for (const c of citations) parts.push({ type: "source", source: sourceFor(c, answerId, row.clientRequestId) });
