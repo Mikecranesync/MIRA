@@ -139,15 +139,15 @@ describe("makerGroupsNamedIn", () => {
     expect(makerGroupsNamedIn(`the Phoenix drive order no. ${part} is Siemens`, [part]).size).toBe(2); // control: same sentence
   });
 
-  // #6131 r3 F6: a maker written as one of two choices counts, the choice's other side a maker.
-  it("a title-case dictionary-word maker written as one of two makers counts", () => {
-    expect(makerGroupsNamedIn("Is this an Eaton or a Siemens panel?").size).toBe(2);
-    expect(makerGroupsNamedIn("Is this a Siemens or an Eaton panel?").size).toBe(2);
-    expect(makerGroupsNamedIn("Is this Eaton/Siemens?").size).toBe(2);
-    expect(makerGroupsNamedIn("Sick or tired of the Siemens panel").size).toBe(1); // the other side is no maker
-    expect(makerGroupsNamedIn("an eaton or a Siemens panel").size).toBe(1); // lowercase stays a word
-    expect(makerGroupsNamedIn("Parker or banner stock for the Siemens cabinet").size).toBe(1); // a lowercase other side too
-    expect(makerGroupsNamedIn("We're in Phoenix and Siemens support says it is fine").size).toBe(1); // "and" is no choice
+  // #6131 r4 F7: "or" also joins clauses and names, so a dictionary word beside it stays a word.
+  it('a capitalised dictionary word joined to a maker by "or" is not read as a maker', () => {
+    expect(makerGroupsNamedIn("Our guy Parker or Siemens field service will look at it").size).toBe(1);
+    expect(makerGroupsNamedIn("I can ask the crew in Phoenix or Siemens can troubleshoot it").size).toBe(1);
+    expect(makerGroupsNamedIn("Ask Banner or Siemens support about it").size).toBe(1);
+    expect(makerGroupsNamedIn("We're in Phoenix and Siemens support says it is fine").size).toBe(1); // "and" too
+    // Known limit, as on main (#6142): a real choice reads the same way, with no part typed after it.
+    expect(makerGroupsNamedIn("Is this an Eaton or a Siemens panel?").size).toBe(1);
+    expect(makerGroupsNamedIn("Is this Eaton/Siemens?").size).toBe(1);
   });
 
   // The identity card's typed reading (makerFromText with a part) is not changed by either rule.

@@ -319,14 +319,10 @@ describe("GET notebook detail: a saved number in a question naming two makers (#
     expect(offeredOwnNumber(question, { manufacturer: "Siemens", model: "TP700" })).toBeNull();
   });
 
-  // #6131 r3 F6: a maker written as one of two choices counts, wherever the choice is written.
-  it.each([
-    ["Eaton or a Siemens", "Is this an Eaton or a Siemens 6AV2124-0GC01-0AX0?"],
-    ["Eaton or Siemens, no articles", "Is this Eaton or Siemens 6AV2124-0GC01-0AX0?"],
-    ["Siemens or an Eaton", "Is this a Siemens or an Eaton 6AV2124-0GC01-0AX0?"],
-    ["Eaton/Siemens", "Is this an Eaton/Siemens 6AV2124-0GC01-0AX0?"],
-    ["the choice written after the number", "Is the 6AV2124-0GC01-0AX0 an Eaton or a Siemens?"],
-  ])("%s: withheld with the number saved, and the card offers nothing", async (_label, question) => {
+  // A choice whose dictionary-word maker is typed right before the number is withheld by the
+  // typed-text rule itself.
+  it("Siemens or an Eaton typed right before the number: withheld with the number saved, and the card offers nothing", async () => {
+    const question = "Is this a Siemens or an Eaton 6AV2124-0GC01-0AX0?";
     const body = await read(question);
     expect(readConfirmedNumbers).toHaveBeenCalledWith(TENANT, NB); // precondition: the number was read
     expect(body.manualSearch).toBeNull();
@@ -334,12 +330,32 @@ describe("GET notebook detail: a saved number in a question naming two makers (#
     expect(offeredOwnNumber(question, { manufacturer: "Siemens", model: "TP700" })).toBeNull();
   });
 
-  // Ordinary words stay ordinary: a sentence break outside a label still breaks, and "or" counts
-  // only when a maker name is on its other side.
+  // Known limit, as on main (#6142): any other choice reads the dictionary-word maker as an
+  // ordinary word, because "or" also joins clauses and names (r4 F7, the controls below). A fix
+  // shows up here as a deliberate change.
+  it.each([
+    ["Eaton or a Siemens", "Is this an Eaton or a Siemens 6AV2124-0GC01-0AX0?"],
+    ["Eaton or Siemens, no articles", "Is this Eaton or Siemens 6AV2124-0GC01-0AX0?"],
+    ["Eaton/Siemens", "Is this an Eaton/Siemens 6AV2124-0GC01-0AX0?"],
+    ["the choice written after the number", "Is the 6AV2124-0GC01-0AX0 an Eaton or a Siemens?"],
+  ])("known limit: %s shows the status with the number saved, and the card offers it, as on main", async (_label, question) => {
+    const body = await read(question);
+    expect(readConfirmedNumbers).toHaveBeenCalledWith(TENANT, NB); // precondition: the number was read
+    expect(body.manualSearch).toEqual(READY);
+    expect(body).not.toHaveProperty("manualSearchScope");
+    expect(offeredOwnNumber(question, { manufacturer: "Siemens", model: "TP700" })).toBe("6AV2124-0GC01-0AX0");
+  });
+
+  // Ordinary words stay ordinary: a sentence break outside a label still breaks, and a dictionary
+  // word joined to a maker by "and" or "or" stays a word.
   it.each([
     ["a city that ends a sentence before a label", "We shipped it from Phoenix. Order no. 6AV2124-0GC01-0AX0 is in our Siemens cabinet."],
     ["a capitalised dictionary word joined to an ordinary word", "Sick or tired of the Siemens 6AV2124-0GC01-0AX0 dropping out."],
     ['a city joined to a maker by "and", which also joins clauses', "We're in Phoenix and Siemens support says the 6AV2124-0GC01-0AX0 will not power up."],
+    // #6131 r4 F7: "or" joins clauses and names as well as makers.
+    ['a city joined to a maker by "or" across clauses', "I can ask the crew in Phoenix or Siemens can troubleshoot the 6AV2124-0GC01-0AX0."],
+    ['a person joined to a maker by "or"', "Our guy Parker or Siemens field service will look at the 6AV2124-0GC01-0AX0 tomorrow."],
+    ['a place joined by "or" after the number', "The 6AV2124-0GC01-0AX0 in Phoenix or the Siemens one in Tampa?"],
   ])("control: %s leaves the thread showing the status, and the card offers the number", async (_label, question) => {
     const body = await read(question);
     expect(body.manualSearch).toEqual(READY);
