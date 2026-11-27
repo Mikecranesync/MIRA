@@ -1648,9 +1648,9 @@ async function handleChatTurn(
     // exit on a request with an id, which errors the response before any answer
     // frame. The call's contract is an answer already committed to the client,
     // and the proof (docs/proofs/2026-09-23-jev-decision-fabric.md) excludes
-    // client-cancelled turns; an answer the technician never received, with its
-    // question, excerpts and photo observations, is not sent (Codex round 1 on
-    // #6082, F1). A turn cancelled after a FAILED history write on a request with
+    // client-cancelled turns; an answer this route knows did not go out in full,
+    // with its question, excerpts and photo observations, is not sent (Codex round
+    // 1 on #6082, F1). A turn cancelled after a FAILED history write on a request with
     // no id writes no packet, so it carries none either.
     //
     // WRITTEN IS NOT HANDED OFF (Codex round 2 on #6082, F5). `delivered` only says this
@@ -1663,7 +1663,10 @@ async function handleChatTurn(
     // abort. (The outer one alone is not enough either: when a wrapper fails, the progress
     // stream ends cleanly with an error frame and the answer never passed through it.) No
     // tracker, a cancel, an abort, an error, or no answer within HANDOFF_WAIT_MS all mean
-    // NO CALL: unknown is never a yes. `delivered` stays a condition of its own, checked
+    // NO CALL: unknown is never a yes. A confirmed handoff is the SERVER'S view only: the
+    // runtime took every byte and its end, and reported no cancellation. A phone that
+    // dropped off the network without closing the connection looks the same from here,
+    // and no server-side check can tell the two apart. `delivered` stays a condition of its own, checked
     // first: an answer whose frames were not all written is never asked about. The
     // wait is bounded and applies only while the call is switched on, so the packet and
     // usage row are never held open by a reader that stalls; with the call off nothing

@@ -340,10 +340,11 @@ describe("#4687 chat progress frames", () => {
     const cancelled = reader.cancel(); // client gone while the committed write is in flight
     release();
     await cancelled;
-    await new Promise((r) => setTimeout(r, 50));
+    await vi.waitFor(() => expect(lifecycleSpy.usageWrites.length).toBeGreaterThan(0), { timeout: 5000, interval: 20 });
     const turn = (vi.mocked(nbMock.recordTurn).mock.calls[0] as unknown as unknown[])[2] as { answerStatus: string };
     expect(turn.answerStatus).toBe("answered");
     // Closed once, by the usage write, with the committed outcome; the fallback close never ran.
+    await new Promise((r) => setTimeout(r, 50));
     expect(lifecycleSpy.usageWrites).toEqual(["answered"]);
     expect(lifecycleSpy.fallbackCloses).toEqual([]);
   });
@@ -362,8 +363,9 @@ describe("#4687 chat progress frames", () => {
     }
     expect(seen).toContain('"status":"answered"');
     await reader.cancel();
-    await new Promise((r) => setTimeout(r, 50));
     // Closed once, by the usage write, with the committed outcome; the fallback close never ran.
+    await vi.waitFor(() => expect(lifecycleSpy.usageWrites).toEqual(["answered"]), { timeout: 5000, interval: 20 });
+    await new Promise((r) => setTimeout(r, 50));
     expect(lifecycleSpy.usageWrites).toEqual(["answered"]);
     expect(lifecycleSpy.fallbackCloses).toEqual([]);
   });

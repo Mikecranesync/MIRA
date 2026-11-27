@@ -265,7 +265,9 @@ export type TurnEvidencePacketAnswerGate = {
   jev_observation_count?: number | null;
   jev_instructions_version?: string | null;
   /**
-   * How many citations the answer actually SHIPPED (#3962). Distinct from
+   * How many citations the COMMITTED answer carries (#3962): "shipped" here means
+   * shipped with the answer that was written to history, not written to the
+   * response stream (that is `response_write`). Distinct from
    * `context.chunk_count`, which is what was put in front of the model: chunks
    * in context with zero citations shipped is "evidence supplied, evidence not
    * followed", and until this field existed the two were indistinguishable in

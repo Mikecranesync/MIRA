@@ -1788,9 +1788,14 @@ describe("#6048 — a body cancel after the commit still persists the packet and
     decisionCallOn();
     sheetOn();
     stubFetch(REDRAFT, [verdict("safe", "none")]);
+    const receiptCallsBefore = (withSheetReceiptSpy as unknown as ReturnType<typeof vi.fn>).mock.calls.length;
     const res = await POST(reqWith(SHEET_TURN), params);
     const text = await res.text();
     expect(text).not.toContain('"kind":"sheet_receipt"');
+    // The sheet path really ran: the receipt wrapper was called, read the job a second time
+    // (the route read it once before generating), and handed back the response as it was.
+    expect((withSheetReceiptSpy as unknown as ReturnType<typeof vi.fn>).mock.calls.length).toBe(receiptCallsBefore + 1);
+    expect(storeMock.loadJob).toHaveBeenCalledTimes(2);
     const r = await settled();
     expect(vendorRequests()).toHaveLength(1);
     expectDispositionMatchesHistory(r, 1);

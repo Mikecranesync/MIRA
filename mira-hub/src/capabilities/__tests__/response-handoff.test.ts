@@ -107,7 +107,7 @@ describe("response handoff: confirmed only when the tracked body was read to its
     await readAll(both(handoff, source(["x"]).stream).body!.getReader());
     const started = Date.now();
     expect(await handoff.confirmed(WAIT)).toBe(true);
-    expect(Date.now() - started).toBeLessThan(QUICK);
+    expect(Date.now() - started).toBeLessThan(WAIT / 2);
   });
 });
 
