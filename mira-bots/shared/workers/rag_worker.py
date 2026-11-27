@@ -186,6 +186,7 @@ def kb_citation_entry(chunk: dict) -> dict:
         "source_url": chunk.get("source_url") or meta.get("source_url", ""),
         "section": meta.get("section", ""),
         "page_num": meta.get("page_num"),
+        "page_label": meta.get("page_label"),
     }
 
 
