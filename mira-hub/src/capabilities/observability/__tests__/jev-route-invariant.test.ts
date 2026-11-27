@@ -42,7 +42,10 @@ describe("the Jev shadow cannot reach the delivery path", () => {
   //  - delivered turn: "control (behavioural form of the jev-route-invariant pin) ..."
   //  - delivery failed or was cancelled after the commit: no call at all ("F1: decision
   //    call on ..."; Codex round 1 on #6082)
-  //  - the history write failed: "R1-D1: the history write fails on a request with an id ..."
+  //  - the history write failed on a request with an id, so the response is errored: no call
+  //    at all ("F1: decision call on, the history write fails on a request with an id ...")
+  //  - the history write failed on a request with no id, so the route carries on and
+  //    delivers: one call ("F1 control: ... the history write fails on a request with NO id ...")
 
   it("the early call sites are upstream of the assignment, so they pass null", () => {
     const assign = assigns[0];
