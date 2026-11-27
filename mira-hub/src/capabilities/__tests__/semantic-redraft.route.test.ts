@@ -66,6 +66,11 @@ vi.mock("@/capabilities/response-handoff", async (importOriginal) => {
   const o = await importOriginal<typeof import("@/capabilities/response-handoff")>();
   return { ...o, createResponseHandoff: vi.fn(o.createResponseHandoff) };
 });
+// The sheet receipt wrapper: real, unless a test makes it fail.
+vi.mock("@/capabilities/living-sheet/receipt", async (importOriginal) => {
+  const o = await importOriginal<typeof import("@/capabilities/living-sheet/receipt")>();
+  return { ...o, withSheetReceipt: vi.fn(o.withSheetReceipt) };
+});
 // The Living Work Sheet job read: the route reads the job once before it generates, and the
 // sheet receipt reads it again after the turn handler has returned. Not found unless a test
 // says otherwise, so no test here depends on the sheet.
@@ -739,6 +744,7 @@ import { closeTurn as closeTurnSpy } from "@/capabilities/observability/turn-lif
 import { evaluateTurnDecision as evaluateTurnDecisionSpy } from "@/capabilities/observability/jev-decision";
 import { JEV_ENDPOINT } from "@/capabilities/observability/jev-shadow";
 import { createResponseHandoff as createResponseHandoffSpy } from "@/capabilities/response-handoff";
+import { withSheetReceipt as withSheetReceiptSpy } from "@/capabilities/living-sheet/receipt";
 
 const ROW_ID = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
 const REQ_ID = "44444444-4444-4444-8444-444444444444";
@@ -752,7 +758,7 @@ type PersistCall = [
       answer_gate: Record<string, unknown>;
       persistence: { turn_row_id: string | null; outcome: string };
       jev_decision?: unknown;
-      delivery?: { frames_written: boolean; citations_written: number };
+      response_write?: { frames_written: boolean; citations_written: number };
     };
   },
 ];
@@ -1694,7 +1700,7 @@ describe("#6048 — a body cancel after the commit still persists the packet and
     expect(vendorRequests()).toHaveLength(0);
     expect(r.packet.jev_decision ?? null).toBeNull();
     expect(r.meta.outcome).toBe("answered");
-    expect(r.packet.delivery).toEqual({ frames_written: true, citations_written: 1 });
+    expect(r.packet.response_write).toEqual({ frames_written: true, citations_written: 1 });
     expectDispositionMatchesHistory(r);
     expect(handoffSpy).toHaveBeenCalledTimes(1);
   });
@@ -1790,23 +1796,52 @@ describe("#6048 — a body cancel after the commit still persists the packet and
     expectDispositionMatchesHistory(r, 1);
   });
 
-  it("F5: decision call on, a response nobody reads: the settle waits a bounded time for the handoff and then gives up -> nothing is sent, ONE packet and usage row, and reading the body afterwards changes nothing", async () => {
+  // With the progress stream on, the progress stream reads the turn's own response to its
+  // end by itself, whether or not anyone reads what it writes: only the final response tells.
+  it.each([false, true])("F5: decision call on, a response nobody reads (progress stream %s): the settle waits a bounded time for the handoff and then gives up -> nothing is sent, ONE packet and usage row, and reading the body afterwards changes nothing", async (progress) => {
     decisionCallOn();
     stubFetch(REDRAFT, [verdict("safe", "none")]);
-    const res = await POST(reqWith(PLAIN_TURN), params);
+    const res = await POST(reqWith(PLAIN_TURN, { progress }), params);
     expect(res.status).toBe(200);
     await turnWroteEverything();
-    await new Promise((r) => setTimeout(r, 1200));
+    await new Promise((r) => setTimeout(r, 1000));
     expect(persistMock.persistTurnUsage).not.toHaveBeenCalled(); // waiting, not skipped
-    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1), { timeout: 4500, interval: 50 });
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1), { timeout: 12_000, interval: 50 });
     expect(vendorRequests()).toHaveLength(0);
     expect(await drain(res.body!.getReader())).toBe("closed");
     const r = await settled();
     expect(vendorRequests()).toHaveLength(0);
     expect(r.packet.jev_decision ?? null).toBeNull();
-    expect(r.packet.delivery).toEqual({ frames_written: true, citations_written: 1 });
+    expect(r.packet.response_write).toEqual({ frames_written: true, citations_written: 1 });
     expectDispositionMatchesHistory(r);
-  }, 15_000);
+  }, 30_000);
+
+  it("F5: decision call on, progress and sheet on, the sheet receipt wrapper FAILS after the turn handler returned: the progress stream ends cleanly with an error frame, the response is read to its end, and nothing is sent", async () => {
+    decisionCallOn();
+    sheetOn();
+    stubFetch(REDRAFT, [verdict("safe", "none")]);
+    (withSheetReceiptSpy as unknown as ReturnType<typeof vi.fn>).mockImplementationOnce(async () => {
+      throw new Error("sheet receipt failed (test)");
+    });
+    const res = await POST(reqWith(SHEET_TURN, { progress: true }), params);
+    const out = follow(res);
+    // A clean end, read in full: the final response alone would look handed off.
+    expect(await out.ended).toBe("closed");
+    expect(out.text()).toContain('"kind":"http_error"');
+    expect(out.text()).toContain("data: [DONE]");
+    expect(out.text()).not.toContain('"kind":"content"');
+    // The turn itself ran to its end behind the failed wrapper and wrote every frame.
+    await turnWroteEverything();
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1), { timeout: 12_000, interval: 50 });
+    const r = await settled();
+    expect(vendorRequests()).toHaveLength(0);
+    expect(r.packet.jev_decision ?? null).toBeNull();
+    expect(r.packet.response_write).toEqual({ frames_written: true, citations_written: 1 });
+    // (The route's entry point closes the attempt itself when a wrapper throws, as on main, so
+    // the usual "closed by the usage write alone" check does not apply to this exit.)
+    expect(r.meta.outcome).toBe("answered");
+    expect(evaluateMock).not.toHaveBeenCalled();
+  }, 30_000);
 
   it("F5: decision call on, the reader takes every frame through the end marker and then cancels instead of reading the end: nothing is sent", async () => {
     decisionCallOn();
@@ -1839,6 +1874,9 @@ describe("#6048 — a body cancel after the commit still persists the packet and
       expect(done).toBe(false);
       seen += d.decode(value, { stream: true });
     }
+    // The progress stream has by now read the turn's own response to its end; the reader has not.
+    await settleAll();
+    expect(persistMock.persistTurnUsage).not.toHaveBeenCalled();
     await reader.cancel();
     const r = await settled();
     expect(vendorRequests()).toHaveLength(0);
@@ -1887,19 +1925,19 @@ describe("#6048 — a body cancel after the commit still persists the packet and
   });
 
   // F6: what the answer COMMITTED (history, `citations_shipped`, the ledger's citation flag)
-  // is kept apart from what the route WROTE to its response stream (`delivery`).
-  it("F6: a cited answer cancelled before its sources frame: history and the committed count keep the citation, the delivery record says none was written, ONE usage row", async () => {
+  // is kept apart from what the route WROTE to its response stream (`response_write`).
+  it("F6: a cited answer cancelled before its sources frame: history and the committed count keep the citation, the write record says none was written, ONE usage row", async () => {
     const r = await answeredCancelledAt("after_content");
     expect(r.evidence.filter((e) => typeof e.citationId === "string")).toHaveLength(1);
     expect(r.gate.citations_shipped).toBe(1);
     expect(r.meta.citationsPresent).toBe(true);
-    expect(r.packet.delivery).toEqual({ frames_written: false, citations_written: 0 });
+    expect(r.packet.response_write).toEqual({ frames_written: false, citations_written: 0 });
   });
 
   it("F6: cancelled after the sources frame (after the usage frame, before status): the citation was written, the body was not completed", async () => {
     const r = await answeredCancelledAt("after_usage");
     expect(r.gate.citations_shipped).toBe(1);
-    expect(r.packet.delivery).toEqual({ frames_written: false, citations_written: 1 });
+    expect(r.packet.response_write).toEqual({ frames_written: false, citations_written: 1 });
   });
 
   it("F6 control: the same answer read to its end: one citation written, every frame written", async () => {
@@ -1908,10 +1946,10 @@ describe("#6048 — a body cancel after the commit still persists the packet and
     expect(await drain(res.body!.getReader())).toBe("closed");
     const r = await settled();
     expect(r.gate.citations_shipped).toBe(1);
-    expect(r.packet.delivery).toEqual({ frames_written: true, citations_written: 1 });
+    expect(r.packet.response_write).toEqual({ frames_written: true, citations_written: 1 });
   });
 
-  it("F6 control: an exit that is not the final path writes no delivery record (the history write failed on a request with an id)", async () => {
+  it("F6 control: an exit that is not the final path writes no write record (the history write failed on a request with an id)", async () => {
     stubFetch(REDRAFT, [verdict("safe", "none")]);
     const boom = new Error("history write failed (test)");
     domainMock.recordTurn.mockImplementation(async () => {
@@ -1922,7 +1960,7 @@ describe("#6048 — a body cancel after the commit still persists the packet and
     await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
     const [, , telemetry] = persistMock.persistTurnUsage.mock.calls[0] as unknown as PersistCall;
     expect(telemetry.packet.persistence.outcome).toBe("failed");
-    expect("delivery" in telemetry.packet).toBe(false);
+    expect("response_write" in telemetry.packet).toBe(false);
   });
 
   it("F2: after the commit a delivery failure does not wait on releasing the request claim: the reader gets the error and ONE packet is written while a release would never return", async () => {

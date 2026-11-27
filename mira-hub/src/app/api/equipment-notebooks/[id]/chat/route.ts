@@ -1280,7 +1280,7 @@ async function handleChatTurn(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
   ingress: IngressRecord,
-  /** Tracks the response that leaves the route; null when the decision call is switched off. */
+  /** Tracks this turn's response on its way out of the route; null when the decision call is switched off. */
   handoff: ResponseHandoff | null,
 ) {
   const ctx = await sessionOr401();
@@ -1598,8 +1598,8 @@ async function handleChatTurn(
       latencyMs: number | null;
       /** False when the route could not write the whole answer to its response stream: no decision call is made (see below). */
       delivered?: boolean;
-      /** What the final path wrote to its response stream (see the packet's `delivery`). */
-      delivery?: TurnEvidencePacket["delivery"];
+      /** What the final path wrote to its response stream (see the packet's `response_write`). */
+      responseWrite?: TurnEvidencePacket["response_write"];
     },
   ): Promise<void> => {
     const { packet, anomalies } = rec.finish({
@@ -1614,7 +1614,7 @@ async function handleChatTurn(
     // confirm it) succeed — the recordTurn-failure exit path passes it
     // explicitly as null; every other call site passes the real row id.
     packet.persistence.outcome = turnRowId ? "ok" : "failed";
-    if (opts.delivery) packet.delivery = opts.delivery;
+    if (opts.responseWrite) packet.response_write = opts.responseWrite;
     // SHADOW (MIRA_JEV_DECISION=1, off by default). The one metered judgment
     // call for this turn.
     //
@@ -1658,9 +1658,13 @@ async function handleChatTurn(
     // the route can be a wrapper around that stream (the progress stream, the sheet
     // receipt) that is cancelled before it reads a single frame, and the frames then sit
     // in a queue nobody drains. So the call needs a second, independent yes: `handoff`
-    // tracks the outermost response and confirms only when its consumer read every byte
-    // and the end, with no cancel and no request abort. No tracker, a cancel, an abort,
-    // or no answer within HANDOFF_WAIT_MS all mean NO CALL: unknown is never a yes. The
+    // tracks this turn's own response and the response that leaves the route, and confirms
+    // only when BOTH were read to their end, with no cancel, no error and no request
+    // abort. (The outer one alone is not enough either: when a wrapper fails, the progress
+    // stream ends cleanly with an error frame and the answer never passed through it.) No
+    // tracker, a cancel, an abort, an error, or no answer within HANDOFF_WAIT_MS all mean
+    // NO CALL: unknown is never a yes. `delivered` stays a condition of its own, checked
+    // first: an answer whose frames were not all written is never asked about. The
     // wait is bounded and applies only while the call is switched on, so the packet and
     // usage row are never held open by a reader that stalls; with the call off nothing
     // waits and the record says "disabled" exactly as before. Extending it to the safety path
@@ -6404,7 +6408,7 @@ async function handleChatTurn(
             // answer committed. `citations_shipped` and the ledger's citation flag stay
             // the committed answer's, so a transport failure never reads as a grounding
             // failure; this says whether the sources frame was written at all.
-            delivery: {
+            responseWrite: {
               frames_written: delivered,
               citations_written: sourcesFrameWritten ? emittedCitations.length : 0,
             },
@@ -6696,12 +6700,15 @@ export async function POST(req: NextRequest, routeCtx: { params: Promise<{ id: s
   // (handleChatTurn below still does the real `req.json()`); any failure here
   // just means no receipt frame, never a broken turn. Session is re-derived
   // independently (never a body-supplied tenant).
-  // Codex round 2 on #6082, F5: the decision call needs to know the response that LEAVES
-  // this function was read to its end. Installed only while that call is switched on, and
-  // on every return below, after the last wrapper. It listens to the request's abort
-  // itself, from here, because the wrappers below can still be waiting when that fires.
+  // Codex round 2 on #6082, F5: the decision call needs to know that the turn's own
+  // response (`own`, before any wrapper reads it) AND the response that leaves this
+  // function (`leaving`, after the last wrapper) were both read to their end. Installed
+  // only while that call is switched on, and on every return below. It listens to the
+  // request's abort itself, from here, because the wrappers below can still be waiting
+  // when that fires.
   const handoff = jevDecisionEnabled() ? createResponseHandoff(req.signal) : null;
-  const leaving = (res: Response): Response => (handoff ? handoff.track(res) : res);
+  const own = (res: Response): Response => (handoff ? handoff.own(res) : res);
+  const leaving = (res: Response): Response => (handoff ? handoff.final(res) : res);
   let sheetReceiptCtx: SheetReceiptContext | null = null;
   if (livingSheetEnabled() && notebookId) {
     try {
@@ -6728,7 +6735,7 @@ export async function POST(req: NextRequest, routeCtx: { params: Promise<{ id: s
     const progressed = withProgressStream(req, async () => {
       let innerStatus = 500;
       try {
-        const inner = await handleChatTurn(req, routeCtx, ingress, handoff);
+        const inner = own(await handleChatTurn(req, routeCtx, ingress, handoff));
         innerStatus = inner.status;
         return sheetReceiptCtx ? await withSheetReceipt(inner, sheetReceiptCtx) : inner;
       } catch (err) {
@@ -6746,7 +6753,7 @@ export async function POST(req: NextRequest, routeCtx: { params: Promise<{ id: s
   }
   let status = 500;
   try {
-    const res = await handleChatTurn(req, routeCtx, ingress, handoff);
+    const res = own(await handleChatTurn(req, routeCtx, ingress, handoff));
     status = res.status;
     return leaving(sheetReceiptCtx ? await withSheetReceipt(res, sheetReceiptCtx) : res);
   } catch (err) {

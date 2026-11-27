@@ -368,10 +368,11 @@ export type TurnEvidencePacket = {
    * checks read: a response cancelled before its sources frame still committed a cited
    * answer to history, and must not look like an uncited one.
    *
-   * This is the route's own write, not proof that a client read it. Optional: absent on
-   * every exit that is not the final path, and on packets written before it existed.
+   * This is the route's own write, NOT delivery: a response can be cancelled with every
+   * frame written and none read. Optional: absent on every exit that is not the final
+   * path, and on packets written before it existed.
    */
-  delivery?: {
+  response_write?: {
     /** Every frame was written to the response stream and the stream was closed. */
     frames_written: boolean;
     /** Citations in the sources frame when that frame was written; 0 when it was not. */
