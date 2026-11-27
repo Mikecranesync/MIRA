@@ -1579,8 +1579,8 @@ describe("#6048 — a body cancel after the commit still persists the packet and
   // ── Codex round 3 on #6082 (F8) ──────────────────────────────────────────────
   // A turn no provider served carries no answer. Its error stream ends cleanly and can be
   // read to its end, so "every frame written" and "handed off" are both true of it. The
-  // decision call still has nothing to judge, and the question, the excerpts and any photo
-  // observations must not go to the vendor for an answer that was never given.
+  // decision call still has nothing to judge, and it must not send the question, the excerpts
+  // and any photo observations to the vendor for an answer that was never given.
   /** Every provider answers 500; the response is read to its end. Returns the frames that arrived. */
   async function exhaustedReadToEnd() {
     vi.stubGlobal("fetch", vi.fn(async () => new Response("down", { status: 500 })));
@@ -1612,8 +1612,8 @@ describe("#6048 — a body cancel after the commit still persists the packet and
   // A completion that is only whitespace is recorded as an answered turn (unchanged here, and
   // the same on main): one content frame of blanks goes out and history keeps the blanks. There
   // is still no answer to judge, so the question and the excerpts are not sent for it either.
-  it("F8: decision call on, the provider's whole completion is whitespace and the response is read to its end: nothing is sent to the vendor, no decision record, ONE packet and usage row", async () => {
-    decisionCallOn();
+  /** The provider's whole completion is whitespace; the response is read to its end. Returns the frames that arrived. */
+  async function blankCompletionReadToEnd() {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (_url: string | URL | Request, init?: RequestInit) =>
@@ -1621,9 +1621,22 @@ describe("#6048 — a body cancel after the commit still persists the packet and
       ),
     );
     const res = await POST(req({ message: Q_PLAIN, sourceDocIds: [DOC_A], clientRequestId: REQ_ID }, false), params);
-    expect(await drain(res.body!.getReader())).toBe("closed");
+    expect(res.status).toBe(200);
+    return (await res.text())
+      .split("\n\n")
+      .filter((l) => l.startsWith("data: ") && l.trim() !== "data: [DONE]")
+      .map((l) => JSON.parse(l.slice(6)) as Frame & { status?: string });
+  }
+
+  it("F8: decision call on, the provider's whole completion is whitespace and the response is read to its end: nothing is sent to the vendor, no decision record, ONE packet and usage row", async () => {
+    decisionCallOn();
+    const frames = await blankCompletionReadToEnd();
     const r = await settled();
-    // Preconditions: recorded as answered, and the whole recorded answer is blanks (not null, not empty).
+    // Preconditions: what the client got as content is blanks only, the turn is recorded as
+    // answered, and the whole recorded answer is blanks (not null, not empty).
+    const content = frames.filter((f) => f.kind === "content");
+    expect(content.length).toBeGreaterThan(0);
+    expect(content.map((f) => f.content ?? "").join("").trim()).toBe("");
     expect(r.turn.answerStatus).toBe("answered");
     expect(typeof r.turn.answerText).toBe("string");
     expect(String(r.turn.answerText).length).toBeGreaterThan(0);
@@ -1633,6 +1646,80 @@ describe("#6048 — a body cancel after the commit still persists the packet and
     expect(r.packet.jev_decision ?? null).toBeNull();
     expect(r.packet.persistence).toMatchObject({ turn_row_id: ROW_ID, outcome: "ok" });
     expect(closeTurnMock).not.toHaveBeenCalled();
+  });
+
+  it("F8 control: decision call OFF, the same blank answered turn read to its end: the packet carries the disabled record as before", async () => {
+    await blankCompletionReadToEnd();
+    const r = await settled();
+    expect(r.turn.answerStatus).toBe("answered");
+    expect(String(r.turn.answerText).trim()).toBe("");
+    expect(handoffSpy).not.toHaveBeenCalled();
+    expect(evaluateMock).toHaveBeenCalledTimes(1);
+    expect(r.packet.jev_decision).toMatchObject({ skipped_reason: "disabled" });
+  });
+
+  // The answer check comes before the handoff: a turn with no answer has nothing to wait for.
+  // An answered turn nobody reads waits out the handoff (pinned below, "a response nobody reads");
+  // this one must not.
+  it("F8: decision call on, every provider fails and NOBODY reads the response: the settle does not wait for the handoff, and nothing is sent", async () => {
+    decisionCallOn();
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("down", { status: 500 })));
+    const res = await POST(req({ message: Q_PLAIN, sourceDocIds: [DOC_A], clientRequestId: REQ_ID }, false), params);
+    expect(res.status).toBe(200);
+    // Well inside the 4 second handoff wait, with the body never read.
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1), { timeout: 1500, interval: 25 });
+    expect(handoffSpy).toHaveBeenCalledTimes(1); // the tracker was installed; the settle did not need its answer
+    const r = await settled();
+    expect(r.turn.answerStatus).toBe("error");
+    expect(r.turn.answerText).toBeNull();
+    expect(vendorRequests()).toHaveLength(0);
+    expect(evaluateMock).not.toHaveBeenCalled();
+    expect(r.packet.jev_decision ?? null).toBeNull();
+    await res.body!.cancel();
+  });
+
+  // With the answer gate OFF the draft is streamed as it arrives. A provider that fails part-way
+  // has already put fragments on the wire; the turn is still an error with no answer, and the
+  // fragments are not sent to the vendor as "the answer MIRA delivered" (on main they were).
+  it("F8: decision call on, answer gate off, the only provider fails part-way through its stream: fragments reached the client, the turn is an error, and nothing is sent", async () => {
+    decisionCallOn();
+    process.env.NOTEBOOK_ANSWER_GATE = "0";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+        if (!(typeof init?.body === "string" && init.body.includes('"stream":true'))) return new Response("down", { status: 500 });
+        let sent = false;
+        return new Response(
+          new ReadableStream<Uint8Array>({
+            pull(c) {
+              if (!sent) {
+                sent = true;
+                for (const w of ["Check ", "the ", "ribbon ", "cable ", "connector ", "first. "]) c.enqueue(enc.encode(delta(w)));
+                return;
+              }
+              c.error(new Error("connection reset (test)"));
+            },
+          }),
+          { status: 200 },
+        );
+      }),
+    );
+    const res = await POST(req({ message: Q_PLAIN, sourceDocIds: [DOC_A], clientRequestId: REQ_ID }, false), params);
+    expect(res.status).toBe(200);
+    const frames = (await res.text())
+      .split("\n\n")
+      .filter((l) => l.startsWith("data: ") && l.trim() !== "data: [DONE]")
+      .map((l) => JSON.parse(l.slice(6)) as Frame & { status?: string });
+    const r = await settled();
+    // Preconditions: a fragment did reach the client, and the turn is an error with no answer.
+    expect(frames.filter((f) => f.kind === "content").map((f) => f.content ?? "").join("")).toContain("Check the ribbon");
+    expect(frames.at(-1)).toMatchObject({ kind: "status", status: "error" });
+    expect(r.turn.answerStatus).toBe("error");
+    expect(r.turn.answerText).toBeNull();
+    expect(vendorRequests()).toHaveLength(0);
+    expect(evaluateMock).not.toHaveBeenCalled();
+    expect(r.packet.jev_decision ?? null).toBeNull();
+    expect(r.packet.persistence).toMatchObject({ turn_row_id: ROW_ID, outcome: "ok" });
   });
 
   it("F8 control: decision call OFF, the same unserved turn read to its end: no tracker, and the packet carries the disabled record as before", async () => {

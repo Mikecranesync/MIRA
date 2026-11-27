@@ -1680,15 +1680,19 @@ async function handleChatTurn(
     // throwing, so an outage shows up as a value in the data rather than a gap.
     if (decisionState) {
       if (opts.delivered !== false) {
-        // NO ANSWER, NO CALL (Codex round 3 on #6082, F8). A turn no provider served ends
-        // with an error status and no content frame. Its stream still closes cleanly and
-        // can be read to its end, so `delivered` and the handoff are both true of it, and
-        // neither says an answer was given. `answerText` is the answer this turn served
-        // (null when none was), the same value the content frames are written from: without
-        // one there is nothing to judge, and the question, the excerpts and the photo
-        // observations stay here. A completion that is only whitespace is recorded as an
-        // answered turn (unchanged by this, and the same on main) and is no answer to judge
-        // either. Checked before the handoff, so such a turn does not wait for it.
+        // NO ANSWER, NO CALL (Codex round 3 on #6082, F8). A turn no provider served is
+        // recorded as an error with no answer text and ends with an error status. Its
+        // stream still closes cleanly and can be read to its end, so `delivered` and the
+        // handoff are both true of it, and neither says an answer was given. `answerText`
+        // is the answer this turn recorded as served (null when none was). Without one
+        // there is nothing to judge, and THIS call sends nothing. That includes a provider
+        // that failed part-way with the answer gate off: the fragments already streamed
+        // are not an answer, the turn is an error, and they are not sent as one. A
+        // completion that is only whitespace is recorded as an answered turn (not changed
+        // here) and is no answer to judge either; when a fixed banner was prefixed to it
+        // the text is not blank, and the call is made as for any served text. Checked
+        // before the handoff, so a turn with no answer does not wait for it. (The separate
+        // sufficiency shadow starts before generation and is not gated here.)
         const answered = typeof opts.answerText === "string" && opts.answerText.trim() !== "";
         const maySend = !jevDecisionEnabled() || (answered && handoff !== null && (await handoff.confirmed(HANDOFF_WAIT_MS)));
         if (maySend) packet.jev_decision = await evaluateTurnDecision(decisionState).catch(() => null);
