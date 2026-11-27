@@ -137,7 +137,7 @@ components:
     required: true
     expected:
       # The highest-numbered migration this release expects applied.
-      level: "117_auth_schema_and_identity_provenance.sql"
+      level: "118_notebook_confirmed_numbers.sql"
     probe:
       kind: none
       why: >-

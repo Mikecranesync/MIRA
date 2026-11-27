@@ -230,3 +230,219 @@ describe("regression — an unknown frame still falls back to the inspection box
     expect(view.container.textContent).toContain("Unrecognized part (preserved for inspection)");
   });
 });
+
+function withOfferedNumber(offeredNumber: string, outcome?: "confirmed" | "superseded") {
+  return (f: ShellFixture): ShellFixture => ({
+    ...f,
+    thread: {
+      ...f.thread,
+      turns: f.thread.turns.map((t) => ({
+        ...t,
+        parts: t.parts.map((p) => (p.type === "identity_proposal" ? { ...p, offeredNumber, ...(outcome ? { priorOutcome: outcome } : {}) } : p)),
+      })),
+    },
+  });
+}
+const box = (view: HarnessView) => view.container.querySelector<HTMLInputElement>('input[type="checkbox"]');
+
+describe("identity_proposal — the offered order number (#6085)", () => {
+  it("shows the offered number beside a box that starts unticked", () => {
+    const view = render({ onConfirmIdentity: async () => ({ manualReady: false }) }, withOfferedNumber("SS5Y3-DUW01302-A"));
+    expect(view.container.textContent).toContain("SS5Y3-DUW01302-A is this machine's number");
+    expect(box(view)).not.toBeNull();
+    expect(box(view)!.checked).toBe(false);
+  });
+
+  it("an unticked confirm sends no number", async () => {
+    const calls: IdentityProposal[] = [];
+    const view = render({ onConfirmIdentity: async (p: IdentityProposal) => { calls.push(p); return { manualReady: false }; } }, withOfferedNumber("SS5Y3-DUW01302-A"));
+    view.click(view.buttonNamed("Use its manuals")!);
+    await view.flush();
+    expect(calls).toEqual([{ manufacturer: "SMC", model: "SS5Y3-DUW01302" }]);
+  });
+
+  it("a ticked confirm sends the number", async () => {
+    const calls: IdentityProposal[] = [];
+    const view = render({ onConfirmIdentity: async (p: IdentityProposal) => { calls.push(p); return { manualReady: false }; } }, withOfferedNumber("SS5Y3-DUW01302-A"));
+    view.click(box(view)!);
+    await view.flush();
+    expect(box(view)!.checked).toBe(true);
+    view.click(view.buttonNamed("Use its manuals")!);
+    await view.flush();
+    expect(calls).toEqual([{ manufacturer: "SMC", model: "SS5Y3-DUW01302", confirmedNumber: "SS5Y3-DUW01302-A" }]);
+  });
+
+  it("a settled card shows no box", () => {
+    const view = render({}, withOfferedNumber("SS5Y3-DUW01302-A", "confirmed"));
+    expect(box(view)).toBeNull();
+    expect(view.container.textContent).not.toContain("is this machine's number");
+  });
+
+  it("control: a card without an offered number renders exactly as before", () => {
+    const view = render({ onConfirmIdentity: async () => ({ manualReady: false }) });
+    expect(box(view)).toBeNull();
+    expect(view.container.textContent).not.toContain("is this machine's number");
+  });
+});
+
+// #6104 r1 F2: the host replaces the streamed card with its saved copy under a new turn id, which
+// mounts a new card. The tick is kept by the host's tickKey (the send's request id) together with
+// the card's identity and offered number; without a key the card starts unticked, as before.
+function withCard(fields: { offeredNumber: string; tickKey?: string }) {
+  return (f: ShellFixture): ShellFixture => ({
+    ...f,
+    thread: {
+      ...f.thread,
+      turns: f.thread.turns.map((t) => ({ ...t, parts: t.parts.map((p) => (p.type === "identity_proposal" ? { ...p, ...fields } : p)) })),
+    },
+  });
+}
+const confirmHooks = (calls: IdentityProposal[]) => ({ onConfirmIdentity: async (p: IdentityProposal) => { calls.push(p); return { manualReady: false }; } });
+async function tickAndReplace(first: { offeredNumber: string; tickKey?: string }, second: { offeredNumber: string; tickKey?: string }) {
+  const firstView = render(confirmHooks([]), withCard(first));
+  firstView.click(box(firstView)!);
+  await firstView.flush();
+  expect(box(firstView)!.checked).toBe(true); // precondition: the first card was ticked
+  firstView.cleanup();
+  views.splice(views.indexOf(firstView), 1);
+  const calls: IdentityProposal[] = [];
+  return { view: render(confirmHooks(calls), withCard(second)), calls };
+}
+
+describe("identity_proposal: a tick survives the saved card replacing the streamed one (#6104 r1 F2)", () => {
+  it("the saved copy of a ticked card is ticked, and its confirm sends the number", async () => {
+    const card = { offeredNumber: "SS5Y3-DUW01302-A", tickKey: "req-f2-same" };
+    const { view, calls } = await tickAndReplace(card, card);
+    expect(box(view)!.checked).toBe(true);
+    view.click(view.buttonNamed("Use its manuals")!);
+    await view.flush();
+    expect(calls).toEqual([{ manufacturer: "SMC", model: "SS5Y3-DUW01302", confirmedNumber: "SS5Y3-DUW01302-A" }]);
+  });
+
+  it("control: a card from another send starts unticked", async () => {
+    const { view } = await tickAndReplace({ offeredNumber: "SS5Y3-DUW01302-A", tickKey: "req-f2-a" }, { offeredNumber: "SS5Y3-DUW01302-A", tickKey: "req-f2-b" });
+    expect(box(view)!.checked).toBe(false);
+  });
+
+  it("control: the same send offering another number starts unticked", async () => {
+    const { view } = await tickAndReplace({ offeredNumber: "SS5Y3-DUW01302-A", tickKey: "req-f2-c" }, { offeredNumber: "SS5Y3-DUW01302-B", tickKey: "req-f2-c" });
+    expect(box(view)!.checked).toBe(false);
+  });
+
+  it("control: without a tick key a new card starts unticked, as before", async () => {
+    const { view } = await tickAndReplace({ offeredNumber: "SS5Y3-DUW01302-A" }, { offeredNumber: "SS5Y3-DUW01302-A" });
+    expect(box(view)!.checked).toBe(false);
+  });
+
+  it("unticking is kept too", async () => {
+    const card = { offeredNumber: "SS5Y3-DUW01302-A", tickKey: "req-f2-untick" };
+    const firstView = render(confirmHooks([]), withCard(card));
+    firstView.click(box(firstView)!);
+    await firstView.flush();
+    firstView.click(box(firstView)!);
+    await firstView.flush();
+    expect(box(firstView)!.checked).toBe(false); // precondition
+    firstView.cleanup();
+    views.splice(views.indexOf(firstView), 1);
+    expect(box(render(confirmHooks([]), withCard(card)))!.checked).toBe(false);
+  });
+
+  // Codex r1 F2 remediation: the choice is for one offer; a card whose offer changes in place
+  // (same turn, re-delivered by the host) starts that offer unticked.
+  const redeliver = (view: HarnessView, fields: { offeredNumber: string; tickKey?: string }) =>
+    view.dispatch({ type: "hydrate", data: { thread: withCard(fields)(getFixture("identity-proposal")).thread } });
+
+  it("the same card offering another number in place is unticked, and its confirm sends no number", async () => {
+    const calls: IdentityProposal[] = [];
+    const card = { offeredNumber: "SS5Y3-DUW01302-A", tickKey: "req-f2-inplace" };
+    const view = render(confirmHooks(calls), withCard(card));
+    view.click(box(view)!);
+    await view.flush();
+    expect(box(view)!.checked).toBe(true); // precondition
+    redeliver(view, { ...card, offeredNumber: "SS5Y3-DUW01302-B" });
+    await view.flush();
+    expect(box(view)!.checked).toBe(false);
+    view.click(view.buttonNamed("Use its manuals")!);
+    await view.flush();
+    expect(calls).toEqual([{ manufacturer: "SMC", model: "SS5Y3-DUW01302" }]);
+  });
+
+  it("without a tick key, the same card offering another number in place is unticked", async () => {
+    const view = render(confirmHooks([]), withCard({ offeredNumber: "SS5Y3-DUW01302-A" }));
+    view.click(box(view)!);
+    await view.flush();
+    expect(box(view)!.checked).toBe(true); // precondition
+    redeliver(view, { offeredNumber: "SS5Y3-DUW01302-B" });
+    await view.flush();
+    expect(box(view)!.checked).toBe(false);
+  });
+
+  it("control: the same card re-delivered with the same offer stays ticked", async () => {
+    const card = { offeredNumber: "SS5Y3-DUW01302-A", tickKey: "req-f2-redeliver" };
+    const view = render(confirmHooks([]), withCard(card));
+    view.click(box(view)!);
+    await view.flush();
+    redeliver(view, card);
+    await view.flush();
+    expect(box(view)!.checked).toBe(true);
+  });
+});
+
+// #6104 r1 F2 on the surface the Hub and mobile render ("assistant"): assistant-ui keeps
+// components by position, so the saved copy usually lands in the streamed card's slot. The tick
+// must follow the send, not the slot: kept when the card moves, dropped when another send's card
+// takes the slot.
+describe("identity_proposal on the assistant surface: the tick follows the send (#6104 r1 F2)", () => {
+  type CardFields = { offeredNumber: string; tickKey?: string };
+  const isCardTurn = (t: ShellFixture["thread"]["turns"][number]) => t.parts.some((p) => p.type === "identity_proposal");
+  const threadWith = (fields: CardFields, opts: { cardTurnId?: string; before?: number } = {}) => {
+    const base = withCard(fields)(getFixture("identity-proposal")).thread;
+    const turns = base.turns.map((t) => (isCardTurn(t) && opts.cardTurnId ? { ...t, id: opts.cardTurnId } : t));
+    const filler = Array.from({ length: opts.before ?? 0 }, (_, i) => ({
+      ...turns[0]!, id: `filler-${i}`, role: (i % 2 ? "assistant" : "user") as "assistant" | "user", parts: [{ type: "text" as const, text: `Earlier message ${i}` }],
+    }));
+    return { ...base, turns: [...filler, ...turns] };
+  };
+  function renderAssistant(fields: CardFields, calls: IdentityProposal[] = []) {
+    const view = renderHarness({ surface: "mobile", fixture: "identity-proposal", conversationSurface: "assistant", hooks: confirmHooks(calls), transformFixture: withCard(fields) });
+    views.push(view);
+    return view;
+  }
+  async function tick(view: HarnessView) {
+    view.click(box(view)!);
+    await view.flush();
+    expect(box(view)!.checked).toBe(true); // precondition
+  }
+  const swap = async (view: HarnessView, thread: ShellFixture["thread"]) => {
+    view.dispatch({ type: "hydrate", data: { thread } });
+    await view.flush();
+  };
+
+  it("control: the saved copy in the same slot under a new turn id stays ticked", async () => {
+    const card = { offeredNumber: "SS5Y3-DUW01302-A", tickKey: "req-as-same" };
+    const view = renderAssistant(card);
+    await tick(view);
+    await swap(view, threadWith(card, { cardTurnId: "row-saved-a" }));
+    expect(box(view)!.checked).toBe(true);
+  });
+
+  it("the saved copy moved to a new slot stays ticked, and its confirm sends the number", async () => {
+    const calls: IdentityProposal[] = [];
+    const card = { offeredNumber: "SS5Y3-DUW01302-A", tickKey: "req-as-moved" };
+    const view = renderAssistant(card, calls);
+    await tick(view);
+    await swap(view, threadWith(card, { cardTurnId: "row-moved-a", before: 2 }));
+    expect(box(view)!.checked).toBe(true);
+    view.click(view.buttonNamed("Use its manuals")!);
+    await view.flush();
+    expect(calls).toEqual([{ manufacturer: "SMC", model: "SS5Y3-DUW01302", confirmedNumber: "SS5Y3-DUW01302-A" }]);
+  });
+
+  it("another send's card taking the slot starts unticked", async () => {
+    const view = renderAssistant({ offeredNumber: "SS5Y3-DUW01302-A", tickKey: "req-as-first" });
+    await tick(view);
+    await swap(view, threadWith({ offeredNumber: "SS5Y3-DUW01302-A", tickKey: "req-as-other" }, { cardTurnId: "row-other-a" }));
+    expect(box(view)!.checked).toBe(false);
+  });
+});
+

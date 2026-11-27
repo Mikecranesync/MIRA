@@ -65,8 +65,10 @@ import {
   liveFixture,
   machinesFor,
   projectsFor,
+  answerTickKeys,
   toThread,
   withManualSearchOverrides,
+  withTickKeys,
   type UnifiedNotebookMeta,
 } from "../unified/to-interaction";
 import type { ChatV2Handlers } from "./ChatV2";
@@ -532,7 +534,11 @@ function UnifiedChatForNotebook({
     handlersRef.current.onSendErrorDismissed?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.sendError]);
-  const baseThread = useMemo(() => toThread(messages, fullMeta), [messages, fullMeta]);
+  // #6104 r1 F2: identity cards carry their send's request id, so a tick follows the send.
+  const baseThread = useMemo(
+    () => withTickKeys(toThread(messages, fullMeta), answerTickKeys(turns, liveTurns)),
+    [messages, fullMeta, turns, liveTurns],
+  );
   const baseThreadRef = useRef(baseThread);
   baseThreadRef.current = baseThread;
   // #5750 r2: one stable key per completed answer, in thread order (every

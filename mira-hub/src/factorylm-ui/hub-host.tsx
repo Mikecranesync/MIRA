@@ -125,6 +125,7 @@ import {
   sendRecoveryId,
   recoveryOwnsDraft,
   recoverySendBody,
+  identityConfirmBody,
 } from "./hub-host-logic";
 import { trackSafetyStop, type SafetyStopTracker } from "./safety-stop-marker";
 import { resumeProjectSelection } from "./project-resume";
@@ -1558,8 +1559,7 @@ export function HubShellHost() {
   const onConfirmIdentity = useCallback(async (proposal: IdentityProposal): Promise<ConfirmIdentityResult> => {
     const notebookId = selectionRef.current?.notebookId;
     if (!notebookId) throw new Error("no notebook selected");
-    const body: Record<string, string> = { manufacturer: proposal.manufacturer, model: proposal.model };
-    if (proposal.catalogNumber) body.catalogNumber = proposal.catalogNumber;
+    const body = identityConfirmBody(proposal);
     const res = await fetch(`${API_BASE}/api/equipment-notebooks/${encodeURIComponent(notebookId)}/identity/confirm/`, {
       method: "POST",
       headers: { "content-type": "application/json", accept: "application/json" },
