@@ -220,6 +220,12 @@ const NOT_A_NOUN = "(?<!\\b(?:the|a|an|this|that|any|no|new|old|existing|factory
  * bridge. Only "bridge" carries that reading: "short the signal to the e-stop input" is still electrical.
  */
 const COMMS_BRIDGE = /^bridg\w*\s+(?:\S+\s+){0,2}?(?:comms?|communications?|networks?|ethernet|data|connections?|traffic|messages?|serial|modbus|profinet|ethercat|devicenet)\b/i;
+/** #6043: a comms object carried on a physical conductor, or landed on an input/terminal/pin, is an electrical bridge. */
+function isCommsBridge(matched: string, after: string): boolean {
+  if (!COMMS_BRIDGE.test(matched)) return false;
+  if (/\b(?:wires?|cables?|leads?|conductors?|lines?)\b/i.test(matched)) return false;
+  return !/^\s+(?:inputs?|terminals?|pins?|contacts?|circuits?|loops?)\b/i.test(after);
+}
 const JUMPER_TO = new RegExp(
   `${NOT_A_NOUN}\\b${JUMP_VERB}(?:\\s+(?:out|it|them))?(?:\\s+\\S+){0,3}?\\s+(?:to|into|across|between)\\s+${ART}(?:${ADJ}\\s+){0,2}${DEVICE}\\b`,
   "i",
@@ -237,7 +243,10 @@ const SUPPLY_TO_INPUT = new RegExp(
     `(?:\\s+(?:straight|direct(?:ly)?|right|over|across|back))*\\s+(?:to|into|onto|on|across)\\s+${ART}${SAFETY_INPUT}\\b` +
     // #6033 r1/r2 F1: only a path through a safeguard is exempt ("through the safety relay"); "through the end of
     // the shift" and "through a standard PLC output" are not.
-    "(?![^.?!]{0,40}\\b(?:through|thru|via)\\s+(?:the\\s+|a\\s+|an\\s+|its\\s+)?(?:\\S+\\s+)?(?:safety(?:[-\\s]rated)?|sto|e-?stop|emergency[-\\s]stop|guard|door|interlock)s?\\b)",
+    // #6039: and only a WORKING protective device in the electrical path ("through the safety relay"), never "through
+    // the safety inspection" or "through the failed safety relay".
+    "(?![^.?!]{0,40}\\b(?:through|thru|via)\\s+(?:the\\s+|a\\s+|an\\s+|its\\s+)?(?!(?:failed|failing|faulty|bad|broken|dead|bypassed|jumpered|shorted|defeated)\\b)(?:\\S+\\s+)?" +
+    "(?:safety(?:[-\\s]rated)?|sto|e-?stop|emergency[-\\s]stop|guard|door|interlock)s?\\s+(?:relays?|controllers?|modules?|plcs?|contacts?|units?|cards?|channels?|outputs?|circuits?)\\b)",
   "i",
 );
 /**
@@ -281,12 +290,12 @@ const NOT_A_REQUEST_BEFORE =
   /\b(?:fail(?:s|ed)?|unable|couldn't|could\s+not|can't|cannot|won't|wouldn't|didn't|did\s+not|doesn't|does\s+not|tried|trying)\s+(?:\S+\s+){0,2}$/;
 const SAFETY_OFF = new RegExp(
   `\\b(?:${DEVICE}|brake\\s+(?:monitoring|control|test))((?:\\s+\\S+){0,3}?)\\s+` +
-    "(?:disabled|off|bypassed|defeated|overridden|deactivated|inactive|jumpered|jumped|shorted|turned\\s+off|switched\\s+off|not\\s+active)\\b",
+    "(?:disabled|off|bypassed|defeated|overridden|deactivated|inactive|jumpered|jumped|shorted|disconnected|unplugged|turned\\s+off|switched\\s+off|not\\s+active)\\b",
   "gi",
 );
 /** #6033 r2 F2: the state first ("with disabled STO", "a bypassed e-stop"). */
 const SAFETY_OFF_FIRST = new RegExp(
-  `\\b(?:disabled|bypassed|defeated|deactivated|inactive|jumpered|overridden|switched[-\\s]off|turned[-\\s]off)\\s+(?:${ADJ}\\s+)?(?:${DEVICE}|brake\\s+monitoring)\\b`,
+  `\\b(?:disabled|bypassed|defeated|deactivated|inactive|jumpered|overridden|disconnected|unplugged|switched[-\\s]off|turned[-\\s]off)\\s+(?:${ADJ}\\s+)?(?:${DEVICE}|brake\\s+monitoring)\\b`,
   "gi",
 );
 /** "if STO were disabled": a proposed condition, not a past one. */
@@ -513,7 +522,7 @@ function judgeClause(clause: string, messageNamesDevice: boolean, terminalLinked
     for (const m of allMatches(c.re, clause)) {
       const index = m.index ?? 0;
       if (c.terminal && !terminalLinked(jumperEndpoints(clause, m))) continue;
-      if (c.re === JUMPER_TO && COMMS_BRIDGE.test(m[0])) continue;
+      if (c.re === JUMPER_TO && isCommsBridge(m[0], clause.slice(index + m[0].length))) continue;
       // A circuit removal that has already happened ("was taken out of the STO circuit",
       // "someone has taken the door switch from the chain") is a report; a proposal is not.
       if (c.removal && isCompletedRemoval(m[0], clause.slice(0, index))) {
@@ -638,7 +647,7 @@ function reportsCurrentUnsafeState(clause: string, terminalLinked: TerminalLink 
   // #6033 r1 F3: "the 24V is shorted to the STO input" is a current unsafe state too.
   for (const m of allMatches(JUMPER_TO, clause)) {
     const before = clause.slice(0, m.index ?? 0);
-    if (!isReport(m[0]) || COMMS_BRIDGE.test(m[0]) || /\b(?:was|were|had)\s+(?:\w+\s+)?$/.test(before)) continue;
+    if (!isReport(m[0]) || isCommsBridge(m[0], clause.slice((m.index ?? 0) + m[0].length)) || /\b(?:was|were|had)\s+(?:\w+\s+)?$/.test(before)) continue;
     if (NOT_NOW_BEFORE.test(before) || NOT_CURRENT_BEFORE.test(before) || NEGATED_BEFORE.test(before) || PREVENT_BEFORE.test(before)) continue;
     return true;
   }
