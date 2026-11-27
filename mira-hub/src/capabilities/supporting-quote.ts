@@ -692,23 +692,48 @@ function termOnPage(term: string, pageTokens: readonly string[]): boolean {
 
 export type CitationSupportGap = { citationId: string; reason: "no_page" | "value" | "terms" };
 
-// #6049: a zero is exempt from the value check only as a READING of residual pressure or
+// #6049: a zero is exempt from the value check only as a reading of residual pressure or
 // voltage, the thing the redraft instruction asks the model to state ("verify it reads
-// zero"). Every other zero (a delay, a setpoint, a current, a zero that is set instead of
-// read) is a value claim like any other and must be on the cited page.
+// zero"). Every other zero (a delay, a setpoint, a current, a pressure that is SET to zero)
+// is a value claim like any other and must be on the cited page.
+//
+// The test is a closed vocabulary, not a list of setting verbs. A list of verbs to refuse
+// (set, adjust, ...) is open-ended: "dial the regulator to 0 psi and verify", "back it off to
+// 0 psi and confirm" and "lower it until the gauge reads 0 psi" all slip one. So the zero's
+// whole sentence must be made ONLY of the words below: relieving, verifying, reading and
+// isolating. No operating verb is in the set, so a sentence that operates a control is never
+// exempt, whatever the verb.
 const RESIDUAL_ENERGY_UNITS = new Set(["psi", "bar", "Pa", "kPa", "MPa", "V", "mV", "kV", "VAC", "VDC", "Vrms"]);
-const READING_RE = /\b(?:reads?|reading|shows?|indicates?|displays?|gauge|meter|verify|verified|confirm|confirmed)\b/i;
-const SETTING_RE = /\b(?:set|setting|setpoint|adjust\w*|program\w*|configur\w*|enter\w*|parameter|delay|timer|timing|limit|threshold)\b/i;
-// A clause ends at , ; : a line break, or a sentence end. A dot inside a number ("1.5") is
-// not followed by whitespace, so it does not end one.
-const CLAUSE_BREAK_RE = /[,;:\n]|[.!?](?=\s|$)/g;
+const ZERO_READING_WORDS = new Set(
+  (
+    "a an the and then until that to at on in of down off fully completely all any no it is are has have " +
+    "relieve relieved release released bleed bled vent vented discharge discharged drain drained dissipate dissipated " +
+    "verify verified confirm confirmed check ensure make sure wait measure " +
+    "reads read shows show indicates indicate displays display dropped fallen drops falls " +
+    "pressure voltage energy charge gauge meter multimeter voltmeter tester " +
+    "residual stored trapped remaining hydraulic pneumatic air dc ac bus capacitor capacitors terminals conductors circuit " +
+    "with stop stopped lock locked lockout tagout out isolate isolated de-energize de-energized under site procedure " +
+    "machine equipment unit system press line"
+  ).split(" "),
+);
+// A sentence ends at a line break or at . ! ? followed by whitespace. A dot inside a number
+// or a part tag ("4.2", "PR-2.a") does not end one.
+const SENTENCE_BREAK_RE = /\n|[.!?](?=\s|$)/g;
+const WORD_RE = /[\p{L}\p{N}][\p{L}\p{N}-]*/gu;
+// What the reading must come before ("... before any fitting is loosened") is a later
+// action, not part of the reading.
+const AFTERWARDS_RE = /\b(?:before|prior to)\b/i;
 
-/** `text` is the answer the value's offsets index (markers masked, offsets kept). */
-function isZeroReading(v: Value, text: string): boolean {
+/**
+ * `text` is the answer the value's offsets index (markers blanked, offsets kept). `machine`
+ * holds the words of the machine's own name, which a sentence may use ("with the Zephyr
+ * locked out"). One free word is allowed as the name of a gauge: "the hose gauge".
+ */
+function isZeroReading(v: Value, text: string, machine: ReadonlySet<string>): boolean {
   if (!v.nums.every((n) => n === 0) || v.unit === null || !RESIDUAL_ENERGY_UNITS.has(v.unit)) return false;
   let from = 0;
   let to = text.length;
-  for (const m of text.matchAll(CLAUSE_BREAK_RE)) {
+  for (const m of text.matchAll(SENTENCE_BREAK_RE)) {
     const at = m.index ?? 0;
     if (at < v.start) from = at + 1;
     else if (at >= v.end) {
@@ -716,8 +741,13 @@ function isZeroReading(v: Value, text: string): boolean {
       break;
     }
   }
-  const clause = text.slice(from, to);
-  return READING_RE.test(clause) && !SETTING_RE.test(clause);
+  const after = text.slice(v.end, to);
+  const later = after.search(AFTERWARDS_RE);
+  const sentence = `${text.slice(from, v.start)} ${later < 0 ? after : after.slice(0, later)}`;
+  const words = (sentence.toLowerCase().replace(/['’]s\b/g, "").match(WORD_RE) ?? []);
+  return words.every(
+    (w, i) => ZERO_READING_WORDS.has(w) || machine.has(w) || (words[i - 1] === "the" && words[i + 1] === "gauge"),
+  );
 }
 
 /**
@@ -725,8 +755,9 @@ function isZeroReading(v: Value, text: string): boolean {
  * and deliberately a low floor, read on the model-visible text of each page:
  *   - a marker that resolves to no retrieved page is a gap;
  *   - every value (number + unit) the answer assigns to a citation must be found on that page,
- *     except a zero reading of residual pressure or voltage (the redraft instruction asks the
- *     model to say a gauge reads zero); a zero setting, delay or other quantity is checked (#6049);
+ *     except a zero reading of residual pressure or voltage in a sentence that only relieves,
+ *     verifies and isolates (the redraft instruction asks the model to say a gauge reads zero);
+ *     a zero setting, delay or other quantity is checked (#6049);
  *   - a sentence carrying markers whose content words appear on NONE of the pages it cites is a
  *     gap. A sentence with no content words left (only isolation/restart vocabulary) is neutral.
  *     Words of the question and of `identity` (the machine's own name) are not support while the
@@ -747,6 +778,7 @@ export function citationSupportGaps(
   const assigned = assignValues(answer, question);
   // The text assignValues' offsets index: markers blanked, every other character in place.
   const masked = answer.replace(MARKER_RE, (m) => " ".repeat(m.length));
+  const machine = new Set(identity.toLowerCase().match(WORD_RE) ?? []);
   for (const id of used) {
     const page = pages[Number(id) - 1];
     if (!page) {
@@ -755,7 +787,7 @@ export function citationSupportGaps(
     }
     const srcVals = page.flatMap((t) => findValues(t, "source"));
     // Usable values only (number + table unit); a bare "step 3" is left to the word check.
-    const claims = (assigned.get(id) ?? []).filter((c) => c.usable && !isZeroReading(c, masked));
+    const claims = (assigned.get(id) ?? []).filter((c) => c.usable && !isZeroReading(c, masked, machine));
     if (claims.some((c) => !srcVals.some((s) => satisfies(s, c)))) gaps.push({ citationId: id, reason: "value" });
   }
   const pageTokens = pages.map((p) => supportTerms(p.join(" ")));

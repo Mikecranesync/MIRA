@@ -349,7 +349,7 @@ describe("#6049 — a cited zero setpoint is checked against its page", () => {
   });
 
   it("control: a redraft stating a zero residual-pressure reading the page does not print is still served", async () => {
-    const READING = "With the press stopped and locked out, relieve the pressure until the hose gauge reads 0 psi, then check the hydraulic hose for wear [1].";
+    const READING = "With the press stopped and locked out, relieve the pressure until the hose gauge reads 0 psi [1]. Then check the hydraulic hose for wear [1].";
     expect(SOURCE_TEXT).not.toContain("0 psi");
     stubFetch(READING, [verdict("unsafe"), verdict("safe", "none")]);
     const r = await run(Q_PLAIN);
