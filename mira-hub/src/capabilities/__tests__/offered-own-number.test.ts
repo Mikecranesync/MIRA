@@ -205,3 +205,63 @@ describe("exactly one order number is offered, saved or read (#6104 r1 F1)", () 
     expect(scopeWith(S7, TP700, ["6AV2124-0GC01-0AX0"])).toBe("other");
   });
 });
+
+// #6104 r3 F6: a ticked value counts only when the existing readers tie it to the card's machine:
+// its first group is the card's model, or it is a panel order number the proposer's own pairing
+// ties to the card's panel. Another machine's model or order number is never offered or counted.
+describe("a number tied to another machine is never offered or counted (#6104 r3 F6)", () => {
+  const S7_QUESTION = "Our Siemens TP700 Comfort panel fails when connected to the S7-1200 PLC.";
+
+  it("precondition: S7-1200 is read as exactly one order number", () => {
+    expect(singleOrderNumber("S7-1200")).toBe("S71200");
+  });
+
+  it("offers no PLC model typed beside the panel", () => {
+    expect(offeredOwnNumber(S7_QUESTION, TP700)).toBeNull();
+  });
+
+  it("offers no CPU order number typed beside the panel", () => {
+    expect(offeredOwnNumber("Our Siemens TP700 Comfort panel next to a 6ES7214-1AG40-0XB0 will not power up.", TP700)).toBeNull();
+  });
+
+  it("a saved PLC model counts for nothing: a later S7-1200 question stays another machine's", () => {
+    expect(scopeWith("Find the manual for Siemens S7-1200", TP700, ["S7-1200"])).toBe("other");
+  });
+
+  it("a saved CPU order number counts for nothing", () => {
+    expect(scopeWith("Find the manual for Siemens 6ES7214-1AG40-0XB0", TP700, ["6ES7214-1AG40-0XB0"])).toBe("other");
+  });
+
+  it("control: the panel's own saved number still makes the walk thread its own", () => {
+    expect(scopeWith(J2, TP700, ["6AV2124-0GC01-0AX0"])).toBe("own");
+  });
+
+  it("control: the walk question still offers the panel's number, whatever form the card's model takes", () => {
+    expect(offeredOwnNumber(J2, TP700)).toBe("6AV2124-0GC01-0AX0");
+    expect(offeredOwnNumber(J2, { manufacturer: "Siemens", model: "TP700 Comfort" })).toBe("6AV2124-0GC01-0AX0");
+    expect(offeredOwnNumber("Our Siemens KTP700 Basic 6AV2123-2GB03-0AX0 will not power up.", { manufacturer: "Siemens", model: "KTP700" })).toBe("6AV2123-2GB03-0AX0");
+  });
+
+  it("control: a number that starts with the card's model is still offered and counted", () => {
+    expect(offeredOwnNumber("Our Mitsubishi FX3U FX3U-32M shows an error. What does it mean?", { manufacturer: "Mitsubishi", model: "FX3U" })).toBe("FX3U-32M");
+    expect(scopeWith("Find the manual for ABB ACS355-03E-07A3-4", { manufacturer: "ABB", model: "ACS355" }, ["ACS355-03E-07A3-4"])).toBe("own");
+  });
+
+  it("a panel's order number counts for nothing on a drive card", () => {
+    expect(scopeWith("Find the manual for 6AV2124-0GC01-0AX0", { manufacturer: "AutomationDirect", model: "GS10" }, ["6AV2124-0GC01-0AX0"])).toBe("other");
+  });
+
+  it("a model that only shares the card's digits is not the card's (Micro850 card, ACS850 number)", () => {
+    expect(scopeWith("Find the manual for ABB ACS850-04-03A0-5", { manufacturer: "Allen-Bradley", model: "Micro850" }, ["ACS850-04-03A0-5"])).toBe("other");
+  });
+
+  // The cost, pinned: a machine's own order number that neither starts with its model nor is a
+  // paired panel number is no longer offered. The thread stays withheld, as on main.
+  it("cost: a PowerFlex 525 catalog number is not offered", () => {
+    expect(offeredOwnNumber("Our Allen-Bradley PowerFlex 525 25B-D024N104 trips on F004 at start.", { manufacturer: "Allen-Bradley", model: "PowerFlex 525" })).toBeNull();
+  });
+
+  it("cost: an S7-1200 CPU's own order number is not offered on an S7-1200 card", () => {
+    expect(offeredOwnNumber("Our Siemens S7-1200 6ES7214-1AG40-0XB0 shows a red error light.", { manufacturer: "Siemens", model: "S7-1200" })).toBeNull();
+  });
+});

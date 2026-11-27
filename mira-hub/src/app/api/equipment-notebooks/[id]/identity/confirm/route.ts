@@ -55,7 +55,7 @@ import {
   applicableReadySource,
   confirmNotebookIdentity,
   readAcquisition,
-  singleOrderNumber,
+  machineOrderNumber,
   startManualAcquisition,
 } from "@/capabilities/notebook-manual-acquisition";
 
@@ -73,12 +73,12 @@ function readString(body: Record<string, unknown>, key: string): string {
 }
 
 /** #6085: the number the technician ticked on the identity card, with the order number it is.
- *  Accepted only when it is at most 64 characters and exactly one order number, the rule the
- *  status scope reads saved numbers with (#6104 r1 F1/F4); anything else is ignored, never an
- *  error. */
-function readConfirmedNumber(body: Record<string, unknown>): { number: string; code: string } | null {
+ *  Accepted only when it is at most 64 characters and exactly one order number of the card's own
+ *  machine, the rule the status scope reads saved numbers with (#6104 r1 F1/F4, r3 F6); anything
+ *  else is ignored, never an error. */
+function readConfirmedNumber(body: Record<string, unknown>, model: string): { number: string; code: string } | null {
   const value = readString(body, "confirmedNumber");
-  const code = value && value.length <= 64 ? singleOrderNumber(value) : null;
+  const code = value && value.length <= 64 ? machineOrderNumber(value, model) : null;
   return code ? { number: value, code } : null;
 }
 
@@ -114,7 +114,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   }
   // See header: written unconditionally, "" when absent — never left out.
   const catalogNumber = readString(body, "catalogNumber");
-  const confirmedNumber = readConfirmedNumber(body);
+  const confirmedNumber = readConfirmedNumber(body, model);
 
   const notebook = await getNotebook(ctx.tenantId, notebookId);
   if (!notebook) {

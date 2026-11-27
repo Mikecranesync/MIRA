@@ -187,6 +187,20 @@ describe("the identity card offers the typed order number (#6085)", () => {
     expect(card).not.toHaveProperty("offeredNumber");
   });
 
+  // #6104 r3 F6: the PLC the panel talks to is another machine; its model or order number is never
+  // offered. Typed with a plain hyphen the proposer sees two machines and proposes nothing; typed with
+  // a typographic hyphen (the reviewer's own text) it proposes the TP700, so the offer must refuse.
+  it.each([
+    ["S7-1200, non-breaking hyphen (the reviewer's text)", "Our Siemens TP700 Comfort panel fails when connected to the S7\u20111200 PLC."],
+    ["S7-1200, Unicode hyphen", "Our Siemens TP700 Comfort panel fails when connected to the S7\u20101200 PLC."],
+    ["S7-1200, minus sign", "Our Siemens TP700 Comfort panel fails when connected to the S7\u22121200 PLC."],
+    ["a CPU's 6ES7 order number", "Our Siemens TP700 Comfort panel next to a 6ES7214\u20111AG40\u20110XB0 will not power up."],
+  ])("a TP700 question that also names %s gets a TP700 card with no offer", async (_label, question) => {
+    const card = proposalIn(await ask(question));
+    expect(card).toMatchObject({ manufacturer: "Siemens", model: "TP700" }); // precondition: the card exists
+    expect(card).not.toHaveProperty("offeredNumber");
+  });
+
   it("control: a card whose question names no number offers none", async () => {
     const card = proposalIn(await ask("Our Siemens TP700 Comfort panel will not power up."));
     expect(card).toMatchObject({ manufacturer: "Siemens", model: "TP700" });

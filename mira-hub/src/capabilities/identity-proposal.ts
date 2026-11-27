@@ -514,6 +514,16 @@ function sameMachine(mention: string, model: string, chosen: string): boolean {
 }
 
 /**
+ * #6104 r3 F6: a Siemens 6AV order number the panel parser pairs with `model` (TP700 and
+ * 6AV2124-0GC01-0AX0 describe one nameplate), by `sameMachine`'s own reading. The confirmed-number
+ * reader uses it so a ticked panel number is tied to the card's panel by the proposer's rule, not a
+ * second one. Pure.
+ */
+export function panelOrderNumberPairs(number: string, model: string): boolean {
+  return /^6AV/i.test(number) && sameMachine(number, model, canonicalModel(model));
+}
+
+/**
  * A controller's plate prints its family AND its catalog number, and a
  * technician types both lines ("Allen-Bradley Micro820 2080-LC20-20QBB"). Read
  * as two models that is a comparison and proposes nothing; it is one machine.

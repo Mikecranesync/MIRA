@@ -69,7 +69,7 @@ export interface TxClient {
  * Decides the notebook's numbers inside the identity confirm's own transaction, after that confirm
  * locked the notebook row and wrote the identity (`confirmNotebookIdentity`, #6104 r2 F3/F4).
  * `entry` is the ticked number, or null when nothing was ticked; `code` is the order number the
- * route read from `number` (`singleOrderNumber`).
+ * route read from `number` (`machineOrderNumber`, the card's own machine's only).
  *
  * - `settledBefore` is whether the identity card had already settled this identity (settled, with
  *   source `user`). A confirm where it had not (a blank or reopened identity, or one a nameplate

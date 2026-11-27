@@ -43,6 +43,7 @@ import { isRatingToken, modelNumbersIn } from "@/capabilities/manual-applicabili
 import { foldForDetection } from "@/capabilities/detection-fold";
 import { normalizeManufacturer } from "@/lib/manufacturerNormalize";
 import { recordConfirmedNumber } from "@/capabilities/confirmed-numbers";
+import { panelOrderNumberPairs } from "@/capabilities/identity-proposal";
 
 /** A running claim older than this is treated as abandoned (container restart). */
 export const STALE_RUNNING_MINUTES = 10;
@@ -1373,13 +1374,14 @@ export function threadStatusScope(
     own.add(norm(value));
     for (const id of modelsNamedIn(value)) own.add(id);
   }
-  // A confirmed number counts only as the order numbers written in it: a model name ticked by
-  // mistake ("TP900", or "…-0AX0/TP900") must never make every thread about that model own.
-  // A confirmed catalog number is the machine's number, so ticked numbers count only without one
-  // (fail closed, the rule set for #6094 r1 F1).
+  // A confirmed number counts only as the order number written in it, and only when it is this
+  // machine's (`machineOrderNumber`): a model name ticked by mistake ("TP900", "…-0AX0/TP900") or
+  // another machine's model or number ("S7-1200", #6104 r3 F6) must never make every thread about
+  // that machine own. A confirmed catalog number is the machine's number, so ticked numbers count
+  // only without one (fail closed, the rule set for #6094 r1 F1).
   const catalogOnRecord = Boolean(machine.catalogNumber?.trim() || machine.recordCatalog?.trim());
   for (const value of catalogOnRecord ? [] : machine.confirmedNumbers ?? []) {
-    const code = singleOrderNumber(value);
+    const code = machineOrderNumber(value, machine.model);
     if (code) own.add(code);
   }
   own.delete("");
@@ -1413,6 +1415,24 @@ export function singleOrderNumber(value: string): string | null {
   const folded = foldForDetection(typedToken(value.trim()));
   const codes = catalogCodesIn(folded);
   return codes.length === 1 && norm(folded) === codes[0] ? codes[0]! : null;
+}
+
+/**
+ * #6104 r3 F6: the order number a confirmed value is, only when it is the card's own machine's, as
+ * the existing readers already tie numbers to machines: its first group is the card's model (the
+ * maker's model code and its options, ACS355-03E-07A3-4 on an ACS355), or it is a Siemens panel
+ * number the proposer's own pairing ties to the card's panel (6AV2124-0GC01-0AX0 on a TP700).
+ * Another machine's model (S7-1200) or order number (a CPU's 6ES7…) is null. Fails closed: a
+ * machine's own number that is neither (a PowerFlex 525's 25B-…) is not counted either. The scope
+ * reads saved values through it and the confirm route saves only what it accepts, so the offer,
+ * the save and the read apply one rule.
+ */
+export function machineOrderNumber(value: string, model: string | null | undefined): string | null {
+  const code = singleOrderNumber(value);
+  const ownModel = norm(model);
+  if (!code || !ownModel) return null;
+  const folded = foldForDetection(typedToken(value.trim()));
+  return norm(folded.split("-")[0]) === ownModel || panelOrderNumberPairs(folded, model!) ? code : null;
 }
 /** Past this many digit-bearing tokens nothing is offered: a bound on the work, never a guess. */
 const MAX_OFFERED_CANDIDATES = 20;

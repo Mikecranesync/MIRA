@@ -157,6 +157,26 @@ describe("offer, confirm and read agree (#6085)", () => {
   });
 });
 
+// #6104 r3 F6: an entry already saved with another machine's model counts for nothing.
+describe("GET notebook detail: a saved number tied to another machine (#6104 r3 F6)", () => {
+  const S7_THREAD = "Find the manual for Siemens S7-1200";
+
+  it("control: with no saved number the S7-1200 thread is withheld", async () => {
+    vi.mocked(listTurns).mockResolvedValue([ask(S7_THREAD)] as never);
+    readConfirmedNumbers.mockResolvedValue([]);
+    expect((await (await GET(threadReq, params)).json()).manualSearchScope).toBe("other_model");
+  });
+
+  it("a saved S7-1200 entry leaves the S7-1200 thread withheld", async () => {
+    vi.mocked(listTurns).mockResolvedValue([ask(S7_THREAD)] as never);
+    readConfirmedNumbers.mockResolvedValue([saved("S7-1200")]);
+    const body = await (await GET(threadReq, params)).json();
+    expect(readConfirmedNumbers).toHaveBeenCalledWith(TENANT, NB); // precondition: the entry was read
+    expect(body.manualSearch).toBeNull();
+    expect(body.manualSearchScope).toBe("other_model");
+  });
+});
+
 describe("numbersForMachine", () => {
   const nb = (over: Partial<EquipmentNotebook> = {}) => ({ ...NOTEBOOK, ...over }) as unknown as EquipmentNotebook;
   const entries = [saved("6AV2124-0GC01-0AX0")];

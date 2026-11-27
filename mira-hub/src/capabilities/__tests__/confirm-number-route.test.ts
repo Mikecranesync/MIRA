@@ -83,6 +83,8 @@ describe("POST identity/confirm with a ticked number (#6085)", () => {
   it.each([
     ["blank", "   "], ["no digit", "TPCOMFORT"], ["whitespace", "6AV2124 0GC01"], ["too long", `6AV2124-0GC01-0AX0-${"9".repeat(46)}`], ["not a string", 6],
     ["two numbers joined", "6AV2124-0GC01-0AX0|S7-1200"], ["a number joined to a model", "6AV2124-0GC01-0AX0/TP900"], ["no hyphens", "6AV21240GC010AX0"],
+    // #6104 r3 F6: another machine's model or order number is never saved for this card.
+    ["PLC model", "S7-1200"], ["PLC model with a typographic hyphen", "S7\u20111200"], ["CPU order", "6ES7214-1AG40-0XB0"],
   ])(
     "ignores a %s number and still confirms",
     async (_label, confirmedNumber) => {
@@ -92,6 +94,11 @@ describe("POST identity/confirm with a ticked number (#6085)", () => {
       expect(acqMock.confirmNotebookIdentity.mock.calls[0]).toHaveLength(3); // exactly main's call
     },
   );
+
+  it("control: a number that starts with the card's model is handed to the confirm", async () => {
+    await POST(req({ manufacturer: "ABB", model: "ACS355", confirmedNumber: "ACS355-03E-07A3-4" }), params);
+    expect(tickArg()).toEqual({ number: "ACS355-03E-07A3-4", code: "ACS35503E07A34" });
+  });
 
   it("control: a 64-character order number is accepted", async () => {
     await POST(req({ ...CARD, confirmedNumber: `6AV2124-0GC01-0AX0-${"9".repeat(45)}` }), params);
