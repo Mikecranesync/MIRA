@@ -1680,7 +1680,16 @@ async function handleChatTurn(
     // throwing, so an outage shows up as a value in the data rather than a gap.
     if (decisionState) {
       if (opts.delivered !== false) {
-        const maySend = !jevDecisionEnabled() || (handoff !== null && (await handoff.confirmed(HANDOFF_WAIT_MS)));
+        // NO ANSWER, NO CALL (Codex round 3 on #6082, F8). A turn no provider served ends
+        // with an error status and no content frame. Its stream still closes cleanly and
+        // can be read to its end, so `delivered` and the handoff are both true of it, and
+        // neither says an answer was given. `answerText` is the answer this turn served
+        // (null when none was), the same value the content frames are written from: without
+        // one there is nothing to judge, and the question, the excerpts and the photo
+        // observations stay here. Checked before the handoff, so an unserved turn does not
+        // wait for it.
+        const answered = Boolean(opts.answerText);
+        const maySend = !jevDecisionEnabled() || (answered && handoff !== null && (await handoff.confirmed(HANDOFF_WAIT_MS)));
         if (maySend) packet.jev_decision = await evaluateTurnDecision(decisionState).catch(() => null);
       }
     }

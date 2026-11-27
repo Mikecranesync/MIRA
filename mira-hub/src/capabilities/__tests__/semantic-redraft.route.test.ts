@@ -1576,6 +1576,46 @@ describe("#6048 — a body cancel after the commit still persists the packet and
     expectDispositionMatchesHistory(r, 1);
   });
 
+  // ── Codex round 3 on #6082 (F8) ──────────────────────────────────────────────
+  // A turn no provider served carries no answer. Its error stream ends cleanly and can be
+  // read to its end, so "every frame written" and "handed off" are both true of it. The
+  // decision call still has nothing to judge, and the question, the excerpts and any photo
+  // observations must not go to the vendor for an answer that was never given.
+  /** Every provider answers 500; the response is read to its end. Returns the frames that arrived. */
+  async function exhaustedReadToEnd() {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("down", { status: 500 })));
+    const res = await POST(req({ message: Q_PLAIN, sourceDocIds: [DOC_A], clientRequestId: REQ_ID }, false), params);
+    expect(res.status).toBe(200);
+    const frames = (await res.text())
+      .split("\n\n")
+      .filter((l) => l.startsWith("data: ") && l.trim() !== "data: [DONE]")
+      .map((l) => JSON.parse(l.slice(6)) as Frame & { status?: string });
+    const r = await settled();
+    // Preconditions: an unserved turn, committed, whose response carried no answer and ended with the error status.
+    expect(r.turn.answerStatus).toBe("error");
+    expect(r.turn.answerText).toBeNull();
+    expect(frames.filter((f) => f.kind === "content")).toHaveLength(0);
+    expect(frames.at(-1)).toMatchObject({ kind: "status", status: "error" });
+    return r;
+  }
+
+  it("F8: decision call on, every provider fails and the error response is read to its end: nothing is sent to the vendor, no decision record, ONE packet and usage row", async () => {
+    decisionCallOn();
+    const r = await exhaustedReadToEnd();
+    expect(vendorRequests()).toHaveLength(0);
+    expect(evaluateMock).not.toHaveBeenCalled();
+    expect(r.packet.jev_decision ?? null).toBeNull();
+    expect(r.packet.persistence).toMatchObject({ turn_row_id: ROW_ID, outcome: "ok" });
+    expect(closeTurnMock).not.toHaveBeenCalled();
+  });
+
+  it("F8 control: decision call OFF, the same unserved turn read to its end: no tracker, and the packet carries the disabled record as before", async () => {
+    const r = await exhaustedReadToEnd();
+    expect(handoffSpy).not.toHaveBeenCalled();
+    expect(evaluateMock).toHaveBeenCalledTimes(1);
+    expect(r.packet.jev_decision).toMatchObject({ skipped_reason: "disabled" });
+  });
+
   it("F1: decision call on, the history write fails on a request with an id: the response is errored, nothing is sent to the vendor, the failed-turn packet carries no decision record", async () => {
     decisionCallOn();
     stubFetch(REDRAFT, [verdict("safe", "none")]);
