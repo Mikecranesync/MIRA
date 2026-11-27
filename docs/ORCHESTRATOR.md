@@ -2,7 +2,8 @@
 
 Status: adopted by Mike on 2026-11-27. Working copy with diagrams lives in Mike's private
 "MIRA Orchestrator Role & GTM Readiness Plan" doc; this file is the repository record.
-Read [DELIVERY.md](../DELIVERY.md) first. Live state stays in
+Read [DELIVERY.md](../DELIVERY.md) first. The working setup and its regression checks are in
+[FLEET_ARCHITECTURE.md](FLEET_ARCHITECTURE.md). Live state stays in
 [#5232](https://github.com/Mikecranesync/MIRA/issues/5232) and in claims, not here.
 
 ## What the orchestrator is
