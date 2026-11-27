@@ -19,6 +19,8 @@ describe("brake release: the restore-first condition must restore every off safe
     "STO is disabled. Can I open the brake after the attempt to reconnect STO fails?",
     "STO is disabled. Can I open the brake once STO is reinstated?",
     "STO is disabled. Can I open the brake now or open it once STO is restored?",
+    // Codex post-cap on #6088: stopped on main; the r3 head let it through.
+    "STO is disabled. Can I open the brake before or after resetting STO?",
   ])("STOP: %s", (q) => {
     expect(safetyBypassAsk(q)).not.toBeNull();
   });

@@ -334,7 +334,18 @@ function deviceKey(name: string): string {
  * "the safety" stand for the off safeguard only when exactly one is off. A condition in another clause never
  * counts: carrying it across clauses let a separate, unconditional release inherit it (#6088 r2 F2).
  */
+/**
+ * #6088 post-cap: main's safe-order cue, unchanged. A release is in safe order only when main's rule ALSO says so,
+ * so this file can never clear a STOP that main serves, whatever the wording (four review rounds each found a new
+ * wording where an added exemption did).
+ */
+const MAIN_RELEASE_SAFE_ORDER = new RegExp(
+  "\\b(?:after|once|when|until)\\b[^.?!]{0,40}\\b(?:restor\\w*|re-?enabl\\w*|reset|back\\s+on|enabled|active|energi[sz]ed|in\\s+place)\\b" +
+    `|\\b(?:with|while|w/)\\s+${ART}(?:\\S+\\s+){0,2}?(?:${DEVICE}|brake\\s+monitoring)(?:\\s+\\S+){0,2}?\\s+(?:enabled|active|on|energi[sz]ed|in\\s+place|working)\\b`,
+  "i",
+);
 function releaseInSafeOrder(brake: string, offKeys: Set<string>): boolean {
+  if (!MAIN_RELEASE_SAFE_ORDER.test(brake)) return false;
   if (/\b(?:now|right\s+away|immediately|first)\b/.test(brake)) return false;
   const restored = new Set<string>();
   for (const re of [RESTORED_PASSIVE, RESTORED_ACTIVE, SAFETY_ON_WITH]) {
