@@ -60,18 +60,50 @@ describe("readConfirmedNumbers", () => {
 });
 
 describe("saveConfirmedNumber", () => {
-  it("sends one tenant-scoped append that skips a duplicate", async () => {
-    query.mockResolvedValue({ rows: [{ id: NB }], rowCount: 1 });
-    expect(await saveConfirmedNumber(TENANT, NB, { number: "6AV2124-0GC01-0AX0", manufacturer: "Siemens", model: "TP700" })).toBe(true);
-    const [sql, values] = query.mock.calls[0]! as [string, unknown[]];
-    expect(sql).toMatch(/UPDATE equipment_notebooks/);
-    expect(sql).toMatch(/WHERE n\.tenant_id = \$1::uuid AND n\.id = \$2::uuid/);
-    expect(sql).toMatch(/NOT EXISTS|WHEN EXISTS/);
-    expect(sql).not.toMatch(/catalog_number|identity_status|manufacturer =|model =/);
-    expect(values.slice(0, 6)).toEqual([TENANT, NB, "6AV2124-0GC01-0AX0", "Siemens", "TP700", "6AV21240GC010AX0"]);
+  const SAVE = { number: "6AV2124-0GC01-0AX0", code: "6AV21240GC010AX0", manufacturer: "Siemens", model: "TP700" };
+
+  it("locks the tenant's row, then appends the entry with its code and touches nothing else", async () => {
+    query.mockResolvedValueOnce({ rows: [{ confirmed_numbers: [] }], rowCount: 1 }).mockResolvedValueOnce({ rows: [], rowCount: 1 });
+    expect(await saveConfirmedNumber(TENANT, NB, SAVE)).toBe(true);
+    const [lockSql, lockValues] = query.mock.calls[0]! as [string, unknown[]];
+    expect(lockSql).toMatch(/SELECT confirmed_numbers FROM equipment_notebooks WHERE tenant_id = \$1::uuid AND id = \$2::uuid FOR UPDATE/);
+    expect(lockValues).toEqual([TENANT, NB]);
+    const [sql, values] = query.mock.calls[1]! as [string, unknown[]];
+    expect(sql).toMatch(/UPDATE equipment_notebooks SET confirmed_numbers = confirmed_numbers \|\| \$3::jsonb WHERE tenant_id = \$1::uuid AND id = \$2::uuid/);
+    expect(sql).not.toMatch(/catalog_number|identity_status|updated_at/);
+    expect(values.slice(0, 2)).toEqual([TENANT, NB]);
+    expect(JSON.parse(values[2] as string)).toEqual([{ ...SAVE, confirmedAt: expect.any(String) }]);
   });
+
+  // #6104 r1 F3: one number per machine, decided under the row lock.
+  it("refuses a different number for a machine that has one, and writes nothing", async () => {
+    query.mockResolvedValueOnce({ rows: [{ confirmed_numbers: [{ ...entry("6AV2124-0JC01-0AX0"), code: "6AV21240JC010AX0" }] }], rowCount: 1 });
+    expect(await saveConfirmedNumber(TENANT, NB, SAVE)).toBe(false);
+    expect(query).toHaveBeenCalledTimes(1);
+  });
+
+  it("a retry of the saved number succeeds and writes nothing", async () => {
+    query.mockResolvedValueOnce({ rows: [{ confirmed_numbers: [{ ...entry("6av2124-0gc01-0ax0", "SIEMENS", "TP 700"), code: "6AV21240GC010AX0" }] }], rowCount: 1 });
+    expect(await saveConfirmedNumber(TENANT, NB, SAVE)).toBe(true);
+    expect(query).toHaveBeenCalledTimes(1);
+  });
+
+  // #6104 r1 F4: an entry without a code is one the scope cannot use, so it decides nothing.
+  it("an entry without a code neither blocks nor stands in for the number", async () => {
+    query.mockResolvedValueOnce({ rows: [{ confirmed_numbers: [entry("6AV21240GC010AX0")] }], rowCount: 1 }).mockResolvedValueOnce({ rows: [], rowCount: 1 });
+    expect(await saveConfirmedNumber(TENANT, NB, SAVE)).toBe(true);
+    expect(query).toHaveBeenCalledTimes(2);
+  });
+
+  it("control: another machine's number does not block this one", async () => {
+    query.mockResolvedValueOnce({ rows: [{ confirmed_numbers: [{ ...entry("6AV2124-0JC01-0AX0", "Siemens", "TP900"), code: "6AV21240JC010AX0" }] }], rowCount: 1 }).mockResolvedValueOnce({ rows: [], rowCount: 1 });
+    expect(await saveConfirmedNumber(TENANT, NB, SAVE)).toBe(true);
+    expect(query).toHaveBeenCalledTimes(2);
+  });
+
   it("is false when no row matched", async () => {
-    query.mockResolvedValue({ rows: [], rowCount: 0 });
-    expect(await saveConfirmedNumber(TENANT, NB, { number: "6AV2124-0GC01-0AX0", manufacturer: "Siemens", model: "TP700" })).toBe(false);
+    query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    expect(await saveConfirmedNumber(TENANT, NB, SAVE)).toBe(false);
+    expect(query).toHaveBeenCalledTimes(1);
   });
 });

@@ -13,6 +13,8 @@ import { normalizeManufacturer } from "@/lib/manufacturerNormalize";
 
 export interface ConfirmedNumberEntry {
   number: string;
+  /** The order number `number` is (#6104 r1 F4). Absent on an entry the scope cannot use. */
+  code?: string;
   manufacturer: string;
   model: string;
   confirmedAt: string;
@@ -56,30 +58,37 @@ export async function readConfirmedNumbers(tenantId: string, notebookId: string)
   }
 }
 
-/** Appends one confirmed number unless the same number (any spelling) is already saved for the
- *  same maker and model. True when the entry is on the row afterwards; false when no row matched.
- *  Touches only `confirmed_numbers`, so migration 101's trigger never fires. */
+/**
+ * Saves the one confirmed number for this maker and model, under the notebook row lock. `code` is
+ * the order number the route read from `number` (`singleOrderNumber`). One number per machine
+ * (#6104 r1 F3): the first saved code wins, a retry of it is a success, and a different code is
+ * refused. Only entries carrying a code count (#6104 r1 F4), so an entry the scope cannot use never
+ * blocks or stands in for one it can. True when this code is the machine's number afterwards;
+ * false when it is not, or no row matched. Touches only `confirmed_numbers`, so migration 101's
+ * trigger never fires.
+ */
 export async function saveConfirmedNumber(
   tenantId: string,
   notebookId: string,
-  entry: { number: string; manufacturer: string; model: string },
+  entry: { number: string; code: string; manufacturer: string; model: string },
 ): Promise<boolean> {
-  const written = await withTenantContext(tenantId, (c) =>
-    c.query<{ id: string }>(
-      `UPDATE equipment_notebooks AS n
-          SET confirmed_numbers = CASE
-                WHEN EXISTS (
-                  SELECT 1 FROM jsonb_array_elements(n.confirmed_numbers) AS e
-                   WHERE upper(regexp_replace(e->>'number', '[^A-Za-z0-9]', '', 'g')) = $6
-                     AND e->>'manufacturer' = $4 AND e->>'model' = $5)
-                THEN n.confirmed_numbers
-                ELSE n.confirmed_numbers || jsonb_build_array(jsonb_build_object(
-                  'number', $3::text, 'manufacturer', $4::text, 'model', $5::text, 'confirmedAt', $7::text))
-              END
-        WHERE n.tenant_id = $1::uuid AND n.id = $2::uuid
-        RETURNING n.id`,
-      [tenantId, notebookId, entry.number, entry.manufacturer, entry.model, key(entry.number), new Date().toISOString()],
-    ),
-  );
-  return (written.rowCount ?? 0) > 0;
+  return withTenantContext(tenantId, async (c) => {
+    const row = await c.query<{ confirmed_numbers: unknown }>(
+      `SELECT confirmed_numbers FROM equipment_notebooks WHERE tenant_id = $1::uuid AND id = $2::uuid FOR UPDATE`,
+      [tenantId, notebookId],
+    );
+    if (!row.rows.length) return false;
+    const value = row.rows[0]!.confirmed_numbers;
+    const entries = Array.isArray(value) ? value.filter(isEntry) : [];
+    const maker = makerKey(entry.manufacturer);
+    const model = key(entry.model);
+    const saved = entries.filter((e) => typeof e.code === "string" && makerKey(e.manufacturer) === maker && key(e.model) === model);
+    if (saved.length) return saved.some((e) => e.code === entry.code);
+    const added = { number: entry.number, code: entry.code, manufacturer: entry.manufacturer, model: entry.model, confirmedAt: new Date().toISOString() };
+    await c.query(
+      `UPDATE equipment_notebooks SET confirmed_numbers = confirmed_numbers || $3::jsonb WHERE tenant_id = $1::uuid AND id = $2::uuid`,
+      [tenantId, notebookId, JSON.stringify([added])],
+    );
+    return true;
+  });
 }

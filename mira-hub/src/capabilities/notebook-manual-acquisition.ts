@@ -1353,7 +1353,8 @@ export function threadStatusScope(
   // (fail closed, the rule set for #6094 r1 F1).
   const catalogOnRecord = Boolean(machine.catalogNumber?.trim() || machine.recordCatalog?.trim());
   for (const value of catalogOnRecord ? [] : machine.confirmedNumbers ?? []) {
-    for (const code of catalogCodesIn(foldForDetection(value))) own.add(code);
+    const code = singleOrderNumber(value);
+    if (code) own.add(code);
   }
   own.delete("");
   const isOwn = (id: string) => own.has(id) || [...own].some((o) => familyCovers(id, o));
@@ -1374,6 +1375,19 @@ export function threadStatusScope(
 /** Brackets around a typed number and punctuation after it are not part of it. */
 const typedToken = (token: string) =>
   token.replace(/^[([{"'“‘]+/, "").replace(/[)\]}"'”’.,;:!?]+$/, "");
+
+/**
+ * #6104 r1 F1: the one order number a value is, as its letters and digits, or null. The whole
+ * value (brackets and trailing punctuation aside) must be exactly one hyphenated order number:
+ * "6AV2124-0GC01-0AX0" is one; "…-0AX0|S7-1200" (two numbers), "…-0AX0/TP900" (a number joined
+ * to a model) and "6AV21240GC010AX0" (no hyphens) are none. The scope reads saved values through
+ * it, so the offer (which asks the scope) and the confirm route apply the same rule.
+ */
+export function singleOrderNumber(value: string): string | null {
+  const folded = foldForDetection(typedToken(value.trim()));
+  const codes = catalogCodesIn(folded);
+  return codes.length === 1 && norm(folded) === codes[0] ? codes[0]! : null;
+}
 /** Past this many digit-bearing tokens nothing is offered: a bound on the work, never a guess. */
 const MAX_OFFERED_CANDIDATES = 20;
 /** Past this length nothing is offered: the scope's cost grows faster than the text. */

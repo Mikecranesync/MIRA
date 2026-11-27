@@ -4,7 +4,7 @@
 //
 // Run: cd mira-hub && npx vitest run src/capabilities/__tests__/offered-own-number
 import { describe, it, expect } from "vitest";
-import { offeredOwnNumber, threadStatusScope } from "@/capabilities/notebook-manual-acquisition";
+import { offeredOwnNumber, singleOrderNumber, threadStatusScope } from "@/capabilities/notebook-manual-acquisition";
 
 const TP700 = { manufacturer: "Siemens", model: "TP700" };
 const J2 = "Our Siemens TP700 Comfort panel 6AV2124-0GC01-0AX0 will not power up. What is the rated supply voltage?";
@@ -123,9 +123,11 @@ describe("a model name is never offered or counted as a number", () => {
     expect(scopeWith("Find the manual for Siemens TP900 Comfort", TP700, ["TP900"])).toBe("other");
   });
 
-  it("a saved number joined to another model counts only as its order number", () => {
+  // #6104 r1 F1: a saved value counts only when it is exactly one order number, so a value
+  // joining the number to anything else counts for nothing (it can no longer be offered or saved).
+  it("a saved number joined to another model counts for nothing", () => {
     expect(scopeWith("Siemens TP900 Comfort will not boot", TP700, ["6AV2124-0GC01-0AX0/TP900"])).toBe("other");
-    expect(scopeWith(J2, TP700, ["6AV2124-0GC01-0AX0/TP900"])).toBe("own"); // control: the order number still counts
+    expect(scopeWith(J2, TP700, ["6AV2124-0GC01-0AX0/TP900"])).toBe("other");
   });
 
   it("a saved number naming a different model does not make that model own", () => {
@@ -166,5 +168,40 @@ describe("a confirmed catalog number outranks a ticked number", () => {
 
   it("control: a catalog equal to the ticked number still settles it", () => {
     expect(threadStatusScope([ONLY_NUMBER], machine("6AV2124-0GC01-0AX0"))).toBe("own");
+  });
+});
+
+// #6104 r1 F1: one token joining two order numbers ("…-0AX0|S7-1200") was offered as one number,
+// and one tick would have made the other machine's threads this notebook's own.
+describe("exactly one order number is offered, saved or read (#6104 r1 F1)", () => {
+  const JOINED = "Siemens TP700 Comfort panel 6AV2124-0GC01-0AX0|S7-1200 will not power up.";
+  const S7 = "Siemens S7-1200 trips on startup";
+
+  it("singleOrderNumber reads one whole order number, whatever its hyphens or wrapping", () => {
+    expect(singleOrderNumber("6AV2124-0GC01-0AX0")).toBe("6AV21240GC010AX0");
+    expect(singleOrderNumber("(6AV2124-0GC01-0AX0).")).toBe("6AV21240GC010AX0");
+    expect(singleOrderNumber("6AV2124\u20110GC01\u20110AX0")).toBe("6AV21240GC010AX0");
+    expect(singleOrderNumber("6av2124-0gc01-0ax0")).toBe("6AV21240GC010AX0");
+  });
+
+  it("singleOrderNumber reads nothing from two numbers, a number joined to a model, or a non-number", () => {
+    for (const value of ["6AV2124-0GC01-0AX0|S7-1200", "6AV2124-0GC01-0AX0/TP900", "6AV21240GC010AX0", "TP900", "DH-485", "208-230VAC", ""]) {
+      expect(singleOrderNumber(value), value).toBeNull();
+    }
+  });
+
+  it("offers nothing for a token joining two order numbers", () => {
+    expect(offeredOwnNumber(JOINED, TP700)).toBeNull();
+  });
+
+  it("a saved value joining two order numbers makes neither machine's thread own", () => {
+    expect(scopeWith(S7, TP700, [])).toBe("other"); // precondition
+    expect(scopeWith(S7, TP700, ["6AV2124-0GC01-0AX0|S7-1200"])).toBe("other");
+    expect(scopeWith(J2, TP700, ["6AV2124-0GC01-0AX0|S7-1200"])).toBe("other");
+  });
+
+  it("control: a saved single order number settles its thread and not the S7-1200 one", () => {
+    expect(scopeWith(J2, TP700, ["6AV2124-0GC01-0AX0"])).toBe("own");
+    expect(scopeWith(S7, TP700, ["6AV2124-0GC01-0AX0"])).toBe("other");
   });
 });

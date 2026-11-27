@@ -51,6 +51,7 @@ import {
   applicableReadySource,
   confirmNotebookIdentity,
   readAcquisition,
+  singleOrderNumber,
   startManualAcquisition,
 } from "@/capabilities/notebook-manual-acquisition";
 import { saveConfirmedNumber } from "@/capabilities/confirmed-numbers";
@@ -68,11 +69,14 @@ function readString(body: Record<string, unknown>, key: string): string {
   return typeof v === "string" ? v.trim().slice(0, MAX_FIELD_LEN) : "";
 }
 
-/** #6085: the number the technician ticked on the identity card. Accepted only when it is 1 to
- *  64 characters, has a digit and no whitespace; anything else is ignored, never an error. */
-function readConfirmedNumber(body: Record<string, unknown>): string | null {
+/** #6085: the number the technician ticked on the identity card, with the order number it is.
+ *  Accepted only when it is at most 64 characters and exactly one order number, the rule the
+ *  status scope reads saved numbers with (#6104 r1 F1/F4); anything else is ignored, never an
+ *  error. */
+function readConfirmedNumber(body: Record<string, unknown>): { number: string; code: string } | null {
   const value = readString(body, "confirmedNumber");
-  return value.length >= 1 && value.length <= 64 && /\d/.test(value) && !/\s/.test(value) ? value : null;
+  const code = value && value.length <= 64 ? singleOrderNumber(value) : null;
+  return code ? { number: value, code } : null;
 }
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -176,7 +180,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   let numberSaved: boolean | undefined;
   if (confirmedNumber) {
     try {
-      numberSaved = await saveConfirmedNumber(ctx.tenantId, notebookId, { number: confirmedNumber, manufacturer, model });
+      numberSaved = await saveConfirmedNumber(ctx.tenantId, notebookId, { ...confirmedNumber, manufacturer, model });
     } catch (err) {
       numberSaved = false;
       console.warn(`[identity-confirm] saveConfirmedNumber failed notebook=${notebookId}: ${(err as Error).message}`);

@@ -180,6 +180,13 @@ describe("the identity card offers the typed order number (#6085)", () => {
     expect(nbMock.recordTurn).toHaveBeenCalledTimes(1);
   });
 
+  // #6104 r1 F1: two order numbers joined in one token are not one number.
+  it("a token joining two order numbers gets a TP700 card with no offer", async () => {
+    const card = proposalIn(await ask("Siemens TP700 Comfort panel 6AV2124-0GC01-0AX0|S7-1200 will not power up."));
+    expect(card).toMatchObject({ manufacturer: "Siemens", model: "TP700" }); // precondition: the card exists
+    expect(card).not.toHaveProperty("offeredNumber");
+  });
+
   it("control: a card whose question names no number offers none", async () => {
     const card = proposalIn(await ask("Our Siemens TP700 Comfort panel will not power up."));
     expect(card).toMatchObject({ manufacturer: "Siemens", model: "TP700" });
