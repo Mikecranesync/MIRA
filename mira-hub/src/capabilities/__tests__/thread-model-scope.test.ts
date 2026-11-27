@@ -191,10 +191,13 @@ describe("threadStatusScope: the question an identity card was saved on (#6085)"
   });
 
   it("control: a card with an empty maker or model never matches", () => {
-    const tp900 = "Find the manual for Siemens TP900 Comfort 6AV2124-0JC01-0AX0";
+    // One identifier the record does not hold, so only the guard keeps it out.
+    const tp900 = "Does the TP900 need a fuse?";
     const noMaker = { manufacturer: null, model: "TP700", catalogNumber: "", recordCatalog: null };
+    expect(threadStatusScope([tp900], noMaker)).toBe("other");
     expect(threadStatusScope([tp900], { ...noMaker, cards: [card(tp900, "", "TP700")] })).toBe("other");
     const noModel = { manufacturer: "Siemens", model: null, catalogNumber: "6AV2124-0GC01-0AX0", recordCatalog: null };
+    expect(threadStatusScope([tp900], noModel)).toBe("other");
     expect(threadStatusScope([tp900], { ...noModel, cards: [card(tp900, "Siemens", "")] })).toBe("other");
   });
 
