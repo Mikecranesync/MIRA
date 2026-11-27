@@ -17,6 +17,26 @@ export interface InviteLinkResult {
 }
 
 /**
+ * The link's token, read the same way for every caller. An invitation carries
+ * it as `?token=`; the emailed sign-in link (#5942, the Hub's magicLinkUrl)
+ * carries it in the fragment, `#token=`, after an optional `?next=`. Every token
+ * parameter in the link must agree: two different tokens anywhere in one link is
+ * rejected rather than resolved by picking one.
+ */
+function linkToken(url: URL): { token: string } | { conflict: true } {
+  // Every token parameter, from both places: get() would see only the first one
+  // of each, and a repeated parameter could hide a second, different token.
+  const all = [
+    ...url.searchParams.getAll("token"),
+    ...new URLSearchParams(url.hash.replace(/^#/, "")).getAll("token"),
+  ]
+    .map((t) => t.trim())
+    .filter(Boolean);
+  if (new Set(all.map((t) => t.toLowerCase())).size > 1) return { conflict: true };
+  return { token: all[0] ?? "" };
+}
+
+/**
  * Token identity of a pasted invitation URL — used only to decide whether a
  * textarea edit is a *different* invite. Does not contact the host, does not
  * log the value, and is not an authentication check (origin/HTTPS/path
@@ -26,8 +46,9 @@ export function inviteTokenIdentity(pasted: string): string | null {
   const raw = pasted.trim();
   if (!raw) return null;
   try {
-    const token = new URL(raw).searchParams.get("token")?.trim() ?? "";
-    return UUID_RE.test(token) ? token.toLowerCase() : null;
+    const found = linkToken(new URL(raw));
+    if ("conflict" in found) return null;
+    return UUID_RE.test(found.token) ? found.token.toLowerCase() : null;
   } catch {
     return null;
   }
@@ -62,8 +83,9 @@ export function parseInviteLink(
   // fetched/followed (no redirect would ever normalize it for us).
   if (!/\/magic\/?$/.test(url.pathname)) return { error: "invalid_format" };
 
-  const token = url.searchParams.get("token")?.trim() ?? "";
-  if (!UUID_RE.test(token)) return { error: "missing_token" };
+  const found = linkToken(url);
+  if ("conflict" in found) return { error: "invalid_format" };
+  if (!UUID_RE.test(found.token)) return { error: "missing_token" };
 
-  return { token };
+  return { token: found.token };
 }

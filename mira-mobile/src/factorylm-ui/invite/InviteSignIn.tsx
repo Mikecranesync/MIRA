@@ -146,8 +146,8 @@ export function InviteSignIn({
     <div className="card">
       <h3>Use an invitation link</h3>
       <p className="meta">
-        No password needed — paste the invitation link from your invite email
-        and we&apos;ll sign you in.
+        No password needed — paste the invitation or sign-in link from your
+        email and we&apos;ll sign you in.
       </p>
       <label htmlFor="invite-link-input">Invitation link</label>
       <textarea
