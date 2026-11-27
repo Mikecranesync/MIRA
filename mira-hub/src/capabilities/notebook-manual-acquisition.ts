@@ -1349,17 +1349,21 @@ export function threadStatusScope(
   own.delete("");
   const ownMaker = maker(machine.manufacturer);
   const isOwn = (id: string) => own.has(id) || [...own].some((o) => familyCovers(id, o));
-  // #6085: a card names one machine. When a card saved on a turn names the machine on record,
-  // the one other identifier its question names is that machine's marking ("TP700 Comfort
-  // panel 6AV2124-0GC01-0AX0", carded and confirmed as the TP700). A question naming two is
-  // not read as one machine's markings ("ACS355-03E-07A3-4 sits next to an ACS355-03E-09A8-4"
-  // is carded as the ACS355), so it changes nothing. Reads the saved card, not the wording.
+  // #6085: a card names one machine. When the cards saved on this thread's turns name the
+  // machine on record, the one other identifier their questions name is that machine's
+  // marking ("TP700 Comfort panel 6AV2124-0GC01-0AX0", carded and confirmed as the TP700).
+  // Fail closed (Codex #6094 r1 F1/F2): a confirmed catalog number on record wins, so cards
+  // add nothing then; and the numbers every matching card names are pooled against the
+  // record, so two different numbers ("07A3-4 sits next to an 09A8-4", or two cards naming
+  // one each) add none, in any order. Reads the saved cards, not a wording rule.
   const ownModel = norm(machine.model);
-  for (const card of machine.cards ?? []) {
+  const onRecord = Boolean(machine.catalogNumber?.trim() || machine.recordCatalog?.trim());
+  const markings = new Set<string>();
+  for (const card of onRecord ? [] : (machine.cards ?? [])) {
     if (!ownMaker || !ownModel || maker(card.manufacturer) !== ownMaker || norm(card.model) !== ownModel) continue;
-    const markings = [...modelsNamedIn(card.question, own)].filter((id) => !isOwn(id));
-    if (markings.length === 1) own.add(markings[0]!);
+    for (const id of modelsNamedIn(card.question, own)) if (!isOwn(id)) markings.add(id);
   }
+  if (markings.size === 1) own.add([...markings][0]!);
   const otherMaker = (named: string | null | undefined) => Boolean(named && ownMaker && maker(named) !== ownMaker);
   for (let i = questions.length - 1; i >= 0; i--) {
     const q = questions[i] ?? "";

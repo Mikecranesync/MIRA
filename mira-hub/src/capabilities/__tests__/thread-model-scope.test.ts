@@ -222,4 +222,46 @@ describe("threadStatusScope: the question an identity card was saved on (#6085)"
     expect(threadStatusScope([q], carded)).toBe("own");
     expect(threadStatusScope([q, "and the ACS355-03E-09A8-4 beside it?"], carded)).toBe("other");
   });
+
+  // Codex #6094 r1 F1/F2: a number read off a card's question is the machine's only when nothing
+  // on record says otherwise and every matching card agrees. Disagreement adds nothing.
+  const Q07 = "Our ABB ACS355 ACS355-03E-07A3-4 shows fault 0001. What does it mean?";
+  const Q09 = "Our ABB ACS355 ACS355-03E-09A8-4 shows fault 0002. What does it mean?";
+  const PAIR = "Our ABB ACS355 ACS355-03E-07A3-4 sits next to an ACS355-03E-09A8-4. Which fuse?";
+  const F07 = "Does the ACS355-03E-07A3-4 need a fuse?";
+  const F09 = "Does the ACS355-03E-09A8-4 need a fuse?";
+  const ACS = { manufacturer: "ABB", model: "ACS355", catalogNumber: "", recordCatalog: null as string | null };
+  const acsCard = (q: string) => card(q, "ABB", "ACS355");
+
+  it("a confirmed catalog number wins over an older card's number", () => {
+    const record = { ...ACS, catalogNumber: "ACS355-03E-09A8-4", recordCatalog: "ACS355-03E-09A8-4", cards: [acsCard(Q07)] };
+    expect(threadStatusScope([Q07], record)).toBe("other");
+    expect(threadStatusScope([Q07, F07], record)).toBe("other");
+    expect(threadStatusScope([Q07, F09], record)).toBe("own");
+  });
+
+  it("either confirmed catalog field alone keeps a card's number out", () => {
+    expect(threadStatusScope([Q07, F07], { ...ACS, catalogNumber: "ACS355-03E-09A8-4", cards: [acsCard(Q07)] })).toBe("other");
+    expect(threadStatusScope([Q07, F07], { ...ACS, recordCatalog: "ACS355-03E-09A8-4", cards: [acsCard(Q07)] })).toBe("other");
+  });
+
+  it("cards that name different numbers add none, in either order", () => {
+    for (const cards of [[acsCard(Q07), acsCard(PAIR)], [acsCard(PAIR), acsCard(Q07)], [acsCard(Q07), acsCard(Q09)]]) {
+      expect(threadStatusScope([Q07, F07], { ...ACS, cards })).toBe("other");
+      expect(threadStatusScope([Q07, F09], { ...ACS, cards })).toBe("other");
+    }
+  });
+
+  it("control: cards that name the same number, or no number, still agree", () => {
+    const again = "Our ABB ACS355 ACS355-03E-07A3-4 trips on start. Why?";
+    const plain = "Our ABB ACS355 will not start. Why?";
+    expect(threadStatusScope([Q07, F07], { ...ACS, cards: [acsCard(Q07), acsCard(again)] })).toBe("own");
+    expect(threadStatusScope([Q07, F07], { ...ACS, cards: [acsCard(plain), acsCard(Q07)] })).toBe("own");
+    expect(threadStatusScope([Q07, F09], { ...ACS, cards: [acsCard(plain), acsCard(Q07)] })).toBe("other");
+  });
+
+  it("control: a card for another machine does not count as disagreeing", () => {
+    const other = "Our ABB ACS580 ACS580-01-12A7-4 shows fault 2310. What does it mean?";
+    expect(threadStatusScope([Q07, F07], { ...ACS, cards: [card(other, "ABB", "ACS580"), acsCard(Q07)] })).toBe("own");
+  });
 });
