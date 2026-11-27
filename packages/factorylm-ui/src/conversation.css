@@ -255,7 +255,7 @@
 .fl-attachment-menu__close svg { inline-size: 1.25rem; block-size: 1.25rem; }
 .fl-attachment-menu__handle { display: none; }
 .fl-attachment-menu__item { display: flex; align-items: center; justify-content: flex-start; gap: var(--fl-workspace-space-3); min-block-size: max(3.25rem, 52px); padding-inline: var(--fl-workspace-space-3); border-radius: var(--fl-workspace-radius); text-align: start; font-size: var(--fl-workspace-fs-body); }
-.fl-attachment-menu__item:disabled { color: var(--fl-workspace-muted); background: var(--fl-workspace-off-tint); border-color: var(--fl-workspace-off-line); border-style: dashed; cursor: not-allowed; }
+.fl-attachment-menu__item:disabled { color: var(--fl-workspace-ink); background: var(--fl-workspace-off-tint); border-color: var(--fl-workspace-off-line); border-style: dashed; cursor: not-allowed; }
 .fl-attachment-menu__copy { display: flex; flex-direction: column; align-items: flex-start; gap: var(--fl-workspace-space-1); min-inline-size: 0; }
 .fl-attachment-menu__reason { color: var(--fl-workspace-ink); font-size: var(--fl-workspace-fs-sm); }
 .fl-attachment-menu__icon { inline-size: 1.5rem; block-size: 1.5rem; flex: 0 0 auto; }
