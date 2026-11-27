@@ -40,7 +40,7 @@ beforeEach(() => {
   acqMock.confirmNotebookIdentity.mockResolvedValue({ ok: true, numberSaved: true });
 });
 const TICK = { number: "6AV2124-0GC01-0AX0", code: "6AV21240GC010AX0" };
-const tickArg = () => acqMock.confirmNotebookIdentity.mock.calls[0]![3];
+const tickArg = () => (acqMock.confirmNotebookIdentity.mock.calls[0] as unknown[] | undefined)?.[3];
 
 describe("POST identity/confirm with a ticked number (#6085)", () => {
   it("hands exactly the ticked number to the identity confirm and reports it saved", async () => {
