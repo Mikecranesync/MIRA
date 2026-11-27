@@ -330,6 +330,14 @@ describe("#6049: a zero value is exempt only as a residual pressure or voltage r
     expect(gaps("Verify the hose gauge reads 0 psi prior to adjusting any hose fitting [1].", HOSE)).toEqual([]);
     expect(gaps("Before any hose fitting is loosened or adjusted, relieve the pressure and verify the hose gauge reads 0 psi [1].", HOSE)).toEqual([]);
     expect(gaps("Prior to loosening any hose fitting, verify the hose gauge reads 0 psi [1].", HOSE)).toEqual([]);
+    // The redraft instruction's own pressure wording, with the zero written as a number.
+    expect(
+      gaps("Relieve the hydraulic pressure and verify it reads 0 psi before any hose fitting, bolt or component is loosened or adjusted [1].", HOSE),
+    ).toEqual([]);
+    // The cost, on the safe side: an opening clause is set aside up to its FIRST comma only, so one that lists things is not.
+    expect(
+      gaps("Before any hose fitting, bolt or component is loosened or adjusted, relieve the hydraulic pressure and verify it reads 0 psi [1].", HOSE),
+    ).toEqual(VALUE);
     // Only that clause is set aside: an action after its comma still counts, and so does a zero inside it.
     expect(gaps("Before any hose fitting is loosened, set the pressure to 0 psi and verify the hose gauge [1].", HOSE)).toEqual(VALUE);
     expect(gaps("Before restart, inspect the hoses, then verify the hose gauge reads 0 psi [1].", HOSE)).toEqual(VALUE);
@@ -349,6 +357,32 @@ describe("#6049: a zero value is exempt only as a residual pressure or voltage r
     expect(gaps("Verify hose gauge reads 0 psi [1].", HOSE)).toEqual(VALUE);
     expect(gaps("Verify the hose line gauge reads 0 psi [1].", HOSE)).toEqual(VALUE);
     expect(gaps("Verify the hose meter reads 0 psi [1].", HOSE)).toEqual(VALUE);
+  });
+
+  it("'make' is allowed only in 'make sure': 'make the gauge read 0 psi' sets it", () => {
+    expect(gaps("Make the gauge read 0 psi [1].", REG)).toEqual(VALUE);
+    expect(gaps("Make the gauge show 0 psi and check it [1].", REG)).toEqual(VALUE);
+    expect(gaps("The gauge is at 0 psi, sure [1].", REG)).toEqual(VALUE);
+    expect(gaps("Make sure the gauge reads 0 psi [1].", REG)).toEqual([]);
+  });
+
+  it("'has', 'have' and 'been' are allowed only as the helper of a listed participle", () => {
+    expect(gaps("Have the gauge read 0 psi [1].", REG)).toEqual(VALUE);
+    expect(gaps("Have the pressure at 0 psi and check the gauge [1].", REG)).toEqual(VALUE);
+    expect(gaps("Check the gauge has the pressure at 0 psi [1].", REG)).toEqual(VALUE);
+    expect(gaps("Check the pressure been relieved to 0 psi on the gauge [1].", REG)).toEqual(VALUE);
+    expect(gaps("Wait until the pressure has dropped to 0 psi on the gauge [1].", REG)).toEqual([]);
+    expect(gaps("Wait until the pressure and the charge have dropped to 0 psi on the gauge [1].", REG)).toEqual([]);
+    expect(gaps("Verify all pressure has been relieved and the gauge reads 0 psi [1].", REG)).toEqual([]);
+  });
+
+  it("'stop' is allowed for the machine and 'lock' in 'lock out': 'stop the pressure at 0 psi' sets it", () => {
+    expect(gaps("Stop the pressure at 0 psi and check the gauge [1].", REG)).toEqual(VALUE);
+    expect(gaps("Stop the line pressure at 0 psi and check the gauge [1].", REG)).toEqual(VALUE);
+    expect(gaps("Lock the pressure in at 0 psi and check the gauge [1].", REG)).toEqual(VALUE);
+    expect(gaps("Stop the machine and verify the gauge reads 0 psi [1].", REG)).toEqual([]);
+    expect(gaps("Stop and lock out the machine, then verify the gauge reads 0 psi [1].", REG)).toEqual([]);
+    expect(gaps("Lock out the machine and verify the gauge reads 0 psi [1].", REG)).toEqual([]);
   });
 
   it("a NON-zero pressure or voltage reading is a value claim: only zero is exempt", () => {

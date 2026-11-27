@@ -701,9 +701,15 @@ export type CitationSupportGap = { citationId: string; reason: "no_page" | "valu
 // (set, adjust, ...) is open-ended: "dial the regulator to 0 psi and verify", "back it off to
 // 0 psi and confirm" and "lower it until the gauge reads 0 psi" all slip one. So the zero's
 // whole sentence must be made ONLY of the words below: relieving, verifying, reading and
-// isolating, with at least one relieving, verifying or reading word among them. No operating
-// verb is in the set, so a sentence that operates a control is never exempt, whatever the
-// verb. A machine's own name is not in it either: the set is closed.
+// isolating, with at least one relieving, verifying or reading word among them. No verb that
+// sets a value is in the set, so a sentence that sets one is not exempt, whatever the verb. A
+// machine's own name is not in it either: the set is closed.
+//
+// Five listed words could still phrase a setting, so each is allowed in one position only
+// (ZERO_READING_POSITION): "make" in "make sure" ("make the gauge read 0 psi" sets it), "has"
+// and "have" as the helper of a listed participle ("have the gauge read 0 psi"), "stop" for
+// the machine and "lock" in "lock out" ("stop the pressure at 0 psi", "lock the pressure in
+// at 0 psi").
 const RESIDUAL_ENERGY_UNITS = new Set(["psi", "bar", "Pa", "kPa", "MPa", "V", "mV", "kV", "VAC", "VDC", "Vrms"]);
 // The words that make a sentence a reading or a relief: it needs at least one of them.
 const ZERO_READING_VERBS = new Set(
@@ -719,11 +725,27 @@ const ZERO_READING_WORDS = new Set(
     "pressure voltage energy charge gauge meter multimeter voltmeter tester " +
     "residual stored trapped remaining hydraulic pneumatic air dc ac bus capacitor capacitors terminals conductors circuit " +
     "with stop stopped lock locked lockout tagout out isolate isolated de-energize de-energized under site procedure " +
-    "machine equipment unit system press line"
+    "machine equipment unit system press line been"
   )
     .split(" ")
     .concat([...ZERO_READING_VERBS]),
 );
+const ZERO_READING_PARTICIPLES = new Set(
+  "relieved released bled vented discharged drained dissipated dropped fallen stopped locked isolated de-energized verified confirmed".split(
+    " ",
+  ),
+);
+const ZERO_READING_STOPPABLE = new Set(["machine", "equipment", "unit", "press"]);
+// A listed word that is allowed only where its neighbours make it part of a reading.
+const ZERO_READING_POSITION: Record<string, (prev: string | undefined, next: string | undefined, next2: string | undefined) => boolean> = {
+  make: (_prev, next) => next === "sure",
+  sure: (prev) => prev === "make",
+  has: (_prev, next) => next === "been" || ZERO_READING_PARTICIPLES.has(next ?? ""),
+  have: (_prev, next) => next === "been" || ZERO_READING_PARTICIPLES.has(next ?? ""),
+  been: (prev) => prev === "has" || prev === "have",
+  lock: (_prev, next) => next === "out",
+  stop: (_prev, next, next2) => next === "and" || (next === "the" && ZERO_READING_STOPPABLE.has(next2 ?? "")),
+};
 // A sentence ends at . ! ? followed by whitespace, and nowhere else. A dot inside a number or
 // a part tag ("4.2", "PR-2.a") does not end one, and neither does a line break: "Set the
 // regulator to:" with "0 psi and verify" on the next line is one sentence.
@@ -757,7 +779,11 @@ function isZeroReading(v: Value, text: string): boolean {
   const words = sentence.toLowerCase().replace(/['’]s\b/g, "").match(WORD_RE) ?? [];
   return (
     words.some((w) => ZERO_READING_VERBS.has(w)) &&
-    words.every((w, i) => ZERO_READING_WORDS.has(w) || (words[i - 1] === "the" && words[i + 1] === "gauge"))
+    words.every((w, i) => {
+      const position = Object.hasOwn(ZERO_READING_POSITION, w) ? ZERO_READING_POSITION[w] : null;
+      if (position) return position(words[i - 1], words[i + 1], words[i + 2]);
+      return ZERO_READING_WORDS.has(w) || (words[i - 1] === "the" && words[i + 1] === "gauge");
+    })
   );
 }
 
