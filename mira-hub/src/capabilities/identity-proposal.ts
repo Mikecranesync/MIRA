@@ -43,8 +43,9 @@ export interface IdentityProposal {
   model: string;
 }
 
-/** The SSE frame the notebook chat emits next to the normal answer. */
-export type NotebookIdentityProposalFrame = { kind: "identity_proposal" } & IdentityProposal;
+/** The SSE frame the notebook chat emits next to the normal answer. `offeredNumber` (#6085) is
+ *  the one typed number the card offers beside an unticked box (`offeredOwnNumber`). */
+export type NotebookIdentityProposalFrame = { kind: "identity_proposal"; offeredNumber?: string } & IdentityProposal;
 
 /** A single letter + 2–4 digits: a fault code, never a model (mirrors extractFaultCodes). */
 const FAULT_CODE_RE = /^[A-Za-z]\d{2,4}$/;
@@ -510,6 +511,16 @@ function sameMachine(mention: string, model: string, chosen: string): boolean {
   if (!/^6AV/i.test(mention)) return false;
   const paired = resolveModelFromObservationText(`${model} ${mention}`);
   return !paired.ambiguous && paired.model !== null && norm(paired.model) === chosen;
+}
+
+/**
+ * #6104 r3 F6: a Siemens 6AV order number the panel parser pairs with `model` (TP700 and
+ * 6AV2124-0GC01-0AX0 describe one nameplate), by `sameMachine`'s own reading. The confirmed-number
+ * reader uses it so a ticked panel number is tied to the card's panel by the proposer's rule, not a
+ * second one. Pure.
+ */
+export function panelOrderNumberPairs(number: string, model: string): boolean {
+  return /^6AV/i.test(number) && sameMachine(number, model, canonicalModel(model));
 }
 
 /**

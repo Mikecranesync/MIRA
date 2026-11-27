@@ -20,6 +20,7 @@ export async function confirmIdentityProposal(
 ): Promise<ConfirmIdentityResult> {
   const body: Record<string, string> = { manufacturer: proposal.manufacturer, model: proposal.model };
   if (proposal.catalogNumber) body.catalogNumber = proposal.catalogNumber;
+  if (proposal.confirmedNumber) body.confirmedNumber = proposal.confirmedNumber;
   // Light-review fix (PR #4195): `request()` throws on any non-2xx by
   // default (`errorFromStatus`, which keeps only the `error` string, not the
   // manufacturer/model this 409's BODY also carries) — `acceptStatuses`

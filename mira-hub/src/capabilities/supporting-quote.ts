@@ -696,8 +696,15 @@ export type CitationSupportGap = { citationId: string; reason: "no_page" | "valu
  * #6020: where an answer's cited steps are not supported by the pages they cite. Deterministic
  * and deliberately a low floor, read on the model-visible text of each page:
  *   - a marker that resolves to no retrieved page is a gap;
- *   - every value (number + unit) the answer assigns to a citation must be found on that page,
- *     except a zero reading (the redraft instruction asks the model to say a gauge reads zero);
+ *   - every USABLE value (a fully recognized number + table unit) the answer assigns to a
+ *     citation must be found on that page: the same value printed anywhere on it. A range
+ *     printed as "0-2000 ms" counts for its two printed ends only, not for the values
+ *     between them. A value the reader cannot fully recognize is not compared (#6101).
+ *     A zero is a value like any other (#6049): "0 psi", "0 ms" and "0 V" are each checked.
+ *     There is no exemption for a zero reading. One existed and could not be made safe: a
+ *     sentence can set a value to zero in more wordings than a list can name. The redraft
+ *     instruction asks the model to "verify it reads zero"; a number written as a word is
+ *     not a value here (a known limit, #6100), and the same reading in digits is checked;
  *   - a sentence carrying markers whose content words appear on NONE of the pages it cites is a
  *     gap. A sentence with no content words left (only isolation/restart vocabulary) is neutral.
  *     Words of the question and of `identity` (the machine's own name) are not support while the
@@ -724,7 +731,7 @@ export function citationSupportGaps(
     }
     const srcVals = page.flatMap((t) => findValues(t, "source"));
     // Usable values only (number + table unit); a bare "step 3" is left to the word check.
-    const claims = (assigned.get(id) ?? []).filter((c) => c.usable && !c.nums.every((n) => n === 0));
+    const claims = (assigned.get(id) ?? []).filter((c) => c.usable);
     if (claims.some((c) => !srcVals.some((s) => satisfies(s, c)))) gaps.push({ citationId: id, reason: "value" });
   }
   const pageTokens = pages.map((p) => supportTerms(p.join(" ")));

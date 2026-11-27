@@ -152,3 +152,29 @@ describe("threadStatusScope", () => {
     expect(threadStatusScope(["Find me the manual for AutomationDirect GS11N-20P25", back], GS10)).toBe("other");
   });
 });
+
+// #6085 (staging tablet walk 2026-11-27): the technician ticked the order number on the
+// identity card. The number is theirs, so the question that names it is the machine's own.
+describe("threadStatusScope: a number the technician confirmed (#6085)", () => {
+  const J2 = "Our Siemens TP700 Comfort panel 6AV2124-0GC01-0AX0 will not power up. What is the rated supply voltage?";
+  const TP700 = { manufacturer: "Siemens", model: "TP700", catalogNumber: "", recordCatalog: null };
+  const ticked = { ...TP700, confirmedNumbers: ["6AV2124-0GC01-0AX0"] };
+
+  it("is own for the walk question once its order number is confirmed", () => {
+    expect(threadStatusScope([J2], ticked)).toBe("own");
+  });
+
+  it("control: with no confirmed number the walk question is other", () => {
+    expect(threadStatusScope([J2], TP700)).toBe("other");
+    expect(threadStatusScope([J2], { ...TP700, confirmedNumbers: [] })).toBe("other");
+  });
+
+  it("control: a TP900 or another order number later in the thread is other", () => {
+    expect(threadStatusScope([J2, "Find the manual for Siemens TP900 Comfort 6AV2124-0JC01-0AX0"], ticked)).toBe("other");
+    expect(threadStatusScope([J2, "What about the 6AV2124-0JC01-0AX0?"], ticked)).toBe("other");
+  });
+
+  it("control: another maker named with the confirmed number is other", () => {
+    expect(threadStatusScope(["Find the manual for Schneider Electric 6AV2124-0GC01-0AX0"], ticked)).toBe("other");
+  });
+});

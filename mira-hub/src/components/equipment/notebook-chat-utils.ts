@@ -300,8 +300,8 @@ export async function readNotebookStream(
           const { manufacturer, model, running, message, startedAt, manualUrl } = frame;
           opts.onManualSearchStatus?.({ manufacturer, model, running, message, startedAt, manualUrl });
         } else if (frame.kind === "identity_proposal") {
-          const { manufacturer, model, catalogNumber } = frame;
-          out.identityProposal = { manufacturer, model, ...(catalogNumber ? { catalogNumber } : {}) };
+          const { manufacturer, model, catalogNumber, offeredNumber } = frame;
+          out.identityProposal = { manufacturer, model, ...(catalogNumber ? { catalogNumber } : {}), ...(offeredNumber ? { offeredNumber } : {}) };
         } else if (frame.kind === "http_error") {
           const body = frame.body as { error?: unknown } | null;
           httpError = new NotebookHttpError(frame.status, typeof body?.error === "string" ? body.error : "");

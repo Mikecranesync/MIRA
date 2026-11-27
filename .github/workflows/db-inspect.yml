@@ -18,6 +18,11 @@ on:
         options:
           - staging
           - prod
+      g120_manual_probe:
+        description: 'Also run the G120 List Manual rows probe (issue 6060). Off by default so ordinary runs keep their time budget.'
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
   group: db-inspect-${{ inputs.target }}
@@ -65,6 +70,48 @@ jobs:
           fi
           echo "::add-mask::$DATABASE_URL"
           echo "DATABASE_URL=$DATABASE_URL" >> "$GITHUB_ENV"
+
+      # #6060: what the July-28 prod crawl wrote for the two Siemens G120 List
+      # Manuals, before any reload is planned. Opt-in (g120_manual_probe), so an
+      # ordinary dispatch keeps its step order and 5-minute budget.
+      # Output is limited to is_private = false rows. Those are visible to every
+      # tenant through the product already (knowledge-entries tenant-scoping
+      # law), so their tags and counts disclose nothing. Private uploads are
+      # excluded entirely: no tenant, model, date, count or content check.
+      # Tenants are labelled shared / other, never printed.
+      # The source URLs match exactly the sources.yaml literals.
+      - name: G120 List Manual rows (issue 6060) — READ-ONLY
+        if: ${{ inputs.g120_manual_probe }}
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          # Neon's pooler rejects startup options, so the read-only lock is a
+          # READ ONLY transaction. ON_ERROR_STOP=1 makes a SQL error or the
+          # statement timeout fail this step instead of leaving it green.
+          psql "$DATABASE_URL" --no-psqlrc -v ON_ERROR_STOP=1 <<'SQL'
+          \echo === G120 List Manual rows (issue 6060), is_private = false only ===
+          BEGIN TRANSACTION READ ONLY;
+          SET LOCAL statement_timeout = '60s';
+          WITH manuals(manual, url) AS (VALUES
+            ('CU240', 'https://cache.industry.siemens.com/dl/files/919/109817919/att_1133702/v1/G120_CU240BE-2_list_man_0223_en-US.pdf'),
+            ('G120C', 'https://cache.industry.siemens.com/dl/files/922/109817922/att_1133717/v1/G120C_list_man_0223_en-US.pdf'))
+          SELECT m.manual,
+                 CASE WHEN k.tenant_id = '78917b56-f85f-43bb-9a08-1bb98a6cd6c3'::uuid
+                      THEN 'shared' ELSE 'other' END             AS tenant,
+                 k.model_number, k.verified,
+                 count(*)                                        AS chunks,
+                 count(k.embedding)                              AS embedded,
+                 min(k.source_page) AS min_page, max(k.source_page) AS max_page,
+                 max((k.metadata->>'chunk_index')::int)          AS max_chunk_index,
+                 count(*) FILTER (WHERE k.content ILIKE '%F30011%') AS f30011_chunks,
+                 min(k.created_at)::date AS first_written, max(k.created_at)::date AS last_written
+            FROM manuals m
+            JOIN knowledge_entries k ON k.source_url = m.url AND k.is_private = false
+           GROUP BY 1, 2, 3, 4
+           ORDER BY 1, 2, 3, 4;
+          ROLLBACK;
+          SQL
 
       - name: 085 canonical-provenance probe (nameplate origin + duplicates) — READ-ONLY
         env:

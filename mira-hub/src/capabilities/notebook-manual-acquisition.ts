@@ -42,6 +42,8 @@ import { familyCovers, modelIdentitiesInText } from "@/capabilities/model-token"
 import { isRatingToken, modelNumbersIn } from "@/capabilities/manual-applicability";
 import { foldForDetection } from "@/capabilities/detection-fold";
 import { normalizeManufacturer } from "@/lib/manufacturerNormalize";
+import { recordConfirmedNumber } from "@/capabilities/confirmed-numbers";
+import { panelOrderNumberPairs } from "@/capabilities/identity-proposal";
 
 /** A running claim older than this is treated as abandoned (container restart). */
 export const STALE_RUNNING_MINUTES = 10;
@@ -653,8 +655,15 @@ export function fencedWriter(key: string, gen: string, basis: "confirmed" | "can
   };
 }
 
+/** An identity that is settled: confirmed or verified, with a maker and a model or catalog number.
+ *  The confirm guard and the ticked-number decision (#6104 r2 F3) read the same predicate. */
+const SETTLED_IDENTITY_SQL = `n.identity_status IN ('user_confirmed', 'verified')
+            AND trim(coalesce(n.manufacturer, '')) <> ''
+            AND (trim(coalesce(n.model, '')) <> '' OR trim(coalesce(n.catalog_number, '')) <> '')`;
+
 export type ConfirmNotebookIdentityResult =
-  | { ok: true }
+  /** `numberSaved` is present only when a ticked number came with the confirm (#6085). */
+  | { ok: true; numberSaved?: boolean }
   | { ok: false; error: "identity_already_confirmed"; manufacturer: string | null; model: string | null }
   | { ok: false; error: "confirm_failed" };
 
@@ -716,7 +725,11 @@ export async function confirmNotebookIdentity(
   tenantId: string,
   notebookId: string,
   identity: { manufacturer: string; model: string; catalogNumber: string },
+  number?: { number: string; code: string } | null,
 ): Promise<ConfirmNotebookIdentityResult> {
+  // #6104 r2 F4: a machine with a catalog number never reads ticked numbers, so a confirm that
+  // writes one refuses the tick rather than saving a number nothing will read.
+  const tick = number && !identity.catalogNumber.trim() ? number : null;
   const incomingKey = acquisitionKey({
     identityStatus: "user_confirmed",
     manufacturer: identity.manufacturer,
@@ -724,6 +737,15 @@ export async function confirmNotebookIdentity(
     catalogNumber: identity.catalogNumber,
   });
   return withTenantContext(tenantId, async (c) => {
+    // #6104 r2 F3: lock the row first and read whether the identity card already settled the
+    // identity, in the same transaction that writes it. A racing confirm waits here. Settled some
+    // other way (a nameplate photo), this confirm is the card's first word on it, so it decides the
+    // numbers afresh (round-3 pre-screen).
+    const lock = await c.query<{ settled: boolean | null }>(
+      `SELECT (${SETTLED_IDENTITY_SQL} AND n.identity_source_type = 'user') AS settled FROM equipment_notebooks AS n WHERE n.tenant_id = $1::uuid AND n.id = $2::uuid FOR UPDATE`,
+      [tenantId, notebookId],
+    );
+    const settledBefore = lock.rows[0]?.settled === true;
     const written = await c.query<{ id: string }>(
       `UPDATE equipment_notebooks AS n
           SET manufacturer = $3,
@@ -735,16 +757,21 @@ export async function confirmNotebookIdentity(
         WHERE n.tenant_id = $1::uuid
           AND n.id = $2::uuid
           AND NOT (
-            n.identity_status IN ('user_confirmed', 'verified')
-            AND trim(coalesce(n.manufacturer, '')) <> ''
-            AND (trim(coalesce(n.model, '')) <> '' OR trim(coalesce(n.catalog_number, '')) <> '')
+            ${SETTLED_IDENTITY_SQL}
             AND $6::text IS NOT NULL
             AND (${NOTEBOOK_KEY_SQL}) IS DISTINCT FROM $6
           )
         RETURNING n.id`,
       [tenantId, notebookId, identity.manufacturer, identity.model, identity.catalogNumber, incomingKey],
     );
-    if ((written.rowCount ?? 0) > 0) return { ok: true };
+    if ((written.rowCount ?? 0) > 0) {
+      // The confirm that settles the identity decides its numbers: exactly its tick, or none
+      // (round-3 pre-screen). On an identity already settled, only a tick is checked.
+      const entry = tick ? { ...tick, manufacturer: identity.manufacturer, model: identity.model } : null;
+      const saved = !settledBefore || entry ? await recordConfirmedNumber(c, tenantId, notebookId, entry, settledBefore) : false;
+      if (!number) return { ok: true };
+      return { ok: true, numberSaved: saved };
+    }
 
     // 0 rows: either the guard blocked this write (the common case — report
     // the CURRENT identity so the 409 body names what's actually confirmed),
@@ -1260,7 +1287,9 @@ export type { ManualSearchStatus };
  *   the GS11N-20P25 need a brake resistor" is "other" (#5750 r2 F3);
  * - a return to the confirmed unit with no model named ("ok, back to my
  *   drive", the same reader retrieval uses, and only when a catalog number is
- *   on record) is "own".
+ *   on record) is "own";
+ * - a number the technician confirmed on the identity card counts as one of
+ *   the project's identifiers (#6085).
  * "undecided" means nothing read settles it.
  */
 export type ThreadStatusScope = "own" | "other" | "undecided";
@@ -1334,6 +1363,8 @@ export function threadStatusScope(
     catalogNumber: string | null | undefined;
     /** The confirmed catalog number, or null — what "my drive" refers to. */
     recordCatalog: string | null;
+    /** Numbers the technician ticked on the identity card for this same machine (#6085). */
+    confirmedNumbers?: readonly string[];
   },
 ): ThreadStatusScope {
   const maker = (s: string | null | undefined) => normalizeManufacturer(s).canonical.toUpperCase().replace(/[^A-Z0-9]/g, "");
@@ -1342,6 +1373,16 @@ export function threadStatusScope(
     if (!value) continue;
     own.add(norm(value));
     for (const id of modelsNamedIn(value)) own.add(id);
+  }
+  // A confirmed number counts only as the order number written in it, and only when it is this
+  // machine's (`machineOrderNumber`): a model name ticked by mistake ("TP900", "…-0AX0/TP900") or
+  // another machine's model or number ("S7-1200", #6104 r3 F6) must never make every thread about
+  // that machine own. A confirmed catalog number is the machine's number, so ticked numbers count
+  // only without one (fail closed, the rule set for #6094 r1 F1).
+  const catalogOnRecord = Boolean(machine.catalogNumber?.trim() || machine.recordCatalog?.trim());
+  for (const value of catalogOnRecord ? [] : machine.confirmedNumbers ?? []) {
+    const code = machineOrderNumber(value, machine.model);
+    if (code) own.add(code);
   }
   own.delete("");
   const isOwn = (id: string) => own.has(id) || [...own].some((o) => familyCovers(id, o));
@@ -1357,6 +1398,70 @@ export function threadStatusScope(
     if (machine.recordCatalog && returnsToRecord(q)) return "own";
   }
   return "undecided";
+}
+
+/** Brackets around a typed number and punctuation after it are not part of it. */
+const typedToken = (token: string) =>
+  token.replace(/^[([{"'“‘]+/, "").replace(/[)\]}"'”’.,;:!?]+$/, "");
+
+/**
+ * #6104 r1 F1: the one order number a value is, as its letters and digits, or null. The whole
+ * value (brackets and trailing punctuation aside) must be exactly one hyphenated order number:
+ * "6AV2124-0GC01-0AX0" is one; "…-0AX0|S7-1200" (two numbers), "…-0AX0/TP900" (a number joined
+ * to a model) and "6AV21240GC010AX0" (no hyphens) are none. The scope reads saved values through
+ * it, so the offer (which asks the scope) and the confirm route apply the same rule.
+ */
+export function singleOrderNumber(value: string): string | null {
+  const folded = foldForDetection(typedToken(value.trim()));
+  const codes = catalogCodesIn(folded);
+  return codes.length === 1 && norm(folded) === codes[0] ? codes[0]! : null;
+}
+
+/**
+ * #6104 r3 F6: the order number a confirmed value is, only when it is the card's own machine's, as
+ * the existing readers already tie numbers to machines: its first group is the card's model (the
+ * maker's model code and its options, ACS355-03E-07A3-4 on an ACS355), or it is a Siemens panel
+ * number the proposer's own pairing ties to the card's panel (6AV2124-0GC01-0AX0 on a TP700).
+ * Another machine's model (S7-1200) or order number (a CPU's 6ES7…) is null. Fails closed: a
+ * machine's own number that is neither (a PowerFlex 525's 25B-…) is not counted either. The scope
+ * reads saved values through it and the confirm route saves only what it accepts, so the offer,
+ * the save and the read apply one rule.
+ */
+export function machineOrderNumber(value: string, model: string | null | undefined): string | null {
+  const code = singleOrderNumber(value);
+  const ownModel = norm(model);
+  if (!code || !ownModel) return null;
+  const folded = foldForDetection(typedToken(value.trim()));
+  return norm(folded.split("-")[0]) === ownModel || panelOrderNumberPairs(folded, model!) ? code : null;
+}
+/** Past this many digit-bearing tokens nothing is offered: a bound on the work, never a guess. */
+const MAX_OFFERED_CANDIDATES = 20;
+/** Past this length nothing is offered: the scope's cost grows faster than the text. */
+const MAX_OFFERED_QUESTION_CHARS = 500;
+
+/**
+ * #6085: the one number the technician typed that would make this question the proposed
+ * machine's own, for the identity card to offer beside an unticked box. The scope decides
+ * (`threadStatusScope` with that number confirmed), so the card and the status scope read the
+ * question the same way. A confirmed value counts only as the hyphenated order numbers in it,
+ * so a model name ("TP900"), a network ("DH-485") or a sibling's series is never offered. Null
+ * when the question is not withheld today, when no single typed token settles it (two numbers,
+ * another maker), past 20 digit-bearing tokens, or past 500 characters. The value is the token
+ * as typed, never a normalised string.
+ */
+export function offeredOwnNumber(
+  question: string,
+  identity: { manufacturer: string | null | undefined; model: string | null | undefined },
+): string | null {
+  if (!identity.model?.trim() || question.length > MAX_OFFERED_QUESTION_CHARS) return null;
+  const machine = { manufacturer: identity.manufacturer, model: identity.model, catalogNumber: null, recordCatalog: null };
+  if (threadStatusScope([question], machine) !== "other") return null;
+  const candidates = [
+    ...new Set(question.split(/\s+/).map(typedToken).filter((t) => /\d/.test(t) && t.length <= 64)),
+  ];
+  if (candidates.length > MAX_OFFERED_CANDIDATES) return null;
+  const fixes = candidates.filter((t) => threadStatusScope([question], { ...machine, confirmedNumbers: [t] }) === "own");
+  return fixes.length === 1 ? fixes[0]! : null;
 }
 
 /**
