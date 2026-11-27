@@ -129,7 +129,7 @@ COMMIT;
 
 ### 4.6 The status scope
 
-- **`threadStatusScope`.** The `machine` argument gains `confirmedNumbers?: readonly string[]`. Each one adds only the hyphenated order numbers written in it (the scope's existing catalog-code reader). It never adds a model name, so a mistaken tick can make no model's threads own. The model and catalog number join `own` as before.
+- **`threadStatusScope`.** The `machine` argument gains `confirmedNumbers?: readonly string[]`. Each one adds only the hyphenated order numbers written in it (the scope's existing catalog-code reader). It never adds a model name, so a mistaken tick can make no model's threads own. Ticked numbers count only while the notebook has no confirmed catalog number: a catalog set later (a notebook PATCH keeps the identity confirmed) is the machine's number, and wins (fail closed, the rule Mike set for #6094 r1 F1). The model and catalog number join `own` as before.
 - **`manual-status-subject.ts`, `subjectMachine`.** It adds the confirmed numbers only when all three hold:
   1. the notebook's identity is settled (`user_confirmed` or `verified`);
   2. the model the status names equals the notebook's model (the same rule `catalogNumber` already follows);
@@ -161,8 +161,8 @@ These are expectations, each to be proven by a test before it is claimed.
 
 Known costs, accepted by Mike:
 - **The box is left unticked.** The thread still withholds the outcome for that confirm, which is the #6085 symptom. This is the fail-closed cost of the unticked default.
-- **A number can be added only on the first card.** A later thread that names the number stays withheld, as now.
-- **Two cards exist before confirming.** Only the pressed card's number is saved; the other card settles as confirmed with no box.
+- **A number can be added only on the first card.** A number left unticked there cannot be added later, and threads that name it stay withheld, as now. A ticked number counts in every thread of the notebook while its identity is unchanged, and cannot be removed (revision after the final review: it counts only as an order number, so a mistaken tick can never make a model's threads own).
+- **Two cards exist before confirming.** Only the pressed card's number is saved; the other card settles as superseded with no box.
 - **Legacy surfaces.** They show no box.
 
 ## 6. Testing

@@ -108,8 +108,15 @@ describe("a model name is never offered or counted as a number", () => {
     expect(offeredOwnNumber("Find the manual for this Allen-Bradley SLC 5/03 on DH-485", { manufacturer: "Allen-Bradley", model: "SLC 5/03" })).toBeNull();
   });
 
-  it("offers no sibling order number that names its own series", () => {
+  // GS11N is in the GS10 family, but the scope reads a GS11N order number as naming the GS11N
+  // model, so a GS10 card never offers it (fail closed). In the route, a question naming both
+  // models gets no card at all; a question naming only GS11N-20P2 gets a GS11N card (below).
+  it("offers no order number whose first group names a different model from the card's", () => {
     expect(offeredOwnNumber("Our AutomationDirect GS10 sits next to a GS11N-20P2 that trips.", GS10)).toBeNull();
+  });
+
+  it("control: a GS11N card offers its own GS11N order number", () => {
+    expect(offeredOwnNumber("Our AutomationDirect GS11N-20P2 trips on oc at start", { manufacturer: "AutomationDirect", model: "GS11N" })).toBe("GS11N-20P2");
   });
 
   it("a saved model name counts for nothing", () => {
@@ -121,7 +128,7 @@ describe("a model name is never offered or counted as a number", () => {
     expect(scopeWith(J2, TP700, ["6AV2124-0GC01-0AX0/TP900"])).toBe("own"); // control: the order number still counts
   });
 
-  it("a saved sibling order number does not make its series own", () => {
+  it("a saved number naming a different model does not make that model own", () => {
     expect(scopeWith("Find the GS11N manual", GS10, ["GS11N-20P2"])).toBe("other");
   });
 
@@ -135,5 +142,29 @@ describe("a model name is never offered or counted as a number", () => {
   it("control: a saved order number in any hyphen spelling still settles the walk question", () => {
     expect(scopeWith(J2, TP700, ["6AV2124-0GC01-0AX0"])).toBe("own");
     expect(scopeWith(J2, TP700, ["6AV2124‑0GC01‑0AX0"])).toBe("own");
+  });
+});
+
+// Pre-Codex check: a notebook can gain a confirmed catalog number after a number was ticked
+// (PATCH catalogNumber keeps the identity confirmed). The catalog is then the machine's number,
+// so a ticked number stops counting: the same fail-closed rule Mike set for #6094 (r1 F1).
+describe("a confirmed catalog number outranks a ticked number", () => {
+  const ONLY_NUMBER = "Siemens panel 6AV2124-0GC01-0AX0 will not power up";
+  const machine = (catalog: string | null) => ({ ...TP700, catalogNumber: catalog ?? "", recordCatalog: catalog, confirmedNumbers: ["6AV2124-0GC01-0AX0"] });
+
+  it("a ticked number does not count once a different catalog is confirmed", () => {
+    expect(threadStatusScope([ONLY_NUMBER], machine("6AV2124-0JC01-0AX0"))).toBe("other");
+  });
+
+  it("nor when only the record carries the catalog", () => {
+    expect(threadStatusScope([ONLY_NUMBER], { ...machine(null), recordCatalog: "6AV2124-0JC01-0AX0" })).toBe("other");
+  });
+
+  it("control: with no catalog the ticked number counts", () => {
+    expect(threadStatusScope([ONLY_NUMBER], machine(null))).toBe("own");
+  });
+
+  it("control: a catalog equal to the ticked number still settles it", () => {
+    expect(threadStatusScope([ONLY_NUMBER], machine("6AV2124-0GC01-0AX0"))).toBe("own");
   });
 });

@@ -89,6 +89,16 @@ describe("GET notebook detail: a confirmed number (#6085)", () => {
     expect((await (await GET(threadReq, params)).json()).manualSearch).toEqual(READY);
   });
 
+  // A catalog confirmed after the tick (PATCH keeps the identity confirmed) is the machine's
+  // number; the ticked one stops counting, fail closed.
+  it("a different catalog confirmed later withholds the thread the ticked number settled", async () => {
+    vi.mocked(getNotebook).mockResolvedValue({ ...NOTEBOOK, catalogNumber: "6AV2124-0JC01-0AX0" } as never);
+    vi.mocked(listTurns).mockResolvedValue([ask(ONLY_NUMBER)] as never);
+    const body = await (await GET(threadReq, params)).json();
+    expect(body.manualSearch).toBeNull();
+    expect(body.manualSearchScope).toBe("other_model");
+  });
+
   // Review Focus 5: follow polling in an own thread adds no query.
   it("an own thread never reads the saved numbers", async () => {
     vi.mocked(listTurns).mockResolvedValue([ask("Find the manual for Siemens TP700")] as never);

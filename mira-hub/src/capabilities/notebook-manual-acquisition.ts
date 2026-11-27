@@ -1349,7 +1349,10 @@ export function threadStatusScope(
   }
   // A confirmed number counts only as the order numbers written in it: a model name ticked by
   // mistake ("TP900", or "…-0AX0/TP900") must never make every thread about that model own.
-  for (const value of machine.confirmedNumbers ?? []) {
+  // A confirmed catalog number is the machine's number, so ticked numbers count only without one
+  // (fail closed, the rule set for #6094 r1 F1).
+  const catalogOnRecord = Boolean(machine.catalogNumber?.trim() || machine.recordCatalog?.trim());
+  for (const value of catalogOnRecord ? [] : machine.confirmedNumbers ?? []) {
     for (const code of catalogCodesIn(foldForDetection(value))) own.add(code);
   }
   own.delete("");
