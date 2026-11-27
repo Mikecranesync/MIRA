@@ -1666,9 +1666,9 @@ async function handleChatTurn(
     // abort. (The outer one alone is not enough either: when a wrapper fails, the progress
     // stream ends cleanly with an error frame and the answer never passed through it.)
     // Two things withdraw that yes even after both were read (Codex round 4, F9 and F11):
-    // a request abort seen by the time the tracker answers (the call below starts on that
-    // answer with nothing awaited in between), and a sheet receipt that wrapped the body
-    // between the two responses (it re-encodes it and can corrupt the answer frame). No
+    // a request abort seen by the time the tracker answers (and read again at the call
+    // below, #6123), and a sheet receipt that wrapped the body between the two responses
+    // (it re-encodes it and can corrupt the answer frame). No
     // tracker, a cancel, an abort, an error, or no answer within HANDOFF_WAIT_MS all mean
     // NO CALL: unknown is never a yes. A confirmed handoff is the SERVER'S view only: the
     // runtime took every byte and its end, and reported no cancellation. A phone that
@@ -1701,7 +1701,14 @@ async function handleChatTurn(
         // before the handoff, so a turn with no answer does not wait for it. (The separate
         // sufficiency shadow starts before generation and is not gated here.)
         const answered = typeof opts.answerText === "string" && opts.answerText.trim() !== "";
-        const maySend = !jevDecisionEnabled() || (answered && handoff !== null && (await handoff.confirmed(HANDOFF_WAIT_MS)));
+        // #6123: the tracker read the abort flag when it answered, and this function resumes
+        // a few microtask steps after that. An abort can land in between, so the flag is
+        // read once more here, with nothing awaited between this read and the start of the
+        // call. Only on the switched-on branch: with the call off nothing is sent, and the
+        // "disabled" record is written for an aborted request as for any other.
+        const maySend =
+          !jevDecisionEnabled() ||
+          (answered && handoff !== null && (await handoff.confirmed(HANDOFF_WAIT_MS)) && !req.signal?.aborted);
         if (maySend) packet.jev_decision = await evaluateTurnDecision(decisionState).catch(() => null);
       }
     }

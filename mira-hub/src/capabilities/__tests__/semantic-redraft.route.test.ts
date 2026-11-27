@@ -2235,6 +2235,91 @@ describe("#6048 — a body cancel after the commit still persists the packet and
     expectDispositionMatchesHistory(r, 1);
   });
 
+  // ── #6123 ────────────────────────────────────────────────────────────────────
+  // The tracker reads the request's abort flag when it answers. The settle acts on that
+  // answer a few microtask steps later, when its own await resumes. An abort that lands in
+  // that gap leaves the tracker's yes standing, so the settle must read the flag itself,
+  // right before the call. The abort below is fired from the tracker's own answer: after its
+  // last read of the flag and before the settle resumes. No timer, no counted hops.
+  /** Wrap this turn's tracker: record each answer it gives, and run `after` before the caller resumes. */
+  const whenTrackerAnswers = async (after: () => void) => {
+    const answers: boolean[] = [];
+    const { createResponseHandoff: real } = await vi.importActual<typeof import("@/capabilities/response-handoff")>(
+      "@/capabilities/response-handoff",
+    );
+    handoffSpy.mockImplementationOnce((signal?: AbortSignal | null) => {
+      const tracker = real(signal);
+      return {
+        ...tracker,
+        confirmed: async (waitMs: number) => {
+          const yes = await tracker.confirmed(waitMs);
+          answers.push(yes);
+          after();
+          return yes;
+        },
+      };
+    });
+    return answers;
+  };
+
+  it("#6123: decision call on, the tracker answers yes and the request is aborted before the settle resumes: nothing is sent to the vendor, ONE packet and usage row", async () => {
+    decisionCallOn();
+    stubFetch(REDRAFT, [verdict("safe", "none")]);
+    const ac = new AbortController();
+    const answers = await whenTrackerAnswers(() => ac.abort());
+    const request = reqWith(PLAIN_TURN, { signal: ac.signal });
+    const res = await POST(request, params);
+    expect(await drain(res.body!.getReader())).toBe("closed");
+    const r = await settled();
+    // Preconditions: the tracker itself said yes (so the zero below is not a timeout or an
+    // unread stream), and the request the route holds was aborted by then.
+    expect(answers).toEqual([true]);
+    expect(request.signal.aborted).toBe(true);
+    expect(vendorRequests()).toHaveLength(0);
+    expect(r.packet.jev_decision ?? null).toBeNull();
+    expect(r.meta.outcome).toBe("answered");
+    expect(r.packet.response_write).toEqual({ frames_written: true, citations_written: 1 });
+    expectDispositionMatchesHistory(r);
+  });
+
+  it("#6123 control: the same wrapped tracker with no abort in the gap: ONE request, a decision record", async () => {
+    decisionCallOn();
+    stubFetch(REDRAFT, [verdict("safe", "none")]);
+    const ac = new AbortController();
+    const answers = await whenTrackerAnswers(() => undefined);
+    const request = reqWith(PLAIN_TURN, { signal: ac.signal });
+    const res = await POST(request, params);
+    expect(await drain(res.body!.getReader())).toBe("closed");
+    const r = await settled();
+    expect(answers).toEqual([true]);
+    expect(request.signal.aborted).toBe(false);
+    expect(vendorRequests()).toHaveLength(1);
+    expect(r.packet.jev_decision ?? null).not.toBeNull();
+    expectDispositionMatchesHistory(r, 1);
+  });
+
+  // With the call off the settle never reads the abort flag, so this passes with or without
+  // the fix. It is the control against a fix that is too wide: a flag read applied to the
+  // switched-off branch as well would drop the "disabled" record for an aborted request.
+  it("#6123 control: decision call OFF and the request aborted before the settle: the packet still says the call is disabled, nothing is sent", async () => {
+    delete process.env.MIRA_JEV_DECISION; // not inherited from the shell that runs the suite
+    stubFetch(REDRAFT, [verdict("safe", "none")]);
+    const ac = new AbortController();
+    const request = reqWith(PLAIN_TURN, { signal: ac.signal });
+    const res = await POST(request, params);
+    expect(await drain(res.body!.getReader())).toBe("closed");
+    // Precondition: the settle has not reached the ledger yet, so the request is already
+    // aborted when the settle runs.
+    expect(persistMock.persistTurnUsage).not.toHaveBeenCalled();
+    ac.abort();
+    const r = await settled();
+    expect(request.signal.aborted).toBe(true);
+    expect(handoffSpy).not.toHaveBeenCalled();
+    expect(vendorRequests()).toHaveLength(0);
+    expect(r.packet.jev_decision).toMatchObject({ skipped_reason: "disabled" });
+    expectDispositionMatchesHistory(r, 1);
+  });
+
   it("F5: sheet on without the progress stream, the receipt frame inserted: the reader takes every frame through the end marker and then cancels -> nothing is sent, ONE packet and usage row", async () => {
     decisionCallOn();
     sheetOn();
