@@ -282,8 +282,10 @@ describe("GET notebook detail: a saved number in a question naming two makers (#
     expect(offeredOwnNumber(question, { manufacturer: "Siemens", model: "TP700" })).toBe("6AV2124-0GC01-0AX0");
   });
 
-  // #6131 r3 F2: an order-number label typed between a dictionary-word maker and the number does
-  // not hide that maker; the abbreviation's period is not a sentence break.
+  // Known limit, as on main (#6141): a dictionary-word maker before an order-number label reads as
+  // an ordinary word. Reading it also read place and person names as makers ("Shipped from Phoenix,
+  // order no. 6AV…", the controls below), so the label is not read (#6131 r5). A fix shows up here
+  // as a deliberate change.
   const LABELLED = [
     ["order no.", "order no. 6AV2124-0GC01-0AX0"],
     ["Order No.:", "Order No.: 6AV2124-0GC01-0AX0"],
@@ -291,17 +293,26 @@ describe("GET notebook detail: a saved number in a question naming two makers (#
     ["part no.", "part no. 6AV2124-0GC01-0AX0"],
     ["order no. glued on", "order no.6AV2124-0GC01-0AX0"],
   ];
-  it.each(LABELLED)(
-    "title-case Eaton before the label %s: withheld with the number saved, and the card offers nothing",
+  it.each(LABELLED.slice(0, 4))(
+    "known limit: title-case Eaton before the label %s shows the status with the number saved, and the card offers it, as on main",
     async (_label, written) => {
       const question = `How do I wire the Eaton ${written} in our Siemens cabinet?`;
       const body = await read(question);
       expect(readConfirmedNumbers).toHaveBeenCalledWith(TENANT, NB); // precondition: the number was read
-      expect(body.manualSearch).toBeNull();
-      expect(body.manualSearchScope).toBe("other_model");
-      expect(offeredOwnNumber(question, { manufacturer: "Siemens", model: "TP700" })).toBeNull();
+      expect(body.manualSearch).toEqual(READY);
+      expect(body).not.toHaveProperty("manualSearchScope");
+      expect(offeredOwnNumber(question, { manufacturer: "Siemens", model: "TP700" })).toBe("6AV2124-0GC01-0AX0");
     },
   );
+
+  it("known limit: title-case Eaton before the label glued on shows the status with the number saved (the card offers only a number written on its own), as on main", async () => {
+    const question = "How do I wire the Eaton order no.6AV2124-0GC01-0AX0 in our Siemens cabinet?";
+    const body = await read(question);
+    expect(readConfirmedNumbers).toHaveBeenCalledWith(TENANT, NB); // precondition: the number was read
+    expect(body.manualSearch).toEqual(READY);
+    expect(body).not.toHaveProperty("manualSearchScope");
+    expect(offeredOwnNumber(question, { manufacturer: "Siemens", model: "TP700" })).toBeNull();
+  });
 
   it.each(LABELLED.slice(0, 4))("control: a Siemens-only question with the label %s shows the status, and the card offers it", async (_label, written) => {
     const question = `How do I wire the Siemens ${written}?`;
@@ -346,8 +357,8 @@ describe("GET notebook detail: a saved number in a question naming two makers (#
     expect(offeredOwnNumber(question, { manufacturer: "Siemens", model: "TP700" })).toBe("6AV2124-0GC01-0AX0");
   });
 
-  // Ordinary words stay ordinary: a sentence break outside a label still breaks, and a dictionary
-  // word joined to a maker by "and" or "or" stays a word.
+  // Ordinary words stay ordinary: a dictionary word joined to a maker by "and" or "or", or sitting
+  // before an order-number label, stays a word.
   it.each([
     ["a city that ends a sentence before a label", "We shipped it from Phoenix. Order no. 6AV2124-0GC01-0AX0 is in our Siemens cabinet."],
     ["a capitalised dictionary word joined to an ordinary word", "Sick or tired of the Siemens 6AV2124-0GC01-0AX0 dropping out."],
@@ -356,6 +367,10 @@ describe("GET notebook detail: a saved number in a question naming two makers (#
     ['a city joined to a maker by "or" across clauses', "I can ask the crew in Phoenix or Siemens can troubleshoot the 6AV2124-0GC01-0AX0."],
     ['a person joined to a maker by "or"', "Our guy Parker or Siemens field service will look at the 6AV2124-0GC01-0AX0 tomorrow."],
     ['a place joined by "or" after the number', "The 6AV2124-0GC01-0AX0 in Phoenix or the Siemens one in Tampa?"],
+    // #6131 r5: a name or place before an order-number label stays a word.
+    ["a place before a label", "Shipped from Phoenix, order no. 6AV2124-0GC01-0AX0, to our Siemens line."],
+    ["a person before a label", "Ask Parker, part no. 6AV2124-0GC01-0AX0 is dead."],
+    ["a person before a label after a colon", "Call Banner: order number 6AV2124-0GC01-0AX0 will not boot."],
   ])("control: %s leaves the thread showing the status, and the card offers the number", async (_label, question) => {
     const body = await read(question);
     expect(body.manualSearch).toEqual(READY);

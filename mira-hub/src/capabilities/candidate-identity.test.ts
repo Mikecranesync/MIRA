@@ -127,16 +127,15 @@ describe("makerGroupsNamedIn", () => {
     expect(makerGroupsNamedIn(q, ['"6AV2124-0GC01-0AX0"']).size).toBe(2);
   });
 
-  // #6131 r3 F2: an order-number label between the maker and the part is not a word in the way.
-  it("an order-number label between a typed maker and the part still counts the maker", () => {
+  // #6131 r5: an order-number label between a dictionary word and the part is a word in the way,
+  // because the word before it is as often a place or a name ("Shipped from Phoenix, order no.").
+  it("a dictionary word before an order-number label is not read as a maker", () => {
     const part = "6AV2124-0GC01-0AX0";
-    expect(makerGroupsNamedIn(`the Eaton order no. ${part} in our Siemens cabinet`, [part]).size).toBe(2);
-    expect(makerGroupsNamedIn(`the Eaton order number ${part} in our Siemens cabinet`, [part]).size).toBe(2);
-    expect(makerGroupsNamedIn(`we shipped it from Phoenix. Order no. ${part} is Siemens`, [part]).size).toBe(1); // a real sentence break
-    // Only the label's own period is exempt: a maker in an earlier sentence never counts, even
-    // when every word between is one the rule allows.
-    expect(makerGroupsNamedIn(`the Phoenix drive. Order no. ${part} is Siemens`, [part]).size).toBe(1);
-    expect(makerGroupsNamedIn(`the Phoenix drive order no. ${part} is Siemens`, [part]).size).toBe(2); // control: same sentence
+    expect(makerGroupsNamedIn(`Shipped from Phoenix, order no. ${part}, to our Siemens line`, [part]).size).toBe(1);
+    expect(makerGroupsNamedIn(`Ask Parker, part no. ${part} is dead`, [part]).size).toBe(0);
+    // Known limit, as on main (#6141): a real maker before the label reads the same way.
+    expect(makerGroupsNamedIn(`the Eaton order no. ${part} in our Siemens cabinet`, [part]).size).toBe(1);
+    expect(makerGroupsNamedIn(`the Eaton ${part} in our Siemens cabinet`, [part]).size).toBe(2); // control: typed right before
   });
 
   // #6131 r4 F7: "or" also joins clauses and names, so a dictionary word beside it stays a word.

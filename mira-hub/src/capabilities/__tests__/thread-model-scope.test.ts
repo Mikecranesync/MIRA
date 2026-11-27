@@ -243,9 +243,8 @@ describe("threadStatusScope: a number the technician confirmed (#6085)", () => {
     expect(threadStatusScope(["How do I wire the Eaton P/N:DG1-344D1FN-C21C?"], EATON)).toBe("own");
   });
 
-  // #6131 r3 F2/F6: the label and choice readings only ever add a maker, so each dictionary-word
-  // maker on record keeps its own labelled number, and a choice between it and another maker is
-  // still withheld.
+  // #6131: each dictionary-word maker on record keeps its own number written after a label, and a
+  // question that also names Siemens is still withheld.
   it.each(["Sick", "Banner", "Parker", "Eaton", "Emerson", "Phoenix"])("control: %s on record keeps its own labelled number", (maker) => {
     const own = { manufacturer: maker, model: "QX700", catalogNumber: "", recordCatalog: null, confirmedNumbers: ["QX700-12A-34B"] };
     for (const q of [`How do I wire the ${maker} order no. QX700-12A-34B?`, `How do I wire the ${maker} part number QX700-12A-34B?`]) {
