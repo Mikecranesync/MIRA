@@ -291,39 +291,37 @@ export async function runCommit(
   abortSignal?: AbortSignal,
   onProgress?: (message: string) => void,
 ): Promise<CommitOutcome> {
-  const checkAborted = () => {
-    if (abortSignal?.aborted) {
-      throw new Error("ABORTED");
-    }
-  };
-  
+  if (abortSignal?.aborted) return { kind: "failed", message: "Project setup cancelled." };
+
   const notes: string[] = [];
+  const docs: DocOutcome[] = [];
   let notebookId: string;
   let nodeId: string | null = null;
   let confirmed: boolean | null = null;
   const name = input.name.trim();
 
+  // A completed create can already be visible in the sidebar. Let dispatched
+  // writes report their outcomes and skip further setup when cancelled.
+  const createdOutcome = (): CommitOutcome => ({ kind: "created", notebookId, nodeId, confirmed, notes, docs });
+
   if (input.selected.kind === "general") {
-    checkAborted();
     onProgress?.("Creating project...");
     let id: string | null;
     try {
       id = await deps.createNotebook({ displayName: name, identitySourceType: "user" });
     } catch (err) {
-      if (err instanceof Error && err.message === "ABORTED") throw err;
       return { kind: "failed", message: err instanceof Error ? err.message : "Could not create the project." };
     }
     if (!id) return { kind: "failed", message: "Sign in again to continue." };
     notebookId = id;
   } else {
-    checkAborted();
     onProgress?.("Creating project for this machine...");
     const machine = input.selected.machine;
     const post = () => call(deps, "POST", `/api/assets/${encodeURIComponent(machine.id)}/notebook/`, {
       json: { selectedVia: "asset_picker", displayName: name || machine.name },
     });
     let res = await post();
-    if (!res.ok && res.body.code === "notebook_race") res = await post();
+    if (!abortSignal?.aborted && !res.ok && res.body.code === "notebook_race") res = await post();
     if (!res.ok) return { kind: "failed", message: messageOf(res, "Could not open a project for that machine.") };
     const nb = res.body.notebook as { id?: unknown; nodeId?: unknown; displayName?: unknown } | undefined;
     if (typeof nb?.id !== "string" || typeof nb.nodeId !== "string") {
@@ -335,10 +333,12 @@ export async function runCommit(
     }
     notebookId = nb.id;
     nodeId = nb.nodeId;
+    if (abortSignal?.aborted) return createdOutcome();
 
     const put = await call(deps, "PUT", `/api/equipment-notebooks/${encodeURIComponent(notebookId)}/asset/`, {
       json: { assetRef: machine.id, selectedVia: "asset_picker" },
     });
+    if (abortSignal?.aborted) return createdOutcome();
     if (!put.ok) {
       if (put.body.code === "asset_already_bound" && typeof put.body.boundNotebookId === "string") {
         return { kind: "refused", notebookId: put.body.boundNotebookId, name: machine.name, message: "This machine already has a project." };
@@ -356,22 +356,19 @@ export async function runCommit(
     }
   }
 
+  if (abortSignal?.aborted) return createdOutcome();
   if (input.selected.kind === "general" && input.pdfs.length > 0 && nodeId === null) {
     const read = await call(deps, "GET", `/api/equipment-notebooks/${encodeURIComponent(notebookId)}/`);
     const id = (read.body.notebook as { nodeId?: unknown } | undefined)?.nodeId;
     if (read.ok && typeof id === "string") nodeId = id;
   }
 
-  checkAborted();
   if (input.docs.length > 0) {
     onProgress?.(`Attaching ${input.docs.length} document${input.docs.length === 1 ? "" : "s"}...`);
   }
-  
-  const docs: DocOutcome[] = [];
   const attached = new Set<string>();
   const attach = async (docId: string, filename: string, key: string, message: string | null) => {
-    checkAborted();
-    if (attached.has(docId)) return;
+    if (abortSignal?.aborted || attached.has(docId)) return;
     attached.add(docId);
     const row = await attachSource(notebookId, docId, filename, key, deps);
     docs.push(row.attachFailed ? row : { ...row, message });
@@ -381,9 +378,9 @@ export async function runCommit(
   if (input.pdfs.length > 0) {
     onProgress?.(`Uploading ${input.pdfs.length} PDF${input.pdfs.length === 1 ? "" : "s"}...`);
   }
-  
+
   for (const [n, pdf] of input.pdfs.entries()) {
-    checkAborted();
+    if (abortSignal?.aborted) break;
     if (input.pdfs.length > 1) {
       onProgress?.(`Uploading ${n + 1} of ${input.pdfs.length}: ${pdf.name}`);
     }
@@ -392,53 +389,7 @@ export async function runCommit(
     if (doc) docs.push(doc);
   }
 
-  return { kind: "created", notebookId, nodeId, confirmed, notes, docs };
-}
-
-/** Wrapper that catches ABORTED and returns a partial outcome if a notebook was created. */
-async function runCommitWithAbortHandling(
-  input: { selected: Selection; name: string; docs: readonly CommitDoc[]; pdfs: readonly File[] },
-  deps: SetupDeps,
-  abortSignal?: AbortSignal,
-  onProgress?: (msg: string) => void,
-): Promise<CommitOutcome> {
-  let partialNotebookId: string | null = null;
-  let partialNodeId: string | null = null;
-  
-  // Wrap deps.createNotebook and deps.fetch to capture the notebook ID even if aborted later
-  const originalFetch = deps.fetch;
-  const wrappedDeps: SetupDeps = {
-    ...deps,
-    createNotebook: async (body: { displayName: string; identitySourceType: "user" }) => {
-      const id = await deps.createNotebook(body);
-      if (id) partialNotebookId = id;
-      return id;
-    },
-    fetch: async (input, init) => {
-      const response = await originalFetch(input, init);
-      // Capture notebook ID from machine POST response
-      if (init?.method === "POST" && String(input).includes("/notebook/")) {
-        const json = await response.json();
-        const nb = json.notebook as { id?: unknown; nodeId?: unknown } | undefined;
-        if (typeof nb?.id === "string") partialNotebookId = nb.id;
-        if (typeof nb?.nodeId === "string") partialNodeId = nb.nodeId;
-        // Return a new Response with the already-read body
-        return { ...response, json: async () => json } as Response;
-      }
-      return response;
-    },
-  };
-  
-  try {
-    return await runCommit(input, wrappedDeps, abortSignal, onProgress);
-  } catch (err) {
-    if (String(err).includes("ABORTED") && partialNotebookId) {
-      // A notebook was created before the abort; return a partial outcome so
-      // commit() can notify the host (Codex #5295 r1 F2).
-      return { kind: "created", notebookId: partialNotebookId, nodeId: partialNodeId, confirmed: false, notes: [], docs: [] };
-    }
-    throw err;
-  }
+  return createdOutcome();
 }
 
 // ---------- readiness watch and result rows ----------
@@ -640,8 +591,7 @@ export type SetupState = {
   /** #5393: live progress text shown during commit ("Uploading documents...",
    *  "Creating project...", etc.) Never shown at the same time as `error`. */
   progress: string | null;
-  /** #5393: true during commit to show the Cancel button. After timeout (60s),
-   *  the commit continues but the button text changes to show it's taking longer. */
+  /** Set when the creation progress has taken longer than expected. */
   commitTimeout: boolean;
 };
 
@@ -667,9 +617,8 @@ export type SetupController = {
   next(): Promise<void>;
   back(): void;
   commit(): Promise<void>;
-  /** #5393: cancel an in-flight commit. The notebook may be half-created but
-   *  usable; the sheet stays on step 3 with an error message. */
-  cancelCommit(): Promise<void>;
+  /** Stop this setup. Writes already sent can still complete. */
+  cancelCommit(): void;
   /** S16: send a PDF whose save failed again (a row with retry), then re-read readiness. No-op otherwise. */
   retryUpload(key: string): Promise<void>;
   /** The notebook the technician should open, if any (created, or the existing one on a refusal). */
@@ -862,7 +811,7 @@ export function createNewProjectSetup(deps: ControllerDeps): SetupController {
     },
 
     async commit() {
-      if (state.committing || state.done || !state.selected || state.duplicate) return;
+      if (disposed || state.committing || state.done || !state.selected || state.duplicate) return;
       if (state.selected.kind === "machine" && state.linked === null) return;
       const selected = state.selected;
       const docs: CommitDoc[] = [];
@@ -873,38 +822,27 @@ export function createNewProjectSetup(deps: ControllerDeps): SetupController {
         seen.add(id);
         docs.push({ docId: id, filename: match.filename });
       }
-      // #5393: set up abort controller and timeout for cancellation
       commitAbortController = new AbortController();
       const abortSignal = commitAbortController.signal;
-      // After 60 seconds, mark as timed out but keep going
       commitTimeoutTimer = setTimeout(() => {
         if (!disposed && state.committing) {
           set({ commitTimeout: true, progress: "This is taking longer than usual. You can cancel or keep waiting." });
         }
-      }, 60000);
-      
+      }, 60_000);
+
       set({ committing: true, error: null, refusal: null, progress: "Starting...", commitTimeout: false });
-      
-      const progressCallback = (msg: string) => {
-        if (!disposed && !abortSignal.aborted) {
-          set({ progress: msg });
-        }
-      };
-      
-      const outcome = await runCommitWithAbortHandling(
+
+      const outcome = await runCommit(
         { selected, name: state.name, docs, pdfs: state.pdfs },
         deps,
         abortSignal,
-        progressCallback,
-      );
-      
-      // Clear timeout
-      if (commitTimeoutTimer) {
-        clearTimeout(commitTimeoutTimer);
+        (progress) => { if (!disposed) set({ progress }); },
+      ).finally(() => {
+        if (commitTimeoutTimer !== null) clearTimeout(commitTimeoutTimer);
         commitTimeoutTimer = null;
-      }
-      commitAbortController = null;
-      
+        commitAbortController = null;
+      });
+
       // Codex #5295 r1 F2: a saved project reaches the host's list even when the
       // sheet was closed mid-commit (the shell's Back closes open dialogs). This
       // must happen before the `disposed` check so that dispose() during commit
@@ -929,32 +867,11 @@ export function createNewProjectSetup(deps: ControllerDeps): SetupController {
       await showReadiness(outcome.notebookId, results);
     },
 
-    async cancelCommit() {
-      // Abort in-flight requests
-      if (commitAbortController && !commitAbortController.signal.aborted) {
-        commitAbortController.abort();
-      }
-      if (commitTimeoutTimer) {
-        clearTimeout(commitTimeoutTimer);
-        commitTimeoutTimer = null;
-      }
-      
-      set({ committing: false, error: null, progress: null, commitTimeout: false });
-      
-      // #5393: Clean up any partially created notebook. Wait a tick for runCommit
-      // to settle (it may throw ABORTED and clear `created`), then delete if a
-      // notebook was saved. This runs after unlock so the UI remains responsive.
-      await Promise.resolve();
-      const partialId = created?.notebookId;
-      if (partialId) {
-        try {
-          await call(deps, "DELETE", `/api/equipment-notebooks/${encodeURIComponent(partialId)}/`);
-          created = null; // Clear so we don't try to delete again
-        } catch {
-          // Deletion failure leaves the partial notebook. The user can delete it
-          // manually from the project list. Don't block the cancel flow on this.
-        }
-      }
+    cancelCommit() {
+      if (disposed || !state.committing || state.done) return;
+      commitAbortController?.abort();
+      set({ committing: false, notebookId: null, progress: null, commitTimeout: false });
+      controller.dispose();
     },
 
     async retryUpload(key) {
@@ -1007,12 +924,7 @@ export function createNewProjectSetup(deps: ControllerDeps): SetupController {
     dispose() {
       disposed = true;
       listeners.clear();
-      // #5393: clean up abort controller and timeout on disposal
-      if (commitAbortController) {
-        commitAbortController.abort();
-        commitAbortController = null;
-      }
-      if (commitTimeoutTimer) {
+      if (commitTimeoutTimer !== null) {
         clearTimeout(commitTimeoutTimer);
         commitTimeoutTimer = null;
       }
