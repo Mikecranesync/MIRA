@@ -49,7 +49,7 @@ import { ENERGIZED_ELECTRICAL_HAZARD } from "@/lib/safety-classifier";
 import { extractManualSafetyStatement, manualSafetyStatementForCitations } from "@/capabilities/manual-safety-statement";
 import { isManualSafetyStatementEntry } from "@/lib/notebook-chat-types";
 import { readNotebookStream, splitEvidence } from "@/components/equipment/notebook-chat-utils";
-import { partsFromStream, turnsFromPersisted } from "@/factorylm-ui/to-interaction";
+import { lifecycleFromStream, partsFromStream, turnsFromPersisted } from "@/factorylm-ui/to-interaction";
 
 const NB = "22222222-2222-4222-8222-222222222222";
 const DOC_A = "33333333-3333-4333-8333-333333333333";
@@ -308,6 +308,50 @@ describe("a persisted manual_safety_statement entry is NOT a citation (#4508 doc
     const answer = parts.findIndex((p) => p.type === "text" && p.text.includes("Set A092"));
     expect(notice).toBeGreaterThanOrEqual(0);
     expect(notice).toBeLessThan(answer);
+    // #6057 control: a saved answer with no directive replays no hazard carrier.
+    expect(evidenceFrame(text)).not.toHaveProperty("hazardEntries");
+  });
+
+  it("#6057: a replayed directive answer keeps the electrical directive first, then the manual warning, then the text", async () => {
+    const DIRECTIVE = { kind: "safety_notice", trigger: ENERGIZED_ELECTRICAL_HAZARD };
+    domainMock.claimNotebookTurnRequest.mockResolvedValue({
+      status: "replay",
+      turn: {
+        id: "turn-replay-2",
+        question: QUESTION,
+        answerStatus: "answered",
+        answerText: "De-energize first [1].",
+        enabledSourceDocIds: [DOC_A],
+        evidence: [DIRECTIVE, ENTRY, CITATION],
+        model: "Groq:test",
+        basis: "oem_documentation",
+      },
+    });
+    stubProvider("unused");
+
+    const res = await POST(
+      chatReq({ message: QUESTION, sourceDocIds: [DOC_A], clientRequestId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb" }),
+      params,
+    );
+    const text = await res.text();
+    expect(res.headers.get("X-Idempotent-Replay")).toBe("true");
+    // Still a completed, cited answer: the directive never becomes a stop on replay.
+    expect(text).not.toContain('"kind":"safety"');
+    expect(evidenceFrame(text)).toMatchObject({ hazardEntries: [DIRECTIVE], manualSafetyStatement: ENTRY });
+
+    const reader = new ReadableStream<Uint8Array>({
+      start(c) {
+        c.enqueue(new TextEncoder().encode(text));
+        c.close();
+      },
+    }).getReader();
+    const result = await readNotebookStream(reader, () => undefined);
+    expect(lifecycleFromStream(result)).toBe("completed");
+    const parts = partsFromStream(result, { turnId: "turn-replay-2-a" });
+    const order = parts.flatMap((p) =>
+      p.type === "safety_notice" ? [p.notice.trigger ?? "?"] : p.type === "text" && p.text.includes("De-energize") ? ["text"] : [],
+    );
+    expect(order).toEqual([ENERGIZED_ELECTRICAL_HAZARD, "manual_safety_statement", "text"]);
   });
 });
 

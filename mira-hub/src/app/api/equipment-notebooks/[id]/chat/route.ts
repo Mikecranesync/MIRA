@@ -1169,6 +1169,9 @@ function replayNotebookTurnResponse(turn: StoredNotebookTurn): Response {
             ...(visualEvidence ? { visualEvidence } : {}),
             ...(identityDisputed ? { identityDisputed: true } : {}),
             ...(observedEntry ? { observedState: observedStateFrameOf(observedEntry) } : {}),
+            // #6057: on this branch a saved safety_notice is never a stop (stops replay above), so it
+            // is the energized-electrical directive; it rides `hazardEntries` exactly as it did live.
+            ...(safetyNotice ? { hazardEntries: [safetyNotice] } : {}),
             ...(manualSafetyStatement ? { manualSafetyStatement } : {}),
           });
         } else if (visualEvidence) {
