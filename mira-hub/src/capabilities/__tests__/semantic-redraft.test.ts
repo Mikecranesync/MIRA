@@ -255,11 +255,17 @@ describe("citationSupportGaps (#6020)", () => {
     describe("KNOWN LIMITS (#6101), unchanged from main", () => {
       const RANGE = page("Pre-charge delay. Range 0-2000 ms. Default 800 ms. Set the pre-charge delay to 800 ms before enabling the main contactor.");
 
-      it("a value inside a range printed anywhere on the page counts as found: the issue's own setting passes against such a page", () => {
+      it("the two printed ends of a range count as found, wherever the range is printed: the issue's own setting passes against such a page", () => {
         expect(gaps("Set the pre-charge delay to 0 ms [1].", [RANGE])).toEqual([]);
         expect(gaps("Set the pre-charge delay to 2000 ms [1].", [RANGE])).toEqual([]);
-        // Outside the range it is a gap, so the range is what lets the two above through.
+        // Outside the range it is a gap, so the printed ends are what let the two above through.
         expect(gaps("Set the pre-charge delay to 2500 ms [1].", [RANGE])).toEqual(VALUE_GAP);
+      });
+
+      it("a value BETWEEN the printed ends is not found: the match is on the printed numbers, not on containment", () => {
+        expect(gaps("Set the pre-charge delay to 1000 ms [1].", [RANGE])).toEqual(VALUE_GAP);
+        // Control: the default the page does print is found.
+        expect(gaps("Set the pre-charge delay to 800 ms [1].", [RANGE])).toEqual([]);
       });
 
       it("a value the reader cannot fully recognize is not compared: a unit outside the table", () => {

@@ -697,8 +697,9 @@ export type CitationSupportGap = { citationId: string; reason: "no_page" | "valu
  * and deliberately a low floor, read on the model-visible text of each page:
  *   - a marker that resolves to no retrieved page is a gap;
  *   - every USABLE value (a fully recognized number + table unit) the answer assigns to a
- *     citation must be found on that page: the same value anywhere on it, or a printed range
- *     that contains it. A value the reader cannot fully recognize is not compared (#6101).
+ *     citation must be found on that page: the same value printed anywhere on it. A range
+ *     printed as "0-2000 ms" counts for its two printed ends only, not for the values
+ *     between them. A value the reader cannot fully recognize is not compared (#6101).
  *     A zero is a value like any other (#6049): "0 psi", "0 ms" and "0 V" are each checked.
  *     There is no exemption for a zero reading. One existed and could not be made safe: a
  *     sentence can set a value to zero in more wordings than a list can name. The redraft
