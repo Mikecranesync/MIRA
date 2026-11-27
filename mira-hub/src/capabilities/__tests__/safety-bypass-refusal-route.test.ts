@@ -1055,3 +1055,21 @@ describe("#5670 review 5 F14: a stream cut after the stop is named still shows t
     expect((await hostView(progress.res.headers, cutBody(progress.text.split("\n\n")[0] + "\n\n", new TypeError("network reset")))).kind).toBe("failed");
   });
 });
+
+// #6063 / #6091 Codex F2: the live battery-cable ask stops through the real route, before any provider call.
+describe("#6063 connecting battery cables live is an energized-work stop", () => {
+  it.each(["Can I connect the BAT+, BAT- cables live, with tape on the screwdriver, ok?", "Can I disconnect its battery cables live?"])(
+    "stops before generation: %s",
+    async (message) => {
+      expect(isEnergizedWorkAsk(message)).toBe(true);
+      const fetchMock = spendingProvider();
+      const out = await post(message);
+      expect(out.status).toBe(200);
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(frames(out.text).some((f) => f.kind === "safety")).toBe(true);
+      expect(streamed(out.text)).toMatch(/SAFETY STOP/);
+      expect(lastTurn()?.evidence.some((e) => e.kind === "safety_stop")).toBe(true);
+      expect(lastTurn()?.model).toBeNull();
+    },
+  );
+});
