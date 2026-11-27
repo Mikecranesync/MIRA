@@ -126,8 +126,38 @@ function Step2({ state, actions }: { state: SetupState; actions: SetupActions })
       {workspace.map((w) => (
         <Checkbox key={w.fileId} checked={isChosen(w.docId)} disabled={!w.docId} label={w.filename} reason={w.docId ? null : "Not ready to attach: no searchable copy yet."} onToggle={() => w.docId && actions.toggleDoc(w.docId)} />
       ))}
-      <h3 style={{ fontSize: "var(--fl-fs)", margin: "16px 0 4px" }}>Upload a PDF</h3>
-      <input type="file" accept="application/pdf" multiple aria-label="Upload PDF" onChange={(e) => { actions.addPdfs(Array.from(e.target.files ?? [])); e.target.value = ""; }} style={{ fontSize: 16, minHeight: 44 }} />
+      <label
+        style={{
+          display: "block",
+          margin: "16px 0 4px",
+          padding: "16px",
+          border: "2px dashed var(--fl-line-strong)",
+          borderRadius: "var(--fl-radius)",
+          background: "var(--fl-surface)",
+          cursor: "pointer",
+          transition: "border-color 0.2s, background 0.2s",
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.borderColor = "var(--fl-accent)";
+          e.currentTarget.style.background = "var(--fl-accent-tint)";
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.borderColor = "var(--fl-line-strong)";
+          e.currentTarget.style.background = "var(--fl-surface)";
+        }}
+        onFocus={(e) => {
+          e.currentTarget.style.borderColor = "var(--fl-accent)";
+          e.currentTarget.style.background = "var(--fl-accent-tint)";
+        }}
+        onBlur={(e) => {
+          e.currentTarget.style.borderColor = "var(--fl-line-strong)";
+          e.currentTarget.style.background = "var(--fl-surface)";
+        }}
+      >
+        <h3 style={{ fontSize: "var(--fl-fs)", margin: "0 0 8px", pointerEvents: "none" }}>Upload a PDF</h3>
+        <p style={{ ...muted, margin: "0 0 8px", pointerEvents: "none" }}>Click to browse or drag files here</p>
+        <input type="file" accept="application/pdf" multiple aria-label="Upload PDF" onChange={(e) => { actions.addPdfs(Array.from(e.target.files ?? [])); e.target.value = ""; }} style={{ fontSize: 16, minHeight: 44 }} />
+      </label>
       {state.pdfError ? <p role="alert" style={alertBox}>{state.pdfError}</p> : null}
       {state.pdfs.map((f, i) => (
         <div key={`${f.name}-${i}`} style={row}>
