@@ -41,15 +41,131 @@ vi.mock("@/lib/equipment-notebooks", () => domainMock);
 const ragMock = vi.hoisted(() => ({
   retrieveNodeChunks: vi.fn(async () => [] as unknown[]),
   retrieveCitedPageChunks: vi.fn(async () => [] as unknown[]),
+  // #6062: the manufacturer-library lane, for the uncited_claim floor (empty unless a test sets it).
+  retrieveManualChunks: vi.fn(async () => [] as unknown[]),
   appendManualContext: vi.fn((base: string) => base),
   buildManualUserContent: vi.fn((q: string) => q),
 }));
 vi.mock("@/lib/manual-rag", () => ragMock);
 
+// #6048: call-through spies. `closeTurn` is the fire-and-forget lifecycle close that
+// endRoot() starts when no settle has happened (it writes the closed row with a NULL
+// packet, and the later usage write is then dropped by ON CONFLICT DO NOTHING).
+// `evaluateTurnDecision` runs once per settle on the final path (decisionState is set).
+vi.mock("@/capabilities/observability/turn-lifecycle", async (importOriginal) => {
+  const o = await importOriginal<typeof import("@/capabilities/observability/turn-lifecycle")>();
+  return { ...o, closeTurn: vi.fn(o.closeTurn) };
+});
+vi.mock("@/capabilities/observability/jev-decision", async (importOriginal) => {
+  const o = await importOriginal<typeof import("@/capabilities/observability/jev-decision")>();
+  return { ...o, evaluateTurnDecision: vi.fn(o.evaluateTurnDecision) };
+});
+// Codex round 2 on #6082 (F5): a call-through spy, so a test can see whether the handoff
+// tracker was installed at all.
+vi.mock("@/capabilities/response-handoff", async (importOriginal) => {
+  const o = await importOriginal<typeof import("@/capabilities/response-handoff")>();
+  return { ...o, createResponseHandoff: vi.fn(o.createResponseHandoff) };
+});
+// The sheet receipt wrapper: real, unless a test makes it fail.
+vi.mock("@/capabilities/living-sheet/receipt", async (importOriginal) => {
+  const o = await importOriginal<typeof import("@/capabilities/living-sheet/receipt")>();
+  return { ...o, withSheetReceipt: vi.fn(o.withSheetReceipt) };
+});
+// The Living Work Sheet job read: the route reads the job once before it generates, and the
+// sheet receipt reads it again after the turn handler has returned. Not found unless a test
+// says otherwise, so no test here depends on the sheet.
+const JOB_NOT_FOUND = { status: "job_not_found" };
+const storeMock = vi.hoisted(() => ({ loadJob: vi.fn(async (): Promise<unknown> => ({ status: "job_not_found" })) }));
+vi.mock("@/capabilities/living-sheet/store", async (importOriginal) => {
+  const o = await importOriginal<typeof import("@/capabilities/living-sheet/store")>();
+  return { ...o, loadJob: storeMock.loadJob };
+});
+// #6048: span attributes are recorded (the "traced" half of #6062's no-text check), and the
+// normal path's post-settle span write can be made to throw (the once-guard case).
+// R1-D2: the settle itself can be made to reject (`throwInSettle`: the span write inside
+// finishAndPersist, outside its own try), and the root span's recordException / end are counted.
+const spanTap = vi.hoisted(() => ({
+  calls: [] as unknown[],
+  throwOnPersistOk: false,
+  throwInSettle: false,
+  rootExceptions: [] as unknown[],
+  rootEnds: 0,
+}));
+vi.mock("@/capabilities/observability/tracing", async (importOriginal) => {
+  const o = await importOriginal<typeof import("@/capabilities/observability/tracing")>();
+  return {
+    ...o,
+    setSpanAttrs: (...a: Parameters<typeof o.setSpanAttrs>) => {
+      spanTap.calls.push(a[0]);
+      if (spanTap.throwOnPersistOk && (a[0] as Record<string, unknown>)["mira.persist.outcome"] === "ok") {
+        throw new Error("post-settle span write failed (test)");
+      }
+      if (spanTap.throwInSettle && "mira.anomalies" in (a[0] as Record<string, unknown>)) {
+        throw new Error("settle span write failed (test)");
+      }
+      return o.setSpanAttrs(...a);
+    },
+    getTracer: () => {
+      const tracer = o.getTracer();
+      return new Proxy(tracer, {
+        get(target, prop) {
+          const v = Reflect.get(target, prop, target) as unknown;
+          if (prop !== "startSpan") return typeof v === "function" ? v.bind(target) : v;
+          return (...a: Parameters<typeof tracer.startSpan>) => {
+            const span = target.startSpan(...a);
+            if (a[0] !== "mira.turn") return span;
+            const recordException = span.recordException.bind(span);
+            const end = span.end.bind(span);
+            span.recordException = (...e: Parameters<typeof span.recordException>) => {
+              spanTap.rootExceptions.push(e[0]);
+              return recordException(...e);
+            };
+            span.end = (...e: Parameters<typeof span.end>) => {
+              spanTap.rootEnds += 1;
+              return end(...e);
+            };
+            return span;
+          };
+        },
+      });
+    },
+  };
+});
+// #6062: a pre-commit failure inside the answer-gate block (before recordTurn), on demand.
+const decisionStateFail = vi.hoisted(() => ({ on: false }));
+vi.mock("@/capabilities/observability/turn-decision-state", async (importOriginal) => {
+  const o = await importOriginal<typeof import("@/capabilities/observability/turn-decision-state")>();
+  return {
+    ...o,
+    buildTurnDecisionState: (...a: Parameters<typeof o.buildTurnDecisionState>) => {
+      if (decisionStateFail.on) throw new Error("pre-commit failure (test)");
+      return o.buildTurnDecisionState(...a);
+    },
+  };
+});
+// #6062: the screen's last dependency throws on this token (the `error` floor code).
+// R1-D3: every string the bypass check was handed is recorded.
+const bypassTap = vi.hoisted(() => ({ args: [] as string[] }));
+vi.mock("@/capabilities/safety-bypass-advisory", async (importOriginal) => {
+  const o = await importOriginal<typeof import("@/capabilities/safety-bypass-advisory")>();
+  return {
+    ...o,
+    safetyBypassAsk: (t: string) => {
+      bypassTap.args.push(t);
+      if (t.includes("QZSCREENTHROW")) throw new Error("screen dependency failed (test)");
+      return o.safetyBypassAsk(t);
+    },
+  };
+});
+
 vi.mock("@/lib/tenant-context", () => ({
   withTenantContext: vi.fn(async (_t: string, fn: (c: unknown) => unknown) => fn({ query: vi.fn() })),
 }));
-const poolMock = vi.hoisted(() => ({ query: vi.fn(async () => ({ rows: [] })) }));
+const poolMock = vi.hoisted(() => ({
+  query: vi.fn(async () => ({ rows: [] })),
+  // Raw-pool client for the OEM corpus path (hybrid corpus law), used by the #6062 uncited_claim case.
+  connect: vi.fn(async () => ({ query: vi.fn(async () => ({ rows: [] })), release: vi.fn() })),
+}));
 vi.mock("@/lib/db", () => ({ default: poolMock }));
 
 const persistMock = vi.hoisted(() => ({
@@ -613,5 +729,1938 @@ describe("#5941 — one redraft after an unsafe verdict", () => {
     expect(judgeBodies).toHaveLength(1);
     expect(r.streamed).toBe(DRAFT1);
     expect(r.outcome.semantic_redraft).toBeUndefined();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// #6048 — once the turn's decision is committed to history (recordTurn), the Turn
+// Evidence Packet and the usage row are persisted EXACTLY once, whatever happens to
+// SSE delivery. The cancel below is a real ReadableStream reader cancel on the POST
+// response body (not an abort of the request signal, which leaves the route's
+// controller writable and cannot see this defect). After it, the route's next
+// controller.enqueue throws on the closed stream.
+// ─────────────────────────────────────────────────────────────────────────────
+import { closeTurn as closeTurnSpy } from "@/capabilities/observability/turn-lifecycle";
+import { evaluateTurnDecision as evaluateTurnDecisionSpy } from "@/capabilities/observability/jev-decision";
+import { JEV_ENDPOINT } from "@/capabilities/observability/jev-shadow";
+import { createResponseHandoff as createResponseHandoffSpy } from "@/capabilities/response-handoff";
+import { withSheetReceipt as withSheetReceiptSpy } from "@/capabilities/living-sheet/receipt";
+
+const ROW_ID = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
+const REQ_ID = "44444444-4444-4444-8444-444444444444";
+
+type PersistCall = [
+  { outcome: string; citationsPresent: boolean; answerText: string | null; latencyMs: number | null },
+  { provider: string | null; model: string | null; inputTokens: number | null; outputTokens: number | null; status: string; routeReason: string },
+  {
+    turnRowId: string | null;
+    packet: {
+      answer_gate: Record<string, unknown>;
+      persistence: { turn_row_id: string | null; outcome: string };
+      jev_decision?: unknown;
+      response_write?: { frames_written: boolean; citations_written: number };
+    };
+  },
+];
+
+describe("#6048 — a body cancel after the commit still persists the packet and the usage exactly once", () => {
+  const closeTurnMock = closeTurnSpy as unknown as ReturnType<typeof vi.fn>;
+  const evaluateMock = evaluateTurnDecisionSpy as unknown as ReturnType<typeof vi.fn>;
+  const settleAll = () => new Promise((r) => setTimeout(r, 150));
+
+  beforeEach(() => {
+    domainMock.recordTurn.mockImplementation(async () => ROW_ID as never);
+  });
+  afterEach(() => {
+    domainMock.recordTurn.mockImplementation(async () => undefined);
+    decisionStateFail.on = false;
+    spanTap.throwOnPersistOk = false;
+    spanTap.throwInSettle = false;
+    domainMock.abandonNotebookTurnRequest.mockImplementation(async () => undefined);
+    delete process.env.MIRA_JEV_DECISION;
+    delete process.env.JEV_API_KEY;
+    storeMock.loadJob.mockReset();
+    storeMock.loadJob.mockImplementation(async () => JOB_NOT_FOUND);
+  });
+
+  /** Holds the cited-page read (after the second judge, before the commit point) until released. */
+  function holdRead() {
+    let release!: () => void;
+    let entered!: () => void;
+    const reached = new Promise<void>((res) => (entered = res));
+    const gate = new Promise<void>((res) => (release = res));
+    ragMock.retrieveNodeChunks.mockResolvedValue([{ ...chunks[0], sourceUrl: "nb://HP200.pdf", sourcePage: 41 }] as never);
+    ragMock.retrieveCitedPageChunks.mockImplementation(async () => {
+      entered();
+      await gate;
+      return [{ ...chunks[0], chunkId: "c9", content: "WARNING relieve pressure before servicing the hose." }] as never;
+    });
+    return { reached, release };
+  }
+  const req = (body: Record<string, unknown>, progress: boolean) =>
+    new NextRequest("http://test/api/equipment-notebooks/nb/chat", {
+      method: "POST",
+      body: JSON.stringify(body),
+      headers: { "Content-Type": "application/json", ...(progress ? { "x-mira-progress": "1" } : {}) },
+    });
+
+  /** History row, the ONE persisted packet/usage row, after everything has had time to settle. */
+  async function settled() {
+    await vi.waitFor(() => expect(domainMock.recordTurn).toHaveBeenCalledTimes(1));
+    await settleAll();
+    expect(domainMock.recordTurn).toHaveBeenCalledTimes(1);
+    expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1);
+    const [, , turn] = domainMock.recordTurn.mock.calls[0] as unknown as [string, string, Record<string, unknown>];
+    const [meta, usage, telemetry] = persistMock.persistTurnUsage.mock.calls[0] as unknown as PersistCall;
+    const gate = telemetry.packet.answer_gate;
+    const evidence = (turn.evidence as { kind?: string; citationId?: string }[]) ?? [];
+    return { turn, meta, usage, packet: telemetry.packet, gate, outcome: gate.safety_outcome as Record<string, unknown>, evidence };
+  }
+
+  /**
+   * The persisted disposition equals what history holds. `decisionCalls`: a turn whose
+   * delivery failed or was cancelled makes no decision call (Codex round 1 on #6082, F1); a
+   * turn delivered in full makes one.
+   */
+  function expectDispositionMatchesHistory(r: Awaited<ReturnType<typeof settled>>, decisionCalls: 0 | 1 = 0) {
+    // A stored citation entry is the EvidenceCitation itself (it carries citationId, no kind).
+    const historyCitations = r.evidence.filter((e) => typeof e.citationId === "string").length;
+    expect(r.gate.citations_shipped).toBe(historyCitations);
+    expect(r.meta.citationsPresent).toBe(historyCitations > 0);
+    expect(r.packet.persistence.turn_row_id).toBe(ROW_ID);
+    expect(r.packet.persistence.outcome).toBe("ok");
+    expect(String(r.turn.model).startsWith(`${r.usage.provider}:`)).toBe(true);
+    // The lifecycle row was closed by the usage write, never by endRoot's bare close.
+    expect(closeTurnMock).not.toHaveBeenCalled();
+    expect(evaluateMock).toHaveBeenCalledTimes(decisionCalls);
+    // R1-D3: the settle writes the turn's wall time, a non-negative number (never null).
+    expect(r.meta.latencyMs).toEqual(expect.any(Number));
+    expect(r.meta.latencyMs).toBeGreaterThanOrEqual(0);
+  }
+
+  /** The acceptance case: unsafe draft 1, safe redraft, the body cancelled during the held read. */
+  async function redraftCancelledDuringRead(progress: boolean) {
+    if (progress) process.env.MIRA_CHAT_PROGRESS = "1";
+    const { judgeBodies } = stubFetch(REDRAFT, [verdict("unsafe"), verdict("safe", "none")]);
+    const hold = holdRead();
+    const res = await POST(req({ message: Q_PLAIN, sourceDocIds: [DOC_A], clientRequestId: REQ_ID }, progress), params);
+    expect(res.status).toBe(200);
+    const reader = res.body!.getReader();
+    await hold.reached;
+    // Precondition: the second judge already passed the redraft.
+    expect(judgeBodies).toHaveLength(2);
+    await reader.cancel();
+    hold.release();
+    const r = await settled();
+    // History: one safety stop.
+    expect(r.turn.answerText).toBe(SAFETY_STOP);
+    expect(r.evidence.map((e) => e.kind)).toContain("safety_stop");
+    expect(JSON.stringify(domainMock.recordTurn.mock.calls)).not.toContain("stopped and locked out");
+    // The ONE packet: the committed stop, with both generations' usage under draft 1's model.
+    expect(r.meta.outcome).toBe("safety_stop");
+    expect(r.meta.answerText).toBe(SAFETY_STOP);
+    expect(r.outcome).toMatchObject({ layer: "semantic_judge", outcome: "block", semantic_verdict: "unsafe", semantic_redraft: "stopped_aborted" });
+    expect(r.gate.citations_shipped).toBe(0);
+    expect(String(r.turn.model)).toMatch(/^OpenAI:/);
+    expect(r.usage).toMatchObject({ provider: "OpenAI", inputTokens: 12 + 50, outputTokens: 7 + 20 });
+    expectDispositionMatchesHistory(r);
+    return r;
+  }
+
+  it("redraft: body cancelled during the held cited-page read -> one stop in history, ONE packet stopped_aborted with both generations' usage", async () => {
+    await redraftCancelledDuringRead(false);
+  });
+
+  it("redraft, progress stream on: the same cancel -> one stop, ONE packet stopped_aborted, both generations' usage", async () => {
+    await redraftCancelledDuringRead(true);
+  });
+
+  /** An ordinary answered turn (safe first verdict, no redraft), the body cancelled at `when`. */
+  async function answeredCancelledAt(when: "during_read" | "during_commit" | "after_content" | "after_usage", progress = false, withId = true) {
+    if (progress) process.env.MIRA_CHAT_PROGRESS = "1";
+    const { redraftBodies } = stubFetch(REDRAFT, [verdict("safe", "none")]);
+    // eslint-disable-next-line prefer-const -- assigned after POST; read by hooks that run later
+    let reader!: ReadableStreamDefaultReader<Uint8Array>;
+    const hold = when === "during_read" ? holdRead() : null;
+    if (when === "during_commit") {
+      domainMock.recordTurn.mockImplementation(async () => {
+        void reader.cancel();
+        return ROW_ID as never;
+      });
+    }
+    if (when === "after_content" || when === "after_usage") {
+      const marker = when === "after_content" ? "gate released" : '"event":"turn.usage"';
+      vi.spyOn(console, "log").mockImplementation((...a: unknown[]) => {
+        if (String(a[0]).includes(marker)) void reader.cancel();
+      });
+    }
+    const res = await POST(req({ message: Q_PLAIN, sourceDocIds: [DOC_A], ...(withId ? { clientRequestId: REQ_ID } : {}) }, progress), params);
+    expect(res.status).toBe(200);
+    reader = res.body!.getReader();
+    if (hold) {
+      await hold.reached;
+      await reader.cancel();
+      hold.release();
+    }
+    const r = await settled();
+    expect(redraftBodies).toHaveLength(0);
+    // History: answered, with draft 1 and its one citation.
+    expect(r.turn.answerStatus).toBe("answered");
+    expect(r.turn.answerText).toBe(DRAFT1);
+    expect(r.evidence.filter((e) => typeof e.citationId === "string")).toHaveLength(1);
+    // The ONE packet: answered, draft 1's spend only.
+    expect(r.meta.outcome).toBe("answered");
+    expect(r.meta.answerText).toBe(DRAFT1);
+    expect(r.outcome).toMatchObject({ layer: "none", outcome: "allow", semantic_verdict: "safe" });
+    expect(r.outcome.semantic_redraft).toBeUndefined();
+    expect(r.usage).toMatchObject({ provider: "OpenAI", inputTokens: 12, outputTokens: 7 });
+    expectDispositionMatchesHistory(r);
+    return r;
+  }
+
+  it("ordinary answered turn: body cancelled during the held cited-page read (before the first post-commit frame)", async () => {
+    await answeredCancelledAt("during_read");
+  });
+
+  it("ordinary answered turn: body cancelled while the history write is in flight", async () => {
+    await answeredCancelledAt("during_commit");
+  });
+
+  it("ordinary answered turn: body cancelled between frames (after the content, before sources)", async () => {
+    await answeredCancelledAt("after_content");
+  });
+
+  it("ordinary answered turn: body cancelled between frames (after the usage frame, before status)", async () => {
+    await answeredCancelledAt("after_usage");
+  });
+
+  it("ordinary answered turn, progress stream on: body cancelled between frames (after the content)", async () => {
+    await answeredCancelledAt("after_content", true);
+  });
+
+  it("control: body read to the end, then the reader cancelled (after the last frame) -> persists exactly once", async () => {
+    stubFetch(REDRAFT, [verdict("unsafe"), verdict("safe", "none")]);
+    const res = await POST(req({ message: Q_PLAIN, sourceDocIds: [DOC_A], clientRequestId: REQ_ID }, false), params);
+    const reader = res.body!.getReader();
+    let text = "";
+    const dec = new TextDecoder();
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      text += dec.decode(value);
+      if (text.includes("data: [DONE]")) {
+        await reader.cancel();
+        break;
+      }
+    }
+    const r = await settled();
+    expect(r.turn.answerText).toBe(REDRAFT);
+    expect(r.meta.outcome).toBe("answered");
+    expect(r.outcome.semantic_redraft).toBe("served");
+    expect(r.usage).toMatchObject({ provider: "OpenAI", inputTokens: 12 + 50, outputTokens: 7 + 20 });
+    expectDispositionMatchesHistory(r, 1);
+  });
+
+  it("control: an uncancelled redraft turn persists exactly once, not twice, with the same frames in the same order", async () => {
+    stubFetch(REDRAFT, [verdict("unsafe"), verdict("safe", "none")]);
+    const r0 = await run(Q_PLAIN);
+    // Today's frames, exactly (captured on the base commit 54afe7371).
+    expect(r0.frames.map((f) => f.kind)).toEqual(["content", "sources", "evidence", "usage", "status"]);
+    expect(r0.streamed).toBe(REDRAFT);
+    await settleAll();
+    expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1);
+    expect(closeTurnMock).not.toHaveBeenCalled();
+    expect(evaluateMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("control: an uncancelled stop turn keeps its frame order (safety before content) and persists once", async () => {
+    stubFetch(REDRAFT, [verdict("unsafe"), verdict("unsafe")]);
+    const r0 = await run(Q_PLAIN);
+    expectStopped(r0);
+    // Today's frames, exactly: the safety frame before the first content byte.
+    expect(r0.frames.map((f) => f.kind)).toEqual(["safety", "content", "content", "content", "content", "sources", "usage", "status"]);
+    await settleAll();
+    expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1);
+    expect(closeTurnMock).not.toHaveBeenCalled();
+  });
+
+  it("control (behavioural form of the jev-route-invariant pin): on a delivered turn the decision lane runs only after the body is complete", async () => {
+    stubFetch(REDRAFT, [verdict("unsafe"), verdict("safe", "none")]);
+    let bodyDone = false;
+    const seenAtCall: boolean[] = [];
+    const real = (await vi.importActual<typeof import("@/capabilities/observability/jev-decision")>("@/capabilities/observability/jev-decision"))
+      .evaluateTurnDecision;
+    evaluateMock.mockImplementation((...a: Parameters<typeof real>) => {
+      seenAtCall.push(bodyDone);
+      return real(...a);
+    });
+    const res = await POST(req({ message: Q_PLAIN, sourceDocIds: [DOC_A] }, false), params);
+    await res.text();
+    bodyDone = true;
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    await settleAll();
+    expect(seenAtCall).toEqual([true]);
+    evaluateMock.mockImplementation(real);
+  });
+
+  it("control (once-guard): a throw AFTER the normal-path settle does not write the packet a second time", async () => {
+    stubFetch(REDRAFT, [verdict("unsafe"), verdict("safe", "none")]);
+    spanTap.throwOnPersistOk = true;
+    const res = await POST(req({ message: Q_PLAIN, sourceDocIds: [DOC_A], clientRequestId: REQ_ID }, false), params);
+    await res.text().catch(() => "");
+    const r = await settled();
+    // Precondition: the injected throw really fired, after the settle.
+    expect(spanTap.calls.some((c) => (c as Record<string, unknown>)["mira.persist.outcome"] === "ok")).toBe(true);
+    expect(r.outcome.semantic_redraft).toBe("served");
+    expect(evaluateMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("control: a failure BEFORE the commit point persists no packet, writes no history, and abandons the request claim", async () => {
+    stubFetch(REDRAFT, [verdict("safe", "none")]);
+    decisionStateFail.on = true;
+    const res = await POST(req({ message: Q_PLAIN, sourceDocIds: [DOC_A], clientRequestId: REQ_ID }, false), params);
+    await res.text().catch(() => "");
+    await settleAll();
+    // Precondition: the failure really was before the commit point.
+    expect(domainMock.recordTurn).not.toHaveBeenCalled();
+    expect(persistMock.persistTurnUsage).not.toHaveBeenCalled();
+    expect(domainMock.abandonNotebookTurnRequest).toHaveBeenCalledTimes(1);
+  });
+
+  it("control: a body cancel before the commit point (during draft 1's stream) records the stopped turn once, as today", async () => {
+    let releaseDraft!: () => void;
+    const draftGate = new Promise<void>((r) => (releaseDraft = r));
+    let draftEntered!: () => void;
+    const draftReached = new Promise<void>((r) => (draftEntered = r));
+    vi.stubGlobal("fetch", vi.fn(async (_u: unknown, init?: RequestInit) => {
+      const body = typeof init?.body === "string" ? init.body : "";
+      if (body.includes('"stream":true')) {
+        return new Response(new ReadableStream<Uint8Array>({
+          async start(c) {
+            c.enqueue(enc.encode(delta("Check ")));
+            draftEntered();
+            await draftGate;
+            c.enqueue(enc.encode(delta("the display [1].")));
+            c.enqueue(enc.encode(STOP));
+            c.enqueue(enc.encode(usageChunk(7)));
+            c.enqueue(enc.encode("data: [DONE]\n\n"));
+            c.close();
+          },
+        }), { status: 200 });
+      }
+      return Response.json({ choices: [{ message: { content: verdict("safe", "none") } }], usage: { prompt_tokens: 1, completion_tokens: 1 } });
+    }));
+    const res = await POST(req({ message: Q_PLAIN, sourceDocIds: [DOC_A] }, false), params);
+    const reader = res.body!.getReader();
+    await draftReached;
+    await reader.cancel();
+    releaseDraft();
+    await vi.waitFor(() => expect(domainMock.recordTurn).toHaveBeenCalledTimes(1));
+    await settleAll();
+    const [, , turn] = domainMock.recordTurn.mock.calls[0] as unknown as [string, string, Record<string, unknown>];
+    expect(turn.answerStatus).toBe("error");
+    expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1);
+  });
+
+  // ── Review round 1 (R1-D1, R1-D2, R1-D3) ─────────────────────────────────────
+  /** Reads the body to its end; resolves "closed", or with the error the stream surfaced. */
+  const drain = (reader: ReadableStreamDefaultReader<Uint8Array>): Promise<unknown> =>
+    (async () => {
+      for (;;) if ((await reader.read()).done) return "closed";
+    })().catch((e: unknown) => e);
+  /** A delivery failure AFTER the commit with the reader still attached: the first log line after the content frames throws. */
+  function failDeliveryAfterContent() {
+    const boom = new Error("delivery failed after the commit (test)");
+    vi.spyOn(console, "log").mockImplementation((...a: unknown[]) => {
+      if (String(a[0]).includes("gate released")) throw boom;
+    });
+    return boom;
+  }
+  /** Holds the settle's ledger write (one call) until released; it then reports a written row. */
+  function holdLedgerWrite() {
+    let release!: () => void;
+    let entered!: () => void;
+    const reached = new Promise<void>((res) => (entered = res));
+    const gate = new Promise<void>((res) => (release = res));
+    persistMock.persistTurnUsage.mockImplementationOnce(async () => {
+      entered();
+      await gate;
+      return { persisted: true, traceId: "trace-1" };
+    });
+    return { reached, release };
+  }
+  const stillPending = (ms: number) => new Promise<string>((res) => setTimeout(() => res("still pending"), ms));
+
+  it("R1-D1: delivery throws after the commit with the reader attached -> the reader gets that error while the settle's ledger write is still pending, then ONE packet", async () => {
+    stubFetch(REDRAFT, [verdict("safe", "none")]);
+    const boom = failDeliveryAfterContent();
+    // The settle's ledger write is parked. (Before Codex round 1 on #6082 this test parked the
+    // decision call, which a failed delivery no longer makes: F1.)
+    const hold = holdLedgerWrite();
+    try {
+      const res = await POST(req({ message: Q_PLAIN, sourceDocIds: [DOC_A], clientRequestId: REQ_ID }, false), params);
+      const seen = drain(res.body!.getReader());
+      await hold.reached;
+      expect(domainMock.recordTurn).toHaveBeenCalledTimes(1);
+      // The transport error is already out: the attached reader does not wait for the settle.
+      expect(await Promise.race([seen, stillPending(400)])).toBe(boom);
+    } finally {
+      hold.release();
+    }
+    const r = await settled();
+    expect(r.meta.outcome).toBe("answered");
+    expect(r.meta.answerText).toBe(DRAFT1);
+    expectDispositionMatchesHistory(r);
+  });
+
+  it("R1-D1: the history write fails on a request with an id -> the reader gets that error while the failed-turn packet's ledger write is still pending", async () => {
+    stubFetch(REDRAFT, [verdict("safe", "none")]);
+    const boom = new Error("history write failed (test)");
+    domainMock.recordTurn.mockImplementation(async () => {
+      throw boom;
+    });
+    // The failed-turn packet's ledger write is parked. (This test parked the decision call
+    // until the advisor pass after Codex round 1 on #6082: that exit no longer makes one.)
+    const hold = holdLedgerWrite();
+    try {
+      const res = await POST(req({ message: Q_PLAIN, sourceDocIds: [DOC_A], clientRequestId: REQ_ID }, false), params);
+      const seen = drain(res.body!.getReader());
+      await hold.reached;
+      expect(await Promise.race([seen, stillPending(400)])).toBe(boom);
+    } finally {
+      hold.release();
+    }
+    await settleAll();
+    expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1);
+    const [, , telemetry] = persistMock.persistTurnUsage.mock.calls[0] as unknown as PersistCall;
+    expect(telemetry.packet.persistence.outcome).toBe("failed");
+  });
+
+  it("R1-D2: the settle rejects on the catch path -> the delivery error is the one surfaced, the completed claim is left alone, the root span records it and ends, the turn is closed", async () => {
+    stubFetch(REDRAFT, [verdict("safe", "none")]);
+    const boom = failDeliveryAfterContent();
+    spanTap.throwInSettle = true;
+    spanTap.rootExceptions.length = 0;
+    spanTap.rootEnds = 0;
+    const unhandled: unknown[] = [];
+    const onUnhandled = (e: unknown) => void unhandled.push(e);
+    process.on("unhandledRejection", onUnhandled);
+    try {
+      const res = await POST(req({ message: Q_PLAIN, sourceDocIds: [DOC_A], clientRequestId: REQ_ID }, false), params);
+      const seen = await drain(res.body!.getReader());
+      await settleAll();
+      // Preconditions: the turn was committed, and the settle ran on the catch path and failed.
+      expect(domainMock.recordTurn).toHaveBeenCalledTimes(1);
+      expect(console.error).toHaveBeenCalledWith(
+        expect.stringContaining("settle after a post-commit failure did not complete"),
+        "settle span write failed (test)",
+      );
+      expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(0);
+      // The original error, not the settle's.
+      expect(seen).toBe(boom);
+      expect(domainMock.abandonNotebookTurnRequest).not.toHaveBeenCalled();
+      expect(spanTap.rootExceptions).toEqual([boom]);
+      expect(spanTap.rootEnds).toBe(1);
+      // No usage write closed the row, so endRoot's own close did, once.
+      expect(closeTurnMock).toHaveBeenCalledTimes(1);
+      expect(closeTurnMock.mock.calls[0][0]).toMatchObject({ outcome: "answered" });
+      expect(unhandled).toEqual([]);
+    } finally {
+      process.off("unhandledRejection", onUnhandled);
+    }
+  });
+
+  it("R1-D2 control: the same delivery failure with a settle that succeeds writes ONE packet and never the bare close", async () => {
+    stubFetch(REDRAFT, [verdict("safe", "none")]);
+    const boom = failDeliveryAfterContent();
+    spanTap.rootExceptions.length = 0;
+    spanTap.rootEnds = 0;
+    const res = await POST(req({ message: Q_PLAIN, sourceDocIds: [DOC_A], clientRequestId: REQ_ID }, false), params);
+    expect(await drain(res.body!.getReader())).toBe(boom);
+    const r = await settled();
+    expectDispositionMatchesHistory(r);
+    expect(domainMock.abandonNotebookTurnRequest).not.toHaveBeenCalled();
+    expect(spanTap.rootExceptions).toEqual([boom]);
+    expect(spanTap.rootEnds).toBe(1);
+  });
+
+  /** A committed turn no provider served (every provider call answers 500), cancelled during the history write or delivered. */
+  async function unservedTurn(cancel: boolean, internal = false) {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        // A route bug (not a provider outage): the stream call throws a RangeError.
+        if (internal) throw new RangeError("route bug (test)");
+        return new Response("down", { status: 500 });
+      }),
+    );
+    // eslint-disable-next-line prefer-const -- assigned after POST; read by the hook below
+    let reader!: ReadableStreamDefaultReader<Uint8Array>;
+    if (cancel) {
+      domainMock.recordTurn.mockImplementation(async () => {
+        await new Promise((res) => setTimeout(res, 0));
+        void reader.cancel();
+        return ROW_ID as never;
+      });
+    }
+    const res = await POST(req({ message: Q_PLAIN, sourceDocIds: [DOC_A], clientRequestId: REQ_ID }, false), params);
+    expect(res.status).toBe(200);
+    reader = res.body!.getReader();
+    // Delivered: how many providers.exhausted lines existed when the status frame reached the reader.
+    let exhaustedLinesAtStatus = -1;
+    if (!cancel) {
+      const dec = new TextDecoder();
+      let text = "";
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        text += dec.decode(value);
+        if (exhaustedLinesAtStatus < 0 && text.includes('"kind":"status"')) exhaustedLinesAtStatus = exhaustedLines().length;
+      }
+    }
+    const r = await settled();
+    // Preconditions: committed as an unserved (error) turn; a cancelled one never got its closing frames.
+    expect(r.turn.answerStatus).toBe("error");
+    expect(r.turn.answerText).toBeNull();
+    expect(r.packet.persistence.turn_row_id).toBe(ROW_ID);
+    expect(closeTurnMock).not.toHaveBeenCalled();
+    return { ...r, exhaustedLinesAtStatus };
+  }
+
+  for (const cancel of [true, false]) {
+    const how = cancel ? "cancelled during the history write" : "delivered";
+    it(`R1-D3: a committed turn no provider served, ${how}: the ledger row stores a null answer text`, async () => {
+      const r = await unservedTurn(cancel);
+      expect(r.usage.routeReason).not.toBe("legacy_cascade");
+      expect(r.meta.answerText).toBeNull();
+    });
+
+    it(`R1-D3: the legacy cascade (canonical seam off), no provider served, ${how}: the ledger row's status is error`, async () => {
+      process.env.MIRA_CANONICAL_SEAM = "0";
+      process.env.GROQ_API_KEY = "g0";
+      const r = await unservedTurn(cancel);
+      // Precondition: this is the legacy branch of the settle.
+      expect(r.usage.routeReason).toBe("legacy_cascade");
+      expect(r.usage.status).toBe("error");
+    });
+  }
+
+  it("R1-D3 control: the legacy cascade's served turn is recorded ok", async () => {
+    process.env.MIRA_CANONICAL_SEAM = "0";
+    process.env.GROQ_API_KEY = "g0";
+    stubFetch(REDRAFT, [verdict("safe", "none")]);
+    const res = await POST(req({ message: Q_PLAIN, sourceDocIds: [DOC_A], clientRequestId: REQ_ID }, false), params);
+    expect(await drain(res.body!.getReader())).toBe("closed");
+    const r = await settled();
+    expect(r.turn.answerStatus).toBe("answered");
+    expect(r.usage.routeReason).toBe("legacy_cascade");
+    expect(r.usage.status).toBe("ok");
+    expect(r.meta.answerText).toBe(DRAFT1);
+  });
+
+  // ── Review round 1 (R1-D4): the catch settles only a decision that IS in history ──
+  const logged = (spy: unknown, marker: string) =>
+    (spy as ReturnType<typeof vi.fn>).mock.calls.map((c) => String(c[0])).filter((l) => l.includes(marker));
+  /** The `turn.usage` and `providers.exhausted` structured log lines of this turn. */
+  const usageLines = () => logged(console.log, '"event":"turn.usage"');
+  const exhaustedLines = () => logged(console.error, '"event":"providers.exhausted"');
+
+  /**
+   * The history write FAILS on a request with no id: there is no claim to abandon, so the
+   * route logs the failure and carries on to delivery (with an id it stops there instead).
+   */
+  async function historyWriteFailed(cancel: boolean) {
+    stubFetch(REDRAFT, [verdict("safe", "none")]);
+    // eslint-disable-next-line prefer-const -- assigned after POST; read by the hook below
+    let reader!: ReadableStreamDefaultReader<Uint8Array>;
+    domainMock.recordTurn.mockImplementation(async () => {
+      await new Promise((res) => setTimeout(res, 0));
+      if (cancel) void reader.cancel();
+      throw new Error("history write failed (test)");
+    });
+    const res = await POST(req({ message: Q_PLAIN, sourceDocIds: [DOC_A] }, false), params);
+    expect(res.status).toBe(200);
+    reader = res.body!.getReader();
+    let text = "";
+    if (!cancel) {
+      const dec = new TextDecoder();
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        text += dec.decode(value);
+      }
+    }
+    await vi.waitFor(() => expect(domainMock.recordTurn).toHaveBeenCalledTimes(1));
+    await settleAll();
+    // Preconditions: the write failed, once, and the route continued past it.
+    expect(domainMock.recordTurn).toHaveBeenCalledTimes(1);
+    expect(console.error).toHaveBeenCalledWith("[notebook-chat] recordTurn failed:", "history write failed (test)");
+    expect(domainMock.abandonNotebookTurnRequest).not.toHaveBeenCalled();
+    return text
+      .split("\n\n")
+      .filter((l) => l.startsWith("data: ") && l.trim() !== "data: [DONE]")
+      .map((l) => JSON.parse(l.slice(6)) as Frame & { status?: string });
+  }
+
+  it("R1-D4: body cancelled after a FAILED history write: the catch persists nothing (no packet, no usage row, no decision call), the bare close as before #6048", async () => {
+    await historyWriteFailed(true);
+    expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(0);
+    expect(evaluateMock).not.toHaveBeenCalled();
+    expect(usageLines()).toHaveLength(0);
+    // The delivery failure reached the catch, whose endRoot closed the row bare.
+    expect(closeTurnMock).toHaveBeenCalledTimes(1);
+    expect(closeTurnMock.mock.calls[0][0]).toMatchObject({ outcome: "answered" });
+  });
+
+  it("R1-D4 control: DELIVERED after a failed history write is unchanged: the same frames, ONE packet with the failed persistence outcome and no row id", async () => {
+    const frames = await historyWriteFailed(false);
+    expect(frames.map((f) => f.kind)).toEqual(["content", "sources", "evidence", "usage", "status"]);
+    expect(frames.filter((f) => f.kind === "content").map((f) => f.content).join("")).toBe(DRAFT1);
+    expect(frames.at(-1)).toMatchObject({ kind: "status", status: "answered" });
+    expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1);
+    const [meta, usage, telemetry] = persistMock.persistTurnUsage.mock.calls[0] as unknown as PersistCall;
+    expect(meta).toMatchObject({ outcome: "answered", answerText: DRAFT1, citationsPresent: true });
+    expect(usage).toMatchObject({ provider: "OpenAI", inputTokens: 12, outputTokens: 7 });
+    expect(telemetry.turnRowId).toBeNull();
+    expect(telemetry.packet.persistence).toMatchObject({ turn_row_id: null, outcome: "failed" });
+    expect(evaluateMock).toHaveBeenCalledTimes(1);
+    expect(usageLines()).toHaveLength(1);
+    expect(closeTurnMock).not.toHaveBeenCalled();
+  });
+
+  // ── Review round 1 (R1-D5): the incident log lines are owed once per committed turn too ──
+  it("R1-D5: an answered turn cancelled BEFORE the usage frame still logs turn.usage, once, with the ledger row's numbers", async () => {
+    const r = await answeredCancelledAt("during_commit");
+    expect(usageLines()).toHaveLength(1);
+    expect(JSON.parse(usageLines()[0])).toMatchObject({
+      provider: r.usage.provider,
+      model: r.usage.model,
+      inputTokens: r.usage.inputTokens,
+      outputTokens: r.usage.outputTokens,
+      status: r.usage.status,
+    });
+    expect(exhaustedLines()).toHaveLength(0);
+  });
+
+  it("R1-D5 control: an answered turn cancelled AFTER the usage frame logs turn.usage once, not twice", async () => {
+    await answeredCancelledAt("after_usage");
+    expect(usageLines()).toHaveLength(1);
+  });
+
+  it("R1-D5 control: a delivered answered turn logs turn.usage once, before its status frame goes out, and no exhausted line", async () => {
+    stubFetch(REDRAFT, [verdict("safe", "none")]);
+    const res = await POST(req({ message: Q_PLAIN, sourceDocIds: [DOC_A], clientRequestId: REQ_ID }, false), params);
+    const reader = res.body!.getReader();
+    const dec = new TextDecoder();
+    let text = "";
+    let linesWhenStatusArrived = -1;
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      text += dec.decode(value);
+      if (linesWhenStatusArrived < 0 && text.includes('"kind":"status"')) linesWhenStatusArrived = usageLines().length;
+    }
+    await settled();
+    // Emitted where it always was (with the usage frame), not deferred to the settle.
+    expect(linesWhenStatusArrived).toBe(1);
+    expect(usageLines()).toHaveLength(1);
+    expect(exhaustedLines()).toHaveLength(0);
+  });
+
+  for (const cancel of [true, false]) {
+    const how = cancel ? "cancelled during the history write" : "delivered";
+    it(`R1-D5${cancel ? "" : " control"}: a committed turn no provider served, ${how}: one providers.exhausted line and one turn.usage line`, async () => {
+      const r = await unservedTurn(cancel);
+      expect(r.usage.routeReason).not.toBe("legacy_cascade");
+      expect(exhaustedLines()).toHaveLength(1);
+      expect(usageLines()).toHaveLength(1);
+      expect(JSON.parse(usageLines()[0])).toMatchObject({ status: r.usage.status, attempted: ["OpenAI"] });
+      // Delivered: the exhausted line is written where it always was (before the status frame), not by the settle.
+      if (!cancel) expect(r.exhaustedLinesAtStatus).toBe(1);
+    });
+
+    it(`R1-D5 control: the legacy cascade (seam off), no provider served, ${how}: neither line (they are canonical-seam lines)`, async () => {
+      process.env.MIRA_CANONICAL_SEAM = "0";
+      process.env.GROQ_API_KEY = "g0";
+      const r = await unservedTurn(cancel);
+      expect(r.usage.routeReason).toBe("legacy_cascade");
+      expect(usageLines()).toHaveLength(0);
+      expect(exhaustedLines()).toHaveLength(0);
+    });
+  }
+
+  // ── Review round 2 (R2-D1 to R2-D4) ──────────────────────────────────────────
+  it("R2-D1: a committed turn with NO client request id, body cancelled while the history write is in flight -> ONE packet, ONE usage row, disposition equal to history", async () => {
+    await answeredCancelledAt("during_commit", false, false);
+    // Precondition: the request carried no id, so no claim was taken or released.
+    const [, , turn] = domainMock.recordTurn.mock.calls[0] as unknown as [string, string, Record<string, unknown>];
+    expect(turn.clientRequestId ?? null).toBeNull();
+    expect(domainMock.claimNotebookTurnRequest).not.toHaveBeenCalled();
+    expect(usageLines()).toHaveLength(1);
+  });
+
+  it("R2-D2: a committed canonical-seam turn that ended in an INTERNAL error, cancelled during the history write -> the settle writes no providers.exhausted line", async () => {
+    const r = await unservedTurn(true, true);
+    // Preconditions: a route bug (not exhaustion) on the canonical seam, settled once by the catch.
+    expect(console.error).toHaveBeenCalledWith("[notebook-chat] internal error (NOT provider exhaustion):", expect.any(RangeError));
+    expect(r.usage.routeReason).not.toBe("legacy_cascade");
+    expect(usageLines()).toHaveLength(1);
+    expect(exhaustedLines()).toHaveLength(0);
+  });
+
+  /** A committed turn cancelled during the history write whose settle then rejects (the span write inside finishAndPersist throws). */
+  async function cancelledThenSettleRejects(kind: "answered" | "exhausted") {
+    if (kind === "answered") stubFetch(REDRAFT, [verdict("safe", "none")]);
+    else vi.stubGlobal("fetch", vi.fn(async () => new Response("down", { status: 500 })));
+    spanTap.throwInSettle = true;
+    // eslint-disable-next-line prefer-const -- assigned after POST; read by the hook below
+    let reader!: ReadableStreamDefaultReader<Uint8Array>;
+    domainMock.recordTurn.mockImplementation(async () => {
+      await new Promise((res) => setTimeout(res, 0));
+      void reader.cancel();
+      return ROW_ID as never;
+    });
+    const res = await POST(req({ message: Q_PLAIN, sourceDocIds: [DOC_A], clientRequestId: REQ_ID }, false), params);
+    expect(res.status).toBe(200);
+    reader = res.body!.getReader();
+    await vi.waitFor(() => expect(domainMock.recordTurn).toHaveBeenCalledTimes(1));
+    await settleAll();
+    // Preconditions: the settle ran on the catch path and rejected, so no ledger row was written.
+    expect(console.error).toHaveBeenCalledWith(
+      expect.stringContaining("settle after a post-commit failure did not complete"),
+      "settle span write failed (test)",
+    );
+    expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(0);
+    // R2-D6 control: this IS a delivery failure, so the delivered-turn line is not written.
+    expect(logged(console.error, "settle after a delivered turn did not complete")).toHaveLength(0);
+  }
+
+  it("R2-D3: an answered turn cancelled during the history write whose settle rejects has still logged turn.usage, once", async () => {
+    await cancelledThenSettleRejects("answered");
+    expect(usageLines()).toHaveLength(1);
+    expect(exhaustedLines()).toHaveLength(0);
+  });
+
+  it("R2-D3: a provider-exhausted turn cancelled during the history write whose settle rejects has still logged providers.exhausted and turn.usage, once each", async () => {
+    await cancelledThenSettleRejects("exhausted");
+    expect(exhaustedLines()).toHaveLength(1);
+    expect(usageLines()).toHaveLength(1);
+  });
+
+  /** Draft 1 streams `text`; any judge call answers safe; nothing else is expected. */
+  function stubDraft(text: string) {
+    const judgeBodies: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_u: unknown, init?: RequestInit) => {
+        const body = typeof init?.body === "string" ? init.body : "";
+        if (body.includes('"stream":true')) return answerStream(text);
+        if (body.includes("candidate_answer")) judgeBodies.push(body);
+        return Response.json({ choices: [{ message: { content: verdict("safe", "none") } }], usage: { prompt_tokens: 40, completion_tokens: 9 } });
+      }),
+    );
+    return { judgeBodies };
+  }
+  /** Cancels the body while the (successful) history write is in flight, then returns the settled turn. */
+  async function cancelDuringCommit() {
+    // eslint-disable-next-line prefer-const -- assigned after POST; read by the hook below
+    let reader!: ReadableStreamDefaultReader<Uint8Array>;
+    domainMock.recordTurn.mockImplementation(async () => {
+      await new Promise((res) => setTimeout(res, 0));
+      void reader.cancel();
+      return ROW_ID as never;
+    });
+    const res = await POST(req({ message: Q_PLAIN, sourceDocIds: [DOC_A], clientRequestId: REQ_ID }, false), params);
+    expect(res.status).toBe(200);
+    reader = res.body!.getReader();
+    return settled();
+  }
+
+  it("R2-D4: a refusal (insufficient evidence) turn cancelled during the history write -> ONE packet and ONE usage row, disposition equal to history", async () => {
+    stubDraft("The provided excerpts do not contain information about this. I don't have enough information to answer.");
+    const r = await cancelDuringCommit();
+    // Precondition: the committed turn is a refusal.
+    expect(r.turn.answerStatus).toBe("insufficient_evidence");
+    expect(r.meta.outcome).toBe("abstained");
+    expectDispositionMatchesHistory(r);
+    expect(usageLines()).toHaveLength(1);
+  });
+
+  it("R2-D4: a turn with NOTEBOOK_ANSWER_GATE=0 cancelled during the history write -> ONE packet and ONE usage row, disposition equal to history", async () => {
+    process.env.NOTEBOOK_ANSWER_GATE = "0";
+    const { judgeBodies } = stubDraft(DRAFT1);
+    const r = await cancelDuringCommit();
+    // Preconditions: the gate really was off (no gated release, no judge call), and the turn was answered.
+    expect(logged(console.log, "gate released")).toHaveLength(0);
+    expect(judgeBodies).toHaveLength(0);
+    expect(r.turn.answerStatus).toBe("answered");
+    expect(r.turn.answerText).toBe(DRAFT1);
+    expectDispositionMatchesHistory(r);
+    expect(usageLines()).toHaveLength(1);
+  });
+
+  it("R2-D6: a DELIVERED turn whose normal-path settle rejects logs that the settle after a delivered turn failed, never a post-commit delivery failure", async () => {
+    stubFetch(REDRAFT, [verdict("safe", "none")]);
+    spanTap.throwInSettle = true;
+    spanTap.rootExceptions.length = 0;
+    spanTap.rootEnds = 0;
+    const unhandled: unknown[] = [];
+    const onUnhandled = (e: unknown) => void unhandled.push(e);
+    process.on("unhandledRejection", onUnhandled);
+    try {
+      const res = await POST(req({ message: Q_PLAIN, sourceDocIds: [DOC_A], clientRequestId: REQ_ID }, false), params);
+      // Precondition: the body was delivered in full, a clean close.
+      expect(await drain(res.body!.getReader())).toBe("closed");
+      await vi.waitFor(() => expect(domainMock.recordTurn).toHaveBeenCalledTimes(1));
+      await settleAll();
+      // Precondition: the settle rejected, so no ledger row was written.
+      expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(0);
+      expect(console.error).toHaveBeenCalledWith(
+        expect.stringContaining("settle after a delivered turn did not complete"),
+        "settle span write failed (test)",
+      );
+      expect(logged(console.error, "settle after a post-commit failure did not complete")).toHaveLength(0);
+      // Everything else as before: the completed claim left alone, the settle's error recorded, root span ended once.
+      expect(domainMock.abandonNotebookTurnRequest).not.toHaveBeenCalled();
+      expect(spanTap.rootExceptions.map((e) => (e as Error).message)).toEqual(["settle span write failed (test)"]);
+      expect(spanTap.rootEnds).toBe(1);
+      expect(unhandled).toEqual([]);
+    } finally {
+      process.off("unhandledRejection", onUnhandled);
+    }
+  });
+
+  // ── Codex round 1 on #6082 (F1, F2, F3) ──────────────────────────────────────
+  /** Requests the route sent to the decision vendor. */
+  const vendorRequests = () =>
+    (globalThis.fetch as unknown as ReturnType<typeof vi.fn>).mock.calls.filter(([u]) => String(u) === JEV_ENDPOINT);
+  const decisionCallOn = () => {
+    process.env.MIRA_JEV_DECISION = "1";
+    process.env.JEV_API_KEY = "dummy-key";
+  };
+
+  it("F1: decision call on, an answered turn cancelled before its first post-commit frame: nothing is sent to the vendor; ONE packet and usage row, no decision record", async () => {
+    decisionCallOn();
+    const r = await answeredCancelledAt("during_read");
+    expect(vendorRequests()).toHaveLength(0);
+    expect(r.packet.jev_decision ?? null).toBeNull();
+  });
+
+  it("F1: decision call on, a redraft turn stopped by a cancel during the held read: nothing is sent to the vendor", async () => {
+    decisionCallOn();
+    const r = await redraftCancelledDuringRead(false);
+    expect(vendorRequests()).toHaveLength(0);
+    expect(r.packet.jev_decision ?? null).toBeNull();
+  });
+
+  it("F1: decision call on, delivery fails after the commit with the reader attached: nothing is sent to the vendor", async () => {
+    decisionCallOn();
+    stubFetch(REDRAFT, [verdict("safe", "none")]);
+    const boom = failDeliveryAfterContent();
+    const res = await POST(req({ message: Q_PLAIN, sourceDocIds: [DOC_A], clientRequestId: REQ_ID }, false), params);
+    expect(await drain(res.body!.getReader())).toBe(boom);
+    const r = await settled();
+    expect(vendorRequests()).toHaveLength(0);
+    expect(r.packet.jev_decision ?? null).toBeNull();
+    expectDispositionMatchesHistory(r);
+  });
+
+  it("F1 control: decision call on, the same answered turn drained to its end sends ONE request and carries a decision record", async () => {
+    decisionCallOn();
+    stubFetch(REDRAFT, [verdict("safe", "none")]);
+    const res = await POST(req({ message: Q_PLAIN, sourceDocIds: [DOC_A], clientRequestId: REQ_ID }, false), params);
+    expect(await drain(res.body!.getReader())).toBe("closed");
+    const r = await settled();
+    expect(vendorRequests()).toHaveLength(1);
+    expect(r.packet.jev_decision ?? null).not.toBeNull();
+    expectDispositionMatchesHistory(r, 1);
+  });
+
+  // ── Codex round 3 on #6082 (F8) ──────────────────────────────────────────────
+  // A turn no provider served carries no answer. Its error stream ends cleanly and can be
+  // read to its end, so "every frame written" and "handed off" are both true of it. The
+  // decision call still has nothing to judge, and it must not send the question, the excerpts
+  // and any photo observations to the vendor for an answer that was never given.
+  /** Every provider answers 500; the response is read to its end. Returns the frames that arrived. */
+  async function exhaustedReadToEnd() {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("down", { status: 500 })));
+    const res = await POST(req({ message: Q_PLAIN, sourceDocIds: [DOC_A], clientRequestId: REQ_ID }, false), params);
+    expect(res.status).toBe(200);
+    const frames = (await res.text())
+      .split("\n\n")
+      .filter((l) => l.startsWith("data: ") && l.trim() !== "data: [DONE]")
+      .map((l) => JSON.parse(l.slice(6)) as Frame & { status?: string });
+    const r = await settled();
+    // Preconditions: an unserved turn, committed, whose response carried no answer and ended with the error status.
+    expect(r.turn.answerStatus).toBe("error");
+    expect(r.turn.answerText).toBeNull();
+    expect(frames.filter((f) => f.kind === "content")).toHaveLength(0);
+    expect(frames.at(-1)).toMatchObject({ kind: "status", status: "error" });
+    return r;
+  }
+
+  it("F8: decision call on, every provider fails and the error response is read to its end: nothing is sent to the vendor, no decision record, ONE packet and usage row", async () => {
+    decisionCallOn();
+    const r = await exhaustedReadToEnd();
+    expect(vendorRequests()).toHaveLength(0);
+    expect(evaluateMock).not.toHaveBeenCalled();
+    expect(r.packet.jev_decision ?? null).toBeNull();
+    expect(r.packet.persistence).toMatchObject({ turn_row_id: ROW_ID, outcome: "ok" });
+    expect(closeTurnMock).not.toHaveBeenCalled();
+  });
+
+  // A completion that is only whitespace is recorded as an answered turn (unchanged here, and
+  // the same on main): one content frame of blanks goes out and history keeps the blanks. There
+  // is still no answer to judge, so the question and the excerpts are not sent for it either.
+  /** The provider's whole completion is whitespace; the response is read to its end. Returns the frames that arrived. */
+  async function blankCompletionReadToEnd() {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string | URL | Request, init?: RequestInit) =>
+        typeof init?.body === "string" && init.body.includes('"stream":true') ? answerStream(" \n ") : new Response("down", { status: 500 }),
+      ),
+    );
+    const res = await POST(req({ message: Q_PLAIN, sourceDocIds: [DOC_A], clientRequestId: REQ_ID }, false), params);
+    expect(res.status).toBe(200);
+    return (await res.text())
+      .split("\n\n")
+      .filter((l) => l.startsWith("data: ") && l.trim() !== "data: [DONE]")
+      .map((l) => JSON.parse(l.slice(6)) as Frame & { status?: string });
+  }
+
+  it("F8: decision call on, the provider's whole completion is whitespace and the response is read to its end: nothing is sent to the vendor, no decision record, ONE packet and usage row", async () => {
+    decisionCallOn();
+    const frames = await blankCompletionReadToEnd();
+    const r = await settled();
+    // Preconditions: what the client got as content is blanks only, the turn is recorded as
+    // answered, and the whole recorded answer is blanks (not null, not empty).
+    const content = frames.filter((f) => f.kind === "content");
+    expect(content.length).toBeGreaterThan(0);
+    expect(content.map((f) => f.content ?? "").join("").trim()).toBe("");
+    expect(r.turn.answerStatus).toBe("answered");
+    expect(typeof r.turn.answerText).toBe("string");
+    expect(String(r.turn.answerText).length).toBeGreaterThan(0);
+    expect(String(r.turn.answerText).trim()).toBe("");
+    expect(vendorRequests()).toHaveLength(0);
+    expect(evaluateMock).not.toHaveBeenCalled();
+    expect(r.packet.jev_decision ?? null).toBeNull();
+    expect(r.packet.persistence).toMatchObject({ turn_row_id: ROW_ID, outcome: "ok" });
+    expect(closeTurnMock).not.toHaveBeenCalled();
+  });
+
+  it("F8 control: decision call OFF, the same blank answered turn read to its end: the packet carries the disabled record as before", async () => {
+    await blankCompletionReadToEnd();
+    const r = await settled();
+    expect(r.turn.answerStatus).toBe("answered");
+    expect(String(r.turn.answerText).trim()).toBe("");
+    expect(handoffSpy).not.toHaveBeenCalled();
+    expect(evaluateMock).toHaveBeenCalledTimes(1);
+    expect(r.packet.jev_decision).toMatchObject({ skipped_reason: "disabled" });
+  });
+
+  // The answer check comes before the handoff: a turn with no answer has nothing to wait for.
+  // An answered turn nobody reads waits out the handoff (pinned below, "a response nobody reads");
+  // this one must not.
+  it("F8: decision call on, every provider fails and NOBODY reads the response: the settle does not wait for the handoff, and nothing is sent", async () => {
+    decisionCallOn();
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("down", { status: 500 })));
+    const res = await POST(req({ message: Q_PLAIN, sourceDocIds: [DOC_A], clientRequestId: REQ_ID }, false), params);
+    expect(res.status).toBe(200);
+    // Well inside the 4 second handoff wait, with the body never read.
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1), { timeout: 1500, interval: 25 });
+    expect(handoffSpy).toHaveBeenCalledTimes(1); // the tracker was installed; the settle did not need its answer
+    const r = await settled();
+    expect(r.turn.answerStatus).toBe("error");
+    expect(r.turn.answerText).toBeNull();
+    expect(vendorRequests()).toHaveLength(0);
+    expect(evaluateMock).not.toHaveBeenCalled();
+    expect(r.packet.jev_decision ?? null).toBeNull();
+    await res.body!.cancel();
+  });
+
+  // With the answer gate OFF the draft is streamed as it arrives. A provider that fails part-way
+  // has already put fragments on the wire; the turn is still an error with no answer, and the
+  // fragments are not sent to the vendor as "the answer MIRA delivered" (on main they were).
+  it("F8: decision call on, answer gate off, the only provider fails part-way through its stream: fragments reached the client, the turn is an error, and nothing is sent", async () => {
+    decisionCallOn();
+    process.env.NOTEBOOK_ANSWER_GATE = "0";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+        if (!(typeof init?.body === "string" && init.body.includes('"stream":true'))) return new Response("down", { status: 500 });
+        let sent = false;
+        return new Response(
+          new ReadableStream<Uint8Array>({
+            pull(c) {
+              if (!sent) {
+                sent = true;
+                for (const w of ["Check ", "the ", "ribbon ", "cable ", "connector ", "first. "]) c.enqueue(enc.encode(delta(w)));
+                return;
+              }
+              c.error(new Error("connection reset (test)"));
+            },
+          }),
+          { status: 200 },
+        );
+      }),
+    );
+    const res = await POST(req({ message: Q_PLAIN, sourceDocIds: [DOC_A], clientRequestId: REQ_ID }, false), params);
+    expect(res.status).toBe(200);
+    const frames = (await res.text())
+      .split("\n\n")
+      .filter((l) => l.startsWith("data: ") && l.trim() !== "data: [DONE]")
+      .map((l) => JSON.parse(l.slice(6)) as Frame & { status?: string });
+    const r = await settled();
+    // Preconditions: a fragment did reach the client, and the turn is an error with no answer.
+    expect(frames.filter((f) => f.kind === "content").map((f) => f.content ?? "").join("")).toContain("Check the ribbon");
+    expect(frames.at(-1)).toMatchObject({ kind: "status", status: "error" });
+    expect(r.turn.answerStatus).toBe("error");
+    expect(r.turn.answerText).toBeNull();
+    expect(vendorRequests()).toHaveLength(0);
+    expect(evaluateMock).not.toHaveBeenCalled();
+    expect(r.packet.jev_decision ?? null).toBeNull();
+    expect(r.packet.persistence).toMatchObject({ turn_row_id: ROW_ID, outcome: "ok" });
+  });
+
+  it("F8 control: decision call OFF, the same unserved turn read to its end: no tracker, and the packet carries the disabled record as before", async () => {
+    const r = await exhaustedReadToEnd();
+    expect(handoffSpy).not.toHaveBeenCalled();
+    expect(evaluateMock).toHaveBeenCalledTimes(1);
+    expect(r.packet.jev_decision).toMatchObject({ skipped_reason: "disabled" });
+  });
+
+  it("F1: decision call on, the history write fails on a request with an id: the response is errored, nothing is sent to the vendor, the failed-turn packet carries no decision record", async () => {
+    decisionCallOn();
+    stubFetch(REDRAFT, [verdict("safe", "none")]);
+    const boom = new Error("history write failed (test)");
+    domainMock.recordTurn.mockImplementation(async () => {
+      throw boom;
+    });
+    const res = await POST(req({ message: Q_PLAIN, sourceDocIds: [DOC_A], clientRequestId: REQ_ID }, false), params);
+    expect(await drain(res.body!.getReader())).toBe(boom);
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    await settleAll();
+    expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1);
+    const [, , telemetry] = persistMock.persistTurnUsage.mock.calls[0] as unknown as PersistCall;
+    expect(telemetry.packet.persistence.outcome).toBe("failed");
+    expect(vendorRequests()).toHaveLength(0);
+    expect(evaluateMock).not.toHaveBeenCalled();
+    expect(telemetry.packet.jev_decision ?? null).toBeNull();
+  });
+
+  // With the call ON the handoff tracker also says no for this exit (the response is errored),
+  // so the test above cannot tell whether the exit itself marks the turn undelivered. With the
+  // call OFF only that mark keeps the helper from being asked at all.
+  it("F1: decision call OFF, the history write fails on a request with an id: the decision helper is not asked and the failed-turn packet carries no decision record, not even a disabled one", async () => {
+    stubFetch(REDRAFT, [verdict("safe", "none")]);
+    const boom = new Error("history write failed (test)");
+    domainMock.recordTurn.mockImplementation(async () => {
+      throw boom;
+    });
+    const res = await POST(req({ message: Q_PLAIN, sourceDocIds: [DOC_A], clientRequestId: REQ_ID }, false), params);
+    expect(await drain(res.body!.getReader())).toBe(boom);
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    await settleAll();
+    const [, , telemetry] = persistMock.persistTurnUsage.mock.calls[0] as unknown as PersistCall;
+    expect(telemetry.packet.persistence.outcome).toBe("failed");
+    expect(evaluateMock).not.toHaveBeenCalled();
+    expect("jev_decision" in telemetry.packet).toBe(false);
+  });
+
+  it("F1 control: decision call OFF, the history write fails on a request with NO id: the answer is delivered and the packet carries the disabled record", async () => {
+    stubFetch(REDRAFT, [verdict("safe", "none")]);
+    domainMock.recordTurn.mockImplementation(async () => {
+      throw new Error("history write failed (test)");
+    });
+    const res = await POST(req({ message: Q_PLAIN, sourceDocIds: [DOC_A] }, false), params);
+    expect(await drain(res.body!.getReader())).toBe("closed");
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    await settleAll();
+    const [, , telemetry] = persistMock.persistTurnUsage.mock.calls[0] as unknown as PersistCall;
+    expect(telemetry.packet.persistence.outcome).toBe("failed");
+    expect(evaluateMock).toHaveBeenCalledTimes(1);
+    expect(telemetry.packet.jev_decision).toMatchObject({ skipped_reason: "disabled" });
+    expect(vendorRequests()).toHaveLength(0);
+  });
+
+  it("F1 control: decision call on, the history write fails on a request with NO id: the route carries on, the answer is delivered, ONE request is sent", async () => {
+    decisionCallOn();
+    stubFetch(REDRAFT, [verdict("safe", "none")]);
+    domainMock.recordTurn.mockImplementation(async () => {
+      throw new Error("history write failed (test)");
+    });
+    const res = await POST(req({ message: Q_PLAIN, sourceDocIds: [DOC_A] }, false), params);
+    expect(await drain(res.body!.getReader())).toBe("closed");
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    await settleAll();
+    const [, , telemetry] = persistMock.persistTurnUsage.mock.calls[0] as unknown as PersistCall;
+    expect(telemetry.packet.persistence.outcome).toBe("failed");
+    expect(vendorRequests()).toHaveLength(1);
+    expect(telemetry.packet.jev_decision ?? null).not.toBeNull();
+  });
+
+  // ── Codex round 2 on #6082 (F5, F6) ──────────────────────────────────────────
+  // F5: the route closing its own stream is not the answer being handed off. The decision
+  // call needs the OUTERMOST response read to its end, with no cancel and no request abort.
+  const JOB_ID = "55555555-5555-4555-8555-555555555555";
+  const handoffSpy = createResponseHandoffSpy as unknown as ReturnType<typeof vi.fn>;
+  const sheetOn = () => {
+    process.env.NOTEBOOK_LIVING_SHEET = "1";
+  };
+  const reqWith = (body: Record<string, unknown>, o: { progress?: boolean; signal?: AbortSignal } = {}) => {
+    if (o.progress) process.env.MIRA_CHAT_PROGRESS = "1";
+    return new NextRequest("http://test/api/equipment-notebooks/nb/chat", {
+      method: "POST",
+      body: JSON.stringify(body),
+      headers: { "Content-Type": "application/json", ...(o.progress ? { "x-mira-progress": "1" } : {}) },
+      ...(o.signal ? { signal: o.signal } : {}),
+    });
+  };
+  const SHEET_TURN = { message: Q_PLAIN, sourceDocIds: [DOC_A], clientRequestId: REQ_ID, livingSheetJobId: JOB_ID };
+  const PLAIN_TURN = { message: Q_PLAIN, sourceDocIds: [DOC_A], clientRequestId: REQ_ID };
+  /** A job the receipt can use: the receipt frame goes out when the job read returns this. */
+  const SHEET_JOB = {
+    status: "ok",
+    view: { jobId: JOB_ID, seq: 4, title: "PM", steps: [], readings: [], parts: [], notes: [], questions: [], photos: [], warnings: [] },
+  };
+  /**
+   * Holds the sheet receipt's job read. It is the SECOND job read of the turn: the route
+   * reads the job once itself, before it generates, and that one is not held.
+   */
+  function holdReceiptRead(result: unknown = JOB_NOT_FOUND) {
+    let release!: () => void;
+    let entered!: () => void;
+    const reached = new Promise<void>((res) => (entered = res));
+    const gate = new Promise<void>((res) => (release = res));
+    let reads = 0;
+    storeMock.loadJob.mockImplementation(async () => {
+      reads += 1;
+      if (reads !== 2) return JOB_NOT_FOUND;
+      entered();
+      await gate;
+      return result;
+    });
+    return { reached, release };
+  }
+  /** Reads a response in the background and keeps what arrived; `stop()` cancels its reader. */
+  function follow(res: Response) {
+    const reader = res.body!.getReader();
+    const d = new TextDecoder();
+    let text = "";
+    const ended = (async () => {
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) return "closed";
+        text += d.decode(value, { stream: true });
+      }
+    })().catch((e: unknown) => e);
+    return { text: () => text, ended, stop: () => reader.cancel() };
+  }
+  /**
+   * The turn committed and wrote its whole answer to its own stream. The usage line is
+   * logged with the usage frame, and the status frame, the end marker and the close follow
+   * it in the same synchronous run, so one more turn of the event loop is past the close.
+   */
+  async function turnWroteEverything() {
+    await vi.waitFor(() => expect(domainMock.recordTurn).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(usageLines()).toHaveLength(1));
+    await settleAll();
+  }
+
+  it("F5: decision call on, progress and sheet on: the outer response is cancelled while the receipt's job read is held, after the turn committed and wrote every frame -> no answer frame went out, nothing is sent to the vendor, ONE packet and usage row", async () => {
+    decisionCallOn();
+    sheetOn();
+    stubFetch(REDRAFT, [verdict("safe", "none")]);
+    const hold = holdReceiptRead();
+    const res = await POST(reqWith(SHEET_TURN, { progress: true }), params);
+    expect(res.status).toBe(200);
+    const out = follow(res);
+    await hold.reached;
+    await turnWroteEverything();
+    // The settle is waiting for the handoff: nothing is written or sent yet.
+    expect(persistMock.persistTurnUsage).not.toHaveBeenCalled();
+    expect(vendorRequests()).toHaveLength(0);
+    await out.stop(); // the technician is gone; no answer frame has reached the outer response
+    hold.release();
+    const r = await settled();
+    expect(out.text()).not.toContain('"kind":"content"');
+    expect(out.text()).not.toContain(DRAFT1);
+    expect(vendorRequests()).toHaveLength(0);
+    expect(r.packet.jev_decision ?? null).toBeNull();
+    expect(r.meta.outcome).toBe("answered");
+    expect(r.packet.response_write).toEqual({ frames_written: true, citations_written: 1 });
+    expectDispositionMatchesHistory(r);
+    expect(handoffSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("F5 control: the same turn with the receipt's job read held and then released, the response read to its end: ONE request, a decision record", async () => {
+    decisionCallOn();
+    sheetOn();
+    stubFetch(REDRAFT, [verdict("safe", "none")]);
+    const hold = holdReceiptRead();
+    const res = await POST(reqWith(SHEET_TURN, { progress: true }), params);
+    const out = follow(res);
+    await hold.reached;
+    await turnWroteEverything();
+    expect(vendorRequests()).toHaveLength(0);
+    hold.release();
+    expect(await out.ended).toBe("closed");
+    const r = await settled();
+    expect(out.text()).toContain(DRAFT1.split(" ")[0]);
+    expect(out.text()).toContain("data: [DONE]");
+    expect(vendorRequests()).toHaveLength(1);
+    expect(r.packet.jev_decision ?? null).not.toBeNull();
+    expectDispositionMatchesHistory(r, 1);
+  });
+
+  it("F5: decision call on, sheet on without the progress stream: the request is aborted while the receipt's job read is held -> nothing is sent, even when the response is then read to its end", async () => {
+    decisionCallOn();
+    sheetOn();
+    stubFetch(REDRAFT, [verdict("safe", "none")]);
+    const hold = holdReceiptRead();
+    const ac = new AbortController();
+    // Without the progress stream the route does not return until the receipt has its job.
+    const pending = POST(reqWith(SHEET_TURN, { signal: ac.signal }), params);
+    await hold.reached;
+    await turnWroteEverything();
+    expect(persistMock.persistTurnUsage).not.toHaveBeenCalled();
+    ac.abort(); // the route's own abort listeners were detached before the history write
+    hold.release();
+    const res = await pending;
+    expect(await drain(res.body!.getReader())).toBe("closed");
+    const r = await settled();
+    expect(vendorRequests()).toHaveLength(0);
+    expect(r.packet.jev_decision ?? null).toBeNull();
+    expectDispositionMatchesHistory(r);
+  });
+
+  // ── Codex round 4 on #6082 (F9, F11) ─────────────────────────────────────────
+  // F9: the sheet receipt RE-ENCODES the turn's bytes (it decodes them, looks for the end
+  // marker anywhere in the text and encodes the text again), and it can corrupt the answer
+  // frame on the way (#6105). Both responses are still read to their end, so the tracker
+  // alone would say yes. A response the receipt wrapped is not a verified handoff, whether
+  // or not this one was damaged: no decision call.
+  it.each([false, true])("F9: decision call on, sheet on (progress stream %s), the receipt frame inserted, an intact answer read to its end: the receipt re-encoded the response, so nothing is sent to the vendor; ONE packet and usage row", async (progress) => {
+    decisionCallOn();
+    sheetOn();
+    stubFetch(REDRAFT, [verdict("safe", "none")]);
+    holdReceiptRead(SHEET_JOB).release();
+    const res = await POST(reqWith(SHEET_TURN, { progress }), params);
+    const text = await res.text();
+    const r = await settled();
+    // Preconditions: the receipt really wrapped this response, and THIS answer went out
+    // whole (every frame parses, the content is the recorded answer). The refusal is for
+    // every response the receipt re-encoded, damaged or not: the route cannot tell which.
+    expect(text).toContain('"kind":"sheet_receipt"');
+    const frames = text
+      .split("\n\n")
+      .filter((l) => l.startsWith("data: ") && l.trim() !== "data: [DONE]")
+      .map((l) => JSON.parse(l.slice(6)) as Frame);
+    expect(frames.filter((f) => f.kind === "content").map((f) => f.content ?? "").join("")).toBe(r.turn.answerText);
+    expect(text.split("\n\n").filter((l) => l.trim() === "data: [DONE]")).toHaveLength(1);
+    expect(vendorRequests()).toHaveLength(0);
+    expect(evaluateMock).not.toHaveBeenCalled();
+    expect(r.packet.jev_decision ?? null).toBeNull();
+    expect(r.meta.outcome).toBe("answered");
+    expect(r.packet.response_write).toEqual({ frames_written: true, citations_written: 1 });
+    expectDispositionMatchesHistory(r);
+    expect(handoffSpy).toHaveBeenCalledTimes(1);
+  });
+
+  // Codex's own case: the answer quotes the stream's end marker. The receipt puts its frame
+  // INSIDE the answer's JSON, so the client cannot parse the content frame and never shows
+  // the answer, while the status frame and the end still arrive.
+  it("F9: decision call on, sheet on, the answer quotes the end marker: the receipt lands inside the answer frame, the client can parse no content frame, and nothing is sent to the vendor", async () => {
+    decisionCallOn();
+    sheetOn();
+    const QUOTING = "Hold reset until the panel log shows data: [DONE] then release it.";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string | URL | Request, init?: RequestInit) =>
+        typeof init?.body === "string" && init.body.includes('"stream":true') ? answerStream(QUOTING) : new Response("down", { status: 500 }),
+      ),
+    );
+    holdReceiptRead(SHEET_JOB).release();
+    const res = await POST(reqWith(SHEET_TURN), params);
+    const raw = await res.text();
+    const parsed: Array<Frame & { status?: string }> = [];
+    let unparseable = 0;
+    for (const l of raw.split("\n\n")) {
+      if (!l.startsWith("data: ") || l.trim() === "data: [DONE]") continue;
+      try {
+        parsed.push(JSON.parse(l.slice(6)) as Frame & { status?: string });
+      } catch {
+        unparseable += 1;
+      }
+    }
+    const r = await settled();
+    // Preconditions: the turn is recorded as answered with the quoting text, the receipt
+    // frame went out, and what the client can parse holds no content frame with the answer.
+    expect(r.turn.answerStatus).toBe("answered");
+    expect(String(r.turn.answerText)).toContain("data: [DONE]");
+    expect(raw).toContain('"kind":"sheet_receipt"');
+    expect(unparseable).toBeGreaterThan(0);
+    expect(parsed.filter((f) => f.kind === "content").map((f) => f.content ?? "").join("")).not.toContain("release it");
+    expect(vendorRequests()).toHaveLength(0);
+    expect(evaluateMock).not.toHaveBeenCalled();
+    expect(r.packet.jev_decision ?? null).toBeNull();
+    expect(r.packet.persistence).toMatchObject({ turn_row_id: ROW_ID, outcome: "ok" });
+  });
+
+  // The other side of F9. The progress stream is a wrapper too, and it stays trusted: it
+  // forwards the turn's bytes as they are, cut only at the end of a whole frame. The same
+  // awkward answer (it quotes the end marker and carries a character outside the basic
+  // plane) reaches the client exactly as recorded, with and without the progress stream,
+  // and the decision call is made once.
+  it.each([false, true])("F9 control: decision call on, no sheet (progress stream %s), the answer quotes the end marker and carries a wide character: the client parses every frame, the content is the recorded answer, ONE request", async (progress) => {
+    decisionCallOn();
+    const QUOTING = "Hold reset until the panel log shows data: [DONE] then release it \u{1F527} slowly.";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string | URL | Request, init?: RequestInit) =>
+        typeof init?.body === "string" && init.body.includes('"stream":true') ? answerStream(QUOTING) : new Response("down", { status: 500 }),
+      ),
+    );
+    const res = await POST(reqWith(PLAIN_TURN, { progress }), params);
+    const raw = await res.text();
+    const frames = raw
+      .split("\n\n")
+      .filter((l) => l.startsWith("data: ") && l.trim() !== "data: [DONE]")
+      .map((l) => JSON.parse(l.slice(6)) as Frame & { status?: string }); // throws on a frame that was cut or rewritten
+    const r = await settled();
+    expect(r.turn.answerStatus).toBe("answered");
+    expect(String(r.turn.answerText)).toContain(QUOTING);
+    const shown = frames.filter((f) => f.kind === "content").map((f) => f.content ?? "").join("");
+    expect(shown).toBe(r.turn.answerText);
+    expect(raw.split("\n\n").filter((l) => l.trim() === "data: [DONE]")).toHaveLength(1);
+    expect(frames.some((f) => (f as { kind?: string }).kind === "progress")).toBe(progress);
+    expect(vendorRequests()).toHaveLength(1);
+    expect(r.packet.jev_decision ?? null).not.toBeNull();
+    expectDispositionMatchesHistory(r, 1);
+  });
+
+  // F11: the tracker says yes the moment both responses are read to their end, and a
+  // promise keeps its first answer. A request abort seen after that, before the settle
+  // reaches the decision call, must still stop the call. The packet and usage do not depend on it.
+  it("F11: decision call on, the response is read to its end and the request is then aborted before the settle reaches the decision call: nothing is sent to the vendor, ONE packet and usage row", async () => {
+    decisionCallOn();
+    stubFetch(REDRAFT, [verdict("safe", "none")]);
+    const ac = new AbortController();
+    const res = await POST(reqWith(PLAIN_TURN, { signal: ac.signal }), params);
+    expect(await drain(res.body!.getReader())).toBe("closed");
+    // Preconditions: read to the end, and the settle has not reached the call or the ledger.
+    expect(evaluateMock).not.toHaveBeenCalled();
+    expect(vendorRequests()).toHaveLength(0);
+    expect(persistMock.persistTurnUsage).not.toHaveBeenCalled();
+    ac.abort();
+    const r = await settled();
+    expect(vendorRequests()).toHaveLength(0);
+    expect(evaluateMock).not.toHaveBeenCalled();
+    expect(r.packet.jev_decision ?? null).toBeNull();
+    expect(r.meta.outcome).toBe("answered");
+    expect(r.packet.response_write).toEqual({ frames_written: true, citations_written: 1 });
+    expectDispositionMatchesHistory(r);
+  });
+
+  it("F11 control: the same request with its signal never aborted, read to its end: ONE request, a decision record", async () => {
+    decisionCallOn();
+    stubFetch(REDRAFT, [verdict("safe", "none")]);
+    const ac = new AbortController();
+    const res = await POST(reqWith(PLAIN_TURN, { signal: ac.signal }), params);
+    expect(await drain(res.body!.getReader())).toBe("closed");
+    const r = await settled();
+    expect(vendorRequests()).toHaveLength(1);
+    expect(r.packet.jev_decision ?? null).not.toBeNull();
+    expectDispositionMatchesHistory(r, 1);
+  });
+
+  it("F5: sheet on without the progress stream, the receipt frame inserted: the reader takes every frame through the end marker and then cancels -> nothing is sent, ONE packet and usage row", async () => {
+    decisionCallOn();
+    sheetOn();
+    stubFetch(REDRAFT, [verdict("safe", "none")]);
+    holdReceiptRead(SHEET_JOB).release();
+    const res = await POST(reqWith(SHEET_TURN), params);
+    const reader = res.body!.getReader();
+    const d = new TextDecoder();
+    let seen = "";
+    while (!seen.includes("data: [DONE]")) {
+      const { value, done } = await reader.read();
+      expect(done).toBe(false);
+      seen += d.decode(value, { stream: true });
+    }
+    expect(seen).toContain('"kind":"sheet_receipt"');
+    // The receipt has by now read the turn's own stream to its end; the reader has not.
+    await settleAll();
+    await reader.cancel();
+    const r = await settled();
+    expect(vendorRequests()).toHaveLength(0);
+    expect(r.packet.jev_decision ?? null).toBeNull();
+    expectDispositionMatchesHistory(r);
+  });
+
+  it("F5 control: sheet on, the job is not found so the receipt hands back the bare response, read to its end: ONE request", async () => {
+    decisionCallOn();
+    sheetOn();
+    stubFetch(REDRAFT, [verdict("safe", "none")]);
+    const receiptCallsBefore = (withSheetReceiptSpy as unknown as ReturnType<typeof vi.fn>).mock.calls.length;
+    const res = await POST(reqWith(SHEET_TURN), params);
+    const text = await res.text();
+    expect(text).not.toContain('"kind":"sheet_receipt"');
+    // The sheet path really ran: the receipt wrapper was called, read the job a second time
+    // (the route read it once before generating), and handed back the response as it was.
+    expect((withSheetReceiptSpy as unknown as ReturnType<typeof vi.fn>).mock.calls.length).toBe(receiptCallsBefore + 1);
+    expect(storeMock.loadJob).toHaveBeenCalledTimes(2);
+    const r = await settled();
+    expect(vendorRequests()).toHaveLength(1);
+    expectDispositionMatchesHistory(r, 1);
+  });
+
+  // With the progress stream on, the progress stream reads the turn's own response to its
+  // end by itself, whether or not anyone reads what it writes: only the final response tells.
+  it.each([false, true])("F5: decision call on, a response nobody reads (progress stream %s): the settle waits a bounded time for the handoff and then gives up -> nothing is sent, ONE packet and usage row, and reading the body afterwards changes nothing", async (progress) => {
+    decisionCallOn();
+    stubFetch(REDRAFT, [verdict("safe", "none")]);
+    const res = await POST(reqWith(PLAIN_TURN, { progress }), params);
+    expect(res.status).toBe(200);
+    await turnWroteEverything();
+    await new Promise((r) => setTimeout(r, 1000));
+    expect(persistMock.persistTurnUsage).not.toHaveBeenCalled(); // waiting, not skipped
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1), { timeout: 12_000, interval: 50 });
+    expect(vendorRequests()).toHaveLength(0);
+    expect(await drain(res.body!.getReader())).toBe("closed");
+    const r = await settled();
+    expect(vendorRequests()).toHaveLength(0);
+    expect(r.packet.jev_decision ?? null).toBeNull();
+    expect(r.packet.response_write).toEqual({ frames_written: true, citations_written: 1 });
+    expectDispositionMatchesHistory(r);
+  }, 30_000);
+
+  it("F5: decision call on, progress and sheet on, the sheet receipt wrapper FAILS after the turn handler returned: the progress stream ends cleanly with an error frame, the response is read to its end, and nothing is sent", async () => {
+    decisionCallOn();
+    sheetOn();
+    stubFetch(REDRAFT, [verdict("safe", "none")]);
+    (withSheetReceiptSpy as unknown as ReturnType<typeof vi.fn>).mockImplementationOnce(async () => {
+      throw new Error("sheet receipt failed (test)");
+    });
+    const res = await POST(reqWith(SHEET_TURN, { progress: true }), params);
+    const out = follow(res);
+    // A clean end, read in full: the final response alone would look handed off.
+    expect(await out.ended).toBe("closed");
+    expect(out.text()).toContain('"kind":"http_error"');
+    expect(out.text()).toContain("data: [DONE]");
+    expect(out.text()).not.toContain('"kind":"content"');
+    // The turn itself ran to its end behind the failed wrapper and wrote every frame.
+    await turnWroteEverything();
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1), { timeout: 12_000, interval: 50 });
+    const r = await settled();
+    expect(vendorRequests()).toHaveLength(0);
+    expect(r.packet.jev_decision ?? null).toBeNull();
+    expect(r.packet.response_write).toEqual({ frames_written: true, citations_written: 1 });
+    // (The route's entry point closes the attempt itself when a wrapper throws, as on main, so
+    // the usual "closed by the usage write alone" check does not apply to this exit.)
+    expect(r.meta.outcome).toBe("answered");
+    expect(evaluateMock).not.toHaveBeenCalled();
+  }, 30_000);
+
+  it("F5: decision call on, the reader takes every frame through the end marker and then cancels instead of reading the end: nothing is sent", async () => {
+    decisionCallOn();
+    stubFetch(REDRAFT, [verdict("safe", "none")]);
+    const res = await POST(reqWith(PLAIN_TURN), params);
+    const reader = res.body!.getReader();
+    const d = new TextDecoder();
+    let seen = "";
+    while (!seen.includes("data: [DONE]")) {
+      const { value, done } = await reader.read();
+      expect(done).toBe(false);
+      seen += d.decode(value, { stream: true });
+    }
+    await reader.cancel();
+    const r = await settled();
+    expect(vendorRequests()).toHaveLength(0);
+    expect(r.packet.jev_decision ?? null).toBeNull();
+    expectDispositionMatchesHistory(r);
+  });
+
+  it("F5: decision call on, progress stream on: the outer response is cancelled after the status frame -> nothing is sent", async () => {
+    decisionCallOn();
+    stubFetch(REDRAFT, [verdict("safe", "none")]);
+    const res = await POST(reqWith(PLAIN_TURN, { progress: true }), params);
+    const reader = res.body!.getReader();
+    const d = new TextDecoder();
+    let seen = "";
+    while (!seen.includes('"kind":"status"')) {
+      const { value, done } = await reader.read();
+      expect(done).toBe(false);
+      seen += d.decode(value, { stream: true });
+    }
+    // The progress stream has by now read the turn's own response to its end; the reader has not.
+    await settleAll();
+    expect(persistMock.persistTurnUsage).not.toHaveBeenCalled();
+    await reader.cancel();
+    const r = await settled();
+    expect(vendorRequests()).toHaveLength(0);
+    expect(r.packet.jev_decision ?? null).toBeNull();
+  });
+
+  it("F5 control: decision call on, progress stream on, the response read to its end: ONE request, and one tracker for the turn", async () => {
+    decisionCallOn();
+    stubFetch(REDRAFT, [verdict("safe", "none")]);
+    const res = await POST(reqWith(PLAIN_TURN, { progress: true }), params);
+    expect(await drain(res.body!.getReader())).toBe("closed");
+    const r = await settled();
+    expect(vendorRequests()).toHaveLength(1);
+    expect(r.packet.jev_decision ?? null).not.toBeNull();
+    expectDispositionMatchesHistory(r, 1);
+    expect(handoffSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([false, true])("F5 control: decision call OFF (progress stream %s): no tracker is installed, nothing waits for a reader, and the record says disabled as before", async (progress) => {
+    stubFetch(REDRAFT, [verdict("safe", "none")]);
+    const res = await POST(reqWith(PLAIN_TURN, { progress }), params);
+    expect(res.status).toBe(200);
+    // Without the progress stream nobody reads this body at all, and the turn still settles
+    // at once. (The progress stream moves the frames itself, so there it is read.)
+    if (progress) expect(await drain(res.body!.getReader())).toBe("closed");
+    const r = await settled();
+    expect(handoffSpy).not.toHaveBeenCalled();
+    expect(r.packet.jev_decision).toMatchObject({ skipped_reason: "disabled" });
+    expect(vendorRequests()).toHaveLength(0);
+    expectDispositionMatchesHistory(r, 1);
+  });
+
+  it("F5: the call is switched on after the request arrived, so no tracker exists for this turn: an unknown handoff is a no, even with the response read to its end", async () => {
+    stubFetch(REDRAFT, [verdict("safe", "none")]);
+    const hold = holdRead();
+    const res = await POST(reqWith(PLAIN_TURN), params);
+    await hold.reached;
+    decisionCallOn();
+    hold.release();
+    expect(await drain(res.body!.getReader())).toBe("closed");
+    const r = await settled();
+    expect(handoffSpy).not.toHaveBeenCalled();
+    expect(vendorRequests()).toHaveLength(0);
+    expect(r.packet.jev_decision ?? null).toBeNull();
+    expectDispositionMatchesHistory(r);
+  });
+
+  // F6: what the answer COMMITTED (history, `citations_shipped`, the ledger's citation flag)
+  // is kept apart from what the route WROTE to its response stream (`response_write`).
+  it("F6: a cited answer cancelled before its sources frame: history and the committed count keep the citation, the write record says none was written, ONE usage row", async () => {
+    const r = await answeredCancelledAt("after_content");
+    expect(r.evidence.filter((e) => typeof e.citationId === "string")).toHaveLength(1);
+    expect(r.gate.citations_shipped).toBe(1);
+    expect(r.meta.citationsPresent).toBe(true);
+    expect(r.packet.response_write).toEqual({ frames_written: false, citations_written: 0 });
+  });
+
+  it("F6: cancelled after the sources frame (after the usage frame, before status): the citation was written, the body was not completed", async () => {
+    const r = await answeredCancelledAt("after_usage");
+    expect(r.gate.citations_shipped).toBe(1);
+    expect(r.packet.response_write).toEqual({ frames_written: false, citations_written: 1 });
+  });
+
+  it("F6 control: the same answer read to its end: one citation written, every frame written", async () => {
+    stubFetch(REDRAFT, [verdict("safe", "none")]);
+    const res = await POST(reqWith(PLAIN_TURN), params);
+    expect(await drain(res.body!.getReader())).toBe("closed");
+    const r = await settled();
+    expect(r.gate.citations_shipped).toBe(1);
+    expect(r.packet.response_write).toEqual({ frames_written: true, citations_written: 1 });
+  });
+
+  it("F6 control: an exit that is not the final path writes no write record (the history write failed on a request with an id)", async () => {
+    stubFetch(REDRAFT, [verdict("safe", "none")]);
+    const boom = new Error("history write failed (test)");
+    domainMock.recordTurn.mockImplementation(async () => {
+      throw boom;
+    });
+    const res = await POST(reqWith(PLAIN_TURN), params);
+    expect(await drain(res.body!.getReader())).toBe(boom);
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    const [, , telemetry] = persistMock.persistTurnUsage.mock.calls[0] as unknown as PersistCall;
+    expect(telemetry.packet.persistence.outcome).toBe("failed");
+    expect("response_write" in telemetry.packet).toBe(false);
+  });
+
+  it("F2: after the commit a delivery failure does not wait on releasing the request claim: the reader gets the error and ONE packet is written while a release would never return", async () => {
+    stubFetch(REDRAFT, [verdict("safe", "none")]);
+    const boom = failDeliveryAfterContent();
+    domainMock.abandonNotebookTurnRequest.mockImplementation(() => new Promise<undefined>(() => {}));
+    const res = await POST(req({ message: Q_PLAIN, sourceDocIds: [DOC_A], clientRequestId: REQ_ID }, false), params);
+    expect(await Promise.race([drain(res.body!.getReader()), stillPending(400)])).toBe(boom);
+    const r = await settled();
+    expectDispositionMatchesHistory(r);
+    // The claim was completed by the history write: there is nothing to release.
+    expect(domainMock.abandonNotebookTurnRequest).not.toHaveBeenCalled();
+  });
+
+  /** A committed turn whose ledger write reports `result`; `cancel` cancels the body during the history write. */
+  async function ledgerWriteReports(result: { persisted: false; reason: string }, verdicts: string[], cancel: boolean) {
+    stubFetch(REDRAFT, verdicts);
+    persistMock.persistTurnUsage.mockImplementationOnce(async () => result as never);
+    // eslint-disable-next-line prefer-const -- assigned after POST; read by the hook that runs later
+    let reader!: ReadableStreamDefaultReader<Uint8Array>;
+    if (cancel) {
+      domainMock.recordTurn.mockImplementation(async () => {
+        void reader.cancel();
+        return ROW_ID as never;
+      });
+    }
+    const res = await POST(req({ message: Q_PLAIN, sourceDocIds: [DOC_A], clientRequestId: REQ_ID }, false), params);
+    reader = res.body!.getReader();
+    if (!cancel) expect(await drain(reader)).toBe("closed");
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    await settleAll();
+    expect(domainMock.recordTurn).toHaveBeenCalledTimes(1);
+    expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1);
+  }
+  const NOT_PERSISTED = "turn usage write did not persist";
+
+  it.each([
+    ["cancelled during the history write", true],
+    ["delivered in full", false],
+  ] as const)("F3: an answered turn %s whose ledger write FAILS: the attempt is closed once by the fallback close as answered, and the failure is logged", async (_how, cancel) => {
+    await ledgerWriteReports({ persisted: false, reason: "57014" }, [verdict("safe", "none")], cancel);
+    expect(closeTurnMock).toHaveBeenCalledTimes(1);
+    expect(closeTurnMock.mock.calls[0][0]).toMatchObject({ outcome: "answered" });
+    expect(console.error).toHaveBeenCalledWith(expect.stringContaining(NOT_PERSISTED), "57014");
+  });
+
+  it("F3: a stopped turn (both verdicts unsafe) cancelled during the history write whose ledger write FAILS: closed once as a safety stop", async () => {
+    await ledgerWriteReports({ persisted: false, reason: "57014" }, [verdict("unsafe"), verdict("unsafe")], true);
+    expect(closeTurnMock).toHaveBeenCalledTimes(1);
+    expect(closeTurnMock.mock.calls[0][0]).toMatchObject({ outcome: "safety_stop" });
+  });
+
+  it("F3 control: the ledger write returns no row because a closed row already exists: no second close, and one line says the packet was not stored", async () => {
+    await ledgerWriteReports({ persisted: false, reason: "no_row_returned" }, [verdict("safe", "none")], true);
+    expect(closeTurnMock).not.toHaveBeenCalled();
+    expect(logged(console.error, NOT_PERSISTED)).toHaveLength(0);
+    expect(logged(console.error, "found the attempt already closed")).toHaveLength(1);
+  });
+
+  it("F3 control: a ledger write that succeeds is followed by no fallback close and neither line", async () => {
+    stubFetch(REDRAFT, [verdict("safe", "none")]);
+    const res = await POST(req({ message: Q_PLAIN, sourceDocIds: [DOC_A], clientRequestId: REQ_ID }, false), params);
+    expect(await drain(res.body!.getReader())).toBe("closed");
+    await settled();
+    expect(closeTurnMock).not.toHaveBeenCalled();
+    expect(logged(console.error, NOT_PERSISTED)).toHaveLength(0);
+    expect(logged(console.error, "found the attempt already closed")).toHaveLength(0);
+  });
+
+  it("F3: the response body cancelled DURING generation, ledger write FAILS: the fallback close records the outcome that write attempted, not the close's own default", async () => {
+    // Draft 1 never finishes: one word, then the provider stream stays open until it is cancelled.
+    // eslint-disable-next-line prefer-const -- assigned after POST; read by the timer that runs later
+    let cancelBody!: () => void;
+    const fetchMock = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+      const body = typeof init?.body === "string" ? init.body : "";
+      if (!body.includes('"stream":true')) throw new Error("no judge or redraft call is expected on a stopped turn (test)");
+      setTimeout(() => cancelBody(), 30);
+      return new Response(
+        new ReadableStream<Uint8Array>({
+          start(c) {
+            c.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({ choices: [{ delta: { content: "Check " } }] })}\n\n`));
+          },
+        }),
+        { status: 200 },
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    persistMock.persistTurnUsage.mockImplementationOnce(async () => ({ persisted: false, reason: "57014" }) as never);
+    const res = await POST(req({ message: Q_PLAIN, sourceDocIds: [DOC_A], clientRequestId: REQ_ID }, false), params);
+    const reader = res.body!.getReader();
+    cancelBody = () => void reader.cancel();
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    await settleAll();
+    // Precondition: this is the client-stop exit (history holds an errored turn), with one failed write.
+    expect(domainMock.recordTurn).toHaveBeenCalledTimes(1);
+    const [, , turn] = domainMock.recordTurn.mock.calls[0] as unknown as [string, string, Record<string, unknown>];
+    expect(turn.answerStatus).toBe("error");
+    expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1);
+    const [meta] = persistMock.persistTurnUsage.mock.calls[0] as unknown as PersistCall;
+    expect(closeTurnMock).toHaveBeenCalledTimes(1);
+    expect(closeTurnMock.mock.calls[0][0]).toMatchObject({ outcome: meta.outcome });
+    expect(console.error).toHaveBeenCalledWith(expect.stringContaining(NOT_PERSISTED), "57014");
+  });
+
+  it("F3: a ledger write that THROWS on a committed turn cancelled during the history write leaves the fallback close to record the outcome", async () => {
+    stubFetch(REDRAFT, [verdict("safe", "none")]);
+    persistMock.persistTurnUsage.mockImplementationOnce(async () => {
+      throw new Error("ledger writer threw (test)");
+    });
+    // eslint-disable-next-line prefer-const -- assigned after POST; read by the hook that runs later
+    let reader!: ReadableStreamDefaultReader<Uint8Array>;
+    domainMock.recordTurn.mockImplementation(async () => {
+      void reader.cancel();
+      return ROW_ID as never;
+    });
+    const res = await POST(req({ message: Q_PLAIN, sourceDocIds: [DOC_A], clientRequestId: REQ_ID }, false), params);
+    reader = res.body!.getReader();
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    await settleAll();
+    expect(closeTurnMock).toHaveBeenCalledTimes(1);
+    expect(closeTurnMock.mock.calls[0][0]).toMatchObject({ outcome: "answered" });
+    expect(console.error).toHaveBeenCalledWith(expect.stringContaining(NOT_PERSISTED), "exception");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// #6062 — a redraft rejected by the answer floors records WHICH floor, as one code
+// from a closed set, on the packet's safety_outcome:
+//   semantic_redraft_check: the FIRST floor that rejected it, in the screen's order:
+//     refusal, uncited_claim, rating_column, no_citation, hazard_warning, prompt_leak,
+//     bypass_ask, error (a screen dependency threw).
+//   semantic_redraft_check_violation: only beside hazard_warning, the validator's own
+//     fixed violation code (never answer text).
+// Present only when semantic_redraft is stopped_check; never any redraft text.
+// ─────────────────────────────────────────────────────────────────────────────
+import { refusalVerdict, isUncitedDocumentClaim } from "@/app/api/equipment-notebooks/[id]/chat/route";
+import { ratingColumnFinding } from "@/capabilities/rating-column";
+
+/** Distinctive token placed in every redraft below: it must appear in no packet, history row or log line. */
+const TOKEN = "QZX4471";
+const RATINGS_TEXT =
+  "Relay Contact Ratings\nMaximum\nVolts Amperes Amperes\nContinuous Volt-Amperes\nMake Break Make Break\n" +
+  "120 V AC 15 A 1.5 A 2 A 1800 180\n240 V AC 7.5 A 0.75 A\n" +
+  "Inspect the hydraulic hose for wear and the ribbon cable connector for looseness.";
+
+const FLOOR_REDRAFT = {
+  refusal: `The provided excerpts do not contain information about the ${TOKEN} [1]. I don't have enough information to answer.`,
+  rating_column: `With the press stopped and locked out, the ${TOKEN} relay contact is rated 15 A [1].`,
+  no_citation: `With the press stopped and locked out, check the ${TOKEN} hydraulic hose for wear.`,
+  no_citation_badmarker: `With the press stopped and locked out, check the ${TOKEN} hydraulic hose for wear [9].`,
+  hazard_conflict: `With the press stopped and locked out, check the ${TOKEN} display contrast setting first [1].`,
+  hazard_bypass: `${TOKEN}: Bypass the light curtain with a jumper so the press keeps cycling [1].`,
+  prompt_leak: `${BASE_SYSTEM_PROMPT.slice(0, 700)} ${TOKEN} [1]`,
+  bypass_ask: `With the press stopped and locked out at panel ${TOKEN}, install a jumper across the light curtain so the press keeps cycling [1].`,
+  error: `With the press stopped and locked out, check the QZSCREENTHROW ${TOKEN} hydraulic hose for wear [1].`,
+} as const;
+
+const vbase = { question: Q_PLAIN, general: false, served: true, refused: false, evidenceSufficient: true, manualSearchRunning: null };
+const notRefusal = (t: string) => expect(refusalVerdict(t, { docGrounded: true, citations: [] })).toBe(false);
+const ratingPassage = (content: string) => [{ content, title: "HP200.pdf", page: 41, cited: true }];
+
+describe("#6062 preconditions: each redraft trips its floor first (the earlier floors pass)", () => {
+  it("refusal is the first floor", () => {
+    expect(refusalVerdict(FLOOR_REDRAFT.refusal, { docGrounded: true, citations: [] })).toBe(true);
+  });
+  it("rating_column: not a refusal, the notebook lane has no uncited-claim floor, the ratings floor fires; draft 1 passes it", () => {
+    notRefusal(FLOOR_REDRAFT.rating_column);
+    expect(isUncitedDocumentClaim(FLOOR_REDRAFT.rating_column, { oemGrounded: false, citations: [], exempt: false })).toBe(false);
+    expect(ratingColumnFinding(Q_PLAIN, FLOOR_REDRAFT.rating_column, ratingPassage(RATINGS_TEXT))).not.toBeNull();
+    expect(ratingColumnFinding(Q_PLAIN, DRAFT1, ratingPassage(RATINGS_TEXT))).toBeNull();
+  });
+  it("no_citation: not a refusal, no ratings figure; it carries no marker, or one that resolves to nothing", () => {
+    for (const t of [FLOOR_REDRAFT.no_citation, FLOOR_REDRAFT.no_citation_badmarker]) {
+      notRefusal(t);
+      expect(ratingColumnFinding(Q_PLAIN, t, ratingPassage(SOURCE_TEXT))).toBeNull();
+      expect(t).not.toContain("[1]");
+    }
+  });
+  it("hazard_warning: cited, not a refusal, no ratings figure; the validator rejects it (not the isolation advisory)", () => {
+    for (const t of [FLOOR_REDRAFT.hazard_conflict, FLOOR_REDRAFT.hazard_bypass]) {
+      notRefusal(t);
+      expect(ratingColumnFinding(Q_PLAIN, t, ratingPassage(SOURCE_TEXT))).toBeNull();
+      expect(t).toContain("[1]");
+      const v = validateAnswer({ ...vbase, answerText: t });
+      expect(v).toMatchObject({ ok: false, kind: "hazard_warning" });
+      expect(v).not.toMatchObject({ violation: "hazard-warning:isolation-advisory" });
+    }
+    expect(validateAnswer({ ...vbase, answerText: FLOOR_REDRAFT.hazard_conflict })).toMatchObject({ violation: "hazard-warning:step-energy-contradiction" });
+    // The bypass wording would ALSO trip the later bypass_ask floor: the first floor wins.
+    expect(safetyBypassAsk(FLOOR_REDRAFT.hazard_bypass)).not.toBeNull();
+  });
+  it("prompt_leak: passes every floor before it, and is a leak", () => {
+    notRefusal(FLOOR_REDRAFT.prompt_leak);
+    expect(validateAnswer({ ...vbase, answerText: FLOOR_REDRAFT.prompt_leak }).ok).toBe(true);
+    expect(detectPromptLeak(BASE_SYSTEM_PROMPT, FLOOR_REDRAFT.prompt_leak, []).leaked).toBe(true);
+  });
+  it("bypass_ask: passes every floor before it (the validator sees only the advisory), not a leak, a bypass ask", () => {
+    notRefusal(FLOOR_REDRAFT.bypass_ask);
+    const v = validateAnswer({ ...vbase, answerText: FLOOR_REDRAFT.bypass_ask });
+    expect(v).toMatchObject({ ok: false, violation: "hazard-warning:isolation-advisory" });
+    expect(detectPromptLeak(BASE_SYSTEM_PROMPT, FLOOR_REDRAFT.bypass_ask, []).leaked).toBe(false);
+    expect(safetyBypassAsk(FLOOR_REDRAFT.bypass_ask)).not.toBeNull();
+  });
+  it("error: passes every floor before the bypass screen, which throws on it", () => {
+    notRefusal(FLOOR_REDRAFT.error);
+    expect(validateAnswer({ ...vbase, answerText: FLOOR_REDRAFT.error }).ok).toBe(true);
+    expect(detectPromptLeak(BASE_SYSTEM_PROMPT, FLOOR_REDRAFT.error, []).leaked).toBe(false);
+    expect(() => safetyBypassAsk(FLOOR_REDRAFT.error)).toThrow();
+  });
+});
+
+describe("#6062 — a redraft stopped by a floor records which floor, and never its text", () => {
+  /** Everything the route wrote or logged on this turn, as one string. */
+  const everything = () =>
+    JSON.stringify([
+      spanTap.calls,
+      persistMock.persistTurnUsage.mock.calls,
+      domainMock.recordTurn.mock.calls,
+      (console.log as unknown as ReturnType<typeof vi.fn>).mock.calls,
+      (console.warn as unknown as ReturnType<typeof vi.fn>).mock.calls,
+      (console.error as unknown as ReturnType<typeof vi.fn>).mock.calls,
+    ]);
+
+  async function floorStop(text: string, setup?: () => void) {
+    spanTap.calls.length = 0;
+    bypassTap.args.length = 0;
+    setup?.();
+    const { judgeBodies } = stubFetch(text, [verdict("unsafe"), verdict("safe", "none")]);
+    const r = await run(Q_PLAIN);
+    expectStopped(r);
+    // The screen stopped it: the judge was not asked again, the existing code is unchanged.
+    expect(judgeBodies).toHaveLength(1);
+    expect(r.outcome.semantic_redraft).toBe("stopped_check");
+    expect(everything()).not.toContain(TOKEN);
+    return r;
+  }
+
+  it("refusal", async () => {
+    const r = await floorStop(FLOOR_REDRAFT.refusal);
+    expect(r.outcome.semantic_redraft_check).toBe("refusal");
+    expect(r.outcome).not.toHaveProperty("semantic_redraft_check_violation");
+    // R1-D3: the log line names the floor too (the code, never the text).
+    expect(console.warn).toHaveBeenCalledWith("[notebook-chat] semantic redraft stopped_check (refusal)");
+  });
+
+  it("rating_column", async () => {
+    const r = await floorStop(FLOOR_REDRAFT.rating_column, () =>
+      ragMock.retrieveNodeChunks.mockResolvedValue([{ ...chunks[0], content: RATINGS_TEXT, sourceUrl: "nb://HP200.pdf", sourcePage: 41 }] as never),
+    );
+    expect(r.outcome.semantic_redraft_check).toBe("rating_column");
+    expect(r.outcome).not.toHaveProperty("semantic_redraft_check_violation");
+  });
+
+  it("no_citation (no marker, and a marker that resolves to no excerpt)", async () => {
+    for (const t of [FLOOR_REDRAFT.no_citation, FLOOR_REDRAFT.no_citation_badmarker]) {
+      vi.clearAllMocks();
+      const r = await floorStop(t);
+      expect(r.outcome.semantic_redraft_check).toBe("no_citation");
+      expect(r.outcome).not.toHaveProperty("semantic_redraft_check_violation");
+    }
+  });
+
+  it("hazard_warning, with the validator's own violation code beside it", async () => {
+    for (const t of [FLOOR_REDRAFT.hazard_conflict, FLOOR_REDRAFT.hazard_bypass]) {
+      vi.clearAllMocks();
+      const want = (validateAnswer({ ...vbase, answerText: t }) as { violation: string }).violation;
+      const r = await floorStop(t);
+      expect(r.outcome.semantic_redraft_check).toBe("hazard_warning");
+      expect(r.outcome.semantic_redraft_check_violation).toBe(want);
+      expect(want).toMatch(/^[a-z-]+:[a-z-]+$/);
+    }
+  });
+
+  it("prompt_leak", async () => {
+    const r = await floorStop(FLOOR_REDRAFT.prompt_leak);
+    expect(r.outcome.semantic_redraft_check).toBe("prompt_leak");
+    expect(r.outcome).not.toHaveProperty("semantic_redraft_check_violation");
+  });
+
+  it("bypass_ask", async () => {
+    const r = await floorStop(FLOOR_REDRAFT.bypass_ask);
+    expect(r.outcome.semantic_redraft_check).toBe("bypass_ask");
+    expect(r.outcome).not.toHaveProperty("semantic_redraft_check_violation");
+    // R1-D3: the advisory replacement applies here (banner + redraft), and the bypass check
+    // still reads the redraft's own text, not the replacement.
+    const v = validateAnswer({ ...vbase, answerText: FLOOR_REDRAFT.bypass_ask }) as { replacement: string };
+    expect(v.replacement).not.toBe(FLOOR_REDRAFT.bypass_ask);
+    expect(v.replacement).toContain(FLOOR_REDRAFT.bypass_ask);
+    expect(bypassTap.args.filter((a) => a.includes(TOKEN))).toEqual([FLOOR_REDRAFT.bypass_ask]);
+  });
+
+  it("error (a screen dependency threw)", async () => {
+    const r = await floorStop(FLOOR_REDRAFT.error);
+    expect(r.outcome.semantic_redraft_check).toBe("error");
+    expect(r.outcome).not.toHaveProperty("semantic_redraft_check_violation");
+  });
+
+  it("uncited_claim, on a manufacturer-library turn (before no_citation, which the same text would also trip)", async () => {
+    const OEM_CHUNK = {
+      content: "The TP700 Comfort accepts a 24 V DC supply on terminal X80. Relieve pressure on the cooling loop before opening it.",
+      manufacturer: "Siemens",
+      modelNumber: "TP700 Comfort",
+      sourceUrl: "https://support.example.com/tp700-comfort.pdf",
+      sourcePage: 12,
+      title: "TP700 Comfort operating instructions",
+      rank: 1,
+      verified: true,
+    };
+    const text = `With the panel isolated, check the ${TOKEN} supply terminal X80.`;
+    notRefusal(text);
+    expect(isUncitedDocumentClaim(text, { oemGrounded: true, citations: [], exempt: false })).toBe(true);
+    domainMock.getNotebook.mockResolvedValue({ id: NB, displayName: "Line 3 HMI", manufacturer: "Siemens", model: "TP700 Comfort" } as never);
+    ragMock.retrieveManualChunks.mockResolvedValue([OEM_CHUNK] as never);
+    const { judgeBodies } = stubFetch(text, [verdict("unsafe"), verdict("safe", "none")]);
+    const res = await POST(chatReq({ message: "The panel shows no supply, what should I check", mode: "general" }), params);
+    expect(res.status).toBe(200);
+    await res.text();
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    // Precondition: this really was the identity-bound manufacturer-library search, and it redrafted.
+    expect(ragMock.retrieveManualChunks).toHaveBeenCalled();
+    expect(ragMock.retrieveNodeChunks).not.toHaveBeenCalled();
+    expect(judgeBodies).toHaveLength(1);
+    const packet = (persistMock.persistTurnUsage.mock.calls[0] as unknown as PersistCall)[2].packet;
+    const outcome = packet.answer_gate.safety_outcome as Record<string, unknown>;
+    expect(outcome.semantic_redraft).toBe("stopped_check");
+    expect(outcome.semantic_redraft_check).toBe("uncited_claim");
+    expect(everything()).not.toContain(TOKEN);
+  });
+});
+
+describe("#6062 controls — no floor code unless the outcome is stopped_check", () => {
+  const cases: { name: string; redraft: Redraft; verdicts: string[]; o?: StubOpts; want: string | undefined; setup?: () => void }[] = [
+    { name: "served", redraft: REDRAFT, verdicts: [verdict("unsafe"), verdict("safe", "none")], want: "served" },
+    { name: "served with the isolation advisory", redraft: ADVISORY_REDRAFT, verdicts: [verdict("unsafe"), verdict("safe", "none")], want: "served" },
+    { name: "stopped_judge_unsafe", redraft: REDRAFT, verdicts: [verdict("unsafe"), verdict("unsafe")], want: "stopped_judge_unsafe" },
+    { name: "stopped_judge_undecided", redraft: REDRAFT, verdicts: [verdict("unsafe"), "not a verdict"], want: "stopped_judge_undecided" },
+    { name: "stopped_generation", redraft: "http500", verdicts: [verdict("unsafe")], want: "stopped_generation" },
+    { name: "stopped_incomplete", redraft: REDRAFT, verdicts: [verdict("unsafe")], o: { finish: "length" }, want: "stopped_incomplete" },
+    {
+      name: "stopped_unsupported",
+      redraft: REDRAFT,
+      verdicts: [verdict("unsafe"), verdict("safe", "none")],
+      want: "stopped_unsupported",
+      setup: () => ragMock.retrieveNodeChunks.mockResolvedValue([{ ...chunks[0], content: UNRELATED_TEXT }] as never),
+    },
+    {
+      name: "stopped_turn_cap",
+      redraft: REDRAFT,
+      verdicts: [verdict("unsafe")],
+      o: { draft1Output: 450 },
+      want: "stopped_turn_cap",
+      setup: () => {
+        process.env.MIRA_TURN_MAX_OUTPUT_TOKENS = "500";
+      },
+    },
+    { name: "no redraft (a safe first verdict)", redraft: REDRAFT, verdicts: [verdict("safe", "none")], want: undefined },
+  ];
+  for (const c of cases) {
+    it(`${c.name}: no semantic_redraft_check`, async () => {
+      c.setup?.();
+      stubFetch(c.redraft, c.verdicts, c.o);
+      const r = await run(Q_PLAIN);
+      expect(r.outcome.semantic_redraft).toBe(c.want);
+      expect(r.outcome).not.toHaveProperty("semantic_redraft_check");
+      expect(r.outcome).not.toHaveProperty("semantic_redraft_check_violation");
+      // R1-D3 control: the log line carries a floor code only beside stopped_check.
+      if (c.want) expect(console.warn).toHaveBeenCalledWith(`[notebook-chat] semantic redraft ${c.want}`);
+    });
+  }
+
+  it("stopped_aborted (a Stop during the second judge): no semantic_redraft_check", async () => {
+    const ac = new AbortController();
+    stubFetch(REDRAFT, [verdict("unsafe"), verdict("safe", "none")], { onSecondJudge: () => ac.abort() });
+    const r = await run(Q_PLAIN, ac.signal);
+    expect(r.outcome.semantic_redraft).toBe("stopped_aborted");
+    expect(r.outcome).not.toHaveProperty("semantic_redraft_check");
+  });
+
+  it("positive control for the text search: a served redraft's own words ARE found in what the route stored", async () => {
+    stubFetch(REDRAFT, [verdict("unsafe"), verdict("safe", "none")]);
+    await run(Q_PLAIN);
+    expect(JSON.stringify(domainMock.recordTurn.mock.calls)).toContain("hydraulic hose for wear");
   });
 });
