@@ -252,7 +252,12 @@ function unknownInteractionPart(raw: unknown): InteractionPart {
       const model = rawString(r, "model");
       if (manufacturer && model) {
         const catalogNumber = rawString(r, "catalogNumber");
-        return { type: "identity_proposal", manufacturer, model, ...(catalogNumber ? { catalogNumber } : {}) };
+        const offeredNumber = rawString(r, "offeredNumber");
+        return {
+          type: "identity_proposal", manufacturer, model,
+          ...(catalogNumber ? { catalogNumber } : {}),
+          ...(offeredNumber ? { offeredNumber } : {}),
+        };
       }
     } else if (r.kind === "manual_search_status") {
       const manufacturer = rawString(r, "manufacturer");

@@ -360,6 +360,7 @@ export function identityProposalOf(evidence: readonly unknown[]): IdentityPropos
       manufacturer: r.manufacturer,
       model: r.model,
       ...(typeof r.catalogNumber === "string" && r.catalogNumber ? { catalogNumber: r.catalogNumber } : {}),
+      ...(typeof r.offeredNumber === "string" && r.offeredNumber ? { offeredNumber: r.offeredNumber } : {}),
     };
   }
   return null;

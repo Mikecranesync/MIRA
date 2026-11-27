@@ -30,6 +30,18 @@ describe("confirmIdentityProposal", () => {
     expect(result).toEqual({ manualReady: true, message: "Confirmed." });
   });
 
+  it("#6085: sends a ticked number, never an offered one", async () => {
+    request.mockResolvedValue({ status: 200, data: { ok: true, manualReady: false }, text: "" });
+    await confirmIdentityProposal("nb-1", { manufacturer: "Siemens", model: "TP700", offeredNumber: "6AV2124-0GC01-0AX0", confirmedNumber: "6AV2124-0GC01-0AX0" });
+    expect(request).toHaveBeenLastCalledWith("/api/equipment-notebooks/nb-1/identity/confirm/", {
+      method: "POST", json: { manufacturer: "Siemens", model: "TP700", confirmedNumber: "6AV2124-0GC01-0AX0" }, acceptStatuses: [409],
+    });
+    await confirmIdentityProposal("nb-1", { manufacturer: "Siemens", model: "TP700", offeredNumber: "6AV2124-0GC01-0AX0" });
+    expect(request).toHaveBeenLastCalledWith("/api/equipment-notebooks/nb-1/identity/confirm/", {
+      method: "POST", json: { manufacturer: "Siemens", model: "TP700" }, acceptStatuses: [409],
+    });
+  });
+
   it("includes catalogNumber only when the proposal carries one", async () => {
     request.mockResolvedValue({ status: 200, data: { ok: true, manualReady: false }, text: "" });
 

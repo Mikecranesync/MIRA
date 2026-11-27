@@ -419,6 +419,13 @@ describe("turnsFromPersisted — hydration mirrors the classic web notebook", ()
 // same pattern as hasIdentityDispute, so reload renders the SAME confirm
 // card the live turn offered.
 describe("identityProposalOf / turnsFromPersisted — the confirm card on reload", () => {
+  it("#6085: carries the offered order number from the saved card", () => {
+    expect(identityProposalOf([{ kind: "identity_proposal", manufacturer: "Siemens", model: "TP700", offeredNumber: "6AV2124-0GC01-0AX0" }]))
+      .toEqual({ manufacturer: "Siemens", model: "TP700", offeredNumber: "6AV2124-0GC01-0AX0" });
+    expect(identityProposalOf([{ kind: "identity_proposal", manufacturer: "Siemens", model: "TP700", offeredNumber: 6 }]))
+      .toEqual({ manufacturer: "Siemens", model: "TP700" });
+  });
+
   const proposal = { kind: "identity_proposal" as const, manufacturer: "SMC", model: "SS5Y3-DUW01302" };
 
   it("reads a persisted identity_proposal entry", () => {
