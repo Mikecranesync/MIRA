@@ -117,7 +117,16 @@ COMMIT;
   - The table's existing grants cover the new column (the plan verifies this on staging).
   - The revoke trigger (`equipment_notebooks_revoke_auto_manuals`, migration 101) fires only on `UPDATE OF manufacturer, model, catalog_number, identity_status`, so a write to this column never touches search state. It is the only trigger on `equipment_notebooks` in any migration (checked across `mira-hub/db/migrations/` on origin/main).
 - **Entry shape.** Each entry is `{ "number": "<display form>", "code": "<order number>", "manufacturer": "<confirmed>", "model": "<confirmed>", "confirmedAt": "<iso>" }`. Storing the identity with the number lets the reader ignore numbers saved for an identity the notebook no longer has, for example after a Settings edit. No other identity writer has to clear the list.
-- **The write.** `saveConfirmedNumber(tenantId, notebookId, entry)` runs in one `withTenantContext` transaction. Revision (Codex round 1, F3 and F4): it reads the column with `SELECT … FOR UPDATE`, then decides under that row lock. One number per machine: if an entry with a `code` is already saved for this maker and model, the save succeeds only when its code is the same (a retry), and a different code is refused with nothing written. Otherwise it appends the entry. Only entries carrying a `code` count, so an entry the scope cannot use never blocks or stands in for one it can.
+- **The write.** Revision (Codex round 2, F3 and F4): the number is decided inside the identity confirm's own transaction, not in a second one after it. `confirmNotebookIdentity(tenantId, notebookId, identity, number)`:
+  1. locks the row (`SELECT … FOR UPDATE`) and reads whether the identity was already settled, with the same predicate the confirm guard uses (`SETTLED_IDENTITY_SQL`);
+  2. writes the identity with the unchanged guarded `UPDATE`;
+  3. calls `recordConfirmedNumber` on the same client, under its own savepoint.
+- **What `recordConfirmedNumber` decides.**
+  - Only the confirm that settles the identity may add a number. If the identity was settled before this confirm, nothing is added: a retry of the number already saved for this machine is still a success, and anything else is refused. So a stale second card for the same machine cannot add a number, whichever box the first confirm left (round 2, F3).
+  - One number per machine (round 1, F3): if an entry with a `code` is already saved for this maker and model, the save succeeds only when its code is the same (a retry), and a different code is refused with nothing written. Otherwise it appends the entry.
+  - Only entries carrying a `code` count (round 1, F4), so an entry the scope cannot use never blocks or stands in for one it can.
+  - Any failure, including a missing column on a Hub deployed before migration 118, rolls back to the savepoint, is logged, and is reported as not saved. The identity still commits.
+- **A catalog number refuses the tick** (round 2, F4). A machine with a catalog number never reads ticked numbers, so a confirm that writes one reports the number as not saved and touches nothing. A catalog edit from Settings takes the same row lock, so it is ordered before or after the confirm and can no longer land between the identity write and the number decision.
 - **The migration file is fixed once pushed.** Draft it against a throwaway Postgres first. `migration-verify.yml` applies the first pushed version to the persistent staging branch, and after that the file is immutable (`.claude/rules/mira-hub-migrations.md` §8).
 
 ### 4.5 The confirm route
@@ -126,7 +135,7 @@ COMMIT;
 
 - **Reading the number.** It reads `confirmedNumber` with the existing `readString`. Revision (Codex round 1, F1): it accepts the number only when the value is at most 64 characters and `singleOrderNumber` reads exactly one hyphenated order number from it, the same reader the status scope uses for saved values. Any other value (blank, no digit, whitespace, two numbers joined, a number joined to a model, no hyphens) is ignored, and the identity is still confirmed.
 - **The identity confirm.** It is unchanged. `catalogNumber` is still written as sent (`""` for text cards), and the lookup key and the search are unchanged.
-- **Saving the number.** After `confirmNotebookIdentity` succeeds, the route calls `saveConfirmedNumber` with the confirmed manufacturer and model. If that write fails, the route logs it and the confirm still succeeds. When a number was sent, the response gains `numberSaved: boolean`.
+- **Saving the number.** Revision (Codex round 2): the route hands the accepted number to `confirmNotebookIdentity`, which decides it in the confirm's own transaction (§4.4). With nothing ticked, the route makes exactly the call it always made. When a number was sent, the response gains `numberSaved: boolean`, which is true only when the confirm says it saved the number; a refused or failed number is `false`, and the identity is confirmed either way.
 - **When the confirm is refused.** On a 409 (`identity_already_confirmed`) or a failed confirm, nothing is saved.
 - **The route does not check that a card offered the number.** It is the technician's own statement about their own notebook, and only the display scope reads it.
 
@@ -139,7 +148,7 @@ COMMIT;
   3. the entry's normalised manufacturer and model equal the notebook's.
 - **Reading the numbers.** `readConfirmedNumbers(tenantId, notebookId)` is a separate, tenant-scoped query. Any error returns no numbers and logs one line, which is today's behaviour. The column is deliberately not added to the main notebook `SELECT`, so a Hub deployed before the prod migration cannot break notebook reads.
 - **The numbers are read only when they could matter.** The detail read asks for them only when the scope without them says `other`. Most thread reads, including every follow poll in an own thread, add no query.
-- **Module boundary.** The read, the write and the entry filter live in a new module, `mira-hub/src/capabilities/confirmed-numbers.ts`. It imports nothing from `notebook-manual-acquisition.ts`, because existing route tests replace that module with a partial mock.
+- **Module boundary.** The read, the write and the entry filter live in a new module, `mira-hub/src/capabilities/confirmed-numbers.ts`. It imports nothing from `notebook-manual-acquisition.ts`, because existing route tests replace that module with a partial mock. The write (`recordConfirmedNumber`) is called only by `confirmNotebookIdentity`, inside its transaction.
 - **No card re-reading.** The card-question logic from #6094 is not carried over. The scope never reads cards.
 
 ### 4.7 Failure behaviour
@@ -149,8 +158,10 @@ COMMIT;
 | The helper finds 0 or several other numbers, another maker, or no display token | The card shows no box; the behaviour is today's |
 | The technician leaves the box unticked | The identity is confirmed without a number; the thread is withheld as today |
 | `confirmedNumber` has a bad shape | Ignored; the identity is confirmed |
-| `saveConfirmedNumber` fails | Logged; the confirm succeeds; `numberSaved: false` |
+| The number write fails (or the column is missing) | Rolled back to its savepoint and logged; the confirm succeeds; `numberSaved: false` |
 | A different number is already saved for this machine | Refused, nothing written; the confirm succeeds; `numberSaved: false` |
+| The identity was already settled before this confirm | No number added; a retry of the saved number is `numberSaved: true`, anything else `false`; the confirm succeeds |
+| The confirm writes a catalog number | No number added; the confirm succeeds; `numberSaved: false` |
 | `readConfirmedNumbers` fails, or the column is missing | No numbers; the thread is withheld as today |
 | The identity was later changed | Old entries no longer match and are ignored |
 
@@ -166,7 +177,8 @@ These are expectations, each to be proven by a test before it is claimed.
 Known costs, accepted by Mike:
 - **The box is left unticked.** The thread still withholds the outcome for that confirm, which is the #6085 symptom. This is the fail-closed cost of the unticked default.
 - **A number can be added only on the first card.** A number left unticked there cannot be added later, and threads that name it stay withheld, as now. A ticked number counts in every thread of the notebook while its identity is unchanged, and cannot be removed (revision after the final review: it counts only as an order number, so a mistaken tick can never make a model's threads own).
-- **Two cards exist before confirming.** Only the pressed card's number is saved; the other card settles as superseded with no box. Revision (Codex round 1, F3): one number per machine, first saved wins; a later different number is refused.
+- **Two cards exist before confirming.** Only the pressed card's number is saved; the other card settles as superseded with no box. Revision (Codex round 1, F3): one number per machine, first saved wins; a later different number is refused. Revision (Codex round 2, F3): only the confirm that settles the identity may add a number, so a second card for the same machine adds none, even after an unticked first confirm.
+- **A failed number write is not retried, and the card does not say so** (Codex round 2, F5, filed as #6116). The response says `numberSaved: false`, but both canonical clients settle the card on any confirm success and drop that field. Because only the first confirm may add a number, a later card cannot recover it either. The thread stays withheld, as it is today without the tick.
 - **The tick lasts for the page.** A tick on a card that was never confirmed is gone after a full page reload, so that card starts unticked again (fail closed).
 - **Legacy surfaces.** They show no box.
 

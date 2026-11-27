@@ -10,6 +10,8 @@
 
 **Spec:** `docs/superpowers/specs/2026-11-27-6085-confirm-order-number-design.md` (approved with Option A; §4.1 amended at plan stage to the token method, §4.6 gained the lazy read and the module boundary).
 
+> **Revisions after review.** The task code below is the plan as approved and is kept as the record. Codex rounds 1 and 2 changed it, and the spec is the authority for what shipped: round 1 (F1 to F4) made the number one validated order number per machine; round 2 (F3, F4) replaced `saveConfirmedNumber` with `recordConfirmedNumber`, called only by `confirmNotebookIdentity` inside its own locked transaction (spec §4.4, §4.5, §4.7). The tests that prove the shipped behaviour are in `confirmed-numbers.test.ts`, `confirmed-numbers.integration.test.ts` and `confirm-number-route.test.ts`.
+
 ## Global Constraints
 
 - Worktree `/Users/bravonode/Mira-worktrees/6085-confirm-number`, branch `bravo/6085-confirm-number`, base `8571e1215c2ef41c9c136c76dc4058792d46d980`. Never commit on main, never force-push.
