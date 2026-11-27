@@ -234,8 +234,9 @@ function selectTableRows(text: string, terms: QuestionTerms, budget: number): st
   tables.forEach((tb, t) => {
     for (let r = tb.rowStart; r < tb.rowEnd; r++) {
       const upper = lines[r].toUpperCase();
-      if (exactRes.some((re) => re.test(upper))) {
-        exactHits.push({ t, r, pri: 0, score: 0 });
+      const covered = exactRes.filter((re) => re.test(upper)).length;
+      if (covered > 0) {
+        exactHits.push({ t, r, pri: 0, score: covered });
         continue;
       }
       const score = symRes.filter((re) => re.test(lines[r])).length;
@@ -244,14 +245,21 @@ function selectTableRows(text: string, terms: QuestionTerms, budget: number): st
   });
   if (exactHits.length === 0 && symHits.length === 0) return null;
 
+  // Identifier COVERAGE decides which exact rows are "the requested row": a row naming more of the
+  // question's complete identifiers outranks one that only repeats the model/scope word the question
+  // also carries (every row of a GS10 table says "GS10"; only one also says P06.53). Rows below the
+  // best coverage are still kept as context while budget remains, but are never "requested" rows.
+  const bestCoverage = exactHits.reduce((m, h) => Math.max(m, h.score), 0);
+  for (const h of exactHits) if (h.score < bestCoverage) h.pri = 1;
+  exactHits.sort((a, b) => b.score - a.score || a.t - b.t || a.r - b.r);
   symHits.sort((a, b) => b.score - a.score || a.t - b.t || a.r - b.r);
   const neighbours: Cand[] = [];
-  for (const h of exactHits) {
+  for (const h of exactHits.filter((x) => x.pri === 0)) {
     const tb = tables[h.t];
     if (h.r + 1 < tb.rowEnd) neighbours.push({ t: h.t, r: h.r + 1, pri: 2, score: 0 });
     if (h.r - 1 >= tb.rowStart) neighbours.push({ t: h.t, r: h.r - 1, pri: 2, score: 0 });
   }
-  const queue = [...exactHits, ...symHits.slice(0, 200), ...neighbours];
+  const queue = [...exactHits.slice(0, 200), ...symHits.slice(0, 200), ...neighbours];
 
   const selected = tables.map(() => new Set<number>());
   const assemble = (): string => {

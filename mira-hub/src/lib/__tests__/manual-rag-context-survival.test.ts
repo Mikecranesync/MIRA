@@ -368,4 +368,31 @@ describe("F6 — selection stays inside table boundaries", () => {
     expect(held).not.toContain("xxxxx");
     expect(body(held).length).toBeLessThanOrEqual(MAX_CONTENT_CHARS);
   });
+
+  // --- identifier coverage: the requested parameter outranks rows that only repeat the model word ---
+  const gs10 = (extra: string[] = []) => {
+    const rows = Array.from({ length: 100 }, (_, i) => `| GS10 | P07.${String(i).padStart(2, "0")} | Synthetic generic parameter |`);
+    return ["# GS10 parameter table", "| Model | Parameter | Function |", "|---|---|---|", ...rows, ...extra].join("\n");
+  };
+  it("the exact parameter row survives when every row also repeats the model the question names", () => {
+    const requested = "| GS10 | P06.53 | Synthetic requested overload row |";
+    const context = buildGroundedContext([makeChunk(gs10([requested]), 223)], "What is parameter P06.53 on the GS10?");
+    expect(context).toContain(requested);
+    expect(context).toContain("# GS10 parameter table");
+    expect(context).toContain("| Model | Parameter | Function |");
+    expect(body(context).length).toBeLessThanOrEqual(TABLE_COMPACT_BUDGET);
+    expect(context).not.toContain("matching rows not shown"); // model-only rows are context, never "requested rows"
+  });
+  it("controls: several requested parameters are all kept; a model-only question keeps model rows; no prefix/substring credit", () => {
+    const r1 = "| GS10 | P06.53 | Synthetic requested row one |";
+    const r2 = "| GS10 | P06.54 | Synthetic requested row two |";
+    const both = buildGroundedContext([makeChunk(gs10([r1, "| GS10 | P06.530 | Prefix collision |", r2]), 223)], "What are P06.53 and P06.54 on the GS10?");
+    expect(both).toContain(r1);
+    expect(both).toContain(r2);
+    const modelOnly = buildGroundedContext([makeChunk(gs10(), 223)], "Which GS10 parameters exist?");
+    expect(modelOnly).toContain("| GS10 | P07.00 |");
+    const collision = buildGroundedContext([makeChunk(gs10(["| GS10 | P06.530 | Prefix collision |"]), 223)], "What is parameter P06.53 on the GS10?");
+    expect(collision).not.toContain("Prefix collision");
+  });
 });
+
