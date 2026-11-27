@@ -152,3 +152,71 @@ describe("threadStatusScope", () => {
     expect(threadStatusScope(["Find me the manual for AutomationDirect GS11N-20P25", back], GS10)).toBe("other");
   });
 });
+
+// #6085 (staging tablet walk 2026-11-27): "Our Siemens TP700 Comfort panel 6AV2124-0GC01-0AX0 …"
+// offered "Is this a Siemens TP700?"; after "Use its manuals" the order number in that same
+// question made the thread "about another model", so the lookup outcome never showed there.
+// The question MIRA saved that identity card on is about the machine the technician confirmed.
+describe("threadStatusScope: the question an identity card was saved on (#6085)", () => {
+  const J2 = "Our Siemens TP700 Comfort panel 6AV2124-0GC01-0AX0 will not power up. What is the rated supply voltage?";
+  const TP700 = { manufacturer: "Siemens", model: "TP700", catalogNumber: "", recordCatalog: null };
+  const card = (question: string, manufacturer: string, model: string) => ({ question, manufacturer, model });
+  const withCard = { ...TP700, cards: [card(J2, "Siemens", "TP700")] };
+
+  it("is own for the question the confirmed machine's card was saved on", () => {
+    expect(threadStatusScope([J2], withCard)).toBe("own");
+  });
+
+  it("control: the same question with no saved card is still other", () => {
+    expect(threadStatusScope([J2], TP700)).toBe("other");
+  });
+
+  it("is own when a later question names the same order number again", () => {
+    expect(threadStatusScope([J2, "Does the 6AV2124-0GC01-0AX0 need a fuse?"], withCard)).toBe("own");
+  });
+
+  it("control: another order number, another panel or another maker is still other", () => {
+    expect(threadStatusScope([J2, "What about the 6AV2124-0JC01-0AX0?"], withCard)).toBe("other");
+    expect(threadStatusScope([J2, "Find the manual for Siemens TP900 Comfort 6AV2124-0JC01-0AX0"], withCard)).toBe("other");
+    expect(threadStatusScope([J2, "Find the manual for Schneider Electric CA3KN22BD"], withCard)).toBe("other");
+  });
+
+  it("control: a card for another model does not make its question own", () => {
+    const tp900 = "Our Siemens TP900 Comfort panel 6AV2124-0JC01-0AX0 will not power up.";
+    expect(threadStatusScope([tp900], { ...TP700, cards: [card(tp900, "Siemens", "TP900")] })).toBe("other");
+  });
+
+  it("control: a card under another maker does not make its question own", () => {
+    expect(threadStatusScope([J2], { ...TP700, cards: [card(J2, "ABB", "TP700")] })).toBe("other");
+  });
+
+  it("control: a card with an empty maker or model never matches", () => {
+    const tp900 = "Find the manual for Siemens TP900 Comfort 6AV2124-0JC01-0AX0";
+    const noMaker = { manufacturer: null, model: "TP700", catalogNumber: "", recordCatalog: null };
+    expect(threadStatusScope([tp900], { ...noMaker, cards: [card(tp900, "", "TP700")] })).toBe("other");
+    const noModel = { manufacturer: "Siemens", model: null, catalogNumber: "6AV2124-0GC01-0AX0", recordCatalog: null };
+    expect(threadStatusScope([tp900], { ...noModel, cards: [card(tp900, "Siemens", "")] })).toBe("other");
+  });
+
+  it("matches the card's maker through its vendor group and the model in any spacing", () => {
+    expect(threadStatusScope([J2], { ...TP700, cards: [card(J2, "SIEMENS", "tp 700")] })).toBe("own");
+  });
+
+  it("is own for a Micro820 typed with its catalog number", () => {
+    const q = "Our Allen-Bradley Micro820 2080-LC20-20QBB will not power up. What is the rated supply voltage?";
+    const m820 = { manufacturer: "Allen-Bradley", model: "820", catalogNumber: "", recordCatalog: null };
+    expect(threadStatusScope([q], m820)).toBe("other");
+    const carded = { ...m820, cards: [card(q, "Allen-Bradley", "820")] };
+    expect(threadStatusScope([q], carded)).toBe("own");
+    expect(threadStatusScope([q, "does the 2080-LC20-20QWB take 24V?"], carded)).toBe("other");
+  });
+
+  it("is own for an ABB ACS355 typed with its type code", () => {
+    const q = "Our ABB ACS355 ACS355-03E-07A3-4 shows fault 0001. What does it mean?";
+    const acs = { manufacturer: "ABB", model: "ACS355", catalogNumber: "", recordCatalog: null };
+    expect(threadStatusScope([q], acs)).toBe("other");
+    const carded = { ...acs, cards: [card(q, "ABB", "ACS355")] };
+    expect(threadStatusScope([q], carded)).toBe("own");
+    expect(threadStatusScope([q, "and the ACS355-03E-09A8-4 beside it?"], carded)).toBe("other");
+  });
+});

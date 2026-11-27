@@ -34,16 +34,31 @@ function latestIdentityProposal(
   turns: readonly { evidence: unknown[] }[],
 ): { manufacturer: string; model: string } | null {
   for (let i = turns.length - 1; i >= 0; i--) {
-    for (const e of turns[i]!.evidence) {
-      if (typeof e !== "object" || e === null) continue;
-      const r = e as Record<string, unknown>;
-      if (r.kind !== "identity_proposal") continue;
-      if (typeof r.manufacturer === "string" && typeof r.model === "string") {
-        return { manufacturer: r.manufacturer, model: r.model };
-      }
+    const proposal = identityProposalIn(turns[i]!.evidence);
+    if (proposal) return proposal;
+  }
+  return null;
+}
+
+/** The identity proposal saved in one turn's evidence, or null. */
+function identityProposalIn(evidence: readonly unknown[]): { manufacturer: string; model: string } | null {
+  for (const e of evidence) {
+    if (typeof e !== "object" || e === null) continue;
+    const r = e as Record<string, unknown>;
+    if (r.kind !== "identity_proposal") continue;
+    if (typeof r.manufacturer === "string" && typeof r.model === "string") {
+      return { manufacturer: r.manufacturer, model: r.model };
     }
   }
   return null;
+}
+
+/** The identity cards saved on these turns, each with the question it was saved on (#6085). */
+function cardsOn(turns: readonly { question: string; evidence: unknown[] }[]) {
+  return turns.flatMap((t) => {
+    const proposal = identityProposalIn(t.evidence);
+    return proposal ? [{ question: t.question, ...proposal }] : [];
+  });
 }
 
 /** True when the newest turn is an answer that came from a document. */
@@ -109,10 +124,10 @@ export function subjectReader(input: {
   return {
     /** Every saved question: what the shown status follows. */
     shown: async (): Promise<SubjectScope> => {
-      const scope = threadStatusScope(turns.map((t) => t.question), machine);
+      const scope = threadStatusScope(turns.map((t) => t.question), { ...machine, cards: cardsOn(turns) });
       if (scope !== "undecided" || turns.length < TURN_WINDOW) return scope;
       const rows = await listTurns(tenantId, notebookId, WIDEST_SUBJECT_READ, { viewerUserId, threadId });
-      const widest = threadStatusScope(rows.map((t) => t.question), machine);
+      const widest = threadStatusScope(rows.map((t) => t.question), { ...machine, cards: cardsOn(rows) });
       return widest === "undecided" && rows.length >= WIDEST_SUBJECT_READ ? "out_of_reach" : widest;
     },
   };

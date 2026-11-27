@@ -1334,6 +1334,9 @@ export function threadStatusScope(
     catalogNumber: string | null | undefined;
     /** The confirmed catalog number, or null — what "my drive" refers to. */
     recordCatalog: string | null;
+    /** The identity cards saved on this conversation's turns, each with the question it was
+     *  saved on (#6085). */
+    cards?: readonly { question: string; manufacturer: string; model: string }[];
   },
 ): ThreadStatusScope {
   const maker = (s: string | null | undefined) => normalizeManufacturer(s).canonical.toUpperCase().replace(/[^A-Z0-9]/g, "");
@@ -1344,8 +1347,16 @@ export function threadStatusScope(
     for (const id of modelsNamedIn(value)) own.add(id);
   }
   own.delete("");
-  const isOwn = (id: string) => own.has(id) || [...own].some((o) => familyCovers(id, o));
   const ownMaker = maker(machine.manufacturer);
+  // #6085: a card names one machine. When it names the machine on record, every model its
+  // question names is that machine's ("TP700 Comfort panel 6AV2124-0GC01-0AX0" proposed and
+  // confirmed as the TP700). This reads the card MIRA saved on the turn, not the wording.
+  const ownModel = norm(machine.model);
+  for (const card of machine.cards ?? []) {
+    if (!ownMaker || !ownModel || maker(card.manufacturer) !== ownMaker || norm(card.model) !== ownModel) continue;
+    for (const id of modelsNamedIn(card.question, own)) own.add(id);
+  }
+  const isOwn = (id: string) => own.has(id) || [...own].some((o) => familyCovers(id, o));
   const otherMaker = (named: string | null | undefined) => Boolean(named && ownMaker && maker(named) !== ownMaker);
   for (let i = questions.length - 1; i >= 0; i--) {
     const q = questions[i] ?? "";
