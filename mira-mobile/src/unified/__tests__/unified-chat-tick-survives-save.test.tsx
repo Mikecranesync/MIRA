@@ -5,7 +5,7 @@
 // number from the saved one. The saved row's clientRequestId is the streamed turn's requestId,
 // so the host gives both cards that id as their tick key.
 //
-// Run: cd mira-mobile && bunx vitest run src/screens/__tests__/unified-chat-tick-survives-save
+// Run: cd mira-mobile && bunx vitest run src/unified/__tests__/unified-chat-tick-survives-save
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 
@@ -47,7 +47,7 @@ vi.mock("../../api/resources", async (importOriginal) => {
   return { ...real, getNotebookDetail };
 });
 
-import { UnifiedChat } from "../UnifiedChat";
+import { UnifiedChat } from "../../screens/UnifiedChat";
 import type { NotebookServerTurn } from "../../api/resources";
 import type { ChatTurn } from "../../chat-adapter/contract";
 
