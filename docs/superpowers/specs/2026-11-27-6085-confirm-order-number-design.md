@@ -72,6 +72,7 @@ Type changes:
   - When the card is live and `offeredNumber` is present, it renders a native checkbox, unticked, labelled "`<number>` is this machine's number".
   - "Use its manuals" passes `confirmedNumber` to `onConfirmIdentity` only when the box is ticked.
   - Settled cards (confirmed, rejected, superseded) render as today, with no box. The result line stays the server's copy.
+  - Revision (Codex round 1, F2): the tick belongs to one send. The host adapter stamps the card with `tickKey`, the send's request id. The card keeps its choice per tick key, maker, model and offered number, and remembers a ticked or unticked choice for the page's lifetime, so the saved copy that replaces the streamed card keeps the tick even when it remounts or moves to another position. A different offered number, or another send's card in the same position, starts unticked. `tickKey` is never sent to the server.
 - The checkbox uses the existing card tokens. No new colour is introduced.
 
 ### 4.3 Adapters and the live stream
@@ -98,6 +99,8 @@ The new Hub shell reads the live stream through `readNotebookStream` in `mira-hu
 - `mira-mobile/src/api/identity-confirm.ts` adds `confirmedNumber` to the body.
 - Both ship only through the separate, dispatch-only OTA release.
 
+**Tick keys (revision, Codex round 1, F2).** Both hosts render the assistant surface, where assistant-ui keeps message components by position, not by turn id. So each adapter stamps the identity card with `tickKey`, the send's request id: the Hub from the live request id and the saved row's `clientRequestId`; mobile from the same pair, in `UnifiedChat` (`answerTickKeys`, `withTickKeys`). The streamed card and its saved copy then share one key.
+
 **Legacy surfaces.** The legacy Hub chat page and legacy mobile screens don't render `offeredNumber`. They confirm without a number, as today.
 
 ### 4.4 Storage: migration 118
@@ -113,15 +116,15 @@ COMMIT;
   - It is additive. It adds no table, policy or index.
   - The table's existing grants cover the new column (the plan verifies this on staging).
   - The revoke trigger (`equipment_notebooks_revoke_auto_manuals`, migration 101) fires only on `UPDATE OF manufacturer, model, catalog_number, identity_status`, so a write to this column never touches search state. It is the only trigger on `equipment_notebooks` in any migration (checked across `mira-hub/db/migrations/` on origin/main).
-- **Entry shape.** Each entry is `{ "number": "<display form>", "manufacturer": "<confirmed>", "model": "<confirmed>", "confirmedAt": "<iso>" }`. Storing the identity with the number lets the reader ignore numbers saved for an identity the notebook no longer has, for example after a Settings edit. No other identity writer has to clear the list.
-- **The write.** `saveConfirmedNumber(tenantId, notebookId, entry)` is one `UPDATE` under `withTenantContext`. It appends the entry unless one with the same normalised number, manufacturer and model is already there, so a repeated confirm is idempotent.
+- **Entry shape.** Each entry is `{ "number": "<display form>", "code": "<order number>", "manufacturer": "<confirmed>", "model": "<confirmed>", "confirmedAt": "<iso>" }`. Storing the identity with the number lets the reader ignore numbers saved for an identity the notebook no longer has, for example after a Settings edit. No other identity writer has to clear the list.
+- **The write.** `saveConfirmedNumber(tenantId, notebookId, entry)` runs in one `withTenantContext` transaction. Revision (Codex round 1, F3 and F4): it reads the column with `SELECT … FOR UPDATE`, then decides under that row lock. One number per machine: if an entry with a `code` is already saved for this maker and model, the save succeeds only when its code is the same (a retry), and a different code is refused with nothing written. Otherwise it appends the entry. Only entries carrying a `code` count, so an entry the scope cannot use never blocks or stands in for one it can.
 - **The migration file is fixed once pushed.** Draft it against a throwaway Postgres first. `migration-verify.yml` applies the first pushed version to the persistent staging branch, and after that the file is immutable (`.claude/rules/mira-hub-migrations.md` §8).
 
 ### 4.5 The confirm route
 
 `mira-hub/src/app/api/equipment-notebooks/[id]/identity/confirm/route.ts`:
 
-- **Reading the number.** It reads `confirmedNumber` with the existing `readString`. It accepts the number only when the trimmed value is 1 to 64 characters, contains a digit and has no whitespace. Any other value is ignored.
+- **Reading the number.** It reads `confirmedNumber` with the existing `readString`. Revision (Codex round 1, F1): it accepts the number only when the value is at most 64 characters and `singleOrderNumber` reads exactly one hyphenated order number from it, the same reader the status scope uses for saved values. Any other value (blank, no digit, whitespace, two numbers joined, a number joined to a model, no hyphens) is ignored, and the identity is still confirmed.
 - **The identity confirm.** It is unchanged. `catalogNumber` is still written as sent (`""` for text cards), and the lookup key and the search are unchanged.
 - **Saving the number.** After `confirmNotebookIdentity` succeeds, the route calls `saveConfirmedNumber` with the confirmed manufacturer and model. If that write fails, the route logs it and the confirm still succeeds. When a number was sent, the response gains `numberSaved: boolean`.
 - **When the confirm is refused.** On a 409 (`identity_already_confirmed`) or a failed confirm, nothing is saved.
@@ -129,7 +132,7 @@ COMMIT;
 
 ### 4.6 The status scope
 
-- **`threadStatusScope`.** The `machine` argument gains `confirmedNumbers?: readonly string[]`. Each one adds only the hyphenated order numbers written in it (the scope's existing catalog-code reader). It never adds a model name, so a mistaken tick can make no model's threads own. Ticked numbers count only while the notebook has no confirmed catalog number: a catalog set later (a notebook PATCH keeps the identity confirmed) is the machine's number, and wins (fail closed, the rule Mike set for #6094 r1 F1). The model and catalog number join `own` as before.
+- **`threadStatusScope`.** The `machine` argument gains `confirmedNumbers?: readonly string[]`. Each one adds only the hyphenated order numbers written in it (the scope's existing catalog-code reader). Revision (Codex round 1, F1): a saved value counts only when it is exactly one order number (`singleOrderNumber`); a value joining two numbers, or a number and a model, adds nothing. It never adds a model name, so a mistaken tick can make no model's threads own. Ticked numbers count only while the notebook has no confirmed catalog number: a catalog set later (a notebook PATCH keeps the identity confirmed) is the machine's number, and wins (fail closed, the rule Mike set for #6094 r1 F1). The model and catalog number join `own` as before.
 - **`manual-status-subject.ts`, `subjectMachine`.** It adds the confirmed numbers only when all three hold:
   1. the notebook's identity is settled (`user_confirmed` or `verified`);
   2. the model the status names equals the notebook's model (the same rule `catalogNumber` already follows);
@@ -147,6 +150,7 @@ COMMIT;
 | The technician leaves the box unticked | The identity is confirmed without a number; the thread is withheld as today |
 | `confirmedNumber` has a bad shape | Ignored; the identity is confirmed |
 | `saveConfirmedNumber` fails | Logged; the confirm succeeds; `numberSaved: false` |
+| A different number is already saved for this machine | Refused, nothing written; the confirm succeeds; `numberSaved: false` |
 | `readConfirmedNumbers` fails, or the column is missing | No numbers; the thread is withheld as today |
 | The identity was later changed | Old entries no longer match and are ignored |
 
@@ -162,7 +166,8 @@ These are expectations, each to be proven by a test before it is claimed.
 Known costs, accepted by Mike:
 - **The box is left unticked.** The thread still withholds the outcome for that confirm, which is the #6085 symptom. This is the fail-closed cost of the unticked default.
 - **A number can be added only on the first card.** A number left unticked there cannot be added later, and threads that name it stay withheld, as now. A ticked number counts in every thread of the notebook while its identity is unchanged, and cannot be removed (revision after the final review: it counts only as an order number, so a mistaken tick can never make a model's threads own).
-- **Two cards exist before confirming.** Only the pressed card's number is saved; the other card settles as superseded with no box.
+- **Two cards exist before confirming.** Only the pressed card's number is saved; the other card settles as superseded with no box. Revision (Codex round 1, F3): one number per machine, first saved wins; a later different number is refused.
+- **The tick lasts for the page.** A tick on a card that was never confirmed is gone after a full page reload, so that card starts unticked again (fail closed).
 - **Legacy surfaces.** They show no box.
 
 ## 6. Testing
