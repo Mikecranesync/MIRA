@@ -100,6 +100,12 @@ describe("POST identity/confirm with a ticked number (#6085)", () => {
     expect(tickArg()).toEqual({ number: "ACS355-03E-07A3-4", code: "ACS35503E07A34" });
   });
 
+  it("ignores another model's number that only shares the card's digits (Micro850 card, ACS850 number)", async () => {
+    const res = await POST(req({ manufacturer: "Allen-Bradley", model: "Micro850", confirmedNumber: "ACS850-04-03A0-5" }), params);
+    expect(res.status).toBe(200);
+    expect(acqMock.confirmNotebookIdentity.mock.calls[0]).toHaveLength(3); // exactly main's call
+  });
+
   it("control: a 64-character order number is accepted", async () => {
     await POST(req({ ...CARD, confirmedNumber: `6AV2124-0GC01-0AX0-${"9".repeat(45)}` }), params);
     expect(tickArg()).toMatchObject({ number: `6AV2124-0GC01-0AX0-${"9".repeat(45)}` });

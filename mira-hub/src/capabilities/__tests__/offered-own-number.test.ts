@@ -4,7 +4,8 @@
 //
 // Run: cd mira-hub && npx vitest run src/capabilities/__tests__/offered-own-number
 import { describe, it, expect } from "vitest";
-import { offeredOwnNumber, singleOrderNumber, threadStatusScope } from "@/capabilities/notebook-manual-acquisition";
+import { machineOrderNumber, offeredOwnNumber, singleOrderNumber, threadStatusScope } from "@/capabilities/notebook-manual-acquisition";
+import { canonicalModelKey } from "@/capabilities/model-token";
 
 const TP700 = { manufacturer: "Siemens", model: "TP700" };
 const J2 = "Our Siemens TP700 Comfort panel 6AV2124-0GC01-0AX0 will not power up. What is the rated supply voltage?";
@@ -251,8 +252,18 @@ describe("a number tied to another machine is never offered or counted (#6104 r3
     expect(scopeWith("Find the manual for 6AV2124-0GC01-0AX0", { manufacturer: "AutomationDirect", model: "GS10" }, ["6AV2124-0GC01-0AX0"])).toBe("other");
   });
 
-  it("a model that only shares the card's digits is not the card's (Micro850 card, ACS850 number)", () => {
-    expect(scopeWith("Find the manual for ABB ACS850-04-03A0-5", { manufacturer: "Allen-Bradley", model: "Micro850" }, ["ACS850-04-03A0-5"])).toBe("other");
+  // The shared model key reads both "Micro850" and "ACS850-04-03A0-5" as 850, so the rule compares
+  // the number's own first group, and the panel pairing is limited to 6AV numbers.
+  it("precondition: the shared model key reads the Micro850 and an ACS850 number alike", () => {
+    expect(canonicalModelKey("ACS850-04-03A0-5")).toBe(canonicalModelKey("Micro850"));
+  });
+
+  it("a number whose model only shares the card's digits is not the card's (Micro850 card, ACS850 number)", () => {
+    expect(machineOrderNumber("ACS850-04-03A0-5", "Micro850")).toBeNull();
+  });
+
+  it("control: the same number is the ACS850 card's own", () => {
+    expect(machineOrderNumber("ACS850-04-03A0-5", "ACS850")).toBe("ACS8500403A05");
   });
 
   // The cost, pinned: a machine's own order number that neither starts with its model nor is a
