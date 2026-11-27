@@ -236,6 +236,7 @@ import {
   type ManualChunk,
 } from "@/lib/manual-rag";
 import { retrieveReferencedPageChunks } from "@/capabilities/referenced-pages";
+import { citationSourceKey } from "@/capabilities/citation-source-key";
 import { inferEquipmentType } from "@/lib/equipment-type";
 import {
   sanitizeHistory,
@@ -534,7 +535,7 @@ async function buildCitations(
 ): Promise<EvidenceCitation[]> {
   const seen = new Map<string, EvidenceCitation>();
   for (const c of chunks) {
-    const key = `${c.sourceUrl}::${c.sourcePage ?? ""}`;
+    const key = citationSourceKey(c);
     if (seen.has(key)) continue;
     seen.set(key, {
       citationId: String(seen.size + 1),
@@ -4744,10 +4745,13 @@ async function handleChatTurn(
   // byte-identical to before (filter(Boolean) drops it).
   const sheetAndLookContext = [lookContext, sheetSection].filter(Boolean).join("\n\n");
   // `chunks` is the one evidence set: referenced pages were already read into it above.
+  // The exact string the excerpts were selected for (extractQuestionTerms reads it): every validator
+  // below judges the SAME model-visible text for it, never a raw prefix of the stored chunk.
+  const contextQuestion = topicHint ? `${message}\n\n${topicHint}` : message;
   const messages = buildProviderMessages(
     systemPrompt,
     turnHistory,
-    buildManualUserContent(topicHint ? `${message}\n\n${topicHint}` : message, chunks, sheetAndLookContext),
+    buildManualUserContent(contextQuestion, chunks, sheetAndLookContext),
     priorReportContext.content,
   );
   {
@@ -5830,7 +5834,7 @@ async function handleChatTurn(
                 // Kept apart from the judge, which checks physical safety, not source support:
                 // every cited step must be supported by the page it cites (#6020).
                 supported: (text) =>
-                  citationSupportGaps(text, chunks, message, [nb?.displayName, nb?.manufacturer, nb?.model].filter(Boolean).join(" ")).length === 0,
+                  citationSupportGaps(text, chunks, message, [nb?.displayName, nb?.manufacturer, nb?.model].filter(Boolean).join(" "), contextQuestion).length === 0,
                 judge: async (text) =>
                   (
                     await semanticSafetyCheck({
@@ -5959,6 +5963,7 @@ async function handleChatTurn(
         chunks,
         answerText,
         message,
+        contextQuestion,
       );
       const emittedCitations = quoted.citations;
       // #4508: the manual's own safety statement (WARNING/CAUTION/… or narrow
@@ -6140,6 +6145,7 @@ async function handleChatTurn(
           docGrounded && served && !refused && !outputRejected
             ? shadowVerifyCitedTurnResult({
                 question: message,
+                contextQuestion,
                 answer: answerText,
                 citationIds: emittedCitations.map((c) => c.citationId),
                 chunks,

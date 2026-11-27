@@ -10,6 +10,7 @@
  */
 import { describe, expect, it } from "vitest";
 import {
+  MAX_CONTENT_CHARS,
   TABLE_COMPACT_BUDGET,
   buildGroundedContext,
   chunksToSources,
@@ -308,5 +309,63 @@ describe("F6 — selection stays inside table boundaries", () => {
     expect(context).toContain("matching rows not shown");
     expect(context).not.toContain("| F205 |");
     expect(body(context).length).toBeLessThanOrEqual(TABLE_COMPACT_BUDGET);
+  });
+
+  // --- structural boundaries: plain captions, separated footnotes, mixed prose+table ---
+  it("a plain caption separated from its table by a blank line is kept", () => {
+    const text = ["Model B only", "", header2, ...filler, "| F205 | Synthetic answer |"].join("\n");
+    const context = buildGroundedContext([makeChunk(text, 20)], "What is F205?");
+    expect(context).toContain("Model B only");
+    expect(context).toContain("| F205 | Synthetic answer |");
+  });
+
+  it("blank-separated one-line qualifiers all stay; the prose paragraph above them does not", () => {
+    const prose = ["Synthetic intro line one.", "Synthetic intro line two."];
+    const text = [...prose, "", "Model B only", "", "Firmware 2 required", "", header2, ...filler, "| F205 | Synthetic answer |"].join("\n");
+    const context = buildGroundedContext([makeChunk(text, 20)], "What is F205?");
+    expect(context).toContain("Model B only");
+    expect(context).toContain("Firmware 2 required");
+    expect(context).not.toContain("Synthetic intro line");
+  });
+
+  it("two plain-captioned tables are never conflated: the Model B row carries only Model B's caption", () => {
+    const a = Array.from({ length: 150 }, (_, i) => `| A${i} | Synthetic A ${i} |`);
+    const text = ["Model A only", "", header2, ...a, "", "Model B only", "", header2, "| F205 | Synthetic B answer |"].join("\n");
+    const context = buildGroundedContext([makeChunk(text, 20)], "What is F205?");
+    expect(context).toContain("Model B only");
+    expect(context).not.toContain("Model A only");
+    expect(context).not.toContain("| A0 |");
+  });
+
+  it("blank-separated footnotes all stay with the rows they qualify", () => {
+    const notes = ["* General note", "", "* Type 2 requires manual reset (synthetic)", "", "* Third note"];
+    const text = ["# Model B only", header2, ...filler, "| F081 | DSI Comm Loss | Type 2 |", ...notes].join("\n");
+    const context = buildGroundedContext([makeChunk(text, 162)], "What does F081 Type 2 mean?");
+    for (const n of notes.filter(Boolean)) expect(context).toContain(n);
+    // a non-footnote paragraph after a blank line is NOT swept in
+    const text2 = [text, "", "Unrelated synthetic prose paragraph."].join("\n");
+    expect(buildGroundedContext([makeChunk(text2, 162)], "What does F081 Type 2 mean?")).not.toContain("Unrelated synthetic prose");
+  });
+
+  const prose80 = Array.from({ length: 80 }, () => "Synthetic surrounding descriptive prose.");
+  it("a late row of a small table in a mostly-prose passage survives with its heading, within the plain limit", () => {
+    const text = [...prose80, "# Model B only", header2, "| F205 | Synthetic answer |"].join("\n");
+    expect(text.length).toBeGreaterThan(MAX_CONTENT_CHARS);
+    const context = buildGroundedContext([makeChunk(text, 20)], "What is F205?");
+    expect(context).toContain("# Model B only");
+    expect(context).toContain("| F205 | Synthetic answer |");
+    expect(body(context).length).toBeLessThanOrEqual(MAX_CONTENT_CHARS);
+  });
+
+  it("controls: prose with no matching table row keeps the old prefix; a giant row in a mixed passage is held whole", () => {
+    const text = [...prose80, "# Model B only", header2, "| F205 | Synthetic answer |"].join("\n");
+    const prefix = buildGroundedContext([makeChunk(text, 20)], "What is the weather?");
+    expect(prefix).toContain("Synthetic surrounding descriptive prose.");
+    expect(prefix).not.toContain("F205");
+    const giant = [...prose80, "# Model B only", header2, `| F205 | ${"x".repeat(1500)} |`].join("\n");
+    const held = buildGroundedContext([makeChunk(giant, 20)], "What is F205?");
+    expect(held).toContain("matching rows not shown");
+    expect(held).not.toContain("xxxxx");
+    expect(body(held).length).toBeLessThanOrEqual(MAX_CONTENT_CHARS);
   });
 });

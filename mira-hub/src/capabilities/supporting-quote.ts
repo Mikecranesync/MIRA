@@ -14,6 +14,8 @@
  * Deterministic and zero-token: no model call.
  */
 import { claimIdentifiers } from "@/lib/quote-window";
+import { citationSourceKey } from "./citation-source-key";
+import { modelVisibleContent } from "./context-selection";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { Root } from "mdast";
@@ -594,6 +596,7 @@ export function supportingQuote(
   answer: string,
   citationId: string,
   question: string,
+  contextQuestion?: string,
 ): SupportingQuote {
   const claims = assignValues(answer, question).get(citationId) ?? [];
   if (claims.length === 0 || chunks.length === 0) return { quote: null, support: "question_fallback", unsupported: [] };
@@ -603,8 +606,10 @@ export function supportingQuote(
   type Cand = { chunk: number; start: number; covered: number; idHits: number; q: number; prox: number };
   const cands: Cand[] = [];
   const everMatched = new Set<number>();
-  chunks.forEach((full, ci) => {
-    const text = full.slice(0, MODEL_VISIBLE_CHARS);
+  // The text the model was actually shown for this question (row selection included), never a raw prefix.
+  const visible = chunks.map((c) => modelVisibleContent(c, contextQuestion ?? question));
+  chunks.forEach((_full, ci) => {
+    const text = visible[ci];
     const srcVals = findValues(text, "source");
     for (const sv of srcVals) {
       if (!claims.some((c) => satisfies(sv, c))) continue;
@@ -636,7 +641,7 @@ export function supportingQuote(
       b.covered - a.covered || b.idHits - a.idHits || b.q - a.q || a.prox - b.prox || a.chunk - b.chunk || a.start - b.start,
   );
   const w = cands[0];
-  const text = chunks[w.chunk].slice(0, MODEL_VISIBLE_CHARS);
+  const text = visible[w.chunk];
   return {
     quote: (w.start > 0 ? "…" : "") + text.slice(w.start, w.start + SPAN),
     support: w.covered === claims.length ? "claim" : "partial",
@@ -645,7 +650,7 @@ export function supportingQuote(
 }
 
 type QuotableCitation = { citationId: string; quote: string | null };
-type PageChunk = { content: string; sourceUrl: string; sourcePage: number | null };
+type PageChunk = { content: string; sourceUrl: string; sourcePage: number | null; docId?: string | null };
 
 /** Chunk texts grouped by page exactly as buildCitations numbers them — key
  *  `${sourceUrl}::${sourcePage ?? ""}`, citationId = first-appearance order — so
@@ -653,7 +658,7 @@ type PageChunk = { content: string; sourceUrl: string; sourcePage: number | null
 export function pagesByCitation(chunks: readonly PageChunk[]): string[][] {
   const byKey = new Map<string, string[]>();
   for (const c of chunks) {
-    const key = `${c.sourceUrl}::${c.sourcePage ?? ""}`;
+    const key = citationSourceKey(c);
     byKey.set(key, [...(byKey.get(key) ?? []), c.content]);
   }
   return [...byKey.values()];
@@ -711,8 +716,9 @@ export function citationSupportGaps(
   chunks: readonly PageChunk[],
   question: string,
   identity = "",
+  contextQuestion?: string,
 ): CitationSupportGap[] {
-  const pages = pagesByCitation(chunks).map((p) => p.map((t) => t.slice(0, MODEL_VISIBLE_CHARS)));
+  const pages = pagesByCitation(chunks).map((p) => p.map((t) => modelVisibleContent(t, contextQuestion ?? question)));
   const gaps: CitationSupportGap[] = [];
   const used = [...new Set([...answer.matchAll(MARKER_RE)].map((m) => m[1]))];
   const assigned = assignValues(answer, question);
@@ -755,6 +761,7 @@ export function withSupportingQuotes<C extends QuotableCitation>(
   chunks: readonly PageChunk[],
   answer: string,
   question: string,
+  contextQuestion?: string,
 ): { citations: C[]; unsupportedValueCount: number; quoteFallbackCount: number } {
   const pages = pagesByCitation(chunks); // citationId n ⇔ pages[n - 1]
   let unsupportedValueCount = 0;
@@ -762,7 +769,7 @@ export function withSupportingQuotes<C extends QuotableCitation>(
   const out = citations.map((c) => {
     const pageChunks = pages[Number(c.citationId) - 1];
     if (!pageChunks) return c;
-    const r = supportingQuote(pageChunks, answer, c.citationId, question);
+    const r = supportingQuote(pageChunks, answer, c.citationId, question, contextQuestion);
     unsupportedValueCount += r.unsupported.length;
     if (r.quote === null) {
       quoteFallbackCount += 1;

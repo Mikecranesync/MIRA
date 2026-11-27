@@ -25,7 +25,7 @@ vi.mock("@/lib/db", () => ({ default: testPool }));
 
 import { withTenantContext } from "@/lib/tenant-context";
 import { REFERENCE_ROWS_PER_PAGE, retrieveReferencedPageChunks } from "@/capabilities/referenced-pages";
-import { retrieveNodeChunks, type ManualChunk } from "@/lib/manual-rag";
+import { retrieveCitedPageChunks, retrieveNodeChunks, type ManualChunk } from "@/lib/manual-rag";
 
 type RetrievalDiagnostics = NonNullable<Parameters<typeof retrieveNodeChunks>[3]["diagnostics"]>;
 
@@ -71,6 +71,9 @@ const ROWS: Seed[] = [
   S({ doc: DOC_G, url: URL_G, page: 45, label: "45", content: "General synthetic installation note for every model.", idx: 3 }),
   S({ doc: DOC_G, url: URL_G, page: 45, label: "45", content: "Accessory PN-1234 brake resistor synthetic", idx: 4, extra: { table_models: ["PN-1234"], table_scope: "shared" } }),
   S({ doc: DOC_G, url: URL_G, page: 45, label: "45", content: "flat unreadable table line synthetic", idx: 5, extra: { table_models: ["GS11N-20P2", "GS11N-20P5"], table_unqualified: true, table_scope: "unresolved" } }),
+  // two documents sharing a file name AND a physical page, each with its own warning (cited-page read)
+  S({ doc: DOC_A, url: URL_A, page: 90, label: "88", content: "WARNING! A-WARN wait 5 minutes before touching the terminals." }),
+  S({ doc: DOC_U, url: URL_A, page: 90, label: "88", content: "WARNING! U-WARN wait 5 minutes before touching the terminals." }),
   // a crowded page: more chunks than the per-page cap
   ...Array.from({ length: 12 }, (_, i) => S({ doc: DOC_A, url: URL_A, page: 70, label: "68", content: `A-CROWD chunk ${i}`, idx: i })),
 ];
@@ -271,5 +274,26 @@ describe("deadline and SET LOCAL on a real connection", () => {
       await c.query("ROLLBACK").catch(() => undefined);
       c.release();
     }
+  });
+});
+
+describe.each<Lane>(["rls", "raw"])("cited-page read keeps two documents on one file+page apart (%s lane)", (lane) => {
+  const read = async (wanted: Array<{ docId: string; sourceUrl: string; page: number }>) => {
+    const opts = { approvedSourceDocIds: [DOC_A, DOC_U] };
+    if (lane === "rls") return withTenantContext(T, (c) => retrieveCitedPageChunks(c, T, wanted, opts));
+    const c = await testPool.connect();
+    try {
+      return await retrieveCitedPageChunks(c, T, wanted, opts);
+    } finally {
+      c.release();
+    }
+  };
+  it("a page cited for document A returns A's warning only, with A's document id", async () => {
+    const out = await read([{ docId: DOC_A, sourceUrl: URL_A, page: 90 }]);
+    expect(out.map((r) => [r.docId, r.content.slice(0, 16)])).toEqual([[DOC_A, "WARNING! A-WARN "]]);
+  });
+  it("both documents cited: each warning comes back under its own document id (neither replaces the other)", async () => {
+    const out = await read([{ docId: DOC_A, sourceUrl: URL_A, page: 90 }, { docId: DOC_U, sourceUrl: URL_A, page: 90 }]);
+    expect(out.map((r) => r.docId).sort()).toEqual([DOC_A, DOC_U].sort());
   });
 });
