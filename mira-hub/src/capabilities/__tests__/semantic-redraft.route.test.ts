@@ -438,6 +438,53 @@ describe("#6020 — a redraft that replaces a stop needs source support, not jus
   });
 });
 
+// #6049 (Codex round 3 on #6001, F8): the source check exempted every zero value, so a redraft
+// could tell the technician to set a delay to 0 ms while citing a page that says 800 ms.
+describe("#6049 — a cited zero setpoint is checked against its page", () => {
+  const ZERO_DELAY = "With the press stopped and locked out, set the pre-charge delay to 0 ms [1].";
+  const PAGE_800 = "SECTION 7.4 Pre-charge sequence. Set the pre-charge delay to 800 ms before enabling the main contactor.";
+  const PAGE_0 = "SECTION 7.4 Pre-charge sequence. Set the pre-charge delay to 0 ms when the bypass kit is fitted.";
+
+  it("a redraft that sets the delay to 0 ms while its page says 800 ms: the stop stands, zero citations, the judge never asked", async () => {
+    // The page gives no zero delay ("800 ms" contains the text "0 ms", so look for a zero that stands alone).
+    expect(PAGE_800).not.toMatch(/(?<![\d.,])0 ms/);
+    expect(PAGE_0).toMatch(/(?<![\d.,])0 ms/);
+    ragMock.retrieveNodeChunks.mockResolvedValue([{ ...chunks[0], content: PAGE_800 }] as never);
+    const { judgeBodies, redraftBodies } = stubFetch(ZERO_DELAY, [verdict("unsafe"), verdict("safe", "none")]);
+    const r = await run(Q_PLAIN);
+    expect(redraftBodies).toHaveLength(1);
+    expectStopped(r);
+    expect(judgeBodies).toHaveLength(1);
+    expect(r.outcome.semantic_redraft).toBe("stopped_unsupported");
+  });
+
+  it("control: the same redraft against a page that says 0 ms is served", async () => {
+    ragMock.retrieveNodeChunks.mockResolvedValue([{ ...chunks[0], content: PAGE_0 }] as never);
+    stubFetch(ZERO_DELAY, [verdict("unsafe"), verdict("safe", "none")]);
+    const r = await run(Q_PLAIN);
+    expect(r.streamed).toBe(ZERO_DELAY);
+    expect(r.outcome.semantic_redraft).toBe("served");
+  });
+
+  it("REVERSAL of #6001: a redraft stating a zero pressure reading in DIGITS that its page does not print is now stopped", async () => {
+    const READING = "With the press stopped and locked out, relieve the pressure until the hose gauge reads 0 psi [1]. Then check the hydraulic hose for wear [1].";
+    expect(SOURCE_TEXT).not.toContain("0 psi");
+    const { judgeBodies } = stubFetch(READING, [verdict("unsafe"), verdict("safe", "none")]);
+    const r = await run(Q_PLAIN);
+    expectStopped(r);
+    expect(judgeBodies).toHaveLength(1);
+    expect(r.outcome.semantic_redraft).toBe("stopped_unsupported");
+  });
+
+  it("control: the same reading in words, as the redraft instruction asks for it, is still served", async () => {
+    const READING = "With the press stopped and locked out, relieve the pressure and verify the hose gauge reads zero [1]. Then check the hydraulic hose for wear [1].";
+    stubFetch(READING, [verdict("unsafe"), verdict("safe", "none")]);
+    const r = await run(Q_PLAIN);
+    expect(r.streamed).toBe(READING);
+    expect(r.outcome.semantic_redraft).toBe("served");
+  });
+});
+
 describe("#6019 — a Stop after the redraft's judge and before the commit point keeps the stop", () => {
   /** Holds the cited-page read open until released; `entered` resolves when the route reaches it. */
   function holdCitedPageRead() {
