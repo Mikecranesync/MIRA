@@ -1260,7 +1260,9 @@ export type { ManualSearchStatus };
  *   the GS11N-20P25 need a brake resistor" is "other" (#5750 r2 F3);
  * - a return to the confirmed unit with no model named ("ok, back to my
  *   drive", the same reader retrieval uses, and only when a catalog number is
- *   on record) is "own".
+ *   on record) is "own";
+ * - a number the technician confirmed on the identity card counts as one of
+ *   the project's identifiers (#6085).
  * "undecided" means nothing read settles it.
  */
 export type ThreadStatusScope = "own" | "other" | "undecided";
@@ -1334,11 +1336,13 @@ export function threadStatusScope(
     catalogNumber: string | null | undefined;
     /** The confirmed catalog number, or null — what "my drive" refers to. */
     recordCatalog: string | null;
+    /** Numbers the technician ticked on the identity card for this same machine (#6085). */
+    confirmedNumbers?: readonly string[];
   },
 ): ThreadStatusScope {
   const maker = (s: string | null | undefined) => normalizeManufacturer(s).canonical.toUpperCase().replace(/[^A-Z0-9]/g, "");
   const own = new Set<string>();
-  for (const value of [machine.model, machine.catalogNumber]) {
+  for (const value of [machine.model, machine.catalogNumber, ...(machine.confirmedNumbers ?? [])]) {
     if (!value) continue;
     own.add(norm(value));
     for (const id of modelsNamedIn(value)) own.add(id);
