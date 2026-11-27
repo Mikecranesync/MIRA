@@ -161,6 +161,10 @@ when a material update changes integration or acceptance, and at integration clo
 The summary must distinguish VERIFIED, REPORTED, BLOCKED and NOT TESTED. Conflicting
 reports remain visible until reconciled against source or receipts.
 
+**Orchestrator:** day-to-day assignment, sequencing and handoffs follow
+[docs/ORCHESTRATOR.md](docs/ORCHESTRATOR.md) (adopted by Mike 2026-11-27). It grants no merge,
+deploy, spend, migration, OTA or device authority.
+
 **Enforcement scope:** this PR adds an instruction requirement, not an automated CI
 attestation, running monitor or dispatcher. Existing running sessions must explicitly
 read/acknowledge it; a merged file cannot force already-running agents to reload.
