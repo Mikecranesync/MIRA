@@ -11,6 +11,8 @@
 
 At session start/resume, read [DELIVERY.md](DELIVERY.md) for goals, ET deadlines and lane ownership, then refresh your existing owner status in [#5232](https://github.com/Mikecranesync/MIRA/issues/5232). Record the plan revision you read; update at material changes, handoff and session end, and link that comment from delivery PRs. Follow the plan's evidence and same-lane ownership rules. This adds no merge/deploy/spend authority or replacement for existing claims/reviews.
 
+Follow its **Product convergence operating loop**: Claude Desktop coordinates, Codex Desktop independently audits, and CLI workers execute existing claims. Report intended outcome, plan, reuse, progress/evidence, blockers and next action using its template. Consume the linked acceptance/recovery crosswalk; recover and reuse before new code. Active sessions acknowledge the exact revision; existing ownership and safety/SDLC gates persist.
+
 ## Coding Principles → `wiki/references/coding-principles.md`
 ## KANBAN Board → `wiki/references/kanban.md`
 
