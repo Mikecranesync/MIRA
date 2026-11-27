@@ -51,6 +51,9 @@ vi.mock("@/lib/visual-evidence-context", async (importOriginal) => ({
 }));
 
 import { POST, replayedErrorStatus } from "@/app/api/equipment-notebooks/[id]/chat/route";
+import { turnsFromPersisted, type HubNotebookMeta } from "@/factorylm-ui/to-interaction";
+import { persistedTurns, type PersistedTurn } from "@/components/equipment/notebook-chat-utils";
+const HYDRATE_META: HubNotebookMeta = { notebookId: NB, threadId: `notebook-${NB}:thread-t-1`, title: "Synthetic notebook", tenantId: TENANT, asset: null, identityConfirmed: false, capturedAt: "2026-11-27T04:00:00Z" };
 
 const chunk = (docId: string, page: number, content: string, extra: Record<string, unknown> = {}) => ({
   content, docId, sourceUrl: URL, sourcePage: page, pageLabel: String(page), title: `Doc ${docId.slice(0, 2)}`,
@@ -118,7 +121,7 @@ const SOURCE = "F081 is DSI Comm Loss. Type 2 requires manual reset (synthetic r
 const one = chunk(DOC_A, 162, SOURCE);
 const contentOf = (raw: string): string =>
   raw.split("\n").filter((l) => l.startsWith("data: ")).map((l) => { try { return JSON.parse(l.slice(6)); } catch { return {}; } }).filter((f) => f.kind === "content").map((f) => f.content ?? "").join("");
-type Turn = { answerStatus: string; answerText: string; basis: string | null; evidence: Array<Record<string, unknown>> };
+type Turn = { answerStatus: string; answerText: string | null; basis: string | null; evidence: Array<Record<string, unknown>> };
 async function run(message: string, history?: unknown[]) {
   const res = await POST(req({ message, sourceDocIds: [DOC_A], ...(history ? { history } : {}) }), params);
   const raw = await res.text();
@@ -155,10 +158,11 @@ describe("a failing draft is never released, and the failure is reported honestl
     ragMock.retrieveNodeChunks.mockResolvedValue([one] as never);
     stubProvider(BAD);
     const r = await run("What does F081 mean?");
-    expect(r.live).not.toContain("ошибка");
-    expect(r.turn.answerText).not.toContain("ошибка");
-    expect(r.live).toBe(r.turn.answerText);
-    expect(r.turn.answerText).toMatch(/could not produce a clean reply/);
+    // #6030 native-2 F8: no answer text at all, live or saved. A saved error WITH text is the
+    // stopped-turn contract (notebook-chat-types.ts), so the explanation travels in the status
+    // message and the durable marker instead.
+    expect(r.live).toBe("");
+    expect(r.turn.answerText).toBeNull();
     // An ERROR of the reply, never "insufficient_evidence": nothing is claimed about the manuals.
     expect(r.turn.answerStatus).toBe("error");
     expect(r.turn.basis).toBeNull();
@@ -190,6 +194,27 @@ describe("a failing draft is never released, and the failure is reported honestl
     expect(replayedErrorStatus([])).toMatchObject({ message: "No answer provider available." }); // control: other errors unchanged
     void r;
   });
+  it("#6030 F8: the saved rejected turn reloads as FAILED, not stopped, in every client rule", async () => {
+    ragMock.retrieveNodeChunks.mockResolvedValue([one] as never);
+    stubProvider(BAD);
+    const r = await run("What does F081 mean?");
+    const row = { ...(turn() as unknown as PersistedTurn), id: "saved-hygiene", createdAt: "2026-11-27T04:00:00Z" };
+    expect(row.answerStatus).toBe("error"); // precondition: the error branch, not an answered turn
+    // The shared shell (Hub) …
+    const [, answer] = turnsFromPersisted(row, HYDRATE_META);
+    expect(answer.lifecycle).toBe("failed");
+    const parts = JSON.stringify(answer.parts);
+    expect(parts).not.toContain("Stopped before");
+    expect(parts).not.toContain("ошибка");
+    // … and the classic notebook view use the same predicate.
+    expect(persistedTurns([row])[1].stopped).toBeUndefined();
+    expect(r.raw).not.toContain("ошибка");
+  });
+  it("#6030 F8 control: a genuine Stop with streamed text still reloads as stopped", () => {
+    const row = { id: "real-stop", question: "What does F081 mean?", answerStatus: "error", answerText: "F081 means ", evidence: [], basis: null, createdAt: "2026-11-27T04:00:00Z" } as unknown as PersistedTurn;
+    expect(turnsFromPersisted(row, HYDRATE_META)[1].lifecycle).toBe("stopped");
+    expect(persistedTurns([row])[1].stopped).toBe(true);
+  });
   it("text cut from the prompt cannot legitimise a foreign word in the answer", async () => {
     const text = "F081 is DSI Comm Loss. Type 2 requires manual reset (synthetic).\n" + "Ordinary synthetic maintenance background. ".repeat(100) + "\nошибка";
     ragMock.retrieveNodeChunks.mockResolvedValue([chunk(DOC_A, 162, text)] as never);
@@ -197,7 +222,7 @@ describe("a failing draft is never released, and the failure is reported honestl
     const r = await run("What does F081 mean?");
     expect(lastUser(p.streamBodies[0])).not.toContain("ошибка");
     expect(r.live).not.toContain("ошибка");
-    expect(r.turn.answerText).not.toContain("ошибка");
+    expect(r.turn.answerText ?? "").not.toContain("ошибка");
   });
   it("a clean quoted recovery is released with its real citation; a still-rejected one is not", async () => {
     ragMock.retrieveNodeChunks.mockResolvedValue([one] as never);
@@ -214,7 +239,7 @@ describe("a failing draft is never released, and the failure is reported honestl
     stubProvider('rewrite: "F081 needs manual reset. rewrite: DSI Comm Loss [1]."');
     const bad = await run("What does F081 mean?");
     expect(bad.live).not.toContain("rewrite:");
-    expect(bad.turn.answerText).not.toContain("rewrite:");
+    expect(bad.turn.answerText ?? "").not.toContain("rewrite:");
   });
   it("gate OFF: what was streamed is exactly what is saved (no post-hoc replacement), detection is not enforced", async () => {
     process.env.NOTEBOOK_ANSWER_GATE = "0";

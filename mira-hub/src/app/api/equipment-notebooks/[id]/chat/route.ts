@@ -6414,7 +6414,10 @@ async function handleChatTurn(
           claimToken: requestClaimToken,
           question: message,
           answerStatus,
-          answerText: served ? answerText : null,
+          // #6030 native-2 F8: a reply that failed output hygiene saves NO text. A saved error
+          // WITH text is a technician Stop (the stopped-turn contract, notebook-chat-types.ts),
+          // so every client would reload it as stopped; the marker below carries the reason.
+          answerText: served && hygieneFailure === null ? answerText : null,
           enabledSourceDocIds: docIds,
           evidence: served
             ? outputRejected?.kind === "unsafe_answer"
@@ -6541,7 +6544,9 @@ async function handleChatTurn(
       // clients keep their incremental-render path. Time-to-first-accepted-
       // content is logged — the gate trades first-token latency for the
       // guarantee that no unvalidated byte is ever displayed.
-      if (gate && served && answerText) {
+      // A hygiene failure streams no content either (#6030 F8): live, replay and reload all show
+      // a failed turn whose reason is the status message, never answer text.
+      if (gate && served && answerText && hygieneFailure === null) {
         for (const piece of chunkForRelease(answerText)) {
           controller.enqueue(enc.encode(sse({ kind: "content", content: piece } as NotebookContentFrame)));
         }
