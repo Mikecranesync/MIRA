@@ -696,12 +696,14 @@ export type CitationSupportGap = { citationId: string; reason: "no_page" | "valu
  * #6020: where an answer's cited steps are not supported by the pages they cite. Deterministic
  * and deliberately a low floor, read on the model-visible text of each page:
  *   - a marker that resolves to no retrieved page is a gap;
- *   - every value (number + unit) the answer assigns to a citation must be found on that page.
+ *   - every USABLE value (a fully recognized number + table unit) the answer assigns to a
+ *     citation must be found on that page: the same value anywhere on it, or a printed range
+ *     that contains it. A value the reader cannot fully recognize is not compared (#6101).
  *     A zero is a value like any other (#6049): "0 psi", "0 ms" and "0 V" are each checked.
  *     There is no exemption for a zero reading. One existed and could not be made safe: a
  *     sentence can set a value to zero in more wordings than a list can name. The redraft
- *     instruction asks the model to say a gauge reads zero, in words, and a number written
- *     as a word is not a value here (a known limit, #6100);
+ *     instruction asks the model to "verify it reads zero"; a number written as a word is
+ *     not a value here (a known limit, #6100), and the same reading in digits is checked;
  *   - a sentence carrying markers whose content words appear on NONE of the pages it cites is a
  *     gap. A sentence with no content words left (only isolation/restart vocabulary) is neutral.
  *     Words of the question and of `identity` (the machine's own name) are not support while the

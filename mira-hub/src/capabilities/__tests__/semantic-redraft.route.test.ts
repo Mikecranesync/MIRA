@@ -330,7 +330,9 @@ describe("#6049 — a cited zero setpoint is checked against its page", () => {
   const PAGE_0 = "SECTION 7.4 Pre-charge sequence. Set the pre-charge delay to 0 ms when the bypass kit is fitted.";
 
   it("a redraft that sets the delay to 0 ms while its page says 800 ms: the stop stands, zero citations, the judge never asked", async () => {
-    expect(PAGE_800).not.toContain("0 ms when");
+    // The page gives no zero delay ("800 ms" contains the text "0 ms", so look for a zero that stands alone).
+    expect(PAGE_800).not.toMatch(/(?<![\d.,])0 ms/);
+    expect(PAGE_0).toMatch(/(?<![\d.,])0 ms/);
     ragMock.retrieveNodeChunks.mockResolvedValue([{ ...chunks[0], content: PAGE_800 }] as never);
     const { judgeBodies, redraftBodies } = stubFetch(ZERO_DELAY, [verdict("unsafe"), verdict("safe", "none")]);
     const r = await run(Q_PLAIN);

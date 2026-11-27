@@ -216,7 +216,10 @@ describe("citationSupportGaps (#6020)", () => {
 
     it("control: those same sentences are supported when the page gives 0 psi", () => {
       expect(gaps("Verify the outlet gauge reads 0 psi before restart, adjusting the outlet regulator as needed [1].", [GAUGE_ZERO])).toEqual([]);
+      expect(gaps("Set the outlet regulator, i.e. make sure the outlet gauge reads 0 psi [1].", [GAUGE_ZERO])).toEqual([]);
       expect(gaps("Verify the outlet gauge reads 0 psi with the machine on [1].", [GAUGE_ZERO])).toEqual([]);
+      expect(gaps("Dial the outlet regulator down to 0 psi and verify the outlet gauge [1].", [GAUGE_ZERO])).toEqual([]);
+      expect(gaps("Make the outlet gauge read 0 psi [1].", [GAUGE_ZERO])).toEqual([]);
     });
 
     it("Codex round 1 F4: markdown around the sentence changes nothing, in either direction", () => {
@@ -231,6 +234,49 @@ describe("citationSupportGaps (#6020)", () => {
       expect(gaps("Verify the outlet gauge shows 0 V at the regulator [1].", [GAUGE])).toEqual(VALUE_GAP);
       expect(gaps("Set the outlet regulator to 0.0 psi [1].", [GAUGE])).toEqual(VALUE_GAP);
       expect(gaps("Check the outlet regulator draws 0 A [1].", [GAUGE])).toEqual(VALUE_GAP);
+    });
+
+    it("control: each of those is supported when the page prints it", () => {
+      const withValue = (v: string) => [page(`Check the outlet gauge and the outlet regulator. The regulator reading is ${v}.`)];
+      expect(gaps("Verify the outlet gauge shows 0 V at the regulator [1].", withValue("0 V"))).toEqual([]);
+      expect(gaps("Set the outlet regulator to 0.0 psi [1].", withValue("0 psi"))).toEqual([]);
+      expect(gaps("Check the outlet regulator draws 0 A [1].", withValue("0 A"))).toEqual([]);
+    });
+
+    // No unit is special: an exemption put back for any one of these would turn its row red.
+    it.each(["0 bar", "0 kPa", "0 Hz", "0 RPM", "0%"])("a zero in any table unit is checked: %s", (value) => {
+      const answer = `Set the outlet regulator to ${value} [1].`;
+      expect(gaps(answer, [GAUGE])).toEqual(VALUE_GAP);
+      expect(gaps(answer, [page(`Check the outlet gauge. Set the outlet regulator to ${value} before restart.`)])).toEqual([]);
+    });
+
+    // The limits below are on main today and are the same for any number, not only zero. They are
+    // pinned so the pull request's "known limits" are facts, and so a fix (#6101) turns them red.
+    describe("KNOWN LIMITS (#6101), unchanged from main", () => {
+      const RANGE = page("Pre-charge delay. Range 0-2000 ms. Default 800 ms. Set the pre-charge delay to 800 ms before enabling the main contactor.");
+
+      it("a value inside a range printed anywhere on the page counts as found: the issue's own setting passes against such a page", () => {
+        expect(gaps("Set the pre-charge delay to 0 ms [1].", [RANGE])).toEqual([]);
+        expect(gaps("Set the pre-charge delay to 2000 ms [1].", [RANGE])).toEqual([]);
+        // Outside the range it is a gap, so the range is what lets the two above through.
+        expect(gaps("Set the pre-charge delay to 2500 ms [1].", [RANGE])).toEqual(VALUE_GAP);
+      });
+
+      it("a value the reader cannot fully recognize is not compared: a unit outside the table", () => {
+        expect(gaps("Set the outlet regulator to 0 psig [1].", [GAUGE])).toEqual([]);
+        expect(gaps("Set the outlet regulator to 60 psig [1].", [GAUGE])).toEqual([]);
+      });
+
+      it("a value in a sentence with no marker is not looked at (#6047)", () => {
+        expect(gaps("Set the pre-charge delay to 0 ms. Then enable the main contactor [1].", [DELAY_800])).toEqual([]);
+        expect(gaps("Set the pre-charge delay to 500 ms. Then enable the main contactor [1].", [DELAY_800])).toEqual([]);
+      });
+
+      it("fails closed: a page that gives the zero reading in WORDS does not support the same reading in digits", () => {
+        const WORDS = page("Relieve the pressure until the outlet gauge reads zero, then check the outlet regulator.");
+        expect(gaps("Relieve the pressure until the outlet gauge reads 0 psi [1].", [WORDS])).toEqual(VALUE_GAP);
+        expect(gaps("Relieve the pressure until the outlet gauge reads zero [1].", [WORDS])).toEqual([]);
+      });
     });
 
     it("KNOWN LIMIT (#6100), unchanged from main: a number written as a word is not a value, so a zero SETTING in words is not checked", () => {
