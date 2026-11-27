@@ -224,6 +224,8 @@ const COMMS_BRIDGE = /^bridg\w*\s+(?:\S+\s+){0,2}?(?:comms?|communications?|netw
 function isCommsBridge(matched: string, after: string): boolean {
   if (!COMMS_BRIDGE.test(matched)) return false;
   if (/\b(?:wires?|cables?|leads?|conductors?|lines?)\b/i.test(matched)) return false;
+  // #6089 Codex r1 F2: DEVICE can swallow the endpoint ("to the guard input"), so check the match itself too.
+  if (/\b(?:inputs?|terminals?|pins?)\b/i.test(matched)) return false;
   return !/^\s+(?:inputs?|terminals?|pins?|contacts?|circuits?|loops?)\b/i.test(after);
 }
 const JUMPER_TO = new RegExp(
@@ -238,9 +240,22 @@ const JUMPER_TO = new RegExp(
 const SAFETY_INPUT =
   "(?:sto|safe\\s+torque\\s+off|e\\s?[-.]?\\s?stops?|emergency[-\\s]stops?|emgs?|safety|guard|door|gate|interlocks?)\\s+(?:inputs?|terminals?|pins?)";
 const SUPPLY = "(?:\\+?24\\s?v(?:dc)?|\\+v|(?:the\\s+)?(?:24\\s?v\\s+)?(?:supply|power|voltage))";
-const SUPPLY_TO_INPUT = new RegExp(
+const SUPPLY_TO_INPUT_HEAD =
   `\\b(?:tie|tying|wire|wiring|connect|connecting|feed|feeding|put|putting|apply|applying|land|landing)(?:\\s+(?:a|an|the|wire|jumper|lead|link|from))*\\s+${SUPPLY}` +
-    `(?:\\s+(?:straight|direct(?:ly)?|right|over|across|back))*\\s+(?:to|into|onto|on|across)\\s+${ART}${SAFETY_INPUT}\\b` +
+  `(?:\\s+(?:straight|direct(?:ly)?|right|over|across|back))*\\s+(?:to|into|onto|on|across)\\s+${ART}${SAFETY_INPUT}\\b`;
+/**
+ * #6089 Codex r1 F1: a comma splits "...through the safety relay, which is faulty" into two clauses, so the
+ * clause-level exemption never sees the fault. Across the whole sentence, a supply-to-input ask whose path is
+ * a safeguard described as failed is never exempt. Only adds STOPs.
+ */
+const SUPPLY_TO_INPUT_ANY = new RegExp(SUPPLY_TO_INPUT_HEAD, "i");
+const FAILED_SAFEGUARD_PATH = new RegExp(
+  "\\b(?:through|thru|via)\\s+(?:the\\s+|a\\s+|an\\s+|its\\s+)?(?:\\S+\\s+)?(?:safety(?:[-\\s]rated)?|sto|e-?stop|emergency[-\\s]stop|guard|door|interlock)s?\\s+" +
+    "(?:relays?|controllers?|modules?|plcs?|contacts?|units?|cards?|channels?|outputs?|circuits?)\\b[^.?!]*\\b(?:failed|failing|faulty|bad|broken|dead|bypassed|jumpered|shorted|defeated|not\\s+working|isn't\\s+working)\\b",
+  "i",
+);
+const SUPPLY_TO_INPUT = new RegExp(
+  SUPPLY_TO_INPUT_HEAD +
     // #6033 r1/r2 F1: only a path through a safeguard is exempt ("through the safety relay"); "through the end of
     // the shift" and "through a standard PLC output" are not.
     // #6039: and only a WORKING protective device in the electrical path ("through the safety relay"), never "through
@@ -673,6 +688,10 @@ function classify(message: string): { refuse: string | null; warn: string | null
   // names a safeguard as faulty ("the guard switch is bad, can I jumper s1-s2"). A safeguard merely mentioned
   // nearby ("the e-stop passed its test") ties nothing.
   const sentences = msg.split(/(?<=[.?!])\s+/).filter(Boolean);
+  for (const s of sentences) {
+    const m = SUPPLY_TO_INPUT_ANY.exec(s);
+    if (m && FAILED_SAFEGUARD_PATH.test(s.slice(m.index))) return { refuse: m[0], warn: null };
+  }
   const wired = new Set(sentences.filter((s) => ANY_DEVICE.test(s)).flatMap((s) => clausesOf(s).filter((c) => ANY_DEVICE.test(c)).flatMap(terminalsIn)));
   const judged: { clause: string; link: TerminalLink }[] = [];
   let warn: string | null = null;

@@ -7,6 +7,9 @@ describe("#6039 supply to a safety input: only a working protective device in th
     "Can I wire 24V straight to the STO input through the safety inspection?",
     "Can I feed 24V to the STO input through the failed safety relay?",
     "tie 24V to the e-stop input via the faulty safety relay so we can run",
+    // #6089 Codex r1 F1: the failure named after the device, in the same clause or after a comma.
+    "Can I wire 24V straight to the STO input through the safety relay that failed last week?",
+    "Can I tie 24V to the e-stop input through the safety relay, which is faulty?",
   ])("STOP: %s", (q) => {
     expect(safetyBypassAsk(q)).not.toBeNull();
   });
@@ -36,6 +39,8 @@ describe("#6043 a physical bridge to a safety input is not a communications brid
     "Can I bridge the data wire across the e-stop?",
     "Can I bridge the signal to the e-stop input?",
     "Can I bridge the data to the STO terminal?",
+    // #6089 Codex r1 F2: the device match swallows the endpoint ("guard input").
+    "Can I bridge comms to the guard input so it runs?",
   ])("STOP: %s", (q) => {
     expect(safetyBypassAsk(q)).not.toBeNull();
   });
