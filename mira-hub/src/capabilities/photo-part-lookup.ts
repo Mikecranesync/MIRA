@@ -151,6 +151,13 @@ export function publicLabelText(text: string): string {
   return splitFields(normalize(text)).open;
 }
 
+/** Everything from the first serial/asset label on (normalized), or "" —
+ *  the counterpart of publicLabelText. Read only to know whether a model sits
+ *  there (#5706, photo-subject.ts); never sent to any search. */
+export function privateLabelText(text: string): string {
+  return splitFields(normalize(text)).secret[0] ?? "";
+}
+
 /**
  * Display-only evidence for an unlabelled model on its own line before one
  * explicitly valued serial field. This does not change the search veto.

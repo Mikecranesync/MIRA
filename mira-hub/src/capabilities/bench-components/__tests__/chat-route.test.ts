@@ -351,7 +351,65 @@ describe("a confirmed component is the record for the turn", () => {
     const opts = retrievalOpts()!;
     expect(opts.subjectQueries).toEqual(["what is the GS13N-20P2 input current"]);
     expect(opts.subjectOutOfReach).toBe(false);
-    expect(storeMock.listSelectionTurns).toHaveBeenCalledWith(TENANT, NB, "u1", null, 6);
+    expect(storeMock.listSelectionTurns).toHaveBeenCalledWith(TENANT, NB, "u1", null, 6, { withAnswers: true });
+  });
+
+  // #5706 review of 185f15c, finding 3: under a component, an open question's
+  // photo carries its machine by the same rule as on the whole machine.
+  it("a photo asked about under this selection carries its machine into the follow-up", async () => {
+    const PHOTO = "77777777-7777-4777-8777-777777777773";
+    storeMock.listSelectionTurns.mockResolvedValue([
+      { id: "t2", question: "Find me the manual", answerStatus: "insufficient_evidence", basis: null, createdAt: "2026-11-14T04:05:00.000Z", componentId: VFD, componentRevision: 2, clientRequestId: null, answerText: null,
+        evidence: [{ kind: "visual_observation", fileId: PHOTO, capturedAt: "2026-11-14T04:04:00.000Z", provenance: "phone_photo" }] },
+    ]);
+    vi.mocked(photoLinkedToTarget).mockImplementation(async (_t: string, fileId: string) => ({ fileId, capturedAt: "2026-11-14T04:04:00.000Z" }) as never);
+    lookMock.loadVisualEvidenceForPhoto.mockImplementation(async (...args: unknown[]) =>
+      args[2] === PHOTO ? { observationId: "o1", sessionId: "s1", text: 'Plate reads "GS20-23P0", "S/N: GS20-US-0031482".', obsKind: "nameplate", trust: "candidate", confidence: 0.9, fileId: PHOTO, photoHash: null, observedAt: "2026-11-14T04:04:00.000Z", hazards: [] } : null,
+    );
+    await frames(await ask("and its rated current?", under(VFD, 3)));
+    const opts = retrievalOpts()!;
+    expect((opts.subjectQueries as string[])[0]).toContain("GS20-23P0");
+    expect((opts.subjectQueries as string[])[0]).not.toContain("GS20-US");
+  });
+
+  it("under a component with a catalog number on record, 'back to mine' keeps its photo out", async () => {
+    const PHOTO = "77777777-7777-4777-8777-777777777775";
+    storeMock.listSelectionTurns.mockResolvedValue([
+      { id: "t2", question: "Back to mine. What was its firmware build?", answerStatus: "insufficient_evidence", basis: null, createdAt: "2026-11-14T04:05:00.000Z", componentId: VFD, componentRevision: 2, clientRequestId: null, answerText: null,
+        evidence: [{ kind: "visual_observation", fileId: PHOTO, capturedAt: "2026-11-14T04:04:00.000Z", provenance: "phone_photo" }] },
+    ]);
+    vi.mocked(photoLinkedToTarget).mockImplementation(async (_t: string, fileId: string) => ({ fileId, capturedAt: "2026-11-14T04:04:00.000Z" }) as never);
+    lookMock.loadVisualEvidenceForPhoto.mockImplementation(async (...args: unknown[]) =>
+      args[2] === PHOTO ? { observationId: "o1", sessionId: "s1", text: 'Plate reads "GS20-23P0".', obsKind: "nameplate", trust: "candidate", confidence: 0.9, fileId: PHOTO, photoHash: null, observedAt: "2026-11-14T04:04:00.000Z", hazards: [] } : null,
+    );
+    await frames(await ask("and its rated current?", under(VFD, 3)));
+    const queries = retrievalOpts()!.subjectQueries as string[];
+    expect(queries[0]).toContain("Back to mine");
+    expect(queries[0]).not.toContain("GS20");
+  });
+
+  it("under a component, a standalone LOOK is not carried and does not cut the selection's own run", async () => {
+    storeMock.listSelectionTurns.mockResolvedValue([
+      { id: "t2", question: "what is the GS13N-20P2 input current", answerStatus: "insufficient_evidence", basis: null, createdAt: "2026-11-14T04:05:00.000Z", componentId: VFD, componentRevision: 2, clientRequestId: null, answerText: null, evidence: [] },
+    ]);
+    // Linked, so only the component rule keeps it out.
+    vi.mocked(photoLinkedToTarget).mockImplementation(async (_t: string, fileId: string) => ({ fileId, capturedAt: "2026-11-14T04:06:00.000Z" }) as never);
+    lookMock.loadRecentLookObservations.mockResolvedValue([
+      { observationId: "o9", sessionId: "s1", text: 'Plate reads "GS20-23P0".', obsKind: "nameplate", trust: "candidate", confidence: 0.9, fileId: "77777777-7777-4777-8777-777777777776", photoHash: null, observedAt: "2026-11-14T04:06:00.000Z", hazards: [] },
+    ]);
+    await frames(await ask("and its rated current?", under(VFD, 3)));
+    expect(retrievalOpts()!.subjectQueries).toEqual(["what is the GS13N-20P2 input current"]);
+  });
+
+  it("under a component, an open photo that cannot be read back is flagged, not dropped", async () => {
+    const PHOTO = "77777777-7777-4777-8777-777777777774";
+    storeMock.listSelectionTurns.mockResolvedValue([
+      { id: "t2", question: "Find me the manual", answerStatus: "insufficient_evidence", basis: null, createdAt: "2026-11-14T04:05:00.000Z", componentId: VFD, componentRevision: 2, clientRequestId: null, answerText: null,
+        evidence: [{ kind: "visual_observation", fileId: PHOTO, capturedAt: "2026-11-14T04:04:00.000Z", provenance: "phone_photo" }] },
+    ]);
+    vi.mocked(photoLinkedToTarget).mockRejectedValue(new Error("pool exhausted"));
+    await frames(await ask("and its rated current?", under(VFD, 3)));
+    expect(retrievalOpts()!.subjectUnclear).toEqual([true]);
   });
 
   it("a refusal under the component offers Return to it as an action, and names both numbers", async () => {
@@ -958,6 +1016,44 @@ describe("every question's scope is checked against the saved choice", () => {
     expect(providerMessages()).not.toContain("ZQX-COMPONENT-ONLY-5504");
     expect(String(ragMock.retrieveNodeChunks.mock.calls[0]?.[2] ?? "")).not.toContain("ZQX-COMPONENT-ONLY-5504");
     expect(providerMessages()).toContain("It moves ZQX-MACHINE-TURN boxes.");
+  });
+
+  // #5764 r3 F6: an explicit whole-machine question must not inherit a component's open question or its photo.
+  const PHOTO_C = "77777777-7777-4777-8777-777777777791";
+  const PHOTO_W = "77777777-7777-4777-8777-777777777792";
+  const openTurn = (id: string, componentId: string | null, question: string, fileId: string) => ({
+    ...saved(id, componentId, question, ""), answerStatus: "insufficient_evidence", basis: null, answerText: null,
+    evidence: [{ kind: "visual_observation", fileId, capturedAt: "2026-11-14T04:04:00.000Z", provenance: "phone_photo" }],
+  });
+  const readingFor = (map: Record<string, string>) =>
+    lookMock.loadVisualEvidenceForPhoto.mockImplementation(async (...args: unknown[]) => {
+      const fileId = String(args[2]);
+      return map[fileId]
+        ? { observationId: "o1", sessionId: "s1", text: map[fileId], obsKind: "nameplate", trust: "candidate", confidence: 0.9, fileId, photoHash: null, observedAt: "2026-11-14T04:04:00.000Z", hazards: [] }
+        : null;
+    });
+  it("r3-F6: an explicit whole-machine question does not carry a component's open photo question into retrieval", async () => {
+    storeMock.getSelectionState.mockResolvedValue({ selection: null, version: 4 });
+    storeMock.listSelectionTurns.mockResolvedValue([openTurn("t1", VFD, "Find me the manual", PHOTO_C)]);
+    // The conversation store returns EVERY turn of the thread, component ones too: only the route's
+    // whole-machine read keeps this one out (without it the component's question and photo carry).
+    nbMock.listTurns.mockResolvedValue([{ ...openTurn("t1", VFD, "Find me the manual", PHOTO_C), ownerUserId: "u1" }]);
+    vi.mocked(photoLinkedToTarget).mockImplementation(async (_t: string, fileId: string) => ({ fileId, capturedAt: "2026-11-14T04:04:00.000Z" }) as never);
+    readingFor({ [PHOTO_C]: 'Plate reads "GS20-23P0".' });
+    ragMock.retrieveNodeChunks.mockResolvedValue([CHUNK]);
+    await frames(await ask("and how fast does it run?", { ...wholeMachine(4), history: WM_A }));
+    const queries = (retrievalOpts()!.subjectQueries as string[]) ?? [];
+    expect(queries.join("\n")).not.toContain("GS20");
+    expect(queries.join("\n")).not.toContain("Find me the manual");
+  });
+  it("r3-F6 control: the whole machine's OWN open photo question does carry", async () => {
+    storeMock.getSelectionState.mockResolvedValue({ selection: null, version: 4 });
+    storeMock.listSelectionTurns.mockResolvedValue([openTurn("t1", null, "Find me the manual", PHOTO_W)]);
+    vi.mocked(photoLinkedToTarget).mockImplementation(async (_t: string, fileId: string) => ({ fileId, capturedAt: "2026-11-14T04:04:00.000Z" }) as never);
+    readingFor({ [PHOTO_W]: 'Plate reads "GS20-23P0".' });
+    ragMock.retrieveNodeChunks.mockResolvedValue([CHUNK]);
+    await frames(await ask("and how fast does it run?", { ...wholeMachine(4), history: WM_A }));
+    expect(((retrievalOpts()!.subjectQueries as string[]) ?? []).join("\n")).toContain("GS20-23P0");
   });
 
   it("control: a client that sends no scope on a conversation with nothing saved keeps today's history", async () => {

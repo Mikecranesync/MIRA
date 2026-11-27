@@ -5,7 +5,7 @@ import { familySqlTerms, inferEquipmentType } from "@/lib/equipment-type";
 import { manufacturerInGroup, manufacturerSearchNames, normalizeManufacturer } from "@/lib/manufacturerNormalize";
 import { FAMILY_ROOTS, MODEL_PATTERNS, ROCKWELL, type ModelMention, familyCovers, modelIdentitiesInText, modelMentionsInText, resolveModelFromObservationText } from "@/capabilities/model-token";
 import { ambiguousSiblingModels } from "@/capabilities/named-model-mismatch";
-import { returnsToRecord } from "@/capabilities/conversation-subject";
+import { carriesEarlierSubject, questionWithPhoto, returnsToRecord } from "@/capabilities/conversation-subject";
 import {
   coverDeclaredNumbers,
   isTitleLine,
@@ -16,6 +16,8 @@ import {
   sameModelFamily,
   summarizeUnlistedRefusals,
   titleLinesBelow,
+  questionModelNumbers,
+  recordModelNumbers,
   unlistedModelNumbers,
   type ExcludedTable,
   type ManualVerdict,
@@ -27,6 +29,8 @@ import { type PhotoDocumentKind, photoDocumentShape, productWrittenBody } from "
 import { withoutSharedTableHeader } from "@/capabilities/section-table-scope";
 import { exactModelKey } from "@/capabilities/table-rows";
 import { confirmedCatalogNumber } from "@/capabilities/notebook-manual-identity";
+import { modelLabels, namesAnyModel } from "@/capabilities/photo-subject";
+import type { PhotoSubjectUnclear } from "@/capabilities/named-model-mismatch";
 import { embedQueryDetailed, hybridRetrievalEnabled, rrfMerge, vectorLiteral } from "@/capabilities/hybrid-retrieval";
 import { setSpanAttrs } from "@/capabilities/observability/tracing";
 import { extractCitedOperatingCaution, extractManualSafetyStatement, OPERATING_CAUTION_PATTERN } from "@/capabilities/manual-safety-statement";
@@ -1644,12 +1648,33 @@ export async function retrieveNodeChunks(
      *  names no model and no confirmed notebook identity scopes it: the model
      *  an earlier, unanswered question named is then still the subject. */
     subjectQueries?: readonly string[];
+    /** Per `subjectQueries` entry: its photo's private-field codes
+     *  (conversation-subject.ts SubjectRead `hidden`). Checked, never read. */
+    subjectHidden?: readonly (readonly string[])[];
     /** True when the caller's widest read of earlier turns found no start to
      *  the open run (conversation-subject.ts `complete: false`): a model named
      *  further back than was read would still be the subject. A question that
      *  names no model, with no model named in what WAS read, is then refused
      *  (`diagnostics.subjectOutOfReach`) instead of being judged on its own. */
     subjectOutOfReach?: boolean;
+    /** Per `subjectQueries` entry: its machine came from a photo that does
+     *  not say which machine is meant (conversation-subject.ts readSubject).
+     *  A follow-up carrying such a question is asked about, not answered. */
+    subjectUnclear?: readonly boolean[];
+    /** Per `subjectQueries` entry: it was asked with a photo (conversation-subject.ts readSubject `photo`). */
+    subjectPhoto?: readonly boolean[];
+    /** The reading of the photo sent WITH this question (its LOOK
+     *  observation), never an earlier photo's (#3966: earlier photos may show
+     *  other machines). When the question names no model, the photo's public
+     *  text (photo-subject.ts photoModelText: no serial is ever read) is judged
+     *  exactly as if typed with it: "Find me the manual" with a GS20 plate is a
+     *  GS20 ask, and a refusal reports `source: "photo"`. The caller passes the
+     *  reading of THIS conversation, exactly scoped (route.ts, Codex r1/r2 F3). */
+    photoText?: string;
+    /** This turn sent a verified photo that has no active reading in this
+     *  conversation (rejected, or read only in another one): its machine is
+     *  unknown, so a question naming no model asks (Codex r3 F3 on #5764). */
+    photoUnread?: boolean;
     /** #4983 — the question rewritten into the manual's vocabulary (search
      *  phrases a model produced from the forum-style post). Rides as one more
      *  query variant: its own OR pass for recall and its terms in the rerank's
@@ -1702,7 +1727,7 @@ export async function retrieveNodeChunks(
       /** CV-101 S6: set only when a named ask refused pages and EVERY refused
        *  page declared its own model — the evidence that the notebook's manual
        *  is for a different model than the one asked about. */
-      namedModelMismatch?: { requested: string[]; declared: string[]; source?: "conversation" };
+      namedModelMismatch?: { requested: string[]; declared: string[]; source?: "conversation" | "photo" };
       /** #5355: the question named two sibling models with no comparison cue;
        *  nothing was retrieved and the reply asks which one. */
       ambiguousModelAsk?: { named: string[] };
@@ -1710,6 +1735,11 @@ export async function retrieveNodeChunks(
        *  one, and older unanswered turns exist that were not read: nothing was
        *  retrieved and the reply asks for the model or a new conversation. */
       subjectOutOfReach?: true;
+      /** #5706: the photo does not say which machine is meant — several models
+       *  the reader cannot tell apart, or models beside an earlier open subject
+       *  (`earlier`), or a carried photo question of that kind (`carried`).
+       *  Nothing was retrieved; the reply asks which machine. Labels only. */
+      photoSubjectUnclear?: PhotoSubjectUnclear;
       /** #5369: a model or catalog number the detector has no pattern for, and
        *  EVERY selected manual was refused because it is not shown to cover it. */
       unlistedModelRefusal?: UnlistedModelRefusal;
@@ -1744,7 +1774,7 @@ export async function retrieveNodeChunks(
        *  number and the question (or an earlier open one) named ANOTHER number of
        *  that number's family — a different unit. Nothing was retrieved; the reply
        *  names both numbers and gives no value (named-model-mismatch.ts). */
-      siblingOfRecordAsk?: { asked: string[]; record: string };
+      siblingOfRecordAsk?: { asked: string[]; record: string; source?: "photo" };
     };
   },
 ): Promise<ManualChunk[]> {
@@ -1861,15 +1891,25 @@ export async function retrieveNodeChunks(
   // A confirmed notebook machine does not switch this off: "the plate reads
   // <another product>" followed by "what voltage does it need?" is about that
   // other product, whatever the notebook is set up for.
-  const ownQuestion = opts.subjectQuestion ?? opts.rawQuery ?? q;
-  const namesKnownModel = (text: string) => {
-    const named = resolveModelFromObservationText(text);
-    return Boolean(named.model) || named.ambiguous || modelIdentitiesInText(text).size > 0;
-  };
-  const ownNumbers = unlistedModelNumbers(ownQuestion);
-  // The project's confirmed catalog number — the unit "mine" refers to below,
-  // and the record the sibling rule further down judges against.
+  const typedQuestion = opts.subjectQuestion ?? opts.rawQuery ?? q;
+  const namesKnownModel = namesAnyModel;
+  // The project's confirmed catalog number: the unit "mine" refers to below, and the record the
+  // sibling rule judges against (read once here; the return-to-record rule needs it).
   const recordText = confirmedCatalogNumber(opts);
+  // Photo-to-manual (#5706, staging tablet walk 2026-11-21): a GS20-23P0 nameplate photo with
+  // "Find me the manual" in a project confirmed as GS11N-20P2 was answered from the GS10 manual,
+  // because the photo's reading never reached this check. The photo sent with THIS question
+  // (never an earlier one, #3966) is read EXACTLY as if its public text had been typed with the
+  // question: every check below reads `ownQuestion`. A typed model, or a return to the
+  // technician's own unit, outranks the photo; a serial is never read (photo-subject.ts). The
+  // same rule joins a carried turn's photo (conversation-subject.ts questionWithPhoto).
+  const live = questionWithPhoto(typedQuestion, opts.photoText, Boolean(recordText), opts.photoUnread === true);
+  const ownQuestion = live.text;
+  const photoNamesModel = live.photo !== null && namesKnownModel(live.photo);
+  const ownNumbers = questionModelNumbers(ownQuestion);
+  // A safety stop still calls out every number the question carries (a fault code too) that the
+  // cover does not list; only the MODEL decision above ignores fault, parameter and port tokens.
+  const calledOutNumbers = unlistedModelNumbers(ownQuestion);
   // Mike's decision 2026-11-13 (CV-101 benchmark FU-A4; option A): a question
   // that says it is back to the technician's OWN unit ("ok back to mine, what
   // frame size is it") is about the record again, so nothing earlier carries
@@ -1881,27 +1921,59 @@ export async function retrieveNodeChunks(
   // GS11N-20P2. It will not start." in a controller's notebook). Typing
   // nothing after a sibling still means the sibling (the case below this one).
   const openQuestions = opts.subjectQueries ?? [];
-  const returnsToOwn = Boolean(recordText) && returnsToRecord(ownQuestion);
+  const returnsToOwn = Boolean(recordText) && returnsToRecord(typedQuestion);
   const returnAt = recordText ? openQuestions.findIndex(returnsToRecord) : -1;
+  // #5720 / #5671: a refusal belongs to the question that named the product. A question
+  // with a subject of its own (conversation-subject.ts leansOnEarlierQuestion says it does
+  // not point back) is judged on its own words, under the project's record, and carries
+  // nothing; a pointer ("does it need...", "and its current", "on this drive") carries the
+  // whole open run up to the newest model, as before. Applied here, where the carry is read.
+  // A question that names an unlisted number of its own keeps the pre-#5720 carry (stated limit, P-72).
+  // A follow-up after a turn that was asked WITH a photo is about that photo's machine whatever its
+  // wording (subjectPhoto / subjectUnclear come from the stored turns, not from the reading's prose).
+  const reachableCount = returnAt >= 0 ? returnAt + 1 : openQuestions.length;
+  const afterPhotoTurn = (opts.subjectPhoto ?? []).slice(0, reachableCount).some(Boolean) || (opts.subjectUnclear ?? []).slice(0, reachableCount).some(Boolean);
+  const standsAlone = ownNumbers.length === 0 && !live.releases && !live.unknown && !photoNamesModel && !afterPhotoTurn && !carriesEarlierSubject(typedQuestion, openQuestions);
   const earlierQuestions =
-    namesKnownModel(ownQuestion) || returnsToOwn ? [] : returnAt >= 0 ? openQuestions.slice(0, returnAt + 1) : openQuestions;
-  const modelAt = earlierQuestions.findIndex(namesKnownModel);
+    namesKnownModel(typedQuestion) || returnsToOwn || live.releases || standsAlone ? [] : returnAt >= 0 ? openQuestions.slice(0, returnAt + 1) : openQuestions;
+  // The subject is the newest earlier question naming a model, or one whose photo did not say which
+  // machine (`subjectUnclear`): its machine is still the subject, unknown, so it is asked about below.
+  const modelAt = earlierQuestions.findIndex((question, i) => namesKnownModel(question) || opts.subjectUnclear?.[i] === true);
   // The open run is longer than the caller could read, this question names
   // no model, and nothing read names one: a model named further back would
   // still be the subject, and it cannot be seen. Retrieve nothing rather than
   // judge the question on its own words. A model named in what was read is
   // carried as usual (it is the newest one; nothing older than it matters).
   // A return to the record, in this question or in one read, is a start too.
-  if (opts.subjectOutOfReach && !namesKnownModel(ownQuestion) && !returnsToOwn && returnAt < 0 && modelAt < 0) {
+  if (opts.subjectOutOfReach && !namesKnownModel(typedQuestion) && !returnsToOwn && !live.releases && returnAt < 0 && modelAt < 0 && !standsAlone) {
     if (opts.diagnostics) opts.diagnostics.subjectOutOfReach = true;
     return [];
   }
   const carriedModelQuestion = modelAt >= 0 ? earlierQuestions[modelAt] : null;
+  // #5706: a photo that does not say which machine is meant is asked about, never answered. Two
+  // cases. (1) The reader finds several models it cannot tell apart, or the photo's machine cannot
+  // be known (private fields, unread): typed, such text skips the coverage check, which a photo must
+  // not inherit. (2) The photo names models but is not specific enough to end the earlier open
+  // subject. The same two cases hold for a carried photo question (`subjectUnclear`).
+  const photoUnclear = live.unknown || (photoNamesModel && (live.ambiguous || (!live.releases && carriedModelQuestion !== null)));
+  const carriedUnclear = modelAt >= 0 && opts.subjectUnclear?.[modelAt] === true;
+  if (photoUnclear || carriedUnclear) {
+    if (opts.diagnostics) {
+      opts.diagnostics.photoSubjectUnclear = photoUnclear
+        ? live.unknown
+          ? { shown: [], earlier: [], unknown: true }
+          : { shown: modelLabels(live.photo ?? ""), earlier: carriedModelQuestion !== null ? modelLabels(carriedModelQuestion) : [] }
+        : { shown: modelLabels(carriedModelQuestion ?? ""), earlier: [], carried: true };
+    }
+    return [];
+  }
   const modelQuestion = carriedModelQuestion ?? ownQuestion;
   const carriedNumbers = (modelAt >= 0 ? earlierQuestions.slice(0, modelAt + 1) : earlierQuestions)
-    .flatMap((text) => unlistedModelNumbers(text))
+    .flatMap((text) => questionModelNumbers(text))
     .filter((carried) => !ownNumbers.some((own) => sameModelFamily(own, carried)));
   const carriedLabels = new Set(carriedNumbers.map((n) => n.label));
+  // A number the photo shows (#5706): its refusal says "in your photo".
+  const photoLabels = new Set(unlistedModelNumbers(live.photo ?? "").map((n) => n.label));
   // Mike's ruling 2026-11-12 (garage pilot L8; HARNESS-SPEC.md bar "refuse"): the
   // notebook is confirmed with a catalog number on record, and this question (or
   // an earlier open one it follows) names ANOTHER number of that number's family
@@ -1947,13 +2019,18 @@ export async function retrieveNodeChunks(
     const seen = new Set<string>();
     return [
       ...identities.filter((id) => !rootsOfLonger.has(id)).flatMap((id) => modelNumbersIn(id)),
-      ...unlistedModelNumbers(text),
+      // The record is read as recorded; a question's own fault and parameter codes are not models.
+      ...(text === recordText ? recordModelNumbers(text) : questionModelNumbers(text)),
     ].filter((n) => (seen.has(n.key) ? false : (seen.add(n.key), true)));
   };
   const recordFamilyNumbers = recordText ? catalogNumbersIn(recordText) : [];
-  const siblingAsked = [...catalogNumbersIn(ownQuestion), ...catalogNumbersIn(carriedModelQuestion ?? ""), ...carriedNumbers].filter((n) =>
-    recordFamilyNumbers.some((own) => own.key !== n.key && sameModelFamily(own, n)),
-  );
+  const isSiblingOfRecord = (n: ModelNumber) =>
+    recordFamilyNumbers.some((own) => own.key !== n.key && sameModelFamily(own, n));
+  // #5706: a look-alike plate in the photo is judged like the same number typed.
+  const siblingAsked = [...catalogNumbersIn(ownQuestion), ...catalogNumbersIn(carriedModelQuestion ?? ""), ...carriedNumbers].filter(isSiblingOfRecord);
+  // Worded "Your photo shows" only when every sibling asked came from this photo.
+  const photoSiblings = catalogNumbersIn(live.photo ?? "").filter(isSiblingOfRecord);
+  const siblingFromPhoto = photoSiblings.length > 0 && siblingAsked.every((n) => photoSiblings.some((p) => p.key === n.key));
   const asksSiblingOfRecord = Boolean(recordText) && siblingAsked.length > 0;
   if (asksSiblingOfRecord && opts.siblingAsk !== "serve") {
     if (opts.diagnostics) {
@@ -1961,9 +2038,65 @@ export async function retrieveNodeChunks(
       opts.diagnostics.siblingOfRecordAsk = {
         asked: siblingAsked.filter((n, i) => siblingAsked.findIndex((m) => m.key === n.key) === i).map((n) => n.label),
         record: recordText as string,
+        ...(siblingFromPhoto ? { source: "photo" as const } : {}),
       };
     }
     return [];
+  }
+
+  // #5706 (fail closed, the exact-number lane): a model-number-shaped code among
+  // a photo's private fields ("Unit: 2080-LC20-20QWB", a serial-labelled value)
+  // is never read as the model — but it is not ignored either. When the record
+  // or a scoped manual's cover would refuse it (the same verdicts the exact-
+  // number lane gives a typed number: a sibling of the record, another model's
+  // cover), the photo does not say which machine it is: one question, no
+  // answer, naming nothing it read there. Codes a cover says nothing about (a
+  // lot, certificate or barcode number) leave the turn as it was. The open
+  // questions' photos are checked the same way, up to the carried subject.
+  const hiddenLabels = [
+    ...live.hidden,
+    ...(modelAt >= 0 ? earlierQuestions.slice(0, modelAt + 1) : earlierQuestions).flatMap((_, i) => opts.subjectHidden?.[i] ?? []),
+  ];
+  const hiddenNumbers = unlistedModelNumbers(hiddenLabels.join("\n"));
+  if (hiddenNumbers.length > 0) {
+    let refuses = hiddenNumbers.some(isSiblingOfRecord);
+    // The cover read below is held to the same boundary as the document-eligibility cover read and every
+    // passage read here: inside a validated document selection only, and under the approved-source
+    // predicate. An unapproved document's cover never decides a turn. Its output is a refuse/ask decision.
+    if (!refuses && docScopeOnly) {
+      try {
+        const covers = await client.query(
+          `/* hidden-code-eligibility */ SELECT DISTINCT ON (doc_id)
+              doc_id::text AS doc_id,
+              metadata->>'filename' AS filename,
+              left(content, 2000) AS document_heading
+            FROM knowledge_entries
+            WHERE tenant_id = $1
+              AND doc_id::text = ANY($2::text[])
+              AND ingest_route = 'v2'
+              ${approvedSourceFilterSql(admitApproved ? 3 : null)}
+            ORDER BY doc_id, page_start NULLS LAST, source_page NULLS LAST,
+              (metadata->>'chunk_index')::int NULLS LAST, id`,
+          [tenantId, allowedDocIds, ...approvedParams],
+        );
+        refuses = covers.rows.some(
+          (r: Record<string, unknown>) =>
+            !manualAnswersFor(hiddenNumbers, String(r.document_heading ?? ""), String(r.filename ?? "")).admit,
+        );
+      } catch (err) {
+        // A cover that cannot be read cannot clear the code: ask.
+        console.error("[manual-rag] hidden-code cover read failed (asking which machine):", err instanceof Error ? err.message : err);
+        refuses = true;
+      }
+    }
+    if (refuses) {
+      if (opts.diagnostics) {
+        opts.diagnostics.photoSubjectUnclear = live.hidden.length > 0 && unlistedModelNumbers(live.hidden.join("\n")).length > 0
+          ? { shown: [], earlier: [], unknown: true }
+          : { shown: [], earlier: [], carried: true };
+      }
+      return [];
+    }
   }
 
   const requestedModel = resolveModelFromObservationText(modelQuestion);
@@ -2485,7 +2618,7 @@ export async function retrieveNodeChunks(
       opts.diagnostics.namedModelMismatch = {
         requested: [...requestedIdentities],
         declared: [...refusedDeclared],
-        ...(carriedModelQuestion !== null ? { source: "conversation" as const } : {}),
+        ...(carriedModelQuestion !== null ? { source: "conversation" as const } : photoNamesModel ? { source: "photo" as const } : {}),
       };
   };
   const noteNamedAskRefusal = (docId: string, headingDeclared: Set<string>) => {
@@ -2510,7 +2643,7 @@ export async function retrieveNodeChunks(
   ];
   const namesNoKnownModel = !requestedModel.model && !requestedModel.ambiguous && closeNameIdentities.size === 0;
   const confirmedNumbers =
-    namesNoKnownModel && identityConfirmed ? unlistedModelNumbers(`${notebookModel} ${opts.catalogNumber ?? ""}`) : [];
+    namesNoKnownModel && identityConfirmed ? recordModelNumbers(`${notebookModel} ${opts.catalogNumber ?? ""}`) : [];
   const notebookNumbers = questionNumbers.some((asked) => confirmedNumbers.some((own) => sameModelFamily(asked, own))) ? [] : confirmedNumbers;
   const notebookLabels = new Set(notebookNumbers.map((n) => n.label));
   const unlistedAsk = [...questionNumbers, ...notebookNumbers];
@@ -2528,7 +2661,9 @@ export async function retrieveNodeChunks(
           ? "notebook"
           : refused.every((r) => r.asked.every((label) => carriedLabels.has(label)))
             ? "conversation"
-            : "question",
+            : refused.every((r) => r.asked.every((label) => photoLabels.has(label)))
+              ? "photo"
+              : "question",
       );
     } else delete opts.diagnostics.unlistedModelRefusal;
   };
@@ -2626,7 +2761,7 @@ export async function retrieveNodeChunks(
   // reported, so the safety stop can say whose manual its page is from and
   // that the cover does not list the number. The confirmed machine's own
   // recorded number is not reported: the project record places it.
-  const ownRecordNumbers = identityConfirmed ? unlistedModelNumbers(`${notebookModel} ${opts.catalogNumber ?? ""}`) : [];
+  const ownRecordNumbers = identityConfirmed ? recordModelNumbers(`${notebookModel} ${opts.catalogNumber ?? ""}`) : [];
   const noteAdmittedCover = (r: Record<string, unknown>) => {
     const docId = String(r.doc_id ?? "");
     if (!opts.diagnostics || !docId) return;
@@ -2641,7 +2776,7 @@ export async function retrieveNodeChunks(
       models: [...coverIdentitiesOf("", heading)],
       // Only the project's own recorded number is left out, by exact match:
       // a look-alike of it is another unit's number.
-      unlisted: ownNumbers
+      unlisted: calledOutNumbers
         .filter((n) => !ownRecordNumbers.some((own) => own.key === n.key) && !manualCoversNumber(n, heading, filename, writtenAs))
         .map((n) => n.label),
     };
@@ -2788,10 +2923,19 @@ export async function retrieveNodeChunks(
           // answer for it (rangeCoverExcludes). The reply then names no "other
           // model": the cover declares the asked model's own range.
           const leftOut = rangeCoverExcludes(heading, requestedIdentities, null);
+          // #5720 (staging 2026-11-25, "KTP400 Comfort"): modelIdentitiesInText drops COMFORT beside a
+          // panel model so "TP700 Comfort" and "TP1200 Comfort" never meet on the family alone, and
+          // KTP panels are not Comfort members (a KTP700 Basic question stays refused). But a panel
+          // WRITTEN "KTP400 Comfort" is a Comfort panel by the technician's own words: against a
+          // cover that names the Comfort family it is covered, against a cover that LISTS panels it
+          // still has to be one of them.
+          const askedForCover = /\bktp\s*\d{2,4}\s*-?\s*comfort\b/i.test(modelQuestion)
+            ? new Set([...requestedIdentities, "COMFORT"])
+            : requestedIdentities;
           if (
             leftOut ||
-            !documentCoversNamedAsk(requestedIdentities, declared) ||
-            (members !== null && !documentCoversNamedAsk(requestedIdentities, members))
+            !documentCoversNamedAsk(askedForCover, declared) ||
+            (members !== null && !documentCoversNamedAsk(askedForCover, members))
           ) {
             // The diagnostic counts only what the document itself declares.
             const headingDeclared = leftOut
