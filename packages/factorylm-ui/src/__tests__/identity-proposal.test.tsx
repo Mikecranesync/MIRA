@@ -230,3 +230,57 @@ describe("regression — an unknown frame still falls back to the inspection box
     expect(view.container.textContent).toContain("Unrecognized part (preserved for inspection)");
   });
 });
+
+function withOfferedNumber(offeredNumber: string, outcome?: "confirmed" | "superseded") {
+  return (f: ShellFixture): ShellFixture => ({
+    ...f,
+    thread: {
+      ...f.thread,
+      turns: f.thread.turns.map((t) => ({
+        ...t,
+        parts: t.parts.map((p) => (p.type === "identity_proposal" ? { ...p, offeredNumber, ...(outcome ? { priorOutcome: outcome } : {}) } : p)),
+      })),
+    },
+  });
+}
+const box = (view: HarnessView) => view.container.querySelector<HTMLInputElement>('input[type="checkbox"]');
+
+describe("identity_proposal — the offered order number (#6085)", () => {
+  it("shows the offered number beside a box that starts unticked", () => {
+    const view = render({ onConfirmIdentity: async () => ({ manualReady: false }) }, withOfferedNumber("SS5Y3-DUW01302-A"));
+    expect(view.container.textContent).toContain("SS5Y3-DUW01302-A is this machine's number");
+    expect(box(view)).not.toBeNull();
+    expect(box(view)!.checked).toBe(false);
+  });
+
+  it("an unticked confirm sends no number", async () => {
+    const calls: IdentityProposal[] = [];
+    const view = render({ onConfirmIdentity: async (p: IdentityProposal) => { calls.push(p); return { manualReady: false }; } }, withOfferedNumber("SS5Y3-DUW01302-A"));
+    view.click(view.buttonNamed("Use its manuals")!);
+    await view.flush();
+    expect(calls).toEqual([{ manufacturer: "SMC", model: "SS5Y3-DUW01302" }]);
+  });
+
+  it("a ticked confirm sends the number", async () => {
+    const calls: IdentityProposal[] = [];
+    const view = render({ onConfirmIdentity: async (p: IdentityProposal) => { calls.push(p); return { manualReady: false }; } }, withOfferedNumber("SS5Y3-DUW01302-A"));
+    view.click(box(view)!);
+    await view.flush();
+    expect(box(view)!.checked).toBe(true);
+    view.click(view.buttonNamed("Use its manuals")!);
+    await view.flush();
+    expect(calls).toEqual([{ manufacturer: "SMC", model: "SS5Y3-DUW01302", confirmedNumber: "SS5Y3-DUW01302-A" }]);
+  });
+
+  it("a settled card shows no box", () => {
+    const view = render({}, withOfferedNumber("SS5Y3-DUW01302-A", "confirmed"));
+    expect(box(view)).toBeNull();
+    expect(view.container.textContent).not.toContain("is this machine's number");
+  });
+
+  it("control: a card without an offered number renders exactly as before", () => {
+    const view = render({ onConfirmIdentity: async () => ({ manualReady: false }) });
+    expect(box(view)).toBeNull();
+    expect(view.container.textContent).not.toContain("is this machine's number");
+  });
+});
