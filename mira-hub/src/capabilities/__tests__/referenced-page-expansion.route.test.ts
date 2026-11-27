@@ -195,4 +195,30 @@ describe("referenced-page expansion through the notebook POST", () => {
     expect(refQueries()).toHaveLength(0);
     expect(userMessage(f)).not.toContain(STEPS);
   });
+
+  it("model admission: a confirmed GS11N-20P2 record keeps another model's section on the referenced page out of the prompt and the citations", async () => {
+    corpus = [
+      { tenant: TENANT, docId: DOC_A, url: URL_A, page: 45, label: "45", content: "Model GS11N-20P5 only: 460 V synthetic specification", extra: { table_models: ["GS11N-20P5"], table_scope: "section" } },
+      { tenant: TENANT, docId: DOC_A, url: URL_A, page: 45, label: "45", content: "General synthetic installation note." },
+    ];
+    // What real retrieval reports for a confirmed record (proved on real SQL in the integration suite).
+    ragMock.retrieveNodeChunks.mockImplementation((async (_c: unknown, _t: string, _q: string, o: { diagnostics?: { recordNumber?: string | null } }) => {
+      if (o.diagnostics) o.diagnostics.recordNumber = "GS11N-20P2";
+      return [referrer()];
+    }) as never);
+    const f = stubProvider("Install per the note [2].");
+    await (await POST(req({ message: QUESTION, sourceDocIds: [DOC_A] }), params)).text();
+    const sent = userMessage(f);
+    expect(sent).toContain("General synthetic installation note.");
+    expect(sent).not.toContain("460 V");
+    const t = turn() as { evidence: Array<{ quote: string }> };
+    expect(JSON.stringify(t.evidence)).not.toContain("460 V");
+  });
+
+  it("control: with no confirmed record the same page's model-tagged section is admitted as retrieval would", async () => {
+    corpus = [{ tenant: TENANT, docId: DOC_A, url: URL_A, page: 45, label: "45", content: "Model GS11N-20P5 only: 460 V synthetic specification", extra: { table_models: ["GS11N-20P5"], table_scope: "section" } }];
+    const f = stubProvider("See the table [2].");
+    await (await POST(req({ message: QUESTION, sourceDocIds: [DOC_A] }), params)).text();
+    expect(userMessage(f)).toContain("460 V");
+  });
 });

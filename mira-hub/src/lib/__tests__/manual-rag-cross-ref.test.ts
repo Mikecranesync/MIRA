@@ -148,3 +148,92 @@ describe("retrieveReferencedPageChunks — the read", () => {
     expect(buildGroundedContext([referrer], "how?")).not.toContain("Step A.");
   });
 });
+
+describe("retrieveReferencedPageChunks — model admission and the deadline", () => {
+  const referrer = doc("Specifications: see page 45.", 44, A, "a.pdf", "44");
+  const resolved = [{ doc_id: A, source_url: "a.pdf", printed: "45", first_pg: 47, last_pg: 47 }];
+  const mk = (content: string, extra: Record<string, unknown> = {}) => ({
+    id: "i", content, doc_id: A, source_url: "a.pdf", pg: 47, page_label: "45", verified: false, ...extra,
+  });
+  const fake = (rows: unknown[], onSet?: (sql: string) => void) => ({
+    query: vi.fn(async (sql: string) => {
+      if (sql.startsWith("SET LOCAL")) {
+        onSet?.(sql);
+        return { rows: [] };
+      }
+      return { rows: sql.includes("first_pg") ? resolved : rows };
+    }),
+  }) as never;
+
+  const P5 = mk("Model GS11N-20P5 only: 460 V synthetic", { table_models: ["GS11N20P5"], table_scope: "section" });
+  const P2 = mk("Model GS11N-20P2 only: 230 V synthetic", { table_models: ["GS11N-20P2"], table_scope: "section" });
+  const SIB = mk("GS11N-20P5 input 380-480 V synthetic");
+  const NOTE = mk("General synthetic note.");
+  const ACC = mk("Accessory PN-1234 synthetic", { table_models: ["PN-1234"], table_scope: "shared" });
+
+  it("with the confirmed record the retrieval used, another model's section and untagged sibling text stay out; own/general/accessory come in", async () => {
+    const out = await retrieveReferencedPageChunks(fake([P5, P2, SIB, NOTE, ACC]), T, [referrer], { docIds: [A], recordNumber: "GS11N-20P2" });
+    expect(out.map((c) => c.content)).toEqual(["Model GS11N-20P2 only: 230 V synthetic", "General synthetic note.", "Accessory PN-1234 synthetic"]);
+  });
+
+  it("control: no confirmed record (null) admits as retrieval does; the referring chunk's own model name is not an authority", async () => {
+    const withName = { ...referrer, modelNumber: "GS11N-20P2" };
+    const out = await retrieveReferencedPageChunks(fake([P5, NOTE]), T, [withName], { docIds: [A], recordNumber: null });
+    expect(out).toHaveLength(2);
+  });
+
+  it("a caller that says nothing about the record (undefined) gets no model-tagged table at all", async () => {
+    const out = await retrieveReferencedPageChunks(fake([P5, P2, ACC, NOTE]), T, [referrer], { docIds: [A] });
+    expect(out.map((c) => c.content)).toEqual(["General synthetic note."]);
+  });
+
+  /** A client whose queries advance a fake clock by the given amounts, in order. */
+  const clocked = (rows: unknown[], costs: number[]) => {
+    let clock = 0;
+    const issued: string[] = [];
+    let n = 0;
+    const client = {
+      query: vi.fn(async (sql: string) => {
+        if (sql.startsWith("SET LOCAL")) {
+          issued.push(sql);
+          return { rows: [] };
+        }
+        clock += costs[n++] ?? 0;
+        return { rows: sql.includes("first_pg") ? resolved : rows };
+      }),
+    } as never;
+    return { client, issued, now: () => clock };
+  };
+
+  it("each statement timeout is capped by what is left of the 4 s deadline", async () => {
+    const c = clocked([NOTE], [1_500, 100]);
+    const out = await retrieveReferencedPageChunks(c.client, T, [referrer], { docIds: [A], recordNumber: null, now: c.now });
+    expect(c.issued).toEqual(["SET LOCAL statement_timeout = '2000ms'", "SET LOCAL statement_timeout = '2500ms'"]);
+    expect(out).toHaveLength(1);
+  });
+
+  it("a slow label lookup leaves the page read only the remainder", async () => {
+    const c = clocked([NOTE], [3_900, 10]);
+    await retrieveReferencedPageChunks(c.client, T, [referrer], { docIds: [A], recordNumber: null, now: c.now });
+    expect(c.issued[1]).toBe("SET LOCAL statement_timeout = '100ms'");
+  });
+
+  it("no page read at all once the lookup has used the deadline", async () => {
+    const c = clocked([NOTE], [4_000]);
+    expect(await retrieveReferencedPageChunks(c.client, T, [referrer], { docIds: [A], recordNumber: null, now: c.now })).toEqual([]);
+    expect(c.issued).toHaveLength(1);
+  });
+
+  it("rows that arrive after the deadline are not added (fail open)", async () => {
+    const c = clocked([NOTE], [500, 3_600]);
+    expect(await retrieveReferencedPageChunks(c.client, T, [referrer], { docIds: [A], recordNumber: null, now: c.now })).toEqual([]);
+  });
+
+  it("uses SET LOCAL only (transaction-scoped), never a session-level SET or RESET", async () => {
+    const c = clocked([NOTE], [1, 1]);
+    await retrieveReferencedPageChunks(c.client, T, [referrer], { docIds: [A], recordNumber: null, now: c.now });
+    const all = (c.client as unknown as { query: { mock: { calls: unknown[][] } } }).query.mock.calls.map((x) => String(x[0]));
+    expect(all.filter((q) => /^(SET|RESET)\b/i.test(q) && !q.startsWith("SET LOCAL"))).toEqual([]);
+  });
+});
+

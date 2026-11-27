@@ -27,7 +27,7 @@
  */
 import type { PoolClient } from "pg";
 import { exactModelKey } from "@/capabilities/table-rows";
-import { approvalGateEnabled, approvedSourceFilterSql, PAGE_LABEL_SQL, type ManualChunk } from "@/lib/manual-rag";
+import { approvalGateEnabled, approvedSourceFilterSql, PAGE_LABEL_SQL, tableExclusionFor, type ManualChunk } from "@/lib/manual-rag";
 
 /** Printed-page targets per turn, across all documents. */
 export const REFERENCE_MAX_TARGETS = 5;
@@ -35,8 +35,11 @@ export const REFERENCE_MAX_TARGETS = 5;
 export const REFERENCE_ROWS_PER_PAGE = 8;
 /** Chunks added per turn, in total. */
 export const REFERENCE_MAX_ROWS = 20;
-/** Wall-clock bound across the two queries; past it nothing is added. */
+/** Wall-clock bound across the two queries, enforced on each query's own timeout and re-checked after each. */
 export const REFERENCE_DEADLINE_MS = 4_000;
+/** Per-query ceilings; each is also capped by what is left of REFERENCE_DEADLINE_MS. */
+export const REFERENCE_LABEL_TIMEOUT_MS = 2_000;
+export const REFERENCE_PAGE_TIMEOUT_MS = 3_000;
 
 export type PageReference = { docId: string; sourceUrl: string; label: string };
 
@@ -124,20 +127,34 @@ export async function retrieveReferencedPageChunks(
   client: Pick<PoolClient, "query">,
   tenantId: string,
   retrieved: readonly ManualChunk[],
-  opts: { docIds: readonly string[]; approvedSourceDocIds?: readonly string[]; existing?: readonly ManualChunk[]; now?: () => number },
+  opts: {
+    docIds: readonly string[];
+    approvedSourceDocIds?: readonly string[];
+    existing?: readonly ManualChunk[];
+    /** The record number retrieval itself judged passages by (retrieveNodeChunks diagnostics.recordNumber:
+     *  confirmed AND on record, else null). Added pages are held to the SAME table-admission rule.
+     *  `undefined` means the caller did not say: applicability cannot then be judged, so any row whose
+     *  table is tagged for specific models is left out (fail closed). `null` admits as retrieval does. */
+    recordNumber?: string | null;
+    now?: () => number;
+  },
 ): Promise<ManualChunk[]> {
   const scope = opts.docIds.filter(Boolean);
   const targets = referenceTargets(retrieved).filter((t) => scope.includes(t.docId));
   if (targets.length === 0 || scope.length === 0) return [];
   const now = opts.now ?? Date.now;
   const deadline = now() + REFERENCE_DEADLINE_MS;
+  const left = (): number => deadline - now();
   const approved = (opts.approvedSourceDocIds ?? []).filter(Boolean);
   const admitApproved = approved.length > 0 && approvalGateEnabled();
 
   // 1) printed label -> physical page, per (document, file): exactly one page or nothing.
   const p1: unknown[] = [tenantId, scope, targets.map((t) => t.docId), targets.map((t) => t.sourceUrl), targets.map((t) => t.label)];
   if (admitApproved) p1.push(approved);
-  await client.query("SET LOCAL statement_timeout = '2s'");
+  // SET LOCAL: scoped to the caller's transaction (withTenantContext), so it cannot leak to other uses.
+  const t1 = Math.min(REFERENCE_LABEL_TIMEOUT_MS, left());
+  if (t1 < 1) return [];
+  await client.query(`SET LOCAL statement_timeout = '${Math.floor(t1)}ms'`);
   const resolved = await client.query(
     `SELECT doc_id::text AS doc_id, source_url, NULLIF(BTRIM(metadata->>'page_label'), '') AS printed,
             min(COALESCE(page_start, source_page)) AS first_pg, max(COALESCE(page_start, source_page)) AS last_pg
@@ -158,19 +175,21 @@ export async function retrieveReferencedPageChunks(
     if (!Number.isInteger(first) || first < 1 || first !== Number(r.last_pg)) continue; // ambiguous or unnumbered
     pages.push({ docId: String(r.doc_id), sourceUrl: String(r.source_url), page: first });
   }
-  if (pages.length === 0 || now() >= deadline) return [];
+  if (pages.length === 0) return [];
+  const t2 = Math.min(REFERENCE_PAGE_TIMEOUT_MS, left());
+  if (t2 < 1) return [];
 
   // 2) those pages' chunks, bounded per page and in total.
   const p2: unknown[] = [tenantId, scope, pages.map((p) => p.docId), pages.map((p) => p.sourceUrl), pages.map((p) => p.page), REFERENCE_ROWS_PER_PAGE, REFERENCE_MAX_ROWS];
   if (admitApproved) p2.push(approved);
-  await client.query("SET LOCAL statement_timeout = '3s'");
+  await client.query(`SET LOCAL statement_timeout = '${Math.floor(t2)}ms'`);
   const read = await client.query(
     `SELECT id::text AS id, content, doc_id::text AS doc_id, source_url, pg, ${PAGE_LABEL_SQL}, verified,
-            table_models, table_unqualified, table_scope
+            table_models, table_unqualified, table_scope, table_header
        FROM (
          SELECT id, content, doc_id, source_url, COALESCE(page_start, source_page) AS pg, metadata, verified,
                 metadata->'table_models' AS table_models, metadata->'table_unqualified' AS table_unqualified,
-                metadata->>'table_scope' AS table_scope,
+                metadata->>'table_scope' AS table_scope, metadata->>'table_header' AS table_header,
                 CASE WHEN metadata->>'chunk_index' ~ '^[0-9]+$' THEN (metadata->>'chunk_index')::int END AS cidx,
                 rank() OVER (
                   PARTITION BY doc_id, source_url, COALESCE(page_start, source_page)
@@ -190,6 +209,8 @@ export async function retrieveReferencedPageChunks(
       LIMIT $7`,
     p2,
   );
+  // Fail open past the deadline: rows that arrived late are not added.
+  if (left() < 0) return [];
 
   const templates = new Map<string, ManualChunk>();
   for (const c of retrieved) if (c.docId && c.sourceUrl && !templates.has(`${c.docId}\u0000${c.sourceUrl}`)) templates.set(`${c.docId}\u0000${c.sourceUrl}`, c);
@@ -201,6 +222,9 @@ export async function retrieveReferencedPageChunks(
     const tpl = templates.get(`${docId}\u0000${sourceUrl}`);
     // A table line the layout parser could not tie to one column is nobody's value (table-rows.ts).
     if (!tpl || r.table_scope === "unresolved" || r.table_unqualified === true || String(r.table_unqualified) === "true") continue;
+    // The same passage-admission predicate retrieval applies for the confirmed record: another
+    // model's explicit section/columns and untagged same-family sibling text are not evidence.
+    if (opts.recordNumber === undefined ? tableModelsOf(r.table_models).length > 0 : tableExclusionFor(r, opts.recordNumber) !== null) continue;
     const content = String(r.content ?? "");
     const page = Number(r.pg);
     const key = identity(docId, sourceUrl, page, content);

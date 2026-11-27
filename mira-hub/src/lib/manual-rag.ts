@@ -458,6 +458,101 @@ function smartTruncate(text: string, terms?: QuestionTerms): string {
   return `${text.slice(0, limit)}…`;
 }
 
+function catalogNumbersIn(text: string): ModelNumber[] {
+  // Two reviewed readers. The identity reader's numbers (it joins a spaced "GS11N - 20P2" that
+  // the generic reader would split) plus unlistedModelNumbers, which blanks each identity
+  // OCCURRENCE out of the text before reading the rest generically — so the split halves of a
+  // spaced number cannot survive, while a catalog number the identity reader left beside a
+  // product name (Micro820 2080-LC20-20QWB) and a separately named prefix sibling (CA3KN22BD
+  // beside CA3KN22BD3, GS11N-20P2 beside GS11N-20P2A) are kept whole. The identity reader also
+  // reads the bare family root of a catalog number (GS11N from GS11N-20P2), and a root pairs
+  // with another root (GS11N with GS13N) though with no full number — so a root is set aside,
+  // but only by its OCCURRENCE: a span-reader mention whose every occurrence continues into a
+  // longer identity read from that same position. Nothing compares one number against another
+  // elsewhere in the text (Codex r3–r6 on #5451: every rule that did — text-wide prefix,
+  // text-wide substring, identity-only prefix — dropped some separately named sibling).
+  const identities = [...modelIdentitiesInText(text)];
+  const continuesIntoLonger = (m: ModelMention) =>
+    identities.some((id) => id !== m.id && id.startsWith(m.id) && text.slice(m.start).replace(/\s+/g, "").toUpperCase().startsWith(id));
+  const mentions = modelMentionsInText(text);
+  const rootsOfLonger = new Set(
+    mentions.filter((m) => mentions.filter((o) => o.id === m.id).every(continuesIntoLonger)).map((m) => m.id),
+  );
+  const seen = new Set<string>();
+  return [
+    ...identities.filter((id) => !rootsOfLonger.has(id)).flatMap((id) => modelNumbersIn(id)),
+    ...unlistedModelNumbers(text),
+  ].filter((n) => (seen.has(n.key) ? false : (seen.add(n.key), true)));
+}
+
+function tableModelKeysOf(r: Record<string, unknown>): string[] {
+  const raw = r.table_models;
+  let list: unknown = raw;
+  if (typeof raw === "string") {
+    try {
+      list = JSON.parse(raw);
+    } catch {
+      list = [];
+    }
+  }
+  return Array.isArray(list) ? list.map((m) => exactModelKey(String(m))).filter((k) => k.length > 0) : [];
+
+}
+
+// A table line the layout parser could not tie to one column is stored as flat
+// text tagged with EVERY model of its block and `table_unqualified` (table-rows.ts).
+// Its values are nobody's in particular, so for a record with a number it is
+// excluded even though the tag holds the record's key: an unreadable line of the
+// record's own table is not the record's value (Gate 7 on #5429: it was admitted,
+// and the GS10 p.26 "Cooling Method Convective Fan" line could answer for a drive
+// whose own cooling method the line does not say). Reported as unresolved, so the
+// refusal names the page and never calls the record's own table another model's.
+
+function isUnresolvedTableRow(r: Record<string, unknown>): boolean {
+  return r.table_scope === "unresolved" || r.table_unqualified === true || String(r.table_unqualified) === "true";
+}
+
+/**
+ * THE passage-admission rule for a confirmed record's tables, shared by retrieveNodeChunks and the
+ * referenced-page reader (#6030): the models a row's table excludes it for, or null when it is
+ * admissible. `recordNumber` is the record number retrieval itself used (diagnostics.recordNumber:
+ * confirmed AND on record, null otherwise); null admits everything.
+ */
+export function tableExclusionFor(r: Record<string, unknown>, recordNumber: string | null): string[] | null {
+  const recordKey = recordNumber ? exactModelKey(recordNumber) || null : null;
+  if (!recordKey) return null;
+  const recordFamilyNumbers = catalogNumbersIn(recordNumber as string);
+  const tagged = tableModelKeysOf(r);
+  if (r.table_scope === "unresolved" && isUnresolvedTableRow(r)) return tagged;
+  if (r.table_scope === "section" && tagged.length > 0) {
+    // A physical caption/header explicitly bound this section to these catalogs.
+    // It cannot become generic merely because an OCR-like substitution changes
+    // its identifier family. Ordinary parameter/accessory table tags below have
+    // no such section assertion and retain their existing family rule.
+    return isUnresolvedTableRow(r) || !tagged.includes(recordKey) ? tagged : null;
+  }
+  if (tagged.length > 0) {
+    // Codex r1 on #5451 (F1): a table keyed by numbers of ANOTHER family (parameter codes,
+    // accessory parts) is nobody's look-alike — for this record it is ordinary text. Only a
+    // table that carries a number of the record's own family is judged here. When the
+    // record's number cannot be read as a model (no family to compare), the old rule holds.
+    const ofRecordFamily =
+      recordFamilyNumbers.length === 0 ||
+      tagged.some((key) => modelNumbersIn(key).some((n) => recordFamilyNumbers.some((own) => sameModelFamily(own, n))));
+    if (!ofRecordFamily) return null;
+    return isUnresolvedTableRow(r) || !tagged.includes(recordKey) ? tagged : null;
+  }
+  if (recordFamilyNumbers.length === 0) return null;
+  const content = String(r.content ?? "");
+  const named = modelNumbersIn(r.table_scope === "shared" ? withoutSharedTableHeader(content, r.table_header) : content);
+  if (named.some((n) => recordFamilyNumbers.some((own) => own.key === n.key))) return null;
+  const siblings = new Set<string>();
+  for (const n of named) {
+    if (recordFamilyNumbers.some((own) => sameModelFamily(own, n))) siblings.add(exactModelKey(n.label));
+  }
+  return siblings.size > 0 ? [...siblings] : null;
+}
+
 export function approvalGateEnabled(): boolean {
   return process.env.MIRA_ENFORCE_APPROVED_RETRIEVAL === "true";
 }
@@ -2226,32 +2321,6 @@ export async function retrieveNodeChunks(
   // identity. So: when the identity reader finds identities, their full numbers are the reading
   // (a bare family root read beside its full number — GS11N beside GS11N-20P2 — is not a number
   // of its own and is dropped); otherwise the generic reader (a relay part, a parameter code).
-  const catalogNumbersIn = (text: string): ModelNumber[] => {
-    // Two reviewed readers. The identity reader's numbers (it joins a spaced "GS11N - 20P2" that
-    // the generic reader would split) plus unlistedModelNumbers, which blanks each identity
-    // OCCURRENCE out of the text before reading the rest generically — so the split halves of a
-    // spaced number cannot survive, while a catalog number the identity reader left beside a
-    // product name (Micro820 2080-LC20-20QWB) and a separately named prefix sibling (CA3KN22BD
-    // beside CA3KN22BD3, GS11N-20P2 beside GS11N-20P2A) are kept whole. The identity reader also
-    // reads the bare family root of a catalog number (GS11N from GS11N-20P2), and a root pairs
-    // with another root (GS11N with GS13N) though with no full number — so a root is set aside,
-    // but only by its OCCURRENCE: a span-reader mention whose every occurrence continues into a
-    // longer identity read from that same position. Nothing compares one number against another
-    // elsewhere in the text (Codex r3–r6 on #5451: every rule that did — text-wide prefix,
-    // text-wide substring, identity-only prefix — dropped some separately named sibling).
-    const identities = [...modelIdentitiesInText(text)];
-    const continuesIntoLonger = (m: ModelMention) =>
-      identities.some((id) => id !== m.id && id.startsWith(m.id) && text.slice(m.start).replace(/\s+/g, "").toUpperCase().startsWith(id));
-    const mentions = modelMentionsInText(text);
-    const rootsOfLonger = new Set(
-      mentions.filter((m) => mentions.filter((o) => o.id === m.id).every(continuesIntoLonger)).map((m) => m.id),
-    );
-    const seen = new Set<string>();
-    return [
-      ...identities.filter((id) => !rootsOfLonger.has(id)).flatMap((id) => modelNumbersIn(id)),
-      ...unlistedModelNumbers(text),
-    ].filter((n) => (seen.has(n.key) ? false : (seen.add(n.key), true)));
-  };
   const recordFamilyNumbers = recordText ? catalogNumbersIn(recordText) : [];
   const siblingAsked = [...catalogNumbersIn(ownQuestion), ...catalogNumbersIn(carriedModelQuestion ?? ""), ...carriedNumbers].filter((n) =>
     recordFamilyNumbers.some((own) => own.key !== n.key && sameModelFamily(own, n)),
@@ -2971,60 +3040,11 @@ export async function retrieveNodeChunks(
   const recordNumber = recordText && !asksSiblingOfRecord ? recordText : null;
   if (opts.diagnostics) opts.diagnostics.recordNumber = recordNumber;
   const recordKey = recordNumber ? exactModelKey(recordNumber) || null : null;
-  const tableModelsOf = (r: Record<string, unknown>): string[] => {
-    const raw = r.table_models;
-    let list: unknown = raw;
-    if (typeof raw === "string") {
-      try {
-        list = JSON.parse(raw);
-      } catch {
-        list = [];
-      }
-    }
-    return Array.isArray(list) ? list.map((m) => exactModelKey(String(m))).filter((k) => k.length > 0) : [];
-  };
-  // A table line the layout parser could not tie to one column is stored as flat
-  // text tagged with EVERY model of its block and `table_unqualified` (table-rows.ts).
-  // Its values are nobody's in particular, so for a record with a number it is
-  // excluded even though the tag holds the record's key: an unreadable line of the
-  // record's own table is not the record's value (Gate 7 on #5429: it was admitted,
-  // and the GS10 p.26 "Cooling Method Convective Fan" line could answer for a drive
-  // whose own cooling method the line does not say). Reported as unresolved, so the
-  // refusal names the page and never calls the record's own table another model's.
-  const isUnresolvedTableLine = (r: Record<string, unknown>): boolean =>
-    r.table_scope === "unresolved" || r.table_unqualified === true || String(r.table_unqualified) === "true";
-  const excludedTableOf = (r: Record<string, unknown>): string[] | null => {
-    if (!recordKey) return null;
-    const tagged = tableModelsOf(r);
-    if (r.table_scope === "unresolved" && isUnresolvedTableLine(r)) return tagged;
-    if (r.table_scope === "section" && tagged.length > 0) {
-      // A physical caption/header explicitly bound this section to these catalogs.
-      // It cannot become generic merely because an OCR-like substitution changes
-      // its identifier family. Ordinary parameter/accessory table tags below have
-      // no such section assertion and retain their existing family rule.
-      return isUnresolvedTableLine(r) || !tagged.includes(recordKey) ? tagged : null;
-    }
-    if (tagged.length > 0) {
-      // Codex r1 on #5451 (F1): a table keyed by numbers of ANOTHER family (parameter codes,
-      // accessory parts) is nobody's look-alike — for this record it is ordinary text. Only a
-      // table that carries a number of the record's own family is judged here. When the
-      // record's number cannot be read as a model (no family to compare), the old rule holds.
-      const ofRecordFamily =
-        recordFamilyNumbers.length === 0 ||
-        tagged.some((key) => modelNumbersIn(key).some((n) => recordFamilyNumbers.some((own) => sameModelFamily(own, n))));
-      if (!ofRecordFamily) return null;
-      return isUnresolvedTableLine(r) || !tagged.includes(recordKey) ? tagged : null;
-    }
-    if (recordFamilyNumbers.length === 0) return null;
-    const content = String(r.content ?? "");
-    const named = modelNumbersIn(r.table_scope === "shared" ? withoutSharedTableHeader(content, r.table_header) : content);
-    if (named.some((n) => recordFamilyNumbers.some((own) => own.key === n.key))) return null;
-    const siblings = new Set<string>();
-    for (const n of named) {
-      if (recordFamilyNumbers.some((own) => sameModelFamily(own, n))) siblings.add(exactModelKey(n.label));
-    }
-    return siblings.size > 0 ? [...siblings] : null;
-  };
+  const tableModelsOf = tableModelKeysOf;
+  const isUnresolvedTableLine = isUnresolvedTableRow;
+  // The one passage-admission predicate for a record's tables lives at module level
+  // (tableExclusionFor) so the referenced-page reader applies exactly this rule.
+  const excludedTableOf = (r: Record<string, unknown>): string[] | null => tableExclusionFor(r, recordNumber);
   const excludedKeys = new Set<string>();
   const noteExcludedTable = (r: Record<string, unknown>, models: string[]) => {
     if (!opts.diagnostics) return;

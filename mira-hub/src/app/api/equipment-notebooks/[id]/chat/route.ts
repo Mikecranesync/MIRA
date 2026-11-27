@@ -3038,6 +3038,8 @@ async function handleChatTurn(
           docIds,
           approvedSourceDocIds: docIds,
           existing: [...retrievedChunks, ...safetyChapterChunks],
+          // the record number retrieval judged passages by: added pages face the same table rule
+          recordNumber: retrievalDiagnostics.recordNumber ?? null,
         }),
       );
     } catch (err) {
