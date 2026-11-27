@@ -38,6 +38,9 @@
  * "Not this" (reject) is NOT a server endpoint: the contract is "no identity
  * write" (T2 acceptance #2), which a pure client-side dismissal already
  * satisfies with nothing to confirm server-side.
+ *
+ * #6085: a ticked "confirmedNumber" is saved for the thread status scope after the confirm
+ * succeeds; it never changes the identity write.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { sessionOr401 } from "@/lib/session";
@@ -50,6 +53,7 @@ import {
   readAcquisition,
   startManualAcquisition,
 } from "@/capabilities/notebook-manual-acquisition";
+import { saveConfirmedNumber } from "@/capabilities/confirmed-numbers";
 
 export const dynamic = "force-dynamic";
 
@@ -62,6 +66,13 @@ const MAX_FIELD_LEN = 200;
 function readString(body: Record<string, unknown>, key: string): string {
   const v = body[key];
   return typeof v === "string" ? v.trim().slice(0, MAX_FIELD_LEN) : "";
+}
+
+/** #6085: the number the technician ticked on the identity card. Accepted only when it is 1 to
+ *  64 characters, has a digit and no whitespace; anything else is ignored, never an error. */
+function readConfirmedNumber(body: Record<string, unknown>): string | null {
+  const value = readString(body, "confirmedNumber");
+  return value.length >= 1 && value.length <= 64 && /\d/.test(value) && !/\s/.test(value) ? value : null;
 }
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -96,6 +107,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   }
   // See header: written unconditionally, "" when absent — never left out.
   const catalogNumber = readString(body, "catalogNumber");
+  const confirmedNumber = readConfirmedNumber(body);
 
   const notebook = await getNotebook(ctx.tenantId, notebookId);
   if (!notebook) {
@@ -157,6 +169,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       );
     }
     return NextResponse.json({ error: "confirm_failed" }, { status: 500 });
+  }
+
+  // #6085: a ticked number is saved for the thread status scope only. A failed save never
+  // fails the confirm that already succeeded; the response says whether it was saved.
+  let numberSaved: boolean | undefined;
+  if (confirmedNumber) {
+    try {
+      numberSaved = await saveConfirmedNumber(ctx.tenantId, notebookId, { number: confirmedNumber, manufacturer, model });
+    } catch (err) {
+      numberSaved = false;
+      console.warn(`[identity-confirm] saveConfirmedNumber failed notebook=${notebookId}: ${(err as Error).message}`);
+    }
   }
 
   const identity = {
@@ -235,6 +259,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     model,
     catalogNumber,
     manualReady,
+    ...(numberSaved !== undefined ? { numberSaved } : {}),
     // Codex F4 round 2 (MEDIUM): a structured signal — not scraped from
     // `message` text — telling the canonical adapters (`UnifiedChat.tsx`,
     // `hub-host.tsx`) whether to START following search progress. Only
