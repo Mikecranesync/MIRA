@@ -17,6 +17,7 @@ import { withTenantContext } from "@/lib/tenant-context";
 import { deriveReadiness, deriveSearchable, type Readiness, type SearchableFix } from "@/lib/document-readiness";
 import { embedOnWriteEnabled } from "@/lib/node-knowledge-ingest";
 import { insertWithUniqueFallback } from "@/lib/pg-unique-retry";
+import { clearConfirmedNumbers } from "@/capabilities/confirmed-numbers";
 
 /** Short disambiguator for an internal backing-node name. Never user-facing. */
 function randomSuffix(): string {
@@ -457,7 +458,13 @@ export async function updateNotebook(
         WHERE tenant_id = $1::uuid AND id = $2::uuid`,
       [tenantId, notebookId, ...Object.values(fields)],
     );
-    return (res.rowCount ?? 0) > 0;
+    const ok = (res.rowCount ?? 0) > 0;
+    // #6085: an identity status or source written by hand drops the ticked numbers; only the
+    // identity card adds one (confirmed-numbers.ts).
+    if (ok && ("identityStatus" in patch || "identitySourceType" in patch)) {
+      await clearConfirmedNumbers(c, tenantId, notebookId);
+    }
+    return ok;
   });
 }
 

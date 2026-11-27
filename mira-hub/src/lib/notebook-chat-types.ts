@@ -483,6 +483,8 @@ export type NotebookIdentityProposalEvent = {
   manufacturer: string;
   model: string;
   catalogNumber?: string;
+  /** #6085: the typed number the card offers beside an unticked box. */
+  offeredNumber?: string;
 };
 
 export type NotebookChatFrame =
@@ -566,7 +568,8 @@ export function parseFrame(data: string): NotebookChatFrame | null {
     if (obj?.kind === "identity_proposal" && (
       typeof obj.manufacturer !== "string" || !obj.manufacturer.trim() ||
       typeof obj.model !== "string" || !obj.model.trim() ||
-      (obj.catalogNumber !== undefined && typeof obj.catalogNumber !== "string")
+      (obj.catalogNumber !== undefined && typeof obj.catalogNumber !== "string") ||
+      (obj.offeredNumber !== undefined && typeof obj.offeredNumber !== "string")
     )) return null;
     if (obj && FRAME_KINDS.has(obj.kind)) {
       return obj as NotebookChatFrame;

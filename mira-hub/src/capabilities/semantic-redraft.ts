@@ -25,6 +25,24 @@ export type RedraftOutcome =
   | "stopped_judge_unsafe"
   | "stopped_judge_undecided";
 
+/**
+ * #6062: which floor stopped a redraft whose outcome is `stopped_check`: the FIRST
+ * one that rejected it, in the order the route's screen applies them (the order
+ * below). `hazard_warning` is the answer validator: any rejection it returns other
+ * than the isolation advisory, whatever its kind, with the validator's own violation
+ * id recorded beside it. `error` is a floor that threw. Codes only, never text.
+ */
+export type RedraftCheckCode =
+  | "hygiene"
+  | "refusal"
+  | "uncited_claim"
+  | "rating_column"
+  | "no_citation"
+  | "hazard_warning"
+  | "prompt_leak"
+  | "bypass_ask"
+  | "error";
+
 const CLASS_CLAUSE: Record<string, string> = {
   pressure:
     "For pressure: tell the technician to relieve the pressure and verify it reads zero before any fitting, bolt " +

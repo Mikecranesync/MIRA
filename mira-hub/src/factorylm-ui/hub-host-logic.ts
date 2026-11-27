@@ -4,7 +4,7 @@
  * the shell's context snapshot says about the machine, which sources a turn is
  * allowed to cite, and what history the canonical route receives.
  */
-import { PROFILES, createShellState, shellReducer, type Attachment, type InteractionTurn, type ManualSearchStatus, type ShellAction, type QuestionTarget, type ShellFixture, type ShellState } from "../../../packages/factorylm-interaction/src";
+import { PROFILES, createShellState, shellReducer, type Attachment, type IdentityProposal, type InteractionTurn, type ManualSearchStatus, type ShellAction, type QuestionTarget, type ShellFixture, type ShellState } from "../../../packages/factorylm-interaction/src";
 import type { EquipmentNotebook, NotebookSource } from "@/lib/equipment-notebooks";
 import { buildChatBody, isAbortError, type ChatBody, type PersistedTurn, type StreamResult } from "@/components/equipment/notebook-chat-utils";
 import { isSafetyNoticeEntry } from "@/lib/notebook-chat-types";
@@ -1013,4 +1013,13 @@ export function withLivingSheetRider<B extends object>(
   openJob: { notebookId: string; jobId: string } | null,
 ): B | (B & { livingSheetJobId: string }) {
   return openJob && openJob.notebookId === notebookId ? { ...body, livingSheetJobId: openJob.jobId } : body;
+}
+
+/** The identity confirm request body (#6085: a ticked number rides as `confirmedNumber`; an
+ *  offered but unticked one is never sent). */
+export function identityConfirmBody(proposal: IdentityProposal): Record<string, string> {
+  const body: Record<string, string> = { manufacturer: proposal.manufacturer, model: proposal.model };
+  if (proposal.catalogNumber) body.catalogNumber = proposal.catalogNumber;
+  if (proposal.confirmedNumber) body.confirmedNumber = proposal.confirmedNumber;
+  return body;
 }

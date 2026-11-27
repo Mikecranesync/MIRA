@@ -38,6 +38,13 @@
  * "Not this" (reject) is NOT a server endpoint: the contract is "no identity
  * write" (T2 acceptance #2), which a pure client-side dismissal already
  * satisfies with nothing to confirm server-side.
+ *
+ * #6085: a ticked "confirmedNumber" is decided inside `confirmNotebookIdentity`'s own locked
+ * transaction, for the thread status scope only: only the confirm that settles the identity may
+ * add it (#6104 r2 F3), never alongside a catalog number (r2 F4), and it never changes the identity
+ * write. A number write that fails leaves the identity confirmed with no number, and the response
+ * says it was not saved. Only when even emptying the numbers fails does the confirm fail, so it
+ * never commits over a number an earlier identity left (round-3 pre-screen 3).
  */
 import { NextRequest, NextResponse } from "next/server";
 import { sessionOr401 } from "@/lib/session";
@@ -48,6 +55,7 @@ import {
   applicableReadySource,
   confirmNotebookIdentity,
   readAcquisition,
+  machineOrderNumber,
   startManualAcquisition,
 } from "@/capabilities/notebook-manual-acquisition";
 
@@ -62,6 +70,16 @@ const MAX_FIELD_LEN = 200;
 function readString(body: Record<string, unknown>, key: string): string {
   const v = body[key];
   return typeof v === "string" ? v.trim().slice(0, MAX_FIELD_LEN) : "";
+}
+
+/** #6085: the number the technician ticked on the identity card, with the order number it is.
+ *  Accepted only when it is at most 64 characters and exactly one order number of the card's own
+ *  machine, the rule the status scope reads saved numbers with (#6104 r1 F1/F4, r3 F6); anything
+ *  else is ignored, never an error. */
+function readConfirmedNumber(body: Record<string, unknown>, model: string): { number: string; code: string } | null {
+  const value = readString(body, "confirmedNumber");
+  const code = value && value.length <= 64 ? machineOrderNumber(value, model) : null;
+  return code ? { number: value, code } : null;
 }
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -96,6 +114,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   }
   // See header: written unconditionally, "" when absent — never left out.
   const catalogNumber = readString(body, "catalogNumber");
+  const confirmedNumber = readConfirmedNumber(body, model);
 
   const notebook = await getNotebook(ctx.tenantId, notebookId);
   if (!notebook) {
@@ -140,11 +159,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // performs, and this guard does not touch that route. "Not this" (reject)
   // never writes here either (see the route header above), so it needs no
   // change.
-  const confirmResult = await confirmNotebookIdentity(ctx.tenantId, notebookId, {
-    manufacturer,
-    model,
-    catalogNumber,
-  });
+  // An unticked confirm makes exactly the call it always made; a ticked one hands the number to the
+  // confirm's own transaction (#6104 r2 F3/F4).
+  const confirmIdentity = { manufacturer, model, catalogNumber };
+  const confirmResult = confirmedNumber
+    ? await confirmNotebookIdentity(ctx.tenantId, notebookId, confirmIdentity, confirmedNumber)
+    : await confirmNotebookIdentity(ctx.tenantId, notebookId, confirmIdentity);
   if (!confirmResult.ok) {
     if (confirmResult.error === "identity_already_confirmed") {
       return NextResponse.json(
@@ -158,6 +178,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     }
     return NextResponse.json({ error: "confirm_failed" }, { status: 500 });
   }
+
+  // #6085: present only when a ticked number came with the confirm; false when it was refused
+  // or its write failed (the identity is still confirmed, with no number).
+  const numberSaved = confirmedNumber ? confirmResult.numberSaved === true : undefined;
 
   const identity = {
     identityStatus: "user_confirmed" as const,
@@ -235,6 +259,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     model,
     catalogNumber,
     manualReady,
+    ...(numberSaved !== undefined ? { numberSaved } : {}),
     // Codex F4 round 2 (MEDIUM): a structured signal — not scraped from
     // `message` text — telling the canonical adapters (`UnifiedChat.tsx`,
     // `hub-host.tsx`) whether to START following search progress. Only

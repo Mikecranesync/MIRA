@@ -25,7 +25,7 @@
 import type { EvidenceFollowedAssessment } from "./evidence-consistency";
 
 import type { JevDecisionRecord } from "./jev-decision";
-import type { RedraftOutcome } from "../semantic-redraft";
+import type { RedraftCheckCode, RedraftOutcome } from "../semantic-redraft";
 
 export const TURN_EVIDENCE_PACKET_VERSION = "2" as const;
 
@@ -200,6 +200,14 @@ export type TurnEvidencePacketGeneration = {
  *    an earlier layer already replaced the draft).
  *  - semantic_redraft (#5941): present only when an unsafe verdict triggered the one
  *    redraft — served (then semantic_verdict is the redraft's "safe") or why it stopped.
+ *  - semantic_redraft_check (#6062): present only when semantic_redraft is stopped_check —
+ *    the first answer floor that rejected the redraft, in the order the screen applies
+ *    them: hygiene (#6030, malformed output), refusal, uncited_claim, rating_column, no_citation, hazard_warning (any answer-
+ *    validator rejection other than the isolation advisory), prompt_leak, bypass_ask, or
+ *    error (a floor threw). Absent, never null, on every other outcome.
+ *  - semantic_redraft_check_violation (#6062): present only beside hazard_warning — the
+ *    validator's own fixed violation id for the redraft (the same vocabulary as `violation`).
+ *    No redraft text is recorded anywhere.
  */
 export type SafetyOutcome = {
   layer: "pre_llm_trigger" | "deterministic_floor" | "semantic_judge" | "none";
@@ -208,6 +216,8 @@ export type SafetyOutcome = {
   violation: string | null;
   semantic_verdict: "safe" | "unsafe" | "unknown" | "not_run";
   semantic_redraft?: RedraftOutcome;
+  semantic_redraft_check?: RedraftCheckCode;
+  semantic_redraft_check_violation?: string;
 };
 
 /**
@@ -255,7 +265,9 @@ export type TurnEvidencePacketAnswerGate = {
   jev_observation_count?: number | null;
   jev_instructions_version?: string | null;
   /**
-   * How many citations the answer actually SHIPPED (#3962). Distinct from
+   * How many citations the COMMITTED answer carries (#3962): "shipped" here means
+   * shipped with the answer that was written to history, not written to the
+   * response stream (that is `response_write`). Distinct from
    * `context.chunk_count`, which is what was put in front of the model: chunks
    * in context with zero citations shipped is "evidence supplied, evidence not
    * followed", and until this field existed the two were indistinguishable in
@@ -351,6 +363,23 @@ export type TurnEvidencePacket = {
    * output never self-promotes).
    */
   jev_decision?: JevDecisionRecord | null;
+  /**
+   * What the notebook chat route WROTE to its response stream on its final path
+   * (Codex round 2 on #6082, F6). Kept apart from `answer_gate.citations_shipped`, which
+   * is the citations the committed answer carries and is what the evidence-following
+   * checks read: a response cancelled before its sources frame still committed a cited
+   * answer to history, and must not look like an uncited one.
+   *
+   * This is the route's own write, NOT delivery: a response can be cancelled with every
+   * frame written and none read. Optional: absent on every exit that is not the final
+   * path, and on packets written before it existed.
+   */
+  response_write?: {
+    /** Every frame was written to the response stream and the stream was closed. */
+    frames_written: boolean;
+    /** Citations in the sources frame when that frame was written; 0 when it was not. */
+    citations_written: number;
+  };
 };
 
 /** What is known at request.receive, before any stage has run. */

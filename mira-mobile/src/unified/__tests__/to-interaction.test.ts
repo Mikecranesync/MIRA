@@ -158,6 +158,11 @@ describe("toInteractionPart", () => {
   // (sse.ts's generic passthrough, unmodified — it's guarded legacy
   // presentation). Recognizing them HERE, in the canonical adapter, is what
   // turns the raw "Unrecognized part" inspection box into the confirm card.
+  it("#6085: carries the offered order number through", () => {
+    expect(toInteractionPart({ type: "unknown", raw: { kind: "identity_proposal", manufacturer: "Siemens", model: "TP700", offeredNumber: "6AV2124-0GC01-0AX0" } }))
+      .toEqual({ type: "identity_proposal", manufacturer: "Siemens", model: "TP700", offeredNumber: "6AV2124-0GC01-0AX0" });
+  });
+
   it("recognizes an identity_proposal raw frame and maps it to a real part", () => {
     expect(toInteractionPart({ type: "unknown", raw: { kind: "identity_proposal", manufacturer: "SMC", model: "SS5Y3-DUW01302" } }))
       .toEqual({ type: "identity_proposal", manufacturer: "SMC", model: "SS5Y3-DUW01302" });

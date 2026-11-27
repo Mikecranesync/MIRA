@@ -305,6 +305,22 @@ export interface IdentityProposal {
   /** Rarely present today (#4120 proposals don't carry one yet); forward-compatible. */
   readonly catalogNumber?: string;
   /**
+   * #6085: the one typed number the server offers beside an unticked box on the card
+   * ("<number> is this machine's number"). Set by the host adapter from the server frame.
+   */
+  readonly offeredNumber?: string;
+  /**
+   * #6104 r1 F2: set by the HOST ADAPTER to the send's request id, the same on the streamed card
+   * and on its saved copy, so a tick survives the saved copy replacing the streamed card. Absent:
+   * a new card starts unticked.
+   */
+  readonly tickKey?: string;
+  /**
+   * #6085: set by the card, only when the technician ticked the offered number; the host sends
+   * it to the confirm route. Never set by an adapter.
+   */
+  readonly confirmedNumber?: string;
+  /**
    * Light-review fix (PR #4195, "a stale proposal can overwrite a later
    * confirmed identity"): set by the HOST ADAPTER — never the renderer, never
    * the server wire frame — by comparing this proposal to the notebook's

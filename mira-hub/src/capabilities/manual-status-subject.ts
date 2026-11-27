@@ -13,6 +13,7 @@ import {
 } from "@/capabilities/notebook-manual-acquisition";
 import { confirmedCatalogNumber } from "@/capabilities/notebook-manual-identity";
 import { DOCUMENT_BASES, SUBJECT_READ_STEPS } from "@/capabilities/conversation-subject";
+import { numbersForIdentity, type ConfirmedNumberEntry } from "@/capabilities/confirmed-numbers";
 
 /** The conversation history the detail read returns, and the first window the subject reads. */
 export const TURN_WINDOW = 50;
@@ -93,6 +94,30 @@ export function subjectMachine(status: ManualSearchStatus | null, notebook: Equi
 }
 
 /**
+ * #6085: whether confirmed numbers can count at all: an identity a technician settled on the
+ * identity card (the only writer of source `user`; a nameplate photo settles without the card, so
+ * it never brings a number back), and a status that names the notebook's own model (the rule
+ * `catalogNumber` follows above). When false, the detail read never reads them.
+ */
+export function numbersApply(status: ManualSearchStatus | null, notebook: EquipmentNotebook): boolean {
+  if (notebook.identityStatus !== "user_confirmed" && notebook.identityStatus !== "verified") return false;
+  if (notebook.identitySourceType !== "user") return false;
+  const model = status?.model ?? notebook.model;
+  return Boolean(model) && model === notebook.model;
+}
+
+/** #6085: the confirmed numbers that count for the machine the status names: only entries
+ *  saved for the notebook's current maker and model, and only when `numbersApply` holds. */
+export function numbersForMachine(
+  entries: readonly ConfirmedNumberEntry[],
+  status: ManualSearchStatus | null,
+  notebook: EquipmentNotebook,
+): string[] {
+  if (!numbersApply(status, notebook)) return [];
+  return numbersForIdentity(entries, { manufacturer: notebook.manufacturer, model: notebook.model });
+}
+
+/**
  * The subject of one conversation, from its newest `turns` (the first window). When the window
  * settles nothing and older turns exist, it reads further back once (the same widest step the
  * chat path's subject read uses); still nothing past that bound, the subject is out of reach.
@@ -104,15 +129,28 @@ export function subjectReader(input: {
   threadId: string;
   turns: Turn[];
   machine: Machine;
+  /** #6085: numbers the technician confirmed; read only when the scope without them is "other". */
+  confirmedNumbers?: () => Promise<readonly string[]>;
 }) {
-  const { tenantId, notebookId, viewerUserId, threadId, turns, machine } = input;
+  const { tenantId, notebookId, viewerUserId, threadId, turns, machine, confirmedNumbers } = input;
+  let numbers: Promise<readonly string[]> | null = null;
+  const scopeOf = async (questions: string[]): Promise<ReturnType<typeof threadStatusScope>> => {
+    const scope = threadStatusScope(questions, machine);
+    if (scope !== "other" || !confirmedNumbers) return scope;
+    numbers ??= confirmedNumbers().catch((err: unknown) => {
+      console.warn(`[manual-status-subject] confirmed numbers unavailable notebook=${notebookId}: ${(err as Error).message}`);
+      return [];
+    });
+    const confirmed = await numbers;
+    return confirmed.length ? threadStatusScope(questions, { ...machine, confirmedNumbers: confirmed }) : scope;
+  };
   return {
     /** Every saved question: what the shown status follows. */
     shown: async (): Promise<SubjectScope> => {
-      const scope = threadStatusScope(turns.map((t) => t.question), machine);
+      const scope = await scopeOf(turns.map((t) => t.question));
       if (scope !== "undecided" || turns.length < TURN_WINDOW) return scope;
       const rows = await listTurns(tenantId, notebookId, WIDEST_SUBJECT_READ, { viewerUserId, threadId });
-      const widest = threadStatusScope(rows.map((t) => t.question), machine);
+      const widest = await scopeOf(rows.map((t) => t.question));
       return widest === "undecided" && rows.length >= WIDEST_SUBJECT_READ ? "out_of_reach" : widest;
     },
   };
