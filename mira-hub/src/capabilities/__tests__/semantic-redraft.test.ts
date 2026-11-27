@@ -9,7 +9,7 @@ import {
   withRedraftInstruction,
   withRedraftUsage,
 } from "@/capabilities/semantic-redraft";
-import { citationSupportGaps } from "@/capabilities/supporting-quote";
+import { citationSupportGaps, findValues } from "@/capabilities/supporting-quote";
 
 const deps = (over: Partial<Parameters<typeof runSemanticRedraft>[0]> = {}) => ({
   aborted: vi.fn(() => false),
@@ -194,5 +194,94 @@ describe("citationSupportGaps (#6020)", () => {
 
   it("a sentence citing two pages is supported when either page holds its words", () => {
     expect(gaps("Check the hydraulic hose for wear [1][2].", [PAINT, page("Hose routing diagram", 2)])).toEqual([]);
+  });
+});
+
+// #6049 (Codex round 3 on #6001, F8): the value check dropped EVERY all-zero value, so a cited
+// zero setpoint ("set the delay to 0 ms") was never compared with its page. A zero is exempt
+// only as a reading of residual pressure or voltage.
+describe("#6049: a zero value is exempt only as a residual pressure or voltage reading", () => {
+  const page = (content: string, n = 1) => ({ content, sourceUrl: "doc", sourcePage: n });
+  const D800 = page("Pre-charge sequence. Set the pre-charge delay to 800 ms before enabling the main contactor.");
+  const D0 = page("Pre-charge sequence. Set the pre-charge delay to 0 ms when the bypass kit is fitted.");
+  const REG = page("Outlet regulator. Set the outlet regulator to 40 psi for normal running.");
+  const HOSE = page("Inspect the hydraulic hoses for wear and abrasion every 500 hours. Torque the fittings to 25 N·m.");
+  const MOTOR = page("Check the motor current at the drive display. Normal running current is 12 A.");
+  const BUS = page("DC bus capacitors hold a charge after power is removed. Measure the DC bus at the test terminals.");
+  const gaps = (a: string, p: ReturnType<typeof page>) => citationSupportGaps(a, [p], "what do I check next");
+  const VALUE = [{ citationId: "1", reason: "value" }];
+
+  it("precondition: the value reader sees a usable all-zero value in each answer, and no zero on the pages that must stop it", () => {
+    const usable = (text: string, side: "answer" | "source") =>
+      findValues(text, side).filter((v) => v.usable).map((v) => ({ nums: v.nums, unit: v.unit }));
+    expect(usable("Set the pre-charge delay to 0 ms [1].", "answer")).toEqual([{ nums: [0], unit: "ms" }]);
+    expect(usable("Set the outlet regulator to 0 psi [1].", "answer")).toEqual([{ nums: [0], unit: "psi" }]);
+    expect(usable("Confirm the motor current reads 0 A [1].", "answer")).toEqual([{ nums: [0], unit: "A" }]);
+    expect(usable("Verify the DC bus reads 0 V [1].", "answer")).toEqual([{ nums: [0], unit: "V" }]);
+    expect(usable(D800.content, "source")).toEqual([{ nums: [800], unit: "ms" }]);
+    expect(usable(D0.content, "source")).toEqual([{ nums: [0], unit: "ms" }]);
+    expect(usable(REG.content, "source")).toEqual([{ nums: [40], unit: "psi" }]);
+    expect(usable(MOTOR.content, "source")).toEqual([{ nums: [12], unit: "A" }]);
+    expect(usable(BUS.content, "source")).toEqual([]);
+  });
+
+  it("a cited zero-delay setting is a gap when the page says 800 ms", () => {
+    expect(gaps("Set the pre-charge delay to 0 ms [1].", D800)).toEqual(VALUE);
+  });
+
+  it("control: the same zero-delay setting is supported when the page says 0 ms", () => {
+    expect(gaps("Set the pre-charge delay to 0 ms [1].", D0)).toEqual([]);
+  });
+
+  it("a zero pressure SETTING is checked: 0 psi against a page that says 40 psi", () => {
+    expect(gaps("Set the outlet regulator to 0 psi [1].", REG)).toEqual(VALUE);
+  });
+
+  it("a reading word beside a setting word in the same clause is still a setting", () => {
+    expect(gaps("Adjust the outlet regulator until the gauge reads 0 psi [1].", REG)).toEqual(VALUE);
+  });
+
+  it("a zero reading in a unit that is not pressure or voltage is checked", () => {
+    expect(gaps("Confirm the motor current reads 0 A [1].", MOTOR)).toEqual(VALUE);
+  });
+
+  it("a zero with no reading word is checked, even in a pressure unit", () => {
+    expect(gaps("Run the outlet regulator at 0 psi [1].", REG)).toEqual(VALUE);
+  });
+
+  it("control: a zero residual-pressure reading is not a value claim", () => {
+    expect(gaps("Relieve the pressure until the hose gauge reads 0 psi [1].", HOSE)).toEqual([]);
+    expect(gaps("Open the bleed valve and confirm the hose gauge shows 0 bar [1].", HOSE)).toEqual([]);
+  });
+
+  it("control: a zero residual-voltage reading is not a value claim", () => {
+    expect(gaps("Verify the DC bus reads 0 V at the test terminals [1].", BUS)).toEqual([]);
+    expect(gaps("Measure the DC bus and confirm the meter reads 0 VDC [1].", BUS)).toEqual([]);
+  });
+
+  it("the clause is the value's own: a setting word in another clause or sentence does not un-exempt a reading, and a reading word elsewhere does not exempt a setting", () => {
+    // Setting word before a comma; the reading is in its own clause.
+    expect(gaps("Set the selector to OFF, then verify the hose gauge reads 0 psi [1].", HOSE)).toEqual([]);
+    // Setting word in the previous sentence.
+    expect(gaps("Adjust nothing yet. Verify the hose gauge reads 0 psi [1].", HOSE)).toEqual([]);
+    // Reading word in another clause; the zero itself is a setting.
+    expect(gaps("Verify the gauge is steady, then set the outlet regulator to 0 psi [1].", REG)).toEqual(VALUE);
+    // A decimal point is not a clause break: the setting word before "4.2" still governs the value.
+    // ("section 4.2" is a bare number, not a value claim, so the only claim here is the 0 psi.)
+    expect(findValues("Adjust the outlet regulator per section 4.2 until the gauge reads 0 psi [1].", "answer").filter((v) => v.usable).map((v) => v.text.trim())).toEqual(["0 psi"]);
+    expect(gaps("Adjust the outlet regulator per section 4.2 until the gauge reads 0 psi [1].", REG)).toEqual(VALUE);
+    // The clause also ends at the next break: a setting word AFTER it does not un-exempt the reading.
+    expect(gaps("Verify the hose gauge reads 0 psi [1], then set the selector to RUN.", HOSE)).toEqual([]);
+    expect(gaps("Verify the hose gauge reads 0 psi [1]. Then adjust the hose clamp.", HOSE)).toEqual([]);
+  });
+
+  it("a NON-zero pressure or voltage reading is a value claim: only zero is exempt", () => {
+    expect(gaps("Relieve the pressure until the hose gauge reads 25 psi [1].", HOSE)).toEqual(VALUE);
+    expect(gaps("Verify the DC bus reads 24 V at the test terminals [1].", BUS)).toEqual(VALUE);
+  });
+
+  it("control: a non-zero value is checked exactly as before", () => {
+    expect(gaps("Set the pre-charge delay to 800 ms [1].", D800)).toEqual([]);
+    expect(gaps("Set the pre-charge delay to 10 ms [1].", D800)).toEqual(VALUE);
   });
 });

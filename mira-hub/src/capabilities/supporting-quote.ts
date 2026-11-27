@@ -692,12 +692,41 @@ function termOnPage(term: string, pageTokens: readonly string[]): boolean {
 
 export type CitationSupportGap = { citationId: string; reason: "no_page" | "value" | "terms" };
 
+// #6049: a zero is exempt from the value check only as a READING of residual pressure or
+// voltage, the thing the redraft instruction asks the model to state ("verify it reads
+// zero"). Every other zero (a delay, a setpoint, a current, a zero that is set instead of
+// read) is a value claim like any other and must be on the cited page.
+const RESIDUAL_ENERGY_UNITS = new Set(["psi", "bar", "Pa", "kPa", "MPa", "V", "mV", "kV", "VAC", "VDC", "Vrms"]);
+const READING_RE = /\b(?:reads?|reading|shows?|indicates?|displays?|gauge|meter|verify|verified|confirm|confirmed)\b/i;
+const SETTING_RE = /\b(?:set|setting|setpoint|adjust\w*|program\w*|configur\w*|enter\w*|parameter|delay|timer|timing|limit|threshold)\b/i;
+// A clause ends at , ; : a line break, or a sentence end. A dot inside a number ("1.5") is
+// not followed by whitespace, so it does not end one.
+const CLAUSE_BREAK_RE = /[,;:\n]|[.!?](?=\s|$)/g;
+
+/** `text` is the answer the value's offsets index (markers masked, offsets kept). */
+function isZeroReading(v: Value, text: string): boolean {
+  if (!v.nums.every((n) => n === 0) || v.unit === null || !RESIDUAL_ENERGY_UNITS.has(v.unit)) return false;
+  let from = 0;
+  let to = text.length;
+  for (const m of text.matchAll(CLAUSE_BREAK_RE)) {
+    const at = m.index ?? 0;
+    if (at < v.start) from = at + 1;
+    else if (at >= v.end) {
+      to = at;
+      break;
+    }
+  }
+  const clause = text.slice(from, to);
+  return READING_RE.test(clause) && !SETTING_RE.test(clause);
+}
+
 /**
  * #6020: where an answer's cited steps are not supported by the pages they cite. Deterministic
  * and deliberately a low floor, read on the model-visible text of each page:
  *   - a marker that resolves to no retrieved page is a gap;
  *   - every value (number + unit) the answer assigns to a citation must be found on that page,
- *     except a zero reading (the redraft instruction asks the model to say a gauge reads zero);
+ *     except a zero reading of residual pressure or voltage (the redraft instruction asks the
+ *     model to say a gauge reads zero); a zero setting, delay or other quantity is checked (#6049);
  *   - a sentence carrying markers whose content words appear on NONE of the pages it cites is a
  *     gap. A sentence with no content words left (only isolation/restart vocabulary) is neutral.
  *     Words of the question and of `identity` (the machine's own name) are not support while the
@@ -716,6 +745,8 @@ export function citationSupportGaps(
   const gaps: CitationSupportGap[] = [];
   const used = [...new Set([...answer.matchAll(MARKER_RE)].map((m) => m[1]))];
   const assigned = assignValues(answer, question);
+  // The text assignValues' offsets index: markers blanked, every other character in place.
+  const masked = answer.replace(MARKER_RE, (m) => " ".repeat(m.length));
   for (const id of used) {
     const page = pages[Number(id) - 1];
     if (!page) {
@@ -724,7 +755,7 @@ export function citationSupportGaps(
     }
     const srcVals = page.flatMap((t) => findValues(t, "source"));
     // Usable values only (number + table unit); a bare "step 3" is left to the word check.
-    const claims = (assigned.get(id) ?? []).filter((c) => c.usable && !c.nums.every((n) => n === 0));
+    const claims = (assigned.get(id) ?? []).filter((c) => c.usable && !isZeroReading(c, masked));
     if (claims.some((c) => !srcVals.some((s) => satisfies(s, c)))) gaps.push({ citationId: id, reason: "value" });
   }
   const pageTokens = pages.map((p) => supportTerms(p.join(" ")));
