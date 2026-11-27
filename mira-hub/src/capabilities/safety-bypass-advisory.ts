@@ -259,7 +259,7 @@ const FAULTY =
   /\b(?:bad|faulty|failed|failing|broken|dead|damaged|stuck|missing|tripp\w*|trips|fault\w*|not\s+working|keeps?\s+\w+ing|went\s+out|is\s+out)\b/;
 /** #6088 r1 F5: the terminals a jumper joins: the one the rule matched, then "to/and/-/ S2 ..." straight after it. */
 const ENDPOINT_TAIL = new RegExp(
-  `^(?:\\s*(?:[-/,&+]|\\bto\\b|\\band\\b|\\bwith\\b|\\bacross\\b)?\\s*(?:(?:terminals?|pins?)\\s+)?\\b${TERMINAL})*`,
+  `^(?:\\s*(?:[-/,&+]|\\bto\\b|\\band\\b|\\bwith\\b|\\bacross\\b)?\\s*(?:the\\s+)?(?:(?:terminals?|pins?)\\s+)?\\b${TERMINAL}(?:\\s+(?:terminals?|pins?)\\b)?)*`,
   "i",
 );
 const jumperEndpoints = (clause: string, m: RegExpMatchArray): string[] =>
@@ -309,11 +309,11 @@ function asksBrakeRelease(clause: string): boolean {
 // is not a safe order (it releases now); "after I reset the HMI" or "once the guard is restored" restores nothing
 // that is off; "once STO is not restored" is no condition at all.
 const RESTORED_PASSIVE = new RegExp(
-  `\\b(?:after|once|when)\\s+${ART}(?<dev>${DEVICE}|brake\\s+monitoring|it|they)(?:\\s+\\S+){0,2}?\\s+(?:is|are|has\\s+been|have\\s+been|gets?|comes?)\\s+(?:\\w+\\s+)?(?:restored|reinstated|re-?enabled|reset|back(?:\\s+on|\\s+in)?|enabled|active|energi[sz]ed|in\\s+place|on)\\b`,
+  `\\b(?:after|once|when)\\s+${ART}(?<dev>${DEVICE}|brake\\s+monitoring|it|they)(?:\\s+\\S+){0,2}?\\s+(?:is|are|has\\s+been|have\\s+been|gets?|comes?)\\s+(?:\\w+\\s+)?(?:restored|re-?enabled|reset|back\\s+on|enabled|active|energi[sz]ed|in\\s+place)\\b`,
   "gi",
 );
 const RESTORED_ACTIVE = new RegExp(
-  `\\b(?:after|once|when)\\s+(?:\\S+\\s+){0,3}?(?:restor(?:e|es|ed|ing)|re-?enabl(?:e|es|ed|ing)|reinstat(?:e|es|ed|ing)|reset(?:s|ting)?|reconnect(?:s|ed|ing)?)\\s+${ART}(?<dev>${DEVICE}|brake\\s+monitoring)\\b`,
+  `\\b(?:after|once|when)\\s+(?:\\S+\\s+){0,3}?(?:restor(?:e|es|ed|ing)|re-?enabl(?:e|es|ed|ing)|reset(?:s|ting)?)\\s+${ART}(?<dev>${DEVICE}|brake\\s+monitoring)\\b`,
   "gi",
 );
 const SAFETY_ON_WITH = new RegExp(
@@ -335,6 +335,7 @@ function deviceKey(name: string): string {
  * counts: carrying it across clauses let a separate, unconditional release inherit it (#6088 r2 F2).
  */
 function releaseInSafeOrder(brake: string, offKeys: Set<string>): boolean {
+  if (/\b(?:now|right\s+away|immediately|first)\b/.test(brake)) return false;
   const restored = new Set<string>();
   for (const re of [RESTORED_PASSIVE, RESTORED_ACTIVE, SAFETY_ON_WITH]) {
     for (const m of allMatches(re, brake)) {

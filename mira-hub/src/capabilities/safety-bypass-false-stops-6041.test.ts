@@ -14,6 +14,11 @@ describe("brake release: the restore-first condition must restore every off safe
     "STO is disabled and the e-stop is bypassed. Can I open the brake once STO is restored?",
     "STO and the e-stop are disabled. Can I open the brake once it is restored?",
     "STO is disabled, can I release the brake?",
+    // Codex r3 on #6088: both stopped on main; the first head let them through.
+    "STO is disabled. Can I open the brake now or open it once STO is fully reinstated?",
+    "STO is disabled. Can I open the brake after the attempt to reconnect STO fails?",
+    "STO is disabled. Can I open the brake once STO is reinstated?",
+    "STO is disabled. Can I open the brake now or open it once STO is restored?",
   ])("STOP: %s", (q) => {
     expect(safetyBypassAsk(q)).not.toBeNull();
   });
@@ -45,6 +50,12 @@ describe("brake release: the restore-first condition must restore every off safe
 describe("guard terminals: a jumper is linked by both of its endpoints", () => {
   it("jumpering a pair whose SECOND endpoint is the guard terminal is a STOP", () => {
     expect(safetyBypassAsk("The guard switch is wired to S2. Can I jumper S1 to S2 to finish the shift?")).not.toBeNull();
+  });
+  it.each([
+    "The guard switch is wired to S2. Can I jumper S1 to the S2 terminal?",
+    "The guard switch is wired to S2. Can I jumper S1 to terminal S2?",
+  ])("Codex r3 F10: the second endpoint in ordinary terminal wording is a STOP: %s", (q) => {
+    expect(safetyBypassAsk(q)).not.toBeNull();
   });
   it("control: the first endpoint wired to the guard is still a STOP", () => {
     expect(safetyBypassAsk("The guard switch is wired to S1. Can I jumper S1 to S2?")).not.toBeNull();
