@@ -2000,6 +2000,38 @@ describe("#6048 — a body cancel after the commit still persists the packet and
     expect(r.packet.persistence).toMatchObject({ turn_row_id: ROW_ID, outcome: "ok" });
   });
 
+  // The other side of F9. The progress stream is a wrapper too, and it stays trusted: it
+  // forwards the turn's bytes as they are, cut only at the end of a whole frame. The same
+  // awkward answer (it quotes the end marker and carries a character outside the basic
+  // plane) reaches the client exactly as recorded, with and without the progress stream,
+  // and the decision call is made once.
+  it.each([false, true])("F9 control: decision call on, no sheet (progress stream %s), the answer quotes the end marker and carries a wide character: the client parses every frame, the content is the recorded answer, ONE request", async (progress) => {
+    decisionCallOn();
+    const QUOTING = "Hold reset until the panel log shows data: [DONE] then release it \u{1F527} slowly.";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string | URL | Request, init?: RequestInit) =>
+        typeof init?.body === "string" && init.body.includes('"stream":true') ? answerStream(QUOTING) : new Response("down", { status: 500 }),
+      ),
+    );
+    const res = await POST(reqWith(PLAIN_TURN, { progress }), params);
+    const raw = await res.text();
+    const frames = raw
+      .split("\n\n")
+      .filter((l) => l.startsWith("data: ") && l.trim() !== "data: [DONE]")
+      .map((l) => JSON.parse(l.slice(6)) as Frame & { status?: string }); // throws on a frame that was cut or rewritten
+    const r = await settled();
+    expect(r.turn.answerStatus).toBe("answered");
+    expect(String(r.turn.answerText)).toContain(QUOTING);
+    const shown = frames.filter((f) => f.kind === "content").map((f) => f.content ?? "").join("");
+    expect(shown).toBe(r.turn.answerText);
+    expect(raw.split("\n\n").filter((l) => l.trim() === "data: [DONE]")).toHaveLength(1);
+    expect(frames.some((f) => (f as { kind?: string }).kind === "progress")).toBe(progress);
+    expect(vendorRequests()).toHaveLength(1);
+    expect(r.packet.jev_decision ?? null).not.toBeNull();
+    expectDispositionMatchesHistory(r, 1);
+  });
+
   // F11: the tracker says yes the moment both responses are read to their end, and a
   // promise keeps its first answer. A request abort seen after that, before the settle
   // reaches the decision call, must still stop the call. The packet and usage do not depend on it.
