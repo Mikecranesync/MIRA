@@ -32,7 +32,8 @@
  *  - F9: `rewritten()`. Reading both ends proves bytes were taken, not that a wrapper in
  *    between passed on the bytes it read. A wrapper that decodes and re-encodes the stream
  *    (the sheet receipt) can corrupt a frame on the way. The route reports such a wrapper
- *    here, and nothing is confirmed for that turn, whenever it is reported.
+ *    here whenever it wrapped the body, damaged or not, and nothing is confirmed for that
+ *    turn, whenever it is reported.
  * So `confirmed` is the answer as of the moment it resolves, and the caller acts on it at
  * once: a later call can say no where an earlier one said yes, never the other way round.
  *
@@ -44,7 +45,7 @@ export type ResponseHandoff = {
   own(res: Response): Response;
   /** Wrap the response that leaves the route, after the last wrapper. Call it once. */
   final(res: Response): Response;
-  /** A wrapper between `own` and `final` rewrites the bytes: nothing can be confirmed for this turn. */
+  /** A wrapper between `own` and `final` re-encodes the bytes (damaged or not): nothing can be confirmed for this turn. */
   rewritten(): void;
   /** True only on a confirmed full handoff; false on anything else, including `waitMs` passing first. */
   confirmed(waitMs: number): Promise<boolean>;

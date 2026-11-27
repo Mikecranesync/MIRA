@@ -1663,8 +1663,9 @@ async function handleChatTurn(
     // abort. (The outer one alone is not enough either: when a wrapper fails, the progress
     // stream ends cleanly with an error frame and the answer never passed through it.)
     // Two things withdraw that yes even after both were read (Codex round 4, F9 and F11):
-    // a request abort seen by the time this call would start, and a sheet receipt that
-    // rewrote the bytes between the two responses (it can corrupt the answer frame). No
+    // a request abort seen by the time the tracker answers (the call below starts on that
+    // answer with nothing awaited in between), and a sheet receipt that wrapped the body
+    // between the two responses (it re-encodes it and can corrupt the answer frame). No
     // tracker, a cancel, an abort, an error, or no answer within HANDOFF_WAIT_MS all mean
     // NO CALL: unknown is never a yes. A confirmed handoff is the SERVER'S view only: the
     // runtime took every byte and its end, and reported no cancellation. A phone that
@@ -6753,8 +6754,9 @@ export async function POST(req: NextRequest, routeCtx: { params: Promise<{ id: s
   // the way (#6105). Both responses are still read to their end, so reading alone would
   // confirm an answer the client could not parse. When the receipt hands back a response of
   // its own (it wrapped the body), the tracker is told and nothing is confirmed for this
-  // turn. When it hands back the response it was given (no job, no body, an error of its
-  // own), the bytes are the turn's own and the tracker decides as before.
+  // turn, damaged or not: the route cannot tell which. When it hands back the response it
+  // was given (no body, no job, or the job read failing, all before it reads a byte), the
+  // bytes are the turn's own and the tracker decides as before.
   const receipted = async (inner: Response): Promise<Response> => {
     if (!sheetReceiptCtx) return inner;
     const out = await withSheetReceipt(inner, sheetReceiptCtx);

@@ -265,7 +265,7 @@ describe("response handoff: a cancel, an abort or a source error is a no", () =>
     expect(await within(handoff.confirmed(WAIT), QUICK)).toBe(true);
   });
 
-  it("an answer already given is not changed by a later abort (the caller acts on it at once)", async () => {
+  it("each answer is as of the moment it is given: a yes before the abort, a no after it", async () => {
     const ac = new AbortController();
     const handoff = createResponseHandoff(ac.signal);
     await readAll(both(handoff, source(["a"]).stream).body!.getReader());
@@ -277,7 +277,7 @@ describe("response handoff: a cancel, an abort or a source error is a no", () =>
 
   // Codex round 4 on #6082, F9: a wrapper that rewrites the bytes between the two responses
   // can corrupt a frame while both are still read to their end.
-  it("rewritten: both responses read to their end, but a wrapper between them rewrote the bytes -> not confirmed", async () => {
+  it("a rewrite reported before the read (the order the route produces), both responses then read to their end -> not confirmed", async () => {
     const handoff = createResponseHandoff();
     const own = handoff.own(sse(source(["a", "b"]).stream));
     const final = handoff.final(new Response(own.body!.pipeThrough(new TransformStream<Uint8Array, Uint8Array>()), { status: own.status }));

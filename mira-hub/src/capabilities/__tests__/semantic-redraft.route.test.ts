@@ -1935,22 +1935,29 @@ describe("#6048 — a body cancel after the commit still persists the packet and
   });
 
   // ── Codex round 4 on #6082 (F9, F11) ─────────────────────────────────────────
-  // F9: the sheet receipt REWRITES the turn's bytes (it decodes them, looks for the end
-  // marker anywhere in the text and re-encodes), and it can corrupt the answer frame on the
-  // way (#6105). Both responses are still read to their end, so the tracker alone would say
-  // yes. A response the receipt rewrote is not a verified handoff: no decision call.
-  it.each([false, true])("F9: decision call on, sheet on (progress stream %s), the receipt frame inserted, the response read to its end: the receipt rewrote the bytes, so nothing is sent to the vendor; ONE packet and usage row", async (progress) => {
+  // F9: the sheet receipt RE-ENCODES the turn's bytes (it decodes them, looks for the end
+  // marker anywhere in the text and encodes the text again), and it can corrupt the answer
+  // frame on the way (#6105). Both responses are still read to their end, so the tracker
+  // alone would say yes. A response the receipt wrapped is not a verified handoff, whether
+  // or not this one was damaged: no decision call.
+  it.each([false, true])("F9: decision call on, sheet on (progress stream %s), the receipt frame inserted, an intact answer read to its end: the receipt re-encoded the response, so nothing is sent to the vendor; ONE packet and usage row", async (progress) => {
     decisionCallOn();
     sheetOn();
     stubFetch(REDRAFT, [verdict("safe", "none")]);
     holdReceiptRead(SHEET_JOB).release();
     const res = await POST(reqWith(SHEET_TURN, { progress }), params);
     const text = await res.text();
-    // Preconditions: the receipt really wrapped this response, and the answer went out whole.
-    expect(text).toContain('"kind":"sheet_receipt"');
-    expect(text).toContain(DRAFT1.split(" ")[0]);
-    expect(text).toContain("data: [DONE]");
     const r = await settled();
+    // Preconditions: the receipt really wrapped this response, and THIS answer went out
+    // whole (every frame parses, the content is the recorded answer). The refusal is for
+    // every response the receipt re-encoded, damaged or not: the route cannot tell which.
+    expect(text).toContain('"kind":"sheet_receipt"');
+    const frames = text
+      .split("\n\n")
+      .filter((l) => l.startsWith("data: ") && l.trim() !== "data: [DONE]")
+      .map((l) => JSON.parse(l.slice(6)) as Frame);
+    expect(frames.filter((f) => f.kind === "content").map((f) => f.content ?? "").join("")).toBe(r.turn.answerText);
+    expect(text.split("\n\n").filter((l) => l.trim() === "data: [DONE]")).toHaveLength(1);
     expect(vendorRequests()).toHaveLength(0);
     expect(evaluateMock).not.toHaveBeenCalled();
     expect(r.packet.jev_decision ?? null).toBeNull();
@@ -2067,7 +2074,7 @@ describe("#6048 — a body cancel after the commit still persists the packet and
     expectDispositionMatchesHistory(r, 1);
   });
 
-  it("F5: sheet on without the progress stream, the receipt frame inserted: the reader takes every frame through the end marker and then cancels -> nothing is sent (the tracker is on the response that leaves the route, not on the one the receipt reads)", async () => {
+  it("F5: sheet on without the progress stream, the receipt frame inserted: the reader takes every frame through the end marker and then cancels -> nothing is sent, ONE packet and usage row", async () => {
     decisionCallOn();
     sheetOn();
     stubFetch(REDRAFT, [verdict("safe", "none")]);
