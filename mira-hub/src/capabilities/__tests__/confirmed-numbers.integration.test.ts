@@ -52,6 +52,11 @@ async function makeBlank(entries: unknown[] = []): Promise<string> {
 }
 const status = async (nb: string) =>
   (await testPool.query<{ identity_status: string | null }>(`SELECT identity_status FROM equipment_notebooks WHERE id = $1::uuid`, [nb])).rows[0]!.identity_status;
+const source = async (nb: string) =>
+  (await testPool.query<{ identity_source_type: string | null }>(`SELECT identity_source_type FROM equipment_notebooks WHERE id = $1::uuid`, [nb])).rows[0]!.identity_source_type;
+/** The order numbers stored on the row, read as the owner (not through the scope). */
+const codes = async (nb: string) =>
+  ((await testPool.query<{ c: unknown }>(`SELECT confirmed_numbers AS c FROM equipment_notebooks WHERE id = $1::uuid`, [nb])).rows[0]!.c as { code?: string }[]).map((e) => e.code);
 const scopeOf = async (nb: string, question = J2) =>
   threadStatusScope([question], { ...ENTRY, catalogNumber: "", recordCatalog: null, confirmedNumbers: numbersForIdentity(await readConfirmedNumbers(TENANT, nb), ENTRY) });
 const wipe = () => testPool.query(`DELETE FROM equipment_notebooks WHERE tenant_id IN ($1::uuid, $2::uuid)`, [TENANT, OTHER]);
@@ -242,7 +247,7 @@ describe("migration 118 + the number decided in the identity confirm (real Postg
 
   // A Hub deployed before migration 118: every settling confirm now writes the column, ticked or
   // not. Without the column, both still confirm the identity.
-  it("without the column (before migration 118), ticked and unticked settling confirms both still confirm", async () => {
+  it("without the column (before migration 118), ticked and unticked settling confirms both still confirm, and a by-hand status PATCH still saves", async () => {
     const ticked = await makeBlank();
     const unticked = await makeBlank();
     await testPool.query(`ALTER TABLE equipment_notebooks DROP COLUMN confirmed_numbers`);
@@ -253,6 +258,8 @@ describe("migration 118 + the number decided in the identity confirm (real Postg
       expect(await status(ticked)).toBe("user_confirmed");
       expect(await status(unticked)).toBe("user_confirmed");
       expect(await readConfirmedNumbers(TENANT, ticked)).toEqual([]);
+      expect(await updateNotebook(TENANT, unticked, { identityStatus: "candidate" })).toBe(true);
+      expect(await status(unticked)).toBe("candidate");
     } finally {
       await testPool.query(`ALTER TABLE equipment_notebooks ADD COLUMN IF NOT EXISTS confirmed_numbers JSONB NOT NULL DEFAULT '[]'::jsonb`);
     }
@@ -322,6 +329,7 @@ describe("migration 118 + the number decided in the identity confirm (real Postg
     const nb = await makeBlank();
     expect(await confirmNotebookIdentity(TENANT, nb, ID, NUMBER)).toEqual({ ok: true, numberSaved: true });
     await settleByPhoto(nb);
+    expect(await codes(nb)).toEqual(["6AV21240GC010AX0"]); // precondition: still stored
     expect(await confirmNotebookIdentity(TENANT, nb, ID)).toEqual({ ok: true });
     expect(await scopeOf(nb, J2)).toBe("other");
   });
@@ -329,6 +337,7 @@ describe("migration 118 + the number decided in the identity confirm (real Postg
     const nb = await makeBlank();
     expect(await confirmNotebookIdentity(TENANT, nb, ID, NUMBER)).toEqual({ ok: true, numberSaved: true });
     await settleByPhoto(nb);
+    expect(await codes(nb)).toEqual(["6AV21240GC010AX0"]); // precondition: still stored
     expect(await confirmNotebookIdentity(TENANT, nb, ID, OTHER_NUMBER)).toEqual({ ok: true, numberSaved: true });
     expect(await scopeOf(nb, J2_WRONG)).toBe("own");
     expect(await scopeOf(nb, J2)).toBe("other");
@@ -361,6 +370,7 @@ describe("migration 118 + the number decided in the identity confirm (real Postg
     expect(await status(nb)).toBe("candidate"); // precondition: the identity is reopened
     expect(await updateNotebook(TENANT, nb, { model: "TP700" })).toBe(true);
     expect(await status(nb)).toBe("candidate");
+    expect(await codes(nb)).toEqual(["6AV21240GC010AX0"]); // precondition: still stored
     expect(await confirmNotebookIdentity(TENANT, nb, ID)).toEqual({ ok: true });
     expect(await status(nb)).toBe("user_confirmed");
     expect(await scopeOf(nb, J2)).toBe("other");
@@ -371,8 +381,44 @@ describe("migration 118 + the number decided in the identity confirm (real Postg
     expect(await confirmNotebookIdentity(TENANT, nb, ID, NUMBER)).toEqual({ ok: true, numberSaved: true });
     expect(await updateNotebook(TENANT, nb, { model: "TP900" })).toBe(true);
     expect(await updateNotebook(TENANT, nb, { model: "TP700" })).toBe(true);
+    expect(await codes(nb)).toEqual(["6AV21240GC010AX0"]); // precondition: still stored
     expect(await confirmNotebookIdentity(TENANT, nb, ID, OTHER_NUMBER)).toEqual({ ok: true, numberSaved: true });
     expect(await scopeOf(nb, J2_WRONG)).toBe("own");
     expect(await scopeOf(nb, J2)).toBe("other");
+  });
+
+  // Pre-screen 2 of round 3: the notebook PATCH can also write the identity status or source by
+  // hand (raw API; no shipped client sends one). A status or source written by hand drops the
+  // ticked numbers: only the identity card adds one.
+  it("a PATCH that writes the identity status by hand drops the ticked number: changed away and back, it counts none", async () => {
+    const nb = await makeBlank();
+    expect(await confirmNotebookIdentity(TENANT, nb, ID, NUMBER)).toEqual({ ok: true, numberSaved: true });
+    expect(await scopeOf(nb, J2)).toBe("own"); // precondition: the tick counts
+    expect(await updateNotebook(TENANT, nb, { model: "TP900" })).toBe(true);
+    expect(await updateNotebook(TENANT, nb, { model: "TP700", identityStatus: "user_confirmed" })).toBe(true);
+    expect(await status(nb)).toBe("user_confirmed"); // precondition: settled again, by hand
+    expect(await source(nb)).toBe("user");
+    expect(await readConfirmedNumbers(TENANT, nb)).toEqual([]);
+    expect(await scopeOf(nb, J2)).toBe("other");
+  });
+
+  it("a PATCH that writes the identity source by hand drops the ticked number", async () => {
+    const nb = await makeBlank();
+    expect(await confirmNotebookIdentity(TENANT, nb, ID, NUMBER)).toEqual({ ok: true, numberSaved: true });
+    await settleByPhoto(nb);
+    expect(await updateNotebook(TENANT, nb, { identitySourceType: "user" })).toBe(true);
+    expect(await status(nb)).toBe("user_confirmed"); // precondition: the read predicate holds
+    expect(await source(nb)).toBe("user");
+    expect(await readConfirmedNumbers(TENANT, nb)).toEqual([]);
+    expect(await scopeOf(nb, J2)).toBe("other");
+  });
+
+  // Control: a PATCH that writes no identity status or source (a rename) keeps the number.
+  it("control: a PATCH that renames the notebook keeps the number", async () => {
+    const nb = await makeBlank();
+    expect(await confirmNotebookIdentity(TENANT, nb, ID, NUMBER)).toEqual({ ok: true, numberSaved: true });
+    expect(await updateNotebook(TENANT, nb, { displayName: "Line 3 HMI" })).toBe(true);
+    expect(await codes(nb)).toEqual(["6AV21240GC010AX0"]);
+    expect(await scopeOf(nb, J2)).toBe("own");
   });
 });

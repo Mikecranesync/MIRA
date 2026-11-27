@@ -10,7 +10,7 @@ vi.mock("@/lib/tenant-context", () => ({
   withTenantContext: vi.fn(async (_t: string, fn: (c: unknown) => unknown) => fn({ query })),
 }));
 
-import { numbersForIdentity, readConfirmedNumbers, recordConfirmedNumber, type ConfirmedNumberEntry } from "@/capabilities/confirmed-numbers";
+import { clearConfirmedNumbers, numbersForIdentity, readConfirmedNumbers, recordConfirmedNumber, type ConfirmedNumberEntry } from "@/capabilities/confirmed-numbers";
 import { confirmNotebookIdentity } from "@/capabilities/notebook-manual-acquisition";
 import { withTenantContext } from "@/lib/tenant-context";
 
@@ -145,6 +145,32 @@ describe("recordConfirmedNumber (inside the confirm's transaction)", () => {
     query.mockResolvedValueOnce({}).mockRejectedValueOnce(new Error('column "confirmed_numbers" does not exist')).mockResolvedValueOnce({});
     expect(await recordConfirmedNumber(client, TENANT, NB, SAVE, true)).toBe(false);
     expect(statements()).toEqual(["SAVEPOINT confirmed_number", "SELECT confirmed_numbers", "ROLLBACK TO"]);
+  });
+});
+
+// Round-3 pre-screen 2: a notebook PATCH that writes the identity status or source by hand empties
+// the numbers on the PATCH's own client, under a savepoint.
+describe("clearConfirmedNumbers (inside the PATCH's transaction)", () => {
+  const client = { query };
+  const statements = () => query.mock.calls.map((c) => String(c[0]).split(/\s+/).slice(0, 2).join(" "));
+
+  it("empties this tenant's notebook's numbers under its own savepoint, touching nothing else", async () => {
+    query.mockResolvedValueOnce({}).mockResolvedValueOnce({ rows: [], rowCount: 1 }).mockResolvedValueOnce({});
+    await clearConfirmedNumbers(client, TENANT, NB);
+    expect(statements()).toEqual(["SAVEPOINT confirmed_number", "UPDATE equipment_notebooks", "RELEASE SAVEPOINT"]);
+    const [sql, values] = query.mock.calls[1]! as [string, unknown[]];
+    expect(sql).toMatch(/UPDATE equipment_notebooks SET confirmed_numbers = '\[\]'::jsonb WHERE tenant_id = \$1::uuid AND id = \$2::uuid/);
+    expect(sql).not.toMatch(/catalog_number|identity_status|updated_at/);
+    expect(values).toEqual([TENANT, NB]);
+  });
+
+  // A Hub deployed before the prod migration: rolled back to the savepoint and logged, never
+  // thrown, so the PATCH still commits.
+  it("a failed clear rolls back to its savepoint, logs, and does not throw", async () => {
+    query.mockResolvedValueOnce({}).mockRejectedValueOnce(new Error('column "confirmed_numbers" does not exist')).mockResolvedValueOnce({});
+    await expect(clearConfirmedNumbers(client, TENANT, NB)).resolves.toBeUndefined();
+    expect(statements()).toEqual(["SAVEPOINT confirmed_number", "UPDATE equipment_notebooks", "ROLLBACK TO"]);
+    expect(console.warn).toHaveBeenCalledTimes(1);
   });
 });
 

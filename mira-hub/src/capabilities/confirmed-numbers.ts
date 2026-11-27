@@ -5,8 +5,10 @@
  * Only the thread status scope reads them (manual-status-subject.ts). The catalog number, the
  * lookup key, the manual search, manual matching and retrieval never do.
  *
- * Written only by `confirmNotebookIdentity` (notebook-manual-acquisition.ts), inside its own
- * transaction. Deliberately imports nothing from that module: tests replace it with a partial mock.
+ * Written by `confirmNotebookIdentity` (notebook-manual-acquisition.ts), inside its own
+ * transaction, and emptied by `updateNotebook` (lib/equipment-notebooks.ts) when a PATCH writes the
+ * identity status or source by hand. Deliberately imports nothing from either module: tests replace
+ * them with partial mocks.
  */
 import { withTenantContext } from "@/lib/tenant-context";
 import { normalizeManufacturer } from "@/lib/manufacturerNormalize";
@@ -119,5 +121,26 @@ export async function recordConfirmedNumber(
     await c.query("ROLLBACK TO SAVEPOINT confirmed_number");
     console.warn(`[confirmed-numbers] save failed notebook=${notebookId}: ${(err as Error).message}`);
     return false;
+  }
+}
+
+/**
+ * Empties the notebook's numbers inside the caller's open transaction (round-3 pre-screen 2). A
+ * notebook PATCH that writes the identity status or source by hand settles or reopens an identity
+ * without the identity card, and only the card adds a number, so an identity asserted by hand
+ * starts with none. Under its own savepoint: a failure (including a missing column before migration
+ * 118) is rolled back to it and logged, so the PATCH still succeeds.
+ */
+export async function clearConfirmedNumbers(c: TxClient, tenantId: string, notebookId: string): Promise<void> {
+  await c.query("SAVEPOINT confirmed_number");
+  try {
+    await c.query(
+      `UPDATE equipment_notebooks SET confirmed_numbers = '[]'::jsonb WHERE tenant_id = $1::uuid AND id = $2::uuid`,
+      [tenantId, notebookId],
+    );
+    await c.query("RELEASE SAVEPOINT confirmed_number");
+  } catch (err) {
+    await c.query("ROLLBACK TO SAVEPOINT confirmed_number");
+    console.warn(`[confirmed-numbers] clear failed notebook=${notebookId}: ${(err as Error).message}`);
   }
 }
