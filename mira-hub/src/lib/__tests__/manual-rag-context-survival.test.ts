@@ -394,5 +394,30 @@ describe("F6 — selection stays inside table boundaries", () => {
     const collision = buildGroundedContext([makeChunk(gs10(["| GS10 | P06.530 | Prefix collision |"]), 223)], "What is parameter P06.53 on the GS10?");
     expect(collision).not.toContain("Prefix collision");
   });
+
+  // native-review-2 F4: the requested row does NOT repeat the model word ("All variants"), so it only
+  // ties the 95+ model-only rows on identifier count. A ubiquitous term must not outrank a rare one.
+  it("a late 'All variants' P06.53 row survives 100 earlier rows that only repeat GS10", () => {
+    const requested = "| All variants | P06.53 | Synthetic requested overload row |";
+    const context = buildGroundedContext([makeChunk(gs10([requested]), 223)], "What does P06.53 do on the GS10?");
+    expect(context).toContain(requested);
+    expect(context).toContain("# GS10 parameter table");
+    expect(context).toContain("| Model | Parameter | Function |");
+    expect(body(context).length).toBeLessThanOrEqual(TABLE_COMPACT_BUDGET);
+    expect(context).not.toContain("matching rows not shown");
+  });
+  it("controls: two requested codes with different frequencies both stay requested; the held marker fires when the target itself cannot fit", () => {
+    const a = "| All variants | P06.53 | Synthetic requested row A |";
+    const b1 = "| All variants | P06.54 | Synthetic requested row B first |";
+    const b2 = "| All variants | P06.54 | Synthetic requested row B second |";
+    const both = buildGroundedContext([makeChunk(gs10([a, b1, b2]), 223)], "What do P06.53 and P06.54 do on the GS10?");
+    expect(both).toContain(a);
+    expect(both).toContain(b1);
+    expect(both).toContain(b2);
+    const giant = `| All variants | P06.53 | ${"y".repeat(2600)} |`;
+    const held = buildGroundedContext([makeChunk(gs10([giant]), 223)], "What does P06.53 do on the GS10?");
+    expect(held).toContain("matching rows not shown");
+    expect(held).not.toContain("yyyyy");
+  });
 });
 
