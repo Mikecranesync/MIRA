@@ -8,7 +8,7 @@
 import { describe, expect, it } from "vitest";
 import { readNotebookStream, type PersistedTurn, type StreamResult } from "@/components/equipment/notebook-chat-utils";
 import type { EvidenceCitation } from "@/lib/notebook-chat-types";
-import { hazardBanner } from "@/lib/safety-classifier";
+import { ENERGIZED_ELECTRICAL_HAZARD, hazardBanner } from "@/lib/safety-classifier";
 import { partsFromStream, turnsFromPersisted, type HubNotebookMeta } from "./to-interaction";
 
 const meta: HubNotebookMeta = {
@@ -130,5 +130,45 @@ describe("#6013 the finished live answer shows the warning where the saved turn 
     ]) {
       expect(shape(r).some((s) => s.startsWith("notice:DANGER"))).toBe(false);
     }
+  });
+});
+
+describe("#6057 a live directive answer orders the directive, then the manual warning, then the steps", () => {
+  // An ordinary electrical answer: no active-incident banner, so safetyFirst takes its plain
+  // branch (Codex #6115 F1). The directive rides the evidence frame, not the answer prose.
+  const directive = { kind: "safety_notice" as const, trigger: ENERGIZED_ELECTRICAL_HAZARD };
+  const ELECTRICAL = "1. Open and lock the upstream disconnect.\n2. Verify zero energy, then reseat the serial cable.";
+  const frames = [
+    { kind: "content", content: ELECTRICAL },
+    { kind: "sources", citations: [citation] },
+    { kind: "evidence", basis: "oem_documentation", hazardEntries: [directive], manualSafetyStatement: manualWarning },
+    { kind: "status", status: "answered" },
+  ];
+  const order = (parts: readonly Part[]) =>
+    parts.map((p) => (p.type === "safety_notice" ? p.notice.trigger ?? "?" : p.type === "text" ? (p.text === ELECTRICAL ? "steps" : "text") : p.type));
+  const savedElectrical = (): PersistedTurn & { createdAt?: string } => ({
+    ...savedRow(),
+    question: "can I reseat the serial cable with power applied",
+    answerText: ELECTRICAL,
+    evidence: [directive, manualWarning, citation] as unknown as PersistedTurn["evidence"],
+  });
+
+  it("precondition: the answer has no incident banner, and the reader keeps both notices", async () => {
+    expect(ELECTRICAL.trimStart().startsWith(hazardBanner("smoke"))).toBe(false);
+    const out = await readNotebookStream(readerOf(frames), () => undefined);
+    expect(out.hazardNotice).toEqual(directive);
+    expect(out.manualSafetyStatement).toEqual(manualWarning);
+  });
+
+  it("live: the directive and the manual warning are the first two parts, then the steps", async () => {
+    const live = partsFromStream(await readNotebookStream(readerOf(frames), () => undefined), { turnId: "turn-1-a" });
+    expect(order(live).slice(0, 3)).toEqual([ENERGIZED_ELECTRICAL_HAZARD, "manual_safety_statement", "steps"]);
+  });
+
+  it("saved: the reloaded turn shows the same first three parts as the live one", async () => {
+    const live = partsFromStream(await readNotebookStream(readerOf(frames), () => undefined), { turnId: "turn-1-a" });
+    const [, saved] = turnsFromPersisted(savedElectrical(), meta);
+    expect(order(saved.parts).slice(0, 3)).toEqual([ENERGIZED_ELECTRICAL_HAZARD, "manual_safety_statement", "steps"]);
+    expect(order(live).slice(0, 3)).toEqual(order(saved.parts).slice(0, 3));
   });
 });

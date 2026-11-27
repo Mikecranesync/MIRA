@@ -9,7 +9,7 @@
 
 ## Shared delivery coordination — required for every agent
 
-At session start/resume, read [DELIVERY.md](DELIVERY.md) for goals, ET deadlines and lane ownership, then refresh your existing owner status in [#5232](https://github.com/Mikecranesync/MIRA/issues/5232). Record the plan revision you read; update at material changes, handoff and session end, and link that comment from delivery PRs. Follow the plan's evidence and same-lane ownership rules. This adds no merge/deploy/spend authority or replacement for existing claims/reviews.
+At session start/resume, read [DELIVERY.md](DELIVERY.md) for goals, ET deadlines and lane ownership, then refresh your existing owner status in [#5232](https://github.com/Mikecranesync/MIRA/issues/5232). Record the plan revision you read; update at material changes, handoff and session end, and link that comment from delivery PRs. Follow the plan's evidence and same-lane ownership rules. This adds no merge/deploy/spend authority or replacement for existing claims/reviews. Coordination roles, message templates and the review-operator rule: [docs/ORCHESTRATOR.md](docs/ORCHESTRATOR.md).
 
 ## Coding Principles → `wiki/references/coding-principles.md`
 ## KANBAN Board → `wiki/references/kanban.md`
