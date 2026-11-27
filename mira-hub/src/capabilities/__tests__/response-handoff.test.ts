@@ -206,11 +206,15 @@ describe("response handoff: a cancel, an abort or a source error is a no", () =>
     expect(await within(handoff.confirmed(WAIT), QUICK)).toBe(false);
   });
 
-  it("request already aborted when the tracker is created: denied (the abort event never fires again)", async () => {
+  it("request already aborted when the tracker is created: denied at once, before anything is read (the abort event never fires again)", async () => {
     const ac = new AbortController();
     ac.abort();
     const handoff = createResponseHandoff(ac.signal);
-    await readAll(both(handoff, source(["x"]).stream).body!.getReader());
+    const res = both(handoff, source(["x"]).stream);
+    // At once: nothing has been read and the wait has not passed. (Since the abort flag is
+    // read again at every answer, a no AFTER the read would not show this check is there.)
+    expect(await within(handoff.confirmed(WAIT), QUICK)).toBe(false);
+    await readAll(res.body!.getReader());
     expect(await within(handoff.confirmed(WAIT), QUICK)).toBe(false);
   });
 
