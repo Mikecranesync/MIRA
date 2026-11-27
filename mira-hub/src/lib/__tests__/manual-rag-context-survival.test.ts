@@ -319,13 +319,18 @@ describe("F6 — selection stays inside table boundaries", () => {
     expect(context).toContain("| F205 | Synthetic answer |");
   });
 
-  it("blank-separated one-line qualifiers all stay; the prose paragraph above them does not", () => {
+  // native-review-2 F6 changed this: a multi-line paragraph above a headingless table is NOT assumed
+  // to be harmless prose ("These limits are valid / for Model B only" is a wrapped qualifier). With no
+  // heading, the table's whole block since the previous table scopes it, and stays with the row.
+  it("blank-separated one-line qualifiers AND the wrapped paragraph above them all stay with the row", () => {
     const prose = ["Synthetic intro line one.", "Synthetic intro line two."];
     const text = [...prose, "", "Model B only", "", "Firmware 2 required", "", header2, ...filler, "| F205 | Synthetic answer |"].join("\n");
     const context = buildGroundedContext([makeChunk(text, 20)], "What is F205?");
+    expect(context).toContain("| F205 | Synthetic answer |");
     expect(context).toContain("Model B only");
     expect(context).toContain("Firmware 2 required");
-    expect(context).not.toContain("Synthetic intro line");
+    expect(context).toContain("Synthetic intro line one.");
+    expect(context).toContain("Synthetic intro line two.");
   });
 
   it("two plain-captioned tables are never conflated: the Model B row carries only Model B's caption", () => {
@@ -342,9 +347,65 @@ describe("F6 — selection stays inside table boundaries", () => {
     const text = ["# Model B only", header2, ...filler, "| F081 | DSI Comm Loss | Type 2 |", ...notes].join("\n");
     const context = buildGroundedContext([makeChunk(text, 162)], "What does F081 Type 2 mean?");
     for (const n of notes.filter(Boolean)) expect(context).toContain(n);
-    // a non-footnote paragraph after a blank line is NOT swept in
-    const text2 = [text, "", "Unrelated synthetic prose paragraph."].join("\n");
-    expect(buildGroundedContext([makeChunk(text2, 162)], "What does F081 Type 2 mean?")).not.toContain("Unrelated synthetic prose");
+    // native-review-2 F6: a blank-separated statement below the rows without a note marker ("Applies
+    // to Model B only") still scopes them, so the whole text up to the next heading/table stays...
+    const text2 = [text, "", "Applies to Model B only (synthetic)."].join("\n");
+    expect(buildGroundedContext([makeChunk(text2, 162)], "What does F081 Type 2 mean?")).toContain("Applies to Model B only (synthetic).");
+    // ...but text under the NEXT heading belongs to that section, not to these rows.
+    const text3 = [text, "", "# Unrelated synthetic section", "Unrelated synthetic prose paragraph."].join("\n");
+    expect(buildGroundedContext([makeChunk(text3, 162)], "What does F081 Type 2 mean?")).not.toContain("Unrelated synthetic prose");
+  });
+
+  // --- native-review-2 F6: the row keeps its COMPLETE scope, or is withheld whole ---
+  const codes95 = Array.from({ length: 95 }, (_, i) => `| A${100 + i} | Synthetic filler ${i} |`);
+  const f205 = "| F205 | Synthetic target description |";
+  const codeTable = [header2, ...codes95, f205];
+  it("a parent heading above the table's own heading stays with the row", () => {
+    const text = ["## Model B only", "### Fault codes", ...codeTable].join("\n");
+    const context = buildGroundedContext([makeChunk(text, 20)], "What does F205 mean?");
+    expect(context).toContain(f205);
+    expect(context).toContain("## Model B only");
+    expect(context).toContain("### Fault codes");
+    expect(body(context).length).toBeLessThanOrEqual(TABLE_COMPACT_BUDGET);
+  });
+  it("a parent heading's lead text stays; a sibling section's text does not; a shared parent is printed once", () => {
+    const t1 = [header2, ...Array.from({ length: 60 }, (_, i) => `| B${i} | Synthetic sibling ${i} |`), "| F206 | Synthetic second target |"];
+    const text = ["## Model B only", "", "Synthetic lead: these limits are valid", "for Model B units.", "", "### Sibling section", "Synthetic sibling prose.", ...t1, "### Fault codes", ...codeTable].join("\n");
+    const context = buildGroundedContext([makeChunk(text, 20)], "What do F205 and F206 mean?");
+    expect(context).toContain(f205);
+    expect(context).toContain("| F206 | Synthetic second target |");
+    expect(context).toContain("Synthetic lead: these limits are valid");
+    expect(context).toContain("for Model B units.");
+    expect(context.split("## Model B only").length - 1).toBe(1);
+    const onlyF205 = buildGroundedContext([makeChunk(text, 20)], "What does F205 mean?");
+    expect(onlyF205).toContain(f205);
+    expect(onlyF205).not.toContain("Synthetic sibling prose.");
+  });
+  it("a cue-free note between two tables stays with the first table's row and is printed once", () => {
+    const a = [header2, ...Array.from({ length: 70 }, (_, i) => `| A${i} | Synthetic A ${i} |`), "| F207 | Synthetic rating row |"];
+    const b = [header2, ...Array.from({ length: 70 }, (_, i) => `| C${i} | Synthetic C ${i} |`), "| F208 | Synthetic other row |"];
+    const text = ["# Ratings", ...a, "", "Ratings above are for 480 V units.", "", ...b].join("\n");
+    const first = buildGroundedContext([makeChunk(text, 20)], "What is F207?");
+    expect(first).toContain("| F207 | Synthetic rating row |");
+    expect(first).toContain("Ratings above are for 480 V units.");
+    const both = buildGroundedContext([makeChunk(text, 20)], "What are F207 and F208?");
+    expect(both.split("Ratings above are for 480 V units.").length - 1).toBe(1);
+  });
+  it("text before the next table is marked as running into it, so another table's caption cannot read as this row's scope", () => {
+    const a = Array.from({ length: 150 }, (_, i) => `| A${i} | Synthetic A ${i} |`);
+    const text = ["Model A only", "", header2, ...a, "| F209 | Synthetic A target |", "", "Model B only", "", header2, "| F205 | Synthetic B answer |"].join("\n");
+    const context = buildGroundedContext([makeChunk(text, 20)], "What is F209?");
+    expect(context).toContain("| F209 | Synthetic A target |");
+    expect(context).toContain("Model A only");
+    expect(context).toMatch(/Model B only\n\[… the text above is followed directly by another table …\]/);
+  });
+  it("control: when the complete scope cannot fit with the row, the row is withheld whole", () => {
+    const lead = Array.from({ length: 30 }, (_, i) => `Synthetic scope line ${i} ${"applies only to Model B ".repeat(4)}`);
+    const text = ["## Model B only", ...lead, "### Fault codes", ...codeTable].join("\n");
+    const context = buildGroundedContext([makeChunk(text, 20)], "What does F205 mean?");
+    expect(context).toContain("matching rows not shown");
+    expect(context).not.toContain("| F205 |");
+    expect(body(context).length).toBeLessThanOrEqual(TABLE_COMPACT_BUDGET);
   });
 
   const prose80 = Array.from({ length: 80 }, () => "Synthetic surrounding descriptive prose.");

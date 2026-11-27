@@ -91,7 +91,6 @@ function symptomTermRe(term: string): RegExp {
 export const TABLE_COMPACT_BUDGET = MAX_CONTENT_CHARS_TABLE;
 /** Reserved for the trailing "requested rows not shown" marker so the total stays <= TABLE_COMPACT_BUDGET. */
 const HELD_MARKER_RESERVE = 120;
-const NOTE_MARKER_RE = /^\s*(\*|†|‡|note\b|\(\d+\)|\d+\))/i;
 const SEPARATOR_ROW_RE = /^\s*\|[\s\-:]+(\|[\s\-:]+)+\|?\s*$/;
 
 interface TableBlock {
@@ -100,19 +99,36 @@ interface TableBlock {
   rowEnd: number;
   /** This table's OWN column header lines (header + separator), if it has one. */
   header: string[];
-  /** Whole section block above (heading + qualifiers), uncapped. */
-  preamble: string[];
-  /** Whole footnote / explanatory block directly below, uncapped. */
-  notes: string[];
-  /** Line range this table owns, including preamble and notes. */
+  /**
+   * Line indices of everything that scopes the table from above, in order: each ENCLOSING ancestor
+   * heading with its lead text (a "## Model B only" parent of "### Fault codes"), then the table's own
+   * section from its nearest heading (or, with no heading, the whole block since the previous table).
+   */
+  context: number[];
+  /** Line indices of everything below the table up to the next heading or table (notes, applicability). */
+  notes: number[];
+  /** The notes run up to another table, so their last lines may be that table's caption. */
+  notesReachNextTable: boolean;
+  /** Line range of the table's own section (own heading/caption block through its notes). */
   spanStart: number;
   spanEnd: number;
 }
 
-/** Split text into tables; each carries only its own heading, header and notes. */
+const HEADING_RE = /^\s{0,3}(#{1,6})\s/;
+const nonBlank = (lines: string[], a: number, b: number): number[] => {
+  const out: number[] = [];
+  for (let k = a; k < b; k++) if (lines[k].trim() !== "") out.push(k);
+  return out;
+};
+
+/**
+ * Split text into tables. Each carries the COMPLETE scope it needs to be read correctly (native-review-2
+ * F6): enclosing headings, the whole own section above it and the whole text below it. Nothing here is
+ * a guess about which line "looks like" a qualifier; if the scope cannot fit with a row, the row is held.
+ */
 function parseTables(lines: string[]): TableBlock[] {
   const tables: TableBlock[] = [];
-  let boundary = 0; // end of the previous table's span
+  let boundary = 0; // end of the previous table's ROWS (text between two tables scopes both)
   let i = 0;
   while (i < lines.length) {
     if (!PIPE_TABLE_ROW_RE.test(lines[i])) {
@@ -130,71 +146,55 @@ function parseTables(lines: string[]): TableBlock[] {
     while (j < lines.length && PIPE_TABLE_ROW_RE.test(lines[j])) j++;
     const rowEnd = j;
 
-    // Applicability block = the table's whole current section: from the nearest
-    // markdown heading above it (and below the previous table) down to the
-    // table; with no heading, the contiguous non-blank block directly above.
-    // No line-count cap: if it is needed to qualify the table it is kept, and
-    // if it cannot fit with a row the table is held (never shown unqualified).
-    let spanStart = tableStart;
-    let headingAt = -1;
-    for (let k = tableStart - 1; k >= boundary; k--) {
-      if (/^\s{0,3}#{1,6}\s/.test(lines[k])) {
-        headingAt = k;
-        break;
-      }
+    // Markdown heading stack in force at the table.
+    const stack: { idx: number; level: number }[] = [];
+    for (let k = 0; k < tableStart; k++) {
+      const m = HEADING_RE.exec(lines[k]);
+      if (!m) continue;
+      while (stack.length > 0 && stack[stack.length - 1].level >= m[1].length) stack.pop();
+      stack.push({ idx: k, level: m[1].length });
     }
-    if (headingAt >= 0) {
-      spanStart = headingAt;
-    } else {
-      // No markdown heading: the paragraph directly above is the caption/qualifier, and so is every
-      // blank-separated ONE-LINE paragraph above it (captions like "Model B only", "Firmware 2
-      // required"). A multi-line paragraph is prose, not a qualifier, and ends the block; so does the
-      // previous table's span. Structural, not a line count.
-      while (spanStart - 1 >= boundary && lines[spanStart - 1].trim() !== "") spanStart--;
-      for (;;) {
-        let k = spanStart - 1;
-        while (k >= boundary && lines[k].trim() === "") k--;
-        if (k < boundary || (k - 1 >= boundary && lines[k - 1].trim() !== "")) break; // none, or multi-line prose
-        spanStart = k;
-      }
+    const own = stack.length > 0 && stack[stack.length - 1].idx >= boundary ? stack.pop() : undefined;
+    const context: number[] = [];
+    for (const anc of stack) {
+      // Ancestor heading + its lead text, up to the next heading or the first table row.
+      let e = anc.idx + 1;
+      while (e < tableStart && !HEADING_RE.test(lines[e]) && !PIPE_TABLE_ROW_RE.test(lines[e])) e++;
+      context.push(...nonBlank(lines, anc.idx, e));
     }
-    const preamble = lines.slice(spanStart, tableStart).filter((l) => l.trim() !== "");
+    // Own section: from the nearest heading below the previous table, else the whole block since it.
+    const spanStart = own ? own.idx : boundary;
+    for (const k of nonBlank(lines, spanStart, tableStart)) if (!context.includes(k)) context.push(k);
 
-    // Notes = the whole footnote block: every non-table line directly below the table up to the next
-    // blank line, heading or table; and, across blank lines, every further block that starts like a
-    // footnote (a note separated by a blank line still qualifies the rows above it).
-    const notes: string[] = [];
-    let n = rowEnd;
-    let end = rowEnd;
-    for (;;) {
-      let m = n;
-      while (m < lines.length && lines[m].trim() === "") m++;
-      const startsNote = m > n ? m < lines.length && NOTE_MARKER_RE.test(lines[m]) : m < lines.length;
-      if (!startsNote || m >= lines.length || PIPE_TABLE_ROW_RE.test(lines[m]) || /^#{1,6}\s/.test(lines[m])) break;
-      while (m < lines.length && lines[m].trim() !== "" && !PIPE_TABLE_ROW_RE.test(lines[m]) && !/^#{1,6}\s/.test(lines[m])) {
-        notes.push(lines[m]);
-        m++;
-      }
-      n = m;
-      end = m;
-    }
-    const spanEnd = notes.length > 0 ? end : rowEnd;
-    tables.push({ rowStart, rowEnd, header, preamble, notes, spanStart, spanEnd });
-    boundary = spanEnd;
-    i = spanEnd;
+    // Notes: everything below the rows up to the next heading or table, blank-separated or not.
+    let e = rowEnd;
+    while (e < lines.length && !HEADING_RE.test(lines[e]) && !PIPE_TABLE_ROW_RE.test(lines[e])) e++;
+    const notes = nonBlank(lines, rowEnd, e);
+    const notesReachNextTable = e < lines.length && PIPE_TABLE_ROW_RE.test(lines[e]);
+    const spanEnd = notes.length > 0 ? notes[notes.length - 1] + 1 : rowEnd;
+    tables.push({ rowStart, rowEnd, header, context, notes, notesReachNextTable, spanStart, spanEnd });
+    boundary = rowEnd;
+    i = rowEnd;
   }
   return tables;
 }
 
 const OMITTED = "[… omitted …]";
+const NEXT_TABLE = "[… the text above is followed directly by another table …]";
 
 /**
- * Heading/qualifier, column header, kept rows and footnotes are always emitted
- * COMPLETE and verbatim; nothing is clipped. When a table does not fit, whole
- * rows are left out (marked), never part of a row or of its qualifiers.
+ * Scope lines, column header, kept rows and notes are always emitted COMPLETE and verbatim; nothing is
+ * clipped. When a table does not fit, whole rows are left out (marked), never part of a row or of its
+ * scope. A scope line already emitted for an earlier selected table (shared parent heading, text
+ * between two tables) is not repeated.
  */
-function renderTable(t: TableBlock, lines: string[], rows: number[]): string {
-  const out: string[] = [...t.preamble, ...t.header];
+function renderTable(t: TableBlock, lines: string[], rows: number[], emitted: Set<number>): string {
+  const take = (idx: number[]): string[] =>
+    idx.filter((k) => !emitted.has(k)).map((k) => {
+      emitted.add(k);
+      return lines[k];
+    });
+  const out: string[] = [...take(t.context), ...t.header];
   let prev = t.rowStart - 1;
   for (const r of rows) {
     const gap = r - prev - 1;
@@ -204,7 +204,10 @@ function renderTable(t: TableBlock, lines: string[], rows: number[]): string {
   }
   const tail = t.rowEnd - 1 - prev;
   if (tail > 0) out.push(`[… ${tail} row${tail === 1 ? "" : "s"} omitted …]`);
-  out.push(...t.notes);
+  const notes = take(t.notes);
+  out.push(...notes);
+  // Text between two tables can be this table's note OR the next table's caption; say which way it runs.
+  if (notes.length > 0 && t.notesReachNextTable) out.push(NEXT_TABLE);
   return out.join("\n");
 }
 
@@ -280,12 +283,14 @@ function selectTableRows(text: string, terms: QuestionTerms, budget: number): st
   const selected = tables.map(() => new Set<number>());
   const assemble = (): string => {
     const parts: string[] = [];
+    const emitted = new Set<number>();
     let lastEnd = 0;
     tables.forEach((tb, t) => {
       if (selected[t].size === 0) return;
-      if (hasText(lines, lastEnd, tb.spanStart)) parts.push(OMITTED);
-      parts.push(renderTable(tb, lines, Array.from(selected[t]).sort((a, b) => a - b)));
-      lastEnd = tb.spanEnd;
+      const firstScope = tb.context.find((k) => !emitted.has(k)) ?? tb.spanStart;
+      if (hasText(lines, lastEnd, Math.min(firstScope, tb.spanStart))) parts.push(OMITTED);
+      parts.push(renderTable(tb, lines, Array.from(selected[t]).sort((a, b) => a - b), emitted));
+      lastEnd = Math.max(lastEnd, tb.spanEnd);
     });
     if (hasText(lines, lastEnd, lines.length)) parts.push(OMITTED);
     return parts.join("\n\n");
