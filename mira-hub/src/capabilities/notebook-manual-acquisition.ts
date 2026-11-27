@@ -36,7 +36,7 @@ import {
 } from "@/capabilities/manual-acquisition";
 import { MANUAL_SEARCH_LIMIT_COPY, MANUAL_SEARCH_UNAVAILABLE_COPY } from "@/capabilities/manual-search-copy";
 import { reviewedManualFor } from "@/capabilities/reviewed-manual-library";
-import { exactManualIdentity, makerFromText, namesSeveralMakers } from "@/capabilities/candidate-identity";
+import { exactManualIdentity, makerFromText, makerGroupOf, makerGroupsNamedIn } from "@/capabilities/candidate-identity";
 import { returnsToRecord } from "@/capabilities/conversation-subject";
 import { familyCovers, modelIdentitiesInText } from "@/capabilities/model-token";
 import { isRatingToken, modelNumbersIn } from "@/capabilities/manual-applicability";
@@ -1390,16 +1390,22 @@ export function threadStatusScope(
   const isOwn = (id: string) => covered(own, id);
   const ownMaker = maker(machine.manufacturer);
   const otherMaker = (named: string | null | undefined) => Boolean(named && ownMaker && maker(named) !== ownMaker);
+  const ownGroup = makerGroupOf(machine.manufacturer);
   for (let i = questions.length - 1; i >= 0; i--) {
     const q = questions[i] ?? "";
     const named = modelsNamedIn(q, own);
     if (named.size) {
-      const exact = exactManualIdentity("", foldForDetection(q));
-      if (otherMaker(exact?.manufacturer ?? makerFromText(q)) || [...named].some((id) => !isOwn(id))) return "other";
-      // #6127 (#6104 r4 F9): a ticked number settles a question only when it names no maker or
-      // this machine's alone. With two makers named, `makerFromText` reads none, not a match.
-      const byTick = [...named].some((id) => !covered(recorded, id));
-      return byTick && namesSeveralMakers(q) ? "other" : "own";
+      // Makers are read from the folded question, as models are (#6131 r1 F1: "Allen‑Bradley").
+      const folded = foldForDetection(q);
+      const exact = exactManualIdentity("", folded);
+      if (otherMaker(exact?.manufacturer ?? makerFromText(folded)) || [...named].some((id) => !isOwn(id))) return "other";
+      // #6127 (#6104 r4 F9), #6131 r1 F2: a ticked number settles a question only when every maker
+      // it names is this machine's, counting a dictionary-word maker typed right before that
+      // number ("the Eaton 6AV2124-…"). With no maker on record, any named maker fails closed.
+      const ticked = [...named].filter((id) => !covered(recorded, id));
+      if (!ticked.length) return "own";
+      const typed = folded.split(/\s+/).map(typedToken).filter((t) => ticked.includes(norm(t)));
+      return [...makerGroupsNamedIn(folded, typed)].every((g) => g === ownGroup) ? "own" : "other";
     }
     if (machine.recordCatalog && returnsToRecord(q)) return "own";
   }

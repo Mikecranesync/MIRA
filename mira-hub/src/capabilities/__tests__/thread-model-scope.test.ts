@@ -197,4 +197,46 @@ describe("threadStatusScope: a number the technician confirmed (#6085)", () => {
     expect(threadStatusScope([q], TP700)).toBe("other");
     expect(threadStatusScope([q], ticked)).toBe("other");
   });
+
+  // #6131 r1 F1: the maker is read from the folded question, as the model is, so a maker written
+  // with a nonbreaking hyphen reads as it does with the ASCII hyphen, ticked number or not.
+  it("another maker written with a nonbreaking hyphen reads as the ASCII spelling does", () => {
+    const ascii = "Is the TP700 on the Allen-Bradley network?";
+    const nbsp = "Is the TP700 on the Allen‑Bradley network?";
+    expect(threadStatusScope([ascii], TP700)).toBe("other"); // precondition: main's ASCII reading
+    expect(threadStatusScope([nbsp], TP700)).toBe("other");
+    expect(threadStatusScope([nbsp], ticked)).toBe("other");
+  });
+
+  it("control: this machine's maker written with a nonbreaking hyphen is own", () => {
+    const MICRO850 = { manufacturer: "Allen-Bradley", model: "Micro850", catalogNumber: "", recordCatalog: null };
+    expect(threadStatusScope(["Find the manual for the Allen‑Bradley Micro850"], MICRO850)).toBe("own");
+    expect(threadStatusScope(["Is the Micro850 on the Allen‑Bradley network?"], MICRO850)).toBe("own");
+  });
+
+  // #6131 r1 F2: with only a ticked number making it own, this machine's maker counts however it
+  // is written on record, a dictionary-word maker typed before its own number is its own maker,
+  // and a machine with no maker on record counts no named maker as its own (fail closed).
+  it("control: this machine's maker written in capitals on record is its own maker", () => {
+    expect(threadStatusScope(["How do I wire the Siemens 6AV2124-0GC01-0AX0?"], { ...ticked, manufacturer: "SIEMENS" })).toBe("own");
+  });
+
+  it("control: a dictionary-word maker typed before this machine's own number is own", () => {
+    const EATON = { manufacturer: "Eaton", model: "DG1", catalogNumber: "", recordCatalog: null, confirmedNumbers: ["DG1-344D1FN-C21C"] };
+    expect(threadStatusScope(["How do I wire the Eaton DG1-344D1FN-C21C?"], EATON)).toBe("own");
+    expect(threadStatusScope(["How do I wire the Eaton DG1-344D1FN-C21C?"], { ...EATON, confirmedNumbers: [] })).toBe("other"); // precondition
+  });
+
+  it("with no maker on record, a named maker makes the confirmed number count for nothing", () => {
+    const NO_MAKER = { ...ticked, manufacturer: "" };
+    expect(threadStatusScope(["How do I wire the 6AV2124-0GC01-0AX0?"], NO_MAKER)).toBe("own"); // control
+    expect(threadStatusScope(["How do I wire the Siemens 6AV2124-0GC01-0AX0?"], NO_MAKER)).toBe("other");
+  });
+
+  // Accepted cost (#6131 r1): a dictionary-word maker counts only when typed right before the
+  // number, the typed-text rule the identity card already uses; written after it, title case,
+  // it is read as an ordinary word.
+  it("cost: title-case Eaton written after the confirmed number is not read as a maker", () => {
+    expect(threadStatusScope(["How do I wire the 6AV2124-0GC01-0AX0 from Eaton in our Siemens cabinet?"], ticked)).toBe("own");
+  });
 });

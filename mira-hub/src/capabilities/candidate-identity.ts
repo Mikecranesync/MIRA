@@ -121,10 +121,20 @@ export function makerFromText(text: string, typedPart?: string): string | null {
   return [...hits.values()][0].toUpperCase();
 }
 
-/** #6127: does `text` name more than one maker, by the reading `makerFromText` uses? There,
- *  null means either no maker or several; this tells the two apart. */
-export function namesSeveralMakers(text: string): boolean {
-  return makerGroups(text).size > 1;
+/** #6127, #6131 r1 F2: every maker group (the OEM table's first domain) `text` names, by the
+ *  reading `makerFromText` uses, with a dictionary-word maker also counted when it is typed right
+ *  before one of `parts` (the typed-text rule above). Aliases of one maker are one group. */
+export function makerGroupsNamedIn(text: string, parts: readonly string[] = []): Set<string> {
+  const groups = new Set(makerGroups(text).keys());
+  for (const part of parts) for (const group of makerGroups(text, part).keys()) groups.add(group);
+  return groups;
+}
+
+/** The maker group a manufacturer field names, read as a label is (any case counts), or null
+ *  when it names none of the OEM table's makers, or several. */
+export function makerGroupOf(manufacturer: string | null | undefined): string | null {
+  const groups = makerGroups((manufacturer ?? "").toUpperCase());
+  return groups.size === 1 ? [...groups.keys()][0]! : null;
 }
 
 export function extractCandidateIdentity(observation: string, typed = ""): CandidateIdentity | null {

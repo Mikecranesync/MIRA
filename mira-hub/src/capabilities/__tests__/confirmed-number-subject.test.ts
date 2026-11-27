@@ -224,6 +224,34 @@ describe("GET notebook detail: a saved number in a question naming two makers (#
   it("control: the card offers the number for the Siemens-only question", () => {
     expect(offeredOwnNumber(SIEMENS_ONLY, { manufacturer: "Siemens", model: "TP700" })).toBe("6AV2124-0GC01-0AX0");
   });
+
+  // #6131 r1 F1/F2: every maker the question names must be this machine's, read as the model is
+  // read (Unicode hyphens folded), with a dictionary-word maker counted when it is typed right
+  // before the number. The first row is the ASCII baseline the rule already caught.
+  it.each([
+    ["Allen-Bradley in ASCII (baseline)", "How do I wire the Allen-Bradley 6AV2124-0GC01-0AX0 in our Siemens cabinet?"],
+    ["Allen-Bradley with a nonbreaking hyphen (r1 F1)", "How do I wire the Allen‑Bradley 6AV2124-0GC01-0AX0 in our Siemens cabinet?"],
+    ["title-case Eaton before the number (r1 F2)", "How do I wire the Eaton 6AV2124-0GC01-0AX0 in our Siemens cabinet?"],
+    ["title-case Eaton before the number, no other maker (already withheld by the exact identity read)", "How do I wire the Eaton 6AV2124-0GC01-0AX0?"],
+    ["title-case Eaton before a number with nonbreaking hyphens", "How do I wire the Eaton 6AV2124‑0GC01‑0AX0 in our Siemens cabinet?"],
+  ])("%s: withheld with the number saved, and the card offers nothing", async (_label, question) => {
+    const body = await read(question);
+    expect(readConfirmedNumbers).toHaveBeenCalledWith(TENANT, NB); // precondition: the number was read
+    expect(body.manualSearch).toBeNull();
+    expect(body.manualSearchScope).toBe("other_model");
+    expect(offeredOwnNumber(question, { manufacturer: "Siemens", model: "TP700" })).toBeNull();
+  });
+
+  // Ordinary words stay ordinary: a dictionary-word maker counts only as above.
+  it.each([
+    ["a lowercase dictionary word", "How do I wire the 6AV2124-0GC01-0AX0 under the banner in our Siemens cabinet?"],
+    ["a capitalised dictionary word used as a word", "Sick of this: the 6AV2124-0GC01-0AX0 in our Siemens cabinet will not power up."],
+  ])("control: %s leaves the thread showing the status, and the card offers the number", async (_label, question) => {
+    const body = await read(question);
+    expect(body.manualSearch).toEqual(READY);
+    expect(body).not.toHaveProperty("manualSearchScope");
+    expect(offeredOwnNumber(question, { manufacturer: "Siemens", model: "TP700" })).toBe("6AV2124-0GC01-0AX0");
+  });
 });
 
 describe("numbersForMachine", () => {
