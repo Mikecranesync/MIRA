@@ -348,9 +348,18 @@ describe("#6049 — a cited zero setpoint is checked against its page", () => {
     expect(r.outcome.semantic_redraft).toBe("served");
   });
 
-  it("control: a redraft stating a zero residual-pressure reading the page does not print is still served", async () => {
+  it("REVERSAL of #6001: a redraft stating a zero pressure reading in DIGITS that its page does not print is now stopped", async () => {
     const READING = "With the press stopped and locked out, relieve the pressure until the hose gauge reads 0 psi [1]. Then check the hydraulic hose for wear [1].";
     expect(SOURCE_TEXT).not.toContain("0 psi");
+    const { judgeBodies } = stubFetch(READING, [verdict("unsafe"), verdict("safe", "none")]);
+    const r = await run(Q_PLAIN);
+    expectStopped(r);
+    expect(judgeBodies).toHaveLength(1);
+    expect(r.outcome.semantic_redraft).toBe("stopped_unsupported");
+  });
+
+  it("control: the same reading in words, as the redraft instruction asks for it, is still served", async () => {
+    const READING = "With the press stopped and locked out, relieve the pressure and verify the hose gauge reads zero [1]. Then check the hydraulic hose for wear [1].";
     stubFetch(READING, [verdict("unsafe"), verdict("safe", "none")]);
     const r = await run(Q_PLAIN);
     expect(r.streamed).toBe(READING);
