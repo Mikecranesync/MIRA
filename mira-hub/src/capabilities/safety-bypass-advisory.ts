@@ -257,7 +257,10 @@ const terminalsIn = (text: string): string[] => allMatches(TERMINAL_MENTION, tex
 /** A safeguard named as faulty in the same sentence ("the guard switch is bad, can I jumper s1-s2"). */
 const FAULTY =
   /\b(?:bad|faulty|failed|failing|broken|dead|damaged|stuck|missing|tripp\w*|trips|fault\w*|not\s+working|keeps?\s+\w+ing|went\s+out|is\s+out)\b/;
-/** Is a terminal-jumper match tied to a safeguard? Given the terminals it names. */
+/** #6042: "S5 is not part of the guard circuit" denies the link; it does not wire S5 to the guard. */
+const DENIED_LINK =
+  /\b(?:not|isn't|aren't|no\s+longer|never)\s+(?:\w+\s+)?(?:part\s+of|in|on|wired\s+(?:to|into|in)|connected\s+to|tied\s+to|for|used\s+(?:by|for|in))\b/;
+/** Is a terminal-jumper match tied to a safeguard? Given the terminals its clause names. */
 type TerminalLink = (terminals: string[]) => boolean;
 
 /**
@@ -298,10 +301,22 @@ function asksBrakeRelease(clause: string): boolean {
  * The release clause decides: an off state in it refuses; a restore-first or safety-on cue in it does not.
  */
 const RELEASE_SAFE_ORDER = new RegExp(
-  "\\b(?:after|once|when|until)\\b[^.?!]{0,40}\\b(?:restor\\w*|re-?enabl\\w*|reset|back\\s+on|enabled|active|energi[sz]ed|in\\s+place)\\b" +
+  // #6041: "after/once/when" + the safety function (or "it") as the SUBJECT of a restored state. "Until" is not a
+  // safe order (it releases now), and "after I reset the HMI" restores nothing.
+  `\\b(?:after|once|when)\\s+${ART}(?:${DEVICE}|brake\\s+monitoring|it|they)(?:\\s+\\S+){0,2}?\\s+(?:is|are|has\\s+been|have\\s+been|gets?|comes?)\\s+(?:\\w+\\s+)?(?:restored|reinstated|re-?enabled|reset|back(?:\\s+on|\\s+in)?|enabled|active|energi[sz]ed|in\\s+place|on)\\b` +
     `|\\b(?:with|while|w/)\\s+${ART}(?:\\S+\\s+){0,2}?(?:${DEVICE}|brake\\s+monitoring)(?:\\s+\\S+){0,2}?\\s+(?:enabled|active|on|energi[sz]ed|in\\s+place|working)\\b`,
   "i",
 );
+/** #6041: the restore-first condition may sit in the clause just before the release ("Once STO is restored, can I ..."). */
+function releaseInSafeOrder(brake: string, sentences: string[]): boolean {
+  if (RELEASE_SAFE_ORDER.test(brake)) return true;
+  for (const sentence of sentences) {
+    const cs = clausesOf(sentence);
+    const i = cs.indexOf(brake);
+    if (i > 0 && RELEASE_SAFE_ORDER.test(cs[i - 1])) return true;
+  }
+  return false;
+}
 function safetyOffNow(clause: string): boolean {
   return allMatches(SAFETY_OFF, clause).some((m) => {
     const before = clause.slice(0, m.index ?? 0);
@@ -455,7 +470,7 @@ function judgeClause(clause: string, messageNamesDevice: boolean, terminalLinked
     if (c.run && SYMPTOM_FRAME.test(clause)) continue;
     for (const m of allMatches(c.re, clause)) {
       const index = m.index ?? 0;
-      if (c.terminal && !terminalLinked(terminalsIn(m[0]))) continue;
+      if (c.terminal && !terminalLinked(terminalsIn(clause))) continue;
       if (c.re === JUMPER_TO && COMMS_BRIDGE.test(m[0])) continue;
       // A circuit removal that has already happened ("was taken out of the STO circuit",
       // "someone has taken the door switch from the chain") is a report; a proposal is not.
@@ -480,6 +495,7 @@ function judgeClause(clause: string, messageNamesDevice: boolean, terminalLinked
   for (const m of allMatches(DEFEAT_PART_IN_PLACE, clause)) {
     if (!NEGATED_BEFORE.test(clause.slice(0, m.index ?? 0))) warn ??= m[0];
   }
+  warn ??= inputStateReport(clause);
   const warned = WARN_PHRASES.find((p) => clause.includes(p));
   if (warned) warn ??= warned;
   return warn ? { kind: "warn", match: warn } : { kind: null, match: null };
@@ -548,14 +564,22 @@ const INPUT_STATE = new RegExp(
   `\\b${SAFETY_INPUT}\\s+((?:(?:is|are|still|now|currently|been|has|have|got)\\s+){0,3})(?:jumpered|jumped|shorted|bridged|tied)(?:\\s+out)?\\b`,
   "gi",
 );
-function reportsCurrentUnsafeState(clause: string, terminalLinked: TerminalLink = () => false): boolean {
+/** #6045: "Is the STO input jumpered?" asks; it reports nothing. */
+const ASKS_BEFORE = /^\s*(?:is|are|was|were|has|have|does|did)\s+(?:\w+\s+){0,2}$/;
+/** #6045: the one reader of "the STO input is jumpered" reports, shared by the advisory and the escalation. */
+function inputStateReport(clause: string): string | null {
   for (const m of allMatches(INPUT_STATE, clause)) {
-    if (/\b(?:not|never)\b/.test(m[1] ?? "") || NOT_CURRENT_BEFORE.test(clause.slice(0, m.index ?? 0))) continue;
-    return true;
+    const before = clause.slice(0, m.index ?? 0);
+    if (/\b(?:not|never)\b/.test(m[1] ?? "") || NOT_CURRENT_BEFORE.test(before) || NOT_NOW_BEFORE.test(before) || ASKS_BEFORE.test(before)) continue;
+    return m[0];
   }
+  return null;
+}
+function reportsCurrentUnsafeState(clause: string, terminalLinked: TerminalLink = () => false): boolean {
+  if (inputStateReport(clause)) return true;
   for (const m of allMatches(TERMINAL_JUMPER, clause)) {
     const before = clause.slice(0, m.index ?? 0);
-    if (!isReport(m[0]) || !terminalLinked(terminalsIn(m[0]))) continue;
+    if (!isReport(m[0]) || !terminalLinked(terminalsIn(clause))) continue;
     if (/\b(?:was|were|had)\s+(?:\w+\s+)?$/.test(before) || NOT_NOW_BEFORE.test(before) || NOT_CURRENT_BEFORE.test(before)) continue;
     return true;
   }
@@ -600,7 +624,9 @@ function classify(message: string): { refuse: string | null; warn: string | null
   // names a safeguard as faulty ("the guard switch is bad, can I jumper s1-s2"). A safeguard merely mentioned
   // nearby ("the e-stop passed its test") ties nothing.
   const sentences = msg.split(/(?<=[.?!])\s+/).filter(Boolean);
-  const wired = new Set(sentences.filter((s) => ANY_DEVICE.test(s)).flatMap((s) => clausesOf(s).filter((c) => ANY_DEVICE.test(c)).flatMap(terminalsIn)));
+  const wired = new Set(
+    sentences.filter((s) => ANY_DEVICE.test(s)).flatMap((s) => clausesOf(s).filter((c) => ANY_DEVICE.test(c) && !DENIED_LINK.test(c)).flatMap(terminalsIn)),
+  );
   const judged: { clause: string; link: TerminalLink }[] = [];
   let warn: string | null = null;
   for (const sentence of sentences) {
@@ -615,7 +641,7 @@ function classify(message: string): { refuse: string | null; warn: string | null
   }
   // #5680: a brake release asked while the safety function is reported off, in either order.
   const brake = clauses.find(asksBrakeRelease);
-  if (brake && (safetyOffNow(brake) || (!RELEASE_SAFE_ORDER.test(brake) && clauses.some(safetyOffNow)))) {
+  if (brake && (safetyOffNow(brake) || (!releaseInSafeOrder(brake, sentences) && clauses.some(safetyOffNow)))) {
     return { refuse: brake, warn: null };
   }
   // A safeguard reported unsafe NOW, followed by a clause that asks to carry on. Another device being
