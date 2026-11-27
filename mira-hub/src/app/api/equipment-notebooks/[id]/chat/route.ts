@@ -77,6 +77,7 @@ import {
   acquisitionManualUrl,
   applicableDisabledSource,
   canRetryReviewedAcquisition,
+  offeredOwnNumber,
   readAcquisition,
   reconcileAcquisition,
   startManualAcquisition,
@@ -3148,9 +3149,13 @@ async function handleChatTurn(
   // Codex #4120 F4 — persisted with the turn so an idempotent retry and the
   // history reload deliver the same proposal the live stream did. Computed
   // here (after the F2 reassignment above) so it reflects the FINAL proposal.
-  const proposalEntries: NotebookIdentityProposalFrame[] = identityProposal
-    ? [{ kind: "identity_proposal", ...identityProposal }]
-    : [];
+  // #6085: the card offers the one typed number the status scope would accept for this
+  // machine (`offeredOwnNumber`), so a technician who ticks it sees this thread's lookup status.
+  const offeredNumber = identityProposal ? offeredOwnNumber(message, identityProposal) : null;
+  const identityProposalFrame: NotebookIdentityProposalFrame | null = identityProposal
+    ? { kind: "identity_proposal", ...identityProposal, ...(offeredNumber ? { offeredNumber } : {}) }
+    : null;
+  const proposalEntries: NotebookIdentityProposalFrame[] = identityProposalFrame ? [identityProposalFrame] : [];
 
   // Once retrieval has produced chunks — from the notebook's own sources OR the
   // shared OEM corpus — the turn is DOCUMENT-GROUNDED for everything
@@ -4215,10 +4220,7 @@ async function handleChatTurn(
         // (mirrors the answered path below): the client offers "Use its
         // manuals" / "Not this" on an abstained turn too, not only an
         // answered one.
-        if (identityProposal) {
-          const proposalFrame: NotebookIdentityProposalFrame = { kind: "identity_proposal", ...identityProposal };
-          controller.enqueue(enc.encode(sse(proposalFrame)));
-        }
+        if (identityProposalFrame) controller.enqueue(enc.encode(sse(identityProposalFrame)));
         // T2 (#4189) — see manualSearchStatusFrame's own header. Transient only.
         const searchStatusFrame = manualSearchStatusFrame(identityProposal, manualSearchRunning, candidateAcquisitionText, candidateSearchStartedAt, candidateManualUrl);
         if (searchStatusFrame) controller.enqueue(enc.encode(sse(searchStatusFrame)));
@@ -6327,10 +6329,7 @@ async function handleChatTurn(
       // #4095 — the proposal rides next to the answer for a client that
       // renders it (none ships that yet; unknown frames are ignored). Emitted
       // whatever the answer status.
-      if (identityProposal) {
-        const proposalFrame: NotebookIdentityProposalFrame = { kind: "identity_proposal", ...identityProposal };
-        controller.enqueue(enc.encode(sse(proposalFrame)));
-      }
+      if (identityProposalFrame) controller.enqueue(enc.encode(sse(identityProposalFrame)));
       // T2 (#4189) — see manualSearchStatusFrame's own header. Transient only.
       {
         const searchStatusFrame = manualSearchStatusFrame(identityProposal, manualSearchRunning, candidateAcquisitionText, candidateSearchStartedAt, candidateManualUrl);

@@ -43,8 +43,9 @@ export interface IdentityProposal {
   model: string;
 }
 
-/** The SSE frame the notebook chat emits next to the normal answer. */
-export type NotebookIdentityProposalFrame = { kind: "identity_proposal" } & IdentityProposal;
+/** The SSE frame the notebook chat emits next to the normal answer. `offeredNumber` (#6085) is
+ *  the one typed number the card offers beside an unticked box (`offeredOwnNumber`). */
+export type NotebookIdentityProposalFrame = { kind: "identity_proposal"; offeredNumber?: string } & IdentityProposal;
 
 /** A single letter + 2–4 digits: a fault code, never a model (mirrors extractFaultCodes). */
 const FAULT_CODE_RE = /^[A-Za-z]\d{2,4}$/;
