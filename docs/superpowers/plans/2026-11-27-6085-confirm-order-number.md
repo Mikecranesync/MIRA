@@ -65,8 +65,9 @@ rm node_modules           # removes the symlink only (no -r)
 bun install --frozen-lockfile
 ln -sfn ../mira-hub/node_modules ../packages/node_modules
 cd ../mira-mobile && bun install --frozen-lockfile
-cd ../apps/factorylm-ui-lab && bun install --frozen-lockfile
 ```
+
+The `apps/factorylm-ui-lab` install waits for the Task 8 gate (it is in the shared-core lane).
 
 - [ ] **Step 3: Record baselines at the base commit**
 
@@ -299,7 +300,7 @@ Expected: 0 failed.
 - [ ] **Step 5: Mutation proofs** (one at a time, restore after each; log counts)
 
 1. `return fixes.length >= 1 ? fixes[0]! : null;` → "two ways" red.
-2. Delete the `!== "other"` early return → "offers nothing when the question is already own or names no number" red (plan-stage probe: "TP700" itself then counts as a fixing token for an already-own question and is offered).
+2. Delete the `!== "other"` early return → expected red: "offers nothing when the question is already own or names no number" (reasoned at plan stage, not yet run: "TP700" itself would then count as a fixing token for an already-own question and be offered). Record the actual result; if it stays green, say so in the log rather than inventing a test.
 3. `if (candidates.length > 200) return null;` → "past 20" red.
 4. Drop `typedToken` (use raw tokens) → "keeps the typed spelling" red.
 
@@ -1113,7 +1114,7 @@ vi.mock("@/lib/workspace-files", () => ({ listFilesForTarget: vi.fn(async () => 
 const currentManualSearchStatus = vi.hoisted(() => vi.fn());
 vi.mock("@/capabilities/notebook-manual-acquisition", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/capabilities/notebook-manual-acquisition")>();
-  return { currentManualSearchStatus, threadStatusScope: actual.threadStatusScope };
+  return { currentManualSearchStatus, threadStatusScope: actual.threadStatusScope, offeredOwnNumber: actual.offeredOwnNumber };
 });
 const readConfirmedNumbers = vi.hoisted(() => vi.fn());
 vi.mock("@/capabilities/confirmed-numbers", async (importOriginal) => ({
@@ -1123,6 +1124,7 @@ vi.mock("@/capabilities/confirmed-numbers", async (importOriginal) => ({
 
 import { GET } from "@/app/api/equipment-notebooks/[id]/route";
 import { numbersForMachine } from "@/capabilities/manual-status-subject";
+import { offeredOwnNumber } from "@/capabilities/notebook-manual-acquisition";
 import { sessionOr401 } from "@/lib/session";
 import { getNotebook, listSources, listTurns } from "@/lib/equipment-notebooks";
 import type { EquipmentNotebook } from "@/lib/equipment-notebooks";
@@ -1203,6 +1205,35 @@ describe("GET notebook detail: a confirmed number (#6085)", () => {
     const body = await (await GET(threadReq, params)).json();
     expect(body.manualSearch).toBeNull();
     expect(body.manualSearchScope).toBe("other_model");
+  });
+});
+
+// The card's offer scopes the card's message alone, with the proposal's maker and model and no
+// catalog number. The read scopes the whole thread with the notebook as the confirm left it.
+// They agree because (a) the scope is decided by the NEWEST question that names a model, and the
+// card's message names one whenever a number is offered, and (b) this route's proposals carry no
+// catalog number, so the confirm writes an empty one. Pinned here end to end with the real code.
+describe("offer, confirm and read agree (#6085)", () => {
+  const AFTER_CONFIRM = { ...NOTEBOOK, catalogNumber: "" };
+
+  it("the offered number, once confirmed, makes the read show the status", async () => {
+    const offered = offeredOwnNumber(J2, { manufacturer: "Siemens", model: "TP700" })!;
+    expect(offered).toBe("6AV2124-0GC01-0AX0");
+    vi.mocked(getNotebook).mockResolvedValue(AFTER_CONFIRM as never);
+    readConfirmedNumbers.mockResolvedValue([saved(offered)]);
+    expect((await (await GET(threadReq, params)).json()).manualSearch).toEqual(READY);
+  });
+
+  it("a card on a later turn agrees too: older questions about another model do not decide", async () => {
+    vi.mocked(getNotebook).mockResolvedValue(AFTER_CONFIRM as never);
+    vi.mocked(listTurns).mockResolvedValue([ask("Find the manual for Siemens TP900 Comfort"), ask(J2), ask("What fuse does it take?")] as never);
+    expect((await (await GET(threadReq, params)).json()).manualSearch).toEqual(READY);
+  });
+
+  it("control: a newer question about another model still withholds", async () => {
+    vi.mocked(getNotebook).mockResolvedValue(AFTER_CONFIRM as never);
+    vi.mocked(listTurns).mockResolvedValue([ask(J2), ask("Find the manual for Siemens TP900 Comfort")] as never);
+    expect((await (await GET(threadReq, params)).json()).manualSearchScope).toBe("other_model");
   });
 });
 
@@ -1402,6 +1433,12 @@ At this point no surface shows a tick box, so no number can be saved: shipped al
 
 **Interfaces:**
 - Produces: `IdentityProposal.offeredNumber?: string` (set by host adapters from the server frame) and `IdentityProposal.confirmedNumber?: string` (set by the card only when ticked); `onConfirmIdentity(proposal)` receives `confirmedNumber` only when ticked.
+
+- [ ] **Step 0: Install the UI lab (only now, after the gate)**
+
+```bash
+cd /Users/bravonode/Mira-worktrees/6085-confirm-number/apps/factorylm-ui-lab && bun install --frozen-lockfile
+```
 
 - [ ] **Step 1: Write the failing tests** (append to `identity-proposal.test.tsx`)
 
@@ -1687,7 +1724,7 @@ git fetch -q origin && git merge-base --is-ancestor origin/main HEAD || git merg
 
 Then: Hub `bun run test`, Hub typecheck count vs baseline, mobile `bun run test`, `apps/factorylm-ui-lab` `bun run verify`, the Task 4 real-Postgres test on a fresh throwaway container, and every mutation row from Tasks 1–9 re-run in one `#!/bin/bash` script that prints the test count each row and treats a missing count as a failed row (`scratchpad/6085/mutations-final.sh`, log `mutations-final.log`).
 
-- [ ] **Step 2: Write the PR body** with: summary; the Siemens TP700 walk before/after; what does not change (catalog number, lookup key, search, matching, answers); the costs from spec §5 (an unticked box keeps today's withheld status; first card only; legacy surfaces show no box); the `## Lifecycle guard rationale` section with `Reason:`, `Canonical replacement impact:` and `Rollback:` covering `mira-hub/package.json` (minor version for a feature, per `mira-hub/AGENTS.md`) and the one-line decoder copy in `notebook-chat-utils.ts` (feeds the canonical shell's live card; the legacy chat page never renders the field; same frame loop and precedent as #6056); migration 118's prod apply being Mike's; the session footer. Run the body lint (no `~`, at most one `$`, no `[^`, no `@`).
+- [ ] **Step 2: Write the PR body** with: summary; the Siemens TP700 walk before/after; what does not change (catalog number, lookup key, search, matching, answers); the costs from spec §5 (an unticked box keeps today's withheld status; first card only, by construction, since a card is proposed only while the notebook has no identity; legacy surfaces show no box); two disclosed limits: (1) a neighbour's number is offered when it is the only one typed (#6094 r2 F7, #6099), and the unticked default is the protection, because ticking it is the technician's own statement; (2) a failed save is logged and returned as `numberSaved: false`, but no surface shows it and the settled card does not offer the box again, so that thread stays withheld as today (fail closed); the `## Lifecycle guard rationale` section with `Reason:`, `Canonical replacement impact:` and `Rollback:` covering `mira-hub/package.json` (minor version for a feature, per `mira-hub/AGENTS.md`) and the one-line decoder copy in `notebook-chat-utils.ts` (feeds the canonical shell's live card; the legacy chat page never renders the field; same frame loop and precedent as #6056); migration 118's prod apply being Mike's; the session footer. Run the body lint (no `~`, at most one `$`, no `[^`, no `@`).
 
 - [ ] **Step 3: Guard preflight from origin/main, three ways**
 
@@ -1713,4 +1750,9 @@ Codex rounds always use `--review-only`. GREEN or CONVERGED (MEDIUMs only): file
 
 Lesson log in `/Users/Shared/cluster/betterclaw/logs/` (the #6094 two-round lesson and the plan-stage probe that changed §4.1). Update the memory file `project_takeover_5746.md`. Session closeout (12 bullets or fewer).
 
-After merge (Mike's): staging deploy with mira-hub after checking staging users, the tablet walk from spec §7.5, prod only after a passed walk, the prod migration via `apply-migrations.yml` (dry-run then apply) with Mike's go, and the mobile OTA as Mike's dispatch.
+After merge (Mike's), in this order:
+1. Staging. `migration-verify` already applied 118 to the staging branch; confirm that with a read-only `db-inspect`. Then deploy staging with mira-hub, after checking for staging users.
+2. Run the tablet walk from spec §7.5.
+3. Prod migration first: `apply-migrations.yml` dry-run, then apply, with Mike's go.
+4. Prod Hub deploy, only after a passed walk and the applied migration. A Hub deployed before the column exists would log every ticked save as failed (`numberSaved: false`) and withhold as today.
+5. Mobile OTA, as Mike's dispatch.
