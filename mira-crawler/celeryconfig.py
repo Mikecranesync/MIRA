@@ -24,7 +24,9 @@ enable_utc = True
 # Worker
 # ---------------------------------------------------------------------------
 
-worker_concurrency = 3  # Bravo has 10 cores; 3 slots balance Ollama embedding headroom with pipeline throughput
+worker_concurrency = (
+    3  # Bravo has 10 cores; 3 slots balance Ollama embedding headroom with pipeline throughput
+)
 worker_prefetch_multiplier = 1  # one task at a time per worker slot
 task_acks_late = True  # ack after completion, not on receipt (crash-safe)
 task_reject_on_worker_lost = True
@@ -69,6 +71,10 @@ task_routes = {
     "tasks.historize_runs.*": {"queue": "historian"},
     "mira_crawler.tasks.tag_diff_historizer.*": {"queue": "historian"},
     "tasks.tag_diff_historizer.*": {"queue": "historian"},
+    # Flaky-input signal detector (Phase 9, issue #1661) — historian queue so
+    # the historian worker handles it; it needs NEON_DATABASE_URL like the rest.
+    "mira_crawler.tasks.flaky_input_detector.*": {"queue": "historian"},
+    "tasks.flaky_input_detector.*": {"queue": "historian"},
     # Conversation-eval auto-scorer (mira_eval.score_conversation_eval, built
     # v3.116.0). Custom task name (not tasks.eval_scorer.*), so route on the exact
     # name. Shares the historian queue — mira-historian-worker is the only prod
@@ -125,6 +131,8 @@ task_annotations = {
     # Tag-diff historizer (issue #2343) — beat owns the 5-min cadence; the
     # rate limit is a defensive cap so a manual burst can't stampede.
     "tasks.tag_diff_historizer.historize_tag_diffs": {"rate_limit": "1/m"},
+    # Flaky-input detector (Phase 9, issue #1661) — beat owns 5-min cadence.
+    "tasks.flaky_input_detector.detect_flaky_inputs": {"rate_limit": "1/m"},
     "tasks.synthetic_dogfood.run_synthetic_dogfood_cycle": {"rate_limit": "1/h"},
     # Observer is three GETs; the cap only stops a manual burst.
     "tasks.machine_memory_observer.observe_cv101_machine_memory": {"rate_limit": "6/h"},
@@ -220,6 +228,14 @@ _HISTORIAN_SCHEDULE = {
         "task": "mira_eval.score_conversation_eval",
         "schedule": crontab(hour=3, minute=0),
     },
+    # Flaky-input signal detector (Phase 9, issue #1661) — every 5 min, same
+    # cadence as the tag-diff historizer. Offset by 1 min (*/5 + 1) so the
+    # detector reads diffs the historizer just wrote rather than racing it.
+    "flaky-input-detector": {
+        "task": "tasks.flaky_input_detector.detect_flaky_inputs",
+        "schedule": crontab(minute="1-59/5"),
+        "options": {"queue": "historian", "expires": 240},
+    },
 }
 
 if os.getenv("CELERY_BEAT_PROFILE") == "synthetic-dogfood":
@@ -245,6 +261,13 @@ else:
         "tag-diff-historizer": {
             "task": "tasks.tag_diff_historizer.historize_tag_diffs",
             "schedule": crontab(minute="*/5"),
+        },
+        # Flaky-input signal detector (Phase 9, issue #1661) — dev parity with
+        # the historian profile; fail-open when NEON_DATABASE_URL is unset.
+        "flaky-input-detector": {
+            "task": "tasks.flaky_input_detector.detect_flaky_inputs",
+            "schedule": crontab(minute="1-59/5"),
+            "options": {"queue": "historian", "expires": 240},
         },
         # Run-centric fault detection (#2341). Polls every 30s; the task itself
         # is a no-op unless MIRA_RUN_DIFF_ENABLED=1, so the cadence is cheap.
