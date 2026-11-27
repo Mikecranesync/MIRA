@@ -23,7 +23,18 @@
  * and no request abort before that point. The claim is "the server handed every byte on and
  * knows of no cancellation", never "the phone showed the answer". Anything else (a cancel,
  * an abort, an error, a response never tracked, a body nobody finished reading within the
- * wait) is false, and the answer is final once given.
+ * wait) is false.
+ *
+ * Two things withdraw a yes that was already latched (Codex round 4 on #6082), because both
+ * can become known only after the last byte was read:
+ *  - F11: the request's abort. Both ends can be read and the client still go away before
+ *    the caller acts. The signal is read again each time `confirmed` answers.
+ *  - F9: `rewritten()`. Reading both ends proves bytes were taken, not that a wrapper in
+ *    between passed on the bytes it read. A wrapper that decodes and re-encodes the stream
+ *    (the sheet receipt) can corrupt a frame on the way. The route reports such a wrapper
+ *    here, and nothing is confirmed for that turn, whenever it is reported.
+ * So `confirmed` is the answer as of the moment it resolves, and the caller acts on it at
+ * once: a later call can say no where an earlier one said yes, never the other way round.
  *
  * It changes nothing a reader can see: the same chunks in the same order, the same status
  * and headers, and a cancel is passed on to the wrapped body.
@@ -33,6 +44,8 @@ export type ResponseHandoff = {
   own(res: Response): Response;
   /** Wrap the response that leaves the route, after the last wrapper. Call it once. */
   final(res: Response): Response;
+  /** A wrapper between `own` and `final` rewrites the bytes: nothing can be confirmed for this turn. */
+  rewritten(): void;
   /** True only on a confirmed full handoff; false on anything else, including `waitMs` passing first. */
   confirmed(waitMs: number): Promise<boolean>;
 };
@@ -50,6 +63,7 @@ export function createResponseHandoff(signal?: AbortSignal | null): ResponseHand
   if (signal?.aborted) deny();
   else signal?.addEventListener("abort", deny, { once: true });
 
+  let rewritten = false;
   const ended = { own: false, final: false };
   const track = (which: "own" | "final") => (res: Response): Response => {
     if (!res.body) {
@@ -90,10 +104,16 @@ export function createResponseHandoff(signal?: AbortSignal | null): ResponseHand
   return {
     own: track("own"),
     final: track("final"),
-    confirmed(waitMs) {
+    rewritten() {
+      rewritten = true;
+      deny();
+    },
+    async confirmed(waitMs) {
       const timer = setTimeout(deny, waitMs);
       (timer as { unref?: () => void }).unref?.();
-      return outcome.finally(() => clearTimeout(timer));
+      const handed = await outcome.finally(() => clearTimeout(timer));
+      // Read at the moment of answering, not when the last byte was read (F9, F11 above).
+      return handed && !rewritten && !signal?.aborted;
     },
   };
 }

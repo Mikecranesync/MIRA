@@ -1934,14 +1934,101 @@ describe("#6048 — a body cancel after the commit still persists the packet and
     expectDispositionMatchesHistory(r);
   });
 
-  it("F5 control: sheet on without the progress stream, the receipt frame inserted, the response read to its end: ONE request", async () => {
+  // ── Codex round 4 on #6082 (F9, F11) ─────────────────────────────────────────
+  // F9: the sheet receipt REWRITES the turn's bytes (it decodes them, looks for the end
+  // marker anywhere in the text and re-encodes), and it can corrupt the answer frame on the
+  // way (#6105). Both responses are still read to their end, so the tracker alone would say
+  // yes. A response the receipt rewrote is not a verified handoff: no decision call.
+  it.each([false, true])("F9: decision call on, sheet on (progress stream %s), the receipt frame inserted, the response read to its end: the receipt rewrote the bytes, so nothing is sent to the vendor; ONE packet and usage row", async (progress) => {
     decisionCallOn();
     sheetOn();
     stubFetch(REDRAFT, [verdict("safe", "none")]);
     holdReceiptRead(SHEET_JOB).release();
-    const res = await POST(reqWith(SHEET_TURN), params);
+    const res = await POST(reqWith(SHEET_TURN, { progress }), params);
     const text = await res.text();
+    // Preconditions: the receipt really wrapped this response, and the answer went out whole.
     expect(text).toContain('"kind":"sheet_receipt"');
+    expect(text).toContain(DRAFT1.split(" ")[0]);
+    expect(text).toContain("data: [DONE]");
+    const r = await settled();
+    expect(vendorRequests()).toHaveLength(0);
+    expect(evaluateMock).not.toHaveBeenCalled();
+    expect(r.packet.jev_decision ?? null).toBeNull();
+    expect(r.meta.outcome).toBe("answered");
+    expect(r.packet.response_write).toEqual({ frames_written: true, citations_written: 1 });
+    expectDispositionMatchesHistory(r);
+    expect(handoffSpy).toHaveBeenCalledTimes(1);
+  });
+
+  // Codex's own case: the answer quotes the stream's end marker. The receipt puts its frame
+  // INSIDE the answer's JSON, so the client cannot parse the content frame and never shows
+  // the answer, while the status frame and the end still arrive.
+  it("F9: decision call on, sheet on, the answer quotes the end marker: the receipt lands inside the answer frame, the client can parse no content frame, and nothing is sent to the vendor", async () => {
+    decisionCallOn();
+    sheetOn();
+    const QUOTING = "Hold reset until the panel log shows data: [DONE] then release it.";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string | URL | Request, init?: RequestInit) =>
+        typeof init?.body === "string" && init.body.includes('"stream":true') ? answerStream(QUOTING) : new Response("down", { status: 500 }),
+      ),
+    );
+    holdReceiptRead(SHEET_JOB).release();
+    const res = await POST(reqWith(SHEET_TURN), params);
+    const raw = await res.text();
+    const parsed: Array<Frame & { status?: string }> = [];
+    let unparseable = 0;
+    for (const l of raw.split("\n\n")) {
+      if (!l.startsWith("data: ") || l.trim() === "data: [DONE]") continue;
+      try {
+        parsed.push(JSON.parse(l.slice(6)) as Frame & { status?: string });
+      } catch {
+        unparseable += 1;
+      }
+    }
+    const r = await settled();
+    // Preconditions: the turn is recorded as answered with the quoting text, the receipt
+    // frame went out, and what the client can parse holds no content frame with the answer.
+    expect(r.turn.answerStatus).toBe("answered");
+    expect(String(r.turn.answerText)).toContain("data: [DONE]");
+    expect(raw).toContain('"kind":"sheet_receipt"');
+    expect(unparseable).toBeGreaterThan(0);
+    expect(parsed.filter((f) => f.kind === "content").map((f) => f.content ?? "").join("")).not.toContain("release it");
+    expect(vendorRequests()).toHaveLength(0);
+    expect(evaluateMock).not.toHaveBeenCalled();
+    expect(r.packet.jev_decision ?? null).toBeNull();
+    expect(r.packet.persistence).toMatchObject({ turn_row_id: ROW_ID, outcome: "ok" });
+  });
+
+  // F11: the tracker says yes the moment both responses are read to their end, and a
+  // promise keeps its first answer. A request abort seen after that, before the settle
+  // reaches the decision call, must still stop the call. The packet and usage do not depend on it.
+  it("F11: decision call on, the response is read to its end and the request is then aborted before the settle reaches the decision call: nothing is sent to the vendor, ONE packet and usage row", async () => {
+    decisionCallOn();
+    stubFetch(REDRAFT, [verdict("safe", "none")]);
+    const ac = new AbortController();
+    const res = await POST(reqWith(PLAIN_TURN, { signal: ac.signal }), params);
+    expect(await drain(res.body!.getReader())).toBe("closed");
+    // Preconditions: read to the end, and the settle has not reached the call or the ledger.
+    expect(evaluateMock).not.toHaveBeenCalled();
+    expect(vendorRequests()).toHaveLength(0);
+    expect(persistMock.persistTurnUsage).not.toHaveBeenCalled();
+    ac.abort();
+    const r = await settled();
+    expect(vendorRequests()).toHaveLength(0);
+    expect(evaluateMock).not.toHaveBeenCalled();
+    expect(r.packet.jev_decision ?? null).toBeNull();
+    expect(r.meta.outcome).toBe("answered");
+    expect(r.packet.response_write).toEqual({ frames_written: true, citations_written: 1 });
+    expectDispositionMatchesHistory(r);
+  });
+
+  it("F11 control: the same request with its signal never aborted, read to its end: ONE request, a decision record", async () => {
+    decisionCallOn();
+    stubFetch(REDRAFT, [verdict("safe", "none")]);
+    const ac = new AbortController();
+    const res = await POST(reqWith(PLAIN_TURN, { signal: ac.signal }), params);
+    expect(await drain(res.body!.getReader())).toBe("closed");
     const r = await settled();
     expect(vendorRequests()).toHaveLength(1);
     expect(r.packet.jev_decision ?? null).not.toBeNull();

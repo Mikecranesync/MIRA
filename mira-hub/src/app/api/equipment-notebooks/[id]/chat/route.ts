@@ -1661,7 +1661,10 @@ async function handleChatTurn(
     // tracks this turn's own response and the response that leaves the route, and confirms
     // only when BOTH were read to their end, with no cancel, no error and no request
     // abort. (The outer one alone is not enough either: when a wrapper fails, the progress
-    // stream ends cleanly with an error frame and the answer never passed through it.) No
+    // stream ends cleanly with an error frame and the answer never passed through it.)
+    // Two things withdraw that yes even after both were read (Codex round 4, F9 and F11):
+    // a request abort seen by the time this call would start, and a sheet receipt that
+    // rewrote the bytes between the two responses (it can corrupt the answer frame). No
     // tracker, a cancel, an abort, an error, or no answer within HANDOFF_WAIT_MS all mean
     // NO CALL: unknown is never a yes. A confirmed handoff is the SERVER'S view only: the
     // runtime took every byte and its end, and reported no cancellation. A phone that
@@ -6745,6 +6748,19 @@ export async function POST(req: NextRequest, routeCtx: { params: Promise<{ id: s
       sheetReceiptCtx = null;
     }
   }
+  // Codex round 4 on #6082, F9: the sheet receipt decodes the turn's bytes, looks for the end
+  // marker anywhere in the text and re-encodes them, and it can corrupt the answer frame on
+  // the way (#6105). Both responses are still read to their end, so reading alone would
+  // confirm an answer the client could not parse. When the receipt hands back a response of
+  // its own (it wrapped the body), the tracker is told and nothing is confirmed for this
+  // turn. When it hands back the response it was given (no job, no body, an error of its
+  // own), the bytes are the turn's own and the tracker decides as before.
+  const receipted = async (inner: Response): Promise<Response> => {
+    if (!sheetReceiptCtx) return inner;
+    const out = await withSheetReceipt(inner, sheetReceiptCtx);
+    if (out !== inner) handoff?.rewritten();
+    return out;
+  };
   if (wantsProgress(req)) {
     // #4687: headers go out now; the turn runs behind the open stream. The
     // accounting below runs when the turn actually finishes, with its real
@@ -6754,7 +6770,7 @@ export async function POST(req: NextRequest, routeCtx: { params: Promise<{ id: s
       try {
         const inner = own(await handleChatTurn(req, routeCtx, ingress, handoff));
         innerStatus = inner.status;
-        return sheetReceiptCtx ? await withSheetReceipt(inner, sheetReceiptCtx) : inner;
+        return await receipted(inner);
       } catch (err) {
         ingress.closeOnUnhandled?.("error");
         throw err;
@@ -6772,7 +6788,7 @@ export async function POST(req: NextRequest, routeCtx: { params: Promise<{ id: s
   try {
     const res = own(await handleChatTurn(req, routeCtx, ingress, handoff));
     status = res.status;
-    return leaving(sheetReceiptCtx ? await withSheetReceipt(res, sheetReceiptCtx) : res);
+    return leaving(await receipted(res));
   } catch (err) {
     // A throw that escaped every `endRoot` would leave the start record open
     // until the reconciler swept it — reported as `abandoned` when it was in

@@ -248,6 +248,57 @@ describe("response handoff: a cancel, an abort or a source error is a no", () =>
     expect(await within(handoff.confirmed(WAIT), QUICK)).toBe(false);
   });
 
+  // Codex round 4 on #6082, F11: the yes is latched when both ends are read, and a promise
+  // keeps its first answer. An abort seen after that must still withdraw it.
+  it("request aborted AFTER both responses were read to their end: the yes is withdrawn", async () => {
+    const ac = new AbortController();
+    const handoff = createResponseHandoff(ac.signal);
+    await readAll(both(handoff, source(["a", "b"]).stream).body!.getReader());
+    ac.abort();
+    expect(await within(handoff.confirmed(WAIT), QUICK)).toBe(false);
+  });
+
+  it("control: the same signal never aborted: confirmed", async () => {
+    const ac = new AbortController();
+    const handoff = createResponseHandoff(ac.signal);
+    await readAll(both(handoff, source(["a", "b"]).stream).body!.getReader());
+    expect(await within(handoff.confirmed(WAIT), QUICK)).toBe(true);
+  });
+
+  it("an answer already given is not changed by a later abort (the caller acts on it at once)", async () => {
+    const ac = new AbortController();
+    const handoff = createResponseHandoff(ac.signal);
+    await readAll(both(handoff, source(["a"]).stream).body!.getReader());
+    const answer = await handoff.confirmed(WAIT);
+    ac.abort();
+    expect(answer).toBe(true);
+    expect(await within(handoff.confirmed(WAIT), QUICK)).toBe(false);
+  });
+
+  // Codex round 4 on #6082, F9: a wrapper that rewrites the bytes between the two responses
+  // can corrupt a frame while both are still read to their end.
+  it("rewritten: both responses read to their end, but a wrapper between them rewrote the bytes -> not confirmed", async () => {
+    const handoff = createResponseHandoff();
+    const own = handoff.own(sse(source(["a", "b"]).stream));
+    const final = handoff.final(new Response(own.body!.pipeThrough(new TransformStream<Uint8Array, Uint8Array>()), { status: own.status }));
+    handoff.rewritten();
+    expect(await readAll(final.body!.getReader())).toBe("ab");
+    expect(await within(handoff.confirmed(WAIT), QUICK)).toBe(false);
+  });
+
+  it("rewritten, reported only after both were read to their end: still not confirmed, and at once", async () => {
+    const handoff = createResponseHandoff();
+    await readAll(both(handoff, source(["a"]).stream).body!.getReader());
+    handoff.rewritten();
+    expect(await within(handoff.confirmed(WAIT), QUICK)).toBe(false);
+  });
+
+  it("rewritten before anything is read: denied at once, without waiting", async () => {
+    const handoff = createResponseHandoff();
+    handoff.rewritten();
+    expect(await within(handoff.confirmed(WAIT), QUICK)).toBe(false);
+  });
+
   it("a confirmed handoff leaves no timer running", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     try {
