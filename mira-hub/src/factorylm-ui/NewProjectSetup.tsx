@@ -35,6 +35,8 @@ export type SetupActions = {
   next: () => void;
   back: () => void;
   commit: () => void;
+  /** #5393: cancel an in-flight commit. */
+  cancelCommit: () => Promise<void>;
   /** S16: send a PDF whose save failed again. */
   retryUpload: (key: string) => void;
   openProject: () => void;
@@ -150,6 +152,10 @@ function Step3({ state, actions }: { state: SetupState; actions: SetupActions })
         <p role="alert" style={alertBox}>{state.refusal.message} <button type="button" style={primary} onClick={actions.openProject}>Open existing</button></p>
       ) : null}
       {state.error ? <p role="alert" style={alertBox}>{state.error}</p> : null}
+      {/* #5393: show live progress during commit */}
+      {state.committing && state.progress ? (
+        <p role="status" style={{ ...muted, fontWeight: state.commitTimeout ? 600 : 400 }} data-testid="creation-progress">{state.progress}</p>
+      ) : null}
       {state.done ? (
         <>
           {state.notes.map((n) => <p key={n} role="status" style={alertBox}>{n}</p>)}
@@ -203,7 +209,12 @@ export function NewProjectSetupView({ state, actions }: { state: SetupState; act
       <div style={{ display: "flex", gap: 8, justifyContent: "space-between", marginTop: 16, flexWrap: "wrap" }}>
         <div style={{ display: "flex", gap: 8 }}>
           {state.step > 1 && state.step < 4 ? <button type="button" style={unless(button, busy || state.done)} disabled={busy || state.done} onClick={actions.back}>Back</button> : null}
-          {state.step < 4 && !state.done ? <button type="button" style={unless(button, busy)} disabled={busy} onClick={actions.cancel}>Cancel</button> : null}
+          {/* #5393: Show Cancel during creation; always available during setup */}
+          {state.step === 3 && busy ? (
+            <button type="button" style={button} onClick={actions.cancelCommit} data-testid="cancel-creation">Cancel creation</button>
+          ) : state.step < 4 && !state.done ? (
+            <button type="button" style={unless(button, busy)} disabled={busy} onClick={actions.cancel}>Cancel</button>
+          ) : null}
         </div>
         {state.step === 1 ? <button type="button" style={unless(primary, !canNext)} disabled={!canNext} onClick={actions.next}>Next</button> : null}
         {state.step === 2 ? <button type="button" style={primary} onClick={actions.next}>Review</button> : null}
@@ -307,6 +318,7 @@ export function NewProjectSetup({ open, onClose, notebooks, createNotebook, onOp
     next: () => { void ctl?.next(); },
     back: () => ctl?.back(),
     commit: () => { void ctl?.commit(); },
+    cancelCommit: async () => { await ctl?.cancelCommit(); },
     retryUpload: (key) => { void ctl?.retryUpload(key); },
     openProject: () => {
       const id = ctl?.openProjectId();
