@@ -40,10 +40,6 @@ const ragMock = vi.hoisted(() => ({
   retrieveCitedPageChunks: vi.fn(async () => [] as unknown[]),
 }));
 vi.mock("@/lib/manual-rag", async (importActual) => ({ ...(await importActual<typeof import("@/lib/manual-rag")>()), ...ragMock }));
-vi.mock("@/lib/tenant-context", () => ({
-  withTenantContext: vi.fn(async (_t: string, fn: (c: unknown) => unknown) => fn({ query: vi.fn(async () => ({ rows: [] })) })),
-}));
-vi.mock("@/lib/db", () => ({ default: { query: vi.fn(async () => ({ rows: [] })) } }));
 const persistMock = vi.hoisted(() => ({ persistTurnUsage: vi.fn(async () => ({ persisted: true, traceId: "t" })) }));
 vi.mock("@/lib/inference/persist-usage", () => persistMock);
 vi.mock("@/lib/workspace-files", () => ({ photoLinkedToTarget: vi.fn(async () => null) }));
@@ -109,7 +105,6 @@ const tenantClient = vi.hoisted(() => ({ query: vi.fn(async (..._a: unknown[]) =
 vi.mock("@/lib/tenant-context", () => ({ withTenantContext: vi.fn(async (_t: string, fn: (c: unknown) => unknown) => fn(tenantClient)) }));
 vi.mock("@/lib/db", () => ({ default: { query: vi.fn(async () => ({ rows: [] })) } }));
 
-import { POST } from "@/app/api/equipment-notebooks/[id]/chat/route";
 
 async function runFixture(fx: HubFixture, providerAnswer = fx.hub_notebook.provider_answer): Promise<Outcome> {
   vi.clearAllMocks();
