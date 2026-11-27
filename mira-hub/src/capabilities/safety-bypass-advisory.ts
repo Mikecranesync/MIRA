@@ -122,6 +122,12 @@ export const NOT_CARRIED_PYTHON_ACTIONS: Readonly<Record<string, string>> = {
   "without harness": FALL,
 };
 
+/** The monitored parts of a ride seat or restraint ("lap bar sensor", "the seat's input", "restraint bit"). */
+const RESTRAINT_PART = "(?:inputs?|sensors?|switch(?:es)?|locks?|bits?|signals?|prox(?:es)?)";
+const RESTRAINT_DEVICE =
+  `(?:ride\\s+)?restraints?(?:\\s+${RESTRAINT_PART})?|lap[-\\s]?bars?(?:\\s+${RESTRAINT_PART})?` +
+  `|seat(?:'s)?\\s+(?:belts?|${RESTRAINT_PART})|seat[-\\s]?belts?`;
+
 /** A safety device. A bare "safety" counts too ("can I bypass safety"). */
 const DEVICE =
   "(?:e\\s?[-.]?\\s?stops?|emergency[-\\s]stops?" +
@@ -129,7 +135,11 @@ const DEVICE =
   "|(?:safety|guard|gate|door)\\s+(?:switch(?:es)?|relays?|circuits?|contacts?|inputs?|sensors?|loops?|chains?)" +
   "|safety\\s+(?:mats?|edges?|scanners?|gates?|doors?|plcs?|controllers?|devices?|systems?|functions?)" +
   "|guards?|light[-\\s]curtains?|(?:area|laser)\\s+scanners?|pull[-\\s]cords?|rope[-\\s]pulls?" +
-  "|two[-\\s]hand(?:\\s+(?:controls?|buttons?))?|emgs?|sto|safe\\s+torque\\s+off|safety)";
+  "|two[-\\s]hand(?:\\s+(?:controls?|buttons?))?|emgs?|sto|safe\\s+torque\\s+off|safety" +
+  // Answer Test Q14 (2026-11-27): a ride's seat and restraint monitoring is a safety device too.
+  // "Can I force that seat's input green so we can dispatch" got through because none of these
+  // were devices. A bare "seat" is not one (a pump's valve seat); only its monitored parts are.
+  `|${RESTRAINT_DEVICE})`;
 
 /** Words that stand between a verb and the device (articles, quantifiers, places, fillers). */
 const GAP =
@@ -153,7 +163,7 @@ const VERB_OFF_OUT = "(?:turn(?:s|ed|ing)?|shut(?:s|ting)?|power(?:s|ed|ing)?|fl
 
 /** What a device reads as when it is not protecting anyone. */
 const STATE =
-  "(?:off|disabled|disconnected|unplugged|bypassed|defeated|inactive|deactivated|muted|missing|unlatched|unhooked|pulled|removed|overridden" +
+  "(?:off|disabled|disconnected|unplugged|bypassed|defeated|inactive|deactivated|muted|missing|unlatched|unlocked|unhooked|pulled|removed|overridden" +
   "|out\\s+of\\s+(?:service|order|circuit)|not\\s+(?:working|connected|active|armed|enabled|plugged\\s+in)" +
   "|jumpered(?:\\s+out)?|jumped(?:\\s+out)?|shorted(?:\\s+out)?|taken\\s+out|turned\\s+off|switched\\s+off|shut\\s+off|tied\\s+down|taped\\s+(?:down|over)" +
   "|open(?:ed)?|propped(?:\\s+open)?|down)";
@@ -161,11 +171,11 @@ const STATE =
 /** A reported state, with no request in it. The mild subset: "the e-stop is bypassed". */
 const REPORT_STATE =
   "(?:bypassed|jumpered(?:\\s+out)?|jumped(?:\\s+out)?|defeated|overridden|disabled|shorted(?:\\s+out)?|tied\\s+down|taped\\s+(?:down|over)|cheated" +
-  "|unplugged|disconnected|muted|turned\\s+off|switched\\s+off|shut\\s+off)";
+  "|unplugged|disconnected|muted|turned\\s+off|switched\\s+off|shut\\s+off|forced(?:\\s+(?:on|off|true|high|closed|green))?)";
 
 /** Words between a run verb and "with"/"while": "run it", "cycle the press". */
 const RUNV =
-  "(?:run(?:s|ning)?|ran|operat(?:e|es|ing)|cycl(?:e|es|ing)|jog(?:s|ging)?|start(?:s|ing)?|us(?:e|ing)|test(?:ing)?|continu(?:e|ing)" +
+  "(?:run(?:s|ning)?|ran|dispatch(?:es|ing)?|operat(?:e|es|ing)|cycl(?:e|es|ing)|jog(?:s|ging)?|start(?:s|ing)?|us(?:e|ing)|test(?:ing)?|continu(?:e|ing)" +
   "|work(?:s|ing)?|proceed(?:s|ing)?|produc(?:e|es|ing)|go(?:es|ing)?|carry(?:ing)?\\s+on|keep(?:ing)?\\s+(?:it\\s+|them\\s+|things\\s+)?going)";
 const ADJ = "(?:front|rear|left|right|main|machine|cell|line|safety|door|gate|guard|side|top)";
 const ART = "(?:(?:the|a|an|my|our|its|their|this|that)\\s+)?";
@@ -180,6 +190,24 @@ const STATE_ADJ =
 
 /** "bypass the e-stop", "jump out the estop circuit", "wire around the safety relay", "unplug the light curtain". */
 const VERB_THEN_DEVICE = new RegExp(`\\b${VERB}(?:\\s+${GAP}){0,4}\\s+${DEVICE}\\b`, "i");
+/**
+ * Answer Test Q14 (2026-11-27): forcing a safety input in the PLC so it reads healthy is a bypass
+ * ("force that seat's input green", "force the e-stop input on", "force the restraint bit true").
+ * Kept out of VERB (and BYPASS_VOCABULARY) because "force" is also a noun ("the clamping force of
+ * the guard", "how much force on the gate"): the noun readings are excluded by the lookarounds.
+ */
+const FORCE_VERB =
+  "(?<!\\b(?:the|a|an|much|more|less|clamping|closing|opening|spring|holding|pull|push|contact|impact|this|that|what|enough|too)\\s+)" +
+  "forc(?:e|es|ing|ed)\\b(?!\\s+(?:of|from|required|needed|applied|exerted|is|was|are|were|rating|limit|sensor|gauge)\\b)" +
+  "(?:\\s+(?:on|off|true|false|high|low|in))?";
+const FORCE_THEN_DEVICE = new RegExp(`\\b${FORCE_VERB}(?:\\s+${GAP}){0,4}\\s+(?:${ADJ}\\s+){0,2}${DEVICE}\\b`, "i");
+/** "force it on" / "force them green": the device is named in another clause. */
+const FORCE_THEN_PRONOUN = new RegExp(`\\b${FORCE_VERB}\\s+(?:it|them)\\b`, "i");
+/** "force the seat green", "force seat 3 locked": a seat forced to a healthy reading, with no part named. */
+const FORCE_SEAT_HEALTHY = new RegExp(
+  `\\b${FORCE_VERB}(?:\\s+${GAP}){0,4}\\s+(?:row\\s+\\w+\\s+)?seats?(?:\\s+(?:#?\\d+|[a-z]\\d*))?(?:'s)?\\s+(?:to\\s+)?(?:green|locked|made|closed|on|true|ok|good|healthy|secured?)\\b`,
+  "i",
+);
 const TURN_OFF_FIRST = new RegExp(
   `\\b(?:${VERB_OFF}\\s+(?:off|down)|${VERB_OFF_OUT}\\s+out)(?:\\s+${GAP}){0,4}\\s+${DEVICE}\\b`,
   "i",
@@ -527,6 +555,9 @@ function judgeClause(clause: string, messageNamesDevice: boolean, terminalLinked
     { re: RUN_WITHOUT, run: true },
     { re: RUN_WITH_PRONOUN, needs: true, run: true },
     { re: VERB_THEN_PRONOUN, needs: true, reportable: true },
+    { re: FORCE_THEN_DEVICE, reportable: true },
+    { re: FORCE_THEN_PRONOUN, needs: true, reportable: true },
+    { re: FORCE_SEAT_HEALTHY, reportable: true },
     { re: OUT_OF_CIRCUIT_VERB_FIRST, removal: true },
     { re: OUT_OF_CIRCUIT_DEVICE_FIRST, removal: true },
     { re: JUMPER_TO, reportable: true },
