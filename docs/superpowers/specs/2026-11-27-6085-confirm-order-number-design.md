@@ -116,14 +116,14 @@ COMMIT;
   - It is additive. It adds no table, policy or index.
   - The table's existing grants cover the new column (the plan verifies this on staging).
   - The revoke trigger (`equipment_notebooks_revoke_auto_manuals`, migration 101) fires only on `UPDATE OF manufacturer, model, catalog_number, identity_status`, so a write to this column never touches search state. It is the only trigger on `equipment_notebooks` in any migration (checked across `mira-hub/db/migrations/` on origin/main).
-- **Entry shape.** Each entry is `{ "number": "<display form>", "code": "<order number>", "manufacturer": "<confirmed>", "model": "<confirmed>", "confirmedAt": "<iso>" }`. Storing the identity with the number lets the reader ignore numbers saved for an identity the notebook no longer has, for example after a Settings edit. No other identity writer has to clear the list.
+- **Entry shape.** Each entry is `{ "number": "<display form>", "code": "<order number>", "manufacturer": "<confirmed>", "model": "<confirmed>", "confirmedAt": "<iso>" }`. Storing the identity with the number lets the reader ignore numbers saved for an identity the notebook no longer has, for example after a notebook PATCH changes the model. Revision (round 3 pre-screens): the list is also replaced whenever a confirm settles the identity (below), and emptied by a notebook PATCH that writes the identity status or source by hand (API only; no shipped client sends one), so a number never outlives the settling it was ticked on. No other identity writer has to clear the list: a nameplate photo writes source `nameplate_image`, which never counts a ticked number, and a create starts with none.
 - **The write.** Revision (Codex round 2, F3 and F4): the number is decided inside the identity confirm's own transaction, not in a second one after it. `confirmNotebookIdentity(tenantId, notebookId, identity, number)`:
-  1. locks the row (`SELECT … FOR UPDATE`) and reads whether the identity was already settled, with the same predicate the confirm guard uses (`SETTLED_IDENTITY_SQL`);
+  1. locks the row (`SELECT … FOR UPDATE`) and reads whether the identity card already settled the identity: the same predicate the confirm guard uses (`SETTLED_IDENTITY_SQL`) and source `user` (round 3 pre-screen: a nameplate photo settles without the card);
   2. writes the identity with the unchanged guarded `UPDATE`;
-  3. calls `recordConfirmedNumber` on the same client, under its own savepoint.
+  3. calls `recordConfirmedNumber` on the same client, under its own savepoint, on every confirm that settles the identity, ticked or not, and on a ticked confirm of an identity the card already settled.
 - **What `recordConfirmedNumber` decides.**
-  - Only the confirm that settles the identity may add a number. If the identity was settled before this confirm, nothing is added: a retry of the number already saved for this machine is still a success, and anything else is refused. So a stale second card for the same machine cannot add a number, whichever box the first confirm left (round 2, F3).
-  - One number per machine (round 1, F3): if an entry with a `code` is already saved for this maker and model, the save succeeds only when its code is the same (a retry), and a different code is refused with nothing written. Otherwise it appends the entry.
+  - A confirm that settles the identity replaces the list with exactly its tick, or none (round 3 pre-screen). So an identity reopened by a notebook PATCH and settled again never brings an old number back, even when it comes back the same.
+  - Only the confirm that settles the identity may add a number. If the card settled the identity before this confirm, nothing changes: a retry of the number already saved for this machine is still a success, and anything else is refused. So a stale second card for the same machine cannot add or clear a number, whichever box the first confirm left (round 2, F3), and the list holds at most one number (round 1, F3).
   - Only entries carrying a `code` count (round 1, F4), so an entry the scope cannot use never blocks or stands in for one it can.
   - Any failure, including a missing column on a Hub deployed before migration 118, rolls back to the savepoint, is logged, and is reported as not saved. The identity still commits.
 - **A catalog number refuses the tick** (round 2, F4). A machine with a catalog number never reads ticked numbers, so a confirm that writes one reports the number as not saved and touches nothing. A catalog edit from Settings takes the same row lock, so it is ordered before or after the confirm and can no longer land between the identity write and the number decision.
@@ -143,7 +143,7 @@ COMMIT;
 
 - **`threadStatusScope`.** The `machine` argument gains `confirmedNumbers?: readonly string[]`. Each one adds only the hyphenated order numbers written in it (the scope's existing catalog-code reader). Revision (Codex round 1, F1): a saved value counts only when it is exactly one order number (`singleOrderNumber`); a value joining two numbers, or a number and a model, adds nothing. It never adds a model name, so a mistaken tick can make no model's threads own. Ticked numbers count only while the notebook has no confirmed catalog number: a catalog set later (a notebook PATCH keeps the identity confirmed) is the machine's number, and wins (fail closed, the rule Mike set for #6094 r1 F1). The model and catalog number join `own` as before.
 - **`manual-status-subject.ts`, `subjectMachine`.** It adds the confirmed numbers only when all three hold:
-  1. the notebook's identity is settled (`user_confirmed` or `verified`);
+  1. the notebook's identity is settled (`user_confirmed` or `verified`) by the identity card, source `user` (round 3 pre-screen: an identity a nameplate photo settled reads no ticked number);
   2. the model the status names equals the notebook's model (the same rule `catalogNumber` already follows);
   3. the entry's normalised manufacturer and model equal the notebook's.
 - **Reading the numbers.** `readConfirmedNumbers(tenantId, notebookId)` is a separate, tenant-scoped query. Any error returns no numbers and logs one line, which is today's behaviour. The column is deliberately not added to the main notebook `SELECT`, so a Hub deployed before the prod migration cannot break notebook reads.
@@ -160,10 +160,12 @@ COMMIT;
 | `confirmedNumber` has a bad shape | Ignored; the identity is confirmed |
 | The number write fails (or the column is missing) | Rolled back to its savepoint and logged; the confirm succeeds; `numberSaved: false` |
 | A different number is already saved for this machine | Refused, nothing written; the confirm succeeds; `numberSaved: false` |
-| The identity was already settled before this confirm | No number added; a retry of the saved number is `numberSaved: true`, anything else `false`; the confirm succeeds |
+| The card had already settled the identity before this confirm | No number added or cleared; a retry of the saved number is `numberSaved: true`, anything else `false`; the confirm succeeds |
+| The identity was reopened and is settled again | The numbers become exactly this confirm's tick, or none |
+| A nameplate photo settled the identity, then the card confirms | The card's first confirm decides the numbers afresh; a stale card after it adds nothing |
 | The confirm writes a catalog number | No number added; the confirm succeeds; `numberSaved: false` |
 | `readConfirmedNumbers` fails, or the column is missing | No numbers; the thread is withheld as today |
-| The identity was later changed | Old entries no longer match and are ignored |
+| The identity was later changed | Old entries no longer match and are ignored, and the next settle replaces them |
 
 ## 5. What this resolves, and what it does not
 
@@ -176,9 +178,11 @@ These are expectations, each to be proven by a test before it is claimed.
 
 Known costs, accepted by Mike:
 - **The box is left unticked.** The thread still withholds the outcome for that confirm, which is the #6085 symptom. This is the fail-closed cost of the unticked default.
-- **A number can be added only on the first card.** A number left unticked there cannot be added later, and threads that name it stay withheld, as now. A ticked number counts in every thread of the notebook while its identity is unchanged, and cannot be removed (revision after the final review: it counts only as an order number, so a mistaken tick can never make a model's threads own).
+- **A number can be added only on the card that settles the identity.** A number left unticked there cannot be added later, and threads that name it stay withheld, as now. A ticked number counts in every thread of the notebook while its identity is unchanged, and cannot be removed (revision after the final review: it counts only as an order number, so a mistaken tick can never make a model's threads own).
 - **Two cards exist before confirming.** Only the pressed card's number is saved; the other card settles as superseded with no box. Revision (Codex round 1, F3): one number per machine, first saved wins; a later different number is refused. Revision (Codex round 2, F3): only the confirm that settles the identity may add a number, so a second card for the same machine adds none, even after an unticked first confirm.
-- **A failed number write is not retried, and the card does not say so** (Codex round 2, F5, filed as #6116). The response says `numberSaved: false`, but both canonical clients settle the card on any confirm success and drop that field. Because only the first confirm may add a number, a later card cannot recover it either. The thread stays withheld, as it is today without the tick.
+- **A failed number write is not retried, and the card does not say so** (Codex round 2, F5, filed as #6116). The response says `numberSaved: false`, but both canonical clients settle the card on any confirm success and drop that field. Because only the confirm that settles the identity may add a number, a later card cannot recover it either. The thread stays withheld, as it is today without the tick.
+- **A number belongs to one settling of the identity** (round 3 pre-screen). After a notebook PATCH reopens the identity, the next settle drops the earlier tick unless it is ticked again.
+- **A notebook PATCH that writes the identity status or source by hand drops the ticked numbers** (round 3 pre-screen 2). It settles or reopens an identity without the card, and only the card adds a number. This holds even when it re-asserts the same machine (fail closed).
 - **The tick lasts for the page.** A tick on a card that was never confirmed is gone after a full page reload, so that card starts unticked again (fail closed).
 - **Legacy surfaces.** They show no box.
 
