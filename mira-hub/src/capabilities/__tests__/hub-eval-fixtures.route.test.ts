@@ -14,7 +14,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
-import { parse as parseYaml } from "yaml"; // transitive dependency of vitest; no dependency was added
+import { createRequire } from "node:module";
+// js-yaml 4.1.1 (MIT) is already locked and installed (eslint's dependency); no dependency was added.
+const jsYaml = createRequire(path.join(__dirname, "noop.js"))("js-yaml") as { load: (text: string) => unknown };
+const parseYaml = (text: string) => jsYaml.load(text);
 
 const TENANT = "11111111-1111-4111-8111-111111111111";
 const NB = "22222222-2222-4222-8222-222222222222";
@@ -180,6 +183,36 @@ afterEach(async () => {
   process.env = { ...ENV };
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
+});
+
+describe("fixture data integrity (the real YAML files, rendered by the real generator)", () => {
+  const linesOf = (fx: HubFixture) => [...fx.hub_notebook.retrieval, ...(fx.hub_notebook.corpus ?? [])].flatMap((p) => render(p.parts).split("\n"));
+  const idCell = (row: string) => row.split("|").map((c) => c.trim()).find((c) => /^[A-Z]\d{2,4}(?:\.\d+)?$/.test(c));
+
+  it.each(fixtures.map((f) => [f.id, f] as const))("%s: each expected row exists exactly once and its identifier names no other row", (_id, fx) => {
+    const lines = linesOf(fx);
+    for (const want of fx.hub_notebook.expect.provider_sees.filter((s) => s.startsWith("|"))) {
+      expect(lines.filter((l) => l === want), `row ${want}`).toHaveLength(1);
+      const id = idCell(want);
+      if (id) expect(lines.filter((l) => l.split("|").map((c) => c.trim()).includes(id)), `identifier ${id}`).toHaveLength(1);
+    }
+  });
+
+  it("the single-target cases keep ONLY the intended type/value", () => {
+    const by = (id: string) => linesOf(fixtures.find((f) => f.id === id)!);
+    const f081 = by("pf525_f081_table_row").filter((l) => l.includes("F081"));
+    expect(f081).toEqual(["| F081 | DSI Comm Loss | Type 2 | Manual reset required |"]);
+    const p047 = by("f16_p047_p88").filter((l) => l.includes("P047"));
+    expect(p047).toEqual(["| P047 | Synthetic regression meaning for the value 15 | 15 |"]);
+    expect(fixtures.find((f) => f.id === "f16_p047_p88")!.hub_notebook.question).toBe("What does P047 = 15 mean on the F16?");
+  });
+
+  it("the original #5998 question is exact in the Hub block and in the legacy turns", () => {
+    const fx = fixtures.find((f) => f.id === "pf525_overcurrent_ranking_5998") as unknown as HubFixture & { turns: Array<{ content: string }>; max_turns: number };
+    expect(fx.hub_notebook.question).toBe("What causes overcurrent faults on a PowerFlex 525?");
+    expect(fx.turns[0].content).toBe(fx.hub_notebook.question);
+    expect(fx.max_turns).toBe(4);
+  });
 });
 
 describe("hub-notebook fixtures (tests/eval/fixtures, runner: hub_notebook)", () => {

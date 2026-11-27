@@ -2,7 +2,16 @@ id: pf525_overcurrent_ranking_5998
 runner: hub_notebook   # executed by mira-hub (hub-eval-fixtures.route.test.ts); EXCLUDED from the /v1/chat/completions pipeline runner
 description: "PowerFlex 525 overcurrent causes — exact original question from #5998"
 expected_final_state: DIAGNOSIS
-max_turns:
+max_turns: 4
+expected_keywords: [overcurrent, PowerFlex, F063, F012, fault]
+expected_vendor: Allen-Bradley
+wo_expected: false
+safety_expected: false
+tags: [vfd, pf525, overcurrent, ranking, fault-table]
+# Exact original question from #5998. Executed by the Hub notebook harness (see the hub_notebook block below);
+# excluded from the /v1/chat/completions pipeline runner, whose any-keyword grading cannot tell an answer
+# from a refusal that repeats a keyword.
+turns:
   - role: user
     content: "What causes overcurrent faults on a PowerFlex 525?"
 # --- Hub notebook profile (#6030 F10) --------------------------------------------------------

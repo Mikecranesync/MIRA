@@ -4,7 +4,7 @@ description: "F16 parameter P047 = 15 on p.88 under a Model B heading (synthetic
 tags: [vfd, f16, parameter, table-row, model-heading]
 # --- Hub notebook profile (#6030 F10): synthetic inputs, not OEM facts; see 70_pf525_f081_table_row.yaml ---
 hub_notebook:
-  question: "What should P047 be set to on the F16?"
+  question: "What does P047 = 15 mean on the F16?"
   retrieval:
     - doc: A
       page: 88
@@ -12,13 +12,13 @@ hub_notebook:
         - "# F16 drive - Model B only"
         - "| Param | Meaning | Default |"
         - "|---|---|---|"
-        - {repeat: 70, template: "| P{i} | Synthetic setting {i} | 0 |"}
-        - "| P047 | Synthetic setting 47 = 15 | 15 |"
-  provider_answer: "P047 is set to 15 for the Model B only table [1]."
+        - {repeat: 70, template: "| S{i} | Synthetic filler setting {i} | 0 |"}
+        - "| P047 | Synthetic regression meaning for the value 15 | 15 |"
+  provider_answer: "In the Model B only table, P047 = 15 has the synthetic regression meaning for the value 15 [1]."
   expect:
     provider_sees:
       - "# F16 drive - Model B only"
-      - "| P047 | Synthetic setting 47 = 15 | 15 |"
+      - "| P047 | Synthetic regression meaning for the value 15 | 15 |"
     status: answered
     citation: {doc: A, page: 88, id: "1"}
     reply_contains: ["15"]

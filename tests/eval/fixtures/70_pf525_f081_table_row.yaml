@@ -28,7 +28,7 @@ hub_notebook:
         - "# Fault descriptions"
         - "| Code | Name | Type | Reset |"
         - "|---|---|---|---|"
-        - {repeat: 90, template: "| F{i} | Synthetic fault {i} | Type 1 | Auto reset |"}
+        - {repeat: 90, template: "| Q{i} | Synthetic filler condition {i} | Type 1 | Auto reset |"}
         - "| F081 | DSI Comm Loss | Type 2 | Manual reset required |"
         - ""
         - "* Type 2: the drive must be reset manually (synthetic definition for this regression case)."
