@@ -1,5 +1,7 @@
-// #6085: "Use its manuals" with the order number ticked saves the number for the status scope.
-// The identity confirm itself is unchanged: same catalog number, same lookup key, same search.
+// #6085: "Use its manuals" with the order number ticked hands the number to the identity confirm,
+// which decides it in its own locked transaction (#6104 r2 F3/F4, proven on real Postgres in
+// confirmed-numbers.integration.test.ts). The identity write is unchanged: same catalog number,
+// same lookup key, same search. The response reports only what the confirm says it saved.
 //
 // Run: cd mira-hub && npx vitest run src/capabilities/__tests__/confirm-number-route
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -18,8 +20,6 @@ vi.mock("@/capabilities/notebook-manual-acquisition", async (importOriginal) => 
   ...(await importOriginal<typeof import("@/capabilities/notebook-manual-acquisition")>()),
   ...acqMock,
 }));
-const numbersMock = vi.hoisted(() => ({ saveConfirmedNumber: vi.fn(async () => true) }));
-vi.mock("@/capabilities/confirmed-numbers", () => numbersMock);
 
 import { POST } from "@/app/api/equipment-notebooks/[id]/identity/confirm/route";
 import { sessionOr401 } from "@/lib/session";
@@ -37,26 +37,29 @@ beforeEach(() => {
   vi.mocked(sessionOr401).mockResolvedValue({ userId: "u_1", tenantId: TENANT, email: "tech@example.com", status: "trial", trialExpiresAt: null, role: "owner" } as never);
   vi.mocked(getNotebook).mockResolvedValue({ id: NB, nodeId: "node-1", asset: null } as never);
   vi.mocked(listSources).mockResolvedValue([] as never);
-  acqMock.confirmNotebookIdentity.mockResolvedValue({ ok: true });
-  numbersMock.saveConfirmedNumber.mockResolvedValue(true);
+  acqMock.confirmNotebookIdentity.mockResolvedValue({ ok: true, numberSaved: true });
 });
+const TICK = { number: "6AV2124-0GC01-0AX0", code: "6AV21240GC010AX0" };
+const tickArg = () => acqMock.confirmNotebookIdentity.mock.calls[0]![3];
 
 describe("POST identity/confirm with a ticked number (#6085)", () => {
-  it("saves the ticked number for the confirmed maker and model", async () => {
+  it("hands exactly the ticked number to the identity confirm and reports it saved", async () => {
     const res = await POST(req({ ...CARD, confirmedNumber: "6AV2124-0GC01-0AX0" }), params);
     expect(res.status).toBe(200);
-    expect(numbersMock.saveConfirmedNumber).toHaveBeenCalledWith(TENANT, NB, { number: "6AV2124-0GC01-0AX0", code: "6AV21240GC010AX0", manufacturer: "Siemens", model: "TP700" });
+    expect(acqMock.confirmNotebookIdentity).toHaveBeenCalledTimes(1);
+    expect(tickArg()).toEqual(TICK);
     expect((await res.json()).numberSaved).toBe(true);
   });
 
   it("the identity write is unchanged: no catalog number, same fields as an unticked confirm", async () => {
     await POST(req({ ...CARD, confirmedNumber: "6AV2124-0GC01-0AX0" }), params);
-    expect(acqMock.confirmNotebookIdentity).toHaveBeenCalledWith(TENANT, NB, { manufacturer: "Siemens", model: "TP700", catalogNumber: "" });
+    expect(acqMock.confirmNotebookIdentity).toHaveBeenCalledWith(TENANT, NB, { manufacturer: "Siemens", model: "TP700", catalogNumber: "" }, TICK);
   });
 
-  it("an unticked confirm saves nothing and adds no numberSaved", async () => {
+  it("an unticked confirm hands no number and adds no numberSaved", async () => {
+    acqMock.confirmNotebookIdentity.mockResolvedValue({ ok: true });
     const res = await POST(req(CARD), params);
-    expect(numbersMock.saveConfirmedNumber).not.toHaveBeenCalled();
+    expect(acqMock.confirmNotebookIdentity.mock.calls[0]).toHaveLength(3); // exactly main's call
     expect(await res.json()).not.toHaveProperty("numberSaved");
   });
 
@@ -70,19 +73,20 @@ describe("POST identity/confirm with a ticked number (#6085)", () => {
     async (_label, confirmedNumber) => {
       const res = await POST(req({ ...CARD, confirmedNumber }), params);
       expect(res.status).toBe(200);
-      expect(numbersMock.saveConfirmedNumber).not.toHaveBeenCalled();
       expect(acqMock.confirmNotebookIdentity).toHaveBeenCalled();
+      expect(acqMock.confirmNotebookIdentity.mock.calls[0]).toHaveLength(3); // exactly main's call
     },
   );
 
   it("control: a 64-character order number is accepted", async () => {
     await POST(req({ ...CARD, confirmedNumber: `6AV2124-0GC01-0AX0-${"9".repeat(45)}` }), params);
-    expect(numbersMock.saveConfirmedNumber).toHaveBeenCalled();
+    expect(tickArg()).toMatchObject({ number: `6AV2124-0GC01-0AX0-${"9".repeat(45)}` });
   });
 
-  // #6104 r1 F3: the store refuses a second, different number for the same machine.
-  it("a refused second number reports numberSaved false and the confirm still succeeds", async () => {
-    numbersMock.saveConfirmedNumber.mockResolvedValue(false);
+  // #6104 r1 F3 / r2 F3: the confirm refuses a second number, or any number once the identity was
+  // already settled; the response says so and the confirm still succeeds.
+  it("a refused number reports numberSaved false and the confirm still succeeds", async () => {
+    acqMock.confirmNotebookIdentity.mockResolvedValue({ ok: true, numberSaved: false });
     const res = await POST(req({ ...CARD, confirmedNumber: "6AV2124-0GC01-0AX0" }), params);
     expect(res.status).toBe(200);
     expect((await res.json()).numberSaved).toBe(false);
@@ -93,21 +97,22 @@ describe("POST identity/confirm with a ticked number (#6085)", () => {
     acqMock.confirmNotebookIdentity.mockResolvedValue({ ok: false, error: "identity_already_confirmed", manufacturer: "Siemens", model: "TP900" });
     const res = await POST(req({ ...CARD, confirmedNumber: "6AV2124-0GC01-0AX0" }), params);
     expect(res.status).toBe(409);
-    expect(numbersMock.saveConfirmedNumber).not.toHaveBeenCalled();
+    expect(await res.json()).not.toHaveProperty("numberSaved");
   });
 
   it("a failed confirm (500) saves nothing", async () => {
     acqMock.confirmNotebookIdentity.mockResolvedValue({ ok: false, error: "confirm_failed" });
     const res = await POST(req({ ...CARD, confirmedNumber: "6AV2124-0GC01-0AX0" }), params);
     expect(res.status).toBe(500);
-    expect(numbersMock.saveConfirmedNumber).not.toHaveBeenCalled();
+    expect(await res.json()).not.toHaveProperty("numberSaved");
   });
 
-  it("a failed save is logged and the confirm still succeeds", async () => {
-    numbersMock.saveConfirmedNumber.mockRejectedValue(new Error("db down"));
+  // A failed number write is rolled back inside the confirm and reported there as false; the route
+  // never reports a number saved that the confirm did not say it saved.
+  it("reports numberSaved false, never true, when the confirm does not say it saved the number", async () => {
+    acqMock.confirmNotebookIdentity.mockResolvedValue({ ok: true });
     const res = await POST(req({ ...CARD, confirmedNumber: "6AV2124-0GC01-0AX0" }), params);
     expect(res.status).toBe(200);
     expect((await res.json()).numberSaved).toBe(false);
-    expect(console.warn).toHaveBeenCalled();
   });
 });

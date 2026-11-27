@@ -39,8 +39,10 @@
  * write" (T2 acceptance #2), which a pure client-side dismissal already
  * satisfies with nothing to confirm server-side.
  *
- * #6085: a ticked "confirmedNumber" is saved for the thread status scope after the confirm
- * succeeds; it never changes the identity write.
+ * #6085: a ticked "confirmedNumber" is decided inside `confirmNotebookIdentity`'s own locked
+ * transaction, for the thread status scope only: only the confirm that settles the identity may
+ * add it (#6104 r2 F3), never alongside a catalog number (r2 F4), and it never changes the identity
+ * write. A failed number write never fails the confirm; the response says whether it was saved.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { sessionOr401 } from "@/lib/session";
@@ -54,7 +56,6 @@ import {
   singleOrderNumber,
   startManualAcquisition,
 } from "@/capabilities/notebook-manual-acquisition";
-import { saveConfirmedNumber } from "@/capabilities/confirmed-numbers";
 
 export const dynamic = "force-dynamic";
 
@@ -156,11 +157,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // performs, and this guard does not touch that route. "Not this" (reject)
   // never writes here either (see the route header above), so it needs no
   // change.
-  const confirmResult = await confirmNotebookIdentity(ctx.tenantId, notebookId, {
-    manufacturer,
-    model,
-    catalogNumber,
-  });
+  // An unticked confirm makes exactly the call it always made; a ticked one hands the number to the
+  // confirm's own transaction (#6104 r2 F3/F4).
+  const confirmIdentity = { manufacturer, model, catalogNumber };
+  const confirmResult = confirmedNumber
+    ? await confirmNotebookIdentity(ctx.tenantId, notebookId, confirmIdentity, confirmedNumber)
+    : await confirmNotebookIdentity(ctx.tenantId, notebookId, confirmIdentity);
   if (!confirmResult.ok) {
     if (confirmResult.error === "identity_already_confirmed") {
       return NextResponse.json(
@@ -175,17 +177,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: "confirm_failed" }, { status: 500 });
   }
 
-  // #6085: a ticked number is saved for the thread status scope only. A failed save never
-  // fails the confirm that already succeeded; the response says whether it was saved.
-  let numberSaved: boolean | undefined;
-  if (confirmedNumber) {
-    try {
-      numberSaved = await saveConfirmedNumber(ctx.tenantId, notebookId, { ...confirmedNumber, manufacturer, model });
-    } catch (err) {
-      numberSaved = false;
-      console.warn(`[identity-confirm] saveConfirmedNumber failed notebook=${notebookId}: ${(err as Error).message}`);
-    }
-  }
+  // #6085: present only when a ticked number came with the confirm; false when it was refused
+  // or its write failed (the identity is confirmed either way).
+  const numberSaved = confirmedNumber ? confirmResult.numberSaved === true : undefined;
 
   const identity = {
     identityStatus: "user_confirmed" as const,

@@ -42,6 +42,7 @@ import { familyCovers, modelIdentitiesInText } from "@/capabilities/model-token"
 import { isRatingToken, modelNumbersIn } from "@/capabilities/manual-applicability";
 import { foldForDetection } from "@/capabilities/detection-fold";
 import { normalizeManufacturer } from "@/lib/manufacturerNormalize";
+import { recordConfirmedNumber } from "@/capabilities/confirmed-numbers";
 
 /** A running claim older than this is treated as abandoned (container restart). */
 export const STALE_RUNNING_MINUTES = 10;
@@ -653,8 +654,15 @@ export function fencedWriter(key: string, gen: string, basis: "confirmed" | "can
   };
 }
 
+/** An identity that is settled: confirmed or verified, with a maker and a model or catalog number.
+ *  The confirm guard and the ticked-number decision (#6104 r2 F3) read the same predicate. */
+const SETTLED_IDENTITY_SQL = `n.identity_status IN ('user_confirmed', 'verified')
+            AND trim(coalesce(n.manufacturer, '')) <> ''
+            AND (trim(coalesce(n.model, '')) <> '' OR trim(coalesce(n.catalog_number, '')) <> '')`;
+
 export type ConfirmNotebookIdentityResult =
-  | { ok: true }
+  /** `numberSaved` is present only when a ticked number came with the confirm (#6085). */
+  | { ok: true; numberSaved?: boolean }
   | { ok: false; error: "identity_already_confirmed"; manufacturer: string | null; model: string | null }
   | { ok: false; error: "confirm_failed" };
 
@@ -716,7 +724,11 @@ export async function confirmNotebookIdentity(
   tenantId: string,
   notebookId: string,
   identity: { manufacturer: string; model: string; catalogNumber: string },
+  number?: { number: string; code: string } | null,
 ): Promise<ConfirmNotebookIdentityResult> {
+  // #6104 r2 F4: a machine with a catalog number never reads ticked numbers, so a confirm that
+  // writes one refuses the tick rather than saving a number nothing will read.
+  const tick = number && !identity.catalogNumber.trim() ? number : null;
   const incomingKey = acquisitionKey({
     identityStatus: "user_confirmed",
     manufacturer: identity.manufacturer,
@@ -724,6 +736,16 @@ export async function confirmNotebookIdentity(
     catalogNumber: identity.catalogNumber,
   });
   return withTenantContext(tenantId, async (c) => {
+    // #6104 r2 F3: with a ticked number, lock the row first and read whether the identity was
+    // already settled, in the same transaction that writes it. A racing confirm waits here.
+    let settledBefore = false;
+    if (tick) {
+      const lock = await c.query<{ settled: boolean | null }>(
+        `SELECT (${SETTLED_IDENTITY_SQL}) AS settled FROM equipment_notebooks AS n WHERE n.tenant_id = $1::uuid AND n.id = $2::uuid FOR UPDATE`,
+        [tenantId, notebookId],
+      );
+      settledBefore = lock.rows[0]?.settled === true;
+    }
     const written = await c.query<{ id: string }>(
       `UPDATE equipment_notebooks AS n
           SET manufacturer = $3,
@@ -735,16 +757,19 @@ export async function confirmNotebookIdentity(
         WHERE n.tenant_id = $1::uuid
           AND n.id = $2::uuid
           AND NOT (
-            n.identity_status IN ('user_confirmed', 'verified')
-            AND trim(coalesce(n.manufacturer, '')) <> ''
-            AND (trim(coalesce(n.model, '')) <> '' OR trim(coalesce(n.catalog_number, '')) <> '')
+            ${SETTLED_IDENTITY_SQL}
             AND $6::text IS NOT NULL
             AND (${NOTEBOOK_KEY_SQL}) IS DISTINCT FROM $6
           )
         RETURNING n.id`,
       [tenantId, notebookId, identity.manufacturer, identity.model, identity.catalogNumber, incomingKey],
     );
-    if ((written.rowCount ?? 0) > 0) return { ok: true };
+    if ((written.rowCount ?? 0) > 0) {
+      if (!number) return { ok: true };
+      if (!tick) return { ok: true, numberSaved: false };
+      const saved = await recordConfirmedNumber(c, tenantId, notebookId, { ...tick, manufacturer: identity.manufacturer, model: identity.model }, settledBefore);
+      return { ok: true, numberSaved: saved };
+    }
 
     // 0 rows: either the guard blocked this write (the common case — report
     // the CURRENT identity so the 409 body names what's actually confirmed),
