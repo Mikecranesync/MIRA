@@ -36,7 +36,7 @@ import {
 } from "@/capabilities/manual-acquisition";
 import { MANUAL_SEARCH_LIMIT_COPY, MANUAL_SEARCH_UNAVAILABLE_COPY } from "@/capabilities/manual-search-copy";
 import { reviewedManualFor } from "@/capabilities/reviewed-manual-library";
-import { exactManualIdentity, makerFromText, makerGroupOf, makerGroupsNamedIn } from "@/capabilities/candidate-identity";
+import { exactManualIdentity, makerFromText, makerGroupsNamedIn } from "@/capabilities/candidate-identity";
 import { returnsToRecord } from "@/capabilities/conversation-subject";
 import { familyCovers, modelIdentitiesInText } from "@/capabilities/model-token";
 import { isRatingToken, modelNumbersIn } from "@/capabilities/manual-applicability";
@@ -1388,24 +1388,34 @@ export function threadStatusScope(
   }
   const covered = (set: ReadonlySet<string>, id: string) => set.has(id) || [...set].some((o) => familyCovers(id, o));
   const isOwn = (id: string) => covered(own, id);
-  const ownMaker = maker(machine.manufacturer);
+  // #6131 r2 F5: the maker on record is read as the question is, folded ("Allen‑Bradley") and
+  // through the alias table ("Alien-Bradley" is Rockwell Automation).
+  const stored = foldForDetection(machine.manufacturer ?? "");
+  const ownMaker = maker(stored);
   const otherMaker = (named: string | null | undefined) => Boolean(named && ownMaker && maker(named) !== ownMaker);
-  const ownGroup = makerGroupOf(machine.manufacturer);
+  // The saved-number rule compares each maker named as this first check does, so the two can
+  // never disagree about which maker is this machine's.
+  const isOwnMaker = (name: string) => Boolean(ownMaker) && maker(name) === ownMaker;
   for (let i = questions.length - 1; i >= 0; i--) {
     const q = questions[i] ?? "";
     const named = modelsNamedIn(q, own);
     if (named.size) {
-      // Makers are read from the folded question, as models are (#6131 r1 F1: "Allen‑Bradley").
       const folded = foldForDetection(q);
       const exact = exactManualIdentity("", folded);
-      if (otherMaker(exact?.manufacturer ?? makerFromText(folded)) || [...named].some((id) => !isOwn(id))) return "other";
-      // #6127 (#6104 r4 F9), #6131 r1 F2: a ticked number settles a question only when every maker
-      // it names is this machine's, counting a dictionary-word maker typed right before that
-      // number ("the Eaton 6AV2124-…"). With no maker on record, any named maker fails closed.
+      // Main's first maker check, unchanged: it reads the question as typed (#6131 r2: folding
+      // it here made two other makers read as none, so a thread main withholds was admitted).
+      if (otherMaker(exact?.manufacturer ?? makerFromText(q)) || [...named].some((id) => !isOwn(id))) return "other";
+      // #6127 (#6104 r4 F9), #6131 r1 F1 and F2: a ticked number settles a question only when
+      // every maker the folded question names ("Allen‑Bradley") is this machine's, counting a
+      // dictionary-word maker typed right before that number ("the Eaton 6AV2124-…"). With no
+      // maker on record, any named maker fails closed.
       const ticked = [...named].filter((id) => !covered(recorded, id));
       if (!ticked.length) return "own";
-      const typed = folded.split(/\s+/).map(typedToken).filter((t) => ticked.includes(norm(t)));
-      return [...makerGroupsNamedIn(folded, typed)].every((g) => g === ownGroup) ? "own" : "other";
+      // #6131 r2 F2: each number goes to the typed-maker rule as written, with whatever is glued
+      // to it ('"6AV…"', "[6AV…]", "P/N:6AV…"), so that wrapper is never read as a word between
+      // the maker and the number.
+      const typed = folded.split(/\s+/).filter((t) => ticked.some((id) => norm(t).includes(id)));
+      return [...makerGroupsNamedIn(folded, typed).values()].every(isOwnMaker) ? "own" : "other";
     }
     if (machine.recordCatalog && returnsToRecord(q)) return "own";
   }

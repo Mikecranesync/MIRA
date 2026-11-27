@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { asksToFindManual, exactManualIdentity, extractCandidateIdentity, isSafeCandidateSearchIdentity, makerFromText, makerGroupOf, makerGroupsNamedIn, wantsManualDocumentation } from "./candidate-identity";
+import { asksToFindManual, exactManualIdentity, extractCandidateIdentity, isSafeCandidateSearchIdentity, makerFromText, makerGroupsNamedIn, wantsManualDocumentation } from "./candidate-identity";
 import { labelledPartCodes } from "./photo-part-lookup";
 
 // Manual-First PRD R1 (#4160 S5): a candidate (manufacturer, part) read from a
@@ -105,8 +105,8 @@ describe("makerFromText — the shared OEM maker table, corpus-independent", () 
   });
 });
 
-// #6127, #6131 r1 F2/F5: the makers a saved-number question names, as groups.
-describe("makerGroupsNamedIn and makerGroupOf", () => {
+// #6127, #6131 r1 F2: the makers a saved-number question names, as groups.
+describe("makerGroupsNamedIn", () => {
   it("aliases of one maker are one group; another maker is a second", () => {
     expect(makerGroupsNamedIn("Allen-Bradley and Rockwell Automation").size).toBe(1);
     expect(makerGroupsNamedIn("Allen-Bradley and ABB").size).toBe(2);
@@ -120,14 +120,11 @@ describe("makerGroupsNamedIn and makerGroupOf", () => {
     expect(makerGroupsNamedIn("Sick of this: the 6AV2124-0GC01-0AX0 is dead", ["6AV2124-0GC01-0AX0"]).size).toBe(0);
   });
 
-  it("a manufacturer field names its group in any case, and nothing off the table", () => {
-    expect(makerGroupOf("Allen-Bradley")).toBe(makerGroupOf("Rockwell Automation"));
-    expect(makerGroupOf("Eaton")).not.toBeNull();
-    expect(makerGroupOf("eaton")).toBe(makerGroupOf("EATON"));
-    expect(makerGroupOf("Siemens")).not.toBe(makerGroupOf("ABB"));
-    expect(makerGroupOf("")).toBeNull();
-    expect(makerGroupOf(null)).toBeNull();
-    expect(makerGroupOf("Acme Widget Works")).toBeNull();
+  // #6131 r2 F2: the part is found as written, so whatever is glued to its front is not a word.
+  it("a part passed with its wrapper glued on still counts a typed maker right before it", () => {
+    const q = 'How do I wire the Eaton "6AV2124-0GC01-0AX0" in our Siemens cabinet?';
+    expect(makerGroupsNamedIn(q, ["6AV2124-0GC01-0AX0"]).size).toBe(1); // precondition: the bare part does not
+    expect(makerGroupsNamedIn(q, ['"6AV2124-0GC01-0AX0"']).size).toBe(2);
   });
 });
 

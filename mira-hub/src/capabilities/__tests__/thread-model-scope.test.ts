@@ -7,6 +7,7 @@
 // Run: cd mira-hub && npx vitest run src/capabilities/__tests__/thread-model-scope
 import { describe, it, expect } from "vitest";
 import { threadStatusScope } from "@/capabilities/notebook-manual-acquisition";
+import { oemMakerTable } from "@/lib/manual-discovery";
 
 const GS10 = { manufacturer: "AutomationDirect", model: "GS11N-20P2", catalogNumber: "", recordCatalog: null };
 const CONFIRMED = { manufacturer: "AutomationDirect", model: "DURApulse GS10", catalogNumber: "GS11N-20P2", recordCatalog: "GS11N-20P2" };
@@ -198,14 +199,23 @@ describe("threadStatusScope: a number the technician confirmed (#6085)", () => {
     expect(threadStatusScope([q], ticked)).toBe("other");
   });
 
-  // #6131 r1 F1: the maker is read from the folded question, as the model is, so a maker written
-  // with a nonbreaking hyphen reads as it does with the ASCII hyphen, ticked number or not.
-  it("another maker written with a nonbreaking hyphen reads as the ASCII spelling does", () => {
-    const ascii = "Is the TP700 on the Allen-Bradley network?";
-    const nbsp = "Is the TP700 on the Allen‑Bradley network?";
-    expect(threadStatusScope([ascii], TP700)).toBe("other"); // precondition: main's ASCII reading
-    expect(threadStatusScope([nbsp], TP700)).toBe("other");
-    expect(threadStatusScope([nbsp], ticked)).toBe("other");
+  // #6131 r1 F1: the saved-number rule reads makers from the folded question, as the model is
+  // read, so another maker written with a nonbreaking hyphen beside a ticked number reads as it
+  // does with the ASCII hyphen.
+  it("another maker written with a nonbreaking hyphen beside a ticked number reads as the ASCII spelling does", () => {
+    const ascii = "How do I wire the Allen-Bradley 6AV2124-0GC01-0AX0?";
+    const nb = "How do I wire the Allen‑Bradley 6AV2124-0GC01-0AX0?";
+    expect(threadStatusScope([ascii], ticked)).toBe("other"); // precondition: the ASCII reading
+    expect(threadStatusScope([nb], TP700)).toBe("other"); // precondition: withheld without the tick
+    expect(threadStatusScope([nb], ticked)).toBe("other");
+  });
+
+  // #6131 r2: without a ticked number, main's first maker check is unchanged. It reads the
+  // question as typed, so a nonbreaking hyphen hides a maker from it, and two other makers read
+  // as none. Folding it in round 1 admitted the second question below, which main withholds.
+  it("known limit, as on main: with no ticked number the first maker check reads the question as typed", () => {
+    expect(threadStatusScope(["Is the TP700 on the Allen‑Bradley network?"], TP700)).toBe("own");
+    expect(threadStatusScope(["How do I wire the EATON TP700 on the Allen‑Bradley network?"], TP700)).toBe("other");
   });
 
   it("control: this machine's maker written with a nonbreaking hyphen is own", () => {
@@ -225,6 +235,43 @@ describe("threadStatusScope: a number the technician confirmed (#6085)", () => {
     const EATON = { manufacturer: "Eaton", model: "DG1", catalogNumber: "", recordCatalog: null, confirmedNumbers: ["DG1-344D1FN-C21C"] };
     expect(threadStatusScope(["How do I wire the Eaton DG1-344D1FN-C21C?"], EATON)).toBe("own");
     expect(threadStatusScope(["How do I wire the Eaton DG1-344D1FN-C21C?"], { ...EATON, confirmedNumbers: [] })).toBe("other"); // precondition
+  });
+
+  it("control: a dictionary-word maker typed before this machine's own quoted number is own", () => {
+    const EATON = { manufacturer: "Eaton", model: "DG1", catalogNumber: "", recordCatalog: null, confirmedNumbers: ["DG1-344D1FN-C21C"] };
+    expect(threadStatusScope(['How do I wire the Eaton "DG1-344D1FN-C21C"?'], EATON)).toBe("own");
+    expect(threadStatusScope(["How do I wire the Eaton P/N:DG1-344D1FN-C21C?"], EATON)).toBe("own");
+  });
+
+  // #6131 r2 F5: a maker on record under a spelling the alias table knows (the OCR "Alien-Bradley")
+  // is still this machine's maker when the question spells it properly.
+  it("a maker on record under a known alias keeps its ticked number", () => {
+    const AL = { manufacturer: "Alien-Bradley", model: "Micro850", catalogNumber: "", recordCatalog: null, confirmedNumbers: ["Micro850-12A"] };
+    expect(threadStatusScope(["How do I wire the Allen-Bradley Micro850-12A?"], AL)).toBe("own");
+    expect(threadStatusScope(["How do I wire the Allen-Bradley Micro850-12A?"], { ...AL, confirmedNumbers: [] })).toBe("other"); // precondition
+    expect(threadStatusScope(["How do I wire the Siemens Micro850-12A?"], AL)).toBe("other"); // control: a conflicting maker
+  });
+
+  // #6131 r2 F5, over the whole maker table: with a maker on record, its ticked number named after
+  // that same maker is own, however either side spells it (as listed, capitals, title case, U+2011).
+  it("every maker on the table keeps its own ticked number in every spelling", () => {
+    const NUMBER = "QX700-12A-34B";
+    const spellings = (s: string) => [...new Set([s, s.toUpperCase(), s.replace(/\b[a-z]/g, (c) => c.toUpperCase()), s.replace(/-/g, "‑")])];
+    const misses: string[] = [];
+    let rows = 0;
+    for (const { name } of oemMakerTable()) {
+      for (const stored of spellings(name)) {
+        for (const asked of spellings(name)) {
+          const machine = { manufacturer: stored, model: "QX700", catalogNumber: "", recordCatalog: null };
+          const q = `How do I wire the ${asked} ${NUMBER}?`;
+          rows++;
+          if (threadStatusScope([q], { ...machine, confirmedNumbers: [] }) !== "other") misses.push(`precondition ${stored} / ${asked}`);
+          if (threadStatusScope([q], { ...machine, confirmedNumbers: [NUMBER] }) !== "own") misses.push(`${stored} / ${asked}`);
+        }
+      }
+    }
+    expect(rows).toBeGreaterThan(100);
+    expect(misses).toEqual([]);
   });
 
   it("with no maker on record, a named maker makes the confirmed number count for nothing", () => {

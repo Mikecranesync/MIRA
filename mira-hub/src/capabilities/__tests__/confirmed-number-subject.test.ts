@@ -252,6 +252,68 @@ describe("GET notebook detail: a saved number in a question naming two makers (#
     expect(body).not.toHaveProperty("manualSearchScope");
     expect(offeredOwnNumber(question, { manufacturer: "Siemens", model: "TP700" })).toBe("6AV2124-0GC01-0AX0");
   });
+
+  // #6131 r2 F2: whatever is written onto the front of the number (quotes, brackets, "P/N:") does
+  // not hide a dictionary-word maker typed right before it.
+  const WRAPPED = [
+    ["straight quotes", '"6AV2124-0GC01-0AX0"'],
+    ["curly quotes", "“6AV2124-0GC01-0AX0”"],
+    ["single quotes", "'6AV2124-0GC01-0AX0'"],
+    ["square brackets", "[6AV2124-0GC01-0AX0]"],
+    ["braces", "{6AV2124-0GC01-0AX0}"],
+  ];
+  it.each([...WRAPPED, ["P/N: glued on", "P/N:6AV2124-0GC01-0AX0"], ["PN: glued on", "PN:6AV2124-0GC01-0AX0"]])(
+    "title-case Eaton before the number in %s: withheld with the number saved, and the card offers nothing",
+    async (_label, written) => {
+      const question = `How do I wire the Eaton ${written} in our Siemens cabinet?`;
+      const body = await read(question);
+      expect(readConfirmedNumbers).toHaveBeenCalledWith(TENANT, NB); // precondition: the number was read
+      expect(body.manualSearch).toBeNull();
+      expect(body.manualSearchScope).toBe("other_model");
+      expect(offeredOwnNumber(question, { manufacturer: "Siemens", model: "TP700" })).toBeNull();
+    },
+  );
+
+  it.each(WRAPPED)("control: a Siemens-only question with the number in %s shows the status, and the card offers it", async (_label, written) => {
+    const question = `How do I wire the Siemens ${written}?`;
+    const body = await read(question);
+    expect(body.manualSearch).toEqual(READY);
+    expect(body).not.toHaveProperty("manualSearchScope");
+    expect(offeredOwnNumber(question, { manufacturer: "Siemens", model: "TP700" })).toBe("6AV2124-0GC01-0AX0");
+  });
+});
+
+// #6131 r2 F5: the maker on record is read as the question is (folded, then through the alias
+// table), so the notebook's own maker never reads as another maker.
+describe("GET notebook detail: the maker on record read as the question is (#6131 r2 F5)", () => {
+  const M850 = { ...NOTEBOOK, displayName: "PLC", manufacturer: "Allen‑Bradley", model: "Micro850" };
+  const READY_M850 = { manufacturer: "Allen‑Bradley", model: "Micro850", running: false, message: "Micro850 manual is ready in Sources." };
+  const read = async (question: string) => {
+    vi.mocked(getNotebook).mockResolvedValue(M850 as never);
+    currentManualSearchStatus.mockResolvedValue(READY_M850);
+    readConfirmedNumbers.mockResolvedValue([]);
+    vi.mocked(listTurns).mockResolvedValue([ask(question)] as never);
+    return (await GET(threadReq, params)).json();
+  };
+
+  it("a maker stored with a nonbreaking hyphen, asked about the same way, shows the status with no saved number", async () => {
+    const body = await read("Is the Micro850 on the Allen‑Bradley network?");
+    expect(body.manualSearch).toEqual(READY_M850);
+    expect(body).not.toHaveProperty("manualSearchScope");
+  });
+
+  // A change from main, declared in the PR body: main reads the stored U+2011 spelling as another
+  // maker than the ASCII question names, and withholds this thread.
+  it("the same stored maker asked about with the ASCII hyphen shows the status", async () => {
+    const body = await read("Is the Micro850 on the Allen-Bradley network?");
+    expect(body.manualSearch).toEqual(READY_M850);
+  });
+
+  it("control: another maker named beside the model stays withheld", async () => {
+    const body = await read("Is the Micro850 on the Siemens network?");
+    expect(body.manualSearch).toBeNull();
+    expect(body.manualSearchScope).toBe("other_model");
+  });
 });
 
 describe("numbersForMachine", () => {
