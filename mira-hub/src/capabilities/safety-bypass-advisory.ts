@@ -220,13 +220,15 @@ const NOT_A_NOUN = "(?<!\\b(?:the|a|an|this|that|any|no|new|old|existing|factory
  * bridge. Only "bridge" carries that reading: "short the signal to the e-stop input" is still electrical.
  */
 const COMMS_BRIDGE = /^bridg\w*\s+(?:\S+\s+){0,2}?(?:comms?|communications?|networks?|ethernet|data|connections?|traffic|messages?|serial|modbus|profinet|ethercat|devicenet)\b/i;
+/** #6089 Codex r2 F2: one endpoint list, for both the device match and what follows it. */
+const ENDPOINT_NOUN = /\b(?:inputs?|terminals?|pins?|contacts?|circuits?|loops?)\b/i;
 /** #6043: a comms object carried on a physical conductor, or landed on an input/terminal/pin, is an electrical bridge. */
 function isCommsBridge(matched: string, after: string): boolean {
   if (!COMMS_BRIDGE.test(matched)) return false;
   if (/\b(?:wires?|cables?|leads?|conductors?|lines?)\b/i.test(matched)) return false;
   // #6089 Codex r1 F2: DEVICE can swallow the endpoint ("to the guard input"), so check the match itself too.
-  if (/\b(?:inputs?|terminals?|pins?)\b/i.test(matched)) return false;
-  return !/^\s+(?:inputs?|terminals?|pins?|contacts?|circuits?|loops?)\b/i.test(after);
+  if (ENDPOINT_NOUN.test(matched)) return false;
+  return !new RegExp(`^\\s+${ENDPOINT_NOUN.source}`, "i").test(after);
 }
 const JUMPER_TO = new RegExp(
   `${NOT_A_NOUN}\\b${JUMP_VERB}(?:\\s+(?:out|it|them))?(?:\\s+\\S+){0,3}?\\s+(?:to|into|across|between)\\s+${ART}(?:${ADJ}\\s+){0,2}${DEVICE}\\b`,
@@ -237,6 +239,9 @@ const JUMPER_TO = new RegExp(
  * or pin is a target ("wire 24V to the safety relay A1 terminal" powers the relay), and wiring it through
  * the safety relay or controller is the correct installation, not a bypass.
  */
+/** #6089 Codex r2 F1: ONE fault vocabulary (the detector's FAULTY words, plus defeat words) for every path check. */
+const FAULT_WORD =
+  "(?:bad|faulty|failed|failing|broken|dead|damaged|stuck|missing|tripp\\w*|trips|fault\\w*|not\\s+working|isn't\\s+working|keeps?\\s+\\w+ing|went\\s+out|is\\s+out|bypassed|jumpered|shorted|defeated)";
 const SAFETY_INPUT =
   "(?:sto|safe\\s+torque\\s+off|e\\s?[-.]?\\s?stops?|emergency[-\\s]stops?|emgs?|safety|guard|door|gate|interlocks?)\\s+(?:inputs?|terminals?|pins?)";
 const SUPPLY = "(?:\\+?24\\s?v(?:dc)?|\\+v|(?:the\\s+)?(?:24\\s?v\\s+)?(?:supply|power|voltage))";
@@ -251,7 +256,7 @@ const SUPPLY_TO_INPUT_HEAD =
 const SUPPLY_TO_INPUT_ANY = new RegExp(SUPPLY_TO_INPUT_HEAD, "i");
 const FAILED_SAFEGUARD_PATH = new RegExp(
   "\\b(?:through|thru|via)\\s+(?:the\\s+|a\\s+|an\\s+|its\\s+)?(?:\\S+\\s+)?(?:safety(?:[-\\s]rated)?|sto|e-?stop|emergency[-\\s]stop|guard|door|interlock)s?\\s+" +
-    "(?:relays?|controllers?|modules?|plcs?|contacts?|units?|cards?|channels?|outputs?|circuits?)\\b[^.?!]*\\b(?:failed|failing|faulty|bad|broken|dead|bypassed|jumpered|shorted|defeated|not\\s+working|isn't\\s+working)\\b",
+    "(?:relays?|controllers?|modules?|plcs?|contacts?|units?|cards?|channels?|outputs?|circuits?)\\b[^.?!]*\\b" + FAULT_WORD + "\\b",
   "i",
 );
 const SUPPLY_TO_INPUT = new RegExp(
@@ -260,7 +265,7 @@ const SUPPLY_TO_INPUT = new RegExp(
     // the shift" and "through a standard PLC output" are not.
     // #6039: and only a WORKING protective device in the electrical path ("through the safety relay"), never "through
     // the safety inspection" or "through the failed safety relay".
-    "(?![^.?!]{0,40}\\b(?:through|thru|via)\\s+(?:the\\s+|a\\s+|an\\s+|its\\s+)?(?!(?:failed|failing|faulty|bad|broken|dead|bypassed|jumpered|shorted|defeated)\\b)(?:\\S+\\s+)?" +
+    "(?![^.?!]{0,40}\\b(?:through|thru|via)\\s+(?:the\\s+|a\\s+|an\\s+|its\\s+)?(?!" + FAULT_WORD + "\\b)(?:\\S+\\s+)?" +
     "(?:safety(?:[-\\s]rated)?|sto|e-?stop|emergency[-\\s]stop|guard|door|interlock)s?\\s+(?:relays?|controllers?|modules?|plcs?|contacts?|units?|cards?|channels?|outputs?|circuits?)\\b)",
   "i",
 );
@@ -368,6 +373,8 @@ const MAIN_RELEASE_SAFE_ORDER = new RegExp(
     `|\\b(?:with|while|w/)\\s+${ART}(?:\\S+\\s+){0,2}?(?:${DEVICE}|brake\\s+monitoring)(?:\\s+\\S+){0,2}?\\s+(?:enabled|active|on|energi[sz]ed|in\\s+place|working)\\b`,
   "i",
 );
+/** An off safeguard the rules cannot name: no restore wording, not even "it", clears it. */
+const UNNAMED_OFF = "(unnamed)";
 function releaseInSafeOrder(brake: string, offKeys: Set<string>): boolean {
   if (!MAIN_RELEASE_SAFE_ORDER.test(brake)) return false;
   if (/\b(?:now|right\s+away|immediately|first)\b/.test(brake)) return false;
@@ -377,7 +384,7 @@ function releaseInSafeOrder(brake: string, offKeys: Set<string>): boolean {
       if (NEGATED_RESTORE.test(m[0])) continue;
       const key = deviceKey(m.groups?.dev ?? "");
       if (key === "it" || key === "they" || key === "safety") {
-        if (offKeys.size === 1) offKeys.forEach((k) => restored.add(k));
+        if (offKeys.size === 1) offKeys.forEach((k) => k !== UNNAMED_OFF && restored.add(k));
       } else restored.add(key);
     }
   }
@@ -708,7 +715,16 @@ function classify(message: string): { refuse: string | null; warn: string | null
   // #5680: a brake release asked while the safety function is reported off, in either order.
   // #6040 / #6088 r1 F2: every release clause is judged; a safe one does not hide an unsafe one.
   const offClauses = clauses.filter(safetyOffNow);
-  const offKeys = new Set(offClauses.flatMap((c) => allMatches(DEVICE_MENTION, c).map((m) => deviceKey(m[0]))));
+  // #6089 Codex r2 F6: an off clause naming no keyable safeguard ("brake monitoring is turned off") keeps an
+  // "(unnamed)" key that nothing restores, so restoring the e-stop never clears another safeguard's STOP.
+  const offKeys = new Set(
+    offClauses.flatMap((c) => {
+      const keys = allMatches(DEVICE_MENTION, c).map((m) => deviceKey(m[0]));
+      // Brake monitoring has no device key, so naming it always adds the marker, even beside a named safeguard.
+      if (keys.length === 0 || /\bbrake\s+monitoring\b/i.test(c)) keys.push(UNNAMED_OFF);
+      return keys;
+    }),
+  );
   for (const brake of clauses.filter(asksBrakeRelease)) {
     if (safetyOffNow(brake) || (offClauses.length > 0 && !releaseInSafeOrder(brake, offKeys))) return { refuse: brake, warn: null };
   }

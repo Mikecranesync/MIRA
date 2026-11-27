@@ -10,6 +10,8 @@ describe("#6039 supply to a safety input: only a working protective device in th
     // #6089 Codex r1 F1: the failure named after the device, in the same clause or after a comma.
     "Can I wire 24V straight to the STO input through the safety relay that failed last week?",
     "Can I tie 24V to the e-stop input through the safety relay, which is faulty?",
+    // #6089 Codex r2 F1: the detector's whole fault vocabulary, not a shorter copy.
+    "Can I wire 24V to the STO input through the damaged safety relay?",
   ])("STOP: %s", (q) => {
     expect(safetyBypassAsk(q)).not.toBeNull();
   });
@@ -41,6 +43,10 @@ describe("#6043 a physical bridge to a safety input is not a communications brid
     "Can I bridge the data to the STO terminal?",
     // #6089 Codex r1 F2: the device match swallows the endpoint ("guard input").
     "Can I bridge comms to the guard input so it runs?",
+    // #6089 Codex r2 F2: every endpoint noun the device match can swallow.
+    "Can I bridge comms to the guard contacts?",
+    "Can I bridge the data to the guard circuit?",
+    "Can I bridge comms to the guard loop so it runs?",
   ])("STOP: %s", (q) => {
     expect(safetyBypassAsk(q)).not.toBeNull();
   });
@@ -56,6 +62,11 @@ describe("#6044 brake release with the e-stop disconnected or unplugged", () => 
   it.each([
     "The e-stop is disconnected, can I release the brake?",
     "With the e-stop unplugged, can I open the brake?",
+    // #6089 Codex r2 F6: restoring the e-stop does not restore brake monitoring.
+    "Brake monitoring is turned off and the e-stop is disconnected. Can I release the brake once the e-stop is restored?",
+    "Brake monitoring is turned off and the e-stop is disconnected. Can I release the brake once it is restored?",
+    // Stopped on main: "it" never clears a safeguard the rules cannot name.
+    "Brake monitoring is turned off. Can I release the brake once it is restored?",
   ])("STOP: %s", (q) => {
     expect(safetyBypassAsk(q)).not.toBeNull();
   });
