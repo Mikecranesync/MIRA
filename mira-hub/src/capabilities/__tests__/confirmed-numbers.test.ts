@@ -16,6 +16,8 @@ import { withTenantContext } from "@/lib/tenant-context";
 
 const TENANT = "6085c000-0000-4000-8000-0000000000a1";
 const NB = "6085c000-0000-4000-8000-0000000000a2";
+/** What node-postgres throws before migration 118: Postgres "undefined column". */
+const MISSING_COLUMN = Object.assign(new Error('column "confirmed_numbers" does not exist'), { code: "42703" });
 const entry = (number: string, manufacturer = "Siemens", model = "TP700"): ConfirmedNumberEntry =>
   ({ number, manufacturer, model, confirmedAt: "2026-11-27T00:00:00.000Z" });
 
@@ -131,20 +133,45 @@ describe("recordConfirmedNumber (inside the confirm's transaction)", () => {
     expect(statements()).not.toContain("UPDATE equipment_notebooks");
   });
 
-  // A Hub deployed before the prod migration: the column does not exist yet. The failure is
-  // rolled back to the savepoint and logged, never thrown, so the confirm still commits.
-  it("a failed write rolls back to its savepoint, logs, and is false", async () => {
-    query.mockResolvedValueOnce({}).mockRejectedValueOnce(new Error('column "confirmed_numbers" does not exist')).mockResolvedValueOnce({});
+  // A Hub deployed before the prod migration: the column does not exist yet (Postgres 42703). The
+  // failure is rolled back to the savepoint and logged, never thrown, so the confirm still commits;
+  // reads fail closed then, so no stale number can count.
+  it("a missing column rolls back to its savepoint, logs, and is false", async () => {
+    query.mockResolvedValueOnce({}).mockRejectedValueOnce(MISSING_COLUMN).mockResolvedValueOnce({});
     expect(await recordConfirmedNumber(client, TENANT, NB, SAVE, false)).toBe(false);
     expect(statements()).toEqual(["SAVEPOINT confirmed_number", "UPDATE equipment_notebooks", "ROLLBACK TO"]);
     expect(sqlAt(2)).toBe("ROLLBACK TO SAVEPOINT confirmed_number");
     expect(console.warn).toHaveBeenCalledTimes(1);
   });
 
-  it("a failed read on a settled identity rolls back the same way", async () => {
-    query.mockResolvedValueOnce({}).mockRejectedValueOnce(new Error('column "confirmed_numbers" does not exist')).mockResolvedValueOnce({});
-    expect(await recordConfirmedNumber(client, TENANT, NB, SAVE, true)).toBe(false);
-    expect(statements()).toEqual(["SAVEPOINT confirmed_number", "SELECT confirmed_numbers", "ROLLBACK TO"]);
+  it("a failed read on a settled identity rolls back the same way, whatever the failure, and writes nothing", async () => {
+    for (const failure of [MISSING_COLUMN, new Error("statement timeout")]) {
+      query.mockReset();
+      query.mockResolvedValueOnce({}).mockRejectedValueOnce(failure).mockResolvedValueOnce({});
+      expect(await recordConfirmedNumber(client, TENANT, NB, SAVE, true)).toBe(false);
+      expect(statements()).toEqual(["SAVEPOINT confirmed_number", "SELECT confirmed_numbers", "ROLLBACK TO"]);
+    }
+  });
+
+  // Round-3 pre-screen 3: a settle must not commit over numbers an earlier identity left. Any other
+  // failure empties them after the rollback, outside the savepoint, so if that write fails too the
+  // confirm's transaction fails and nothing commits.
+  it("on a settle, any other failure empties the numbers instead, and is false", async () => {
+    for (const entry of [SAVE, null]) {
+      query.mockReset();
+      query.mockResolvedValueOnce({}).mockRejectedValueOnce(new Error("invalid input syntax for type json")).mockResolvedValueOnce({}).mockResolvedValueOnce({ rows: [], rowCount: 1 });
+      expect(await recordConfirmedNumber(client, TENANT, NB, entry, false)).toBe(false);
+      expect(statements()).toEqual(["SAVEPOINT confirmed_number", "UPDATE equipment_notebooks", "ROLLBACK TO", "UPDATE equipment_notebooks"]);
+      const [sql, values] = query.mock.calls[3]! as [string, unknown[]];
+      expect(sql).toMatch(/UPDATE equipment_notebooks SET confirmed_numbers = '\[\]'::jsonb WHERE tenant_id = \$1::uuid AND id = \$2::uuid/);
+      expect(values).toEqual([TENANT, NB]);
+    }
+  });
+
+  it("on a settle, when emptying the numbers fails too, the failure is thrown", async () => {
+    query.mockResolvedValueOnce({}).mockRejectedValueOnce(new Error("disk full")).mockResolvedValueOnce({}).mockRejectedValueOnce(new Error("disk full again"));
+    await expect(recordConfirmedNumber(client, TENANT, NB, SAVE, false)).rejects.toThrow("disk full again");
+    expect(statements()).toEqual(["SAVEPOINT confirmed_number", "UPDATE equipment_notebooks", "ROLLBACK TO", "UPDATE equipment_notebooks"]);
   });
 });
 
@@ -166,11 +193,18 @@ describe("clearConfirmedNumbers (inside the PATCH's transaction)", () => {
 
   // A Hub deployed before the prod migration: rolled back to the savepoint and logged, never
   // thrown, so the PATCH still commits.
-  it("a failed clear rolls back to its savepoint, logs, and does not throw", async () => {
-    query.mockResolvedValueOnce({}).mockRejectedValueOnce(new Error('column "confirmed_numbers" does not exist')).mockResolvedValueOnce({});
+  it("a missing column rolls back to its savepoint, logs, and does not throw", async () => {
+    query.mockResolvedValueOnce({}).mockRejectedValueOnce(MISSING_COLUMN).mockResolvedValueOnce({});
     await expect(clearConfirmedNumbers(client, TENANT, NB)).resolves.toBeUndefined();
     expect(statements()).toEqual(["SAVEPOINT confirmed_number", "UPDATE equipment_notebooks", "ROLLBACK TO"]);
     expect(console.warn).toHaveBeenCalledTimes(1);
+  });
+
+  // Round-3 pre-screen 3: a by-hand settle must not commit over the old numbers.
+  it("any other failed clear rolls back to its savepoint and is thrown, so the PATCH fails", async () => {
+    query.mockResolvedValueOnce({}).mockRejectedValueOnce(new Error("statement timeout")).mockResolvedValueOnce({});
+    await expect(clearConfirmedNumbers(client, TENANT, NB)).rejects.toThrow("statement timeout");
+    expect(statements()).toEqual(["SAVEPOINT confirmed_number", "UPDATE equipment_notebooks", "ROLLBACK TO"]);
   });
 });
 

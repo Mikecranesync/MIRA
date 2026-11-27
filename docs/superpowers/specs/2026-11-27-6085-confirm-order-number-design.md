@@ -125,7 +125,8 @@ COMMIT;
   - A confirm that settles the identity replaces the list with exactly its tick, or none (round 3 pre-screen). So an identity reopened by a notebook PATCH and settled again never brings an old number back, even when it comes back the same.
   - Only the confirm that settles the identity may add a number. If the card settled the identity before this confirm, nothing changes: a retry of the number already saved for this machine is still a success, and anything else is refused. So a stale second card for the same machine cannot add or clear a number, whichever box the first confirm left (round 2, F3), and the list holds at most one number (round 1, F3).
   - Only entries carrying a `code` count (round 1, F4), so an entry the scope cannot use never blocks or stands in for one it can.
-  - Any failure, including a missing column on a Hub deployed before migration 118, rolls back to the savepoint, is logged, and is reported as not saved. The identity still commits.
+  - Any failure rolls back to the savepoint, is logged, and is reported as not saved. A missing column (a Hub deployed before migration 118, where every read fails closed) ends there and the identity still commits.
+  - Revision (round 3 pre-screen 3, the reviewer's gap): any other failure on a confirm that settles the identity then empties the list outside the savepoint, so the identity commits with no number rather than over one an earlier identity left. If even that write fails, the confirm fails and nothing commits; the route answers 500 and the card shows its retryable "Could not confirm." The same rule holds for the PATCH clear: a missing column is logged and the PATCH succeeds, any other failure fails the PATCH. A number the database cannot store (a NUL byte, sent only by a direct API call) is one way to reach the first case.
 - **A catalog number refuses the tick** (round 2, F4). A machine with a catalog number never reads ticked numbers, so a confirm that writes one reports the number as not saved and touches nothing. A catalog edit from Settings takes the same row lock, so it is ordered before or after the confirm and can no longer land between the identity write and the number decision.
 - **The migration file is fixed once pushed.** Draft it against a throwaway Postgres first. `migration-verify.yml` applies the first pushed version to the persistent staging branch, and after that the file is immutable (`.claude/rules/mira-hub-migrations.md` §8).
 
@@ -135,7 +136,7 @@ COMMIT;
 
 - **Reading the number.** It reads `confirmedNumber` with the existing `readString`. Revision (Codex round 1, F1): it accepts the number only when the value is at most 64 characters and `singleOrderNumber` reads exactly one hyphenated order number from it, the same reader the status scope uses for saved values. Any other value (blank, no digit, whitespace, two numbers joined, a number joined to a model, no hyphens) is ignored, and the identity is still confirmed.
 - **The identity confirm.** It is unchanged. `catalogNumber` is still written as sent (`""` for text cards), and the lookup key and the search are unchanged.
-- **Saving the number.** Revision (Codex round 2): the route hands the accepted number to `confirmNotebookIdentity`, which decides it in the confirm's own transaction (§4.4). With nothing ticked, the route makes exactly the call it always made. When a number was sent, the response gains `numberSaved: boolean`, which is true only when the confirm says it saved the number; a refused or failed number is `false`, and the identity is confirmed either way.
+- **Saving the number.** Revision (Codex round 2): the route hands the accepted number to `confirmNotebookIdentity`, which decides it in the confirm's own transaction (§4.4). With nothing ticked, the route makes exactly the call it always made. When a number was sent, the response gains `numberSaved: boolean`, which is true only when the confirm says it saved the number; a refused or failed number is `false`, and the identity is confirmed either way, with no number for a failed one (the one exception, a write that cannot even empty the numbers, fails the confirm: §4.4).
 - **When the confirm is refused.** On a 409 (`identity_already_confirmed`) or a failed confirm, nothing is saved.
 - **The route does not check that a card offered the number.** It is the technician's own statement about their own notebook, and only the display scope reads it.
 
@@ -212,7 +213,7 @@ All tests are written first. Each one is seen red against a named mutation, with
   - An unticked confirm saves nothing.
   - A bad shape is ignored.
   - A 409 saves nothing.
-  - A save failure still confirms.
+  - A save failure still confirms, with no number; a confirm that fails is never reported as a success.
   - The catalog number and the lookup key are unchanged.
   - A repeated confirm does not duplicate the entry.
 - **Chat route:** the card frame carries `offeredNumber` live and after a reload, and the validator rejects a non-string value.

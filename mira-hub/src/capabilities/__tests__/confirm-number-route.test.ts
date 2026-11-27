@@ -56,6 +56,21 @@ describe("POST identity/confirm with a ticked number (#6085)", () => {
     expect(acqMock.confirmNotebookIdentity).toHaveBeenCalledWith(TENANT, NB, { manufacturer: "Siemens", model: "TP700", catalogNumber: "" }, TICK);
   });
 
+  // Round-3 pre-screen 3: a value the database cannot store reaches the confirm from a direct API
+  // call (the card only sends what it offered), so the confirm's own write is what refuses it
+  // (confirmed-numbers.integration.test.ts proves that refusal leaves no number).
+  it("a number carrying a NUL byte reaches the confirm as typed", async () => {
+    await POST(req({ ...CARD, confirmedNumber: "6AV2124-0GC01-0AX0\u0000" }), params);
+    expect(tickArg()).toEqual({ number: "6AV2124-0GC01-0AX0\u0000", code: "6AV21240GC010AX0" });
+  });
+
+  // A confirm whose number write cannot settle fails as a whole: the route never reports it as a
+  // success (Next.js answers 500, and the Hub and mobile cards show their retryable failure).
+  it("a confirm that fails is never reported as a success", async () => {
+    acqMock.confirmNotebookIdentity.mockRejectedValue(new Error("injected confirmed_numbers failure"));
+    await expect(POST(req({ ...CARD, confirmedNumber: "6AV2124-0GC01-0AX0" }), params)).rejects.toThrow("injected confirmed_numbers failure");
+  });
+
   it("an unticked confirm hands no number and adds no numberSaved", async () => {
     acqMock.confirmNotebookIdentity.mockResolvedValue({ ok: true });
     const res = await POST(req(CARD), params);

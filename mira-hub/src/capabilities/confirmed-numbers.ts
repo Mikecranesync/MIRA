@@ -81,8 +81,12 @@ export interface TxClient {
  *   for the same machine therefore cannot add or clear one, whichever box the first confirm left.
  *   Only entries carrying a code count (r1 F4), so an entry the scope cannot use never stands in.
  *
- * Runs under its own savepoint: a failing statement (including a missing column before migration
- * 118) is rolled back to it, logged and reported as false, so it never fails the confirm. True when
+ * Runs under its own savepoint: a failing statement is rolled back to it, logged and reported as
+ * false. A missing column (before migration 118, when every read fails closed) ends there, so the
+ * confirm still commits. Any other failure on a settle then empties the numbers outside the
+ * savepoint (round-3 pre-screen 3): a settle never commits over numbers an earlier identity left,
+ * and if even that write fails the confirm's transaction fails and nothing commits. The row is
+ * locked and was just written in this transaction, so neither write can match no row. True when
  * the ticked code is the machine's number afterwards. Touches only `confirmed_numbers`.
  */
 export async function recordConfirmedNumber(
@@ -120,27 +124,36 @@ export async function recordConfirmedNumber(
   } catch (err) {
     await c.query("ROLLBACK TO SAVEPOINT confirmed_number");
     console.warn(`[confirmed-numbers] save failed notebook=${notebookId}: ${(err as Error).message}`);
+    if (!settledBefore && !missingColumn(err)) await c.query(CLEAR_SQL, [tenantId, notebookId]);
     return false;
   }
+}
+
+/** Empties a notebook's numbers. */
+const CLEAR_SQL = `UPDATE equipment_notebooks SET confirmed_numbers = '[]'::jsonb WHERE tenant_id = $1::uuid AND id = $2::uuid`;
+
+/** Postgres "undefined column": a Hub running before migration 118, where every read fails closed. */
+function missingColumn(err: unknown): boolean {
+  return typeof err === "object" && err !== null && (err as { code?: unknown }).code === "42703";
 }
 
 /**
  * Empties the notebook's numbers inside the caller's open transaction (round-3 pre-screen 2). A
  * notebook PATCH that writes the identity status or source by hand settles or reopens an identity
  * without the identity card, and only the card adds a number, so an identity asserted by hand
- * starts with none. Under its own savepoint: a failure (including a missing column before migration
- * 118) is rolled back to it and logged, so the PATCH still succeeds.
+ * starts with none. Under its own savepoint: a missing column (before migration 118, when every read
+ * fails closed) is rolled back to it and logged, so the PATCH still succeeds. Any other failure is
+ * rolled back to it and thrown, so the PATCH fails rather than commit over the old numbers (round-3
+ * pre-screen 3).
  */
 export async function clearConfirmedNumbers(c: TxClient, tenantId: string, notebookId: string): Promise<void> {
   await c.query("SAVEPOINT confirmed_number");
   try {
-    await c.query(
-      `UPDATE equipment_notebooks SET confirmed_numbers = '[]'::jsonb WHERE tenant_id = $1::uuid AND id = $2::uuid`,
-      [tenantId, notebookId],
-    );
+    await c.query(CLEAR_SQL, [tenantId, notebookId]);
     await c.query("RELEASE SAVEPOINT confirmed_number");
   } catch (err) {
     await c.query("ROLLBACK TO SAVEPOINT confirmed_number");
+    if (!missingColumn(err)) throw err;
     console.warn(`[confirmed-numbers] clear failed notebook=${notebookId}: ${(err as Error).message}`);
   }
 }

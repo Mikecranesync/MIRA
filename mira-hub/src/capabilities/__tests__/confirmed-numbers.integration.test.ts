@@ -2,7 +2,8 @@
 // The number is decided inside the identity confirm's own locked transaction
 // (`confirmNotebookIdentity`, #6104 r2 F3/F4): only the confirm that settles the identity may add
 // one, one number per machine, a retry of it stays a success, another tenant can neither read nor
-// write, and a failing number write rolls back alone.
+// write, and a failing number write rolls back alone, leaving no number; only when even emptying
+// the numbers fails does the confirm fail and commit nothing.
 //
 // From mira-hub/ (throwaway database only):
 //   docker run -d --name mira6085-pg -e POSTGRES_PASSWORD=testpw -e POSTGRES_DB=mira_test -p 55685:5432 postgres:16
@@ -235,14 +236,96 @@ describe("migration 118 + the number decided in the identity confirm (real Postg
     expect(await scopeOf(nb)).toBe("own");
   });
 
-  // A failing number write never fails the confirm: it rolls back to its own savepoint, so the
-  // identity still commits (the same holds for a Hub deployed before migration 118).
+  // A failing number write rolls back to its own savepoint and the numbers are emptied instead, so
+  // the identity still commits, with no number (a Hub deployed before migration 118 also commits:
+  // below).
   it("a failing number write rolls back alone: the identity is confirmed and numberSaved is false", async () => {
     const nb = await makeBlank();
     const unstorable = { number: "6AV2124-0GC01-0AX0\u0000", code: "6AV21240GC010AX0" }; // jsonb rejects \u0000
     expect(await confirmNotebookIdentity(TENANT, nb, ID, unstorable)).toEqual({ ok: true, numberSaved: false });
     expect(await status(nb)).toBe("user_confirmed");
     expect(await readConfirmedNumbers(TENANT, nb)).toEqual([]);
+  });
+
+  // Round-3 pre-screen 3 (reviewer gap, before the formal round): a confirm or PATCH that settles
+  // the identity never commits over numbers an earlier identity left. A replacement that fails
+  // empties them instead; if even that write fails, nothing commits.
+  const failNumberWrites = async () => {
+    await testPool.query(
+      `CREATE OR REPLACE FUNCTION fail_confirmed_numbers_6104() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'injected confirmed_numbers failure'; END $$`,
+    );
+    await testPool.query(
+      `CREATE TRIGGER fail_confirmed_numbers_6104 BEFORE UPDATE OF confirmed_numbers ON equipment_notebooks FOR EACH ROW EXECUTE FUNCTION fail_confirmed_numbers_6104()`,
+    );
+    expect((await testPool.query(`SELECT 1 FROM pg_trigger WHERE tgname = 'fail_confirmed_numbers_6104'`)).rowCount).toBe(1); // precondition
+  };
+  const restoreNumberWrites = async () => {
+    await testPool.query(`DROP TRIGGER IF EXISTS fail_confirmed_numbers_6104 ON equipment_notebooks`);
+    await testPool.query(`DROP FUNCTION IF EXISTS fail_confirmed_numbers_6104()`);
+  };
+  /** The numbers the detail read counts (numbersApply included), not just the stored ones. */
+  const counted = async (nb: string) => numbersForMachine(await readConfirmedNumbers(TENANT, nb), null, (await getNotebook(TENANT, nb))!);
+  /** Confirmed with the number ticked, then reopened by a model PATCH away and back. */
+  const reopenedWithOldNumber = async () => {
+    const nb = await makeBlank();
+    expect(await confirmNotebookIdentity(TENANT, nb, ID, NUMBER)).toEqual({ ok: true, numberSaved: true });
+    expect(await updateNotebook(TENANT, nb, { model: "TP900" })).toBe(true);
+    expect(await updateNotebook(TENANT, nb, { model: "TP700" })).toBe(true);
+    expect(await status(nb)).toBe("candidate"); // precondition: reopened
+    expect(await codes(nb)).toEqual(["6AV21240GC010AX0"]); // precondition: the old number is still stored
+    return nb;
+  };
+
+  it("a re-confirm whose ticked number cannot be stored empties the old number instead of keeping it", async () => {
+    const nb = await reopenedWithOldNumber();
+    const unstorable = { number: `${OTHER_NUMBER.number}\u0000`, code: OTHER_NUMBER.code }; // jsonb rejects \u0000
+    expect(await confirmNotebookIdentity(TENANT, nb, ID, unstorable)).toEqual({ ok: true, numberSaved: false });
+    expect([await status(nb), await source(nb)]).toEqual(["user_confirmed", "user"]); // precondition: an identity whose numbers count
+    expect(await codes(nb)).toEqual([]);
+    expect(await counted(nb)).toEqual([]);
+    expect(await scopeOf(nb)).toBe("other");
+  });
+
+  it("a settling re-confirm whose numbers cannot be written at all fails and commits nothing, ticked or not", async () => {
+    for (const tick of [null, OTHER_NUMBER]) {
+      const nb = await reopenedWithOldNumber();
+      await failNumberWrites();
+      try {
+        await expect(tick ? confirmNotebookIdentity(TENANT, nb, ID, tick) : confirmNotebookIdentity(TENANT, nb, ID)).rejects.toThrow(/injected confirmed_numbers failure/);
+      } finally {
+        await restoreNumberWrites();
+      }
+      expect(await status(nb)).toBe("candidate");
+      expect(await counted(nb)).toEqual([]);
+    }
+  });
+
+  it("a by-hand status PATCH whose clear cannot be written fails and commits nothing", async () => {
+    const nb = await makeBlank();
+    expect(await confirmNotebookIdentity(TENANT, nb, ID, NUMBER)).toEqual({ ok: true, numberSaved: true });
+    expect(await updateNotebook(TENANT, nb, { model: "TP900" })).toBe(true);
+    expect(await status(nb)).toBe("candidate"); // precondition: reopened
+    await failNumberWrites();
+    try {
+      await expect(updateNotebook(TENANT, nb, { model: "TP700", identityStatus: "user_confirmed", identitySourceType: "user" })).rejects.toThrow(/injected confirmed_numbers failure/);
+    } finally {
+      await restoreNumberWrites();
+    }
+    expect([await status(nb), (await getNotebook(TENANT, nb))!.model]).toEqual(["candidate", "TP900"]);
+    expect(await counted(nb)).toEqual([]);
+  });
+
+  it("control: with number writes failing, a retry on an identity the card settled and a rename both still succeed", async () => {
+    const nb = await makeBlank();
+    expect(await confirmNotebookIdentity(TENANT, nb, ID, NUMBER)).toEqual({ ok: true, numberSaved: true });
+    await failNumberWrites();
+    try {
+      expect(await confirmNotebookIdentity(TENANT, nb, ID, NUMBER)).toEqual({ ok: true, numberSaved: true });
+      expect(await updateNotebook(TENANT, nb, { displayName: "number bench renamed" })).toBe(true);
+    } finally {
+      await restoreNumberWrites();
+    }
+    expect(await counted(nb)).toEqual(["6AV2124-0GC01-0AX0"]);
   });
 
   // A Hub deployed before migration 118: every settling confirm now writes the column, ticked or
