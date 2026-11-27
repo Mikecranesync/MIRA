@@ -23,13 +23,43 @@ export interface PoolLike {
   connect(): Promise<unknown>;
   end(): Promise<void>;
 }
-export type PoolFactory = (config: { connectionString: string; options?: string }) => PoolLike;
+/**
+ * The ONLY connection settings a pool may be built from. They are explicit fields (never a connection string
+ * the driver re-parses), so a query key such as ?host= or ?options=, a service name or the environment cannot
+ * override what was validated: pg uses a config field whenever it is set, and every field below is always set.
+ */
+export type SanitizedPgConfig = {
+  host: string;
+  port: number;
+  user: string;
+  password: string;
+  database: string;
+  /** Always set: the owned search_path for the fixture pool, a neutral one for the admin pool. */
+  options: string;
+};
+export type PoolFactory = (config: SanitizedPgConfig) => PoolLike;
 
 const LOOPBACK = new Set(["127.0.0.1", "localhost", "::1", "[::1]"]);
 
-export type TargetVerdict = { ok: true; url: string; database: string } | { ok: false; reason: string };
+export type TargetVerdict =
+  | { ok: true; host: string; port: number; user: string; password: string; database: string }
+  | { ok: false; reason: string };
 
-/** Pure: decides whether `env` names a disposable local test database. Touches nothing. */
+const safeDecode = (s: string): string | null => {
+  try {
+    return decodeURIComponent(s);
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * Pure: decides whether `env` names a disposable local test database, and returns the SANITIZED parts to
+ * connect with. Touches nothing. Deliberately strict for a strictly local fixture instead of a DSN framework:
+ * no query string, no fragment, a single plain database segment, a loopback host. Anything the driver could
+ * interpret differently from this parser (query overrides of host/database/options, service names, encoded or
+ * malformed database names) is rejected rather than reconciled.
+ */
 export function validateDisposableTarget(env: EnvLike): TargetVerdict {
   if (env.MIRA_TEST_DB_CONFIRM !== "DISPOSABLE") return { ok: false, reason: "MIRA_TEST_DB_CONFIRM must be exactly DISPOSABLE" };
   const raw = env.TEST_DATABASE_URL;
@@ -41,10 +71,17 @@ export function validateDisposableTarget(env: EnvLike): TargetVerdict {
     return { ok: false, reason: "TEST_DATABASE_URL is not a valid URL" };
   }
   if (u.protocol !== "postgres:" && u.protocol !== "postgresql:") return { ok: false, reason: "TEST_DATABASE_URL is not a postgres URL" };
+  if (u.search !== "" || u.hash !== "" || raw.includes("?") || raw.includes("#")) return { ok: false, reason: "query strings and fragments are not allowed (they can override host/database/options)" };
   if (!LOOPBACK.has(u.hostname)) return { ok: false, reason: `host ${u.hostname} is not loopback` };
-  const database = decodeURIComponent(u.pathname.replace(/^\//, ""));
+  const database = /^\/([A-Za-z0-9_]+)$/.exec(u.pathname)?.[1];
+  if (!database) return { ok: false, reason: "the path must be exactly one plain database name ([A-Za-z0-9_]+)" };
   if (!/test/i.test(database) || /prod|prd|stag/i.test(database)) return { ok: false, reason: "database name must contain 'test' and must not look like prod/staging" };
-  return { ok: true, url: raw, database };
+  const port = u.port === "" ? 5432 : Number(u.port);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) return { ok: false, reason: "invalid port" };
+  const user = safeDecode(u.username);
+  const password = safeDecode(u.password);
+  if (user === null || password === null) return { ok: false, reason: "malformed percent-encoding in the credentials" };
+  return { ok: true, host: u.hostname.replace(/^\[|\]$/g, ""), port, user, password, database };
 }
 
 export class DisposableTargetRejected extends Error {}
@@ -78,7 +115,10 @@ export function createIsolatedFixture(opts: {
       const suffix = (opts.randomSuffix ?? (() => Math.random().toString(16).slice(2, 10)))();
       if (!/^[0-9a-f]{4,16}$/.test(suffix)) throw new Error("schema suffix must be hex");
       schema = `itest_refpages_${suffix}`;
-      admin = opts.poolFactory({ connectionString: target.url });
+      const base = { host: target.host, port: target.port, user: target.user, password: target.password, database: target.database };
+      // The admin pool only runs statements that name the owned schema; its options are pinned anyway so the
+      // environment (PGOPTIONS) cannot steer it.
+      admin = opts.poolFactory({ ...base, options: "-c search_path=pg_catalog" });
       await admin.query(`CREATE SCHEMA ${schema}`);
       schemaCreated = true;
       // Structure only, copied from the shared table (a catalog read). Every statement below names the OWNED schema.
@@ -90,7 +130,7 @@ export function createIsolatedFixture(opts: {
       await admin.query(`CREATE POLICY knowledge_entries_tenant ON ${schema}.knowledge_entries USING ${TENANT_EXPR}`);
       await admin.query(`GRANT USAGE ON SCHEMA ${schema} TO factorylm_app`);
       await admin.query(`GRANT SELECT, INSERT, UPDATE, DELETE ON ${schema}.knowledge_entries TO factorylm_app`);
-      main = opts.poolFactory({ connectionString: target.url, options: `-c search_path=${schema},public` });
+      main = opts.poolFactory({ ...base, options: `-c search_path=${schema},public` });
       await opts.seed(main);
       return { pool: main, schema };
     },
