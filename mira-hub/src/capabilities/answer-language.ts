@@ -22,7 +22,11 @@ export const ENGLISH_ANSWER_RULE =
  *  to state its language outright when it is English; without it (or for a
  *  non-English question) the rule is unchanged. */
 export function withAnswerLanguage(systemPrompt: string, question?: string): string {
-  const english = question !== undefined && question.trim() !== "" && !looksNonEnglish(question);
+  // English is stated outright only for a question that is Latin-script AND not recognisably another
+  // Latin-script language. A Japanese/Arabic/Hindi/Russian question carries no accented Latin letters,
+  // but it is not English and is never called English here (#6030 F7).
+  const english =
+    question !== undefined && question.trim() !== "" && !looksNonEnglish(question) && nonLatinScriptsIn(question).size === 0;
   return `${systemPrompt}\n\n${ANSWER_LANGUAGE_RULE}${english ? ` ${ENGLISH_ANSWER_RULE}` : ""}`;
 }
 
@@ -53,4 +57,26 @@ export async function englishSearchQuery(text: string, translate: Translate): Pr
   } catch {
     return text;
   }
+}
+
+
+/** Script groups whose letters a Latin-script (English) answer does not normally contain. Greek is left
+ *  out on purpose: Ω/µ/Δ are ordinary unit and drive symbols. */
+export type ScriptGroup = "cjk" | "hangul" | "arabic" | "devanagari" | "cyrillic" | "thai" | "hebrew";
+
+export const SCRIPT_PATTERNS: ReadonlyArray<readonly [ScriptGroup, string]> = [
+  ["cjk", "\\p{Script=Han}\\p{Script=Hiragana}\\p{Script=Katakana}"],
+  ["hangul", "\\p{Script=Hangul}"],
+  ["arabic", "\\p{Script=Arabic}"],
+  ["devanagari", "\\p{Script=Devanagari}"],
+  ["cyrillic", "\\p{Script=Cyrillic}"],
+  ["thai", "\\p{Script=Thai}"],
+  ["hebrew", "\\p{Script=Hebrew}"],
+];
+
+/** The non-Latin script groups present in `text` (letters only; digits, symbols and Latin are ignored). */
+export function nonLatinScriptsIn(text: string): Set<ScriptGroup> {
+  const out = new Set<ScriptGroup>();
+  for (const [group, cls] of SCRIPT_PATTERNS) if (new RegExp(`[${cls}]`, "u").test(text)) out.add(group);
+  return out;
 }

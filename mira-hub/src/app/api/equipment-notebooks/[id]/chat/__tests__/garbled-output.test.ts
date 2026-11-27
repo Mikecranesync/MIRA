@@ -1,153 +1,105 @@
 /**
- * Garbled output detection tests (#6004)
+ * Output hygiene (#6004, #6030 F7): the PRODUCTION checker (capabilities/answer-hygiene.ts), not a copy.
+ * The route-level release behaviour is covered by output-hygiene-release.route.test.ts.
  */
 import { describe, expect, it } from "vitest";
+import { OUTPUT_HYGIENE_FAILURE_TEXT, checkAnswerHygiene, expectedScripts, quotedRecovery } from "@/capabilities/answer-hygiene";
+import { ANSWER_LANGUAGE_RULE, ENGLISH_ANSWER_RULE, looksNonEnglish, withAnswerLanguage } from "@/capabilities/answer-language";
 
-// Import the function from route.ts - we'll need to export it
-// For now, inline the detection logic for testing
+const EN = { question: "What does fault F004 mean?" };
+const ES = { question: "¿Qué significa el fallo F004?" };
+const verdict = (text: string, ctx: Parameters<typeof checkAnswerHygiene>[1] = EN) => checkAnswerHygiene(text, ctx);
 
-function detectGarbledOutput(answer: string, conversationLanguages: string[] = ["en"]): { garbled: boolean; reason?: string } {
-  const latinConvo = conversationLanguages.every(lang => ["en", "es", "fr", "de", "it", "pt"].includes(lang));
-  if (latinConvo) {
-    if (/[\u0900-\u097F]/.test(answer)) {
-      return { garbled: true, reason: "Devanagari text in Latin-script conversation" };
-    }
-    if (/[\u0600-\u06FF]/.test(answer)) {
-      return { garbled: true, reason: "Arabic text in Latin-script conversation" };
-    }
-    if (/[\u0400-\u04FF]/.test(answer)) {
-      return { garbled: true, reason: "Cyrillic text in Latin-script conversation" };
-    }
-    if (/[\u4E00-\u9FFF\u3040-\u309F\u30A0-\u30FF]/.test(answer)) {
-      return { garbled: true, reason: "CJK text in Latin-script conversation" };
-    }
-  }
-  
-  const draftMarkers = [
-    /better (spanish|english|french|german):/i,
-    /rewrite:/i,
-    /correction:/i,
-    /let me (rephrase|correct|fix|rewrite)/i,
-    /wait,? (let me|i should)/i,
-    /actually,? (let me|i should)/i
-  ];
-  for (const pattern of draftMarkers) {
-    if (pattern.test(answer)) {
-      return { garbled: true, reason: `Draft marker found: ${pattern.source}` };
-    }
-  }
-  
-  return { garbled: false };
-}
-
-describe("detectGarbledOutput", () => {
-  describe("mixed-script detection", () => {
-    it("flags Devanagari in English answer", () => {
-      const answer = "No puedo पुछि? better Spanish: No puedo confirmar...";
-      const result = detectGarbledOutput(answer, ["en"]);
-      expect(result.garbled).toBe(true);
-      expect(result.reason).toContain("Devanagari");
-    });
-
-    it("flags Devanagari in Spanish answer", () => {
-      const answer = "El LED está पुष्टि encendido en amarillo.";
-      const result = detectGarbledOutput(answer, ["es"]);
-      expect(result.garbled).toBe(true);
-      expect(result.reason).toContain("Devanagari");
-    });
-
-    it("flags Arabic in English answer", () => {
-      const answer = "The drive shows fault مشكلة F004.";
-      const result = detectGarbledOutput(answer, ["en"]);
-      expect(result.garbled).toBe(true);
-      expect(result.reason).toContain("Arabic");
-    });
-
-    it("flags Cyrillic in English answer", () => {
-      const answer = "The parameter Ошибка is not set.";
-      const result = detectGarbledOutput(answer, ["en"]);
-      expect(result.garbled).toBe(true);
-      expect(result.reason).toContain("Cyrillic");
-    });
-
-    it("flags CJK in English answer", () => {
-      const answer = "The fault code 错误 means overcurrent.";
-      const result = detectGarbledOutput(answer, ["en"]);
-      expect(result.garbled).toBe(true);
-      expect(result.reason).toContain("CJK");
-    });
-
-    it("does not flag clean English answer", () => {
-      const answer = "F004 is an overcurrent fault. Check the motor cable for shorts [1].";
-      const result = detectGarbledOutput(answer, ["en"]);
-      expect(result.garbled).toBe(false);
-    });
-
-    it("does not flag clean Spanish answer", () => {
-      const answer = "El LED amarillo indica que el CPU está en modo STOP [1].";
-      const result = detectGarbledOutput(answer, ["es"]);
-      expect(result.garbled).toBe(false);
-    });
+describe("unexpected scripts in a Latin-script turn", () => {
+  it.each([
+    ["Devanagari", "No puedo पुछि? Confirmo que el LED está en amarillo.", ES],
+    ["Arabic", "The drive shows fault مشكلة F004.", EN],
+    ["Cyrillic", "The parameter Ошибка is not set.", EN],
+    ["CJK", "The fault code 错误 means overcurrent.", EN],
+    ["Hangul", "The fault code 오류 means overcurrent.", EN],
+  ])("flags %s prose", (_n, text, ctx) => {
+    expect(verdict(text, ctx)).toMatchObject({ ok: false, code: "unexpected_script" });
   });
-
-  describe("draft marker detection", () => {
-    it("flags 'better Spanish:' meta-comment", () => {
-      const answer = "No puedo? better Spanish: No puedo confirmar...";
-      const result = detectGarbledOutput(answer);
-      expect(result.garbled).toBe(true);
-      expect(result.reason).toContain("Draft marker");
-    });
-
-    it("flags 'better English:' meta-comment", () => {
-      const answer = "not sure, better english: The drive is in fault mode.";
-      const result = detectGarbledOutput(answer);
-      expect(result.garbled).toBe(true);
-    });
-
-    it("flags 'rewrite:' meta-comment", () => {
-      const answer = "Fault detected. rewrite: The drive shows F004 overcurrent fault.";
-      const result = detectGarbledOutput(answer);
-      expect(result.garbled).toBe(true);
-    });
-
-    it("flags 'let me rephrase' self-correction", () => {
-      const answer = "The LED means... let me rephrase: The yellow LED indicates STOP mode.";
-      const result = detectGarbledOutput(answer);
-      expect(result.garbled).toBe(true);
-    });
-
-    it("flags 'wait, let me' self-correction", () => {
-      const answer = "F081 is not found. Wait, let me check again - it's on page 162.";
-      const result = detectGarbledOutput(answer);
-      expect(result.garbled).toBe(true);
-    });
-
-    it("flags 'actually, i should' self-correction", () => {
-      const answer = "No information found. Actually, I should check the table - F081 is Type 2.";
-      const result = detectGarbledOutput(answer);
-      expect(result.garbled).toBe(true);
-    });
-
-    it("does not flag normal use of 'wait' or 'actually' in instructions", () => {
-      const answer = "Wait 5 minutes for the DC bus to discharge. Actually test with a meter before touching terminals [1].";
-      const result = detectGarbledOutput(answer);
-      expect(result.garbled).toBe(false);
-    });
-
-    it("does not flag normal 'better' in comparison context", () => {
-      const answer = "Using shielded cable is better than unshielded for long runs [1].";
-      const result = detectGarbledOutput(answer);
-      expect(result.garbled).toBe(false);
-    });
+  it("accepts clean English and clean Spanish", () => {
+    expect(verdict("F004 is an overcurrent fault. Check the motor cable for shorts [1].")).toEqual({ ok: true });
+    expect(verdict("El LED amarillo indica que el CPU está en modo STOP [1].", ES)).toEqual({ ok: true });
   });
+  it("Latin product codes, units and Greek unit symbols are ordinary", () => {
+    expect(verdict("The GS11N-20P2 rated 5 Ω, 10 µF, 20 °C [1].")).toEqual({ ok: true });
+  });
+});
 
-  describe("combined issues", () => {
-    it("flags answer with both mixed script and draft marker", () => {
-      const answer = "No puedo पुछि? better Spanish: No puedo confirmar que el BAT.STATUS rojo sea el fuse.";
-      const result = detectGarbledOutput(answer, ["es"]);
-      expect(result.garbled).toBe(true);
-      // Should catch either issue
-      expect(result.reason).toBeTruthy();
-    });
+describe("expected scripts come from what the technician wrote", () => {
+  it.each([
+    ["Japanese", "F081 の意味は何ですか？", "F081 は通信障害です。タイプ2では手動リセットが必要です [1]。"],
+    ["Arabic", "ما معنى العطل F081؟", "العطل F081 يعني فقد الاتصال [1]."],
+    ["Hindi", "F081 का अर्थ क्या है?", "F081 का अर्थ संचार हानि है [1]।"],
+    ["Russian", "Что означает F081?", "F081 означает потерю связи [1]."],
+  ])("a valid %s answer to a %s question passes", (_n, q, a) => {
+    expect(verdict(a, { question: q })).toEqual({ ok: true });
+    expect(expectedScripts({ question: q }).size).toBe(1);
+  });
+  it("a different unexpected script inside a non-Latin answer is still flagged", () => {
+    expect(verdict("F081 は通信障害です。ошибка [1]。", { question: "F081 の意味は何ですか？" })).toMatchObject({ ok: false, code: "unexpected_script" });
+  });
+  it("a Japanese thread keeps expecting Japanese on a Latin follow-up", () => {
+    const ctx = { question: "F081?", priorUserTurns: ["F081 の意味は何ですか？"] };
+    expect(verdict("F081 は通信障害です [1]。", ctx)).toEqual({ ok: true });
+    expect(verdict("F081 は通信障害です [1]。", { question: "F081?" })).toMatchObject({ ok: false });
+  });
+});
+
+describe("legitimate source names do not exempt foreign prose", () => {
+  const sources = ["Manual title: インバータ取扱説明書 (GS10)"];
+  it("a non-Latin name that appears verbatim in the evidence is acceptable in an English answer", () => {
+    expect(verdict("See the manual インバータ取扱説明書 for wiring [1].", { ...EN, sources })).toEqual({ ok: true });
+  });
+  it("without that evidence the same name is unexpected", () => {
+    expect(verdict("See the manual インバータ取扱説明書 for wiring [1].", EN)).toMatchObject({ ok: false });
+  });
+  it("a legitimate quoted name and a product code elsewhere do not exempt unexpected Cyrillic prose", () => {
+    const text = 'PF525-TEST reports ошибка. See "インバータ取扱説明書" [1].';
+    expect(verdict(text, { ...EN, sources })).toMatchObject({ ok: false, code: "unexpected_script" });
+  });
+});
+
+describe("draft markers", () => {
+  it.each([
+    "No puedo? better Spanish: No puedo confirmar...",
+    "Fault detected. rewrite: The drive shows F004.",
+    "The LED means... let me rephrase: The yellow LED indicates STOP mode.",
+    "F081 is not found. Wait, let me check again.",
+    "No information. Actually, I should check the table.",
+    "correction: F081 is Type 2.",
+  ])("flags %j", (t) => expect(verdict(t)).toMatchObject({ ok: false, code: "draft_marker" }));
+  it("does not flag ordinary instructions", () => {
+    expect(verdict("Wait 5 minutes for the DC bus to discharge. Actually test with a meter first [1].")).toEqual({ ok: true });
+    expect(verdict("Shielded cable is better than unshielded for long runs [1].")).toEqual({ ok: true });
+  });
+});
+
+describe("quoted recovery and the failure text", () => {
+  it("extracts a trailing quoted passage and the caller re-checks it", () => {
+    const clean = "F081 means DSI Comm Loss and Type 2 requires manual reset [1].";
+    expect(quotedRecovery(`rewrite: "${clean}"`)).toBe(clean);
+    expect(quotedRecovery('rewrite: "short"')).toBeNull();
+    expect(verdict(quotedRecovery(`rewrite: "F081 needs reset. rewrite: DSI [1]."`) ?? "")).toMatchObject({ ok: false });
+  });
+  it("the failure text blames the reply, not the manuals", () => {
+    expect(OUTPUT_HYGIENE_FAILURE_TEXT).toMatch(/could not produce a clean reply/);
+    expect(OUTPUT_HYGIENE_FAILURE_TEXT).toMatch(/nothing about your manuals/);
+    expect(OUTPUT_HYGIENE_FAILURE_TEXT.toLowerCase()).not.toMatch(/not (found|contain)|insufficient|do not have/);
+  });
+});
+
+describe("withAnswerLanguage never calls a non-Latin question English", () => {
+  const plain = `SYS\n\n${ANSWER_LANGUAGE_RULE}`;
+  it.each(["F081 の意味は何ですか？", "ما معنى العطل F081؟", "F081 का अर्थ क्या है?", "Что означает F081?"])("%s", (q) => {
+    expect(withAnswerLanguage("SYS", q)).toBe(plain);
+    expect(withAnswerLanguage("SYS", q)).not.toContain(ENGLISH_ANSWER_RULE);
+  });
+  it("control: an English question still states English; translation detection is unchanged", () => {
+    expect(withAnswerLanguage("SYS", "What does F081 mean?")).toBe(`${plain} ${ENGLISH_ANSWER_RULE}`);
+    expect(looksNonEnglish("F081 の意味は何ですか？")).toBe(false); // unchanged: no new translation call for these
   });
 });

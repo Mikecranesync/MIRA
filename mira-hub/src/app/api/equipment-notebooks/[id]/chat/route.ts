@@ -163,6 +163,7 @@ import {
 } from "@/capabilities/manual-applicability";
 import { isOffTopic, SCOPE_REPLY } from "@/capabilities/scope-check";
 import { englishSearchQuery, withAnswerLanguage } from "@/capabilities/answer-language";
+import { OUTPUT_HYGIENE_FAILURE_TEXT, checkAnswerHygiene, quotedRecovery } from "@/capabilities/answer-hygiene";
 import { normalizeCitationMarkers, withStepSafety } from "@/capabilities/answer-shape";
 import { withLabelDataIdentifiers } from "@/capabilities/label-data-identifiers";
 import { withPhotoProvenance } from "@/capabilities/photo-provenance";
@@ -707,56 +708,6 @@ function refusalPhraseIn(folded: string): boolean {
       FIRST_PERSON_REFUSAL_RE.test(sentence)
     );
   });
-}
-
-/**
- * Detect garbled output that should not be shown under a Grounded badge.
- * Fixes F7: derive expected scripts from actual conversation language.
- * Fixes F8: unified hygiene check for all release paths.
- */
-function detectGarbledOutput(answer: string, turnLanguages: string[]): { garbled: boolean; reason?: string } {
-  // F7 FIX: If no languages detected, default to English but don't reject valid non-Latin
-  const hasLanguages = turnLanguages.length > 0;
-  const latinConvo = !hasLanguages || turnLanguages.every(lang => ["en", "es", "fr", "de", "it", "pt"].includes(lang));
-  
-  // Only check for unexpected scripts in Latin conversations
-  if (latinConvo && hasLanguages) {
-    // Skip if answer contains legitimate non-Latin product names or codes
-    const hasProductCodes = /\b[A-Z0-9]{3,}[-_][A-Z0-9]+\b/.test(answer);
-    
-    // Check for unexpected scripts (not in isolated product names)
-    const bodyWithoutCodes = answer.replace(/\b[A-Z0-9]{3,}[-_][A-Z0-9]+\b/g, '');
-    
-    if (/[\u0900-\u097F]/.test(bodyWithoutCodes)) {
-      return { garbled: true, reason: "Unexpected Devanagari in Latin conversation" };
-    }
-    if (/[\u0600-\u06FF]/.test(bodyWithoutCodes) && !hasProductCodes) {
-      return { garbled: true, reason: "Unexpected Arabic in Latin conversation" };
-    }
-    if (/[\u0400-\u04FF]/.test(bodyWithoutCodes) && !hasProductCodes) {
-      return { garbled: true, reason: "Unexpected Cyrillic in Latin conversation" };
-    }
-    if (/[\u4E00-\u9FFF\u3040-\u309F\u30A0-\u30FF]/.test(bodyWithoutCodes) && !hasProductCodes) {
-      return { garbled: true, reason: "Unexpected CJK in Latin conversation" };
-    }
-  }
-  
-  // Detect draft/meta markers that should not reach the user
-  const draftMarkers = [
-    /better (spanish|english|french|german|japanese|chinese|arabic|russian):/i,
-    /rewrite:/i,
-    /correction:/i,
-    /let me (rephrase|correct|fix|rewrite)/i,
-    /wait,? (let me|i should)/i,
-    /actually,? (let me|i should)/i
-  ];
-  for (const pattern of draftMarkers) {
-    if (pattern.test(answer)) {
-      return { garbled: true, reason: `Draft marker: ${pattern.source}` };
-    }
-  }
-  
-  return { garbled: false };
 }
 
 export function isRefusal(answer: string): boolean {
@@ -5440,24 +5391,31 @@ async function handleChatTurn(
       if (served && gate) reportProgress(req, "checking_answer");
       let answerText = normalizeCitationMarkers(responseBuffer.join(""));
 
-      // F7/F8: Check for garbled output with actual turn languages, re-check recovered text
-      const turnLanguages = ["en"]; // TODO: derive from turn history/language detector
-      const garbledCheck = detectGarbledOutput(answerText, turnLanguages);
-      if (garbledCheck.garbled && served && docGrounded) {
-        console.warn(`[notebook-chat] garbled output detected: ${garbledCheck.reason}`);
-        // F8: Re-check quoted recovery before using it
-        const quotedMatch = answerText.match(/"([^"]+)"$/);
-        if (quotedMatch && quotedMatch[1].length > 20) {
-          const recoveredText = quotedMatch[1];
-          const recheck = detectGarbledOutput(recoveredText, turnLanguages);
-          if (!recheck.garbled) {
-            answerText = recoveredText;
+      // #6030 F7/F8: ONE deterministic hygiene check (answer-hygiene.ts) for every candidate admitted to
+      // buffered release. Expected scripts come from the technician's own turn(s); a Latin product code
+      // exempts nothing. Under the gate nothing has been released, so a failing draft is replaced before a
+      // byte of it ships: first by its own quoted recovery IF that recovery passes the same check, else by
+      // an honest "reply could not be shown" text that says nothing about the manuals. Gate off stays
+      // legacy: the live stream already carries the draft, so a post-hoc replacement would make the saved
+      // reply differ from what was shown — never done.
+      const hygieneIn = (text: string) =>
+        checkAnswerHygiene(text, {
+          question: message,
+          priorUserTurns: turnHistory.filter((t) => t.role === "user").map((t) => t.content),
+          sources: chunks.flatMap((c) => [c.content, c.title ?? "", c.sourceUrl ?? ""]),
+        });
+      let hygieneFailure: string | null = null;
+      if (gate && served) {
+        const first = hygieneIn(answerText);
+        if (!first.ok) {
+          console.warn(`[notebook-chat] output hygiene rejected the draft: ${first.code} ${first.detail}`);
+          const recovered = quotedRecovery(answerText);
+          if (recovered !== null && hygieneIn(recovered).ok) {
+            answerText = recovered;
           } else {
-            // Recovery also garbled, use clean refusal
-            answerText = "The loaded excerpts do not contain enough information to answer this question.";
+            answerText = OUTPUT_HYGIENE_FAILURE_TEXT;
+            hygieneFailure = `output-hygiene:${first.code}`;
           }
-        } else {
-          answerText = "The loaded excerpts do not contain enough information to answer this question.";
         }
       }
 
@@ -5468,7 +5426,7 @@ async function handleChatTurn(
       // shipped source is not a refusal just because it also states a
       // limitation. `isRefusal` itself is unchanged (the observability mirror
       // below still reports the raw phrase match).
-      const refusedByText = served && refusalVerdict(answerText, { docGrounded, citations });
+      const refusedByText = served && hygieneFailure === null && refusalVerdict(answerText, { docGrounded, citations });
       // #4426 deterministic floor: a manufacturer-library answer that cites none
       // of the retrieved passages is not left to the model's wording. Under the
       // gate nothing has been released yet, so the uncited draft is replaced
@@ -5491,7 +5449,7 @@ async function handleChatTurn(
             (Boolean(visualSection) && answerUsesStoredNameplateReading(text, visualReadings)) ||
             Boolean(safetyTrigger),
         });
-      const uncitedDocumentClaim = gate && served && !refusedByText && uncitedClaimFor(answerText);
+      const uncitedDocumentClaim = gate && served && hygieneFailure === null && !refusedByText && uncitedClaimFor(answerText);
       if (uncitedDocumentClaim) {
         console.warn(`[notebook-chat] uncited manufacturer-library claim withheld (#4426): ${answerText.length} chars, ${citations.length} citations available`);
         answerText = UNCITED_OEM_CLAIM_TEXT;
@@ -5518,7 +5476,7 @@ async function handleChatTurn(
       };
       // Not skipped for a draft that only READS as a refusal (refusedByText): "Yes, rated 15 A. The
       // excerpts do not say …" still approves, and a refusal's text is shown to the technician.
-      const ratingColumn = !gate || !served || !docGrounded || uncitedDocumentClaim ? null : ratingColumnFor(answerText);
+      const ratingColumn = !gate || !served || !docGrounded || uncitedDocumentClaim || hygieneFailure !== null ? null : ratingColumnFor(answerText);
       if (ratingColumn) {
         console.warn(`[notebook-chat] ratings-table answer withheld (#5466, ${ratingColumn.rule} rule): ${answerText.length} chars, table p. ${ratingColumn.page ?? "?"}`);
         answerText = ratingColumnText(ratingColumn);
@@ -5558,7 +5516,8 @@ async function handleChatTurn(
           console.error("[notebook-chat] manual-search re-read failed:", err instanceof Error ? err.message : err);
         }
       }
-      const validation = validateAnswer({
+      // A hygiene failure is already replaced by its fixed text; the answer floors judge candidates, not that text.
+      const validation = hygieneFailure !== null ? ({ ok: true } as const) : validateAnswer({
         answerText,
         question: message,
         general: !docGrounded,
@@ -5567,7 +5526,8 @@ async function handleChatTurn(
         evidenceSufficient,
         manualSearchRunning: fallbackSearchRunning,
       });
-      let outputRejected: { kind: "unsafe_answer" | "unsupported_specificity"; violation: string } | null = null;
+      let outputRejected: { kind: "unsafe_answer" | "unsupported_specificity" | "output_hygiene"; violation: string } | null =
+        hygieneFailure === null ? null : { kind: "output_hygiene", violation: hygieneFailure };
       // Safety Phase 0 (#4372): which layer decided, recorded on the packet as
       // closed-vocabulary codes only. A FLAGGED turn is one where a pre-LLM
       // safety trigger fired (question/photo trigger, the energized directive,
@@ -5811,6 +5771,8 @@ async function handleChatTurn(
                 // served above the redraft, as it would be on draft 1; every other
                 // warning or replacement stops the turn.
                 screen: (text) => {
+                  // The same hygiene check the first draft faced: a malformed redraft is never adopted.
+                  if (!hygieneIn(text).ok) return null;
                   if (refusalVerdict(text, { docGrounded, citations }) || uncitedClaimFor(text) || ratingColumnFor(text) !== null) return null;
                   // It replaces a stop only with a source the technician can check: at least one
                   // marker that resolves to a retrieved excerpt (Codex r1 F3).
@@ -5827,7 +5789,7 @@ async function handleChatTurn(
                   const shown = v.ok ? text : v.violation === "hazard-warning:isolation-advisory" ? v.replacement : null;
                   // A guard/interlock defeat reworded under lockout wording draws only the
                   // advisory above; the bypass classifier catches it (safety review on #6001).
-                  if (!shown || promptLeakIn(shown).leaked || safetyBypassAsk(text) !== null) return null;
+                  if (!shown || !hygieneIn(shown).ok || promptLeakIn(shown).leaked || safetyBypassAsk(text) !== null) return null;
                   redraftAdvisory = !v.ok;
                   return shown;
                 },
@@ -6310,7 +6272,7 @@ async function handleChatTurn(
             // question (#4289 F4); hydration shows no observation on a failed answer.
             : [...hazardEntries, ...emittedCitations, ...disputeEntries, ...componentEntries, ...proposalEntries, ...(visualEntry ? [visualEntry] : []), ...providerFailureEntries],
           model: servedModel,
-          basis: served ? (outputRejected?.kind === "unsafe_answer" ? null : evidenceFrame.basis) : null,
+          basis: served ? (outputRejected?.kind === "unsafe_answer" || outputRejected?.kind === "output_hygiene" ? null : evidenceFrame.basis) : null,
           ...assetSnapshot,
         });
       } catch (err) {
@@ -6386,7 +6348,7 @@ async function handleChatTurn(
         // lane must not certify the replacement. Its safety frame was emitted
         // before content above; only the verified-photo marker remains here.
         if (visualEntry) controller.enqueue(enc.encode(sse(visualEvidenceMarker(visualEntry))));
-      } else {
+      } else if (outputRejected?.kind !== "output_hygiene") {
         controller.enqueue(enc.encode(sse(evidenceFrame)));
       }
 
