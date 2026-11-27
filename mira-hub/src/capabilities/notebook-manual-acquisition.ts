@@ -1363,6 +1363,35 @@ export function threadStatusScope(
   return "undecided";
 }
 
+/** Brackets around a typed number and punctuation after it are not part of it. */
+const typedToken = (token: string) =>
+  token.replace(/^[([{"'“‘]+/, "").replace(/[)\]}"'”’.,;:!?]+$/, "");
+/** Past this many digit-bearing tokens nothing is offered: a bound on the work, never a guess. */
+const MAX_OFFERED_CANDIDATES = 20;
+
+/**
+ * #6085: the one number the technician typed that would make this question the proposed
+ * machine's own, for the identity card to offer beside an unticked box. The scope decides
+ * (`threadStatusScope` with that number confirmed), so the card and the status scope read the
+ * question the same way. Null when the question is not withheld today, when no single typed
+ * token settles it (two numbers, another maker, the same number spelled two ways), or past
+ * 20 digit-bearing tokens. The value is the token as typed, never a normalised string.
+ */
+export function offeredOwnNumber(
+  question: string,
+  identity: { manufacturer: string | null | undefined; model: string | null | undefined },
+): string | null {
+  if (!identity.model?.trim()) return null;
+  const machine = { manufacturer: identity.manufacturer, model: identity.model, catalogNumber: null, recordCatalog: null };
+  if (threadStatusScope([question], machine) !== "other") return null;
+  const candidates = [
+    ...new Set(question.split(/\s+/).map(typedToken).filter((t) => /\d/.test(t) && t.length <= 64)),
+  ];
+  if (candidates.length > MAX_OFFERED_CANDIDATES) return null;
+  const fixes = candidates.filter((t) => threadStatusScope([question], { ...machine, confirmedNumbers: [t] }) === "own");
+  return fixes.length === 1 ? fixes[0]! : null;
+}
+
 /**
  * The notebook's CURRENT manual-search status — for its own confirmed
  * identity, or (if that search never ran or isn't this notebook's own) the
