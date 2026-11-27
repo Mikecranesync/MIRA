@@ -1,14 +1,17 @@
 /**
- * Ranking test for #5998: PowerFlex 525 overcurrent faults
- * 
- * Verifies that fault-table pages (161-162) reach the answer context
- * when retrieved, not just that they're returned by retrieval.
+ * Context-survival test for #5998: PowerFlex 525 overcurrent faults.
+ *
+ * SCOPE: proves only that fault-table excerpts (synthetic stand-ins for
+ * pp.161-162) survive prompt assembly WHEN retrieval returns them. It does NOT
+ * test or fix ranking: #5998's root cause is that retrieval never returned
+ * pp.161-162, and that limitation remains open (no ranking/BM25/vector change
+ * is made here). Excerpts are synthetic, not verified OEM text.
  */
 import { describe, expect, it } from "vitest";
 import { buildGroundedContext } from "../manual-rag";
 import { makeChunk } from "./test-fixtures";
 
-describe("PowerFlex 525 overcurrent ranking (#5998)", () => {
+describe("PowerFlex 525 overcurrent context survival (#5998; retrieval ranking NOT covered)", () => {
   it("fault-table pages reach answer context when retrieved", () => {
     // Simulate the scenario from #5998: retrieval returns pp.1, 665, 666, 672
     // but also fault-table pp.161-162 (which were missed in ranking)
@@ -63,7 +66,7 @@ describe("PowerFlex 525 overcurrent ranking (#5998)", () => {
       161
     );
     
-    const question = "What causes overcurrent faults?";
+    const question = "What causes overcurrent faults on a PowerFlex 525?";
     const context = buildGroundedContext([longFaultTable], question);
     
     // F063 should be preserved even if it's row 63 in a 100-row table
@@ -104,9 +107,10 @@ describe("PowerFlex 525 overcurrent ranking (#5998)", () => {
     const page1 = makeChunk("PowerFlex 525 manual...", 1);
     const page665 = makeChunk("Specifications...", 665);
     
-    const question = "What causes overcurrent faults?";
+    const question = "What causes overcurrent faults on a PowerFlex 525?";
     const context = buildGroundedContext([page1, page665], question);
     
+    // Limitation retained: if retrieval omits pp.161-162, nothing here can recover them.
     // F063 should NOT be in context (can't be, wasn't retrieved)
     expect(context).not.toContain("F063");
   });

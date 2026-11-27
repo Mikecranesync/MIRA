@@ -168,201 +168,284 @@ export function neutralizeReferenceText(text: string): string {
 }
 
 /**
- * Extract identifiers and symptom terms from question that might appear in table rows.
- * Fixes F4 (exact dotted parameters), F5 (symptom terms).
+ * Identifiers and symptom terms from the question that may appear in table
+ * rows (#6030 F4/F5).
+ *
+ * `exact` holds COMPLETE identifiers (fault codes `F081`, dotted parameters
+ * `P06.53`, terminal numbers); they are only ever matched as whole tokens, so
+ * `P06` never matches `P06.53`, `P06.530` or `XP06.53`, and a dotted parameter
+ * does not also contribute its `P06` prefix. `symptoms` holds SPECIFIC symptom
+ * words only. Broad words ("fault", "error", "alarm", "warning", "trip") appear
+ * in nearly every fault-table row and would crowd out the real answer, so they
+ * are deliberately not extracted.
  */
-function extractQuestionTerms(question: string): { exact: Set<string>; symptoms: Set<string> } {
+export interface QuestionTerms {
+  exact: Set<string>;
+  symptoms: Set<string>;
+}
+
+export function extractQuestionTerms(question: string): QuestionTerms {
   const exact = new Set<string>();
   const symptoms = new Set<string>();
-  
-  // Fault codes: F004, E001, A123, etc. (letter + 2-4 digits)
-  for (const m of question.matchAll(/\b[A-Za-z]\d{2,4}\b/g)) {
-    exact.add(m[0].toUpperCase());
+
+  // Dotted parameters first, then mask them so their prefix is not re-captured.
+  let rest = question.replace(
+    /(?<![A-Za-z0-9])[A-Za-z]{1,2}\d{1,3}\.\d{1,4}(?![A-Za-z0-9])/g,
+    (m) => {
+      exact.add(m.toUpperCase());
+      return " ";
+    },
+  );
+  // Undotted fault codes / parameters: F081, E001, P042, F16.
+  rest = rest.replace(
+    /(?<![A-Za-z0-9.])[A-Za-z]{1,2}\d{2,4}(?![A-Za-z0-9])(?!\.\d)/g,
+    (m) => {
+      exact.add(m.toUpperCase());
+      return " ";
+    },
+  );
+  // Terminal numbers: "terminal 07", "T12".
+  for (const m of rest.matchAll(/\bterminals?\s*#?(\d{1,3})\b/gi)) {
+    exact.add(m[1].padStart(2, "0"));
   }
-  
-  // Parameters with dots: P06.53, A12.34 (complete identifiers)
-  for (const m of question.matchAll(/\b[A-Za-z]\d{1,3}\.\d{1,3}\b/g)) {
-    exact.add(m[0].toUpperCase());
+  for (const m of rest.matchAll(/\bT(\d{1,3})\b/g)) {
+    exact.add(m[1].padStart(2, "0"));
   }
-  
-  // Parameters without dots: P042, b001
-  for (const m of question.matchAll(/\b[A-Za-z]\d{1,3}\b/g)) {
-    const upper = m[0].toUpperCase();
-    // Don't double-add if already captured as dotted param
-    if (!Array.from(exact).some(e => e.startsWith(upper))) {
-      exact.add(upper);
-    }
-  }
-  
-  // Terminal numbers: terminal 07, T12, etc.
-  for (const m of question.matchAll(/\b(?:terminal|T)\s*(\d{1,3})\b/gi)) {
-    exact.add(m[1].padStart(2, '0'));
-  }
-  
-  // Symptom terms (F5): common fault/status terms that appear in tables
+
   const symptomPatterns = [
     /\b(overcurrent|overvoltage|undervoltage|overload|overtemp|overheat)\b/gi,
     /\b(ground\s*fault|phase\s*loss|short\s*circuit)\b/gi,
     /\b(yellow|red|green|amber|orange|blue|flashing|solid|blinking)\b/gi,
-    /\b(error|fault|alarm|warning|trip)\b/gi,
   ];
-  
   for (const pattern of symptomPatterns) {
     for (const m of question.matchAll(pattern)) {
-      symptoms.add(m[0].toLowerCase());
+      symptoms.add(m[0].toLowerCase().replace(/\s+/g, " "));
     }
   }
-  
   return { exact, symptoms };
 }
 
-/**
- * Detect table boundaries (separators or semantic headings).
- * Returns array of [start_line, end_line, header_start] for each table.
- */
-function detectTableBoundaries(lines: string[]): Array<[number, number, number]> {
-  const tables: Array<[number, number, number]> = [];
+const escapeRe = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/** Whole-token matcher on an UPPERCASED line: no alnum/`_`/`.` before, no alnum/`_`/`.digit` after. */
+function exactTermRe(term: string): RegExp {
+  return new RegExp(`(?<![A-Z0-9_.])${escapeRe(term)}(?![A-Z0-9_]|\\.\\d)`);
+}
+
+function symptomTermRe(term: string): RegExp {
+  return new RegExp(`\\b${escapeRe(term).replace(/ /g, "\\s*")}s?\\b`, "i");
+}
+
+/** Hard cap on one compacted table-heavy chunk, markers and headings included. */
+export const TABLE_COMPACT_BUDGET = MAX_CONTENT_CHARS_TABLE;
+const ROW_CLIP = 500;
+const HEADER_CLIP = 300;
+const CONTEXT_LINE_CLIP = 160;
+const NOTE_MARKER_RE = /^\s*(\*|†|‡|note\b|\(\d+\)|\d+\))/i;
+const SEPARATOR_ROW_RE = /^\s*\|[\s\-:]+(\|[\s\-:]+)+\|?\s*$/;
+
+const clip = (s: string, n: number): string => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
+
+interface TableBlock {
+  /** Index of the first data row and one past the last. */
+  rowStart: number;
+  rowEnd: number;
+  /** This table's OWN column header lines (header + separator), if it has one. */
+  header: string[];
+  /** Non-table lines directly above (heading / applicability qualifier). */
+  preamble: string[];
+  /** Footnote / explanatory lines directly below. */
+  notes: string[];
+  /** Line range this table owns, including preamble and notes. */
+  spanStart: number;
+  spanEnd: number;
+}
+
+/** Split text into tables; each carries only its own heading, header and notes. */
+function parseTables(lines: string[]): TableBlock[] {
+  const tables: TableBlock[] = [];
+  let boundary = 0; // end of the previous table's span
   let i = 0;
-  
   while (i < lines.length) {
-    // Look for table header or separator
-    if (PIPE_TABLE_ROW_RE.test(lines[i])) {
-      const headerStart = i;
-      let start = i;
-      
-      // Find separator if present
-      if (i + 1 < lines.length && /^\s*\|[\s\-:]+(\|[\s\-:]+)+\|?\s*$/.test(lines[i + 1])) {
-        start = i + 1;
-        i += 2;
-      } else {
-        i += 1;
-      }
-      
-      // Scan for end of table (first non-table line or semantic heading)
-      let end = i;
-      while (i < lines.length) {
-        const line = lines[i];
-        if (PIPE_TABLE_ROW_RE.test(line)) {
-          end = i + 1;
-          i++;
-        } else if (line.trim() === '') {
-          // Blank line might separate tables
-          if (i + 1 < lines.length && /^#{1,3}\s+\w+/i.test(lines[i + 1])) {
-            // Next line is heading - table ends here
-            break;
-          }
-          i++;
-        } else {
-          // Non-table content
-          break;
-        }
-      }
-      
-      if (end > start) {
-        tables.push([start, end, headerStart]);
-      }
-    } else {
+    if (!PIPE_TABLE_ROW_RE.test(lines[i])) {
       i++;
+      continue;
     }
+    const tableStart = i;
+    let header: string[] = [];
+    let rowStart = i;
+    if (i + 1 < lines.length && SEPARATOR_ROW_RE.test(lines[i + 1]) && !SEPARATOR_ROW_RE.test(lines[i])) {
+      header = [lines[i], lines[i + 1]];
+      rowStart = i + 2;
+    }
+    let j = rowStart;
+    while (j < lines.length && PIPE_TABLE_ROW_RE.test(lines[j])) j++;
+    const rowEnd = j;
+
+    // Heading / qualifier: up to 3 non-blank lines within 6 lines above.
+    const preamble: string[] = [];
+    let spanStart = tableStart;
+    for (let k = tableStart - 1; k >= Math.max(boundary, tableStart - 6) && preamble.length < 3; k--) {
+      if (lines[k].trim() === "") continue;
+      preamble.unshift(lines[k]);
+      spanStart = k;
+    }
+
+    // Notes: non-table lines directly below (or after one blank when they
+    // start like a footnote), at most 3.
+    const notes: string[] = [];
+    let n = rowEnd;
+    if (n < lines.length && lines[n].trim() === "" && n + 1 < lines.length && NOTE_MARKER_RE.test(lines[n + 1])) n++;
+    while (n < lines.length && notes.length < 3) {
+      const l = lines[n];
+      if (l.trim() === "" || PIPE_TABLE_ROW_RE.test(l) || /^#{1,6}\s/.test(l)) break;
+      notes.push(l);
+      n++;
+    }
+    const spanEnd = notes.length > 0 ? n : rowEnd;
+    tables.push({ rowStart, rowEnd, header, preamble, notes, spanStart, spanEnd });
+    boundary = spanEnd;
+    i = spanEnd;
   }
-  
   return tables;
 }
 
+const OMITTED = "[… omitted …]";
+
+function renderTable(t: TableBlock, lines: string[], rows: number[], compact: boolean): string {
+  const out: string[] = [];
+  const pre = compact ? t.preamble.slice(-1) : t.preamble;
+  for (const l of pre) out.push(clip(l, CONTEXT_LINE_CLIP));
+  for (const l of t.header) out.push(clip(l, HEADER_CLIP));
+  let prev = t.rowStart - 1;
+  for (const r of rows) {
+    const gap = r - prev - 1;
+    if (gap > 0) out.push(`[… ${gap} row${gap === 1 ? "" : "s"} omitted …]`);
+    out.push(clip(lines[r], ROW_CLIP));
+    prev = r;
+  }
+  const tail = t.rowEnd - 1 - prev;
+  if (tail > 0) out.push(`[… ${tail} row${tail === 1 ? "" : "s"} omitted …]`);
+  if (!compact) for (const l of t.notes) out.push(clip(l, CONTEXT_LINE_CLIP));
+  return out.join("\n");
+}
+
+const hasText = (lines: string[], a: number, b: number): boolean =>
+  lines.slice(Math.max(a, 0), Math.max(b, 0)).some((l) => l.trim() !== "");
+
 /**
- * Smart truncation that preserves table rows matching question terms.
- * Fixes F4 (exact parameters), F5 (symptoms), F6 (preserve headers and boundaries).
+ * Select rows of an over-long table-heavy chunk that match the question, within
+ * TABLE_COMPACT_BUDGET characters in total. Selection is per table: a kept row
+ * is always rendered under its OWN heading/qualifier and column header, gaps are
+ * marked explicitly, and rows from different tables are never made adjacent.
+ * Complete requested rows (exact identifiers) are reserved first, then specific
+ * symptom rows (most symptom words first), then one neighbouring row of each
+ * exact hit as context while budget remains. Returns null when nothing matched
+ * or nothing fit, so the caller falls back to the row-boundary prefix.
  */
-function smartTruncate(text: string, terms?: { exact: Set<string>; symptoms: Set<string> }): string {
+function selectTableRows(text: string, terms: QuestionTerms): string | null {
+  const lines = text.split("\n");
+  const tables = parseTables(lines);
+  if (tables.length === 0) return null;
+  const exactRes = Array.from(terms.exact).map(exactTermRe);
+  const symRes = Array.from(terms.symptoms).map(symptomTermRe);
+
+  type Cand = { t: number; r: number; pri: number; score: number };
+  const exactHits: Cand[] = [];
+  const symHits: Cand[] = [];
+  tables.forEach((tb, t) => {
+    for (let r = tb.rowStart; r < tb.rowEnd; r++) {
+      const upper = lines[r].toUpperCase();
+      if (exactRes.some((re) => re.test(upper))) {
+        exactHits.push({ t, r, pri: 0, score: 0 });
+        continue;
+      }
+      const score = symRes.filter((re) => re.test(lines[r])).length;
+      if (score > 0) symHits.push({ t, r, pri: 1, score });
+    }
+  });
+  if (exactHits.length === 0 && symHits.length === 0) return null;
+
+  symHits.sort((a, b) => b.score - a.score || a.t - b.t || a.r - b.r);
+  const neighbours: Cand[] = [];
+  for (const h of exactHits) {
+    const tb = tables[h.t];
+    if (h.r + 1 < tb.rowEnd) neighbours.push({ t: h.t, r: h.r + 1, pri: 2, score: 0 });
+    if (h.r - 1 >= tb.rowStart) neighbours.push({ t: h.t, r: h.r - 1, pri: 2, score: 0 });
+  }
+  const queue = [...exactHits, ...symHits.slice(0, 200), ...neighbours];
+
+  const selected = tables.map(() => new Set<number>());
+  const compact = new Set<number>();
+  const assemble = (): string => {
+    const parts: string[] = [];
+    let lastEnd = 0;
+    tables.forEach((tb, t) => {
+      if (selected[t].size === 0) return;
+      if (hasText(lines, lastEnd, tb.spanStart)) parts.push(OMITTED);
+      parts.push(renderTable(tb, lines, Array.from(selected[t]).sort((a, b) => a - b), compact.has(t)));
+      lastEnd = tb.spanEnd;
+    });
+    if (hasText(lines, lastEnd, lines.length)) parts.push(OMITTED);
+    return parts.join("\n\n");
+  };
+
+  let placed = 0;
+  for (const c of queue) {
+    if (selected[c.t].has(c.r)) continue;
+    selected[c.t].add(c.r);
+    if (assemble().length <= TABLE_COMPACT_BUDGET) {
+      placed++;
+      continue;
+    }
+    if (c.pri === 0 && !compact.has(c.t)) {
+      compact.add(c.t);
+      if (assemble().length <= TABLE_COMPACT_BUDGET) {
+        placed++;
+        continue;
+      }
+      compact.delete(c.t);
+    }
+    selected[c.t].delete(c.r);
+  }
+  return placed > 0 ? assemble() : null;
+}
+
+/**
+ * Smart truncation for over-long chunks. Table-heavy chunks with question
+ * terms keep the matching rows (see selectTableRows); everything else keeps the
+ * previous row-boundary / prefix behaviour. Output never exceeds the limit
+ * (plus the trailing ellipsis).
+ */
+function smartTruncate(text: string, terms?: QuestionTerms): string {
   const tableHeavy = isTableHeavy(text);
   const limit = tableHeavy ? MAX_CONTENT_CHARS_TABLE : MAX_CONTENT_CHARS;
-  
+
   if (text.length <= limit) return text;
-  
-  // If not table-heavy, simple truncation
-  if (!tableHeavy) {
-    return `${text.slice(0, limit)}…`;
-  }
-  
-  // For table-heavy content with question terms: keep matching rows with their headers
+  if (!tableHeavy) return `${text.slice(0, limit)}…`;
+
   if (terms && (terms.exact.size > 0 || terms.symptoms.size > 0)) {
-    const lines = text.split('\n');
-    const tables = detectTableBoundaries(lines);
-    const keptRanges: Array<[number, number]> = [];
-    
-    // For each table, check if it contains matches
-    for (const [start, end, headerStart] of tables) {
-      let hasMatch = false;
-      let matchIndices: number[] = [];
-      
-      for (let i = start; i < end; i++) {
-        const line = lines[i];
-        if (!PIPE_TABLE_ROW_RE.test(line)) continue;
-        
-        const lineUpper = line.toUpperCase();
-        const lineLower = line.toLowerCase();
-        
-        // Exact match (highest priority)
-        const exactMatch = Array.from(terms.exact).some(term => lineUpper.includes(term));
-        // Symptom match (secondary)
-        const symptomMatch = !exactMatch && Array.from(terms.symptoms).some(term => lineLower.includes(term));
-        
-        if (exactMatch || symptomMatch) {
-          hasMatch = true;
-          matchIndices.push(i);
-        }
-      }
-      
-      if (hasMatch) {
-        // Keep header through first match, plus context after
-        const firstMatch = matchIndices[0];
-        const lastMatch = matchIndices[matchIndices.length - 1];
-        const rangeStart = headerStart;
-        const rangeEnd = Math.min(end, lastMatch + 3); // +2 context rows
-        keptRanges.push([rangeStart, rangeEnd]);
-      }
-    }
-    
-    // Assemble kept ranges
-    if (keptRanges.length > 0) {
-      const keptLines: string[] = [];
-      let lastEnd = -1;
-      
-      for (const [start, end] of keptRanges) {
-        // Add ellipsis if gap
-        if (lastEnd >= 0 && start > lastEnd) {
-          keptLines.push('…');
-        }
-        keptLines.push(...lines.slice(start, end));
-        lastEnd = end;
-      }
-      
-      const result = keptLines.join('\n');
-      if (result.length <= MAX_CONTENT_CHARS_TABLE * 2) {
-        return result;
-      }
-    }
+    const picked = selectTableRows(text, terms);
+    if (picked) return picked;
   }
-  
+
   // Fallback: truncate at row boundary
-  const lines = text.split('\n');
+  const lines = text.split("\n");
   let accum = 0;
   let lastCompleteRow = 0;
-  
   for (let i = 0; i < lines.length; i++) {
     const lineLen = lines[i].length + 1;
     if (accum + lineLen > limit) {
       if (lastCompleteRow > 0 && i > lastCompleteRow) {
-        return lines.slice(0, lastCompleteRow + 1).join('\n') + '\n…';
+        return lines.slice(0, lastCompleteRow + 1).join("\n") + "\n…";
       }
       break;
     }
     accum += lineLen;
-    if (PIPE_TABLE_ROW_RE.test(lines[i]) || lines[i].trim() === '') {
+    if (PIPE_TABLE_ROW_RE.test(lines[i]) || lines[i].trim() === "") {
       lastCompleteRow = i;
     }
   }
-  
   return `${text.slice(0, limit)}…`;
 }
 
@@ -3702,11 +3785,18 @@ export function buildGroundedContext(
   const crossRefChunks = followCrossReferences(chunks, allChunks || chunks);
   const allRelevantChunks = [...chunks, ...crossRefChunks];
   
-  // F1 FIX: Dedupe by content hash, not by sourceKey (which loses distinct passages from same page)
+  // F1: keep every DISTINCT passage (two passages of one page both reach the
+  // model under that page's single citation number); drop only exact
+  // duplicates — same document, same page (null stays distinct from a number),
+  // same whitespace/case-normalised full text.
   const seen = new Set<string>();
-  const deduped = allRelevantChunks.filter(c => {
-    // Use first 200 chars of content as identity (distinct passages have different content)
-    const contentKey = `${c.sourceUrl}:${c.sourcePage}:${c.content.slice(0, 200)}`;
+  const deduped = allRelevantChunks.filter((c) => {
+    const contentKey = [
+      c.docId ?? "",
+      c.sourceUrl,
+      c.sourcePage == null ? "?" : String(c.sourcePage),
+      c.content.replace(/\s+/g, " ").trim().toLowerCase(),
+    ].join("\u0000");
     if (seen.has(contentKey)) return false;
     seen.add(contentKey);
     return true;

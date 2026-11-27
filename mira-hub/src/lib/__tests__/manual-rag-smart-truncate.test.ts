@@ -28,7 +28,7 @@ describe("smartTruncate — table-aware content limits", () => {
       `| F${String(i + 1).padStart(3, "0")} | Fault ${i + 1} | Type ${i % 2 + 1} | Auto ${i % 3 === 0 ? "Yes" : "No"} |`
     );
     const tableContent = "# Fault Codes\n\n| Code | Name | Type | Auto-Reset |\n|------|------|------|------------|\n" + rows.join("\n");
-    const chunk = makeChunk(tableContent);
+    const chunk = makeChunk(tableContent, 1);
     
     const context = buildGroundedContext([chunk], "PowerFlex 525 showing F081, does it auto-reset?");
     
@@ -55,7 +55,7 @@ describe("smartTruncate — table-aware content limits", () => {
 | ERROR | Red solid | Hardware fault |
 | ERROR | Red flashing | Software error |`;
 
-    const chunk = makeChunk(ledTable);
+    const chunk = makeChunk(ledTable, 1);
     const context = buildGroundedContext([chunk], "the plc has a yellow light on");
     
     // Yellow solid row must be preserved
@@ -69,7 +69,7 @@ describe("smartTruncate — table-aware content limits", () => {
       `| P06.${String(i).padStart(2, "0")} | Parameter ${i} | Range: 0-100 | Default: ${i % 10} |`
     );
     const paramTable = "# Parameter Group 06\n\n" + params.join("\n");
-    const chunk = makeChunk(paramTable);
+    const chunk = makeChunk(paramTable, 1);
     
     const context = buildGroundedContext([chunk], "What is parameter P06.53?");
     
@@ -87,7 +87,7 @@ describe("smartTruncate — table-aware content limits", () => {
       `Plain text line ${i}.`
     );
     const mixed = [...tableRows, ...textLines].join("\n");
-    const chunk = makeChunk(mixed);
+    const chunk = makeChunk(mixed, 1);
     
     const context = buildGroundedContext([chunk], "What is in Row 15?");
     
@@ -99,7 +99,7 @@ describe("smartTruncate — table-aware content limits", () => {
 
   it("falls back to simple truncation for non-table content", () => {
     const longText = "A".repeat(1500); // Exceeds 1200 char limit
-    const chunk = makeChunk(longText);
+    const chunk = makeChunk(longText, 1);
     
     const context = buildGroundedContext([chunk]);
     
@@ -110,7 +110,7 @@ describe("smartTruncate — table-aware content limits", () => {
 
   it("does not truncate short content", () => {
     const shortText = "Short answer about terminal 07.";
-    const chunk = makeChunk(shortText);
+    const chunk = makeChunk(shortText, 1);
     
     const context = buildGroundedContext([chunk]);
     
