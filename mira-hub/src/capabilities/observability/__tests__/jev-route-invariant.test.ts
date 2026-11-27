@@ -40,7 +40,8 @@ describe("the Jev shadow cannot reach the delivery path", () => {
   // it runs. It is pinned by behaviour instead, one test per downstream call site, in
   // src/capabilities/__tests__/semantic-redraft.route.test.ts:
   //  - delivered turn: "control (behavioural form of the jev-route-invariant pin) ..."
-  //  - delivery failed after the commit: "R1-D1: delivery throws after the commit ..."
+  //  - delivery failed or was cancelled after the commit: no call at all ("F1: decision
+  //    call on ..."; Codex round 1 on #6082)
   //  - the history write failed: "R1-D1: the history write fails on a request with an id ..."
 
   it("the early call sites are upstream of the assignment, so they pass null", () => {

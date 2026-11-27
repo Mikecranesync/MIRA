@@ -722,6 +722,7 @@ describe("#5941 — one redraft after an unsafe verdict", () => {
 // ─────────────────────────────────────────────────────────────────────────────
 import { closeTurn as closeTurnSpy } from "@/capabilities/observability/turn-lifecycle";
 import { evaluateTurnDecision as evaluateTurnDecisionSpy } from "@/capabilities/observability/jev-decision";
+import { JEV_ENDPOINT } from "@/capabilities/observability/jev-shadow";
 
 const ROW_ID = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
 const REQ_ID = "44444444-4444-4444-8444-444444444444";
@@ -729,7 +730,10 @@ const REQ_ID = "44444444-4444-4444-8444-444444444444";
 type PersistCall = [
   { outcome: string; citationsPresent: boolean; answerText: string | null; latencyMs: number | null },
   { provider: string | null; model: string | null; inputTokens: number | null; outputTokens: number | null; status: string; routeReason: string },
-  { turnRowId: string | null; packet: { answer_gate: Record<string, unknown>; persistence: { turn_row_id: string | null; outcome: string } } },
+  {
+    turnRowId: string | null;
+    packet: { answer_gate: Record<string, unknown>; persistence: { turn_row_id: string | null; outcome: string }; jev_decision?: unknown };
+  },
 ];
 
 describe("#6048 — a body cancel after the commit still persists the packet and the usage exactly once", () => {
@@ -745,6 +749,9 @@ describe("#6048 — a body cancel after the commit still persists the packet and
     decisionStateFail.on = false;
     spanTap.throwOnPersistOk = false;
     spanTap.throwInSettle = false;
+    domainMock.abandonNotebookTurnRequest.mockImplementation(async () => undefined);
+    delete process.env.MIRA_JEV_DECISION;
+    delete process.env.JEV_API_KEY;
   });
 
   /** Holds the cited-page read (after the second judge, before the commit point) until released. */
@@ -781,8 +788,12 @@ describe("#6048 — a body cancel after the commit still persists the packet and
     return { turn, meta, usage, packet: telemetry.packet, gate, outcome: gate.safety_outcome as Record<string, unknown>, evidence };
   }
 
-  /** The persisted disposition equals what history holds. */
-  function expectDispositionMatchesHistory(r: Awaited<ReturnType<typeof settled>>) {
+  /**
+   * The persisted disposition equals what history holds. `decisionCalls`: a turn whose
+   * delivery failed or was cancelled makes no decision call (Codex round 1 on #6082, F1); a
+   * turn delivered in full makes one.
+   */
+  function expectDispositionMatchesHistory(r: Awaited<ReturnType<typeof settled>>, decisionCalls: 0 | 1 = 0) {
     // A stored citation entry is the EvidenceCitation itself (it carries citationId, no kind).
     const historyCitations = r.evidence.filter((e) => typeof e.citationId === "string").length;
     expect(r.gate.citations_shipped).toBe(historyCitations);
@@ -792,8 +803,7 @@ describe("#6048 — a body cancel after the commit still persists the packet and
     expect(String(r.turn.model).startsWith(`${r.usage.provider}:`)).toBe(true);
     // The lifecycle row was closed by the usage write, never by endRoot's bare close.
     expect(closeTurnMock).not.toHaveBeenCalled();
-    // One settle: the decision lane ran once (decisionState is set at the commit point).
-    expect(evaluateMock).toHaveBeenCalledTimes(1);
+    expect(evaluateMock).toHaveBeenCalledTimes(decisionCalls);
     // R1-D3: the settle writes the turn's wall time, a non-negative number (never null).
     expect(r.meta.latencyMs).toEqual(expect.any(Number));
     expect(r.meta.latencyMs).toBeGreaterThanOrEqual(0);
@@ -825,6 +835,7 @@ describe("#6048 — a body cancel after the commit still persists the packet and
     expect(String(r.turn.model)).toMatch(/^OpenAI:/);
     expect(r.usage).toMatchObject({ provider: "OpenAI", inputTokens: 12 + 50, outputTokens: 7 + 20 });
     expectDispositionMatchesHistory(r);
+    return r;
   }
 
   it("redraft: body cancelled during the held cited-page read -> one stop in history, ONE packet stopped_aborted with both generations' usage", async () => {
@@ -918,7 +929,7 @@ describe("#6048 — a body cancel after the commit still persists the packet and
     expect(r.meta.outcome).toBe("answered");
     expect(r.outcome.semantic_redraft).toBe("served");
     expect(r.usage).toMatchObject({ provider: "OpenAI", inputTokens: 12 + 50, outputTokens: 7 + 20 });
-    expectDispositionMatchesHistory(r);
+    expectDispositionMatchesHistory(r, 1);
   });
 
   it("control: an uncancelled redraft turn persists exactly once, not twice, with the same frames in the same order", async () => {
@@ -1051,26 +1062,38 @@ describe("#6048 — a body cancel after the commit still persists the packet and
     });
     return { reached, release, restore: () => evaluateMock.mockImplementation(real) };
   }
+  /** Holds the settle's ledger write (one call) until released; it then reports a written row. */
+  function holdLedgerWrite() {
+    let release!: () => void;
+    let entered!: () => void;
+    const reached = new Promise<void>((res) => (entered = res));
+    const gate = new Promise<void>((res) => (release = res));
+    persistMock.persistTurnUsage.mockImplementationOnce(async () => {
+      entered();
+      await gate;
+      return { persisted: true, traceId: "trace-1" };
+    });
+    return { reached, release };
+  }
   const stillPending = (ms: number) => new Promise<string>((res) => setTimeout(() => res("still pending"), ms));
 
-  it("R1-D1: delivery throws after the commit with the reader attached -> the reader gets that error before the settle's ledger write begins, then ONE packet", async () => {
+  it("R1-D1: delivery throws after the commit with the reader attached -> the reader gets that error while the settle's ledger write is still pending, then ONE packet", async () => {
     stubFetch(REDRAFT, [verdict("safe", "none")]);
     const boom = failDeliveryAfterContent();
-    const hold = await holdDecisionLane();
+    // The settle's ledger write is parked. (Before Codex round 1 on #6082 this test parked the
+    // decision call, which a failed delivery no longer makes: F1.)
+    const hold = holdLedgerWrite();
     try {
       const res = await POST(req({ message: Q_PLAIN, sourceDocIds: [DOC_A], clientRequestId: REQ_ID }, false), params);
       const seen = drain(res.body!.getReader());
-      // The settle has started and is parked in front of its ledger write.
       await hold.reached;
       expect(domainMock.recordTurn).toHaveBeenCalledTimes(1);
       // The transport error is already out: the attached reader does not wait for the settle.
       expect(await Promise.race([seen, stillPending(400)])).toBe(boom);
-      expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(0);
     } finally {
       hold.release();
     }
     const r = await settled();
-    hold.restore();
     expect(r.meta.outcome).toBe("answered");
     expect(r.meta.answerText).toBe(DRAFT1);
     expectDispositionMatchesHistory(r);
@@ -1100,7 +1123,7 @@ describe("#6048 — a body cancel after the commit still persists the packet and
     expect(telemetry.packet.persistence.outcome).toBe("failed");
   });
 
-  it("R1-D2: the settle rejects on the catch path -> the delivery error is the one surfaced, the claim is released once, the root span records it and ends, the turn is closed", async () => {
+  it("R1-D2: the settle rejects on the catch path -> the delivery error is the one surfaced, the completed claim is left alone, the root span records it and ends, the turn is closed", async () => {
     stubFetch(REDRAFT, [verdict("safe", "none")]);
     const boom = failDeliveryAfterContent();
     spanTap.throwInSettle = true;
@@ -1122,7 +1145,7 @@ describe("#6048 — a body cancel after the commit still persists the packet and
       expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(0);
       // The original error, not the settle's.
       expect(seen).toBe(boom);
-      expect(domainMock.abandonNotebookTurnRequest).toHaveBeenCalledTimes(1);
+      expect(domainMock.abandonNotebookTurnRequest).not.toHaveBeenCalled();
       expect(spanTap.rootExceptions).toEqual([boom]);
       expect(spanTap.rootEnds).toBe(1);
       // No usage write closed the row, so endRoot's own close did, once.
@@ -1143,7 +1166,7 @@ describe("#6048 — a body cancel after the commit still persists the packet and
     expect(await drain(res.body!.getReader())).toBe(boom);
     const r = await settled();
     expectDispositionMatchesHistory(r);
-    expect(domainMock.abandonNotebookTurnRequest).toHaveBeenCalledTimes(1);
+    expect(domainMock.abandonNotebookTurnRequest).not.toHaveBeenCalled();
     expect(spanTap.rootExceptions).toEqual([boom]);
     expect(spanTap.rootEnds).toBe(1);
   });
@@ -1484,14 +1507,147 @@ describe("#6048 — a body cancel after the commit still persists the packet and
         "settle span write failed (test)",
       );
       expect(logged(console.error, "settle after a post-commit failure did not complete")).toHaveLength(0);
-      // Everything else as before: claim released once, the settle's error recorded, root span ended once.
-      expect(domainMock.abandonNotebookTurnRequest).toHaveBeenCalledTimes(1);
+      // Everything else as before: the completed claim left alone, the settle's error recorded, root span ended once.
+      expect(domainMock.abandonNotebookTurnRequest).not.toHaveBeenCalled();
       expect(spanTap.rootExceptions.map((e) => (e as Error).message)).toEqual(["settle span write failed (test)"]);
       expect(spanTap.rootEnds).toBe(1);
       expect(unhandled).toEqual([]);
     } finally {
       process.off("unhandledRejection", onUnhandled);
     }
+  });
+
+  // ── Codex round 1 on #6082 (F1, F2, F3) ──────────────────────────────────────
+  /** Requests the route sent to the decision vendor. */
+  const vendorRequests = () =>
+    (globalThis.fetch as unknown as ReturnType<typeof vi.fn>).mock.calls.filter(([u]) => String(u) === JEV_ENDPOINT);
+  const decisionCallOn = () => {
+    process.env.MIRA_JEV_DECISION = "1";
+    process.env.JEV_API_KEY = "dummy-key";
+  };
+
+  it("F1: decision call on, an answered turn cancelled before its first post-commit frame: nothing is sent to the vendor; ONE packet and usage row, no decision record", async () => {
+    decisionCallOn();
+    const r = await answeredCancelledAt("during_read");
+    expect(vendorRequests()).toHaveLength(0);
+    expect(r.packet.jev_decision ?? null).toBeNull();
+  });
+
+  it("F1: decision call on, a redraft turn stopped by a cancel during the held read: nothing is sent to the vendor", async () => {
+    decisionCallOn();
+    const r = await redraftCancelledDuringRead(false);
+    expect(vendorRequests()).toHaveLength(0);
+    expect(r.packet.jev_decision ?? null).toBeNull();
+  });
+
+  it("F1: decision call on, delivery fails after the commit with the reader attached: nothing is sent to the vendor", async () => {
+    decisionCallOn();
+    stubFetch(REDRAFT, [verdict("safe", "none")]);
+    const boom = failDeliveryAfterContent();
+    const res = await POST(req({ message: Q_PLAIN, sourceDocIds: [DOC_A], clientRequestId: REQ_ID }, false), params);
+    expect(await drain(res.body!.getReader())).toBe(boom);
+    const r = await settled();
+    expect(vendorRequests()).toHaveLength(0);
+    expect(r.packet.jev_decision ?? null).toBeNull();
+    expectDispositionMatchesHistory(r);
+  });
+
+  it("F1 control: decision call on, the same answered turn drained to its end sends ONE request and carries a decision record", async () => {
+    decisionCallOn();
+    stubFetch(REDRAFT, [verdict("safe", "none")]);
+    const res = await POST(req({ message: Q_PLAIN, sourceDocIds: [DOC_A], clientRequestId: REQ_ID }, false), params);
+    expect(await drain(res.body!.getReader())).toBe("closed");
+    const r = await settled();
+    expect(vendorRequests()).toHaveLength(1);
+    expect(r.packet.jev_decision ?? null).not.toBeNull();
+    expectDispositionMatchesHistory(r, 1);
+  });
+
+  it("F2: after the commit a delivery failure does not wait on releasing the request claim: the reader gets the error and ONE packet is written while a release would never return", async () => {
+    stubFetch(REDRAFT, [verdict("safe", "none")]);
+    const boom = failDeliveryAfterContent();
+    domainMock.abandonNotebookTurnRequest.mockImplementation(() => new Promise<undefined>(() => {}));
+    const res = await POST(req({ message: Q_PLAIN, sourceDocIds: [DOC_A], clientRequestId: REQ_ID }, false), params);
+    expect(await Promise.race([drain(res.body!.getReader()), stillPending(400)])).toBe(boom);
+    const r = await settled();
+    expectDispositionMatchesHistory(r);
+    // The claim was completed by the history write: there is nothing to release.
+    expect(domainMock.abandonNotebookTurnRequest).not.toHaveBeenCalled();
+  });
+
+  /** A committed turn whose ledger write reports `result`; `cancel` cancels the body during the history write. */
+  async function ledgerWriteReports(result: { persisted: false; reason: string }, verdicts: string[], cancel: boolean) {
+    stubFetch(REDRAFT, verdicts);
+    persistMock.persistTurnUsage.mockImplementationOnce(async () => result as never);
+    // eslint-disable-next-line prefer-const -- assigned after POST; read by the hook that runs later
+    let reader!: ReadableStreamDefaultReader<Uint8Array>;
+    if (cancel) {
+      domainMock.recordTurn.mockImplementation(async () => {
+        void reader.cancel();
+        return ROW_ID as never;
+      });
+    }
+    const res = await POST(req({ message: Q_PLAIN, sourceDocIds: [DOC_A], clientRequestId: REQ_ID }, false), params);
+    reader = res.body!.getReader();
+    if (!cancel) expect(await drain(reader)).toBe("closed");
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    await settleAll();
+    expect(domainMock.recordTurn).toHaveBeenCalledTimes(1);
+    expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1);
+  }
+  const NOT_PERSISTED = "turn usage write did not persist";
+
+  it.each([
+    ["cancelled during the history write", true],
+    ["delivered in full", false],
+  ] as const)("F3: an answered turn %s whose ledger write FAILS: the attempt is closed once by the fallback close as answered, and the failure is logged", async (_how, cancel) => {
+    await ledgerWriteReports({ persisted: false, reason: "57014" }, [verdict("safe", "none")], cancel);
+    expect(closeTurnMock).toHaveBeenCalledTimes(1);
+    expect(closeTurnMock.mock.calls[0][0]).toMatchObject({ outcome: "answered" });
+    expect(console.error).toHaveBeenCalledWith(expect.stringContaining(NOT_PERSISTED), "57014");
+  });
+
+  it("F3: a stopped turn (both verdicts unsafe) cancelled during the history write whose ledger write FAILS: closed once as a safety stop", async () => {
+    await ledgerWriteReports({ persisted: false, reason: "57014" }, [verdict("unsafe"), verdict("unsafe")], true);
+    expect(closeTurnMock).toHaveBeenCalledTimes(1);
+    expect(closeTurnMock.mock.calls[0][0]).toMatchObject({ outcome: "safety_stop" });
+  });
+
+  it("F3 control: the ledger write returns no row because a closed row already exists: no second close, and one line says the packet was not stored", async () => {
+    await ledgerWriteReports({ persisted: false, reason: "no_row_returned" }, [verdict("safe", "none")], true);
+    expect(closeTurnMock).not.toHaveBeenCalled();
+    expect(logged(console.error, NOT_PERSISTED)).toHaveLength(0);
+    expect(logged(console.error, "found the attempt already closed")).toHaveLength(1);
+  });
+
+  it("F3 control: a ledger write that succeeds is followed by no fallback close and neither line", async () => {
+    stubFetch(REDRAFT, [verdict("safe", "none")]);
+    const res = await POST(req({ message: Q_PLAIN, sourceDocIds: [DOC_A], clientRequestId: REQ_ID }, false), params);
+    expect(await drain(res.body!.getReader())).toBe("closed");
+    await settled();
+    expect(closeTurnMock).not.toHaveBeenCalled();
+    expect(logged(console.error, NOT_PERSISTED)).toHaveLength(0);
+    expect(logged(console.error, "found the attempt already closed")).toHaveLength(0);
+  });
+
+  it("F3: a ledger write that THROWS on a committed turn cancelled during the history write leaves the fallback close to record the outcome", async () => {
+    stubFetch(REDRAFT, [verdict("safe", "none")]);
+    persistMock.persistTurnUsage.mockImplementationOnce(async () => {
+      throw new Error("ledger writer threw (test)");
+    });
+    // eslint-disable-next-line prefer-const -- assigned after POST; read by the hook that runs later
+    let reader!: ReadableStreamDefaultReader<Uint8Array>;
+    domainMock.recordTurn.mockImplementation(async () => {
+      void reader.cancel();
+      return ROW_ID as never;
+    });
+    const res = await POST(req({ message: Q_PLAIN, sourceDocIds: [DOC_A], clientRequestId: REQ_ID }, false), params);
+    reader = res.body!.getReader();
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    await settleAll();
+    expect(closeTurnMock).toHaveBeenCalledTimes(1);
+    expect(closeTurnMock.mock.calls[0][0]).toMatchObject({ outcome: "answered" });
+    expect(console.error).toHaveBeenCalledWith(expect.stringContaining(NOT_PERSISTED), "exception");
   });
 });
 

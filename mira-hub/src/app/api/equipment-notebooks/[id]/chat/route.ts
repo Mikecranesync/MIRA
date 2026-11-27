@@ -1580,7 +1580,13 @@ async function handleChatTurn(
   const finishAndPersist = async (
     turnRowId: string | null,
     usage: TurnUsage,
-    opts: { answerText: string | null; citationsPresent: boolean; latencyMs: number | null },
+    opts: {
+      answerText: string | null;
+      citationsPresent: boolean;
+      latencyMs: number | null;
+      /** False when the answer did not reach the client: no decision call is made (see below). */
+      delivered?: boolean;
+    },
   ): Promise<void> => {
     const { packet, anomalies } = rec.finish({
       productionRouteVars: productionRouteDetected(),
@@ -1621,10 +1627,15 @@ async function handleChatTurn(
     // turns that end before `decisionState` is assigned (safety_stop, abstained,
     // a client stop during generation) carry NO jev_decision. Shadow coverage is
     // the turns that reached the final answer gate and wrote a packet: delivered
-    // ones, the history-write-failure exit, and since #6048 a committed turn
-    // whose delivery then failed or was cancelled (its settle makes the same one
-    // metered call a delivered turn makes). A turn cancelled after a FAILED
-    // history write writes no packet, so it carries none. Extending it to the safety path
+    // ones and the history-write-failure exit. A committed turn whose delivery
+    // then failed or was cancelled (#6048) writes its packet and usage row but
+    // carries NO jev_decision and sends nothing to the vendor: its settle passes
+    // `delivered: false`. The call's contract is an answer already committed to
+    // the client, and the proof (docs/proofs/2026-09-23-jev-decision-fabric.md)
+    // excludes client-cancelled turns; an answer the technician never received,
+    // with its question, excerpts and photo observations, is not sent (Codex
+    // round 1 on #6082, F1). A turn cancelled after a FAILED history write
+    // writes no packet, so it carries none either. Extending it to the safety path
     // would mean awaiting a vendor call before a hazard stop reaches the
     // technician, which is not a trade worth making for a shadow signal.
     //
@@ -1633,7 +1644,7 @@ async function handleChatTurn(
     // is fail-open and returns a record carrying `skipped_reason` instead of
     // throwing, so an outage shows up as a value in the data rather than a gap.
     if (decisionState) {
-      packet.jev_decision = await evaluateTurnDecision(decisionState).catch(() => null);
+      if (opts.delivered !== false) packet.jev_decision = await evaluateTurnDecision(decisionState).catch(() => null);
     }
     setSpanAttrs({ "mira.turn.row_id": turnRowId, "mira.anomalies": anomalies.map((a) => a.code) }, rootSpan);
     if (anomalies.length > 0) {
@@ -1641,9 +1652,11 @@ async function handleChatTurn(
         JSON.stringify({ event: "turn.anomaly", traceId: rootTraceId, turnId, codes: anomalies.map((a) => a.code) }),
       );
     }
+    // Why the usage write did not close the attempt's row, when it did not.
+    let notPersisted: string | null = null;
     try {
       const opened = await openedTurn;
-      await persistTurnUsage(
+      const written = await persistTurnUsage(
         {
           tenantId: ctx.tenantId,
           notebookId,
@@ -1668,13 +1681,28 @@ async function handleChatTurn(
           gitSha: gitSha(),
         },
       );
+      if (!written.persisted) notPersisted = written.reason;
     } catch (err) {
       // persistTurnUsage itself never throws (it returns a result); this is a
       // last-resort guard so the Turn Flight Recorder can never fail a turn.
       console.error("[notebook-chat] flight-recorder persistTurnUsage failed:", err instanceof Error ? err.message : err);
+      notPersisted = "exception";
     }
-    // The usage write owns the close from here; endRoot must not re-close.
-    lifecycleSettled = true;
+    // Codex round 1 on #6082, F3. The usage write owns the close only when the row
+    // is closed: it wrote it, or it returned no row because a closed row for this
+    // attempt already exists (the insert is ON CONFLICT DO NOTHING). On a definite
+    // failure the row is still open, so `lifecycleSettled` stays false and endRoot's
+    // own close records the outcome; without it the accepted attempt stayed open,
+    // or was later relabelled abandoned. Either way the packet and usage row are
+    // not stored, and that is said here, once, by turn id. It never fails the turn.
+    if (notPersisted === null) {
+      lifecycleSettled = true;
+    } else if (notPersisted === "no_row_returned") {
+      lifecycleSettled = true;
+      console.error(`[notebook-chat] turn usage write found the attempt already closed; packet and usage not stored (turn ${turnId})`);
+    } else {
+      console.error(`[notebook-chat] turn usage write did not persist; closing the attempt without its packet (turn ${turnId}):`, notPersisted);
+    }
   };
   // ─────────────────────────────────────────────────────────────────────────
 
@@ -6329,6 +6357,9 @@ async function handleChatTurn(
             answerText: served ? answerText : null,
             citationsPresent: emittedCitations.length > 0,
             latencyMs: Date.now() - turnStartedAt,
+            // Read when the settle starts: true on the normal path (the body is
+            // closed), false when the catch runs it after a failed delivery.
+            delivered,
           });
         })());
       // The catch may settle only a decision that IS in history. When the history write
@@ -6486,15 +6517,21 @@ async function handleChatTurn(
       } catch (err) {
         req.signal?.removeEventListener("abort", onClientGone);
         progressCancel?.removeEventListener("abort", onClientGone); // Codex #4765 F5
-        await abandonRequestClaim().catch((releaseErr) => {
-          console.error(
-            "[notebook-chat] request claim release failed:",
-            releaseErr instanceof Error ? releaseErr.message : releaseErr,
-          );
-        });
+        // The claim is released only while the turn is uncommitted. Once the history
+        // write has returned, that write completed the claim and cleared its token, and
+        // the release (a DELETE of a still-pending claim) can match nothing; awaiting it
+        // only put a database round trip, which can wait on a lock, in front of the
+        // reader's error and of the settle (Codex round 1 on #6082, F2).
+        if (!settleCommitted) {
+          await abandonRequestClaim().catch((releaseErr) => {
+            console.error(
+              "[notebook-chat] request claim release failed:",
+              releaseErr instanceof Error ? releaseErr.message : releaseErr,
+            );
+          });
+        }
         // The transport error goes out before the settle below, so a ledger write
-        // (and the shadow decision call) never sits in front of a reader that is
-        // still attached (#6048).
+        // never sits in front of a reader that is still attached (#6048).
         try {
           controller.error(err);
         } catch {
@@ -6506,8 +6543,7 @@ async function handleChatTurn(
         // that writes the closed row with no packet, and the usage write that
         // follows such a close is dropped (ON CONFLICT DO NOTHING). Null before the
         // commit point and when the history write failed: nothing is owed there. A
-        // settle that fails is logged and never replaces `err`; the claim was already
-        // released above.
+        // settle that fails is logged and never replaces `err`.
         if (settleCommitted) {
           try {
             await settleCommitted();
