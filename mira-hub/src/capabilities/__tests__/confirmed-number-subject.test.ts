@@ -281,6 +281,71 @@ describe("GET notebook detail: a saved number in a question naming two makers (#
     expect(body).not.toHaveProperty("manualSearchScope");
     expect(offeredOwnNumber(question, { manufacturer: "Siemens", model: "TP700" })).toBe("6AV2124-0GC01-0AX0");
   });
+
+  // #6131 r3 F2: an order-number label typed between a dictionary-word maker and the number does
+  // not hide that maker; the abbreviation's period is not a sentence break.
+  const LABELLED = [
+    ["order no.", "order no. 6AV2124-0GC01-0AX0"],
+    ["Order No.:", "Order No.: 6AV2124-0GC01-0AX0"],
+    ["order number", "order number 6AV2124-0GC01-0AX0"],
+    ["part no.", "part no. 6AV2124-0GC01-0AX0"],
+    ["order no. glued on", "order no.6AV2124-0GC01-0AX0"],
+  ];
+  it.each(LABELLED)(
+    "title-case Eaton before the label %s: withheld with the number saved, and the card offers nothing",
+    async (_label, written) => {
+      const question = `How do I wire the Eaton ${written} in our Siemens cabinet?`;
+      const body = await read(question);
+      expect(readConfirmedNumbers).toHaveBeenCalledWith(TENANT, NB); // precondition: the number was read
+      expect(body.manualSearch).toBeNull();
+      expect(body.manualSearchScope).toBe("other_model");
+      expect(offeredOwnNumber(question, { manufacturer: "Siemens", model: "TP700" })).toBeNull();
+    },
+  );
+
+  it.each(LABELLED.slice(0, 4))("control: a Siemens-only question with the label %s shows the status, and the card offers it", async (_label, written) => {
+    const question = `How do I wire the Siemens ${written}?`;
+    const body = await read(question);
+    expect(body.manualSearch).toEqual(READY);
+    expect(body).not.toHaveProperty("manualSearchScope");
+    expect(offeredOwnNumber(question, { manufacturer: "Siemens", model: "TP700" })).toBe("6AV2124-0GC01-0AX0");
+  });
+
+  it("control: a Siemens-only question with the label glued on shows the status (the card offers only a number written on its own, as on main)", async () => {
+    const question = "How do I wire the Siemens order no.6AV2124-0GC01-0AX0?";
+    const body = await read(question);
+    expect(body.manualSearch).toEqual(READY);
+    expect(body).not.toHaveProperty("manualSearchScope");
+    expect(offeredOwnNumber(question, { manufacturer: "Siemens", model: "TP700" })).toBeNull();
+  });
+
+  // #6131 r3 F6: a maker written as one of two choices counts, wherever the choice is written.
+  it.each([
+    ["Eaton or a Siemens", "Is this an Eaton or a Siemens 6AV2124-0GC01-0AX0?"],
+    ["Eaton or Siemens, no articles", "Is this Eaton or Siemens 6AV2124-0GC01-0AX0?"],
+    ["Siemens or an Eaton", "Is this a Siemens or an Eaton 6AV2124-0GC01-0AX0?"],
+    ["Eaton/Siemens", "Is this an Eaton/Siemens 6AV2124-0GC01-0AX0?"],
+    ["the choice written after the number", "Is the 6AV2124-0GC01-0AX0 an Eaton or a Siemens?"],
+  ])("%s: withheld with the number saved, and the card offers nothing", async (_label, question) => {
+    const body = await read(question);
+    expect(readConfirmedNumbers).toHaveBeenCalledWith(TENANT, NB); // precondition: the number was read
+    expect(body.manualSearch).toBeNull();
+    expect(body.manualSearchScope).toBe("other_model");
+    expect(offeredOwnNumber(question, { manufacturer: "Siemens", model: "TP700" })).toBeNull();
+  });
+
+  // Ordinary words stay ordinary: a sentence break outside a label still breaks, and "or" counts
+  // only when a maker name is on its other side.
+  it.each([
+    ["a city that ends a sentence before a label", "We shipped it from Phoenix. Order no. 6AV2124-0GC01-0AX0 is in our Siemens cabinet."],
+    ["a capitalised dictionary word joined to an ordinary word", "Sick or tired of the Siemens 6AV2124-0GC01-0AX0 dropping out."],
+    ['a city joined to a maker by "and", which also joins clauses', "We're in Phoenix and Siemens support says the 6AV2124-0GC01-0AX0 will not power up."],
+  ])("control: %s leaves the thread showing the status, and the card offers the number", async (_label, question) => {
+    const body = await read(question);
+    expect(body.manualSearch).toEqual(READY);
+    expect(body).not.toHaveProperty("manualSearchScope");
+    expect(offeredOwnNumber(question, { manufacturer: "Siemens", model: "TP700" })).toBe("6AV2124-0GC01-0AX0");
+  });
 });
 
 // #6131 r2 F5: the maker on record is read as the question is (folded, then through the alias

@@ -61,16 +61,23 @@ const TYPED_MAKER_GAP_WORDS = new Set([
   "safety", "pneumatic", "hydraulic",
 ]);
 
+/** #6131 r3 F2, saved-number rule only: an order-number label typed between the maker and the
+ *  number ("order no.", "Order No.:", "order number", "part no."). The label's own period is not a
+ *  sentence break; every other period still is. */
+const ORDER_LABEL_ABBREVIATION = /(?<![A-Za-z0-9])((?:order|part)\s+no)\.(?![A-Za-z0-9])/gi;
+const ORDER_LABEL_WORDS = new Set(["order"]);
+
 /** #4160 gate NO-GO: in a technician's TYPED text a dictionary-word maker
  *  ("Banner", "Sick") counts when it is capitalised and the part code follows
  *  in the same sentence within a few words — the way people write a model,
- *  not the way a label prints one. Lowercase never counts ("a banner"). */
-function typedMakerNamesPart(text: string, matched: string, matchIndex: number, part: string): boolean {
+ *  not the way a label prints one. Lowercase never counts ("a banner").
+ *  `labels` (the saved-number rule only) also allows an order-number label in between. */
+function typedMakerNamesPart(text: string, matched: string, matchIndex: number, part: string, labels = false): boolean {
   if (!/^[A-Z]/.test(matched)) return false;
   const after = text.slice(matchIndex + matched.length);
   const at = after.toUpperCase().indexOf(part.toUpperCase());
   if (at < 0) return false;
-  const gap = after.slice(0, at);
+  const gap = labels ? after.slice(0, at).replace(ORDER_LABEL_ABBREVIATION, "$1") : after.slice(0, at);
   if (/[.!?\n]/.test(gap)) return false;
   const words = gap.split(/[\s,;:()]+/).filter(Boolean);
   if (words.length > TYPED_MAKER_MAX_GAP_WORDS) return false;
@@ -78,14 +85,34 @@ function typedMakerNamesPart(text: string, matched: string, matchIndex: number, 
   // equipment word ("valve", "sensor", "part") or a code-like token with a
   // digit (the family, "Q4X"). Anything else ("Sick of this …", "Banner is
   // wrong on …") means the word is being used as an ordinary word.
-  return words.every((w) => /\d/.test(w) || TYPED_MAKER_GAP_WORDS.has(w.toLowerCase().replace(/[.#]$/, "")));
+  return words.every((w) => {
+    const word = w.toLowerCase().replace(/[.#]$/, "");
+    return /\d/.test(w) || TYPED_MAKER_GAP_WORDS.has(word) || (labels && ORDER_LABEL_WORDS.has(word));
+  });
+}
+
+/** #6131 r3 F6, saved-number rule only: a capitalised dictionary-word maker written as one of two
+ *  makers ("an Eaton or a Siemens", "Siemens or an Eaton", "Eaton/Siemens"), the other side a maker
+ *  name from the same table. A dictionary word on the other side counts only capitalised, so
+ *  "Sick or tired" stays two ordinary words. "and" is not a choice: it also joins clauses
+ *  ("We're in Phoenix and Siemens support says…"). */
+function namedAsChoice(text: string, matched: string, matchIndex: number): boolean {
+  if (!/^[A-Z]/.test(matched)) return false;
+  const names = oemMakerTable()
+    .map(({ name }) => escape(name).replace(/\\-| /g, "[\\s-]+"))
+    .join("|");
+  const join = String.raw`(?:\s+or\s+|\s*\/\s*)(?:(?:an?|the)\s+)?`;
+  const next = new RegExp(`^${join}(${names})(?![A-Za-z0-9])`, "i").exec(text.slice(matchIndex + matched.length));
+  const prev = new RegExp(`(?<![A-Za-z0-9])(${names})${join}$`, "i").exec(text.slice(0, matchIndex));
+  return [next, prev].some((m) => m !== null && (!DICTIONARY_MAKERS.has(m[1].toLowerCase()) || /^[A-Z]/.test(m[1])));
 }
 
 /** Every maker group (the OEM table's first domain) named in `text`, mapped to the
  *  longest matched name. Aliases of one maker share a group. `typedPart`: the
  *  text is the technician's typed message and this is the part it names, which
- *  enables the typed-text rule for dictionary-word makers above. */
-function makerGroups(text: string, typedPart?: string, loose = false): Map<string, string> {
+ *  enables the typed-text rule for dictionary-word makers above. `savedNumber`: the saved-number
+ *  rule's reading, which adds the label and choice readings above; no other caller sets it. */
+function makerGroups(text: string, typedPart?: string, loose = false, savedNumber = false): Map<string, string> {
   const hits = new Map<string, string>(); // group (first domain) -> longest matched name
   for (const { name, domains } of oemMakerTable()) {
     const body = escape(name).replace(/\\-| /g, "[\\s-]+");
@@ -97,7 +124,8 @@ function makerGroups(text: string, typedPart?: string, loose = false): Map<strin
         m[0] === m[0].toUpperCase() ||
         // `loose` (ambiguity check only): any capitalised mention counts.
         (loose && /^[A-Z]/.test(m[0])) ||
-        (typedPart !== undefined && typedMakerNamesPart(text, m[0], m.index ?? 0, typedPart)),
+        (typedPart !== undefined && typedMakerNamesPart(text, m[0], m.index ?? 0, typedPart, savedNumber)) ||
+        (savedNumber && namedAsChoice(text, m[0], m.index ?? 0)),
     );
     if (!named) continue;
     const group = domains[0] ?? name;
@@ -124,10 +152,13 @@ export function makerFromText(text: string, typedPart?: string): string | null {
 /** #6127, #6131 r1 F2: every maker group (the OEM table's first domain) `text` names, mapped to a
  *  name matched for it, by the reading `makerFromText` uses, with a dictionary-word maker also
  *  counted when it is typed right before one of `parts` (the typed-text rule above). Aliases of
- *  one maker are one group. */
+ *  one maker are one group. #6131 r3 F2 and F6: an order-number label may sit between that maker
+ *  and the part, and a maker written as one of two makers counts wherever it is written. */
 export function makerGroupsNamedIn(text: string, parts: readonly string[] = []): Map<string, string> {
-  const groups = makerGroups(text);
-  for (const part of parts) for (const [group, name] of makerGroups(text, part)) if (!groups.has(group)) groups.set(group, name);
+  const groups = makerGroups(text, undefined, false, true);
+  for (const part of parts) {
+    for (const [group, name] of makerGroups(text, part, false, true)) if (!groups.has(group)) groups.set(group, name);
+  }
   return groups;
 }
 

@@ -126,6 +126,37 @@ describe("makerGroupsNamedIn", () => {
     expect(makerGroupsNamedIn(q, ["6AV2124-0GC01-0AX0"]).size).toBe(1); // precondition: the bare part does not
     expect(makerGroupsNamedIn(q, ['"6AV2124-0GC01-0AX0"']).size).toBe(2);
   });
+
+  // #6131 r3 F2: an order-number label between the maker and the part is not a word in the way.
+  it("an order-number label between a typed maker and the part still counts the maker", () => {
+    const part = "6AV2124-0GC01-0AX0";
+    expect(makerGroupsNamedIn(`the Eaton order no. ${part} in our Siemens cabinet`, [part]).size).toBe(2);
+    expect(makerGroupsNamedIn(`the Eaton order number ${part} in our Siemens cabinet`, [part]).size).toBe(2);
+    expect(makerGroupsNamedIn(`we shipped it from Phoenix. Order no. ${part} is Siemens`, [part]).size).toBe(1); // a real sentence break
+    // Only the label's own period is exempt: a maker in an earlier sentence never counts, even
+    // when every word between is one the rule allows.
+    expect(makerGroupsNamedIn(`the Phoenix drive. Order no. ${part} is Siemens`, [part]).size).toBe(1);
+    expect(makerGroupsNamedIn(`the Phoenix drive order no. ${part} is Siemens`, [part]).size).toBe(2); // control: same sentence
+  });
+
+  // #6131 r3 F6: a maker written as one of two choices counts, the choice's other side a maker.
+  it("a title-case dictionary-word maker written as one of two makers counts", () => {
+    expect(makerGroupsNamedIn("Is this an Eaton or a Siemens panel?").size).toBe(2);
+    expect(makerGroupsNamedIn("Is this a Siemens or an Eaton panel?").size).toBe(2);
+    expect(makerGroupsNamedIn("Is this Eaton/Siemens?").size).toBe(2);
+    expect(makerGroupsNamedIn("Sick or tired of the Siemens panel").size).toBe(1); // the other side is no maker
+    expect(makerGroupsNamedIn("an eaton or a Siemens panel").size).toBe(1); // lowercase stays a word
+    expect(makerGroupsNamedIn("Parker or banner stock for the Siemens cabinet").size).toBe(1); // a lowercase other side too
+    expect(makerGroupsNamedIn("We're in Phoenix and Siemens support says it is fine").size).toBe(1); // "and" is no choice
+  });
+
+  // The identity card's typed reading (makerFromText with a part) is not changed by either rule.
+  it("the identity card's typed maker reading is unchanged", () => {
+    const part = "6AV2124-0GC01-0AX0";
+    expect(makerFromText(`the Eaton order no. ${part}`, part)).toBeNull();
+    expect(makerFromText(`the Eaton order number ${part}`, part)).toBeNull();
+    expect(makerFromText(`the Eaton ${part}`, part)).toBe("EATON"); // control: the typed-text rule itself
+  });
 });
 
 describe("asksToFindManual", () => {
