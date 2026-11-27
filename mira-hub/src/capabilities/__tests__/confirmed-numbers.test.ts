@@ -66,62 +66,68 @@ describe("recordConfirmedNumber (inside the confirm's transaction)", () => {
   const client = { query };
   const sqlAt = (i: number) => String(query.mock.calls[i]![0]);
   const statements = () => query.mock.calls.map((c) => String(c[0]).split(/\s+/).slice(0, 2).join(" "));
+  const coded = (number: string, code: string, manufacturer?: string, model?: string) => ({ ...entry(number, manufacturer, model), code });
 
-  it("under its own savepoint, reads the row, then appends the entry with its code and touches nothing else", async () => {
-    query.mockResolvedValueOnce({}).mockResolvedValueOnce({ rows: [{ confirmed_numbers: [] }], rowCount: 1 }).mockResolvedValueOnce({ rows: [], rowCount: 1 }).mockResolvedValueOnce({});
+  // Round-3 pre-screen: the confirm that settles the identity decides its numbers afresh, so an
+  // identity reopened and settled again never brings an old number back.
+  it("a settling confirm replaces the numbers with exactly its tick, under its own savepoint, touching nothing else", async () => {
+    query.mockResolvedValueOnce({}).mockResolvedValueOnce({ rows: [], rowCount: 1 }).mockResolvedValueOnce({});
     expect(await recordConfirmedNumber(client, TENANT, NB, SAVE, false)).toBe(true);
-    expect(statements()).toEqual(["SAVEPOINT confirmed_number", "SELECT confirmed_numbers", "UPDATE equipment_notebooks", "RELEASE SAVEPOINT"]);
-    expect(sqlAt(1)).toMatch(/SELECT confirmed_numbers FROM equipment_notebooks WHERE tenant_id = \$1::uuid AND id = \$2::uuid/);
-    expect(query.mock.calls[1]![1]).toEqual([TENANT, NB]);
-    const [sql, values] = query.mock.calls[2]! as [string, unknown[]];
-    expect(sql).toMatch(/UPDATE equipment_notebooks SET confirmed_numbers = confirmed_numbers \|\| \$3::jsonb WHERE tenant_id = \$1::uuid AND id = \$2::uuid/);
-    expect(sql).not.toMatch(/catalog_number|identity_status|updated_at/);
+    expect(statements()).toEqual(["SAVEPOINT confirmed_number", "UPDATE equipment_notebooks", "RELEASE SAVEPOINT"]);
+    const [sql, values] = query.mock.calls[1]! as [string, unknown[]];
+    expect(sql).toMatch(/UPDATE equipment_notebooks SET confirmed_numbers = \$3::jsonb WHERE tenant_id = \$1::uuid AND id = \$2::uuid/);
+    expect(sql).not.toMatch(/catalog_number|identity_status|updated_at|\|\|/);
     expect(values.slice(0, 2)).toEqual([TENANT, NB]);
     expect(JSON.parse(values[2] as string)).toEqual([{ ...SAVE, confirmedAt: expect.any(String) }]);
   });
 
-  // #6104 r1 F3: one number per machine.
-  it("refuses a different number for a machine that has one, and writes nothing", async () => {
-    query.mockResolvedValueOnce({}).mockResolvedValueOnce({ rows: [{ confirmed_numbers: [{ ...entry("6AV2124-0JC01-0AX0"), code: "6AV21240JC010AX0" }] }], rowCount: 1 }).mockResolvedValueOnce({});
-    expect(await recordConfirmedNumber(client, TENANT, NB, SAVE, false)).toBe(false);
-    expect(statements()).toEqual(["SAVEPOINT confirmed_number", "SELECT confirmed_numbers", "RELEASE SAVEPOINT"]);
+  it("a settling confirm with nothing ticked leaves no number, and is false", async () => {
+    query.mockResolvedValueOnce({}).mockResolvedValueOnce({ rows: [], rowCount: 1 }).mockResolvedValueOnce({});
+    expect(await recordConfirmedNumber(client, TENANT, NB, null, false)).toBe(false);
+    expect(statements()).toEqual(["SAVEPOINT confirmed_number", "UPDATE equipment_notebooks", "RELEASE SAVEPOINT"]);
+    expect(JSON.parse((query.mock.calls[1]![1] as unknown[])[2] as string)).toEqual([]);
   });
 
-  it("a retry of the saved number succeeds and writes nothing", async () => {
-    query.mockResolvedValueOnce({}).mockResolvedValueOnce({ rows: [{ confirmed_numbers: [{ ...entry("6av2124-0gc01-0ax0", "SIEMENS", "TP 700"), code: "6AV21240GC010AX0" }] }], rowCount: 1 }).mockResolvedValueOnce({});
-    expect(await recordConfirmedNumber(client, TENANT, NB, SAVE, false)).toBe(true);
+  it("a settling confirm is false when no row matched", async () => {
+    query.mockResolvedValueOnce({}).mockResolvedValueOnce({ rows: [], rowCount: 0 }).mockResolvedValueOnce({});
+    expect(await recordConfirmedNumber(client, TENANT, NB, SAVE, false)).toBe(false);
+  });
+
+  // #6104 r1 F3 + r2 F3: on an identity already settled, no number is added or cleared.
+  it("on an identity settled before, refuses a different number and writes nothing", async () => {
+    query.mockResolvedValueOnce({}).mockResolvedValueOnce({ rows: [{ confirmed_numbers: [coded("6AV2124-0JC01-0AX0", "6AV21240JC010AX0")] }], rowCount: 1 }).mockResolvedValueOnce({});
+    expect(await recordConfirmedNumber(client, TENANT, NB, SAVE, true)).toBe(false);
+    expect(statements()).toEqual(["SAVEPOINT confirmed_number", "SELECT confirmed_numbers", "RELEASE SAVEPOINT"]);
+    expect(sqlAt(1)).toMatch(/SELECT confirmed_numbers FROM equipment_notebooks WHERE tenant_id = \$1::uuid AND id = \$2::uuid/);
+    expect(query.mock.calls[1]![1]).toEqual([TENANT, NB]);
+  });
+
+  it("on an identity settled before, a retry of the saved number, however spelled, succeeds and writes nothing", async () => {
+    query.mockResolvedValueOnce({}).mockResolvedValueOnce({ rows: [{ confirmed_numbers: [coded("6av2124-0gc01-0ax0", "6AV21240GC010AX0", "SIEMENS", "TP 700")] }], rowCount: 1 }).mockResolvedValueOnce({});
+    expect(await recordConfirmedNumber(client, TENANT, NB, SAVE, true)).toBe(true);
     expect(statements()).not.toContain("UPDATE equipment_notebooks");
   });
 
-  // #6104 r2 F3: once the identity was settled before this confirm, no number is added.
-  it("on an identity settled before this confirm, adds nothing", async () => {
+  it("on an identity settled before with nothing saved, adds nothing", async () => {
     query.mockResolvedValueOnce({}).mockResolvedValueOnce({ rows: [{ confirmed_numbers: [] }], rowCount: 1 }).mockResolvedValueOnce({});
     expect(await recordConfirmedNumber(client, TENANT, NB, SAVE, true)).toBe(false);
     expect(statements()).not.toContain("UPDATE equipment_notebooks");
   });
 
-  it("on an identity settled before this confirm, a retry of the saved number is still a success", async () => {
-    query.mockResolvedValueOnce({}).mockResolvedValueOnce({ rows: [{ confirmed_numbers: [{ ...entry("6AV2124-0GC01-0AX0"), code: "6AV21240GC010AX0" }] }], rowCount: 1 }).mockResolvedValueOnce({});
-    expect(await recordConfirmedNumber(client, TENANT, NB, SAVE, true)).toBe(true);
-    expect(statements()).not.toContain("UPDATE equipment_notebooks");
+  // #6104 r1 F4: an entry without a code is one the scope cannot use, so it stands in for nothing.
+  it("on an identity settled before, an entry without a code does not stand in for the number", async () => {
+    query.mockResolvedValueOnce({}).mockResolvedValueOnce({ rows: [{ confirmed_numbers: [entry("6AV21240GC010AX0")] }], rowCount: 1 }).mockResolvedValueOnce({});
+    expect(await recordConfirmedNumber(client, TENANT, NB, SAVE, true)).toBe(false);
   });
 
-  // #6104 r1 F4: an entry without a code is one the scope cannot use, so it decides nothing.
-  it("an entry without a code neither blocks nor stands in for the number", async () => {
-    query.mockResolvedValueOnce({}).mockResolvedValueOnce({ rows: [{ confirmed_numbers: [entry("6AV21240GC010AX0")] }], rowCount: 1 }).mockResolvedValueOnce({ rows: [], rowCount: 1 }).mockResolvedValueOnce({});
-    expect(await recordConfirmedNumber(client, TENANT, NB, SAVE, false)).toBe(true);
-    expect(statements()).toContain("UPDATE equipment_notebooks");
+  it("on an identity settled before, another machine's number does not stand in for this one", async () => {
+    query.mockResolvedValueOnce({}).mockResolvedValueOnce({ rows: [{ confirmed_numbers: [coded("6AV2124-0GC01-0AX0", "6AV21240GC010AX0", "Siemens", "TP900")] }], rowCount: 1 }).mockResolvedValueOnce({});
+    expect(await recordConfirmedNumber(client, TENANT, NB, SAVE, true)).toBe(false);
   });
 
-  it("control: another machine's number does not block this one", async () => {
-    query.mockResolvedValueOnce({}).mockResolvedValueOnce({ rows: [{ confirmed_numbers: [{ ...entry("6AV2124-0JC01-0AX0", "Siemens", "TP900"), code: "6AV21240JC010AX0" }] }], rowCount: 1 }).mockResolvedValueOnce({ rows: [], rowCount: 1 }).mockResolvedValueOnce({});
-    expect(await recordConfirmedNumber(client, TENANT, NB, SAVE, false)).toBe(true);
-    expect(statements()).toContain("UPDATE equipment_notebooks");
-  });
-
-  it("is false when no row matched", async () => {
+  it("on an identity settled before, is false when no row matched", async () => {
     query.mockResolvedValueOnce({}).mockResolvedValueOnce({ rows: [], rowCount: 0 }).mockResolvedValueOnce({});
-    expect(await recordConfirmedNumber(client, TENANT, NB, SAVE, false)).toBe(false);
+    expect(await recordConfirmedNumber(client, TENANT, NB, SAVE, true)).toBe(false);
     expect(statements()).not.toContain("UPDATE equipment_notebooks");
   });
 
@@ -130,36 +136,60 @@ describe("recordConfirmedNumber (inside the confirm's transaction)", () => {
   it("a failed write rolls back to its savepoint, logs, and is false", async () => {
     query.mockResolvedValueOnce({}).mockRejectedValueOnce(new Error('column "confirmed_numbers" does not exist')).mockResolvedValueOnce({});
     expect(await recordConfirmedNumber(client, TENANT, NB, SAVE, false)).toBe(false);
-    expect(statements()).toEqual(["SAVEPOINT confirmed_number", "SELECT confirmed_numbers", "ROLLBACK TO"]);
+    expect(statements()).toEqual(["SAVEPOINT confirmed_number", "UPDATE equipment_notebooks", "ROLLBACK TO"]);
     expect(sqlAt(2)).toBe("ROLLBACK TO SAVEPOINT confirmed_number");
     expect(console.warn).toHaveBeenCalledTimes(1);
+  });
+
+  it("a failed read on a settled identity rolls back the same way", async () => {
+    query.mockResolvedValueOnce({}).mockRejectedValueOnce(new Error('column "confirmed_numbers" does not exist')).mockResolvedValueOnce({});
+    expect(await recordConfirmedNumber(client, TENANT, NB, SAVE, true)).toBe(false);
+    expect(statements()).toEqual(["SAVEPOINT confirmed_number", "SELECT confirmed_numbers", "ROLLBACK TO"]);
   });
 });
 
 // #6104 r2 F3/F4: the number is decided inside the identity confirm's own transaction, after the
 // row lock and the identity write, on the same client.
-describe("confirmNotebookIdentity with a ticked number", () => {
+describe("confirmNotebookIdentity and the numbers", () => {
   const ID = { manufacturer: "Siemens", model: "TP700", catalogNumber: "" };
   const NUMBER = { number: "6AV2124-0GC01-0AX0", code: "6AV21240GC010AX0" };
   const statements = () => query.mock.calls.map((c) => String(c[0]).trim().split(/\s+/).slice(0, 2).join(" "));
+  const SETTLING = ["SELECT (n.identity_status", "UPDATE equipment_notebooks", "SAVEPOINT confirmed_number", "UPDATE equipment_notebooks", "RELEASE SAVEPOINT"];
+  const replaced = () => JSON.parse((query.mock.calls[3]![1] as unknown[])[2] as string);
+  const settling = () => query
+    .mockResolvedValueOnce({ rows: [{ settled: false }], rowCount: 1 })
+    .mockResolvedValueOnce({ rows: [{ id: NB }], rowCount: 1 })
+    .mockResolvedValueOnce({})
+    .mockResolvedValueOnce({ rows: [], rowCount: 1 })
+    .mockResolvedValueOnce({});
 
-  it("locks the row, writes the identity, then the number, in one transaction", async () => {
+  it("locks the row, reading whether the card settled it, writes the identity, then the number, in one transaction", async () => {
     vi.mocked(withTenantContext).mockClear();
-    query
-      .mockResolvedValueOnce({ rows: [{ settled: false }], rowCount: 1 })
-      .mockResolvedValueOnce({ rows: [{ id: NB }], rowCount: 1 })
-      .mockResolvedValueOnce({})
-      .mockResolvedValueOnce({ rows: [{ confirmed_numbers: [] }], rowCount: 1 })
-      .mockResolvedValueOnce({ rows: [], rowCount: 1 })
-      .mockResolvedValueOnce({});
+    settling();
     expect(await confirmNotebookIdentity(TENANT, NB, ID, NUMBER)).toEqual({ ok: true, numberSaved: true });
     expect(withTenantContext).toHaveBeenCalledTimes(1);
-    expect(statements()).toEqual(["SELECT (n.identity_status", "UPDATE equipment_notebooks", "SAVEPOINT confirmed_number", "SELECT confirmed_numbers", "UPDATE equipment_notebooks", "RELEASE SAVEPOINT"]);
-    expect(String(query.mock.calls[0]![0])).toMatch(/WHERE n\.tenant_id = \$1::uuid AND n\.id = \$2::uuid FOR UPDATE/);
+    expect(statements()).toEqual(SETTLING);
+    expect(String(query.mock.calls[0]![0])).toMatch(/AND n\.identity_source_type = 'user'\) AS settled FROM equipment_notebooks AS n WHERE n\.tenant_id = \$1::uuid AND n\.id = \$2::uuid FOR UPDATE/);
     expect(query.mock.calls[0]![1]).toEqual([TENANT, NB]);
+    expect(replaced()).toEqual([{ ...NUMBER, manufacturer: "Siemens", model: "TP700", confirmedAt: expect.any(String) }]);
   });
 
-  it("an identity settled before this confirm adds no number", async () => {
+  // Round-3 pre-screen: the confirm that settles the identity decides its numbers afresh.
+  it("an unticked confirm that settles the identity leaves no number", async () => {
+    settling();
+    expect(await confirmNotebookIdentity(TENANT, NB, ID)).toEqual({ ok: true });
+    expect(statements()).toEqual(SETTLING);
+    expect(replaced()).toEqual([]);
+  });
+
+  // #6104 r2 F4: a machine with a catalog number never reads ticked numbers.
+  it("a settling confirm that writes a catalog number refuses the tick and leaves no number", async () => {
+    settling();
+    expect(await confirmNotebookIdentity(TENANT, NB, { ...ID, catalogNumber: "6AV2124-0GC01-0AX0" }, NUMBER)).toEqual({ ok: true, numberSaved: false });
+    expect(replaced()).toEqual([]);
+  });
+
+  it("on an identity the card already settled, a ticked confirm only checks the saved number", async () => {
     query
       .mockResolvedValueOnce({ rows: [{ settled: true }], rowCount: 1 })
       .mockResolvedValueOnce({ rows: [{ id: NB }], rowCount: 1 })
@@ -167,20 +197,13 @@ describe("confirmNotebookIdentity with a ticked number", () => {
       .mockResolvedValueOnce({ rows: [{ confirmed_numbers: [] }], rowCount: 1 })
       .mockResolvedValueOnce({});
     expect(await confirmNotebookIdentity(TENANT, NB, ID, NUMBER)).toEqual({ ok: true, numberSaved: false });
-    expect(statements().filter((s) => s === "UPDATE equipment_notebooks")).toHaveLength(1);
+    expect(statements()).toEqual(["SELECT (n.identity_status", "UPDATE equipment_notebooks", "SAVEPOINT confirmed_number", "SELECT confirmed_numbers", "RELEASE SAVEPOINT"]);
   });
 
-  it("an unticked confirm sends only the identity write, as before", async () => {
-    query.mockResolvedValueOnce({ rows: [{ id: NB }], rowCount: 1 });
+  it("on an identity the card already settled, an unticked confirm sends only the identity write", async () => {
+    query.mockResolvedValueOnce({ rows: [{ settled: true }], rowCount: 1 }).mockResolvedValueOnce({ rows: [{ id: NB }], rowCount: 1 });
     expect(await confirmNotebookIdentity(TENANT, NB, ID)).toEqual({ ok: true });
-    expect(statements()).toEqual(["UPDATE equipment_notebooks"]);
-  });
-
-  // #6104 r2 F4: a machine with a catalog number never reads ticked numbers.
-  it("a confirm that writes a catalog number refuses the tick without touching the numbers", async () => {
-    query.mockResolvedValueOnce({ rows: [{ id: NB }], rowCount: 1 });
-    expect(await confirmNotebookIdentity(TENANT, NB, { ...ID, catalogNumber: "6AV2124-0GC01-0AX0" }, NUMBER)).toEqual({ ok: true, numberSaved: false });
-    expect(statements()).toEqual(["UPDATE equipment_notebooks"]);
+    expect(statements()).toEqual(["SELECT (n.identity_status", "UPDATE equipment_notebooks"]);
   });
 
   it("a blocked confirm (another identity) writes no number", async () => {
@@ -192,3 +215,4 @@ describe("confirmNotebookIdentity with a ticked number", () => {
     expect(statements()).not.toContain("SAVEPOINT confirmed_number");
   });
 });
+

@@ -736,16 +736,15 @@ export async function confirmNotebookIdentity(
     catalogNumber: identity.catalogNumber,
   });
   return withTenantContext(tenantId, async (c) => {
-    // #6104 r2 F3: with a ticked number, lock the row first and read whether the identity was
-    // already settled, in the same transaction that writes it. A racing confirm waits here.
-    let settledBefore = false;
-    if (tick) {
-      const lock = await c.query<{ settled: boolean | null }>(
-        `SELECT (${SETTLED_IDENTITY_SQL}) AS settled FROM equipment_notebooks AS n WHERE n.tenant_id = $1::uuid AND n.id = $2::uuid FOR UPDATE`,
-        [tenantId, notebookId],
-      );
-      settledBefore = lock.rows[0]?.settled === true;
-    }
+    // #6104 r2 F3: lock the row first and read whether the identity card already settled the
+    // identity, in the same transaction that writes it. A racing confirm waits here. Settled some
+    // other way (a nameplate photo), this confirm is the card's first word on it, so it decides the
+    // numbers afresh (round-3 pre-screen).
+    const lock = await c.query<{ settled: boolean | null }>(
+      `SELECT (${SETTLED_IDENTITY_SQL} AND n.identity_source_type = 'user') AS settled FROM equipment_notebooks AS n WHERE n.tenant_id = $1::uuid AND n.id = $2::uuid FOR UPDATE`,
+      [tenantId, notebookId],
+    );
+    const settledBefore = lock.rows[0]?.settled === true;
     const written = await c.query<{ id: string }>(
       `UPDATE equipment_notebooks AS n
           SET manufacturer = $3,
@@ -765,9 +764,11 @@ export async function confirmNotebookIdentity(
       [tenantId, notebookId, identity.manufacturer, identity.model, identity.catalogNumber, incomingKey],
     );
     if ((written.rowCount ?? 0) > 0) {
+      // The confirm that settles the identity decides its numbers: exactly its tick, or none
+      // (round-3 pre-screen). On an identity already settled, only a tick is checked.
+      const entry = tick ? { ...tick, manufacturer: identity.manufacturer, model: identity.model } : null;
+      const saved = !settledBefore || entry ? await recordConfirmedNumber(c, tenantId, notebookId, entry, settledBefore) : false;
       if (!number) return { ok: true };
-      if (!tick) return { ok: true, numberSaved: false };
-      const saved = await recordConfirmedNumber(c, tenantId, notebookId, { ...tick, manufacturer: identity.manufacturer, model: identity.model }, settledBefore);
       return { ok: true, numberSaved: saved };
     }
 

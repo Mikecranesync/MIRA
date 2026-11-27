@@ -25,6 +25,9 @@ vi.mock("@/lib/db", () => ({ default: testPool }));
 
 import { numbersForIdentity, readConfirmedNumbers } from "@/capabilities/confirmed-numbers";
 import { confirmNotebookIdentity, threadStatusScope } from "@/capabilities/notebook-manual-acquisition";
+import { getNotebook, updateNotebook } from "@/lib/equipment-notebooks";
+import { numbersForMachine } from "@/capabilities/manual-status-subject";
+import { adoptNameplateIdentity } from "@/capabilities/nameplate-identity-adoption";
 
 const TENANT = "6085beef-0000-4000-8000-000000000001";
 const OTHER = "6085beef-0000-4000-8000-000000000009";
@@ -237,16 +240,107 @@ describe("migration 118 + the number decided in the identity confirm (real Postg
     expect(await readConfirmedNumbers(TENANT, nb)).toEqual([]);
   });
 
-  it("the same machine spelled another way is the same machine", async () => {
-    const nb = await makeBlank([{ ...ENTRY, confirmedAt: "2026-11-27T00:00:00.000Z" }]);
-    expect(await confirmNotebookIdentity(TENANT, nb, { manufacturer: "SIEMENS", model: "TP 700", catalogNumber: "" }, OTHER_NUMBER)).toEqual({ ok: true, numberSaved: false });
-    expect(await readConfirmedNumbers(TENANT, nb)).toHaveLength(1);
+  // A Hub deployed before migration 118: every settling confirm now writes the column, ticked or
+  // not. Without the column, both still confirm the identity.
+  it("without the column (before migration 118), ticked and unticked settling confirms both still confirm", async () => {
+    const ticked = await makeBlank();
+    const unticked = await makeBlank();
+    await testPool.query(`ALTER TABLE equipment_notebooks DROP COLUMN confirmed_numbers`);
+    try {
+      expect((await testPool.query(`SELECT 1 FROM information_schema.columns WHERE table_name = 'equipment_notebooks' AND column_name = 'confirmed_numbers'`)).rowCount).toBe(0); // precondition
+      expect(await confirmNotebookIdentity(TENANT, ticked, ID, NUMBER)).toEqual({ ok: true, numberSaved: false });
+      expect(await confirmNotebookIdentity(TENANT, unticked, ID)).toEqual({ ok: true });
+      expect(await status(ticked)).toBe("user_confirmed");
+      expect(await status(unticked)).toBe("user_confirmed");
+      expect(await readConfirmedNumbers(TENANT, ticked)).toEqual([]);
+    } finally {
+      await testPool.query(`ALTER TABLE equipment_notebooks ADD COLUMN IF NOT EXISTS confirmed_numbers JSONB NOT NULL DEFAULT '[]'::jsonb`);
+    }
   });
 
-  it("control: another machine on the same notebook gets its own number", async () => {
-    const nb = await makeBlank([{ ...ENTRY, confirmedAt: "2026-11-27T00:00:00.000Z" }]);
+  // On a settled identity, the same machine spelled another way is the same machine: a retry of
+  // its number is a success, another number is refused, and the saved one stays.
+  it("the same machine spelled another way is the same machine", async () => {
+    const nb = await makeBlank();
+    expect(await confirmNotebookIdentity(TENANT, nb, ID, NUMBER)).toEqual({ ok: true, numberSaved: true });
+    const spelled = { manufacturer: "SIEMENS", model: "TP 700", catalogNumber: "" };
+    expect(await confirmNotebookIdentity(TENANT, nb, spelled, NUMBER)).toEqual({ ok: true, numberSaved: true });
+    expect(await confirmNotebookIdentity(TENANT, nb, spelled, OTHER_NUMBER)).toEqual({ ok: true, numberSaved: false });
+    expect((await readConfirmedNumbers(TENANT, nb)).map((e) => e.code)).toEqual(["6AV21240GC010AX0"]);
+  });
+
+  // A confirm that settles the identity decides its numbers afresh: a settle for another machine
+  // leaves only that machine's number, never the earlier machine's.
+  it("a settle for another machine replaces the earlier machine's number", async () => {
+    const nb = await makeBlank();
+    expect(await confirmNotebookIdentity(TENANT, nb, ID, NUMBER)).toEqual({ ok: true, numberSaved: true });
+    expect(await updateNotebook(TENANT, nb, { model: "TP900" })).toBe(true);
     expect(await confirmNotebookIdentity(TENANT, nb, { ...ID, model: "TP900" }, OTHER_NUMBER)).toEqual({ ok: true, numberSaved: true });
-    expect(await readConfirmedNumbers(TENANT, nb)).toHaveLength(2);
+    expect((await readConfirmedNumbers(TENANT, nb)).map((e) => [e.model, e.code])).toEqual([["TP900", "6AV21240JC010AX0"]]);
+  });
+
+  // Controls: what an already-settled identity sees changes no number.
+  it("control: after a ticked settle, a stale unticked card for the same machine, however spelled, clears nothing", async () => {
+    const nb = await makeBlank();
+    expect(await confirmNotebookIdentity(TENANT, nb, ID, NUMBER)).toEqual({ ok: true, numberSaved: true });
+    expect(await confirmNotebookIdentity(TENANT, nb, { manufacturer: "SIEMENS", model: "TP 700", catalogNumber: "" })).toEqual({ ok: true });
+    expect(await confirmNotebookIdentity(TENANT, nb, ID)).toEqual({ ok: true });
+    expect(await scopeOf(nb, J2)).toBe("own");
+  });
+
+  it("control: a Settings save of the same maker and model keeps the number", async () => {
+    const nb = await makeBlank();
+    expect(await confirmNotebookIdentity(TENANT, nb, ID, NUMBER)).toEqual({ ok: true, numberSaved: true });
+    expect(await updateNotebook(TENANT, nb, { manufacturer: "Siemens", model: "TP700" })).toBe(true);
+    expect(await status(nb)).toBe("user_confirmed");
+    expect(await scopeOf(nb, J2)).toBe("own");
+  });
+
+  // The nameplate photo settles an identity without the card, so it never brings a number back.
+  it("an identity a nameplate photo settled reads no ticked number; control: the card-settled one does", async () => {
+    const nb = await makeBlank();
+    expect(await confirmNotebookIdentity(TENANT, nb, ID, NUMBER)).toEqual({ ok: true, numberSaved: true });
+    const counted = async () => {
+      const notebook = (await getNotebook(TENANT, nb))!;
+      return numbersForMachine(await readConfirmedNumbers(TENANT, nb), null, notebook);
+    };
+    expect(await counted()).toEqual(["6AV2124-0GC01-0AX0"]); // control
+    expect(await updateNotebook(TENANT, nb, { manufacturer: "", model: "", catalogNumber: "" })).toBe(true);
+    expect(await adoptNameplateIdentity(TENANT, nb, "6085beef-0000-4000-8000-0000000000f1", { manufacturer: "Siemens", model: "TP700", catalogNumber: null })).toBe(true);
+    expect(await status(nb)).toBe("user_confirmed"); // precondition: settled by the photo
+    expect(await counted()).toEqual([]);
+  });
+
+  // A card confirm after the photo settled the identity is the card's first word on it: it decides
+  // the numbers afresh, so the number ticked for the earlier identity does not come back.
+  const settleByPhoto = async (nb: string) => {
+    expect(await updateNotebook(TENANT, nb, { manufacturer: "", model: "", catalogNumber: "" })).toBe(true);
+    expect(await adoptNameplateIdentity(TENANT, nb, "6085beef-0000-4000-8000-0000000000f2", { manufacturer: "Siemens", model: "TP700", catalogNumber: null })).toBe(true);
+    expect(await status(nb)).toBe("user_confirmed");
+  };
+  it("after a photo settled the identity, an unticked card confirm brings no earlier number back", async () => {
+    const nb = await makeBlank();
+    expect(await confirmNotebookIdentity(TENANT, nb, ID, NUMBER)).toEqual({ ok: true, numberSaved: true });
+    await settleByPhoto(nb);
+    expect(await confirmNotebookIdentity(TENANT, nb, ID)).toEqual({ ok: true });
+    expect(await scopeOf(nb, J2)).toBe("other");
+  });
+  it("after a photo settled the identity, a card confirm ticking another number saves that one only", async () => {
+    const nb = await makeBlank();
+    expect(await confirmNotebookIdentity(TENANT, nb, ID, NUMBER)).toEqual({ ok: true, numberSaved: true });
+    await settleByPhoto(nb);
+    expect(await confirmNotebookIdentity(TENANT, nb, ID, OTHER_NUMBER)).toEqual({ ok: true, numberSaved: true });
+    expect(await scopeOf(nb, J2_WRONG)).toBe("own");
+    expect(await scopeOf(nb, J2)).toBe("other");
+  });
+  // Control: the card's first word after the photo is the only one. A stale card after it, ticked
+  // with any number, changes nothing.
+  it("control: after a photo settle and one unticked card confirm, a stale ticked card is refused", async () => {
+    const nb = await makeBlank();
+    await settleByPhoto(nb);
+    expect(await confirmNotebookIdentity(TENANT, nb, ID)).toEqual({ ok: true });
+    expect(await confirmNotebookIdentity(TENANT, nb, ID, NUMBER)).toEqual({ ok: true, numberSaved: false });
+    expect(await readConfirmedNumbers(TENANT, nb)).toEqual([]);
   });
 
   // #6104 r1 F4: an entry the scope cannot use (no order number in it) neither blocks a usable
@@ -256,5 +350,29 @@ describe("migration 118 + the number decided in the identity confirm (real Postg
     expect(threadStatusScope([J2], { ...ENTRY, catalogNumber: "", recordCatalog: null, confirmedNumbers: numbersForIdentity(await readConfirmedNumbers(TENANT, nb), ENTRY) })).toBe("other"); // precondition
     expect(await confirmNotebookIdentity(TENANT, nb, ID, NUMBER)).toEqual({ ok: true, numberSaved: true });
     expect(await scopeOf(nb)).toBe("own");
+  });
+
+  // Pre-screen of round 3: a number belongs to the confirmation that ticked it. Settings changing
+  // the model away and back reopens the identity; the next confirm decides afresh.
+  it("a number does not outlive its identity: changed away and back, an unticked re-confirm brings none back", async () => {
+    const nb = await makeBlank();
+    expect(await confirmNotebookIdentity(TENANT, nb, ID, NUMBER)).toEqual({ ok: true, numberSaved: true });
+    expect(await updateNotebook(TENANT, nb, { model: "TP900" })).toBe(true);
+    expect(await status(nb)).toBe("candidate"); // precondition: the identity is reopened
+    expect(await updateNotebook(TENANT, nb, { model: "TP700" })).toBe(true);
+    expect(await status(nb)).toBe("candidate");
+    expect(await confirmNotebookIdentity(TENANT, nb, ID)).toEqual({ ok: true });
+    expect(await status(nb)).toBe("user_confirmed");
+    expect(await scopeOf(nb, J2)).toBe("other");
+  });
+
+  it("changed away and back, a re-confirm ticking another number saves that one and only that one", async () => {
+    const nb = await makeBlank();
+    expect(await confirmNotebookIdentity(TENANT, nb, ID, NUMBER)).toEqual({ ok: true, numberSaved: true });
+    expect(await updateNotebook(TENANT, nb, { model: "TP900" })).toBe(true);
+    expect(await updateNotebook(TENANT, nb, { model: "TP700" })).toBe(true);
+    expect(await confirmNotebookIdentity(TENANT, nb, ID, OTHER_NUMBER)).toEqual({ ok: true, numberSaved: true });
+    expect(await scopeOf(nb, J2_WRONG)).toBe("own");
+    expect(await scopeOf(nb, J2)).toBe("other");
   });
 });

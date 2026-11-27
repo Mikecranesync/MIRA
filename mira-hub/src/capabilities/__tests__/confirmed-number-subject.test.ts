@@ -36,7 +36,7 @@ const THREAD = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
 const threadReq = { nextUrl: { searchParams: new URLSearchParams({ threadId: THREAD }) } } as unknown as NextRequest;
 const params = { params: Promise.resolve({ id: NB }) };
 const J2 = "Our Siemens TP700 Comfort panel 6AV2124-0GC01-0AX0 will not power up. What is the rated supply voltage?";
-const NOTEBOOK = { id: NB, displayName: "Panel", identityStatus: "user_confirmed", manufacturer: "Siemens", model: "TP700", catalogNumber: "" };
+const NOTEBOOK = { id: NB, displayName: "Panel", identityStatus: "user_confirmed", identitySourceType: "user", manufacturer: "Siemens", model: "TP700", catalogNumber: "" };
 const READY = { manufacturer: "Siemens", model: "TP700", running: false, message: "SIMATIC HMI Comfort Panels manual is ready in Sources." };
 const saved = (number: string, manufacturer = "Siemens", model = "TP700") => ({ number, manufacturer, model, confirmedAt: "2026-11-27T00:00:00.000Z" });
 const ask = (question: string) => ({ id: "t", question, evidence: [] });
@@ -167,6 +167,12 @@ describe("numbersForMachine", () => {
   });
   it("counts none for an unsettled identity", () => {
     expect(numbersForMachine(entries, READY as never, nb({ identityStatus: "unconfirmed" } as never))).toEqual([]);
+  });
+  // Round-3 pre-screen: only the identity card writes source `user`. An identity a nameplate photo
+  // (or anything else) settled never brings back a number ticked for an earlier one.
+  it("counts none for an identity settled without the identity card", () => {
+    expect(numbersForMachine(entries, READY as never, nb({ identitySourceType: "nameplate_image" }))).toEqual([]);
+    expect(numbersForMachine(entries, READY as never, nb({ identitySourceType: null }))).toEqual([]);
   });
   it("counts none when the status names a proposed model, not the notebook's", () => {
     expect(numbersForMachine(entries, { ...READY, model: "TP900" } as never, nb())).toEqual([]);

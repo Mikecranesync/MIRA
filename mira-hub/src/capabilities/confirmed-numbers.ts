@@ -64,51 +64,54 @@ export interface TxClient {
 }
 
 /**
- * Records the ticked number inside the identity confirm's own transaction, after that confirm
- * locked the notebook row and wrote the identity (`confirmNotebookIdentity`, #6104 r2 F3/F4). `code`
- * is the order number the route read from `number` (`singleOrderNumber`).
+ * Decides the notebook's numbers inside the identity confirm's own transaction, after that confirm
+ * locked the notebook row and wrote the identity (`confirmNotebookIdentity`, #6104 r2 F3/F4).
+ * `entry` is the ticked number, or null when nothing was ticked; `code` is the order number the
+ * route read from `number` (`singleOrderNumber`).
  *
- * - Only the confirm that settles the identity may add a number (r2 F3). When the identity was
- *   already settled before this confirm (`settledBefore`), nothing is added: a retry of the number
- *   already saved for this machine is still a success, anything else is refused. A stale second card
- *   for the same machine therefore cannot add one, whichever box the first confirm left.
- * - One number per machine (r1 F3): the first saved code wins, a retry of it is a success, and a
- *   different code is refused. Only entries carrying a code count (r1 F4), so an entry the scope
- *   cannot use never blocks or stands in for one it can.
+ * - `settledBefore` is whether the identity card had already settled this identity (settled, with
+ *   source `user`). A confirm where it had not (a blank or reopened identity, or one a nameplate
+ *   photo settled) decides its numbers afresh: they become exactly its tick, or none, whatever an
+ *   earlier identity left (round-3 pre-screen). An identity reopened and settled again therefore
+ *   never brings an old number back.
+ * - A confirm on an identity the card already settled changes no number (r2 F3): a retry of the
+ *   number saved for this machine is still a success, anything else is refused. A stale second card
+ *   for the same machine therefore cannot add or clear one, whichever box the first confirm left.
+ *   Only entries carrying a code count (r1 F4), so an entry the scope cannot use never stands in.
  *
- * Runs under its own savepoint: any failure (including a missing column before migration 118) is
- * rolled back to it, logged and reported as false, so it never fails the confirm. True when this
- * code is the machine's number afterwards. Touches only `confirmed_numbers`.
+ * Runs under its own savepoint: a failing statement (including a missing column before migration
+ * 118) is rolled back to it, logged and reported as false, so it never fails the confirm. True when
+ * the ticked code is the machine's number afterwards. Touches only `confirmed_numbers`.
  */
 export async function recordConfirmedNumber(
   c: TxClient,
   tenantId: string,
   notebookId: string,
-  entry: { number: string; code: string; manufacturer: string; model: string },
+  entry: { number: string; code: string; manufacturer: string; model: string } | null,
   settledBefore: boolean,
 ): Promise<boolean> {
   await c.query("SAVEPOINT confirmed_number");
   try {
-    const row = await c.query<{ confirmed_numbers: unknown }>(
-      `SELECT confirmed_numbers FROM equipment_notebooks WHERE tenant_id = $1::uuid AND id = $2::uuid`,
-      [tenantId, notebookId],
-    );
     let saved = false;
-    if (row.rows.length) {
-      const value = row.rows[0]!.confirmed_numbers;
+    if (!settledBefore) {
+      const next = entry
+        ? [{ number: entry.number, code: entry.code, manufacturer: entry.manufacturer, model: entry.model, confirmedAt: new Date().toISOString() }]
+        : [];
+      const res = await c.query(
+        `UPDATE equipment_notebooks SET confirmed_numbers = $3::jsonb WHERE tenant_id = $1::uuid AND id = $2::uuid`,
+        [tenantId, notebookId, JSON.stringify(next)],
+      );
+      saved = entry !== null && (res.rowCount ?? 0) > 0;
+    } else if (entry) {
+      const row = await c.query<{ confirmed_numbers: unknown }>(
+        `SELECT confirmed_numbers FROM equipment_notebooks WHERE tenant_id = $1::uuid AND id = $2::uuid`,
+        [tenantId, notebookId],
+      );
+      const value = row.rows[0]?.confirmed_numbers;
       const entries = Array.isArray(value) ? value.filter(isEntry) : [];
       const maker = makerKey(entry.manufacturer);
       const model = key(entry.model);
-      const coded = entries.filter((e) => typeof e.code === "string" && makerKey(e.manufacturer) === maker && key(e.model) === model);
-      if (coded.length) saved = coded.some((e) => e.code === entry.code);
-      else if (!settledBefore) {
-        const added = { number: entry.number, code: entry.code, manufacturer: entry.manufacturer, model: entry.model, confirmedAt: new Date().toISOString() };
-        await c.query(
-          `UPDATE equipment_notebooks SET confirmed_numbers = confirmed_numbers || $3::jsonb WHERE tenant_id = $1::uuid AND id = $2::uuid`,
-          [tenantId, notebookId, JSON.stringify([added])],
-        );
-        saved = true;
-      }
+      saved = entries.some((e) => e.code === entry.code && makerKey(e.manufacturer) === maker && key(e.model) === model);
     }
     await c.query("RELEASE SAVEPOINT confirmed_number");
     return saved;

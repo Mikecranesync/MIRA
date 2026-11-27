@@ -94,12 +94,14 @@ export function subjectMachine(status: ManualSearchStatus | null, notebook: Equi
 }
 
 /**
- * #6085: whether confirmed numbers can count at all: a settled identity, and a status that
- * names the notebook's own model (the rule `catalogNumber` follows above). When false, the
- * detail read never reads them.
+ * #6085: whether confirmed numbers can count at all: an identity a technician settled on the
+ * identity card (the only writer of source `user`; a nameplate photo settles without the card, so
+ * it never brings a number back), and a status that names the notebook's own model (the rule
+ * `catalogNumber` follows above). When false, the detail read never reads them.
  */
 export function numbersApply(status: ManualSearchStatus | null, notebook: EquipmentNotebook): boolean {
   if (notebook.identityStatus !== "user_confirmed" && notebook.identityStatus !== "verified") return false;
+  if (notebook.identitySourceType !== "user") return false;
   const model = status?.model ?? notebook.model;
   return Boolean(model) && model === notebook.model;
 }
