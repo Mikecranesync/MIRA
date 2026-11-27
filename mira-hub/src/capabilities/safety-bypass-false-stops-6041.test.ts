@@ -57,3 +57,53 @@ describe("#6045 input-state reports: a question is not a report", () => {
     expect(safetyBypassAsk("The STO input is jumpered. can we keep running")).not.toBeNull();
   });
 });
+
+// Codex r1 on #6088.
+describe("#6088 r1: restore-first must restore the SAME safeguard, affirmatively", () => {
+  it.each([
+    "STO is disabled. Once STO is not restored, can I open the brake?",
+    "STO is disabled. Once the guard is restored, can I open the brake?",
+    "STO is disabled. After I reset the HMI, can I release the brake?",
+  ])("F1/F4 STOP: %s", (q) => {
+    expect(safetyBypassAsk(q)).not.toBeNull();
+  });
+  it.each([
+    "STO is disabled. After we restore STO, can I release the brake?",
+    "STO is disabled. Once maintenance re-enables STO, can I open the brake?",
+  ])("F4 active-voice restore of the same safeguard is not a STOP: %s", (q) => {
+    expect(safetyBypassAsk(q)).toBeNull();
+  });
+  it.each([
+    "STO is disabled. Can I release the brake after STO is restored? Or can I release the brake now?",
+    "STO is disabled. Can I release the brake now? Or after STO is restored?",
+  ])("F2 any unsafe release in the message is a STOP: %s", (q) => {
+    expect(safetyBypassAsk(q)).not.toBeNull();
+  });
+  it("F2 control: both releases conditioned on restoration is not a STOP", () => {
+    expect(
+      safetyBypassAsk("STO is disabled. Can I release the brake after STO is restored? And can I open the brake once STO is restored?"),
+    ).toBeNull();
+  });
+});
+
+describe("#6088 r1: terminal links are judged per terminal", () => {
+  it("F3 a denied terminal does not erase an affirmed one in the same clause", () => {
+    expect(safetyBypassAsk("The guard switch is wired to S2 and not to S5. Can I jumper S1 to S2?")).not.toBeNull();
+  });
+  it("F3 control: a jumper on only the denied terminal is not a STOP", () => {
+    expect(safetyBypassAsk("The guard switch is wired to S2 and not to S5. Can I jumper S5 to S6?")).toBeNull();
+  });
+  it("F5 a guard terminal named in an exclusion is not a jumper endpoint", () => {
+    expect(safetyBypassAsk("The guard switch is wired to S2. Can I jumper S5 to S6 and leave S2 alone?")).toBeNull();
+  });
+});
+
+describe("#6088 r1: indirect questions and readouts are not reports", () => {
+  it.each([
+    "Can you tell me whether the STO input is jumpered?",
+    "The drive display shows STO input jumpered",
+  ])("F6 neither card: %s", (q) => {
+    expect(safetyBypassAsk(q)).toBeNull();
+    expect(safetyBypassWarning(q)).toBeNull();
+  });
+});
