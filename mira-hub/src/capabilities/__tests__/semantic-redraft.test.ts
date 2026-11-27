@@ -296,12 +296,11 @@ describe("#6049: a zero value is exempt only as a residual pressure or voltage r
     expect(gaps(answer, BUS)).toEqual([]);
   });
 
-  it("the sentence is the unit: another sentence or line does not count, a second action in the same sentence does", () => {
-    // The previous sentence, and the previous line, are not part of the reading's sentence.
+  it("the sentence is the unit: another sentence does not count, a second action in the same sentence does", () => {
+    // The previous sentence and the next one are not part of the reading's sentence.
     expect(gaps("Adjust nothing yet. Verify the hose gauge reads 0 psi [1].", HOSE)).toEqual([]);
-    expect(gaps("Torque the hose fittings to 25 N·m [1]\nVerify the hose gauge reads 0 psi [1].", HOSE)).toEqual([]);
-    // The next sentence is not part of it either.
     expect(gaps("Verify the hose gauge reads 0 psi [1]. Then inspect the hoses for wear [1].", HOSE)).toEqual([]);
+    expect(gaps("1. Inspect the hoses for wear [1].\n2. Verify the hose gauge reads 0 psi [1].", HOSE)).toEqual([]);
     // A second action in the SAME sentence makes the whole sentence more than a reading.
     expect(gaps("Verify the hose gauge reads 0 psi, then inspect the hoses for wear [1].", HOSE)).toEqual(VALUE);
     expect(gaps("Inspect the hoses for wear, then verify the hose gauge reads 0 psi [1].", HOSE)).toEqual(VALUE);
@@ -310,16 +309,39 @@ describe("#6049: a zero value is exempt only as a residual pressure or voltage r
     expect(gaps("Adjust valve PR-2.a until the gauge reads 0 psi [1].", REG)).toEqual(VALUE);
   });
 
-  it("what the reading must come BEFORE is not part of it; a 'before' clause in front of the reading is", () => {
-    expect(gaps("Verify the hose gauge reads 0 psi before any hose fitting is loosened or adjusted [1].", HOSE)).toEqual([]);
-    expect(gaps("Verify the hose gauge reads 0 psi prior to adjusting any hose fitting [1].", HOSE)).toEqual([]);
-    expect(gaps("Before setting the outlet regulator, verify the gauge reads 0 psi [1].", REG)).toEqual(VALUE);
+  it("a line break does not end a sentence: a setting split across lines is still a setting", () => {
+    expect(gaps("Set the outlet regulator to:\n0 psi and verify [1].", REG)).toEqual(VALUE);
+    expect(gaps("Set the outlet regulator to\n\n0 psi, then verify the gauge [1].", REG)).toEqual(VALUE);
+    // The cost, on the safe side: an unpunctuated line above a reading belongs to its sentence.
+    expect(gaps("Torque the hose fittings to 25 N·m [1]\nVerify the hose gauge reads 0 psi [1].", HOSE)).toEqual(VALUE);
   });
 
-  it("the machine's own name may appear in the sentence; any other name may not", () => {
+  it("a sentence needs a relieving, verifying or reading word: a bare zero or a stated condition is checked", () => {
+    expect(gaps("The hydraulic pressure is at 0 psi [1].", HOSE)).toEqual(VALUE);
+    expect(gaps("Hydraulic pressure: 0 bar [1].", HOSE)).toEqual(VALUE);
+    expect(gaps("The DC bus is at 0 V at the terminals [1].", BUS)).toEqual(VALUE);
+    // The same sentences with such a word are readings.
+    expect(gaps("Verify the hydraulic pressure is at 0 psi [1].", HOSE)).toEqual([]);
+    expect(gaps("Confirm the DC bus is at 0 V at the terminals [1].", BUS)).toEqual([]);
+  });
+
+  it("what the reading must come BEFORE is not part of it, behind the reading or as the clause that opens the sentence", () => {
+    expect(gaps("Verify the hose gauge reads 0 psi before any hose fitting is loosened or adjusted [1].", HOSE)).toEqual([]);
+    expect(gaps("Verify the hose gauge reads 0 psi prior to adjusting any hose fitting [1].", HOSE)).toEqual([]);
+    expect(gaps("Before any hose fitting is loosened or adjusted, relieve the pressure and verify the hose gauge reads 0 psi [1].", HOSE)).toEqual([]);
+    expect(gaps("Prior to loosening any hose fitting, verify the hose gauge reads 0 psi [1].", HOSE)).toEqual([]);
+    // Only that clause is set aside: an action after its comma still counts, and so does a zero inside it.
+    expect(gaps("Before any hose fitting is loosened, set the pressure to 0 psi and verify the hose gauge [1].", HOSE)).toEqual(VALUE);
+    expect(gaps("Before restart, inspect the hoses, then verify the hose gauge reads 0 psi [1].", HOSE)).toEqual(VALUE);
+    expect(gaps("Before the hose gauge reads 0 psi, verify nothing [1].", HOSE)).toEqual(VALUE);
+    expect(gaps("Inspect the hoses before you verify the hose gauge reads 0 psi [1].", HOSE)).toEqual(VALUE);
+  });
+
+  it("the list is closed: a machine's own name is not on it", () => {
     const a = "With the Zephyr stopped and locked out, verify the hose gauge reads 0 psi [1].";
-    expect(gaps(a, ZEPHYR, "Zephyr ZX-9000")).toEqual([]);
+    expect(gaps(a, ZEPHYR, "Zephyr ZX-9000")).toEqual(VALUE);
     expect(gaps(a, ZEPHYR)).toEqual(VALUE);
+    expect(gaps("With the press stopped and locked out, verify the hose gauge reads 0 psi [1].", ZEPHYR, "Zephyr ZX-9000")).toEqual([]);
   });
 
   it("one free word may name a gauge after 'the'; nothing else is free", () => {

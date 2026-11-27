@@ -701,35 +701,45 @@ export type CitationSupportGap = { citationId: string; reason: "no_page" | "valu
 // (set, adjust, ...) is open-ended: "dial the regulator to 0 psi and verify", "back it off to
 // 0 psi and confirm" and "lower it until the gauge reads 0 psi" all slip one. So the zero's
 // whole sentence must be made ONLY of the words below: relieving, verifying, reading and
-// isolating. No operating verb is in the set, so a sentence that operates a control is never
-// exempt, whatever the verb.
+// isolating, with at least one relieving, verifying or reading word among them. No operating
+// verb is in the set, so a sentence that operates a control is never exempt, whatever the
+// verb. A machine's own name is not in it either: the set is closed.
 const RESIDUAL_ENERGY_UNITS = new Set(["psi", "bar", "Pa", "kPa", "MPa", "V", "mV", "kV", "VAC", "VDC", "Vrms"]);
+// The words that make a sentence a reading or a relief: it needs at least one of them.
+const ZERO_READING_VERBS = new Set(
+  (
+    "relieve relieved release released bleed bled vent vented discharge discharged drain drained dissipate dissipated " +
+    "verify verified confirm confirmed check ensure sure wait measure " +
+    "reads read shows show indicates indicate displays display dropped fallen drops falls"
+  ).split(" "),
+);
 const ZERO_READING_WORDS = new Set(
   (
-    "a an the and then until that to at on in of down off fully completely all any no it is are has have " +
-    "relieve relieved release released bleed bled vent vented discharge discharged drain drained dissipate dissipated " +
-    "verify verified confirm confirmed check ensure make sure wait measure " +
-    "reads read shows show indicates indicate displays display dropped fallen drops falls " +
+    "a an the and then until that to at on in of down off fully completely all any no it is are has have make " +
     "pressure voltage energy charge gauge meter multimeter voltmeter tester " +
     "residual stored trapped remaining hydraulic pneumatic air dc ac bus capacitor capacitors terminals conductors circuit " +
     "with stop stopped lock locked lockout tagout out isolate isolated de-energize de-energized under site procedure " +
     "machine equipment unit system press line"
-  ).split(" "),
+  )
+    .split(" ")
+    .concat([...ZERO_READING_VERBS]),
 );
-// A sentence ends at a line break or at . ! ? followed by whitespace. A dot inside a number
-// or a part tag ("4.2", "PR-2.a") does not end one.
-const SENTENCE_BREAK_RE = /\n|[.!?](?=\s|$)/g;
+// A sentence ends at . ! ? followed by whitespace, and nowhere else. A dot inside a number or
+// a part tag ("4.2", "PR-2.a") does not end one, and neither does a line break: "Set the
+// regulator to:" with "0 psi and verify" on the next line is one sentence.
+const SENTENCE_BREAK_RE = /[.!?](?=\s|$)/g;
 const WORD_RE = /[\p{L}\p{N}][\p{L}\p{N}-]*/gu;
-// What the reading must come before ("... before any fitting is loosened") is a later
-// action, not part of the reading.
+// What the reading must come before is a later action, not part of the reading: the rest of
+// the sentence from "before" on ("... before any fitting is loosened"), or a "Before ...,"
+// clause that opens it.
 const AFTERWARDS_RE = /\b(?:before|prior to)\b/i;
+const BEFOREHAND_RE = /^\s*(?:before|prior to)\b[^,]*,/i;
 
 /**
- * `text` is the answer the value's offsets index (markers blanked, offsets kept). `machine`
- * holds the words of the machine's own name, which a sentence may use ("with the Zephyr
- * locked out"). One free word is allowed as the name of a gauge: "the hose gauge".
+ * `text` is the answer the value's offsets index (markers blanked, offsets kept). One word
+ * outside the set is allowed, as the name of a gauge: "the hose gauge".
  */
-function isZeroReading(v: Value, text: string, machine: ReadonlySet<string>): boolean {
+function isZeroReading(v: Value, text: string): boolean {
   if (!v.nums.every((n) => n === 0) || v.unit === null || !RESIDUAL_ENERGY_UNITS.has(v.unit)) return false;
   let from = 0;
   let to = text.length;
@@ -743,10 +753,11 @@ function isZeroReading(v: Value, text: string, machine: ReadonlySet<string>): bo
   }
   const after = text.slice(v.end, to);
   const later = after.search(AFTERWARDS_RE);
-  const sentence = `${text.slice(from, v.start)} ${later < 0 ? after : after.slice(0, later)}`;
-  const words = (sentence.toLowerCase().replace(/['’]s\b/g, "").match(WORD_RE) ?? []);
-  return words.every(
-    (w, i) => ZERO_READING_WORDS.has(w) || machine.has(w) || (words[i - 1] === "the" && words[i + 1] === "gauge"),
+  const sentence = `${text.slice(from, v.start).replace(BEFOREHAND_RE, "")} ${later < 0 ? after : after.slice(0, later)}`;
+  const words = sentence.toLowerCase().replace(/['’]s\b/g, "").match(WORD_RE) ?? [];
+  return (
+    words.some((w) => ZERO_READING_VERBS.has(w)) &&
+    words.every((w, i) => ZERO_READING_WORDS.has(w) || (words[i - 1] === "the" && words[i + 1] === "gauge"))
   );
 }
 
@@ -778,7 +789,6 @@ export function citationSupportGaps(
   const assigned = assignValues(answer, question);
   // The text assignValues' offsets index: markers blanked, every other character in place.
   const masked = answer.replace(MARKER_RE, (m) => " ".repeat(m.length));
-  const machine = new Set(identity.toLowerCase().match(WORD_RE) ?? []);
   for (const id of used) {
     const page = pages[Number(id) - 1];
     if (!page) {
@@ -787,7 +797,7 @@ export function citationSupportGaps(
     }
     const srcVals = page.flatMap((t) => findValues(t, "source"));
     // Usable values only (number + table unit); a bare "step 3" is left to the word check.
-    const claims = (assigned.get(id) ?? []).filter((c) => c.usable && !isZeroReading(c, masked, machine));
+    const claims = (assigned.get(id) ?? []).filter((c) => c.usable && !isZeroReading(c, masked));
     if (claims.some((c) => !srcVals.some((s) => satisfies(s, c)))) gaps.push({ citationId: id, reason: "value" });
   }
   const pageTokens = pages.map((p) => supportTerms(p.join(" ")));
