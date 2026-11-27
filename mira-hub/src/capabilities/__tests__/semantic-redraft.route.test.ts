@@ -1609,6 +1609,32 @@ describe("#6048 — a body cancel after the commit still persists the packet and
     expect(closeTurnMock).not.toHaveBeenCalled();
   });
 
+  // A completion that is only whitespace is recorded as an answered turn (unchanged here, and
+  // the same on main): one content frame of blanks goes out and history keeps the blanks. There
+  // is still no answer to judge, so the question and the excerpts are not sent for it either.
+  it("F8: decision call on, the provider's whole completion is whitespace and the response is read to its end: nothing is sent to the vendor, no decision record, ONE packet and usage row", async () => {
+    decisionCallOn();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string | URL | Request, init?: RequestInit) =>
+        typeof init?.body === "string" && init.body.includes('"stream":true') ? answerStream(" \n ") : new Response("down", { status: 500 }),
+      ),
+    );
+    const res = await POST(req({ message: Q_PLAIN, sourceDocIds: [DOC_A], clientRequestId: REQ_ID }, false), params);
+    expect(await drain(res.body!.getReader())).toBe("closed");
+    const r = await settled();
+    // Preconditions: recorded as answered, and the whole recorded answer is blanks (not null, not empty).
+    expect(r.turn.answerStatus).toBe("answered");
+    expect(typeof r.turn.answerText).toBe("string");
+    expect(String(r.turn.answerText).length).toBeGreaterThan(0);
+    expect(String(r.turn.answerText).trim()).toBe("");
+    expect(vendorRequests()).toHaveLength(0);
+    expect(evaluateMock).not.toHaveBeenCalled();
+    expect(r.packet.jev_decision ?? null).toBeNull();
+    expect(r.packet.persistence).toMatchObject({ turn_row_id: ROW_ID, outcome: "ok" });
+    expect(closeTurnMock).not.toHaveBeenCalled();
+  });
+
   it("F8 control: decision call OFF, the same unserved turn read to its end: no tracker, and the packet carries the disabled record as before", async () => {
     const r = await exhaustedReadToEnd();
     expect(handoffSpy).not.toHaveBeenCalled();

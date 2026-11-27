@@ -1686,9 +1686,10 @@ async function handleChatTurn(
         // neither says an answer was given. `answerText` is the answer this turn served
         // (null when none was), the same value the content frames are written from: without
         // one there is nothing to judge, and the question, the excerpts and the photo
-        // observations stay here. Checked before the handoff, so an unserved turn does not
-        // wait for it.
-        const answered = Boolean(opts.answerText);
+        // observations stay here. A completion that is only whitespace is recorded as an
+        // answered turn (unchanged by this, and the same on main) and is no answer to judge
+        // either. Checked before the handoff, so such a turn does not wait for it.
+        const answered = typeof opts.answerText === "string" && opts.answerText.trim() !== "";
         const maySend = !jevDecisionEnabled() || (answered && handoff !== null && (await handoff.confirmed(HANDOFF_WAIT_MS)));
         if (maySend) packet.jev_decision = await evaluateTurnDecision(decisionState).catch(() => null);
       }
