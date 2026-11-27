@@ -167,6 +167,20 @@ describe("a failing draft is never released, and the failure is reported honestl
     const status = r.raw.split("\n").filter((l) => l.startsWith("data: ")).map((l) => { try { return JSON.parse(l.slice(6)); } catch { return {}; } }).find((f) => f.kind === "status");
     expect(status).toEqual({ kind: "status", status: "error", message: "I could not produce a clean reply this time. Please ask again." }); // no provider `reason`
   });
+  it("logs carry the closed code, script and count only: no rejected text, no technician or source words", async () => {
+    // synthetic private-looking words in the turn, the source and the rejected draft
+    const SECRET_Q = "What does F081 mean on the Zyxwv-Plant line?";
+    const SECRET_SRC = chunk(DOC_A, 162, `${SOURCE} Site name: Quuxcorp-Annex.`);
+    ragMock.retrieveNodeChunks.mockResolvedValue([SECRET_SRC] as never);
+    stubProvider("F081 ошибкаквюкс means DSI Comm Loss at Quuxcorp-Annex [1].");
+    await run(SECRET_Q);
+    const logged = [console.warn, console.error, console.log]
+      .flatMap((fn) => (fn as unknown as { mock: { calls: unknown[][] } }).mock.calls)
+      .map((c) => c.map(String).join(" "))
+      .join("\n");
+    expect(logged).toContain("output hygiene rejected the draft: unexpected_script cyrillicx1"); // actionable, closed
+    for (const word of ["ошибкаквюкс", "ошибка", "Zyxwv", "Quuxcorp"]) expect(logged).not.toContain(word);
+  });
   it("the stored failure replays with the same status (no provider-exhaustion copy)", async () => {
     ragMock.retrieveNodeChunks.mockResolvedValue([one] as never);
     stubProvider(BAD);

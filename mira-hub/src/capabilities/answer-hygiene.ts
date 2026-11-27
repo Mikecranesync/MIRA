@@ -15,6 +15,7 @@
  */
 import { SCRIPT_PATTERNS, nonLatinScriptsIn, type ScriptGroup } from "./answer-language";
 
+/** `detail` is safe to log: a script group and a count, or the fixed marker pattern; never candidate text. */
 export type HygieneVerdict = { ok: true } | { ok: false; code: "unexpected_script" | "draft_marker"; detail: string };
 
 export type HygieneContext = {
@@ -63,9 +64,10 @@ export function checkAnswerHygiene(text: string, ctx: HygieneContext): HygieneVe
   const evidence = (ctx.sources ?? []).join("\n");
   for (const [group, cls] of SCRIPT_PATTERNS) {
     if (expected.has(group)) continue;
-    for (const run of text.match(new RegExp(`[${cls}]+`, "gu")) ?? []) {
-      if (!evidence.includes(run)) return { ok: false, code: "unexpected_script", detail: `${group}:${run.slice(0, 24)}` };
-    }
+    const unexpected = (text.match(new RegExp(`[${cls}]+`, "gu")) ?? []).filter((run) => !evidence.includes(run));
+    // `detail` is logged: closed vocabulary only (script group + count). Never the candidate's own text,
+    // which can carry a technician's or a source's private words.
+    if (unexpected.length > 0) return { ok: false, code: "unexpected_script", detail: `${group}x${unexpected.length}` };
   }
   return { ok: true };
 }

@@ -20,6 +20,11 @@ describe("unexpected scripts in a Latin-script turn", () => {
   ])("flags %s prose", (_n, text, ctx) => {
     expect(verdict(text, ctx)).toMatchObject({ ok: false, code: "unexpected_script" });
   });
+  it("the logged detail is data-free: script group and count, never the rejected run", () => {
+    const v = verdict("The parameter Ошибка конфигурации is not set.");
+    expect(v).toEqual({ ok: false, code: "unexpected_script", detail: "cyrillicx2" });
+    expect(JSON.stringify(v)).not.toMatch(/Ошибка|конфигурации/);
+  });
   it("accepts clean English and clean Spanish", () => {
     expect(verdict("F004 is an overcurrent fault. Check the motor cable for shorts [1].")).toEqual({ ok: true });
     expect(verdict("El LED amarillo indica que el CPU está en modo STOP [1].", ES)).toEqual({ ok: true });
