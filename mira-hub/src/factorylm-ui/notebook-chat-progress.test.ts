@@ -80,6 +80,17 @@ describe("readNotebookStream — progress frames", () => {
       expect("partial" in e).toBe(false); // not an interrupted answer
     });
   });
+
+  // #6085 (Option A): the live card keeps the offered number, so the box shows before reload.
+  it("keeps the identity card's offered number on the live result", async () => {
+    const proposal = { manufacturer: "Siemens", model: "TP700", offeredNumber: "6AV2124-0GC01-0AX0" };
+    const result = await readNotebookStream(streamOf([
+      frame({ kind: "status", status: "insufficient_evidence", message: "Confirm the equipment." }),
+      frame({ kind: "identity_proposal", ...proposal }),
+    ]), () => {});
+    expect(result.identityProposal).toEqual(proposal);
+    expect(partsFromStream(result, { turnId: "live" })).toContainEqual({ type: "identity_proposal", ...proposal });
+  });
 });
 
 function streamThenFail(chunks: string[], err: Error) {

@@ -1,6 +1,6 @@
 {
   "name": "mira-hub",
-  "version": "2.66.14",
+  "version": "2.67.0",
   "private": true,
   "scripts": {
     "dev": "next dev",

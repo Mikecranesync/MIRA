@@ -334,6 +334,9 @@ function ArtifactPart({ part, adapter }: { readonly part: Extract<InteractionPar
   </Card>;
 }
 
+/** #6104 r1 F2: ticks by host tickKey + identity + offered number, for the page's lifetime. */
+const rememberedTicks = new Map<string, boolean>();
+
 /**
  * "Is this an {manufacturer} {model}?" — the confirm card for a machine MIRA
  * proposed from free text (#4120/#4175). Two buttons:
@@ -386,6 +389,20 @@ function IdentityProposalPart({
   // Set only on a LIVE 409 refusal (see header); the adapter-seeded
   // "superseded" case above has no server message and falls back below.
   const [refusal, setRefusal] = useState<string | null>(null);
+  // #6085: the offered order number starts unticked; only a ticked box is sent. #6104 r1 F2: a
+  // choice belongs to one send's offer (host tickKey, identity, number), not to this component:
+  // the assistant surface keeps components by position, so another send's card can take this one's
+  // slot (it starts unticked), and the saved copy can land in another slot (it is still ticked).
+  const choiceKey = [part.tickKey ?? "", part.manufacturer, part.model, part.offeredNumber ?? ""].join("\u0000");
+  const tickMemoryKey = part.tickKey && part.offeredNumber ? choiceKey : null;
+  const [tick, setTick] = useState<{ readonly choiceKey: string; readonly ticked: boolean } | null>(null);
+  const numberTicked = tick?.choiceKey === choiceKey
+    ? tick.ticked
+    : tickMemoryKey ? rememberedTicks.get(tickMemoryKey) ?? false : false;
+  const setNumberTicked = (ticked: boolean) => {
+    if (tickMemoryKey) rememberedTicks.set(tickMemoryKey, ticked);
+    setTick({ choiceKey, ticked });
+  };
   const proposal: IdentityProposal = {
     manufacturer: part.manufacturer,
     model: part.model,
@@ -402,7 +419,7 @@ function IdentityProposalPart({
     if (busy || settled || !hooks?.onConfirmIdentity) return;
     setBusy(true);
     hooks
-      .onConfirmIdentity(proposal)
+      .onConfirmIdentity(part.offeredNumber && numberTicked ? { ...proposal, confirmedNumber: part.offeredNumber } : proposal)
       .then((r) => { setResult(r); setOutcome("confirmed"); })
       .catch((err) => {
         if (err instanceof IdentityAlreadyConfirmedError) {
@@ -422,6 +439,15 @@ function IdentityProposalPart({
   return <Card type="identity_proposal" label="Machine identity" title={`Is this a ${name}?`}>
     {!settled ? <>
       {outcome === "failed" ? <p role="alert" className="fl-card__meta">Could not confirm. Try again.</p> : null}
+      {part.offeredNumber ? <label className="fl-card__meta">
+        <input
+          type="checkbox"
+          checked={numberTicked}
+          disabled={busy}
+          onChange={(e) => setNumberTicked(e.currentTarget.checked)}
+        />{" "}
+        {part.offeredNumber} is this machine&apos;s number
+      </label> : null}
       <div className="fl-card__actions">
         <button
           type="button"

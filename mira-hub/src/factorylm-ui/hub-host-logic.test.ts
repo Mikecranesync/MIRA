@@ -7,6 +7,7 @@ import {
   applyConfirmIdentityResult,
   createLatestLoadTracker,
   homeSendPlan,
+  identityConfirmBody,
   isUnboundNotebook,
   landingSelection,
   NO_PROJECT_ERROR,
@@ -764,5 +765,20 @@ describe("every way the Hub sends a chat question", () => {
     expect(hooksObject).toMatch(/\n    onComposerSend,\n/);
     expect(hooksObject).toContain("groundingLine:");
     expect(HOST).not.toMatch(/suggestChips/);
+  });
+});
+
+describe("identityConfirmBody (#6085)", () => {
+  it("sends the ticked number", () => {
+    expect(identityConfirmBody({ manufacturer: "Siemens", model: "TP700", offeredNumber: "6AV2124-0GC01-0AX0", confirmedNumber: "6AV2124-0GC01-0AX0" }))
+      .toEqual({ manufacturer: "Siemens", model: "TP700", confirmedNumber: "6AV2124-0GC01-0AX0" });
+  });
+  it("never sends a number that was only offered", () => {
+    expect(identityConfirmBody({ manufacturer: "Siemens", model: "TP700", offeredNumber: "6AV2124-0GC01-0AX0" }))
+      .toEqual({ manufacturer: "Siemens", model: "TP700" });
+  });
+  it("control: keeps the catalog number as before", () => {
+    expect(identityConfirmBody({ manufacturer: "SMC", model: "SS5Y3", catalogNumber: "DUW01302" }))
+      .toEqual({ manufacturer: "SMC", model: "SS5Y3", catalogNumber: "DUW01302" });
   });
 });
