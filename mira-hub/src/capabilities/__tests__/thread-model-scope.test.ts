@@ -196,7 +196,8 @@ describe("threadStatusScope: the question an identity card was saved on (#6085)"
     const noMaker = { manufacturer: null, model: "TP700", catalogNumber: "", recordCatalog: null };
     expect(threadStatusScope([tp900], noMaker)).toBe("other");
     expect(threadStatusScope([tp900], { ...noMaker, cards: [card(tp900, "", "TP700")] })).toBe("other");
-    const noModel = { manufacturer: "Siemens", model: null, catalogNumber: "6AV2124-0GC01-0AX0", recordCatalog: null };
+    // No catalog either, so the confirmed-catalog rule cannot be what keeps the card out.
+    const noModel = { manufacturer: "Siemens", model: null, catalogNumber: "", recordCatalog: null };
     expect(threadStatusScope([tp900], noModel)).toBe("other");
     expect(threadStatusScope([tp900], { ...noModel, cards: [card(tp900, "Siemens", "")] })).toBe("other");
   });
