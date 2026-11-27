@@ -397,12 +397,6 @@ const SKIP_LOCKOUT_RE = new RegExp(
       // "hot to the touch" carry no such verb and stay controls)
       "(?:pull|swap|replac|chang|remov|servic|fix|work\\s+on)\\w*\\s+(?:it|them|this|that|the\\s+\\w+(?:\\s+\\w+)?)\\s+hot",
       "hot[- ]?(?:swap|plug)\\w*",
-      // #6063 / #6006: the same shape with "live" as the adverb, "connect the BAT+ BAT- cables live". The words
-      // between the verb and "live" may not turn it into a check ("disconnect it and check if it's live"), and
-      // "live" must close the phrase ("disconnect the live wire" keeps its owner-decided banner).
-      "(?:connect|disconnect|reconnect|land|lift|plug|unplug|pull|swap|replac|chang|remov|install|servic|work\\s+on)\\w*\\s+" +
-        "(?:(?!(?:is|are|it's|its|if|whether|check\\w*|see|verify\\w*|confirm\\w*|test\\w*|still|was|were|be)\\b)[^\\s,.;!?]+\\s+){1,5}?" +
-        "live(?=\\s*(?:$|[,.;!?]|(?:with|while|and|or|ok|okay|please|now|safely|on|onto|to|without|so|if|is)\\b))",
       // "without killing power", "without shutting it down", "without de-energizing"
       "without\\s+(?:killing|cutting|dropping|removing|isolating|disconnecting)\\s+(?:the\\s+|all\\s+)?power",
       "without\\s+de-?energi[sz]ing",
@@ -422,6 +416,20 @@ const SKIP_LOCKOUT_RE = new RegExp(
       "can'?t\\s+(?:shut|take|bring|power)\\s+(?:it|this|that|the\\s+\\w+(?:\\s+\\w+)?)\\s+(?:down|off(?:line)?)",
     ].join("|") +
     ")\\b",
+  "i",
+);
+
+/**
+ * #6063 / #6006: hands-on work on a part with "live" as the adverb, "connect the BAT+, BAT- cables live" — the
+ * "pull the jumper hot" shape. Up to seven words between the verb and "live" (commas allowed, so terminal lists
+ * pass), but none that turns it into a check ("disconnect it and check if it's live") or a commissioning step
+ * ("connect the Ethernet cable and go live"); "live" must close the phrase ("disconnect the live wire" keeps its
+ * banner). Judged after negated sentences are dropped (#6091 Codex F4).
+ */
+const LIVE_ADVERB_RE = new RegExp(
+  "\\b(?:connect|disconnect|reconnect|land|lift|plug|unplug|pull|swap|replac|chang|remov|install|servic|work\\s+on)\\w*\\s+" +
+    "(?:(?!(?:is|are|it's|if|whether|check\\w*|see|verify\\w*|confirm\\w*|test\\w*|still|was|were|be|go|goes|going|went|gone|before|after|until|once|when|bring\\w*|brought|come|comes|coming)\\b)[^\\s.;!?]+\\s+){1,7}?" +
+    "live(?=\\s*(?:$|[,.;!?]|(?:with|while|and|or|ok|okay|please|now|safely|on|onto|to|without|so|if|is)\\b))",
   "i",
 );
 
@@ -529,7 +537,7 @@ const PURE_DEFINITION_RE =
 /** Energized-work INTENT, opener-agnostic: a powered or skip-lockout state
  *  together with a hands-on verb, a work object, or powered contact. */
 function hasEnergizedWorkIntent(msg: string): boolean {
-  const state = skipLockoutIntent(msg) || POWERED_STATE_RE.test(msg);
+  const state = skipLockoutIntent(msg) || POWERED_STATE_RE.test(msg) || LIVE_ADVERB_RE.test(msg);
   if (!state) return false;
   return HANDS_ON_VERB_RE.test(msg) || WORK_OBJECT_RE.test(msg) || isPoweredContact(msg);
 }
@@ -578,6 +586,8 @@ export function isEnergizedWorkAsk(message: string): boolean {
   // Codex round 7 F3: evaluate the powered state and the work ask only over
   // the sentences that do not NEGATE the work (see NEGATED_WORK_SENTENCE_RE).
   const msgEff = withoutNegatedWorkSentences(msg);
+  // #6063: an owner-decided banner phrase ("pull the fuse") keeps its banner (#6091 Codex F5).
+  if (LIVE_ADVERB_RE.test(msgEff) && !notebookSafetyTrigger(msgEff)) return true;
   if (!POWERED_STATE_RE.test(msgEff)) return false;
   // A status report / reading question with no hands-on verb is diagnosis,
   // not energized work (round-2 review false positives) — unless the message
