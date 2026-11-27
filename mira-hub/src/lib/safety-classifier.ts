@@ -428,10 +428,24 @@ const SKIP_LOCKOUT_RE = new RegExp(
  */
 const LIVE_ADVERB_RE = new RegExp(
   "\\b(?:connect|disconnect|reconnect|land|lift|plug|unplug|pull|swap|replac|chang|remov|install|servic|work\\s+on)\\w*\\s+" +
-    "(?:(?!(?:is|are|it's|if|whether|check\\w*|see|verify\\w*|confirm\\w*|test\\w*|still|was|were|be|go|goes|going|went|gone|before|after|until|once|when|bring\\w*|brought|come|comes|coming)\\b)[^\\s.;!?]+\\s+){1,7}?" +
-    "live(?=\\s*(?:$|[,.;!?]|(?:with|while|and|or|ok|okay|please|now|safely|on|onto|to|without|so|if|is)\\b))",
-  "i",
+    "(?:(?!(?:is|are|it's|if|whether|check\\w*|see|verify\\w*|confirm\\w*|test\\w*|still|was|were|be|go|goes|going|went|gone|before|after|until|once|when|then|so|bring\\w*|brought|come|comes|coming|deploy\\w*|stream\\w*|broadcast\\w*|run|running)\\b)[^\\s.;!?]+\\s+){1,10}?" +
+    // "live" is the adverb, not a noun's modifier ("the live wire", "batteries live mean", "stream live video").
+    "live\\b(?!\\s+(?:wires?|circuits?|panels?|bus\\w*|sides?|legs?|conductors?|parts?|mean\\w*|stream\\w*|video|feed|demo|data|version|site|environment|system|test\\w*)\\b)",
+  "gi",
 );
+/**
+ * #6091 Codex r2: "never disconnect ... live" / "how do I avoid disconnecting ... live" negate the work (F4). When
+ * the live-work words are themselves an owner-decided banner phrase ("pull the fuse live"), that banner keeps
+ * precedence; a banner phrase elsewhere in the message ("the placard says de-energize") does not (F5/F6).
+ */
+function liveAdverbAsk(msg: string): boolean {
+  for (const m of msg.matchAll(LIVE_ADVERB_RE)) {
+    if (NEGATION_BEFORE_RE.test(msg.slice(Math.max(0, m.index! - 40), m.index!))) continue;
+    if (matchSafetyStop(m[0])) continue;
+    return true;
+  }
+  return false;
+}
 
 // Round-2 review: a STATUS report or reading question is a diagnosis turn,
 // not a work ask, even when it names a powered machine and a part: "with the
@@ -537,7 +551,7 @@ const PURE_DEFINITION_RE =
 /** Energized-work INTENT, opener-agnostic: a powered or skip-lockout state
  *  together with a hands-on verb, a work object, or powered contact. */
 function hasEnergizedWorkIntent(msg: string): boolean {
-  const state = skipLockoutIntent(msg) || POWERED_STATE_RE.test(msg) || LIVE_ADVERB_RE.test(msg);
+  const state = skipLockoutIntent(msg) || POWERED_STATE_RE.test(msg) || liveAdverbAsk(msg);
   if (!state) return false;
   return HANDS_ON_VERB_RE.test(msg) || WORK_OBJECT_RE.test(msg) || isPoweredContact(msg);
 }
@@ -587,7 +601,7 @@ export function isEnergizedWorkAsk(message: string): boolean {
   // the sentences that do not NEGATE the work (see NEGATED_WORK_SENTENCE_RE).
   const msgEff = withoutNegatedWorkSentences(msg);
   // #6063: an owner-decided banner phrase ("pull the fuse") keeps its banner (#6091 Codex F5).
-  if (LIVE_ADVERB_RE.test(msgEff) && !notebookSafetyTrigger(msgEff)) return true;
+  if (liveAdverbAsk(msgEff)) return true;
   if (!POWERED_STATE_RE.test(msgEff)) return false;
   // A status report / reading question with no hands-on verb is diagnosis,
   // not energized work (round-2 review false positives) — unless the message
