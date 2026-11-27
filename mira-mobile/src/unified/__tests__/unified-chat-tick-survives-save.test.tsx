@@ -49,7 +49,7 @@ vi.mock("../../api/resources", async (importOriginal) => {
 
 import { UnifiedChat } from "../../screens/UnifiedChat";
 import type { NotebookServerTurn } from "../../api/resources";
-import type { ChatTurn } from "../../chat-adapter/contract";
+import type { ChatTurn } from "../../lib/sse";
 
 const NB = "nb-6104";
 const QUESTION = "Our SMC SS5Y3-DUW01302 manifold SS5Y3-DUW01302-A leaks at the end plate";
