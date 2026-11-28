@@ -1341,7 +1341,14 @@ capabilities:
       Gate flag is MIRA_OEM_VIEWER ("1"/"true" = on), read at call time by
       oemViewerEnabled() in mira-hub/src/capabilities/oem-source-bytes.ts.
       Recorded in notes, not feature_flag, because tools/capability_closure.py
-      scans Python modules only. The real-Postgres suite
+      scans Python modules only. Default off; "1"/"true" gives shared-manual
+      citations a sourceEntryId and enables GET /api/oem-sources/{entryId}/,
+      any other value keeps the old vendor link and the route answers a
+      signed-in request 404 oem_viewer_disabled (no session is still 401). Not
+      in docs/env-vars.md yet: tools/check_env_drift.py requires every
+      documented var to be forwarded by a staging or production compose file,
+      and forwarding it is a deploy change that comes with the migration 119
+      staging approval. The real-Postgres suite
       (oem-source-bytes.integration.test.ts) needs a disposable database and is
       not run by any CI job; it was run locally.
 
