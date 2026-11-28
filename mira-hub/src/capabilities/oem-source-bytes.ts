@@ -194,8 +194,9 @@ export async function fetchOemPdf(sourceUrl: string, deps: FetchDeps = defaultFe
 
 /**
  * The shared-library row a citation may open through the Hub's own copy: only a public
- * manufacturer manual chunk (no parked document id, not private, an http(s) address). An
- * upload, a private row, or a row with no web address returns null and keeps its old link.
+ * manufacturer manual chunk (no parked document id, not private, an https address on an
+ * allowlisted vendor host). An upload, a private row, or any other address returns null and
+ * keeps its old link.
  */
 export function oemSourceEntryId(chunk: {
   docId?: string | null;
@@ -204,7 +205,9 @@ export function oemSourceEntryId(chunk: {
   sourceUrl?: string | null;
 }): string | null {
   if (chunk.docId || chunk.isPrivate !== false || !chunk.entryId) return null;
-  return /^https?:\/\//i.test(chunk.sourceUrl ?? "") ? chunk.entryId : null;
+  // Only a manual the Hub can actually fetch (https, allowlisted host). Anything else keeps its
+  // raw vendor link, so a forum post or an http-only address is never turned into a dead end.
+  return allowedSourceUrl(chunk.sourceUrl ?? "") ? chunk.entryId : null;
 }
 
 /** The address a shared manual chunk came from, or null. Raw owner pool: RLS on

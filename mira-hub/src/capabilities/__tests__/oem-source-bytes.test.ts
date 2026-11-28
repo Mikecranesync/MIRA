@@ -260,5 +260,8 @@ describe("oemSourceEntryId — which citations open the Hub's copy", () => {
   it("no web address, or no row id, is nothing to open", () => {
     expect(oemSourceEntryId({ ...shared, sourceUrl: "hub-upload://t/x.pdf" })).toBeNull();
     expect(oemSourceEntryId({ ...shared, entryId: null })).toBeNull();
+  });  it("an address the Hub would refuse to fetch keeps its raw vendor link (no dead end)", () => {
+    expect(oemSourceEntryId({ ...shared, sourceUrl: "https://forum.example.com/t/123" })).toBeNull();
+    expect(oemSourceEntryId({ ...shared, sourceUrl: "http://cache.industry.siemens.com/dl/files/g120.pdf" })).toBeNull();
   });
 });

@@ -12,6 +12,7 @@ import {
   requestId,
   viewerHref,
   viewerHrefForOem,
+  openDocumentHref,
   viewerMode,
 } from "./document-page-viewer-logic";
 
@@ -136,6 +137,24 @@ describe("the viewer opens a manufacturer manual by its row id", () => {
   });
   it("both file and oem is no request, not a guess at which one", () => {
     expect(parseViewerRequest(`?file=${FILE}&oem=${ENTRY}`)).toBeNull();
+  });
+  it("the vendor address rides along on an allowlisted host and becomes Open document", () => {
+    const src = "https://cache.industry.siemens.com/dl/files/g120.pdf";
+    const href = viewerHrefForOem(ENTRY, 906, src);
+    const req = parseViewerRequest(href.slice(href.indexOf("?")))!;
+    expect(req).toEqual({ oemId: ENTRY, page: 906, sourceUrl: src });
+    expect(openDocumentHref(req, 906)).toBe(`${src}#page=906`);
+    expect(requestBytesHref(req, null)).toBe(`${API_BASE}/api/oem-sources/${ENTRY}/`);
+  });
+  it("an off-list or http vendor address is dropped; Open document falls back to the byte route", () => {
+    expect(viewerHrefForOem(ENTRY, 906, "https://evil.example.com/x.pdf")).toBe(`${BASE_PATH}/v3/source/?oem=${ENTRY}&page=906`);
+    const req = parseViewerRequest(`?oem=${ENTRY}&page=906&src=${encodeURIComponent("http://cache.industry.siemens.com/x.pdf")}`)!;
+    expect(req).toEqual({ oemId: ENTRY, page: 906 });
+    expect(openDocumentHref(req, 906)).toBe(`${API_BASE}/api/oem-sources/${ENTRY}/#page=906`);
+  });
+  it("control: a file request opens its own byte route", () => {
+    const req = parseViewerRequest(`?file=${FILE}&page=3`)!;
+    expect(openDocumentHref(req, 3)).toBe(`${API_BASE}/api/namespace/files/${FILE}/#page=3`);
   });
   it("a manual the Hub could not fetch says so and points at Open document", () => {
     expect(failureMessage(502)).toBe("This manual can't be loaded here. Use Open document.");

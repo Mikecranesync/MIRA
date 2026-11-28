@@ -194,7 +194,7 @@ export function citationHref(citation: EvidenceCitation): string | undefined {
   if (citation.originFileId) return fileUrl(citation.originFileId);
   if (citation.fileId) return viewerHref(citation.fileId, citation.page);
   // #6119: a public manufacturer manual opens in the same viewer from the Hub's own copy.
-  if (citation.sourceEntryId) return viewerHrefForOem(citation.sourceEntryId, citation.page);
+  if (citation.sourceEntryId) return viewerHrefForOem(citation.sourceEntryId, citation.page, citation.sourceUrl);
   const url = citation.sourceUrl ?? "";
   if (/^https?:\/\//i.test(url)) return url.includes("#") ? url : `${url}${page}`;
   return undefined;

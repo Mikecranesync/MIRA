@@ -13,6 +13,7 @@ import {
   pageCaption,
   pageToShow,
   parseViewerRequest,
+  openDocumentHref,
   requestBytesHref,
   requestId,
   viewerMode,
@@ -148,7 +149,7 @@ export function DocumentPageViewer() {
   });
   const rendered = state.kind === "ready" && state.rendered;
   const openDocument = request ? (
-    <a href={requestBytesHref(request, request.page)} target="_blank" rel="noopener noreferrer">Open document</a>
+    <a href={openDocumentHref(request, request.page)} target="_blank" rel="noopener noreferrer">Open document</a>
   ) : null;
 
   return (

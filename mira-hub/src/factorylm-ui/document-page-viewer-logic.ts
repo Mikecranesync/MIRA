@@ -10,6 +10,7 @@
  * embed or for an explicit citation. A standalone uncited file can open natively.
  */
 import { API_BASE } from "@/lib/config";
+import { isOemSourceAddress } from "@/capabilities/oem-source-hosts";
 
 /** The same-origin page that shows one cited page of a parked document. */
 export function viewerHref(fileId: string, page: number | null | undefined): string {
@@ -24,18 +25,20 @@ export function nativeFileHref(fileId: string, page: number | null): string {
   return `${API_BASE}/api/namespace/files/${encodeURIComponent(fileId)}/${page ? `#page=${page}` : ""}`;
 }
 
-/** #6119: the same viewer for a public manufacturer manual, by its shared-library row id. */
-export function viewerHrefForOem(entryId: string, page: number | null | undefined): string {
+/** #6119: the same viewer for a public manufacturer manual, by its shared-library row id.
+ *  The vendor's own address rides along (allowlisted hosts only) as the Open document fallback. */
+export function viewerHrefForOem(entryId: string, page: number | null | undefined, sourceUrl?: string | null): string {
   const base = process.env.NEXT_PUBLIC_BASE_PATH ?? "/hub";
   const query = new URLSearchParams({ oem: entryId });
   if (page && page > 0) query.set("page", String(page));
+  if (sourceUrl && isOemSourceAddress(sourceUrl)) query.set("src", sourceUrl);
   return `${base}/v3/source/?${query.toString()}`;
 }
 
 /** A parked upload (`?file=`) or a public manufacturer manual (`?oem=`, #6119). */
 export type ViewerRequest =
   | { readonly fileId: string; readonly page: number | null }
-  | { readonly oemId: string; readonly page: number | null };
+  | { readonly oemId: string; readonly page: number | null; readonly sourceUrl?: string };
 
 /** Reads `?file=…&page=…` or `?oem=…&page=…`. Neither, or both, is no request; a bad page is no page. */
 export function parseViewerRequest(search: string): ViewerRequest | null {
@@ -47,13 +50,25 @@ export function parseViewerRequest(search: string): ViewerRequest | null {
   const raw = params.get("page");
   const n = raw !== null && /^\d+$/.test(raw) ? Number(raw) : NaN;
   const page = Number.isSafeInteger(n) && n > 0 ? n : null;
-  return fileId ? { fileId, page } : { oemId, page };
+  if (fileId) return { fileId, page };
+  const src = params.get("src") ?? "";
+  return isOemSourceAddress(src) ? { oemId, page, sourceUrl: src } : { oemId, page };
 }
 
 /** The byte route the viewer reads, at the page for a native viewer. */
 export function requestBytesHref(req: ViewerRequest, page: number | null): string {
   if ("fileId" in req) return nativeFileHref(req.fileId, page);
   return `${API_BASE}/api/oem-sources/${encodeURIComponent(req.oemId)}/${page ? `#page=${page}` : ""}`;
+}
+
+/** Open document: the vendor's own allowlisted address when known (never fetched, only linked),
+ *  otherwise the byte route. A manual the Hub can't load still opens at the vendor. */
+export function openDocumentHref(req: ViewerRequest, page: number | null): string {
+  if ("oemId" in req && req.sourceUrl) {
+    if (req.sourceUrl.includes("#") || !page) return req.sourceUrl;
+    return `${req.sourceUrl}#page=${page}`;
+  }
+  return requestBytesHref(req, page);
 }
 
 /** The id the caption names: the parked file, or the manual's shared-library row. */
