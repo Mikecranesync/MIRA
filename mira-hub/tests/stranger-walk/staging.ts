@@ -159,15 +159,14 @@ export function worstCaseTurnUsd(prices = PROVIDER_PRICES, b = TURN_BOUND): numb
   return usd + (JEV_CALLS_PER_TURN * JEV_INPUT_BOUND * JEV_CEILING_PER_MTOK_IN) / 1e6; // Jev, input-only
 }
 
-/** The declared hard cap per run. STRANGER_WALK_BUDGET_USD may only LOWER it: a value that is not a
- *  finite number in [0, 4.50] (e.g. an inherited 100 or Infinity) refuses to start. */
+/** Each walk can only lower its declared ceiling; the standard Stranger Walk defaults to $4.50. */
 export const MAX_USD_PER_RUN = 4.5;
-export function budgetUsdFromEnv(env: Record<string, string | undefined> = process.env): number {
+export function budgetUsdFromEnv(env: Record<string, string | undefined> = process.env, maxUsd = MAX_USD_PER_RUN): number {
   const raw = env.STRANGER_WALK_BUDGET_USD;
-  if (raw === undefined || raw.trim() === "") return MAX_USD_PER_RUN;
+  if (raw === undefined || raw.trim() === "") return maxUsd;
   const v = Number(raw);
-  if (!Number.isFinite(v) || v < 0 || v > MAX_USD_PER_RUN) {
-    throw new Error(`STRANGER_WALK_BUDGET_USD=${raw} is outside the $0–$${MAX_USD_PER_RUN} budget — refusing to spend`);
+  if (!Number.isFinite(v) || v < 0 || v > maxUsd) {
+    throw new Error(`STRANGER_WALK_BUDGET_USD=${raw} is outside the $0–$${maxUsd} budget — refusing to spend`);
   }
   return v;
 }
