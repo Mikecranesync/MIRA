@@ -81,13 +81,17 @@ export interface TxClient {
  *   for the same machine therefore cannot add or clear one, whichever box the first confirm left.
  *   Only entries carrying a code count (r1 F4), so an entry the scope cannot use never stands in.
  *
- * Runs under its own savepoint: a failing statement is rolled back to it, logged and reported as
- * false. A missing column (before migration 118, when every read fails closed) ends there, so the
- * confirm still commits. Any other failure on a settle then empties the numbers outside the
- * savepoint (round-3 pre-screen 3): a settle never commits over numbers an earlier identity left,
- * and if even that write fails the confirm's transaction fails and nothing commits. The row is
- * locked and was just written in this transaction, so neither write can match no row. True when
- * the ticked code is the machine's number afterwards. Touches only `confirmed_numbers`.
+ * Runs under its own savepoint: a failing statement is rolled back to it and logged. A missing
+ * column (before migration 118, when every read fails closed) ends there as false, so the confirm
+ * still commits. Any other failure on a settle with a tick is thrown (#6116, option C): a ticked
+ * settle saves its number or fails whole, so nothing commits, the identity stays unsettled and the
+ * card keeps its tick for the technician to press again. Any other failure on an unticked settle
+ * empties the numbers outside the savepoint instead (round-3 pre-screen 3): a settle never commits
+ * over numbers an earlier identity left, and if even that write fails the confirm's transaction
+ * fails and nothing commits. A failed check on an identity settled before stays false: it writes
+ * nothing. The row is locked and was just written in this transaction, so no write can match no
+ * row. True when the ticked code is the machine's number afterwards. Touches only
+ * `confirmed_numbers`.
  */
 export async function recordConfirmedNumber(
   c: TxClient,
@@ -124,7 +128,10 @@ export async function recordConfirmedNumber(
   } catch (err) {
     await c.query("ROLLBACK TO SAVEPOINT confirmed_number");
     console.warn(`[confirmed-numbers] save failed notebook=${notebookId}: ${(err as Error).message}`);
-    if (!settledBefore && !missingColumn(err)) await c.query(CLEAR_SQL, [tenantId, notebookId]);
+    if (!settledBefore && !missingColumn(err)) {
+      if (entry) throw err;
+      await c.query(CLEAR_SQL, [tenantId, notebookId]);
+    }
     return false;
   }
 }

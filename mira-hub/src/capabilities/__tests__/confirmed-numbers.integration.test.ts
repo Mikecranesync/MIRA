@@ -1,9 +1,9 @@
 // #6085: migration 118 and the confirmed-number write, against a real, disposable Postgres.
 // The number is decided inside the identity confirm's own locked transaction
 // (`confirmNotebookIdentity`, #6104 r2 F3/F4): only the confirm that settles the identity may add
-// one, one number per machine, a retry of it stays a success, another tenant can neither read nor
-// write, and a failing number write rolls back alone, leaving no number; only when even emptying
-// the numbers fails does the confirm fail and commit nothing.
+// one, one number per machine, a retry of it stays a success, and another tenant can neither read
+// nor write. A ticked settle whose number cannot be saved fails and commits nothing, and pressing
+// again saves it (#6116); an unticked settle fails only when even emptying the numbers fails.
 //
 // From mira-hub/ (throwaway database only):
 //   docker run -d --name mira6085-pg -e POSTGRES_PASSWORD=testpw -e POSTGRES_DB=mira_test -p 55685:5432 postgres:16
@@ -236,14 +236,17 @@ describe("migration 118 + the number decided in the identity confirm (real Postg
     expect(await scopeOf(nb)).toBe("own");
   });
 
-  // A failing number write rolls back to its own savepoint and the numbers are emptied instead, so
-  // the identity still commits, with no number (a Hub deployed before migration 118 also commits:
-  // below).
-  it("a failing number write rolls back alone: the identity is confirmed and numberSaved is false", async () => {
+  // #6116 (option C): a ticked confirm that settles the identity saves its number or fails whole.
+  // A failing number write rolls back the whole confirm, so the identity is not settled, the card
+  // keeps its tick and the technician presses again. A Hub deployed before migration 118 still
+  // confirms (below).
+  it("a ticked settle whose number cannot be stored fails and commits nothing (#6116)", async () => {
     const nb = await makeBlank();
+    const before = await status(nb);
+    expect(before).not.toBe("user_confirmed"); // precondition: not settled
     const unstorable = { number: "6AV2124-0GC01-0AX0\u0000", code: "6AV21240GC010AX0" }; // jsonb rejects \u0000
-    expect(await confirmNotebookIdentity(TENANT, nb, ID, unstorable)).toEqual({ ok: true, numberSaved: false });
-    expect(await status(nb)).toBe("user_confirmed");
+    await expect(confirmNotebookIdentity(TENANT, nb, ID, unstorable)).rejects.toThrow(/unicode/i);
+    expect(await status(nb)).toBe(before);
     expect(await readConfirmedNumbers(TENANT, nb)).toEqual([]);
   });
 
@@ -276,14 +279,68 @@ describe("migration 118 + the number decided in the identity confirm (real Postg
     return nb;
   };
 
-  it("a re-confirm whose ticked number cannot be stored empties the old number instead of keeping it", async () => {
+  /** #6116: only a write that stores a number fails; emptying the numbers still works. The failure
+   *  a statement timeout on the number write would give. */
+  const failNumberSaves = async () => {
+    await testPool.query(
+      `CREATE OR REPLACE FUNCTION fail_number_saves_6116() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF jsonb_array_length(NEW.confirmed_numbers) > 0 THEN RAISE EXCEPTION 'injected number save failure'; END IF; RETURN NEW; END $$`,
+    );
+    await testPool.query(
+      `CREATE TRIGGER fail_number_saves_6116 BEFORE UPDATE OF confirmed_numbers ON equipment_notebooks FOR EACH ROW EXECUTE FUNCTION fail_number_saves_6116()`,
+    );
+    expect((await testPool.query(`SELECT 1 FROM pg_trigger WHERE tgname = 'fail_number_saves_6116'`)).rowCount).toBe(1); // precondition
+  };
+  const restoreNumberSaves = async () => {
+    await testPool.query(`DROP TRIGGER IF EXISTS fail_number_saves_6116 ON equipment_notebooks`);
+    await testPool.query(`DROP FUNCTION IF EXISTS fail_number_saves_6116()`);
+  };
+
+  it("a re-confirm whose ticked number cannot be saved fails and commits nothing; the old number still does not count (#6116)", async () => {
     const nb = await reopenedWithOldNumber();
-    const unstorable = { number: `${OTHER_NUMBER.number}\u0000`, code: OTHER_NUMBER.code }; // jsonb rejects \u0000
-    expect(await confirmNotebookIdentity(TENANT, nb, ID, unstorable)).toEqual({ ok: true, numberSaved: false });
-    expect([await status(nb), await source(nb)]).toEqual(["user_confirmed", "user"]); // precondition: an identity whose numbers count
-    expect(await codes(nb)).toEqual([]);
+    await failNumberSaves();
+    try {
+      await expect(confirmNotebookIdentity(TENANT, nb, ID, OTHER_NUMBER)).rejects.toThrow(/injected number save failure/);
+    } finally {
+      await restoreNumberSaves();
+    }
+    expect([await status(nb), (await getNotebook(TENANT, nb))!.model]).toEqual(["candidate", "TP700"]);
     expect(await counted(nb)).toEqual([]);
-    expect(await scopeOf(nb)).toBe("other");
+    // The scope with the numbers the detail read counts (`scopeOf` reads stored ones, whatever the
+    // status, and the old number is still stored on this reopened identity).
+    expect(threadStatusScope([J2], { ...ENTRY, catalogNumber: "", recordCatalog: null, confirmedNumbers: await counted(nb) })).toBe("other");
+  });
+
+  // #6116: the card keeps its tick after a failed confirm, so pressing again is the settling
+  // confirm again, and it saves the number once the write works.
+  it("after a failed ticked settle, pressing again saves exactly that number (#6116)", async () => {
+    const nb = await makeBlank();
+    await failNumberSaves();
+    try {
+      await expect(confirmNotebookIdentity(TENANT, nb, ID, NUMBER)).rejects.toThrow(/injected number save failure/);
+    } finally {
+      await restoreNumberSaves();
+    }
+    expect(await status(nb)).not.toBe("user_confirmed"); // precondition: the failed confirm settled nothing
+    expect(await confirmNotebookIdentity(TENANT, nb, ID, NUMBER)).toEqual({ ok: true, numberSaved: true });
+    expect([await status(nb), await source(nb)]).toEqual(["user_confirmed", "user"]);
+    expect(await codes(nb)).toEqual(["6AV21240GC010AX0"]);
+    expect(await scopeOf(nb)).toBe("own");
+  });
+
+  // #6116 controls: while number saves fail, only a ticked settle fails. An unticked confirm and a
+  // confirm whose catalog number refuses the tick still confirm, with no number.
+  it("control: while number saves fail, an unticked settle and a catalog-number settle still confirm", async () => {
+    const plain = await makeBlank();
+    const catalog = await makeBlank();
+    await failNumberSaves();
+    try {
+      expect(await confirmNotebookIdentity(TENANT, plain, ID)).toEqual({ ok: true });
+      expect(await confirmNotebookIdentity(TENANT, catalog, { ...ID, catalogNumber: "6AV2124-0GC01-0AX0" }, NUMBER)).toEqual({ ok: true, numberSaved: false });
+    } finally {
+      await restoreNumberSaves();
+    }
+    expect([await status(plain), await status(catalog)]).toEqual(["user_confirmed", "user_confirmed"]);
+    expect([await codes(plain), await codes(catalog)]).toEqual([[], []]);
   });
 
   it("a settling re-confirm whose numbers cannot be written at all fails and commits nothing, ticked or not", async () => {

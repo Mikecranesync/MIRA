@@ -42,9 +42,11 @@
  * #6085: a ticked "confirmedNumber" is decided inside `confirmNotebookIdentity`'s own locked
  * transaction, for the thread status scope only: only the confirm that settles the identity may
  * add it (#6104 r2 F3), never alongside a catalog number (r2 F4), and it never changes the identity
- * write. A number write that fails leaves the identity confirmed with no number, and the response
- * says it was not saved. Only when even emptying the numbers fails does the confirm fail, so it
- * never commits over a number an earlier identity left (round-3 pre-screen 3).
+ * write. A settling confirm whose ticked number cannot be saved fails as a whole and commits
+ * nothing, so the card keeps its tick for the technician to press again (#6116). Before migration
+ * 118 the identity still confirms and the response says the number was not saved. An unticked
+ * settle fails only when even emptying the numbers fails, so it never commits over a number an
+ * earlier identity left (round-3 pre-screen 3).
  */
 import { NextRequest, NextResponse } from "next/server";
 import { sessionOr401 } from "@/lib/session";
@@ -179,8 +181,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: "confirm_failed" }, { status: 500 });
   }
 
-  // #6085: present only when a ticked number came with the confirm; false when it was refused
-  // or its write failed (the identity is still confirmed, with no number).
+  // #6085: present only when a ticked number came with the confirm; false when it was refused, or
+  // before migration 118 (the identity is confirmed, with no number). A settling confirm whose
+  // number write fails throws above instead and commits nothing (#6116).
   const numberSaved = confirmedNumber ? confirmResult.numberSaved === true : undefined;
 
   const identity = {

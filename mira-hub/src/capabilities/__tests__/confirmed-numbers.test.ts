@@ -153,24 +153,30 @@ describe("recordConfirmedNumber (inside the confirm's transaction)", () => {
     }
   });
 
-  // Round-3 pre-screen 3: a settle must not commit over numbers an earlier identity left. Any other
-  // failure empties them after the rollback, outside the savepoint, so if that write fails too the
-  // confirm's transaction fails and nothing commits.
-  it("on a settle, any other failure empties the numbers instead, and is false", async () => {
-    for (const entry of [SAVE, null]) {
-      query.mockReset();
-      query.mockResolvedValueOnce({}).mockRejectedValueOnce(new Error("invalid input syntax for type json")).mockResolvedValueOnce({}).mockResolvedValueOnce({ rows: [], rowCount: 1 });
-      expect(await recordConfirmedNumber(client, TENANT, NB, entry, false)).toBe(false);
-      expect(statements()).toEqual(["SAVEPOINT confirmed_number", "UPDATE equipment_notebooks", "ROLLBACK TO", "UPDATE equipment_notebooks"]);
-      const [sql, values] = query.mock.calls[3]! as [string, unknown[]];
-      expect(sql).toMatch(/UPDATE equipment_notebooks SET confirmed_numbers = '\[\]'::jsonb WHERE tenant_id = \$1::uuid AND id = \$2::uuid/);
-      expect(values).toEqual([TENANT, NB]);
-    }
+  // #6116 (option C): a ticked settle saves its number or fails whole. Any failure other than a
+  // missing column is rolled back to the savepoint and thrown, so the confirm's transaction fails and
+  // nothing commits; the card keeps its tick for the retry.
+  it("on a ticked settle, any other failure is rolled back to its savepoint and thrown, with no further write", async () => {
+    query.mockResolvedValueOnce({}).mockRejectedValueOnce(new Error("statement timeout")).mockResolvedValueOnce({}).mockResolvedValueOnce({ rows: [], rowCount: 1 });
+    await expect(recordConfirmedNumber(client, TENANT, NB, SAVE, false)).rejects.toThrow("statement timeout");
+    expect(statements()).toEqual(["SAVEPOINT confirmed_number", "UPDATE equipment_notebooks", "ROLLBACK TO"]);
   });
 
-  it("on a settle, when emptying the numbers fails too, the failure is thrown", async () => {
+  // Round-3 pre-screen 3: an unticked settle must not commit over numbers an earlier identity left.
+  // Any other failure empties them after the rollback, outside the savepoint, so if that write fails
+  // too the confirm's transaction fails and nothing commits.
+  it("on an unticked settle, any other failure empties the numbers instead, and is false", async () => {
+    query.mockResolvedValueOnce({}).mockRejectedValueOnce(new Error("invalid input syntax for type json")).mockResolvedValueOnce({}).mockResolvedValueOnce({ rows: [], rowCount: 1 });
+    expect(await recordConfirmedNumber(client, TENANT, NB, null, false)).toBe(false);
+    expect(statements()).toEqual(["SAVEPOINT confirmed_number", "UPDATE equipment_notebooks", "ROLLBACK TO", "UPDATE equipment_notebooks"]);
+    const [sql, values] = query.mock.calls[3]! as [string, unknown[]];
+    expect(sql).toMatch(/UPDATE equipment_notebooks SET confirmed_numbers = '\[\]'::jsonb WHERE tenant_id = \$1::uuid AND id = \$2::uuid/);
+    expect(values).toEqual([TENANT, NB]);
+  });
+
+  it("on an unticked settle, when emptying the numbers fails too, the failure is thrown", async () => {
     query.mockResolvedValueOnce({}).mockRejectedValueOnce(new Error("disk full")).mockResolvedValueOnce({}).mockRejectedValueOnce(new Error("disk full again"));
-    await expect(recordConfirmedNumber(client, TENANT, NB, SAVE, false)).rejects.toThrow("disk full again");
+    await expect(recordConfirmedNumber(client, TENANT, NB, null, false)).rejects.toThrow("disk full again");
     expect(statements()).toEqual(["SAVEPOINT confirmed_number", "UPDATE equipment_notebooks", "ROLLBACK TO", "UPDATE equipment_notebooks"]);
   });
 });

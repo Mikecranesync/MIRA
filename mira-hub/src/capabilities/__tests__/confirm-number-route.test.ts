@@ -135,8 +135,8 @@ describe("POST identity/confirm with a ticked number (#6085)", () => {
     expect(await res.json()).not.toHaveProperty("numberSaved");
   });
 
-  // A failed number write is rolled back inside the confirm and reported there as false; the route
-  // never reports a number saved that the confirm did not say it saved.
+  // The route never reports a number saved that the confirm did not say it saved. (A settling
+  // confirm whose number write fails rejects instead, above, #6116.)
   it("reports numberSaved false, never true, when the confirm does not say it saved the number", async () => {
     acqMock.confirmNotebookIdentity.mockResolvedValue({ ok: true });
     const res = await POST(req({ ...CARD, confirmedNumber: "6AV2124-0GC01-0AX0" }), params);
