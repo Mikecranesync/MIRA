@@ -102,5 +102,5 @@ Add CSV row to `tests/golden_gs11_conveyor.csv` only if you also want to drive i
 - Reference doc — `wiki/references/bot-grounding-tests.md`
 - Hot cache — `wiki/hot.md` 2026-05-19 entry
 - Memory — `feedback_lock_in_chronic_ops_bugs.md`, `project_recall_embedding_gate.md`
-- Complementary skill — `.claude/skills/kb-benchmark.md` (broader 100-MCQ exam — domain coverage, not grounding gate)
+- Complementary skill — `.claude/skills/kb-benchmark/SKILL.md` (broader 100-MCQ exam — domain coverage, not grounding gate)
 - Related command — `/mira-run-hallucination-audit` (static grep for risk patterns — complementary, not a substitute)

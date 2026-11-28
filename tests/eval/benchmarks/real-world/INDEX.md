@@ -22,7 +22,7 @@ Each entry is a forensic analysis of an actual user session pulled from mira.db.
 
 ## How to add an entry
 
-Run the `conversation-forensic` skill (`.claude/skills/conversation-forensic.md`):
+Run the `conversation-forensic` skill (`.claude/skills/conversation-forensic/SKILL.md`):
 
 ```
 /conversation-forensic

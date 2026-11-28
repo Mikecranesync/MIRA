@@ -205,7 +205,11 @@ wiki/.smart-env/
 .claire/
 
 # Third-party AI tool runtime dirs (local config, not code)
-.agents/
+# Exception: .agents/skills/ is Codex's checked-in repo skills folder
+# (https://developers.openai.com/codex/skills). It holds symlinks to
+# .claude/skills/<name>, so Claude's copy stays the single source of truth.
+.agents/*
+!.agents/skills/
 .codex/
 .serena/
 
