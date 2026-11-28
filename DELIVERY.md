@@ -1,8 +1,14 @@
 # FactoryLM / MIRA — Shared Delivery Plan
 
-Status date: 2026-11-08. Owner: CHARLIE Codex, integration role.
+Status date: 2026-11-27. Engineering coordination: Claude Desktop.
+Independent technical audit: Codex Desktop. Existing implementation and integration
+claims retain their owners until an acknowledged handoff.
 Strategy: [NORTH_STAR.md](NORTH_STAR.md).
 Live acceptance and agent updates: [#5232](https://github.com/Mikecranesync/MIRA/issues/5232).
+
+Product convergence: [acceptance matrix and recovery order](docs/plans/2026-11-27-product-convergence.md),
+[observed resources and ownership](docs/plans/2026-11-27-product-convergence-inventory.md).
+These are evidence crosswalks for the existing queue, not additional assignment queues.
 
 ## North stars and end goals
 
@@ -93,6 +99,9 @@ Conveyor stays stopped; equipment interaction remains read-only.
 These are responsibility summaries, not grants to take over active file claims.
 Verify current ownership and exact heads before editing. PR numbers are entry points,
 not claims about current merge, review or deployment status.
+The operating roles below govern coordination; the four lanes retain their existing
+specialties, claims and integration/device responsibilities. No running session is
+reassigned by a documentation change.
 
 | Agent | Responsibility | Starting references |
 |---|---|---|
@@ -140,13 +149,20 @@ mark it UNPUBLISHED, and publish/reconcile when access returns. Never imply peer
 ```text
 [DELIVERY-UPDATE: CHARLIE-CODEX | CHARLIE-CLAUDE | BRAVO-CODEX | BRAVO-CLAUDE]
 Updated: <ISO-8601 UTC>; session: <id>; claim: <link>
-Plan read: <DELIVERY.md commit/blob link>; acknowledgment: PROPOSED | MERGED
+Owner / contact: <agent, host, Desktop or CLI, verified receiver/task or GitHub thread>
 Goal / slice: <goal and issue>; branch / SHA: <exact>
+Plan read: <DELIVERY.md commit/blob link>; acknowledgment: PROPOSED | MERGED
+Intended outcome: <observable technician result and acceptance IDs>
+Worktree / scope: <absolute path; owned paths/contracts; foreign WIP or none>
+Plan: <next bounded steps and dependencies>
+Reuse: <existing source, PRs, branches, tests and receipts checked; demonstrated gap if new code>
 State: ACTIVE | BLOCKED | HANDOFF | COMPLETE
 Evidence: VERIFIED | REPORTED | NOT TESTED — <scope and receipt link>
 Stage: local | review/CI | staging | device | human | production
 Changed: <one sentence; preserve material earlier receipts>
+Progress: <observed result versus intended outcome; remaining acceptance IDs>
 Next: <one concrete action>; target: <ET date/time or not agreed>
+Next check: <UTC heartbeat due while executing, or handoff/stop condition>
 Blocked by / needs: <owner + specific action, or none>
 Decision for Mike: <specific decision, or none>
 ```
@@ -154,8 +170,12 @@ Decision for Mike: <specific decision, or none>
 Choose one lane marker, state, evidence label, stage and acknowledgment status per
 update; use extra short lines when evidence spans stages. COMPLETE means the owned slice's acceptance is proven, not
 that the entire product is accepted. FAIL is a valid test verdict; record it explicitly.
+Put the candidate's full head SHA on `Goal / slice` before any plan/source SHA:
+the current cockpit parser takes the first 40-character SHA in the report.
+Keep base/review/runtime revisions labelled separately; the cockpit is not their validator.
 
-CHARLIE Codex maintains the existing combined acceptance summary in #5232, linking the
+The Claude Desktop coordinator maintains the existing combined acceptance summary
+in #5232 with the CHARLIE Codex integration owner and independent Codex Desktop auditor, linking the
 four latest lane comments, candidate, milestone status and next decision. Refresh it
 when a material update changes integration or acceptance, and at integration closeout.
 The summary must distinguish VERIFIED, REPORTED, BLOCKED and NOT TESTED. Conflicting
@@ -169,6 +189,106 @@ deploy, spend, migration, OTA or device authority.
 attestation, running monitor or dispatcher. Existing running sessions must explicitly
 read/acknowledge it; a merged file cannot force already-running agents to reload.
 Do not require a new source commit/PR for each status update.
+
+## Product convergence operating loop
+
+The objective is pilot readiness through recovery, reuse, integration, repair and
+verification of existing capabilities. New application code is the last resort.
+The complete integrated milestone and controlling acceptance scope above remain.
+
+### Roles and one assignment queue
+
+| Role | Responsibility | Boundary |
+|---|---|---|
+| Claude Desktop — engineering coordinator | Reconcile existing claims and reports; select the next dependency in #5232; identify an execution owner, intended outcome, reuse candidates and acceptance evidence; maintain the combined summary. | A role designation is not proof of a live session or authority to interrupt, override a claim, spend, merge or deploy. Register the actual coordinator session and backup in #5232. |
+| Codex Desktop — independent technical auditor | Challenge the source/requirement mapping and completion claims; inspect exact source, tests, reviews and deployed evidence; identify unproven acceptance and regression risks. | Do not audit your own authored change as independent. This plan was authored by Codex and needs a separate authorized reviewer. Desktop audit does not substitute for the trusted-base R3 review producer. |
+| CLI agents — execution workers | Execute one claimed slice in an isolated worktree; recover and qualify existing work first; report using the template above; provide a reproducible handoff. | Preserve the repository's Claude implementation/Codex read-only review separation. An explicitly assigned exception remains bounded to that assignment; it grants no self-review. |
+| Mike — product and authorization owner | Decide supported offer/scope, resolve authority or requirement conflicts, arrange representative technicians, and make existing human-gated decisions. | Retain explicit merge, deploy, device, migration, sharing and spend boundaries and durable review budgets. |
+
+**#5232 is the authoritative assignment and outcome queue.** Its existing claims and
+linked implementation issues/PRs hold execution detail. Project #4 is its existing
+board view; Mission Control is an evidence cockpit. Neither stale board status nor
+a dashboard badge creates an assignment or proves pilot acceptance. The private
+Pilot Acceptance Ledger remains the authoritative pilot result record, as described
+in the [Mission Control runbook](docs/runbooks/mission-control.md).
+The matrix/backlog ranks dependencies and links the queue; it is not a new registry.
+
+### Registration, heartbeat, ownership and reassignment
+
+1. At start/resume, read this exact plan revision, `wiki/hot.md`, applicable module
+   instructions and controlling acceptance references. Run the existing three-command
+   coordination check in the [MVP plan](docs/plans/2026-04-19-mira-90-day-mvp.md#coordination--read-before-starting-any-unit).
+   Inspect actual changed paths of plausible overlapping PRs, not only their titles.
+2. Register through the established `[WORK-CLAIM]` on #5232 or its linked canonical
+   issue/PR. Include session/contact route, host, worktree, branch/full base and head,
+   owned paths/contracts, outcome, plan, reuse and next action. Re-read the namespace
+   after claiming: the earliest ACTIVE overlapping claim wins. Preserve the shared
+   UI writing lease and all other exclusive claims. Never edit another worktree.
+3. Keep the existing lane's owner-managed `[DELIVERY-UPDATE]` comment. A specialist
+   keeps a linked slice claim and reports through its lane owner; do not overwrite
+   another active owner's comment or create a second lane summary. New fields in
+   the template are prose extensions; retain the existing marker and enum syntax
+   so the current Mission Control parser continues to work.
+4. Report on start/resume, material change, blocker, handoff and closeout. While
+   executing, refresh the **same** owner comment at least every two hours with a
+   truthful timestamp, current progress/blocker and next check. Do not append
+   unchanged heartbeat comments. A blocked/stopped owner records when/what would
+   resume it; no unattended heartbeat job is required. Mission Control's current
+   nine-hour stale threshold is visibility, not a lease-expiry or takeover rule.
+5. Reassignment requires the current owner or Mike to record the transfer, or the
+   repository's existing stale-claim procedure: both claim and branch idle 24+ hours,
+   takeover note with the idle evidence on the original thread, and updated claim.
+   Check for a live process/contact and moving branch first; uncertainty goes to
+   Mike. A missing heartbeat, `notLoaded` task or old worktree alone proves nothing.
+   This mission inventories ownership; it performs no reassignment or interruption.
+6. Handoff includes exact source/body revision, reusable artifacts, tests with scope
+   and failures/skips, review ledger and remaining rounds, runtime evidence, blockers,
+   next action and receiver acknowledgment. Until acknowledged, mark HANDOFF pending;
+   do not assume another agent saw the plan or can receive an old peer ID.
+
+### Discover → recover → reuse → integrate → repair → verify → independently review → reassign
+
+For each selected queue item, the coordinator records its acceptance IDs, dependencies,
+existing owner and one next action. The worker then:
+
+- **Discover:** inspect current source, PRs/issues, worktrees/branches, historical
+  receipts, approved contracts and the real failing journey. Separate VERIFIED,
+  REPORTED, NOT TESTED and historical evidence.
+- **Recover:** locate the existing candidate and its owner; preserve foreign WIP,
+  applied migrations, source hashes, review budgets and earlier failure evidence.
+  A closed/old branch may hold useful work; it is not permission to delete or adopt it.
+- **Reuse:** compare the candidate with current main and the offered workflow.
+  Reuse the canonical domain state, shared UI, adapters, tests and coordination tools.
+  Document why an existing capability cannot close the observed gap before proposing
+  application code. No new orchestration service, queue, agent platform or registry.
+- **Integrate:** propose the smallest composition that delivers the complete intended
+  outcome. Record interface/flag/schema dependencies and serial writer order; obtain
+  any needed handoff first. Do not shrink acceptance to the passing component.
+- **Repair:** change only the demonstrated gap under the existing implementation
+  claim. Keep unsupported cases, safety stops and incomplete evidence visible.
+- **Verify:** run relevant regressions and the actual deployed staging technician
+  journey on an identified candidate. Bind source hash/revision, client/backend,
+  schema/flags, tenant/asset/thread, inputs, result and receipts. Include negative,
+  reload/retry and cross-tenant controls; preserve all stricter ledger thresholds.
+- **Independently review:** use the existing SDLC risk class, cheap lane and required
+  trusted-base exact-head/body review. Different author/reviewer; CI alone is not
+  review. A changed head/body invalidates old review; do not reset a spent ledger.
+- **Reassign:** reconcile the result in #5232 and the existing pilot ledger, then
+  select the next authorized unclaimed dependency. Record COMPLETE only for the
+  proven slice. Preserve local/test/review/staging/device/human/production distinctions.
+
+Stop the affected action for overlapping ownership, uncertain authority, unsafe or
+wrong-tenant/asset behavior, silent data loss/duplicate writes or charges, missing
+applicability/provenance, a new blocking/HIGH finding, exhausted review/spend/device
+allowance, or mismatched candidate/CI/runtime evidence. Record the failure and exact
+owner/action needed; continue only independent authorized work. Never bypass a gate,
+invent acceptance or turn a status report into permission. Follow
+[SDLC v1](docs/architecture/mira-sdlc-v1.md), the
+[multi-session protocol](.claude/rules/multi-session-protocol.md) and
+[environment rules](docs/environments.md).
+
+Adoption and first read order for each current session are in the
+[convergence crosswalk](docs/plans/2026-11-27-product-convergence.md#adoption-by-existing-agents).
 
 ## Change and authority boundaries
 

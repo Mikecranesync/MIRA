@@ -278,3 +278,7 @@ Changed: `wiki/hot.md`
 ## 2026-09-13T13:28:46Z — session auto-commit
 
 Changed: `wiki/hot.md`
+
+## 2026-11-27 — BRAVO product convergence documentation
+
+Prepared an isolated documentation draft extending DELIVERY's roles/reporting/operating loop, with existing-resource inventory, full acceptance crosswalk, recovery order and adoption instructions. Claim: [#5232 / 7218731903](https://github.com/Mikecranesync/MIRA/issues/5232#issuecomment-7218731903). Source base: `6446e887b11be95b1c463d0c1a26b1d105ea9210`. Existing queue, private pilot ledger, implementation claims and safety/SDLC gates retained. Independent R3 review and active-agent ACKs pending; no application/runtime or agent-control changes.
