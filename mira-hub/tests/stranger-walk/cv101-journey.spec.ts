@@ -6,8 +6,8 @@
  * is judged on what the screen said AND what the backend recorded. Expected outcomes live in
  * cv101-journey.scenarios.md and were written before the first paid run.
  *
- *   CV_TARGET=desktop|phone|pixel|tablet CV_PAID=1 doppler run --project factorylm --config stg -- \
- *     npx playwright test --config tests/stranger-walk/playwright.cv101-journey.config.ts
+ *   CV_TARGET=tablet CV_PAID=1 doppler run --project factorylm --config stg -- \
+ *     env STRANGER_WALK_BUDGET_USD=0.50 npx playwright test --config tests/stranger-walk/playwright.cv101-journey.config.ts
  *
  * pixel: drives the attached phone's Chrome over CDP (adb forward tcp:9333
  * localabstract:chrome_devtools_remote) in a NEW incognito context, so the phone's own sessions are
@@ -23,7 +23,7 @@ import { extractTurn, UI } from "../fidelity/surfaces";
 import { cardsOf, viewerTargetOf } from "./extract";
 import { githubToken } from "./required-fixes";
 import { reserveWalkSpend, settleWalkSpend } from "./spend-ledger";
-import { assertOpenRouterCeiling, BudgetMeter, identity, ledgerVerdictFor, pricesFromEnv, releaseOwnPilotHold, runtimeDrift, runtimeOf, stagingBase, teardownTenant, worstCaseTurnUsd, type RuntimeIdentity } from "./staging";
+import { assertOpenRouterCeiling, BudgetMeter, budgetUsdFromEnv, identity, ledgerVerdictFor, pricesFromEnv, releaseOwnPilotHold, runtimeDrift, runtimeOf, stagingBase, teardownTenant, worstCaseTurnUsd, type RuntimeIdentity } from "./staging";
 import { decodeChatBody } from "./stream-decode";
 import { admitPaidTurn, reconcilePaidTurn, recoverSetupTenant, requireDeployedPricing, settlementOf } from "./journey-guard";
 import { judgeCautionPointer, persistedRowIdOf, readableTexts, savedRowFor, servedTurnOf, type RenderedPart, type RenderedTurn, type ServedCitation } from "./journey-judges";
@@ -46,7 +46,7 @@ const OEM = "Rockwell Automation";
 const MODEL = "2080-LC20-20QWB";
 const JOB = "CV-101 PLC output check (synthetic)";
 const EMAIL = `strangerwalk-cv101-${RUN_ID.toLowerCase().replace(/[^a-z0-9-]/g, "-")}@factorylm.com`;
-const RUN_BUDGET_USD = 1.0;
+const CV101_MAX_USD_PER_RUN = 1.0;
 const Q_MAIN = "What are the relay contact ratings at 120 V AC on a Micro820 2080-LC20-20QWB?";
 const Q_CAUTION = "Can I disconnect the serial cable from a Micro820 with power applied in a hazardous location?";
 /** p.19 values, and the p.5 WARNING the caution answer must carry. */
@@ -377,17 +377,18 @@ async function classifySetupToken(token: string): Promise<string | null> {
 }
 
 test("cv101 journey", async () => {
+  const runBudgetUsd = budgetUsdFromEnv(process.env, CV101_MAX_USD_PER_RUN);
   test.setTimeout(90 * 60_000);
   mkdirSync(path.join(OUT, "shots"), { recursive: true });
   const base = stagingBase();
   const start = await identity(base);
-  writeFileSync(path.join(OUT, "run.json"), JSON.stringify({ RUN_ID, TARGET, PAID, email: EMAIL, build: start.gitSha, builtAt: start.builtAt, generation: start.deploymentGeneration, startedAt: new Date().toISOString() }, null, 1));
+  writeFileSync(path.join(OUT, "run.json"), JSON.stringify({ RUN_ID, TARGET, PAID, budgetUsd: runBudgetUsd, email: EMAIL, build: start.gitSha, builtAt: start.builtAt, generation: start.deploymentGeneration, startedAt: new Date().toISOString() }, null, 1));
   // Priced the way the stranger walk prices (walk.spec.ts): the deployed env's own rates, the Hub's
   // lane fingerprint and the OpenRouter ceiling are checked before any reservation (Codex r1 F1).
   // Each refusal throws here, before an account, a reservation or a paid turn exists.
   const prices = PAID ? pricesFromEnv() : undefined;
   let pricingHash = "";
-  const meter = new BudgetMeter(RUN_BUDGET_USD, worstCaseTurnUsd(prices));
+  const meter = new BudgetMeter(runBudgetUsd, worstCaseTurnUsd(prices));
   if (PAID) {
     pricingHash = requireDeployedPricing(start.inferenceFingerprint, prices!);
     await assertOpenRouterCeiling();
@@ -406,7 +407,7 @@ test("cv101 journey", async () => {
     // Reservation and browser start inside the lifecycle, so a CDP failure still writes the
     // receipt and settles the reservation (Codex r1 F5).
     if (PAID) {
-      reservation = await reserveWalkSpend({ token: githubToken(), repo: process.env.GITHUB_REPOSITORY, entryId: `cv101-${RUN_ID}`, usd: RUN_BUDGET_USD, note: `CV-101 journey ${RUN_ID} on ${start.gitSha.slice(0, 9)} (${TARGET})` });
+      reservation = await reserveWalkSpend({ token: githubToken(), repo: process.env.GITHUB_REPOSITORY, entryId: `cv101-${RUN_ID}`, usd: meter.budget, note: `CV-101 journey ${RUN_ID} on ${start.gitSha.slice(0, 9)} (${TARGET})` });
       if (!reservation.ok) throw new Error(`spend refused: ${reservation.reason}`);
     }
     ({ browser, ctx } = await newBrowser());

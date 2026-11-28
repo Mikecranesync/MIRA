@@ -32,13 +32,14 @@ describe("admitPaidTurn", () => {
   });
 
   it("refuses a turn whose worst case would cross the cap", () => {
-    const m = new BudgetMeter(0.25, 0.1);
+    const m = new BudgetMeter(0.5, 0.2);
     admitPaidTurn(m, start, start, "S5");
     reconcilePaidTurn(m, "S5", STOP_SSE, ZERO_CALL);
     admitPaidTurn(m, start, start, "S5b");
     reconcilePaidTurn(m, "S5b", STOP_SSE, ZERO_CALL);
-    expect(() => admitPaidTurn(m, start, start, "S6")).toThrow(/budget stop/);
+    expect(() => admitPaidTurn(m, start, start, "S6")).toThrow(/next turn's worst case would cross the run cap/);
     expect(m.turns).toBe(2);
+    expect(m.booked).toBeCloseTo(0.4);
   });
 });
 
