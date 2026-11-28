@@ -1298,6 +1298,53 @@ capabilities:
       paged-equipment.test.tsx) run in the shared-ui job of
       factorylm-ui-lab.yml, which this validator does not read (ci.yml only).
 
+  # =========================================================================
+  - id: oem_manual_cited_page_viewer
+    purpose: >-
+      A citation on a public manufacturer manual opens the Hub's own copy of that
+      PDF at the cited page (#6119), so Android, which has no inline PDF viewer,
+      lands on the page instead of a download or page 1. The Hub fetches the
+      manual once from an allowlisted vendor host, stores it (migration 119,
+      oem_source_documents) and serves it from GET /api/oem-sources/{entryId}/.
+    customer_outcome: >-
+      A technician taps a manufacturer-manual citation on the tablet and sees the
+      cited page; when the Hub cannot load the manual, Open document still opens
+      the vendor's own address.
+    feature_flag: null   # hub TS flag MIRA_OEM_VIEWER — see notes
+    entrypoints:
+      - "mira-hub/src/app/api/oem-sources/[id]/route.ts"
+      - "mira-hub/src/capabilities/oem-source-bytes.ts"
+    consumers:
+      - "mira-hub/src/app/api/equipment-notebooks/[id]/chat/route.ts   # citation sourceEntryId"
+      - "mira-hub/src/factorylm-ui/document-page-viewer-logic.ts"
+    environments:
+      dev: unset
+      staging: unset
+      production: unset
+    state: deployed_disabled
+    owner: null
+    owner_missing: "CHARLIE Claude Safety and Tablet Acceptance lane (#5232); owner assigned at promotion (Mike)."
+    ci_jobs:
+      - mira-hub-unit   # oem-source-bytes / oem-source-route / document-page-viewer-logic tests
+    required_checks: []
+    evidence: []
+    rollback: "n/a - off in every environment; flag off makes citations keep their old vendor link and the byte route answer 404."
+    reason: >-
+      Not deployed. Migration 119 sits in mira-hub/db/pending-migrations and is
+      applied nowhere shared; the flag stays off until it is applied, so no
+      citation can point at a route whose table does not exist yet.
+    promotion_criteria:
+      - "Mike approves applying migration 119 to staging (then prod) and the copyright question (the Hub keeps and serves its own copy of public vendor PDFs)."
+      - "Staging walk on the Galaxy Tab S9 FE: the G120 CU240BE-2 F30011 citation opens at PDF page 906; a manual the Hub cannot load still opens at the vendor through Open document."
+    review_by: "2026-12-15"
+    notes: >-
+      Gate flag is MIRA_OEM_VIEWER ("1"/"true" = on), read at call time by
+      oemViewerEnabled() in mira-hub/src/capabilities/oem-source-bytes.ts.
+      Recorded in notes, not feature_flag, because tools/capability_closure.py
+      scans Python modules only. The real-Postgres suite
+      (oem-source-bytes.integration.test.ts) needs a disposable database and is
+      not run by any CI job; it was run locally.
+
 ignored_flags:
   - CRAWL_SCHEDULE_ENABLED          # default-ON operational schedule, not a gated capability
   - ENFORCE_PLAN_QUOTA              # billing/plan enforcement; belongs to the PLG surface

@@ -17,6 +17,7 @@ import { createHash } from "node:crypto";
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
 import pool from "@/lib/db";
+import { displayPage } from "@/lib/manual-rag";
 import { OEM_SOURCE_HOSTS } from "./oem-source-hosts";
 
 export { OEM_SOURCE_HOSTS };
@@ -26,6 +27,20 @@ export const OEM_MAX_BYTES = 100 * 1024 * 1024;
 export const OEM_MAX_REDIRECTS = 3;
 /** How long a failed fetch is remembered before the vendor is asked again. */
 export const OEM_RETRY_AFTER_MS = 6 * 60 * 60 * 1000;
+/** At most this many vendor downloads run at once in one Hub process; more are told to retry. */
+export const OEM_MAX_CONCURRENT_FETCHES = 2;
+
+/**
+ * Default-off gate. Off (unset, empty, anything but "1"/"true") keeps every citation on its
+ * raw vendor link and the byte route answers 404, so nothing reaches `oem_source_documents`
+ * before migration 119 is applied. Read at call time, never at module load.
+ */
+export const OEM_VIEWER_FLAG = "MIRA_OEM_VIEWER";
+
+export function oemViewerEnabled(): boolean {
+  const v = process.env[OEM_VIEWER_FLAG];
+  return v === "1" || v === "true";
+}
 
 const HOSTS = new Set(OEM_SOURCE_HOSTS);
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -87,6 +102,12 @@ export function looksLikePdf(head: Uint8Array): boolean {
   return head.length >= 5 && Buffer.from(head.subarray(0, 5)).toString("latin1") === "%PDF-";
 }
 
+/** A whole PDF, not a cut-off one: the `%PDF-` header and an `%%EOF` marker in the last 1 KiB. */
+export function looksLikeCompletePdf(bytes: Uint8Array): boolean {
+  if (!looksLikePdf(bytes)) return false;
+  return Buffer.from(bytes.subarray(Math.max(0, bytes.length - 1024))).toString("latin1").includes("%%EOF");
+}
+
 /** The file name the browser is offered: the URL's last path segment, as a PDF name. */
 export function pdfFilename(url: string): string {
   let last = "";
@@ -124,6 +145,25 @@ export const defaultFetchDeps: FetchDeps = {
   timeoutMs: OEM_FETCH_TIMEOUT_MS,
   maxBytes: OEM_MAX_BYTES,
 };
+
+/** Rejects when `signal` aborts first, so a hung lookup is held to the same deadline as the fetch. */
+function withDeadline<T>(work: Promise<T>, signal: AbortSignal): Promise<T> {
+  if (signal.aborted) return Promise.reject(signal.reason);
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(signal.reason);
+    signal.addEventListener("abort", onAbort, { once: true });
+    work.then(
+      (v) => {
+        signal.removeEventListener("abort", onAbort);
+        resolve(v);
+      },
+      (e) => {
+        signal.removeEventListener("abort", onAbort);
+        reject(e);
+      },
+    );
+  });
+}
 
 /** Reads the body up to `max` bytes; null when it is larger (the stream is cancelled). */
 async function readCapped(res: Response, max: number): Promise<Buffer | null> {
@@ -163,7 +203,7 @@ export async function fetchOemPdf(sourceUrl: string, deps: FetchDeps = defaultFe
     for (let hop = 0; hop <= OEM_MAX_REDIRECTS; hop++) {
       const url = allowedSourceUrl(current);
       if (!url) return { status: "fetch_failed", httpStatus: null };
-      const addresses = await deps.resolve(url.hostname);
+      const addresses = await withDeadline(deps.resolve(url.hostname), signal);
       if (addresses.length === 0 || addresses.some(isPrivateAddress)) return { status: "fetch_failed", httpStatus: null };
       const res = await deps.fetch(url, { redirect: "manual", signal, headers: { accept: "application/pdf" } });
       if (res.status >= 300 && res.status < 400) {
@@ -177,13 +217,16 @@ export async function fetchOemPdf(sourceUrl: string, deps: FetchDeps = defaultFe
         await res.body?.cancel().catch(() => undefined);
         return { status: "host_refused", httpStatus: res.status };
       }
-      if (res.status < 200 || res.status >= 300) {
+      // Only a whole 200 response: a 206 (or any other 2xx) is never a complete document.
+      if (res.status !== 200) {
         await res.body?.cancel().catch(() => undefined);
         return { status: "fetch_failed", httpStatus: res.status };
       }
       const bytes = await readCapped(res, deps.maxBytes);
       if (bytes === null) return { status: "too_large", httpStatus: res.status };
-      if (!looksLikePdf(bytes)) return { status: "not_pdf", httpStatus: res.status };
+      const declared = res.headers.get("content-length");
+      if (declared !== null && Number(declared) !== bytes.byteLength) return { status: "not_pdf", httpStatus: res.status };
+      if (!looksLikeCompletePdf(bytes)) return { status: "not_pdf", httpStatus: res.status };
       return { status: "ok", httpStatus: res.status, bytes, contentType: "application/pdf" };
     }
     return { status: "fetch_failed", httpStatus: null };
@@ -204,10 +247,25 @@ export function oemSourceEntryId(chunk: {
   entryId?: string | null;
   sourceUrl?: string | null;
 }): string | null {
+  if (!oemViewerEnabled()) return null;
   if (chunk.docId || chunk.isPrivate !== false || !chunk.entryId) return null;
   // Only a manual the Hub can actually fetch (https, allowlisted host). Anything else keeps its
   // raw vendor link, so a forum post or an http-only address is never turned into a dead end.
   return allowedSourceUrl(chunk.sourceUrl ?? "") ? chunk.entryId : null;
+}
+
+/**
+ * The citation fields for the Hub's own copy, or null (the citation keeps its old link). The
+ * viewer draws exactly `page`, so a legacy chunk ordinal stored as a page (#2910, see
+ * `displayPage`) is no page at all rather than a wrong one.
+ */
+export function oemCitationLink(chunk: Parameters<typeof oemSourceEntryId>[0] & {
+  sourcePage?: number | null;
+  chunkIndex?: number | null;
+}): { sourceEntryId: string; page: number | null } | null {
+  const sourceEntryId = oemSourceEntryId(chunk);
+  if (!sourceEntryId) return null;
+  return { sourceEntryId, page: displayPage({ sourcePage: chunk.sourcePage ?? null, chunkIndex: chunk.chunkIndex ?? null }) };
 }
 
 /** The address a shared manual chunk came from, or null. Raw owner pool: RLS on
@@ -217,13 +275,16 @@ export const RESOLVE_SOURCE_SQL = `SELECT source_url FROM knowledge_entries
 
 const CACHE_SQL = `SELECT status, content, retry_after FROM oem_source_documents WHERE url_sha256 = $1`;
 
-const STORE_SQL = `INSERT INTO oem_source_documents
+/** A stored good copy is never replaced: the first complete PDF for a URL stays pinned, so a
+ *  later vendor change cannot silently swap the pages under an existing citation. */
+export const STORE_SQL = `INSERT INTO oem_source_documents
       (url_sha256, source_url, status, http_status, content, content_sha256, content_type, byte_length, page_count, fetched_at, retry_after)
     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NULL, now(), $9)
     ON CONFLICT (url_sha256) DO UPDATE SET
       status = EXCLUDED.status, http_status = EXCLUDED.http_status, content = EXCLUDED.content,
       content_sha256 = EXCLUDED.content_sha256, content_type = EXCLUDED.content_type,
-      byte_length = EXCLUDED.byte_length, page_count = NULL, fetched_at = now(), retry_after = EXCLUDED.retry_after`;
+      byte_length = EXCLUDED.byte_length, page_count = NULL, fetched_at = now(), retry_after = EXCLUDED.retry_after
+    WHERE oem_source_documents.status <> 'ok'`;
 
 type CacheRow = { status: string; content: Buffer | null; retry_after: Date | string | null };
 
@@ -232,8 +293,7 @@ export type OemSourceResult =
   | { kind: "not_found" }
   | { kind: "unavailable" };
 
-type Queryable = { query: (sql: string, params?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }> };
-type Db = Queryable & { connect: () => Promise<Queryable & { release: () => void }> };
+type Db = { query: (sql: string, params?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }> };
 
 export type SourceDeps = { db: Db; fetch: FetchDeps; now: () => number; log: (line: string) => void };
 
@@ -251,11 +311,18 @@ function fromCache(row: CacheRow | undefined, now: number, url: string): OemSour
   return retryAt > now ? { kind: "unavailable" } : null;
 }
 
+/** Downloads in flight in this process, by URL hash: a second miss for the same manual joins
+ *  the first instead of fetching again. Per process only; across Hub processes the stored row
+ *  (and the never-replace-a-good-copy write) keeps the outcome consistent. */
+const inFlight = new Map<string, Promise<OemSourceResult>>();
+let fetching = 0;
+
 /**
- * The bytes of the public manual behind one shared knowledge_entries row: from the
- * cache, or fetched once and stored. Two concurrent misses for the same URL fetch
- * once: the second waits on a transaction-scoped advisory lock, then reads the row
- * the first stored.
+ * The bytes of the public manual behind one shared knowledge_entries row: from the cache, or
+ * fetched once and stored. No database connection is held while the vendor is contacted: one
+ * short read, the download, then one short write. Concurrent misses for the same URL share
+ * one download; at most OEM_MAX_CONCURRENT_FETCHES distinct downloads run at once and any
+ * more answer unavailable straight away.
  */
 export async function oemSourceBytes(entryId: string, deps: SourceDeps = defaultSourceDeps()): Promise<OemSourceResult> {
   if (!isEntryId(entryId)) return { kind: "not_found" };
@@ -272,39 +339,41 @@ export async function oemSourceBytes(entryId: string, deps: SourceDeps = default
   const cached = fromCache((await deps.db.query(CACHE_SQL, [urlSha])).rows[0] as CacheRow | undefined, deps.now(), sourceUrl);
   if (cached) return cached;
 
-  const client = await deps.db.connect();
-  try {
-    await client.query("BEGIN");
-    await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [urlSha]);
-    const again = fromCache((await client.query(CACHE_SQL, [urlSha])).rows[0] as CacheRow | undefined, deps.now(), sourceUrl);
-    if (again) {
-      await client.query("COMMIT");
-      return again;
-    }
-    const started = deps.now();
-    const outcome = await fetchOemPdf(sourceUrl, deps.fetch);
-    const ok = outcome.status === "ok";
-    const bytes = ok ? outcome.bytes : null;
-    await client.query(STORE_SQL, [
-      urlSha,
-      sourceUrl,
-      outcome.status,
-      outcome.httpStatus,
-      bytes,
-      bytes ? sha256Hex(bytes) : null,
-      ok ? outcome.contentType : null,
-      bytes ? bytes.byteLength : null,
-      ok ? null : new Date(deps.now() + OEM_RETRY_AFTER_MS),
-    ]);
-    await client.query("COMMIT");
-    deps.log(
-      `[oem-source] url_sha256=${urlSha} host=${host} status=${outcome.status} http=${outcome.httpStatus ?? "none"} bytes=${bytes?.byteLength ?? 0} ms=${deps.now() - started}`,
-    );
-    return bytes ? { kind: "ok", bytes, filename: pdfFilename(sourceUrl) } : { kind: "unavailable" };
-  } catch (err) {
-    await client.query("ROLLBACK").catch(() => undefined);
-    throw err;
-  } finally {
-    client.release();
+  const joined = inFlight.get(urlSha);
+  if (joined) return joined;
+  if (fetching >= OEM_MAX_CONCURRENT_FETCHES) {
+    deps.log(`[oem-source] url_sha256=${urlSha} host=${host} status=busy`);
+    return { kind: "unavailable" };
   }
+  fetching++;
+  const work = fillCache(sourceUrl, urlSha, host, deps).finally(() => {
+    fetching--;
+    inFlight.delete(urlSha);
+  });
+  inFlight.set(urlSha, work);
+  return work;
+}
+
+async function fillCache(sourceUrl: string, urlSha: string, host: string, deps: SourceDeps): Promise<OemSourceResult> {
+  const started = deps.now();
+  const outcome = await fetchOemPdf(sourceUrl, deps.fetch);
+  const ok = outcome.status === "ok";
+  const bytes = ok ? outcome.bytes : null;
+  await deps.db.query(STORE_SQL, [
+    urlSha,
+    sourceUrl,
+    outcome.status,
+    outcome.httpStatus,
+    bytes,
+    bytes ? sha256Hex(bytes) : null,
+    ok ? outcome.contentType : null,
+    bytes ? bytes.byteLength : null,
+    ok ? null : new Date(deps.now() + OEM_RETRY_AFTER_MS),
+  ]);
+  deps.log(
+    `[oem-source] url_sha256=${urlSha} host=${host} status=${outcome.status} http=${outcome.httpStatus ?? "none"} bytes=${bytes?.byteLength ?? 0} ms=${deps.now() - started}`,
+  );
+  // Another process may have stored a good copy first; that pinned copy is what every caller sees.
+  const stored = fromCache((await deps.db.query(CACHE_SQL, [urlSha])).rows[0] as CacheRow | undefined, deps.now(), sourceUrl);
+  return stored ?? (bytes ? { kind: "ok", bytes, filename: pdfFilename(sourceUrl) } : { kind: "unavailable" });
 }

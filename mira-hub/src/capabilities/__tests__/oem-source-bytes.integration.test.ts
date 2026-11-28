@@ -16,14 +16,20 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Pool } from "pg";
 
-const { testPool } = vi.hoisted(() => {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { Pool: PgPool } = require("pg");
-  return { testPool: new PgPool({ connectionString: process.env.TEST_DATABASE_URL }) as Pool };
+// The pool is built only for an explicit disposable loopback database (the repository's shared
+// validator): without MIRA_TEST_DB_CONFIRM=DISPOSABLE, or for any other host, the suite throws
+// before a single connection or query.
+vi.mock("@/lib/db", async () => {
+  const { equipmentTestDatabaseUrl } = await import("../../../scripts/equipment-test-database.mjs");
+  const { Pool: PgPool } = await import("pg");
+  const url = equipmentTestDatabaseUrl(process.env.TEST_DATABASE_URL ?? "", process.env.MIRA_TEST_DB_CONFIRM ?? "");
+  return { default: new PgPool({ connectionString: url }) };
 });
-vi.mock("@/lib/db", () => ({ default: testPool }));
 
-import { RESOLVE_SOURCE_SQL, oemSourceBytes, sha256Hex, type SourceDeps } from "@/capabilities/oem-source-bytes";
+import dbPool from "@/lib/db";
+import { RESOLVE_SOURCE_SQL, STORE_SQL, oemSourceBytes, sha256Hex, type SourceDeps } from "@/capabilities/oem-source-bytes";
+
+const testPool = dbPool as unknown as Pool;
 
 const MIGRATION = readFileSync(join(__dirname, "../../../db/pending-migrations/119_oem_source_documents.sql"), "utf8");
 const TENANT = "6119beef-0000-4000-8000-0000000000aa";
@@ -31,7 +37,7 @@ const PUBLIC_ENTRY = "6119beef-0000-4000-8000-000000000001";
 const PRIVATE_ENTRY = "6119beef-0000-4000-8000-000000000002";
 const URL_OK = "https://cache.industry.siemens.com/dl/files/6119-g120.pdf";
 const URL_PRIVATE = "https://cache.industry.siemens.com/dl/files/6119-private.pdf";
-const PDF = Buffer.from("%PDF-1.7\n6119\n");
+const PDF = Buffer.from("%PDF-1.7\n6119\n%%EOF\n");
 
 const wipe = async () => {
   await testPool.query(`DELETE FROM oem_source_documents WHERE source_url IN ($1, $2)`, [URL_OK, URL_PRIVATE]);
@@ -126,6 +132,41 @@ describe("two concurrent misses for one manual", () => {
     expect(rows.rows).toEqual([{ status: "ok", byte_length: String(PDF.byteLength) }]);
   });
 
+  it("five cold opens on a five-connection pool: one download, and other queries are not starved", async () => {
+    await wipe();
+    const { Pool: PgPool } = await import("pg");
+    const small = new PgPool({ connectionString: (testPool as unknown as { options: { connectionString: string } }).options.connectionString, max: 5, connectionTimeoutMillis: 5_000 });
+    let calls = 0;
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const heldFetch = (async () => {
+      calls += 1;
+      await gate;
+      return new Response(PDF);
+    }) as unknown as typeof fetch;
+    const deps: SourceDeps = {
+      db: small as unknown as SourceDeps["db"],
+      fetch: { fetch: heldFetch, resolve: async () => ["23.0.0.10"], timeoutMs: 5_000, maxBytes: 1024 },
+      now: () => Date.now(),
+      log: () => undefined,
+    };
+    try {
+      const opens = Promise.all(Array.from({ length: 5 }, () => oemSourceBytes(PUBLIC_ENTRY, deps)));
+      await new Promise((r) => setTimeout(r, 200));
+      // While the vendor download is still pending, an unrelated query on the same pool answers.
+      const unrelated = await small.query("SELECT 1 AS one");
+      expect(unrelated.rows[0].one).toBe(1);
+      expect(calls).toBe(1);
+      release();
+      const results = await opens;
+      expect(results.every((r) => r.kind === "ok")).toBe(true);
+      expect(calls).toBe(1);
+    } finally {
+      release();
+      await small.end();
+    }
+  });
+
   it("a private row is never fetched or stored", async () => {
     await wipe();
     let calls = 0;
@@ -142,5 +183,33 @@ describe("two concurrent misses for one manual", () => {
     expect(out).toEqual({ kind: "not_found" });
     expect(calls).toBe(0);
     expect((await testPool.query(`SELECT 1 FROM oem_source_documents WHERE source_url = $1`, [URL_PRIVATE])).rows).toEqual([]);
+  });
+});
+
+describe("the stored copy of a manual", () => {
+  const store = (status: string, content: Buffer | null) =>
+    testPool.query(STORE_SQL, [
+      sha256Hex(URL_OK), URL_OK, status, 200, content, content ? sha256Hex(content) : null,
+      content ? "application/pdf" : null, content ? content.byteLength : null,
+      content ? null : new Date(Date.now() + 60_000),
+    ]);
+  const row = async () =>
+    (await testPool.query(`SELECT status, content_sha256 FROM oem_source_documents WHERE source_url = $1`, [URL_OK])).rows[0];
+
+  it("a good copy is never replaced, by a failure or by different bytes", async () => {
+    await wipe();
+    await store("ok", PDF);
+    await store("not_pdf", null);
+    expect(await row()).toEqual({ status: "ok", content_sha256: sha256Hex(PDF) });
+    const other = Buffer.from("%PDF-1.7\nrevised\n%%EOF\n");
+    await store("ok", other);
+    expect(await row()).toEqual({ status: "ok", content_sha256: sha256Hex(PDF) });
+  });
+
+  it("control — a failure row is replaced by a later good copy", async () => {
+    await wipe();
+    await store("fetch_failed", null);
+    await store("ok", PDF);
+    expect(await row()).toEqual({ status: "ok", content_sha256: sha256Hex(PDF) });
   });
 });

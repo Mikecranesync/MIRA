@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { sessionOr401 } from "@/lib/session";
-import { oemSourceBytes } from "@/capabilities/oem-source-bytes";
+import { oemSourceBytes, oemViewerEnabled } from "@/capabilities/oem-source-bytes";
 
 export const dynamic = "force-dynamic";
 // Node runtime: the fetch guards resolve DNS and hash with node:crypto.
@@ -19,6 +19,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   }
   const ctx = await sessionOr401();
   if (ctx instanceof NextResponse) return ctx;
+  // Default off (MIRA_OEM_VIEWER): until migration 119 is applied the cache table does not exist.
+  if (!oemViewerEnabled()) return NextResponse.json({ error: "oem_viewer_disabled" }, { status: 404 });
 
   const { id } = await params;
   try {

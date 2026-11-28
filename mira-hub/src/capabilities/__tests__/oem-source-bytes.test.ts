@@ -3,7 +3,7 @@
 // negative cache) and the resolver's id-only input, with the DB and fetch stubbed.
 // The real-Postgres half (migration 119, the grant, the resolver SQL against a
 // private row, two concurrent misses) is oem-source-bytes.integration.test.ts.
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -16,6 +16,8 @@ import {
   fetchOemPdf,
   isPrivateAddress,
   looksLikePdf,
+  STORE_SQL,
+  oemCitationLink,
   oemSourceBytes,
   oemSourceEntryId,
   pdfFilename,
@@ -25,7 +27,7 @@ import {
 
 const ENTRY = "6119beef-0000-4000-8000-000000000001";
 const URL_OK = "https://cache.industry.siemens.com/dl/files/g120.pdf";
-const PDF = Buffer.from("%PDF-1.7\n1 0 obj\n");
+const PDF = Buffer.from("%PDF-1.7\n1 0 obj\n%%EOF\n");
 
 type Row = { url: string; isPrivate: boolean };
 type Stored = { status: string; content: Buffer | null; retry_after: Date | null; http_status: number | null };
@@ -45,13 +47,14 @@ function fakeDb(entries: Record<string, Row>) {
     }
     if (sql.startsWith("INSERT INTO oem_source_documents")) {
       const [sha, , status, http, content, , , , retryAfter] = params as [string, string, string, number | null, Buffer | null, string, string, number, Date | null];
-      cache.set(sha, { status, content, retry_after: retryAfter, http_status: http });
+      // Mirrors STORE_SQL's WHERE: a stored good copy is never replaced.
+      if (cache.get(sha)?.status !== "ok") cache.set(sha, { status, content, retry_after: retryAfter, http_status: http });
       stores.push(status);
       return { rows: [] };
     }
     return { rows: [] };
   };
-  return { db: { query: run, connect: async () => ({ query: run, release: () => undefined }) }, cache, stores };
+  return { db: { query: run }, cache, stores };
 }
 
 function fakeFetch(routes: Record<string, () => Response>) {
@@ -246,6 +249,8 @@ describe("oemSourceBytes — id in, bytes out; the URL never comes from the clie
 });
 
 describe("oemSourceEntryId — which citations open the Hub's copy", () => {
+  beforeEach(() => vi.stubEnv("MIRA_OEM_VIEWER", "1"));
+  afterEach(() => vi.unstubAllEnvs());
   const shared = { docId: null, isPrivate: false, entryId: ENTRY, sourceUrl: URL_OK };
   it("a public manufacturer manual chunk carries its row id", () => {
     expect(oemSourceEntryId(shared)).toBe(ENTRY);
@@ -260,8 +265,104 @@ describe("oemSourceEntryId — which citations open the Hub's copy", () => {
   it("no web address, or no row id, is nothing to open", () => {
     expect(oemSourceEntryId({ ...shared, sourceUrl: "hub-upload://t/x.pdf" })).toBeNull();
     expect(oemSourceEntryId({ ...shared, entryId: null })).toBeNull();
-  });  it("an address the Hub would refuse to fetch keeps its raw vendor link (no dead end)", () => {
+  });
+  it("default off: with MIRA_OEM_VIEWER unset or not 1/true, no citation opens the Hub's copy", () => {
+    vi.stubEnv("MIRA_OEM_VIEWER", "");
+    expect(oemSourceEntryId(shared)).toBeNull();
+    vi.stubEnv("MIRA_OEM_VIEWER", "0");
+    expect(oemSourceEntryId(shared)).toBeNull();
+    vi.stubEnv("MIRA_OEM_VIEWER", "true");
+    expect(oemSourceEntryId(shared)).toBe(ENTRY);
+  });
+  it("an address the Hub would refuse to fetch keeps its raw vendor link (no dead end)", () => {
     expect(oemSourceEntryId({ ...shared, sourceUrl: "https://forum.example.com/t/123" })).toBeNull();
     expect(oemSourceEntryId({ ...shared, sourceUrl: "http://cache.industry.siemens.com/dl/files/g120.pdf" })).toBeNull();
+  });
+});
+
+describe("oemCitationLink — the page the viewer draws", () => {
+  beforeEach(() => vi.stubEnv("MIRA_OEM_VIEWER", "1"));
+  afterEach(() => vi.unstubAllEnvs());
+  const shared = { docId: null, isPrivate: false, entryId: ENTRY, sourceUrl: URL_OK };
+  it("a legacy chunk ordinal stored as the page (sourcePage === chunkIndex) is no page", () => {
+    expect(oemCitationLink({ ...shared, sourcePage: 47, chunkIndex: 47 })).toEqual({ sourceEntryId: ENTRY, page: null });
+  });
+  it("control — a real page is kept", () => {
+    expect(oemCitationLink({ ...shared, sourcePage: 906, chunkIndex: 12 })).toEqual({ sourceEntryId: ENTRY, page: 906 });
+    expect(oemCitationLink({ ...shared, sourcePage: 906, chunkIndex: null })).toEqual({ sourceEntryId: ENTRY, page: 906 });
+  });
+  it("no Hub copy means no link at all", () => {
+    expect(oemCitationLink({ ...shared, isPrivate: true, sourcePage: 9, chunkIndex: 1 })).toBeNull();
+  });
+});
+
+describe("only a complete PDF is ever stored", () => {
+  const fd = (f: typeof fetch, over: Partial<FetchDeps> = {}): FetchDeps => ({ fetch: f, resolve: publicDns, timeoutMs: 5_000, maxBytes: 1024, ...over });
+  it("a 206 partial response is a failure, never a document", async () => {
+    const f = fakeFetch({ [URL_OK]: () => new Response(PDF, { status: 206 }) });
+    expect((await fetchOemPdf(URL_OK, fd(f.fn))).status).toBe("fetch_failed");
+  });
+  it("a 200 cut off before the %%EOF trailer is not_pdf", async () => {
+    const f = fakeFetch({ [URL_OK]: () => new Response(Buffer.from("%PDF-1.7\n1 0 obj\n")) });
+    expect((await fetchOemPdf(URL_OK, fd(f.fn))).status).toBe("not_pdf");
+  });
+  it("a body shorter than its declared content-length is not_pdf", async () => {
+    const f = fakeFetch({ [URL_OK]: () => new Response(PDF, { headers: { "content-length": String(PDF.byteLength + 10) } }) });
+    expect((await fetchOemPdf(URL_OK, fd(f.fn))).status).toBe("not_pdf");
+  });
+  it("control — a complete 200 PDF with a matching length is ok", async () => {
+    const f = fakeFetch({ [URL_OK]: () => new Response(PDF, { headers: { "content-length": String(PDF.byteLength) } }) });
+    expect((await fetchOemPdf(URL_OK, fd(f.fn))).status).toBe("ok");
+  });
+  it("a DNS lookup that never answers is held to the fetch deadline", async () => {
+    const f = fakeFetch({ [URL_OK]: () => new Response(PDF) });
+    const out = await fetchOemPdf(URL_OK, fd(f.fn, { resolve: () => new Promise<string[]>(() => undefined), timeoutMs: 30 }));
+    expect(out.status).toBe("fetch_failed");
+    expect(f.calls).toEqual([]);
+  });
+  it("a stored good copy is never replaced (the write only overwrites a non-ok row)", () => {
+    expect(STORE_SQL).toMatch(/ON CONFLICT \(url_sha256\) DO UPDATE SET[\s\S]*WHERE oem_source_documents\.status <> 'ok'\s*$/);
+  });
+});
+
+describe("downloads: one per manual, at most two at once, no held connection", () => {
+  /** A fetch that waits until released, so concurrent callers overlap. */
+  function gatedFetch() {
+    const calls: string[] = [];
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const fn = vi.fn(async (input: string | URL | Request) => {
+      calls.push(String(input));
+      await gate;
+      return new Response(PDF);
+    });
+    return { fn: fn as unknown as typeof fetch, calls, release };
+  }
+  const urlN = (n: number) => `https://cache.industry.siemens.com/dl/files/m${n}.pdf`;
+  const idN = (n: number) => `6119beef-0000-4000-8000-00000000010${n}`;
+
+  it("concurrent misses for one manual share a single download", async () => {
+    const { db } = fakeDb({ [ENTRY]: { url: URL_OK, isPrivate: false } });
+    const g = gatedFetch();
+    const all = Promise.all([1, 2, 3].map(() => oemSourceBytes(ENTRY, deps(db, g.fn))));
+    await vi.waitFor(() => expect(g.calls).toHaveLength(1));
+    g.release();
+    const out = await all;
+    expect(out.map((r) => r.kind)).toEqual(["ok", "ok", "ok"]);
+    expect(g.calls).toEqual([URL_OK]);
+  });
+
+  it("a third distinct manual while two download answers unavailable at once, without fetching", async () => {
+    const entries = Object.fromEntries([1, 2, 3].map((n) => [idN(n), { url: urlN(n), isPrivate: false }]));
+    const { db } = fakeDb(entries);
+    const g = gatedFetch();
+    const first = [oemSourceBytes(idN(1), deps(db, g.fn)), oemSourceBytes(idN(2), deps(db, g.fn))];
+    await vi.waitFor(() => expect(g.calls).toHaveLength(2));
+    expect(await oemSourceBytes(idN(3), deps(db, g.fn))).toEqual({ kind: "unavailable" });
+    expect(g.calls).toEqual([urlN(1), urlN(2)]);
+    g.release();
+    expect((await Promise.all(first)).map((r) => r.kind)).toEqual(["ok", "ok"]);
+    // control — once they finish, the third is fetched normally
+    expect((await oemSourceBytes(idN(3), deps(db, g.fn))).kind).toBe("ok");
   });
 });

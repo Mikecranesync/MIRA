@@ -377,14 +377,14 @@ approved:
     query_snippet: |
       FROM knowledge_entries
                   WHERE tenant_id = $1 AND doc_id = $2::uuid AND ingest_route = 'v2'
-  "mira-hub/src/capabilities/__tests__/oem-source-bytes.integration.test.ts:43":
+  "mira-hub/src/capabilities/__tests__/oem-source-bytes.integration.test.ts:49":
     approved_classification: UNFILTERED
     query_sha256: "e255695f80690d88a99e334e3b3030dec6a63603834bd15d3bb847004c8c3dd8"
     reason: "Fixture setup (#6119): deletes this suite's own two fixed-UUID knowledge_entries rows before re-seeding, on a DISPOSABLE test Postgres only (TEST_DATABASE_URL + MIRA_TEST_DB_CONFIRM=DISPOSABLE). Not a tenant read surface."
-  "mira-hub/src/capabilities/__tests__/oem-source-bytes.integration.test.ts:55":
+  "mira-hub/src/capabilities/__tests__/oem-source-bytes.integration.test.ts:61":
     approved_classification: UNFILTERED
     query_sha256: "8707b53b827037caafa8ed047f71d9e3f8631d14b93b7cb239d4cab414d3e860"
-    reason: "Fixture teardown (#6119): same as :43, removes the suite's two fixed-UUID rows after the run on the disposable test Postgres. Not a tenant read surface."
+    reason: "Fixture teardown (#6119): same as :49, removes the suite's two fixed-UUID rows after the run on the disposable test Postgres. Not a tenant read surface."
   "mira-hub/src/lib/__tests__/notebook-isolation.test.ts:50":
     approved_classification: UNFILTERED
     query_sha256: "77a99070767e75fded5b01434c7683a6a4f8c69ed8832529b7d3da86f25fbeb0"

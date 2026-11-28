@@ -4,11 +4,11 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NextResponse } from "next/server";
 
 vi.mock("@/lib/session", () => ({ sessionOr401: vi.fn() }));
-vi.mock("@/capabilities/oem-source-bytes", () => ({ oemSourceBytes: vi.fn() }));
+vi.mock("@/capabilities/oem-source-bytes", () => ({ oemSourceBytes: vi.fn(), oemViewerEnabled: vi.fn() }));
 
 import { GET } from "@/app/api/oem-sources/[id]/route";
 import { sessionOr401 } from "@/lib/session";
-import { oemSourceBytes } from "@/capabilities/oem-source-bytes";
+import { oemSourceBytes, oemViewerEnabled } from "@/capabilities/oem-source-bytes";
 
 const ID = "6119beef-0000-4000-8000-000000000001";
 const session = { userId: "u_1", tenantId: "6119beef-0000-4000-8000-0000000000aa", email: "x@y", status: "trial", trialExpiresAt: null };
@@ -18,6 +18,7 @@ const params = (id: string) => ({ params: Promise.resolve({ id }) });
 beforeEach(() => {
   vi.resetAllMocks();
   process.env.NEON_DATABASE_URL = "postgres://test-only-not-used";
+  vi.mocked(oemViewerEnabled).mockReturnValue(true);
 });
 
 describe("GET /api/oem-sources/[id]", () => {
@@ -26,6 +27,21 @@ describe("GET /api/oem-sources/[id]", () => {
     const res = await GET(req(), params(ID));
     expect(res.status).toBe(401);
     expect(oemSourceBytes).not.toHaveBeenCalled();
+  });
+
+  it("404 oem_viewer_disabled while the flag is off, signed in, and the capability is never asked", async () => {
+    vi.mocked(sessionOr401).mockResolvedValue(session as never);
+    vi.mocked(oemViewerEnabled).mockReturnValue(false);
+    const res = await GET(req(), params(ID));
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: "oem_viewer_disabled" });
+    expect(oemSourceBytes).not.toHaveBeenCalled();
+  });
+
+  it("control — flag off still answers 401 to a caller with no session", async () => {
+    vi.mocked(oemViewerEnabled).mockReturnValue(false);
+    vi.mocked(sessionOr401).mockResolvedValue(NextResponse.json({ error: "unauthorized" }, { status: 401 }));
+    expect((await GET(req(), params(ID))).status).toBe(401);
   });
 
   it("200 inline PDF with the safe headers", async () => {
