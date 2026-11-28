@@ -105,7 +105,7 @@ describe("makerFromText — the shared OEM maker table, corpus-independent", () 
   });
 });
 
-// #6127, #6131 r1 F2: the makers a saved-number question names, as groups.
+// #6127, #6131 r6: the makers a saved-number question names, as groups, read as makerFromText reads them.
 describe("makerGroupsNamedIn", () => {
   it("aliases of one maker are one group; another maker is a second", () => {
     expect(makerGroupsNamedIn("Allen-Bradley and Rockwell Automation").size).toBe(1);
@@ -113,29 +113,27 @@ describe("makerGroupsNamedIn", () => {
     expect(makerGroupsNamedIn("ABB and Rockwell Automation").size).toBe(2);
   });
 
-  it("a title-case dictionary-word maker counts only when typed right before the given part", () => {
-    const q = "How do I wire the Eaton 6AV2124-0GC01-0AX0 in our Siemens cabinet?";
-    expect(makerGroupsNamedIn(q).size).toBe(1); // Siemens only
-    expect(makerGroupsNamedIn(q, ["6AV2124-0GC01-0AX0"]).size).toBe(2);
-    expect(makerGroupsNamedIn("Sick of this: the 6AV2124-0GC01-0AX0 is dead", ["6AV2124-0GC01-0AX0"]).size).toBe(0);
+  // #6131 r5 F8: a title-case dictionary word is as often a person or a place, so it counts as a
+  // maker only in capitals, as makerFromText reads it, wherever it sits.
+  it("a dictionary-word maker counts only in capitals", () => {
+    const part = "6AV2124-0GC01-0AX0";
+    expect(makerGroupsNamedIn(`How do I wire the EATON ${part} in our Siemens cabinet?`).size).toBe(2);
+    expect(makerGroupsNamedIn(`How do I wire the ABB ${part} in our Siemens cabinet?`).size).toBe(2); // control: not a dictionary word
+    expect(makerGroupsNamedIn(`I spoke with Parker; the ${part} in our Siemens cabinet will not power up.`).size).toBe(1);
+    expect(makerGroupsNamedIn(`When it left Phoenix, the ${part} in our Siemens cabinet was working.`).size).toBe(1);
+    expect(makerGroupsNamedIn(`I sent Parker ${part} specs for the Siemens cabinet.`).size).toBe(1);
+    expect(makerGroupsNamedIn(`Sick of this: the ${part} is dead`).size).toBe(0);
+    // Known limit, as on main (r1 F2): a real maker in title case reads the same way.
+    expect(makerGroupsNamedIn(`How do I wire the Eaton ${part} in our Siemens cabinet?`).size).toBe(1);
   });
 
-  // #6131 r2 F2: the part is found as written, so whatever is glued to its front is not a word.
-  it("a part passed with its wrapper glued on still counts a typed maker right before it", () => {
-    const q = 'How do I wire the Eaton "6AV2124-0GC01-0AX0" in our Siemens cabinet?';
-    expect(makerGroupsNamedIn(q, ["6AV2124-0GC01-0AX0"]).size).toBe(1); // precondition: the bare part does not
-    expect(makerGroupsNamedIn(q, ['"6AV2124-0GC01-0AX0"']).size).toBe(2);
-  });
-
-  // #6131 r5: an order-number label between a dictionary word and the part is a word in the way,
-  // because the word before it is as often a place or a name ("Shipped from Phoenix, order no.").
+  // #6131 r5: a dictionary word before an order-number label is a word too ("Shipped from Phoenix, order no.").
   it("a dictionary word before an order-number label is not read as a maker", () => {
     const part = "6AV2124-0GC01-0AX0";
-    expect(makerGroupsNamedIn(`Shipped from Phoenix, order no. ${part}, to our Siemens line`, [part]).size).toBe(1);
-    expect(makerGroupsNamedIn(`Ask Parker, part no. ${part} is dead`, [part]).size).toBe(0);
+    expect(makerGroupsNamedIn(`Shipped from Phoenix, order no. ${part}, to our Siemens line`).size).toBe(1);
+    expect(makerGroupsNamedIn(`Ask Parker, part no. ${part} is dead`).size).toBe(0);
     // Known limit, as on main (#6141): a real maker before the label reads the same way.
-    expect(makerGroupsNamedIn(`the Eaton order no. ${part} in our Siemens cabinet`, [part]).size).toBe(1);
-    expect(makerGroupsNamedIn(`the Eaton ${part} in our Siemens cabinet`, [part]).size).toBe(2); // control: typed right before
+    expect(makerGroupsNamedIn(`the Eaton order no. ${part} in our Siemens cabinet`).size).toBe(1);
   });
 
   // #6131 r4 F7: "or" also joins clauses and names, so a dictionary word beside it stays a word.
@@ -149,7 +147,7 @@ describe("makerGroupsNamedIn", () => {
     expect(makerGroupsNamedIn("Is this Eaton/Siemens?").size).toBe(1);
   });
 
-  // The identity card's typed reading (makerFromText with a part) is not changed by either rule.
+  // The identity card's typed reading (makerFromText with a part) is not changed by this rule.
   it("the identity card's typed maker reading is unchanged", () => {
     const part = "6AV2124-0GC01-0AX0";
     expect(makerFromText(`the Eaton order no. ${part}`, part)).toBeNull();

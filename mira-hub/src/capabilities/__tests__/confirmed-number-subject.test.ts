@@ -225,15 +225,15 @@ describe("GET notebook detail: a saved number in a question naming two makers (#
     expect(offeredOwnNumber(SIEMENS_ONLY, { manufacturer: "Siemens", model: "TP700" })).toBe("6AV2124-0GC01-0AX0");
   });
 
-  // #6131 r1 F1/F2: every maker the question names must be this machine's, read as the model is
-  // read (Unicode hyphens folded), with a dictionary-word maker counted when it is typed right
-  // before the number. The first row is the ASCII baseline the rule already caught.
+  // #6131 r1 F1, r6: every maker the question names must be this machine's, read as the model is
+  // read (Unicode hyphens folded) and as main's maker check reads makers, so a dictionary-word maker
+  // (Eaton, Parker) counts only in capitals. The first row is the ASCII baseline the rule already caught.
   it.each([
     ["Allen-Bradley in ASCII (baseline)", "How do I wire the Allen-Bradley 6AV2124-0GC01-0AX0 in our Siemens cabinet?"],
     ["Allen-Bradley with a nonbreaking hyphen (r1 F1)", "How do I wire the Allen‑Bradley 6AV2124-0GC01-0AX0 in our Siemens cabinet?"],
-    ["title-case Eaton before the number (r1 F2)", "How do I wire the Eaton 6AV2124-0GC01-0AX0 in our Siemens cabinet?"],
+    ["EATON in capitals before the number", "How do I wire the EATON 6AV2124-0GC01-0AX0 in our Siemens cabinet?"],
+    ["EATON in capitals before a number with nonbreaking hyphens", "How do I wire the EATON 6AV2124‑0GC01‑0AX0 in our Siemens cabinet?"],
     ["title-case Eaton before the number, no other maker (already withheld by the exact identity read)", "How do I wire the Eaton 6AV2124-0GC01-0AX0?"],
-    ["title-case Eaton before a number with nonbreaking hyphens", "How do I wire the Eaton 6AV2124‑0GC01‑0AX0 in our Siemens cabinet?"],
   ])("%s: withheld with the number saved, and the card offers nothing", async (_label, question) => {
     const body = await read(question);
     expect(readConfirmedNumbers).toHaveBeenCalledWith(TENANT, NB); // precondition: the number was read
@@ -242,7 +242,21 @@ describe("GET notebook detail: a saved number in a question naming two makers (#
     expect(offeredOwnNumber(question, { manufacturer: "Siemens", model: "TP700" })).toBeNull();
   });
 
-  // Ordinary words stay ordinary: a dictionary-word maker counts only as above.
+  // Known limit, as on main (r1 F2): a title-case dictionary-word maker reads as an ordinary word
+  // wherever it sits, because the same word is as often a person or a place ("I sent Parker 6AV…
+  // specs", r5 F8, the controls below). A fix shows up here as a deliberate change.
+  it.each([
+    ["title-case Eaton before the number", "How do I wire the Eaton 6AV2124-0GC01-0AX0 in our Siemens cabinet?", "6AV2124-0GC01-0AX0"],
+    ["title-case Eaton before a number with nonbreaking hyphens", "How do I wire the Eaton 6AV2124‑0GC01‑0AX0 in our Siemens cabinet?", "6AV2124‑0GC01‑0AX0"],
+  ])("known limit: %s shows the status with the number saved, and the card offers it, as on main", async (_label, question, offered) => {
+    const body = await read(question);
+    expect(readConfirmedNumbers).toHaveBeenCalledWith(TENANT, NB); // precondition: the number was read
+    expect(body.manualSearch).toEqual(READY);
+    expect(body).not.toHaveProperty("manualSearchScope");
+    expect(offeredOwnNumber(question, { manufacturer: "Siemens", model: "TP700" })).toBe(offered);
+  });
+
+  // Ordinary words stay ordinary: a dictionary-word maker counts only in capitals.
   it.each([
     ["a lowercase dictionary word", "How do I wire the 6AV2124-0GC01-0AX0 under the banner in our Siemens cabinet?"],
     ["a capitalised dictionary word used as a word", "Sick of this: the 6AV2124-0GC01-0AX0 in our Siemens cabinet will not power up."],
@@ -254,7 +268,7 @@ describe("GET notebook detail: a saved number in a question naming two makers (#
   });
 
   // #6131 r2 F2: whatever is written onto the front of the number (quotes, brackets, "P/N:") does
-  // not hide a dictionary-word maker typed right before it.
+  // not hide a maker written right before it.
   const WRAPPED = [
     ["straight quotes", '"6AV2124-0GC01-0AX0"'],
     ["curly quotes", "“6AV2124-0GC01-0AX0”"],
@@ -263,9 +277,9 @@ describe("GET notebook detail: a saved number in a question naming two makers (#
     ["braces", "{6AV2124-0GC01-0AX0}"],
   ];
   it.each([...WRAPPED, ["P/N: glued on", "P/N:6AV2124-0GC01-0AX0"], ["PN: glued on", "PN:6AV2124-0GC01-0AX0"]])(
-    "title-case Eaton before the number in %s: withheld with the number saved, and the card offers nothing",
+    "EATON in capitals before the number in %s: withheld with the number saved, and the card offers nothing",
     async (_label, written) => {
-      const question = `How do I wire the Eaton ${written} in our Siemens cabinet?`;
+      const question = `How do I wire the EATON ${written} in our Siemens cabinet?`;
       const body = await read(question);
       expect(readConfirmedNumbers).toHaveBeenCalledWith(TENANT, NB); // precondition: the number was read
       expect(body.manualSearch).toBeNull();
@@ -330,21 +344,11 @@ describe("GET notebook detail: a saved number in a question naming two makers (#
     expect(offeredOwnNumber(question, { manufacturer: "Siemens", model: "TP700" })).toBeNull();
   });
 
-  // A choice whose dictionary-word maker is typed right before the number is withheld by the
-  // typed-text rule itself.
-  it("Siemens or an Eaton typed right before the number: withheld with the number saved, and the card offers nothing", async () => {
-    const question = "Is this a Siemens or an Eaton 6AV2124-0GC01-0AX0?";
-    const body = await read(question);
-    expect(readConfirmedNumbers).toHaveBeenCalledWith(TENANT, NB); // precondition: the number was read
-    expect(body.manualSearch).toBeNull();
-    expect(body.manualSearchScope).toBe("other_model");
-    expect(offeredOwnNumber(question, { manufacturer: "Siemens", model: "TP700" })).toBeNull();
-  });
-
-  // Known limit, as on main (#6142): any other choice reads the dictionary-word maker as an
-  // ordinary word, because "or" also joins clauses and names (r4 F7, the controls below). A fix
-  // shows up here as a deliberate change.
+  // Known limit, as on main (#6142): a choice reads the dictionary-word maker as an ordinary word,
+  // because "or" also joins clauses and names (r4 F7, the controls below). A fix shows up here as a
+  // deliberate change.
   it.each([
+    ["Siemens or an Eaton typed right before the number", "Is this a Siemens or an Eaton 6AV2124-0GC01-0AX0?"],
     ["Eaton or a Siemens", "Is this an Eaton or a Siemens 6AV2124-0GC01-0AX0?"],
     ["Eaton or Siemens, no articles", "Is this Eaton or Siemens 6AV2124-0GC01-0AX0?"],
     ["Eaton/Siemens", "Is this an Eaton/Siemens 6AV2124-0GC01-0AX0?"],
@@ -357,8 +361,8 @@ describe("GET notebook detail: a saved number in a question naming two makers (#
     expect(offeredOwnNumber(question, { manufacturer: "Siemens", model: "TP700" })).toBe("6AV2124-0GC01-0AX0");
   });
 
-  // Ordinary words stay ordinary: a dictionary word joined to a maker by "and" or "or", or sitting
-  // before an order-number label, stays a word.
+  // Ordinary words stay ordinary: a dictionary word in normal case stays a word wherever it sits,
+  // joined to a maker by "and" or "or", before an order-number label, or right before the number.
   it.each([
     ["a city that ends a sentence before a label", "We shipped it from Phoenix. Order no. 6AV2124-0GC01-0AX0 is in our Siemens cabinet."],
     ["a capitalised dictionary word joined to an ordinary word", "Sick or tired of the Siemens 6AV2124-0GC01-0AX0 dropping out."],
@@ -371,6 +375,15 @@ describe("GET notebook detail: a saved number in a question naming two makers (#
     ["a place before a label", "Shipped from Phoenix, order no. 6AV2124-0GC01-0AX0, to our Siemens line."],
     ["a person before a label", "Ask Parker, part no. 6AV2124-0GC01-0AX0 is dead."],
     ["a person before a label after a colon", "Call Banner: order number 6AV2124-0GC01-0AX0 will not boot."],
+    // #6131 r5 F8: a name or a place before the number, across a semicolon, a comma or "the", or
+    // right before it, stays a word.
+    ["a person before a semicolon", "I spoke with Parker; the 6AV2124-0GC01-0AX0 in our Siemens cabinet will not power up."],
+    ["a place before a comma", "When it left Phoenix, the 6AV2124-0GC01-0AX0 in our Siemens cabinet was working."],
+    ['a person before "the"', "Tell Parker the 6AV2124-0GC01-0AX0 in the Siemens cabinet is fixed."],
+    ["a person right before the number", "I sent Parker 6AV2124-0GC01-0AX0 specs for the Siemens cabinet."],
+    ["a place right before the number", "We are in Phoenix 6AV2124-0GC01-0AX0 is down on the Siemens line."],
+    ["a person thanked right before the number", "Thank you Parker 6AV2124-0GC01-0AX0 in the Siemens cabinet works now."],
+    ["a person before an equipment word", "Ask Banner panel 6AV2124-0GC01-0AX0 questions to Siemens support."],
   ])("control: %s leaves the thread showing the status, and the card offers the number", async (_label, question) => {
     const body = await read(question);
     expect(body.manualSearch).toEqual(READY);

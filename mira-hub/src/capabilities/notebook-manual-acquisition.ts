@@ -1405,17 +1405,14 @@ export function threadStatusScope(
       // Main's first maker check, unchanged: it reads the question as typed (#6131 r2: folding
       // it here made two other makers read as none, so a thread main withholds was admitted).
       if (otherMaker(exact?.manufacturer ?? makerFromText(q)) || [...named].some((id) => !isOwn(id))) return "other";
-      // #6127 (#6104 r4 F9), #6131 r1 F1 and F2: a ticked number settles a question only when
-      // every maker the folded question names ("Allen‑Bradley") is this machine's, counting a
-      // dictionary-word maker typed right before that number ("the Eaton 6AV2124-…"). With no
-      // maker on record, any named maker fails closed.
+      // #6127 (#6104 r4 F9), #6131 r1 F1: a ticked number settles a question only when every maker
+      // the folded question names ("Allen‑Bradley") is this machine's. With no maker on record, any
+      // named maker fails closed. #6131 r6: makers are read as main's maker check reads them, so a
+      // dictionary word (Eaton, Parker, Phoenix) counts only in capitals; reading it by where it
+      // sat also read people and places as makers (r4 F7, r5 F8).
       const ticked = [...named].filter((id) => !covered(recorded, id));
       if (!ticked.length) return "own";
-      // #6131 r2 F2: each number goes to the typed-maker rule as written, with whatever is glued
-      // to it ('"6AV…"', "[6AV…]", "P/N:6AV…"), so that wrapper is never read as a word between
-      // the maker and the number.
-      const typed = folded.split(/\s+/).filter((t) => ticked.some((id) => norm(t).includes(id)));
-      return [...makerGroupsNamedIn(folded, typed).values()].every(isOwnMaker) ? "own" : "other";
+      return [...makerGroupsNamedIn(folded).values()].every(isOwnMaker) ? "own" : "other";
     }
     if (machine.recordCatalog && returnsToRecord(q)) return "own";
   }
