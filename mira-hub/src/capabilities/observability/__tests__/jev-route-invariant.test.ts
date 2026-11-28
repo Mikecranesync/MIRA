@@ -59,6 +59,20 @@ describe("the Jev shadow cannot reach the delivery path", () => {
     expect(src).toContain("if (decisionState) {");
   });
 
+  // #6123: the settle reads the request's abort flag once more after the handoff tracker
+  // answers. That read is only as good as its distance from the call: anything awaited
+  // between the two reopens the gap. The behavioural tests cannot see such an edit (their
+  // abort lands before the read), so the distance is pinned in the source.
+  it("#6123: nothing is awaited between the abort read and the start of the decision call", () => {
+    const READ = "(await handoff.confirmed(HANDOFF_WAIT_MS)) && !req.signal?.aborted);";
+    const read = src.indexOf(READ);
+    expect(read).toBeGreaterThan(-1);
+    const call = src.indexOf("evaluateTurnDecision(decisionState)", read);
+    expect(call).toBeGreaterThan(read);
+    // The only `await` allowed here is the one on the call's own result.
+    expect(src.slice(read + READ.length, call)).toMatch(/^\s*if \(maySend\) packet\.jev_decision = await $/);
+  });
+
   // sufficiency-v2 (2026-10-12): the shadow is handed the vision model's RAW
   // readings (this turn's row, then the prior rows already in context) — a
   // subset of what the decision lane sends, never the rendered `lookContext`
