@@ -96,6 +96,7 @@ import {
 } from "@/capabilities/observability/config";
 import { createResponseHandoff, type ResponseHandoff } from "@/capabilities/response-handoff";
 import pool from "@/lib/db";
+import { oemSourceEntryId } from "@/capabilities/oem-source-bytes";
 import type { PoolClient } from "pg";
 import { composeTimeout } from "@/lib/abort-helpers";
 import { relevantQuoteWindow } from "@/lib/quote-window";
@@ -549,6 +550,9 @@ async function buildCitations(
       // A manufacturer manual's own address, so the reader can open it; only a
       // place a browser can actually go (http/https) is carried.
       ...(/^https?:\/\//i.test(c.sourceUrl ?? "") ? { sourceUrl: c.sourceUrl } : {}),
+      // #6119: the shared row the Hub's own copy is served by — only for a public manufacturer
+      // manual (no document id, not private, a web address). An upload keeps its fileId alone.
+      ...(oemSourceEntryId(c) ? { sourceEntryId: oemSourceEntryId(c) } : {}),
       // Claim-centered window (CIT-07 phase 2) — not the chunk head.
       quote: relevantQuoteWindow(c.content, question),
     });

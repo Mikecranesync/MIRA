@@ -36,6 +36,16 @@ describe("citationHref — the classic source page's rule", () => {
     expect(citationHref({ ...base, sourceUrl: "https://lit.example.com/gs10.pdf" })).toBe("https://lit.example.com/gs10.pdf#page=47");
     expect(citationHref({ ...base, sourceUrl: "https://lit.example.com/gs10.pdf#nameddest=x" })).toBe("https://lit.example.com/gs10.pdf#nameddest=x");
   });
+  // #6119: a public manufacturer manual opens in the same cited-page viewer from the Hub's own
+  // copy, because Android Chrome cannot open the vendor's PDF at a page.
+  it("a public manufacturer manual opens in the viewer at the cited page, not at the vendor", () => {
+    const entry = "6119beef-0000-4000-8000-000000000001";
+    expect(citationHref({ ...base, page: 906, sourceEntryId: entry, sourceUrl: "https://cache.industry.siemens.com/g120.pdf" }))
+      .toBe(`${BASE_PATH}/v3/source/?oem=${entry}&page=906`);
+  });
+  it("a parked file still wins over the manual's row (the uploaded copy is the tenant's own)", () => {
+    expect(citationHref({ ...base, fileId: "f-1", sourceEntryId: "e-1" })).toBe(`${BASE_PATH}/v3/source/?file=f-1&page=47`);
+  });
   it("control — nothing parked and no web address: nothing to open", () => {
     expect(citationHref(base)).toBeUndefined();
     expect(citationHref({ ...base, sourceUrl: "hub-upload://tenant/file.pdf" })).toBeUndefined();

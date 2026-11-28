@@ -10,10 +10,11 @@ import {
   failureMessage,
   filenameFromDisposition,
   isPdf,
-  nativeFileHref,
   pageCaption,
   pageToShow,
   parseViewerRequest,
+  requestBytesHref,
+  requestId,
   viewerMode,
   type ViewerRequest,
 } from "./document-page-viewer-logic";
@@ -55,14 +56,14 @@ export function DocumentPageViewer() {
     }
     const embedded = window.self !== window.top;
     if (viewerMode(navigator.pdfViewerEnabled, { embedded, page: req.page }) === "native") {
-      window.location.replace(nativeFileHref(req.fileId, null));
+      window.location.replace(requestBytesHref(req, null));
       return;
     }
     const abort = new AbortController();
     let loaded: PdfDoc | null = null;
     void (async () => {
       try {
-        const res = await fetch(nativeFileHref(req.fileId, null), {
+        const res = await fetch(requestBytesHref(req, null), {
           credentials: "same-origin",
           signal: abort.signal,
         });
@@ -75,7 +76,7 @@ export function DocumentPageViewer() {
           if (embedded) {
             setState({ kind: "failed", message: "Use Open document to view the original file." });
           } else {
-            window.location.replace(nativeFileHref(req.fileId, null));
+            window.location.replace(requestBytesHref(req, null));
           }
           return;
         }
@@ -147,7 +148,7 @@ export function DocumentPageViewer() {
   });
   const rendered = state.kind === "ready" && state.rendered;
   const openDocument = request ? (
-    <a href={nativeFileHref(request.fileId, request.page)} target="_blank" rel="noopener noreferrer">Open document</a>
+    <a href={requestBytesHref(request, request.page)} target="_blank" rel="noopener noreferrer">Open document</a>
   ) : null;
 
   return (
@@ -168,7 +169,7 @@ export function DocumentPageViewer() {
         <>
           {rendered ? (
             <p data-testid="viewer-caption" style={{ margin: "0 0 var(--fl-workspace-space-1)", fontWeight: 700, overflowWrap: "anywhere" }}>
-              {pageCaption(state.name, state.page, state.numPages, request.fileId)}
+              {pageCaption(state.name, state.page, state.numPages, requestId(request))}
             </p>
           ) : <p role="status">Opening page {state.page}…</p>}
           {rendered && state.outOfRange ? (

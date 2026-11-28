@@ -47,7 +47,7 @@ import {
 } from "@/lib/notebook-chat-types";
 import { API_BASE } from "@/lib/config";
 import { hazardBanner } from "@/lib/safety-classifier";
-import { viewerHref } from "./document-page-viewer-logic";
+import { viewerHref, viewerHrefForOem } from "./document-page-viewer-logic";
 import { PROVIDER_EXHAUSTION_COPY } from "@/capabilities/provider-health";
 import type { PersistedTurn, StreamResult } from "@/components/equipment/notebook-chat-utils";
 import { BASIS_LABEL, splitEvidence } from "@/components/equipment/notebook-chat-utils";
@@ -193,6 +193,8 @@ export function citationHref(citation: EvidenceCitation): string | undefined {
   const page = citation.page ? `#page=${citation.page}` : "";
   if (citation.originFileId) return fileUrl(citation.originFileId);
   if (citation.fileId) return viewerHref(citation.fileId, citation.page);
+  // #6119: a public manufacturer manual opens in the same viewer from the Hub's own copy.
+  if (citation.sourceEntryId) return viewerHrefForOem(citation.sourceEntryId, citation.page);
   const url = citation.sourceUrl ?? "";
   if (/^https?:\/\//i.test(url)) return url.includes("#") ? url : `${url}${page}`;
   return undefined;

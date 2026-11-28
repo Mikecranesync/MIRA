@@ -17,33 +17,9 @@ import { createHash } from "node:crypto";
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
 import pool from "@/lib/db";
+import { OEM_SOURCE_HOSTS } from "./oem-source-hosts";
 
-/**
- * The vendor hosts a manual may be fetched from: the hosts of the curated OEM
- * tiers in `mira-crawler/sources.yaml` (`3_manufacturer`, `5_reference`, the
- * tiers `ManufacturerCrawler` trusts — `.claude/rules/oem-crawler-trusted.md`).
- * Checked in, not read at runtime; `oem-source-bytes.test.ts` fails when it
- * drifts from sources.yaml.
- */
-export const OEM_SOURCE_HOSTS: readonly string[] = [
-  "cache.industry.siemens.com",
-  "cdn.automationdirect.com",
-  "cdn.skfmediahub.skf.com",
-  "content2.smcetech.com",
-  "download.schneider-electric.com",
-  "forums.ni.com",
-  "library.e.abb.com",
-  "literature.rockwellautomation.com",
-  "www.demagcranes.com",
-  "www.emerson.com",
-  "www.iaeng.org",
-  "www.interroll.com",
-  "www.magnetekdrives.com",
-  "www.nema.org",
-  "www.smcworld.com",
-  "www.stle.org",
-  "www.wago.com",
-];
+export { OEM_SOURCE_HOSTS };
 
 export const OEM_FETCH_TIMEOUT_MS = 30_000;
 export const OEM_MAX_BYTES = 100 * 1024 * 1024;
@@ -214,6 +190,21 @@ export async function fetchOemPdf(sourceUrl: string, deps: FetchDeps = defaultFe
   } catch {
     return { status: "fetch_failed", httpStatus: null };
   }
+}
+
+/**
+ * The shared-library row a citation may open through the Hub's own copy: only a public
+ * manufacturer manual chunk (no parked document id, not private, an http(s) address). An
+ * upload, a private row, or a row with no web address returns null and keeps its old link.
+ */
+export function oemSourceEntryId(chunk: {
+  docId?: string | null;
+  isPrivate?: boolean;
+  entryId?: string | null;
+  sourceUrl?: string | null;
+}): string | null {
+  if (chunk.docId || chunk.isPrivate !== false || !chunk.entryId) return null;
+  return /^https?:\/\//i.test(chunk.sourceUrl ?? "") ? chunk.entryId : null;
 }
 
 /** The address a shared manual chunk came from, or null. Raw owner pool: RLS on

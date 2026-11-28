@@ -17,6 +17,7 @@ import {
   isPrivateAddress,
   looksLikePdf,
   oemSourceBytes,
+  oemSourceEntryId,
   pdfFilename,
   type FetchDeps,
   type SourceDeps,
@@ -241,5 +242,23 @@ describe("oemSourceBytes — id in, bytes out; the URL never comes from the clie
     const out = await fetchOemPdf(hop(0), { fetch: f.fn, resolve: publicDns, timeoutMs: 5_000, maxBytes: 1024 });
     expect(out.status).toBe("fetch_failed");
     expect(f.calls).toHaveLength(4);
+  });
+});
+
+describe("oemSourceEntryId — which citations open the Hub's copy", () => {
+  const shared = { docId: null, isPrivate: false, entryId: ENTRY, sourceUrl: URL_OK };
+  it("a public manufacturer manual chunk carries its row id", () => {
+    expect(oemSourceEntryId(shared)).toBe(ENTRY);
+  });
+  it("a private row never does, even with a web address", () => {
+    expect(oemSourceEntryId({ ...shared, isPrivate: true })).toBeNull();
+    expect(oemSourceEntryId({ ...shared, isPrivate: undefined })).toBeNull();
+  });
+  it("an upload keeps its file link alone", () => {
+    expect(oemSourceEntryId({ ...shared, docId: "doc-1" })).toBeNull();
+  });
+  it("no web address, or no row id, is nothing to open", () => {
+    expect(oemSourceEntryId({ ...shared, sourceUrl: "hub-upload://t/x.pdf" })).toBeNull();
+    expect(oemSourceEntryId({ ...shared, entryId: null })).toBeNull();
   });
 });

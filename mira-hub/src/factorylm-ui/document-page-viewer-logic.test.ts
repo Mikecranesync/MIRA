@@ -8,7 +8,10 @@ import {
   pageCaption,
   pageToShow,
   parseViewerRequest,
+  requestBytesHref,
+  requestId,
   viewerHref,
+  viewerHrefForOem,
   viewerMode,
 } from "./document-page-viewer-logic";
 
@@ -109,5 +112,32 @@ describe("failureMessage and pageCaption say exactly what happened", () => {
   });
   it("names source, page and revision", () => {
     expect(pageCaption("GS10 manual.pdf", 47, 312, FILE)).toBe("GS10 manual.pdf · page 47 of 312 · file 3a0f78a2");
+  });
+});
+
+// #6119: a public manufacturer manual, opened by its shared-library row id.
+describe("the viewer opens a manufacturer manual by its row id", () => {
+  const ENTRY = "6119beef-0000-4000-8000-000000000001";
+  it("round-trips the row id and the cited page", () => {
+    const href = viewerHrefForOem(ENTRY, 906);
+    expect(href).toBe(`${BASE_PATH}/v3/source/?oem=${ENTRY}&page=906`);
+    expect(parseViewerRequest(href.slice(href.indexOf("?")))).toEqual({ oemId: ENTRY, page: 906 });
+  });
+  it("reads the Hub's copy from the manual byte route, never the vendor", () => {
+    const req = parseViewerRequest(`?oem=${ENTRY}&page=906`)!;
+    expect(requestBytesHref(req, null)).toBe(`${API_BASE}/api/oem-sources/${ENTRY}/`);
+    expect(requestBytesHref(req, 906)).toBe(`${API_BASE}/api/oem-sources/${ENTRY}/#page=906`);
+    expect(requestId(req)).toBe(ENTRY);
+  });
+  it("control: a file request still reads the file route", () => {
+    const req = parseViewerRequest(`?file=${FILE}&page=3`)!;
+    expect(requestBytesHref(req, null)).toBe(`${API_BASE}/api/namespace/files/${FILE}/`);
+    expect(requestId(req)).toBe(FILE);
+  });
+  it("both file and oem is no request, not a guess at which one", () => {
+    expect(parseViewerRequest(`?file=${FILE}&oem=${ENTRY}`)).toBeNull();
+  });
+  it("a manual the Hub could not fetch says so and points at Open document", () => {
+    expect(failureMessage(502)).toBe("This manual can't be loaded here. Use Open document.");
   });
 });

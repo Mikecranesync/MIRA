@@ -24,19 +24,41 @@ export function nativeFileHref(fileId: string, page: number | null): string {
   return `${API_BASE}/api/namespace/files/${encodeURIComponent(fileId)}/${page ? `#page=${page}` : ""}`;
 }
 
-export interface ViewerRequest {
-  readonly fileId: string;
-  readonly page: number | null;
+/** #6119: the same viewer for a public manufacturer manual, by its shared-library row id. */
+export function viewerHrefForOem(entryId: string, page: number | null | undefined): string {
+  const base = process.env.NEXT_PUBLIC_BASE_PATH ?? "/hub";
+  const query = new URLSearchParams({ oem: entryId });
+  if (page && page > 0) query.set("page", String(page));
+  return `${base}/v3/source/?${query.toString()}`;
 }
 
-/** Reads `?file=…&page=…`. A missing file is no request; a bad page is no page. */
+/** A parked upload (`?file=`) or a public manufacturer manual (`?oem=`, #6119). */
+export type ViewerRequest =
+  | { readonly fileId: string; readonly page: number | null }
+  | { readonly oemId: string; readonly page: number | null };
+
+/** Reads `?file=…&page=…` or `?oem=…&page=…`. Neither, or both, is no request; a bad page is no page. */
 export function parseViewerRequest(search: string): ViewerRequest | null {
   const params = new URLSearchParams(search);
   const fileId = (params.get("file") ?? "").trim();
-  if (!fileId) return null;
+  const oemId = (params.get("oem") ?? "").trim();
+  if (fileId && oemId) return null;
+  if (!fileId && !oemId) return null;
   const raw = params.get("page");
   const n = raw !== null && /^\d+$/.test(raw) ? Number(raw) : NaN;
-  return { fileId, page: Number.isSafeInteger(n) && n > 0 ? n : null };
+  const page = Number.isSafeInteger(n) && n > 0 ? n : null;
+  return fileId ? { fileId, page } : { oemId, page };
+}
+
+/** The byte route the viewer reads, at the page for a native viewer. */
+export function requestBytesHref(req: ViewerRequest, page: number | null): string {
+  if ("fileId" in req) return nativeFileHref(req.fileId, page);
+  return `${API_BASE}/api/oem-sources/${encodeURIComponent(req.oemId)}/${page ? `#page=${page}` : ""}`;
+}
+
+/** The id the caption names: the parked file, or the manual's shared-library row. */
+export function requestId(req: ViewerRequest): string {
+  return "fileId" in req ? req.fileId : req.oemId;
 }
 
 /** The platform handles only a standalone opening with no cited page. */
@@ -84,6 +106,8 @@ export function isPdf(contentType: string | null): boolean {
 export function failureMessage(status: number): string {
   if (status === 401 || status === 403) return "You're signed out. Sign in again, then reopen this source.";
   if (status === 404) return "This document is no longer in this workspace.";
+  // #6119: the Hub could not get its own copy of a manufacturer's manual.
+  if (status === 502) return "This manual can't be loaded here. Use Open document.";
   return "This page couldn't be shown. Use Open document to try the file itself.";
 }
 
