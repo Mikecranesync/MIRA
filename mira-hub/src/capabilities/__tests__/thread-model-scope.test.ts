@@ -7,6 +7,7 @@
 // Run: cd mira-hub && npx vitest run src/capabilities/__tests__/thread-model-scope
 import { describe, it, expect } from "vitest";
 import { threadStatusScope } from "@/capabilities/notebook-manual-acquisition";
+import { oemMakerTable } from "@/lib/manual-discovery";
 
 const GS10 = { manufacturer: "AutomationDirect", model: "GS11N-20P2", catalogNumber: "", recordCatalog: null };
 const CONFIRMED = { manufacturer: "AutomationDirect", model: "DURApulse GS10", catalogNumber: "GS11N-20P2", recordCatalog: "GS11N-20P2" };
@@ -176,5 +177,134 @@ describe("threadStatusScope: a number the technician confirmed (#6085)", () => {
 
   it("control: another maker named with the confirmed number is other", () => {
     expect(threadStatusScope(["Find the manual for Schneider Electric 6AV2124-0GC01-0AX0"], ticked)).toBe("other");
+  });
+
+  // #6127: two makers named make a confirmed number count for nothing; this machine's own model
+  // keeps counting, as before, when another maker is mentioned beside it.
+  it("two makers named with the confirmed number is other", () => {
+    expect(threadStatusScope(["How do I wire the ABB 6AV2124-0GC01-0AX0 in our Siemens cabinet?"], ticked)).toBe("other");
+  });
+
+  it("control: the card's own model is own with another maker mentioned beside it", () => {
+    const q = "Our Siemens TP700 is wired to an ABB drive. Why is the TP700 screen blank?";
+    expect(threadStatusScope([q], TP700)).toBe("own");
+    expect(threadStatusScope([q], ticked)).toBe("own");
+  });
+
+  // Accepted cost: the ticked number still counts for nothing when a second maker is named, even
+  // beside the card's own model. That matches the scope before #6104.
+  it("cost: the walk question with a second maker named stays other, ticked or not", () => {
+    const q = "Our Siemens TP700 Comfort panel 6AV2124-0GC01-0AX0 is wired to an ABB drive and will not power up.";
+    expect(threadStatusScope([q], TP700)).toBe("other");
+    expect(threadStatusScope([q], ticked)).toBe("other");
+  });
+
+  // #6131 r7 (Mike): any everyday use of a counted maker name is the same written cost, here the
+  // conductance unit read as the maker Siemens on an Allen-Bradley machine. It fails safe.
+  it("cost: the siemens unit beside a ticked number on another maker's machine is other", () => {
+    const M850 = { manufacturer: "Allen-Bradley", model: "Micro850", catalogNumber: "", recordCatalog: null };
+    const tickedM850 = { ...M850, confirmedNumbers: ["Micro850-12A"] };
+    const unit = "The conductivity probe on the Allen-Bradley Micro850-12A reads 0.5 siemens.";
+    const control = "The conductivity probe on the Allen-Bradley Micro850-12A reads 0.5 mS.";
+    expect(threadStatusScope([control], tickedM850)).toBe("own"); // precondition: the tick admits the thread
+    expect(threadStatusScope([unit], tickedM850)).toBe("other");
+  });
+
+  // #6131 r1 F1: the saved-number rule reads makers from the folded question, as the model is
+  // read, so another maker written with a nonbreaking hyphen beside a ticked number reads as it
+  // does with the ASCII hyphen.
+  it("another maker written with a nonbreaking hyphen beside a ticked number reads as the ASCII spelling does", () => {
+    const ascii = "How do I wire the Allen-Bradley 6AV2124-0GC01-0AX0?";
+    const nb = "How do I wire the Allen‑Bradley 6AV2124-0GC01-0AX0?";
+    expect(threadStatusScope([ascii], ticked)).toBe("other"); // precondition: the ASCII reading
+    expect(threadStatusScope([nb], TP700)).toBe("other"); // precondition: withheld without the tick
+    expect(threadStatusScope([nb], ticked)).toBe("other");
+  });
+
+  // #6131 r2: without a ticked number, main's first maker check is unchanged. It reads the
+  // question as typed, so a nonbreaking hyphen hides a maker from it, and two other makers read
+  // as none. Folding it in round 1 admitted the second question below, which main withholds.
+  it("known limit, as on main: with no ticked number the first maker check reads the question as typed", () => {
+    expect(threadStatusScope(["Is the TP700 on the Allen‑Bradley network?"], TP700)).toBe("own");
+    expect(threadStatusScope(["How do I wire the EATON TP700 on the Allen‑Bradley network?"], TP700)).toBe("other");
+  });
+
+  it("control: this machine's maker written with a nonbreaking hyphen is own", () => {
+    const MICRO850 = { manufacturer: "Allen-Bradley", model: "Micro850", catalogNumber: "", recordCatalog: null };
+    expect(threadStatusScope(["Find the manual for the Allen‑Bradley Micro850"], MICRO850)).toBe("own");
+    expect(threadStatusScope(["Is the Micro850 on the Allen‑Bradley network?"], MICRO850)).toBe("own");
+  });
+
+  // #6131 r1 F2, r6: with only a ticked number making it own, this machine's maker counts however
+  // it is written on record, a dictionary-word maker before its own number never counts against
+  // it, and a machine with no maker on record counts no named maker as its own (fail closed).
+  it("control: this machine's maker written in capitals on record is its own maker", () => {
+    expect(threadStatusScope(["How do I wire the Siemens 6AV2124-0GC01-0AX0?"], { ...ticked, manufacturer: "SIEMENS" })).toBe("own");
+  });
+
+  it("control: a dictionary-word maker typed before this machine's own number is own", () => {
+    const EATON = { manufacturer: "Eaton", model: "DG1", catalogNumber: "", recordCatalog: null, confirmedNumbers: ["DG1-344D1FN-C21C"] };
+    expect(threadStatusScope(["How do I wire the Eaton DG1-344D1FN-C21C?"], EATON)).toBe("own");
+    expect(threadStatusScope(["How do I wire the Eaton DG1-344D1FN-C21C?"], { ...EATON, confirmedNumbers: [] })).toBe("other"); // precondition
+  });
+
+  it("control: a dictionary-word maker typed before this machine's own quoted number is own", () => {
+    const EATON = { manufacturer: "Eaton", model: "DG1", catalogNumber: "", recordCatalog: null, confirmedNumbers: ["DG1-344D1FN-C21C"] };
+    expect(threadStatusScope(['How do I wire the Eaton "DG1-344D1FN-C21C"?'], EATON)).toBe("own");
+    expect(threadStatusScope(["How do I wire the Eaton P/N:DG1-344D1FN-C21C?"], EATON)).toBe("own");
+  });
+
+  // #6131: each dictionary-word maker on record keeps its own number written after a label, and a
+  // question that also names Siemens is still withheld.
+  it.each(["Sick", "Banner", "Parker", "Eaton", "Emerson", "Phoenix"])("control: %s on record keeps its own labelled number", (maker) => {
+    const own = { manufacturer: maker, model: "QX700", catalogNumber: "", recordCatalog: null, confirmedNumbers: ["QX700-12A-34B"] };
+    for (const q of [`How do I wire the ${maker} order no. QX700-12A-34B?`, `How do I wire the ${maker} part number QX700-12A-34B?`]) {
+      expect(threadStatusScope([q], { ...own, confirmedNumbers: [] })).toBe("other"); // precondition: withheld without the tick
+      expect(threadStatusScope([q], own)).toBe("own");
+    }
+    expect(threadStatusScope([`Is this a ${maker} or a Siemens QX700-12A-34B?`], own)).toBe("other");
+  });
+
+  // #6131 r2 F5: a maker on record under a spelling the alias table knows (the OCR "Alien-Bradley")
+  // is still this machine's maker when the question spells it properly.
+  it("a maker on record under a known alias keeps its ticked number", () => {
+    const AL = { manufacturer: "Alien-Bradley", model: "Micro850", catalogNumber: "", recordCatalog: null, confirmedNumbers: ["Micro850-12A"] };
+    expect(threadStatusScope(["How do I wire the Allen-Bradley Micro850-12A?"], AL)).toBe("own");
+    expect(threadStatusScope(["How do I wire the Allen-Bradley Micro850-12A?"], { ...AL, confirmedNumbers: [] })).toBe("other"); // precondition
+    expect(threadStatusScope(["How do I wire the Siemens Micro850-12A?"], AL)).toBe("other"); // control: a conflicting maker
+  });
+
+  // #6131 r2 F5, over the whole maker table: with a maker on record, its ticked number named after
+  // that same maker is own, however either side spells it (as listed, capitals, title case, U+2011).
+  it("every maker on the table keeps its own ticked number in every spelling", () => {
+    const NUMBER = "QX700-12A-34B";
+    const spellings = (s: string) => [...new Set([s, s.toUpperCase(), s.replace(/\b[a-z]/g, (c) => c.toUpperCase()), s.replace(/-/g, "‑")])];
+    const misses: string[] = [];
+    let rows = 0;
+    for (const { name } of oemMakerTable()) {
+      for (const stored of spellings(name)) {
+        for (const asked of spellings(name)) {
+          const machine = { manufacturer: stored, model: "QX700", catalogNumber: "", recordCatalog: null };
+          const q = `How do I wire the ${asked} ${NUMBER}?`;
+          rows++;
+          if (threadStatusScope([q], { ...machine, confirmedNumbers: [] }) !== "other") misses.push(`precondition ${stored} / ${asked}`);
+          if (threadStatusScope([q], { ...machine, confirmedNumbers: [NUMBER] }) !== "own") misses.push(`${stored} / ${asked}`);
+        }
+      }
+    }
+    expect(rows).toBeGreaterThan(100);
+    expect(misses).toEqual([]);
+  });
+
+  it("with no maker on record, a named maker makes the confirmed number count for nothing", () => {
+    const NO_MAKER = { ...ticked, manufacturer: "" };
+    expect(threadStatusScope(["How do I wire the 6AV2124-0GC01-0AX0?"], NO_MAKER)).toBe("own"); // control
+    expect(threadStatusScope(["How do I wire the Siemens 6AV2124-0GC01-0AX0?"], NO_MAKER)).toBe("other");
+  });
+
+  // Known limit (#6146, #6131 r6): a maker that is also an ordinary word never counts in this rule,
+  // in any case; written after the number it reads as an ordinary word too.
+  it("known limit: title-case Eaton written after the confirmed number is not read as a maker", () => {
+    expect(threadStatusScope(["How do I wire the 6AV2124-0GC01-0AX0 from Eaton in our Siemens cabinet?"], ticked)).toBe("own");
   });
 });

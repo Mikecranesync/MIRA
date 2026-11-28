@@ -44,6 +44,10 @@ export type CandidateIdentity = { manufacturer: string | null; part: string };
 
 /** Maker names that are also everyday words: only an ALL-CAPS label print counts. */
 const DICTIONARY_MAKERS = new Set(["sick", "banner", "parker", "eaton", "emerson", "phoenix"]);
+/** #6131 r6 F9: maker names the saved-number check never counts, in any case: the dictionary-word
+ *  makers, and SMC, which is as often an acronym (an SMC alarm, an SMC connector) or Siemens' own
+ *  SMC sensor modules as the valve maker. */
+const NEVER_COUNTED_IN_SAVED_NUMBER = new Set([...DICTIONARY_MAKERS, "smc"]);
 
 const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
@@ -84,13 +88,15 @@ function typedMakerNamesPart(text: string, matched: string, matchIndex: number, 
 /** Every maker group (the OEM table's first domain) named in `text`, mapped to the
  *  longest matched name. Aliases of one maker share a group. `typedPart`: the
  *  text is the technician's typed message and this is the part it names, which
- *  enables the typed-text rule for dictionary-word makers above. */
-function makerGroups(text: string, typedPart?: string, loose = false): Map<string, string> {
+ *  enables the typed-text rule for dictionary-word makers above. `wordsAreWords`:
+ *  the names in NEVER_COUNTED_IN_SAVED_NUMBER never count. */
+function makerGroups(text: string, typedPart?: string, loose = false, wordsAreWords = false): Map<string, string> {
   const hits = new Map<string, string>(); // group (first domain) -> longest matched name
   for (const { name, domains } of oemMakerTable()) {
     const body = escape(name).replace(/\\-| /g, "[\\s-]+");
     const re = new RegExp(`(?<![A-Za-z0-9])${body}(?![A-Za-z0-9])`, "gi");
     const dictionary = DICTIONARY_MAKERS.has(name);
+    if (wordsAreWords && NEVER_COUNTED_IN_SAVED_NUMBER.has(name)) continue;
     const named = [...text.matchAll(re)].some(
       (m) =>
         !dictionary ||
@@ -119,6 +125,16 @@ export function makerFromText(text: string, typedPart?: string): string | null {
     if ([...makerGroups(text, undefined, true).keys()].some((g) => g !== chosen)) return null;
   }
   return [...hits.values()][0].toUpperCase();
+}
+
+/** #6127, #6131 r6: every maker group (the OEM table's first domain) `text` names, mapped to a
+ *  name matched for it. The six dictionary-word makers (Eaton, Parker, Banner, Sick, Emerson,
+ *  Phoenix) never count, in any case, because the same word is as often a person or a place;
+ *  a full name that is not an ordinary word ("Phoenix Contact") still counts. SMC never counts
+ *  either (r6 F9): it is as often an acronym or a Siemens sensor module. Aliases of one maker are
+ *  one group. */
+export function makerGroupsNamedIn(text: string): Map<string, string> {
+  return makerGroups(text, undefined, false, true);
 }
 
 export function extractCandidateIdentity(observation: string, typed = ""): CandidateIdentity | null {

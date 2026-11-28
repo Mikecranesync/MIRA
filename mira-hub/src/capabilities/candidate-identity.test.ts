@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { asksToFindManual, exactManualIdentity, extractCandidateIdentity, isSafeCandidateSearchIdentity, makerFromText, wantsManualDocumentation } from "./candidate-identity";
+import { asksToFindManual, exactManualIdentity, extractCandidateIdentity, isSafeCandidateSearchIdentity, makerFromText, makerGroupsNamedIn, wantsManualDocumentation } from "./candidate-identity";
 import { labelledPartCodes } from "./photo-part-lookup";
 
 // Manual-First PRD R1 (#4160 S5): a candidate (manufacturer, part) read from a
@@ -102,6 +102,72 @@ describe("makerFromText — the shared OEM maker table, corpus-independent", () 
 
   it("a maker name inside another word does not count", () => {
     expect(makerFromText("SMCX-200 adapter")).toBeNull();
+  });
+});
+
+// #6127, #6131 r6: the makers a saved-number question names, as groups, with the six makers that are
+// also ordinary words left out.
+describe("makerGroupsNamedIn", () => {
+  it("aliases of one maker are one group; another maker is a second", () => {
+    expect(makerGroupsNamedIn("Allen-Bradley and Rockwell Automation").size).toBe(1);
+    expect(makerGroupsNamedIn("Allen-Bradley and ABB").size).toBe(2);
+    expect(makerGroupsNamedIn("ABB and Rockwell Automation").size).toBe(2);
+  });
+
+  // #6131 r5 F8, r6: a maker that is also an ordinary word is as often a person or a place, in any
+  // case, so it never counts here.
+  it("a maker that is also an ordinary word never counts, in any case", () => {
+    const part = "6AV2124-0GC01-0AX0";
+    expect(makerGroupsNamedIn(`How do I wire the ABB ${part} in our Siemens cabinet?`).size).toBe(2); // control: not an ordinary word
+    expect(makerGroupsNamedIn(`Phoenix Contact terminals on the Siemens ${part} are loose.`).size).toBe(2); // control: the full name
+    expect(makerGroupsNamedIn(`I spoke with Parker; the ${part} in our Siemens cabinet will not power up.`).size).toBe(1);
+    expect(makerGroupsNamedIn(`I SPOKE WITH PARKER; THE ${part} IN OUR SIEMENS CABINET WILL NOT POWER UP.`).size).toBe(1);
+    expect(makerGroupsNamedIn(`When it left Phoenix, the ${part} in our Siemens cabinet was working.`).size).toBe(1);
+    expect(makerGroupsNamedIn(`I sent Parker ${part} specs for the Siemens cabinet.`).size).toBe(1);
+    expect(makerGroupsNamedIn(`SICK OF THIS: THE ${part} IS DEAD`).size).toBe(0);
+    // Known limit (#6146): a real maker that is also an ordinary word reads the same way.
+    expect(makerGroupsNamedIn(`How do I wire the Eaton ${part} in our Siemens cabinet?`).size).toBe(1);
+    expect(makerGroupsNamedIn(`How do I wire the EATON ${part} in our Siemens cabinet?`).size).toBe(1);
+  });
+
+  // #6131 r6 F9: SMC is as often an acronym or Siemens' own SMC sensor modules, so it never counts
+  // here, in any case. The other short maker names still count.
+  it("SMC never counts, in any case; the other short maker names still do", () => {
+    const part = "6AV2124-0GC01-0AX0";
+    expect(makerGroupsNamedIn(`Can I acknowledge the SMC (sliding mode control) alarm on the Siemens ${part}?`).size).toBe(1);
+    expect(makerGroupsNamedIn(`the smc alarm on the siemens ${part} will not clear`).size).toBe(1);
+    expect(makerGroupsNamedIn(`The SMC 30 module on the Siemens ${part} shows a fault.`).size).toBe(1);
+    expect(makerGroupsNamedIn(`The SMC valve next to the Siemens ${part} leaks.`).size).toBe(1); // known limit, as on main
+    expect(makerGroupsNamedIn(`The WAGO terminals on the Siemens ${part} are loose.`).size).toBe(2); // control
+    expect(makerGroupsNamedIn(`The ABB drive next to the Siemens ${part} trips.`).size).toBe(2); // control
+  });
+
+  // #6131 r5: a dictionary word before an order-number label is a word too ("Shipped from Phoenix, order no.").
+  it("a dictionary word before an order-number label is not read as a maker", () => {
+    const part = "6AV2124-0GC01-0AX0";
+    expect(makerGroupsNamedIn(`Shipped from Phoenix, order no. ${part}, to our Siemens line`).size).toBe(1);
+    expect(makerGroupsNamedIn(`Ask Parker, part no. ${part} is dead`).size).toBe(0);
+    // Known limit, as on main (#6141): a real maker before the label reads the same way.
+    expect(makerGroupsNamedIn(`the Eaton order no. ${part} in our Siemens cabinet`).size).toBe(1);
+  });
+
+  // #6131 r4 F7: "or" also joins clauses and names, so a dictionary word beside it stays a word.
+  it('a capitalised dictionary word joined to a maker by "or" is not read as a maker', () => {
+    expect(makerGroupsNamedIn("Our guy Parker or Siemens field service will look at it").size).toBe(1);
+    expect(makerGroupsNamedIn("I can ask the crew in Phoenix or Siemens can troubleshoot it").size).toBe(1);
+    expect(makerGroupsNamedIn("Ask Banner or Siemens support about it").size).toBe(1);
+    expect(makerGroupsNamedIn("We're in Phoenix and Siemens support says it is fine").size).toBe(1); // "and" too
+    // Known limit, as on main (#6142): a real choice reads the same way, with no part typed after it.
+    expect(makerGroupsNamedIn("Is this an Eaton or a Siemens panel?").size).toBe(1);
+    expect(makerGroupsNamedIn("Is this Eaton/Siemens?").size).toBe(1);
+  });
+
+  // The identity card's typed reading (makerFromText with a part) is not changed by this rule.
+  it("the identity card's typed maker reading is unchanged", () => {
+    const part = "6AV2124-0GC01-0AX0";
+    expect(makerFromText(`the Eaton order no. ${part}`, part)).toBeNull();
+    expect(makerFromText(`the Eaton order number ${part}`, part)).toBeNull();
+    expect(makerFromText(`the Eaton ${part}`, part)).toBe("EATON"); // control: the typed-text rule itself
   });
 });
 
