@@ -60,6 +60,7 @@ import {
 import { citationSupportGaps, withSupportingQuotes } from "@/capabilities/supporting-quote";
 import { citedPagesFor, manualSafetyStatementForCitations } from "@/capabilities/manual-safety-statement";
 import { retrieveSafetyChapterChunks, SAFETY_CHAPTER_DIRECTIVE } from "@/capabilities/manual-safety-chapter";
+import { asksDischargeWait, DISCHARGE_WAIT_DIRECTIVE, retrieveDischargeWaitChunks } from "@/capabilities/manual-discharge-wait";
 import { shadowVerifyCitedTurnResult } from "@/capabilities/claim-verifier-shadow";
 import { judgeEvidenceSufficiencyShadow, type JevShadowResult } from "@/capabilities/observability/jev-shadow";
 import { isWeakEvidence, WEAK_EVIDENCE_LABEL, WEAK_EVIDENCE_RULE } from "@/capabilities/observability/jev-weak-evidence";
@@ -137,6 +138,7 @@ import {
 } from "@/lib/safety-classifier";
 import { RESTART_BANNER, RESTART_DIRECTIVE, isFaultResetAsk } from "@/capabilities/restart-advisory";
 import { BYPASS_BANNER, BYPASS_STOP_TRIGGER, bypassStopText, safetyBypassAsk, safetyBypassWarning } from "@/capabilities/safety-bypass-advisory";
+import { SIGNOFF_REFUSAL, SIGNOFF_STOP_TRIGGER, safetySignoffAsk } from "@/capabilities/safety-signoff-ask";
 import { pageFromRetrievedChunks, withPageCitation } from "@/lib/citation-page";
 import {
   ENERGIZED_WORK_TRIGGER,
@@ -1383,7 +1385,11 @@ async function handleChatTurn(
   // retrieval, provider or judge. #5670 review 4 F13: decided from the text
   // alone, before the optional component scope is read, so a malformed scope
   // cannot turn the refusal into a 400. The refusal reads no scope at all.
-  const bypassStopEarly = safetyBypassAsk(message) !== null;
+  // Answer Test Q19: a request to write, fill in or sign a safety inspection sign-off is the same
+  // kind of fixed refusal (safety-signoff-ask.ts), served by the same branch below with its own
+  // trigger and text. Everything that lets the bypass refusal through an early error lets it through.
+  const signoffStopEarly = safetyBypassAsk(message) === null && safetySignoffAsk(message) !== null;
+  const bypassStopEarly = safetyBypassAsk(message) !== null || signoffStopEarly;
   // Machine-evidence selection (§4.4): a malformed window is a 400, never a silent
   // "answered without the machine". #5670 review 5 F15: read after the message and the
   // request's own identity, and a recognized bypass request drops a malformed window
@@ -2490,32 +2496,36 @@ async function handleChatTurn(
     // energized-work guidance (de-energize, lock out and tag out every source, verify zero energy;
     // no search, no page, no citation), under the same feature switch. One terminal row.
     const energizedGuidance = energizedWorkAsk ? energizedWorkStop(null, { notSearched: true }) : null;
-    const stopText = bypassStopText(
-      safetyTrigger && !electricalHazardDirective ? hazardBanner(safetyTrigger) : electricalHazardDirective ? hazardBanner(ENERGIZED_ELECTRICAL_HAZARD) : null,
-      energizedGuidance,
-    );
-    console.warn(`[notebook-chat] safety-device bypass STOP (${BYPASS_STOP_TRIGGER}) — fixed refusal, no retrieval, no provider`);
+    const otherHazard =
+      safetyTrigger && !electricalHazardDirective ? hazardBanner(safetyTrigger) : electricalHazardDirective ? hazardBanner(ENERGIZED_ELECTRICAL_HAZARD) : null;
+    // A sign-off ask gets its own fixed text and trigger; any other hazard of the turn still shows beside it.
+    const stopTrigger = signoffStopEarly ? SIGNOFF_STOP_TRIGGER : BYPASS_STOP_TRIGGER;
+    const stopReason = signoffStopEarly ? "safety_record_signoff_ask" : "safety_device_bypass_ask";
+    const stopText = signoffStopEarly
+      ? [otherHazard, SIGNOFF_REFUSAL, energizedGuidance].filter(Boolean).join("\n\n")
+      : bypassStopText(otherHazard, energizedGuidance);
+    console.warn(`[notebook-chat] safety STOP (${stopTrigger}) — fixed refusal, no retrieval, no provider`);
     const stopGateSpan = tracer.startSpan("answer_gate.evaluate", undefined, rootCtx);
     lifecycleOutcome = "safety_stop";
     rec.stage("answer_gate", {
       invoked: true,
       decision: "blocked",
-      reason: "safety_device_bypass_ask",
+      reason: stopReason,
       answer_chars: stopText.length,
       refusal_phrase_matched: false,
       evidence_phrase_matched: false,
       safety_classification: "safety_stop",
       evidence_sufficient: false,
       ungrounded_unit_claim: false,
-      safety_outcome: { layer: "pre_llm_trigger", outcome: "block", flagged: true, violation: BYPASS_STOP_TRIGGER, semantic_verdict: "not_run" },
+      safety_outcome: { layer: "pre_llm_trigger", outcome: "block", flagged: true, violation: stopTrigger, semantic_verdict: "not_run" },
     });
     setSpanAttrs(
       {
         "mira.answer_gate.invoked": true,
         "mira.answer_gate.decision": "blocked",
-        "mira.answer_gate.reason": "safety_device_bypass_ask",
+        "mira.answer_gate.reason": stopReason,
         "mira.answer_gate.answer_chars": stopText.length,
-        "mira.safety.trigger": BYPASS_STOP_TRIGGER,
+        "mira.safety.trigger": stopTrigger,
       },
       stopGateSpan,
     );
@@ -2536,8 +2546,8 @@ async function handleChatTurn(
         // ONE terminal display notice for the response (#5670 native 3 F10): the energized-work
         // isolation guidance is part of the saved answer text; a second safety_notice would render
         // as a second terminal notice on hydration where the live stream and replay show one.
-        { kind: "safety_notice", trigger: BYPASS_STOP_TRIGGER } satisfies SafetyNoticeEntry,
-        { kind: "safety_stop", trigger: BYPASS_STOP_TRIGGER } satisfies SafetyStopEntry,
+        { kind: "safety_notice", trigger: stopTrigger } satisfies SafetyNoticeEntry,
+        { kind: "safety_stop", trigger: stopTrigger } satisfies SafetyStopEntry,
       ],
       model: null,
       basis: null,
@@ -2568,7 +2578,7 @@ async function handleChatTurn(
         if (identityDisputed) controller.enqueue(stopEnc.encode(sse(IDENTITY_DISPUTE_FRAME)));
         const sources: NotebookSourcesFrame = { kind: "sources", citations: [], sourceSnapshot: docIds };
         controller.enqueue(stopEnc.encode(sse(sources)));
-        controller.enqueue(stopEnc.encode(sse({ kind: "safety", trigger: BYPASS_STOP_TRIGGER } as NotebookSafetyFrame)));
+        controller.enqueue(stopEnc.encode(sse({ kind: "safety", trigger: stopTrigger } as NotebookSafetyFrame)));
         if (visualEntry) controller.enqueue(stopEnc.encode(sse(visualEvidenceMarker(visualEntry))));
         for (const piece of chunkForRelease(stopText)) {
           controller.enqueue(stopEnc.encode(sse({ kind: "content", content: piece })));
@@ -2584,10 +2594,10 @@ async function handleChatTurn(
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache, no-transform",
         "X-Accel-Buffering": "no",
-        ...safetyFlagHeaders(BYPASS_STOP_TRIGGER),
+        ...safetyFlagHeaders(stopTrigger),
         // #5670 review 4 F14: the terminal stop's authoritative header, as its replay sends it,
         // so a stream that breaks after the headers still shows the refusal, not Retry.
-        "X-Safety-Stop": BYPASS_STOP_TRIGGER,
+        "X-Safety-Stop": stopTrigger,
         ...(rootTraceId ? { "x-mira-trace-id": rootTraceId } : {}),
       },
     });
@@ -3088,7 +3098,26 @@ async function handleChatTurn(
       console.warn("[notebook-chat] safety-chapter read failed (retrieved chunks only):", err instanceof Error ? err.message : err);
     }
   }
-  const chunks: ManualChunk[] = safetyChapterChunks.length > 0 ? [...retrievedChunks, ...safetyChapterChunks] : retrievedChunks;
+  // Answer Test Q11: "I just killed power to the GS10. How long until I can open it up?" retrieved a
+  // DC-bus page with no wait on it and the answer said the manual gives none. When the question is
+  // about getting into equipment after power is removed, each retrieved document's own discharge-wait
+  // warnings ("wait at least 10 minutes ... measure DC+ to DC-") join the excerpts, after the
+  // retrieved and Safety-chapter ones so no citation number moves. Notebook path only; fail-open.
+  let dischargeWaitChunks: ManualChunk[] = [];
+  if (notebookRetrieval && !oemRetrieval && retrievedChunks.length > 0 && asksDischargeWait(message)) {
+    try {
+      const already = [...retrievedChunks, ...safetyChapterChunks];
+      dischargeWaitChunks = await withTenantContext(ctx.tenantId, (client) =>
+        retrieveDischargeWaitChunks(client, ctx.tenantId, already, { approvedSourceDocIds: docIds }),
+      );
+    } catch (err) {
+      console.warn("[notebook-chat] discharge-wait read failed (retrieved chunks only):", err instanceof Error ? err.message : err);
+    }
+  }
+  const chunks: ManualChunk[] =
+    safetyChapterChunks.length > 0 || dischargeWaitChunks.length > 0
+      ? [...retrievedChunks, ...safetyChapterChunks, ...dischargeWaitChunks]
+      : retrievedChunks;
   // No document selected and the library's pages were for the bound model, not
   // the model this message names: the turn has no passages (so nothing below
   // can answer, cite or print a page from them) and this says why. It is NOT
@@ -4747,7 +4776,7 @@ async function handleChatTurn(
   // `systemPrompt` via their own independent conditionals, unchanged.
   const systemPrompt = withRetailCodeNote(withLabelDataIdentifiers(withPhotoProvenance(withStepSafety(withAnswerLanguage(
     docGrounded
-      ? appendManualContext(withObserved, chunks) + machineContext + coverageDirective + vendorFallbackDirective + (safetyChapterChunks.length > 0 ? SAFETY_CHAPTER_DIRECTIVE : "")
+      ? appendManualContext(withObserved, chunks) + machineContext + coverageDirective + vendorFallbackDirective + (safetyChapterChunks.length > 0 ? SAFETY_CHAPTER_DIRECTIVE : "") + (dischargeWaitChunks.length > 0 ? DISCHARGE_WAIT_DIRECTIVE : "")
       : withObserved + machineContext + identityProposalDirective,
     message,
  )), lookContext), lookContext), lookContext);
