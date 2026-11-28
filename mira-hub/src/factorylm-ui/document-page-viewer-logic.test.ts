@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { API_BASE } from "@/lib/config";
 import {
+  oemCopyNotice,
   failureMessage,
   filenameFromDisposition,
   isPdf,
@@ -158,5 +159,19 @@ describe("the viewer opens a manufacturer manual by its row id", () => {
   });
   it("a manual the Hub could not fetch says so and points at Open document", () => {
     expect(failureMessage(502)).toBe("This manual can't be loaded here. Use Open document.");
+  });
+});
+
+describe("oemCopyNotice — the Hub's copy is labelled, never passed off as the indexed edition (#6119)", () => {
+  const oem = { oemId: "6119beef-0000-4000-8000-000000000001", page: 906 };
+  it("a manufacturer manual names the day the Hub fetched it", () => {
+    expect(oemCopyNotice(oem, "2026-11-20T08:00:00.000Z")).toBe("Hub copy fetched 2026-11-20, not checked against the indexed edition.");
+  });
+  it("a missing or unreadable date still says it is not checked", () => {
+    expect(oemCopyNotice(oem, null)).toBe("Hub copy, not checked against the indexed edition.");
+    expect(oemCopyNotice(oem, "yesterday-ish")).toBe("Hub copy, not checked against the indexed edition.");
+  });
+  it("control — a parked upload is the customer's own file and gets no notice", () => {
+    expect(oemCopyNotice({ fileId: "f-1", page: 3 }, "2026-11-20T08:00:00.000Z")).toBeNull();
   });
 });

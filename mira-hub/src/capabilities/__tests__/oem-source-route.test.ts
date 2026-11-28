@@ -46,13 +46,14 @@ describe("GET /api/oem-sources/[id]", () => {
 
   it("200 inline PDF with the safe headers", async () => {
     vi.mocked(sessionOr401).mockResolvedValue(session as never);
-    vi.mocked(oemSourceBytes).mockResolvedValue({ kind: "ok", bytes: Buffer.from("%PDF-1.7"), filename: "g120 list.pdf" });
+    vi.mocked(oemSourceBytes).mockResolvedValue({ kind: "ok", bytes: Buffer.from("%PDF-1.7"), filename: "g120 list.pdf", fetchedAt: "2026-11-20T08:00:00.000Z" });
     const res = await GET(req(), params(ID));
     expect(res.status).toBe(200);
     expect(res.headers.get("Content-Type")).toBe("application/pdf");
     expect(res.headers.get("Content-Disposition")).toBe('inline; filename="g120 list.pdf"');
     expect(res.headers.get("Cache-Control")).toBe("private, max-age=3600");
     expect(res.headers.get("X-Content-Type-Options")).toBe("nosniff");
+    expect(res.headers.get("X-Source-Fetched-At")).toBe("2026-11-20T08:00:00.000Z");
     expect(Buffer.from(await res.arrayBuffer()).toString()).toBe("%PDF-1.7");
     expect(oemSourceBytes).toHaveBeenCalledWith(ID);
   });

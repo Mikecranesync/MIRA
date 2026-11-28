@@ -130,3 +130,15 @@ export function failureMessage(status: number): string {
 export function pageCaption(name: string, page: number, numPages: number, fileId: string): string {
   return `${name} · page ${page} of ${numPages} · file ${fileId.slice(0, 8)}`;
 }
+
+/**
+ * #6119: the Hub's copy of a manufacturer manual is the first good copy it fetched, and it is not
+ * checked against the edition that was indexed, so the viewer says so. A parked upload is the
+ * customer's own file and gets no notice.
+ */
+export function oemCopyNotice(req: ViewerRequest, fetchedAtHeader: string | null): string | null {
+  if (!("oemId" in req)) return null;
+  const t = fetchedAtHeader ? Date.parse(fetchedAtHeader) : NaN;
+  const when = Number.isFinite(t) ? ` fetched ${new Date(t).toISOString().slice(0, 10)}` : "";
+  return `Hub copy${when}, not checked against the indexed edition.`;
+}

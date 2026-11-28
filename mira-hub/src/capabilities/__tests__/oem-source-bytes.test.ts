@@ -30,7 +30,9 @@ const URL_OK = "https://cache.industry.siemens.com/dl/files/g120.pdf";
 const PDF = Buffer.from("%PDF-1.7\n1 0 obj\n%%EOF\n");
 
 type Row = { url: string; isPrivate: boolean };
-type Stored = { status: string; content: Buffer | null; retry_after: Date | null; http_status: number | null };
+type Stored = { status: string; content: Buffer | null; retry_after: Date | null; http_status: number | null; fetched_at: Date };
+/** The database clock at the store; the result must carry this, not the request time. */
+const STORED_AT = new Date("2026-11-20T08:00:00.000Z");
 
 /** A database that honours the resolver's predicate (non-private, http(s)) and keeps the cache in memory. */
 function fakeDb(entries: Record<string, Row>) {
@@ -41,14 +43,14 @@ function fakeDb(entries: Record<string, Row>) {
       const e = entries[String(params[0])];
       return { rows: e && !e.isPrivate && /^https?:\/\//.test(e.url) ? [{ source_url: e.url }] : [] };
     }
-    if (sql.startsWith("SELECT status, content, retry_after FROM oem_source_documents")) {
+    if (sql.startsWith("SELECT status, content, retry_after, fetched_at FROM oem_source_documents")) {
       const s = cache.get(String(params[0]));
       return { rows: s ? [s] : [] };
     }
     if (sql.startsWith("INSERT INTO oem_source_documents")) {
       const [sha, , status, http, content, , , , retryAfter] = params as [string, string, string, number | null, Buffer | null, string, string, number, Date | null];
       // Mirrors STORE_SQL's WHERE: a stored good copy is never replaced.
-      if (cache.get(sha)?.status !== "ok") cache.set(sha, { status, content, retry_after: retryAfter, http_status: http });
+      if (cache.get(sha)?.status !== "ok") cache.set(sha, { status, content, retry_after: retryAfter, http_status: http, fetched_at: STORED_AT });
       stores.push(status);
       return { rows: [] };
     }
@@ -149,10 +151,11 @@ describe("oemSourceBytes — id in, bytes out; the URL never comes from the clie
     const { db, stores } = fakeDb({ [ENTRY]: { url: URL_OK, isPrivate: false } });
     const f = fakeFetch({ [URL_OK]: () => new Response(PDF) });
     const first = await oemSourceBytes(ENTRY, deps(db, f.fn));
-    expect(first).toEqual({ kind: "ok", bytes: PDF, filename: "g120.pdf" });
+    expect(first).toEqual({ kind: "ok", bytes: PDF, filename: "g120.pdf", fetchedAt: STORED_AT.toISOString() });
     expect(stores).toEqual(["ok"]);
-    const second = await oemSourceBytes(ENTRY, deps(db, f.fn));
-    expect(second.kind).toBe("ok");
+    const second = await oemSourceBytes(ENTRY, deps(db, f.fn, {}, Date.parse("2026-12-01T00:00:00Z")));
+    // The copy's own fetch date, not the time of this request: the viewer labels the page with it.
+    expect(second).toEqual({ kind: "ok", bytes: PDF, filename: "g120.pdf", fetchedAt: STORED_AT.toISOString() });
     expect(f.calls).toEqual([URL_OK]);
   });
 

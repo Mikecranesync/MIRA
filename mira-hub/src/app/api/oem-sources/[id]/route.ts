@@ -35,6 +35,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         "Content-Disposition": `inline; filename="${safeFilename}"`,
         "Cache-Control": "private, max-age=3600",
         "X-Content-Type-Options": "nosniff",
+        // When the Hub fetched its copy; the viewer labels the page with it (#6119).
+        "X-Source-Fetched-At": result.fetchedAt,
       },
     });
   } catch (err) {

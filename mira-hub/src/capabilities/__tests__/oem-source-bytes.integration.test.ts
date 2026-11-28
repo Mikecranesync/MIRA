@@ -128,8 +128,10 @@ describe("two concurrent misses for one manual", () => {
     expect(a.kind).toBe("ok");
     expect(b.kind).toBe("ok");
     expect(calls).toBe(1);
-    const rows = await testPool.query(`SELECT status, byte_length FROM oem_source_documents WHERE source_url = $1`, [URL_OK]);
-    expect(rows.rows).toEqual([{ status: "ok", byte_length: String(PDF.byteLength) }]);
+    const rows = await testPool.query(`SELECT status, byte_length, fetched_at FROM oem_source_documents WHERE source_url = $1`, [URL_OK]);
+    expect(rows.rows.map((r) => ({ status: r.status, byte_length: r.byte_length }))).toEqual([{ status: "ok", byte_length: String(PDF.byteLength) }]);
+    // The viewer's "fetched" date is the stored row's own fetch time.
+    expect(a.kind === "ok" ? a.fetchedAt : "").toBe(new Date(rows.rows[0].fetched_at).toISOString());
   });
 
   it("five cold opens on a five-connection pool: one download, and other queries are not starved", async () => {

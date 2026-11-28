@@ -273,7 +273,7 @@ export function oemCitationLink(chunk: Parameters<typeof oemSourceEntryId>[0] & 
 export const RESOLVE_SOURCE_SQL = `SELECT source_url FROM knowledge_entries
     WHERE id = $1::uuid AND is_private = false AND source_url ~ '^https?://' LIMIT 1`;
 
-const CACHE_SQL = `SELECT status, content, retry_after FROM oem_source_documents WHERE url_sha256 = $1`;
+const CACHE_SQL = `SELECT status, content, retry_after, fetched_at FROM oem_source_documents WHERE url_sha256 = $1`;
 
 /** A stored good copy is never replaced: the first complete PDF for a URL stays pinned, so a
  *  later vendor change cannot silently swap the pages under an existing citation. */
@@ -286,10 +286,10 @@ export const STORE_SQL = `INSERT INTO oem_source_documents
       byte_length = EXCLUDED.byte_length, page_count = NULL, fetched_at = now(), retry_after = EXCLUDED.retry_after
     WHERE oem_source_documents.status <> 'ok'`;
 
-type CacheRow = { status: string; content: Buffer | null; retry_after: Date | string | null };
+type CacheRow = { status: string; content: Buffer | null; retry_after: Date | string | null; fetched_at?: Date | string | null };
 
 export type OemSourceResult =
-  | { kind: "ok"; bytes: Buffer; filename: string }
+  | { kind: "ok"; bytes: Buffer; filename: string; fetchedAt: string }
   | { kind: "not_found" }
   | { kind: "unavailable" };
 
@@ -306,7 +306,12 @@ const defaultSourceDeps = (): SourceDeps => ({
 
 function fromCache(row: CacheRow | undefined, now: number, url: string): OemSourceResult | null {
   if (!row) return null;
-  if (row.status === "ok" && row.content) return { kind: "ok", bytes: Buffer.from(row.content), filename: pdfFilename(url) };
+  if (row.status === "ok" && row.content) {
+    // When the Hub fetched this copy: the viewer shows it, because the copy is not checked
+    // against the edition that was indexed (#6119 F2, Mike chose A).
+    const fetched = row.fetched_at ? new Date(row.fetched_at) : new Date(now);
+    return { kind: "ok", bytes: Buffer.from(row.content), filename: pdfFilename(url), fetchedAt: fetched.toISOString() };
+  }
   const retryAt = row.retry_after ? new Date(row.retry_after).getTime() : 0;
   return retryAt > now ? { kind: "unavailable" } : null;
 }
@@ -375,5 +380,5 @@ async function fillCache(sourceUrl: string, urlSha: string, host: string, deps: 
   );
   // Another process may have stored a good copy first; that pinned copy is what every caller sees.
   const stored = fromCache((await deps.db.query(CACHE_SQL, [urlSha])).rows[0] as CacheRow | undefined, deps.now(), sourceUrl);
-  return stored ?? (bytes ? { kind: "ok", bytes, filename: pdfFilename(sourceUrl) } : { kind: "unavailable" });
+  return stored ?? (bytes ? { kind: "ok", bytes, filename: pdfFilename(sourceUrl), fetchedAt: new Date(deps.now()).toISOString() } : { kind: "unavailable" });
 }
