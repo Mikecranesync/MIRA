@@ -199,7 +199,7 @@ Before hitting "Merge," the reviewer checks:
 - **Architecture questions:** [Architecture overview](architecture.md) or ask Mike
 - **Deploy questions:** [Deployment](deployment.md) or `docs/runbooks/factorylm-vps.md`
 - **CI failures:** check [wiki/hot.md](../../wiki/hot.md) for known-broken-main scenarios
-- **Stuck debugging:** [`.claude/skills/diagnostic-workflow.md`](../../.claude/skills/diagnostic-workflow.md) or ask
+- **Stuck debugging:** [`.claude/skills/diagnostic-workflow/SKILL.md`](../../.claude/skills/diagnostic-workflow/SKILL.md) or ask
 
 ## Where to go next
 

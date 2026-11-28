@@ -13,7 +13,7 @@ MIRA is a multi-context monorepo. This file points engineering skills at the per
 | sidecar-legacy | `mira-sidecar/` | `mira-sidecar/CLAUDE.md` | Deprecated ChromaDB (sunset pending — see ADR-0008) |
 | bridge-orchestration | `mira-bridge/` | `mira-bridge/CLAUDE.md` | Node-RED orchestration, SQLite WAL |
 | hub | `mira-hub/` | `mira-hub/CLAUDE.md` + `mira-hub/AGENTS.md` | Auth + tenant + Next.js app shell |
-| knowledge-ingest | `mira-crawler/` | (no module CLAUDE.md — use `.claude/skills/knowledge-ingest.md`) | OEM discovery + chunker |
+| knowledge-ingest | `mira-crawler/` | (no module CLAUDE.md — use `.claude/skills/knowledge-ingest/SKILL.md`) | OEM discovery + chunker |
 
 System-wide language: `CONTEXT.md` (cross-cutting glossary; grown by `/grill-with-docs`).
 System-wide ADRs: `docs/adr/` (0001–0016).

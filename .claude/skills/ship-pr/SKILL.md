@@ -143,9 +143,9 @@ to `ship` for that.
 
 ## Cross-references
 
-- `.claude/skills/ship.md` — the merge→deploy→verify-live half this hands off to
-- `.claude/skills/design-ship-routine.md` — visible mira-web ship loop
-- `.claude/skills/smart-commit.md` — commit hygiene before a PR exists
+- `.claude/skills/ship/SKILL.md` — the merge→deploy→verify-live half this hands off to
+- `.claude/skills/design-ship-routine/SKILL.md` — visible mira-web ship loop
+- `.claude/skills/smart-commit/SKILL.md` — commit hygiene before a PR exists
 - `.claude/rules/session-discipline.md` — scoped commits, regression recheck, checkpointing
 - `tools/hooks/git-state-guard.sh` — the P0 preflight guard reused in §0
 - `docs/environments.md` — staging gate + promotion discipline

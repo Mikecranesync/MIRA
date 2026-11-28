@@ -114,7 +114,7 @@ If the failure mode is at the recall layer (different stream), extend `test_reca
 - Slash command: `.claude/commands/mira-test-bot-grounding.md`
 - Skill (auto-loads on retrieval edits): `.claude/skills/bot-grounding-tests/SKILL.md`
 - Memory: `project_recall_embedding_gate.md`, `feedback_lock_in_chronic_ops_bugs.md`
-- Related: `wiki/references/dev-loop.md`, `.claude/skills/kb-benchmark.md` (broader 100-MCQ exam)
+- Related: `wiki/references/dev-loop.md`, `.claude/skills/kb-benchmark/SKILL.md` (broader 100-MCQ exam)
 - Spec layer: `docs/specs/uns-message-resolver-spec.md`, `docs/specs/maintenance-namespace-builder-spec.md`
 
 ## Open follow-ups
