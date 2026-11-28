@@ -17,6 +17,7 @@ import {
   extractQuestionTerms,
 } from "../manual-rag";
 import { makeChunk } from "./test-fixtures";
+import { pagesByCitation } from "@/capabilities/supporting-quote";
 
 /** Text of the single rendered block, without its `[n] head, p.N` label line. */
 function body(context: string): string {
@@ -54,6 +55,35 @@ describe("F1 — distinct passages on one page are kept", () => {
     const a = makeChunk("Synthetic identical passage.", 10);
     const b = makeChunk("Synthetic identical passage.", 11);
     expect(buildGroundedContext([a, b]).match(/Synthetic identical passage/g)).toHaveLength(2);
+  });
+
+  // Native review 2 F1: one page retrieved twice, once with its line breaks and once flattened to
+  // a single line. They are the same passage, but only the line-broken copy lets row selection
+  // keep the requested row; whichever order they arrive in, the model must see that copy.
+  describe("a flattened and a line-broken copy of one page", () => {
+    const hdr = "| Model | Parameter | Meaning |\n|---|---|---|";
+    const filler = Array.from({ length: 95 }, (_, i) => `| GS10 | A${100 + i} | synthetic unrelated filler ${i} |`);
+    const row = "| All variants | P06.53 | This is the complete requested synthetic definition |";
+    const structured = ["# GS10 parameters", hdr, ...filler, row].join("\n");
+    const flat = structured.replace(/\s+/g, " ");
+    it.each([
+      ["flattened first", [flat, structured]],
+      ["line-broken first", [structured, flat]],
+    ])("%s: the requested row reaches the model once, under one citation", (_name, order) => {
+      expect(flat).not.toContain("\n"); // precondition: the flat copy really has no line structure
+      const chunks = order.map((t) => makeChunk(t, 88));
+      const context = buildGroundedContext(chunks, "What does P06.53 mean?");
+      expect(context).toContain(row);
+      expect(context.match(/^\[1\] /gm)).toHaveLength(1);
+      expect(context).not.toMatch(/^\[2\] /m);
+    });
+    it.each([
+      ["flattened first", [flat, structured]],
+      ["line-broken first", [structured, flat]],
+    ])("%s: the validators read the same single line-broken copy the model saw", (_name, order) => {
+      const chunks = order.map((t) => makeChunk(t, 88));
+      expect(pagesByCitation(chunks)).toEqual([[structured]]);
+    });
   });
 
   it("unknown-page passages are neither dropped nor merged with a numbered page", () => {

@@ -31,6 +31,7 @@ import {
   MAX_CONTENT_CHARS,
   TABLE_COMPACT_BUDGET,
   extractQuestionTerms,
+  modelVisibleChunks,
   neutralizeReferenceText,
   smartTruncate,
   type QuestionTerms,
@@ -3512,22 +3513,9 @@ export function buildGroundedContext(
   // into the same `chunks` this renders and chunksToSources numbers.
   const allRelevantChunks = chunks;
   
-  // F1: keep every DISTINCT passage (two passages of one page both reach the
-  // model under that page's single citation number); drop only exact
-  // duplicates — same document, same page (null stays distinct from a number),
-  // same whitespace-normalised full text (case is meaningful: 4 mV vs 4 MV).
-  const seen = new Set<string>();
-  const deduped = allRelevantChunks.filter((c) => {
-    const contentKey = [
-      c.docId ?? "",
-      c.sourceUrl,
-      c.sourcePage == null ? "?" : String(c.sourcePage),
-      c.content.replace(/\s+/g, " ").trim(),
-    ].join("\u0000");
-    if (seen.has(contentKey)) return false;
-    seen.add(contentKey);
-    return true;
-  });
+  // F1: every DISTINCT passage, one copy of each duplicate — the line-broken copy when one was
+  // also retrieved flattened (native review 2 F1). The validators read the same collection.
+  const deduped = modelVisibleChunks(allRelevantChunks);
   
   // Assign citation numbers by page (multiple passages from same page share citation number)
   const idx = citationIndex(deduped);

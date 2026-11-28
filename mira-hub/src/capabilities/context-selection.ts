@@ -374,3 +374,41 @@ export function neutralizeReferenceText(text: string): string {
 export function modelVisibleContent(content: string, question: string | undefined): string {
   return neutralizeReferenceText(smartTruncate(content, question ? extractQuestionTerms(question) : undefined));
 }
+
+type DedupeChunk = { content: string; sourceUrl: string; sourcePage: number | null; docId?: string | null };
+
+const lineBreaks = (text: string): number => (text.trim().match(/\n/g) ?? []).length;
+
+/**
+ * The retrieved passages the model is actually shown, in order (#6030 F1, native review 2).
+ *
+ * Keeps every DISTINCT passage; two passages of one page both reach the model under that page's
+ * single citation number. Passages that are the same text once whitespace is collapsed — same
+ * document, same page (null stays distinct from a number), case kept (4 mV vs 4 MV) — are one
+ * passage and appear once, at the first one's position. Of those copies the one with the most line
+ * breaks is kept: a copy flattened onto one line has lost the row structure that row selection
+ * needs, so keeping it whenever it happened to arrive first dropped the requested table row.
+ *
+ * The prompt builder (lib/manual-rag.ts) and the validators (supporting-quote.ts pagesByCitation)
+ * both read through this, so a validator never judges a copy the model did not see.
+ */
+export function modelVisibleChunks<T extends DedupeChunk>(chunks: readonly T[]): T[] {
+  const slot = new Map<string, number>();
+  const kept: T[] = [];
+  for (const c of chunks) {
+    const key = [
+      c.docId ?? "",
+      c.sourceUrl,
+      c.sourcePage == null ? "?" : String(c.sourcePage),
+      c.content.replace(/\s+/g, " ").trim(),
+    ].join("\u0000");
+    const at = slot.get(key);
+    if (at === undefined) {
+      slot.set(key, kept.length);
+      kept.push(c);
+    } else if (lineBreaks(c.content) > lineBreaks(kept[at].content)) {
+      kept[at] = c;
+    }
+  }
+  return kept;
+}

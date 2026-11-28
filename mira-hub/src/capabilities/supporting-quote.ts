@@ -15,7 +15,7 @@
  */
 import { claimIdentifiers } from "@/lib/quote-window";
 import { citationSourceKey } from "./citation-source-key";
-import { modelVisibleContent } from "./context-selection";
+import { modelVisibleChunks, modelVisibleContent } from "./context-selection";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { Root } from "mdast";
@@ -654,10 +654,11 @@ type PageChunk = { content: string; sourceUrl: string; sourcePage: number | null
 
 /** Chunk texts grouped by page exactly as buildCitations numbers them — key
  *  `${sourceUrl}::${sourcePage ?? ""}`, citationId = first-appearance order — so
- *  pages[n - 1] is the page the model saw as [n]. */
+ *  pages[n - 1] is the page the model saw as [n]. Only the passages the model was shown
+ *  (modelVisibleChunks, #6030 F1): a duplicate copy dropped from the prompt is not evidence. */
 export function pagesByCitation(chunks: readonly PageChunk[]): string[][] {
   const byKey = new Map<string, string[]>();
-  for (const c of chunks) {
+  for (const c of modelVisibleChunks(chunks)) {
     const key = citationSourceKey(c);
     byKey.set(key, [...(byKey.get(key) ?? []), c.content]);
   }
