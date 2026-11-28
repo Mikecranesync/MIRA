@@ -402,12 +402,40 @@ describe("GET notebook detail: a saved number in a question naming two makers (#
     expect(offeredOwnNumber(question, { manufacturer: "Siemens", model: "TP700" })).toBe("6AV2124-0GC01-0AX0");
   });
 
+  // #6131 r6 F9: SMC is as often an acronym (an alarm, a connector) or Siemens' own SMC sensor
+  // modules as the valve maker, so it never counts here, in any case, as on main.
+  it.each([
+    ["an alarm acronym", "Can I acknowledge the SMC (sliding mode control) alarm on the Siemens 6AV2124-0GC01-0AX0?"],
+    ["a connector type", "The SMC connector on the Siemens 6AV2124-0GC01-0AX0 is loose."],
+    ["the acronym in lowercase", "the smc alarm on the siemens 6AV2124-0GC01-0AX0 will not clear"],
+    ["a Siemens sensor module written with a space", "The SMC 30 module on the Siemens 6AV2124-0GC01-0AX0 shows a fault."],
+    ["a Siemens sensor module written with a hyphen", "Siemens SMC-30 encoder module on the 6AV2124-0GC01-0AX0 line keeps faulting."],
+  ])("control: SMC as %s leaves the thread showing the status, and the card offers the number", async (_label, question) => {
+    const body = await read(question);
+    expect(readConfirmedNumbers).toHaveBeenCalledWith(TENANT, NB); // precondition: the number was read
+    expect(body.manualSearch).toEqual(READY);
+    expect(body).not.toHaveProperty("manualSearchScope");
+    expect(offeredOwnNumber(question, { manufacturer: "Siemens", model: "TP700" })).toBe("6AV2124-0GC01-0AX0");
+  });
+
+  // Known limit, as on main (#6131 r6 F9, Mike chose this over the acronym withholding): a real
+  // SMC part reads the same way, like Eaton (#6146). A fix shows up here as a deliberate change.
+  it("known limit: a real SMC valve next to the panel shows the status with the number saved, and the card offers it, as on main", async () => {
+    const question = "The SMC valve next to the Siemens 6AV2124-0GC01-0AX0 leaks.";
+    const body = await read(question);
+    expect(readConfirmedNumbers).toHaveBeenCalledWith(TENANT, NB); // precondition: the number was read
+    expect(body.manualSearch).toEqual(READY);
+    expect(body).not.toHaveProperty("manualSearchScope");
+    expect(offeredOwnNumber(question, { manufacturer: "Siemens", model: "TP700" })).toBe("6AV2124-0GC01-0AX0");
+  });
+
   // Accepted cost (#6131 r6, Mike): another maker's name hides the status even when it names a
   // person or a part nearby, because a word test cannot tell them from the device's maker. It fails
   // safe: the status line is withheld, the wrong manual is never shown. Main shows these.
   it.each([
     ["a person whose surname is a maker", "I spoke with Schneider; the 6AV2124-0GC01-0AX0 in our Siemens cabinet will not power up."],
     ["a part from another maker nearby", "The Omron relay next to the Siemens 6AV2124-0GC01-0AX0 clicks."],
+    ["a part from another short-named maker nearby (only SMC is left out)", "The WAGO terminals on the Siemens 6AV2124-0GC01-0AX0 are loose."],
   ])("cost: %s withholds the status with the number saved, and the card offers nothing", async (_label, question) => {
     const body = await read(question);
     expect(readConfirmedNumbers).toHaveBeenCalledWith(TENANT, NB); // precondition: the number was read

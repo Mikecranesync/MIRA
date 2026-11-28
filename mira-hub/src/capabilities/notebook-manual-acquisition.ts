@@ -1409,7 +1409,8 @@ export function threadStatusScope(
       // the folded question names ("Allen‑Bradley") is this machine's. With no maker on record, any
       // named maker fails closed. #6131 r6: a maker that is also an ordinary word (Eaton, Parker,
       // Phoenix) never counts here, in any case; reading it by where it sat or by capitals also read
-      // people and places as makers (r4 F7, r5 F8). Another maker's name used for a person or a
+      // people and places as makers (r4 F7, r5 F8). SMC never counts either, since it is as often
+      // an acronym or a Siemens sensor module (r6 F9). Another maker's name used for a person or a
       // nearby part still withholds (an accepted cost: it fails safe).
       const ticked = [...named].filter((id) => !covered(recorded, id));
       if (!ticked.length) return "own";

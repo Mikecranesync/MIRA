@@ -130,6 +130,18 @@ describe("makerGroupsNamedIn", () => {
     expect(makerGroupsNamedIn(`How do I wire the EATON ${part} in our Siemens cabinet?`).size).toBe(1);
   });
 
+  // #6131 r6 F9: SMC is as often an acronym or Siemens' own SMC sensor modules, so it never counts
+  // here, in any case. The other short maker names still count.
+  it("SMC never counts, in any case; the other short maker names still do", () => {
+    const part = "6AV2124-0GC01-0AX0";
+    expect(makerGroupsNamedIn(`Can I acknowledge the SMC (sliding mode control) alarm on the Siemens ${part}?`).size).toBe(1);
+    expect(makerGroupsNamedIn(`the smc alarm on the siemens ${part} will not clear`).size).toBe(1);
+    expect(makerGroupsNamedIn(`The SMC 30 module on the Siemens ${part} shows a fault.`).size).toBe(1);
+    expect(makerGroupsNamedIn(`The SMC valve next to the Siemens ${part} leaks.`).size).toBe(1); // known limit, as on main
+    expect(makerGroupsNamedIn(`The WAGO terminals on the Siemens ${part} are loose.`).size).toBe(2); // control
+    expect(makerGroupsNamedIn(`The ABB drive next to the Siemens ${part} trips.`).size).toBe(2); // control
+  });
+
   // #6131 r5: a dictionary word before an order-number label is a word too ("Shipped from Phoenix, order no.").
   it("a dictionary word before an order-number label is not read as a maker", () => {
     const part = "6AV2124-0GC01-0AX0";
