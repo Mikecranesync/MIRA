@@ -201,3 +201,168 @@ describe("lib/llm/cascade — the OpenAI leg is spend-capped", () => {
     expect(openAiRunBudget().calls).toBe(0);
   });
 });
+
+/**
+ * #6022: per-attempt accounting. `cascadeComplete` settles the run budget for an
+ * attempt that may have been billed (a 200 with empty content, a timeout, an
+ * unreadable body) and then returns null for it, so only an attempt that produced
+ * text reaches the caller's usage. The contract below delivers every contacted
+ * attempt through ONE optional collector in opts; the six callers that pass no
+ * collector keep today's result shape and null-on-exhaustion (controls at the end).
+ *
+ * Proposed names (the implementer adopts them or changes them here, in one place):
+ *   opts[ON_ATTEMPT](attempt), called once per provider actually contacted, in order;
+ *   attempt = { provider, model, billed, usage }:
+ *     billed false = rejected before generation (non-2xx), usage null;
+ *     billed true + usage counts = served (with or without text), actual counts;
+ *     billed true + usage null = unresolved (timeout, unreadable body): the caller
+ *       must treat the turn's totals as unknown.
+ */
+const ON_ATTEMPT = "onAttempt";
+type AttemptRecord = { provider: string; model: string; billed: boolean; usage: { prompt_tokens?: number; completion_tokens?: number } | null };
+
+describe("#6022 F5 — every contacted attempt reaches the caller", () => {
+  beforeEach(() => {
+    // Pinned: an inherited budget would refuse OpenAI before the fetch and change why these fail.
+    delete process.env.OPENAI_RUN_BUDGET_USD;
+    resetOpenAiRunBudgetForTests();
+  });
+  const P = (name: string, url: string) => ({
+    name,
+    url,
+    key: "k",
+    model: name === "OpenAI" ? "gpt-5.4-mini" : `m-${name}`,
+    requestStyle: name === "OpenAI" ? ("openai-reasoning" as const) : undefined,
+  });
+  const OPENAI = P("OpenAI", "https://api.openai.com/v1/chat/completions");
+  const GROQ = P("Groq", "https://api.groq.com/openai/v1/chat/completions");
+  type Reply = { status?: number; content?: string; usage?: unknown; throws?: boolean; badBody?: boolean };
+  function stubHosts(byHost: Record<string, Reply>) {
+    const bodies: Array<{ host: string; body: Record<string, unknown> }> = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+        const host = new URL(String(url)).host;
+        bodies.push({ host, body: JSON.parse(String(init?.body)) as Record<string, unknown> });
+        const r = byHost[host];
+        if (r.throws) throw new DOMException("timed out", "TimeoutError");
+        if (r.status && r.status !== 200) return new Response("down", { status: r.status });
+        if (r.badBody) return new Response("{not json", { status: 200 });
+        return Response.json({ choices: [{ message: { content: r.content ?? "" }, finish_reason: "stop" }], usage: r.usage });
+      }),
+    );
+    return bodies;
+  }
+  /** The collector goes through a variable so this tests-only commit still type-checks before the option exists. */
+  function withCollector(base: Record<string, unknown>) {
+    const seen: AttemptRecord[] = [];
+    const opts = { ...base, [ON_ATTEMPT]: (a: AttemptRecord) => seen.push(a) } as Parameters<typeof cascadeComplete>[1];
+    return { seen, opts };
+  }
+  const brief = (a: AttemptRecord) => ({ provider: a.provider, billed: a.billed, usage: a.usage });
+
+  it("F5-a: a 200 with empty content and known usage is reported as billed with its counts when the cascade is exhausted", async () => {
+    stubHosts({ "api.openai.com": { content: "", usage: { prompt_tokens: 50, completion_tokens: 300 } } });
+    const { seen, opts } = withCollector({ providers: [OPENAI], maxTokens: 300 });
+    expect(await cascadeComplete(MESSAGES, opts)).toBeNull();
+    expect(seen.map(brief)).toEqual([{ provider: "OpenAI", billed: true, usage: { prompt_tokens: 50, completion_tokens: 300 } }]);
+  });
+
+  it("F5-a: a billed empty first attempt is reported alongside the fallback that served", async () => {
+    stubHosts({
+      "api.openai.com": { content: "", usage: { prompt_tokens: 50, completion_tokens: 30 } },
+      "api.groq.com": { content: "ok", usage: { prompt_tokens: 50, completion_tokens: 20 } },
+    });
+    const { seen, opts } = withCollector({ providers: [OPENAI, GROQ], maxTokens: 300 });
+    expect((await cascadeComplete(MESSAGES, opts))?.provider).toBe("Groq");
+    expect(seen.map(brief)).toEqual([
+      { provider: "OpenAI", billed: true, usage: { prompt_tokens: 50, completion_tokens: 30 } },
+      { provider: "Groq", billed: true, usage: { prompt_tokens: 50, completion_tokens: 20 } },
+    ]);
+  });
+
+  it("F5-b: a timeout is reported as billed with unknown usage", async () => {
+    stubHosts({ "api.groq.com": { throws: true } });
+    const { seen, opts } = withCollector({ providers: [GROQ] });
+    expect(await cascadeComplete(MESSAGES, opts)).toBeNull();
+    expect(seen.map(brief)).toEqual([{ provider: "Groq", billed: true, usage: null }]);
+  });
+
+  it("F5-b: a 200 whose body cannot be read is reported as billed with unknown usage", async () => {
+    stubHosts({ "api.groq.com": { badBody: true } });
+    const { seen, opts } = withCollector({ providers: [GROQ] });
+    expect(await cascadeComplete(MESSAGES, opts)).toBeNull();
+    expect(seen.map(brief)).toEqual([{ provider: "Groq", billed: true, usage: null }]);
+  });
+
+  // #6081 F3 (Codex round 1): a gateway reporting that its relay to the provider timed out or
+  // broke does not establish that nothing ran, so the caller is told it may have been billed.
+  it.each([408, 502, 504, 524])("a gateway timeout (HTTP %i) is reported as possibly billed, usage unknown", async (status) => {
+    stubHosts({ "api.groq.com": { status } });
+    const { seen, opts } = withCollector({ providers: [GROQ] });
+    expect(await cascadeComplete(MESSAGES, opts)).toBeNull();
+    expect(seen.map(brief)).toEqual([{ provider: "Groq", billed: true, usage: null }]);
+  });
+
+  it.each([400, 401, 429, 503])("control: the provider's own rejection (HTTP %i) is reported as not billed", async (status) => {
+    stubHosts({ "api.groq.com": { status } });
+    const { seen, opts } = withCollector({ providers: [GROQ] });
+    expect(await cascadeComplete(MESSAGES, opts)).toBeNull();
+    expect(seen.map(brief)).toEqual([{ provider: "Groq", billed: false, usage: null }]);
+  });
+
+  it("control (every caller): a gateway timeout from OpenAI frees the shared run budget's hold, as any non-2xx always has", async () => {
+    stubHosts({ "api.openai.com": { status: 504 }, "api.groq.com": { content: "ok", usage: { prompt_tokens: 50, completion_tokens: 20 } } });
+    expect((await cascadeComplete(MESSAGES, { providers: [OPENAI, GROQ], maxTokens: 300 }))?.provider).toBe("Groq");
+    expect(openAiRunBudget().heldUsd).toBe(0);
+    expect(openAiRunBudget().spentUsd).toBe(0);
+    expect(openAiRunBudget().calls).toBe(0);
+  });
+
+  it("F5: an HTTP 500 before generation is reported as not billed", async () => {
+    stubHosts({ "api.groq.com": { status: 500 } });
+    const { seen, opts } = withCollector({ providers: [GROQ] });
+    expect(await cascadeComplete(MESSAGES, opts)).toBeNull();
+    expect(seen.map(brief)).toEqual([{ provider: "Groq", billed: false, usage: null }]);
+  });
+
+  it("control (the six other callers): with no collector, an empty first response falls through to the backup with the same cap", async () => {
+    const bodies = stubHosts({
+      "api.openai.com": { content: "", usage: { prompt_tokens: 50, completion_tokens: 300 } },
+      "api.groq.com": { content: "ok", usage: { prompt_tokens: 50, completion_tokens: 20 } },
+    });
+    const r = await cascadeComplete(MESSAGES, { providers: [OPENAI, GROQ], maxTokens: 300 });
+    expect(bodies.map((b) => [b.host, b.body.max_completion_tokens ?? b.body.max_tokens])).toEqual([
+      ["api.openai.com", 300],
+      ["api.groq.com", 300],
+    ]);
+    expect(r).toMatchObject({ provider: "Groq", content: "ok", model: "m-Groq", usage: { prompt_tokens: 50, completion_tokens: 20 } });
+  });
+
+  it("control (the six other callers): with no collector, exhaustion still returns null", async () => {
+    stubHosts({ "api.openai.com": { content: "", usage: { prompt_tokens: 50, completion_tokens: 300 } }, "api.groq.com": { status: 500 } });
+    expect(await cascadeComplete(MESSAGES, { providers: [OPENAI, GROQ], maxTokens: 300 })).toBeNull();
+  });
+});
+
+/** Round 2 (review r1, mutation CM1): the non-object-JSON 200 report. */
+describe("R1-C3 CM1 — a 200 whose JSON is not an object is reported as billed with unknown usage", () => {
+  beforeEach(() => {
+    delete process.env.OPENAI_RUN_BUDGET_USD;
+    resetOpenAiRunBudgetForTests();
+  });
+  const GROQ = { name: "Groq", url: "https://api.groq.com/openai/v1/chat/completions", key: "k", model: "m-Groq" };
+
+  it("a 200 with the JSON literal null: one attempt, billed true, usage null, and the cascade returns null", async () => {
+    const fetchMock = vi.fn(async () => new Response("null", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const seen: Array<{ provider: string; billed: boolean; usage: unknown }> = [];
+    const r = await cascadeComplete(MESSAGES, {
+      providers: [GROQ],
+      onAttempt: (a) => seen.push({ provider: a.provider, billed: a.billed, usage: a.usage }),
+    } as Parameters<typeof cascadeComplete>[1]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(r).toBeNull();
+    expect(seen).toEqual([{ provider: "Groq", billed: true, usage: null }]);
+  });
+});
