@@ -105,7 +105,8 @@ describe("makerFromText — the shared OEM maker table, corpus-independent", () 
   });
 });
 
-// #6127, #6131 r6: the makers a saved-number question names, as groups, read as makerFromText reads them.
+// #6127, #6131 r6: the makers a saved-number question names, as groups, with the six makers that are
+// also ordinary words left out.
 describe("makerGroupsNamedIn", () => {
   it("aliases of one maker are one group; another maker is a second", () => {
     expect(makerGroupsNamedIn("Allen-Bradley and Rockwell Automation").size).toBe(1);
@@ -113,18 +114,20 @@ describe("makerGroupsNamedIn", () => {
     expect(makerGroupsNamedIn("ABB and Rockwell Automation").size).toBe(2);
   });
 
-  // #6131 r5 F8: a title-case dictionary word is as often a person or a place, so it counts as a
-  // maker only in capitals, as makerFromText reads it, wherever it sits.
-  it("a dictionary-word maker counts only in capitals", () => {
+  // #6131 r5 F8, r6: a maker that is also an ordinary word is as often a person or a place, in any
+  // case, so it never counts here.
+  it("a maker that is also an ordinary word never counts, in any case", () => {
     const part = "6AV2124-0GC01-0AX0";
-    expect(makerGroupsNamedIn(`How do I wire the EATON ${part} in our Siemens cabinet?`).size).toBe(2);
-    expect(makerGroupsNamedIn(`How do I wire the ABB ${part} in our Siemens cabinet?`).size).toBe(2); // control: not a dictionary word
+    expect(makerGroupsNamedIn(`How do I wire the ABB ${part} in our Siemens cabinet?`).size).toBe(2); // control: not an ordinary word
+    expect(makerGroupsNamedIn(`Phoenix Contact terminals on the Siemens ${part} are loose.`).size).toBe(2); // control: the full name
     expect(makerGroupsNamedIn(`I spoke with Parker; the ${part} in our Siemens cabinet will not power up.`).size).toBe(1);
+    expect(makerGroupsNamedIn(`I SPOKE WITH PARKER; THE ${part} IN OUR SIEMENS CABINET WILL NOT POWER UP.`).size).toBe(1);
     expect(makerGroupsNamedIn(`When it left Phoenix, the ${part} in our Siemens cabinet was working.`).size).toBe(1);
     expect(makerGroupsNamedIn(`I sent Parker ${part} specs for the Siemens cabinet.`).size).toBe(1);
-    expect(makerGroupsNamedIn(`Sick of this: the ${part} is dead`).size).toBe(0);
-    // Known limit, as on main (r1 F2): a real maker in title case reads the same way.
+    expect(makerGroupsNamedIn(`SICK OF THIS: THE ${part} IS DEAD`).size).toBe(0);
+    // Known limit (#6146): a real maker that is also an ordinary word reads the same way.
     expect(makerGroupsNamedIn(`How do I wire the Eaton ${part} in our Siemens cabinet?`).size).toBe(1);
+    expect(makerGroupsNamedIn(`How do I wire the EATON ${part} in our Siemens cabinet?`).size).toBe(1);
   });
 
   // #6131 r5: a dictionary word before an order-number label is a word too ("Shipped from Phoenix, order no.").

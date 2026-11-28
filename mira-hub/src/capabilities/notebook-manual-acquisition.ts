@@ -1407,9 +1407,10 @@ export function threadStatusScope(
       if (otherMaker(exact?.manufacturer ?? makerFromText(q)) || [...named].some((id) => !isOwn(id))) return "other";
       // #6127 (#6104 r4 F9), #6131 r1 F1: a ticked number settles a question only when every maker
       // the folded question names ("Allen‑Bradley") is this machine's. With no maker on record, any
-      // named maker fails closed. #6131 r6: makers are read as main's maker check reads them, so a
-      // dictionary word (Eaton, Parker, Phoenix) counts only in capitals; reading it by where it
-      // sat also read people and places as makers (r4 F7, r5 F8).
+      // named maker fails closed. #6131 r6: a maker that is also an ordinary word (Eaton, Parker,
+      // Phoenix) never counts here, in any case; reading it by where it sat or by capitals also read
+      // people and places as makers (r4 F7, r5 F8). Another maker's name used for a person or a
+      // nearby part still withholds (an accepted cost: it fails safe).
       const ticked = [...named].filter((id) => !covered(recorded, id));
       if (!ticked.length) return "own";
       return [...makerGroupsNamedIn(folded).values()].every(isOwnMaker) ? "own" : "other";

@@ -84,13 +84,15 @@ function typedMakerNamesPart(text: string, matched: string, matchIndex: number, 
 /** Every maker group (the OEM table's first domain) named in `text`, mapped to the
  *  longest matched name. Aliases of one maker share a group. `typedPart`: the
  *  text is the technician's typed message and this is the part it names, which
- *  enables the typed-text rule for dictionary-word makers above. */
-function makerGroups(text: string, typedPart?: string, loose = false): Map<string, string> {
+ *  enables the typed-text rule for dictionary-word makers above. `wordsAreWords`:
+ *  dictionary-word makers never count. */
+function makerGroups(text: string, typedPart?: string, loose = false, wordsAreWords = false): Map<string, string> {
   const hits = new Map<string, string>(); // group (first domain) -> longest matched name
   for (const { name, domains } of oemMakerTable()) {
     const body = escape(name).replace(/\\-| /g, "[\\s-]+");
     const re = new RegExp(`(?<![A-Za-z0-9])${body}(?![A-Za-z0-9])`, "gi");
     const dictionary = DICTIONARY_MAKERS.has(name);
+    if (dictionary && wordsAreWords) continue;
     const named = [...text.matchAll(re)].some(
       (m) =>
         !dictionary ||
@@ -122,10 +124,12 @@ export function makerFromText(text: string, typedPart?: string): string | null {
 }
 
 /** #6127, #6131 r6: every maker group (the OEM table's first domain) `text` names, mapped to a
- *  name matched for it, by the reading `makerFromText` uses without a typed part, so a
- *  dictionary-word maker counts only in capitals. Aliases of one maker are one group. */
+ *  name matched for it. The six dictionary-word makers (Eaton, Parker, Banner, Sick, Emerson,
+ *  Phoenix) never count, in any case, because the same word is as often a person or a place;
+ *  a full name that is not an ordinary word ("Phoenix Contact") still counts. Aliases of one
+ *  maker are one group. */
 export function makerGroupsNamedIn(text: string): Map<string, string> {
-  return makerGroups(text);
+  return makerGroups(text, undefined, false, true);
 }
 
 export function extractCandidateIdentity(observation: string, typed = ""): CandidateIdentity | null {

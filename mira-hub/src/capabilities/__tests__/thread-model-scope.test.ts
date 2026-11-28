@@ -224,9 +224,9 @@ describe("threadStatusScope: a number the technician confirmed (#6085)", () => {
     expect(threadStatusScope(["Is the Micro850 on the Allen‑Bradley network?"], MICRO850)).toBe("own");
   });
 
-  // #6131 r1 F2: with only a ticked number making it own, this machine's maker counts however it
-  // is written on record, a dictionary-word maker typed before its own number is its own maker,
-  // and a machine with no maker on record counts no named maker as its own (fail closed).
+  // #6131 r1 F2, r6: with only a ticked number making it own, this machine's maker counts however
+  // it is written on record, a dictionary-word maker before its own number never counts against
+  // it, and a machine with no maker on record counts no named maker as its own (fail closed).
   it("control: this machine's maker written in capitals on record is its own maker", () => {
     expect(threadStatusScope(["How do I wire the Siemens 6AV2124-0GC01-0AX0?"], { ...ticked, manufacturer: "SIEMENS" })).toBe("own");
   });
@@ -291,10 +291,9 @@ describe("threadStatusScope: a number the technician confirmed (#6085)", () => {
     expect(threadStatusScope(["How do I wire the Siemens 6AV2124-0GC01-0AX0?"], NO_MAKER)).toBe("other");
   });
 
-  // Accepted cost (#6131 r1): a dictionary-word maker counts only when typed right before the
-  // number, the typed-text rule the identity card already uses; written after it, title case,
-  // it is read as an ordinary word.
-  it("cost: title-case Eaton written after the confirmed number is not read as a maker", () => {
+  // Known limit (#6146, #6131 r6): a maker that is also an ordinary word never counts in this rule,
+  // in any case; written after the number it reads as an ordinary word too.
+  it("known limit: title-case Eaton written after the confirmed number is not read as a maker", () => {
     expect(threadStatusScope(["How do I wire the 6AV2124-0GC01-0AX0 from Eaton in our Siemens cabinet?"], ticked)).toBe("own");
   });
 });
