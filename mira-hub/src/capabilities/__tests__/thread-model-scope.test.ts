@@ -199,6 +199,17 @@ describe("threadStatusScope: a number the technician confirmed (#6085)", () => {
     expect(threadStatusScope([q], ticked)).toBe("other");
   });
 
+  // #6131 r7 (Mike): any everyday use of a counted maker name is the same written cost, here the
+  // conductance unit read as the maker Siemens on an Allen-Bradley machine. It fails safe.
+  it("cost: the siemens unit beside a ticked number on another maker's machine is other", () => {
+    const M850 = { manufacturer: "Allen-Bradley", model: "Micro850", catalogNumber: "", recordCatalog: null };
+    const tickedM850 = { ...M850, confirmedNumbers: ["Micro850-12A"] };
+    const unit = "The conductivity probe on the Allen-Bradley Micro850-12A reads 0.5 siemens.";
+    const control = "The conductivity probe on the Allen-Bradley Micro850-12A reads 0.5 mS.";
+    expect(threadStatusScope([control], tickedM850)).toBe("own"); // precondition: the tick admits the thread
+    expect(threadStatusScope([unit], tickedM850)).toBe("other");
+  });
+
   // #6131 r1 F1: the saved-number rule reads makers from the folded question, as the model is
   // read, so another maker written with a nonbreaking hyphen beside a ticked number reads as it
   // does with the ASCII hyphen.

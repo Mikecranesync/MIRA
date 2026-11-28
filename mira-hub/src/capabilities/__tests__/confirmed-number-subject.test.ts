@@ -436,6 +436,8 @@ describe("GET notebook detail: a saved number in a question naming two makers (#
     ["a person whose surname is a maker", "I spoke with Schneider; the 6AV2124-0GC01-0AX0 in our Siemens cabinet will not power up."],
     ["a part from another maker nearby", "The Omron relay next to the Siemens 6AV2124-0GC01-0AX0 clicks."],
     ["a part from another short-named maker nearby (only SMC is left out)", "The WAGO terminals on the Siemens 6AV2124-0GC01-0AX0 are loose."],
+    // #6131 r7 (Mike): any everyday use of a counted maker name is the same written cost.
+    ["a maker name used for a hardness scale", "The bracket bolts for the Siemens 6AV2124-0GC01-0AX0 need a Rockwell C hardness of 40."],
   ])("cost: %s withholds the status with the number saved, and the card offers nothing", async (_label, question) => {
     const body = await read(question);
     expect(readConfirmedNumbers).toHaveBeenCalledWith(TENANT, NB); // precondition: the number was read
