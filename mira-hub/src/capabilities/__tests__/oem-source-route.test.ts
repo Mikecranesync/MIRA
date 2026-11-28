@@ -6,7 +6,7 @@ import { NextResponse } from "next/server";
 vi.mock("@/lib/session", () => ({ sessionOr401: vi.fn() }));
 vi.mock("@/capabilities/oem-source-bytes", () => ({ oemSourceBytes: vi.fn() }));
 
-import { GET } from "../route";
+import { GET } from "@/app/api/oem-sources/[id]/route";
 import { sessionOr401 } from "@/lib/session";
 import { oemSourceBytes } from "@/capabilities/oem-source-bytes";
 
