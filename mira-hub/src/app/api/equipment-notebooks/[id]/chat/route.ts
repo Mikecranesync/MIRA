@@ -96,6 +96,7 @@ import {
 } from "@/capabilities/observability/config";
 import { createResponseHandoff, type ResponseHandoff } from "@/capabilities/response-handoff";
 import pool from "@/lib/db";
+import { oemCitationLink } from "@/capabilities/oem-source-bytes";
 import type { PoolClient } from "pg";
 import { composeTimeout } from "@/lib/abort-helpers";
 import { relevantQuoteWindow } from "@/lib/quote-window";
@@ -540,15 +541,20 @@ async function buildCitations(
   for (const c of chunks) {
     const key = `${c.sourceUrl}::${c.sourcePage ?? ""}`;
     if (seen.has(key)) continue;
+    const oem = oemCitationLink(c);
     seen.set(key, {
       citationId: String(seen.size + 1),
       docId: c.docId ?? "",
       sourceTitle: citationTitle(c),
-      page: c.sourcePage,
+      // #6119: the viewer draws exactly this page, so a legacy chunk ordinal (#2910) is no page.
+      page: oem ? oem.page : c.sourcePage,
       fileId: null,
       // A manufacturer manual's own address, so the reader can open it; only a
       // place a browser can actually go (http/https) is carried.
       ...(/^https?:\/\//i.test(c.sourceUrl ?? "") ? { sourceUrl: c.sourceUrl } : {}),
+      // #6119: the shared row the Hub's own copy is served by — only for a public manufacturer
+      // manual (no document id, not private, a web address). An upload keeps its fileId alone.
+      ...(oem ? { sourceEntryId: oem.sourceEntryId } : {}),
       // Claim-centered window (CIT-07 phase 2) — not the chunk head.
       quote: relevantQuoteWindow(c.content, question),
     });

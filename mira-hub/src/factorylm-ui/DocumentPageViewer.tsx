@@ -10,10 +10,13 @@ import {
   failureMessage,
   filenameFromDisposition,
   isPdf,
-  nativeFileHref,
   pageCaption,
   pageToShow,
   parseViewerRequest,
+  openDocumentHref,
+  oemCopyNotice,
+  requestBytesHref,
+  requestId,
   viewerMode,
   type ViewerRequest,
 } from "./document-page-viewer-logic";
@@ -24,7 +27,7 @@ type RenderTask = ReturnType<Awaited<ReturnType<PdfDoc["getPage"]>>["render"]>;
 type ViewState =
   | { kind: "loading" }
   | { kind: "failed"; message: string }
-  | { kind: "ready"; name: string; numPages: number; page: number; outOfRange: boolean; rendered: boolean };
+  | { kind: "ready"; name: string; numPages: number; page: number; outOfRange: boolean; rendered: boolean; notice: string | null };
 
 const wrap: CSSProperties = {
   minHeight: "100dvh",
@@ -55,14 +58,14 @@ export function DocumentPageViewer() {
     }
     const embedded = window.self !== window.top;
     if (viewerMode(navigator.pdfViewerEnabled, { embedded, page: req.page }) === "native") {
-      window.location.replace(nativeFileHref(req.fileId, null));
+      window.location.replace(requestBytesHref(req, null));
       return;
     }
     const abort = new AbortController();
     let loaded: PdfDoc | null = null;
     void (async () => {
       try {
-        const res = await fetch(nativeFileHref(req.fileId, null), {
+        const res = await fetch(requestBytesHref(req, null), {
           credentials: "same-origin",
           signal: abort.signal,
         });
@@ -75,11 +78,12 @@ export function DocumentPageViewer() {
           if (embedded) {
             setState({ kind: "failed", message: "Use Open document to view the original file." });
           } else {
-            window.location.replace(nativeFileHref(req.fileId, null));
+            window.location.replace(requestBytesHref(req, null));
           }
           return;
         }
         const name = filenameFromDisposition(res.headers.get("content-disposition")) ?? "Document";
+        const notice = oemCopyNotice(req, res.headers.get("x-source-fetched-at"));
         const data = new Uint8Array(await res.arrayBuffer());
         const { getDocumentProxy } = await import("unpdf");
         if (abort.signal.aborted) return;
@@ -92,7 +96,7 @@ export function DocumentPageViewer() {
         loaded = pdf;
         const shown = pageToShow(req.page, pdf.numPages);
         setDoc(pdf);
-        setState({ kind: "ready", name, numPages: pdf.numPages, ...shown, rendered: false });
+        setState({ kind: "ready", name, numPages: pdf.numPages, ...shown, rendered: false, notice });
       } catch (err) {
         if (abort.signal.aborted) return;
         console.error("[DocumentPageViewer]", err);
@@ -147,7 +151,7 @@ export function DocumentPageViewer() {
   });
   const rendered = state.kind === "ready" && state.rendered;
   const openDocument = request ? (
-    <a href={nativeFileHref(request.fileId, request.page)} target="_blank" rel="noopener noreferrer">Open document</a>
+    <a href={openDocumentHref(request, request.page)} target="_blank" rel="noopener noreferrer">Open document</a>
   ) : null;
 
   return (
@@ -168,9 +172,14 @@ export function DocumentPageViewer() {
         <>
           {rendered ? (
             <p data-testid="viewer-caption" style={{ margin: "0 0 var(--fl-workspace-space-1)", fontWeight: 700, overflowWrap: "anywhere" }}>
-              {pageCaption(state.name, state.page, state.numPages, request.fileId)}
+              {pageCaption(state.name, state.page, state.numPages, requestId(request))}
             </p>
           ) : <p role="status">Opening page {state.page}…</p>}
+          {rendered && state.notice ? (
+            <p data-testid="viewer-copy-notice" style={{ margin: "0 0 var(--fl-workspace-space-1)", color: "var(--fl-workspace-muted)" }}>
+              {state.notice}
+            </p>
+          ) : null}
           {rendered && state.outOfRange ? (
             <p role="status" style={{ margin: "0 0 var(--fl-workspace-space-1)", color: "var(--fl-workspace-muted)" }}>
               The cited page {request.page} isn&apos;t in this file; showing page 1.

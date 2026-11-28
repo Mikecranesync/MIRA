@@ -48,6 +48,11 @@ export type EvidenceCitation = {
    *  no parked file), so the shell can open it. Absent on older turns and on
    *  docs without a web address. */
   sourceUrl?: string | null;
+  /** #6119: the shared-library row (knowledge_entries.id) a public manufacturer manual citation
+   *  came from, so the viewer can draw the cited page from the Hub's own copy
+   *  (/api/oem-sources/{id}/) instead of sending the reader to the vendor. Set only when the chunk
+   *  has no document id, is not private, and has an http(s) address. Absent on older turns. */
+  sourceEntryId?: string | null;
   quote: string | null;
   /** Room for richer selectors later without changing the API shape (PRD §14). */
   selector?: { type: "page" | "text" | "bbox" | "section"; value: unknown };

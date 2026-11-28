@@ -122,6 +122,10 @@ export interface ManualChunk {
    */
   retrievalScope?: "vendor_fallback";
   verified?: boolean;
+  /** #6119: the knowledge_entries row id and its privacy, on the shared-library path only, so a
+   *  citation on a public manufacturer manual can open the Hub's own copy (/api/oem-sources/{id}). */
+  entryId?: string | null;
+  isPrivate?: boolean;
 }
 
 /** What an admitted document's cover says, as the safety stop needs it. */
@@ -1458,6 +1462,8 @@ async function runBm25Query(
           metadata->>'chunk_index' AS chunk_index,
           metadata->>'title' AS title,
           verified,
+          id::text AS entry_id,
+          is_private,
           ts_rank_cd(content_tsv, ${tsquery}) AS rank
         FROM knowledge_entries
         WHERE (is_private = false OR tenant_id = $1)
@@ -1546,6 +1552,8 @@ async function runBm25Query(
           metadata->>'chunk_index' AS chunk_index,
           metadata->>'title' AS title,
           verified,
+          id::text AS entry_id,
+          is_private,
           2::float4 AS rank
         FROM knowledge_entries
         WHERE (is_private = false OR tenant_id = $1)
@@ -1582,6 +1590,8 @@ async function runBm25Query(
     title: String(r.title ?? ""),
     rank: Number(r.rank ?? 0),
     verified: r.verified === true,
+    entryId: r.entry_id == null ? null : String(r.entry_id),
+    isPrivate: r.is_private === true,
   }));
 }
 

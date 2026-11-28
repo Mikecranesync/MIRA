@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { API_BASE } from "@/lib/config";
 import {
+  oemCopyNotice,
   failureMessage,
   filenameFromDisposition,
   isPdf,
@@ -8,7 +9,11 @@ import {
   pageCaption,
   pageToShow,
   parseViewerRequest,
+  requestBytesHref,
+  requestId,
   viewerHref,
+  viewerHrefForOem,
+  openDocumentHref,
   viewerMode,
 } from "./document-page-viewer-logic";
 
@@ -109,5 +114,64 @@ describe("failureMessage and pageCaption say exactly what happened", () => {
   });
   it("names source, page and revision", () => {
     expect(pageCaption("GS10 manual.pdf", 47, 312, FILE)).toBe("GS10 manual.pdf · page 47 of 312 · file 3a0f78a2");
+  });
+});
+
+// #6119: a public manufacturer manual, opened by its shared-library row id.
+describe("the viewer opens a manufacturer manual by its row id", () => {
+  const ENTRY = "6119beef-0000-4000-8000-000000000001";
+  it("round-trips the row id and the cited page", () => {
+    const href = viewerHrefForOem(ENTRY, 906);
+    expect(href).toBe(`${BASE_PATH}/v3/source/?oem=${ENTRY}&page=906`);
+    expect(parseViewerRequest(href.slice(href.indexOf("?")))).toEqual({ oemId: ENTRY, page: 906 });
+  });
+  it("reads the Hub's copy from the manual byte route, never the vendor", () => {
+    const req = parseViewerRequest(`?oem=${ENTRY}&page=906`)!;
+    expect(requestBytesHref(req, null)).toBe(`${API_BASE}/api/oem-sources/${ENTRY}/`);
+    expect(requestBytesHref(req, 906)).toBe(`${API_BASE}/api/oem-sources/${ENTRY}/#page=906`);
+    expect(requestId(req)).toBe(ENTRY);
+  });
+  it("control: a file request still reads the file route", () => {
+    const req = parseViewerRequest(`?file=${FILE}&page=3`)!;
+    expect(requestBytesHref(req, null)).toBe(`${API_BASE}/api/namespace/files/${FILE}/`);
+    expect(requestId(req)).toBe(FILE);
+  });
+  it("both file and oem is no request, not a guess at which one", () => {
+    expect(parseViewerRequest(`?file=${FILE}&oem=${ENTRY}`)).toBeNull();
+  });
+  it("the vendor address rides along on an allowlisted host and becomes Open document", () => {
+    const src = "https://cache.industry.siemens.com/dl/files/g120.pdf";
+    const href = viewerHrefForOem(ENTRY, 906, src);
+    const req = parseViewerRequest(href.slice(href.indexOf("?")))!;
+    expect(req).toEqual({ oemId: ENTRY, page: 906, sourceUrl: src });
+    expect(openDocumentHref(req, 906)).toBe(`${src}#page=906`);
+    expect(requestBytesHref(req, null)).toBe(`${API_BASE}/api/oem-sources/${ENTRY}/`);
+  });
+  it("an off-list or http vendor address is dropped; Open document falls back to the byte route", () => {
+    expect(viewerHrefForOem(ENTRY, 906, "https://evil.example.com/x.pdf")).toBe(`${BASE_PATH}/v3/source/?oem=${ENTRY}&page=906`);
+    const req = parseViewerRequest(`?oem=${ENTRY}&page=906&src=${encodeURIComponent("http://cache.industry.siemens.com/x.pdf")}`)!;
+    expect(req).toEqual({ oemId: ENTRY, page: 906 });
+    expect(openDocumentHref(req, 906)).toBe(`${API_BASE}/api/oem-sources/${ENTRY}/#page=906`);
+  });
+  it("control: a file request opens its own byte route", () => {
+    const req = parseViewerRequest(`?file=${FILE}&page=3`)!;
+    expect(openDocumentHref(req, 3)).toBe(`${API_BASE}/api/namespace/files/${FILE}/#page=3`);
+  });
+  it("a manual the Hub could not fetch says so and points at Open document", () => {
+    expect(failureMessage(502)).toBe("This manual can't be loaded here. Use Open document.");
+  });
+});
+
+describe("oemCopyNotice — the Hub's copy is labelled, never passed off as the indexed edition (#6119)", () => {
+  const oem = { oemId: "6119beef-0000-4000-8000-000000000001", page: 906 };
+  it("a manufacturer manual names the day the Hub fetched it", () => {
+    expect(oemCopyNotice(oem, "2026-11-20T08:00:00.000Z")).toBe("Hub copy fetched 2026-11-20, not checked against the indexed edition.");
+  });
+  it("a missing or unreadable date still says it is not checked", () => {
+    expect(oemCopyNotice(oem, null)).toBe("Hub copy, not checked against the indexed edition.");
+    expect(oemCopyNotice(oem, "yesterday-ish")).toBe("Hub copy, not checked against the indexed edition.");
+  });
+  it("control — a parked upload is the customer's own file and gets no notice", () => {
+    expect(oemCopyNotice({ fileId: "f-1", page: 3 }, "2026-11-20T08:00:00.000Z")).toBeNull();
   });
 });
